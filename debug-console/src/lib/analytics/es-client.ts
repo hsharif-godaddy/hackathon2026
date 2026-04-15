@@ -3,7 +3,8 @@ import { Client } from '@elastic/elasticsearch';
 import { logger } from '@/lib/logger';
 
 const SOURCE_ES_URL = process.env.PIONEER_ES_ENDPOINT || 'http://localhost:9200';
-const SOURCE_INDEX = 'airo-agents-prod';
+const envName = process.env.ENVIRONMENT_NAME || 'dev';
+const SOURCE_INDEX = envName === 'prod' ? 'airo-agents-prod' : 'airo-agents-dev';
 
 const WRITE_ES_URL = process.env.AIRO_BUILDER_ES_ENDPOINT || 'http://localhost:9200';
 

@@ -160,7 +160,7 @@ const controlPlaneFieldMapping: FieldMapping = {
 function getESConfigForSource(sourceId: string): LogSourceConfig | null {
   const env = process.env;
   const envName = env.ENVIRONMENT_NAME || 'dev';
-  const isTestEnv = envName === 'test' || envName === 'dev';
+  const isTestEnv = envName !== 'prod';
 
   const sources: LogSourceRegistry = {
     'airo-agents': {
@@ -306,7 +306,7 @@ export function getLogSourceConfig(sourceId: string): LogSourceConfig | null {
 export function getAllLogSources(): LogSourceConfig[] {
   const env = process.env;
   const envName = env.ENVIRONMENT_NAME || 'dev';
-  const isTestEnv = envName === 'test' || envName === 'dev';
+  const isTestEnv = envName !== 'prod';
 
   return [
     {

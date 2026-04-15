@@ -4,7 +4,8 @@ import { withAuth } from '@/lib/api-auth';
 
 export const dynamic = 'force-dynamic';
 
-const SOURCE_INDEX = 'airo-agents-prod';
+const envName = process.env.ENVIRONMENT_NAME || 'dev';
+const SOURCE_INDEX = envName === 'prod' ? 'airo-agents-prod' : 'airo-agents-dev';
 
 interface PublishEvent {
   id: string;

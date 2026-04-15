@@ -207,9 +207,13 @@ async function validateAdGroup(request: NextRequest, token: string, adGroup: str
 }
 
 /**
- * Higher-order function to wrap API handlers with authentication
+ * Higher-order function to wrap API handlers with authentication.
  *
- * Usage for simple routes:
+ * The returned function satisfies Next.js 16's strict RouteHandlerConfig
+ * validation which requires `context: { params: Promise<...> }` as a
+ * required second parameter.
+ *
+ * Usage for simple routes (context param is accepted but unused):
  *   export const GET = withAuth(async (request, auth) => { ... });
  *
  * Usage for dynamic routes with params:
@@ -221,33 +225,20 @@ async function validateAdGroup(request: NextRequest, token: string, adGroup: str
  * Usage with AD group restriction:
  *   export const GET = withAuth(async (request, auth) => { ... }, { adGroup: 'MyADGroup' });
  */
-export function withAuth<P = void>(
-    handler: P extends void
-        ? (request: NextRequest, auth: AuthResult) => Promise<NextResponse>
-        : (request: NextRequest, auth: AuthResult, context: RouteContext<P>) => Promise<NextResponse>,
+export function withAuth<P = unknown>(
+    handler: (request: NextRequest, auth: AuthResult, context: RouteContext<P>) => Promise<NextResponse | Response>,
     options?: WithAuthOptions
 ) {
     return async (
         request: NextRequest,
-        context: RouteContext<P> | { params: Promise<Record<string, string>> }
-    ): Promise<NextResponse> => {
+        context: RouteContext<P>
+    ): Promise<Response> => {
         const auth = await validateApiAuth(request, options);
 
         if (!auth.authenticated && auth.error) {
             return auth.error;
         }
 
-        // For dynamic routes (P is not void), pass context with params
-        // For non-dynamic routes (P is void), only pass request and auth
-        const contextParams = (context as any).params;
-        if (contextParams) {
-            return (handler as (request: NextRequest, auth: AuthResult, context: RouteContext<P>) => Promise<NextResponse>)(
-                request,
-                auth,
-                context as RouteContext<P>
-            );
-        }
-
-        return (handler as (request: NextRequest, auth: AuthResult) => Promise<NextResponse>)(request, auth);
+        return handler(request, auth, context);
     };
 }
