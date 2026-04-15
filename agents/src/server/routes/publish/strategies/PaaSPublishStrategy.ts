@@ -1,4 +1,5 @@
 import type { PublishStrategy, PublishContext, PublishResult, DeploymentStrategy } from './PublishStrategy.js';
+import { detectPackageManager, getBuildCommand } from '../../../../services/AppRestartService.js';
 
 /**
  * PaaS Publish Strategy
@@ -24,13 +25,20 @@ export class PaaSPublishStrategy implements PublishStrategy {
       message: 'PaaS strategy: skipping git operations',
     });
 
+    // Detect package manager from lock files (uses shared utility)
+    const packageManager = await detectPackageManager(devSupervisor);
+    logger.info(`route.publish.${this.key}.package-manager.detected`, { packageManager });
+    const buildCommand = getBuildCommand(packageManager, true); // production=true for publish
+
     // Build the application
     logger.info(`route.publish.${this.key}.build.begin`, {
       commitHash: commitHash.substring(0, 7),
+      packageManager,
+      command: buildCommand,
     });
 
     const buildResult = await devSupervisor.exec({
-      command: 'NODE_ENV=production npm run build',
+      command: buildCommand,
       working_dir: '/app',
       timeout: 120,
       capture_output: true,
@@ -39,6 +47,7 @@ export class PaaSPublishStrategy implements PublishStrategy {
     if (!buildResult.success) {
       logger.error(`route.publish.${this.key}.build.failed`, {
         commitHash: commitHash.substring(0, 7),
+        packageManager,
         exitCode: buildResult.exit_code,
         stderr: buildResult.stderr,
       });
@@ -51,6 +60,7 @@ export class PaaSPublishStrategy implements PublishStrategy {
 
     logger.info(`route.publish.${this.key}.build.success`, {
       commitHash: commitHash.substring(0, 7),
+      packageManager,
       executionTime: buildResult.execution_time,
     });
 

@@ -25,6 +25,92 @@ export const DEFAULT_BUILD_COMMAND = 'npm run build';
 export const PAAS_NODEJS_V1_PRODUCT_ID = 'paas-nodejs-v1';
 
 /**
+ * Supported package managers
+ */
+export type PackageManager = 'npm' | 'yarn' | 'pnpm';
+
+/**
+ * Get the install command for the given package manager.
+ * Note: npm uses --include=dev to ensure devDependencies are installed (needed for build tools like Vite).
+ * pnpm and yarn install devDependencies by default unless NODE_ENV=production or --prod flag is used,
+ * so no additional flags are needed. These commands run in the preview container which has
+ * NODE_ENV=development by default.
+ */
+export function getInstallCommand(packageManager: PackageManager = 'npm'): string {
+  switch (packageManager) {
+    case 'pnpm':
+      return 'pnpm install';
+    case 'yarn':
+      return 'yarn install';
+    case 'npm':
+    default:
+      return 'npm install --include=dev';
+  }
+}
+
+/**
+ * Get the build command for the given package manager.
+ * @param packageManager - Package manager to use
+ * @param production - If true, prefixes with NODE_ENV=production (for publish builds)
+ */
+export function getBuildCommand(packageManager: PackageManager = 'npm', production = false): string {
+  const prefix = production ? 'NODE_ENV=production ' : '';
+  switch (packageManager) {
+    case 'pnpm':
+      return `${prefix}pnpm run build`;
+    case 'yarn':
+      return `${prefix}yarn run build`;
+    case 'npm':
+    default:
+      return `${prefix}npm run build`;
+  }
+}
+
+/**
+ * Interface for dev-supervisor exec method (minimal interface for detectPackageManager)
+ */
+export interface DevSupervisorExec {
+  exec(options: { command: string; timeout: number }): Promise<{ stdout?: string }>;
+}
+
+/**
+ * Detect package manager by checking for lock files.
+ * Used by zip upload, git pull, and publish flows.
+ * Falls back to npm on any error (container unreachable, timeout, etc.)
+ * @param devSupervisor - Dev supervisor client with exec method
+ * @param projectRoot - Root path to check for lock files (default: /app)
+ */
+export async function detectPackageManager(
+  devSupervisor: DevSupervisorExec,
+  projectRoot = '/app'
+): Promise<PackageManager> {
+  try {
+    // Check for pnpm-lock.yaml
+    const pnpmCheck = await devSupervisor.exec({
+      command: `test -f "${projectRoot}/pnpm-lock.yaml" && echo "found"`,
+      timeout: 5,
+    });
+    if (pnpmCheck.stdout?.trim() === 'found') {
+      return 'pnpm';
+    }
+
+    // Check for yarn.lock
+    const yarnCheck = await devSupervisor.exec({
+      command: `test -f "${projectRoot}/yarn.lock" && echo "found"`,
+      timeout: 5,
+    });
+    if (yarnCheck.stdout?.trim() === 'found') {
+      return 'yarn';
+    }
+
+    return 'npm';
+  } catch {
+    // Fall back to npm on any error (container unreachable, timeout, etc.)
+    return 'npm';
+  }
+}
+
+/**
  * @deprecated Build tool type is no longer used - always Node.js
  */
 export type BuildToolType = 'nodejs';
@@ -108,6 +194,14 @@ export class AppRestartService {
     this.logger.info('app-restart.cycle.begin', { appId });
 
     try {
+      // Detect package manager from lock files
+      const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
+      const packageManager: PackageManager = devSupervisor
+        ? await detectPackageManager(devSupervisor)
+        : 'npm';
+
+      this.logger.info('app-restart.package-manager.detected', { appId, packageManager });
+
       // Step 1: Stop dev server
       const stopResult = await this.stopDevServer(appId);
       if (!stopResult.success) {
@@ -123,7 +217,7 @@ export class AppRestartService {
 
       // Step 2: Run install (unless skipped)
       if (!options?.skipInstall) {
-        const installCommand = options?.commands?.install || DEFAULT_INSTALL_COMMAND;
+        const installCommand = options?.commands?.install || getInstallCommand(packageManager);
         const installResult = await this.runCommand(appId, appPath, installCommand, 'install');
         if (!installResult.success) {
           result.error = installResult.error || 'install failed';
@@ -142,7 +236,7 @@ export class AppRestartService {
 
       // Step 3: Run build (unless skipped)
       if (!options?.skipBuild) {
-        const buildCommand = options?.commands?.build || DEFAULT_BUILD_COMMAND;
+        const buildCommand = options?.commands?.build || getBuildCommand(packageManager);
         const buildResult = await this.runCommand(appId, appPath, buildCommand, 'build');
         if (!buildResult.success) {
           // Build failure is not critical - log warning but continue
@@ -166,7 +260,9 @@ export class AppRestartService {
         appPath,
         options?.buildToolType,
         options?.commands?.start,
-        options?.commands?.dev
+        undefined, // productId
+        options?.commands?.dev,
+        packageManager
       );
 
       // Step 5: Restart dev server with resolved start command
@@ -284,11 +380,15 @@ export class AppRestartService {
   }
 
   /**
-   * Run npm install via dev-supervisor
+   * Run install command via dev-supervisor
+   * @param appId - App ID
+   * @param appPath - Path to the app directory
+   * @param packageManager - Package manager to use (npm, yarn, pnpm)
    */
-  async runNpmInstall(
+  async runInstall(
     appId: string,
-    appPath: string
+    appPath: string,
+    packageManager: PackageManager = 'npm'
   ): Promise<{ success: boolean; output?: string; error?: string; exitCode?: number }> {
     try {
       const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
@@ -301,9 +401,12 @@ export class AppRestartService {
       }
 
       const terminalTool = new TerminalTool(devSupervisor);
+      const installCommand = getInstallCommand(packageManager);
+
+      this.logger.info('app-restart.install.begin', { appId, packageManager, command: installCommand });
 
       const result = await terminalTool.executeCommand(appPath, {
-        command: 'npm install',
+        command: installCommand,
         timeout: RESTART_TIMEOUTS.INSTALL,
       });
 
@@ -314,23 +417,27 @@ export class AppRestartService {
       const combinedOutput = `${result.stdout || ''}\n${result.stderr || ''}`.trim();
       if (combinedOutput) response.output = combinedOutput;
       if (!result.success) {
-        response.error = result.stderr || 'npm install failed';
+        response.error = result.stderr || `${installCommand} failed`;
       }
       return response;
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'npm install failed',
+        error: error instanceof Error ? error.message : 'install failed',
       };
     }
   }
 
   /**
-   * Run npm build via dev-supervisor
+   * Run build command via dev-supervisor
+   * @param appId - App ID
+   * @param appPath - Path to the app directory
+   * @param packageManager - Package manager to use (npm, yarn, pnpm)
    */
-  async runNpmBuild(
+  async runBuild(
     appId: string,
-    appPath: string
+    appPath: string,
+    packageManager: PackageManager = 'npm'
   ): Promise<{ success: boolean; output?: string; error?: string; exitCode?: number }> {
     try {
       const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
@@ -343,9 +450,12 @@ export class AppRestartService {
       }
 
       const terminalTool = new TerminalTool(devSupervisor);
+      const buildCommand = getBuildCommand(packageManager);
+
+      this.logger.info('app-restart.build.begin', { appId, packageManager, command: buildCommand });
 
       const result = await terminalTool.executeCommand(appPath, {
-        command: 'npm run build',
+        command: buildCommand,
         timeout: RESTART_TIMEOUTS.BUILD,
       });
 
@@ -356,13 +466,13 @@ export class AppRestartService {
       const combinedOutput = `${result.stdout || ''}\n${result.stderr || ''}`.trim();
       if (combinedOutput) response.output = combinedOutput;
       if (!result.success) {
-        response.error = result.stderr || 'npm run build failed';
+        response.error = result.stderr || `${buildCommand} failed`;
       }
       return response;
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'npm run build failed',
+        error: error instanceof Error ? error.message : 'build failed',
       };
     }
   }
@@ -374,20 +484,23 @@ export class AppRestartService {
    * @param customStartCommand - Custom start command override
    * @param productId - Optional product identifier for runtime behavior
    * @param customDevCommand - Custom dev command override
+   * @param packageManager - Package manager to use for build command
    */
   async createPaasConfig(
     appPath: string,
     _buildToolType?: BuildToolType,
     customStartCommand?: string,
     productId?: string,
-    customDevCommand?: string
+    customDevCommand?: string,
+    packageManager: PackageManager = 'npm'
   ): Promise<void> {
     const airoDir = join(appPath, '.airo');
     const configPath = join(airoDir, 'config.json');
 
-    // Always use Node.js commands - customers define their own scripts
+    // Use detected package manager for build command
     const finalStartCmd = customStartCommand || DEFAULT_START_COMMAND;
     const finalDevCmd = customDevCommand || finalStartCmd;
+    const finalBuildCmd = getBuildCommand(packageManager);
 
     const paasConfig: PaasConfig = {
       runtime: {
@@ -395,7 +508,7 @@ export class AppRestartService {
           command: finalDevCmd,
         },
         build: {
-          command: DEFAULT_BUILD_COMMAND,
+          command: finalBuildCmd,
         },
         serve: {
           command: finalStartCmd,

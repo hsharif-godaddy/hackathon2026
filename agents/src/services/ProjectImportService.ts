@@ -16,7 +16,14 @@ import { zipSecurityService } from './ZipSecurityService.js';
 import { gitCloneService } from './GitCloneService.js';
 import { codeSyncFileCleanupService } from './CodeSyncFileCleanupService.js';
 import { modifyViteConfig } from './ViteConfigModifier.js';
-import { appRestartService, DEFAULT_START_COMMAND } from './AppRestartService.js';
+import {
+  appRestartService,
+  DEFAULT_START_COMMAND,
+  getInstallCommand,
+  getBuildCommand,
+  detectPackageManager,
+  type PackageManager,
+} from './AppRestartService.js';
 import { injectPortHandling } from './ExpressPortInjector.js';
 import { GitTool } from '../tools/git-tool.js';
 import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js';
@@ -424,29 +431,33 @@ export class ProjectImportService {
 
       // Phase 8: Install dependencies (already runs in container via dev-supervisor)
       await this.updateStatus(jobId, ImportJobStatus.INSTALLING);
-      const installResult = await appRestartService.runNpmInstall(appId, app.path);
+      const detectedPm = validation.packageManager || 'npm';
+      const installResult = await appRestartService.runInstall(appId, app.path, detectedPm);
 
       if (installResult.output) {
         await this.importJobRepo.update(jobId, { installOutput: installResult.output });
       }
 
       if (!installResult.success) {
+        const installCommand = getInstallCommand(detectedPm);
+        const installFailedMsg = installResult.error || `${installCommand} failed`;
         this.logger.error('project-import.install.failed', {
           jobId,
           appId,
           stage: ImportJobStatus.INSTALLING,
           error: installResult.error,
           exitCode: installResult.exitCode,
+          packageManager: detectedPm,
         });
         await this.gitRollback(appId, app.path);
         await this.importJobRepo.markFailed(
           jobId,
-          installResult.error || 'npm install failed',
+          installFailedMsg,
           ImportJobStatus.INSTALLING,
           [{
             key: ValidationErrorKey.INSTALL_FAILED,
-            message: installResult.error || 'npm install failed',
-            details: { exitCode: installResult.exitCode },
+            message: installFailedMsg,
+            details: { exitCode: installResult.exitCode, packageManager: detectedPm },
           }]
         );
         await this.cleanupContainerFiles(devSupervisor, containerZipPath, containerProjectPath);
@@ -457,29 +468,32 @@ export class ProjectImportService {
       // Phase 9: Build (if script exists)
       if (validation.hasBuildScript) {
         await this.updateStatus(jobId, ImportJobStatus.BUILDING);
-        const buildResult = await appRestartService.runNpmBuild(appId, app.path);
+        const buildResult = await appRestartService.runBuild(appId, app.path, detectedPm);
 
         if (buildResult.output) {
           await this.importJobRepo.update(jobId, { buildOutput: buildResult.output });
         }
 
         if (!buildResult.success) {
+          const buildCommand = getBuildCommand(detectedPm);
+          const buildFailedMsg = buildResult.error || `${buildCommand} failed`;
           this.logger.error('project-import.build.failed', {
             jobId,
             appId,
             stage: ImportJobStatus.BUILDING,
             error: buildResult.error,
             exitCode: buildResult.exitCode,
+            packageManager: detectedPm,
           });
           await this.gitRollback(appId, app.path);
           await this.importJobRepo.markFailed(
             jobId,
-            buildResult.error || 'npm run build failed',
+            buildFailedMsg,
             ImportJobStatus.BUILDING,
             [{
               key: ValidationErrorKey.BUILD_FAILED,
-              message: buildResult.error || 'npm run build failed',
-              details: { exitCode: buildResult.exitCode },
+              message: buildFailedMsg,
+              details: { exitCode: buildResult.exitCode, packageManager: detectedPm },
             }]
           );
           await this.cleanupContainerFiles(devSupervisor, containerZipPath, containerProjectPath);
@@ -496,13 +510,14 @@ export class ProjectImportService {
         || (validation.hasStartScript ? `${pm} start` : null)
         || (validation.hasDevScript ? `NODE_ENV=development ${pm} run dev` : null)
         || DEFAULT_START_COMMAND;
-      this.logger.info('project-import.config.create', { jobId, appId });
+      this.logger.info('project-import.config.create', { jobId, appId, packageManager: pm });
       await appRestartService.createPaasConfig(
         app.path,
         undefined,
         startCommand,
         params.productId,
-        params.commands?.dev
+        params.commands?.dev,
+        pm
       );
       this.logger.info('project-import.config.created', { jobId, appId });
 
@@ -779,7 +794,7 @@ export class ProjectImportService {
   ): Promise<{
     valid: boolean;
     projectRoot?: string;
-    packageManager?: 'npm' | 'yarn' | 'pnpm';
+    packageManager?: PackageManager;
     hasBuildScript?: boolean;
     hasDevScript?: boolean;
     hasStartScript?: boolean;
@@ -860,23 +875,7 @@ export class ProjectImportService {
     }
 
     // Detect package manager by checking lock files
-    let packageManager: 'npm' | 'yarn' | 'pnpm' = 'npm';
-
-    const pnpmCheck = await devSupervisor.exec({
-      command: `test -f "${projectRoot}/pnpm-lock.yaml" && echo "found"`,
-      timeout: 5, // seconds
-    });
-    if (pnpmCheck.stdout?.trim() === 'found') {
-      packageManager = 'pnpm';
-    } else {
-      const yarnCheck = await devSupervisor.exec({
-        command: `test -f "${projectRoot}/yarn.lock" && echo "found"`,
-        timeout: 5, // seconds
-      });
-      if (yarnCheck.stdout?.trim() === 'found') {
-        packageManager = 'yarn';
-      }
-    }
+    const packageManager = await detectPackageManager(devSupervisor, projectRoot);
 
     // Check for scripts
     const scripts = packageJson.scripts || {};
@@ -908,7 +907,7 @@ export class ProjectImportService {
     const result: {
       valid: boolean;
       projectRoot?: string;
-      packageManager?: 'npm' | 'yarn' | 'pnpm';
+      packageManager?: PackageManager;
       hasBuildScript?: boolean;
       hasDevScript?: boolean;
       hasStartScript?: boolean;

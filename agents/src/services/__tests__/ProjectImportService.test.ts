@@ -19,7 +19,20 @@ import * as fs from 'node:fs/promises';
 vi.mock('../../utils/dev-supervisor-client-factory.js');
 vi.mock('../../database/repositories/AppRepository.js');
 vi.mock('../../database/repositories/ImportJobRepository.js');
-vi.mock('../AppRestartService.js');
+vi.mock('../AppRestartService.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../AppRestartService.js')>();
+  return {
+    ...actual,
+    // Keep real utility functions but mock the service singleton
+    appRestartService: {
+      stopDevServer: vi.fn(),
+      runInstall: vi.fn(),
+      runBuild: vi.fn(),
+      createPaasConfig: vi.fn(),
+      restartDevServer: vi.fn(),
+    },
+  };
+});
 vi.mock('../ZipSecurityService.js');
 vi.mock('../GitCloneService.js');
 vi.mock('../CodeSyncFileCleanupService.js');
@@ -152,8 +165,8 @@ describe('ProjectImportService', () => {
 
       // Setup AppRestartService mocks
       vi.mocked(appRestartService.stopDevServer).mockResolvedValue({ success: true });
-      vi.mocked(appRestartService.runNpmInstall).mockResolvedValue({ success: true, output: '' });
-      vi.mocked(appRestartService.runNpmBuild).mockResolvedValue({ success: true, output: '' });
+      vi.mocked(appRestartService.runInstall).mockResolvedValue({ success: true, output: '' });
+      vi.mocked(appRestartService.runBuild).mockResolvedValue({ success: true, output: '' });
       vi.mocked(appRestartService.createPaasConfig).mockResolvedValue();
       vi.mocked(appRestartService.restartDevServer).mockResolvedValue({ success: true });
 
