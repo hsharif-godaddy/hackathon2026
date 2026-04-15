@@ -1,26 +1,16 @@
 import type { PropsWithChildren } from 'react';
-import { createContext, useContext, useState } from 'react';
+import { createContext, useState } from 'react';
 import { Cart } from '@godaddy/react';
 import { createCheckoutSession } from '../../lib/commerce-client';
 import { getCommercePreviewUrl, getStorefrontRuntimeConfig } from '../../lib/commerce/storefront-config';
 
-interface StorefrontCartContextValue {
+export interface StorefrontCartContextValue {
   openCart: () => void;
   closeCart: () => void;
   isCheckingOut: boolean;
 }
 
-const StorefrontCartContext = createContext<StorefrontCartContextValue | undefined>(undefined);
-
-export function useStorefrontCart() {
-  const context = useContext(StorefrontCartContext);
-
-  if (!context) {
-    throw new Error('useStorefrontCart must be used within StorefrontShell');
-  }
-
-  return context;
-}
+export const StorefrontCartContext = createContext<StorefrontCartContextValue | undefined>(undefined);
 
 export function StorefrontShell({ children }: PropsWithChildren) {
   const [isCartOpen, setIsCartOpen] = useState(false);

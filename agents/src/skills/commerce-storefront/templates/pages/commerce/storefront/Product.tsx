@@ -1,6 +1,7 @@
 import { ProductDetails } from '@godaddy/react';
 import { useParams } from 'react-router-dom';
-import { StorefrontShell, useStorefrontCart } from '../../../components/commerce/StorefrontShell';
+import { StorefrontShell } from '../../../components/commerce/StorefrontShell';
+import { useStorefrontCart } from '../../../components/commerce/use-storefront-cart';
 
 function ProductContent({ productId }: { productId: string }) {
   const { openCart } = useStorefrontCart();

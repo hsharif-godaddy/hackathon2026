@@ -324,7 +324,10 @@ function modifyAllowedHosts(serverObj: t.ObjectExpression): boolean {
 // =====================================================
 
 /** Packages that must be deduplicated to avoid dual-instance crashes */
-const DEDUPE_PACKAGES = ['react', 'react-dom'] as const;
+const DEDUPE_PACKAGES = ['react', 'react-dom', 'react-router-dom'] as const;
+
+/** Packages to pre-bundle in dev mode to prevent dual-instance issues in lazy chunks */
+const OPTIMIZE_DEPS_PACKAGES = ['react', 'react-dom', 'react-router-dom'] as const;
 
 /**
  * Create: dedupe: ["react", "react-dom"]
@@ -400,13 +403,90 @@ function modifyResolve(configObj: t.ObjectExpression): boolean {
   return modifyDedupe(resolveProp.value);
 }
 
+// =====================================================
+// OptimizeDeps Helpers
+// =====================================================
+
+/**
+ * Create: include: ["react", "react-dom", "react-router-dom"]
+ */
+function createOptimizeDepsIncludeProperty(): t.ObjectProperty {
+  return t.objectProperty(
+    t.identifier('include'),
+    t.arrayExpression(OPTIMIZE_DEPS_PACKAGES.map((pkg) => t.stringLiteral(pkg)))
+  );
+}
+
+/**
+ * Ensure optimizeDeps.include contains required packages.
+ * Creates the include array if missing, appends missing entries if partial.
+ * Returns true if modifications were made.
+ */
+function modifyOptimizeDepsInclude(optimizeDepsObj: t.ObjectExpression): boolean {
+  const includeProp = findProperty(optimizeDepsObj.properties, 'include');
+
+  if (!includeProp) {
+    optimizeDepsObj.properties.push(createOptimizeDepsIncludeProperty());
+    return true;
+  }
+
+  if (!t.isArrayExpression(includeProp.value)) {
+    includeProp.value = t.arrayExpression(OPTIMIZE_DEPS_PACKAGES.map((pkg) => t.stringLiteral(pkg)));
+    return true;
+  }
+
+  const arr = includeProp.value;
+  const existing = new Set(
+    arr.elements
+      .filter((el): el is t.StringLiteral => t.isStringLiteral(el))
+      .map((el) => el.value)
+  );
+
+  let modified = false;
+  for (const pkg of OPTIMIZE_DEPS_PACKAGES) {
+    if (!existing.has(pkg)) {
+      arr.elements.push(t.stringLiteral(pkg));
+      modified = true;
+    }
+  }
+  return modified;
+}
+
+/**
+ * Ensure the top-level optimizeDeps property exists and contains include.
+ * Returns true if modifications were made.
+ */
+function modifyOptimizeDeps(configObj: t.ObjectExpression): boolean {
+  const optimizeDepsProp = findProperty(configObj.properties, 'optimizeDeps');
+
+  if (!optimizeDepsProp) {
+    configObj.properties.push(
+      t.objectProperty(
+        t.identifier('optimizeDeps'),
+        t.objectExpression([createOptimizeDepsIncludeProperty()])
+      )
+    );
+    return true;
+  }
+
+  if (!t.isObjectExpression(optimizeDepsProp.value)) {
+    logger.warn('vite-config.optimizeDeps-not-object', {
+      valueType: optimizeDepsProp.value.type,
+    });
+    return false;
+  }
+
+  return modifyOptimizeDepsInclude(optimizeDepsProp.value);
+}
+
 /**
  * Modify an object expression to ensure:
  * - server.port uses process.env.PORT
  * - server.allowedHosts is true
- * - resolve.dedupe includes react and react-dom
+ * - resolve.dedupe includes react, react-dom, and react-router-dom
+ * - optimizeDeps.include includes react, react-dom, and react-router-dom
  *
- * Returns true if any modifications were made (either to server or resolve),
+ * Returns true if any modifications were made (either to server, resolve, or optimizeDeps),
  * and false if no changes were needed. Note that server-specific modifications
  * may be skipped when server is not an object literal (e.g., a variable or
  * function call), while other modifications (like resolve.dedupe) can still apply.
@@ -440,6 +520,9 @@ export function modifyConfigObject(
 
   // Handle resolve.dedupe
   modified = modifyResolve(objExpr) || modified;
+
+  // Handle optimizeDeps.include
+  modified = modifyOptimizeDeps(objExpr) || modified;
 
   return modified;
 }

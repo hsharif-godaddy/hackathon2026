@@ -11,7 +11,7 @@
  * Example:
  *   const { cart, addToCart, removeFromCart, cartCount } = useCart();
  */
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useState, useEffect, ReactNode } from 'react';
 
 export interface CartItem {
   id: string;
@@ -41,7 +41,7 @@ interface CartContextType {
   cartCount: number;
 }
 
-const CartContext = createContext<CartContextType | undefined>(undefined);
+export const CartContext = createContext<CartContextType | undefined>(undefined);
 
 export function CartProvider({ children }: { children: ReactNode }) {
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -124,10 +124,3 @@ export function CartProvider({ children }: { children: ReactNode }) {
   );
 }
 
-export function useCart() {
-  const context = useContext(CartContext);
-  if (!context) {
-    throw new Error('useCart must be used within a CartProvider');
-  }
-  return context;
-}

@@ -92,7 +92,7 @@ export default defineConfig({
         expect(result.code).toContain('parseInt(process.env.PORT');
       });
 
-      it('should not modify when allowedHosts, port, and dedupe are already set correctly', () => {
+      it('should not modify when allowedHosts, port, dedupe, and optimizeDeps are already set correctly', () => {
         const input = `
 import { defineConfig } from 'vite';
 export default defineConfig({
@@ -101,7 +101,10 @@ export default defineConfig({
     port: parseInt(process.env.PORT || "5173")
   },
   resolve: {
-    dedupe: ["react", "react-dom"]
+    dedupe: ["react", "react-dom", "react-router-dom"]
+  },
+  optimizeDeps: {
+    include: ["react", "react-dom", "react-router-dom"]
   }
 });
 `;
@@ -303,7 +306,7 @@ export default defineConfig({
       expect(result.code).toContain('"react-dom"');
     });
 
-    it('should be a no-op when dedupe already contains react and react-dom', () => {
+    it('should be a no-op when dedupe and optimizeDeps already contain all required packages', () => {
       const input = `
 import { defineConfig } from 'vite';
 export default defineConfig({
@@ -312,7 +315,10 @@ export default defineConfig({
     allowedHosts: true
   },
   resolve: {
-    dedupe: ["react", "react-dom"]
+    dedupe: ["react", "react-dom", "react-router-dom"]
+  },
+  optimizeDeps: {
+    include: ["react", "react-dom", "react-router-dom"]
   }
 });
 `;
@@ -385,7 +391,7 @@ export default defineConfig({
       expect(result.code).toContain('"react-dom"');
     });
 
-    it('should skip resolve modification when resolve is not an object', () => {
+    it('should skip resolve modification when resolve is not an object but still add optimizeDeps', () => {
       const input = `
 import { defineConfig } from 'vite';
 export default defineConfig({
@@ -398,8 +404,9 @@ export default defineConfig({
 `;
       const result = processAndGenerateViteConfig(input);
 
-      expect(result.modified).toBe(false);
+      expect(result.modified).toBe(true);
       expect(result.code).toContain('getResolveConfig()');
+      expect(result.code).toContain('optimizeDeps');
     });
 
     it('should still add dedupe when server is not an object', () => {
@@ -421,6 +428,76 @@ export default defineConfig({
       expect(result.code).toContain('dedupe');
       expect(result.code).toContain('"react"');
       expect(result.code).toContain('"react-dom"');
+    });
+  });
+
+  describe('OptimizeDeps', () => {
+    it('should append missing packages to existing optimizeDeps.include', () => {
+      const input = `
+import { defineConfig } from 'vite';
+export default defineConfig({
+  server: {
+    port: parseInt(process.env.PORT || "5173"),
+    allowedHosts: true
+  },
+  resolve: {
+    dedupe: ["react", "react-dom", "react-router-dom"]
+  },
+  optimizeDeps: {
+    include: ["react"]
+  }
+});
+`;
+      const result = processAndGenerateViteConfig(input);
+
+      expect(result.modified).toBe(true);
+      expect(result.code).toContain('"react"');
+      expect(result.code).toContain('"react-dom"');
+      expect(result.code).toContain('"react-router-dom"');
+    });
+
+    it('should replace non-array optimizeDeps.include with full list', () => {
+      const input = `
+import { defineConfig } from 'vite';
+export default defineConfig({
+  server: {
+    port: parseInt(process.env.PORT || "5173"),
+    allowedHosts: true
+  },
+  resolve: {
+    dedupe: ["react", "react-dom", "react-router-dom"]
+  },
+  optimizeDeps: {
+    include: getIncludes()
+  }
+});
+`;
+      const result = processAndGenerateViteConfig(input);
+
+      expect(result.modified).toBe(true);
+      expect(result.code).toContain('"react"');
+      expect(result.code).toContain('"react-dom"');
+      expect(result.code).toContain('"react-router-dom"');
+    });
+
+    it('should skip optimizeDeps modification when not an object', () => {
+      const input = `
+import { defineConfig } from 'vite';
+export default defineConfig({
+  server: {
+    port: parseInt(process.env.PORT || "5173"),
+    allowedHosts: true
+  },
+  resolve: {
+    dedupe: ["react", "react-dom", "react-router-dom"]
+  },
+  optimizeDeps: getOptimizeDepsConfig()
+});
+`;
+      const result = processAndGenerateViteConfig(input);
+
+      expect(result.modified).toBe(false);
+      expect(result.code).toContain('getOptimizeDepsConfig()');
     });
   });
 

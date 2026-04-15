@@ -300,14 +300,14 @@ Based on user response, wrap routes with `ProtectedRoute`:
 
 ## Known Behaviors & Edge Cases
 
-| Situation                                | What to do                                                                                                                                                                             |
-| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Situation                                | What to do                                                                                                                                                                     |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Auth works in preview but 500 in publish | `getAuth()` defers `betterAuth()` construction to the first request so secrets are available — verify `BETTER_AUTH_SECRET` is set and the publish build completed successfully |
-| `BETTER_AUTH_SECRET` not set             | Auth server throws on startup — always run `requestSecrets` before starting                                                                                                            |
-| OAuth redirect goes to wrong page        | `callbackURL` is set automatically by the template from the user's intended destination                                                                                                |
-| Session check times out (30s)            | User sees a retry button — check network or if `/api/auth/get-session` route is mounted                                                                                                |
-| User connects a custom domain            | Add hostname to `trustedOrigins` in `auth.ts` — BetterAuth blocks cross-origin requests by default                                                                                     |
-| Want shorter sessions (e.g. banking)     | Add `session.expiresIn` + `session.updateAge` to `auth.ts` (see Configure auth.ts above)                                                                                               |
-| OAuth token access after login           | Use `authClient.getAccessToken({ providerId: 'google' })` — handles refresh automatically                                                                                              |
+| `BETTER_AUTH_SECRET` not set             | Auth server throws on startup — always run `requestSecrets` before starting                                                                                                    |
+| OAuth redirect goes to wrong page        | `callbackURL` is set automatically by the template from the user's intended destination                                                                                        |
+| Session check times out (30s)            | User sees a retry button — check network or if `/api/auth/get-session` route is mounted                                                                                        |
+| User connects a custom domain            | Add hostname to `trustedOrigins` in `auth.ts` — BetterAuth blocks cross-origin requests by default                                                                             |
+| Want shorter sessions (e.g. banking)     | Add `session.expiresIn` + `session.updateAge` to `auth.ts` (see Configure auth.ts above)                                                                                       |
+| OAuth token access after login           | Use `authClient.getAccessToken({ providerId: 'google' })` — handles refresh automatically                                                                                      |
 
 ---

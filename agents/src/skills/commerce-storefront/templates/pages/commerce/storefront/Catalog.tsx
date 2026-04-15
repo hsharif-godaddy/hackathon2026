@@ -1,5 +1,6 @@
 import { ProductGrid, ProductSearch } from '@godaddy/react';
-import { StorefrontShell, useStorefrontCart } from '../../../components/commerce/StorefrontShell';
+import { StorefrontShell } from '../../../components/commerce/StorefrontShell';
+import { useStorefrontCart } from '../../../components/commerce/use-storefront-cart';
 
 function CatalogContent() {
   const { openCart } = useStorefrontCart();

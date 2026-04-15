@@ -102,12 +102,16 @@ export default defineConfig(({ mode }) => ({
 	],
 
 	resolve: {
-		dedupe: ["react", "react-dom"],
+		dedupe: ["react", "react-dom", "react-router-dom"],
 		alias: {
 			nothing: "/src/fallbacks/missingModule.ts",
 			"@/api": path.resolve(__dirname, "./src/server/api"),
 			"@": path.resolve(__dirname, "./src"),
 		},
+	},
+
+	optimizeDeps: {
+		include: ["react", "react-dom", "react-router-dom"],
 	},
 
 	server: {

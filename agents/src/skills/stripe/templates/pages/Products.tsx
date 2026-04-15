@@ -21,7 +21,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 
-import { useCart } from '../contexts/cart-context';
+import { useCart } from '../contexts/use-cart';
 import { formatPrice } from '../lib/stripe/format';
 
 const ENABLE_CART = true;
