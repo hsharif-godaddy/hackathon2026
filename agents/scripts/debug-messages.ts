@@ -95,7 +95,7 @@ async function main() {
     console.log('This is what the WebSocket server gets from messageProvider.loadMessages()');
     console.log('');
 
-    const modelName = 'claude4';
+    const modelName = 'claude-sonnet-4-6';
     const historyLoader = contextManager.getHistoryLoader();
     
     const llmMessages = await historyLoader.loadMessagesWithTokenLimit(

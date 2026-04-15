@@ -123,7 +123,7 @@ async function main() {
     console.log(`Processing only: "${STYLE_NAME}"`)
   }
   
-  const model = await getModel('claude4')
+  const model = await getModel('claude-sonnet-4-6')
   console.log('Connected to AI model')
   
   const agentFactory = createAgentFactory()

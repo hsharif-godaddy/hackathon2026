@@ -786,7 +786,7 @@ export class DevelopmentHandler implements LogHandler {
     parts.push(this.blue('REQUEST'));
     
     // Model name (simplified)
-    const modelDisplay = model.replace('claude-sonnet-4-20250514', 'claude-4').replace('claude-', '');
+    const modelDisplay = model.replace('azure/', 'az/').replace('claude-sonnet-4-6', 'sonnet-4-6').replace('claude-', '');
     parts.push(this.cyan(modelDisplay));
     
     // Message count
@@ -823,7 +823,7 @@ export class DevelopmentHandler implements LogHandler {
     parts.push(this.green('RESPONSE'));
     
     // Model name (simplified)
-    const modelDisplay = model.replace('claude-sonnet-4-20250514', 'claude-4').replace('claude-', '');
+    const modelDisplay = model.replace('azure/', 'az/').replace('claude-sonnet-4-6', 'sonnet-4-6').replace('claude-', '');
     parts.push(this.cyan(modelDisplay));
     
     // Content info
@@ -867,7 +867,7 @@ export class DevelopmentHandler implements LogHandler {
     parts.push(this.red('ERROR'));
     
     // Model name (simplified)
-    const modelDisplay = model.replace('claude-sonnet-4-20250514', 'claude-4').replace('claude-', '');
+    const modelDisplay = model.replace('azure/', 'az/').replace('claude-sonnet-4-6', 'sonnet-4-6').replace('claude-', '');
     parts.push(this.cyan(modelDisplay));
     
     // Duration if available

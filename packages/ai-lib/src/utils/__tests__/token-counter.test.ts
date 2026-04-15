@@ -23,11 +23,6 @@ vi.mock('ai-tokenizer', () => ({
     'openai/gpt-4o': true,
     'openai/gpt-4o-mini': true,
     'openai/gpt-4-turbo': true,
-    'anthropic/claude-3-opus': true,
-    'anthropic/claude-3.5-sonnet': true,
-    'anthropic/claude-3-haiku': true,
-    'anthropic/claude-3.5-haiku': true,
-    'anthropic/claude-sonnet-4': true,
     'anthropic/claude-sonnet-4.5': true,
     'anthropic/claude-haiku-4.5': true,
     'google/gemini-3-pro-preview': true,
@@ -57,23 +52,23 @@ describe('token-counter', () => {
     })
 
     it('should count tokens for Anthropic models', async () => {
-      const result = await countTokens('Hello world', 'claude-3-5-sonnet')
+      const result = await countTokens('Hello world', 'claude-sonnet-4-6')
 
       expect(result).toEqual({
         tokenCount: expect.any(Number),
         provider: 'anthropic',
-        normalizedModelName: 'claude-3-5-sonnet'
+        normalizedModelName: 'claude-sonnet-4-6'
       })
       expect(result.tokenCount).toBeGreaterThan(0)
     })
 
     it('should count tokens for Claude models using aliases', async () => {
-      const result = await countTokens('Hello world', 'claude4')
+      const result = await countTokens('Hello world', 'sonnet')
 
       expect(result).toEqual({
         tokenCount: expect.any(Number),
         provider: 'anthropic',
-        normalizedModelName: 'claude-sonnet-4'
+        normalizedModelName: 'claude-sonnet-4-6'
       })
       expect(result.tokenCount).toBeGreaterThan(0)
     })
@@ -217,7 +212,7 @@ describe('token-counter', () => {
         { role: 'assistant', content: 'Hi!' }
       ]
 
-      const result = await countConversationTokens(messages, 'claude-3-5-sonnet')
+      const result = await countConversationTokens(messages, 'claude-sonnet-4-6')
 
       expect(result.tokenCount).toBeGreaterThan(0)
       expect(result.provider).toBe('anthropic')
@@ -232,14 +227,14 @@ describe('token-counter', () => {
     })
 
     it('should return true for supported Anthropic models', () => {
-      expect(isTokenCountingSupported('claude-3-5-sonnet')).toBe(true)
-      expect(isTokenCountingSupported('claude4')).toBe(true)
+      expect(isTokenCountingSupported('claude-sonnet-4-6')).toBe(true)
       expect(isTokenCountingSupported('sonnet')).toBe(true)
+      expect(isTokenCountingSupported('haiku')).toBe(true)
     })
 
     it('should return true for supported Claude models', () => {
-      expect(isTokenCountingSupported('claude-sonnet-4')).toBe(true)
-      expect(isTokenCountingSupported('claude-3-5-sonnet')).toBe(true)
+      expect(isTokenCountingSupported('claude-sonnet-4-5')).toBe(true)
+      expect(isTokenCountingSupported('claude-haiku-4-5')).toBe(true)
     })
 
     it('should return false for unsupported models', () => {
@@ -260,8 +255,8 @@ describe('token-counter', () => {
     })
 
     it('should return correct provider for Anthropic models', () => {
-      expect(getModelProvider('claude-3-5-sonnet')).toBe('anthropic')
-      expect(getModelProvider('claude4')).toBe('anthropic')
+      expect(getModelProvider('claude-sonnet-4-6')).toBe('anthropic')
+      expect(getModelProvider('sonnet')).toBe('anthropic')
     })
 
     it('should return correct provider for Gemini models', () => {
@@ -276,18 +271,16 @@ describe('token-counter', () => {
   describe('integration with model normalization', () => {
     it('should consistently use normalized model names', async () => {
       // Test that aliases resolve to the same normalized name
-      const result1 = await countTokens('test', 'claude4')
-      const result2 = await countTokens('test', 'sonnet4')
-      const result3 = await countTokens('test', 'claude-sonnet-4')
+      const result1 = await countTokens('test', 'sonnet')
+      const result2 = await countTokens('test', 'claude-sonnet-4-6')
 
-      expect(result1.normalizedModelName).toBe('claude-sonnet-4')
-      expect(result2.normalizedModelName).toBe('claude-sonnet-4')
-      expect(result3.normalizedModelName).toBe('claude-sonnet-4')
+      expect(result1.normalizedModelName).toBe('claude-sonnet-4-6')
+      expect(result2.normalizedModelName).toBe('claude-sonnet-4-6')
     })
 
     it('should handle provider correctly for Claude models', async () => {
       // Claude models should use anthropic provider
-      const result = await countTokens('test', 'claude4')
+      const result = await countTokens('test', 'sonnet')
       expect(result.provider).toBe('anthropic')
     })
   })
@@ -344,7 +337,7 @@ describe('token-counter', () => {
       expect(openaiResult.provider).toBe('openai')
 
       // Load Claude tokenizer
-      const claudeResult = await countTokens('test', 'claude-3-5-sonnet')
+      const claudeResult = await countTokens('test', 'claude-sonnet-4-6')
       expect(claudeResult.provider).toBe('anthropic')
     })
   })

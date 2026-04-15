@@ -215,7 +215,7 @@ function analogous(hex: string): { color1: string; color2: string } {
  *
  * Note: Currently unused but kept for potential future use
  */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
+
 function triadic(hex: string): { color1: string; color2: string } {
   const { r, g, b } = hexToRgb(hex)
   const { h, s, l } = rgbToHsl(r, g, b)

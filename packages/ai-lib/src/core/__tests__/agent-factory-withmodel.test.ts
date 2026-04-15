@@ -58,7 +58,7 @@ describe('AgentWrapper withModel', function withModelSuite() {
     generate: ReturnType<typeof vi.fn>
     stream: ReturnType<typeof vi.fn>
   }
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   let lastSettings: any
   let MockToolLoopAgent: ReturnType<typeof vi.fn>
 
@@ -102,8 +102,8 @@ describe('AgentWrapper withModel', function withModelSuite() {
       logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() }
     }
     const wrapper = new AgentWrapper(config)
-    const derived = wrapper.withModel(nextModel, 'claude-3-opus')
-    expect(derived.getConfig().modelName).toBe('claude-3-opus')
+    const derived = wrapper.withModel(nextModel, 'claude-opus-4-6')
+    expect(derived.getConfig().modelName).toBe('claude-opus-4-6')
     expect(wrapper.getConfig().modelName).toBe('gpt-4')
   })
 

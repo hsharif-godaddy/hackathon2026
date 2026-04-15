@@ -207,7 +207,7 @@ async function main() {
 
   // Convert to LLM messages and count tokens
   const llmMessages = convertToLLMMessages(allMessages);
-  const modelName = 'claude-3-5-sonnet';
+  const modelName = 'claude-sonnet-4-6';
   let totalTokens = 0;
   for (const msg of llmMessages) {
     const serialized = serializeMessage(msg);

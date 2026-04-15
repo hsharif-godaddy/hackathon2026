@@ -405,7 +405,7 @@ describe('ConversationHistoryLoader', () => {
         { role: 'assistant', content: 'Test response' },
       ];
 
-      const result = await loader.applyTokenLimit(messages, 10000, 'claude4');
+      const result = await loader.applyTokenLimit(messages, 10000, 'claude-sonnet-4-6');
 
       expect(result).toHaveLength(2);
     });
@@ -435,7 +435,7 @@ describe('ConversationHistoryLoader', () => {
 
       vi.mocked(mockRepo.getMessagesForHistory).mockResolvedValue(messages);
 
-      const result = await loader.loadMessagesWithTokenLimitByConversationId('conv1', 40000, 'claude4');
+      const result = await loader.loadMessagesWithTokenLimitByConversationId('conv1', 40000, 'claude-sonnet-4-6');
 
       expect(result.length).toBeGreaterThan(0);
       expect(result[0].role).toBe('user');

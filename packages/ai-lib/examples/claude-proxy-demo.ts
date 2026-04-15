@@ -73,7 +73,7 @@ async function demonstrateClaudeProxy() {
 
     try {
       // Get model info to see routing decision
-      const modelInfo = getModelInfo('claude4', scenario.config)
+      const modelInfo = getModelInfo('claude-sonnet-4-6', scenario.config)
       console.log(`   📊 Model Info:`)
       console.log(`      Provider: ${modelInfo.provider}`)
       console.log(`      Full Name: ${modelInfo.fullName}`)
@@ -85,7 +85,7 @@ async function demonstrateClaudeProxy() {
       if (!scenario.expectError) {
         // Try to create the model (this will validate configuration)
         try {
-          await getModel('claude4', scenario.config)
+          await getModel('claude-sonnet-4-6', scenario.config)
           console.log(`   ✅ Model creation would succeed`)
         } catch (error) {
           console.log(`   ❌ Model creation failed: ${error instanceof Error ? error.message : String(error)}`)
@@ -116,7 +116,7 @@ async function demonstrateClaudeProxy() {
 async function demonstrateModelList() {
   console.log('📋 Claude Models Available for Proxy Routing:')
   
-  const claudeModels = ['claude4', 'sonnet4', 'claude-sonnet-4', 'claude-sonnet-4-20250514']
+  const claudeModels = ['claude-opus-4-6', 'claude-sonnet-4-6', 'azure/claude-sonnet-4-6', 'claude-sonnet-4-5', 'claude-haiku-4-5']
   
   for (const modelName of claudeModels) {
     const info = getModelInfo(modelName)

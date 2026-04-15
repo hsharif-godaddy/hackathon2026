@@ -92,7 +92,7 @@ function extractLitellmMetadata(
 export interface StreamResultWithValidation {
   textStream: AsyncIterable<string>
   baseStream?: unknown
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   response?: PromiseLike<{ id: string; timestamp: Date; modelId: string; headers?: Record<string, string>; body?: any }>
   getFinalResult: () => Promise<any>
   isToolValidationError?: boolean
@@ -208,10 +208,10 @@ interface CachePointMetadata {
 interface ProviderOptions {
   anthropic?: {
     cacheControl?: { type: string }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     [key: string]: any
   }
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   [key: string]: any
 }
 
@@ -229,7 +229,7 @@ export type MessageWithCachePoint = ModelMessage & {
 export class AgentWrapper {
   // Using explicit empty call options type instead of 'any' to avoid 'as never' casts
   // The second and third generics remain 'any' as they're provider-internal types
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   private agent: ToolLoopAgent<AgentCallOptions, any, any>
   private config: AgentConfig
   private skillToolProvider?: GlobalAgentConfig['skillToolProvider']
@@ -300,7 +300,7 @@ export class AgentWrapper {
       ...(config.maxOutputTokens !== undefined && { maxOutputTokens: config.maxOutputTokens }),
       stopWhen: stopWhen.length > 0 ? stopWhen : [stepCountIs(10)], // Default max 10 steps
       // Pass provider-specific options (e.g., effort, disableParallelToolUse for Anthropic)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       ...(config.providerOptions && { providerOptions: this.filterProviderOptions(config.providerOptions, config.model, config.modelName) as any }),
       maxRetries,
       // Enable OpenTelemetry telemetry for Elastic APM and Langfuse integration
@@ -394,7 +394,7 @@ export class AgentWrapper {
   /**
    * Wrap tools with execution hooks and context passing
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   private wrapToolsWithHooks(tools: Record<string, any>): Record<string, Tool> {
     const wrappedTools: Record<string, Tool> = {}
 
@@ -765,11 +765,11 @@ export class AgentWrapper {
     executionContext?: Record<string, unknown>
   }): Promise<{
     content: string
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     usage: any
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     finishReason: any
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     toolCalls: any
   }> {
     // env var > AsyncLocalStorage > configured model
@@ -855,14 +855,14 @@ export class AgentWrapper {
   }): Promise<{
     textStream: AsyncIterable<string>
     baseStream?: unknown
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     response?: PromiseLike<{ id: string; timestamp: Date; modelId: string; headers?: Record<string, string>; body?: any }>
     getFinalResult: () => Promise<{
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       usage: any
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       finishReason: any
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       toolCalls: any
     }>
   }> {
@@ -892,14 +892,14 @@ export class AgentWrapper {
   }): Promise<{
     textStream: AsyncIterable<string>
     baseStream?: unknown
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     response?: PromiseLike<{ id: string; timestamp: Date; modelId: string; headers?: Record<string, string>; body?: any }>
     getFinalResult: () => Promise<{
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       usage: any
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       finishReason: any
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       toolCalls: any
     }>
   }> {
@@ -926,14 +926,14 @@ export class AgentWrapper {
   ): Promise<{
     textStream: AsyncIterable<string>
     baseStream?: unknown
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     response?: PromiseLike<{ id: string; timestamp: Date; modelId: string; headers?: Record<string, string>; body?: any }>
     getFinalResult: () => Promise<{
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       usage: any
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       finishReason: any
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       toolCalls: any
     }>
   }> {
@@ -1056,7 +1056,7 @@ export class AgentWrapper {
         this.config.retryConfig,
         retryContext
       )
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   } catch (error: any) {
       // Normalize APICallError budget errors to BudgetExceededError so grant fallback works
       let normalizedError = error
@@ -1208,7 +1208,7 @@ Please retry your tool call with corrected input formatting.`
 
       // Provide access to the raw baseStream for real-time tool call events
       // baseStream exists at runtime but is not in the AI SDK type definitions
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       baseStream: (streamResult as any).baseStream,
 
       // Function to get final result after streaming is complete
@@ -1242,7 +1242,7 @@ Please retry your tool call with corrected input formatting.`
   /**
    * Get the underlying ToolLoopAgent (for advanced usage)
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   getToolLoopAgent(): ToolLoopAgent<any, any, any> {
     return this.agent
   }
@@ -1255,7 +1255,7 @@ Please retry your tool call with corrected input formatting.`
     model: import('ai').LanguageModel,
     modelName?: string
   ): Record<string, unknown> | undefined {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const anthropic = providerOptions.anthropic as Record<string, any> | undefined
     if (!anthropic?.effort) {
       return providerOptions
@@ -1596,7 +1596,7 @@ export class AgentFactory {
       : {}
 
     // Convert global tools array to object if needed
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     let globalToolsObj: Record<string, any> = {}
     if (Array.isArray(globalTools)) {
       globalTools.forEach((tool, index) => {

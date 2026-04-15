@@ -109,6 +109,13 @@ const MODEL_PRICING: Record<string, ModelPricing> = {
   },
 
   // Anthropic Models (via Anthropic API)
+  'claude-opus-4-6': {
+    inputCostPer1K: 0.005,
+    outputCostPer1K: 0.025,
+    cachedInputReadCostPer1K: 0.0005,
+    cachedInputWriteCostPer1K: 0.00625,
+    currency: 'USD'
+  },
   'claude-sonnet-4-6': {
     inputCostPer1K: 0.003,
     outputCostPer1K: 0.015,
@@ -128,27 +135,6 @@ const MODEL_PRICING: Record<string, ModelPricing> = {
     outputCostPer1K: 0.005,
     cachedInputReadCostPer1K: 0.0001,
     cachedInputWriteCostPer1K: 0.00125,
-    currency: 'USD'
-  },
-  'claude-sonnet-4': {
-    inputCostPer1K: 0.003,
-    outputCostPer1K: 0.015,
-    cachedInputReadCostPer1K: 0.0003,
-    cachedInputWriteCostPer1K: 0.00375,
-    currency: 'USD'
-  },
-  'claude-3-5-sonnet': {
-    inputCostPer1K: 0.003,
-    outputCostPer1K: 0.015,
-    cachedInputReadCostPer1K: 0.0003,
-    cachedInputWriteCostPer1K: 0.00375,
-    currency: 'USD'
-  },
-  'claude-3-5-haiku': {
-    inputCostPer1K: 0.0008,
-    outputCostPer1K: 0.004,
-    cachedInputReadCostPer1K: 0.0003,
-    cachedInputWriteCostPer1K: 0.00375,
     currency: 'USD'
   },
 }

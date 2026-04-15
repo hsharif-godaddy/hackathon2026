@@ -687,7 +687,7 @@ OPENAI_API_KEY="${config.modelConfig.gocodeApiKey}"
 OPENAI_BASE_URL="${config.modelConfig.gocodeBaseUrl}"
 ANTHROPIC_API_KEY="${config.modelConfig.gocodeApiKey}"
 ANTHROPIC_BASE_URL="${config.modelConfig.gocodeBaseUrl}"
-ANTHROPIC_MODEL="claude-sonnet-4"
+ANTHROPIC_MODEL="claude-sonnet-4-6"
 `;
 
 		envContent += `

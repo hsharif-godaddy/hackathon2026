@@ -30,25 +30,24 @@ describe('model-normalization', () => {
     })
 
     it('should normalize Claude models to Anthropic by default', () => {
-      const result = normalizeModelName('claude4')
+      const result = normalizeModelName('claude-sonnet-4-6')
       expect(result).toEqual({
-        normalizedName: 'claude-sonnet-4',
-        fullModelId: 'claude-sonnet-4',
+        normalizedName: 'claude-sonnet-4-6',
+        fullModelId: 'claude-sonnet-4-6',
         provider: 'anthropic',
         isSupported: true,
-        originalName: 'claude4'
+        originalName: 'claude-sonnet-4-6'
       })
     })
 
-
     it('should handle canonical model names', () => {
-      const result = normalizeModelName('claude-3-5-sonnet')
+      const result = normalizeModelName('claude-sonnet-4-5')
       expect(result).toEqual({
-        normalizedName: 'claude-3-5-sonnet',
-        fullModelId: 'claude-3-5-sonnet',
+        normalizedName: 'claude-sonnet-4-5',
+        fullModelId: 'claude-sonnet-4-5-20250929',
         provider: 'anthropic',
         isSupported: true,
-        originalName: 'claude-3-5-sonnet'
+        originalName: 'claude-sonnet-4-5'
       })
     })
 
@@ -64,14 +63,14 @@ describe('model-normalization', () => {
     })
 
     it('should handle case insensitive input', () => {
-      const result = normalizeModelName('CLAUDE4')
-      expect(result.normalizedName).toBe('claude-sonnet-4')
+      const result = normalizeModelName('CLAUDE-SONNET-4-6')
+      expect(result.normalizedName).toBe('claude-sonnet-4-6')
     })
 
     it('should trim whitespace for processing but preserve original', () => {
-      const result = normalizeModelName('  claude4  ')
-      expect(result.normalizedName).toBe('claude-sonnet-4')
-      expect(result.originalName).toBe('  claude4  ')
+      const result = normalizeModelName('  claude-sonnet-4-6  ')
+      expect(result.normalizedName).toBe('claude-sonnet-4-6')
+      expect(result.originalName).toBe('  claude-sonnet-4-6  ')
     })
   })
 
@@ -82,8 +81,8 @@ describe('model-normalization', () => {
       expect(models.length).toBeGreaterThan(0)
       expect(models).toContain('gpt-4o')
       expect(models).toContain('gpt4o')
-      expect(models).toContain('claude-sonnet-4')
-      expect(models).toContain('claude4')
+      expect(models).toContain('claude-sonnet-4-6')
+      expect(models).toContain('sonnet')
     })
 
     it('should return sorted models', () => {
@@ -102,13 +101,13 @@ describe('model-normalization', () => {
   describe('isModelSupported', () => {
     it('should return true for supported canonical models', () => {
       expect(isModelSupported('gpt-4o')).toBe(true)
-      expect(isModelSupported('claude-sonnet-4')).toBe(true)
+      expect(isModelSupported('claude-sonnet-4-6')).toBe(true)
     })
 
     it('should return true for supported aliases', () => {
       expect(isModelSupported('gpt4o')).toBe(true)
-      expect(isModelSupported('claude4')).toBe(true)
-      expect(isModelSupported('sonnet4')).toBe(true)
+      expect(isModelSupported('sonnet')).toBe(true)
+      expect(isModelSupported('haiku')).toBe(true)
     })
 
 
@@ -119,7 +118,7 @@ describe('model-normalization', () => {
 
     it('should handle case insensitive input', () => {
       expect(isModelSupported('GPT4O')).toBe(true)
-      expect(isModelSupported('CLAUDE4')).toBe(true)
+      expect(isModelSupported('CLAUDE-SONNET-4-6')).toBe(true)
     })
   })
 
@@ -130,7 +129,7 @@ describe('model-normalization', () => {
     })
 
     it('should return Anthropic name by default for Claude models', () => {
-      expect(getFullModelName('claude4')).toBe('claude-sonnet-4')
+      expect(getFullModelName('sonnet')).toBe('claude-sonnet-4-6')
     })
 
   })
@@ -138,13 +137,13 @@ describe('model-normalization', () => {
   describe('getNormalizedModelName', () => {
     it('should return normalized name for aliases', () => {
       expect(getNormalizedModelName('gpt4o')).toBe('gpt-4o')
-      expect(getNormalizedModelName('claude4')).toBe('claude-sonnet-4')
       expect(getNormalizedModelName('sonnet')).toBe('claude-sonnet-4-6')
+      expect(getNormalizedModelName('haiku')).toBe('claude-haiku-4-5')
     })
 
     it('should return same name for already normalized models', () => {
       expect(getNormalizedModelName('gpt-4o')).toBe('gpt-4o')
-      expect(getNormalizedModelName('claude-sonnet-4')).toBe('claude-sonnet-4')
+      expect(getNormalizedModelName('claude-sonnet-4-6')).toBe('claude-sonnet-4-6')
     })
   })
 
@@ -155,7 +154,7 @@ describe('model-normalization', () => {
     })
 
     it('should return anthropic provider by default for Claude models', () => {
-      expect(getModelProvider('claude4')).toBe('anthropic')
+      expect(getModelProvider('claude-sonnet-4-6')).toBe('anthropic')
       expect(getModelProvider('sonnet')).toBe('anthropic')
     })
 
@@ -168,13 +167,13 @@ describe('model-normalization', () => {
 
   describe('getModelInfo', () => {
     it('should return complete model information', () => {
-      const info = getModelInfo('claude4')
+      const info = getModelInfo('claude-sonnet-4-6')
       expect(info).toEqual({
-        normalizedName: 'claude-sonnet-4',
-        fullModelId: 'claude-sonnet-4',
+        normalizedName: 'claude-sonnet-4-6',
+        fullModelId: 'claude-sonnet-4-6',
         provider: 'anthropic',
         isSupported: true,
-        originalName: 'claude4'
+        originalName: 'claude-sonnet-4-6'
       })
     })
   })
@@ -184,13 +183,13 @@ describe('model-normalization', () => {
       const mappings = getLegacyModelMappings()
       expect(typeof mappings).toBe('object')
       expect(mappings['gpt4o']).toBe('gpt-4o')
-      expect(mappings['claude4']).toBe('claude-sonnet-4')
+      expect(mappings['sonnet']).toBe('claude-sonnet-4-6')
     })
 
     it('should map Claude models to Anthropic provider', () => {
       const mappings = getLegacyModelMappings()
-      expect(mappings['claude-sonnet-4']).toBe('claude-sonnet-4')
-      expect(mappings['claude-3-5-sonnet']).toBe('claude-3-5-sonnet')
+      expect(mappings['claude-sonnet-4-6']).toBe('claude-sonnet-4-6')
+      expect(mappings['claude-sonnet-4-5']).toBe('claude-sonnet-4-5-20250929')
     })
   })
 

@@ -34,7 +34,7 @@ DEFAULT_MODEL=gpt-4o-mini
 ```env
 DEFAULT_PROVIDER=anthropic
 ANTHROPIC_API_KEY=your_anthropic_api_key_here
-DEFAULT_MODEL=claude-3-5-sonnet-20241022
+DEFAULT_MODEL=claude-sonnet-4-6
 ```
 
 ## Step 3: Run Examples

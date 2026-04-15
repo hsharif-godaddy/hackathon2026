@@ -142,7 +142,7 @@ describe('defaultConvertToLlm', () => {
   it('applies caching breakpoints with after_history messages in correct order', () => {
     const mockModel = {
       provider: 'anthropic',
-      modelId: 'claude-3-5-sonnet-20241022',
+      modelId: 'claude-sonnet-4-6',
     } as any
 
     const result = defaultConvertToLlm({
@@ -185,7 +185,7 @@ describe('defaultConvertToLlm', () => {
   it('first turn with after_history context caches stable prefix only, not user message', () => {
     const mockModel = {
       provider: 'anthropic',
-      modelId: 'claude-3-5-sonnet-20241022',
+      modelId: 'claude-sonnet-4-6',
     } as any
 
     const result = defaultConvertToLlm({
@@ -313,7 +313,7 @@ describe('normalizeContextMessages — providerOptions', () => {
 describe('applyPromptCaching', () => {
   const mockModel = {
     provider: 'anthropic',
-    modelId: 'claude-3-5-sonnet-20241022',
+    modelId: 'claude-sonnet-4-6',
   } as any
 
   it('does not cache system messages on subsequent turns', () => {

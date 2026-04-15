@@ -60,7 +60,7 @@ const agents = factory.defineAgents({
   myAgent: {
     name: "My Agent",
     system: "You are a helpful assistant...",
-    model: await getModel("claude4"),
+    model: await getModel("sonnet"),
     tools: { weather: weatherTool },
     maxSteps: 5,
     stopAfterTools: ["weather"],
@@ -122,14 +122,13 @@ The unified provider automatically routes Claude models through an OpenAI-compat
 
 1. **AWS credentials are not available** (no `AWS_PROFILE`, `AWS_ACCESS_KEY_ID`, etc.)
 2. **`OPENAI_BASE_URL` is set** (proxy endpoint configured)
-3. **Model is supported** (currently `claude-sonnet-4-20250514`)
+3. **Model is supported** (currently `claude-sonnet-4-6`)
 
 ### Supported Claude Models for Proxy
 
-- `claude4` → `claude-sonnet-4-20250514`
-- `sonnet4` → `claude-sonnet-4-20250514`
-- `claude-sonnet-4` → `claude-sonnet-4-20250514`
-- `claude-sonnet-4-20250514` → `claude-sonnet-4-20250514`
+- `sonnet` → `claude-sonnet-4-6`
+- `haiku` → `claude-haiku-4-5`
+- `claude-sonnet-4-6` → `claude-sonnet-4-6`
 
 ### Example Usage
 

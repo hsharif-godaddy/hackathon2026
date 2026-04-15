@@ -20,7 +20,7 @@ Dynamic prompt caching reduces API costs and improves performance by automatical
 import { getModel } from "@airo/ai-lib";
 import { createAgentFactory } from "@airo/ai-lib";
 
-const model = await getModel("claude4");
+const model = await getModel("sonnet");
 
 const agentFactory = createAgentFactory();
 

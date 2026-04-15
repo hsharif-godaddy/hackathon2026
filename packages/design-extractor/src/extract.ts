@@ -154,7 +154,7 @@ async function main() {
   const pageTexts = await extractPDFText(PDF_PATH)
   console.log(`Extracted text from ${pageTexts.size} pages`)
   
-  const model = await getModel('claude4')
+  const model = await getModel('claude-sonnet-4-6')
   console.log('Connected to AI model')
   
   const agentFactory = createAgentFactory()

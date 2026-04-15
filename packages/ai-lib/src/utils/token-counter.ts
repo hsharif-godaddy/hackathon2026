@@ -15,7 +15,7 @@ const logger = createLogger('token-counter')
 type TokenizerInstance = {
   count(text: string): number
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 type TokenizerClass = new (...args: any[]) => TokenizerInstance
 
 // Lazy-loaded tokenizer instances (one per encoding type)
@@ -138,13 +138,8 @@ export type SupportedModel =
   | 'gpt-4-turbo'
   | 'gpt-3.5-turbo'
   // Anthropic Models
-  | 'claude-3-opus'
-  | 'claude-3-sonnet'
-  | 'claude-3-haiku'
-  | 'claude-3-5-sonnet'
-  | 'claude-3-5-haiku'
-  | 'claude-sonnet-4'
   | 'claude-sonnet-4-5'
+  | 'claude-opus-4-6'
   | 'claude-sonnet-4-6'
   | 'claude-haiku-4-5'
   // Gemini Models (via OpenAI-compatible provider)
@@ -178,13 +173,8 @@ const MODEL_TO_TOKENIZER: Record<string, string> = {
   'gpt-4-turbo': 'openai/gpt-4-turbo',
   'gpt-3.5-turbo': 'openai/gpt-4-turbo',
   // Claude models
-  'claude-3-opus': 'anthropic/claude-3-opus',
-  'claude-3-sonnet': 'anthropic/claude-3.5-sonnet',
-  'claude-3-haiku': 'anthropic/claude-3-haiku',
-  'claude-3-5-sonnet': 'anthropic/claude-3.5-sonnet',
-  'claude-3-5-haiku': 'anthropic/claude-3.5-haiku',
-  'claude-sonnet-4': 'anthropic/claude-sonnet-4',
   'claude-sonnet-4-5': 'anthropic/claude-sonnet-4.5',
+  'claude-opus-4-6': 'anthropic/claude-sonnet-4.5', // ai-tokenizer doesn't include opus 4.6 yet; same tokenizer family
   'claude-sonnet-4-6': 'anthropic/claude-sonnet-4.5', // ai-tokenizer@1.0.6 doesn't include 4.6 yet; same tokenizer as 4.5
   'claude-haiku-4-5': 'anthropic/claude-haiku-4.5',
   // Gemini models
@@ -226,8 +216,8 @@ async function getTokenizer(normalizedName: string, provider: ModelProvider): Pr
  * const result2 = await countTokens("Hello world", "gpt4o-mini") // alias supported
  *
  * // Anthropic models
- * const result3 = await countTokens("Hello world", "claude-3-5-sonnet")
- * const result4 = await countTokens("Hello world", "sonnet4") // alias supported
+ * const result3 = await countTokens("Hello world", "claude-sonnet-4-6")
+ * const result4 = await countTokens("Hello world", "sonnet") // alias supported
  * ```
  */
 export async function countTokens(text: string, modelName: string): Promise<TokenCountResult> {

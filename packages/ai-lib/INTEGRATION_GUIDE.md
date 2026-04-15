@@ -77,7 +77,7 @@ process.env.AWS_REGION = "us-west-2";
 process.env.AWS_PROFILE = "your-profile";
 
 const factory = createAgentFactory();
-const model = await getModel("sonnet4");
+const model = await getModel("sonnet");
 
 const agents = factory.defineAgents({
   claude: {
@@ -120,7 +120,7 @@ const gpt4 = await getModel("gpt4o");
 const gptMini = await getModel("gpt4o-mini");
 
 // Claude models (via Bedrock or Anthropic)
-const sonnet = await getModel("sonnet4");
+const sonnet = await getModel("sonnet");
 const haiku = await getModel("haiku");
 
 // Embedding models
@@ -381,16 +381,15 @@ process.env.AWS_REGION = "us-west-2";
 process.env.AWS_PROFILE = "your-profile";
 
 // Or programmatic credentials
-const model = await getModel("sonnet4", {
+const model = await getModel("sonnet", {
   awsRegion: "us-east-1",
   awsAccessKeyId: "your-key",
   awsSecretAccessKey: "your-secret",
 });
 
 // Available Claude models via getModel():
-const sonnet4 = await getModel("sonnet4");
+const sonnet = await getModel("sonnet");
 const haiku = await getModel("haiku");
-const claude4 = await getModel("claude4");
 ```
 
 ### Checking Available Models
@@ -400,7 +399,7 @@ import { getAvailableModels, isModelSupported } from "@airo/ai-lib";
 
 // List all available model short names
 const models = getAvailableModels();
-console.log(models); // ['gpt4o', 'gpt4o-mini', 'sonnet4', 'haiku', ...]
+console.log(models); // ['gpt4o', 'gpt4o-mini', 'sonnet', 'haiku', ...]
 
 // Check if a model name is supported
 console.log(isModelSupported("gpt4o")); // true
@@ -497,7 +496,7 @@ if (!process.env.OPENAI_API_KEY) {
 import { getModel } from "@airo/ai-lib";
 
 // Use short names — getModel() resolves the full model ID automatically
-const production = await getModel("sonnet4");
+const production = await getModel("sonnet");
 const fast = await getModel("gpt4o-mini");
 ```
 
@@ -581,7 +580,7 @@ console.log("AWS Profile:", process.env.AWS_PROFILE);
 
 // Test model support
 import { isModelSupported } from "@airo/ai-lib";
-console.log(isModelSupported("sonnet4")); // true
+console.log(isModelSupported("sonnet")); // true
 ```
 
 **"Cannot read properties of undefined (reading 'textStream')"**
@@ -589,8 +588,9 @@ console.log(isModelSupported("sonnet4")); // true
 ```typescript
 // Fix: Use getModel() to get a proper model instance
 import { getModel } from "@airo/ai-lib";
-const model = await getModel("sonnet4");
-// Don't use: const model = 'claude-3-5-sonnet' (string without provider)
+const model = await getModel("sonnet");
+// Don't pass a string where a LanguageModel instance is expected
+// e.g., generateText({ model: "claude-sonnet-4-6" }) will fail
 ```
 
 **TypeScript compilation errors**

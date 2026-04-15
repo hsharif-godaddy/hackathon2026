@@ -44,7 +44,7 @@ describe('model-pricing', () => {
         cachedInputTokensRead: 200
       }
 
-      const estimate = calculateCostEstimate(usage, 'claude-sonnet-4')
+      const estimate = calculateCostEstimate(usage, 'claude-sonnet-4-6')
 
       // Regular input: 800 tokens * 0.003 / 1000 = 0.0024
       expect(estimate.inputCost).toBeCloseTo(0.0024, 5)
@@ -68,7 +68,7 @@ describe('model-pricing', () => {
         cachedInputTokensWrite: 300
       }
 
-      const estimate = calculateCostEstimate(usage, 'claude-sonnet-4')
+      const estimate = calculateCostEstimate(usage, 'claude-sonnet-4-6')
 
       // Regular input: 700 tokens * 0.003 / 1000 = 0.0021
       expect(estimate.inputCost).toBe(0.0021)
@@ -91,7 +91,7 @@ describe('model-pricing', () => {
         cachedInputTokensWrite: 100
       }
 
-      const estimate = calculateCostEstimate(usage, 'claude-sonnet-4')
+      const estimate = calculateCostEstimate(usage, 'claude-sonnet-4-6')
       
       // Regular input: 700 tokens * 0.003 / 1000 = 0.0021
       expect(estimate.inputCost).toBe(0.0021)
@@ -128,8 +128,8 @@ describe('model-pricing', () => {
         totalTokens: 1500
       }
 
-      const estimate1 = calculateCostEstimate(usage, 'claude4')
-      const estimate2 = calculateCostEstimate(usage, 'claude-sonnet-4')
+      const estimate1 = calculateCostEstimate(usage, 'sonnet')
+      const estimate2 = calculateCostEstimate(usage, 'claude-sonnet-4-6')
       
       // Should produce identical results
       expect(estimate1.totalCost).toBe(estimate2.totalCost)
@@ -144,7 +144,7 @@ describe('model-pricing', () => {
         cachedInputTokensRead: 200
       }
 
-      const estimate = calculateCostEstimate(usage, 'claude4')
+      const estimate = calculateCostEstimate(usage, 'sonnet')
 
       // Should use Anthropic pricing
       expect(estimate.provider).toBe('anthropic')
@@ -246,7 +246,7 @@ describe('model-pricing', () => {
         savings: 0.00006,
         savingsPercentage: 0.15,
         currency: 'USD',
-        model: 'claude-sonnet-4',
+        model: 'claude-sonnet-4-6',
         provider: 'anthropic'
       }
 
@@ -259,7 +259,7 @@ describe('model-pricing', () => {
 
       const lines = formatCostEstimate(estimate, usage)
 
-      expect(lines).toContain('📊 Cost Analysis for claude-sonnet-4:')
+      expect(lines).toContain('📊 Cost Analysis for claude-sonnet-4-6:')
       expect(lines).toContain('   Cached input cost: $0.0001')
       expect(lines).toContain('     • Read: 200 tokens')
       expect(lines).toContain('   💰 Total cost (with caching): $0.0400')
@@ -277,7 +277,7 @@ describe('model-pricing', () => {
         savings: -0.000435,
         savingsPercentage: -1.09,
         currency: 'USD',
-        model: 'claude-sonnet-4',
+        model: 'claude-sonnet-4-6',
         provider: 'anthropic'
       }
 
@@ -298,9 +298,9 @@ describe('model-pricing', () => {
 
   describe('modelSupportsCaching', () => {
     it('should return true for Anthropic Claude models with caching support', () => {
-      expect(modelSupportsCaching('claude-sonnet-4')).toBe(true)
-      expect(modelSupportsCaching('claude4')).toBe(true)
-      expect(modelSupportsCaching('claude-3-5-haiku')).toBe(true)
+      expect(modelSupportsCaching('claude-sonnet-4-6')).toBe(true)
+      expect(modelSupportsCaching('sonnet')).toBe(true)
+      expect(modelSupportsCaching('claude-haiku-4-5')).toBe(true)
     })
 
     it('should return false for OpenAI models', () => {
@@ -309,12 +309,12 @@ describe('model-pricing', () => {
       expect(modelSupportsCaching('gpt-4-turbo')).toBe(false)
     })
 
-    it('should return false for Claude models without caching support', () => {
-      expect(modelSupportsCaching('claude-3-opus')).toBe(false)
+    it('should return false for unknown models', () => {
+      expect(modelSupportsCaching('unknown-model')).toBe(false)
     })
 
-    it('should return false for unsupported models', () => {
-      expect(modelSupportsCaching('unknown-model')).toBe(false)
+    it('should return false for OpenAI models without caching', () => {
+      expect(modelSupportsCaching('gpt-4-turbo')).toBe(false)
     })
   })
 
@@ -357,8 +357,8 @@ describe('model-pricing', () => {
 
       anthropicModels.forEach(model => {
         if (model.name.includes('claude-sonnet-4') ||
-            model.name.includes('claude-3-5-haiku') ||
-            model.name.includes('claude-haiku-4-5')) {
+            model.name.includes('claude-haiku-4-5') ||
+            model.name.includes('claude-opus-4-6')) {
           expect(model.supportsCaching).toBe(true)
         }
       })
@@ -393,7 +393,7 @@ describe('model-pricing', () => {
       }
 
       expect(() => {
-        calculateCostEstimate(usage, 'claude-sonnet-4')
+        calculateCostEstimate(usage, 'claude-sonnet-4-6')
       }).not.toThrow()
     })
 
@@ -405,7 +405,7 @@ describe('model-pricing', () => {
         cachedInputTokensRead: 1500 // More than input tokens
       }
 
-      const estimate = calculateCostEstimate(usage, 'claude-sonnet-4')
+      const estimate = calculateCostEstimate(usage, 'claude-sonnet-4-6')
       // Should use Math.max(0, ...) to prevent negative regular tokens
       expect(estimate.inputCost).toBeGreaterThanOrEqual(0)
     })
@@ -418,7 +418,7 @@ describe('model-pricing', () => {
         cachedInputTokensRead: 200000
       }
 
-      const estimate = calculateCostEstimate(usage, 'claude-sonnet-4')
+      const estimate = calculateCostEstimate(usage, 'claude-sonnet-4-6')
       expect(estimate.totalCost).toBeGreaterThan(0)
       expect(estimate.totalCost).toBeLessThan(10000) // Reasonable upper bound
     })

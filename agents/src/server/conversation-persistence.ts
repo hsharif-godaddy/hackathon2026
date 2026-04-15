@@ -659,7 +659,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
                 const targetAgent = handoffResult.targetAgent || 'unknown';
                 // Get model name from target agent metadata
                 const targetMetadata = aiLibAgentMetadata[targetAgent] as AILibAgentMetadata & { modelName?: string };
-                const modelName = targetMetadata?.modelName || 'claude-sonnet-4-20250514';
+                const modelName = targetMetadata?.modelName || 'claude-sonnet-4-6';
 
                 // Calculate accurate cost for handoff
                 const handoffCostEstimate = calculateCostEstimate(

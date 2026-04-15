@@ -1491,7 +1491,7 @@ export class WebSocketServer {
       reader = baseStream.getReader()
       const accumulatedToolInput = new Map<string, string>() // Track tool input deltas
 
-      // eslint-disable-next-line no-constant-condition
+
       while (true) { // Intentional infinite loop until stream is done
         // Check if the stream was cancelled
         if (abortController?.signal.aborted) {
@@ -2108,7 +2108,7 @@ export class WebSocketServer {
     // Local vars survive even if catch block clears conversation.context
     let budgetSessionBudgetId: string | undefined
     let budgetSessionSessionId: string | undefined
-    // eslint-disable-next-line prefer-const -- Unit 6 sets this to true after report creation
+
     let budgetReportFiled = false
 
     try {
@@ -3199,7 +3199,7 @@ export class WebSocketServer {
     try {
       const agentConfig = agent.getConfig()
       modelName = agentConfig.modelName || agentName || 'unknown'
-      // Extract provider from model name convention (e.g., 'claude-3-5-sonnet' -> anthropic)
+      // Extract provider from model name convention (e.g., 'claude-sonnet-4-6' -> anthropic)
       if (modelName.includes('claude') || modelName.includes('anthropic')) {
         providerName = 'anthropic'
       } else if (modelName.includes('gpt') || modelName.includes('openai')) {

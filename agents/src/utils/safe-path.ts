@@ -38,19 +38,19 @@ function sanitizePathComponent(component: string): string {
   // Remove null bytes and other control characters
   // eslint-disable-next-line no-control-regex
   let sanitized = component.replace(/[\x00-\x1f\x7f]/g, '');
-  
+
   // Remove or replace dangerous sequences
   sanitized = sanitized
     .replace(/\.\./g, '') // Remove .. sequences
-    // eslint-disable-next-line no-useless-escape
+
     .replace(/\/+/g, '/') // Collapse multiple slashes
-    // eslint-disable-next-line no-useless-escape
+
     .replace(/\\+/g, '\\') // Collapse multiple backslashes
     // eslint-disable-next-line no-useless-escape
     .replace(/^[\/\\]+/, '') // Remove leading slashes
     // eslint-disable-next-line no-useless-escape
     .replace(/[\/\\]+$/, ''); // Remove trailing slashes
-  
+
   // Reject certain dangerous names
   const dangerous = ['.', '..', '', 'CON', 'PRN', 'AUX', 'NUL', 'COM1', 'COM2', 'COM3', 'COM4', 'COM5', 'COM6', 'COM7', 'COM8', 'COM9', 'LPT1', 'LPT2', 'LPT3', 'LPT4', 'LPT5', 'LPT6', 'LPT7', 'LPT8', 'LPT9'];
   if (dangerous.includes(sanitized.toUpperCase())) {
@@ -66,7 +66,7 @@ function sanitizePathComponent(component: string): string {
 function validatePathWithinBase(resolvedPath: string, baseDir: string): void {
   const normalizedResolved = path.normalize(resolvedPath);
   const normalizedBase = path.normalize(baseDir);
-  
+
   if (!normalizedResolved.startsWith(normalizedBase)) {
     throw new UnsafePathError(
       `Path traversal detected: resolved path '${normalizedResolved}' is outside base directory '${normalizedBase}'`,
@@ -118,12 +118,12 @@ export function safeJoinWithOptions(
   if (hasAbsolutePath && options.allowAbsolute) {
     const absoluteSegment = segments.find(segment => path.isAbsolute(segment));
     const resolvedPath = path.resolve(absoluteSegment!);
-    
+
     if (!options.allowTraversal) {
       // Still need to validate if we have a base constraint
       validatePathWithinBase(resolvedPath, normalizedBase);
     }
-    
+
     return resolvedPath;
   }
 
@@ -214,13 +214,13 @@ export function safeResolve(baseDir: string, targetPath: string, options: SafePa
         baseDir
       );
     }
-    
+
     const resolvedPath = path.resolve(targetPath);
-    
+
     if (!options.allowTraversal) {
       validatePathWithinBase(resolvedPath, normalizedBase);
     }
-    
+
     return resolvedPath;
   }
 
@@ -277,30 +277,30 @@ export function isSafePath(targetPath: string, baseDir: string, options: SafePat
  */
 export function createSafePathBuilder(baseDir: string, defaultOptions: SafePathOptions = {}) {
   const normalizedBase = path.resolve(baseDir);
-  
+
   return {
     /**
      * Join segments relative to base directory
      */
     join: (...segments: string[]) => safeJoinWithOptions(normalizedBase, segments, defaultOptions),
-    
+
     /**
      * Resolve path relative to base directory  
      */
     resolve: (targetPath: string, options?: SafePathOptions) => 
       safeResolve(normalizedBase, targetPath, { ...defaultOptions, ...options }),
-    
+
     /**
      * Check if path is safe relative to base directory
      */
     isSafe: (targetPath: string, options?: SafePathOptions) => 
       isSafePath(targetPath, normalizedBase, { ...defaultOptions, ...options }),
-    
+
     /**
      * Get the base directory
      */
     getBaseDir: () => normalizedBase,
-    
+
     /**
      * Check if a resolved path exists
      */

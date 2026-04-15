@@ -29,7 +29,7 @@ import {
 import type { ModelMessage, LanguageModel } from 'ai'
 
 // Helper to create a mock Anthropic model
-function createMockModel(provider = 'anthropic', modelId = 'claude-3-5-sonnet-20241022'): LanguageModel {
+function createMockModel(provider = 'anthropic', modelId = 'claude-sonnet-4-6'): LanguageModel {
   return { provider, modelId, doGenerate: vi.fn(), doStream: vi.fn() } as any
 }
 

@@ -81,9 +81,17 @@ const MODELS: Record<string, ModelDefinition> = {
   },
 
   // Claude Models (available on multiple providers)
+  'claude-opus-4-6': {
+    normalizedName: 'claude-opus-4-6',
+    anthropic: 'claude-opus-4-6'
+  },
   'claude-sonnet-4-6': {
     normalizedName: 'claude-sonnet-4-6',
     anthropic: 'claude-sonnet-4-6'
+  },
+  'azure/claude-sonnet-4-6': {
+    normalizedName: 'claude-sonnet-4-6',
+    anthropic: 'azure/claude-sonnet-4-6'
   },
   'claude-sonnet-4-5': {
     normalizedName: 'claude-sonnet-4-5',
@@ -93,30 +101,6 @@ const MODELS: Record<string, ModelDefinition> = {
     normalizedName: 'claude-haiku-4-5',
     anthropic: 'claude-haiku-4-5-20251001'
   },
-  'claude-sonnet-4': {
-    normalizedName: 'claude-sonnet-4',
-    anthropic: 'claude-sonnet-4'
-  },
-  'claude-3-5-sonnet': {
-    normalizedName: 'claude-3-5-sonnet',
-    anthropic: 'claude-3-5-sonnet'
-  },
-  'claude-3-5-haiku': {
-    normalizedName: 'claude-3-5-haiku',
-    anthropic: 'claude-3-5-haiku'
-  },
-  'claude-3-sonnet': {
-    normalizedName: 'claude-3-sonnet',
-    anthropic: 'claude-3-sonnet'
-  },
-  'claude-3-haiku': {
-    normalizedName: 'claude-3-haiku',
-    anthropic: 'claude-3-haiku'
-  },
-  'claude-3-opus': {
-    normalizedName: 'claude-3-opus',
-    anthropic: 'claude-3-opus'
-  }
 }
 
 /**
@@ -142,17 +126,10 @@ const ALIASES: Record<string, string> = {
   'glm4.7': 'zai-glm-4.7',
 
   // Claude aliases
-  'claude4': 'claude-sonnet-4',
-  'sonnet4': 'claude-sonnet-4',
-  'claude-sonnet-4-20250514': 'claude-sonnet-4',
   'claude-sonnet-4-5-20250929': 'claude-sonnet-4-5',
   'claude-haiku-4-5-20251001': 'claude-haiku-4-5',
-  'claude-3.5-sonnet': 'claude-3-5-sonnet',
-  'claude35-sonnet': 'claude-3-5-sonnet',
   'sonnet': 'claude-sonnet-4-6',
-  'claude-haiku': 'claude-3-5-haiku',
-  'haiku': 'claude-haiku-4-5',
-  'claude3-haiku': 'claude-3-haiku'
+  'haiku': 'claude-haiku-4-5'
 }
 
 /**
@@ -298,6 +275,7 @@ export function getLegacyModelMappings(): Record<string, string> {
 }
 
 const EFFORT_SUPPORTED_MODELS = new Set([
+  'claude-opus-4-6',
   'claude-sonnet-4-6',
 ])
 

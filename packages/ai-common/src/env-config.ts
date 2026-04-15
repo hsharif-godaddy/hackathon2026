@@ -24,7 +24,7 @@ export class EnvConfig {
   static getAnthropicConfig() {
     return {
       apiKey: process.env.ANTHROPIC_API_KEY,
-      model: process.env.DEFAULT_MODEL || 'claude-3-5-sonnet-20241022'
+      model: process.env.DEFAULT_MODEL || 'claude-sonnet-4-6'
     }
   }
 

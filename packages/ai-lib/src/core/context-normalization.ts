@@ -11,10 +11,10 @@ import { buildHybridContent } from '../utils/image-content-builder.js'
 interface ProviderOptions {
   anthropic?: {
     cacheControl?: { type: string }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     [key: string]: any
   }
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   [key: string]: any
 }
 

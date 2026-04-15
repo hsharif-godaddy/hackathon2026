@@ -192,7 +192,7 @@ describe('WebSocketServer - Error Handling', () => {
 
       // Check that error messages were emitted to the client
       const emitCalls = mockSocket.emit.mock.calls
-      
+
       // Should emit step_start for the failed attempt
       const stepStartCall = emitCalls.find(call => 
         call[0] === 'message' && call[1].type === 'step_start'
@@ -685,7 +685,7 @@ describe('WebSocketServer - Error Handling', () => {
         call[1].type === 'tool_result' &&
         call[1].data.tool.name === 'tool_validation_failed'
       )
-      
+
       expect(toolResultCall).toBeDefined()
       expect(toolResultCall[1].data.tool.output).toContain('JSON parsing failed')
     })
@@ -702,7 +702,7 @@ describe('WebSocketServer - Error Handling', () => {
 
       testCases.forEach(({ input, expected }) => {
         let formattedArgs = 'unknown_arguments'
-        
+
         // Simulate the logic from the actual code
         if (typeof input === 'object' && input !== null) {
           formattedArgs = Object.entries(input)
@@ -740,7 +740,7 @@ describe('WebSocketServer - Error Handling', () => {
 
       // Should not throw but handle via error handlers
       await messageHandler(chatMessage)
-      
+
       // Should emit error message for non-tool validation errors
       const emitCalls = mockSocket.emit.mock.calls
       const errorCall = emitCalls.find(call => 
@@ -749,7 +749,7 @@ describe('WebSocketServer - Error Handling', () => {
       )
       expect(errorCall).toBeDefined()
       expect(errorCall[1].content).toContain('Network timeout')
-      
+
       // Should not emit tool validation error messages for other error types
       const toolValidationCall = emitCalls.find(call => 
         call[0] === 'message' && 
@@ -757,7 +757,7 @@ describe('WebSocketServer - Error Handling', () => {
         call[1].data.tool.name === 'tool_validation_failed'
       )
       expect(toolValidationCall).toBeUndefined()
-      
+
       // Note: onError handler may or may not be called depending on how the error is processed
     })
 
@@ -785,9 +785,9 @@ describe('WebSocketServer - Error Handling', () => {
 
       // Should attempt retry and then handle the retry error
       await messageHandler(chatMessage)
-      
+
       expect(mockAgent.streamGenerate).toHaveBeenCalledTimes(2)
-      
+
       // Should show the initial tool validation failure
       const emitCalls = mockSocket.emit.mock.calls
       const toolResultCall = emitCalls.find(call => 
@@ -796,7 +796,7 @@ describe('WebSocketServer - Error Handling', () => {
         call[1].data.tool.name === 'tool_validation_failed'
       )
       expect(toolResultCall).toBeDefined()
-      
+
       // Note: Error handling occurs via standard error flow
     })
   })
@@ -2738,7 +2738,7 @@ describe('WebSocketServer - Abort Signal Handling', () => {
         getReader: () => mockReader,
         cancel: vi.fn()
       },
-      // eslint-disable-next-line require-yield
+
       textStream: (async function* () {})(),
       getFinalResult: hangingGetFinalResult
     })

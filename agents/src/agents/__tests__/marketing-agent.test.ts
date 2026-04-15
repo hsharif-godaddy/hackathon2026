@@ -5,7 +5,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 vi.mock('../../utils/model-selection.js', () => ({
   getAgentModelWithName: vi.fn().mockResolvedValue({
     model: { generate: vi.fn(), streamGenerate: vi.fn() },
-    modelName: 'claude-3-sonnet-20240229'
+    modelName: 'claude-sonnet-4-6'
   })
 }));
 

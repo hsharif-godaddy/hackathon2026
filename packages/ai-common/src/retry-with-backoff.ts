@@ -262,7 +262,7 @@ export interface RetryFailureMeta {
  *
  * @param fn - Async function to execute
  * @param config - Retry configuration (optional, uses defaults)
- * @param context - Optional context for logging (e.g., { operation: 'generate', model: 'claude4' })
+ * @param context - Optional context for logging (e.g., { operation: 'generate', model: 'claude-sonnet-4-6' })
  * @returns Promise resolving to the function's return value
  * @throws Error with retry metadata when all attempts fail
  *
@@ -271,7 +271,7 @@ export interface RetryFailureMeta {
  * const result = await retryWithBackoff(
  *   async () => await agent.generate({ messages }),
  *   DEFAULT_RETRY_CONFIG,
- *   { operation: 'generate', model: 'claude4' }
+ *   { operation: 'generate', model: 'claude-sonnet-4-6' }
  * )
  * ```
  */

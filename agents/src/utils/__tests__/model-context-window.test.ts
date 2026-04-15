@@ -11,12 +11,12 @@ describe('getModelContextWindow', () => {
       expect(getModelContextWindow('claude-sonnet-4-5')).toBe(200000)
     })
 
-    it('should return 200k for Claude Opus 4', () => {
-      expect(getModelContextWindow('claude-opus-4')).toBe(200000)
+    it('should return 200k for Claude Opus 4.6', () => {
+      expect(getModelContextWindow('claude-opus-4-6')).toBe(200000)
     })
 
-    it('should return 200k for Claude Haiku 4', () => {
-      expect(getModelContextWindow('claude-haiku-4')).toBe(200000)
+    it('should return 200k for Claude Sonnet 4.6', () => {
+      expect(getModelContextWindow('claude-sonnet-4-6')).toBe(200000)
     })
 
     it('should return 128k for GPT-4o', () => {
@@ -70,11 +70,11 @@ describe('getModelContextWindow', () => {
     })
 
     it('should match Bedrock-style model IDs containing Claude Opus', () => {
-      expect(getModelContextWindow('anthropic.claude-opus-4-v1:0')).toBe(200000)
+      expect(getModelContextWindow('anthropic.claude-opus-4-6-v1:0')).toBe(200000)
     })
 
-    it('should match Bedrock-style model IDs containing Claude Haiku', () => {
-      expect(getModelContextWindow('anthropic.claude-haiku-4-v1:0')).toBe(200000)
+    it('should match Bedrock-style model IDs containing Claude Sonnet 4.6', () => {
+      expect(getModelContextWindow('anthropic.claude-sonnet-4-6-v1:0')).toBe(200000)
     })
   })
 

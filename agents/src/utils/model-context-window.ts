@@ -15,15 +15,9 @@
  */
 const MODEL_CONTEXT_WINDOWS = {
   // Claude models (Anthropic)
+  'claude-opus-4-6': 200000,
   'claude-sonnet-4-6': 200000,
   'claude-sonnet-4-5': 200000,
-  'claude-sonnet-4': 200000,
-  'claude-opus-4': 200000,
-  'claude-haiku-4': 200000,
-  'claude-3-5-sonnet': 200000,
-  'claude-3-opus': 200000,
-  'claude-3-sonnet': 200000,
-  'claude-3-haiku': 200000,
 
   // OpenAI models
   'gpt-4o': 128000,
@@ -78,15 +72,9 @@ export function getModelContextWindow(modelName: string | undefined): number {
   // Order matters: check more specific patterns first to avoid misclassification
   // e.g., 'gpt-4o' before 'gpt-4' to avoid matching 'gpt-4o-mini' as 8k
   const orderedKeys = [
+    'claude-opus-4-6',
     'claude-sonnet-4-6',
     'claude-sonnet-4-5',
-    'claude-sonnet-4',
-    'claude-opus-4',
-    'claude-haiku-4',
-    'claude-3-5-sonnet',
-    'claude-3-opus',
-    'claude-3-sonnet',
-    'claude-3-haiku',
     'gpt-4o-mini',
     'gpt-4o',
     'gpt-4-turbo',

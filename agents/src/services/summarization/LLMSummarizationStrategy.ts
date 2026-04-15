@@ -422,7 +422,7 @@ Merge new info. Remove completed items from Pending.`;
     }
 
     const summaryText = `[Fallback Summary] ${parts.join(' | ')}`;
-    const tokenCountResult = await countTokens(summaryText, 'claude-3-5-sonnet');
+    const tokenCountResult = await countTokens(summaryText, 'claude-sonnet-4-6');
     const summaryTokenCount = tokenCountResult.tokenCount;
 
     logger.warn('summarization.llm.fallback', {

@@ -195,8 +195,8 @@ async function demonstrateS2SAnthropicAuth() {
     
     // Test multiple Claude models through S2S authentication
     const claudeModels = [
-      { name: 'claude-sonnet-4-20250514', displayName: 'Claude Sonnet 4' },
-      { name: 'claude-haiku', displayName: 'Claude Haiku' },
+      { name: 'claude-sonnet-4-6', displayName: 'Claude Sonnet 4.6' },
+      { name: 'claude-haiku-4-5', displayName: 'Claude Haiku 4.5' },
     ]
     
     for (const modelInfo of claudeModels) {
@@ -265,7 +265,7 @@ async function demonstrateRegularAnthropicAuth() {
     const originalS2S = process.env.GOCODE_USE_S2S_AUTH
     process.env.GOCODE_USE_S2S_AUTH = 'false'
     
-    const model = await getModel('claude-haiku')
+    const model = await getModel('claude-haiku-4-5')
     console.log('✅ Successfully created Claude model with regular API key authentication')
     
     const result = await generateText({

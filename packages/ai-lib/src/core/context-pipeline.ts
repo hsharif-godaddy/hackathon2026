@@ -18,7 +18,7 @@ export interface PipelineContextMessage {
   insertionOrder?: 'before_history' | 'after_history'
   cachePoint?: CachePointMetadata
   /** Provider-specific options (e.g., Anthropic cacheControl, Bedrock cachePoint). Preserved through normalization. */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   providerOptions?: Record<string, Record<string, any>>
 }
 

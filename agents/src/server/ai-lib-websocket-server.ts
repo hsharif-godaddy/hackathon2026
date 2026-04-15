@@ -2143,7 +2143,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
       }
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const wsServer = createWebSocketServer(httpServer, wsServerConfig as any)
 
     logger.info('websocket.server.ready', {

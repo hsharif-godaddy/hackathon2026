@@ -30,7 +30,7 @@ vi.mock('../../../utils/token-counter.js', () => ({
 }));
 
 vi.mock('../../../utils/model-selection.js', () => ({
-  getAgentModelWithName: vi.fn().mockResolvedValue({ modelName: 'claude-3-5-sonnet' })
+  getAgentModelWithName: vi.fn().mockResolvedValue({ modelName: 'claude-sonnet-4-6' })
 }));
 
 describe('BackgroundSummarizer', () => {
@@ -63,7 +63,7 @@ describe('BackgroundSummarizer', () => {
         originalTokenCount: 100,
         messageCount: 2,
         messageRange: { startId: 'msg1', endId: 'msg2' },
-        modelUsed: 'claude-3-5-sonnet'
+        modelUsed: 'claude-sonnet-4-6'
       })
     } as unknown as SummarizationStrategy;
 
@@ -136,7 +136,7 @@ describe('BackgroundSummarizer', () => {
         messageRangeEnd: 'msg2',
         operationLog: 'Previous operations',
         createdAt: new Date(),
-        modelUsed: 'claude-3-5-sonnet',
+        modelUsed: 'claude-sonnet-4-6',
         incrementalUpdateCount: 0,
         lastFullSummarizationAt: new Date()
       };
@@ -184,7 +184,7 @@ describe('BackgroundSummarizer', () => {
         messageRangeEnd: 'msg2',
         operationLog: null,
         createdAt: new Date(),
-        modelUsed: 'claude-3-5-sonnet',
+        modelUsed: 'claude-sonnet-4-6',
         incrementalUpdateCount: 0,
         lastFullSummarizationAt: new Date()
       };
@@ -225,7 +225,7 @@ describe('BackgroundSummarizer', () => {
         messageRangeEnd: 'msg2-deleted',
         operationLog: null,
         createdAt: new Date(),
-        modelUsed: 'claude-3-5-sonnet',
+        modelUsed: 'claude-sonnet-4-6',
         incrementalUpdateCount: 0,
         lastFullSummarizationAt: new Date()
       };
@@ -308,7 +308,7 @@ describe('BackgroundSummarizer', () => {
           ],
         }),
         createdAt: new Date(),
-        modelUsed: 'claude-3-5-sonnet',
+        modelUsed: 'claude-sonnet-4-6',
         incrementalUpdateCount: 5,
         lastFullSummarizationAt: new Date()
       };
@@ -376,7 +376,7 @@ describe('BackgroundSummarizer', () => {
         messageRangeEnd: 'msg2',
         operationLog: JSON.stringify({ version: 1, entries: [] }),
         createdAt: new Date(),
-        modelUsed: 'claude-3-5-sonnet',
+        modelUsed: 'claude-sonnet-4-6',
         incrementalUpdateCount: 5,
         lastFullSummarizationAt: new Date()
       };
@@ -445,7 +445,7 @@ describe('BackgroundSummarizer', () => {
           ],
         }),
         createdAt: new Date(),
-        modelUsed: 'claude-3-5-sonnet',
+        modelUsed: 'claude-sonnet-4-6',
         incrementalUpdateCount: 0,
         lastFullSummarizationAt: new Date()
       };
@@ -514,7 +514,7 @@ describe('BackgroundSummarizer', () => {
           ],
         }),
         createdAt: new Date(),
-        modelUsed: 'claude-3-5-sonnet',
+        modelUsed: 'claude-sonnet-4-6',
         incrementalUpdateCount: 0,
         lastFullSummarizationAt: new Date()
       };
@@ -572,7 +572,7 @@ describe('BackgroundSummarizer', () => {
           ],
         }),
         createdAt: new Date(),
-        modelUsed: 'claude-3-5-sonnet',
+        modelUsed: 'claude-sonnet-4-6',
         incrementalUpdateCount: 1,
         lastFullSummarizationAt: new Date()
       };

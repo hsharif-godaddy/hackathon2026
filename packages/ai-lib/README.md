@@ -61,7 +61,7 @@ const agents = agentFactory.defineAgents({
   claudeAgent: {
     name: "Claude Assistant",
     systemPrompt: "You are Claude.",
-    model: await getModel("sonnet4"), // Uses AWS credentials
+    model: await getModel("sonnet"), // Uses AWS credentials
   },
 });
 ```
@@ -89,7 +89,7 @@ const agents = agentFactory.defineAgents({
   cachedAgent: {
     name: "Cached Code Reviewer",
     systemPrompt: "Your large system prompt here...", // Will be cached
-    model: await getModel("sonnet4"),
+    model: await getModel("sonnet"),
     providerOptions: {
       anthropic: {
         cacheControl: { type: "ephemeral" },
@@ -235,7 +235,7 @@ export const agents = agentFactory.defineAgents({
 
   smartAgent: {
     name: "Smart Agent",
-    model: await getModel("sonnet4"), // Routes to Bedrock/Anthropic
+    model: await getModel("sonnet"), // Routes to Bedrock/Anthropic
     systemPrompt: "You provide detailed, thoughtful responses.",
   },
 });

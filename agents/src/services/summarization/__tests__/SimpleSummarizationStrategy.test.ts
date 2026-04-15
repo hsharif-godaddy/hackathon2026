@@ -27,7 +27,7 @@ describe('summarization', function summarizationTests() {
       expect(result.messageCount).toBe(2);
       expect(result.originalTokenCount).toBe(100);
       expect(result.summaryTokenCount).toBeGreaterThan(0);
-      expect(result.modelUsed).toBe('claude-3-5-sonnet');
+      expect(result.modelUsed).toBe('claude-sonnet-4-6');
     });
 
     it('should handle incremental summarization', async function incremental() {

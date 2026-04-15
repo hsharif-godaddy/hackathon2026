@@ -122,7 +122,7 @@ const response = await fetch('/api/ai/generate', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
-    model: 'claude-3-5-sonnet',
+    model: 'claude-sonnet-4-6',
     prompt: 'Write a product description for...',
     max_tokens: 500
   })

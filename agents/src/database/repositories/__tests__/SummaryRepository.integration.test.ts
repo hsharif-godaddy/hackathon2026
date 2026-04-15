@@ -31,7 +31,7 @@ describe('repositories', function repositoriesTests() {
       const summary: SummarizationResult = {
         summaryText: 'Test summary',
         summaryTokenCount: 50,
-        modelUsed: 'claude-3-5-sonnet',
+        modelUsed: 'claude-sonnet-4-6',
         messageRange: { startId: 'msg1', endId: 'msg2' },
         messageCount: 10,
         originalTokenCount: 500,
@@ -47,14 +47,14 @@ describe('repositories', function repositoriesTests() {
       expect(created.messageCount).toBe(10);
       expect(created.originalTokenCount).toBe(500);
       expect(created.summaryTokenCount).toBe(50);
-      expect(created.modelUsed).toBe('claude-3-5-sonnet');
+      expect(created.modelUsed).toBe('claude-sonnet-4-6');
     });
 
     it('should find summaries by app ID', async function findByAppId() {
       const summary1: SummarizationResult = {
         summaryText: 'First summary',
         summaryTokenCount: 30,
-        modelUsed: 'claude-3-5-sonnet',
+        modelUsed: 'claude-sonnet-4-6',
         messageRange: { startId: 'msg1', endId: 'msg5' },
         messageCount: 5,
         originalTokenCount: 300,
@@ -63,7 +63,7 @@ describe('repositories', function repositoriesTests() {
       const summary2: SummarizationResult = {
         summaryText: 'Second summary',
         summaryTokenCount: 40,
-        modelUsed: 'claude-3-5-sonnet',
+        modelUsed: 'claude-sonnet-4-6',
         messageRange: { startId: 'msg6', endId: 'msg10' },
         messageCount: 5,
         originalTokenCount: 400,
@@ -83,7 +83,7 @@ describe('repositories', function repositoriesTests() {
       const summary: SummarizationResult = {
         summaryText: 'Range summary',
         summaryTokenCount: 25,
-        modelUsed: 'claude-3-5-sonnet',
+        modelUsed: 'claude-sonnet-4-6',
         messageRange: { startId: 'msg1', endId: 'msg3' },
         messageCount: 3,
         originalTokenCount: 250,
@@ -101,7 +101,7 @@ describe('repositories', function repositoriesTests() {
       const summary1: SummarizationResult = {
         summaryText: 'Old summary',
         summaryTokenCount: 20,
-        modelUsed: 'claude-3-5-sonnet',
+        modelUsed: 'claude-sonnet-4-6',
         messageRange: { startId: 'msg1', endId: 'msg2' },
         messageCount: 2,
         originalTokenCount: 200,
@@ -110,7 +110,7 @@ describe('repositories', function repositoriesTests() {
       const summary2: SummarizationResult = {
         summaryText: 'New summary',
         summaryTokenCount: 30,
-        modelUsed: 'claude-3-5-sonnet',
+        modelUsed: 'claude-sonnet-4-6',
         messageRange: { startId: 'msg3', endId: 'msg4' },
         messageCount: 2,
         originalTokenCount: 300,
@@ -129,7 +129,7 @@ describe('repositories', function repositoriesTests() {
       const summary: SummarizationResult = {
         summaryText: 'To delete',
         summaryTokenCount: 15,
-        modelUsed: 'claude-3-5-sonnet',
+        modelUsed: 'claude-sonnet-4-6',
         messageRange: { startId: 'msg1', endId: 'msg2' },
         messageCount: 2,
         originalTokenCount: 150,

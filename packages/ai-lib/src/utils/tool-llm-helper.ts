@@ -88,7 +88,7 @@ export interface GenerateTextWithTrackingResult {
  * ```typescript
  * const result = await generateTextWithTracking({
  *   model: await getModel('sonnet'),
- *   modelName: 'claude-sonnet-4-20250514',
+ *   modelName: 'claude-sonnet-4-6',
  *   system: 'You are a helpful assistant',
  *   prompt: 'Generate a color palette',
  *   temperature: 0.8,

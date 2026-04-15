@@ -74,8 +74,8 @@ async function main() {
       console.log(`   Base64 size: ${processedFile.base64Content?.length || 0} characters\n`)
     }
 
-    console.log('\n🤖 Creating Claude Sonnet 4 agent...')
-    const model = await getModel('claude4')
+    console.log('\n🤖 Creating Claude Sonnet 4.6 agent...')
+    const model = await getModel('claude-sonnet-4-6')
 
     const agentFactory = createAgentFactory()
 

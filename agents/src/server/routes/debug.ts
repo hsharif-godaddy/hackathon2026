@@ -30,7 +30,7 @@ function validateAppIdParam(req: Request, res: Response, next: NextFunction): vo
 }
 
 // Token counting model for debug context analysis
-const TOKEN_COUNTING_MODEL = 'claude-sonnet-4'
+const TOKEN_COUNTING_MODEL = 'claude-sonnet-4-6'
 
 // Maximum token limit for context analysis
 const MAX_CONTEXT_TOKENS = 150000

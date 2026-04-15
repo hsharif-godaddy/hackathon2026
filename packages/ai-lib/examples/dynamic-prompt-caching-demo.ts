@@ -117,7 +117,7 @@ async function demonstrateCaching() {
   }
 
   try {
-    const model = await getModel('claude4')
+    const model = await getModel('claude-sonnet-4-6')
     console.log(`✅ Using model: ${model.modelId}\n`)
 
     const agentFactory = createAgentFactory()

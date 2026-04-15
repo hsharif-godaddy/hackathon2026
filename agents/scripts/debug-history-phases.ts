@@ -22,7 +22,7 @@ const appId = process.argv[2];
 const agentId = process.argv[3];
 const phase = process.argv[4] || 'llm';
 const maxTokens = process.argv[5] ? parseInt(process.argv[5], 10) : 40000;
-const modelName = process.argv[6] || 'claude4';
+const modelName = process.argv[6] || 'claude-sonnet-4-6';
 
 if (!appId || !agentId) {
   console.error('Usage: pnpm debug:history <appId> <agentId> [phase] [maxTokens] [modelName]');
@@ -32,7 +32,7 @@ if (!appId || !agentId) {
   console.error('  agentId    - Required. Agent ID (e.g., "develop")');
   console.error('  phase      - Optional. Which phase to dump (default: llm)');
   console.error('  maxTokens  - Optional. Token limit for limited phase (default: 40000)');
-  console.error('  modelName  - Optional. Model name for token counting (default: claude4)');
+  console.error('  modelName  - Optional. Model name for token counting (default: claude-sonnet-4-6)');
   console.error('');
   console.error('Phases:');
   console.error('  db          - Show raw database messages');

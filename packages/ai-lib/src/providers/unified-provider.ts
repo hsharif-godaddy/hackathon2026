@@ -43,18 +43,15 @@ import { grantSessionManager } from '@airo/ai-grants'
  * Maps short names to their OpenAI proxy model identifiers
  */
 const CLAUDE_PROXY_MODELS = {
+  'claude-opus-4-6': 'claude-opus-4-6',
   'claude-sonnet-4-6': 'claude-sonnet-4-6',
+  'azure/claude-sonnet-4-6': 'azure/claude-sonnet-4-6',
   'claude-sonnet-4-5-20250929': 'claude-sonnet-4-5-20250929',
   'claude-sonnet-4-5': 'claude-sonnet-4-5-20250929',
   'sonnet': 'claude-sonnet-4-6',
   'claude-haiku-4-5-20251001': 'claude-haiku-4-5-20251001',
   'claude-haiku-4-5': 'claude-haiku-4-5-20251001',
   'haiku': 'claude-haiku-4-5-20251001',
-  'claude-sonnet-4-20250514': 'claude-sonnet-4-20250514',
-  'claude-sonnet-4': 'claude-sonnet-4-20250514',
-  'claude4': 'claude-sonnet-4-20250514',
-  'sonnet4': 'claude-sonnet-4-20250514',
-  'claude-haiku': 'claude-haiku-4-5-20251001',
 } as const
 
 // Use unified model mappings from model-normalization
@@ -561,8 +558,8 @@ async function createOpenAIProvider(config?: ProviderConfig) {
  *
  * // Claude models
  * // Automatically routes to Anthropic API or proxy based on available credentials
- * const claude = await getModel('claude4')
- * const claudeViaProxy = await getModel('claude4')  // Uses proxy when configured
+ * const claude = await getModel('claude-sonnet-4-6')
+ * const claudeViaProxy = await getModel('claude-sonnet-4-6')  // Uses proxy when configured
  * ```
  */
 export async function getModel(

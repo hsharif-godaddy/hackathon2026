@@ -52,7 +52,7 @@ describe('AgentWrapper - Cache Point Preservation', () => {
 
     const mockModel = {
       provider: 'anthropic',
-      modelId: 'claude-3-5-sonnet-20241022',
+      modelId: 'claude-sonnet-4-6',
       doGenerate: vi.fn(),
       doStream: vi.fn()
     }
@@ -306,7 +306,7 @@ describe('AgentWrapper - Automatic Prompt Caching', () => {
 
     const mockModel = {
       provider: 'anthropic',
-      modelId: 'claude-3-5-sonnet-20241022',
+      modelId: 'claude-sonnet-4-6',
       doGenerate: vi.fn(),
       doStream: vi.fn()
     }
@@ -463,7 +463,7 @@ describe('AgentWrapper - Automatic Prompt Caching', () => {
   it('should not apply caching when enablePromptCaching is false', async () => {
     const mockModel = {
       provider: 'anthropic',
-      modelId: 'claude-3-5-sonnet-20241022',
+      modelId: 'claude-sonnet-4-6',
       doGenerate: vi.fn(),
       doStream: vi.fn()
     }
@@ -946,7 +946,7 @@ describe('AgentWrapper - advanceCacheBreakpoint via prepareStep', () => {
 
     const mockModel = {
       provider: 'anthropic',
-      modelId: 'claude-3-5-sonnet-20241022',
+      modelId: 'claude-sonnet-4-6',
       doGenerate: vi.fn(),
       doStream: vi.fn()
     }
