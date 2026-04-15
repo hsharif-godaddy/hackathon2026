@@ -51,6 +51,46 @@ jobs:
         Use the repository's CLAUDE.md for project-specific conventions.
         </instructions>
 
+        <approach_review>
+        Before reporting line-level issues, evaluate the PR's overall approach. Include
+        a "## Approach" section in the summary comment addressing these questions:
+
+        1. Is the problem genuine? Read the PR description and the code it changes.
+           Does the problem the PR claims to solve actually exist? Is it worth solving
+           now, or is it speculative/premature? If the problem is not genuine or not
+           worth the complexity cost, say so directly.
+
+        2. Is this the simplest solution? Given what the codebase already provides,
+           could the same goal be achieved more directly? Look for:
+           - Existing utilities, helpers, or patterns that already solve part of this
+           - Framework or library configuration that could achieve the goal without
+             custom code (don't write code for what config can solve)
+           - Built-in features of libraries already in use that make custom
+             implementations unnecessary
+           - Simpler architectural approaches (fewer layers, less indirection)
+           - Whether the PR adds abstractions for single-use operations
+           - Whether new files, wrappers, or interfaces could be avoided
+           - Whether copy-paste with slight variation could be a shared abstraction
+           - Whether parameter sprawl could be avoided by restructuring
+
+        3. Is the solution overcomplicated? Flag when:
+           - The change adds indirection (new files, layers, wrappers) without clear benefit
+           - Custom code duplicates functionality available via library/framework config
+           - Redundant state is introduced: state that duplicates existing state, cached
+             values that could be derived, observers/effects that could be direct calls
+           - Unnecessary work is performed: redundant computations, repeated reads,
+             duplicate API calls, N+1 patterns
+           - The code has unnecessary nesting, wrapper elements, or containers that
+             add no structural value
+           - Comments explain WHAT code does rather than non-obvious WHY
+
+        Be specific. If a simpler approach exists, sketch it concisely. Prefer clarity
+        over brevity - show enough that the author can act on the feedback.
+
+        If the approach is sound, state "Approach looks good" and move on to line-level
+        review. Do not pad this section with generic praise.
+        </approach_review>
+
         <e2e_review>
         When the PR modifies UI components (app/src/):
         1. Grep tests/smoke/ for any data-testid, data-eid, or selectors affected by the diff.
@@ -61,6 +101,7 @@ jobs:
 
         <output_format>
         Summary comment:
+        - "## Approach" section (from <approach_review>) - always include
         - "## Issues" section with checkbox list (if any)
         - "## Suggestions" section with bullet list (if any)
         - No preamble or closing remarks
