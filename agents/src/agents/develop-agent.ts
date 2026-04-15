@@ -18,6 +18,7 @@ import { SkillLoaderTool, buildSkillsPromptSection } from '../tools/skill-loader
 import { skillToolManager } from '../tools/skill-tool-manager.js'
 import { allAILibTools } from '../tools/ai-lib-tools/index.js'
 import { getPersistentAssetPaths } from '../utils/persistent-assets.js'
+import { skills } from '../services/features.js'
 import { readFile } from 'fs/promises'
 
 /**
@@ -275,7 +276,9 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
     handoffs: [
       {
         agentName: 'marketing',
-        description: 'SEO optimization and marketing strategy for websites',
+        description: skills.isEnabled('social')
+          ? 'SEO optimization, marketing strategy, and social media (Facebook, Instagram publishing, connecting social accounts, creating social posts)'
+          : 'SEO optimization and marketing strategy for websites',
       },
     ],
 
