@@ -34,7 +34,7 @@ interface ESSearchResponse {
   };
 }
 
-export const GET = withAuth(async (request) => {
+export const GET = withAuth(async (request, _auth) => {
   try {
     const { searchParams } = new URL(request.url);
     const sourceId = searchParams.get('source') || 'airo-agents';

@@ -35,7 +35,7 @@ function getClient(): Client | null {
   return new Client({ node: endpoint, auth: { apiKey } });
 }
 
-export const GET = withAuth(async (request) => {
+export const GET = withAuth(async (request, _auth) => {
   const client = getClient();
   if (!client) {
     return NextResponse.json({ error: 'ES not configured' }, { status: 500 });

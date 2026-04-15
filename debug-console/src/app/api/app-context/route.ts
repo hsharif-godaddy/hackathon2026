@@ -847,7 +847,7 @@ async function fetchAPMTraces(
   }
 }
 
-export const GET = withAuth(async (request) => {
+export const GET = withAuth(async (request, _auth) => {
   try {
     const { searchParams } = new URL(request.url);
     const appId = searchParams.get('appId');

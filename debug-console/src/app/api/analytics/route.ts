@@ -25,7 +25,7 @@ async function ensureInitialized() {
   }
 }
 
-export const GET = withAuth(async (request) => {
+export const GET = withAuth(async (request, _auth) => {
   await ensureInitialized();
 
   const { searchParams } = new URL(request.url);

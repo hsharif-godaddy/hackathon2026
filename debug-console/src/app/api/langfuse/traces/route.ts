@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import { withAuth } from '@/lib/api-auth';
 import { getLangfuseConfig } from '@/lib/langfuse-client';
 
-export const GET = withAuth(async (request) => {
+export const GET = withAuth(async (request, _auth) => {
   try {
     const lf = getLangfuseConfig();
     if (!lf) {

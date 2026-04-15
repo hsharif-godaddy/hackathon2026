@@ -24,7 +24,7 @@ interface ESHit {
   };
 }
 
-export const GET = withAuth(async (request) => {
+export const GET = withAuth(async (request, _auth) => {
   try {
     const { searchParams } = new URL(request.url);
     const subscriptionId = searchParams.get('subscriptionId') ?? undefined;

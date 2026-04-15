@@ -28,7 +28,7 @@ interface ESSearchResponse {
   };
 }
 
-export const GET = withAuth(async (request) => {
+export const GET = withAuth(async (request, _auth) => {
   try {
     const endpoint = process.env.PIONEER_ES_ENDPOINT;
     const apiKey = process.env.PIONEER_ES_API_KEY;

@@ -229,7 +229,7 @@ export function withAuth<P = void>(
 ) {
     return async (
         request: NextRequest,
-        context?: RouteContext<P>
+        context: RouteContext<P> | { params: Promise<Record<string, string>> }
     ): Promise<NextResponse> => {
         const auth = await validateApiAuth(request, options);
 
@@ -237,11 +237,14 @@ export function withAuth<P = void>(
             return auth.error;
         }
 
-        if (context) {
+        // For dynamic routes (P is not void), pass context with params
+        // For non-dynamic routes (P is void), only pass request and auth
+        const contextParams = (context as any).params;
+        if (contextParams) {
             return (handler as (request: NextRequest, auth: AuthResult, context: RouteContext<P>) => Promise<NextResponse>)(
                 request,
                 auth,
-                context
+                context as RouteContext<P>
             );
         }
 
