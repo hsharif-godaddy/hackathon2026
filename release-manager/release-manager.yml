@@ -83,6 +83,7 @@ pipeline:
             - "Publish the app and verify it goes live"
             - "Verify the app id in nomad c4 has the correct image versions"
             - "Verify an existing app upgrades correctly and the agent is working"
+            - "Verify that you can add a credit pack"
             - "Verify any new features in the release notes are working"
 
     prod:
@@ -164,6 +165,7 @@ pipeline:
             - "Publish the app and verify it goes live"
             - "Verify the app id in prod nomad has the correct image versions"
             - "Verify an existing app upgrades correctly and the agent is working"
+            - "Verify that you can add a credit pack"
             - "Verify any new features in the release notes are working"
 
   dry_run:
