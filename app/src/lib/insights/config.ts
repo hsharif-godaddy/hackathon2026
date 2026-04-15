@@ -1,12 +1,15 @@
+import 'server-only'
+
 /**
- * Insights API Configuration
+ * Insights API Configuration (Server-Only)
  *
- * Centralized configuration for insights GraphQL API client.
+ * Server-side configuration for insights GraphQL API client.
  * URL is set per-environment in gasket.ts (insightsApiUrl) and falls back
  * to the production endpoint so removal of the config never silently
  * breaks production.
+ *
+ * Client code should import from ./constants instead.
  */
-
 import gasket from '../../../gasket.ts'
 
 const PROD_INSIGHTS_API_URL = 'https://uip.api.int.godaddy.com/v1/insights/graphql'
@@ -38,10 +41,4 @@ export function getInsightsSsoHost(): string {
   return (gasket.config as any).insightsSsoHost
     ?? PROD_SSO_HOST
 }
-
-export const REQUEST_TIMEOUT_MS = 30000
-export const MAX_RETRIES = 3
-export const INITIAL_RETRY_DELAY_MS = 1000
-export const MAX_RETRY_DELAY_MS = 10000
-export const TOKEN_FETCH_TIMEOUT_MS = 30000
 

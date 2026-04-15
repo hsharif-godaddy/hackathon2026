@@ -5,7 +5,7 @@
  */
 
 import { logger } from '@/lib/request-context'
-import { INITIAL_RETRY_DELAY_MS, MAX_RETRIES, MAX_RETRY_DELAY_MS, REQUEST_TIMEOUT_MS } from './config'
+import { INITIAL_RETRY_DELAY_MS, MAX_RETRIES, MAX_RETRY_DELAY_MS, REQUEST_TIMEOUT_MS } from './constants'
 import { calculateBackoffDelay, classifyError, sleep } from './error-handler'
 import type { InsightCountResponse } from './types'
 

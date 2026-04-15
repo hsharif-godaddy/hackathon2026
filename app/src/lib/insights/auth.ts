@@ -4,7 +4,7 @@
  * Handles authentication token fetching with timeout and error handling.
  */
 
-import { TOKEN_FETCH_TIMEOUT_MS } from './config'
+import { TOKEN_FETCH_TIMEOUT_MS } from './constants'
 
 /**
  * Get authentication token with timeout

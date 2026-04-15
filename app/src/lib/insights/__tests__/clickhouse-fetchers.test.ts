@@ -11,8 +11,8 @@ vi.mock('@/lib/request-context', () => ({
 }))
 
 // Reduce retry delays to speed up error-path tests
-vi.mock('../config', async (importOriginal) => {
-  const orig = await importOriginal<typeof import('../config')>()
+vi.mock('../constants', async (importOriginal) => {
+  const orig = await importOriginal<typeof import('../constants')>()
   return {
     ...orig,
     MAX_RETRIES: 1,
