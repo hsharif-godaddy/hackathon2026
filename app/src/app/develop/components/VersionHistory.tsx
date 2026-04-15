@@ -116,6 +116,7 @@ function CommitItem({
     <>
       <div
         ref={containerRef}
+        data-testid="commit-item-container"
         onMouseEnter={() => showDisabledTooltip && setShowTooltip(true)}
         onMouseLeave={() => setShowTooltip(false)}
         onFocus={() => showDisabledTooltip && setShowTooltip(true)}
@@ -206,8 +207,8 @@ function CommitItem({
         </div>
       </div>
       {showTooltip && showDisabledTooltip && (
-        <Tooltip anchorRef={containerRef}>
-          <div id={tooltipId} role="tooltip" className="p-1 max-w-[30ch] break-words text-sm">
+        <Tooltip id={tooltipId} anchorRef={containerRef} portalElem={document.body}>
+          <div className="p-1 max-w-[30ch] break-words text-sm">
             {isRestoring
               ? t('builder_version_history_disabled_during_restore', undefined, 'Cannot interact with version history while restoration is in progress')
               : t('builder_version_history_disabled_during_publish', undefined, 'Cannot interact with version history while publish is in progress')}

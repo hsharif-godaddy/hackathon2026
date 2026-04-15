@@ -5,14 +5,14 @@ import '@testing-library/jest-dom';
 
 import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { fireEvent, screen } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 
 import { renderWithProviders } from '@/tests/test-utils';
 import { InfoTooltip } from './InfoTooltip';
 
 vi.mock('@ux/tooltip', () => ({
-  default: ({ children }: { children: ReactNode }) => (
-    <div data-testid="tooltip">{children}</div>
+  default: ({ children, id }: { children: ReactNode; id?: string }) => (
+    <div data-testid="tooltip" id={id} role="tooltip">{children}</div>
   ),
 }));
 
@@ -145,26 +145,17 @@ describe('InfoTooltip', () => {
       expect(trigger).toHaveAttribute('aria-expanded', 'false');
     });
 
-    it('should have role="tooltip" on tooltip content', () => {
+    it('should link trigger to tooltip via aria-describedby', async () => {
       renderWithProviders(<InfoTooltip content="Test tooltip content" />);
 
       const trigger = screen.getByRole('button', { name: 'builder_common_more_info' });
       fireEvent.mouseEnter(trigger);
 
-      const tooltipContent = screen.getByRole('tooltip');
-      expect(tooltipContent).toBeInTheDocument();
-      expect(tooltipContent).toHaveTextContent('Test tooltip content');
-    });
-
-    it('should link trigger to tooltip via aria-describedby', () => {
-      renderWithProviders(<InfoTooltip content="Test tooltip content" />);
-
-      const trigger = screen.getByRole('button', { name: 'builder_common_more_info' });
-      fireEvent.mouseEnter(trigger);
-
-      const tooltipContent = screen.getByRole('tooltip');
-      const tooltipId = tooltipContent.getAttribute('id');
-      expect(trigger).toHaveAttribute('aria-describedby', tooltipId);
+      await waitFor(() => {
+        const tooltip = screen.getByRole('tooltip');
+        const tooltipId = tooltip.getAttribute('id');
+        expect(trigger).toHaveAttribute('aria-describedby', tooltipId);
+      });
     });
   });
 

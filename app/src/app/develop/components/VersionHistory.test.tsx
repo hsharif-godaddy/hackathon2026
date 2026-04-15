@@ -3,11 +3,23 @@
  */
 import '@testing-library/jest-dom';
 
+import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 
 import { renderWithProviders } from '@/tests/test-utils';
 import VersionHistory from './VersionHistory';
+
+// Mock UXCore Tooltip to verify it renders with correct props and ARIA attributes
+vi.mock('@ux/tooltip', () => ({
+  default: ({ children, id }: { children: ReactNode; id?: string; anchorRef?: any; portalElem?: any }) => (
+    <div data-testid="tooltip" id={id} role="tooltip">{children}</div>
+  ),
+}));
+
+vi.mock('@/hooks/useTranslations', () => ({
+  useTranslations: () => (key: string) => key,
+}));
 
 let selectedCommitHash: string | null = null;
 let mockAppId = 'app-123'
@@ -548,6 +560,69 @@ describe('VersionHistory', () => {
       // Restore button should be disabled
       const restoreButton = screen.getByRole('button', { name: 'builder_preview_error_restore' })
       expect(restoreButton).toBeDisabled()
+    })
+
+    it('shows tooltip on hover over disabled commit and links it via aria-describedby', async () => {
+      const { user } = renderWithProviders(<VersionHistory />);
+
+      await waitFor(() => {
+        expect(screen.getByText('New commit')).toBeInTheDocument()
+      })
+
+      // Get the commit container by its test id
+      const commitContainers = screen.getAllByTestId('commit-item-container')
+      const commitContainer = commitContainers[0]
+      expect(commitContainer).toBeInTheDocument()
+
+      // Tooltip should not be visible initially
+      expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+
+      // Hover over the disabled commit container
+      await user.hover(commitContainer)
+
+      // Tooltip should appear
+      await waitFor(() => {
+        const tooltip = screen.getByRole('tooltip')
+        expect(tooltip).toBeInTheDocument()
+
+        // Verify ARIA linkage: aria-describedby should point to tooltip's id
+        const tooltipId = tooltip.getAttribute('id')
+        expect(tooltipId).toBeTruthy()
+        expect(commitContainer).toHaveAttribute('aria-describedby', tooltipId)
+
+        // Verify tooltip content for publish state
+        expect(tooltip).toHaveTextContent('builder_version_history_disabled_during_publish')
+      })
+
+      // Unhover
+      await user.unhover(commitContainer)
+
+      // Tooltip should disappear
+      await waitFor(() => {
+        expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+      })
+    })
+
+    it('shows correct tooltip message during restore operation', async () => {
+      mockRestoreMutation.isPending = true
+
+      const { user } = renderWithProviders(<VersionHistory />);
+
+      await waitFor(() => {
+        expect(screen.getByText('New commit')).toBeInTheDocument()
+      })
+
+      // Get the commit container by its test id
+      const commitContainer = screen.getAllByTestId('commit-item-container')[0]
+
+      // Hover over the disabled commit
+      await user.hover(commitContainer)
+
+      // Tooltip should show restore message
+      await waitFor(() => {
+        const tooltip = screen.getByRole('tooltip')
+        expect(tooltip).toHaveTextContent('builder_version_history_disabled_during_restore')
+      })
     })
   })
 
