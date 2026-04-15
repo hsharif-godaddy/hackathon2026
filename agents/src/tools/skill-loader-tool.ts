@@ -111,6 +111,8 @@ export interface InstallTemplatesResult {
   skillDependenciesInstalled?: string[];
   /** Instructions from dependent skills (key: skill name, value: instructions) */
   dependentInstructions?: Record<string, string>;
+  /** Post-install notes from skill frontmatter (critical constraints for the agent) */
+  postInstallNotes?: string;
   /** Error message if operation failed */
   error?: string;
 }
@@ -483,6 +485,12 @@ export class SkillLoaderTool {
 
       if (Object.keys(dependentInstructions).length > 0) {
         result.dependentInstructions = dependentInstructions;
+      }
+
+      // Pass through post-install notes from frontmatter (critical constraints for the agent)
+      const postInstallNotes = data['post-install-notes'] as string | undefined;
+      if (postInstallNotes) {
+        result.postInstallNotes = postInstallNotes;
       }
 
       return result;

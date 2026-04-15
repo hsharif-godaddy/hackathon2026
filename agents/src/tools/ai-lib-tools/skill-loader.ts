@@ -164,6 +164,30 @@ export const skillAITool: Tool = createTool(
         appId
       });
 
+      // Auto-restart dev server if npm dependencies were installed.
+      // Vite needs a restart to resolve newly installed packages —
+      // without this, imports like 'better-auth/react' fail until manual restart.
+      const depsInstalled = result.dependenciesInstalled?.some(d => d.success);
+      if (depsInstalled) {
+        try {
+          const { ServerManagementTool } = await import('../../tools/server-management-tool.js');
+          const serverTool = new ServerManagementTool();
+          const restartResult = await serverTool.restartServer({ reason: `skill '${input.skill}' installed new dependencies` }, appId);
+          if (restartResult.success) {
+            logger.info('skill.install.server-restarted', { skill: input.skill, appId });
+          } else {
+            logger.warn('skill.install.server-restart-failed', { skill: input.skill, appId, error: restartResult.error });
+          }
+        } catch (error) {
+          // Non-fatal — agent can restart manually if needed
+          logger.warn('skill.install.server-restart-failed', {
+            skill: input.skill,
+            appId,
+            error: error instanceof Error ? error.message : String(error)
+          });
+        }
+      }
+
       // Build response with dependency info
       const skippedNote = result.filesSkipped ? `, ${result.filesSkipped} existing files skipped` : '';
       const response: Record<string, unknown> = {
@@ -195,6 +219,12 @@ export const skillAITool: Tool = createTool(
         response.dependentInstructions = result.dependentInstructions;
         const depSkills = Object.keys(result.dependentInstructions).join(', ');
         response.message = `${response.message}\n\nDependent skill instructions loaded: ${depSkills}`;
+      }
+
+      // Include post-install notes (critical constraints the agent must follow)
+      if (result.postInstallNotes) {
+        response.postInstallNotes = result.postInstallNotes;
+        response.message = `${response.message}\n\nIMPORTANT: ${result.postInstallNotes}`;
       }
 
       return response;

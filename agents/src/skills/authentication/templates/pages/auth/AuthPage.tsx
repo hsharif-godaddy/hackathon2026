@@ -76,7 +76,7 @@ interface AuthPageProps {
 }
 
 export default function AuthPage({ mode, providers }: AuthPageProps) {
-  const { data: session, isPending, error: sessionError } = useSession();
+  const { isAuthenticated, isPending } = useSession();
   const navigate = useNavigate();
   const location = useLocation();
   // Restore the page the user tried to visit before being redirected to login
@@ -101,7 +101,7 @@ export default function AuthPage({ mode, providers }: AuthPageProps) {
     return null;
   }
 
-  if (!isPending && !sessionError && session) {
+  if (isAuthenticated) {
     return <Navigate to="/" replace />;
   }
 

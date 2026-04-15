@@ -4,6 +4,7 @@ description: Add BetterAuth authentication (Email/Password, OAuth, or both).
 whenToUse: User wants login, signup, user accounts, authentication, or to restrict access to pages. Phrases like "add login", "user accounts", "sign up page", "authentication", "password protection", "password protect this site", "password protect a page", "require login", "restrict access", "lock down", "admin access", "members only", "private page", "secure this page".
 dependencies:
   - better-auth
+post-install-notes: 'Auth API route files are included in the templates — do NOT create additional route files under src/server/api/auth/. Do NOT install better-call or other better-auth sub-dependencies. The installed template files are complete — configure auth.ts and create login/signup pages only.'
 ---
 
 # BetterAuth Authentication Skill
@@ -11,6 +12,15 @@ dependencies:
 **Purpose:** Add BetterAuth authentication system with Email/Password, OAuth providers, or both.
 
 > **Note:** This skill provides authentication setup instructions. Some skills may also provide specialized tools that are automatically loaded when you activate the skill. Tools are prefixed with the skill name (e.g., `skillname__toolname`) to prevent naming conflicts. You can unload a skill's tools with `skill({ action: 'unload', skill: 'name' })` when no longer needed.
+
+---
+
+## CRITICAL — Read Before Doing Anything
+
+- **ALWAYS run `skill({ action: 'install', skill: 'authentication' })` first** — even when re-applying or changing auth. Never manually create auth files.
+- **Do NOT create additional API route files** under `src/server/api/auth/`. The skill templates include dynamic route files that forward all requests to BetterAuth automatically.
+- **Do NOT install `better-call` or other better-auth sub-dependencies** — they are transitive dependencies installed automatically.
+- **Do NOT create custom auth context providers** — use the provided auth-client imports directly.
 
 ---
 
@@ -22,6 +32,10 @@ If OAuth: "Which provider?"
 
 ---
 
+## Prerequisites
+
+**The database skill must be installed before authentication.** BetterAuth uses the database for users, sessions, and accounts. If the database skill is not installed, auth API calls will return a clear 503 error explaining what to do.
+
 ## Installation
 
 ### Step 1: Install Skill Templates (includes dependencies)
@@ -30,7 +44,14 @@ If OAuth: "Which provider?"
 skill({ action: 'install', skill: 'authentication' });
 ```
 
-This automatically installs the `better-auth` package and all template files.
+This automatically:
+
+- Installs the `better-auth` package
+- Copies all template files (auth library, dynamic route files, pages)
+
+No manual server-side route setup is needed — all BetterAuth API routes (sign-in, sign-up, sign-out, session, CSRF, OAuth callbacks, etc.) are handled automatically by the dynamic route files under `src/server/api/auth/`.
+
+**CRITICAL:** The skill templates include dynamic route files under `src/server/api/auth/[action]/` that handle all BetterAuth requests. Do NOT create additional API route files, catch-all routes (`[...all]`), or endpoint-specific route files (`sign-in/POST.ts`, `get-session/GET.ts`, etc.) — these will conflict with the existing dynamic routes. Do NOT install `better-call` or any other better-auth sub-dependencies manually — they are installed automatically as transitive dependencies of `better-auth`.
 
 **Note**: If package installation fails (e.g., network issues), the skill templates are still installed. You can manually install the package with `npm install better-auth` if needed.
 
@@ -91,6 +112,21 @@ requestSecrets({
 
 Configure `auth.ts` based on user's choice.
 
+**IMPORTANT:** Do NOT create custom auth context providers, auth wrappers, or auth-context.tsx files. The skill templates provide everything needed:
+
+- `auth-client.tsx` (or `auth-core.ts` + `auth-hooks.ts`) — client-side auth functions and hooks
+- `auth.ts` — server-side BetterAuth configuration
+- `auth-middleware.ts` — centralized BetterAuth handler called by the dynamic route files
+
+Use `signIn`, `signUp`, `signOut`, `useSession` directly from the auth-client imports. BetterAuth handles session context internally via cookies — no React context provider is needed.
+
+`useSession()` returns `{ user, isAuthenticated, isPending }` — use `isAuthenticated` for conditional rendering and `user?.name` for display. Example for a header:
+
+```typescript
+const { user, isAuthenticated, isPending } = useSession();
+// In JSX: isAuthenticated ? <span>{user?.name}</span> : <a href="/login">Sign In</a>
+```
+
 ---
 
 ## Configure auth.ts
@@ -145,6 +181,8 @@ if (hostname === 'their-custom-domain.com') return [origin];
 ## Configure Routes
 
 **Important:** Login should be the landing page. Home and other routes should be protected.
+
+**Unauthenticated pages (login, signup) must render independently** — never nest them inside layouts or components that depend on session state. Session data is null until loaded; any component that renders before authentication must handle that gracefully with optional chaining (`session?.user?.name`).
 
 **Built-in redirect preservation:** `ProtectedRoute` automatically saves the page a user tried to visit and restores it after login — no extra code needed. OAuth sign-in also uses this destination as the `callbackURL`.
 
@@ -303,9 +341,9 @@ Based on user response, wrap routes with `ProtectedRoute`:
 | Situation                                | What to do                                                                                                                                                                     |
 | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Auth works in preview but 500 in publish | `getAuth()` defers `betterAuth()` construction to the first request so secrets are available — verify `BETTER_AUTH_SECRET` is set and the publish build completed successfully |
-| `BETTER_AUTH_SECRET` not set             | Auth server throws on startup — always run `requestSecrets` before starting                                                                                                    |
+| `BETTER_AUTH_SECRET` not set             | Failure happens on the first auth request, and the middleware returns a 503 diagnostic — always run `requestSecrets` before starting                                           |
 | OAuth redirect goes to wrong page        | `callbackURL` is set automatically by the template from the user's intended destination                                                                                        |
-| Session check times out (30s)            | User sees a retry button — check network or if `/api/auth/get-session` route is mounted                                                                                        |
+| Session check times out (30s)            | User sees a retry button — check network and that `src/server/api/auth/` route files exist                                                                                     |
 | User connects a custom domain            | Add hostname to `trustedOrigins` in `auth.ts` — BetterAuth blocks cross-origin requests by default                                                                             |
 | Want shorter sessions (e.g. banking)     | Add `session.expiresIn` + `session.updateAge` to `auth.ts` (see Configure auth.ts above)                                                                                       |
 | OAuth token access after login           | Use `authClient.getAccessToken({ providerId: 'google' })` — handles refresh automatically                                                                                      |

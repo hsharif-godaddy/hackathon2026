@@ -9,9 +9,35 @@ import { createAuthClient } from 'better-auth/react';
 import { ReactNode, useEffect, useState } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 
-// Auth client - baseURL empty means relative to current origin
-export const authClient = createAuthClient({ baseURL: '' });
-export const { signIn, signUp, signOut, useSession } = authClient;
+// Auth client - baseURL must be the full origin for BetterAuth's URL construction.
+// window.location.origin works in all environments (local dev, iframe preview, published).
+const _authClient = createAuthClient({
+  baseURL: typeof window !== 'undefined' ? window.location.origin : '',
+});
+
+export const authClient = _authClient;
+export const { signIn, signUp, signOut } = _authClient;
+
+/**
+ * useSession — null-safe session hook.
+ *
+ * Returns `user` as a top-level nullable field and `isAuthenticated` as a
+ * boolean so components naturally handle the unauthenticated state:
+ *
+ *   const { user, isAuthenticated, isPending } = useSession();
+ *   if (isPending) return <Spinner />;
+ *   return isAuthenticated ? <span>{user.name}</span> : <a href="/login">Sign In</a>;
+ */
+export function useSession() {
+  const { data: session, isPending, error } = _authClient.useSession();
+  return {
+    session,
+    user: session?.user ?? null,
+    isPending,
+    error,
+    isAuthenticated: !isPending && !!session?.user,
+  };
+}
 
 // Alias for useSession (common naming convention)
 export const useAuth = useSession;
@@ -37,7 +63,7 @@ const SESSION_TIMEOUT_MS = 30000;
 
 // ProtectedRoute component with timeout handling
 export function ProtectedRoute({ children }: { children: ReactNode }) {
-  const { data: session, isPending, error } = useSession();
+  const { isAuthenticated, isPending } = useSession();
   const location = useLocation();
   const [timedOut, setTimedOut] = useState(false);
 
@@ -70,7 +96,7 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
     );
   }
 
-  if (error || !session) {
+  if (!isAuthenticated) {
     // Preserve intended destination so AuthPage can redirect back after login
     return <Navigate to="/login" state={{ from: location }} replace />;
   }

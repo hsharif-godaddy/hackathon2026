@@ -30,13 +30,19 @@ import { getSecret } from '#airo/secrets';
 // or secrets must be deferred to request time.
 let _auth: ReturnType<typeof betterAuth> | null = null;
 
-export function getAuth(): ReturnType<typeof betterAuth> {
+export function getAuth() {
   if (_auth) return _auth;
 
   const authSecret = getSecret('BETTER_AUTH_SECRET');
-  if (!authSecret) throw new Error('BETTER_AUTH_SECRET is not set — run requestSecrets() first');
+  if (!authSecret || typeof authSecret !== 'string') {
+    throw new Error('BETTER_AUTH_SECRET is not set or invalid — run requestSecrets() first');
+  }
 
-  _auth = betterAuth({
+  if (!db) {
+    throw new Error('Database not configured. Install the database skill first, then configure auth.');
+  }
+
+  const auth = betterAuth({
     // Schema passed explicitly — avoids BetterAuth's runtime schema inference.
     database: drizzleAdapter(db, {
       provider: 'mysql',
@@ -47,7 +53,7 @@ export function getAuth(): ReturnType<typeof betterAuth> {
 
     // CORS: Trusts .airoapp.ai subdomains and localhost by default.
     // If your app has a custom domain, add it here or set BETTER_AUTH_TRUSTED_ORIGINS.
-    trustedOrigins: (request) => {
+    trustedOrigins: (request?: Request) => {
       if (!request) return [];
 
       const origin = request.headers.get('origin');
@@ -100,7 +106,8 @@ export function getAuth(): ReturnType<typeof betterAuth> {
     // },
   });
 
-  return _auth;
+  _auth = auth as ReturnType<typeof betterAuth>;
+  return auth;
 }
 
 export type Session = ReturnType<typeof getAuth>['$Infer']['Session'];

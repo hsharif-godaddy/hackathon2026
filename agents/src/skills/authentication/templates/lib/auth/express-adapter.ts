@@ -9,12 +9,20 @@ import type { Request as ExpressRequest, Response as ExpressResponse } from 'exp
  * Convert Express request to Web API Request
  */
 export function toWebRequest(req: ExpressRequest): Request {
+  // Use actual protocol — hardcoding https breaks BetterAuth's CSRF origin
+  // check in local dev (HTTP), causing sign-up/sign-in to silently fail.
+  const rawProto = req.get('x-forwarded-proto') || req.protocol || 'http';
+  const protocol = rawProto.split(',')[0].trim();
   const host = req.get('host') || 'localhost';
-  const url = `https://${host}${req.originalUrl}`;
+  const url = `${protocol}://${host}${req.originalUrl}`;
 
   const headers = new Headers();
   for (const [key, value] of Object.entries(req.headers)) {
     if (value) {
+      // Skip content-length — the body is re-serialized below and the
+      // original length may no longer match. Let the Request constructor
+      // derive it from the actual body.
+      if (key.toLowerCase() === 'content-length') continue;
       if (Array.isArray(value)) {
         value.forEach((v) => headers.append(key, v));
       } else {
