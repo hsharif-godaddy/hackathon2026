@@ -9,4 +9,5 @@ export interface RuntimeErrorData {
   componentStack?: string
   url?: string
   timestamp?: number
+  attemptNumber?: number
 }

@@ -106,7 +106,8 @@ const SYNC_MANIFEST = [
     description: 'Main HTML file that loads the React app and analytics script',
     known_hashes: [
       '2b36ce7723f0a17d0a735b65079f3e7c', // 072cb636 - Before analytics was added
-      '5a13fd960f9e484c4b92e2fc927518b3'  // f482954c - Current version with refactored analytics
+      '5a13fd960f9e484c4b92e2fc927518b3', // f482954c - Current version with refactored analytics
+      '03d2c6061dba1a2d61870ba1c9e3e406'  // Before import retry for transient Vite dep optimization errors
     ],
     force: false
   },

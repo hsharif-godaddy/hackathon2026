@@ -63,7 +63,7 @@ interface PreviewPaneProps {
   isMobile?: boolean
   showBuildingOverlay?: boolean
   fixingOverlayMessage?: string | null
-  unresolvedError?: { message: string; onFix: () => void } | null
+  unresolvedError?: { message: string; onFix: () => void; onDismiss?: () => void } | null
   isHibernated?: boolean
   isResuming?: boolean
   resumeFailed?: boolean
@@ -632,6 +632,13 @@ export default function PreviewPane({
                     data-partial="componentAiro"
                     text={t('builder_common_ask_airo_to_fix', undefined, 'Ask Airo to fix')}
                   />
+                  {unresolvedError.onDismiss && (
+                    <Button
+                      onClick={unresolvedError.onDismiss}
+                      design="secondary"
+                      text={t('builder_common_dismiss', undefined, 'Dismiss')}
+                    />
+                  )}
                 </MessageOverlay>
               )}
             </div>

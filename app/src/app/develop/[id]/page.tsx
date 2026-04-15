@@ -415,6 +415,7 @@ function DevelopPageContent() {
   }, [isProcessing])
 
   // Three-state error fix lifecycle: none → pending → unresolved (see useErrorFixState)
+  const fixAttemptCountRef = useRef(0)
   const errorFixSendHandler = useCallback((error: PendingError) => {
     if (error.errorData) {
       const { message, name, stack, componentStack, url, timestamp } = error.errorData
@@ -426,7 +427,7 @@ function DevelopPageContent() {
           isActionRequest: false,
           customContext: {
             type: 'runtime_error',
-            data: { message, name, stack, componentStack, url, timestamp },
+            data: { message, name, stack, componentStack, url, timestamp, attemptNumber: fixAttemptCountRef.current + 1 },
             persistence: 'ephemeral',
             source: 'error-boundary'
           }
@@ -446,8 +447,10 @@ function DevelopPageContent() {
     errorFixState,
     userRequestedFix,
     pendingError,
+    fixAttemptCount,
     actions: errorFixActions
   } = useErrorFixState(isProcessing, errorFixSendHandler)
+  fixAttemptCountRef.current = fixAttemptCount
 
 
   const handleScreenshotUpload = useCallback(async (screenshotDataUrl: string) => {
@@ -1067,7 +1070,7 @@ function DevelopPageContent() {
                     onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
                     showBuildingOverlay={init.ui.showPreviewLoader}
                     fixingOverlayMessage={userRequestedFix && errorFixState === 'pending' ? t('builder_preview_fixing_error') : null}
-                    unresolvedError={errorFixState === 'unresolved' && pendingError ? { message: pendingError.errorMessage || pendingError.errorData?.message || '', onFix: errorFixActions.handleFixError } : null}
+                    unresolvedError={errorFixState === 'unresolved' && pendingError ? { message: pendingError.errorMessage || pendingError.errorData?.message || '', onFix: errorFixActions.handleFixError, onDismiss: errorFixActions.handleDismissError } : null}
                     isHibernated={hibernation.isHibernated}
                     isResuming={hibernation.isResuming}
                     resumeFailed={hibernation.resumeFailed}
@@ -1142,7 +1145,7 @@ function DevelopPageContent() {
                         onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
                         showBuildingOverlay={init.ui.showPreviewLoader}
                         fixingOverlayMessage={userRequestedFix && errorFixState === 'pending' ? t('builder_preview_fixing_error') : null}
-                        unresolvedError={errorFixState === 'unresolved' && pendingError ? { message: pendingError.errorMessage || pendingError.errorData?.message || '', onFix: errorFixActions.handleFixError } : null}
+                        unresolvedError={errorFixState === 'unresolved' && pendingError ? { message: pendingError.errorMessage || pendingError.errorData?.message || '', onFix: errorFixActions.handleFixError, onDismiss: errorFixActions.handleDismissError } : null}
                         isHibernated={hibernation.isHibernated}
                         isResuming={hibernation.isResuming}
                         resumeFailed={hibernation.resumeFailed}

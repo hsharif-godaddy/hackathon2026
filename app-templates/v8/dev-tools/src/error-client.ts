@@ -73,6 +73,22 @@ if (import.meta.env.MODE === 'development') {
     if (hasDetailedError) return; // HMR already sent a detailed error; ignore the generic import failure
     showInactiveOverlay();
     sendCompileErrorToParent(event.detail);
+
+    // The error may be transient (e.g. Vite dep optimization). Watch for React
+    // mounting into #app -- if children appear, the app recovered on its own.
+    const appEl = document.getElementById('app');
+    if (appEl) {
+      const observer = new MutationObserver(() => {
+        if (appEl.children.length > 0) {
+          observer.disconnect();
+          removeInactiveOverlay();
+          safePostMessage(window.parent, { type: 'error-fix-resolved' });
+        }
+      });
+      observer.observe(appEl, { childList: true });
+      // Stop watching after 30s if nothing mounts
+      setTimeout(() => observer.disconnect(), 30000);
+    }
   }) as EventListener);
 
   // After a full page reload (e.g., recovering from a compile error), the module
@@ -148,6 +164,16 @@ if (import.meta.env.MODE === 'development' && import.meta.hot) {
   // Recover after a successful HMR update clears a previous error
   import.meta.hot.on('vite:afterUpdate', handleAfterUpdate);
 
+  // Clear overlay before full reload -- the reloaded page sends error-fix-resolved on load
+  const handleBeforeFullReload = () => {
+    if (hasErrorOverlay || overlayElement) {
+      hasErrorOverlay = false;
+      hasDetailedError = false;
+      removeInactiveOverlay();
+    }
+  };
+  import.meta.hot.on('vite:beforeFullReload', handleBeforeFullReload);
+
   // Clean up listeners on module disposal to prevent accumulation
   import.meta.hot.dispose(() => {
     hasErrorOverlay = false;
@@ -158,5 +184,6 @@ if (import.meta.env.MODE === 'development' && import.meta.hot) {
     import.meta.hot!.off('tsc-error', handleTscError);
     import.meta.hot!.off('tsc-error-resolved', handleAfterUpdate);
     import.meta.hot!.off('vite:afterUpdate', handleAfterUpdate);
+    import.meta.hot!.off('vite:beforeFullReload', handleBeforeFullReload);
   });
 }

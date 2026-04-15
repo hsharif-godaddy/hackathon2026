@@ -8,6 +8,7 @@ interface RuntimeErrorData {
   componentStack?: string
   url?: string
   timestamp?: number
+  attemptNumber?: number
 }
 
 /**
@@ -63,7 +64,7 @@ export class RuntimeErrorContextRenderer implements ContextAttachmentRenderer<Ru
     _userPrompt: string
   ): Promise<RenderedContext | null> {
     try {
-      const { message, name, stack, componentStack, url, timestamp } = attachment.data
+      const { message, name, stack, componentStack, url, timestamp, attemptNumber } = attachment.data
 
       if (!message && !stack) {
         return null
@@ -75,6 +76,12 @@ export class RuntimeErrorContextRenderer implements ContextAttachmentRenderer<Ru
       // Header
       sections.push(isCompileError ? '### Compile Error Detected' : '### Runtime Error Occurred')
       sections.push('')
+
+      if (attemptNumber && attemptNumber > 1) {
+        sections.push(`**Fix Attempt:** ${attemptNumber}`)
+        sections.push('**IMPORTANT:** Previous fix attempts failed. This may be a stale/cached error that resolves on page refresh. Do NOT restart the server. If you cannot identify a specific code bug, tell the user the error appears transient and suggest refreshing the preview.')
+        sections.push('')
+      }
 
       // Error details
       if (!isCompileError) {

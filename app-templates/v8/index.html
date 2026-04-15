@@ -12,8 +12,16 @@
       if (import.meta.env.MODE === 'development') {
         await import('/dev-tools/src/error-client.ts')
       }
-      import('/src/main.tsx').catch(err => {
-        window.dispatchEvent(new CustomEvent('vite:initial-error', { detail: err }));
+      let mainLoaded = false
+      import('/src/main.tsx').then(() => { mainLoaded = true }).catch(err => {
+        // Vite dep optimization can cause transient import failures that resolve
+        // in 1-3s. Retry once before reporting the error to avoid false positives.
+        setTimeout(() => {
+          if (mainLoaded) return
+          import('/src/main.tsx').then(() => { mainLoaded = true }).catch(retryErr => {
+            window.dispatchEvent(new CustomEvent('vite:initial-error', { detail: retryErr }));
+          });
+        }, 2000);
       })
     </script>
     <script src="/analytics.js"></script>
