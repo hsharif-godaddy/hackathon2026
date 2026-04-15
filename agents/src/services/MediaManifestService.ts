@@ -17,8 +17,14 @@ import { GitUtils } from '../utils/git.js';
 import { logger } from '../logging/index.js';
 import { gettyUploadService } from './GettyUploadService.js';
 import { astImageEditor } from '../tools/ast-image-editor.js';
+import { getPersistentPublicDir } from '../utils/persistent-assets.js';
 
 export const MANIFEST_FILENAME = 'airo-media.json';
+
+/** Result of POST /media/:appId/slots/import (importSlot). Failures include HTTP status for the route. */
+export type ImportSlotResult =
+  | { success: true; slotPath: string }
+  | { success: false; error: string; httpStatus: number };
 
 /**
  * Size configuration for media slots
@@ -206,6 +212,18 @@ function deriveSlotPath(
   return `${category}/${segmentName}/${imageName}`;
 }
 
+const AIRO_PREVIEW_HOST_SUFFIXES = [
+  '.airoapp.ai',
+  '.test-airoapp.ai',
+] as const;
+
+function isAiroPreviewHostname(hostname: string): boolean {
+  return (
+    hostname.includes('.preview.') &&
+    AIRO_PREVIEW_HOST_SUFFIXES.some((suffix) => hostname.endsWith(suffix))
+  );
+}
+
 /**
  * Normalize an image URL to a local path if it points to the preview server.
  * Browser img.src is fully qualified (e.g. "https://localhost:5009/assets/photo.jpg")
@@ -215,16 +233,20 @@ function normalizeImageUrl(imageUrl: string): string {
   try {
     const url = new URL(imageUrl);
     const isLocal = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
-    // Production preview URLs like icph5qe56k.preview.c37.airoapp.ai serve
-    // the same assets as localhost in dev — normalize to just the pathname.
-    const isPreviewServer = url.hostname.endsWith('.airoapp.ai') && url.hostname.includes('.preview.');
-    if (isLocal || isPreviewServer) {
+    if (isLocal || isAiroPreviewHostname(url.hostname)) {
       return url.pathname;
     }
   } catch {
     // Not a valid URL, return as-is
   }
   return imageUrl;
+}
+
+function isResolvedPathWithinRoot(resolvedFile: string, rootDir: string): boolean {
+  const root = path.resolve(rootDir);
+  const file = path.resolve(resolvedFile);
+  const sep = path.sep;
+  return file === root || file.startsWith(root + sep);
 }
 
 /**
@@ -239,21 +261,55 @@ async function copyLocalFileToMedia(
   slotPath: string,
 ): Promise<string | null> {
   // Resolve local URL path to a filesystem path.
-  // Vite serves public/ at root, so /assets/photo.jpg → preview/public/assets/photo.jpg
-  // Strip leading slash so path.resolve doesn't treat it as absolute
+  // Vite serves public/ at root, so /assets/images/x.png → {app}/public/assets/images/x.png
+  // getPersistentPublicDir(appPath) (.../assets/public/). Host layout stores files at
+  // assets/public/images/... (URL /assets/images/... → relative path images/...), not
+  // assets/public/assets/images/... — try preview mirror, then persistent with and without
+  // the leading "assets/" segment.
   const sanitizedPath = localUrlPath.replace(/^\/+/, '');
-  const sourcePath = path.resolve(appPath, 'public', sanitizedPath);
-  if (!sourcePath.startsWith(path.resolve(appPath, 'public') + path.sep)) {
-    logger.warn('media_manifest.copy_local.path_traversal_blocked', { localUrlPath });
+  if (sanitizedPath.split('/').includes('..')) {
+    logger.error('media_manifest.copy_local.path_traversal_blocked', { localUrlPath });
     return null;
   }
 
-  try {
-    await fs.access(sourcePath);
-  } catch {
+  const previewPublicRoot = path.resolve(appPath, 'public');
+  const persistentPublicRoot = path.resolve(getPersistentPublicDir(appPath));
+  const persistentRel = sanitizedPath.replace(/^assets\//, '');
+
+  const candidates = [
+    path.resolve(previewPublicRoot, sanitizedPath),
+    path.resolve(persistentPublicRoot, persistentRel),
+    path.resolve(persistentPublicRoot, sanitizedPath),
+  ];
+  const uniqueCandidates = [...new Set(candidates)];
+
+  let sourcePath: string | null = null;
+  for (const candidate of uniqueCandidates) {
+    const underPreview = isResolvedPathWithinRoot(candidate, previewPublicRoot);
+    const underPersistent = isResolvedPathWithinRoot(candidate, persistentPublicRoot);
+    if (!underPreview && !underPersistent) {
+      logger.error('media_manifest.copy_local.path_traversal_blocked', {
+        localUrlPath,
+        candidate,
+      });
+      continue;
+    }
+    try {
+      const stat = await fs.stat(candidate);
+      if (!stat.isFile()) {
+        continue;
+      }
+      sourcePath = candidate;
+      break;
+    } catch {
+      // try next candidate
+    }
+  }
+
+  if (!sourcePath) {
     logger.warn('media_manifest.copy_local.source_not_found', {
-      sourcePath,
       localUrlPath,
+      triedPaths: uniqueCandidates,
     });
     return null;
   }
@@ -381,13 +437,17 @@ export class MediaManifestService {
       imageAlt?: string;
       imageType?: 'img' | 'background';
     }
-  ): Promise<{ success: boolean; slotPath?: string; error?: string }> {
+  ): Promise<ImportSlotResult> {
     const release = await acquireLock(appId);
 
     try {
       const result = await this.getManifest(appId);
       if (!result.success || !result.manifest) {
-        return { success: false, error: result.error || 'Failed to read manifest' };
+        return {
+          success: false,
+          error: result.error || 'Failed to read manifest',
+          httpStatus: 500,
+        };
       }
 
       const manifest = result.manifest;
@@ -447,7 +507,7 @@ export class MediaManifestService {
       // Without this, the image manager shows broken images for local files.
       const app = this.appRepository.findById(appId);
       if (!app?.path) {
-        return { success: false, error: 'App not found' };
+        return { success: false, error: 'App not found', httpStatus: 404 };
       }
 
       // Preserve the pre-copy URL for AST matching — this is what the source
@@ -455,11 +515,27 @@ export class MediaManifestService {
       // becomes /airo-assets/uploads/... which won't match the source.
       const sourceFileUrl = normalizedUrl;
 
+      logger.info('media_manifest.import_slot.copy_local_begin', {
+        appId,
+        slotPath,
+        normalizedUrl,
+      });
       if (normalizedUrl.startsWith('/') && !normalizedUrl.startsWith('/airo-assets/')) {
         const uploadUrl = await copyLocalFileToMedia(app.path, normalizedUrl, slotPath);
-        if (uploadUrl) {
-          normalizedUrl = uploadUrl;
+        if (!uploadUrl) {
+          logger.error('media_manifest.import_slot.copy_local_failed', {
+            appId,
+            slotPath,
+            localPath: normalizedUrl,
+          });
+          return {
+            success: false,
+            error:
+              'Could not read the image under public/ in the app workspace. Ensure the file exists (e.g. public/assets/images/...), then use Replace again.',
+            httpStatus: 400,
+          };
         }
+        normalizedUrl = uploadUrl;
       }
 
       const now = new Date().toISOString();
@@ -542,7 +618,7 @@ export class MediaManifestService {
         appId,
         error: error instanceof Error ? error.message : String(error),
       });
-      return { success: false, error: 'Failed to import slot' };
+      return { success: false, error: 'Failed to import slot', httpStatus: 500 };
     } finally {
       release();
     }
@@ -607,7 +683,7 @@ export class MediaManifestService {
 
       // Validate the new URL is in the list
       const urlIndex = options.alternativeIndex ?? allUrls.indexOf(options.newUrl);
-      
+
       let newCurrentUrl: string;
       let newAlternatives: string[];
       let newCurrentGettyId: string | undefined;

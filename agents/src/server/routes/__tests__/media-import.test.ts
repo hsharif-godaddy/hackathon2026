@@ -99,10 +99,11 @@ describe("POST /media/:appId/slots/import", () => {
     expect(res.body.success).toBe(false);
   });
 
-  it("returns 500 when importSlot fails", async () => {
+  it("returns 500 when importSlot reports server error", async () => {
     vi.mocked(mediaManifestService.importSlot).mockResolvedValue({
       success: false,
       error: "Failed to read manifest",
+      httpStatus: 500,
     });
 
     const res = await request(app)
@@ -110,6 +111,36 @@ describe("POST /media/:appId/slots/import", () => {
       .send({ imageUrl: "https://example.com/photo.jpg" });
 
     expect(res.status).toBe(500);
+    expect(res.body.success).toBe(false);
+  });
+
+  it("returns 400 when importSlot reports client error", async () => {
+    vi.mocked(mediaManifestService.importSlot).mockResolvedValue({
+      success: false,
+      error: "Could not read the image under public/",
+      httpStatus: 400,
+    });
+
+    const res = await request(app)
+      .post("/media/test-app/slots/import")
+      .send({ imageUrl: "https://example.com/photo.jpg" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.success).toBe(false);
+  });
+
+  it("returns 404 when importSlot reports app not found", async () => {
+    vi.mocked(mediaManifestService.importSlot).mockResolvedValue({
+      success: false,
+      error: "App not found",
+      httpStatus: 404,
+    });
+
+    const res = await request(app)
+      .post("/media/test-app/slots/import")
+      .send({ imageUrl: "https://example.com/photo.jpg" });
+
+    expect(res.status).toBe(404);
     expect(res.body.success).toBe(false);
   });
 

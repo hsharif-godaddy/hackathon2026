@@ -181,8 +181,9 @@ router.post('/:appId/slots/import', async (req: Request, res: Response) => {
       logger.error('route.media.import_slot.failed', {
         appId,
         error: result.error,
+        httpStatus: result.httpStatus,
       });
-      res.status(500).json({
+      res.status(result.httpStatus).json({
         success: false,
         error: result.error || 'Failed to import slot',
       });

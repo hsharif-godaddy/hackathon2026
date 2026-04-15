@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import fs from "node:fs/promises";
 import type { MediaSlot } from "../MediaManifestService.js";
 
@@ -7,7 +7,7 @@ vi.mock("node:fs/promises", () => ({
     readFile: vi.fn(),
     writeFile: vi.fn(),
     rename: vi.fn(),
-    access: vi.fn(),
+    stat: vi.fn(),
     mkdir: vi.fn(),
   },
 }));
@@ -45,8 +45,12 @@ vi.mock("../GettyUploadService.js", () => ({
   },
 }));
 
+import { AppRepository } from "../../database/repositories/AppRepository.js";
 import { astImageEditor } from "../../tools/ast-image-editor.js";
 import { MediaManifestService } from "../MediaManifestService.js";
+
+const fileStat = { isFile: () => true } as Awaited<ReturnType<typeof fs.stat>>;
+const dirStat = { isFile: () => false } as Awaited<ReturnType<typeof fs.stat>>;
 
 describe("MediaManifestService - importSlot", () => {
   let service: MediaManifestService;
@@ -55,8 +59,7 @@ describe("MediaManifestService - importSlot", () => {
     vi.clearAllMocks();
     service = new MediaManifestService();
 
-    // Default: fs.access rejects (file not found) so local copy is skipped
-    vi.mocked(fs.access).mockRejectedValue(new Error("ENOENT"));
+    vi.mocked(fs.stat).mockRejectedValue(Object.assign(new Error("ENOENT"), { code: "ENOENT" }));
     vi.mocked(fs.mkdir).mockResolvedValue(undefined);
   });
 
@@ -123,7 +126,7 @@ describe("MediaManifestService - importSlot", () => {
       .mockResolvedValueOnce(fakeImageBuffer as any);  // image file
     vi.mocked(fs.writeFile).mockResolvedValue(undefined);
     vi.mocked(fs.rename).mockResolvedValue(undefined);
-    vi.mocked(fs.access).mockResolvedValue(undefined); // file exists
+    vi.mocked(fs.stat).mockResolvedValue(fileStat);
     vi.mocked(fs.mkdir).mockResolvedValue(undefined);
 
     await service.importSlot("test-app", {
@@ -136,8 +139,7 @@ describe("MediaManifestService - importSlot", () => {
       },
     });
 
-    // Should have checked the source file exists
-    expect(fs.access).toHaveBeenCalledWith(
+    expect(fs.stat).toHaveBeenCalledWith(
       "/tmp/test-app/public/assets/photo.jpg"
     );
 
@@ -160,13 +162,95 @@ describe("MediaManifestService - importSlot", () => {
     expect(slot.alternatives[0]).toBe(slot.currentUrl);
   });
 
-  it("keeps original URL when local file copy fails", async () => {
+  it("copies test preview host image using pathname like localhost", async () => {
+    const fakeImageBuffer = Buffer.from("fake-image-data");
+    vi.mocked(fs.readFile)
+      .mockResolvedValueOnce(JSON.stringify({}))
+      .mockResolvedValueOnce(fakeImageBuffer as any);
+    vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+    vi.mocked(fs.rename).mockResolvedValue(undefined);
+    vi.mocked(fs.stat).mockResolvedValue(fileStat);
+    vi.mocked(fs.mkdir).mockResolvedValue(undefined);
+
+    await service.importSlot("test-app", {
+      imageUrl:
+        "https://437ewcbzah.preview.c4.test-airoapp.ai/assets/images/f2a2018247347906af77a0263c42eab7.jpg",
+      imageAlt: "Hero",
+      devContext: {
+        fileName: "src/pages/index.tsx",
+        componentName: "unknown",
+        lineNumber: 10,
+      },
+    });
+
+    expect(fs.stat).toHaveBeenCalledWith(
+      "/tmp/test-app/public/assets/images/f2a2018247347906af77a0263c42eab7.jpg"
+    );
+  });
+
+  describe("host preview workspace layout", () => {
+    beforeEach(() => {
+      vi.mocked(AppRepository).mockImplementation(() => ({
+        findById: vi.fn().mockReturnValue({
+          id: "test-app",
+          path: "/tmp/airo-app-builder/hostapp/preview",
+        }),
+      }));
+    });
+
+    afterEach(() => {
+      vi.mocked(AppRepository).mockImplementation(() => ({
+        findById: vi.fn().mockReturnValue({ id: "test-app", path: "/tmp/test-app" }),
+      }));
+    });
+
+    it("reads local rebuild assets from assets/public when app path is .../preview", async () => {
+      const previewLayoutService = new MediaManifestService();
+
+      const fakeImageBuffer = Buffer.from("from-assets-public");
+      vi.mocked(fs.readFile)
+        .mockResolvedValueOnce(JSON.stringify({}))
+        .mockResolvedValueOnce(fakeImageBuffer as any);
+      vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+      vi.mocked(fs.rename).mockResolvedValue(undefined);
+      vi.mocked(fs.mkdir).mockResolvedValue(undefined);
+
+      vi.mocked(fs.stat).mockImplementation(function statForPreviewLayout(p: string | Buffer | URL) {
+        const s = String(p);
+        if (s.includes("/preview/public/")) {
+          return Promise.reject(Object.assign(new Error("ENOENT"), { code: "ENOENT" }));
+        }
+        if (s.includes("/assets/public/images/logo.png")) {
+          return Promise.resolve(fileStat);
+        }
+        return Promise.reject(Object.assign(new Error("ENOENT"), { code: "ENOENT" }));
+      });
+
+      const result = await previewLayoutService.importSlot("test-app", {
+        imageUrl: "https://localhost:5009/assets/images/logo.png",
+        imageAlt: "Logo",
+        devContext: {
+          fileName: "src/pages/index.tsx",
+          componentName: "unknown",
+          lineNumber: 10,
+        },
+      });
+
+      expect(result.success).toBe(true);
+      expect(fs.stat).toHaveBeenCalledWith(
+        "/tmp/airo-app-builder/hostapp/preview/public/assets/images/logo.png"
+      );
+      expect(fs.stat).toHaveBeenCalledWith(
+        "/tmp/airo-app-builder/hostapp/assets/public/images/logo.png"
+      );
+    });
+  });
+
+  it("fails import when local file copy cannot read source under public/", async () => {
     vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify({}));
     vi.mocked(fs.writeFile).mockResolvedValue(undefined);
     vi.mocked(fs.rename).mockResolvedValue(undefined);
-    // fs.access rejects (default) → file not found → keeps original URL
-
-    await service.importSlot("test-app", {
+    const result = await service.importSlot("test-app", {
       imageUrl: "https://localhost:5009/assets/missing.jpg",
       imageAlt: "Missing",
       devContext: {
@@ -176,12 +260,35 @@ describe("MediaManifestService - importSlot", () => {
       },
     });
 
-    const writeCall = vi.mocked(fs.writeFile).mock.calls[0];
-    const writtenManifest = JSON.parse(writeCall[1] as string);
-    const slot = writtenManifest["pages/home/missing"];
+    expect(result.success).toBe(false);
+    expect(result.httpStatus).toBe(400);
+    expect(result.error).toMatch(/Could not read the image under public\//);
+    const manifestWrites = vi.mocked(fs.writeFile).mock.calls.filter((call) =>
+      String(call[0]).includes("airo-media.json")
+    );
+    expect(manifestWrites).toHaveLength(0);
+    expect(astImageEditor.replaceImage).not.toHaveBeenCalled();
+  });
 
-    expect(slot).toBeDefined();
-    expect(slot.currentUrl).toBe("/assets/missing.jpg");
+  it("fails import when candidate path exists but is a directory", async () => {
+    vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify({}));
+    vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+    vi.mocked(fs.rename).mockResolvedValue(undefined);
+    vi.mocked(fs.stat).mockResolvedValue(dirStat);
+
+    const result = await service.importSlot("test-app", {
+      imageUrl: "https://localhost:5009/assets/some-dir",
+      imageAlt: "Missing",
+      devContext: {
+        fileName: "src/pages/index.tsx",
+        componentName: "unknown",
+        lineNumber: 10,
+      },
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.httpStatus).toBe(400);
+    expect(result.error).toMatch(/Could not read the image under public\//);
   });
 
   it("creates slot with correct MediaSlot shape", async () => {
@@ -564,7 +671,7 @@ describe("MediaManifestService - importSlot", () => {
         .mockResolvedValueOnce(fakeImageBuffer as any);  // image file
       vi.mocked(fs.writeFile).mockResolvedValue(undefined);
       vi.mocked(fs.rename).mockResolvedValue(undefined);
-      vi.mocked(fs.access).mockResolvedValue(undefined); // file exists
+      vi.mocked(fs.stat).mockResolvedValue(fileStat);
       vi.mocked(fs.mkdir).mockResolvedValue(undefined);
 
       await service.importSlot("test-app", {
