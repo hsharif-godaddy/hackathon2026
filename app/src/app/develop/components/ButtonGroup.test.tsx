@@ -4,7 +4,7 @@
 import '@testing-library/jest-dom';
 
 import { describe, expect, it, vi } from 'vitest';
-import { screen } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 
 import { ButtonGroup } from '@/app/develop/components/ButtonGroup';
 import { renderWithProviders } from '@/tests/test-utils';
@@ -283,5 +283,69 @@ describe('ButtonGroup', () => {
     buttons = screen.getAllByRole('radio');
     expect(buttons[0]).toHaveAttribute('aria-checked', 'false');
     expect(buttons[1]).toHaveAttribute('aria-checked', 'true');
+  });
+
+  it('should set the same inline width on the active item when uniformActiveItemWidth is true', async () => {
+    const getBoundingClientRect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect');
+    getBoundingClientRect.mockImplementation(function mockRect(this: HTMLElement) {
+      const long = this.textContent?.includes('Much longer') ?? false;
+      const width = long ? 200 : 72;
+      return {
+        width,
+        height: 24,
+        top: 0,
+        left: 0,
+        right: width,
+        bottom: 24,
+        x: 0,
+        y: 0,
+        toJSON() {
+          return {};
+        },
+      } as DOMRect;
+    });
+
+    try {
+      const { rerender } = renderWithProviders(
+        <ButtonGroup value="a" onChange={mockOnChange} uniformActiveItemWidth>
+          <ButtonGroup.Item value="a" icon={<TestIcon />} label="A" />
+          <ButtonGroup.Item value="b" icon={<TestIcon />} label="Much longer label" />
+        </ButtonGroup>
+      );
+
+      let buttons = screen.getAllByRole('radio');
+      await waitFor(() => {
+        buttons = screen.getAllByRole('radio');
+        expect(buttons[0].style.width).toBe('200px');
+      });
+      expect(buttons[1].style.width).toBe('');
+
+      rerender(
+        <ButtonGroup value="b" onChange={mockOnChange} uniformActiveItemWidth>
+          <ButtonGroup.Item value="a" icon={<TestIcon />} label="A" />
+          <ButtonGroup.Item value="b" icon={<TestIcon />} label="Much longer label" />
+        </ButtonGroup>
+      );
+
+      await waitFor(() => {
+        buttons = screen.getAllByRole('radio');
+        expect(buttons[1].style.width).toBe('200px');
+      });
+      expect(buttons[0].style.width).toBe('');
+    } finally {
+      getBoundingClientRect.mockRestore();
+    }
+  });
+
+  it('should not set uniform active width when uniformActiveItemWidth is false', () => {
+    renderWithProviders(
+      <ButtonGroup value="a" onChange={mockOnChange}>
+        <ButtonGroup.Item value="a" icon={<TestIcon />} label="A" />
+        <ButtonGroup.Item value="b" icon={<TestIcon />} label="Much longer label" />
+      </ButtonGroup>
+    );
+
+    const buttons = screen.getAllByRole('radio');
+    expect(buttons[0].style.width).toBe('');
   });
 });

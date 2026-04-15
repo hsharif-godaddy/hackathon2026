@@ -105,6 +105,7 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
             {/* Left side controls */}
             <Box orientation="horizontal" gap="sm" inlineAlignChildren='center'>
               <ButtonGroup
+                uniformActiveItemWidth
                 value={viewMode}
                 onChange={(value) => {
                   handleViewModeChange(value as ViewMode, hasUnsavedChanges);
@@ -115,21 +116,18 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
                   value={ViewMode.PREVIEW}
                   icon={<WebsiteFilledIcon className="size-2.5" />}
                   label={t('builder_preview_button_preview')}
-                  showLabelAlways
                   data-eid={generateClickEID('develop.header.iframe')}
                 />
                 <ButtonGroup.Item
                   value={ViewMode.EDIT}
                   icon={<WandIcon className="size-2.5" />}
                   label={t('builder_preview_button_edit')}
-                  showLabelAlways
                   data-eid={generateClickEID('develop.header.edit_mode')}
                 />
                 <ButtonGroup.Item
                   value={ViewMode.CODE}
                   icon={<CodeIcon className="size-2.5" />}
                   label={t('builder_preview_button_code')}
-                  showLabelAlways
                   disabled={isVersionHistoryOpen}
                   data-eid={generateClickEID('develop.header.code_editor')}
                 />

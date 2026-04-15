@@ -1,5 +1,6 @@
 'use client'
 
+import { motion, useReducedMotion } from 'framer-motion'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { isEmployeeAuthType } from '@airo/shared/auth'
@@ -8,7 +9,6 @@ import Growl from '@ux/growl'
 import { AssetManagerItem, MediaType } from '@/app/develop/components/chat/AssetTypes'
 import ChatBanners from '@/app/develop/components/chat/banners/ChatBanners'
 import BudgetExceededBanner from '@/app/develop/components/chat/BudgetExceededBanner'
-import type { SendMessageOptions as ChatSendMessageOptions } from '@/app/develop/components/chat/ChatContext'
 import { ChatContext } from '@/app/develop/components/chat/ChatContext'
 import ChatInput, { type StagedChatFile } from '@/app/develop/components/chat/ChatInput'
 import ChatToolbar from '@/app/develop/components/chat/ChatToolbar'
@@ -48,6 +48,7 @@ import {
   useBuildErrorContext,
   useCurrentAppId,
   useDevelopmentPlan,
+  useHistoryLoadingComplete,
   useInputValue,
   useIsActivelyStreaming,
   useIsLoading,
@@ -185,7 +186,7 @@ export default function ChatPane({
   const { authState } = useAuthContext()
   // CRM skip sessions use e2s tokens. isEmployeeAuthType covers e2s/e2s2s — same check
   // used for feedback impersonation detection in Feedback.tsx.
-
+   
   const isImpersonating = isEmployeeAuthType((authState as any)?.authType)
 
   // Dual-path credit availability check
@@ -221,8 +222,17 @@ export default function ChatPane({
   const isMobile = useDevelopPageStore((state) => state.isMobile)
   const setIsVersionHistoryOpen = useDevelopPageStore((state) => state.setIsVersionHistoryOpen)
   const { activeChatTab, setActiveChatTab } = useChatTabs()
+  const prefersReducedMotion = useReducedMotion()
 
   const appId = useAppIdFromParams()
+
+  const tabCrossfadeTransition = useMemo(
+    () =>
+      prefersReducedMotion
+        ? { duration: 0 }
+        : { duration: 0.2, ease: [0.4, 0, 0.2, 1] as const },
+    [prefersReducedMotion]
+  )
 
   // Get site data to access agent_url for file URLs
   const getSite = useSiteStore((state) => state.getSite)
@@ -263,7 +273,7 @@ export default function ChatPane({
   const [referencedFiles, setReferencedFiles] = useState<Array<{ path: string; content: string }>>([])
 
   // Pre-fetch ventureId for AssetManager to avoid loading delay
-  const [ventureId, setVentureId] = useState<string | null>(null)
+  const [ventureId, setVentureId] = useState<string | null>(null)  
 
   // Fetch ventureId on component mount
   useEffect(function fetchVentureId() {
@@ -366,10 +376,9 @@ export default function ChatPane({
   }
 
   // Track processing state - use isLoading OR isStreaming to match original behavior
-  // History now loads asynchronously in the background (decoupled from connection setup),
-  // so we no longer gate on historyLoadingComplete — the spinner in StreamingMessageList
-  // already signals the in-flight load and the user should be free to type at any time.
-  const isProcessing = isLoading || isStreaming
+  // Also disable input until history/recovery has loaded to prevent duplicate messages after refresh
+  const historyLoadingComplete = useHistoryLoadingComplete()
+  const isProcessing = isLoading || isStreaming || !historyLoadingComplete
 
   // Handle clearing AI edit context
   const handleClearAiEditContext = useCallback(() => {
@@ -566,8 +575,107 @@ export default function ChatPane({
     })
   }, [])
 
+  // Handle asset selection from AssetManager
+  const handleAssetSelect = useCallback((items: AssetManagerItem[]) => {
+    logger.debug('chat-pane.asset-select', { itemCount: items?.length })
+
+    if (items && items.length > 0) {
+      // Get current state directly from store to avoid stale closure issues
+      const currentAiEditContext = useStreamingConversationStore.getState().aiEditContext
+
+      logger.debug('chat-pane.asset-select.context', {
+        isImageReplacement: currentAiEditContext?.isImageReplacement,
+        hasAiEditContext: !!currentAiEditContext
+      })
+
+      if (currentAiEditContext?.isImageReplacement) {
+        // Image replacement mode: try AST first, then fall back to AI agent
+        logger.debug('chat-pane.image-replace.auto-send', { appId })
+        const selectedItem = items[0]
+        const newImageUrl = selectedItem.imageUrl
+
+        // Try AST replacement first
+        const tryAstReplacement = async () => {
+          try {
+            logger.debug('chat-pane.image-replace.ast-attempt', { appId })
+            // Combine elementInfo with devContext for the API
+            const elementInfoWithDevContext = {
+              tagName: currentAiEditContext.elementInfo?.tagName || '',
+              className: currentAiEditContext.elementInfo?.className || '',
+              id: currentAiEditContext.elementInfo?.id || '',
+              selector: currentAiEditContext.selector || '',
+              devContext: currentAiEditContext.devContext || { fileName: '', componentName: '', lineNumber: 0 }
+            }
+            const astResult = await appService.replaceImage(appId, {
+              elementInfo: elementInfoWithDevContext,
+              imageInfo: currentAiEditContext.imageInfo || { type: 'img', currentUrl: null },
+              newImageUrl
+            })
+
+            if (astResult.success) {
+              logger.info('chat-pane.image-replace.ast-success', { appId })
+              handleClearAiEditContext()
+              return
+            }
+
+            if (astResult.fallbackRequired) {
+              logger.info('chat-pane.image-replace.ast-fallback', { appId, error: astResult.error })
+              sendFallbackMessage()
+            } else {
+              logger.debug('chat-pane.image-replace.ast-failed-no-fallback', { appId, error: astResult.error })
+              handleClearAiEditContext()
+            }
+          } catch (error) {
+            logger.error('chat-pane.image-replace.ast-error', { appId, error: String(error) })
+            sendFallbackMessage()
+          }
+
+          function sendFallbackMessage() {
+            const message = 'Replace this image with the new one I selected'
+            shipAnalyticsLog('chat.prompt.sent', {
+              appId,
+              promptLength: message.length,
+              source: 'image-replacement',
+              hasEditContext: true,
+              hasSelectedAsset: true,
+              hasBuildErrorContext: false
+            })
+            void sendMessage({
+              content: message,
+              aiEditContext: { ...currentAiEditContext, screenshot: null },
+              selectedAssets: [selectedItem]
+            })
+            handleClearAiEditContext()
+          }
+        }
+
+        void tryAstReplacement()
+      } else {
+        // Normal mode: allow multiple images (append with duplicate checking, capped at MAX_TOTAL_ASSETS)
+        logger.debug('chat-pane.asset-select.manual', { appId })
+
+        const existingUrls = new Set(selectedAssets.map(asset => asset.imageUrl))
+        const newUniqueItems = items.filter(item => !existingUrls.has(item.imageUrl))
+        if (selectedAssets.length + newUniqueItems.length > MAX_TOTAL_ASSETS) {
+          // Not handleUploadError — that clears uploadingStagedFileIds and logs upload failure
+          showTransientAttachmentBanner(
+            t('builder_chatfiles_error_max_attachments', { count: MAX_TOTAL_ASSETS })
+          )
+        }
+
+        setSelectedAssets((prevAssets) => {
+          const prevUrls = new Set(prevAssets.map(asset => asset.imageUrl))
+          const newItems = items.filter(item => !prevUrls.has(item.imageUrl))
+          return [...prevAssets, ...newItems].slice(0, MAX_TOTAL_ASSETS)
+        })
+      }
+    } else {
+      logger.debug('chat-pane.asset-select.empty', { appId })
+    }
+  }, [appId, sendMessage, handleClearAiEditContext, t, selectedAssets, showTransientAttachmentBanner])
+
   // Handle sending a message - accepts optional content for programmatic sends
-  const handleSendMessage = useCallback(async (content?: string, options?: ChatSendMessageOptions) => {
+  const handleSendMessage = useCallback(async (content?: string, options?: { isActionRequest?: boolean }) => {
     const messageToSend = content ?? inputValue
     const userInitiated = content === undefined
     const hasText = Boolean(messageToSend?.trim())
@@ -588,6 +696,8 @@ export default function ChatPane({
       })
       return
     }
+
+    const outboundContent = messageToSend.trim()
 
     let mergedAssets: AssetManagerItem[] | undefined =
       selectedAssets.length > 0 ? [...selectedAssets] : undefined
@@ -669,7 +779,7 @@ export default function ChatPane({
 
     shipAnalyticsLog('chat.prompt.sent', {
       appId,
-      promptLength: messageToSend.length,
+      promptLength: outboundContent.length,
       source: content ? 'suggestion' : 'user-input',
       hasEditContext: !!safeAiEditContext,
       hasSelectedAsset: Boolean(mergedAssets?.length),
@@ -685,7 +795,7 @@ export default function ChatPane({
       if (userCount <= 1) {
         shipAnalyticsLog('funnel.user_first_message.sent', {
           appId,
-          promptLength: messageToSend.length,
+          promptLength: outboundContent.length,
         })
         hasLoggedFirstUserMessageRef.current = true
       }
@@ -695,27 +805,19 @@ export default function ChatPane({
       setCurrentAppId(appId)
     }
 
-    const outboundContent = messageToSend.trim()
-
-    const mergedCustomContext = {
-      ...(options?.customContext),
-      ...(referencedFiles.length > 0 ? { referencedFiles } : {}),
-    }
-    const resolvedCustomContext = Object.keys(mergedCustomContext).length > 0 ? mergedCustomContext : undefined
-
     if (content) {
       void sendMessage({
         content: outboundContent,
         aiEditContext: { screenshot: null },
         isActionRequest: options?.isActionRequest,
-        customContext: resolvedCustomContext,
+        customContext: referencedFiles.length > 0 ? { referencedFiles } : undefined
       })
     } else {
       void sendMessage({
         content: outboundContent,
         aiEditContext: { ...safeAiEditContext, screenshot: null },
         selectedAssets: mergedAssets,
-        customContext: resolvedCustomContext,
+        customContext: referencedFiles.length > 0 ? { referencedFiles } : undefined
       })
 
       // Clear contexts only for user input sends
@@ -760,116 +862,6 @@ export default function ChatPane({
     sendMessage: handleSendMessage
   }), [handleSendMessage])
 
-  // Handle asset selection from AssetManager
-  const handleAssetSelect = useCallback((items: AssetManagerItem[]) => {
-    logger.debug('chat-pane.asset-select', { itemCount: items?.length })
-
-    if (items && items.length > 0) {
-      // Get current state directly from store to avoid stale closure issues
-      const currentAiEditContext = useStreamingConversationStore.getState().aiEditContext
-
-      logger.debug('chat-pane.asset-select.context', {
-        isImageReplacement: currentAiEditContext?.isImageReplacement,
-        hasAiEditContext: !!currentAiEditContext
-      })
-
-      if (currentAiEditContext?.isImageReplacement) {
-        // Image replacement mode: try AST first, then fall back to AI agent
-        logger.debug('chat-pane.image-replace.auto-send', { appId })
-        const selectedItem = items[0]
-        const newImageUrl = selectedItem.imageUrl
-
-        // Try AST replacement first
-        const tryAstReplacement = async () => {
-          try {
-            logger.debug('chat-pane.image-replace.ast-attempt', { appId })
-            // Combine elementInfo with devContext for the API
-            const elementInfoWithDevContext = {
-              tagName: currentAiEditContext.elementInfo?.tagName || '',
-              className: currentAiEditContext.elementInfo?.className || '',
-              id: currentAiEditContext.elementInfo?.id || '',
-              selector: currentAiEditContext.selector || '',
-              devContext: currentAiEditContext.devContext || { fileName: '', componentName: '', lineNumber: 0 }
-            }
-            const astResult = await appService.replaceImage(appId, {
-              elementInfo: elementInfoWithDevContext,
-              imageInfo: currentAiEditContext.imageInfo || { type: 'img', currentUrl: null },
-              newImageUrl
-            })
-
-            if (astResult.success) {
-              logger.info('chat-pane.image-replace.ast-success', { appId })
-              // No manual refresh needed - Vite HMR will auto-update the preview
-              handleClearAiEditContext()
-              return
-            }
-
-            if (astResult.fallbackRequired) {
-              // AST failed, fall back to AI agent
-              logger.info('chat-pane.image-replace.ast-fallback', { appId, error: astResult.error })
-              sendFallbackMessage()
-            } else {
-              // AST failed but fallback not required - just clear context
-              logger.debug('chat-pane.image-replace.ast-failed-no-fallback', { appId, error: astResult.error })
-              handleClearAiEditContext()
-            }
-          } catch (error) {
-            logger.error('chat-pane.image-replace.ast-error', { appId, error: String(error) })
-            // On exception, fall back to AI agent
-            sendFallbackMessage()
-          }
-
-          function sendFallbackMessage() {
-            const message = 'Replace this image with the new one I selected'
-            shipAnalyticsLog('chat.prompt.sent', {
-              appId,
-              promptLength: message.length,
-              source: 'image-replacement',
-              hasEditContext: true,
-              hasSelectedAsset: true,
-              hasBuildErrorContext: false
-            })
-            sendMessage({
-              content: message,
-              aiEditContext: { ...currentAiEditContext, screenshot: null },
-              selectedAssets: [selectedItem]
-            })
-            handleClearAiEditContext()
-          }
-        }
-
-        void tryAstReplacement()
-      } else {
-        // Normal mode: allow multiple images (append with duplicate checking, capped at MAX_TOTAL_ASSETS)
-        logger.debug('chat-pane.asset-select.manual', { appId })
-
-        // Check before updating — functional updater runs async so we can't rely on it for side effects
-        const existingUrls = new Set(selectedAssets.map(asset => asset.imageUrl))
-        const newUniqueItems = items.filter(item => !existingUrls.has(item.imageUrl))
-        if (selectedAssets.length + newUniqueItems.length > MAX_TOTAL_ASSETS) {
-          // Not handleUploadError — that clears uploadingStagedFileIds and logs upload failure
-          showTransientAttachmentBanner(
-            t('builder_chatfiles_error_max_attachments', { count: MAX_TOTAL_ASSETS })
-          )
-        }
-
-        // Intentional partial-accept: assets that fit within the limit are still added
-        // even when the total would exceed MAX_TOTAL_ASSETS. The error banner above informs
-        // the user, and setSelectedAssets slices to the limit below.
-        setSelectedAssets((prevAssets) => {
-          // Create a Set of existing asset URLs to check for duplicates
-          const prevUrls = new Set(prevAssets.map(asset => asset.imageUrl))
-
-          // Filter out duplicates from new items, then cap at limit
-          const newItems = items.filter(item => !prevUrls.has(item.imageUrl))
-          return [...prevAssets, ...newItems].slice(0, MAX_TOTAL_ASSETS)
-        })
-      }
-    } else {
-      logger.debug('chat-pane.asset-select.empty', { appId })
-    }
-  }, [appId, sendMessage, handleClearAiEditContext, t, selectedAssets, showTransientAttachmentBanner])
-
   // Handle screenshot capture from chat input
   const handleScreenshotCaptured = useCallback((dataUrl: string) => {
     logger.debug('chat-pane.screenshot-captured', { appId })
@@ -884,9 +876,9 @@ export default function ChatPane({
       imageUrl: dataUrl,
       filename: `screenshot-${timestamp}.jpg`,
       contentType: 'image/jpeg',
-      size: dataUrl.length, // Approximate size
+      size: dataUrl.length,
       thumbnailUrl: dataUrl,
-      dimensions: { width: 1024, height: 0 } // Width is 1024 from resize
+      dimensions: { width: 1024, height: 0 }
     }
 
     // Respect combined cap with staged files (same slots as menu / drop / paste)
@@ -909,7 +901,7 @@ export default function ChatPane({
     const handleErrorFixEvent = (event: CustomEvent) => {
       if (!isProcessing && event.detail.appId === appId && inputValue?.trim()) {
         // Use the actual sendMessage function from WebSocket hook
-        sendMessage({
+        void sendMessage({
           content: inputValue,
           aiEditContext: { ...safeAiEditContext, screenshot: null },
           selectedAssets: selectedAssets.length > 0 ? selectedAssets : undefined
@@ -996,25 +988,26 @@ export default function ChatPane({
 
   return (
     <ChatContext.Provider value={chatContextValue}>
-      <div className="flex-1 flex flex-col h-full p-0 md:pl-2 md:pb-2 gap-1">
-        <PlanTracker
-          developmentPlan={developmentPlan}
-          expandedPlan={expandedPlan}
-          onToggleExpandedPlan={toggleExpandedPlan}
-        />
+    <div className="flex-1 flex flex-col h-full p-0 md:pl-2 md:pb-2 gap-1">
+      <PlanTracker
+        developmentPlan={developmentPlan}
+        expandedPlan={expandedPlan}
+        onToggleExpandedPlan={toggleExpandedPlan}
+      />
 
-        {/* Chat Tab - Keep mounted, hide with CSS */}
-        <div
-          className="flex flex-col flex-1 min-h-0"
-          style={{ display: activeChatTab === ChatTab.CHAT ? 'flex' : 'none' }}
+      <div className="relative flex-1 min-h-0">
+        <motion.div
+          className="absolute inset-0 flex flex-col min-h-0"
+          initial={false}
+          animate={{ opacity: activeChatTab === ChatTab.CHAT ? 1 : 0 }}
+          transition={tabCrossfadeTransition}
+          style={{ pointerEvents: activeChatTab === ChatTab.CHAT ? 'auto' : 'none' }}
+          aria-hidden={activeChatTab !== ChatTab.CHAT}
+          inert={activeChatTab !== ChatTab.CHAT ? true : undefined}
         >
-          <div className="flex-1 flex flex-col min-h-0">
-            <div className="px-2 md:px-0">
-              <PersistentTodoList />
-            </div>
+          <PersistentTodoList />
 
-            <StreamingMessageList allMessages={visibleMessages} isCreateFlowSession={isCreateFlowSession} />
-          </div>
+          <StreamingMessageList allMessages={visibleMessages} isCreateFlowSession={isCreateFlowSession} />
 
           {safeBuildErrorContext && (
             <div className="mx-2 rounded-md overflow-hidden border">
@@ -1051,7 +1044,7 @@ export default function ChatPane({
           {showProactiveBudgetBanner && (
             <div className="px-2 sm:px-3 md:px-1 mb-2">
               <BudgetExceededBanner onClose={() => setIsProactiveBannerDismissed(true)} />
-            </div>
+              </div>
           )}
           <div className="px-2 sm:px-3 md:px-0">
             <ChatBanners appId={appId} />
@@ -1088,42 +1081,61 @@ export default function ChatPane({
               userMessages={userMessages}
             />
           </div>
-        </div>
+        </motion.div>
 
-        {/* History Tab - Keep mounted, hide with CSS */}
-        <div
-          className="flex flex-col flex-1 min-h-0"
-          style={{ display: activeChatTab === ChatTab.HISTORY ? 'flex' : 'none' }}
+        <motion.div
+          className="absolute inset-0 flex flex-col min-h-0"
+          initial={false}
+          animate={{ opacity: activeChatTab === ChatTab.HISTORY ? 1 : 0 }}
+          transition={tabCrossfadeTransition}
+          style={{ pointerEvents: activeChatTab === ChatTab.HISTORY ? 'auto' : 'none' }}
+          aria-hidden={activeChatTab !== ChatTab.HISTORY}
+          inert={activeChatTab !== ChatTab.HISTORY ? true : undefined}
         >
           <VersionHistory />
-        </div>
+        </motion.div>
 
-        {/* Media Tab - Keep mounted, hide with CSS */}
-        <div
-          className="flex flex-col flex-1 min-h-0"
-          style={{ display: activeChatTab === ChatTab.MEDIAS ? 'flex' : 'none' }}
+        <motion.div
+          className="absolute inset-0 flex flex-col min-h-0"
+          initial={false}
+          animate={{ opacity: activeChatTab === ChatTab.MEDIAS ? 1 : 0 }}
+          transition={tabCrossfadeTransition}
+          style={{ pointerEvents: activeChatTab === ChatTab.MEDIAS ? 'auto' : 'none' }}
+          aria-hidden={activeChatTab !== ChatTab.MEDIAS}
+          inert={activeChatTab !== ChatTab.MEDIAS ? true : undefined}
         >
           <MediaPanel />
-        </div>
+        </motion.div>
 
-        {/* Analytics Tab - Keep mounted, hide with CSS */}
-        <div
-          className="flex flex-col flex-1 min-h-0 overflow-y-auto"
-          style={{ display: activeChatTab === ChatTab.ANALYTICS ? 'flex' : 'none' }}
+        <motion.div
+          className="absolute inset-0 flex flex-col min-h-0 overflow-y-auto"
+          initial={false}
+          animate={{ opacity: activeChatTab === ChatTab.ANALYTICS ? 1 : 0 }}
+          transition={tabCrossfadeTransition}
+          style={{ pointerEvents: activeChatTab === ChatTab.ANALYTICS ? 'auto' : 'none' }}
+          aria-hidden={activeChatTab !== ChatTab.ANALYTICS}
+          inert={activeChatTab !== ChatTab.ANALYTICS ? true : undefined}
         >
           <AnalyticsPanel />
-        </div>
+        </motion.div>
 
-        {/* Settings Tab - Keep mounted, hide with CSS */}
-        <div
-          className="flex flex-col flex-1 min-h-0"
-          style={{ display: activeChatTab === ChatTab.SETTINGS ? 'flex' : 'none' }}
+        <motion.div
+          className="absolute inset-0 flex flex-col min-h-0"
+          initial={false}
+          animate={{ opacity: activeChatTab === ChatTab.SETTINGS ? 1 : 0 }}
+          transition={tabCrossfadeTransition}
+          style={{ pointerEvents: activeChatTab === ChatTab.SETTINGS ? 'auto' : 'none' }}
+          aria-hidden={activeChatTab !== ChatTab.SETTINGS}
+          inert={activeChatTab !== ChatTab.SETTINGS ? true : undefined}
         >
           <SettingsView />
-        </div>
-
-        <ChatToolbar />
+        </motion.div>
       </div>
+
+      <ChatToolbar
+        isProcessing={isProcessing}
+      />
+    </div>
     </ChatContext.Provider>
   )
 }

@@ -16,6 +16,7 @@ const mockDevelopStore = {
   isMobile: false,
   mobileMode: MobileMode.TOOLS, // MobileMode.TOOLS
   viewMode: ViewMode.PREVIEW, // ViewMode.PREVIEW
+  isSelectMode: false,
   isVersionHistoryOpen: false,
   isAssetManagerOpen: false,
   hasUnsavedChanges: false,
@@ -23,6 +24,7 @@ const mockDevelopStore = {
   app: null,
   deploymentInProgressId: null,
   setIsAssetManagerOpen: vi.fn(),
+  toggleSelectMode: vi.fn(),
   handleViewModeChange: vi.fn(),
   handleMobileModeChange: vi.fn(),
   getPublishState: vi.fn(() => ({
@@ -58,21 +60,20 @@ vi.mock('@/hooks/useChatTabs', () => ({
 vi.mock('@/stores/useGitStore', () => ({
   useGitStore: (selector: any) => selector(mockGitStore),
 }));
-vi.mock('@/hooks/useSwitchboard', () => ({
-  SwitchboardAuthError: class SwitchboardAuthError extends Error {
-    constructor(featureName: string) {
-      super(`Authentication required to fetch feature flag: ${featureName}`);
-      this.name = 'SwitchboardAuthError';
-    }
-  },
-  useSwitchboard: (feature: string) => {
-    if (feature === 'appbuilder-image-manager') return { data: true, error: null };
-    if (feature === 'appbuilder-settings') return { data: true, error: null };
-    return { data: false, error: null };
-  },
-}));
+vi.mock('@/hooks/useSwitchboard', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/hooks/useSwitchboard')>();
+  return {
+    ...actual,
+    useSwitchboard: (feature: string) => {
+      if (feature === 'appbuilder-image-manager') return { data: true };
+      if (feature === 'appbuilder-settings') return { data: true };
+      if (feature === 'appbuilder-analytics') return { data: false };
+      return { data: false };
+    },
+  };
+});
 vi.mock('@/hooks/useGitHistory', () => ({
-  useGitHistoryQuery: () => ({ isFetching: false }),
+  useGitHistoryQuery: () => ({ isLoading: false }),
 }));
 vi.mock('@/utils/instrumentation', () => ({
   generateClickEID: vi.fn((id) => id),
@@ -96,10 +97,13 @@ describe('ChatToolbar', () => {
     mockDevelopStore.isMobile = false;
     mockDevelopStore.mobileMode = MobileMode.TOOLS;
     mockDevelopStore.viewMode = ViewMode.PREVIEW;
+    mockDevelopStore.isSelectMode = false;
     mockDevelopStore.isVersionHistoryOpen = false;
     mockDevelopStore.isAssetManagerOpen = false;
     mockDevelopStore.hasUnsavedChanges = false;
     mockDevelopStore.publishStates = { 'app-123': { isPublishing: false } };
+    mockDevelopStore.viewMode = ViewMode.PREVIEW;
+    mockDevelopStore.isSelectMode = false;
     mockChatTabs.activeChatTab = ChatTab.CHAT;
     mockChatTabs.activeSettingsSection = SettingsSection.DOMAIN;
     mockGitStore.isSelectingCommit = false;
@@ -108,13 +112,17 @@ describe('ChatToolbar', () => {
   it('should render without crashing', () => {
     renderWithProviders(<ChatToolbar {...defaultProps} />);
 
-    expect(screen.getByText('builder_chat_toolbar_button_chat')).toBeInTheDocument();
+    expect(
+      screen.getByRole('radio', { name: 'builder_chat_toolbar_button_chat' }),
+    ).toBeInTheDocument();
   });
 
   it('should render chat button', () => {
     renderWithProviders(<ChatToolbar {...defaultProps} />);
 
-    expect(screen.getByText('builder_chat_toolbar_button_chat')).toBeInTheDocument();
+    expect(
+      screen.getByRole('radio', { name: 'builder_chat_toolbar_button_chat' }),
+    ).toBeInTheDocument();
   });
 
   it('should render history button', () => {
@@ -199,6 +207,26 @@ describe('ChatToolbar', () => {
     expect(buttons.length).toBeGreaterThanOrEqual(3);
   });
 
+  it('should ignore history navigation while selecting commit', async () => {
+    mockGitStore.isSelectingCommit = true;
+
+    const { user } = renderWithProviders(<ChatToolbar {...defaultProps} />);
+
+    const historyButton = screen.getByLabelText('builder_chat_toolbar_button_history');
+    expect(historyButton).not.toBeDisabled();
+    await user.click(historyButton);
+    expect(mockChatTabs.setActiveChatTab).not.toHaveBeenCalled();
+  });
+
+  it('should disable history button when publishing', () => {
+    mockDevelopStore.publishStates['app-123'].isPublishing = true;
+
+    renderWithProviders(<ChatToolbar {...defaultProps} />);
+
+    const historyButton = screen.getByLabelText('builder_chat_toolbar_button_history');
+    expect(historyButton).toBeDisabled();
+  });
+
   it('should render settings menu on mobile when settings enabled', () => {
     mockDevelopStore.isMobile = true;
 
@@ -212,10 +240,9 @@ describe('ChatToolbar', () => {
     mockDevelopStore.isMobile = true;
     mockDevelopStore.mobileMode = MobileMode.PREVIEW;
 
-    const { container } = renderWithProviders(<ChatToolbar {...defaultProps} />);
+    renderWithProviders(<ChatToolbar {...defaultProps} />);
 
-    const settingsButton = container.querySelector('[data-eid="develop.chat_toolbar.settings"]');
-    expect(settingsButton).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('builder_settings_title')).not.toBeInTheDocument();
   });
 
   it('should have correct data-eid attributes', () => {
