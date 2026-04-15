@@ -114,7 +114,7 @@ export default function DomainDNS({ domainDetails }: { domainDetails: AppDomain 
       <Box
         orientation="vertical"
         gap="md"
-        className="rounded-lg"
+        className="rounded-2xl"
       >
         <Box orientation="horizontal" inlineAlignChildren="center" gap="sm">
           <Spinner size="sm" />
@@ -134,7 +134,7 @@ export default function DomainDNS({ domainDetails }: { domainDetails: AppDomain 
     <Box
       orientation="vertical"
       gap="md"
-      className="rounded-lg w-full"
+      className="w-full pb-2 mb-1 border-b"
     >
       <text.p className="text-sm">
         {t('builder_domain_dns_instructions')}

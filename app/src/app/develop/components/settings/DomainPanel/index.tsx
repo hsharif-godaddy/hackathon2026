@@ -8,9 +8,11 @@ import DomainAttach from "@/app/develop/components/settings/DomainPanel/DomainAt
 import ProjectDomain from "@/app/develop/components/settings/DomainPanel/ProjectDomain";
 import { useAppIdFromParams } from "@/app/develop/components/utils";
 import EmptyStateCard from '@/components/layout/EmptyStateCard';
+import { useDomainPolling } from '@/hooks/useDomainPolling';
 import { usePaywallEligibility } from '@/hooks/usePaywallEligibility';
 import { useSwitchboard } from "@/hooks/useSwitchboard";
 import { useTranslations } from '@/hooks/useTranslations';
+import { DomainStatus, DomainType } from "@/lib/control-plane/types";
 import { PAYWALL_ITC } from '@/lib/paywall/shared';
 import { useDevelopPageStore } from "@/stores/useDevelopPageStore";
 import { useSiteStore } from "@/stores/useSiteStore";
@@ -40,6 +42,15 @@ export default function DomainPanel() {
 
   const { handlePublish, isPublishDisabled, publishState } = usePublishForDomain(currentAppId, site);
   const canManageDomains = canAccessDomainManagement(site);
+
+  // Use polling query as single source of truth for domain ordering
+  const { data: appDetails, isFetched: isAppDetailsFetched } = useDomainPolling(currentAppId);
+
+  // Check if there's an active or pending custom domain to determine section order
+  const hasActiveCustomDomain = appDetails?.domains?.some(
+    d => d.domainType !== DomainType.PREFIX &&
+      (d.status === DomainStatus.ACTIVE || d.status === DomainStatus.PENDING)
+  ) ?? false;
 
   if (isDomainAttachLoading || isProjectDomainLoading || isSiteLoading || isPaywallLoading) {
     return (
@@ -107,10 +118,20 @@ export default function DomainPanel() {
         <>
           <text.h1>{t('builder_domain_title')}</text.h1>
           <text.p>{t('builder_domain_coming_soon')}</text.p>
+      </>
+      )}
+      {/* Conditionally render sections based on custom domain connection status */}
+      {hasActiveCustomDomain ? (
+        <>
+          {isDomainAttachEnabled && <DomainAttach appDetails={appDetails} isAppDetailsFetched={isAppDetailsFetched} />}
+          {isProjectDomainEnabled && <ProjectDomain />}
+        </>
+      ) : (
+        <>
+          {isProjectDomainEnabled && <ProjectDomain />}
+          {isDomainAttachEnabled && <DomainAttach appDetails={appDetails} isAppDetailsFetched={isAppDetailsFetched} />}
         </>
       )}
-      {isProjectDomainEnabled && <ProjectDomain />}
-      {isDomainAttachEnabled && <DomainAttach />}
     </Box>
   )
 }

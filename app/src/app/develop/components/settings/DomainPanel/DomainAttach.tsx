@@ -11,11 +11,11 @@ import DomainItem from "@/app/develop/components/settings/components/DomainItem"
 import SettingsSection from "@/app/develop/components/settings/SettingsSection";
 import { Status } from "@/app/develop/components/types";
 import { useAppIdFromParams } from "@/app/develop/components/utils";
+import type { AppDetailsResponse } from '@/hooks/useAppDetails';
 import { useAuth } from '@/hooks/useAuth';
 import { useCloseOnReauth } from '@/hooks/useCloseOnReauth';
 import { useCustomerDomainAttach } from '@/hooks/useCustomerDomainAttach';
 import { useDomainDnsOwnership } from '@/hooks/useDomainDnsOwnership';
-import { useDomainPolling } from '@/hooks/useDomainPolling';
 import { useDomainsQuery } from '@/hooks/useDomainsQuery';
 import { useDomainValidationQuery } from '@/hooks/useDomainValidationQuery';
 import { DomainMutationError, useModifyDomains } from '@/hooks/useModifyDomains';
@@ -47,13 +47,18 @@ function getErrorMessage(error: unknown, t: ReturnType<typeof useTranslations>):
   return t('builder_custom_domain_error_fetch_failed')
 }
 
+interface DomainAttachProps {
+  appDetails: AppDetailsResponse | undefined;
+  isAppDetailsFetched: boolean;
+}
+
 /**
  * Domain attachment and custom domain management component
  *
  * Handles connecting and managing custom domains for the application,
  * including DNS configuration instructions for pending domains.
  */
-export default function DomainAttach() {
+export default function DomainAttach({ appDetails, isAppDetailsFetched }: DomainAttachProps) {
   const t = useTranslations();
   const currentAppId = useAppIdFromParams()
   const { isAuthenticated, isLoading: authLoading } = useAuth();
@@ -95,9 +100,6 @@ export default function DomainAttach() {
 
   // Compute actual loading state - show loading until we've attempted to fetch
   const isLoading = authLoading || isLoadingDomains || (!isDomainsFetched && isAuthenticated);
-
-  // Poll while any domain is in a transitional state (pending, deleting, no status yet)
-  const { data: appDetails, isFetched: isAppDetailsFetched } = useDomainPolling(currentAppId);
 
   const sanitizedInput = customDomain ? sanitizeDomainInput(customDomain) : '';
   const isAiroDomainBlocked = sanitizedInput.length > 0 && isBlockedAiroDomain(sanitizedInput);
@@ -349,6 +351,20 @@ export default function DomainAttach() {
       !isCustomerDomain(appDomain.fqdn, domains)
   ) : [];
 
+  // Separate connected vs available domains
+  const connectedCustomerDomains = customerDomainEntries.filter(
+    entry => entry.connectedDomains.length > 0
+  );
+  const availableCustomerDomains = customerDomainEntries.filter(
+    entry => entry.connectedDomains.length === 0
+  );
+  const connectedCustomDomains = customDomains.filter(
+    d => d.status === DomainStatus.ACTIVE || d.status === DomainStatus.PENDING
+  );
+  const availableCustomDomains = customDomains.filter(
+    d => d.status !== DomainStatus.ACTIVE && d.status !== DomainStatus.PENDING
+  );
+
   // Check if there's already a custom domain in pending or active state
   const hasActiveOrPendingCustomDomain = customDomains.some(
     (d) => d.status === DomainStatus.PENDING || d.status === DomainStatus.ACTIVE
@@ -389,7 +405,6 @@ export default function DomainAttach() {
       status={getCustomDomainStatus()}
       isCollapsible
     >
-      {/* GoDaddy Domains Section */}
       <Box gap="sm">
         {isLoading && (
           <>
@@ -411,11 +426,13 @@ export default function DomainAttach() {
         {!isLoading && !error && domains.length === 0 && (
           <text.p>{t('builder_custom_domain_no_domains')}</text.p>
         )}
-        {!isLoading && !error && customerDomainEntries.map((entry, index) => {
+
+        {/* Connected Customer Domains First */}
+        {!isLoading && !error && connectedCustomerDomains.map((entry, index) => {
           const domainName = entry.customerDomain.domain || entry.customerDomain.name || '';
 
           return (
-            <Box key={`customer-domain-${index}-${domainName}`} gap="sm">
+            <Box key={`connected-customer-domain-${index}-${domainName}`} gap="sm">
               {/* Root domain */}
               {(() => {
                 const rootAppDomain = entry.connectedDomains.find((d) => d.fqdn === domainName);
@@ -435,10 +452,10 @@ export default function DomainAttach() {
 
               {/* Connected subdomains */}
               {entry.connectedDomains
-                .filter((d) => d.fqdn !== domainName) // Exclude the root domain itself
+                .filter((d) => d.fqdn !== domainName)
                 .map((subdomain, subIndex) => (
                   <DomainItem
-                    key={`subdomain-${index}-${subIndex}-${subdomain.fqdn}`}
+                    key={`connected-subdomain-${index}-${subIndex}-${subdomain.fqdn}`}
                     domain={{
                       domain: subdomain.fqdn,
                       name: subdomain.fqdn,
@@ -456,14 +473,81 @@ export default function DomainAttach() {
             </Box>
           );
         })}
-        <Button
-          text={t('builder_custom_domain_button_buy')}
-          design="primary"
-          size="sm"
-          data-eid={generateClickEID(`settings.domains.buy_new_domain`)}
-          href={`https://www.${getRootDomain()}/domains`}
-          external
-        />
+
+        {/* Connected Custom Domains */}
+        {!isLoading && !error && connectedCustomDomains.map((appDomain, index) => (
+          <DomainItem
+            key={`connected-custom-domain-${index}-${appDomain.fqdn}`}
+            domain={{
+              domain: appDomain.fqdn,
+              name: appDomain.fqdn,
+            }}
+            appDomain={appDomain}
+            siteId={currentAppId}
+            onConnect={handleConnectDomain}
+            onDisconnect={handleDisconnectDomain}
+            isLoading={modifyDomainsMutation.isPending}
+            disableConnect={shouldDisableAddingDomain}
+            isCustomDomain={true}
+            mutationError={modifyDomainsMutation.error}
+          />
+        ))}
+
+        {showDomainDNS && (
+          <DomainDNS
+            domainDetails={pendingDomainDetails}
+          />
+        )}
+
+        {/* Available Custom Domains (FAILED/ERROR/INACTIVE states) */}
+        {!isLoading && !error && availableCustomDomains.map((appDomain, index) => (
+          <DomainItem
+            key={`available-custom-domain-${index}-${appDomain.fqdn}`}
+            domain={{
+              domain: appDomain.fqdn,
+              name: appDomain.fqdn,
+            }}
+            appDomain={appDomain}
+            siteId={currentAppId}
+            onConnect={handleConnectDomain}
+            onDisconnect={handleDisconnectDomain}
+            isLoading={modifyDomainsMutation.isPending}
+            disableConnect={shouldDisableAddingDomain}
+            isCustomDomain={true}
+            mutationError={modifyDomainsMutation.error}
+          />
+        ))}
+
+        {/* Available Customer Domains */}
+        {!isLoading && !error && availableCustomerDomains.map((entry, index) => {
+          const domainName = entry.customerDomain.domain || entry.customerDomain.name || '';
+
+          return (
+            <DomainItem
+              key={`available-customer-domain-${index}-${domainName}`}
+              domain={entry.customerDomain}
+              appDomain={undefined}
+              siteId={currentAppId}
+              onConnect={handleConnectDomain}
+              onDisconnect={handleDisconnectDomain}
+              isLoading={modifyDomainsMutation.isPending}
+              disableConnect={shouldDisableAddingDomain}
+              mutationError={modifyDomainsMutation.error}
+            />
+          );
+        })}
+
+        {/* Buy a New Domain Button */}
+        {!isLoading && !error && (
+          <Button
+            text={t('builder_custom_domain_button_buy')}
+            design="primary"
+            size="sm"
+            data-eid={generateClickEID(`settings.domains.buy_new_domain`)}
+            href={`https://www.${getRootDomain()}/domains`}
+            external
+          />
+        )}
       </Box>
 
       {/* Custom Domain Input */}
@@ -498,9 +582,9 @@ export default function DomainAttach() {
               customDomain.length === 0 ||
               isAiroDomainBlocked ||
               isValidatingDomain ||
-              hasValidationError || // Validation check failed
-              (customDomain !== debouncedDomain) || // Validation hasn't completed yet (debounce pending)
-              (validationData && !validationData.available) // Validation failed
+              hasValidationError ||
+              (customDomain !== debouncedDomain) ||
+              (validationData && !validationData.available)
             }
             data-eid={generateClickEID(`settings.domains.add_domain`)}
             className="!hover:bg-transparent"
@@ -533,35 +617,6 @@ export default function DomainAttach() {
             </Box>
           </Box>
         </Modal>
-      )}
-
-      {/* Custom Domains Added Section */}
-      {customDomains.length > 0 && (
-        <Box gap="sm">
-          {customDomains.map((appDomain, index) => (
-            <DomainItem
-              key={`custom-domain-${index}-${appDomain.fqdn}`}
-              domain={{
-                domain: appDomain.fqdn,
-                name: appDomain.fqdn,
-              }}
-              appDomain={appDomain}
-              siteId={currentAppId}
-              onConnect={handleConnectDomain}
-              onDisconnect={handleDisconnectDomain}
-              isLoading={modifyDomainsMutation.isPending}
-              disableConnect={shouldDisableAddingDomain}
-              isCustomDomain={true}
-              mutationError={modifyDomainsMutation.error}
-            />
-          ))}
-        </Box>
-      )}
-
-      {showDomainDNS && (
-        <DomainDNS
-          domainDetails={pendingDomainDetails}
-        />
       )}
     </SettingsSection>
   );
