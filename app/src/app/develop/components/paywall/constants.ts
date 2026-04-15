@@ -23,6 +23,14 @@ export const UPGRADE_PRODUCT_IDS = {
   AIRO_BUILDER_CREDITS: 'AiroBuilderCreditsProduct',
 } as const
 
+/**
+ * Offer group IDs for Direct-to-Paid flows
+ */
+export const D2P_OFFER_GROUP_IDS = {
+  /** Airo Builder lineup for new users without subscription */
+  AIRO_BUILDER_LINEUP: 'airoBuilderLineup',
+} as const
+
 export type UpgradeProductId = typeof UPGRADE_PRODUCT_IDS[keyof typeof UPGRADE_PRODUCT_IDS]
 
 /**

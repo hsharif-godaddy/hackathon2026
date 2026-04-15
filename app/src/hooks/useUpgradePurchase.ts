@@ -112,8 +112,9 @@ export function useUpgradePurchase(): UseUpgradePurchaseResult {
 
       // For upgrades: poll for the new plan-monthly grant after subscription is updated
       // A new grant is created on the backend when upgrading, so we wait for it to appear
+      // Skip grant polling for D2P/new subscriptions (planBeforePurchase is undefined) since there's no existing grant
       let grantUpdated = false
-      if (isUpgrade && updated && subscriptionId) {
+      if (isUpgrade && updated && subscriptionId && planBeforePurchase !== undefined) {
         if (!initialPlanMonthlyGrantId) {
           // Grant cache was cold or no plan-monthly grant found at purchase time
           logger.warn('plan.upgrade.grant-polling-skipped', {

@@ -8,11 +8,19 @@ import { screen } from '@testing-library/react';
 
 import { EXPERIMENT_IDS } from '@/config/experiments';
 import { useIsInCohort } from '@/hooks/useHivemind';
+import { useSubscription } from '@/hooks/useSubscription';
 import { renderWithProviders } from '@/tests/test-utils';
 import { SubscriptionPlan } from '@/types/credits';
 
 vi.mock('@/hooks/useSwitchboard', () => ({
   useSwitchboard: vi.fn(() => ({ data: false, isLoading: false })),
+}));
+
+vi.mock('@/hooks/useSubscription', () => ({
+  useSubscription: vi.fn(() => ({
+    data: { builderEntitlementId: 'test-entitlement-id' },
+    isLoading: false,
+  })),
 }));
 
 vi.mock('./SinglePlanUpgradeContainer', () => ({
@@ -28,6 +36,31 @@ vi.mock('./HigherPlansUpgradeContainer', () => ({
       <span data-testid="higher-plans-source">{props.source ?? ''}</span>
     </div>
   ),
+}));
+
+vi.mock('./DirectToPaidContainer', () => ({
+  default: (props: { source?: string }) => (
+    <div data-testid="direct-to-paid">
+      <span data-testid="d2p-source">{props.source ?? ''}</span>
+    </div>
+  ),
+}));
+
+vi.mock('./PaywallLoadingModal', () => ({
+  PaywallLoadingModal: ({ onClose, component }: any) => (
+    <div data-testid="paywall-loading-modal">
+      <span data-testid="loading-component">{component}</span>
+      <button data-testid="loading-close" onClick={onClose}>Close</button>
+    </div>
+  ),
+  PaywallLoadingModalVariant: {
+    HigherPlans: 'higher-plans',
+    Credits: 'credits',
+  },
+}));
+
+vi.mock('@/utils/focus', () => ({
+  resetFocusOnModalClose: vi.fn(),
 }));
 
 vi.mock('@/hooks/useHivemind', () => ({
@@ -146,5 +179,90 @@ describe('UpgradeContainer', function upgradeContainerTests() {
 
     expect(logImpressionEvent).toHaveBeenCalledWith('paywall.upgrade.view');
     expect(shipAnalyticsLog).toHaveBeenCalledWith('paywall.upgrade.view', {});
+  });
+
+  describe('DirectToPaid flow', function directToPaidTests() {
+    it('should render DirectToPaidContainer when user has no subscription', async function renderD2PNoSubscription() {
+      const { useSwitchboard } = await import('@/hooks/useSwitchboard');
+      vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
+      vi.mocked(useSubscription).mockReturnValue({
+        data: undefined,
+        subscriptions: [],
+        isLoading: false,
+        isError: false,
+        error: null,
+        refetch: vi.fn(),
+      });
+
+      const { container } = renderWithProviders(
+        <UpgradeContainer source="test" onClose={vi.fn()} />
+      );
+
+      expect(container.querySelector('[data-testid="direct-to-paid"]')).toBeInTheDocument();
+      expect(container.querySelector('[data-testid="higher-plans-upgrade"]')).not.toBeInTheDocument();
+      expect(container.querySelector('[data-testid="single-plan-upgrade"]')).not.toBeInTheDocument();
+    });
+
+    it('should render DirectToPaidContainer when user has subscription but no builderEntitlementId', async function renderD2PNoEntitlement() {
+      const { useSwitchboard } = await import('@/hooks/useSwitchboard');
+      vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
+      vi.mocked(useSubscription).mockReturnValue({
+        data: { id: 'sub-123', builderEntitlementId: undefined } as any,
+        subscriptions: [],
+        isLoading: false,
+        isError: false,
+        error: null,
+        refetch: vi.fn(),
+      });
+
+      const { container } = renderWithProviders(
+        <UpgradeContainer source="test" onClose={vi.fn()} />
+      );
+
+      expect(container.querySelector('[data-testid="direct-to-paid"]')).toBeInTheDocument();
+      expect(container.querySelector('[data-testid="higher-plans-upgrade"]')).not.toBeInTheDocument();
+    });
+
+    it('should render HigherPlansUpgradeContainer when user has subscription with builderEntitlementId', async function renderUpgradeWithEntitlement() {
+      const { useSwitchboard } = await import('@/hooks/useSwitchboard');
+      vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
+      vi.mocked(useSubscription).mockReturnValue({
+        data: { id: 'sub-123', builderEntitlementId: 'ent-123' } as any,
+        subscriptions: [],
+        isLoading: false,
+        isError: false,
+        error: null,
+        refetch: vi.fn(),
+      });
+
+      const { container } = renderWithProviders(
+        <UpgradeContainer source="test" onClose={vi.fn()} />
+      );
+
+      expect(container.querySelector('[data-testid="higher-plans-upgrade"]')).toBeInTheDocument();
+      expect(container.querySelector('[data-testid="direct-to-paid"]')).not.toBeInTheDocument();
+    });
+
+    it('should render loading modal while subscription is loading', async function loadingWhileSubscriptionLoading() {
+      const { useSwitchboard } = await import('@/hooks/useSwitchboard');
+      vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
+      vi.mocked(useSubscription).mockReturnValue({
+        data: undefined,
+        subscriptions: [],
+        isLoading: true,
+        isError: false,
+        error: null,
+        refetch: vi.fn(),
+      });
+
+      const { container } = renderWithProviders(
+        <UpgradeContainer source="test" onClose={vi.fn()} />
+      );
+
+      // While loading, should render loading modal to prevent incorrect routing
+      expect(container.querySelector('[data-testid="paywall-loading-modal"]')).toBeInTheDocument();
+      expect(container.querySelector('[data-testid="direct-to-paid"]')).not.toBeInTheDocument();
+      expect(container.querySelector('[data-testid="higher-plans-upgrade"]')).not.toBeInTheDocument();
+    });
   });
 });

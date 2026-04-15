@@ -192,10 +192,20 @@ vi.mock('@/hooks/useHivemind', () => ({
   useIsInCohort: vi.fn(() => false),
 }));
 
+const mockUseIsUpgradePolling = vi.fn(() => false)
+vi.mock('@/hooks/useUpgradePurchase', () => ({
+  useIsUpgradePolling: () => mockUseIsUpgradePolling(),
+}));
+
+vi.mock('@/app/develop/components/paywall', () => ({
+  UpgradePollingModal: () => <div data-testid="upgrade-polling-modal">Updating your plan...</div>,
+}));
+
 describe('PricingSection', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.mocked(useIsInCohort).mockReturnValue(false)
+    mockUseIsUpgradePolling.mockReturnValue(false)
     mockInViewValue = false
     sessionStorage.clear()
     authContextOverrides = { isAuthenticated: false, isAuthDisabled: false, isLoading: false }
@@ -553,6 +563,24 @@ describe('PricingSection', () => {
       expect(ctaButton).not.toBeNull()
       await user.click(ctaButton!)
       expect(mockOpenUpgradeModal).toHaveBeenCalledWith('pricing_section.upgrade', 'slp_airo_ai_builder')
+    })
+  })
+
+  describe('upgrade polling modal', () => {
+    it('should render UpgradePollingModal when useIsUpgradePolling returns true', () => {
+      mockUseIsUpgradePolling.mockReturnValue(true)
+
+      renderWithProviders(<PricingSection />)
+
+      expect(screen.getByTestId('upgrade-polling-modal')).toBeInTheDocument()
+    })
+
+    it('should not render UpgradePollingModal when useIsUpgradePolling returns false', () => {
+      mockUseIsUpgradePolling.mockReturnValue(false)
+
+      renderWithProviders(<PricingSection />)
+
+      expect(screen.queryByTestId('upgrade-polling-modal')).not.toBeInTheDocument()
     })
   })
 })

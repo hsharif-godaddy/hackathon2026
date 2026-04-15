@@ -14,6 +14,7 @@ import ServerIcon from '@ux/icon/server'
 import UserIcon from '@ux/icon/user'
 import text from '@ux/text'
 
+import { UpgradePollingModal } from '@/app/develop/components/paywall'
 import PageSection from '@/components/layout/PageSection'
 import PlanPriceDisplay from '@/components/layout/PricingSection/PlanPriceDisplay'
 import { useAuthContext } from '@/components/providers/AuthProvider'
@@ -24,6 +25,7 @@ import { usePricingOffers } from '@/hooks/usePricingOffers'
 import { useSsoSignIn } from '@/hooks/useSsoSignIn'
 import { useSubscription } from '@/hooks/useSubscription'
 import { useTranslations } from '@/hooks/useTranslations'
+import { useIsUpgradePolling } from '@/hooks/useUpgradePurchase'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { PLAN_PUBLISH_LIMITS } from '@/lib/publish-limit'
 import { logger } from '@/lib/request-context'
@@ -86,6 +88,7 @@ export default function PricingSection({ showHighTierPlans = false, onPricingVie
   const t = useTranslations();
   const { data: pricingData, isLoading } = usePricingOffers()
   const openUpgradeModal = useDevelopPageStore((state) => state.openUpgradeModal)
+  const isUpgradePolling = useIsUpgradePolling()
 
   const { isAuthenticated, isAuthDisabled, isLoading: authIsLoading } = useAuthContext()
   const { signIn } = useSsoSignIn()
@@ -227,6 +230,11 @@ export default function PricingSection({ showHighTierPlans = false, onPricingVie
 
   return (
     <div ref={sectionRef}>
+    {isUpgradePolling && (
+      <div className="relative z-[50]">
+        <UpgradePollingModal />
+      </div>
+    )}
     <PageSection data-testid="pricing-section" id="pricing-section">
       {showHighTierPlans ? (
         <div className="w-full max-w-[1700px] mx-auto px-4">
