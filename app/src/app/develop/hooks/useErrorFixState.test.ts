@@ -43,7 +43,8 @@ describe('useErrorFixState', () => {
       expect(onSendFix).not.toHaveBeenCalled()
     })
 
-    it('escalates to unresolved when agent finishes with error still pending', () => {
+    it('escalates to unresolved after grace period when agent finishes with error still pending', () => {
+      vi.useFakeTimers()
       const { result, setIsProcessing } = setup(true)
 
       act(() => {
@@ -53,10 +54,94 @@ describe('useErrorFixState', () => {
       })
       expect(result.current.errorFixState).toBe('pending')
 
-      // Agent finishes processing
+      // Agent finishes processing — grace period starts
       act(() => setIsProcessing(false))
 
+      // Still pending during grace period (transient errors may resolve)
+      expect(result.current.errorFixState).toBe('pending')
+
+      // After grace period, escalates to unresolved
+      act(() => vi.advanceTimersByTime(3000))
+
       expect(result.current.errorFixState).toBe('unresolved')
+      vi.useRealTimers()
+    })
+
+    it('holds error as pending when received during grace window after agent finishes', () => {
+      vi.useFakeTimers()
+      const { result, setIsProcessing } = setup(true)
+
+      // Agent finishes — grace window starts, no error yet
+      act(() => setIsProcessing(false))
+      expect(result.current.errorFixState).toBe('none')
+
+      // Error arrives during grace window (agent no longer processing)
+      act(() => {
+        result.current.actions.handleErrorFixRequest({ errorMessage: 'navItems is not defined' })
+      })
+      // inGraceWindowRef keeps it pending, not unresolved
+      expect(result.current.errorFixState).toBe('pending')
+
+      // Grace period elapses without HMR resolution → escalate
+      act(() => vi.advanceTimersByTime(3000))
+      expect(result.current.errorFixState).toBe('unresolved')
+
+      vi.useRealTimers()
+    })
+
+    it('shows compile error immediately when new error arrives after resolved during grace window', () => {
+      vi.useFakeTimers()
+      const { result, setIsProcessing } = setup(true)
+
+      act(() => {
+        result.current.actions.handleErrorFixRequest({
+          errorMessage: 'first error'
+        })
+      })
+
+      // Agent finishes — grace window starts
+      act(() => setIsProcessing(false))
+      expect(result.current.errorFixState).toBe('pending')
+
+      // HMR resolves the first error during grace window
+      act(() => { result.current.actions.handleErrorFixResolved() })
+      expect(result.current.errorFixState).toBe('none')
+
+      // A NEW compile error arrives (agent is idle, grace window should be closed)
+      act(() => {
+        result.current.actions.handleErrorFixRequest({
+          errorMessage: 'second error'
+        })
+      })
+      // Should show immediately as unresolved, not held as pending
+      expect(result.current.errorFixState).toBe('unresolved')
+
+      vi.useRealTimers()
+    })
+
+    it('returns to none when error resolves during grace period after agent finishes', () => {
+      vi.useFakeTimers()
+      const { result, setIsProcessing } = setup(true)
+
+      act(() => {
+        result.current.actions.handleErrorFixRequest({
+          errorMessage: 'navItems is not defined'
+        })
+      })
+      expect(result.current.errorFixState).toBe('pending')
+
+      act(() => setIsProcessing(false))
+      expect(result.current.errorFixState).toBe('pending')
+
+      // HMR resolves before 3s timer fires
+      act(() => { result.current.actions.handleErrorFixResolved() })
+      expect(result.current.errorFixState).toBe('none')
+      expect(result.current.pendingError).toBeNull()
+
+      // Grace timer must be cancelled — no escalation after 3s
+      act(() => vi.advanceTimersByTime(3000))
+      expect(result.current.errorFixState).toBe('none')
+      vi.useRealTimers()
     })
 
     it('returns to none when error resolved before agent finishes', () => {
@@ -275,6 +360,7 @@ describe('useErrorFixState', () => {
 
   describe('runtime error dedup', () => {
     it('does not auto-send the same runtime error signature twice', () => {
+      vi.useFakeTimers()
       const { result, onSendFix, setIsProcessing } = setup(false)
 
       const error: PendingError = {
@@ -289,15 +375,19 @@ describe('useErrorFixState', () => {
       // Simulate agent finishing without resolving the error
       act(() => setIsProcessing(true))
       act(() => setIsProcessing(false))
+      // Wait for grace period to elapse
+      act(() => vi.advanceTimersByTime(3000))
       expect(result.current.errorFixState).toBe('unresolved')
 
       // Same error arrives again - should NOT auto-send
       act(() => { result.current.actions.handleErrorFixRequest(error) })
       expect(onSendFix).toHaveBeenCalledTimes(1) // still 1
       expect(result.current.errorFixState).toBe('unresolved')
+      vi.useRealTimers()
     })
 
     it('auto-sends a different error signature', () => {
+      vi.useFakeTimers()
       const { result, onSendFix, setIsProcessing } = setup(false)
 
       // First error
@@ -308,9 +398,10 @@ describe('useErrorFixState', () => {
       })
       expect(onSendFix).toHaveBeenCalledTimes(1)
 
-      // Agent finishes
+      // Agent finishes + grace period
       act(() => setIsProcessing(true))
       act(() => setIsProcessing(false))
+      act(() => vi.advanceTimersByTime(3000))
 
       // Different error
       act(() => {
@@ -319,6 +410,7 @@ describe('useErrorFixState', () => {
         })
       })
       expect(onSendFix).toHaveBeenCalledTimes(2)
+      vi.useRealTimers()
     })
 
     it('resets dedup after error resolves', () => {

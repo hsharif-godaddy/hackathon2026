@@ -31,6 +31,14 @@ export interface ErrorFixResult {
 const FALLBACK_TIMEOUT_MS = 5000
 
 /**
+ * Grace period (ms) after agent finishes processing before escalating
+ * to unresolved. Transient HMR errors resolve on their own once Vite
+ * processes all file changes. This delay avoids flashing "Preview Error"
+ * for errors that clear within seconds of the agent completing its work.
+ */
+const POST_PROCESSING_GRACE_MS = 3000
+
+/**
  * Manages the three-state error fix lifecycle:
  *   none → pending (agent working) → unresolved (agent done, error persists)
  *
@@ -48,6 +56,8 @@ export function useErrorFixState(
   const errorFixStateRef = useRef<ErrorFixState>('none')
   const pendingErrorRef = useRef<PendingError | null>(null)
   const isProcessingRef = useRef(isProcessing)
+  const graceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const inGraceWindowRef = useRef(false)
   // Track which error signature was already auto-sent to avoid infinite loops
   const autoSentSignatureRef = useRef<string | null>(null)
 
@@ -55,7 +65,10 @@ export function useErrorFixState(
   errorFixStateRef.current = errorFixState
   isProcessingRef.current = isProcessing
 
-  // When agent finishes processing, escalate pending errors to unresolved
+  // When agent finishes processing, delay escalation by 3 seconds to let
+  // transient HMR errors resolve. If the error clears during the grace
+  // period (via handleErrorFixResolved / vite:afterUpdate), the "Preview
+  // Error" dialog never appears.
   const prevIsProcessingRef = useRef(isProcessing)
   useEffect(() => {
     const wasProcessing = prevIsProcessingRef.current
@@ -63,13 +76,27 @@ export function useErrorFixState(
 
     if (wasProcessing && !isProcessing) {
       setUserRequestedFix(false)
-      if (pendingErrorRef.current) {
-        setErrorFixState('unresolved')
-        errorFixStateRef.current = 'unresolved'
-      } else {
-        setErrorFixState('none')
-        errorFixStateRef.current = 'none'
+      inGraceWindowRef.current = true
+      if (graceTimerRef.current) clearTimeout(graceTimerRef.current)
+      graceTimerRef.current = setTimeout(() => {
+        graceTimerRef.current = null
+        inGraceWindowRef.current = false
+        if (pendingErrorRef.current && !isProcessingRef.current) {
+          setErrorFixState('unresolved')
+          errorFixStateRef.current = 'unresolved'
+        } else if (!pendingErrorRef.current) {
+          setErrorFixState('none')
+          errorFixStateRef.current = 'none'
+        }
+      }, POST_PROCESSING_GRACE_MS)
+    }
+
+    return () => {
+      if (graceTimerRef.current) {
+        clearTimeout(graceTimerRef.current)
+        graceTimerRef.current = null
       }
+      inGraceWindowRef.current = false
     }
   }, [isProcessing])
 
@@ -103,7 +130,9 @@ export function useErrorFixState(
 
     if (errorFixStateRef.current === 'pending') return // already working on a fix
 
-    if (isProcessingRef.current) {
+    if (isProcessingRef.current || inGraceWindowRef.current) {
+      // Agent is actively writing OR just finished — error is likely transient.
+      // Hold it as pending; the grace timer will escalate if it persists.
       setErrorFixState('pending')
       errorFixStateRef.current = 'pending'
     } else if (error.errorData) {
@@ -122,7 +151,7 @@ export function useErrorFixState(
       setFixAttemptCount(n => n + 1)
       onSendFix(error)
     } else {
-      // Compile error with agent idle — show unresolved dialog immediately
+      // Compile error with agent idle (no recent processing) — show immediately
       setErrorFixState('unresolved')
       errorFixStateRef.current = 'unresolved'
     }
@@ -136,6 +165,11 @@ export function useErrorFixState(
     setUserRequestedFix(false)
     setFixAttemptCount(0)
     autoSentSignatureRef.current = null
+    if (graceTimerRef.current) {
+      clearTimeout(graceTimerRef.current)
+      graceTimerRef.current = null
+      inGraceWindowRef.current = false
+    }
   }, [])
 
   const handleDismissError = useCallback(() => {
@@ -146,6 +180,11 @@ export function useErrorFixState(
     setUserRequestedFix(false)
     setFixAttemptCount(0)
     autoSentSignatureRef.current = null
+    if (graceTimerRef.current) {
+      clearTimeout(graceTimerRef.current)
+      graceTimerRef.current = null
+      inGraceWindowRef.current = false
+    }
   }, [])
 
   return {
