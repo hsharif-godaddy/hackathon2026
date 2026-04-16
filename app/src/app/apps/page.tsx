@@ -7,7 +7,7 @@ import Pagination from '@ux/pagination'
 import Spinner from '@ux/spinner'
 import Tag from '@ux/tag'
 
-import AppCard, { AppCardEmptyState } from '@/app/apps/AppCard'
+import AppCard, { AppCardEmptyState, TransferAppCard } from '@/app/apps/AppCard'
 import AcceptTransferDialog from '@/app/apps/components/AcceptTransferDialog'
 import { APPS_GRID_PAGE_SIZE } from '@/app/apps/constants'
 import { ProtectedRoute } from '@/components/auth'
@@ -121,11 +121,13 @@ function SitesPageContent() {
         <div className="mb-4 flex items-center justify-between" data-testid="apps-page-title">
           <Box orientation="horizontal" gap="md">
             {t('builder_apps_title')}
-            <div>
-              <Tag emphasis="info">
-                {t('builder_apps_count', { count: totalSites })}
-              </Tag>
-            </div>
+            {totalSites > 0 && (
+              <div>
+                <Tag emphasis="info">
+                  {t('builder_apps_count', { count: totalSites })}
+                </Tag>
+              </div>
+            )}
           </Box>
         </div>
 
@@ -142,7 +144,8 @@ function SitesPageContent() {
         )}
 
         <div className="grid gap-2 md:gap-3 md:grid-cols-2 xl:grid-cols-3">
-          <AppCardEmptyState
+          <AppCardEmptyState />
+          <TransferAppCard
             isTransferEnabled={isTransferEnabled}
             onAcceptTransfer={() => setIsAcceptTransferOpen(true)}
           />

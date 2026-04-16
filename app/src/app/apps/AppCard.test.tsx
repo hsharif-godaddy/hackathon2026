@@ -14,7 +14,7 @@ import { useSitesStore } from '@/stores/useSitesStore';
 import { createMockSite, mockInstrumentation, mockRouter } from '@/tests/mocks';
 import { renderWithProviders } from '@/tests/test-utils';
 import * as instrumentation from '@/utils/instrumentation';
-import AppCard, { AppCardEmptyState } from './AppCard';
+import AppCard, { AppCardEmptyState, TransferAppCard } from './AppCard';
 
 vi.mock('@/lib/gasket-config');
 vi.mock('@/app/apps/components/TransferInitiateDialog', () => ({ default: () => null }));
@@ -959,19 +959,37 @@ describe('AppCardEmptyState', () => {
 
     expect(screen.getByText('builder_apps_empty_create')).toBeInTheDocument();
   });
+});
 
-  it('should render accept transfer menu item with data-eid when transfer is enabled', async function acceptTransferEid() {
+describe('TransferAppCard', () => {
+  it('should render transfer card with data-eid when transfer is enabled', () => {
     const onAcceptTransfer = vi.fn();
-    const { user } = renderWithProviders(
-      <AppCardEmptyState isTransferEnabled={true} onAcceptTransfer={onAcceptTransfer} />
+    renderWithProviders(
+      <TransferAppCard isTransferEnabled={true} onAcceptTransfer={onAcceptTransfer} />
     );
 
-    await user.click(screen.getByRole('button', { name: 'Actions' }));
+    const transferCard = screen.getByTestId('transfer-app-card');
+    expect(transferCard).toBeInTheDocument();
+    expect(transferCard).toHaveAttribute('data-eid', 'apps.emptystate.accept_transfer.click');
+  });
 
-    await waitFor(() => {
-      const acceptItem = screen.getByTestId('empty-state-accept-transfer');
-      expect(acceptItem).toBeInTheDocument();
-      expect(acceptItem).toHaveAttribute('data-eid', 'apps.emptystate.accept_transfer.click');
-    });
+  it('should call onAcceptTransfer when clicked', async () => {
+    const onAcceptTransfer = vi.fn();
+    const { user } = renderWithProviders(
+      <TransferAppCard isTransferEnabled={true} onAcceptTransfer={onAcceptTransfer} />
+    );
+
+    await user.click(screen.getByTestId('transfer-app-card'));
+
+    expect(onAcceptTransfer).toHaveBeenCalled();
+  });
+
+  it('should not render when transfer is disabled', () => {
+    const onAcceptTransfer = vi.fn();
+    renderWithProviders(
+      <TransferAppCard isTransferEnabled={false} onAcceptTransfer={onAcceptTransfer} />
+    );
+
+    expect(screen.queryByTestId('transfer-app-card')).not.toBeInTheDocument();
   });
 });

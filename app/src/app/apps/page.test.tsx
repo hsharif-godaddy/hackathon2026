@@ -155,10 +155,10 @@ describe('Sites Page', () => {
       expect(screen.getByText('builder_apps_empty_create')).toBeInTheDocument();
     });
 
-    it('should show 0 apps total tag', () => {
+    it('should hide apps count tag when no sites', () => {
       renderWithProviders(<Sites />);
 
-      expect(screen.getByText('builder_apps_count')).toBeInTheDocument();
+      expect(screen.queryByText('builder_apps_count')).not.toBeInTheDocument();
     });
   });
 
@@ -348,16 +348,16 @@ describe('Sites Page', () => {
   });
 
   describe('renders transfer UI', () => {
-    it('should render accept transfer button on empty state card', () => {
+    it('should render transfer app card', () => {
       renderWithProviders(<Sites />);
 
-      expect(screen.getByTestId('empty-state-accept-transfer')).toBeInTheDocument();
+      expect(screen.getByTestId('transfer-app-card')).toBeInTheDocument();
     });
 
-    it('should open accept transfer dialog via empty state button', async function openDialog() {
+    it('should open accept transfer dialog via transfer card', async function openDialog() {
       const { user } = renderWithProviders(<Sites />);
 
-      await user.click(screen.getByTestId('empty-state-accept-transfer'));
+      await user.click(screen.getByTestId('transfer-app-card'));
 
       await waitFor(() => {
         expect(screen.getByTestId('accept-transfer-dialog')).toBeInTheDocument();
@@ -367,7 +367,7 @@ describe('Sites Page', () => {
     it('should close accept transfer dialog when dismissed', async function closeDialog() {
       const { user } = renderWithProviders(<Sites />);
 
-      await user.click(screen.getByTestId('empty-state-accept-transfer'));
+      await user.click(screen.getByTestId('transfer-app-card'));
 
       await waitFor(() => {
         expect(screen.getByTestId('accept-transfer-dialog')).toBeInTheDocument();
@@ -383,7 +383,7 @@ describe('Sites Page', () => {
     it('should keep dialog open when loading starts mid-operation', async function dialogSurvivesLoading() {
       const { user } = renderWithProviders(<Sites />);
 
-      await user.click(screen.getByTestId('empty-state-accept-transfer'));
+      await user.click(screen.getByTestId('transfer-app-card'));
 
       await waitFor(() => {
         expect(screen.getByTestId('accept-transfer-dialog')).toBeInTheDocument();
@@ -396,12 +396,12 @@ describe('Sites Page', () => {
   });
 
   describe('hides transfer UI when flag is disabled', () => {
-    it('should not show accept transfer menu when flag is off', () => {
+    it('should not show transfer card when flag is off', () => {
       vi.mocked(useSwitchboard).mockReturnValue({ data: false, isLoading: false, error: null } as ReturnType<typeof useSwitchboard>);
 
       renderWithProviders(<Sites />);
 
-      expect(screen.queryByTestId('empty-card-menu-button')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('transfer-app-card')).not.toBeInTheDocument();
     });
   });
 

@@ -5,6 +5,7 @@ import { FormattedMessage } from 'react-intl';
 import Box from '@ux/box'
 import Button from '@ux/button'
 import Card, { MediaCard } from '@ux/card'
+import ArrowRightIcon from '@ux/icon/arrow-right'
 import CopyIcon from '@ux/icon/copy'
 import EditIcon from '@ux/icon/edit'
 import MenuIcon from '@ux/icon/menu'
@@ -709,40 +710,12 @@ export default function AppCard({ site }: { site: SiteInfo }) {
   )
 }
 
-export const AppCardEmptyState = ({ onAcceptTransfer, isTransferEnabled }: { onAcceptTransfer?: () => void, isTransferEnabled?: boolean }) => {
+export const AppCardEmptyState = () => {
   const t = useTranslations();
   const router = useRouter()
 
   return (
-    <Card className="items-center justify-center relative">
-      {isTransferEnabled && onAcceptTransfer && (
-        <div className="absolute top-2 right-2">
-          <Menu id="empty-card-menu" size="sm" closeOnSelect>
-            <MenuButton
-              aria-label={t('builder_apps_menu_actions', undefined, 'Actions')}
-              data-testid="empty-card-menu-button"
-              design="inline"
-              size="sm"
-              icon={<MenuIcon />}
-            />
-            <MenuList stretch>
-              <MenuItem
-                onClick={() => {
-                  if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
-                  onAcceptTransfer()
-                }}
-                data-testid="empty-state-accept-transfer"
-                data-eid={generateClickEID('apps.emptystate.accept_transfer')}
-              >
-                <Box orientation="horizontal" gap="sm">
-                  <ShareIcon />
-                  <text.span>{t('builder_transfer_accept_button', undefined, 'Accept Transfer')}</text.span>
-                </Box>
-              </MenuItem>
-            </MenuList>
-          </Menu>
-        </div>
-      )}
+    <Card className="items-center justify-center">
       <button
         data-testid="create-app-card"
         onClick={() => router.push(`/`)}
@@ -750,6 +723,26 @@ export const AppCardEmptyState = ({ onAcceptTransfer, isTransferEnabled }: { onA
       >
         <PlusIcon className="size-3 text-ai" />
         <text.p>{t('builder_apps_empty_create')}</text.p>
+      </button>
+    </Card>
+  )
+}
+
+export const TransferAppCard = ({ onAcceptTransfer, isTransferEnabled }: { onAcceptTransfer?: () => void, isTransferEnabled?: boolean }) => {
+  const t = useTranslations();
+
+  if (!isTransferEnabled || !onAcceptTransfer) return null
+
+  return (
+    <Card className="items-center justify-center">
+      <button
+        data-testid="transfer-app-card"
+        data-eid={generateClickEID('apps.emptystate.accept_transfer')}
+        onClick={onAcceptTransfer}
+        className="w-full h-full flex flex-col gap-1 items-center justify-center cursor-pointer"
+      >
+        <ArrowRightIcon className="size-3 text-ai" />
+        <text.p>{t('builder_transfer_accept_button', undefined, 'Accept Transfer')}</text.p>
       </button>
     </Card>
   )
