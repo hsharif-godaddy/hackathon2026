@@ -88,7 +88,6 @@ func (c *AgentsEnvCheck) Run(_ context.Context, projectRoot string) preflight.Ch
 			"AUTH_TYPE",
 			"OPENAI_API_KEY",
 			"OPENAI_BASE_URL",
-			"AWS_PROFILE",
 			"ANTHROPIC_API_KEY",
 			"ANTHROPIC_BASE_URL",
 		},
