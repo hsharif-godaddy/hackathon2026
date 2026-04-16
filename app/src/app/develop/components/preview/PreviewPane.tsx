@@ -526,6 +526,33 @@ export default function PreviewPane({
     )
   }
 
+  // Cookie verification failed - browser is blocking cookies needed for preview auth
+  if (serverState?.cookieVerified === false && serverState.url) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center px-4" data-testid="preview-cookie-blocked">
+        <h3 className="text-lg font-semibold mb-1">{t('builder_preview_error_title')}</h3>
+        <p className="text-sm mb-2 text-center max-w-md">
+          {t('builder_preview_cookie_blocked_text', undefined, 'Your browser is blocking cookies needed to display the preview. This can happen in incognito mode or when third-party cookies are disabled.')}
+        </p>
+        <div className="flex gap-2 items-center">
+          <Button
+            onClick={handleManualRetry}
+            design="tertiary"
+            text={t('builder_common_try_again')}
+          />
+          <a
+            href={serverState.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm underline text-intents-ux-link-color"
+          >
+            {t('builder_preview_open_new_tab', undefined, 'Open preview in new tab')}
+          </a>
+        </div>
+      </div>
+    )
+  }
+
   // Error state when iframe fails to load
   if (iframeError && previewUrl) {
     return (

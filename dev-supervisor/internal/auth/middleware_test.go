@@ -45,35 +45,35 @@ func newTestMiddleware(t *testing.T, claims *auth.JWTClaims) http.Handler {
 	return mw.Wrap(inner)
 }
 
-// findAuthCookie returns the first active airo_preview cookie from the recorder's Set-Cookie headers.
+// findAuthCookie returns the first active preview_auth cookie from the recorder's Set-Cookie headers.
 // Skips deletion entries (MaxAge < 0) so it returns the real cookie.
 func findAuthCookie(t *testing.T, rec *httptest.ResponseRecorder) *http.Cookie {
 	t.Helper()
 	for _, c := range rec.Result().Cookies() {
-		if c.Name == "airo_preview" && c.MaxAge >= 0 {
+		if c.Name == "preview_auth" && c.MaxAge >= 0 {
 			return c
 		}
 	}
 	return nil
 }
 
-// findAuthCookies returns all active airo_preview cookies (MaxAge >= 0).
+// findAuthCookies returns all active preview_auth cookies (MaxAge >= 0).
 func findAuthCookies(t *testing.T, rec *httptest.ResponseRecorder) []*http.Cookie {
 	t.Helper()
 	var cookies []*http.Cookie
 	for _, c := range rec.Result().Cookies() {
-		if c.Name == "airo_preview" && c.MaxAge >= 0 {
+		if c.Name == "preview_auth" && c.MaxAge >= 0 {
 			cookies = append(cookies, c)
 		}
 	}
 	return cookies
 }
 
-// findAuthDeletionCookie returns the airo_preview deletion cookie (MaxAge < 0).
+// findAuthDeletionCookie returns the preview_auth deletion cookie (MaxAge < 0).
 func findAuthDeletionCookie(t *testing.T, rec *httptest.ResponseRecorder) *http.Cookie {
 	t.Helper()
 	for _, c := range rec.Result().Cookies() {
-		if c.Name == "airo_preview" && c.MaxAge < 0 {
+		if c.Name == "preview_auth" && c.MaxAge < 0 {
 			return c
 		}
 	}
@@ -100,7 +100,7 @@ func TestAuthCookie_SetOnAuthorizationHeader(t *testing.T) {
 
 	cookies := findAuthCookies(t, rec)
 	if len(cookies) != 2 {
-		t.Fatalf("expected 2 active airo_preview cookies (unpartitioned + partitioned), got %d", len(cookies))
+		t.Fatalf("expected 2 active preview_auth cookies (unpartitioned + partitioned), got %d", len(cookies))
 	}
 
 	// First cookie: unpartitioned (for top-level navigation / PaaS flow)
@@ -136,7 +136,7 @@ func TestAuthCookie_SetOnAuthorizationHeader(t *testing.T) {
 	// No deletion cookie should exist — we now set both variants
 	del := findAuthDeletionCookie(t, rec)
 	if del != nil {
-		t.Error("airo_preview deletion cookie should NOT be set (both variants are now set directly)")
+		t.Error("preview_auth deletion cookie should NOT be set (both variants are now set directly)")
 	}
 }
 
@@ -149,7 +149,7 @@ func TestAuthCookie_NotSetOnCookieAuth(t *testing.T) {
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/page", nil)
-	req.AddCookie(&http.Cookie{Name: "airo_preview", Value: "test-token"})
+	req.AddCookie(&http.Cookie{Name: "preview_auth", Value: "test-token"})
 	rec := httptest.NewRecorder()
 
 	handler.ServeHTTP(rec, req)
@@ -160,12 +160,12 @@ func TestAuthCookie_NotSetOnCookieAuth(t *testing.T) {
 
 	c := findAuthCookie(t, rec)
 	if c != nil {
-		t.Error("airo_preview cookie should NOT be set when auth comes from cookie")
+		t.Error("preview_auth cookie should NOT be set when auth comes from cookie")
 	}
 
 	del := findAuthDeletionCookie(t, rec)
 	if del != nil {
-		t.Error("airo_preview deletion cookie should NOT be set when auth comes from cookie")
+		t.Error("preview_auth deletion cookie should NOT be set when auth comes from cookie")
 	}
 }
 
@@ -185,7 +185,7 @@ func TestAuthCookie_MaxAgeDerivedFromExp(t *testing.T) {
 
 	c := findAuthCookie(t, rec)
 	if c == nil {
-		t.Fatal("airo_preview cookie not set")
+		t.Fatal("preview_auth cookie not set")
 	}
 
 	// MaxAge should be approximately 30 minutes (1800s), allow 5s tolerance
@@ -207,7 +207,7 @@ func TestAuthCookie_MaxAgeFallbackWhenNoExp(t *testing.T) {
 
 	c := findAuthCookie(t, rec)
 	if c == nil {
-		t.Fatal("airo_preview cookie not set")
+		t.Fatal("preview_auth cookie not set")
 	}
 
 	if c.MaxAge != 43200 {

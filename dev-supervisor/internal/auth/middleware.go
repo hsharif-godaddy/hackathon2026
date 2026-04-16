@@ -81,7 +81,7 @@ func (m *JWTMiddleware) Wrap(next http.Handler) http.Handler {
 		// Fallback to cookie if no Authorization header (for iframe navigation)
 		// Uses a distinct name to avoid colliding with GoDaddy SSO's "auth_idp" cookie
 		if token == "" {
-			if cookie, err := r.Cookie("airo_preview"); err == nil && cookie.Value != "" {
+			if cookie, err := r.Cookie("preview_auth"); err == nil && cookie.Value != "" {
 				token = cookie.Value
 				slog.Debug("jwt.middleware.token_from_cookie", "path", r.URL.Path)
 			}
@@ -125,7 +125,7 @@ func (m *JWTMiddleware) Wrap(next http.Handler) http.Handler {
 			"siteID", result.Claims.SiteID)
 
 		// Set cookie on preview domain for iframe navigation
-		// Named "airo_preview" to avoid colliding with GoDaddy SSO's "auth_idp" cookie
+		// Named "preview_auth" to avoid colliding with GoDaddy SSO's "auth_idp" cookie
 		// which shares the .dev-godaddy.com domain in local dev
 		if tokenFromHeader != "" {
 			// Only set cookie if token came from Authorization header (not from cookie itself to avoid loops)
@@ -136,7 +136,7 @@ func (m *JWTMiddleware) Wrap(next http.Handler) http.Handler {
 
 			// Unpartitioned cookie for top-level navigation (PaaS: user opens preview URL directly).
 			http.SetCookie(w, &http.Cookie{
-				Name:     "airo_preview",
+				Name:     "preview_auth",
 				Value:    token,
 				Path:     "/",
 				HttpOnly: true,
@@ -148,7 +148,7 @@ func (m *JWTMiddleware) Wrap(next http.Handler) http.Handler {
 			// Partitioned (CHIPS) cookie for iframe embedding (AAB: builder embeds preview).
 			// Works even when third-party cookies are blocked (e.g. incognito).
 			http.SetCookie(w, &http.Cookie{
-				Name:        "airo_preview",
+				Name:        "preview_auth",
 				Value:       token,
 				Path:        "/",
 				HttpOnly:    true,

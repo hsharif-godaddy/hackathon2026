@@ -120,6 +120,10 @@ func (p *HTTPProxy) Start() error {
 	// Add canary checks endpoint for infrastructure verification
 	mux.HandleFunc("/airo/canary_checks", handlerWithName("health", handleCanaryChecks))
 
+	// Add auth-check endpoint (behind JWT middleware - NOT excluded)
+	// Used by builder to verify cookie was stored after auth bootstrap
+	mux.HandleFunc("/airo/auth-check", handlerWithName("auth-check", handleAuthCheck))
+
 	// Add media slot handlers - use app directory for manifest (not static root)
 	// The manifest is written to the app root by the agents service, not to the build output
 	appDir := os.Getenv("CUSTOMER_APP_DIR")

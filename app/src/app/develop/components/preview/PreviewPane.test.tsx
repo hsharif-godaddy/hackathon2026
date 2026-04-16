@@ -246,6 +246,41 @@ describe('PreviewPane', () => {
     expect(mockDevelopPageStore.setPreviewViewMode).toHaveBeenCalledWith(PreviewViewMode.DESKTOP);
   });
 
+  it('should show cookie-blocked overlay when cookieVerified is false', () => {
+    mockServerPollingStore.getServerState = vi.fn(() => ({
+      isReady: false,
+      url: 'http://localhost:3000',
+      healthCheckPassed: true,
+      cookieVerified: false,
+    }));
+
+    renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
+
+    const overlay = screen.getByTestId('preview-cookie-blocked');
+    expect(overlay).toBeInTheDocument();
+
+    // Retry button present
+    expect(screen.getByText('builder_common_try_again')).toBeInTheDocument();
+
+    // Open-in-new-tab link with correct href (defaultMessage used since messages={})
+    const link = screen.getByText('Open preview in new tab');
+    expect(link).toHaveAttribute('href', 'http://localhost:3000');
+    expect(link).toHaveAttribute('target', '_blank');
+  });
+
+  it('should not show cookie-blocked overlay when cookieVerified is undefined', () => {
+    mockServerPollingStore.getServerState = vi.fn(() => ({
+      isReady: false,
+      url: 'http://localhost:3000',
+      healthCheckPassed: true,
+      cookieVerified: undefined,
+    }));
+
+    renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
+
+    expect(screen.queryByTestId('preview-cookie-blocked')).not.toBeInTheDocument();
+  });
+
   it('should show error when iframe fails to load', async () => {
     mockServerPollingStore.getServerState = vi.fn(() => ({ isReady: false, url: null, error: 'Server failed' }));
 

@@ -64,6 +64,7 @@ export interface ServerState {
   lastActivity?: string
   isReady: boolean
   healthCheckPassed: boolean
+  cookieVerified?: boolean
   error?: string
 }
 
@@ -92,7 +93,7 @@ interface ServerPollingStore {
   _pollServer: (appId: string) => Promise<void>
   _scheduleNextPoll: (appId: string) => void
   _calculateNextInterval: (pollCount: number) => number
-  _checkUrlHealth: (url: string, appId: string) => Promise<boolean>
+  _checkUrlHealth: (url: string, appId: string) => Promise<{ healthy: boolean; cookieVerified?: boolean }>
 }
 
 // Adaptive polling intervals (in ms)
@@ -141,6 +142,10 @@ export const useServerPollingStore = create<ServerPollingStore>()(
         if (existingState) {
           // Reuse existing state to preserve server info, poll count, etc.
           existingState.isPolling = true
+          // Reset cookieVerified so retry starts with clean state
+          if (existingState.server) {
+            existingState.server.cookieVerified = undefined
+          }
         } else {
           // Create new state
           state.servers.set(appId, {
@@ -246,10 +251,13 @@ export const useServerPollingStore = create<ServerPollingStore>()(
         // setting the preview-domain auth cookie via Authorization header.
         // Use effectiveAppId to ensure JWT is requested for the real allocated app ID
         let healthCheckPassed = false
+        let cookieVerified: boolean | undefined
         if ((serverData.status === 'running' || serverData.status === 'starting') && serverData.url) {
           logger.debug('server-polling.health-check', { message: 'Performing health check', appId: effectiveAppId, url: serverData.url, status: serverData.status })
-          healthCheckPassed = await get()._checkUrlHealth(serverData.url, effectiveAppId)
-          logger.debug('server-polling.health-check-result', { message: 'Health check result', appId: effectiveAppId, passed: healthCheckPassed })
+          const result = await get()._checkUrlHealth(serverData.url, effectiveAppId)
+          healthCheckPassed = result.healthy
+          cookieVerified = result.cookieVerified
+          logger.debug('server-polling.health-check-result', { message: 'Health check result', appId: effectiveAppId, passed: healthCheckPassed, cookieVerified })
         }
 
         set((state) => {
@@ -263,6 +271,7 @@ export const useServerPollingStore = create<ServerPollingStore>()(
               lastActivity: serverData.lastActivity,
               isReady: serverData.status === 'running' && !!serverData.url && healthCheckPassed,
               healthCheckPassed,
+              cookieVerified,
               error: undefined
             }
             currentState.pollCount++
@@ -352,7 +361,7 @@ export const useServerPollingStore = create<ServerPollingStore>()(
       }
     },
 
-    _checkUrlHealth: async (url: string, appId: string): Promise<boolean> => {
+    _checkUrlHealth: async (url: string, appId: string): Promise<{ healthy: boolean; cookieVerified?: boolean }> => {
       try {
         const controller = new AbortController()
         const timeoutId = setTimeout(() => controller.abort(), 5000)
@@ -368,7 +377,7 @@ export const useServerPollingStore = create<ServerPollingStore>()(
         // 3. Set airo_preview cookie on preview app's domain
         // 4. Subsequent iframe navigation uses the cookie automatically
         const token = await getPreviewAppToken(appId)
-        
+
         // Debug: Log URL being checked to detect stale allocation IDs
         const urlHostname = new URL(url).hostname
         logger.debug('server-polling.health-check.url', { appId, url, hostname: urlHostname })
@@ -388,14 +397,61 @@ export const useServerPollingStore = create<ServerPollingStore>()(
 
         // Validate response status
         // Only 2xx is healthy - redirects indicate auth failure, 4xx/5xx are errors
-        return response.ok
+        if (!response.ok) {
+          return { healthy: false }
+        }
+
+        // Verify cookie was stored by calling auth-check without Authorization header.
+        // If the browser stored the cookie, this request will authenticate via cookie.
+        // If third-party cookies are blocked and CHIPS isn't supported, this will fail.
+        // Verify cookie was stored: only 401 means "cookie not stored" (cookieVerified=false).
+        // Other errors (5xx, network) leave cookieVerified=undefined to avoid false positives.
+        let cookieVerified: boolean | undefined
+        if (token) {
+          const authCheckUrl = new URL('/airo/auth-check', url).href
+          const verifyController = new AbortController()
+          const verifyTimeoutId = setTimeout(() => verifyController.abort(), 5000)
+          try {
+            const verifyResponse = await fetch(authCheckUrl, {
+              method: 'GET',
+              credentials: 'include',
+              cache: 'no-store',
+              signal: verifyController.signal
+            })
+            if (verifyResponse.ok) {
+              cookieVerified = true
+            } else if (verifyResponse.status === 401) {
+              cookieVerified = false
+              logger.warn('server-polling.cookie-verification.failed', {
+                message: 'Cookie not stored - browser may be blocking third-party cookies',
+                appId
+              })
+            } else {
+              logger.warn('server-polling.cookie-verification.unexpected', {
+                message: 'Unexpected status from auth-check',
+                appId,
+                status: verifyResponse.status
+              })
+            }
+          } catch (verifyError) {
+            logger.warn('server-polling.cookie-verification.error', {
+              message: 'Cookie verification request failed',
+              appId,
+              error: verifyError instanceof Error ? verifyError.message : String(verifyError)
+            })
+          } finally {
+            clearTimeout(verifyTimeoutId)
+          }
+        }
+
+        return { healthy: true, cookieVerified }
       } catch (error) {
         if (error instanceof Error && error.name === 'AbortError') {
           logger.debug('server-polling.health-check.timeout', { message: 'Health check timed out', appId, url })
         } else {
           logger.debug('server-polling.health-check.failed', { message: 'Health check failed', appId, url, error: error instanceof Error ? error.message : String(error) })
         }
-        return false
+        return { healthy: false }
       }
     }
   })),
