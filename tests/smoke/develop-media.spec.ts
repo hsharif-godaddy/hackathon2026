@@ -166,4 +166,16 @@ test.describe('Develop Page - Media Tab', () => {
     await deleteAllSitesViaAPI(page, `${getSpecPrefix('media')}`);
     console.log('✅ Test complete');
   });
+
+  test.skip('Logo grid — select variant, Save, slot swap and placement follow-up', async () => {
+    // Skip reason: Needs a develop session where media__generate_logo completed in chat (same
+    // AI latency / flake constraints as the image flow test above). Enable when smoke env can
+    // reliably finish logo generation or when a fixture app exposes the logo grid widget.
+    //
+    // Target flow when implemented:
+    // 1. Open develop for an app whose chat shows the logo tool result grid.
+    // 2. Click a non-default thumbnail if multiple logos exist.
+    // 3. Click Save (builder_common_save); expect slot PUT success and optional preview RELOAD_MEDIA_SLOT.
+    // 4. Confirm chat shows the short placement user line and agent run without queue errors.
+  });
 });

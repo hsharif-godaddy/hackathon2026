@@ -3,14 +3,17 @@
 import clsx from 'clsx'
 import { useCallback, useEffect, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
+import Box from '@ux/box'
 import Button from '@ux/button'
 
 import { useSendUserMessage } from '@/app/develop/components/chat/ChatContext'
+import OptionButton from '@/app/develop/components/tool-renderers/OptionButton'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
 import { dynamicApiConfigService } from '@/config/dynamic-api'
 import { useTranslations } from '@/hooks/useTranslations'
 import { regenerateToken } from '@/lib/jwt-regeneration'
 import { logger } from '@/lib/request-context'
+import type { CustomContext } from '@/services/websocket/ChatMessageBuilder'
 import { useIsActivelyStreaming, useIsLoading } from '@/stores/useStreamingConversationStore'
 import { postMessageToIframe } from '@/utils/postMessage'
 
@@ -52,6 +55,28 @@ export function getLogoDisplayUrl(
 
 const LOGO_SLOT_NAME = 'logo/primary';
 
+/** Agent-facing placement directive for `logo_slot_placement` context (version in-repo, not user-visible). */
+const LOGO_SLOT_PLACEMENT_INSTRUCTIONS =
+  'The user saved their logo in the primary media slot. Update the codebase so that logo appears everywhere it should: use urls.default on light backgrounds (img src, framework Image components, CSS when appropriate) and urls.solidOnDark on dark backgrounds. Add or update header, navigation, footer, favicon, and other branding; replace hardcoded logo image URLs with these slot paths where the live primary logo should show.';
+
+function buildLogoPlacementContext(): CustomContext {
+  const slotBase = `/airo-assets/images/${LOGO_SLOT_NAME}`
+  return {
+    type: 'logo_slot_placement',
+    data: {
+      event: 'user_saved_logo_selection',
+      slotPath: LOGO_SLOT_NAME,
+      urls: {
+        default: slotBase,
+        solidOnDark: `${slotBase}?variant=solid`,
+      },
+      instructions: LOGO_SLOT_PLACEMENT_INSTRUCTIONS,
+    },
+    persistence: 'ephemeral',
+    source: 'logo-grid-widget',
+  }
+}
+
 /**
  * Logo Grid Widget Props
  */
@@ -65,7 +90,8 @@ export interface LogoGridWidgetProps {
  *
  * Displays generated logos in a 2x2 grid with interactive selection.
  * Clicking a logo highlights it. Save swaps the media slot via the API,
- * which updates the preview automatically through the slot system.
+ * reloads slot images in the preview, then offers suggested-response style
+ * next steps; applying runs a short chat line with `logo_slot_placement` context.
  */
 export default function LogoGridWidget({ logos, className = '' }: LogoGridWidgetProps) {
   const t = useTranslations()
@@ -73,6 +99,7 @@ export default function LogoGridWidget({ logos, className = '' }: LogoGridWidget
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [isSwapping, setIsSwapping] = useState(false)
   const [swapError, setSwapError] = useState<string | null>(null)
+  const [postSaveSuggestionsVisible, setPostSaveSuggestionsVisible] = useState(false)
   const sendUserMessage = useSendUserMessage()
   const isStreaming = useIsActivelyStreaming()
   const isLoading = useIsLoading()
@@ -108,8 +135,8 @@ export default function LogoGridWidget({ logos, className = '' }: LogoGridWidget
    * The slot name contains a slash — do NOT encodeURIComponent it,
    * the Express wildcard route /:slotName(*) expects the raw path.
    */
-  const swapSlot = useCallback(async (newUrl: string) => {
-    if (!appId) return
+  const swapSlot = useCallback(async (newUrl: string): Promise<boolean> => {
+    if (!appId) return false
 
     setIsSwapping(true)
     setSwapError(null)
@@ -143,14 +170,21 @@ export default function LogoGridWidget({ logos, className = '' }: LogoGridWidget
       if (iframe) {
         postMessageToIframe(iframe, { type: 'RELOAD_MEDIA_SLOT', slotPath: LOGO_SLOT_NAME })
       }
+
+      return true
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e)
       logger.error('logo_grid.slot.swap_failed', { appId, error: message })
       setSwapError(message)
+      return false
     } finally {
       setIsSwapping(false)
     }
   }, [appId, queryClient])
+
+  useEffect(function resetPostSaveWhenLogosChange() {
+    setPostSaveSuggestionsVisible(false)
+  }, [logos])
 
   /**
    * Handle click on logo -- only update visual selection, no API call
@@ -170,17 +204,43 @@ export default function LogoGridWidget({ logos, className = '' }: LogoGridWidget
   }
 
   /**
-   * Swap the slot to the selected logo — no chat message needed.
-   * The agent already placed the slot URL in code immediately after generation.
+   * Swap the slot to the selected logo, then show optional next-step suggestions
+   * (same interaction pattern as suggestedResponse tool) when chat is available.
    */
   async function handleSave() {
-    if (isSwapping) return
+    setPostSaveSuggestionsVisible(false)
+    if (isSwapping || isProcessing) return
 
     const selectedLogo = logos[selectedIndex]
-    if (!selectedLogo?.transparentUrl) return
+    const urlToSwap = selectedLogo ? getLogoDisplayUrl(selectedLogo) : undefined
+    if (!urlToSwap) {
+      setSwapError(t('builder_common_error_generic'))
+      return
+    }
 
     setSwapError(null)
-    await swapSlot(selectedLogo.transparentUrl)
+    const swapped = await swapSlot(urlToSwap)
+    if (!swapped) return
+
+    if (sendUserMessage) {
+      setPostSaveSuggestionsVisible(true)
+    }
+  }
+
+  function handleApplyLogoPlacement() {
+    if (isProcessing || !sendUserMessage) return
+    sendUserMessage(
+      t('builder_logo_grid_next_apply', undefined, 'Apply logo across the site'),
+      {
+        isActionRequest: true,
+        customContext: buildLogoPlacementContext(),
+      }
+    )
+    setPostSaveSuggestionsVisible(false)
+  }
+
+  function handleDismissPostSaveSuggestions() {
+    setPostSaveSuggestionsVisible(false)
   }
 
   /**
@@ -236,13 +296,40 @@ export default function LogoGridWidget({ logos, className = '' }: LogoGridWidget
           text={t('builder_common_save')}
           design="primary"
           size="sm"
-          disabled={isSwapping}
+          disabled={isProcessing || isSwapping}
           onClick={handleSave}
         />
       </div>
 
       {swapError && (
         <p className="text-xs text-red-600 mt-1">{swapError}</p>
+      )}
+
+      {postSaveSuggestionsVisible && (
+        <Box gap="sm" className="mt-3">
+          <div className="text-sm leading-relaxed break-words text-intents-ux-text-default-textColor">
+            {t('builder_logo_grid_next_question', undefined, 'Logo saved. What would you like to do next?')}
+          </div>
+          <Box orientation="vertical" gap="sm">
+            <OptionButton
+              text={t('builder_logo_grid_next_apply', undefined, 'Apply logo across the site')}
+              disabled={isProcessing}
+              onClick={handleApplyLogoPlacement}
+              animationDelay={0}
+              isSelectable
+            />
+            <OptionButton
+              text={t('builder_logo_grid_next_skip', undefined, 'Not now')}
+              disabled={isProcessing}
+              onClick={handleDismissPostSaveSuggestions}
+              animationDelay={0.2}
+              isSelectable
+            />
+          </Box>
+          <span className="text-xs text-intents-ux-textSubtle-textColor">
+            {t('builder_tools_suggested_response')}
+          </span>
+        </Box>
       )}
 
       {/* Helper message */}
