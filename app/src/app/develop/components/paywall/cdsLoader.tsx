@@ -7,6 +7,7 @@ import * as ReactIntl from 'react-intl'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { logger } from '@/lib/request-context'
 import { ensurePropTypes } from '@/utils/propTypes'
+import { shimReactInternals } from '@/utils/reactCompat'
 
 /**
  * Props for the CDS ComponentLoader.
@@ -39,6 +40,7 @@ interface CdsComponentLoaderProps extends Record<string, unknown> {
 const DynamicComponentLoader: ComponentType<CdsComponentLoaderProps> = dynamic(
   async () => {
     try {
+      shimReactInternals()
       const [, cdsLoaderModule] = await Promise.all([
         ensurePropTypes(),
         import('@venture/cds-loader'),

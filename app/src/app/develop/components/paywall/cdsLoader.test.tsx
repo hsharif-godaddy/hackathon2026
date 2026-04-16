@@ -17,6 +17,7 @@ vi.mock('@/lib/logging', () => ({
 vi.mock('@/lib/request-context', () => ({
   logger: {
     error: (...args: unknown[]) => mockLoggerError(...args),
+    warn: vi.fn(),
   },
 }))
 

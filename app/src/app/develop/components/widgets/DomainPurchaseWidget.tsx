@@ -1,7 +1,8 @@
 'use client'
 
+import dynamic from 'next/dynamic';
+import type { ComponentType } from 'react';
 import { useCallback, useState } from 'react';
-import { Checkout } from '@px/checkouts';
 import AddToCartButton from '@site/buttons/lib/AddToCartButton';
 import { useQuery } from '@tanstack/react-query';
 import Alert from '@ux/alert';
@@ -25,6 +26,16 @@ import { logger } from '@/lib/request-context';
 import { useSiteStore } from '@/stores/useSiteStore';
 import type { Domain, DomainPurchaseWidgetProps, Product } from '@/types/domain-purchase';
 import { getRootDomain } from '@/utils/getRootDomain';
+import { shimReactInternals } from '@/utils/reactCompat';
+
+const DynamicCheckout: ComponentType<any> = dynamic(
+  async () => {
+    shimReactInternals();
+    const mod = await import('@px/checkouts');
+    return mod.Checkout;
+  },
+  { ssr: false }
+);
 
 /**
  * Domain Purchase Widget
@@ -337,7 +348,7 @@ export default function DomainPurchaseWidget({
 
             {/* Express Checkout Component */}
             {!checkoutError && (
-              <Checkout
+              <DynamicCheckout
                 id="domain-purchase-checkout"
                 appKey="airo-abuilder"
                 basketId={basketId}
