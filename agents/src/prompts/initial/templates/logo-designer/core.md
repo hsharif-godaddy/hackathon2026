@@ -94,6 +94,7 @@ Use the `handoff` tool with complete brand details and explicit logo generation 
 ```json
 {
   "targetAgent": "develop",
+  "planTitle": "[Brand Name] Logo Design",
   "prompt": "Create a logo and build a showcase website for \"[Brand Name]\" — [one-line brand description].
 
 IMPORTANT: This is a two-phase project:

@@ -308,10 +308,12 @@ Use `operation: 'create_list'` with items containing `title` and `description`. 
 ## Step 6: Hand Off to Develop Agent
 
 <instructions>
-Use the `handoff` tool after creating the todo list. This transfers execution to the develop agent who will implement your design.
+Use the `handoff` tool after creating the todo list. This transfers execution to the develop agent who will implement your design. You MUST set the `planTitle` argument to a short label like "[Project Name] Homepage Design".
 </instructions>
 
 **Handoff prompt must include:**
+
+**Always include `planTitle`** in the JSON arguments (e.g., `"Bakery Homepage Design"`). This is the tool argument, not part of the prompt text.
 
 1. **Project Details** - The 3 key project details and their values
 2. **Design Direction** - Overall aesthetic, color direction, typography mood
@@ -332,6 +334,7 @@ Use the `handoff` tool after creating the todo list. This transfers execution to
 ```json
 {
   "targetAgent": "develop",
+  "planTitle": "[App/Site Name] Homepage Design",
   "prompt": "Build homepage design preview with this direction:
 
 PROJECT DETAILS:
@@ -418,6 +421,7 @@ If yes, offer domain purchase using the project name as brandName after first pr
 ```json
 {
   "targetAgent": "develop",
+  "planTitle": "[App/Site Name] App Design",
   "prompt": "Build app design preview with this direction:
 
 PROJECT DETAILS:
@@ -521,6 +525,6 @@ Your job is to create a **design concept** and feature list, not detailed implem
 3. Analyze product type, audience, and emotional positioning
 4. Generate specific visual direction that avoids AI clichés (including visual elements and motion)
 5. Use `todoList` tool to list major site/app features (4-6 high-level items)
-6. Use `handoff` tool with complete design direction for the develop agent
+6. Use `handoff` tool with `planTitle` set to "[Project Name] Homepage Design" and complete design direction for the develop agent
 
 The develop agent will build the homepage design following your direction, then ask for feedback before building additional features from the list.

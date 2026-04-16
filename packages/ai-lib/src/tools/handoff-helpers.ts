@@ -100,9 +100,11 @@ export function createHandoffTool(config: HandoffToolConfig): Tool {
       targetAgent: z.string().describe(
         `ID of the agent to hand off to. Available: ${validTargets.join(', ')}`
       ),
-      prompt: z.string().describe('Brief summary of what you completed. Do NOT add new instructions or tasks.')
+      prompt: z.string().describe('Brief summary of what you completed. Do NOT add new instructions or tasks.'),
+      planTitle: z.string().optional().describe('Short title for the plan being handed off (e.g. "Homepage Design"). Include when handing off a detailed build plan.')
     }),
-    async ({ targetAgent, prompt }, context) => {
+    // planTitle is metadata-only; consumed by the UI renderer, not used in execution
+    async ({ targetAgent, prompt, planTitle: _planTitle }, context) => {
       logger.debug('handoff.begin', { sourceAgentId, targetAgent, prompt })
       logger.debug('handoff.context', {
         contextKeys: context ? Object.keys(context).join(', ') : 'none',

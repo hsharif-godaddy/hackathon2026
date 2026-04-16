@@ -14,7 +14,7 @@ vi.mock('../../utils/logger.js', () => ({
 
 /** Type for the internal execute function of AI SDK tools */
 type ToolExecuteFunction = (
-  params: { targetAgent: string; prompt: string },
+  params: { targetAgent: string; prompt: string; planTitle?: string },
   context?: Record<string, unknown>
 ) => Promise<Record<string, unknown>>
 
@@ -24,7 +24,7 @@ type ToolExecuteFunction = (
  */
 async function executeTool(
   tool: Tool,
-  params: { targetAgent: string; prompt: string },
+  params: { targetAgent: string; prompt: string; planTitle?: string },
   context: Record<string, unknown> = {}
 ): Promise<Record<string, unknown>> {
   const executeFunc = (tool as unknown as { execute: ToolExecuteFunction }).execute
@@ -165,6 +165,47 @@ describe('createHandoffTool', () => {
 
       expect(result.success).toBe(false)
       expect(result.error).toBe('Self-handoff not allowed')
+    })
+  })
+
+  describe('planTitle argument', () => {
+    // Verifies planTitle is accepted by the schema but NOT forwarded to switchAgent (metadata-only)
+    it('accepts planTitle without error and returns success', async () => {
+      const tool = createHandoffTool({
+        sourceAgentId: 'initial',
+        validTargets: ['develop'],
+        stateManager: mockStateManager,
+        sessionId: 'test-session'
+      })
+
+      const result = await executeTool(
+        tool,
+        { targetAgent: 'develop', prompt: 'Build the homepage', planTitle: 'Homepage Design' },
+        { sessionId: 'test-session' }
+      )
+
+      expect(result).toMatchObject({ success: true })
+      expect(mockStateManager.switchAgent).toHaveBeenCalledWith(
+        'test-session',
+        'develop',
+        'Build the homepage'
+      )
+    })
+
+    it('works fine without planTitle (backward compat)', async () => {
+      const tool = createHandoffTool({
+        sourceAgentId: 'initial',
+        validTargets: ['develop'],
+        stateManager: mockStateManager
+      })
+
+      const result = await executeTool(
+        tool,
+        { targetAgent: 'develop', prompt: 'Build the homepage' },
+        { sessionId: 'test-session' }
+      )
+
+      expect(result).toMatchObject({ success: true })
     })
   })
 })

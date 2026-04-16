@@ -163,6 +163,7 @@ Use the `handoff` tool with the complete business plan website design:
 ```json
 {
   "targetAgent": "develop",
+  "planTitle": "[Business Name] Business Plan",
   "prompt": "Build the complete business plan website for \"[Business Name]\" — [one-line business description].
 
 IMPORTANT: This is a BUSINESS PLAN presented as a website — a co-founder intelligence dashboard. NOT a customer-facing website for the business. Each page is a business plan section with real analysis, data, and strategic insights.
