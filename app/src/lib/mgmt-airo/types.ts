@@ -164,6 +164,8 @@ export interface AiroSignupPayload {
     variants?: string[];
     variables: Record<string, any>;
   }>;
+  /** Request BMS integration for new subscription (requires feature flag) */
+  bmsActive?: boolean;
 }
 
 /**

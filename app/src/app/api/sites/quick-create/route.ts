@@ -88,7 +88,8 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       prompt: normalizedPrompt,
       jwt: authContext.jwt,
       productId,
-      marketId
+      marketId,
+      headers: request.headers,
     };
 
     const result = await adapter.createSite(createSiteParams);

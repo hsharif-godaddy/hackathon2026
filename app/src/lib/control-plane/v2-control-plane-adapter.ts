@@ -1,5 +1,6 @@
 import { AIRO_OWNER_PRODUCTS, AIRO_PRODUCT_IDS, AiroMgmtClient, getOwnerProductFromProductId } from '@/lib/mgmt-airo';
 import { logger } from '@/lib/request-context';
+import { checkSwitchboardFlag } from '@/lib/switchboard/server';
 import { getDatacenterFromMarketId } from '@/lib/utils/dc-mapping';
 import { extractCustomerId } from '@/lib/utils/jwt-utils';
 import { useSubscriptionCacheStore } from '@/stores/useSubscriptionCacheStore';
@@ -171,6 +172,11 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
         };
       }
 
+      // Check BMS feature flag to determine if new subscription should use Budget Service
+      const isBmsEnabled = params.headers
+        ? await checkSwitchboardFlag('app-builder-budget-service', params.jwt, params.headers)
+        : false;
+
       const response = await client.signup({
         datacenter: process.env.MGMT_AIRO_DATACENTER || getDatacenterFromMarketId(params.marketId),
         isTrial: true,
@@ -183,11 +189,13 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
             initialPrompt: params.prompt,
             title: generatedTitle
           }
-        }]
+        }],
+        bmsActive: isBmsEnabled,
       });
 
       logger.info('v2-control-plane.create-site.signup.success', {
-        jobId: response.statusJobId
+        jobId: response.statusJobId,
+        bmsActive: isBmsEnabled,
       }, {
         tags: ['security']
       });

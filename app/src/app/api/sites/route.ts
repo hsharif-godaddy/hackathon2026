@@ -93,7 +93,8 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       accountId: account_id,
       prompt: projectPrompt,
       jwt: authContext.jwt,
-      marketId
+      marketId,
+      headers: request.headers,
     });
 
     if (!result.success) {
