@@ -95,6 +95,8 @@ export default function RumProvider({
             'https://airo-builder.godaddy.com',
           ],
 
+          ignoreTransactions: [/fullstory\.com/],
+
           breakdownMetrics: environment !== 'production',
 
           // When active, fully sample — the activation gate above already

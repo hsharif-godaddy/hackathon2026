@@ -94,7 +94,11 @@ describe('RumProvider', () => {
       renderWithProviders(<RumProvider><div>child</div></RumProvider>);
 
       await waitFor(() => {
-        expect(mockInitApm).toHaveBeenCalled();
+        expect(mockInitApm).toHaveBeenCalledWith(
+          expect.objectContaining({
+            ignoreTransactions: [/fullstory\.com/],
+          })
+        );
       });
     });
 
