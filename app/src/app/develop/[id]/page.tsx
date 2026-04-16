@@ -524,7 +524,11 @@ function DevelopPageContent() {
       const result = await response.json()
       if (result.success && result.slotPath) {
         useMediaSlotDialogStore.getState().navigateToSlot(result.slotPath)
-        useDevelopPageStore.getState().setActiveChatTab(ChatTab.MEDIAS)
+        const develop = useDevelopPageStore.getState()
+        develop.setActiveChatTab(ChatTab.MEDIAS)
+        if (develop.isMobile) {
+          develop.handleMobileModeChange(MobileMode.TOOLS)
+        }
       }
     } catch (error) {
       logger.error('develop-page.auto-import-media-slot.error', {
@@ -783,7 +787,11 @@ function DevelopPageContent() {
           // Navigate the Media tab panel to the requested slot
           if (event.data.slotName && appId) {
             useMediaSlotDialogStore.getState().navigateToSlot(event.data.slotName)
-            useDevelopPageStore.getState().setActiveChatTab(ChatTab.MEDIAS)
+            const develop = useDevelopPageStore.getState()
+            develop.setActiveChatTab(ChatTab.MEDIAS)
+            if (develop.isMobile) {
+              develop.handleMobileModeChange(MobileMode.TOOLS)
+            }
           }
           break
         case 'error-fix-resolved':

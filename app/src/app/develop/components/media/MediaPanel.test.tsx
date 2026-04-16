@@ -6,6 +6,7 @@ import '@testing-library/jest-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen } from '@testing-library/react';
 
+import { ChatTab, MobileMode, SettingsSection } from '@/app/develop/components/types';
 import { renderWithProviders } from '@/tests/test-utils';
 import MediaPanel from './MediaPanel';
 
@@ -13,6 +14,18 @@ const mockAppId = 'app-123';
 
 vi.mock('@/app/develop/components/utils', () => ({
   useAppIdFromParams: () => mockAppId,
+}));
+
+const mockSetActiveChatTab = vi.fn();
+const mockHandleMobileModeChange = vi.fn();
+
+vi.mock('@/hooks/useChatTabs', () => ({
+  useChatTabs: () => ({
+    activeChatTab: ChatTab.MEDIAS,
+    setActiveChatTab: mockSetActiveChatTab,
+    activeSettingsSection: SettingsSection.DOMAIN,
+    setActiveSettingsSection: vi.fn(),
+  }),
 }));
 
 vi.mock('@/hooks/useMediaManifest', () => ({
@@ -27,9 +40,20 @@ vi.mock('@/hooks/useMediaManifest', () => ({
   }),
 }));
 
+vi.mock('@/stores/useDevelopPageStore', () => ({
+  useDevelopPageStore: {
+    getState: () => ({
+      handleMobileModeChange: mockHandleMobileModeChange,
+    }),
+  },
+}));
+
 const mockMediaSlotDialogStore = {
   panelSlotName: null as string | null,
   clearPanelSlot: vi.fn(),
+  mediaReturnTab: null as ChatTab | null,
+  mediaReturnMobileMode: null as MobileMode | null,
+  clearMediaReturnState: vi.fn(),
 };
 
 vi.mock('@/stores/useMediaSlotDialogStore', () => ({
@@ -58,6 +82,8 @@ describe('MediaPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockMediaSlotDialogStore.panelSlotName = null;
+    mockMediaSlotDialogStore.mediaReturnTab = null;
+    mockMediaSlotDialogStore.mediaReturnMobileMode = null;
   });
 
   it('renders grid by default', () => {
@@ -80,8 +106,11 @@ describe('MediaPanel', () => {
     await user.click(screen.getByText('Select slot-1'));
     expect(screen.getByTestId('media-slot-detail')).toBeInTheDocument();
 
-    await user.click(screen.getByText('slot-1')); // The back button text
+    await user.click(screen.getByText('builder_common_back'));
     expect(screen.getByTestId('media-slots-grid')).toBeInTheDocument();
+    expect(mockSetActiveChatTab).not.toHaveBeenCalled();
+    expect(mockHandleMobileModeChange).not.toHaveBeenCalled();
+    expect(mockMediaSlotDialogStore.clearMediaReturnState).toHaveBeenCalled();
   });
 
   it('navigates to detail when panelSlotName is set externally', async () => {
@@ -92,6 +121,23 @@ describe('MediaPanel', () => {
     expect(screen.getByTestId('media-slot-detail')).toBeInTheDocument();
     expect(screen.getByText('Detail for external-slot')).toBeInTheDocument();
     expect(mockMediaSlotDialogStore.clearPanelSlot).toHaveBeenCalled();
+  });
+
+  it('restores previous tab when back from externally opened detail', async () => {
+    mockMediaSlotDialogStore.panelSlotName = 'external-slot';
+    mockMediaSlotDialogStore.mediaReturnTab = ChatTab.PREVIEW;
+    mockMediaSlotDialogStore.mediaReturnMobileMode = MobileMode.PREVIEW;
+
+    const { user } = renderWithProviders(<MediaPanel />);
+
+    expect(screen.getByTestId('media-slot-detail')).toBeInTheDocument();
+
+    await user.click(screen.getByText('builder_common_back'));
+
+    expect(mockSetActiveChatTab).toHaveBeenCalledWith(ChatTab.PREVIEW);
+    expect(mockHandleMobileModeChange).toHaveBeenCalledWith(MobileMode.PREVIEW);
+    expect(mockMediaSlotDialogStore.clearMediaReturnState).toHaveBeenCalled();
+    expect(screen.getByTestId('media-slots-grid')).toBeInTheDocument();
   });
 
   it('navigates to grid when panelSlotName is __GRID__', async () => {
