@@ -3,31 +3,25 @@ package fixers
 import (
 	"context"
 	"fmt"
-	"os/exec"
 	"path/filepath"
-	"strings"
+
+	"github.com/airo-ai-builder/dev-runner/internal/sso"
 )
 
 const knowbAPIURL = "https://knowb.api.int.test-godaddy.com"
 
-// KnowBFixer generates an SSO JWT and configures KnowB in agents/.env.
-type KnowBFixer struct{}
+// KnowBFixer acquires an SSO JWT via OAuth device flow and configures KnowB in agents/.env.
+type KnowBFixer struct {
+	TokenCache *sso.TokenCache
+}
 
 func (f *KnowBFixer) Fix(ctx context.Context, projectRoot string) error {
-	if _, err := exec.LookPath("ssojwt"); err != nil {
-		return fmt.Errorf("ssojwt not found in PATH — install from https://github.com/gdcorp-engineering/ssojwt")
-	}
-
-	// ssojwt prints prompts/browser-opening text to stderr and the JWT to stdout.
-	// Use RunCommandStdout to capture only stdout, avoiding the prompt text
-	// (e.g., "Opening https://ssojwt...") polluting the token value.
-	out, err := RunCommandStdout(ctx, projectRoot, "ssojwt", "-e", "test")
+	token, err := f.TokenCache.GetToken(ctx)
 	if err != nil {
-		return fmt.Errorf("ssojwt -e test: %w", err)
+		return fmt.Errorf("acquiring SSO JWT: %w", err)
 	}
-	token := strings.TrimSpace(out)
 	if token == "" {
-		return fmt.Errorf("ssojwt returned empty token")
+		return fmt.Errorf("SSO JWT token was empty")
 	}
 
 	agentsEnvPath := filepath.Join(projectRoot, "agents", ".env")

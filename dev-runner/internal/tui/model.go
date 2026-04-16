@@ -17,6 +17,7 @@ import (
 	"github.com/airo-ai-builder/dev-runner/internal/preflight/checks"
 	"github.com/airo-ai-builder/dev-runner/internal/preflight/fixers"
 	"github.com/airo-ai-builder/dev-runner/internal/process"
+	"github.com/airo-ai-builder/dev-runner/internal/sso"
 )
 
 // --- Bubble Tea messages ---
@@ -217,6 +218,9 @@ func buildPreflightRunner() *preflight.Runner {
 		8443: "App HTTPS",
 	}
 
+	// Shared SSO token cache so KnowB and Design RAG fixers authenticate only once.
+	ssoTokenCache := sso.NewTokenCache(sso.DefaultLocalDevConfig())
+
 	// App env fixer collects values; agents fixer reuses them via AppEnvFixer pointer.
 	appEnvFixer := &fixers.EnvFixer{Target: "app"}
 	agentsEnvFixer := &fixers.EnvFixer{Target: "agents", AppEnvFixer: appEnvFixer}
@@ -248,8 +252,8 @@ func buildPreflightRunner() *preflight.Runner {
 					{Check: &checks.CommerceOAuthCheck{}, Fixer: &fixers.CommerceOAuthFixer{}},
 					{Check: &checks.JWTKeysCheck{}, Fixer: &fixers.JWTKeysFixer{}},
 					{Check: &checks.GettyCheck{}, Fixer: &fixers.GettyFixer{}},
-					{Check: &checks.KnowBCheck{}, Fixer: &fixers.KnowBFixer{}},
-					{Check: &checks.DesignRAGCheck{}, Fixer: &fixers.DesignRAGFixer{}},
+					{Check: &checks.KnowBCheck{}, Fixer: &fixers.KnowBFixer{TokenCache: ssoTokenCache}},
+					{Check: &checks.DesignRAGCheck{}, Fixer: &fixers.DesignRAGFixer{TokenCache: ssoTokenCache}},
 					{Check: &checks.LocalFeaturesCheck{}, Fixer: &fixers.LocalFeaturesFixer{}, OptIn: true},
 				},
 			},

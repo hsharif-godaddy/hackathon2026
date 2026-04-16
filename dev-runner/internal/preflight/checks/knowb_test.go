@@ -41,3 +41,23 @@ func TestKnowBCheck_MissingEnvFile(t *testing.T) {
 		t.Error("expected FixAvailable to be true")
 	}
 }
+
+func TestKnowBCheck_S2SAuth(t *testing.T) {
+	root := t.TempDir()
+	writeAgentsEnv(t, root, "GOCODE_USE_S2S_AUTH=true\n")
+
+	result := (&KnowBCheck{}).Run(context.Background(), root)
+	if result.Status != preflight.StatusPass {
+		t.Errorf("expected Pass with S2S auth, got %v: %s", result.Status, result.Message)
+	}
+}
+
+func TestKnowBCheck_WithSSOJWT(t *testing.T) {
+	root := t.TempDir()
+	writeAgentsEnv(t, root, "SSO_JWT=some-token\n")
+
+	result := (&KnowBCheck{}).Run(context.Background(), root)
+	if result.Status != preflight.StatusPass {
+		t.Errorf("expected Pass with SSO_JWT set, got %v: %s", result.Status, result.Message)
+	}
+}

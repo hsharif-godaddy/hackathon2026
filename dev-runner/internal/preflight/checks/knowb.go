@@ -3,15 +3,13 @@ package checks
 import (
 	"context"
 	"fmt"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
 	"github.com/airo-ai-builder/dev-runner/internal/preflight"
 )
 
-// KnowBCheck verifies that KnowB RAG configuration is present in agents/.env
-// when the KnowB API base URL is configured. Also checks for the ssojwt binary.
+// KnowBCheck verifies that KnowB RAG configuration is present in agents/.env.
 type KnowBCheck struct{}
 
 func (c *KnowBCheck) Name() string     { return "KnowB Config" }
@@ -24,7 +22,7 @@ func (c *KnowBCheck) Run(_ context.Context, projectRoot string) preflight.CheckR
 
 	env, err := preflight.ParseEnvFile(envPath)
 	// When GOCODE_USE_S2S_AUTH=true, KnowB uses AWS IAM-based S2S tokens
-	// instead of SSO_JWT, so SSO_JWT and ssojwt binary are not required.
+	// instead of SSO_JWT, so SSO_JWT is not required.
 	useS2S := env != nil && strings.TrimSpace(env["GOCODE_USE_S2S_AUTH"]) == "true"
 
 	if err != nil {
@@ -35,13 +33,6 @@ func (c *KnowBCheck) Run(_ context.Context, projectRoot string) preflight.CheckR
 		}
 	}
 
-	// ssojwt binary only needed when not using S2S auth
-	if !useS2S {
-		if _, err := exec.LookPath("ssojwt"); err != nil {
-			issues = append(issues, "ssojwt binary not found in PATH")
-		}
-	}
-
 	if len(issues) > 0 {
 		return preflight.CheckResult{
 			Status:       preflight.StatusWarn,
@@ -49,7 +40,6 @@ func (c *KnowBCheck) Run(_ context.Context, projectRoot string) preflight.CheckR
 			Category:     c.Category(),
 			FixAvailable: true,
 			Message:      fmt.Sprintf("KnowB: %s", strings.Join(issues, "; ")),
-			InstallHint:  "https://github.com/gdcorp-engineering/ssojwt",
 		}
 	}
 
