@@ -318,7 +318,7 @@ Update the package's `exports` map in `package.json`. Run
   `messageProvider`, `agentRouter`), not inline in this file.
 - Translation keys are validated at pre-commit. Missing keys
   block commits. Add keys at
-  [i18n.int.gdcorp.tools](https://i18n.int.gdcorp.tools/org/hcx/app/airo-app-builder).
+  [i18n.int.gdcorp.tools](https://i18n.int.gdcorp.tools/org/hcx/app/aab).
 - The codebase serves two products (AAB + PaaS). When adding
   features, check if they need product-gating using the
   dual-product pattern in [`CLAUDE.md`](CLAUDE.md).

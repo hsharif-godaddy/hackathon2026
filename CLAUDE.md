@@ -188,9 +188,9 @@ All translation keys are validated during pre-commit. The system:
 - Blocks commits if keys are missing
 
 To fetch available translations (for LLM/agents):
-GET https://api.i18n.int.gdcorp.tools/api/v2/package/market/en-US/%40airo%2Fapp-builder
+GET https://api.i18n.int.gdcorp.tools/api/v2/package/market/en-US/%40airo-app-builder%2Faab
 
-To create missing keys, visit: https://i18n.int.gdcorp.tools/org/hcx/app/airo-app-builder
+To create missing keys, visit: https://i18n.int.gdcorp.tools/org/hcx/app/aab
 (Requires PARTNERSTRANSLATIONS AD group membership)
 
 See app/src/lib/translations/README.md for full details.

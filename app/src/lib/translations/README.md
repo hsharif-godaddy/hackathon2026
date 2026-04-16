@@ -6,7 +6,7 @@ Comprehensive guide to using translations in both Client Components and Server C
 
 **Want to add or update translations?** Use the GoDaddy i18n Management UI:
 
-**[https://i18n.int.gdcorp.tools/org/hcx/app/airo-app-builder](https://i18n.int.gdcorp.tools/org/hcx/app/airo-app-builder)**
+**[https://i18n.int.gdcorp.tools/org/hcx/app/aab](https://i18n.int.gdcorp.tools/org/hcx/app/aab)**
 
 **NOTE: you must first add yourself to the `PARTNERSTRANSLATIONS` ad group**
 
@@ -55,7 +55,7 @@ This app uses **react-intl** for internationalization with translations loaded d
 
 ### Current Translation Package
 
-- **Package**: `@airo/app-builder`
+- **Package**: `@airo-app-builder/aab`
 - **Locale**: `en-US` (default)
 - **Format**: JSON key-value pairs
 - **API**: `https://api.i18n.int.gdcorp.tools/api/v2`
@@ -112,7 +112,7 @@ This app follows **Next.js best practices**:
 
 ```typescript
 // layout.tsx or Server Component
-const messages = await loadTranslations("en-US", ["@airo/app-builder"]);
+const messages = await loadTranslations("en-US", ["@airo-app-builder/aab"]);
 // ↓ Direct call to translation API (no HTTP overhead)
 // ↓ Result: 86 translations in ~50ms (first call)
 // ↓ Result: 86 translations in <1ms (cached)
@@ -176,7 +176,7 @@ export default async function MyComponent() {
 import { loadTranslations } from '@/lib/translations';
 
 export default async function MyPage() {
-  const messages = await loadTranslations('en-US', ['@airo/app-builder']);
+  const messages = await loadTranslations('en-US', ['@airo-app-builder/aab']);
 
   return (
     <div>
@@ -203,7 +203,7 @@ export default async function RootLayout({ children }) {
 
   try {
     // Server-side: Load translations directly (no HTTP)
-    messages = await loadTranslations(locale, ['@airo/app-builder']);
+    messages = await loadTranslations(locale, ['@airo-app-builder/aab']);
   } catch (error) {
     // Client-side will handle fallback
   }
@@ -214,7 +214,7 @@ export default async function RootLayout({ children }) {
         <TranslationsProvider
           locale={locale}
           messages={messages}
-          packages={['@airo/app-builder']}
+          packages={['@airo-app-builder/aab']}
         >
           {children}
         </TranslationsProvider>
@@ -501,7 +501,7 @@ import { loadTranslations, detectLocale } from '@/lib/translations';
 
 export default async function ServerPage() {
   const locale = await detectLocale();
-  const messages = await loadTranslations(locale, ['@airo/app-builder']);
+  const messages = await loadTranslations(locale, ['@airo-app-builder/aab']);
 
   return (
     <div>
@@ -531,7 +531,7 @@ const intl = await getServerIntl({
 
 ```typescript
 const intl = await getServerIntl({
-  packages: ["@airo/app-builder", "@airo/shared"],
+  packages: ["@airo-app-builder/aab", "@airo/shared"],
 });
 ```
 
@@ -698,7 +698,7 @@ export default async function StaticPage() {
 
 ## Available Translation Keys
 
-Current keys in `@airo/app-builder`:
+Current keys in `@airo-app-builder/aab`:
 
 ```typescript
 {
@@ -738,7 +738,7 @@ import { loadTranslations, detectLocale } from '@/lib/translations';
 
 export default async function Article() {
   const locale = await detectLocale();
-  const messages = await loadTranslations(locale, ['@airo/app-builder']);
+  const messages = await loadTranslations(locale, ['@airo-app-builder/aab']);
   return <article>{messages['article_title']}</article>;
 }
 
@@ -837,12 +837,16 @@ Load translations from multiple sources:
 
 ```typescript
 const intl = await getServerIntl({
-  packages: ["@airo/app-builder", "@airo/shared-components", "@airo/marketing"],
+  packages: [
+    "@airo-app-builder/aab",
+    "@airo/shared-components",
+    "@airo/marketing",
+  ],
 });
 
 // Or with loadTranslations
 const messages = await loadTranslations("en-US", [
-  "@airo/app-builder",
+  "@airo-app-builder/aab",
   "@airo/shared-components",
 ]);
 ```
@@ -870,7 +874,7 @@ const messages = await loadTranslations("en-US", [
 **For LLMs/Agents/Scripts:**
 
 ```bash
-curl https://api.i18n.int.gdcorp.tools/api/v2/package/market/en-US/%40airo%2Fapp-builder
+curl https://api.i18n.int.gdcorp.tools/api/v2/package/market/en-US/%40airo-app-builder%2Faab
 ```
 
 No authentication required. Returns JSON object with all available translation keys.
@@ -888,7 +892,7 @@ No authentication required. Returns JSON object with all available translation k
 ### Creating New Translation Keys
 
 **Use the i18n Management UI:**
-https://i18n.int.gdcorp.tools/org/hcx/app/airo-app-builder
+https://i18n.int.gdcorp.tools/org/hcx/app/aab
 
 **Prerequisites:**
 
@@ -933,7 +937,7 @@ git commit --no-verify
 ## External Resources
 
 - [GoDaddy Translation API](https://api.i18n.int.gdcorp.tools/api/v2)
-- [i18n Management UI](https://i18n.int.gdcorp.tools/org/hcx/app/airo-app-builder)
+- [i18n Management UI](https://i18n.int.gdcorp.tools/org/hcx/app/aab)
 - [React Intl Documentation](https://formatjs.io/docs/react-intl/)
 - [Next.js Internationalization](https://nextjs.org/docs/app/building-your-application/routing/internationalization)
 - [ICU Message Syntax](https://formatjs.io/docs/core-concepts/icu-syntax/)

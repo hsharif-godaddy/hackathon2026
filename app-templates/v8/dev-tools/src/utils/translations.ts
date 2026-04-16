@@ -1,5 +1,5 @@
 const I18N_API_URL =
-  "https://api.i18n.int.gdcorp.tools/api/v2/package/market/en-us/%40airo%2Fapp-builder";
+  "https://api.i18n.int.gdcorp.tools/api/v2/package/market/en-us/%40airo-app-builder%2Faab";
 
 let translations: Record<string, string> = {};
 let loaded = false;

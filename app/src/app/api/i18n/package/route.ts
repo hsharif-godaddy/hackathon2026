@@ -13,30 +13,30 @@ import { loadTranslations } from '@/lib/translations/load-translations';
  * No authentication required - translations are public data.
  *
  * @example
- * GET /api/i18n/package?packageName=@airo/app-builder
- * GET /api/i18n/package?packageName=@airo/app-builder&locale=es-ES
+ * GET /api/i18n/package?packageName=@airo-app-builder/aab
+ * GET /api/i18n/package?packageName=@airo-app-builder/aab&locale=es-ES
  */
 export const GET = withApmRoute(async (request: NextRequest) => {
   try {
     const searchParams = request.nextUrl.searchParams;
     const packageName = searchParams.get('packageName');
     const locale = searchParams.get('locale') || 'en-US';
-    
+
     if (!packageName) {
       return NextResponse.json(
         { error: 'packageName query parameter is required' },
         { status: 400 }
       );
     }
-    
+
     logger.info('translations.api.request', {
       packageName,
       locale,
       message: 'Translation package requested (client-side)'
     });
-    
+
     const translations = await loadTranslations(locale, [packageName]);
-    
+
     return NextResponse.json(translations, {
       headers: {
         'Cache-Control': 'public, s-maxage=120, stale-while-revalidate=120',
@@ -47,7 +47,7 @@ export const GET = withApmRoute(async (request: NextRequest) => {
       error,
       message: 'Failed to load translation package'
     });
-    
+
     return NextResponse.json(
       { error: 'Failed to load translations' },
       { status: 500 }

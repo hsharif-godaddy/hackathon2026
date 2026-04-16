@@ -115,7 +115,7 @@ Two-layer system:
 
 ## Internationalization (i18n)
 
-Translations use react-intl via Gasket's `pluginIntl` (62 locales, default `en-US`). Translation strings are managed externally at [i18n.int.gdcorp.tools](https://i18n.int.gdcorp.tools/org/hcx/app/airo-app-builder) — no locale JSON files in the repo.
+Translations use react-intl via Gasket's `pluginIntl` (62 locales, default `en-US`). Translation strings are managed externally at [i18n.int.gdcorp.tools](https://i18n.int.gdcorp.tools/org/hcx/app/aab) — no locale JSON files in the repo.
 
 **Usage:**
 

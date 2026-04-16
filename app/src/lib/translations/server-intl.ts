@@ -8,28 +8,28 @@ import { logger } from '../request-context';
 
 /**
  * Detect user's locale using Gasket's built-in locale detection
- * 
+ *
  * Uses Gasket's `resolveGasketData` which handles:
  * - Cookie-based locale detection (`market_locale`, `locale`)
  * - Accept-Language header parsing
  * - Locale validation against supported locales
  * - Fallback to defaultLocale
- * 
+ *
  * This ensures consistency between server-side and client-side locale detection.
- * 
+ *
  * @returns Promise resolving to detected locale string (e.g., 'en-US', 'es-MX', 'fr-FR')
  */
 export async function detectLocale(): Promise<string> {
   try {
     const req = await request();
     const data: any = await resolveGasketData(gasket, req);
-    
+
     const locale = data?.intl?.locale;
 
     if (locale && typeof locale === 'string') {
       return locale;
     }
-    
+
     // Fallback to Gasket's default locale if detection fails
     return gasket.config.intl?.defaultLocale || 'en-US';
   } catch (error) {
@@ -45,7 +45,7 @@ export async function detectLocale(): Promise<string> {
 
 /**
  * Server-side translation cache to avoid recreating intl instances
- * 
+ *
  * This cache is reused across requests to improve performance
  */
 const cache = createIntlCache();
@@ -60,7 +60,7 @@ interface CacheEntry {
 
 /**
  * Translation messages cache to avoid refetching
- * 
+ *
  * Key format: `${locale}:${packages.join(',')}`
  * Entries expire after 5 minutes (300,000ms)
  */
@@ -77,7 +77,7 @@ export interface ServerIntlOptions {
    */
   locale?: string;
   /**
-   * Translation packages to load (default: ['@airo/app-builder'])
+   * Translation packages to load (default: ['@airo-app-builder/aab'])
    */
   packages?: string[];
   /**
@@ -88,10 +88,10 @@ export interface ServerIntlOptions {
 
 /**
  * Get cached or load translation messages with smart caching
- * 
+ *
  * Shared helper function used by both getServerIntl and getTranslationMessages.
  * Implements Map cache with 5-minute TTL. Only caches non-empty results.
- * 
+ *
  * @param locale - Locale string (e.g., 'en-US')
  * @param packages - Array of package names to load
  * @param useCache - Whether to use cache (default: true)
@@ -104,72 +104,72 @@ async function getCachedOrLoadMessages(
 ): Promise<Record<string, string>> {
   // Generate cache key
   const cacheKey = `${locale}:${packages.join(',')}`;
-  
+
   // Check cache first
   let messages: Record<string, string>;
   const cachedEntry = messagesCache.get(cacheKey);
   const now = Date.now();
-  
+
   // Check if cache exists and is still valid (not expired)
   if (useCache && cachedEntry && (now - cachedEntry.timestamp) < CACHE_TTL) {
     messages = cachedEntry.messages;
   } else {
     // Cache miss or expired - load translations directly (no HTTP)
     messages = await loadTranslations(locale, packages);
-    
+
     const translationCount = Object.keys(messages).length;
-    
+
     // Only cache if we got translations
     if (useCache && translationCount > 0) {
       messagesCache.set(cacheKey, {
         messages,
         timestamp: now,
       });
-      
+
       // Clean up expired entries after storing new one
       cleanupExpiredCache();
     } else if (translationCount === 0) {
-      logger.warn('translations.cache.skip', { 
+      logger.warn('translations.cache.skip', {
         cacheKey,
         message: 'Empty translations - not caching'
       });
     }
   }
-  
+
   return messages;
 }
 
 /**
  * Create a server-side intl instance for translations in Server Components
- * 
+ *
  * This utility function creates an IntlShape instance that can be used in
  * Server Components, async functions, and API routes. It fetches translation
  * messages from the same BFF endpoint as the client-side hook.
- * 
+ *
  * @param options - Configuration options for intl initialization
  * @returns Promise resolving to IntlShape instance
- * 
+ *
  * @example
  * ```typescript
  * // Basic usage in Server Component
  * export default async function Page() {
  *   const intl = await getServerIntl();
- *   
+ *
  *   return (
  *     <h1>{intl.formatMessage({ id: 'builder_project_domain_title' })}</h1>
  *   );
  * }
  * ```
- * 
+ *
  * @example
  * ```typescript
  * // Usage with custom packages
  * export default async function Page() {
  *   const intl = await getServerIntl({
  *     locale: 'es-ES',
- *     packages: ['@airo/app-builder', '@airo/custom-package']
+ *     packages: ['@airo-app-builder/aab', '@airo/custom-package']
  *   });
- *   
+ *
  *   return <h1>{intl.formatMessage({ id: 'my_key' })}</h1>;
  * }
  * ```
@@ -177,7 +177,7 @@ async function getCachedOrLoadMessages(
 export async function getServerIntl(options: ServerIntlOptions = {}): Promise<IntlShape> {
   const {
     locale = 'en-US',
-    packages = ['@airo/app-builder'],
+    packages = ['@airo-app-builder/aab'],
     useCache = true,
   } = options;
 
@@ -196,25 +196,25 @@ export async function getServerIntl(options: ServerIntlOptions = {}): Promise<In
 
 /**
  * Get translation messages for use in layout/providers
- * 
+ *
  * Similar to getServerIntl but returns just the messages object instead of IntlShape.
  * Uses the same Map cache with 5-minute TTL. Only caches non-empty results.
- * 
+ *
  * @param options - Configuration options
  * @returns Promise resolving to translation messages (empty object if fetch fails)
- * 
+ *
  * @example
  * ```typescript
- * const messages = await getTranslationMessages({ 
+ * const messages = await getTranslationMessages({
  *   locale: 'en-US',
- *   packages: ['@airo/app-builder']
+ *   packages: ['@airo-app-builder/aab']
  * });
  * ```
  */
 export async function getTranslationMessages(options: ServerIntlOptions = {}): Promise<Record<string, string>> {
   const {
     locale = 'en-US',
-    packages = ['@airo/app-builder'],
+    packages = ['@airo-app-builder/aab'],
     useCache = true,
   } = options;
 
@@ -231,20 +231,20 @@ export function clearServerIntlCache(): void {
 
 /**
  * Remove expired entries from the cache
- * 
+ *
  * This function cleans up cache entries that have exceeded the TTL.
  * Called automatically during cache checks to prevent memory leaks.
  */
 function cleanupExpiredCache(): void {
   const now = Date.now();
   const keysToDelete: string[] = [];
-  
+
   for (const [key, entry] of messagesCache.entries()) {
     if (now - entry.timestamp >= CACHE_TTL) {
       keysToDelete.push(key);
     }
   }
-  
+
   for (const key of keysToDelete) {
     messagesCache.delete(key);
   }

@@ -55,7 +55,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const defaultTitle = 'Airo Builder';
   const defaultDescription = "Share your idea and we'll handle the rest";
   const shareImageUrl = `${getMetadataBaseUrl()}/images/share.png`;
-  
+
   try {
     const locale = await detectLocale();
     const intl = await getServerIntl({ locale });
@@ -139,7 +139,7 @@ async function RootLayout({
 
   let messages: Record<string, string> | undefined;
   try {
-    const fetchedMessages = await loadTranslations(locale, ['@airo/app-builder']);
+    const fetchedMessages = await loadTranslations(locale, ['@airo-app-builder/aab']);
 
     // Only use messages if they're not empty
     if (Object.keys(fetchedMessages).length > 0) {
@@ -188,7 +188,7 @@ async function RootLayout({
             homepageEngagementCohort={homepageEngagementCohort}
             locale={locale}
             messages={messages}
-            packages={['@airo/app-builder']}
+            packages={['@airo-app-builder/aab']}
           >
             <AuthProvider homepageEngagementCohort={homepageEngagementCohort}>
               <SubscriptionCacheProvider>

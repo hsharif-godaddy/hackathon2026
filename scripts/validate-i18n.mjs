@@ -18,7 +18,7 @@ import traverse from "@babel/traverse";
 import * as t from "@babel/types";
 
 const API_URL =
-  "https://api.i18n.int.gdcorp.tools/api/v2/package/market/en-US/%40airo%2Fapp-builder";
+  "https://api.i18n.int.gdcorp.tools/api/v2/package/market/en-US/%40airo-app-builder%2Faab";
 const API_TIMEOUT_MS = 10000;
 
 /**
@@ -265,7 +265,7 @@ function reportMissingKeys(missingKeys) {
   console.log("");
   console.log("To add these translation keys:");
   console.log(
-    "1. Visit: https://i18n.int.gdcorp.tools/org/hcx/app/airo-app-builder",
+    "1. Visit: https://i18n.int.gdcorp.tools/org/hcx/app/aab",
   );
   console.log(
     "2. Add yourself to the PARTNERSTRANSLATIONS AD group (if needed)",
