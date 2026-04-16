@@ -230,7 +230,9 @@ export default function DomainPurchaseWidget({
       reasonCode: error.reasonCode,
     });
 
-    // Show error alert in the modal
+    // Restore search input defensively — the checkout component may unmount
+    // without triggering handleBackFromCheckout, leaving showSearchInput stuck false.
+    setShowSearchInput(true);
     setCheckoutError(
       error.message || t('builder_domain_purchase_checkout_error')
     );
