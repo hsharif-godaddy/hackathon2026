@@ -165,7 +165,7 @@ function ButtonGroupRoot({
         ref={groupRef}
         role="radiogroup"
         className={clsx(
-          'relative flex items-center gap-0.5 p-0.5 rounded-lg bg-intents-ux-box-backgroundColor',
+          'relative isolate flex items-center gap-0.5 p-0.5 rounded-lg bg-intents-ux-box-backgroundColor',
           className,
         )}
         data-eid={dataEid}
