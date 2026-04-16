@@ -788,6 +788,13 @@ function DevelopPageContent() {
         case 'IFRAME_READY':
           // Send edit mode state when iframe signals it is ready
           sendEditModeMessage(isEditModeEnabled)
+          // Agent edits trigger full iframe reloads (not HMR) due to git
+          // operations touching many files. The iframe's window.load handler
+          // sends error-fix-resolved, but rapid successive reloads cause the
+          // parent's contentWindow reference to change before the message
+          // arrives, silently dropping it. IFRAME_READY is sent from the
+          // final settled contentWindow so it always gets through.
+          errorFixActions.handleErrorFixResolved()
           break
         case 'AUTO_IMPORT_MEDIA_SLOT': {
           const { imageUrl, devContext, imageAlt, imageType } = event.data
