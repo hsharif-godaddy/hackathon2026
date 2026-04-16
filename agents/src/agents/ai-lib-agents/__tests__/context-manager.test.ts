@@ -42,7 +42,7 @@ const mockedRegistryRender = vi.mocked(contextAttachmentRegistry.render)
 
 const { appContextResult } = vi.hoisted(() => ({
   appContextResult: {
-    value: null as { stableContext?: string; secretsContext?: string; mediaSlotsContext?: string } | null
+    value: null as { stableContext?: string; secretsContext?: string; mediaSlotsContext?: string; gitStatusContext?: string; publishStateContext?: string } | null
   }
 }))
 
@@ -257,7 +257,7 @@ describe('AILibContextManager', () => {
       expect(stableMsg?.insertionOrder).toBe('after_history')
     })
 
-    it('forwards all three app context types', async () => {
+    it('forwards stable, secrets, and media slots context types', async () => {
       appContextResult.value = {
         stableContext: 'stable content',
         secretsContext: 'secrets content',
@@ -291,6 +291,53 @@ describe('AILibContextManager', () => {
       const mediaIdx = result.contextMessages.indexOf(media!)
       expect(stableIdx).toBeLessThan(secretsIdx)
       expect(secretsIdx).toBeLessThan(mediaIdx)
+    })
+
+    it('forwards gitStatusContext and publishStateContext as after_history user messages', async () => {
+      appContextResult.value = {
+        stableContext: 'stable content',
+        gitStatusContext: '## Git Status\n- Branch: main\n- Uncommitted changes: 2',
+        publishStateContext: '## App Status\n- Published: yes\n- URL: https://example.com'
+      }
+
+      const cm = new AILibContextManager()
+      const result = await cm.buildContextMessages(
+        '',
+        { metadata: { appId: 'app-123' }, appContext: {} },
+        { includeTemplateDescription: false }
+      )
+
+      const gitStatus = result.contextMessages.find(m => m.content.includes('Git Status'))
+      const publishState = result.contextMessages.find(m => m.content.includes('App Status'))
+
+      expect(gitStatus).toBeDefined()
+      expect(gitStatus?.role).toBe('user')
+      expect(gitStatus?.insertionOrder).toBe('after_history')
+
+      expect(publishState).toBeDefined()
+      expect(publishState?.role).toBe('user')
+      expect(publishState?.insertionOrder).toBe('after_history')
+    })
+
+    it('omits gitStatusContext and publishStateContext when null', async () => {
+      appContextResult.value = {
+        stableContext: 'stable content',
+        gitStatusContext: null as any,
+        publishStateContext: null as any
+      }
+
+      const cm = new AILibContextManager()
+      const result = await cm.buildContextMessages(
+        '',
+        { metadata: { appId: 'app-123' }, appContext: {} },
+        { includeTemplateDescription: false }
+      )
+
+      const gitStatus = result.contextMessages.find(m => m.content?.includes?.('Git Status'))
+      const publishState = result.contextMessages.find(m => m.content?.includes?.('App Status'))
+
+      expect(gitStatus).toBeUndefined()
+      expect(publishState).toBeUndefined()
     })
 
     it('does not include app context when includeAppContext is false', async () => {

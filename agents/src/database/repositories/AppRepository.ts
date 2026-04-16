@@ -405,7 +405,7 @@ export class AppRepository {
    */
   findById(id: string): App | null {
     const stmt = this.db.prepare(`
-      SELECT id, name, path, port, socket_path, publish_supervisor_path, preview_url, initial_prompt, template_version, subscription_id, customer_id, status, initial_build_complete, created_at, updated_at
+      SELECT id, name, path, port, socket_path, publish_supervisor_path, preview_url, published_url, initial_prompt, template_version, subscription_id, customer_id, status, initial_build_complete, created_at, updated_at
       FROM apps
       WHERE id = ?
     `);
@@ -421,6 +421,7 @@ export class AppRepository {
       socketPath: row.socket_path,
       publishSupervisorPath: row.publish_supervisor_path,
       previewUrl: row.preview_url,
+      publishedUrl: row.published_url,
       initialPrompt: row.initial_prompt,
       templateVersion: row.template_version,
       subscriptionId: row.subscription_id,
@@ -437,7 +438,7 @@ export class AppRepository {
    */
   findByPath(path: string): App | null {
     const stmt = this.db.prepare(`
-      SELECT id, name, path, port, socket_path, publish_supervisor_path, preview_url, initial_prompt, template_version, subscription_id, customer_id, status, initial_build_complete, created_at, updated_at
+      SELECT id, name, path, port, socket_path, publish_supervisor_path, preview_url, published_url, initial_prompt, template_version, subscription_id, customer_id, status, initial_build_complete, created_at, updated_at
       FROM apps
       WHERE path = ?
     `);
@@ -453,6 +454,7 @@ export class AppRepository {
       socketPath: row.socket_path,
       publishSupervisorPath: row.publish_supervisor_path,
       previewUrl: row.preview_url,
+      publishedUrl: row.published_url,
       initialPrompt: row.initial_prompt,
       templateVersion: row.template_version,
       subscriptionId: row.subscription_id,
@@ -469,7 +471,7 @@ export class AppRepository {
    */
   findAll(limit = 50, offset = 0): App[] {
     const stmt = this.db.prepare(`
-      SELECT id, name, path, port, socket_path, publish_supervisor_path, preview_url, initial_prompt, template_version, subscription_id, customer_id, status, initial_build_complete, created_at, updated_at
+      SELECT id, name, path, port, socket_path, publish_supervisor_path, preview_url, published_url, initial_prompt, template_version, subscription_id, customer_id, status, initial_build_complete, created_at, updated_at
       FROM apps
       ORDER BY created_at DESC
       LIMIT ? OFFSET ?
@@ -485,6 +487,7 @@ export class AppRepository {
       socketPath: row.socket_path,
       publishSupervisorPath: row.publish_supervisor_path,
       previewUrl: row.preview_url,
+      publishedUrl: row.published_url,
       initialPrompt: row.initial_prompt,
       templateVersion: row.template_version,
       subscriptionId: row.subscription_id,

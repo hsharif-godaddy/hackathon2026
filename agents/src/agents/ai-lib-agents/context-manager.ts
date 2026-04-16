@@ -444,6 +444,24 @@ export class AILibContextManager {
                 })
             }
 
+            if (appContextResult.gitStatusContext) {
+                messages.push({
+                    role: 'user',
+                    content: appContextResult.gitStatusContext,
+                    type: 'app_context_git_status',
+                    insertionOrder: 'after_history'
+                })
+            }
+
+            if (appContextResult.publishStateContext) {
+                messages.push({
+                    role: 'user',
+                    content: appContextResult.publishStateContext,
+                    type: 'app_context_publish_state',
+                    insertionOrder: 'after_history'
+                })
+            }
+
             if (messages.length === 0) {
                 contextLogger.debug('context.app.build.empty', {
                     reason: 'AppContextManager returned no content'
@@ -455,6 +473,8 @@ export class AILibContextManager {
                 stableContextLength: appContextResult.stableContext?.length || 0,
                 secretsContextLength: appContextResult.secretsContext?.length || 0,
                 mediaSlotsContextLength: appContextResult.mediaSlotsContext?.length || 0,
+                gitStatusContextLength: appContextResult.gitStatusContext?.length || 0,
+                publishStateContextLength: appContextResult.publishStateContext?.length || 0,
                 totalMessages: messages.length
             })
 
@@ -463,7 +483,9 @@ export class AILibContextManager {
                 contextLogger.debug('context.app.content', {
                     stableContext: appContextResult.stableContext,
                     secretsContext: appContextResult.secretsContext,
-                    mediaSlotsContext: appContextResult.mediaSlotsContext
+                    mediaSlotsContext: appContextResult.mediaSlotsContext,
+                    gitStatusContext: appContextResult.gitStatusContext,
+                    publishStateContext: appContextResult.publishStateContext
                 })
             }
 

@@ -1,13 +1,19 @@
 import { readFile } from 'fs/promises';
+import { existsSync } from 'fs';
 import { resolve, join } from 'path';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import type { AgentExecutionContext } from '../base/agent.interface.js';
 import { DirectoryListingTool } from '../tools/directory-listing.js';
-import { appPlanTool } from '../tools/app-plan-tool.js';
+import { appPlanTool, type ColorPalette, type FontTheme } from '../tools/app-plan-tool.js';
 import { logger } from '../logging/index.js';
 import { appContextEvents } from '../logging/events/index.js';
 import { SecretsManagementTool } from '../tools/secrets-management-tool.js';
 import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js';
 import { mediaManifestService, type MediaSlot } from './MediaManifestService.js';
+import { AppRepository } from '../database/repositories/AppRepository.js';
+
+const execFileAsync = promisify(execFile);
 
 /**
  * Result of app context generation, split into stable and dynamic parts for cache efficiency
@@ -19,6 +25,10 @@ export interface AppContextResult {
   secretsContext: string | null;
   /** Semi-dynamic media slots context - goes after history to prevent cache invalidation */
   mediaSlotsContext: string | null;
+  /** Git status context - branch, uncommitted changes, last commit */
+  gitStatusContext: string | null;
+  /** Publish state context - whether app is published and its URL */
+  publishStateContext: string | null;
 }
 
 /**
@@ -31,9 +41,11 @@ export interface AppContextResult {
  */
 export class AppContextManager {
   private directoryTool: DirectoryListingTool;
+  private appRepository: AppRepository;
 
   constructor() {
     this.directoryTool = new DirectoryListingTool();
+    this.appRepository = new AppRepository();
   }
 
   /**
@@ -48,7 +60,7 @@ export class AppContextManager {
     try {
       // Only generate context if we have an app context
       if (!appId || !appPath) {
-        return { stableContext: null, secretsContext: null, mediaSlotsContext: null };
+        return { stableContext: null, secretsContext: null, mediaSlotsContext: null, gitStatusContext: null, publishStateContext: null };
       }
 
       appContextEvents.generateBegin(logger, { appId, directoryPath: appPath });
@@ -56,20 +68,24 @@ export class AppContextManager {
       // Fetch all context data in parallel (these are independent lookups)
       // Note: Directory listing removed to prevent cache invalidation on file changes.
       // Agents should use the directoryListing tool when they need to explore the file structure.
-      const [packageInfo, colorSchemeInfo, secretsInfo, mediaSlotsInfo] = await Promise.all([
+      const [packageInfo, designSystemInfo, secretsInfo, mediaSlotsInfo, gitStatusInfo, publishStateInfo] = await Promise.all([
         this.getPackageInfo(context),
-        this.getColorSchemeInfo(appId),
+        this.getDesignSystemInfo(appId),
         this.getSecretsInfo(appId),
         this.getMediaSlotsInfo(appId),
+        this.getGitStatusInfo(appPath),
+        this.getPublishStateInfo(appId),
       ]);
 
-      // Format stable context (package info, color scheme) - after_history to avoid cache invalidation
-      const stableContext = this.formatStableContext(packageInfo, colorSchemeInfo);
+      // Format stable context (package info, design system) - after_history to avoid cache invalidation
+      const stableContext = this.formatStableContext(packageInfo, designSystemInfo);
 
       // Format dynamic contexts (secrets, media slots) - after_history to prevent cache invalidation
       // These methods return null when there's no content, avoiding boilerplate
       const secretsContext = this.formatSecretsSection(secretsInfo);
       const mediaSlotsContext = this.formatMediaSlotsSection(mediaSlotsInfo);
+      const gitStatusContext = this.formatGitStatusSection(gitStatusInfo);
+      const publishStateContext = this.formatPublishStateSection(publishStateInfo);
 
       // Log successful generation
       const generateData: any = {
@@ -79,7 +95,9 @@ export class AppContextManager {
         scriptCount: packageInfo?.scripts.length || 0,
         stableContextSize: stableContext?.length || 0,
         secretsContextSize: secretsContext?.length || 0,
-        mediaSlotsContextSize: mediaSlotsContext?.length || 0
+        mediaSlotsContextSize: mediaSlotsContext?.length || 0,
+        gitStatusContextSize: gitStatusContext?.length || 0,
+        publishStateContextSize: publishStateContext?.length || 0
       };
 
       if (packageInfo?.name) {
@@ -97,13 +115,15 @@ export class AppContextManager {
       return {
         stableContext,
         secretsContext,
-        mediaSlotsContext
+        mediaSlotsContext,
+        gitStatusContext,
+        publishStateContext
       };
 
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
       appContextEvents.generateFailure(logger, err, { appId, directoryPath: appPath });
-      return { stableContext: null, secretsContext: null, mediaSlotsContext: null };
+      return { stableContext: null, secretsContext: null, mediaSlotsContext: null, gitStatusContext: null, publishStateContext: null };
     }
   }
 
@@ -237,23 +257,26 @@ export class AppContextManager {
   }
 
   /**
-   * Get color scheme information for the app
+   * Get design system information (color palette + font theme) for the app
    * @param appId - The app ID
-   * @returns Color scheme information or null
+   * @returns Design system info or null
    */
-  private async getColorSchemeInfo(appId: string): Promise<any> {
+  private async getDesignSystemInfo(appId: string): Promise<{ colorPalette: ColorPalette | null; fontTheme: FontTheme | null } | null> {
     try {
       const result = await appPlanTool.execute({
         appId,
         operation: 'get'
       });
 
-      if (result.success && result.data?.colorPalette) {
-        return result.data.colorPalette;
+      if (result.success && (result.data?.colorPalette || result.data?.fontTheme)) {
+        return {
+          colorPalette: result.data.colorPalette || null,
+          fontTheme: result.data.fontTheme || null
+        };
       }
       return null;
     } catch (error) {
-      logger.warn('app.context.color_scheme.failure', {
+      logger.warn('app.context.designSystem.failure', {
         appId,
         error: error instanceof Error ? error.message : String(error)
       });
@@ -331,57 +354,62 @@ export class AppContextManager {
   }
 
   /**
-   * Format stable context (package info, color scheme) that rarely changes
+   * Format stable context (package info, design system) that rarely changes
    * Goes in cached prefix to maximize cache hits
    * @param packageInfo - Package information from package.json
-   * @param colorSchemeInfo - Color scheme information from app plan
+   * @param designSystemInfo - Design system info (colors + fonts) from app plan
    * @returns Formatted stable context message
    */
   private formatStableContext(
     packageInfo: any,
-    colorSchemeInfo: any
+    designSystemInfo: { colorPalette: ColorPalette | null; fontTheme: FontTheme | null } | null
   ): string {
     const packageSection = this.formatPackageSection(packageInfo);
-    const colorSchemeSection = this.formatColorSchemeSection(colorSchemeInfo);
+    const designSystemSection = this.formatDesignSystemSection(designSystemInfo);
 
     return `[Current Project Context]
 
 ${packageSection}
 
-${colorSchemeSection}
+${designSystemSection}
 
-Note: This is the current project context including dependencies and color scheme. Use the directoryListing tool to explore the file structure when you need to see what files exist or find specific files. Secrets and media slots may be provided separately if configured.`;
+Note: This is the current project context including dependencies and design system. Use the directoryListing tool to explore the file structure when you need to see what files exist or find specific files. Secrets and media slots may be provided separately if configured.`;
   }
 
   /**
-   * Format color scheme information into a compact section
-   * @param colorSchemeInfo - Color scheme information or null
-   * @returns Formatted color scheme section
+   * Format design system information (colors + fonts) into a compact section
+   * @param designInfo - Design system info or null
+   * @returns Formatted design system section
    */
-  private formatColorSchemeSection(colorSchemeInfo: any): string {
-    if (!colorSchemeInfo) {
-      return 'Color Scheme: Not configured';
+  private formatDesignSystemSection(designInfo: { colorPalette: ColorPalette | null; fontTheme: FontTheme | null } | null): string {
+    if (!designInfo) {
+      return 'Design System: Not configured';
     }
 
-    const parts = [];
+    const sections: string[] = [];
 
-    if (colorSchemeInfo.name) {
-      parts.push(`Name: ${colorSchemeInfo.name}`);
+    // Color scheme
+    if (designInfo.colorPalette) {
+      const parts = [];
+      if (designInfo.colorPalette.name) parts.push(`Name: ${designInfo.colorPalette.name}`);
+      if (designInfo.colorPalette.primary) parts.push(`Primary: ${designInfo.colorPalette.primary}`);
+      if (designInfo.colorPalette.secondary) parts.push(`Secondary: ${designInfo.colorPalette.secondary}`);
+      if (designInfo.colorPalette.accent) parts.push(`Accent: ${designInfo.colorPalette.accent}`);
+      sections.push(`Color Scheme: ${parts.join(', ')}`);
+    } else {
+      sections.push('Color Scheme: Not configured');
     }
 
-    if (colorSchemeInfo.primary) {
-      parts.push(`Primary: ${colorSchemeInfo.primary}`);
+    // Font theme
+    if (designInfo.fontTheme) {
+      const fontParts = [];
+      if (designInfo.fontTheme.name) fontParts.push(`Theme: ${designInfo.fontTheme.name}`);
+      if (designInfo.fontTheme.headerFont?.name) fontParts.push(`Headers: ${designInfo.fontTheme.headerFont.name}`);
+      if (designInfo.fontTheme.bodyFont?.name) fontParts.push(`Body: ${designInfo.fontTheme.bodyFont.name}`);
+      sections.push(`Font Theme: ${fontParts.join(', ')}`);
     }
 
-    if (colorSchemeInfo.secondary) {
-      parts.push(`Secondary: ${colorSchemeInfo.secondary}`);
-    }
-
-    if (colorSchemeInfo.accent) {
-      parts.push(`Accent: ${colorSchemeInfo.accent}`);
-    }
-
-    return `Color Scheme: ${parts.join(', ')}`;
+    return sections.join('\n');
   }
 
   /**
@@ -443,6 +471,133 @@ Note: This is the current project context including dependencies and color schem
     return slotsContext;
   }
 
+
+  /**
+   * Get git status information for the app workspace
+   * @param appPath - The app workspace path
+   * @returns Git status info or null if no git repo
+   */
+  private async getGitStatusInfo(appPath: string): Promise<{
+    branch: string | null;
+    uncommittedCount: number | null;
+    lastCommitHash: string | null;
+    lastCommitMessage: string | null;
+  } | null> {
+    try {
+      const gitRepoPath = resolve(join(appPath, '..', 'git-repo'));
+
+      if (!existsSync(gitRepoPath)) {
+        return null;
+      }
+
+      const gitOpts = { env: { ...process.env, GIT_DIR: gitRepoPath, GIT_WORK_TREE: appPath }, timeout: 5000 };
+
+      // Run all git commands in parallel
+      const [branchResult, statusResult, logResult] = await Promise.all([
+        execFileAsync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], gitOpts).catch(() => null),
+        execFileAsync('git', ['status', '--porcelain'], gitOpts).catch(() => null),
+        execFileAsync('git', ['log', '-1', '--format=%h %s'], gitOpts).catch(() => null),
+      ]);
+
+      // If all git commands failed, git is unavailable — return null to omit the section
+      if (!branchResult && !statusResult && !logResult) {
+        return null;
+      }
+
+      let branch: string | null = branchResult?.stdout.trim() || null;
+      if (branch === 'HEAD') {
+        try {
+          const { stdout: hashOut } = await execFileAsync('git', ['rev-parse', '--short', 'HEAD'], gitOpts);
+          branch = `detached:${hashOut.trim()}`;
+        } catch { branch = null; }
+      }
+
+      const uncommittedCount = statusResult
+        ? (statusResult.stdout.trim() ? statusResult.stdout.trim().split('\n').length : 0)
+        : null;
+
+      let lastCommitHash: string | null = null;
+      let lastCommitMessage: string | null = null;
+      const logTrimmed = logResult?.stdout.trim() || '';
+      if (logTrimmed) {
+        const spaceIdx = logTrimmed.indexOf(' ');
+        if (spaceIdx === -1) {
+          lastCommitHash = logTrimmed;
+        } else {
+          lastCommitHash = logTrimmed.substring(0, spaceIdx);
+          lastCommitMessage = logTrimmed.substring(spaceIdx + 1);
+        }
+      }
+
+      return { branch, uncommittedCount, lastCommitHash, lastCommitMessage };
+    } catch (error) {
+      logger.warn('app.context.gitStatus.failure', {
+        error: error instanceof Error ? error.message : String(error)
+      });
+      return null;
+    }
+  }
+
+  /**
+   * Format git status information into a compact section
+   * @param gitInfo - Git status info or null
+   * @returns Formatted git status section, or null if no git repo
+   */
+  private formatGitStatusSection(gitInfo: {
+    branch: string | null;
+    uncommittedCount: number | null;
+    lastCommitHash: string | null;
+    lastCommitMessage: string | null;
+  } | null): string | null {
+    if (!gitInfo) return null;
+
+    const parts: string[] = ['## Git Status'];
+    if (gitInfo.branch) {
+      parts.push(`- Branch: ${gitInfo.branch}`);
+    }
+    if (gitInfo.uncommittedCount !== null) {
+      parts.push(`- Uncommitted changes: ${gitInfo.uncommittedCount}`);
+    }
+    if (gitInfo.lastCommitHash) {
+      parts.push(`- Last commit: ${gitInfo.lastCommitHash}${gitInfo.lastCommitMessage ? ` ${gitInfo.lastCommitMessage}` : ''}`);
+    }
+    return parts.join('\n');
+  }
+
+  /**
+   * Get publish state information for the app
+   * @param appId - The app ID
+   * @returns Publish state info or null
+   */
+  private async getPublishStateInfo(appId: string): Promise<{ publishedUrl: string | null } | null> {
+    try {
+      const app = this.appRepository.findById(appId);
+      if (!app) return null;
+      return { publishedUrl: app.publishedUrl || null };
+    } catch (error) {
+      logger.warn('app.context.publishState.failure', {
+        appId,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      return null;
+    }
+  }
+
+  /**
+   * Format publish state information into a compact section
+   * @param publishStateInfo - Publish state info or null
+   * @returns Formatted publish state section, or null if no data
+   */
+  private formatPublishStateSection(publishStateInfo: { publishedUrl: string | null } | null): string | null {
+    if (!publishStateInfo) return null;
+
+    const isPublished = !!publishStateInfo.publishedUrl;
+    let section = `## App Status\n- Published: ${isPublished ? 'yes' : 'no'}`;
+    if (publishStateInfo.publishedUrl) {
+      section += `\n- URL: ${publishStateInfo.publishedUrl}`;
+    }
+    return section;
+  }
 
   /**
    * Format package.json information into a compact section

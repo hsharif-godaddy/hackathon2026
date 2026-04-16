@@ -28,6 +28,7 @@ export interface App {
   subscriptionId?: string; // Subscription ID from main app
   customerId?: string; // Customer ID from main app
   status: 'creating' | 'created' | 'error';
+  publishedUrl: string | null; // Published site URL (set after successful publish)
   initialBuildComplete?: boolean; // True when first git commit has been made
   createdAt: Date;
   updatedAt: Date;

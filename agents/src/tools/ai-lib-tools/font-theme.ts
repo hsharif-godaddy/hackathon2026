@@ -8,6 +8,7 @@ import { z } from 'zod'
 
 import { AppRepository } from '../../database/repositories/AppRepository.js'
 
+import { appPlanTool } from '../app-plan-tool.js'
 import { getAgentModelWithName } from '../../utils/model-selection.js'
 import { logger } from '../../logging/index.js'
 
@@ -612,6 +613,46 @@ export const FONT_THEMES: Record<string, {
   }
 }
 
+/**
+ * Persist font theme selection to the app plan.
+ * Non-fatal: logs warnings on failure but never throws.
+ */
+async function persistFontThemeToPlan(
+  appId: string,
+  fontTheme: { name: string; headerFont: FontInfo; bodyFont: FontInfo },
+  logEventPrefix: string
+): Promise<void> {
+  try {
+    const persistResult = await appPlanTool.execute({
+      appId,
+      operation: 'update',
+      fontTheme: {
+        name: fontTheme.name,
+        headerFont: fontTheme.headerFont,
+        bodyFont: fontTheme.bodyFont
+      }
+    })
+    if (persistResult.success) {
+      logger.info(`${logEventPrefix}.persist.success`, {
+        appId,
+        themeName: fontTheme.name,
+        headerFont: fontTheme.headerFont.name,
+        bodyFont: fontTheme.bodyFont.name
+      })
+    } else {
+      logger.warn(`${logEventPrefix}.persist.failure`, {
+        appId,
+        error: persistResult.error || persistResult.message
+      })
+    }
+  } catch (error) {
+    logger.warn(`${logEventPrefix}.persist.failure`, {
+      appId,
+      error: error instanceof Error ? error.message : String(error)
+    })
+  }
+}
+
 export async function updateCssFontVariables(
   appPath: string,
   headerFont: { name: string; weights: string[]; category: FontCategory },
@@ -903,6 +944,13 @@ MODE SELECTION GUIDE:
         const fontDescription = selectedFont.headerFont.name === selectedFont.bodyFont.name
           ? selectedFont.headerFont.name
           : `${selectedFont.headerFont.name} (headers) + ${selectedFont.bodyFont.name} (body)`
+
+        // Persist font theme to app plan
+        await persistFontThemeToPlan(
+          appId,
+          { name: selectedFont.name, headerFont: selectedFont.headerFont, bodyFont: selectedFont.bodyFont },
+          'fontTheme.set'
+        )
 
         logger.info('fontTheme.set.complete', {
           appId,
@@ -1219,6 +1267,9 @@ MODE SELECTION GUIDE:
       if (!result.success) {
         throw new Error(result.message)
       }
+
+      // Persist font theme to app plan
+      await persistFontThemeToPlan(appId, { name: themeName, headerFont, bodyFont }, 'fontTheme.apply')
 
       return {
         success: true,
