@@ -117,7 +117,7 @@ func main() {
 		tokenGen = tg
 	}
 
-	srv := &api.Server{Store: st, LocalAuthDisable: cfg.LocalAuthDisable}
+	srv := &api.Server{Store: st, LocalAuthDisable: cfg.LocalAuthDisable, LogRequestBodies: cfg.LogRequestBodies}
 	if tokenGen != nil {
 		srv.TokenGenerator = tokenGen
 	}

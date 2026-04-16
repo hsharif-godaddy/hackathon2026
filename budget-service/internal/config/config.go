@@ -33,6 +33,9 @@ type Config struct {
 	// LogLevel controls slog level for the whole process (JSON logs). From LOG_LEVEL, default "info".
 	LogLevel string
 
+	// LogRequestBodies adds requestBody to http.request.complete for POST/PATCH when true (LOG_REQUEST_BODIES). Default false.
+	LogRequestBodies bool
+
 	// Background worker settings
 	WorkerEnabled   bool
 	WorkerInterval  time.Duration
@@ -61,6 +64,7 @@ func Load() (Config, error) {
 		HTTPWriteTimeout:     getEnvDuration("HTTP_WRITE_TIMEOUT", 60*time.Second),
 		HTTPIdleTimeout:      getEnvDuration("HTTP_IDLE_TIMEOUT", 120*time.Second),
 		LogLevel:             getEnv("LOG_LEVEL", "info"),
+		LogRequestBodies:     getEnvBool("LOG_REQUEST_BODIES"),
 		WorkerEnabled:        getEnvBoolDefault("WORKER_ENABLED", true),
 		WorkerInterval:       getEnvDuration("WORKER_INTERVAL", 1*time.Minute),
 		WorkerBatchSize:      getEnvInt("WORKER_BATCH_SIZE", 500),

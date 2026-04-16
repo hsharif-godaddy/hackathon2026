@@ -79,6 +79,20 @@ func TestLoadLogLevelFromEnv(t *testing.T) {
 	}
 }
 
+func TestLoadLogRequestBodiesFromEnv(t *testing.T) {
+	t.Setenv("LOCAL_AUTH_DISABLE", "true")
+	t.Setenv("SSO_HOST", "")
+	t.Setenv("DATABASE_URL", "")
+	t.Setenv("LOG_REQUEST_BODIES", "true")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !cfg.LogRequestBodies {
+		t.Fatal("LogRequestBodies: want true")
+	}
+}
+
 func TestLoadLogLevelDefaultInfo(t *testing.T) {
 	t.Setenv("LOCAL_AUTH_DISABLE", "true")
 	t.Setenv("SSO_HOST", "")

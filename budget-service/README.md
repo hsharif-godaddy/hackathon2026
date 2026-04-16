@@ -11,7 +11,7 @@ HTTP API for budgets, LLM sessions, session spend lines, session reports (reconc
 ## Observability
 
 - **Logs:** Structured JSON to **stdout** via `log/slog` (same idea as `knowledge-service`). Default level is **info**. The logger is configured from **`LOG_LEVEL`** before config load so early failures (e.g. invalid env) still emit JSON on stdout.
-- **HTTP access:** The mux router is wrapped so **every response** (including **404** / **405** and OpenAPI routes) emits **`http.request.complete`** with `method`, `path`, `status`, `durationMs`, `userAgent`. Path and user-agent are sanitized and truncated for log safety.
+- **HTTP access:** The mux router is wrapped so **every response** (including **404** / **405** and OpenAPI routes) emits **`http.request.complete`** with `method`, `path`, `status`, `durationMs`, `userAgent`. Path and user-agent are sanitized and truncated for log safety. Set **`LOG_REQUEST_BODIES=true`** to also log **`requestBody`** for **POST** and **PATCH** (sanitized, 64KiB rune cap; opt-in to avoid shipping large or sensitive payloads by default).
 - **Shutdown:** `SIGINT` / `SIGTERM` triggers graceful **`http.Server.Shutdown`** (15s timeout).
 
 ## Session API (routing vs create)

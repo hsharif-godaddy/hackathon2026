@@ -1,6 +1,9 @@
 package api
 
 import (
+	"bytes"
+	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -9,6 +12,11 @@ import (
 )
 
 const maxLogFieldLen = 512
+
+// maxPayloadLogLen caps logged request body size for Kibana/JSON lines (full body is still buffered up to budgetMaxBodyBytes for handlers).
+const maxPayloadLogLen = 65536
+
+var errRequestBodyTooLarge = errors.New("request body too large")
 
 type responseWriter struct {
 	http.ResponseWriter
@@ -32,37 +40,84 @@ func (rw *responseWriter) Flush() {
 
 // LoggingMiddleware wraps the entire handler (including mux NotFound/MethodNotAllowed) so
 // every response emits an access log line.
-func LoggingMiddleware(next http.Handler) http.Handler {
-	return newLoggingMiddleware(slog.Default(), next)
+func LoggingMiddleware(next http.Handler, logRequestBodies bool) http.Handler {
+	return newLoggingMiddleware(slog.Default(), next, logRequestBodies)
 }
 
-func newLoggingMiddleware(logger *slog.Logger, next http.Handler) http.Handler {
+func newLoggingMiddleware(logger *slog.Logger, next http.Handler, logRequestBodies bool) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		rw := newResponseWriter(w)
 
+		var requestBodyLog string
+		if logRequestBodies && (r.Method == http.MethodPost || r.Method == http.MethodPatch) {
+			body, err := readAndReplaceRequestBody(r, int64(budgetMaxBodyBytes))
+			if err != nil {
+				if errors.Is(err, errRequestBodyTooLarge) {
+					writeError(rw, http.StatusRequestEntityTooLarge, "PAYLOAD_TOO_LARGE", "request body too large")
+				} else {
+					writeError(rw, http.StatusBadRequest, "BAD_REQUEST", "invalid request body")
+				}
+				logger.Info("http.request.complete",
+					"method", r.Method,
+					"path", sanitizeLogValue(r.URL.Path),
+					"status", rw.statusCode,
+					"durationMs", time.Since(start).Milliseconds(),
+					"userAgent", sanitizeLogValue(r.UserAgent()),
+				)
+				return
+			}
+			requestBodyLog = sanitizeAndTruncate(string(body), maxPayloadLogLen)
+		}
+
 		next.ServeHTTP(rw, r)
 
-		logger.Info("http.request.complete",
+		attrs := []any{
 			"method", r.Method,
 			"path", sanitizeLogValue(r.URL.Path),
 			"status", rw.statusCode,
 			"durationMs", time.Since(start).Milliseconds(),
 			"userAgent", sanitizeLogValue(r.UserAgent()),
-		)
+		}
+		if logRequestBodies && (r.Method == http.MethodPost || r.Method == http.MethodPatch) {
+			attrs = append(attrs, "requestBody", requestBodyLog)
+		}
+		logger.Info("http.request.complete", attrs...)
 	})
 }
 
-func sanitizeLogValue(s string) string {
-	s = strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) {
-			return -1
-		}
-		return r
-	}, s)
-	runes := []rune(s)
-	if len(runes) > maxLogFieldLen {
-		return string(runes[:maxLogFieldLen])
+func readAndReplaceRequestBody(r *http.Request, max int64) ([]byte, error) {
+	if r.Body == nil {
+		return nil, nil
 	}
-	return s
+	defer r.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(r.Body, max+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(body)) > max {
+		return nil, errRequestBodyTooLarge
+	}
+	r.Body = io.NopCloser(bytes.NewReader(body))
+	return body, nil
+}
+
+func sanitizeAndTruncate(s string, maxRunes int) string {
+	var b strings.Builder
+	n := 0
+	for _, r := range s {
+		if unicode.IsControl(r) {
+			continue
+		}
+		if n >= maxRunes {
+			break
+		}
+		b.WriteRune(r)
+		n++
+	}
+	return b.String()
+}
+
+func sanitizeLogValue(s string) string {
+	return sanitizeAndTruncate(s, maxLogFieldLen)
 }

@@ -18,8 +18,6 @@ import (
 	"github.com/gdcorp-partners/airo-app-builder/budget-service/internal/store"
 )
 
-const budgetMaxBodyBytes = 1 << 20
-
 // flexAmount unmarshals JSON string or number into a normalized decimal string.
 type flexAmount string
 

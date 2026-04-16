@@ -8,6 +8,11 @@ import (
 	"strings"
 )
 
+// budgetMaxBodyBytes caps JSON request bodies. When LOG_REQUEST_BODIES is true, POST/PATCH
+// middleware buffers up to this size before handlers; otherwise decodeJSONBody's MaxBytesReader
+// is the first line of defense for oversized bodies.
+const budgetMaxBodyBytes = 1 << 20
+
 func decodeJSONBody(w http.ResponseWriter, r *http.Request, dst any, allowEmpty bool) bool {
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, budgetMaxBodyBytes))
 	dec.DisallowUnknownFields()
