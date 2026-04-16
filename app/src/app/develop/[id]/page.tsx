@@ -452,7 +452,6 @@ function DevelopPageContent() {
   } = useErrorFixState(isProcessing, errorFixSendHandler)
   fixAttemptCountRef.current = fixAttemptCount
 
-
   const handleScreenshotUpload = useCallback(async (screenshotDataUrl: string) => {
     if (!appId) return
 

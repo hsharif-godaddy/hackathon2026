@@ -413,7 +413,7 @@ describe('useErrorFixState', () => {
       vi.useRealTimers()
     })
 
-    it('resets dedup after error resolves', () => {
+    it('preserves dedup after error resolves to prevent resolve/request race loop', () => {
       const { result, onSendFix, setIsProcessing } = setup(false)
 
       const error: PendingError = {
@@ -428,12 +428,59 @@ describe('useErrorFixState', () => {
       act(() => setIsProcessing(true))
       act(() => setIsProcessing(false))
 
+      // Error resolves (e.g. HMR reset)
+      act(() => { result.current.actions.handleErrorFixResolved() })
+
+      // Same error immediately re-fires (re-render threw again) — should NOT auto-send
+      act(() => { result.current.actions.handleErrorFixRequest(error) })
+      expect(onSendFix).toHaveBeenCalledTimes(1)
+      expect(result.current.errorFixState).toBe('unresolved')
+    })
+
+    it('resets dedup after user dismisses error', () => {
+      const { result, onSendFix } = setup(false)
+
+      const error: PendingError = {
+        errorData: { message: 'x is undefined', name: 'TypeError' }
+      }
+
+      // First auto-send
+      act(() => { result.current.actions.handleErrorFixRequest(error) })
+      expect(onSendFix).toHaveBeenCalledTimes(1)
+
+      // Dismiss (explicit user action)
+      act(() => { result.current.actions.handleDismissError() })
+
+      // Same error comes back — dedup was reset by dismiss, should auto-send
+      act(() => { result.current.actions.handleErrorFixRequest(error) })
+      expect(onSendFix).toHaveBeenCalledTimes(2)
+    })
+
+    it('auto-sends a different error after resolve without clearing dedup', () => {
+      const { result, onSendFix, setIsProcessing } = setup(false)
+
+      const errorA: PendingError = {
+        errorData: { message: 'x is undefined', name: 'TypeError' }
+      }
+      const errorB: PendingError = {
+        errorData: { message: 'y is not a function', name: 'TypeError' }
+      }
+
+      // First auto-send
+      act(() => { result.current.actions.handleErrorFixRequest(errorA) })
+      expect(onSendFix).toHaveBeenCalledTimes(1)
+
+      // Agent finishes
+      act(() => setIsProcessing(true))
+      act(() => setIsProcessing(false))
+
       // Error resolves
       act(() => { result.current.actions.handleErrorFixResolved() })
 
-      // Same error comes back - should auto-send again (dedup was reset)
-      act(() => { result.current.actions.handleErrorFixRequest(error) })
+      // Different error arrives — should auto-send despite dedup being preserved
+      act(() => { result.current.actions.handleErrorFixRequest(errorB) })
       expect(onSendFix).toHaveBeenCalledTimes(2)
+      expect(result.current.errorFixState).toBe('pending')
     })
 
     it('does not re-send while already pending', () => {

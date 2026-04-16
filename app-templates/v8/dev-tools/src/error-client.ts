@@ -93,10 +93,35 @@ if (import.meta.env.MODE === 'development') {
 
   // After a full page reload (e.g., recovering from a compile error), the module
   // re-initializes with clean state and the parent never receives error-fix-resolved.
-  // Fires on every load (even without a prior error) since we can't know post-reload
-  // whether one existed. The parent handles this idempotently.
+  // Wait for React to actually mount into #app before signaling — sending too early
+  // creates a race where error-fix-resolved clears parent dedup state, then the same
+  // runtime error immediately fires error-fix-request and gets auto-sent again.
   window.addEventListener('load', () => {
-    safePostMessage(window.parent, { type: 'error-fix-resolved' });
+    const appEl = document.getElementById('app');
+    if (appEl && appEl.children.length > 0) {
+      safePostMessage(window.parent, { type: 'error-fix-resolved' });
+      return;
+    }
+    if (appEl) {
+      let resolved = false;
+      const observer = new MutationObserver(() => {
+        if (appEl.children.length > 0) {
+          resolved = true;
+          observer.disconnect();
+          safePostMessage(window.parent, { type: 'error-fix-resolved' });
+        }
+      });
+      observer.observe(appEl, { childList: true });
+      setTimeout(() => {
+        observer.disconnect();
+        // Only signal if React actually mounted — if children are still absent,
+        // there's likely still an error and firing here would clear parent dedup
+        // state, re-triggering the auto-send loop we're preventing.
+        if (!resolved && appEl.children.length > 0) {
+          safePostMessage(window.parent, { type: 'error-fix-resolved' });
+        }
+      }, 5000);
+    }
   });
 }
 
@@ -115,7 +140,10 @@ if (import.meta.env.MODE === 'development' && import.meta.hot) {
 
   const handleAfterUpdate = () => {
     // Check both hasErrorOverlay (for HMR errors) and overlayElement (for initial-error,
-    // where hasErrorOverlay is not set because it's scoped to this block)
+    // where hasErrorOverlay is not set because it's scoped to this block).
+    // Sends error-fix-resolved immediately (no deferral) because compile errors flow
+    // through useErrorFixState's non-runtime branch — no dedup signature is set, so a
+    // premature signal can't trigger the auto-send loop.
     if (hasErrorOverlay || overlayElement) {
       hasErrorOverlay = false;
       hasDetailedError = false;

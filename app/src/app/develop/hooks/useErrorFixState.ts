@@ -14,7 +14,8 @@ export interface ErrorFixActions {
   handleErrorFixRequest: (error: PendingError) => void
   /** Call when user clicks "Ask Airo to Fix" on the unresolved overlay */
   handleFixError: () => void
-  /** Call when an error-fix-resolved message arrives from the iframe */
+  /** Call when an error-fix-resolved message arrives from the iframe.
+   * Clears error state but preserves the dedup signature — use handleDismissError to also reset dedup. */
   handleErrorFixResolved: () => void
   /** Call when user clicks "Dismiss" on the unresolved overlay */
   handleDismissError: () => void
@@ -164,7 +165,11 @@ export function useErrorFixState(
     errorFixStateRef.current = 'none'
     setUserRequestedFix(false)
     setFixAttemptCount(0)
-    autoSentSignatureRef.current = null
+    // Intentionally do NOT clear autoSentSignatureRef here.
+    // If the same error immediately re-fires after "resolved" (e.g. HMR reset
+    // triggers re-render that throws again), the dedup check prevents an
+    // infinite auto-send loop. The signature resets on dismiss or when a
+    // genuinely different error arrives.
     if (graceTimerRef.current) {
       clearTimeout(graceTimerRef.current)
       graceTimerRef.current = null

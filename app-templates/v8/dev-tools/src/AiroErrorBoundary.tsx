@@ -18,15 +18,15 @@ interface State {
 export default class AiroErrorBoundary extends Component<Props, State> {
   state: State = { error: null, errorInfo: null, isFixing: false };
   private hmrAfterUpdateHandler?: () => void;
+  private pendingHmrReset = false;
 
   componentDidMount() {
     injectDevToolsStyles();
-    // Reset error state on HMR updates so fixed code can render
     if (import.meta.hot) {
       this.hmrAfterUpdateHandler = () => {
         if (this.state.error) {
+          this.pendingHmrReset = true;
           this.setState({ error: null, errorInfo: null, isFixing: false });
-          safePostMessage(window.parent, { type: 'error-fix-resolved' });
         }
       };
       import.meta.hot.on('vite:afterUpdate', this.hmrAfterUpdateHandler);
@@ -34,13 +34,20 @@ export default class AiroErrorBoundary extends Component<Props, State> {
   }
 
   componentWillUnmount() {
-    // Clean up HMR listener to prevent memory leaks
     if (import.meta.hot && this.hmrAfterUpdateHandler) {
       import.meta.hot.off('vite:afterUpdate', this.hmrAfterUpdateHandler);
     }
   }
 
+  componentDidUpdate(_prevProps: Props, prevState: State) {
+    if (this.pendingHmrReset && prevState.error && !this.state.error) {
+      this.pendingHmrReset = false;
+      safePostMessage(window.parent, { type: 'error-fix-resolved' });
+    }
+  }
+
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    this.pendingHmrReset = false;
     console.error('Error caught by AiroErrorBoundary:', error, errorInfo);
     this.setState({ error, errorInfo, isFixing: false });
   }
