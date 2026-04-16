@@ -53,6 +53,19 @@ Additional: `app-templates/` (v8 template), `packages/design-extractor/` (PDF RA
 
 See service-specific CLAUDE.md files: [agents/](agents/CLAUDE.md), [app/](app/CLAUDE.md), [dev-supervisor/](dev-supervisor/CLAUDE.md), [local-control-plane/](local-control-plane/CLAUDE.md)
 
+## Publish Flow Architecture
+
+The publish flow spans agents service and publish container. **When modifying publish logic, check both locations.**
+
+| Component        | Location                                     | Role                                                     |
+| ---------------- | -------------------------------------------- | -------------------------------------------------------- |
+| Archive Creation | `agents/src/utils/git.ts`                    | Creates tarball, validates dist/ for dist-only archives  |
+| Publish Route    | `agents/src/server/routes/publish.ts`        | API endpoint, orchestrates flow                          |
+| Run Script       | `container-scripts/publish/run-app.sh`       | Extracts archive, routes to build or direct run          |
+| Build Script     | `container-scripts/publish/build-and-run.sh` | Installs deps, builds, validates dist/ for default serve |
+
+**Cross-service validation:** Dist directory checks exist in both `git.ts` (archive time) and `build-and-run.sh` (deploy time). Changes to validation logic must be synchronized.
+
 ## V4 Directory Structure
 
 ```

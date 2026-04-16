@@ -592,6 +592,8 @@ export class GitUtils {
 
     // Only verify dist/ folder exists for dist-only archives
     // Full source archives include everything in /app, so dist/ is not required
+    // CROSS-SERVICE: Dist validation also exists in container-scripts/publish/build-and-run.sh
+    // When modifying this check, verify the container-side logic is consistent
     if (!includeSource) {
       const distCheckResult = await this.devSupervisor!.exec({
         command: buildShellCommand(['test', '-d', 'dist']),
@@ -755,8 +757,12 @@ export class GitUtils {
     return untrackedResult.stdout
       .split('\0')
       .map(file => file.replace(/\r?\n$/, ''))
-      // TODO: env file exception until we have a better solution for handling environment variables in source archives
+      // Exceptions: files that should always be included even if untracked
+      // - repo-root .env* files: customer environment variables needed for runtime
+      //   (only root-level, e.g. .env, .env.local - nested like subdir/.env are still excluded)
+      // - .airo/ directory: platform configuration (runtime commands for PaaS)
       .filter(file => !file.startsWith('.env'))
+      .filter(file => !file.startsWith('.airo/') && file !== '.airo')
       .filter(file => file.length > 0);
   }
 

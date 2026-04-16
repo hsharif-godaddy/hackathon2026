@@ -77,6 +77,9 @@ log "Changed to app directory: $APP_DIR"
 
 # Detect if archive contains pre-built artifacts or needs to be built
 # Check for ESM bundle first (current), then fall back to CJS (legacy archives)
+# CROSS-SERVICE: Archive content strategy determined by agents/src/utils/git.ts createArchive()
+# - dist-only archives: contain pre-built server.bundle.mjs/cjs → fast path below
+# - full-source archives (PaaS): contain source + package.json → build-and-run.sh path
 if [[ -f "${APP_DIR}/dist/server.bundle.mjs" ]]; then
     log "Detected pre-built artifacts (server.bundle.mjs) - using fast path"
 

@@ -52,24 +52,36 @@ else
 fi
 log "Dependencies installed successfully"
 
-# Build project - check for custom build command in .airo/config.json
-BUILD_CMD="$PACKAGE_MANAGER run build"
+# Read custom commands from .airo/config.json (if exists)
+CUSTOM_BUILD_CMD=""
+CUSTOM_SERVE_CMD=""
 if [[ -f ".airo/config.json" ]]; then
     CUSTOM_BUILD_CMD=$(jq -er '.runtime.build.command // empty' .airo/config.json 2>/dev/null || echo "")
-    if [[ -n "$CUSTOM_BUILD_CMD" ]]; then
-        BUILD_CMD="$CUSTOM_BUILD_CMD"
-        log "Using custom build command from .airo/config.json"
-    fi
+    CUSTOM_SERVE_CMD=$(jq -er '.runtime.serve.command // empty' .airo/config.json 2>/dev/null || echo "")
+fi
+
+# Build project - use custom build command if provided
+BUILD_CMD="$PACKAGE_MANAGER run build"
+if [[ -n "$CUSTOM_BUILD_CMD" ]]; then
+    BUILD_CMD="$CUSTOM_BUILD_CMD"
+    log "Using custom build command from .airo/config.json"
 fi
 log "Building project with command: $BUILD_CMD"
 sh -c "$BUILD_CMD" || error_exit "Failed to build project"
 log "Project built successfully"
 
-# Verify dist directory was created
-if [[ ! -d "dist" ]]; then
-    error_exit "dist directory not found after build. Build may have failed silently."
+# Verify dist directory was created (only if using default serve command)
+# Custom serve commands may not require a dist directory
+# CROSS-SERVICE: Dist validation also exists in agents/src/utils/git.ts
+# When modifying this check, verify the agents-side logic is consistent
+if [[ -z "$CUSTOM_SERVE_CMD" ]]; then
+    if [[ ! -d "dist" ]]; then
+        error_exit "dist directory not found after build. Build may have failed silently."
+    fi
+    log "Found dist directory"
+else
+    log "Using custom serve command - skipping dist directory check"
 fi
-log "Found dist directory"
 
 # Push database migrations if applicable
 if [[ "$CONFIG_EXISTS" == "false" ]]; then
@@ -88,9 +100,8 @@ else
     log "No db:push or db:migrate script found, skipping database migrations"
 fi
 
-# Execute built app - check for custom serve command in .airo/config.json
-# Try to read custom serve command (handles missing file, empty file, invalid JSON, or missing field)
-CUSTOM_SERVE_CMD=$(jq -er '.runtime.serve.command // empty' .airo/config.json 2>/dev/null || echo "")
+# Execute built app using custom serve command (if configured) or auto-detect entry point
+# Default path tries: dist/app.js, dist/index.js, dist/server.js, dist/main.js (first found wins)
 
 load_customer_environment_variables
 
@@ -99,13 +110,23 @@ if [[ -n "$CUSTOM_SERVE_CMD" ]]; then
     log "Using custom serve command from .airo/config.json: $CUSTOM_SERVE_CMD"
     exec sh -c "$CUSTOM_SERVE_CMD"
 else
-    # Default path - requires dist/app.js
-    if [[ ! -f "${APP_DIR}/dist/app.js" ]]; then
-        error_exit "app.js not found in dist directory. Build output may be incorrect."
+    # Default path - try common entry points in order of preference
+    # CROSS-SERVICE: These entry points match what app templates and common frameworks produce
+    ENTRY_FILE=""
+    for candidate in "dist/app.js" "dist/index.js" "dist/server.js" "dist/main.js"; do
+        if [[ -f "${APP_DIR}/${candidate}" ]]; then
+            ENTRY_FILE="${candidate}"
+            break
+        fi
+    done
+
+    if [[ -z "$ENTRY_FILE" ]]; then
+        error_exit "No entry point found in dist directory (tried: app.js, index.js, server.js, main.js). Build output may be incorrect or missing."
     fi
-    log "Found app.js in dist directory"
+
+    log "Found entry point: ${ENTRY_FILE}"
     create_env_file "${APP_DIR}/dist"
     cd "${APP_DIR}/dist" || error_exit "Failed to change to directory: ${APP_DIR}/dist"
-    log "Starting application with default command: /usr/local/bin/node ./app.js"
-    exec /usr/local/bin/node ./app.js
+    log "Starting application with command: /usr/local/bin/node ./${ENTRY_FILE##*/}"
+    exec /usr/local/bin/node "./${ENTRY_FILE##*/}"
 fi

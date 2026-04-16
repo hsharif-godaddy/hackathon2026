@@ -649,6 +649,29 @@ describe('GitUtils', () => {
           expect(tarCallArgs.command).toContain('--exclude=config.json');
         });
 
+        it('should filter out .airo/ files from untracked exclusions to keep them in the archive', async () => {
+          const commitHash = 'abc1234';
+
+          // Note: No dist check because includeSource: true skips it
+          mockDevSupervisor.exec
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' }) // mkdir output dir
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '.airo/config.json\u0000.airo\u0000.airo-other/foo.txt\u0000random.txt\u0000', stderr: '' }) // list untracked
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' }); // tar
+
+          await gitUtils.createArchive('/app', commitHash, undefined, { includeSource: true, excludeUntracked: true });
+
+          const tarCallArgs = mockDevSupervisor.exec.mock.calls[2][0];
+          // .airo/ files and the .airo directory itself are filtered from the untracked exclusion list,
+          // so they will NOT have --exclude flags and will be included in the publish archive
+          expect(tarCallArgs.command).not.toContain('--exclude=.airo/config.json');
+          // Check .airo directory is not excluded (use regex to avoid matching .airo-other)
+          expect(tarCallArgs.command).not.toMatch(/--exclude=\.airo['"\s]/);
+          // .airo-other/ has a different prefix (not .airo/), so it remains in the exclusion list
+          expect(tarCallArgs.command).toContain('--exclude=.airo-other/foo.txt');
+          // Non-.airo untracked files should still be excluded
+          expect(tarCallArgs.command).toContain('--exclude=random.txt');
+        });
+
         it('should continue archive creation when listing untracked files fails', async () => {
           const commitHash = 'abc1234';
 
