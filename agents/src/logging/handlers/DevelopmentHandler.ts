@@ -230,8 +230,17 @@ export class DevelopmentHandler implements LogHandler {
       return compactFormat;
     }
 
-    const jsonStr = JSON.stringify(obj, null, 2);
-    
+    let jsonStr: string;
+    try {
+      jsonStr = JSON.stringify(obj, null, 2);
+    } catch {
+      // Circular references or non-serializable objects
+      const keys = Object.keys(obj);
+      const preview = keys.slice(0, 5).join(', ');
+      const moreKeys = keys.length > 5 ? ` (+${keys.length - 5} more)` : '';
+      return `  ${this.gray('Object')} {${preview}${moreKeys}} ${this.gray('(non-serializable)')}`;
+    }
+
     if (jsonStr.length <= this.expandThreshold) {
       return this.indent(jsonStr, 2);
     }
@@ -240,7 +249,7 @@ export class DevelopmentHandler implements LogHandler {
     const keys = Object.keys(obj);
     const preview = keys.slice(0, 5).join(', ');
     const moreKeys = keys.length > 5 ? ` (+${keys.length - 5} more)` : '';
-    
+
     return `  ${this.gray('Object')} {${preview}${moreKeys}} ${this.gray(`(${jsonStr.length} chars - use debugger to inspect)`)}`;
   }
 

@@ -84,26 +84,37 @@ export function sanitizeLogEvent(event: LogEvent): LogEvent {
   return sanitized;
 }
 
-/**
- * Sanitize sensitive data from any object
- */
-function sanitizeSensitiveData(obj: Record<string, any>): Record<string, any> {
-  const sensitiveKeys = [
-    'password', 'token', 'secret', 'key', 'apikey', 'api_key',
-    'authorization', 'auth', 'credential', 'credentials'
-  ];
+const SENSITIVE_KEYS = [
+  'password', 'token', 'secret', 'key', 'apikey', 'api_key',
+  'authorization', 'auth', 'credential', 'credentials'
+];
 
-  // Keys that should NOT be redacted even if they contain sensitive keywords
-  const allowedKeys = [
-    'promptTokens', 'completionTokens', 'totalTokens', 'tokens',
-    'tokenCount', 'tokenUsage', 'tokenType', 'inputTokens', 'outputTokens',
-    'originalTokenCount', 'summaryTokenCount', 'maxTokensPerBatch', 'maxPromptTokens',
-    'cacheReadTokens', 'cacheWriteTokens', 'noCacheTokens', 'totalInputTokens', 'batchTokenCount', 'batchTokens',
-    'totalSummaryTokens', 'originalTokens', 'summaryTokens', 'reasoningTokens',
-    'cachedInputTokens', 'freshInputTokens', 'unsummarizedTokenCount', 'projectedPromptTokens',
-    'thresholdTokenCount', 'contextWindowUtilization', 'cacheHitRate',
-    'tokensSaved', 'cumulativeOriginalTokens', 'incrementalTokens', 'fullHistoryTokens'
-  ];
+const ALLOWED_KEYS = new Set([
+  'prompttokens', 'completiontokens', 'totaltokens', 'tokens',
+  'tokencount', 'tokenusage', 'tokentype', 'inputtokens', 'outputtokens',
+  'originaltokencount', 'summarytokencount', 'maxtokensperbatch', 'maxprompttokens',
+  'cachereadtokens', 'cachewritetokens', 'nocachetokens', 'totalinputtokens', 'batchtokencount', 'batchtokens',
+  'totalsummarytokens', 'originaltokens', 'summarytokens', 'reasoningtokens',
+  'cachedinputtokens', 'freshinputtokens', 'unsummarizedtokencount', 'projectedprompttokens',
+  'thresholdtokencount', 'contextwindowutilization', 'cachehitrate',
+  'tokenssaved', 'cumulativeoriginaltokens', 'incrementaltokens', 'fullhistorytokens',
+]);
+
+/**
+ * Sanitize sensitive data from any object.
+ *
+ * Uses a shared WeakSet across the full traversal to detect circular references
+ * and prevent stack overflow. Trade-off: shared (non-circular) references to the
+ * same object will also be replaced with '[Circular]' on second encounter. This
+ * matches JSON.stringify's cycle detection behavior and is acceptable for logging.
+ */
+function sanitizeSensitiveData(obj: Record<string, any>, seen?: WeakSet<object>): any {
+  if (!seen) seen = new WeakSet();
+
+  if (seen.has(obj)) {
+    return '[Circular]';
+  }
+  seen.add(obj);
 
   const sanitized = { ...obj };
 
@@ -111,23 +122,22 @@ function sanitizeSensitiveData(obj: Record<string, any>): Record<string, any> {
     const lowerKey = key.toLowerCase();
 
     // Skip redaction for allowed token usage fields
-    if (allowedKeys.some(allowed => lowerKey === allowed.toLowerCase())) {
-      // Still recursively sanitize nested objects
+    if (ALLOWED_KEYS.has(lowerKey)) {
       if (value && typeof value === 'object' && !Array.isArray(value)) {
-        sanitized[key] = sanitizeSensitiveData(value);
+        sanitized[key] = sanitizeSensitiveData(value, seen);
       }
       continue;
     }
 
     // Check if key is sensitive
-    if (sensitiveKeys.some(sensitive => lowerKey.includes(sensitive))) {
+    if (SENSITIVE_KEYS.some(sensitive => lowerKey.includes(sensitive))) {
       sanitized[key] = '[REDACTED]';
       continue;
     }
 
     // Recursively sanitize nested objects
     if (value && typeof value === 'object' && !Array.isArray(value)) {
-      sanitized[key] = sanitizeSensitiveData(value);
+      sanitized[key] = sanitizeSensitiveData(value, seen);
     }
   }
 

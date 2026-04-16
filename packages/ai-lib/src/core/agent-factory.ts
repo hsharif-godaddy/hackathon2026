@@ -36,6 +36,27 @@ import {
 const logger = createLogger('agent-factory')
 
 /**
+ * Filter an object to only include JSON-serializable values (primitives, plain objects, arrays).
+ * Strips class instances, functions, Timeouts, Maps, etc. that would cause issues during logging.
+ */
+function filterSerializableValues(obj: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(obj)) {
+    if (value === null || value === undefined) {
+      result[key] = value
+    } else if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+      result[key] = value
+    } else if (Array.isArray(value)) {
+      result[key] = value
+    } else if (typeof value === 'object' && value.constructor === Object) {
+      result[key] = value
+    }
+    // Skip: class instances, functions, Maps, Sets, Timeouts, etc.
+  }
+  return result
+}
+
+/**
  * Like the AI SDK's `hasToolCall`, but only triggers when the tool call
  * is considered successful because it produced a matching `tool-result`.
  * This allows the LLM to retry when a stopAfterTools call results in a
@@ -450,7 +471,7 @@ export class AgentWrapper {
             context: context ? {
               sessionId: context.sessionId,
               userId: context.userId,
-              metadata: context.metadata,
+              metadata: context.metadata ? filterSerializableValues(context.metadata) : undefined,
               messageCount: context.messages?.length,
               hasInitialContext: !!context.initialContextMessages?.length,
               timestamp: context.timestamp

@@ -38,10 +38,14 @@ export class ProductionHandler implements LogHandler {
    * Transform field names from camelCase to snake_case for log output
    * Currently transforms: appId -> app_id, productId -> product_id
    */
-  private transformFieldNames(event: any): any {
+  private transformFieldNames(event: any, seen?: WeakSet<object>): any {
     if (!event || typeof event !== 'object') {
       return event;
     }
+
+    if (!seen) seen = new WeakSet();
+    if (seen.has(event)) return '[Circular]';
+    seen.add(event);
 
     const result: any = Array.isArray(event) ? [] : {};
 
@@ -55,7 +59,7 @@ export class ProductionHandler implements LogHandler {
 
       // Recursively transform nested objects
       if (value && typeof value === 'object') {
-        result[newKey] = this.transformFieldNames(value);
+        result[newKey] = this.transformFieldNames(value, seen);
       } else {
         result[newKey] = value;
       }
