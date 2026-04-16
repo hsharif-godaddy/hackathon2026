@@ -29,5 +29,6 @@ export interface DatabaseMessage {
     timestamp: Date;
   }>;
   toolCalls?: ToolCall[];
+  origin: 'support' | 'customer';
   createdAt: Date;
 }

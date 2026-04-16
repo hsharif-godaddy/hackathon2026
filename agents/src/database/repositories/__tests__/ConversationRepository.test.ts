@@ -605,4 +605,59 @@ describe('getMessagesAfterMessageId', () => {
       expect(result.total).toBe(0)
     })
   })
+
+  describe('message origin', () => {
+    it('should default origin to customer when not specified', async () => {
+      createApp('app-123')
+      const conv = await repo.create('app-123', 'develop', 'Test')
+
+      const msg = await repo.addMessage(conv.id, 'user', 'Hello')
+
+      expect(msg.origin).toBe('customer')
+    })
+
+    it('should store origin as support when specified', async () => {
+      createApp('app-123')
+      const conv = await repo.create('app-123', 'develop', 'Test')
+
+      const msg = await repo.addMessage(conv.id, 'user', 'Support message', {
+        origin: 'support'
+      })
+
+      expect(msg.origin).toBe('support')
+    })
+
+    it('should persist and retrieve origin from database', async () => {
+      createApp('app-123')
+      const conv = await repo.create('app-123', 'develop', 'Test')
+
+      await repo.addMessage(conv.id, 'user', 'Customer msg', { origin: 'customer' })
+      await repo.addMessage(conv.id, 'agent', 'Agent reply to customer', { origin: 'customer' })
+      await repo.addMessage(conv.id, 'user', 'Support msg', { origin: 'support' })
+      await repo.addMessage(conv.id, 'agent', 'Agent reply to support', { origin: 'support' })
+
+      const messages = await repo.getMessages(conv.id)
+
+      expect(messages).toHaveLength(4)
+      expect(messages[0].origin).toBe('customer')
+      expect(messages[1].origin).toBe('customer')
+      expect(messages[2].origin).toBe('support')
+      expect(messages[3].origin).toBe('support')
+    })
+
+    it('should return all messages including both origins from getMessagesPaginated', async () => {
+      createApp('app-123')
+      const conv = await repo.create('app-123', 'develop', 'Test')
+
+      await repo.addMessage(conv.id, 'user', 'Customer msg', { origin: 'customer' })
+      await repo.addMessage(conv.id, 'user', 'Support msg', { origin: 'support' })
+
+      const result = await repo.getMessagesPaginated(conv.id, 'app-123')
+
+      expect(result.messages).toHaveLength(2)
+      expect(result.total).toBe(2)
+      expect(result.messages[0].origin).toBe('customer')
+      expect(result.messages[1].origin).toBe('support')
+    })
+  })
 })

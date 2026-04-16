@@ -1082,6 +1082,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
             if (msg.contextAttachments != null) {
               persistedMsg.contextAttachments = msg.contextAttachments
             }
+            persistedMsg.origin = msg.origin
 
             return persistedMsg
           })
@@ -1405,7 +1406,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         }
 
         if (agentContext) {
-          // Inject JWT-based permissions into context metadata for tool access
+          // Inject JWT-based permissions and auth info into context metadata for tool access
           rawContext.metadata = {
             ...metadata,
             permissions: {
@@ -1414,6 +1415,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
               canPurchaseDomain: agentContext.canPurchaseDomain ?? false,
             },
             isE2S: agentContext.isE2S ?? false,
+            authType: agentContext.authType,
           }
         }
 

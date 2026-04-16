@@ -49,4 +49,5 @@ export interface AgentConversationMessagePayload {
   errorCode?: number
   retryAttempts?: number
   retryReason?: string
+  origin?: 'support' | 'customer'
 }

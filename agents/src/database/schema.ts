@@ -97,6 +97,7 @@ export interface ConversationMessage {
     persistence?: 'save' | 'ephemeral';
     renderStrategy?: 'before_prompt' | 'after_prompt' | 'replace_prompt' | 'hidden';
   }>;
+  origin: 'support' | 'customer';
   createdAt: Date;
 }
 
@@ -363,6 +364,7 @@ function createConversationMessagesTable(db: Database): void {
       segments TEXT,   -- JSON string
       metadata TEXT,   -- JSON string
       context_attachments TEXT, -- JSON string for generic context attachments
+      origin TEXT NOT NULL DEFAULT 'customer' CHECK(origin IN ('support', 'customer')),
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
     )
@@ -644,6 +646,9 @@ function createIndexes(db: Database): void {
     CREATE INDEX IF NOT EXISTS idx_conversation_messages_created_at ON conversation_messages(created_at)
   `);
 
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_conversation_messages_conversation_origin ON conversation_messages(conversation_id, origin)
+  `);
 
   // Memory table indexes
   db.exec(`
@@ -1271,6 +1276,13 @@ function applyMigrations(db: Database): void {
   // Add context_attachments column if it doesn't exist (for generic context attachments)
   try {
     db.exec(`ALTER TABLE conversation_messages ADD COLUMN context_attachments TEXT`);
+  } catch (err) {
+    // Column might already exist, that's fine
+  }
+
+  // Add origin column to track support vs customer message visibility
+  try {
+    db.exec(`ALTER TABLE conversation_messages ADD COLUMN origin TEXT NOT NULL DEFAULT 'customer' CHECK(origin IN ('support', 'customer'))`);
   } catch (err) {
     // Column might already exist, that's fine
   }

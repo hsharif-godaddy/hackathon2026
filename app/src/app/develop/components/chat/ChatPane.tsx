@@ -327,6 +327,9 @@ export default function ChatPane({
     return [...messages, activeStream]
   }, [messages, activeStream])
 
+  // Switchboard flag reserved for future support-message UI treatment
+  // const { data: showSupportMessages } = useSwitchboard('airo-builder-support-chat-ui')
+
   // Only show messages and state if they belong to the current app context
   const visibleMessages = (currentAppId === appId) ? allMessages : []
   const safeInputValue = (currentAppId === appId) ? (inputValue || '') : ''

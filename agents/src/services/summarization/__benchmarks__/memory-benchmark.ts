@@ -68,6 +68,7 @@ function createMessages(count: number, startId: number = 0, conversationId: stri
       content: isUser
         ? `User message ${id}: Please implement feature X with detailed requirements`
         : `Agent response ${id}: I've implemented the feature as requested`,
+      origin: 'customer' as const,
       createdAt: new Date(Date.now() + i * 1000),
       segments: !isUser ? [{
         id: `seg-${id}`,

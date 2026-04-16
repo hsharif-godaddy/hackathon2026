@@ -93,6 +93,7 @@ describe('BackgroundSummarizer', () => {
           id: 'msg1',
           conversationId: 'conv1',
           sender: 'user',
+          origin: 'customer' as const,
           content: 'Hello',
           createdAt: new Date('2024-01-01T10:00:00Z')
         },
@@ -100,6 +101,7 @@ describe('BackgroundSummarizer', () => {
           id: 'msg2',
           conversationId: 'conv1',
           sender: 'agent',
+          origin: 'customer' as const,
           content: 'Hi',
           createdAt: new Date('2024-01-01T10:01:00Z')
         }
@@ -145,6 +147,7 @@ describe('BackgroundSummarizer', () => {
           id: 'msg3',
           conversationId: 'conv1',
           sender: 'user',
+          origin: 'customer' as const,
           content: 'New message',
           createdAt: new Date('2024-01-01T10:02:00Z')
         },
@@ -152,6 +155,7 @@ describe('BackgroundSummarizer', () => {
           id: 'msg4',
           conversationId: 'conv1',
           sender: 'agent',
+          origin: 'customer' as const,
           content: 'Response',
           createdAt: new Date('2024-01-01T10:03:00Z')
         }
@@ -196,6 +200,7 @@ describe('BackgroundSummarizer', () => {
         id: 'msg2',
         conversationId: 'conv1',
         sender: 'agent',
+        origin: 'customer',
         content: 'Hi',
         createdAt: new Date()
       });
@@ -234,6 +239,7 @@ describe('BackgroundSummarizer', () => {
           id: 'msg3',
           conversationId: 'conv1',
           sender: 'user',
+          origin: 'customer' as const,
           content: 'Message after deleted ref',
           createdAt: new Date('2024-01-01T10:02:00Z')
         },
@@ -241,6 +247,7 @@ describe('BackgroundSummarizer', () => {
           id: 'msg4',
           conversationId: 'conv1',
           sender: 'agent',
+          origin: 'customer' as const,
           content: 'Response',
           createdAt: new Date('2024-01-01T10:03:00Z')
         }
@@ -317,6 +324,7 @@ describe('BackgroundSummarizer', () => {
           id: 'msg1',
           conversationId: 'conv1',
           sender: 'user',
+          origin: 'customer' as const,
           content: 'Hello',
           createdAt: new Date('2024-01-01T10:00:00Z')
         },
@@ -324,6 +332,7 @@ describe('BackgroundSummarizer', () => {
           id: 'msg2',
           conversationId: 'conv1',
           sender: 'agent',
+          origin: 'customer' as const,
           content: 'Hi',
           createdAt: new Date('2024-01-01T10:01:00Z')
         },
@@ -331,6 +340,7 @@ describe('BackgroundSummarizer', () => {
           id: 'msg3',
           conversationId: 'conv1',
           sender: 'user',
+          origin: 'customer' as const,
           content: 'New message',
           createdAt: new Date('2024-01-01T10:02:00Z')
         },
@@ -338,6 +348,7 @@ describe('BackgroundSummarizer', () => {
           id: 'msg4',
           conversationId: 'conv1',
           sender: 'agent',
+          origin: 'customer' as const,
           content: 'Response',
           createdAt: new Date('2024-01-01T10:03:00Z')
         }
@@ -385,6 +396,7 @@ describe('BackgroundSummarizer', () => {
           id: 'msg3',
           conversationId: 'conv1',
           sender: 'user',
+          origin: 'customer' as const,
           content: 'New message',
           createdAt: new Date('2024-01-01T10:02:00Z')
         },
@@ -392,6 +404,7 @@ describe('BackgroundSummarizer', () => {
           id: 'msg4',
           conversationId: 'conv1',
           sender: 'agent',
+          origin: 'customer' as const,
           content: 'Response',
           createdAt: new Date('2024-01-01T10:03:00Z')
         }
@@ -454,6 +467,7 @@ describe('BackgroundSummarizer', () => {
           id: 'msg3',
           conversationId: 'conv1',
           sender: 'agent',
+          origin: 'customer' as const,
           content: '',
           createdAt: new Date('2024-01-01T10:02:00Z'),
           segments: [{
@@ -523,6 +537,7 @@ describe('BackgroundSummarizer', () => {
           id: 'msg3',
           conversationId: 'conv1',
           sender: 'user',
+          origin: 'customer' as const,
           content: 'Just text, no tool calls',
           createdAt: new Date('2024-01-01T10:02:00Z')
         }
@@ -581,6 +596,7 @@ describe('BackgroundSummarizer', () => {
           id: 'msg3',
           conversationId: 'conv1',
           sender: 'user',
+          origin: 'customer' as const,
           content: 'New message',
           createdAt: new Date('2024-01-01T10:02:00Z')
         },
@@ -588,6 +604,7 @@ describe('BackgroundSummarizer', () => {
           id: 'msg4',
           conversationId: 'conv1',
           sender: 'agent',
+          origin: 'customer' as const,
           content: 'Response',
           createdAt: new Date('2024-01-01T10:03:00Z')
         }
@@ -632,6 +649,7 @@ describe('BackgroundSummarizer', () => {
           id: 'msg1',
           conversationId: 'conv1',
           sender: 'user',
+          origin: 'customer' as const,
           content: 'Short',
           createdAt: new Date('2024-01-01T10:00:00Z')
         }
@@ -661,6 +679,7 @@ describe('BackgroundSummarizer', () => {
           id: 'msg1',
           conversationId: 'conv1',
           sender: 'user',
+          origin: 'customer' as const,
           content: 'Long message',
           createdAt: new Date('2024-01-01T10:00:00Z')
         },
@@ -668,6 +687,7 @@ describe('BackgroundSummarizer', () => {
           id: 'msg2',
           conversationId: 'conv1',
           sender: 'agent',
+          origin: 'customer' as const,
           content: 'Response',
           createdAt: new Date('2024-01-01T10:01:00Z')
         }
@@ -711,6 +731,7 @@ describe('BackgroundSummarizer', () => {
           id: 'msg1',
           conversationId: 'conv1',
           sender: 'user',
+          origin: 'customer' as const,
           content: 'Old message 1',
           createdAt: new Date('2024-01-01T10:00:00Z')
         },
@@ -718,6 +739,7 @@ describe('BackgroundSummarizer', () => {
           id: 'msg2',
           conversationId: 'conv1',
           sender: 'agent',
+          origin: 'customer' as const,
           content: 'Old response 1',
           createdAt: new Date('2024-01-01T10:01:00Z')
         },
@@ -725,6 +747,7 @@ describe('BackgroundSummarizer', () => {
           id: 'msg3',
           conversationId: 'conv1',
           sender: 'user',
+          origin: 'customer' as const,
           content: 'Recent message 1',
           createdAt: new Date('2024-01-01T10:02:00Z')
         },
@@ -732,6 +755,7 @@ describe('BackgroundSummarizer', () => {
           id: 'msg4',
           conversationId: 'conv1',
           sender: 'agent',
+          origin: 'customer' as const,
           content: 'Recent response 1',
           createdAt: new Date('2024-01-01T10:03:00Z')
         },
@@ -739,6 +763,7 @@ describe('BackgroundSummarizer', () => {
           id: 'msg5',
           conversationId: 'conv1',
           sender: 'user',
+          origin: 'customer' as const,
           content: 'Recent message 2',
           createdAt: new Date('2024-01-01T10:04:00Z')
         },
@@ -746,6 +771,7 @@ describe('BackgroundSummarizer', () => {
           id: 'msg6',
           conversationId: 'conv1',
           sender: 'agent',
+          origin: 'customer' as const,
           content: 'Recent response 2',
           createdAt: new Date('2024-01-01T10:05:00Z')
         }
@@ -789,6 +815,7 @@ describe('BackgroundSummarizer', () => {
           id: 'msg1',
           conversationId: 'conv1',
           sender: 'user',
+          origin: 'customer' as const,
           content: 'Recent message',
           createdAt: new Date('2024-01-01T10:00:00Z')
         },
@@ -796,6 +823,7 @@ describe('BackgroundSummarizer', () => {
           id: 'msg2',
           conversationId: 'conv1',
           sender: 'agent',
+          origin: 'customer' as const,
           content: 'Recent response',
           createdAt: new Date('2024-01-01T10:01:00Z')
         }
@@ -823,6 +851,7 @@ describe('BackgroundSummarizer', () => {
           id: 'msg1',
           conversationId: 'conv1',
           sender: 'user',
+          origin: 'customer' as const,
           content: 'Message',
           createdAt: new Date()
         }
@@ -880,6 +909,7 @@ describe('BackgroundSummarizer', () => {
           id: 'msg1',
           conversationId: 'conv1',
           sender: 'user',
+          origin: 'customer' as const,
           content: 'Hello',
           createdAt: new Date('2024-01-01T10:00:00Z')
         },
@@ -887,6 +917,7 @@ describe('BackgroundSummarizer', () => {
           id: 'msg2',
           conversationId: 'conv1',
           sender: 'agent',
+          origin: 'customer' as const,
           content: 'Hi there!',
           createdAt: new Date('2024-01-01T10:01:00Z')
         }
@@ -919,6 +950,7 @@ describe('BackgroundSummarizer', () => {
           id: 'msg1',
           conversationId: 'conv1',
           sender: 'user',
+          origin: 'customer' as const,
           content: 'Hello',
           createdAt: new Date('2024-01-01T10:00:00Z')
         },
@@ -926,6 +958,7 @@ describe('BackgroundSummarizer', () => {
           id: 'msg2',
           conversationId: 'conv1',
           sender: 'agent',
+          origin: 'customer' as const,
           content: 'Hi there!',
           createdAt: new Date('2024-01-01T10:01:00Z')
         }
@@ -962,6 +995,7 @@ describe('BackgroundSummarizer', () => {
           id: 'msg1',
           conversationId: 'conv1',
           sender: 'user',
+          origin: 'customer' as const,
           content: 'Hello',
           createdAt: new Date('2024-01-01T10:00:00Z')
         },
@@ -969,6 +1003,7 @@ describe('BackgroundSummarizer', () => {
           id: 'msg2',
           conversationId: 'conv1',
           sender: 'agent',
+          origin: 'customer' as const,
           content: 'Hi there!',
           createdAt: new Date('2024-01-01T10:01:00Z')
         }
@@ -1018,6 +1053,7 @@ describe('BackgroundSummarizer', () => {
           id: 'msg1',
           conversationId: 'conv1',
           sender: 'user',
+          origin: 'customer' as const,
           content: 'Hello',
           createdAt: new Date('2024-01-01T10:00:00Z')
         },
@@ -1025,6 +1061,7 @@ describe('BackgroundSummarizer', () => {
           id: 'msg2',
           conversationId: 'conv1',
           sender: 'agent',
+          origin: 'customer' as const,
           content: 'Hi there!',
           createdAt: new Date('2024-01-01T10:01:00Z')
         }

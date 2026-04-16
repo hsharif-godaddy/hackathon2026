@@ -61,6 +61,7 @@ export interface PersistedMessage {
   segments?: any[]
   metadata?: Record<string, unknown>
   contextAttachments?: any[]
+  origin?: 'support' | 'customer'
   createdAt: string
 }
 

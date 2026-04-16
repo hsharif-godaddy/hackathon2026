@@ -23,6 +23,7 @@ import { toolGitEvents } from '../logging/events/index.js'
 import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js'
 import { aiLibAgentMetadata, type AILibAgentMetadata } from '../agents/ai-lib-agents/index.js'
 import { AppNotFoundError } from './errors/app-not-found-error.js'
+import { isEmployeeAuthType } from '@airo/shared/auth'
 import { nanoid } from 'nanoid'
 import apm from 'elastic-apm-node'
 
@@ -37,6 +38,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
     agentMessageId?: string
     context: ConversationContext
     message?: string
+    origin: 'support' | 'customer'
   }>()
 
   // Map of appIds to their most recent user message
@@ -46,6 +48,15 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
     // Use singleton repositories to ensure hooks work correctly
     this.conversationRepo = conversationRepository
     this.appRepository = appRepository
+  }
+
+  /**
+   * Derive message origin from conversation context auth type.
+   * Support sessions (e2s/e2s2s) get origin='support', all others get 'customer'.
+   */
+  private getOriginFromContext(context: ConversationContext): 'support' | 'customer' {
+    const authType = context.metadata?.authType
+    return isEmployeeAuthType(authType) ? 'support' : 'customer'
   }
 
   /**
@@ -234,6 +245,8 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
       ? contextAttachments.filter((att: any) => att.persistence === 'save')
       : undefined
 
+    const origin = this.getOriginFromContext(context)
+
     await this.conversationRepo.addMessage(conversationId, 'user', message, {
       metadata: {
         socketId: context.socketId,
@@ -242,6 +255,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
         userId: context.userId,
         sessionId: context.sessionId
       },
+      origin,
       ...(filteredAttachments && filteredAttachments.length > 0 && { contextAttachments: filteredAttachments })
     })
 
@@ -249,7 +263,8 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
       conversationId,
       userMessageId: nanoid(12),
       context,
-      message
+      message,
+      origin
     })
 
     if (context.appId) {
@@ -275,16 +290,19 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
       socketId: context.socketId
     })
 
+    // Inherit origin from the triggering user message so agent responses share the same visibility
+    const activeConversation = this.activeConversations.get(context.socketId)
+    const origin = activeConversation?.origin || this.getOriginFromContext(context)
+
     const message = await this.conversationRepo.addMessage(conversationId, 'agent', '', {
       metadata: {
         socketId: context.socketId,
         agentName: context.agentName,
         appId: context.appId,
         inProgress: true
-      }
+      },
+      origin
     })
-
-    const activeConversation = this.activeConversations.get(context.socketId)
     if (activeConversation) {
       // Finalize the previous agent message before starting a new turn.
       // During handoffs, the prior message is left with inProgress: true
@@ -424,6 +442,8 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
       ? contextAttachments.filter((att: any) => att.persistence === 'save')
       : undefined
 
+    const origin = this.getOriginFromContext(context)
+
     await this.conversationRepo.addMessage(conversationId, 'user', message, {
       metadata: {
         socketId: context.socketId,
@@ -432,6 +452,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
         userId: context.userId,
         sessionId: context.sessionId
       },
+      origin,
       ...(filteredAttachments && filteredAttachments.length > 0 && { contextAttachments: filteredAttachments })
     })
 
@@ -439,7 +460,8 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
       conversationId,
       userMessageId: nanoid(12),
       context,
-      message
+      message,
+      origin
     })
 
     if (context.appId) {
@@ -615,6 +637,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
         messageId: activeConversation.agentMessageId
       })
     } else {
+      const fallbackOrigin = activeConversation?.origin || this.getOriginFromContext(context)
       await this.conversationRepo.addMessage(conversationId, 'agent', accumulatedContent, {
         segments,
         toolCalls,
@@ -623,7 +646,8 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
           finalResult: result,
           streamingEvents: streamingEvents.length,
           usedFreeGrants
-        }
+        },
+        origin: fallbackOrigin
       })
       contextLogger.info('conversation.agent_response.saved', {})
     }

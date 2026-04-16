@@ -92,6 +92,7 @@ export interface StreamingMessage {
   usedFreeGrants?: boolean         // True if task used free grants (publish/domain/fix task budget)
   selectedAssets?: any[]           // Attached files/assets (only for user messages, kept for type compatibility)
   referencedFiles?: Array<{ path: string; content: string }> // Referenced code files (only for user messages, kept for type compatibility)
+  origin?: 'support' | 'customer'  // Message origin for visibility filtering
   metadata?: {
     usage?: {
       inputTokens: number
@@ -125,6 +126,7 @@ export interface ChatMessage {
   usedFreeGrants?: boolean         // True if task used free grants (publish/domain/fix task budget)
   selectedAssets?: any[]           // Attached files/assets for user messages
   referencedFiles?: Array<{ path: string; content: string }> // Referenced code files for user messages
+  origin?: 'support' | 'customer'  // Message origin for visibility filtering
   metadata?: {
     usage?: {
       inputTokens: number
@@ -396,7 +398,8 @@ export const normalizeConversationMessages = (
       errorType: msg.errorType,
       errorCode: msg.errorCode,
       retryAttempts: msg.retryAttempts,
-      retryReason: msg.retryReason
+      retryReason: msg.retryReason,
+      origin: msg.origin
     }
   })
 }
@@ -1334,6 +1337,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
           toolCalls: lastMsg.toolCalls || [],
           timestamp: lastMsg.timestamp,
           isComplete: false,
+          origin: lastMsg.origin,
         }
         messages = normalized.slice(0, -1)
 

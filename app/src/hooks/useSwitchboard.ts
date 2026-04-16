@@ -39,6 +39,7 @@ const LOCAL_FEATURE_OVERRIDES: Record<string, boolean> = {
   'app-builder-budget-service': false, // opt-in: requires running Budget Service
   'appbuilder-template-selector': true,
   'appbuilder-model-selector': true,
+  'airo-builder-support-chat-ui': true, // default: show support messages locally
 };
 
 interface FetchOptions {

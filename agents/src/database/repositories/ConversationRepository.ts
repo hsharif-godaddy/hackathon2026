@@ -276,15 +276,17 @@ export class ConversationRepository {
         persistence?: 'save' | 'ephemeral';
         renderStrategy?: 'before_prompt' | 'after_prompt' | 'replace_prompt' | 'hidden';
       }>;
+      origin?: 'support' | 'customer';
     } = {}
   ): Promise<ConversationMessage> {
     const id = nanoid(12);
     const now = new Date().toISOString();
+    const origin = options.origin || 'customer';
 
     const stmt = this.db.prepare(`
       INSERT INTO conversation_messages
-      (id, conversation_id, sender, content, message_type, tool_calls, segments, metadata, context_attachments, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, conversation_id, sender, content, message_type, tool_calls, segments, metadata, context_attachments, origin, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     stmt.run(
@@ -297,6 +299,7 @@ export class ConversationRepository {
       options.segments ? safeStringify(options.segments) : null,
       options.metadata ? safeStringify(options.metadata) : null,
       options.contextAttachments ? safeStringify(options.contextAttachments) : null,
+      origin,
       now
     );
 
@@ -305,6 +308,7 @@ export class ConversationRepository {
       conversationId,
       sender,
       content,
+      origin,
       createdAt: new Date(now)
     };
 
@@ -389,6 +393,7 @@ export class ConversationRepository {
       segments: row.segments ? JSON.parse(row.segments) : undefined,
       metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
       contextAttachments: row.context_attachments ? JSON.parse(row.context_attachments) : undefined,
+      origin: row.origin,
       createdAt: new Date(row.created_at)
     };
   }
@@ -518,6 +523,7 @@ export class ConversationRepository {
         segments,
         metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
         contextAttachments: row.context_attachments ? JSON.parse(row.context_attachments) : undefined,
+        origin: row.origin,
         createdAt: new Date(row.created_at)
       };
     });
@@ -634,6 +640,7 @@ export class ConversationRepository {
         segments,
         metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
         contextAttachments: row.context_attachments ? JSON.parse(row.context_attachments) : undefined,
+        origin: row.origin,
         createdAt: new Date(row.created_at)
       };
     });
@@ -694,6 +701,7 @@ export class ConversationRepository {
       };
       timestamp: Date;
     }>;
+    origin: 'support' | 'customer';
     createdAt: Date;
   }>> {
     const stmt = this.db.prepare(`
@@ -709,6 +717,7 @@ export class ConversationRepository {
         conversationId: row.conversation_id,
         sender: row.sender,
         content: row.content,
+        origin: row.origin,
         createdAt: new Date(row.created_at)
       };
 
@@ -774,6 +783,7 @@ export class ConversationRepository {
         toolCalls: row.tool_calls ? JSON.parse(row.tool_calls) : undefined,
         segments,
         metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
+        origin: row.origin,
         createdAt: new Date(row.created_at)
       };
     });
@@ -898,6 +908,7 @@ export class ConversationRepository {
         conversationId: row.conversation_id,
         sender: row.sender,
         content: row.content,
+        origin: row.origin,
         createdAt: new Date(row.created_at)
       };
 

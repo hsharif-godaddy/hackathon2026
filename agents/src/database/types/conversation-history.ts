@@ -44,5 +44,6 @@ export interface NormalizedConversationMessage {
   sender: 'user' | 'agent';
   content: string;
   segments?: NormalizedMessageSegment[];
+  origin: 'support' | 'customer';
   createdAt: Date;
 }
