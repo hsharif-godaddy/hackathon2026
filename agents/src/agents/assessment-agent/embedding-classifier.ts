@@ -185,55 +185,119 @@ const CATEGORY_EXAMPLES: Record<AssessmentTaskType, string[]> = {
     'ซื้อโดเมน',          // Thai: buy domain
   ],
   [AssessmentTaskType.Fix]: [
-    // English - primary examples
-    'fix this bug',
-    'something is broken',
-    'not working',
-    'there is an error',
-    'fix the issue',
-    'debug this',
-    'it crashed',
-    'help me fix',
-    'broken functionality',
-    'this is failing',
-    'troubleshoot this',
+    // =========================================================================
+    // EXPLICIT FIX REQUESTS
+    // =========================================================================
     'fix this',
-    'fix the button',
-    'fix the page',
-    'it is broken',
-    'something went wrong',
-    'there is a problem',
-    // Real user patterns - combines fix intent with site/app context
+    'fix it',
+    'fix this bug',
+    'fix the bug',
     'fix my site',
     'fix my app',
-    'the button is broken',
-    'button doesnt work',
+    'fix the issue',
+    'fix the problem',
+    'fix that',
+    'fix please',
+    'fix the button',
+    'fix the page',
+    'fix the form',
+    'debug this',
+    'help me fix',
+    'troubleshoot this',
+
+    // =========================================================================
+    // "IS BROKEN" PATTERNS
+    // =========================================================================
+    'something is broken',
+    'its broken',
+    'it is broken',
+    'this is broken',
+    'the site is broken',
     'my site is broken',
-    'page not loading',
-    // Problem descriptions (users describe issues without saying "fix")
-    // Only include clear "something is broken" patterns, not user-initiated changes
+    'my website is broken',
+    'everything is broken',
+    'the button is broken',
+    'the menu is broken',
+    'broken functionality',
+    'broken link',
+    'layout is broken',
+
+    // =========================================================================
+    // "NOT WORKING" PATTERNS
+    // =========================================================================
+    'not working',
+    'its not working',
+    'this is not working',
+    'the button doesnt work',
+    'button doesnt work',
+    'navigation doesnt work',
+    'checkout not working',
     'form doesnt submit',
     'the form is not submitting',
+    'nothing works',
+    'page not loading',
+    'image wont load',
     'images not showing up',
     'images wont load',
-    'layout is broken',
-    'checkout not working',
     'customers cant checkout',
-    'error message appears',
+
+    // =========================================================================
+    // ERROR / BUG PATTERNS
+    // =========================================================================
+    'there is an error',
+    'theres an error',
+    'i got an error',
     'getting an error',
-    // Typo variations (with context to avoid false positives)
+    'error message',
+    'error message appears',
+    'javascript error',
+    'console error',
+    'theres a bug',
+    'i found a bug',
+    'there is a problem',
+    'something went wrong',
+    'this is failing',
+    'it crashed',
+    'the site crashed',
+    'it keeps crashing',
+    'blank page',
+    'having issues',
+    'help something is wrong',
+
+    // =========================================================================
+    // REGRESSION MARKERS (explicitly states it worked before)
+    // =========================================================================
+    'it was working before',
+    'this was working and now its broken',
+    'it broke after the last change',
+    'you broke it',
+    'since yesterday it stopped working',
+    'suddenly stopped working',
+    'stopped working',
+    'it broke',
+    'something broke',
+    'something is broken after the update',
+    'the form broke',
+    'the button broke after your change',
+
+    // =========================================================================
+    // TYPO VARIATIONS
+    // =========================================================================
     'fixx this',
+    'fixx this bug',
     'fxi the bug',
+    'fxi the error',
     'its brokn',
     'somethings borken',
-    // CJK + Thai - structurally different
-    '修复这个错误',       // Chinese Simplified: fix this bug
-    '出问题了',          // Chinese: something went wrong
+
+    // CJK + Thai - structurally different (with regression/error context)
+    '修复这个错误',       // Chinese Simplified: fix this bug/error
+    '出错了',            // Chinese: there's an error
     '修復錯誤',          // Chinese Traditional: fix the bug
     'バグを直して',       // Japanese: fix the bug
-    '動かない',          // Japanese: not working
+    'エラーが出た',       // Japanese: an error appeared
     '버그 수정',          // Korean: fix bug
-    '작동 안함',          // Korean: not working
+    '오류가 발생했습니다', // Korean: an error occurred
     'แก้ไขบัค',          // Thai: fix bug
   ],
   [AssessmentTaskType.General]: [
@@ -265,6 +329,44 @@ const CATEGORY_EXAMPLES: Record<AssessmentTaskType, string[]> = {
     'what is my domain',
     'how does this work',
 
+    // =========================================================================
+    // CONTINUATION PATTERNS (NOT fixes - user resuming interrupted work)
+    // =========================================================================
+    'continue',
+    'keep going',
+    'continue building',
+    'finish this',
+    'finish the site',
+    'complete this',
+    'complete the page',
+    'resume',
+    'pick up where you left off',
+    'continue from where you stopped',
+    'keep working on this',
+    'finish what you started',
+    'you stopped, continue',
+
+    // =========================================================================
+    // INCOMPLETE WORK PATTERNS (NOT fixes)
+    // Focus on "missing/empty/unfinished" language that's distinct from fix patterns
+    // =========================================================================
+    // "Unfinished" - clearly about completion
+    'this isnt finished',
+    'you didnt finish',
+    'the page is incomplete',
+    'you left this unfinished',
+    'you stopped in the middle',
+
+    // "Missing/empty" - about absence, not malfunction
+    'the page is empty',
+    'content is missing',
+    'the about page is missing',
+    'some pages are missing',
+
+    // "Doesn't go anywhere" - destination missing (distinct from "doesn't work")
+    'the link doesnt go anywhere',
+    'links arent set up yet',
+
     // CJK + Thai - structurally different
     '为我的面包店创建网站',      // Chinese Simplified: create website for bakery
     '帮我建一个网站',           // Chinese: help me build a website
@@ -274,6 +376,14 @@ const CATEGORY_EXAMPLES: Record<AssessmentTaskType, string[]> = {
     '웹사이트 만들어줘',         // Korean: make me a website
     '블로그 만들기',            // Korean: create a blog
     'สร้างเว็บไซต์',           // Thai: create website
+
+    // Continuation patterns - CJK
+    '继续',                     // Chinese: continue
+    '继续工作',                 // Chinese: keep working
+    '完成这个',                 // Chinese: finish this
+    '続けて',                   // Japanese: continue
+    '계속해',                   // Korean: continue
+    'ทำต่อ',                    // Thai: continue
   ],
 }
 

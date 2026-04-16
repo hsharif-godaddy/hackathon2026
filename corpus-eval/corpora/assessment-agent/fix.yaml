@@ -69,73 +69,80 @@ cases:
     tags: ["fix", "vague"]
     rationale: "Vague - no specific problem stated, context needed"
 
+  # "is broken" patterns - kept as fix per embedding configuration
   - id: "fix-011"
     prompt: "something is broken"
     expectedTaskType: "fix"
     expectedPath: "embedding"
-    tags: ["fix", "clear", "path-validation"]
+    tags: ["fix", "broken", "path-validation"]
 
   - id: "fix-012"
     prompt: "its broken"
     expectedTaskType: "fix"
     expectedPath: "embedding"
-    tags: ["fix", "clear", "path-validation"]
+    tags: ["fix", "broken", "path-validation"]
 
   - id: "fix-013"
     prompt: "this is broken"
     expectedTaskType: "fix"
-    tags: ["fix", "clear"]
+    tags: ["fix", "broken"]
 
   - id: "fix-014"
     prompt: "the site is broken"
     expectedTaskType: "fix"
-    tags: ["fix", "clear"]
+    tags: ["fix", "broken"]
 
   - id: "fix-015"
     prompt: "my website is broken"
     expectedTaskType: "fix"
-    tags: ["fix", "clear"]
+    tags: ["fix", "broken"]
 
   - id: "fix-016"
     prompt: "everything is broken"
     expectedTaskType: "fix"
-    tags: ["fix", "clear"]
+    tags: ["fix", "broken"]
 
+  # "something broke" implies past tense change - keep as fix
   - id: "fix-017"
     prompt: "something broke"
     expectedTaskType: "fix"
-    tags: ["fix", "clear"]
+    tags: ["fix", "regression"]
+    rationale: "Past tense 'broke' implies it was working before"
 
+  # "not working" patterns - kept as fix per embedding configuration
   - id: "fix-018"
     prompt: "not working"
     expectedTaskType: "fix"
-    tags: ["fix", "clear"]
+    tags: ["fix", "not-working"]
 
   - id: "fix-019"
     prompt: "its not working"
     expectedTaskType: "fix"
-    tags: ["fix", "clear"]
+    tags: ["fix", "not-working"]
 
   - id: "fix-020"
     prompt: "that doesnt work"
     expectedTaskType: "general"
-    tags: ["fix", "vague"]
+    tags: ["general", "vague"]
     rationale: "Vague statement - no specific problem or fix request"
 
+  # "doesn't work" patterns - these stay as fix for strong problem signals
   - id: "fix-021"
     prompt: "the button doesnt work"
     expectedTaskType: "fix"
-    tags: ["fix", "clear"]
+    tags: ["fix", "doesnt-work"]
 
   - id: "fix-022"
     prompt: "nothing works"
     expectedTaskType: "fix"
-    tags: ["fix", "clear"]
+    tags: ["fix", "doesnt-work"]
 
+  # "stopped working" implies it was working before - keep as fix
   - id: "fix-023"
     prompt: "stopped working"
     expectedTaskType: "fix"
-    tags: ["fix", "clear"]
+    tags: ["fix", "regression"]
+    rationale: "'stopped' implies temporal change - was working before"
 
   - id: "fix-024"
     prompt: "there is an error"
@@ -172,45 +179,46 @@ cases:
     expectedTaskType: "fix"
     tags: ["fix", "clear"]
 
+  # "is broken" / "doesn't work" patterns - kept as fix per embeddings
   - id: "fix-031"
     prompt: "the button is broken"
     expectedTaskType: "fix"
-    tags: ["fix", "clear"]
+    tags: ["fix", "broken"]
 
   - id: "fix-032"
     prompt: "fix the button"
     expectedTaskType: "fix"
-    tags: ["fix", "clear"]
+    tags: ["fix", "explicit-fix"]
 
   - id: "fix-033"
     prompt: "the form doesnt submit"
     expectedTaskType: "fix"
-    tags: ["fix", "clear"]
+    tags: ["fix", "doesnt-work"]
 
   - id: "fix-034"
     prompt: "fix the form"
     expectedTaskType: "fix"
-    tags: ["fix", "clear"]
+    tags: ["fix", "explicit-fix"]
 
   - id: "fix-035"
     prompt: "the menu is broken"
     expectedTaskType: "fix"
-    tags: ["fix", "clear"]
+    tags: ["fix", "broken"]
 
   - id: "fix-036"
     prompt: "navigation doesnt work"
     expectedTaskType: "fix"
-    tags: ["fix", "clear"]
+    tags: ["fix", "doesnt-work"]
 
   - id: "fix-037"
     prompt: "broken link"
     expectedTaskType: "fix"
-    tags: ["fix", "clear"]
+    tags: ["fix", "broken"]
 
   - id: "fix-038"
     prompt: "image wont load"
     expectedTaskType: "fix"
-    tags: ["fix", "clear"]
+    tags: ["fix", "wont-load"]
 
   - id: "fix-039"
     prompt: "it looks wrong"
@@ -221,27 +229,27 @@ cases:
   - id: "fix-040"
     prompt: "layout is messed up"
     expectedTaskType: "fix"
-    tags: ["fix", "clear"]
+    tags: ["fix", "broken"]
 
   - id: "fix-041"
     prompt: "page wont load"
     expectedTaskType: "fix"
-    tags: ["fix", "clear"]
+    tags: ["fix", "wont-load"]
 
   - id: "fix-042"
     prompt: "site wont load"
     expectedTaskType: "fix"
-    tags: ["fix", "clear"]
+    tags: ["fix", "wont-load"]
 
   - id: "fix-043"
     prompt: "help something is wrong"
     expectedTaskType: "fix"
-    tags: ["fix", "clear"]
+    tags: ["fix", "something-wrong"]
 
   - id: "fix-044"
     prompt: "having issues"
     expectedTaskType: "fix"
-    tags: ["fix", "clear"]
+    tags: ["fix", "issues"]
 
   - id: "fix-045"
     prompt: "undo that"
@@ -268,7 +276,7 @@ cases:
   - id: "fix-049"
     prompt: "blank page"
     expectedTaskType: "fix"
-    tags: ["fix", "clear"]
+    tags: ["fix", "blank"]
 
   - id: "fix-050"
     prompt: "FIX IT NOW"
@@ -654,3 +662,250 @@ cases:
     prompt: "ok this is weird but ever since we added that new hero section to the homepage something broke and now when you scroll down the page on an iphone the navigation bar kind of jumps around and flickers and sometimes it completely disappears and you cant get back to the top of the page without refreshing which is really annoying and it worked perfectly fine before we made those changes last week"
     expectedTaskType: "fix"
     tags: ["fix", "complex", "long"]
+
+  # ============================================================================
+  # TRUE BUGS VS INCOMPLETE WORK (billing-critical validation)
+  # These confirm ACTUAL bugs should still classify as fix
+  # ============================================================================
+
+  - id: "fix-regression-001"
+    prompt: "this was working before and now its broken"
+    expectedTaskType: "fix"
+    tags: ["fix", "regression", "billing-critical"]
+    rationale: "Explicitly states it worked before - regression bug"
+
+  - id: "fix-regression-002"
+    prompt: "you broke it"
+    expectedTaskType: "fix"
+    tags: ["fix", "regression", "billing-critical"]
+    rationale: "Explicitly attributes breakage to agent action"
+
+  - id: "fix-regression-003"
+    prompt: "it broke after the last change"
+    expectedTaskType: "fix"
+    tags: ["fix", "regression", "billing-critical"]
+    rationale: "Explicitly links breakage to agent change - regression"
+
+  - id: "fix-regression-004"
+    prompt: "since your last update it stopped working"
+    expectedTaskType: "fix"
+    tags: ["fix", "regression", "billing-critical"]
+    rationale: "Explicitly links breakage to agent update - regression"
+
+  - id: "fix-regression-005"
+    prompt: "the form was working yesterday but now it wont submit"
+    expectedTaskType: "fix"
+    tags: ["fix", "regression", "billing-critical"]
+    rationale: "Explicitly states temporal change - was working, now broken"
+
+  - id: "fix-regression-006"
+    prompt: "suddenly the checkout stopped working"
+    expectedTaskType: "fix"
+    tags: ["fix", "regression", "billing-critical"]
+    rationale: "Suddenly implies unexpected change - regression"
+
+  - id: "fix-error-001"
+    prompt: "im getting an error message"
+    expectedTaskType: "fix"
+    tags: ["fix", "error", "billing-critical"]
+    rationale: "Technical error - definite bug"
+
+  - id: "fix-error-002"
+    prompt: "the site crashed"
+    expectedTaskType: "fix"
+    tags: ["fix", "error", "billing-critical"]
+    rationale: "Crash - definite bug"
+
+  - id: "fix-error-003"
+    prompt: "theres a javascript error"
+    expectedTaskType: "fix"
+    tags: ["fix", "error", "billing-critical"]
+    rationale: "Technical error - definite bug"
+
+  - id: "fix-error-004"
+    prompt: "i see an error in the console"
+    expectedTaskType: "fix"
+    tags: ["fix", "error", "billing-critical"]
+    rationale: "Technical error - definite bug"
+
+  # ============================================================================
+  # AMBIGUOUS INCOMPLETE WORK (billing-critical)
+  # NOTE: Non-ambiguous continuation/incomplete patterns are covered in general.yaml.
+  # These cases document ambiguous patterns that currently classify as fix but
+  # should change to general once context-aware classification is in place.
+  # ============================================================================
+
+  # TODO: Change to general once context-aware classification is in place
+  # Currently ambiguous - could be incomplete work OR bug, classifier defaults to fix
+  - id: "fix-ambiguous-incomplete-001"
+    prompt: "this button doesnt do anything"
+    expectedTaskType: "fix"
+    tags: ["fix", "ambiguous", "billing-critical", "todo-change-to-general"]
+    rationale: "Ambiguous without context - currently classifies as fix"
+
+  # TODO: Change to general once context-aware classification is in place
+  # Currently ambiguous - could be incomplete work OR bug, classifier defaults to fix
+  - id: "fix-ambiguous-incomplete-002"
+    prompt: "clicking the menu does nothing"
+    expectedTaskType: "fix"
+    tags: ["fix", "ambiguous", "billing-critical", "todo-change-to-general"]
+    rationale: "Ambiguous without context - currently classifies as fix"
+
+  # ============================================================================
+  # EXTENDED TRUE BUG PATTERNS (billing-critical validation)
+  # ============================================================================
+
+  - id: "fix-true-error-001"
+    prompt: "error 500"
+    expectedTaskType: "fix"
+    tags: ["fix", "error", "billing-critical"]
+    rationale: "HTTP error code - definite bug"
+
+  - id: "fix-true-error-002"
+    prompt: "404 error"
+    expectedTaskType: "fix"
+    tags: ["fix", "error", "billing-critical"]
+    rationale: "HTTP error code - definite bug"
+
+  - id: "fix-true-error-003"
+    prompt: "null pointer exception"
+    expectedTaskType: "fix"
+    tags: ["fix", "error", "billing-critical"]
+    rationale: "Technical exception - definite bug"
+
+  - id: "fix-true-error-004"
+    prompt: "undefined is not a function"
+    expectedTaskType: "fix"
+    tags: ["fix", "error", "billing-critical"]
+    rationale: "JavaScript error - definite bug"
+
+  - id: "fix-true-error-005"
+    prompt: "the page shows a white screen of death"
+    expectedTaskType: "fix"
+    tags: ["fix", "error", "billing-critical"]
+    rationale: "WSOD - definite bug"
+
+  - id: "fix-true-error-006"
+    prompt: "server error"
+    expectedTaskType: "fix"
+    tags: ["fix", "error", "billing-critical"]
+    rationale: "Server error - definite bug"
+
+  - id: "fix-true-error-007"
+    prompt: "the app keeps crashing"
+    expectedTaskType: "fix"
+    tags: ["fix", "error", "billing-critical"]
+    rationale: "Repeated crashes - definite bug"
+
+  - id: "fix-true-error-008"
+    prompt: "syntax error in the code"
+    expectedTaskType: "fix"
+    tags: ["fix", "error", "billing-critical"]
+    rationale: "Code error - definite bug"
+
+  - id: "fix-true-regression-001"
+    prompt: "the button was working and now its not"
+    expectedTaskType: "fix"
+    tags: ["fix", "regression", "billing-critical"]
+    rationale: "Explicit regression - was working"
+
+  - id: "fix-true-regression-002"
+    prompt: "everything worked yesterday"
+    expectedTaskType: "fix"
+    tags: ["fix", "regression", "billing-critical"]
+    rationale: "Temporal marker - worked before"
+
+  - id: "fix-true-regression-003"
+    prompt: "after the last update it stopped working"
+    expectedTaskType: "fix"
+    tags: ["fix", "regression", "billing-critical"]
+    rationale: "Explicit cause - stopped after update"
+
+  - id: "fix-true-regression-004"
+    prompt: "you changed something and now its broken"
+    expectedTaskType: "fix"
+    tags: ["fix", "regression", "billing-critical"]
+    rationale: "Attributes breakage to agent change"
+
+  - id: "fix-true-regression-005"
+    prompt: "it was fine before you touched it"
+    expectedTaskType: "fix"
+    tags: ["fix", "regression", "billing-critical"]
+    rationale: "Explicit regression - worked before change"
+
+  - id: "fix-true-regression-006"
+    prompt: "something went wrong after you edited the header"
+    expectedTaskType: "fix"
+    tags: ["fix", "regression", "billing-critical"]
+    rationale: "Specific change caused problem"
+
+  - id: "fix-true-regression-007"
+    prompt: "the form stopped submitting"
+    expectedTaskType: "fix"
+    tags: ["fix", "regression", "billing-critical"]
+    rationale: "'stopped' implies it was working"
+
+  - id: "fix-true-regression-008"
+    prompt: "the images stopped loading"
+    expectedTaskType: "fix"
+    tags: ["fix", "regression", "billing-critical"]
+    rationale: "'stopped' implies they were loading"
+
+  - id: "fix-true-regression-009"
+    prompt: "now it doesnt work anymore"
+    expectedTaskType: "fix"
+    tags: ["fix", "regression", "billing-critical"]
+    rationale: "'anymore' implies it was working"
+
+  - id: "fix-true-regression-010"
+    prompt: "it broke when you added the footer"
+    expectedTaskType: "fix"
+    tags: ["fix", "regression", "billing-critical"]
+    rationale: "Specific change caused breakage"
+
+  # ============================================================================
+  # EXPLICIT FIX REQUESTS (should remain as fix)
+  # User explicitly asks to "fix" something
+  # ============================================================================
+
+  # NOTE: fix-explicit-001 "fix this" removed - duplicate of fix-001
+  # NOTE: fix-explicit-002 "fix it" removed - duplicate of fix-002
+
+  - id: "fix-explicit-003"
+    prompt: "please fix the button"
+    expectedTaskType: "fix"
+    tags: ["fix", "explicit", "billing-critical"]
+    rationale: "Explicit fix request for button"
+
+  # NOTE: fix-explicit-004 "fix the form" removed - duplicate of fix-034
+  # NOTE: fix-explicit-005 "fix the bug" removed - duplicate of fix-003
+
+  - id: "fix-explicit-006"
+    prompt: "can you fix the error"
+    expectedTaskType: "fix"
+    tags: ["fix", "explicit", "billing-critical"]
+    rationale: "Explicit error fix request"
+
+  - id: "fix-explicit-007"
+    prompt: "fix whatever is wrong"
+    expectedTaskType: "fix"
+    tags: ["fix", "explicit", "billing-critical"]
+    rationale: "Explicit fix request"
+
+  - id: "fix-explicit-008"
+    prompt: "repair the broken link"
+    expectedTaskType: "fix"
+    tags: ["fix", "explicit", "billing-critical"]
+    rationale: "Explicit repair request"
+
+  - id: "fix-explicit-009"
+    prompt: "debug the checkout"
+    expectedTaskType: "fix"
+    tags: ["fix", "explicit", "billing-critical"]
+    rationale: "Explicit debug request"
+
+  - id: "fix-explicit-010"
+    prompt: "troubleshoot the form submission"
+    expectedTaskType: "fix"
+    tags: ["fix", "explicit", "billing-critical"]
+    rationale: "Explicit troubleshoot request"

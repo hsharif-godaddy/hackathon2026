@@ -318,22 +318,34 @@ export class AssessmentAgent {
 
     try {
       if (remainingTime < 500) {
+        // BILLING SAFETY: If embedding returned "fix" with medium confidence (below HIGH threshold),
+        // we needed the tiebreaker but can't run it. Default to "general" to avoid billing for fix.
+        const needsBillingSafetyFallback =
+          embeddingResult.taskType === AssessmentTaskType.Fix &&
+          embeddingResult.similarity < HIGH_CONFIDENCE_SIMILARITY
+
+        const fallbackTaskType = needsBillingSafetyFallback
+          ? AssessmentTaskType.General
+          : embeddingResult.taskType
+
         logger.info('assessment_agent.haiku.skipped', {
           appId: context?.appId,
           reason: 'insufficient_time',
           remainingMs: remainingTime,
           minRequiredMs: 500,
-          fallbackTaskType: embeddingResult.taskType,
-          fallbackSimilarity: embeddingResult.similarity,
+          embeddingTaskType: embeddingResult.taskType,
+          embeddingSimilarity: embeddingResult.similarity,
+          needsBillingSafetyFallback,
+          fallbackTaskType,
         })
 
         return this.buildOutcome(
-          embeddingResult.taskType,
+          fallbackTaskType,
           Math.round(embeddingResult.similarity * 100),
           Date.now() - startTime,
           context,
           AssessmentReason.EmbeddingCompleted,
-          { similarity: embeddingResult.similarity, method: 'embedding-timeout-fallback' }
+          { similarity: embeddingResult.similarity, method: 'embedding-timeout-fallback', billingSafetyApplied: needsBillingSafetyFallback }
         )
       }
 
@@ -356,30 +368,40 @@ export class AssessmentAgent {
       const totalDurationMs = Date.now() - startTime
 
       if (haikuResult === null) {
-        // Smarter fallback: if embedding matched a special task, trust it more
-        // This ensures budget override is applied even when Haiku times out
-        const isSpecialTask = embeddingResult.taskType !== AssessmentTaskType.General
-        const fallbackConfidence = isSpecialTask ? 70 : Math.round(embeddingResult.similarity * 100)
+        // BILLING SAFETY: If embedding returned "fix" with medium confidence (below HIGH threshold),
+        // we needed the tiebreaker but it timed out. Default to "general" to avoid billing for fix.
+        // For publish/domain tasks, trust the embedding since those are less ambiguous.
+        const needsBillingSafetyFallback =
+          embeddingResult.taskType === AssessmentTaskType.Fix &&
+          embeddingResult.similarity < HIGH_CONFIDENCE_SIMILARITY
+
+        const fallbackTaskType = needsBillingSafetyFallback
+          ? AssessmentTaskType.General
+          : embeddingResult.taskType
+
+        const fallbackConfidence = needsBillingSafetyFallback
+          ? 100 // High confidence in the safety fallback
+          : Math.round(embeddingResult.similarity * 100)
 
         logger.info('assessment_agent.haiku.timeout', {
           appId: context?.appId,
           haikuDurationMs,
           totalDurationMs,
           timeoutMs: remainingTime,
-          fallbackTaskType: embeddingResult.taskType,
-          fallbackSimilarity: embeddingResult.similarity,
+          embeddingTaskType: embeddingResult.taskType,
+          embeddingSimilarity: embeddingResult.similarity,
+          needsBillingSafetyFallback,
+          fallbackTaskType,
           fallbackConfidence,
-          isSpecialTask,
-          overrideWillApply: fallbackConfidence >= MIN_CONFIDENCE_FOR_OVERRIDE,
         })
 
         return this.buildOutcome(
-          embeddingResult.taskType,
+          fallbackTaskType,
           fallbackConfidence,
           totalDurationMs,
           context,
           AssessmentReason.Timeout,
-          { similarity: embeddingResult.similarity, method: 'embedding-haiku-timeout', fallbackReason: isSpecialTask ? 'special_task_trusted' : 'low_similarity' }
+          { similarity: embeddingResult.similarity, method: 'embedding-haiku-timeout', billingSafetyApplied: needsBillingSafetyFallback }
         )
       }
 
@@ -471,6 +493,16 @@ export class AssessmentAgent {
     return await llmMetadataContext.run(metadata, classifyFn)
   }
 
+  /**
+   * Build the Haiku system prompt for task classification.
+   *
+   * BILLING CONTEXT:
+   * - Continuation patterns ("continue", "finish this") are classified as general (paid)
+   *   to prevent the loophole where user-initiated stops + continues get free work.
+   * - Incomplete work patterns ("page is empty", "missing") are classified as general (paid)
+   *   to prevent incremental build progress being reported as "bugs" for free fixes.
+   * - When ambiguous between fix/general, defaulting to general is safer for billing.
+   */
   private buildHaikuSystemPrompt(): string {
     return `You are a task classifier for an AI app builder. Classify the PRIMARY INTENT of user prompts.
 
@@ -510,10 +542,39 @@ KEYWORDS IN CONTEXT (not action intent):
 - "the bug icon in the corner" = general (icon name, not reporting a bug)
 - Keywords appearing as part of names, labels, or descriptions are NOT action requests
 
+CONTINUATION PATTERNS (NOT fixes - classify as general):
+- "continue", "keep going", "finish this", "resume" = general (resuming work)
+- "pick up where you left off", "continue from where you stopped" = general
+- "you stopped in the middle", "complete this" = general
+These are continuation requests after user-initiated stops, NOT bug reports.
+
+INCOMPLETE WORK PATTERNS (NOT fixes - classify as general):
+Use language that emphasizes "missing/empty/unfinished" NOT "broken":
+- "this isn't finished", "you didn't complete it" = general
+- "the link doesn't go anywhere", "leads to nothing" = general (destination missing)
+- "the page is empty", "content is missing" = general
+- "where is the about page", "some pages are missing" = general
+- "links aren't set up yet", "nothing there yet" = general
+
+CLEAR FIX PATTERNS (classify as fix):
+- Explicit fix requests: "fix this", "fix my site", "fix the button", "fix please" = fix
+- Broken/not working: "something is broken", "not working", "broken link" = fix
+- Bug reports: "theres a bug", "i found a bug", "debug this" = fix
+- Errors/crashes: "error message", "it crashed", "getting an error" = fix
+- Technical failures: "javascript error", "console error", "blank page" = fix
+
+USER-INITIATED STOP + CONTINUE:
+When a user stops the agent and then asks to continue, this is NOT a fix:
+- "continue", "resume", "keep going" = general (user chose to stop, now wants to resume)
+- "pick up where you left off" = general
+- "continue from where you stopped" = general
+These are user-initiated continuations, not error recovery.
+
 CONFIDENCE GUIDANCE:
 - 90-100: Clear, unambiguous intent with action words
 - 70-89: Likely intent but some ambiguity
 - Below 70: Uncertain, default to general
+- When in doubt between "fix" and "general", choose general
 
 MULTILINGUAL SUPPORT:
 - Classify prompts in ANY language (Spanish, French, German, Portuguese, etc.)

@@ -671,6 +671,296 @@ describe('AssessmentAgent', () => {
     })
   })
 
+  describe('billing-critical classification rules', () => {
+    /**
+     * These tests verify that the Haiku tiebreaker correctly overrides embedding
+     * classifications for billing-critical scenarios:
+     * - Continuation patterns should be general (paid) to prevent stop+continue loophole
+     * - Incomplete work patterns should be general (paid) to prevent free fix loophole
+     */
+
+    it('should classify "continue" as general even when embeddings suggest fix', async () => {
+      // Embedding returns fix with medium similarity (triggers Haiku tiebreaker)
+      mockEmbeddingClassify.mockResolvedValue({
+        taskType: AssessmentTaskType.Fix,
+        confidence: 65,
+        similarity: 0.60, // Medium similarity triggers Haiku
+        matchedExample: 'fix this bug',
+        margin: 0.1,
+        method: 'embedding-nn',
+        hasNegation: false,
+      })
+
+      // Haiku correctly classifies continuation as general
+      mockGenerateText.mockResolvedValue({
+        text: JSON.stringify({
+          taskType: AssessmentTaskType.General,
+          confidence: 85,
+          reasoning: 'User wants to continue previous work, not fix a bug',
+        }),
+      })
+
+      const agent = createAssessmentAgent({ enabled: true, timeoutMs: 2000 })
+      const outcome = await agent.classify('continue')
+
+      expect(outcome.reason).toBe(AssessmentReason.LlmCompleted)
+      expect(outcome.result?.taskType).toBe(AssessmentTaskType.General)
+      expect(outcome.overrideApplied).toBe(false) // general = no override
+    })
+
+    it('should classify "keep going" as general even when embeddings suggest fix', async () => {
+      mockEmbeddingClassify.mockResolvedValue({
+        taskType: AssessmentTaskType.Fix,
+        confidence: 60,
+        similarity: 0.55,
+        matchedExample: 'fix the button',
+        margin: 0.08,
+        method: 'embedding-nn',
+        hasNegation: false,
+      })
+
+      mockGenerateText.mockResolvedValue({
+        text: JSON.stringify({
+          taskType: AssessmentTaskType.General,
+          confidence: 80,
+          reasoning: 'Continuation request, not a fix',
+        }),
+      })
+
+      const agent = createAssessmentAgent({ enabled: true, timeoutMs: 2000 })
+      const outcome = await agent.classify('keep going')
+
+      expect(outcome.result?.taskType).toBe(AssessmentTaskType.General)
+      expect(outcome.overrideApplied).toBe(false)
+    })
+
+    it('should classify "finish this" as general even when embeddings suggest fix', async () => {
+      mockEmbeddingClassify.mockResolvedValue({
+        taskType: AssessmentTaskType.Fix,
+        confidence: 62,
+        similarity: 0.58,
+        matchedExample: 'fix this issue',
+        margin: 0.09,
+        method: 'embedding-nn',
+        hasNegation: false,
+      })
+
+      mockGenerateText.mockResolvedValue({
+        text: JSON.stringify({
+          taskType: AssessmentTaskType.General,
+          confidence: 82,
+          reasoning: 'User asking to complete work, not fix something broken',
+        }),
+      })
+
+      const agent = createAssessmentAgent({ enabled: true, timeoutMs: 2000 })
+      const outcome = await agent.classify('finish this')
+
+      expect(outcome.result?.taskType).toBe(AssessmentTaskType.General)
+      expect(outcome.overrideApplied).toBe(false)
+    })
+
+    it('should classify "the page is empty" as general (incomplete work, not fix)', async () => {
+      mockEmbeddingClassify.mockResolvedValue({
+        taskType: AssessmentTaskType.Fix,
+        confidence: 58,
+        similarity: 0.52,
+        matchedExample: 'page is broken',
+        margin: 0.07,
+        method: 'embedding-nn',
+        hasNegation: false,
+      })
+
+      mockGenerateText.mockResolvedValue({
+        text: JSON.stringify({
+          taskType: AssessmentTaskType.General,
+          confidence: 78,
+          reasoning: 'Empty page indicates incomplete work, not a bug',
+        }),
+      })
+
+      const agent = createAssessmentAgent({ enabled: true, timeoutMs: 2000 })
+      const outcome = await agent.classify('the page is empty')
+
+      expect(outcome.result?.taskType).toBe(AssessmentTaskType.General)
+      expect(outcome.overrideApplied).toBe(false)
+    })
+
+    it('should classify "content is missing" as general (incomplete work, not fix)', async () => {
+      mockEmbeddingClassify.mockResolvedValue({
+        taskType: AssessmentTaskType.Fix,
+        confidence: 55,
+        similarity: 0.50,
+        matchedExample: 'content not showing',
+        margin: 0.06,
+        method: 'embedding-nn',
+        hasNegation: false,
+      })
+
+      mockGenerateText.mockResolvedValue({
+        text: JSON.stringify({
+          taskType: AssessmentTaskType.General,
+          confidence: 75,
+          reasoning: 'Missing content indicates work not yet done',
+        }),
+      })
+
+      const agent = createAssessmentAgent({ enabled: true, timeoutMs: 2000 })
+      const outcome = await agent.classify('content is missing')
+
+      expect(outcome.result?.taskType).toBe(AssessmentTaskType.General)
+      expect(outcome.overrideApplied).toBe(false)
+    })
+
+    it('should still classify clear fix patterns as fix', async () => {
+      // Even with Haiku tiebreaker, clear fix patterns should remain fix
+      mockEmbeddingClassify.mockResolvedValue({
+        taskType: AssessmentTaskType.Fix,
+        confidence: 70,
+        similarity: 0.65,
+        matchedExample: 'fix this bug',
+        margin: 0.12,
+        method: 'embedding-nn',
+        hasNegation: false,
+      })
+
+      mockGenerateText.mockResolvedValue({
+        text: JSON.stringify({
+          taskType: AssessmentTaskType.Fix,
+          confidence: 90,
+          reasoning: 'User explicitly reports broken functionality',
+        }),
+      })
+
+      const agent = createAssessmentAgent({ enabled: true, timeoutMs: 2000 })
+      const outcome = await agent.classify('fix this, the button is broken')
+
+      expect(outcome.result?.taskType).toBe(AssessmentTaskType.Fix)
+      expect(outcome.overrideApplied).toBe(true)
+      expect(outcome.appliedBudget).toBe('airo-builder:fix-task')
+    })
+
+    it('should classify "resume where you left off" as general', async () => {
+      mockEmbeddingClassify.mockResolvedValue({
+        taskType: AssessmentTaskType.Fix,
+        confidence: 60,
+        similarity: 0.55,
+        matchedExample: 'fix where it stopped',
+        margin: 0.08,
+        method: 'embedding-nn',
+        hasNegation: false,
+      })
+
+      mockGenerateText.mockResolvedValue({
+        text: JSON.stringify({
+          taskType: AssessmentTaskType.General,
+          confidence: 85,
+          reasoning: 'Resume is a continuation pattern, not a fix request',
+        }),
+      })
+
+      const agent = createAssessmentAgent({ enabled: true, timeoutMs: 2000 })
+      const outcome = await agent.classify('resume where you left off')
+
+      expect(outcome.result?.taskType).toBe(AssessmentTaskType.General)
+      expect(outcome.overrideApplied).toBe(false)
+    })
+
+    it('should apply billing-safety fallback when Haiku is skipped and embedding returned fix with medium confidence', async () => {
+      // Embedding returns fix with medium similarity (would need Haiku tiebreaker)
+      mockEmbeddingClassify.mockResolvedValue({
+        taskType: AssessmentTaskType.Fix,
+        confidence: 65,
+        similarity: 0.60, // Below HIGH_CONFIDENCE_SIMILARITY (0.75)
+        matchedExample: 'fix the button',
+        margin: 0.1,
+        method: 'embedding-nn',
+        hasNegation: false,
+      })
+
+      // Very short timeout means no time for Haiku (needs 500ms minimum)
+      const agent = createAssessmentAgent({ enabled: true, timeoutMs: 100 })
+      const outcome = await agent.classify('continue working')
+
+      // BILLING SAFETY: Should fall back to general, not fix
+      expect(outcome.reason).toBe(AssessmentReason.EmbeddingCompleted)
+      expect(outcome.result?.taskType).toBe(AssessmentTaskType.General)
+      expect(outcome.overrideApplied).toBe(false)
+    })
+
+    it('should apply billing-safety fallback when Haiku times out and embedding returned fix with medium confidence', async () => {
+      // Embedding returns fix with medium similarity (triggers Haiku tiebreaker)
+      mockEmbeddingClassify.mockResolvedValue({
+        taskType: AssessmentTaskType.Fix,
+        confidence: 65,
+        similarity: 0.60, // Below HIGH_CONFIDENCE_SIMILARITY (0.75)
+        matchedExample: 'fix the button',
+        margin: 0.1,
+        method: 'embedding-nn',
+        hasNegation: false,
+      })
+
+      // Haiku times out (takes longer than allowed)
+      mockGenerateText.mockImplementation(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 2000))
+        return { text: JSON.stringify({ taskType: AssessmentTaskType.Fix, confidence: 90 }) }
+      })
+
+      const agent = createAssessmentAgent({ enabled: true, timeoutMs: 600 })
+      const outcome = await agent.classify('continue working')
+
+      // BILLING SAFETY: Should fall back to general, not fix
+      expect(outcome.reason).toBe(AssessmentReason.Timeout)
+      expect(outcome.result?.taskType).toBe(AssessmentTaskType.General)
+      expect(outcome.overrideApplied).toBe(false)
+    })
+
+    it('should NOT apply billing-safety fallback for publish/domain tasks on timeout', async () => {
+      // Embedding returns publish with medium similarity
+      mockEmbeddingClassify.mockResolvedValue({
+        taskType: AssessmentTaskType.Publish,
+        confidence: 70,
+        similarity: 0.70, // Below HIGH_CONFIDENCE_SIMILARITY but publish is not fix
+        matchedExample: 'publish my app',
+        margin: 0.1,
+        method: 'embedding-nn',
+        hasNegation: false,
+      })
+
+      // Very short timeout means no time for Haiku
+      const agent = createAssessmentAgent({ enabled: true, timeoutMs: 100 })
+      const outcome = await agent.classify('make my site live')
+
+      // Publish is trusted even on timeout (not a billing-safety concern)
+      // Key assertion: taskType is Publish, not General (no billing-safety fallback)
+      expect(outcome.reason).toBe(AssessmentReason.EmbeddingCompleted)
+      expect(outcome.result?.taskType).toBe(AssessmentTaskType.Publish)
+      // Override applies since confidence (70) >= MIN_CONFIDENCE_FOR_OVERRIDE (65)
+      expect(outcome.overrideApplied).toBe(true)
+    })
+
+    it('should NOT apply billing-safety fallback for high-confidence fix', async () => {
+      // Embedding returns fix with HIGH similarity (no tiebreaker needed)
+      mockEmbeddingClassify.mockResolvedValue({
+        taskType: AssessmentTaskType.Fix,
+        confidence: 90,
+        similarity: 0.85, // Above HIGH_CONFIDENCE_SIMILARITY (0.75)
+        matchedExample: 'fix the bug',
+        margin: 0.3,
+        method: 'embedding-nn',
+        hasNegation: false,
+      })
+
+      const agent = createAssessmentAgent({ enabled: true, timeoutMs: 100 })
+      const outcome = await agent.classify('fix this bug')
+
+      // High confidence fix should be trusted
+      expect(outcome.reason).toBe(AssessmentReason.EmbeddingCompleted)
+      expect(outcome.result?.taskType).toBe(AssessmentTaskType.Fix)
+      expect(outcome.overrideApplied).toBe(true)
+    })
+  })
+
   describe('agent lifecycle methods', () => {
     it('should initialize without error', async () => {
       const agent = createAssessmentAgent()

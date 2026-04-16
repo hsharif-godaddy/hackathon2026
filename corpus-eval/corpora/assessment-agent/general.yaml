@@ -1311,3 +1311,683 @@ cases:
     expectedTaskType: "general"
     tags: ["general", "initial", "thai"]
     rationale: "Thai: Create a website for my restaurant"
+
+  # ============================================================================
+  # CONTINUATION PATTERNS (billing-critical - NOT fixes)
+  # User-initiated stop + continue is paid work, not free fix
+  # ============================================================================
+
+  - id: "gen-continue-001"
+    prompt: "continue"
+    expectedTaskType: "general"
+    tags: ["general", "continue", "billing-critical"]
+    rationale: "User resuming interrupted work - not a fix"
+
+  - id: "gen-continue-002"
+    prompt: "keep going"
+    expectedTaskType: "general"
+    tags: ["general", "continue", "billing-critical"]
+    rationale: "User resuming interrupted work - not a fix"
+
+  - id: "gen-continue-003"
+    prompt: "continue building"
+    expectedTaskType: "general"
+    tags: ["general", "continue", "billing-critical"]
+    rationale: "User resuming interrupted work - not a fix"
+
+  - id: "gen-continue-004"
+    prompt: "finish this"
+    expectedTaskType: "general"
+    tags: ["general", "continue", "billing-critical"]
+    rationale: "Completion request - not a fix"
+
+  - id: "gen-continue-005"
+    prompt: "finish the site"
+    expectedTaskType: "general"
+    tags: ["general", "continue", "billing-critical"]
+    rationale: "Completion request - not a fix"
+
+  - id: "gen-continue-006"
+    prompt: "complete this"
+    expectedTaskType: "general"
+    tags: ["general", "continue", "billing-critical"]
+    rationale: "Completion request - not a fix"
+
+  - id: "gen-continue-007"
+    prompt: "resume"
+    expectedTaskType: "general"
+    tags: ["general", "continue", "billing-critical"]
+    rationale: "User resuming interrupted work - not a fix"
+
+  - id: "gen-continue-008"
+    prompt: "pick up where you left off"
+    expectedTaskType: "general"
+    tags: ["general", "continue", "billing-critical"]
+    rationale: "User resuming interrupted work - not a fix"
+
+  - id: "gen-continue-009"
+    prompt: "continue from where you stopped"
+    expectedTaskType: "general"
+    tags: ["general", "continue", "billing-critical"]
+    rationale: "User resuming interrupted work - not a fix"
+
+  - id: "gen-continue-010"
+    prompt: "keep working on this"
+    expectedTaskType: "general"
+    tags: ["general", "continue", "billing-critical"]
+    rationale: "User resuming interrupted work - not a fix"
+
+  - id: "gen-continue-011"
+    prompt: "finish what you started"
+    expectedTaskType: "general"
+    tags: ["general", "continue", "billing-critical"]
+    rationale: "Completion request - not a fix"
+
+  - id: "gen-continue-012"
+    prompt: "you stopped continue"
+    expectedTaskType: "general"
+    tags: ["general", "continue", "billing-critical"]
+    rationale: "User acknowledging stop and requesting continuation - not a fix"
+
+  - id: "gen-continue-013"
+    prompt: "you stopped in the middle keep going"
+    expectedTaskType: "general"
+    tags: ["general", "continue", "billing-critical"]
+    rationale: "User acknowledging incomplete work and requesting continuation"
+
+  - id: "gen-continue-014"
+    prompt: "i stopped you now continue"
+    expectedTaskType: "general"
+    tags: ["general", "continue", "billing-critical"]
+    rationale: "User explicitly acknowledges they stopped the agent"
+
+  - id: "gen-continue-015"
+    prompt: "continue please"
+    expectedTaskType: "general"
+    tags: ["general", "continue", "billing-critical"]
+    rationale: "Polite continuation request - not a fix"
+
+  # ============================================================================
+  # INCOMPLETE WORK PATTERNS (billing-critical - NOT fixes)
+  # User reporting unfinished work is completion request, not bug fix
+  # ============================================================================
+
+  - id: "gen-incomplete-001"
+    prompt: "this isnt finished"
+    expectedTaskType: "general"
+    tags: ["general", "incomplete", "billing-critical"]
+    rationale: "Incomplete work report - not a bug fix"
+
+  - id: "gen-incomplete-002"
+    prompt: "its not complete"
+    expectedTaskType: "general"
+    tags: ["general", "incomplete", "billing-critical"]
+    rationale: "Incomplete work report - not a bug fix"
+
+  - id: "gen-incomplete-003"
+    prompt: "you didnt finish"
+    expectedTaskType: "general"
+    tags: ["general", "incomplete", "billing-critical"]
+    rationale: "Incomplete work report - not a bug fix"
+
+  - id: "gen-incomplete-004"
+    prompt: "the page is incomplete"
+    expectedTaskType: "general"
+    tags: ["general", "incomplete", "billing-critical"]
+    rationale: "Incomplete work report - not a bug fix"
+
+  - id: "gen-incomplete-005"
+    prompt: "you left this unfinished"
+    expectedTaskType: "general"
+    tags: ["general", "incomplete", "billing-critical"]
+    rationale: "Incomplete work report - not a bug fix"
+
+  - id: "gen-incomplete-006"
+    prompt: "this is only half done"
+    expectedTaskType: "general"
+    tags: ["general", "incomplete", "billing-critical"]
+    rationale: "Incomplete work report - not a bug fix"
+
+  - id: "gen-incomplete-007"
+    prompt: "the link doesnt go anywhere"
+    expectedTaskType: "general"
+    tags: ["general", "incomplete", "billing-critical"]
+    rationale: "Feature never implemented - not a bug"
+
+  # TODO: Change to general once context-aware classification is in place
+  - id: "gen-incomplete-008"
+    prompt: "this button doesnt do anything"
+    expectedTaskType: "fix"
+    tags: ["fix", "ambiguous", "billing-critical", "todo-change-to-general"]
+    rationale: "Ambiguous without context - currently classifies as fix"
+
+  - id: "gen-incomplete-009"
+    prompt: "the page is empty"
+    expectedTaskType: "general"
+    tags: ["general", "incomplete", "billing-critical"]
+    rationale: "Incomplete generation - not a bug"
+
+  - id: "gen-incomplete-010"
+    prompt: "there is nothing on this page"
+    expectedTaskType: "general"
+    tags: ["general", "incomplete", "billing-critical"]
+    rationale: "Incomplete generation - not a bug"
+
+  - id: "gen-incomplete-011"
+    prompt: "you need to finish this"
+    expectedTaskType: "general"
+    tags: ["general", "incomplete", "billing-critical"]
+    rationale: "Completion request - not a bug fix"
+
+  - id: "gen-incomplete-012"
+    prompt: "this still needs work"
+    expectedTaskType: "general"
+    tags: ["general", "incomplete", "billing-critical"]
+    rationale: "Incomplete work report - not a bug fix"
+
+  - id: "gen-incomplete-013"
+    prompt: "the services link doesnt work"
+    expectedTaskType: "general"
+    tags: ["general", "incomplete", "billing-critical"]
+    rationale: "Link never implemented - completion request not fix"
+
+  # TODO: Change to general once context-aware classification is in place
+  - id: "gen-incomplete-014"
+    prompt: "clicking about does nothing"
+    expectedTaskType: "fix"
+    tags: ["fix", "ambiguous", "billing-critical", "todo-change-to-general"]
+    rationale: "Ambiguous without context - currently classifies as fix"
+
+  - id: "gen-incomplete-015"
+    prompt: "the contact page is missing"
+    expectedTaskType: "general"
+    tags: ["general", "incomplete", "billing-critical"]
+    rationale: "Page never created - completion request not fix"
+
+  - id: "gen-incomplete-016"
+    prompt: "you only built one page"
+    expectedTaskType: "general"
+    tags: ["general", "incomplete", "billing-critical"]
+    rationale: "Incomplete work report - completion request"
+
+  - id: "gen-incomplete-017"
+    prompt: "the menu links dont work yet"
+    expectedTaskType: "general"
+    tags: ["general", "incomplete", "billing-critical"]
+    rationale: "User acknowledges 'yet' - knows its incomplete not broken"
+
+  - id: "gen-incomplete-018"
+    prompt: "none of the links are connected"
+    expectedTaskType: "general"
+    tags: ["general", "incomplete", "billing-critical"]
+    rationale: "Multiple unimplemented features - completion request"
+
+  - id: "gen-incomplete-019"
+    prompt: "the footer links dont go anywhere"
+    expectedTaskType: "general"
+    tags: ["general", "incomplete", "billing-critical"]
+    rationale: "Links never implemented - completion request"
+
+  - id: "gen-incomplete-020"
+    prompt: "this section is blank"
+    expectedTaskType: "general"
+    tags: ["general", "incomplete", "billing-critical"]
+    rationale: "Incomplete generation - completion request"
+
+  # ============================================================================
+  # MULTI-TURN: User stop + continue (billing-critical)
+  # ============================================================================
+
+  - id: "gen-stop-continue-001"
+    previousMessage: "stop"
+    prompt: "continue"
+    expectedTaskType: "general"
+    tags: ["general", "stop-continue", "multi-turn", "billing-critical"]
+    rationale: "User stopped then asked to continue - user-initiated, not agent error"
+
+  - id: "gen-stop-continue-002"
+    previousMessage: "stop"
+    prompt: "keep going"
+    expectedTaskType: "general"
+    tags: ["general", "stop-continue", "multi-turn", "billing-critical"]
+    rationale: "User stopped then asked to continue - user-initiated, not agent error"
+
+  - id: "gen-stop-continue-003"
+    previousMessage: "stop that"
+    prompt: "ok now continue"
+    expectedTaskType: "general"
+    tags: ["general", "stop-continue", "multi-turn", "billing-critical"]
+    rationale: "User stopped then asked to continue - user-initiated, not agent error"
+
+  - id: "gen-stop-continue-004"
+    previousMessage: "wait stop"
+    prompt: "finish building the site"
+    expectedTaskType: "general"
+    tags: ["general", "stop-continue", "multi-turn", "billing-critical"]
+    rationale: "User stopped then asked to finish - user-initiated, not agent error"
+
+  - id: "gen-stop-continue-005"
+    previousMessage: "hold on"
+    prompt: "continue with the design"
+    expectedTaskType: "general"
+    tags: ["general", "stop-continue", "multi-turn", "billing-critical"]
+    rationale: "User paused then asked to continue - user-initiated, not agent error"
+
+  - id: "gen-stop-continue-006"
+    previousMessage: "stop"
+    prompt: "resume"
+    expectedTaskType: "general"
+    tags: ["general", "stop-continue", "multi-turn", "billing-critical"]
+    rationale: "User stopped then resumed - user-initiated"
+
+  - id: "gen-stop-continue-007"
+    previousMessage: "stop"
+    prompt: "go on"
+    expectedTaskType: "general"
+    tags: ["general", "stop-continue", "multi-turn", "billing-critical"]
+    rationale: "User stopped then asked to go on - user-initiated"
+
+  - id: "gen-stop-continue-008"
+    previousMessage: "cancel"
+    prompt: "actually continue"
+    expectedTaskType: "general"
+    tags: ["general", "stop-continue", "multi-turn", "billing-critical"]
+    rationale: "User canceled then changed mind - user-initiated"
+
+  - id: "gen-stop-continue-009"
+    previousMessage: "pause"
+    prompt: "ok continue now"
+    expectedTaskType: "general"
+    tags: ["general", "stop-continue", "multi-turn", "billing-critical"]
+    rationale: "User paused then continued - user-initiated"
+
+  - id: "gen-stop-continue-010"
+    previousMessage: "wait"
+    prompt: "continue"
+    expectedTaskType: "general"
+    tags: ["general", "stop-continue", "multi-turn", "billing-critical"]
+    rationale: "User waited then continued - user-initiated"
+
+  - id: "gen-stop-continue-011"
+    previousMessage: "stop building"
+    prompt: "continue building"
+    expectedTaskType: "general"
+    tags: ["general", "stop-continue", "multi-turn", "billing-critical"]
+    rationale: "Explicit stop then continue building - user-initiated"
+
+  - id: "gen-stop-continue-012"
+    previousMessage: "stop"
+    prompt: "finish the homepage"
+    expectedTaskType: "general"
+    tags: ["general", "stop-continue", "multi-turn", "billing-critical"]
+    rationale: "User stopped then requested completion - user-initiated"
+
+  - id: "gen-stop-continue-013"
+    previousMessage: "stop"
+    prompt: "complete the site"
+    expectedTaskType: "general"
+    tags: ["general", "stop-continue", "multi-turn", "billing-critical"]
+    rationale: "User stopped then requested completion - user-initiated"
+
+  - id: "gen-stop-continue-014"
+    previousMessage: "stop please"
+    prompt: "ok now please continue"
+    expectedTaskType: "general"
+    tags: ["general", "stop-continue", "multi-turn", "billing-critical"]
+    rationale: "Polite stop then continue - user-initiated"
+
+  - id: "gen-stop-continue-015"
+    previousMessage: "halt"
+    prompt: "proceed"
+    expectedTaskType: "general"
+    tags: ["general", "stop-continue", "multi-turn", "billing-critical"]
+    rationale: "User halted then proceeded - user-initiated"
+
+  - id: "gen-stop-continue-016"
+    previousMessage: "stop"
+    prompt: "never mind keep going"
+    expectedTaskType: "general"
+    tags: ["general", "stop-continue", "multi-turn", "billing-critical"]
+    rationale: "User changed mind after stop - user-initiated"
+
+  - id: "gen-stop-continue-017"
+    previousMessage: "stop that"
+    prompt: "sorry continue"
+    expectedTaskType: "general"
+    tags: ["general", "stop-continue", "multi-turn", "billing-critical"]
+    rationale: "User apologetically continues after stop - user-initiated"
+
+  - id: "gen-stop-continue-018"
+    previousMessage: "stop execution"
+    prompt: "continue"
+    expectedTaskType: "general"
+    tags: ["general", "stop-continue", "multi-turn", "billing-critical"]
+    rationale: "Explicit stop execution then continue - user-initiated"
+
+  - id: "gen-stop-continue-019"
+    previousMessage: "stop"
+    prompt: "pick up where you left off"
+    expectedTaskType: "general"
+    tags: ["general", "stop-continue", "multi-turn", "billing-critical"]
+    rationale: "User stopped then wants to resume - user-initiated"
+
+  - id: "gen-stop-continue-020"
+    previousMessage: "stop"
+    prompt: "carry on"
+    expectedTaskType: "general"
+    tags: ["general", "stop-continue", "multi-turn", "billing-critical"]
+    rationale: "User stopped then carries on - user-initiated"
+
+  # ============================================================================
+  # EXTENDED CONTINUATION PATTERNS (single-turn, billing-critical)
+  # ============================================================================
+
+  - id: "gen-continue-016"
+    prompt: "go on"
+    expectedTaskType: "general"
+    tags: ["general", "continue", "billing-critical"]
+    rationale: "Continuation request"
+
+  - id: "gen-continue-017"
+    prompt: "proceed"
+    expectedTaskType: "general"
+    tags: ["general", "continue", "billing-critical"]
+    rationale: "Continuation request"
+
+  - id: "gen-continue-018"
+    prompt: "carry on"
+    expectedTaskType: "general"
+    tags: ["general", "continue", "billing-critical"]
+    rationale: "Continuation request"
+
+  - id: "gen-continue-019"
+    prompt: "go ahead"
+    expectedTaskType: "general"
+    tags: ["general", "continue", "billing-critical"]
+    rationale: "Continuation request"
+
+  - id: "gen-continue-020"
+    prompt: "dont stop"
+    expectedTaskType: "general"
+    tags: ["general", "continue", "billing-critical"]
+    rationale: "User wants agent to not stop - continuation"
+
+  - id: "gen-continue-021"
+    prompt: "why did you stop"
+    expectedTaskType: "general"
+    tags: ["general", "continue", "billing-critical"]
+    rationale: "Question about stopping - implies wanting to continue"
+
+  # NOTE: gen-continue-022 "you didnt finish" removed - duplicate of gen-incomplete-003
+
+  - id: "gen-continue-023"
+    prompt: "thats not done yet"
+    expectedTaskType: "general"
+    tags: ["general", "continue", "billing-critical"]
+    rationale: "Acknowledges incomplete work - completion request"
+
+  - id: "gen-continue-024"
+    prompt: "more"
+    expectedTaskType: "general"
+    tags: ["general", "continue", "billing-critical"]
+    rationale: "Simple continuation request"
+
+  - id: "gen-continue-025"
+    prompt: "and"
+    expectedTaskType: "general"
+    tags: ["general", "continue", "billing-critical"]
+    rationale: "Continuation prompt"
+
+  - id: "gen-continue-026"
+    prompt: "then what"
+    expectedTaskType: "general"
+    tags: ["general", "continue", "billing-critical"]
+    rationale: "Asking for next steps - continuation"
+
+  - id: "gen-continue-027"
+    prompt: "whats next"
+    expectedTaskType: "general"
+    tags: ["general", "continue", "billing-critical"]
+    rationale: "Asking for next steps - continuation"
+
+  - id: "gen-continue-028"
+    prompt: "continue where you left off"
+    expectedTaskType: "general"
+    tags: ["general", "continue", "billing-critical"]
+    rationale: "Explicit continuation request"
+
+  - id: "gen-continue-029"
+    prompt: "you stopped mid sentence"
+    expectedTaskType: "general"
+    tags: ["general", "continue", "billing-critical"]
+    rationale: "Observation about stopping - continuation request"
+
+  - id: "gen-continue-030"
+    prompt: "the build isnt done"
+    expectedTaskType: "general"
+    tags: ["general", "continue", "billing-critical"]
+    rationale: "Incomplete build observation - completion request"
+
+  # ============================================================================
+  # EXTENDED INCOMPLETE WORK PATTERNS (billing-critical)
+  # ============================================================================
+
+  - id: "gen-incomplete-021"
+    prompt: "the about page doesnt have any content"
+    expectedTaskType: "general"
+    tags: ["general", "incomplete", "billing-critical"]
+    rationale: "Page content never added - completion request"
+
+  - id: "gen-incomplete-022"
+    prompt: "when i click services nothing happens"
+    expectedTaskType: "general"
+    tags: ["general", "incomplete", "billing-critical"]
+    rationale: "Feature never implemented - not a bug"
+
+  - id: "gen-incomplete-023"
+    prompt: "the nav links dont work"
+    expectedTaskType: "general"
+    tags: ["general", "incomplete", "billing-critical"]
+    rationale: "Links never connected - completion request"
+
+  - id: "gen-incomplete-024"
+    prompt: "there are no images on the page"
+    expectedTaskType: "general"
+    tags: ["general", "incomplete", "billing-critical"]
+    rationale: "Images never added - completion request"
+
+  - id: "gen-incomplete-025"
+    prompt: "the form is missing"
+    expectedTaskType: "general"
+    tags: ["general", "incomplete", "billing-critical"]
+    rationale: "Form never created - completion request"
+
+  - id: "gen-incomplete-026"
+    prompt: "where is the gallery"
+    expectedTaskType: "general"
+    tags: ["general", "incomplete", "billing-critical"]
+    rationale: "Feature not yet built - completion request"
+
+  - id: "gen-incomplete-027"
+    prompt: "i dont see a contact form"
+    expectedTaskType: "general"
+    tags: ["general", "incomplete", "billing-critical"]
+    rationale: "Form not yet built - completion request"
+
+  - id: "gen-incomplete-028"
+    prompt: "the pricing section is empty"
+    expectedTaskType: "general"
+    tags: ["general", "incomplete", "billing-critical"]
+    rationale: "Section not yet filled - completion request"
+
+  - id: "gen-incomplete-029"
+    prompt: "you havent added the testimonials"
+    expectedTaskType: "general"
+    tags: ["general", "incomplete", "billing-critical"]
+    rationale: "Feature not yet added - completion request"
+
+  - id: "gen-incomplete-030"
+    prompt: "the blog section has no posts"
+    expectedTaskType: "general"
+    tags: ["general", "incomplete", "billing-critical"]
+    rationale: "Content not yet added - completion request"
+
+  # TODO: Change to general once context-aware classification is in place
+  - id: "gen-incomplete-031"
+    prompt: "clicking the logo does nothing"
+    expectedTaskType: "fix"
+    tags: ["fix", "ambiguous", "billing-critical", "todo-change-to-general"]
+    rationale: "Ambiguous without context - currently classifies as fix"
+
+  - id: "gen-incomplete-032"
+    prompt: "the social links dont go anywhere"
+    expectedTaskType: "general"
+    tags: ["general", "incomplete", "billing-critical"]
+    rationale: "Links not yet connected - completion request"
+
+  - id: "gen-incomplete-033"
+    prompt: "some pages are missing"
+    expectedTaskType: "general"
+    tags: ["general", "incomplete", "billing-critical"]
+    rationale: "Pages not yet created - completion request"
+
+  - id: "gen-incomplete-034"
+    prompt: "the site only has one page"
+    expectedTaskType: "general"
+    tags: ["general", "incomplete", "billing-critical"]
+    rationale: "Site incomplete - completion request"
+
+  - id: "gen-incomplete-035"
+    prompt: "where are the other pages"
+    expectedTaskType: "general"
+    tags: ["general", "incomplete", "billing-critical"]
+    rationale: "Pages not yet created - completion request"
+
+  # ============================================================================
+  # SEMANTICALLY DISTINCT INCOMPLETE PATTERNS
+  # Uses "missing/empty/unfinished" language, NOT "broken/error" language
+  # ============================================================================
+
+  - id: "gen-incomplete-distinct-001"
+    prompt: "content is missing"
+    expectedTaskType: "general"
+    tags: ["general", "incomplete", "semantic-distinct", "billing-critical"]
+    rationale: "Missing = not created, not broken"
+
+  - id: "gen-incomplete-distinct-002"
+    prompt: "where is the contact page"
+    expectedTaskType: "general"
+    tags: ["general", "incomplete", "semantic-distinct", "billing-critical"]
+    rationale: "Where is = missing, not broken"
+
+  - id: "gen-incomplete-distinct-003"
+    prompt: "the about page is missing"
+    expectedTaskType: "general"
+    tags: ["general", "incomplete", "semantic-distinct", "billing-critical"]
+    rationale: "Missing = not created"
+
+  - id: "gen-incomplete-distinct-004"
+    prompt: "no content yet"
+    expectedTaskType: "general"
+    tags: ["general", "incomplete", "semantic-distinct", "billing-critical"]
+    rationale: "No content yet = incomplete"
+
+  - id: "gen-incomplete-distinct-005"
+    prompt: "nothing there yet"
+    expectedTaskType: "general"
+    tags: ["general", "incomplete", "semantic-distinct", "billing-critical"]
+    rationale: "Nothing there yet = incomplete"
+
+  - id: "gen-incomplete-distinct-006"
+    prompt: "clicking takes me nowhere"
+    expectedTaskType: "general"
+    tags: ["general", "incomplete", "semantic-distinct", "billing-critical"]
+    rationale: "Takes nowhere = link not set up"
+
+  - id: "gen-incomplete-distinct-007"
+    prompt: "the link leads to nothing"
+    expectedTaskType: "general"
+    tags: ["general", "incomplete", "semantic-distinct", "billing-critical"]
+    rationale: "Leads to nothing = destination missing"
+
+  - id: "gen-incomplete-distinct-008"
+    prompt: "links arent connected"
+    expectedTaskType: "general"
+    tags: ["general", "incomplete", "semantic-distinct", "billing-critical"]
+    rationale: "Not connected = not set up"
+
+  - id: "gen-incomplete-distinct-009"
+    prompt: "links arent set up yet"
+    expectedTaskType: "general"
+    tags: ["general", "incomplete", "semantic-distinct", "billing-critical"]
+    rationale: "Not set up yet = incomplete"
+
+  - id: "gen-incomplete-distinct-010"
+    prompt: "not done yet"
+    expectedTaskType: "general"
+    tags: ["general", "incomplete", "semantic-distinct", "billing-critical"]
+    rationale: "Not done yet = incomplete"
+
+  - id: "gen-incomplete-distinct-011"
+    prompt: "still building"
+    expectedTaskType: "general"
+    tags: ["general", "incomplete", "semantic-distinct", "billing-critical"]
+    rationale: "Still building = in progress"
+
+  - id: "gen-incomplete-distinct-012"
+    prompt: "the nav links go nowhere"
+    expectedTaskType: "general"
+    tags: ["general", "incomplete", "semantic-distinct", "billing-critical"]
+    rationale: "Go nowhere = destination missing"
+
+  # ============================================================================
+  # MULTILINGUAL CONTINUATION (billing-critical)
+  # ============================================================================
+
+  - id: "gen-continue-es-001"
+    prompt: "continua"
+    expectedTaskType: "general"
+    tags: ["general", "continue", "spanish", "billing-critical"]
+    rationale: "Spanish: continue"
+
+  - id: "gen-continue-es-002"
+    prompt: "sigue"
+    expectedTaskType: "general"
+    tags: ["general", "continue", "spanish", "billing-critical"]
+    rationale: "Spanish: keep going"
+
+  - id: "gen-continue-fr-001"
+    prompt: "continuez"
+    expectedTaskType: "general"
+    tags: ["general", "continue", "french", "billing-critical"]
+    rationale: "French: continue"
+
+  - id: "gen-continue-de-001"
+    prompt: "weitermachen"
+    expectedTaskType: "general"
+    tags: ["general", "continue", "german", "billing-critical"]
+    rationale: "German: continue"
+
+  - id: "gen-continue-pt-001"
+    prompt: "continue"
+    expectedTaskType: "general"
+    tags: ["general", "continue", "portuguese", "billing-critical"]
+    rationale: "Portuguese: continue"
+
+  - id: "gen-continue-zh-001"
+    prompt: "继续"
+    expectedTaskType: "general"
+    tags: ["general", "continue", "chinese", "billing-critical"]
+    rationale: "Chinese: continue"
+
+  - id: "gen-continue-ja-001"
+    prompt: "続けて"
+    expectedTaskType: "general"
+    tags: ["general", "continue", "japanese", "billing-critical"]
+    rationale: "Japanese: continue"
+
+  - id: "gen-continue-ko-001"
+    prompt: "계속해"
+    expectedTaskType: "general"
+    tags: ["general", "continue", "korean", "billing-critical"]
+    rationale: "Korean: continue"
