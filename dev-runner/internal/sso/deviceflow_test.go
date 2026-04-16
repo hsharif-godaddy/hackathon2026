@@ -111,6 +111,31 @@ func TestPollForToken_PendingThenSuccess(t *testing.T) {
 	}
 }
 
+func TestPollForToken_PendingWith400_ThenSuccess(t *testing.T) {
+	var calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		n := calls.Add(1)
+		if n < 3 {
+			w.WriteHeader(http.StatusBadRequest) // RFC 8628 actual behavior
+			json.NewEncoder(w).Encode(tokenPollResponse{Error: "authorization_pending"})
+			return
+		}
+		json.NewEncoder(w).Encode(tokenPollResponse{AccessToken: "jwt-after-400-pending"})
+	}))
+	defer srv.Close()
+
+	token, err := PollForToken(context.Background(), testConfig(srv.URL), "device123", 1, 30)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if token != "jwt-after-400-pending" {
+		t.Errorf("expected jwt-after-400-pending, got %s", token)
+	}
+	if n := calls.Load(); n != 3 {
+		t.Errorf("expected 3 poll calls, got %d", n)
+	}
+}
+
 func TestPollForToken_SlowDown(t *testing.T) {
 	var calls atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

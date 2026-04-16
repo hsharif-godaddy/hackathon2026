@@ -118,16 +118,14 @@ func PollForToken(ctx context.Context, cfg Config, deviceCode string, interval, 
 			return "", fmt.Errorf("polling for token: %w", err)
 		}
 
-		if resp.StatusCode != http.StatusOK {
-			resp.Body.Close()
-			return "", fmt.Errorf("token poll returned status %d", resp.StatusCode)
-		}
-
+		// Don't check resp.StatusCode here — per RFC 8628, the token endpoint
+		// returns authorization_pending/slow_down errors with HTTP 400, so we
+		// must read the JSON body to distinguish retryable from fatal errors.
 		var tr tokenPollResponse
 		decodeErr := json.NewDecoder(resp.Body).Decode(&tr)
 		resp.Body.Close()
 		if decodeErr != nil {
-			return "", fmt.Errorf("decoding poll response: %w", decodeErr)
+			return "", fmt.Errorf("decoding poll response (status %d): %w", resp.StatusCode, decodeErr)
 		}
 
 		if tr.AccessToken != "" {
