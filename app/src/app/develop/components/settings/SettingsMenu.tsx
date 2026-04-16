@@ -52,7 +52,7 @@ const SettingsMenu = forwardRef<SettingsMenuRef>((props, ref) => {
   const items = useSettingsNavItems(open || isOnSettingsTab);
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open}>
       <PopoverAnchor asChild>
         <ButtonGroup.Item
           ref={anchorRef}
@@ -68,11 +68,15 @@ const SettingsMenu = forwardRef<SettingsMenuRef>((props, ref) => {
         align={isMobile ? "center" : "end"}
         className="p-1"
         onInteractOutside={(e) => {
-          // Prevent Radix dismiss when clicking the anchor — onClick handles the toggle
+          // Anchor clicks are toggled externally via the ButtonGroup onChange → togglePopover ref; suppress Radix dismiss
           if (anchorRef.current?.contains(e.target as Node)) {
             e.preventDefault();
+            return;
           }
+          // Non-anchor outside clicks close the popover
+          setOpen(false);
         }}
+        onEscapeKeyDown={() => setOpen(false)}
       >
         <div className="flex flex-col gap-0.5">
           {items.map((item) => (

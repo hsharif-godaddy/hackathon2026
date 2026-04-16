@@ -270,6 +270,40 @@ describe('SettingsMenu', () => {
     });
   });
 
+  it('should close popover on Escape key', async () => {
+    const { user, container } = renderWithProviders(<SettingsMenu />);
+
+    const trigger = container.querySelector('[data-eid="develop.chat_toolbar.settings"]')!;
+    await user.click(trigger);
+
+    await waitFor(() => {
+      expect(screen.getByText('builder_settings_nav_project')).toBeInTheDocument();
+    });
+
+    await user.keyboard('{Escape}');
+
+    await waitFor(() => {
+      expect(screen.queryByText('builder_settings_nav_project')).not.toBeInTheDocument();
+    });
+  });
+
+  it('should close popover when clicking outside', async () => {
+    const { user, container } = renderWithProviders(<SettingsMenu />);
+
+    const trigger = container.querySelector('[data-eid="develop.chat_toolbar.settings"]')!;
+    await user.click(trigger);
+
+    await waitFor(() => {
+      expect(screen.getByText('builder_settings_nav_project')).toBeInTheDocument();
+    });
+
+    await user.click(document.body);
+
+    await waitFor(() => {
+      expect(screen.queryByText('builder_settings_nav_project')).not.toBeInTheDocument();
+    });
+  });
+
   it('should close popover after clicking needsAuth item', async () => {
     mockSwitchboardResults['appbuilder-settings-domain'] = {
       data: undefined,
