@@ -146,9 +146,6 @@ function ManagePlanContent() {
     resetError: resetRenewalError,
   } = useSubscriptionRenewal();
   const { data: isUnpublishEnabled } = useSwitchboard("appbuilder-unpublish");
-  const { data: isHigherPlansEnabled } = useSwitchboard(
-    "appbuilder-higher-plans",
-  );
   const {
     data: isSuspendedBannerEnabled,
     isLoading: isSuspendedFeatureLoading,
@@ -524,7 +521,6 @@ function ManagePlanContent() {
                 openPaywall={openPaywall}
                 autoRenewStatus={autoRenewStatus}
                 onDowngradeClick={() => setShowSwitchToFreeModal(true)}
-                isHigherPlansEnabled={!!isHigherPlansEnabled}
               />
               {currentPlan && (
                 <AddonCreditCard

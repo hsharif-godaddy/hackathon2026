@@ -5,7 +5,6 @@ import { useCallback, useEffect } from 'react'
 import { EXPERIMENT_IDS } from '@/config/experiments'
 import { useIsInCohort } from '@/hooks/useHivemind'
 import { useSubscription } from '@/hooks/useSubscription'
-import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { SubscriptionPlan } from '@/types/credits'
 import { resetFocusOnModalClose } from '@/utils/focus'
@@ -13,7 +12,6 @@ import { logImpressionEvent } from '@/utils/instrumentation'
 import DirectToPaidContainer from './DirectToPaidContainer'
 import HigherPlansUpgradeContainer from './HigherPlansUpgradeContainer'
 import { PaywallLoadingModal, PaywallLoadingModalVariant } from './PaywallLoadingModal'
-import SinglePlanUpgradeContainer from './SinglePlanUpgradeContainer'
 
 interface UpgradeContainerProps {
   onClose: () => void
@@ -26,7 +24,6 @@ interface UpgradeContainerProps {
 
 export default function UpgradeContainer(props: UpgradeContainerProps) {
   const { onClose, onSuccessClick, source } = props
-  const { data: isHigherPlansEnabled } = useSwitchboard('appbuilder-higher-plans')
   const { data: subscription, isLoading: subscriptionLoading } = useSubscription()
 
   const isInTreatment = useIsInCohort(EXPERIMENT_IDS.recommendedPlan, 'treatment')
@@ -72,21 +69,11 @@ export default function UpgradeContainer(props: UpgradeContainerProps) {
     )
   }
 
-  // User has subscription with entitlement - use existing upgrade flows
-  if (isHigherPlansEnabled) {
-    return (
-      <HigherPlansUpgradeContainer
-        {...props}
-        onSuccessClick={handleSuccessClick}
-        recommendedPlan={recommendedPlan}
-      />
-    )
-  }
-
   return (
-    <SinglePlanUpgradeContainer
+    <HigherPlansUpgradeContainer
       {...props}
       onSuccessClick={handleSuccessClick}
+      recommendedPlan={recommendedPlan}
     />
   )
 }

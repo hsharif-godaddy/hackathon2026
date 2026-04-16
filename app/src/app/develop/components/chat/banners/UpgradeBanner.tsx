@@ -38,7 +38,6 @@ export default function UpgradeBanner({ onDismiss }: UpgradeBannerProps) {
   const [isDismissed, setIsDismissed] = useState(true)
   const [mounted, setMounted] = useState(false)
   const { data: featureEnabled, isLoading: isFeatureLoading } = useSwitchboard('appbuilder-airoplus-upgrade-banner')
-  const { data: isHigherPlansEnabled } = useSwitchboard('appbuilder-higher-plans')
   const openUpgradeModal = useDevelopPageStore((state) => state.openUpgradeModal)
   const { showPaywall, isLoading: isPaywallLoading } = usePaywallEligibility()
   const { data: subscription } = useSubscription()
@@ -53,7 +52,7 @@ export default function UpgradeBanner({ onDismiss }: UpgradeBannerProps) {
   }, [])
 
   const shouldShowBanner = mounted && !isFeatureLoading && !isPaywallLoading && featureEnabled && !isDismissed &&
-    (showPaywall || canUpgradePlan(currentPlan, !!isHigherPlansEnabled))
+    (showPaywall || canUpgradePlan(currentPlan))
   useEffect(() => {
     if (shouldShowBanner && !hasLoggedImpressionRef.current) {
       logImpressionEvent('chat.upgradeBanner.view')()
@@ -61,10 +60,9 @@ export default function UpgradeBanner({ onDismiss }: UpgradeBannerProps) {
     }
   }, [shouldShowBanner])
 
-  // Wait for loading, then show only if feature enabled and user doesn't have paid plan
-  // With higher plans enabled, also show for non-Ultimate paid users
+  // Wait for loading, then show only if feature enabled and user can upgrade (non-Ultimate users)
   if (!mounted || isFeatureLoading || isPaywallLoading || !featureEnabled || isDismissed ||
-      (!showPaywall && !canUpgradePlan(currentPlan, !!isHigherPlansEnabled))) return null
+      (!showPaywall && !canUpgradePlan(currentPlan))) return null
 
   const handleClose = () => {
     logClickEvent('chat.upgradeBanner.close')()

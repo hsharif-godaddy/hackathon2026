@@ -581,7 +581,7 @@ export function OriginalHomePage({ serverFeatures }: HomeContentProps) {
             ]}
           />
 
-          {serverFeatures.showPricingSection && <PricingSection showHighTierPlans={serverFeatures.showHighTierPlans} onPricingViewEnd={logHomepagePricingView} />}
+          {serverFeatures.showPricingSection && <PricingSection onPricingViewEnd={logHomepagePricingView} />}
 
           <FAQSection />
 

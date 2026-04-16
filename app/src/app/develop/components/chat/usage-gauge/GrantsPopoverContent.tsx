@@ -8,7 +8,6 @@ import text from '@ux/text'
 import TextLockup from '@ux/text-lockup'
 
 import { useSubscriptionWithPolling } from '@/hooks/useSubscriptionWithPolling'
-import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { canUpgradePlan, isPaidPlanForGrants } from '@/lib/paywall/shared'
 import type { CreditGrant } from '@/types/credits'
@@ -30,10 +29,9 @@ export function GrantsPopoverContent({
   const t = useTranslations()
   const rootDomain = getRootDomain() || 'godaddy.com'
   const { subscription, isPurchaseDisabled } = useSubscriptionWithPolling()
-  const { data: isHigherPlansEnabled } = useSwitchboard('appbuilder-higher-plans')
   const currentPlan = subscription ? getPlanFromSubscription(subscription) : undefined
   const isFreePlan = !isPaidPlanForGrants(currentPlan)
-  const showUpgrade = canUpgradePlan(currentPlan, isHigherPlansEnabled === true)
+  const showUpgrade = canUpgradePlan(currentPlan)
 
   // Calculate grant-based data
   const planGrant = grants ? getMonthlyPlanGrant(grants) : undefined

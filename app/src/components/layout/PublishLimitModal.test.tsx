@@ -152,51 +152,9 @@ describe('PublishLimitModal', function publishLimitModalTests() {
     });
   });
 
-  describe('isHigherPlansEnabled flag OFF', function higherPlansDisabledTests() {
+  describe('upgrade and manage buttons', function upgradeAndManageButtonsTests() {
     beforeEach(function setup() {
       mockUseSwitchboard.mockImplementation((flag: string) => {
-        if (flag === 'appbuilder-higher-plans') return { data: false, isLoading: false };
-        if (flag === 'appbuilder-unpublish') return { data: true, isLoading: false };
-        return { data: false, isLoading: false };
-      });
-    });
-
-    it('should show Manage Published Apps button when unpublish is enabled', function showsManageAppsButton() {
-      renderWithProviders(<PublishLimitModal {...defaultProps} />);
-
-      expect(screen.getByRole('button', { name: 'builder_publish_limit_manage_apps' })).toBeInTheDocument();
-    });
-
-    it('should not show Upgrade button', function noUpgradeButton() {
-      renderWithProviders(<PublishLimitModal {...defaultProps} onUpgrade={vi.fn()} />);
-
-      expect(screen.queryByRole('button', { name: 'builder_publish_limit_upgrade' })).not.toBeInTheDocument();
-    });
-
-    it('should navigate to manage-plan when Manage Published Apps is clicked', function navigatesToManagePlan() {
-      const onClose = vi.fn();
-      renderWithProviders(<PublishLimitModal {...defaultProps} onClose={onClose} />);
-
-      fireEvent.click(screen.getByRole('button', { name: 'builder_publish_limit_manage_apps' }));
-
-      expect(onClose).toHaveBeenCalled();
-      expect(mockPush).toHaveBeenCalledWith('/manage-plan');
-    });
-
-    it('should not show any action buttons when unpublish is also disabled', function noButtonsWhenBothDisabled() {
-      mockUseSwitchboard.mockReturnValue({ data: false, isLoading: false });
-
-      renderWithProviders(<PublishLimitModal {...defaultProps} />);
-
-      expect(screen.queryByRole('button', { name: 'builder_publish_limit_manage_apps' })).not.toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: 'builder_publish_limit_upgrade' })).not.toBeInTheDocument();
-    });
-  });
-
-  describe('isHigherPlansEnabled flag ON', function higherPlansEnabledTests() {
-    beforeEach(function setup() {
-      mockUseSwitchboard.mockImplementation((flag: string) => {
-        if (flag === 'appbuilder-higher-plans') return { data: true, isLoading: false };
         if (flag === 'appbuilder-unpublish') return { data: true, isLoading: false };
         return { data: false, isLoading: false };
       });
@@ -315,10 +273,7 @@ describe('PublishLimitModal', function publishLimitModalTests() {
 
   describe('different plan types', function planTypeTests() {
     beforeEach(function setup() {
-      mockUseSwitchboard.mockImplementation((flag: string) => {
-        if (flag === 'appbuilder-higher-plans') return { data: true, isLoading: false };
-        return { data: false, isLoading: false };
-      });
+      mockUseSwitchboard.mockImplementation(() => ({ data: false, isLoading: false }));
     });
 
     it('should show Upgrade for Free plan', function upgradeForFree() {
@@ -376,10 +331,7 @@ describe('PublishLimitModal', function publishLimitModalTests() {
 
   describe('data attributes', function dataAttributeTests() {
     beforeEach(function setup() {
-      mockUseSwitchboard.mockImplementation((flag: string) => {
-        if (flag === 'appbuilder-higher-plans') return { data: true, isLoading: false };
-        return { data: false, isLoading: false };
-      });
+      mockUseSwitchboard.mockImplementation(() => ({ data: false, isLoading: false }));
     });
 
     it('should have data-eid attribute on Upgrade button', function hasDataEidUpgrade() {

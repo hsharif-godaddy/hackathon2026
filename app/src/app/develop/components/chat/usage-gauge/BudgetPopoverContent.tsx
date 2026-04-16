@@ -9,7 +9,6 @@ import text from '@ux/text'
 import TextLockup from '@ux/text-lockup'
 
 import { useSubscriptionWithPolling } from '@/hooks/useSubscriptionWithPolling'
-import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { canUpgradePlan, isPaidPlanForGrants } from '@/lib/paywall/shared'
 import type { CreditStatusResponse } from '@/types/budget'
@@ -45,10 +44,9 @@ export function BudgetPopoverContent({
   const intl = useIntl()
   const rootDomain = getRootDomain() || 'godaddy.com'
   const { subscription, isPurchaseDisabled } = useSubscriptionWithPolling()
-  const { data: isHigherPlansEnabled } = useSwitchboard('appbuilder-higher-plans')
   const currentPlan = subscription ? subscription.plan : undefined
   const isFreePlan = !isPaidPlanForGrants(currentPlan)
-  const showUpgrade = canUpgradePlan(currentPlan, isHigherPlansEnabled === true)
+  const showUpgrade = canUpgradePlan(currentPlan)
 
   const planItem = data.items.find((item) => item.type === 'plan-monthly')
   const packItems = data.items.filter((item) => item.type === 'credit-pack')

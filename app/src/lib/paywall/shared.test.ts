@@ -118,39 +118,21 @@ describe('paywall/shared', function paywallSharedTests() {
   });
 
   describe('canUpgradePlan', function canUpgradePlanTests() {
-    describe('when higher plans flag is OFF (legacy)', function flagOff() {
-      it('should return true for Free and None plans', function freeAndNoneCanUpgrade() {
-        expect(canUpgradePlan(SubscriptionPlan.Free, false)).toBe(true);
-        expect(canUpgradePlan(SubscriptionPlan.None, false)).toBe(true);
-      });
-
-      it('should return false for paid plans', function paidPlansCannotUpgrade() {
-        expect(canUpgradePlan(SubscriptionPlan.Starter, false)).toBe(false);
-        expect(canUpgradePlan(SubscriptionPlan.Professional, false)).toBe(false);
-        expect(canUpgradePlan(SubscriptionPlan.Ultimate, false)).toBe(false);
-        expect(canUpgradePlan(SubscriptionPlan.AiroPlus, false)).toBe(false);
-      });
+    it('should return true for all non-Ultimate plans', function nonUltimateTrue() {
+      expect(canUpgradePlan(SubscriptionPlan.Free)).toBe(true);
+      expect(canUpgradePlan(SubscriptionPlan.Starter)).toBe(true);
+      expect(canUpgradePlan(SubscriptionPlan.Professional)).toBe(true);
+      expect(canUpgradePlan(SubscriptionPlan.AiroPlus)).toBe(true);
+      expect(canUpgradePlan(SubscriptionPlan.None)).toBe(true);
     });
 
-    describe('when higher plans flag is ON', function flagOn() {
-      it('should return true for all non-Ultimate plans', function nonUltimateTrue() {
-        expect(canUpgradePlan(SubscriptionPlan.Free, true)).toBe(true);
-        expect(canUpgradePlan(SubscriptionPlan.Starter, true)).toBe(true);
-        expect(canUpgradePlan(SubscriptionPlan.Professional, true)).toBe(true);
-        expect(canUpgradePlan(SubscriptionPlan.AiroPlus, true)).toBe(true);
-        expect(canUpgradePlan(SubscriptionPlan.None, true)).toBe(true);
-      });
-
-      it('should return false for Ultimate plan', function ultimateFalse() {
-        expect(canUpgradePlan(SubscriptionPlan.Ultimate, true)).toBe(false);
-      });
+    it('should return false for Ultimate plan', function ultimateFalse() {
+      expect(canUpgradePlan(SubscriptionPlan.Ultimate)).toBe(false);
     });
 
     it('should return true for null or undefined (no plan = show upgrade)', function handlesNullish() {
-      expect(canUpgradePlan(null, true)).toBe(true);
-      expect(canUpgradePlan(undefined, true)).toBe(true);
-      expect(canUpgradePlan(null, false)).toBe(true);
-      expect(canUpgradePlan(undefined, false)).toBe(true);
+      expect(canUpgradePlan(null)).toBe(true);
+      expect(canUpgradePlan(undefined)).toBe(true);
     });
   });
 

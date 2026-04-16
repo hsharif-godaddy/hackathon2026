@@ -400,7 +400,7 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
       expect(screen.queryByText('builder_manageplan_downgrade_plan')).not.toBeInTheDocument();
     });
 
-    it('should NOT show any buttons for Free plan without credit packs', function freeNoPacksNoButtons() {
+    it('should show Upgrade button for Free plan without credit packs', function freeNoPacksShowsUpgrade() {
       renderWithProviders(
         <PlanCreditsCard
           subscription={createMockSubscription({ plan: SubscriptionPlan.Free })}
@@ -411,7 +411,7 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
         />
       );
 
-      expect(screen.queryByText('builder_manageplan_upgrade')).not.toBeInTheDocument();
+      expect(screen.getByText('builder_manageplan_upgrade')).toBeInTheDocument();
       expect(screen.queryByText('builder_manageplan_buy_credits')).not.toBeInTheDocument();
       expect(screen.queryByText('builder_manageplan_downgrade_plan')).not.toBeInTheDocument();
     });
@@ -467,7 +467,7 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
       expect(screen.getByText('builder_manageplan_downgrade_plan')).toBeInTheDocument();
     });
 
-    it('should NOT show Upgrade button for Starter plan', function starterNoUpgrade() {
+    it('should show Upgrade button for Starter plan', function starterShowsUpgrade() {
       renderWithProviders(
         <PlanCreditsCard
           subscription={createMockSubscription({ plan: SubscriptionPlan.Starter })}
@@ -478,7 +478,7 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
         />
       );
 
-      expect(screen.queryByText('builder_manageplan_upgrade')).not.toBeInTheDocument();
+      expect(screen.getByText('builder_manageplan_upgrade')).toBeInTheDocument();
     });
   });
 
@@ -530,7 +530,7 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
       expect(screen.getByText('builder_manageplan_upgrade')).toBeInTheDocument();
     });
 
-    it('should NOT show any buttons for AiroPlus plan without credit packs', function airoPlusNoPacksNoButtons() {
+    it('should show Upgrade button for AiroPlus plan without credit packs', function airoPlusNoPacksShowsUpgrade() {
       renderWithProviders(
         <PlanCreditsCard
           subscription={createMockSubscription({ plan: SubscriptionPlan.AiroPlus })}
@@ -543,8 +543,8 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
         />
       );
 
-      // Like Free plan without credit packs, no buttons shown
-      expect(screen.queryByText('builder_manageplan_upgrade')).not.toBeInTheDocument();
+      // AiroPlus treated as non-paid, so shows Upgrade like Free plan without credit packs
+      expect(screen.getByText('builder_manageplan_upgrade')).toBeInTheDocument();
       expect(screen.queryByText('builder_manageplan_buy_credits')).not.toBeInTheDocument();
       expect(screen.queryByText('builder_manageplan_downgrade_plan')).not.toBeInTheDocument();
     });
@@ -564,7 +564,7 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
 
       await user.click(screen.getByText('builder_manageplan_upgrade'));
 
-      expect(mockOpenPaywall).toHaveBeenCalledWith('manage_plan.upgrade', 'upgrade', PAYWALL_ITC.UPGRADE);
+      expect(mockOpenPaywall).toHaveBeenCalledWith('manage_plan.upgrade_plan', 'upgrade', PAYWALL_ITC.UPGRADE);
     });
 
     it('should call openPaywall with credits when Buy Credits clicked', async function clickBuyCredits() {
@@ -618,91 +618,66 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
     });
   });
 
-  describe('button visibility with higher plans flag', function higherPlansButtonTests() {
-    it('should show Upgrade button for Starter plan when higher plans flag is on', function starterUpgradeWithFlag() {
+  describe('Upgrade/Downgrade button rendering', function upgradeDowngradeButtonTests() {
+    it('should show Upgrade button for Starter plan', function starterShowsUpgrade() {
       renderWithProviders(
         <PlanCreditsCard
           subscription={createMockSubscription({ plan: SubscriptionPlan.Starter })}
           planGrant={createMockPlanGrant()}
           creditPacks={[]}
           openPaywall={mockOpenPaywall}
-
-          isHigherPlansEnabled={true}
         />
       );
 
       expect(screen.getByText('builder_manageplan_upgrade')).toBeInTheDocument();
     });
 
-    it('should show Upgrade button for Professional plan when higher plans flag is on', function professionalUpgradeWithFlag() {
+    it('should show Upgrade button for Professional plan', function professionalShowsUpgrade() {
       renderWithProviders(
         <PlanCreditsCard
           subscription={createMockSubscription({ plan: SubscriptionPlan.Professional })}
           planGrant={createMockPlanGrant()}
           creditPacks={[]}
           openPaywall={mockOpenPaywall}
-
-          isHigherPlansEnabled={true}
         />
       );
 
       expect(screen.getByText('builder_manageplan_upgrade')).toBeInTheDocument();
     });
 
-    it('should NOT show Upgrade button for Ultimate plan when higher plans flag is on', function ultimateNoUpgrade() {
+    it('should NOT show Upgrade button for Ultimate plan', function ultimateNoUpgrade() {
       renderWithProviders(
         <PlanCreditsCard
           subscription={createMockSubscription({ plan: SubscriptionPlan.Ultimate })}
           planGrant={createMockPlanGrant()}
           creditPacks={[]}
           openPaywall={mockOpenPaywall}
-
-          isHigherPlansEnabled={true}
         />
       );
 
       expect(screen.queryByText('builder_manageplan_upgrade')).not.toBeInTheDocument();
     });
 
-    it('should show Downgrade button for Ultimate plan when higher plans flag is on', function ultimateShowsDowngrade() {
+    it('should show Downgrade button for Ultimate plan', function ultimateShowsDowngrade() {
       renderWithProviders(
         <PlanCreditsCard
           subscription={createMockSubscription({ plan: SubscriptionPlan.Ultimate })}
           planGrant={createMockPlanGrant()}
           creditPacks={[]}
           openPaywall={mockOpenPaywall}
-
-          isHigherPlansEnabled={true}
         />
       );
 
       expect(screen.getByText('builder_manageplan_downgrade')).toBeInTheDocument();
     });
 
-    it('should NOT show higher plans Upgrade button when flag is off', function noUpgradeWhenFlagOff() {
-      renderWithProviders(
-        <PlanCreditsCard
-          subscription={createMockSubscription({ plan: SubscriptionPlan.Starter })}
-          planGrant={createMockPlanGrant()}
-          creditPacks={[]}
-          openPaywall={mockOpenPaywall}
-
-          isHigherPlansEnabled={false}
-        />
-      );
-
-      expect(screen.queryByText('builder_manageplan_upgrade')).not.toBeInTheDocument();
-    });
-
-    it('should call openPaywall with upgrade_plan when higher plans Upgrade is clicked', async function clickHigherPlansUpgrade() {
+    it('should call openPaywall with upgrade_plan when Upgrade is clicked', async function clickUpgrade() {
       const { user } = renderWithProviders(
         <PlanCreditsCard
           subscription={createMockSubscription({ plan: SubscriptionPlan.Starter })}
           planGrant={createMockPlanGrant()}
           creditPacks={[]}
           openPaywall={mockOpenPaywall}
-
-          isHigherPlansEnabled={true}
         />
       );
 

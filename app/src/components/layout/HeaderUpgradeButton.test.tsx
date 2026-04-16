@@ -76,16 +76,14 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
       });
     });
 
-    it('should not render when user has Airo Plus and higher plans is disabled', async function noRenderWithAiroPlus() {
+    it('should render when user has Airo Plus since they can upgrade to Starter/Professional/Ultimate', async function renderWithAiroPlus() {
       const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
       const { useSubscription } = await import('@/hooks/useSubscription');
 
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: false, isLoading: false, isError: false, error: null });
-      // Mock both flags - feature enabled but higher plans disabled
       vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
         if (flag === 'appbuilder-airoplus-upgrade-button') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
-        if (flag === 'appbuilder-higher-plans') return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
         return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
       });
       // Mock subscription with AiroPlus plan
@@ -107,9 +105,11 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
         refetch: vi.fn(),
       });
 
-      const { container } = renderWithProviders(<HeaderUpgradeButton location="test" />);
+      renderWithProviders(<HeaderUpgradeButton location="test" />);
 
-      expect(container.firstChild).toBeNull();
+      await waitFor(function waitForButton() {
+        expect(screen.getByRole('button')).toBeInTheDocument();
+      });
     });
 
     it('should not render when feature flag is disabled', async function noRenderWhenFlagDisabled() {
@@ -305,8 +305,8 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
 
   });
 
-  describe('higher plans visibility', function higherPlansTests() {
-    it('should render for Starter user when higher plans flag is on and showPaywall is false', async function starterWithHigherPlans() {
+  describe('plan-based visibility', function planBasedVisibilityTests() {
+    it('should render for Starter user when showPaywall is false', async function starterCanUpgrade() {
       const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
       const { useSubscription } = await import('@/hooks/useSubscription');
@@ -315,7 +315,6 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
       vi.mocked(useSubscription).mockReturnValue({ data: { id: 'sub-1', plan: SubscriptionPlan.Starter, builderEntitlementId: 'ent-1' }, isLoading: false } as ReturnType<typeof useSubscription>);
       vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
         if (flag === 'appbuilder-airoplus-upgrade-button') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
-        if (flag === 'appbuilder-higher-plans') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
         return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
       });
 
@@ -326,7 +325,7 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
       });
     });
 
-    it('should not render for Ultimate user when higher plans flag is on', async function ultimateNoRender() {
+    it('should not render for Ultimate user', async function ultimateNoRender() {
       const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
       const { useSubscription } = await import('@/hooks/useSubscription');
@@ -335,7 +334,6 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
       vi.mocked(useSubscription).mockReturnValue({ data: { id: 'sub-1', plan: SubscriptionPlan.Ultimate, builderEntitlementId: 'ent-1' }, isLoading: false } as ReturnType<typeof useSubscription>);
       vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
         if (flag === 'appbuilder-airoplus-upgrade-button') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
-        if (flag === 'appbuilder-higher-plans') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
         return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
       });
 
@@ -344,7 +342,7 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
       expect(container.firstChild).toBeNull();
     });
 
-    it('should not render for Starter user when higher plans flag is off and showPaywall is false', async function starterNoHigherPlans() {
+    it('should display paid plan content for Starter user', async function starterPaidPlanContent() {
       const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
       const { useSubscription } = await import('@/hooks/useSubscription');
@@ -353,25 +351,6 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
       vi.mocked(useSubscription).mockReturnValue({ data: { id: 'sub-1', plan: SubscriptionPlan.Starter, builderEntitlementId: 'ent-1' }, isLoading: false } as ReturnType<typeof useSubscription>);
       vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
         if (flag === 'appbuilder-airoplus-upgrade-button') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
-        if (flag === 'appbuilder-higher-plans') return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
-        return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
-      });
-
-      const { container } = renderWithProviders(<HeaderUpgradeButton location="test" />);
-
-      expect(container.firstChild).toBeNull();
-    });
-
-    it('should display paid plan content for Starter user when higher plans flag is on', async function starterPaidPlanContent() {
-      const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
-      const { useSwitchboard } = await import('@/hooks/useSwitchboard');
-      const { useSubscription } = await import('@/hooks/useSubscription');
-
-      vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: false, isLoading: false, isError: false, error: null });
-      vi.mocked(useSubscription).mockReturnValue({ data: { id: 'sub-1', plan: SubscriptionPlan.Starter, builderEntitlementId: 'ent-1' }, isLoading: false } as ReturnType<typeof useSubscription>);
-      vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
-        if (flag === 'appbuilder-airoplus-upgrade-button') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
-        if (flag === 'appbuilder-higher-plans') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
         return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
       });
 
@@ -387,7 +366,7 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
       });
     });
 
-    it('should display paid plan content for Professional user when higher plans flag is on', async function professionalPaidPlanContent() {
+    it('should display paid plan content for Professional user', async function professionalPaidPlanContent() {
       const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
       const { useSubscription } = await import('@/hooks/useSubscription');
@@ -396,7 +375,6 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
       vi.mocked(useSubscription).mockReturnValue({ data: { id: 'sub-1', plan: SubscriptionPlan.Professional, builderEntitlementId: 'ent-1' }, isLoading: false } as ReturnType<typeof useSubscription>);
       vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
         if (flag === 'appbuilder-airoplus-upgrade-button') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
-        if (flag === 'appbuilder-higher-plans') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
         return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
       });
 

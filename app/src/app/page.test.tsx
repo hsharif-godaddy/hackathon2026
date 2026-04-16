@@ -96,7 +96,7 @@ describe('Home Page', () => {
   });
 
   it('should render without crashing', async () => {
-    renderWithProviders(<HomeContent serverFeatures={{ showPricingSection: true, showHighTierPlans: false }} />);
+    renderWithProviders(<HomeContent serverFeatures={{ showPricingSection: true }} />);
 
     await waitFor(() => {
       expect(document.body).toBeTruthy();
@@ -106,7 +106,7 @@ describe('Home Page', () => {
   it('should log impression event on mount', async () => {
     const { logImpressionEvent } = await import('@/utils/instrumentation');
 
-    renderWithProviders(<HomeContent serverFeatures={{ showPricingSection: true, showHighTierPlans: false }} />);
+    renderWithProviders(<HomeContent serverFeatures={{ showPricingSection: true }} />);
 
     await waitFor(() => {
       expect(logImpressionEvent).toHaveBeenCalledWith('homepage.page.view', { cohort: 'test-cohort' });
@@ -116,7 +116,7 @@ describe('Home Page', () => {
   it('should handle localStorage operations', async () => {
     localStorage.setItem('airo-pending-prompt', 'Build a dashboard');
 
-    renderWithProviders(<HomeContent serverFeatures={{ showPricingSection: true, showHighTierPlans: false }} />);
+    renderWithProviders(<HomeContent serverFeatures={{ showPricingSection: true }} />);
 
     await waitFor(() => {
       expect(document.body).toBeTruthy();
@@ -126,7 +126,7 @@ describe('Home Page', () => {
   it('should handle errors gracefully', async () => {
     vi.mocked(appFetch).mockRejectedValue(new Error('Network error'));
 
-    renderWithProviders(<HomeContent serverFeatures={{ showPricingSection: true, showHighTierPlans: false }} />);
+    renderWithProviders(<HomeContent serverFeatures={{ showPricingSection: true }} />);
 
     await waitFor(() => {
       expect(document.body).toBeTruthy();
@@ -139,7 +139,7 @@ describe('Home Page', () => {
         { error: 'Authentication token required' }, 401
       ) as any);
 
-      renderWithProviders(<HomeContent serverFeatures={{ showPricingSection: true, showHighTierPlans: false }} />);
+      renderWithProviders(<HomeContent serverFeatures={{ showPricingSection: true }} />);
       await typePromptAndSubmit('Build me an app');
 
       await waitFor(() => {
@@ -152,7 +152,7 @@ describe('Home Page', () => {
         { error: 'Failed to create site record', details: 'Subscription has no systems' }, 500
       ) as any);
 
-      renderWithProviders(<HomeContent serverFeatures={{ showPricingSection: true, showHighTierPlans: false }} />);
+      renderWithProviders(<HomeContent serverFeatures={{ showPricingSection: true }} />);
       await typePromptAndSubmit('Build me an app');
 
       await waitFor(() => {
@@ -165,7 +165,7 @@ describe('Home Page', () => {
         { error: 'Failed to create site record' }, 500
       ) as any);
 
-      renderWithProviders(<HomeContent serverFeatures={{ showPricingSection: true, showHighTierPlans: false }} />);
+      renderWithProviders(<HomeContent serverFeatures={{ showPricingSection: true }} />);
       await typePromptAndSubmit('Build me an app');
 
       await waitFor(() => {
@@ -178,7 +178,7 @@ describe('Home Page', () => {
         { error: 'Unauthorized' }, 401
       ) as any);
 
-      renderWithProviders(<HomeContent serverFeatures={{ showPricingSection: true, showHighTierPlans: false }} />);
+      renderWithProviders(<HomeContent serverFeatures={{ showPricingSection: true }} />);
       await typePromptAndSubmit('Build a dashboard');
 
       await waitFor(() => {
@@ -274,7 +274,7 @@ describe('Home Page', () => {
 
   describe('public sections rendering', () => {
     it('should render Pricing section when serverFeatures.showPricingSection is true', async () => {
-      renderWithProviders(<HomeContent serverFeatures={{ showPricingSection: true, showHighTierPlans: false }} />);
+      renderWithProviders(<HomeContent serverFeatures={{ showPricingSection: true }} />);
 
       await waitFor(() => {
         expect(screen.getByTestId('pricing-section')).toBeInTheDocument();
@@ -282,7 +282,7 @@ describe('Home Page', () => {
     });
 
     it('should not render Pricing section when serverFeatures.showPricingSection is false', async () => {
-      renderWithProviders(<HomeContent serverFeatures={{ showPricingSection: false, showHighTierPlans: false }} />);
+      renderWithProviders(<HomeContent serverFeatures={{ showPricingSection: false }} />);
 
       await waitFor(() => {
         expect(screen.queryByTestId('pricing-section')).not.toBeInTheDocument();
@@ -290,7 +290,7 @@ describe('Home Page', () => {
     });
 
     it('should always render FAQ section', async () => {
-      renderWithProviders(<HomeContent serverFeatures={{ showPricingSection: true, showHighTierPlans: false }} />);
+      renderWithProviders(<HomeContent serverFeatures={{ showPricingSection: true }} />);
 
       await waitFor(() => {
         expect(screen.getByTestId('faq-section')).toBeInTheDocument();
@@ -304,7 +304,7 @@ describe('Home Page', () => {
         const mockUnauthContext = vi.fn(() => mockAuthContext({ isAuthenticated: false, isAuthDisabled: false }))
         vi.mocked(mod).useAuthContext = mockUnauthContext as any
 
-        renderWithProviders(<HomeContent serverFeatures={{ showPricingSection: true, showHighTierPlans: false }} />)
+        renderWithProviders(<HomeContent serverFeatures={{ showPricingSection: true }} />)
 
         await waitFor(() => {
           expect(screen.getByTestId('faq-section')).toBeInTheDocument()

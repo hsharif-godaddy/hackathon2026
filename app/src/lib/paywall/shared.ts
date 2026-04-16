@@ -258,26 +258,18 @@ export const PLAN_PRIORITY: Record<SubscriptionPlan, number> = {
 /**
  * Check if a user can upgrade their plan
  *
- * When higher plans flag is enabled: shows upgrade for all non-Ultimate users (Free→Starter→Professional→Ultimate)
- * When higher plans flag is disabled: shows upgrade only for Free/None users (legacy Starter upgrade flow)
+ * Shows upgrade for all non-Ultimate users (Free→Starter→Professional→Ultimate)
  *
  * @param plan - Current subscription plan
- * @param isHigherPlansEnabled - Whether appbuilder-higher-plans flag is enabled
  * @returns True if user should see upgrade CTAs
  */
 export function canUpgradePlan(
-  plan: SubscriptionPlan | undefined | null,
-  isHigherPlansEnabled: boolean
+  plan: SubscriptionPlan | undefined | null
 ): boolean {
   if (plan == null) return true; // No plan = should show upgrade
 
-  if (isHigherPlansEnabled) {
-    // With higher plans: upgrade available for all non-Ultimate users
-    return plan !== SubscriptionPlan.Ultimate;
-  }
-
-  // Legacy: only Free/None users can upgrade to Starter
-  return plan === SubscriptionPlan.Free || plan === SubscriptionPlan.None;
+  // Upgrade available for all non-Ultimate users
+  return plan !== SubscriptionPlan.Ultimate;
 }
 
 /**

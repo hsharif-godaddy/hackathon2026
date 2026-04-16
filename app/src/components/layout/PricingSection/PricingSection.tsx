@@ -37,7 +37,6 @@ import { generateClickEID, logImpressionEvent } from '@/utils/instrumentation'
 const PENDING_UPGRADE_KEY = 'airo-pending-pricing-upgrade'
 
 export interface PricingSectionProps {
-  showHighTierPlans?: boolean
   onPricingViewEnd?: (detail: { viewDurationMs: number }) => void
 }
 
@@ -84,7 +83,7 @@ const ULTIMATE_FEATURES: PlanFeature[] = [
   // { icon: CodeIcon, titleKey: 'builder_pricing_item_git_hosting', tooltipKey: 'builder_pricing_item_git_hosting_tooltip' },
 ]
 
-export default function PricingSection({ showHighTierPlans = false, onPricingViewEnd }: PricingSectionProps) {
+export default function PricingSection({ onPricingViewEnd }: PricingSectionProps) {
   const t = useTranslations();
   const { data: pricingData, isLoading } = usePricingOffers()
   const openUpgradeModal = useDevelopPageStore((state) => state.openUpgradeModal)
@@ -210,18 +209,6 @@ export default function PricingSection({ showHighTierPlans = false, onPricingVie
     ))
   }
 
-  const renderFeaturesWithSeparators = (features: PlanFeature[]) => {
-    return features.map((feature, index) => (
-      <React.Fragment key={feature.titleKey}>
-        {index > 0 && <hr className="border-intents-ux-box-borderColor my-1.5" />}
-        <PricingItem
-          icon={<feature.icon className="size-2" />}
-          feature={feature}
-        />
-      </React.Fragment>
-    ))
-  }
-
   const isInTreatment = useIsInCohort(EXPERIMENT_IDS.recommendedPlan, 'treatment')
   const recommendedPlan = isInTreatment ? SubscriptionPlan.Ultimate : SubscriptionPlan.Professional;
 
@@ -236,137 +223,104 @@ export default function PricingSection({ showHighTierPlans = false, onPricingVie
       </div>
     )}
     <PageSection data-testid="pricing-section" id="pricing-section">
-      {showHighTierPlans ? (
-        <div className="w-full max-w-[1700px] mx-auto px-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 xl:gap-2 items-stretch">
+      <div className="w-full max-w-[1700px] mx-auto px-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 xl:gap-2 items-stretch">
 
-            {/* Free Plan */}
-            <div
-              className="flex flex-col h-auto md:h-full xl:h-auto xl:self-center border border-intents-ux-box-borderColor rounded-2xl overflow-hidden"
-              data-partial="inverted"
-            >
-              <div className="p-4">
-                <text.h3 as="heading" size={1} className="mb-2" text={t('builder_pricing_free_title')} />
-                <text.p size={1} className="mb-4" text={t('builder_pricing_free_desc')} />
-                <Button
-                  design="primary"
-                  text={t('builder_pricing_free_cta')}
-                  onClick={handleStartBuildingClick}
-                  className="!mb-6"
-                />
-                <div className="space-y-3">
-                  {renderFeatures(FREE_FEATURES)}
-                </div>
-              </div>
-            </div>
-
-            {/* Starter Plan */}
-            <div className={paidCardStyles}>
-              <div className="p-4 flex flex-col h-full">
-                <text.h3 as="heading" size={0} className="mb-2" text={t('builder_pricing_starter_title')} />
-                <text.p size={1} className="mb-2 min-h-8" emphasis="passive" text={t('builder_pricing_starter_desc')} />
-                <PlanPriceDisplay planOffer={pricingData?.[SubscriptionPlan.Starter] ?? null} isLoading={isLoading} />
-                <Button
-                  design="primary"
-                  text={t('builder_pricing_starter_cta')}
-                  onClick={handleUpgradeClick}
-                  data-eid={generateClickEID('pricing_section.upgrade_button.starter')}
-                  disabled={authIsLoading}
-                  className="!mb-6"
-                />
-                <div className="space-y-3">
-                  {renderFeatures(STARTER_FEATURES)}
-                </div>
-              </div>
-            </div>
-
-            {/* Professional Plan */}
-            <div className={recommendedPlan === SubscriptionPlan.Professional ? recommendedCardStyles : paidCardStyles}>
-              {recommendedPlan === SubscriptionPlan.Professional && (
-                <text.span
-                  as="paragraph"
-                  className="absolute -top-3 left-1/2 -translate-x-1/2 bg-ring-ai text-intents-ux-boxHighContrast-foregroundColor font-semibold px-4 py-1.5 rounded-full whitespace-nowrap shadow-lg z-10"
-                  text={t('builder_pricing_recommended')}
-                />
-              )}
-              <div className={`p-4 flex flex-col h-full`}>
-                <text.h3 as="heading" size={0} className="mb-2" text={t('builder_pricing_professional_title')} />
-                <text.p size={1} className="mb-2 min-h-8" emphasis="passive" text={t('builder_pricing_professional_desc')} />
-                <PlanPriceDisplay planOffer={pricingData?.[SubscriptionPlan.Professional] ?? null} isLoading={isLoading} />
-                <Button
-                  design="primary"
-                  text={t('builder_pricing_free_cta')}
-                  onClick={handleUpgradeClick}
-                  data-eid={generateClickEID('pricing_section.upgrade_button.professional')}
-                  disabled={authIsLoading}
-                  className="!mb-6"
-                />
-                <div className="space-y-3">
-                  {renderFeatures(PROFESSIONAL_FEATURES)}
-                </div>
-              </div>
-            </div>
-
-            {/* Ultimate Plan */}
-            <div className={recommendedPlan === SubscriptionPlan.Ultimate ? recommendedCardStyles : paidCardStyles}>
-              {recommendedPlan === SubscriptionPlan.Ultimate && (
-                <text.span
-                  as="paragraph"
-                  className="absolute -top-3 left-1/2 -translate-x-1/2 bg-ring-ai text-intents-ux-boxHighContrast-foregroundColor font-semibold px-4 py-1.5 rounded-full whitespace-nowrap shadow-lg z-10"
-                  text={t('builder_pricing_recommended')}
-                />
-              )}
-              <div className={`p-4 flex flex-col h-full`}>
-                <text.h3 as="heading" size={0} className="mb-2" text={t('builder_pricing_ultimate_title')} />
-                <text.p size={1} className="mb-2 min-h-8" emphasis="passive" text={t('builder_pricing_ultimate_desc')} />
-                <PlanPriceDisplay planOffer={pricingData?.[SubscriptionPlan.Ultimate] ?? null} isLoading={isLoading} />
-                <Button
-                  design="primary"
-                  text={t('builder_pricing_free_cta')}
-                  data-eid={generateClickEID('pricing_section.upgrade_button.ultimate')}
-                  onClick={handleUpgradeClick}
-                  disabled={authIsLoading}
-                  className="!mb-6"
-                />
-                <div className="space-y-3">
-                  {renderFeatures(ULTIMATE_FEATURES)}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : (
-        // Original 2-tier layout (Free + Starter)
-        <div className="flex flex-row flex-wrap justify-center items-center gap-4 md:gap-0 w-full max-w-screen-lg mx-auto">
           {/* Free Plan */}
-          <div className="flex flex-col shrink-0 w-full md:max-w-1/2 p-4 lg:p-6 md:pr-12 md:mr-1 lg:pr-24 lg:mr-2 border border-intents-ux-box-borderColor rounded-2xl" data-partial="inverted">
-            <text.h3 as="heading" size={0} className="mb-1">{t('builder_pricing_free_title')}</text.h3>
-            <text.p size={1}>{t('builder_pricing_free_desc')}</text.p>
-            <Button
-              design="primary"
-              text={t('builder_pricing_free_cta')}
-              onClick={handleStartBuildingClick}
-              className="!my-3"
-            />
-            {renderFeaturesWithSeparators(FREE_FEATURES)}
+          <div
+            className="flex flex-col h-auto md:h-full xl:h-auto xl:self-center border border-intents-ux-box-borderColor rounded-2xl overflow-hidden"
+            data-partial="inverted"
+          >
+            <div className="p-4">
+              <text.h3 as="heading" size={1} className="mb-2" text={t('builder_pricing_free_title')} />
+              <text.p size={1} className="mb-4" text={t('builder_pricing_free_desc')} />
+              <Button
+                design="primary"
+                text={t('builder_pricing_free_cta')}
+                onClick={handleStartBuildingClick}
+                className="!mb-6"
+              />
+              <div className="space-y-3">
+                {renderFeatures(FREE_FEATURES)}
+              </div>
+            </div>
           </div>
 
           {/* Starter Plan */}
-          <div className="flex flex-col shrink-0 w-full md:max-w-1/2 md:-ml-10 lg:-ml-20 p-4 md:p-6 bg-intents-ux-box-backgroundColor border border-intents-ux-box-borderColor rounded-2xl text-intents-ux-box-foregroundColor shadow-md">
-            <text.h3 as="heading" size={2} className="mb-1">{t('builder_pricing_starter_title')}</text.h3>
-            <text.p size={1}>{t('builder_pricing_starter_desc')}</text.p>
-            <PlanPriceDisplay planOffer={pricingData?.[SubscriptionPlan.Starter] ?? null} isLoading={isLoading} />
-            <Button
-              design="primary"
-              text={t('builder_pricing_starter_cta')}
-              onClick={handleUpgradeClick}
-              disabled={authIsLoading}
-              className="!my-4"
-            />
-            {renderFeaturesWithSeparators(STARTER_FEATURES)}
+          <div className={paidCardStyles}>
+            <div className="p-4 flex flex-col h-full">
+              <text.h3 as="heading" size={0} className="mb-2" text={t('builder_pricing_starter_title')} />
+              <text.p size={1} className="mb-2 min-h-8" emphasis="passive" text={t('builder_pricing_starter_desc')} />
+              <PlanPriceDisplay planOffer={pricingData?.[SubscriptionPlan.Starter] ?? null} isLoading={isLoading} />
+              <Button
+                design="primary"
+                text={t('builder_pricing_starter_cta')}
+                onClick={handleUpgradeClick}
+                data-eid={generateClickEID('pricing_section.upgrade_button.starter')}
+                disabled={authIsLoading}
+                className="!mb-6"
+              />
+              <div className="space-y-3">
+                {renderFeatures(STARTER_FEATURES)}
+              </div>
+            </div>
+          </div>
+
+          {/* Professional Plan */}
+          <div className={recommendedPlan === SubscriptionPlan.Professional ? recommendedCardStyles : paidCardStyles}>
+            {recommendedPlan === SubscriptionPlan.Professional && (
+              <text.span
+                as="paragraph"
+                className="absolute -top-3 left-1/2 -translate-x-1/2 bg-ring-ai text-intents-ux-boxHighContrast-foregroundColor font-semibold px-4 py-1.5 rounded-full whitespace-nowrap shadow-lg z-10"
+                text={t('builder_pricing_recommended')}
+              />
+            )}
+            <div className={`p-4 flex flex-col h-full`}>
+              <text.h3 as="heading" size={0} className="mb-2" text={t('builder_pricing_professional_title')} />
+              <text.p size={1} className="mb-2 min-h-8" emphasis="passive" text={t('builder_pricing_professional_desc')} />
+              <PlanPriceDisplay planOffer={pricingData?.[SubscriptionPlan.Professional] ?? null} isLoading={isLoading} />
+              <Button
+                design="primary"
+                text={t('builder_pricing_free_cta')}
+                onClick={handleUpgradeClick}
+                data-eid={generateClickEID('pricing_section.upgrade_button.professional')}
+                disabled={authIsLoading}
+                className="!mb-6"
+              />
+              <div className="space-y-3">
+                {renderFeatures(PROFESSIONAL_FEATURES)}
+              </div>
+            </div>
+          </div>
+
+          {/* Ultimate Plan */}
+          <div className={recommendedPlan === SubscriptionPlan.Ultimate ? recommendedCardStyles : paidCardStyles}>
+            {recommendedPlan === SubscriptionPlan.Ultimate && (
+              <text.span
+                as="paragraph"
+                className="absolute -top-3 left-1/2 -translate-x-1/2 bg-ring-ai text-intents-ux-boxHighContrast-foregroundColor font-semibold px-4 py-1.5 rounded-full whitespace-nowrap shadow-lg z-10"
+                text={t('builder_pricing_recommended')}
+              />
+            )}
+            <div className={`p-4 flex flex-col h-full`}>
+              <text.h3 as="heading" size={0} className="mb-2" text={t('builder_pricing_ultimate_title')} />
+              <text.p size={1} className="mb-2 min-h-8" emphasis="passive" text={t('builder_pricing_ultimate_desc')} />
+              <PlanPriceDisplay planOffer={pricingData?.[SubscriptionPlan.Ultimate] ?? null} isLoading={isLoading} />
+              <Button
+                design="primary"
+                text={t('builder_pricing_free_cta')}
+                data-eid={generateClickEID('pricing_section.upgrade_button.ultimate')}
+                onClick={handleUpgradeClick}
+                disabled={authIsLoading}
+                className="!mb-6"
+              />
+              <div className="space-y-3">
+                {renderFeatures(ULTIMATE_FEATURES)}
+              </div>
+            </div>
           </div>
         </div>
-      )}
+      </div>
     </PageSection>
     </div>
   )

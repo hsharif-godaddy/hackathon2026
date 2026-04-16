@@ -18,15 +18,13 @@ vi.mock('@/hooks/useSwitchboard', () => ({
 
 vi.mock('@/hooks/useSubscription', () => ({
   useSubscription: vi.fn(() => ({
-    data: { builderEntitlementId: 'test-entitlement-id' },
+    data: { id: 'sub-123', builderEntitlementId: 'ent-123' },
+    subscriptions: [],
     isLoading: false,
+    isError: false,
+    error: null,
+    refetch: vi.fn(),
   })),
-}));
-
-vi.mock('./SinglePlanUpgradeContainer', () => ({
-  default: (props: { source?: string }) => (
-    <div data-testid="single-plan-upgrade">{props.source}</div>
-  ),
 }));
 
 vi.mock('./HigherPlansUpgradeContainer', () => ({
@@ -84,25 +82,7 @@ describe('UpgradeContainer', function upgradeContainerTests() {
     vi.clearAllMocks();
   });
 
-  it('should render SinglePlanUpgradeContainer when flag is off', async function renderSinglePlan() {
-    const { useSwitchboard } = await import('@/hooks/useSwitchboard');
-    vi.mocked(useSwitchboard).mockReturnValue({ data: false, isLoading: false } as ReturnType<typeof useSwitchboard>);
-
-    const { container } = renderWithProviders(
-      <UpgradeContainer
-        source="test"
-        onClose={vi.fn()}
-      />
-    );
-
-    expect(container.querySelector('[data-testid="single-plan-upgrade"]')).toBeInTheDocument();
-    expect(container.querySelector('[data-testid="higher-plans-upgrade"]')).not.toBeInTheDocument();
-  });
-
-  it('should render HigherPlansUpgradeContainer when flag is on', async function renderHigherPlans() {
-    const { useSwitchboard } = await import('@/hooks/useSwitchboard');
-    vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
-
+  it('should render HigherPlansUpgradeContainer with Professional plan by default', function renderHigherPlans() {
     const { container } = renderWithProviders(
       <UpgradeContainer
         source="test"
@@ -111,42 +91,21 @@ describe('UpgradeContainer', function upgradeContainerTests() {
     );
 
     expect(container.querySelector('[data-testid="higher-plans-upgrade"]')).toBeInTheDocument();
-    expect(container.querySelector('[data-testid="single-plan-upgrade"]')).not.toBeInTheDocument();
     expect(screen.getByTestId('recommended-plan')).toHaveTextContent(SubscriptionPlan.Professional);
   });
 
-  it('should render SinglePlanUpgradeContainer when flag is undefined (loading)', async function renderDefaultWhileLoading() {
-    const { useSwitchboard } = await import('@/hooks/useSwitchboard');
-    vi.mocked(useSwitchboard).mockReturnValue({ data: undefined, isLoading: true } as ReturnType<typeof useSwitchboard>);
-
-    const { container } = renderWithProviders(
-      <UpgradeContainer
-        source="test"
-        onClose={vi.fn()}
-      />
-    );
-
-    expect(container.querySelector('[data-testid="single-plan-upgrade"]')).toBeInTheDocument();
-    expect(container.querySelector('[data-testid="higher-plans-upgrade"]')).not.toBeInTheDocument();
-  });
-
-  it('should pass all props through to the rendered component', async function passProps() {
-    const { useSwitchboard } = await import('@/hooks/useSwitchboard');
-    vi.mocked(useSwitchboard).mockReturnValue({ data: false, isLoading: false } as ReturnType<typeof useSwitchboard>);
-
-    const { container } = renderWithProviders(
+  it('should pass source prop through to HigherPlansUpgradeContainer', function passProps() {
+    renderWithProviders(
       <UpgradeContainer
         source="my-source"
         onClose={vi.fn()}
       />
     );
 
-    expect(container.querySelector('[data-testid="single-plan-upgrade"]')).toHaveTextContent('my-source');
+    expect(screen.getByTestId('higher-plans-source')).toHaveTextContent('my-source');
   });
 
-  it('forwards SubscriptionPlan.Ultimate to HigherPlansUpgradeContainer when Hivemind treatment', async function cohortTreatmentUltimate() {
-    const { useSwitchboard } = await import('@/hooks/useSwitchboard');
-    vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
+  it('forwards SubscriptionPlan.Ultimate to HigherPlansUpgradeContainer when Hivemind treatment', function cohortTreatmentUltimate() {
     vi.mocked(useIsInCohort).mockReturnValue(true);
 
     renderWithProviders(
@@ -158,9 +117,7 @@ describe('UpgradeContainer', function upgradeContainerTests() {
     expect(screen.getByTestId('recommended-plan')).toHaveTextContent(SubscriptionPlan.Ultimate);
   });
 
-  it('forwards SubscriptionPlan.Professional to HigherPlansUpgradeContainer when not in treatment (control)', async function cohortControlProfessional() {
-    const { useSwitchboard } = await import('@/hooks/useSwitchboard');
-    vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
+  it('forwards SubscriptionPlan.Professional to HigherPlansUpgradeContainer when not in treatment (control)', function cohortControlProfessional() {
     vi.mocked(useIsInCohort).mockReturnValue(false);
 
     renderWithProviders(

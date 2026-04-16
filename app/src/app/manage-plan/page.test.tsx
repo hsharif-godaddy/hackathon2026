@@ -150,7 +150,6 @@ vi.mock('@ux/modal', () => ({
 }));
 
 vi.mock('@/app/develop/components/paywall', () => ({
-  SinglePlanUpgradeContainer: () => <div data-testid="upgrade-modal">Upgrade Modal</div>,
   UpgradeContainer: () => <div data-testid="upgrade-modal">Upgrade Modal</div>,
   CreditsUpgradeContainer: ({ entitlementId }: { entitlementId: string }) => (
     <div data-testid="credits-modal">
@@ -197,8 +196,6 @@ describe('ManagePlan', function managePlanTests() {
     mockReplace.mockClear();
     // Reset switchboard flags
     Object.keys(mockSwitchboardFlags).forEach((key) => delete mockSwitchboardFlags[key]);
-    // Default: higher-plans disabled unless explicitly enabled
-    mockSwitchboardFlags['appbuilder-higher-plans'] = false;
     // Default mock for autoRenew status
     mockUseEcommSubscriptionAutoRenewStatus.mockReturnValue({
       data: { autoRenew: true, paidThroughDate: '2027-01-29T07:00:00Z', subscriptionId: 'sub-123' },
@@ -539,7 +536,7 @@ describe('ManagePlan', function managePlanTests() {
         expect(screen.getByText('builder_manageplan_downgrade_plan')).toBeInTheDocument();
       });
 
-      it('should not show upgrade or buy credits buttons for Starter plan without credit packs', function starterNoPacksNoUpgrade() {
+      it('should show upgrade button for Starter plan without credit packs', function starterNoPacksShowsUpgrade() {
         mockUseActiveSubscription.mockReturnValue({
           data: { id: 'sub-1', plan: SubscriptionPlan.Starter },
           isLoading: false,
@@ -553,7 +550,7 @@ describe('ManagePlan', function managePlanTests() {
 
         renderWithProviders(<ManagePlan />);
 
-        expect(screen.queryByText('builder_manageplan_upgrade')).not.toBeInTheDocument();
+        expect(screen.getByText('builder_manageplan_upgrade')).toBeInTheDocument();
       });
 
       it('should show buy credits and cancel buttons for Starter plan with credit packs', function starterWithPacks() {
@@ -574,7 +571,7 @@ describe('ManagePlan', function managePlanTests() {
         expect(screen.getByText('builder_manageplan_downgrade_plan')).toBeInTheDocument();
       });
 
-      it('should not show upgrade button for Starter plan with credit packs', function starterWithPacksNoUpgrade() {
+      it('should show upgrade button for Starter plan with credit packs', function starterWithPacksShowsUpgrade() {
         mockUseActiveSubscription.mockReturnValue({
           data: { id: 'sub-1', plan: SubscriptionPlan.Starter },
           isLoading: false,
@@ -588,7 +585,7 @@ describe('ManagePlan', function managePlanTests() {
 
         renderWithProviders(<ManagePlan />);
 
-        expect(screen.queryByText('builder_manageplan_upgrade')).not.toBeInTheDocument();
+        expect(screen.getByText('builder_manageplan_upgrade')).toBeInTheDocument();
       });
     });
 
@@ -832,7 +829,7 @@ describe('ManagePlan', function managePlanTests() {
       await user.click(screen.getByText('builder_manageplan_upgrade'));
 
       await waitFor(function checkAnalytics() {
-        expect(shipAnalyticsLog).toHaveBeenCalledWith('manage_plan.upgrade.shown', {
+        expect(shipAnalyticsLog).toHaveBeenCalledWith('manage_plan.upgrade_plan.shown', {
           paywallType: 'upgrade',
         });
       });

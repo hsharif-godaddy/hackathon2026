@@ -243,18 +243,20 @@ describe('PricingSection', () => {
     })
   })
 
-  describe('2-tier layout (default)', () => {
-    it('should render the pricing section with Free and Starter plans', async () => {
+  describe('4-tier layout (default)', () => {
+    it('should render the pricing section with all four plans', async () => {
       renderWithProviders(<PricingSection />)
 
       expect(screen.getByText('builder_pricing_free_title')).toBeInTheDocument()
       expect(screen.getByText('builder_pricing_starter_title')).toBeInTheDocument()
+      expect(screen.getByText('builder_pricing_professional_title')).toBeInTheDocument()
+      expect(screen.getByText('builder_pricing_ultimate_title')).toBeInTheDocument()
     })
 
     it('should render Free plan CTA button', async () => {
       renderWithProviders(<PricingSection />)
 
-      expect(screen.getByText('builder_pricing_free_cta')).toBeInTheDocument()
+      expect(screen.getAllByText('builder_pricing_free_cta').length).toBeGreaterThan(0)
     })
 
     it('should render Starter plan CTA button', async () => {
@@ -272,27 +274,9 @@ describe('PricingSection', () => {
       expect(starterButton).toBeDisabled()
     })
 
-    it('should not show Professional and Ultimate plans', async () => {
-      renderWithProviders(<PricingSection />)
-
-      expect(screen.queryByText('builder_pricing_professional_title')).not.toBeInTheDocument()
-      expect(screen.queryByText('builder_pricing_ultimate_title')).not.toBeInTheDocument()
-    })
-  })
-
-  describe('4-tier layout (showHighTierPlans=true)', () => {
-    it('should render all four plans', async () => {
-      renderWithProviders(<PricingSection showHighTierPlans={true} />)
-
-      expect(screen.getByText('builder_pricing_free_title')).toBeInTheDocument()
-      expect(screen.getByText('builder_pricing_starter_title')).toBeInTheDocument()
-      expect(screen.getByText('builder_pricing_professional_title')).toBeInTheDocument()
-      expect(screen.getByText('builder_pricing_ultimate_title')).toBeInTheDocument()
-    })
-
     it('should render Recommended badge on Professional plan (control cohort)', async () => {
       vi.mocked(useIsInCohort).mockReturnValue(false)
-      renderWithProviders(<PricingSection showHighTierPlans={true} />)
+      renderWithProviders(<PricingSection />)
 
       expect(useIsInCohort).toHaveBeenCalledWith(EXPERIMENT_IDS.recommendedPlan, 'treatment')
       expect(screen.getByText('builder_pricing_recommended')).toBeInTheDocument()
@@ -306,7 +290,7 @@ describe('PricingSection', () => {
 
     it('should render Recommended badge on Ultimate plan (treatment cohort)', async () => {
       vi.mocked(useIsInCohort).mockReturnValue(true)
-      renderWithProviders(<PricingSection showHighTierPlans={true} />)
+      renderWithProviders(<PricingSection />)
 
       expect(useIsInCohort).toHaveBeenCalledWith(EXPERIMENT_IDS.recommendedPlan, 'treatment')
       expect(screen.getByText('builder_pricing_recommended')).toBeInTheDocument()
@@ -319,7 +303,7 @@ describe('PricingSection', () => {
     })
 
     it('should render PlanPriceDisplay for each paid plan', async () => {
-      renderWithProviders(<PricingSection showHighTierPlans={true} />)
+      renderWithProviders(<PricingSection />)
 
       const priceDisplays = screen.getAllByTestId('plan-price-display')
       // Starter, Professional, Ultimate = 3 price displays
@@ -327,7 +311,7 @@ describe('PricingSection', () => {
     })
 
     it('should render features with FormattedMessage', async () => {
-      renderWithProviders(<PricingSection showHighTierPlans={true} />)
+      renderWithProviders(<PricingSection />)
 
       // Check for credit features using FormattedMessage (one per plan = 4 total)
       const creditFeatures = screen.getAllByTestId('formatted-message-builder_pricing_item_credits')
@@ -507,8 +491,8 @@ describe('PricingSection', () => {
     it('should scroll to top of page', async () => {
       const { user } = renderWithProviders(<PricingSection />)
 
-      const freeButton = screen.getByText('builder_pricing_free_cta')
-      await user.click(freeButton)
+      const freeButtons = screen.getAllByText('builder_pricing_free_cta')
+      await user.click(freeButtons[0])
 
       expect(window.scrollTo).toHaveBeenCalledWith({ top: 0, behavior: 'smooth' })
     })
@@ -522,7 +506,7 @@ describe('PricingSection', () => {
     it('should disable Professional CTA when auth is loading', async () => {
       authContextOverrides = { isAuthenticated: false, isAuthDisabled: false, isLoading: true }
 
-      renderWithProviders(<PricingSection showHighTierPlans={true} />)
+      renderWithProviders(<PricingSection />)
 
       const professionalCard = screen.getByText('builder_pricing_professional_title').closest('div')
       const ctaButton = professionalCard?.querySelector('button')
@@ -533,7 +517,7 @@ describe('PricingSection', () => {
     it('should disable Ultimate CTA when auth is loading', async () => {
       authContextOverrides = { isAuthenticated: false, isAuthDisabled: false, isLoading: true }
 
-      renderWithProviders(<PricingSection showHighTierPlans={true} />)
+      renderWithProviders(<PricingSection />)
 
       const ultimateCard = screen.getByText('builder_pricing_ultimate_title').closest('div')
       const ctaButton = ultimateCard?.querySelector('button')
@@ -542,7 +526,7 @@ describe('PricingSection', () => {
     })
 
     it('should call openUpgradeModal when clicking Professional CTA', async () => {
-      const { user } = renderWithProviders(<PricingSection showHighTierPlans={true} />)
+      const { user } = renderWithProviders(<PricingSection />)
 
       // Professional and Ultimate both use 'builder_pricing_free_cta' as their button text
       // We need to find the one in the Professional card
@@ -555,7 +539,7 @@ describe('PricingSection', () => {
     })
 
     it('should call openUpgradeModal when clicking Ultimate CTA', async () => {
-      const { user } = renderWithProviders(<PricingSection showHighTierPlans={true} />)
+      const { user } = renderWithProviders(<PricingSection />)
 
       const ultimateCard = screen.getByText('builder_pricing_ultimate_title').closest('div')
       const ctaButton = ultimateCard?.querySelector('button')

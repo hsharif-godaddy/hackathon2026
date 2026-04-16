@@ -95,25 +95,20 @@ describe('UpgradeBanner', function upgradeBannerTests() {
       });
     });
 
-    it('should not render when user has Airo Plus and higher plans is disabled', async function noRenderWithAiroPlusLegacy() {
+    it('should not render when user has Ultimate plan', async function noRenderWithUltimate() {
       const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
       const { useSubscription } = await import('@/hooks/useSubscription');
 
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: false, isLoading: false, isError: false, error: null });
-      // Mock both flags - feature enabled but higher plans disabled
-      vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
-        if (flag === 'appbuilder-airoplus-upgrade-banner') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
-        if (flag === 'appbuilder-higher-plans') return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
-        return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
-      });
-      // Mock subscription with AiroPlus plan - should not show upgrade when higher plans disabled
+      vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
+      // Mock subscription with Ultimate plan - should not show upgrade for Ultimate users
       vi.mocked(useSubscription).mockReturnValue({
         data: {
           id: 'sub-123',
           productId: 'aab-v1',
           customerId: 'cust-123',
-          plan: SubscriptionPlan.AiroPlus,
+          plan: SubscriptionPlan.Ultimate,
           status: 'active',
           isTrial: false,
           createdAt: '2026-01-01T00:00:00Z',

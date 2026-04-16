@@ -17,7 +17,6 @@ const mockOpenUpgradeModal = vi.fn();
 const mockOpenCreditsModal = vi.fn();
 
 let mockSite: SiteInfo | null = null;
-const mockHigherPlansData = { data: false as boolean | undefined };
 const mockSubscriptionData = {
   data: { id: 'sub-1', builderEntitlementId: 'ent-1', plan: SubscriptionPlan.AiroPlus } as any,
   isLoading: false,
@@ -31,17 +30,16 @@ vi.mock('@/utils/instrumentation', () => ({
   },
 }));
 
-vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: (flag: string) =>
-    flag === 'appbuilder-higher-plans' ? mockHigherPlansData : { data: false },
-}));
-
 vi.mock('@/hooks/useSubscription', () => ({
   useSubscription: () => mockSubscriptionData,
 }));
 
 vi.mock('@/hooks/useCreditGrants', () => ({
   useCreditGrants: () => mockGrantsData,
+}));
+
+vi.mock('@/hooks/useSwitchboard', () => ({
+  useSwitchboard: () => ({ data: false, isLoading: false }),
 }));
 
 vi.mock('@/stores/useDevelopPageStore', () => ({
@@ -68,7 +66,6 @@ describe('BudgetExceededBanner', function budgetExceededBannerTests() {
   beforeEach(function resetMocks() {
     vi.clearAllMocks();
     mockSite = null;
-    mockHigherPlansData.data = false;
     mockSubscriptionData.data = { id: 'sub-1', builderEntitlementId: 'ent-1', plan: SubscriptionPlan.AiroPlus };
     mockSubscriptionData.isLoading = false;
     mockGrantsData.data = [];
@@ -116,9 +113,9 @@ describe('BudgetExceededBanner', function budgetExceededBannerTests() {
       });
     });
 
-    it('should NOT show Upgrade button for paid plan users', async function hideUpgradeForPaid() {
+    it('should NOT show Upgrade button for Ultimate users', async function hideUpgradeForUltimate() {
       mockSite = createMockSite({ id: 'test-app-123' });
-      mockSubscriptionData.data = { id: 'sub-1', builderEntitlementId: 'ent-1', plan: SubscriptionPlan.AiroPlus };
+      mockSubscriptionData.data = { id: 'sub-1', builderEntitlementId: 'ent-1', plan: SubscriptionPlan.Ultimate };
       renderWithProviders(<BudgetExceededBanner />);
 
       await waitFor(function assertBuyCreditsVisible() {
@@ -126,6 +123,16 @@ describe('BudgetExceededBanner', function budgetExceededBannerTests() {
       });
 
       expect(screen.queryByText('builder_usage_gauge_upgrade')).not.toBeInTheDocument();
+    });
+
+    it('should show Upgrade button for non-Ultimate paid users (Starter, Professional, AiroPlus)', async function showUpgradeForNonUltimatePaid() {
+      mockSite = createMockSite({ id: 'test-app-123' });
+      mockSubscriptionData.data = { id: 'sub-1', builderEntitlementId: 'ent-1', plan: SubscriptionPlan.Starter };
+      renderWithProviders(<BudgetExceededBanner />);
+
+      await waitFor(function assertUpgradeButton() {
+        expect(screen.getByText('builder_usage_gauge_upgrade')).toBeInTheDocument();
+      });
     });
   });
 

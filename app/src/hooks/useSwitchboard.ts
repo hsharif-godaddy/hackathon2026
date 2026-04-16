@@ -30,7 +30,6 @@ const LOCAL_FEATURE_OVERRIDES: Record<string, boolean> = {
   'app-builder-app-on-demand-reload': true,
   'appbuilder-domain-purchase': true,
   'appbuilder-transfer-ownership': true,
-  'appbuilder-higher-plans': true,
   'appbuilder-analytics': true,
   'appbuilder-settings-analytics': true,
   'appbuilder-suspended-compliance-banner': true,

@@ -39,7 +39,6 @@ export default function PublishLimitModal({
   const t = useTranslations();
   const router = useRouter();
   const { data: isUnpublishEnabled } = useSwitchboard('appbuilder-unpublish');
-  const { data: isHigherPlansEnabled } = useSwitchboard('appbuilder-higher-plans');
   const planName = plan ? t(getPlanDisplayLabelKey(plan)) : '';
 
   useEffect(() => {
@@ -62,45 +61,28 @@ export default function PublishLimitModal({
       data-partial="componentAiro"
     >
       <Box className="md:max-w-lg" orientation="vertical" gap="lg">
-        {isHigherPlansEnabled ? (
-          <div className="flex flex-col gap-2">
-            <text.p size={-1} text={t('builder_publish_limit_plan_info', {planName, limit, strong: (chunks) => <strong>{chunks}</strong>})}/>
-            <div className="flex gap-2 bg-ai-light/15 border border-border rounded-lg p-3">
-              <InfoIcon className="w-4 h-4 flex-shrink-0 mt-0.5" />
-              <text.p>
-                <FormattedMessage
-                  id="builder_publish_limit_upgrade_hint"
-                  values={{
-                    myAppsLink: (chunks) => (
-                      <Button
-                        design="inline"
-                        data-partial="componentAiro"
-                        data-eid={generateClickEID('publish_limit.buttons.my_apps')}
-                        onClick={handleManageApps}
-                        text={chunks.toString()}
-                      />
-                    ),
-                  }}
-                />
-              </text.p>
-            </div>
-          </div>
-        ) : (
-          <div className="flex gap-2 bg-ai-light/15 rounded-lg p-3">
-            <InfoIcon className="w-3 h-3 flex-shrink-0" />
+        <div className="flex flex-col gap-2">
+          <text.p size={-1} text={t('builder_publish_limit_plan_info', {planName, limit, strong: (chunks) => <strong>{chunks}</strong>})}/>
+          <div className="flex gap-2 bg-ai-light/15 border border-border rounded-lg p-3">
+            <InfoIcon className="w-4 h-4 flex-shrink-0 mt-0.5" />
             <text.p>
               <FormattedMessage
-                id="builder_publish_limit_message"
+                id="builder_publish_limit_upgrade_hint"
                 values={{
-                  planName,
-                  count: currentCount,
-                  limit: limit ?? 0,
-                  strong: (chunks) => <strong>{chunks}</strong>,
+                  myAppsLink: (chunks) => (
+                    <Button
+                      design="inline"
+                      data-partial="componentAiro"
+                      data-eid={generateClickEID('publish_limit.buttons.my_apps')}
+                      onClick={handleManageApps}
+                      text={chunks.toString()}
+                    />
+                  ),
                 }}
               />
             </text.p>
           </div>
-        )}
+        </div>
 
         {publishedApps.length > 0 ? (
           <div className="flex flex-col gap-2">
@@ -121,7 +103,7 @@ export default function PublishLimitModal({
           </text.p>
         ) : null}
 
-        {isHigherPlansEnabled && plan !== SubscriptionPlan.Ultimate && onUpgrade ? (
+        {plan !== SubscriptionPlan.Ultimate && onUpgrade ? (
           <Button
             design="primary"
             data-partial="componentAiro"

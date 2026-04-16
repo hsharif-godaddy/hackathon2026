@@ -34,15 +34,13 @@ export default function HeaderUpgradeButton({ location = 'unknown' }: HeaderUpgr
   const openUpgradeModal = useDevelopPageStore((state) => state.openUpgradeModal);
 
   const { data: featureEnabled, isLoading: isFeatureLoading } = useSwitchboard('appbuilder-airoplus-upgrade-button');
-  const { data: isHigherPlansEnabled } = useSwitchboard('appbuilder-higher-plans', { enabled: featureEnabled === true });
   const { showPaywall, isLoading: isPaywallLoading } = usePaywallEligibility();
   const { data: subscription } = useSubscription();
   const currentPlan = subscription ? getPlanFromSubscription(subscription) : undefined;
 
-  // Only show on develop page, when feature enabled, and user doesn't have paid plan
-  // With higher plans enabled, also show for non-Ultimate paid users
+  // Only show on develop page, when feature enabled, and user can upgrade (non-Ultimate users)
   if (!isDevelopPage || isFeatureLoading || isPaywallLoading || !featureEnabled ||
-      (!showPaywall && !canUpgradePlan(currentPlan, !!isHigherPlansEnabled))) return null;
+      (!showPaywall && !canUpgradePlan(currentPlan))) return null;
 
   const handleUpgradeClick = () => {
     setOpen(false);

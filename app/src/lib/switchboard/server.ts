@@ -22,7 +22,6 @@ const SERVER_LOCAL_FEATURE_OVERRIDES: Record<string, boolean> = {
   'appbuilder-domain-attach': true,
   'appbuilder-share-links': true,
   'appbuilder-transfer-ownership': true,
-  'appbuilder-higher-plans': true,
   'appbuilder-github-integration': true,
   'app-builder-budget-service': false, // opt-in: requires running Budget Service
   'appbuilder-assessment-agent': true,

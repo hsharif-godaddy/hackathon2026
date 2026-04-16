@@ -35,7 +35,6 @@ export default function BudgetExceededBanner({ onClose }: BudgetExceededBannerPr
   const openUpgradeModal = useDevelopPageStore((state) => state.openUpgradeModal)
   const openCreditsModal = useDevelopPageStore((state) => state.openCreditsModal)
 
-  const { data: isHigherPlansEnabled } = useSwitchboard('appbuilder-higher-plans')
   const { data: isBudgetServiceEnabled = false } = useSwitchboard('app-builder-budget-service')
   const { data: subscription, isLoading: isSubscriptionLoading } = useSubscription()
 
@@ -51,7 +50,7 @@ export default function BudgetExceededBanner({ onClose }: BudgetExceededBannerPr
   })
 
   const currentPlan = subscription ? getPlanFromSubscription(subscription) : SubscriptionPlan.None
-  const isNotUltimatePlan = !isSubscriptionLoading && canUpgradePlan(currentPlan, isHigherPlansEnabled === true)
+  const isNotUltimatePlan = !isSubscriptionLoading && canUpgradePlan(currentPlan)
   const builderEntitlementId = subscription?.builderEntitlementId
   const isPurchaseDisabled = !builderEntitlementId
 

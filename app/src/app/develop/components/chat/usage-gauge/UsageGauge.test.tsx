@@ -305,17 +305,9 @@ describe('UsageGauge', function usageGaugeTests() {
       expect(mockOpenCreditsModal).toHaveBeenCalledWith('usage_gauge.buy_credits', PAYWALL_ITC.CREDITS);
     });
 
-    it('should not render Upgrade Plan button for paid plan users when higher plans is disabled', async function noUpgradeForPaidPlan() {
-      const { useSwitchboard } = await import('@/hooks/useSwitchboard');
+    it('should not render Upgrade Plan button for Ultimate plan users', async function noUpgradeForUltimate() {
       const { useSubscription } = await import('@/hooks/useSubscription');
       const { useSubscriptionWithPolling } = await import('@/hooks/useSubscriptionWithPolling');
-
-      vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
-        if (flag === 'appbuilder-higher-plans') {
-          return { data: false, isLoading: false, error: null } as ReturnType<typeof useSwitchboard>;
-        }
-        return { data: true, isLoading: false, error: null } as ReturnType<typeof useSwitchboard>;
-      });
 
       vi.mocked(useSubscription).mockReturnValue({
         data: {
@@ -326,7 +318,7 @@ describe('UsageGauge', function usageGaugeTests() {
           isTrial: false,
           entitlementId: 'ent-123',
           builderEntitlementId: 'builder-ent-123',
-          plan: SubscriptionPlan.Starter,
+          plan: SubscriptionPlan.Ultimate,
           createdAt: '2026-01-01T00:00:00Z',
           updatedAt: '2026-01-01T00:00:00Z',
         },
@@ -347,7 +339,7 @@ describe('UsageGauge', function usageGaugeTests() {
           renewsAt: '2026-02-15T00:00:00Z',
           createdAt: '2026-01-15T00:00:00Z',
           updatedAt: '2026-01-15T00:00:00Z',
-          plan: SubscriptionPlan.Starter,
+          plan: SubscriptionPlan.Ultimate,
           builderEntitlementId: 'entitlement-123',
         },
         subscriptions: [],
@@ -371,21 +363,13 @@ describe('UsageGauge', function usageGaugeTests() {
         expect(screen.getByText('builder_usage_gauge_buy_credits')).toBeInTheDocument();
       });
 
-      // Upgrade button should not be present for paid plans when higher plans is disabled
+      // Upgrade button should not be present for Ultimate users (highest tier)
       expect(screen.queryByText('builder_usage_gauge_upgrade_plan')).not.toBeInTheDocument();
     });
 
-    it('should render Upgrade Plan button for paid plan users when higher plans is enabled', async function upgradeForPaidPlanWithHigherPlans() {
-      const { useSwitchboard } = await import('@/hooks/useSwitchboard');
+    it('should render Upgrade Plan button for non-Ultimate paid plan users', async function upgradeForNonUltimatePaidPlan() {
       const { useSubscription } = await import('@/hooks/useSubscription');
       const { useSubscriptionWithPolling } = await import('@/hooks/useSubscriptionWithPolling');
-
-      vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
-        if (flag === 'appbuilder-higher-plans') {
-          return { data: true, isLoading: false, error: null } as ReturnType<typeof useSwitchboard>;
-        }
-        return { data: true, isLoading: false, error: null } as ReturnType<typeof useSwitchboard>;
-      });
 
       vi.mocked(useSubscription).mockReturnValue({
         data: {
