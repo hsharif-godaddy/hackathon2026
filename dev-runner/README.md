@@ -99,9 +99,6 @@ hooks:
     - name: Install dependencies
       command: pnpm install
       dir: .
-    - name: Build packages
-      command: pnpm build
-      dir: .
 ```
 
 ## Development

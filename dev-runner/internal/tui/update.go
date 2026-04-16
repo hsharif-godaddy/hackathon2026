@@ -161,9 +161,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case preflightFixDoneMsg:
 		if msg.Err != nil {
 			m.preflightFixStatus = fmt.Sprintf("Fix failed: %v", msg.Err)
-		} else {
-			m.preflightFixIndex++
 		}
+		// Always advance to avoid retrying the same fixer in a loop
+		// (e.g., SSO device flow repeatedly opening browser tabs).
+		m.preflightFixIndex++
 
 		if m.preflightFixIndex >= len(m.preflightFixQueue) {
 			// All fixes attempted — re-run ALL checks since fixes may

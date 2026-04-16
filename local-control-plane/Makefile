@@ -5,10 +5,10 @@ GO := go
 .PHONY: build test lint fmt fmt-fix vet check clean run
 
 build:
-	CGO_ENABLED=1 $(GO) build -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/server/
+	$(GO) build -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/server/
 
-run: build
-	$(BUILD_DIR)/$(BINARY_NAME)
+run:
+	exec $(GO) run ./cmd/server/
 
 test:
 	$(GO) test ./... -v -count=1

@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 )
 
 const nanoidAlphabet = "0123456789abcdefghijklmnopqrstuvwxyz"
@@ -46,9 +46,20 @@ type DB struct {
 }
 
 func Open(path string) (*DB, error) {
-	sqlDB, err := sql.Open("sqlite3", path+"?_journal_mode=WAL&_busy_timeout=5000")
+	sqlDB, err := sql.Open("sqlite", path)
 	if err != nil {
 		return nil, fmt.Errorf("open database: %w", err)
+	}
+
+	sqlDB.SetMaxOpenConns(1)
+
+	if _, err := sqlDB.Exec("PRAGMA journal_mode=WAL"); err != nil {
+		sqlDB.Close()
+		return nil, fmt.Errorf("set journal_mode: %w", err)
+	}
+	if _, err := sqlDB.Exec("PRAGMA busy_timeout=5000"); err != nil {
+		sqlDB.Close()
+		return nil, fmt.Errorf("set busy_timeout: %w", err)
 	}
 
 	d := &DB{db: sqlDB}

@@ -8,8 +8,8 @@ build:
 	@mkdir -p $(BUILD_DIR)
 	$(GO) build -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/dev-runner/
 
-run: build
-	$(BUILD_DIR)/$(BINARY_NAME)
+run:
+	exec $(GO) run ./cmd/dev-runner/
 
 test:
 	$(GO) test ./... -v -count=1
