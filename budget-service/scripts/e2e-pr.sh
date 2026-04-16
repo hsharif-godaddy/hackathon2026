@@ -185,6 +185,20 @@ WEBHOOK_ID=$(jq -r .webhookId "$RESP_FILE")
 st=$(api_req GET "/api/v1/webhooks/${WEBHOOK_ID}" "" \
   "Get webhook by id")
 expect_status "$st" 200 "webhook get"
+st=$(api_req GET "/api/v1/webhooks?productKey=${MAIN_PK}" "" \
+  "List webhooks filtered by productKey")
+expect_status "$st" 200 "webhook list by productKey"
+if ! jq -e --arg id "$WEBHOOK_ID" '[.[] | select(.webhookId == $id)] | length == 1' "$RESP_FILE" >/dev/null; then
+  echo "e2e-pr: filtered webhook list should contain WEBHOOK_ID once, body=$(cat "$RESP_FILE")" >&2
+  exit 1
+fi
+st=$(api_req GET /api/v1/webhooks "" \
+  "List webhooks (unfiltered)")
+expect_status "$st" 200 "webhook list all"
+if ! jq -e --arg id "$WEBHOOK_ID" '[.[] | select(.webhookId == $id)] | length >= 1' "$RESP_FILE" >/dev/null; then
+  echo "e2e-pr: unfiltered webhook list should contain WEBHOOK_ID, body=$(cat "$RESP_FILE")" >&2
+  exit 1
+fi
 st=$(api_req DELETE "/api/v1/webhooks/${WEBHOOK_ID}" "" \
   "Delete webhook (soft)")
 expect_status "$st" 204 "webhook delete"

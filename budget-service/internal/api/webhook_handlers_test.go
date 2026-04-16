@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -56,6 +57,77 @@ func TestPostWebhookRejectsUnsupportedEventType(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "eventType must be one of:") {
 		t.Fatalf("unexpected body: %s", rec.Body.String())
+	}
+}
+
+func TestGetWebhooksRejectsOversizedProductKeyQuery(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	longPK := strings.Repeat("a", productKeyMaxLen+1)
+	req := httptest.NewRequest(http.MethodGet, "/webhooks?productKey="+longPK, nil)
+	rec := httptest.NewRecorder()
+	s.getWebhooks(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestGetWebhooksFiltersByProductKey(t *testing.T) {
+	ctx := context.Background()
+	st := testStore(t)
+	pkA := "wh-list-a-" + uuid.NewString()
+	pkB := "wh-list-b-" + uuid.NewString()
+	if _, err := st.CreateProduct(ctx, pkA); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.CreateProduct(ctx, pkB); err != nil {
+		t.Fatal(err)
+	}
+	idA := uuid.NewString()
+	idB := uuid.NewString()
+	if err := st.CreateWebhook(ctx, idA, "report.created", pkA, "https://example.godaddy.com/a"); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.CreateWebhook(ctx, idB, "report.created", pkB, "https://example.godaddy.com/b"); err != nil {
+		t.Fatal(err)
+	}
+
+	authMW := auth.NewMiddleware("none")
+	h := NewRouter(&Server{Store: st}, authMW)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/webhooks?productKey="+pkA, nil)
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list filtered status %d body %s", rec.Code, rec.Body.String())
+	}
+	var filtered []struct {
+		WebhookID string `json:"webhookId"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &filtered); err != nil {
+		t.Fatal(err)
+	}
+	if len(filtered) != 1 {
+		t.Fatalf("filtered len %d want 1", len(filtered))
+	}
+	if filtered[0].WebhookID != idA {
+		t.Fatalf("webhookId = %q want %s", filtered[0].WebhookID, idA)
+	}
+
+	recAll := httptest.NewRecorder()
+	reqAll := httptest.NewRequest(http.MethodGet, "/api/v1/webhooks", nil)
+	h.ServeHTTP(recAll, reqAll)
+	if recAll.Code != http.StatusOK {
+		t.Fatalf("list all status %d", recAll.Code)
+	}
+	var all []struct {
+		WebhookID string `json:"webhookId"`
+	}
+	if err := json.Unmarshal(recAll.Body.Bytes(), &all); err != nil {
+		t.Fatal(err)
+	}
+	if len(all) < 2 {
+		t.Fatalf("list all len %d want >= 2", len(all))
 	}
 }
 

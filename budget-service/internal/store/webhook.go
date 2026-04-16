@@ -5,11 +5,14 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 )
+
+const listWebhooksRowLimit = 10000
 
 // WebhookRow is a persisted webhook subscription.
 type WebhookRow struct {
@@ -85,6 +88,45 @@ func (s *Store) GetWebhook(ctx context.Context, webhookID string) (*WebhookRow, 
 		return nil, mapNotFound(err)
 	}
 	return &r, nil
+}
+
+// ListWebhooks returns active webhooks, optionally filtered by productKey (trimmed; empty means all).
+// Rows are capped at listWebhooksRowLimit (simple guard until pagination exists).
+func (s *Store) ListWebhooks(ctx context.Context, productKey string) ([]WebhookRow, error) {
+	pk := strings.TrimSpace(productKey)
+	var rows *sql.Rows
+	var err error
+	if pk == "" {
+		rows, err = s.db.QueryContext(ctx, fmt.Sprintf(`
+			SELECT id, event_type, product_key, url, created_at, updated_at
+			FROM webhooks
+			WHERE deleted_at IS NULL
+			ORDER BY created_at, id
+			LIMIT %d
+		`, listWebhooksRowLimit))
+	} else {
+		rows, err = s.db.QueryContext(ctx, fmt.Sprintf(`
+			SELECT id, event_type, product_key, url, created_at, updated_at
+			FROM webhooks
+			WHERE deleted_at IS NULL AND product_key = $1
+			ORDER BY created_at, id
+			LIMIT %d
+		`, listWebhooksRowLimit), pk)
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []WebhookRow
+	for rows.Next() {
+		var r WebhookRow
+		if err := rows.Scan(&r.ID, &r.EventType, &r.ProductKey, &r.URL, &r.CreatedAt, &r.UpdatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
 }
 
 // ListWebhooksForEvent returns active webhooks for productKey subscribed to the given event type.

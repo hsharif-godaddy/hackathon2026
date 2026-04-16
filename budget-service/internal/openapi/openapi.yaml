@@ -167,6 +167,23 @@ paths:
           $ref: "#/components/responses/Error"
 
   /api/v1/webhooks:
+    get:
+      tags: [v1]
+      summary: List webhooks
+      description: Returns active webhook subscriptions. Omit `productKey` to list all; set `productKey` to restrict to one product.
+      parameters:
+        - $ref: "#/components/parameters/productKeyQuery"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Webhook"
+        "400":
+          $ref: "#/components/responses/Error"
     post:
       tags: [v1]
       summary: Create webhook subscription
@@ -602,6 +619,14 @@ components:
       required: true
       schema:
         type: string
+    productKeyQuery:
+      name: productKey
+      in: query
+      required: false
+      description: Filter by product key; omit for all webhooks. Requests with values longer than 256 characters are rejected.
+      schema:
+        type: string
+        maxLength: 256
 
   responses:
     Error:

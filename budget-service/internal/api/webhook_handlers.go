@@ -281,6 +281,28 @@ func webhookToResponse(row *store.WebhookRow) map[string]any {
 	}
 }
 
+func (s *Server) getWebhooks(w http.ResponseWriter, r *http.Request) {
+	pk := strings.TrimSpace(r.URL.Query().Get("productKey"))
+	if len(pk) > productKeyMaxLen {
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "productKey exceeds maximum length")
+		return
+	}
+	if !s.requireStore(w) {
+		return
+	}
+	rows, err := s.Store.ListWebhooks(r.Context(), pk)
+	if err != nil {
+		slog.Error("webhooks.list.request", "error", err, "productKey", pk)
+		writeError(w, http.StatusInternalServerError, "INTERNAL", "internal error")
+		return
+	}
+	out := make([]map[string]any, 0, len(rows))
+	for i := range rows {
+		out = append(out, webhookToResponse(&rows[i]))
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
 func (s *Server) postWebhook(w http.ResponseWriter, r *http.Request) {
 	var payload postWebhookBody
 	if !decodeJSONBody(w, r, &payload, false) {
