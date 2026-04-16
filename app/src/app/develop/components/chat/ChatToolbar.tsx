@@ -124,11 +124,11 @@ export default function ChatToolbar({
     onBeforeTabChange?.(tab)
 
     if (tab === ChatTab.SETTINGS) {
-      settingsMenuRef.current?.openPopover()
+      settingsMenuRef.current?.togglePopover()
       return
     }
 
-    // This will update the URL, but the optimistic state is already updated above
+    settingsMenuRef.current?.closePopover()
     setActiveChatTab(tab)
   }
 
