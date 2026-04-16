@@ -72,7 +72,7 @@ function DnsRecordCard({
       orientation="vertical"
       className="p-2 rounded-md border border-intents-ux-border-subtle bg-intents-ux-box-backgroundColor"
     >
-      <text.p className="!font-semibold text-right">{type}</text.p>
+      <text.p className="!font-semibold">{type}</text.p>
       <Box gap="sm" orientation="horizontal" inlineAlignChildren="center">
         <text.p>
           <strong>{t('builder_domain_dns_table_ttl')}:</strong>
