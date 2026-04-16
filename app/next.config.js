@@ -1,13 +1,8 @@
 import 'tsx';
 
 const gasket = (await import('./gasket.ts')).default;
-const elasticApm = gasket.config.elasticApm || {};
 
 export default gasket.actions.getNextConfig({
-  env: {
-    NEXT_PUBLIC_ELASTIC_APM_SERVER_URL: process.env.NEXT_PUBLIC_ELASTIC_APM_SERVER_URL || elasticApm.serverUrl || '',
-    NEXT_PUBLIC_ELASTIC_APM_ENVIRONMENT: process.env.NEXT_PUBLIC_ELASTIC_APM_ENVIRONMENT || elasticApm.environment || '',
-  },
   serverExternalPackages: ['@azure/functions-core', '@godaddy/gd-auth-lib'],
   outputFileTracingIncludes: {
     '/explore/[name]/[[...lang]]': ['./src/data/landing-pages/**/*.yaml'],

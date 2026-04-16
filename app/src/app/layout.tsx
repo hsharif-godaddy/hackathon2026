@@ -12,7 +12,6 @@ import SessionTimeoutManager from "@/components/auth/SessionTimeoutManager";
 import AuthProvider from "@/components/providers/AuthProvider";
 import FullStoryProvider from "@/components/providers/FullStoryProvider";
 import { QueryClientProvider } from "@/components/providers/QueryClientProvider";
-import RumProvider from "@/components/providers/RumProvider";
 import SubscriptionCacheProvider from "@/components/providers/SubscriptionCacheProvider";
 import { TranslationsProvider } from "@/components/providers/TranslationProvider";
 import ConversationIdCookie from "@/components/security/ConversationIdCookie";
@@ -183,8 +182,7 @@ async function RootLayout({
         <ReferralTracker />
         <ItcInitializer />
       </Suspense>
-      <RumProvider>
-        <FullStoryProvider>
+      <FullStoryProvider>
         <QueryClientProvider>
           <TranslationsProvider
             homepageEngagementCohort={homepageEngagementCohort}
@@ -204,9 +202,8 @@ async function RootLayout({
               </SubscriptionCacheProvider>
             </AuthProvider>
           </TranslationsProvider>
-          </QueryClientProvider>
-        </FullStoryProvider>
-      </RumProvider>
+        </QueryClientProvider>
+      </FullStoryProvider>
     </PresentationLayout>
   )
 }

@@ -2,7 +2,7 @@
 
 import { motion } from 'framer-motion'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import Growl from '@ux/growl'
 
 import AppNotFound from '@/app/develop/components/AppNotFound'
@@ -32,7 +32,6 @@ import { FEEDBACK_ID } from '@/components/feedback/utils'
 import FirstPublishCongratsModal from '@/components/layout/FirstPublishCongratsModal'
 import PostPublishGoLiveModal from '@/components/layout/PostPublishGoLiveModal'
 import PublishLimitModal from '@/components/layout/PublishLimitModal'
-import { useAuthContext } from '@/components/providers/AuthProvider'
 import { buildDynamicApiUrl, dynamicApiConfigService } from '@/config/dynamic-api'
 import { WebSocketProvider } from '@/contexts/WebSocketContext'
 import { useAppDetails } from '@/hooks/useAppDetails'
@@ -40,9 +39,7 @@ import { useAppHibernation } from '@/hooks/useAppHibernation'
 import { useChatTabs } from '@/hooks/useChatTabs'
 import { useGitHistoryQuery } from '@/hooks/useGitHistory'
 import { useImageReadiness } from '@/hooks/useImageReadiness'
-import { usePageTiming } from '@/hooks/usePageTiming'
 import { usePaywallPrefetch } from '@/hooks/usePaywallPrefetch'
-import { useRumAppContext } from '@/hooks/useRumAppContext'
 import { useStreamingWebSocket } from '@/hooks/useStreamingWebSocket'
 import { useIsRenewalPolling } from '@/hooks/useSubscriptionRenewal'
 import { useSyncResponsiveState } from '@/hooks/useSyncResponsiveState'
@@ -83,12 +80,6 @@ function DevelopPageContent() {
   const router = useRouter()
   const appId = useAppIdFromParams()
   const isJobId = searchParams.get('type') === 'job'
-  const { getUserInfo } = useAuthContext()
-
-  const customerId = useMemo(() => getUserInfo()?.customerId as string | undefined, [getUserInfo])
-
-  useRumAppContext({ appId, customerId })
-
   // Prefetch paywall data early for faster eligibility checks
   usePaywallPrefetch()
 
@@ -172,9 +163,6 @@ function DevelopPageContent() {
     appId: appId || '',
     enabled: loadingPhase === 'ready' && !!appId && !!site?.agent_url
   })
-
-  // Track page timing with RUM
-  usePageTiming('develop-page', appId)
 
   // Local state (only what's not in stores)
   const isEditModeEnabled = useDevelopPageStore((state) => state.isEditModeEnabled)
