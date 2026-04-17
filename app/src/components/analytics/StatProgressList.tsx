@@ -106,7 +106,7 @@ export function StatProgressList({
                   {item.icon && <span className="shrink-0 flex items-center">{item.icon}</span>}
 
                   {/* Label */}
-                  <text.span className="!text-xs !font-medium !truncate !min-w-0 !max-w-[40%] shrink">
+                  <text.span className="!text-xs !font-medium !truncate !min-w-0 !max-w-[50%] shrink">
                     {item.label}
                   </text.span>
 

@@ -89,7 +89,7 @@ export function AnalyticsDetailTable<T>({
                   className={`
                     py-2 font-semibold uppercase tracking-wider text-[10px] text-muted-foreground whitespace-nowrap
                     ${col.align === 'right' ? 'text-right' : 'text-left'}
-                    ${i === 0 ? 'pl-4 pr-2' : i === columns.length - 1 ? 'pl-2 pr-4' : 'px-2'}
+                    ${i === 0 ? 'pl-2 pr-1.5' : i === columns.length - 1 ? 'pl-1.5 pr-2' : 'px-1.5'}
                   `}
                 >
                   {col.header}
@@ -116,7 +116,7 @@ export function AnalyticsDetailTable<T>({
                       className={`
                         py-1.5 text-xs leading-tight
                         ${col.align === 'right' ? 'text-right font-semibold tabular-nums' : 'text-left'}
-                        ${i === 0 ? 'pl-4 pr-2' : i === columns.length - 1 ? 'pl-2 pr-4' : 'px-2'}
+                        ${i === 0 ? 'pl-2 pr-1.5' : i === columns.length - 1 ? 'pl-1.5 pr-2' : 'px-1.5'}
                       `}
                     >
                       {col.render ? col.render(val, row) : String(val ?? '')}
@@ -130,7 +130,7 @@ export function AnalyticsDetailTable<T>({
       </div>
 
       {/* Footer row count */}
-      <div className="px-4 py-1.5 border-t border-border/40 flex items-center justify-between">
+      <div className="px-2 py-1.5 border-t border-border/40 flex items-center justify-between">
         <text.span className="!text-[10px] !font-medium !text-muted-foreground">
           {data.length} {data.length === 1 ? 'row' : 'rows'}
         </text.span>

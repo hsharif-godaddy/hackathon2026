@@ -607,7 +607,7 @@ export default function RUM() {
         <div className="h-full overflow-y-auto @container">
           <Box gap="md">
             {/* Key Metrics — Row 1: Core Overview */}
-            <div className="grid grid-cols-2 @md:grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 @sm:grid-cols-3 @lg:grid-cols-5 gap-2">
               <MetricCard
                 label={t('builder_analytics_pageviews')}
                 value={metrics.pageviews}
@@ -636,7 +636,7 @@ export default function RUM() {
             </div>
 
             {/* Key Metrics — Row 2: Engagement Deep Dive (Professional+) */}
-            {isPro && <div className="grid grid-cols-2 @md:grid-cols-5 gap-3">
+            {isPro && <div className="grid grid-cols-2 @sm:grid-cols-3 @lg:grid-cols-5 gap-2">
               <MetricCard
                 label={t('builder_analytics_total_clicks')}
                 value={metrics.totalClicks}
@@ -718,7 +718,7 @@ export default function RUM() {
               badge={t('builder_analytics_badge_geo')}
               icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>}
             />
-            <div className="grid grid-cols-1 @md:grid-cols-2 gap-4 [&>*]:min-w-0">
+            <div className="grid grid-cols-1 @sm:grid-cols-2 gap-3 [&>*]:min-w-0">
               <StatProgressList
                 items={countryProgressItems}
                 title={t('builder_analytics_visitors_by_country')}
@@ -787,7 +787,7 @@ export default function RUM() {
               badge={t('builder_analytics_badge_audience')}
               icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>}
             />
-            <div className="grid grid-cols-1 @md:grid-cols-2 gap-4 [&>*]:min-w-0">
+            <div className="grid grid-cols-1 @sm:grid-cols-2 gap-3 [&>*]:min-w-0">
               <AnalyticsPieChart data={sessionsByDeviceData} label={t('builder_analytics_sessions_by_device')} tooltip={intl.formatMessage({ id: 'builder_analytics_tooltip_device_breakdown', defaultMessage: 'Breakdown of sessions by device type (desktop, mobile, tablet) for the selected period.' })} />
               <StatProgressList
                 items={referrerProgressItems}
@@ -937,7 +937,7 @@ export default function RUM() {
 
             {/* Page-level path bars (Starter+) */}
             {isStarter &&
-              <div className="grid grid-cols-1 @md:grid-cols-2 gap-4 [&>*]:min-w-0">
+              <div className="grid grid-cols-1 @sm:grid-cols-2 gap-3 [&>*]:min-w-0">
                 <StatProgressList
                   items={pageViewsByPathData.slice().sort((a, b) => b.value - a.value).slice(0, 10).map((d) => ({ label: d.date === '/' ? t('builder_analytics_home_page') : d.date, value: d.value }))}
                   title={t('builder_analytics_pageviews_by_path')}

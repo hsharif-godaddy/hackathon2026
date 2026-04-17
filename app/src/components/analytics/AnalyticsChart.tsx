@@ -45,14 +45,14 @@ export function AnalyticsChart({ data, label, embedded }: AnalyticsChartProps) {
   }
 
   const chartContent = (
-    <ResponsiveContainer width="100%" height={350} minHeight={250}>
+    <ResponsiveContainer width="100%" height={260} minHeight={200}>
       <AreaChart
           data={data}
           margin={{
-            top: 20,
-            right: 40,
-            bottom: 40,
-            left: 50
+            top: 10,
+            right: 20,
+            bottom: 20,
+            left: 20
           }}
         >
           <defs>
@@ -69,12 +69,12 @@ export function AnalyticsChart({ data, label, embedded }: AnalyticsChartProps) {
           <XAxis
             dataKey="date"
             stroke="hsl(var(--muted-foreground))"
-            tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
+            tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }}
             tickLine={{ stroke: 'hsl(var(--muted-foreground))' }}
           />
           <YAxis
             stroke="hsl(var(--muted-foreground))"
-            tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
+            tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }}
             tickLine={{ stroke: 'hsl(var(--muted-foreground))' }}
             tickFormatter={formatChartValue}
           />

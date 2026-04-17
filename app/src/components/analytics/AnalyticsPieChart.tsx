@@ -59,13 +59,15 @@ export function AnalyticsPieChart({ data, label = 'Distribution', tooltip }: Ana
     const cy = Number(cyProp ?? 0)
     const midAngle = Number(midAngleProp ?? 0)
     const or = Number(orProp ?? 0)
-    const radius = or + 14
+    const radius = or + 10
     const x = cx + radius * Math.cos(-midAngle * RADIAN)
     const y = cy + radius * Math.sin(-midAngle * RADIAN)
-    const text = `${name ?? ''} (${((percent ?? 0) * 100).toFixed(0)}%)`
+    const pct = `${((percent ?? 0) * 100).toFixed(0)}%`
+    const truncatedName = name && String(name).length > 10 ? `${String(name).slice(0, 10)}…` : (name ?? '')
+    const labelText = truncatedName ? `${truncatedName} ${pct}` : pct
     return (
-      <text x={x} y={y} fill="hsl(var(--foreground))" fontSize={11} textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central">
-        {text}
+      <text x={x} y={y} fill="hsl(var(--foreground))" fontSize={10} textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central">
+        {labelText}
       </text>
     )
   }
@@ -91,7 +93,7 @@ export function AnalyticsPieChart({ data, label = 'Distribution', tooltip }: Ana
           </InfoTooltip>
         )}
       </div>
-      <ResponsiveContainer width="100%" height={220} minHeight={160}>
+      <ResponsiveContainer width="100%" height={200} minHeight={140}>
         <PieChart>
           <Pie
             data={pieData}

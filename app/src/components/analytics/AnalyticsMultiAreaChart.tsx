@@ -56,8 +56,8 @@ export function AnalyticsMultiAreaChart({
   }
 
   const chartContent = (
-    <ResponsiveContainer width="100%" height={350} minHeight={250}>
-      <AreaChart data={data} margin={{ top: 10, right: 30, bottom: 20, left: 20 }}>
+    <ResponsiveContainer width="100%" height={260} minHeight={200}>
+      <AreaChart data={data} margin={{ top: 10, right: 20, bottom: 20, left: 20 }}>
           <defs>
             {series.map((s, i) => (
               <linearGradient key={`grad-${chartId}-${i}`} id={`grad-${chartId}-${i}`} x1="0" y1="0" x2="0" y2="1">
@@ -69,11 +69,11 @@ export function AnalyticsMultiAreaChart({
           <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--muted-border))" vertical={false} />
           <XAxis
             dataKey="date"
-            tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
+            tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }}
             tickLine={{ stroke: 'hsl(var(--muted-foreground))' }}
           />
           <YAxis
-            tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
+            tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }}
             allowDecimals={false}
           />
           <Tooltip content={<ChartTooltip variant="multi" showDots />} />
