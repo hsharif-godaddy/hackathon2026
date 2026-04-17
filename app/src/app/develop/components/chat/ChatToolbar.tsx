@@ -5,7 +5,6 @@ import { useEffect, useMemo, useRef } from 'react'
 import Box from '@ux/box'
 import CodeIcon from '@ux/icon/code'
 import CommentsIcon from '@ux/icon/comments'
-import EditIcon from '@ux/icon/edit'
 import GraphIcon from '@ux/icon/graph'
 import HistoryIcon from '@ux/icon/history'
 import ImageIcon from '@ux/icon/image'
@@ -30,7 +29,6 @@ import { useGitStore } from '@/stores/useGitStore'
 import { logClickEvent } from '@/utils/instrumentation'
 
 interface ChatToolbarProps {
-  isProcessing?: boolean
   className?: string
   onBeforeTabChange?: (tab: ChatTab) => void
   optimisticActiveTab?: ChatTab
@@ -38,7 +36,6 @@ interface ChatToolbarProps {
 }
 
 export default function ChatToolbar({
-    isProcessing = false,
     className = '',
     onBeforeTabChange,
     optimisticActiveTab,
@@ -53,22 +50,16 @@ export default function ChatToolbar({
   const isMobile = useDevelopPageStore((state) => state.isMobile);
   const mobileMode = useDevelopPageStore((state) => state.mobileMode);
   const hasUnsavedChanges = useDevelopPageStore((state) => state.hasUnsavedChanges);
-  const toggleSelectMode = useDevelopPageStore((state) => state.toggleEditMode);
   const handleViewModeChange = useDevelopPageStore((state) => state.handleViewModeChange);
 
   // Use optimistic tab for UI selection state, fall back to URL-based state
   const displayActiveTab = optimisticActiveTab ?? activeChatTab
   const viewMode = useDevelopPageStore((state) => state.viewMode);
-  const isSelectMode = useDevelopPageStore((state) => state.isEditModeEnabled);
-  const isPublishing = useDevelopPageStore((state) =>
-    appId ? (state.publishStates?.[appId]?.isPublishing ?? false) : false
-  );
-  const isSelectingCommit = useGitStore((state) => state.isSelectingCommit);
   const returnToMain = useGitStore((state) => state.returnToMain);
   const setSelectedCommitHash = useGitStore((state) => state.setSelectedCommitHash);
   const { data: isAnalyticsEnabled } = useSwitchboard('appbuilder-analytics');
 
-  const { data: gitHistoryData, isLoading: isGitHistoryLoading } = useGitHistoryQuery({
+  const { data: gitHistoryData } = useGitHistoryQuery({
     appId: appId || '',
     enabled: !!appId
   })
@@ -77,19 +68,16 @@ export default function ChatToolbar({
 
   // Track previous values to detect mode changes
   const prevViewModeRef = useRef<ViewMode>(viewMode)
-  const prevSelectModeRef = useRef<boolean>(isSelectMode)
   const prevChatTabRef = useRef<ChatTab>(activeChatTab)
   const settingsMenuRef = useRef<SettingsMenuRef>(null)
 
   // Auto-return to main branch when:
   useEffect(function autoReturnToMain() {
     const prevViewMode = prevViewModeRef.current
-    const prevSelectMode = prevSelectModeRef.current
     const prevChatTab = prevChatTabRef.current
 
     // Update refs for next comparison
     prevViewModeRef.current = viewMode
-    prevSelectModeRef.current = isSelectMode
     prevChatTabRef.current = activeChatTab
 
     if (!appId || !latestCommitHash) {
@@ -101,12 +89,11 @@ export default function ChatToolbar({
       return
     }
 
-    // Detect when mode CHANGES to code editor or select mode
+    // Detect when mode CHANGES to code editor or history tab closes
     const codeEditorJustOpened = viewMode === ViewMode.CODE && prevViewMode !== ViewMode.CODE
-    const selectModeJustActivated = isSelectMode && !prevSelectMode
     const historyTabJustClosed = prevChatTab === ChatTab.HISTORY && activeChatTab !== ChatTab.HISTORY
 
-    if (codeEditorJustOpened || selectModeJustActivated || historyTabJustClosed) {
+    if (codeEditorJustOpened || historyTabJustClosed) {
       // Reset selected commit hash to the latest commit to prevent showing historical commit
       // banner during the async returnToMain operation. This provides smooth UX when switching
       // from History tab to Chat/Preview tab.
@@ -115,21 +102,24 @@ export default function ChatToolbar({
       // Trigger async backend checkout to main branch
       returnToMain(appId, latestCommitHash)
     }
-  }, [appId, viewMode, isSelectMode, activeChatTab, latestCommitHash, returnToMain, setSelectedCommitHash])
+  }, [appId, viewMode, activeChatTab, latestCommitHash, returnToMain, setSelectedCommitHash])
 
 
   const handleTabClick = (tab: ChatTab) => {
-    if (tab === ChatTab.HISTORY && isSelectingCommit) {
-      return
-    }
-
     // Call optimistic callback first for instant UI updates
     onBeforeTabChange?.(tab)
 
     if (tab === ChatTab.SETTINGS) {
+      // Open the settings popover instead of navigating
       settingsMenuRef.current?.togglePopover()
       return
     }
+
+    // IMPORTANT: No navigation guard needed for History tab during commit selection.
+    // Commit items in the History tab are disabled during publish/restore operations,
+    // preventing interaction that could interrupt async checkout. This is intentional
+    // design - users can navigate to History but cannot trigger conflicting operations.
+    // DO NOT add isSelectingCommit guards here.
 
     settingsMenuRef.current?.closePopover()
     setActiveChatTab(tab)
@@ -166,7 +156,6 @@ export default function ChatToolbar({
       {showToolsMode && (
         <>
           <ButtonGroup
-            uniformActiveItemWidth
             value={displayActiveTab}
             onChange={(value) => {
               const tab = value as ChatTab
@@ -188,14 +177,6 @@ export default function ChatToolbar({
               value={ChatTab.HISTORY}
               icon={<HistoryIcon className="size-2.5" />}
               label={t('builder_chat_toolbar_button_history')}
-              disabled={
-                displayActiveTab !== ChatTab.HISTORY && (
-                  isProcessing ||
-                  isGitHistoryLoading ||
-                  viewMode === ViewMode.CODE ||
-                  isPublishing
-                )
-              }
             />
             {isAnalyticsEnabled && (
               <ButtonGroup.Item
@@ -211,7 +192,7 @@ export default function ChatToolbar({
         </>
       )}
 
-      {/* PREVIEW mode: Edit + View/Code + Refresh + Domain + Publish */}
+      {/* PREVIEW mode: View/Code + Refresh + Domain + Publish */}
       {showPreviewMode && (
         <>
           <Box orientation="horizontal" gap="sm">
@@ -241,36 +222,24 @@ export default function ChatToolbar({
             </ButtonGroup>
 
             <AnimatePresence>
-              {viewMode === ViewMode.PREVIEW && (
+              {viewMode === ViewMode.PREVIEW && onPreviewRefresh && (
                 <motion.div
                   initial={{ x: -20, opacity: 0 }}
                   animate={{ x: 0, opacity: 1 }}
                   exit={{ x: -20, opacity: 0 }}
                   transition={{ duration: 0.2, ease: 'easeInOut', delay: 0.5 }}
                 >
-                  <Box orientation="horizontal" gap="sm">
-                    <IconButton
-                      icon={<EditIcon className="size-2.5" />}
-                      onClick={() => {
-                        logClickEvent('develop.chat_toolbar.edit', clickContext)()
-                        toggleSelectMode()
-                      }}
-                      active={isSelectMode}
-                      label={t('builder_chat_toolbar_button_edit')}
-                    />
-
-                    {onPreviewRefresh && (
-                      <IconButton
-                        icon={<RefreshIcon className="size-2.5" />}
-                        onClick={() => {
-                          logClickEvent('develop.chat_toolbar.refresh', clickContext)()
-                          onPreviewRefresh()
-                        }}
-                        label={t('builder_preview_button_refresh')}
-                        showLabelWhenActive={false}
-                      />
-                    )}
-                  </Box>
+                  <IconButton
+                    icon={<RefreshIcon className="size-2.5" />}
+                    onClick={() => {
+                      logClickEvent('develop.chat_toolbar.refresh', clickContext)()
+                      if (onPreviewRefresh) {
+                        onPreviewRefresh()
+                      }
+                    }}
+                    label={t('builder_preview_button_refresh')}
+                    showLabelWhenActive={false}
+                  />
                 </motion.div>
               )}
             </AnimatePresence>
