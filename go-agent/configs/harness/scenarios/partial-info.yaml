@@ -1,0 +1,24 @@
+- id: bakery-named-located
+  persona: Bakery owner in Austin, specializes in artisan breads and pastries
+  user_message: I need a website for my bakery called Flour & Fold in Austin, Texas
+- id: salon-named-located
+  persona: Salon owner in Brooklyn, trendy and modern clientele
+  user_message: Website for my hair salon, Velvet Rose, in Brooklyn
+- id: gym-named-goal
+  persona: Gym owner, focused on strength training and community
+  user_message: I need a website for my gym called Iron Republic where people can sign up for memberships
+- id: dentist-named-located
+  persona: Dentist running a family practice, wants to attract new patients
+  user_message: Build a website for Bright Smile Dental, we're in suburban Chicago
+- id: florist-name-audience
+  persona: Florist specializing in wedding arrangements, serves the local area
+  user_message: Website for my flower shop Petal & Stem, we mostly do weddings and events
+- id: tutoring-name-goal-audience
+  persona: Tutoring service owner, former teacher, works with high schoolers
+  user_message: I run a tutoring service called BrightPath for high school students, need a site where parents can book sessions
+- id: brewery-named-located
+  persona: Brewery co-owner, taproom with food trucks, local beer community
+  user_message: We need a website for our craft brewery, Copper Kettle Brewing, in Portland Oregon
+- id: photographer-named
+  persona: Portrait and fashion photographer, wants high-end clients
+  user_message: I'm a photographer named Elena Voss and I need a portfolio site

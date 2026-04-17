@@ -1,0 +1,108 @@
+- id: bakery-brief
+  persona: Small bakery owner in Portland, specializing in sourdough
+  user_message: I want a website for my bakery
+- id: saas-detailed
+  persona: Startup founder, technical background
+  user_message: Build a project management SaaS called TaskFlow for small dev teams. Clean, minimal design with dark mode.
+- id: portfolio-vague
+  persona: Freelance photographer, landscape work
+  user_message: portfolio site
+- id: ecommerce-rich
+  persona: Artisan jewelry maker, active on Instagram, ships nationwide
+  user_message: I need an online store for my handmade jewelry brand called Luna & Stone. Target audience is women 25-40 who love artisan accessories.
+- id: restaurant-simple
+  persona: Family Italian restaurant owner, not tech-savvy
+  user_message: restaurant website
+- id: fitness-coach
+  persona: Independent fitness coach, runs a small gym, wants online booking
+  user_message: I'm a personal trainer and I need a site where clients can book sessions
+- id: nonprofit-detailed
+  persona: Nonprofit director, passionate about mission, needs credibility
+  user_message: We need a website for our ocean cleanup nonprofit called BlueWave. We want to show our impact with data visualizations, accept donations, and recruit volunteers.
+- id: blog-minimal
+  persona: Aspiring travel writer who wants a simple place to publish essays
+  user_message: blog
+- id: realestate-agent
+  persona: Real estate agent in Miami, sells luxury condos
+  user_message: I need a website to showcase my property listings with photos, virtual tours, and a contact form
+- id: wedding-planner
+  persona: Boutique wedding planner in Napa Valley, high-end clientele
+  user_message: wedding planning website
+- id: game-landing
+  persona: Solo indie game developer, pixel art enthusiast
+  user_message: Landing page for my indie game called Void Drifter. It's a roguelike space exploration game with pixel art. Coming to Steam in 3 months.
+- id: law-firm
+  persona: Senior partner at a 12-person IP law firm, conservative taste
+  user_message: Our law firm needs a professional website. We specialize in intellectual property law.
+- id: music-artist
+  persona: Electronic music producer, plays festivals, visual-forward brand
+  user_message: I need a site for my music. I'm an electronic music producer and DJ.
+- id: daycare-center
+  persona: Daycare owner, wants to reassure parents, show facilities and staff
+  user_message: website for happy little stars daycare
+- id: crypto-dashboard
+  persona: Crypto enthusiast, wants a functional tool not a marketing page
+  user_message: Build a crypto portfolio tracker dashboard. I want to see my holdings across wallets, price charts, and profit/loss.
+- id: yoga-studio
+  persona: Yoga instructor who runs a small studio, values calm and mindfulness
+  user_message: website for my yoga studio
+- id: agency-creative
+  persona: Creative director at a trendy agency, wants the site itself to be a portfolio piece
+  user_message: We're a creative agency called Neon Jungle. We do branding, video production, and social media campaigns for Gen Z brands.
+- id: saas-one-word
+  persona: Developer who has an idea but gave almost no information
+  user_message: app
+- id: domain-purchase
+  persona: Entrepreneur launching a DTC coffee brand
+  user_message: I want to build a coffee subscription service website and buy a domain for it
+- id: tech-startup
+  persona: Co-founder of an early-stage AI company, wants to look credible to investors
+  user_message: Landing page for our AI startup called Synapse Labs
+- id: hello-world
+  persona: Developer testing the platform, not a real project
+  user_message: Make me a hello world app
+- id: llm-essay-prompt
+  persona: Coffee roastery owner who had ChatGPT write their brief, very detailed and specific
+  user_message: 'I''m looking to create a comprehensive digital platform for my artisanal coffee roasting business called Ember & Oak. We''re a small-batch specialty roaster based in the Pacific Northwest
+    that sources single-origin beans directly from farmers in Ethiopia, Colombia, and Guatemala. Our brand identity centers around craftsmanship, sustainability, and the story behind each cup. We want our
+    online presence to reflect the warmth and intentionality that goes into every roast.
+
+
+    Our primary audience is coffee enthusiasts aged 25-45 who care about origin, process, and flavor profiles. They''re willing to pay premium prices for exceptional quality and transparent sourcing. Many
+    of them follow us on Instagram where we share behind-the-scenes content of our roasting process, farm visits, and brewing guides. We also have a growing wholesale segment supplying boutique cafes across
+    Oregon and Washington.
+
+
+    The website needs to serve multiple functions. First and foremost, it should be an e-commerce platform where customers can browse our current offerings, learn about each bean''s origin story and tasting
+    notes, and place orders for home delivery on a subscription or one-time basis. We''d also like a wholesale inquiry section for cafe owners interested in carrying our beans. A blog or journal section
+    would be valuable for sharing brewing guides, farm visit stories, and industry insights.
+
+
+    Design-wise, we''re drawn to earthy, warm aesthetics that feel handcrafted rather than corporate. Think exposed wood textures, matte finishes, and photography that captures the rich browns and ambers
+    of freshly roasted beans. We want the site to feel like walking into a cozy, well-designed coffee shop. Typography should feel artisanal but readable, and the overall experience should be smooth and
+    intuitive on both desktop and mobile.
+
+
+    We currently have a basic Shopify store but it feels generic and doesn''t tell our story well. We want something that truly represents who we are and creates an emotional connection with visitors before
+    they even taste the coffee. Budget isn''t the primary concern — getting the brand experience right is what matters most to us.'
+- id: admin-dashboard
+  persona: Startup CTO building internal tools, wants clean functional UI
+  user_message: I need an admin dashboard to manage users, view analytics, and handle content moderation for my platform
+- id: puzzle-game
+  persona: Hobbyist developer who wants a playable browser game
+  user_message: Build a sliding puzzle game, 4x4 grid where you rearrange numbered tiles to put them in order
+- id: product-landing
+  persona: Product marketing manager at a consumer electronics startup
+  user_message: Landing page for our new wireless earbuds called AeroBeats Pro. Premium noise cancelling, 40hr battery, $199.
+- id: slide-deck
+  persona: Founder preparing a Series A pitch, wants something more impressive than Google Slides
+  user_message: I need a presentation slide deck app for pitching my startup to investors, maybe 10-12 slides
+- id: recipe-app
+  persona: Home cook who wants a personal recipe collection tool
+  user_message: Build a recipe organizer app where I can save recipes, tag them, and plan weekly meals
+- id: weather-widget
+  persona: Developer who wants a clean weather display for their home screen
+  user_message: Create a weather dashboard that shows current conditions, hourly forecast, and a 7-day outlook
+- id: event-countdown
+  persona: Marketing lead at a startup building hype for a launch
+  user_message: I need a countdown timer page for our product launch on June 15th with an email signup to get notified

@@ -1,0 +1,48 @@
+name: v2.0
+description: Initial agent v2.0 prompts (simplified askQuestion, no attributes.md)
+
+model: claude-sonnet-4-6
+temperature: 0.5
+max_output_tokens: 8000
+max_steps: 10
+
+prompt_files:
+  - ../../../agents/src/prompts/initial/2.0/core.md
+  - ../../../agents/src/prompts/shared/communication.md
+  - ../../../agents/src/prompts/initial/2.0/guidelines.md
+  - ../../../agents/src/prompts/initial/2.0/examples.md
+  - ../../../agents/src/prompts/shared/security.md
+
+prompt_overrides: {}
+
+responder:
+  model: claude-sonnet-4-6
+
+judge:
+  model: claude-sonnet-4-6
+  criteria:
+    - name: project_name_quality
+      description: "Is the project name specific, relevant, and 1-3 words? (5=perfect fit, 1=generic/wrong)"
+      scale: "1-5"
+    - name: handoff_completeness
+      description: "Does the handoff include all required sections: project details, design direction, layout type, visual direction, visual elements, motion design, section guidance, differentiation, consistency, build order, initial scope, suggested responses?"
+      scale: "1-5"
+    - name: design_specificity
+      description: "Is the design direction specific and distinctive rather than generic? Does it name specific fonts, specific color emotions, specific layout approaches rather than vague terms like 'modern and clean'?"
+      scale: "1-5"
+    - name: anti_cliche
+      description: "Does the handoff explicitly avoid common AI design patterns (icon grids, purple gradients, centered-band CTAs, empty-right heroes) and suggest specific alternatives?"
+      scale: "1-5"
+    - name: design_fit_and_vibe
+      description: "Does the design have a clear, unified emotional personality that fits this specific business? Do color, typography, imagery, motion, and layout all reinforce one coherent mood — and is that mood right for the audience? (e.g., a law firm should feel like 'old-money authority meets modern restraint', not generic corporate; a bakery should feel like 'sun-warmed artisan kitchen', not template-warm). Score 1 if generic checklist of safe choices, 5 if every element contributes to one distinctive atmosphere tailored to this business."
+      scale: "1-5"
+    - name: visual_impact
+      description: "Would the described design create a 'wow' moment on first load? Does it have at least one visually striking element — a dramatic hero, bold typography, unique layout, atmospheric motion, or rich imagery — that would make someone want to keep exploring? Score 1 for generic/forgettable, 5 for genuinely impressive."
+      scale: "1-5"
+    - name: actionability
+      description: "Could a developer build this homepage from the handoff alone without guessing? Are sections, layouts, colors, fonts, image search terms, and animations described concretely enough to implement? Score 1 if vague and hand-wavy, 5 if every section has clear implementation guidance."
+      scale: "1-5"
+
+runs_per_case: 1
+
+test_cases_file: scenarios/standard.yaml

@@ -3,3 +3,7 @@ tmp/
 data/
 coverage.out
 coverage.html
+results/harness/**/*.json
+/agent
+/harness
+/harness-review
