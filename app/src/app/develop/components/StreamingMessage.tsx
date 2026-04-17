@@ -1,13 +1,14 @@
 'use client'
 
 import clsx from 'clsx'
-import { Check, ClipboardCopy, Expand } from 'lucide-react'
+import { Check, ClipboardCopy, Expand, Headset } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import Button from '@ux/button'
 import Modal from '@ux/modal'
 
 import { AttachmentList } from '@/app/develop/components/chat/AttachmentBadge'
 import { FileReferenceList } from '@/app/develop/components/chat/FileReferenceBadge'
+import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
 import type { ChatMessage, StreamingMessage as StreamingMessageType } from '@/stores/useStreamingConversationStore'
@@ -44,15 +45,14 @@ function shouldRenderMessage(message: ChatMessage | StreamingMessageType): boole
 }
 
 // Helper function to get message styling classes (matching Message.tsx)
-function getMessageClasses(message: ChatMessage | StreamingMessageType): string {
+function getMessageClasses(message: ChatMessage | StreamingMessageType, isSupport: boolean): string {
   const baseClasses = 'rounded-lg'
-
-  // Don't hide messages - we'll show ThinkingIndicator when there's no content
-  // (Previously hid messages with no content, but now we show indicator instead)
 
   switch (message.role) {
     case 'user':
-      return clsx(baseClasses, 'bg-intents-ux-actionHovered-backgroundColor px-2 py-1.5 border ml-4 my-0.5')
+      return isSupport
+        ? clsx(baseClasses, 'bg-ai/10 px-2 py-1.5 border ml-4 my-0.5')
+        : clsx(baseClasses, 'bg-intents-ux-actionHovered-backgroundColor px-2 py-1.5 border ml-4 my-0.5')
 
     case 'assistant':
       return clsx(baseClasses, 'max-w-full p-0')
@@ -60,6 +60,14 @@ function getMessageClasses(message: ChatMessage | StreamingMessageType): string 
     default:
       return clsx(baseClasses)
   }
+}
+
+function SupportBadge() {
+  return (
+    <span className="text-ai mt-0.5 mr-0.5">
+      <Headset className="size-2" />
+    </span>
+  )
 }
 
 /**
@@ -202,6 +210,8 @@ function renderMessageContent({ message, isActiveStream, isLastAssistantMessage,
 
 export default function StreamingMessage({ message, isActiveStream = false, isLastAssistantMessage = false, startTime, showThinking = false }: StreamingMessageProps) {
   const streamingState = useStreamingState()
+  const { data: showSupportIndicator } = useSwitchboard('airo-builder-support-chat-ui')
+  const isSupport = showSupportIndicator === true && message.origin === 'support'
 
   // Don't render messages that shouldn't be displayed
   if (!shouldRenderMessage(message)) {
@@ -214,12 +224,13 @@ export default function StreamingMessage({ message, isActiveStream = false, isLa
       'justify-start': message.role !== 'user'
     })}>
       <div className={clsx({
-        'order-2 max-w-full': message.role === 'user',
+        'order-2 flex flex-col items-end': message.role === 'user',
         'order-1 w-full': message.role !== 'user'
       })}>
-        <div className={getMessageClasses(message)}>
+        <div className={getMessageClasses(message, isSupport)}>
           {renderMessageContent({ message, isActiveStream, isLastAssistantMessage, startTime, streamingState, showThinking })}
         </div>
+        {isSupport && message.role === 'user' && <SupportBadge />}
       </div>
     </div>
   )
