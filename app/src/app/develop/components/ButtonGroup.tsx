@@ -306,7 +306,7 @@ const ButtonGroupItem = forwardRef<HTMLButtonElement, ButtonGroupItemProps>(func
   };
 
   const tooltipComponent = label && (
-    <Tooltip className="z-50" anchorRef={buttonRef}>
+    <Tooltip className="z-50" anchorRef={buttonRef} portalElem={document.body}>
       <div className="flex flex-col gap-0 p-1">
         <div className="text-sm font-bold leading-none">{label}</div>
         {tooltipDescription && <div className="text-sm font-thin">{tooltipDescription}</div>}
