@@ -3,6 +3,7 @@
  */
 import '@testing-library/jest-dom';
 
+import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import Growl from '@ux/growl';
@@ -373,5 +374,96 @@ describe('AppPublish', () => {
     await waitFor(() => {
       expect(mockDevelopStore.setShowFeedbackBanner).not.toHaveBeenCalled();
     });
+  });
+
+  it('should add success growl with feedback CTA when publish completes while popover closed', async function successGrowlIncludesFeedback() {
+    mockDeploymentsData = [{ id: 'dep-1', status: 'IN_PROGRESS' }];
+    mockDevelopStore.publishStates['app-123'] = { isPublishing: true };
+
+    const { rerender, unmount } = renderWithProviders(<AppPublish />);
+
+    mockDeploymentsData = [{ id: 'dep-1', status: DeploymentStatus.DEPLOYED }];
+    mockDevelopStore.publishStates['app-123'] = { isPublishing: false };
+    rerender(<AppPublish />);
+
+    await waitFor(() => {
+      expect(Growl.addGrowlMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'app-publish-success',
+          title: 'builder_publish_success_title',
+          emphasis: 'success',
+        })
+      );
+    });
+
+    const successPayload = vi.mocked(Growl.addGrowlMessage).mock.calls
+      .map((c) => c[0])
+      .find(
+        (a): a is { id: string; children: ReactNode } =>
+          Boolean(a && typeof a === 'object' && 'id' in a && (a as { id: string }).id === 'app-publish-success')
+      );
+    expect(successPayload?.children).toBeDefined();
+
+    unmount();
+    const { user } = renderWithProviders(<div>{successPayload!.children}</div>);
+
+    await waitFor(() => {
+      expect(screen.getByText('builder_publish_message_live')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole('button', { name: 'builder_settings_nav_feedback' }));
+
+    expect(Growl.removeGrowlMessage).toHaveBeenCalledWith('app-publish-success');
+    expect(mockDevelopStore.openFeedbackModal).toHaveBeenCalledWith('airo#app-builder', 'Publish Growl');
+  });
+
+  it('should open published URL from success growl visit when fqdn resolves', async function successGrowlVisitWhenFqdn() {
+    mockSiteStore.getSite.mockReturnValue(
+      createMockSite({
+        id: 'app-123',
+        agent_url: 'https://app-123.agent.test',
+        published_url: 'https://published.example.com',
+      })
+    );
+    const windowOpen = vi.spyOn(window, 'open').mockImplementation(() => null);
+
+    try {
+      mockDeploymentsData = [{ id: 'dep-1', status: 'IN_PROGRESS' }];
+      mockDevelopStore.publishStates['app-123'] = { isPublishing: true };
+
+      const { rerender, unmount } = renderWithProviders(<AppPublish />);
+
+      mockDeploymentsData = [{ id: 'dep-1', status: DeploymentStatus.DEPLOYED }];
+      mockDevelopStore.publishStates['app-123'] = { isPublishing: false };
+      rerender(<AppPublish />);
+
+      await waitFor(() => {
+        expect(Growl.addGrowlMessage).toHaveBeenCalledWith(
+          expect.objectContaining({
+            id: 'app-publish-success',
+            title: 'builder_publish_success_title',
+            emphasis: 'success',
+          })
+        );
+      });
+
+      const successPayload = vi.mocked(Growl.addGrowlMessage).mock.calls
+        .map((c) => c[0])
+        .find(
+          (a): a is { id: string; children: ReactNode } =>
+            Boolean(a && typeof a === 'object' && 'id' in a && (a as { id: string }).id === 'app-publish-success')
+        );
+      expect(successPayload).toBeDefined();
+
+      unmount();
+      const { user } = renderWithProviders(<div>{successPayload!.children}</div>);
+
+      const visitButton = await screen.findByRole('button', { name: 'builder_publish_button_visit' });
+      await user.click(visitButton);
+
+      expect(windowOpen).toHaveBeenCalledWith('https://published.example.com', '_blank', 'noopener,noreferrer');
+    } finally {
+      windowOpen.mockRestore();
+    }
   });
 });

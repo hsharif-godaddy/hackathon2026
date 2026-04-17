@@ -90,6 +90,15 @@ export default function AppPublish({ location = 'develop' }: { location?: string
   const openFeedbackModal = useDevelopPageStore((state) => state.openFeedbackModal);
   const setShowFeedbackBanner = useDevelopPageStore((state) => state.setShowFeedbackBanner);
 
+  const handlePublishFeedbackClick = useCallback((origin: string) => {
+    try {
+      localStorage.removeItem(`airo-feedback-shown:${FEEDBACK_ID}`);
+    } catch {
+      // storage unavailable
+    }
+    openFeedbackModal(FEEDBACK_ID, origin);
+  }, [openFeedbackModal]);
+
   // Switchboard flags
   // Coerce to boolean to prevent React Query errors when undefined
   const {
@@ -328,19 +337,42 @@ export default function AppPublish({ location = 'develop' }: { location?: string
       Growl.addGrowlMessage({
         id: 'app-publish-success',
         title: t('builder_publish_success_title'),
-        ...(fqdn
-          ? {
-              children: (
+        children: (
+          <Box orientation='vertical' gap='md' className='min-w-[200px]'>
+            <p>{t('builder_publish_message_live')}</p>
+            <Separator className='opacity-20' />
+            <Box orientation='vertical' gap='sm' data-partial='inverted'>
+              {fqdn ? (
                 <Button
-                  design='inline'
+                  design='primary'
+                  type='button'
                   as='external'
-                  external={true}
-                  href={fqdn}
-                  text={t('builder_common_open_link')}
+                  size='sm'
+                  text={t('builder_publish_button_visit')}
+                  stretch
+                  data-eid={generateClickEID(`${location}.growl.visit_site`)}
+                  // `as='external'` still renders a <button> here (no href). onClick + window.open
+                  // avoids growl CSS overrides on elements with href attribute.
+                  onClick={() => {
+                    window.open(fqdn, '_blank', 'noopener,noreferrer');
+                  }}
                 />
-              ),
-            }
-          : {}),
+              ) : null}
+              <Button
+                design='secondary'
+                type='button'
+                size='sm'
+                text={t('builder_settings_nav_feedback')}
+                stretch
+                data-eid={generateClickEID(`${location}.growl.publish_feedback`)}
+                onClick={() => {
+                  Growl.removeGrowlMessage('app-publish-success');
+                  handlePublishFeedbackClick('Publish Growl');
+                }}
+              />
+            </Box>
+          </Box>
+        ),
         emphasis: 'success'
       });
       return;
@@ -361,7 +393,7 @@ export default function AppPublish({ location = 'develop' }: { location?: string
       ),
       emphasis: 'critical',
     });
-  }, [currentAppId, isPublishingOrDeploying, mostRecentDeployment?.status, publishError, fqdn, t, handleDeploy, setShowFeedbackBanner]);
+  }, [currentAppId, isPublishingOrDeploying, mostRecentDeployment?.status, publishError, fqdn, t, handleDeploy, handlePublishFeedbackClick, location, setShowFeedbackBanner]);
 
   /**
    * Navigate to version history tab
@@ -376,15 +408,6 @@ export default function AppPublish({ location = 'develop' }: { location?: string
     setActiveSettingsSection(SettingsSection.DOMAIN);
     setActiveChatTab(ChatTab.SETTINGS);
   }, [setOpen, setActiveSettingsSection, setActiveChatTab]);
-
-  const handlePublishFeedbackClick = useCallback(() => {
-    try {
-      localStorage.removeItem(`airo-feedback-shown:${FEEDBACK_ID}`);
-    } catch {
-      // storage unavailable
-    }
-    openFeedbackModal(FEEDBACK_ID, 'Publish Popover');
-  }, [openFeedbackModal]);
 
   // Register deployments refetch function in store for retry functionality
   useEffect(() => {
@@ -674,7 +697,7 @@ export default function AppPublish({ location = 'develop' }: { location?: string
                     type='button'
                     className='w-full pt-1 pb-0.5 flex items-center justify-center gap-1 cursor-pointer'
                     data-eid={generateClickEID(`${location}.header.publish_feedback`)}
-                    onClick={handlePublishFeedbackClick}
+                    onClick={() => handlePublishFeedbackClick('Publish Popover')}
                   >
                     <CommentsIcon className='size-2' />
                     <text.span as='action' size={-1}>
