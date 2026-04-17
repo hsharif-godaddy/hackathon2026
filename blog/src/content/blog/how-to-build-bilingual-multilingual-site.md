@@ -6,8 +6,6 @@ category: "How-To"
 heroImage: "/images/bilingual-multilingual-store-hero.png"
 ---
 
-# How to Build a Bilingual or Multilingual Site with Airo AI Builder
-
 ## Your Customers Don't All Speak English. Your Site Shouldn't Either.
 
 If your audience speaks more than one language, your site needs to work in more than one language. Not as an afterthought with a Google Translate widget, but with real localized content, proper currency formatting, and navigation that feels native in every language.
@@ -29,6 +27,7 @@ The single biggest mistake people make with multilingual builds is adding langua
 Instead, include your language and locale requirements in your very first prompt. This tells the AI to scaffold every page, every component, and every piece of copy with multilingual support baked in from the start.
 
 **What to include in your first prompt:**
+
 - Primary language (the default)
 - Secondary language(s)
 - A language toggle in the header or nav
@@ -112,28 +111,28 @@ Multilingual sites need to be accessible in every language. This is especially i
 
 Here's how language requirements look across different types of builds:
 
-| Use Case | Languages | Key Considerations |
-|----------|-----------|-------------------|
-| E-commerce store | Spanish + English | Currency formatting, product names in both languages, bilingual checkout flow |
-| Local services site | French + English | Bilingual booking form, localized date/time, regional address fields |
-| Restaurant/cafe | Any 2+ languages | Menu items in each language, hours formatted per locale, location with local map |
-| Portfolio | German + English | Project descriptions in both languages, bilingual contact form |
-| SaaS landing page | English + Japanese | RTL not needed but character width varies, CTA buttons need testing in both |
-| Non-profit | English + Arabic | RTL support required, donation amounts in local currency, cultural tone adaptation |
-| Tourism/travel | 3+ languages | Itineraries, pricing in multiple currencies, hreflang for geo-targeted SEO |
+| Use Case            | Languages          | Key Considerations                                                                 |
+| ------------------- | ------------------ | ---------------------------------------------------------------------------------- |
+| E-commerce store    | Spanish + English  | Currency formatting, product names in both languages, bilingual checkout flow      |
+| Local services site | French + English   | Bilingual booking form, localized date/time, regional address fields               |
+| Restaurant/cafe     | Any 2+ languages   | Menu items in each language, hours formatted per locale, location with local map   |
+| Portfolio           | German + English   | Project descriptions in both languages, bilingual contact form                     |
+| SaaS landing page   | English + Japanese | RTL not needed but character width varies, CTA buttons need testing in both        |
+| Non-profit          | English + Arabic   | RTL support required, donation amounts in local currency, cultural tone adaptation |
+| Tourism/travel      | 3+ languages       | Itineraries, pricing in multiple currencies, hreflang for geo-targeted SEO         |
 
 ---
 
 ## Common Issues and How to Fix Them
 
-| Issue | What to prompt |
-|-------|---------------|
-| Language toggle doesn't switch all content | "Make sure the language toggle updates all text on the page, including navigation, footer, form labels, and button text. Nothing should stay in the previous language after switching." |
-| Prices showing in wrong format | "Format prices using [locale] conventions. Use [currency symbol], [thousands separator], and [decimal separator]." |
-| Translated text breaks the layout | "Check all pages in both languages for text overflow. Buttons, cards, and navigation items should resize or truncate gracefully when text is longer in one language." |
-| Screen reader reads wrong language | "Set the HTML lang attribute dynamically based on the selected language. This ensures screen readers use the correct pronunciation." |
-| SEO not distinguishing languages | "Add hreflang tags to every page. Each language version should have unique meta titles and descriptions. Use /es/ and /en/ URL prefixes." |
-| RTL layout not mirroring properly | "When Arabic is selected, mirror the full layout: nav items right to left, text alignment right, form fields right-aligned. Use CSS logical properties (margin-inline-start instead of margin-left)." |
+| Issue                                      | What to prompt                                                                                                                                                                                        |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Language toggle doesn't switch all content | "Make sure the language toggle updates all text on the page, including navigation, footer, form labels, and button text. Nothing should stay in the previous language after switching."               |
+| Prices showing in wrong format             | "Format prices using [locale] conventions. Use [currency symbol], [thousands separator], and [decimal separator]."                                                                                    |
+| Translated text breaks the layout          | "Check all pages in both languages for text overflow. Buttons, cards, and navigation items should resize or truncate gracefully when text is longer in one language."                                 |
+| Screen reader reads wrong language         | "Set the HTML lang attribute dynamically based on the selected language. This ensures screen readers use the correct pronunciation."                                                                  |
+| SEO not distinguishing languages           | "Add hreflang tags to every page. Each language version should have unique meta titles and descriptions. Use /es/ and /en/ URL prefixes."                                                             |
+| RTL layout not mirroring properly          | "When Arabic is selected, mirror the full layout: nav items right to left, text alignment right, form fields right-aligned. Use CSS logical properties (margin-inline-start instead of margin-left)." |
 
 ---
 
