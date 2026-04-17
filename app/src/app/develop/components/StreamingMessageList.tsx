@@ -9,6 +9,7 @@ import Skeleton from '@ux/skeleton'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
 import { useWebSocketContext } from '@/contexts/WebSocketContext'
 import { useSound } from '@/hooks/useSound'
+import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
@@ -49,6 +50,7 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
   const prevIsStreamingRef = useRef(false)
   const hasUserInteractedRef = useRef(false)
   const t = useTranslations();
+  const { data: areChatPlansEnabled } = useSwitchboard('airo-builder-chat-plans')
 
   // Store hooks for loading state
   const isStreaming = useIsActivelyStreaming()
@@ -505,10 +507,12 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
     return !hasRunningTools && !isStreamingText && !isSuggestedResponseCompleted
   }, [isStreaming, activeStream])
 
-  // Standalone thinking indicator shows when the last assistant message has no content yet
+  // Standalone thinking indicator shows when the last assistant message has no content yet.
+  // When chat plans are enabled, thinking is shown in InputActionsPanel instead.
   const lastMsg = allMessages[allMessages.length - 1]
   const lastMsgHasContent = lastMsg?.role === 'assistant' && (lastMsg.segments?.length ?? 0) > 0
-  const shouldShowStandaloneThinking = shouldShowGlobalThinking && !lastMsgHasContent
+  const effectiveShouldShowThinking = areChatPlansEnabled ? false : shouldShowGlobalThinking
+  const shouldShowStandaloneThinking = effectiveShouldShowThinking && !lastMsgHasContent
 
   // Show loading state during app transitions to prevent showing stale messages
   const isAppTransitioning = currentAppId !== appIdFromParams
@@ -712,7 +716,7 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
             isActiveStream={'isComplete' in message && !message.isComplete}
             isLastAssistantMessage={isLastAssistantMessage}
             startTime={startTime}
-            showThinking={isLastAssistantMessage && shouldShowGlobalThinking}
+            showThinking={isLastAssistantMessage && effectiveShouldShowThinking}
           />
         )
       })}

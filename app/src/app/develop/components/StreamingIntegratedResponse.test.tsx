@@ -24,7 +24,11 @@ vi.mock('@/utils/instrumentation', () => ({
 let mockSite: SiteInfo | null = null;
 
 vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: () => ({ data: true }),
+  useSwitchboard: (name: string) => ({
+    // Default flags to true, but keep chat plans off so suggestedResponse
+    // filtering tests match the flag-off (default) behavior.
+    data: name === 'airo-builder-chat-plans' ? false : true,
+  }),
 }));
 
 vi.mock('@/hooks/useSubscription', () => ({

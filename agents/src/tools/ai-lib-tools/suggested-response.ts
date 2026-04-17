@@ -166,6 +166,19 @@ The suggestions will be displayed as clickable buttons below your question.
 This tool automatically checks for available rebuild pages and includes them
 as suggestions without requiring explicit prompting.
 
+Guidelines for good suggestions:
+- Only call this tool when you have genuinely useful next steps to offer.
+- Keep suggestions tightly relevant to what the user just asked or the current
+  state of the app — avoid generic or unrelated options.
+- Prefer 2–3 short, specific, actionable suggestions. No minimum — skip this
+  tool entirely if there are no good non-plan suggestions.
+- Do not suggest actions that simply repeat the user's previous request.
+- NEVER duplicate or rephrase uncompleted todo list items. The user already
+  sees those in the plan panel. For example, do not suggest "Let's build the
+  about page" if "About page" is an uncompleted plan item.
+- Focus on the current task: design tweaks, feedback requests, refinements
+  to what was just built, or cross-cutting concerns (fonts, colors, SEO).
+
 Example use cases:
 - Offering multiple options for the user to choose from
 - Providing common follow-up actions

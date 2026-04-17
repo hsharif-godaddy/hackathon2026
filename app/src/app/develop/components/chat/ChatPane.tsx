@@ -9,7 +9,7 @@ import Growl from '@ux/growl'
 import { AssetManagerItem, MediaType } from '@/app/develop/components/chat/AssetTypes'
 import ChatBanners from '@/app/develop/components/chat/banners/ChatBanners'
 import BudgetExceededBanner from '@/app/develop/components/chat/BudgetExceededBanner'
-import { ChatContext } from '@/app/develop/components/chat/ChatContext'
+import { ChatContext, type SendMessageOptions as SendChatMessageOptions } from '@/app/develop/components/chat/ChatContext'
 import ChatInput, { type StagedChatFile } from '@/app/develop/components/chat/ChatInput'
 import ChatToolbar from '@/app/develop/components/chat/ChatToolbar'
 import { UploadedFile } from '@/app/develop/components/chat/FileUploadButton'
@@ -34,6 +34,7 @@ import { useCreditGrants } from '@/hooks/useCreditGrants'
 import type { SendMessageOptions } from '@/hooks/useStreamingWebSocket'
 import { useSubscription } from '@/hooks/useSubscription'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
+import { useTodoListLoader } from '@/hooks/useTodoListLoader'
 import { useTranslations } from '@/hooks/useTranslations'
 import { appFetch } from '@/lib/gasket-config'
 import { shipAnalyticsLog } from '@/lib/logging'
@@ -171,6 +172,7 @@ export default function ChatPane({
 
   const { data: subscription } = useSubscription()
   const { data: isBudgetServiceEnabled = false } = useSwitchboard('app-builder-budget-service')
+  const { data: areChatPlansEnabled } = useSwitchboard('airo-builder-chat-plans')
 
   // Gate grants fetch: disabled when budget path active
   const { data: grants, isFetching: isGrantsFetching } = useCreditGrants({
@@ -225,6 +227,9 @@ export default function ChatPane({
   const prefersReducedMotion = useReducedMotion()
 
   const appId = useAppIdFromParams()
+
+  // Load current todo list into store so InputActionsPanel has data when the flag is on
+  useTodoListLoader(areChatPlansEnabled ? appId : null)
 
   const tabCrossfadeTransition = useMemo(
     () =>
@@ -678,7 +683,7 @@ export default function ChatPane({
   }, [appId, sendMessage, handleClearAiEditContext, t, selectedAssets, showTransientAttachmentBanner])
 
   // Handle sending a message - accepts optional content for programmatic sends
-  const handleSendMessage = useCallback(async (content?: string, options?: { isActionRequest?: boolean }) => {
+  const handleSendMessage = useCallback(async (content?: string, options?: SendChatMessageOptions) => {
     const messageToSend = content ?? inputValue
     const userInitiated = content === undefined
     const hasText = Boolean(messageToSend?.trim())
@@ -808,19 +813,27 @@ export default function ChatPane({
       setCurrentAppId(appId)
     }
 
+    // Merge referenced files with any custom context from the caller (e.g. plan item instructions)
+    const mergedCustomContext = options?.customContext || referencedFiles.length > 0
+      ? {
+          ...options?.customContext,
+          ...(referencedFiles.length > 0 ? { referencedFiles } : {}),
+        }
+      : undefined
+
     if (content) {
       void sendMessage({
         content: outboundContent,
         aiEditContext: { screenshot: null },
         isActionRequest: options?.isActionRequest,
-        customContext: referencedFiles.length > 0 ? { referencedFiles } : undefined
+        customContext: mergedCustomContext,
       })
     } else {
       void sendMessage({
         content: outboundContent,
         aiEditContext: { ...safeAiEditContext, screenshot: null },
         selectedAssets: mergedAssets,
-        customContext: referencedFiles.length > 0 ? { referencedFiles } : undefined
+        customContext: mergedCustomContext,
       })
 
       // Clear contexts only for user input sends
@@ -1008,7 +1021,7 @@ export default function ChatPane({
           aria-hidden={activeChatTab !== ChatTab.CHAT}
           inert={activeChatTab !== ChatTab.CHAT ? true : undefined}
         >
-          <PersistentTodoList />
+          {!areChatPlansEnabled && <PersistentTodoList />}
 
           <StreamingMessageList allMessages={visibleMessages} isCreateFlowSession={isCreateFlowSession} />
 

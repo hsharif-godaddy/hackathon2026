@@ -10,6 +10,7 @@ import MessageToolCallsRenderer from '@/app/develop/components/MessageToolCallsR
 import ResponseMetadata from '@/app/develop/components/ResponseMetadata'
 import StreamingAlertMessage from '@/app/develop/components/StreamingAlertMessage'
 import { hasValidSegments, isStreamingMessage } from '@/app/develop/components/utils'
+import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import type { ChatMessage, StreamingMessage as StreamingMessageType, ToolCall } from '@/stores/useStreamingConversationStore'
 
@@ -24,6 +25,7 @@ interface StreamingIntegratedResponseProps {
 
 export default function StreamingIntegratedResponse({ message, isActiveStream = false, isLastAssistantMessage = false, startTime, streamingState, showThinking = false }: StreamingIntegratedResponseProps) {
   const t = useTranslations();
+  const { data: areChatPlansEnabled } = useSwitchboard('airo-builder-chat-plans');
   const hasSegments = hasValidSegments(message)
   const isComplete = isStreamingMessage(message) ? message.isComplete : true
 
@@ -178,8 +180,9 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
 
     // Filter suggestedResponse tool blocks before grouping so they don't act as
     // boundaries that split consecutive action tools into separate groups.
-    // When it IS the last assistant message, suggestedResponse renders normally.
-    const filteredBlocks = isLastAssistantMessage
+    // When chat plans are enabled, NBAs are shown in InputActionsPanel — always filter.
+    // Otherwise, show suggestedResponse only on the last assistant message.
+    const filteredBlocks = (isLastAssistantMessage && !areChatPlansEnabled)
       ? blocks
       : blocks.filter((block) => !(block.type === 'tool' && block.toolCall?.name === 'suggestedResponse'))
 

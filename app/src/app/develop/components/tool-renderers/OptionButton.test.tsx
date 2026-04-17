@@ -62,8 +62,9 @@ describe('OptionButton', () => {
 
     const button = screen.getByRole('button')
     expect(button).toBeDisabled()
-    expect(button).toHaveClass('disabled:opacity-50')
-    expect(button).toHaveClass('disabled:cursor-not-allowed')
+    expect(button).toHaveClass('opacity-50')
+    expect(button).toHaveClass('cursor-not-allowed')
+    expect(button).toHaveClass('pointer-events-none')
   })
 
   it('should not show radio circle when isSelectable is false', () => {

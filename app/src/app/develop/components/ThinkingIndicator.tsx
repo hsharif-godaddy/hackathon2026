@@ -38,13 +38,18 @@ export default function ThinkingIndicator({
 
   if (inline) {
     return (
-      <span className={cn("inline-flex items-center gap-1 text-xs text-foreground/70", className)}>
-        <span className="inline-flex items-center justify-center rounded border border-foreground/20 bg-intents-ux-box-backgroundColor p-[3px] relative">
+      <span
+        className={cn("inline-flex items-center gap-1.5 text-base md:text-sm text-foreground/70", className)}
+      >
+        <span className="inline-flex items-center justify-center relative">
           {active && <PulseRings />}
-          <Brain className="size-2 relative" />
+          <Brain className="size-2.5 relative" />
         </span>
-        <span className="whitespace-nowrap" aria-live="polite">
-          {active ? <span className="italic">{activeLabelDefault}</span> : labelDefault}
+        <span
+          className={cn("whitespace-nowrap", active && "font-semibold")}
+          aria-live="polite"
+        >
+          {active ? activeLabelDefault : labelDefault}
         </span>
       </span>
     )

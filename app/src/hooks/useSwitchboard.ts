@@ -40,6 +40,7 @@ const LOCAL_FEATURE_OVERRIDES: Record<string, boolean> = {
   'appbuilder-template-selector': true,
   'appbuilder-model-selector': true,
   'airo-builder-support-chat-ui': true, // default: show support messages locally
+  'airo-builder-chat-plans': true, // opt-in: enables combined NBA + plan panel in chat input
 };
 
 interface FetchOptions {

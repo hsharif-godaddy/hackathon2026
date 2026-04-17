@@ -7,7 +7,7 @@ import { todoListTool, TodoListToolOptions } from '../todo-list-tool.js'
  * Comprehensive planning tool with SQLite storage
  */
 export const todoListAITool: Tool = createTool(
-  'Create and manage todo lists for planning. CRITICAL: Mark items complete IMMEDIATELY after finishing each task - do not wait until end of workflow or git commit. Use show_list to display completed work. Use select_list to switch between todo lists. Use this to break down complex tasks and track progress in real-time.',
+  'Create and manage todo lists for planning. CRITICAL: Call mark_done in the SAME TURN you finish a task — before suggestedResponse, before ending your response. The user sees the plan update in real-time; if you forget, it looks like nothing was accomplished. Never batch mark_done calls or defer them. Use show_list to display completed work. Use select_list to switch between todo lists. Use this to break down complex tasks and track progress in real-time.',
   z.object({
     operation: z.enum([
       'create_list',

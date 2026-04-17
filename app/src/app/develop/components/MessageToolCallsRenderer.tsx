@@ -4,6 +4,7 @@ import React from 'react'
 
 import ToolRenderer from '@/app/develop/components/ToolRenderer'
 import WidgetRenderer from '@/app/develop/components/WidgetRenderer'
+import { useSwitchboard } from '@/hooks/useSwitchboard'
 import type { ToolCall } from '@/stores/useStreamingConversationStore'
 
 interface MessageToolCallsRendererProps {
@@ -21,8 +22,10 @@ interface MessageToolCallsRendererProps {
  * @param isLastAssistantMessage - Whether this is the last assistant message
  * @returns React element for the tool call
  */
-function renderToolCall(toolCall: ToolCall, index?: number, isActiveStream?: boolean, isLastAssistantMessage?: boolean) {
-  if (toolCall.name === 'suggestedResponse' && !isLastAssistantMessage) {
+function renderToolCall(toolCall: ToolCall, index?: number, isActiveStream?: boolean, isLastAssistantMessage?: boolean, chatPlansEnabled?: boolean) {
+  // When chat plans are enabled, NBAs live in InputActionsPanel — never render in message stream.
+  // Otherwise, only render suggestedResponse on the last assistant message.
+  if (toolCall.name === 'suggestedResponse' && (!isLastAssistantMessage || chatPlansEnabled)) {
     return null
   }
 
@@ -55,10 +58,11 @@ function renderToolCall(toolCall: ToolCall, index?: number, isActiveStream?: boo
  * @returns React element containing all tool calls, or null if empty
  */
 function MessageToolCallsRenderer({ toolCalls, isActiveStream = false, isLastAssistantMessage = false }: MessageToolCallsRendererProps) {
+  const { data: areChatPlansEnabled } = useSwitchboard('airo-builder-chat-plans')
 
   return (
     <div className="space-y-1">
-      {toolCalls.map((toolCall, index) => renderToolCall(toolCall, index, isActiveStream, isLastAssistantMessage))}
+      {toolCalls.map((toolCall, index) => renderToolCall(toolCall, index, isActiveStream, isLastAssistantMessage, areChatPlansEnabled))}
     </div>
   )
 }
