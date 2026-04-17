@@ -561,28 +561,38 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
     const existingTool = activeStream.toolCalls.find(tc => tc.id === toolCall.id)
 
     if (existingTool) {
-      // Update existing tool and its segment with the correct name/data from the authoritative tool_start event
       const updatedToolCalls = activeStream.toolCalls.map(tc =>
         tc.id === toolCall.id ? { ...tc, ...toolCall } : tc
       )
-      const updatedSegments = activeStream.segments.map(segment => {
-        if ((segment.type === 'tool_start' || segment.type === 'tool_call') && segment.toolCall?.id === toolCall.id) {
-          return {
-            ...segment,
-            content: `Starting ${toolCall.name}...`,
-            toolCall: { ...segment.toolCall, ...toolCall }
-          }
-        }
-        return segment
-      })
 
-      set({
-        activeStream: {
-          ...activeStream,
-          toolCalls: updatedToolCalls,
-          segments: updatedSegments
+      const hasSegment = activeStream.segments.some(
+        s => (s.type === 'tool_start' || s.type === 'tool_call') && s.toolCall?.id === toolCall.id
+      )
+
+      if (hasSegment) {
+        // Segment already exists — update in place
+        const updatedSegments = activeStream.segments.map(segment => {
+          if ((segment.type === 'tool_start' || segment.type === 'tool_call') && segment.toolCall?.id === toolCall.id) {
+            return {
+              ...segment,
+              content: `Starting ${toolCall.name}...`,
+              toolCall: { ...segment.toolCall, ...toolCall }
+            }
+          }
+          return segment
+        })
+        set({ activeStream: { ...activeStream, toolCalls: updatedToolCalls, segments: updatedSegments } })
+      } else {
+        // No segment yet — create one now at the correct position
+        const segment: StreamSegment = {
+          id: generateId(),
+          type: 'tool_start',
+          content: `Starting ${toolCall.name}...`,
+          timestamp: new Date(),
+          toolCall: { ...existingTool, ...toolCall }
         }
-      })
+        set({ activeStream: { ...activeStream, toolCalls: updatedToolCalls, segments: [...activeStream.segments, segment] } })
+      }
     } else {
       const segment: StreamSegment = {
         id: generateId(),
@@ -789,22 +799,13 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
     // Check if tool exists in toolCalls array
     const existingTool = activeStream.toolCalls.find(tc => tc.id === toolId)
 
-    // If toolName is missing/unknown, try to find it from existing tool or segments
+    // If toolName is missing/unknown, resolve from the existing toolCall entry
     let resolvedToolName = toolName
-    if (!existingTool && (toolName === 'unknown-tool' || !toolName)) {
-      // Try to find tool name from segments
-      const segmentWithTool = activeStream.segments.find(
-        s => (s.type === 'tool_start' || s.type === 'tool_call') && s.toolCall?.id === toolId
-      )
-      if (segmentWithTool?.toolCall?.name) {
-        resolvedToolName = segmentWithTool.toolCall.name
-      }
-    } else if (existingTool && existingTool.name) {
+    if (existingTool && existingTool.name) {
       resolvedToolName = existingTool.name
     }
 
     if (!existingTool) {
-      // Tool doesn't exist yet - create it (handles race condition where delta arrives before tool_start)
       const newToolCall: ToolCall = {
         id: toolId,
         name: resolvedToolName,
@@ -814,18 +815,9 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
         partialInput: delta
       }
 
-      const segment: StreamSegment = {
-        id: generateId(),
-        type: 'tool_start',
-        content: `Starting ${resolvedToolName}...`,
-        timestamp: new Date(),
-        toolCall: newToolCall
-      }
-
       const updatedStream = {
         ...activeStream,
         toolCalls: [...activeStream.toolCalls, newToolCall],
-        segments: [...activeStream.segments, segment]
       }
 
       set({ activeStream: updatedStream })

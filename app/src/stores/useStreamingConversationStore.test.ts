@@ -460,6 +460,7 @@ describe('useStreamingConversationStore', function packageTests() {
       const streamBefore = useStreamingConversationStore.getState().activeStream;
       expect(streamBefore?.toolCalls).toHaveLength(1);
       expect(streamBefore?.toolCalls[0].name).toBe('unknown-tool');
+      expect(streamBefore?.segments).toHaveLength(0);
 
       // Now tool_start arrives with correct name
       act(() => {
@@ -515,9 +516,19 @@ describe('useStreamingConversationStore', function packageTests() {
         store.startNewStream('Edit a file');
       });
 
-      // Simulate delta creating tool with unknown name, then tool_start fixing it
+      // Simulate delta creating tool entry, then tool_start creating the segment, then tool_call fixing the name
       act(() => {
         useStreamingConversationStore.getState().updateToolDelta('tool-1', 'unknown-tool', '{"command":');
+      });
+
+      // tool_start arrives and creates the segment (updateToolDelta only registers in toolCalls)
+      act(() => {
+        useStreamingConversationStore.getState().addToolStartSegment({
+          id: 'tool-1',
+          name: 'unknown-tool',
+          input: {},
+          status: 'running',
+        });
       });
 
       // tool_call arrives with correct name and full input
