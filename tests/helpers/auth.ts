@@ -72,6 +72,7 @@ export async function handleSsoLogin(page: Page): Promise<void> {
   } else if (signInType === 'redirect') {
     console.log('Redirected to sign-in page (test environment)');
     await fillCredentials(page, username, password);
+    await page.waitForURL('**/', { timeout: SSO_TIMEOUT });
   } else {
     throw new Error('Sign-in failed: Timed out waiting for either iframe modal or login redirect');
   }

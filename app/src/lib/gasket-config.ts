@@ -28,6 +28,7 @@ export interface GasketConfig {
   sso: {
     loginUrl: string;
     logoutUrl: string;
+    appName: string;
   };
   redirects: {
     loginRedirectUrl: string;
@@ -54,7 +55,8 @@ async function loadRuntimeConfig(): Promise<GasketConfig> {
       },
       sso: {
         loginUrl: process.env.SSO_LOGIN_URL || 'https://sso.test-godaddy.com/login',
-        logoutUrl: process.env.SSO_LOGOUT_URL || 'https://sso.test-godaddy.com/logout'
+        logoutUrl: process.env.SSO_LOGOUT_URL || 'https://sso.test-godaddy.com/logout',
+        appName: process.env.SSO_APP_NAME || 'airo-builder',
       },
       redirects: {
         loginRedirectUrl: process.env.LOGIN_REDIRECT_URL || 'https://airo-builder.test-godaddy.com/',
@@ -154,7 +156,7 @@ export const authConfigs = {
 // registered domain when redirecting back after authentication.
 export async function getLoginUrl(returnUrl?: string): Promise<string> {
   const gasketConfig = await getGasketConfig();
-  const params = new URLSearchParams({ app: 'airo-builder' });
+  const params = new URLSearchParams({ app: gasketConfig.sso.appName });
 
   const target = returnUrl || gasketConfig.redirects.loginRedirectUrl;
   if (target) {
@@ -180,7 +182,7 @@ export async function getLogoutUrl(): Promise<string> {
   const gasketConfig = await getGasketConfig();
   const baseUrl = gasketConfig.sso.logoutUrl;
   const params = new URLSearchParams({
-    app: 'airo-builder',
+    app: gasketConfig.sso.appName,
     redirect: gasketConfig.redirects.logoutRedirectUrl
   });
   return `${baseUrl}?${params.toString()}`;

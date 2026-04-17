@@ -5,7 +5,7 @@ vi.mock('@/lib/request-context', () => ({
 }));
 
 const mockConfig = {
-  sso: { loginUrl: 'https://sso.test-godaddy.com/login' },
+  sso: { loginUrl: 'https://sso.test-godaddy.com/login', appName: 'airo-builder' },
   redirects: { loginRedirectUrl: 'https://airo-builder.test-godaddy.com/' },
 };
 

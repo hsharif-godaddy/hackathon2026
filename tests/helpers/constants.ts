@@ -35,7 +35,7 @@ export const APPS_GRID_PAGE_SIZE = 12;
 /**
  * Environment configuration
  */
-export type Environment = 'dev' | 'test' | 'prod';
+export type Environment = 'dev' | 'pre-test' | 'test' | 'prod';
 
 export interface EnvironmentConfig {
   baseUrl: string;
@@ -48,6 +48,11 @@ export const environments: Record<Environment, EnvironmentConfig> = {
     baseUrl: 'https://airo-builder.dev-godaddy.com',
     usernameVar: 'DEV_USERNAME',
     passwordVar: 'DEV_PASSWORD',
+  },
+  'pre-test': {
+    baseUrl: 'https://pre-test-airo-builder.test-godaddy.com',
+    usernameVar: 'PRE_TEST_USERNAME',
+    passwordVar: 'PRE_TEST_PASSWORD',
   },
   test: {
     baseUrl: 'https://airo-builder.test-godaddy.com',
@@ -68,12 +73,12 @@ export function getEnvConfig(): { env: Environment; config: EnvironmentConfig } 
 }
 
 export function getCredentials(): { username: string; password: string } {
-  const { env } = getEnvConfig();
-  const username = process.env[`${env.toUpperCase()}_USERNAME`] || process.env.TEST_USERNAME;
-  const password = process.env[`${env.toUpperCase()}_PASSWORD`] || process.env.TEST_PASSWORD;
+  const { config } = getEnvConfig();
+  const username = process.env[config.usernameVar];
+  const password = process.env[config.passwordVar];
 
   if (!username || !password) {
-    throw new Error(`${env.toUpperCase()}_USERNAME and ${env.toUpperCase()}_PASSWORD environment variables must be set`);
+    throw new Error(`${config.usernameVar} and ${config.passwordVar} environment variables must be set`);
   }
 
   return { username, password };

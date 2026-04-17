@@ -311,7 +311,7 @@ export default makeGasket({
       ssoRedirectOverride: process.env.SSO_LOGIN_URL,
       ssoLogoutOverride: process.env.SSO_LOGOUT_URL,
       ssoRedirectSubdomain: false,
-      appName: 'airo-builder', // Fallback when visitor.hostname is unavailable
+      appName: process.env.SSO_APP_NAME || 'airo-builder', // Fallback when visitor.hostname is unavailable
       // Let Gasket handle automatic redirects to SSO
       alt: undefined // This allows automatic SSO redirects instead of showing alt content
     }

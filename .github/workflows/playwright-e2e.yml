@@ -16,8 +16,9 @@ on:
         default: "prod"
         type: choice
         options:
-          - test
           - dev
+          - pre-test
+          - test
           - prod
       test_filter:
         description: "Run specific test (or 'all' for full suite)"
@@ -91,6 +92,9 @@ jobs:
               ;;
             dev)
               echo "base_url=https://airo-builder.dev-godaddy.com" >> $GITHUB_OUTPUT
+              ;;
+            pre-test)
+              echo "base_url=https://pre-test-airo-builder.test-godaddy.com" >> $GITHUB_OUTPUT
               ;;
             test)
               echo "base_url=https://airo-builder.test-godaddy.com" >> $GITHUB_OUTPUT
@@ -245,9 +249,16 @@ jobs:
           fi
         env:
           CI: true
+          DEV_USERNAME: ${{ steps.get-credentials.outputs.username }}
+          DEV_PASSWORD: ${{ steps.get-credentials.outputs.password }}
+          PRE_TEST_USERNAME: ${{ steps.get-credentials.outputs.username }}
+          PRE_TEST_PASSWORD: ${{ steps.get-credentials.outputs.password }}
           TEST_USERNAME: ${{ steps.get-credentials.outputs.username }}
           TEST_PASSWORD: ${{ steps.get-credentials.outputs.password }}
+          PROD_USERNAME: ${{ steps.get-credentials.outputs.username }}
+          PROD_PASSWORD: ${{ steps.get-credentials.outputs.password }}
           PLAYWRIGHT_BASE_URL: ${{ steps.env-config.outputs.base_url }}
+          PLAYWRIGHT_ENV: ${{ steps.env-config.outputs.environment }}
           TEST_ENVIRONMENT: ${{ steps.env-config.outputs.environment }}
           ES_URL: ${{ steps.get-es-credentials.outputs.es_url }}
           ES_API_KEY: ${{ steps.get-es-credentials.outputs.es_api_key }}
