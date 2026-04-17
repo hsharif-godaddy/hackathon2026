@@ -1,6 +1,6 @@
 'use client'
 
-import { ChangeEvent, useEffect, useRef, useState } from 'react';
+import { ChangeEvent, useEffect, useMemo, useRef, useState } from 'react';
 import Button from '@ux/button';
 import CloudUploadIcon from '@ux/icon/cloud-upload';
 import ImageIcon from '@ux/icon/image';
@@ -13,7 +13,7 @@ import { logger } from '@/lib/request-context';
 import { Popover, PopoverContent, PopoverTrigger } from '@/lib/shadcn/popover';
 import { ACCEPTED_UPLOAD_FILE_TYPES } from '@/utils/file-types';
 import { validateForStaging } from '@/utils/file-upload-validation';
-import { generateClickEID } from '@/utils/instrumentation';
+import { logClickEvent } from '@/utils/instrumentation';
 
 export type { UploadedFile } from '@/app/develop/components/chat/FileUploadButton';
 
@@ -46,12 +46,16 @@ export default function ChatAttachmentMenu({
     setIsScreenCaptureSupported(typeof navigator?.mediaDevices?.getDisplayMedia === 'function');
   }, []);
 
+  const clickContext = useMemo(() => (appId ? { appId } : undefined), [appId]);
+
   const handleFileButtonClick = () => {
+    logClickEvent('develop.attachment_menu.file', clickContext)();
     setOpen(false);
     fileInputRef.current?.click();
   };
 
   const handleFileReferenceClick = () => {
+    logClickEvent('develop.attachment_menu.reference', clickContext)();
     setOpen(false);
     setShowFileReferenceModal(true);
   };
@@ -91,6 +95,7 @@ export default function ChatAttachmentMenu({
   };
 
   const handleScreenshotClick = async () => {
+    logClickEvent('develop.attachment_menu.screenshot', clickContext)();
     setOpen(false);
     setIsCapturing(true);
 
@@ -212,12 +217,13 @@ export default function ChatAttachmentMenu({
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Button
+            data-testid="chat-attachment-menu-trigger"
             disabled={disabled || isCapturing}
             design="stateless"
             size="sm"
             icon={<PlusIcon />}
             className={`!bg-intents-ux-box-backgroundColor !border !border-border !rounded-lg transition-all duration-200 hover:!shadow-md ${open ? '!shadow-md' : ''}`}
-            data-eid={generateClickEID('develop.chat_input.attachment_menu')}
+            onClick={() => logClickEvent('develop.chat_input.attachment_menu', clickContext)()}
             aria-label={t('builder_chatfiles_attach', undefined, 'Attach')}
           />
         </PopoverTrigger>
@@ -231,7 +237,6 @@ export default function ChatAttachmentMenu({
               disabled={disabled}
               className="!justify-start"
               onClick={handleFileReferenceClick}
-              data-eid={generateClickEID('develop.attachment_menu.reference')}
             />
             {isScreenCaptureSupported && (
               <Button
@@ -242,7 +247,6 @@ export default function ChatAttachmentMenu({
                 disabled={isCapturing || disabled}
                 className="!justify-start"
                 onClick={handleScreenshotClick}
-                data-eid={generateClickEID('develop.attachment_menu.screenshot')}
               />
             )}
             <Button
@@ -253,7 +257,6 @@ export default function ChatAttachmentMenu({
               disabled={disabled}
               className="!justify-start"
               onClick={handleFileButtonClick}
-              data-eid={generateClickEID('develop.attachment_menu.file')}
             />
           </div>
         </PopoverContent>

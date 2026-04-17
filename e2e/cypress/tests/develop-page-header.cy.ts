@@ -35,7 +35,7 @@ describe('Develop Page - Header', () => {
     it('should display header with logo, beta tag, publish button, and user menu', () => {
       cy.get('header', { timeout: 30000 }).should('be.visible');
 
-      cy.get('header [data-eid*="header.airo_ai_link"]')
+      cy.get('header a[href="/"]')
         .should('exist')
         .should('have.attr', 'href', '/');
 
@@ -50,7 +50,7 @@ describe('Develop Page - Header', () => {
     });
 
     it('should navigate back to homepage when logo is clicked', () => {
-      cy.get('header [data-eid*="header.airo_ai_link"]')
+      cy.get('header a[href="/"]')
         .first()
         .click();
 
@@ -63,23 +63,23 @@ describe('Develop Page - Header', () => {
       cy.get('header').first().should('be.visible');
 
       // Switch to mobile view via device selector
-      cy.get('[data-eid*="preview.device_selector"]').click();
+      cy.get('[data-testid="preview-device-selector-trigger"]').click();
       cy.get('[data-radix-popper-content-wrapper]')
-        .find('[data-eid*="preview.device_select_iphone-se"]')
+        .contains('iPhone SE')
         .click();
       cy.get('header').first().should('be.visible');
 
       // Switch back to desktop view
-      cy.get('[data-eid*="preview.device_selector"]').click();
+      cy.get('[data-testid="preview-device-selector-trigger"]').click();
       cy.get('[data-radix-popper-content-wrapper]')
-        .find('[data-eid*="preview.device_select_full"]')
+        .contains('Full size')
         .click();
       cy.get('header').first().should('be.visible');
 
-      cy.get('[data-eid*="chat_toolbar.history"]').click({ force: true });
+      cy.get('button[aria-label*="builder_chat_toolbar_button_history"]').click({ force: true });
       cy.get('header').first().should('be.visible');
 
-      cy.get('[data-eid*="chat_toolbar.chat"]').click({ force: true });
+      cy.get('button[aria-label*="builder_chat_toolbar_button_chat"]').click({ force: true });
       cy.get('header').first().should('be.visible');
     });
   });

@@ -583,10 +583,9 @@ describe('SecretsPanel', () => {
       await waitFor(function waitForEditRow() {
         expect(screen.getByRole('button', { name: 'builder_common_cancel' })).toBeInTheDocument();
       });
-      const rowSave = document.querySelector(
-        '[data-eid="develop.settings.secrets.save.QUOTE_RECIPIENT_EMAIL.click"]'
-      );
-      expect(rowSave).not.toBeNull();
+      const rowSave = screen.getByRole('button', {
+        name: /builder_common_save.*QUOTE_RECIPIENT_EMAIL/,
+      });
       expect(rowSave).toBeDisabled();
     });
   });
@@ -700,9 +699,8 @@ describe('SecretsPanel', () => {
       expect(editedValueInput).not.toBeNull();
       await user.type(editedValueInput as HTMLElement, 'persisted-after-save');
 
-      const rowSave = document.querySelector('[data-eid="develop.settings.secrets.save.API_KEY.click"]');
-      expect(rowSave).not.toBeNull();
-      await user.click(rowSave as HTMLElement);
+      const rowSave = screen.getByRole('button', { name: /builder_common_save.*API_KEY/ });
+      await user.click(rowSave);
 
       await waitFor(function waitForSubmit() {
         expect(mockMutateAsync).toHaveBeenCalledWith({

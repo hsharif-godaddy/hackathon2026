@@ -9,7 +9,7 @@
  */
 import { test, expect } from '@playwright/test';
 
-import { handleSsoLogin, clearAuthState, openUserMenu, verifyAuthenticated } from '../helpers/auth';
+import { clearAuthState, handleSsoLogin, openUserMenu, userMenuTrigger, verifyAuthenticated } from '../helpers/auth';
 import { LONG_TIMEOUT, DEFAULT_TIMEOUT } from '../helpers/constants';
 import { logTestResult, logTestStart } from '../helpers/ui';
 
@@ -36,7 +36,10 @@ test.describe('Authentication', () => {
 
     // Trigger login via user menu
     await openUserMenu(page);
-    await page.locator('[data-eid*="user_menu.sign_in"]').click();
+    await page
+      .locator('[data-slot="popover-content"][data-state="open"]')
+      .getByRole('button', { name: /sign\s*in|builder_common_signin/i })
+      .click();
     await handleSsoLogin(page);
 
     // Wait for redirect back to homepage
@@ -106,7 +109,7 @@ test.describe('Authentication', () => {
     await openUserMenu(page);
     console.log('  [6.2] User menu opened');
 
-    const signOutLocator = page.locator('[data-eid*="user_menu.sign_out"]');
+    const signOutLocator = page.locator('[data-slot="popover-content"][data-state="open"]').getByRole('button', { name: /sign\s*out|builder_common_signout/i });
     await expect(signOutLocator).toBeVisible();
     console.log('  [6.3] Sign Out button visible');
 
@@ -149,8 +152,8 @@ test.describe('Authentication', () => {
     // STEP 2: Sign In option in user menu
     // ========================================
     console.log('👤 Step 2: Checking user menu (unauthenticated)...');
-    const userMenuButton = page.locator('[data-eid*="user_menu.button"], [data-eid*="chat_toolbar.user_menu"]');
-    await userMenuButton.click({ force: true });
+    const menuTrigger = userMenuTrigger(page);
+    await menuTrigger.click({ force: true });
     await page.getByRole('button', { name: /sign in/i }).waitFor({ state: 'visible', timeout: 5000 });
     console.log('  ✓ Sign In option visible in user menu');
     await page.click('body', { position: { x: 0, y: 0 } });
@@ -166,8 +169,11 @@ test.describe('Authentication', () => {
     // STEP 4: SSO triggers on Sign In click
     // ========================================
     console.log('🔐 Step 4: Testing Sign In button triggers SSO...');
-    await userMenuButton.click({ force: true });
-    await page.locator('[data-eid*="user_menu.sign_in"]').click();
+    await menuTrigger.click({ force: true });
+    await page
+      .locator('[data-slot="popover-content"][data-state="open"]')
+      .getByRole('button', { name: /sign\s*in|builder_common_signin/i })
+      .click();
 
     // SSO can appear as iframe modal (prod) or redirect (test/dev)
     const ssoIframe = page.locator('iframe[src*="sso"]');

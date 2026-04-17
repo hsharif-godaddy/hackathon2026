@@ -51,8 +51,10 @@ export function getToolRenderType(toolName: string): 'plain' | 'markdown' {
 }
 
 export function useAppIdFromParams() {
-  const params = useParams()
-  return params?.id as string || ''
+  const params = useParams();
+  const raw = params?.id;
+  const id = Array.isArray(raw) ? raw[0] : raw;
+  return typeof id === 'string' && id.length > 0 ? id : '';
 }
 
 const VISUAL_CONTEXT_TIMEOUT_MS = 100

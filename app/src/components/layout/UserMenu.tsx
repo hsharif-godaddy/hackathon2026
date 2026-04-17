@@ -1,7 +1,6 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import React, { useCallback, useMemo, useState } from 'react';
 import Button from '@ux/button';
 import AppsIcon from '@ux/icon/apps';
@@ -30,8 +29,9 @@ import {
   PopoverTrigger,
 } from '@/lib/shadcn/popover';
 import { Separator } from '@/lib/shadcn/separator';
+import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { getRootDomain } from '@/utils/getRootDomain';
-import { generateClickEID } from '@/utils/instrumentation';
+import { logClickEvent } from '@/utils/instrumentation';
 
 const AIRO_HQ_URL = 'https://airo.godaddy.com';
 const getMyProductsUrl = () => `https://account.${getRootDomain() || 'godaddy.com'}/products`;
@@ -67,6 +67,11 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
   const { signIn } = useSsoSignIn();
   const { data: isManagePlanEnabled } = useSwitchboard('appbuilder-manage-plan', { enabled: isAuthenticated });
   const { data: activeSubscription } = useSubscription({ enabled: isAuthenticated && !!isManagePlanEnabled });
+  const currentAppId = useDevelopPageStore((state) => state.currentAppId);
+  const clickContext = useMemo(
+    () => (currentAppId ? { appId: currentAppId } : undefined),
+    [currentAppId],
+  );
 
   const handleSignInClick = useCallback(() => {
     setOpen(false);
@@ -153,9 +158,11 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
             <IconButton
               icon={<UserIcon className="size-2.5" />}
               label={t('builder_user_menu_label')}
-              data-eid={generateClickEID('develop.chat_toolbar.user_menu')}
               data-testid="user-menu-trigger"
               aria-label={t('builder_user_menu_label')}
+              onClick={() => {
+                logClickEvent('develop.chat_toolbar.user_menu', clickContext)();
+              }}
             />
           ) : (
             <Button
@@ -164,8 +171,11 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
               className='!text-intents-ux-boxHighContrast-foregroundColor'
               size="sm"
               icon={<UserIcon className="size-2" />}
-              data-eid={generateClickEID(`${location}.user_menu.button`)}
               data-testid="user-menu-trigger"
+              aria-label={t('builder_user_menu_label')}
+              onClick={() => {
+                logClickEvent(`${location}.user_menu.button`, clickContext)();
+              }}
             />
           )}
         </PopoverTrigger>
@@ -180,8 +190,11 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
                     design="option"
                     size="sm"
                     className="!justify-start gap-1 px-1"
-                    onClick={item.onClick}
-                    data-eid={generateClickEID(item.eid)}
+                    data-testid={`user-menu-item-${item.key}`}
+                    onClick={() => {
+                      logClickEvent(item.eid, clickContext)();
+                      item.onClick?.();
+                    }}
                     icon={item.icon}
                     text={item.text}
                   />

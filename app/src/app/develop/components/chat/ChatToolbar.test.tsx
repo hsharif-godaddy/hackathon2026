@@ -8,6 +8,7 @@ import { screen } from '@testing-library/react';
 
 import { ChatTab, MobileMode, SettingsSection, ViewMode } from '@/app/develop/components/types';
 import { renderWithProviders } from '@/tests/test-utils';
+import { logClickEvent } from '@/utils/instrumentation';
 import ChatToolbar from './ChatToolbar';
 
 const mockRouter = { push: vi.fn() };
@@ -77,6 +78,7 @@ vi.mock('@/hooks/useGitHistory', () => ({
 }));
 vi.mock('@/utils/instrumentation', () => ({
   generateClickEID: vi.fn((id) => id),
+  logClickEvent: vi.fn(() => vi.fn()),
 }));
 vi.mock('@/app/develop/components/chat/AssetManagerModal', () => ({
   default: () => <div data-testid="asset-manager-modal">AssetManagerModal</div>,
@@ -142,7 +144,7 @@ describe('ChatToolbar', () => {
 
     const { container } = renderWithProviders(<ChatToolbar {...defaultProps} />);
 
-    const settingsButton = container.querySelector('[data-eid="develop.chat_toolbar.settings"]');
+    const settingsButton = screen.getByRole('radio', { name: 'Settings' });
     expect(settingsButton).toBeInTheDocument();
   });
 
@@ -232,7 +234,7 @@ describe('ChatToolbar', () => {
 
     const { container } = renderWithProviders(<ChatToolbar {...defaultProps} />);
 
-    const settingsButton = container.querySelector('[data-eid="develop.chat_toolbar.settings"]');
+    const settingsButton = screen.getByRole('radio', { name: 'Settings' });
     expect(settingsButton).toBeInTheDocument();
   });
 
@@ -245,20 +247,16 @@ describe('ChatToolbar', () => {
     expect(screen.queryByLabelText('builder_settings_title')).not.toBeInTheDocument();
   });
 
-  it('should have correct data-eid attributes', () => {
-    const { container } = renderWithProviders(<ChatToolbar {...defaultProps} />);
+  it('should log toolbar tab clicks via logClickEvent', async () => {
+    const { user } = renderWithProviders(<ChatToolbar {...defaultProps} />);
 
-    const chatButton = container.querySelector('[data-eid="develop.chat_toolbar.chat"]');
-    expect(chatButton).toBeInTheDocument();
+    await user.click(screen.getByLabelText('builder_chat_toolbar_button_chat'));
+    expect(vi.mocked(logClickEvent)).toHaveBeenCalledWith('develop.chat_toolbar.chat', { appId: 'app-123' });
 
-    const historyButton = container.querySelector('[data-eid="develop.chat_toolbar.history"]');
-    expect(historyButton).toBeInTheDocument();
+    vi.mocked(logClickEvent).mockClear();
 
-    const mediaButton = container.querySelector('[data-eid="develop.chat_toolbar.media"]');
-    expect(mediaButton).toBeInTheDocument();
-
-    const settingsButton = container.querySelector('[data-eid="develop.chat_toolbar.settings"]');
-    expect(settingsButton).toBeInTheDocument();
+    await user.click(screen.getByLabelText('builder_chat_toolbar_button_history'));
+    expect(vi.mocked(logClickEvent)).toHaveBeenCalledWith('develop.chat_toolbar.history', { appId: 'app-123' });
   });
 
 });

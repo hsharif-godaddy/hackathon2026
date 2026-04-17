@@ -1,7 +1,7 @@
 'use client'
 
 import { AnimatePresence, motion } from 'framer-motion'
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import Box from '@ux/box'
 import CodeIcon from '@ux/icon/code'
 import CommentsIcon from '@ux/icon/comments'
@@ -27,7 +27,7 @@ import { logger } from '@/lib/request-context'
 import { cn } from '@/lib/utils'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useGitStore } from '@/stores/useGitStore'
-import { generateClickEID } from '@/utils/instrumentation'
+import { logClickEvent } from '@/utils/instrumentation'
 
 interface ChatToolbarProps {
   isProcessing?: boolean
@@ -46,7 +46,10 @@ export default function ChatToolbar({
   }: ChatToolbarProps) {
   const t = useTranslations();
   const appId = useAppIdFromParams()
+
+  const clickContext = useMemo(() => (appId ? { appId } : undefined), [appId])
   const { activeChatTab, setActiveChatTab } = useChatTabs()
+
   const isMobile = useDevelopPageStore((state) => state.isMobile);
   const mobileMode = useDevelopPageStore((state) => state.mobileMode);
   const hasUnsavedChanges = useDevelopPageStore((state) => state.hasUnsavedChanges);
@@ -132,40 +135,54 @@ export default function ChatToolbar({
     setActiveChatTab(tab)
   }
 
+  const logTabToolbarClick = (tab: ChatTab) => {
+    const tabEid: Partial<Record<ChatTab, string>> = {
+      [ChatTab.CHAT]: 'develop.chat_toolbar.chat',
+      [ChatTab.MEDIAS]: 'develop.chat_toolbar.media',
+      [ChatTab.HISTORY]: 'develop.chat_toolbar.history',
+      [ChatTab.ANALYTICS]: 'develop.chat_toolbar.analytics',
+      [ChatTab.SETTINGS]: 'develop.chat_toolbar.settings',
+    }
+    const eid = tabEid[tab]
+    if (eid) logClickEvent(eid, clickContext)()
+  }
+
   // Desktop: Always show TOOLS mode
   // Mobile: Show different toolbars based on mobileMode
   const showToolsMode = !isMobile || mobileMode === MobileMode.TOOLS;
   const showPreviewMode = isMobile && mobileMode === MobileMode.PREVIEW;
 
   return (
-    <Box
-      orientation="horizontal"
-      gap="sm"
-      inlineAlignChildren="center"
-      blockAlignChildren='spaceBetween'
-      className={cn("pt-0 pb-1 md:pb-2 md:pb-0 px-1.5 sm:px-3 md:p-0", className)}
-      style={isMobile ? { paddingBottom: `calc(0.25rem + env(safe-area-inset-bottom))` } : undefined}
-    >
+    <div data-testid="chat-toolbar" className="min-w-0 w-full">
+      <Box
+        orientation="horizontal"
+        gap="sm"
+        inlineAlignChildren="center"
+        blockAlignChildren='spaceBetween'
+        className={cn("pt-0 pb-1 md:pb-2 md:pb-0 px-1.5 sm:px-3 md:p-0", className)}
+        style={isMobile ? { paddingBottom: `calc(0.25rem + env(safe-area-inset-bottom))` } : undefined}
+      >
       {/* TOOLS mode: Chat + History buttons */}
       {showToolsMode && (
         <>
           <ButtonGroup
             uniformActiveItemWidth
             value={displayActiveTab}
-            onChange={(value) => handleTabClick(value as ChatTab)}
-            data-eid={generateClickEID('develop.chat_toolbar.tab_group')}
+            onChange={(value) => {
+              const tab = value as ChatTab
+              logTabToolbarClick(tab)
+              handleTabClick(tab)
+            }}
           >
             <ButtonGroup.Item
               value={ChatTab.CHAT}
               icon={<CommentsIcon className="size-2.5" />}
               label={t('builder_chat_toolbar_button_chat')}
-              data-eid={generateClickEID('develop.chat_toolbar.chat')}
             />
             <ButtonGroup.Item
               value={ChatTab.MEDIAS}
               icon={<ImageIcon />}
               label={t('builder_chat_toolbar_button_media')}
-              data-eid={generateClickEID('develop.chat_toolbar.media')}
             />
             <ButtonGroup.Item
               value={ChatTab.HISTORY}
@@ -179,14 +196,12 @@ export default function ChatToolbar({
                   isPublishing
                 )
               }
-              data-eid={generateClickEID('develop.chat_toolbar.history')}
             />
             {isAnalyticsEnabled && (
               <ButtonGroup.Item
                 value={ChatTab.ANALYTICS}
                 icon={<GraphIcon className="size-2.5" />}
                 label={t('builder_settings_nav_analytics')}
-                data-eid={generateClickEID('develop.chat_toolbar.analytics')}
               />
             )}
             <SettingsMenu ref={settingsMenuRef} />
@@ -203,20 +218,25 @@ export default function ChatToolbar({
             {/* View/Code ButtonGroup */}
             <ButtonGroup
               value={viewMode}
-              onChange={(value) => handleViewModeChange(value as ViewMode, hasUnsavedChanges)}
-              data-eid={generateClickEID('develop.chat_toolbar.view_mode_group')}
+              onChange={(value) => {
+                handleViewModeChange(value as ViewMode, hasUnsavedChanges)
+                const eidMap: Partial<Record<ViewMode, string>> = {
+                  [ViewMode.PREVIEW]: 'develop.chat_toolbar.view',
+                  [ViewMode.CODE]: 'develop.chat_toolbar.code',
+                }
+                const eid = eidMap[value as ViewMode]
+                if (eid) logClickEvent(eid, clickContext)()
+              }}
             >
               <ButtonGroup.Item
                 value={ViewMode.PREVIEW}
                 icon={<ShowIcon className="size-2.5" />}
                 label={t('builder_chat_toolbar_button_view')}
-                data-eid={generateClickEID('develop.chat_toolbar.view')}
               />
               <ButtonGroup.Item
                 value={ViewMode.CODE}
                 icon={<CodeIcon className="size-2.5" />}
                 label={t('builder_chat_toolbar_button_code')}
-                data-eid={generateClickEID('develop.chat_toolbar.code')}
               />
             </ButtonGroup>
 
@@ -231,17 +251,21 @@ export default function ChatToolbar({
                   <Box orientation="horizontal" gap="sm">
                     <IconButton
                       icon={<EditIcon className="size-2.5" />}
-                      onClick={toggleSelectMode}
+                      onClick={() => {
+                        logClickEvent('develop.chat_toolbar.edit', clickContext)()
+                        toggleSelectMode()
+                      }}
                       active={isSelectMode}
                       label={t('builder_chat_toolbar_button_edit')}
-                      data-eid={generateClickEID('develop.chat_toolbar.edit')}
                     />
 
                     {onPreviewRefresh && (
                       <IconButton
                         icon={<RefreshIcon className="size-2.5" />}
-                        onClick={onPreviewRefresh}
-                        data-eid={generateClickEID('develop.chat_toolbar.refresh')}
+                        onClick={() => {
+                          logClickEvent('develop.chat_toolbar.refresh', clickContext)()
+                          onPreviewRefresh()
+                        }}
                         label={t('builder_preview_button_refresh')}
                         showLabelWhenActive={false}
                       />
@@ -259,5 +283,6 @@ export default function ChatToolbar({
         </>
       )}
     </Box>
+    </div>
   )
 }

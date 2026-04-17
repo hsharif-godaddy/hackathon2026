@@ -2,7 +2,7 @@
 
 import { motion } from 'framer-motion'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
+import { Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import Growl from '@ux/growl'
 
 import AppNotFound from '@/app/develop/components/AppNotFound'
@@ -70,7 +70,7 @@ import {
   useStreamingConversationStore
 } from '@/stores/useStreamingConversationStore'
 import { useTodoListStore } from '@/stores/useTodoListStore'
-import { logAiroHQEvent, logImpressionEvent } from '@/utils/instrumentation'
+import { logAiroHQEvent, logImpressionEvent, setInstrumentationAppId } from '@/utils/instrumentation'
 import { postMessageToIframe } from '@/utils/postMessage'
 
 function DevelopPageContent() {
@@ -80,6 +80,16 @@ function DevelopPageContent() {
   const router = useRouter()
   const appId = useAppIdFromParams()
   const isJobId = searchParams.get('type') === 'job'
+
+  // Set appId for instrumentation before paint so early clicks include appId in custom_properties
+  useLayoutEffect(() => {
+    setInstrumentationAppId(appId);
+
+    return () => {
+      setInstrumentationAppId(null);
+    };
+  }, [appId]);
+
   // Prefetch paywall data early for faster eligibility checks
   usePaywallPrefetch()
 

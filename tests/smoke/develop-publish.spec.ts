@@ -64,7 +64,9 @@ test.describe('Publish Flow', () => {
     console.log('✅ Step 3: Verifying publish success...');
 
     // Verify publish button is enabled and interactive after deploy
-    const publishButton = page.locator('[data-eid*="header"][data-eid*="publish"]');
+    const publishButton = page
+      .getByTestId('airo-header')
+      .getByRole('button', { name: /publish/i });
     await expect(publishButton).not.toBeDisabled({ timeout: DEPLOYMENT_TIMEOUT_MS });
     console.log('  ✓ Publish button enabled');
 

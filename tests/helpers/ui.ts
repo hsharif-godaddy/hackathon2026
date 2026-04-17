@@ -1,7 +1,7 @@
 import type { Page, TestInfo } from '@playwright/test';
 import { expect } from '@playwright/test';
 
-import { handleSsoLogin, detectSsoType } from './auth';
+import { detectSsoType, handleSsoLogin, userMenuTrigger } from './auth';
 import {
   CHAT_INPUT_TIMEOUT,
   DEFAULT_TIMEOUT,
@@ -29,15 +29,15 @@ export async function logPageState(page: Page, label: string): Promise<void> {
       console.log(`    visible dialogs: ${visibleDialogs}`);
     }
 
-    const userMenu = page.locator('[data-eid*="user_menu.button"], [data-eid*="chat_toolbar.user_menu"]');
-    const menuVisible = await userMenu.isVisible().catch(() => false);
+    const menuTrigger = userMenuTrigger(page);
+    const menuVisible = await menuTrigger.isVisible().catch(() => false);
     console.log(`    user menu button visible: ${menuVisible}`);
 
-    const signOut = page.locator('[data-eid*="user_menu.sign_out"]');
+    const signOut = page.locator('[data-testid="user-menu-item-sign-out"]');
     const signOutVisible = await signOut.isVisible().catch(() => false);
     console.log(`    sign_out visible: ${signOutVisible}`);
 
-    const signIn = page.locator('[data-eid*="user_menu.sign_in"]');
+    const signIn = page.locator('[data-testid*="user-menu-item-sign-in"]');
     const signInVisible = await signIn.isVisible().catch(() => false);
     if (signInVisible) {
       console.log(`    sign_in visible: true (session may have expired)`);
@@ -130,16 +130,19 @@ async function handleSsoLoginIfNeeded(page: Page): Promise<void> {
 }
 
 /**
- * Dismiss privacy banners if they exist on the page
+ * Hide known third-party banners (#gtm_privacy, etc.) when present so they cannot block clicks.
  */
 export async function dismissBanners(page: Page): Promise<void> {
   const banners = ['#pcFooter', '#gtm_privacy', '#pw_banner'];
 
   for (const selector of banners) {
-    const banner = page.locator(selector);
-    if (await banner.isVisible({ timeout: SHORT_TIMEOUT }).catch(() => false)) {
-      await banner.evaluate((el) => (el as HTMLElement).style.display = 'none');
-    }
+    const locator = page.locator(selector).first();
+    if ((await locator.count()) === 0) continue;
+    await locator.evaluate((el) => {
+      const node = el as HTMLElement;
+      node.style.display = 'none';
+      node.style.pointerEvents = 'none';
+    });
   }
 }
 

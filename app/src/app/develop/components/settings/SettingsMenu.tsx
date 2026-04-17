@@ -1,14 +1,14 @@
 'use client';
 
-import { forwardRef, useImperativeHandle, useRef, useState } from 'react';
+import { forwardRef, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import Button from '@ux/button';
 import MenuIcon from '@ux/icon/menu';
 
 import { ButtonGroup } from '@/app/develop/components/ButtonGroup';
 import { useSettingsNavItems } from '@/app/develop/components/settings/useSettingsNavItems';
 import { ChatTab, SettingsSection } from '@/app/develop/components/types';
+import { useAppIdFromParams } from '@/app/develop/components/utils';
 import { useChatTabs } from '@/hooks/useChatTabs';
-import { useTranslations } from '@/hooks/useTranslations';
 import {
   Popover,
   PopoverAnchor,
@@ -16,7 +16,7 @@ import {
 } from '@/lib/shadcn/popover';
 import { useAuthUIStore } from '@/stores/useAuthUIStore';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
-import { generateClickEID } from '@/utils/instrumentation';
+import { logClickEvent } from '@/utils/instrumentation';
 
 export interface SettingsMenuRef {
   openPopover: () => void;
@@ -26,11 +26,12 @@ export interface SettingsMenuRef {
 }
 
 const SettingsMenu = forwardRef<SettingsMenuRef>((props, ref) => {
-  const t = useTranslations();
+  const appId = useAppIdFromParams();
+  const clickContext = useMemo(() => (appId ? { appId } : undefined), [appId]);
 
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLButtonElement>(null);
-  const isMobile = useDevelopPageStore((state) => state.isMobile)
+  const isMobile = useDevelopPageStore((state) => state.isMobile);
 
   const { activeChatTab, activeSettingsSection, setActiveSettingsSection, setActiveChatTab } = useChatTabs();
 
@@ -58,12 +59,13 @@ const SettingsMenu = forwardRef<SettingsMenuRef>((props, ref) => {
           ref={anchorRef}
           value={ChatTab.SETTINGS}
           icon={<MenuIcon className="size-2.5" />}
+          label="Settings"
           onClick={() => setOpen(prev => !prev)}
           aria-expanded={open}
           aria-haspopup="dialog"
-          data-eid={generateClickEID('develop.chat_toolbar.settings')}
+          data-testid="chat-toolbar-settings-button"
         />
-      </PopoverAnchor>
+        </PopoverAnchor>
       <PopoverContent
         align={isMobile ? "center" : "end"}
         className="p-1"
@@ -90,6 +92,7 @@ const SettingsMenu = forwardRef<SettingsMenuRef>((props, ref) => {
               disabled={item.disabled}
               className="!justify-start"
               onClick={() => {
+                logClickEvent(`develop.settings_menu.${item.id}`, clickContext)();
                 if (item.needsAuth) {
                   useAuthUIStore.getState().setNeedsReauth('session_expired');
                   setOpen(false);
@@ -100,7 +103,6 @@ const SettingsMenu = forwardRef<SettingsMenuRef>((props, ref) => {
                   handleNavigate(item.id);
                 }
               }}
-              data-eid={generateClickEID(`develop.settings_menu.${item.id}`)}
             />
           ))}
         </div>

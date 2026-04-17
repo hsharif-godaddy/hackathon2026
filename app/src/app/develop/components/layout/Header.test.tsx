@@ -6,7 +6,9 @@ import '@testing-library/jest-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen } from '@testing-library/react';
 
+import { mockInstrumentation } from '@/tests/mocks';
 import { renderWithProviders } from '@/tests/test-utils';
+import { logClickEvent } from '@/utils/instrumentation';
 import DevelopHeader from './Header';
 import { ViewMode } from '../types';
 
@@ -59,10 +61,7 @@ vi.mock('@/components/providers/AuthProvider', () => ({
   useAuthContext: () => mockAuthContext,
 }));
 
-vi.mock('@/utils/instrumentation', () => ({
-  generateClickEID: vi.fn((id) => id),
-  logAiroHQEvent: vi.fn(() => vi.fn()),
-}));
+vi.mock('@/utils/instrumentation', () => mockInstrumentation());
 
 vi.mock('@/components/layout/AppPublish', () => ({
   default: () => <div data-testid="app-publish">AppPublish</div>,
@@ -161,19 +160,17 @@ describe('DevelopHeader', () => {
   it('should render device selector on desktop', () => {
     mockDevelopStore.isMobile = false;
 
-    const { container } = renderWithProviders(<DevelopHeader />);
+    renderWithProviders(<DevelopHeader onPreviewRefresh={vi.fn()} />);
 
-    const deviceSelector = container.querySelector('[data-eid="develop.preview.device_selector"]');
-    expect(deviceSelector).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'builder_preview_button_device' })).toBeInTheDocument();
   });
 
   it('should not render device selector on mobile', () => {
     mockDevelopStore.isMobile = true;
 
-    const { container } = renderWithProviders(<DevelopHeader />);
+    renderWithProviders(<DevelopHeader onPreviewRefresh={vi.fn()} />);
 
-    const deviceSelector = container.querySelector('[data-eid="develop.preview.device_selector"]');
-    expect(deviceSelector).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'builder_preview_button_device' })).not.toBeInTheDocument();
   });
 
   it('should disable code button when version history is open', () => {
@@ -188,10 +185,9 @@ describe('DevelopHeader', () => {
   it('should disable device selector when in code mode', () => {
     mockDevelopStore.viewMode = ViewMode.CODE;
 
-    const { container } = renderWithProviders(<DevelopHeader />);
+    renderWithProviders(<DevelopHeader onPreviewRefresh={vi.fn()} />);
 
-    const deviceSelector = container.querySelector('[data-eid="develop.preview.device_selector"]');
-    expect(deviceSelector).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'builder_preview_button_device' })).toBeDisabled();
   });
 
 
@@ -215,10 +211,11 @@ describe('DevelopHeader', () => {
     expect(mockDevelopStore.handleViewModeChange).toHaveBeenCalledWith(ViewMode.PREVIEW, false);
   });
 
-  it('should have correct EID on ButtonGroup', () => {
-    const { container } = renderWithProviders(<DevelopHeader />);
+  it('should log click event when switching to edit view mode', async function logEditView() {
+    const { user } = renderWithProviders(<DevelopHeader onPreviewRefresh={vi.fn()} />);
 
-    const buttonGroup = container.querySelector('[data-eid="develop.header.view_mode"]');
-    expect(buttonGroup).toBeInTheDocument();
+    await user.click(screen.getByLabelText('builder_preview_button_edit'));
+
+    expect(vi.mocked(logClickEvent)).toHaveBeenCalledWith('develop.header.edit_mode', { appId: 'app-123' });
   });
 });

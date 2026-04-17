@@ -44,6 +44,7 @@ const mockPush = vi.fn();
 const mockUseSwitchboard = vi.fn();
 const mockUseSubscription = vi.fn();
 const mockUseAuthContext = vi.fn();
+const mockLogClickEvent = vi.fn(() => vi.fn());
 
 vi.mock('next/navigation', () => ({
   usePathname: () => '/develop',
@@ -51,7 +52,15 @@ vi.mock('next/navigation', () => ({
 }));
 
 vi.mock('@/utils/instrumentation', () => ({
-  generateClickEID: vi.fn((id) => id),
+  logClickEvent: (...args: unknown[]) => {
+    mockLogClickEvent(...args);
+    return vi.fn();
+  },
+}));
+
+vi.mock('@/stores/useDevelopPageStore', () => ({
+  useDevelopPageStore: vi.fn((selector: (state: { currentAppId: string | null }) => unknown) =>
+    selector({ currentAppId: 'test-app-123' })),
 }));
 
 vi.mock('@/hooks/useSsoSignIn', () => ({
@@ -135,7 +144,15 @@ describe('UserMenu', function userMenuTests() {
 
       await user.click(screen.getByText('builder_user_menu_all_projects'));
 
+      expect(mockLogClickEvent).toHaveBeenCalledWith('develop.user_menu.all_projects', { appId: 'test-app-123' });
       expect(mockPush).toHaveBeenCalledWith('/apps');
+    });
+
+    it('should log menu trigger click', async function logMenuTrigger() {
+      const { user } = renderWithProviders(<UserMenu location="develop" />);
+
+      await user.click(screen.getByLabelText('builder_user_menu_label'));
+      expect(mockLogClickEvent).toHaveBeenCalledWith('develop.chat_toolbar.user_menu', { appId: 'test-app-123' });
     });
 
     it('should open correct Discord URL when Join Discord is clicked', async function discordUrl() {

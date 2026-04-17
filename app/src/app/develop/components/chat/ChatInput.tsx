@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useIntl } from 'react-intl'
 import Button from '@ux/button'
 import MicIcon from '@ux/icon/mic'
@@ -19,7 +19,7 @@ import type { AiEditContext } from '@/app/develop/components/types'
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
-import { generateClickEID } from '@/utils/instrumentation'
+import { logClickEvent } from '@/utils/instrumentation'
 import { handleModifierEnterNewline } from '@/utils/textareaShortcuts'
 
 export interface StagedChatFile {
@@ -109,6 +109,7 @@ export default function ChatInput({
   userMessages = [],
 }: ChatInputProps) {
   const t = useTranslations();
+  const clickContext = useMemo(() => (appId ? { appId } : undefined), [appId]);
   const { locale } = useIntl();
   const { data: isChatGaugeEnabled } = useSwitchboard('appbuilder-chat-gauge');
   const { data: areChatPlansEnabled } = useSwitchboard('airo-builder-chat-plans');
@@ -174,6 +175,7 @@ export default function ChatInput({
   )
 
   function handleSend() {
+    logClickEvent('develop.prompt.send', clickContext)();
     if (isListening) {
       textBeforeListeningRef.current = ''
       stopSpeech()
@@ -459,9 +461,11 @@ export default function ChatInput({
             <div className="flex items-center gap-0.5">
               {isSpeechSupported && (
                 <Button
-                  onClick={toggleSpeech}
+                  onClick={() => {
+                    logClickEvent('develop.prompt.speech', clickContext)();
+                    toggleSpeech();
+                  }}
                   onMouseDown={(e) => e.preventDefault()}
-                  data-eid={generateClickEID('develop.prompt.speech')}
                   disabled={(isDisabled && !isStreaming) || isBudgetExceeded}
                   design={isListening ? 'primary' : 'control'}
                   className={isListening
@@ -477,8 +481,10 @@ export default function ChatInput({
               {isStreaming && onStopGeneration ? (
                 <Button
                   data-testid="chat-stop-button"
-                  onClick={onStopGeneration}
-                  data-eid={generateClickEID('develop.prompt.stop')}
+                  onClick={() => {
+                    logClickEvent('develop.prompt.stop', clickContext)();
+                    onStopGeneration();
+                  }}
                   aria-label={t('builder_chatinput_stop')}
                   design="primary"
                   icon={<StopIcon />}
@@ -489,7 +495,6 @@ export default function ChatInput({
                   id="chat-send-button"
                   data-testid="chat-send-button"
                   onClick={handleSend}
-                  data-eid={generateClickEID('develop.prompt.send')}
                   disabled={!canSubmit || (isDisabled && !isStreaming) || isBudgetExceeded || uploadingStagedFileIds.length > 0}
                   aria-label={t('builder_chatinput_send')}
                   design="primary"

@@ -29,7 +29,7 @@ describe('Develop Page - Loading', () => {
       cy.openDevelop(appId);
 
       cy.get('header').first().should('be.visible');
-      cy.get('header [data-eid*="header.airo_ai_link"]').first().should('exist');
+      cy.get('header a[href="/"]').first().should('exist');
       cy.get('header').contains('beta', { matchCase: false }).should('be.visible');
 
       cy.contains('button', 'Publish', { timeout: 60000 })

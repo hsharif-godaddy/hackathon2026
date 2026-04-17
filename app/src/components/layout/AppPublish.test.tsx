@@ -57,6 +57,7 @@ const mockStreaming = {
 
 const mockRefetchGitHistory = vi.fn();
 const mockRefetchDeployments = vi.fn();
+const mockLogClickEvent = vi.fn(() => vi.fn());
 
 vi.mock('next/navigation', () => ({
   useRouter: () => mockRouterInstance,
@@ -161,6 +162,10 @@ vi.mock('@/stores/useStreamingConversationStore', () => ({
 vi.mock('@/utils/instrumentation', () => ({
   generateClickEID: vi.fn((id: string) => id),
   logAiroHQEvent: vi.fn(() => vi.fn()),
+  logClickEvent: (...args: unknown[]) => {
+    mockLogClickEvent(...args);
+    return vi.fn();
+  },
 }));
 
 vi.mock('@ux/growl', () => ({
@@ -225,6 +230,8 @@ describe('AppPublish', () => {
 
     const trigger = await screen.findByRole('button', { name: 'builder_publish_button' });
     await user.click(trigger);
+
+    expect(mockLogClickEvent).toHaveBeenCalledWith('develop.header.app_first_publish', { appId: 'app-123' });
 
     await waitFor(() => {
       expect(screen.getByText('builder_publish_popover_title')).toBeInTheDocument();

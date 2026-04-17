@@ -2,7 +2,7 @@
 
 import { AnimatePresence, motion } from 'framer-motion';
 import { usePathname } from 'next/navigation';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FormattedMessage } from 'react-intl';
 import Alert from '@ux/alert';
 import Box from '@ux/box';
@@ -47,9 +47,24 @@ import { useSiteStore } from '@/stores/useSiteStore';
 import { useIsLoading, useStreamingState } from '@/stores/useStreamingConversationStore';
 import { getPlanDisplayLabelKey } from '@/utils/credits';
 import { isAiroSubdomain, resolveSiteFqdn } from '@/utils/domain';
-import { generateClickEID, logAiroHQEvent } from '@/utils/instrumentation';
+import { logAiroHQEvent, logClickEvent } from '@/utils/instrumentation';
 import { hasBeenPublished } from '@/utils/site';
 import { timeAgo } from '@/utils/time';
+
+function publishTriggerClickEid(surfaceLocation: string, firstTime: boolean): string {
+  const widget = firstTime ? 'app_first_publish' : 'app_publish';
+  if (surfaceLocation === 'develop.chat_toolbar') {
+    return `develop.chat_toolbar.${widget}`;
+  }
+  return `${surfaceLocation}.header.${widget}`;
+}
+
+function publishSubmitClickEid(surfaceLocation: string): string {
+  if (surfaceLocation === 'develop.chat_toolbar') {
+    return 'develop.chat_toolbar.publish_submit';
+  }
+  return 'develop.header.publish_submit';
+}
 
 function PublishFailedRetryMessage({ onRetry }: { onRetry: () => void | Promise<void> }) {
   return (
@@ -82,6 +97,10 @@ export default function AppPublish({ location = 'develop' }: { location?: string
   const isDevelopPage = pathname?.includes('/develop');
   const { setActiveChatTab, setActiveSettingsSection } = useChatTabs();
   const currentAppId = useDevelopPageStore((state) => state.currentAppId);
+  const clickContext = useMemo(
+    () => (currentAppId ? { appId: currentAppId } : undefined),
+    [currentAppId],
+  );
   const { isDisabled: isHistoryDisabled } = useIsHistoryDisabled(currentAppId || '');
   const setIsPublishing = useDevelopPageStore((state) => state.setIsPublishing);
   const setPublishError = useDevelopPageStore((state) => state.setPublishError);
@@ -91,13 +110,14 @@ export default function AppPublish({ location = 'develop' }: { location?: string
   const setShowFeedbackBanner = useDevelopPageStore((state) => state.setShowFeedbackBanner);
 
   const handlePublishFeedbackClick = useCallback((origin: string) => {
+    logClickEvent(`${location}.header.publish_feedback`, clickContext)();
     try {
       localStorage.removeItem(`airo-feedback-shown:${FEEDBACK_ID}`);
     } catch {
       // storage unavailable
     }
     openFeedbackModal(FEEDBACK_ID, origin);
-  }, [openFeedbackModal]);
+  }, [clickContext, location, openFeedbackModal]);
 
   // Switchboard flags
   // Coerce to boolean to prevent React Query errors when undefined
@@ -258,6 +278,11 @@ export default function AppPublish({ location = 'develop' }: { location?: string
       return;
     }
 
+    logClickEvent(publishSubmitClickEid(location), {
+      ...(clickContext ?? {}),
+      ...(isFirstTimePublishing ? { firstPublish: true } : {}),
+    })();
+
     // Log publish button click event
     const airoHQTask = isFirstTimePublishing
       ? 'builder_project_first_published'
@@ -288,7 +313,7 @@ export default function AppPublish({ location = 'develop' }: { location?: string
       setPublishError(currentAppId, true);
       setIsPublishing(currentAppId, false);
     }
-  }, [currentAppId, site, isFirstTimePublishing, isPublishComplianceBlocked, publishComplianceBlockReason, setPublishError, setIsPublishing, clearPublishStatus, publishMutation]);
+  }, [clickContext, currentAppId, site, location, isFirstTimePublishing, isPublishComplianceBlocked, publishComplianceBlockReason, setPublishError, setIsPublishing, clearPublishStatus, publishMutation]);
 
   useEffect(() => {
     const wasPublishing = prevPublishingRef.current;
@@ -350,10 +375,10 @@ export default function AppPublish({ location = 'develop' }: { location?: string
                   size='sm'
                   text={t('builder_publish_button_visit')}
                   stretch
-                  data-eid={generateClickEID(`${location}.growl.visit_site`)}
                   // `as='external'` still renders a <button> here (no href). onClick + window.open
                   // avoids growl CSS overrides on elements with href attribute.
                   onClick={() => {
+                    logClickEvent(`${location}.growl.visit_site`, clickContext)();
                     window.open(fqdn, '_blank', 'noopener,noreferrer');
                   }}
                 />
@@ -364,8 +389,8 @@ export default function AppPublish({ location = 'develop' }: { location?: string
                 size='sm'
                 text={t('builder_settings_nav_feedback')}
                 stretch
-                data-eid={generateClickEID(`${location}.growl.publish_feedback`)}
                 onClick={() => {
+                  logClickEvent(`${location}.growl.publish_feedback`, clickContext)();
                   Growl.removeGrowlMessage('app-publish-success');
                   handlePublishFeedbackClick('Publish Growl');
                 }}
@@ -404,10 +429,11 @@ export default function AppPublish({ location = 'develop' }: { location?: string
   }, [setActiveChatTab]);
 
   const handleViewDomain = useCallback(() => {
+    logClickEvent(`${location}.header.publish_domain_edit`, clickContext)();
     setOpen(false);
     setActiveSettingsSection(SettingsSection.DOMAIN);
     setActiveChatTab(ChatTab.SETTINGS);
-  }, [setOpen, setActiveSettingsSection, setActiveChatTab]);
+  }, [clickContext, location, setOpen, setActiveSettingsSection, setActiveChatTab]);
 
   // Register deployments refetch function in store for retry functionality
   useEffect(() => {
@@ -446,9 +472,6 @@ export default function AppPublish({ location = 'develop' }: { location?: string
     !currentAppId ||
     !site?.agent_url ||
     isPublishComplianceBlocked;
-
-  const publishWidget = isFirstTimePublishing ? 'app_first_publish' : 'app_publish';
-
 
   // Determine which status alert to show (priority order)
   const getPublishStatusAlert = () => {
@@ -489,6 +512,11 @@ export default function AppPublish({ location = 'develop' }: { location?: string
       return;
     }
 
+    logClickEvent(
+      publishTriggerClickEid(location, isFirstTimePublishing),
+      clickContext,
+    )();
+
     // Refetch git history and secrets diff to ensure counts are accurate
     refetchGitHistory();
     void refetchSecretsDiff();
@@ -523,7 +551,6 @@ export default function AppPublish({ location = 'develop' }: { location?: string
             design='primary'
             size='sm'
             data-partial='componentAiro'
-            data-eid={generateClickEID(`${location}.header.${publishWidget}`)}
             disabled={isButtonDisabled}
             icon={getTriggerButtonIcon()}
             text={isChatToolbar || isPublishingOrDeploying ? undefined : getPublishButtonText()}
@@ -596,18 +623,17 @@ export default function AppPublish({ location = 'develop' }: { location?: string
                         icon={<InlineEditIcon className='size-2' />}
                         onClick={handleViewDomain}
                         label={t('builder_common_edit')}
-                        dataEid={generateClickEID(`${location}.header.publish_domain_edit`)}
                         size='sm'
                         inverted
                         showLabelWhenActive={false}
                       />
                       <IconButton
                         icon={<WindowNewIcon className='size-2' />}
-                        onClick={function openPublishDomain() {
+                        onClick={() => {
+                          logClickEvent(`${location}.header.publish_domain_copy`, clickContext)();
                           window.open(fqdn, '_blank', 'noopener,noreferrer');
                         }}
                         label={t('builder_common_open_link')}
-                        dataEid={generateClickEID(`${location}.header.publish_domain_copy`)}
                         size='sm'
                         inverted
                         showLabelWhenActive={false}
@@ -643,7 +669,6 @@ export default function AppPublish({ location = 'develop' }: { location?: string
                 design='primary'
                 size='sm'
                 data-partial='componentAiro'
-                data-eid={generateClickEID(`${location}.header.${publishWidget}`)}
                 disabled={isButtonDisabled || isPublishingOrDeploying || isConversationInProgress}
                 onClick={handleDeploy}
                 text={getPublishButtonText()}
@@ -696,7 +721,6 @@ export default function AppPublish({ location = 'develop' }: { location?: string
                   <button
                     type='button'
                     className='w-full pt-1 pb-0.5 flex items-center justify-center gap-1 cursor-pointer'
-                    data-eid={generateClickEID(`${location}.header.publish_feedback`)}
                     onClick={() => handlePublishFeedbackClick('Publish Popover')}
                   >
                     <CommentsIcon className='size-2' />

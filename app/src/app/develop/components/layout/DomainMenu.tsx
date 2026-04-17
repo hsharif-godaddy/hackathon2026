@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import Button from '@ux/button';
 import WindowNewIcon from '@ux/icon/window-new';
 
@@ -14,15 +14,16 @@ import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@/lib/shadcn/popover";
+} from '@/lib/shadcn/popover';
 import { Separator } from '@/lib/shadcn/separator';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
-import { generateClickEID } from '@/utils/instrumentation';
+import { logClickEvent } from '@/utils/instrumentation';
 import { hasBeenPublished } from '@/utils/site';
 
 export default function DomainMenu() {
   const t = useTranslations();
   const appId = useAppIdFromParams();
+  const clickContext = useMemo(() => (appId ? { appId } : undefined), [appId]);
   const [open, setOpen] = useState(false);
   const { setActiveChatTab, setActiveSettingsSection } = useChatTabs();
 
@@ -35,6 +36,10 @@ export default function DomainMenu() {
   const hasPublishedUrl = publishedUrl && hasBeenPublished(site);
 
   const handleUrlClick = (url: string, type: 'preview' | 'publish') => {
+    logClickEvent(
+      type === 'preview' ? 'develop.header.open_preview' : 'develop.header.open_published',
+      clickContext,
+    )();
     window.open(url, '_blank', 'noopener,noreferrer');
     setOpen(false);
 
@@ -45,6 +50,7 @@ export default function DomainMenu() {
   };
 
   const handleDomainSettings = () => {
+    logClickEvent('develop.header.domain_settings', clickContext)();
     setOpen(false);
     setActiveSettingsSection(SettingsSection.DOMAIN);
     setActiveChatTab(ChatTab.SETTINGS);
@@ -64,9 +70,11 @@ export default function DomainMenu() {
             icon={<WindowNewIcon className="size-2.5" />}
             label={t('builder_domain_button_visit')}
             showLabelWhenActive={false}
-            onClick={() => setOpen(!open)}
+            onClick={() => {
+              logClickEvent('develop.header.domain', clickContext)();
+              setOpen(!open);
+            }}
             disabled={isDisabled}
-            data-eid={generateClickEID('develop.header.domain')}
           />
         </div>
       </PopoverTrigger>
@@ -79,7 +87,6 @@ export default function DomainMenu() {
               text={t('builder_domain_menu_preview')}
               className="!justify-start"
               onClick={() => handleUrlClick(previewUrl, 'preview')}
-              data-eid={generateClickEID('develop.header.open_preview')}
             />
           )}
           {hasPublishedUrl && (
@@ -89,7 +96,6 @@ export default function DomainMenu() {
               text={t('builder_domain_menu_published')}
               className="!justify-start"
               onClick={() => handleUrlClick(publishedUrl, 'publish')}
-              data-eid={generateClickEID('develop.header.open_published')}
             />
           )}
           <Separator />
@@ -99,7 +105,6 @@ export default function DomainMenu() {
             text={t('builder_project_domain_title')}
             className="!justify-start"
             onClick={handleDomainSettings}
-            data-eid={generateClickEID('develop.header.domain_settings')}
           />
         </div>
       </PopoverContent>

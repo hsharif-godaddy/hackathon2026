@@ -10,6 +10,7 @@ import {
   logClickEvent,
   logImpressionEvent,
   parseEID,
+  setInstrumentationAppId,
 } from './instrumentation';
 
 // Mock the logger
@@ -31,6 +32,8 @@ describe('instrumentation utilities', () => {
     global.window = {
       _expDataLayer: mockDataLayer,
     } as any;
+    // Clear any stored appId between tests
+    setInstrumentationAppId(null);
   });
 
   describe('parseEID', () => {
@@ -134,9 +137,85 @@ describe('instrumentation utilities', () => {
             section: 'section',
             widget: 'widget',
           },
+          traffic: {
+            eid: 'appbuilder.product.section.widget.click',
+            customProperties: {},
+          },
         },
         targets: ['fullstory'],
       });
+    });
+
+    it('should include custom_properties when provided', () => {
+      const logClick = logClickEvent('product.section.widget', { userId: 'test123' });
+      logClick();
+
+      expect(mockDataLayer).toHaveLength(1);
+      expect(mockDataLayer[0]).toEqual({
+        schema: 'add_click',
+        data: {
+          element: {
+            area: 'appbuilder',
+            product: 'product',
+            section: 'section',
+            widget: 'widget',
+          },
+          traffic: {
+            eid: 'appbuilder.product.section.widget.click',
+            customProperties: {
+              userId: 'test123',
+            },
+          },
+        },
+        targets: ['fullstory'],
+      });
+    });
+
+    it('should automatically add appId when appId is set', () => {
+      setInstrumentationAppId('test-app-123');
+
+      const logClick = logClickEvent('product.section.widget');
+      logClick();
+
+      expect(mockDataLayer).toHaveLength(1);
+      expect(mockDataLayer[0].data.traffic?.customProperties).toEqual({
+        appId: 'test-app-123',
+      });
+    });
+
+    it('should merge custom_properties with appId when appId is set', () => {
+      setInstrumentationAppId('test-app-456');
+
+      const logClick = logClickEvent('product.section.widget', { userId: 'user789' });
+      logClick();
+
+      expect(mockDataLayer).toHaveLength(1);
+      expect(mockDataLayer[0].data.traffic?.customProperties).toEqual({
+        userId: 'user789',
+        appId: 'test-app-456',
+      });
+    });
+
+    it('should not include appId when appId is not set', () => {
+      // appId is null by default (set in beforeEach)
+      const logClick = logClickEvent('product.section.widget', { userId: 'user789' });
+      logClick();
+
+      expect(mockDataLayer).toHaveLength(1);
+      expect(mockDataLayer[0].data.traffic?.customProperties).toEqual({
+        userId: 'user789',
+      });
+    });
+
+    it('should include appId from custom_properties when module appId is unset', () => {
+      const logClick = logClickEvent('product.section.widget', { appId: 'route-app-1' });
+      logClick();
+
+      expect(mockDataLayer).toHaveLength(1);
+      expect(mockDataLayer[0].data.traffic?.customProperties).toEqual({
+        appId: 'route-app-1',
+      });
+      expect(logger.warn).not.toHaveBeenCalled();
     });
 
     it('should handle hyphens in event ID', () => {
@@ -169,12 +248,17 @@ describe('instrumentation utilities', () => {
     });
 
     it('should handle missing data layer', () => {
-      global.window._expDataLayer = undefined as any;
+      // Set up a proper window mock with location but no _expDataLayer
+      global.window = {
+        location: { pathname: '/apps' },
+        _expDataLayer: undefined
+      } as any;
       const logClick = logClickEvent('product.section.widget');
       logClick();
-      // Should not throw error
+      // Should not throw error and should not log warnings for the click itself
       expect(logger.warn).not.toHaveBeenCalled();
     });
+
   });
 
   describe('logActionEvent', () => {
@@ -193,8 +277,65 @@ describe('instrumentation utilities', () => {
             widget: 'widget',
             action: 'hover',
           },
+          custom_properties: {},
         },
         targets: ['fullstory'],
+      });
+    });
+
+    it('should include custom_properties when provided', () => {
+      const logAction = logActionEvent({
+        eid: 'product.section.widget',
+        action: 'hover',
+        customProperties: { sessionId: 'abc123' }
+      });
+      logAction();
+
+      expect(mockDataLayer).toHaveLength(1);
+      expect(mockDataLayer[0]).toEqual({
+        schema: 'add_element_action',
+        data: {
+          element: {
+            area: 'appbuilder',
+            product: 'product',
+            section: 'section',
+            widget: 'widget',
+            action: 'hover',
+          },
+          custom_properties: {
+            sessionId: 'abc123',
+          },
+        },
+        targets: ['fullstory'],
+      });
+    });
+
+    it('should automatically add appId when appId is set', () => {
+      setInstrumentationAppId('action-app-789');
+
+      const logAction = logActionEvent({ eid: 'product.section.widget', action: 'focus' });
+      logAction();
+
+      expect(mockDataLayer).toHaveLength(1);
+      expect(mockDataLayer[0].data.custom_properties).toEqual({
+        appId: 'action-app-789',
+      });
+    });
+
+    it('should merge custom_properties with appId when appId is set', () => {
+      setInstrumentationAppId('merge-app-321');
+
+      const logAction = logActionEvent({ 
+        eid: 'product.section.widget', 
+        action: 'scroll', 
+        customProperties: { trackingId: 'track456' }
+      });
+      logAction();
+
+      expect(mockDataLayer).toHaveLength(1);
+      expect(mockDataLayer[0].data.custom_properties).toEqual({
+        trackingId: 'track456',
+        appId: 'merge-app-321',
       });
     });
 
@@ -234,6 +375,21 @@ describe('instrumentation utilities', () => {
 
       expect(mockDataLayer).toHaveLength(0);
       expect(logger.warn).toHaveBeenCalled();
+    });
+
+    it('should not include appId when appId is not set', () => {
+      // appId is null by default (set in beforeEach)
+      const logAction = logActionEvent({ 
+        eid: 'product.section.widget', 
+        action: 'hover', 
+        customProperties: { userId: 'user789' }
+      });
+      logAction();
+
+      expect(mockDataLayer).toHaveLength(1);
+      expect(mockDataLayer[0].data.custom_properties).toEqual({
+        userId: 'user789',
+      });
     });
 
     it('should return a function', () => {
@@ -299,6 +455,46 @@ describe('instrumentation utilities', () => {
       expect(mockDataLayer[0].data.custom_properties).toEqual({
         hasPublishedApp: true,
         hasCustomDomain: false,
+      });
+    });
+
+    it('should automatically add appId when appId is set', () => {
+      setInstrumentationAppId('impression-app-999');
+
+      const logImpression = logImpressionEvent('chat.banner.view');
+      logImpression();
+
+      expect(mockDataLayer).toHaveLength(1);
+      expect(mockDataLayer[0].data.custom_properties).toEqual({
+        appId: 'impression-app-999',
+      });
+    });
+
+    it('should merge custom_properties with appId when appId is set', () => {
+      setInstrumentationAppId('merge-impression-111');
+
+      const logImpression = logImpressionEvent('chat.modal.view', {
+        modalType: 'upgrade',
+        userTier: 'free',
+      });
+      logImpression();
+
+      expect(mockDataLayer).toHaveLength(1);
+      expect(mockDataLayer[0].data.custom_properties).toEqual({
+        modalType: 'upgrade',
+        userTier: 'free',
+        appId: 'merge-impression-111',
+      });
+    });
+
+    it('should not include appId when appId is not set', () => {
+      // appId is null by default (set in beforeEach)
+      const logImpression = logImpressionEvent('apps.page.view', { pageNumber: 1 });
+      logImpression();
+
+      expect(mockDataLayer).toHaveLength(1);
+      expect(mockDataLayer[0].data.custom_properties).toEqual({
+        pageNumber: 1,
       });
     });
   });
@@ -414,6 +610,126 @@ describe('instrumentation utilities', () => {
       expect(mockDataLayer[0].data.custom_properties.agent_conversation_id).toBe('');
       expect(mockDataLayer[0].data.custom_properties.recommendation_id).toBe('');
     });
+
+    it('should handle server-side rendering gracefully', () => {
+      global.window = undefined as any;
+
+      const logEvent = logAiroHQEvent({
+        category: 'impression',
+        recommendation_task: 'ssr-task',
+      });
+      logEvent();
+
+      // Should not push to data layer when window is undefined (same as other logging functions)
+      expect(mockDataLayer).toHaveLength(0);
+    });
+  });
+
+  describe('appId management', () => {
+    it('should set and get appId correctly', () => {
+      logClickEvent('test.section.widget')();
+      expect(mockDataLayer[0].data.traffic?.customProperties?.appId).toBeUndefined();
+
+      setInstrumentationAppId('test-app-123');
+      logClickEvent('test.section.widget')();
+      expect(mockDataLayer[1].data.traffic?.customProperties?.appId).toBe('test-app-123');
+
+      setInstrumentationAppId('different-app-456');
+      logClickEvent('test.section.widget')();
+      expect(mockDataLayer[2].data.traffic?.customProperties?.appId).toBe('different-app-456');
+
+      setInstrumentationAppId(null);
+      logClickEvent('test.section.widget')();
+      expect(mockDataLayer[3].data.traffic?.customProperties?.appId).toBeUndefined();
+    });
+
+    it('should handle UUID-style app IDs', () => {
+      const uuidAppId = '550e8400-e29b-41d4-a716-446655440000';
+      setInstrumentationAppId(uuidAppId);
+      
+      const logClick = logClickEvent('test.section.widget');
+      logClick();
+
+      expect(mockDataLayer[0].data.traffic?.customProperties?.appId).toBe(uuidAppId);
+    });
+
+    it('should treat empty string appId as unset', () => {
+      setInstrumentationAppId('');
+
+      const logClick = logClickEvent('test.section.widget');
+      logClick();
+
+      expect(mockDataLayer[0].data.traffic?.customProperties?.appId).toBeUndefined();
+    });
+
+    it('should persist appId across multiple events', () => {
+      setInstrumentationAppId('persistent-app-789');
+      
+      // Multiple different event types should all include the same appId
+      logClickEvent('test.click.widget')();
+      logActionEvent({ eid: 'test.action.widget', action: 'hover' })();
+      logImpressionEvent('test.impression.widget')();
+
+      expect(mockDataLayer).toHaveLength(3);
+      expect(mockDataLayer[0].data.traffic?.customProperties?.appId).toBe('persistent-app-789');
+      expect(mockDataLayer[1].data.custom_properties?.appId).toBe('persistent-app-789');
+      expect(mockDataLayer[2].data.custom_properties?.appId).toBe('persistent-app-789');
+    });
+
+    it('should warn when caller appId differs from currentAppId', () => {
+      setInstrumentationAppId('current-app-123');
+
+      logImpressionEvent('test.warning.widget', {
+        userId: 'user456',
+        appId: 'caller-app-789',
+      })();
+
+      expect(mockDataLayer).toHaveLength(1);
+      expect(mockDataLayer[0].data.custom_properties).toEqual({
+        userId: 'user456',
+        appId: 'current-app-123',
+      });
+
+      expect(logger.warn).toHaveBeenCalledWith(
+        'instrumentation.mergeCustomProperties.conflict',
+        expect.objectContaining({
+          message: 'appId in customProperties differs from currentAppId; using currentAppId',
+          callerAppId: 'caller-app-789',
+          currentAppId: 'current-app-123',
+        })
+      );
+    });
+
+    it('should not warn when caller appId matches currentAppId', () => {
+      setInstrumentationAppId('same-app');
+
+      logClickEvent('test.section.widget', { appId: 'same-app' })();
+
+      expect(mockDataLayer).toHaveLength(1);
+      expect(mockDataLayer[0].data.traffic?.customProperties).toEqual({ appId: 'same-app' });
+      expect(logger.warn).not.toHaveBeenCalled();
+    });
+
+    it('should handle server-side calls gracefully', () => {
+      // Mock server-side environment
+      const originalWindow = global.window;
+      delete (global as any).window;
+
+      // Should not crash and should not set appId
+      setInstrumentationAppId('server-app-123');
+
+      // Should warn about server-side usage
+      expect(logger.warn).toHaveBeenCalledWith(
+        'instrumentation.setAppId.server-side',
+        expect.objectContaining({
+          message: 'setInstrumentationAppId called on server - this may cause cross-request state leakage',
+          appId: 'server-app-123'
+        })
+      );
+
+      // Restore window
+      global.window = originalWindow;
+    });
   });
 
   describe('server-side rendering', () => {
@@ -431,7 +747,17 @@ describe('instrumentation utilities', () => {
       global.window = undefined as any;
       const logClick = logClickEvent('product.section.widget');
       logClick();
-      // Should not throw error
+      // Should not throw error and should not push to mockDataLayer (since window is undefined)
+      expect(mockDataLayer).toHaveLength(0);
+      expect(logger.warn).not.toHaveBeenCalled();
+    });
+
+    it('should handle undefined window in logClickEvent with custom properties', () => {
+      global.window = undefined as any;
+      const logClick = logClickEvent('product.section.widget', { userId: 'test' });
+      logClick();
+      // Should not throw error and should not push to mockDataLayer (since window is undefined)
+      expect(mockDataLayer).toHaveLength(0);
       expect(logger.warn).not.toHaveBeenCalled();
     });
 
@@ -439,7 +765,21 @@ describe('instrumentation utilities', () => {
       global.window = undefined as any;
       const logAction = logActionEvent({ eid: 'product.section.widget', action: 'hover' });
       logAction();
-      // Should not throw error
+      // Should not throw error and should not push to mockDataLayer (since window is undefined)
+      expect(mockDataLayer).toHaveLength(0);
+      expect(logger.warn).not.toHaveBeenCalled();
+    });
+
+    it('should handle undefined window in logActionEvent with custom properties', () => {
+      global.window = undefined as any;
+      const logAction = logActionEvent({ 
+        eid: 'product.section.widget', 
+        action: 'hover', 
+        customProperties: { sessionId: 'test123' }
+      });
+      logAction();
+      // Should not throw error and should not push to mockDataLayer (since window is undefined)
+      expect(mockDataLayer).toHaveLength(0);
       expect(logger.warn).not.toHaveBeenCalled();
     });
 
@@ -447,7 +787,17 @@ describe('instrumentation utilities', () => {
       global.window = undefined as any;
       const logImpression = logImpressionEvent('product.section.widget');
       logImpression();
-      // Should not throw error
+      // Should not throw error and should not push to mockDataLayer (since window is undefined)
+      expect(mockDataLayer).toHaveLength(0);
+      expect(logger.warn).not.toHaveBeenCalled();
+    });
+
+    it('should handle undefined window in logImpressionEvent with custom properties', () => {
+      global.window = undefined as any;
+      const logImpression = logImpressionEvent('product.section.widget', { feature: 'test' });
+      logImpression();
+      // Should not throw error and should not push to mockDataLayer (since window is undefined)
+      expect(mockDataLayer).toHaveLength(0);
       expect(logger.warn).not.toHaveBeenCalled();
     });
 

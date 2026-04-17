@@ -13,6 +13,14 @@ import HeaderUpgradeButton from './HeaderUpgradeButton';
 
 const mockOpenUpgradeModal = vi.fn();
 const mockShipAnalyticsLog = vi.fn();
+const mockLogClickEvent = vi.fn(() => vi.fn());
+
+vi.mock('@/utils/instrumentation', () => ({
+  logClickEvent: (...args: unknown[]) => {
+    mockLogClickEvent(...args);
+    return vi.fn();
+  },
+}));
 
 vi.mock('@/hooks/usePaywallEligibility', () => ({
   usePaywallEligibility: vi.fn(() => ({ showPaywall: true, isLoading: false, isError: false, error: null })),
@@ -225,6 +233,8 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
 
       await user.click(screen.getByRole('button'));
 
+      expect(mockLogClickEvent).toHaveBeenCalledWith('test.header.upgrade', { appId: 'test-app-id' });
+
       await waitFor(function waitForPopover() {
         expect(screen.getByText('builder_upgrade_plans_popover_title')).toBeInTheDocument();
       });
@@ -274,6 +284,7 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
       // Click the CTA button using accessible name
       await user.click(screen.getByRole('button', { name: 'builder_upgrade_plans_popover_cta' }));
 
+      expect(mockLogClickEvent).toHaveBeenCalledWith('test.header.upgrade_popover', { appId: 'test-app-id' });
       expect(mockOpenUpgradeModal).toHaveBeenCalledWith('header.upgrade_button', PAYWALL_ITC.UPGRADE);
     });
 
@@ -287,7 +298,7 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
         return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
       });
 
-      const { user } = renderWithProviders(<HeaderUpgradeButton location="header" />);
+      const { user } = renderWithProviders(<HeaderUpgradeButton location="apps" />);
 
       await user.click(screen.getByRole('button'));
 
@@ -297,9 +308,10 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
 
       await user.click(screen.getByRole('button', { name: 'builder_upgrade_plans_popover_cta' }));
 
+      expect(mockLogClickEvent).toHaveBeenCalledWith('apps.header.upgrade_popover', { appId: 'test-app-id' });
       expect(mockShipAnalyticsLog).toHaveBeenCalledWith('header.upgrade_button.clicked', {
         appId: 'test-app-id',
-        location: 'header',
+        location: 'apps',
       });
     });
 
@@ -414,6 +426,7 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
       // Click the CTA button using accessible name
       await user.click(screen.getByRole('button', { name: 'builder_upgrade_plans_popover_cta' }));
 
+      expect(mockLogClickEvent).toHaveBeenCalledWith('unknown.header.upgrade_popover', { appId: 'test-app-id' });
       expect(mockShipAnalyticsLog).toHaveBeenCalledWith('header.upgrade_button.clicked', {
         appId: 'test-app-id',
         location: 'unknown',

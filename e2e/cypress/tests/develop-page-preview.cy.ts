@@ -36,24 +36,24 @@ describe('Develop Page - Preview', () => {
         .should('have.attr', 'src');
 
       // Verify refresh button and device selector exist
-      cy.get('[data-eid*="preview.refresh"]', { timeout: 30000 }).should('exist');
-      cy.get('[data-eid*="preview.device_selector"]').should('exist');
+      cy.get('[data-testid="header-refresh-button"]', { timeout: 30000 }).should('exist');
+      cy.get('[data-testid="preview-device-selector-trigger"]').should('exist');
 
       // Test refresh button
-      cy.get('[data-eid*="preview.refresh"]').click();
+      cy.get('[data-testid="header-refresh-button"]').click();
       cy.get('#preview-iframe').should('be.visible');
 
       // Test device selector - switch to mobile view
-      cy.get('[data-eid*="preview.device_selector"]').click();
+      cy.get('[data-testid="preview-device-selector-trigger"]').click();
       cy.get('[data-radix-popper-content-wrapper]')
-        .find('[data-eid*="preview.device_select_iphone-se"]')
+        .contains('iPhone SE')
         .click();
       cy.get('#preview-iframe').should('be.visible');
 
       // Test device selector - switch back to desktop view
-      cy.get('[data-eid*="preview.device_selector"]').click();
+      cy.get('[data-testid="preview-device-selector-trigger"]').click();
       cy.get('[data-radix-popper-content-wrapper]')
-        .find('[data-eid*="preview.device_select_full"]')
+        .contains('Full size')
         .click();
       cy.get('#preview-iframe').should('be.visible');
     });

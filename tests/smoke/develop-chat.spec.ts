@@ -73,7 +73,9 @@ test.describe('Develop Page', () => {
     console.log('  ✓ Header visible');
 
     // Publish button (use data-eid to avoid matching modal buttons)
-    const publishButton = page.locator('[data-eid*="header"][data-eid*="publish"]');
+    const publishButton = page
+      .getByTestId('airo-header')
+      .getByRole('button', { name: /publish/i });
     await expect(publishButton).toBeVisible({ timeout: DEFAULT_TIMEOUT });
     await expect(publishButton).not.toBeDisabled();
     console.log('  ✓ Publish button visible and enabled');
@@ -96,8 +98,12 @@ test.describe('Develop Page', () => {
 
     // Verify user menu shows expected items for authenticated users
     await openUserMenu(page);
-    await expect(page.locator('[data-eid*="user_menu.sign_out"]')).toBeVisible({ timeout: 5000 });
-    await expect(page.locator('[data-eid*="user_menu.my_products"]')).toBeVisible({ timeout: 5000 });
+    await expect(
+      page.getByRole('button', { name: /sign\s*out|builder_user_menu_sign_out/i }),
+    ).toBeVisible({ timeout: 5000 });
+    await expect(
+      page.getByRole('button', { name: /my\s*products|builder_user_menu_my_products/i }),
+    ).toBeVisible({ timeout: 5000 });
     await page.keyboard.press('Escape');
     console.log('  ✓ User menu shows Sign Out and My Products (authenticated)');
 
@@ -115,31 +121,38 @@ test.describe('Develop Page', () => {
 
     console.log('🖼️ Step 4: Testing preview controls...');
 
+    const headerRefreshButton = page
+      .getByTestId('airo-header')
+      .getByRole('button', { name: /refresh|builder_preview_button_refresh/i });
+
+    const deviceSelectorTrigger = page
+      .getByTestId('airo-header')
+      .getByRole('button', { name: /device|builder_preview_button_device/i });
+
     // Verify controls exist
-    await expect(page.locator('[data-eid*="header.refresh"]')).toBeVisible({ timeout: DEFAULT_TIMEOUT });
-    await expect(page.locator('[data-eid*="preview.device_selector"]')).toBeVisible();
+    await expect(headerRefreshButton).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+    await expect(deviceSelectorTrigger).toBeVisible();
     console.log('  ✓ Refresh and device selector visible');
 
     // Test refresh button
-    await page.locator('[data-eid*="header.refresh"]').click({ force: true });
+    await headerRefreshButton.click({ force: true });
     await expect(page.getByTestId('preview-iframe')).toBeVisible();
     console.log('  ✓ Refresh button works');
 
     // Test device selector - mobile view
-    await page.locator('[data-eid*="preview.device_selector"]').click({ force: true });
-    await page.locator('[data-radix-popper-content-wrapper]').waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT });
-    await page.locator('[data-radix-popper-content-wrapper]')
-      .locator('[data-eid*="preview.device_select_iphone-se"]')
-      .click({ force: true });
+    await deviceSelectorTrigger.click({ force: true });
+    const deviceSelectorPopover = page.locator('[data-slot="popover-content"][data-state="open"]');
+    await deviceSelectorPopover.waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT });
+    await deviceSelectorPopover.getByRole('button', { name: /iphone se/i }).click({ force: true });
     await expect(page.getByTestId('preview-iframe')).toBeVisible();
     await expect(page.getByTestId('airo-header')).toBeVisible();
     console.log('  ✓ Mobile view works, header persists');
 
     // Test device selector - back to desktop
-    await page.locator('[data-eid*="preview.device_selector"]').click({ force: true });
-    await page.locator('[data-radix-popper-content-wrapper]').waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT });
-    await page.locator('[data-radix-popper-content-wrapper]')
-      .locator('[data-eid*="preview.device_select_full"]')
+    await deviceSelectorTrigger.click({ force: true });
+    await deviceSelectorPopover.waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT });
+    await deviceSelectorPopover
+      .getByRole('button', { name: /full size|builder_device_full_size/i })
       .click({ force: true });
     await expect(page.getByTestId('preview-iframe')).toBeVisible();
     console.log('  ✓ Desktop view restored');
@@ -150,34 +163,62 @@ test.describe('Develop Page', () => {
     await dismissOverlays(page);
     console.log('🔧 Step 5: Testing chat toolbar...');
 
-    // Verify toolbar buttons
-    await expect(page.locator('[data-eid*="chat_toolbar.chat"]')).toBeVisible();
-    await expect(page.locator('[data-eid*="chat_toolbar.history"]')).toBeVisible();
-    await expect(page.locator('[data-eid*="chat_toolbar.settings"]')).toBeVisible();
+    await expect(page).toHaveURL(new RegExp(`/develop/${appId}`));
+
+    // Toolbar is inside the sliding chat pane; when collapsed it is off-screen with pointer-events: none.
+    const expandChatPane = page.getByTestId('airo-header').getByRole('button', {
+      name: /expand|builder_preview_button_expand/i,
+    });
+    if (await expandChatPane.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await expandChatPane.click();
+      await page.getByTestId('chat-input-textarea').waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT });
+    }
+
+    // Force mobile toolbar into TOOLS mode if needed (settings only appears in TOOLS mode)
+    const toolsButton = page.getByRole('button', { name: /tools|builder_preview_button_tools/i });
+    if (await toolsButton.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await toolsButton.click();
+    }
+
+    // Wait for toolbar via working radio buttons (more reliable than test-id on @ux/box)
+    const chatRadioButton = page.getByRole('radio', { name: /chat|builder_chat_toolbar_button_chat/i });
+    await expect(chatRadioButton).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+
+    // Verify toolbar buttons (aria-label is translated copy; key appears when i18n missing)s
+    await expect(page.getByRole('radio', { name: /history|builder_chat_toolbar_button_history/i })).toBeVisible();
+
+    // Settings button: PopoverAnchor's Slot wrapping breaks aria-label/data-testid forwarding on
+    // the ButtonGroup.Item. It still renders as role="radio" but without a name. Locate it as the
+    // last radio in the same radiogroup as Chat (which is the tools toolbar's ButtonGroup).
+    const toolsRadioGroup = page
+      .getByRole('radiogroup')
+      .filter({ has: page.getByRole('radio', { name: /^chat$/i }) });
+    const settingsButton = toolsRadioGroup.getByRole('radio').last();
+    await expect(settingsButton).toBeVisible({ timeout: DEFAULT_TIMEOUT });
     console.log('  ✓ All toolbar buttons visible');
 
+    const openPopover = () => page.locator('[data-slot="popover-content"][data-state="open"]');
+
     // Test settings menu toggle (open → close → reopen)
-    const settingsButton = page.locator('[data-eid*="chat_toolbar.settings"]');
     await settingsButton.click({ force: true });
-    const popoverContent = page.locator('[data-radix-popper-content-wrapper]');
-    await expect(popoverContent).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+    await expect(openPopover()).toBeVisible({ timeout: DEFAULT_TIMEOUT });
     console.log('  ✓ Settings menu opens on first click');
 
     await settingsButton.click({ force: true });
-    await expect(popoverContent).not.toBeVisible({ timeout: DEFAULT_TIMEOUT });
+    await expect(openPopover()).toHaveCount(0, { timeout: DEFAULT_TIMEOUT });
     console.log('  ✓ Settings menu closes on second click');
 
     await settingsButton.click({ force: true });
-    await expect(popoverContent).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+    await expect(openPopover()).toBeVisible({ timeout: DEFAULT_TIMEOUT });
     // Dismiss the popover before continuing
     await page.keyboard.press('Escape');
-    await expect(popoverContent).not.toBeVisible({ timeout: DEFAULT_TIMEOUT });
+    await expect(openPopover()).toHaveCount(0, { timeout: DEFAULT_TIMEOUT });
     console.log('  ✓ Settings menu reopens on third click and closes on Escape');
 
     // Navigate to history and back
-    await page.locator('[data-eid*="chat_toolbar.history"]').click({ force: true });
+    await page.getByRole('radio', { name: /history|builder_chat_toolbar_button_history/i }).click({ force: true });
     await expect(page.getByTestId('airo-header')).toBeVisible();
-    await page.locator('[data-eid*="chat_toolbar.chat"]').click({ force: true });
+    await page.getByRole('radio', { name: /chat|builder_chat_toolbar_button_chat/i }).click({ force: true });
     await page.getByTestId('chat-input-textarea').waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT });
     console.log('  ✓ History tab navigation works, header persists');
 

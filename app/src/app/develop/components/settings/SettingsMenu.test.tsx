@@ -9,7 +9,12 @@ import { screen, waitFor } from '@testing-library/react';
 import { ChatTab, SettingsSection } from '@/app/develop/components/types';
 import { SwitchboardAuthError } from '@/hooks/useSwitchboard';
 import { renderWithProviders } from '@/tests/test-utils';
+import { logClickEvent } from '@/utils/instrumentation';
 import SettingsMenu from './SettingsMenu';
+
+vi.mock('@/app/develop/components/utils', () => ({
+  useAppIdFromParams: () => 'test-app-id',
+}));
 
 const mockDevelopStore = {
   openFeedbackModal: vi.fn(),
@@ -64,7 +69,7 @@ vi.mock('@/stores/useAuthUIStore', () => ({
 }));
 
 vi.mock('@/utils/instrumentation', () => ({
-  generateClickEID: vi.fn((id) => id),
+  logClickEvent: vi.fn(() => vi.fn()),
 }));
 
 describe('SettingsMenu', () => {
@@ -82,20 +87,21 @@ describe('SettingsMenu', () => {
   it('should render without crashing', () => {
     const { container } = renderWithProviders(<SettingsMenu />);
 
-    expect(container.querySelector('[data-eid="develop.chat_toolbar.settings"]')!).toBeInTheDocument();
+    expect(container.querySelector('[data-testid="chat-toolbar-settings-button"]')!).toBeInTheDocument();
+
   });
 
   it('should render settings trigger button', () => {
     const { container } = renderWithProviders(<SettingsMenu />);
 
-    const button = container.querySelector('[data-eid="develop.chat_toolbar.settings"]')!;
+    const button = container.querySelector('[data-testid="chat-toolbar-settings-button"]')!;
     expect(button).toBeInTheDocument();
   });
 
   it('should open popover when trigger button clicked', async () => {
     const { user, container } = renderWithProviders(<SettingsMenu />);
 
-    const trigger = container.querySelector('[data-eid="develop.chat_toolbar.settings"]')!;
+    const trigger = container.querySelector('[data-testid="chat-toolbar-settings-button"]')!;
     await user.click(trigger);
 
     await waitFor(() => {
@@ -106,7 +112,7 @@ describe('SettingsMenu', () => {
   it('should display all settings options when open', async () => {
     const { user, container } = renderWithProviders(<SettingsMenu />);
 
-    const trigger = container.querySelector('[data-eid="develop.chat_toolbar.settings"]')!;
+    const trigger = container.querySelector('[data-testid="chat-toolbar-settings-button"]')!;
     await user.click(trigger);
 
     await waitFor(() => {
@@ -123,7 +129,7 @@ describe('SettingsMenu', () => {
     mockChatTabs.activeSettingsSection = SettingsSection.PROJECT;
     const { user, container } = renderWithProviders(<SettingsMenu />);
 
-    const trigger = container.querySelector('[data-eid="develop.chat_toolbar.settings"]')!;
+    const trigger = container.querySelector('[data-testid="chat-toolbar-settings-button"]')!;
     await user.click(trigger);
 
     await waitFor(() => {
@@ -137,7 +143,7 @@ describe('SettingsMenu', () => {
 
     const { user, container } = renderWithProviders(<SettingsMenu />);
 
-    const trigger = container.querySelector('[data-eid="develop.chat_toolbar.settings"]')!;
+    const trigger = container.querySelector('[data-testid="chat-toolbar-settings-button"]')!;
     await user.click(trigger);
 
     await waitFor(() => {
@@ -155,7 +161,7 @@ describe('SettingsMenu', () => {
   it('should close popover after option clicked', async () => {
     const { user, container } = renderWithProviders(<SettingsMenu />);
 
-    const trigger = container.querySelector('[data-eid="develop.chat_toolbar.settings"]')!;
+    const trigger = container.querySelector('[data-testid="chat-toolbar-settings-button"]')!;
     await user.click(trigger);
 
     await waitFor(() => {
@@ -175,7 +181,7 @@ describe('SettingsMenu', () => {
 
     const { user, container } = renderWithProviders(<SettingsMenu />);
 
-    const trigger = container.querySelector('[data-eid="develop.chat_toolbar.settings"]')!;
+    const trigger = container.querySelector('[data-testid="chat-toolbar-settings-button"]')!;
     await user.click(trigger);
 
     await waitFor(() => {
@@ -183,11 +189,31 @@ describe('SettingsMenu', () => {
     });
   });
 
-  it('should have correct data-eid on trigger button', () => {
+  it('should expose settings menu trigger test id', () => {
     const { container } = renderWithProviders(<SettingsMenu />);
 
-    const trigger = container.querySelector('[data-eid="develop.chat_toolbar.settings"]')!;
-    expect(trigger).toHaveAttribute('data-eid', 'develop.chat_toolbar.settings');
+    const trigger = container.querySelector('[data-testid="chat-toolbar-settings-button"]')!;
+    expect(trigger).toHaveAttribute('aria-label', 'Settings');
+  });
+
+  it('should log click when settings nav item clicked', async () => {
+    const { user, container } = renderWithProviders(<SettingsMenu />);
+
+    const trigger = container.querySelector('[data-testid="chat-toolbar-settings-button"]')!;
+    await user.click(trigger);
+
+    await waitFor(() => {
+      expect(screen.getByText('builder_settings_nav_domain')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByText('builder_settings_nav_domain'));
+
+    await waitFor(() => {
+      expect(vi.mocked(logClickEvent)).toHaveBeenCalledWith(
+        'develop.settings_menu.domain',
+        { appId: 'test-app-id' },
+      );
+    });
   });
 
   it('should call openFeedbackModal when feedback clicked', async () => {
@@ -196,7 +222,7 @@ describe('SettingsMenu', () => {
 
     const { user, container } = renderWithProviders(<SettingsMenu />);
 
-    const trigger = container.querySelector('[data-eid="develop.chat_toolbar.settings"]')!;
+    const trigger = container.querySelector('[data-testid="chat-toolbar-settings-button"]')!;
     await user.click(trigger);
 
     await waitFor(() => {
@@ -216,7 +242,7 @@ describe('SettingsMenu', () => {
 
     const { user, container } = renderWithProviders(<SettingsMenu />);
 
-    const trigger = container.querySelector('[data-eid="develop.chat_toolbar.settings"]')!;
+    const trigger = container.querySelector('[data-testid="chat-toolbar-settings-button"]')!;
     await user.click(trigger);
 
     await waitFor(() => {
@@ -239,7 +265,7 @@ describe('SettingsMenu', () => {
 
     const { user, container } = renderWithProviders(<SettingsMenu />);
 
-    const trigger = container.querySelector('[data-eid="develop.chat_toolbar.settings"]')!;
+    const trigger = container.querySelector('[data-testid="chat-toolbar-settings-button"]')!;
     await user.click(trigger);
 
     await waitFor(() => {
@@ -257,7 +283,7 @@ describe('SettingsMenu', () => {
   it('should close popover when trigger button clicked a second time', async () => {
     const { user, container } = renderWithProviders(<SettingsMenu />);
 
-    const trigger = container.querySelector('[data-eid="develop.chat_toolbar.settings"]')!;
+    const trigger = container.querySelector('[data-testid="chat-toolbar-settings-button"]')!;
 
     await user.click(trigger);
     await waitFor(() => {
@@ -273,7 +299,7 @@ describe('SettingsMenu', () => {
   it('should close popover on Escape key', async () => {
     const { user, container } = renderWithProviders(<SettingsMenu />);
 
-    const trigger = container.querySelector('[data-eid="develop.chat_toolbar.settings"]')!;
+    const trigger = container.querySelector('[data-testid="chat-toolbar-settings-button"]')!;
     await user.click(trigger);
 
     await waitFor(() => {
@@ -290,7 +316,7 @@ describe('SettingsMenu', () => {
   it('should close popover when clicking outside', async () => {
     const { user, container } = renderWithProviders(<SettingsMenu />);
 
-    const trigger = container.querySelector('[data-eid="develop.chat_toolbar.settings"]')!;
+    const trigger = container.querySelector('[data-testid="chat-toolbar-settings-button"]')!;
     await user.click(trigger);
 
     await waitFor(() => {
@@ -312,7 +338,7 @@ describe('SettingsMenu', () => {
 
     const { user, container } = renderWithProviders(<SettingsMenu />);
 
-    const trigger = container.querySelector('[data-eid="develop.chat_toolbar.settings"]')!;
+    const trigger = container.querySelector('[data-testid="chat-toolbar-settings-button"]')!;
     await user.click(trigger);
 
     await waitFor(() => {

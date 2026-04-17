@@ -2,7 +2,7 @@
 
 import clsx from 'clsx';
 import { usePathname } from 'next/navigation';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import Button from '@ux/button';
 import CheckIcon from '@ux/icon/checkmark';
 import DiamondIcon from '@ux/icon/diamond';
@@ -18,7 +18,7 @@ import { canUpgradePlan, isPaidPlanForGrants, PAYWALL_ITC } from '@/lib/paywall/
 import { Popover, PopoverContent, PopoverTrigger } from '@/lib/shadcn/popover';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { getPlanFromSubscription } from '@/utils/credits';
-import { generateClickEID } from '@/utils/instrumentation';
+import { logClickEvent } from '@/utils/instrumentation';
 
 interface HeaderUpgradeButtonProps {
   location?: string;
@@ -37,12 +37,17 @@ export default function HeaderUpgradeButton({ location = 'unknown' }: HeaderUpgr
   const { showPaywall, isLoading: isPaywallLoading } = usePaywallEligibility();
   const { data: subscription } = useSubscription();
   const currentPlan = subscription ? getPlanFromSubscription(subscription) : undefined;
+  const clickContext = useMemo(
+    () => (currentAppId ? { appId: currentAppId } : undefined),
+    [currentAppId],
+  );
 
   // Only show on develop page, when feature enabled, and user can upgrade (non-Ultimate users)
   if (!isDevelopPage || isFeatureLoading || isPaywallLoading || !featureEnabled ||
       (!showPaywall && !canUpgradePlan(currentPlan))) return null;
 
   const handleUpgradeClick = () => {
+    logClickEvent(`${location}.header.upgrade_popover`, clickContext)();
     setOpen(false);
     openUpgradeModal('header.upgrade_button', PAYWALL_ITC.UPGRADE);
     shipAnalyticsLog('header.upgrade_button.clicked', {
@@ -72,7 +77,6 @@ export default function HeaderUpgradeButton({ location = 'unknown' }: HeaderUpgr
           design='tertiary'
           size='sm'
           data-partial='componentAiro'
-          data-eid={generateClickEID('develop.header.upgrade')}
           icon={<DiamondIcon className="!size-2.5" />}
           text={t('builder_upgrade_button')}
           aria-label={isBelowSmBreakpoint ? t('builder_upgrade_button') : undefined}
@@ -80,6 +84,9 @@ export default function HeaderUpgradeButton({ location = 'unknown' }: HeaderUpgr
             "!rounded-lg !pt-0 !pb-0 !pl-0.5 !pr-0.5 md:!px-1 md:!py-[6px]",
             isDevelopPage ? '!rounded-xmd md:!py-[8px]' : '!rounded-lg md:!py-[6px]'
           )}
+          onClick={() => {
+            logClickEvent(`${location}.header.upgrade`, clickContext)();
+          }}
         />
       </PopoverTrigger>
       <PopoverContent
@@ -110,7 +117,6 @@ export default function HeaderUpgradeButton({ location = 'unknown' }: HeaderUpgr
             size='sm'
             className='w-full'
             data-partial='componentAiro'
-            data-eid={generateClickEID(`${location}.header.upgrade_popover`)}
             onClick={handleUpgradeClick}
             text={t('builder_upgrade_plans_popover_cta')}
           />

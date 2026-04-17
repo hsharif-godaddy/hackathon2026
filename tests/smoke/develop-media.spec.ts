@@ -70,7 +70,7 @@ test.describe('Develop Page - Media Tab', () => {
     // ========================================
     console.log('🖼️ Step 2: Opening Media tab...');
 
-    const mediaTabButton = page.locator('[data-eid*="chat_toolbar.media"]');
+    const mediaTabButton = page.getByRole('radio', { name: /media|builder_chat_toolbar_button_media/i });
     await expect(mediaTabButton).toBeVisible({ timeout: DEFAULT_TIMEOUT });
     await mediaTabButton.click({ force: true });
     console.log('  ✓ Media tab clicked');
@@ -153,7 +153,7 @@ test.describe('Develop Page - Media Tab', () => {
     // STEP 4: Switch back to chat tab
     // ========================================
     console.log('💬 Step 4: Switching back to chat...');
-    const chatTabButton = page.locator('[data-eid*="chat_toolbar.chat"]');
+    const chatTabButton = page.getByRole('radio', { name: /chat|builder_chat_toolbar_button_chat/i });
     await chatTabButton.click({ force: true });
 
     await waitForChatInput(page);

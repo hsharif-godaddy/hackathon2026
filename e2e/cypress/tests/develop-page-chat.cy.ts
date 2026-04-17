@@ -37,26 +37,26 @@ describe('Develop Page - Chat', () => {
         .should('be.visible')
         .should('not.be.disabled');
 
-      cy.get('[data-eid*="chat_toolbar.chat"]').should('exist');
-      cy.get('[data-eid*="chat_toolbar.medias"]').should('exist');
-      cy.get('[data-eid*="chat_toolbar.history"]').should('exist');
-      cy.get('[data-eid*="chat_toolbar.settings"]').should('exist');
+      cy.get('button[aria-label*="builder_chat_toolbar_button_chat"]').should('exist');
+      cy.get('button[aria-label*="builder_chat_toolbar_button_media"]').should('exist');
+      cy.get('button[aria-label*="builder_chat_toolbar_button_history"]').should('exist');
+      cy.get('[data-testid="chat-toolbar-settings-button"]').should('exist');
 
-      cy.get('[data-eid*="chat_toolbar.medias"]').click({ force: true });
-      cy.get('[data-eid*="chat_toolbar.medias"]').should('exist');
-      cy.get('[data-eid*="chat_toolbar.chat"]').click({ force: true });
+      cy.get('button[aria-label*="builder_chat_toolbar_button_media"]').click({ force: true });
+      cy.get('button[aria-label*="builder_chat_toolbar_button_media"]').should('exist');
+      cy.get('button[aria-label*="builder_chat_toolbar_button_chat"]').click({ force: true });
       cy.get('textarea[placeholder*="Ask Airo"]', { timeout: 30000 }).should('be.visible');
 
-      cy.get('[data-eid*="chat_toolbar.history"]').click({ force: true });
-      cy.get('[data-eid*="chat_toolbar.history"]').should('exist');
-      cy.get('[data-eid*="chat_toolbar.chat"]').click({ force: true });
+      cy.get('button[aria-label*="builder_chat_toolbar_button_history"]').click({ force: true });
+      cy.get('button[aria-label*="builder_chat_toolbar_button_history"]').should('exist');
+      cy.get('button[aria-label*="builder_chat_toolbar_button_chat"]').click({ force: true });
       cy.get('textarea[placeholder*="Ask Airo"]', { timeout: 30000 }).should('be.visible');
 
-      cy.get('[data-eid*="chat_toolbar.settings"]').then(($btn) => {
+      cy.get('[data-testid="chat-toolbar-settings-button"]').then(($btn) => {
         if (!$btn.prop('disabled')) {
           cy.wrap($btn).click({ force: true });
-          cy.get('[data-eid*="chat_toolbar.settings"]').should('exist');
-          cy.get('[data-eid*="chat_toolbar.chat"]').click({ force: true });
+          cy.get('[data-testid="chat-toolbar-settings-button"]').should('exist');
+          cy.get('button[aria-label*="builder_chat_toolbar_button_chat"]').click({ force: true });
         }
       });
     });

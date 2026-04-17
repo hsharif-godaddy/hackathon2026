@@ -35,8 +35,8 @@ describe('Develop Page - Creation', () => {
 
       cy.url({ timeout: 60000 }).should('match', /\/develop\//);
 
-      cy.get('[data-eid*="chat_toolbar.chat"]', { timeout: 30000 }).should('exist');
-      cy.get('[data-eid*="chat_toolbar.history"]').should('exist');
+      cy.get('button[aria-label*="builder_chat_toolbar_button_chat"]', { timeout: 30000 }).should('exist');
+      cy.get('button[aria-label*="builder_chat_toolbar_button_history"]').should('exist');
 
       cy.contains('button', 'Publish', { timeout: 60000 }).should('be.visible').should('not.be.disabled');
 

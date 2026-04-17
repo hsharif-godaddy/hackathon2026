@@ -2,7 +2,7 @@
 
 import { motion } from 'framer-motion';
 import Link from 'next/link';
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import Box from '@ux/box';
 import Apps2Icon from '@ux/icon/apps2'
 import CodeIcon from '@ux/icon/code'
@@ -20,6 +20,7 @@ import IconButton from '@/app/develop/components/IconButton';
 import DomainMenu from '@/app/develop/components/layout/DomainMenu';
 import DeviceSelector from '@/app/develop/components/preview/DeviceSelector'
 import { ChatTab, MobileMode, SettingsSection, ViewMode } from '@/app/develop/components/types'
+import { useAppIdFromParams } from '@/app/develop/components/utils'
 import { AiroLogo } from '@/components/layout/AiroLogo';
 import AppPublish from '@/components/layout/AppPublish';
 import HeaderUpgradeButton from '@/components/layout/HeaderUpgradeButton';
@@ -28,7 +29,18 @@ import UserMenu from '@/components/layout/UserMenu';
 import { useChatTabs } from '@/hooks/useChatTabs';
 import { useTranslations } from '@/hooks/useTranslations';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
-import { generateClickEID } from '@/utils/instrumentation'
+import { logClickEvent } from '@/utils/instrumentation'
+
+const VIEW_MODE_EID_MAP: Record<string, string> = {
+  [ViewMode.PREVIEW]: 'develop.header.iframe',
+  [ViewMode.EDIT]: 'develop.header.edit_mode',
+  [ViewMode.CODE]: 'develop.header.code_editor',
+};
+
+const MOBILE_MODE_EID_MAP: Record<string, string> = {
+  [MobileMode.TOOLS]: 'develop.mobile_header.tools',
+  [MobileMode.PREVIEW]: 'develop.mobile_header.preview',
+};
 
 interface DevelopHeaderProps {
   onPreviewRefresh: () => void;
@@ -37,8 +49,9 @@ interface DevelopHeaderProps {
 export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) {
   const t = useTranslations();
   const location = 'develop';
+  const appId = useAppIdFromParams();
+  const clickContext = useMemo(() => (appId ? { appId } : undefined), [appId]);
 
-  const { activeChatTab } = useChatTabs()
   const chatPaneWidth = useDevelopPageStore((state) => state.chatPaneWidth)
   const isMobile = useDevelopPageStore((state) => state.isMobile)
   const viewMode = useDevelopPageStore((state) => state.viewMode)
@@ -54,7 +67,8 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
   const handleDomainSettings = useCallback(() => {
     setActiveSettingsSection(SettingsSection.DOMAIN);
     setActiveChatTab(ChatTab.SETTINGS);
-  }, [setActiveSettingsSection]);
+    logClickEvent('develop.header.domain_settings', clickContext)();
+  }, [clickContext, setActiveChatTab, setActiveSettingsSection]);
 
   return (
     <header data-testid="airo-header" className="flex">
@@ -74,7 +88,7 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
           <Link
             href="/"
             className="flex items-center"
-            data-eid={ generateClickEID(`${location}.header.airo_ai_link`) }
+            onClick={() => logClickEvent(`${location}.header.airo_ai_link`, clickContext)()}
           >
             <AiroLogo className="relative" />
           </Link>
@@ -84,10 +98,12 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
           <motion.div layout>
             <IconButton
               icon={isChatPaneCollapsed ? <SidebarExpandIcon className="size-2.5" /> : <SidebarCollapseIcon className="size-2.5" />}
-              onClick={toggleChatPaneCollapse}
+              onClick={() => {
+                toggleChatPaneCollapse();
+                logClickEvent(`develop.header.chat_pane_${isChatPaneCollapsed ? 'expand' : 'collapse'}`, clickContext)();
+              }}
               label={isChatPaneCollapsed ? t('builder_preview_button_expand') : t('builder_preview_button_collapse')}
               showLabelWhenActive={false}
-              data-eid={generateClickEID(`develop.header.chat_pane_${isChatPaneCollapsed ? 'expand' : 'collapse'}`)}
             />
           </motion.div>
         )}
@@ -109,27 +125,24 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
                 value={viewMode}
                 onChange={(value) => {
                   handleViewModeChange(value as ViewMode, hasUnsavedChanges);
+                  if (VIEW_MODE_EID_MAP[value]) logClickEvent(VIEW_MODE_EID_MAP[value], clickContext)();
                 }}
-                data-eid={generateClickEID('develop.header.view_mode')}
               >
                 <ButtonGroup.Item
                   value={ViewMode.PREVIEW}
                   icon={<WebsiteFilledIcon className="size-2.5" />}
                   label={t('builder_preview_button_preview')}
-                  data-eid={generateClickEID('develop.header.iframe')}
                 />
                 <ButtonGroup.Item
                   value={ViewMode.EDIT}
                   icon={<WandIcon className="size-2.5" />}
                   label={t('builder_preview_button_edit')}
-                  data-eid={generateClickEID('develop.header.edit_mode')}
                 />
                 <ButtonGroup.Item
                   value={ViewMode.CODE}
                   icon={<CodeIcon className="size-2.5" />}
                   label={t('builder_preview_button_code')}
                   disabled={isVersionHistoryOpen}
-                  data-eid={generateClickEID('develop.header.code_editor')}
                 />
               </ButtonGroup>
             </Box>
@@ -137,10 +150,13 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
             <Box orientation="horizontal" gap="sm" inlineAlignChildren='center'>
               {/* Middle controls */}
               <IconButton
+                data-testid="header-refresh-button"
                 icon={<RefreshIcon className="size-2.5" />}
                 disabled={viewMode === ViewMode.CODE || isVersionHistoryOpen}
-                onClick={onPreviewRefresh}
-                data-eid={generateClickEID('develop.header.refresh')}
+                onClick={() => {
+                  onPreviewRefresh();
+                  logClickEvent('develop.header.refresh', clickContext)();
+                }}
                 label={t('builder_preview_button_refresh')}
                 showLabelWhenActive={false}
               />
@@ -155,7 +171,6 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
                 icon={<WorldIcon className="size-2.5" />}
                 label={t('builder_project_domain_title')}
                 showLabelWhenActive={false}
-                data-eid={generateClickEID('develop.header.domain_settings')}
                 onClick={handleDomainSettings}
               />
 
@@ -179,22 +194,20 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
             value={mobileMode}
             onChange={(value) => {
               handleMobileModeChange(value as MobileMode);
+              if (MOBILE_MODE_EID_MAP[value]) logClickEvent(MOBILE_MODE_EID_MAP[value], clickContext)();
             }}
-            data-eid={generateClickEID('develop.mobile_header.view_mode')}
           >
             <ButtonGroup.Item
               value={MobileMode.TOOLS}
               icon={<Apps2Icon className="size-2.5" />}
               label={t('builder_preview_button_tools')}
               showLabelAlways
-              data-eid={generateClickEID('develop.mobile_header.tools')}
             />
             <ButtonGroup.Item
               value={MobileMode.PREVIEW}
               icon={<MobilePhoneIcon className="size-2.5" />}
               label={t('builder_preview_button_preview')}
               showLabelAlways
-              data-eid={generateClickEID('develop.mobile_header.preview')}
             />
           </ButtonGroup>
           <UserMenu location="develop" />

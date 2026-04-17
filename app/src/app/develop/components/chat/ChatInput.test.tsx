@@ -8,6 +8,7 @@ import { fireEvent, screen, waitFor } from '@testing-library/react';
 
 import { MediaType } from '@/app/develop/components/chat/AssetTypes';
 import { renderWithProviders } from '@/tests/test-utils';
+import { logClickEvent } from '@/utils/instrumentation';
 import ChatInput from './ChatInput';
 
 const mockDevelopStore = {
@@ -25,7 +26,8 @@ const mockUseSwitchboard = vi.hoisted(() => vi.fn((feature: string) => {
 }));
 
 vi.mock('@/utils/instrumentation', () => ({
-  generateClickEID: vi.fn((id) => id),
+  generateClickEID: vi.fn((id: string) => id),
+  logClickEvent: vi.fn(() => vi.fn()),
 }));
 vi.mock('@/stores/useDevelopPageStore', () => ({
   useDevelopPageStore: (selector: any) => selector(mockDevelopStore),
@@ -378,7 +380,7 @@ describe('ChatInput', () => {
   it('should call onSendMessage when send button clicked', async () => {
     const onSendMessage = vi.fn();
     const { user } = renderWithProviders(
-      <ChatInput {...defaultProps} inputValue="Test" onSendMessage={onSendMessage} />
+      <ChatInput {...defaultProps} inputValue="Test" onSendMessage={onSendMessage} appId="app-xyz" />
     );
 
     const sendButton = screen.getByRole('button', { name: 'builder_chatinput_send' });
@@ -387,6 +389,7 @@ describe('ChatInput', () => {
     await waitFor(() => {
       expect(onSendMessage).toHaveBeenCalledOnce();
     });
+    expect(vi.mocked(logClickEvent)).toHaveBeenCalledWith('develop.prompt.send', { appId: 'app-xyz' });
   });
 
   it('should call onSendMessage when Enter key pressed', async () => {
@@ -402,6 +405,7 @@ describe('ChatInput', () => {
     await waitFor(() => {
       expect(onSendMessage).toHaveBeenCalledOnce();
     });
+    expect(vi.mocked(logClickEvent)).toHaveBeenCalledWith('develop.prompt.send', undefined);
   });
 
   it('should not call onSendMessage when Shift+Enter pressed', async () => {
@@ -465,44 +469,42 @@ describe('ChatInput', () => {
     expect(textarea).toHaveAttribute('rows', '3');
   });
 
-  it('should have correct send button attributes', () => {
-    renderWithProviders(<ChatInput {...defaultProps} inputValue="Test" />);
+  it('should have correct send button attributes and log send on click', async () => {
+    const { user } = renderWithProviders(<ChatInput {...defaultProps} inputValue="Test" />);
 
     const sendButton = screen.getByRole('button', { name: 'builder_chatinput_send' });
     expect(sendButton).toHaveAttribute('id', 'chat-send-button');
-    expect(sendButton).toHaveAttribute('data-eid', 'develop.prompt.send');
+    expect(sendButton).not.toHaveAttribute('data-eid');
+    await user.click(sendButton);
+    expect(vi.mocked(logClickEvent)).toHaveBeenCalledWith('develop.prompt.send', undefined);
   });
 
   it('should render attachment menu when appId and onStageFiles provided', () => {
-    const { container } = renderWithProviders(
+    renderWithProviders(
       <ChatInput {...defaultProps} appId="test-app-123" onStageFiles={vi.fn()} />
     );
 
-    const attachmentButton = container.querySelector('[data-eid="develop.chat_input.attachment_menu"]');
-    expect(attachmentButton).toBeInTheDocument();
+    expect(screen.getByTestId('chat-attachment-menu-trigger')).toBeInTheDocument();
   });
 
   it('should not render attachment menu when appId is not provided', () => {
-    const { container } = renderWithProviders(<ChatInput {...defaultProps} />);
+    renderWithProviders(<ChatInput {...defaultProps} />);
 
-    const attachmentButton = container.querySelector('[data-eid="develop.chat_input.attachment_menu"]');
-    expect(attachmentButton).not.toBeInTheDocument();
+    expect(screen.queryByTestId('chat-attachment-menu-trigger')).not.toBeInTheDocument();
   });
 
   it('should not render attachment menu when onStageFiles is not provided', () => {
-    const { container } = renderWithProviders(<ChatInput {...defaultProps} appId="test-app-123" />);
+    renderWithProviders(<ChatInput {...defaultProps} appId="test-app-123" />);
 
-    const attachmentButton = container.querySelector('[data-eid="develop.chat_input.attachment_menu"]');
-    expect(attachmentButton).not.toBeInTheDocument();
+    expect(screen.queryByTestId('chat-attachment-menu-trigger')).not.toBeInTheDocument();
   });
 
   it('should disable attachment menu button when disabled', () => {
-    const { container } = renderWithProviders(
+    renderWithProviders(
       <ChatInput {...defaultProps} appId="test-app-123" onStageFiles={vi.fn()} isDisabled={true} />
     );
 
-    const attachmentButton = container.querySelector('[data-eid="develop.chat_input.attachment_menu"]');
-    expect(attachmentButton).toBeDisabled();
+    expect(screen.getByTestId('chat-attachment-menu-trigger')).toBeDisabled();
   });
 
   it('should disable attachment menu when selectedAssets length equals maxAssets', function disableAtLimit() {
@@ -518,7 +520,7 @@ describe('ChatInput', () => {
       thumbnailUrl: 'https://example.com/thumb.jpg',
     });
 
-    const { container } = renderWithProviders(
+    renderWithProviders(
       <ChatInput
         {...defaultProps}
         appId="test-app-123"
@@ -529,8 +531,7 @@ describe('ChatInput', () => {
       />
     );
 
-    const attachmentButton = container.querySelector('[data-eid="develop.chat_input.attachment_menu"]');
-    expect(attachmentButton).toBeDisabled();
+    expect(screen.getByTestId('chat-attachment-menu-trigger')).toBeDisabled();
   });
 
   it('should enable attachment menu when selectedAssets length is less than maxAssets', function enableBelowLimit() {
@@ -546,7 +547,7 @@ describe('ChatInput', () => {
       thumbnailUrl: 'https://example.com/thumb.jpg',
     });
 
-    const { container } = renderWithProviders(
+    renderWithProviders(
       <ChatInput
         {...defaultProps}
         appId="test-app-123"
@@ -557,8 +558,7 @@ describe('ChatInput', () => {
       />
     );
 
-    const attachmentButton = container.querySelector('[data-eid="develop.chat_input.attachment_menu"]');
-    expect(attachmentButton).not.toBeDisabled();
+    expect(screen.getByTestId('chat-attachment-menu-trigger')).not.toBeDisabled();
   });
 
   describe('UsageGauge feature flag', () => {
@@ -609,12 +609,11 @@ describe('ChatInput', () => {
     });
 
     it('should disable attachment menu when isBudgetExceeded is true', () => {
-      const { container } = renderWithProviders(
+      renderWithProviders(
         <ChatInput {...defaultProps} appId="test-app-123" onStageFiles={vi.fn()} isBudgetExceeded={true} />
       );
 
-      const attachmentButton = container.querySelector('[data-eid="develop.chat_input.attachment_menu"]');
-      expect(attachmentButton).toBeDisabled();
+      expect(screen.getByTestId('chat-attachment-menu-trigger')).toBeDisabled();
     });
 
     it('should disable speech button when isBudgetExceeded is true', () => {

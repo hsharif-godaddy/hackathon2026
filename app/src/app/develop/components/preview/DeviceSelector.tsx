@@ -1,7 +1,7 @@
 'use client'
 
 import clsx from 'clsx'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import CheckmarkIcon from '@ux/icon/checkmark'
 import DesktopIcon from '@ux/icon/desktop'
 import MobilePhoneIcon from '@ux/icon/mobile-phone'
@@ -10,6 +10,7 @@ import TabletIcon from '@ux/icon/tablet'
 import IconButton from '@/app/develop/components/IconButton'
 import { type DevicePreset, getDevicesByCategory } from '@/app/develop/components/preview/devicePresets'
 import { PreviewViewMode } from '@/app/develop/components/types'
+import { useAppIdFromParams } from '@/app/develop/components/utils'
 import { useTranslations } from '@/hooks/useTranslations'
 import {
   Popover,
@@ -17,7 +18,7 @@ import {
   PopoverTrigger,
 } from '@/lib/shadcn/popover'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
-import { generateClickEID } from '@/utils/instrumentation'
+import { logClickEvent } from '@/utils/instrumentation'
 
 interface DeviceSelectorProps {
   disabled?: boolean
@@ -26,6 +27,8 @@ interface DeviceSelectorProps {
 export default function DeviceSelector({ disabled = false }: DeviceSelectorProps) {
   const [open, setOpen] = useState(false)
   const t = useTranslations()
+  const appId = useAppIdFromParams()
+  const clickContext = useMemo(() => (appId ? { appId } : undefined), [appId])
 
   const previewViewMode = useDevelopPageStore((state) => state.previewViewMode)
   const selectedDeviceId = useDevelopPageStore((state) => state.selectedDeviceId)
@@ -48,6 +51,13 @@ export default function DeviceSelector({ disabled = false }: DeviceSelectorProps
     setSelectedDeviceId(device.id)
 
     setOpen(false)
+  }
+
+  function deviceRowClick(device: DevicePreset) {
+    return function selectDeviceRow() {
+      logClickEvent(`develop.preview.device_select_${device.id}`, clickContext)()
+      handleDeviceSelect(device)
+    }
   }
 
   function getIcon() {
@@ -73,7 +83,10 @@ export default function DeviceSelector({ disabled = false }: DeviceSelectorProps
           label={t('builder_preview_button_device')}
           showLabelWhenActive={false}
           disabled={disabled}
-          dataEid={generateClickEID('develop.preview.device_selector')}
+          data-testid="preview-device-selector-trigger"
+          onClick={() => {
+            logClickEvent('develop.preview.device_selector', clickContext)()
+          }}
         />
       </PopoverTrigger>
       <PopoverContent
@@ -89,7 +102,7 @@ export default function DeviceSelector({ disabled = false }: DeviceSelectorProps
               device={device}
               displayName={getDeviceDisplayName(device)}
               isSelected={selectedDeviceId === device.id}
-              onClick={() => handleDeviceSelect(device)}
+              onClick={deviceRowClick(device)}
             />
           ))}
 
@@ -100,7 +113,7 @@ export default function DeviceSelector({ disabled = false }: DeviceSelectorProps
               device={device}
               displayName={getDeviceDisplayName(device)}
               isSelected={selectedDeviceId === device.id}
-              onClick={() => handleDeviceSelect(device)}
+              onClick={deviceRowClick(device)}
             />
           ))}
 
@@ -111,7 +124,7 @@ export default function DeviceSelector({ disabled = false }: DeviceSelectorProps
               device={device}
               displayName={getDeviceDisplayName(device)}
               isSelected={selectedDeviceId === device.id}
-              onClick={() => handleDeviceSelect(device)}
+              onClick={deviceRowClick(device)}
             />
           ))}
         </div>
@@ -137,7 +150,6 @@ function DeviceMenuItem({ device, displayName, isSelected, onClick }: DeviceMenu
         isSelected && 'font-medium'
       )}
       onClick={onClick}
-      data-eid={generateClickEID(`develop.preview.device_select_${device.id}`)}
     >
       <span>{displayName}</span>
       {isSelected && <CheckmarkIcon />}

@@ -16,7 +16,7 @@ import { test, expect } from '@playwright/test';
 import { deleteAllSitesViaAPI } from '../helpers/api';
 import { handleSsoLogin, openUserMenu, ensureAuthenticated } from '../helpers/auth';
 import { LONG_TIMEOUT, CHAT_INPUT_TIMEOUT, DEFAULT_TIMEOUT, PREVIEW_TIMEOUT, APPS_GRID_PAGE_SIZE, getSpecPrefix } from '../helpers/constants';
-import { logTestResult, logTestStart, waitForDevelopPage } from '../helpers/ui';
+import { dismissBanners, logTestResult, logTestStart, waitForDevelopPage } from '../helpers/ui';
 
 test.describe('Apps Page & Navigation', () => {
   test.beforeEach(async ({}, testInfo) => {
@@ -67,8 +67,10 @@ test.describe('Apps Page & Navigation', () => {
     await expect(page.getByTestId('airo-header')).toBeVisible();
     console.log('  ✓ Header visible');
 
-    // Verify Publish button (use data-eid to target header button specifically)
-    const publishButton = page.locator('[data-eid*="header"][data-eid*="publish"]');
+    // Publish control in header: match by accessible name (not test id — toolbar may duplicate AppPublish)
+    const publishButton = page
+      .getByTestId('airo-header')
+      .getByRole('button', { name: /publish/i });
     await expect(publishButton).toBeVisible({ timeout: DEFAULT_TIMEOUT });
     await expect(publishButton).not.toBeDisabled();
     console.log('  ✓ Publish button visible and enabled');
@@ -179,8 +181,10 @@ test.describe('Apps Page & Navigation', () => {
     const countBefore = await page.getByTestId('app-card-edit-button').count();
     console.log(`  Apps before delete: ${countBefore}`);
 
+    await dismissBanners(page);
     await page.getByTestId('app-card-menu-button').first().click();
     await page.getByTestId('app-card-delete-button').waitFor({ state: 'visible', timeout: 10000 });
+    await dismissBanners(page);
     await page.getByTestId('app-card-delete-button').click();
 
     // Verify confirmation dialog
@@ -212,7 +216,10 @@ test.describe('Apps Page & Navigation', () => {
     await promptInput.waitFor({ state: 'visible', timeout: LONG_TIMEOUT });
 
     await openUserMenu(page);
-    await page.locator('[data-eid*="user_menu.sign_in"]').click();
+    await page
+      .locator('[data-slot="popover-content"][data-state="open"]')
+      .getByRole('button', { name: /sign\s*in|builder_common_signin/i })
+      .click();
     await handleSsoLogin(page);
     await page.waitForURL('**/', { timeout: LONG_TIMEOUT });
     await promptInput.waitFor({ state: 'visible', timeout: LONG_TIMEOUT });
@@ -325,7 +332,10 @@ test.describe('Apps Page & Navigation', () => {
 
     // Trigger login via user menu
     await openUserMenu(page);
-    await page.locator('[data-eid*="user_menu.sign_in"]').click();
+    await page
+      .locator('[data-slot="popover-content"][data-state="open"]')
+      .getByRole('button', { name: /sign\s*in|builder_common_signin/i })
+      .click();
     await handleSsoLogin(page);
 
     // Wait for redirect back to homepage

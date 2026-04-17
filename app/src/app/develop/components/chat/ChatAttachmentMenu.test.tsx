@@ -10,7 +10,7 @@ import { renderWithProviders } from '@/tests/test-utils';
 import ChatAttachmentMenu from './ChatAttachmentMenu';
 
 vi.mock('@/utils/instrumentation', () => ({
-  generateClickEID: vi.fn((id) => id),
+  logClickEvent: vi.fn(() => vi.fn()),
   logImpressionEvent: vi.fn(() => vi.fn()),
 }));
 
@@ -82,22 +82,21 @@ describe('ChatAttachmentMenu', () => {
   it('should render attachment menu button', () => {
     renderWithProviders(<ChatAttachmentMenu {...defaultProps} />);
 
-    const button = screen.getByRole('button', { name: 'Attach' });
+    const button = screen.getByTestId('chat-attachment-menu-trigger');
     expect(button).toBeInTheDocument();
-    expect(button).toHaveAttribute('data-eid', 'develop.chat_input.attachment_menu');
   });
 
   it('should disable button when disabled prop is true', () => {
     renderWithProviders(<ChatAttachmentMenu {...defaultProps} disabled={true} />);
 
-    const button = screen.getByRole('button', { name: 'Attach' });
+    const button = screen.getByTestId('chat-attachment-menu-trigger');
     expect(button).toBeDisabled();
   });
 
   it('should open popover when button is clicked', async () => {
     const { user } = renderWithProviders(<ChatAttachmentMenu {...defaultProps} />);
 
-    const button = screen.getByRole('button', { name: 'Attach' });
+    const button = screen.getByTestId('chat-attachment-menu-trigger');
     await user.click(button);
 
     await waitFor(() => {
@@ -110,7 +109,7 @@ describe('ChatAttachmentMenu', () => {
   it('should show file reference modal when "Reference a file" is clicked', async () => {
     const { user } = renderWithProviders(<ChatAttachmentMenu {...defaultProps} />);
 
-    const button = screen.getByRole('button', { name: 'Attach' });
+    const button = screen.getByTestId('chat-attachment-menu-trigger');
     await user.click(button);
 
     await waitFor(() => {
@@ -131,7 +130,7 @@ describe('ChatAttachmentMenu', () => {
       <ChatAttachmentMenu {...defaultProps} onFileReferencesSelected={onFileReferencesSelected} />
     );
 
-    const button = screen.getByRole('button', { name: 'Attach' });
+    const button = screen.getByTestId('chat-attachment-menu-trigger');
     await user.click(button);
 
     await waitFor(() => {
@@ -157,7 +156,7 @@ describe('ChatAttachmentMenu', () => {
   it('should trigger file input when "Attach a file" is clicked', async () => {
     const { user } = renderWithProviders(<ChatAttachmentMenu {...defaultProps} />);
 
-    const button = screen.getByRole('button', { name: 'Attach' });
+    const button = screen.getByTestId('chat-attachment-menu-trigger');
     await user.click(button);
 
     await waitFor(() => {
@@ -257,7 +256,7 @@ describe('ChatAttachmentMenu', () => {
 
     const { user } = renderWithProviders(<ChatAttachmentMenu {...defaultProps} />);
 
-    const button = screen.getByRole('button', { name: 'Attach' });
+    const button = screen.getByTestId('chat-attachment-menu-trigger');
     await user.click(button);
 
     await waitFor(() => {
@@ -284,7 +283,7 @@ describe('ChatAttachmentMenu', () => {
       <ChatAttachmentMenu {...defaultProps} onUploadError={onUploadError} />
     );
 
-    const button = screen.getByRole('button', { name: 'Attach' });
+    const button = screen.getByTestId('chat-attachment-menu-trigger');
     await user.click(button);
 
     await waitFor(() => {
@@ -307,7 +306,7 @@ describe('ChatAttachmentMenu', () => {
 
     const { user } = renderWithProviders(<ChatAttachmentMenu {...defaultProps} />);
 
-    const button = screen.getByRole('button', { name: 'Attach' });
+    const button = screen.getByTestId('chat-attachment-menu-trigger');
     await user.click(button);
 
     await waitFor(() => {
@@ -320,7 +319,7 @@ describe('ChatAttachmentMenu', () => {
   it('should close popover when option is selected', async () => {
     const { user } = renderWithProviders(<ChatAttachmentMenu {...defaultProps} />);
 
-    const button = screen.getByRole('button', { name: 'Attach' });
+    const button = screen.getByTestId('chat-attachment-menu-trigger');
     await user.click(button);
 
     await waitFor(() => {

@@ -3,6 +3,14 @@ import { expect } from '@playwright/test';
 
 import { getCredentials, DEFAULT_TIMEOUT, LONG_TIMEOUT, SSO_TIMEOUT, SHORT_TIMEOUT } from './constants';
 
+/**
+ * User menu opener in the main app chrome only (`data-testid="user-menu-trigger"` under `airo-header`).
+ * Avoids ambiguous matches when the same test id appears elsewhere; label copy varies by locale so we do not match on text.
+ */
+export function userMenuTrigger(page: Page) {
+  return page.getByTestId('airo-header').getByTestId('user-menu-trigger');
+}
+
 /** SSO detection result types */
 export type SsoDetectionResult = 'iframe' | 'redirect' | 'authenticated' | 'timeout' | null;
 
@@ -96,11 +104,11 @@ export async function authenticate(page: Page, context: BrowserContext): Promise
     await page.getByTestId('homepage-prompt-input').waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT });
 
     // Check if Sign Out exists in user menu (indicates authenticated)
-    const userMenuButton = page.locator('[data-eid*="user_menu.button"], [data-eid*="chat_toolbar.user_menu"]');
+    const menuTrigger = userMenuTrigger(page);
 
     // Wait for button to be visible before clicking (fixes race condition)
-    await userMenuButton.waitFor({ state: 'visible', timeout: SHORT_TIMEOUT });
-    await userMenuButton.click({ force: true });
+    await menuTrigger.waitFor({ state: 'visible', timeout: SHORT_TIMEOUT });
+    await menuTrigger.click({ force: true });
 
     const signOutButton = page.getByRole('button', { name: /sign out/i });
     if (await signOutButton.isVisible({ timeout: SHORT_TIMEOUT }).catch(() => false)) {
@@ -129,12 +137,12 @@ export async function authenticate(page: Page, context: BrowserContext): Promise
  */
 async function triggerSignIn(page: Page): Promise<void> {
   // Open user menu
-  const userMenuButton = page.locator('[data-eid*="user_menu.button"], [data-eid*="chat_toolbar.user_menu"]');
+  const menuTrigger = userMenuTrigger(page);
 
-  await userMenuButton.click({ force: true });
+  await menuTrigger.click({ force: true });
 
   // Click Sign In
-  const signInButton = page.locator('[data-eid*="user_menu.sign_in"]');
+  const signInButton = page.locator('[data-testid="user-menu-item-sign-in"]');
   if (await signInButton.isVisible({ timeout: DEFAULT_TIMEOUT }).catch(() => false)) {
     await signInButton.click();
   } else {
@@ -171,12 +179,12 @@ export async function verifyAuthenticated(page: Page): Promise<void> {
   await page.keyboard.press('Escape');
   await page.waitForTimeout(300);
 
-  const userMenuButton = page.locator('[data-eid*="user_menu.button"], [data-eid*="chat_toolbar.user_menu"]');
+  const menuTrigger = userMenuTrigger(page);
 
   await expect(async () => {
     await page.keyboard.press('Escape');
     await page.waitForTimeout(200);
-    await userMenuButton.click({ force: true });
+    await menuTrigger.click({ force: true });
     await expect(page.getByRole('button', { name: /sign out/i })).toBeVisible({ timeout: 0 });
   }).toPass({ timeout: DEFAULT_TIMEOUT });
 
@@ -187,9 +195,9 @@ export async function verifyAuthenticated(page: Page): Promise<void> {
  * Verify user is NOT authenticated by checking user menu
  */
 export async function verifyUnauthenticated(page: Page): Promise<void> {
-  const userMenuButton = page.locator('[data-eid*="user_menu.button"], [data-eid*="chat_toolbar.user_menu"]');
+  const menuTrigger = userMenuTrigger(page);
 
-  await userMenuButton.click({ force: true });
+  await menuTrigger.click({ force: true });
   await page.getByRole('button', { name: /sign in/i }).waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT });
   await page.click('body', { position: { x: 0, y: 0 } });
 }
@@ -198,29 +206,33 @@ export async function verifyUnauthenticated(page: Page): Promise<void> {
  * Sign out via user menu
  */
 export async function signOut(page: Page): Promise<void> {
-  const userMenuButton = page.locator('[data-eid*="user_menu.button"], [data-eid*="chat_toolbar.user_menu"]');
+  const menuTrigger = userMenuTrigger(page);
 
-  await userMenuButton.click({ force: true });
-  await page.locator('[data-eid*="user_menu.sign_out"]').click();
+  await menuTrigger.click({ force: true });
+  await page
+    .locator('[data-slot="popover-content"][data-state="open"]')
+    .getByRole('button', { name: /sign\s*in|builder_common_signin/i })
+    .click();
 }
 
 /**
  * Click Sign In from user menu
  */
 export async function signIn(page: Page): Promise<void> {
-  const userMenuButton = page.locator('[data-eid*="user_menu.button"], [data-eid*="chat_toolbar.user_menu"]');
+  const menuTrigger = userMenuTrigger(page);
 
-  await userMenuButton.click({ force: true });
-  await page.locator('[data-eid*="user_menu.sign_in"]').click();
+  await menuTrigger.click({ force: true });
+  await page
+    .locator('[data-slot="popover-content"][data-state="open"]')
+    .getByRole('button', { name: /sign\s*in|builder_common_signin/i })
+    .click();
 }
 
 /**
  * Open user menu in header
  */
 export async function openUserMenu(page: Page): Promise<void> {
-  const userMenuButton = page.locator('[data-eid*="user_menu.button"], [data-eid*="chat_toolbar.user_menu"]');
-
-  await userMenuButton.click({ force: true });
+  await userMenuTrigger(page).click({ force: true });
 }
 
 /**
