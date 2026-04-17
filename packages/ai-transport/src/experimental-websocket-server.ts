@@ -2075,12 +2075,30 @@ export class WebSocketServer {
     // Business context includes app-specific metadata (appId) for Event Bus enrichment
     const appId = extractAppIdFromMessageContext(data.context)
     const BUSINESS_CONTEXT_SCHEMA_ID = 'urn:shared:user:business-context:/airo-app-builder/v1';
+
+    // Build screenshot URL so the observability system (Event Bus / Langfuse) can
+    // link directly to the app screenshot stored in debug-console without relative paths.
+    let screenshotUrl: string | undefined
+    if (appId) {
+      const apiUrl = process.env.GODADDY_API_BASE_URL
+      if (apiUrl) {
+        const isNonProd = apiUrl.includes('dev') || apiUrl.includes('test')
+        const host = isNonProd
+          ? 'https://console.airo-builder.test-godaddy.com'
+          : 'https://console.airo-builder.godaddy.com'
+        screenshotUrl = `${host}/api/screenshots/default/${encodeURIComponent(appId)}`
+      }
+    }
+
     const traceCtx = createTraceContext({
       headers: socket.handshake?.headers,
       ...(appId && {
         businessContext: {
           schemaId: BUSINESS_CONTEXT_SCHEMA_ID,
-          data: { appId }
+          data: {
+            appId,
+            ...(screenshotUrl && { defaultScreenshotUrl: screenshotUrl })
+          }
         }
       })
     })

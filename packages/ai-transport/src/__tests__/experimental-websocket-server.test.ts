@@ -3233,6 +3233,100 @@ describe('BusinessContext Enrichment', () => {
 
     server.close()
   })
+
+  it('should include defaultScreenshotUrl with dev host when GODADDY_API_BASE_URL contains dev', async () => {
+    vi.stubEnv('GODADDY_API_BASE_URL', 'https://api.dev-godaddy.com')
+
+    const httpServer = { close: vi.fn() } as any
+    const { server, messageHandler } = await setupServerWithConnection(httpServer, {
+      agents: mockAgents,
+      defaultAgent: 'test-agent',
+      messagePersistence: createNoOpPersistence()
+    })
+
+    await messageHandler({
+      message: 'test',
+      context: { metadata: { appId: 'test-app-id-123' } }
+    })
+
+    const callArgs = mockCreateTraceContext.mock.calls[0]?.[0]
+    expect(callArgs.businessContext.data.defaultScreenshotUrl).toBe(
+      'https://console.airo-builder.test-godaddy.com/api/screenshots/default/test-app-id-123'
+    )
+
+    vi.unstubAllEnvs()
+    server.close()
+  })
+
+  it('should include defaultScreenshotUrl with prod host when GODADDY_API_BASE_URL is prod', async () => {
+    vi.stubEnv('GODADDY_API_BASE_URL', 'https://api.godaddy.com')
+
+    const httpServer = { close: vi.fn() } as any
+    const { server, messageHandler } = await setupServerWithConnection(httpServer, {
+      agents: mockAgents,
+      defaultAgent: 'test-agent',
+      messagePersistence: createNoOpPersistence()
+    })
+
+    await messageHandler({
+      message: 'test',
+      context: { metadata: { appId: 'test-app-id-123' } }
+    })
+
+    const callArgs = mockCreateTraceContext.mock.calls[0]?.[0]
+    expect(callArgs.businessContext.data.defaultScreenshotUrl).toBe(
+      'https://console.airo-builder.godaddy.com/api/screenshots/default/test-app-id-123'
+    )
+
+    vi.unstubAllEnvs()
+    server.close()
+  })
+
+  it('should omit defaultScreenshotUrl when GODADDY_API_BASE_URL is not set', async () => {
+    vi.stubEnv('GODADDY_API_BASE_URL', undefined)
+
+    const httpServer = { close: vi.fn() } as any
+    const { server, messageHandler } = await setupServerWithConnection(httpServer, {
+      agents: mockAgents,
+      defaultAgent: 'test-agent',
+      messagePersistence: createNoOpPersistence()
+    })
+
+    await messageHandler({
+      message: 'test',
+      context: { metadata: { appId: 'test-app-id-123' } }
+    })
+
+    const callArgs = mockCreateTraceContext.mock.calls[0]?.[0]
+    expect(callArgs.businessContext.data.defaultScreenshotUrl).toBeUndefined()
+
+    vi.unstubAllEnvs()
+    server.close()
+  })
+
+  it('should encode appId in defaultScreenshotUrl', async () => {
+    vi.stubEnv('GODADDY_API_BASE_URL', 'https://api.godaddy.com')
+
+    const httpServer = { close: vi.fn() } as any
+    const { server, messageHandler } = await setupServerWithConnection(httpServer, {
+      agents: mockAgents,
+      defaultAgent: 'test-agent',
+      messagePersistence: createNoOpPersistence()
+    })
+
+    await messageHandler({
+      message: 'test',
+      context: { metadata: { appId: 'app id/special' } }
+    })
+
+    const callArgs = mockCreateTraceContext.mock.calls[0]?.[0]
+    expect(callArgs.businessContext.data.defaultScreenshotUrl).toBe(
+      'https://console.airo-builder.godaddy.com/api/screenshots/default/app%20id%2Fspecial'
+    )
+
+    vi.unstubAllEnvs()
+    server.close()
+  })
 })
 
 
