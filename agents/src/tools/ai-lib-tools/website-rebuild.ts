@@ -33,7 +33,7 @@ async function waitForCompletion(
   maxWaitMs: number = 300000
 ): Promise<RebuildWorkflowState> {
   const startTime = Date.now()
-  const pollInterval = 2000
+  let pollIteration = 0
 
   while (Date.now() - startTime < maxWaitMs) {
     const state = await service.getStatus(appId)
@@ -50,7 +50,9 @@ async function waitForCompletion(
       })
     }
 
-    await new Promise(resolve => setTimeout(resolve, pollInterval))
+    const pollMs = pollIteration < 18 ? 400 : 1500
+    pollIteration++
+    await new Promise(resolve => setTimeout(resolve, pollMs))
   }
 
   throw new Error('Rebuild timed out waiting for completion')

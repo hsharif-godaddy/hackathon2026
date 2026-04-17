@@ -1,6 +1,8 @@
 import { mkdir, writeFile, readFile } from 'node:fs/promises';
 import path from 'node:path';
 
+import { PagePromptAgent } from '../agents/page-prompt-agent.js';
+import { SiteAnalyzerAgent } from '../agents/site-analyzer-agent.js';
 import { Logger } from '../logging/index.js';
 import {
   asRebuildError,
@@ -14,11 +16,10 @@ import {
   type StylePreferences,
   WEBSITE_REBUILD_IMPORT_FAILED_USER_MESSAGE
 } from '../types/rebuild.js';
-import { AssetProcessingService } from './AssetProcessingService.js';
-import { SiteAnalyzerAgent } from '../agents/site-analyzer-agent.js';
-import { SitemapDiscoveryService, type SitemapDiscoveryResult } from './SitemapDiscoveryService.js';
+import type { PageScrapeResult } from '../tools/ai-lib-tools/drivers/website-scraper-driver.js';
 import { WebsiteScraperDriver } from '../tools/ai-lib-tools/drivers/website-scraper-driver.js';
-import { PagePromptAgent } from '../agents/page-prompt-agent.js';
+import { AssetProcessingService } from './AssetProcessingService.js';
+import { SitemapDiscoveryService, type SitemapDiscoveryResult } from './SitemapDiscoveryService.js';
 
 const logger = Logger.create({ component: 'rebuild-orchestration-service' });
 
@@ -27,6 +28,42 @@ const logger = Logger.create({ component: 'rebuild-orchestration-service' });
  * Prevents excessive scraping and keeps rebuild scope manageable
  */
 const MAX_PAGES_TO_SCRAPE = 20;
+
+function readRebuildScrapeBatchDelayMs(): number {
+  const raw = process.env.REBUILD_SCRAPE_BATCH_DELAY_MS;
+  if (raw === undefined || raw === '') return 600;
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) && n >= 0 ? n : 600;
+}
+
+function readRebuildScrapeConcurrency(): number | undefined {
+  const raw = process.env.REBUILD_SCRAPE_CONCURRENCY;
+  if (raw === undefined || raw === '') return undefined;
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n) || n < 1) return undefined;
+  return n;
+}
+
+function normalizeRebuildPageKey(pageUrl: string): string {
+  try {
+    const u = new URL(pageUrl);
+    const path = u.pathname.replace(/\/$/, '') || '/';
+    return `${u.origin}${path}`;
+  } catch {
+    return pageUrl;
+  }
+}
+
+function dedupeExtractedAssetRows<T extends { url: string }>(rows: T[]): T[] {
+  const seen = new Set<string>();
+  const out: T[] = [];
+  for (const r of rows) {
+    if (seen.has(r.url)) continue;
+    seen.add(r.url);
+    out.push(r);
+  }
+  return out;
+}
 
 /**
  * Rebuild Orchestration Service
@@ -101,9 +138,51 @@ export class RebuildOrchestrationService {
     }
   }
 
+  private async persistOneScrapedPage(
+    appId: string,
+    page: PageScrapeResult,
+    rootPath: string
+  ): Promise<void> {
+    const sanitized = page.sanitizedContent;
+    if (!sanitized) {
+      return;
+    }
+    logger.debug('rebuild-orchestration.saving-page', {
+      appId,
+      url: page.url,
+      contentLength: sanitized.length,
+      htmlLength: page.html?.length ?? 0,
+      hasScreenshot: !!page.screenshotBase64
+    });
+    await this.savePage(
+      {
+        url: page.url,
+        sanitizedContent: sanitized,
+        html: page.html,
+        screenshotBase64: page.screenshotBase64
+      },
+      rootPath
+    );
+  }
+
+  private async persistScrapedPages(
+    appId: string,
+    pages: PageScrapeResult[],
+    rootPath: string
+  ): Promise<void> {
+    const toPersist = pages.filter(p => p.success && p.sanitizedContent);
+    if (toPersist.length === 0) {
+      return;
+    }
+
+    await Promise.all(
+      toPersist.map(page => this.persistOneScrapedPage(appId, page, rootPath))
+    );
+  }
+
   /**
    * Background task: Scrape and analyze the website
-   * 
+   *
    * @param appId - Application ID
    * @param sourceUrl - URL to scrape
    */
@@ -113,10 +192,7 @@ export class RebuildOrchestrationService {
 
       let discoveryResult: SitemapDiscoveryResult;
 
-      // Choose discovery method based on whether URL has a path beyond root
       if (SitemapDiscoveryService.hasPathBeyondRoot(sourceUrl)) {
-        // Sub-path mode: crawl-based discovery with path prefix filtering
-        // Reuse state.rootPath which was already computed in startRebuild()
         logger.info('rebuild-orchestration.sub-path-mode', {
           appId,
           sourceUrl,
@@ -126,7 +202,6 @@ export class RebuildOrchestrationService {
         const sitemapService = new SitemapDiscoveryService(sourceUrl, MAX_PAGES_TO_SCRAPE);
         discoveryResult = await sitemapService.crawlFromPath(state.rootPath);
       } else {
-        // Root mode: existing sitemap-based discovery
         logger.info('rebuild-orchestration.root-mode', {
           appId,
           sourceUrl
@@ -140,7 +215,6 @@ export class RebuildOrchestrationService {
         throw new Error('Failed to discover pages');
       }
 
-      // Filter out blog pages before scraping
       const nonBlogPages = discoveryResult.pages.filter(p => !p.isBlog);
       const blogPagesCount = discoveryResult.pages.length - nonBlogPages.length;
 
@@ -158,19 +232,21 @@ export class RebuildOrchestrationService {
       state.status = 'scraping';
       await this.saveState(state);
 
+      const rebuildPipelineStartedAt = Date.now();
       const scraper = new WebsiteScraperDriver();
       const urls = pagesToScrape.map(p => p.url);
 
       logger.info('rebuild-orchestration.scraping-pages', {
         appId,
         totalUrls: urls.length,
-        urls: urls.slice(0, 5) // Log first 5 URLs
+        urls: urls.slice(0, 5)
       });
 
       const multiPageResult = await scraper.scrapeMultiplePages({
         urls,
         includeAssets: true,
-        rateLimit: 1000
+        rateLimit: readRebuildScrapeBatchDelayMs(),
+        concurrency: readRebuildScrapeConcurrency()
       });
 
       logger.info('rebuild-orchestration.scraping-result', {
@@ -181,13 +257,12 @@ export class RebuildOrchestrationService {
         assetsFound: multiPageResult.assets?.length || 0
       });
 
-      // Check if all pages failed to scrape
       if (multiPageResult.successfulPages === 0) {
         const firstError = multiPageResult.pages.length > 0 ? multiPageResult.pages[0]?.error : undefined;
         const errorMessage = firstError
           ? `Failed to scrape any pages: ${firstError}`
           : 'Failed to scrape any pages from the source website';
-        
+
         logger.error('rebuild-orchestration.all-scraping-failed', {
           appId,
           totalAttempted: multiPageResult.totalPages,
@@ -201,9 +276,8 @@ export class RebuildOrchestrationService {
       state.status = 'analyzing';
       await this.saveState(state);
 
-      // Create sitemap with all discovered pages, marking which ones were scraped
       const scrapedUrls = new Set(multiPageResult.pages.filter(p => p.success).map(p => p.url));
-      
+
       const sitemapData: SitemapData = {
         pages: discoveryResult.pages.map(p => ({
           url: p.url,
@@ -228,21 +302,7 @@ export class RebuildOrchestrationService {
       });
 
       for (const page of multiPageResult.pages) {
-        if (page.success && page.sanitizedContent) {
-          logger.debug('rebuild-orchestration.saving-page', {
-            appId,
-            url: page.url,
-            contentLength: page.sanitizedContent.length,
-            htmlLength: page.html?.length || 0,
-            hasScreenshot: !!page.screenshotBase64
-          });
-          await this.savePage({
-            url: page.url,
-            sanitizedContent: page.sanitizedContent,
-            html: page.html,
-            screenshotBase64: page.screenshotBase64
-          }, state.rootPath);
-        } else {
+        if (!(page.success && page.sanitizedContent)) {
           logger.warn('rebuild-orchestration.page-skip', {
             appId,
             url: page.url,
@@ -253,22 +313,11 @@ export class RebuildOrchestrationService {
         }
       }
 
+      await this.persistScrapedPages(appId, multiPageResult.pages, state.rootPath);
+
       const homePage = multiPageResult.pages.find(p => p.success && this.isHomepage(p.url, state.rootPath));
 
-      if (homePage && homePage.sanitizedContent) {
-        const analyzer = new SiteAnalyzerAgent();
-        await analyzer.initialize();
-
-        const metadata = await analyzer.analyze(
-          homePage.sanitizedContent,
-          homePage.screenshotBase64
-        );
-        metadata.sourceUrl = sourceUrl;
-
-        await this.saveMetadata(metadata);
-
-        await analyzer.cleanup();
-      } else {
+      if (!homePage?.sanitizedContent) {
         logger.error('rebuild-orchestration.homepage-analysis-skipped', {
           appId,
           sourceUrl,
@@ -289,18 +338,49 @@ export class RebuildOrchestrationService {
         });
       }
 
-      if (multiPageResult.assets && multiPageResult.assets.length > 0) {
-        const assetService = new AssetProcessingService(this.appPath);
-        const assetMap = new Map<string, string[]>();
-
-        for (const asset of multiPageResult.assets) {
-          if (!assetMap.has(asset.url)) {
-            assetMap.set(asset.url, []);
-          }
-          assetMap.get(asset.url)!.push(asset.sourceUrl);
+      const allScrapedAssets = multiPageResult.assets ?? [];
+      const assetMap = new Map<string, string[]>();
+      for (const asset of allScrapedAssets) {
+        if (!assetMap.has(asset.url)) {
+          assetMap.set(asset.url, []);
         }
+        assetMap.get(asset.url)!.push(asset.sourceUrl);
+      }
 
-        await assetService.process(multiPageResult.assets, assetMap);
+      const homeKey = normalizeRebuildPageKey(homePage.url);
+      const homeAssetRows = allScrapedAssets.filter(
+        a => normalizeRebuildPageKey(a.sourceUrl) === homeKey
+      );
+      const otherAssetRows = allScrapedAssets.filter(
+        a => normalizeRebuildPageKey(a.sourceUrl) !== homeKey
+      );
+      const homeUnique = dedupeExtractedAssetRows(homeAssetRows);
+      const otherUnique = dedupeExtractedAssetRows(otherAssetRows);
+
+      const analyzer = new SiteAnalyzerAgent();
+      await analyzer.initialize();
+
+      const assetService = new AssetProcessingService(this.appPath);
+
+      const analyzerPromise = analyzer
+        .analyze(homePage.sanitizedContent, homePage.screenshotBase64)
+        .then(async metadata => {
+          metadata.sourceUrl = sourceUrl;
+          await this.saveMetadata(metadata);
+        })
+        .finally(async () => {
+          await analyzer.cleanup();
+        });
+
+      const homeAssetPromise =
+        homeUnique.length > 0
+          ? assetService.process(homeUnique, assetMap, { merge: false })
+          : Promise.resolve(undefined);
+
+      await Promise.all([analyzerPromise, homeAssetPromise]);
+
+      if (otherUnique.length > 0) {
+        await assetService.process(otherUnique, assetMap, { merge: true });
       }
 
       state.status = 'style_questions';
@@ -310,7 +390,8 @@ export class RebuildOrchestrationService {
       logger.info('rebuild-orchestration.scrape-complete', {
         appId,
         pagesScraped: multiPageResult.successfulPages,
-        assetsFound: multiPageResult.assets?.length || 0
+        assetsFound: allScrapedAssets.length,
+        rebuildPipelineDurationMs: Date.now() - rebuildPipelineStartedAt
       });
     } catch (error) {
       const rebuildError = asRebuildError(error);
@@ -378,6 +459,7 @@ export class RebuildOrchestrationService {
       });
 
       const sourceSiteData = await this.loadSourceSiteData();
+
       const state = await this.getStatus(appId);
 
       if (!state.stylePreferences) {
@@ -632,15 +714,23 @@ export class RebuildOrchestrationService {
       });
     }
 
-    const pages: Record<string, PageContent> = {};
-    for (const sitemapPage of sitemap.pages) {
-      if (sitemapPage.scraped) {
+    const scrapedSlugs = sitemap.pages.filter(p => p.scraped).map(p => p.slug);
+    const loaded = await Promise.all(
+      scrapedSlugs.map(async slug => {
         try {
-          const pagePath = path.join(this.sourceSiteDir, 'pages', `${sitemapPage.slug}.json`);
-          pages[sitemapPage.slug] = JSON.parse(await readFile(pagePath, 'utf-8'));
+          const pagePath = path.join(this.sourceSiteDir, 'pages', `${slug}.json`);
+          const data = JSON.parse(await readFile(pagePath, 'utf-8')) as PageContent;
+          return [slug, data] as const;
         } catch {
-          continue;
+          return null;
         }
+      })
+    );
+
+    const pages: Record<string, PageContent> = {};
+    for (const entry of loaded) {
+      if (entry) {
+        pages[entry[0]] = entry[1];
       }
     }
 

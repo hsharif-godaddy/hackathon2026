@@ -451,9 +451,9 @@ ${isFirstPage ? `6. **HOMEPAGE STRUCTURE**:
 
 ${isFirstPage ? 'Generate a comprehensive, actionable prompt (400-1000 words)' : 'Generate a focused, actionable prompt (300-600 words)'} that enables the develop agent to rebuild this page with the REAL content optimized for the ${isFirstPage ? 'new' : 'existing'} design.`
 
-    const result = await agent.generate(prompt)
+    const result = await agent.generate(prompt);
 
-    return result.content
+    return result.content;
   }
 
   /**

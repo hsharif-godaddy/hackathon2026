@@ -111,6 +111,8 @@ export interface MultiPageScraperOptions {
   urls: string[];
   includeAssets?: boolean;
   rateLimit?: number;
+  /** When set, caps batch size (default: DEFAULT_SCRAPE_CONCURRENCY). */
+  concurrency?: number;
 }
 
 /**
@@ -521,7 +523,10 @@ export class WebsiteScraperDriver extends BaseDriver {
   async scrapeMultiplePages(options: MultiPageScraperOptions): Promise<MultiPageScraperResult> {
     const { urls, includeAssets = false, rateLimit = 1000 } = options;
     const allAssets: ExtractedAsset[] = [];
-    const concurrencyLimit = DEFAULT_SCRAPE_CONCURRENCY;
+    const concurrencyLimit =
+      options.concurrency && options.concurrency > 0
+        ? Math.min(options.concurrency, 30)
+        : DEFAULT_SCRAPE_CONCURRENCY;
 
     this.logger.info('website-scraper.multi-page.begin', {
       totalUrls: urls.length,

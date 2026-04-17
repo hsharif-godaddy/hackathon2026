@@ -1,5 +1,11 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import type { AssetManifest, AssetInfo } from '../../types/rebuild.js';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+import type { AssetInfo, AssetManifest } from '../../types/rebuild.js';
+import { AssetProcessingService } from '../AssetProcessingService.js';
 
 describe('AssetProcessingService - analyzePageAssets filtering', () => {
   const createMockManifest = (): AssetManifest => ({
@@ -191,5 +197,75 @@ describe('AssetProcessingService - analyzePageAssets filtering', () => {
 
       expect(unanalyzedImages).toHaveLength(0);
     });
+  });
+});
+
+describe('AssetProcessingService - process merge', () => {
+  it('resolves processAssetsWithConcurrency immediately for empty input', async function emptyConcurrency() {
+    const svc = new AssetProcessingService(path.join(os.tmpdir(), 'asset-processing-empty'));
+    const results = await (svc as unknown as {
+      processAssetsWithConcurrency: (
+        assets: unknown[],
+        sourcePages: Map<string, string[]>
+      ) => Promise<(AssetInfo | null)[]>;
+    }).processAssetsWithConcurrency([], new Map());
+
+    expect(results).toEqual([]);
+  });
+
+  it('merge pass completes when every URL already exists in manifest', async function mergeOnlySourcePages() {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'asset-processing-merge-'));
+    try {
+      const assetsDir = path.join(dir, '.source-site', 'assets');
+      await mkdir(assetsDir, { recursive: true });
+      const existing: AssetManifest = {
+        assets: [
+          {
+            url: 'https://example.com/logo.png',
+            localPath: '.source-site/assets/images/logo.png',
+            type: 'image',
+            sourcePages: ['https://example.com/'],
+            dimensions: { width: 100, height: 50 },
+            fileSize: 1000
+          }
+        ],
+        totalAssets: 1,
+        byType: { image: 1, font: 0, icon: 0, other: 0 },
+        generatedAt: new Date().toISOString()
+      };
+      await writeFile(
+        path.join(assetsDir, 'manifest.json'),
+        JSON.stringify(existing),
+        'utf-8'
+      );
+
+      const svc = new AssetProcessingService(dir);
+      const sourcePages = new Map<string, string[]>([
+        ['https://example.com/logo.png', ['https://example.com/', 'https://example.com/about']]
+      ]);
+
+      await svc.process(
+        [
+          {
+            url: 'https://example.com/logo.png',
+            type: 'image',
+            sourceUrl: 'https://example.com/about'
+          }
+        ],
+        sourcePages,
+        { merge: true }
+      );
+
+      const saved = JSON.parse(
+        await readFile(path.join(assetsDir, 'manifest.json'), 'utf-8')
+      ) as AssetManifest;
+
+      expect(saved.assets).toHaveLength(1);
+      expect(saved.assets[0]?.sourcePages?.sort()).toEqual(
+        ['https://example.com/', 'https://example.com/about'].sort()
+      );
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });

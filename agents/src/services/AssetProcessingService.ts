@@ -46,14 +46,16 @@ export class AssetProcessingService {
 
   /**
    * Process and download assets
-   * 
+   *
    * @param assets - Array of asset URLs to process
    * @param sourcePages - Map of asset URLs to source pages
+   * @param options - merge: extend existing manifest (dedupe by asset URL, merge sourcePages)
    * @returns Promise resolving to asset manifest
    */
   async process(
     assets: Array<{ url: string; type: 'image' | 'font' | 'icon' | 'other'; altText?: string; sourceUrl: string }>,
-    sourcePages: Map<string, string[]>
+    sourcePages: Map<string, string[]>,
+    options?: { merge?: boolean }
   ): Promise<AssetManifest> {
     try {
       logger.info('asset-processing.begin', {
@@ -64,7 +66,53 @@ export class AssetProcessingService {
 
       await this.ensureDirectories();
 
-      const processedAssets: AssetInfo[] = [];
+      const byUrl = new Map<string, AssetInfo>();
+      if (options?.merge) {
+        const existing = await this.loadManifestIfExists();
+        if (existing) {
+          for (const a of existing.assets) {
+            byUrl.set(a.url, a);
+          }
+        }
+      }
+
+      const toProcess: Array<{
+        url: string;
+        type: 'image' | 'font' | 'icon' | 'other';
+        altText?: string;
+        sourceUrl: string;
+      }> = [];
+      const queuedUrl = new Set<string>();
+
+      for (const row of assets) {
+        const pagesForUrl = sourcePages.get(row.url) ?? [row.sourceUrl];
+        const hit = byUrl.get(row.url);
+        if (hit) {
+          byUrl.set(row.url, {
+            ...hit,
+            sourcePages: this.combineSourcePages(hit.sourcePages, pagesForUrl)
+          });
+          continue;
+        }
+        if (queuedUrl.has(row.url)) {
+          continue;
+        }
+        queuedUrl.add(row.url);
+        toProcess.push(row);
+      }
+
+      const results =
+        toProcess.length > 0
+          ? await this.processAssetsWithConcurrency(toProcess, sourcePages)
+          : [];
+
+      for (const result of results) {
+        if (result) {
+          byUrl.set(result.url, result);
+        }
+      }
+
+      const processedAssets = [...byUrl.values()];
       const byType = {
         image: 0,
         font: 0,
@@ -72,14 +120,8 @@ export class AssetProcessingService {
         other: 0
       };
 
-      // Process assets in parallel with concurrency limit
-      const results = await this.processAssetsWithConcurrency(assets, sourcePages);
-
-      for (const result of results) {
-        if (result) {
-          processedAssets.push(result);
-          byType[result.type]++;
-        }
+      for (const a of processedAssets) {
+        byType[a.type]++;
       }
 
       const manifest: AssetManifest = {
@@ -108,6 +150,20 @@ export class AssetProcessingService {
     }
   }
 
+  private combineSourcePages(a: string[] | undefined, b: string[] | undefined): string[] {
+    return [...new Set([...(a ?? []), ...(b ?? [])])];
+  }
+
+  private async loadManifestIfExists(): Promise<AssetManifest | null> {
+    try {
+      const manifestPath = path.join(this.assetsDir, 'manifest.json');
+      const raw = await readFile(manifestPath, 'utf-8');
+      return JSON.parse(raw) as AssetManifest;
+    } catch {
+      return null;
+    }
+  }
+
   /**
    * Process assets with concurrency control
    * 
@@ -119,6 +175,10 @@ export class AssetProcessingService {
     assets: Array<{ url: string; type: 'image' | 'font' | 'icon' | 'other'; altText?: string; sourceUrl: string }>,
     sourcePages: Map<string, string[]>
   ): Promise<(AssetInfo | null)[]> {
+    if (assets.length === 0) {
+      return [];
+    }
+
     const results: (AssetInfo | null)[] = new Array(assets.length);
     let activeCount = 0;
     let currentIndex = 0;
