@@ -962,6 +962,101 @@ func TestPatchBudgetItemInsertsHistoryRow(t *testing.T) {
 	}
 }
 
+func TestBudgetItemLabelCreatePatchOmitPreservesClear(t *testing.T) {
+	ctx := context.Background()
+	st := testStore(t)
+	key := "label-roundtrip-" + uuid.NewString()
+	if _, err := st.CreateProduct(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	budgetID := uuid.NewString()
+	if err := st.CreateBudget(ctx, budgetID, key, []store.ItemInput{}); err != nil {
+		t.Fatal(err)
+	}
+
+	s := &Server{Store: st}
+	r := mux.NewRouter()
+	r.HandleFunc("/budgets/{budgetId}/budget-items", s.postBudgetItem).Methods(http.MethodPost)
+	r.HandleFunc("/budgets/{budgetId}/budget-items/{budgetItemId}", s.getBudgetItem).Methods(http.MethodGet)
+	r.HandleFunc("/budgets/{budgetId}/budget-items/{budgetItemId}", s.patchBudgetItem).Methods(http.MethodPatch)
+
+	postReq := httptest.NewRequest(http.MethodPost, "/budgets/"+budgetID+"/budget-items", strings.NewReader(
+		`{"creditsTotal":"100.000000","costToCreditRatio":"1","label":"line-a"}`,
+	))
+	postReq.Header.Set("Content-Type", "application/json")
+	postRec := httptest.NewRecorder()
+	r.ServeHTTP(postRec, postReq)
+	if postRec.Code != http.StatusCreated {
+		t.Fatalf("post item: %d %s", postRec.Code, postRec.Body.String())
+	}
+	var postOut map[string]any
+	if err := json.Unmarshal(postRec.Body.Bytes(), &postOut); err != nil {
+		t.Fatal(err)
+	}
+	itemID, _ := postOut["budgetItemId"].(string)
+	if itemID == "" {
+		t.Fatal("missing budgetItemId")
+	}
+	if got, ok := postOut["label"].(string); !ok || got != "line-a" {
+		t.Fatalf("post label %v want line-a", postOut["label"])
+	}
+
+	getReq := httptest.NewRequest(http.MethodGet, "/budgets/"+budgetID+"/budget-items/"+itemID, nil)
+	getRec := httptest.NewRecorder()
+	r.ServeHTTP(getRec, getReq)
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("get item: %d %s", getRec.Code, getRec.Body.String())
+	}
+	var getOut map[string]any
+	if err := json.Unmarshal(getRec.Body.Bytes(), &getOut); err != nil {
+		t.Fatal(err)
+	}
+	if getOut["label"].(string) != "line-a" {
+		t.Fatalf("get label %v want line-a", getOut["label"])
+	}
+
+	patchKeep := httptest.NewRequest(http.MethodPatch, "/budgets/"+budgetID+"/budget-items/"+itemID, strings.NewReader(
+		`{"creditsTotal":"90.000000"}`,
+	))
+	patchKeep.Header.Set("Content-Type", "application/json")
+	patchRec := httptest.NewRecorder()
+	r.ServeHTTP(patchRec, patchKeep)
+	if patchRec.Code != http.StatusOK {
+		t.Fatalf("patch omit label: %d %s", patchRec.Code, patchRec.Body.String())
+	}
+	var patchKeepOut map[string]any
+	if err := json.Unmarshal(patchRec.Body.Bytes(), &patchKeepOut); err != nil {
+		t.Fatal(err)
+	}
+	if patchKeepOut["label"].(string) != "line-a" {
+		t.Fatalf("patch omit label preserved: got %v", patchKeepOut["label"])
+	}
+
+	patchNull := httptest.NewRequest(http.MethodPatch, "/budgets/"+budgetID+"/budget-items/"+itemID, strings.NewReader(
+		`{"label":null}`,
+	))
+	patchNull.Header.Set("Content-Type", "application/json")
+	patchNullRec := httptest.NewRecorder()
+	r.ServeHTTP(patchNullRec, patchNull)
+	if patchNullRec.Code != http.StatusOK {
+		t.Fatalf("patch null label: %d %s", patchNullRec.Code, patchNullRec.Body.String())
+	}
+	var patchNullOut map[string]any
+	if err := json.Unmarshal(patchNullRec.Body.Bytes(), &patchNullOut); err != nil {
+		t.Fatal(err)
+	}
+	if patchNullOut["label"] != nil {
+		t.Fatalf("patch null label: got %v want nil", patchNullOut["label"])
+	}
+	row, err := st.GetBudgetItem(ctx, budgetID, itemID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row.Label != nil {
+		t.Fatalf("stored label after clear: %v want nil", row.Label)
+	}
+}
+
 func TestBudgetItemBodyToItemInputAllowsMissingCostToCreditRatioOnUpdate(t *testing.T) {
 	body := budgetItemBody{CreditsTotal: "10.000000"}
 	row, msg := body.toItemInput(false)

@@ -203,14 +203,15 @@ func hasMissingFlexAmountValue(p *flexAmount) bool {
 
 // hydrateMissingBudgetItemUpdateFields loads the current DB record and fills only missing
 // update fields used by PATCH handlers.
-func (s *Server) hydrateMissingBudgetItemUpdateFields(ctx context.Context, budgetID, budgetItemID string, creditsTotal *flexAmount, costToCreditRatio **flexAmount, hydrateExpiresAt, hydrateStartsAt, hydrateResetsAt, hydrateResetInterval bool, expiresAt, startsAt, resetsAt, resetInterval **string) error {
+func (s *Server) hydrateMissingBudgetItemUpdateFields(ctx context.Context, budgetID, budgetItemID string, creditsTotal *flexAmount, costToCreditRatio **flexAmount, hydrateExpiresAt, hydrateStartsAt, hydrateResetsAt, hydrateResetInterval, hydrateLabel bool, expiresAt, startsAt, resetsAt, resetInterval **string, label **string) error {
 	missingCreditsTotal := strings.TrimSpace(string(*creditsTotal)) == ""
 	missingCostToCreditRatio := hasMissingFlexAmountValue(*costToCreditRatio)
 	missingExpiresAt := hydrateExpiresAt && *expiresAt == nil
 	missingStartsAt := hydrateStartsAt && *startsAt == nil
 	missingResetsAt := hydrateResetsAt && *resetsAt == nil
 	missingResetInterval := hydrateResetInterval && *resetInterval == nil
-	if !missingCreditsTotal && !missingCostToCreditRatio && !missingExpiresAt && !missingStartsAt && !missingResetsAt && !missingResetInterval {
+	missingLabel := hydrateLabel && *label == nil
+	if !missingCreditsTotal && !missingCostToCreditRatio && !missingExpiresAt && !missingStartsAt && !missingResetsAt && !missingResetInterval && !missingLabel {
 		return nil
 	}
 
@@ -241,6 +242,14 @@ func (s *Server) hydrateMissingBudgetItemUpdateFields(ctx context.Context, budge
 		interval := *existing.ResetInterval
 		*resetInterval = &interval
 	}
+	if missingLabel {
+		if existing.Label != nil {
+			v := *existing.Label
+			*label = &v
+		} else {
+			*label = nil
+		}
+	}
 	return nil
 }
 
@@ -252,6 +261,7 @@ type budgetItemBody struct {
 	StartsAt          *string     `json:"startsAt"`
 	ResetsAt          *string     `json:"resetsAt"`
 	ResetInterval     *string     `json:"resetInterval"`
+	Label             *string     `json:"label"`
 }
 
 func (b budgetItemBody) toItemInput(validateCreate bool) (store.ItemInput, string) {
@@ -323,6 +333,7 @@ func (b budgetItemBody) toItemInput(validateCreate bool) (store.ItemInput, strin
 		StartsAt:        b.StartsAt,
 		ResetsAt:        b.ResetsAt,
 		ResetInterval:   ri,
+		Label:           b.Label,
 	}
 	return out, ""
 }
@@ -359,6 +370,11 @@ func budgetItemToResponse(r store.BudgetItemRow) map[string]any {
 		out["resetInterval"] = *r.ResetInterval
 	} else {
 		out["resetInterval"] = nil
+	}
+	if r.Label != nil {
+		out["label"] = *r.Label
+	} else {
+		out["label"] = nil
 	}
 	if r.DeletedAt != nil {
 		out["deletedAt"] = r.DeletedAt.UTC().Format(time.RFC3339Nano)
@@ -498,10 +514,12 @@ type patchBudgetItem struct {
 	StartsAt          *string     `json:"startsAt"`
 	ResetsAt          *string     `json:"resetsAt"`
 	ResetInterval     *string     `json:"resetInterval"`
+	Label             *string     `json:"label"`
 	expiresAtSet      bool        `json:"-"`
 	startsAtSet       bool        `json:"-"`
 	resetsAtSet       bool        `json:"-"`
 	resetIntervalSet  bool        `json:"-"`
+	labelSet          bool        `json:"-"`
 }
 
 // patchBudgetItemAllowedFields lists JSON keys accepted by patchBudgetItem.UnmarshalJSON.
@@ -514,6 +532,7 @@ var patchBudgetItemAllowedFields = map[string]struct{}{
 	"startsAt":          {},
 	"resetsAt":          {},
 	"resetInterval":     {},
+	"label":             {},
 }
 
 func (p *patchBudgetItem) UnmarshalJSON(data []byte) error {
@@ -537,6 +556,7 @@ func (p *patchBudgetItem) UnmarshalJSON(data []byte) error {
 	_, p.startsAtSet = raw["startsAt"]
 	_, p.resetsAtSet = raw["resetsAt"]
 	_, p.resetIntervalSet = raw["resetInterval"]
+	_, p.labelSet = raw["label"]
 	return nil
 }
 
@@ -549,6 +569,7 @@ func (p patchBudgetItem) toPutItemInput(validateCreate bool) (store.PutItemInput
 		StartsAt:          p.StartsAt,
 		ResetsAt:          p.ResetsAt,
 		ResetInterval:     p.ResetInterval,
+		Label:             p.Label,
 	}
 	row, msg := body.toItemInput(validateCreate)
 	if msg != "" {
@@ -563,6 +584,7 @@ func (p patchBudgetItem) toPutItemInput(validateCreate bool) (store.PutItemInput
 		StartsAt:        row.StartsAt,
 		ResetsAt:        row.ResetsAt,
 		ResetInterval:   row.ResetInterval,
+		Label:           row.Label,
 	}, ""
 }
 
@@ -624,10 +646,12 @@ func (s *Server) patchBudget(w http.ResponseWriter, r *http.Request) {
 				!it.startsAtSet,
 				hydrateResetsAt,
 				hydrateResetInterval,
+				!it.labelSet,
 				&it.ExpiresAt,
 				&it.StartsAt,
 				&it.ResetsAt,
 				&it.ResetInterval,
+				&it.Label,
 			)
 			if err != nil {
 				writeBudgetStoreError(w, "budget.patch_budget_get_existing_item", err)
@@ -774,10 +798,12 @@ func (s *Server) patchBudgetItem(w http.ResponseWriter, r *http.Request) {
 		!payload.startsAtSet,
 		hydrateResetsAt,
 		hydrateResetInterval,
+		!payload.labelSet,
 		&payload.ExpiresAt,
 		&payload.StartsAt,
 		&payload.ResetsAt,
 		&payload.ResetInterval,
+		&payload.Label,
 	); err != nil {
 		writeBudgetStoreError(w, "budget.patch_budget_item_get_existing", err)
 		return
@@ -795,6 +821,7 @@ func (s *Server) patchBudgetItem(w http.ResponseWriter, r *http.Request) {
 		StartsAt:        putRow.StartsAt,
 		ResetsAt:        putRow.ResetsAt,
 		ResetInterval:   putRow.ResetInterval,
+		Label:           putRow.Label,
 	}
 
 	if err := s.Store.UpdateBudgetItem(r.Context(), budgetID, budgetItemID, row); err != nil {

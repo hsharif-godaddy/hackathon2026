@@ -24,6 +24,7 @@ type ItemInput struct {
 	StartsAt        *string
 	ResetsAt        *string
 	ResetInterval   *string
+	Label           *string
 }
 
 type PutItemInput struct {
@@ -35,6 +36,7 @@ type PutItemInput struct {
 	StartsAt        *string
 	ResetsAt        *string
 	ResetInterval   *string
+	Label           *string
 }
 
 type SessionLine struct {
@@ -119,6 +121,7 @@ type BudgetItemRow struct {
 	StartsAt        *time.Time
 	ResetsAt        *time.Time
 	ResetInterval   *string
+	Label           *string
 	DeletedAt       *time.Time
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
@@ -157,6 +160,13 @@ func resetIntervalForDB(p *string) (sql.NullString, error) {
 	return sql.NullString{String: *norm, Valid: true}, nil
 }
 
+func labelForDB(p *string) sql.NullString {
+	if p == nil {
+		return sql.NullString{}
+	}
+	return sql.NullString{String: *p, Valid: true}
+}
+
 type preparedBudgetItemInsert struct {
 	ID              string
 	CreditsTotal    string
@@ -165,6 +175,7 @@ type preparedBudgetItemInsert struct {
 	StartsAt        sql.NullTime
 	ResetsAt        sql.NullTime
 	ResetInterval   sql.NullString
+	Label           sql.NullString
 	CreatedAt       time.Time
 }
 
@@ -204,6 +215,7 @@ func prepareBudgetItemInsert(in ItemInput) (*preparedBudgetItemInsert, error) {
 		StartsAt:        st,
 		ResetsAt:        rs,
 		ResetInterval:   resetInterval,
+		Label:           labelForDB(in.Label),
 		CreatedAt:       createdAt,
 	}, nil
 }
@@ -212,10 +224,10 @@ func insertPreparedBudgetItem(ctx context.Context, tx *sql.Tx, budgetID string, 
 	_, err := tx.ExecContext(ctx, `
 		INSERT INTO budget_items (
 			id, budget_id, credits_total, credits_used, cost_credit_ratio,
-			expires_at, starts_at, resets_at, reset_interval, created_at
-		) VALUES ($1, $2, $3, 0, $4, $5, $6, $7, $8, $9)
+			expires_at, starts_at, resets_at, reset_interval, label, created_at
+		) VALUES ($1, $2, $3, 0, $4, $5, $6, $7, $8, $9, $10)
 	`, prepared.ID, budgetID, prepared.CreditsTotal, prepared.CostCreditRatio,
-		prepared.ExpiresAt, prepared.StartsAt, prepared.ResetsAt, prepared.ResetInterval, prepared.CreatedAt)
+		prepared.ExpiresAt, prepared.StartsAt, prepared.ResetsAt, prepared.ResetInterval, prepared.Label, prepared.CreatedAt)
 	return err
 }
 
@@ -323,11 +335,11 @@ func insertBudgetItemsHistory(ctx context.Context, tx *sql.Tx, itemID, budgetID 
 	res, err := tx.ExecContext(ctx, `
 		INSERT INTO budget_items_history (
 			budget_item_id, budget_id, credits_total, credits_used, cost_credit_ratio,
-			expires_at, starts_at, reset_interval, resets_at, item_created_at, item_updated_at
+			expires_at, starts_at, reset_interval, resets_at, label, item_created_at, item_updated_at
 		)
 		SELECT
 			id, budget_id, credits_total, credits_used, cost_credit_ratio,
-			expires_at, starts_at, reset_interval, resets_at, created_at, updated_at
+			expires_at, starts_at, reset_interval, resets_at, label, created_at, updated_at
 		FROM budget_items
 		WHERE id = $1 AND budget_id = $2 AND deleted_at IS NULL
 	`, itemID, budgetID)
@@ -393,7 +405,7 @@ func (s *Store) GetBudget(ctx context.Context, budgetID string) (*BudgetDetail, 
 			bi.credits_total,
 			bi.credits_used,
 			bi.cost_credit_ratio,
-			bi.expires_at, bi.starts_at, bi.resets_at, bi.reset_interval, bi.deleted_at, bi.created_at, bi.updated_at
+			bi.expires_at, bi.starts_at, bi.resets_at, bi.reset_interval, bi.label, bi.deleted_at, bi.created_at, bi.updated_at
 		FROM budget_items bi
 		WHERE bi.budget_id = $1
 		ORDER BY bi.created_at, bi.id
@@ -406,12 +418,12 @@ func (s *Store) GetBudget(ctx context.Context, budgetID string) (*BudgetDetail, 
 	for rows.Next() {
 		var r BudgetItemRow
 		var exp, st, rs sql.NullTime
-		var reset sql.NullString
+		var reset, lbl sql.NullString
 		var ctot, cusd, csr decimal.Decimal
 		var delItem sql.NullTime
 		if err := rows.Scan(
 			&r.ID, &ctot, &cusd, &csr,
-			&exp, &st, &rs, &reset, &delItem, &r.CreatedAt, &r.UpdatedAt,
+			&exp, &st, &rs, &reset, &lbl, &delItem, &r.CreatedAt, &r.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -434,6 +446,10 @@ func (s *Store) GetBudget(ctx context.Context, budgetID string) (*BudgetDetail, 
 			sv := reset.String
 			r.ResetInterval = &sv
 		}
+		if lbl.Valid {
+			ls := lbl.String
+			r.Label = &ls
+		}
 		if delItem.Valid {
 			t := delItem.Time
 			r.DeletedAt = &t
@@ -452,7 +468,7 @@ func (s *Store) GetBudgetItem(ctx context.Context, budgetID, itemID string) (*Bu
 	}
 	var r BudgetItemRow
 	var exp, st, rs sql.NullTime
-	var reset sql.NullString
+	var reset, lbl sql.NullString
 	var ctot, cusd, csr decimal.Decimal
 	var delItem sql.NullTime
 	err := s.db.QueryRowContext(ctx, `
@@ -461,12 +477,12 @@ func (s *Store) GetBudgetItem(ctx context.Context, budgetID, itemID string) (*Bu
 			bi.credits_total,
 			bi.credits_used,
 			bi.cost_credit_ratio,
-			bi.expires_at, bi.starts_at, bi.resets_at, bi.reset_interval, bi.deleted_at, bi.created_at, bi.updated_at
+			bi.expires_at, bi.starts_at, bi.resets_at, bi.reset_interval, bi.label, bi.deleted_at, bi.created_at, bi.updated_at
 		FROM budget_items bi
 		WHERE bi.id = $1 AND bi.budget_id = $2
 	`, itemID, budgetID).Scan(
 		&r.ID, &ctot, &cusd, &csr,
-		&exp, &st, &rs, &reset, &delItem, &r.CreatedAt, &r.UpdatedAt,
+		&exp, &st, &rs, &reset, &lbl, &delItem, &r.CreatedAt, &r.UpdatedAt,
 	)
 	if err != nil {
 		return nil, mapNotFound(err)
@@ -489,6 +505,10 @@ func (s *Store) GetBudgetItem(ctx context.Context, budgetID, itemID string) (*Bu
 	if reset.Valid {
 		sv := reset.String
 		r.ResetInterval = &sv
+	}
+	if lbl.Valid {
+		ls := lbl.String
+		r.Label = &ls
 	}
 	if delItem.Valid {
 		t := delItem.Time
@@ -523,6 +543,7 @@ func (s *Store) UpsertBudgetItems(ctx context.Context, budgetID string, items []
 				StartsAt:        it.StartsAt,
 				ResetsAt:        it.ResetsAt,
 				ResetInterval:   it.ResetInterval,
+				Label:           it.Label,
 			}); err != nil {
 				return err
 			}
@@ -548,6 +569,7 @@ func (s *Store) UpsertBudgetItems(ctx context.Context, budgetID string, items []
 		if err != nil {
 			return err
 		}
+		lbl := labelForDB(it.Label)
 		if err := insertBudgetItemsHistory(ctx, tx, itemID, budgetID); err != nil {
 			return err
 		}
@@ -558,10 +580,11 @@ func (s *Store) UpsertBudgetItems(ctx context.Context, budgetID string, items []
 				expires_at = $3,
 				starts_at = $4,
 				resets_at = $5,
-				reset_interval = $6
-			WHERE id = $7 AND budget_id = $8 AND deleted_at IS NULL
+				reset_interval = $6,
+				label = $7
+			WHERE id = $8 AND budget_id = $9 AND deleted_at IS NULL
 		`, it.CreditsTotal, it.CostCreditRatio,
-			exp, st, rs, resetInterval, itemID, budgetID)
+			exp, st, rs, resetInterval, lbl, itemID, budgetID)
 		if err != nil {
 			return err
 		}
@@ -617,6 +640,7 @@ func (s *Store) UpdateBudgetItem(ctx context.Context, budgetID, itemID string, i
 	if err != nil {
 		return err
 	}
+	lbl := labelForDB(in.Label)
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -632,10 +656,11 @@ func (s *Store) UpdateBudgetItem(ctx context.Context, budgetID, itemID string, i
 			expires_at = $3,
 			starts_at = $4,
 			resets_at = $5,
-			reset_interval = $6
-		WHERE id = $7 AND budget_id = $8 AND deleted_at IS NULL
+			reset_interval = $6,
+			label = $7
+		WHERE id = $8 AND budget_id = $9 AND deleted_at IS NULL
 	`, in.CreditsTotal, in.CostCreditRatio,
-		exp, st, rs, resetInterval, itemID, budgetID)
+		exp, st, rs, resetInterval, lbl, itemID, budgetID)
 	if err != nil {
 		return err
 	}

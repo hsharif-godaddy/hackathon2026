@@ -6,7 +6,13 @@
   const DEFAULT_BUDGET_MINIMAL = JSON.stringify(
     {
       productKey: 'dev-ui-product',
-      items: [{ creditsTotal: '150.000000', costToCreditRatio: '0.1' }],
+      items: [
+        {
+          creditsTotal: '150.000000',
+          costToCreditRatio: '0.1',
+          label: 'primary',
+        },
+      ],
     },
     null,
     2,
@@ -20,11 +26,13 @@
           creditsTotal: '100.000000',
           costToCreditRatio: '0.1',
           resetInterval: '30d',
+          label: 'renewal-line',
         },
         {
           creditsTotal: '50.000000',
           costToCreditRatio: '0.066666',
           expiresAt: '2027-12-31T23:59:59Z',
+          label: 'expiring-line',
         },
       ],
     },

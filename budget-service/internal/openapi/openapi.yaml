@@ -708,6 +708,10 @@ components:
         resetInterval:
           type: string
           nullable: true
+        label:
+          type: string
+          nullable: true
+          description: Optional free-form label
 
     PatchBudgetItem:
       type: object
@@ -735,6 +739,10 @@ components:
         resetInterval:
           type: string
           nullable: true
+        label:
+          type: string
+          nullable: true
+          description: Optional free-form label
 
     BudgetItem:
       type: object
@@ -763,6 +771,10 @@ components:
         resetInterval:
           type: string
           nullable: true
+        label:
+          type: string
+          nullable: true
+          description: Optional free-form label
         deletedAt:
           type: string
           nullable: true

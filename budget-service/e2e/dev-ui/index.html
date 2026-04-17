@@ -358,7 +358,7 @@
 
       <details class="step" id="step-budget" open>
         <summary>3 · Budget</summary>
-        <p class="hint"><code>costToCreditRatio</code> = USD per credit (<code>credits_used = budget_cost / costToCreditRatio</code>). Example: <code>0.1</code> ⇒ $1 ⇒ 10 credits. Optional per item: <code>expiresAt</code>, <code>startsAt</code>, <code>resetInterval</code> (<code>30d</code>, <code>1mo</code>, …), <code>resetsAt</code> (RFC3339).</p>
+        <p class="hint"><code>costToCreditRatio</code> = USD per credit (<code>credits_used = budget_cost / costToCreditRatio</code>). Example: <code>0.1</code> ⇒ $1 ⇒ 10 credits. Optional per item: <code>label</code> (free-form string), <code>expiresAt</code>, <code>startsAt</code>, <code>resetInterval</code> (<code>30d</code>, <code>1mo</code>, …), <code>resetsAt</code> (RFC3339).</p>
         <div class="json-field-head">
           <label for="budgetPost">POST <code>/api/v1/budgets</code> body</label>
           <div class="json-tools">
@@ -373,12 +373,14 @@
     {
       "creditsTotal": "100.000000",
       "costToCreditRatio": "0.1",
-      "resetInterval": "30d"
+      "resetInterval": "30d",
+      "label": "renewal-line"
     },
     {
       "creditsTotal": "50.000000",
       "costToCreditRatio": "0.066666",
-      "expiresAt": "2027-12-31T23:59:59Z"
+      "expiresAt": "2027-12-31T23:59:59Z",
+      "label": "expiring-line"
     }
   ]
 }</textarea>
@@ -400,7 +402,8 @@
   "items": [
     {
       "creditsTotal": "100.000000",
-      "costToCreditRatio": "0.066666"
+      "costToCreditRatio": "0.066666",
+      "label": "after-patch"
     }
   ]
 }</textarea>
