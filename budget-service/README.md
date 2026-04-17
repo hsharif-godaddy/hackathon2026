@@ -112,24 +112,31 @@ curl -sS -H "Authorization: sso-jwt $TOKEN" "http://localhost:8080/api/v1/auth-c
 
 ## Environment
 
-| Variable                              | Default | Notes                                                                                                         |
-| ------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------- |
-| `BUDGET_SERVICE_ADDR`                 | `:8080` | Listen address                                                                                                |
-| `LOCAL_AUTH_DISABLE`                  | —       | `true`/`1`/`yes`/`on` skips JWT (local dev only)                                                              |
-| `LOG_LEVEL`                           | `info`  | slog level for the process: `debug` / `info` / `warn` / `error` (includes auth middleware noise when `debug`) |
-| `SSO_HOST`                            | —       | Required when auth enabled; e.g. `sso.dev-godaddy.com`                                                        |
-| `AWS_PROFILE`                         | —       | **`mint-iam-jwt`** / AWS CLI                                                                                  |
-| `CERT_PEM_PATH`, `CERT_KEY_PATH`      | —       | **`mint-cert-jwt` only**                                                                                      |
-| `DATABASE_URL`                        | —       | If unset, no Store                                                                                            |
-| `AUTO_MIGRATE`                        | —       | If unset and `DATABASE_URL` is set, **on**: run golang-migrate after ping. Set `false` to skip.               |
-| `MIGRATE_DATABASE_URL`                | —       | Optional DDL-capable DSN for migrations only; requires `DATABASE_URL` for the app pool.                       |
-| `DB_MAX_OPEN_CONNS`                   | `25`    |                                                                                                               |
-| `DB_MAX_IDLE_CONNS`                   | `5`     |                                                                                                               |
-| `DB_CONN_MAX_LIFETIME`                | `5m`    | Go duration                                                                                                   |
-| `SERVER_CERT_PATH`, `SERVER_KEY_PATH` | —       | Both or neither → TLS                                                                                         |
-| `HTTP_READ_TIMEOUT`                   | `30s`   |                                                                                                               |
-| `HTTP_WRITE_TIMEOUT`                  | `60s`   |                                                                                                               |
-| `HTTP_IDLE_TIMEOUT`                   | `120s`  |                                                                                                               |
+| Variable                              | Default | Notes                                                                                                                                               |
+| ------------------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BUDGET_SERVICE_ADDR`                 | `:8080` | Listen address                                                                                                                                      |
+| `LOCAL_AUTH_DISABLE`                  | —       | `true`/`1`/`yes`/`on` skips JWT (local dev only). See [local E2E](docs/local-e2e.md#quick-start-auth-disabled).                                     |
+| `LOG_LEVEL`                           | `info`  | slog level for the process: `debug` / `info` / `warn` / `error` (includes auth middleware noise when `debug`)                                       |
+| `LOG_REQUEST_BODIES`                  | `false` | Log sanitized request bodies for POST/PATCH in `http.request.complete` (64 KiB cap)                                                                 |
+| `SSO_HOST`                            | —       | Required when auth enabled; e.g. `sso.dev-godaddy.com`. See [local E2E](docs/local-e2e.md#optional-jwt-prod-like-auth).                             |
+| `AWS_PROFILE`                         | —       | **`mint-iam-jwt`** / AWS CLI                                                                                                                        |
+| `CERT_PEM_PATH`, `CERT_KEY_PATH`      | —       | **`mint-cert-jwt` only**                                                                                                                            |
+| `DATABASE_URL`                        | —       | If unset, no Store. See [database design](docs/database-design.md#migration) and [local E2E](docs/local-e2e.md).                                    |
+| `AUTO_MIGRATE`                        | —       | If unset and `DATABASE_URL` is set, **on**: run golang-migrate after ping. Set `false` to skip. See [migration](docs/database-design.md#migration). |
+| `MIGRATE_DATABASE_URL`                | —       | Optional DDL-capable DSN for migrations only; requires `DATABASE_URL` for the app pool. See [migration](docs/database-design.md#migration).         |
+| `DB_MAX_OPEN_CONNS`                   | `25`    |                                                                                                                                                     |
+| `DB_MAX_IDLE_CONNS`                   | `5`     |                                                                                                                                                     |
+| `DB_CONN_MAX_LIFETIME`                | `5m`    | Go duration                                                                                                                                         |
+| `SERVER_CERT_PATH`, `SERVER_KEY_PATH` | —       | Both or neither → TLS                                                                                                                               |
+| `HTTP_READ_TIMEOUT`                   | `30s`   |                                                                                                                                                     |
+| `HTTP_WRITE_TIMEOUT`                  | `60s`   |                                                                                                                                                     |
+| `HTTP_IDLE_TIMEOUT`                   | `120s`  |                                                                                                                                                     |
+| `WORKER_ENABLED`                      | `true`  | Enable/disable the background worker (resets, expirations, webhook delivery). See [webhooks](docs/webhooks.md#background-worker).                   |
+| `WORKER_INTERVAL`                     | `1m`    | Background worker processing interval. See [webhooks](docs/webhooks.md#background-worker).                                                          |
+| `WORKER_BATCH_SIZE`                   | `500`   | Max items per worker processing cycle. See [webhooks](docs/webhooks.md#background-worker).                                                          |
+| `OUTBOX_MAX_ATTEMPTS`                 | `7`     | Maximum webhook delivery attempts before marking failed. See [webhooks](docs/webhooks.md#retry-strategy).                                           |
+| `OUTBOX_DRAIN_BATCH_SIZE`             | `100`   | Webhook events processed per outbox drain cycle. See [webhooks](docs/webhooks.md#outbox-configuration).                                             |
+| `OUTBOX_RETENTION_DAYS`               | `7`     | Days to keep completed/failed outbox events. See [webhooks](docs/webhooks.md#outbox-configuration).                                                 |
 
 ## Postgres
 
