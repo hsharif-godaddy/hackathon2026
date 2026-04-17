@@ -147,6 +147,10 @@ Renewable budget items use **hybrid reset handling**. A periodic `pg_cron` job r
 
 Targets: `up`, `down`, `logs` (Postgres), `data` (seed), `dev` (Air), `build`, `test`, `clean`, `e2e-up`, `e2e-down`, `e2e-local`, `dev-budget-ui`. See [`Makefile`](Makefile) and [docs/local-e2e.md](docs/local-e2e.md).
 
+## DevOps
+
+Deployment, monitoring, rollbacks, and dashboards: [`docs/devops.md`](docs/devops.md).
+
 ## Related
 
 - Auth implementation uses `gd-auth-lib` wrapped by `internal/auth`.
