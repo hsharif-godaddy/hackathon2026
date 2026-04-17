@@ -331,6 +331,7 @@ async function handleBudgetExceededWithGrantFallback(
     const retryHeaders = new Headers(modifiedInit.headers as HeadersInit)
     retryHeaders.delete('x-gocode-budget-service-name')
     retryHeaders.delete('x-gocode-budget-id')
+    retryHeaders.set('x-correlation-id', crypto.randomUUID())
     const retryInit: RequestInit = { ...modifiedInit, body: retryBody, headers: retryHeaders }
     return await llmFetch(url, retryInit)
   } catch (retryError) {
@@ -366,6 +367,13 @@ function createS2SFetchWrapper(s2sAuthConfig?: S2SAuthConfig, options?: { blocke
       headers.set('x-gocode-budget-service-name', 'airo-bms')
       headers.set('x-gocode-budget-id', `${metadata.budgetId}:${metadata.budgetSessionId}`)
     }
+
+    if (metadata?.traceId) {
+      headers.set('x-trace-id', metadata.traceId)
+    }
+
+    // Per-call correlation ID for GoCode log drill-down (highest priority in GoCode's middleware)
+    headers.set('x-correlation-id', crypto.randomUUID())
 
     // Inject litellm_metadata into request body if available from AsyncLocalStorage context
     const modifiedInit: RequestInit = { ...init, headers }
@@ -408,7 +416,8 @@ function createS2SFetchWrapper(s2sAuthConfig?: S2SAuthConfig, options?: { blocke
         // Ignore errors consuming the response body
       }
 
-      // Refresh token and retry
+      // Refresh token and retry. modifiedInit shares the headers object so the
+      // original x-correlation-id is preserved -- do not clone headers here.
       const newToken = await refreshS2SToken(s2sAuthConfig)
       headers.set('Authorization', `Bearer ${newToken}`)
       return await llmFetch(url, modifiedInit)
@@ -437,6 +446,13 @@ function createSelectiveBetaHeaderFetch(blockedHeaders?: string[]): typeof fetch
       headers.set('x-gocode-budget-service-name', 'airo-bms')
       headers.set('x-gocode-budget-id', `${metadata.budgetId}:${metadata.budgetSessionId}`)
     }
+
+    if (metadata?.traceId) {
+      headers.set('x-trace-id', metadata.traceId)
+    }
+
+    // Per-call correlation ID for GoCode log drill-down (highest priority in GoCode's middleware)
+    headers.set('x-correlation-id', crypto.randomUUID())
 
     // Inject litellm_metadata into request body if available from AsyncLocalStorage context
     const modifiedInit: RequestInit = { ...init, headers }
@@ -805,4 +821,10 @@ export async function getEmbeddingModel(
   } else {
     throw new Error(`Unsupported embedding model: ${modelName}`)
   }
+}
+
+// @visibleForTesting
+export const __test__ = {
+  createS2SFetchWrapper,
+  createSelectiveBetaHeaderFetch,
 }

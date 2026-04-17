@@ -10,6 +10,7 @@ export interface LogContext {
   userId?: string;
   requestId?: string;
   conversationId?: string;
+  correlationId?: string;
   component?: string;
   version?: string;
   productId?: string;

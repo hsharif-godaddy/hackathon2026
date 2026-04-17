@@ -520,6 +520,7 @@ describe('build-metadata', function tests() {
         createGrant({ llmBudgetUserId: 'airo-builder:grant:g1' }),
       ])
 
+
       const context = {
         socketId: 'test-session',
         metadata: {
@@ -535,6 +536,117 @@ describe('build-metadata', function tests() {
       expect(result?.user).toBe('airo-builder:grant:g1')
       expect(result?.budgetId).toBe('budget-uuid-1')
       expect(result?.budgetSessionId).toBe('session-uuid-1')
+    })
+  })
+
+  describe('OTel traceId propagation', function traceIdTests() {
+    it('includes traceId when metadata has traceId', function hasTraceId() {
+      const context = {
+        metadata: {
+          appId: 'app-1',
+          subscriptionId: 'sub-1',
+          traceId: 'abc123def456',
+        },
+      }
+
+      const result = buildLitellmMetadataFromContext(context, { source: LlmCallSource.UserChat })
+
+      expect(result).toBeDefined()
+      expect(result?.traceId).toBe('abc123def456')
+    })
+
+    it('omits traceId when metadata has no traceId', function noTraceId() {
+      const context = {
+        metadata: {
+          appId: 'app-1',
+          subscriptionId: 'sub-1',
+        },
+      }
+
+      const result = buildLitellmMetadataFromContext(context, { source: LlmCallSource.UserChat })
+
+      expect(result).toBeDefined()
+      expect(result?.traceId).toBeUndefined()
+    })
+
+    it('includes traceId for BudgetOverride sessions', function overrideWithTraceId() {
+      const context = {
+        metadata: {
+          appId: 'app-1',
+          subscriptionId: BudgetOverride.CareAgent,
+          traceId: 'trace-care-123',
+        },
+      }
+
+      const result = buildLitellmMetadataFromContext(context, { source: LlmCallSource.UserChat })
+
+      expect(result?.user).toBe(BudgetOverride.CareAgent)
+      expect(result?.traceId).toBe('trace-care-123')
+    })
+
+    it('includes traceId for TestAccounts override', function testAccountsWithTraceId() {
+      const context = {
+        metadata: {
+          appId: 'app-1',
+          subscriptionId: BudgetOverride.TestAccounts,
+          traceId: 'trace-test-456',
+        },
+      }
+
+      const result = buildLitellmMetadataFromContext(context, { source: LlmCallSource.UserChat })
+
+      expect(result?.user).toBe(BudgetOverride.TestAccounts)
+      expect(result?.traceId).toBe('trace-test-456')
+    })
+
+    it('includes traceId for task-specific budget overrides', function taskOverrideWithTraceId() {
+      const context = {
+        metadata: {
+          appId: 'app-1',
+          subscriptionId: BudgetOverride.AssessAgent,
+          traceId: 'trace-assess-789',
+        },
+      }
+
+      const result = buildLitellmMetadataFromContext(context, { source: LlmCallSource.UserChat })
+
+      expect(result?.user).toBe(BudgetOverride.AssessAgent)
+      expect(result?.traceId).toBe('trace-assess-789')
+    })
+
+    it('includes traceId alongside grant metadata', function traceIdWithGrants() {
+      grantSessionManager.setGrants('test-session', [
+        createGrant({ llmBudgetUserId: 'airo-builder:grant:g1' }),
+      ])
+
+      const context = {
+        socketId: 'test-session',
+        metadata: {
+          appId: 'app-1',
+          subscriptionId: 'sub-1',
+          traceId: 'trace-grant-456',
+        },
+      }
+
+      const result = buildLitellmMetadataFromContext(context, { source: LlmCallSource.UserChat })
+
+      expect(result?.user).toBe('airo-builder:grant:g1')
+      expect(result?.traceId).toBe('trace-grant-456')
+    })
+
+    it('includes traceId for customerId fallback path', function traceIdWithCustomerId() {
+      const context = {
+        metadata: {
+          appId: 'app-1',
+          customerId: 'customer-1',
+          traceId: 'trace-cust-789',
+        },
+      }
+
+      const result = buildLitellmMetadataFromContext(context, { source: LlmCallSource.UserChat })
+
+      expect(result?.user).toBe('customer-1')
+      expect(result?.traceId).toBe('trace-cust-789')
     })
   })
 })

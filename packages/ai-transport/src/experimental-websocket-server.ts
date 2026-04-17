@@ -25,7 +25,7 @@ import { WebSocketSubscriber } from './subscribers/websocket-subscriber.js'
 import { PersistenceSubscriber } from './subscribers/persistence-subscriber.js'
 import { ConnectionStateManager, type ConnectionStateData } from './connection-state-manager.js'
 import { ConnectionRecoveryManager } from './connection-recovery-manager.js'
-import { context as otelContext } from '@opentelemetry/api'
+import { context as otelContext, trace } from '@opentelemetry/api'
 import { createError, createHandoff } from '@godaddy/agent-observability-events'
 import {
   createAgentContext,
@@ -279,6 +279,8 @@ export interface WebSocketConfig {
     responseId?: string
     /** Summary of reasoning (for models that support extended thinking) */
     reasoningSummary?: string
+    /** GoCode x-correlation-id from response headers */
+    correlationId?: string
   }) => void | Promise<void>
 
   /** Tool execution observability hooks */
@@ -3321,6 +3323,19 @@ export class WebSocketServer {
     let capturedResponseId: string | undefined
     let capturedModelId: string | undefined
 
+    // Propagate OTel trace ID to GoCode via x-trace-id header for cross-service log correlation.
+    // Per-call uniqueness is provided separately via x-correlation-id in the fetch wrapper.
+    const invocationSpan = trace.getSpan(invocation.context)
+    if (invocationSpan && context) {
+      const traceId = invocationSpan.spanContext().traceId
+      if (traceId) {
+        const metadata = (context as ProcessedContext).metadata
+        if (metadata) {
+          metadata.traceId = traceId
+        }
+      }
+    }
+
     try {
       // Run agent.streamGenerate within the invocation context
       streamResult = await otelContext.with(invocation.context, async () => {
@@ -3674,11 +3689,22 @@ Please try again with corrected formatting.`
         }
       }
 
+      // Capture onLlmEnd ref before async gap (avoids TS2304 with `typeof this` after await)
+      const onLlmEnd = this.config.onLlmEnd
+
+      // Ensure response headers are available before onLlmEnd (may not have resolved from .then())
+      if (streamResult && !capturedResponseHeaders) {
+        const meta = await this.extractResponseMetadata(streamResult)
+        capturedResponseHeaders ??= meta.headers
+        capturedResponseId ??= meta.responseId
+        capturedModelId ??= meta.modelId
+      }
+
       // Call LLM end hook for observability
-      if (this.config.onLlmEnd) {
+      if (onLlmEnd) {
         try {
           // Build params object, only including defined values
-          const llmEndParams: Parameters<NonNullable<typeof this.config.onLlmEnd>>[0] = {
+          const llmEndParams: Parameters<NonNullable<typeof onLlmEnd>>[0] = {
             socketId: socket.id,
             startTime: llmSpanInfo?.startTime || llmStartTime,
             model: modelName,
@@ -3729,7 +3755,12 @@ Please try again with corrected formatting.`
             llmEndParams.reasoningSummary = finalResult.reasoningSummary
           }
 
-          await this.config.onLlmEnd(llmEndParams)
+          const correlationId = capturedResponseHeaders?.['x-correlation-id']
+          if (correlationId) {
+            llmEndParams.correlationId = correlationId
+          }
+
+          await onLlmEnd(llmEndParams)
         } catch (hookError) {
           this.logger.warn('llm.hook.end.failure', { error: hookError })
         }

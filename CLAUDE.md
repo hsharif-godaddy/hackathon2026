@@ -177,7 +177,7 @@ Use `./setup.sh` — don't create `.env` files manually.
 - Logging: `LOGGING-GUIDE.md`
 - Setup: `GETTING_STARTED.md`
 - Mock auth: `app/MOCK-AUTH-SETUP.md`
-- Documentation index: `docs/README.md`
+- Documentation: browse `docs/` and read files relevant to your task
 
 ## i18n Validation
 

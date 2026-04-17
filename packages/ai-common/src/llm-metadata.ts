@@ -15,6 +15,8 @@ export interface LitellmMetadata {
   budgetId?: string
   /** BMS session ID for GoCode cost reporting (HTTP header, not litellm_metadata body) */
   budgetSessionId?: string
+  /** OTel trace ID for GoCode cross-service log correlation (sent as x-trace-id header) */
+  traceId?: string
 }
 
 /**

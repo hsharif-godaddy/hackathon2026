@@ -37,6 +37,7 @@ Each domain enforces specific required context fields:
 - **`docker.*`** events → require `containerId: string`
 - **`process.*`** events → require `processId: number`
 - **`file.*`** events → require `path: string`
+- **`llm.*`** events → include `correlationId: string` when available (GoCode's `x-correlation-id` response header, for cross-service tracing)
 
 ### Lifecycle States
 

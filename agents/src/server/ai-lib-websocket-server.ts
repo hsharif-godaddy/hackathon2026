@@ -2107,6 +2107,17 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         }
       },
 
+      onLlmEnd: async (data: { socketId: string; model: string; provider: string; correlationId?: string; conversationId?: string; appId?: string }) => {
+        logger.info('llm.call.end', {
+          socketId: data.socketId,
+          model: data.model,
+          provider: data.provider,
+          ...(data.correlationId && { correlationId: data.correlationId }),
+          ...(data.conversationId && { conversationId: data.conversationId }),
+          ...(data.appId && { appId: data.appId }),
+        })
+      },
+
       // messageMiddleware reads metadata.modelOverride from the raw incoming
       // data.context (before processContext runs). This field is client-owned
       // metadata that passes through context processing unchanged. If context
