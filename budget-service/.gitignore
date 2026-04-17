@@ -5,3 +5,5 @@
 # Local PEMs for cmd/mint-cert-jwt (CloudUI cert + key); not committed
 .certs
 .cursor
+# k6 load test result JSON files
+load-test/results/

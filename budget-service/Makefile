@@ -1,6 +1,7 @@
 # budget-service — see README.md, docs/budget-service-spec.md, docs/local-e2e.md
 
-.PHONY: build dev test clean up down logs data e2e-up e2e-down e2e-local dev-budget-ui
+.PHONY: build dev test clean up down logs data e2e-up e2e-down e2e-local dev-budget-ui \
+       load-test load-test-contention load-test-throughput load-test-lifecycle load-test-monitor
 
 _BUDGET_SVC_DIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 _COMPOSE := docker compose -f $(_BUDGET_SVC_DIR)docker-compose.yml
@@ -59,3 +60,21 @@ logs:
 data:
 	@$(_COMPOSE) exec -T postgres \
 		psql -U budget -d budget_test -v ON_ERROR_STOP=1 -f - < $(_BUDGET_SVC_DIR)seed/seed_test_data.sql
+
+# ── Load tests (k6) ─────────────────────────────────────────────────
+# Prerequisites: brew install k6; make up && make dev
+load-test:
+	$(_BUDGET_SVC_DIR)load-test/run.sh
+
+load-test-contention:
+	$(_BUDGET_SVC_DIR)load-test/run.sh contention
+
+load-test-throughput:
+	$(_BUDGET_SVC_DIR)load-test/run.sh throughput
+
+load-test-lifecycle:
+	$(_BUDGET_SVC_DIR)load-test/run.sh lifecycle
+
+load-test-monitor:
+	watch -n 2 'psql "postgres://budget:budget@localhost:5432/budget_test?sslmode=disable" -f $(_BUDGET_SVC_DIR)load-test/pg-monitor.sql'
+
