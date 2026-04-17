@@ -9,7 +9,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import type { ProductType } from '@airo/shared/auth';
+import { isEmployeeAuthType, type ProductType } from '@airo/shared/auth';
 
 import { getControlPlaneAdapter } from '@/lib/control-plane';
 import { createCustomerAuthError, type CustomerAuthContext, customerHasAccount, type CustomerUser, withCustomerAuth } from '@/lib/customer-auth';
@@ -308,6 +308,20 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     // Enforce dependency: enableAssessmentOverride requires enableAssessmentAgent
     // If agent is disabled, override can't function (classification is short-circuited)
     enableAssessmentOverride = enableAssessmentAgent && enableAssessmentOverride;
+
+    // CRM skip / impersonation sessions (e2s, e2s2s) always get the model selector
+    // regardless of the switchboard flag — matches the bypass patterns used in
+    // Feedback.tsx and ChatPane.tsx for impersonated sessions.
+    if (isEmployeeAuthType(user.authType)) {
+      if (!modelSelectorEnabled) {
+        logger.info('agent-token.model-selector-forced-for-impersonation', {
+          siteId: body.siteId,
+          customerId: user.customerId,
+          authType: user.authType,
+        });
+      }
+      modelSelectorEnabled = true;
+    }
 
     timing.siteAccessMs = Date.now() - siteAccessStart;
     timing.siteAccessCacheHit = siteValidationCacheHit ? 1 : 0;

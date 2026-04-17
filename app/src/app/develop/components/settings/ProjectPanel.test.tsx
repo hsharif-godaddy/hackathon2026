@@ -50,6 +50,10 @@ vi.mock('@/utils/instrumentation', () => ({
   logAiroHQEvent: vi.fn(() => vi.fn()),
 }));
 
+vi.mock('@/components/providers/AuthProvider', () => ({
+  useAuthContext: () => ({ authState: null }),
+}));
+
 import { useDownloadApp } from '@/hooks/useDownloadApp';
 import { usePaywallModal } from '@/hooks/usePaywallModal';
 import { PurgeErrorCode, PurgeStatus, usePurgeCache } from '@/hooks/usePurgeCache';

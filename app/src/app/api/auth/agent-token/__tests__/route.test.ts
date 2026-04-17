@@ -435,7 +435,7 @@ describe('agent-token', function packageTests() {
           enableAssessmentAgent: false,
           enableAssessmentOverride: false,
           product: 'AiroAppBuilder',
-          modelSelectorEnabled: false,
+          modelSelectorEnabled: true,
           modelOverride: undefined,
         });
       });
@@ -702,6 +702,74 @@ describe('agent-token', function packageTests() {
         expect(response.status).toBe(200);
         expect(mockJWTService.getToken).toHaveBeenCalledWith(
           expect.objectContaining({ modelSelectorEnabled: false })
+        );
+      });
+
+      it('should force modelSelectorEnabled true for e2s (CRM skip) sessions even when switchboard is false', async function modelSelectorE2sOverride() {
+        mockAuthenticateCustomer.mockResolvedValue({
+          isAuthenticated: true,
+          user: { ...MOCK_USER, authType: 'e2s', isE2S: true },
+          jwt: 'user-jwt-token'
+        });
+        mockCheckSwitchboardFlag.mockResolvedValue(false);
+
+        const request = createMockRequest({ siteId: MOCK_SITE_ID });
+        const response = await POST(request);
+
+        expect(response.status).toBe(200);
+        expect(mockJWTService.getToken).toHaveBeenCalledWith(
+          expect.objectContaining({ authType: 'e2s', modelSelectorEnabled: true })
+        );
+      });
+
+      it('should force modelSelectorEnabled true for e2s2s sessions even when switchboard rejects', async function modelSelectorE2s2sOverride() {
+        mockAuthenticateCustomer.mockResolvedValue({
+          isAuthenticated: true,
+          user: { ...MOCK_USER, authType: 'e2s2s', isE2S: false },
+          jwt: 'user-jwt-token'
+        });
+        mockCheckSwitchboardFlag.mockRejectedValue(new Error('switchboard down'));
+
+        const request = createMockRequest({ siteId: MOCK_SITE_ID });
+        const response = await POST(request);
+
+        expect(response.status).toBe(200);
+        expect(mockJWTService.getToken).toHaveBeenCalledWith(
+          expect.objectContaining({ authType: 'e2s2s', modelSelectorEnabled: true })
+        );
+      });
+
+      it('should not force modelSelectorEnabled for non-employee auth types', async function modelSelectorBasicNotForced() {
+        mockAuthenticateCustomer.mockResolvedValue({
+          isAuthenticated: true,
+          user: { ...MOCK_USER, authType: 'basic', isE2S: false },
+          jwt: 'user-jwt-token'
+        });
+        mockCheckSwitchboardFlag.mockResolvedValue(false);
+
+        const request = createMockRequest({ siteId: MOCK_SITE_ID });
+        const response = await POST(request);
+
+        expect(response.status).toBe(200);
+        expect(mockJWTService.getToken).toHaveBeenCalledWith(
+          expect.objectContaining({ authType: 'basic', modelSelectorEnabled: false })
+        );
+      });
+
+      it('should not force modelSelectorEnabled for s2s (delegation) sessions', async function modelSelectorS2sNotForced() {
+        mockAuthenticateCustomer.mockResolvedValue({
+          isAuthenticated: true,
+          user: { ...MOCK_USER, authType: 's2s', isE2S: false },
+          jwt: 'user-jwt-token'
+        });
+        mockCheckSwitchboardFlag.mockResolvedValue(false);
+
+        const request = createMockRequest({ siteId: MOCK_SITE_ID });
+        const response = await POST(request);
+
+        expect(response.status).toBe(200);
+        expect(mockJWTService.getToken).toHaveBeenCalledWith(
+          expect.objectContaining({ authType: 's2s', modelSelectorEnabled: false })
         );
       });
     });

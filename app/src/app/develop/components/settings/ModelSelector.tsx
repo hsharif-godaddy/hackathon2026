@@ -1,5 +1,6 @@
 'use client'
 
+import { isEmployeeAuthType } from '@airo/shared/auth'
 import { useQuery } from '@tanstack/react-query'
 import Alert from '@ux/alert'
 import Select from '@ux/select'
@@ -7,6 +8,7 @@ import Spinner from '@ux/spinner'
 
 import SettingsSection from '@/app/develop/components/settings/SettingsSection'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
+import { useAuthContext } from '@/components/providers/AuthProvider'
 import { buildDynamicAgentUrl } from '@/config/dynamic-api'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
@@ -43,14 +45,23 @@ function useAvailableModels(siteId: string | undefined, enabled: boolean) {
 export default function ModelSelector() {
   const t = useTranslations()
   const appId = useAppIdFromParams()
-  const { data: isEnabled, isLoading: isFlagLoading, error: flagError } = useSwitchboard('appbuilder-model-selector')
+  const { authState } = useAuthContext()
+  // CRM skip / impersonation sessions (e2s, e2s2s) always get the selector,
+  // matching the server-side bypass in /api/auth/agent-token and the
+  // impersonation patterns used in Feedback.tsx and ChatPane.tsx.
+  const isImpersonating = isEmployeeAuthType((authState as any)?.authType)
+  const { data: flagEnabled, isLoading: isFlagLoading, error: flagError } = useSwitchboard(
+    'appbuilder-model-selector',
+    { enabled: !isImpersonating }
+  )
+  const isEnabled = isImpersonating || flagEnabled
 
   const selectedModel = useDevelopPageStore(s => s.selectedModel)
   const setSelectedModel = useDevelopPageStore(s => s.setSelectedModel)
 
   const { data: modelsData, isLoading: isModelsLoading, error } = useAvailableModels(appId, !!isEnabled)
 
-  if (isFlagLoading) return null
+  if (!isImpersonating && isFlagLoading) return null
   if (!isEnabled && !flagError) return null
 
   const models = modelsData?.models ?? []
