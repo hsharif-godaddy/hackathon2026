@@ -4,7 +4,7 @@
  * Handles stream completion messages.
  * Finalizes the stream, clears state, and triggers post-completion actions.
  */
-
+import { getQueryClient } from '@/components/providers/QueryClientProvider'
 import { appFetch } from '@/lib/gasket-config'
 import { logger } from '@/lib/request-context'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
@@ -101,6 +101,10 @@ function showFeedbackBanner(promptCount: number): void {
   })
 }
 
+function isMediaTool(toolName: string): boolean {
+  return toolName === 'media' || toolName.startsWith('media__')
+}
+
 export class CompleteHandler implements MessageHandler {
   readonly type = 'complete'
 
@@ -152,14 +156,25 @@ export class CompleteHandler implements MessageHandler {
     // Machine handles UI state transitions via STREAM_COMPLETE event
     // Adapter syncs: setWebSocketState, setStreamingState, setIsLoading, finalizeStream
 
+    // Read finalized messages once — all post-finalize checks use this snapshot.
+    const { messages: finalizedMessages } = useStreamingConversationStore.getState()
+    const lastMsg = finalizedMessages[finalizedMessages.length - 1]
+
+    // Invalidate media manifest cache so the Media tab picks up newly created slots.
+    // Check the finalized message for media-related tool calls to avoid unnecessary refetches.
+    const hadMediaTools = lastMsg?.role === 'assistant' &&
+      lastMsg.toolCalls?.some((tc) => isMediaTool(tc.name))
+
+    if (hadMediaTools && appId) {
+      getQueryClient()?.invalidateQueries({ queryKey: ['mediaManifest', appId] })
+    }
+
     // Determine eval snapshot eligibility after finalizeStream so the current turn's
     // tool calls are available in messages[]. Skip counting when the agent stopped on
     // askQuestion — that means it wrote partial scaffold and is waiting for user input,
     // not that it completed the first real build.
     let shouldFireEvalSnapshotTrigger = false
     if (commitHash) {
-      const { messages } = useStreamingConversationStore.getState()
-      const lastMsg = messages[messages.length - 1]
       const stoppedOnAskQuestion = lastMsg?.role === 'assistant' &&
         lastMsg.toolCalls?.some((tc) => tc.name === 'askQuestion')
       if (!stoppedOnAskQuestion) {
@@ -179,8 +194,6 @@ export class CompleteHandler implements MessageHandler {
       // No commit hash — check if the agent created a new page.
       // Vite HMR handles the file-change refresh but won't navigate to the
       // new route, so we fire MESSAGE_COMPLETE ourselves when a page was created.
-      const { messages: finalizedMessages } = useStreamingConversationStore.getState()
-      const lastMsg = finalizedMessages[finalizedMessages.length - 1]
       if (lastMsg?.role === 'assistant' && lastMsg.toolCalls?.length) {
         const { extractNewPageRoute } = await import('@/app/develop/components/utils')
         if (extractNewPageRoute(lastMsg.toolCalls)) {

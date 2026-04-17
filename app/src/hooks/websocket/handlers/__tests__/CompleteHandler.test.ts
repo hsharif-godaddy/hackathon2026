@@ -9,6 +9,13 @@ import { createMockMessageContext } from './testUtils'
 import { CompleteHandler } from '../CompleteHandler'
 import type { WebSocketMessage } from '../types'
 
+const mockInvalidateQueries = vi.fn()
+vi.mock('@/components/providers/QueryClientProvider', () => ({
+  getQueryClient: vi.fn(() => ({
+    invalidateQueries: mockInvalidateQueries,
+  })),
+}))
+
 vi.mock('@/stores/useStreamingConversationStore', () => ({
   useStreamingConversationStore: {
     getState: vi.fn(),
@@ -53,7 +60,6 @@ describe('CompleteHandler', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    mockLogImpressionEvent.mockClear()
     sessionStorage.removeItem('airo_eval_snapshot_app_build_count_app-123')
     sessionStorage.removeItem('airo_session_prompt_count')
 
@@ -247,5 +253,77 @@ describe('CompleteHandler', () => {
     )
 
     expect(sessionStorage.getItem('airo_session_prompt_count')).toBe(null)
+  })
+
+  it('invalidates media manifest when stream had media tool calls', async () => {
+    mockStore.getState.mockReturnValue({
+      connectionRetry: { isRetrying: false },
+      clearConnectionRetry: vi.fn(),
+      messages: [
+        { role: 'assistant', toolCalls: [{ id: '1', name: 'media' }] },
+      ],
+    })
+
+    await handler.handle(
+      { type: 'complete', content: '', data: { agentId: 'develop' } },
+      createMockMessageContext()
+    )
+
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({
+      queryKey: ['mediaManifest', 'app-123'],
+    })
+  })
+
+  it('invalidates media manifest for media__ prefixed tool calls', async () => {
+    mockStore.getState.mockReturnValue({
+      connectionRetry: { isRetrying: false },
+      clearConnectionRetry: vi.fn(),
+      messages: [
+        { role: 'assistant', toolCalls: [{ id: '1', name: 'media__generate_image' }] },
+      ],
+    })
+
+    await handler.handle(
+      { type: 'complete', content: '', data: { agentId: 'develop' } },
+      createMockMessageContext()
+    )
+
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({
+      queryKey: ['mediaManifest', 'app-123'],
+    })
+  })
+
+  it('does not invalidate media manifest when stream had no media tool calls', async () => {
+    mockStore.getState.mockReturnValue({
+      connectionRetry: { isRetrying: false },
+      clearConnectionRetry: vi.fn(),
+      messages: [
+        { role: 'assistant', toolCalls: [{ id: '1', name: 'fileEdit' }] },
+      ],
+    })
+
+    await handler.handle(
+      { type: 'complete', content: '', data: { agentId: 'develop' } },
+      createMockMessageContext()
+    )
+
+    expect(mockInvalidateQueries).not.toHaveBeenCalled()
+  })
+
+  it('does not invalidate media manifest when appId is null', async () => {
+    mockStore.getState.mockReturnValue({
+      connectionRetry: { isRetrying: false },
+      clearConnectionRetry: vi.fn(),
+      messages: [
+        { role: 'assistant', toolCalls: [{ id: '1', name: 'media' }] },
+      ],
+    })
+
+    await handler.handle(
+      { type: 'complete', content: '', data: { agentId: 'develop' } },
+      createMockMessageContext({ currentAppId: null })
+    )
+
+    expect(mockInvalidateQueries).not.toHaveBeenCalled()
   })
 })
