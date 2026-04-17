@@ -17,23 +17,24 @@ import { getTemplate } from './template-registry.js'
  * This agent is only used for brand new apps with no conversation history.
  * It creates a minimal todo list for a single-page preview and hands off to develop agent.
  *
- * Prompt structure (default):
- * - core.md: Core role, workflow, and rules
- * - attributes.md: Attribute discovery for personalization
- * - guidelines.md: Detailed planning instructions
- * - examples.md: Pattern demonstrations
- * - security.md: Content restrictions
+ * Prompt versions (in agents/src/prompts/initial/<version>/):
+ * - 1.0: Original with attributes.md and detailed askQuestion framework
+ * - 2.0: Simplified askQuestion logic, no attributes.md (10% cheaper, 4s faster, equivalent quality)
+ *
+ * Each version directory contains: core.md, guidelines.md, examples.md, and optionally attributes.md.
+ * Shared files (communication.md, security.md) are appended from the shared/ directory.
  *
  * When a templateId is provided, prompt files are loaded from
  * agents/src/prompts/initial/templates/<templateId>/ instead.
  */
 
+const DEFAULT_PROMPT_VERSION = '1.0'
 const OPTIONAL_PROMPT_FILES = ['attributes.md', 'guidelines.md', 'examples.md']
 
 /**
  * Build the system prompt for the Initial Agent
  */
-async function buildInitialSystemPrompt(templateId?: string): Promise<string> {
+async function buildInitialSystemPrompt(templateId?: string, promptVersion?: string): Promise<string> {
   const promptBuilder = createPromptBuilder()
   const paths = getModularPromptPaths(import.meta.url)
 
@@ -49,13 +50,20 @@ async function buildInitialSystemPrompt(templateId?: string): Promise<string> {
       }
     }
   } else {
-    // Default mode: existing behavior
-    // Order: Identity → Voice → Technical details
-    promptBuilder.file(paths.getAgentFile('initial', 'core.md'))
+    // Versioned mode: load from initial/<version>/
+    const version = promptVersion || DEFAULT_PROMPT_VERSION
+    const versionDir = `initial/${version}`
+
+    promptBuilder.file(paths.getAgentFile(versionDir, 'core.md'))
     promptBuilder.file(paths.getSharedFile('communication.md'))
-    promptBuilder.file(paths.getAgentFile('initial', 'attributes.md'))
-    promptBuilder.file(paths.getAgentFile('initial', 'guidelines.md'))
-    promptBuilder.file(paths.getAgentFile('initial', 'examples.md'))
+
+    for (const file of OPTIONAL_PROMPT_FILES) {
+      const filePath = paths.getAgentFile(versionDir, file)
+      if (existsSync(filePath)) {
+        promptBuilder.file(filePath)
+      }
+    }
+
     promptBuilder.file(paths.getSharedFile('security.md'))
     return await promptBuilder.build()
   }
@@ -71,16 +79,18 @@ async function buildInitialSystemPrompt(templateId?: string): Promise<string> {
  * Create the Initial Agent configuration
  * @param stateManager - Optional session state manager for handoff support
  * @param templateId - Optional template ID to use a custom system prompt
+ * @param promptVersion - Optional prompt version (e.g., '1.0', '2.0'). Defaults to DEFAULT_PROMPT_VERSION.
  */
 export async function createInitialAgent(
   stateManager?: SessionStateManager,
-  templateId?: string
+  templateId?: string,
+  promptVersion?: string
 ): Promise<AgentConfig> {
   if (templateId && !getTemplate(templateId)) {
     throw new Error(`Unknown template: ${templateId}`)
   }
 
-  const systemPrompt = await buildInitialSystemPrompt(templateId)
+  const systemPrompt = await buildInitialSystemPrompt(templateId, promptVersion)
   const { model, modelName } = await getAgentModelWithName('fast')
 
   const agentId = templateId ? `initial-${templateId}` : 'initial'
