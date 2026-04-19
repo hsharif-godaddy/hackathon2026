@@ -26,6 +26,8 @@ make check          # All checks (fmt, vet, lint, test)
 | `APP_TEMPLATE_DIR` | `../app-templates/v8`    | Path to app template                   |
 | `DB_PATH`          | `local-control-plane.db` | SQLite database path                   |
 | `PROJECT_ROOT`     | `..`                     | Project root for Docker build contexts |
+| `AUTH_TYPE`        | `none`                   | `jwt` to enable SSO JWT validation     |
+| `SSO_HOST`         | `sso.dev-godaddy.com`    | GoDaddy SSO host for token validation  |
 
 ## Architecture
 

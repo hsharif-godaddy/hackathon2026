@@ -25,7 +25,7 @@ type Server struct {
 	retryDelay func(attempt int) time.Duration
 }
 
-func NewRouter(db *store.DB, jwtService *auth.JWTService) *mux.Router {
+func NewRouter(db *store.DB, jwtService *auth.JWTService, ssoMW *auth.SSOMiddleware) *mux.Router {
 	srv := &Server{
 		DB:            db,
 		DockerManager: docker.NewManager(),
@@ -53,15 +53,20 @@ func NewRouter(db *store.DB, jwtService *auth.JWTService) *mux.Router {
 		})
 	})
 
+	// Public endpoints registered before the authenticated subrouter so
+	// gorilla/mux doesn't match the PathPrefix first.
+	r.HandleFunc("/api/airo/v1/signup", srv.Signup).Methods("POST")
+	r.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	}).Methods("GET")
+
 	v1 := r.PathPrefix("/api/airo/v1").Subrouter()
+	v1.Use(ssoMW.Authenticate)
 
 	// Customer
 	v1.HandleFunc("/customers/me", srv.GetCustomer).Methods("GET")
 	v1.HandleFunc("/customers/me/apps", srv.GetAllApps).Methods("GET")
 	v1.HandleFunc("/customers/me/tree", srv.GetCustomerTree).Methods("GET")
-
-	// Signup
-	v1.HandleFunc("/signup", srv.Signup).Methods("POST")
 
 	// Subscriptions
 	v1.HandleFunc("/subscriptions", srv.ListSubscriptions).Methods("GET")
@@ -120,11 +125,6 @@ func NewRouter(db *store.DB, jwtService *auth.JWTService) *mux.Router {
 	v1.HandleFunc("/attributes/{ownerType}/{ownerId}/{key}", srv.GetAttribute).Methods("GET")
 	v1.HandleFunc("/attributes/{ownerType}/{ownerId}", srv.CreateAttribute).Methods("POST")
 	v1.HandleFunc("/attributes/{attributeId}", srv.UpdateAttribute).Methods("PUT")
-
-	// Health
-	r.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
-	}).Methods("GET")
 
 	// Debug endpoints for error injection
 	r.HandleFunc("/api/_debug/inject-error", srv.InjectError).Methods("POST")

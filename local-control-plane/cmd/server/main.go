@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/airo-ai-builder/local-control-plane/internal/api"
@@ -17,6 +18,8 @@ import (
 )
 
 func main() {
+	loadDotenv(".env")
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "4100"
@@ -67,7 +70,15 @@ func main() {
 
 	docker.NewManager().Reconcile(db)
 
-	router := api.NewRouter(db, jwtService)
+	authType := getEnv("AUTH_TYPE", "none")
+	ssoHost := getEnv("SSO_HOST", "sso.dev-godaddy.com")
+	ssoMW, err := auth.NewSSOMiddleware(authType, ssoHost)
+	if err != nil {
+		slog.Error("sso.init.failed", "error", err)
+		os.Exit(1)
+	}
+
+	router := api.NewRouter(db, jwtService, ssoMW)
 
 	handler := cors.New(cors.Options{
 		AllowedOrigins: []string{"*"},
@@ -88,7 +99,7 @@ func main() {
 		server.Close()
 	}()
 
-	slog.Info("local-control-plane starting", "port", port, "db", dbPath)
+	slog.Info("local-control-plane starting", "port", port, "db", dbPath, "auth_type", authType)
 	fmt.Printf("\n  Local Control Plane running at http://localhost:%s\n\n", port)
 
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -98,8 +109,39 @@ func main() {
 }
 
 func awsProfile() string {
-	if p := os.Getenv("AWS_PROFILE"); p != "" {
-		return p
+	return getEnv("AWS_PROFILE", "airobuild-dev-private-sso")
+}
+
+func getEnv(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
 	}
-	return "airobuild-dev-private-sso"
+	return fallback
+}
+
+func loadDotenv(path string) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		key, val, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		key = strings.TrimSpace(key)
+		val = strings.TrimSpace(val)
+		if len(val) >= 2 && (val[0] == '"' && val[len(val)-1] == '"' || val[0] == '\'' && val[len(val)-1] == '\'') {
+			val = val[1 : len(val)-1]
+		} else if idx := strings.Index(val, " #"); idx != -1 {
+			val = strings.TrimSpace(val[:idx])
+		}
+		if _, exists := os.LookupEnv(key); !exists {
+			os.Setenv(key, val)
+		}
+	}
 }

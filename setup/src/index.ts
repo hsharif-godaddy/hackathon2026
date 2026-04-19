@@ -108,6 +108,7 @@ async function selectiveConfiguration(): Promise<void> {
       { name: '🔍 Check Docker Dependencies', value: 'docker-deps' },
       { name: '📱 Configure App Environment (.env)', value: 'app-env' },
       { name: '🤖 Configure Agents Environment (.env)', value: 'agents-env' },
+      { name: '🎛️  Configure Control Plane Environment (.env)', value: 'control-plane-env' },
       { name: '🔎 Configure Image Search Service (.env)', value: 'image-search-env' },
       { name: '🔐 Generate JWT Keys', value: 'jwt-keys' },
       { name: '🖼️  Configure Getty Images Proxy', value: 'getty-config' },
@@ -150,6 +151,9 @@ async function selectiveConfiguration(): Promise<void> {
           break;
         case 'agents-env':
           await envGenerator.generateAgentsEnv();
+          break;
+        case 'control-plane-env':
+          await envGenerator.generateControlPlaneEnv();
           break;
         case 'image-search-env':
           await envGenerator.generateImageSearchEnv();
@@ -550,6 +554,8 @@ async function fullSetup(yesToAll: boolean = false): Promise<void> {
     // Pass the auth type from app config to ensure both services use same auth
     await envGenerator.generateAgentsEnv(yesToAll, commerceResult, appAuthType);
   }
+
+  await envGenerator.generateControlPlaneEnv(yesToAll, appAuthType);
 
   printSeparator();
 

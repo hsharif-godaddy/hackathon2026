@@ -5,18 +5,28 @@ import (
 	"encoding/json"
 	"net"
 	"net/http"
-	"strings"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/airo-ai-builder/local-control-plane/internal/auth"
 	"github.com/airo-ai-builder/local-control-plane/internal/setup"
 	"github.com/airo-ai-builder/local-control-plane/internal/store"
 	"github.com/gorilla/mux"
 )
+
+func noopSSOMiddleware(t *testing.T) *auth.SSOMiddleware {
+	t.Helper()
+	mw, err := auth.NewSSOMiddleware("none", "")
+	if err != nil {
+		t.Fatalf("create noop SSO middleware: %v", err)
+	}
+	return mw
+}
 
 func newTestDB(t *testing.T) *store.DB {
 	t.Helper()
@@ -330,7 +340,7 @@ func setupAppDirs(t *testing.T, baseDir, appID string) {
 		filepath.Join(baseDir, appID, "local", "publish"),
 		filepath.Join(baseDir, appID, "alloc"),
 	} {
-		if err := os.MkdirAll(dir, 0755); err != nil {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatalf("mkdir %s: %v", dir, err)
 		}
 	}
@@ -350,7 +360,7 @@ func TestUpdateSecretsSyncsConfigFile(t *testing.T) {
 	}
 	configPath := filepath.Join(tmpDir, appID, "local", "preview", "config.json")
 	data, _ := json.MarshalIndent(initialConfig, "", "  ")
-	os.WriteFile(configPath, data, 0600)
+	os.WriteFile(configPath, data, 0o600)
 
 	body, _ := json.Marshal(map[string]any{
 		"operations": []map[string]any{
@@ -404,7 +414,6 @@ func TestUpdateSecretsSyncsConfigFile(t *testing.T) {
 	if entry["VALUE"] != "my-secret-key" {
 		t.Errorf("expected VALUE my-secret-key, got %v", entry["VALUE"])
 	}
-
 }
 
 func TestUpdateSecretsDeleteRemovesFromConfig(t *testing.T) {
@@ -421,7 +430,7 @@ func TestUpdateSecretsDeleteRemovesFromConfig(t *testing.T) {
 		"OLD_KEY":  map[string]any{"SYSTEM_MANAGED": false, "VALUE": "old-value"},
 	}
 	data, _ := json.MarshalIndent(initialConfig, "", "  ")
-	os.WriteFile(configPath, data, 0600)
+	os.WriteFile(configPath, data, 0o600)
 
 	body, _ := json.Marshal(map[string]any{
 		"operations": []map[string]any{
@@ -567,7 +576,7 @@ func TestSyncSecretsMixedOperations(t *testing.T) {
 	}
 	configPath := filepath.Join(tmpDir, appID, "local", "preview", "config.json")
 	data, _ := json.MarshalIndent(initialConfig, "", "  ")
-	os.WriteFile(configPath, data, 0600)
+	os.WriteFile(configPath, data, 0o600)
 
 	body, _ := json.Marshal(map[string]any{
 		"operations": []map[string]any{
@@ -638,7 +647,7 @@ func TestSyncSecretsUpdateExistingValue(t *testing.T) {
 		"API_KEY":  map[string]any{"SYSTEM_MANAGED": false, "VALUE": "old-value"},
 	}
 	data, _ := json.MarshalIndent(initialConfig, "", "  ")
-	os.WriteFile(configPath, data, 0600)
+	os.WriteFile(configPath, data, 0o600)
 
 	// Update the secret value
 	body, _ := json.Marshal(map[string]any{
@@ -759,7 +768,7 @@ func TestCopyPreviewConfigToPublish(t *testing.T) {
 		"API_KEY":  map[string]any{"SYSTEM_MANAGED": false, "VALUE": "secret"},
 	}
 	data, _ := json.MarshalIndent(previewConfig, "", "  ")
-	os.WriteFile(filepath.Join(tmpDir, appID, "local", "preview", "config.json"), data, 0600)
+	os.WriteFile(filepath.Join(tmpDir, appID, "local", "preview", "config.json"), data, 0o600)
 
 	if err := srv.copyPreviewConfigToPublish(appID); err != nil {
 		t.Fatalf("copyPreviewConfigToPublish: %v", err)
@@ -1217,7 +1226,7 @@ func TestClearErrorHandler(t *testing.T) {
 
 func TestHealthEndpoint(t *testing.T) {
 	db := newTestDB(t)
-	router := NewRouter(db, nil)
+	router := NewRouter(db, nil, noopSSOMiddleware(t))
 
 	req := httptest.NewRequest("GET", "/health", nil)
 	w := httptest.NewRecorder()
@@ -1236,7 +1245,7 @@ func TestHealthEndpoint(t *testing.T) {
 
 func TestRouterErrorInjectionMiddleware(t *testing.T) {
 	db := newTestDB(t)
-	router := NewRouter(db, nil)
+	router := NewRouter(db, nil, noopSSOMiddleware(t))
 
 	// Clean state
 	injectedErrorMu.Lock()
