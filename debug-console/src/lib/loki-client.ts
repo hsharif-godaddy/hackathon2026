@@ -366,7 +366,7 @@ export async function queryLoki(
   const response = await fetch(url.toString(), {
     method: 'GET',
     headers,
-    signal: AbortSignal.timeout(30000) // 30 second timeout
+    signal: AbortSignal.timeout(60000)
   });
 
   if (!response.ok) {
@@ -392,6 +392,9 @@ export function transformLokiResponse(
   sourceId: string
 ): LogEntry[] {
   const logs: LogEntry[] = [];
+  // Position-based counter ensures ids are unique even when two entries share
+  // the same nanosecond timestamp and identical leading log content.
+  let entryIndex = 0;
 
   for (const stream of response.data.result) {
     for (const [timestampNs, logLine] of stream.values) {
@@ -432,8 +435,7 @@ export function transformLokiResponse(
           (parsedLog.service as string) ||
           undefined;
 
-        // Generate unique ID from timestamp and a hash of the log line
-        const id = `${timestampNs}-${logLine.substring(0, 50).replace(/[^a-zA-Z0-9]/g, '')}`;
+        const id = `${timestampNs}-${entryIndex++}-${logLine.substring(0, 50).replace(/[^a-zA-Z0-9]/g, '')}`;
 
         const logEntry: LogEntry = {
           id,

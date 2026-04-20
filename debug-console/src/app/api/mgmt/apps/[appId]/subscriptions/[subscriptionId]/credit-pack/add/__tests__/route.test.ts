@@ -11,12 +11,9 @@ const mockAuth: AuthResult = {
     user: { shopperId: 'shop-1', cid: 'cid-1', email: 'admin@test.com' },
 } as AuthResult;
 
-const mockShouldBypassAuth = vi.fn(() => ({ bypass: false, reason: 'test' }));
-
 vi.mock('@/lib/api-auth', () => ({
     withAuth: (handler: AuthHandler) => (request: NextRequest, context: unknown) =>
         handler(request, mockAuth, context),
-    shouldBypassAuth: () => mockShouldBypassAuth(),
 }));
 
 vi.mock('@/lib/logger', () => ({
@@ -28,7 +25,6 @@ vi.mock('@/lib/analytics/es-client', () => ({
     writeClient: { search: vi.fn(), create: vi.fn() },
     initIndices: vi.fn().mockResolvedValue(undefined),
     bulkIndex: vi.fn(),
-    isProdES: vi.fn(() => false),
 }));
 
 vi.mock('@/lib/credit-pack-utils', () => ({
@@ -144,25 +140,6 @@ describe('credit-pack add route', () => {
         );
 
         expect(response.status).toBe(201);
-    });
-
-    it('should return 403 when isProdES and auth bypass are both true', async () => {
-        const { isProdES } = await import('@/lib/analytics/es-client');
-        vi.mocked(isProdES).mockReturnValue(true);
-        mockShouldBypassAuth.mockReturnValue({ bypass: true, reason: 'NODE_ENV=development' });
-
-        const { POST } = await import('../route');
-        const response = await (POST as RouteHandler)(
-            makePostRequest({ notes: 'some note' }),
-            mockContext,
-        );
-
-        expect(response.status).toBe(403);
-        const body = await response.json();
-        expect(body.error).toContain('auth bypass');
-
-        vi.mocked(isProdES).mockReturnValue(false);
-        mockShouldBypassAuth.mockReturnValue({ bypass: false, reason: 'test' });
     });
 
     it('should sanitize notes before processing', async () => {

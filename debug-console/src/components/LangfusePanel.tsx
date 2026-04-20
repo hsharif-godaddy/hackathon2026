@@ -2,13 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-// Module-level cache for Langfuse config
-interface LangfuseConfig {
-  baseUrl: string | null;
-  projectId: string | null;
-}
-let cachedLangfuseConfig: LangfuseConfig | null = null;
-let configFetchPromise: Promise<LangfuseConfig | null> | null = null;
+import { langfuseTraceUrl, langfuseUserUrl } from '@/lib/langfuse-ui';
 
 // Anthropic pricing per million tokens (USD).
 // We compute cost ourselves because Langfuse's calculatedTotalCost has a known
@@ -44,24 +38,6 @@ function estimateCostFromTokens(
   // $3.00/MTok as part of regularInput, and again at $3.75/MTok as cacheWrite).
   const regularInput = Math.max(0, inputTokens - cacheRead - cacheWrite);
   return (regularInput * pricing.in + cacheRead * pricing.cacheRead + cacheWrite * pricing.cacheWrite + outputTokens * pricing.out) / 1_000_000;
-}
-
-async function getLangfuseConfig(): Promise<LangfuseConfig | null> {
-  if (cachedLangfuseConfig) return cachedLangfuseConfig;
-  if (configFetchPromise) return configFetchPromise;
-
-  configFetchPromise = fetch('/api/langfuse/config')
-    .then(res => res.ok ? res.json() : null)
-    .then(data => {
-      cachedLangfuseConfig = {
-        baseUrl: data?.baseUrl || null,
-        projectId: data?.projectId || null
-      };
-      return cachedLangfuseConfig;
-    })
-    .catch(() => null);
-
-  return configFetchPromise;
 }
 
 interface Message {
@@ -296,6 +272,57 @@ function formatTime(dateStr: string): string {
 
 function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+/**
+ * Strip carry-over context from user messages.
+ *
+ * The agent often re-sends the prior turn as `<previous_message>…</previous_message>`
+ * before the actual `<user_prompt>…</user_prompt>` to give the LLM context. For
+ * UI display we only care about the latest user prompt, so:
+ *   1. Drop any `<previous_message>` blocks.
+ *   2. If a `<user_prompt>` block is present, unwrap it.
+ *   3. Trim surrounding whitespace.
+ *
+ * Falls back to the original string if no tags are detected.
+ */
+function stripPreviousMessageContext(content: string): string {
+  if (!content) return content;
+  if (!content.includes('<previous_message>') && !content.includes('<user_prompt>')) {
+    return content;
+  }
+  let cleaned = content.replace(/<previous_message>[\s\S]*?<\/previous_message>/g, '');
+  const promptMatch = cleaned.match(/<user_prompt>([\s\S]*?)<\/user_prompt>/);
+  if (promptMatch) {
+    cleaned = promptMatch[1];
+  } else {
+    // Tolerate a truncated/unbalanced <user_prompt> tag (e.g. when the trace
+    // body was clipped) by taking everything after the opening tag.
+    const openIdx = cleaned.indexOf('<user_prompt>');
+    if (openIdx !== -1) {
+      cleaned = cleaned.slice(openIdx + '<user_prompt>'.length);
+    }
+  }
+  return cleaned.trim();
+}
+
+function downloadConversationJson(
+  appId: string | undefined,
+  rawPages: Map<number, SessionsResponse>,
+): void {
+  const pages = Array.from(rawPages.entries())
+    .sort(([a], [b]) => a - b)
+    .map(([page, response]) => ({ page, response }));
+  const blob = new Blob([JSON.stringify(pages, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const safeId = (appId || 'conversation').replace(/[^a-zA-Z0-9_-]/g, '_');
+  a.href = url;
+  a.download = `langfuse-conversation-${safeId}-${Date.now()}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 function formatNumber(n: number): string {
@@ -713,6 +740,10 @@ export function extractConversationItems(sessions: Session[]): ConversationItem[
         if (typeof promptVal === 'string' && promptVal.length > 0) {
           userContent = promptVal;
         }
+      }
+
+      if (userContent) {
+        userContent = stripPreviousMessageContext(userContent);
       }
 
       if (userContent &&
@@ -1524,7 +1555,7 @@ function FormattedContent({ content }: { content: string }) {
   );
 }
 
-function UserMessage({ item, traceUrlBase }: { item: ConversationItem; traceUrlBase?: string }) {
+function UserMessage({ item }: { item: ConversationItem }) {
   const [expanded, setExpanded] = useState(false);
 
   const hasStructuredContent = /^(User:|Assistant actions?:|Tool result:|Read:|Write:|Edit:|Terminal:)/m.test(item.content);
@@ -1543,18 +1574,17 @@ function UserMessage({ item, traceUrlBase }: { item: ConversationItem; traceUrlB
   const isCollapsible = isLong || hasFullContent;
 
   const isHandoff = item.isAgentHandoff;
-  const avatarBg = isHandoff ? '#f59e0b' : '#3b82f6';
   const avatarIcon = isHandoff ? '🔄' : '👤';
   const labelColor = isHandoff ? '#92400e' : '#1e40af';
   const bubbleBg = isHandoff ? '#fef3c7' : '#eff6ff';
   const textColor = isHandoff ? '#78350f' : '#1e3a8a';
   const label = isHandoff ? `Handoff from ${item.sourceAgent || 'Agent'}` : 'User';
 
-  const traceLink = traceUrlBase && item.traceId ? `${traceUrlBase}/${item.traceId}` : undefined;
+  const traceLink = item.traceId ? langfuseTraceUrl(item.traceId) : undefined;
 
   return (
     <div style={{ marginBottom: '1rem', display: 'flex', gap: '0.6rem' }}>
-      <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: avatarBg, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '0.9rem', flexShrink: 0 }}>{avatarIcon}</div>
+      <div style={{ width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.4rem', flexShrink: 0 }}>{avatarIcon}</div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.3rem', flexWrap: 'wrap', gap: '0.5rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -1615,7 +1645,7 @@ function UserMessage({ item, traceUrlBase }: { item: ConversationItem; traceUrlB
   );
 }
 
-function AssistantMessage({ item, traceUrlBase }: { item: ConversationItem; traceUrlBase?: string }) {
+function AssistantMessage({ item }: { item: ConversationItem }) {
   const [expanded, setExpanded] = useState(false);
 
   const hasStructuredContent = /^(User:|Assistant actions?:|Tool result:|Read:|Write:|Edit:|Terminal:)/m.test(item.content);
@@ -1625,11 +1655,11 @@ function AssistantMessage({ item, traceUrlBase }: { item: ConversationItem; trac
   const hasMoreLines = item.content.includes('\n') || item.content.length > 150;
   const isCollapsible = hasContent && (hasMoreLines || hasStructuredContent || !!item.agentSteps);
 
-  const traceLink = traceUrlBase && item.traceId ? `${traceUrlBase}/${item.traceId}` : undefined;
+  const traceLink = item.traceId ? langfuseTraceUrl(item.traceId) : undefined;
 
   return (
     <div style={{ marginBottom: '1rem', display: 'flex', gap: '0.6rem' }}>
-      <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#10b981', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '0.9rem', flexShrink: 0 }}>🤖</div>
+      <div style={{ width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.4rem', flexShrink: 0 }}>🤖</div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.3rem', flexWrap: 'wrap', gap: '0.5rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -1766,10 +1796,10 @@ function AssistantMessage({ item, traceUrlBase }: { item: ConversationItem; trac
   );
 }
 
-function SummarizationMessage({ item, traceUrlBase }: { item: ConversationItem; traceUrlBase?: string }) {
+function SummarizationMessage({ item }: { item: ConversationItem }) {
   const [expanded, setExpanded] = useState(false);
 
-  const traceLink = traceUrlBase && item.traceId ? `${traceUrlBase}/${item.traceId}` : undefined;
+  const traceLink = item.traceId ? langfuseTraceUrl(item.traceId) : undefined;
   const steps = item.summarySteps || [];
   const totalProcessingMs = item.summaryTimeMs || steps.reduce((sum, s) => sum + s.durationMs, 0);
   const stepCount = item.summaryStepCount || steps.length;
@@ -1914,11 +1944,7 @@ interface TimelineItem {
   data: ConversationItem | ESError;
 }
 
-function ConversationView({ items, errors, langfuseBaseUrl, langfuseProjectId }: { items: ConversationItem[]; errors?: ESError[]; langfuseBaseUrl?: string; langfuseProjectId?: string }) {
-  const normalizedBase = langfuseBaseUrl?.replace(/\/+$/, '');
-  const traceUrlBase = normalizedBase && langfuseProjectId
-    ? `${normalizedBase}/project/${langfuseProjectId}/traces`
-    : undefined;
+function ConversationView({ items, errors }: { items: ConversationItem[]; errors?: ESError[] }) {
   const timeline: TimelineItem[] = [
     ...items.map(item => ({ type: 'conversation' as const, timestamp: item.timestamp, data: item })),
     ...(errors || []).map(err => ({ type: 'error' as const, timestamp: err.lastSeen, data: err }))
@@ -1935,9 +1961,9 @@ function ConversationView({ items, errors, langfuseBaseUrl, langfuseProjectId }:
           <React.Fragment key={`${item.type}-${idx}`}>
             {showDateSeparator && <DateSeparator date={itemDate} />}
             {item.type === 'error' && <ErrorMessage error={item.data as ESError} />}
-            {item.type === 'conversation' && (item.data as ConversationItem).type === 'user' && <UserMessage item={item.data as ConversationItem} traceUrlBase={traceUrlBase} />}
-            {item.type === 'conversation' && (item.data as ConversationItem).type === 'assistant' && <AssistantMessage item={item.data as ConversationItem} traceUrlBase={traceUrlBase} />}
-            {item.type === 'conversation' && (item.data as ConversationItem).type === 'summarization' && <SummarizationMessage item={item.data as ConversationItem} traceUrlBase={traceUrlBase} />}
+            {item.type === 'conversation' && (item.data as ConversationItem).type === 'user' && <UserMessage item={item.data as ConversationItem} />}
+            {item.type === 'conversation' && (item.data as ConversationItem).type === 'assistant' && <AssistantMessage item={item.data as ConversationItem} />}
+            {item.type === 'conversation' && (item.data as ConversationItem).type === 'summarization' && <SummarizationMessage item={item.data as ConversationItem} />}
           </React.Fragment>
         );
       })}
@@ -1951,8 +1977,6 @@ export default function LangfusePanel({ globalAppId, refreshKey = 0, onRefresh }
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [langfuseBaseUrl, setLangfuseBaseUrl] = useState<string | undefined>(undefined);
-  const [langfuseProjectId, setLangfuseProjectId] = useState<string | undefined>(undefined);
   const [currentPage, setCurrentPage] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [hasMore, setHasMore] = useState(true);
@@ -1986,6 +2010,29 @@ export default function LangfusePanel({ globalAppId, refreshKey = 0, onRefresh }
   const [loadingAll, setLoadingAll] = useState(false);
   const [loadAllProgress, setLoadAllProgress] = useState({ loaded: 0, total: 0 });
   const loadAllAbortRef = useRef<AbortController | null>(null);
+  const prefetchedRef = useRef(new Map<number, SessionsResponse>());
+  const prefetchingRef = useRef(new Set<number>());
+  // Captures the raw `/api/langfuse/sessions/{appId}?page=N` response per page,
+  // so the JSON download dumps untransformed server payloads keyed by page.
+  const rawPagesRef = useRef(new Map<number, SessionsResponse>());
+
+  const prefetch = useCallback(async function prefetchPage(pageToFetch: number, knownTotalPages?: number) {
+    if (!globalAppId) return;
+    if (pageToFetch < 1) return;
+    if (knownTotalPages && pageToFetch > knownTotalPages) return;
+    if (prefetchedRef.current.has(pageToFetch) || prefetchingRef.current.has(pageToFetch)) return;
+    prefetchingRef.current.add(pageToFetch);
+    try {
+      const response = await fetch(`/api/langfuse/sessions/${encodeURIComponent(globalAppId)}?page=${pageToFetch}`);
+      if (!response.ok) return;
+      const data: SessionsResponse = await response.json();
+      prefetchedRef.current.set(pageToFetch, data);
+    } catch {
+      // Ignore prefetch failures silently; main fetch path remains the fallback.
+    } finally {
+      prefetchingRef.current.delete(pageToFetch);
+    }
+  }, [globalAppId]);
 
   const fetchAllPages = useCallback(async () => {
     if (!globalAppId || loadingMoreRef.current) return;
@@ -2013,6 +2060,7 @@ export default function LangfusePanel({ globalAppId, refreshKey = 0, onRefresh }
         setTotalPages(totalPagesValue);
         setSessions(prev => mergeSessions(prev, data.sessions));
         setCurrentPage(nextPage);
+        rawPagesRef.current.set(nextPage, data);
 
         if (nextPage >= totalPagesValue) {
           setHasMore(false);
@@ -2055,9 +2103,16 @@ export default function LangfusePanel({ globalAppId, refreshKey = 0, onRefresh }
     setError(null);
 
     try {
-      const lfResponse = await fetch(`/api/langfuse/sessions/${encodeURIComponent(globalAppId)}?page=${pageToFetch}`);
-      if (!lfResponse?.ok) throw new Error(`Failed to fetch: ${lfResponse?.status}`);
-      const data: SessionsResponse = await lfResponse.json();
+      const cached = prefetchedRef.current.get(pageToFetch);
+      let data: SessionsResponse;
+      if (cached) {
+        data = cached;
+        prefetchedRef.current.delete(pageToFetch);
+      } else {
+        const response = await fetch(`/api/langfuse/sessions/${encodeURIComponent(globalAppId)}?page=${pageToFetch}`);
+        if (!response.ok) throw new Error(`Failed to fetch: ${response.status}`);
+        data = await response.json() as SessionsResponse;
+      }
 
       const totalPagesValue = data.pagination?.totalPages || 1;
       setTotalPages(totalPagesValue);
@@ -2065,6 +2120,9 @@ export default function LangfusePanel({ globalAppId, refreshKey = 0, onRefresh }
       setHasMore(pageToFetch < totalPagesValue);
 
       setSessions(prev => isLoadMore ? mergeSessions(prev, data.sessions) : data.sessions);
+      if (!isLoadMore) rawPagesRef.current.clear();
+      rawPagesRef.current.set(pageToFetch, data);
+      prefetch(pageToFetch + 1, totalPagesValue);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch sessions');
     } finally {
@@ -2072,14 +2130,20 @@ export default function LangfusePanel({ globalAppId, refreshKey = 0, onRefresh }
       setLoadingMore(false);
       loadingMoreRef.current = false;
     }
-  }, [globalAppId, mergeSessions]);
+  }, [globalAppId, mergeSessions, prefetch]);
 
   useEffect(() => {
     if (globalAppId) {
+      prefetchedRef.current.clear();
+      prefetchingRef.current.clear();
+      rawPagesRef.current.clear();
       fetchPage(1);
     } else {
       setSessions([]);
       setEsErrors(null);
+      prefetchedRef.current.clear();
+      prefetchingRef.current.clear();
+      rawPagesRef.current.clear();
     }
   }, [globalAppId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -2091,6 +2155,9 @@ export default function LangfusePanel({ globalAppId, refreshKey = 0, onRefresh }
       setEsErrors(null);
       setCurrentPage(0);
       setHasMore(true);
+      prefetchedRef.current.clear();
+      prefetchingRef.current.clear();
+      rawPagesRef.current.clear();
       fetchPage(1, { forceRefresh: true });
     }
   }, [refreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -2112,13 +2179,6 @@ export default function LangfusePanel({ globalAppId, refreshKey = 0, onRefresh }
       .then(data => { if (data) setEsErrors(data); })
       .catch(() => {});
   }, [globalAppId, loading, sessions]);
-
-  useEffect(() => {
-    getLangfuseConfig().then(config => {
-      if (config?.baseUrl) setLangfuseBaseUrl(config.baseUrl);
-      if (config?.projectId) setLangfuseProjectId(config.projectId);
-    });
-  }, []);
 
   const conversationItems = useMemo(() => extractConversationItems(sessions), [sessions]);
   const userMessages = conversationItems.filter(i => i.type === 'user').length;
@@ -2295,10 +2355,26 @@ export default function LangfusePanel({ globalAppId, refreshKey = 0, onRefresh }
             {esErrors && esErrors.uniqueErrors > 0 && (
               <span style={{ color: '#dc2626', fontWeight: 600 }}>⚠️ {esErrors.totalErrors + esErrors.totalClientErrors} errors</span>
             )}
-            {langfuseBaseUrl && langfuseProjectId && (
-              <a href={`${langfuseBaseUrl}/project/${langfuseProjectId}/users/${globalAppId}`} target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.7rem', color: '#3b82f6', textDecoration: 'none', marginLeft: 'auto' }}>
-                Langfuse ↗
-              </a>
+            <a href={langfuseUserUrl(globalAppId)} target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.7rem', color: '#3b82f6', textDecoration: 'none', marginLeft: 'auto' }}>
+              Langfuse ↗
+            </a>
+            {sessions.length > 0 && (
+              <button
+                onClick={() => downloadConversationJson(globalAppId, rawPagesRef.current)}
+                style={{
+                  fontSize: '0.7rem',
+                  color: '#3b82f6',
+                  background: 'none',
+                  border: 'none',
+                  padding: 0,
+                  cursor: 'pointer',
+                  textDecoration: 'underline',
+                  marginLeft: '0.5rem',
+                }}
+                title="Download loaded conversation data as JSON"
+              >
+                Download JSON ⬇
+              </button>
             )}
           </div>
 
@@ -2372,7 +2448,18 @@ export default function LangfusePanel({ globalAppId, refreshKey = 0, onRefresh }
                 )}
               </div>
             )}
-            <ConversationView items={conversationItems} errors={esErrors?.errors} langfuseBaseUrl={langfuseBaseUrl} langfuseProjectId={langfuseProjectId} />
+            {hasMore && (
+              <div style={{
+                textAlign: 'center',
+                padding: '0 0 0.75rem',
+                fontSize: '0.7rem',
+                color: '#6b7280',
+                fontStyle: 'italic',
+              }}>
+                Each page fetches 20 traces in parallel from Langfuse, and the next page is prefetched. Only fetch older messages if you really need them.
+              </div>
+            )}
+            <ConversationView items={conversationItems} errors={esErrors?.errors} />
           </div>
         </>
       )}

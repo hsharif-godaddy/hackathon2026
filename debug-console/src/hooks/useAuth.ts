@@ -12,32 +12,23 @@ interface AuthState {
   };
 }
 
-function isLocalEnv(): boolean {
-  if (typeof window === 'undefined') return false;
-  return window.location.hostname === 'localhost' ||
-         window.location.hostname === '127.0.0.1' ||
-         window.location.hostname.startsWith('192.168.') ||
-         window.location.hostname.startsWith('10.') ||
-         process.env.NEXT_PUBLIC_BYPASS_AUTH === 'true';
-}
-
-// Module-level cache to prevent duplicate auth checks
+// Module-level cache prevents duplicate /api/auth/validate calls when
+// multiple consumers mount simultaneously. The TTL guards against showing
+// stale `isAuthenticated: true` state after the SSO cookie expires
+// mid-session — server routes already gate correctly, but without a TTL
+// the UI would keep claiming we're signed in until a hard refresh.
+const CACHE_TTL_MS = 60 * 60 * 1000;
 let cachedAuthState: AuthState | null = null;
+let cachedAt = 0;
 let authCheckPromise: Promise<AuthState> | null = null;
 
-async function checkAuthOnce(): Promise<AuthState> {
-  if (cachedAuthState) return cachedAuthState;
-  if (authCheckPromise) return authCheckPromise;
+function isCacheFresh(): boolean {
+  return cachedAuthState !== null && Date.now() - cachedAt < CACHE_TTL_MS;
+}
 
-  // Bypass auth in local development
-  if (isLocalEnv()) {
-    cachedAuthState = {
-      isAuthenticated: true,
-      isLoading: false,
-      user: { shopperId: 'local-dev', cid: 'local-dev', email: 'local-dev@localhost' }
-    };
-    return cachedAuthState;
-  }
+async function checkAuthOnce(): Promise<AuthState> {
+  if (isCacheFresh()) return cachedAuthState as AuthState;
+  if (authCheckPromise) return authCheckPromise;
 
   authCheckPromise = fetch('/api/auth/validate')
     .then(async response => {
@@ -55,37 +46,35 @@ async function checkAuthOnce(): Promise<AuthState> {
       } else {
         cachedAuthState = { isAuthenticated: false, isLoading: false };
       }
+      cachedAt = Date.now();
       return cachedAuthState;
     })
     .catch(() => {
       cachedAuthState = { isAuthenticated: false, isLoading: false };
+      cachedAt = Date.now();
       return cachedAuthState;
+    })
+    .finally(() => {
+      authCheckPromise = null;
     });
 
   return authCheckPromise;
 }
 
-// Get initial state synchronously for local env
-function getInitialState(): AuthState {
-  if (typeof window !== 'undefined' && isLocalEnv()) {
-    return {
-      isAuthenticated: true,
-      isLoading: false,
-      user: { shopperId: 'local-dev', cid: 'local-dev', email: 'local-dev@localhost' }
-    };
-  }
-  return { isAuthenticated: false, isLoading: true };
-}
-
 export function useAuth(): AuthState {
-  const [authState, setAuthState] = useState<AuthState>(getInitialState);
+  // Seed from the module cache when present so remounted consumers don't
+  // flicker through `isLoading: true` after the first successful auth check.
+  const [authState, setAuthState] = useState<AuthState>(() =>
+    isCacheFresh() ? (cachedAuthState as AuthState) : { isAuthenticated: false, isLoading: true }
+  );
 
   useEffect(() => {
-    // Skip if already authenticated (local env)
-    if (authState.isAuthenticated && !authState.isLoading) return;
-
-    checkAuthOnce().then(setAuthState);
-  }, [authState.isAuthenticated, authState.isLoading]);
+    let cancelled = false;
+    checkAuthOnce().then(next => {
+      if (!cancelled) setAuthState(next);
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   return authState;
 }

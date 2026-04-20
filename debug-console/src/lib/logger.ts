@@ -93,11 +93,8 @@ function serverDevOutput(level: LogLevel, event: string, data?: Record<string, u
         }
     }
 
-    console.log(`${color}${levelStr}${c.reset} ${msg}`);
-
-    if (fields.length > 0) {
-        console.log(`      ${fields.slice(0, 5).join('  ')}`);
-    }
+    const fieldsStr = fields.length > 0 ? `  ${fields.slice(0, 5).join('  ')}` : '';
+    console.log(`${color}${levelStr}${c.reset} ${msg}${fieldsStr}`);
 
     if (options?.error?.message) {
         console.log(`      ${c.error}→ ${options.error.message}${c.reset}`);

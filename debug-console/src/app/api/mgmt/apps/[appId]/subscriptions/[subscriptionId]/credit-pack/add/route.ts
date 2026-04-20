@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { OPS_ADMIN } from '@/lib/ad-groups';
-import { shouldBypassAuth, withAuth } from '@/lib/api-auth';
+import { withAuth } from '@/lib/api-auth';
 import { NOTES_MAX_WORDS, NOTES_RE } from '@/lib/credit-pack-constants';
 import { claimCreditPackSlot, CREDIT_PACK_STATUS, CreditPackDoc, getCreditPackDoc, getLatestCreditPack, indexCreditPackDoc } from '@/lib/credit-pack-utils';
 import { logger } from '@/lib/logger';
 import mgmtControlPlaneAdapter, { MgmtGrant } from '@/lib/mgmt-control-plane-adapter';
 import { APP_ID_RE, handleMgmtError, SUBSCRIPTION_ID_RE, validateId } from '@/lib/mgmt-helpers';
-import { isProdES } from '@/lib/analytics/es-client';
 
 
 function addIndexError(doc: CreditPackDoc, status: string): NextResponse {
@@ -49,13 +48,6 @@ export const POST = withAuth<{ appId: string; subscriptionId: string }>(async fu
     }
 
     const notes = (result as { ok: true; value: string }).value;
-
-    const { bypass, reason } = shouldBypassAuth();
-
-    if (isProdES() && bypass) {
-        logger.warn('credit-pack.add.not-allowed-in-local', { appId, subscriptionId, shopperId: auth.user?.shopperId, reason });
-        return NextResponse.json({ error: 'Credit pack addition is not allowed with auth bypass' }, { status: 403 });
-    }
 
     try {
         const appDetails = await mgmtControlPlaneAdapter.getAppDetails(appId, { includeResources: false });

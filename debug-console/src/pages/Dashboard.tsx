@@ -4,17 +4,18 @@ import { useRouter, useSearchParams } from "next/navigation";
 import React, { useCallback, useEffect, useState } from "react";
 
 import AppDetailsPanel from "@/components/AppDetailsPanel";
+import CarePanel from "@/components/CarePanel";
 import type {
+  MgmtAppDetails,
   MgmtCustomerApp,
-  MgmtSubscription,
   MgmtSubscriptionGrants,
 } from "@/lib/mgmt-types";
+import type { LlmSpendData } from "@/lib/spend-types";
 import { formatTimestamp } from "@/lib/date-utils";
-import { CUSTOMER_ID_RE } from "@/lib/mgmt-helpers";
+import { CUSTOMER_ID_RE, SHOPPER_ID_RE } from "@/lib/mgmt-helpers";
 import LangfusePanel from "@/components/LangfusePanel";
 import LogsPanel, { type LogSource } from "@/components/LogsPanel";
-import PublishEventsPanel from "@/components/PublishEventsPanel";
-
+import UserMenu from "@/components/UserMenu";
 const TIME_RANGES = [
   { label: "Last 1 hour", value: "1h" },
   { label: "Last 6 hours", value: "6h" },
@@ -47,421 +48,12 @@ interface AppContext {
   errorSummary: ErrorSummary;
 }
 
-interface SpendDay {
-  date: string;
-  spend: number;
-  promptTokens: number;
-  completionTokens: number;
-  totalTokens: number;
-  cacheReadTokens: number;
-  cacheWriteTokens: number;
-  requests: number;
-}
-
-interface GrantBreakdown {
-  grantUserId: string;
-  totalSpend: number;
-  totalTokens: number;
-  totalRequests: number;
-  totalPromptTokens: number;
-  totalCompletionTokens: number;
-  totalCacheReadTokens: number;
-  totalCacheWriteTokens: number;
-  dailySpend: SpendDay[];
-}
-
-interface LlmSpendData {
-  subscriptionId?: string;
-  grantUserIds: string[];
-  totalSpend: number;
-  totalTokens: number;
-  totalRequests: number;
-  totalPromptTokens: number;
-  totalCompletionTokens: number;
-  totalCacheReadTokens: number;
-  totalCacheWriteTokens: number;
-  grantBreakdowns: GrantBreakdown[];
-  docCount: number;
-  truncated?: boolean;
-}
-
 type TabId =
   | "details"
   | "summary"
   | "conversation"
-  | "logs"
-  | "publish"
-  | "llm-spend";
-
-function GrantSpendSection({
-  grant,
-  mgmtGrant,
-  isActive,
-}: {
-  grant: GrantBreakdown;
-  mgmtGrant?: import("@/lib/mgmt-types").MgmtGrant;
-  isActive?: boolean;
-}) {
-  const [expanded, setExpanded] = React.useState(true);
-  const fmt = (n: number) =>
-    n >= 1_000_000
-      ? `${(n / 1_000_000).toFixed(2)}M`
-      : n >= 1_000
-        ? `${(n / 1_000).toFixed(1)}k`
-        : String(n);
-  const pct =
-    mgmtGrant && mgmtGrant.creditsMax > 0
-      ? Math.min(
-          100,
-          Math.round((mgmtGrant.creditsSpent / mgmtGrant.creditsMax) * 100),
-        )
-      : null;
-  return (
-    <div
-      style={{
-        border: "1px solid #e5e7eb",
-        borderRadius: "6px",
-        overflow: "hidden",
-      }}
-    >
-      {/* Grant header */}
-      <button
-        onClick={() => setExpanded((e) => !e)}
-        style={{
-          width: "100%",
-          display: "flex",
-          alignItems: "center",
-          gap: "0.75rem",
-          padding: "0.625rem 1rem",
-          backgroundColor: "#f9fafb",
-          border: "none",
-          cursor: "pointer",
-          textAlign: "left",
-        }}
-      >
-        <span style={{ fontSize: "0.65rem", color: "#6b7280" }}>
-          {expanded ? "▼" : "▶"}
-        </span>
-        <span
-          style={{
-            fontSize: "0.75rem",
-            fontFamily: "monospace",
-            color: "#1f2937",
-            fontWeight: 600,
-            flexShrink: 0,
-          }}
-        >
-          {grant.grantUserId}
-        </span>
-        {isActive && (
-          <span
-            style={{
-              fontSize: "0.6rem",
-              color: "#2563eb",
-              backgroundColor: "#dbeafe",
-              padding: "0.1rem 0.35rem",
-              borderRadius: "9999px",
-              fontWeight: 600,
-              flexShrink: 0,
-            }}
-          >
-            active
-          </span>
-        )}
-        {mgmtGrant && (
-          <span
-            style={{
-              fontSize: "0.7rem",
-              color: mgmtGrant.isAvailable ? "#16a34a" : "#6b7280",
-              flexShrink: 0,
-            }}
-          >
-            {mgmtGrant.isAvailable
-              ? "available"
-              : (mgmtGrant.finalState ?? "unavailable")}
-          </span>
-        )}
-        {/* Credit gauge */}
-        {pct !== null && mgmtGrant && (
-          <>
-            <div
-              style={{
-                width: "80px",
-                height: "4px",
-                backgroundColor: "#e5e7eb",
-                borderRadius: "2px",
-                overflow: "hidden",
-                flexShrink: 0,
-              }}
-            >
-              <div
-                style={{
-                  width: `${pct}%`,
-                  height: "100%",
-                  backgroundColor: pct > 90 ? "#ef4444" : "#3b82f6",
-                  borderRadius: "2px",
-                }}
-              />
-            </div>
-            <span
-              style={{
-                fontSize: "0.7rem",
-                fontFamily: "monospace",
-                color: "#374151",
-                flexShrink: 0,
-              }}
-            >
-              {mgmtGrant.creditsSpent}/{mgmtGrant.creditsMax} ({pct}%)
-            </span>
-            {mgmtGrant.useBefore && (
-              <span
-                style={{ fontSize: "0.7rem", color: "#6b7280", flexShrink: 0 }}
-              >
-                until {mgmtGrant.useBefore.split("T")[0]}
-              </span>
-            )}
-          </>
-        )}
-        <span style={{ flex: 1 }} />
-        <span
-          style={{
-            fontSize: "0.75rem",
-            fontFamily: "monospace",
-            color: "#059669",
-            fontWeight: 700,
-            flexShrink: 0,
-          }}
-        >
-          ${grant.totalSpend.toFixed(4)}
-        </span>
-        <span style={{ fontSize: "0.72rem", color: "#6b7280", flexShrink: 0 }}>
-          {fmt(grant.totalTokens)} tokens
-        </span>
-        <span style={{ fontSize: "0.72rem", color: "#8b5cf6", flexShrink: 0 }}>
-          {grant.totalRequests.toLocaleString()} reqs
-        </span>
-        <span style={{ fontSize: "0.72rem", color: "#6b7280", flexShrink: 0 }}>
-          {grant.dailySpend.length} days
-        </span>
-      </button>
-      {expanded && (
-        <div
-          style={{
-            padding: "0.75rem 1rem",
-            display: "flex",
-            flexDirection: "column",
-            gap: "0.75rem",
-          }}
-        >
-          {/* Daily table */}
-          {grant.dailySpend.length > 0 && (
-            <div
-              style={{
-                maxHeight: "360px",
-                overflowY: "auto",
-                border: "1px solid #f3f4f6",
-                borderRadius: "4px",
-              }}
-            >
-              <table
-                style={{
-                  width: "100%",
-                  borderCollapse: "collapse",
-                  fontSize: "0.78rem",
-                }}
-              >
-                <thead>
-                  <tr
-                    style={{
-                      backgroundColor: "#f9fafb",
-                      position: "sticky",
-                      top: 0,
-                    }}
-                  >
-                    <th
-                      style={{
-                        padding: "0.4rem 0.75rem",
-                        textAlign: "left",
-                        fontWeight: 600,
-                        color: "#374151",
-                      }}
-                    >
-                      Date
-                    </th>
-                    <th
-                      style={{
-                        padding: "0.4rem 0.75rem",
-                        textAlign: "right",
-                        fontWeight: 600,
-                        color: "#059669",
-                      }}
-                    >
-                      Spend
-                    </th>
-                    <th
-                      style={{
-                        padding: "0.4rem 0.75rem",
-                        textAlign: "right",
-                        fontWeight: 600,
-                        color: "#3b82f6",
-                      }}
-                    >
-                      Input
-                    </th>
-                    <th
-                      style={{
-                        padding: "0.4rem 0.75rem",
-                        textAlign: "right",
-                        fontWeight: 600,
-                        color: "#8b5cf6",
-                      }}
-                    >
-                      Cache Read
-                    </th>
-                    <th
-                      style={{
-                        padding: "0.4rem 0.75rem",
-                        textAlign: "right",
-                        fontWeight: 600,
-                        color: "#d97706",
-                      }}
-                    >
-                      Cache Write
-                    </th>
-                    <th
-                      style={{
-                        padding: "0.4rem 0.75rem",
-                        textAlign: "right",
-                        fontWeight: 600,
-                        color: "#10b981",
-                      }}
-                    >
-                      Output
-                    </th>
-                    <th
-                      style={{
-                        padding: "0.4rem 0.75rem",
-                        textAlign: "right",
-                        fontWeight: 600,
-                        color: "#374151",
-                      }}
-                    >
-                      Total
-                    </th>
-                    <th
-                      style={{
-                        padding: "0.4rem 0.75rem",
-                        textAlign: "right",
-                        fontWeight: 600,
-                        color: "#6b7280",
-                      }}
-                    >
-                      Reqs
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {grant.dailySpend.map((day) => (
-                    <tr
-                      key={day.date}
-                      style={{ borderBottom: "1px solid #f3f4f6" }}
-                    >
-                      <td
-                        style={{
-                          padding: "0.35rem 0.75rem",
-                          fontFamily: "monospace",
-                          color: "#374151",
-                        }}
-                      >
-                        {day.date}
-                      </td>
-                      <td
-                        style={{
-                          padding: "0.35rem 0.75rem",
-                          textAlign: "right",
-                          fontFamily: "monospace",
-                          color: "#059669",
-                          fontWeight: 600,
-                        }}
-                      >
-                        ${day.spend.toFixed(4)}
-                      </td>
-                      <td
-                        style={{
-                          padding: "0.35rem 0.75rem",
-                          textAlign: "right",
-                          fontFamily: "monospace",
-                          color: "#3b82f6",
-                        }}
-                      >
-                        {(day.promptTokens / 1000).toFixed(1)}k
-                      </td>
-                      <td
-                        style={{
-                          padding: "0.35rem 0.75rem",
-                          textAlign: "right",
-                          fontFamily: "monospace",
-                          color: "#8b5cf6",
-                        }}
-                      >
-                        {day.cacheReadTokens > 0
-                          ? `${(day.cacheReadTokens / 1000).toFixed(1)}k`
-                          : "—"}
-                      </td>
-                      <td
-                        style={{
-                          padding: "0.35rem 0.75rem",
-                          textAlign: "right",
-                          fontFamily: "monospace",
-                          color: "#d97706",
-                        }}
-                      >
-                        {day.cacheWriteTokens > 0
-                          ? `${(day.cacheWriteTokens / 1000).toFixed(1)}k`
-                          : "—"}
-                      </td>
-                      <td
-                        style={{
-                          padding: "0.35rem 0.75rem",
-                          textAlign: "right",
-                          fontFamily: "monospace",
-                          color: "#10b981",
-                        }}
-                      >
-                        {(day.completionTokens / 1000).toFixed(1)}k
-                      </td>
-                      <td
-                        style={{
-                          padding: "0.35rem 0.75rem",
-                          textAlign: "right",
-                          fontFamily: "monospace",
-                          color: "#374151",
-                          fontWeight: 500,
-                        }}
-                      >
-                        {(day.totalTokens / 1000).toFixed(1)}k
-                      </td>
-                      <td
-                        style={{
-                          padding: "0.35rem 0.75rem",
-                          textAlign: "right",
-                          fontFamily: "monospace",
-                          color: "#6b7280",
-                        }}
-                      >
-                        {day.requests.toLocaleString()}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
+  | "care"
+  | "logs";
 
 export default function Dashboard() {
   const router = useRouter();
@@ -498,25 +90,19 @@ export default function Dashboard() {
   const [llmSpend, setLlmSpend] = useState<LlmSpendData | null>(null);
   const [llmSpendLoading, setLlmSpendLoading] = useState(false);
   const [llmSpendError, setLlmSpendError] = useState<string | null>(null);
-  // Subscription + grant data lifted from AppDetailsPanel
+  // Subscription + grant identifiers lifted from AppDetailsPanel — needed to
+  // drive the LLM spend fetch that powers the Subscription Details section.
   const [mgmtRawSubId, setMgmtRawSubId] = useState<string | null>(null);
   const [mgmtGrantUserIds, setMgmtGrantUserIds] = useState<string[]>([]);
-  const [mgmtSubscription, setMgmtSubscription] =
-    useState<MgmtSubscription | null>(null);
-  const [mgmtGrants, setMgmtGrants] = useState<MgmtSubscriptionGrants | null>(
-    null,
-  );
-  // true once AppDetailsPanel confirms whether a subscription exists or not
-  const [mgmtSubscriptionResolved, setMgmtSubscriptionResolved] =
-    useState(false);
+
+  const [shopperId, setShopperId] = useState<string | null>(null);
 
   const [refreshKeys, setRefreshKeys] = useState({
     details: 0,
     summary: 0,
     conversation: 0,
+    care: 0,
     logs: 0,
-    publish: 0,
-    "llm-spend": 0,
   });
 
   // Support bundle download state
@@ -582,14 +168,7 @@ export default function Dashboard() {
     }
     if (
       urlTab &&
-      [
-        "details",
-        "summary",
-        "conversation",
-        "logs",
-        "publish",
-        "llm-spend",
-      ].includes(urlTab)
+      ["details", "summary", "conversation", "care", "logs"].includes(urlTab)
     ) {
       setActiveTab(urlTab);
     }
@@ -692,9 +271,6 @@ export default function Dashboard() {
   useEffect(() => {
     setMgmtRawSubId(null);
     setMgmtGrantUserIds([]);
-    setMgmtSubscription(null);
-    setMgmtGrants(null);
-    setMgmtSubscriptionResolved(false);
     setLlmSpend(null);
   }, [submittedAppId]);
 
@@ -777,22 +353,71 @@ export default function Dashboard() {
   );
 
   const isUUID = (value: string) => CUSTOMER_ID_RE.test(value);
+  const isShopperId = (value: string) => SHOPPER_ID_RE.test(value);
 
-  const handleSearch = () => {
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [resolvingShopper, setResolvingShopper] = useState(false);
+
+  const handleSearch = async () => {
+    // Resolution precedence (intentional):
+    //   1. UUID  → treated as a customerId, loads that customer's apps.
+    //   2. Numeric shopperId → resolved to a customerId via /api/shopper/:id,
+    //      then handled like (1).
+    //   3. Otherwise → treated as a literal appId.
+    // Shopper IDs are constrained to 4-12 digits (SHOPPER_ID_RE) and UUIDs
+    // never collide with that, so the order is unambiguous.
     const trimmed = appId.trim();
     if (!trimmed) return;
+
+    setSearchError(null);
 
     if (isUUID(trimmed)) {
       setSubmittedAppId("");
       if (submittedCustomerId === trimmed) setCustomerAppsRefresh((k) => k + 1);
       setSubmittedCustomerId(trimmed);
       updateUrl({ customerId: trimmed, appId: null, tab: "details" });
-    } else {
-      setSubmittedCustomerId("");
-      setSubmittedAppId(trimmed);
-      setActiveTab("details");
-      updateUrl({ appId: trimmed, customerId: null, tab: "details" });
+      return;
     }
+
+    if (isShopperId(trimmed)) {
+      setResolvingShopper(true);
+      try {
+        const res = await fetch(`/api/shopper/${encodeURIComponent(trimmed)}`, {
+          cache: "no-store",
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          setSearchError(
+            res.status === 404
+              ? `Shopper ${trimmed} not found`
+              : `Failed to resolve shopper (HTTP ${res.status})`,
+          );
+          return;
+        }
+        const customerId = data?.customerId;
+        if (!customerId || !CUSTOMER_ID_RE.test(customerId)) {
+          setSearchError(`No customerId returned for shopper ${trimmed}`);
+          return;
+        }
+        setSubmittedAppId("");
+        if (submittedCustomerId === customerId)
+          setCustomerAppsRefresh((k) => k + 1);
+        setSubmittedCustomerId(customerId);
+        updateUrl({ customerId, appId: null, tab: "details" });
+      } catch (err) {
+        setSearchError(
+          err instanceof Error ? err.message : "Failed to resolve shopper",
+        );
+      } finally {
+        setResolvingShopper(false);
+      }
+      return;
+    }
+
+    setSubmittedCustomerId("");
+    setSubmittedAppId(trimmed);
+    setActiveTab("details");
+    updateUrl({ appId: trimmed, customerId: null, tab: "details" });
   };
 
   // Collect llmBudgetUserId from ALL grants (active + historical) so LLM Spend captures
@@ -813,19 +438,8 @@ export default function Dashboard() {
     [],
   );
 
-  const handleSubscriptionLoaded = useCallback(
-    (subscription: MgmtSubscription, grants: MgmtSubscriptionGrants) => {
-      setMgmtSubscription(subscription);
-      setMgmtGrants(grants);
-      setMgmtSubscriptionResolved(true);
-    },
-    [],
-  );
-
-  // Called by AppDetailsPanel when the app has no subscriptionId — marks the tab as resolved
-  // so the Subscription tab doesn't show "Loading…" indefinitely.
-  const handleNoSubscription = useCallback(() => {
-    setMgmtSubscriptionResolved(true);
+  const handleAppLoaded = useCallback((app: MgmtAppDetails | null) => {
+    setShopperId(app?.shopperId || null);
   }, []);
 
   const handleClear = () => {
@@ -835,6 +449,8 @@ export default function Dashboard() {
     setCustomerApps([]);
     setCustomerAppsError(null);
     setContext(null);
+    setShopperId(null);
+    setSearchError(null);
     setActiveTab("summary");
     router.push("/", { scroll: false });
   };
@@ -890,8 +506,7 @@ export default function Dashboard() {
     { id: "summary", label: "Summary", icon: "📊" },
     { id: "conversation", label: "Conversation", icon: "💬" },
     { id: "logs", label: "Logs", icon: "📋" },
-    { id: "publish", label: "Publish Events", icon: "🚀" },
-    { id: "llm-spend", label: "Subscription", icon: "💳" },
+    { id: "care", label: "Care Contacts", icon: "🎧" },
   ];
 
   return (
@@ -944,7 +559,7 @@ export default function Dashboard() {
                 onKeyDown={(e) => {
                   if (e.key === "Enter") handleSearch();
                 }}
-                placeholder="App ID or Customer ID..."
+                placeholder="App ID, Customer ID, or Shopper ID..."
                 style={{
                   width: "100%",
                   padding: appId.trim()
@@ -970,12 +585,22 @@ export default function Dashboard() {
                     borderRadius: "3px",
                     backgroundColor: isUUID(appId.trim())
                       ? "#dbeafe"
-                      : "#f0fdf4",
-                    color: isUUID(appId.trim()) ? "#1d4ed8" : "#15803d",
+                      : isShopperId(appId.trim())
+                        ? "#fef3c7"
+                        : "#f0fdf4",
+                    color: isUUID(appId.trim())
+                      ? "#1d4ed8"
+                      : isShopperId(appId.trim())
+                        ? "#92400e"
+                        : "#15803d",
                     pointerEvents: "none",
                   }}
                 >
-                  {isUUID(appId.trim()) ? "customerId" : "appId"}
+                  {isUUID(appId.trim())
+                    ? "customerId"
+                    : isShopperId(appId.trim())
+                      ? "shopperId"
+                      : "appId"}
                 </span>
               )}
               {appId && (
@@ -1007,7 +632,7 @@ export default function Dashboard() {
             </div>
             <button
               onClick={handleSearch}
-              disabled={!appId.trim()}
+              disabled={!appId.trim() || resolvingShopper}
               style={{
                 padding: "0.375rem 0.75rem",
                 backgroundColor: appId.trim() ? "#3b82f6" : "#9ca3af",
@@ -1017,36 +642,29 @@ export default function Dashboard() {
                 cursor: appId.trim() ? "pointer" : "not-allowed",
                 fontSize: "0.875rem",
                 fontWeight: 500,
-                opacity: appId.trim() ? 1 : 0.6,
+                opacity: appId.trim() && !resolvingShopper ? 1 : 0.6,
               }}
             >
-              Search
+              {resolvingShopper ? "Resolving…" : "Search"}
             </button>
-            <select
-              value={timeRange}
-              onChange={(e) => {
-                setTimeRange(e.target.value);
-                updateUrl({ timeRange: e.target.value });
-              }}
-              style={{
-                padding: "0.375rem 0.5rem",
-                borderRadius: "4px",
-                border: "1px solid #d1d5db",
-                fontSize: "0.875rem",
-                backgroundColor: "white",
-                cursor: "pointer",
-              }}
-            >
-              {TIME_RANGES.map((range) => (
-                <option key={range.value} value={range.value}>
-                  {range.label}
-                </option>
-              ))}
-            </select>
           </div>
           {loading && (
             <span style={{ fontSize: "0.75rem", color: "#6b7280" }}>
               Loading...
+            </span>
+          )}
+          {searchError && (
+            <span
+              style={{
+                fontSize: "0.75rem",
+                color: "#991b1b",
+                background: "#fef2f2",
+                border: "1px solid #fecaca",
+                padding: "2px 8px",
+                borderRadius: 4,
+              }}
+            >
+              {searchError}
             </span>
           )}
           <div
@@ -1104,6 +722,7 @@ export default function Dashboard() {
             >
               Images
             </a>
+            <UserMenu />
           </div>
         </header>
 
@@ -1328,7 +947,7 @@ export default function Dashboard() {
                 color: "#1a1a1a",
               }}
             >
-              Enter an App ID or Customer ID to get started
+              Enter an App ID, Customer ID, or Shopper ID to get started
             </h2>
             <p
               style={{
@@ -1612,8 +1231,10 @@ export default function Dashboard() {
                   refreshKey={refreshKeys.details}
                   onRefresh={() => handleRefreshTab("details")}
                   onGrantsLoaded={handleGrantsLoaded}
-                  onSubscriptionLoaded={handleSubscriptionLoaded}
-                  onNoSubscription={handleNoSubscription}
+                  onAppLoaded={handleAppLoaded}
+                  llmSpend={llmSpend}
+                  llmSpendLoading={llmSpendLoading}
+                  llmSpendError={llmSpendError}
                 />
               </div>
 
@@ -1625,8 +1246,44 @@ export default function Dashboard() {
                   gap: "1rem",
                 }}
               >
-                {/* Refresh Button */}
-                <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                {/* Time range + Refresh */}
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "flex-end",
+                    alignItems: "center",
+                    gap: "0.5rem",
+                  }}
+                >
+                  <label
+                    style={{
+                      fontSize: "0.813rem",
+                      color: "#6b7280",
+                    }}
+                  >
+                    Time range:
+                  </label>
+                  <select
+                    value={timeRange}
+                    onChange={(e) => {
+                      setTimeRange(e.target.value);
+                      updateUrl({ timeRange: e.target.value });
+                    }}
+                    style={{
+                      padding: "0.375rem 0.5rem",
+                      borderRadius: "4px",
+                      border: "1px solid #d1d5db",
+                      fontSize: "0.875rem",
+                      backgroundColor: "white",
+                      cursor: "pointer",
+                    }}
+                  >
+                    {TIME_RANGES.map((range) => (
+                      <option key={range.value} value={range.value}>
+                        {range.label}
+                      </option>
+                    ))}
+                  </select>
                   <button
                     onClick={() => handleRefreshTab("summary")}
                     disabled={loading}
@@ -1690,18 +1347,32 @@ export default function Dashboard() {
                           : "1px solid #bbf7d0",
                       }}
                     >
-                      <h3
-                        style={{
-                          margin: 0,
-                          fontSize: "1rem",
-                          fontWeight: 600,
-                          color: context.errorSummary?.total
-                            ? "#991b1b"
-                            : "#166534",
-                        }}
-                      >
-                        Error Summary
-                      </h3>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+                        <h3
+                          style={{
+                            margin: 0,
+                            fontSize: "1rem",
+                            fontWeight: 600,
+                            color: context.errorSummary?.total
+                              ? "#991b1b"
+                              : "#166534",
+                          }}
+                        >
+                          Error Summary
+                        </h3>
+                        <div
+                          style={{
+                            fontSize: "0.75rem",
+                            fontStyle: "italic",
+                            color: context.errorSummary?.total
+                              ? "#991b1b"
+                              : "#166534",
+                            opacity: 0.75,
+                          }}
+                        >
+                          Errors don&apos;t mean the user wasted credits — correlate with chats to confirm.
+                        </div>
+                      </div>
                       <div
                         style={{
                           display: "flex",
@@ -1726,24 +1397,6 @@ export default function Dashboard() {
                             style={{ fontSize: "0.75rem", color: "#6b7280" }}
                           >
                             Total Errors
-                          </div>
-                        </div>
-                        <div style={{ textAlign: "center" }}>
-                          <div
-                            style={{
-                              fontSize: "1.5rem",
-                              fontWeight: 700,
-                              color: context.errorSummary?.last24Hours
-                                ? "#dc2626"
-                                : "#16a34a",
-                            }}
-                          >
-                            {context.errorSummary?.last24Hours ?? 0}
-                          </div>
-                          <div
-                            style={{ fontSize: "0.75rem", color: "#6b7280" }}
-                          >
-                            Last 24h
                           </div>
                         </div>
                       </div>
@@ -2057,6 +1710,15 @@ export default function Dashboard() {
                 />
               </div>
 
+              {/* Care Tab */}
+              <div style={{ display: activeTab === "care" ? "block" : "none" }}>
+                <CarePanel
+                  shopperId={shopperId}
+                  refreshKey={refreshKeys.care}
+                  onRefresh={() => handleRefreshTab("care")}
+                />
+              </div>
+
               {/* Logs Tab */}
               <div style={{ display: activeTab === "logs" ? "block" : "none" }}>
                 <LogsPanel
@@ -2068,231 +1730,6 @@ export default function Dashboard() {
                 />
               </div>
 
-              {/* Publish Events Tab */}
-              <div
-                style={{ display: activeTab === "publish" ? "block" : "none" }}
-              >
-                <PublishEventsPanel
-                  appId={submittedAppId}
-                  timeRange={timeRange}
-                  refreshKey={refreshKeys["publish"]}
-                  onRefresh={() => handleRefreshTab("publish")}
-                />
-              </div>
-
-              {/* Subscription Tab */}
-              <div
-                style={{
-                  display: activeTab === "llm-spend" ? "flex" : "none",
-                  flexDirection: "column",
-                  gap: "1rem",
-                  maxWidth: "1200px",
-                  margin: "0 auto",
-                  width: "100%",
-                }}
-              >
-                {/* Subscription details — shown as soon as data is available */}
-                {mgmtSubscription && (
-                  <div
-                    style={{
-                      padding: "1rem",
-                      backgroundColor: "#f9fafb",
-                      borderRadius: "6px",
-                      border: "1px solid #e5e7eb",
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: "0.75rem",
-                    }}
-                  >
-                    {/* Subscription fields + per-grant gauges in one header block */}
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "2rem",
-                        flexWrap: "wrap",
-                        fontSize: "0.8rem",
-                      }}
-                    >
-                      {[
-                        { label: "Plan", value: mgmtSubscription.plan },
-                        { label: "Status", value: mgmtSubscription.status },
-                        {
-                          label: "Trial",
-                          value: mgmtSubscription.isTrial ? "yes" : "no",
-                        },
-                        { label: "Sub ID", value: mgmtSubscription.id },
-                      ].map(({ label, value }) => (
-                        <div key={label}>
-                          <div
-                            style={{
-                              fontSize: "0.6rem",
-                              color: "#9ca3af",
-                              fontWeight: 600,
-                              textTransform: "uppercase",
-                              letterSpacing: "0.05em",
-                              marginBottom: "0.15rem",
-                            }}
-                          >
-                            {label}
-                          </div>
-                          <div
-                            style={{
-                              fontFamily: "monospace",
-                              color: "#111827",
-                            }}
-                          >
-                            {value}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {mgmtGrantUserIds.length === 0 ? (
-                  <div
-                    style={{
-                      padding: "3rem 2rem",
-                      textAlign: "center",
-                      backgroundColor: "#f9fafb",
-                      borderRadius: "6px",
-                      border: "1px solid #e5e7eb",
-                    }}
-                  >
-                    <p
-                      style={{
-                        margin: 0,
-                        color: "#6b7280",
-                        fontSize: "0.875rem",
-                      }}
-                    >
-                      {!submittedAppId
-                        ? "Enter an app ID to view subscription data"
-                        : !mgmtSubscriptionResolved
-                          ? "Loading subscription data..."
-                          : "No grant data available for this app — check the Details tab"}
-                    </p>
-                  </div>
-                ) : llmSpendLoading ? (
-                  <div
-                    style={{
-                      padding: "3rem 2rem",
-                      textAlign: "center",
-                      backgroundColor: "#f9fafb",
-                      borderRadius: "6px",
-                      border: "1px solid #e5e7eb",
-                    }}
-                  >
-                    <p
-                      style={{
-                        margin: 0,
-                        color: "#6b7280",
-                        fontSize: "0.875rem",
-                      }}
-                    >
-                      Loading spend data...
-                    </p>
-                  </div>
-                ) : llmSpendError ? (
-                  <div
-                    style={{
-                      padding: "3rem 2rem",
-                      textAlign: "center",
-                      backgroundColor: "#fef2f2",
-                      borderRadius: "6px",
-                      border: "1px solid #fecaca",
-                    }}
-                  >
-                    <p
-                      style={{
-                        margin: 0,
-                        color: "#dc2626",
-                        fontSize: "0.875rem",
-                      }}
-                    >
-                      {llmSpendError}
-                    </p>
-                  </div>
-                ) : !llmSpend ? (
-                  <div
-                    style={{
-                      padding: "3rem 2rem",
-                      textAlign: "center",
-                      backgroundColor: "#f9fafb",
-                      borderRadius: "6px",
-                      border: "1px solid #e5e7eb",
-                    }}
-                  >
-                    <p
-                      style={{
-                        margin: 0,
-                        color: "#6b7280",
-                        fontSize: "0.875rem",
-                      }}
-                    >
-                      No spend data available
-                    </p>
-                  </div>
-                ) : (
-                  <>
-                    {/* Summary row */}
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "1.5rem",
-                        padding: "0.25rem 0",
-                        fontSize: "0.8rem",
-                        flexWrap: "wrap",
-                      }}
-                    >
-                      <span>
-                        Total:{" "}
-                        <strong style={{ color: "#059669" }}>
-                          ${llmSpend.totalSpend.toFixed(2)}
-                        </strong>
-                      </span>
-                      <span style={{ color: "#6b7280" }}>
-                        {llmSpend.totalRequests.toLocaleString()} requests
-                      </span>
-                    </div>
-
-                    {/* Truncation warning */}
-                    {llmSpend.truncated && (
-                      <div
-                        style={{
-                          padding: "0.5rem 0.75rem",
-                          backgroundColor: "#fffbeb",
-                          border: "1px solid #fde68a",
-                          borderRadius: "6px",
-                          fontSize: "0.78rem",
-                          color: "#92400e",
-                        }}
-                      >
-                        ⚠ Results are truncated — {llmSpend.docCount} total
-                        records matched but only the first 500 are shown. Totals
-                        may be incomplete.
-                      </div>
-                    )}
-
-                    {/* Per-grant sections */}
-                    {llmSpend.grantBreakdowns.map((grant) => {
-                      const mg = mgmtGrants?.grants.find(
-                        (g) => g.llmBudgetUserId === grant.grantUserId,
-                      );
-                      return (
-                        <GrantSpendSection
-                          key={grant.grantUserId}
-                          grant={grant}
-                          mgmtGrant={mg}
-                          isActive={!!mg && mg.id === mgmtGrants?.activeGrant}
-                        />
-                      );
-                    })}
-                  </>
-                )}
-              </div>
             </div>
           </div>
         )}

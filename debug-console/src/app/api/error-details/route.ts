@@ -1,11 +1,15 @@
 import { NextResponse } from 'next/server';
 
 import { withAuth } from '@/lib/api-auth';
-import { buildAppIdQuery, getAllLogSources } from '@/lib/log-sources';
+import { logger } from '@/lib/logger';
+import { buildAppIdQuery, DEFAULT_SUMMARY_SOURCE_IDS, getAllLogSources } from '@/lib/log-sources';
+import { buildLokiQuery, queryLoki, transformLokiResponse } from '@/lib/loki-client';
 import { parseTimeRange } from '@/lib/time-range';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
+
+const MAX_MESSAGE_LENGTH = 500;
 
 interface ErrorDetail {
   timestamp: string;
@@ -36,8 +40,20 @@ export const GET = withAuth(async (request, _auth) => {
       );
     }
 
+    // Cap message length so we don't forward arbitrarily large strings into
+    // three ES match_phrase clauses + an in-memory Loki .includes() scan.
+    if (message.length > MAX_MESSAGE_LENGTH) {
+      return NextResponse.json(
+        { error: `message must be <= ${MAX_MESSAGE_LENGTH} characters` },
+        { status: 400 }
+      );
+    }
+
     const sources = getAllLogSources();
-    const sourceIds = ['airo-agents', 'control-plane'];
+    const sourcesParam = searchParams.get('sources');
+    const sourceIds = sourcesParam
+      ? sourcesParam.split(',')
+      : [...DEFAULT_SUMMARY_SOURCE_IDS];
 
     const { startTime, endTime } = parseTimeRange(timeRange);
 
@@ -45,7 +61,56 @@ export const GET = withAuth(async (request, _auth) => {
 
     for (const sourceId of sourceIds) {
       const sourceConfig = sources.find((s) => s.id === sourceId);
-      if (!sourceConfig || !sourceConfig.apiKey) continue;
+      if (!sourceConfig) continue;
+
+      // Loki-backed sources: fetch error logs and filter by message in memory.
+      if (sourceConfig.backendType === 'loki') {
+        try {
+          const lokiParams = await buildLokiQuery({
+            levelsFilter: 'error',
+            appId,
+            startTime: startTime.toISOString(),
+            endTime: endTime.toISOString(),
+            size: 1000,
+            from: 0
+          }, {
+            lokiEndpoint: sourceConfig.lokiEndpoint,
+            lokiApiKey: sourceConfig.lokiApiKey,
+            lokiLabels: sourceConfig.lokiLabels,
+            environment: sourceConfig.environment
+          });
+
+          const lokiResponse = await queryLoki({
+            lokiEndpoint: sourceConfig.lokiEndpoint,
+            lokiApiKey: sourceConfig.lokiApiKey,
+            lokiLabels: sourceConfig.lokiLabels,
+            environment: sourceConfig.environment
+          }, lokiParams);
+
+          const logs = transformLokiResponse(
+            lokiResponse,
+            sourceConfig.fieldMapping,
+            sourceId
+          );
+
+          for (const log of logs) {
+            if (log.level !== 'error') continue;
+            if (!log.message || !log.message.includes(message)) continue;
+            allErrors.push({
+              timestamp: log.timestamp,
+              message: log.message,
+              event: log.event,
+              service: log.service,
+              raw: log.raw as Record<string, unknown>
+            });
+          }
+        } catch (error) {
+          logger.error('error-details.loki.failed', { sourceId, appId }, { error: error as Error });
+        }
+        continue;
+      }
+
+      if (!sourceConfig.apiKey) continue;
 
       const { fieldMapping } = sourceConfig;
 
@@ -120,7 +185,7 @@ export const GET = withAuth(async (request, _auth) => {
           }
         }
       } catch (error) {
-        console.error('Error fetching error details from source:', sourceId, error);
+        logger.error('error-details.es.failed', { sourceId, appId }, { error: error as Error });
       }
     }
 

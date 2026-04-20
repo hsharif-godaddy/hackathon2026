@@ -62,15 +62,6 @@ interface Eligibility {
     recentCreditPack: RecentCreditPack | null;
 }
 
-function isLocalEnv(): boolean {
-    if (typeof window === 'undefined') return false;
-    return window.location.hostname === 'localhost' ||
-        window.location.hostname === '127.0.0.1' ||
-        window.location.hostname.startsWith('192.168.') ||
-        window.location.hostname.startsWith('10.') ||
-        process.env.NEXT_PUBLIC_BYPASS_AUTH === 'true';
-}
-
 function redirectToSso(): void {
     const returnUrl = window.location.href;
     const hostname = window.location.hostname;
@@ -104,11 +95,6 @@ export default function AddCreditPackPage() {
     const wordCount = notes.trim() ? notes.trim().split(/\s+/).filter(Boolean).length : 0;
 
     useEffect(() => {
-        if (isLocalEnv()) {
-            setStatus('authenticated');
-            return;
-        }
-
         fetch('/api/auth/ops-admin')
             .then(function handleResponse(response) {
                 if (response.ok) {

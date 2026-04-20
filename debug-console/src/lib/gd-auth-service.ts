@@ -1,33 +1,3 @@
-// Track if we've already logged the bypass warning to avoid log spam
-let bypassWarningLogged = false;
-
-/**
- * Check if auth bypass is allowed
- *
- * Security: BYPASS_AUTH is ignored in production to prevent accidental exposure.
- * Only NODE_ENV=development allows bypass, and we log a warning when it happens.
- */
-function shouldBypassAuth(): boolean {
-    const nodeEnv = process.env.NODE_ENV;
-    const bypassAuth = process.env.BYPASS_AUTH;
-
-    // Never allow bypass in production, regardless of BYPASS_AUTH setting
-    if (nodeEnv === 'production') {
-        if (bypassAuth === 'true' || bypassAuth === '1') {
-            console.error('[SECURITY] BYPASS_AUTH is set but ignored in production environment');
-        }
-        return false;
-    }
-
-    // In development, allow bypass
-    if (nodeEnv === 'development') {
-        return true;
-    }
-
-    // For test environment, only allow explicit bypass
-    return bypassAuth === 'true' || bypassAuth === '1';
-}
-
 /**
  * GoDaddy Auth Service using official gd-auth library
  * Handles JWT validation and automatic heartbeat for JOMAX tokens
@@ -59,13 +29,11 @@ export class GdAuthService {
     private ssoHost: string;
 
     constructor() {
-        let ssoUrl = process.env.SSO_LOGIN_URL || 'https://sso.test-godaddy.com/login';
-        ssoUrl = ssoUrl.includes('test') ? 'sso.test-godaddy.com' : 'sso.godaddy.com';
-        try {
-            this.ssoHost = new URL(ssoUrl).hostname;
-        } catch {
-            this.ssoHost = ssoUrl;
-        }
+        // gd-auth wants a bare hostname, not a URL. We pick which env to talk
+        // to based on whether SSO_LOGIN_URL points at the test stack.
+        const isTestEnv = (process.env.SSO_LOGIN_URL || '').includes('test')
+            || !process.env.SSO_LOGIN_URL;
+        this.ssoHost = isTestEnv ? 'sso.test-godaddy.com' : 'sso.godaddy.com';
 
         // Lazy import to avoid issues with ES modules
         const { GdAuth } = require('gd-auth'); // eslint-disable-line @typescript-eslint/no-require-imports
@@ -81,24 +49,6 @@ export class GdAuthService {
     }
 
     async authenticate(token: string): Promise<{ valid: boolean; payload?: AuthPayload; reason?: string }> {
-        // Bypass auth in local development
-        if (shouldBypassAuth()) {
-            if (!bypassWarningLogged) {
-                console.warn('[SECURITY] GdAuthService: Authentication bypass enabled. This should only occur in development.');
-                bypassWarningLogged = true;
-            }
-            return {
-                valid: true,
-                payload: {
-                    shopperId: 'local-dev',
-                    cid: 'local-dev',
-                    email: 'local-dev@localhost',
-                    exp: Math.floor(Date.now() / 1000) + 3600,
-                    iat: Math.floor(Date.now() / 1000)
-                }
-            };
-        }
-
         try {
             const jwt = await this.gdAuth.authenticate(this.ssoHost, token, 0);
             const isE2S = jwt.auth === 'e2s';
@@ -122,11 +72,6 @@ export class GdAuthService {
     }
 
     extractTokenFromRequest(request: Request & { cookies?: { get: (name: string) => { value: string } | undefined } }): string | null {
-        // In local env, return a dummy token to satisfy the flow
-        if (shouldBypassAuth()) {
-            return 'local-dev-token';
-        }
-
         const authHeader = request.headers.get('authorization');
         if (authHeader?.startsWith('Bearer ')) {
             return authHeader.substring(7);

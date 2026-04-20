@@ -3,6 +3,12 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import { formatTimestamp } from '@/lib/date-utils';
+import {
+  LOG_TIME_PRESETS,
+  resolveInitialPreset,
+  resolveSyncedPreset,
+  type RangeMode,
+} from '@/lib/log-time-range';
 
 export interface LogSource {
   id: string;
@@ -117,6 +123,17 @@ const SOURCE_LABELS: Record<string, string> = {
   'control_plane': 'CP',
 };
 
+// Convert ISO string to datetime-local input value (YYYY-MM-DDTHH:MM)
+function isoToLocalInput(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function localInputToIso(local: string): string {
+  return new Date(local).toISOString();
+}
+
 export default function LogsPanel({
   sources,
   globalAppId,
@@ -134,6 +151,27 @@ export default function LogsPanel({
   const [total, setTotal] = useState(0);
   const [filterText, setFilterText] = useState('');
   const [levelFilters, setLevelFilters] = useState({ error: true, warn: false });
+
+  // Date range state: preset dropdown OR custom absolute start/end
+  const [rangeMode, setRangeMode] = useState<RangeMode>('preset');
+  const [presetValue, setPresetValue] = useState<string>(() => resolveInitialPreset(timeRange));
+  const [customStart, setCustomStart] = useState<string>(() => {
+    const d = new Date();
+    d.setHours(d.getHours() - 1);
+    return isoToLocalInput(d.toISOString());
+  });
+  const [customEnd, setCustomEnd] = useState<string>(() => isoToLocalInput(new Date().toISOString()));
+
+  // Keep the local preset in sync when the parent Dashboard changes its
+  // top-level time-range selector. Custom ranges are user-owned and aren't
+  // overwritten by parent updates. `presetValue` is intentionally not in the
+  // deps — including it would cause user-driven dropdown changes to be reset
+  // back to the parent value (see resolveSyncedPreset jsdoc).
+  useEffect(() => {
+    const next = resolveSyncedPreset(timeRange, rangeMode);
+    if (next !== null) setPresetValue(next);
+  }, [timeRange, rangeMode]);
+
   const PAGE_SIZE = 50;
   const panelRef = useRef<HTMLDivElement>(null);
   const tableContainerRef = useRef<HTMLDivElement>(null);
@@ -202,20 +240,26 @@ export default function LogsPanel({
   }, [handleColumnMouseMove, handleColumnMouseUp]);
 
   const buildTimeParams = useCallback(function buildTime(params: URLSearchParams) {
-    if (timeRange !== 'all') {
-      const now = new Date();
-      const value = parseInt(timeRange.slice(0, -1), 10);
-      const unit = timeRange.slice(-1);
-      const startTime = new Date(now);
-      switch (unit) {
-        case 'm': startTime.setMinutes(startTime.getMinutes() - value); break;
-        case 'h': startTime.setHours(startTime.getHours() - value); break;
-        case 'd': startTime.setDate(startTime.getDate() - value); break;
-      }
-      params.set('startTime', startTime.toISOString());
-      params.set('endTime', now.toISOString());
+    if (rangeMode === 'custom') {
+      if (customStart) params.set('startTime', localInputToIso(customStart));
+      if (customEnd) params.set('endTime', localInputToIso(customEnd));
+      return;
     }
-  }, [timeRange]);
+
+    if (presetValue === 'all') return;
+
+    const now = new Date();
+    const value = parseInt(presetValue.slice(0, -1), 10);
+    const unit = presetValue.slice(-1);
+    const startTime = new Date(now);
+    switch (unit) {
+      case 'm': startTime.setMinutes(startTime.getMinutes() - value); break;
+      case 'h': startTime.setHours(startTime.getHours() - value); break;
+      case 'd': startTime.setDate(startTime.getDate() - value); break;
+    }
+    params.set('startTime', startTime.toISOString());
+    params.set('endTime', now.toISOString());
+  }, [rangeMode, presetValue, customStart, customEnd]);
 
   const fetchSingleSource = useCallback(async function fetchSingle(sourceId: string): Promise<{ logs: LogEntry[]; total: number }> {
     const fm = SOURCE_FIELD_MAPPINGS[sourceId] || DEFAULT_FIELD_MAPPING;
@@ -297,7 +341,7 @@ export default function LogsPanel({
   useEffect(() => {
     setPage(0);
     setAccumulatedLogs([]);
-  }, [selectedSource, filterText, levelFilters, query, timeRange, globalAppId, refreshKey]);
+  }, [selectedSource, filterText, levelFilters, query, rangeMode, presetValue, customStart, customEnd, globalAppId, refreshKey]);
 
   const loadMore = () => {
     if (!loading && accumulatedLogs.length < total) {
@@ -394,6 +438,61 @@ export default function LogsPanel({
               width: '150px'
             }}
           />
+          <select
+            value={rangeMode === 'custom' ? 'custom' : presetValue}
+            onChange={(e) => {
+              const v = e.target.value;
+              if (v === 'custom') {
+                setRangeMode('custom');
+              } else {
+                setRangeMode('preset');
+                setPresetValue(v);
+              }
+            }}
+            style={{
+              padding: '0.375rem 0.5rem',
+              borderRadius: '4px',
+              border: '1px solid #d1d5db',
+              fontSize: '0.813rem',
+              backgroundColor: 'white',
+              cursor: 'pointer'
+            }}
+            title="Time range"
+          >
+            {LOG_TIME_PRESETS.map(p => (
+              <option key={p.value} value={p.value}>{p.label}</option>
+            ))}
+            <option value="custom">Custom range…</option>
+          </select>
+          {rangeMode === 'custom' && (
+            <>
+              <input
+                type="datetime-local"
+                value={customStart}
+                onChange={(e) => setCustomStart(e.target.value)}
+                style={{
+                  padding: '0.375rem 0.5rem',
+                  borderRadius: '4px',
+                  border: '1px solid #d1d5db',
+                  fontSize: '0.813rem'
+                }}
+                title="Start"
+              />
+              <span style={{ fontSize: '0.813rem', color: '#6b7280' }}>→</span>
+              <input
+                type="datetime-local"
+                value={customEnd}
+                onChange={(e) => setCustomEnd(e.target.value)}
+                style={{
+                  padding: '0.375rem 0.5rem',
+                  borderRadius: '4px',
+                  border: '1px solid #d1d5db',
+                  fontSize: '0.813rem'
+                }}
+                title="End"
+              />
+            </>
+          )}
           {onRefresh && (
             <button
               onClick={onRefresh}

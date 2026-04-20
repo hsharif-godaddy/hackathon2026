@@ -4,42 +4,7 @@ import { gdAuthService } from '@/lib/gd-auth-service';
 import { logger } from './logger';
 import { getRootDomainFromHeaders } from './getRootDomain';
 
-// Track if we've already logged the bypass warning to avoid log spam
-let bypassWarningLogged = false;
-
 const AD_MEMBERSHIP_PATH = '/v1/api/jomax/my/ad_membership';
-
-/**
- * Check if auth bypass is allowed
- *
- * Security: BYPASS_AUTH is ignored in production to prevent accidental exposure.
- * Only NODE_ENV=development allows bypass, and we log a warning when it happens.
- * BYPASS_AUTH should be set to 'true' or '1' to bypass auth in test/dev environment.
- */
-export function shouldBypassAuth(): { bypass: boolean; reason: string } {
-    const nodeEnv = process.env.NODE_ENV;
-    const bypassAuth = process.env.BYPASS_AUTH;
-
-    // Never allow bypass in production, regardless of BYPASS_AUTH setting
-    if (nodeEnv === 'production') {
-        if (bypassAuth === 'true' || bypassAuth === '1') {
-            console.error('[SECURITY] BYPASS_AUTH is set but ignored in production environment');
-        }
-        return { bypass: false, reason: 'production' };
-    }
-
-    // In development, allow bypass if explicitly requested or by default
-    if (nodeEnv === 'development') {
-        return { bypass: true, reason: 'NODE_ENV=development' };
-    }
-
-    // For test environment, only allow explicit bypass
-    if (bypassAuth === 'true' || bypassAuth === '1') {
-        return { bypass: true, reason: 'BYPASS_AUTH flag' };
-    }
-
-    return { bypass: false, reason: 'no bypass conditions met' };
-}
 
 export interface AuthResult {
     authenticated: boolean;
@@ -60,25 +25,6 @@ interface WithAuthOptions {
  * Returns authenticated: true if valid, or an error response if not
  */
 export async function validateApiAuth(request: NextRequest, options?: WithAuthOptions): Promise<AuthResult> {
-    const bypassCheck = shouldBypassAuth();
-
-    if (bypassCheck.bypass) {
-        // Log warning once per process to avoid log spam
-        if (!bypassWarningLogged) {
-            console.warn(`[SECURITY] Authentication bypass enabled: ${bypassCheck.reason}. This should only occur in development.`);
-            bypassWarningLogged = true;
-        }
-
-        return {
-            authenticated: true,
-            user: {
-                shopperId: 'local-dev',
-                cid: 'local-dev',
-                email: 'local-dev@localhost'
-            }
-        };
-    }
-
     const token = gdAuthService.extractTokenFromRequest(request);
 
     if (!token) {

@@ -1,12 +1,27 @@
 import { NextResponse } from 'next/server';
 
 import { withAuth } from '@/lib/api-auth';
-import { buildAppIdQuery, getAllLogSources, getNestedValue } from '@/lib/log-sources';
+import { logger } from '@/lib/logger';
+import { buildAppIdQuery, DEFAULT_SUMMARY_SOURCE_IDS, getAllLogSources, getNestedValue } from '@/lib/log-sources';
 import type { FieldMapping } from '@/lib/log-sources';
+import { buildLokiQuery, queryLoki, transformLokiResponse } from '@/lib/loki-client';
 import { parseTimeRange } from '@/lib/time-range';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
+
+// Caps for user-controlled paging parameters. These flow directly into ES
+// query `size`/`from` values, so unbounded callers can force very large
+// scans. 1000 is the ES `index.max_result_window` default and matches what
+// the UI paginates against in practice.
+const MAX_PAGE_SIZE = 1000;
+const MAX_PAGE_INDEX = 100;
+
+function clampPageParam(raw: string | null, fallback: number, max: number): number {
+  const parsed = parseInt(raw || String(fallback), 10);
+  if (!Number.isFinite(parsed) || parsed < 0) return fallback;
+  return Math.min(parsed, max);
+}
 
 interface LogSourceData {
   message?: string;
@@ -227,9 +242,11 @@ interface AggBucket {
   top_event?: { buckets?: Array<{ key: string }> };
 }
 
+type ErrorMessageMap = Map<string, { count: number; lastSeen: string | null; event: string | null }>;
+
 function mergeAggregationBuckets(
   buckets: AggBucket[] | undefined,
-  map: Map<string, { count: number; lastSeen: string | null; event: string | null }>
+  map: ErrorMessageMap
 ): void {
   if (!buckets) return;
   for (const bucket of buckets) {
@@ -248,6 +265,25 @@ function mergeAggregationBuckets(
       });
     }
   }
+}
+
+function mergeErrorEntry(
+  map: ErrorMessageMap,
+  message: string | undefined | null,
+  timestamp: string | undefined | null,
+  event: string | undefined | null
+): void {
+  const msg = (message || '').trim();
+  if (!msg) return;
+  const existing = map.get(msg) || { count: 0, lastSeen: null as string | null, event: null as string | null };
+  const newLastSeen = timestamp && (!existing.lastSeen || timestamp > existing.lastSeen)
+    ? timestamp
+    : existing.lastSeen;
+  map.set(msg, {
+    count: existing.count + 1,
+    lastSeen: newLastSeen,
+    event: existing.event || event || null
+  });
 }
 
 interface ErrorGroup {
@@ -275,11 +311,56 @@ async function fetchErrorSummary(
 
   let totalErrors = 0;
   let last24HoursCount = 0;
-  const messageCountMap = new Map<string, { count: number; lastSeen: string | null; event: string | null }>();
+  const messageCountMap: ErrorMessageMap = new Map();
 
   for (const sourceId of sourceIds) {
     const sourceConfig = sources.find((s) => s.id === sourceId);
-    if (!sourceConfig || !sourceConfig.apiKey) continue;
+    if (!sourceConfig) continue;
+
+    // Loki-backed sources don't use ES aggregations — fetch error logs and
+    // aggregate message counts in memory so summary matches the logs view.
+    if (sourceConfig.backendType === 'loki') {
+      try {
+        const lokiParams = await buildLokiQuery({
+          levelsFilter: 'error',
+          appId,
+          startTime: startTime.toISOString(),
+          endTime: endTime.toISOString(),
+          size: 1000,
+          from: 0
+        }, {
+          lokiEndpoint: sourceConfig.lokiEndpoint,
+          lokiApiKey: sourceConfig.lokiApiKey,
+          lokiLabels: sourceConfig.lokiLabels,
+          environment: sourceConfig.environment
+        });
+
+        const lokiResponse = await queryLoki({
+          lokiEndpoint: sourceConfig.lokiEndpoint,
+          lokiApiKey: sourceConfig.lokiApiKey,
+          lokiLabels: sourceConfig.lokiLabels,
+          environment: sourceConfig.environment
+        }, lokiParams);
+
+        const logs = transformLokiResponse(
+          lokiResponse,
+          sourceConfig.fieldMapping,
+          sourceId
+        );
+
+        totalErrors += logs.length;
+        for (const log of logs) {
+          if (log.level !== 'error') continue;
+          if (new Date(log.timestamp) >= last24Hours) last24HoursCount++;
+          mergeErrorEntry(messageCountMap, log.message, log.timestamp, log.event);
+        }
+      } catch (error) {
+        logger.error('app-context.errorSummary.loki.failed', { sourceId, appId }, { error: error as Error });
+      }
+      continue;
+    }
+
+    if (!sourceConfig.apiKey) continue;
 
     const { fieldMapping } = sourceConfig;
 
@@ -304,6 +385,60 @@ async function fetchErrorSummary(
       mustClauses.push(appIdQuery);
     }
 
+    // Indices where messageField has no aggregatable `.keyword` subfield
+    // (e.g. `logs-*` where `message` is `match_only_text`) can't be summarized
+    // via ES terms aggregations — fetch top error docs and aggregate in memory.
+    if (!fieldMapping.messageKeywordField) {
+      try {
+        const esQuery = {
+          size: 1000,
+          _source: [
+            fieldMapping.timestampField,
+            fieldMapping.messageField,
+            fieldMapping.eventField,
+            fieldMapping.levelField
+          ],
+          sort: [{ [fieldMapping.timestampField]: { order: 'desc' } }],
+          query: { bool: { must: mustClauses } }
+        };
+
+        const response = await fetch(
+          `${sourceConfig.endpoint}/${sourceConfig.index}/_search?ignore_unavailable=true`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `ApiKey ${sourceConfig.apiKey}`
+            },
+            body: JSON.stringify(esQuery)
+          }
+        );
+
+        if (response.ok) {
+          const data = await response.json();
+          const hits: LogEntry[] = data.hits?.hits || [];
+          totalErrors += data.hits?.total?.value || hits.length;
+
+          for (const hit of hits) {
+            const source = hit._source as Record<string, unknown>;
+            const timestamp = String(getNestedValue(source, fieldMapping.timestampField) ?? '');
+            const message = getNestedValue(source, fieldMapping.messageField);
+            const event = getNestedValue(source, fieldMapping.eventField);
+            if (timestamp && new Date(timestamp) >= last24Hours) last24HoursCount++;
+            mergeErrorEntry(
+              messageCountMap,
+              typeof message === 'string' ? message : null,
+              timestamp,
+              typeof event === 'string' ? event : null
+            );
+          }
+        }
+      } catch (error) {
+        logger.error('app-context.errorSummary.es.failed', { sourceId, appId }, { error: error as Error });
+      }
+      continue;
+    }
+
     try {
       const esQuery = {
         size: 0,
@@ -324,7 +459,7 @@ async function fetchErrorSummary(
           },
           error_messages: {
             terms: {
-              field: fieldMapping.messageField + '.keyword',
+              field: fieldMapping.messageKeywordField,
               size: 20
             },
             aggs: {
@@ -335,7 +470,7 @@ async function fetchErrorSummary(
               },
               top_event: {
                 terms: {
-                  field: 'event.keyword',
+                  field: fieldMapping.eventKeywordField,
                   size: 1
                 }
               }
@@ -354,7 +489,7 @@ async function fetchErrorSummary(
               },
               top_event: {
                 terms: {
-                  field: 'event.keyword',
+                  field: fieldMapping.eventKeywordField,
                   size: 1
                 }
               }
@@ -373,7 +508,7 @@ async function fetchErrorSummary(
               },
               top_event: {
                 terms: {
-                  field: 'event.keyword',
+                  field: fieldMapping.eventKeywordField,
                   size: 1
                 }
               }
@@ -879,10 +1014,10 @@ export const GET = withAuth(async (request, _auth) => {
     }
 
     const sourcesParam = searchParams.get('sources');
-    const traceIdsPage = parseInt(searchParams.get('traceIdsPage') || '0', 10);
-    const traceIdsPageSize = parseInt(searchParams.get('traceIdsPageSize') || '100', 10);
-    const spansPage = parseInt(searchParams.get('spansPage') || '0', 10);
-    const spansPageSize = parseInt(searchParams.get('spansPageSize') || '100', 10);
+    const traceIdsPage = clampPageParam(searchParams.get('traceIdsPage'), 0, MAX_PAGE_INDEX);
+    const traceIdsPageSize = clampPageParam(searchParams.get('traceIdsPageSize'), 100, MAX_PAGE_SIZE);
+    const spansPage = clampPageParam(searchParams.get('spansPage'), 0, MAX_PAGE_INDEX);
+    const spansPageSize = clampPageParam(searchParams.get('spansPageSize'), 100, MAX_PAGE_SIZE);
 
     if (!appId) {
       return NextResponse.json(
@@ -893,7 +1028,7 @@ export const GET = withAuth(async (request, _auth) => {
 
     const sourceIds = sourcesParam
       ? sourcesParam.split(',')
-      : ['airo-agents', 'control-plane'];
+      : [...DEFAULT_SUMMARY_SOURCE_IDS];
 
     const customStartTime = startTimeParam || undefined;
     const customEndTime = endTimeParam || undefined;

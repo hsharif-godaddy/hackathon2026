@@ -2,27 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { gdAuthService } from '@/lib/gd-auth-service';
 
-function isLocalEnv(): boolean {
-  const nodeEnv = process.env.NODE_ENV;
-  const bypassAuth = process.env.BYPASS_AUTH;
-  return nodeEnv === 'development' || bypassAuth === 'true' || bypassAuth === '1';
-}
-
 export async function GET(request: NextRequest) {
   try {
-    // Bypass auth in local development
-    if (isLocalEnv()) {
-      return NextResponse.json({
-        valid: true,
-        payload: {
-          shopperId: 'local-dev',
-          cid: 'local-dev',
-          email: 'local-dev@localhost'
-        },
-        reason: 'Local development mode - auth bypassed'
-      }, { status: 200 });
-    }
-
     const token = gdAuthService.extractTokenFromRequest(request);
 
     if (!token) {

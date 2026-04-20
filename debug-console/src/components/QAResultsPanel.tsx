@@ -2,6 +2,8 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 
+import { langfuseUserUrl } from '@/lib/langfuse-ui';
+
 interface QARun {
   id: string;
   scenario: string;
@@ -96,7 +98,6 @@ interface LangfuseStatsResult {
 
 function computeLangfuseStats(
   tracesData: { data: Array<{ totalTokens?: number; promptTokens?: number; completionTokens?: number; totalCost?: number; metadata?: { attributes?: Record<string, unknown> } }>; meta?: { totalItems?: number } },
-  config: { baseUrl?: string; projectId?: string } | null,
   appId: string
 ): LangfuseStatsResult {
   const traces = tracesData.data;
@@ -110,14 +111,11 @@ function computeLangfuseStats(
     const model = t.metadata?.attributes?.['ai.model.id'];
     if (typeof model === 'string') modelSet.add(model);
   }
-  const langfuseUrl = config?.baseUrl && config?.projectId
-    ? `${config.baseUrl}/project/${config.projectId}/users/${appId}`
-    : null;
   return {
     traces: tracesData.meta?.totalItems ?? traces.length,
     totalTokens, promptTokens, completionTokens, totalCost,
     models: Array.from(modelSet),
-    langfuseUrl,
+    langfuseUrl: langfuseUserUrl(appId),
   };
 }
 
@@ -459,11 +457,9 @@ export default function QAResultsPanel() {
     setLangfuseLoading(true);
     try {
       const tracesParams = new URLSearchParams({ appId, limit: '100' });
-      const [tracesData, config] = await Promise.all([
-        fetch(`/api/langfuse/traces?${tracesParams}`).then(r => r.ok ? r.json() : null),
-        fetch('/api/langfuse/config').then(r => r.ok ? r.json() : null),
-      ]);
-      setLangfuseStats(tracesData?.data ? computeLangfuseStats(tracesData, config, appId) : null);
+      const tracesData = await fetch(`/api/langfuse/traces?${tracesParams}`)
+        .then(r => r.ok ? r.json() : null);
+      setLangfuseStats(tracesData?.data ? computeLangfuseStats(tracesData, appId) : null);
     } catch (err) {
       console.error('Failed to fetch Langfuse stats:', err);
       setLangfuseStats(null);

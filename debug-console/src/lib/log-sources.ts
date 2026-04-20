@@ -13,6 +13,10 @@ export interface FieldMapping {
   levelKeywordField: string;
   // Field for message content
   messageField: string;
+  // Aggregatable keyword form of messageField. Leave undefined when the index
+  // stores `messageField` as plain text without a `.keyword` subfield — callers
+  // must then aggregate error messages in memory.
+  messageKeywordField?: string;
   // Field for event type
   eventField: string;
   // Field for event keyword (for aggregations)
@@ -61,6 +65,7 @@ const airoAgentsFieldMapping: FieldMapping = {
   levelField: 'level',
   levelKeywordField: 'level',
   messageField: 'message',
+  messageKeywordField: 'message.keyword',
   eventField: 'event',
   eventKeywordField: 'event.keyword',
   serviceField: 'service',
@@ -87,6 +92,7 @@ const airoContainerFieldMapping: FieldMapping = {
   levelField: 'level',
   levelKeywordField: 'level.keyword',
   messageField: 'msg',
+  messageKeywordField: 'msg.keyword',
   eventField: 'type',
   eventKeywordField: 'type.keyword',
   serviceField: 'com.hashicorp.nomad.task_name',
@@ -140,6 +146,7 @@ const controlPlaneFieldMapping: FieldMapping = {
   levelField: 'level',
   levelKeywordField: 'log.level.keyword',
   messageField: 'message',
+  messageKeywordField: 'message.keyword',
   eventField: 'event',
   eventKeywordField: 'event.keyword',
   serviceField: 'service',
@@ -288,6 +295,17 @@ function getLokiConfigForSource(sourceId: string): LogSourceConfig | null {
     fieldMapping: baseConfig.fieldMapping
   };
 }
+
+// Default log sources used by app-context summary + error-details aggregation
+// when the caller does not pass an explicit `sources` query param. Keep in
+// sync with the source IDs registered in `getESConfigForSource`.
+export const DEFAULT_SUMMARY_SOURCE_IDS: readonly string[] = [
+  'airo-agents',
+  'airo-app',
+  'airo-preview',
+  'airo-publish',
+  'control_plane',
+];
 
 export function getLogSourceConfig(sourceId: string): LogSourceConfig | null {
   // Check if this source should use Loki

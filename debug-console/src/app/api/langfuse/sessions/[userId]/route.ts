@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 
 import { withAuth } from '@/lib/api-auth';
 import { getLangfuseConfig } from '@/lib/langfuse-client';
+import { logger } from '@/lib/logger';
 
 interface Observation {
   id: string;
@@ -39,9 +40,12 @@ interface TraceWithObservations {
 }
 
 export const GET = withAuth<{ userId: string }>(async (request, _auth, context) => {
+  const requestStartedAt = Date.now();
+  let userIdForLog = 'unknown';
   try {
     const lf = getLangfuseConfig();
     if (!lf) {
+      logger.error('langfuse.sessions.config.missing');
       return NextResponse.json(
         { error: 'Langfuse credentials not configured' },
         { status: 500 }
@@ -49,11 +53,19 @@ export const GET = withAuth<{ userId: string }>(async (request, _auth, context) 
     }
 
     const { userId } = await context.params;
+    userIdForLog = userId;
     const searchParams = request.nextUrl.searchParams;
     const fromTimestamp = searchParams.get('fromTimestamp');
     const toTimestamp = searchParams.get('toTimestamp');
     const requestedPage = parseInt(searchParams.get('page') || '1', 10);
-    const pageSize = 10; // Small page size for fast initial render
+    const pageSize = 20; // Small page size for fast initial render
+    logger.info('langfuse.sessions.request.start', {
+      userId,
+      page: requestedPage,
+      pageSize,
+      hasFromTimestamp: !!fromTimestamp,
+      hasToTimestamp: !!toTimestamp,
+    });
 
     // Fetch one page of traces
     const tracesParams = new URLSearchParams({
@@ -68,15 +80,25 @@ export const GET = withAuth<{ userId: string }>(async (request, _auth, context) 
       tracesParams.append('toTimestamp', toTimestamp);
     }
 
+    const tracesRequestStartedAt = Date.now();
     const tracesResponse = await fetch(`${lf.baseUrl}/api/public/traces?${tracesParams}`, {
       headers: {
         'Authorization': lf.authHeader,
         'Content-Type': 'application/json',
+        'Accept-Encoding': 'gzip, deflate, br',
       },
     });
 
     if (!tracesResponse.ok) {
       const errorText = await tracesResponse.text();
+      logger.warn('langfuse.sessions.traces.list.error', {
+        userId,
+        page: requestedPage,
+        status: tracesResponse.status,
+        message: errorText.slice(0, 200),
+      }, {
+        duration: Date.now() - tracesRequestStartedAt,
+      });
       return NextResponse.json(
         { error: `Langfuse API error: ${tracesResponse.status}`, message: errorText },
         { status: tracesResponse.status }
@@ -87,10 +109,19 @@ export const GET = withAuth<{ userId: string }>(async (request, _auth, context) 
     const traceIds = (tracesData.data || []).map((t: { id: string }) => t.id);
     const totalPages = tracesData.meta?.totalPages || 1;
     const hasMore = requestedPage < totalPages;
+    logger.info('langfuse.sessions.traces.list.success', {
+      userId,
+      page: requestedPage,
+      returnedTraceIds: traceIds.length,
+      totalPages,
+      hasMore,
+    }, {
+      duration: Date.now() - tracesRequestStartedAt,
+    });
 
     // Fetch full trace details including observations
-    // With pageSize=10 and BATCH_SIZE=10, all fetches run in parallel via Promise.all (not sequential)
-    const BATCH_SIZE = 10;
+    // With pageSize=20 and BATCH_SIZE=20, detail fetches run in parallel via Promise.all (not sequential).
+    const BATCH_SIZE = 20;
     const fullTraces: TraceWithObservations[] = [];
     let failedFetches = 0;
 
@@ -103,6 +134,7 @@ export const GET = withAuth<{ userId: string }>(async (request, _auth, context) 
               headers: {
                 'Authorization': lf.authHeader,
                 'Content-Type': 'application/json',
+                'Accept-Encoding': 'gzip, deflate, br',
               },
             });
             if (!traceResponse.ok) {
@@ -118,6 +150,13 @@ export const GET = withAuth<{ userId: string }>(async (request, _auth, context) 
       );
       fullTraces.push(...batchResults.filter(Boolean));
     }
+    logger.info('langfuse.sessions.traces.details.complete', {
+      userId,
+      page: requestedPage,
+      requestedTraceIds: traceIds.length,
+      fetchedTraces: fullTraces.length,
+      failedFetches,
+    });
 
     // Group traces by sessionId
     const sessionMap = new Map<string, {
@@ -191,6 +230,16 @@ export const GET = withAuth<{ userId: string }>(async (request, _auth, context) 
     if (failedFetches > 0) {
       warnings.push(`Failed to fetch ${failedFetches} of ${traceIds.length} traces`);
     }
+    logger.info('langfuse.sessions.request.success', {
+      userId,
+      page: requestedPage,
+      sessions: sessions.length,
+      totalTraces: fullTraces.length,
+      failedFetches,
+      warnings: warnings.length,
+    }, {
+      duration: Date.now() - requestStartedAt,
+    });
 
     return NextResponse.json({
       userId,
@@ -204,7 +253,12 @@ export const GET = withAuth<{ userId: string }>(async (request, _auth, context) 
       ...(warnings.length > 0 && { warnings }),
     });
   } catch (error) {
-    console.error('Langfuse sessions by user fetch error:', error);
+    logger.error('langfuse.sessions.request.error', {
+      userId: userIdForLog,
+    }, {
+      error: error as Error,
+      duration: Date.now() - requestStartedAt,
+    });
     return NextResponse.json(
       { error: 'Failed to fetch Langfuse sessions', message: error instanceof Error ? error.message : String(error) },
       { status: 500 }

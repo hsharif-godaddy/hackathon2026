@@ -6,12 +6,15 @@ import { createServer, type Server as HttpServer } from 'node:http';
 import type { Server as HttpsServer } from 'node:https';
 import next from 'next';
 
+import { logger } from './src/lib/logger';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const dev = process.env.NODE_ENV !== 'production';
+const isTest = process.env.NODE_ENV === 'test';
 const hostname = '0.0.0.0';
-const port = parseInt(process.env.PORT || '8443', 10);
+const port = parseInt(process.env.PORT || '443', 10);
 
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
@@ -22,43 +25,53 @@ app.prepare().then(() => {
 
     let server: HttpsServer | HttpServer;
 
+    let key: Buffer | null = null;
+    let cert: Buffer | null = null;
+    let readError: Error | null = null;
     try {
-        const key = readFileSync(keyPath);
-        const cert = readFileSync(certPath);
-
-        const sslOptions = {
-            key,
-            cert
-        };
-
-        server = https.createServer(sslOptions, (req, res) => {
-            handle(req, res);
-        });
-
-        server.listen(port, hostname, () => {
-            console.log(`> Ready on https://${hostname}:${port}`);
-        });
+        key = readFileSync(keyPath);
+        cert = readFileSync(certPath);
     } catch (error) {
-        console.warn(`SSL certificates not found at ${keyPath} and/or ${certPath}, falling back to HTTP`);
-        console.warn('Error:', (error as Error).message);
+        readError = error as Error;
+    }
 
-        server = createServer((req, res) => {
-            handle(req, res);
-        });
-
+    if (key && cert) {
+        server = https.createServer({ key, cert }, (req, res) => handle(req, res));
         server.listen(port, hostname, () => {
-            console.log(`> Ready on http://${hostname}:${port}`);
+            logger.info('server.listening', { protocol: 'https', hostname, port });
         });
+    } else if (isTest) {
+        logger.warn('server.ssl.missing.fallback_http', {
+            keyPath,
+            certPath,
+            error: readError?.message,
+        });
+        server = createServer((req, res) => handle(req, res));
+        server.listen(port, hostname, () => {
+            logger.info('server.listening', { protocol: 'http', hostname, port });
+        });
+    } else {
+        // SSO requires HTTPS; refuse to silently downgrade in dev/prod.
+        logger.fatal('server.ssl.missing', {
+            keyPath,
+            certPath,
+            error: readError?.message,
+            hint: 'Generate self-signed certs (see debug-console/README.md) or set SERVER_KEY_PATH/SERVER_CERT_PATH.',
+        });
+        process.exit(1);
     }
 
     const gracefulShutdown = (signal: string) => {
-        console.log(`Received ${signal}, shutting down gracefully`);
+        logger.info('server.shutdown', { signal });
         server.close(() => {
-            console.log('Server closed');
+            logger.info('server.shutdown.complete');
             process.exit(0);
         });
     };
 
     process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
     process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+}).catch((error: Error) => {
+    logger.fatal('server.startup.failed', {}, { error });
+    process.exit(1);
 });
