@@ -1,19 +1,20 @@
-import { createTool, type Tool } from '@airo/ai-lib'
 import { fqdnIsConnectedOrProvisioningOnSite, type SiteDomainForAttachCheck } from '@airo/shared'
 import { z } from 'zod'
 
-import { AppRepository } from '../../database/repositories/AppRepository.js'
-import { Logger } from '../../logging/index.js'
-import { getClientActionService } from '../../server/ai-lib-websocket-server.js'
-import { validateDomainName } from '../../utils/domain-validation.js'
-import { MemoryTool } from '../memory-tool.js'
+import type { SkillToolDefinition } from '@airo/ai-skills'
+
+import { AppRepository } from '../../../database/repositories/AppRepository.js'
+import { Logger } from '../../../logging/index.js'
+import { getClientActionService } from '../../../server/ai-lib-websocket-server.js'
+import { validateDomainName } from '../../../utils/domain-validation.js'
+import { MemoryTool } from '../../../tools/memory-tool.js'
 
 const logger = Logger.create({ component: 'domain-tool' })
 const memoryTool = new MemoryTool()
 const appRepo = new AppRepository()
 
 const DOMAIN_ATTACH_AGENT_EXPLAINER =
-    'Connecting a domain points that address at this published app. GoDaddy-hosted domains can get DNS updated automatically; elsewhere the user updates DNS at their registrar. If the domain already serves another site, attaching can move visitors to this app—confirm with the user before connecting.'
+    'Connecting points the domain at this app. GoDaddy domains: DNS auto-updated. External: user updates DNS at registrar. If domain serves another site, attaching moves traffic here—confirm with user first.'
 
 function messageForAttachWidget(base: string): string {
     return `${base.trimEnd()}\n\n${DOMAIN_ATTACH_AGENT_EXPLAINER}`
@@ -21,81 +22,16 @@ function messageForAttachWidget(base: string): string {
 
 const domainInputSchema = z.object({
     action: z.enum(['purchase', 'attach']).describe(
-        'Action to perform. "purchase" = user wants to BUY/FIND a new domain. "attach" = user wants to CONNECT a domain they already own.'
+        'purchase = buy/find new; attach = connect existing'
     ),
     brandName: z.string().optional().describe(
-        'Human-readable business/project name for domain search suggestions. NOT a domain — no dots or TLDs. Examples: "Sweet Delights Bakery", "Libro Tacos". Omit if user specified an exact domain and no brand context.'
+        'Business/project name for suggestions. NOT a domain — no dots/TLDs. Omit if user gave an exact domain.'
     ),
     domain: z.string().optional().describe(
-        'Exact fully-qualified domain name, including TLD. Examples: "my-sweet-store.com", "libro-tacos.net". For purchase: the domain user wants to buy. For attach: the domain user wants to connect. Only set when user explicitly states a domain name with a TLD. Never fabricate — leave empty if user only describes a brand.'
+        'FQDN with TLD (e.g. "my-sweet-store.com"). Only when user explicitly states one. Never fabricate.'
     ),
-    appId: z.string().optional().describe(
-        'The app ID for context (optional, uses current session app if not provided)'
-    )
+    appId: z.string().optional().describe('Defaults to current session app')
 })
-
-/**
- * @example
- * domain({ action: 'purchase', brandName: 'Letter Club' })
- * domain({ action: 'purchase', domain: 'letter-club.com' })
- * domain({ action: 'attach', domain: 'mydomain.com' })
- */
-export const domainPurchaseAITool: Tool = createTool(
-    `MANDATORY: ALWAYS call this tool when the user mentions domains. Never substitute calling this tool with a standalone prose reply about domains — call the tool first, then answer from its result.
-Even if this tool was already called earlier in the conversation, CALL IT AGAIN. Every request gets a fresh tool call.
-
-Unified domain tool for purchasing new domains or attaching existing ones to a project.
-
-ACTION = "purchase" — Show the domain PURCHASE widget to help users SEARCH FOR and BUY a NEW domain.
-ACTION = "attach"  — Show the domain ATTACH widget to help users CONNECT an existing domain.
-
-WHEN TO USE action="purchase" (BUY/FIND):
-- User says "buy a domain", "purchase a domain", "get a domain", "find a domain"
-- User says "I need a domain", "search for domains"
-- User wants to see available domains, suggestions, or pricing
-- User doesn't have a domain yet
-
-WHEN TO USE action="attach" (CONNECT/LINK):
-- User says "I purchased <domain>!", "I bought <domain>!"
-- User says "Attach <domain>", "Use <domain>", "Connect <domain>"
-- User says "add my domain to my site", "link my domain"
-- User already owns a domain and wants to point it to their app
-- After publish when user asks about domain connection
-
-PUBLISH HANDLING (attach only):
-- If app is NOT published → Tool returns requiresPublish flag. Ask the user if they want to publish first.
-- If app IS published → Shows widget immediately
-
-Pass domain when user specifies an exact domain (e.g. "I want to buy my-sweet-store.com").
-Pass brandName as the project/app name for general domain suggestions.
-
-The tool result message may list domains already on the app (from live site data). If it says a domain is already connected, reflect that to the user from the tool message — do not imply they must attach again.
-
-CRITICAL RULES:
-1. ALWAYS call this tool — even if it was called before in this conversation. The widget must be re-rendered every time.
-2. After the tool returns, you may briefly paraphrase its result for the user (e.g. requiresPublish, domain already on the app, widget shown). Do not call the tool again solely to repeat the same status you already stated in your last reply.
-3. NEVER say "scroll up" or "I already showed the widget" — call the tool again.
-4. If user mentions a SPECIFIC DOMAIN, pass it as domain param.
-5. NEVER redirect to Settings — use this tool instead.
-6. NEVER ask clarifying questions — just show the widget.
-7. If the user asks for concrete DNS values (CNAME, A, targets): call this tool so the attach widget can show the official record table — never invent targets and never use the **Preview URL** from Dynamic Context as a DNS target for their domain.`,
-    domainInputSchema,
-    async (input, context) => {
-        const appId = context?.metadata?.appId as string || input.appId
-        if (!appId) {
-            logger.error('domain.missing-app-id', {})
-            return {
-                success: false,
-                error: 'App ID is required',
-                message: 'App ID is required for domain operations. Please ensure you are working within an app context.'
-            }
-        }
-
-        return input.action === 'purchase'
-            ? purchase(input, context, appId)
-            : attach(input, context, appId)
-    }
-)
 
 async function purchase(
     input: z.infer<typeof domainInputSchema>,
@@ -117,7 +53,7 @@ async function purchase(
         return {
             success: false,
             error: 'Domain purchase permission not granted',
-            message: 'This feature is not enabled for your account.'
+            message: 'Feature not enabled for this account.'
         }
     }
 
@@ -177,7 +113,7 @@ async function attach(
         return {
             success: false,
             error: 'Domain purchase permission not granted',
-            message: 'This feature is not enabled for your account.'
+            message: 'Feature not enabled for this account.'
         }
     }
 
@@ -187,7 +123,7 @@ async function attach(
         return {
             success: false,
             error: 'Socket ID not available',
-            message: 'Unable to verify app status. Please try again.'
+            message: 'Cannot verify app status — try again.'
         }
     }
 
@@ -196,8 +132,8 @@ async function attach(
         logger.error('domain.attach.client-action-service-unavailable', { appId })
         return {
             success: false,
-            error: 'Client action service not available',
-            message: 'Unable to verify app status. Please try again.'
+            error: 'Client action service unavailable',
+            message: 'Cannot verify app status — try again.'
         }
     }
 
@@ -216,7 +152,7 @@ async function attach(
             success: false,
             requiresPublish: true,
             error: 'App must be published before attaching a domain',
-            message: 'The app needs to be published before a domain can be attached. Ask the user if they would like to publish first.'
+            message: 'App must be published first. Ask the user if they want to publish.'
         }
     }
 
@@ -225,7 +161,7 @@ async function attach(
             logger.info('domain.attach.skip-already-on-app', { appId, domain })
             return {
                 success: true,
-                message: `Domain ${domain} is already on this app (active or still provisioning). Confirm with the user — no attach step needed.`
+                message: `${domain} already on this app (active or provisioning). Confirm with user — no attach needed.`
             }
         }
         await storePurchasedDomain(appId, domain)
@@ -249,8 +185,8 @@ async function attach(
         },
         message: messageForAttachWidget(
             attachedSummary
-                ? `Domain attach widget rendered. Custom domains already on this app: ${attachedSummary}.`
-                : 'Domain attach widget rendered'
+                ? `Attach widget shown. Domains on app: ${attachedSummary}.`
+                : 'Attach widget shown'
         )
     }
 }
@@ -277,7 +213,7 @@ async function autoAttach(
             logger.info('domain.attach.auto.success', { appId, domain })
             return {
                 success: true,
-                message: `Domain ${domain} has been attached to your app. DNS propagation may take a few minutes.`
+                message: `${domain} attached. DNS propagation may take a few minutes.`
             }
         }
 
@@ -294,7 +230,6 @@ async function autoAttach(
         })
     }
 
-    // Fall back to widget so the user can retry manually
     return {
         success: true,
         widgetType: 'domain-attach',
@@ -304,7 +239,7 @@ async function autoAttach(
             appId
         },
         message: messageForAttachWidget(
-            `Automatic attachment failed — showing domain attach widget for ${domain}`
+            `Auto-attach failed — showing attach widget for ${domain}`
         )
     }
 }
@@ -377,5 +312,40 @@ async function storePurchasedDomain(appId: string, fqdn: string) {
             fqdn,
             error: error instanceof Error ? error.message : String(error),
         })
+    }
+}
+
+export const domainPurchaseTool: SkillToolDefinition = {
+    name: 'domainPurchase',
+    description: `Purchase or attach a domain.
+
+purchase: show domain search/buy widget.
+attach: connect an existing domain to this app.
+
+Rules:
+1. Call this tool immediately on domain requests (do not  prose-reply)
+2. Re-call on each new domain message to re-render the widget (do not say "scroll up")
+3. Paraphrase the result after one call per response (not a second call)
+4. Tell the user when a domain is already connected (skip re-attach)
+5. Pass **domain** param when user names a specific domain
+6. Use this tool for all domain operations (do not redirect to Settings)
+7. Call attach for DNS requests to show the official record table
+8. Show the widget directly (skip clarifying questions)
+9. Use only real DNS values from tool results (not fabricated or Preview URL \`*.preview.*\`)`,
+    parameters: domainInputSchema,
+    execute: async (input, context) => {
+        const appId = (context?.metadata?.appId as string) || input.appId
+        if (!appId) {
+            logger.error('domain.missing-app-id', {})
+            return {
+                success: false,
+                error: 'App ID is required',
+                message: 'App ID required for domain operations.'
+            }
+        }
+
+        return input.action === 'purchase'
+            ? purchase(input, context, appId)
+            : attach(input, context, appId)
     }
 }

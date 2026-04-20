@@ -248,7 +248,7 @@ pnpm --filter @airo/agents dev
 
 Use `skill({ action: "list" })` to see all available skills with descriptions.
 
-Current skills (19):
+Current skills (20):
 
 - **ai-agent** - Streaming AI chatbot or agent with tool use (OpenAI, Anthropic, Google)
 - **authentication** - User authentication and login flows
@@ -257,6 +257,7 @@ Current skills (19):
 - **commerce** - GoDaddy Commerce product catalog and checkout integration
 - **commerce-one-time-payment** - One-time payment processing via Commerce API
 - **commerce-storefront** - Storefront setup and product display
+- **custom-domain** - Purchase new domains or attach existing ones to the app
 - **database** - SQL database operations for application data
 - **email** - Send emails via Nodemailer and local SMTP relay
 - **google-maps** - Google Maps integration and location features

@@ -83,7 +83,7 @@ Base class: `src/base/base-agent.ts` — `getSystemPrompt()` → `loadSystemProm
 
 **Stop-after tools:** `handoff`, `suggestedResponse`, `requestSecrets` — agent pauses for user confirmation. Other agents may define different stop-after sets.
 
-**Skills system:** Dynamic tool loading via `skillToolManager`. Skills activated/deactivated per conversation. Tool names prefixed `skill__{skillName}`. 19 skills in `src/skills/`: ai-agent, authentication, blog, blog-writing, commerce, commerce-one-time-payment, commerce-storefront, database, email, google-maps, i18n, media, online-appointments, publishing, seo, social-platform, social-posts, social-publish, stripe. See `src/skills/README.md`.
+**Skills system:** Dynamic tool loading via `skillToolManager`. Skills activated/deactivated per conversation. Tool names use `{skillName}__{toolName}`. 20 skills in `src/skills/`: ai-agent, authentication, blog, blog-writing, commerce, commerce-one-time-payment, commerce-storefront, custom-domain, database, email, google-maps, i18n, media, online-appointments, publishing, seo, social-platform, social-posts, social-publish, stripe. See `src/skills/README.md`.
 
 ### GitUtils Requirement
 

@@ -65,19 +65,20 @@ pnpm --filter corpus-eval eval run corpora/assessment-agent/ --html
 
 Scripts are namespaced by agent type for extensibility:
 
-| Script                         | Description                              |
-| ------------------------------ | ---------------------------------------- |
-| `eval:skill-loader`            | Run all skill-loader corpora             |
-| `eval:skill-loader:verbose`    | All skill-loader corpora, verbose output |
-| `eval:skill-loader:publishing` | Publishing corpus only, verbose output   |
-| `eval:assessment`              | Run full assessment corpus               |
-| `eval:assessment:verbose`      | Full corpus with verbose output          |
-| `eval:assessment:compare`      | Compare haiku vs sonnet models           |
-| `eval:assessment:publish`      | Run publish cases only                   |
-| `eval:assessment:domain`       | Run domain cases only                    |
-| `eval:assessment:fix`          | Run fix cases only                       |
-| `eval:assessment:general`      | Run general/edge cases only              |
-| `eval:assessment:path`         | Run path-validation cases only           |
+| Script                            | Description                               |
+| --------------------------------- | ----------------------------------------- |
+| `eval:skill-loader`               | Run all skill-loader corpora              |
+| `eval:skill-loader:verbose`       | All skill-loader corpora, verbose output  |
+| `eval:skill-loader:publishing`    | Publishing corpus only, verbose output    |
+| `eval:skill-loader:custom-domain` | Custom-domain corpus only, verbose output |
+| `eval:assessment`                 | Run full assessment corpus                |
+| `eval:assessment:verbose`         | Full corpus with verbose output           |
+| `eval:assessment:compare`         | Compare haiku vs sonnet models            |
+| `eval:assessment:publish`         | Run publish cases only                    |
+| `eval:assessment:domain`          | Run domain cases only                     |
+| `eval:assessment:fix`             | Run fix cases only                        |
+| `eval:assessment:general`         | Run general/edge cases only               |
+| `eval:assessment:path`            | Run path-validation cases only            |
 
 All `eval:*` scripts inherit environment from `agents/.env` via `load-env.cjs`.
 
@@ -121,6 +122,8 @@ Tests whether the `develop` agent correctly loads (or avoids loading) a skill in
 
 Cases run serially against a shared agent instance (parallelism is unsafe due to mutable state in the agent wrapper).
 
+Each `eval:skill-loader*` script runs `scripts/sync-agents-assets.cjs` first so `agents/dist/prompts/` and `agents/dist/skills/**/skill.md` match `agents/src/` without a full agents build.
+
 ```bash
 # Run all skill-loader corpora
 pnpm --filter corpus-eval eval:skill-loader
@@ -130,11 +133,15 @@ pnpm --filter corpus-eval eval:skill-loader:verbose
 
 # Run publishing corpus only
 pnpm --filter corpus-eval eval:skill-loader:publishing
+
+# Run custom-domain corpus only
+pnpm --filter corpus-eval eval:skill-loader:custom-domain
 ```
 
-| File              | Cases | Description                                      |
-| ----------------- | ----- | ------------------------------------------------ |
-| `publishing.yaml` | 10    | Publishing/deploy intent vs unrelated UI prompts |
+| File                 | Cases | Description                                      |
+| -------------------- | ----- | ------------------------------------------------ |
+| `publishing.yaml`    | 10    | Publishing/deploy intent vs unrelated UI prompts |
+| `custom-domain.yaml` | 22    | Domain attach/purchase vs unrelated UI prompts   |
 
 ### assessment-agent/
 

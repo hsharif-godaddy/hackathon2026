@@ -58,7 +58,7 @@ export const toolRendererRegistry = {
   colorScheme: ColorSchemeToolRenderer,
   cssColor: CssColorToolRenderer,
   cssSuggest: CssSuggestToolRenderer,
-  domainPurchase: DomainToolRenderer,
+  'custom-domain__domainPurchase': DomainToolRenderer,
   fontTheme: FontThemeToolRenderer,
   socialPostCreate: SocialPostCreateToolRenderer,
   socialPostPublish: SocialPublishToolRenderer,

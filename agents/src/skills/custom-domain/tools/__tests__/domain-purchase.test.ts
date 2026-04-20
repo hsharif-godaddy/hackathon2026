@@ -4,7 +4,7 @@ const { mockSetMemory } = vi.hoisted(() => ({
     mockSetMemory: vi.fn().mockResolvedValue({ success: true }),
 }))
 
-vi.mock('../../../logging/index.js', () => ({
+vi.mock('../../../../logging/index.js', () => ({
     Logger: {
         create: vi.fn().mockReturnValue({
             info: vi.fn(),
@@ -15,32 +15,32 @@ vi.mock('../../../logging/index.js', () => ({
     },
 }))
 
-vi.mock('../../../server/ai-lib-websocket-server.js', () => ({
+vi.mock('../../../../server/ai-lib-websocket-server.js', () => ({
     getClientActionService: vi.fn(),
 }))
 
-vi.mock('../../memory-tool.js', () => ({
+vi.mock('../../../../tools/memory-tool.js', () => ({
     MemoryTool: vi.fn().mockImplementation(() => ({
         setMemory: mockSetMemory,
     })),
 }))
 
-vi.mock('../../../database/repositories/AppRepository.js', () => ({
+vi.mock('../../../../database/repositories/AppRepository.js', () => ({
     AppRepository: vi.fn().mockImplementation(() => ({
         findById: vi.fn().mockReturnValue({ path: '/fake/app/path' }),
     })),
 }))
 
-import { domainPurchaseAITool } from '../domain-purchase.js'
-import { getClientActionService } from '../../../server/ai-lib-websocket-server.js'
+import { domainPurchaseTool } from '../index.js'
+import { getClientActionService } from '../../../../server/ai-lib-websocket-server.js'
 
 const mockGetClientActionService = vi.mocked(getClientActionService)
 
 function execute(input: Record<string, unknown>, context: Record<string, unknown>) {
-    return (domainPurchaseAITool as any).execute(input, { experimental_context: context })
+    return domainPurchaseTool.execute(input as any, context)
 }
 
-describe('domain-purchase', function packageTests() {
+describe('custom-domain', function packageTests() {
     beforeEach(function reset() {
         vi.clearAllMocks()
     })
@@ -228,7 +228,7 @@ describe('domain-purchase', function packageTests() {
             )
 
             expect(result.success).toBe(false)
-            expect(result.error).toBe('Client action service not available')
+            expect(result.error).toBe('Client action service unavailable')
         })
 
         it('should auto-attach domain when app is published and domain is provided', async function autoAttach() {

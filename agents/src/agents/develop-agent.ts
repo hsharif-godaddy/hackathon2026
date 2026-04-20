@@ -259,8 +259,6 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
 
       // OAuth (used by commerce skill for GoDaddy auth)
       oauthConnect: allAILibTools.oauthConnect,
-
-      domainPurchase: allAILibTools.domainPurchase,
       // Handoff and conversation control tools will be added by the factory when needed
     },
 

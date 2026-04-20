@@ -1,0 +1,148 @@
+metadata:
+  name: Skill Loader - Custom Domain
+  version: 1.0.0
+
+cases:
+  # --- Positive: custom-domain skill should load ---
+
+  - id: attach-domain-explicit
+    prompt: "I want to attach my domain to this site"
+    expectedSkill: custom-domain
+    tags: [positive]
+    rationale: Direct attach request — clearest signal to load the custom-domain skill
+
+  - id: connect-domain
+    prompt: "Connect mydomain.com to my app"
+    expectedSkill: custom-domain
+    tags: [positive]
+    rationale: Connect a specific domain — explicit attach intent
+
+  - id: user-purchased-domain
+    prompt: "I just purchased mysite.com, proceed"
+    expectedSkill: custom-domain
+    tags: [positive]
+    rationale: User already owns the domain and wants to attach it
+
+  - id: buy-domain
+    prompt: "I need to buy a domain for my site"
+    expectedSkill: custom-domain
+    tags: [positive]
+    rationale: Domain purchase intent — should load the custom-domain skill
+
+  - id: find-domain-suggestions
+    prompt: "Can you help me find a good domain name for my bakery?"
+    expectedSkill: custom-domain
+    tags: [positive]
+    rationale: Asking for domain suggestions triggers the purchase flow
+
+  - id: custom-domain-phrase
+    prompt: "How do I add a custom domain?"
+    expectedSkill: custom-domain
+    tags: [positive]
+    rationale: Custom domain is the canonical user phrase for this feature
+
+  - id: dns-configuration
+    prompt: "What DNS settings do I need to point my domain at this site?"
+    expectedSkill: custom-domain
+    tags: [positive]
+    rationale: DNS configuration questions are covered by the custom-domain skill
+
+  - id: domain-not-working
+    prompt: "I connected my domain but it's not loading the site"
+    expectedSkill: custom-domain
+    tags: [positive]
+    rationale: Troubleshooting a connected domain requires the custom-domain skill
+
+  - id: use-existing-domain
+    prompt: "I already have a domain at GoDaddy — can I use it here?"
+    expectedSkill: custom-domain
+    tags: [positive]
+    rationale: Attaching an existing GoDaddy domain is the attach flow
+
+  # --- Positive: harder cases (no literal "domain" or buried intent) ---
+
+  - id: custom-url
+    prompt: "I want my site to be reachable at www.sweetdelights.com"
+    expectedSkill: custom-domain
+    tags: [positive, hard]
+    rationale: User states a URL without saying "domain" — intent is attach
+
+  - id: own-address
+    prompt: "How do I get my own web address for this app?"
+    expectedSkill: custom-domain
+    tags: [positive, hard]
+    rationale: Web address is a layperson synonym for domain — no literal keyword
+
+  - id: point-url
+    prompt: "I bought myshop.com on Namecheap, how do I point it here?"
+    expectedSkill: custom-domain
+    tags: [positive, hard]
+    rationale: "Point it here + an FQDN is attach intent; the word domain never appears"
+
+  - id: dns-records-no-keyword
+    prompt: "What A record or CNAME do I need to set up for this site?"
+    expectedSkill: custom-domain
+    tags: [positive, hard]
+    rationale: DNS record types without the word domain — still custom-domain skill territory
+
+  - id: godaddy-registrar
+    prompt: "I have a .com at GoDaddy I want to use for this project"
+    expectedSkill: custom-domain
+    tags: [positive, hard]
+    rationale: Mentions a registrar and TLD, no "domain" keyword — attach intent
+
+  - id: branded-url
+    prompt: "Can I make this site available at mybusiness.co instead of the preview URL?"
+    expectedSkill: custom-domain
+    tags: [positive, hard]
+    rationale: Wants to replace the preview URL with a real FQDN - attach flow
+
+  # --- Negative: tricky near-misses that should NOT load the skill ---
+
+  - id: email-domain-confusion
+    prompt: "Can you add a contact email with our company address to the footer?"
+    expectedSkill: null
+    tags: [negative, hard]
+    rationale: "Company address and email are not domain attachment"
+
+  - id: url-path-not-domain
+    prompt: "Change the URL path from /about-us to /about"
+    expectedSkill: null
+    tags: [negative, hard]
+    rationale: URL path routing, not domain attachment
+
+  # --- Negative: no skill should be loaded ---
+  # The agent runs against a minimal app (bare package.json). For these cases the agent
+  # will attempt to explore the project and begin the task before stopping at maxSteps (4).
+  # Skill loading is a routing decision made in the first 1-2 steps, so 4 steps is enough
+  # to confirm the agent correctly avoids loading any skill.
+
+  - id: add-hero-section
+    prompt: "Add a hero section with a background image to my homepage"
+    expectedSkill: null
+    tags: [negative]
+    rationale: Pure UI feature — no domain intent
+
+  - id: fix-mobile-layout
+    prompt: "The mobile layout is broken, please fix it"
+    expectedSkill: null
+    tags: [negative]
+    rationale: Layout bug fix — no domain intent
+
+  - id: change-color-scheme
+    prompt: "Change the color scheme to something more professional"
+    expectedSkill: null
+    tags: [negative]
+    rationale: Design change — no domain intent
+
+  - id: add-contact-form
+    prompt: "Add a contact form to my site"
+    expectedSkill: null
+    tags: [negative]
+    rationale: Feature addition — no domain intent
+
+  - id: create-about-page
+    prompt: "Create an About page with our team bios"
+    expectedSkill: null
+    tags: [negative]
+    rationale: New page creation — no domain intent
