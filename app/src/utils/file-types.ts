@@ -94,8 +94,8 @@ export function getFileExtension(filePath: string): string {
  * - Documents: .pdf, .txt, .md, .csv
  * - Data: .json, .xml, .yaml, .yml
  * - Fonts: .ttf, .otf, .woff, .woff2
- * - Audio: .mp3, .wav
+ * - Audio: audio/* (all audio types), .mp3, .wav, .m4a
  * - Code: .js, .ts, .jsx, .tsx, .css, .html
  */
 export const ACCEPTED_UPLOAD_FILE_TYPES =
-  'image/*,video/*,.pdf,.json,.xml,.yaml,.yml,.txt,.md,.csv,.ttf,.otf,.woff,.woff2,.mp3,.wav,.js,.ts,.jsx,.tsx,.css,.html'
+  'image/*,video/*,audio/*,.pdf,.json,.xml,.yaml,.yml,.txt,.md,.csv,.ttf,.otf,.woff,.woff2,.mp3,.wav,.m4a,.js,.ts,.jsx,.tsx,.css,.html'

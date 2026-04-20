@@ -230,7 +230,7 @@ describe('ChatAttachmentMenu', () => {
     renderWithProviders(<ChatAttachmentMenu {...defaultProps} />);
 
     const fileInput = screen.getByTestId('file-input');
-    expect(fileInput).toHaveAttribute('accept', 'image/*,video/*,.pdf,.json,.xml,.yaml,.yml,.txt,.md,.csv,.ttf,.otf,.woff,.woff2,.mp3,.wav,.js,.ts,.jsx,.tsx,.css,.html');
+    expect(fileInput).toHaveAttribute('accept', 'image/*,video/*,audio/*,.pdf,.json,.xml,.yaml,.yml,.txt,.md,.csv,.ttf,.otf,.woff,.woff2,.mp3,.wav,.m4a,.js,.ts,.jsx,.tsx,.css,.html');
   });
 
   it('should allow multiple file selection', () => {

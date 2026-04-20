@@ -43,7 +43,7 @@ export const BINARY_FILE_EXTENSIONS = [
   // Fonts
   'woff', 'woff2', 'ttf', 'otf', 'eot',
   // Audio
-  'mp3', 'wav', 'ogg',
+  'mp3', 'wav', 'ogg', 'm4a', 'aac',
   // Video
   'mp4', 'webm', 'mov',
   // Documents
