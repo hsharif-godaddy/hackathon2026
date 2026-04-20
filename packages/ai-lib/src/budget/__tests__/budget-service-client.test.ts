@@ -53,7 +53,7 @@ const VALID_REPORT_RESPONSE = JSON.stringify({
       reportItemId: 'ri-1',
       budgetCost: 3.5,
       productCost: 0,
-      category: 'airo-builder:general',
+      label: 'airo-builder:general',
       budgetItems: [{ budgetItemId: 'bi-1', creditsUsed: 2.33 }],
     },
   ],
@@ -200,9 +200,14 @@ describe('BudgetServiceClient', () => {
 
       expect(result.sessionId).toBe('sess-abc')
       expect(fetchMock).toHaveBeenCalledWith(
-        'https://budget.example.com/api/v1/budgets/b-1/sessions',
-        expect.objectContaining({ method: 'POST' })
+        'https://budget.example.com/api/v1/sessions',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ budgetId: 'b-1' }),
+        })
       )
+      const sentBody = JSON.parse((fetchMock as ReturnType<typeof vi.fn>).mock.calls[0]![1].body)
+      expect(sentBody.budgetId).toBe('b-1')
     })
 
     it('throws on missing sessionId', async () => {
@@ -218,12 +223,12 @@ describe('BudgetServiceClient', () => {
       const fetchMock = mockFetchWithText(true, 200, VALID_SESSION_RESPONSE)
       const client = clientWith(fetchMock)
 
-      const result = await client.getSession('b-1', 'sess-abc')
+      const result = await client.getSession('sess-abc')
 
       expect(result.costTotal).toBe(3.5)
       expect(result.sessionItems).toHaveLength(2)
       expect(fetchMock).toHaveBeenCalledWith(
-        'https://budget.example.com/api/v1/budgets/b-1/sessions/sess-abc',
+        'https://budget.example.com/api/v1/sessions/sess-abc',
         expect.objectContaining({ method: 'GET' })
       )
     })
@@ -231,13 +236,13 @@ describe('BudgetServiceClient', () => {
     it('throws on missing costTotal', async () => {
       const body = JSON.stringify({ sessionItems: [] })
       const client = clientWith(mockFetchWithText(true, 200, body))
-      await expect(client.getSession('b-1', 'sess-abc')).rejects.toThrow('invalid SessionResponse')
+      await expect(client.getSession('sess-abc')).rejects.toThrow('invalid SessionResponse')
     })
 
     it('throws on malformed sessionItems element', async () => {
       const body = JSON.stringify({ costTotal: 1.0, sessionItems: [{ notASessionItem: true }] })
       const client = clientWith(mockFetchWithText(true, 200, body))
-      await expect(client.getSession('b-1', 'sess-abc')).rejects.toThrow('invalid SessionResponse')
+      await expect(client.getSession('sess-abc')).rejects.toThrow('invalid SessionResponse')
     })
   })
 
@@ -248,7 +253,7 @@ describe('BudgetServiceClient', () => {
       const fetchMock = mockFetchWithText(true, 200, VALID_CREATE_REPORT_RESPONSE)
       const client = clientWith(fetchMock)
 
-      const result = await client.createReport('b-1', 'sess-abc', {
+      const result = await client.createReport('sess-abc', {
         reportItems: [{ budgetCost: '3.5', productCost: '0', label: 'airo-builder:general' }],
       })
 
@@ -257,68 +262,16 @@ describe('BudgetServiceClient', () => {
       expect(result.sessionId).toBe('sess-abc')
       expect(result.creditsAvailable).toBe(135)
       expect(result.reportItems).toHaveLength(1)
+      // Verify label→category transform (backward compat)
+      expect(result.reportItems[0]!.category).toBe('airo-builder:general')
 
       const [url, init] = (fetchMock as ReturnType<typeof vi.fn>).mock.calls[0]!
-      expect(url).toBe('https://budget.example.com/api/v1/budgets/b-1/sessions/sess-abc/reports')
+      expect(url).toBe('https://budget.example.com/api/v1/sessions/sess-abc/reports')
       expect(init.method).toBe('POST')
       const sentBody = JSON.parse(init.body)
       expect(sentBody.reportItems[0].budgetCost).toBe('3.5')
     })
 
-    it('includes operationId in request body', async () => {
-      const fetchMock = mockFetchWithText(true, 200, VALID_CREATE_REPORT_RESPONSE)
-      const client = clientWith(fetchMock)
-
-      await client.createReport('b-1', 'sess-abc', {
-        reportItems: [{ budgetCost: '3.5', productCost: '0', label: 'airo-builder:general' }],
-      })
-
-      const sentBody = JSON.parse((fetchMock as ReturnType<typeof vi.fn>).mock.calls[0]![1].body)
-      expect(typeof sentBody.operationId).toBe('string')
-      expect(sentBody.operationId).toMatch(
-        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
-      )
-    })
-
-    it('reuses same operationId across retries', async () => {
-      const fetchMock = vi
-        .fn()
-        .mockRejectedValueOnce(new TypeError('fetch failed'))
-        .mockRejectedValueOnce(new TypeError('fetch failed'))
-        .mockResolvedValue({
-          ok: true,
-          status: 200,
-          text: vi.fn().mockResolvedValue(VALID_CREATE_REPORT_RESPONSE),
-        }) as unknown as typeof globalThis.fetch
-      const client = clientWith(fetchMock)
-
-      await client.createReport('b-1', 'sess-abc', {
-        reportItems: [{ budgetCost: '3.5', productCost: '0', label: 'airo-builder:general' }],
-      })
-
-      const calls = (fetchMock as ReturnType<typeof vi.fn>).mock.calls
-      const ids = calls.map((c: unknown[]) => JSON.parse(c[1].body).operationId)
-      expect(ids).toHaveLength(3)
-      expect(ids[0]).toBe(ids[1])
-      expect(ids[1]).toBe(ids[2])
-    })
-
-    it('uses different operationId for different invocations', async () => {
-      const fetchMock = mockFetchWithText(true, 200, VALID_CREATE_REPORT_RESPONSE)
-      const client = clientWith(fetchMock)
-
-      await client.createReport('b-1', 'sess-abc', {
-        reportItems: [{ budgetCost: '1', productCost: '0', label: 'a' }],
-      })
-      await client.createReport('b-1', 'sess-abc', {
-        reportItems: [{ budgetCost: '2', productCost: '0', label: 'b' }],
-      })
-
-      const calls = (fetchMock as ReturnType<typeof vi.fn>).mock.calls
-      const id1 = JSON.parse(calls[0]![1].body).operationId
-      const id2 = JSON.parse(calls[1]![1].body).operationId
-      expect(id1).not.toBe(id2)
-    })
 
     it('retries up to 3 times on transient failure', async () => {
       const fetchMock = vi
@@ -333,7 +286,7 @@ describe('BudgetServiceClient', () => {
         }) as unknown as typeof globalThis.fetch
       const client = clientWith(fetchMock)
 
-      const result = await client.createReport('b-1', 'sess-abc', {
+      const result = await client.createReport('sess-abc', {
         reportItems: [{ budgetCost: '3.5', productCost: '0', label: 'airo-builder:general' }],
       })
       expect(result.reportId).toBe('rpt-1')
@@ -351,7 +304,7 @@ describe('BudgetServiceClient', () => {
         }) as unknown as typeof globalThis.fetch
       const client = clientWith(fetchMock)
 
-      const result = await client.createReport('b-1', 'sess-abc', {
+      const result = await client.createReport('sess-abc', {
         reportItems: [{ budgetCost: '3.5', productCost: '0', label: 'airo-builder:general' }],
       })
       expect(result.reportId).toBe('rpt-1')
@@ -365,7 +318,7 @@ describe('BudgetServiceClient', () => {
       const client = clientWith(fetchMock)
 
       await expect(
-        client.createReport('b-1', 'sess-abc', {
+        client.createReport('sess-abc', {
           reportItems: [{ budgetCost: '3.5', productCost: '0', label: 'airo-builder:general' }],
         })
       ).rejects.toThrow(BudgetServiceUnavailableError)
@@ -377,7 +330,7 @@ describe('BudgetServiceClient', () => {
       const client = clientWith(fetchMock)
 
       await expect(
-        client.createReport('b-1', 'sess-abc', {
+        client.createReport('sess-abc', {
           reportItems: [{ budgetCost: '3.5', productCost: '0', label: 'airo-builder:general' }],
         })
       ).rejects.toThrow('invalid ReportResponse')
@@ -389,7 +342,7 @@ describe('BudgetServiceClient', () => {
       const client = clientWith(fetchMock)
 
       await expect(
-        client.createReport('b-1', 'sess-abc', {
+        client.createReport('sess-abc', {
           reportItems: [{ budgetCost: '3.5', productCost: '0', label: 'airo-builder:general' }],
         })
       ).rejects.toThrow(BudgetServiceError)
@@ -400,7 +353,7 @@ describe('BudgetServiceClient', () => {
       const client = clientWith(mockFetchWithText(false, 401, '{"error":"Unauthorized"}'))
 
       await expect(
-        client.createReport('b-1', 'sess-abc', {
+        client.createReport('sess-abc', {
           reportItems: [{ budgetCost: '3.5', productCost: '0', label: 'airo-builder:general' }],
         })
       ).rejects.toThrow(BudgetServiceAuthError)
@@ -415,18 +368,20 @@ describe('BudgetServiceClient', () => {
       const fetchMock = mockFetchWithText(true, 200, VALID_REPORT_RESPONSE)
       const client = clientWith(fetchMock)
 
-      const result = await client.getReport('b-1', 'sess-abc', 'rpt-1')
+      const result = await client.getReport('sess-abc', 'rpt-1')
 
       expect(result.reportId).toBe('rpt-1')
+      expect(result.reportItems).toHaveLength(1)
+      expect(result.reportItems[0]!.category).toBe('airo-builder:general')
       expect(fetchMock).toHaveBeenCalledWith(
-        'https://budget.example.com/api/v1/budgets/b-1/sessions/sess-abc/reports/rpt-1',
+        'https://budget.example.com/api/v1/sessions/sess-abc/reports/rpt-1',
         expect.objectContaining({ method: 'GET' })
       )
     })
 
     it('throws on malformed report', async () => {
       const client = clientWith(mockFetchWithText(true, 200, '{"reportId":"rpt-1"}'))
-      await expect(client.getReport('b-1', 'sess-abc', 'rpt-1')).rejects.toThrow(
+      await expect(client.getReport('sess-abc', 'rpt-1')).rejects.toThrow(
         'invalid ReportResponse'
       )
     })
@@ -435,20 +390,20 @@ describe('BudgetServiceClient', () => {
       const badReport = JSON.stringify({
         reportId: 'rpt-1', budgetId: 'b-1', sessionId: 'sess-abc', productKey: 'airo-builder',
         budgetCostTotal: 3.5, productCostTotal: 0, creditsAvailable: 100,
-        reportItems: [{ budgetCost: 3.5, category: 'general', budgetItems: [] }],
+        reportItems: [{ budgetCost: 3.5, label: 'general', budgetItems: [] }],
       })
       const client = clientWith(mockFetchWithText(true, 200, badReport))
-      await expect(client.getReport('b-1', 'sess-abc', 'rpt-1')).rejects.toThrow('invalid ReportResponse')
+      await expect(client.getReport('sess-abc', 'rpt-1')).rejects.toThrow('invalid ReportResponse')
     })
 
-    it('rejects report item missing category', async () => {
+    it('rejects report item missing label', async () => {
       const badReport = JSON.stringify({
         reportId: 'rpt-1', budgetId: 'b-1', sessionId: 'sess-abc', productKey: 'airo-builder',
         budgetCostTotal: 3.5, productCostTotal: 0, creditsAvailable: 100,
         reportItems: [{ budgetCost: 3.5, productCost: 0, budgetItems: [] }],
       })
       const client = clientWith(mockFetchWithText(true, 200, badReport))
-      await expect(client.getReport('b-1', 'sess-abc', 'rpt-1')).rejects.toThrow('invalid ReportResponse')
+      await expect(client.getReport('sess-abc', 'rpt-1')).rejects.toThrow('invalid ReportResponse')
     })
   })
 
@@ -544,7 +499,7 @@ describe('BudgetServiceClient', () => {
         fetch: fetchMock,
       })
 
-      const result = await client.createReport('b-1', 'sess-abc', {
+      const result = await client.createReport('sess-abc', {
         reportItems: [{ budgetCost: '3.5', productCost: '0', label: 'airo-builder:general' }],
       })
       expect(result.reportId).toBe('rpt-1')

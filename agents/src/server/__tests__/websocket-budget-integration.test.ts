@@ -320,9 +320,9 @@ describe('budget report creation', () => {
     budgetId: string,
     sessionId: string,
   ) {
-    const session = await client.getSession(budgetId, sessionId)
+    const session = await client.getSession(sessionId)
     // createReport is the critical path -- must not be blocked by getBudget
-    const report = await client.createReport(budgetId, sessionId, {
+    const report = await client.createReport(sessionId, {
       reportItems: [{
         budgetCost: session.costTotal.toString(),
         productCost: '0',
@@ -343,8 +343,8 @@ describe('budget report creation', () => {
     const result = await simulateOnBudgetReport(client, 'budget-1', 'session-1')
 
     expect(result.refreshRequired).toBe(false)
-    expect(client.getSession).toHaveBeenCalledWith('budget-1', 'session-1')
-    expect(client.createReport).toHaveBeenCalledWith('budget-1', 'session-1', {
+    expect(client.getSession).toHaveBeenCalledWith('session-1')
+    expect(client.createReport).toHaveBeenCalledWith('session-1', {
       reportItems: [{ budgetCost: '0.05', productCost: '0', label: 'airo-builder:general' }],
     })
     if (!result.refreshRequired) {
@@ -359,7 +359,7 @@ describe('budget report creation', () => {
     const result = await simulateOnBudgetReport(client, 'budget-1', 'session-1')
 
     expect(result.refreshRequired).toBe(false)
-    expect(client.createReport).toHaveBeenCalledWith('budget-1', 'session-1', {
+    expect(client.createReport).toHaveBeenCalledWith('session-1', {
       reportItems: [{ budgetCost: '0', productCost: '0', label: 'airo-builder:general' }],
     })
   })

@@ -5,7 +5,6 @@
  * createReport retries up to 3 times on transient failures (critical path for reconciliation).
  */
 
-import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import { getS2SToken } from '../utils/s2s-auth.js'
 import type {
@@ -91,9 +90,14 @@ const BudgetItemDeductionSchema = z.object({
 const ReportItemResponseSchema = z.object({
   budgetCost: z.number(),
   productCost: z.number(),
-  category: z.string(),
+  label: z.string(),
   budgetItems: z.array(BudgetItemDeductionSchema),
-}).passthrough() as z.ZodType<ReportItemResponse>
+}).passthrough().transform((item): ReportItemResponse => ({
+  budgetCost: item.budgetCost,
+  productCost: item.productCost,
+  category: item.label,
+  budgetItems: item.budgetItems,
+}))
 
 const ReportResponseSchema = z.object({
   reportId: z.string(),
@@ -160,29 +164,26 @@ export class BudgetServiceClient {
 
   async createSession(budgetId: string): Promise<CreateSessionResponse> {
     return this.requestAndValidate(
-      'POST', `/api/v1/budgets/${encodeURIComponent(budgetId)}/sessions`,
-      CreateSessionResponseSchema, 'CreateSessionResponse', {}, this.getBudgetTimeoutMs
+      'POST', `/api/v1/sessions`,
+      CreateSessionResponseSchema, 'CreateSessionResponse', { budgetId }, this.getBudgetTimeoutMs
     )
   }
 
-  async getSession(budgetId: string, sessionId: string): Promise<SessionResponse> {
+  async getSession(sessionId: string): Promise<SessionResponse> {
     return this.requestAndValidate(
-      'GET', `/api/v1/budgets/${encodeURIComponent(budgetId)}/sessions/${encodeURIComponent(sessionId)}`,
+      'GET', `/api/v1/sessions/${encodeURIComponent(sessionId)}`,
       SessionResponseSchema, 'SessionResponse', undefined, this.getBudgetTimeoutMs
     )
   }
 
   /** Retries up to reportMaxRetries times on transient failure (timeout, network unreachable). */
   async createReport(
-    budgetId: string,
     sessionId: string,
     request: CreateReportRequest
   ): Promise<ReportResponse> {
-    const path = `/api/v1/budgets/${encodeURIComponent(budgetId)}/sessions/${encodeURIComponent(sessionId)}/reports`
-    const operationId = randomUUID()
-    const body = { ...request, operationId }
+    const path = `/api/v1/sessions/${encodeURIComponent(sessionId)}/reports`
     const doReport = () =>
-      this.requestAndValidate('POST', path, ReportResponseSchema, 'ReportResponse', body, this.reportTimeoutMs)
+      this.requestAndValidate('POST', path, ReportResponseSchema, 'ReportResponse', request, this.reportTimeoutMs)
     let lastErr: unknown
     for (let attempt = 0; attempt <= this.reportMaxRetries; attempt++) {
       try {
@@ -197,10 +198,10 @@ export class BudgetServiceClient {
     throw lastErr // unreachable, satisfies TS
   }
 
-  async getReport(budgetId: string, sessionId: string, reportId: string): Promise<ReportResponse> {
+  async getReport(sessionId: string, reportId: string): Promise<ReportResponse> {
     return this.requestAndValidate(
       'GET',
-      `/api/v1/budgets/${encodeURIComponent(budgetId)}/sessions/${encodeURIComponent(sessionId)}/reports/${encodeURIComponent(reportId)}`,
+      `/api/v1/sessions/${encodeURIComponent(sessionId)}/reports/${encodeURIComponent(reportId)}`,
       ReportResponseSchema, 'ReportResponse', undefined, this.getBudgetTimeoutMs
     )
   }

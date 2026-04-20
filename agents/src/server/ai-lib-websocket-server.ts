@@ -1869,7 +1869,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         // Get session cost (GoCode reports cost async, may be 0 due to race)
         let session
         try {
-          session = await client.getSession(budgetId, sessionId)
+          session = await client.getSession(sessionId)
         } catch (err) {
           logger.error('budget.report.getSessionFailed', {
             budgetId, sessionId, error: err instanceof Error ? err.message : String(err),
@@ -1881,7 +1881,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         // by getBudget failure. Returns full ReportResponse (BMS parity, PR #2577).
         let report
         try {
-          report = await client.createReport(budgetId, sessionId, {
+          report = await client.createReport(sessionId, {
             reportItems: [{
               budgetCost: session.costTotal.toString(),
               productCost: '0',
