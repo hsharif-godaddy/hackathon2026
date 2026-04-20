@@ -338,9 +338,14 @@ describe('Publish Route Authorization', () => {
       mockCreateForApp.mockReturnValue({ exec: vi.fn() }); // dev-supervisor available
       vi.mocked(getPublishStrategy).mockReturnValue({
         key: 'default',
-        publish: vi.fn().mockResolvedValue({
+        prepareBuild: vi.fn().mockResolvedValue({
           commitHash: 'abc1234567890',
           archivePath: '/dist/abc1234567890.tar.gz',
+        }),
+        deploy: vi.fn().mockResolvedValue({
+          status: 'success',
+          version: 'abc1234567890',
+          healthStatus: 'healthy',
         }),
       } as any);
 

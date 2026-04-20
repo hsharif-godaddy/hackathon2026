@@ -1,4 +1,6 @@
-import type { PublishStrategy, PublishContext, PublishResult, DeploymentStrategy } from './PublishStrategy.js';
+import type { PublishStrategy, PublishContext, BuildResult, DeploymentStrategy } from './PublishStrategy.js';
+import type { DevSupervisorClient, PublishRequest, PublishResponse } from '../../../../services/DevSupervisorClient.js';
+import type { ILogger } from '../../../../logging/types.js';
 import { BuildError } from './PaaSPublishStrategy.js';
 
 /**
@@ -13,7 +15,7 @@ import { BuildError } from './PaaSPublishStrategy.js';
 export class DefaultPublishStrategy implements PublishStrategy {
   readonly key: DeploymentStrategy = 'default';
 
-  async publish(context: PublishContext): Promise<PublishResult> {
+  async prepareBuild(context: PublishContext): Promise<BuildResult> {
     const { logger, gitUtils, appPath, devSupervisor, targetDir } = context;
 
     // 1. Ensure on main branch (merge feature branch if needed)
@@ -277,5 +279,17 @@ export class DefaultPublishStrategy implements PublishStrategy {
     });
 
     return archiveResult.path;
+  }
+
+  /**
+   * Deploy to publish supervisor.
+   * Default strategy: Direct pass-through, no recovery logic.
+   */
+  async deploy(
+    publishSupervisor: DevSupervisorClient,
+    request: PublishRequest,
+    _logger: ILogger
+  ): Promise<PublishResponse> {
+    return publishSupervisor.publish(request);
   }
 }

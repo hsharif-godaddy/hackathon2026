@@ -1,6 +1,6 @@
-import type { DevSupervisorClient } from '../../../../services/DevSupervisorClient.js';
+import type { DevSupervisorClient, PublishRequest, PublishResponse } from '../../../../services/DevSupervisorClient.js';
 import type { GitUtils } from '../../../../utils/git.js';
-import type { log } from '../../../../logging/index.js';
+import type { ILogger } from '../../../../logging/types.js';
 
 export type DeploymentStrategy = 'default' | 'paas';
 
@@ -10,10 +10,10 @@ export interface PublishContext {
   targetDir?: string;
   devSupervisor: DevSupervisorClient;
   gitUtils: GitUtils;
-  logger: ReturnType<typeof log.forApp>;
+  logger: ILogger;
 }
 
-export interface PublishResult {
+export interface BuildResult {
   commitHash: string;
   archivePath: string;
 }
@@ -27,13 +27,26 @@ export interface PublishStrategy {
   readonly key: DeploymentStrategy;
 
   /**
-   * Execute the complete publish workflow.
-   * Each strategy owns its entire workflow internally.
+   * Phase 1: Prepare the build artifact.
+   * Creates the deployable archive without making it live.
    *
    * - Default: git ops → build → auto-detect archive
    * - PaaS: build → full source archive (no git ops)
    */
-  publish(context: PublishContext): Promise<PublishResult>;
+  prepareBuild(context: PublishContext): Promise<BuildResult>;
+
+  /**
+   * Phase 2: Deploy to the publish supervisor.
+   * Makes the prepared build live. Strategy-specific behavior:
+   *
+   * - Default: Direct publish call (no recovery)
+   * - PaaS: Publish with timeout recovery logic
+   */
+  deploy(
+    publishSupervisor: DevSupervisorClient,
+    request: PublishRequest,
+    logger: ILogger
+  ): Promise<PublishResponse>;
 }
 
 // Import strategies for factory function

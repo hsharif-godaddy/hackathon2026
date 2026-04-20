@@ -160,7 +160,7 @@ describe("Publish Strategy Integration", () => {
         expect.any(String),
         expect.stringMatching(/^[a-f0-9]{12,}$/i), // hex timestamp
         undefined, // targetDir is undefined when not unified job + not local dev
-        { includeSource: true }
+        { includeSource: true, excludeUntracked: true }
       );
     });
 

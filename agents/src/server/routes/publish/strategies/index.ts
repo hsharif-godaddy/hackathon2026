@@ -1,7 +1,7 @@
 export type {
   DeploymentStrategy,
   PublishContext,
-  PublishResult,
+  BuildResult,
   PublishStrategy,
 } from './PublishStrategy.js';
 

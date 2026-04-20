@@ -6,7 +6,7 @@ import { GitUtils } from '../../utils/git.js';
 import { log } from '../../logging/index.js';
 import { Router } from 'express';
 import type { AuthenticatedRequest } from '../middleware/jwt-auth.js';
-import type { DevSupervisorClient, PublishResponse, PublishSuccessResponse, UnpublishResponse } from '../../services/DevSupervisorClient.js';
+import type { DevSupervisorClient, PublishRequest, PublishSuccessResponse, UnpublishResponse } from '../../services/DevSupervisorClient.js';
 import { requirePermission } from '../middleware/require-permission.js';
 import { validateAppOwnership } from '../middleware/app-ownership.js';
 import { getPublishStrategy, BuildError } from './publish/strategies/index.js';
@@ -142,12 +142,12 @@ router.post('/apps/:id/publish', requirePermission('canPublish'), async (req, re
       logger: contextLogger,
     };
 
-    // Execute strategy
+    // Execute strategy - Phase 1: Prepare build artifact
     let fullCommitHash: string;
     let archivePath: string;
 
     try {
-      const result = await strategy.publish(publishContext);
+      const result = await strategy.prepareBuild(publishContext);
       fullCommitHash = result.commitHash;
       archivePath = result.archivePath;
 
@@ -201,12 +201,19 @@ router.post('/apps/:id/publish', requirePermission('canPublish'), async (req, re
           throw new Error('Failed to create publish supervisor client');
         }
 
-        const publishResponse: PublishResponse = await publishSupervisor.publish({
+        // Phase 2: Deploy to publish supervisor (strategy handles recovery logic)
+        const publishRequest: PublishRequest = {
           commitHash: fullCommitHash,
           force: false,
           waitForHealthy: true,
           healthTimeoutSeconds: strategy.key === 'paas' ? 120 : 60
-        });
+        };
+
+        const publishResponse = await strategy.deploy(
+          publishSupervisor,
+          publishRequest,
+          contextLogger
+        );
 
         if (publishResponse.status === 'error') {
           contextLogger.error('route.publish.supervisor.failed', {
