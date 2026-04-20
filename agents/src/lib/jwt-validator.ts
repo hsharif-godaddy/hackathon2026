@@ -42,8 +42,8 @@ async function fetchJson<T>(url: string, timeoutMs: number = 10000, noCache: boo
     headers['Pragma'] = 'no-cache';
   }
 
-  // For local dev URLs in development mode, accept self-signed certificates
-  if (isDev && isLocalUrl) {
+  // For local dev HTTPS URLs in development mode, accept self-signed certificates
+  if (isDev && isLocalUrl && url.startsWith('https://')) {
     return new Promise((resolve, reject) => {
       const parsed = new URL(url);
       const options: https.RequestOptions = {

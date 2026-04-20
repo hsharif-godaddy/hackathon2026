@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { generateKeyPairSync, createPublicKey, type JsonWebKey } from 'node:crypto';
+import https from 'node:https';
 
 // Generate RSA key pair for testing
 const { publicKey, privateKey } = generateKeyPairSync('rsa', {
@@ -14,14 +15,21 @@ testJwk.kid = 'test-kid-1';
 const rotatedJwk = { ...testJwk, kid: 'rotated-kid-2' };
 
 // Hoist mocks
-const { mockFetch, mockLoggerInfo, mockLoggerError } = vi.hoisted(() => ({
+const { mockFetch, mockLoggerInfo, mockLoggerError, mockGetFeatures, mockGetJWTAgentConfig } = vi.hoisted(() => ({
   mockFetch: vi.fn(),
   mockLoggerInfo: vi.fn(),
   mockLoggerError: vi.fn(),
+  mockGetFeatures: vi.fn().mockReturnValue({ nodeEnv: 'production' }),
+  mockGetJWTAgentConfig: vi.fn().mockReturnValue({
+    jwksUrl: 'https://example.com/.well-known/jwks.json',
+    issuer: 'airo-app',
+    audience: 'agents-service',
+    algorithms: ['RS256'],
+  }),
 }));
 
 vi.mock('../../services/features.js', () => ({
-  getFeatures: () => ({ nodeEnv: 'production' }),
+  getFeatures: mockGetFeatures,
   auth: {
     getJWKSUrl: () => 'https://example.com/.well-known/jwks.json',
     getSiteId: () => 'bypass-site',
@@ -29,12 +37,7 @@ vi.mock('../../services/features.js', () => ({
 }));
 
 vi.mock('../jwks-config.js', () => ({
-  getJWTAgentConfig: () => ({
-    jwksUrl: 'https://example.com/.well-known/jwks.json',
-    issuer: 'airo-app',
-    audience: 'agents-service',
-    algorithms: ['RS256'],
-  }),
+  getJWTAgentConfig: mockGetJWTAgentConfig,
   validateJWTAgentConfig: () => ({ valid: true, errors: [] }),
 }));
 
@@ -49,6 +52,17 @@ vi.mock('../../logging/index.js', () => ({
 
 // Mock global fetch
 vi.stubGlobal('fetch', mockFetch);
+
+// Restore mock defaults after clearAllMocks
+beforeEach(() => {
+  mockGetFeatures.mockReturnValue({ nodeEnv: 'production' });
+  mockGetJWTAgentConfig.mockReturnValue({
+    jwksUrl: 'https://example.com/.well-known/jwks.json',
+    issuer: 'airo-app',
+    audience: 'agents-service',
+    algorithms: ['RS256'],
+  });
+});
 
 // Use real jsonwebtoken for creating test tokens
 import { createRequire } from 'module';
@@ -174,6 +188,84 @@ describe('JWTValidator JWKS cache-busting', () => {
     // Second call should use cache, no additional fetch
     await validator.validateToken(token);
     expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('fetchJson http/https branching', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('should use fetch() not https.request for http:// local URLs in development', async () => {
+    mockGetFeatures.mockReturnValue({ nodeEnv: 'development' });
+    mockGetJWTAgentConfig.mockReturnValue({
+      jwksUrl: 'http://localhost:4100/.well-known/jwks.json',
+      issuer: 'airo-app',
+      audience: 'agents-service',
+      algorithms: ['RS256'],
+    });
+
+    const httpsSpy = vi.spyOn(https, 'request');
+
+    mockFetch.mockReturnValueOnce(
+      Promise.resolve({ ok: true, json: () => Promise.resolve({ keys: [testJwk] }) })
+    );
+
+    const validator = new JWTValidator();
+    const token = createTestToken('test-kid-1');
+    await validator.validateToken(token);
+
+    expect(httpsSpy).not.toHaveBeenCalled();
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(mockFetch).toHaveBeenCalledWith(
+      'http://localhost:4100/.well-known/jwks.json',
+      expect.anything()
+    );
+  });
+
+  it('should use https.request with rejectUnauthorized:false for https:// local URLs in development', async () => {
+    mockGetFeatures.mockReturnValue({ nodeEnv: 'development' });
+    mockGetJWTAgentConfig.mockReturnValue({
+      jwksUrl: 'https://local.gasket.dev-godaddy.com:8443/.well-known/jwks.json',
+      issuer: 'airo-app',
+      audience: 'agents-service',
+      algorithms: ['RS256'],
+    });
+
+    const jwksPayload = JSON.stringify({ keys: [testJwk] });
+    const mockRes = {
+      statusCode: 200,
+      on: vi.fn((event: string, cb: (chunk?: string) => void) => {
+        if (event === 'data') cb(jwksPayload);
+        if (event === 'end') cb();
+        return mockRes;
+      }),
+    };
+    const mockReq = {
+      on: vi.fn().mockReturnThis(),
+      end: vi.fn(),
+      destroy: vi.fn(),
+    };
+
+    const httpsSpy = vi.spyOn(https, 'request').mockImplementation((_opts: any, cb: any) => {
+      cb(mockRes);
+      return mockReq as any;
+    });
+
+    const validator = new JWTValidator();
+    const token = createTestToken('test-kid-1');
+    await validator.validateToken(token);
+
+    expect(httpsSpy).toHaveBeenCalledTimes(1);
+    const opts = httpsSpy.mock.calls[0][0] as https.RequestOptions;
+    expect(opts.rejectUnauthorized).toBe(false);
+    expect(opts.hostname).toBe('local.gasket.dev-godaddy.com');
+    expect(opts.port).toBe('8443');
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 });
 

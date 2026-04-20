@@ -276,6 +276,13 @@ export class JWTService {
   }
 
   /**
+   * Pre-fetch keys so the JWKS endpoint responds instantly on first hit.
+   */
+  async warmKeys(): Promise<void> {
+    await this.fetchKeys();
+  }
+
+  /**
    * Get all public keys for JWKS endpoint
    */
   async getPublicKeys(): Promise<KeyMetadata[]> {

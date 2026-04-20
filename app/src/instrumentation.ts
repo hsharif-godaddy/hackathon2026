@@ -15,4 +15,16 @@ export async function register() {
   registerOTel({
     serviceName: process.env.OTEL_SERVICE_NAME || 'airo-app-builder',
   });
+
+  if (process.env.NEXT_RUNTIME === 'nodejs') {
+    // Pre-fetch JWT signing keys from Secrets Manager so the JWKS endpoint
+    // responds instantly on first hit (avoids 15s cold-start in local dev).
+    const { getJWTService } = await import('./lib/jwt-service');
+    const { logger } = await import('./lib/request-context');
+    getJWTService().warmKeys().catch((err) => {
+      logger.error('jwt.warmup.failed', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
+  }
 }
