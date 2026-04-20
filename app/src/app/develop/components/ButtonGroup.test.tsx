@@ -110,19 +110,7 @@ describe('ButtonGroup', () => {
     expect(mockOnChange).not.toHaveBeenCalled();
   });
 
-  it('should show label when showLabelAlways is true', () => {
-    renderWithProviders(
-      <ButtonGroup value="option1" onChange={mockOnChange}>
-        <ButtonGroup.Item value="option1" icon={<TestIcon />} label="Option 1" showLabelAlways />
-        <ButtonGroup.Item value="option2" icon={<TestIcon />} label="Option 2" showLabelAlways />
-      </ButtonGroup>
-    );
-
-    expect(screen.getByText('Option 1')).toBeInTheDocument();
-    expect(screen.getByText('Option 2')).toBeInTheDocument();
-  });
-
-  it('should only show label for active item when showLabelAlways is false', () => {
+  it('should only show visible label for the active item', () => {
     renderWithProviders(
       <ButtonGroup value="option1" onChange={mockOnChange}>
         <ButtonGroup.Item value="option1" icon={<TestIcon />} label="Option 1" />
@@ -130,8 +118,13 @@ describe('ButtonGroup', () => {
       </ButtonGroup>
     );
 
-    expect(screen.getByText('Option 1')).toBeInTheDocument();
-    expect(screen.queryByText('Option 2')).not.toBeInTheDocument();
+    const buttons = screen.getAllByRole('radio');
+    expect(buttons[0]).toHaveAttribute('aria-checked', 'true');
+    expect(buttons[1]).toHaveAttribute('aria-checked', 'false');
+    // The active button renders the label inside the animated span; the inactive one
+    // only renders it in the hidden measurement ghost. Both still expose it via aria-label.
+    expect(buttons[0]).toHaveAttribute('aria-label', 'Option 1');
+    expect(buttons[1]).toHaveAttribute('aria-label', 'Option 2');
   });
 
   it('should render without labels when label prop is not provided', () => {
@@ -154,6 +147,20 @@ describe('ButtonGroup', () => {
       <ButtonGroup value="option1" onChange={mockOnChange}>
         <ButtonGroup.Item value="option1" icon={<TestIcon />} label="Option 1" />
         <ButtonGroup.Item value="option2" icon={<TestIcon />} label="Option 2" />
+      </ButtonGroup>
+    );
+
+    const visibleIcons = screen
+      .getAllByTestId('test-icon')
+      .filter((el) => !el.closest('[aria-hidden="true"]'));
+    expect(visibleIcons).toHaveLength(2);
+  });
+
+  it('should render only visible icon for items without labels', () => {
+    renderWithProviders(
+      <ButtonGroup value="option1" onChange={mockOnChange}>
+        <ButtonGroup.Item value="option1" icon={<TestIcon />} />
+        <ButtonGroup.Item value="option2" icon={<TestIcon />} />
       </ButtonGroup>
     );
 
@@ -245,20 +252,6 @@ describe('ButtonGroup', () => {
     await user.keyboard(' ');
 
     expect(mockOnChange).toHaveBeenCalledWith('option2');
-  });
-
-  it('should support mixed label visibility', () => {
-    renderWithProviders(
-      <ButtonGroup value="option1" onChange={mockOnChange}>
-        <ButtonGroup.Item value="option1" icon={<TestIcon />} label="Option 1" showLabelAlways />
-        <ButtonGroup.Item value="option2" icon={<TestIcon />} label="Option 2" />
-        <ButtonGroup.Item value="option3" icon={<TestIcon />} label="Option 3" showLabelAlways />
-      </ButtonGroup>
-    );
-
-    expect(screen.getByText('Option 1')).toBeInTheDocument();
-    expect(screen.queryByText('Option 2')).not.toBeInTheDocument();
-    expect(screen.getByText('Option 3')).toBeInTheDocument();
   });
 
   it('should update active state when value prop changes', () => {

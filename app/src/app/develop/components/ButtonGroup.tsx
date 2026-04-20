@@ -1,15 +1,29 @@
 'use client';
 
 import clsx from 'clsx';
-import { motion } from 'framer-motion';
-import { useCallback, useMemo } from 'react';
-import { createContext, forwardRef, useContext, useId, useRef, useState } from 'react';
+import { AnimatePresence, type HTMLMotionProps, motion } from 'framer-motion';
+import {
+  createContext,
+  forwardRef,
+  useCallback,
+  useContext,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import Tooltip from '@ux/tooltip';
 
 interface ButtonGroupContextValue {
   value?: string;
   onChange?: (value: string) => void;
   groupId: string;
+  registerActiveWidth: (id: string, width: number) => void;
+  registerInactiveWidth: (id: string, width: number) => void;
+  unregisterWidths: (id: string) => void;
+  maxActiveWidth: number;
+  maxInactiveWidth: number;
 }
 
 const ButtonGroupContext = createContext<ButtonGroupContextValue | null>(null);
@@ -18,6 +32,8 @@ function useButtonGroupContext() {
   const context = useContext(ButtonGroupContext);
   return context;
 }
+
+export const SPRING_TRANSITION = { type: 'spring' as const, stiffness: 300, damping: 30 };
 
 interface ButtonGroupProps {
   value?: string;
@@ -29,7 +45,67 @@ interface ButtonGroupProps {
 
 function ButtonGroupRoot({ value, onChange, children, className, 'data-eid': dataEid }: ButtonGroupProps) {
   const groupId = useId();
-  const contextValue = useMemo(() => ({ value, onChange, groupId }), [value, onChange, groupId]);
+  const widthsRef = useRef<Map<string, { active: number; inactive: number }>>(new Map());
+  const [maxActiveWidth, setMaxActiveWidth] = useState(0);
+  const [maxInactiveWidth, setMaxInactiveWidth] = useState(0);
+
+  const recomputeMax = useCallback(function recompute() {
+    let nextActive = 0;
+    let nextInactive = 0;
+    widthsRef.current.forEach(function pick({ active, inactive }) {
+      if (active > nextActive) nextActive = active;
+      if (inactive > nextInactive) nextInactive = inactive;
+    });
+    setMaxActiveWidth(function update(prev) {
+      return prev === nextActive ? prev : nextActive;
+    });
+    setMaxInactiveWidth(function update(prev) {
+      return prev === nextInactive ? prev : nextInactive;
+    });
+  }, []);
+
+  const registerActiveWidth = useCallback(function register(id: string, width: number) {
+    const existing = widthsRef.current.get(id);
+    if (existing?.active === width) return;
+    widthsRef.current.set(id, { active: width, inactive: existing?.inactive ?? 0 });
+    recomputeMax();
+  }, [recomputeMax]);
+
+  const registerInactiveWidth = useCallback(function register(id: string, width: number) {
+    const existing = widthsRef.current.get(id);
+    if (existing?.inactive === width) return;
+    widthsRef.current.set(id, { active: existing?.active ?? 0, inactive: width });
+    recomputeMax();
+  }, [recomputeMax]);
+
+  const unregisterWidths = useCallback(function unregister(id: string) {
+    if (!widthsRef.current.has(id)) return;
+    widthsRef.current.delete(id);
+    recomputeMax();
+  }, [recomputeMax]);
+
+  const contextValue = useMemo(
+    () => ({
+      value,
+      onChange,
+      groupId,
+      registerActiveWidth,
+      registerInactiveWidth,
+      unregisterWidths,
+      maxActiveWidth,
+      maxInactiveWidth,
+    }),
+    [
+      value,
+      onChange,
+      groupId,
+      registerActiveWidth,
+      registerInactiveWidth,
+      unregisterWidths,
+      maxActiveWidth,
+      maxInactiveWidth,
+    ]
+  );
 
   return (
     <ButtonGroupContext.Provider value={contextValue}>
@@ -47,24 +123,29 @@ function ButtonGroupRoot({ value, onChange, children, className, 'data-eid': dat
   );
 }
 
-interface ButtonGroupItemProps extends Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, 'onClick'> {
+interface ButtonGroupItemProps extends Omit<HTMLMotionProps<'button'>, 'onClick' | 'ref' | 'animate' | 'transition' | 'initial' | 'exit'> {
   value?: string;
   icon: React.ReactNode;
   label?: string;
   disabled?: boolean;
-  showLabelAlways?: boolean;
   onClick?: () => void;
   tooltipDescription?: string | React.ReactNode;
   'data-eid'?: string;
 }
 
 const ButtonGroupItem = forwardRef<HTMLButtonElement, ButtonGroupItemProps>(function ButtonGroupItem(
-  { value, icon, label, disabled, showLabelAlways = false, onClick, tooltipDescription = null, 'data-eid': dataEid, className: extraClassName, ...rest },
+  { value, icon, label, disabled, onClick, tooltipDescription = null, 'data-eid': dataEid, className: extraClassName, ...rest },
   forwardedRef
 ) {
   const context = useButtonGroupContext();
-  const [showTooltip, setShowTooltip] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
+  const showTooltip = isHovered || isFocused;
   const internalRef = useRef<HTMLButtonElement>(null);
+  const activeMeasureRef = useRef<HTMLSpanElement>(null);
+  const inactiveMeasureRef = useRef<HTMLSpanElement>(null);
+  const internalId = useId();
+  const registrationId = value ?? internalId;
 
   const setRefs = useCallback((element: HTMLButtonElement | null) => {
     internalRef.current = element;
@@ -77,11 +158,44 @@ const ButtonGroupItem = forwardRef<HTMLButtonElement, ButtonGroupItemProps>(func
 
   const isControlled = context?.value !== undefined && context?.onChange !== undefined;
   const isActive = isControlled && value !== undefined && context!.value === value;
-  const shouldShowLabel = label && (showLabelAlways || isActive);
+  const isSelectable = value !== undefined;
+
+  const registerActiveWidth = context?.registerActiveWidth;
+  const registerInactiveWidth = context?.registerInactiveWidth;
+  const unregisterWidths = context?.unregisterWidths;
+
+  useEffect(function measureWidths() {
+    if (!isSelectable || !label || !registerActiveWidth || !registerInactiveWidth || !unregisterWidths) return;
+    const activeElement = activeMeasureRef.current;
+    const inactiveElement = inactiveMeasureRef.current;
+    if (!activeElement || !inactiveElement) return;
+
+    const reportActive = function reportActive() {
+      registerActiveWidth(registrationId, activeElement.offsetWidth);
+    };
+    const reportInactive = function reportInactive() {
+      registerInactiveWidth(registrationId, inactiveElement.offsetWidth);
+    };
+
+    reportActive();
+    reportInactive();
+
+    const activeObserver = new ResizeObserver(reportActive);
+    const inactiveObserver = new ResizeObserver(reportInactive);
+    activeObserver.observe(activeElement);
+    inactiveObserver.observe(inactiveElement);
+
+    return function cleanup() {
+      activeObserver.disconnect();
+      inactiveObserver.disconnect();
+      unregisterWidths(registrationId);
+    };
+  }, [isSelectable, label, registerActiveWidth, registerInactiveWidth, unregisterWidths, registrationId]);
 
   const handleClick = () => {
     if (disabled) return;
-    setShowTooltip(false);
+    setIsHovered(false);
+    setIsFocused(false);
 
     if (isControlled && context?.onChange && value !== undefined) {
       context.onChange(value);
@@ -99,8 +213,12 @@ const ButtonGroupItem = forwardRef<HTMLButtonElement, ButtonGroupItemProps>(func
     </Tooltip>
   );
 
+  const targetWidth = isActive
+    ? (context?.maxActiveWidth || 'auto')
+    : (context?.maxInactiveWidth || 'auto');
+
   return (
-    <button
+    <motion.button
       type="button"
       role={isControlled ? "radio" : undefined}
       aria-checked={isControlled ? isActive : undefined}
@@ -109,14 +227,17 @@ const ButtonGroupItem = forwardRef<HTMLButtonElement, ButtonGroupItemProps>(func
       onClick={handleClick}
       data-eid={dataEid}
       ref={setRefs}
-      onMouseEnter={() => setShowTooltip(true)}
-      onMouseLeave={() => setShowTooltip(false)}
-      aria-haspopup={showTooltip}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      onFocus={() => setIsFocused(true)}
+      onBlur={() => setIsFocused(false)}
+      animate={{ width: targetWidth }}
+      transition={SPRING_TRANSITION}
       {...rest}
       className={clsx(
-        'relative flex items-center gap-1 p-1 rounded-xmd transition-colors duration-200',
+        'relative flex items-center justify-center p-1 rounded-xmd shrink-0 overflow-hidden transition-colors duration-200',
         {
-          'text-intents-ux-boxHighContrast-foregroundColor': isActive,
+          'bg-intents-ux-boxHighContrast-backgroundColor text-intents-ux-boxHighContrast-foregroundColor shadow-md': isActive,
           'bg-intents-ux-boxLowContrast-backgroundColor': !isActive && !disabled,
           'opacity-25 pointer-events-none': disabled,
           'cursor-pointer': !disabled,
@@ -124,37 +245,42 @@ const ButtonGroupItem = forwardRef<HTMLButtonElement, ButtonGroupItemProps>(func
         extraClassName
       )}
     >
-      {isActive && isControlled && context?.groupId && (
-        <motion.div
-          layoutId={`${context.groupId}-bubble`}
-          className="absolute inset-0 bg-intents-ux-boxHighContrast-backgroundColor rounded-xmd shadow-md"
-          transition={{
-            type: 'spring',
-            stiffness: 300,
-            damping: 30,
-          }}
-        />
-      )}
-      <span className="relative flex items-center size-2.5">{icon}</span>
-      {shouldShowLabel && (
-        showLabelAlways ? (
-          <span className="relative text-xs font-medium whitespace-nowrap">
-            {label}
+      {label && isSelectable && registerActiveWidth && registerInactiveWidth && (
+        <>
+          <span
+            ref={activeMeasureRef}
+            aria-hidden
+            className="pointer-events-none invisible absolute left-0 top-0 flex items-center p-1 whitespace-nowrap"
+          >
+            <span className="flex items-center size-2.5">{icon}</span>
+            <span className="ml-1 text-sm font-medium">{label}</span>
           </span>
-        ) : (
+          <span
+            ref={inactiveMeasureRef}
+            aria-hidden
+            className="pointer-events-none invisible absolute left-0 top-0 flex items-center p-1 whitespace-nowrap"
+          >
+            <span className="flex items-center size-2.5">{icon}</span>
+          </span>
+        </>
+      )}
+      <span className="flex items-center size-2.5">{icon}</span>
+      <AnimatePresence initial={false}>
+        {isActive && label && (
           <motion.span
-            initial={{ opacity: 0, width: 0 }}
-            animate={{ opacity: 1, width: 'auto' }}
-            exit={{ opacity: 0, width: 0 }}
+            key="label"
+            initial={{ opacity: 0, width: 0, marginLeft: 0 }}
+            animate={{ opacity: 1, width: 'auto', marginLeft: 4 }}
+            exit={{ opacity: 0, width: 0, marginLeft: 0 }}
             transition={{ duration: 0.2 }}
-            className="relative text-sm font-medium whitespace-nowrap"
+            className="text-sm font-medium whitespace-nowrap"
           >
             {label}
           </motion.span>
-        )
-      )}
+        )}
+      </AnimatePresence>
       {!isActive && showTooltip && tooltipComponent}
-    </button>
+    </motion.button>
   );
 });
 

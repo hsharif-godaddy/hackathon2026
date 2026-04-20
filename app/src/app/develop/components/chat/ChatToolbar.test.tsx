@@ -121,13 +121,13 @@ describe('ChatToolbar', () => {
   it('should render without crashing', () => {
     renderWithProviders(<ChatToolbar {...defaultProps} />);
 
-    expect(screen.getByText('builder_chat_toolbar_button_chat')).toBeInTheDocument();
+    expect(screen.getByLabelText('builder_chat_toolbar_button_chat')).toBeInTheDocument();
   });
 
   it('should render chat button', () => {
     renderWithProviders(<ChatToolbar {...defaultProps} />);
 
-    expect(screen.getByText('builder_chat_toolbar_button_chat')).toBeInTheDocument();
+    expect(screen.getByLabelText('builder_chat_toolbar_button_chat')).toBeInTheDocument();
   });
 
   it('should render history button', () => {

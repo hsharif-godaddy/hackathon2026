@@ -15,7 +15,7 @@ import WebsiteFilledIcon from '@ux/icon/website-filled'
 import WorldIcon from '@ux/icon/world'
 import Tag from '@ux/tag';
 
-import { ButtonGroup } from '@/app/develop/components/ButtonGroup';
+import { ButtonGroup, SPRING_TRANSITION } from '@/app/develop/components/ButtonGroup';
 import IconButton from '@/app/develop/components/IconButton';
 import DomainMenu from '@/app/develop/components/layout/DomainMenu';
 import DeviceSelector from '@/app/develop/components/preview/DeviceSelector'
@@ -78,11 +78,7 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
           width: (isChatPaneCollapsed || isMobile) ? undefined : `${chatPaneWidth}px`,
           justifyContent: isChatPaneCollapsed ? 'flex-start' : 'space-between'
         }}
-        transition={{
-          type: 'spring',
-          stiffness: 300,
-          damping: 30
-        }}
+        transition={SPRING_TRANSITION}
       >
         <div className="flex items-center gap-1" data-partial="componentAiro">
           <Link
@@ -130,19 +126,16 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
                 <ButtonGroup.Item
                   value={ViewMode.PREVIEW}
                   icon={<WebsiteFilledIcon className="size-2.5" />}
-                  showLabelAlways
                   label={t('builder_preview_button_preview')}
                 />
                 <ButtonGroup.Item
                   value={ViewMode.EDIT}
                   icon={<WandIcon className="size-2.5" />}
-                  showLabelAlways
                   label={t('builder_preview_button_edit')}
                 />
                 <ButtonGroup.Item
                   value={ViewMode.CODE}
                   icon={<CodeIcon className="size-2.5" />}
-                  showLabelAlways
                   label={t('builder_preview_button_code')}
                   disabled={isVersionHistoryOpen}
                 />
@@ -203,13 +196,11 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
               value={MobileMode.TOOLS}
               icon={<Apps2Icon className="size-2.5" />}
               label={t('builder_preview_button_tools')}
-              showLabelAlways
             />
             <ButtonGroup.Item
               value={MobileMode.PREVIEW}
               icon={<MobilePhoneIcon className="size-2.5" />}
               label={t('builder_preview_button_preview')}
-              showLabelAlways
             />
           </ButtonGroup>
           <UserMenu location="develop" />
