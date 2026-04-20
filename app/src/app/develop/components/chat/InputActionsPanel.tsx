@@ -96,6 +96,15 @@ export default function InputActionsPanel() {
     }, 5000)
   }
 
+  // Clean up auto-collapse timer on unmount only
+  useEffect(() => {
+    return () => {
+      if (autoCollapseTimerRef.current) {
+        clearTimeout(autoCollapseTimerRef.current)
+      }
+    }
+  }, [])
+
   // Collapse full plan when agent starts working — but not if we just
   // auto-revealed a new list (let the 5s timer handle that instead).
   useEffect(() => {
@@ -106,7 +115,6 @@ export default function InputActionsPanel() {
 
   // Auto-expand plan when first created (new list ID) or when an item is
   // checked off (viewState === 'update'). Auto-collapse after 5s.
-  // New list reveals are allowed even during processing.
   const currentListId = currentList?.id ?? null
 
   useEffect(() => {
@@ -114,7 +122,6 @@ export default function InputActionsPanel() {
 
     const isNewList = currentListId !== revealedListIdRef.current
     const isItemUpdate = viewState === 'update'
-    // Trigger on: new list (even during processing), or item checked off (even during processing)
     if (!isNewList && !isItemUpdate) return
 
     revealedListIdRef.current = currentListId
@@ -122,18 +129,13 @@ export default function InputActionsPanel() {
     // If already open by user, leave it — don't auto-collapse
     if (fullPlanExpanded && !autoExpandedRef.current) return
 
-    // Open it and start auto-collapse timer
+    // Open it and start auto-collapse timer.
+    // startAutoCollapseTimer() clears any prior timer, so no cleanup needed here.
     autoExpandedRef.current = true
     setFullPlanExpanded(true)
     startAutoCollapseTimer()
 
-    return () => {
-      if (autoCollapseTimerRef.current) {
-        clearTimeout(autoCollapseTimerRef.current)
-        autoCollapseTimerRef.current = null
-      }
-    }
-  }, [viewState, hasPlan, isProcessing, currentListId, fullPlanExpanded])
+  }, [viewState, hasPlan, currentListId])
 
   // When all items in the current list are completed, auto-switch to another
   // list that has undone items. If none exist, keep the completed list showing.
