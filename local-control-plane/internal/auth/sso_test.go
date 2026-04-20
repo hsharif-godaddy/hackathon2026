@@ -99,6 +99,7 @@ func TestHighRiskRoutes_ReadOnlyNotIncluded(t *testing.T) {
 		"GET /api/airo/v1/customers/me",
 		"GET /api/airo/v1/subscriptions/{subId}",
 		"GET /api/airo/v1/subscriptions/{subId}/systems/{sysId}/apps/{appId}",
+		"GET /api/airo/v1/subscriptions/{subId}/systems/{sysId}/apps/{appId}/domain-job",
 		"GET /api/airo/v1/jobs/{jobId}",
 		"GET /api/airo/v1/subscriptions/{subId}/systems/{sysId}/apps/{appId}/secrets",
 	}

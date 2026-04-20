@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { appFetch } from '@/lib/gasket-config';
 import { logger } from '@/lib/request-context';
+import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 
 /**
  * Domain to create for an app
@@ -102,7 +103,7 @@ export function useModifyDomains() {
           (typeof details === 'object' ? (details?.message ?? details?.error?.message) : details) ||
           errorData.error ||
           `Failed to modify domains: ${response.status}`;
-          
+
         const domainSpecificError: Record<string, string> = {};
         for (const d of payload.domainsToCreate ?? []) {
           domainSpecificError[d.fqdn.trim().toLowerCase()] = errorMessage;
@@ -130,6 +131,17 @@ export function useModifyDomains() {
       queryClient.invalidateQueries({ queryKey: ['app-details', siteId] });
 
       return data;
+    },
+    onSuccess: (data, variables) => {
+      const isConnect = (variables.payload.domainsToCreate?.length ?? 0) > 0;
+      const fqdn = variables.payload.domainsToCreate?.[0]?.fqdn?.trim().toLowerCase();
+      if (isConnect && fqdn) {
+        useDevelopPageStore.getState().setDomainJobInProgress(variables.siteId, {
+          fqdn,
+          startedAt: Date.now(),
+          jobStatus: data.status,
+        });
+      }
     },
   });
 }

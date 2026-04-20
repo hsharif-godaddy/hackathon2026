@@ -22,6 +22,7 @@ import {
   type AiroDomainCheckResponse,
   type AiroDomainDnsOwnershipResponse,
   type AiroDomainErrorResponse,
+  type AiroDomainJobResponse,
   type AiroGetCreditGrantsResponse,
   AiroHttpError,
   type AiroImageStatusResponse,
@@ -719,6 +720,25 @@ export class AiroMgmtClient {
       `/api/airo/v1/subscriptions/${subscriptionId}/systems/${systemId}/apps/${appId}/domain-error?fqdn=${encodeURIComponent(fqdn)}`,
       undefined,
       { logEvent: 'mgmt-airo.get-domain-error' }
+    );
+  }
+
+  /**
+   * Get domain modification job status for an FQDN
+   *
+   * GET /api/airo/v1/subscriptions/:subscriptionId/systems/:systemId/apps/:appId/domain-job?fqdn=<fqdn>
+   */
+  async getDomainJob(
+    subscriptionId: string,
+    systemId: string,
+    appId: string,
+    fqdn: string
+  ): Promise<AiroDomainJobResponse> {
+    return this.request<AiroDomainJobResponse>(
+      'GET',
+      `/api/airo/v1/subscriptions/${subscriptionId}/systems/${systemId}/apps/${appId}/domain-job?fqdn=${encodeURIComponent(fqdn)}`,
+      undefined,
+      { logEvent: 'mgmt-airo.get-domain-job' }
     );
   }
 

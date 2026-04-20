@@ -20,9 +20,11 @@ import { useDomainsQuery } from '@/hooks/useDomainsQuery';
 import { useDomainValidationQuery } from '@/hooks/useDomainValidationQuery';
 import { DomainMutationError, useModifyDomains } from '@/hooks/useModifyDomains';
 import { useTranslations } from '@/hooks/useTranslations';
+import { DomainStatus as ControlPlaneDomainStatus } from '@/lib/control-plane/types';
 import { shipAnalyticsLog } from '@/lib/logging';
 import { DomainMode, DomainStatus } from '@/lib/mgmt-airo/types';
 import { logger } from '@/lib/request-context';
+import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { useSiteStore } from "@/stores/useSiteStore";
 import { isBlockedAiroDomain, isCustomerDomain, sanitizeDomainInput, validateDomain } from '@/utils/domain';
 import { getDomainErrorMessage, translateDomainApiError } from '@/utils/domain-validation';
@@ -73,6 +75,10 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
     if (!currentAppId) return null;
     return state.getSite(currentAppId);
   });
+
+  const hasActiveDomainJob = useDevelopPageStore(
+    (s) => Boolean(currentAppId && s.domainJobsInProgress?.[currentAppId]),
+  );
 
   // Validate domain when user has entered a value
   const shouldValidate = debouncedDomain.length > 0;
@@ -382,172 +388,190 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
     !isPublished ||
     modifyDomainsMutation.isPending;
 
-  const getCustomDomainStatus = () => {
-    const connectedDomains = appDetails?.domains?.filter(d => d.domainType !== 'prefix') || [];
-
+  const customDomainSectionStatus = useMemo(() => {
+    const connectedDomains = appDetails?.domains?.filter((d) => d.domainType !== 'prefix') || [];
     if (connectedDomains.length === 0) return undefined;
 
-    const hasPending = connectedDomains.some(d => d.status === DomainStatus.PENDING);
+    if (hasActiveDomainJob) return Status.PENDING;
 
-    const hasActive = connectedDomains.some(d =>
-      d.status === DomainStatus.ACTIVE
-    );
+    if (connectedDomains.some((d) => d.status === DomainStatus.ACTIVE)) {
+      return Status.READY;
+    }
 
-    if (hasPending) return Status.PENDING;
-    if (hasActive) return Status.READY;
+    if (
+      connectedDomains.some(
+        (d) =>
+          d.status === ControlPlaneDomainStatus.FAILED ||
+          d.status === ControlPlaneDomainStatus.ERROR,
+      )
+    ) {
+      return Status.CRITICAL;
+    }
+
+    if (connectedDomains.some((d) => d.status === DomainStatus.PENDING)) {
+      return Status.PENDING;
+    }
+
     return undefined;
-  };
+  }, [appDetails, hasActiveDomainJob]);
 
   return (
     <SettingsSection
       title={t('builder_custom_domain_title')}
       description={t('builder_custom_domain_description')}
-      status={getCustomDomainStatus()}
+      status={customDomainSectionStatus}
       isCollapsible
     >
-      <Box gap="sm">
-        {isLoading && (
-          <>
-            {[1, 2, 3].map((i) => (
-              <div
-                key={`skeleton-${i}`}
-                className="bg-intents-ux-box-backgroundColor rounded-lg px-2 py-1"
-              >
-                <Skeleton size="md" width="30%" />
-              </div>
-            ))}
-          </>
-        )}
-        {error && (
-          <text.p className="text-intents-ux-text-destructive">
-            {getErrorMessage(error, t)}
+      <Box orientation="vertical" gap="sm" className="w-full">
+        {hasActiveDomainJob && (
+          <text.p className="text-sm italic text-intents-ux-text-secondaryColor">
+            {t('builder_domain_connection_timing_info')}
           </text.p>
         )}
-        {!isLoading && !error && domains.length === 0 && (
-          <text.p>{t('builder_custom_domain_no_domains')}</text.p>
-        )}
+        <Box gap="sm">
+          {isLoading && (
+            <>
+              {[1, 2, 3].map((i) => (
+                <div
+                  key={`skeleton-${i}`}
+                  className="bg-intents-ux-box-backgroundColor rounded-lg px-2 py-1"
+                >
+                  <Skeleton size="md" width="30%" />
+                </div>
+              ))}
+            </>
+          )}
+          {error && (
+            <text.p className="text-intents-ux-text-destructive">
+              {getErrorMessage(error, t)}
+            </text.p>
+          )}
+          {!isLoading && !error && domains.length === 0 && (
+            <text.p>{t('builder_custom_domain_no_domains')}</text.p>
+          )}
 
-        {/* Connected Customer Domains First */}
-        {!isLoading && !error && connectedCustomerDomains.map((entry, index) => {
-          const domainName = entry.customerDomain.domain || entry.customerDomain.name || '';
+          {/* Connected Customer Domains First */}
+          {!isLoading && !error && connectedCustomerDomains.map((entry, index) => {
+            const domainName = entry.customerDomain.domain || entry.customerDomain.name || '';
 
-          return (
-            <Box key={`connected-customer-domain-${index}-${domainName}`} gap="sm">
-              {/* Root domain */}
-              {(() => {
-                const rootAppDomain = entry.connectedDomains.find((d) => d.fqdn === domainName);
-                return (
-                  <DomainItem
-                    domain={entry.customerDomain}
-                    appDomain={rootAppDomain}
-                    siteId={currentAppId}
-                    onConnect={handleConnectDomain}
-                    onDisconnect={handleDisconnectDomain}
-                    isLoading={modifyDomainsMutation.isPending}
-                    disableConnect={shouldDisableAddingDomain}
-                    mutationError={modifyDomainsMutation.error}
-                  />
-                );
-              })()}
+            return (
+              <Box key={`connected-customer-domain-${index}-${domainName}`} gap="sm">
+                {/* Root domain */}
+                {(() => {
+                  const rootAppDomain = entry.connectedDomains.find((d) => d.fqdn === domainName);
+                  return (
+                    <DomainItem
+                      domain={entry.customerDomain}
+                      appDomain={rootAppDomain}
+                      siteId={currentAppId}
+                      onConnect={handleConnectDomain}
+                      onDisconnect={handleDisconnectDomain}
+                      isLoading={modifyDomainsMutation.isPending}
+                      disableConnect={shouldDisableAddingDomain}
+                      mutationError={modifyDomainsMutation.error}
+                    />
+                  );
+                })()}
 
-              {/* Connected subdomains */}
-              {entry.connectedDomains
-                .filter((d) => d.fqdn !== domainName)
-                .map((subdomain, subIndex) => (
-                  <DomainItem
-                    key={`connected-subdomain-${index}-${subIndex}-${subdomain.fqdn}`}
-                    domain={{
-                      domain: subdomain.fqdn,
-                      name: subdomain.fqdn,
-                    }}
-                    appDomain={subdomain}
-                    siteId={currentAppId}
-                    onConnect={handleConnectDomain}
-                    onDisconnect={handleDisconnectDomain}
-                    isLoading={modifyDomainsMutation.isPending}
-                    disableConnect={shouldDisableAddingDomain}
-                    isCustomDomain={true}
-                    mutationError={modifyDomainsMutation.error}
-                  />
-                ))}
-            </Box>
-          );
-        })}
+                {/* Connected subdomains */}
+                {entry.connectedDomains
+                  .filter((d) => d.fqdn !== domainName)
+                  .map((subdomain, subIndex) => (
+                    <DomainItem
+                      key={`connected-subdomain-${index}-${subIndex}-${subdomain.fqdn}`}
+                      domain={{
+                        domain: subdomain.fqdn,
+                        name: subdomain.fqdn,
+                      }}
+                      appDomain={subdomain}
+                      siteId={currentAppId}
+                      onConnect={handleConnectDomain}
+                      onDisconnect={handleDisconnectDomain}
+                      isLoading={modifyDomainsMutation.isPending}
+                      disableConnect={shouldDisableAddingDomain}
+                      isCustomDomain={true}
+                      mutationError={modifyDomainsMutation.error}
+                    />
+                  ))}
+              </Box>
+            );
+          })}
 
-        {/* Connected Custom Domains */}
-        {!isLoading && !error && connectedCustomDomains.map((appDomain, index) => (
-          <DomainItem
-            key={`connected-custom-domain-${index}-${appDomain.fqdn}`}
-            domain={{
-              domain: appDomain.fqdn,
-              name: appDomain.fqdn,
-            }}
-            appDomain={appDomain}
-            siteId={currentAppId}
-            onConnect={handleConnectDomain}
-            onDisconnect={handleDisconnectDomain}
-            isLoading={modifyDomainsMutation.isPending}
-            disableConnect={shouldDisableAddingDomain}
-            isCustomDomain={true}
-            mutationError={modifyDomainsMutation.error}
-          />
-        ))}
-
-        {showDomainDNS && (
-          <DomainDNS
-            domainDetails={pendingDomainDetails}
-          />
-        )}
-
-        {/* Available Custom Domains (FAILED/ERROR/INACTIVE states) */}
-        {!isLoading && !error && availableCustomDomains.map((appDomain, index) => (
-          <DomainItem
-            key={`available-custom-domain-${index}-${appDomain.fqdn}`}
-            domain={{
-              domain: appDomain.fqdn,
-              name: appDomain.fqdn,
-            }}
-            appDomain={appDomain}
-            siteId={currentAppId}
-            onConnect={handleConnectDomain}
-            onDisconnect={handleDisconnectDomain}
-            isLoading={modifyDomainsMutation.isPending}
-            disableConnect={shouldDisableAddingDomain}
-            isCustomDomain={true}
-            mutationError={modifyDomainsMutation.error}
-          />
-        ))}
-
-        {/* Available Customer Domains */}
-        {!isLoading && !error && availableCustomerDomains.map((entry, index) => {
-          const domainName = entry.customerDomain.domain || entry.customerDomain.name || '';
-
-          return (
+          {/* Connected Custom Domains */}
+          {!isLoading && !error && connectedCustomDomains.map((appDomain, index) => (
             <DomainItem
-              key={`available-customer-domain-${index}-${domainName}`}
-              domain={entry.customerDomain}
-              appDomain={undefined}
+              key={`connected-custom-domain-${index}-${appDomain.fqdn}`}
+              domain={{
+                domain: appDomain.fqdn,
+                name: appDomain.fqdn,
+              }}
+              appDomain={appDomain}
               siteId={currentAppId}
               onConnect={handleConnectDomain}
               onDisconnect={handleDisconnectDomain}
               isLoading={modifyDomainsMutation.isPending}
               disableConnect={shouldDisableAddingDomain}
+              isCustomDomain={true}
               mutationError={modifyDomainsMutation.error}
             />
-          );
-        })}
+          ))}
 
-        {/* Buy a New Domain Button */}
-        {!isLoading && !error && (
-          <Button
-            text={t('builder_custom_domain_button_buy')}
-            design="primary"
-            size="sm"
-            data-eid={generateClickEID(`settings.domains.buy_new_domain`)}
-            href={`https://www.${getRootDomain()}/domains`}
-            external
-          />
-        )}
+          {showDomainDNS && (
+            <DomainDNS
+              domainDetails={pendingDomainDetails}
+            />
+          )}
+
+          {/* Available Custom Domains (FAILED/ERROR/INACTIVE states) */}
+          {!isLoading && !error && availableCustomDomains.map((appDomain, index) => (
+            <DomainItem
+              key={`available-custom-domain-${index}-${appDomain.fqdn}`}
+              domain={{
+                domain: appDomain.fqdn,
+                name: appDomain.fqdn,
+              }}
+              appDomain={appDomain}
+              siteId={currentAppId}
+              onConnect={handleConnectDomain}
+              onDisconnect={handleDisconnectDomain}
+              isLoading={modifyDomainsMutation.isPending}
+              disableConnect={shouldDisableAddingDomain}
+              isCustomDomain={true}
+              mutationError={modifyDomainsMutation.error}
+            />
+          ))}
+
+          {/* Available Customer Domains */}
+          {!isLoading && !error && availableCustomerDomains.map((entry, index) => {
+            const domainName = entry.customerDomain.domain || entry.customerDomain.name || '';
+
+            return (
+              <DomainItem
+                key={`available-customer-domain-${index}-${domainName}`}
+                domain={entry.customerDomain}
+                appDomain={undefined}
+                siteId={currentAppId}
+                onConnect={handleConnectDomain}
+                onDisconnect={handleDisconnectDomain}
+                isLoading={modifyDomainsMutation.isPending}
+                disableConnect={shouldDisableAddingDomain}
+                mutationError={modifyDomainsMutation.error}
+              />
+            );
+          })}
+
+          {/* Buy a New Domain Button */}
+          {!isLoading && !error && (
+            <Button
+              text={t('builder_custom_domain_button_buy')}
+              design="primary"
+              size="sm"
+              data-eid={generateClickEID(`settings.domains.buy_new_domain`)}
+              href={`https://www.${getRootDomain()}/domains`}
+              external
+            />
+          )}
+        </Box>
       </Box>
 
       {/* Custom Domain Input */}

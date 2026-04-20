@@ -126,6 +126,13 @@ export type LaunchVideoResult =
   | { type: 'success'; url: string }
   | { type: 'error'; message: string }
 
+export interface DomainJobInProgress {
+  fqdn: string
+  startedAt: number
+  /** Job status from modify-domains API (`status` field). */
+  jobStatus?: string
+}
+
 // Helper to create default publish state
 const createDefaultPublishState = () => {
   const goLiveStatus = loadGoLiveStatus();
@@ -233,6 +240,10 @@ interface DevelopPageStore {
     featureSelections: { qa: boolean; security: boolean; video: boolean; marketing: boolean } | null
     marketingSelections: { seo: boolean; socialPosts: boolean; blogPost: boolean } | null
   }>
+
+  domainJobsInProgress: Record<string, DomainJobInProgress>
+  setDomainJobInProgress: (appId: string, job: DomainJobInProgress) => void
+  clearDomainJobInProgress: (appId: string) => void
 
   // Page loading orchestration
   loadingPhase: LoadingPhase
@@ -398,6 +409,8 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
 
     // Publish status state (per-app, keyed by appId)
     publishStates: {},
+
+    domainJobsInProgress: {},
 
     // Page loading orchestration state
     loadingPhase: 'idle',
@@ -658,6 +671,14 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         state.publishStates[appId] = createDefaultPublishState();
       }
       state.publishStates[appId].deploymentInProgressId = deploymentId;
+    }),
+
+    setDomainJobInProgress: (appId: string, job: DomainJobInProgress) => set((state) => {
+      state.domainJobsInProgress[appId] = job;
+    }),
+
+    clearDomainJobInProgress: (appId: string) => set((state) => {
+      delete state.domainJobsInProgress[appId];
     }),
     setPublishSuccess: (appId: string, showSuccess: boolean) => set((state) => {
       if (!state.publishStates[appId]) {

@@ -29,6 +29,7 @@ export type {
   AiroDomainDnsOwnershipResponse,
   AiroDomainError,
   AiroDomainErrorResponse,
+  AiroDomainJobResponse,
   AiroGetCreditGrantsResponse,
   AiroImageStatus,
   AiroImageStatusEntry,

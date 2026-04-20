@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -111,6 +112,81 @@ func (s *Server) ModifyDomains(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) GetDomainError(w http.ResponseWriter, r *http.Request) {
 	writeError(w, http.StatusNotFound, "no domain error found")
+}
+
+// Local dev simulation of GET .../domain-job (mgmt-airo). Cycles step labels then completes ~30s.
+var (
+	domainJobFirstSeen   = map[string]time.Time{}
+	domainJobFirstSeenMu sync.Mutex
+)
+
+const (
+	domainJobStubPhaseWindow = 7500 * time.Millisecond
+	domainJobStubComplete    = 30 * time.Second
+)
+
+var domainJobStubPhases = []map[string]any{
+	{"id": "mock-start", "label": "builder_domain_job_starting_connection", "status": "RUNNING"},
+	{"id": "mock-dns", "label": "builder_domain_job_configuring_dns", "status": "RUNNING"},
+	{"id": "mock-verify", "label": "builder_domain_job_verifying_domain", "status": "RUNNING"},
+	{"id": "mock-connect", "label": "builder_domain_job_connecting_domain", "status": "RUNNING"},
+}
+
+func domainJobStubCacheKey(vars map[string]string, fqdn string) string {
+	return fmt.Sprintf("%s:%s:%s:%s",
+		vars["subId"], vars["sysId"], vars["appId"],
+		strings.ToLower(strings.TrimSpace(fqdn)),
+	)
+}
+
+func (s *Server) GetDomainJob(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	fqdn := r.URL.Query().Get("fqdn")
+	if strings.TrimSpace(fqdn) == "" {
+		writeError(w, http.StatusBadRequest, "fqdn query parameter required")
+		return
+	}
+
+	key := domainJobStubCacheKey(vars, fqdn)
+	now := time.Now()
+
+	domainJobFirstSeenMu.Lock()
+	if _, ok := domainJobFirstSeen[key]; !ok {
+		domainJobFirstSeen[key] = now
+	}
+	started := domainJobFirstSeen[key]
+	domainJobFirstSeenMu.Unlock()
+
+	elapsed := now.Sub(started)
+	appID := vars["appId"]
+
+	if elapsed >= domainJobStubComplete {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id":            fmt.Sprintf("mock-domain-job-%s", appID),
+			"type":          "airo-modify-domains",
+			"overallStatus": "SUCCESS",
+			"dynamic": map[string]any{
+				"current":         nil,
+				"steps":           []any{},
+				"stepDefinitions": []any{},
+			},
+		})
+		return
+	}
+
+	idx := int(elapsed/domainJobStubPhaseWindow) % len(domainJobStubPhases)
+	current := domainJobStubPhases[idx]
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"id":            fmt.Sprintf("mock-domain-job-%s", appID),
+		"type":          "airo-modify-domains",
+		"overallStatus": "RUNNING",
+		"dynamic": map[string]any{
+			"current":         current,
+			"steps":           []any{},
+			"stepDefinitions": []any{},
+		},
+	})
 }
 
 // Image status stubs

@@ -9,6 +9,8 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { appFetch } from '@/lib/gasket-config';
 import { DomainMutationError, useModifyDomains } from './useModifyDomains';
 
+const setDomainJobInProgress = vi.fn();
+
 vi.mock('@/lib/gasket-config', () => ({
   appFetch: vi.fn(),
 }));
@@ -17,6 +19,14 @@ vi.mock('@/lib/request-context', () => ({
   logger: {
     info: vi.fn(),
     error: vi.fn(),
+  },
+}));
+
+vi.mock('@/stores/useDevelopPageStore', () => ({
+  useDevelopPageStore: {
+    getState: () => ({
+      setDomainJobInProgress,
+    }),
   },
 }));
 
@@ -63,6 +73,39 @@ describe('useModifyDomains', () => {
     });
 
     expect(result.current.data?.statusJobId).toBe('job-123');
+    expect(setDomainJobInProgress).toHaveBeenCalledWith('app-123', {
+      fqdn: 'new.example.com',
+      startedAt: expect.any(Number),
+      jobStatus: 'pending',
+    });
+  });
+
+  it('should not track domain job for delete-only success', async function deleteNoJobTrack() {
+    vi.mocked(appFetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        statusJobId: 'job-del',
+        status: 'pending',
+        message: 'Delete started',
+      }),
+    } as Response);
+
+    const { result } = renderHook(() => useModifyDomains(), {
+      wrapper: createWrapper(),
+    });
+
+    result.current.mutate({
+      siteId: 'app-123',
+      payload: {
+        domainsToDelete: [{ fqdn: 'gone.example.com' }],
+      },
+    });
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+
+    expect(setDomainJobInProgress).not.toHaveBeenCalled();
   });
 
   it('should throw DomainMutationError on non-ok response', async function throwsMutationError() {

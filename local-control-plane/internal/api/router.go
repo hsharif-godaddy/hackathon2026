@@ -105,6 +105,7 @@ func NewRouter(db *store.DB, jwtService *auth.JWTService, ssoMW *auth.SSOMiddlew
 	v1.HandleFunc("/subscriptions/{subId}/systems/{sysId}/apps/{appId}/domain/check", srv.CheckDomainAvailability).Methods("GET")
 	v1.HandleFunc("/subscriptions/{subId}/systems/{sysId}/apps/{appId}/domains", srv.ModifyDomains).Methods("PUT")
 	v1.HandleFunc("/subscriptions/{subId}/systems/{sysId}/apps/{appId}/domain-error", srv.GetDomainError).Methods("GET")
+	v1.HandleFunc("/subscriptions/{subId}/systems/{sysId}/apps/{appId}/domain-job", srv.GetDomainJob).Methods("GET")
 
 	// Jobs
 	v1.HandleFunc("/jobs/{jobId}/apps", srv.GetJobApps).Methods("GET")

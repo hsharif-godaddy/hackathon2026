@@ -25,6 +25,18 @@ vi.mock('@/hooks/useGasketConfig', () => ({
   }),
 }));
 
+vi.mock('@/hooks/useDomainJobPolling', () => ({
+  domainJobQueryKey: (siteId: string, fqdn: string) =>
+    ['domain-job', siteId, fqdn.trim().toLowerCase()] as const,
+  useDomainJobPolling: () => ({
+    labelKey: null,
+    status: null,
+    overallStatus: null,
+    isLoading: false,
+    error: null,
+  }),
+}));
+
 vi.mock('@/utils/instrumentation', () => ({
   generateClickEID: vi.fn((id: string) => `${id}.click`),
 }));

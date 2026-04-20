@@ -421,6 +421,20 @@ export interface AiroDomainErrorResponse {
 }
 
 /**
+ * Domain modification job status (mgmt-airo domain-job)
+ */
+export interface AiroDomainJobResponse {
+  id: string;
+  type: string;
+  overallStatus: string;
+  dynamic: {
+    current: { id?: string; label?: string; status?: string } | null;
+    steps: unknown[];
+    stepDefinitions: unknown[];
+  };
+}
+
+/**
  * Response from domain DNS ownership check (mgmt-airo)
  */
 export interface AiroDomainDnsOwnershipResponse {

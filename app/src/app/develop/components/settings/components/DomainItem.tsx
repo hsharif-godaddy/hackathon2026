@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useQueryClient } from '@tanstack/react-query';
 import Box from "@ux/box";
 import Button from "@ux/button";
 import Card from "@ux/card";
@@ -11,6 +12,7 @@ import Tag from "@ux/tag";
 import text from "@ux/text";
 
 import type { AppDomain } from '@/hooks/useAppDetails';
+import { domainJobQueryKey, useDomainJobPolling } from '@/hooks/useDomainJobPolling';
 import type { Domain } from '@/hooks/useDomainsQuery';
 import { useGasketConfig } from '@/hooks/useGasketConfig';
 import { DomainMutationError } from '@/hooks/useModifyDomains';
@@ -20,6 +22,8 @@ import type { AiroDomainErrorResponse } from '@/lib/mgmt-airo';
 import { CdnStatus } from "@/lib/mgmt-airo/types";
 import { logger } from '@/lib/request-context';
 import { Popover, PopoverContent, PopoverTrigger } from "@/lib/shadcn/popover"
+import { defaultMessageForDomainJobLabelKey } from '@/lib/translations/domain-job-label-defaults';
+import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { translateDomainApiError } from '@/utils/domain-validation';
 import { generateClickEID } from '@/utils/instrumentation';
 import DomainConnectConfirmation from './DomainConnectConfirmation';
@@ -52,6 +56,20 @@ function getStatusLabel(appDomain: AppDomain | undefined, t: ReturnType<typeof u
   return appDomain.status;
 }
 
+function getConnectedDomainTagLabel(
+  appDomain: AppDomain | undefined,
+  hasInProgressJobFromStore: boolean,
+  t: ReturnType<typeof useTranslations>,
+): string {
+  if (hasInProgressJobFromStore) {
+    return t('builder_domain_attach_connecting');
+  }
+  if (!appDomain) {
+    return t('builder_domain_status_not_connected');
+  }
+  return getStatusLabel(appDomain, t);
+}
+
 export default function DomainItem({
   domain,
   appDomain,
@@ -74,13 +92,78 @@ export default function DomainItem({
   mutationError?: Error | null;
 }) {
   const t = useTranslations();
+  const queryClient = useQueryClient();
   const { config } = useGasketConfig();
   const [open, setOpen] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [domainError, setDomainError] = useState<AiroDomainErrorResponse | null>(null);
   const domainName = domain.domain || domain.name || '';
+  /** True when app details include this domain (any status: PENDING, ACTIVE, …). Not the same as “ACTIVE only”. */
   const isConnected = !!appDomain;
-  const statusLabel = getStatusLabel(appDomain, t);
+  const domainJobForApp = useDevelopPageStore((s) => s.domainJobsInProgress[siteId]);
+  const activeJobForDomain =
+    domainJobForApp && domainJobForApp.fqdn === domainName.trim().toLowerCase()
+      ? domainJobForApp
+      : null;
+  const {
+    labelKey: polledLabelKey,
+    status: polledStatus,
+    overallStatus: polledOverallStatus,
+    error: jobPollError,
+  } = useDomainJobPolling(
+    siteId,
+    domainName,
+    Boolean(activeJobForDomain),
+  );
+
+  const translatedPolledLabel = polledLabelKey
+    ? t(
+        polledLabelKey,
+        undefined,
+        defaultMessageForDomainJobLabelKey(polledLabelKey),
+      )
+    : null;
+
+  const hasActiveJob = Boolean(activeJobForDomain);
+  const polledJobSuccess =
+    !jobPollError &&
+    (polledStatus === 'SUCCESS' || polledOverallStatus === 'SUCCESS');
+  const showDomainStatusTag =
+    isConnected || hasActiveJob || polledJobSuccess;
+
+  const connectedTagLabel =
+    !jobPollError &&
+    polledLabelKey &&
+    translatedPolledLabel?.trim() &&
+    (hasActiveJob || polledJobSuccess)
+      ? translatedPolledLabel.trim()
+      : getConnectedDomainTagLabel(appDomain, Boolean(activeJobForDomain), t);
+
+  useEffect(() => {
+    if (appDomain?.status !== DomainStatus.ACTIVE) return;
+    queryClient.removeQueries({ queryKey: domainJobQueryKey(siteId, domainName) });
+  }, [appDomain?.status, queryClient, siteId, domainName]);
+
+  // Clear in-progress job when poll reports terminal job status or when app domain reaches a terminal status.
+  useEffect(() => {
+    function clearJobWhenTerminal() {
+      if (!activeJobForDomain) return;
+      if (
+        polledStatus === 'SUCCESS' ||
+        polledStatus === 'FAILED' ||
+        polledOverallStatus === 'SUCCESS' ||
+        polledOverallStatus === 'FAILED'
+      ) {
+        useDevelopPageStore.getState().clearDomainJobInProgress(siteId);
+        return;
+      }
+      if (!appDomain) return;
+      const { status } = appDomain;
+      if (status !== DomainStatus.ACTIVE && status !== DomainStatus.FAILED) return;
+      useDevelopPageStore.getState().clearDomainJobInProgress(siteId);
+    }
+    clearJobWhenTerminal();
+  }, [siteId, activeJobForDomain, appDomain?.status, polledStatus, polledOverallStatus]);
 
   useEffect(() => {
     const abortController = new AbortController();
@@ -197,16 +280,21 @@ export default function DomainItem({
           ) : (
             <text.p>{domainName}</text.p>
           )}
-          {isConnected && (
+          {showDomainStatusTag && (
             <Tag
               emphasis={
-                appDomain?.status === DomainStatus.ACTIVE
-                  ? "success"
-                  : appDomain?.status === DomainStatus.FAILED || appDomain?.status === DomainStatus.ERROR
-                    ? "critical"
-                    : "info"}
+                polledStatus === 'SUCCESS' ||
+                  polledOverallStatus === 'SUCCESS' ||
+                  appDomain?.status === DomainStatus.ACTIVE
+                  ? 'success'
+                  : polledStatus === 'FAILED' ||
+                      polledOverallStatus === 'FAILED' ||
+                      appDomain?.status === DomainStatus.FAILED ||
+                      appDomain?.status === DomainStatus.ERROR
+                    ? 'critical'
+                    : 'info'}
             >
-              {statusLabel}
+              {connectedTagLabel}
             </Tag>
           )}
         </Box>
