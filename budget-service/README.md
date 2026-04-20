@@ -8,6 +8,22 @@ HTTP API for budgets, LLM sessions, session spend lines, session reports (reconc
 - **Database:** Optional. If `DATABASE_URL` is unset, `Store` is nil: `/health` reports DB unconfigured; budget/product/webhook handlers return 503 on write paths.
 - **Local E2E:** [docs/local-e2e.md](docs/local-e2e.md) — Docker profile `e2e` (webhook sink), `make e2e-local`, optional `make dev-budget-ui` (proxied CRUD UI). Not used in production.
 
+## Documentation
+
+**Security and architecture**
+
+- [Threat model](docs/threat-model.md) — STRIDE summary, assets, trust boundaries, JWT vs row-level access.
+- [Service architecture](docs/service-architecture.md) — context diagram (Mermaid).
+- [Database schema (summary)](docs/database-schema.md) — table inventory and sensitivity; full detail in [database-design.md](docs/database-design.md).
+- [Endpoint data flow](docs/endpoint-data-flow.md) — middleware path and endpoint-to-table map.
+
+**Reference**
+
+- [budget-service-spec.md](docs/budget-service-spec.md) — flows, numbers, REST behavior.
+- [Webhooks](docs/webhooks.md) — events, outbox, retries, URL rules.
+- [Local E2E](docs/local-e2e.md), [DevOps](docs/devops.md).
+- OpenAPI: [`internal/openapi/openapi.yaml`](internal/openapi/openapi.yaml) (`GET /openapi.yaml`, `GET /swagger/`).
+
 ## Observability
 
 - **Logs:** Structured JSON to **stdout** via `log/slog` (same idea as `knowledge-service`). Default level is **info**. The logger is configured from **`LOG_LEVEL`** before config load so early failures (e.g. invalid env) still emit JSON on stdout.
