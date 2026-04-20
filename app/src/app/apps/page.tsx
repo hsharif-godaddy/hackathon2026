@@ -15,6 +15,7 @@ import { ProtectedRoute } from '@/components/auth'
 import { DevelopmentAdminSection } from '@/components/development'
 import AppInactivityAlert from '@/components/layout/AppInactivityAlert'
 import Header from '@/components/layout/Header'
+import { useAuth } from '@/hooks/useAuth'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { SiteStatus } from '@/lib/control-plane/types'
@@ -25,10 +26,15 @@ import { logImpressionEvent } from '@/utils/instrumentation'
 function SitesPageContent() {
   const t = useTranslations();
   const router = useRouter();
+  const { getUserInfo } = useAuth();
   const [adminActionLoading, setAdminActionLoading] = useState<string | null>(null)
   const [isAcceptTransferOpen, setIsAcceptTransferOpen] = useState(false)
   const [appsPage, setAppsPage] = useState(1)
   const { data: isTransferEnabled } = useSwitchboard('appbuilder-transfer-ownership')
+
+  const { shopperId } = getUserInfo();
+  // TLA (Three Letter Account) shopperIds have 3 or fewer characters
+  const isTLA = typeof shopperId === 'string' && shopperId.length <= 3;
 
   const sites = useSitesStore((state) => state.allSites)
   const isLoading = useSitesStore((state) => state.isLoadingAll)
@@ -157,7 +163,7 @@ function SitesPageContent() {
         <div className="grid gap-2 md:gap-3 md:grid-cols-2 xl:grid-cols-3">
           <AppCardEmptyState />
           <TransferAppCard
-            isTransferEnabled={isTransferEnabled}
+            isTransferEnabled={isTransferEnabled && !isTLA}
             onAcceptTransfer={() => setIsAcceptTransferOpen(true)}
           />
           {totalSites > 0 && paginatedSites.map((site) => (
@@ -182,7 +188,7 @@ function SitesPageContent() {
         )}
       </main>
 
-      {isTransferEnabled && isAcceptTransferOpen && (
+      {isTransferEnabled && !isTLA && isAcceptTransferOpen && (
         <AcceptTransferDialog onClose={() => setIsAcceptTransferOpen(false)} />
       )}
     </div>

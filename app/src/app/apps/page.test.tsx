@@ -101,6 +101,12 @@ vi.mock('@/hooks/useSwitchboard', () => ({
   useSwitchboard: vi.fn(() => ({ data: true, isLoading: false, error: null })),
 }));
 
+vi.mock('@/hooks/useAuth', () => ({
+  useAuth: vi.fn(() => ({
+    getUserInfo: () => ({ shopperId: '123456789' }),
+  })),
+}));
+
 vi.mock('@/lib/features', () => ({
   isFeatureEnabled: {
     codeEditor: vi.fn().mockReturnValue(false),
@@ -399,6 +405,19 @@ describe('Sites Page', () => {
   describe('hides transfer UI when flag is disabled', () => {
     it('should not show transfer card when flag is off', () => {
       vi.mocked(useSwitchboard).mockReturnValue({ data: false, isLoading: false, error: null } as ReturnType<typeof useSwitchboard>);
+
+      renderWithProviders(<Sites />);
+
+      expect(screen.queryByTestId('transfer-app-card')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('hides transfer UI for TLA accounts', () => {
+    it('should not show transfer card when user is a TLA (shopperId <= 3 chars)', async () => {
+      const { useAuth } = await import('@/hooks/useAuth');
+      vi.mocked(useAuth).mockReturnValue({
+        getUserInfo: () => ({ shopperId: 'abc' }),
+      } as ReturnType<typeof useAuth>);
 
       renderWithProviders(<Sites />);
 
