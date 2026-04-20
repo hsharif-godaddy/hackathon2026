@@ -41,6 +41,7 @@ Object.defineProperty(navigator, 'clipboard', {
 });
 
 const mockPush = vi.fn();
+const mockPrefetch = vi.fn();
 const mockUseSwitchboard = vi.fn();
 const mockUseSubscription = vi.fn();
 const mockUseAuthContext = vi.fn();
@@ -48,7 +49,7 @@ const mockLogClickEvent = vi.fn(() => vi.fn());
 
 vi.mock('next/navigation', () => ({
   usePathname: () => '/develop',
-  useRouter: () => ({ ...mockRouter(), push: mockPush }),
+  useRouter: () => ({ ...mockRouter(), push: mockPush, prefetch: mockPrefetch }),
 }));
 
 vi.mock('@/utils/instrumentation', () => ({
@@ -436,6 +437,59 @@ describe('UserMenu', function userMenuTests() {
       await user.click(screen.getByText('builder_user_menu_give_feedback'));
 
       expect(removeItemSpy).not.toHaveBeenCalledWith(expect.stringContaining('airo-feedback-shown'));
+    });
+  });
+
+  describe('route prefetching', function prefetchTests() {
+    it('should prefetch /apps when authenticated', function prefetchApps() {
+      renderWithProviders(<UserMenu location="develop" />);
+
+      expect(mockPrefetch).toHaveBeenCalledWith('/apps');
+    });
+
+    it('should not prefetch /apps when unauthenticated', function noPrefetchWhenUnauthed() {
+      mockUseAuthContext.mockReturnValue(mockAuthContext({ isAuthenticated: false, isAuthDisabled: false }));
+
+      renderWithProviders(<UserMenu location="develop" />);
+
+      expect(mockPrefetch).not.toHaveBeenCalledWith('/apps');
+    });
+
+    it('should prefetch /manage-plan when manage plan is available', function prefetchManagePlan() {
+      mockUseSwitchboard.mockReturnValue({ data: true, isLoading: false });
+      mockUseSubscription.mockReturnValue({
+        data: { id: 'sub-1', builderEntitlementId: 'entitlement-123' },
+        isLoading: false,
+      });
+
+      renderWithProviders(<UserMenu location="develop" />);
+
+      expect(mockPrefetch).toHaveBeenCalledWith('/manage-plan');
+    });
+
+    it('should not prefetch /manage-plan when feature flag is off', function noPrefetchManagePlanFlagOff() {
+      mockUseSwitchboard.mockReturnValue({ data: false, isLoading: false });
+      mockUseSubscription.mockReturnValue({
+        data: { id: 'sub-1', builderEntitlementId: 'entitlement-123' },
+        isLoading: false,
+      });
+
+      renderWithProviders(<UserMenu location="develop" />);
+
+      expect(mockPrefetch).not.toHaveBeenCalledWith('/manage-plan');
+    });
+
+    it('should not prefetch /manage-plan when unauthenticated even if showManagePlan would be true', function noPrefetchManagePlanUnauthed() {
+      mockUseAuthContext.mockReturnValue(mockAuthContext({ isAuthenticated: false, isAuthDisabled: false }));
+      mockUseSwitchboard.mockReturnValue({ data: true, isLoading: false });
+      mockUseSubscription.mockReturnValue({
+        data: { id: 'sub-1', builderEntitlementId: 'entitlement-123' },
+        isLoading: false,
+      });
+
+      renderWithProviders(<UserMenu location="develop" />);
+
+      expect(mockPrefetch).not.toHaveBeenCalledWith('/manage-plan');
     });
   });
 });

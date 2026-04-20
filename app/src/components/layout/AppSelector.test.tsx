@@ -9,7 +9,7 @@ import { screen } from '@testing-library/react';
 import { renderWithProviders } from '@/tests/test-utils';
 import AppSelector from './AppSelector';
 
-const mockRouter = { push: vi.fn() };
+const mockRouter = { push: vi.fn(), prefetch: vi.fn() };
 const mockParams = { id: undefined };
 const mockAuthContext = {
   isAuthenticated: true,
@@ -287,5 +287,53 @@ describe('AppSelector', () => {
     trigger.click();
 
     expect(container.querySelector('[data-testid="app-item"]')).not.toBeInTheDocument();
+  });
+
+  describe('route prefetching', () => {
+    it('should prefetch /apps and / routes', () => {
+      renderWithProviders(<AppSelector />);
+
+      expect(mockRouter.prefetch).toHaveBeenCalledWith('/apps');
+      expect(mockRouter.prefetch).toHaveBeenCalledWith('/');
+    });
+
+    it('should prefetch /develop route using the first site id', () => {
+      mockSites.sites = [
+        {
+          id: 'first-site',
+          name: 'First App',
+          status: 'running',
+          created_at: '2024-01-01T00:00:00Z',
+          updated_at: '2024-01-01T00:00:00Z',
+        },
+        {
+          id: 'second-site',
+          name: 'Second App',
+          status: 'running',
+          created_at: '2024-01-02T00:00:00Z',
+          updated_at: '2024-01-02T00:00:00Z',
+        },
+      ];
+
+      renderWithProviders(<AppSelector />);
+
+      expect(mockRouter.prefetch).toHaveBeenCalledWith('/develop/first-site');
+    });
+
+    it('should not prefetch /develop route when there are no sites', () => {
+      mockSites.sites = [];
+
+      renderWithProviders(<AppSelector />);
+
+      expect(mockRouter.prefetch).not.toHaveBeenCalledWith(expect.stringContaining('/develop/'));
+    });
+
+    it('should not prefetch any routes when not authenticated', () => {
+      mockAuthContext.isAuthenticated = false;
+
+      renderWithProviders(<AppSelector />);
+
+      expect(mockRouter.prefetch).not.toHaveBeenCalled();
+    });
   });
 });

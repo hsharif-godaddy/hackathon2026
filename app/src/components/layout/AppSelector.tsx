@@ -49,6 +49,19 @@ export default function AppSelector({ location }: { location?: string }) {
     }
   }, [location, isLoadingSites, sites.length]);
 
+  // Prefetch routes the user is likely to navigate to from this selector.
+  // Next.js shares the bundle across all /develop/[id] routes, so one call
+  // warms the cache for every app in the list.
+  const firstSiteId = sites[0]?.id;
+  useEffect(function prefetchSelectorRoutes() {
+    if (!isAuthenticated) return;
+    router.prefetch('/apps');
+    router.prefetch('/');
+    if (firstSiteId) {
+      router.prefetch(`/develop/${firstSiteId}`);
+    }
+  }, [router, firstSiteId, isAuthenticated]);
+
   const isLoading = isLoadingAuth || isLoadingSites;
 
   // Show nothing while auth is still loading - wait for definitive auth state.

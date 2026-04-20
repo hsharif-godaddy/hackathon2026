@@ -1,7 +1,7 @@
 'use client';
 
 import { usePathname, useRouter } from 'next/navigation';
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Button from '@ux/button';
 import AppsIcon from '@ux/icon/apps';
 import CommentsIcon from '@ux/icon/comments';
@@ -112,6 +112,15 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
   };
 
   const showManagePlan = !!(isManagePlanEnabled && activeSubscription?.builderEntitlementId);
+
+  useEffect(function prefetchMenuRoutes() {
+    if (isAuthenticated) {
+      router.prefetch('/apps');
+      if (showManagePlan) {
+        router.prefetch('/manage-plan');
+      }
+    }
+  }, [router, isAuthenticated, showManagePlan]);
 
   const sections: MenuItemConfig[][] = useMemo(() => {
     if (!isAuthenticated) {

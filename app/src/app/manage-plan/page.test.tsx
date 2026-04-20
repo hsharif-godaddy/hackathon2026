@@ -14,14 +14,16 @@ import { GrantType, SubscriptionPlan } from '@/types/credits';
 import ManagePlan from './page';
 
 const mockReplace = vi.fn();
+const mockPrefetch = vi.fn();
 const mockUseSwitchboard = vi.fn();
 const mockUseActiveSubscription = vi.fn();
 const mockUseCreditGrants = vi.fn();
 const mockSetAutoRenewMutate = vi.fn();
 const mockSwitchboardFlags: Record<string, boolean | undefined> = {};
+const mockUseSites = vi.fn();
 
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ ...mockRouter(), replace: mockReplace }),
+  useRouter: () => ({ ...mockRouter(), replace: mockReplace, prefetch: mockPrefetch }),
 }));
 
 vi.mock('@/components/auth', () => ({
@@ -122,11 +124,7 @@ vi.mock('@/utils/getRootDomain', () => ({
 }));
 
 vi.mock('@/stores/useSitesStore', () => ({
-  useSites: () => ({
-    sites: [],
-    isLoading: false,
-    error: null,
-  }),
+  useSites: (...args: unknown[]) => mockUseSites(...args),
   useSitesStore: vi.fn((selector) => {
     const state = {
       allSites: [],
@@ -194,6 +192,7 @@ describe('ManagePlan', function managePlanTests() {
   beforeEach(function setup() {
     vi.clearAllMocks();
     mockReplace.mockClear();
+    mockUseSites.mockReturnValue({ sites: [], isLoading: false, error: null });
     // Reset switchboard flags
     Object.keys(mockSwitchboardFlags).forEach((key) => delete mockSwitchboardFlags[key]);
     // Default mock for autoRenew status
@@ -1035,6 +1034,53 @@ describe('ManagePlan', function managePlanTests() {
       await waitFor(function checkNoAlert() {
         expect(screen.queryByText('builder_manageplan_downgrade_plan_title')).not.toBeInTheDocument();
       });
+    });
+  });
+
+  describe('prefetches develop route', function prefetchTests() {
+    beforeEach(function setupPrefetchTests() {
+      mockUseSwitchboard.mockReturnValue({ data: true, isLoading: false });
+    });
+
+    it('should prefetch /develop route using the first site id', async function prefetchFirstSite() {
+      mockUseActiveSubscription.mockReturnValue({
+        data: { id: 'sub-1', plan: SubscriptionPlan.Starter },
+        isLoading: false,
+        isError: false,
+      });
+      mockUseCreditGrants.mockReturnValue({
+        data: [createMonthlyGrant()],
+        isLoading: false,
+        isError: false,
+      });
+      mockUseSites.mockReturnValue({
+        sites: [{ id: 'first-site' }, { id: 'second-site' }],
+        isLoading: false,
+        error: null,
+      });
+
+      renderWithProviders(<ManagePlan />);
+
+      await waitFor(function checkPrefetch() {
+        expect(mockPrefetch).toHaveBeenCalledWith('/develop/first-site');
+      });
+    });
+
+    it('should not prefetch when there are no sites', function noPrefetchEmptySites() {
+      mockUseActiveSubscription.mockReturnValue({
+        data: { id: 'sub-1', plan: SubscriptionPlan.Starter },
+        isLoading: false,
+        isError: false,
+      });
+      mockUseCreditGrants.mockReturnValue({
+        data: [createMonthlyGrant()],
+        isLoading: false,
+        isError: false,
+      });
+
+      renderWithProviders(<ManagePlan />);
+
+      expect(mockPrefetch).not.toHaveBeenCalled();
     });
   });
 });

@@ -15,8 +15,9 @@ import { createMockSite, mockRouter } from '@/tests/mocks';
 import { renderWithProviders } from '@/tests/test-utils';
 import Sites from './page';
 
+const mockPrefetch = vi.fn();
 vi.mock('next/navigation', () => ({
-  useRouter: () => mockRouter(),
+  useRouter: () => ({ ...mockRouter(), prefetch: mockPrefetch }),
 }));
 
 vi.mock('@/components/auth', () => ({
@@ -414,6 +415,32 @@ describe('Sites Page', () => {
       await waitFor(() => {
         expect(logImpressionEvent).toHaveBeenCalledWith('apps.page.view');
       });
+    });
+  });
+
+  describe('prefetches develop route', () => {
+    it('should prefetch /develop route using the first site id', async () => {
+      useSitesStore.setState({
+        allSites: [
+          createMockSite({ id: 'first-app' }),
+          createMockSite({ id: 'second-app' }),
+        ],
+      });
+
+      renderWithProviders(<Sites />);
+
+      await waitFor(() => {
+        expect(mockPrefetch).toHaveBeenCalledWith('/develop/first-app');
+      });
+      expect(mockPrefetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('should not prefetch when there are no sites', () => {
+      useSitesStore.setState({ allSites: [] });
+
+      renderWithProviders(<Sites />);
+
+      expect(mockPrefetch).not.toHaveBeenCalled();
     });
   });
 });

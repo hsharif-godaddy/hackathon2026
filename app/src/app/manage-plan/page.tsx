@@ -122,6 +122,7 @@ function CreditsPaywallFallback({
 
 function ManagePlanContent() {
   const t = useTranslations();
+  const router = useRouter();
   const gasketData = useGasketData();
   const locale = gasketData?.intl?.locale;
   const rootDomain = getRootDomain() || "godaddy.com";
@@ -194,6 +195,15 @@ function ManagePlanContent() {
   const { sites, isLoading: isSitesLoading } = useSites({
     enabled: isUnpublishEnabled === true,
   });
+
+  // Next.js shares the route bundle across all /develop/[id] routes,
+  // so one prefetch warms the cache for every row.
+  const firstSiteId = sites?.[0]?.id;
+  useEffect(function prefetchDevelopRoute() {
+    if (firstSiteId) {
+      router.prefetch(`/develop/${firstSiteId}`);
+    }
+  }, [router, firstSiteId]);
 
   const { totalCreditsSpent, totalCreditsMax } = useMemo(
     function calculateTotalCredits() {

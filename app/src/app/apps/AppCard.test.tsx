@@ -959,6 +959,20 @@ describe('AppCardEmptyState', () => {
 
     expect(screen.getByText('builder_apps_empty_create')).toBeInTheDocument();
   });
+
+  it('should have data-eid for analytics tracking', () => {
+    renderWithProviders(<AppCardEmptyState />);
+
+    expect(screen.getByTestId('create-app-card')).toHaveAttribute('data-eid', 'apps.app_list.new_app.click');
+  });
+
+  it('should navigate to home page when clicked', async () => {
+    const { user } = renderWithProviders(<AppCardEmptyState />);
+
+    await user.click(screen.getByTestId('create-app-card'));
+
+    expect(mockRouterInstance.push).toHaveBeenCalledWith('/');
+  });
 });
 
 describe('TransferAppCard', () => {

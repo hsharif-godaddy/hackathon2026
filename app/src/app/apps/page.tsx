@@ -1,5 +1,6 @@
 'use client'
 
+import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Box from '@ux/box'
 import Button from '@ux/button'
@@ -23,6 +24,7 @@ import { logImpressionEvent } from '@/utils/instrumentation'
 
 function SitesPageContent() {
   const t = useTranslations();
+  const router = useRouter();
   const [adminActionLoading, setAdminActionLoading] = useState<string | null>(null)
   const [isAcceptTransferOpen, setIsAcceptTransferOpen] = useState(false)
   const [appsPage, setAppsPage] = useState(1)
@@ -37,6 +39,15 @@ function SitesPageContent() {
 
   const totalSites = sites ? sites.length : 0
   const runningCount = sites ? sites.filter(site => site.status === SiteStatus.Running).length : 0
+
+  // Next.js shares the route bundle across all /develop/[id] routes,
+  // so one prefetch warms the cache for every card.
+  const firstSiteId = sites?.[0]?.id;
+  useEffect(function prefetchDevelopRoute() {
+    if (firstSiteId) {
+      router.prefetch(`/develop/${firstSiteId}`);
+    }
+  }, [router, firstSiteId]);
 
   const appsTotalPages = useMemo(
     () => Math.max(1, Math.ceil(Math.max(0, totalSites) / APPS_GRID_PAGE_SIZE)),

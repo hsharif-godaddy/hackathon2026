@@ -718,6 +718,7 @@ export const AppCardEmptyState = () => {
     <Card className="items-center justify-center">
       <button
         data-testid="create-app-card"
+        data-eid={generateClickEID('apps.app_list.new_app')}
         onClick={() => router.push(`/`)}
         className="w-full h-full flex flex-col gap-1 items-center justify-center cursor-pointer"
       >
