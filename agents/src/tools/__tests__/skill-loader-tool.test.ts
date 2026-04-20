@@ -403,5 +403,13 @@ whenToUse:
       // No "When to use" for auth since it has no whenToUse
       expect(section).not.toContain('**auth**: Add authentication *When to use:*');
     });
+
+    it('should include quick intent map in preamble', function includesIntentMap() {
+      const section = buildSkillsPromptSection([
+        { name: 'test', description: 'Test skill' },
+      ]);
+
+      expect(section).toContain('Quick intent map');
+    });
   });
 });

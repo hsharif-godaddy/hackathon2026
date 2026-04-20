@@ -1,7 +1,7 @@
 ---
 name: commerce
 description: Manage GoDaddy Commerce store data and operations via APIs (auth, store setup, catalog, products/SKUs, pricing, inventory, media, and orders). UI rendering belongs to commerce-storefront and commerce-one-time-payment skills.
-whenToUse: Trigger for requests like "build product catalog", "set up shop/store", "add products", "add cart/checkout", or "connect GoDaddy Commerce" whenever data should come from GoDaddy Commerce APIs. ALWAYS load this skill first for ANY store/catalog/product operation (even when the user starts with UI wording), then load commerce-storefront or commerce-one-time-payment for UI pages.
+whenToUse: Trigger for ANY e-commerce intent — "create online store", "sell online", "sell products", "e-commerce site", "I want a shop" — as well as specific requests like "build product catalog", "set up shop/store", "add products", "add cart/checkout", or "connect GoDaddy Commerce". ALWAYS load this skill first for ANY store/catalog/product/selling operation (even when the user starts with UI or high-level wording), then load commerce-storefront or commerce-one-time-payment for UI pages.
 ---
 
 # Commerce Management Skill

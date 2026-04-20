@@ -1,7 +1,7 @@
 ---
 name: seo
 description: Intelligent SEO analysis and optimization for websites
-whenToUse: User wants to improve search engine rankings or SEO analysis. Phrases like "optimize SEO", "improve search rankings", "help with SEO", "check my SEO".
+whenToUse: User wants to improve search engine visibility or SEO. Phrases like "optimize SEO", "improve search rankings", "help with SEO", "check my SEO", "meta tags", "get found on Google", "search visibility", "sitemap", "SEO audit".
 ---
 
 # SEO Analysis & Optimization Skill
@@ -21,6 +21,11 @@ whenToUse: User wants to improve search engine rankings or SEO analysis. Phrases
 - "Help with SEO"
 - "Analyze my site for SEO"
 - "Check my SEO"
+- "Add meta tags"
+- "Get found on Google"
+- "Improve search visibility"
+- "Generate a sitemap"
+- "SEO audit"
 
 ---
 

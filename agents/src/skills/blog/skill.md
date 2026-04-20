@@ -1,7 +1,7 @@
 ---
 name: blog
 description: Install and activate the blog system (routes, pages, components)
-whenToUse: User wants a blog, blog section, or blog feature on their site. Phrases like "add a blog", "create a blog", "set up a blog", "I want a blog feature".
+whenToUse: User wants a blog, news section, or articles feature on their site. Phrases like "add a blog", "create a blog", "set up a blog", "I want a blog feature", "news section", "articles page", "post articles", "content section for articles".
 ---
 
 # Blog System Setup Skill
@@ -23,6 +23,10 @@ whenToUse: User wants a blog, blog section, or blog feature on their site. Phras
 - "Create a blog"
 - "Set up a blog"
 - "I want a blog feature"
+- "Add a news section"
+- "Articles page"
+- "Post articles on my site"
+- "Content section for articles"
 
 **What this skill does:**
 

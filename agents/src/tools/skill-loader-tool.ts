@@ -139,9 +139,13 @@ export function buildSkillsPromptSection(skills: SkillListItem[]): string {
     })
     .join('\n');
 
+  // NOTE: The quick intent map below is a hardcoded routing hint for the LLM.
+  // Update it when adding, removing, or renaming skills that handle high-level user intents.
   return `## Available Skills
 
 **IMPORTANT: Before implementing any feature, check this list for a matching skill.** Skills provide battle-tested templates, patterns, and specialized tools. If a skill matches the user's request, load it immediately with \`skill({ action: "load", skill: "name" })\` and follow its instructions.
+
+**Quick intent map:** online store/e-commerce/sell → commerce | booking/scheduling → online-appointments | blog/articles/news → blog | payments/buy-now → commerce-one-time-payment | login/accounts → authentication | multi-language → i18n | SEO/search rankings → seo
 
 ${skillsList}`;
 }

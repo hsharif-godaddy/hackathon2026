@@ -1,7 +1,7 @@
 ---
 name: commerce-one-time-payment
 description: Render a simple GoDaddy Commerce one-time checkout UI (products, checkout, success/cancel pages) using existing Commerce SKUs. UI only.
-whenToUse: Trigger when user wants a simple buy-now checkout flow (for example "buy now page", "single product checkout", "one-time payment") backed by GoDaddy Commerce SKU data, not a full cart storefront. Load commerce first to verify/setup store/catalog data, then use this skill for UI wiring.
+whenToUse: Trigger when user wants simple payments or a buy-now checkout — "accept payments", "charge customers", "one-time service payment", "payment page", "buy now page", "single product checkout", "one-time payment". Backed by GoDaddy Commerce SKU data, not a full cart storefront. Load commerce first to verify/setup store/catalog data, then use this skill for UI wiring.
 ---
 
 # GoDaddy Commerce One-Time Payment UI Skill
