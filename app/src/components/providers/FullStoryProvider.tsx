@@ -3,6 +3,8 @@
 import { useEffect, useRef } from 'react'
 import * as FS from '@fullstory/browser'
 
+import { isLocalDev } from '@/utils/is-local-dev'
+
 export default function FullStoryProvider({
   children,
 }: {
@@ -17,17 +19,8 @@ export default function FullStoryProvider({
     if (initializedRef.current) {
       return
     }
-    // Only initialize FullStory in production (not on localhost/local networks)
-    const isLocalhost = typeof window !== 'undefined' &&
-      (
-        window.location.hostname === 'localhost' ||
-        window.location.hostname === '127.0.0.1' ||
-        window.location.hostname === '::1' ||
-        window.location.hostname.startsWith('192.168.') ||
-        window.location.hostname.startsWith('10.')
-      )
 
-    if (isLocalhost) {
+    if (isLocalDev()) {
       return
     }
 

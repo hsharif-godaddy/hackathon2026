@@ -7,10 +7,11 @@ import text from "@ux/text";
 import { FeedbackDescription } from '@/components/feedback/FeedbackDescription';
 import { FeedbackForm } from '@/components/feedback/FeedbackForm';
 import { FeedbackProps } from '@/components/feedback/types';
-import { getBaseUrl, getMockFeedbackConfig, isLocalhost } from '@/components/feedback/utils';
+import { getBaseUrl, getMockFeedbackConfig } from '@/components/feedback/utils';
 import { useAuthContext } from '@/components/providers/AuthProvider';
 import { useTranslations } from "@/hooks/useTranslations";
 import { logger } from '@/lib/request-context';
+import { isLocalDev } from '@/utils/is-local-dev';
 
 export function Feedback(props: FeedbackProps) {
   const t = useTranslations();
@@ -32,7 +33,7 @@ export function Feedback(props: FeedbackProps) {
     }
 
     // Use mock data on localhost
-    if (isLocalhost()) {
+    if (isLocalDev()) {
       const mockConfig = getMockFeedbackConfig(feedbackId);
       setConfig(mockConfig);
       setIsLoading(false);

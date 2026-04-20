@@ -69,8 +69,11 @@ vi.mock('@/lib/request-context', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
+vi.mock('@/utils/is-local-dev', () => ({
+  isLocalDev: vi.fn(() => true),
+}));
+
 vi.mock('@/components/feedback/utils', () => ({
-  isLocalhost: vi.fn(() => true),
   getMockFeedbackConfig: vi.fn(() => ({
     pk: 'airo#app-builder',
     fields: [],

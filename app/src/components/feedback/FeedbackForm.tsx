@@ -16,8 +16,9 @@ import { formatSlackBlockMessage, type SlackBlockMessage, type SlackLink } from 
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { useSitesStore } from '@/stores/useSitesStore';
 import { getEffectiveCreditsSpent } from '@/utils/credits';
+import { isLocalDev } from '@/utils/is-local-dev';
 import type { FeedbackFormProps } from "./types";
-import { getBaseUrl, getFullStorySessionUrl, isLocalhost } from "./utils";
+import { getBaseUrl, getFullStorySessionUrl } from "./utils";
 
 export function FeedbackForm({
   config,
@@ -229,7 +230,7 @@ export function FeedbackForm({
       });
 
       // In dev mode, log the blockMessage returned from backend
-      if (isLocalhost() && response.ok) {
+      if (isLocalDev() && response.ok) {
         const result = await response.json();
         if (result.blockMessage) {
           const formattedPayload = formatSlackBlockMessage(result.blockMessage);
@@ -261,7 +262,7 @@ export function FeedbackForm({
     setIsSubmitting(true);
 
     try {
-      if (isLocalhost()) {
+      if (isLocalDev()) {
         // Development: just send to Slack
         await sendToSlack(data);
         logger.info('feedback.submit.success', {

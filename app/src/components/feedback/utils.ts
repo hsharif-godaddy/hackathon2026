@@ -36,10 +36,6 @@ export const getFullStorySessionUrl = async (now = true): Promise<string | null>
   }
 };
 
-export const isLocalhost = () => {
-  const hostname = window.location.hostname;
-  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('localhost:') || hostname.includes('local.gasket.dev');
-};
 
 export const getMockFeedbackConfig = (feedbackId: string) => {
   return {
