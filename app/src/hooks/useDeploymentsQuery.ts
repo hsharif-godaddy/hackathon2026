@@ -117,11 +117,24 @@ export function useDeploymentsQuery({
       );
 
       if (!response.ok) {
+        const publishState = getPublishState(appId);
+        if (publishState.deploymentInProgressId) {
+          logger.warn('deployments-query.fetch.error-during-polling', {
+            appId,
+            deploymentId: publishState.deploymentInProgressId,
+            status: response.status,
+          });
+          pollingStartTimeRef.current = null;
+          setDeploymentInProgressId(appId, null);
+          setFirstPublishDeployPending(appId, false);
+        }
         const errorMessage = `Failed to fetch deployments: ${response.status} ${response.statusText}`;
-        logger.error('deployments-query.fetch.failure', {
-          message: errorMessage,
-          appId,
-        });
+        if (response.status !== 401) {
+          logger.error('deployments-query.fetch.failure', {
+            message: errorMessage,
+            appId,
+          });
+        }
         throw new Error(errorMessage);
       }
 
@@ -171,11 +184,14 @@ export function useDeploymentsQuery({
           if (elapsed >= MAX_POLLING_DURATION_MS) {
             logger.warn('deployments-query.polling.timeout', {
               appId,
+              deploymentId: deploymentInProgressId,
               elapsedMs: elapsed,
               elapsedMinutes: Math.round(elapsed / 60000),
               message: 'Polling stopped after 5 minutes - deployment may be stuck'
             });
             pollingStartTimeRef.current = null;
+            setDeploymentInProgressId(appId, null);
+            setFirstPublishDeployPending(appId, false);
             return false;
           }
 
