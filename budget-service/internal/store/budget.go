@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -517,7 +518,7 @@ func (s *Store) GetBudgetItem(ctx context.Context, budgetID, itemID string) (*Bu
 	return &r, nil
 }
 
-func (s *Store) UpsertBudgetItems(ctx context.Context, budgetID string, items []PutItemInput) error {
+func (s *Store) UpdateBudgetItems(ctx context.Context, budgetID string, items []PutItemInput) error {
 	if _, err := uuid.Parse(budgetID); err != nil {
 		return err
 	}
@@ -535,19 +536,7 @@ func (s *Store) UpsertBudgetItems(ctx context.Context, budgetID string, items []
 	for i := range items {
 		it := items[i]
 		if it.BudgetItemID == nil || strings.TrimSpace(*it.BudgetItemID) == "" {
-			if _, err := insertBudgetItem(ctx, tx, budgetID, ItemInput{
-				CreditsTotal:    it.CreditsTotal,
-				CreditsUsed:     it.CreditsUsed,
-				CostCreditRatio: it.CostCreditRatio,
-				ExpiresAt:       it.ExpiresAt,
-				StartsAt:        it.StartsAt,
-				ResetsAt:        it.ResetsAt,
-				ResetInterval:   it.ResetInterval,
-				Label:           it.Label,
-			}); err != nil {
-				return err
-			}
-			continue
+			return fmt.Errorf("UpdateBudgetItems: budgetItemId is required for each item")
 		}
 		itemID := strings.TrimSpace(*it.BudgetItemID)
 		if _, err := uuid.Parse(itemID); err != nil {

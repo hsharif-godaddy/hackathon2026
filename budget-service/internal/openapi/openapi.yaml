@@ -286,7 +286,7 @@ paths:
           $ref: "#/components/responses/Error"
     patch:
       tags: [v1]
-      summary: Replace budget items (upsert by budgetItemId)
+      summary: Batch update existing budget items
       parameters:
         - $ref: "#/components/parameters/budgetIdPath"
       requestBody:
@@ -299,8 +299,9 @@ paths:
               properties:
                 items:
                   type: array
+                  minItems: 1
                   items:
-                    $ref: "#/components/schemas/PatchBudgetItem"
+                    $ref: "#/components/schemas/PatchBudgetBatchItem"
       responses:
         "200":
           description: OK
@@ -722,9 +723,6 @@ components:
           nullable: true
         creditsTotal:
           type: string
-        creditsUsed:
-          type: string
-          description: Optional initial credits spent (for migration); only valid when creating a new item (budgetItemId absent)
         costToCreditRatio:
           type: string
         expiresAt:
@@ -743,6 +741,17 @@ components:
           type: string
           nullable: true
           description: Optional free-form label
+
+    PatchBudgetBatchItem:
+      description: Each entry updates an existing item; use POST .../budget-items to add an item.
+      allOf:
+        - $ref: "#/components/schemas/PatchBudgetItem"
+        - type: object
+          required: [budgetItemId]
+          properties:
+            budgetItemId:
+              type: string
+              format: uuid
 
     BudgetItem:
       type: object

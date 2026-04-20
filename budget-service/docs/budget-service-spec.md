@@ -22,7 +22,7 @@ If usage exceeds what the budget can absorb as **budget** spend, callers should 
 - **`DELETE /api/v1/products/{productKey}`** — sets `products.deleted_at`; **409** if any **active** budget (`deleted_at` null) references the product.
 - **`DELETE /api/v1/budgets/{budgetId}`** — sets `deleted_at` on the budget and all its items; **409** if any session has `reconciled_at` null (open session). Reports and sessions remain readable.
 - **`DELETE .../budget-items/{budgetItemId}`** — sets `budget_items.deleted_at`; **409** if any open session exists for the budget. Report lines still reference the item id.
-- **`PATCH` item** (and upsert-by-id) copies the prior row into **`budget_items_history`** before updating the live row (update audit only; no history row on soft-delete).
+- **`PATCH` budget** (`items` with **`budgetItemId`** each) and **`PATCH` single item** copy the prior row into **`budget_items_history`** before updating the live row (update audit only; no history row on soft-delete). New items are added with **`POST .../budget-items`**, not via **`PATCH` budget**.
 
 8. **Webhooks** — `POST /api/v1/webhooks` with `eventType`, `productKey`, `url` and returns the same body shape as `GET /webhooks/{webhookId}`. Supported event types: `report.created`, `budget-item.reset`, `budget-item.expired`, `budget-item.exhausted`. Unsupported values return **400**. **`DELETE /webhooks/{webhookId}`** sets **`webhooks.deleted_at`**. Webhooks are delivered via a transactional outbox pattern with automatic retries (configurable via `OUTBOX_MAX_ATTEMPTS`, default 7). See [`webhooks.md`](webhooks.md) for payload details and retry schedule.
 
@@ -41,21 +41,21 @@ For each resource with read/write APIs, successful `POST`/`PATCH` responses are 
 
 ## REST (implemented)
 
-| Method                   | Path                                                             | Notes                                                                                                          |
-| ------------------------ | ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `GET`, `HEAD`            | `/health`                                                        | No auth                                                                                                        |
-| `GET`                    | `/api/v1/auth-check`                                             | Auth probe                                                                                                     |
-| `GET`, `POST`            | `/api/v1/products`                                               | List / register `productKey` (or revive after soft-delete; **409** if key is already active)                   |
-| `DELETE`                 | `/api/v1/products/{productKey}`                                  | Soft-delete; 409 if active budgets reference product                                                           |
-| `POST`                   | `/api/v1/webhooks`                                               | Body: `eventType`, `productKey`, `url` → same shape as `GET /webhooks/{webhookId}`                             |
-| `GET`, `DELETE`          | `/api/v1/webhooks/{webhookId}`                                   | `GET` body includes `createdAt`, `updatedAt`. `DELETE` → soft-delete (`deleted_at`), then 204                  |
-| `POST`                   | `/api/v1/budgets`                                                | Create budget; optional `items` (shell budget if omitted/empty); response matches `GET /budgets/{budgetId}`    |
-| `GET`, `PATCH`, `DELETE` | `/api/v1/budgets/{budgetId}`                                     | DELETE soft-deletes budget + items; 409 if unreconciled session                                                |
-| `POST`                   | `/api/v1/budgets/{budgetId}/budget-items`                        | Append one item; create-time `startsAt`/`resetsAt` defaults apply; response matches item `GET`                 |
-| `GET`, `PATCH`, `DELETE` | `/api/v1/budgets/{budgetId}/budget-items/{budgetItemId}`         | `PATCH` response matches item `GET`; DELETE 409 if unreconciled session                                        |
-| `POST`                   | `/api/v1/sessions`                                               | Body: `budgetId`, optional `metadata`; response matches session `GET`; **402** when no capacity                |
-| `GET`, `PATCH`           | `/api/v1/sessions/{sessionId}`                                   | `PATCH` append: partial virtual `credits_charged` ok; response matches session `GET`; GET 404 if reconciled    |
-| `POST`, `GET`            | `/api/v1/sessions/{sessionId}/reports`, `.../reports/{reportId}` | `POST`: strict `budgetCost`; **400** `INSUFFICIENT_CREDITS` if allocation fails; response matches report `GET` |
+| Method                   | Path                                                             | Notes                                                                                                                                        |
+| ------------------------ | ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET`, `HEAD`            | `/health`                                                        | No auth                                                                                                                                      |
+| `GET`                    | `/api/v1/auth-check`                                             | Auth probe                                                                                                                                   |
+| `GET`, `POST`            | `/api/v1/products`                                               | List / register `productKey` (or revive after soft-delete; **409** if key is already active)                                                 |
+| `DELETE`                 | `/api/v1/products/{productKey}`                                  | Soft-delete; 409 if active budgets reference product                                                                                         |
+| `POST`                   | `/api/v1/webhooks`                                               | Body: `eventType`, `productKey`, `url` → same shape as `GET /webhooks/{webhookId}`                                                           |
+| `GET`, `DELETE`          | `/api/v1/webhooks/{webhookId}`                                   | `GET` body includes `createdAt`, `updatedAt`. `DELETE` → soft-delete (`deleted_at`), then 204                                                |
+| `POST`                   | `/api/v1/budgets`                                                | Create budget; optional `items` (shell budget if omitted/empty); response matches `GET /budgets/{budgetId}`                                  |
+| `GET`, `PATCH`, `DELETE` | `/api/v1/budgets/{budgetId}`                                     | `PATCH` batch-updates existing items only (`items[].budgetItemId` required); DELETE soft-deletes budget + items; 409 if unreconciled session |
+| `POST`                   | `/api/v1/budgets/{budgetId}/budget-items`                        | Append one item; create-time `startsAt`/`resetsAt` defaults apply; response matches item `GET`                                               |
+| `GET`, `PATCH`, `DELETE` | `/api/v1/budgets/{budgetId}/budget-items/{budgetItemId}`         | `PATCH` response matches item `GET`; DELETE 409 if unreconciled session                                                                      |
+| `POST`                   | `/api/v1/sessions`                                               | Body: `budgetId`, optional `metadata`; response matches session `GET`; **402** when no capacity                                              |
+| `GET`, `PATCH`           | `/api/v1/sessions/{sessionId}`                                   | `PATCH` append: partial virtual `credits_charged` ok; response matches session `GET`; GET 404 if reconciled                                  |
+| `POST`, `GET`            | `/api/v1/sessions/{sessionId}/reports`, `.../reports/{reportId}` | `POST`: strict `budgetCost`; **400** `INSUFFICIENT_CREDITS` if allocation fails; response matches report `GET`                               |
 
 Auth: `packages/go-auth` `AuthenticateAWSIAMService` by default (`Bearer` or `sso-jwt`). `LOCAL_AUTH_DISABLE=true` skips auth (local only).
 

@@ -195,7 +195,7 @@ For a due item with `credits_used > 0`, the processor inserts a `periodic_reset`
 
 ## `budget_items_history` (update audit only)
 
-Rows are **inserted by application logic** immediately before an **`UPDATE budget_items`** from PATCH / upsert-by-id (prior row copied). There are **no** triggers that write this table when `credits_used` changes from the ledger. **Soft-delete** of an item or budget does **not** insert here — tombstones use **`deleted_at`** on `budget_items`.
+Rows are **inserted by application logic** immediately before an **`UPDATE budget_items`** from PATCH (batch or single-item; prior row copied). There are **no** triggers that write this table when `credits_used` changes from the ledger. **Soft-delete** of an item or budget does **not** insert here — tombstones use **`deleted_at`** on `budget_items`.
 
 **Credit movement** remains **`budget_item_credit_ledger`** (append-only).
 

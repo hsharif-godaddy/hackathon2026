@@ -606,18 +606,25 @@ func (s *Server) patchBudget(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	for i := range payload.Items {
+		if payload.Items[i].BudgetItemID == nil || strings.TrimSpace(*payload.Items[i].BudgetItemID) == "" {
+			writeError(w, http.StatusBadRequest, "BAD_REQUEST",
+				"each item must include budgetItemId; use POST /api/v1/budgets/"+budgetID+"/budget-items to add a budget item")
+			return
+		}
+		if _, err := uuid.Parse(strings.TrimSpace(*payload.Items[i].BudgetItemID)); err != nil {
+			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "budgetItemId must be a valid UUID")
+			return
+		}
+	}
+
 	// Pre-hydration validation: validate all items eagerly before touching the store.
-	// creditsTotal is required for new items but optional for existing ones (toItemInput allows
-	// it when validateCreate=false); we resolve existing values from the DB further below.
+	// creditsTotal is optional for updates (toItemInput allows it when validateCreate=false);
+	// we resolve existing values from the DB further below.
 	// NOTE: The result of toPutItemInput here is intentionally discarded — this call validates
 	// the payload fields only. We call it again after hydration to get the final values.
 	for i := range payload.Items {
-		isCreate := payload.Items[i].BudgetItemID == nil || strings.TrimSpace(*payload.Items[i].BudgetItemID) == ""
-		if isCreate && strings.TrimSpace(string(payload.Items[i].CreditsTotal)) == "" {
-			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "each new item requires creditsTotal")
-			return
-		}
-		if _, msg := payload.Items[i].toPutItemInput(isCreate); msg != "" {
+		if _, msg := payload.Items[i].toPutItemInput(false); msg != "" {
 			writeError(w, http.StatusBadRequest, "BAD_REQUEST", msg)
 			return
 		}
@@ -627,43 +634,39 @@ func (s *Server) patchBudget(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// For existing items missing update fields, fill in values from the current DB record.
+	// For items missing update fields, fill in values from the current DB record.
 	// If resetInterval is explicitly cleared (set to null), don't hydrate resetsAt from DB —
 	// clearing one implicitly clears the other to avoid confusing validation errors.
 	for i := range payload.Items {
 		it := &payload.Items[i]
-		isCreate := it.BudgetItemID == nil || strings.TrimSpace(*it.BudgetItemID) == ""
-		if !isCreate {
-			hydrateResetsAt := !it.resetsAtSet && !(it.resetIntervalSet && it.ResetInterval == nil)
-			hydrateResetInterval := !it.resetIntervalSet && !(it.resetsAtSet && it.ResetsAt == nil)
-			err := s.hydrateMissingBudgetItemUpdateFields(
-				r.Context(),
-				budgetID,
-				strings.TrimSpace(*it.BudgetItemID),
-				&it.CreditsTotal,
-				&it.CostToCreditRatio,
-				!it.expiresAtSet,
-				!it.startsAtSet,
-				hydrateResetsAt,
-				hydrateResetInterval,
-				!it.labelSet,
-				&it.ExpiresAt,
-				&it.StartsAt,
-				&it.ResetsAt,
-				&it.ResetInterval,
-				&it.Label,
-			)
-			if err != nil {
-				writeBudgetStoreError(w, "budget.patch_budget_get_existing_item", err)
-				return
-			}
+		hydrateResetsAt := !it.resetsAtSet && !(it.resetIntervalSet && it.ResetInterval == nil)
+		hydrateResetInterval := !it.resetIntervalSet && !(it.resetsAtSet && it.ResetsAt == nil)
+		err := s.hydrateMissingBudgetItemUpdateFields(
+			r.Context(),
+			budgetID,
+			strings.TrimSpace(*it.BudgetItemID),
+			&it.CreditsTotal,
+			&it.CostToCreditRatio,
+			!it.expiresAtSet,
+			!it.startsAtSet,
+			hydrateResetsAt,
+			hydrateResetInterval,
+			!it.labelSet,
+			&it.ExpiresAt,
+			&it.StartsAt,
+			&it.ResetsAt,
+			&it.ResetInterval,
+			&it.Label,
+		)
+		if err != nil {
+			writeBudgetStoreError(w, "budget.patch_budget_get_existing_item", err)
+			return
 		}
 	}
 
 	rows := make([]store.PutItemInput, len(payload.Items))
 	for i := range payload.Items {
-		isCreate := payload.Items[i].BudgetItemID == nil || strings.TrimSpace(*payload.Items[i].BudgetItemID) == ""
-		row, msg := payload.Items[i].toPutItemInput(isCreate)
+		row, msg := payload.Items[i].toPutItemInput(false)
 		if msg != "" {
 			writeError(w, http.StatusBadRequest, "BAD_REQUEST", msg)
 			return
@@ -671,7 +674,7 @@ func (s *Server) patchBudget(w http.ResponseWriter, r *http.Request) {
 		rows[i] = row
 	}
 
-	if err := s.Store.UpsertBudgetItems(r.Context(), budgetID, rows); err != nil {
+	if err := s.Store.UpdateBudgetItems(r.Context(), budgetID, rows); err != nil {
 		writeBudgetStoreError(w, "budget.patch_budget", err)
 		return
 	}
