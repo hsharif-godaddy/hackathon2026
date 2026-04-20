@@ -40,3 +40,37 @@ export interface FeedbackProps extends FeedbackBaseProps {
   onInitError?: (err: any) => void;
   origin?: string;
 }
+
+// Multi-step feedback dialog types
+export type FeedbackCategory = 'support' | 'issue' | 'feedback';
+export type FeedbackStep = 'category' | FeedbackCategory;
+
+export interface SupportFormData {
+  topics: string[];
+  description: string;
+  followUp: boolean;
+}
+
+export interface IssueFormData {
+  topics: string[];
+  description: string;
+  followUp: boolean;
+}
+
+export interface ShareFeedbackFormData {
+  rating: number | null;
+  topics: string[];
+  comment: string;
+  customerConsent: boolean;
+}
+
+export interface DiagnosticContext {
+  currentAppId: string | null;
+  previewUrl: string | undefined;
+  publishedUrl: string | undefined;
+  fullStoryUrl: string | null;
+  subscriptionInfo: string;
+  isInternalUser: boolean;
+  isImpersonating: boolean;
+  shopperId: string | undefined;
+}

@@ -6,17 +6,30 @@ import text from "@ux/text";
 
 import { FeedbackDescription } from '@/components/feedback/FeedbackDescription';
 import { FeedbackForm } from '@/components/feedback/FeedbackForm';
-import { FeedbackProps } from '@/components/feedback/types';
+import type { FeedbackProps } from '@/components/feedback/types';
 import { getBaseUrl, getMockFeedbackConfig } from '@/components/feedback/utils';
 import { useAuthContext } from '@/components/providers/AuthProvider';
+import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from "@/hooks/useTranslations";
 import { logger } from '@/lib/request-context';
 import { isLocalDev } from '@/utils/is-local-dev';
+import { FeedbackMultiStep } from './FeedbackMultiStep';
 
 export function Feedback(props: FeedbackProps) {
+  const { isAuthenticated } = useAuthContext();
+  const { data: isMultiStepEnabled } = useSwitchboard('airo-builder-feedback-multistep', { enabled: isAuthenticated });
+
+  if (isMultiStepEnabled) {
+    return <FeedbackMultiStep {...props} />;
+  }
+
+  return <FeedbackLegacy {...props} />;
+}
+
+function FeedbackLegacy(props: FeedbackProps) {
   const t = useTranslations();
   const [isLoading, setIsLoading] = useState(true);
-  const [config, setConfig] = useState(null);
+  const [config, setConfig] = useState<any>(null);
   const { authState } = useAuthContext();
   // Gasket Auth spreads the full /api/auth/validate response onto authState,
   // so authType is available directly (same pattern as authReason in useAuth.ts)
@@ -62,7 +75,7 @@ export function Feedback(props: FeedbackProps) {
     .catch((err) => {
       logger.error('feedback.config.fetch.failed', {
         feedbackId,
-        error: err instanceof Error ? err.message : String(err)
+        error: err instanceof Error ? err.message : String(err),
       });
       setIsLoading(false);
       onClose();

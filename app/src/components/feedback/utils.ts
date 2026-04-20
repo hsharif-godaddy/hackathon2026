@@ -9,6 +9,39 @@ declare global {
 }
 
 export const FEEDBACK_ID = 'airo#app-builder';
+export const SUPPORT_FEEDBACK_ID = 'airo#app-builder-support';
+export const BUG_REPORT_FEEDBACK_ID = 'airo#app-builder-bug';
+
+export interface TopicOption {
+  key: string;
+  i18nKey: string;
+}
+
+export const SUPPORT_TOPICS: TopicOption[] = [
+  { key: 'Domain or DNS', i18nKey: 'builder_feedback_support_topic_domain' },
+  { key: 'Publishing my site', i18nKey: 'builder_feedback_support_topic_publishing' },
+  { key: 'Billing or credits', i18nKey: 'builder_feedback_support_topic_billing' },
+  { key: 'Account or login', i18nKey: 'builder_feedback_support_topic_account' },
+  { key: 'Plan or upgrade', i18nKey: 'builder_feedback_support_topic_plan' },
+  { key: 'Something else', i18nKey: 'builder_feedback_support_topic_other' },
+];
+
+export const ISSUE_TOPICS: TopicOption[] = [
+  { key: 'Editor or canvas', i18nKey: 'builder_feedback_issue_topic_editor' },
+  { key: 'AI assistant', i18nKey: 'builder_feedback_issue_topic_ai' },
+  { key: 'Publishing or preview', i18nKey: 'builder_feedback_issue_topic_publishing' },
+  { key: 'Credits or limits', i18nKey: 'builder_feedback_issue_topic_credits' },
+  { key: 'Something else', i18nKey: 'builder_feedback_issue_topic_other' },
+];
+
+export const FEEDBACK_TOPICS: TopicOption[] = [
+  { key: 'Editor & design', i18nKey: 'builder_feedback_share_topic_editor' },
+  { key: 'AI assistant', i18nKey: 'builder_feedback_share_topic_ai' },
+  { key: 'Publishing & domains', i18nKey: 'builder_feedback_share_topic_publishing' },
+  { key: 'Credits & pricing', i18nKey: 'builder_feedback_share_topic_credits' },
+  { key: 'Integrations', i18nKey: 'builder_feedback_share_topic_integrations' },
+  { key: 'Overall experience', i18nKey: 'builder_feedback_share_topic_overall' },
+];
 
 export const getBaseUrl = () => {
   const hostname = window.location.hostname;
