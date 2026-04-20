@@ -57,10 +57,11 @@ describe('ChatPaneLoader', () => {
   });
 
   it('should display loading indicators', () => {
-    const { container } = renderWithProviders(<ChatPaneLoader {...defaultProps} />);
+    renderWithProviders(<ChatPaneLoader {...defaultProps} />);
 
-    const dots = container.querySelectorAll('.animate-bounce');
-    expect(dots).toHaveLength(3);
+    expect(screen.getByTestId('loader-dot-1')).toBeInTheDocument();
+    expect(screen.getByTestId('loader-dot-2')).toBeInTheDocument();
+    expect(screen.getByTestId('loader-dot-3')).toBeInTheDocument();
   });
 
   it('should display timing information', () => {

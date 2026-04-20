@@ -4,7 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import Box from '@ux/box'
 import Button from '@ux/button'
 import ChevronDownIcon from '@ux/icon/chevron-down'
-import Skeleton from '@ux/skeleton'
+import Spinner from '@ux/spinner'
 
 import { useAppIdFromParams } from '@/app/develop/components/utils'
 import { useWebSocketContext } from '@/contexts/WebSocketContext'
@@ -26,12 +26,30 @@ import {
 import StreamingMessage from './StreamingMessage'
 import ThinkingIndicator from './ThinkingIndicator'
 
+interface StaticSkeletonProps {
+  width: string
+  height: string
+  rounding?: 'full'
+  className?: string
+}
+
+function StaticSkeleton({ width, height, rounding, className }: StaticSkeletonProps) {
+  return (
+    <div
+      className={`ux-skeleton bg-intents-ux-boxLowContrast-backgroundColor ${rounding === 'full' ? 'rounded-full' : 'rounded-sm'} ${className ?? ''}`.trim()}
+      style={{ width, height }}
+    />
+  )
+}
+
 interface StreamingMessageListProps {
   allMessages: (ChatMessage | StreamingMessageType)[]
   isCreateFlowSession?: boolean
+  hasInitialPrompt?: boolean
+  initialPromptText?: string | null
 }
 
-export default function StreamingMessageList({ allMessages, isCreateFlowSession = false }: StreamingMessageListProps) {
+export default function StreamingMessageList({ allMessages, isCreateFlowSession = false, hasInitialPrompt = false, initialPromptText = null }: StreamingMessageListProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const [isInitialLoad, setIsInitialLoad] = useState(true)
@@ -518,6 +536,19 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
   const isAppTransitioning = currentAppId !== appIdFromParams
 
   if (allMessages.length === 0 || isAppTransitioning || (isInitialLoad && !historyLoadingComplete)) {
+    // Creation flow with initial prompt: show the user's prompt as a real message + thinking indicator
+    if (hasInitialPrompt && initialPromptText && allMessages.length === 0) {
+      return (
+        <div ref={containerRef} data-testid="chat-transcript" className="flex flex-1 flex-col overflow-y-auto overflow-x-hidden px-2 md:px-0 pt-3 md:pt-1 gap-1" onScroll={handleScroll}>
+          <StreamingMessage
+            message={{ id: 'initial-prompt', role: 'user', content: initialPromptText, timestamp: new Date() } satisfies ChatMessage}
+          />
+          <ThinkingIndicator active={true} />
+          <div ref={messagesEndRef} />
+        </div>
+      )
+    }
+
     const isPageLoading = loadingPhase !== 'ready'
     const showSpinner = isLoadingMessages || isPageLoading || isAppTransitioning || !historyLoadingComplete
 
@@ -529,19 +560,19 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
             <Box orientation="horizontal" gap="sm" inlineAlignChildren="end">
               <div className="flex-1" />
               <Box orientation="vertical" gap="sm" className="max-w-[80%]">
-                <Skeleton width="180px" height="16px" />
-                <Skeleton width="240px" height="16px" />
+                <StaticSkeleton width="180px" height="16px" />
+                <StaticSkeleton width="240px" height="16px" />
               </Box>
             </Box>
 
             {/* Assistant message skeleton */}
             <Box orientation="horizontal" gap="sm" inlineAlignChildren="start">
-              <Skeleton rounding="full" width="24px" height="24px" className="flex-shrink-0 mt-0.5" />
+              <StaticSkeleton rounding="full" width="24px" height="24px" className="flex-shrink-0 mt-0.5" />
               <Box orientation="vertical" gap="sm" className="flex-1">
-                <Skeleton width="280px" height="16px" />
-                <Skeleton width="320px" height="16px" />
-                <Skeleton width="240px" height="16px" />
-                <Skeleton width="180px" height="16px" />
+                <StaticSkeleton width="280px" height="16px" />
+                <StaticSkeleton width="320px" height="16px" />
+                <StaticSkeleton width="240px" height="16px" />
+                <StaticSkeleton width="180px" height="16px" />
               </Box>
             </Box>
 
@@ -549,16 +580,16 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
             <Box orientation="horizontal" gap="sm" inlineAlignChildren="end">
               <div className="flex-1" />
               <Box orientation="vertical" gap="sm" className="max-w-[80%]">
-                <Skeleton width="200px" height="16px" />
+                <StaticSkeleton width="200px" height="16px" />
               </Box>
             </Box>
 
             {/* Assistant message skeleton */}
             <Box orientation="horizontal" gap="sm" inlineAlignChildren="start">
-              <Skeleton rounding="full" width="24px" height="24px" className="flex-shrink-0 mt-0.5" />
+              <StaticSkeleton rounding="full" width="24px" height="24px" className="flex-shrink-0 mt-0.5" />
               <Box orientation="vertical" gap="sm" className="flex-1">
-                <Skeleton width="260px" height="16px" />
-                <Skeleton width="300px" height="16px" />
+                <StaticSkeleton width="260px" height="16px" />
+                <StaticSkeleton width="300px" height="16px" />
               </Box>
             </Box>
 
@@ -566,18 +597,18 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
             <Box orientation="horizontal" gap="sm" inlineAlignChildren="end">
               <div className="flex-1" />
               <Box orientation="vertical" gap="sm" className="max-w-[80%]">
-                <Skeleton width="160px" height="16px" />
-                <Skeleton width="220px" height="16px" />
+                <StaticSkeleton width="160px" height="16px" />
+                <StaticSkeleton width="220px" height="16px" />
               </Box>
             </Box>
 
             {/* Assistant message skeleton */}
             <Box orientation="horizontal" gap="sm" inlineAlignChildren="start">
-              <Skeleton rounding="full" width="24px" height="24px" className="flex-shrink-0 mt-0.5" />
+              <StaticSkeleton rounding="full" width="24px" height="24px" className="flex-shrink-0 mt-0.5" />
               <Box orientation="vertical" gap="sm" className="flex-1">
-                <Skeleton width="290px" height="16px" />
-                <Skeleton width="310px" height="16px" />
-                <Skeleton width="270px" height="16px" />
+                <StaticSkeleton width="290px" height="16px" />
+                <StaticSkeleton width="310px" height="16px" />
+                <StaticSkeleton width="270px" height="16px" />
               </Box>
             </Box>
           </Box>
@@ -607,54 +638,35 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
       {!historyLoadingComplete && (
         <Box orientation="vertical" gap="lg" className="pt-2 pb-1">
           <Box orientation="horizontal" gap="sm" inlineAlignChildren="start">
-            <Skeleton rounding="full" width="24px" height="24px" className="flex-shrink-0 mt-0.5" />
+            <StaticSkeleton rounding="full" width="24px" height="24px" className="flex-shrink-0 mt-0.5" />
             <Box orientation="vertical" gap="sm" className="flex-1">
-              <Skeleton width="280px" height="16px" />
-              <Skeleton width="320px" height="16px" />
-              <Skeleton width="240px" height="16px" />
+              <StaticSkeleton width="280px" height="16px" />
+              <StaticSkeleton width="320px" height="16px" />
+              <StaticSkeleton width="240px" height="16px" />
             </Box>
           </Box>
           <Box orientation="horizontal" gap="sm" inlineAlignChildren="end">
             <div className="flex-1" />
             <Box orientation="vertical" gap="sm" className="max-w-[80%]">
-              <Skeleton width="200px" height="16px" />
+              <StaticSkeleton width="200px" height="16px" />
             </Box>
           </Box>
           <Box orientation="horizontal" gap="sm" inlineAlignChildren="start">
-            <Skeleton rounding="full" width="24px" height="24px" className="flex-shrink-0 mt-0.5" />
+            <StaticSkeleton rounding="full" width="24px" height="24px" className="flex-shrink-0 mt-0.5" />
             <Box orientation="vertical" gap="sm" className="flex-1">
-              <Skeleton width="260px" height="16px" />
-              <Skeleton width="300px" height="16px" />
+              <StaticSkeleton width="260px" height="16px" />
+              <StaticSkeleton width="300px" height="16px" />
             </Box>
           </Box>
         </Box>
       )}
 
-      {/* Skeleton while paginating — consistent with initial-load skeleton treatment */}
+      {/* Spinner while paginating */}
       {historyLoadingMore && (
-        <Box orientation="vertical" gap="lg" className="pt-2 pb-1">
-          <Box orientation="horizontal" gap="sm" inlineAlignChildren="start">
-            <Skeleton rounding="full" width="24px" height="24px" className="flex-shrink-0 mt-0.5" />
-            <Box orientation="vertical" gap="sm" className="flex-1">
-              <Skeleton width="280px" height="16px" />
-              <Skeleton width="320px" height="16px" />
-              <Skeleton width="240px" height="16px" />
-            </Box>
-          </Box>
-          <Box orientation="horizontal" gap="sm" inlineAlignChildren="end">
-            <div className="flex-1" />
-            <Box orientation="vertical" gap="sm" className="max-w-[80%]">
-              <Skeleton width="200px" height="16px" />
-            </Box>
-          </Box>
-          <Box orientation="horizontal" gap="sm" inlineAlignChildren="start">
-            <Skeleton rounding="full" width="24px" height="24px" className="flex-shrink-0 mt-0.5" />
-            <Box orientation="vertical" gap="sm" className="flex-1">
-              <Skeleton width="260px" height="16px" />
-              <Skeleton width="300px" height="16px" />
-            </Box>
-          </Box>
-        </Box>
+        <div className="flex justify-center items-center py-3 gap-2">
+          <Spinner size="sm" />
+          <span className="text-sm opacity-60">Loading older messages...</span>
+        </div>
       )}
 
       {/* Inline error banner when pagination times out — existing messages stay visible below */}

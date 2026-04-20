@@ -7,7 +7,6 @@ import Growl from '@ux/growl'
 
 import AppNotFound from '@/app/develop/components/AppNotFound'
 import ChatPane from '@/app/develop/components/chat/ChatPane'
-import ChatPaneLoader, { ImageReloadLoaderPhase, ResumeLoaderPhase } from '@/app/develop/components/chat/ChatPaneLoader'
 import ChatToolbar from '@/app/develop/components/chat/ChatToolbar'
 import DevelopHeader from '@/app/develop/components/layout/Header'
 import MediaPanel from '@/app/develop/components/media/MediaPanel'
@@ -587,14 +586,15 @@ function DevelopPageContent() {
         !toolCall.error
     )
 
-    if (completedFileEdit && !isPreviewVisible) {
-      // First successful file edit - show preview and mark it
-      setIsPreviewVisible(true)
-      init.actions.markFirstFileEditSeen()
-      const storageKey = `airo-preview-visible-${appId}`
-      if (typeof window !== 'undefined') {
-        localStorage.setItem(storageKey, 'true')
+    if (completedFileEdit) {
+      if (!isPreviewVisible) {
+        setIsPreviewVisible(true)
+        const storageKey = `airo-preview-visible-${appId}`
+        if (typeof window !== 'undefined') {
+          localStorage.setItem(storageKey, 'true')
+        }
       }
+      init.actions.markFirstFileEditSeen()
     }
   }, [appId, activeStream, isPreviewVisible, setIsPreviewVisible, init.actions])
 
@@ -874,11 +874,13 @@ function DevelopPageContent() {
           promptPreview: init.ui.autoSendPromptText.substring(0, 50) + '...'
         })
 
-        // Funnel event: Initial prompt sent from client - correlate with APM using appId
         shipAnalyticsLog('funnel.initial_prompt.sent', {
           appId,
           promptLength: init.ui.autoSendPromptText.length,
         })
+      } else if (messages.length > 0) {
+        // Conversation already exists (hard refresh or duplicate send) — unstick machine
+        init.actions.markInitialPromptSent()
       }
     }
 
@@ -920,7 +922,8 @@ function DevelopPageContent() {
     ws.actions.send,
     appId,
     init.actions,
-    ws.connection.isConnected
+    ws.connection.isConnected,
+    messages.length
   ])
 
   useEffect(() => {
@@ -989,6 +992,7 @@ function DevelopPageContent() {
             {/* Sidebar (Chat, History, Settings menu) */}
             <motion.div
               className="absolute top-0 left-0 bottom-0 isolate"
+              initial={false}
               animate={{
                 x: isChatPaneCollapsed ? -(chatPaneWidth + 16) : 0,
                 width: chatPaneWidth
@@ -998,52 +1002,25 @@ function DevelopPageContent() {
                 ease: [0.4, 0, 0.2, 1]
               }}
               style={{
+                transform: isChatPaneCollapsed ? `translateX(-${chatPaneWidth + 16}px)` : 'translateX(0)',
+                width: chatPaneWidth,
                 pointerEvents: isChatPaneCollapsed ? 'none' : 'auto'
               }}
             >
-              {init.ui.showChatLoader ? (
-                <ChatPaneLoader
-                  phase={init.ui.chatLoaderPhase}
-                  error={init.ui.chatLoaderError}
-                  retryCount={init.retryCount}
-                  maxRetries={init.maxRetries}
-                  onRetry={init.actions.retry}
-                  onCancel={init.actions.cancel}
-                />
-              ) : hibernation.isHibernated || hibernation.isResuming ? (
-                <ChatPaneLoader
-                  phase={ResumeLoaderPhase.RESUMING}
-                  error={null}
-                  retryCount={0}
-                  maxRetries={0}
-                  onRetry={() => {}}
-                  onCancel={() => {}}
-                />
-              ) : imageReadiness.isChecking ? (
-                <ChatPaneLoader
-                  phase={ImageReloadLoaderPhase.CHECKING_IMAGES}
-                  error={null}
-                  retryCount={0}
-                  maxRetries={0}
-                  onRetry={() => {}}
-                  onCancel={() => router.push('/')}
-                />
-              ) : imageReadiness.isImageUpdating || imageReadiness.error ? (
-                <ChatPaneLoader
-                  phase={ImageReloadLoaderPhase.UPDATING_IMAGES}
-                  error={imageReadiness.error}
-                  retryCount={0}
-                  maxRetries={1}
-                  onRetry={() => imageReadiness.retry()}
-                  onCancel={() => router.push('/')}
-                />
-              ) : (
-                <ChatPane
-                  sendMessage={ws.actions.send}
-                  stopGeneration={ws.actions.stop}
-                  isCreateFlowSession={isCreateFlowSession}
-                />
-              )}
+              <ChatPane
+                sendMessage={ws.actions.send}
+                stopGeneration={ws.actions.stop}
+                isCreateFlowSession={isCreateFlowSession}
+                hasInitialPrompt={init.context.hasInitialPrompt}
+                initialPromptText={init.context.initialPromptText}
+                loadingMessage={
+                  init.ui.showChatLoader ? t(`builder_chatpane_phase_${init.ui.chatLoaderPhase}`)
+                  : (hibernation.isHibernated || hibernation.isResuming) ? t('builder_chatpane_phase_resuming')
+                  : imageReadiness.isChecking ? t('builder_chatpane_phase_checking_images')
+                  : (imageReadiness.isImageUpdating || imageReadiness.error) ? t('builder_chatpane_phase_updating_images')
+                  : null
+                }
+              />
             </motion.div>
 
             {/* Resizable Divider */}
@@ -1061,12 +1038,9 @@ function DevelopPageContent() {
             {/* Content (Preview, Settings, Code) */}
             <motion.div
               className="absolute top-0 right-0 bottom-0 flex flex-col"
+              initial={false}
               animate={{
                 left: isChatPaneCollapsed ? 8 : chatPaneWidth + 16
-              }}
-              transition={{
-                duration: 0.3,
-                ease: [0.4, 0, 0.2, 1]
               }}
             >
               <PostPublishGoLiveModal appId={appId} />
@@ -1081,6 +1055,7 @@ function DevelopPageContent() {
                   <PreviewPane
                     onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
                     showBuildingOverlay={init.ui.showPreviewLoader}
+                    isCreationFlow={isCreateFlowSession}
                     fixingOverlayMessage={userRequestedFix && errorFixState === 'pending' ? t('builder_preview_fixing_error') : null}
                     unresolvedError={errorFixState === 'unresolved' && pendingError ? { message: pendingError.errorMessage || pendingError.errorData?.message || '', onFix: errorFixActions.handleFixError, onDismiss: errorFixActions.handleDismissError } : null}
                     isHibernated={hibernation.isHibernated}
@@ -1102,44 +1077,6 @@ function DevelopPageContent() {
         {isMobile && (
           <div className="relative h-full w-full overflow-hidden">
             <div className="absolute top-0 left-0 right-0 bottom-8 flex flex-col">
-              {init.ui.showChatLoader ? (
-                <ChatPaneLoader
-                  phase={init.ui.chatLoaderPhase}
-                  error={init.ui.chatLoaderError}
-                  retryCount={init.retryCount}
-                  maxRetries={init.maxRetries}
-                  onRetry={init.actions.retry}
-                  onCancel={init.actions.cancel}
-                />
-              ) : hibernation.isHibernated || hibernation.isResuming ? (
-                <ChatPaneLoader
-                  phase={ResumeLoaderPhase.RESUMING}
-                  error={null}
-                  retryCount={0}
-                  maxRetries={0}
-                  onRetry={() => {}}
-                  onCancel={() => {}}
-                />
-              ) : imageReadiness.isChecking ? (
-                <ChatPaneLoader
-                  phase={ImageReloadLoaderPhase.CHECKING_IMAGES}
-                  error={null}
-                  retryCount={0}
-                  maxRetries={0}
-                  onRetry={() => {}}
-                  onCancel={() => router.push('/')}
-                />
-              ) : imageReadiness.isImageUpdating || imageReadiness.error ? (
-                <ChatPaneLoader
-                  phase={ImageReloadLoaderPhase.UPDATING_IMAGES}
-                  error={imageReadiness.error}
-                  retryCount={0}
-                  maxRetries={1}
-                  onRetry={() => imageReadiness.retry()}
-                  onCancel={() => router.push('/')}
-                />
-              ) : (
-                <>
                   <PostPublishGoLiveModal appId={appId} />
 
                   {/* Content area - takes remaining space after banner */}
@@ -1156,6 +1093,7 @@ function DevelopPageContent() {
                       <PreviewPane
                         onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
                         showBuildingOverlay={init.ui.showPreviewLoader}
+                        isCreationFlow={isCreateFlowSession}
                         fixingOverlayMessage={userRequestedFix && errorFixState === 'pending' ? t('builder_preview_fixing_error') : null}
                         unresolvedError={errorFixState === 'unresolved' && pendingError ? { message: pendingError.errorMessage || pendingError.errorData?.message || '', onFix: errorFixActions.handleFixError, onDismiss: errorFixActions.handleDismissError } : null}
                         isHibernated={hibernation.isHibernated}
@@ -1182,6 +1120,15 @@ function DevelopPageContent() {
                         sendMessage={ws.actions.send}
                         stopGeneration={ws.actions.stop}
                         isCreateFlowSession={isCreateFlowSession}
+                        hasInitialPrompt={init.context.hasInitialPrompt}
+                        initialPromptText={init.context.initialPromptText}
+                        loadingMessage={
+                          init.ui.showChatLoader ? t(`builder_chatpane_phase_${init.ui.chatLoaderPhase}`)
+                          : (hibernation.isHibernated || hibernation.isResuming) ? t('builder_chatpane_phase_resuming')
+                          : imageReadiness.isChecking ? t('builder_chatpane_phase_checking_images')
+                          : (imageReadiness.isImageUpdating || imageReadiness.error) ? t('builder_chatpane_phase_updating_images')
+                          : null
+                        }
                       />
                     </div>
 
@@ -1233,8 +1180,6 @@ function DevelopPageContent() {
                       <SettingsView />
                     </div>
                   </div>
-                </>
-              )}
             </div>
             <ChatToolbar
               className="fixed bottom-1 left-0 right-0"

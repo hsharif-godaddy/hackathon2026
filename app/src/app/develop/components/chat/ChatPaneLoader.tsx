@@ -1,4 +1,3 @@
-import { AnimatePresence, motion } from 'framer-motion'
 import Box from '@ux/box'
 import Button from '@ux/button'
 
@@ -79,20 +78,9 @@ export default function ChatPaneLoader({
       <div className="text-center w-full px-3">
         <Box gap="lg">
           <div className="h-16 w-full mb-3 flex flex-col justify-end overflow-hidden">
-            <motion.div className="text-center">
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={phase}
-                  initial={{ opacity: 0, y: 15 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -5 }}
-                  transition={{ duration: 0.6 }}
-                  className="text-2xl font-medium"
-                >
-                  {phaseMessage}
-                </motion.div>
-              </AnimatePresence>
-            </motion.div>
+            <div className="text-center text-2xl font-medium">
+              {phaseMessage}
+            </div>
           </div>
 
           <Box
@@ -101,9 +89,9 @@ export default function ChatPaneLoader({
             className="mb-3"
             blockAlignChildren="center"
           >
-            <div className="w-1.5 h-1.5 bg-ai-light rounded-full animate-bounce"></div>
-            <div className="w-1.5 h-1.5 bg-ai rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-            <div className="w-1.5 h-1.5 bg-ai-dark rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+            <div data-testid="loader-dot-1" className="w-1.5 h-1.5 bg-ai-light rounded-full"></div>
+            <div data-testid="loader-dot-2" className="w-1.5 h-1.5 bg-ai rounded-full"></div>
+            <div data-testid="loader-dot-3" className="w-1.5 h-1.5 bg-ai-dark rounded-full"></div>
           </Box>
 
           <Box className="text-sm" gap="sm">

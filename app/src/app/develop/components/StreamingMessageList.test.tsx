@@ -698,15 +698,15 @@ describe('StreamingMessageList', function packageTests() {
     it('should show "Try again" banner when pagination times out', async function paginationTimeout() {
       const { container } = renderWithProviders(<StreamingMessageList allMessages={messages} />);
 
-      // Pagination skeleton shows while loading.
-      expect(container.querySelector('.ux-skeleton')).toBeInTheDocument();
+      // Pagination spinner shows while loading.
+      expect(screen.getByText('Loading older messages...')).toBeInTheDocument();
       expect(screen.queryByText('builder_messages_pagination_failed')).not.toBeInTheDocument();
 
       // Advance past the 10s pagination safety timeout.
       await act(async () => { vi.advanceTimersByTime(10_001) });
 
-      // Skeleton gone, banner with "Try again" button appears.
-      expect(container.querySelector('.ux-skeleton')).not.toBeInTheDocument();
+      // Spinner gone, banner with "Try again" button appears.
+      expect(screen.queryByText('Loading older messages...')).not.toBeInTheDocument();
       expect(screen.getByText('builder_messages_pagination_failed')).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'builder_common_try_again' })).toBeInTheDocument();
     });
@@ -741,14 +741,14 @@ describe('StreamingMessageList', function packageTests() {
       fireEvent.click(screen.getByRole('button', { name: 'builder_common_try_again' }));
       await act(async () => { rerender(<StreamingMessageList allMessages={messages} />) });
 
-      expect(container.querySelector('.ux-skeleton')).toBeInTheDocument();
+      expect(screen.getByText('Loading older messages...')).toBeInTheDocument();
       expect(screen.queryByText('builder_messages_pagination_failed')).not.toBeInTheDocument();
 
       // Simulate success: server responds → historyLoadingMore false, banner stays cleared.
       mockStreamingStore.historyLoadingMore = false;
       rerender(<StreamingMessageList allMessages={messages} />);
 
-      expect(container.querySelector('.ux-skeleton')).not.toBeInTheDocument();
+      expect(screen.queryByText('Loading older messages...')).not.toBeInTheDocument();
       expect(screen.queryByText('builder_messages_pagination_failed')).not.toBeInTheDocument();
       expect(screen.getByTestId('message-msg-1')).toBeInTheDocument();
     });

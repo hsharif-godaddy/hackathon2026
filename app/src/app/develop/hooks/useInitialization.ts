@@ -252,21 +252,18 @@ export interface UseInitializationReturn {
 const FILE_EDIT_TOOLS = new Set(['str_replace_based_edit_tool', 'textEditor', 'fileEdit'])
 
 /** Check if a tool call is a completed, non-view file edit */
-export function isCompletedFileEdit(tc: { name: string; status: string; error?: string; input: Record<string, unknown> }): boolean {
+export function isCompletedFileEdit(tc: { name: string; status: string; error?: string; input?: Record<string, unknown> }): boolean {
   if (!FILE_EDIT_TOOLS.has(tc.name) || tc.status !== 'completed' || tc.error) return false
-  // Exclude view-only commands (textEditor/str_replace_based_edit_tool)
-  if (tc.input.command === 'view') return false
+  if (tc.input?.command === 'view') return false
   return true
 }
 
 /** Extract file paths from a tool call input, handling all known shapes */
-export function getEditPaths(tc: { input: Record<string, unknown> }): string[] {
+export function getEditPaths(tc: { input?: Record<string, unknown> }): string[] {
+  if (!tc.input) return []
   const paths: string[] = []
-  // Direct path field (textEditor, str_replace_based_edit_tool)
   if (typeof tc.input.path === 'string') paths.push(tc.input.path)
-  // Alternative field name (file_path)
   if (typeof tc.input.file_path === 'string') paths.push(tc.input.file_path)
-  // Batch operations (fileEdit with operations array)
   if (Array.isArray(tc.input.operations)) {
     for (const op of tc.input.operations) {
       if (op && typeof op === 'object' && typeof (op as Record<string, unknown>).path === 'string') {
@@ -312,7 +309,9 @@ function computeUIState(
     context.hasInitialPrompt &&
     !context.hasSeenFirstFileEdit &&
     (
-      // During ready phase with WebSocket coordination
+      state.matches('checkingCreation') ||
+      state.matches('creating') ||
+      state.matches('initializingPage') ||
       state.matches({ ready: 'waitingForWebSocket' }) ||
       state.matches({ ready: 'websocketConnected' }) ||
       state.matches({ ready: 'waitingForFirstEdit' })

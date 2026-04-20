@@ -11,6 +11,7 @@ import DomainBar from '@/app/develop/components/layout/DomainBar'
 import { getDevicePreset } from '@/app/develop/components/preview/devicePresets'
 import PreviewCode from '@/app/develop/components/preview/PreviewCode'
 import PreviewError from '@/app/develop/components/preview/PreviewError'
+import PreviewLoadingState from '@/app/develop/components/preview/PreviewLoadingState'
 import Tips from '@/app/develop/components/tips/Tips'
 import { PreviewViewMode, ViewMode } from '@/app/develop/components/types'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
@@ -62,6 +63,7 @@ interface PreviewPaneProps {
   onPreviewRefresh: () => void
   isMobile?: boolean
   showBuildingOverlay?: boolean
+  isCreationFlow?: boolean
   fixingOverlayMessage?: string | null
   unresolvedError?: { message: string; onFix: () => void; onDismiss?: () => void } | null
   isHibernated?: boolean
@@ -77,6 +79,7 @@ export default function PreviewPane({
   onPreviewRefresh,
   isMobile = false,
   showBuildingOverlay = false,
+  isCreationFlow = false,
   fixingOverlayMessage = null,
   unresolvedError = null,
   isHibernated = false,
@@ -182,14 +185,10 @@ export default function PreviewPane({
     }
 
     if (current === ViewMode.CODE) {
-      // Preview: fade out
       animate(previewOpacity, 0, { duration: 0.25, ease: [0.4, 0, 0.2, 1] })
-      // Code: fade in with slight delay
       animate(codeOpacity, 1, { duration: 0.3, ease: [0.4, 0, 0.2, 1], delay: 0.15 })
     } else {
-      // Code: fade out
       animate(codeOpacity, 0, { duration: 0.25, ease: [0.4, 0, 0.2, 1] })
-      // Preview: fade in with slight delay
       animate(previewOpacity, 1, { duration: 0.3, ease: [0.4, 0, 0.2, 1], delay: 0.15 })
     }
 
@@ -486,7 +485,7 @@ export default function PreviewPane({
 
   // Show restarting message when app is hibernated or resuming
   if (isHibernated || isResuming) {
-    return <Tips buildingMessage={t('builder_preview_resuming_message')} />
+    return <PreviewLoadingState message={t('builder_preview_resuming_message')} isMobile={isMobile} />
   }
 
   if (imageReloadFailed) {
@@ -501,17 +500,14 @@ export default function PreviewPane({
   }
 
   if (isImageReloading) {
-    return <Tips buildingMessage={t('builder_preview_image_reloading_message')} />
+    return <PreviewLoadingState message={t('builder_preview_image_reloading_message')} isMobile={isMobile} />
   }
 
-  // Don't show building overlay here - it should overlay the iframe below, not replace it
-  // Only block rendering if server is not ready yet
   if (!serverState || (isPollingServer(appId) && !serverState.isReady)) {
-    // Show building overlay message if in creation flow, otherwise show server loading
     const loadingMessage = showBuildingOverlay
       ? t('builder_preview_building_app')
       : t('builder_preview_loading_app')
-    return <Tips buildingMessage={loadingMessage} />
+    return <PreviewLoadingState message={loadingMessage} isMobile={isMobile} />
   }
 
   // Error state when server failed
@@ -592,9 +588,9 @@ export default function PreviewPane({
                   <div className="flex-1 flex items-center justify-center pb-1 md:pb-0 px-1 md:px-0">
                     <div
                       className={clsx(
-                        "relative transition-all duration-300 ease-in-out", {
-                          "w-full h-full": isFullSize || isMobile,
-                          "my-auto": !isFullSize && !isMobile
+                        'relative border rounded-lg md:rounded-b-none bg-intents-ux-boxLowContrast-backgroundColor overflow-hidden', {
+                          'w-full h-full': isFullSize || isMobile,
+                          'my-auto': !isFullSize && !isMobile
                         }
                       )}
                       style={!isFullSize && !isMobile ? {
@@ -635,9 +631,6 @@ export default function PreviewPane({
                 </motion.div>
               </div>
 
-              {/* Building overlay - hides template app AND controls until agent makes changes
-                   INTENTIONAL: Stays visible if agent never edits (errors, timeouts, etc.)
-                   The vanilla template is an implementation detail that shouldn't be visible */}
               {showBuildingOverlay && (
                 <div className="absolute inset-0 bg-intents-ux-boxLowContrast-backgroundColor rounded-lg">
                   <Tips buildingMessage={t('builder_preview_building_app')} />

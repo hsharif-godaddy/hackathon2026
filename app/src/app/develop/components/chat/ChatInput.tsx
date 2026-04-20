@@ -59,6 +59,7 @@ interface ChatInputProps {
   isDisabled?: boolean
   isStreaming?: boolean
   isBudgetExceeded?: boolean
+  loadingMessage?: string | null
   onInputChange: (value: string) => void
   onSendMessage: (content?: string, options?: SendMessageOptions) => void | Promise<void>
   onStopGeneration?: () => void
@@ -88,6 +89,7 @@ export default function ChatInput({
   isDisabled,
   isStreaming,
   isBudgetExceeded,
+  loadingMessage = null,
   onInputChange,
   onSendMessage,
   onStopGeneration,
@@ -282,6 +284,12 @@ export default function ChatInput({
 
   const canSubmit = Boolean(inputValue?.trim())
 
+  function getPlaceholder() {
+    if (isBudgetExceeded) return t('builder_chatinput_budget_exceeded');
+    if (isDisabled && !isStreaming) return loadingMessage ?? t('builder_chatinput_processing');
+    return t('builder_chatinput_ask_airo');
+  }
+
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'ArrowUp') {
       if (textareaRef.current && handleArrowUp(textareaRef.current)) {
@@ -422,7 +430,7 @@ export default function ChatInput({
           )}
 
           <div className="flex items-stretch space-x-1">
-            <div className="flex-1">
+            <div className="flex-1 relative">
               <textarea
                 ref={textareaRef}
                 id="chat-input-textarea"
@@ -435,7 +443,7 @@ export default function ChatInput({
                 }}
                 onPaste={handlePaste}
                 onKeyDown={onKeyDown}
-                placeholder={isBudgetExceeded ? t('builder_chatinput_budget_exceeded') : (isDisabled && !isStreaming) ? t('builder_chatinput_processing') : t('builder_chatinput_ask_airo')}
+                placeholder={getPlaceholder()}
                 rows={3}
                 disabled={(isDisabled && !isStreaming) || isListening || isBudgetExceeded}
                 className={`w-full h-full resize-none border-0 focus:ring-0 focus:outline-none text-base md:text-sm chat-input-text`}

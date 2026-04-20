@@ -67,6 +67,9 @@ interface ChatPaneProps {
   sendMessage: (options: SendMessageOptions) => Promise<void>
   stopGeneration: () => void
   isCreateFlowSession?: boolean
+  hasInitialPrompt?: boolean
+  loadingMessage?: string | null
+  initialPromptText?: string | null
 }
 
 function mapUploadedFilesToAssetItems(files: UploadedFile[], agentUrl: string): AssetManagerItem[] {
@@ -146,7 +149,10 @@ function stagedIdsForSuccessfulUploads(
 export default function ChatPane({
   sendMessage,
   stopGeneration,
-  isCreateFlowSession = false
+  isCreateFlowSession = false,
+  hasInitialPrompt = false,
+  loadingMessage = null,
+  initialPromptText = null,
 }: ChatPaneProps) {
   const t = useTranslations();
   const messages = useMessages()
@@ -376,7 +382,7 @@ export default function ChatPane({
   // History now loads asynchronously in the background (decoupled from connection setup),
   // so we no longer gate on historyLoadingComplete — the spinner in StreamingMessageList
   // already signals the in-flight load and the user should be free to type at any time.
-  const isProcessing = isLoading || isStreaming
+  const isProcessing = isLoading || isStreaming || !!loadingMessage
 
   // Handle clearing AI edit context
   const handleClearAiEditContext = useCallback(() => {
@@ -958,7 +964,7 @@ export default function ChatPane({
             onToggleExpandedPlan={toggleExpandedPlan}
           />
 
-          <StreamingMessageList allMessages={visibleMessages} isCreateFlowSession={isCreateFlowSession} />
+          <StreamingMessageList allMessages={visibleMessages} isCreateFlowSession={isCreateFlowSession} hasInitialPrompt={hasInitialPrompt} initialPromptText={initialPromptText} />
 
           {showProactiveBudgetBanner && (
             <div className="mx-2 sm:mx-3 mb-2">
@@ -978,6 +984,7 @@ export default function ChatPane({
             isDisabled={isProcessing}
             isStreaming={isStreaming}
             isBudgetExceeded={budgetExceeded}
+            loadingMessage={loadingMessage}
             onInputChange={setInputValue}
             onSendMessage={handleSendMessage}
             onStopGeneration={stopGeneration}
@@ -1019,7 +1026,7 @@ export default function ChatPane({
         >
           {!areChatPlansEnabled && <PersistentTodoList />}
 
-          <StreamingMessageList allMessages={visibleMessages} isCreateFlowSession={isCreateFlowSession} />
+          <StreamingMessageList allMessages={visibleMessages} isCreateFlowSession={isCreateFlowSession} hasInitialPrompt={hasInitialPrompt} initialPromptText={initialPromptText} />
 
           {safeBuildErrorContext && (
             <div className="mx-2 rounded-md overflow-hidden border">
@@ -1072,6 +1079,7 @@ export default function ChatPane({
               isDisabled={isProcessing}
               isStreaming={isStreaming}
               isBudgetExceeded={budgetExceeded}
+              loadingMessage={loadingMessage}
               onInputChange={setInputValue}
               onSendMessage={handleSendMessage}
               onStopGeneration={stopGeneration}

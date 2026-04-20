@@ -264,7 +264,7 @@ export const useServerPollingStore = create<ServerPollingStore>()(
           const currentState = state.servers.get(appId)
           if (currentState) {
             currentState.server = {
-              appId: serverData.appId || effectiveAppId, // Fallback to effectiveAppId if server doesn't return one
+              appId: serverData.appId || effectiveAppId,
               port: serverData.port,
               url: serverData.url,
               status: serverData.status,

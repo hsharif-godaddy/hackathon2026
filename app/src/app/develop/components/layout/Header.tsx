@@ -74,8 +74,9 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
     <header data-testid="airo-header" className="flex">
       <motion.div
         className="p-1.5 md:pl-2.5 md:pr-0 shrink-0 flex items-center gap-1.5"
+        initial={false}
         animate={{
-          width: (isChatPaneCollapsed || isMobile) ? undefined : `${chatPaneWidth}px`,
+          width: (isChatPaneCollapsed || isMobile) ? 'auto' : `${chatPaneWidth}px`,
           justifyContent: isChatPaneCollapsed ? 'flex-start' : 'space-between'
         }}
         transition={SPRING_TRANSITION}
