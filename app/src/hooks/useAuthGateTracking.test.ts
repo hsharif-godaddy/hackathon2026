@@ -52,7 +52,7 @@ describe('useAuthGateTracking', () => {
           msFromShown: expect.any(Number),
           promptLength: 11,
         }),
-        { kind: 'action', eid: 'homepage.auth.gate', action: 'custom' },
+        { kind: 'click', eid: 'homepage.auth.complete' },
       );
       expect(refs.authGateShownAtRef.current).toBeNull();
       expect(mockClearSsoCloseReason).toHaveBeenCalled();
@@ -84,7 +84,7 @@ describe('useAuthGateTracking', () => {
           msFromShown: expect.any(Number),
           promptLength: 2,
         }),
-        { kind: 'action', eid: 'homepage.auth.gate', action: 'custom' },
+        { kind: 'click', eid: 'homepage.auth.dismiss' },
       );
       expect(refs.authGateShownAtRef.current).toBeNull();
       expect(mockClearSsoCloseReason).toHaveBeenCalled();

@@ -24,10 +24,12 @@ interface AuthGateRefs {
  * Listens to the SSO close reason from the auth UI store and fires
  * analytics events so the full funnel is visible in Elastic:
  *
- *   homepage.auth_gate.shown  (fired by caller at gate open time)
- *       ├── homepage.auth_gate.completed   — user finished SSO
- *       ├── homepage.auth_gate.dismissed   — user clicked X / closed modal
- *       └── homepage.auth_gate.abandoned   — user left the page (tab close / navigation)
+ *   homepage.auth_gate.shown  (fired by caller; CSP element action load on homepage.auth.gate)
+ *       ├── homepage.auth_gate.completed   — SSO success (CSP click homepage.auth.complete)
+ *       ├── homepage.auth_gate.dismissed   — modal closed (CSP click homepage.auth.dismiss)
+ *       └── homepage.auth_gate.abandoned   — tab close / navigation (client log only)
+ *
+ * CSP rejects add_element_action with action custom; completed/dismiss use click schema instead.
  */
 export function useAuthGateTracking(
   logAnalytics: LogAnalyticsFn,
@@ -48,9 +50,8 @@ export function useAuthGateTracking(
             promptLength: promptTextRef.current.length,
           },
           {
-            kind: 'action',
-            eid: 'homepage.auth.gate',
-            action: 'custom',
+            kind: 'click',
+            eid: 'homepage.auth.complete',
           },
         )
       }
@@ -63,9 +64,8 @@ export function useAuthGateTracking(
           promptLength: promptTextRef.current.length,
         },
         {
-          kind: 'action',
-          eid: 'homepage.auth.gate',
-          action: 'custom',
+          kind: 'click',
+          eid: 'homepage.auth.dismiss',
         },
       )
       authGateShownAtRef.current = null
