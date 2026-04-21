@@ -1,11 +1,11 @@
-import type { ModelMessage } from 'ai'
+import type { LanguageModelUsage, ModelMessage } from 'ai'
 import { APICallError, RetryError } from 'ai'
 import { Server as SocketIOServer } from 'socket.io'
 import type { Socket, ServerOptions } from 'socket.io'
 import { Server as HTTPServer } from 'http'
 import type { AgentFactory, AgentWrapper, PipelineContextMessage } from '@airo/ai-lib'
 import { createAgentFactory } from '@airo/ai-lib'
-import { calculateCostEstimate, formatCostEstimate, getCacheHitRate, type TokenUsage } from '@airo/ai-lib'
+import { buildTokenUsage, calculateCostEstimate, formatCostEstimate, getCacheHitRate } from '@airo/ai-lib'
 import { classifyError, BudgetExceededError, isBudgetExceededAPIError, createLogger } from '@airo/ai-common'
 import type { AgentsCollection } from '@airo/ai-lib'
 import type { HandoffStateManager } from '@airo/ai-lib'
@@ -47,14 +47,10 @@ type APMSpan = any
  * Agent execution result with usage tracking
  */
 interface AgentExecutionResult {
-  usage?: TokenUsage
-  totalUsage?: TokenUsage
+  usage?: LanguageModelUsage
+  totalUsage?: LanguageModelUsage
   finishReason?: string
   toolCalls?: any[]
-  caching?: {
-    cachedInputTokens?: number
-    cacheWriteInputTokens?: number
-  }
   /** Summary of reasoning (for models that support extended thinking) */
   reasoningSummary?: string
 }
@@ -3605,18 +3601,9 @@ Please try again with corrected formatting.`
       // Log token and cache usage information
       // Use totalUsage for accurate multi-step token tracking (sums all steps)
       const usageToTrack = finalResult.totalUsage || finalResult.usage
+      const usage = usageToTrack ? buildTokenUsage(usageToTrack) : undefined
       let costEstimateTotalCost: number | undefined
-      if (usageToTrack) {
-        // Merge usage data with caching information
-        const usage: TokenUsage = {
-          ...usageToTrack,
-          // Include cache metrics from the caching object if available
-          ...(finalResult.caching && {
-            cachedInputTokensRead: finalResult.caching.cachedInputTokens,
-            cachedInputTokensWrite: finalResult.caching.cacheWriteInputTokens
-          })
-        }
-
+      if (usage) {
         // Get model information from agent config
         // Get model name from agent configuration
         let modelName = 'unknown'
@@ -3716,12 +3703,12 @@ Please try again with corrected formatting.`
           if (appId !== undefined) {llmEndParams.appId = appId}
           if (context !== undefined) {llmEndParams.context = context}
           if (finalResult.finishReason !== undefined) {llmEndParams.finishReason = finalResult.finishReason}
-          if (usageToTrack) {
+          if (usage) {
             const usageObj: NonNullable<typeof llmEndParams.usage> = {}
-            if (usageToTrack.inputTokens !== undefined) {usageObj.inputTokens = usageToTrack.inputTokens}
-            if (usageToTrack.outputTokens !== undefined) {usageObj.outputTokens = usageToTrack.outputTokens}
-            if (usageToTrack.totalTokens !== undefined) {usageObj.totalTokens = usageToTrack.totalTokens}
-            if (usageToTrack.cachedInputTokensRead !== undefined) {usageObj.cachedTokens = usageToTrack.cachedInputTokensRead}
+            if (usage.inputTokens !== undefined) {usageObj.inputTokens = usage.inputTokens}
+            if (usage.outputTokens !== undefined) {usageObj.outputTokens = usage.outputTokens}
+            if (usage.totalTokens !== undefined) {usageObj.totalTokens = usage.totalTokens}
+            if (usage.cachedInputTokensRead !== undefined) {usageObj.cachedTokens = usage.cachedInputTokensRead}
             llmEndParams.usage = usageObj
           }
 

@@ -2,15 +2,18 @@
  * Tests for model-pricing.ts
  */
 
+import type { LanguageModelUsage } from 'ai'
 import { describe, it, expect } from 'vitest'
+
 import {
+  buildTokenUsage,
   calculateCostEstimate,
   formatCostEstimate,
   getCacheHitRate,
-  modelSupportsCaching,
   getAvailableModelsWithPricing,
-  type TokenUsage,
-  type CostEstimate
+  modelSupportsCaching,
+  type CostEstimate,
+  type TokenUsage
 } from '../model-pricing.js'
 
 describe('model-pricing', () => {
@@ -369,6 +372,165 @@ describe('model-pricing', () => {
       const names = models.map(m => m.name)
       const sortedNames = [...names].sort()
       expect(names).toEqual(sortedNames)
+    })
+  })
+
+  describe('buildTokenUsage', () => {
+    it('should map inputTokenDetails cache fields to TokenUsage', function mapDetails() {
+      const usage = buildTokenUsage({
+        inputTokens: 96772,
+        outputTokens: 183,
+        totalTokens: 96955,
+        inputTokenDetails: {
+          noCacheTokens: 5,
+          cacheReadTokens: 47192,
+          cacheWriteTokens: 49575
+        },
+        cachedInputTokens: 47192
+      } as LanguageModelUsage)
+
+      expect(usage).toEqual({
+        inputTokens: 96772,
+        outputTokens: 183,
+        totalTokens: 96955,
+        cachedInputTokensRead: 47192,
+        cachedInputTokensWrite: 49575
+      })
+    })
+
+    it('should fall back to deprecated cachedInputTokens for reads', function fallback() {
+      const usage = buildTokenUsage({
+        inputTokens: 50000,
+        outputTokens: 200,
+        totalTokens: 50200,
+        cachedInputTokens: 30000
+      } as LanguageModelUsage)
+
+      expect(usage).toEqual({
+        inputTokens: 50000,
+        outputTokens: 200,
+        totalTokens: 50200,
+        cachedInputTokensRead: 30000
+      })
+    })
+
+    it('should prefer inputTokenDetails.cacheReadTokens over deprecated cachedInputTokens', function preferDetails() {
+      const usage = buildTokenUsage({
+        inputTokens: 50000,
+        outputTokens: 200,
+        totalTokens: 50200,
+        inputTokenDetails: {
+          noCacheTokens: undefined,
+          cacheReadTokens: 40000,
+          cacheWriteTokens: 5000
+        },
+        cachedInputTokens: 30000
+      } as LanguageModelUsage)
+
+      expect(usage.cachedInputTokensRead).toBe(40000)
+    })
+
+    it('should omit cache fields when no cache data exists', function noCache() {
+      const usage = buildTokenUsage({
+        inputTokens: 1000,
+        outputTokens: 50,
+        totalTokens: 1050
+      } as LanguageModelUsage)
+
+      expect(usage).toEqual({
+        inputTokens: 1000,
+        outputTokens: 50,
+        totalTokens: 1050
+      })
+      expect(usage.cachedInputTokensRead).toBeUndefined()
+      expect(usage.cachedInputTokensWrite).toBeUndefined()
+    })
+
+    it('should handle cache writes without reads', function writesOnly() {
+      const usage = buildTokenUsage({
+        inputTokens: 47196,
+        outputTokens: 85,
+        totalTokens: 47281,
+        inputTokenDetails: {
+          noCacheTokens: undefined,
+          cacheReadTokens: undefined,
+          cacheWriteTokens: 47192
+        }
+      } as LanguageModelUsage)
+
+      expect(usage).toEqual({
+        inputTokens: 47196,
+        outputTokens: 85,
+        totalTokens: 47281,
+        cachedInputTokensWrite: 47192
+      })
+      expect(usage.cachedInputTokensRead).toBeUndefined()
+    })
+
+    it('should default missing token counts to zero', function defaults() {
+      const usage = buildTokenUsage({} as LanguageModelUsage)
+
+      expect(usage.inputTokens).toBe(0)
+      expect(usage.outputTokens).toBe(0)
+      expect(usage.totalTokens).toBe(0)
+    })
+
+    it('should derive totalTokens from input + output when totalTokens is absent', function derive() {
+      const usage = buildTokenUsage({
+        inputTokens: 500,
+        outputTokens: 200
+      } as LanguageModelUsage)
+
+      expect(usage.totalTokens).toBe(700)
+    })
+
+    it('should preserve zero-valued cache tokens', function zeroes() {
+      const usage = buildTokenUsage({
+        inputTokens: 100,
+        outputTokens: 50,
+        totalTokens: 150,
+        inputTokenDetails: {
+          noCacheTokens: 100,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0
+        }
+      } as LanguageModelUsage)
+
+      expect(usage.cachedInputTokensRead).toBe(0)
+      expect(usage.cachedInputTokensWrite).toBe(0)
+    })
+
+    it('should fall back to cachedInputTokens when inputTokenDetails has no cacheReadTokens', function fallbackWithDetails() {
+      const usage = buildTokenUsage({
+        inputTokens: 50000,
+        outputTokens: 200,
+        totalTokens: 50200,
+        inputTokenDetails: {
+          noCacheTokens: undefined,
+          cacheReadTokens: undefined,
+          cacheWriteTokens: 5000
+        },
+        cachedInputTokens: 30000
+      } as LanguageModelUsage)
+
+      expect(usage.cachedInputTokensRead).toBe(30000)
+      expect(usage.cachedInputTokensWrite).toBe(5000)
+    })
+
+    it('should verify noCacheTokens equals inputTokens minus cache tokens', function noCacheArithmetic() {
+      const usage = buildTokenUsage({
+        inputTokens: 96772,
+        outputTokens: 183,
+        totalTokens: 96955,
+        inputTokenDetails: {
+          noCacheTokens: 5,
+          cacheReadTokens: 47192,
+          cacheWriteTokens: 49575
+        },
+        cachedInputTokens: 47192
+      } as LanguageModelUsage)
+
+      expect(usage.inputTokens - (usage.cachedInputTokensRead ?? 0) - (usage.cachedInputTokensWrite ?? 0)).toBe(5)
     })
   })
 

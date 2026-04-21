@@ -14,8 +14,10 @@
  * - https://openai.com/pricing
  */
 
-import { 
-  normalizeModelName, 
+import type { LanguageModelUsage } from 'ai'
+
+import {
+  normalizeModelName,
   type ModelProvider
 } from './model-normalization.js'
 
@@ -28,6 +30,20 @@ export interface TokenUsage {
   totalTokens: number
   cachedInputTokensRead?: number
   cachedInputTokensWrite?: number
+}
+
+export function buildTokenUsage(raw: LanguageModelUsage): TokenUsage {
+  const inputTokens = raw.inputTokens ?? 0
+  const outputTokens = raw.outputTokens ?? 0
+  const cachedInputTokensRead = raw.inputTokenDetails?.cacheReadTokens ?? raw.cachedInputTokens
+  const cachedInputTokensWrite = raw.inputTokenDetails?.cacheWriteTokens
+  return {
+    inputTokens,
+    outputTokens,
+    totalTokens: raw.totalTokens ?? (inputTokens + outputTokens),
+    ...(cachedInputTokensRead != null && { cachedInputTokensRead }),
+    ...(cachedInputTokensWrite != null && { cachedInputTokensWrite })
+  }
 }
 
 /**
