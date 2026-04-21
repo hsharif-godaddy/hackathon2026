@@ -10,7 +10,7 @@
 
 import { createReadStream, existsSync } from 'node:fs';
 import { rm, mkdir } from 'node:fs/promises';
-import mysql from 'mysql2/promise';
+import type mysql from 'mysql2/promise';
 import { Logger } from '../logging/index.js';
 import { AppRepository } from '../database/repositories/AppRepository.js';
 import { DbImportJobRepository } from '../database/repositories/DbImportJobRepository.js';
@@ -88,7 +88,7 @@ export class DatabaseImportService {
    * Background import pipeline
    */
   private async processImport(jobId: string, appId: string, filePath: string): Promise<void> {
-    let connection: mysql.Connection | null = null;
+    let connection: mysql.PoolConnection | null = null;
     let overallTimer: ReturnType<typeof setTimeout> | null = null;
     let timedOut = false;
     let importAbortController: AbortController | null = null;
@@ -136,16 +136,7 @@ export class DatabaseImportService {
 
       // Test connection
       try {
-        connection = await mysql.createConnection({
-          host: credentials.host,
-          port: credentials.port,
-          user: credentials.user,
-          password: credentials.password,
-          database: credentials.database,
-          ssl: { rejectUnauthorized: false },   // nosemgrep: bypass-tls-verification — user-provided DB; many providers use self-signed certs
-          multipleStatements: false,
-        });
-        await connection.ping();
+        connection = await this.mysqlUtils.createConnection(credentials);
       } catch (error) {
         await this.dbImportJobRepo.markFailed(
           jobId,
@@ -255,7 +246,7 @@ export class DatabaseImportService {
 
       // Close MySQL connection
       if (connection) {
-        try { await connection.end(); } catch { /* ignore */ }
+        try { connection.release(); } catch { /* ignore */ }
       }
 
       // Clean up temp file
@@ -266,7 +257,7 @@ export class DatabaseImportService {
   /**
    * Drop all user tables (excluding system tables)
    */
-  private async dropUserTables(connection: mysql.Connection): Promise<number> {
+  private async dropUserTables(connection: mysql.PoolConnection): Promise<number> {
     const [rows] = await connection.query('SHOW TABLES');
     const tables = (rows as any[])
       .map(row => Object.values(row)[0] as string)
@@ -292,7 +283,7 @@ export class DatabaseImportService {
   private async executeImport(
     jobId: string,
     appId: string,
-    connection: mysql.Connection,
+    connection: mysql.PoolConnection,
     filePath: string,
     abortSignal?: AbortSignal,
   ): Promise<void> {

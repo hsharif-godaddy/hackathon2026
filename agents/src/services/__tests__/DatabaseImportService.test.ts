@@ -24,11 +24,7 @@ vi.mock('node:fs/promises', () => ({
   rm: vi.fn().mockResolvedValue(undefined),
   mkdir: vi.fn().mockResolvedValue(undefined),
 }));
-vi.mock('mysql2/promise', () => ({
-  default: {
-    createConnection: vi.fn(),
-  },
-}));
+vi.mock('mysql2/promise');
 vi.mock('../SqlStatementSplitter.js');
 
 describe('DatabaseImportService', () => {
@@ -95,20 +91,19 @@ describe('DatabaseImportService', () => {
       findById: vi.fn().mockReturnValue(mockApp),
     };
 
+    // Mock MySQL connection
+    mockConnection = {
+      query: vi.fn().mockResolvedValue([[], []]),
+      release: vi.fn(),
+      destroy: vi.fn(),
+    };
+
     // Mock MySQLUtils
     mockMysqlUtils = {
       loadCredentialsFromApp: vi.fn().mockResolvedValue(mockCredentials),
+      createConnection: vi.fn().mockResolvedValue(mockConnection),
     };
 
-    // Mock MySQL connection
-    mockConnection = {
-      ping: vi.fn().mockResolvedValue(undefined),
-      query: vi.fn().mockResolvedValue([[], []]),
-      end: vi.fn().mockResolvedValue(undefined),
-    };
-
-    const mysql = await import('mysql2/promise');
-    vi.mocked(mysql.default.createConnection).mockResolvedValue(mockConnection as any);
 
     // Mock SqlStatementSplitter
     const { SqlStatementSplitter } = await import('../SqlStatementSplitter.js');
@@ -208,8 +203,7 @@ describe('DatabaseImportService', () => {
     });
 
     it('should fail if MySQL connection fails', async () => {
-      const mysql = await import('mysql2/promise');
-      vi.mocked(mysql.default.createConnection).mockRejectedValue(
+      mockMysqlUtils.createConnection.mockRejectedValue(
         new Error('ECONNREFUSED'),
       );
 
@@ -362,7 +356,7 @@ describe('DatabaseImportService', () => {
       await service.startImport(testAppId, testFilePath, testFileName, testFileSize);
 
       await vi.waitFor(() => {
-        expect(mockConnection.end).toHaveBeenCalled();
+        expect(mockConnection.release).toHaveBeenCalled();
       }, { timeout: 2000, interval: 50 });
     });
   });
