@@ -21,8 +21,8 @@ import text from '@ux/text';
 import TextInput from '@ux/text-input';
 import TextLockup from '@ux/text-lockup';
 
-import IconButton from '@/app/develop/components/IconButton';
-import { ChatTab, SettingsSection } from '@/app/develop/components/types';
+import IconButton from '@/app/[market]/develop/components/IconButton';
+import { ChatTab, SettingsSection } from '@/app/[market]/develop/components/types';
 import { FEEDBACK_ID } from '@/components/feedback/utils';
 import { useChatTabs } from '@/hooks/useChatTabs';
 import { useDeploymentsQuery } from '@/hooks/useDeploymentsQuery';

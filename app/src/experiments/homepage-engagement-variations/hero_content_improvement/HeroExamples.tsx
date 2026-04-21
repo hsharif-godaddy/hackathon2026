@@ -1,9 +1,9 @@
 import clsx from 'clsx'
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowRightIcon } from '@heroicons/react/24/outline'
+import ArrowRightIcon from '@ux/icon/arrow-right'
 import { text } from '@ux/text'
 
-import { Example, HeroExamplesProps } from '@/app/components/types'
+import { Example, HeroExamplesProps } from '@/app/[market]/components/types'
 import { useAuthContext } from '@/components/providers/AuthProvider'
 import { EXPERIMENT_IDS } from '@/config/experiments'
 import { useAnalytics } from '@/hooks/useAnalytics'
@@ -204,7 +204,7 @@ export default function HeroExamples({ onExampleClick }: HeroExamplesProps) {
             <span className="font-medium transition-colors">
               {example.title}
             </span>
-            <ArrowRightIcon className="w-1.5 h-1.5 ml-1 inline opacity-50 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all" />
+            <ArrowRightIcon className="w-1.5 h-1.5 ms-1 inline opacity-50 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all rtl:scale-x-[-1]" />
           </button>
         ))}
       </div>

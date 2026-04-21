@@ -18,8 +18,8 @@ import { createActor } from 'xstate'
 import type { BudgetUpdatePayload } from '@airo/shared/budget'
 import type { AgentsAppChatMessage } from '@airo/shared/websocket'
 
-import type { AssetManagerItem } from '@/app/develop/components/chat/AssetTypes'
-import type { VisualContext } from '@/app/develop/components/visualContextCapture'
+import type { AssetManagerItem } from '@/app/[market]/develop/components/chat/AssetTypes'
+import type { VisualContext } from '@/app/[market]/develop/components/visualContextCapture'
 import type {
   MessageHandlerActions,
   MessageHandlerHelpers,

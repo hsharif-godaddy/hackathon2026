@@ -8,6 +8,7 @@ const manifest = {
   ],
   defaultLocale: 'en-US',
   locales: [
+    'ar-AE',
     'en-US',
     'en-AE',
     'en-AU',
@@ -26,7 +27,6 @@ const manifest = {
     'de-DE',
     'de-AT',
     'de-CH',
-    'el-GR',
     'es-ES',
     'es-MX',
     'es-US',
@@ -35,7 +35,6 @@ const manifest = {
     'es-CO',
     'es-PE',
     'es-VE',
-    'fi-FI',
     'fr-CA',
     'fr-FR',
     'fr-BE',

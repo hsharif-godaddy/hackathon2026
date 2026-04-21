@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-import { ChatTab, MobileMode } from '@/app/develop/components/types';
+import { ChatTab, MobileMode } from '@/app/[market]/develop/components/types';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 
 interface MediaSlotDialogState {

@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 
-import type { MediaSlot } from '@/app/develop/components/media/types';
+import type { MediaSlot } from '@/app/[market]/develop/components/media/types';
 import { dynamicApiConfigService } from '@/config/dynamic-api';
 import { regenerateToken } from '@/lib/jwt-regeneration';
 import { logger } from '@/lib/request-context';

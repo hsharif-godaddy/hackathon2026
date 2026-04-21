@@ -8,7 +8,7 @@
 import type { ContextAttachment } from '@airo/shared/context-attachment'
 import type { AgentsAppChatMessage, AgentsAppContext } from '@airo/shared/websocket'
 
-import type { VisualContext } from '@/app/develop/components/visualContextCapture'
+import type { VisualContext } from '@/app/[market]/develop/components/visualContextCapture'
 
 export interface AIEditContext {
   [key: string]: unknown

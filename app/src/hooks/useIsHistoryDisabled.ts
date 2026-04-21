@@ -1,4 +1,4 @@
-import { ViewMode } from '@/app/develop/components/types';
+import { ViewMode } from '@/app/[market]/develop/components/types';
 import { useGitHistoryQuery } from '@/hooks/useGitHistory';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { useGitStore } from '@/stores/useGitStore';

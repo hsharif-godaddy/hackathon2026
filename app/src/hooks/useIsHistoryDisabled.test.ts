@@ -4,7 +4,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderHook } from '@testing-library/react';
 
-import { ViewMode } from '@/app/develop/components/types';
+import { ViewMode } from '@/app/[market]/develop/components/types';
 import { useIsHistoryDisabled } from '@/hooks/useIsHistoryDisabled';
 
 let mockViewMode = ViewMode.PREVIEW;

@@ -195,7 +195,7 @@ export class CompleteHandler implements MessageHandler {
       // Vite HMR handles the file-change refresh but won't navigate to the
       // new route, so we fire MESSAGE_COMPLETE ourselves when a page was created.
       if (lastMsg?.role === 'assistant' && lastMsg.toolCalls?.length) {
-        const { extractNewPageRoute } = await import('@/app/develop/components/utils')
+        const { extractNewPageRoute } = await import('@/app/[market]/develop/components/utils')
         if (extractNewPageRoute(lastMsg.toolCalls)) {
           window.postMessage(
             { type: 'MESSAGE_COMPLETE', source: 'websocket' },

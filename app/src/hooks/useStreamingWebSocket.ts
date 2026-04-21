@@ -7,8 +7,9 @@
 
 import { useCallback, useEffect, useRef } from 'react'
 
-import type { AssetManagerItem } from '@/app/develop/components/chat/AssetTypes'
-import type { VisualContext } from '@/app/develop/components/visualContextCapture'
+import type { AssetManagerItem } from '@/app/[market]/develop/components/chat/AssetTypes'
+import type { VisualContext } from '@/app/[market]/develop/components/visualContextCapture'
+import { captureVisualContext } from '@/app/[market]/develop/components/visualContextCapture'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
@@ -63,7 +64,6 @@ import {
   getConversationIdFromCookie,
   setConversationIdCookie,
 } from './websocket/useWebSocketHelpers'
-import { captureVisualContext } from '../app/develop/components/visualContextCapture'
 
 /**
  * Options for sending a message through the WebSocket

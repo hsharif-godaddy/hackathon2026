@@ -7,7 +7,7 @@ import AppsIcon from '@ux/icon/apps';
 import PlusIcon from '@ux/icon/plus';
 import text from '@ux/text';
 
-import AppThumbnail from '@/app/apps/AppThumbnail';
+import AppThumbnail from '@/app/[market]/apps/AppThumbnail';
 import { useTranslations } from '@/hooks/useTranslations';
 import { Site } from '@/stores/useSitesStore';
 import { generateClickEID } from '@/utils/instrumentation';

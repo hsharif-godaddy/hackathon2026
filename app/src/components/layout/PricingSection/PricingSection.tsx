@@ -14,7 +14,7 @@ import ServerIcon from '@ux/icon/server'
 import UserIcon from '@ux/icon/user'
 import text from '@ux/text'
 
-import { UpgradePollingModal } from '@/app/develop/components/paywall'
+import { UpgradePollingModal } from '@/app/[market]/develop/components/paywall'
 import PageSection from '@/components/layout/PageSection'
 import PlanPriceDisplay from '@/components/layout/PricingSection/PlanPriceDisplay'
 import { useAuthContext } from '@/components/providers/AuthProvider'

@@ -7,7 +7,7 @@ import Alert from '@ux/alert';
 import Button from '@ux/button';
 import text from '@ux/text';
 
-import { ChatTab, SettingsSection } from '@/app/develop/components/types';
+import { ChatTab, SettingsSection } from '@/app/[market]/develop/components/types';
 import { Feedback } from '@/components/feedback/Feedback';
 import { FEEDBACK_ID } from '@/components/feedback/utils';
 import { useChatTabs } from '@/hooks/useChatTabs';

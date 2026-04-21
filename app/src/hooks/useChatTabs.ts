@@ -1,7 +1,7 @@
 import { usePathname } from 'next/navigation'
 import { useCallback, useEffect, useRef } from 'react'
 
-import { ChatTab, SettingsSection } from '@/app/develop/components/types'
+import { ChatTab, SettingsSection } from '@/app/[market]/develop/components/types'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 
 const VALID_CHAT_TABS = new Set(Object.values(ChatTab))

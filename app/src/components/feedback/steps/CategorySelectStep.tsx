@@ -2,7 +2,7 @@ import { FormattedMessage } from 'react-intl';
 import Box from '@ux/box';
 import text from '@ux/text';
 
-import OptionButton from '@/app/develop/components/tool-renderers/OptionButton';
+import OptionButton from '@/app/[market]/develop/components/tool-renderers/OptionButton';
 import { useTranslations } from '@/hooks/useTranslations';
 import type { FeedbackCategory } from '../types';
 

@@ -241,6 +241,7 @@ export default makeGasket({
   },
   intl: {
     locales: [
+      'ar-AE',
       'en-US',
       'en-AE',
       'en-AU',
@@ -259,7 +260,6 @@ export default makeGasket({
       'de-DE',
       'de-AT',
       'de-CH',
-      'el-GR',
       'es-ES',
       'es-MX',
       'es-US',
@@ -268,7 +268,6 @@ export default makeGasket({
       'es-CO',
       'es-PE',
       'es-VE',
-      'fi-FI',
       'fr-CA',
       'fr-FR',
       'fr-BE',

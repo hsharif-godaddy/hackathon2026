@@ -197,7 +197,7 @@ vi.mock('@/hooks/useUpgradePurchase', () => ({
   useIsUpgradePolling: () => mockUseIsUpgradePolling(),
 }));
 
-vi.mock('@/app/develop/components/paywall', () => ({
+vi.mock('@/app/[market]/develop/components/paywall', () => ({
   UpgradePollingModal: () => <div data-testid="upgrade-polling-modal">Updating your plan...</div>,
 }));
 

@@ -1,7 +1,7 @@
 import React, { useCallback, useState } from "react";
 import { useQueryClient } from '@tanstack/react-query';
 
-import { UpgradeContainer } from '@/app/develop/components/paywall'
+import { UpgradeContainer } from '@/app/[market]/develop/components/paywall'
 import PublishLimitModal from '@/components/layout/PublishLimitModal'
 import type { SiteInfo } from '@/lib/control-plane/types'
 import { regenerateToken } from '@/lib/jwt-regeneration'

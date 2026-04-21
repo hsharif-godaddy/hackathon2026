@@ -9,8 +9,8 @@ import SendIcon from '@ux/icon/send'
 import Spinner from '@ux/spinner'
 import { text } from '@ux/text'
 
-import TemplateSelector from '@/app/components/TemplateSelector'
-import type { HeroSectionProps, HeroSectionRef } from '@/app/components/types'
+import TemplateSelector from '@/app/[market]/components/TemplateSelector'
+import type { HeroSectionProps, HeroSectionRef } from '@/app/[market]/components/types'
 import { useAuthContext } from '@/components/providers/AuthProvider'
 import { EXPERIMENT_IDS } from '@/config/experiments'
 import ExamplesSection from '@/experiments/homepage-engagement-variations/abstract_animation/HeroExamples'
@@ -520,8 +520,9 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                   isUserTypingRef.current = false
                 }}
                 rows={5}
+                dir="auto"
                 disabled={isLoading || isListening}
-                className={clsx('!bg-intents-ux-box-backgroundColor relative pl-3 sm:pl-4 pr-8 sm:pr-12 py-2.5 sm:py-3 w-full text-md sm:text-xl leading-[1.5] font-light resize-none disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300', {
+                className={clsx('!bg-intents-ux-box-backgroundColor relative ps-3 sm:ps-4 pe-8 sm:pe-12 py-2.5 sm:py-3 w-full text-md sm:text-xl leading-[1.5] font-light resize-none disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300', {
                   'h-24 md:h-32 rounded-2xl': isExpanded,
                   'h-8 sm:h-10 rounded-[3rem]': !isExpanded
                 })}
@@ -533,7 +534,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                 id="prompt-char-count"
                 role="status"
                 aria-live="polite"
-                className="absolute top-2.5 right-2 sm:top-3 sm:right-3 md:right-3.5"
+                className="absolute top-2.5 end-2 sm:top-3 sm:end-3 md:end-3.5"
               >
                 {showCharCount && (
                   <text.p
@@ -556,7 +557,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
               </div>
 
               {/* Action Buttons Container */}
-              <div className={clsx('absolute flex items-center right-1.5 gap-0.5 transition-all duration-300', {
+              <div className={clsx('absolute flex items-center end-1.5 gap-0.5 transition-all duration-300', {
                 'bottom-1/2 translate-y-1/2 -space-x-1': !isExpanded,
                 'bottom-1.5': isExpanded
               })}>

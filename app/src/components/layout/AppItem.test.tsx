@@ -29,7 +29,7 @@ const { mockAppThumbnail } = vi.hoisted(() => ({
   }),
 }));
 
-vi.mock('@/app/apps/AppThumbnail', () => ({
+vi.mock('@/app/[market]/apps/AppThumbnail', () => ({
   default: mockAppThumbnail,
 }));
 

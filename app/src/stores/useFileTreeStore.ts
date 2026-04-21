@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-import type { FileItem } from '@/app/develop/components/FileTree';
+import type { FileItem } from '@/app/[market]/develop/components/FileTree';
 import { logger } from '@/lib/request-context';
 import { appService } from '@/services/AppService';
 import { useAuthUIStore } from '@/stores/useAuthUIStore';

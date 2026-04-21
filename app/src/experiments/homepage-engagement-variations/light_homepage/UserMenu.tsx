@@ -12,7 +12,7 @@ import MapIcon from '@ux/icon/map';
 import ProductsIcon from '@ux/icon/products';
 import UserIcon from '@ux/icon/user';
 
-import IconButton from '@/app/develop/components/IconButton';
+import IconButton from '@/app/[market]/develop/components/IconButton';
 import { Feedback } from '@/components/feedback/Feedback';
 import { FEEDBACK_ID } from '@/components/feedback/utils';
 import { DiscordIcon } from '@/components/layout/DiscordLink';

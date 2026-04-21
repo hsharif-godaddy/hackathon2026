@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  */
 import { act, renderHook, waitFor } from '@testing-library/react';
 
-import { ChatTab, SettingsSection } from '@/app/develop/components/types';
+import { ChatTab, SettingsSection } from '@/app/[market]/develop/components/types';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { useChatTabs } from './useChatTabs';
 

@@ -1,0 +1,597 @@
+'use client';
+
+import clsx from 'clsx';
+import { motion } from 'framer-motion';
+import { useRouter } from 'next/navigation';
+import {
+  type UIEvent,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import { FormattedMessage } from 'react-intl';
+import Button from '@ux/button';
+import ChevronDownIcon from '@ux/icon/chevron-down';
+import Skeleton from '@ux/skeleton';
+import text from '@ux/text';
+
+import AppSiteRow from '@/app/[market]/manage-plan/components/AppSiteRow';
+import { CollapsibleCardBody } from '@/app/[market]/manage-plan/components/CollapsibleCardBody';
+import { APPS_LIST_LOAD_MORE_THRESHOLD_PX, MANAGE_PLAN_APPS_SCROLL_BATCH } from '@/app/[market]/manage-plan/constants';
+import UnpublishConfirmationModal from '@/components/layout/UnpublishConfirmationModal';
+import { useCloseOnReauth } from '@/hooks/useCloseOnReauth';
+import { useDomainDisconnectPolling, useMultipleDeploymentStatusPolling } from '@/hooks/useDeploymentStatusPolling';
+import { usePublishApp } from '@/hooks/usePublishApp';
+import { useSubscription } from '@/hooks/useSubscription';
+import { useSwitchboard } from '@/hooks/useSwitchboard';
+import { useTranslations } from '@/hooks/useTranslations';
+import { useUnpublishApp } from '@/hooks/useUnpublishApp';
+import type { SiteInfo } from '@/lib/control-plane/types';
+import { DomainStatus, DomainType } from '@/lib/control-plane/types';
+import { getEffectivePlan, isPaidPlanForGrants, PAYWALL_ITC, type PaywallType } from '@/lib/paywall/shared';
+import { getPublishLimit, isPublishedApp } from '@/lib/publish-limit';
+import {
+  getPublishComplianceBlockReason,
+  isPublishBlockedByComplianceRules,
+  PublishComplianceBlockReason,
+} from '@/lib/subscription';
+import { useSitesStore } from '@/stores/useSitesStore';
+import { SubscriptionPlan } from '@/types/credits';
+import { getPlanDisplayLabelKey } from '@/utils/credits';
+
+interface AppsAndSitesCardProps {
+  sites: SiteInfo[];
+  isLoading?: boolean;
+  subscriptionPlan?: SubscriptionPlan;
+  hadAiroPlus?: boolean;
+  onOpenPaywall?: (source: string, type?: PaywallType, itc?: string) => void;
+}
+
+function getCustomDomain(site: SiteInfo): string | null {
+  if (!site.domains?.length) {
+    return null;
+  }
+
+  const customDomain = site.domains.find((d) => d.domainType !== DomainType.PREFIX && d.status === DomainStatus.ACTIVE);
+  return customDomain?.fqdn ?? null;
+}
+
+/**
+ * Get the display URL for a site, preferring custom domain over default published_url.
+ * Returns URL with https:// protocol for use in href attributes.
+ */
+function getDisplayUrl(site: SiteInfo): string | null {
+  const customDomain = getCustomDomain(site);
+  if (customDomain) {
+    return `https://${customDomain}`;
+  }
+  return site.published_url ?? null;
+}
+
+export default function AppsAndSitesCard({
+  sites,
+  isLoading = false,
+  subscriptionPlan,
+  hadAiroPlus,
+  onOpenPaywall,
+}: AppsAndSitesCardProps) {
+  const t = useTranslations();
+  const router = useRouter();
+  const { data: isUnpublishEnabled } = useSwitchboard('appbuilder-unpublish');
+  const { data: suspendedComplianceBannerEnabled, isLoading: isSuspendedComplianceFeatureLoading } = useSwitchboard('appbuilder-suspended-compliance-banner');
+  const unpublishMutation = useUnpublishApp();
+  const publishMutation = usePublishApp();
+  const fetchAllSites = useSitesStore((state) => state.fetchAllSites);
+  const { data: subscription } = useSubscription();
+
+  const effectivePlanForLimits = getEffectivePlan(subscriptionPlan, hadAiroPlus);
+
+  const publishLimit = getPublishLimit(effectivePlanForLimits);
+  const planLabelKey = subscriptionPlan ? getPlanDisplayLabelKey(subscriptionPlan) : null;
+  const planName = planLabelKey ? t(planLabelKey) : '';
+  const isPaidPlan = isPaidPlanForGrants(subscriptionPlan);
+
+  const canUpgradeForMorePublishes =
+    effectivePlanForLimits &&
+    effectivePlanForLimits !== SubscriptionPlan.Ultimate &&
+    effectivePlanForLimits !== SubscriptionPlan.AiroPlus;
+
+  const publishedCount = useMemo(
+    () => sites.filter(isPublishedApp).length,
+    [sites]
+  );
+
+  const sitesSignature = useMemo(() => sites.map((s) => s.id).join('|'), [sites]);
+
+  const [visibleSiteCount, setVisibleSiteCount] = useState(() =>
+    Math.min(MANAGE_PLAN_APPS_SCROLL_BATCH, sites.length)
+  );
+
+  useEffect(() => {
+    setVisibleSiteCount(Math.min(MANAGE_PLAN_APPS_SCROLL_BATCH, sites.length));
+
+  }, [sitesSignature]);
+
+  const visibleSites = useMemo(
+    () => sites.slice(0, visibleSiteCount),
+    [sites, visibleSiteCount]
+  );
+
+  const appsScrollListRef = useRef<HTMLDivElement>(null);
+
+  const onAppsListScroll = useCallback(function onAppsListScroll(e: UIEvent<HTMLDivElement>) {
+    const el = e.currentTarget;
+    if (el.scrollTop + el.clientHeight < el.scrollHeight - APPS_LIST_LOAD_MORE_THRESHOLD_PX) {
+      return;
+    }
+    setVisibleSiteCount((c) => {
+      if (c >= sites.length) {
+        return c;
+      }
+      return Math.min(c + MANAGE_PLAN_APPS_SCROLL_BATCH, sites.length);
+    });
+  }, [sites.length]);
+
+  // Runs synchronously after DOM mutations so layout measurements are committed
+  useLayoutEffect(() => {
+    const el = appsScrollListRef.current;
+    if (!el || visibleSiteCount >= sites.length) {
+      return;
+    }
+    const { scrollHeight, clientHeight } = el;
+    if (clientHeight === 0 || scrollHeight === 0) {
+      return;
+    }
+    if (scrollHeight <= clientHeight + 1) {
+      setVisibleSiteCount((c) => Math.min(c + MANAGE_PLAN_APPS_SCROLL_BATCH, sites.length));
+    }
+  }, [visibleSiteCount, sites.length]);
+
+  const isAtPublishLimit = publishLimit !== null && publishedCount >= publishLimit;
+
+  const complianceSubscriptionRulesEnabled =
+    !isSuspendedComplianceFeatureLoading && suspendedComplianceBannerEnabled === true;
+
+  const isAppBlockedForPublishing = useCallback(
+    (site: SiteInfo) =>
+      isPublishBlockedByComplianceRules(site, subscription, complianceSubscriptionRulesEnabled),
+    [subscription, complianceSubscriptionRulesEnabled]
+  );
+
+  const getPublishBlockedRowMessage = useCallback(
+    (site: SiteInfo) => {
+      const reason = getPublishComplianceBlockReason(
+        site,
+        subscription,
+        complianceSubscriptionRulesEnabled
+      );
+      if (!reason) {
+        return undefined;
+      }
+      if (reason === PublishComplianceBlockReason.SiteSuspended) {
+        return t('builder_manageplan_apps_publish_blocked_suspended');
+      }
+      return t('builder_manageplan_apps_publish_blocked_subscription');
+    },
+    [complianceSubscriptionRulesEnabled, subscription, t]
+  );
+
+  const [isExpanded, setIsExpanded] = useState(true);
+  const [selectedApp, setSelectedApp] = useState<SiteInfo | null>(null);
+  const [showUnpublishModal, setShowUnpublishModal] = useState(false);
+
+  useCloseOnReauth(showUnpublishModal, () => {
+    setShowUnpublishModal(false);
+    setSelectedApp(null);
+    unpublishMutation.reset();
+  });
+
+  const [publishingApps, setPublishingApps] = useState<Set<string>>(new Set());
+  const [unpublishingApps, setUnpublishingApps] = useState<Set<string>>(new Set());
+
+  const [disconnectingDomainApps, setDisconnectingDomainApps] = useState<Map<string, string>>(new Map());
+
+  const [deploymentsToTrack, setDeploymentsToTrack] = useState<Map<string, string>>(new Map());
+
+  // Error state per app - stores error message to display below button
+  const [appErrors, setAppErrors] = useState<Map<string, string>>(new Map());
+
+  const clearAppError = useCallback((appId: string) => {
+    setAppErrors((prev) => {
+      const next = new Map(prev);
+      next.delete(appId);
+      return next;
+    });
+  }, []);
+
+  const setAppError = useCallback((appId: string, error: string) => {
+    setAppErrors((prev) => {
+      const next = new Map(prev);
+      next.set(appId, error);
+      return next;
+    });
+  }, []);
+
+  const domainsToTrack = useMemo(
+    () => Array.from(disconnectingDomainApps.entries()).map(([appId, domainFqdn]) => ({
+      appId,
+      domainFqdn,
+    })),
+    [disconnectingDomainApps]
+  );
+
+  const handleDomainDisconnectComplete = useCallback(async (appId: string) => {
+    setDisconnectingDomainApps((prev) => {
+      const next = new Map(prev);
+      next.delete(appId);
+      return next;
+    });
+    await fetchAllSites();
+  }, [fetchAllSites]);
+
+  const handleDomainDisconnectTimeout = useCallback((appId: string) => {
+    setDisconnectingDomainApps((prev) => {
+      const next = new Map(prev);
+      next.delete(appId);
+      return next;
+    });
+    setAppError(appId, t('builder_unpublish_domain_disconnect_timeout'));
+  }, [setAppError, t]);
+
+  useDomainDisconnectPolling({
+    domains: domainsToTrack,
+    onComplete: handleDomainDisconnectComplete,
+    onTimeout: handleDomainDisconnectTimeout,
+  });
+
+  const deploymentsToTrackArray = useMemo(
+    () => Array.from(deploymentsToTrack.entries()).map(([appId, deploymentId]) => ({
+      appId,
+      deploymentId,
+    })),
+    [deploymentsToTrack]
+  );
+
+  const handleDeploymentComplete = useCallback(async (appId: string) => {
+    setDeploymentsToTrack((prev) => {
+      const next = new Map(prev);
+      next.delete(appId);
+      return next;
+    });
+
+    setPublishingApps((prev) => {
+      const next = new Set(prev);
+      next.delete(appId);
+      return next;
+    });
+
+    await fetchAllSites();
+  }, [fetchAllSites]);
+
+  useMultipleDeploymentStatusPolling({
+    deployments: deploymentsToTrackArray,
+    onComplete: handleDeploymentComplete,
+  });
+
+  const handleUnpublishClick = (site: SiteInfo) => {
+    // Clear any previous error when clicking the button
+    clearAppError(site.id);
+    setSelectedApp(site);
+    setShowUnpublishModal(true);
+  };
+
+  const handleUnpublishConfirm = (disconnectDomain: boolean) => {
+    if (!selectedApp) return;
+
+    const appId = selectedApp.id;
+    const customDomain = getCustomDomain(selectedApp);
+
+    setUnpublishingApps((prev) => new Set(prev).add(appId));
+
+    unpublishMutation.mutate(
+      {
+        appId,
+        disconnectDomain,
+        domainFqdn: disconnectDomain && customDomain ? customDomain : undefined,
+      },
+      {
+        onSuccess: (_result) => {
+          setShowUnpublishModal(false);
+          setSelectedApp(null);
+
+          // Start polling for domain removal if disconnect was requested
+          if (disconnectDomain && customDomain) {
+            setDisconnectingDomainApps((prev) => {
+              const next = new Map(prev);
+              next.set(appId, customDomain);
+              return next;
+            });
+          }
+        },
+        onSettled: () => {
+          setUnpublishingApps((prev) => {
+            const next = new Set(prev);
+            next.delete(appId);
+            return next;
+          });
+        },
+      }
+    );
+  };
+
+  const handleUnpublishRetry = () => {
+    if (selectedApp) {
+      const appId = selectedApp.id;
+
+      setUnpublishingApps((prev) => new Set(prev).add(appId));
+
+      unpublishMutation.mutate(
+        {
+          appId,
+          disconnectDomain: false,
+        },
+        {
+          onSuccess: () => {
+            setShowUnpublishModal(false);
+            setSelectedApp(null);
+          },
+          onSettled: () => {
+            setUnpublishingApps((prev) => {
+              const next = new Set(prev);
+              next.delete(appId);
+              return next;
+            });
+          },
+        }
+      );
+    }
+  };
+
+  const handleCloseModal = () => {
+    setShowUnpublishModal(false);
+    setSelectedApp(null);
+    unpublishMutation.reset();
+  };
+
+  const handlePublishClick = async (siteId: string) => {
+    // Clear any previous error when clicking the button
+    clearAppError(siteId);
+
+    // Find the site to check for suspension
+    const site = sites.find(s => s.id === siteId);
+    if (!site) {
+      setAppError(siteId, t('builder_common_error_generic'));
+      return;
+    }
+
+    if (isAppBlockedForPublishing(site)) {
+      return;
+    }
+
+    setPublishingApps((prev) => new Set(prev).add(siteId));
+
+    try {
+      const result = await publishMutation.mutateAsync({ appId: siteId });
+
+      if (result.result.deployment?.deploymentId) {
+        setDeploymentsToTrack((prev) => {
+          const next = new Map(prev);
+          next.set(siteId, result.result.deployment!.deploymentId);
+          return next;
+        });
+      } else if (result.result.published) {
+        await fetchAllSites();
+        setPublishingApps((prev) => {
+          const next = new Set(prev);
+          next.delete(siteId);
+          return next;
+        });
+      } else {
+        setPublishingApps((prev) => {
+          const next = new Set(prev);
+          next.delete(siteId);
+          return next;
+        });
+      }
+    } catch (error) {
+      setPublishingApps((prev) => {
+        const next = new Set(prev);
+        next.delete(siteId);
+        return next;
+      });
+      const errorMessage = error instanceof Error && error.message?.trim() ? error.message : t('builder_common_error_generic');
+      setAppError(siteId, errorMessage);
+    }
+  };
+
+  if (isLoading && sites.length === 0) {
+    return (
+      <div className="flex flex-col md:col-span-2 bg-intents-ux-box-backgroundColor rounded-xl border border-border p-2 sm:p-4">
+        <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 w-full">
+          <Skeleton width="16px" height="16px" className="flex-shrink-0" />
+          <Skeleton width="120px" height="20px" />
+          <Skeleton width="80px" height="16px" />
+          <div className="hidden sm:block sm:ml-auto">
+            <Skeleton width="60px" height="20px" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!sites.length) {
+    return (
+      <div className="flex flex-col md:col-span-2 bg-intents-ux-box-backgroundColor rounded-xl border border-border p-2 sm:p-4">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-baseline gap-2">
+            <text.strong
+              as="title"
+              size={0}
+              className="block"
+              text={`${t('builder_manageplan_apps_title')} (0)`}
+            />
+            <text.p as="paragraph" size={-1} className="text-intents-ux-passive-foregroundColor">
+              {t('builder_manageplan_apps_published_count', { count: 0 })}
+            </text.p>
+          </div>
+          <Button
+            design="inline"
+            size="sm"
+            onClick={() => router.push('/apps')}
+            text={t('builder_manageplan_my_apps')}
+          />
+        </div>
+        {planName && publishLimit !== null && publishLimit > 0 && (
+          <text.p as="paragraph" size={-1} className="mb-3 text-intents-ux-passive-foregroundColor">
+            <FormattedMessage
+              id="builder_manageplan_apps_plan_limit"
+              values={{
+                planName,
+                limit: publishLimit,
+                strong: (chunks) => <strong>{chunks}</strong>,
+              }}
+            />
+          </text.p>
+        )}
+        <text.p
+          as="paragraph"
+          text={t('builder_manageplan_apps_empty')}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className={clsx('flex flex-col md:col-span-2 bg-intents-ux-box-backgroundColor rounded-xl border border-border p-2 sm:p-4', isExpanded && 'pb-0 sm:pb-0')}>
+        <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 w-full">
+          <button
+            type="button"
+            className="flex-shrink-0 cursor-pointer"
+            onClick={() => setIsExpanded(!isExpanded)}
+            aria-expanded={isExpanded}
+            aria-label={isExpanded ? t('builder_common_collapse') : t('builder_common_expand')}
+          >
+            <motion.span
+              className="inline-flex"
+              initial={false}
+              animate={{ rotate: isExpanded ? 180 : 0 }}
+              transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
+            >
+              <ChevronDownIcon className="w-4 h-4" />
+            </motion.span>
+          </button>
+          <div className="flex items-baseline gap-2 flex-shrink-0">
+            <text.strong
+              as="title"
+              size={0}
+              className="block flex-shrink-0"
+              text={`${t('builder_manageplan_apps_title')}`}
+            />
+            <text.p as="paragraph" size={-1} className="text-intents-ux-passive-foregroundColor flex-shrink-0" emphasis="passive">
+              {t('builder_manageplan_apps_published_count', { count: publishedCount })}
+            </text.p>
+          </div>
+          <div className="hidden sm:block sm:ml-auto flex-shrink-0">
+            <Button
+              design="inline"
+              data-partial='componentAiro'
+              size="sm"
+              onClick={() => router.push('/apps')}
+              text={t('builder_manageplan_my_apps')}
+            />
+          </div>
+        </div>
+
+        <CollapsibleCardBody isExpanded={isExpanded}>
+          <>
+            {planName && publishLimit !== null && publishLimit > 0 && (
+              <text.p as="paragraph" size={-1} className="mt-2 mb-3 flex-shrink-0 text-intents-ux-passive-foregroundColor">
+                {canUpgradeForMorePublishes && onOpenPaywall ? (
+                  <FormattedMessage
+                    id="builder_manageplan_apps_plan_limit_with_upgrade"
+                    values={{
+                      planName,
+                      limit: publishLimit,
+                      upgradeLink: (chunks) => (
+                        <Button
+                          design="inline"
+                          size="sm"
+                          data-partial="componentAiro"
+                          onClick={() => onOpenPaywall('manage_plan.apps_upgrade', 'upgrade', PAYWALL_ITC.UPGRADE)}
+                          text={chunks.toString()}
+                        />
+                      ),
+                      strong: (chunks) => <strong>{chunks}</strong>
+                    }}
+                  />
+                ) : (
+                  <FormattedMessage
+                    id="builder_manageplan_apps_plan_limit"
+                    values={{
+                      planName,
+                      limit: publishLimit,
+                      strong: (chunks) => <strong>{chunks}</strong>,
+                    }}
+                  />
+                )}
+              </text.p>
+            )}
+
+            <div
+              ref={appsScrollListRef}
+              data-testid="manage-plan-apps-scroll-list"
+              className="flex flex-col flex-1 min-h-0 overflow-y-auto pr-1 max-h-48"
+              onScroll={onAppsListScroll}
+            >
+              {visibleSites.map((site) => {
+                const published = isPublishedApp(site);
+                return (
+                  <AppSiteRow
+                    key={site.id}
+                    disabled={publishingApps.has(site.id) || unpublishingApps.has(site.id) || disconnectingDomainApps.has(site.id)}
+                    site={site}
+                    isPublished={published}
+                    publishedUrl={getDisplayUrl(site)}
+                    isPublishing={publishingApps.has(site.id)}
+                    isUnpublishing={unpublishingApps.has(site.id)}
+                    isDisconnectingDomain={disconnectingDomainApps.has(site.id)}
+                    isUnpublishEnabled={isUnpublishEnabled ?? false}
+                    isPaidPlan={isPaidPlan}
+                    isAtPublishLimit={isAtPublishLimit}
+                    canUpgrade={canUpgradeForMorePublishes ?? false}
+                    isPublishingBlocked={isAppBlockedForPublishing(site)}
+                    error={
+                      appErrors.get(site.id) ??
+                      (!published ? getPublishBlockedRowMessage(site) : undefined)
+                    }
+                    onPublishClick={handlePublishClick}
+                    onUnpublishClick={handleUnpublishClick}
+                    onOpenPaywall={onOpenPaywall}
+                    onRowClick={(siteId) => router.push(`/develop/${siteId}`)}
+                  />
+                );
+              })}
+            </div>
+          </>
+        </CollapsibleCardBody>
+      </div>
+
+      {showUnpublishModal && selectedApp && (
+        <UnpublishConfirmationModal
+          appName={selectedApp.name}
+          customDomain={getCustomDomain(selectedApp)}
+          publishedUrl={getDisplayUrl(selectedApp)}
+          onClose={handleCloseModal}
+          onConfirm={handleUnpublishConfirm}
+          isLoading={unpublishingApps.has(selectedApp.id)}
+          error={unpublishMutation.error}
+          onRetry={unpublishMutation.error?.retryable ? handleUnpublishRetry : undefined}
+        />
+      )}
+    </>
+  );
+}

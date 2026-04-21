@@ -250,7 +250,7 @@ vi.mock('@/services/AgentService', () => ({
   }
 }));
 
-vi.mock('@/app/develop/components/visualContextCapture', () => ({
+vi.mock('@/app/[market]/develop/components/visualContextCapture', () => ({
   captureVisualContext: vi.fn(() => Promise.resolve(null))
 }));
 
@@ -548,7 +548,7 @@ describe('useStreamingWebSocket', () => {
     it('should handle visual context capture errors gracefully', async () => {
       // Regression test for Bug 3: Visual context errors escaping error handling
       vi.useFakeTimers()
-      const { captureVisualContext } = await import('@/app/develop/components/visualContextCapture');
+      const { captureVisualContext } = await import('@/app/[market]/develop/components/visualContextCapture');
 
       // Make captureVisualContext throw an error
       vi.mocked(captureVisualContext).mockRejectedValue(new Error('Iframe not ready'));

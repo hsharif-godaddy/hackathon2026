@@ -7,7 +7,7 @@ import Modal from '@ux/modal';
 import text from '@ux/text';
 import TextInput from '@ux/text-input';
 
-import IconButton from '@/app/develop/components/IconButton';
+import IconButton from '@/app/[market]/develop/components/IconButton';
 import { useTranslations } from '@/hooks/useTranslations';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { useSiteStore } from '@/stores/useSiteStore';

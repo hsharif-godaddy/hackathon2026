@@ -4,6 +4,7 @@ export default {
       locale: 'en-US',
       defaultLocale: 'en-US',
       locales: [
+        'ar-AE',
         'en-US',
         'en-AE',
         'en-AU',
@@ -22,7 +23,6 @@ export default {
         'de-DE',
         'de-AT',
         'de-CH',
-        'el-GR',
         'es-ES',
         'es-MX',
         'es-US',
@@ -31,7 +31,6 @@ export default {
         'es-CO',
         'es-PE',
         'es-VE',
-        'fi-FI',
         'fr-CA',
         'fr-FR',
         'fr-BE',

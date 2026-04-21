@@ -141,7 +141,7 @@ vi.mock('@/services/AgentService', () => ({
   },
 }))
 
-vi.mock('@/app/develop/components/visualContextCapture', () => ({
+vi.mock('@/app/[market]/develop/components/visualContextCapture', () => ({
   captureVisualContext: vi.fn(() => Promise.resolve(null)),
 }))
 

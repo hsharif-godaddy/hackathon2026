@@ -32,7 +32,7 @@ vi.mock('@/stores/useAuthUIStore', () => {
   };
 });
 
-import type { FileItem } from '@/app/develop/components/FileTree';
+import type { FileItem } from '@/app/[market]/develop/components/FileTree';
 import { useFileTreeStore } from './useFileTreeStore';
 
 describe('useFileTreeStore', () => {

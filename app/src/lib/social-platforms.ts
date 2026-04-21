@@ -6,7 +6,7 @@ import TiktokIcon from '@ux/icon/tiktok'
 import WhatsappIcon from '@ux/icon/whatsapp'
 import YelpIcon from '@ux/icon/yelp'
 
-import { Status } from '@/app/develop/components/settings/social/StatusBadge'
+import { Status } from '@/app/[market]/develop/components/settings/social/StatusBadge'
 import { SocialConnection, SocialPlatform, SocialPlatformKey } from '@/types/social'
 
 export interface PlatformConfig {
