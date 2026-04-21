@@ -19,6 +19,11 @@ vi.mock('@/services/AppService', () => ({
   appService: {
     readFile: vi.fn(),
     writeFile: vi.fn(),
+    searchCode: vi.fn().mockResolvedValue({
+      matches: [],
+      totalMatches: 0,
+      truncated: false
+    }),
   },
 }));
 
@@ -62,6 +67,32 @@ vi.mock('@/stores/useSiteCreationStore', () => ({
     })
   ),
 }));
+
+vi.mock('@/stores/useServerPollingStore', () => ({
+  useServerPollingStore: vi.fn((selector: any) =>
+    selector({
+      getServerState: () => ({ url: 'http://localhost:3000' }),
+    })
+  ),
+}));
+
+const mockCodeSyncState = {
+  changeVersion: 0,
+  clearFileChange: vi.fn(),
+  addConflict: vi.fn(),
+  resolveConflict: vi.fn(),
+  hasConflict: vi.fn(() => false),
+  getFileChange: vi.fn(() => null),
+  fileChanges: new Map(),
+};
+
+vi.mock('@/stores/useCodeSyncStore', () => {
+  const store = Object.assign(
+    vi.fn((selector: any) => selector(mockCodeSyncState)),
+    { getState: () => mockCodeSyncState }
+  );
+  return { useCodeSyncStore: store };
+});
 
 vi.mock('@/hooks/useBreakpoints', () => ({
   useBreakpoints: () => ({ isBelowSmBreakpoint: false }),
@@ -265,6 +296,61 @@ describe('PreviewCode', () => {
     // Should call with new realAppId after cleanup
     await waitFor(() => {
       expect(mockFileTreeState.loadFilesFromCacheOrFetch).toHaveBeenCalledWith('real-app-xyz');
+    });
+  });
+
+  it('should open search tab when search button is clicked', async () => {
+    const { useDevelopPageStore } = await import('@/stores/useDevelopPageStore');
+
+    vi.mocked(useDevelopPageStore).mockImplementation((selector: any) =>
+      selector({
+        isMobile: false,
+        isFileTreeCollapsed: false,
+        setIsFileTreeCollapsed: vi.fn(),
+        setHasUnsavedChanges: vi.fn(),
+        loadingPhase: 'ready',
+      })
+    );
+
+    mockFileTreeState.files['test-app-123'] = [];
+
+    const { user } = renderWithProviders(<PreviewCode appId="test-app-123" />);
+
+    // Find and click the search button
+    const searchButton = screen.getByTestId('search-button');
+    expect(searchButton).toBeInTheDocument();
+
+    await user.click(searchButton);
+
+    // Search panel should now be visible
+    await waitFor(() => {
+      expect(screen.getByTestId('search-panel')).toBeInTheDocument();
+    });
+  });
+
+  it('should show search input when search tab is active', async () => {
+    const { useDevelopPageStore } = await import('@/stores/useDevelopPageStore');
+
+    vi.mocked(useDevelopPageStore).mockImplementation((selector: any) =>
+      selector({
+        isMobile: false,
+        isFileTreeCollapsed: false,
+        setIsFileTreeCollapsed: vi.fn(),
+        setHasUnsavedChanges: vi.fn(),
+        loadingPhase: 'ready',
+      })
+    );
+
+    mockFileTreeState.files['test-app-123'] = [];
+
+    const { user } = renderWithProviders(<PreviewCode appId="test-app-123" />);
+
+    // Click search button to open search
+    await user.click(screen.getByTestId('search-button'));
+
+    // Search input in header should be visible
+    await waitFor(() => {
+      expect(screen.getByTestId('search-input-header')).toBeInTheDocument();
     });
   });
 

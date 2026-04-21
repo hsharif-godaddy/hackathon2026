@@ -519,6 +519,7 @@ export class AppService {
       regex?: boolean
       maxResults?: number
       filePattern?: string
+      signal?: AbortSignal
     } = {}
   ): Promise<{
     matches: Array<{
@@ -546,7 +547,8 @@ export class AppService {
       siteId: appId,
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(requestBody)
+      body: JSON.stringify(requestBody),
+      signal: options.signal
     })
 
     if (!response.ok) {

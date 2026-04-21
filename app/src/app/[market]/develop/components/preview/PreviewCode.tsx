@@ -2,20 +2,21 @@
 
 import clsx from 'clsx'
 import dynamic from 'next/dynamic'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import Button from '@ux/button'
 import DownloadIcon from '@ux/icon/download'
 import HamburgerIcon from '@ux/icon/hamburger'
 import PageIcon from '@ux/icon/page'
+import SearchIcon from '@ux/icon/search'
 import XIcon from '@ux/icon/x'
 import Spinner from '@ux/spinner'
 import Text from '@ux/text'
 
-import CodeSearch from '@/app/[market]/develop/components/CodeSearch'
 import FileTree, { FileItem, FileStatus } from '@/app/[market]/develop/components/FileTree'
 import { markdownComponents } from '@/app/[market]/develop/components/preview/markdownComponents'
+import UnifiedSearch, { SearchState } from '@/app/[market]/develop/components/UnifiedSearch'
 import { useBreakpoints } from '@/hooks/useBreakpoints'
 import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
@@ -28,6 +29,9 @@ import { useSiteCreationStore } from '@/stores/useSiteCreationStore'
 import { BINARY_FILE_REGEX, IMAGE_FILE_REGEX, VIDEO_FILE_REGEX } from '@/utils/file-types'
 
 const EMPTY_ARRAY: never[] = [];
+
+// Special path for the search "file"
+const SEARCH_PATH = '__search__'
 
 // Dynamically import Monaco Editor to avoid SSR issues
 const MonacoEditor = dynamic(() => import('@monaco-editor/react'), {
@@ -95,6 +99,7 @@ interface OpenFile {
   content: string
   language: string
   isDirty: boolean
+  isSearch?: boolean
 }
 
 interface PreviewCodeProps {
@@ -108,6 +113,9 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
   const [saving, setSaving] = useState<string | null>(null)
   const [recentlySaved, setRecentlySaved] = useState<string | null>(null)
   const [showMarkdownPreview, setShowMarkdownPreview] = useState(false)
+  const [searchState, setSearchState] = useState<SearchState | undefined>(undefined)
+  const [isSearchExpanded, setIsSearchExpanded] = useState(false)
+  const searchInputRef = useRef<HTMLInputElement>(null)
 
   const { isBelowSmBreakpoint } = useBreakpoints()
   // On mobile, start with file tree open so users know it exists
@@ -599,6 +607,52 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
     }
   }, [activeFile, openFiles])
 
+  // Open search as a "file" tab
+  const handleOpenSearch = useCallback(() => {
+    // Check if search tab already exists
+    const existingSearch = openFiles.find(f => f.path === SEARCH_PATH)
+    if (existingSearch) {
+      setActiveFile(SEARCH_PATH)
+      return
+    }
+
+    // Add search as a new tab
+    const searchFile: OpenFile = {
+      path: SEARCH_PATH,
+      name: t('builder_code_search_tab', undefined, 'Search'),
+      content: '',
+      language: 'plaintext',
+      isDirty: false,
+      isSearch: true
+    }
+
+    setOpenFiles(prev => [...prev, searchFile])
+    setActiveFile(SEARCH_PATH)
+
+    // On mobile, close file tree after opening search
+    if (isBelowSmBreakpoint) {
+      setShowFileTree(false)
+    }
+  }, [openFiles, isBelowSmBreakpoint, t])
+
+  // Expand search input in header and open search tab
+  const expandSearch = useCallback(() => {
+    setIsSearchExpanded(true)
+    handleOpenSearch()
+    setTimeout(() => searchInputRef.current?.focus(), 0)
+  }, [handleOpenSearch])
+
+  // Collapse search input and close search tab
+  const collapseSearch = useCallback(() => {
+    setIsSearchExpanded(false)
+    setSearchState(undefined)
+    setOpenFiles(prev => prev.filter(f => f.path !== SEARCH_PATH))
+    if (activeFile === SEARCH_PATH) {
+      const remainingFiles = openFiles.filter(f => f.path !== SEARCH_PATH)
+      setActiveFile(remainingFiles.length > 0 ? remainingFiles[remainingFiles.length - 1].path : null)
+    }
+  }, [activeFile, openFiles])
+
   const handleEditorChange = useCallback((value: string | undefined) => {
     if (!activeFile || !value) return
 
@@ -665,6 +719,15 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [handleSaveFile])
 
+  // Sync: collapse header when search tab is closed externally
+  const isSearchTabOpen = useMemo(() => openFiles.some(f => f.path === SEARCH_PATH), [openFiles])
+  useEffect(() => {
+    if (!isSearchTabOpen && isSearchExpanded) {
+      setIsSearchExpanded(false)
+      setSearchState(undefined)
+    }
+  }, [isSearchTabOpen, isSearchExpanded])
+
   const currentFile = openFiles.find(f => f.path === activeFile)
 
   if (isLoading) {
@@ -711,18 +774,28 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
             "absolute left-0 top-0 bottom-0 w-[280px] bg-intents-ux-box-backgroundColor z-20 transform transition-transform duration-300 ease-in-out flex flex-col",
             showFileTree ? "translate-x-0" : "-translate-x-full"
           )}>
-            <div className="flex items-center justify-between px-1.5 py-0.5 border-b">
+            <div className="flex items-center justify-between px-1.5 py-1 border-b">
               <Text.p className="ml-2 !font-semibold">{t('builder_common_files')}</Text.p>
-              <Button
-                onClick={() => setShowFileTree(false)}
-                className="!p-0.5"
-                design="control"
-                title={t('builder_common_close', undefined, 'Close')}
-                aria-label={t('builder_common_close', undefined, 'Close')}
-                icon={<XIcon />}
-              />
+              <div className="flex items-center gap-1">
+                <Button
+                  onClick={handleOpenSearch}
+                  className="!p-0.5"
+                  design="control"
+                  data-testid="search-button"
+                  title={t('builder_code_search_placeholder_code', undefined, 'Search')}
+                  aria-label={t('builder_code_search_placeholder_code', undefined, 'Search')}
+                  icon={<SearchIcon />}
+                />
+                <Button
+                  onClick={() => setShowFileTree(false)}
+                  className="!p-0.5"
+                  design="control"
+                  title={t('builder_common_close', undefined, 'Close')}
+                  aria-label={t('builder_common_close', undefined, 'Close')}
+                  icon={<XIcon />}
+                />
+              </div>
             </div>
-            <CodeSearch appId={effectiveAppId} files={files} onResultClick={handleFileSelect} />
             <div className="flex-1 overflow-y-auto">
               <FileTree
                 files={files}
@@ -736,7 +809,82 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
       ) : (
         // Desktop: Fixed sidebar
         <div className="border-r min-h-0 w-[250px] flex-shrink-0 flex flex-col">
-          <CodeSearch appId={effectiveAppId} files={files} onResultClick={handleFileSelect} />
+          <div className="flex items-center justify-between px-2 border-b h-6 my-0.5">
+            {/* Files title - hidden when search is expanded */}
+            <Text.p
+              className={clsx(
+                "!font-semibold transition-opacity duration-200",
+                isSearchExpanded ? "opacity-0 w-0 overflow-hidden" : "opacity-100"
+              )}
+            >
+              {t('builder_common_files')}
+            </Text.p>
+
+            {/* Search button that transforms into input */}
+            <div
+              className={clsx(
+                "flex items-center rounded-md bg-intents-ux-boxLowContrast-backgroundColor transition-[width] duration-300 ease-in-out",
+                isSearchExpanded ? "w-full" : "w-[28px]"
+              )}
+            >
+              <button
+                onClick={!isSearchExpanded ? expandSearch : undefined}
+                className={clsx(
+                  "flex items-center justify-center flex-shrink-0 h-[28px] w-[28px]",
+                  !isSearchExpanded && "cursor-pointer hover:opacity-80"
+                )}
+                aria-label={t('builder_code_search_placeholder_code', undefined, 'Search')}
+                data-testid="search-button"
+                type="button"
+              >
+                <SearchIcon className="w-2 h-2" />
+              </button>
+              <input
+                ref={searchInputRef}
+                type="text"
+                value={searchState?.query ?? ''}
+                onChange={(e) => {
+                  const q = e.target.value
+                  setSearchState(prev =>
+                    prev
+                      ? { ...prev, query: q }
+                      : { query: q, fileResults: [], codeResults: [], totalCodeMatches: 0, truncated: false }
+                  )
+                }}
+                onBlur={() => {
+                  if (isSearchExpanded && !searchState?.query?.trim()) {
+                    collapseSearch()
+                  }
+                }}
+                onKeyDown={(e) => e.key === 'Escape' && collapseSearch()}
+                placeholder={t('builder_code_search_placeholder_code', undefined, 'Search files and code')}
+                className={clsx(
+                  "bg-transparent outline-none text-sm h-[28px] transition-opacity duration-300 ease-in-out",
+                  isSearchExpanded ? "flex-1 opacity-100 delay-150" : "w-0 opacity-0"
+                )}
+                aria-label={t('builder_code_search_placeholder_code', undefined, 'Search')}
+                data-testid="search-input-header"
+                tabIndex={isSearchExpanded ? 0 : -1}
+              />
+              {isSearchExpanded && searchState?.query && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchState(prev =>
+                      prev
+                        ? { ...prev, query: '' }
+                        : { query: '', fileResults: [], codeResults: [], totalCodeMatches: 0, truncated: false }
+                    )
+                    searchInputRef.current?.focus()
+                  }}
+                  className="flex-shrink-0 p-1 mr-1 opacity-60 hover:opacity-100 transition-opacity"
+                  aria-label={t('builder_common_clear', undefined, 'Clear')}
+                >
+                  <XIcon className="w-1.5 h-1.5" />
+                </button>
+              )}
+            </div>
+          </div>
           <div className="flex-1 overflow-y-auto">
             <FileTree
               files={files}
@@ -749,7 +897,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
       )}
 
       {/* Editor Area */}
-      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+      <div className="flex flex-col flex-1 min-w-0 overflow-hidden relative">
         {/* Tabs */}
         <div className="flex items-center border-b overflow-x-auto">
           {/* Mobile: File tree toggle button */}
@@ -776,11 +924,11 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
                   )}
                   onClick={() => setActiveFile(file.path)}
                 >
-                  <PageIcon />
+                  {file.isSearch ? <SearchIcon /> : <PageIcon />}
                   <span className={clsx(isBelowSmBreakpoint ? "max-w-[80px] truncate" : "")}>{file.name}</span>
 
-                  {/* Save status indicators */}
-                  {(saving === file.path || recentlySaved === file.path || file.isDirty) && (
+                  {/* Save status indicators - not shown for search tab */}
+                  {!file.isSearch && (saving === file.path || recentlySaved === file.path || file.isDirty) && (
                     <div className={clsx(
                       "absolute top-1 left-1 w-1 h-1 bg-intents-ux-feedbackHighContrastCritical-feedbackColor rounded-full", {
                         "bg-intents-ux-feedbackHighContrastSuccess-feedbackColor": recentlySaved === file.path,
@@ -840,7 +988,18 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
 
         {/* Editor */}
         <div className="flex-1 overflow-auto">
-          {currentFile ? (
+          {currentFile?.isSearch ? (
+            // Search tab content
+            <UnifiedSearch
+              appId={effectiveAppId}
+              files={files}
+              onResultClick={(path, line) => {
+                handleFileSelect(path, line)
+              }}
+              initialState={searchState}
+              onStateChange={setSearchState}
+            />
+          ) : currentFile ? (
             <>
               {/* Conflict banner - show when file has unsaved changes and was modified by agent */}
               {currentFile && hasConflict(currentFile.path) && (
