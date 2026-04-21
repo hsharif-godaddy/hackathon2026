@@ -12,11 +12,12 @@ export const config = {
 
 /** @type {import('next/server').NextMiddleware} */
 export async function middleware(request: Request) {
-  const { pathname } = new URL(request.url);
+  const requestUrl = new URL(request.url);
+  const { pathname, search } = requestUrl;
 
   const visitor = await gasket.actions.getVisitor(request);
   const { market } = visitor;
 
   const targetPathname = [market, pathname.slice(1)].filter(Boolean).join('/');
-  return NextResponse.rewrite(new URL(`/${targetPathname}`, request.url));
+  return NextResponse.rewrite(new URL(`/${targetPathname}${search}`, request.url));
 }
