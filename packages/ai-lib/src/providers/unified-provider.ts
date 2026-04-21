@@ -365,9 +365,9 @@ function createS2SFetchWrapper(s2sAuthConfig?: S2SAuthConfig, options?: { blocke
     // Inject BMS cost-reporting headers when budget session is active
     // Set before first fetch so they persist across 401 retries and grant-fallback retries
     const metadata = llmMetadataContext.getStore()
-    if (metadata?.budgetId && metadata?.budgetSessionId) {
-      headers.set('x-gocode-budget-service-name', 'airo-bms')
-      headers.set('x-gocode-budget-id', `${metadata.budgetId}:${metadata.budgetSessionId}`)
+    if (metadata?.budgetSessionId) {
+      headers.set('x-gocode-budget-service-name', 'airo-app-builder')
+      headers.set('x-gocode-budget-id', metadata.budgetSessionId)
     }
 
     if (metadata?.traceId) {
@@ -431,11 +431,17 @@ function createS2SFetchWrapper(s2sAuthConfig?: S2SAuthConfig, options?: { blocke
 
 
 /**
- * Create a fetch wrapper that selectively blocks specific anthropic-beta headers for proxy compatibility
- * Used for non-S2S Anthropic API calls through GoCode proxy
- * Also injects litellm_metadata for cost tracking when available
+ * Create a fetch wrapper that selectively blocks specific anthropic-beta headers for proxy compatibility.
+ * Used for non-S2S Anthropic API calls through GoCode proxy.
+ * Also injects litellm_metadata for cost tracking when available.
+ *
+ * @param blockedHeaders - List of anthropic-beta header values to filter out
+ * @param baseFetch - Base fetch function to use (defaults to llmFetch, injectable for testing)
  */
-function createSelectiveBetaHeaderFetch(blockedHeaders?: string[]): typeof fetch {
+export function createSelectiveBetaHeaderFetch(
+  blockedHeaders?: string[],
+  baseFetch: typeof fetch = llmFetch
+): typeof fetch {
   return async (url: RequestInfo | URL, init?: RequestInit) => {
     // Convert to Headers instance for consistent API
     const headers = new Headers(init?.headers)
@@ -444,9 +450,9 @@ function createSelectiveBetaHeaderFetch(blockedHeaders?: string[]): typeof fetch
 
     // Inject BMS cost-reporting headers when budget session is active
     const metadata = llmMetadataContext.getStore()
-    if (metadata?.budgetId && metadata?.budgetSessionId) {
-      headers.set('x-gocode-budget-service-name', 'airo-bms')
-      headers.set('x-gocode-budget-id', `${metadata.budgetId}:${metadata.budgetSessionId}`)
+    if (metadata?.budgetSessionId) {
+      headers.set('x-gocode-budget-service-name', 'airo-app-builder')
+      headers.set('x-gocode-budget-id', metadata.budgetSessionId)
     }
 
     if (metadata?.traceId) {
@@ -470,7 +476,7 @@ function createSelectiveBetaHeaderFetch(blockedHeaders?: string[]): typeof fetch
     }
 
     // Make request with modified headers and body
-    let response = await llmFetch(url, modifiedInit)
+    let response = await baseFetch(url, modifiedInit)
 
     // Handle budget exceeded with grant fallback
     if (metadata) {
