@@ -9,45 +9,46 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
-	"github.com/airo-ai-builder/dev-runner/internal/preflight/fixers"
+	"github.com/airo-ai-builder/dev-runner/internal/preflight"
 )
 
-// envFormField is a single input field in the inline env form.
+// envFormField is a single input field in the inline form.
 type envFormField struct {
+	Key         string
 	Label       string
 	Description string
+	Required    bool
 	Input       textinput.Model
 }
 
-// initEnvForm sets up the inline form fields for an EnvFixer.
-func (m *Model) initEnvForm(ef *fixers.EnvFixer) {
-	defaults := fixers.DefaultEnvValues()
-	m.envFormFixer = ef
+// initFixerForm sets up the inline form fields from a FormFixer's declarations.
+func (m *Model) initFixerForm(ff preflight.FormFixer) {
+	m.formFixer = ff
+	fields := ff.FormFields()
 
-	apiKey := textinput.New()
-	apiKey.Placeholder = "sk-..."
-	apiKey.EchoMode = textinput.EchoPassword
-	apiKey.CharLimit = 200
-	apiKey.SetValue(defaults.APIKey)
-	apiKey.Focus()
-
-	baseURL := textinput.New()
-	baseURL.CharLimit = 200
-	baseURL.SetValue(defaults.BaseURL)
-
-	authType := textinput.New()
-	authType.CharLimit = 10
-	authType.SetValue(defaults.AuthType)
-
-	awsProfile := textinput.New()
-	awsProfile.CharLimit = 100
-	awsProfile.SetValue(defaults.AWSProfile)
-
-	m.envFormFields = []envFormField{
-		{Label: "GoCode API Key", Description: "Get your key at: https://caas.open-webui.godaddy.com/workspace/apiKeys", Input: apiKey},
-		{Label: "GoCode Base URL", Input: baseURL},
-		{Label: "Auth Type (jwt/mock/none)", Input: authType},
-		{Label: "AWS Profile", Description: "AWS SSO profile for S2S auth (logo, budget, knowledge services)", Input: awsProfile},
+	m.envFormFields = make([]envFormField, len(fields))
+	for i, f := range fields {
+		ti := textinput.New()
+		if f.Placeholder != "" {
+			ti.Placeholder = f.Placeholder
+		}
+		if f.Password {
+			ti.EchoMode = textinput.EchoPassword
+		}
+		ti.CharLimit = 200
+		if f.Default != "" {
+			ti.SetValue(f.Default)
+		}
+		if i == 0 {
+			ti.Focus()
+		}
+		m.envFormFields[i] = envFormField{
+			Key:         f.Key,
+			Label:       f.Label,
+			Description: f.Description,
+			Required:    f.Required,
+			Input:       ti,
+		}
 	}
 	m.envFormCursor = 0
 }
@@ -105,25 +106,25 @@ func (m *Model) handleEnvFormKey(msg tea.KeyPressMsg) tea.Cmd {
 
 // submitEnvForm collects values from the form fields and continues fixing.
 func (m *Model) submitEnvForm() tea.Cmd {
-	apiKey := strings.TrimSpace(m.envFormFields[0].Input.Value())
-	if apiKey == "" {
-		m.preflightFixStatus = "API key is required"
-		return nil
+	// Validate required fields
+	for _, f := range m.envFormFields {
+		if f.Required && strings.TrimSpace(f.Input.Value()) == "" {
+			m.preflightFixStatus = f.Label + " is required"
+			return nil
+		}
 	}
 
-	values := &fixers.EnvValues{
-		APIKey:     apiKey,
-		BaseURL:    strings.TrimSpace(m.envFormFields[1].Input.Value()),
-		AuthType:   strings.TrimSpace(m.envFormFields[2].Input.Value()),
-		AWSProfile: strings.TrimSpace(m.envFormFields[3].Input.Value()),
+	// Build key-value map and pass to fixer
+	values := make(map[string]string, len(m.envFormFields))
+	for _, f := range m.envFormFields {
+		values[f.Key] = f.Input.Value()
 	}
+	m.formFixer.SetFormValues(values)
 
-	m.envFormFixer.Values = values
 	m.phase = PhasePreflightFixing
 	m.preflightFixStatus = "Fixing: " + m.preflightFixQueue[m.preflightFixIndex].Check.Name() + "..."
 
-	// Run the fixer now that Values is set
-	fixer := m.envFormFixer
+	fixer := m.formFixer
 	projectRoot := m.projectRoot
 	name := m.preflightFixQueue[m.preflightFixIndex].Check.Name()
 	return func() tea.Msg {
@@ -174,7 +175,7 @@ func (m Model) renderPreflightEnvForm() string {
 		b.WriteString("\n")
 	}
 
-	if m.preflightFixStatus != "" && strings.HasPrefix(m.preflightFixStatus, "API key") {
+	if m.preflightFixStatus != "" && strings.HasSuffix(m.preflightFixStatus, "is required") {
 		b.WriteString(preflightFailStyle.Render("  " + m.preflightFixStatus))
 		b.WriteString("\n\n")
 	}

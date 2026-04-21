@@ -11,7 +11,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/airo-ai-builder/dev-runner/internal/preflight"
-	"github.com/airo-ai-builder/dev-runner/internal/preflight/fixers"
 	"github.com/airo-ai-builder/dev-runner/internal/process"
 )
 
@@ -74,9 +73,9 @@ func (m *Model) runNextFixer() tea.Cmd {
 	fixer := cwf.Fixer
 	projectRoot := m.projectRoot
 
-	// EnvFixer that needs form input — pause and show inline form
-	if ef, ok := fixer.(*fixers.EnvFixer); ok && ef.NeedsForm() {
-		m.initEnvForm(ef)
+	// FormFixer with fields — pause and show inline form
+	if ff, ok := fixer.(preflight.FormFixer); ok && len(ff.FormFields()) > 0 {
+		m.initFixerForm(ff)
 		m.phase = PhasePreflightEnvForm
 		return nil
 	}

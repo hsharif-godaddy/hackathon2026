@@ -58,6 +58,26 @@ type TerminalFixer interface {
 	NeedsTerminal() bool
 }
 
+// FormField describes a single input field for a FormFixer.
+type FormField struct {
+	Key         string // unique identifier, used as map key in SetFormValues
+	Label       string
+	Description string // shown below label when field is active
+	Placeholder string
+	Default     string
+	Required    bool
+	Password    bool // EchoPassword mode
+}
+
+// FormFixer is a Fixer that collects user input via inline TUI form fields.
+// The TUI calls FormFields() to build the form, then SetFormValues() with
+// collected values before running Fix().
+type FormFixer interface {
+	Fixer
+	FormFields() []FormField
+	SetFormValues(values map[string]string)
+}
+
 // CheckWithFixer pairs a Check with its optional Fixer.
 type CheckWithFixer struct {
 	Check Check

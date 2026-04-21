@@ -150,7 +150,7 @@ type Model struct {
 	// Inline env form state
 	envFormFields  []envFormField
 	envFormCursor  int
-	envFormFixer   *fixers.EnvFixer // the fixer waiting for form values
+	formFixer      preflight.FormFixer // the fixer waiting for form values
 
 	// Dev settings tab state
 	devSettingsCursor   int
@@ -246,6 +246,7 @@ func buildPreflightRunner() *preflight.Runner {
 					{Check: &checks.HostsCheck{}, Fixer: &fixers.HostsFixer{}},
 					{Check: &checks.AppEnvCheck{}, Fixer: appEnvFixer},
 					{Check: &checks.AgentsEnvCheck{}, Fixer: agentsEnvFixer},
+					{Check: &checks.GoProxyCheck{}, Fixer: &fixers.GoProxyFixer{}},
 					{Check: &checks.AWSSSOCheck{}, Fixer: &fixers.AWSSSOFixer{}},
 					{Check: &checks.GasketDevCertsCheck{}},
 					{Check: &checks.S2SCertsCheck{}, Fixer: &fixers.S2SCertsFixer{}},

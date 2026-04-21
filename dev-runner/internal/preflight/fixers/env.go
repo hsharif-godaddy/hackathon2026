@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+
+	"github.com/airo-ai-builder/dev-runner/internal/preflight"
 )
 
 type EnvFixer struct {
@@ -22,8 +25,51 @@ type EnvValues struct {
 	AWSProfile string
 }
 
-// NeedsForm returns true if this fixer needs user input via the TUI form.
-func (f *EnvFixer) NeedsForm() bool {
+func (f *EnvFixer) FormFields() []preflight.FormField {
+	if !f.needsForm() {
+		return nil
+	}
+	defaults := DefaultEnvValues()
+	return []preflight.FormField{
+		{
+			Key:         "apiKey",
+			Label:       "GoCode API Key",
+			Description: "Get your key at: https://caas.open-webui.godaddy.com/workspace/apiKeys",
+			Placeholder: "sk-...",
+			Default:     defaults.APIKey,
+			Required:    true,
+			Password:    true,
+		},
+		{
+			Key:     "baseURL",
+			Label:   "GoCode Base URL",
+			Default: defaults.BaseURL,
+		},
+		{
+			Key:     "authType",
+			Label:   "Auth Type (jwt/mock/none)",
+			Default: defaults.AuthType,
+		},
+		{
+			Key:         "awsProfile",
+			Label:       "AWS Profile",
+			Description: "AWS SSO profile for S2S auth (logo, budget, knowledge services)",
+			Default:     defaults.AWSProfile,
+		},
+	}
+}
+
+func (f *EnvFixer) SetFormValues(values map[string]string) {
+	f.Values = &EnvValues{
+		APIKey:     strings.TrimSpace(values["apiKey"]),
+		BaseURL:    strings.TrimSpace(values["baseURL"]),
+		AuthType:   strings.TrimSpace(values["authType"]),
+		AWSProfile: strings.TrimSpace(values["awsProfile"]),
+	}
+}
+
+// needsForm returns true if this fixer needs user input via the TUI form.
+func (f *EnvFixer) needsForm() bool {
 	if f.Values != nil {
 		return false
 	}
