@@ -48,7 +48,8 @@ describe('exportConversations', () => {
     expect(result).toContain('Build me a landing page');
     expect(result).toContain('**Agent**');
     expect(result).toContain('I will create a landing page for you.');
-    expect(result).toContain('> Tools used: generateCode, editFile');
+    expect(result).toContain('> **generateCode**');
+    expect(result).toContain('> **editFile**');
     // Summary should NOT contain tool args/results
     expect(result).not.toContain('index.html');
     expect(result).not.toContain('style.css');
@@ -98,7 +99,7 @@ describe('exportConversations', () => {
     ]);
 
     const summaryResult = exportConversations('app-123', conversations, messages, 'summary');
-    expect(summaryResult).toContain('> Tools used: readFile');
+    expect(summaryResult).toContain('> **readFile**');
 
     const fullResult = exportConversations('app-123', conversations, messages, 'full');
     expect(fullResult).toContain('readFile');

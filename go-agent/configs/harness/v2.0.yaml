@@ -42,6 +42,9 @@ judge:
     - name: actionability
       description: "Could a developer build this homepage from the handoff alone without guessing? Are sections, layouts, colors, fonts, image search terms, and animations described concretely enough to implement? Score 1 if vague and hand-wavy, 5 if every section has clear implementation guidance."
       scale: "1-5"
+    - name: feature_list_quality
+      description: "Does the feature list (todoList) contain 4-6 well-scoped features appropriate for this project type? Are items high-level features (not implementation steps), relevant to the business, and ordered with Homepage first? Score 1 if missing/generic, 3 if reasonable but cookie-cutter, 5 if tailored to the specific business with creative feature ideas."
+      scale: "1-5"
 
 runs_per_case: 1
 

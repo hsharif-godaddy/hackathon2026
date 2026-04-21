@@ -62,8 +62,9 @@ export function exportConversations(
       if (message.toolCalls && message.toolCalls.length > 0) {
         if (detail === 'summary') {
           lines.push('');
-          const toolNames = message.toolCalls.map((tc: any) => normalizeToolCall(tc).toolName);
-          lines.push(`> Tools used: ${toolNames.join(', ')}`);
+          for (const rawTc of message.toolCalls) {
+            lines.push(formatToolCallSummary(rawTc));
+          }
         } else {
           lines.push('');
           for (const tc of message.toolCalls) {
@@ -78,6 +79,37 @@ export function exportConversations(
 
   lines.push('---');
   return lines.join('\n');
+}
+
+function formatToolCallSummary(rawTc: any): string {
+  const tc = normalizeToolCall(rawTc);
+  const args = tc.toolArgs || {};
+
+  switch (tc.toolName) {
+    case 'askQuestion': {
+      const questions = args.questions || [];
+      if (questions.length === 0) return `> **askQuestion**`;
+      const qLines = questions.map((q: any) => {
+        const suggestions = (q.suggestions || []).map((s: any) => s.text || s).join(', ');
+        return suggestions
+          ? `>   - ${q.question} _(${suggestions})_`
+          : `>   - ${q.question}`;
+      });
+      return `> **askQuestion:**\n${qLines.join('\n')}`;
+    }
+    case 'setProjectName':
+      return `> **setProjectName:** ${args.name || '?'}`;
+    case 'todoList': {
+      const items = args.items || [];
+      if (items.length === 0) return `> **todoList:** ${args.listName || ''}`;
+      const itemNames = items.map((i: any) => i.title).join(', ');
+      return `> **todoList:** ${args.listName || ''} — ${itemNames}`;
+    }
+    case 'handoff':
+      return `> **handoff** → ${args.targetAgent || '?'} (${(tc.toolArgs?.prompt || '').length} chars)`;
+    default:
+      return `> **${tc.toolName}**`;
+  }
 }
 
 function formatToolCallFull(rawTc: any): string {

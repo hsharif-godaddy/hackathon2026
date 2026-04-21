@@ -5,12 +5,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	sdk "github.com/anthropics/anthropic-sdk-go"
 )
 
-const toolAskQuestion = "askQuestion"
+const (
+	toolAskQuestion = "askQuestion"
+	blockTypeText   = "text"
+)
 
 // APICallFunc is the function signature for making Claude API calls (non-streaming).
 type APICallFunc func(ctx context.Context, params sdk.MessageNewParams) (*sdk.Message, error)
@@ -35,12 +39,13 @@ type RunnerConfig struct {
 
 // TurnTiming captures timing for a single conversation turn.
 type TurnTiming struct {
-	Turn         int      `json:"turn"`          // 1-based turn number
-	ToolsCalled  []string `json:"tools_called"`  // tool names called this turn
-	LatencyMs    int64    `json:"latency_ms"`    // total turn time including API call
-	APIMs        int64    `json:"api_ms"`        // API call duration (time to full response)
-	InputTokens  int64    `json:"input_tokens"`  // input tokens for this turn
-	OutputTokens int64    `json:"output_tokens"` // output tokens for this turn
+	Turn         int      `json:"turn"`                   // 1-based turn number
+	ToolsCalled  []string `json:"tools_called"`           // tool names called this turn
+	LatencyMs    int64    `json:"latency_ms"`             // total turn time including API call
+	APIMs        int64    `json:"api_ms"`                 // API call duration (time to full response)
+	InputTokens  int64    `json:"input_tokens"`           // input tokens for this turn
+	OutputTokens int64    `json:"output_tokens"`          // output tokens for this turn
+	TextContent  string   `json:"text_content,omitempty"` // assistant text (non-tool) content
 }
 
 // RunResult captures the outcome of a multi-turn conversation run.
@@ -137,6 +142,15 @@ func (r *Runner) Run(ctx context.Context, userMessage string) (*RunResult, error
 		for _, tc := range toolCalls {
 			toolNames = append(toolNames, tc.name)
 		}
+		var textContent strings.Builder
+		for _, block := range resp.Content {
+			if block.Type == blockTypeText && block.Text != "" {
+				if textContent.Len() > 0 {
+					textContent.WriteString("\n")
+				}
+				textContent.WriteString(block.Text)
+			}
+		}
 		result.TurnTimings = append(result.TurnTimings, TurnTiming{
 			Turn:         turn + 1,
 			ToolsCalled:  toolNames,
@@ -144,6 +158,7 @@ func (r *Runner) Run(ctx context.Context, userMessage string) (*RunResult, error
 			LatencyMs:    time.Since(turnStart).Milliseconds(),
 			InputTokens:  resp.Usage.InputTokens,
 			OutputTokens: resp.Usage.OutputTokens,
+			TextContent:  textContent.String(),
 		})
 
 		// If no tool calls, check stop reason before marking complete.
@@ -162,7 +177,7 @@ func (r *Runner) Run(ctx context.Context, userMessage string) (*RunResult, error
 		var assistantBlocks []sdk.ContentBlockParamUnion
 		for _, block := range resp.Content {
 			switch block.Type {
-			case "text":
+			case blockTypeText:
 				if block.Text != "" {
 					assistantBlocks = append(assistantBlocks, sdk.NewTextBlock(block.Text))
 				}

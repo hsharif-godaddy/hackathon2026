@@ -1,5 +1,7 @@
 import { createInitialAgent } from '../initial-agent.js';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+const fileCalls: string[] = [];
 
 vi.mock('../../utils/model-selection.js', () => ({
   getAgentModelWithName: vi.fn().mockResolvedValue({
@@ -12,15 +14,46 @@ vi.mock('@airo/ai-lib', async () => {
   const actual = await vi.importActual('@airo/ai-lib');
   return {
     ...actual,
-    createPromptBuilder: () => ({
-      file: vi.fn().mockReturnThis(),
-      build: vi.fn().mockResolvedValue('# Initial Agent\nYou are a senior product designer.')
-    }),
+    createPromptBuilder: () => {
+      const builder = {
+        file: vi.fn().mockImplementation((path: string) => {
+          fileCalls.push(path);
+          return builder;
+        }),
+        build: vi.fn().mockResolvedValue('# Initial Agent\nYou are a senior product designer.')
+      };
+      return builder;
+    },
     createHandoffTool: vi.fn().mockReturnValue({ execute: vi.fn() })
   };
 });
 
+vi.mock('fs', async () => {
+  const actual = await vi.importActual('fs');
+  return {
+    ...actual,
+    existsSync: (path: string) => {
+      // 3.0 modular files exist
+      if (path.includes('initial/3.0/')) return true;
+      // Legacy files: core.md always exists, optional files exist for 1.0
+      if (path.includes('core.md')) return true;
+      if (path.includes('initial/1.0/attributes.md')) return true;
+      if (path.includes('initial/1.0/guidelines.md')) return true;
+      if (path.includes('initial/1.0/examples.md')) return true;
+      if (path.includes('initial/2.0/guidelines.md')) return true;
+      if (path.includes('initial/2.0/examples.md')) return true;
+      // identity.md only exists in 3.0 (sentinel for modular detection)
+      if (path.includes('identity.md') && !path.includes('3.0')) return false;
+      return false;
+    }
+  };
+});
+
 describe('initial-agent', function initialAgentTests() {
+  beforeEach(() => {
+    fileCalls.length = 0;
+  });
+
   describe('#createInitialAgent', function createTests() {
     it('should create agent configuration with correct properties', async function create() {
       const config = await createInitialAgent();
@@ -140,6 +173,65 @@ describe('initial-agent', function initialAgentTests() {
 
       expect(config.id).toBe('initial');
       expect(config.name).toBe('Initial');
+    });
+  });
+
+  describe('prompt file loading', function promptLoadingTests() {
+    it('should load legacy 1.0 files in correct order: core → communication → optional → security', async function legacyOrder() {
+      await createInitialAgent(undefined, undefined, '1.0');
+
+      const fileNames = fileCalls.map(p => p.split('/').pop());
+      const coreIdx = fileNames.indexOf('core.md');
+      const commIdx = fileNames.indexOf('communication.md');
+      const secIdx = fileNames.indexOf('security.md');
+
+      const attrIdx = fileNames.indexOf('attributes.md');
+
+      expect(coreIdx).toBeLessThan(commIdx);
+      expect(commIdx).toBeLessThan(attrIdx);
+      expect(commIdx).toBeLessThan(secIdx);
+      expect(fileNames).toContain('attributes.md');
+      expect(fileNames).toContain('guidelines.md');
+      expect(fileNames).toContain('examples.md');
+    });
+
+    it('should load v2.0 in legacy mode (no identity.md)', async function v2Legacy() {
+      await createInitialAgent(undefined, undefined, '2.0');
+
+      const fileNames = fileCalls.map(p => p.split('/').pop());
+      expect(fileNames).toContain('core.md');
+      expect(fileNames).toContain('communication.md');
+      expect(fileNames).toContain('security.md');
+      expect(fileNames).not.toContain('identity.md');
+    });
+
+    it('should load v3.0 in modular mode with all 8 modules', async function modularLoading() {
+      await createInitialAgent(undefined, undefined, '3.0');
+
+      const fileNames = fileCalls.map(p => p.split('/').pop());
+      const expectedModules = [
+        'identity.md', 'questioning.md', 'project-name.md',
+        'design-direction.md', 'design-reference.md', 'feature-list.md',
+        'handoff-template.md', 'examples.md',
+      ];
+      for (const mod of expectedModules) {
+        expect(fileNames).toContain(mod);
+      }
+      expect(fileNames).toContain('communication.md');
+      expect(fileNames).toContain('security.md');
+      expect(fileNames).not.toContain('core.md');
+    });
+
+    it('should append shared files after modules in v3.0', async function modularSharedOrder() {
+      await createInitialAgent(undefined, undefined, '3.0');
+
+      const fileNames = fileCalls.map(p => p.split('/').pop());
+      const lastModuleIdx = fileNames.lastIndexOf('examples.md');
+      const commIdx = fileNames.indexOf('communication.md');
+      const secIdx = fileNames.indexOf('security.md');
+
+      expect(lastModuleIdx).toBeLessThan(commIdx);
+      expect(commIdx).toBeLessThan(secIdx);
     });
   });
 });

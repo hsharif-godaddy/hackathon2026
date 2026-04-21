@@ -21,6 +21,7 @@ type JudgeInput struct {
 	UserMessage   string
 	Persona       string
 	ProjectName   string
+	TodoList      string
 	HandoffPrompt string
 }
 
@@ -87,7 +88,7 @@ func (j *Judge) Evaluate(ctx context.Context, input JudgeInput) (map[string]Judg
 	// Extract and concatenate all text content blocks from the response.
 	var textBuilder strings.Builder
 	for _, block := range resp.Content {
-		if block.Type == "text" {
+		if block.Type == blockTypeText {
 			textBuilder.WriteString(block.Text)
 		}
 	}
@@ -147,6 +148,10 @@ func (j *Judge) buildPrompt(input JudgeInput) string {
 	}
 	sb.WriteString("\n\n## Project Name\n")
 	sb.WriteString(input.ProjectName)
+	if input.TodoList != "" {
+		sb.WriteString("\n\n## Feature List (todoList)\n")
+		sb.WriteString(input.TodoList)
+	}
 	sb.WriteString("\n\n## Agent Handoff Prompt\n")
 	sb.WriteString(input.HandoffPrompt)
 	sb.WriteString("\n\n## Evaluation Criteria\n")

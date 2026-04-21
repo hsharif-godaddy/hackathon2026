@@ -62,7 +62,7 @@ describe('GET /api/conversations/export', () => {
     expect(res.text).toContain('# App Conversations: test-app');
     expect(res.text).toContain('Hello');
     expect(res.text).toContain('Hi there!');
-    expect(res.text).toContain('> Tools used: readFile');
+    expect(res.text).toContain('> **readFile**');
     // Summary should NOT show tool details
     expect(res.text).not.toContain('<details>');
   });

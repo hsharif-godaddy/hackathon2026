@@ -190,40 +190,46 @@ func PrintSummary(w io.Writer, configName string, results []*FullResult) {
 	fmt.Fprintf(w, "\nTotal cost: agent $%.4f + responder $%.4f + judge $%.4f = $%.4f\n",
 		agentTotal, responderTotal, judgeTotal, agentTotal+responderTotal+judgeTotal)
 
-	// Per-turn breakdown table.
-	printPerTurnSummary(w, results)
+	// Per-tool breakdown table.
+	printPerToolSummary(w, results)
 }
 
-// turnAgg accumulates per-turn stats for averaging.
-type turnAgg struct {
-	count    int
-	apiMs    int64
-	inTok    int64
-	outTok   int64
-	toolSets map[string]int // tool combination -> frequency
+// toolAgg accumulates per-tool-combination stats for averaging.
+type toolAgg struct {
+	count  int
+	apiMs  int64
+	inTok  int64
+	outTok int64
+	minAPI int64
+	maxAPI int64
 }
 
-// printPerTurnSummary prints an aggregated per-turn breakdown table.
-func printPerTurnSummary(w io.Writer, results []*FullResult) {
-	agg := map[int]*turnAgg{}
+// printPerToolSummary prints a tool-grouped breakdown table.
+func printPerToolSummary(w io.Writer, results []*FullResult) {
+	agg := map[string]*toolAgg{}
 
 	for _, r := range results {
 		for _, tt := range r.TurnTimings {
-			a, ok := agg[tt.Turn]
+			toolKey := strings.Join(tt.ToolsCalled, ", ")
+			if toolKey == "" {
+				toolKey = "(none)"
+			}
+
+			a, ok := agg[toolKey]
 			if !ok {
-				a = &turnAgg{toolSets: map[string]int{}}
-				agg[tt.Turn] = a
+				a = &toolAgg{minAPI: tt.APIMs, maxAPI: tt.APIMs}
+				agg[toolKey] = a
 			}
 			a.count++
 			a.apiMs += tt.APIMs
 			a.inTok += tt.InputTokens
 			a.outTok += tt.OutputTokens
-
-			toolKey := strings.Join(tt.ToolsCalled, ", ")
-			if toolKey == "" {
-				toolKey = "(none)"
+			if tt.APIMs < a.minAPI {
+				a.minAPI = tt.APIMs
 			}
-			a.toolSets[toolKey]++
+			if tt.APIMs > a.maxAPI {
+				a.maxAPI = tt.APIMs
+			}
 		}
 	}
 
@@ -231,50 +237,46 @@ func printPerTurnSummary(w io.Writer, results []*FullResult) {
 		return
 	}
 
-	// Sort turn numbers.
-	turns := make([]int, 0, len(agg))
-	for turn := range agg {
-		turns = append(turns, turn)
+	// Sort by average API time descending (slowest first).
+	keys := make([]string, 0, len(agg))
+	for k := range agg {
+		keys = append(keys, k)
 	}
-	sort.Ints(turns)
+	sort.Slice(keys, func(i, j int) bool {
+		ai := float64(agg[keys[i]].apiMs) / float64(agg[keys[i]].count)
+		aj := float64(agg[keys[j]].apiMs) / float64(agg[keys[j]].count)
+		return ai > aj
+	})
 
-	fmt.Fprintf(w, "\nPer-Turn Breakdown:\n")
+	fmt.Fprintf(w, "\nPer-Tool Breakdown:\n")
 
 	pt := table.NewWriter()
 	pt.SetOutputMirror(w)
-	pt.AppendHeader(table.Row{"Turn", "Count", "Avg API", "Avg In Tok", "Avg Out Tok", "Common Tools"})
+	pt.AppendHeader(table.Row{"Tools", "Count", "Avg API", "Min API", "Max API", "Avg In Tok", "Avg Out Tok"})
 	pt.SetStyle(table.StyleLight)
 	pt.Style().Format.HeaderAlign = text.AlignCenter
 	pt.SetColumnConfigs([]table.ColumnConfig{
-		{Number: 1, Align: text.AlignRight},
+		{Number: 1, Align: text.AlignLeft, WidthMax: 30, WidthMaxEnforcer: text.WrapSoft},
 		{Number: 2, Align: text.AlignRight},
 		{Number: 3, Align: text.AlignRight},
 		{Number: 4, Align: text.AlignRight},
 		{Number: 5, Align: text.AlignRight},
-		{Number: 6, Align: text.AlignLeft, WidthMax: 40, WidthMaxEnforcer: text.WrapSoft},
+		{Number: 6, Align: text.AlignRight},
+		{Number: 7, Align: text.AlignRight},
 	})
 
-	for _, turn := range turns {
-		a := agg[turn]
+	for _, toolKey := range keys {
+		a := agg[toolKey]
 		n := float64(a.count)
 
-		// Find most common tool set.
-		bestTools := ""
-		bestCount := 0
-		for tools, cnt := range a.toolSets {
-			if cnt > bestCount {
-				bestCount = cnt
-				bestTools = tools
-			}
-		}
-
 		pt.AppendRow(table.Row{
-			turn,
+			toolKey,
 			a.count,
 			fmt.Sprintf("%.1fs", float64(a.apiMs)/n/1000),
+			fmt.Sprintf("%.1fs", float64(a.minAPI)/1000),
+			fmt.Sprintf("%.1fs", float64(a.maxAPI)/1000),
 			fmt.Sprintf("%.0f", float64(a.inTok)/n),
 			fmt.Sprintf("%.0f", float64(a.outTok)/n),
-			bestTools,
 		})
 	}
 

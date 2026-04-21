@@ -184,10 +184,11 @@ func TestPrintSummary(t *testing.T) {
 		"should contain averages row",
 	)
 
-	// Per-turn breakdown table checks (go-pretty uppercases headers)
-	assert.Contains(t, output, "Per-Turn Breakdown", "should have per-turn section header")
+	// Per-tool breakdown table checks (go-pretty uppercases headers)
+	assert.Contains(t, output, "Per-Tool Breakdown", "should have per-tool section header")
 	assert.Contains(t, lowerOutput, "avg in tok", "should have input token column")
 	assert.Contains(t, lowerOutput, "avg out tok", "should have output token column")
-	assert.Contains(t, lowerOutput, "common tools", "should have tools column")
-	assert.Contains(t, output, "handoff", "should show handoff as a common tool")
+	assert.Contains(t, lowerOutput, "min api", "should have min api column")
+	assert.Contains(t, lowerOutput, "max api", "should have max api column")
+	assert.Contains(t, output, "handoff", "should show handoff as a tool group")
 }

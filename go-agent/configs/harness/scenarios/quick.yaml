@@ -1,0 +1,9 @@
+- id: bakery-brief
+  persona: Small bakery owner in Portland, specializing in sourdough
+  user_message: I want a website for my bakery
+- id: saas-detailed
+  persona: Startup founder, technical background
+  user_message: Build a project management SaaS called TaskFlow for small dev teams. Clean, minimal design with dark mode.
+- id: admin-dashboard
+  persona: Startup CTO building internal tools, wants clean functional UI
+  user_message: I need an admin dashboard to manage users, view analytics, and handle content moderation for my platform

@@ -275,20 +275,8 @@ func runSingleCase(
 	var judgeScores map[string]harness.JudgeScore
 	var judgeTokens harness.TokenUsage
 	if runResult.HandoffPrompt != "" {
-		scores, tokens, judgeErr := judge.Evaluate(ctx, harness.JudgeInput{
-			UserMessage:   tc.UserMessage,
-			Persona:       tc.Persona,
-			ProjectName:   runResult.ProjectName,
-			HandoffPrompt: runResult.HandoffPrompt,
-		})
-		if judgeErr != nil {
-			fmt.Fprintf(os.Stderr, "  [%s] warning: judge failed: %v\n", tc.ID, judgeErr)
-		} else {
-			judgeScores = scores
-			if tokens != nil {
-				judgeTokens = *tokens
-			}
-		}
+		todoListStr := string(runResult.TodoList)
+		judgeScores, judgeTokens = runJudge(ctx, judge, tc, runResult, todoListStr)
 	}
 	judgeCost := harness.CalculateCost(cfg.Judge.Model, judgeTokens)
 
@@ -435,4 +423,29 @@ func buildSystemPrompt(cfg *harness.Config) (string, error) {
 		parts = append(parts, string(data))
 	}
 	return strings.Join(parts, "\n\n"), nil
+}
+
+func runJudge(
+	ctx context.Context,
+	judge *harness.Judge,
+	tc harness.TestCase,
+	runResult *harness.RunResult,
+	todoListStr string,
+) (map[string]harness.JudgeScore, harness.TokenUsage) {
+	scores, tokens, err := judge.Evaluate(ctx, harness.JudgeInput{
+		UserMessage:   tc.UserMessage,
+		Persona:       tc.Persona,
+		ProjectName:   runResult.ProjectName,
+		TodoList:      todoListStr,
+		HandoffPrompt: runResult.HandoffPrompt,
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "  [%s] warning: judge failed: %v\n", tc.ID, err)
+		return nil, harness.TokenUsage{}
+	}
+	var judgeTokens harness.TokenUsage
+	if tokens != nil {
+		judgeTokens = *tokens
+	}
+	return scores, judgeTokens
 }

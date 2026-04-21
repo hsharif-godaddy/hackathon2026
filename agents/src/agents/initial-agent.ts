@@ -18,10 +18,10 @@ import { getTemplate } from './template-registry.js'
  * It creates a minimal todo list for a single-page preview and hands off to develop agent.
  *
  * Prompt versions (in agents/src/prompts/initial/<version>/):
- * - 1.0: Original with attributes.md and detailed askQuestion framework
- * - 2.0: Simplified askQuestion logic, no attributes.md (10% cheaper, 4s faster, equivalent quality)
+ * - 1.0: Legacy monolithic (core.md + attributes.md + guidelines.md + examples.md)
+ * - 2.0: Simplified askQuestion, no attributes.md (10% cheaper, 4s faster)
+ * - 3.0: Modular — each concern is a separate swappable file for A/B testing
  *
- * Each version directory contains: core.md, guidelines.md, examples.md, and optionally attributes.md.
  * Shared files (communication.md, security.md) are appended from the shared/ directory.
  *
  * When a templateId is provided, prompt files are loaded from
@@ -29,7 +29,21 @@ import { getTemplate } from './template-registry.js'
  */
 
 const DEFAULT_PROMPT_VERSION = '1.0'
-const OPTIONAL_PROMPT_FILES = ['attributes.md', 'guidelines.md', 'examples.md']
+
+// Modular prompt files (3.0+). Each is independently swappable.
+const MODULE_FILES = [
+  'identity.md',
+  'questioning.md',
+  'project-name.md',
+  'design-direction.md',
+  'design-reference.md',
+  'feature-list.md',
+  'handoff-template.md',
+  'examples.md',
+]
+
+// Legacy optional files (1.0, 2.0)
+const LEGACY_OPTIONAL_FILES = ['attributes.md', 'guidelines.md', 'examples.md']
 
 /**
  * Build the system prompt for the Initial Agent
@@ -43,35 +57,47 @@ async function buildInitialSystemPrompt(templateId?: string, promptVersion?: str
     const templateDir = `initial/templates/${templateId}`
     promptBuilder.file(paths.getAgentFile(templateDir, 'core.md'))
 
-    for (const file of OPTIONAL_PROMPT_FILES) {
+    for (const file of LEGACY_OPTIONAL_FILES) {
       const filePath = paths.getAgentFile(templateDir, file)
       if (existsSync(filePath)) {
         promptBuilder.file(filePath)
       }
     }
-  } else {
-    // Versioned mode: load from initial/<version>/
-    const version = promptVersion || DEFAULT_PROMPT_VERSION
-    const versionDir = `initial/${version}`
 
+    promptBuilder.file(paths.getSharedFile('communication.md'))
+    promptBuilder.file(paths.getSharedFile('security.md'))
+    return await promptBuilder.build()
+  }
+
+  // Versioned mode: load from initial/<version>/
+  const version = promptVersion || DEFAULT_PROMPT_VERSION
+  const versionDir = `initial/${version}`
+
+  // Detect modular (3.0+) vs legacy (1.0, 2.0) structure
+  const isModular = existsSync(paths.getAgentFile(versionDir, 'identity.md'))
+
+  if (isModular) {
+    for (const file of MODULE_FILES) {
+      const filePath = paths.getAgentFile(versionDir, file)
+      if (!existsSync(filePath)) {
+        throw new Error(`Missing required module: ${file} in ${versionDir}`)
+      }
+      promptBuilder.file(filePath)
+    }
+    promptBuilder.file(paths.getSharedFile('communication.md'))
+    promptBuilder.file(paths.getSharedFile('security.md'))
+  } else {
+    // Legacy order: core → communication → [optional] → security
     promptBuilder.file(paths.getAgentFile(versionDir, 'core.md'))
     promptBuilder.file(paths.getSharedFile('communication.md'))
-
-    for (const file of OPTIONAL_PROMPT_FILES) {
+    for (const file of LEGACY_OPTIONAL_FILES) {
       const filePath = paths.getAgentFile(versionDir, file)
       if (existsSync(filePath)) {
         promptBuilder.file(filePath)
       }
     }
-
     promptBuilder.file(paths.getSharedFile('security.md'))
-    return await promptBuilder.build()
   }
-
-  // Template mode: shared files appended after template-specific files
-  promptBuilder.file(paths.getSharedFile('communication.md'))
-  promptBuilder.file(paths.getSharedFile('security.md'))
-
   return await promptBuilder.build()
 }
 

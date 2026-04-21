@@ -51,7 +51,7 @@ if (options.token && options.repoUrl) {
 
 Additional: `app-templates/` (v8 template), `packages/design-extractor/` (PDF RAG), `setup/` (config utility), `e2e/` (E2E tests)
 
-See service-specific CLAUDE.md files: [agents/](agents/CLAUDE.md), [app/](app/CLAUDE.md), [dev-supervisor/](dev-supervisor/CLAUDE.md), [local-control-plane/](local-control-plane/CLAUDE.md)
+See service-specific CLAUDE.md files: [agents/](agents/CLAUDE.md), [app/](app/CLAUDE.md), [dev-supervisor/](dev-supervisor/CLAUDE.md), [local-control-plane/](local-control-plane/CLAUDE.md), [go-agent/](go-agent/CLAUDE.md)
 
 ## Publish Flow Architecture
 
