@@ -4,6 +4,7 @@
 FROM 764525110978.dkr.ecr.us-west-2.amazonaws.com/node:22-alpine AS pruner
 
 USER root
+RUN mkdir -p /home
 
 RUN npm install -g turbo@2.8.17
 
@@ -18,6 +19,7 @@ FROM 764525110978.dkr.ecr.us-west-2.amazonaws.com/node:22-alpine AS builder
 
 # Switch to root to install packages, then switch back to node user
 USER root
+RUN mkdir -p /home
 
 RUN apk add --no-cache openssl wget
 
