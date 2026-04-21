@@ -272,15 +272,18 @@ func buildPreflightRunner() *preflight.Runner {
 					{Check: &checks.DockerCheck{}},
 					{Check: &checks.AWSCLICheck{}},
 					{Check: &checks.ArtifactoryCheck{}, Fixer: &fixers.ArtifactoryFixer{}},
+					{Check: &checks.DirenvCheck{}},
 				},
 			},
 			{
 				Name: preflight.CategoryEnvironment,
 				Checks: []preflight.CheckWithFixer{
 					{Check: &checks.HostsCheck{}, Fixer: &fixers.HostsFixer{}},
+					{Check: &checks.AWSProfileCheck{}},
 					{Check: &checks.AppEnvCheck{}, Fixer: appEnvFixer},
 					{Check: &checks.AgentsEnvCheck{}, Fixer: agentsEnvFixer},
 					{Check: &checks.GoProxyCheck{}, Fixer: &fixers.GoProxyFixer{}},
+					{Check: &checks.LCPEnvCheck{}, Fixer: &fixers.LCPEnvFixer{}},
 					{Check: &checks.AWSSSOCheck{}, Fixer: &fixers.AWSSSOFixer{}},
 					{Check: &checks.GasketDevCertsCheck{}},
 					{Check: &checks.S2SCertsCheck{}, Fixer: &fixers.S2SCertsFixer{}},
