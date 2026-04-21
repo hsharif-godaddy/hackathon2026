@@ -237,19 +237,12 @@ AWS account access (`GD-AWS-USA-GD-AiroBuilde-Dev-Private`).
 ```bash
 git clone <repository-url>
 cd airo-app-builder
-./setup.sh
+pnpm run dev
 ```
 
-The setup wizard configures AI provider (GoCode), auth (JWT/SSO),
-Getty Images proxy, MySQL container, and generates all `.env` files.
+`pnpm run dev` runs preflight checks that configure AI provider (GoCode), auth (JWT/SSO),
+Getty Images proxy, MySQL container, and generates all `.env` files automatically.
 See [`GETTING_STARTED.md`](GETTING_STARTED.md) for the full guide.
-
-After setup:
-
-```bash
-aws sso login --profile airobuild-dev-private-sso    # once per day
-pnpm run dev     # starts agents + app + control plane
-```
 
 Access the builder at `https://local.gasket.dev-godaddy.com:8443`.
 

@@ -36,10 +36,6 @@ make lint
 2. **Set up AWS SSO access (for S3 analysis cache):**
 
    ```bash
-   # From the repo root, run setup if you haven't already
-   ./setup.sh
-
-   # Login to AWS SSO
    aws sso login --profile airobuild-dev-private-sso
    ```
 

@@ -4,17 +4,13 @@ This directory contains setup utilities to help you configure and install the Ai
 
 ## 🚀 Quick Start
 
-### Option 1: Complete Setup (Recommended)
-
 Run from the project root:
 
 ```bash
-./setup.sh
+pnpm run dev
 ```
 
-### Option 2: Selective Configuration
-
-For individual component setup or reconfiguration:
+The Dev Runner TUI runs preflight checks automatically and offers to fix any issues inline. For selective reconfiguration:
 
 ```bash
 # From project root
@@ -34,25 +30,9 @@ Choose "Selective Configuration" to:
 - 🐳 Start MySQL Container
 - 🔍 Check Current Configuration Status
 
-### Option 3: Individual Scripts
-
-```bash
-# Check Node.js 22 and pnpm only
-./check-deps.sh
-
-# Run the full interactive setup
-./run-setup.sh
-```
-
 ## What the Setup Does
 
-### Basic Dependencies (`check-deps.sh`)
-
-- ✅ Verifies Node.js 22.x is installed
-- ✅ Checks for pnpm package manager
-- 📋 Provides Ubuntu installation instructions for missing deps
-
-### Advanced Setup (`run-setup.sh` or `./setup.sh`)
+### Advanced Setup (`cd setup && ./run-setup.sh`)
 
 - 🐳 **Docker Dependencies**: Checks Docker, Docker Compose, and daemon status
 - 📝 **Environment Configuration**: Generates `.env` files with proper MySQL configuration

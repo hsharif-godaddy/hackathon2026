@@ -30,13 +30,7 @@ pnpm --filter @airo/agents test:integration        # Integration tests (need run
 
 ## Environment
 
-Copy the example and fill in values, or use the setup script:
-
-```bash
-./setup.sh            # Guided setup from repo root
-```
-
-See `agents/.env.example` for available variables.
+Run `pnpm run dev` from the repo root — preflight checks will generate `agents/.env` automatically. See `agents/.env.example` for available variables.
 
 ## Reference
 

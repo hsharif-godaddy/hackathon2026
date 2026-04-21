@@ -29,8 +29,6 @@ pnpm run dev
 
 `pnpm run dev` launches the **Dev Runner** TUI which automatically runs preflight checks, detects missing tools or configuration, and offers to fix them inline — no separate setup step needed. On subsequent runs, checks pass in ~2 seconds and auto-advance to launching services.
 
-**Fallback:** If you prefer a standalone setup step, run `./setup.sh` first.
-
 **[📖 Detailed Setup Guide →](./GETTING_STARTED.md)**
 
 ## 🚀 Key Features
