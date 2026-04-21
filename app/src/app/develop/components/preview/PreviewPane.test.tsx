@@ -3,7 +3,7 @@
  */
 import '@testing-library/jest-dom';
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 
 import { renderWithProviders } from '@/tests/test-utils';
@@ -286,6 +286,81 @@ describe('PreviewPane', () => {
   });
 
 });
+
+describe('publish-snapshot-request handling', function publishSnapshotHandlingTests() {
+  const publishDetail = {
+    appId: 'test-app-123',
+    deploymentId: 'deploy-abc',
+    commitHash: 'abc1234',
+  }
+
+  function dispatchPublishRequest() {
+    window.dispatchEvent(new CustomEvent('publish-snapshot-request', { detail: publishDetail }))
+  }
+
+  function simulateIframeResponse(screenshot = 'data:image/png;base64,xx') {
+    const iframe = document.querySelector('iframe')
+    window.dispatchEvent(new MessageEvent('message', {
+      data: { type: 'VIEWPORT_SCREENSHOT_RESPONSE', screenshot },
+      source: iframe?.contentWindow ?? window,
+    }))
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.useFakeTimers()
+    mockServerPollingStore.getServerState = vi.fn(() => ({ isReady: true, url: 'http://localhost:3000' }))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('sends REQUEST_VIEWPORT_SCREENSHOT after 2s delay', async () => {
+    const onPublishSnapshot = vi.fn()
+    renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} onPublishSnapshot={onPublishSnapshot} />)
+
+    dispatchPublishRequest()
+    expect(vi.mocked(postMessageToIframe)).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ type: 'REQUEST_VIEWPORT_SCREENSHOT' })
+    )
+
+    vi.advanceTimersByTime(2000)
+    expect(vi.mocked(postMessageToIframe)).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ type: 'REQUEST_VIEWPORT_SCREENSHOT' })
+    )
+  })
+
+  it('calls onPublishSnapshot when VIEWPORT_SCREENSHOT_RESPONSE arrives', async () => {
+    const onPublishSnapshot = vi.fn()
+    renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} onPublishSnapshot={onPublishSnapshot} />)
+
+    dispatchPublishRequest()
+    vi.advanceTimersByTime(2000)
+    simulateIframeResponse()
+
+    expect(onPublishSnapshot).toHaveBeenCalledWith('data:image/png;base64,xx', publishDetail)
+  })
+
+  it('re-sends REQUEST_VIEWPORT_SCREENSHOT via fallback timer when no response arrives', () => {
+    const onPublishSnapshot = vi.fn()
+    renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} onPublishSnapshot={onPublishSnapshot} />)
+
+    dispatchPublishRequest()
+    vi.advanceTimersByTime(2000)
+    vi.mocked(postMessageToIframe).mockClear()
+
+    // Advance past the 8s fallback
+    vi.advanceTimersByTime(8000)
+    expect(vi.mocked(postMessageToIframe)).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ type: 'REQUEST_VIEWPORT_SCREENSHOT' })
+    )
+  })
+
+})
 
 describe('restoreIframeState', function restoreTests() {
   beforeEach(() => {

@@ -126,6 +126,30 @@ async function handleLocalDevPublishSuccess(
   useDevelopPageStore.getState().setFirstPublishDeployPending(appId, false);
 }
 
+const MAX_DEPLOYMENT_WAIT_MS = 5 * 60 * 1000;
+
+function waitForDeploymentComplete(appId: string, deploymentId: string): Promise<boolean> {
+  return new Promise(function awaitDeployment(resolve) {
+    const timeout = setTimeout(function handleTimeout() {
+      unsubscribe();
+      logger.warn('publish.snapshot-wait.timeout', { appId, deploymentId });
+      resolve(false);
+    }, MAX_DEPLOYMENT_WAIT_MS);
+
+    function check(state: ReturnType<typeof useDevelopPageStore.getState>) {
+      const publishState = state.publishStates[appId];
+      if (!publishState || publishState.deploymentInProgressId !== null) return false;
+      clearTimeout(timeout);
+      unsubscribe();
+      resolve(!publishState.publishError);
+      return true;
+    }
+
+    const unsubscribe = useDevelopPageStore.subscribe(check);
+    check(useDevelopPageStore.getState());
+  });
+}
+
 /**
  * React Query hook for publishing an app
  *
@@ -355,6 +379,23 @@ export function usePublishApp() {
           queryKey: ['deployments', variables.appId],
           refetchType: 'active',
         });
+
+        // Fire-and-forget: wait for terminal state then dispatch snapshot event.
+        // Must not block onSuccess — callers awaiting mutateAsync would otherwise
+        // be held for up to 5 minutes.
+        void waitForDeploymentComplete(variables.appId, data.result.deployment.deploymentId)
+          .then(function dispatchSnapshot(succeeded) {
+            if (succeeded && typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('publish-snapshot-request', {
+                detail: {
+                  appId: variables.appId,
+                  deploymentId: data.result.deployment.deploymentId,
+                  commitHash: data.result.commitHash || data.commitHash,
+                },
+              }));
+            }
+          });
+
         // Note: isPublishing stays true - AppPublish.tsx useEffect handles clearing it when deployment completes
         return;
       }
@@ -371,6 +412,17 @@ export function usePublishApp() {
           fetchSite,
           fetchSitesList
         );
+
+        if (typeof window !== 'undefined' && (data.result.commitHash || data.commitHash)) {
+          window.dispatchEvent(new CustomEvent('publish-snapshot-request', {
+            detail: {
+              appId: variables.appId,
+              deploymentId: undefined,
+              commitHash: data.result.commitHash || data.commitHash,
+            },
+          }));
+        }
+
         return;
       }
 

@@ -59,6 +59,12 @@ export function restoreIframeState(
   }
 }
 
+export interface PublishSnapshotRequestDetail {
+  appId: string
+  deploymentId: string | undefined
+  commitHash: string
+}
+
 interface PreviewPaneProps {
   onPreviewRefresh: () => void
   isMobile?: boolean
@@ -73,6 +79,7 @@ interface PreviewPaneProps {
   isImageReloading?: boolean
   imageReloadFailed?: boolean
   onRetryImageReload?: () => void
+  onPublishSnapshot?: (screenshotDataUrl: string, detail: PublishSnapshotRequestDetail) => void
 }
 
 export default function PreviewPane({
@@ -89,6 +96,7 @@ export default function PreviewPane({
   isImageReloading = false,
   imageReloadFailed = false,
   onRetryImageReload,
+  onPublishSnapshot,
 }: PreviewPaneProps) {
   const t = useTranslations();
   const { data: isDomainBarEnabled } = useSwitchboard('appbuilder-domain-bar');
@@ -362,6 +370,79 @@ export default function PreviewPane({
     }
   }, [])
 
+  const pendingPublishSnapshotRef = useRef<PublishSnapshotRequestDetail | null>(null)
+  const pendingPublishFullHeightRef = useRef(false)
+  const onPublishSnapshotRef = useRef(onPublishSnapshot)
+  useEffect(() => { onPublishSnapshotRef.current = onPublishSnapshot }, [onPublishSnapshot])
+  const publishSnapshotFallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const publishSnapshotDelayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const publishSnapshotIframeReadyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    function clearPublishFallback() {
+      if (publishSnapshotFallbackTimerRef.current !== null) {
+        clearTimeout(publishSnapshotFallbackTimerRef.current)
+        publishSnapshotFallbackTimerRef.current = null
+      }
+    }
+
+    function deliverPublishSnapshotRequest() {
+      pendingPublishFullHeightRef.current = true
+      if (!iframeRef.current?.contentWindow) {
+        logger.info('preview.publish-snapshot.deferred', {
+          appId: pendingPublishSnapshotRef.current?.appId,
+          message: 'iframe not ready, will retry on IFRAME_READY',
+        })
+        return
+      }
+      postMessageToIframe(iframeRef.current, { type: 'REQUEST_VIEWPORT_SCREENSHOT' })
+      logger.info('preview.publish-snapshot.posted', {
+        appId: pendingPublishSnapshotRef.current?.appId,
+        deploymentId: pendingPublishSnapshotRef.current?.deploymentId,
+      })
+
+      publishSnapshotFallbackTimerRef.current = setTimeout(function publishSnapshotFallback() {
+        publishSnapshotFallbackTimerRef.current = null
+        if (!pendingPublishFullHeightRef.current) return
+        // Re-deliver if iframe still hasn't responded — IFRAME_READY will catch it if reloading
+        if (iframeRef.current?.contentWindow) {
+          postMessageToIframe(iframeRef.current, { type: 'REQUEST_VIEWPORT_SCREENSHOT' })
+          logger.info('preview.publish-snapshot.posted', { reason: 'fallback-timeout', appId: pendingPublishSnapshotRef.current?.appId })
+        }
+      }, EVAL_SNAPSHOT_IFRAME_FALLBACK_MS)
+    }
+
+    function handlePublishSnapshotRequest(event: Event) {
+      const detail = (event as CustomEvent<PublishSnapshotRequestDetail>).detail
+      pendingPublishSnapshotRef.current = detail
+      clearPublishFallback()
+      if (publishSnapshotDelayTimerRef.current !== null) {
+        clearTimeout(publishSnapshotDelayTimerRef.current)
+      }
+      // Delay to let the iframe reload with freshly published content
+      publishSnapshotDelayTimerRef.current = setTimeout(function publishSnapshotDelay() {
+        publishSnapshotDelayTimerRef.current = null
+        deliverPublishSnapshotRequest()
+      }, 2000)
+    }
+
+    window.addEventListener('publish-snapshot-request', handlePublishSnapshotRequest)
+    return () => {
+      window.removeEventListener('publish-snapshot-request', handlePublishSnapshotRequest)
+      clearPublishFallback()
+      if (publishSnapshotDelayTimerRef.current !== null) {
+        clearTimeout(publishSnapshotDelayTimerRef.current)
+        publishSnapshotDelayTimerRef.current = null
+      }
+      if (publishSnapshotIframeReadyTimerRef.current !== null) {
+        clearTimeout(publishSnapshotIframeReadyTimerRef.current)
+        publishSnapshotIframeReadyTimerRef.current = null
+      }
+      pendingPublishSnapshotRef.current = null
+      pendingPublishFullHeightRef.current = false
+    }
+  }, [])
+
   // Listen for file save events and preview refresh requests to auto-refresh preview
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
@@ -369,10 +450,25 @@ export default function PreviewPane({
         iframeRef.current?.contentWindow != null && event.source === iframeRef.current.contentWindow
 
       if (event.data?.type === 'VIEWPORT_SCREENSHOT_RESPONSE' && fromPreviewIframe) {
-        pendingEvalFullHeightRef.current = false
-        if (evalFullHeightFallbackTimerRef.current !== null) {
-          clearTimeout(evalFullHeightFallbackTimerRef.current)
-          evalFullHeightFallbackTimerRef.current = null
+        const pendingPublish = pendingPublishSnapshotRef.current
+        if (pendingPublish) {
+          // Always clear pending state — even if screenshot is missing — to avoid
+          // permanently blocking eval captures when the iframe returns an empty response.
+          pendingPublishFullHeightRef.current = false
+          if (publishSnapshotFallbackTimerRef.current !== null) {
+            clearTimeout(publishSnapshotFallbackTimerRef.current)
+            publishSnapshotFallbackTimerRef.current = null
+          }
+          pendingPublishSnapshotRef.current = null
+          if (event.data.screenshot && onPublishSnapshotRef.current) {
+            onPublishSnapshotRef.current(event.data.screenshot, pendingPublish)
+          }
+        } else {
+          pendingEvalFullHeightRef.current = false
+          if (evalFullHeightFallbackTimerRef.current !== null) {
+            clearTimeout(evalFullHeightFallbackTimerRef.current)
+            evalFullHeightFallbackTimerRef.current = null
+          }
         }
       }
 
@@ -398,6 +494,22 @@ export default function PreviewPane({
           if (evalFullHeightFallbackTimerRef.current !== null) {
             clearTimeout(evalFullHeightFallbackTimerRef.current)
             evalFullHeightFallbackTimerRef.current = null
+          }
+        }
+        if (pendingPublishFullHeightRef.current && iframeRef.current) {
+          if (publishSnapshotIframeReadyTimerRef.current !== null) {
+            clearTimeout(publishSnapshotIframeReadyTimerRef.current)
+          }
+          publishSnapshotIframeReadyTimerRef.current = setTimeout(function publishSnapshotIframeReady() {
+            publishSnapshotIframeReadyTimerRef.current = null
+            if (!pendingPublishSnapshotRef.current || !iframeRef.current) return
+            postMessageToIframe(iframeRef.current, { type: 'REQUEST_VIEWPORT_SCREENSHOT' })
+            logger.info('preview.publish-snapshot.posted', { reason: 'iframe-ready', appId: pendingPublishSnapshotRef.current.appId })
+          }, 1000)
+          pendingPublishFullHeightRef.current = false
+          if (publishSnapshotFallbackTimerRef.current !== null) {
+            clearTimeout(publishSnapshotFallbackTimerRef.current)
+            publishSnapshotFallbackTimerRef.current = null
           }
         }
         return

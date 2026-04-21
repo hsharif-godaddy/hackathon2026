@@ -456,6 +456,16 @@ export const publishAction: ClientActionExecutor = async (params) => {
 
       const finalDeploymentStatus = await waitForPublishResult(appId)
       result.deployment.status = finalDeploymentStatus
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('publish-snapshot-request', {
+          detail: {
+            appId,
+            deploymentId: result.deployment.deploymentId,
+            commitHash: result.commitHash,
+          }
+        }))
+      }
     } else {
       // No deployment tracking available (local dev or deployment creation failure),
       // show success immediately instead of polling
@@ -472,6 +482,16 @@ export const publishAction: ClientActionExecutor = async (params) => {
           appId,
           error: storeError instanceof Error ? storeError.message : String(storeError),
         })
+      }
+
+      if (typeof window !== 'undefined' && result.commitHash) {
+        window.dispatchEvent(new CustomEvent('publish-snapshot-request', {
+          detail: {
+            appId,
+            deploymentId: result.deployment?.deploymentId,
+            commitHash: result.commitHash,
+          }
+        }))
       }
     }
 
