@@ -11,6 +11,7 @@
 
 import type { AgentsAppChatMessage, AgentsAppContext } from '@airo/shared/websocket'
 
+import { JourneyTracker } from '@/lib/journeyTracker'
 import { logger } from '@/lib/request-context'
 import { logImpressionEvent } from '@/utils/instrumentation'
 import type { LifecycleHandlerContext, MessageHandler, WebSocketMessage } from './types'
@@ -101,6 +102,7 @@ export class ErrorHandler implements MessageHandler {
       agentId: data.data?.agentId as string | undefined,
       totalSteps: data.data?.step as number | undefined,
     })
+    JourneyTracker.current()?.completeActivePrompt({ success: false, errorType: 'BUDGET_EXCEEDED' })
     context.helpers.sendToolImpression('error')
 
     context.refs.pendingRecoveryAck.current = null
@@ -226,6 +228,7 @@ export class ErrorHandler implements MessageHandler {
       agentId: data.data?.agentId as string | undefined,
       totalSteps: data.data?.step as number | undefined,
     })
+    JourneyTracker.current()?.completeActivePrompt({ success: false, errorType: errorType ?? 'unknown' })
     context.helpers.sendToolImpression('error')
 
     // Machine handles UI state transitions via STREAM_ERROR event (already sent above)

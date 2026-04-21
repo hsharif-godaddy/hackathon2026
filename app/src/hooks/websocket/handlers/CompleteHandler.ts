@@ -6,6 +6,7 @@
  */
 import { getQueryClient } from '@/components/providers/QueryClientProvider'
 import { appFetch } from '@/lib/gasket-config'
+import { JourneyTracker } from '@/lib/journeyTracker'
 import { logger } from '@/lib/request-context'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useSitesStore } from '@/stores/useSitesStore'
@@ -145,6 +146,8 @@ export class CompleteHandler implements MessageHandler {
       finishReason: data.data?.finishReason as string | undefined,
       usedFreeGrants: data.data?.usedFreeGrants as boolean | undefined,
     })
+
+    JourneyTracker.current()?.completeActivePrompt({ success: true })
 
     if (data.data?.usage) {
       logImpressionEvent('credits.usage.consumed')()

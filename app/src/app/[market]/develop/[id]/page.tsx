@@ -46,6 +46,7 @@ import { useSyncResponsiveState } from '@/hooks/useSyncResponsiveState'
 import { useTranslations } from '@/hooks/useTranslations'
 import { useIsUpgradePolling } from '@/hooks/useUpgradePurchase'
 import { agentFetch } from '@/lib/agent-fetch'
+import { JourneyTracker } from '@/lib/journeyTracker'
 import { regenerateToken } from '@/lib/jwt-regeneration'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { PAYWALL_ITC } from '@/lib/paywall/shared'
@@ -174,6 +175,12 @@ function DevelopPageContent() {
     enabled: loadingPhase === 'ready' && !!appId && !!site?.agent_url
   })
 
+  useEffect(function syncAppId() {
+    if (appId) {
+      JourneyTracker.setAppId(appId)
+    }
+  }, [appId])
+
   // Local state (only what's not in stores)
   const isEditModeEnabled = useDevelopPageStore((state) => state.isEditModeEnabled)
   // Optimistic mobile tab state for instant transitions
@@ -196,6 +203,8 @@ function DevelopPageContent() {
   const [isCreateFlowSession, setIsCreateFlowSession] = useState(false)
   const prevShowChatLoaderRef = useRef(init.ui.showChatLoader)
   const previewInitializedRef = useRef(false)
+  const firstEditTrackedRef = useRef(false)
+  const previewMilestoneTrackedRef = useRef(false)
   const historyLoadingComplete = useHistoryLoadingComplete()
 
   const scheduleMicrotask = useCallback((task: () => void | Promise<void>) => {
@@ -587,13 +596,25 @@ function DevelopPageContent() {
         !toolCall.error
     )
 
-    if (completedFileEdit && !isPreviewVisible) {
-      // First successful file edit - show preview and mark it
-      setIsPreviewVisible(true)
-      init.actions.markFirstFileEditSeen()
-      const storageKey = `airo-preview-visible-${appId}`
-      if (typeof window !== 'undefined') {
-        localStorage.setItem(storageKey, 'true')
+    if (completedFileEdit) {
+      if (!firstEditTrackedRef.current) {
+        firstEditTrackedRef.current = true
+        JourneyTracker.current()?.trackMilestone('first_edit_made', { appId })
+      }
+
+      if (!isPreviewVisible) {
+        setIsPreviewVisible(true)
+
+        if (!previewMilestoneTrackedRef.current) {
+          previewMilestoneTrackedRef.current = true
+          JourneyTracker.current()?.trackMilestone('preview_generated', { appId })
+        }
+
+        init.actions.markFirstFileEditSeen()
+        const storageKey = `airo-preview-visible-${appId}`
+        if (typeof window !== 'undefined') {
+          localStorage.setItem(storageKey, 'true')
+        }
       }
     }
   }, [appId, activeStream, isPreviewVisible, setIsPreviewVisible, init.actions])
@@ -879,6 +900,13 @@ function DevelopPageContent() {
           appId,
           promptLength: init.ui.autoSendPromptText.length,
         })
+
+        JourneyTracker.current()?.trackMilestone('onboarding_started', { appId })
+        if (init.ui.templateId && init.ui.templateId !== 'default') {
+          JourneyTracker.current()?.trackMilestone('template_selected', { appId, templateId: init.ui.templateId })
+        }
+      } else if (messages.length > 0) {
+        init.actions.markInitialPromptSent()
       }
     }
 
@@ -920,7 +948,8 @@ function DevelopPageContent() {
     ws.actions.send,
     appId,
     init.actions,
-    ws.connection.isConnected
+    ws.connection.isConnected,
+    messages.length
   ])
 
   useEffect(() => {

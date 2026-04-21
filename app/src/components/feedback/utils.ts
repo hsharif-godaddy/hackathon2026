@@ -122,7 +122,7 @@ const formatFieldName = (key: string): string => {
 
 const formatFieldValue = (key: string, value: any): string => {
   if (key === 'rate-overal-experience') {
-    const rating = String(value).charAt(0);
+    const rating = String(parseInt(String(value).trim(), 10));
     return RATING_EMOJIS[rating] || value;
   }
   return value;

@@ -35,6 +35,7 @@ import { useSecretsDiff } from '@/hooks/useSecretsDiff';
 import { useSubscription } from '@/hooks/useSubscription';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
+import { JourneyTracker } from '@/lib/journeyTracker';
 import { DeploymentStatus } from '@/lib/mgmt-airo/types';
 import { PAYWALL_ITC } from '@/lib/paywall/shared';
 import { getPublishLimit } from '@/lib/publish-limit';
@@ -299,8 +300,8 @@ export default function AppPublish({ location = 'develop' }: { location?: string
     setIsPublishing(currentAppId, true);
 
     try {
-      // Publish with latest commit (mutation will fetch git history and store commit hash internally)
       await publishMutation.mutateAsync({ appId: currentAppId });
+      JourneyTracker.current()?.trackMilestone('site_published', { appId: currentAppId })
 
       // Note: usePublishApp hook polls until deployment appears and triggers refetch
     } catch (error) {

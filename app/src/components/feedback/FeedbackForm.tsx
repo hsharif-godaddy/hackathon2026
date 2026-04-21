@@ -11,6 +11,7 @@ import TextInput from "@ux/text-input";
 
 import { useAuthContext } from "@/components/providers/AuthProvider";
 import { useTranslations } from "@/hooks/useTranslations";
+import { JourneyTracker } from '@/lib/journeyTracker';
 import { logger } from '@/lib/request-context';
 import { formatSlackBlockMessage, type SlackBlockMessage, type SlackLink } from '@/lib/slack-webhook';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
@@ -138,7 +139,7 @@ export function FeedbackForm({
         });
       } else if (rating) {
         // Regular user - show full rating
-        const ratingNumber = String(rating).charAt(0);
+        const ratingNumber = String(parseInt(String(rating).trim(), 10));
         const ratingEmojis: Record<string, string> = {
           '1': ':alert_red: :alert_red: :alert_red:',
           '2': ':alert_orange: :alert_orange:',
@@ -260,6 +261,15 @@ export function FeedbackForm({
 
   async function onSubmit(data: any) {
     setIsSubmitting(true);
+
+    const rating = data['rate-overal-experience'];
+    const parsed = rating ? parseInt(String(rating).trim(), 10) : NaN;
+    const ratingNumber = isNaN(parsed) ? undefined : parsed;
+    JourneyTracker.current()?.trackMilestone('feedback_submitted', {
+      feedbackId: config.pk,
+      rating: ratingNumber,
+      appId: currentAppId,
+    });
 
     try {
       if (isLocalDev()) {

@@ -16,6 +16,7 @@ import { TranslationsProvider } from "@/components/providers/TranslationProvider
 import ConversationIdCookie from "@/components/security/ConversationIdCookie";
 import FrameBuster from "@/components/security/FrameBuster";
 import ItcInitializer from "@/components/tracking/ItcInitializer";
+import JourneyTrackerInit, { JourneyTrackerAuth } from "@/components/tracking/JourneyTrackerInit";
 import ReferralTracker from "@/components/tracking/ReferralTracker";
 import { EXPERIMENT_IDS } from "@/config/experiments";
 import { instrumentPageRequest } from "@/lib/apm-context";
@@ -178,6 +179,7 @@ async function MarketLayout({
   return (
     <PresentationLayout params={params}>
       <FrameBuster />
+      <JourneyTrackerInit />
       <Suspense fallback={null}>
         <ConversationIdCookie />
         <ReferralTracker />
@@ -192,6 +194,7 @@ async function MarketLayout({
             packages={['@airo-app-builder/aab']}
           >
             <AuthProvider homepageEngagementCohort={homepageEngagementCohort}>
+              <JourneyTrackerAuth />
               <SubscriptionCacheProvider>
                 <SessionTimeoutManager />
                 <AuthBoundary>

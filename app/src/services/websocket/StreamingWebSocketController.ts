@@ -31,6 +31,7 @@ import {
   clearConversationIdCookie,
   getConversationIdFromCookie,
 } from '@/hooks/websocket/useWebSocketHelpers'
+import { JourneyTracker } from '@/lib/journeyTracker'
 import { logger } from '@/lib/request-context'
 import { toWebSocketError, WebSocketError, WebSocketErrorCode } from '@/lib/websocket-errors'
 import {
@@ -527,6 +528,8 @@ export class StreamingWebSocketController extends EventEmitter {
           logger.error('websocket.message.ack_error', { appId: this.currentAppId, error: response.error })
         }
       })
+
+      JourneyTracker.current()?.trackPromptStarted(crypto.randomUUID(), content)
 
       this.emit('message:sent', { message: chatMessage })
     } catch (error) {

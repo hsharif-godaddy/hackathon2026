@@ -1,5 +1,6 @@
 import { type MutableRefObject, useEffect } from 'react'
 
+import { JourneyTracker } from '@/lib/journeyTracker'
 import { ClientLogBuffer } from '@/lib/logging'
 import { useAuthUIStore } from '@/stores/useAuthUIStore'
 
@@ -24,29 +25,39 @@ interface AuthGateRefs {
  * Listens to the SSO close reason from the auth UI store and fires
  * analytics events so the full funnel is visible in Elastic:
  *
- *   homepage.auth_gate.shown  (fired by caller; CSP element action load on homepage.auth.gate)
- *       ├── homepage.auth_gate.completed   — SSO success (CSP click homepage.auth.complete)
- *       ├── homepage.auth_gate.dismissed   — modal closed (CSP click homepage.auth.dismiss)
- *       └── homepage.auth_gate.abandoned   — tab close / navigation (client log only)
+ *   homepage.auth_gate.shown  (fired by caller at gate open time)
+ *       ├── homepage.auth_gate.completed   — user finished SSO
+ *       ├── homepage.auth_gate.dismissed   — user clicked X / closed modal
+ *       └── homepage.auth_gate.abandoned   — user left the page (tab close / navigation)
  *
- * CSP rejects add_element_action with action custom; completed/dismiss use click schema instead.
+ * All outcomes are also sent to FullStory via JourneyTracker milestones.
  */
 export function useAuthGateTracking(
   logAnalytics: LogAnalyticsFn,
   { authGateShownAtRef, promptTextRef }: AuthGateRefs,
 ) {
+  const isSsoLoginOpen = useAuthUIStore((s) => s.isSsoLoginOpen)
   const ssoCloseReason = useAuthUIStore((s) => s.ssoCloseReason)
   const clearSsoCloseReason = useAuthUIStore((s) => s.clearSsoCloseReason)
+
+  useEffect(function trackAuthGateShown() {
+    if (isSsoLoginOpen && authGateShownAtRef.current != null) {
+      JourneyTracker.current()?.trackMilestone('auth_gate_shown', {
+        promptLength: promptTextRef.current.length,
+      })
+    }
+  }, [isSsoLoginOpen, authGateShownAtRef, promptTextRef])
 
   useEffect(() => {
     if (ssoCloseReason == null) return
 
     if (ssoCloseReason === 'success') {
       if (authGateShownAtRef.current != null) {
+        const msFromShown = Math.round(Date.now() - authGateShownAtRef.current)
         logAnalytics(
           'homepage.auth_gate.completed',
           {
-            msFromShown: Math.round(Date.now() - authGateShownAtRef.current),
+            msFromShown,
             promptLength: promptTextRef.current.length,
           },
           {
@@ -54,13 +65,18 @@ export function useAuthGateTracking(
             eid: 'homepage.auth.complete',
           },
         )
+        JourneyTracker.current()?.trackMilestone('auth_gate_completed', {
+          msFromShown,
+          promptLength: promptTextRef.current.length,
+        })
       }
       authGateShownAtRef.current = null
     } else if (ssoCloseReason === 'dismiss' && authGateShownAtRef.current != null) {
+      const msFromShown = Math.round(Date.now() - authGateShownAtRef.current)
       logAnalytics(
         'homepage.auth_gate.dismissed',
         {
-          msFromShown: Math.round(Date.now() - authGateShownAtRef.current),
+          msFromShown,
           promptLength: promptTextRef.current.length,
         },
         {
@@ -68,6 +84,10 @@ export function useAuthGateTracking(
           eid: 'homepage.auth.dismiss',
         },
       )
+      JourneyTracker.current()?.trackMilestone('auth_gate_dismissed', {
+        msFromShown,
+        promptLength: promptTextRef.current.length,
+      })
       authGateShownAtRef.current = null
     }
 
@@ -77,8 +97,13 @@ export function useAuthGateTracking(
   useEffect(function trackAuthGateAbandonment() {
     function onPageHide() {
       if (authGateShownAtRef.current == null) return
+      const msFromShown = Math.round(Date.now() - authGateShownAtRef.current)
       logAnalytics('homepage.auth_gate.abandoned', {
-        msFromShown: Math.round(Date.now() - authGateShownAtRef.current),
+        msFromShown,
+        promptLength: promptTextRef.current.length,
+      })
+      JourneyTracker.current()?.trackMilestone('auth_gate_abandoned', {
+        msFromShown,
         promptLength: promptTextRef.current.length,
       })
       authGateShownAtRef.current = null

@@ -8,6 +8,7 @@ import { useAuthContext } from '@/components/providers/AuthProvider'
 import { EXPERIMENT_IDS } from '@/config/experiments'
 import { useAnalytics } from '@/hooks/useAnalytics'
 import { useTranslations } from '@/hooks/useTranslations'
+import { JourneyTracker } from '@/lib/journeyTracker'
 import { generateClickEID, logClickEvent } from '@/utils/instrumentation'
 
 export default function HeroExamples({ onExampleClick }: HeroExamplesProps) {
@@ -190,7 +191,8 @@ export default function HeroExamples({ onExampleClick }: HeroExamplesProps) {
               logAnalytics('homepage.template.click', { templateSlug: example.slug })
               logClickEvent('homepage.examples.example')();
               logClickEvent(`homepage.examples.example_${example.slug}`)();
-            } }
+              JourneyTracker.current()?.trackMilestone('homepage_example_selected', { slug: example.slug })
+            }}
             className={clsx(
               'group bg-ai-dark-transparent px-2 py-0.5 rounded-lg hover:shadow-md transition-all duration-300 text-sm cursor-pointer transform',
               visibleItems[index]

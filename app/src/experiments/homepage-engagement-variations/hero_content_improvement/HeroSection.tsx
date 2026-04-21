@@ -18,6 +18,7 @@ import { useAnalytics } from '@/hooks/useAnalytics'
 import { useBreakpoints } from '@/hooks/useBreakpoints'
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition'
 import { useTranslations } from '@/hooks/useTranslations'
+import { JourneyTracker } from '@/lib/journeyTracker'
 import { getByteLength, MAX_PROMPT_BYTES, validateAndClampPrompt } from '@/lib/waf-validation'
 import { generateClickEID } from '@/utils/instrumentation'
 import { handleModifierEnterNewline } from '@/utils/textareaShortcuts'
@@ -94,6 +95,9 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
       stopSpeech()
       resetTranscript()
     }
+    JourneyTracker.current()?.trackMilestone('homepage_prompt_submitted', {
+      promptLength: displayText.trim().length,
+    })
     onStartBuilding()
   }
 
@@ -462,6 +466,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                     logAnalytics('homepage.prompt.first_input', {
                       msFromPageLoad: Math.round(performance.now()),
                     })
+                    JourneyTracker.current()?.trackMilestone('homepage_prompt_typed')
                   }
                   isUserTypingRef.current = true
                   if (
@@ -513,6 +518,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                         action: 'focus',
                       },
                     )
+                    JourneyTracker.current()?.trackMilestone('homepage_prompt_focused')
                   }
                 }}
                 onBlur={() => {
