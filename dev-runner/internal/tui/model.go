@@ -293,6 +293,7 @@ func buildPreflightRunner() *preflight.Runner {
 					{Check: &checks.KnowBCheck{}, Fixer: &fixers.KnowBFixer{TokenCache: ssoTokenCache}},
 					{Check: &checks.DesignRAGCheck{}, Fixer: &fixers.DesignRAGFixer{TokenCache: ssoTokenCache}},
 					{Check: &checks.LocalFeaturesCheck{}, Fixer: &fixers.LocalFeaturesFixer{}, OptIn: true},
+					{Check: &checks.ImageSearchEnvCheck{}, Fixer: &fixers.ImageSearchEnvFixer{}, OptIn: true},
 				},
 			},
 			{

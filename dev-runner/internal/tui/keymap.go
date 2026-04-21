@@ -188,7 +188,7 @@ type PreflightSelectFixesKeyMap struct {
 
 func NewPreflightSelectFixesKeyMap() PreflightSelectFixesKeyMap {
 	return PreflightSelectFixesKeyMap{
-		Toggle: key.NewBinding(key.WithKeys(" "), key.WithHelp("Space", "toggle")),
+		Toggle: key.NewBinding(key.WithKeys("space"), key.WithHelp("Space", "toggle")),
 		Down:   key.NewBinding(key.WithKeys("j", "down"), key.WithHelp("j/k", "navigate")),
 		Up:     key.NewBinding(key.WithKeys("k", "up")),
 		All:    key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "all")),

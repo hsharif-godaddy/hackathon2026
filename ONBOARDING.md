@@ -111,7 +111,6 @@ airo-app-builder/
   e2e/                   # Playwright E2E tests
   tests/                 # Smoke tests
   docs/                  # Architecture + feature docs
-  setup/                 # Interactive setup wizard
   scripts/               # CI/CD and utility scripts
 ```
 
@@ -240,8 +239,9 @@ cd airo-app-builder
 pnpm run dev
 ```
 
-`pnpm run dev` runs preflight checks that configure AI provider (GoCode), auth (JWT/SSO),
-Getty Images proxy, MySQL container, and generates all `.env` files automatically.
+The Dev Runner TUI runs preflight checks and offers to auto-fix any
+issues inline — generating `.env` files, running `aws sso login`,
+configuring MySQL, etc.
 See [`GETTING_STARTED.md`](GETTING_STARTED.md) for the full guide.
 
 Access the builder at `https://local.gasket.dev-godaddy.com:8443`.

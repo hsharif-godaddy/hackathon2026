@@ -2,33 +2,40 @@
 
 ## Current Implementation
 
-The image-search-service uses the **airo-builder proxy** (Option A below) with pluggable authentication.
+The image-search-service uses **SSO JWT + mTLS certificate authentication** (`GETTY_AUTH_TYPE=sso-jwt`) to call the GoDaddy Getty Images proxy directly.
 
 **Environment Variables:**
+
 ```bash
-GETTY_UPSTREAM=https://airobuilde-proxy-dev-private-ecs.airobuilde-dev-private.prod.onkatana.net
-GETTY_TOKEN=<from-secrets-manager>
-GETTY_X_APP_KEY=image-search-service
+GETTY_UPSTREAM=https://getty-images-proxy.api.godaddy.com
+GETTY_AUTH_TYPE=sso-jwt
+GETTY_CERT_PATH=image-search-service/certs/client.crt
+GETTY_KEY_PATH=image-search-service/certs/client.key
+GETTY_X_APP_KEY=airo-app-builder
 ```
 
-**To get GETTY_TOKEN:**
+**To get the client certificates:**
+
+Use `pnpm run dev` from the repo root — the Image Search preflight check (opt-in) will fetch the client cert and key from AWS Secrets Manager and generate the `.env` automatically.
+
+Or fetch manually:
+
 ```bash
 aws secretsmanager get-secret-value \
-  --secret-id /Katana/Secrets/airobuilde/app/dev-private-ecs/GETTY_TOKEN \
+  --secret-id /Katana/Secrets/airobuilde/proxy/dev-private-ecs/GETTY_CERT \
   --profile airobuild-dev-private-sso \
-  --query "SecretString" --output text
-```
-
-Or use the setup utility:
-```bash
-pnpm --filter airo-setup start
-# Select "Configure Image Search Service (.env)"
+  --query "SecretString" --output text > image-search-service/certs/client.crt
+aws secretsmanager get-secret-value \
+  --secret-id /Katana/Secrets/airobuilde/proxy/dev-private-ecs/GETTY_KEY \
+  --profile airobuild-dev-private-sso \
+  --query "SecretString" --output text > image-search-service/certs/client.key
 ```
 
 **Pluggable Auth Architecture:**
 The `internal/getty/auth.go` file defines an `AuthProvider` interface allowing different auth strategies:
-- `BearerTokenAuth` - Current implementation for airo-builder proxy
-- `SSOJWTAuth` - Placeholder for future direct Getty proxy access
+
+- `SSOJWTAuth` - Active implementation (direct Getty proxy via mTLS + SSO JWT)
+- `BearerTokenAuth` - Prior implementation via the airo-builder proxy
 
 ---
 
@@ -37,6 +44,7 @@ The `internal/getty/auth.go` file defines an `AuthProvider` interface allowing d
 The GoDaddy Getty Images proxy (`https://getty-images-proxy.api.test-godaddy.com`) uses **SSO JWT + mTLS certificate authentication**.
 
 This is NOT a simple Bearer token system. It requires:
+
 1. Client certificates to authenticate with GoDaddy SSO
 2. An SSO JWT token obtained from GoDaddy SSO using those certificates
 3. An `x-app-key` header identifying the application
@@ -76,24 +84,27 @@ User-Agent: image-search-service/1.0
 ### Option 1: Using gd-auth-client (Node.js)
 
 ```typescript
-import { getTokenFromCertificate } from 'gd-auth-client';
+import { getTokenFromCertificate } from "gd-auth-client";
 
 // Read client certificates
-const cert = fs.readFileSync('/path/to/getty-client.crt', 'utf8');
-const key = fs.readFileSync('/path/to/getty-client.key', 'utf8');
+const cert = fs.readFileSync("/path/to/getty-client.crt", "utf8");
+const key = fs.readFileSync("/path/to/getty-client.key", "utf8");
 
 // Get JWT token from SSO
-const ssoHost = 'sso.test-godaddy.com'; // or 'sso.godaddy.com' for prod
+const ssoHost = "sso.test-godaddy.com"; // or 'sso.godaddy.com' for prod
 const jwtToken = await getTokenFromCertificate(ssoHost, cert, key);
 
 // Use token in request
-const response = await fetch('https://getty-images-proxy.api.test-godaddy.com/v1/search?phrase=office&pageSize=10', {
-  headers: {
-    'Authorization': `sso-jwt ${jwtToken}`,
-    'x-app-key': 'hosting-dev',
-    'User-Agent': 'my-service/1.0'
-  }
-});
+const response = await fetch(
+  "https://getty-images-proxy.api.test-godaddy.com/v1/search?phrase=office&pageSize=10",
+  {
+    headers: {
+      Authorization: `sso-jwt ${jwtToken}`,
+      "x-app-key": "hosting-dev",
+      "User-Agent": "my-service/1.0",
+    },
+  },
+);
 ```
 
 ### Option 2: Direct SSO API Call (Any Language)
@@ -116,6 +127,7 @@ The client certificates are required for SSO authentication:
 - `getty-client.key` - Client private key
 
 **Where to get them:**
+
 - Katana: https://katana.int.gdcorp.tools/apps/airobuilde/proxy/environment/dev-private-ecs/variables
 - They may be stored as environment variables or files
 
@@ -132,21 +144,21 @@ curl -X GET "https://getty-images-proxy.api.test-godaddy.com/v1/search?phrase=of
 
 ## Environment-Specific URLs
 
-| Environment | SSO Host | Getty Proxy |
-|-------------|----------|-------------|
-| Test | sso.test-godaddy.com | getty-images-proxy.api.test-godaddy.com |
-| Production | sso.godaddy.com | getty-images-proxy.api.godaddy.com |
+| Environment | SSO Host             | Getty Proxy                             |
+| ----------- | -------------------- | --------------------------------------- |
+| Test        | sso.test-godaddy.com | getty-images-proxy.api.test-godaddy.com |
+| Production  | sso.godaddy.com      | getty-images-proxy.api.godaddy.com      |
 
 ## Search Parameters
 
-| Parameter | Type | Default | Notes |
-|-----------|------|---------|-------|
-| `phrase` | string | required | Search term |
-| `page` | number | 1 | Page number |
-| `pageSize` | number | 25 | Max 100 |
-| `sortOrder` | string | - | Sort order |
-| `orientations` | string | - | e.g., "Horizontal" |
-| `compositions` | string | - | e.g., "CopySpace" |
+| Parameter      | Type   | Default  | Notes              |
+| -------------- | ------ | -------- | ------------------ |
+| `phrase`       | string | required | Search term        |
+| `page`         | number | 1        | Page number        |
+| `pageSize`     | number | 25       | Max 100            |
+| `sortOrder`    | string | -        | Sort order         |
+| `orientations` | string | -        | e.g., "Horizontal" |
+| `compositions` | string | -        | e.g., "CopySpace"  |
 
 ## Implementation Options for image-search-service
 
@@ -166,6 +178,7 @@ The token must be in the proxy's `VALID_TOKENS` environment variable.
 To call the Getty proxy directly, the image-search-service would need to:
 
 1. **Add a Go SSO client** that:
+
    - Reads client certificates
    - Makes mTLS request to GoDaddy SSO
    - Caches JWT tokens (they expire after ~50 minutes)
@@ -199,9 +212,9 @@ Check how the agents service calls Getty. It may use the airo-builder proxy or h
       "title": "Image title",
       "caption": "Image caption",
       "display_sizes": [
-        {"name": "thumb", "uri": "https://..."},
-        {"name": "preview", "uri": "https://..."},
-        {"name": "comp", "uri": "https://..."}
+        { "name": "thumb", "uri": "https://..." },
+        { "name": "preview", "uri": "https://..." },
+        { "name": "comp", "uri": "https://..." }
       ],
       "max_dimensions": {
         "width": 5000,
@@ -215,6 +228,7 @@ Check how the agents service calls Getty. It may use the airo-builder proxy or h
 ## Error Responses
 
 ### 401 - Invalid/Missing SSO Token
+
 ```json
 {
   "error": "Unauthorized",
@@ -223,6 +237,7 @@ Check how the agents service calls Getty. It may use the airo-builder proxy or h
 ```
 
 ### 400 - Missing x-app-key
+
 ```json
 {
   "status": 400,
@@ -235,5 +250,6 @@ Check how the agents service calls Getty. It may use the airo-builder proxy or h
 The Getty Images proxy requires SSO JWT authentication obtained via mTLS client certificates. This is significantly more complex than simple API key authentication.
 
 For the image-search-service, the options are:
+
 1. **Use the airo-builder proxy** (simpler, but adds a hop)
 2. **Implement SSO auth in Go** (direct, but requires certificate management)

@@ -49,7 +49,7 @@ if (options.token && options.repoUrl) {
 | **packages/shared/**     | `@airo/shared` | —    | Shared types and pure utilities (grants, context-attachment, social, websocket) |
 | **packages/ai-lib/**     | `@airo/ai-lib` | —    | AI SDK wrapper, consumed by agents                                              |
 
-Additional: `app-templates/` (v8 template), `packages/design-extractor/` (PDF RAG), `setup/` (config utility), `e2e/` (E2E tests)
+Additional: `app-templates/` (v8 template), `packages/design-extractor/` (PDF RAG), `e2e/` (E2E tests)
 
 See service-specific CLAUDE.md files: [agents/](agents/CLAUDE.md), [app/](app/CLAUDE.md), [dev-supervisor/](dev-supervisor/CLAUDE.md), [local-control-plane/](local-control-plane/CLAUDE.md), [go-agent/](go-agent/CLAUDE.md)
 

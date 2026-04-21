@@ -184,7 +184,7 @@ These files are automatically loaded based on the `GASKET_ENV` via the `scripts/
 
 **Manual configuration (if needed):**
 
-If you need to customize these files, you can create them manually:
+If you need to manually create these files:
 
 **`app/.env.local.dev` (dev-godaddy.com):**
 
@@ -287,9 +287,9 @@ Generated apps run on `https://local.gasket.dev-godaddy.com:5XXX` using the GoDa
 
 ## 🔧 Setup Utilities
 
-### Dev Runner Preflight (Recommended)
+### Dev Runner Preflight
 
-`pnpm run dev` handles most setup tasks automatically. If a check fails, select it in the fix selector and the TUI will resolve it. This covers: .env generation, AWS SSO login, JWT keys, TLS certs, S2S certs, Getty proxy tokens, MySQL, hosts file, and more.
+`pnpm run dev` handles all setup tasks automatically. If a check fails, select it in the fix selector and the TUI will resolve it. This covers: .env generation, AWS SSO login, JWT keys, TLS certs, S2S certs, Getty proxy tokens, MySQL, hosts file, and more.
 
 ### Getty Images Setup
 
