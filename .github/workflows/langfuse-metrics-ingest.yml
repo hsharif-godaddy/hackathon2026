@@ -55,7 +55,7 @@ jobs:
           echo "//gdartifactory1.jfrog.io/artifactory/api/npm/npm-gasket-core-local/:_authToken=${{ env.ARTIFACTORY_NPM_TOKEN }}" >> .npmrc
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v6.3.0
         with:
           node-version: "22"
 

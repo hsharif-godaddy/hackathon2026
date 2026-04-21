@@ -45,7 +45,7 @@ jobs:
           echo "ARTIFACTORY_NPM_TOKEN=${OIDC_TOKEN}" >> $GITHUB_ENV
 
       - name: Set up Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v6.3.0
         with:
           node-version: "22.12"
           registry-url: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/
