@@ -17,6 +17,7 @@ import { injectPortHandling } from './ExpressPortInjector.js';
 import { codeSyncFileCleanupService } from './CodeSyncFileCleanupService.js';
 import { Logger } from '../logging/index.js';
 import { getErrorMessage } from '../utils/error.js';
+import { bytesToMB } from '../utils/container-metrics.js';
 
 const logger = Logger.create({ component: 'git-ops-service' });
 
@@ -556,6 +557,18 @@ export class GitOpsService {
         );
         return;
       }
+
+      // Log consolidated metrics for git pull (use -1 for missing values to keep consistent numeric type in ES)
+      const metrics = restartResult.metrics ?? {};
+      logger.info('git-ops.pull.metrics', {
+        appId,
+        jobId,
+        sourceType: 'git_pull',
+        installDurationMs: metrics.installDurationMs ?? -1,
+        buildDurationMs: metrics.buildDurationMs ?? -1,
+        startDurationMs: metrics.startDurationMs ?? -1,
+        appDirSizeMB: bytesToMB(metrics.appDirSizeBytes),
+      });
 
       // Commit pulled changes only after successful restart
       void this.commitPostPulledChanges(gitTool, appPath, appId, jobId);

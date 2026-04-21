@@ -40,21 +40,18 @@ vi.mock('../ViteConfigModifier.js');
 vi.mock('../ExpressPortInjector.js');
 vi.mock('../../tools/git-tool.js');
 vi.mock('node:fs/promises');
+const mockLogger = vi.hoisted(() => ({
+  info: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn(),
+  debug: vi.fn(),
+}));
+
 vi.mock('../../logging/index.js', () => ({
   Logger: {
-    create: () => ({
-      info: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn(),
-      debug: vi.fn(),
-    }),
+    create: () => mockLogger,
   },
-  logger: {
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
-  },
+  logger: mockLogger,
 }));
 
 /**
@@ -978,6 +975,28 @@ describe('ProjectImportService', () => {
       // This ensures `|| true` only applies to public cleanup, not main cleanup
       expect(cleanupCommand).toContain('&& {'); // Opening brace after main cleanup
       expect(cleanupCommand).toMatch(/\|\|\s*true\s*;\s*\}/); // Closing brace with || true inside
+    });
+  });
+
+  describe('Metrics Logging', () => {
+    it('should use -1 sentinel for missing metric values via bytesToMB', async () => {
+      // Import the actual bytesToMB function to test its behavior
+      const { bytesToMB } = await import('../../utils/container-metrics.js');
+
+      // Test bytesToMB sentinel behavior
+      expect(bytesToMB(undefined)).toBe(-1);
+      expect(bytesToMB(null)).toBe(-1);
+      expect(bytesToMB(0)).toBe(0); // 0 bytes is valid, not missing
+      expect(bytesToMB(104857600)).toBe(100); // 100MB
+    });
+
+    it('should calculate bytesToMB with correct precision', async () => {
+      const { bytesToMB } = await import('../../utils/container-metrics.js');
+
+      // Test precision (2 decimal places)
+      expect(bytesToMB(1048576)).toBe(1); // 1MB exactly
+      expect(bytesToMB(1572864)).toBe(1.5); // 1.5MB
+      expect(bytesToMB(1610612)).toBe(1.54); // ~1.536MB rounds to 1.54
     });
   });
 });

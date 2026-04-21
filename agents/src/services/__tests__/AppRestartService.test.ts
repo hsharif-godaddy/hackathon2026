@@ -709,6 +709,113 @@ describe('AppRestartService', () => {
       expect(appRestartService).toBeInstanceOf(AppRestartService);
     });
   });
+
+  describe('metrics collection', () => {
+    beforeEach(() => {
+      mockDevSupervisor.stopProcess.mockResolvedValue(true);
+      mockDevSupervisor.startProcess.mockResolvedValue({ state: 'running' });
+      mockTerminalTool.executeCommand.mockResolvedValue({
+        success: true,
+        exitCode: 0,
+        stdout: 'Success',
+        stderr: '',
+      });
+      // Use command-based mocking for robustness (not dependent on call order)
+      mockDevSupervisor.exec.mockImplementation(({ command }: { command: string }) => {
+        if (command.includes('pnpm-lock.yaml')) {
+          return Promise.resolve({ stdout: '' }); // pnpm not found
+        }
+        if (command.includes('yarn.lock')) {
+          return Promise.resolve({ stdout: '' }); // yarn not found
+        }
+        if (command.includes('du -sb')) {
+          return Promise.resolve({ stdout: '104857600' }); // 100MB
+        }
+        return Promise.resolve({ stdout: '' });
+      });
+    });
+
+    it('should collect timing metrics for install, build, and start phases', async () => {
+      const result = await service.performFullRestartCycle(testAppId, testAppPath);
+
+      expect(result.success).toBe(true);
+      expect(result.metrics).toBeDefined();
+      expect(result.metrics!.installDurationMs).toBeGreaterThanOrEqual(0);
+      expect(result.metrics!.buildDurationMs).toBeGreaterThanOrEqual(0);
+      expect(result.metrics!.startDurationMs).toBeGreaterThanOrEqual(0);
+    });
+
+    it('should collect app directory size metric', async () => {
+      const result = await service.performFullRestartCycle(testAppId, testAppPath);
+
+      expect(result.success).toBe(true);
+      expect(result.metrics!.appDirSizeBytes).toBe(104857600); // 100MB
+    });
+
+    it('should handle du command failure gracefully', async () => {
+      mockDevSupervisor.exec.mockReset().mockImplementation(({ command }: { command: string }) => {
+        if (command.includes('du -sb')) {
+          return Promise.reject(new Error('du command failed'));
+        }
+        return Promise.resolve({ stdout: '' });
+      });
+
+      const result = await service.performFullRestartCycle(testAppId, testAppPath);
+
+      expect(result.success).toBe(true);
+      expect(result.metrics!.appDirSizeBytes).toBeUndefined();
+    });
+
+    it('should handle invalid du output gracefully', async () => {
+      mockDevSupervisor.exec.mockReset().mockImplementation(({ command }: { command: string }) => {
+        if (command.includes('du -sb')) {
+          return Promise.resolve({ stdout: 'not-a-number' });
+        }
+        return Promise.resolve({ stdout: '' });
+      });
+
+      const result = await service.performFullRestartCycle(testAppId, testAppPath);
+
+      expect(result.success).toBe(true);
+      expect(result.metrics!.appDirSizeBytes).toBeUndefined();
+    });
+
+    it('should have undefined install metrics when install is skipped', async () => {
+      const result = await service.performFullRestartCycle(testAppId, testAppPath, {
+        skipInstall: true,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.metrics!.installDurationMs).toBeUndefined();
+      expect(result.metrics!.buildDurationMs).toBeGreaterThanOrEqual(0);
+    });
+
+    it('should have undefined build metrics when build is skipped', async () => {
+      const result = await service.performFullRestartCycle(testAppId, testAppPath, {
+        skipBuild: true,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.metrics!.installDurationMs).toBeGreaterThanOrEqual(0);
+      expect(result.metrics!.buildDurationMs).toBeUndefined();
+    });
+
+    it('should still collect partial metrics when install fails', async () => {
+      mockTerminalTool.executeCommand.mockResolvedValueOnce({
+        success: false,
+        exitCode: 1,
+        stdout: '',
+        stderr: 'npm ERR!',
+      });
+
+      const result = await service.performFullRestartCycle(testAppId, testAppPath);
+
+      expect(result.success).toBe(false);
+      expect(result.metrics!.installDurationMs).toBeGreaterThanOrEqual(0);
+      expect(result.metrics!.buildDurationMs).toBeUndefined();
+      expect(result.metrics!.startDurationMs).toBeUndefined();
+    });
+  });
 });
 
 describe('Package Manager Utilities', () => {

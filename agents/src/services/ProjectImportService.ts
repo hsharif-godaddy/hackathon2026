@@ -24,6 +24,7 @@ import {
   detectPackageManager,
   type PackageManager,
 } from './AppRestartService.js';
+import { measureAppDirSize, bytesToMB } from '../utils/container-metrics.js';
 import { injectPortHandling } from './ExpressPortInjector.js';
 import { GitTool } from '../tools/git-tool.js';
 import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js';
@@ -432,7 +433,9 @@ export class ProjectImportService {
       // Phase 8: Install dependencies (already runs in container via dev-supervisor)
       await this.updateStatus(jobId, ImportJobStatus.INSTALLING);
       const detectedPm = validation.packageManager || 'npm';
+      const installStartTime = Date.now();
       const installResult = await appRestartService.runInstall(appId, app.path, detectedPm);
+      const installDurationMs = Date.now() - installStartTime;
 
       if (installResult.output) {
         await this.importJobRepo.update(jobId, { installOutput: installResult.output });
@@ -466,9 +469,12 @@ export class ProjectImportService {
       }
 
       // Phase 9: Build (if script exists)
+      let buildDurationMs: number | undefined;
       if (validation.hasBuildScript) {
         await this.updateStatus(jobId, ImportJobStatus.BUILDING);
+        const buildStartTime = Date.now();
         const buildResult = await appRestartService.runBuild(appId, app.path, detectedPm);
+        buildDurationMs = Date.now() - buildStartTime;
 
         if (buildResult.output) {
           await this.importJobRepo.update(jobId, { buildOutput: buildResult.output });
@@ -565,7 +571,9 @@ export class ProjectImportService {
       // Phase 12: Restart dev server with start command (or custom command)
       // Priority: user-provided command > start script > dev script > default
       await this.updateStatus(jobId, ImportJobStatus.RESTARTING);
+      const restartStartTime = Date.now();
       const restartResult = await appRestartService.restartDevServer(appId, startCommand);
+      const startDurationMs = Date.now() - restartStartTime;
 
       if (!restartResult.success) {
         this.logger.warn('project-import.restart.failed', {
@@ -574,6 +582,20 @@ export class ProjectImportService {
           error: restartResult.error,
         });
       }
+
+      // Measure /app directory size
+      const appDirSizeBytes = await measureAppDirSize(devSupervisor);
+
+      // Log consolidated metrics for zip import (use -1 for missing values to keep consistent numeric type in ES)
+      this.logger.info('project-import.metrics', {
+        jobId,
+        appId,
+        sourceType,
+        installDurationMs: installDurationMs ?? -1,
+        buildDurationMs: buildDurationMs ?? -1,
+        startDurationMs: startDurationMs ?? -1,
+        appDirSizeMB: bytesToMB(appDirSizeBytes),
+      });
 
       // Mark as completed
       await this.importJobRepo.markCompleted(jobId);

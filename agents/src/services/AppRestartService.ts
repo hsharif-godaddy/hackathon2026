@@ -12,6 +12,7 @@ import { join } from 'node:path';
 import { Logger } from '../logging/index.js';
 import { TerminalTool } from '../tools/terminal.js';
 import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js';
+import { measureAppDirSize } from '../utils/container-metrics.js';
 
 const RESTART_TIMEOUTS = {
   INSTALL: 5 * 60 * 1000, // 5 minutes
@@ -147,6 +148,12 @@ export interface RestartCycleResult {
     build: boolean;
     restart: boolean;
   };
+  metrics?: {
+    installDurationMs?: number;
+    buildDurationMs?: number;
+    startDurationMs?: number;
+    appDirSizeBytes?: number;
+  };
 }
 
 export interface PaasConfig {
@@ -182,6 +189,7 @@ export class AppRestartService {
     appPath: string,
     options?: RestartCycleOptions
   ): Promise<RestartCycleResult> {
+    const metrics: NonNullable<RestartCycleResult['metrics']> = {};
     const result: RestartCycleResult = {
       success: false,
       phases: {
@@ -189,6 +197,7 @@ export class AppRestartService {
         build: false,
         restart: false,
       },
+      metrics,
     };
 
     this.logger.info('app-restart.cycle.begin', { appId });
@@ -216,9 +225,14 @@ export class AppRestartService {
       }
 
       // Step 2: Run install (unless skipped)
+      let installDurationMs: number | undefined;
       if (!options?.skipInstall) {
         const installCommand = options?.commands?.install || getInstallCommand(packageManager);
+        const installStartTime = Date.now();
         const installResult = await this.runCommand(appId, appPath, installCommand, 'install');
+        installDurationMs = Date.now() - installStartTime;
+        metrics.installDurationMs = installDurationMs;
+
         if (!installResult.success) {
           result.error = installResult.error || 'install failed';
           this.logger.error('app-restart.install.failed', {
@@ -235,9 +249,14 @@ export class AppRestartService {
       }
 
       // Step 3: Run build (unless skipped)
+      let buildDurationMs: number | undefined;
       if (!options?.skipBuild) {
         const buildCommand = options?.commands?.build || getBuildCommand(packageManager);
+        const buildStartTime = Date.now();
         const buildResult = await this.runCommand(appId, appPath, buildCommand, 'build');
+        buildDurationMs = Date.now() - buildStartTime;
+        metrics.buildDurationMs = buildDurationMs;
+
         if (!buildResult.success) {
           // Build failure is not critical - log warning but continue
           this.logger.warn('app-restart.build.failed', {
@@ -267,7 +286,11 @@ export class AppRestartService {
 
       // Step 5: Restart dev server with resolved start command
       const startCommand = this.resolveStartCommand(options);
+      const restartStartTime = Date.now();
       const restartResult = await this.restartDevServer(appId, startCommand);
+      const startDurationMs = Date.now() - restartStartTime;
+      metrics.startDurationMs = startDurationMs;
+
       if (!restartResult.success) {
         result.error = restartResult.error || 'Failed to restart dev server';
         this.logger.error('app-restart.restart.failed', {
@@ -277,6 +300,14 @@ export class AppRestartService {
         return result;
       }
       result.phases.restart = true;
+
+      // Measure /app directory size
+      if (devSupervisor) {
+        const appDirSizeBytes = await measureAppDirSize(devSupervisor);
+        if (appDirSizeBytes !== undefined) {
+          metrics.appDirSizeBytes = appDirSizeBytes;
+        }
+      }
 
       result.success = true;
       this.logger.info('app-restart.cycle.success', { appId });

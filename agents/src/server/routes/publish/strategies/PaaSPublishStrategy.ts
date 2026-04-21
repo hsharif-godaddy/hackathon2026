@@ -127,16 +127,19 @@ export class PaaSPublishStrategy implements PublishStrategy {
       includeSource: true,
     });
 
+    const archiveStartTime = Date.now();
     const archiveResult = await gitUtils.createArchive(
       appPath,
       commitHash,
       targetDir,
       { includeSource: true, excludeUntracked: true }
     );
+    const archiveDurationMs = Date.now() - archiveStartTime;
 
     logger.info(`route.publish.${this.key}.archive.success`, {
       commitHash: commitHash.substring(0, 7),
       archivePath: archiveResult.path,
+      archiveDurationMs: archiveDurationMs,
     });
 
     return {

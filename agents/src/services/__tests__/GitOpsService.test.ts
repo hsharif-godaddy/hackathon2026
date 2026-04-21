@@ -58,13 +58,15 @@ vi.mock('../ExpressPortInjector.js', () => ({
   injectPortHandling: vi.fn().mockResolvedValue({ modified: false }),
 }));
 
+const mockLogger = vi.hoisted(() => ({
+  info: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn(),
+}));
+
 vi.mock('../../logging/index.js', () => ({
   Logger: {
-    create: () => ({
-      info: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn(),
-    }),
+    create: () => mockLogger,
   },
 }));
 
@@ -486,6 +488,72 @@ describe('GitOpsService', () => {
 
       // Verify restart was NOT called
       expect(appRestartService.performFullRestartCycle).not.toHaveBeenCalled();
+    });
+
+    it('should log metrics with correct payload after successful pull', async () => {
+      // Setup successful restart with metrics
+      vi.mocked(appRestartService.performFullRestartCycle).mockResolvedValue({
+        success: true,
+        phases: { install: true, build: true, restart: true },
+        metrics: {
+          installDurationMs: 5000,
+          buildDurationMs: 3000,
+          startDurationMs: 1000,
+          appDirSizeBytes: 104857600, // 100MB
+        },
+      });
+
+      await service.startPull({
+        appId: testAppId,
+        token: 'ghp_test_token',
+        repoUrl: 'https://github.com/user/repo.git',
+      });
+
+      await vi.runAllTimersAsync();
+
+      // Verify metrics log was called with correct payload
+      expect(mockLogger.info).toHaveBeenCalledWith('git-ops.pull.metrics', {
+        appId: testAppId,
+        jobId: testJobId,
+        sourceType: 'git_pull',
+        installDurationMs: 5000,
+        buildDurationMs: 3000,
+        startDurationMs: 1000,
+        appDirSizeMB: 100, // bytesToMB(104857600) = 100
+      });
+    });
+
+    it('should log metrics with -1 sentinel for missing values', async () => {
+      // Setup successful restart with partial metrics (some undefined)
+      vi.mocked(appRestartService.performFullRestartCycle).mockResolvedValue({
+        success: true,
+        phases: { install: true, build: true, restart: true },
+        metrics: {
+          installDurationMs: 5000,
+          // buildDurationMs undefined
+          startDurationMs: 1000,
+          // appDirSizeBytes undefined
+        },
+      });
+
+      await service.startPull({
+        appId: testAppId,
+        token: 'ghp_test_token',
+        repoUrl: 'https://github.com/user/repo.git',
+      });
+
+      await vi.runAllTimersAsync();
+
+      // Verify metrics log uses -1 sentinel for missing values
+      expect(mockLogger.info).toHaveBeenCalledWith('git-ops.pull.metrics', {
+        appId: testAppId,
+        jobId: testJobId,
+        sourceType: 'git_pull',
+        installDurationMs: 5000,
+        buildDurationMs: -1, // missing -> -1
+        startDurationMs: 1000,
+        appDirSizeMB: -1, // missing -> -1 (bytesToMB returns -1 for undefined)
+      });
     });
   });
 

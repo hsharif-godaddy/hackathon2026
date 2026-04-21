@@ -68,8 +68,11 @@ fi
 
 # Extract archive
 log "Extracting archive to: $APP_DIR"
+EXTRACT_START_MS=$(($(date +%s%N)/1000000))
 tar zxf "$ARCHIVE_PATH" -C "$APP_DIR" || error_exit "Failed to extract archive"
-log "Archive extracted successfully"
+EXTRACT_END_MS=$(($(date +%s%N)/1000000))
+EXTRACT_DURATION_MS=$((EXTRACT_END_MS - EXTRACT_START_MS))
+log "Archive extracted successfully, extractDurationMs=${EXTRACT_DURATION_MS}"
 
 # Change to app directory
 cd "$APP_DIR" || error_exit "Failed to change directory to $APP_DIR"
