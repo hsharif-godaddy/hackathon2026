@@ -200,6 +200,88 @@ describe('AssetProcessingService - analyzePageAssets filtering', () => {
   });
 });
 
+describe('AssetProcessingService - analyzePageAssets return value', () => {
+  it('returns pageAssets and zero analyzedImageCount when all images already described', async function analyzedCountZero() {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'asset-processing-analyzed-'));
+    try {
+      const manifest: AssetManifest = {
+        assets: [
+          {
+            url: 'https://example.com/home-hero.jpg',
+            localPath: '.source-site/assets/images/abc.jpg',
+            type: 'image',
+            sourcePages: ['https://example.com/'],
+            description: 'already described'
+          },
+          {
+            url: 'https://example.com/other.jpg',
+            localPath: '.source-site/assets/images/def.jpg',
+            type: 'image',
+            sourcePages: ['https://example.com/other']
+          }
+        ],
+        totalAssets: 2,
+        byType: { image: 2, font: 0, icon: 0, other: 0 },
+        generatedAt: new Date().toISOString()
+      };
+
+      const svc = new AssetProcessingService(dir);
+      const result = await svc.analyzePageAssets('https://example.com/', manifest);
+
+      expect(result.pageAssets).toHaveLength(1);
+      expect(result.pageAssets[0]?.url).toBe('https://example.com/home-hero.jpg');
+      expect(result.analyzedImageCount).toBe(0);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('returns analyzedImageCount equal to number of images described in this call', async function analyzedCountNonZero() {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'asset-processing-analyzed-nonzero-'));
+    try {
+      await mkdir(path.join(dir, '.source-site', 'assets'), { recursive: true });
+      const manifest: AssetManifest = {
+        assets: [
+          {
+            url: 'https://example.com/a.jpg',
+            localPath: '.source-site/assets/images/a.jpg',
+            type: 'image',
+            sourcePages: ['https://example.com/']
+          },
+          {
+            url: 'https://example.com/b.jpg',
+            localPath: '.source-site/assets/images/b.jpg',
+            type: 'image',
+            sourcePages: ['https://example.com/']
+          }
+        ],
+        totalAssets: 2,
+        byType: { image: 2, font: 0, icon: 0, other: 0 },
+        generatedAt: new Date().toISOString()
+      };
+
+      const svc = new AssetProcessingService(dir);
+      vi
+        .spyOn(
+          svc as unknown as { analyzeImageBatch: (images: AssetInfo[]) => Promise<void> },
+          'analyzeImageBatch'
+        )
+        .mockImplementation(async function describe(images) {
+          for (const img of images) {
+            img.description = 'stub description';
+          }
+        });
+
+      const result = await svc.analyzePageAssets('https://example.com/', manifest);
+
+      expect(result.pageAssets).toHaveLength(2);
+      expect(result.analyzedImageCount).toBe(2);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('AssetProcessingService - process merge', () => {
   it('resolves processAssetsWithConcurrency immediately for empty input', async function emptyConcurrency() {
     const svc = new AssetProcessingService(path.join(os.tmpdir(), 'asset-processing-empty'));

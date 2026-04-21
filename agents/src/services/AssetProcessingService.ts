@@ -911,18 +911,19 @@ Respond ONLY with valid JSON in this exact format:
 
   /**
    * Analyze assets used on a specific page (lazy analysis)
-   * 
+   *
    * Filters assets by the page URL they were found on during scraping,
    * then generates AI descriptions only for those that don't have them yet.
-   * 
+   *
    * @param pageUrl - URL of the page being built
    * @param assetManifest - Full asset manifest
-   * @returns Promise resolving to array of analyzed assets
+   * @returns Promise resolving to the assets on this page and the number of
+   *   images that received new AI descriptions in this call
    */
   async analyzePageAssets(
     pageUrl: string,
     assetManifest: AssetManifest
-  ): Promise<AssetInfo[]> {
+  ): Promise<{ pageAssets: AssetInfo[]; analyzedImageCount: number }> {
     try {
       logger.info('asset-processing.analyze-page-assets.begin', {
         pageUrl,
@@ -933,8 +934,7 @@ Respond ONLY with valid JSON in this exact format:
         }))
       });
 
-      // Filter to only assets that were found on this specific page during scraping
-      const pageAssets = assetManifest.assets.filter(asset => 
+      const pageAssets = assetManifest.assets.filter(asset =>
         asset.sourcePages && asset.sourcePages.includes(pageUrl)
       );
 
@@ -944,7 +944,6 @@ Respond ONLY with valid JSON in this exact format:
         matchedAssets: pageAssets.slice(0, 5).map(a => a.url)
       });
 
-      // Find images that don't have descriptions yet
       const unanalyzedImages = pageAssets.filter(
         asset => asset.type === 'image' && !asset.description
       );
@@ -955,26 +954,24 @@ Respond ONLY with valid JSON in this exact format:
         unanalyzedImages: unanalyzedImages.length
       });
 
-      // Analyze unanalyzed images in batches
       if (unanalyzedImages.length > 0) {
         await this.analyzeImageBatch(unanalyzedImages);
-        
-        // Save updated manifest with new descriptions
+
         await this.saveManifest(assetManifest);
-        
+
         logger.info('asset-processing.manifest-updated-after-analysis', {
           pageUrl,
           imagesAnalyzed: unanalyzedImages.length
         });
       }
 
-      return pageAssets;
+      return { pageAssets, analyzedImageCount: unanalyzedImages.length };
     } catch (error) {
       logger.error('asset-processing.analyze-page-assets.error', {
         pageUrl,
         error: error instanceof Error ? error.message : String(error)
       });
-      return [];
+      return { pageAssets: [], analyzedImageCount: 0 };
     }
   }
 

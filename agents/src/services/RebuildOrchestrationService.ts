@@ -374,7 +374,31 @@ export class RebuildOrchestrationService {
 
       const homeAssetPromise =
         homeUnique.length > 0
-          ? assetService.process(homeUnique, assetMap, { merge: false })
+          ? assetService
+              .process(homeUnique, assetMap, { merge: false })
+              .then(async manifest => {
+                const preAnalyzeStartedAt = Date.now();
+                try {
+                  const { pageAssets, analyzedImageCount } = await assetService.analyzePageAssets(
+                    homePage.url,
+                    manifest
+                  );
+                  logger.info('rebuild-orchestration.homepage-assets-pre-analyzed', {
+                    appId,
+                    pageUrl: homePage.url,
+                    pageAssetCount: pageAssets.length,
+                    analyzedImageCount,
+                    preAnalyzeDurationMs: Date.now() - preAnalyzeStartedAt
+                  });
+                } catch (error) {
+                  logger.warn('rebuild-orchestration.homepage-assets-pre-analyze-failed', {
+                    appId,
+                    pageUrl: homePage.url,
+                    preAnalyzeDurationMs: Date.now() - preAnalyzeStartedAt,
+                    error: error instanceof Error ? error.message : String(error)
+                  });
+                }
+              })
           : Promise.resolve(undefined);
 
       await Promise.all([analyzerPromise, homeAssetPromise]);
@@ -490,7 +514,7 @@ export class RebuildOrchestrationService {
       });
 
       const assetService = new AssetProcessingService(this.appPath);
-      const analyzedAssets = await assetService.analyzePageAssets(
+      const { pageAssets, analyzedImageCount } = await assetService.analyzePageAssets(
         pageContent.url,
         sourceSiteData.assets
       );
@@ -499,18 +523,18 @@ export class RebuildOrchestrationService {
         appId,
         pageSlug,
         pageUrl: pageContent.url,
-        analyzedCount: analyzedAssets.length
+        pageAssetCount: pageAssets.length,
+        analyzedImageCount
       });
 
-      // Create filtered asset manifest with only assets from this page
       const pageAssetManifest: AssetManifest = {
-        assets: analyzedAssets,
-        totalAssets: analyzedAssets.length,
+        assets: pageAssets,
+        totalAssets: pageAssets.length,
         byType: {
-          image: analyzedAssets.filter(a => a.type === 'image').length,
-          font: analyzedAssets.filter(a => a.type === 'font').length,
-          icon: analyzedAssets.filter(a => a.type === 'icon').length,
-          other: analyzedAssets.filter(a => a.type === 'other').length
+          image: pageAssets.filter(a => a.type === 'image').length,
+          font: pageAssets.filter(a => a.type === 'font').length,
+          icon: pageAssets.filter(a => a.type === 'icon').length,
+          other: pageAssets.filter(a => a.type === 'other').length
         },
         generatedAt: new Date().toISOString()
       };
