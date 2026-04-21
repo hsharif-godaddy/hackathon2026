@@ -103,7 +103,7 @@ Preferred: if available in current flow, use `commerce__install_storefront` from
 Otherwise, add/update `.env` manually:
 
 ```bash
-VITE_GODADDY_CLIENT_ID=<from /alloc/config.json GODADDY_OAUTH_CLIENT_ID.VALUE>
+VITE_GODADDY_CLIENT_ID=<from task-local config.json GODADDY_OAUTH_CLIENT_ID.VALUE>
 VITE_GODADDY_API_HOST=<hostname from GODADDY_API_BASE_URL, no https://>
 GODADDY_API_BASE_URL=https://<same-host-as-VITE_GODADDY_API_HOST>
 VITE_GODADDY_STORE_ID=<storeId from commerce__setup_store>

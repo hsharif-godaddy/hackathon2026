@@ -27,7 +27,7 @@ This skill is **UI wiring only**.
 2. **Use SKU IDs for checkout** (`product.skuId`), never SKU Group IDs.
 3. **Do NOT modify** `src/server/api/commerce/create-checkout-session/POST.ts` (immutable route).
 4. Keep preview URL fallback behavior for return/success URLs.
-5. Do not request Commerce OAuth secrets manually (system-managed in `/alloc/config.json`).
+5. Do not request Commerce OAuth secrets manually (system-managed in task-local config.json).
 
 ---
 

@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 /**
  * Secret stored in config.json
@@ -16,22 +17,18 @@ interface ConfigStorage {
 }
 
 /**
- * Path to the config file in the container
- */
-const CONFIG_PATH = '/alloc/config.json';
-
-/**
- * Read and parse the config.json file
+ * Read and parse the task-local config.json file.
  *
  * @returns Parsed config object
  * @throws Error if file cannot be read or parsed
  */
 function readConfig(): ConfigStorage {
+  const configPath = join(process.env.NOMAD_TASK_DIR || '/local', 'config.json');
   try {
-    const content = readFileSync(CONFIG_PATH, 'utf8');
+    const content = readFileSync(configPath, 'utf8');
     return JSON.parse(content);
   } catch (error) {
-    throw new Error(`Failed to read config from ${CONFIG_PATH}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    throw new Error(`Failed to read config from ${configPath}: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
 
@@ -54,7 +51,7 @@ function isNonSystemManagedSecret(value: any): value is StoredSecret {
 /**
  * Get a non-system-managed secret value by name
  *
- * Fetches a secret from /alloc/config.json if it exists and is not system-managed.
+ * Fetches a secret from config.json if it exists and is not system-managed.
  *
  * @param secretName - Name of the secret to retrieve
  * @returns Secret value (string or object) if found and non-system-managed, null otherwise
@@ -91,7 +88,7 @@ export function getSecret(secretName: string): string | object | null {
 /**
  * List all non-system-managed secret names
  *
- * Returns an array of secret names from /alloc/config.json that are marked as
+ * Returns an array of secret names from config.json that are marked as
  * non-system-managed (SYSTEM_MANAGED: false).
  *
  * @returns Array of non-system-managed secret names

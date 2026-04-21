@@ -14,7 +14,7 @@
  *   npm install @ai-sdk/anthropic  → secret: ANTHROPIC_API_KEY
  *   npm install @ai-sdk/google     → secret: GOOGLE_GENERATIVE_AI_API_KEY
  *
- * Secrets are read at request time from /alloc/config.json via getSecret()
+ * Secrets are read at request time from task-local config.json via getSecret()
  * and passed directly to the provider factory — no process.env mutation needed.
  */
 

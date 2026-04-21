@@ -7,7 +7,7 @@
  * - Push schema to database: npx drizzle-kit push
  *
  * Configuration source:
- * - Reads from /alloc/config.json
+ * - Reads from $NOMAD_TASK_DIR/config.json (defaults to /local/config.json)
  * - Throws error if config file not found or invalid
  */
 import { defineConfig } from 'drizzle-kit';

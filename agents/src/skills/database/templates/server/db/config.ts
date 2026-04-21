@@ -18,14 +18,14 @@ export interface DatabaseCredentials {
 }
 
 /**
- * Load database configuration from JSON config file
- * Reads from /alloc/config.json (container) or uses NOMAD_ALLOC_DIR if available
+ * Load database configuration from the task-local config file.
+ * Reads from $NOMAD_TASK_DIR/config.json (defaults to /local/config.json).
  *
  * @returns Database connection credentials
  * @throws Error if config file not found or invalid
  */
 export function getDatabaseCredentials(): DatabaseCredentials {
-  const configPath = join(env.NOMAD_ALLOC_DIR || '/alloc', 'config.json');
+  const configPath = join(env.NOMAD_TASK_DIR || '/local', 'config.json');
 
   if (!existsSync(configPath)) {
     throw new Error(

@@ -5,6 +5,7 @@
  */
 import type { Request, Response } from "express";
 import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 
 const USER_AGENT = "GoDaddy-Airo-AppBuilder App Commerce-Checkout v1";
 
@@ -36,11 +37,11 @@ function resolveApiBaseUrl(): string | undefined {
 /**
  * Load commerce credentials from config files and environment
  *
- * OAuth credentials are read from /alloc/config.json (system-managed)
+ * OAuth credentials are read from the task-local config.json (system-managed).
  * API base URL is read from GODADDY_API_BASE_URL environment variable
  * (falls back to VITE_GODADDY_API_HOST for backward compatibility)
  *
- * /alloc/config.json structure:
+ * config.json structure:
  * {
  *   "GODADDY_OAUTH_CLIENT_ID": {
  *     "SYSTEM_MANAGED": true,
@@ -54,12 +55,11 @@ function resolveApiBaseUrl(): string | undefined {
  * @throws Error if credentials are missing
  */
 function getCommerceConfig() {
-	const allocConfigPath = "/alloc/config.json";
+	const configPath = join(process.env.NOMAD_TASK_DIR || "/local", "config.json");
 
-	// Read OAuth credentials from /alloc/config.json
-	if (!existsSync(allocConfigPath)) {
+	if (!existsSync(configPath)) {
 		throw new Error(
-			"Commerce configuration not found. Missing /alloc/config.json with OAuth credentials.",
+			`Commerce configuration not found. Missing ${configPath} with OAuth credentials.`,
 		);
 	}
 
@@ -67,13 +67,13 @@ function getCommerceConfig() {
 	let clientSecret: string | undefined;
 
 	try {
-		const allocConfig = JSON.parse(readFileSync(allocConfigPath, "utf-8"));
-		clientId = allocConfig.GODADDY_OAUTH_CLIENT_ID?.VALUE;
-		clientSecret = allocConfig.GODADDY_OAUTH_CLIENT_SECRET?.VALUE;
+		const config = JSON.parse(readFileSync(configPath, "utf-8"));
+		clientId = config.GODADDY_OAUTH_CLIENT_ID?.VALUE;
+		clientSecret = config.GODADDY_OAUTH_CLIENT_SECRET?.VALUE;
 	} catch (error) {
 		if (error instanceof SyntaxError) {
 			throw new Error(
-				`Failed to parse ${allocConfigPath}: Invalid JSON format`,
+				`Failed to parse ${configPath}: Invalid JSON format`,
 			);
 		}
 		throw error;

@@ -4,7 +4,7 @@ Backend-only secrets management utilities for Airo applications.
 
 ## Overview
 
-This package provides utilities for accessing non-system-managed secrets from `/alloc/config.json` in Airo application containers.
+This package provides utilities for accessing non-system-managed secrets from the task-local `config.json` in Airo application containers.
 
 > ⚠️ **SERVER-ONLY**: This package uses Node.js built-in modules (`fs`) and is designed exclusively for server-side/container execution. It cannot be used in browser/frontend code.
 
@@ -87,7 +87,7 @@ console.log("Available secrets:", secretNames);
 
 - ⚠️ These utilities **ONLY** access non-system-managed secrets
 - 🔒 System-managed secrets are completely inaccessible via these functions
-- 📁 Secrets are read from `/alloc/config.json` in the container
+- Secrets are read from `$NOMAD_TASK_DIR/config.json` (defaults to `/local/config.json`) in the container
 - ⚙️ Intended for server-side use only (Node.js environment)
 - 🛡️ Cannot be imported in browser code (will cause build errors)
 - 📦 Use `#airo/secrets` import (with `#`) which works at runtime via Node.js package imports
@@ -145,7 +145,7 @@ export function getConfig() {
 
 ### File Location
 
-Secrets are read from `/alloc/config.json` in the container, which has the following structure:
+Secrets are read from `$NOMAD_TASK_DIR/config.json` (defaults to `/local/config.json`) in the container, which has the following structure:
 
 ```json
 {
