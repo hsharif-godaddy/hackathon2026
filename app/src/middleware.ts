@@ -5,8 +5,8 @@ import gasket from '../gasket.edge';
 export const config = {
   matcher: [
     '/',
-    // Match other paths EXCEPT /api, /_next, static assets, etc.
-    '/((?!api|_next|images|favicon.ico|sitemap.xml|robots.txt).*)'
+    // Match other paths EXCEPT /api, /_next, static assets, /.well-known, etc.
+    '/((?!api|_next|images|favicon.ico|sitemap.xml|robots.txt|\\.well-known).*)'
   ]
 }
 
