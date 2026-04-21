@@ -247,13 +247,15 @@ export async function openUserMenu(page: Page): Promise<void> {
  */
 export async function handleReauthIfPresent(page: Page): Promise<boolean> {
   const ssoIframe = page.locator('iframe[title="Container for sign in"]');
+  const ssoModal = page.locator('.sso-login-modal');
   const signInModal = page.locator('[role="dialog"]', { hasText: 'Sign In Required' });
 
-  // Check for SSO iframe (auto-opened on 401) or AuthBoundary fallback modal.
-  // Each branch needs its own .catch() so the losing racer doesn't produce an
-  // unhandled rejection after the race settles.
+  // Check for SSO iframe, SsoLogin modal (redirect-based SSO in test env),
+  // or AuthBoundary fallback modal. Each branch needs its own .catch() so
+  // the losing racer doesn't produce an unhandled rejection.
   const detected = await Promise.race([
-    ssoIframe.waitFor({ state: 'visible', timeout: SHORT_TIMEOUT }).then(() => 'sso' as const).catch(() => null),
+    ssoIframe.waitFor({ state: 'visible', timeout: SHORT_TIMEOUT }).then(() => 'sso-iframe' as const).catch(() => null),
+    ssoModal.waitFor({ state: 'visible', timeout: SHORT_TIMEOUT }).then(() => 'sso-modal' as const).catch(() => null),
     signInModal.waitFor({ state: 'visible', timeout: SHORT_TIMEOUT }).then(() => 'fallback' as const).catch(() => null),
   ]);
 
@@ -262,8 +264,10 @@ export async function handleReauthIfPresent(page: Page): Promise<boolean> {
   if (detected === 'fallback') {
     console.log('  Sign In Required fallback modal detected, clicking Sign In...');
     await signInModal.getByRole('button', { name: 'Sign In', exact: true }).click();
-  } else {
+  } else if (detected === 'sso-iframe') {
     console.log('  SSO iframe detected (auto-opened on 401), completing login...');
+  } else {
+    console.log('  SsoLogin modal detected (redirect-based SSO), completing login...');
   }
 
   try {
@@ -272,8 +276,9 @@ export async function handleReauthIfPresent(page: Page): Promise<boolean> {
     throw new Error(`Re-authentication failed: ${err instanceof Error ? err.message : err}`);
   }
 
-  // Wait for both SSO iframe and fallback modal to disappear
+  // Wait for auth UI to disappear
   await ssoIframe.waitFor({ state: 'hidden', timeout: SSO_TIMEOUT }).catch(() => {});
+  await ssoModal.waitFor({ state: 'hidden', timeout: SHORT_TIMEOUT }).catch(() => {});
   await signInModal.waitFor({ state: 'hidden', timeout: SHORT_TIMEOUT }).catch(() => {});
 
   console.log('  Re-authenticated successfully');

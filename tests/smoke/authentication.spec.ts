@@ -124,17 +124,24 @@ test.describe('Authentication', () => {
     // Navigate to /apps - the client-side fetch to /api/sites triggers the 401 mock
     await page.goto('/apps');
 
-    // 6a: Race SSO iframe (new auto-open behavior) vs fallback modal (pre-deploy).
-    // TODO: Remove else branch after #2789 deploys to prod -- only the SSO path should remain.
+    // 6a: Detect which auth UI appeared after the mocked 401.
+    // Three possible states depending on environment and deploy status:
+    //   'sso-iframe'  - prod post-deploy: SsoDeck renders iframe inside SsoLogin Modal
+    //   'sso-redirect' - test post-deploy: SsoLogin Modal opens but SsoDeck uses redirect (no iframe)
+    //   'fallback'    - pre-deploy: old AuthBoundary shows "Sign In Required" modal directly
+    // TODO: Remove fallback branch after #2789 deploys to prod.
     const ssoIframe = page.locator('iframe[title="Container for sign in"]');
-    // UXCore Modal renders its title as a <div> (not a heading), so match
-    // the dialog + title text to identify the AuthBoundary fallback modal.
+    const ssoModal = page.locator('.sso-login-modal');
     const fallbackModal = page.locator('[role="dialog"]', { hasText: 'Sign In Required' });
 
     const authUiState = await Promise.race([
       ssoIframe
         .waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT })
-        .then(() => 'sso' as const)
+        .then(() => 'sso-iframe' as const)
+        .catch(() => null),
+      ssoModal
+        .waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT })
+        .then(() => 'sso-redirect' as const)
         .catch(() => null),
       fallbackModal
         .waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT })
@@ -142,12 +149,11 @@ test.describe('Authentication', () => {
         .catch(() => null),
     ]);
 
-    expect(authUiState, 'Expected either SSO iframe or fallback dialog after 401').not.toBeNull();
-    const autoOpened = authUiState === 'sso';
+    expect(authUiState, 'Expected SSO iframe, SSO modal, or fallback dialog after 401').not.toBeNull();
+    console.log(`  [6a] Auth UI detected: ${authUiState}`);
 
-    if (autoOpened) {
-      console.log('  [6a] SSO Deck auto-opened on 401');
-
+    if (authUiState === 'sso-iframe') {
+      // Prod post-deploy: full auto-open/dismiss/fallback flow
       // 6b: Dismiss SSO without completing auth.
       const closeButton = page.getByRole('button', { name: /close/i });
       if (await closeButton.isVisible({ timeout: 2000 }).catch(() => false)) {
@@ -167,9 +173,12 @@ test.describe('Authentication', () => {
       await signInButton.click();
       await expect(ssoIframe).toBeVisible({ timeout: DEFAULT_TIMEOUT });
       console.log('  [6d] SSO Deck re-opened from fallback Sign In button');
+    } else if (authUiState === 'sso-redirect') {
+      // Test env post-deploy: SsoLogin Modal opened but SsoDeck uses redirect, not iframe
+      console.log('  [6b] SsoLogin modal opened (redirect-based SSO, no iframe)');
     } else {
       // Pre-deploy: old AuthBoundary shows fallback modal directly
-      console.log('  [6a] Fallback modal shown (pre-deploy, auto-open not yet active)');
+      console.log('  [6b] Fallback modal shown (pre-deploy, auto-open not yet active)');
     }
 
     // Clean up route mock and navigate to homepage to clear AuthBoundary state.
