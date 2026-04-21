@@ -7,7 +7,9 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/bubbles/v2/spinner"
 	"charm.land/huh/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/airo-ai-builder/release-manager/internal/gh"
 	"github.com/airo-ai-builder/release-manager/internal/lock"
@@ -106,7 +108,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.BackgroundColorMsg:
 		m.hasDarkBG = msg.IsDark()
 		m.theme = themeForBackground(m.hasDarkBG)
+		m.spinner.Style = lipgloss.NewStyle().Foreground(m.theme.Running)
 		return m, nil
+
+	case spinner.TickMsg:
+		if m.phase == phaseComplete || m.phase == phaseAborted {
+			return m, nil
+		}
+		var cmd tea.Cmd
+		m.spinner, cmd = m.spinner.Update(msg)
+		return m, cmd
 
 	case tea.WindowSizeMsg:
 		m.width = msg.Width

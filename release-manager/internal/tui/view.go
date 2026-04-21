@@ -26,10 +26,10 @@ func (m Model) View() tea.View {
 		}
 
 	case phaseLockAcquire:
-		sb.WriteString("  " + m.theme.RunningDotStyle.Render("◉") + " Acquiring deploy lock...\n")
+		sb.WriteString("  " + m.spinner.View() + " Acquiring deploy lock...\n")
 
 	case phaseSnapshot:
-		sb.WriteString("  " + m.theme.RunningDotStyle.Render("◉") + " Fetching rollback snapshot...\n")
+		sb.WriteString("  " + m.spinner.View() + " Fetching rollback snapshot...\n")
 
 	case phaseSnapshotConfirm:
 		m.renderSnapshot(&sb)
@@ -41,7 +41,7 @@ func (m Model) View() tea.View {
 		if m.form != nil {
 			sb.WriteString("\n" + m.form.View())
 		} else {
-			sb.WriteString("\n  " + m.theme.RunningDotStyle.Render("◉") + " Fetching release notes...\n")
+			sb.WriteString("\n  " + m.spinner.View() + " Fetching release notes...\n")
 		}
 
 	case phaseRunning:
@@ -91,7 +91,7 @@ func (m Model) renderPreflight(sb *strings.Builder) {
 	for _, check := range m.preflight {
 		if !check.Done {
 			sb.WriteString(fmt.Sprintf("  %s %s\n",
-				m.theme.RunningDotStyle.Render("◉"),
+				m.spinner.View(),
 				check.Name,
 			))
 		} else if check.Passed {
@@ -249,12 +249,19 @@ func (m Model) stageString(sr *pipeline.StageRun) string {
 	return strings.TrimRight(sb.String(), "\n")
 }
 
+func (m Model) styledStateSymbol(state pipeline.StageState) string {
+	if state == pipeline.StateRunning || state == pipeline.StateParsingOutputs {
+		return m.spinner.View()
+	}
+	return lipgloss.NewStyle().Foreground(m.theme.StateColor(state)).Render(state.Symbol())
+}
+
 func (m Model) renderStage(sb *strings.Builder, sr *pipeline.StageRun) {
-	symbol := sr.State.Symbol()
+	styledSymbol := m.styledStateSymbol(sr.State)
 	name := m.theme.StageNameStyle.Render(sr.Stage.Name)
 
 	sb.WriteString(fmt.Sprintf("  %s %s",
-		lipgloss.NewStyle().Foreground(m.theme.StateColor(sr.State)).Render(symbol),
+		styledSymbol,
 		name,
 	))
 
@@ -296,25 +303,13 @@ func (m Model) renderStage(sb *strings.Builder, sr *pipeline.StageRun) {
 	}
 
 	for _, mr := range sr.MatrixRuns {
-		mrSymbol := pipeline.StateSuccess.Symbol()
-		mrColor := m.theme.StateColor(pipeline.StateSuccess)
-		if mr.State == pipeline.StateFailed {
-			mrSymbol = pipeline.StateFailed.Symbol()
-			mrColor = m.theme.StateColor(pipeline.StateFailed)
-		} else if mr.State == pipeline.StateRunning {
-			mrSymbol = pipeline.StateRunning.Symbol()
-			mrColor = m.theme.StateColor(pipeline.StateRunning)
-		} else if mr.State == pipeline.StatePending {
-			mrSymbol = pipeline.StatePending.Symbol()
-			mrColor = m.theme.StateColor(pipeline.StatePending)
-		}
-
+		mrStyledSymbol := m.styledStateSymbol(mr.State)
 		mrLabel := formatMatrixInputs(mr.Inputs)
 		if mr.State == pipeline.StateRunning && mr.StatusText != "" {
 			mrLabel += " " + m.theme.MutedStyle.Render(mr.StatusText)
 		}
 		sb.WriteString(fmt.Sprintf("    %s %s\n",
-			lipgloss.NewStyle().Foreground(mrColor).Render(mrSymbol),
+			mrStyledSymbol,
 			mrLabel,
 		))
 		if mr.RunURL != "" && !strings.HasPrefix(mr.RunURL, "[DRY RUN]") {

@@ -17,11 +17,11 @@ type Pane struct {
 	AutoFollow bool
 	label      string
 
-	searchQuery        string
-	matchIndices       []int
-	lineVisualOffsets  []int // maps logical line index to visual row offset (for soft-wrap)
-	currentMatch       int
-	scrollAfterSearch  bool
+	searchQuery       string
+	matchIndices      []int
+	lineVisualOffsets []int // maps logical line index to visual row offset (for soft-wrap)
+	currentMatch      int
+	scrollAfterSearch bool
 }
 
 // NewPane creates a Pane for a process.

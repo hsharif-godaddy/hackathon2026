@@ -13,7 +13,7 @@ func (m Model) renderPreflightChecking() string {
 	var b strings.Builder
 	b.WriteString(preflightHeaderStyle.Render("Preflight Checks"))
 	b.WriteString("\n\n")
-	b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("244")).Render("Checking prerequisites..."))
+	b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("244")).Render(m.spinner.View() + " Checking prerequisites..."))
 	b.WriteString("\n")
 
 	if len(m.preflightResults) > 0 {
@@ -60,13 +60,12 @@ func (m Model) renderPreflightDashboard() string {
 	fixable := m.preflightRunner.FixableChecks(m.preflightResults)
 	if len(fixable) > 0 {
 		b.WriteString(preflightFooterStyle.Render(
-			fmt.Sprintf("%d item(s) can be auto-fixed. Press Enter to select fixes, s to skip, q to quit.", len(fixable))))
+			fmt.Sprintf("%d item(s) can be auto-fixed. ", len(fixable)) + m.help.View(m.preflightKeys)))
 	} else if failCount > 0 {
 		b.WriteString(preflightFooterStyle.Render(
 			"No auto-fixes available. Install missing tools and run again."))
 	} else if warnCount > 0 {
-		b.WriteString(preflightFooterStyle.Render(
-			"Press Enter to continue, q to quit."))
+		b.WriteString(preflightFooterStyle.Render(m.help.View(m.preflightKeys)))
 	}
 
 	return b.String()
@@ -105,8 +104,7 @@ func (m Model) renderPreflightSelectFixes() string {
 	}
 
 	b.WriteString("\n")
-	b.WriteString(preflightFooterStyle.Render(
-		"space: toggle  a: all  n: none  enter: confirm  esc: cancel  q: quit"))
+	b.WriteString(preflightFooterStyle.Render(m.help.View(m.fixSelectorKeys)))
 
 	return b.String()
 }
@@ -123,7 +121,7 @@ func (m Model) renderPreflightFixing() string {
 			b.WriteString("\n")
 		} else if i == m.preflightFixIndex {
 			b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("62")).Bold(true).
-				Render("  ◌ " + name + "..."))
+				Render("  " + m.spinner.View() + " " + name + "..."))
 			b.WriteString("\n")
 		} else {
 			b.WriteString(preflightSkipStyle.Render("  · " + name))
@@ -141,7 +139,7 @@ func (m Model) renderPreflightFixing() string {
 
 func (m Model) renderPreflightVerifying() string {
 	var b strings.Builder
-	b.WriteString(preflightHeaderStyle.Render("Verifying fixes..."))
+	b.WriteString(preflightHeaderStyle.Render(m.spinner.View() + " Verifying fixes..."))
 	b.WriteString("\n\n")
 	b.WriteString(m.renderCheckResults())
 	return b.String()

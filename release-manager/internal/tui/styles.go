@@ -44,7 +44,6 @@ type Theme struct {
 	PreflightWarnStyle  lipgloss.Style
 	SuccessMessageStyle lipgloss.Style
 	FailedMessageStyle  lipgloss.Style
-	RunningDotStyle     lipgloss.Style
 	MutedStyle          lipgloss.Style
 	HelpStyle           lipgloss.Style
 }
@@ -152,9 +151,6 @@ func themeForBackground(isDark bool) Theme {
 	t.FailedMessageStyle = lipgloss.NewStyle().
 		Bold(true).
 		Foreground(t.Failed)
-
-	t.RunningDotStyle = lipgloss.NewStyle().
-		Foreground(t.Running)
 
 	t.MutedStyle = lipgloss.NewStyle().
 		Foreground(t.Muted)

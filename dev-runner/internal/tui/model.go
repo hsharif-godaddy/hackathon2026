@@ -7,9 +7,12 @@ import (
 	"net/url"
 	"time"
 
+	"charm.land/bubbles/v2/help"
+	"charm.land/bubbles/v2/spinner"
 	"charm.land/bubbles/v2/textinput"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/airo-ai-builder/dev-runner/internal/config"
 	"github.com/airo-ai-builder/dev-runner/internal/hooks"
@@ -67,7 +70,7 @@ type devSettingsErrorClearMsg struct{}
 type Phase int
 
 const (
-	PhasePreflightChecking     Phase = iota
+	PhasePreflightChecking Phase = iota
 	PhasePreflightDashboard
 	PhasePreflightSelectFixes
 	PhasePreflightEnvForm
@@ -98,7 +101,7 @@ type preflightAutoAdvanceMsg struct{}
 type Model struct {
 	config      *config.Config
 	projectRoot string
-	manager *process.Manager
+	manager     *process.Manager
 
 	panes          []Pane
 	activeTab      int
@@ -126,6 +129,18 @@ type Model struct {
 	hookViewport   viewport.Model
 	hookAutoFollow bool
 
+	help    help.Model
+	spinner spinner.Model
+
+	keys            RunningKeyMap
+	searchKeys      SearchKeyMap
+	settingsKeys    SettingsKeyMap
+	devSettingsKeys DevSettingsKeyMap
+	confirmQuitKeys ConfirmQuitKeyMap
+	preflightKeys   PreflightDashboardKeyMap
+	fixSelectorKeys PreflightSelectFixesKeyMap
+	envFormKeys     EnvFormKeyMap
+
 	mouseEnabled     bool
 	clickHint        bool
 	confirmQuit      bool
@@ -133,14 +148,14 @@ type Model struct {
 	healthGeneration []int // per-process generation counter to discard stale health check results
 
 	// Preflight state
-	phase              Phase
-	preflightRunner    *preflight.Runner
-	preflightResults   []preflight.CheckResult
-	preflightFixQueue  []preflight.CheckWithFixer
-	preflightFixIndex  int
-	preflightFixStatus     string // "Fixing: <name>..."
-	preflightViewport      viewport.Model
-	preflightAutoFollow    bool
+	phase               Phase
+	preflightRunner     *preflight.Runner
+	preflightResults    []preflight.CheckResult
+	preflightFixQueue   []preflight.CheckWithFixer
+	preflightFixIndex   int
+	preflightFixStatus  string // "Fixing: <name>..."
+	preflightViewport   viewport.Model
+	preflightAutoFollow bool
 
 	// Inline fix selector state
 	fixSelectorItems    []preflight.CheckWithFixer
@@ -148,9 +163,9 @@ type Model struct {
 	fixSelectorSelected []bool
 
 	// Inline env form state
-	envFormFields  []envFormField
-	envFormCursor  int
-	formFixer      preflight.FormFixer // the fixer waiting for form values
+	envFormFields []envFormField
+	envFormCursor int
+	formFixer     preflight.FormFixer // the fixer waiting for form values
 
 	// Dev settings tab state
 	devSettingsCursor   int
@@ -173,6 +188,14 @@ func NewModel(cfg *config.Config, projectRoot string) Model {
 
 	items := buildSettingsItems(cfg)
 
+	h := help.New()
+	h.Styles = helpStyles()
+	h.ShortSeparator = "  "
+
+	s := spinner.New()
+	s.Spinner = spinner.Dot
+	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
+
 	return Model{
 		config:              cfg,
 		projectRoot:         projectRoot,
@@ -185,6 +208,16 @@ func NewModel(cfg *config.Config, projectRoot string) Model {
 		bellAllowed:         true,
 		hookAutoFollow:      true,
 		hookViewport:        newSoftWrapViewport(80, 24),
+		help:                h,
+		spinner:             s,
+		keys:                NewRunningKeyMap(),
+		searchKeys:          NewSearchKeyMap(),
+		settingsKeys:        NewSettingsKeyMap(),
+		devSettingsKeys:     NewDevSettingsKeyMap(),
+		confirmQuitKeys:     NewConfirmQuitKeyMap(),
+		preflightKeys:       NewPreflightDashboardKeyMap(),
+		fixSelectorKeys:     NewPreflightSelectFixesKeyMap(),
+		envFormKeys:         NewEnvFormKeyMap(),
 		searchInput:         ti,
 		settingsItems:       items,
 		phase:               PhasePreflightChecking,
@@ -202,6 +235,7 @@ func (m Model) Init() tea.Cmd {
 	projectRoot := m.projectRoot
 	return tea.Batch(
 		m.tickCmd(),
+		m.spinner.Tick,
 		func() tea.Msg {
 			results := runner.RunAll(context.Background(), projectRoot)
 			return preflightAllChecksDoneMsg{Results: results}

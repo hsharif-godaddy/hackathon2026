@@ -153,7 +153,7 @@ func (m Model) renderSearchBar() string {
 	}
 
 	return searchBarStyle.Width(m.width).Render(
-		fmt.Sprintf("/ %s%s  (n/N: next/prev, Esc: close)", m.searchInput.View(), matchInfo),
+		fmt.Sprintf("/ %s%s  %s", m.searchInput.View(), matchInfo, m.help.View(m.searchKeys)),
 	)
 }
 
@@ -246,49 +246,56 @@ func (m Model) renderStatusLeft() string {
 }
 
 func (m Model) renderStatusRight() string {
-	barBg := lipgloss.Color("236")
-	barFg := lipgloss.Color("250")
-	barText := func(s string) string {
-		return lipgloss.NewStyle().Foreground(barFg).Background(barBg).Render(s)
-	}
-	barKey := func(s string) string {
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("229")).Background(barBg).Bold(true).Render(s)
-	}
-
 	if m.clickHint {
+		barBg := lipgloss.Color("236")
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("229")).Background(barBg).Bold(true).
 			Render("To select text: hold Shift or Option, or press 'm' to disable mouse mode")
 	}
 
-	hints := barKey("Tab") + barText(":Switch  ") +
-		barKey("m") + barText(":Mouse(")
-	if m.mouseEnabled {
-		hints += barText("on")
-	} else {
-		hints += barText("off")
+	mouseLabel := "mouse(on)"
+	if !m.mouseEnabled {
+		mouseLabel = "mouse(off)"
 	}
-	hints += barText(")  ") +
-		barKey("d") + barText(":Dev  ") +
-		barKey("s") + barText(":Settings  ")
-	if m.activeTab != 0 {
-		hints += barKey("↑↓") + barText(":Scroll  ") +
-			barKey("/") + barText(":Search  ")
-		pane := m.activePanePtr()
-		if pane != nil && pane.AutoFollow {
-			hints += barKey("F") + barText(":Follow(on)  ")
-		} else {
-			hints += barKey("F") + barText(":Follow(off)  ")
+	m.keys.Mouse.SetHelp("m", mouseLabel)
+
+	pane := m.activePanePtr()
+	followLabel := "follow(on)"
+	if pane == nil || !pane.AutoFollow {
+		followLabel = "follow(off)"
+	}
+	m.keys.Follow.SetHelp("F", followLabel)
+
+	onProcessTab := m.activeTab != 0
+	m.keys.Scroll.SetEnabled(onProcessTab)
+	m.keys.Search.SetEnabled(onProcessTab)
+	m.keys.Follow.SetEnabled(onProcessTab)
+	m.keys.NextMatch.SetEnabled(onProcessTab)
+	m.keys.PrevMatch.SetEnabled(onProcessTab)
+
+	barBg := lipgloss.Color("236")
+	barKey := func(s string) string {
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("229")).Background(barBg).Bold(true).Render(s)
+	}
+	barText := func(s string) string {
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("244")).Background(barBg).Render(s)
+	}
+	sep := barText("  ")
+
+	var parts []string
+	for _, b := range m.keys.ShortHelp() {
+		if !b.Enabled() {
+			continue
 		}
+		h := b.Help()
+		parts = append(parts, barKey(h.Key)+barText(" "+h.Desc))
 	}
-	hints += barKey("Esc") + barText(":Clear  ") +
-		barKey("q") + barText(":Quit")
-	return hints
+	return strings.Join(parts, sep)
 }
 
 func (m Model) renderQuitConfirm() string {
 	title := titleStyle.Render("Quit?")
 	body := "All processes will be stopped."
-	hints := keyHintStyle.Render(keyStyle.Render("y") + "/" + keyStyle.Render("Enter") + ": Quit  " + keyStyle.Render("Any key") + ": Cancel")
+	hints := m.help.View(m.confirmQuitKeys)
 	content := title + "\n\n" + body + "\n\n" + hints
 	return settingsBoxStyle.Render(content)
 }

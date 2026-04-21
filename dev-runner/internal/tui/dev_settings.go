@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 )
 
@@ -55,11 +56,7 @@ func (m Model) renderDevSettings() string {
 		items = append(items, fmt.Sprintf("  %s %s", radio, label))
 	}
 
-	hints := keyHintStyle.Render(
-		keyStyle.Render("j/k") + " " + keyHintStyle.Render("navigate") + "  " +
-			keyStyle.Render("Enter") + " " + keyHintStyle.Render("apply") + "  " +
-			keyStyle.Render("Esc") + " " + keyHintStyle.Render("close"),
-	)
+	hints := m.help.View(m.devSettingsKeys)
 
 	content := title + "\n\n" + section + "\n\n" + strings.Join(items, "\n") + "\n\n" + hints
 	if m.devSettingsError != "" {
@@ -69,19 +66,18 @@ func (m Model) renderDevSettings() string {
 }
 
 func (m *Model) handleDevSettingsKey(msg tea.KeyPressMsg) tea.Cmd {
-	key := msg.String()
-	switch key {
-	case "esc", "d":
+	switch {
+	case key.Matches(msg, m.devSettingsKeys.Close):
 		m.devSettingsOpen = false
 		return nil
-	case "j", "down":
+	case key.Matches(msg, m.devSettingsKeys.Down):
 		m.devSettingsCursor = (m.devSettingsCursor + 1) % len(subscriptionPresets)
-	case "k", "up":
+	case key.Matches(msg, m.devSettingsKeys.Up):
 		m.devSettingsCursor--
 		if m.devSettingsCursor < 0 {
 			m.devSettingsCursor = len(subscriptionPresets) - 1
 		}
-	case "enter":
+	case key.Matches(msg, m.devSettingsKeys.Enter):
 		preset := subscriptionPresets[m.devSettingsCursor]
 		if preset.Name == m.devSettingsPreset {
 			return nil

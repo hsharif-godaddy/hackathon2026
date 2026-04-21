@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/airo-ai-builder/dev-runner/internal/preflight"
@@ -107,12 +109,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.help.SetWidth(msg.Width)
 		m.ready = true
 		m.resizePanes()
 		m.refreshPanes()
 		m.refreshPreflightViewport()
 		m.refreshHookViewport()
 		return m, nil
+
+	case spinner.TickMsg:
+		if m.phase == PhasePreflightChecking || m.phase == PhasePreflightFixing || m.phase == PhasePreflightVerifying {
+			var cmd tea.Cmd
+			m.spinner, cmd = m.spinner.Update(msg)
+			cmds = append(cmds, cmd)
+		}
 
 	case tea.KeyPressMsg:
 		cmd := m.handleKey(msg)
@@ -172,7 +182,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.phase = PhasePreflightVerifying
 			runner := m.preflightRunner
 			projectRoot := m.projectRoot
-			cmds = append(cmds, func() tea.Msg {
+			cmds = append(cmds, m.spinner.Tick, func() tea.Msg {
 				results := runner.RunAll(context.Background(), projectRoot)
 				return preflightVerifyDoneMsg{Results: results}
 			})
@@ -349,12 +359,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
-	key := msg.String()
-
 	// Always quit on ctrl+c, regardless of state
-	if key == "ctrl+c" {
+	if msg.String() == "ctrl+c" {
 		if m.quitting {
-			// Already shutting down — force exit immediately
 			return tea.Quit
 		}
 		m.quitting = true
@@ -362,8 +369,8 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	}
 
 	if m.confirmQuit {
-		switch key {
-		case "y", "enter":
+		switch {
+		case key.Matches(msg, m.confirmQuitKeys.Yes):
 			m.confirmQuit = false
 			m.quitting = true
 			return m.shutdownCmd()
@@ -383,21 +390,19 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 
 	// Preflight phase key handling
 	if m.phase == PhasePreflightDashboard {
-		switch key {
-		case "enter":
+		switch {
+		case key.Matches(msg, m.preflightKeys.Fix):
 			fixable := m.preflightRunner.FixableChecks(m.preflightResults)
 			if len(fixable) > 0 {
-				// Show inline checkbox selector
 				m.fixSelectorItems = fixable
 				m.fixSelectorCursor = 0
 				m.fixSelectorSelected = make([]bool, len(fixable))
 				for i, cwf := range fixable {
-					m.fixSelectorSelected[i] = !cwf.OptIn // opt-in fixes unchecked by default
+					m.fixSelectorSelected[i] = !cwf.OptIn
 				}
 				m.phase = PhasePreflightSelectFixes
 				return nil
 			}
-			// No fixable items — continue past warnings
 			if !preflight.HasFailures(m.preflightResults) {
 				m.phase = PhaseHooks
 				m.hookRunning = true
@@ -407,8 +412,7 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 				m.hookDone = hookDone
 				return hookCmd
 			}
-		case "s":
-			// Skip — continue without fixing (allowed when all failures have fixes available)
+		case key.Matches(msg, m.preflightKeys.Skip):
 			if !preflight.HasUnfixableFailures(m.preflightResults) {
 				m.phase = PhaseHooks
 				m.hookRunning = true
@@ -418,7 +422,7 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 				m.hookDone = hookDone
 				return hookCmd
 			}
-		case "q":
+		case key.Matches(msg, m.preflightKeys.Quit):
 			m.quitting = true
 			return tea.Quit
 		}
@@ -434,7 +438,7 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	}
 
 	if m.phase < PhaseHooks {
-		return nil // No other keys during preflight
+		return nil
 	}
 
 	if m.phase == PhaseHooks {
@@ -445,48 +449,48 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		return m.handleDevSettingsKey(msg)
 	}
 
-	switch key {
-	case "q":
+	switch {
+	case key.Matches(msg, m.keys.Quit):
 		m.confirmQuit = true
 		return nil
-	case "esc":
+	case key.Matches(msg, m.keys.ClearErr):
 		for _, p := range m.manager.Processes {
 			p.ClearErrors()
 		}
-	case "tab":
+	case key.Matches(msg, m.keys.Tab):
 		m.activeTab = (m.activeTab + 1) % m.tabCount()
 		m.resizePanes()
 		m.refreshPanes()
-	case "shift+tab":
+	case key.Matches(msg, m.keys.ShiftTab):
 		m.activeTab--
 		if m.activeTab < 0 {
 			m.activeTab = m.tabCount() - 1
 		}
 		m.resizePanes()
 		m.refreshPanes()
-	case "0", "a":
+	case key.Matches(msg, m.keys.All):
 		m.activeTab = 0
 		m.resizePanes()
 		m.refreshPanes()
-	case "1":
+	case key.Matches(msg, m.keys.Proc1):
 		if m.processCount() >= 1 {
 			m.activeTab = 1
 			m.resizePanes()
 			m.refreshPanes()
 		}
-	case "2":
+	case key.Matches(msg, m.keys.Proc2):
 		if m.processCount() >= 2 {
 			m.activeTab = 2
 			m.resizePanes()
 			m.refreshPanes()
 		}
-	case "3":
+	case key.Matches(msg, m.keys.Proc3):
 		if m.processCount() >= 3 {
 			m.activeTab = 3
 			m.resizePanes()
 			m.refreshPanes()
 		}
-	case "d":
+	case key.Matches(msg, m.keys.DevSetting):
 		m.devSettingsOpen = true
 		m.devSettingsCursor = 0
 		for i, p := range subscriptionPresets {
@@ -495,12 +499,12 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 				break
 			}
 		}
-	case "m":
+	case key.Matches(msg, m.keys.Mouse):
 		m.mouseEnabled = !m.mouseEnabled
-	case "s", "?":
+	case key.Matches(msg, m.keys.Settings):
 		m.settingsOpen = true
 		m.settingsCursor = 0
-	case "F":
+	case key.Matches(msg, m.keys.Follow):
 		pane := m.activePanePtr()
 		if pane != nil {
 			pane.AutoFollow = !pane.AutoFollow
@@ -508,19 +512,19 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 				pane.Viewport.GotoBottom()
 			}
 		}
-	case "g":
+	case key.Matches(msg, m.keys.Top):
 		pane := m.activePanePtr()
 		if pane != nil {
 			pane.Viewport.GotoTop()
 			pane.AutoFollow = false
 		}
-	case "G":
+	case key.Matches(msg, m.keys.Bottom):
 		pane := m.activePanePtr()
 		if pane != nil {
 			pane.Viewport.GotoBottom()
 			pane.AutoFollow = true
 		}
-	case "/":
+	case key.Matches(msg, m.keys.Search):
 		if m.activeTab != 0 {
 			m.searchOpen = true
 			m.searchInput.Reset()
@@ -528,12 +532,12 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			m.resizePanes()
 		}
 		return nil
-	case "n":
+	case key.Matches(msg, m.keys.NextMatch):
 		pane := m.activePanePtr()
 		if pane != nil && pane.searchQuery != "" {
 			pane.NextMatch()
 		}
-	case "N":
+	case key.Matches(msg, m.keys.PrevMatch):
 		pane := m.activePanePtr()
 		if pane != nil && pane.searchQuery != "" {
 			pane.PrevMatch()
@@ -544,26 +548,19 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 }
 
 func (m *Model) handleSearchKey(msg tea.KeyPressMsg) tea.Cmd {
-	key := msg.String()
-	switch key {
-	case "esc":
+	switch {
+	case key.Matches(msg, m.searchKeys.Close):
 		m.searchOpen = false
 		m.searchInput.Blur()
 		m.resizePanes()
 		return nil
-	case "enter":
+	case key.Matches(msg, m.searchKeys.Confirm), key.Matches(msg, m.searchKeys.Next):
 		pane := m.activePanePtr()
 		if pane != nil {
 			pane.NextMatch()
 		}
 		return nil
-	case "ctrl+n":
-		pane := m.activePanePtr()
-		if pane != nil {
-			pane.NextMatch()
-		}
-		return nil
-	case "ctrl+p":
+	case key.Matches(msg, m.searchKeys.Prev):
 		pane := m.activePanePtr()
 		if pane != nil {
 			pane.PrevMatch()
@@ -591,22 +588,21 @@ func (m *Model) handleSearchKey(msg tea.KeyPressMsg) tea.Cmd {
 }
 
 func (m *Model) handleSettingsKey(msg tea.KeyPressMsg) tea.Cmd {
-	key := msg.String()
-	switch key {
-	case "esc", "s", "?":
+	switch {
+	case key.Matches(msg, m.settingsKeys.Close):
 		m.settingsOpen = false
 		return nil
-	case "j", "down":
+	case key.Matches(msg, m.settingsKeys.Down):
 		m.settingsCursor++
 		if m.settingsCursor >= len(m.settingsItems) {
 			m.settingsCursor = 0
 		}
-	case "k", "up":
+	case key.Matches(msg, m.settingsKeys.Up):
 		m.settingsCursor--
 		if m.settingsCursor < 0 {
 			m.settingsCursor = len(m.settingsItems) - 1
 		}
-	case "enter":
+	case key.Matches(msg, m.settingsKeys.Enter):
 		return m.executeSettingsAction()
 	}
 	return nil
@@ -668,12 +664,10 @@ func (m *Model) handleFixSelectorKey(msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 	}
 
-	// Check special keys by code first
-	switch msg.Code {
-	case tea.KeySpace:
+	switch {
+	case key.Matches(msg, m.fixSelectorKeys.Toggle):
 		m.fixSelectorSelected[m.fixSelectorCursor] = !m.fixSelectorSelected[m.fixSelectorCursor]
-		return nil
-	case tea.KeyEnter:
+	case key.Matches(msg, m.fixSelectorKeys.Apply):
 		var queue []preflight.CheckWithFixer
 		for i, cwf := range m.fixSelectorItems {
 			if m.fixSelectorSelected[i] {
@@ -684,42 +678,27 @@ func (m *Model) handleFixSelectorKey(msg tea.KeyPressMsg) tea.Cmd {
 			m.preflightFixQueue = queue
 			m.preflightFixIndex = 0
 			m.phase = PhasePreflightFixing
-			return m.runNextFixer()
+			return tea.Batch(m.runNextFixer(), m.spinner.Tick)
 		}
 		m.phase = PhasePreflightDashboard
-		return nil
-	case tea.KeyEscape:
+	case key.Matches(msg, m.fixSelectorKeys.Cancel):
 		m.phase = PhasePreflightDashboard
-		return nil
-	case tea.KeyUp:
+	case key.Matches(msg, m.fixSelectorKeys.Up):
 		m.fixSelectorCursor--
 		if m.fixSelectorCursor < 0 {
 			m.fixSelectorCursor = n - 1
 		}
-		return nil
-	case tea.KeyDown:
+	case key.Matches(msg, m.fixSelectorKeys.Down):
 		m.fixSelectorCursor = (m.fixSelectorCursor + 1) % n
-		return nil
-	}
-
-	// Letter keys
-	switch msg.String() {
-	case "j":
-		m.fixSelectorCursor = (m.fixSelectorCursor + 1) % n
-	case "k":
-		m.fixSelectorCursor--
-		if m.fixSelectorCursor < 0 {
-			m.fixSelectorCursor = n - 1
-		}
-	case "a":
+	case key.Matches(msg, m.fixSelectorKeys.All):
 		for i := range m.fixSelectorSelected {
 			m.fixSelectorSelected[i] = true
 		}
-	case "n":
+	case key.Matches(msg, m.fixSelectorKeys.None):
 		for i := range m.fixSelectorSelected {
 			m.fixSelectorSelected[i] = false
 		}
-	case "q":
+	case key.Matches(msg, m.fixSelectorKeys.Quit):
 		m.quitting = true
 		return tea.Quit
 	}

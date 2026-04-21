@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"charm.land/bubbles/v2/help"
 	"charm.land/lipgloss/v2"
 )
 
@@ -30,12 +31,6 @@ var (
 			Foreground(lipgloss.Color("#ffffff")).
 			Background(lipgloss.Color("#8b0000")).
 			Bold(true)
-
-	statusBarStyle = lipgloss.NewStyle().
-			Background(lipgloss.Color("236"))
-
-	statusBarTextStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("244"))
 
 	keyHintStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("244"))
@@ -131,3 +126,14 @@ var (
 				Bold(true).
 				Padding(0, 1)
 )
+
+func helpStyles() help.Styles {
+	return help.Styles{
+		ShortKey:       keyStyle,
+		ShortDesc:      keyHintStyle,
+		ShortSeparator: keyHintStyle,
+		FullKey:        keyStyle,
+		FullDesc:       keyHintStyle,
+		FullSeparator:  keyHintStyle,
+	}
+}

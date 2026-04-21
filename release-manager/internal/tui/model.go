@@ -9,7 +9,9 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/bubbles/v2/spinner"
 	"charm.land/huh/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/airo-ai-builder/release-manager/internal/config"
 	"github.com/airo-ai-builder/release-manager/internal/gh"
@@ -103,6 +105,7 @@ type Model struct {
 
 	hasDarkBG bool
 	theme     Theme
+	spinner   spinner.Model
 
 	operator        string
 	statusMessage   string
@@ -140,6 +143,12 @@ func NewModel(cfg *config.Config, runner gh.Runner, dryRun bool, branch string, 
 		preflight = append(preflight, preflightCheck{Name: "Slack notifications"})
 	}
 
+	theme := themeForBackground(true)
+	s := spinner.New(
+		spinner.WithSpinner(spinner.MiniDot),
+		spinner.WithStyle(lipgloss.NewStyle().Foreground(theme.Running)),
+	)
+
 	return Model{
 		config:      cfg,
 		runner:      runner,
@@ -159,7 +168,8 @@ func NewModel(cfg *config.Config, runner gh.Runner, dryRun bool, branch string, 
 		operator:    operator,
 		startTime:   time.Time{},
 		hasDarkBG:   true,
-		theme:       themeForBackground(true),
+		theme:       theme,
+		spinner:     s,
 		width:       80,
 		height:      24,
 	}
@@ -168,6 +178,7 @@ func NewModel(cfg *config.Config, runner gh.Runner, dryRun bool, branch string, 
 func (m Model) Init() tea.Cmd {
 	cmds := []tea.Cmd{
 		func() tea.Msg { return tea.RequestBackgroundColor() },
+		m.spinner.Tick,
 		checkGHInstalled(m.runner, m.ctx),
 		checkGHVersion(m.runner, m.ctx),
 		checkGHAuth(m.runner, m.ctx),

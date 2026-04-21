@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -60,27 +61,16 @@ func (m *Model) handleEnvFormKey(msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 	}
 
-	// Check for shift+tab via string (modifier + key)
-	if msg.String() == "shift+tab" {
-		m.envFormFields[m.envFormCursor].Input.Blur()
-		m.envFormCursor--
-		if m.envFormCursor < 0 {
-			m.envFormCursor = n - 1
-		}
-		m.envFormFields[m.envFormCursor].Input.Focus()
-		return nil
-	}
-
-	switch msg.Code {
-	case tea.KeyEscape:
+	switch {
+	case key.Matches(msg, m.envFormKeys.Cancel):
 		m.phase = PhasePreflightDashboard
 		return nil
-	case tea.KeyTab, tea.KeyDown:
+	case key.Matches(msg, m.envFormKeys.NextField):
 		m.envFormFields[m.envFormCursor].Input.Blur()
 		m.envFormCursor = (m.envFormCursor + 1) % n
 		m.envFormFields[m.envFormCursor].Input.Focus()
 		return nil
-	case tea.KeyUp:
+	case key.Matches(msg, m.envFormKeys.PrevField):
 		m.envFormFields[m.envFormCursor].Input.Blur()
 		m.envFormCursor--
 		if m.envFormCursor < 0 {
@@ -88,7 +78,7 @@ func (m *Model) handleEnvFormKey(msg tea.KeyPressMsg) tea.Cmd {
 		}
 		m.envFormFields[m.envFormCursor].Input.Focus()
 		return nil
-	case tea.KeyEnter:
+	case key.Matches(msg, m.envFormKeys.Submit):
 		if m.envFormCursor < n-1 {
 			m.envFormFields[m.envFormCursor].Input.Blur()
 			m.envFormCursor++
@@ -127,10 +117,13 @@ func (m *Model) submitEnvForm() tea.Cmd {
 	fixer := m.formFixer
 	projectRoot := m.projectRoot
 	name := m.preflightFixQueue[m.preflightFixIndex].Check.Name()
-	return func() tea.Msg {
-		err := fixer.Fix(context.Background(), projectRoot)
-		return preflightFixDoneMsg{Err: err, FixerName: name}
-	}
+	return tea.Batch(
+		func() tea.Msg {
+			err := fixer.Fix(context.Background(), projectRoot)
+			return preflightFixDoneMsg{Err: err, FixerName: name}
+		},
+		m.spinner.Tick,
+	)
 }
 
 // renderPreflightEnvForm renders the inline env configuration form.
@@ -180,8 +173,7 @@ func (m Model) renderPreflightEnvForm() string {
 		b.WriteString("\n\n")
 	}
 
-	b.WriteString(preflightFooterStyle.Render(
-		"tab/↓: next field  ↑: prev field  enter: submit  esc: cancel"))
+	b.WriteString(preflightFooterStyle.Render(m.help.View(m.envFormKeys)))
 
 	return b.String()
 }

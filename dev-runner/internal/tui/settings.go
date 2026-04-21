@@ -59,7 +59,7 @@ func (m Model) renderSettings() string {
 	}
 
 	content := title + "\n\n" + strings.Join(items, "\n") + "\n\n" +
-		keyHintStyle.Render("j/k: navigate  Enter: select  Esc: close")
+		m.help.View(m.settingsKeys)
 
 	box := settingsBoxStyle.Render(content)
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
