@@ -4,6 +4,7 @@
  */
 
 import { Logger } from '../logging/index.js';
+import { getPersistentPrivateDir } from '../utils/persistent-assets.js';
 
 const logger = Logger.create({ component: 'features' });
 
@@ -201,7 +202,11 @@ function parseEnvironmentFeatures(): FeatureConfig {
     mysqlRootPass: process.env.MYSQL_ROOT_PASS || 'airo',
 
     // File upload configuration
-    uploadDir: process.env.UPLOAD_DIR || 'data/uploads',
+    uploadDir: process.env.UPLOAD_DIR || (
+      process.env.CUSTOMER_APP_DIR
+        ? getPersistentPrivateDir(process.env.CUSTOMER_APP_DIR) + '/uploads'
+        : '/tmp/airo-app-builder-uploads'
+    ),
 
     // Context logging configuration
     contextLogging: {

@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { FileEditTool } from './file-edit.js';
 import { fileUploadService } from '../services/FileUploadService.js';
-import { clearExtensionResolved } from '../utils/upload-resolution-tracking.js';
 import { mkdir, writeFile, rm, readFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join } from 'path';
@@ -15,12 +14,9 @@ describe('FileEditTool - Auto Resolution from Uploads', () => {
     if (existsSync(testProjectDir)) {
       await rm(testProjectDir, { recursive: true, force: true });
     }
-
     await mkdir(testProjectDir, { recursive: true });
 
-    clearExtensionResolved(testAppId);
-
-    const testAppUploadsDir = fileUploadService['pathBuilder'].join(testAppId);
+    const testAppUploadsDir = fileUploadService.getAppUploadsDir(testAppId);
     if (existsSync(testAppUploadsDir)) {
       await rm(testAppUploadsDir, { recursive: true, force: true });
     }
@@ -30,205 +26,75 @@ describe('FileEditTool - Auto Resolution from Uploads', () => {
     if (existsSync(testProjectDir)) {
       await rm(testProjectDir, { recursive: true, force: true });
     }
-
-    clearExtensionResolved(testAppId);
-
-    const testAppUploadsDir = fileUploadService['pathBuilder'].join(testAppId);
+    const testAppUploadsDir = fileUploadService.getAppUploadsDir(testAppId);
     if (existsSync(testAppUploadsDir)) {
       await rm(testAppUploadsDir, { recursive: true, force: true });
     }
   });
 
-  it('should auto-resolve file from uploads when creating new file', async () => {
-    // Upload a test file
-    const testFile = {
-      originalname: 'logo.png',
-      mimetype: 'image/png',
-      size: 19,
-      buffer: Buffer.from('test-image-content')
+  async function seedUpload(name: string, content: Buffer) {
+    const file = {
+      originalname: name,
+      mimetype: name.endsWith('.png') ? 'image/png' : 'application/octet-stream',
+      size: content.length,
+      buffer: content
     } as Express.Multer.File;
+    return fileUploadService.processUpload(testAppId, [file]);
+  }
 
-    await fileUploadService.processUpload(testAppId, [testFile]);
+  it('should resolve file when target matches originalName exactly', async () => {
+    const imageData = Buffer.from('FAKE_PNG_DATA');
+    await seedUpload('logo.png', imageData);
 
-    // Try to create the file in the project using file-edit tool
-    const result = await tool.editFiles(testProjectDir, {
-      operations: [{
-        path: 'public/assets/logo.png',
-        mode: 'create',
-        content: '' // Empty content should be ignored, auto-resolve from uploads
-      }],
-      createDirs: true
-    }, { appId: testAppId });
-
-    expect(result.success).toBe(true);
-    expect(result.completedOperations).toBe(1);
-
-    // Verify file was copied to project
-    const projectFilePath = join(testProjectDir, 'public/assets/logo.png');
-    expect(existsSync(projectFilePath)).toBe(true);
-
-    // Verify content matches uploaded file
-    const content = await readFile(projectFilePath);
-    expect(content.toString()).toBe('test-image-content');
-  });
-
-  it('should not auto-resolve if file already exists in project', async () => {
-    // Create existing file in project first
-    const projectFilePath = join(testProjectDir, 'public/assets/existing.png');
-    await mkdir(join(testProjectDir, 'public/assets'), { recursive: true });
-    await writeFile(projectFilePath, 'existing-project-content');
-
-    // Upload a different file with the same name
-    const testFile = {
-      originalname: 'existing.png',
-      mimetype: 'image/png',
-      size: 11,
-      buffer: Buffer.from('new-content')
-    } as Express.Multer.File;
-
-    await fileUploadService.processUpload(testAppId, [testFile]);
-
-    // Try to rewrite - should not auto-resolve since file exists
-    const result = await tool.editFiles(testProjectDir, {
-      operations: [{
-        path: 'public/assets/existing.png',
-        mode: 'rewrite',
-        content: 'manually-specified-content'
-      }]
-    }, { appId: testAppId });
-
-    expect(result.success).toBe(true);
-
-    // Verify file has the manually specified content, not the uploaded content
-    const content = await readFile(projectFilePath, 'utf-8');
-    expect(content).toBe('manually-specified-content');
-  });
-
-  it('should proceed normally if no matching upload found', async () => {
-    // Try to create a file with no matching upload
-    const result = await tool.editFiles(testProjectDir, {
-      operations: [{
-        path: 'public/assets/no-match.png',
-        mode: 'create',
-        content: 'regular-content'
-      }],
-      createDirs: true
-    }, { appId: testAppId });
-
-    expect(result.success).toBe(true);
-
-    // Verify file was created with provided content
-    const projectFilePath = join(testProjectDir, 'public/assets/no-match.png');
-    expect(existsSync(projectFilePath)).toBe(true);
-
-    const content = await readFile(projectFilePath, 'utf-8');
-    expect(content).toBe('regular-content');
-  });
-
-  it('should match by originalName when filename is different', async () => {
-    const testFile = {
-      originalname: 'my-logo.png',
-      mimetype: 'image/png',
-      size: 12,
-      buffer: Buffer.from('logo-content')
-    } as Express.Multer.File;
-
-    await fileUploadService.processUpload(testAppId, [testFile]);
-
-    const result = await tool.editFiles(testProjectDir, {
-      operations: [{
-        path: 'public/my-logo.png',
-        mode: 'create',
-        content: ''
-      }],
-      createDirs: true
-    }, { appId: testAppId });
-
-    expect(result.success).toBe(true);
-
-    const projectFilePath = join(testProjectDir, 'public/my-logo.png');
-    expect(existsSync(projectFilePath)).toBe(true);
-
-    const content = await readFile(projectFilePath);
-    expect(content.toString()).toBe('logo-content');
-  });
-
-  it('should resolve two different uploaded images to different target files (no duplicates)', async () => {
-    // Upload two distinct images with the same extension
-    const slide1File = {
-      originalname: 'slide1.jpg',
-      mimetype: 'image/jpeg',
-      size: 13,
-      buffer: Buffer.from('slide1-content')
-    } as Express.Multer.File;
-
-    const slide2File = {
-      originalname: 'slide2.jpg',
-      mimetype: 'image/jpeg',
-      size: 13,
-      buffer: Buffer.from('slide2-content')
-    } as Express.Multer.File;
-
-    await fileUploadService.processUpload(testAppId, [slide1File, slide2File]);
-
-    // Sequential calls simulating what the LLM does via Promise.all with custom names
-    const result1 = await tool.editFiles(testProjectDir, {
-      operations: [{ path: 'public/hero.jpg', mode: 'create', content: '' }],
-      createDirs: true
-    }, { appId: testAppId });
-
-    const result2 = await tool.editFiles(testProjectDir, {
-      operations: [{ path: 'public/banner.jpg', mode: 'create', content: '' }],
-      createDirs: true
-    }, { appId: testAppId });
-
-    expect(result1.success).toBe(true);
-    expect(result2.success).toBe(true);
-
-    const heroContent = (await readFile(join(testProjectDir, 'public/hero.jpg'))).toString();
-    const bannerContent = (await readFile(join(testProjectDir, 'public/banner.jpg'))).toString();
-
-    // Each target file must have received a distinct uploaded image
-    expect(heroContent).not.toBe(bannerContent);
-    expect(new Set([heroContent, bannerContent])).toEqual(
-      new Set(['slide1-content', 'slide2-content'])
+    const resolved = await (tool as any).resolveSourceFile(
+      testAppId,
+      'public/assets/logo.png',
+      testProjectDir
     );
+
+    expect(resolved).toBe(true);
+    const targetPath = join(testProjectDir, 'public/assets/logo.png');
+    expect(existsSync(targetPath)).toBe(true);
+    await expect(readFile(targetPath)).resolves.toEqual(imageData);
   });
 
-  it('should clear tracking state after processUpload so next upload batch starts fresh', async () => {
-    const imageFile = {
-      originalname: 'photo.jpg',
-      mimetype: 'image/jpeg',
-      size: 12,
-      buffer: Buffer.from('first-upload')
-    } as Express.Multer.File;
+  it('should NOT resolve when filename differs (no heuristic matching)', async () => {
+    await seedUpload('hero-image.jpg', Buffer.from('JPEG'));
 
-    await fileUploadService.processUpload(testAppId, [imageFile]);
+    const resolved = await (tool as any).resolveSourceFile(
+      testAppId,
+      'public/assets/banner.jpg',
+      testProjectDir
+    );
 
-    // Consume the upload via extension resolution
-    await tool.editFiles(testProjectDir, {
-      operations: [{ path: 'public/a.jpg', mode: 'create', content: '' }],
-      createDirs: true
-    }, { appId: testAppId });
+    expect(resolved).toBe(false);
+  });
 
-    // Second upload batch — clearExtensionResolved should have been called
-    const newImage = {
-      originalname: 'photo.jpg',
-      mimetype: 'image/jpeg',
-      size: 11,
-      buffer: Buffer.from('second-upload')
-    } as Express.Multer.File;
+  it('should return false when no uploads exist', async () => {
+    const resolved = await (tool as any).resolveSourceFile(
+      testAppId,
+      'public/assets/logo.png',
+      testProjectDir
+    );
 
-    await fileUploadService.processUpload(testAppId, [newImage]);
+    expect(resolved).toBe(false);
+  });
 
-    const result = await tool.editFiles(testProjectDir, {
-      operations: [{ path: 'public/b.jpg', mode: 'create', content: '' }],
-      createDirs: true
-    }, { appId: testAppId });
+  it('should overwrite existing file when exact match found', async () => {
+    const targetPath = join(testProjectDir, 'public/assets/logo.png');
+    await mkdir(join(testProjectDir, 'public/assets'), { recursive: true });
+    await writeFile(targetPath, 'OLD_DATA');
 
-    expect(result.success).toBe(true);
+    const newData = Buffer.from('NEW_PNG_DATA');
+    await seedUpload('logo.png', newData);
 
-    const content = (await readFile(join(testProjectDir, 'public/b.jpg'))).toString();
-    expect(content).toBe('second-upload');
+    const resolved = await (tool as any).resolveSourceFile(
+      testAppId,
+      'public/assets/logo.png',
+      testProjectDir
+    );
+
+    expect(resolved).toBe(true);
+    await expect(readFile(targetPath)).resolves.toEqual(newData);
   });
 });

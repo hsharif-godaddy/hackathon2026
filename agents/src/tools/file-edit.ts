@@ -12,7 +12,7 @@ import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-facto
 import { fileUploadService } from '../services/FileUploadService.js';
 import { createSafePathBuilder } from '../utils/safe-path.js';
 import { isSourceFile, BINARY_FILE_REGEX } from '../utils/file-types.js';
-import { pickAndMarkExtensionResolved } from '../utils/upload-resolution-tracking.js';
+
 
 // Constants for consistent text truncation
 const EDIT_RESULT_TRUNCATION_LENGTH = 50;
@@ -700,15 +700,6 @@ export class FileEditTool {
     return validateNoEscapingSymlinks(targetPath, appPath, assetsDir ? [assetsDir] : []);
   }
 
-  /**
-   * Attempt to resolve a file from the uploads directory.
-   * Checks if a matching file exists in /tmp/uploads/{appId}/ and copies it to the target location.
-   *
-   * @param appId - Application ID to search uploads for
-   * @param targetPath - Relative target path within the project (e.g., 'public/logo.png')
-   * @param appBasePath - Absolute base path of the application
-   * @returns Promise<boolean> - true if file was resolved and copied, false otherwise
-   */
   private async resolveSourceFile(
     appId: string,
     targetPath: string,
@@ -716,64 +707,13 @@ export class FileEditTool {
   ): Promise<boolean> {
     try {
       const filename = basename(targetPath);
-      // SECURITY: Use safe path builder to prevent path traversal attacks
       const pathBuilder = createSafePathBuilder(appBasePath);
       const fullTargetPath = pathBuilder.join(targetPath);
 
-      // List all uploaded files for this app
-      const uploadedFiles = await fileUploadService.listUploadedFiles(appId);
+      const match = await fileUploadService.findMatchingUpload(appId, filename);
 
-      if (uploadedFiles.length === 0) {
-        logger.debug('file-edit.auto-resolve.no-uploads', {
-          appId,
-          filename
-        });
-        return false; // No uploads available
-      }
-
-      // Extract file extension from target filename
-      const targetExt = filename.includes('.') ? filename.substring(filename.lastIndexOf('.')).toLowerCase() : '';
-
-      // Strategy 1: Try exact match by originalName or filename, prefer most recent
-      const exactMatches = uploadedFiles
-        .filter(f => f.originalName === filename || f.filename === filename)
-        .sort((a, b) => compareByUploadDate(a.uploadedAt, b.uploadedAt));
-      let matchingFile = exactMatches[0] ?? null;
-
-      // Strategy 2: If no exact match, try matching by file extension.
-      // Uses pickAndMarkExtensionResolved for atomic pick+mark to avoid race
-      // conditions when multiple file_edit calls run concurrently via Promise.all.
-      if (!matchingFile && targetExt) {
-        const filesWithSameExt = uploadedFiles.filter(f => {
-          const uploadExt = f.originalName.includes('.')
-            ? f.originalName.substring(f.originalName.lastIndexOf('.')).toLowerCase()
-            : '';
-          return uploadExt === targetExt;
-        });
-
-        if (filesWithSameExt.length > 0) {
-          matchingFile = pickAndMarkExtensionResolved(
-            appId,
-            filesWithSameExt,
-            (a, b) =>
-              scoreNameSimilarity(filename, b.originalName) - scoreNameSimilarity(filename, a.originalName)
-              || compareByUploadDate(a.uploadedAt, b.uploadedAt)
-          );
-          if (matchingFile) {
-            logger.info('file-edit.auto-resolve.extension-match', {
-              appId,
-              requestedFilename: filename,
-              matchedOriginalName: matchingFile.originalName,
-              candidateCount: filesWithSameExt.length,
-              matchingStrategy: filesWithSameExt.length === 1 ? 'single-extension-match' : 'name-similarity'
-            });
-          }
-        }
-      }
-
-      // Skip if file already exists and no newer upload is available
       if (existsSync(fullTargetPath)) {
-        if (!matchingFile) {
+        if (!match) {
           logger.debug('file-edit.auto-resolve.target-exists', {
             appId,
             filename,
@@ -784,56 +724,19 @@ export class FileEditTool {
         logger.info('file-edit.auto-resolve.overwriting', {
           appId,
           filename,
-          matchedOriginalName: matchingFile.originalName,
-          uploadedAt: matchingFile.uploadedAt
+          matchedOriginalName: match.file.originalName,
+          uploadedAt: match.file.uploadedAt
         });
       }
 
-      if (!matchingFile) {
-        logger.debug('file-edit.auto-resolve.no-match', {
-          appId,
-          filename,
-          uploadedFileCount: uploadedFiles.length,
-          availableFiles: uploadedFiles.map(f => f.originalName)
-        });
-        return false; // No matching upload found
-      }
-
-      // Get the full path to the uploaded file
-      // Note: We need to find which uploadId this file belongs to
-      // The metadata.files array doesn't include uploadId, so we need to scan uploads
-      let sourcePath: string | null = null;
-
-      // Re-scan to find the upload directory containing this file
-      const uploadsBaseDir = fileUploadService['uploadsDir'];
-      const appUploadsDir = fileUploadService['pathBuilder'].join(appId);
-
-      if (existsSync(appUploadsDir)) {
-        const { readdirSync } = await import('fs');
-        const uploadDirs = readdirSync(appUploadsDir);
-
-        for (const uploadId of uploadDirs) {
-          const candidatePath = fileUploadService.getFilePath(appId, uploadId, matchingFile.filename);
-          if (existsSync(candidatePath)) {
-            sourcePath = candidatePath;
-            break;
-          }
-        }
-      }
-
-      if (!sourcePath || !existsSync(sourcePath)) {
-        logger.warn('file-edit.auto-resolve.source-missing', {
-          appId,
-          filename,
-          matchingFile: matchingFile.filename
-        });
+      if (!match) {
+        logger.debug('file-edit.auto-resolve.no-match', { appId, filename });
         return false;
       }
 
-      // Ensure target directory exists
-      await mkdir(dirname(fullTargetPath), { recursive: true });
+      const { file: matchingFile, sourcePath } = match;
 
-      // Copy file from uploads to project
+      await mkdir(dirname(fullTargetPath), { recursive: true });
       const sourceContent = await readFile(sourcePath);
       await writeFile(fullTargetPath, sourceContent);
 
@@ -1643,39 +1546,6 @@ export function resolveFilePath(appPath: string, relativePath: string): string {
   return resolved;
 }
 
-/**
- * Compare two upload dates for descending sort (most recent first).
- * Pushes entries with invalid/missing dates to the end.
- */
-function compareByUploadDate(a: string, b: string): number {
-  const bTime = new Date(b).getTime();
-  const aTime = new Date(a).getTime();
-  if (isNaN(bTime) && isNaN(aTime)) return 0;
-  if (isNaN(bTime)) return -1;
-  if (isNaN(aTime)) return 1;
-  return bTime - aTime;
-}
-
-/**
- * Score how similar two filenames are (ignoring extension).
- * Higher score = better match. Used when multiple uploads share the same extension.
- */
-function scoreNameSimilarity(requested: string, candidate: string): number {
-  const reqBase = requested.substring(0, requested.lastIndexOf('.')).toLowerCase();
-  const candBase = candidate.substring(0, candidate.lastIndexOf('.')).toLowerCase();
-
-  if (reqBase === candBase) return 100;
-  if (candBase.includes(reqBase) || reqBase.includes(candBase)) return 50;
-
-  let common = 0;
-  const shorter = reqBase.length < candBase.length ? reqBase : candBase;
-  const longer = reqBase.length < candBase.length ? candBase : reqBase;
-  for (let i = 0; i < shorter.length; i++) {
-    if (shorter[i] === longer[i]) common++;
-    else break;
-  }
-  return common;
-}
 
 /**
  * Attempt to resolve a file from the uploads directory.
@@ -1693,103 +1563,18 @@ export async function resolveSourceFile(
   try {
     const filename = basename(targetPath);
 
-    // Check if content is empty (signal for auto-resolution)
     if (content !== '') {
-      return null; // Content provided, no need to resolve
-    }
-
-    // List all uploaded files for this app
-    const uploadedFiles = await fileUploadService.listUploadedFiles(appId);
-
-    if (uploadedFiles.length === 0) {
-      logger.debug('file-edit.auto-resolve.no-uploads', {
-        appId,
-        filename
-      });
-      return null; // No uploads available
-    }
-
-    // Extract file extension from target filename
-    const targetExt = filename.includes('.') ? filename.substring(filename.lastIndexOf('.')).toLowerCase() : '';
-
-    // Strategy 1: Exact match by originalName or filename, prefer most recent
-    const exactMatches = uploadedFiles
-      .filter(f => f.originalName === filename || f.filename === filename)
-      .sort((a, b) => compareByUploadDate(a.uploadedAt, b.uploadedAt));
-    let matchingFile = exactMatches[0] ?? null;
-
-    // Strategy 2: Match by extension with name similarity scoring.
-    // Uses pickAndMarkExtensionResolved for atomic pick+mark to avoid race
-    // conditions when multiple file_edit calls run concurrently via Promise.all.
-    if (!matchingFile && targetExt) {
-      const filesWithSameExt = uploadedFiles.filter(f => {
-        const uploadExt = f.originalName.includes('.')
-          ? f.originalName.substring(f.originalName.lastIndexOf('.')).toLowerCase()
-          : '';
-        return uploadExt === targetExt;
-      });
-
-      if (filesWithSameExt.length > 0) {
-        matchingFile = pickAndMarkExtensionResolved(
-          appId,
-          filesWithSameExt,
-          (a, b) =>
-            scoreNameSimilarity(filename, b.originalName) - scoreNameSimilarity(filename, a.originalName)
-            || compareByUploadDate(a.uploadedAt, b.uploadedAt)
-        );
-        if (matchingFile) {
-          logger.info('file-edit.auto-resolve.extension-match', {
-            appId,
-            requestedFilename: filename,
-            matchedOriginalName: matchingFile.originalName,
-            candidateCount: filesWithSameExt.length,
-            matchingStrategy: filesWithSameExt.length === 1 ? 'single-extension-match' : 'name-similarity'
-          });
-        }
-      }
-    }
-
-    if (!matchingFile) {
-      logger.debug('file-edit.auto-resolve.no-match', {
-        appId,
-        filename,
-        uploadedFileCount: uploadedFiles.length,
-        availableFiles: uploadedFiles.map(f => f.originalName)
-      });
-      return null; // No matching upload found
-    }
-
-    // Get the full path to the uploaded file
-    let sourcePath: string | null = null;
-
-    // Re-scan to find the upload directory containing this file
-    const appUploadsDir = fileUploadService['pathBuilder'].join(appId);
-
-    if (existsSync(appUploadsDir)) {
-      const { readdirSync } = await import('node:fs');
-      const uploadDirs = readdirSync(appUploadsDir);
-
-      for (const uploadId of uploadDirs) {
-        const candidatePath = fileUploadService.getFilePath(appId, uploadId, matchingFile.filename);
-        if (existsSync(candidatePath)) {
-          sourcePath = candidatePath;
-          break;
-        }
-      }
-    }
-
-    if (!sourcePath || !existsSync(sourcePath)) {
-      logger.warn('file-edit.auto-resolve.source-missing', {
-        appId,
-        filename,
-        matchingFile: matchingFile.filename
-      });
       return null;
     }
 
-    // Binary files (JPEG, PNG, fonts, etc.) must be copied as raw Buffer.
-    // Reading them as UTF-8 corrupts every byte > 127 into U+FFFD.
-    // SVG is excluded since it's XML text despite being in BINARY_FILE_REGEX.
+    const match = await fileUploadService.findMatchingUpload(appId, filename);
+
+    if (!match) {
+      logger.debug('file-edit.auto-resolve.no-match', { appId, filename });
+      return null;
+    }
+
+    const { file: matchingFile, sourcePath } = match;
     const isBinary = BINARY_FILE_REGEX.test(filename) && !filename.toLowerCase().endsWith('.svg');
 
     if (isBinary && fullTargetPath) {

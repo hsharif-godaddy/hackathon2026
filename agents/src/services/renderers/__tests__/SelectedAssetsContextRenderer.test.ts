@@ -186,7 +186,7 @@ describe('SelectedAssetsContextRenderer', () => {
       const result = await renderer.render(attachment, 'use this image')
       expect(result).not.toBeNull()
       // Path separators should be sanitized in the suggested paths
-      expect(result!.content).toContain('AUTO-RESOLUTION')
+      expect(result!.content).toContain('UPLOADED FILE - To use in project:')
       expect(result!.content).not.toContain('public/assets/../')
       expect(result!.content).toContain('.._.._.._etc_passwd')
     })
@@ -249,7 +249,7 @@ describe('SelectedAssetsContextRenderer', () => {
       expect(result!.content).toContain('IMAGE')
       expect(result!.content).toContain('photo.jpg')
       expect(result!.content).toContain('1920x1080')
-      expect(result!.content).not.toContain('AUTO-RESOLUTION')
+      expect(result!.content).not.toContain('UPLOADED FILE - To use in project:')
     })
 
     it('renders uploaded IMAGE with auto-resolution instructions and suppresses upload URL', async () => {
@@ -268,12 +268,13 @@ describe('SelectedAssetsContextRenderer', () => {
 
       const result = await renderer.render(attachment, 'use this image')
       expect(result).not.toBeNull()
-      expect(result!.content).toContain('AUTO-RESOLUTION ENABLED')
+      expect(result!.content).toContain('UPLOADED FILE - To use in project:')
       expect(result!.content).toContain('file_edit')
       expect(result!.content).toContain('public/assets/hero.jpg')
       expect(result!.content).toContain('<img src="/assets/hero.jpg"')
-      // Upload URLs should be suppressed for uploaded assets
-      expect(result!.content).not.toContain('/files/uploads/')
+      // Upload URLs should not appear as image sources (only in the "NEVER reference" instruction)
+      expect(result!.content).not.toContain('http://localhost:4000/files/uploads/')
+      expect(result!.content).toContain('NEVER reference /files/uploads/ URLs in code')
     })
 
     it('skips auto-resolution for uploaded IMAGE/PDF without filename', async () => {
@@ -290,7 +291,7 @@ describe('SelectedAssetsContextRenderer', () => {
 
       const result = await renderer.render(attachment, 'use this image')
       expect(result).not.toBeNull()
-      expect(result!.content).not.toContain('AUTO-RESOLUTION')
+      expect(result!.content).not.toContain('UPLOADED FILE - To use in project:')
       expect(result!.content).not.toContain('public/assets/unknown')
     })
 
@@ -309,7 +310,7 @@ describe('SelectedAssetsContextRenderer', () => {
 
       const result = await renderer.render(attachment, 'use this pdf')
       expect(result).not.toBeNull()
-      expect(result!.content).toContain('AUTO-RESOLUTION ENABLED')
+      expect(result!.content).toContain('UPLOADED FILE - To use in project:')
       expect(result!.content).toContain('public/data/guide.pdf')
       expect(result!.content).toContain('Download PDF')
     })
@@ -489,7 +490,7 @@ describe('SelectedAssetsContextRenderer', () => {
 
         const result = await renderer.render(attachment, 'place this image')
         expect(result).not.toBeNull()
-        expect(result!.content).toContain('AUTO-RESOLUTION ENABLED')
+        expect(result!.content).toContain('UPLOADED FILE - To use in project:')
         expect(result!.assetImages).toBeUndefined()
       })
 
@@ -510,7 +511,7 @@ describe('SelectedAssetsContextRenderer', () => {
 
         const result = await renderer.render(attachment, 'place this image')
         expect(result).not.toBeNull()
-        expect(result!.content).toContain('AUTO-RESOLUTION ENABLED')
+        expect(result!.content).toContain('UPLOADED FILE - To use in project:')
         expect(result!.assetImages).toBeUndefined()
       })
 

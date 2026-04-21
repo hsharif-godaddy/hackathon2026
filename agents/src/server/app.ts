@@ -189,7 +189,6 @@ import { setupAILibWebSocketServer, getWebSocketServerInfo, getGitHookService } 
 import { getDatabase } from '../database/index.js';
 import { AppRepository } from '../database/repositories/AppRepository.js';
 import { destroyLlmDispatcher } from '@airo/ai-lib';
-import { fileCleanupService } from '../services/FileCleanupService.js';
 
 const app: Express = express();
 const port = process.env.PORT || 4000;
@@ -524,11 +523,6 @@ async function initialize() {
       });
     }
 
-    // Start file cleanup service
-    logger.info('server.cleanup.start.begin', {});
-    fileCleanupService.start();
-    logger.info('server.cleanup.start.success', {});
-
     // Start periodic memory logging
     startPeriodicMemoryLogging();
 
@@ -642,8 +636,6 @@ async function shutdown() {
   });
 
   try {
-    fileCleanupService.stop();
-
     if (memoryLogInterval) {
       clearInterval(memoryLogInterval);
       memoryLogInterval = null;

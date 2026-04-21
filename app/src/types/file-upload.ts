@@ -11,7 +11,7 @@ export interface UploadResult {
   uploadId: string
   appId: string
   files: UploadedFileMetadata[]
-  expiresAt: string
+  expiresAt?: string
 }
 
 export interface UploadProgress {

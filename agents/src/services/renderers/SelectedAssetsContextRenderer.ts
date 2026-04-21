@@ -114,16 +114,15 @@ export class SelectedAssetsContextRenderer implements ContextAttachmentRenderer<
           const refPath = `/${subdir}/${filename}`
 
           parts.push('')
-          parts.push('⚠️ UPLOADED FILE - AUTO-RESOLUTION ENABLED')
-          parts.push('')
-          parts.push('**CRITICAL**: Use file_edit with mode="create" and content="" (empty string)')
-          parts.push('- The empty content is intentional - the system will automatically copy the uploaded file')
-          parts.push(`- Suggested: file_edit({ path: "${projectPath}", mode: "create", content: "" })`)
+          parts.push('UPLOADED FILE - To use in project:')
+          parts.push(`- file_edit({ path: "${projectPath}", mode: "create", content: "" })`)
+          parts.push(`- Target filename MUST exactly match "${filename}" for auto-resolution`)
           if (asset.mediaType === 'IMAGE') {
             parts.push(`- Reference: <img src="${refPath}" alt="description" />`)
           } else {
             parts.push(`- Reference: <a href="${refPath}">Download PDF</a>`)
           }
+          parts.push('- NEVER reference /files/uploads/ URLs in code')
         }
 
         return parts.join('\n')

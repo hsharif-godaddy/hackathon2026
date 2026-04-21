@@ -1,5 +1,5 @@
-import { existsSync, readdirSync, statSync } from 'fs'
-import { mkdir, writeFile, readFile, unlink, rm } from 'fs/promises'
+import { existsSync, readdirSync } from 'fs'
+import { mkdir, writeFile, readFile, readdir, unlink, rm } from 'fs/promises'
 import { extname } from 'path'
 import { nanoid } from 'nanoid'
 import { z } from 'zod'
@@ -10,7 +10,6 @@ import { FileValidationError, SVGSanitizationError } from './errors/file-upload-
 import { getAgentConfig } from './features.js'
 import { createSafePathBuilder } from '../utils/safe-path.js'
 import { sanitizeSVG, isSVGFile } from '../utils/svg-sanitizer.js'
-import { clearExtensionResolved } from '../utils/upload-resolution-tracking.js'
 
 export interface UploadedFile {
   id: string
@@ -31,7 +30,7 @@ export interface UploadResult {
   appId: string
   files: UploadedFile[]
   failedFiles: FailedFile[]
-  expiresAt: string
+  expiresAt?: string
 }
 
 const BLOCKED_EXTENSIONS = new Set([
@@ -74,7 +73,6 @@ const BLOCKED_MIME_TYPES = new Set([
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024
 const MAX_FILES_PER_UPLOAD = 5
-const UPLOAD_EXPIRY_HOURS = 24
 
 // SECURITY: Zod schemas for metadata validation
 // Prevents type confusion, prototype pollution, and validates structure
@@ -91,7 +89,7 @@ const MetadataSchema = z.object({
   uploadId: z.string(),
   appId: z.string(),
   uploadedAt: z.string(),
-  expiresAt: z.string(),
+  expiresAt: z.string().optional(),
   fileCount: z.number().int().nonnegative(),
   files: z.array(UploadedFileSchema)
 })
@@ -282,7 +280,6 @@ export class FileUploadService {
     const uploadDir = await this.ensureUploadDirectory(appId, uploadId)
     const uploadedFiles: UploadedFile[] = []
     const uploadedAt = new Date().toISOString()
-    const expiresAt = new Date(Date.now() + UPLOAD_EXPIRY_HOURS * 60 * 60 * 1000).toISOString()
 
     const failedFiles: Array<{ originalName: string; error: string }> = []
     let hasServerError = false
@@ -352,7 +349,6 @@ export class FileUploadService {
       uploadId,
       appId,
       uploadedAt,
-      expiresAt,
       fileCount: uploadedFiles.length,
       files: uploadedFiles
     }
@@ -381,15 +377,11 @@ export class FileUploadService {
       imageCount: uploadedFiles.filter(f => f.mimeType?.startsWith('image/')).length
     })
 
-    // Reset extension-based resolution tracking so new uploads get a fresh start
-    clearExtensionResolved(appId)
-
     return {
       uploadId,
       appId,
       files: uploadedFiles,
-      failedFiles,
-      expiresAt
+      failedFiles
     }
   }
 
@@ -447,33 +439,19 @@ export class FileUploadService {
         return null
       }
 
-      if (!metadata.files) {
-        const files: UploadedFile[] = []
-        const dirFiles = readdirSync(uploadDir)
-        for (const file of dirFiles) {
-          if (file === 'metadata.json') continue
-          const filePath = this.pathBuilder.join(appId, uploadId, file)
-          const stats = existsSync(filePath) ? statSync(filePath) : null
-          
-          files.push({
-            id: `file_${nanoid(10)}`,
-            originalName: file,
-            filename: file,
-            size: stats ? stats.size : 0,
-            mimeType: null,
-            uploadedAt: stats ? stats.mtime.toISOString() : new Date().toISOString()
-          })
-        }
-        metadata.files = files
-      }
-      
-      return {
+      const result: UploadResult = {
         uploadId: metadata.uploadId,
         appId: metadata.appId,
         files: metadata.files,
-        failedFiles: [],
-        expiresAt: metadata.expiresAt
-      } as UploadResult
+        failedFiles: []
+      }
+
+      // Include expiresAt from old metadata files for backward compatibility
+      if (metadata.expiresAt) {
+        result.expiresAt = metadata.expiresAt
+      }
+
+      return result
     } catch (error) {
       fileUploadEvents.retrieveFailure(logger, error instanceof Error ? error : new Error(String(error)), {
         appId,
@@ -488,6 +466,39 @@ export class FileUploadService {
    */
   getAppUploadsDir(appId: string): string {
     return this.pathBuilder.join(appId)
+  }
+
+  // Path traversal safe: getFilePath delegates to pathBuilder.join (createSafePathBuilder)
+  async findUploadedFilePath(appId: string, storedFilename: string): Promise<string | null> {
+    const appUploadsDir = this.pathBuilder.join(appId)
+    if (!existsSync(appUploadsDir)) {
+      return null
+    }
+    const uploadDirs = await readdir(appUploadsDir)
+    for (const uploadId of uploadDirs) {
+      const candidatePath = this.getFilePath(appId, uploadId, storedFilename)
+      if (existsSync(candidatePath)) {
+        return candidatePath
+      }
+    }
+    return null
+  }
+
+  async findMatchingUpload(appId: string, targetFilename: string): Promise<{ file: UploadedFile; sourcePath: string } | null> {
+    const uploadedFiles = await this.listUploadedFiles(appId)
+    if (uploadedFiles.length === 0) return null
+
+    const match = uploadedFiles
+      .filter(f => f.originalName === targetFilename || f.filename === targetFilename)
+      .sort((a, b) => b.uploadedAt.localeCompare(a.uploadedAt))
+      [0] ?? null
+
+    if (!match) return null
+
+    const sourcePath = await this.findUploadedFilePath(appId, match.filename)
+    if (!sourcePath) return null
+
+    return { file: match, sourcePath }
   }
 
   async listUploadedFiles(appId: string): Promise<UploadedFile[]> {
@@ -536,9 +547,7 @@ export class FileUploadService {
             continue  // Skip invalid metadata
           }
 
-          if (metadata.files && Array.isArray(metadata.files)) {
-            allFiles.push(...metadata.files)
-          }
+          allFiles.push(...metadata.files)
         } catch (error) {
           fileUploadEvents.retrieveFailure(
             logger,
@@ -587,74 +596,6 @@ export class FileUploadService {
     }
   }
 
-  async deleteExpiredUploads(): Promise<number> {
-    const now = Date.now()
-    let deletedCount = 0
-
-    try {
-      if (!existsSync(this.uploadsDir)) {
-        return 0
-      }
-
-      const appDirs = readdirSync(this.uploadsDir)
-
-      for (const appId of appDirs) {
-        const appDir = this.pathBuilder.join(appId)
-        const uploadDirs = readdirSync(appDir)
-
-        for (const uploadId of uploadDirs) {
-          const metadataPath = this.pathBuilder.join(appId, uploadId, 'metadata.json')
-          
-          if (!existsSync(metadataPath)) {
-            continue
-          }
-
-          try {
-            const metadataContent = await readFile(metadataPath, 'utf-8')
-            const metadata = JSON.parse(metadataContent)
-            const expiresAt = new Date(metadata.expiresAt).getTime()
-
-            if (expiresAt < now) {
-              const deleted = await this.deleteUpload(appId, uploadId)
-              if (deleted) {
-                deletedCount++
-                fileUploadEvents.cleanupExpired(logger, {
-                  appId,
-                  uploadId,
-                  operation: 'expired',
-                  expiredCount: 1
-                })
-              }
-            }
-          } catch (error) {
-            fileUploadEvents.cleanupFailure(logger, error instanceof Error ? error : new Error(String(error)), {
-              appId,
-              uploadId,
-              operation: 'expired'
-            })
-          }
-        }
-      }
-
-      if (deletedCount > 0) {
-        fileUploadEvents.cleanupComplete(logger, {
-          appId: 'system',
-          operation: 'expired',
-          deletedCount,
-          expiredCount: deletedCount
-        })
-      }
-
-      return deletedCount
-    } catch (error) {
-      fileUploadEvents.cleanupFailure(logger, error instanceof Error ? error : new Error(String(error)), {
-        appId: 'system',
-        operation: 'expired'
-      })
-      return deletedCount
-    }
-  }
-
   async cleanupAppUploads(appId: string): Promise<number> {
     const appDir = this.pathBuilder.join(appId)
     let deletedCount = 0
@@ -688,8 +629,6 @@ export class FileUploadService {
         operation: 'app-cleanup'
       })
       return deletedCount
-    } finally {
-      clearExtensionResolved(appId)
     }
   }
 

@@ -1,7 +1,5 @@
 import { logger } from '../../logging/index.js'
-import { readdir, readFile } from 'node:fs/promises'
-import { join, normalize, resolve } from 'node:path'
-import { getFeatures } from '../features.js'
+import { readFile } from 'node:fs/promises'
 
 export interface FormattedContext {
   /** The formatted content string ready for LLM */
@@ -33,7 +31,6 @@ export interface FormattedContext {
  */
 export async function readUploadedFileContent(imageUrl: string, filename: string): Promise<string | null> {
   try {
-    // Extract appId from imageUrl: .../files/uploads/{appId}/{filename}
     const urlMatch = imageUrl.match(/\/files\/uploads\/([^/]+)\/[^/]+$/)
     if (!urlMatch || !urlMatch[1]) {
       logger.warn('context.formatter.file_read.invalid_url', {
@@ -44,97 +41,38 @@ export async function readUploadedFileContent(imageUrl: string, filename: string
     }
 
     const appId = urlMatch[1]
-    const features = getFeatures()
-    const uploadDirConfig = features.uploadDir || 'data/uploads'
-    const uploadDir = uploadDirConfig.startsWith('/')
-      ? uploadDirConfig
-      : join(process.cwd(), uploadDirConfig)
+    // dynamic import avoids circular dep: FileUploadService -> ContextAttachment -> ContextFormatter
+    const { fileUploadService } = await import('../FileUploadService.js')
 
-    // Build base path for this app's uploads
-    const appUploadDir = join(uploadDir, appId)
+    const match = await fileUploadService.findMatchingUpload(appId, filename)
 
-    // Security: Normalize paths and validate we stay within appUploadDir
-    const normalizedAppDir = normalize(resolve(appUploadDir))
-
-    // Find the file by searching subdirectories (uploadId subdirs) and reading metadata
-    try {
-      const uploadIdDirs = await readdir(appUploadDir)
-
-      for (const uploadIdDir of uploadIdDirs) {
-        // Read metadata.json to find the actual filename
-        const metadataPath = join(appUploadDir, uploadIdDir, 'metadata.json')
-
-        try {
-          const metadataContent = await readFile(metadataPath, 'utf-8')
-          const metadata = JSON.parse(metadataContent)
-
-          // Find file by originalName
-          const fileEntry = metadata.files?.find((f: any) => f.originalName === filename)
-
-          if (!fileEntry) {
-            // File not in this upload, try next one
-            continue
-          }
-
-          // Use the actual stored filename
-          const candidatePath = join(appUploadDir, uploadIdDir, fileEntry.filename)
-          const normalizedCandidate = normalize(resolve(candidatePath))
-
-          // Security: Ensure path doesn't escape appUploadDir
-          if (!normalizedCandidate.startsWith(normalizedAppDir)) {
-            logger.error('context.formatter.file_read.path_traversal_attempt', {
-              appId,
-              filename,
-              actualFilename: fileEntry.filename,
-              attemptedPath: candidatePath
-            }, { tags: ['security', 'path-traversal-attempt'] })
-            return null
-          }
-
-          // Read the file
-          const content = await readFile(candidatePath, 'utf-8')
-
-          // Limit content size (100KB for text files)
-          const maxSizeBytes = 100 * 1024
-          if (content.length > maxSizeBytes) {
-            const truncated = content.substring(0, maxSizeBytes)
-            logger.info('context.formatter.file_read.truncated', {
-              appId,
-              filename,
-              originalSize: content.length,
-              truncatedSize: maxSizeBytes
-            })
-            return truncated + '\n\n[Content truncated - file too large]'
-          }
-
-          logger.info('context.formatter.file_read.success', {
-            appId,
-            filename,
-            actualFilename: fileEntry.filename,
-            size: content.length
-          })
-
-          return content
-        } catch (metadataError) {
-          // Metadata doesn't exist or is invalid, try next upload
-          continue
-        }
-      }
-
-      logger.warn('context.formatter.file_read.not_found', {
-        appId,
-        filename,
-        searchedDirs: uploadIdDirs.length
-      })
-      return null
-    } catch (dirError) {
-      logger.error('context.formatter.file_read.directory_error', {
-        appId,
-        filename,
-        error: dirError instanceof Error ? dirError.message : String(dirError)
-      })
+    if (!match) {
+      logger.warn('context.formatter.file_read.not_found', { appId, filename })
       return null
     }
+
+    const content = await readFile(match.sourcePath, 'utf-8')
+
+    const maxSizeBytes = 100 * 1024
+    if (content.length > maxSizeBytes) {
+      const truncated = content.substring(0, maxSizeBytes)
+      logger.info('context.formatter.file_read.truncated', {
+        appId,
+        filename,
+        originalSize: content.length,
+        truncatedSize: maxSizeBytes
+      })
+      return truncated + '\n\n[Content truncated - file too large]'
+    }
+
+    logger.info('context.formatter.file_read.success', {
+      appId,
+      filename,
+      actualFilename: match.file.filename,
+      size: content.length
+    })
+
+    return content
   } catch (error) {
     logger.error('context.formatter.file_read.error', {
       imageUrl,
@@ -167,14 +105,12 @@ export async function readAgentUploadAsBase64(imageUrl: string): Promise<string 
     const appId = urlMatch[1]
     const serverFilename = decodeURIComponent(urlMatch[2])
 
-    // Use fileUploadService to read the file directly
+    // dynamic import avoids circular dep: FileUploadService -> ContextAttachment -> ContextFormatter
     const { fileUploadService } = await import('../FileUploadService.js')
 
-    // Find the file in the uploads
-    const uploadedFiles = await fileUploadService.listUploadedFiles(appId)
-    const matchingFile = uploadedFiles.find(f => f.filename === serverFilename)
+    const match = await fileUploadService.findMatchingUpload(appId, serverFilename)
 
-    if (!matchingFile) {
+    if (!match) {
       logger.warn('context.formatter.agent_upload.not_found', {
         appId,
         serverFilename
@@ -182,42 +118,20 @@ export async function readAgentUploadAsBase64(imageUrl: string): Promise<string 
       return null
     }
 
-    // Get the file from disk
-    const appDir = fileUploadService.getAppUploadsDir(appId)
-    const { readdirSync, existsSync } = await import('fs')
-    const { readFile: fsReadFile } = await import('fs/promises')
+    const buffer = await readFile(match.sourcePath)
+    const base64 = buffer.toString('base64')
+    const contentType = match.file.mimeType || 'image/jpeg'
+    const dataUrl = `data:${contentType};base64,${base64}`
 
-    if (!existsSync(appDir)) {
-      logger.warn('context.formatter.agent_upload.app_dir_missing', { appId, appDir })
-      return null
-    }
-
-    // Search for the file in upload subdirectories
-    const uploadDirs = readdirSync(appDir)
-    for (const uploadId of uploadDirs) {
-      const filePath = fileUploadService.getFilePath(appId, uploadId, serverFilename)
-      if (existsSync(filePath)) {
-        const buffer = await fsReadFile(filePath)
-        const base64 = buffer.toString('base64')
-        const contentType = matchingFile.mimeType || 'image/jpeg'
-        const dataUrl = `data:${contentType};base64,${base64}`
-
-        logger.info('context.formatter.agent_upload.success', {
-          appId,
-          serverFilename,
-          contentType,
-          sizeKB: Math.round(buffer.length / 1024)
-        })
-
-        return dataUrl
-      }
-    }
-
-    logger.warn('context.formatter.agent_upload.file_not_on_disk', {
+    logger.info('context.formatter.agent_upload.success', {
       appId,
-      serverFilename
+      serverFilename,
+      contentType,
+      sizeKB: Math.round(buffer.length / 1024),
+      actualFilename: match.file.filename
     })
-    return null
+
+    return dataUrl
   } catch (error) {
     logger.error('context.formatter.agent_upload.error', {
       imageUrl,
