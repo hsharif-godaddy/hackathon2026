@@ -227,11 +227,13 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     let enableAssessmentOverride = false;
     let modelSelectorEnabled = false;
     let modelOverride: string | undefined;
+    let agentProfileSelectorEnabled = false;
+    let agentProfile: string | undefined;
 
     if (siteValidationCacheHit) {
       // Cache hit: skip site validation, run paywall + switchboard + subscription lookup in parallel
       const parallelStart = Date.now();
-      const [paywallResult, domainPurchaseResult, testBudgetResult, budgetServiceResult, siteInfoResult, assessmentAgentResult, assessmentOverrideResult, modelSelectorResult, modelOverrideResult] = await Promise.allSettled([
+      const [paywallResult, domainPurchaseResult, testBudgetResult, budgetServiceResult, siteInfoResult, assessmentAgentResult, assessmentOverrideResult, modelSelectorResult, modelOverrideResult, agentProfileSelectorResult, agentProfileResult] = await Promise.allSettled([
         checkPaywallEligibility(
           new ServerPaywallProvider(authContext.jwt || '', user.customerId, request.headers),
           body.siteId,
@@ -245,6 +247,8 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
         checkSwitchboardFlag('appbuilder-assessment-override', authContext.jwt || '', request.headers),
         checkSwitchboardFlag('appbuilder-model-selector', authContext.jwt || '', request.headers),
         checkSwitchboardValue('appbuilder-model-override', authContext.jwt || '', request.headers),
+        checkSwitchboardFlag('appbuilder-agent-profile-selector', authContext.jwt || '', request.headers),
+        checkSwitchboardValue('appbuilder-agent-profile', authContext.jwt || '', request.headers),
       ]);
       timing.parallelChecksMs = Date.now() - parallelStart;
 
@@ -258,10 +262,13 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       modelSelectorEnabled = resolveBooleanFlag(modelSelectorResult, 'agent-token.model-selector-flag-check-failed', body.siteId, user.customerId);
       const rawModelOverride = resolveStringFlag(modelOverrideResult, 'agent-token.model-override-flag-check-failed', body.siteId, user.customerId);
       modelOverride = rawModelOverride && rawModelOverride !== 'default' ? rawModelOverride : undefined;
+      agentProfileSelectorEnabled = resolveBooleanFlag(agentProfileSelectorResult, 'agent-token.agent-profile-selector-flag-check-failed', body.siteId, user.customerId);
+      const rawAgentProfile = resolveStringFlag(agentProfileResult, 'agent-token.agent-profile-flag-check-failed', body.siteId, user.customerId);
+      agentProfile = rawAgentProfile && rawAgentProfile !== 'default' ? rawAgentProfile : undefined;
     } else {
       // Cache miss: run site validation, paywall, switchboard, and subscription lookup all in parallel
       const parallelStart = Date.now();
-      const [siteResult, paywallResult, domainPurchaseResult, testBudgetResult, budgetServiceResult, siteInfoResult, assessmentAgentResult, assessmentOverrideResult, modelSelectorResult, modelOverrideResult] = await Promise.allSettled([
+      const [siteResult, paywallResult, domainPurchaseResult, testBudgetResult, budgetServiceResult, siteInfoResult, assessmentAgentResult, assessmentOverrideResult, modelSelectorResult, modelOverrideResult, agentProfileSelectorResult, agentProfileResult] = await Promise.allSettled([
         validateSiteAccess(body.siteId, user, authContext.jwt || '', body.owningProduct),
         checkPaywallEligibility(
           new ServerPaywallProvider(authContext.jwt || '', user.customerId, request.headers),
@@ -276,6 +283,8 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
         checkSwitchboardFlag('appbuilder-assessment-override', authContext.jwt || '', request.headers),
         checkSwitchboardFlag('appbuilder-model-selector', authContext.jwt || '', request.headers),
         checkSwitchboardValue('appbuilder-model-override', authContext.jwt || '', request.headers),
+        checkSwitchboardFlag('appbuilder-agent-profile-selector', authContext.jwt || '', request.headers),
+        checkSwitchboardValue('appbuilder-agent-profile', authContext.jwt || '', request.headers),
       ]);
       timing.parallelChecksMs = Date.now() - parallelStart;
 
@@ -298,6 +307,9 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       modelSelectorEnabled = resolveBooleanFlag(modelSelectorResult, 'agent-token.model-selector-flag-check-failed', body.siteId, user.customerId);
       const rawModelOverride = resolveStringFlag(modelOverrideResult, 'agent-token.model-override-flag-check-failed', body.siteId, user.customerId);
       modelOverride = rawModelOverride && rawModelOverride !== 'default' ? rawModelOverride : undefined;
+      agentProfileSelectorEnabled = resolveBooleanFlag(agentProfileSelectorResult, 'agent-token.agent-profile-selector-flag-check-failed', body.siteId, user.customerId);
+      const rawAgentProfile = resolveStringFlag(agentProfileResult, 'agent-token.agent-profile-flag-check-failed', body.siteId, user.customerId);
+      agentProfile = rawAgentProfile && rawAgentProfile !== 'default' ? rawAgentProfile : undefined;
     }
 
     // Fail-safe: disable budget service and fall back to legacy grants
@@ -349,6 +361,8 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       product,
       modelSelectorEnabled,
       modelOverride,
+      agentProfileSelectorEnabled,
+      agentProfile,
     };
 
     const result = body.expiresInSeconds

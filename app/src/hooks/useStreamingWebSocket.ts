@@ -95,6 +95,9 @@ export interface SendMessageOptions {
 
   /** Per-project model override (from model selector in settings) */
   modelOverride?: string
+
+  /** Per-project agent profile override (from profile selector in settings) */
+  agentProfile?: string
 }
 
 /**
@@ -368,11 +371,14 @@ export function useStreamingWebSocket() {
       }
 
       try {
-        // Resolve per-project model override: explicit param > store selection > undefined
+        // Resolve per-project overrides: explicit param > store selection > undefined
         let resolvedModelOverride = options.modelOverride
-        if (resolvedModelOverride === undefined) {
+        let resolvedProfile = options.agentProfile
+        if (resolvedModelOverride === undefined || resolvedProfile === undefined) {
           const { useDevelopPageStore } = await import('@/stores/useDevelopPageStore')
-          resolvedModelOverride = useDevelopPageStore.getState().selectedModel ?? undefined
+          const state = useDevelopPageStore.getState()
+          if (resolvedModelOverride === undefined) resolvedModelOverride = state.selectedModel ?? undefined
+          if (resolvedProfile === undefined) resolvedProfile = state.selectedProfile ?? undefined
         }
 
         await controller.sendMessage({
@@ -385,6 +391,7 @@ export function useStreamingWebSocket() {
           customContext: options.customContext,
           templateId: options.templateId,
           modelOverride: resolvedModelOverride,
+          agentProfile: resolvedProfile,
         })
       } catch (error) {
         // Convert to structured error with context

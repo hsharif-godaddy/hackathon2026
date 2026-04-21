@@ -187,6 +187,7 @@ interface DevelopPageStore {
 
   // Model override (per-project)
   selectedModel: string | null
+  selectedProfile: string | null
 
   // Version history UI
   isVersionHistoryOpen: boolean
@@ -264,6 +265,7 @@ interface DevelopPageStore {
   setIsChatPaneCollapsed: (collapsed: boolean) => void
   setHasUnsavedChanges: (hasChanges: boolean) => void
   setSelectedModel: (model: string | null) => void
+  setSelectedProfile: (profile: string | null) => void
   setIsMobile: (isMobile: boolean) => void
   setIsVersionHistoryOpen: (open: boolean) => void
   setIsPreviewVisible: (visible: boolean) => void
@@ -377,6 +379,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     isRestarting: false,
     hasUnsavedChanges: false,
     selectedModel: null,
+    selectedProfile: null,
     isVersionHistoryOpen: false,
 
     // Tab state (initialized from URL in useChatTabs)
@@ -441,6 +444,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     setIsChatPaneCollapsed: (collapsed) => set((state) => { state.isChatPaneCollapsed = collapsed }),
     setHasUnsavedChanges: (hasChanges) => set((state) => { state.hasUnsavedChanges = hasChanges }),
     setSelectedModel: (model) => set((state) => { state.selectedModel = model }),
+    setSelectedProfile: (profile) => set((state) => { state.selectedProfile = profile }),
     setIsMobile: (isMobile) => set((state) => {
       const wasMobileGoingToDesktop = state.isMobile === true && isMobile === false
       state.isMobile = isMobile
@@ -740,6 +744,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         state.autoSendTriggered = false
         state.hasUnsavedChanges = false
         state.selectedModel = null
+        state.selectedProfile = null
       })
     },
 

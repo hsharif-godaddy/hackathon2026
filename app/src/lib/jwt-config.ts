@@ -33,6 +33,8 @@ export interface JWTClaims {
   product?: ProductType; // Product type: 'AiroAppBuilder' (default) or 'PaaSNodeJS'
   modelOverride?: string; // When set, override the default agent model (switchboard: appbuilder-model-override)
   modelSelectorEnabled?: boolean; // When true, allow per-project model selection from frontend (switchboard: appbuilder-model-selector)
+  agentProfile?: string; // When set, activate the named agent profile (switchboard: appbuilder-agent-profile)
+  agentProfileSelectorEnabled?: boolean; // When true, allow per-project profile selection from frontend (switchboard: appbuilder-agent-profile-selector)
 }
 
 /**

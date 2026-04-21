@@ -18,6 +18,8 @@ describe('buildAgentContext', function suite() {
     product: 'PaaSNodeJS',
     modelOverride: 'claude-sonnet-4-5',
     modelSelectorEnabled: true,
+    agentProfile: 'experimental',
+    agentProfileSelectorEnabled: true,
     exp: 1700000000,
     iat: 1699999000,
   };
@@ -39,6 +41,8 @@ describe('buildAgentContext', function suite() {
       product: 'PaaSNodeJS',
       modelOverride: 'claude-sonnet-4-5',
       modelSelectorEnabled: true,
+      agentProfile: 'experimental',
+      agentProfileSelectorEnabled: true,
       exp: 1700000000,
       iat: 1699999000,
     });
@@ -55,6 +59,7 @@ describe('buildAgentContext', function suite() {
     expect(ctx.enableAssessmentAgent).toBe(false);
     expect(ctx.enableAssessmentOverride).toBe(false);
     expect(ctx.modelSelectorEnabled).toBe(false);
+    expect(ctx.agentProfileSelectorEnabled).toBe(false);
   });
 
   it('defaults authType to basic when missing', function defaultAuth() {

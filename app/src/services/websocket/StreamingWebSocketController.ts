@@ -408,6 +408,7 @@ export class StreamingWebSocketController extends EventEmitter {
     customContext?: CustomContext
     templateId?: string
     modelOverride?: string
+    agentProfile?: string
   }): Promise<void> {
     const { content } = params
 
@@ -482,6 +483,7 @@ export class StreamingWebSocketController extends EventEmitter {
         customContext: params.customContext,
         templateId: params.templateId,
         modelOverride: params.modelOverride,
+        agentProfile: params.agentProfile,
       }
 
       const chatMessage = this.deps.messageBuilder.build(messageParams)

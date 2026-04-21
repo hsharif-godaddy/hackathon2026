@@ -38,6 +38,8 @@ export interface AgentContext {
   product: ProductType;    // Product type: 'AiroAppBuilder' (default) or 'PaaSNodeJS'
   modelOverride?: string; // Override the default agent model (switchboard: appbuilder-model-override)
   modelSelectorEnabled?: boolean; // Allow per-project model selection from frontend (switchboard: appbuilder-model-selector)
+  agentProfile?: string; // Active agent profile identifier
+  agentProfileSelectorEnabled?: boolean; // Allow per-project agent profile selection from frontend
   exp: number;
   iat: number;
 }
@@ -67,6 +69,8 @@ export function buildAgentContext(raw: Record<string, unknown>): AgentContext {
     product: coerceProductType(raw.product as string | undefined),
     modelOverride: raw.modelOverride as string | undefined,
     modelSelectorEnabled: (raw.modelSelectorEnabled as boolean) ?? false,
+    agentProfile: raw.agentProfile as string | undefined,
+    agentProfileSelectorEnabled: (raw.agentProfileSelectorEnabled as boolean) ?? false,
     exp: (raw.exp as number) || 0,
     iat: (raw.iat as number) || 0,
   };
@@ -145,6 +149,7 @@ export class JWTAuthMiddleware {
           isE2S: false,
           product: 'AiroAppBuilder',
           modelSelectorEnabled: true,
+          agentProfileSelectorEnabled: true,
           exp: now + 3600,
           iat: now
         };
@@ -162,6 +167,7 @@ export class JWTAuthMiddleware {
           isE2S: false,
           product: 'AiroAppBuilder',
           modelSelectorEnabled: true,
+          agentProfileSelectorEnabled: true,
           exp: now + 3600,
           iat: now
         };

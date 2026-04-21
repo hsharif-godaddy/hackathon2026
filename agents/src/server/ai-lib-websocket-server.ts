@@ -53,6 +53,7 @@ import { logger, log } from '../logging/index.js'
 import { jwtAuthMiddleware, buildAgentContext, type AgentContext } from './middleware/jwt-auth.js'
 import { getAgentConfig } from '../services/features.js'
 import { runWithModelOverride } from '@airo/ai-lib'
+import { resolveProfile, runWithProfile, profileValue } from '../profiles/index.js'
 import { getModelOverride } from '../utils/model-selection.js'
 import {
   guardAllowedOverrideModel,
@@ -1211,7 +1212,23 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           const templateId = typeof rawTemplateId === 'string' && getTemplateIds().includes(rawTemplateId)
             ? rawTemplateId
             : undefined
-          const agentId = templateId ? `initial-${templateId}` : 'initial'
+          let agentId = templateId ? `initial-${templateId}` : 'initial'
+
+          if (agentId === 'initial') {
+            const socket = getSocket(socketId)
+            const agentContext = socket?.handshake?.auth?.agentContext
+            const profile = resolveProfile({
+              agentProfileSelectorEnabled: !!agentContext?.agentProfileSelectorEnabled,
+              perProjectProfile: metadata?.agentProfile as string | undefined,
+              jwtAgentProfile: agentContext?.agentProfile as string | undefined,
+            })
+            if (profile) {
+              const promptVersion = runWithProfile(profile, () => profileValue('initial.promptVersion', '' as string))
+              if (promptVersion === '2.0') {
+                agentId = 'initial-v2'
+              }
+            }
+          }
 
           logger.info('websocket.agent_router.initial_selected', {
             socketId,
@@ -2131,28 +2148,45 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         const socket = getSocket(socketId)
         const agentContext = socket?.handshake?.auth?.agentContext
 
+        const profile = resolveProfile({
+          agentProfileSelectorEnabled: !!agentContext?.agentProfileSelectorEnabled,
+          perProjectProfile: (context as any)?.metadata?.agentProfile as string | undefined,
+          jwtAgentProfile: agentContext?.agentProfile as string | undefined,
+        })
+
+        if (profile) {
+          logger.info('profile.resolve.active', { profileName: profile.name, socketId })
+        }
+
         const effectiveOverride = resolveOverride({
           modelSelectorEnabled: !!agentContext?.modelSelectorEnabled,
           perProjectModel: (context as any)?.metadata?.modelOverride as string | undefined,
           jwtModelOverride: agentContext?.modelOverride as string | undefined,
         })
 
-        if (effectiveOverride) {
-          const allowed = guardAllowedOverrideModel(
-            effectiveOverride,
-            'messageMiddleware',
-            function logReject(event: string, data: Record<string, unknown>) {
-              logger.warn(event, data)
-            },
-          )
-          if (allowed) {
-            logger.info('model.override.context.active', { effectiveOverride: allowed, socketId })
-            await runWithModelOverride(allowed, execute)
-            return
+        const executeWithModelOverride = async () => {
+          if (effectiveOverride) {
+            const allowed = guardAllowedOverrideModel(
+              effectiveOverride,
+              'messageMiddleware',
+              function logReject(event: string, data: Record<string, unknown>) {
+                logger.warn(event, data)
+              },
+            )
+            if (allowed) {
+              logger.info('model.override.context.active', { effectiveOverride: allowed, socketId })
+              await runWithModelOverride(allowed, execute)
+              return
+            }
           }
+          await execute()
         }
 
-        await execute()
+        if (profile) {
+          await runWithProfile(profile, executeWithModelOverride)
+        } else {
+          await executeWithModelOverride()
+        }
       }
     }
 

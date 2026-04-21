@@ -31,7 +31,7 @@ vi.mock('../../../logging/index.js', () => ({
   },
 }));
 
-import { JWTAuthMiddleware } from '../jwt-auth.js';
+import { JWTAuthMiddleware, buildAgentContext } from '../jwt-auth.js';
 import type { AuthenticatedRequest } from '../jwt-auth.js';
 
 describe('JWTAuthMiddleware', function jwtAuthMiddlewareSuite() {
@@ -65,6 +65,36 @@ describe('JWTAuthMiddleware', function jwtAuthMiddlewareSuite() {
     statusSpy = vi.fn().mockReturnValue({ json: jsonSpy });
     mockRes = { status: statusSpy, json: jsonSpy };
     mockNext = vi.fn();
+  });
+
+  describe('buildAgentContext', function buildAgentContextSuite() {
+    it('extracts agentProfile from raw claims', function extractsAgentProfile() {
+      const raw = {
+        siteId: 'test-site',
+        canDownload: true,
+        canPublish: true,
+        agentProfile: 'experimental',
+        agentProfileSelectorEnabled: true,
+        exp: 9999999999,
+        iat: 1000000000,
+      };
+      const context = buildAgentContext(raw);
+      expect(context.agentProfile).toBe('experimental');
+      expect(context.agentProfileSelectorEnabled).toBe(true);
+    });
+
+    it('defaults agentProfileSelectorEnabled to false when missing', function defaultsFalse() {
+      const raw = {
+        siteId: 'test-site',
+        canDownload: true,
+        canPublish: true,
+        exp: 9999999999,
+        iat: 1000000000,
+      };
+      const context = buildAgentContext(raw);
+      expect(context.agentProfile).toBeUndefined();
+      expect(context.agentProfileSelectorEnabled).toBe(false);
+    });
   });
 
   describe('agent context model override claims', function modelOverrideClaims() {

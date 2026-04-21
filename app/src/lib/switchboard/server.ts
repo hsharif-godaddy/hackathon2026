@@ -27,6 +27,7 @@ const SERVER_LOCAL_FEATURE_OVERRIDES: Record<string, boolean> = {
   'appbuilder-assessment-agent': true,
   'appbuilder-assessment-override': true,
   'appbuilder-model-selector': true,
+  'appbuilder-agent-profile-selector': true,
 };
 
 /**
@@ -35,6 +36,7 @@ const SERVER_LOCAL_FEATURE_OVERRIDES: Record<string, boolean> = {
  */
 const SERVER_LOCAL_VALUE_OVERRIDES: Record<string, string> = {
   'appbuilder-model-override': 'default',
+  'appbuilder-agent-profile': 'experimental',
 };
 
 /**

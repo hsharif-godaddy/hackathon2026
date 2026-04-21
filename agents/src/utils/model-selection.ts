@@ -14,6 +14,7 @@ import { devToolsMiddleware } from '@ai-sdk/devtools'
 import { getActiveModelOverride, getModel, getModelInfo } from '@airo/ai-lib'
 
 import { logger } from '../logging/index.js'
+import { profileValue } from '../profiles/index.js'
 
 /**
  * Check if DevTools should be enabled (development mode only)
@@ -201,6 +202,38 @@ export async function getAgentModel(tier: ModelTier): Promise<LanguageModel> {
     }
   }
 
+  // Check profile for model default (lower priority than explicit overrides)
+  const profileModel = profileValue('model.default', '')
+  if (profileModel) {
+    logger.info('model.profile.active', {
+      profileModel,
+      tier,
+    })
+
+    try {
+      const model = await getModel(profileModel)
+      const modelInfo = getModelInfo(profileModel)
+      logger.info('model.profile.success', {
+        tier,
+        profileModel,
+        modelInfo: {
+          shortName: modelInfo.shortName,
+          fullName: modelInfo.fullName,
+          provider: modelInfo.provider,
+          usingProxy: modelInfo.usingProxy
+        }
+      })
+      return await wrapWithDevTools(model)
+    } catch (error) {
+      logger.warn('model.profile.failure', {
+        tier,
+        profileModel,
+        error: error instanceof Error ? error.message : String(error),
+        message: 'Falling back to default model selection',
+      })
+    }
+  }
+
   // Check provider availability
   const anthropicAvailable = isAnthropicAvailable()
   const openaiAvailable = isOpenAIAvailable()
@@ -312,6 +345,22 @@ export async function getAgentModelWithName(tier: ModelTier): Promise<{model: an
         error: error instanceof Error ? error.message : String(error)
       })
       throw new Error(`Failed to initialize override model '${overrideModel}'. Please check the model name and API credentials.`)
+    }
+  }
+
+  const profileModel = profileValue('model.default', '')
+  if (profileModel) {
+    logger.info('model.profile.active', { profileModel, tier })
+    try {
+      const model = await getModel(profileModel)
+      return { model: await wrapWithDevTools(model), modelName: profileModel }
+    } catch (error) {
+      logger.warn('model.profile.failure', {
+        tier,
+        profileModel,
+        error: error instanceof Error ? error.message : String(error),
+        message: 'Falling back to default model selection',
+      })
     }
   }
 

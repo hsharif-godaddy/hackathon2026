@@ -64,6 +64,9 @@ export async function createUnifiedAgentFactory(options?: {
   const developConfig = await createDevelopAgent()
   const marketingConfig = await createMarketingAgent()
   const initialConfig = await createInitialAgent(stateManager)
+  const initialV2Config = await createInitialAgent(stateManager, undefined, '2.0')
+  initialV2Config.id = 'initial-v2'
+  initialV2Config.name = 'Initial (v2.0)'
 
   // Pre-create template-specific initial agent variants
   const templateInitialConfigs: Record<string, AgentConfig> = {}
@@ -113,6 +116,7 @@ export async function createUnifiedAgentFactory(options?: {
   developConfig.contextPipeline = contextPipeline
   marketingConfig.contextPipeline = contextPipeline
   initialConfig.contextPipeline = contextPipeline
+  initialV2Config.contextPipeline = contextPipeline
 
   for (const config of Object.values(templateInitialConfigs)) {
     config.contextPipeline = contextPipeline
@@ -121,6 +125,7 @@ export async function createUnifiedAgentFactory(options?: {
   // Build agent definitions conditionally
   const agentDefinitions: Record<string, AgentConfig> = {
     initial: initialConfig,
+    'initial-v2': initialV2Config,
     develop: developConfig,
     marketing: marketingConfig,
     ...templateInitialConfigs,
