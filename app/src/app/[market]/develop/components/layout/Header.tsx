@@ -130,19 +130,16 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
                 <ButtonGroup.Item
                   value={ViewMode.PREVIEW}
                   icon={<WebsiteFilledIcon className="size-2.5" />}
-                  showLabelAlways
                   label={t('builder_preview_button_preview')}
                 />
                 <ButtonGroup.Item
                   value={ViewMode.EDIT}
                   icon={<WandIcon className="size-2.5" />}
-                  showLabelAlways
                   label={t('builder_preview_button_edit')}
                 />
                 <ButtonGroup.Item
                   value={ViewMode.CODE}
                   icon={<CodeIcon className="size-2.5" />}
-                  showLabelAlways
                   label={t('builder_preview_button_code')}
                   disabled={isVersionHistoryOpen}
                 />
@@ -203,13 +200,11 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
               value={MobileMode.TOOLS}
               icon={<Apps2Icon className="size-2.5" />}
               label={t('builder_preview_button_tools')}
-              showLabelAlways
             />
             <ButtonGroup.Item
               value={MobileMode.PREVIEW}
               icon={<MobilePhoneIcon className="size-2.5" />}
               label={t('builder_preview_button_preview')}
-              showLabelAlways
             />
           </ButtonGroup>
           <UserMenu location="develop" />
