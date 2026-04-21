@@ -112,16 +112,57 @@ export const viewport: Viewport = {
 
 const PresentationLayout = withGasketData(gasket)(makeLayout(gasket));
 
+async function resolveTranslations() {
+  const locale = await detectLocale();
+  let messages: Record<string, string> | undefined;
+  try {
+    const fetched = await loadTranslations(locale, ['@airo-app-builder/aab']);
+    if (Object.keys(fetched).length > 0) {
+      messages = fetched;
+    }
+  } catch (error) {
+    logger.error('translations.layout.load.failure', { error });
+  }
+  return { locale, messages };
+}
+
+async function resolveExperiments(
+  headersList: Awaited<ReturnType<typeof headers>>
+): Promise<string | undefined> {
+  try {
+    const cohorts = await gasket.actions.getExperimentCohorts({
+      headers: Object.fromEntries(headersList.entries()),
+    });
+    const aaCohort = cohorts?.['aa-airo-builder'];
+
+    if (aaCohort) {
+      logger.info('hivemind.experiment.triggered', {
+        experimentId: 'aa-airo-builder',
+        cohortId: aaCohort,
+      });
+    }
+
+    return cohorts?.[EXPERIMENT_IDS.homepageEngagement] as string | undefined;
+  } catch (error) {
+    logger.error('hivemind.experiments.error', {
+      experimentIds: JSON.stringify(['aa-airo-builder', EXPERIMENT_IDS.homepageEngagement]),
+      error,
+    });
+    return undefined;
+  }
+}
+
 /**
  * Root layout component for the application
  *
  * **Translation Handling:**
- * - Fetches translations on server-side using getServerIntl (has Map cache)
- * - Map cache only stores successful non-empty results
- * - If server fetch fails (401, network error), falls back to client-side fetch
- * - Empty results are never cached, ensuring fresh attempts on subsequent requests
+ * - Detects the active locale on the server with `detectLocale()`
+ * - Loads translations for `@airo-app-builder/aab` via `loadTranslations()`
+ * - Only passes `messages` to `TranslationsProvider` when non-empty translations are returned
+ * - Logs translation load failures and continues rendering with the resolved locale
  *
- * This ensures translations load reliably regardless of initial auth state.
+ * Translation caching behavior is defined by the underlying `loadTranslations()`
+ * implementation rather than by this layout.
  */
 async function RootLayout({
   children,
@@ -130,49 +171,13 @@ async function RootLayout({
 }>) {
   const headersList = await headers();
 
-  // Instrument page request for APM tracking (sets cid, span.type, pathname)
-  // This runs in Node.js context where OpenTelemetry is active
-  // Note: Middleware can't do this - it runs in Edge Runtime without OTel context
-  await instrumentPageRequest(headersList);
-
-  const locale = await detectLocale();
-
-  let messages: Record<string, string> | undefined;
-  try {
-    const fetchedMessages = await loadTranslations(locale, ['@airo-app-builder/aab']);
-
-    // Only use messages if they're not empty
-    if (Object.keys(fetchedMessages).length > 0) {
-      messages = fetchedMessages;
-    }
-  } catch (error) {
-    // Translation load failed - fall back to client-side fetch
-    logger.error('translations.layout.load.failure', { error });
-  }
-
-  let homepageEngagementCohort: string | undefined;
-
-  try {
-    const headersObj: Record<string, string> = {};
-    headersList.forEach((value, key) => {
-      headersObj[key] = value;
-    });
-    const cohorts = await gasket.actions.getExperimentCohorts({ headers: headersObj });
-    const aaCohort = cohorts?.['aa-airo-builder'];
-    homepageEngagementCohort = cohorts?.[EXPERIMENT_IDS.homepageEngagement] as string | undefined;
-
-    if (aaCohort) {
-      logger.info('hivemind.experiment.triggered', {
-        experimentId: 'aa-airo-builder',
-        cohortId: aaCohort,
-      });
-    }
-  } catch (error) {
-    logger.warn('hivemind.experiment.error', {
-      experimentId: 'aa-airo-builder',
-      error: error instanceof Error ? error.message : String(error),
-    });
-  }
+  const [{ locale, messages }, homepageEngagementCohort] = await Promise.all([
+    resolveTranslations(),
+    resolveExperiments(headersList),
+    instrumentPageRequest(headersList).catch((error) => {
+      logger.error('apm.instrumentation.error', { error });
+    }), // result unused — awaited only for side-effect
+  ]);
 
   return (
     <PresentationLayout>
