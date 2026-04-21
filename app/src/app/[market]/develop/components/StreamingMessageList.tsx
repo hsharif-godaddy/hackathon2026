@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import Box from '@ux/box'
 import Button from '@ux/button'
 import ChevronDownIcon from '@ux/icon/chevron-down'
@@ -33,9 +33,22 @@ interface StreamingMessageListProps {
   isCreateFlowSession?: boolean
   hasInitialPrompt?: boolean
   initialPromptText?: string | null
+  transcriptFooter?: ReactNode
+  /** When transcriptFooter is shown, scroll to bottom when this value changes (e.g. post-publish Go Live nonce). */
+  transcriptFooterScrollNonce?: number
+  /** False while the chat transcript is hidden (e.g. display:none) so scroll runs after it becomes visible. */
+  transcriptContainerVisible?: boolean
 }
 
-export default function StreamingMessageList({ allMessages, isCreateFlowSession = false, hasInitialPrompt = false, initialPromptText = null }: StreamingMessageListProps) {
+export default function StreamingMessageList({
+  allMessages,
+  isCreateFlowSession = false,
+  hasInitialPrompt = false,
+  initialPromptText = null,
+  transcriptFooter = null,
+  transcriptFooterScrollNonce = 0,
+  transcriptContainerVisible = true,
+}: StreamingMessageListProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const [isInitialLoad, setIsInitialLoad] = useState(true)
@@ -256,6 +269,31 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
       setUserHasScrolledUp(false)
     }
   }, [])
+
+  const prevTranscriptFooterScrollNonceRef = useRef(0)
+
+  useLayoutEffect(
+    function scrollTranscriptWhenPostPublishFooterOpens() {
+      if (!transcriptFooter || !transcriptContainerVisible) {
+        if (!transcriptFooter) {
+          prevTranscriptFooterScrollNonceRef.current = 0
+        }
+        return
+      }
+
+      if (transcriptFooterScrollNonce === 0 || transcriptFooterScrollNonce === prevTranscriptFooterScrollNonceRef.current) {
+        return
+      }
+
+      prevTranscriptFooterScrollNonceRef.current = transcriptFooterScrollNonce
+      setUserHasScrolledUp(false)
+      scrollToBottom(false, true)
+      requestAnimationFrame(() => {
+        scrollToBottom(false, true)
+      })
+    },
+    [transcriptFooter, transcriptContainerVisible, transcriptFooterScrollNonce, scrollToBottom],
+  )
 
   // Show "new messages" indicator when new stream starts while user is scrolled up
   useEffect(() => {
@@ -557,6 +595,7 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
             </div>
           </div>
         )}
+        {transcriptFooter}
         <div ref={messagesEndRef} />
       </div>
     )
@@ -665,6 +704,8 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
 
       {/* Standalone thinking indicator when the last assistant message has no content yet */}
       {shouldShowStandaloneThinking && <ThinkingIndicator active={true} />}
+
+      {transcriptFooter}
 
       {/* New messages indicator - shows when user is scrolled up and new messages arrive */}
       {showNewMessageIndicator && (

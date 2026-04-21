@@ -234,27 +234,34 @@ describe('TokenStore Service', () => {
             expect(decryptToken).toHaveBeenCalledTimes(1);
         });
 
-        it('should accept token that expires exactly at 60 second threshold', () => {
-            const exactlyAtBuffer = Date.now() + 60_001; // Just over 60 seconds
-            mockFindOne.mockReturnValue({
-                id: 'token-1',
-                appId: 'app-123',
-                provider: 'godaddy',
-                scopes: 'commerce.product:read',
-                accessTokenEncrypted: 'encrypted-access',
-                accessTokenIv: 'iv-access',
-                accessTokenTag: 'tag-access',
-                expiresAt: exactlyAtBuffer,
-                createdAt: new Date(),
-                updatedAt: new Date(),
-            });
+        it('should accept token that expires just beyond the 60 second buffer', () => {
+            vi.useFakeTimers();
+            try {
+                const now = 1_700_000_000_000;
+                vi.setSystemTime(now);
+                const exactlyBeyondBuffer = now + 60_001;
+                mockFindOne.mockReturnValue({
+                    id: 'token-1',
+                    appId: 'app-123',
+                    provider: 'godaddy',
+                    scopes: 'commerce.product:read',
+                    accessTokenEncrypted: 'encrypted-access',
+                    accessTokenIv: 'iv-access',
+                    accessTokenTag: 'tag-access',
+                    expiresAt: exactlyBeyondBuffer,
+                    createdAt: new Date(),
+                    updatedAt: new Date(),
+                });
 
-            vi.mocked(decryptToken).mockReturnValue('decrypted-access-token');
+                vi.mocked(decryptToken).mockReturnValue('decrypted-access-token');
 
-            const result = TokenStore.findValid(testKey);
+                const result = TokenStore.findValid(testKey);
 
-            expect(result).not.toBeNull();
-            expect(result?.accessToken).toBe('decrypted-access-token');
+                expect(result).not.toBeNull();
+                expect(result?.accessToken).toBe('decrypted-access-token');
+            } finally {
+                vi.useRealTimers();
+            }
         });
     });
 

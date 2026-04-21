@@ -2,14 +2,13 @@ import React from 'react';
 import Box from '@ux/box';
 import Button from '@ux/button';
 import Card from '@ux/card';
-import TextLockup from '@ux/text-lockup';
 
 interface FeatureCardProps {
   id: string;
   icon: React.ReactNode;
   title: string;
   description: string;
-  children: React.ReactNode;
+  children?: React.ReactNode;
   checked: boolean;
   onChange: (checked: boolean) => void;
   onKeyDown?: (e: React.KeyboardEvent) => void;
@@ -61,21 +60,17 @@ export function FeatureCard({
       }}
       {...props}
      >
-      {/* 
-        * Using a div with Tailwind classes here because @ux/box isn't flexible
-        * enough to support the desired layout change across breakpoints.
-        */}
-      <div className="flex flex-col-reverse md:flex-row gap-1 justify-between">
-        <Box orientation="horizontal" gap="sm">
-          {iconElement}
-          <TextLockup
-            title={title}
-            size="sm"
-            >
+      <div className="flex w-full min-w-0 gap-2">
+        <div className="shrink-0">{iconElement}</div>
+        <div className="flex min-w-0 flex-1 flex-col">
+          <span className="mb-0.5 min-w-0 truncate text-sm font-semibold leading-tight">
+            {title}
+          </span>
+          {children != null ? <div className="mb-1 shrink-0 w-fit">{children}</div> : null}
+          <p className="m-0 w-full min-w-0 text-sm leading-relaxed text-intents-ux-neutral-foregroundColor">
             {description}
-          </TextLockup>
-        </Box>
-        {children}
+          </p>
+        </div>
       </div>
     </Card>
   );

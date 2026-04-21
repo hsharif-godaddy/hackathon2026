@@ -39,12 +39,12 @@ In CI, credentials are fetched from AWS Secrets Manager automatically.
 
 ## Test Files
 
-| File                      | Purpose                                                   |
-| ------------------------- | --------------------------------------------------------- |
-| `apps-page.spec.ts`       | Apps page, navigation, homepage input validation          |
-| `authentication.spec.ts`  | Login/logout flows, session persistence, protected routes |
-| `develop-chat.spec.ts`    | Develop page components, chat, preview, header elements   |
-| `develop-publish.spec.ts` | AI agent auto-publish; first-publish congrats modal or success growl |
+| File                      | Purpose                                                                                       |
+| ------------------------- | --------------------------------------------------------------------------------------------- |
+| `apps-page.spec.ts`       | Apps page, navigation, homepage input validation                                              |
+| `authentication.spec.ts`  | Login/logout flows, session persistence, protected routes                                     |
+| `develop-chat.spec.ts`    | Develop page components, chat, preview, header elements                                       |
+| `develop-publish.spec.ts` | AI agent auto-publish; first-publish congrats or growl; publish popover Pre-Launch SEO prompt |
 
 ## Test Strategy
 

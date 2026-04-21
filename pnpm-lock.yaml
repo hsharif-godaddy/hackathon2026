@@ -711,6 +711,9 @@ importers:
       '@sso/deck':
         specifier: ^2.1.3
         version: 2.1.3(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react-intl@7.1.14(react@19.1.0)(typescript@5.9.3))(react@19.1.0)
+      '@switchboard/client':
+        specifier: ^2.5.3
+        version: 2.5.3
       '@tanstack/react-query':
         specifier: ^5.62.14
         version: 5.90.7(react@19.1.0)

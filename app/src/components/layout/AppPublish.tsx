@@ -24,6 +24,7 @@ import TextLockup from '@ux/text-lockup';
 import IconButton from '@/app/[market]/develop/components/IconButton';
 import { ChatTab, SettingsSection } from '@/app/[market]/develop/components/types';
 import { FEEDBACK_ID } from '@/components/feedback/utils';
+import { InfoTooltip } from '@/components/ui/InfoTooltip';
 import { useChatTabs } from '@/hooks/useChatTabs';
 import { useDeploymentsQuery } from '@/hooks/useDeploymentsQuery';
 import { useGitHistoryQuery } from '@/hooks/useGitHistory';
@@ -36,8 +37,10 @@ import { useSubscription } from '@/hooks/useSubscription';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import { JourneyTracker } from '@/lib/journeyTracker';
+import { shipAnalyticsLog } from '@/lib/logging';
 import { DeploymentStatus } from '@/lib/mgmt-airo/types';
 import { PAYWALL_ITC } from '@/lib/paywall/shared';
+import { openPostPublishFeatureSelectionInChat } from '@/lib/post-publish-feature-selection';
 import { getPublishLimit } from '@/lib/publish-limit';
 import { logger } from '@/lib/request-context';
 import { Popover, PopoverContent, PopoverTrigger } from '@/lib/shadcn/popover';
@@ -48,7 +51,7 @@ import { useSiteStore } from '@/stores/useSiteStore';
 import { useIsLoading, useStreamingState } from '@/stores/useStreamingConversationStore';
 import { getPlanDisplayLabelKey } from '@/utils/credits';
 import { isAiroSubdomain, resolveSiteFqdn } from '@/utils/domain';
-import { logAiroHQEvent, logClickEvent } from '@/utils/instrumentation';
+import { generateClickEID, logAiroHQEvent, logClickEvent } from '@/utils/instrumentation';
 import { hasBeenPublished } from '@/utils/site';
 import { timeAgo } from '@/utils/time';
 
@@ -88,6 +91,7 @@ function PublishFailedRetryMessage({ onRetry }: { onRetry: () => void | Promise<
 
 export default function AppPublish({ location = 'develop' }: { location?: string }) {
   const t = useTranslations();
+  const publishGoLiveChatButtonLabel = t('builder_golive_marketing_seo_title', {}, 'SEO Optimization');
   const [open, setOpen] = useState(false);
   const [publishResult, setPublishResult] = useState<'success' | 'failed' | null>(null);
   const openRef = useRef(false);
@@ -134,6 +138,10 @@ export default function AppPublish({ location = 'develop' }: { location?: string
   // AppPublish is always mounted in the header, so without this guard they fire on every page load.
   const publishFlagsEnabled = isPublishButtonEnabledFlag && isDevelopPage;
   const { data: isSecretsEnabled } = useSwitchboard('appbuilder-settings-secrets', { enabled: publishFlagsEnabled });
+  const { data: isPostPublishFeatureSelectionEnabled } = useSwitchboard(
+    'appbuilder-post-publish-feature-selection',
+    { enabled: publishFlagsEnabled }
+  );
 
   const isChatToolbar = location === 'develop.chat_toolbar';
 
@@ -208,6 +216,15 @@ export default function AppPublish({ location = 'develop' }: { location?: string
     ![DeploymentStatus.DEPLOYED, DeploymentStatus.FAILED].includes(mostRecentDeployment.status as DeploymentStatus);
 
   const isPublishingOrDeploying = isPublishing || isDeploymentInProgress;
+
+  const showPostPublishFeatureSelection = useDevelopPageStore((state) =>
+    currentAppId && state.publishStates?.[currentAppId]
+      ? Boolean(state.publishStates[currentAppId].showPostPublishFeatureSelection)
+      : false,
+  );
+
+  const isPreLaunchCheckFromPublishDisabled =
+    isPublishingOrDeploying || isConversationInProgress || showPostPublishFeatureSelection;
 
   openRef.current = open;
 
@@ -436,6 +453,15 @@ export default function AppPublish({ location = 'develop' }: { location?: string
     setActiveChatTab(ChatTab.SETTINGS);
   }, [clickContext, location, setOpen, setActiveSettingsSection, setActiveChatTab]);
 
+  const handleGoLiveInChat = useCallback(() => {
+    if (!currentAppId || isPreLaunchCheckFromPublishDisabled) {
+      return;
+    }
+    openPostPublishFeatureSelectionInChat(currentAppId);
+    shipAnalyticsLog('go_live.chat.opened_from_publish_popover', { appId: currentAppId });
+    setOpen(false);
+  }, [currentAppId, isPreLaunchCheckFromPublishDisabled, setOpen]);
+
   // Register deployments refetch function in store for retry functionality
   useEffect(() => {
     if (currentAppId) {
@@ -653,6 +679,36 @@ export default function AppPublish({ location = 'develop' }: { location?: string
             )}
 
             <Separator />
+
+            {isPostPublishFeatureSelectionEnabled === true && currentAppId && !isFirstTimePublishing && (
+              <div className='relative w-full'>
+                <Button
+                  className='w-full'
+                  design='tertiary'
+                  size='sm'
+                  data-eid={generateClickEID(`${location}.header.publish_go_live_chat`)}
+                  onClick={handleGoLiveInChat}
+                  disabled={isPreLaunchCheckFromPublishDisabled}
+                  text={publishGoLiveChatButtonLabel}
+                />
+                <div className='pointer-events-none absolute inset-0 flex items-center justify-center'>
+                  <div className='inline-flex items-center gap-[8px] me-[calc((8px+0.5rem)/2)]'>
+                    <InfoTooltip
+                      embedded
+                      content={t(
+                        'builder_golive_marketing_seo_description',
+                        {},
+                        'Optimize meta tags, descriptions, and search engine visibility',
+                      )}
+                      contentClassName='p-2 max-w-xs break-words text-left'
+                    />
+                    <span aria-hidden className='invisible select-none whitespace-pre'>
+                      {publishGoLiveChatButtonLabel}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {isAiroSubdomain(fqdn) && !isFirstTimePublishing && (
               <Button

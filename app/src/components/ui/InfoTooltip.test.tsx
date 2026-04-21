@@ -183,4 +183,62 @@ describe('InfoTooltip', () => {
       expect(contentDiv).toHaveClass('max-w-xs');
     });
   });
+
+  describe('embedded mode', function embeddedMode() {
+    function expectVisibleTooltipContent(text: string) {
+      expect(screen.getByRole('tooltip')).toHaveTextContent(text);
+    }
+
+    it('should show tooltip content on hover', async function embeddedShowsOnHover() {
+      const { user } = renderWithProviders(
+        <InfoTooltip embedded content="Embedded tooltip copy" />,
+      );
+
+      const trigger = screen.getByRole('button', { name: 'builder_common_more_info' });
+
+      await user.hover(trigger);
+      await waitFor(
+        () => {
+          expectVisibleTooltipContent('Embedded tooltip copy');
+        },
+        { timeout: 2000 },
+      );
+    });
+
+    it('should show tooltip content when trigger is focused', async function embeddedShowsOnFocus() {
+      const { user } = renderWithProviders(
+        <InfoTooltip embedded content="Embedded focus tip" />,
+      );
+
+      const trigger = screen.getByRole('button', { name: 'builder_common_more_info' });
+
+      await user.tab();
+      expect(trigger).toHaveFocus();
+      await waitFor(
+        () => {
+          expectVisibleTooltipContent('Embedded focus tip');
+        },
+        { timeout: 2000 },
+      );
+    });
+
+    it('should stop click and pointerdown from bubbling', function embeddedStopsPropagation() {
+      const parentClick = vi.fn();
+      const parentPointerDown = vi.fn();
+
+      renderWithProviders(
+        <div onClick={parentClick} onPointerDown={parentPointerDown}>
+          <InfoTooltip embedded content="Tip" />
+        </div>,
+      );
+
+      const trigger = screen.getByRole('button', { name: 'builder_common_more_info' });
+
+      fireEvent.pointerDown(trigger);
+      expect(parentPointerDown).not.toHaveBeenCalled();
+
+      fireEvent.click(trigger);
+      expect(parentClick).not.toHaveBeenCalled();
+    });
+  });
 });

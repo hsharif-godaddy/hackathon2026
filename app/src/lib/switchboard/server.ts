@@ -28,6 +28,7 @@ const SERVER_LOCAL_FEATURE_OVERRIDES: Record<string, boolean> = {
   'appbuilder-assessment-override': true,
   'appbuilder-model-selector': true,
   'appbuilder-agent-profile-selector': true,
+  'appbuilder-post-publish-feature-selection': true,
 };
 
 /**

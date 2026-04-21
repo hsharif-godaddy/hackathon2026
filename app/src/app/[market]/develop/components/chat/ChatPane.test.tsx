@@ -49,8 +49,11 @@ vi.mock('@/app/[market]/develop/components/chat/ChatToolbar', () => ({
 }));
 
 vi.mock('@/app/[market]/develop/components/StreamingMessageList', () => ({
-  default: ({ messages }: any) => (
-    <div data-testid="message-list">Messages: {messages?.length ?? 0}</div>
+  default: ({ allMessages, transcriptFooter }: any) => (
+    <div data-testid="message-list">
+      Messages: {allMessages?.length ?? 0}
+      {transcriptFooter}
+    </div>
   ),
 }));
 

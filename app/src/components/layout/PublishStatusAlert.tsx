@@ -68,6 +68,11 @@ export default function PublishStatusAlert() {
   const showSuccessAlert = useDevelopPageStore((state) =>
     state.publishStates[currentAppId]?.showSuccessAlert ?? false
   );
+  const showPostPublishFeatureSelection = useDevelopPageStore((state) =>
+    currentAppId && state.publishStates?.[currentAppId]
+      ? state.publishStates[currentAppId].showPostPublishFeatureSelection
+      : false
+  );
   const deploymentsRefetch = useDevelopPageStore((state) =>
     state.publishStates[currentAppId]?.deploymentsRefetch ?? null
   );
@@ -209,6 +214,9 @@ export default function PublishStatusAlert() {
   // Automatically show Go Live modal on successful publish if user hasn't gone live yet
   // and hasn't previously dismissed the modal in this session
   useEffect(() => {
+    if (showPostPublishFeatureSelection) {
+      return;
+    }
     if (isGoLiveEnabled && showSuccessAlert && currentAppId && hasBeenPublished(site)) {
       const publishState = getPublishState(currentAppId);
       if (!publishState?.hasGoneLive && !publishState?.goLiveModalDismissed) {
@@ -219,7 +227,7 @@ export default function PublishStatusAlert() {
         setShowGoLiveModal(currentAppId, true);
       }
     }
-  }, [isGoLiveEnabled, showSuccessAlert, currentAppId, site, getPublishState, setShowGoLiveModal]);
+  }, [isGoLiveEnabled, showSuccessAlert, showPostPublishFeatureSelection, currentAppId, site, getPublishState, setShowGoLiveModal]);
 
   useEffect(() => {
     if (!isPublishing && !publishError && !showSuccessAlert) {

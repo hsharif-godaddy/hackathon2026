@@ -159,6 +159,8 @@ const createDefaultPublishState = () => {
     // Feature selections
     featureSelections: null as { qa: boolean; security: boolean; video: boolean; marketing: boolean } | null,
     marketingSelections: null as { seo: boolean; socialPosts: boolean; blogPost: boolean } | null,
+    showPostPublishFeatureSelection: false,
+    postPublishFeatureSelectionNonce: 0,
   };
 }
 
@@ -240,6 +242,8 @@ interface DevelopPageStore {
     launchVideoResult: LaunchVideoResult | null
     featureSelections: { qa: boolean; security: boolean; video: boolean; marketing: boolean } | null
     marketingSelections: { seo: boolean; socialPosts: boolean; blogPost: boolean } | null
+    showPostPublishFeatureSelection: boolean
+    postPublishFeatureSelectionNonce: number
   }>
 
   domainJobsInProgress: Record<string, DomainJobInProgress>
@@ -331,6 +335,8 @@ interface DevelopPageStore {
     launchVideoResult: LaunchVideoResult | null
     featureSelections: { qa: boolean; security: boolean; video: boolean; marketing: boolean } | null
     marketingSelections: { seo: boolean; socialPosts: boolean; blogPost: boolean } | null
+    showPostPublishFeatureSelection: boolean
+    postPublishFeatureSelectionNonce: number
   }
 
   // Go Live modal actions
@@ -342,6 +348,7 @@ interface DevelopPageStore {
   setMarketingSelections: (appId: string, selections: { seo: boolean; socialPosts: boolean; blogPost: boolean }) => void
   markAsGoneLive: (appId: string) => Promise<void>
   hasGoneLive: (appId: string) => boolean
+  setPostPublishFeatureSelection: (appId: string, show: boolean) => void
 
   // Page loading orchestration
   initializePage: (appId: string) => Promise<void>
@@ -635,6 +642,9 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         state.publishStates[appId] = createDefaultPublishState();
       }
       state.publishStates[appId].isPublishing = isPublishing;
+      if (isPublishing) {
+        state.publishStates[appId].showPostPublishFeatureSelection = false;
+      }
     }),
     setPublishError: (appId: string, hasError: boolean) => set((state) => {
       if (!state.publishStates[appId]) {
@@ -1001,7 +1011,17 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
       // Check localStorage if not in state
       const goLiveStatus = loadGoLiveStatus();
       return goLiveStatus.hasGoneLive;
-    }
+    },
+
+    setPostPublishFeatureSelection: (appId: string, show: boolean) => set((state) => {
+      if (!state.publishStates[appId]) {
+        state.publishStates[appId] = createDefaultPublishState();
+      }
+      state.publishStates[appId].showPostPublishFeatureSelection = show;
+      if (show) {
+        state.publishStates[appId].postPublishFeatureSelectionNonce += 1;
+      }
+    })
   })),
     { name: 'DevelopPageStore' }
   )

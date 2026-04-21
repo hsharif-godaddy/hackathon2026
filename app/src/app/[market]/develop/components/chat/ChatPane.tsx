@@ -12,6 +12,7 @@ import { ChatContext, type SendMessageOptions as SendChatMessageOptions } from '
 import ChatInput, { type StagedChatFile } from '@/app/[market]/develop/components/chat/ChatInput'
 import ChatToolbar from '@/app/[market]/develop/components/chat/ChatToolbar'
 import { UploadedFile } from '@/app/[market]/develop/components/chat/FileUploadButton'
+import PostPublishFeatureSelection from '@/app/[market]/develop/components/chat/PostPublishFeatureSelection'
 import {
   getStagedFilePreviewUrl,
   revokeStagedFilePreviewIfCached,
@@ -230,6 +231,18 @@ export default function ChatPane({
   const { activeChatTab, setActiveChatTab } = useChatTabs()
 
   const appId = useAppIdFromParams()
+
+  const showPostPublishFeatureSelection = useDevelopPageStore((state) =>
+    appId && state.publishStates?.[appId]
+      ? state.publishStates[appId].showPostPublishFeatureSelection
+      : false
+  )
+
+  const postPublishFeatureSelectionNonce = useDevelopPageStore((state) =>
+    appId && state.publishStates?.[appId]
+      ? state.publishStates[appId].postPublishFeatureSelectionNonce
+      : 0
+  )
 
   // Load current todo list into store so InputActionsPanel has data when the flag is on
   useTodoListLoader(areChatPlansEnabled ? appId : null)
@@ -964,7 +977,24 @@ export default function ChatPane({
             onToggleExpandedPlan={toggleExpandedPlan}
           />
 
-          <StreamingMessageList allMessages={visibleMessages} isCreateFlowSession={isCreateFlowSession} hasInitialPrompt={hasInitialPrompt} initialPromptText={initialPromptText} />
+          <StreamingMessageList
+            allMessages={visibleMessages}
+            isCreateFlowSession={isCreateFlowSession}
+            hasInitialPrompt={hasInitialPrompt}
+            initialPromptText={initialPromptText}
+            transcriptContainerVisible
+            transcriptFooter={
+              showPostPublishFeatureSelection && appId ? (
+                <PostPublishFeatureSelection
+                  key={postPublishFeatureSelectionNonce}
+                  appId={appId}
+                />
+              ) : null
+            }
+            transcriptFooterScrollNonce={
+              showPostPublishFeatureSelection && appId ? postPublishFeatureSelectionNonce : 0
+            }
+          />
 
           {showProactiveBudgetBanner && (
             <div className="mx-2 sm:mx-3 mb-2">
@@ -1026,7 +1056,24 @@ export default function ChatPane({
         >
           {!areChatPlansEnabled && <PersistentTodoList />}
 
-          <StreamingMessageList allMessages={visibleMessages} isCreateFlowSession={isCreateFlowSession} hasInitialPrompt={hasInitialPrompt} initialPromptText={initialPromptText} />
+          <StreamingMessageList
+            allMessages={visibleMessages}
+            isCreateFlowSession={isCreateFlowSession}
+            hasInitialPrompt={hasInitialPrompt}
+            initialPromptText={initialPromptText}
+            transcriptContainerVisible={activeChatTab === ChatTab.CHAT}
+            transcriptFooter={
+              showPostPublishFeatureSelection && appId ? (
+                <PostPublishFeatureSelection
+                  key={postPublishFeatureSelectionNonce}
+                  appId={appId}
+                />
+              ) : null
+            }
+            transcriptFooterScrollNonce={
+              showPostPublishFeatureSelection && appId ? postPublishFeatureSelectionNonce : 0
+            }
+          />
 
           {safeBuildErrorContext && (
             <div className="mx-2 rounded-md overflow-hidden border">

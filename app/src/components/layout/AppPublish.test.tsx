@@ -9,7 +9,9 @@ import { screen, waitFor } from '@testing-library/react';
 import Growl from '@ux/growl';
 
 import AppPublish from '@/components/layout/AppPublish';
+import { shipAnalyticsLog } from '@/lib/logging';
 import { DeploymentStatus } from '@/lib/mgmt-airo/types';
+import { openPostPublishFeatureSelectionInChat } from '@/lib/post-publish-feature-selection';
 import { createMockSite, mockRouter } from '@/tests/mocks';
 import { renderWithProviders } from '@/tests/test-utils';
 
@@ -21,6 +23,7 @@ type MockPublishSlice = {
   publishError?: boolean;
   showFirstPublishCongrats?: boolean;
   firstPublishDeployPending?: boolean;
+  showPostPublishFeatureSelection?: boolean;
 };
 
 const mockDevelopStore = {
@@ -33,6 +36,7 @@ const mockDevelopStore = {
       publishError: slice?.publishError ?? false,
       showFirstPublishCongrats: slice?.showFirstPublishCongrats ?? false,
       firstPublishDeployPending: slice?.firstPublishDeployPending ?? false,
+      showPostPublishFeatureSelection: slice?.showPostPublishFeatureSelection ?? false,
     };
   },
   setIsPublishing: vi.fn(),
@@ -91,7 +95,7 @@ vi.mock('@/hooks/useGitHistory', () => ({
 }));
 
 vi.mock('@/hooks/useIsHistoryDisabled', () => ({
-  useIsHistoryDisabled: () => false,
+  useIsHistoryDisabled: () => ({ isDisabled: false }),
 }));
 
 vi.mock('@/hooks/usePaywallModal', () => ({
@@ -128,11 +132,22 @@ vi.mock('@/hooks/useSwitchboard', () => ({
     if (feature === 'appbuilder-airoplus-paywall') {
       return { data: true, isLoading: false };
     }
+    if (feature === 'appbuilder-post-publish-feature-selection') {
+      return { data: true, isLoading: false };
+    }
     if (feature === 'appbuilder-settings-secrets') {
       return { data: false, isLoading: false };
     }
     return { data: false, isLoading: false };
   }),
+}));
+
+vi.mock('@/lib/logging', () => ({
+  shipAnalyticsLog: vi.fn(),
+}));
+
+vi.mock('@/lib/post-publish-feature-selection', () => ({
+  openPostPublishFeatureSelectionInChat: vi.fn(),
 }));
 
 vi.mock('@/lib/request-context', () => ({
@@ -381,6 +396,122 @@ describe('AppPublish', () => {
     await waitFor(() => {
       expect(mockDevelopStore.setShowFeedbackBanner).not.toHaveBeenCalled();
     });
+  });
+
+  it('should show Go Live button when app was published and post-publish flag is on', async function goLiveButton() {
+    mockSiteStore.getSite.mockReturnValue(
+      createMockSite({
+        id: 'app-123',
+        agent_url: 'https://app-123.agent.test',
+        variants: ['publish'],
+      })
+    );
+
+    const { user } = renderWithProviders(<AppPublish />);
+    const trigger = await screen.findByRole('button', { name: 'builder_publish_button' });
+    await user.click(trigger);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /builder_golive_marketing_seo_title/ })).toBeInTheDocument();
+    });
+  });
+
+  it('should open go live in chat when Go Live is clicked', async function goLiveClick() {
+    mockSiteStore.getSite.mockReturnValue(
+      createMockSite({
+        id: 'app-123',
+        agent_url: 'https://app-123.agent.test',
+        variants: ['publish'],
+      })
+    );
+
+    const { user } = renderWithProviders(<AppPublish />);
+    const trigger = await screen.findByRole('button', { name: 'builder_publish_button' });
+    await user.click(trigger);
+
+    const goLive = await screen.findByRole('button', { name: /builder_golive_marketing_seo_title/ });
+    await user.click(goLive);
+
+    expect(vi.mocked(openPostPublishFeatureSelectionInChat)).toHaveBeenCalledWith('app-123');
+    expect(vi.mocked(shipAnalyticsLog)).toHaveBeenCalledWith('go_live.chat.opened_from_publish_popover', {
+      appId: 'app-123',
+    });
+  });
+
+  it('should disable Pre-Launch Check while publish or deploy is in progress', async function preLaunchDisabledPublishing() {
+    mockSiteStore.getSite.mockReturnValue(
+      createMockSite({
+        id: 'app-123',
+        agent_url: 'https://app-123.agent.test',
+        variants: ['publish'],
+      }),
+    );
+    mockDevelopStore.publishStates['app-123'] = { isPublishing: true };
+
+    const { user } = renderWithProviders(<AppPublish />);
+    const trigger = await screen.findByRole('button', { name: /builder_publish_button/ });
+    await user.click(trigger);
+
+    const goLive = await screen.findByRole('button', { name: /builder_golive_marketing_seo_title/ });
+    expect(goLive).toBeDisabled();
+    await user.click(goLive);
+    expect(vi.mocked(openPostPublishFeatureSelectionInChat)).not.toHaveBeenCalled();
+  });
+
+  it('should disable Pre-Launch Check while the chat pre-launch prompt is open', async function preLaunchDisabledPromptOpen() {
+    mockSiteStore.getSite.mockReturnValue(
+      createMockSite({
+        id: 'app-123',
+        agent_url: 'https://app-123.agent.test',
+        variants: ['publish'],
+      }),
+    );
+    mockDevelopStore.publishStates['app-123'] = { showPostPublishFeatureSelection: true };
+
+    const { user } = renderWithProviders(<AppPublish />);
+    const trigger = await screen.findByRole('button', { name: 'builder_publish_button' });
+    await user.click(trigger);
+
+    const goLive = await screen.findByRole('button', { name: /builder_golive_marketing_seo_title/ });
+    expect(goLive).toBeDisabled();
+    await user.click(goLive);
+    expect(vi.mocked(openPostPublishFeatureSelectionInChat)).not.toHaveBeenCalled();
+  });
+
+  it('should disable Pre-Launch Check while a chat response is in progress', async function preLaunchDisabledStreaming() {
+    mockSiteStore.getSite.mockReturnValue(
+      createMockSite({
+        id: 'app-123',
+        agent_url: 'https://app-123.agent.test',
+        variants: ['publish'],
+      }),
+    );
+    mockStreaming.isLoading = true;
+
+    const { user } = renderWithProviders(<AppPublish />);
+    const trigger = await screen.findByRole('button', { name: 'builder_publish_button' });
+    await user.click(trigger);
+
+    const goLive = await screen.findByRole('button', { name: /builder_golive_marketing_seo_title/ });
+    expect(goLive).toBeDisabled();
+    await user.click(goLive);
+    expect(vi.mocked(openPostPublishFeatureSelectionInChat)).not.toHaveBeenCalled();
+  });
+
+  it('should not show Go Live button for first-time publish', async function noGoLiveFirstTime() {
+    mockSiteStore.getSite.mockReturnValue(
+      createMockSite({
+        id: 'app-123',
+        agent_url: 'https://app-123.agent.test',
+        variants: [],
+      })
+    );
+
+    const { user } = renderWithProviders(<AppPublish />);
+    const trigger = await screen.findByRole('button', { name: 'builder_publish_button' });
+    await user.click(trigger);
+
+    expect(screen.queryByRole('button', { name: /builder_golive_marketing_seo_title/ })).not.toBeInTheDocument();
   });
 
   it('should add success growl with feedback CTA when publish completes while popover closed', async function successGrowlIncludesFeedback() {

@@ -129,12 +129,25 @@ interface ButtonGroupItemProps extends Omit<HTMLMotionProps<'button'>, 'onClick'
   label?: string;
   disabled?: boolean;
   onClick?: () => void;
+  /** When true, label stays visible for inactive items (e.g. header view toggles). */
+  showLabelAlways?: boolean;
   tooltipDescription?: string | React.ReactNode;
   'data-eid'?: string;
 }
 
 const ButtonGroupItem = forwardRef<HTMLButtonElement, ButtonGroupItemProps>(function ButtonGroupItem(
-  { value, icon, label, disabled, onClick, tooltipDescription = null, 'data-eid': dataEid, className: extraClassName, ...rest },
+  {
+    value,
+    icon,
+    label,
+    disabled,
+    onClick,
+    showLabelAlways = false,
+    tooltipDescription = null,
+    'data-eid': dataEid,
+    className: extraClassName,
+    ...rest
+  },
   forwardedRef
 ) {
   const context = useButtonGroupContext();
@@ -190,7 +203,7 @@ const ButtonGroupItem = forwardRef<HTMLButtonElement, ButtonGroupItemProps>(func
       inactiveObserver.disconnect();
       unregisterWidths(registrationId);
     };
-  }, [isSelectable, label, registerActiveWidth, registerInactiveWidth, unregisterWidths, registrationId]);
+  }, [isSelectable, label, registerActiveWidth, registerInactiveWidth, unregisterWidths, registrationId, showLabelAlways]);
 
   const handleClick = () => {
     if (disabled) return;
@@ -261,24 +274,31 @@ const ButtonGroupItem = forwardRef<HTMLButtonElement, ButtonGroupItemProps>(func
             className="pointer-events-none invisible absolute left-0 top-0 flex items-center p-1 whitespace-nowrap"
           >
             <span className="flex items-center size-2.5">{icon}</span>
+            {showLabelAlways ? (
+              <span className="ml-1 text-sm font-medium">{label}</span>
+            ) : null}
           </span>
         </>
       )}
       <span className="flex items-center size-2.5">{icon}</span>
-      <AnimatePresence initial={false}>
-        {isActive && label && (
-          <motion.span
-            key="label"
-            initial={{ opacity: 0, width: 0, marginLeft: 0 }}
-            animate={{ opacity: 1, width: 'auto', marginLeft: 4 }}
-            exit={{ opacity: 0, width: 0, marginLeft: 0 }}
-            transition={{ duration: 0.2 }}
-            className="text-sm font-medium whitespace-nowrap"
-          >
-            {label}
-          </motion.span>
-        )}
-      </AnimatePresence>
+      {label && showLabelAlways ? (
+        <span className="ml-1 text-sm font-medium whitespace-nowrap">{label}</span>
+      ) : (
+        <AnimatePresence initial={false}>
+          {isActive && label && (
+            <motion.span
+              key="label"
+              initial={{ opacity: 0, width: 0, marginLeft: 0 }}
+              animate={{ opacity: 1, width: 'auto', marginLeft: 4 }}
+              exit={{ opacity: 0, width: 0, marginLeft: 0 }}
+              transition={{ duration: 0.2 }}
+              className="text-sm font-medium whitespace-nowrap"
+            >
+              {label}
+            </motion.span>
+          )}
+        </AnimatePresence>
+      )}
       {!isActive && showTooltip && tooltipComponent}
     </motion.button>
   );

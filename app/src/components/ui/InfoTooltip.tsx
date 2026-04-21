@@ -5,21 +5,25 @@ import InfoIcon from '@ux/icon/information';
 import Tooltip from '@ux/tooltip';
 
 import { useTranslations } from '@/hooks/useTranslations';
+import { cn } from '@/lib/utils';
 
 interface InfoTooltipProps {
   content: string;
   iconClassName?: string;
   contentClassName?: string;
+  /** Compact trigger for overlays (e.g. aligned over a parent control); stops click bubbling */
+  embedded?: boolean;
 }
 
 export function InfoTooltip({
   content,
   iconClassName = 'size-2 text-intents-ux-passive-foregroundColor',
   contentClassName = 'p-1 max-w-[25ch] break-words',
+  embedded = false,
 }: InfoTooltipProps) {
   const t = useTranslations();
   const [show, setShow] = useState(false);
-  const anchorRef = useRef<HTMLButtonElement | null>(null);
+  const anchorRef = useRef<HTMLButtonElement>(null);
   const tooltipId = useId();
 
   return (
@@ -37,15 +41,23 @@ export function InfoTooltip({
             setShow(false);
           }
         }}
+        onClick={embedded ? (event) => event.stopPropagation() : undefined}
+        onPointerDown={embedded ? (event) => event.stopPropagation() : undefined}
         aria-expanded={show}
         aria-describedby={show ? tooltipId : undefined}
-        className="inline-flex items-center"
+        className={
+          embedded
+            ? 'pointer-events-auto inline-flex shrink-0 items-center border-0 bg-transparent p-0'
+            : 'inline-flex items-center'
+        }
       >
         <InfoIcon className={iconClassName} />
       </button>
       {show && (
         <Tooltip id={tooltipId} anchorRef={anchorRef} portalElem={document.body}>
-          <div className={contentClassName}>{content}</div>
+          <div className={cn(embedded && 'max-w-xs text-left', contentClassName)}>
+            {content}
+          </div>
         </Tooltip>
       )}
     </>

@@ -501,6 +501,26 @@ describe('PublishStatusAlert', () => {
     expect(mockDevelopStore.setShowGoLiveModal).not.toHaveBeenCalled();
   });
 
+  it('should NOT show Go Live modal when post-publish feature selection is active in chat', async () => {
+    mockDevelopStore.publishStates = {
+      'app-123': {
+        showSuccessAlert: true,
+        hasGoneLive: false,
+        showPostPublishFeatureSelection: true,
+      },
+    };
+    mockSiteStore.getSite.mockReturnValue({
+      id: 'app-123',
+      published_url: 'https://example.com',
+    });
+
+    renderWithProviders(<PublishStatusAlert />);
+
+    await waitFor(() => {
+      expect(mockDevelopStore.setShowGoLiveModal).not.toHaveBeenCalled();
+    });
+  });
+
   describe('feedback button', () => {
     it('should render feedback button in publishing state', () => {
       mockDevelopStore.publishStates = {

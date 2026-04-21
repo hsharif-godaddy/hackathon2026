@@ -406,6 +406,93 @@ describe('StreamingMessageList', function packageTests() {
       // Should be considered "near bottom" and resume auto-scroll
       expect(scrollContainer).toBeInTheDocument();
     });
+
+    describe('transcript footer scroll', function transcriptFooterScroll() {
+      it('scrolls when transcriptFooterScrollNonce increases', async function scrollOnNonceIncrease() {
+        const messages = [
+          {
+            id: 'msg-1',
+            role: 'user' as const,
+            content: 'Hello',
+            timestamp: new Date(),
+          },
+        ];
+        const footer = <div data-testid="transcript-footer">pre-launch</div>;
+
+        const { rerender } = renderWithProviders(
+          <StreamingMessageList
+            allMessages={messages}
+            transcriptFooter={footer}
+            transcriptFooterScrollNonce={1}
+            transcriptContainerVisible={true}
+          />,
+        );
+
+        await vi.waitFor(
+          () => {
+            expect(scrollIntoViewMock).toHaveBeenCalled();
+          },
+          { timeout: 300 },
+        );
+
+        scrollIntoViewMock.mockClear();
+
+        rerender(
+          <StreamingMessageList
+            allMessages={messages}
+            transcriptFooter={footer}
+            transcriptFooterScrollNonce={2}
+            transcriptContainerVisible={true}
+          />,
+        );
+
+        await vi.waitFor(
+          () => {
+            expect(scrollIntoViewMock).toHaveBeenCalled();
+          },
+          { timeout: 300 },
+        );
+      });
+
+      it('scrolls when transcriptContainerVisible becomes true with footer and nonce', async function scrollWhenVisible() {
+        const messages = [
+          {
+            id: 'msg-1',
+            role: 'user' as const,
+            content: 'Hello',
+            timestamp: new Date(),
+          },
+        ];
+        const footer = <div data-testid="transcript-footer">pre-launch</div>;
+
+        const { rerender } = renderWithProviders(
+          <StreamingMessageList
+            allMessages={messages}
+            transcriptFooter={footer}
+            transcriptFooterScrollNonce={1}
+            transcriptContainerVisible={false}
+          />,
+        );
+
+        scrollIntoViewMock.mockClear();
+
+        rerender(
+          <StreamingMessageList
+            allMessages={messages}
+            transcriptFooter={footer}
+            transcriptFooterScrollNonce={1}
+            transcriptContainerVisible={true}
+          />,
+        );
+
+        await vi.waitFor(
+          () => {
+            expect(scrollIntoViewMock).toHaveBeenCalled();
+          },
+          { timeout: 300 },
+        );
+      });
+    });
   });
 
   describe('startTime assignment for Completed indicator', function startTimeTests() {
