@@ -4,13 +4,13 @@ import clsx from 'clsx';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import Box from '@ux/box';
-import ChevronLeftIcon from '@ux/icon/chevron-left';
 import Tag from '@ux/tag';
 
 import { AiroLogo } from '@/components/layout/AiroLogo';
 import AppPublish from '@/components/layout/AppPublish';
 import AppSelector from '@/components/layout/AppSelector';
 import DiscordLink from '@/components/layout/DiscordLink';
+import GoDaddyLink from '@/components/layout/GoDaddyLink';
 import HeaderUpgradeButton from '@/components/layout/HeaderUpgradeButton';
 import IframeCloseButton from '@/components/layout/IframeCloseButton';
 import InviteFriends from '@/components/layout/InviteFriends';
@@ -46,16 +46,7 @@ export default function Header({ actions, onShowMockLogin, location = 'unknown',
       <div className="mx-auto px-2 sm:px-3 lg:px-4">
         <div className="flex justify-between items-center h-8">
           <div className="flex items-center space-x-1.5" data-partial="componentAiro">
-            {isHomepage && (
-              <Link
-                href={godaddyUrl}
-                className="flex items-center mr-2"
-                data-eid={ generateClickEID(`${location}.header.godaddy_link`) }
-                aria-label="Back to GoDaddy"
-              >
-                <ChevronLeftIcon className="w-4 h-4" />
-              </Link>
-            )}
+            <GoDaddyLink location={location} className="mr-2" />
             <Link
               href={isHomepage ? godaddyUrl : '/'}
               className="flex items-center"

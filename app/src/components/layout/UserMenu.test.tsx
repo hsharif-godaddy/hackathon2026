@@ -128,7 +128,7 @@ describe('UserMenu', function userMenuTests() {
         expect(screen.getByText('builder_user_menu_refer_friend')).toBeInTheDocument();
         expect(screen.getByText('builder_user_menu_join_discord')).toBeInTheDocument();
         expect(screen.getByText('builder_user_menu_give_feedback')).toBeInTheDocument();
-        expect(screen.getByText('builder_user_menu_airo_hq')).toBeInTheDocument();
+        expect(screen.getByText('builder_user_menu_godaddy')).toBeInTheDocument();
         expect(screen.getByText('builder_user_menu_sign_out')).toBeInTheDocument();
       });
 
@@ -182,13 +182,13 @@ describe('UserMenu', function userMenuTests() {
       mockUseAuthContext.mockReturnValue(mockAuthContext({ isAuthenticated: false, isAuthDisabled: false }));
     });
 
-    it('should show only GoDaddy Airo and Sign In', async function showUnauthItems() {
+    it('should show only GoDaddy, Airo and Sign In', async function showUnauthItems() {
       const { user } = renderWithProviders(<UserMenu location="develop" />);
 
       await user.click(screen.getByLabelText('builder_user_menu_label'));
 
       await waitFor(function checkItems() {
-        expect(screen.getByText('builder_user_menu_airo_hq')).toBeInTheDocument();
+        expect(screen.getByText('builder_user_menu_godaddy')).toBeInTheDocument();
         expect(screen.getByText('builder_common_signin')).toBeInTheDocument();
       });
 
@@ -330,6 +330,51 @@ describe('UserMenu', function userMenuTests() {
         await user.click(screen.getByText('builder_user_menu_my_products'));
 
         expect(hrefSetter).toHaveBeenCalledWith('https://account.godaddy.com/products');
+      } finally {
+        Object.defineProperty(window, 'location', {
+          value: originalLocation,
+          writable: true,
+          configurable: true,
+        });
+      }
+    });
+  });
+
+  describe('GoDaddy menu item', function godaddyTests() {
+    it('should show GoDaddy when authenticated', async function showWhenAuthenticated() {
+      const { user } = renderWithProviders(<UserMenu location="develop" />);
+
+      await user.click(screen.getByLabelText('builder_user_menu_label'));
+
+      await waitFor(function checkGoDaddy() {
+        expect(screen.getByText('builder_user_menu_godaddy')).toBeInTheDocument();
+      });
+    });
+
+    it('should navigate to godaddy.com when clicked', async function navigate() {
+      const originalLocation = window.location;
+      const hrefSetter = vi.fn();
+      Object.defineProperty(window, 'location', {
+        value: { ...originalLocation, href: '' },
+        writable: true,
+        configurable: true,
+      });
+      Object.defineProperty(window.location, 'href', {
+        set: hrefSetter,
+        configurable: true,
+      });
+
+      try {
+        const { user } = renderWithProviders(<UserMenu location="develop" />);
+
+        await user.click(screen.getByLabelText('builder_user_menu_label'));
+        await waitFor(function checkGoDaddy() {
+          expect(screen.getByText('builder_user_menu_godaddy')).toBeInTheDocument();
+        });
+
+        await user.click(screen.getByText('builder_user_menu_godaddy'));
+
+        expect(hrefSetter).toHaveBeenCalledWith('https://www.godaddy.com');
       } finally {
         Object.defineProperty(window, 'location', {
           value: originalLocation,

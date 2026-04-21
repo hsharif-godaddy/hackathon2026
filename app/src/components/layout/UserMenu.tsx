@@ -5,8 +5,8 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Button from '@ux/button';
 import AppsIcon from '@ux/icon/apps';
 import CommentsIcon from '@ux/icon/comments';
+import GdTheGoIcon from '@ux/icon/gd-the-go';
 import HeartIcon from '@ux/icon/heart';
-import InfoIcon from '@ux/icon/information';
 import LogoutIcon from '@ux/icon/logout';
 import MapIcon from '@ux/icon/map';
 import ProductsIcon from '@ux/icon/products';
@@ -33,7 +33,7 @@ import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { getRootDomain } from '@/utils/getRootDomain';
 import { logClickEvent } from '@/utils/instrumentation';
 
-const AIRO_HQ_URL = 'https://airo.godaddy.com';
+const GODADDY_URL = 'https://www.godaddy.com';
 const getMyProductsUrl = () => `https://account.${getRootDomain() || 'godaddy.com'}/products`;
 
 interface MenuItemConfig {
@@ -111,11 +111,10 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
 
   const closeFeedback = useCallback(() => setFeedbackOpen(false), []);
 
-  const handleAiroHQ = () => {
+  const handleGoDaddy = useCallback(() => {
     setOpen(false);
-    const win = window.open(AIRO_HQ_URL, '_blank', 'noopener,noreferrer');
-    if (win) win.opener = null;
-  };
+    window.location.href = GODADDY_URL;
+  }, []);
 
   const showManagePlan = !!(isManagePlanEnabled && activeSubscription?.builderEntitlementId);
 
@@ -132,7 +131,7 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
     if (!isAuthenticated) {
       return [
         [
-          { key: 'airo-hq', onClick: handleAiroHQ, eid: `${location}.user_menu.airo_hq`, icon: <InfoIcon className="size-2" />, text: t('builder_user_menu_airo_hq') },
+          { key: 'godaddy', onClick: handleGoDaddy, eid: `${location}.user_menu.godaddy`, icon: <GdTheGoIcon className="size-2" />, text: t('builder_user_menu_godaddy') },
           { key: 'sign-in', onClick: handleSignInClick, eid: `${location}.user_menu.sign_in`, icon: <UserIcon className="size-2" />, text: t('builder_common_signin') },
         ],
       ];
@@ -152,12 +151,12 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
         { key: 'give-feedback', onClick: handleGiveFeedback, eid: `${location}.user_menu.give_feedback`, icon: <CommentsIcon className="size-2" />, text: t('builder_user_menu_give_feedback') },
       ].filter(Boolean) as MenuItemConfig[],
       [
-        { key: 'airo-hq', onClick: handleAiroHQ, eid: `${location}.user_menu.airo_hq`, icon: <InfoIcon className="size-2" />, text: t('builder_user_menu_airo_hq') },
+        { key: 'godaddy', onClick: handleGoDaddy, eid: `${location}.user_menu.godaddy`, icon: <GdTheGoIcon className="size-2" />, text: t('builder_user_menu_godaddy') },
         { key: 'sign-out', onClick: handleSignOut, eid: `${location}.user_menu.sign_out`, icon: <LogoutIcon className="size-2" />, text: t('builder_user_menu_sign_out') },
       ],
     ];
 
-  }, [location, t, isAuthenticated, showManagePlan, isDevelopPage, handleSignOut, handleSignInClick]);
+  }, [location, t, isAuthenticated, showManagePlan, isDevelopPage, handleSignOut, handleSignInClick, handleGoDaddy]);
 
   return (
     <>

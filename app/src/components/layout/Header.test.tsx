@@ -56,8 +56,16 @@ describe('Header', () => {
   it('should render Airo logo link', () => {
     renderWithProviders(<Header />);
 
-    const link = screen.getByRole('link');
-    expect(link).toHaveAttribute('href', '/');
+    const links = screen.getAllByRole('link');
+    const airoLink = links.find(link => link.getAttribute('href') === '/');
+    expect(airoLink).toBeInTheDocument();
+  });
+
+  it('should render GoDaddy logo link', () => {
+    renderWithProviders(<Header />);
+
+    const godaddyLink = screen.getByRole('link', { name: 'builder_common_back_godaddy' });
+    expect(godaddyLink).toBeInTheDocument();
   });
 
   it('should render beta tag', () => {
