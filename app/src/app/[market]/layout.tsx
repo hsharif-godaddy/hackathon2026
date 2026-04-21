@@ -3,6 +3,7 @@ import "@/styles/globals.scss";
 import type { Metadata, Viewport } from "next";
 import { headers } from "next/headers";
 import { Suspense } from "react";
+import { withGasketData } from '@gasket/nextjs/layout';
 import { makeLayout } from '@godaddy/gasket-next/layout';
 
 import AuthBoundary from "@/components/auth/AuthBoundary";
@@ -110,7 +111,7 @@ export const viewport: Viewport = {
   userScalable: false,
 }
 
-const PresentationLayout = makeLayout(gasket);
+const PresentationLayout = withGasketData(gasket)(makeLayout(gasket));
 
 /**
  * Root layout component for the application

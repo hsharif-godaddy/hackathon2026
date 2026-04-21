@@ -51,6 +51,10 @@ vi.mock('@/config/experiments', () => ({
   EXPERIMENT_IDS: { homepageEngagement: 'homepage-engagement' },
 }));
 
+vi.mock('@gasket/nextjs/layout', () => ({
+  withGasketData: () => (Component: React.ComponentType<any>) => Component,
+}));
+
 vi.mock('@godaddy/gasket-next/layout', () => ({
   makeLayout: () => ({ children, params }: { children: React.ReactNode; params: unknown }) => <>{children}</>,
 }));
