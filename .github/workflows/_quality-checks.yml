@@ -110,7 +110,7 @@ jobs:
 
       # Note: pnpm store path is Linux-specific; self-hosted runners are Linux-only
       - name: Cache pnpm store
-        uses: actions/cache@v5.0.4
+        uses: actions/cache@v5.0.5
         with:
           path: ~/.local/share/pnpm/store
           key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
@@ -118,14 +118,14 @@ jobs:
 
       - name: Cache Next.js build
         if: inputs.cache-next-build
-        uses: actions/cache@v5.0.4
+        uses: actions/cache@v5.0.5
         with:
           path: ${{ inputs.working-directory }}/.next/cache
           key: nextjs-${{ runner.os }}-${{ hashFiles(format('{0}/**/*.ts', inputs.working-directory), format('{0}/**/*.tsx', inputs.working-directory), format('{0}/next.config.*', inputs.working-directory), format('{0}/tailwind.config.*', inputs.working-directory), format('{0}/tsconfig*.json', inputs.working-directory), format('{0}/package.json', inputs.working-directory), 'pnpm-lock.yaml') }}
           restore-keys: nextjs-${{ runner.os }}-
 
       - name: Cache Turborepo
-        uses: actions/cache@v5.0.4
+        uses: actions/cache@v5.0.5
         with:
           path: .turbo
           key: turbo-${{ runner.os }}-${{ github.sha }}
@@ -217,14 +217,14 @@ jobs:
 
       # Note: pnpm store path is Linux-specific; self-hosted runners are Linux-only
       - name: Cache pnpm store
-        uses: actions/cache@v5.0.4
+        uses: actions/cache@v5.0.5
         with:
           path: ~/.local/share/pnpm/store
           key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
           restore-keys: pnpm-store-${{ runner.os }}-
 
       - name: Cache Turborepo
-        uses: actions/cache@v5.0.4
+        uses: actions/cache@v5.0.5
         with:
           path: .turbo
           key: turbo-${{ runner.os }}-${{ github.sha }}
