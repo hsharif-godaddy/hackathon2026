@@ -75,7 +75,7 @@ export const POST = withCustomerAuth(
 
 - **Financial/billing:** `subscriptions/renew` POST, `ecomm-subscription/auto-renew` POST, `entitlements/[subscriptionId]/update` PUT
 - **Ownership/transfer:** `apps/[id]/transfer` POST+DELETE, `apps/[id]/transfer/cancel` POST, `transfer` POST (accept)
-- **Deployment/publishing:** `sites/[id]/deploy` POST, `apps/[id]/unpublish` POST
+- **Deployment/publishing:** `sites/[id]/deploy` POST, `apps/[id]/deployments` POST, `apps/[id]/unpublish` POST
 - **Secrets:** `secrets/[appId]/sync` POST, `secrets/[appId]/variants/[variant]` POST
 - **Deletion:** `sites/[id]` DELETE, `sites` DELETE (bulk)
 - **DNS/domains:** `sites/[id]/domains` POST

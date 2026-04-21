@@ -111,7 +111,7 @@ export const useAuthUIStore = create<AuthUIStore>((set, get) => ({
     reauthReason: reason,
     requiresRefresh,
     authReason: authReason ?? null,
-    needsReauthSeq: state.needsReauthSeq + 1
+    needsReauthSeq: state.needsReauthSeq + 1,
   })),
 
   clearNeedsReauth: (expectedSeq) => set((state) => {
@@ -123,7 +123,7 @@ export const useAuthUIStore = create<AuthUIStore>((set, get) => ({
       reauthReason: null,
       requiresRefresh: false,
       authReason: null,
-      redirectUrl: null  // Clear redirect URL when clearing auth state
+      redirectUrl: null,
     };
   }),
 

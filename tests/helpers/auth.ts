@@ -23,19 +23,21 @@ export type SsoDetectionResult = 'iframe' | 'redirect' | 'authenticated' | 'time
 export async function detectSsoType(page: Page, includeAuthenticatedCheck = false): Promise<SsoDetectionResult> {
   const signInIframe = page.locator('iframe[title="Container for sign in"]');
 
+  // Each branch needs its own .catch() so losing racers don't produce
+  // unhandled rejections after the race settles.
   const promises: Promise<SsoDetectionResult>[] = [
-    signInIframe.waitFor({ state: 'visible', timeout: SSO_TIMEOUT }).then(() => 'iframe' as const),
-    page.waitForURL('**/login**', { timeout: SSO_TIMEOUT }).then(() => 'redirect' as const),
-    page.waitForURL('**/sso**', { timeout: SSO_TIMEOUT }).then(() => 'redirect' as const),
+    signInIframe.waitFor({ state: 'visible', timeout: SSO_TIMEOUT }).then(() => 'iframe' as const).catch(() => null),
+    page.waitForURL('**/login**', { timeout: SSO_TIMEOUT }).then(() => 'redirect' as const).catch(() => null),
+    page.waitForURL('**/sso**', { timeout: SSO_TIMEOUT }).then(() => 'redirect' as const).catch(() => null),
   ];
 
   if (includeAuthenticatedCheck) {
     promises.push(
-      page.waitForURL('**/develop/**', { timeout: SSO_TIMEOUT }).then(() => 'authenticated' as const)
+      page.waitForURL('**/develop/**', { timeout: SSO_TIMEOUT }).then(() => 'authenticated' as const).catch(() => null)
     );
   }
 
-  return Promise.race(promises).catch(() => includeAuthenticatedCheck ? 'timeout' : null);
+  return Promise.race(promises).then(result => result ?? (includeAuthenticatedCheck ? 'timeout' : null));
 }
 
 /**
@@ -236,52 +238,60 @@ export async function openUserMenu(page: Page): Promise<void> {
 }
 
 /**
- * Dismiss the "Sign In Required" modal if present and re-authenticate.
- * Returns true if modal was found and handled, false if no modal.
+ * Handle re-authentication if SSO appeared during a test.
+ * Returns true if re-auth was needed and completed, false if no auth UI was present.
  *
- * The AuthBoundary modal appears when a BFF call returns 401 (session expired).
- * It is non-dismissible -- the only way to proceed is to click "Sign In" and
- * complete the SSO flow.
+ * On 401, the app auto-opens the SSO Deck iframe directly. If the user dismisses
+ * SSO without completing auth, the AuthBoundary fallback modal appears with a
+ * "Sign In" button. This helper checks for both, SSO iframe first.
  */
-export async function dismissAuthModalIfPresent(page: Page): Promise<boolean> {
+export async function handleReauthIfPresent(page: Page): Promise<boolean> {
+  const ssoIframe = page.locator('iframe[title="Container for sign in"]');
   const signInModal = page.getByRole('heading', { name: 'Sign In Required' });
-  const modalFound = await signInModal
-    .waitFor({ state: 'visible', timeout: SHORT_TIMEOUT })
-    .then(() => true)
-    .catch(() => false);
 
-  if (!modalFound) return false;
+  // Check for SSO iframe (auto-opened on 401) or AuthBoundary fallback modal.
+  // Each branch needs its own .catch() so the losing racer doesn't produce an
+  // unhandled rejection after the race settles.
+  const detected = await Promise.race([
+    ssoIframe.waitFor({ state: 'visible', timeout: SHORT_TIMEOUT }).then(() => 'sso' as const).catch(() => null),
+    signInModal.waitFor({ state: 'visible', timeout: SHORT_TIMEOUT }).then(() => 'fallback' as const).catch(() => null),
+  ]);
 
-  console.log('  Sign In Required modal detected, re-authenticating...');
+  if (!detected) return false;
 
-  // Click the Sign In button inside the modal
-  const modalSignIn = page.getByRole('button', { name: 'Sign In', exact: true });
-  await modalSignIn.click();
+  if (detected === 'fallback') {
+    console.log('  Sign In Required fallback modal detected, clicking Sign In...');
+    await page.getByRole('button', { name: 'Sign In', exact: true }).click();
+  } else {
+    console.log('  SSO iframe detected (auto-opened on 401), completing login...');
+  }
 
-  // Complete SSO login flow -- let errors propagate with clear context
   try {
     await handleSsoLogin(page);
   } catch (err) {
-    throw new Error(`Re-authentication failed after Sign In Required modal: ${err instanceof Error ? err.message : err}`);
+    throw new Error(`Re-authentication failed: ${err instanceof Error ? err.message : err}`);
   }
 
-  // Wait for modal to disappear (auth processed)
-  await signInModal.waitFor({ state: 'hidden', timeout: SSO_TIMEOUT });
+  // Wait for both SSO iframe and fallback modal to disappear
+  await ssoIframe.waitFor({ state: 'hidden', timeout: SSO_TIMEOUT }).catch(() => {});
+  await signInModal.waitFor({ state: 'hidden', timeout: SHORT_TIMEOUT }).catch(() => {});
 
   console.log('  Re-authenticated successfully');
   return true;
 }
 
+/** @deprecated Use handleReauthIfPresent instead */
+export const dismissAuthModalIfPresent = handleReauthIfPresent;
+
 /**
- * Handle the "Sign In Required" modal if it appeared during a long-running test step.
- * This is a reactive check (modal-only), not a proactive session verification.
- * If no modal is visible, this is a no-op and returns immediately.
+ * Handle re-authentication if SSO or the AuthBoundary fallback appeared during
+ * a long-running test step. No-op if neither is visible.
  *
  * Call before page navigations or critical operations (delete, deploy, unpublish)
  * that are likely to trigger 401s if the session expired during AI generation.
  */
 export async function ensureAuthenticated(page: Page): Promise<void> {
-  const didReauth = await dismissAuthModalIfPresent(page);
+  const didReauth = await handleReauthIfPresent(page);
   if (didReauth) {
     await verifyAuthenticated(page);
   }

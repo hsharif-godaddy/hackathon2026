@@ -260,5 +260,5 @@ export const POST = withCustomerAuth(async (
       { status }
     );
   }
-});
+}, { level: 3 });
 

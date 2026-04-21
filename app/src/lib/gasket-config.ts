@@ -324,6 +324,9 @@ export async function appFetch(
     // Set auth state in UI store (client-side only)
     if (setAuthState && typeof window !== 'undefined') {
       const reason = requiresRefresh ? 'session_stale' : 'not_authenticated';
+      // Capture current URL for post-auth redirect before opening SSO
+      const currentUrl = window.location.pathname + window.location.search + window.location.hash;
+      useAuthUIStore.getState().setRedirectUrl(currentUrl);
       useAuthUIStore.getState().setNeedsReauth(reason, requiresRefresh, authReason);
     }
   }

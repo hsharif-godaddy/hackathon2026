@@ -9,7 +9,7 @@
  */
 import { test, expect } from '@playwright/test';
 
-import { clearAuthState, handleSsoLogin, openUserMenu, userMenuTrigger, verifyAuthenticated } from '../helpers/auth';
+import { clearAuthState, handleReauthIfPresent, handleSsoLogin, openUserMenu, userMenuTrigger, verifyAuthenticated } from '../helpers/auth';
 import { LONG_TIMEOUT, DEFAULT_TIMEOUT } from '../helpers/constants';
 import { logTestResult, logTestStart } from '../helpers/ui';
 
@@ -99,30 +99,93 @@ test.describe('Authentication', () => {
     console.log('  ✓ Protected content persists after refresh');
 
     // ========================================
-    // STEP 6: Sign out
+    // STEP 6: 401 auto-opens SSO Deck, dismiss shows fallback
     // ========================================
-    console.log('🚪 Step 6: Testing sign out...');
+    console.log('🔓 Step 6: Testing 401 auto-open SSO flow...');
     await page.goto('/');
     await page.getByTestId('homepage-prompt-input').waitFor({ state: 'visible', timeout: LONG_TIMEOUT });
-    console.log(`  [6.1] Homepage loaded, url=${page.url()}`);
+
+    // Mock a single BFF call to return 401 with authReason (HBI expired), then remove the mock.
+    // We intercept /api/sites which fires when navigating to /apps.
+    let intercepted = false;
+    await page.route('**/api/sites', (route) => {
+      if (!intercepted && route.request().resourceType() === 'fetch') {
+        intercepted = true;
+        route.fulfill({
+          status: 401,
+          contentType: 'application/json',
+          body: JSON.stringify({ message: 'Unauthorized', authReason: 2 }),
+        });
+      } else {
+        route.continue();
+      }
+    });
+
+    // Navigate to /apps - the client-side fetch to /api/sites triggers the 401 mock
+    await page.goto('/apps');
+
+    // 6a: SSO Deck iframe must auto-open (AuthBoundary auto-open on 401)
+    const ssoIframe = page.locator('iframe[title="Container for sign in"]');
+    await expect(ssoIframe).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+    console.log('  [6a] SSO Deck auto-opened on 401');
+
+    // 6b: Dismiss SSO without completing auth.
+    // Use the modal close button rather than Escape - if the iframe's login form
+    // autofocuses an input, Escape targets the iframe context and never reaches
+    // the outer page's Modal keydown handler.
+    const closeButton = page.getByRole('button', { name: /close/i });
+    if (await closeButton.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await closeButton.click();
+    } else {
+      // Fallback: click outside the modal to dismiss
+      await page.mouse.click(10, 10);
+    }
+    await expect(ssoIframe).not.toBeVisible({ timeout: DEFAULT_TIMEOUT });
+    console.log('  [6b] SSO Deck dismissed');
+
+    // 6c: AuthBoundary fallback modal must appear after dismiss
+    const fallbackHeading = page.getByRole('heading', { name: /sign in/i });
+    await expect(fallbackHeading).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+    console.log('  [6c] Fallback "Sign In" modal appeared after SSO dismiss');
+
+    // 6d: Click Sign In button in fallback - must re-open SSO
+    const signInButton = page.getByRole('button', { name: /sign in/i });
+    await signInButton.click();
+    await expect(ssoIframe).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+    console.log('  [6d] SSO Deck re-opened from fallback Sign In button');
+
+    // Clean up route mock
+    await page.unroute('**/api/sites');
+    console.log('  ✓ 401 auto-open SSO flow verified');
+
+    // Re-authenticate if needed before sign-out step
+    await handleReauthIfPresent(page);
+
+    // ========================================
+    // STEP 7: Sign out
+    // ========================================
+    console.log('🚪 Step 7: Testing sign out...');
+    await page.goto('/');
+    await page.getByTestId('homepage-prompt-input').waitFor({ state: 'visible', timeout: LONG_TIMEOUT });
+    console.log(`  [7.1] Homepage loaded, url=${page.url()}`);
 
     await openUserMenu(page);
-    console.log('  [6.2] User menu opened');
+    console.log('  [7.2] User menu opened');
 
     const signOutLocator = page.locator('[data-slot="popover-content"][data-state="open"]').getByRole('button', { name: /sign\s*out|builder_common_signout/i });
     await expect(signOutLocator).toBeVisible();
-    console.log('  [6.3] Sign Out button visible');
+    console.log('  [7.3] Sign Out button visible');
 
     // noWaitAfter: sign-out triggers a cross-origin redirect (SSO/godaddy.com)
     // that Playwright's auto-wait-for-navigation can't resolve, causing a 30s hang.
     await signOutLocator.click({ force: true, noWaitAfter: true });
-    console.log('  [6.4] Sign Out clicked');
+    console.log('  [7.4] Sign Out clicked');
 
     await page.waitForURL(
       (url) => url.href.includes('sso') || url.href.includes('logout') || url.href.includes('godaddy.com'),
       { timeout: DEFAULT_TIMEOUT }
     );
-    console.log(`  [6.5] Post sign-out url=${page.url()}`);
+    console.log(`  [7.5] Post sign-out url=${page.url()}`);
     console.log('  ✓ Sign out redirects to SSO/logout');
 
     console.log('🎉 Authenticated flow complete!');
@@ -225,10 +288,14 @@ test.describe('Authentication', () => {
     await page.goto('/apps');
     await page.waitForTimeout(3000); // Wait for redirect or page load
 
-    // Protected route should show auth message, redirect to SSO, or show sign-in
+    // Protected route should redirect to SSO, auto-open SSO iframe, or show auth message
     const appsUrl = page.url();
+    const ssoIframeVisible = await page.locator('iframe[title="Container for sign in"]')
+      .isVisible().catch(() => false);
     if (appsUrl.includes('sso') || appsUrl.includes('login')) {
       console.log('  ✓ Redirected to SSO');
+    } else if (ssoIframeVisible) {
+      console.log('  ✓ SSO Deck auto-opened on 401');
     } else {
       const bodyText = await page.locator('body').textContent() || '';
       const hasAuthRequired = bodyText.includes('Authentication Required') || bodyText.includes('Sign In');
@@ -247,8 +314,12 @@ test.describe('Authentication', () => {
     await page.waitForTimeout(3000);
 
     const developUrl = page.url();
+    const ssoOnDevelop = await page.locator('iframe[title="Container for sign in"]')
+      .isVisible().catch(() => false);
     if (developUrl.includes('sso') || developUrl.includes('login')) {
       console.log('  ✓ Develop page redirects to SSO');
+    } else if (ssoOnDevelop) {
+      console.log('  ✓ SSO Deck auto-opened on 401');
     } else {
       const bodyText = await page.locator('body').textContent() || '';
       const requiresAuth = bodyText.includes('Authentication Required') ||

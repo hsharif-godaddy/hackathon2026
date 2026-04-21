@@ -64,6 +64,7 @@ describe('AuthBoundary', () => {
       useAuthUIStore.setState({
         isSsoLoginOpen: false,
         isSsoLoading: true,
+        ssoCloseReason: null,
         needsReauth: false,
         reauthReason: null,
         requiresRefresh: false,
@@ -87,12 +88,22 @@ describe('AuthBoundary', () => {
     expect(screen.queryByText('builder_common_signin_required')).not.toBeInTheDocument();
   });
 
-  it('should show modal when needsReauth is true', () => {
+  it('should show fallback modal when SSO was dismissed without completing auth', () => {
+    const { rerender } = render(
+      <AuthBoundary>
+        <div data-testid="child-content">Protected Content</div>
+      </AuthBoundary>
+    );
+
+    // 401 triggers auto-open, then user dismisses
     act(() => {
       useAuthUIStore.getState().setNeedsReauth('not_authenticated');
     });
+    act(() => {
+      useAuthUIStore.getState().closeSsoLogin('dismiss');
+    });
 
-    render(
+    rerender(
       <AuthBoundary>
         <div data-testid="child-content">Protected Content</div>
       </AuthBoundary>
@@ -106,12 +117,39 @@ describe('AuthBoundary', () => {
     expect(screen.getByRole('button', { name: 'builder_common_signin' })).toBeInTheDocument();
   });
 
-  it('should show session stale message', () => {
+  it('should auto-open SSO modal on 401 instead of showing fallback', () => {
     act(() => {
-      useAuthUIStore.getState().setNeedsReauth('session_stale');
+      useAuthUIStore.getState().setNeedsReauth('not_authenticated');
     });
 
     render(
+      <AuthBoundary>
+        <div data-testid="child-content">Protected Content</div>
+      </AuthBoundary>
+    );
+
+    expect(screen.getByTestId('child-content')).toBeInTheDocument();
+    // Fallback modal should NOT be visible - SSO Deck was auto-opened by effect
+    expect(screen.queryByText('builder_common_signin_required')).not.toBeInTheDocument();
+    // SSO modal should have been opened
+    expect(useAuthUIStore.getState().isSsoLoginOpen).toBe(true);
+  });
+
+  it('should show session stale message', () => {
+    const { rerender } = render(
+      <AuthBoundary>
+        <div>Content</div>
+      </AuthBoundary>
+    );
+
+    act(() => {
+      useAuthUIStore.getState().setNeedsReauth('session_stale');
+    });
+    act(() => {
+      useAuthUIStore.getState().closeSsoLogin('dismiss');
+    });
+
+    rerender(
       <AuthBoundary>
         <div>Content</div>
       </AuthBoundary>
@@ -121,11 +159,20 @@ describe('AuthBoundary', () => {
   });
 
   it('should show session expired message', () => {
+    const { rerender } = render(
+      <AuthBoundary>
+        <div>Content</div>
+      </AuthBoundary>
+    );
+
     act(() => {
       useAuthUIStore.getState().setNeedsReauth('session_expired');
     });
+    act(() => {
+      useAuthUIStore.getState().closeSsoLogin('dismiss');
+    });
 
-    render(
+    rerender(
       <AuthBoundary>
         <div>Content</div>
       </AuthBoundary>
@@ -135,11 +182,20 @@ describe('AuthBoundary', () => {
   });
 
   it('should call openSsoLogin when Sign In button is clicked', () => {
+    const { rerender } = render(
+      <AuthBoundary>
+        <div>Content</div>
+      </AuthBoundary>
+    );
+
     act(() => {
       useAuthUIStore.getState().setNeedsReauth('not_authenticated');
     });
+    act(() => {
+      useAuthUIStore.getState().closeSsoLogin('dismiss');
+    });
 
-    render(
+    rerender(
       <AuthBoundary>
         <div>Content</div>
       </AuthBoundary>
@@ -230,9 +286,37 @@ describe('AuthBoundary', () => {
       expect(screen.queryByText('builder_common_signin_required')).not.toBeInTheDocument();
     });
 
-    it('should show modal on unknown explore slug', async () => {
+    it('should show modal on unknown explore slug after SSO dismiss', async () => {
       const { usePathname } = vi.mocked(await import('next/navigation'));
       usePathname.mockReturnValue('/explore/__test-not-a-landing__');
+
+      const { rerender } = render(
+        <AuthBoundary>
+          <div data-testid="child-content">Content</div>
+        </AuthBoundary>
+      );
+
+      act(() => {
+        useAuthUIStore.getState().setNeedsReauth('not_authenticated');
+      });
+      act(() => {
+        useAuthUIStore.getState().closeSsoLogin('dismiss');
+      });
+
+      rerender(
+        <AuthBoundary>
+          <div data-testid="child-content">Content</div>
+        </AuthBoundary>
+      );
+
+      expect(screen.getByText('builder_common_signin_required')).toBeInTheDocument();
+    });
+  });
+
+  describe('SSO auto-open', () => {
+    it('should not auto-open SSO on homepage', async () => {
+      const { usePathname } = vi.mocked(await import('next/navigation'));
+      usePathname.mockReturnValue('/');
 
       act(() => {
         useAuthUIStore.getState().setNeedsReauth('not_authenticated');
@@ -244,30 +328,27 @@ describe('AuthBoundary', () => {
         </AuthBoundary>
       );
 
-      expect(screen.getByText('builder_common_signin_required')).toBeInTheDocument();
+      expect(useAuthUIStore.getState().isSsoLoginOpen).toBe(false);
     });
-  });
 
-  describe('analytics tracking', () => {
-    it('should log analytics when modal is shown', () => {
+    it('should not auto-open SSO on landing pages', async () => {
+      const { usePathname } = vi.mocked(await import('next/navigation'));
+      usePathname.mockReturnValue('/explore/games');
+
       act(() => {
         useAuthUIStore.getState().setNeedsReauth('not_authenticated');
       });
 
       render(
         <AuthBoundary>
-          <div>Content</div>
+          <div data-testid="child-content">Content</div>
         </AuthBoundary>
       );
 
-      expect(shipAnalyticsLog).toHaveBeenCalledWith('auth.boundary.modal_shown', {
-        reason: 'not_authenticated',
-        pathname: '/develop'
-      });
-      expect(shipAnalyticsLog).toHaveBeenCalledTimes(1);
+      expect(useAuthUIStore.getState().isSsoLoginOpen).toBe(false);
     });
 
-    it('should not log duplicate analytics on re-render', () => {
+    it('should not re-open SSO after user dismisses (loop guard)', () => {
       act(() => {
         useAuthUIStore.getState().setNeedsReauth('session_expired');
       });
@@ -277,6 +358,127 @@ describe('AuthBoundary', () => {
           <div>Content</div>
         </AuthBoundary>
       );
+
+      // Auto-open should have fired
+      expect(useAuthUIStore.getState().isSsoLoginOpen).toBe(true);
+
+      // User dismisses SSO modal
+      act(() => {
+        useAuthUIStore.getState().closeSsoLogin('dismiss');
+      });
+
+      rerender(
+        <AuthBoundary>
+          <div>Content</div>
+        </AuthBoundary>
+      );
+
+      // Should NOT re-open - user already dismissed
+      expect(useAuthUIStore.getState().isSsoLoginOpen).toBe(false);
+    });
+
+    it('should not spuriously re-open SSO when 401 fires while SSO already open', () => {
+      // SSO is already open (e.g. from session expiration banner)
+      act(() => {
+        useAuthUIStore.getState().openSsoLogin();
+      });
+
+      const { rerender } = render(
+        <AuthBoundary>
+          <div>Content</div>
+        </AuthBoundary>
+      );
+
+      // Concurrent 401 fires while SSO is open
+      act(() => {
+        useAuthUIStore.getState().setNeedsReauth('session_expired');
+      });
+
+      // User completes auth - SSO closes with success before clearNeedsReauth arrives
+      act(() => {
+        useAuthUIStore.getState().closeSsoLogin('success');
+      });
+
+      rerender(
+        <AuthBoundary>
+          <div>Content</div>
+        </AuthBoundary>
+      );
+
+      // Should NOT re-open SSO - auth was already handled
+      expect(useAuthUIStore.getState().isSsoLoginOpen).toBe(false);
+    });
+
+    it('should auto-open again after successful auth clears state', () => {
+      act(() => {
+        useAuthUIStore.getState().setNeedsReauth('session_expired');
+      });
+
+      const { rerender } = render(
+        <AuthBoundary>
+          <div>Content</div>
+        </AuthBoundary>
+      );
+
+      expect(useAuthUIStore.getState().isSsoLoginOpen).toBe(true);
+
+      // Auth succeeds - clear state
+      act(() => {
+        useAuthUIStore.getState().closeSsoLogin('success');
+        useAuthUIStore.getState().clearNeedsReauth();
+      });
+
+      rerender(
+        <AuthBoundary>
+          <div>Content</div>
+        </AuthBoundary>
+      );
+
+      // New 401 - should auto-open again since state was cleared
+      act(() => {
+        useAuthUIStore.getState().setNeedsReauth('session_expired');
+      });
+
+      rerender(
+        <AuthBoundary>
+          <div>Content</div>
+        </AuthBoundary>
+      );
+
+      expect(useAuthUIStore.getState().isSsoLoginOpen).toBe(true);
+    });
+  });
+
+  describe('analytics tracking', () => {
+    /** Helper: render AuthBoundary, trigger 401, dismiss SSO, rerender to show fallback */
+    function renderWithDismissedSso(reason: 'not_authenticated' | 'session_expired' | 'session_stale' = 'not_authenticated') {
+      const result = render(
+        <AuthBoundary>
+          <div>Content</div>
+        </AuthBoundary>
+      );
+      act(() => { useAuthUIStore.getState().setNeedsReauth(reason); });
+      act(() => { useAuthUIStore.getState().closeSsoLogin('dismiss'); });
+      result.rerender(
+        <AuthBoundary>
+          <div>Content</div>
+        </AuthBoundary>
+      );
+      return result;
+    }
+
+    it('should log analytics when fallback modal is shown', () => {
+      renderWithDismissedSso('not_authenticated');
+
+      expect(shipAnalyticsLog).toHaveBeenCalledWith('auth.boundary.modal_shown', {
+        reason: 'not_authenticated',
+        pathname: '/develop'
+      });
+      expect(shipAnalyticsLog).toHaveBeenCalledTimes(1);
+    });
+
+    it('should not log duplicate analytics on re-render', () => {
+      const { rerender } = renderWithDismissedSso('session_expired');
 
       expect(shipAnalyticsLog).toHaveBeenCalledTimes(1);
 
@@ -292,15 +494,7 @@ describe('AuthBoundary', () => {
     });
 
     it('should log again when modal is dismissed and re-shown (flag resets)', () => {
-      act(() => {
-        useAuthUIStore.getState().setNeedsReauth('not_authenticated');
-      });
-
-      const { rerender } = render(
-        <AuthBoundary>
-          <div>Content</div>
-        </AuthBoundary>
-      );
+      const { rerender } = renderWithDismissedSso('not_authenticated');
 
       expect(shipAnalyticsLog).toHaveBeenCalledTimes(1);
 
@@ -315,9 +509,12 @@ describe('AuthBoundary', () => {
         </AuthBoundary>
       );
 
-      // Show modal again
+      // Show modal again (new 401 cycle: auto-opens SSO, user dismisses)
       act(() => {
         useAuthUIStore.getState().setNeedsReauth('session_expired');
+      });
+      act(() => {
+        useAuthUIStore.getState().closeSsoLogin('dismiss');
       });
 
       rerender(
@@ -326,7 +523,7 @@ describe('AuthBoundary', () => {
         </AuthBoundary>
       );
 
-      // Should be called twice (once for each time modal was shown)
+      // Should be called twice (once for each time fallback modal was shown)
       expect(shipAnalyticsLog).toHaveBeenCalledTimes(2);
       expect(shipAnalyticsLog).toHaveBeenNthCalledWith(2, 'auth.boundary.modal_shown', {
         reason: 'session_expired',
@@ -338,15 +535,7 @@ describe('AuthBoundary', () => {
       const { usePathname } = vi.mocked(await import('next/navigation'));
       usePathname.mockReturnValue('/develop');
 
-      act(() => {
-        useAuthUIStore.getState().setNeedsReauth('not_authenticated');
-      });
-
-      const { rerender } = render(
-        <AuthBoundary>
-          <div>Content</div>
-        </AuthBoundary>
-      );
+      const { rerender } = renderWithDismissedSso('not_authenticated');
 
       expect(shipAnalyticsLog).toHaveBeenCalledTimes(1);
       expect(shipAnalyticsLog).toHaveBeenCalledWith('auth.boundary.modal_shown', {
@@ -368,15 +557,7 @@ describe('AuthBoundary', () => {
     });
 
     it('should not log duplicate events when reason changes during modal display', () => {
-      act(() => {
-        useAuthUIStore.getState().setNeedsReauth('not_authenticated');
-      });
-
-      const { rerender } = render(
-        <AuthBoundary>
-          <div>Content</div>
-        </AuthBoundary>
-      );
+      const { rerender } = renderWithDismissedSso('not_authenticated');
 
       expect(shipAnalyticsLog).toHaveBeenCalledTimes(1);
       expect(shipAnalyticsLog).toHaveBeenCalledWith('auth.boundary.modal_shown', {
@@ -416,10 +597,9 @@ describe('AuthBoundary', () => {
       expect(shipAnalyticsLog).not.toHaveBeenCalled();
     });
 
-    it('should not log analytics when SSO modal is already open', () => {
+    it('should not log analytics when SSO modal is auto-opened', () => {
       act(() => {
         useAuthUIStore.getState().setNeedsReauth('not_authenticated');
-        useAuthUIStore.getState().openSsoLogin();
       });
 
       render(
@@ -428,6 +608,7 @@ describe('AuthBoundary', () => {
         </AuthBoundary>
       );
 
+      // SSO auto-opened, fallback not shown yet
       expect(shipAnalyticsLog).not.toHaveBeenCalled();
     });
 
@@ -435,15 +616,7 @@ describe('AuthBoundary', () => {
       const { usePathname } = vi.mocked(await import('next/navigation'));
       usePathname.mockReturnValue('/develop/settings');
 
-      act(() => {
-        useAuthUIStore.getState().setNeedsReauth('session_stale');
-      });
-
-      render(
-        <AuthBoundary>
-          <div>Content</div>
-        </AuthBoundary>
-      );
+      renderWithDismissedSso('session_stale');
 
       expect(shipAnalyticsLog).toHaveBeenCalledWith('auth.boundary.modal_shown', {
         reason: 'session_stale',
@@ -458,18 +631,20 @@ describe('AuthBoundary', () => {
         throw mockError;
       });
 
-      act(() => {
-        useAuthUIStore.getState().setNeedsReauth('not_authenticated');
-      });
+      const { rerender } = render(
+        <AuthBoundary>
+          <div data-testid="child-content">Content</div>
+        </AuthBoundary>
+      );
 
-      // Should not throw - component should render successfully
-      expect(() => {
-        render(
-          <AuthBoundary>
-            <div data-testid="child-content">Content</div>
-          </AuthBoundary>
-        );
-      }).not.toThrow();
+      act(() => { useAuthUIStore.getState().setNeedsReauth('not_authenticated'); });
+      act(() => { useAuthUIStore.getState().closeSsoLogin('dismiss'); });
+
+      rerender(
+        <AuthBoundary>
+          <div data-testid="child-content">Content</div>
+        </AuthBoundary>
+      );
 
       // Modal should still be visible despite analytics failure
       expect(screen.getByText('builder_common_signin_required')).toBeInTheDocument();
@@ -481,21 +656,14 @@ describe('AuthBoundary', () => {
       });
     });
 
-    it('should not double-fire analytics when SSO modal is dismissed without sign-in', () => {
-      act(() => {
-        useAuthUIStore.getState().setNeedsReauth('not_authenticated');
-      });
+    it('should not double-fire analytics when SSO modal is dismissed again after retry', () => {
+      const { rerender } = renderWithDismissedSso('not_authenticated');
 
-      const { rerender } = render(
-        <AuthBoundary>
-          <div>Content</div>
-        </AuthBoundary>
-      );
-
-      // Modal shows, analytics logs once
+      // Fallback modal shows, analytics logs once
       expect(shipAnalyticsLog).toHaveBeenCalledTimes(1);
+      expect(screen.getByText('builder_common_signin_required')).toBeInTheDocument();
 
-      // User clicks "Sign In" button - SSO modal opens
+      // User clicks "Sign In" button from fallback - SSO modal opens again
       act(() => {
         useAuthUIStore.getState().openSsoLogin();
       });
@@ -506,10 +674,10 @@ describe('AuthBoundary', () => {
         </AuthBoundary>
       );
 
-      // Auth boundary modal hidden, but analytics should still only be 1 call
+      // Auth boundary modal hidden while SSO is open
       expect(shipAnalyticsLog).toHaveBeenCalledTimes(1);
 
-      // User dismisses SSO modal without completing sign-in
+      // User dismisses SSO modal again without completing sign-in
       act(() => {
         useAuthUIStore.getState().closeSsoLogin('dismiss');
       });
@@ -520,7 +688,7 @@ describe('AuthBoundary', () => {
         </AuthBoundary>
       );
 
-      // Auth boundary modal re-appears (needsReauth still true), but should NOT log again
+      // Auth boundary modal re-appears, but should NOT log again
       expect(shipAnalyticsLog).toHaveBeenCalledTimes(1);
       expect(screen.getByText('builder_common_signin_required')).toBeInTheDocument();
     });
