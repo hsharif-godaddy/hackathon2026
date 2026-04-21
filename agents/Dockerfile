@@ -22,6 +22,7 @@ RUN apk add --no-cache python3 py3-setuptools make g++
 
 ENV CI=true
 
+RUN mkdir -p /home
 RUN addgroup -S -g 790 agent
 RUN adduser -S -G agent -u 790 agent
 
@@ -69,6 +70,7 @@ USER root
 
 RUN apk add --no-cache git ffmpeg
 
+RUN mkdir -p /home
 RUN addgroup -S -g 790 agent
 RUN adduser -S -G agent -u 790 agent
 

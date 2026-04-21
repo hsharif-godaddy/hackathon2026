@@ -2,6 +2,8 @@ FROM 764525110978.dkr.ecr.us-west-2.amazonaws.com/node:22-alpine
 
 USER root
 
+RUN mkdir -p /home/node && chown node:node /home/node
+
 RUN apk add --no-cache openssl
 
 # Use existing node user from base image (UID 1001)
