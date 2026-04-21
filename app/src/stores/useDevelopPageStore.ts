@@ -17,7 +17,7 @@ import { postMessageToIframe } from '@/utils/postMessage'
 type LoadingPhase = 'idle' | 'loading-app' | 'loading-site' | 'loading-conversations' | 'ready'
 
 // Chat pane width constants
-const DEFAULT_CHAT_PANE_WIDTH = 415
+export const DEFAULT_CHAT_PANE_WIDTH = 415
 const WIDE_CHAT_PANE_WIDTH = 640 - 24 // 640px - 24px (12px left + 12px right padding)
 
 // Settings sections that require wider panel

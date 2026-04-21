@@ -8,6 +8,7 @@ import Growl from '@ux/growl'
 import AppNotFound from '@/app/develop/components/AppNotFound'
 import ChatPane from '@/app/develop/components/chat/ChatPane'
 import ChatToolbar from '@/app/develop/components/chat/ChatToolbar'
+import DevelopSkeleton from '@/app/develop/components/DevelopSkeleton'
 import DevelopHeader from '@/app/develop/components/layout/Header'
 import MediaPanel from '@/app/develop/components/media/MediaPanel'
 import { DevelopCreditsModal, PaywallErrorFallback, RenewalPollingModal, UpgradeContainer, UpgradePollingModal } from '@/app/develop/components/paywall'
@@ -1304,8 +1305,9 @@ export default function Develop() {
   return (
     <ProtectedRoute
       unauthorizedMessage={t('builder_develop_protected_route')}
+      loadingFallback={<DevelopSkeleton isFallback={true} />}
     >
-      <Suspense fallback={<div>{t('builder_develop_loading')}</div>}>
+      <Suspense fallback={<DevelopSkeleton isFallback={true} />}>
         <DevelopPageContent />
       </Suspense>
     </ProtectedRoute>

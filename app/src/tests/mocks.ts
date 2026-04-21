@@ -184,3 +184,31 @@ export function mockSearchParams(params: Record<string, string | null> = {}) {
     get: vi.fn((key: string) => params[key] ?? null),
   };
 }
+
+/**
+ * Mock useBreakpoints hook with configurable values
+ *
+ * @param overrides - Override specific breakpoint flags
+ * @returns Object with all breakpoint booleans matching the real hook shape
+ *
+ * @example
+ * vi.mock('@/hooks/useBreakpoints', () => ({
+ *   useBreakpoints: () => mockBreakpoints({ isBelowSmBreakpoint: true }),
+ * }));
+ */
+export function mockBreakpoints(overrides: {
+  isBelowSmBreakpoint?: boolean;
+  isSmBreakpoint?: boolean;
+  isMdBreakpoint?: boolean;
+  isLgBreakpoint?: boolean;
+  isXlBreakpoint?: boolean;
+} = {}) {
+  return {
+    isBelowSmBreakpoint: false,
+    isSmBreakpoint: true,
+    isMdBreakpoint: true,
+    isLgBreakpoint: true,
+    isXlBreakpoint: false,
+    ...overrides,
+  };
+}

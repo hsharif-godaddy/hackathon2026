@@ -6,6 +6,8 @@ import Button from '@ux/button'
 import ChevronDownIcon from '@ux/icon/chevron-down'
 import Spinner from '@ux/spinner'
 
+import ChatMessagesSkeleton from '@/app/develop/components/chat/ChatMessagesSkeleton'
+import StaticSkeleton from '@/app/develop/components/StaticSkeleton'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
 import { useWebSocketContext } from '@/contexts/WebSocketContext'
 import { useSound } from '@/hooks/useSound'
@@ -25,22 +27,6 @@ import {
 } from '@/stores/useStreamingConversationStore'
 import StreamingMessage from './StreamingMessage'
 import ThinkingIndicator from './ThinkingIndicator'
-
-interface StaticSkeletonProps {
-  width: string
-  height: string
-  rounding?: 'full'
-  className?: string
-}
-
-function StaticSkeleton({ width, height, rounding, className }: StaticSkeletonProps) {
-  return (
-    <div
-      className={`ux-skeleton bg-intents-ux-boxLowContrast-backgroundColor ${rounding === 'full' ? 'rounded-full' : 'rounded-sm'} ${className ?? ''}`.trim()}
-      style={{ width, height }}
-    />
-  )
-}
 
 interface StreamingMessageListProps {
   allMessages: (ChatMessage | StreamingMessageType)[]
@@ -555,63 +541,7 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
     return (
       <div ref={containerRef} data-testid="chat-transcript" className="flex-1 overflow-y-auto overflow-x-hidden p-2 space-y-2" onScroll={handleScroll}>
         {showSpinner ? (
-          <Box orientation="vertical" gap="lg" className="pt-2">
-            {/* User message skeleton */}
-            <Box orientation="horizontal" gap="sm" inlineAlignChildren="end">
-              <div className="flex-1" />
-              <Box orientation="vertical" gap="sm" className="max-w-[80%]">
-                <StaticSkeleton width="180px" height="16px" />
-                <StaticSkeleton width="240px" height="16px" />
-              </Box>
-            </Box>
-
-            {/* Assistant message skeleton */}
-            <Box orientation="horizontal" gap="sm" inlineAlignChildren="start">
-              <StaticSkeleton rounding="full" width="24px" height="24px" className="flex-shrink-0 mt-0.5" />
-              <Box orientation="vertical" gap="sm" className="flex-1">
-                <StaticSkeleton width="280px" height="16px" />
-                <StaticSkeleton width="320px" height="16px" />
-                <StaticSkeleton width="240px" height="16px" />
-                <StaticSkeleton width="180px" height="16px" />
-              </Box>
-            </Box>
-
-            {/* User message skeleton */}
-            <Box orientation="horizontal" gap="sm" inlineAlignChildren="end">
-              <div className="flex-1" />
-              <Box orientation="vertical" gap="sm" className="max-w-[80%]">
-                <StaticSkeleton width="200px" height="16px" />
-              </Box>
-            </Box>
-
-            {/* Assistant message skeleton */}
-            <Box orientation="horizontal" gap="sm" inlineAlignChildren="start">
-              <StaticSkeleton rounding="full" width="24px" height="24px" className="flex-shrink-0 mt-0.5" />
-              <Box orientation="vertical" gap="sm" className="flex-1">
-                <StaticSkeleton width="260px" height="16px" />
-                <StaticSkeleton width="300px" height="16px" />
-              </Box>
-            </Box>
-
-            {/* User message skeleton */}
-            <Box orientation="horizontal" gap="sm" inlineAlignChildren="end">
-              <div className="flex-1" />
-              <Box orientation="vertical" gap="sm" className="max-w-[80%]">
-                <StaticSkeleton width="160px" height="16px" />
-                <StaticSkeleton width="220px" height="16px" />
-              </Box>
-            </Box>
-
-            {/* Assistant message skeleton */}
-            <Box orientation="horizontal" gap="sm" inlineAlignChildren="start">
-              <StaticSkeleton rounding="full" width="24px" height="24px" className="flex-shrink-0 mt-0.5" />
-              <Box orientation="vertical" gap="sm" className="flex-1">
-                <StaticSkeleton width="290px" height="16px" />
-                <StaticSkeleton width="310px" height="16px" />
-                <StaticSkeleton width="270px" height="16px" />
-              </Box>
-            </Box>
-          </Box>
+          <ChatMessagesSkeleton />
         ) : historyLoadFailed ? (
           <div className="flex items-center justify-center h-full">
             <div className="opacity-50 text-center">

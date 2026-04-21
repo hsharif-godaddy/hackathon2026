@@ -134,7 +134,7 @@ test.describe('Apps Page & Navigation', () => {
     console.log('  ✓ Navigated to homepage');
 
     // ========================================
-    // STEP 6: Test "Edit" navigation from /apps
+    // STEP 6: Test "Edit" navigation from /apps (skeleton + page load)
     // ========================================
     console.log('✏️ Step 6: Testing Edit navigation from /apps...');
     await page.goto('/apps');
@@ -142,7 +142,27 @@ test.describe('Apps Page & Navigation', () => {
     await page.getByTestId('app-card-edit-button').first().click();
 
     await expect(page).toHaveURL(/\/develop\//);
-    await page.getByTestId('chat-input-textarea').waitFor({ state: 'visible', timeout: CHAT_INPUT_TIMEOUT });
+
+    // Either the loading skeleton or the real page UI must appear within 8s.
+    // Using Promise.race avoids masking regressions where neither renders.
+    const skeleton = page.getByTestId('develop-skeleton');
+    const chatInput = page.getByTestId('chat-input-textarea');
+    const earlyUiState = await Promise.race([
+      skeleton.waitFor({ state: 'visible', timeout: 8000 }).then(() => 'skeleton' as const, () => new Promise<never>(() => {})),
+      chatInput.waitFor({ state: 'visible', timeout: 8000 }).then(() => 'chat-input' as const, () => new Promise<never>(() => {})),
+      new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), 8000)),
+    ]);
+    expect(
+      earlyUiState,
+      'Expected either the develop loading skeleton or the chat input to appear quickly after navigation',
+    ).not.toBe('timeout');
+    if (earlyUiState === 'skeleton') {
+      console.log('  ✓ Loading skeleton appeared during transition');
+    } else {
+      console.log('  ⚡ Develop page became interactive before skeleton could be captured (fast connection)');
+    }
+
+    await chatInput.waitFor({ state: 'visible', timeout: CHAT_INPUT_TIMEOUT });
     console.log('  ✓ Navigated to develop page from /apps');
 
     // ========================================

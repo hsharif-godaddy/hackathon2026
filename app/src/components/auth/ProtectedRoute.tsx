@@ -16,6 +16,7 @@ interface ProtectedRouteProps {
   risk?: AuthRiskType;
   type?: AuthIdpType[];
   unauthorizedMessage?: string;
+  loadingFallback?: React.ReactNode;
 }
 
 export default function ProtectedRoute({
@@ -24,7 +25,8 @@ export default function ProtectedRoute({
   groups = [],
   risk,
   type,
-  unauthorizedMessage = null
+  unauthorizedMessage = null,
+  loadingFallback
 }: ProtectedRouteProps) {
   const t = useTranslations();
   // State to track if component has hydrated and mock login dialog
@@ -55,7 +57,7 @@ export default function ProtectedRoute({
   // Only gate rendering on initial load. After initial auth completes, keep children
   // mounted during client-side revalidations to prevent tearing down websocket connections.
   if (!hasInitiallyRendered.current && (configLoading || !isClient || authLoading)) {
-    return <LoadingComponent />;
+    return <>{loadingFallback ?? <LoadingComponent />}</>;
   }
 
   // Configure auth parameters based on access level
@@ -87,7 +89,7 @@ export default function ProtectedRoute({
   return (
     <AuthRequired
       {...authParams}
-      loading={<LoadingComponent />}
+      loading={loadingFallback ?? <LoadingComponent />}
       alt={<UnauthorizedComponent unauthorizedMessage={unauthorizedMessage} />}
     >
       <>{children}</>
