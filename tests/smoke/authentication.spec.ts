@@ -124,39 +124,55 @@ test.describe('Authentication', () => {
     // Navigate to /apps - the client-side fetch to /api/sites triggers the 401 mock
     await page.goto('/apps');
 
-    // 6a: SSO Deck iframe must auto-open (AuthBoundary auto-open on 401)
+    // 6a: Race SSO iframe (new auto-open behavior) vs fallback modal (pre-deploy).
+    // TODO: Remove else branch after #2789 deploys to prod -- only the SSO path should remain.
     const ssoIframe = page.locator('iframe[title="Container for sign in"]');
-    await expect(ssoIframe).toBeVisible({ timeout: DEFAULT_TIMEOUT });
-    console.log('  [6a] SSO Deck auto-opened on 401');
+    const fallbackHeading = page.getByRole('heading', { name: 'Sign In Required' });
 
-    // 6b: Dismiss SSO without completing auth.
-    // Use the modal close button rather than Escape - if the iframe's login form
-    // autofocuses an input, Escape targets the iframe context and never reaches
-    // the outer page's Modal keydown handler.
-    const closeButton = page.getByRole('button', { name: /close/i });
-    if (await closeButton.isVisible({ timeout: 2000 }).catch(() => false)) {
-      await closeButton.click();
+    const authUiState = await Promise.race([
+      ssoIframe
+        .waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT })
+        .then(() => 'sso' as const)
+        .catch(() => null),
+      fallbackHeading
+        .waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT })
+        .then(() => 'fallback' as const)
+        .catch(() => null),
+    ]);
+
+    expect(authUiState, 'Expected either SSO iframe or fallback Sign In modal after 401').not.toBeNull();
+    const autoOpened = authUiState === 'sso';
+
+    if (autoOpened) {
+      console.log('  [6a] SSO Deck auto-opened on 401');
+
+      // 6b: Dismiss SSO without completing auth.
+      const closeButton = page.getByRole('button', { name: /close/i });
+      if (await closeButton.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await closeButton.click();
+      } else {
+        await page.mouse.click(10, 10);
+      }
+      await expect(ssoIframe).not.toBeVisible({ timeout: DEFAULT_TIMEOUT });
+      console.log('  [6b] SSO Deck dismissed');
+
+      // 6c: AuthBoundary fallback modal must appear after dismiss
+      await expect(fallbackHeading).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+      console.log('  [6c] Fallback "Sign In" modal appeared after SSO dismiss');
+
+      // 6d: Click Sign In button in fallback - must re-open SSO
+      const signInButton = page.getByRole('button', { name: 'Sign In', exact: true });
+      await signInButton.click();
+      await expect(ssoIframe).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+      console.log('  [6d] SSO Deck re-opened from fallback Sign In button');
     } else {
-      // Fallback: click outside the modal to dismiss
-      await page.mouse.click(10, 10);
+      // Pre-deploy: old AuthBoundary shows fallback modal directly
+      console.log('  [6a] Fallback "Sign In" modal shown (pre-deploy, auto-open not yet active)');
     }
-    await expect(ssoIframe).not.toBeVisible({ timeout: DEFAULT_TIMEOUT });
-    console.log('  [6b] SSO Deck dismissed');
-
-    // 6c: AuthBoundary fallback modal must appear after dismiss
-    const fallbackHeading = page.getByRole('heading', { name: /sign in/i });
-    await expect(fallbackHeading).toBeVisible({ timeout: DEFAULT_TIMEOUT });
-    console.log('  [6c] Fallback "Sign In" modal appeared after SSO dismiss');
-
-    // 6d: Click Sign In button in fallback - must re-open SSO
-    const signInButton = page.getByRole('button', { name: /sign in/i });
-    await signInButton.click();
-    await expect(ssoIframe).toBeVisible({ timeout: DEFAULT_TIMEOUT });
-    console.log('  [6d] SSO Deck re-opened from fallback Sign In button');
 
     // Clean up route mock
     await page.unroute('**/api/sites');
-    console.log('  ✓ 401 auto-open SSO flow verified');
+    console.log('  ✓ 401 auth flow verified');
 
     // Re-authenticate if needed before sign-out step
     await handleReauthIfPresent(page);
