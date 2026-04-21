@@ -6,10 +6,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 
+import { appFetch } from '@/lib/gasket-config';
 import { useAddRow, useDeleteRow, useUpdateRow } from './useTableMutations';
 
 vi.mock('@/lib/request-context', () => ({
   logger: { error: vi.fn() },
+}));
+
+vi.mock('@/lib/gasket-config', () => ({
+  appFetch: vi.fn(),
 }));
 
 describe('useTableMutations', () => {
@@ -24,12 +29,11 @@ describe('useTableMutations', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    global.fetch = vi.fn();
   });
 
   describe('useAddRow', () => {
     it('should add a row successfully', async () => {
-      vi.mocked(global.fetch).mockResolvedValue({
+      vi.mocked(appFetch).mockResolvedValue({
         ok: true,
         json: async () => ({ id: 1, name: 'Test' }),
       } as Response);
@@ -45,18 +49,19 @@ describe('useTableMutations', () => {
         expect(result.current.isSuccess).toBe(true);
       });
 
-      expect(global.fetch).toHaveBeenCalledWith(
+      expect(appFetch).toHaveBeenCalledWith(
         '/api/database/test-app/tables/users/rows',
         expect.objectContaining({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ data: { name: 'Test', email: 'test@example.com' } }),
-        })
+        }),
+        { authLevel: 3 }
       );
     });
 
     it('should call onSuccess callback when provided', async () => {
-      vi.mocked(global.fetch).mockResolvedValue({
+      vi.mocked(appFetch).mockResolvedValue({
         ok: true,
         json: async () => ({ id: 1 }),
       } as Response);
@@ -77,7 +82,7 @@ describe('useTableMutations', () => {
     });
 
     it('should handle add row errors', async () => {
-      vi.mocked(global.fetch).mockResolvedValue({
+      vi.mocked(appFetch).mockResolvedValue({
         ok: false,
         status: 400,
         json: async () => ({ error: 'Invalid data' }),
@@ -98,7 +103,7 @@ describe('useTableMutations', () => {
     });
 
     it('should handle HTML error responses gracefully', async () => {
-      vi.mocked(global.fetch).mockResolvedValue({
+      vi.mocked(appFetch).mockResolvedValue({
         ok: false,
         status: 500,
         statusText: 'Internal Server Error',
@@ -129,7 +134,7 @@ describe('useTableMutations', () => {
 
   describe('useUpdateRow', () => {
     it('should update a row successfully', async () => {
-      vi.mocked(global.fetch).mockResolvedValue({
+      vi.mocked(appFetch).mockResolvedValue({
         ok: true,
         json: async () => ({ updated: true }),
       } as Response);
@@ -150,7 +155,7 @@ describe('useTableMutations', () => {
         expect(result.current.isSuccess).toBe(true);
       });
 
-      expect(global.fetch).toHaveBeenCalledWith(
+      expect(appFetch).toHaveBeenCalledWith(
         '/api/database/test-app/tables/users/rows',
         expect.objectContaining({
           method: 'PUT',
@@ -159,12 +164,13 @@ describe('useTableMutations', () => {
             primaryKey: { id: 1 },
             data: { name: 'Updated Name' },
           }),
-        })
+        }),
+        { authLevel: 3 }
       );
     });
 
     it('should call onSuccess callback when provided', async () => {
-      vi.mocked(global.fetch).mockResolvedValue({
+      vi.mocked(appFetch).mockResolvedValue({
         ok: true,
         json: async () => ({ updated: true }),
       } as Response);
@@ -191,7 +197,7 @@ describe('useTableMutations', () => {
     });
 
     it('should handle update errors', async () => {
-      vi.mocked(global.fetch).mockResolvedValue({
+      vi.mocked(appFetch).mockResolvedValue({
         ok: false,
         status: 404,
         json: async () => ({ error: 'Row not found' }),
@@ -217,7 +223,7 @@ describe('useTableMutations', () => {
     });
 
     it('should handle HTML error responses gracefully', async () => {
-      vi.mocked(global.fetch).mockResolvedValue({
+      vi.mocked(appFetch).mockResolvedValue({
         ok: false,
         status: 502,
         statusText: 'Bad Gateway',
@@ -253,7 +259,7 @@ describe('useTableMutations', () => {
 
   describe('useDeleteRow', () => {
     it('should delete a row successfully', async () => {
-      vi.mocked(global.fetch).mockResolvedValue({
+      vi.mocked(appFetch).mockResolvedValue({
         ok: true,
         json: async () => ({ deleted: true }),
       } as Response);
@@ -269,18 +275,19 @@ describe('useTableMutations', () => {
         expect(result.current.isSuccess).toBe(true);
       });
 
-      expect(global.fetch).toHaveBeenCalledWith(
+      expect(appFetch).toHaveBeenCalledWith(
         '/api/database/test-app/tables/users/rows',
         expect.objectContaining({
           method: 'DELETE',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ primaryKey: { id: 1 } }),
-        })
+        }),
+        { authLevel: 3 }
       );
     });
 
     it('should handle delete errors', async () => {
-      vi.mocked(global.fetch).mockResolvedValue({
+      vi.mocked(appFetch).mockResolvedValue({
         ok: false,
         status: 404,
         json: async () => ({ error: 'Row not found' }),
@@ -302,7 +309,7 @@ describe('useTableMutations', () => {
 
 
     it('should handle composite primary keys', async () => {
-      vi.mocked(global.fetch).mockResolvedValue({
+      vi.mocked(appFetch).mockResolvedValue({
         ok: true,
         json: async () => ({ deleted: true }),
       } as Response);
@@ -318,16 +325,17 @@ describe('useTableMutations', () => {
         expect(result.current.isSuccess).toBe(true);
       });
 
-      expect(global.fetch).toHaveBeenCalledWith(
+      expect(appFetch).toHaveBeenCalledWith(
         '/api/database/test-app/tables/user_roles/rows',
         expect.objectContaining({
           body: JSON.stringify({ primaryKey: { userId: 1, roleId: 2 } }),
-        })
+        }),
+        { authLevel: 3 }
       );
     });
 
     it('should handle HTML error responses gracefully', async () => {
-      vi.mocked(global.fetch).mockResolvedValue({
+      vi.mocked(appFetch).mockResolvedValue({
         ok: false,
         status: 503,
         statusText: 'Service Unavailable',

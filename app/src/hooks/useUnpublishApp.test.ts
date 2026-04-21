@@ -18,6 +18,9 @@ const mockFetchAllSites = vi.hoisted(() => vi.fn());
 
 vi.mock('@/lib/gasket-config', () => ({
   appFetch: (...args: unknown[]) => mockAppFetch(...args),
+  AuthDismissedError: class AuthDismissedError extends Error {
+    constructor() { super('Authentication dismissed'); this.name = 'AuthDismissedError'; }
+  },
 }));
 
 vi.mock('@/lib/request-context', () => ({
@@ -75,7 +78,7 @@ describe('useUnpublishApp', function useUnpublishAppTests() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ disconnectDomain: undefined, domainFqdn: undefined }),
-    });
+    }, { authLevel: 3 });
   });
 
   it('should pass disconnectDomain option', async function passesDisconnectDomain() {
@@ -102,7 +105,7 @@ describe('useUnpublishApp', function useUnpublishAppTests() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ disconnectDomain: true, domainFqdn: 'example.com' }),
-    });
+    }, { authLevel: 3 });
   });
 
   it('should refetch sites on success', async function refetchesSites() {

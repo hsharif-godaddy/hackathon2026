@@ -8,7 +8,7 @@ import {
 } from '@/hooks/useAppDetails';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
-import { appFetch } from '@/lib/gasket-config';
+import { appFetch, AuthDismissedError, authPreflight } from '@/lib/gasket-config';
 import { regenerateToken } from '@/lib/jwt-regeneration';
 import type { AiroSubscription } from '@/lib/mgmt-airo/types';
 import { logger } from '@/lib/request-context';
@@ -197,6 +197,8 @@ export function usePublishApp() {
 
   return useMutation<PublishResult, Error, PublishParams>({
     mutationFn: async ({ appId }) => {
+      const preflightFailure = await authPreflight(3);
+      if (preflightFailure) throw new Error('Authentication required');
       await queryClient.invalidateQueries({ queryKey: ['app-details', appId] });
       const site = await queryClient.fetchQuery<AppDetailsResponse>({
         queryKey: appDetailsQueryKey(appId),
@@ -234,7 +236,7 @@ export function usePublishApp() {
               source: 'preview',
               destination: 'publish'
             }),
-          });
+          }, { setAuthState: false });
 
           if (!syncResponse.ok) {
             // Log warning but don't fail publish - secrets sync is non-critical
@@ -335,7 +337,7 @@ export function usePublishApp() {
             body: JSON.stringify({
               gitHash: result.commitHash,
             }),
-          });
+          }, { setAuthState: false });
 
           if (!deploymentResponse.ok) {
             const deploymentError = await deploymentResponse.json().catch(() => ({
@@ -429,6 +431,7 @@ export function usePublishApp() {
       useDevelopPageStore.getState().setFirstPublishDeployPending(variables.appId, false);
     },
     onError: (error, variables) => {
+      if (error instanceof AuthDismissedError) return;
       useDevelopPageStore.getState().setFirstPublishDeployPending(variables.appId, false);
       useDevelopPageStore.getState().setShowFirstPublishCongrats(variables.appId, false);
       logger.error('publish.error', {

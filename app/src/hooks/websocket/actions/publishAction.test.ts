@@ -14,6 +14,10 @@ import { createMockMessageContext } from '../handlers/__tests__/testUtils'
 // Mock dependencies
 vi.mock('@/lib/gasket-config', () => ({
   appFetch: vi.fn(),
+  authPreflight: vi.fn().mockResolvedValue(null),
+  AuthDismissedError: class AuthDismissedError extends Error {
+    constructor() { super('Authentication dismissed'); this.name = 'AuthDismissedError'; }
+  },
 }))
 
 vi.mock('@/services/AppService', () => ({
@@ -511,7 +515,8 @@ describe('publishAction', () => {
         expect.objectContaining({
           method: 'POST',
           body: JSON.stringify({ source: 'preview', destination: 'publish' }),
-        })
+        }),
+        { setAuthState: false }
       )
     })
 

@@ -16,6 +16,9 @@ const mockLogger = vi.hoisted(() => ({
 
 vi.mock('@/lib/gasket-config', () => ({
   appFetch: (...args: unknown[]) => mockAppFetch(...args),
+  AuthDismissedError: class AuthDismissedError extends Error {
+    constructor() { super('Authentication dismissed'); this.name = 'AuthDismissedError'; }
+  },
 }));
 
 vi.mock('@/lib/request-context', () => ({
@@ -67,7 +70,7 @@ describe('useEcommSubscriptionAutoRenew', function useEcommSubscriptionAutoRenew
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ builderEntitlementId: 'entitlement-123', autoRenew: false }),
       credentials: 'include',
-    });
+    }, { authLevel: 3 });
   });
 
   it('should successfully update autoRenew to true', async function updateToTrue() {
@@ -121,6 +124,6 @@ describe('useEcommSubscriptionAutoRenew', function useEcommSubscriptionAutoRenew
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ builderEntitlementId: 'test-entitlement-456', autoRenew: true }),
       credentials: 'include',
-    });
+    }, { authLevel: 3 });
   });
 });

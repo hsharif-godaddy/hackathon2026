@@ -6,7 +6,7 @@
  */
 
 import { validateDomainName } from '@/lib/domain-validation'
-import { appFetch } from '@/lib/gasket-config'
+import { appFetch, AuthDismissedError } from '@/lib/gasket-config'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { logger } from '@/lib/request-context'
 import type { ClientActionExecutor } from './types'
@@ -45,7 +45,7 @@ export const attachDomainAction: ClientActionExecutor = async (params) => {
                 domainsToCreate: [{ fqdn: domainName, primary: false }],
                 createCdn: true,
             }),
-        })
+        }, { authLevel: 3 })
 
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
@@ -88,6 +88,7 @@ export const attachDomainAction: ClientActionExecutor = async (params) => {
             message: result.message,
         }
     } catch (error) {
+        if (error instanceof AuthDismissedError) return { cancelled: true }
         const errorMessage = error instanceof Error ? error.message : String(error)
         logger.error('attach-domain-action.error', {
             appId,

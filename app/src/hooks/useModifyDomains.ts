@@ -94,7 +94,7 @@ export function useModifyDomains() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(payload),
-      });
+      }, { authLevel: 3 });
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));

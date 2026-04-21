@@ -11,7 +11,7 @@ import TextInput from '@ux/text-input'
 import { TRANSFER_TOKEN_LENGTH, TRANSFER_TOKEN_PATTERN } from '@/app/apps/components/transfer-constants'
 import { useCloseOnReauth } from '@/hooks/useCloseOnReauth'
 import { useTranslations } from '@/hooks/useTranslations'
-import { appFetch } from '@/lib/gasket-config'
+import { appFetch, AuthDismissedError } from '@/lib/gasket-config'
 import { logger } from '@/lib/request-context'
 import { useSitesStore } from '@/stores/useSitesStore'
 import { generateClickEID, logClickEvent, logImpressionEvent } from '@/utils/instrumentation'
@@ -149,7 +149,7 @@ export default function AcceptTransferDialog({ onClose, onAccepted }: AcceptTran
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ transferToken: trimmed })
-      })
+      }, { authLevel: 3 })
 
       const data = await response.json()
 
@@ -170,6 +170,7 @@ export default function AcceptTransferDialog({ onClose, onAccepted }: AcceptTran
         onClose()
       }
     } catch (err) {
+      if (err instanceof AuthDismissedError) return
       logClickEvent('apps.transfer.accept_error')()
       logger.error('transfer.accept.ui.error', {
         error: err instanceof Error ? err.message : String(err)

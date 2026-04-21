@@ -233,6 +233,91 @@ export interface AppFetchOptions {
    * Defaults to true. Set to false if you want to handle 401 manually.
    */
   setAuthState?: boolean;
+  /**
+   * When set, validates auth at this level before making the request.
+   * If validation fails (401), triggers SSO re-auth and waits for completion.
+   * On successful re-auth, retries validation then proceeds with the request.
+   * On SSO dismiss or timeout, returns the 401 response (caller handles normally).
+   */
+  authLevel?: 1 | 2 | 3;
+}
+
+export class AuthDismissedError extends Error {
+  constructor() {
+    super('Authentication dismissed');
+    this.name = 'AuthDismissedError';
+  }
+}
+
+const AUTH_PREFLIGHT_TIMEOUT_MS = 5 * 60 * 1000;
+let pendingSsoPromise: Promise<'success' | 'dismiss'> | null = null;
+
+function waitForSsoOutcome(): Promise<'success' | 'dismiss'> {
+  return new Promise((resolve, reject) => {
+    let unsubscribe = () => {};
+
+    const timeout = setTimeout(() => {
+      unsubscribe();
+      useAuthUIStore.getState().clearNeedsReauth();
+      reject(new Error('Authentication timed out'));
+    }, AUTH_PREFLIGHT_TIMEOUT_MS);
+
+    unsubscribe = useAuthUIStore.subscribe((state, prevState) => {
+      if (
+        state.ssoCloseReason !== prevState.ssoCloseReason &&
+        (state.ssoCloseReason === 'success' || state.ssoCloseReason === 'dismiss')
+      ) {
+        clearTimeout(timeout);
+        unsubscribe();
+        resolve(state.ssoCloseReason);
+      }
+    });
+  });
+}
+
+export async function authPreflight(level: 1 | 2 | 3): Promise<AppFetchResponse | null> {
+  if (typeof window === 'undefined') return null;
+
+  const response: AppFetchResponse = await fetch(
+    `/api/auth/validate?level=${level}`,
+    { method: 'GET', credentials: 'include' }
+  );
+
+  if (response.ok) return null;
+  if (response.status !== 401) return response;
+
+  let authReason: number | undefined;
+  try {
+    const data = await response.clone().json();
+    authReason = data.authReason;
+  } catch { /* response may not be JSON */ }
+
+  logger.info('app-fetch.auth-preflight.reauth-required', { level, authReason });
+
+  if (!pendingSsoPromise) {
+    useAuthUIStore.getState().setNeedsReauth('session_expired', false, authReason);
+    pendingSsoPromise = waitForSsoOutcome().finally(() => { pendingSsoPromise = null; });
+  }
+
+  let outcome: 'success' | 'dismiss';
+  try {
+    outcome = await pendingSsoPromise;
+  } catch {
+    return response;
+  }
+
+  if (outcome === 'dismiss') {
+    useAuthUIStore.getState().clearNeedsReauth();
+    throw new AuthDismissedError();
+  }
+
+  const retryResponse: AppFetchResponse = await fetch(
+    `/api/auth/validate?level=${level}`,
+    { method: 'GET', credentials: 'include' }
+  );
+
+  if (!retryResponse.ok) return retryResponse;
+  return null;
 }
 
 /**
@@ -277,7 +362,13 @@ export async function appFetch(
   options?: RequestInit,
   appOptions?: AppFetchOptions
 ): Promise<AppFetchResponse> {
-  const { setAuthState = true } = appOptions || {};
+  const { setAuthState = true, authLevel } = appOptions || {};
+
+  // Auth preflight: validate session at the required level before making the request
+  if (authLevel) {
+    const preflightResult = await authPreflight(authLevel);
+    if (preflightResult) return preflightResult;
+  }
 
   // Normalize relative URLs for environments where the underlying fetch/auth wrapper
   // requires absolute URLs (e.g., some server/test runtimes).

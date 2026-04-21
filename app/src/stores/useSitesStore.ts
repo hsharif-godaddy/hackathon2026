@@ -3,7 +3,7 @@ import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
 
 import { SiteInfo, SiteStatus } from '@/lib/control-plane/types'
-import { appFetch } from '@/lib/gasket-config'
+import { appFetch, AuthDismissedError } from '@/lib/gasket-config'
 import { logger } from '@/lib/request-context'
 import { AppErrorCode } from '@/types/error-codes'
 
@@ -174,7 +174,7 @@ export const useSitesStore = create<SitesStore>()(
 
         const response = await appFetch(`/api/sites/${siteId}`, {
           method: 'DELETE'
-        })
+        }, { authLevel: 3 })
 
         if (response.ok) {
 
@@ -195,6 +195,7 @@ export const useSitesStore = create<SitesStore>()(
           return false
         }
       } catch (error) {
+        if (error instanceof AuthDismissedError) return false
         const errorMessage = error instanceof Error ? error.message : 'Failed to delete site'
         logger.error('sites-store.delete.error', { siteId, error: errorMessage })
 
@@ -269,7 +270,7 @@ export const useSitesStore = create<SitesStore>()(
 
         // Delete all sites in parallel
         const deletePromises = allSites.map(site =>
-          appFetch(`/api/sites/${site.id}`, { method: 'DELETE' })
+          appFetch(`/api/sites/${site.id}`, { method: 'DELETE' }, { authLevel: 3 })
         )
 
         await Promise.all(deletePromises)
@@ -283,6 +284,7 @@ export const useSitesStore = create<SitesStore>()(
 
         return true
       } catch (error) {
+        if (error instanceof AuthDismissedError) return false
         const errorMessage = error instanceof Error ? error.message : 'Failed to delete all sites'
         logger.error('sites-store.delete-all.failure', { error: errorMessage })
 

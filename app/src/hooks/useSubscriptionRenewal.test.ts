@@ -28,6 +28,9 @@ vi.mock('@/lib/request-context', () => ({
 // Mock appFetch
 vi.mock('@/lib/gasket-config', () => ({
   appFetch: vi.fn(),
+  AuthDismissedError: class AuthDismissedError extends Error {
+    constructor() { super('Authentication dismissed'); this.name = 'AuthDismissedError'; }
+  },
 }));
 
 import { appFetch } from '@/lib/gasket-config';
@@ -212,7 +215,8 @@ describe('useSubscriptionRenewal', function useSubscriptionRenewalTests() {
           body: JSON.stringify({
             subscriptionId: 'sub-456',
           }),
-        })
+        }),
+        { authLevel: 3 }
       );
     });
 

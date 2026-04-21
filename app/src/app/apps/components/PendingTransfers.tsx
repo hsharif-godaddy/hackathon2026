@@ -9,7 +9,7 @@ import Tag from '@ux/tag'
 import text from '@ux/text'
 
 import { useTranslations } from '@/hooks/useTranslations'
-import { appFetch } from '@/lib/gasket-config'
+import { appFetch, AuthDismissedError } from '@/lib/gasket-config'
 import { logger } from '@/lib/request-context'
 import { useSitesStore } from '@/stores/useSitesStore'
 import { formatDate } from '@/utils/common'
@@ -112,7 +112,7 @@ export default function PendingTransfers({ onAcceptTransfer }: PendingTransfersP
     setCancellingId(transfer.id)
     setCancelErrorId(null)
     try {
-      const response = await appFetch(`/api/apps/${transfer.appId}/transfer/cancel`, { method: 'POST' })
+      const response = await appFetch(`/api/apps/${transfer.appId}/transfer/cancel`, { method: 'POST' }, { authLevel: 3 })
       if (response.ok) {
         setOutgoing(function removeTransfer(prev) {
           return prev.filter(function keep(t) { return t.id !== transfer.id })
@@ -124,6 +124,7 @@ export default function PendingTransfers({ onAcceptTransfer }: PendingTransfersP
         setCancelErrorId(transfer.id)
       }
     } catch (error) {
+      if (error instanceof AuthDismissedError) return
       logger.error('transfer.cancel.list.error', {
         transferId: transfer.id,
         error: error instanceof Error ? error.message : String(error)

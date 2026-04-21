@@ -4,7 +4,7 @@ import { immer } from 'zustand/middleware/immer'
 
 import { agentFetch } from '@/lib/agent-fetch'
 import { SiteStatus } from '@/lib/control-plane/types'
-import { appFetch } from '@/lib/gasket-config'
+import { appFetch, AuthDismissedError } from '@/lib/gasket-config'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { logger } from '@/lib/request-context'
 import { appService } from '@/services/AppService'
@@ -172,7 +172,7 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
 
         const deployResponse = await appFetch(`/api/sites/${siteId}/deploy`, {
           method: 'POST'
-        })
+        }, { authLevel: 3 })
 
         if (!deployResponse.ok) {
           const errorData = await deployResponse.json().catch(() => ({}))
@@ -230,6 +230,7 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
         get()._startPolling()
 
       } catch (error) {
+        if (error instanceof AuthDismissedError) return
         logger.error('site.deployment.failure', { appId: get().siteId ?? undefined, message: 'Error starting deployment', error: error instanceof Error ? error.message : 'Unknown error' })
         set((state) => {
           state.error = error instanceof Error ? error.message : 'Failed to start deployment'

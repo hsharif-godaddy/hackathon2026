@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
-import { appFetch } from '@/lib/gasket-config';
+import { appFetch, AuthDismissedError } from '@/lib/gasket-config';
 import { logger } from '@/lib/request-context';
 import { useSitesStore } from '@/stores/useSitesStore';
 import { useSiteStore } from '@/stores/useSiteStore';
@@ -56,7 +56,7 @@ export function useUnpublishApp() {
           disconnectDomain,
           domainFqdn,
         }),
-      });
+      }, { authLevel: 3 });
 
       const data = await response.json();
 
@@ -93,6 +93,7 @@ export function useUnpublishApp() {
       });
     },
     onError: (error, variables) => {
+      if (error instanceof AuthDismissedError) return;
       logger.error('unpublish.hook.error', {
         appId: variables.appId,
         error: error.message,

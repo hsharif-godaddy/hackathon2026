@@ -28,7 +28,6 @@ vi.mock('@ux/modal', () => ({
     </div>
   ),
 }));
-
 describe('AcceptTransferDialog', function dialogTests() {
   const defaultProps = {
     onClose: vi.fn(),

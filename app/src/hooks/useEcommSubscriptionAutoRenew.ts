@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
-import { appFetch } from '@/lib/gasket-config';
+import { appFetch, AuthDismissedError } from '@/lib/gasket-config';
 import { logger } from '@/lib/request-context';
 
 interface SetAutoRenewParams {
@@ -46,7 +46,7 @@ export function useEcommSubscriptionAutoRenew() {
         },
         body: JSON.stringify({ builderEntitlementId, autoRenew }),
         credentials: 'include',
-      });
+      }, { authLevel: 3 });
 
       let data: { error?: string; renewalDate?: string } | undefined;
       let responseText: string | undefined;
@@ -111,6 +111,7 @@ export function useEcommSubscriptionAutoRenew() {
       }, 5000);
     },
     onError: (error, variables) => {
+      if (error instanceof AuthDismissedError) return;
       logger.error('ecomm-subscription.auto-renew.mutation.failed', {
         builderEntitlementId: variables.builderEntitlementId,
         autoRenew: variables.autoRenew,

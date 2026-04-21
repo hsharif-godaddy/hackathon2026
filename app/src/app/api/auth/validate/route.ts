@@ -63,8 +63,11 @@ async function validateHandler(request: NextRequest) {
       return NextResponse.json({ valid: false, reason: 'No token provided' }, { status: 401 });
     }
 
+    const levelParam = request.nextUrl.searchParams.get('level');
+    const level: 1 | 2 | 3 = levelParam === '3' ? 3 : levelParam === '2' ? 2 : 1;
+
     // Use gd-auth for authentication (includes automatic heartbeat)
-    const result = await gdAuthService.authenticate(token);
+    const result = await gdAuthService.authenticate(token, level);
 
     return NextResponse.json({
       valid: result.valid,

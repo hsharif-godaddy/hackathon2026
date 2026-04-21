@@ -1,6 +1,6 @@
 import { useIsMutating, useMutation, useQueryClient } from '@tanstack/react-query'
 
-import { appFetch } from '@/lib/gasket-config'
+import { appFetch, AuthDismissedError } from '@/lib/gasket-config'
 import { waitForQueryUpdate } from '@/lib/query-utils'
 import { logger } from '@/lib/request-context'
 import { SubscriptionStatus } from '@/types/credits'
@@ -60,7 +60,7 @@ export function useSubscriptionRenewal(): UseSubscriptionRenewalResult {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ subscriptionId }),
-      })
+      }, { authLevel: 3 })
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}))
@@ -105,6 +105,7 @@ export function useSubscriptionRenewal(): UseSubscriptionRenewalResult {
       queryClient.invalidateQueries({ queryKey: ['ecomm-subscription-status'] })
     },
     onError: (error, { subscriptionId }) => {
+      if (error instanceof AuthDismissedError) return;
       logger.error('subscription.renewal.error', {
         subscriptionId,
         error: error instanceof Error ? error.message : 'Unknown error',

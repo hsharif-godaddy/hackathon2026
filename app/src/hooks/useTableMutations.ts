@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
+import { appFetch } from '@/lib/gasket-config';
 import { logger } from '@/lib/request-context';
 
 interface AddRowOptions {
@@ -36,11 +37,11 @@ export function useAddRow({ appId, tableName, onSuccess }: AddRowOptions) {
 
   return useMutation({
     mutationFn: async (data: Record<string, any>) => {
-      const response = await fetch(`/api/database/${appId}/tables/${tableName}/rows`, {
+      const response = await appFetch(`/api/database/${appId}/tables/${tableName}/rows`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ data }),
-      });
+      }, { authLevel: 3 });
 
       if (!response.ok) {
         const errorData = await response.json().catch((parseError) => {
@@ -72,9 +73,7 @@ export function useAddRow({ appId, tableName, onSuccess }: AddRowOptions) {
       return response.json();
     },
     onSuccess: () => {
-      // Invalidate table data queries to trigger refetch
       queryClient.invalidateQueries({ queryKey: ['table-data', appId, tableName] });
-      // Call custom success callback if provided
       onSuccess?.();
     },
   });
@@ -97,11 +96,11 @@ export function useUpdateRow({ appId, tableName, primaryKey, onSuccess }: Update
 
   return useMutation({
     mutationFn: async (data: Record<string, any>) => {
-      const response = await fetch(`/api/database/${appId}/tables/${tableName}/rows`, {
+      const response = await appFetch(`/api/database/${appId}/tables/${tableName}/rows`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ primaryKey, data }),
-      });
+      }, { authLevel: 3 });
 
       if (!response.ok) {
         const errorData = await response.json().catch((parseError) => {
@@ -135,9 +134,7 @@ export function useUpdateRow({ appId, tableName, primaryKey, onSuccess }: Update
       return response.json();
     },
     onSuccess: () => {
-      // Invalidate table data queries to trigger refetch
       queryClient.invalidateQueries({ queryKey: ['table-data', appId, tableName] });
-      // Call custom success callback if provided
       onSuccess?.();
     },
   });
@@ -167,11 +164,11 @@ export function useDeleteRow({ appId, tableName }: DeleteRowOptions) {
 
   return useMutation({
     mutationFn: async (primaryKey: Record<string, any>) => {
-      const response = await fetch(`/api/database/${appId}/tables/${tableName}/rows`, {
+      const response = await appFetch(`/api/database/${appId}/tables/${tableName}/rows`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ primaryKey }),
-      });
+      }, { authLevel: 3 });
 
       if (!response.ok) {
         const errorData = await response.json().catch((parseError) => {
@@ -205,7 +202,6 @@ export function useDeleteRow({ appId, tableName }: DeleteRowOptions) {
       return response.json();
     },
     onSuccess: () => {
-      // Invalidate table data queries to trigger refetch
       queryClient.invalidateQueries({ queryKey: ['table-data', appId, tableName] });
     },
   });

@@ -84,7 +84,7 @@ export function useSecretOperations() {
         body: JSON.stringify({
           operations,
         }),
-      });
+      }, { authLevel: 3 });
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -114,7 +114,6 @@ export function useSecretOperations() {
       return data;
     },
     onSuccess: (data, variables) => {
-      // Invalidate the secrets cache to trigger a refetch
       queryClient.invalidateQueries({
         queryKey: ['secrets', variables.appId, variables.variant],
       });

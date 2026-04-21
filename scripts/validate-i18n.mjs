@@ -81,7 +81,7 @@ async function fetchTranslationKeys() {
       return null;
     }
 
-    return new Set(Object.keys(data));
+    return new Set(Object.keys(data).map((k) => k.trim()));
   } catch (error) {
     clearTimeout(timeout);
 

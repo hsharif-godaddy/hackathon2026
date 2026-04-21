@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-import { appFetch } from '@/lib/gasket-config'
+import { appFetch, AuthDismissedError } from '@/lib/gasket-config'
 import { logger } from '@/lib/request-context'
 
 interface UseDownloadAppResult {
@@ -46,7 +46,7 @@ export function useDownloadApp(appId: string | null): UseDownloadAppResult {
       const response = await appFetch(`/api/apps/${appId}/download`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-      })
+      }, { authLevel: 3 })
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: 'Failed to initiate download' }))
@@ -96,6 +96,7 @@ export function useDownloadApp(appId: string | null): UseDownloadAppResult {
         window.URL.revokeObjectURL(url)
       }
     } catch (err) {
+      if (err instanceof AuthDismissedError) return
       const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred'
       logger.error('app.download.error', { appId, error: errorMessage })
       setError(errorMessage)

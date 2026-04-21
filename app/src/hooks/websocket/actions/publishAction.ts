@@ -12,7 +12,7 @@ import {
   type AppDetailsResponse,
   fetchAppDetails,
 } from '@/hooks/useAppDetails'
-import { appFetch } from '@/lib/gasket-config'
+import { appFetch, AuthDismissedError, authPreflight } from '@/lib/gasket-config'
 import { regenerateToken } from '@/lib/jwt-regeneration'
 import { type AiroSubscription,DeploymentStatus } from '@/lib/mgmt-airo/types'
 import { ClientPaywallProvider } from '@/lib/paywall/client-provider'
@@ -151,6 +151,9 @@ export const publishAction: ClientActionExecutor = async (params) => {
       throw new Error('Publish blocked: compliance suspension')
     }
 
+    const preflightFailure = await authPreflight(3)
+    if (preflightFailure) throw new Error('Authentication required')
+
     // Log publish analytics event (matches UI behavior)
     try {
       const isFirstTimePublishing = !hasBeenPublished(appDetails)
@@ -220,7 +223,7 @@ export const publishAction: ClientActionExecutor = async (params) => {
           source: 'preview',
           destination: 'publish',
         }),
-      })
+      }, { setAuthState: false })
 
       if (!syncResponse.ok) {
         logger.warn('websocket.client-action.publish.secrets-sync-failed', {
@@ -370,7 +373,7 @@ export const publishAction: ClientActionExecutor = async (params) => {
           body: JSON.stringify({
             gitHash: result.commitHash,
           }),
-        })
+        }, { setAuthState: false })
 
         if (!deploymentResponse.ok) {
           const deploymentError = await deploymentResponse.json().catch(() => ({
@@ -504,8 +507,7 @@ export const publishAction: ClientActionExecutor = async (params) => {
       deploymentMessage: result.deployment?.message,
     }
   } catch (error) {
-    // Set error state and clear publishing state (matches UI behavior)
-    // EXCEPT when paywall modal is showing - in that case, don't show error alert
+    if (error instanceof AuthDismissedError) return { cancelled: true }
     try {
       const store = useDevelopPageStore.getState()
       const showPaywallModal = store.publishStates[appId]?.showPaywallModal ?? false

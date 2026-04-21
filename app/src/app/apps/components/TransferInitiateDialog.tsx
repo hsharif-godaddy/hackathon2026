@@ -10,7 +10,7 @@ import TextInput from '@ux/text-input'
 
 import { useCloseOnReauth } from '@/hooks/useCloseOnReauth'
 import { useTranslations } from '@/hooks/useTranslations'
-import { appFetch } from '@/lib/gasket-config'
+import { appFetch, AuthDismissedError } from '@/lib/gasket-config'
 import { logger } from '@/lib/request-context'
 import { generateClickEID, logClickEvent, logImpressionEvent } from '@/utils/instrumentation'
 
@@ -66,7 +66,7 @@ export default function TransferInitiateDialog({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ targetEmail: trimmed })
-      })
+      }, { authLevel: 3 })
 
       const data = await response.json()
 
@@ -81,6 +81,7 @@ export default function TransferInitiateDialog({
       setTransferExpiresAt(data.expiresAt)
       setStep('token')
     } catch (err) {
+      if (err instanceof AuthDismissedError) return
       logClickEvent('apps.transfer.initiate_error')()
       logger.error('transfer.initiate.ui.error', {
         appId,

@@ -32,7 +32,7 @@ import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { useUnpublishApp } from '@/hooks/useUnpublishApp'
 import { SiteInfo, SiteStatus } from '@/lib/control-plane/types'
-import { appFetch } from '@/lib/gasket-config'
+import { appFetch, AuthDismissedError } from '@/lib/gasket-config'
 import { isPublishedApp } from '@/lib/publish-limit'
 import { logger } from '@/lib/request-context'
 import { shouldShowAppNonCompliantOrAccountComplianceTag } from '@/lib/subscription'
@@ -139,7 +139,7 @@ export default function AppCard({ site }: { site: SiteInfo }) {
     setActionLoading('cancel-transfer')
     setCancelTransferError(null)
     try {
-      const response = await appFetch(`/api/apps/${site.id}/transfer/cancel`, { method: 'POST' })
+      const response = await appFetch(`/api/apps/${site.id}/transfer/cancel`, { method: 'POST' }, { authLevel: 3 })
       if (response.ok) {
         logClickEvent('apps.transfer.cancel_success')()
         setActiveTransfer(null)
@@ -153,6 +153,7 @@ export default function AppCard({ site }: { site: SiteInfo }) {
         setCancelTransferError(data.error || t('builder_transfer_error_cancel_failed', undefined, 'Failed to cancel transfer. Please try again.'))
       }
     } catch (error) {
+      if (error instanceof AuthDismissedError) return
       logClickEvent('apps.transfer.cancel_error')()
       logger.error('transfer.cancel.ui.error', {
         appId: site.id,

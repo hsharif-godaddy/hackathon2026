@@ -19,6 +19,9 @@ vi.mock('@/lib/request-context', () => ({
 
 vi.mock('@/lib/gasket-config', () => ({
   appFetch: vi.fn(),
+  AuthDismissedError: class AuthDismissedError extends Error {
+    constructor() { super('Authentication dismissed'); this.name = 'AuthDismissedError'; }
+  },
 }));
 
 const mockAppFetch = vi.mocked((await import('@/lib/gasket-config')).appFetch);
@@ -104,7 +107,8 @@ describe('useDownloadApp', () => {
       expect.objectContaining({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-      })
+      }),
+      { authLevel: 3 }
     );
 
     // Verify agent was called directly with token

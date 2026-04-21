@@ -27,7 +27,6 @@ vi.mock('@ux/modal', () => ({
     </div>
   ),
 }));
-
 describe('TransferInitiateDialog', function dialogTests() {
   const defaultProps = {
     appId: 'app-123',
