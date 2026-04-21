@@ -13,7 +13,6 @@ vi.mock('@godaddy/gasket-auth', () => ({
     valid: true,
     details: { email: 'test@example.com', cid: 'customer-123' },
   })),
-  authFetch: vi.fn(),
   AuthRealmType: {},
   AuthRiskType: {},
   AuthIdpType: {},

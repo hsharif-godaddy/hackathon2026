@@ -20,7 +20,7 @@ vi.mock('@/lib/features', () => ({
 vi.mock('@/lib/gasket-config', () => ({
   isAuthDisabled: vi.fn(() => false),
   authConfigs: {
-    user: { realm: 'idp', risk: 'low', type: ['basic'], allowHeartbeat: true, use12HourExpiration: true }
+    user: { realm: 'idp', risk: 'low', type: ['basic'], allowHeartbeat: false, use12HourExpiration: true }
   }
 }));
 

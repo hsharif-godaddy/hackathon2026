@@ -305,7 +305,7 @@ export default makeGasket({
       realm: 'idp',
       risk: 'high',
       type: ['basic'],
-      allowHeartbeat: true,
+      allowHeartbeat: false,
       use12HourExpiration: true,
       host: process.env.SSO_HOST ? [process.env.SSO_HOST] : ['godaddy.com'],
       ssoRedirectOverride: process.env.SSO_LOGIN_URL,

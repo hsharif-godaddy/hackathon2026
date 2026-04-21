@@ -50,8 +50,8 @@ async function loadRuntimeConfig(): Promise<GasketConfig> {
         isDisabled: auth.isDisabled(),
         isMock: auth.isMock(),
         isJWT: auth.isJWT(),
-        allowHeartbeat: true,
-        use12HourExpiration: true,    // Passed as useNewExpiration to gd-auth
+        allowHeartbeat: false,
+        use12HourExpiration: true,
       },
       sso: {
         loginUrl: process.env.SSO_LOGIN_URL || 'https://sso.test-godaddy.com/login',
@@ -131,7 +131,7 @@ export const authConfigs = {
     realm: 'idp',
     risk: 'low',
     type: SUPPORTED_AUTH_TYPES,
-    allowHeartbeat: true,
+    allowHeartbeat: false,
     use12HourExpiration: true    // Passed as useNewExpiration to gd-auth (30d persistent, 12h non-persistent, 12h HBI for level 3)
   },
   // Admin access for administrative functions
@@ -139,7 +139,7 @@ export const authConfigs = {
     realm: 'jomax',
     risk: 'medium',
     groups: ['admin', 'developer'],
-    allowHeartbeat: true,
+    allowHeartbeat: false,
     use12HourExpiration: true    // Passed as useNewExpiration to gd-auth (30d persistent, 12h non-persistent, 12h HBI for level 3)
   },
   // High security for sensitive operations
@@ -147,7 +147,8 @@ export const authConfigs = {
     realm: 'idp',
     risk: 'high',
     type: SUPPORTED_AUTH_TYPES,
-    allowHeartbeat: true         // Keep heartbeat, but shorter expiration for security
+    allowHeartbeat: false,
+    use12HourExpiration: true    // Passed as useNewExpiration to gd-auth (30d persistent, 12h non-persistent, 12h HBI for level 3)
   }
 };
 

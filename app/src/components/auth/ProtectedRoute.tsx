@@ -53,7 +53,7 @@ export default function ProtectedRoute({
   }
 
   // Only gate rendering on initial load. After initial auth completes, keep children
-  // mounted during heartbeat revalidations to prevent tearing down websocket connections.
+  // mounted during client-side revalidations to prevent tearing down websocket connections.
   if (!hasInitiallyRendered.current && (configLoading || !isClient || authLoading)) {
     return <LoadingComponent />;
   }
@@ -64,7 +64,7 @@ export default function ProtectedRoute({
     risk: risk || 'low' as AuthRiskType,
     type: type || ['basic'] as AuthIdpType[],
     groups,
-    allowHeartbeat: true,
+    allowHeartbeat: false,
     use12HourExpiration: true
   };
 
