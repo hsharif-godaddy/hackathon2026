@@ -672,5 +672,21 @@ describe('Feedback', function feedbackTests() {
         expect(screen.getByText('builder_feedback_category_share')).toBeInTheDocument();
       });
     });
+
+    it('should show a spinner while switchboard flag is loading', async function loadingSpinner() {
+      vi.mocked(useSwitchboard).mockReturnValue({ data: undefined, isLoading: true, error: null } as ReturnType<typeof useSwitchboard>);
+      mockAuth('basic');
+      renderWithProviders(<Feedback {...defaultProps} />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('dialog')).toBeInTheDocument();
+        expect(screen.getByTestId('spinner')).toBeInTheDocument();
+      });
+
+      // Neither feedback variant should render while loading
+      expect(screen.queryByText('builder_feedback_category_support')).toBeNull();
+      // Loading modal should have the feedback title for accessibility
+      expect(screen.getByText('builder_feedback_title')).toBeInTheDocument();
+    });
   });
 });
