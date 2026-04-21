@@ -8,6 +8,7 @@
 import { createLogger, containsBudgetExceededPattern, llmMetadataContext, type LitellmMetadata } from '@airo/ai-common'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import type { LanguageModel } from 'ai'
+import { wrapLanguageModel } from 'ai'
 import { createAnthropic } from '@ai-sdk/anthropic'
 import { Agent } from 'undici'
 
@@ -35,6 +36,7 @@ import {
   isModelSupported as isModelSupportedFromNormalization,
   getFullModelName as getFullModelNameFromNormalization
 } from '../utils/model-normalization.js'
+import { createCostTrackingMiddleware } from './usage-instrumentation-middleware.js'
 import { getS2SProviderConfig, isS2SAuthEnabled, getDefaultAnthropicProxyEndpoint, refreshS2SToken, getS2SToken, type S2SAuthConfig } from '../utils/s2s-auth.js'
 import { grantSessionManager } from '@airo/ai-grants'
 
@@ -603,7 +605,10 @@ export async function getModel(
 
       // Create OpenAI provider
       const provider = await createOpenAIProvider(config)
-      return provider(modelNameToUse)
+      return wrapLanguageModel({
+        model: provider(modelNameToUse),
+        middleware: createCostTrackingMiddleware()
+      })
 
     } else if (providerType === 'anthropic') {
       // Validate Anthropic configuration
@@ -624,7 +629,10 @@ export async function getModel(
 
       // Create Anthropic provider
       const provider = await createAnthropicProvider(config)
-      return provider(modelNameToUse)
+      return wrapLanguageModel({
+        model: provider(modelNameToUse),
+        middleware: createCostTrackingMiddleware()
+      })
 
     } else {
       throw new Error(`Unsupported provider type: ${providerType}`)

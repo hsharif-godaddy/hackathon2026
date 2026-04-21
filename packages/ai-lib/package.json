@@ -62,6 +62,7 @@
     "@ai-sdk/provider": "catalog:",
     "@airo/ai-common": "workspace:*",
     "@airo/ai-grants": "workspace:*",
+    "@godaddy/agent-otel-sdk": "catalog:",
     "@airo/shared": "workspace:*",
     "@langfuse/tracing": "catalog:",
     "ai": "catalog:",
