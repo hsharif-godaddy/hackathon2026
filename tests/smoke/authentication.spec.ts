@@ -9,7 +9,7 @@
  */
 import { test, expect } from '@playwright/test';
 
-import { clearAuthState, handleReauthIfPresent, handleSsoLogin, openUserMenu, userMenuTrigger, verifyAuthenticated } from '../helpers/auth';
+import { clearAuthState, handleSsoLogin, openUserMenu, userMenuTrigger, verifyAuthenticated } from '../helpers/auth';
 import { LONG_TIMEOUT, DEFAULT_TIMEOUT } from '../helpers/constants';
 import { logTestResult, logTestStart } from '../helpers/ui';
 
@@ -127,20 +127,22 @@ test.describe('Authentication', () => {
     // 6a: Race SSO iframe (new auto-open behavior) vs fallback modal (pre-deploy).
     // TODO: Remove else branch after #2789 deploys to prod -- only the SSO path should remain.
     const ssoIframe = page.locator('iframe[title="Container for sign in"]');
-    const fallbackHeading = page.getByRole('heading', { name: 'Sign In Required' });
+    // UXCore Modal renders its title as a <div> (not a heading), so match
+    // the dialog + title text to identify the AuthBoundary fallback modal.
+    const fallbackModal = page.locator('[role="dialog"]', { hasText: 'Sign In Required' });
 
     const authUiState = await Promise.race([
       ssoIframe
         .waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT })
         .then(() => 'sso' as const)
         .catch(() => null),
-      fallbackHeading
+      fallbackModal
         .waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT })
         .then(() => 'fallback' as const)
         .catch(() => null),
     ]);
 
-    expect(authUiState, 'Expected either SSO iframe or fallback Sign In modal after 401').not.toBeNull();
+    expect(authUiState, 'Expected either SSO iframe or fallback dialog after 401').not.toBeNull();
     const autoOpened = authUiState === 'sso';
 
     if (autoOpened) {
@@ -157,25 +159,26 @@ test.describe('Authentication', () => {
       console.log('  [6b] SSO Deck dismissed');
 
       // 6c: AuthBoundary fallback modal must appear after dismiss
-      await expect(fallbackHeading).toBeVisible({ timeout: DEFAULT_TIMEOUT });
-      console.log('  [6c] Fallback "Sign In" modal appeared after SSO dismiss');
+      await expect(fallbackModal).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+      console.log('  [6c] Fallback modal appeared after SSO dismiss');
 
       // 6d: Click Sign In button in fallback - must re-open SSO
-      const signInButton = page.getByRole('button', { name: 'Sign In', exact: true });
+      const signInButton = fallbackModal.getByRole('button', { name: 'Sign In', exact: true });
       await signInButton.click();
       await expect(ssoIframe).toBeVisible({ timeout: DEFAULT_TIMEOUT });
       console.log('  [6d] SSO Deck re-opened from fallback Sign In button');
     } else {
       // Pre-deploy: old AuthBoundary shows fallback modal directly
-      console.log('  [6a] Fallback "Sign In" modal shown (pre-deploy, auto-open not yet active)');
+      console.log('  [6a] Fallback modal shown (pre-deploy, auto-open not yet active)');
     }
 
-    // Clean up route mock
+    // Clean up route mock and navigate to homepage to clear AuthBoundary state.
+    // The 401 was mocked (not a real session expiry), so the user is still
+    // authenticated - navigating to homepage clears the modal without re-auth.
     await page.unroute('**/api/sites');
+    await page.goto('/');
+    await page.getByTestId('homepage-prompt-input').waitFor({ state: 'visible', timeout: LONG_TIMEOUT });
     console.log('  ✓ 401 auth flow verified');
-
-    // Re-authenticate if needed before sign-out step
-    await handleReauthIfPresent(page);
 
     // ========================================
     // STEP 7: Sign out

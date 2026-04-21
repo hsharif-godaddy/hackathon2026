@@ -247,7 +247,7 @@ export async function openUserMenu(page: Page): Promise<void> {
  */
 export async function handleReauthIfPresent(page: Page): Promise<boolean> {
   const ssoIframe = page.locator('iframe[title="Container for sign in"]');
-  const signInModal = page.getByRole('heading', { name: 'Sign In Required' });
+  const signInModal = page.locator('[role="dialog"]', { hasText: 'Sign In Required' });
 
   // Check for SSO iframe (auto-opened on 401) or AuthBoundary fallback modal.
   // Each branch needs its own .catch() so the losing racer doesn't produce an
@@ -261,7 +261,7 @@ export async function handleReauthIfPresent(page: Page): Promise<boolean> {
 
   if (detected === 'fallback') {
     console.log('  Sign In Required fallback modal detected, clicking Sign In...');
-    await page.getByRole('button', { name: 'Sign In', exact: true }).click();
+    await signInModal.getByRole('button', { name: 'Sign In', exact: true }).click();
   } else {
     console.log('  SSO iframe detected (auto-opened on 401), completing login...');
   }
