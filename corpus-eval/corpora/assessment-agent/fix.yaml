@@ -561,6 +561,66 @@ cases:
     tags: ["fix", "multi-turn"]
 
   # ============================================================================
+  # SESSION CONTEXT GATE (6 cases)
+  # Tests for below-threshold follow-ups during active fix sessions where
+  # embedding returns general but session context should route to Haiku
+  # ============================================================================
+
+  - id: "fix-scg-001"
+    previousMessage: "fix the button on the contact page"
+    previousAssessmentTaskType: "fix"
+    prompt: "here"
+    expectedTaskType: "fix"
+    expectedPath: "haiku"
+    tags: ["fix", "multi-turn", "session-context-gate"]
+    rationale: "Single-word diagnostic follow-up during active fix. Embedding scores below threshold, session context gate routes to Haiku."
+
+  - id: "fix-scg-002"
+    previousMessage: "the grades are not showing for 2025"
+    previousAssessmentTaskType: "fix"
+    prompt: "ok try again"
+    expectedTaskType: "fix"
+    expectedPath: "haiku"
+    tags: ["fix", "multi-turn", "session-context-gate"]
+    rationale: "Retry request during active fix loop. Vague in isolation but clearly fix continuation."
+
+  - id: "fix-scg-003"
+    previousMessage: "fix the import error"
+    previousAssessmentTaskType: "fix"
+    prompt: "the one in the header"
+    expectedTaskType: "fix"
+    expectedPath: "haiku"
+    tags: ["fix", "multi-turn", "session-context-gate"]
+    rationale: "Location clarification during active fix. Previously skipped as fix-mt-011 without session context."
+
+  - id: "fix-scg-004"
+    previousMessage: "the report data is wrong"
+    previousAssessmentTaskType: "fix"
+    prompt: "yes"
+    expectedTaskType: "fix"
+    expectedPath: "haiku"
+    tags: ["fix", "multi-turn", "session-context-gate"]
+    rationale: "Confirmation during active fix. Embedding cannot classify 'yes' but Haiku can with previous message context."
+
+  - id: "fix-scg-005"
+    previousMessage: "fix the checkout flow"
+    previousAssessmentTaskType: "fix"
+    prompt: "still broken"
+    expectedTaskType: "fix"
+    expectedPath: "haiku"
+    tags: ["fix", "multi-turn", "session-context-gate"]
+    rationale: "Persistence report during fix loop. 'still broken' may score below embedding threshold without strong fix keywords."
+
+  - id: "fix-scg-006"
+    previousMessage: "fix the database error"
+    previousAssessmentTaskType: "fix"
+    prompt: "add a new contact form with email validation"
+    expectedTaskType: "general"
+    expectedPath: "haiku"
+    tags: ["general", "multi-turn", "session-context-gate"]
+    rationale: "New feature request during active fix session. Session context gate routes to Haiku, but Haiku correctly classifies as general because current message has clear general intent."
+
+  # ============================================================================
   # LONG PROMPTS (9 cases)
   # ============================================================================
 

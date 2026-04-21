@@ -1003,4 +1003,161 @@ describe('AssessmentAgent', () => {
       expect(mockEmbeddingClassify).toHaveBeenCalled()
     })
   })
+
+  describe('session context gate', () => {
+    const lowSimilarityGeneral = {
+      taskType: AssessmentTaskType.General,
+      confidence: 100,
+      similarity: 0.35,
+      matchedExample: 'general task',
+      margin: 0.1,
+      method: 'embedding-nn' as const,
+      hasNegation: false,
+    }
+
+    it('should route to Haiku when previous assessment was fix', async () => {
+      mockEmbeddingClassify.mockResolvedValue(lowSimilarityGeneral)
+      mockGenerateText.mockResolvedValue({
+        text: JSON.stringify({ taskType: AssessmentTaskType.Fix, confidence: 85, reasoning: 'follow-up to active fix' }),
+      })
+
+      const agent = createAssessmentAgent({ enabled: true, timeoutMs: 2000 })
+      const outcome = await agent.classify('here', {
+        previousAssessmentTaskType: AssessmentTaskType.Fix,
+        previousUserMessage: 'fix my button',
+      })
+
+      expect(outcome.reason).toBe(AssessmentReason.LlmCompleted)
+      expect(outcome.result?.taskType).toBe(AssessmentTaskType.Fix)
+      expect(outcome.overrideApplied).toBe(true)
+    })
+
+    it('should route to Haiku when previous assessment was publish', async () => {
+      mockEmbeddingClassify.mockResolvedValue(lowSimilarityGeneral)
+      mockGenerateText.mockResolvedValue({
+        text: JSON.stringify({ taskType: AssessmentTaskType.Publish, confidence: 80, reasoning: 'publish confirmation' }),
+      })
+
+      const agent = createAssessmentAgent({ enabled: true, timeoutMs: 2000 })
+      const outcome = await agent.classify('go ahead', {
+        previousAssessmentTaskType: AssessmentTaskType.Publish,
+        previousUserMessage: 'publish my app',
+      })
+
+      expect(outcome.reason).toBe(AssessmentReason.LlmCompleted)
+      expect(outcome.result?.taskType).toBe(AssessmentTaskType.Publish)
+    })
+
+    it('should route to Haiku when previous assessment was domain', async () => {
+      mockEmbeddingClassify.mockResolvedValue(lowSimilarityGeneral)
+      mockGenerateText.mockResolvedValue({
+        text: JSON.stringify({ taskType: AssessmentTaskType.Domain, confidence: 78, reasoning: 'domain follow-up' }),
+      })
+
+      const agent = createAssessmentAgent({ enabled: true, timeoutMs: 2000 })
+      const outcome = await agent.classify('yes that one', {
+        previousAssessmentTaskType: AssessmentTaskType.Domain,
+        previousUserMessage: 'connect my domain',
+      })
+
+      expect(outcome.reason).toBe(AssessmentReason.LlmCompleted)
+    })
+
+    it('should return BelowThreshold when previous assessment was general', async () => {
+      mockEmbeddingClassify.mockResolvedValue(lowSimilarityGeneral)
+
+      const agent = createAssessmentAgent({ enabled: true, timeoutMs: 2000 })
+      const outcome = await agent.classify('here', {
+        previousAssessmentTaskType: AssessmentTaskType.General,
+      })
+
+      expect(outcome.reason).toBe(AssessmentReason.BelowThreshold)
+      expect(outcome.result?.taskType).toBe(AssessmentTaskType.General)
+      expect(outcome.result?.confidence).toBe(100)
+    })
+
+    it('should return BelowThreshold when no previous assessment exists', async () => {
+      mockEmbeddingClassify.mockResolvedValue(lowSimilarityGeneral)
+
+      const agent = createAssessmentAgent({ enabled: true, timeoutMs: 2000 })
+      const outcome = await agent.classify('here')
+
+      expect(outcome.reason).toBe(AssessmentReason.BelowThreshold)
+      expect(outcome.result?.taskType).toBe(AssessmentTaskType.General)
+    })
+
+    it('should not apply override when Haiku returns fix below confidence threshold', async () => {
+      mockEmbeddingClassify.mockResolvedValue(lowSimilarityGeneral)
+      mockGenerateText.mockResolvedValue({
+        text: JSON.stringify({ taskType: AssessmentTaskType.Fix, confidence: 45, reasoning: 'possibly fix but uncertain' }),
+      })
+
+      const agent = createAssessmentAgent({ enabled: true, timeoutMs: 2000, confidenceThreshold: 65 })
+      const outcome = await agent.classify('hmm', {
+        previousAssessmentTaskType: AssessmentTaskType.Fix,
+        previousUserMessage: 'fix the error',
+      })
+
+      expect(outcome.reason).toBe(AssessmentReason.LlmCompleted)
+      expect(outcome.result?.taskType).toBe(AssessmentTaskType.Fix)
+      expect(outcome.overrideApplied).toBe(false)
+    })
+
+    it('should fall back to embedding result when insufficient time for Haiku', async () => {
+      mockEmbeddingClassify.mockResolvedValue(lowSimilarityGeneral)
+
+      const agent = createAssessmentAgent({ enabled: true, timeoutMs: 100 })
+      const outcome = await agent.classify('here', {
+        previousAssessmentTaskType: AssessmentTaskType.Fix,
+        previousUserMessage: 'fix the button',
+      })
+
+      // With <500ms remaining, Haiku is skipped and embedding result is used
+      expect(outcome.reason).toBe(AssessmentReason.EmbeddingCompleted)
+      expect(outcome.result?.taskType).toBe(AssessmentTaskType.General)
+    })
+
+    it('should not affect high similarity path', async () => {
+      mockEmbeddingClassify.mockResolvedValue({
+        taskType: AssessmentTaskType.General,
+        confidence: 90,
+        similarity: 0.85,
+        matchedExample: 'general task',
+        margin: 0.2,
+        method: 'embedding-nn' as const,
+        hasNegation: false,
+      })
+
+      const agent = createAssessmentAgent({ enabled: true, timeoutMs: 2000 })
+      const outcome = await agent.classify('add a form', {
+        previousAssessmentTaskType: AssessmentTaskType.Fix,
+      })
+
+      expect(outcome.reason).toBe(AssessmentReason.EmbeddingCompleted)
+      expect(outcome.result?.taskType).toBe(AssessmentTaskType.General)
+    })
+
+    it('should not affect medium similarity path', async () => {
+      mockEmbeddingClassify.mockResolvedValue({
+        taskType: AssessmentTaskType.General,
+        confidence: 60,
+        similarity: 0.60,
+        matchedExample: 'general task',
+        margin: 0.1,
+        method: 'embedding-nn' as const,
+        hasNegation: false,
+      })
+      mockGenerateText.mockResolvedValue({
+        text: JSON.stringify({ taskType: AssessmentTaskType.General, confidence: 85, reasoning: 'general request' }),
+      })
+
+      const agent = createAssessmentAgent({ enabled: true, timeoutMs: 2000 })
+      const outcome = await agent.classify('make it pretty', {
+        previousAssessmentTaskType: AssessmentTaskType.Fix,
+      })
+
+      // Medium similarity already routes to Haiku regardless of session context
+      expect(outcome.reason).toBe(AssessmentReason.LlmCompleted)
+    })
+  })
 })

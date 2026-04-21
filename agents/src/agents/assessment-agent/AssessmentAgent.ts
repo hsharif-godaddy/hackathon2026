@@ -242,6 +242,22 @@ export class AssessmentAgent {
           return this.callHaikuTiebreaker(prompt, embeddingResult, context, startTime)
         }
 
+        // Session context gate: if previous classification was non-general (active fix/publish/domain
+        // sequence), route to Haiku instead of defaulting to general. Haiku can use previousUserMessage
+        // to detect contextual follow-ups (screenshots, error pastes, diagnostic messages).
+        if (context?.previousAssessmentTaskType && context.previousAssessmentTaskType !== AssessmentTaskType.General) {
+          logger.info('assessment_agent.decision.session_context_gate', {
+            appId: context?.appId,
+            similarity: embeddingResult.similarity,
+            threshold: LOW_CONFIDENCE_SIMILARITY,
+            reason: 'below_threshold_but_active_non_general_session',
+            previousAssessmentTaskType: context.previousAssessmentTaskType,
+            closestMatch: embeddingResult.matchedExample,
+          })
+
+          return this.callHaikuTiebreaker(prompt, embeddingResult, context, startTime, true)
+        }
+
         // Only default to general if embedding also thinks it's general
         logger.info('assessment_agent.decision.default_general', {
           appId: context?.appId,
@@ -302,7 +318,8 @@ export class AssessmentAgent {
     prompt: string,
     embeddingResult: { taskType: AssessmentTaskType; similarity: number; margin: number; matchedExample: string; hasNegation: boolean },
     context: AssessmentContext | undefined,
-    startTime: number
+    startTime: number,
+    sessionContextGated?: boolean
   ): Promise<AssessmentOutcome> {
     const elapsedMs = Date.now() - startTime
     const remainingTime = this.config.timeoutMs - elapsedMs
@@ -337,6 +354,7 @@ export class AssessmentAgent {
           embeddingSimilarity: embeddingResult.similarity,
           needsBillingSafetyFallback,
           fallbackTaskType,
+          sessionContextGated,
         })
 
         return this.buildOutcome(
@@ -345,7 +363,7 @@ export class AssessmentAgent {
           Date.now() - startTime,
           context,
           AssessmentReason.EmbeddingCompleted,
-          { similarity: embeddingResult.similarity, method: 'embedding-timeout-fallback', billingSafetyApplied: needsBillingSafetyFallback }
+          { similarity: embeddingResult.similarity, method: 'embedding-timeout-fallback', billingSafetyApplied: needsBillingSafetyFallback, sessionContextGated }
         )
       }
 
@@ -401,7 +419,7 @@ export class AssessmentAgent {
           totalDurationMs,
           context,
           AssessmentReason.Timeout,
-          { similarity: embeddingResult.similarity, method: 'embedding-haiku-timeout', billingSafetyApplied: needsBillingSafetyFallback }
+          { similarity: embeddingResult.similarity, method: 'embedding-haiku-timeout', billingSafetyApplied: needsBillingSafetyFallback, sessionContextGated }
         )
       }
 
@@ -430,6 +448,7 @@ export class AssessmentAgent {
           reasoning: haikuResult.reasoning,
           agreesWithEmbedding,
           haikuDurationMs,
+          sessionContextGated,
         }
       )
 
@@ -449,7 +468,7 @@ export class AssessmentAgent {
         durationMs,
         context,
         AssessmentReason.Error,
-        { similarity: embeddingResult.similarity, method: 'embedding-haiku-error' }
+        { similarity: embeddingResult.similarity, method: 'embedding-haiku-error', sessionContextGated }
       )
     }
   }

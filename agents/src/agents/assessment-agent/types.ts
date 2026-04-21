@@ -40,6 +40,8 @@ export interface AssessmentContext {
   enabledOverride?: boolean
   /** Previous user message for multi-turn context (e.g., "fix my button" before "it doesn't work") */
   previousUserMessage?: string
+  /** Previous assessment's task type for session context gating (enables Haiku for below-threshold follow-ups in active fix/publish/domain sequences) */
+  previousAssessmentTaskType?: AssessmentTaskType
   /**
    * True if this is the first message for a new app.
    * Initial prompts are always creation intent - you can't publish/fix/domain an app that doesn't exist.

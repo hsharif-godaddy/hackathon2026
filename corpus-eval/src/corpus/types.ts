@@ -37,6 +37,9 @@ export const TestCaseSchema = z.object({
   /** Previous message for multi-turn context (optional) */
   previousMessage: z.string().optional(),
 
+  /** Previous assessment task type for session context gating (optional) */
+  previousAssessmentTaskType: TaskTypeSchema.optional(),
+
   /**
    * Mark as initial prompt (first message for a new app).
    * When true, AssessmentAgent returns 'general' immediately without classification.

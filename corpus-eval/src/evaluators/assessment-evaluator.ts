@@ -2,6 +2,7 @@
 import {
   createAssessmentAgent,
   AssessmentReason,
+  AssessmentTaskType,
   MIN_CONFIDENCE_FOR_OVERRIDE,
   type AssessmentAgent,
   type AssessmentOutcome,
@@ -80,6 +81,7 @@ export class AssessmentEvaluator extends BaseEvaluator {
       customerId: 'corpus-eval',
       enabledOverride: true,
       previousUserMessage: testCase.previousMessage,
+      previousAssessmentTaskType: testCase.previousAssessmentTaskType as AssessmentTaskType | undefined,
       isInitialPrompt,
     };
 

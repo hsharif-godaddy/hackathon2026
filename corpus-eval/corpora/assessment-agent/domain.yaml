@@ -631,3 +631,25 @@ cases:
     prompt: "ok so here is the situation i already own a domain that i bought a few years ago when i first started my business and its registered with google domains but now i want to use it for this new website that we are building together so can you help me figure out how to connect it and make sure the dns settings are correct so everything works properly including my email which is also on that domain"
     expectedTaskType: "domain"
     tags: ["domain", "complex", "long"]
+
+  # ============================================================================
+  # SESSION CONTEXT GATE (2 cases)
+  # ============================================================================
+
+  - id: "dom-scg-001"
+    previousMessage: "connect my domain"
+    previousAssessmentTaskType: "domain"
+    prompt: "yes that one"
+    expectedTaskType: "domain"
+    expectedPath: "haiku"
+    tags: ["domain", "multi-turn", "session-context-gate"]
+    rationale: "Confirmation follow-up during active domain flow. Embedding scores below threshold for 'yes that one', session context gate routes to Haiku."
+
+  - id: "dom-scg-002"
+    previousMessage: "i want to use my own domain"
+    previousAssessmentTaskType: "domain"
+    prompt: "the .com one"
+    expectedTaskType: "domain"
+    expectedPath: "haiku"
+    tags: ["domain", "multi-turn", "session-context-gate"]
+    rationale: "Clarification follow-up during active domain configuration."

@@ -74,7 +74,7 @@ import {
 import { GitHookService } from '../services/git-hook-service.js'
 import { ClientActionService } from '../services/ClientActionService.js'
 import { hasUnbuiltRebuildPages } from '../tools/ai-lib-tools/suggested-response.js'
-import { getAssessmentAgent, type AssessmentOutcome } from '../agents/assessment-agent/index.js'
+import { getAssessmentAgent, type AssessmentOutcome, AssessmentTaskType } from '../agents/assessment-agent/index.js'
 
 /**
  * Shared AppRepository instance to avoid repeated initialization
@@ -191,6 +191,11 @@ const pendingBudgetOverrides = new Map<string, string>()
 
 // Cache last user message per socket for assessment multi-turn context
 const lastUserMessageCache = new Map<string, string>()
+
+// Cache last assessment task type per socket for session context gating
+// Self-healing: updates on every classification (including general) so the gate
+// only fires at intent-transition boundaries, not for the rest of the session
+const lastAssessmentTaskTypeCache = new Map<string, AssessmentTaskType>()
 
 /**
  * Socket.IO server instance for emitting events
@@ -1702,20 +1707,26 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
             }
           }
 
+          const previousAssessmentTaskType = lastAssessmentTaskTypeCache.get(socketId)
+
           const assessmentOutcome = await assessmentAgent.classify(message, {
             appId: siteId,
             customerId,
             socketId,
             enabledOverride: enableAssessmentAgent,
             previousUserMessage,
+            previousAssessmentTaskType,
             isInitialPrompt,
           })
 
           // Store for later use in onMessageComplete
           assessmentOutcomes.set(socketId, assessmentOutcome)
 
-          // Cache current message for next request's multi-turn context
+          // Cache current message and task type for next request's multi-turn context
           lastUserMessageCache.set(socketId, message)
+          if (assessmentOutcome.result?.taskType) {
+            lastAssessmentTaskTypeCache.set(socketId, assessmentOutcome.result.taskType)
+          }
 
           // Queue budget override for application in contextProvider
           // Only apply if both:
@@ -1948,6 +1959,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         assessmentOutcomes.delete(socketId)
         pendingBudgetOverrides.delete(socketId)
         lastUserMessageCache.delete(socketId)
+        lastAssessmentTaskTypeCache.delete(socketId)
 
         // Cleanup ClientActionService
         cleanupClientActionService(socketId)

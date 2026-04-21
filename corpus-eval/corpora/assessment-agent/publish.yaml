@@ -640,3 +640,25 @@ cases:
     prompt: "the seo tags are done and sitemap is ready so go live so google can start indexing"
     expectedTaskType: "publish"
     tags: ["publish", "complex"]
+
+  # ============================================================================
+  # SESSION CONTEXT GATE (2 cases)
+  # ============================================================================
+
+  - id: "pub-scg-001"
+    previousMessage: "publish my app"
+    previousAssessmentTaskType: "publish"
+    prompt: "go ahead"
+    expectedTaskType: "publish"
+    expectedPath: "haiku"
+    tags: ["publish", "multi-turn", "session-context-gate"]
+    rationale: "Confirmation follow-up during active publish. Embedding scores below threshold for 'go ahead', session context gate routes to Haiku."
+
+  - id: "pub-scg-002"
+    previousMessage: "deploy to production"
+    previousAssessmentTaskType: "publish"
+    prompt: "yes"
+    expectedTaskType: "publish"
+    expectedPath: "haiku"
+    tags: ["publish", "multi-turn", "session-context-gate"]
+    rationale: "Single-word confirmation during active publish sequence."
