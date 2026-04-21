@@ -335,28 +335,30 @@ describe('HeroSection', () => {
   });
 
   describe('template selector', () => {
-    it('should render template selector with radiogroup when onTemplateChange provided', () => {
+    it('should render template selector as a labelled group when onTemplateChange provided', () => {
       renderWithProviders(<HeroSection {...defaultProps} />);
 
-      const radiogroup = screen.getByRole('radiogroup');
-      expect(radiogroup).toBeInTheDocument();
-      const radios = screen.getAllByRole('radio');
-      expect(radios).toHaveLength(3);
+      const group = screen.getByRole('group', { name: 'builder_homepage_template_label' });
+      expect(group).toBeInTheDocument();
+      const chips = screen.getAllByRole('checkbox');
+      expect(chips).toHaveLength(3);
     });
 
     it('should not render template selector when onTemplateChange is undefined', () => {
       renderWithProviders(<HeroSection {...defaultProps} onTemplateChange={undefined} />);
 
-      expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('group', { name: 'builder_homepage_template_label' })
+      ).not.toBeInTheDocument();
     });
 
     it('should mark default template as checked', () => {
       renderWithProviders(<HeroSection {...defaultProps} selectedTemplate="default" />);
 
-      const radios = screen.getAllByRole('radio');
-      expect(radios[0]).toHaveAttribute('aria-checked', 'true');
-      expect(radios[1]).toHaveAttribute('aria-checked', 'false');
-      expect(radios[2]).toHaveAttribute('aria-checked', 'false');
+      const chips = screen.getAllByRole('checkbox');
+      expect(chips[0]).toBeChecked();
+      expect(chips[1]).not.toBeChecked();
+      expect(chips[2]).not.toBeChecked();
     });
 
     it('should call onTemplateChange when clicking a template', async () => {
@@ -365,8 +367,8 @@ describe('HeroSection', () => {
         <HeroSection {...defaultProps} onTemplateChange={onTemplateChange} />
       );
 
-      const radios = screen.getAllByRole('radio');
-      await user.click(radios[1]);
+      const chips = screen.getAllByRole('checkbox');
+      await user.click(chips[1]);
       expect(onTemplateChange).toHaveBeenCalledWith('business-plan');
     });
   });

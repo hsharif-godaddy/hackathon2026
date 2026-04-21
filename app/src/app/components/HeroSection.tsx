@@ -594,7 +594,8 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
               </Box>
             </Box>
           </div>
-          {/* Template Selector */}
+          {/* Template selector */}
+          {/* Template selector is used for internal experiments in TLA accounts only; customers won't see it. */}
           {onTemplateChange && (
             <TemplateSelector selectedTemplate={selectedTemplate} onTemplateChange={onTemplateChange} />
           )}
