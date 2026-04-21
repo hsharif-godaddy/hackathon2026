@@ -9,7 +9,7 @@ import type { AuthenticatedRequest } from '../middleware/jwt-auth.js';
 import type { DevSupervisorClient, PublishRequest, PublishSuccessResponse, UnpublishResponse } from '../../services/DevSupervisorClient.js';
 import { requirePermission } from '../middleware/require-permission.js';
 import { validateAppOwnership } from '../middleware/app-ownership.js';
-import { getPublishStrategy, BuildError } from './publish/strategies/index.js';
+import { getPublishStrategy, BuildError, PreviewNotRunningError } from './publish/strategies/index.js';
 import type { PublishContext } from './publish/strategies/index.js';
 import { getGitHookService } from '../ai-lib-websocket-server.js';
 
@@ -34,6 +34,7 @@ router.use('/apps/:id', validateAppOwnership);
  *    - Auto-detects content: dist-only if bundled server exists, full-source otherwise
  *
  * **PaaS strategy** (`deploymentStrategy: "paas"`):
+ * 0. Verify preview HTTP server is responding (curl check via dev-supervisor)
  * 1. Skip git operations entirely
  * 2. Generate hex timestamp identifier (e.g., "019cab3def12")
  * 3. Run build via dev-supervisor
@@ -166,6 +167,15 @@ router.post('/apps/:id/publish', requirePermission('canPublish'), async (req, re
           error: error.message,
           details: error.details,
           exitCode: error.exitCode,
+        });
+      }
+      if (error instanceof PreviewNotRunningError) {
+        // Use 503 for system/connection errors, 400 for known bad states
+        const statusCode = error.isSystemError ? 503 : 400;
+        return res.status(statusCode).json({
+          error: error.message,
+          processState: error.processState,
+          details: error.details,
         });
       }
       throw error;

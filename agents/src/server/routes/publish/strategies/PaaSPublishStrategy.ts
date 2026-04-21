@@ -1,5 +1,5 @@
 import type { PublishStrategy, PublishContext, BuildResult, DeploymentStrategy } from './PublishStrategy.js';
-import type { DevSupervisorClient, PublishRequest, PublishResponse } from '../../../../services/DevSupervisorClient.js';
+import type { DevSupervisorClient, ProcessInfo, PublishRequest, PublishResponse } from '../../../../services/DevSupervisorClient.js';
 import type { ILogger } from '../../../../logging/types.js';
 import { detectPackageManager, getBuildCommand } from '../../../../services/AppRestartService.js';
 
@@ -23,6 +23,25 @@ const PAAS_PUBLISH_RECOVERY_CONFIG = {
   defaultHealthPollTimeoutMs: 60000,
 };
 
+/** Valid process states from dev-supervisor plus 'unknown' for connection failures */
+type PreviewProcessState = ProcessInfo['state'] | 'unknown';
+
+/**
+ * Error thrown when preview is not in a healthy/running state
+ */
+export class PreviewNotRunningError extends Error {
+  constructor(
+    message: string,
+    public readonly processState: PreviewProcessState,
+    public readonly details?: string,
+    /** True if this is a system/connection error rather than a known bad state */
+    public readonly isSystemError: boolean = false
+  ) {
+    super(message);
+    this.name = 'PreviewNotRunningError';
+  }
+}
+
 /**
  * PaaS Publish Strategy
  *
@@ -30,6 +49,7 @@ const PAAS_PUBLISH_RECOVERY_CONFIG = {
  * - No git operations (code is uploaded directly, not developed in-app)
  * - Full source archive (needs package.json for npm install in publish container)
  * - Timestamp-based identifier instead of git commit hash
+ * - Preview must be running before publish is allowed
  * - Timeout recovery logic for supervisor communication
  */
 export class PaaSPublishStrategy implements PublishStrategy {
@@ -48,6 +68,9 @@ export class PaaSPublishStrategy implements PublishStrategy {
 
   async prepareBuild(context: PublishContext): Promise<BuildResult> {
     const { logger, devSupervisor, gitUtils, appPath, targetDir } = context;
+
+    // Step 0: Ensure preview is running before proceeding
+    await this.ensurePreviewRunning(context);
 
     // No git operations - generate hex timestamp identifier
     // Format as hex to pass git.ts validation (requires ^[a-f0-9]{7,40}$)
@@ -120,6 +143,53 @@ export class PaaSPublishStrategy implements PublishStrategy {
       commitHash,
       archivePath: archiveResult.path,
     };
+  }
+
+  /**
+   * Ensure preview HTTP server is responding before allowing publish.
+   * Uses curl via exec to verify the HTTP server responds with 2xx/3xx.
+   * Note: $FRONTEND_DOMAIN is resolved inside the Preview container where it's defined.
+   */
+  private async ensurePreviewRunning(context: PublishContext): Promise<void> {
+    const { logger, devSupervisor } = context;
+
+    logger.info(`route.publish.${this.key}.preview-check.begin`, {});
+
+    try {
+      // $FRONTEND_DOMAIN is resolved by shell inside Preview container
+      const result = await devSupervisor.exec({
+        command: 'curl -s -o /dev/null -w "%{http_code}" --max-time 5 https://$FRONTEND_DOMAIN',
+        timeout: 10,
+        capture_output: true,
+      });
+
+      const statusCode = parseInt(result.stdout?.trim() || '0', 10);
+      logger.info(`route.publish.${this.key}.preview-check.result`, {
+        statusCode,
+        success: result.success,
+      });
+
+      // Accept 2xx and 3xx status codes
+      if (statusCode >= 200 && statusCode < 400) {
+        return;
+      }
+
+      throw new PreviewNotRunningError(
+        'Preview is not healthy',
+        'unknown',
+        `HTTP ${statusCode} from preview server`
+      );
+    } catch (error) {
+      if (error instanceof PreviewNotRunningError) {
+        throw error;
+      }
+
+      logger.error(`route.publish.${this.key}.preview-check.failed`, {
+        error: error instanceof Error ? error.message : String(error),
+      });
+
+      throw new PreviewNotRunningError('Preview is not healthy', 'unknown', undefined, true);
+    }
   }
 
   /**
