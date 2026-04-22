@@ -191,6 +191,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
           }
         }],
         bmsActive: isBmsEnabled,
+        ...(params.itc && { itc: params.itc }),
       });
 
       logger.info('v2-control-plane.create-site.signup.success', {

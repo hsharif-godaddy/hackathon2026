@@ -188,11 +188,9 @@ describe('V2ControlPlaneAdapter', () => {
         jwt: MOCK_JWT
       });
 
-      // Get the createApp call (third call after getActiveSubscription and getSystems)
-      const createAppCall = mockFetch.mock.calls[2];
-      const requestBody = JSON.parse(createAppCall[1].body);
+      const createAppCall = mockFetch.mock.calls.find(([url]) => typeof url === 'string' && url.includes('/apps'));
+      const requestBody = JSON.parse(createAppCall![1].body);
 
-      // Verify datacenter is included in the request body
       expect(requestBody.datacenter).toBe('p3');
 
       // Clean up
@@ -568,6 +566,109 @@ describe('V2ControlPlaneAdapter', () => {
         const signupCall = mockFetch.mock.calls[0];
         const requestBody = JSON.parse(signupCall[1].body);
         expect(requestBody.bmsActive).toBe(false);
+      });
+    });
+
+    describe('itc passthrough', () => {
+      beforeEach(() => {
+        process.env.ALWAYS_NEW_SUBSCRIPTION = 'true';
+        mockCheckSwitchboardFlag.mockResolvedValue(false);
+      });
+
+      afterEach(() => {
+        delete process.env.ALWAYS_NEW_SUBSCRIPTION;
+      });
+
+      it('should include itc in signup payload when provided', async () => {
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            statusJobId: MOCK_JOB_ID,
+            subscriptionId: 'new-sub-xyz789'
+          })
+        });
+
+        await adapter.createSite({
+          accountId: MOCK_ACCOUNT_ID,
+          prompt: MOCK_PROMPT,
+          jwt: MOCK_JWT,
+          itc: 'campaign_summer_2026'
+        });
+
+        const signupCall = mockFetch.mock.calls[0];
+        const requestBody = JSON.parse(signupCall[1].body);
+        expect(requestBody.itc).toBe('campaign_summer_2026');
+      });
+
+      it('should omit itc from signup payload when not provided', async () => {
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            statusJobId: MOCK_JOB_ID,
+            subscriptionId: 'new-sub-xyz789'
+          })
+        });
+
+        await adapter.createSite({
+          accountId: MOCK_ACCOUNT_ID,
+          prompt: MOCK_PROMPT,
+          jwt: MOCK_JWT
+        });
+
+        const signupCall = mockFetch.mock.calls[0];
+        const requestBody = JSON.parse(signupCall[1].body);
+        expect(requestBody).not.toHaveProperty('itc');
+      });
+
+      it('should omit itc from signup payload when empty string', async () => {
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            statusJobId: MOCK_JOB_ID,
+            subscriptionId: 'new-sub-xyz789'
+          })
+        });
+
+        await adapter.createSite({
+          accountId: MOCK_ACCOUNT_ID,
+          prompt: MOCK_PROMPT,
+          jwt: MOCK_JWT,
+          itc: ''
+        });
+
+        const signupCall = mockFetch.mock.calls[0];
+        const requestBody = JSON.parse(signupCall[1].body);
+        expect(requestBody).not.toHaveProperty('itc');
+      });
+
+      it('should not include itc in createApp payload', async () => {
+        process.env.ALWAYS_NEW_SUBSCRIPTION = 'false';
+
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => [{ id: 'existing-sub-123', status: 'active' }]
+        });
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => [{ id: 'sys-456' }]
+        });
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            statusJobId: MOCK_JOB_ID
+          })
+        });
+
+        await adapter.createSite({
+          accountId: MOCK_ACCOUNT_ID,
+          prompt: MOCK_PROMPT,
+          jwt: MOCK_JWT,
+          itc: 'campaign_summer_2026'
+        });
+
+        const createAppCall = mockFetch.mock.calls.find(([url]) => typeof url === 'string' && url.includes('/apps'));
+        const requestBody = JSON.parse(createAppCall![1].body);
+        expect(requestBody).not.toHaveProperty('itc');
       });
     });
   });

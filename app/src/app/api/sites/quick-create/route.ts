@@ -18,7 +18,8 @@ import { getByteLength, MAX_PROMPT_BYTES } from '@/lib/waf-validation';
 export const POST = withCustomerAuth(async (request: NextRequest, authContext: CustomerAuthContext) => {
   try {
     const body = await request.json();
-    const { prompt, initialPrompt, productId } = body;
+    const { prompt, initialPrompt, productId, itc: rawItc } = body;
+    const validItc = typeof rawItc === 'string' && rawItc.length > 0 && rawItc.length <= 128 && /^[a-zA-Z0-9_-]+$/.test(rawItc) ? rawItc : undefined;
     const { user } = authContext;
 
     // Validate productId if provided
@@ -90,6 +91,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       productId,
       marketId,
       headers: request.headers,
+      ...(validItc && { itc: validItc }),
     };
 
     const result = await adapter.createSite(createSiteParams);

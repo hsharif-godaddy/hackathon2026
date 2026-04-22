@@ -1,6 +1,6 @@
-import { appFetch } from '@/lib/gasket-config'
 import { logger } from '@/lib/request-context'
 import { getByteLength, MAX_PROMPT_BYTES } from '@/lib/waf-validation'
+import { buildDevelopUrl, fetchQuickCreate, type QuickCreateResponse, setQuickCreateSessionFlags } from './quick-create'
 
 export interface CreateSiteOptions {
   prompt: string
@@ -16,20 +16,6 @@ interface Router {
   push: (href: string) => void
 }
 
-interface CreateSiteResponse {
-  id: string
-  name?: string
-  status: string
-  account_id: string
-  created_at: string
-  updated_at: string
-  type: 'job' | 'site'
-}
-
-/**
- * Creates a site via quick-create API and redirects to the develop page.
- * This centralizes the site creation flow used by homepage and /create page.
- */
 export async function createSiteAndRedirect(
   options: CreateSiteOptions,
   router: Router
@@ -37,7 +23,6 @@ export async function createSiteAndRedirect(
   const { prompt, templateId, productId, source = 'unknown', onAuthRequired, onError, onSuccess } = options
 
   try {
-    // Validate prompt
     const normalizedPrompt = prompt.trim()
     if (!normalizedPrompt) {
       const error = 'Prompt cannot be empty'
@@ -66,24 +51,14 @@ export async function createSiteAndRedirect(
       hasProductId: !!productId,
     })
 
-    // Call quick-create API
-    const createSiteResponse = await appFetch('/api/sites/quick-create', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        initialPrompt: normalizedPrompt,
-        productId,
-      }),
-    }, { setAuthState: false })
+    const createSiteResponse = await fetchQuickCreate(normalizedPrompt, { setAuthState: false }, { productId })
 
-    // Handle 401 - auth required
     if (createSiteResponse.status === 401) {
       logger.info('site-creation.auth-required', { source })
       onAuthRequired?.(normalizedPrompt)
       return
     }
 
-    // Handle other errors
     if (!createSiteResponse.ok) {
       const errorData = await createSiteResponse.json().catch(() => ({}))
       const errorMessage = errorData.message || errorData.error || 'Failed to create site'
@@ -96,30 +71,18 @@ export async function createSiteAndRedirect(
       return
     }
 
-    // Success
-    const siteData: CreateSiteResponse = await createSiteResponse.json()
+    const siteData: QuickCreateResponse = await createSiteResponse.json()
     logger.info('site-creation.success', {
       siteId: siteData.id,
       type: siteData.type,
       source,
     })
 
-    // Set sessionStorage flags for develop page
-    sessionStorage.setItem(`initial-prompt-pending-${siteData.id}`, 'true')
-    sessionStorage.setItem(`initial-prompt-text-${siteData.id}`, normalizedPrompt)
-    sessionStorage.setItem(`name-registration-pending-${siteData.id}`, 'true')
-    sessionStorage.setItem(`in-creation-flow-${siteData.id}`, 'true')
-
-    if (templateId && templateId !== 'default') {
-      sessionStorage.setItem(`initial-template-${siteData.id}`, templateId)
-    }
+    setQuickCreateSessionFlags(siteData.id, normalizedPrompt, templateId)
 
     onSuccess?.(siteData.id, siteData.type)
 
-    // Redirect to develop page
-    const redirectUrl = siteData.type === 'job'
-      ? `/develop/${siteData.id}?type=job`
-      : `/develop/${siteData.id}`
+    const redirectUrl = buildDevelopUrl(siteData.id, siteData.type)
 
     logger.info('site-creation.redirect', {
       siteId: siteData.id,

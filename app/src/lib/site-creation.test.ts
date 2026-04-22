@@ -4,11 +4,16 @@
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest'
 
 import { appFetch } from './gasket-config'
+import { getItcOverride } from './itc'
 import { logger } from './request-context'
 import { createSiteAndRedirect } from './site-creation'
 
 vi.mock('./gasket-config', () => ({
   appFetch: vi.fn(),
+}))
+
+vi.mock('./itc', () => ({
+  getItcOverride: vi.fn(),
 }))
 
 vi.mock('./request-context', () => ({
@@ -25,9 +30,11 @@ describe('createSiteAndRedirect', () => {
   } as any
 
   const mockAppFetch = appFetch as Mock
+  const mockGetItcOverride = getItcOverride as Mock
 
   beforeEach(() => {
     vi.clearAllMocks()
+    mockGetItcOverride.mockReturnValue(null)
     sessionStorage.clear()
   })
 
@@ -238,5 +245,76 @@ describe('createSiteAndRedirect', () => {
         source: 'create-page',
       })
     )
+  })
+
+  it('includes itc in request body when available', async () => {
+    mockGetItcOverride.mockReturnValue('campaign_2026')
+    mockAppFetch.mockResolvedValue({
+      ok: true,
+      status: 201,
+      json: async () => ({
+        id: 'site-itc',
+        type: 'site',
+        status: 'running',
+        account_id: 'acc123',
+        created_at: '2024-01-01T00:00:00.000Z',
+        updated_at: '2024-01-01T00:00:00.000Z',
+      }),
+    })
+
+    await createSiteAndRedirect(
+      { prompt: 'test prompt' },
+      mockRouter
+    )
+
+    const body = JSON.parse(mockAppFetch.mock.calls[0][1].body)
+    expect(body.itc).toBe('campaign_2026')
+  })
+
+  it('omits itc from request body when not available', async () => {
+    mockGetItcOverride.mockReturnValue(null)
+    mockAppFetch.mockResolvedValue({
+      ok: true,
+      status: 201,
+      json: async () => ({
+        id: 'site-no-itc',
+        type: 'site',
+        status: 'running',
+        account_id: 'acc123',
+        created_at: '2024-01-01T00:00:00.000Z',
+        updated_at: '2024-01-01T00:00:00.000Z',
+      }),
+    })
+
+    await createSiteAndRedirect(
+      { prompt: 'test prompt' },
+      mockRouter
+    )
+
+    const body = JSON.parse(mockAppFetch.mock.calls[0][1].body)
+    expect(body).not.toHaveProperty('itc')
+  })
+
+  it('includes productId in request body when provided', async () => {
+    mockAppFetch.mockResolvedValue({
+      ok: true,
+      status: 201,
+      json: async () => ({
+        id: 'site-pid',
+        type: 'site',
+        status: 'running',
+        account_id: 'acc123',
+        created_at: '2024-01-01T00:00:00.000Z',
+        updated_at: '2024-01-01T00:00:00.000Z',
+      }),
+    })
+
+    await createSiteAndRedirect(
+      { prompt: 'test prompt', productId: 'aab-v1' },
+      mockRouter
+    )
+
+    const body = JSON.parse(mockAppFetch.mock.calls[0][1].body)
+    expect(body.productId).toBe('aab-v1')
   })
 })

@@ -166,6 +166,7 @@ export interface AiroSignupPayload {
   }>;
   /** Request BMS integration for new subscription (requires feature flag) */
   bmsActive?: boolean;
+  itc?: string;
 }
 
 /**

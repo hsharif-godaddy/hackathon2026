@@ -25,8 +25,8 @@ import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { getErrorMessage } from '@/lib/errors'
 import { isFeatureEnabled } from '@/lib/features'
-import { appFetch } from '@/lib/gasket-config'
 import { shipAnalyticsLog } from '@/lib/logging'
+import { buildDevelopUrl, extractApiError, fetchQuickCreate, type QuickCreateResponse, setQuickCreateSessionFlags } from '@/lib/quick-create'
 import { logger } from '@/lib/request-context'
 import type { ServerFeatureFlags } from '@/lib/server-features'
 import { validateAndClampPrompt } from '@/lib/waf-validation'
@@ -335,24 +335,15 @@ export function OriginalHomePage({ serverFeatures }: HomeContentProps) {
         return;
       }
 
-      // Step 2: Super fast create - only create database record, no deployment
-      const createSiteResponse = await appFetch('/api/sites/quick-create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          initialPrompt: promptToUse,
-        })
-      }, { setAuthState: false })
+      const createSiteResponse = await fetchQuickCreate(promptToUse, { setAuthState: false })
 
       if (!createSiteResponse.ok) {
-        // 401 means unauthenticated — trigger SSO login to refresh the session
         if (createSiteResponse.status === 401) {
           logger.info('homepage.auth-required', {
             action: 'triggering-sso-login',
             phase: 'quick-create'
           });
 
-          // Save the prompt to localStorage before showing login
           savePromptForRetry(promptToUse, 'session-refresh');
 
           logAnalytics(
@@ -373,34 +364,16 @@ export function OriginalHomePage({ serverFeatures }: HomeContentProps) {
           return;
         }
 
-        // For other errors, extract and throw
         const errorData = await createSiteResponse.json().catch(() => ({}))
-        const apiError = new Error(errorData.message || errorData.error || 'Failed to create site')
-        if (errorData.details) {
-          (apiError as any).details = errorData.details
-        }
-        throw apiError
+        throw extractApiError(errorData)
       }
 
-      const siteData = await createSiteResponse.json()
+      const siteData: QuickCreateResponse = await createSiteResponse.json()
       logger.info('page.site.quick-create.success', { message: 'Site record created instantly', siteId: siteData.id, type: siteData.type })
 
-      // Set flags for post-setup actions before redirect
-      sessionStorage.setItem(`name-registration-pending-${siteData.id}`, 'true')
-      sessionStorage.setItem(`initial-prompt-pending-${siteData.id}`, 'true')
-      sessionStorage.setItem(`in-creation-flow-${siteData.id}`, 'true')
-      sessionStorage.setItem(`initial-prompt-text-${siteData.id}`, promptToUse)
+      setQuickCreateSessionFlags(siteData.id, promptToUse, selectedTemplate)
 
-      if (selectedTemplate !== 'default') {
-        sessionStorage.setItem(`initial-template-${siteData.id}`, selectedTemplate)
-      }
-
-      // Immediately redirect to /develop/{siteId} - deployment polling will happen there
-      // If the response includes type='job', add query param to indicate this is a temporary job ID
-      // The develop page will poll until it gets the real app ID
-      const redirectUrl = siteData.type === 'job'
-        ? `/develop/${siteData.id}?type=job`
-        : `/develop/${siteData.id}`
+      const redirectUrl = buildDevelopUrl(siteData.id, siteData.type)
 
       logger.info('page.site.redirect', {
         message: 'Redirecting to develop page',

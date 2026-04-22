@@ -14,9 +14,9 @@ import { useSsoSignIn } from '@/hooks/useSsoSignIn'
 import { useTranslations } from '@/hooks/useTranslations'
 import { getErrorMessage } from '@/lib/errors'
 import { isFeatureEnabled } from '@/lib/features'
-import { appFetch } from '@/lib/gasket-config'
 import { setItcOverride } from '@/lib/itc'
 import { landingItc } from '@/lib/paywall/shared'
+import { buildDevelopUrl, fetchQuickCreate, type QuickCreateResponse, setQuickCreateSessionFlags } from '@/lib/quick-create'
 import { logger } from '@/lib/request-context'
 import { useAuthUIStore } from '@/stores/useAuthUIStore'
 import { logAiroHQEvent, logImpressionEvent } from '@/utils/instrumentation'
@@ -132,11 +132,7 @@ function LandingPageContent({ data }: LandingPageProps) {
         return;
       }
 
-      const createSiteResponse = await appFetch('/api/sites/quick-create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ initialPrompt: promptToUse })
-      })
+      const createSiteResponse = await fetchQuickCreate(promptToUse)
 
       if (!createSiteResponse.ok) {
         if (createSiteResponse.status === 401 && createSiteResponse.requiresRefresh) {
@@ -154,23 +150,16 @@ function LandingPageContent({ data }: LandingPageProps) {
         throw new Error(errorData.message || errorData.error || 'Failed to create site')
       }
 
-      const siteData = await createSiteResponse.json()
+      const siteData: QuickCreateResponse = await createSiteResponse.json()
       logger.info('landing.site.quick-create.success', {
         siteId: siteData.id,
         type: siteData.type,
         landingSlug: slug
       })
 
-      sessionStorage.setItem(`name-registration-pending-${siteData.id}`, 'true')
-      sessionStorage.setItem(`initial-prompt-pending-${siteData.id}`, 'true')
-      sessionStorage.setItem(`in-creation-flow-${siteData.id}`, 'true')
-      sessionStorage.setItem(`initial-prompt-text-${siteData.id}`, promptToUse)
+      setQuickCreateSessionFlags(siteData.id, promptToUse)
 
-      router.push(
-        siteData.type === 'job'
-          ? `/develop/${siteData.id}?type=job`
-          : `/develop/${siteData.id}`
-      )
+      router.push(buildDevelopUrl(siteData.id, siteData.type))
     } catch (err) {
       logger.error('landing.start_building.failed', {
         error: err instanceof Error ? err.message : String(err),
