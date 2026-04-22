@@ -1,6 +1,5 @@
 'use client';
 
-import { AnimatePresence, motion } from 'framer-motion';
 import { usePathname } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FormattedMessage } from 'react-intl';
@@ -70,16 +69,32 @@ function publishSubmitClickEid(surfaceLocation: string): string {
   return 'develop.header.publish_submit';
 }
 
-function PublishFailedRetryMessage({ onRetry }: { onRetry: () => void | Promise<void> }) {
+function PublishFailedMessage({
+  onFix,
+  onRetry,
+  isFix,
+  growl = false,
+}: {
+  onFix: () => void;
+  onRetry: () => void;
+  isFix: boolean;
+  growl?: boolean;
+}) {
+  const handler = isFix ? onFix : onRetry;
+  const id = isFix
+    ? `builder_publish${growl ? '_growl' : ''}_failed_fix`
+    : 'builder_publish_failed_retry_v2';
+
   return (
     <FormattedMessage
-      id='builder_publish_failed_retry'
+      id={id}
       values={{
-        retry: (chunks) => (
+        action: (chunks) => (
           <button
             type='button'
             className='underline cursor-pointer text-inherit'
-            onClick={() => void onRetry()}
+            data-testid='publish-failed-action'
+            onClick={() => void handler()}
           >
             {chunks}
           </button>
@@ -94,10 +109,10 @@ export default function AppPublish({ location = 'develop' }: { location?: string
   const publishGoLiveChatButtonLabel = t('builder_golive_marketing_seo_title', {}, 'SEO Optimization');
   const [open, setOpen] = useState(false);
   const [publishResult, setPublishResult] = useState<'success' | 'failed' | null>(null);
+  const [isFixingBuildError, setIsFixingBuildError] = useState(false);
   const openRef = useRef(false);
   const prevAppIdRef = useRef<string | null>(null);
   const prevPublishingRef = useRef(false);
-  const feedbackAnimatedRef = useRef(false);
   const pathname = usePathname();
   const isDevelopPage = pathname?.includes('/develop');
   const { setActiveChatTab, setActiveSettingsSection } = useChatTabs();
@@ -169,6 +184,10 @@ export default function AppPublish({ location = 'develop' }: { location?: string
   const publishError = useDevelopPageStore(
     (state) => state.publishStates?.[currentAppId]?.publishError ?? false
   );
+  const buildErrorDetails = useDevelopPageStore(
+    (state) => state.publishStates?.[currentAppId]?.buildErrorDetails ?? null
+  );
+  const prevBuildErrorDetailsRef = useRef(buildErrorDetails);
   const showFirstPublishCongrats = useDevelopPageStore(
     (state) =>
       currentAppId && state.publishStates[currentAppId]
@@ -264,6 +283,7 @@ export default function AppPublish({ location = 'develop' }: { location?: string
     if (hadPreviousApp) {
       setPublishResult(null);
       setOpen(false);
+      setIsFixingBuildError(false);
     }
   }, [currentAppId]);
 
@@ -333,13 +353,56 @@ export default function AppPublish({ location = 'develop' }: { location?: string
     }
   }, [clickContext, currentAppId, site, location, isFirstTimePublishing, isPublishComplianceBlocked, publishComplianceBlockReason, setPublishError, setIsPublishing, clearPublishStatus, publishMutation]);
 
+  const handleFixBuildError = useCallback(() => {
+    if (!currentAppId || !buildErrorDetails) return;
+
+    logger.info('app-publish.fix-build-error', {
+      message: 'User clicked fix build error',
+      appId: currentAppId,
+    });
+
+    setIsFixingBuildError(true);
+    setActiveChatTab(ChatTab.CHAT);
+
+    window.postMessage({
+      type: 'build-error-fix-request',
+      appId: currentAppId,
+      errorMessage: buildErrorDetails.error,
+      errorDetails: buildErrorDetails.details,
+      exitCode: buildErrorDetails.exitCode,
+    }, window.location.origin);
+  }, [currentAppId, buildErrorDetails, setActiveChatTab]);
+
+  const prevIsConversationInProgressRef = useRef(isConversationInProgress);
+
+  useEffect(() => {
+    const wasProcessing = prevIsConversationInProgressRef.current;
+    prevIsConversationInProgressRef.current = isConversationInProgress;
+
+    if (wasProcessing && !isConversationInProgress && isFixingBuildError) {
+      setIsFixingBuildError(false);
+      setPublishResult(null);
+    }
+  }, [isConversationInProgress, isFixingBuildError]);
+
+  useEffect(() => {
+    if (!isFixingBuildError || isConversationInProgress) return;
+    const timeout = setTimeout(() => {
+      setIsFixingBuildError(false);
+      setPublishResult(null);
+    }, 5000);
+    return () => clearTimeout(timeout);
+  }, [isFixingBuildError, isConversationInProgress]);
+
   useEffect(() => {
     const wasPublishing = prevPublishingRef.current;
     prevPublishingRef.current = !!isPublishingOrDeploying;
 
-    if (!wasPublishing || isPublishingOrDeploying) return;
+    const prevBuildErrorDetails = prevBuildErrorDetailsRef.current;
+    prevBuildErrorDetailsRef.current = buildErrorDetails;
+    const buildErrorDetailsUpdated = prevBuildErrorDetails !== buildErrorDetails;
 
-    feedbackAnimatedRef.current = false;
+    if ((!wasPublishing && !buildErrorDetailsUpdated) || isPublishingOrDeploying) return;
 
     const failed = publishError || mostRecentDeployment?.status === DeploymentStatus.FAILED;
     const succeeded = mostRecentDeployment?.status === DeploymentStatus.DEPLOYED;
@@ -348,8 +411,10 @@ export default function AppPublish({ location = 'develop' }: { location?: string
 
     const outcome: 'success' | 'failed' = failed ? 'failed' : 'success';
 
-    // Trigger chat feedback banner on successful publish if user hasn't seen feedback prompt
     if (outcome === 'success') {
+      if (!wasPublishing) return;
+
+      // Trigger chat feedback banner on successful publish if user hasn't seen feedback prompt
       let hasSeenFeedbackPrompt = false;
       try {
         hasSeenFeedbackPrompt = localStorage.getItem(`airo-feedback-shown:${FEEDBACK_ID}`) === 'true';
@@ -359,24 +424,21 @@ export default function AppPublish({ location = 'develop' }: { location?: string
       if (!hasSeenFeedbackPrompt) {
         setShowFeedbackBanner(true);
       }
-    }
 
-    if (
-      currentAppId &&
-      outcome === 'success' &&
-      useDevelopPageStore.getState().getPublishState(currentAppId).showFirstPublishCongrats
-    ) {
-      setOpen(false);
-      setPublishResult(null);
-      return;
-    }
+      if (
+        currentAppId &&
+        useDevelopPageStore.getState().getPublishState(currentAppId).showFirstPublishCongrats
+      ) {
+        setOpen(false);
+        setPublishResult(null);
+        return;
+      }
 
-    if (openRef.current) {
-      setPublishResult(outcome);
-      return;
-    }
+      if (openRef.current) {
+        setPublishResult(outcome);
+        return;
+      }
 
-    if (outcome === 'success') {
       Growl.addGrowlMessage({
         id: 'app-publish-success',
         title: t('builder_publish_success_title'),
@@ -421,22 +483,28 @@ export default function AppPublish({ location = 'develop' }: { location?: string
       return;
     }
 
+    if (openRef.current) {
+      if (wasPublishing) setPublishResult(outcome);
+      return;
+    }
+
+    Growl.removeGrowlMessage('app-publish-failed');
     Growl.addGrowlMessage({
       id: 'app-publish-failed',
       title: t('builder_publish_failed_title'),
       children: (
         <p>
-          <PublishFailedRetryMessage
-            onRetry={() => {
-              Growl.removeGrowlMessage('app-publish-failed');
-              void handleDeploy();
-            }}
+          <PublishFailedMessage
+            onFix={() => { Growl.removeGrowlMessage('app-publish-failed'); handleFixBuildError(); }}
+            onRetry={() => { Growl.removeGrowlMessage('app-publish-failed'); void handleDeploy(); }}
+            isFix={!!buildErrorDetails}
+            growl
           />
         </p>
       ),
       emphasis: 'critical',
     });
-  }, [currentAppId, isPublishingOrDeploying, mostRecentDeployment?.status, publishError, fqdn, t, handleDeploy, handlePublishFeedbackClick, location, setShowFeedbackBanner]);
+  }, [currentAppId, isPublishingOrDeploying, mostRecentDeployment?.status, publishError, buildErrorDetails, fqdn, t, handleDeploy, handleFixBuildError, handlePublishFeedbackClick, location, setShowFeedbackBanner]);
 
   /**
    * Navigate to version history tab
@@ -720,7 +788,7 @@ export default function AppPublish({ location = 'develop' }: { location?: string
               />
             )}
 
-            {publishResult === null && (
+            {(publishResult === null || isFixingBuildError) && (
               <Button
                 className='w-full'
                 design='primary'
@@ -750,7 +818,7 @@ export default function AppPublish({ location = 'develop' }: { location?: string
               </Box>
             )}
 
-            {publishResult === 'failed' && (
+            {publishResult === 'failed' && !isFixingBuildError && (
               <Box
                 orientation='horizontal'
                 blockAlignChildren='center'
@@ -761,33 +829,26 @@ export default function AppPublish({ location = 'develop' }: { location?: string
               >
                 <AlertIcon className='text-intents-ux-feedbackHighContrastCritical-feedbackColor' />
                 <text.span as='action' size={-1}>
-                  <PublishFailedRetryMessage onRetry={handleDeploy} />
+                  <PublishFailedMessage
+                    onFix={() => { setOpen(false); handleFixBuildError(); }}
+                    onRetry={() => void handleDeploy()}
+                    isFix={!!buildErrorDetails}
+                  />
                 </text.span>
               </Box>
             )}
 
-            <AnimatePresence>
-              {isPublishingOrDeploying && publishResult === null && (
-                <motion.div
-                  initial={feedbackAnimatedRef.current ? false : { opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.2, ease: 'easeInOut', delay: feedbackAnimatedRef.current ? 0 : 0.5 }}
-                  onAnimationComplete={() => { feedbackAnimatedRef.current = true; }}
-                >
-                  <button
-                    type='button'
-                    className='w-full pt-1 pb-0.5 flex items-center justify-center gap-1 cursor-pointer'
-                    onClick={() => handlePublishFeedbackClick('Publish Popover')}
-                  >
-                    <CommentsIcon className='size-2' />
-                    <text.span as='action' size={-1}>
-                      {t('builder_settings_nav_feedback')}
-                    </text.span>
-                  </button>
-                </motion.div>
-              )}
-            </AnimatePresence>
+            {isPublishingOrDeploying && publishResult === null && (
+              <Button
+                type='button'
+                className='w-full'
+                onClick={() => handlePublishFeedbackClick('Publish Popover')}
+                icon={<CommentsIcon className='size-2' />}
+                size='sm'
+              >
+                {t('builder_settings_nav_feedback')}
+              </Button>
+            )}
           </div>
         </PopoverContent>
       </Popover>

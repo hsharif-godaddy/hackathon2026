@@ -8,6 +8,17 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import Growl from '@ux/growl';
 
+vi.mock('react-intl', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react-intl')>();
+  return {
+    ...actual,
+    FormattedMessage: ({ id, values }: { id: string; values?: Record<string, unknown> }) => {
+      const action = values?.action;
+      return typeof action === 'function' ? <>{action([''])}</> : <>{id}</>;
+    },
+  };
+});
+
 import AppPublish from '@/components/layout/AppPublish';
 import { shipAnalyticsLog } from '@/lib/logging';
 import { DeploymentStatus } from '@/lib/mgmt-airo/types';
@@ -23,6 +34,7 @@ type MockPublishSlice = {
   publishError?: boolean;
   showFirstPublishCongrats?: boolean;
   firstPublishDeployPending?: boolean;
+  buildErrorDetails?: { error: string; details: string; exitCode?: number } | null;
   showPostPublishFeatureSelection?: boolean;
 };
 
@@ -72,9 +84,10 @@ vi.mock('@/hooks/useTranslations', () => ({
   useTranslations: () => (key: string) => key,
 }));
 
+const mockSetActiveChatTab = vi.fn();
 vi.mock('@/hooks/useChatTabs', () => ({
   useChatTabs: () => ({
-    setActiveChatTab: vi.fn(),
+    setActiveChatTab: mockSetActiveChatTab,
     setActiveSettingsSection: vi.fn(),
   }),
 }));
@@ -193,6 +206,7 @@ vi.mock('@ux/growl', () => ({
 describe('AppPublish', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockSetActiveChatTab.mockReset();
     localStorage.removeItem('airo-feedback-shown:airo#app-builder');
     mockPathname = '/develop/app-123';
     mockDevelopStore.currentAppId = 'app-123';
@@ -603,5 +617,437 @@ describe('AppPublish', () => {
     } finally {
       windowOpen.mockRestore();
     }
+  });
+
+  it('should dispatch build-error-fix-request when fix action is clicked in popover', async function fixBuildErrorPopover() {
+    const postMessageSpy = vi.spyOn(window, 'postMessage');
+
+    mockDeploymentsData = [{ id: 'dep-1', status: 'IN_PROGRESS' }];
+    mockDevelopStore.publishStates['app-123'] = {
+      isPublishing: true,
+      buildErrorDetails: { error: 'Build failed', details: 'Detailed error', exitCode: 1 },
+    };
+
+    const { user, rerender } = renderWithProviders(<AppPublish />);
+
+    const trigger = await screen.findByRole('button', { name: 'builder_publish_button_publishing' });
+    await user.click(trigger);
+
+    await waitFor(() => {
+      expect(screen.getByText('builder_publish_popover_title')).toBeInTheDocument();
+    });
+
+    mockDeploymentsData = [{ id: 'dep-1', status: DeploymentStatus.FAILED }];
+    mockDevelopStore.publishStates['app-123'] = {
+      isPublishing: false,
+      publishError: true,
+      buildErrorDetails: { error: 'Build failed', details: 'Detailed error', exitCode: 1 },
+    };
+    rerender(<AppPublish />);
+
+    const actionButton = await screen.findByTestId('publish-failed-action');
+    await user.click(actionButton);
+
+    await waitFor(() => {
+      expect(postMessageSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'build-error-fix-request',
+          appId: 'app-123',
+          errorMessage: 'Build failed',
+        }),
+        window.location.origin
+      );
+    });
+
+    expect(mockSetActiveChatTab).toHaveBeenCalledWith('chat');
+
+    await waitFor(() => {
+      expect(screen.queryByText('builder_publish_popover_title')).not.toBeInTheDocument();
+    });
+
+    postMessageSpy.mockRestore();
+  });
+
+  it('should dispatch build-error-fix-request when fix action is clicked in failed growl', async function fixBuildErrorGrowl() {
+    const postMessageSpy = vi.spyOn(window, 'postMessage');
+
+    mockDeploymentsData = [{ id: 'dep-1', status: 'IN_PROGRESS' }];
+    mockDevelopStore.publishStates['app-123'] = {
+      isPublishing: true,
+      buildErrorDetails: { error: 'Build failed', details: 'Detailed error', exitCode: 1 },
+    };
+
+    const { rerender, unmount } = renderWithProviders(<AppPublish />);
+
+    mockDeploymentsData = [{ id: 'dep-1', status: DeploymentStatus.FAILED }];
+    mockDevelopStore.publishStates['app-123'] = {
+      isPublishing: false,
+      publishError: true,
+      buildErrorDetails: { error: 'Build failed', details: 'Detailed error', exitCode: 1 },
+    };
+    rerender(<AppPublish />);
+
+    await waitFor(() => {
+      expect(Growl.addGrowlMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'app-publish-failed' })
+      );
+    });
+
+    const failedPayload = vi.mocked(Growl.addGrowlMessage).mock.calls
+      .map((c) => c[0])
+      .find(
+        (a): a is { id: string; children: ReactNode } =>
+          Boolean(a && typeof a === 'object' && 'id' in a && (a as { id: string }).id === 'app-publish-failed')
+      );
+    expect(failedPayload).toBeDefined();
+
+    unmount();
+    const { user } = renderWithProviders(<div>{failedPayload!.children}</div>);
+
+    const actionButton = await screen.findByTestId('publish-failed-action');
+    await user.click(actionButton);
+
+    await waitFor(() => {
+      expect(Growl.removeGrowlMessage).toHaveBeenCalledWith('app-publish-failed');
+      expect(postMessageSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'build-error-fix-request',
+          appId: 'app-123',
+          errorMessage: 'Build failed',
+        }),
+        window.location.origin
+      );
+    });
+
+    expect(mockSetActiveChatTab).toHaveBeenCalledWith('chat');
+
+    postMessageSpy.mockRestore();
+  });
+
+  it('should update failure growl with isFix=true when buildErrorDetails arrives after publishError', async function buildErrorDetailsLateArrival() {
+    const postMessageSpy = vi.spyOn(window, 'postMessage');
+
+    mockDeploymentsData = [{ id: 'dep-1', status: 'IN_PROGRESS' }];
+    mockDevelopStore.publishStates['app-123'] = { isPublishing: true };
+
+    const { rerender, unmount } = renderWithProviders(<AppPublish />);
+
+    // First update: failure lands but buildErrorDetails not yet arrived
+    mockDeploymentsData = [{ id: 'dep-1', status: DeploymentStatus.FAILED }];
+    mockDevelopStore.publishStates['app-123'] = {
+      isPublishing: false,
+      publishError: true,
+      buildErrorDetails: null,
+    };
+    rerender(<AppPublish />);
+
+    await waitFor(() => {
+      expect(Growl.addGrowlMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'app-publish-failed' })
+      );
+    });
+
+    const firstCall = vi.mocked(Growl.addGrowlMessage).mock.calls.length;
+
+    // Extract the first growl payload and verify it shows retry (isFix=false)
+    const firstPayload = vi.mocked(Growl.addGrowlMessage).mock.calls
+      .map((c) => c[0])
+      .find(
+        (a): a is { id: string; children: ReactNode } =>
+          Boolean(a && typeof a === 'object' && 'id' in a && (a as { id: string }).id === 'app-publish-failed')
+      );
+    expect(firstPayload).toBeDefined();
+    unmount();
+    const { user: retryUser, unmount: unmountRetry } = renderWithProviders(<div>{firstPayload!.children}</div>);
+    const retryButton = await screen.findByTestId('publish-failed-action');
+    await retryUser.click(retryButton);
+    expect(postMessageSpy).not.toHaveBeenCalled();
+    unmountRetry();
+
+    // Second update: buildErrorDetails arrives in a separate state update
+    const { rerender: rerender2, unmount: unmount2 } = renderWithProviders(<AppPublish />);
+    mockDevelopStore.publishStates['app-123'] = {
+      isPublishing: false,
+      publishError: true,
+      buildErrorDetails: { error: 'Build failed', details: 'Detailed error', exitCode: 1 },
+    };
+    rerender2(<AppPublish />);
+
+    await waitFor(() => {
+      expect(vi.mocked(Growl.addGrowlMessage).mock.calls.length).toBeGreaterThan(firstCall);
+    });
+
+    expect(Growl.removeGrowlMessage).toHaveBeenCalledWith('app-publish-failed');
+
+    const updatedPayload = [...vi.mocked(Growl.addGrowlMessage).mock.calls]
+      .reverse()
+      .map((c) => c[0])
+      .find(
+        (a): a is { id: string; children: ReactNode } =>
+          Boolean(a && typeof a === 'object' && 'id' in a && (a as { id: string }).id === 'app-publish-failed')
+      );
+    expect(updatedPayload).toBeDefined();
+    unmount2();
+    const { user: fixUser } = renderWithProviders(<div>{updatedPayload!.children}</div>);
+    const fixButton = await screen.findByTestId('publish-failed-action');
+    await fixUser.click(fixButton);
+
+    await waitFor(() => {
+      expect(postMessageSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'build-error-fix-request',
+          appId: 'app-123',
+          errorMessage: 'Build failed',
+        }),
+        window.location.origin
+      );
+    });
+
+    postMessageSpy.mockRestore();
+  });
+
+  it('should show disabled publish button instead of failed state while chat is actively fixing build error', async function publishButtonWhileFixing() {
+    const postMessageSpy = vi.spyOn(window, 'postMessage');
+
+    mockDeploymentsData = [{ id: 'dep-1', status: 'IN_PROGRESS' }];
+    mockDevelopStore.publishStates['app-123'] = {
+      isPublishing: true,
+      buildErrorDetails: { error: 'Build failed', details: 'Detailed error', exitCode: 1 },
+    };
+
+    const { user, rerender } = renderWithProviders(<AppPublish />);
+
+    const trigger = await screen.findByRole('button', { name: 'builder_publish_button_publishing' });
+    await user.click(trigger);
+
+    await waitFor(() => {
+      expect(screen.getByText('builder_publish_popover_title')).toBeInTheDocument();
+    });
+
+    mockDeploymentsData = [{ id: 'dep-1', status: DeploymentStatus.FAILED }];
+    mockDevelopStore.publishStates['app-123'] = {
+      isPublishing: false,
+      publishError: true,
+      buildErrorDetails: { error: 'Build failed', details: 'Detailed error', exitCode: 1 },
+    };
+    mockStreaming.isLoading = true;
+    rerender(<AppPublish />);
+
+    const actionButton = await screen.findByTestId('publish-failed-action');
+    await user.click(actionButton);
+
+    const reopenTrigger = await screen.findByRole('button', { name: 'builder_publish_button' });
+    await user.click(reopenTrigger);
+
+    await waitFor(() => {
+      expect(screen.getByText('builder_publish_popover_title')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByTestId('publish-failed-action')).not.toBeInTheDocument();
+
+    const publishButtons = screen.getAllByRole('button', { name: 'builder_publish_button' });
+    const innerPublishButton = publishButtons.find((btn) => btn.id !== 'tour-publish-button');
+    expect(innerPublishButton).toBeDefined();
+    expect(innerPublishButton).toBeDisabled();
+
+    postMessageSpy.mockRestore();
+  });
+
+  it('should clear publishResult when chat finishes fixing build error', async function clearPublishResultOnFixComplete() {
+    const postMessageSpy = vi.spyOn(window, 'postMessage');
+
+    mockDeploymentsData = [{ id: 'dep-1', status: 'IN_PROGRESS' }];
+    mockDevelopStore.publishStates['app-123'] = {
+      isPublishing: true,
+      buildErrorDetails: { error: 'Build failed', details: 'Detailed error', exitCode: 1 },
+    };
+
+    const { user, rerender } = renderWithProviders(<AppPublish />);
+
+    const trigger = await screen.findByRole('button', { name: 'builder_publish_button_publishing' });
+    await user.click(trigger);
+
+    await waitFor(() => {
+      expect(screen.getByText('builder_publish_popover_title')).toBeInTheDocument();
+    });
+
+    mockDeploymentsData = [{ id: 'dep-1', status: DeploymentStatus.FAILED }];
+    mockDevelopStore.publishStates['app-123'] = {
+      isPublishing: false,
+      publishError: true,
+      buildErrorDetails: { error: 'Build failed', details: 'Detailed error', exitCode: 1 },
+    };
+    mockStreaming.isLoading = true;
+    rerender(<AppPublish />);
+
+    const actionButton = await screen.findByTestId('publish-failed-action');
+    await user.click(actionButton);
+
+    mockStreaming.isLoading = false;
+    rerender(<AppPublish />);
+
+    const reopenTrigger = await screen.findByRole('button', { name: 'builder_publish_button' });
+    await user.click(reopenTrigger);
+
+    await waitFor(() => {
+      expect(screen.getByText('builder_publish_popover_title')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByTestId('publish-failed-action')).not.toBeInTheDocument();
+
+    const publishButtons = screen.getAllByRole('button', { name: 'builder_publish_button' });
+    const innerPublishButton = publishButtons.find((btn) => btn.id !== 'tour-publish-button');
+    expect(innerPublishButton).toBeDefined();
+    expect(innerPublishButton).not.toBeDisabled();
+
+    postMessageSpy.mockRestore();
+  });
+
+  it('should not dispatch build-error-fix-request when buildErrorDetails is absent', async function noFixWithoutBuildErrorDetails() {
+    const postMessageSpy = vi.spyOn(window, 'postMessage');
+
+    mockDeploymentsData = [{ id: 'dep-1', status: 'IN_PROGRESS' }];
+    mockDevelopStore.publishStates['app-123'] = { isPublishing: true };
+
+    const { rerender, unmount } = renderWithProviders(<AppPublish />);
+
+    mockDeploymentsData = [{ id: 'dep-1', status: DeploymentStatus.FAILED }];
+    mockDevelopStore.publishStates['app-123'] = { isPublishing: false, publishError: true };
+    rerender(<AppPublish />);
+
+    await waitFor(() => {
+      expect(Growl.addGrowlMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'app-publish-failed' })
+      );
+    });
+
+    const failedPayload = vi.mocked(Growl.addGrowlMessage).mock.calls
+      .map((c) => c[0])
+      .find(
+        (a): a is { id: string; children: ReactNode } =>
+          Boolean(a && typeof a === 'object' && 'id' in a && (a as { id: string }).id === 'app-publish-failed')
+      );
+
+    unmount();
+    const { user } = renderWithProviders(<div>{failedPayload!.children}</div>);
+
+    const actionButton = await screen.findByTestId('publish-failed-action');
+    await user.click(actionButton);
+
+    expect(postMessageSpy).not.toHaveBeenCalled();
+    expect(Growl.removeGrowlMessage).toHaveBeenCalledWith('app-publish-failed');
+    expect(mockDevelopStore.clearPublishStatus).toHaveBeenCalledWith('app-123');
+
+    postMessageSpy.mockRestore();
+  });
+
+  it('should keep popover open when retry is clicked without buildErrorDetails', async function retryKeepsPopoverOpen() {
+    const postMessageSpy = vi.spyOn(window, 'postMessage');
+
+    mockDeploymentsData = [{ id: 'dep-1', status: 'IN_PROGRESS' }];
+    mockDevelopStore.publishStates['app-123'] = { isPublishing: true };
+
+    const { user, rerender } = renderWithProviders(<AppPublish />);
+
+    const trigger = await screen.findByRole('button', { name: 'builder_publish_button_publishing' });
+    await user.click(trigger);
+
+    await waitFor(() => {
+      expect(screen.getByText('builder_publish_popover_title')).toBeInTheDocument();
+    });
+
+    mockDeploymentsData = [{ id: 'dep-1', status: DeploymentStatus.FAILED }];
+    mockDevelopStore.publishStates['app-123'] = { isPublishing: false, publishError: true };
+    rerender(<AppPublish />);
+
+    const actionButton = await screen.findByTestId('publish-failed-action');
+    await user.click(actionButton);
+
+    expect(screen.getByText('builder_publish_popover_title')).toBeInTheDocument();
+    expect(postMessageSpy).not.toHaveBeenCalled();
+
+    postMessageSpy.mockRestore();
+  });
+
+  it('should clear publish status and set isPublishing when deploy starts', async function deployInitiatesPublish() {
+    mockDeploymentsData = [{ id: 'dep-1', status: 'IN_PROGRESS' }];
+    mockDevelopStore.publishStates['app-123'] = { isPublishing: true };
+
+    const { user, rerender } = renderWithProviders(<AppPublish />);
+
+    const trigger = await screen.findByRole('button', { name: 'builder_publish_button_publishing' });
+    await user.click(trigger);
+
+    await waitFor(() => {
+      expect(screen.getByText('builder_publish_popover_title')).toBeInTheDocument();
+    });
+
+    mockDeploymentsData = [{ id: 'dep-1', status: DeploymentStatus.FAILED }];
+    mockDevelopStore.publishStates['app-123'] = { isPublishing: false, publishError: true };
+    rerender(<AppPublish />);
+
+    const actionButton = await screen.findByTestId('publish-failed-action');
+    await user.click(actionButton);
+
+    await waitFor(() => {
+      expect(mockDevelopStore.clearPublishStatus).toHaveBeenCalledWith('app-123');
+    });
+    expect(mockDevelopStore.setIsPublishing).toHaveBeenCalledWith('app-123', true);
+  });
+
+  it('should clear isFixingBuildError when switching apps', async function clearFixingOnAppSwitch() {
+    mockDeploymentsData = [{ id: 'dep-1', status: 'IN_PROGRESS' }];
+    mockDevelopStore.publishStates['app-123'] = {
+      isPublishing: true,
+      buildErrorDetails: { error: 'Build failed', details: 'details', exitCode: 1 },
+    };
+
+    const { user, rerender } = renderWithProviders(<AppPublish />);
+
+    const trigger = await screen.findByRole('button', { name: 'builder_publish_button_publishing' });
+    await user.click(trigger);
+
+    await waitFor(() => {
+      expect(screen.getByText('builder_publish_popover_title')).toBeInTheDocument();
+    });
+
+    // Transition app-123 publishing -> failed so the in-popover failure UI renders
+    mockDeploymentsData = [{ id: 'dep-1', status: DeploymentStatus.FAILED }];
+    mockDevelopStore.publishStates['app-123'] = {
+      isPublishing: false,
+      publishError: true,
+      buildErrorDetails: { error: 'Build failed', details: 'details', exitCode: 1 },
+    };
+    rerender(<AppPublish />);
+
+    const actionButton = await screen.findByTestId('publish-failed-action');
+    await user.click(actionButton);
+
+    // Fix-in-progress hides the failure UI in the popover
+    expect(screen.queryByTestId('publish-failed-action')).not.toBeInTheDocument();
+
+    // Switch to a different app that is mid-publish
+    mockDevelopStore.currentAppId = 'app-456';
+    mockSiteStore.getSite.mockReturnValue(
+      createMockSite({ id: 'app-456', agent_url: 'https://app-456.agent.test' })
+    );
+    mockDeploymentsData = [{ id: 'dep-2', status: 'IN_PROGRESS' }];
+    mockDevelopStore.publishStates['app-456'] = { isPublishing: true };
+    rerender(<AppPublish />);
+
+    const newTrigger = await screen.findByRole('button', { name: 'builder_publish_button_publishing' });
+    await user.click(newTrigger);
+
+    // Drive app-456 publishing -> failed; if isFixingBuildError leaked across apps,
+    // the failure UI would be hidden by `publishResult === 'failed' && !isFixingBuildError`
+    mockDeploymentsData = [{ id: 'dep-2', status: DeploymentStatus.FAILED }];
+    mockDevelopStore.publishStates['app-456'] = {
+      isPublishing: false,
+      publishError: true,
+      buildErrorDetails: { error: 'Other error', details: 'details', exitCode: 1 },
+    };
+    rerender(<AppPublish />);
+
+    expect(await screen.findByTestId('publish-failed-action')).toBeInTheDocument();
   });
 });
