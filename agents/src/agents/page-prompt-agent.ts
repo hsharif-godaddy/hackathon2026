@@ -10,6 +10,7 @@ import { createAgentTelemetryLogger } from '../utils/agent-logger.js'
 import { Logger } from '../logging/index.js'
 import { getAgentModelWithName } from '../utils/model-selection.js'
 import type { AssetInfo, PageContent, SiteMetadata, StylePreferences, AssetManifest } from '../types/rebuild.js'
+import { buildSiteTypeRules } from './site-type-helpers.js'
 
 const logger = Logger.create({ component: 'page-prompt-agent' })
 
@@ -130,7 +131,13 @@ When referencing assets:
 
 ### 6. Homepage Structure Requirements
 
-**For HOMEPAGE builds, ALWAYS include these structural elements:**
+**SITE TYPE** in the user prompt sets homepage shape—read it first.
+
+- \`app\` / \`dashboard\`: **Full-viewport shell**—one primary surface (\`app\`: map, canvas, board, editor, chat, game…; \`dashboard\`: sidebar + metrics/tables/charts). No marketing header, hero, feature grid, testimonials, or marketing footer; thin top bar OK. **Skip §6 below**; follow **Site-type rules** in the user prompt.
+- \`commerce\`: **Storefront** (header, nav, search, cart, product grid/catalog, optional policy/help footer per **Site-type rules**). Not a single-canvas app shell—do not use the full-viewport bullets above.
+- \`content\` (default): **§6 below** applies.
+
+**For CONTENT-type homepages, ALWAYS include these structural elements:**
 
 - **Header/Navigation**: Include a proper header with logo, navigation links, and any CTAs
 - **Footer**: ALWAYS include a complete footer. Include ONLY contact information that was ACTUALLY FOUND in the source:
@@ -373,7 +380,13 @@ export class PagePromptAgent {
       ? this.buildDesignInstructions(stylePreferences, siteMetadata)
       : ''
 
+    const siteType = siteMetadata.siteType ?? 'content'
+    const siteTypeRules = buildSiteTypeRules(siteType, isFirstPage)
+
     const prompt = `Generate a detailed prompt for building this ${isFirstPage ? 'homepage' : 'page'}. Your job is to OPTIMIZE the existing content, not create new content.
+
+SITE TYPE: ${siteType}
+${siteTypeRules}
 
 SITE METADATA:
 - Purpose: ${siteMetadata.sitePurpose}

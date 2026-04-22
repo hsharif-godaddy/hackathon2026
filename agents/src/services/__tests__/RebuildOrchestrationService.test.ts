@@ -656,4 +656,99 @@ describe('RebuildOrchestrationService', () => {
       scrapeSpy.mockRestore();
     }
   });
+
+  it('persists siteType from analyzer metadata when scrape completes', async function siteTypeSave() {
+    const scrapeSpy = vi.spyOn(WebsiteScraperDriver.prototype, 'scrapeMultiplePages').mockResolvedValue({
+      success: true,
+      totalPages: 1,
+      successfulPages: 1,
+      failedPages: 0,
+      pages: [
+        {
+          url: 'https://example.com/',
+          success: true,
+          sanitizedContent: '<html><title>Home</title></html>',
+          html: '<html><title>Home</title></html>',
+          screenshotBase64: 'data:image/png;base64,aGVsbG8='
+        }
+      ],
+      assets: []
+    } as never);
+
+    vi.spyOn(SiteAnalyzerAgent.prototype, 'initialize').mockResolvedValue(undefined as never);
+    vi.spyOn(SiteAnalyzerAgent.prototype, 'cleanup').mockResolvedValue(undefined as never);
+    vi.spyOn(SiteAnalyzerAgent.prototype, 'analyze').mockResolvedValue({
+      siteType: 'commerce',
+      sourceUrl: '',
+      sitePurpose: 'p',
+      targetAudience: 'a',
+      brandVoice: 'b',
+      designStyle: 'd',
+      colorPalette: { primary: [], secondary: [], accent: [] },
+      typography: { headingFonts: [], bodyFonts: [] },
+      scrapedAt: new Date().toISOString(),
+      version: '1'
+    } as never);
+
+    const emptyManifest = {
+      assets: [],
+      totalAssets: 0,
+      byType: { image: 0, font: 0, icon: 0, other: 0 },
+      generatedAt: new Date().toISOString()
+    };
+    vi.spyOn(AssetProcessingService.prototype, 'process').mockResolvedValue(emptyManifest as never);
+    vi.spyOn(AssetProcessingService.prototype, 'analyzePageAssets').mockResolvedValue({
+      pageAssets: [],
+      analyzedImageCount: 0
+    } as never);
+
+    const service = new RebuildOrchestrationService('/tmp/test-app-site-type');
+    const state = {
+      appId: 'app-site-type',
+      sourceUrl: 'https://example.com',
+      rootPath: '/',
+      status: 'scraping' as const,
+      scrapingProgress: {
+        total: 0,
+        completed: 0
+      },
+      pagesBuilt: [],
+      currentPage: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    vi.spyOn(SitemapDiscoveryService.prototype, 'discover').mockResolvedValue({
+      success: true,
+      pages: [
+        {
+          url: 'https://example.com/',
+          priority: 1,
+          source: 'crawl',
+          isBlog: false
+        }
+      ],
+      totalPages: 1
+    });
+
+    vi.spyOn(service as never, 'getStatus').mockResolvedValue(state);
+    vi.spyOn(service as never, 'saveState').mockResolvedValue(undefined);
+    vi.spyOn(service as never, 'saveSitemap').mockResolvedValue(undefined);
+    vi.spyOn(service as never, 'savePage').mockResolvedValue(undefined);
+    const saveMetadata = vi.spyOn(service as never, 'saveMetadata').mockResolvedValue(undefined);
+
+    await (service as never as { scrapeAndAnalyze: (a: string, u: string) => Promise<void> }).scrapeAndAnalyze(
+      'app-site-type',
+      'https://example.com'
+    );
+
+    expect(saveMetadata).toHaveBeenCalledWith(
+      expect.objectContaining({
+        siteType: 'commerce',
+        sourceUrl: 'https://example.com'
+      })
+    );
+
+    scrapeSpy.mockRestore();
+  });
 });

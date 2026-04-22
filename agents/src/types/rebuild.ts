@@ -20,10 +20,21 @@ export interface StylePreferences {
 }
 
 /**
+ * High-level shape of the source site. Drives whether the rebuild should use
+ * a marketing-page layout (header/hero/footer) or a full-viewport app shell.
+ */
+export type SiteType = 'content' | 'app' | 'commerce' | 'dashboard';
+
+/**
  * Overall site metadata
  */
 export interface SiteMetadata {
   sourceUrl: string;
+  /**
+   * Defaults to 'content' when absent (pre-classification manifests). The Site
+   * Analyzer classifies this from the homepage screenshot.
+   */
+  siteType?: SiteType;
   sitePurpose: string;
   targetAudience: string;
   brandVoice: string;

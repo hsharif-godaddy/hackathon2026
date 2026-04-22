@@ -2,6 +2,9 @@ import {
   createAgentFactory,
   type AgentConfig,
   createPromptBuilder,
+  createFileInputFromBuffer,
+  processFile,
+  type ProcessedFile,
   type SessionStateManager,
   createSessionStateManager
 } from '@airo/ai-lib'
@@ -10,26 +13,57 @@ import { createAgentTelemetryLogger } from '../utils/agent-logger.js'
 import { Logger } from '../logging/index.js'
 import { getAgentModelWithName } from '../utils/model-selection.js'
 import type { SiteMetadata } from '../types/rebuild.js'
+import { normalizeSiteType } from './site-type-helpers.js'
+import { parseScreenshotDataUrl, screenshotFilenameForMime } from './screenshot-data-url.js'
 
 const logger = Logger.create({ component: 'site-analyzer-agent' })
+
+function defaultMetadata(): SiteMetadata {
+  return {
+    sourceUrl: '',
+    siteType: 'content',
+    sitePurpose: 'Unable to analyze site purpose',
+    targetAudience: 'General audience',
+    brandVoice: 'Professional',
+    designStyle: 'Modern',
+    colorPalette: { primary: [], secondary: [], accent: [] },
+    typography: { headingFonts: [], bodyFonts: [] },
+    scrapedAt: new Date().toISOString(),
+    version: '1.0'
+  }
+}
 
 async function buildSiteAnalyzerSystemPrompt(): Promise<string> {
   const promptBuilder = createPromptBuilder()
 
   promptBuilder.text(`# Site Analyzer Agent
 
-You are a specialized AI agent that analyzes scraped website content to extract key information about the site's purpose, design, and branding.
+You are a specialized AI agent that analyzes scraped website content to extract key information about the site's purpose, type, design, and branding.
 
 ## Your Role
 
-Given scraped website content and screenshots, you analyze and extract:
+Given scraped website content and a homepage screenshot, you analyze and extract:
 
-1. **Site Purpose**: What the website is for, what it offers, who it serves
-2. **Target Audience**: Demographics, interests, and needs of the intended users
-3. **Brand Voice**: Tone, personality, and communication style
-4. **Design Style**: Visual aesthetic classification (minimalist, bold, playful, corporate, etc.)
-5. **Color Palette**: Primary, secondary, and accent colors used
-6. **Typography**: Font families and typographic hierarchy
+1. **Site Type**: The fundamental app shape (marketing site vs storefront vs full-viewport tool vs admin analytics). This drives layout strategy for the rebuild.
+2. **Site Purpose**: What the website is for, what it offers, who it serves
+3. **Target Audience**: Demographics, interests, and needs of the intended users
+4. **Brand Voice**: Tone, personality, and communication style
+5. **Design Style**: Visual aesthetic classification (minimalist, bold, playful, corporate, etc.)
+6. **Color Palette**: Primary, secondary, and accent colors used
+7. **Typography**: Font families and typographic hierarchy
+
+## Site type (CRITICAL — screenshot is ground truth)
+
+Pick exactly one: **content** | **app** | **commerce** | **dashboard**.
+
+- **content** — Marketing/docs: hero + sections + footer (most sites).
+- **app** — Full-viewport tool: one dominant surface (map, canvas, board, editor, chat, game); not a product catalog or admin-metrics shell.
+- **commerce** — Storefront: header + product grid/catalog + cart/PDP emphasis.
+- **dashboard** — Admin/analytics: sidebar nav + metrics, KPIs, tables, or dense charts.
+
+**Classify in this order:** (1) Hero + marketing body + footer → **content**. (2) Product grid/catalog/cart flow → **commerce**. (3) Sidebar + metrics/tables/charts → **dashboard**. (4) Else one interactive surface owns the viewport, no (2)/(3) patterns → **app**. **App vs dashboard:** persistent left nav sidebar → **dashboard**; single map/canvas/board dominates → **app**. Still uncertain → **content**.
+
+**Downstream:** app/dashboard must not become generic marketing pages; commerce/content follow storefront vs marketing layouts.
 
 ## Analysis Approach
 
@@ -40,7 +74,7 @@ Given scraped website content and screenshots, you analyze and extract:
 - Understand the target audience from language and content
 
 ### 2. Visual Analysis
-- Examine screenshots for design patterns
+- Examine the homepage screenshot for design patterns and overall layout shape (**siteType** uses the screenshot as primary evidence; see Site type section above)
 - Identify color schemes and visual hierarchy
 - Note typography choices and usage
 - Classify the overall design aesthetic
@@ -52,10 +86,11 @@ Given scraped website content and screenshots, you analyze and extract:
 
 ## Output Format
 
-Provide your analysis as a structured JSON object with these fields:
+Provide your analysis as a structured JSON object with these fields (use a \`\`\`json code block):
 
 \`\`\`json
 {
+  "siteType": "content" | "app" | "commerce" | "dashboard",
   "sitePurpose": "Clear, concise description of what the site does",
   "targetAudience": "Description of the intended users",
   "brandVoice": "Tone and personality (e.g., professional, friendly, authoritative)",
@@ -74,12 +109,12 @@ Provide your analysis as a structured JSON object with these fields:
 
 ## Guidelines
 
+- Base **siteType** on the screenshot layout, not keywords in the text
 - Be specific and actionable in your descriptions
-- Extract actual hex color codes from screenshots when possible
-- Identify font families if visible in screenshots
+- Extract actual hex color codes from the screenshot when possible
+- Identify font families if visible in the screenshot
 - Focus on the most prominent design elements
-- Keep descriptions concise but informative
-- Base analysis on evidence from content and visuals`)
+- Keep descriptions concise but informative`)
 
   return await promptBuilder.build()
 }
@@ -162,14 +197,34 @@ export class SiteAnalyzerAgent {
   async analyze(content: string, screenshotBase64?: string): Promise<SiteMetadata> {
     const agent = this.getAgent()
 
-    const prompt = `Analyze this website and provide a structured analysis:\n\n${content}`
+    const generateArgs: { files?: ProcessedFile[] } = {}
+    let hasScreenshotAttachment = false
 
-    const metadata: any = {}
     if (screenshotBase64) {
-      metadata._screenshots = [screenshotBase64]
+      const parsed = parseScreenshotDataUrl(screenshotBase64)
+      if (parsed) {
+        try {
+          const fileInput = createFileInputFromBuffer(
+            parsed.buffer,
+            parsed.mimeType,
+            screenshotFilenameForMime(parsed.mimeType)
+          )
+          const processed = await processFile(fileInput)
+          generateArgs.files = [processed]
+          hasScreenshotAttachment = true
+        } catch (error) {
+          logger.warn('site-analyzer-agent.screenshot-processing-failed', {
+            error: error instanceof Error ? error.message : String(error)
+          })
+        }
+      }
     }
 
-    const result = await agent.generate(prompt)
+    const prompt = hasScreenshotAttachment
+      ? `Analyze this website using the attached homepage screenshot (primary evidence) and the scraped content below. Determine siteType from the screenshot.\n\n${content}`
+      : `Analyze this website from the scraped content below. No screenshot is available, so default siteType to "content" unless the text clearly indicates a full-viewport app.\n\n${content}`
+
+    const result = await agent.generate(prompt, generateArgs)
 
     try {
       const jsonMatch = result.content?.match(/```json\s*([\s\S]*?)\s*```/)
@@ -178,6 +233,7 @@ export class SiteAnalyzerAgent {
 
         return {
           sourceUrl: '',
+          siteType: normalizeSiteType(parsed.siteType),
           sitePurpose: parsed.sitePurpose || '',
           targetAudience: parsed.targetAudience || '',
           brandVoice: parsed.brandVoice || '',
@@ -189,33 +245,13 @@ export class SiteAnalyzerAgent {
         }
       }
 
-      return {
-        sourceUrl: '',
-        sitePurpose: 'Unable to analyze site purpose',
-        targetAudience: 'General audience',
-        brandVoice: 'Professional',
-        designStyle: 'Modern',
-        colorPalette: { primary: [], secondary: [], accent: [] },
-        typography: { headingFonts: [], bodyFonts: [] },
-        scrapedAt: new Date().toISOString(),
-        version: '1.0'
-      }
+      return defaultMetadata()
     } catch (error) {
       logger.error('site-analyzer-agent.parse-error', {
         error: error instanceof Error ? error.message : String(error)
       })
 
-      return {
-        sourceUrl: '',
-        sitePurpose: 'Unable to analyze site purpose',
-        targetAudience: 'General audience',
-        brandVoice: 'Professional',
-        designStyle: 'Modern',
-        colorPalette: { primary: [], secondary: [], accent: [] },
-        typography: { headingFonts: [], bodyFonts: [] },
-        scrapedAt: new Date().toISOString(),
-        version: '1.0'
-      }
+      return defaultMetadata()
     }
   }
 
