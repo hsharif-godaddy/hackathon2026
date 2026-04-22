@@ -30,9 +30,6 @@ catalogs:
     '@godaddy/agent-otel-sdk':
       specifier: ^2.1.0
       version: 2.1.0
-    '@godaddy/gd-auth-lib':
-      specifier: ^0.11.1
-      version: 0.11.1
     '@godaddy/goknowb-client':
       specifier: ^1.0.9
       version: 1.0.9
@@ -96,6 +93,9 @@ catalogs:
     express:
       specifier: ^4.22.1
       version: 4.22.1
+    gd-auth:
+      specifier: 1.5.0
+      version: 1.5.0
     gd-auth-client:
       specifier: ^2.1.1
       version: 2.1.1
@@ -332,9 +332,6 @@ importers:
       '@godaddy/agent-otel-sdk':
         specifier: 'catalog:'
         version: 2.1.0(@opentelemetry/api@1.9.0)
-      '@godaddy/gd-auth-lib':
-        specifier: 'catalog:'
-        version: 0.11.1
       '@godaddy/goknowb-client':
         specifier: 'catalog:'
         version: 1.0.9
@@ -392,6 +389,9 @@ importers:
       express-rate-limit:
         specifier: ^7.4.1
         version: 7.5.1(express@4.22.1)
+      gd-auth:
+        specifier: 'catalog:'
+        version: 1.5.0
       glob:
         specifier: '>=10.5.0 <11 || >=11.1.0'
         version: 13.0.0
@@ -651,9 +651,6 @@ importers:
       '@godaddy/gasket-plugin-visitor':
         specifier: ^3.8.0
         version: 3.8.0
-      '@godaddy/gd-auth-lib':
-        specifier: 'catalog:'
-        version: 0.11.1
       '@godaddy/react-mintl':
         specifier: ^3.2.0
         version: 3.2.0(prop-types@15.8.1)(react@19.1.0)
@@ -855,6 +852,9 @@ importers:
       framer-motion:
         specifier: ^12.38.0
         version: 12.38.0(@emotion/is-prop-valid@0.8.8)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      gd-auth:
+        specifier: 'catalog:'
+        version: 1.5.0
       gd-auth-client:
         specifier: 'catalog:'
         version: 2.1.1
@@ -1141,12 +1141,12 @@ importers:
       '@elastic/elasticsearch':
         specifier: 'catalog:'
         version: 8.19.1
-      '@godaddy/gd-auth-lib':
-        specifier: 'catalog:'
-        version: 0.11.1
       archiver:
         specifier: 'catalog:'
         version: 7.0.1
+      gd-auth:
+        specifier: 'catalog:'
+        version: 1.5.0
       gd-auth-client:
         specifier: 'catalog:'
         version: 2.1.1
@@ -3372,10 +3372,6 @@ packages:
 
   '@godaddy/gasket-private-labels@3.4.0':
     resolution: {integrity: sha512-bRKg4hIoKsY8Sncwi5HAxW3qXm6verQDtWRoyqtt5o36SM28gpGKU6RzOvWtDC98y0dJWTO330ZyDrnwBpj5+g==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@godaddy/gasket-private-labels/-/@godaddy/gasket-private-labels-3.4.0.tgz}
-
-  '@godaddy/gd-auth-lib@0.11.1':
-    resolution: {integrity: sha512-bR2C6P0SCqAYM+ZPCyB2nOcYrshGapCVQ8bGMtmHid90tirt7CaY20cgmX4SoVi5LsTZNCvyhfdV/kC7GlGh2Q==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@godaddy/gd-auth-lib/-/@godaddy/gd-auth-lib-0.11.1.tgz}
-    engines: {node: '>=14.0.0'}
 
   '@godaddy/gd-auth-lib@0.7.0':
     resolution: {integrity: sha512-TVvuoG5OCGNCUwgukK08aNy1xeJjbyEOidkJ0kOArlZPBekZYMehiNwahNG4q9zXgvBbWWt4eSD+f9gSTqpW/Q==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@godaddy/gd-auth-lib/-/@godaddy/gd-auth-lib-0.7.0.tgz}
@@ -5987,7 +5983,7 @@ packages:
     engines: {node: '>=12'}
 
   '@testing-library/dom@10.4.1':
-    resolution: {integrity: sha512-o4PXJQidqJl82ckFaXUeoAW+XysPLauYI43Abki5hABd853iMhitooc6znOnczgbTYmEP6U6/y1ZyKAIsvMKGg==}
+    resolution: {integrity: sha512-o4PXJQidqJl82ckFaXUeoAW+XysPLauYI43Abki5hABd853iMhitooc6znOnczgbTYmEP6U6/y1ZyKAIsvMKGg==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@testing-library/dom/-/testing-library-dom-10.4.1.tgz}
     engines: {node: '>=18'}
 
   '@testing-library/jest-dom@6.9.1':
@@ -16033,10 +16029,6 @@ snapshots:
 
   '@godaddy/gasket-private-labels@3.4.0': {}
 
-  '@godaddy/gd-auth-lib@0.11.1':
-    dependencies:
-      detect-libc: 2.1.2
-
   '@godaddy/gd-auth-lib@0.7.0':
     dependencies:
       detect-libc: 2.1.2
@@ -22286,7 +22278,7 @@ snapshots:
       eslint: 9.28.0(jiti@2.5.1)
       eslint-import-resolver-node: 0.3.9
       eslint-import-resolver-typescript: 3.10.1(eslint-plugin-import@2.32.0(eslint@9.28.0(jiti@2.5.1)))(eslint@9.28.0(jiti@2.5.1))
-      eslint-plugin-import: 2.32.0(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(eslint@9.28.0(jiti@2.5.1)))(eslint@9.28.0(jiti@2.5.1)))(eslint@9.28.0(jiti@2.5.1))
+      eslint-plugin-import: 2.32.0(eslint-import-resolver-typescript@3.10.1)(eslint@9.28.0(jiti@2.5.1))
       eslint-plugin-jsx-a11y: 6.10.2(eslint@9.28.0(jiti@2.5.1))
       eslint-plugin-react: 7.37.5(eslint@9.28.0(jiti@2.5.1))
       eslint-plugin-react-hooks: 7.0.1(eslint@9.28.0(jiti@2.5.1))
@@ -22323,7 +22315,7 @@ snapshots:
       tinyglobby: 0.2.15
       unrs-resolver: 1.11.1
     optionalDependencies:
-      eslint-plugin-import: 2.32.0(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(eslint@9.28.0(jiti@2.5.1)))(eslint@9.28.0(jiti@2.5.1)))(eslint@9.28.0(jiti@2.5.1))
+      eslint-plugin-import: 2.32.0(eslint-import-resolver-typescript@3.10.1)(eslint@9.28.0(jiti@2.5.1))
     transitivePeerDependencies:
       - supports-color
 
@@ -22351,7 +22343,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  eslint-plugin-import@2.32.0(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(eslint@9.28.0(jiti@2.5.1)))(eslint@9.28.0(jiti@2.5.1)))(eslint@9.28.0(jiti@2.5.1)):
+  eslint-plugin-import@2.32.0(eslint-import-resolver-typescript@3.10.1)(eslint@9.28.0(jiti@2.5.1)):
     dependencies:
       '@rtsao/scc': 1.1.0
       array-includes: 3.1.9

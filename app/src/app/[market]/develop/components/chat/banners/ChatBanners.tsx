@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 
+import SessionExpirationBanner from '@/components/auth/SessionExpirationBanner'
 import { usePaywallEligibility } from '@/hooks/usePaywallEligibility'
 import { useSubscription } from '@/hooks/useSubscription'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
@@ -35,11 +36,12 @@ function isUpgradeBannerDismissedToday(): boolean {
 /**
  * Container component that manages which chat banner to display.
  * Only one banner shows at a time, with priority order:
- * 1. SuspendedComplianceBanner (site suspended or account subscription non-compliant; Switchboard-gated)
- * 2. SuspendedNonPaymentBanner (subscription suspended for non-payment)
- * 3. UsageWarningBanner (usage >= 90%)
- * 4. UpgradeBanner (no Airo Plus subscription)
- * 5. FeedbackBanner (prompt for user feedback)
+ * 1. SessionExpirationBanner (session expiring within 5 minutes)
+ * 2. SuspendedComplianceBanner (site suspended or account subscription non-compliant; Switchboard-gated)
+ * 3. SuspendedNonPaymentBanner (subscription suspended for non-payment)
+ * 4. UsageWarningBanner (usage >= 90%)
+ * 5. UpgradeBanner (no Airo Plus subscription)
+ * 6. FeedbackBanner (prompt for user feedback)
  */
 export default function ChatBanners({ appId }: ChatBannersProps) {
   const { isWarningBannerActive } = useUsage({ appId, enabled: !!appId })
@@ -86,35 +88,58 @@ export default function ChatBanners({ appId }: ChatBannersProps) {
   // Determine if feedback banner should be shown (feature flag AND store state)
   const showFeedbackBanner = mounted && !isFeedbackFeatureLoading && feedbackBannerEnabled && showFeedbackBannerFromStore
 
-  // Priority 1: Suspended compliance (critical - user needs to contact support)
-  if (isSuspendedForCompliance) {
-    return <SuspendedComplianceBanner />
-  }
+  // Priority 1: Session expiration (critical - user will be logged out)
+  // This component manages its own visibility state
+  const sessionBanner = <SessionExpirationBanner />
 
-  // Priority 2: Suspended non-payment (critical - user needs to renew)
-  if (isSuspendedForNonPayment) {
+  // Priority 2: Suspended compliance (critical - user needs to contact support)
+  if (isSuspendedForCompliance) {
     return (
-      <SuspendedNonPaymentBanner
-        builderEntitlementId={subscription?.builderEntitlementId}
-        renewsAt={subscription?.renewsAt}
-      />
+      <>
+        {sessionBanner}
+        <SuspendedComplianceBanner />
+      </>
     )
   }
 
-  // Priority 3: Usage warning takes precedence over upgrade prompt
+  // Priority 3: Suspended non-payment (critical - user needs to renew)
+  if (isSuspendedForNonPayment) {
+    return (
+      <>
+        {sessionBanner}
+        <SuspendedNonPaymentBanner
+          builderEntitlementId={subscription?.builderEntitlementId}
+          renewsAt={subscription?.renewsAt}
+        />
+      </>
+    )
+  }
+
+  // Priority 4: Usage warning takes precedence over upgrade prompt
   if (isWarningBannerActive) {
-    return <UsageWarningBanner appId={appId} />
+    return (
+      <>
+        {sessionBanner}
+        <UsageWarningBanner appId={appId} />
+      </>
+    )
   }
 
-  // Priority 4: Upgrade banner
+  // Priority 5: Upgrade banner
   if (isUpgradeBannerActive) {
-    return <UpgradeBanner onDismiss={handleUpgradeBannerDismiss} />
+    return (
+      <>
+        {sessionBanner}
+        <UpgradeBanner onDismiss={handleUpgradeBannerDismiss} />
+      </>
+    )
   }
 
-  // Priority 5: Feedback banner (only if feature flag is enabled)
-  if (showFeedbackBanner) {
-    return <FeedbackBanner />
-  }
-
-  return null
+  // Priority 6: Feedback banner (only if feature flag is enabled)
+  return (
+    <>
+      {sessionBanner}
+      {showFeedbackBanner && <FeedbackBanner />}
+    </>
+  )
 }

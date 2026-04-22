@@ -151,7 +151,7 @@ export async function authenticateCustomer(request: NextRequest, level?: 1 | 2 |
 
     // Use gd-auth for authentication (includes automatic heartbeat and expiration checking)
     // Default level 1: IAT <= 30 days (persistent) or <= 12 hours (non-persistent)
-    // Level 3 (sensitive ops): HBI <= 1 hour (requires recent heartbeat)
+    // Level 3 (sensitive ops): HBI <= 12 hours (requires recent heartbeat)
     const result = await gdAuthService.authenticate(token, level);
     if (!result.valid || !result.payload) {
       logger.warn('auth.gdauth.validate.failed', { reason: result.reason, authReason: result.authReason }, { tags: ['security'] });
@@ -253,7 +253,7 @@ export function withCustomerAuth<T extends unknown[]>(
     // This ensures cid is set even when auth fails (401), helping debug auth issues
     // Use standalone functions to avoid instantiating auth service when no token exists
     try {
-      const { extractTokenFromRequest, decodeTokenPayload } = await import('@/lib/auth-utils');
+      const { extractTokenFromRequest, decodeTokenPayload } = await import('@/lib/gd-auth-service');
       const token = extractTokenFromRequest(request);
       if (token && transaction) {
         const claims = decodeTokenPayload(token);

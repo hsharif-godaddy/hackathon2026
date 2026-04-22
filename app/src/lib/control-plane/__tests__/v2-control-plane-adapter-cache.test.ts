@@ -62,8 +62,10 @@ vi.mock('@/lib/request-context', () => ({
   }
 }))
 
-vi.mock('@/lib/auth-utils', () => ({
-  decodeTokenPayload: vi.fn().mockReturnValue({ cid: 'customer-123' })
+// Mock JWT utils
+vi.mock('@/lib/utils/jwt-utils', () => ({
+  extractCustomerId: vi.fn().mockReturnValue('customer-123'),
+  decodeJWT: vi.fn().mockReturnValue({ cid: 'customer-123' })
 }))
 
 describe('V2ControlPlaneAdapter with Cache', function adapterCacheTests() {

@@ -60,7 +60,7 @@ catalog:
   express: ^4.22.1
 
   # Auth
-  "@godaddy/gd-auth-lib": ^0.11.1
+  gd-auth: 1.5.0
   gd-auth-client: ^2.1.1
   gray-matter: ^4.0.3
   helmet: ^8.0.0

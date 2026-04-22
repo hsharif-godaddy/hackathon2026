@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { getControlPlaneAdapter } from '@/lib/control-plane';
-import { handleControlPlaneError } from '@/lib/control-plane/error-handler';
 import { CreateSiteParams } from '@/lib/control-plane/types';
 import {
   createCustomerAuthError,
@@ -126,6 +125,13 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     }, { status: 201 });
 
   } catch (error) {
-    return handleControlPlaneError(error, 'sites.quick-create');
+    logger.error('sites.quick-create.error', { message: 'Quick site creation failed', errorMessage: error instanceof Error ? error.message : 'Unknown error' });
+    return NextResponse.json(
+      {
+        error: 'Failed to create site record',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
+      { status: 500 }
+    );
   }
-}, { level: 3 });
+});

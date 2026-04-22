@@ -138,7 +138,7 @@
     "diff": "catalog:",
     "execa": "catalog:",
     "framer-motion": "^12.38.0",
-    "@godaddy/gd-auth-lib": "catalog:",
+    "gd-auth": "catalog:",
     "gd-auth-client": "catalog:",
     "gray-matter": "catalog:",
     "immer": "^10.1.3",

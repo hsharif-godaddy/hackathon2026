@@ -38,8 +38,12 @@ vi.mock('@/lib/request-context', () => ({
   }
 }));
 
-vi.mock('@/lib/auth-utils', () => ({
-  decodeTokenPayload: vi.fn(() => ({ cid: 'customer-123' }))
+/**
+ * Mock jwt-utils to return test customer ID
+ */
+vi.mock('@/lib/utils/jwt-utils', () => ({
+  extractCustomerId: vi.fn(() => 'customer-123'),
+  decodeJWT: vi.fn(() => ({ cid: 'customer-123' }))
 }));
 
 /**
