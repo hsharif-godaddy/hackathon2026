@@ -1,0 +1,288 @@
+/* ═══════════════════════════════════════════════════════════════════════════ */
+/*  BrandBookView — Intent-based styles                                      */
+/*  Uses @ux/postcss-intents for theme-aware colors.                         */
+/*  All directional properties use CSS logical properties for RTL support.   */
+/* ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Root scroll container */
+.root {
+  block-size: 100%;
+  overflow-y: auto;
+}
+
+/* ── Section layout ─────────────────────────────────────────────────────── */
+
+.section {
+  padding: 6rem 0;
+}
+
+.sectionInner {
+  gap: 4rem;
+  margin: auto;
+  width: 100%;
+  max-width: 960px;
+}
+
+/* ── Section header ────────────────────────────────────────────────────── */
+
+.sectionHeader {
+  padding-bottom: 1rem;
+  border-bottom: 0.1rem solid intent('ux.box.borderColor');
+}
+
+.sectionLabel {
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+
+.sectionHeaderDivider {
+  height: 0.25rem;
+  width: 8rem;
+  border: none;
+}
+
+/* ── Hero ───────────────────────────────────────────────────────────────── */
+
+.hero {
+  composes: section;
+  background-color: intent('ux.boxLowContrast.backgroundColor');
+  padding-top: 2rem;
+  padding-bottom: 11rem;
+}
+
+.heroInner {
+  composes: sectionInner;
+  gap: 0;
+}
+
+.heroSeparator {
+  height: 8rem;
+}
+
+.heroTitle {
+  padding-bottom: 0.5rem;
+
+}
+
+.heroTagline {
+  opacity: 0.85;
+}
+
+
+/* ── Logo grid ─────────────────────────────────────────────────────────── */
+
+.logoGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-rows: auto minmax(12rem, auto);
+  grid-template-areas:
+    'light dark  vert'
+    'horiz horiz vert';
+  gap: 1.5rem;
+}
+
+.logoGridItem {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.logoPanel {
+  flex: 1;
+  position: relative;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(128, 128, 128, 0.15);
+}
+
+.logoPanelSquare {
+  composes: logoPanel;
+  aspect-ratio: 1;
+}
+
+.logoPanelWide {
+  composes: logoPanel;
+  min-block-size: 10rem;
+}
+
+.logoImage {
+  object-fit: contain;
+}
+
+/* ── Color swatches ─────────────────────────────────────────────────────── */
+
+.swatchGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(8rem, 1fr));
+  gap: 1rem;
+}
+
+.swatchCard {
+  display: flex;
+  flex-direction: column;
+}
+
+.swatchSquare {
+  aspect-ratio: 1;
+  border-radius: 0.75rem;
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.08),
+    0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.swatchInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  padding-block-start: 0.5rem;
+}
+
+.swatchName {
+  font-weight: 600;
+  font-size: 0.8125rem;
+}
+
+.swatchValue {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.6875rem;
+  opacity: 0.5;
+}
+
+/* ── Typography ─────────────────────────────────────────────────────────── */
+
+.typeScaleRow {
+  border-block-end: 1px solid intent('ux.box.borderColor');
+  padding-block: 1.25rem;
+}
+
+.typeScaleRow:last-child {
+  border-block-end: none;
+}
+
+.typeScaleCaption {
+  opacity: 0.75;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+/* ── Soft card (semi-transparent overlay) ──────────────────────────────── */
+
+.softCard {
+  border-radius: 0.75rem;
+  padding: 1.5rem;
+  background-color: rgba(128, 128, 128, 0.06);
+}
+
+.softCardSpaced {
+  composes: softCard;
+  margin-block-start: 2rem;
+}
+
+/* Forces all text inside a font showcase card to use a specific font-family,
+   overriding UXCore's per-element heading/paragraph intents. */
+.fontShowcase * {
+  font-family: var(--showcase-font) !important;
+}
+
+.softDivider {
+  border: none;
+  block-size: 1px;
+  background-color: currentColor;
+  opacity: 0.1;
+  margin: 0;
+}
+
+/* ── Tone matrix rows ────────────────────────────────────────────────── */
+
+.toneRow {
+  border-radius: 0.75rem;
+  padding: 1rem 1.25rem;
+  background-color: rgba(128, 128, 128, 0.06);
+}
+
+.toneRowContext {
+  flex: 0 0 25%;
+  min-inline-size: 0;
+}
+
+.toneExamples {
+  display: flex;
+  gap: 0.5rem;
+}
+
+/* ── Personality traits ────────────────────────────────────────────────── */
+
+.traitName {
+  font-weight: 700;
+  min-inline-size: 8rem;
+  flex-shrink: 0;
+}
+
+/* ── Voice icons ───────────────────────────────────────────────────────── */
+
+.voiceIcon {
+  flex-shrink: 0;
+}
+
+.voiceCheckIcon {
+  composes: voiceIcon;
+  color: intent('ux.feedbackSuccess.feedbackColor');
+}
+
+.voiceCrossIcon {
+  composes: voiceIcon;
+  color: intent('ux.feedbackCritical.feedbackColor');
+}
+
+/* ── Footer ────────────────────────────────────────────────────────────── */
+
+.footerInner {
+  text-align: center;
+}
+
+/* ── Lists ─────────────────────────────────────────────────────────────── */
+
+.bulletList {
+  list-style: disc;
+  padding-inline-start: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/* ── Utilities ──────────────────────────────────────────────────────────── */
+
+.quote {
+  font-style: italic;
+  line-height: 1.4;
+}
+
+.quoteOpen,
+.quoteClose {
+  font-size: 2rem;
+  font-style: normal;
+  line-height: 0;
+  vertical-align: -0.25em;
+}
+
+.quoteOpen {
+  margin-inline-end: 0.05em;
+}
+
+.quoteClose {
+  margin-inline-start: 0.05em;
+}
+
+.flexOne {
+  flex: 1;
+}
+
+.dot {
+  display: inline-block;
+  width: 0.25rem;
+  height: 0.25rem;
+  background-color: rgba(128, 128, 128, 0.5);
+  border-radius: 50%;
+  opacity: 0.6;
+  margin: 0 0.5rem;
+}

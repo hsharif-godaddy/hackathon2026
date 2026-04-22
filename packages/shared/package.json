@@ -38,6 +38,10 @@
     "./json": {
       "types": "./dist/json/index.d.ts",
       "import": "./dist/json/index.js"
+    },
+    "./brand-data": {
+      "types": "./dist/brand-data/index.d.ts",
+      "import": "./dist/brand-data/index.js"
     }
   },
   "typesVersions": {
@@ -62,6 +66,9 @@
       ],
       "json": [
         "dist/json/index.d.ts"
+      ],
+      "brand-data": [
+        "dist/brand-data/index.d.ts"
       ]
     }
   },

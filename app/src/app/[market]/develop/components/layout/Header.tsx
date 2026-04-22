@@ -6,6 +6,7 @@ import { useCallback, useMemo } from 'react';
 import Box from '@ux/box';
 import Apps2Icon from '@ux/icon/apps2'
 import CodeIcon from '@ux/icon/code'
+import ColorPaletteIcon from '@ux/icon/color-palette'
 import MobilePhoneIcon from '@ux/icon/mobile-phone'
 import RefreshIcon from '@ux/icon/refresh'
 import SidebarCollapseIcon from '@ux/icon/sidebar-collapse'
@@ -28,14 +29,16 @@ import HeaderUpgradeButton from '@/components/layout/HeaderUpgradeButton';
 import IframeCloseButton from '@/components/layout/IframeCloseButton';
 import UserMenu from '@/components/layout/UserMenu';
 import { useChatTabs } from '@/hooks/useChatTabs';
+import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
-import { logClickEvent } from '@/utils/instrumentation'
+import { generateClickEID, logClickEvent } from '@/utils/instrumentation'
 
 const VIEW_MODE_EID_MAP: Record<string, string> = {
   [ViewMode.PREVIEW]: 'develop.header.iframe',
   [ViewMode.EDIT]: 'develop.header.edit_mode',
   [ViewMode.CODE]: 'develop.header.code_editor',
+  [ViewMode.BRAND]: 'develop.header.brand_book',
 };
 
 const MOBILE_MODE_EID_MAP: Record<string, string> = {
@@ -49,6 +52,7 @@ interface DevelopHeaderProps {
 
 export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) {
   const t = useTranslations();
+  const { data: isBrandBookEnabled } = useSwitchboard('appbuilder-brandbook');
   const location = 'develop';
   const appId = useAppIdFromParams();
   const clickContext = useMemo(() => (appId ? { appId } : undefined), [appId]);
@@ -129,6 +133,13 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
                   if (VIEW_MODE_EID_MAP[value]) logClickEvent(VIEW_MODE_EID_MAP[value], clickContext)();
                 }}
               >
+                {isBrandBookEnabled && (
+                  <ButtonGroup.Item
+                    value={ViewMode.BRAND}
+                    icon={<ColorPaletteIcon className="size-2.5" />}
+                    label="Brand Book"
+                  />
+                )}
                 <ButtonGroup.Item
                   value={ViewMode.PREVIEW}
                   icon={<WebsiteFilledIcon className="size-2.5" />}

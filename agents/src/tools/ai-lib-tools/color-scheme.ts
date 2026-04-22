@@ -24,12 +24,14 @@ interface ColorPaletteWidget {
   }
 }
 import { AppRepository } from '../../database/repositories/AppRepository.js'
+import { MemoryRepository } from '../../database/repositories/MemoryRepository.js'
 
 import { appPlanTool } from '../app-plan-tool.js'
 import { getAgentModelWithName } from '../../utils/model-selection.js'
 import { logger } from '../../logging/index.js'
 
 const appRepo = new AppRepository()
+const memoryRepo = new MemoryRepository()
 
 function formatPaletteForWidget(palette: ReturnType<typeof generatePalette>, name: string) {
   return {
@@ -296,7 +298,7 @@ IMPORTANT:
 - The widget has built-in "Apply" buttons and instructions - no additional text needed
 - After apply mode, use suggestedResponse to offer next steps`,
   z.object({
-    mode: z.enum(['suggest', 'apply']).describe('suggest: Generate palette options | apply: Apply a palette to CSS'),
+    mode: z.enum(['suggest', 'apply', 'set']).describe('suggest: Generate palette options | apply: Apply a palette to CSS | set: Generate one palette and apply directly (non-interactive)'),
     description: z.string().optional().describe('For suggest mode: What kind of colors? (e.g., "warm purple tones for bakery", "professional blue", "dark cyberpunk")'),
     count: z.number().min(2).max(6).default(4).describe('For suggest mode: Number of palette options to generate (2-6, default 4)'),
     theme: z.enum(['light', 'dark', 'both']).default('both').describe('For suggest mode: Generate light, dark, or both types of palettes'),
@@ -465,6 +467,19 @@ IMPORTANT:
         })
       }
 
+      // Persist to memory table for brand-data API
+      try {
+        await memoryRepo.set(appId, 'brand.colors.palette', {
+          name: paletteName,
+          ...result.palette
+        })
+      } catch (error) {
+        logger.warn('colorScheme.apply.memory_write_failed', {
+          appId,
+          error: error instanceof Error ? error.message : String(error)
+        })
+      }
+
       logger.info('colorScheme.apply.complete', {
         appId,
         paletteName
@@ -542,6 +557,135 @@ IMPORTANT:
             }
           }
         } satisfies ColorPaletteWidget
+      }
+    }
+
+    if (input.mode === 'set') {
+      if (!input.description) {
+        throw new Error('Description is required for set mode')
+      }
+      if (!appId) {
+        throw new Error('App ID is required for set mode')
+      }
+
+      const app = appRepo.findById(appId)
+      if (!app) {
+        throw new Error(`App '${appId}' not found`)
+      }
+
+      logger.info('colorScheme.set.begin', {
+        appId,
+        description: input.description,
+        theme: input.theme
+      })
+
+      const agentId = context?.metadata?.agentId as string | undefined
+      const customTags = context?.metadata?.tags as string[] | undefined
+      const socketId = (context as any)?.socketId as string | undefined
+      const llmPalettes = await generatePalettesWithLLM(
+        input.description,
+        1,
+        input.theme,
+        appId,
+        sessionId,
+        agentId,
+        customTags,
+        socketId,
+        subscriptionId,
+        customerId
+      )
+
+      if (!llmPalettes.length) {
+        throw new Error('Failed to generate color palette')
+      }
+
+      const llmPalette = llmPalettes[0]!
+      const paletteName = llmPalette.name || 'Brand Palette'
+      const paletteInput = llmPalette as unknown as ColorPalette
+
+      const fullPalette = generatePalette(paletteInput)
+      const result = await updateCssColorPalette(app.path, paletteInput)
+
+      if (!result.success) {
+        throw new Error(result.message)
+      }
+
+      // Persist to AppPlanTool
+      try {
+        await appPlanTool.execute({
+          appId,
+          operation: 'update',
+          colorPalette: {
+            name: paletteName,
+            ...result.palette
+          }
+        })
+      } catch (error) {
+        logger.warn('colorScheme.set.appPlan_failed', {
+          appId,
+          error: error instanceof Error ? error.message : String(error)
+        })
+      }
+
+      // Persist to memory table for brand-data API
+      try {
+        await memoryRepo.set(appId, 'brand.colors.palette', {
+          name: paletteName,
+          ...result.palette
+        })
+      } catch (error) {
+        logger.warn('colorScheme.set.memory_write_failed', {
+          appId,
+          error: error instanceof Error ? error.message : String(error)
+        })
+      }
+
+      logger.info('colorScheme.set.complete', {
+        appId,
+        paletteName,
+        primary: result.palette.primary
+      })
+
+      const widget: ColorPaletteWidget = {
+        widgetType: 'color-palette',
+        widgetData: {
+          name: paletteName,
+          palette: {
+            primary: result.palette.primary,
+            primaryForeground: result.palette.primaryForeground,
+            secondary: result.palette.secondary,
+            secondaryForeground: result.palette.secondaryForeground,
+            accent: result.palette.accent,
+            accentForeground: result.palette.accentForeground,
+            background: result.palette.background,
+            foreground: result.palette.foreground,
+            muted: result.palette.muted,
+            mutedForeground: result.palette.mutedForeground,
+            border: result.palette.border,
+            card: result.palette.card,
+            cardForeground: result.palette.cardForeground,
+            destructive: result.palette.destructive,
+            destructiveForeground: result.palette.destructiveForeground,
+            success: result.palette.success,
+            successForeground: result.palette.successForeground,
+            warning: result.palette.warning,
+            warningForeground: result.palette.warningForeground,
+            chart1: result.palette.chart1,
+            chart2: result.palette.chart2,
+            chart3: result.palette.chart3,
+            chart4: result.palette.chart4,
+            chart5: result.palette.chart5
+          }
+        }
+      }
+
+      return {
+        success: true,
+        message: `Color scheme "${paletteName}" set successfully.`,
+        paletteName,
+        palette: result.palette,
+        theme: result.palette.theme,
+        widget
       }
     }
 

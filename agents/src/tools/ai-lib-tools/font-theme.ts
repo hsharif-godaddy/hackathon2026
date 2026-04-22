@@ -7,12 +7,14 @@ import { fileURLToPath } from 'node:url'
 import { z } from 'zod'
 
 import { AppRepository } from '../../database/repositories/AppRepository.js'
+import { MemoryRepository } from '../../database/repositories/MemoryRepository.js'
 
 import { appPlanTool } from '../app-plan-tool.js'
 import { getAgentModelWithName } from '../../utils/model-selection.js'
 import { logger } from '../../logging/index.js'
 
 const appRepo = new AppRepository()
+const memoryRepo = new MemoryRepository()
 
 type FontCategory = 'serif' | 'sans-serif' | 'monospace' | 'cursive' | 'fantasy'
 
@@ -952,6 +954,19 @@ MODE SELECTION GUIDE:
           'fontTheme.set'
         )
 
+        // Persist to memory table for brand-data API (BrandDataTypography shape)
+        try {
+          await memoryRepo.set(appId, 'brand.typography', {
+            heading: { family: selectedFont.headerFont.name, weights: selectedFont.headerFont.weights },
+            body: { family: selectedFont.bodyFont.name, weights: selectedFont.bodyFont.weights },
+          })
+        } catch (error) {
+          logger.warn('fontTheme.set.memory_write_failed', {
+            appId,
+            error: error instanceof Error ? error.message : String(error)
+          })
+        }
+
         logger.info('fontTheme.set.complete', {
           appId,
           headerFont: selectedFont.headerFont.name,
@@ -1270,6 +1285,19 @@ MODE SELECTION GUIDE:
 
       // Persist font theme to app plan
       await persistFontThemeToPlan(appId, { name: themeName, headerFont, bodyFont }, 'fontTheme.apply')
+
+      // Persist to memory table for brand-data API (BrandDataTypography shape)
+      try {
+        await memoryRepo.set(appId, 'brand.typography', {
+          heading: { family: headerFont.name, weights: headerFont.weights },
+          body: { family: bodyFont.name, weights: bodyFont.weights },
+        })
+      } catch (error) {
+        logger.warn('fontTheme.apply.memory_write_failed', {
+          appId,
+          error: error instanceof Error ? error.message : String(error)
+        })
+      }
 
       return {
         success: true,

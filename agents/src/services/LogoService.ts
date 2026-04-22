@@ -29,6 +29,7 @@ export interface LogoGenerateInput {
   styleDescription?: string;
   symbol?: string;
   count?: number;
+  layout?: string;
   // Caller context (not sent in body)
   customerId: string;
   budgetUserId: string;
@@ -39,6 +40,23 @@ export interface ProcessedLogo {
   transparentUrl: string;
   solidUrl: string;
   mockupUrl: string;
+  horizontalTransparentUrl?: string;
+  horizontalSolidUrl?: string;
+  horizontalMockupUrl?: string;
+  verticalTransparentUrl?: string;
+  verticalSolidUrl?: string;
+  verticalMockupUrl?: string;
+}
+
+export interface LogoEditInput {
+  sourceSessionId: string;
+  sourceLogoId: string;
+  prompt: string;
+  layout?: string;
+  count?: number;
+  // Caller context (not sent in body)
+  customerId: string;
+  budgetUserId: string;
 }
 
 export interface LogoGenerateResult {
@@ -96,6 +114,7 @@ class LogoService {
         ...(input.styleDescription && { styleDescription: input.styleDescription }),
         ...(input.symbol && { symbol: input.symbol }),
         ...(input.count && { count: input.count }),
+        ...(input.layout && { layout: input.layout }),
       };
 
       const response = await fetch(url, {
@@ -164,6 +183,103 @@ class LogoService {
       logger.error('logo.generate.error', {
         error: error instanceof Error ? error.message : String(error),
         cause: error instanceof Error ? (error.cause !== undefined ? (error.cause instanceof Error ? error.cause.message : String(error.cause)) : undefined) : undefined,
+        customerId: input.customerId,
+      });
+
+      const normalizedError = error instanceof Error ? error : new Error(String(error), { cause: error });
+      throw normalizedError;
+    }
+  }
+  async editLogos(input: LogoEditInput): Promise<LogoGenerateResult> {
+    const baseUrl = getLogoApiBaseUrl();
+    const url = `${baseUrl}/api/logo/edit`;
+
+    logger.info('logo.edit.begin', {
+      sourceSessionId: input.sourceSessionId,
+      sourceLogoId: input.sourceLogoId,
+      prompt: input.prompt.slice(0, 100),
+      customerId: input.customerId,
+    });
+
+    try {
+      const token = await getS2SToken();
+
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        Authorization: `Bearer ${token}`,
+        'x-app-key': this.appKey,
+        'x-customer-id': input.customerId,
+        'x-budget-user-id': input.budgetUserId,
+      };
+
+      const body = {
+        sourceSessionId: input.sourceSessionId,
+        sourceLogoId: input.sourceLogoId,
+        prompt: input.prompt,
+        ...(input.layout && { layout: input.layout }),
+        ...(input.count && { count: input.count }),
+      };
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(120_000),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+
+        if (response.status === 402) {
+          logger.warn('logo.edit.budget_exceeded', {
+            customerId: input.customerId,
+            budgetUserId: input.budgetUserId,
+          });
+          throw new BudgetExceededError('Logo edit budget exceeded', 402, errorText);
+        }
+
+        logger.error('logo.edit.api_error', {
+          status: response.status,
+          error: errorText.slice(0, 500),
+          endpoint: url,
+          customerId: input.customerId,
+        });
+
+        throw new Error(`Logo edit API error: ${response.status} ${errorText.slice(0, 500)}`);
+      }
+
+      const result = (await response.json()) as LogoGenerateResult;
+
+      logger.info('logo.edit.success', {
+        sessionId: result.sessionId,
+        logoCount: result.logos.length,
+        customerId: input.customerId,
+      });
+
+      return result;
+    } catch (error) {
+      if (BudgetExceededError.isInstance(error)) {
+        throw error;
+      }
+
+      if (error instanceof DOMException && error.name === 'TimeoutError') {
+        logger.error('logo.edit.timeout', {
+          timeoutMs: 120_000,
+          customerId: input.customerId,
+        });
+        throw error;
+      }
+
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        logger.error('logo.edit.aborted', {
+          customerId: input.customerId,
+        });
+        throw error;
+      }
+
+      logger.error('logo.edit.error', {
+        error: error instanceof Error ? error.message : String(error),
         customerId: input.customerId,
       });
 

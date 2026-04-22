@@ -49,6 +49,9 @@ export { qrCodeAITool } from './qr-code.js';
 export { websiteRebuildAITool } from './website-rebuild.js';
 export { rebuildPageSelectorAITool } from './rebuild-page-selector.js';
 export { mediaSlotAITool } from './media-slot.js';
+export { generateLogoAITool } from './generate-logo.js';
+export { editLogoAITool } from './edit-logo.js';
+export { brandIdentityAITool } from './brand-identity.js';
 
 // Re-import for registry
 import { fileEditAITool } from './file-edit.js';
@@ -93,6 +96,9 @@ import { qrCodeAITool } from './qr-code.js';
 import { websiteRebuildAITool } from './website-rebuild.js';
 import { rebuildPageSelectorAITool } from './rebuild-page-selector.js';
 import { mediaSlotAITool } from './media-slot.js';
+import { generateLogoAITool } from './generate-logo.js';
+import { editLogoAITool } from './edit-logo.js';
+import { brandIdentityAITool } from './brand-identity.js';
 
 /**
  * Complete registry of all AI-Lib converted tools
@@ -140,6 +146,9 @@ export const allAILibTools: Record<string, Tool> = {
   websiteRebuild: websiteRebuildAITool,
   rebuildPageSelector: rebuildPageSelectorAITool,
   media: mediaSlotAITool,
+  generateLogo: generateLogoAITool,
+  editLogo: editLogoAITool,
+  brandBook: brandIdentityAITool,
 };
 
 /**

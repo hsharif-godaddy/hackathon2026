@@ -45,6 +45,14 @@ vi.mock('../../tools/app-plan-tool.js', () => ({
 }));
 
 vi.mock('../../logging/index.js', () => ({
+  Logger: {
+    create: vi.fn(() => ({
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn()
+    }))
+  },
   logger: {
     info: vi.fn(),
     warn: vi.fn(),

@@ -17,7 +17,7 @@ import ResizableDivider from '@/app/[market]/develop/components/ResizableDivider
 import AnalyticsPanel from '@/app/[market]/develop/components/settings/Analytics/AnalyticsPanel'
 import SettingsView from '@/app/[market]/develop/components/settings/SettingsView'
 import { AppIntroTour } from '@/app/[market]/develop/components/tour/AppIntroTour'
-import { ChatTab, IframeMessageType, MobileMode } from '@/app/[market]/develop/components/types'
+import { ChatTab, IframeMessageType, MobileMode, ViewMode } from '@/app/[market]/develop/components/types'
 import { extractNewPageRoute, handlePreviewRefresh, navigatePreviewToRoute, requestPreviewScreenshot, useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import VersionHistory from '@/app/[market]/develop/components/VersionHistory'
 import { clearExpiredWidgetStates } from '@/app/[market]/develop/components/widgets'
@@ -44,6 +44,7 @@ import { useImageReadiness } from '@/hooks/useImageReadiness'
 import { usePaywallPrefetch } from '@/hooks/usePaywallPrefetch'
 import { useStreamingWebSocket } from '@/hooks/useStreamingWebSocket'
 import { useIsRenewalPolling } from '@/hooks/useSubscriptionRenewal'
+import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useSyncResponsiveState } from '@/hooks/useSyncResponsiveState'
 import { useTranslations } from '@/hooks/useTranslations'
 import { useIsUpgradePolling } from '@/hooks/useUpgradePurchase'
@@ -105,6 +106,14 @@ function DevelopPageContent() {
 
   // Unified initialization hook - handles all sequencing and UI state
   const init = useInitialization({ appId, isJobId })
+
+  // Default to Brand Book tab for logo-designer template
+  const { data: isBrandBookEnabled } = useSwitchboard('appbuilder-brandbook')
+  useEffect(() => {
+    if (init.ui.templateId === 'logo-designer' && isBrandBookEnabled) {
+      useDevelopPageStore.getState().setViewMode(ViewMode.BRAND)
+    }
+  }, [init.ui.templateId, isBrandBookEnabled])
 
   // Hibernation handling - auto-resume when app is hibernated
   const appDetails = useAppDetails(appId);

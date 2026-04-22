@@ -6,6 +6,10 @@ import { logoService } from '../../../services/LogoService.js';
 import { mediaManifestService } from '../../../services/MediaManifestService.js';
 import { appRepository } from '../../../database/repositories/index.js';
 import { appPlanTool } from '../../../tools/app-plan-tool.js';
+import { MemoryRepository } from '../../../database/repositories/MemoryRepository.js';
+import { buildBrandLogoData } from '../../../utils/brand-data.js';
+
+const memoryRepo = new MemoryRepository();
 
 type LogoStyle =
   | 'line'
@@ -213,6 +217,17 @@ export const generateLogoTool: SkillToolDefinition = {
           logoCount: result.logos.length,
           totalLogos: mergedAlternatives.length + 1,
         });
+
+        // Save first logo to brand.logo memory key for the brand book
+        const firstLogo = result.logos[0];
+        if (firstLogo) {
+          memoryRepo.set(appId, 'brand.logo', buildBrandLogoData(firstLogo)).catch((error) => {
+            logger.warn('skills.media.tools.generate_logo.brandData_failed', {
+              appId,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          });
+        }
       } catch (e) {
         logger.warn('skills.media-logo.tools.generate_logo.slot_save_failed', {
           appId,

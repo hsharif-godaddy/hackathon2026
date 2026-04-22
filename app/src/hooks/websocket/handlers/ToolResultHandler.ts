@@ -5,11 +5,16 @@
  * Updates tool call segment with result and updates persistent todo list if applicable.
  */
 
+import { BRAND_DATA_UPDATED_EVENT } from '@/hooks/useBrandData'
 import { logger } from '@/lib/request-context'
 import type { ToolCall } from '@/stores/useStreamingConversationStore'
 import { useTodoListStore } from '@/stores/useTodoListStore'
 import { fileOperationHandler } from './FileOperationHandler'
 import type { DataHandlerContext, MessageHandler, WebSocketMessage } from './types'
+
+// Tools whose results should trigger a brand data refetch in the Brand Book view.
+// setProjectName is included because it updates brandData.brandName (the hero heading).
+const BRAND_UPDATE_TOOLS = ['colorScheme', 'fontTheme', 'generateLogo', 'editLogo', 'setProjectName', 'brandBook']
 
 export class ToolResultHandler implements MessageHandler {
   readonly type = 'tool_result'
@@ -169,6 +174,18 @@ export class ToolResultHandler implements MessageHandler {
             error: error instanceof Error ? error.message : String(error),
           })
         }
+      }
+
+      // Dispatch brand data updated event for Brand Book UI refresh
+      const isBrandTool = BRAND_UPDATE_TOOLS.includes(tool.name)
+      const isBrandMemorySet = tool.name === 'memorySet' && !hasError
+        && typeof tool.input?.key === 'string'
+        && (tool.input.key.startsWith('design.') || tool.input.key.startsWith('brand.'))
+
+      if ((isBrandTool || isBrandMemorySet) && !hasError) {
+        window.dispatchEvent(new CustomEvent(BRAND_DATA_UPDATED_EVENT, {
+          detail: { appId: context.currentAppId }
+        }))
       }
     }
   }

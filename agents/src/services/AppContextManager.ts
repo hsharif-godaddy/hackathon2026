@@ -12,8 +12,10 @@ import { SecretsManagementTool } from '../tools/secrets-management-tool.js';
 import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js';
 import { mediaManifestService, type MediaSlot } from './MediaManifestService.js';
 import { AppRepository } from '../database/repositories/AppRepository.js';
+import { MemoryRepository } from '../database/repositories/MemoryRepository.js';
 
 const execFileAsync = promisify(execFile);
+const memoryRepo = new MemoryRepository();
 
 /**
  * Result of app context generation, split into stable and dynamic parts for cache efficiency
@@ -274,6 +276,22 @@ export class AppContextManager {
           fontTheme: result.data.fontTheme || null
         };
       }
+
+      // Fallback: read from memory table (persisted by brand tools)
+      const [paletteResult, typographyResult] = await Promise.all([
+        memoryRepo.get(appId, 'brand.colors.palette'),
+        memoryRepo.get(appId, 'brand.typography'),
+      ]);
+      const colorPalette = paletteResult.exists && paletteResult.value
+        ? { name: 'Brand Colors', ...(paletteResult.value as Partial<ColorPalette> & { name?: string }) } as ColorPalette
+        : null;
+      const fontTheme = typographyResult.exists && typographyResult.value
+        ? typographyResult.value as FontTheme
+        : null;
+      if (colorPalette || fontTheme) {
+        return { colorPalette, fontTheme };
+      }
+
       return null;
     } catch (error) {
       logger.warn('app.context.designSystem.failure', {

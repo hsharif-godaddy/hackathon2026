@@ -30,6 +30,10 @@ vi.mock('@/app/[market]/develop/components/tips/Tips', () => ({
   default: () => <div data-testid="tips">Tips</div>,
 }));
 
+vi.mock('./brand-book', () => ({
+  default: ({ appId }: any) => <div data-testid="brand-book">Brand Book: {appId}</div>,
+}));
+
 // Mock stores
 const mockServerPollingStore = {
   getServerState: vi.fn(() => ({ isReady: true, url: 'http://localhost:3000' })),
@@ -283,6 +287,23 @@ describe('PreviewPane', () => {
       // The component may show an error or loading state
       expect(mockServerPollingStore.getServerState).toHaveBeenCalled();
     });
+  });
+
+  it('should render BrandBookView when viewMode is BRAND', () => {
+    mockDevelopPageStore.viewMode = ViewMode.BRAND;
+
+    renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
+
+    expect(screen.getByTestId('brand-book')).toBeInTheDocument();
+    expect(screen.queryByTestId('preview-iframe')).not.toBeInTheDocument();
+  });
+
+  it('should not render BrandBookView when viewMode is PREVIEW', () => {
+    mockDevelopPageStore.viewMode = ViewMode.PREVIEW;
+
+    renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
+
+    expect(screen.queryByTestId('brand-book')).not.toBeInTheDocument();
   });
 
 });

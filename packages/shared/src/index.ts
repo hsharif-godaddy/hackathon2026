@@ -32,3 +32,21 @@ export type { SiteDomainForAttachCheck } from './domain/index.js'
 
 // JSON
 export { safeStringify } from './json/index.js'
+
+// Brand Data
+export type {
+  BrandData,
+  BrandDataAudience,
+  BrandDataColors,
+  BrandDataIconography,
+  BrandDataLayout,
+  BrandDataLogo,
+  BrandDataLogoVariant,
+  BrandDataMission,
+  BrandDataPalette,
+  BrandDataPersonality,
+  BrandDataPhotography,
+  BrandDataToneMatrix,
+  BrandDataTypography,
+  BrandDataVoice,
+} from './brand-data/index.js'

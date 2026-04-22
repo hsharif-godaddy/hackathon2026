@@ -15,6 +15,7 @@ import { EventEmitter } from 'events'
 import type { DisconnectDescription, Socket } from 'socket.io-client'
 import type { BudgetUpdatePayload } from '@airo/shared/budget'
 
+import { BRAND_DATA_UPDATED_EVENT } from '@/hooks/useBrandData'
 import {
   AgentsAvailableHandler,
   CatchupCompleteHandler,
@@ -460,6 +461,13 @@ export class TransportSupervisor extends EventEmitter {
       });
       this.emit('budget:update', data);
     });
+
+    // Brand data updated events from agent (e.g., logo generation completing in background)
+    socket.on('brand_data_updated', (data: { appId?: string; key?: string; error?: boolean }) => {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent(BRAND_DATA_UPDATED_EVENT, { detail: data }))
+      }
+    })
 
     socket.on('message', async (data: { type: string; content: string; data?: any }, ack?: () => void) => {
       if (data.data?.conversationId && messageContext.currentAppId && typeof data.data.conversationId === 'string') {

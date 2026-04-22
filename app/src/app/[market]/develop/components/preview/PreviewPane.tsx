@@ -7,6 +7,7 @@ import { Loader } from '@airo-ux/loader'
 import Button from '@ux/button'
 
 import DomainBar from '@/app/[market]/develop/components/layout/DomainBar'
+import BrandBookView from '@/app/[market]/develop/components/preview/brand-book'
 import { getDevicePreset } from '@/app/[market]/develop/components/preview/devicePresets'
 import PreviewCode from '@/app/[market]/develop/components/preview/PreviewCode'
 import PreviewError from '@/app/[market]/develop/components/preview/PreviewError'
@@ -181,6 +182,14 @@ export default function PreviewPane({
     const current = viewMode
 
     if (previous === current) return
+
+    // Brand view uses an early return path (separate render tree), so no animation needed
+    if (current === ViewMode.BRAND || previous === ViewMode.BRAND) {
+      previewOpacity.set(current !== ViewMode.CODE && current !== ViewMode.BRAND ? 1 : 0)
+      codeOpacity.set(current === ViewMode.CODE ? 1 : 0)
+      previousViewModeRef.current = current
+      return
+    }
 
     // Skip animation on mobile for better performance and UX
     if (isMobile) {
@@ -610,7 +619,7 @@ export default function PreviewPane({
   }
 
   // Show error state when resume failed
-  if (resumeFailed) {
+  if (resumeFailed && viewMode !== ViewMode.BRAND) {
     return (
       <PreviewError
         title={t('builder_preview_resume_failed_title')}
@@ -633,11 +642,11 @@ export default function PreviewPane({
   }
 
   // Show restarting message when app is hibernated or resuming
-  if (isHibernated || isResuming) {
+  if ((isHibernated || isResuming) && viewMode !== ViewMode.BRAND) {
     return <PreviewLoadingState message={t('builder_preview_resuming_message')} isMobile={isMobile} />
   }
 
-  if (imageReloadFailed) {
+  if (imageReloadFailed && viewMode !== ViewMode.BRAND) {
     return (
       <PreviewError
         title={t('builder_preview_image_reload_failed_title')}
@@ -648,8 +657,26 @@ export default function PreviewPane({
     )
   }
 
-  if (isImageReloading) {
+  if (isImageReloading && viewMode !== ViewMode.BRAND) {
     return <PreviewLoadingState message={t('builder_preview_image_reloading_message')} isMobile={isMobile} />
+  }
+
+  // Brand Book uses its own API and doesn't depend on the preview server,
+  // so render it immediately without waiting for server readiness
+  if (viewMode === ViewMode.BRAND) {
+    return (
+      <div className="h-full flex flex-col pr-1 md:pr-2.5 pl-1">
+        <div className="inset-0 relative h-full">
+          <div className="flex flex-col items-center justify-center h-full bg-intents-ux-boxLowContrast-backgroundColor rounded-lg md:rounded-b-none">
+            <div className="flex flex-col h-full w-full bg-intents-ux-boxLowContrast-backgroundColor relative rounded-lg md:rounded-b-none">
+              <div className="relative w-full h-full overflow-hidden rounded-lg md:rounded-b-none">
+                <BrandBookView appId={appId} />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   if (!serverState || (isPollingServer(appId) && !serverState.isReady)) {

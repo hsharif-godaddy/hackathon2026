@@ -65,7 +65,8 @@ export interface AiEditContext {
 export enum ViewMode {
   PREVIEW = 'preview',
   EDIT = 'edit',
-  CODE = 'code'
+  CODE = 'code',
+  BRAND = 'brand'
 }
 
 /** Message types sent to the preview iframe via postMessage */

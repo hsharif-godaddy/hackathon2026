@@ -137,6 +137,15 @@ export async function createInitialAgent(
     websiteRebuild: allAILibTools.websiteRebuild,
   }
 
+  // Logo-designer template needs brand tools to populate the Brand Book
+  if (templateId === 'logo-designer') {
+    tools.brandBook = allAILibTools.brandBook
+    tools.colorScheme = allAILibTools.colorScheme
+    tools.fontTheme = allAILibTools.fontTheme
+    tools.generateLogo = allAILibTools.generateLogo
+    tools.editLogo = allAILibTools.editLogo
+  }
+
   if (handoffTool) {
     tools.handoff = handoffTool
   }
