@@ -1,9 +1,14 @@
-/**
- * GoDaddy Auth Service using @godaddy/gd-auth-lib (Rust + NAPI)
- * Handles JWT validation for JOMAX tokens
- */
 import { GdAuth, SecurityLevel } from '@godaddy/gd-auth-lib';
 
+import { getSsoHost } from '@/lib/sso-host';
+
+/**
+ * GoDaddy Auth Service using @godaddy/gd-auth-lib (Rust + NAPI).
+ * Handles JWT validation for JOMAX tokens.
+ *
+ * Picks the SSO host from the incoming request's FQDN (via getSsoHost) so
+ * validation and the /api/auth/refresh heartbeat target the same SSO stack.
+ */
 interface AuthPayload {
     shopperId: string;
     cid: string;
@@ -13,15 +18,21 @@ interface AuthPayload {
     [key: string]: unknown;
 }
 
+type RequestLike = Request & {
+    cookies?: { get: (name: string) => { value: string } | undefined }
+};
+
+const DEFAULT_SSO_HOST = 'sso.test-godaddy.com';
+
+function hostFromRequest(request: RequestLike | undefined): string {
+    if (!request) return DEFAULT_SSO_HOST;
+    return getSsoHost(request.headers.get('host'));
+}
+
 export class GdAuthService {
     private gdAuth: GdAuth;
-    private ssoHost: string;
 
     constructor() {
-        const isTestEnv = (process.env.SSO_LOGIN_URL || '').includes('test')
-            || !process.env.SSO_LOGIN_URL;
-        this.ssoHost = isTestEnv ? 'sso.test-godaddy.com' : 'sso.godaddy.com';
-
         this.gdAuth = new GdAuth();
         this.gdAuth.setAppConfig({
             app: 'console.airo-builder',
@@ -31,11 +42,15 @@ export class GdAuthService {
         });
     }
 
-    async authenticate(token: string): Promise<{ valid: boolean; payload?: AuthPayload; reason?: string }> {
+    async authenticate(
+        token: string,
+        request?: RequestLike
+    ): Promise<{ valid: boolean; payload?: AuthPayload; reason?: string }> {
         try {
+            const ssoHost = hostFromRequest(request);
             const claims = this.gdAuth.parseToken(token, {
                 godaddySso: {
-                    host: `https://${this.ssoHost}`,
+                    host: `https://${ssoHost}`,
                     securityLevel: SecurityLevel.NONE,
                     auths: ['basic'],
                     authType: 'jomax',
@@ -65,7 +80,7 @@ export class GdAuthService {
         }
     }
 
-    extractTokenFromRequest(request: Request & { cookies?: { get: (name: string) => { value: string } | undefined } }): string | null {
+    extractTokenFromRequest(request: RequestLike): string | null {
         const authHeader = request.headers.get('authorization');
         if (authHeader?.startsWith('Bearer ')) {
             return authHeader.substring(7);
@@ -92,11 +107,11 @@ export const gdAuthService = {
         return _gdAuthService;
     },
 
-    extractTokenFromRequest(request: Request & { cookies?: { get: (name: string) => { value: string } | undefined } }): string | null {
+    extractTokenFromRequest(request: RequestLike): string | null {
         return this.instance.extractTokenFromRequest(request);
     },
 
-    async authenticate(token: string) {
-        return this.instance.authenticate(token);
+    async authenticate(token: string, request?: RequestLike) {
+        return this.instance.authenticate(token, request);
     }
 };

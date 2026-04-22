@@ -32,8 +32,12 @@ export const GET = withAuth<{ contactId: string }>(async function getTranscript(
         contactId
     )}?includeSurveyResponses=${encodeURIComponent(includeSurveyResponses)}`;
 
-    const jomax = extractCookieValue(request.headers.get('cookie'), 'auth_jomax');
-    if (!jomax) {
+    // Care rejects the `Authorization: sso-jwt <jwt>` header that other
+    // GoDaddy APIs (e.g. shopper) accept — verified by reproducing a 401
+    // from this route while the same call against care's own UI works
+    // when it sends cookies. Forward the cookie jar verbatim instead.
+    const cookieHeader = request.headers.get('cookie') || '';
+    if (!extractCookieValue(cookieHeader, 'auth_jomax')) {
         return NextResponse.json(
             { error: 'Missing auth_jomax cookie' },
             { status: 401 }
@@ -44,7 +48,7 @@ export const GET = withAuth<{ contactId: string }>(async function getTranscript(
         const res = await fetch(upstream, {
             headers: {
                 accept: 'application/json',
-                authorization: `sso-jwt ${jomax}`,
+                cookie: cookieHeader,
             },
             cache: 'no-store',
         });

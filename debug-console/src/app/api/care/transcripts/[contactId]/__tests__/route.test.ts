@@ -94,7 +94,7 @@ describe('care/transcripts/[contactId] route GET', () => {
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
-  it('forwards auth_jomax as Authorization: sso-jwt and defaults includeSurveyResponses=true', async () => {
+  it('forwards the incoming Cookie header and defaults includeSurveyResponses=true', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response('{"transcript":"hi"}', { status: 200, headers: { 'content-type': 'application/json' } })
     );
@@ -119,8 +119,8 @@ describe('care/transcripts/[contactId] route GET', () => {
     expect(calledUrl).toContain(`${CARE_BASE_URL}/transcripts/contact-1`);
     expect(calledUrl).toContain('includeSurveyResponses=true');
     const headers = init?.headers as Record<string, string>;
-    expect(headers.authorization).toBe('sso-jwt jwt-value');
-    expect(headers.cookie).toBeUndefined();
+    expect(headers.cookie).toBe('foo=bar; auth_jomax=jwt-value');
+    expect(headers.authorization).toBeUndefined();
   });
 
   it('respects includeSurveyResponses query override', async () => {

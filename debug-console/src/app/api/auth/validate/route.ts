@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const result = await gdAuthService.authenticate(token);
+    const result = await gdAuthService.authenticate(token, request);
 
     if (!result.valid) {
       return NextResponse.json(

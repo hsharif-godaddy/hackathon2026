@@ -37,7 +37,7 @@ export async function validateApiAuth(request: NextRequest, options?: WithAuthOp
         };
     }
 
-    const result = await gdAuthService.authenticate(token);
+    const result = await gdAuthService.authenticate(token, request);
 
     if (!result.valid) {
         return {
