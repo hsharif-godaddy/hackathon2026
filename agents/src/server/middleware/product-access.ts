@@ -47,6 +47,15 @@ const PAAS_ALLOWED_ROUTES: RoutePattern[] = [
   { method: 'POST', path: '/apps/:id/database/import' },
   { method: 'GET', path: '/apps/:id/database/import/:jobId' },
   { method: 'GET', path: '/apps/:id/database/import' },
+
+  // DB table routes
+  { method: 'GET', path: '/apps/:id/database/tables' },
+  { method: 'GET', path: '/apps/:id/database/tables/:tableName/schema' },
+  { method: 'GET', path: '/apps/:id/database/tables/:tableName/data' },
+  { method: 'POST', path: '/apps/:id/database/tables/:tableName/rows' },
+  { method: 'PUT', path: '/apps/:id/database/tables/:tableName/rows' },
+  { method: 'DELETE', path: '/apps/:id/database/tables/:tableName/rows' },
+  { method: 'GET', path: '/apps/:id/database/tables/:tableName/export' },
 ];
 
 /**
