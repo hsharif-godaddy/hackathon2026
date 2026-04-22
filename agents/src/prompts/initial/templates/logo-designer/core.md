@@ -103,7 +103,7 @@ IMPORTANT: This is a two-phase project:
 
 === PHASE 1: LOGO GENERATION ===
 
-Load the `media` skill, then call `media__generate_logo` with these parameters:
+Load the `media-logo` skill, then call `media-logo__generate_logo` with these parameters:
 - brandName: \"[Brand Name]\"
 - brandDescription: \"[What the business does — 1-2 sentences]\"
 - brandTagline: \"[Tagline if discovered, omit if none]\"
@@ -186,7 +186,7 @@ Phase 4 — Finalize:
 - Mark items as COMPLETE via todoList
 - Show completed site via suggestedResponse
 
-CRITICAL: `media__generate_logo` automatically saves all generated logos to the media slot system. Use the returned `slotUrl` (`/airo-assets/images/logo/primary`) in all components. For solid backgrounds, use `/airo-assets/images/logo/primary?variant=solid`. The user can swap between logos via the widget. Do NOT embed CDN URLs directly in source code or use `str_replace_based_edit_tool` to create image files.
+CRITICAL: `media-logo__generate_logo` automatically saves all generated logos to the media slot system. Use the returned `slotUrl` (`/airo-assets/images/logo/primary`) in all components. For solid backgrounds, use `/airo-assets/images/logo/primary?variant=solid`. The user can swap between logos via the widget. Do NOT embed CDN URLs directly in source code or use `str_replace_based_edit_tool` to create image files.
 
 SUGGESTED RESPONSES:
 After showing the completed site, use suggestedResponse:

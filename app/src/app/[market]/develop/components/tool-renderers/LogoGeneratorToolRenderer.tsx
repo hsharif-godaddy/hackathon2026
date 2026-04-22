@@ -12,7 +12,7 @@ import { logger } from '@/lib/request-context'
 type LogoResult = LogoData
 
 /**
- * Custom renderer for media__generate_logo tool
+ * Custom renderer for media-logo__generate_logo tool
  *
  * Displays generated logos in a selectable grid format.
  * Users can click to select a logo, which opens a modal with larger view.

@@ -48,7 +48,7 @@ No separate configuration required. All eval scripts run through `agents/load-en
 # From repo root
 pnpm install
 
-# Run full assessment corpus (538 cases)
+# Run full assessment corpus
 pnpm --filter corpus-eval eval:assessment
 
 # Run specific category
@@ -65,20 +65,19 @@ pnpm --filter corpus-eval eval run corpora/assessment-agent/ --html
 
 Scripts are namespaced by agent type for extensibility:
 
-| Script                            | Description                               |
-| --------------------------------- | ----------------------------------------- |
-| `eval:skill-loader`               | Run all skill-loader corpora              |
-| `eval:skill-loader:verbose`       | All skill-loader corpora, verbose output  |
-| `eval:skill-loader:publishing`    | Publishing corpus only, verbose output    |
-| `eval:skill-loader:custom-domain` | Custom-domain corpus only, verbose output |
-| `eval:assessment`                 | Run full assessment corpus                |
-| `eval:assessment:verbose`         | Full corpus with verbose output           |
-| `eval:assessment:compare`         | Compare haiku vs sonnet models            |
-| `eval:assessment:publish`         | Run publish cases only                    |
-| `eval:assessment:domain`          | Run domain cases only                     |
-| `eval:assessment:fix`             | Run fix cases only                        |
-| `eval:assessment:general`         | Run general/edge cases only               |
-| `eval:assessment:path`            | Run path-validation cases only            |
+| Script                      | Description                                       |
+| --------------------------- | ------------------------------------------------- |
+| `eval:skill-loader`         | Run all skill-loader corpora                      |
+| `eval:skill-loader:verbose` | All skill-loader corpora, verbose output          |
+| `eval:skill-loader:run`     | Run a specific corpus file (pass path after `--`) |
+| `eval:assessment`           | Run full assessment corpus                        |
+| `eval:assessment:verbose`   | Full corpus with verbose output                   |
+| `eval:assessment:compare`   | Compare haiku vs sonnet models                    |
+| `eval:assessment:publish`   | Run publish cases only                            |
+| `eval:assessment:domain`    | Run domain cases only                             |
+| `eval:assessment:fix`       | Run fix cases only                                |
+| `eval:assessment:general`   | Run general/edge cases only                       |
+| `eval:assessment:path`      | Run path-validation cases only                    |
 
 All `eval:*` scripts inherit environment from `agents/.env` via `load-env.cjs`.
 
@@ -131,28 +130,28 @@ pnpm --filter corpus-eval eval:skill-loader
 # With per-case output
 pnpm --filter corpus-eval eval:skill-loader:verbose
 
-# Run publishing corpus only
-pnpm --filter corpus-eval eval:skill-loader:publishing
-
-# Run custom-domain corpus only
-pnpm --filter corpus-eval eval:skill-loader:custom-domain
+# Run a specific corpus file
+pnpm --filter corpus-eval eval:skill-loader:run corpora/skill-loader/media-image.yaml --verbose
 ```
 
-| File                 | Cases | Description                                      |
-| -------------------- | ----- | ------------------------------------------------ |
-| `publishing.yaml`    | 10    | Publishing/deploy intent vs unrelated UI prompts |
-| `custom-domain.yaml` | 22    | Domain attach/purchase vs unrelated UI prompts   |
+| File                 | Description                                                  |
+| -------------------- | ------------------------------------------------------------ |
+| `publishing.yaml`    | Publishing/deploy intent vs unrelated UI prompts             |
+| `custom-domain.yaml` | Domain attach/purchase vs unrelated UI prompts               |
+| `media-image.yaml`   | AI image generation/editing vs stock search and other skills |
+| `media-logo.yaml`    | Logo generation vs image generation and unrelated prompts    |
+| `media-video.yaml`   | AI video generation vs stock video and other skills          |
 
 ### assessment-agent/
 
-Test corpus for the AssessmentAgent (568 test cases):
+Test corpus for the AssessmentAgent:
 
-| File           | Cases | Description                                     |
-| -------------- | ----- | ----------------------------------------------- |
-| `publish.yaml` | 113   | Publish/deploy related prompts                  |
-| `domain.yaml`  | 110   | Domain registration and management              |
-| `fix.yaml`     | 115   | Bug fixes and troubleshooting                   |
-| `general.yaml` | 230   | General requests + edge cases + initial prompts |
+| File           | Description                                     |
+| -------------- | ----------------------------------------------- |
+| `publish.yaml` | Publish/deploy related prompts                  |
+| `domain.yaml`  | Domain registration and management              |
+| `fix.yaml`     | Bug fixes and troubleshooting                   |
+| `general.yaml` | General requests + edge cases + initial prompts |
 
 See `corpora/assessment-agent/README.md` for detailed corpus documentation.
 

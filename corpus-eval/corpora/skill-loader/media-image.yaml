@@ -1,0 +1,127 @@
+metadata:
+  name: Skill Loader - Media Image
+  version: 1.0.0
+
+cases:
+  # --- Positive: media-image skill should load ---
+
+  # --- We are not testing any edit intent here, cause that requires app context ---
+  - id: generate-image-explicit
+    prompt: "Generate an AI image of a sunset over mountains for the hero section"
+    expectedSkill: media-image
+    tags: [positive]
+    rationale: Explicit AI image generation request — clearest signal to load media-image
+
+  - id: create-custom-banner
+    prompt: "Create a custom banner image for my homepage"
+    expectedSkill: media-image
+    tags: [positive]
+    rationale: Create custom image matches the whenToUse trigger phrases
+
+  - id: design-banner
+    prompt: "Design a banner with abstract shapes for the about page"
+    expectedSkill: media-image
+    tags: [positive]
+    rationale: Design a banner is a whenToUse trigger phrase
+
+  - id: edit-image-explicit
+    prompt: "Edit this image to make it brighter and add a warm filter"
+    expectedSkill: media-image
+    tags: [positive]
+    rationale: Explicit image editing request — maps to edit_image tool
+
+  - id: ai-generated-image
+    prompt: "I need an AI-generated illustration of a cozy coffee shop interior"
+    expectedSkill: media-image
+    tags: [positive]
+    rationale: AI-generated image request — should load media-image, not use stock search
+
+  # --- Positive: harder cases ---
+
+  - id: make-unique-image
+    prompt: "I don't want stock photos, make me something unique for the hero"
+    expectedSkill: media-image
+    tags: [positive, hard]
+    rationale: Rejecting stock photos implies AI generation — no literal "generate" keyword
+
+  - id: custom-artwork
+    prompt: "Can you create some custom artwork for my product page?"
+    expectedSkill: media-image
+    tags: [positive, hard]
+    rationale: Custom artwork implies AI generation without using explicit trigger words
+
+  - id: photorealistic-scene
+    prompt: "Can you make a photorealistic scene of a futuristic city for the homepage?"
+    expectedSkill: media-image
+    tags: [positive, hard]
+    rationale: Make a photorealistic scene implies AI generation — no "image" or "generate" keyword
+
+  # --- Negative: should NOT load media-image ---
+
+  - id: stock-photo-search
+    prompt: "Find me a photo of a modern office for the hero section"
+    expectedSkill: null
+    tags: [negative]
+    rationale: Stock photo search uses the media tool, not media-image skill
+
+  - id: logo-request
+    prompt: "Generate a logo for my bakery business"
+    expectedSkill: media-logo
+    tags: [negative]
+    rationale: Logo generation should load media-logo, not media-image
+
+  - id: video-request
+    prompt: "Generate a video clip of ocean waves"
+    expectedSkill: media-video
+    tags: [negative]
+    rationale: Video generation should load media-video, not media-image
+
+  - id: change-existing-slot
+    prompt: "Change the hero image to something with mountains"
+    expectedSkill: null
+    tags: [negative]
+    rationale: Changing an existing image uses the media tool to update the slot
+
+  - id: add-hero-section
+    prompt: "Add a hero section with a background image to my homepage"
+    expectedSkill: null
+    tags: [negative]
+    rationale: Building a section with a stock image — no AI generation intent
+
+  # --- Negative: harder cases (tricky near-misses) ---
+
+  - id: make-it-pop
+    prompt: "The hero section needs something that really pops visually"
+    expectedSkill: null
+    tags: [negative, hard]
+    rationale: Vague visual improvement request — could be CSS, colors, or a better stock photo, not AI generation
+
+  - id: better-visuals
+    prompt: "Can you find better visuals for the product section?"
+    expectedSkill: null
+    tags: [negative, hard]
+    rationale: Find better visuals is stock search (media tool), not AI generation — "find" implies search
+
+  - id: placeholder-images
+    prompt: "Replace the placeholder images with something real"
+    expectedSkill: null
+    tags: [negative, hard]
+    rationale: Replacing placeholders with real photos is stock search, not AI generation
+
+  - id: high-quality-photos
+    prompt: "I need high quality professional photos for the team section"
+    expectedSkill: null
+    tags: [negative, hard]
+    rationale: Professional photos implies stock photography, not AI-generated images
+
+  - id: brand-icon-header
+    prompt: "I need a nice icon for my brand in the header"
+    expectedSkill: media-logo
+    tags: [negative, hard]
+    rationale: Brand icon for header is logo territory (media-logo), not image generation — easy to confuse
+
+  - id: make-images-consistent
+    prompt: "Make all the images on my site look consistent and professional"
+    expectedSkill: null
+    tags: [negative, hard]
+    rationale: Consistency request is about re-searching stock with similar style/filters, not AI generation

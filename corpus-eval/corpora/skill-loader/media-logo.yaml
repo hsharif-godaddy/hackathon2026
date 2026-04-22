@@ -1,0 +1,112 @@
+metadata:
+  name: Skill Loader - Media Logo
+  version: 1.0.0
+
+cases:
+  # --- Positive: media-logo skill should load ---
+
+  - id: generate-logo-explicit
+    prompt: "Generate a logo for my business"
+    expectedSkill: media-logo
+    tags: [positive]
+    rationale: Direct logo generation request — clearest signal to load media-logo
+
+  - id: create-logo
+    prompt: "Create a logo for Sunrise Cafe"
+    expectedSkill: media-logo
+    tags: [positive]
+    rationale: Create a logo is a whenToUse trigger phrase
+
+  - id: design-logo
+    prompt: "Design a professional logo for my consulting firm"
+    expectedSkill: media-logo
+    tags: [positive]
+    rationale: Design a logo is a whenToUse trigger phrase
+
+  - id: make-logo
+    prompt: "Make a logo with a mountain icon and blue colors"
+    expectedSkill: media-logo
+    tags: [positive]
+    rationale: Make a logo is a whenToUse trigger phrase
+
+  - id: change-logo
+    prompt: "Change my logo to something more modern"
+    expectedSkill: media-logo
+    tags: [positive]
+    rationale: Change my logo is a whenToUse trigger phrase — regeneration, not editing
+
+  - id: update-logo
+    prompt: "Update the logo with warmer colors and a different icon"
+    expectedSkill: media-logo
+    tags: [positive]
+    rationale: Update the logo triggers regeneration via media-logo
+
+  - id: redesign-logo
+    prompt: "I don't like the current logo, can you redesign it?"
+    expectedSkill: media-logo
+    tags: [positive]
+    rationale: Logo redesign requires regeneration via generate_logo
+
+  # --- Positive: harder cases ---
+
+  - id: brand-identity
+    prompt: "I need a brand mark for my new startup"
+    expectedSkill: media-logo
+    tags: [positive, hard]
+    rationale: Brand mark is a synonym for logo without using the literal word
+
+  - id: icon-for-business
+    prompt: "Can you make a business icon I can use?"
+    expectedSkill: media-logo
+    tags: [positive, hard]
+    rationale: Business icon as logo — indirect but clear logo intent
+
+  - id: company-emblem
+    prompt: "I need an emblem for my company to put in the header"
+    expectedSkill: media-logo
+    tags: [positive, hard]
+    rationale: Emblem for header is a logo synonym — no "logo" keyword
+
+  - id: branding-visual
+    prompt: "We need professional branding, something we can put on the site and business cards"
+    expectedSkill: media-logo
+    tags: [positive, hard]
+    rationale: Branding for site and business cards implies logo without saying the word
+
+  - id: header-symbol
+    prompt: "Can you give us a nice symbol to represent our bakery in the top left?"
+    expectedSkill: media-logo
+    tags: [positive, hard]
+    rationale: Symbol in the top left = logo placement, no "logo" keyword
+
+  - id: monogram-initials
+    prompt: "I want something with my initials for the brand — like a monogram"
+    expectedSkill: media-logo
+    tags: [positive, hard]
+    rationale: Monogram for brand is a logo style — no "logo" keyword, just brand + monogram
+
+  # --- Negative: should NOT load media-logo ---
+
+  - id: generate-image-not-logo
+    prompt: "Generate an image of a sunset for the hero section"
+    expectedSkill: media-image
+    tags: [negative]
+    rationale: Image generation should load media-image, not media-logo
+
+  - id: edit-logo-image
+    prompt: "Edit the hero image to be brighter"
+    expectedSkill: media-image
+    tags: [negative]
+    rationale: Image editing should load media-image
+
+  - id: stock-photo
+    prompt: "Find me a stock photo for the about page"
+    expectedSkill: null
+    tags: [negative]
+    rationale: Stock photo search uses the media tool, not any skill
+
+  - id: fix-mobile-layout
+    prompt: "The mobile layout is broken, please fix it"
+    expectedSkill: null
+    tags: [negative]
+    rationale: Layout bug fix — no logo intent

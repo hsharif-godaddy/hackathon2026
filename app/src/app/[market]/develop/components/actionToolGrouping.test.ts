@@ -32,7 +32,7 @@ describe('actionToolGrouping', () => {
     expect(isActionToolGroupEligible(createToolCall({ name: 'viewLogs' }))).toBe(true)
     expect(isActionToolGroupEligible(createToolCall({ name: 'readFile' }))).toBe(true)
     expect(isActionToolGroupEligible(createToolCall({ name: 'unknownNewTool' }))).toBe(false)
-    expect(isActionToolGroupEligible(createToolCall({ name: 'media__generate_image' }))).toBe(false)
+    expect(isActionToolGroupEligible(createToolCall({ name: 'media-image__generate_image' }))).toBe(false)
     expect(isActionToolGroupEligible(createToolCall({ name: 'widgetRender' }))).toBe(false)
   })
 

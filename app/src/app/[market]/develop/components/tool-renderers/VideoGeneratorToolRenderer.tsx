@@ -14,7 +14,7 @@ interface VideoResult {
 }
 
 /**
- * Custom renderer for media__generate_video tool
+ * Custom renderer for media-video__generate_video tool
  *
  * Displays AI-generated video with inline player and modal for fullscreen view.
  */

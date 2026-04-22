@@ -197,7 +197,7 @@ suggestedResponse({
 - Clean, modern design unless specified otherwise
 - Use `lucide-react` for icons
 - No emojis unless requested
-- Meaningful images (use media skill for generation, media tool for stock photos)
+- Meaningful images (load `media-image` / `media-logo` / `media-video` skills for AI generation, `media` tool for stock photos)
 - Mobile-first responsive design
 - Update shadcn components as needed
 
@@ -290,17 +290,6 @@ media({
 });
 ```
 
-**Only generate** when user explicitly says "generate", "create", "design", or "AI-generated":
-
-```typescript
-// AI-generated images
-media({
-  slot: 'pages/home/hero',
-  query: 'futuristic cityscape',
-  mediaType: 'generate',
-});
-```
-
 **Handling uploaded files:**
 
 When a user uploads an image and wants to use it for a specific location:
@@ -311,16 +300,16 @@ When a user uploads an image and wants to use it for a specific location:
 
 **Decision guide:**
 
-| Need                  | Action                                       |
-| --------------------- | -------------------------------------------- |
-| Change existing image | Use `media` with the existing slot name      |
-| Stock photo search    | `media({ slot: "...", query: "..." })`       |
-| Stock video search    | `media({ ..., mediaType: "video" })`         |
-| Logo generation       | Load `media` skill → `media__generate_logo`  |
-| AI-generated image    | `media({ ..., mediaType: "generate" })`      |
-| Edit existing image   | Load `media` skill → `media__edit_image`     |
-| Video generation      | Load `media` skill → `media__generate_video` |
-| User uploaded file    | The UI handles slot updates automatically    |
+| Need                  | Action                                    |
+| --------------------- | ----------------------------------------- |
+| Change existing image | Use `media` with the existing slot name   |
+| Stock photo search    | `media({ slot: "...", query: "..." })`    |
+| Stock video search    | `media({ ..., mediaType: "video" })`      |
+| Logo generation       | Load `media-logo` skill                   |
+| AI-generated image    | Load `media-image` skill                  |
+| Edit existing image   | Load `media-image` skill                  |
+| Video generation      | Load `media-video` skill                  |
+| User uploaded file    | The UI handles slot updates automatically |
 
 **Filters**: `orientations` (horizontal/vertical/square), `compositions` (close_up/wide_shot/portrait)
 
@@ -329,8 +318,8 @@ When a user uploads an image and wants to use it for a specific location:
 - **Keep HTML `src`/`poster` attributes pointing to slot URLs** (e.g., `/airo-assets/images/{slot}`). Never change them to external/resolved URLs - let the slot system handle URL resolution.
 - **NEVER embed Getty/external URLs directly in code** - always use the slot URL pattern (`/airo-assets/images/{slot}`)
 - **When changing an image, UPDATE the existing slot via the `media` tool** - don't create a new slot or change HTML to a different URL
-- **Logos are auto-saved to slots** — use the returned `slotUrl` in source code. See the `media` skill for the full logo placement flow.
-- **NEVER use `media__edit_image` on logo URLs** — regenerate with `media__generate_logo` instead.
+- **Logos are auto-saved to slots** — use the returned `slotUrl` in source code. See the `media-logo` skill for the full logo placement flow.
+- **NEVER use `media-image__edit_image` on logo URLs** — regenerate with `media-logo__generate_logo` instead.
 
 ### Animations
 

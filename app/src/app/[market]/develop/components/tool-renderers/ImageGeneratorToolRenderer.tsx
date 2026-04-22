@@ -17,7 +17,7 @@ interface ImageResult {
 }
 
 /**
- * Custom renderer for media__generate_image tool
+ * Custom renderer for media-image__generate_image and media-image__edit_image tools
  *
  * Displays AI-generated images in a grid format.
  * Users can click to select an image, which opens a modal with larger view.
@@ -61,7 +61,7 @@ export default function ImageGeneratorToolRenderer({
       }
 
       if (resultObj) {
-        // Handle structuredContent.images from MCP response
+        // Handle structuredContent.images from generate_image
         if (resultObj.structuredContent?.images && Array.isArray(resultObj.structuredContent.images)) {
           resultObj.structuredContent.images.forEach((img: any) => {
             images.push({
@@ -72,6 +72,10 @@ export default function ImageGeneratorToolRenderer({
               contentType: img.contentType
             })
           })
+        }
+        // Handle structuredContent.url from edit_image (single image result)
+        else if (typeof resultObj.structuredContent?.url === 'string') {
+          images.push({ url: resultObj.structuredContent.url })
         }
         // Handle content array with resource_link items (MCP format)
         else if (resultObj.content && Array.isArray(resultObj.content)) {

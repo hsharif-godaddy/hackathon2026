@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// Mock logger before other imports
 vi.mock('../../../../logging/index.js', () => ({
   logger: {
     info: vi.fn(),
@@ -10,7 +9,6 @@ vi.mock('../../../../logging/index.js', () => ({
   },
 }));
 
-// Mock ImagegenService
 const mockEditImage = vi.fn();
 vi.mock('../../../../services/ImagegenService.js', () => ({
   imagegenService: {
@@ -20,22 +18,6 @@ vi.mock('../../../../services/ImagegenService.js', () => ({
   },
 }));
 
-// Mock LogoService (needed because same file exports all tools)
-vi.mock('../../../../services/LogoService.js', () => ({
-  logoService: {
-    generateLogos: vi.fn(),
-  },
-}));
-
-// Mock MediaManifestService (needed because same file exports tools that use it)
-vi.mock('../../../../services/MediaManifestService.js', () => ({
-  mediaManifestService: {
-    importSlot: vi.fn(),
-    setSlot: vi.fn(),
-  },
-}));
-
-// Mock AppRepository
 const mockFindById = vi.fn();
 vi.mock('../../../../database/repositories/index.js', () => ({
   appRepository: {
@@ -43,7 +25,6 @@ vi.mock('../../../../database/repositories/index.js', () => ({
   },
 }));
 
-// Mock grantSessionManager
 const mockGetCurrentUserId = vi.fn();
 vi.mock('@airo/ai-grants', async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>();
@@ -56,13 +37,6 @@ vi.mock('@airo/ai-grants', async (importOriginal) => {
     },
   };
 });
-
-// Mock AppPlanTool
-vi.mock('../../../../tools/app-plan-tool.js', () => ({
-  appPlanTool: {
-    execute: vi.fn(),
-  },
-}));
 
 describe('editImageTool', () => {
   beforeEach(() => {

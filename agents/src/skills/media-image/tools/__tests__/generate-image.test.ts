@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// Mock logger before other imports
 vi.mock('../../../../logging/index.js', () => ({
   logger: {
     info: vi.fn(),
@@ -10,32 +9,15 @@ vi.mock('../../../../logging/index.js', () => ({
   },
 }));
 
-// Mock ImagegenService
-const mockGenerateVideo = vi.fn();
+const mockGenerateImages = vi.fn();
 vi.mock('../../../../services/ImagegenService.js', () => ({
   imagegenService: {
-    generateImages: vi.fn(),
+    generateImages: mockGenerateImages,
     editImage: vi.fn(),
-    generateVideo: mockGenerateVideo,
+    generateVideo: vi.fn(),
   },
 }));
 
-// Mock LogoService (needed because same file exports all tools)
-vi.mock('../../../../services/LogoService.js', () => ({
-  logoService: {
-    generateLogos: vi.fn(),
-  },
-}));
-
-// Mock MediaManifestService (needed because same file exports tools that use it)
-vi.mock('../../../../services/MediaManifestService.js', () => ({
-  mediaManifestService: {
-    importSlot: vi.fn(),
-    setSlot: vi.fn(),
-  },
-}));
-
-// Mock AppRepository
 const mockFindById = vi.fn();
 vi.mock('../../../../database/repositories/index.js', () => ({
   appRepository: {
@@ -43,7 +25,6 @@ vi.mock('../../../../database/repositories/index.js', () => ({
   },
 }));
 
-// Mock grantSessionManager
 const mockGetCurrentUserId = vi.fn();
 vi.mock('@airo/ai-grants', async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>();
@@ -57,14 +38,7 @@ vi.mock('@airo/ai-grants', async (importOriginal) => {
   };
 });
 
-// Mock AppPlanTool
-vi.mock('../../../../tools/app-plan-tool.js', () => ({
-  appPlanTool: {
-    execute: vi.fn(),
-  },
-}));
-
-describe('generateVideoTool', () => {
+describe('generateImageTool', () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
@@ -77,34 +51,37 @@ describe('generateVideoTool', () => {
 
     mockGetCurrentUserId.mockReturnValue('budget-user-111');
 
-    mockGenerateVideo.mockResolvedValue({
-      sessionId: 'vid-123',
-      url: 'https://cdn/video.mp4',
+    mockGenerateImages.mockResolvedValue({
+      sessionId: 'sess-img-123',
+      images: [
+        { id: 'img-1', url: 'https://cdn/img1.png' },
+        { id: 'img-2', url: 'https://cdn/img2.png' },
+      ],
     });
   });
 
   it('should call imagegenService with mapped params', async () => {
-    const { generateVideoTool } = await import('../index.js');
+    const { generateImageTool } = await import('../index.js');
 
     const context = {
       socketId: 'socket-1',
       metadata: { appId: 'app-123' },
     };
 
-    await generateVideoTool.execute(
+    await generateImageTool.execute(
       {
-        prompt: 'Sunrise over mountains',
+        prompt: 'A professional business team',
         orientation: 'landscape',
-        duration: 8,
+        imageCount: 2,
       },
       context
     );
 
-    expect(mockGenerateVideo).toHaveBeenCalledWith(
+    expect(mockGenerateImages).toHaveBeenCalledWith(
       expect.objectContaining({
-        description: 'Sunrise over mountains',
+        description: 'A professional business team',
         orientation: 'landscape',
-        duration: 8,
+        count: 2,
         customerId: 'cust-abc',
         budgetUserId: 'budget-user-111',
       })
@@ -112,26 +89,29 @@ describe('generateVideoTool', () => {
   });
 
   it('should return structured content on success', async () => {
-    const { generateVideoTool } = await import('../index.js');
+    const { generateImageTool } = await import('../index.js');
 
     const context = {
       socketId: 'socket-1',
       metadata: { appId: 'app-123' },
     };
 
-    const result = await generateVideoTool.execute(
+    const result = await generateImageTool.execute(
       {
-        prompt: 'A sunset video',
+        prompt: 'A sunset',
         orientation: 'landscape',
-        duration: 5,
+        imageCount: 2,
       },
       context
     );
 
     expect(result).toEqual({
       structuredContent: {
-        sessionId: 'vid-123',
-        url: 'https://cdn/video.mp4',
+        sessionId: 'sess-img-123',
+        images: [
+          { id: 'img-1', url: 'https://cdn/img1.png' },
+          { id: 'img-2', url: 'https://cdn/img2.png' },
+        ],
       },
     });
   });
@@ -139,57 +119,57 @@ describe('generateVideoTool', () => {
   it('should return error when customerId not found', async () => {
     mockFindById.mockReturnValue(null);
 
-    const { generateVideoTool } = await import('../index.js');
+    const { generateImageTool } = await import('../index.js');
 
     const context = {
       socketId: 'socket-1',
       metadata: { appId: 'unknown-app' },
     };
 
-    const result = await generateVideoTool.execute(
+    const result = await generateImageTool.execute(
       {
         prompt: 'Test',
         orientation: 'landscape',
-        duration: 5,
+        imageCount: 1,
       },
       context
     );
 
     expect(result).toEqual({
-      error: 'Unable to determine customer identity for video generation',
+      error: 'Unable to determine customer identity for image generation',
     });
-    expect(mockGenerateVideo).not.toHaveBeenCalled();
+    expect(mockGenerateImages).not.toHaveBeenCalled();
   });
 
   it('should return error when grants exhausted', async () => {
     mockGetCurrentUserId.mockReturnValue(undefined);
 
-    const { generateVideoTool } = await import('../index.js');
+    const { generateImageTool } = await import('../index.js');
 
     const context = {
       socketId: 'socket-1',
       metadata: { appId: 'app-123' },
     };
 
-    const result = await generateVideoTool.execute(
+    const result = await generateImageTool.execute(
       {
         prompt: 'Test',
         orientation: 'landscape',
-        duration: 5,
+        imageCount: 1,
       },
       context
     );
 
     expect(result).toEqual({
-      error: 'All credit grants have been exhausted. Please purchase additional credits to generate videos.',
+      error: 'All credit grants have been exhausted. Please purchase additional credits to generate images.',
     });
-    expect(mockGenerateVideo).not.toHaveBeenCalled();
+    expect(mockGenerateImages).not.toHaveBeenCalled();
   });
 
   it('should propagate error when imagegenService throws', async () => {
-    mockGenerateVideo.mockRejectedValue(new Error('Video generation failed: Content policy violation'));
+    mockGenerateImages.mockRejectedValue(new Error('Imagegen API error (image.generate): 500 Internal Server Error'));
 
-    const { generateVideoTool } = await import('../index.js');
+    const { generateImageTool } = await import('../index.js');
 
     const context = {
       socketId: 'socket-1',
@@ -197,36 +177,14 @@ describe('generateVideoTool', () => {
     };
 
     await expect(
-      generateVideoTool.execute(
+      generateImageTool.execute(
         {
           prompt: 'Test',
           orientation: 'landscape',
-          duration: 5,
+          imageCount: 1,
         },
         context
       )
-    ).rejects.toThrow('Video generation failed: Content policy violation');
-  });
-
-  it('should pass duration as a number', async () => {
-    const { generateVideoTool } = await import('../index.js');
-
-    const context = {
-      socketId: 'socket-1',
-      metadata: { appId: 'app-123' },
-    };
-
-    await generateVideoTool.execute(
-      {
-        prompt: 'Test video',
-        orientation: 'portrait',
-        duration: 6,
-      },
-      context
-    );
-
-    const callArgs = mockGenerateVideo.mock.calls[0][0];
-    expect(typeof callArgs.duration).toBe('number');
-    expect(callArgs.duration).toBe(6);
+    ).rejects.toThrow('Imagegen API error (image.generate): 500 Internal Server Error');
   });
 });

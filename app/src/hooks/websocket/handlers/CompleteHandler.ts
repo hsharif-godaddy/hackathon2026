@@ -103,7 +103,10 @@ function showFeedbackBanner(promptCount: number): void {
 }
 
 function isMediaTool(toolName: string): boolean {
-  return toolName === 'media' || toolName.startsWith('media__')
+  return toolName === 'media'
+    || toolName.startsWith('media-logo__')
+    || toolName.startsWith('media-image__')
+    || toolName.startsWith('media-video__')
 }
 
 export class CompleteHandler implements MessageHandler {

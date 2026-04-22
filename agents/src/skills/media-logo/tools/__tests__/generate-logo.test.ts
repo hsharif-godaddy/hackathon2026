@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// Mock logger before other imports
 vi.mock('../../../../logging/index.js', () => ({
   logger: {
     info: vi.fn(),
@@ -10,7 +9,6 @@ vi.mock('../../../../logging/index.js', () => ({
   },
 }));
 
-// Mock LogoService
 const mockGenerateLogos = vi.fn();
 vi.mock('../../../../services/LogoService.js', () => ({
   logoService: {
@@ -18,7 +16,6 @@ vi.mock('../../../../services/LogoService.js', () => ({
   },
 }));
 
-// Mock AppRepository
 const mockFindById = vi.fn();
 vi.mock('../../../../database/repositories/index.js', () => ({
   appRepository: {
@@ -26,7 +23,6 @@ vi.mock('../../../../database/repositories/index.js', () => ({
   },
 }));
 
-// Mock grantSessionManager
 const mockGetCurrentUserId = vi.fn();
 const mockGetSubscriptionIdForSession = vi.fn();
 const mockGetSubscriptionState = vi.fn();
@@ -42,7 +38,6 @@ vi.mock('@airo/ai-grants', async (importOriginal) => {
   };
 });
 
-// Mock AppPlanTool
 const mockAppPlanExecute = vi.fn();
 vi.mock('../../../../tools/app-plan-tool.js', () => ({
   appPlanTool: {
@@ -50,16 +45,6 @@ vi.mock('../../../../tools/app-plan-tool.js', () => ({
   },
 }));
 
-// Mock ImagegenService (needed because same file exports all tools)
-vi.mock('../../../../services/ImagegenService.js', () => ({
-  imagegenService: {
-    generateImages: vi.fn(),
-    editImage: vi.fn(),
-    generateVideo: vi.fn(),
-  },
-}));
-
-// Mock MediaManifestService
 const mockSetSlot = vi.fn();
 const mockGetSlot = vi.fn();
 vi.mock('../../../../services/MediaManifestService.js', () => ({

@@ -1,0 +1,94 @@
+metadata:
+  name: Skill Loader - Media Video
+  version: 1.0.0
+
+cases:
+  # --- Positive: media-video skill should load ---
+
+  - id: generate-video-explicit
+    prompt: "Generate a video of a sunrise over the ocean"
+    expectedSkill: media-video
+    tags: [positive]
+    rationale: Direct video generation request — clearest signal to load media-video
+
+  - id: create-video-clip
+    prompt: "Create a video clip of clouds moving across the sky"
+    expectedSkill: media-video
+    tags: [positive]
+    rationale: Create a video clip is a whenToUse trigger phrase
+
+  - id: make-video
+    prompt: "Make a short video of a busy city street for the background"
+    expectedSkill: media-video
+    tags: [positive]
+    rationale: Make a video is a whenToUse trigger phrase
+
+  - id: ai-video-hero
+    prompt: "I want an AI-generated video for my landing page hero"
+    expectedSkill: media-video
+    tags: [positive]
+    rationale: AI-generated video request explicitly triggers media-video
+
+  - id: generate-background-video
+    prompt: "Generate a looping background video of abstract particles"
+    expectedSkill: media-video
+    tags: [positive]
+    rationale: Explicit generation of a background video
+
+  # --- Positive: harder cases ---
+
+  - id: custom-video-no-keyword
+    prompt: "I need a unique animation content, not stock footage"
+    expectedSkill: media-video
+    tags: [positive, hard]
+    rationale: Rejecting stock footage and wanting something unique implies AI video generation
+
+  - id: moving-visuals
+    prompt: "I want something moving and cinematic, not a static photo"
+    expectedSkill: media-video
+    tags: [positive, hard]
+    rationale: Moving and cinematic, rejecting static photo — implies generated video without "video" or "clip" keyword
+
+  - id: timelapse-feel
+    prompt: "I want a timelapse of clouds rushing across the sky"
+    expectedSkill: media-video
+    tags: [positive, hard]
+    rationale: Timelapse with a scene description implies AI video — no "video" or "generate" keyword
+
+  # --- Negative: should NOT load media-video ---
+
+  - id: stock-video-search
+    prompt: "Find me a stock video of ocean waves for the background"
+    expectedSkill: null
+    tags: [negative]
+    rationale: Stock video search uses the media tool with mediaType video, not the media-video skill
+
+  - id: generate-image-not-video
+    prompt: "Generate an image of a mountain landscape"
+    expectedSkill: media-image
+    tags: [negative]
+    rationale: Image generation should load media-image, not media-video
+
+  - id: logo-request
+    prompt: "Create a logo for my business"
+    expectedSkill: media-logo
+    tags: [negative]
+    rationale: Logo generation should load media-logo, not media-video
+
+  - id: add-video-element
+    prompt: "Add a video player to the about page"
+    expectedSkill: null
+    tags: [negative]
+    rationale: Adding a video HTML element is a code task, not video generation
+
+  - id: embed-youtube
+    prompt: "Embed a YouTube video on my homepage"
+    expectedSkill: null
+    tags: [negative]
+    rationale: Embedding an external video is a code task, not AI video generation
+
+  - id: background-video-stock
+    prompt: "Add a background video to the hero section"
+    expectedSkill: null
+    tags: [negative]
+    rationale: Adding a background video without generate/create intent uses stock search via media tool

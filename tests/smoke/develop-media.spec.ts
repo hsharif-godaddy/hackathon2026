@@ -168,7 +168,7 @@ test.describe('Develop Page - Media Tab', () => {
   });
 
   test.skip('Logo grid — select variant, Save, slot swap and placement follow-up', async () => {
-    // Skip reason: Needs a develop session where media__generate_logo completed in chat (same
+    // Skip reason: Needs a develop session where media-logo__generate_logo completed in chat (same
     // AI latency / flake constraints as the image flow test above). Enable when smoke env can
     // reliably finish logo generation or when a fixture app exposes the logo grid widget.
     //

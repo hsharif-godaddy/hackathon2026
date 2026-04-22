@@ -274,12 +274,50 @@ describe('CompleteHandler', () => {
     })
   })
 
-  it('invalidates media manifest for media__ prefixed tool calls', async () => {
+  it('invalidates media manifest for media-logo__ prefixed tool calls', async () => {
     mockStore.getState.mockReturnValue({
       connectionRetry: { isRetrying: false },
       clearConnectionRetry: vi.fn(),
       messages: [
-        { role: 'assistant', toolCalls: [{ id: '1', name: 'media__generate_image' }] },
+        { role: 'assistant', toolCalls: [{ id: '1', name: 'media-logo__generate_logo' }] },
+      ],
+    })
+
+    await handler.handle(
+      { type: 'complete', content: '', data: { agentId: 'develop' } },
+      createMockMessageContext()
+    )
+
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({
+      queryKey: ['mediaManifest', 'app-123'],
+    })
+  })
+
+  it('invalidates media manifest for media-image__ prefixed tool calls', async () => {
+    mockStore.getState.mockReturnValue({
+      connectionRetry: { isRetrying: false },
+      clearConnectionRetry: vi.fn(),
+      messages: [
+        { role: 'assistant', toolCalls: [{ id: '1', name: 'media-image__generate_image' }] },
+      ],
+    })
+
+    await handler.handle(
+      { type: 'complete', content: '', data: { agentId: 'develop' } },
+      createMockMessageContext()
+    )
+
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({
+      queryKey: ['mediaManifest', 'app-123'],
+    })
+  })
+
+  it('invalidates media manifest for media-video__ prefixed tool calls', async () => {
+    mockStore.getState.mockReturnValue({
+      connectionRetry: { isRetrying: false },
+      clearConnectionRetry: vi.fn(),
+      messages: [
+        { role: 'assistant', toolCalls: [{ id: '1', name: 'media-video__generate_video' }] },
       ],
     })
 
