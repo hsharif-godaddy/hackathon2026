@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import {
   buildLokiQuery,
@@ -6,9 +6,6 @@ import {
   type LokiQueryResponse
 } from '../loki-client';
 import type { FieldMapping } from '../log-sources';
-
-// Mock fetch for cluster lookup
-global.fetch = vi.fn();
 
 describe('loki-client', () => {
   describe('buildLokiQuery', () => {
@@ -22,24 +19,6 @@ describe('loki-client', () => {
       environment: 'prod' as const
     };
 
-    // Mock fetch to return cluster for appId lookups (Prometheus metrics format)
-    beforeEach(() => {
-      vi.clearAllMocks();
-      (global.fetch as any).mockResolvedValue({
-        ok: true,
-        json: async () => ({
-          status: 'success',
-          data: {
-            resultType: 'vector',
-            result: [{
-              metric: { cluster: 'c36', app_id: 'abc123' },
-              value: [Date.now() / 1000, '123456']
-            }]
-          }
-        })
-      });
-    });
-
     it('should build basic query with labels only', async () => {
       const result = await buildLokiQuery({}, mockConfig);
 
@@ -48,33 +27,33 @@ describe('loki-client', () => {
       expect(result.limit).toBe(5000); // fetch all logs up to cap
     });
 
-    it('should add line filter for single level filter', async () => {
+    it('should add case-insensitive line filter for single level filter', async () => {
       const result = await buildLokiQuery(
         { levelFilter: 'error' },
         mockConfig
       );
 
-      expect(result.query).toContain('|= "level\\":\\"error\\""');
+      expect(result.query).toContain('|~ "(?i)[{,]\\"level\\":\\"(error)\\""');
     });
 
-    it('should use regex OR for multiple levels', async () => {
+    it('should use case-insensitive regex OR for multiple levels', async () => {
       const result = await buildLokiQuery(
         { levelsFilter: 'error,warn' },
         mockConfig
       );
 
-      expect(result.query).toContain('|~ "level\\":\\"error\\"|level\\":\\"warn\\""');
+      expect(result.query).toContain('|~ "(?i)[{,]\\"level\\":\\"(error|warn)\\""');
     });
 
-    it('should add cluster label and line filter for app_id', async () => {
+    it('should add line filter for app_id without a cluster label', async () => {
       const result = await buildLokiQuery(
         { appId: 'abc123' },
         mockConfig
       );
 
-      // Should have cluster label from lookup
-      expect(result.query).toContain('cluster="c36"');
-      // Should still have line filter for app_id
+      // Cluster lookup was removed; query must not constrain by cluster so that
+      // apps whose allocation migrated still surface logs.
+      expect(result.query).not.toContain('cluster=');
       expect(result.query).toContain('|= "\\"app_id\\":\\"abc123\\""');
     });
 
@@ -108,8 +87,8 @@ describe('loki-client', () => {
         mockConfig
       );
 
-      expect(result.query).toContain('cluster="c36"');
-      expect(result.query).toContain('|= "level\\":\\"error\\""');
+      expect(result.query).not.toContain('cluster=');
+      expect(result.query).toContain('|~ "(?i)[{,]\\"level\\":\\"(error)\\""');
       expect(result.query).toContain('|= "\\"app_id\\":\\"abc123\\""');
       expect(result.query).toContain('|= "database"');
     });
@@ -174,8 +153,8 @@ describe('loki-client', () => {
         mockConfig
       );
 
-      expect(result.query).toContain('|~ "level\\":\\"error\\"|level\\":\\"warn\\""');
-      expect(result.query).not.toContain('|= "level\\":\\"info\\""');
+      expect(result.query).toContain('|~ "(?i)[{,]\\"level\\":\\"(error|warn)\\""');
+      expect(result.query).not.toContain('(info)');
     });
 
     it('should skip level filter when set to "all"', async () => {
@@ -184,8 +163,7 @@ describe('loki-client', () => {
         mockConfig
       );
 
-      expect(result.query).not.toContain('|= "level\\"');
-      expect(result.query).not.toContain('|~ "level\\"');
+      expect(result.query).not.toContain('level\\":');
     });
 
     it('should detect level filters from query parameter', async () => {
@@ -194,11 +172,8 @@ describe('loki-client', () => {
         mockConfig
       );
 
-      // Should extract "error" as level filter
-      expect(result.query).toContain('|= "level\\":\\"error\\""');
-      // Should keep "database" as text search
+      expect(result.query).toContain('|~ "(?i)[{,]\\"level\\":\\"(error)\\""');
       expect(result.query).toContain('|= "database"');
-      // Should NOT search for "error" as text
       expect(result.query).not.toContain('|= "error"');
     });
 
@@ -208,11 +183,8 @@ describe('loki-client', () => {
         mockConfig
       );
 
-      // Should extract both levels with OR pattern
-      expect(result.query).toContain('|~ "level\\":\\"error\\"|level\\":\\"warn\\""');
-      // Should keep "database" as text search
+      expect(result.query).toContain('|~ "(?i)[{,]\\"level\\":\\"(error|warn)\\""');
       expect(result.query).toContain('|= "database"');
-      // Should NOT search for level names as text
       expect(result.query).not.toContain('|= "error"');
       expect(result.query).not.toContain('|= "warn"');
     });
@@ -226,31 +198,63 @@ describe('loki-client', () => {
         mockConfig
       );
 
-      // Should use explicit levelFilter, not detected ones
-      expect(result.query).toContain('|= "level\\":\\"info\\""');
+      expect(result.query).toContain('|~ "(?i)[{,]\\"level\\":\\"(info)\\""');
       expect(result.query).not.toContain('error');
       expect(result.query).not.toContain('warn');
     });
 
-    it('should handle cluster lookup failure gracefully', async () => {
-      // Use a different appId to avoid cache hit
-      const uniqueAppId = 'xyz789-nocache';
+    it('should emit case-insensitive regex so uppercase container-log levels match', async () => {
+      // Preview/publish containers emit "level":"ERROR"; agents emit
+      // "level":"error". Must not regress to exact-case `|=` matching.
+      const result = await buildLokiQuery({ levelFilter: 'error' }, mockConfig);
 
-      // Mock failed cluster lookup for all 3 recording rule attempts
-      (global.fetch as any)
-        .mockResolvedValueOnce({ ok: false, status: 404 })
-        .mockResolvedValueOnce({ ok: false, status: 404 })
-        .mockResolvedValueOnce({ ok: false, status: 404 });
+      expect(result.query).toContain('|~ "(?i)');
+      expect(result.query).not.toMatch(/\|= "level\\":/);
+    });
 
+    it('should anchor level regex to the exact key, not substrings like detected_level', async () => {
+      // The emitted LogQL pattern (`[{,]"level":"(error)"`) must match the
+      // exact `level` key at the top of a JSON object or after a comma, and
+      // must NOT match look-alike keys like `detected_level`.
+      const result = await buildLokiQuery({ levelFilter: 'error' }, mockConfig);
+
+      expect(result.query).toContain('[{,]\\"level\\":\\"(error)\\"');
+
+      // Mirror the LogQL pattern with JS RegExp semantics (`i` flag replaces
+      // the Go `(?i)` inline flag).
+      const re = /[{,]"level":"(error)"/i;
+
+      expect(re.test('{"level":"error","msg":"x"}')).toBe(true);
+      expect(re.test('{"level":"ERROR","msg":"x"}')).toBe(true);
+      expect(re.test('{"a":1,"level":"Error"}')).toBe(true);
+      expect(re.test('{"detected_level":"error","msg":"x"}')).toBe(false);
+      expect(re.test('{"parent_level":"error"}')).toBe(false);
+      expect(re.test('{"prev_level":"error"}')).toBe(false);
+    });
+
+    it('should drop unknown level values passed via levelFilter', async () => {
+      // URL params flow into a `|~` regex; `escapeLogQLString` only handles
+      // string-literal escapes, not regex metacharacters. Unknown/invalid
+      // levels must be dropped so e.g. `?level=error|.*` cannot widen the
+      // filter into a wildcard.
       const result = await buildLokiQuery(
-        { appId: uniqueAppId },
+        { levelFilter: 'error|.*' },
         mockConfig
       );
 
-      // Should not have cluster label
-      expect(result.query).not.toContain('cluster=');
-      // Should still have app_id line filter
-      expect(result.query).toContain(`|= "\\"app_id\\":\\"${uniqueAppId}\\"`);
+      expect(result.query).not.toContain('|~');
+      expect(result.query).not.toContain('.*');
+    });
+
+    it('should keep only known levels from levelsFilter and drop the rest', async () => {
+      const result = await buildLokiQuery(
+        { levelsFilter: 'error,bogus,warn,.*' },
+        mockConfig
+      );
+
+      expect(result.query).toContain('|~ "(?i)[{,]\\"level\\":\\"(error|warn)\\""');
+      expect(result.query).not.toContain('bogus');
+      expect(result.query).not.toContain('.*');
     });
   });
 

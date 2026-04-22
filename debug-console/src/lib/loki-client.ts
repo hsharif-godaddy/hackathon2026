@@ -1,39 +1,5 @@
 import type { FieldMapping } from './log-sources';
 
-// In-memory cache for appId -> cluster mappings
-interface ClusterCacheEntry {
-  cluster: string;
-  timestamp: number;
-}
-
-const clusterCache = new Map<string, ClusterCacheEntry>();
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
-const MAX_CACHE_SIZE = 1000; // Prevent unbounded growth
-
-/**
- * Clean up expired entries and enforce max cache size
- */
-function cleanupClusterCache() {
-  const now = Date.now();
-
-  // Remove expired entries
-  for (const [appId, entry] of clusterCache.entries()) {
-    if (now - entry.timestamp > CACHE_TTL_MS) {
-      clusterCache.delete(appId);
-    }
-  }
-
-  // Enforce max size by removing oldest entries
-  if (clusterCache.size > MAX_CACHE_SIZE) {
-    const entries = Array.from(clusterCache.entries())
-      .sort((a, b) => a[1].timestamp - b[1].timestamp);
-    const toRemove = entries.slice(0, clusterCache.size - MAX_CACHE_SIZE);
-    for (const [appId] of toRemove) {
-      clusterCache.delete(appId);
-    }
-  }
-}
-
 export interface LokiQueryParams {
   query: string;
   start: string;  // Nanosecond timestamp
@@ -113,95 +79,25 @@ function toNanoseconds(isoString: string): string {
 }
 
 /**
- * Look up which cluster an appId is running in
- * Always queries last 24 hours of recording rule data regardless of user's time range
- * since we just need to know which cluster the app is in, not when it was there
+ * Allow-list of log levels accepted by the level filter.
+ *
+ * `levelFilter`/`levelsFilter` arrive from URL query params and flow into a
+ * Loki `|~` regex. `escapeLogQLString` only escapes string-literal characters
+ * (`"` and `\`), not regex metacharacters, so raw pass-through would let a
+ * caller widen the filter with e.g. `?level=error|.*`. Reject anything outside
+ * this set before building the pattern.
  */
-async function lookupClusterForAppId(
-  appId: string,
-  config: LokiConfig
-): Promise<string | null> {
-  // Clean up cache periodically
-  cleanupClusterCache();
+const KNOWN_LEVELS = new Set(['error', 'warn', 'info', 'debug', 'fatal']);
 
-  // Check cache first
-  const cached = clusterCache.get(appId);
-  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
-    return cached.cluster;
+function sanitizeLevels(raw: Iterable<string>): string[] {
+  const out: string[] = [];
+  for (const value of raw) {
+    const normalized = value.trim().toLowerCase();
+    if (normalized && KNOWN_LEVELS.has(normalized) && !out.includes(normalized)) {
+      out.push(normalized);
+    }
   }
-
-  try {
-    const endpoint = config.lokiEndpoint;
-    if (!endpoint) {
-      return null;
-    }
-
-    // Query recording rule metric for fast lookup
-    // Recording rules are in Prometheus, not Loki, so use Prometheus datasource
-    const grafanaBaseUrl = endpoint.includes('grafana.monitoring.gd3p.tools')
-      ? 'https://grafana.monitoring.gd3p.tools/api/datasources/proxy/uid/beojxs8t38ttsb'
-      : endpoint.replace('/uid/ff18mpwxpc7wgd', '/uid/beojxs8t38ttsb');
-    const escapedAppId = escapeLogQLString(appId);
-
-    // Always query last 24 hours of recording rule data
-    // We just need to know which cluster the app is in, not when it was there
-    const metricQuery = `airo_agents:log_lines_by_app:rate5m{app_id="${escapedAppId}"}`;
-    const url = new URL(`${grafanaBaseUrl}/api/v1/query_range`);
-    url.searchParams.set('query', metricQuery);
-
-    // Query last 24 hours (Prometheus expects Unix seconds)
-    const endSec = Math.floor(Date.now() / 1000);
-    const startSec = endSec - (24 * 60 * 60); // 24 hours ago
-    url.searchParams.set('start', startSec.toString());
-    url.searchParams.set('end', endSec.toString());
-    url.searchParams.set('step', '300'); // 5m step (matches recording rule interval)
-
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json'
-    };
-
-    if (config.lokiApiKey) {
-      headers['Authorization'] = config.lokiApiKey.startsWith('glsa_')
-        ? `Bearer ${config.lokiApiKey}`
-        : `Bearer ${config.lokiApiKey}`;
-    }
-
-    const response = await fetch(url.toString(), {
-      method: 'GET',
-      headers,
-      signal: AbortSignal.timeout(3000) // 3 second timeout (slightly longer for range query)
-    });
-
-    if (!response.ok) {
-      return null;
-    }
-
-    // Prometheus range query response format
-    const data: {
-      status: string;
-      data: {
-        resultType: string;
-        result: Array<{
-          metric: Record<string, string>;
-          values: Array<[number, string]>; // [timestamp, value] pairs
-        }>;
-      };
-    } = await response.json();
-
-    if (data.status === 'success' && data.data.result.length > 0) {
-      // Take the first result (most recent app_id match)
-      const cluster = data.data.result[0].metric.cluster;
-      if (cluster) {
-        // Cache the result
-        clusterCache.set(appId, { cluster, timestamp: Date.now() });
-        return cluster;
-      }
-    }
-
-    return null;
-  } catch (error) {
-    return null;
-  }
+  return out;
 }
 
 /**
@@ -226,7 +122,6 @@ export async function buildLokiQuery(
   // Extract level filters from query parameter if present
   // UI sends level checkboxes as part of query string: "error warn"
   let queryTerms = params.query || '';
-  const knownLevels = ['error', 'warn', 'info', 'debug', 'fatal'];
   const detectedLevels: string[] = [];
 
   if (queryTerms) {
@@ -234,7 +129,7 @@ export async function buildLokiQuery(
     const remainingTerms: string[] = [];
 
     for (const term of terms) {
-      if (knownLevels.includes(term)) {
+      if (KNOWN_LEVELS.has(term)) {
         detectedLevels.push(term);
       } else {
         remainingTerms.push(term);
@@ -245,48 +140,40 @@ export async function buildLokiQuery(
     queryTerms = remainingTerms.join(' ');
   }
 
-  // Handle level filtering using line filters (level is in JSON, not a label)
-  // Use exact string match for better performance
-  // Pattern matches both "level":"error" and "detected_level":"error"
-  // Priority: explicit params > detected from query
-  if (params.levelsFilter) {
-    const levels = params.levelsFilter.split(',').map(l => escapeLogQLString(l.trim().toLowerCase()));
-    if (levels.length === 1) {
-      // Single level - exact string match (catches both level and detected_level)
-      lineFilters.push(`|= "level\\":\\"${levels[0]}\\""`);
-    } else if (levels.length > 1) {
-      // Multiple levels: use regex OR pattern (no exact match operator for OR in LogQL)
-      const levelPattern = levels.map(l => `level\\":\\"${l}\\"`).join('|');
-      lineFilters.push(`|~ "${levelPattern}"`);
-    }
-  } else if (params.levelFilter && params.levelFilter !== 'all') {
-    const escapedLevel = escapeLogQLString(params.levelFilter.toLowerCase());
-    lineFilters.push(`|= "level\\":\\"${escapedLevel}\\""`);
-  } else if (detectedLevels.length > 0) {
-    // Use levels detected from query parameter (already validated against knownLevels)
-    if (detectedLevels.length === 1) {
-      lineFilters.push(`|= "level\\":\\"${detectedLevels[0]}\\""`);
-    } else {
-      const levelPattern = detectedLevels.map(l => `level\\":\\"${l}\\"`).join('|');
-      lineFilters.push(`|~ "${levelPattern}"`);
-    }
+  // Handle level filtering using line filters (level is in JSON, not a label).
+  // Use a case-insensitive regex so we match both lower-case (agents:
+  // `"level":"error"`) and upper-case (preview/publish containers:
+  // `"level":"ERROR"`) log producers with a single filter. The leading `[{,]`
+  // anchors on the exact `level` JSON key (either the first field after `{`
+  // or a subsequent field after `,`) so we don't match `detected_level`,
+  // `parent_level`, etc. This assumes compact JSON output from log producers;
+  // pretty-printed lines with space-padded keys would not match.
+  //
+  // Priority: explicit params > detected from query. All inputs are routed
+  // through `sanitizeLevels`, which drops anything outside `KNOWN_LEVELS`, so
+  // regex metacharacters sneaking in via URL params can't broaden the filter.
+  const effectiveLevels = params.levelsFilter
+    ? sanitizeLevels(params.levelsFilter.split(','))
+    : (params.levelFilter && params.levelFilter !== 'all')
+      ? sanitizeLevels([params.levelFilter])
+      : detectedLevels;
+
+  if (effectiveLevels.length > 0) {
+    const levelPattern = effectiveLevels.join('|');
+    lineFilters.push(`|~ "(?i)[{,]\\"level\\":\\"(${levelPattern})\\""`);
   }
 
-  // Handle time range (calculate early for cluster lookup)
   const now = new Date();
   const defaultStart = new Date(now.getTime() - 24 * 60 * 60 * 1000); // 24 hours ago
   const startTimeISO = params.startTime || defaultStart.toISOString();
   const endTimeISO = params.endTime || now.toISOString();
 
-  // OPTIMIZATION: Look up cluster for appId to add indexed label selector
-  // This significantly reduces the scope of the expensive line filter scan
-  // Cluster lookup always queries last 24h of recording rule data (not user's time range)
-  if (params.appId) {
-    const cluster = await lookupClusterForAppId(params.appId, config);
-    if (cluster) {
-      labels.push(`cluster="${cluster}"`);
-    }
-  }
+  // Note: we intentionally do NOT add a `cluster` label selector here. A
+  // previous iteration looked up the app's cluster via a Prometheus recording
+  // rule to shrink the line-filter scan, but it silently dropped logs when an
+  // allocation migrated clusters. We accept the broader scan in exchange for
+  // correctness; revisit with a multi-cluster regex filter if this becomes a
+  // perf hotspot.
 
   // Handle app ID filtering - CRITICAL: app_id is in log line, NOT a label
   // Use exact string match (faster than regex)
@@ -357,10 +244,7 @@ export async function queryLoki(
   };
 
   if (config.lokiApiKey) {
-    // Support both Bearer token and basic Grafana API key
-    headers['Authorization'] = config.lokiApiKey.startsWith('glsa_')
-      ? `Bearer ${config.lokiApiKey}`
-      : `Bearer ${config.lokiApiKey}`;
+    headers['Authorization'] = `Bearer ${config.lokiApiKey}`;
   }
 
   const response = await fetch(url.toString(), {
