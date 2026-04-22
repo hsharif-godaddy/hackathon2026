@@ -30,6 +30,7 @@ on:
           - authentication
           - apps-page
           - develop-chat
+          - develop-edit-interactions
           - develop-media
           - develop-publish
       post_promotion:
@@ -47,7 +48,7 @@ on:
         default: "test" # The workflow_call will mostly be called building for the test env
         type: string
       test_filter:
-        description: "Run specific test: all, authentication, apps-page, develop-chat, develop-media, develop-publish"
+        description: "Run specific test: all, authentication, apps-page, develop-chat, develop-edit-interactions, develop-media, develop-publish"
         required: false
         default: "all"
         type: string
@@ -235,7 +236,7 @@ jobs:
       - name: Run Playwright tests
         run: |
           FILTER="${{ inputs.test_filter || 'all' }}"
-          ALLOWED="all authentication apps-page develop-chat develop-media develop-publish"
+          ALLOWED="all authentication apps-page develop-chat develop-edit-interactions develop-media develop-publish"
           if [[ ! " $ALLOWED " =~ " $FILTER " ]]; then
             echo "Invalid test_filter: $FILTER"
             exit 1
