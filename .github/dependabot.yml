@@ -26,6 +26,19 @@ updates:
       - dependency-name: "*"
         update-types:
           - "version-update:semver-major"
+      # AI SDK v5->v6 migration changed majors across all packages.
+      # Old major lines still receive patches on npm, causing dependabot
+      # to propose downgrades. Pin floors to current majors.
+      - dependency-name: "ai"
+        versions: ["< 6.0.0"]
+      - dependency-name: "@ai-sdk/openai"
+        versions: ["< 3.0.0"]
+      - dependency-name: "@ai-sdk/anthropic"
+        versions: ["< 3.0.0"]
+      - dependency-name: "@ai-sdk/google"
+        versions: ["< 3.0.0"]
+      - dependency-name: "@ai-sdk/provider"
+        versions: ["< 3.0.0"]
     schedule:
       interval: "daily"
     cooldown:
@@ -65,14 +78,11 @@ updates:
           - "@typescript-eslint/*"
           - "prettier"
           - "typescript"
-      # Group AI SDK packages (minor/patch only - prevents downgrade to pre-v6 line)
+      # Group AI SDK packages together
       ai-sdk:
         patterns:
           - "ai"
           - "@ai-sdk/*"
-        update-types:
-          - "minor"
-          - "patch"
 
   # app-templates: standalone npm (excluded from pnpm workspace; see pnpm-workspace.yaml)
   # No registries — v8 template uses only public npm packages. Using JFrog here
