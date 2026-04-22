@@ -127,6 +127,7 @@ describe('commerce__manage_inventory', () => {
         storeId: 'store-1',
         locationLabel: 'My Store',
         locationName: 'My Store Location',
+        addressLine1: '123 Main St',
         countryCode: 'US',
       },
       context,

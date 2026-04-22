@@ -9,6 +9,7 @@
 
 import AskQuestionToolRenderer from './AskQuestionToolRenderer'
 import ColorSchemeToolRenderer from './ColorSchemeToolRenderer'
+import CommerceToolRenderer from './CommerceToolRenderer'
 import CssColorToolRenderer from './CssColorToolRenderer'
 import CssSuggestToolRenderer from './CssSuggestToolRenderer'
 import DefaultToolRenderer, { type DefaultToolRendererProps } from './DefaultToolRenderer'
@@ -86,6 +87,14 @@ export const toolRendererRegistry = {
   media__generate_logo: LogoGeneratorToolRenderer,
   media__generate_image: ImageGeneratorToolRenderer,
   media__generate_video: VideoGeneratorToolRenderer,
+  commerce__setup_store: CommerceToolRenderer,
+  commerce__fetch_catalog: CommerceToolRenderer,
+  commerce__install_storefront: CommerceToolRenderer,
+  commerce__manage_products: CommerceToolRenderer,
+  commerce__manage_inventory: CommerceToolRenderer,
+  commerce__manage_pricing: CommerceToolRenderer,
+  commerce__manage_media: CommerceToolRenderer,
+  commerce__get_orders: CommerceToolRenderer,
 } as const
 
 /**
@@ -122,6 +131,7 @@ export function getToolRenderer(toolName: string) {
 export {
   AskQuestionToolRenderer,
   ColorSchemeToolRenderer,
+  CommerceToolRenderer,
   CssColorToolRenderer,
   CssSuggestToolRenderer,
   DefaultToolRenderer,

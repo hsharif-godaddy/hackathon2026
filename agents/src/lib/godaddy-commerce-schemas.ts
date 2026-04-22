@@ -2,54 +2,59 @@ import { z } from 'zod';
 
 /**
  * Zod schemas for GoDaddy Commerce API response validation.
- * Uses .passthrough() on objects so extra fields don't cause failures.
+ *
+ * IMPORTANT: Do NOT use .passthrough() on any schema. Zod v4's
+ * .passthrough() causes "Maximum call stack size exceeded" when
+ * validating large or deeply nested API responses. We only validate
+ * the fields our code consumes; extra fields are silently stripped.
  */
 
 export const StoreSummarySchema = z.object({
   storeId: z.string().optional(),
   storeName: z.string().optional(),
   channelId: z.string().optional(),
-}).passthrough();
+});
 
 export const OnboardingResponseSchema = z.object({
   metadata: z.object({
     storeId: z.string(),
     channelId: z.string().optional(),
     businessId: z.string().optional(),
-  }).passthrough(),
-}).passthrough();
-
-const SkuGroupNodeSchema = z.object({
-  id: z.string(),
-  label: z.string().nullable().optional(),
-}).passthrough();
+  }),
+});
 
 export const SkuGroupsResponseSchema = z.object({
   data: z.object({
     skuGroups: z.object({
-      edges: z.array(z.object({
-        node: SkuGroupNodeSchema,
-        cursor: z.string().optional(),
-      }).passthrough()),
+      edges: z.array(z.record(z.string(), z.unknown())),
       pageInfo: z.object({
         hasNextPage: z.boolean(),
-      }).passthrough(),
+        hasPreviousPage: z.boolean().optional(),
+        startCursor: z.string().nullable().optional(),
+        endCursor: z.string().nullable().optional(),
+      }),
       totalCount: z.number().optional(),
-    }).passthrough(),
-  }).passthrough(),
-}).passthrough();
+    }),
+  }),
+});
 
 const OrderSchema = z.object({
   id: z.string(),
   status: z.string().optional(),
-}).passthrough();
+});
+
+const OrderLinkSchema = z.object({
+  rel: z.string(),
+  href: z.string(),
+});
 
 export const OrdersResponseSchema = z.object({
   orders: z.array(OrderSchema),
-}).passthrough();
+  links: z.array(OrderLinkSchema).optional(),
+});
 
 export const GraphQLErrorSchema = z.object({
   errors: z.array(z.object({
     message: z.string(),
-  }).passthrough()),
-}).passthrough();
+  })),
+});

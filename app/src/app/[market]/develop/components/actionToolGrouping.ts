@@ -33,6 +33,15 @@ const ACTION_GROUP_TOOL_NAMES = new Set([
   'viewLogs',
   'websiteScraper',
   'skill',
+  // Commerce skill tools (toCamelCase converts commerce__setup_store → commerce_SetupStore)
+  'commerce_SetupStore',
+  'commerce_FetchCatalog',
+  'commerce_InstallStorefront',
+  'commerce_ManageProducts',
+  'commerce_ManageInventory',
+  'commerce_ManagePricing',
+  'commerce_ManageMedia',
+  'commerce_GetOrders',
 ])
 
 export function isMediaSlotTool(name?: string): boolean {

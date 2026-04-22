@@ -79,6 +79,58 @@ export async function fetchWithRetry(
 }
 
 /**
+ * Safely parse a fetch Response as JSON.
+ *
+ * Handles the case where the GoDaddy API gateway returns HTTP 200 OK
+ * with a plain-text error body (e.g. "RBAC: access denied") instead of
+ * JSON. Without this guard, `response.json()` throws a SyntaxError that
+ * cascades through the error-handling chain and can surface as
+ * "Maximum call stack size exceeded" in downstream serialization.
+ *
+ * @throws Error with descriptive message when response is not OK or not JSON
+ */
+async function safeJsonParse(response: Response, context: string): Promise<unknown> {
+  const body = await response.text();
+  const truncated = body.length > 200 ? body.slice(0, 200) + '…' : body;
+
+  if (!response.ok) {
+    throw new Error(`Commerce API error (${context}): ${response.status} ${response.statusText} - ${truncated}`);
+  }
+
+  try {
+    return JSON.parse(body);
+  } catch {
+    throw new Error(
+      `Commerce API returned non-JSON response (${context}): ${response.status} - ${truncated}`
+    );
+  }
+}
+
+/**
+ * Like safeJsonParse but returns { ok, data, error } instead of throwing.
+ * Accepts an optional request type label so callers can distinguish
+ * GraphQL from REST while keeping the default error text generic.
+ */
+async function tryJsonParse(
+  response: Response,
+  context: string,
+  requestType: string = 'Commerce API',
+): Promise<{ ok: true; data: unknown } | { ok: false; error: string }> {
+  const body = await response.text();
+  const truncated = body.length > 200 ? body.slice(0, 200) + '…' : body;
+
+  if (!response.ok) {
+    return { ok: false, error: `${requestType} request failed (${context}): ${response.status} ${response.statusText} - ${truncated}` };
+  }
+
+  try {
+    return { ok: true, data: JSON.parse(body) };
+  } catch {
+    return { ok: false, error: `${requestType} returned non-JSON response (${context}): ${response.status} - ${truncated}` };
+  }
+}
+
+/**
  * Validates an API response against a Zod schema.
  * Throws a descriptive error on validation failure so malformed
  * API responses are caught early rather than causing silent type mismatches.
@@ -237,6 +289,13 @@ export class GoDaddyCommerce {
     };
   }
 
+  private requireBaseUrl(): string {
+    if (!this.baseUrl) {
+      throw new Error('GoDaddy base url not set');
+    }
+    return this.baseUrl;
+  }
+
   private getCommerceDomain(): string {
     if (!this.baseUrl) {
       return 'godaddy.com';
@@ -264,12 +323,10 @@ export class GoDaddyCommerce {
     args: { customerId: string },
     accessToken: string
   ): Promise<unknown> {
-    if (!this.baseUrl) {
-      throw new Error('Godaddy base url not set');
-    }
+    const baseUrl = this.requireBaseUrl();
 
     const result = await fetchWithRetry(
-      `${this.baseUrl}/v1/commerce/stores-summary?customerId=${encodeURIComponent(args.customerId)}`,
+      `${baseUrl}/v1/commerce/stores-summary?customerId=${encodeURIComponent(args.customerId)}`,
       {
         headers: {
           ...this.baseHeaders,
@@ -278,7 +335,8 @@ export class GoDaddyCommerce {
         },
       }
     );
-    const data = await result.json();
+
+    const data = await safeJsonParse(result, 'getStoreSummary');
 
     return parseResponse(StoreSummarySchema, data, 'getStoreSummary');
   }
@@ -287,11 +345,9 @@ export class GoDaddyCommerce {
     args: { appId: string; customerId: string; storeName?: string | undefined; email: string; firstName: string; lastName: string },
     accessToken: string
   ) {
-    if (!this.baseUrl) {
-      throw new Error('Godaddy base url not set');
-    }
+    const baseUrl = this.requireBaseUrl();
 
-    const hostname = new URL(this.baseUrl).hostname;
+    const hostname = new URL(baseUrl).hostname;
     const domain = hostname.replace(/^api\./, '');
     let queryParams = '';
 
@@ -340,17 +396,13 @@ export class GoDaddyCommerce {
       body: JSON.stringify(requestBody),
     });
 
-    const data = await result.json() as CommerceOnboardingApplicationResponse;
-
-    if (!result.ok) {
-      throw new Error(`Commerce onboarding API error (${result.status}): ${JSON.stringify(data)}`);
-    }
+    const data = await safeJsonParse(result, 'onboardApplication');
 
     return parseResponse(OnboardingResponseSchema, data, 'onboardApplication');
   }
 
   public async enableGoDaddyPaymentsApplication(args: { storeId: string }, accessToken: string) {
-    const graphqlUrl = `${this.baseUrl}/v1/apps/app-registry-subgraph`;
+    const graphqlUrl = `${this.requireBaseUrl()}/v1/apps/app-registry-subgraph`;
 
     const query = `
     mutation EnableGoDaddyPaymentsApplication($storeId: String!) {
@@ -377,10 +429,7 @@ export class GoDaddyCommerce {
       }),
     });
 
-    if (!response.ok) {
-      throw new Error(`GraphQL request failed: ${response.status} ${response.statusText}`);
-    }
-    const data = await response.json();
+    const data = await safeJsonParse(response, 'enableGoDaddyPaymentsApplication') as any;
 
     if (data.errors) {
       throw new Error(`GraphQL request failed: ${data.errors[0].message}`);
@@ -400,11 +449,9 @@ export class GoDaddyCommerce {
    * @throws Error if the API request fails
    */
   public async enableCatalogV2(args: { storeId: string }, accessToken: string): Promise<void> {
-    if (!this.baseUrl) {
-      throw new Error('Godaddy base url not set');
-    }
+    const baseUrl = this.requireBaseUrl();
 
-    const hostname = new URL(this.baseUrl).hostname;
+    const hostname = new URL(baseUrl).hostname;
     const domain = hostname.replace(/^api\./, '');
     const url = `https://catalog.commerce.${domain}/v1/commerce/catalog/internal/stores/${args.storeId}/eligibleVersion`;
 
@@ -427,13 +474,14 @@ export class GoDaddyCommerce {
 
     if (!response.ok) {
       const errorText = await response.text();
+      const truncated = errorText.length > 200 ? errorText.slice(0, 200) + '…' : errorText;
       logger.error('godaddy_commerce.enable_catalog_v2.failure', {
         storeId: args.storeId,
         status: response.status,
         statusText: response.statusText,
-        error: errorText,
+        error: truncated,
       });
-      throw new Error(`Failed to enable Catalog V2 for store ${args.storeId}: ${response.status} ${response.statusText} - ${errorText}`);
+      throw new Error(`Failed to enable Catalog V2 for store ${args.storeId}: ${response.status} ${response.statusText} - ${truncated}`);
     }
 
     logger.info('godaddy_commerce.enable_catalog_v2.success', {
@@ -442,7 +490,7 @@ export class GoDaddyCommerce {
   }
 
   public async getSkuGroups(args: { storeId: string; first?: number; after?: string | undefined; query?: string | undefined }, accessToken: string): Promise<GetSkuGroupsResponse> {
-    const graphqlUrl = `${this.baseUrl}/v2/commerce/stores/${args.storeId}/catalog-subgraph`;
+    const graphqlUrl = `${this.requireBaseUrl()}/v2/commerce/stores/${args.storeId}/catalog-subgraph`;
 
     const query = `
         query GetProducts($first: Int, $after: String, $label: LabelFilter) {
@@ -516,15 +564,11 @@ export class GoDaddyCommerce {
       }),
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      return {
-        success: false,
-        error: `GraphQL request failed: ${response.status} ${response.statusText} - ${errorText}`,
-      };
+    const parsed = await tryJsonParse(response, 'getSkuGroups');
+    if (!parsed.ok) {
+      return { success: false, error: parsed.error };
     }
-
-    const data = await response.json();
+    const data = parsed.data;
 
     // Check for GraphQL errors before parsing data
     const gqlErrors = GraphQLErrorSchema.safeParse(data);
@@ -547,7 +591,7 @@ export class GoDaddyCommerce {
     args: { storeId: string; product: MutationCreateSkuGroupInput },
     accessToken: string
   ): Promise<CreateSkuGroupResponse> {
-    const graphqlUrl = `${this.baseUrl}/v2/commerce/stores/${args.storeId}/catalog-subgraph`;
+    const graphqlUrl = `${this.requireBaseUrl()}/v2/commerce/stores/${args.storeId}/catalog-subgraph`;
 
     const mutation = `
       mutation CreateSkuGroup($input: MutationCreateSkuGroupInput!) {
@@ -616,21 +660,15 @@ export class GoDaddyCommerce {
       body: JSON.stringify(requestBody),
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
+    const parsed = await tryJsonParse(response, 'createSkuGroup');
+    if (!parsed.ok) {
       logger.error('commerce.create-sku-group.request-failed', {
         storeId: args.storeId,
-        status: response.status,
-        statusText: response.statusText,
-        error: errorText,
+        error: parsed.error,
       });
-      return {
-        success: false,
-        error: `GraphQL request failed: ${response.status} ${response.statusText} - ${errorText}`,
-      };
+      return { success: false, error: parsed.error };
     }
-
-    const data = await response.json();
+    const data = parsed.data as any;
 
     // GraphQL returns { data, errors } structure
     if (data.errors) {
@@ -654,7 +692,7 @@ export class GoDaddyCommerce {
     args: { storeId: string; skuGroupId: string },
     accessToken: string
   ): Promise<{ success: boolean; data?: { skuGroup: SKUGroupResponse }; error?: string }> {
-    const graphqlUrl = `${this.baseUrl}/v2/commerce/stores/${args.storeId}/catalog-subgraph`;
+    const graphqlUrl = `${this.requireBaseUrl()}/v2/commerce/stores/${args.storeId}/catalog-subgraph`;
 
     const query = `
       query GetSkuGroup($id: String!) {
@@ -737,22 +775,16 @@ export class GoDaddyCommerce {
       }),
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
+    const parsed = await tryJsonParse(response, 'getSkuGroup');
+    if (!parsed.ok) {
       logger.error('commerce.get-sku-group.request-failed', {
         storeId: args.storeId,
         skuGroupId: args.skuGroupId,
-        status: response.status,
-        statusText: response.statusText,
-        error: errorText,
+        error: parsed.error,
       });
-      return {
-        success: false,
-        error: `GraphQL request failed: ${response.status} ${response.statusText} - ${errorText}`,
-      };
+      return { success: false, error: parsed.error };
     }
-
-    const data = await response.json();
+    const data = parsed.data as any;
 
     if (data.errors) {
       logger.error('commerce.get-sku-group.graphql-errors', {
@@ -776,7 +808,7 @@ export class GoDaddyCommerce {
     args: { storeId: string; skuGroupId: string; product: MutationUpdateSkuGroupInput },
     accessToken: string
   ): Promise<UpdateSkuGroupResponse> {
-    const graphqlUrl = `${this.baseUrl}/v2/commerce/stores/${args.storeId}/catalog-subgraph`;
+    const graphqlUrl = `${this.requireBaseUrl()}/v2/commerce/stores/${args.storeId}/catalog-subgraph`;
 
     const mutation = `
       mutation UpdateSkuGroup($id: String!, $input: MutationUpdateSkuGroupInput!) {
@@ -844,22 +876,16 @@ export class GoDaddyCommerce {
       }),
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
+    const parsed = await tryJsonParse(response, 'updateSkuGroup');
+    if (!parsed.ok) {
       logger.error('commerce.update-sku-group.request-failed', {
         storeId: args.storeId,
         skuGroupId: args.skuGroupId,
-        status: response.status,
-        statusText: response.statusText,
-        error: errorText,
+        error: parsed.error,
       });
-      return {
-        success: false,
-        error: `GraphQL request failed: ${response.status} ${response.statusText} - ${errorText}`,
-      };
+      return { success: false, error: parsed.error };
     }
-
-    const data = await response.json();
+    const data = parsed.data as any;
 
     if (data.errors) {
       logger.error('commerce.update-sku-group.graphql-errors', {
@@ -883,7 +909,7 @@ export class GoDaddyCommerce {
     args: { storeId: string; skuId: string; product: MutationUpdateSkuInput },
     accessToken: string
   ): Promise<UpdateSkuResponse> {
-    const graphqlUrl = `${this.baseUrl}/v2/commerce/stores/${args.storeId}/catalog-subgraph`;
+    const graphqlUrl = `${this.requireBaseUrl()}/v2/commerce/stores/${args.storeId}/catalog-subgraph`;
 
     const mutation = `
       mutation UpdateSku($id: String!, $input: MutationUpdateSkuInput!) {
@@ -928,22 +954,16 @@ export class GoDaddyCommerce {
       }),
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
+    const parsed = await tryJsonParse(response, 'updateSku');
+    if (!parsed.ok) {
       logger.error('commerce.update-sku.request-failed', {
         storeId: args.storeId,
         skuId: args.skuId,
-        status: response.status,
-        statusText: response.statusText,
-        error: errorText,
+        error: parsed.error,
       });
-      return {
-        success: false,
-        error: `GraphQL request failed: ${response.status} ${response.statusText} - ${errorText}`,
-      };
+      return { success: false, error: parsed.error };
     }
-
-    const data = await response.json();
+    const data = parsed.data as any;
 
     if (data.errors) {
       logger.error('commerce.update-sku.graphql-errors', {
@@ -967,7 +987,7 @@ export class GoDaddyCommerce {
     args: { storeId: string; skuId: string; input: CreateSKUPriceInput },
     accessToken: string
   ): Promise<CreateSkuPriceResponse> {
-    const graphqlUrl = `${this.baseUrl}/v2/commerce/stores/${args.storeId}/catalog-subgraph`;
+    const graphqlUrl = `${this.requireBaseUrl()}/v2/commerce/stores/${args.storeId}/catalog-subgraph`;
 
     const mutation = `
       mutation CreateSkuPrice($input: MutationCreateSkuPriceInput!) {
@@ -1003,22 +1023,16 @@ export class GoDaddyCommerce {
       }),
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
+    const parsed = await tryJsonParse(response, 'createSkuPrice');
+    if (!parsed.ok) {
       logger.error('commerce.create-sku-price.request-failed', {
         storeId: args.storeId,
         skuId: args.skuId,
-        status: response.status,
-        statusText: response.statusText,
-        error: errorText,
+        error: parsed.error,
       });
-      return {
-        success: false,
-        error: `GraphQL request failed: ${response.status} ${response.statusText} - ${errorText}`,
-      };
+      return { success: false, error: parsed.error };
     }
-
-    const data = await response.json();
+    const data = parsed.data as any;
 
     if (data.errors) {
       logger.error('commerce.create-sku-price.graphql-errors', {
@@ -1042,7 +1056,7 @@ export class GoDaddyCommerce {
     args: { storeId: string; priceId: string; input: MutationUpdateSkuPriceInput },
     accessToken: string
   ): Promise<UpdateSkuPriceResponse> {
-    const graphqlUrl = `${this.baseUrl}/v2/commerce/stores/${args.storeId}/catalog-subgraph`;
+    const graphqlUrl = `${this.requireBaseUrl()}/v2/commerce/stores/${args.storeId}/catalog-subgraph`;
 
     const mutation = `
       mutation UpdateSkuPrice($id: String!, $input: MutationUpdateSkuPriceInput!) {
@@ -1076,22 +1090,16 @@ export class GoDaddyCommerce {
       }),
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
+    const parsed = await tryJsonParse(response, 'updateSkuPrice');
+    if (!parsed.ok) {
       logger.error('commerce.update-sku-price.request-failed', {
         storeId: args.storeId,
         priceId: args.priceId,
-        status: response.status,
-        statusText: response.statusText,
-        error: errorText,
+        error: parsed.error,
       });
-      return {
-        success: false,
-        error: `GraphQL request failed: ${response.status} ${response.statusText} - ${errorText}`,
-      };
+      return { success: false, error: parsed.error };
     }
-
-    const data = await response.json();
+    const data = parsed.data as any;
 
     if (data.errors) {
       logger.error('commerce.update-sku-price.graphql-errors', {
@@ -1115,7 +1123,7 @@ export class GoDaddyCommerce {
     args: { storeId: string; skuId: string; attributeValueIds: string[] },
     accessToken: string
   ): Promise<AddAttributeValuesToSkuResponse> {
-    const graphqlUrl = `${this.baseUrl}/v2/commerce/stores/${args.storeId}/catalog-subgraph`;
+    const graphqlUrl = `${this.requireBaseUrl()}/v2/commerce/stores/${args.storeId}/catalog-subgraph`;
 
     const mutation = `
       mutation AddAttributeValuesToSku($id: String!, $input: MutationAddAttributeValuesToSkuInput!) {
@@ -1129,7 +1137,7 @@ export class GoDaddyCommerce {
       }
     `;
 
-    const response = await fetch(graphqlUrl, {
+    const response = await fetchWithRetry(graphqlUrl, {
       method: 'POST',
       headers: {
         ...this.baseHeaders,
@@ -1147,23 +1155,17 @@ export class GoDaddyCommerce {
       }),
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
+    const parsed = await tryJsonParse(response, 'addAttributeValuesToSku');
+    if (!parsed.ok) {
       logger.error('commerce.add-attribute-values-to-sku.request-failed', {
         storeId: args.storeId,
         skuId: args.skuId,
         attributeValueIds: args.attributeValueIds,
-        status: response.status,
-        statusText: response.statusText,
-        error: errorText,
+        error: parsed.error,
       });
-      return {
-        success: false,
-        error: `GraphQL request failed: ${response.status} ${response.statusText} - ${errorText}`,
-      };
+      return { success: false, error: parsed.error };
     }
-
-    const data = await response.json();
+    const data = parsed.data as any;
 
     if (data.errors) {
       logger.error('commerce.add-attribute-values-to-sku.graphql-errors', {
@@ -1188,7 +1190,7 @@ export class GoDaddyCommerce {
     args: { storeId: string; skuGroupId: string },
     accessToken: string
   ): Promise<DeleteSkuGroupResponse> {
-    const graphqlUrl = `${this.baseUrl}/v2/commerce/stores/${args.storeId}/catalog-subgraph`;
+    const graphqlUrl = `${this.requireBaseUrl()}/v2/commerce/stores/${args.storeId}/catalog-subgraph`;
 
     const mutation = `
       mutation DeleteSkuGroup($id: String!) {
@@ -1211,22 +1213,16 @@ export class GoDaddyCommerce {
       }),
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
+    const parsed = await tryJsonParse(response, 'deleteSkuGroup');
+    if (!parsed.ok) {
       logger.error('commerce.delete-sku-group.request-failed', {
         storeId: args.storeId,
         skuGroupId: args.skuGroupId,
-        status: response.status,
-        statusText: response.statusText,
-        error: errorText,
+        error: parsed.error,
       });
-      return {
-        success: false,
-        error: `GraphQL request failed: ${response.status} ${response.statusText} - ${errorText}`,
-      };
+      return { success: false, error: parsed.error };
     }
-
-    const data = await response.json();
+    const data = parsed.data as any;
 
     if (data.errors) {
       logger.error('commerce.delete-sku-group.graphql-errors', {
@@ -1250,7 +1246,7 @@ export class GoDaddyCommerce {
     args: { storeId: string; skuId?: string; locationId?: string; first?: number; after?: string },
     accessToken: string
   ): Promise<GetInventoryCountsResponse> {
-    const graphqlUrl = `${this.baseUrl}/v2/commerce/stores/${args.storeId}/catalog-subgraph`;
+    const graphqlUrl = `${this.requireBaseUrl()}/v2/commerce/stores/${args.storeId}/catalog-subgraph`;
 
     const query = `
       query GetInventoryCounts($skuId: SKUIdFilter, $locationId: LocationIdFilter, $first: Int, $after: String) {
@@ -1302,23 +1298,17 @@ export class GoDaddyCommerce {
       }),
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
+    const parsed = await tryJsonParse(response, 'getInventoryCounts');
+    if (!parsed.ok) {
       logger.error('commerce.get-inventory-counts.request-failed', {
         storeId: args.storeId,
         skuId: args.skuId,
         locationId: args.locationId,
-        status: response.status,
-        statusText: response.statusText,
-        error: errorText,
+        error: parsed.error,
       });
-      return {
-        success: false,
-        error: `GraphQL request failed: ${response.status} ${response.statusText} - ${errorText}`,
-      };
+      return { success: false, error: parsed.error };
     }
-
-    const data = await response.json();
+    const data = parsed.data as any;
 
     if (data.errors) {
       logger.error('commerce.get-inventory-counts.graphql-errors', {
@@ -1342,7 +1332,7 @@ export class GoDaddyCommerce {
     args: { storeId: string; skuId: string; locationId: string; delta: number },
     accessToken: string
   ): Promise<AdjustInventoryResponse> {
-    const graphqlUrl = `${this.baseUrl}/v2/commerce/stores/${args.storeId}/catalog-subgraph`;
+    const graphqlUrl = `${this.requireBaseUrl()}/v2/commerce/stores/${args.storeId}/catalog-subgraph`;
 
     const mutation = `
       mutation AdjustInventory($input: MutationAdjustInventoryInput!) {
@@ -1385,24 +1375,18 @@ export class GoDaddyCommerce {
       }),
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
+    const parsed = await tryJsonParse(response, 'adjustInventory');
+    if (!parsed.ok) {
       logger.error('commerce.adjust-inventory.request-failed', {
         storeId: args.storeId,
         skuId: args.skuId,
         locationId: args.locationId,
         delta: args.delta,
-        status: response.status,
-        statusText: response.statusText,
-        error: errorText,
+        error: parsed.error,
       });
-      return {
-        success: false,
-        error: `GraphQL request failed: ${response.status} ${response.statusText} - ${errorText}`,
-      };
+      return { success: false, error: parsed.error };
     }
-
-    const data = await response.json();
+    const data = parsed.data as any;
 
     if (data.errors) {
       logger.error('commerce.adjust-inventory.graphql-errors', {
@@ -1426,7 +1410,7 @@ export class GoDaddyCommerce {
     args: { storeId: string; skuId: string; locationId: string; quantity: number },
     accessToken: string
   ): Promise<StockInventoryResponse> {
-    const graphqlUrl = `${this.baseUrl}/v2/commerce/stores/${args.storeId}/catalog-subgraph`;
+    const graphqlUrl = `${this.requireBaseUrl()}/v2/commerce/stores/${args.storeId}/catalog-subgraph`;
 
     const mutation = `
       mutation StockInventory($input: MutationStockInventoryInput!) {
@@ -1469,24 +1453,18 @@ export class GoDaddyCommerce {
       }),
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
+    const parsed = await tryJsonParse(response, 'stockInventory');
+    if (!parsed.ok) {
       logger.error('commerce.stock-inventory.request-failed', {
         storeId: args.storeId,
         skuId: args.skuId,
         locationId: args.locationId,
         quantity: args.quantity,
-        status: response.status,
-        statusText: response.statusText,
-        error: errorText,
+        error: parsed.error,
       });
-      return {
-        success: false,
-        error: `GraphQL request failed: ${response.status} ${response.statusText} - ${errorText}`,
-      };
+      return { success: false, error: parsed.error };
     }
-
-    const data = await response.json();
+    const data = parsed.data as any;
 
     if (data.errors) {
       logger.error('commerce.stock-inventory.graphql-errors', {
@@ -1510,7 +1488,7 @@ export class GoDaddyCommerce {
     args: { storeId: string; first?: number; after?: string; status?: 'ACTIVE' | 'INACTIVE' | 'ARCHIVED' },
     accessToken: string
   ): Promise<GetLocationsResponse> {
-    const graphqlUrl = `${this.baseUrl}/v2/commerce/stores/${args.storeId}/catalog-subgraph`;
+    const graphqlUrl = `${this.requireBaseUrl()}/v2/commerce/stores/${args.storeId}/catalog-subgraph`;
 
     const query = `
       query GetLocations($first: Int, $after: String, $status: LocationStatusFilter) {
@@ -1559,21 +1537,15 @@ export class GoDaddyCommerce {
       }),
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
+    const parsed = await tryJsonParse(response, 'getLocations');
+    if (!parsed.ok) {
       logger.error('commerce.get-locations.request-failed', {
         storeId: args.storeId,
-        status: response.status,
-        statusText: response.statusText,
-        error: errorText,
+        error: parsed.error,
       });
-      return {
-        success: false,
-        error: `GraphQL request failed: ${response.status} ${response.statusText} - ${errorText}`,
-      };
+      return { success: false, error: parsed.error };
     }
-
-    const data = await response.json();
+    const data = parsed.data as any;
 
     if (data.errors) {
       logger.error('commerce.get-locations.graphql-errors', {
@@ -1596,7 +1568,7 @@ export class GoDaddyCommerce {
     args: { storeId: string; location: MutationCreateLocationInput },
     accessToken: string
   ): Promise<CreateLocationResponse> {
-    const graphqlUrl = `${this.baseUrl}/v2/commerce/stores/${args.storeId}/catalog-subgraph`;
+    const graphqlUrl = `${this.requireBaseUrl()}/v2/commerce/stores/${args.storeId}/catalog-subgraph`;
 
     const mutation = `
       mutation CreateLocation($input: MutationCreateLocationInput!) {
@@ -1634,22 +1606,16 @@ export class GoDaddyCommerce {
       }),
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
+    const parsed = await tryJsonParse(response, 'createLocation');
+    if (!parsed.ok) {
       logger.error('commerce.create-location.request-failed', {
         storeId: args.storeId,
         label: args.location.label,
-        status: response.status,
-        statusText: response.statusText,
-        error: errorText,
+        error: parsed.error,
       });
-      return {
-        success: false,
-        error: `GraphQL request failed: ${response.status} ${response.statusText} - ${errorText}`,
-      };
+      return { success: false, error: parsed.error };
     }
-
-    const data = await response.json();
+    const data = parsed.data as any;
 
     if (data.errors) {
       logger.error('commerce.create-location.graphql-errors', {
@@ -1673,7 +1639,7 @@ export class GoDaddyCommerce {
     args: { storeId: string; skuGroupId: string; mediaObjects: CreateMediaObjectInput[] },
     accessToken: string
   ): Promise<AddMediaObjectsToSkuGroupResponse> {
-    const graphqlUrl = `${this.baseUrl}/v2/commerce/stores/${args.storeId}/catalog-subgraph`;
+    const graphqlUrl = `${this.requireBaseUrl()}/v2/commerce/stores/${args.storeId}/catalog-subgraph`;
 
     const mutation = `
       mutation AddMediaObjectsToSkuGroup($id: String!, $input: MutationAddMediaObjectsToSkuGroupInput!) {
@@ -1716,22 +1682,16 @@ export class GoDaddyCommerce {
       }),
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
+    const parsed = await tryJsonParse(response, 'addMediaObjectsToSkuGroup');
+    if (!parsed.ok) {
       logger.error('commerce.add-media-objects-to-sku-group.request-failed', {
         storeId: args.storeId,
         skuGroupId: args.skuGroupId,
-        status: response.status,
-        statusText: response.statusText,
-        error: errorText,
+        error: parsed.error,
       });
-      return {
-        success: false,
-        error: `GraphQL request failed: ${response.status} ${response.statusText} - ${errorText}`,
-      };
+      return { success: false, error: parsed.error };
     }
-
-    const data = await response.json();
+    const data = parsed.data as any;
 
     if (data.errors) {
       logger.error('commerce.add-media-objects-to-sku-group.graphql-errors', {
@@ -1755,7 +1715,7 @@ export class GoDaddyCommerce {
     args: { storeId: string; skuGroupId: string; mediaObjectIds: string[] },
     accessToken: string
   ): Promise<RemoveMediaObjectsFromSkuGroupResponse> {
-    const graphqlUrl = `${this.baseUrl}/v2/commerce/stores/${args.storeId}/catalog-subgraph`;
+    const graphqlUrl = `${this.requireBaseUrl()}/v2/commerce/stores/${args.storeId}/catalog-subgraph`;
 
     const mutation = `
       mutation RemoveMediaObjectsFromSkuGroup($id: String!, $input: MutationRemoveMediaObjectsFromSkuGroupInput!) {
@@ -1798,22 +1758,16 @@ export class GoDaddyCommerce {
       }),
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
+    const parsed = await tryJsonParse(response, 'removeMediaObjectsFromSkuGroup');
+    if (!parsed.ok) {
       logger.error('commerce.remove-media-objects-from-sku-group.request-failed', {
         storeId: args.storeId,
         skuGroupId: args.skuGroupId,
-        status: response.status,
-        statusText: response.statusText,
-        error: errorText,
+        error: parsed.error,
       });
-      return {
-        success: false,
-        error: `GraphQL request failed: ${response.status} ${response.statusText} - ${errorText}`,
-      };
+      return { success: false, error: parsed.error };
     }
-
-    const data = await response.json();
+    const data = parsed.data as any;
 
     if (data.errors) {
       logger.error('commerce.remove-media-objects-from-sku-group.graphql-errors', {
@@ -1860,7 +1814,7 @@ export class GoDaddyCommerce {
     if (args.pageSize) queryParams.append('pageSize', args.pageSize.toString());
     if (args.pageToken) queryParams.append('pageToken', args.pageToken);
 
-    const url = `${this.baseUrl}/v1/commerce/stores/${args.storeId}/orders${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+    const url = `${this.requireBaseUrl()}/v1/commerce/stores/${args.storeId}/orders${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
 
     logger.info('commerce.get-orders.request', {
       storeId: args.storeId,
@@ -1875,21 +1829,15 @@ export class GoDaddyCommerce {
       },
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
+    const parsed = await tryJsonParse(response, 'getOrders');
+    if (!parsed.ok) {
       logger.error('commerce.get-orders.request-failed', {
         storeId: args.storeId,
-        status: response.status,
-        statusText: response.statusText,
-        error: errorText,
+        error: parsed.error,
       });
-      return {
-        success: false,
-        error: `REST API request failed: ${response.status} ${response.statusText} - ${errorText}`,
-      };
+      return { success: false, error: parsed.error };
     }
-
-    const data = await response.json();
+    const data = parsed.data as any;
 
     logger.info('commerce.get-orders.success', {
       storeId: args.storeId,
@@ -1909,7 +1857,7 @@ export class GoDaddyCommerce {
     },
     accessToken: string
   ): Promise<{ success: true; data: GetOrderResponse } | { success: false; error: string }> {
-    const url = `${this.baseUrl}/v1/commerce/stores/${args.storeId}/orders/${args.orderId}`;
+    const url = `${this.requireBaseUrl()}/v1/commerce/stores/${args.storeId}/orders/${args.orderId}`;
 
     logger.info('commerce.get-order.request', {
       storeId: args.storeId,
@@ -1924,22 +1872,16 @@ export class GoDaddyCommerce {
       },
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
+    const parsed = await tryJsonParse(response, 'getOrder');
+    if (!parsed.ok) {
       logger.error('commerce.get-order.request-failed', {
         storeId: args.storeId,
         orderId: args.orderId,
-        status: response.status,
-        statusText: response.statusText,
-        error: errorText,
+        error: parsed.error,
       });
-      return {
-        success: false,
-        error: `REST API request failed: ${response.status} ${response.statusText} - ${errorText}`,
-      };
+      return { success: false, error: parsed.error };
     }
-
-    const data = await response.json();
+    const data = parsed.data as any;
 
     logger.info('commerce.get-order.success', {
       storeId: args.storeId,

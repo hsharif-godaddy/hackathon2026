@@ -53,32 +53,38 @@ describe('withCommerceAuth', () => {
     expect(result.needsAuth).toBe(true);
   });
 
-  it('should throw when token has no sub claim', async () => {
+  it('should return error when token has no sub claim', async () => {
     mockGetAccessToken.mockResolvedValue({
       accessToken: 'test-token',
       sub: undefined,
     });
 
     const fn = vi.fn();
-    await expect(withCommerceAuth('app-123', fn)).rejects.toThrow('Access token missing sub claim');
+    const result = await withCommerceAuth('app-123', fn);
+    expect(result.success).toBe(false);
+    expect((result as any).error).toContain('sub claim');
     expect(fn).not.toHaveBeenCalled();
   });
 
-  it('should throw when sub claim has wrong format', async () => {
+  it('should return error when sub claim has wrong format', async () => {
     mockGetAccessToken.mockResolvedValue({
       accessToken: 'test-token',
       sub: 'not-a-customer-id',
     });
 
     const fn = vi.fn();
-    await expect(withCommerceAuth('app-123', fn)).rejects.toThrow('Access token missing expected sub format');
+    const result = await withCommerceAuth('app-123', fn);
+    expect(result.success).toBe(false);
+    expect((result as any).error).toContain('expected sub format');
     expect(fn).not.toHaveBeenCalled();
   });
 
-  it('should propagate non-auth errors', async () => {
+  it('should return error for non-auth errors instead of throwing', async () => {
     mockGetAccessToken.mockRejectedValue(new Error('Network failure'));
 
     const fn = vi.fn();
-    await expect(withCommerceAuth('app-123', fn)).rejects.toThrow('Network failure');
+    const result = await withCommerceAuth('app-123', fn);
+    expect(result.success).toBe(false);
+    expect((result as any).error).toBe('Network failure');
   });
 });

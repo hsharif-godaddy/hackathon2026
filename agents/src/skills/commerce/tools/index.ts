@@ -269,8 +269,16 @@ export const setupStoreTool: SkillToolDefinition = {
           storeId: summary.storeId,
         });
 
-        // Enable GoDaddy Payments for existing stores (idempotent)
-        await godaddy.enableGoDaddyPaymentsApplication({ storeId: summary.storeId }, accessToken);
+        // Enable GoDaddy Payments for existing stores (idempotent, non-fatal)
+        try {
+          await godaddy.enableGoDaddyPaymentsApplication({ storeId: summary.storeId }, accessToken);
+        } catch (err) {
+          logger.warn('commerce.skill.setup_store.existing_payments.failed', {
+            appId,
+            storeId: summary.storeId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
 
         // Ensure the store has a location so the agent can stock inventory
         let locationId: string | undefined;
@@ -317,9 +325,18 @@ export const setupStoreTool: SkillToolDefinition = {
         };
       }
 
-      // Validate required fields for store creation
+      // No existing store — tell the AI what info is needed to create one
       if (!input.firstName || !input.lastName || !input.email) {
-        throw new Error('firstName, lastName, and email are required to create a new store');
+        const missing = [
+          ...(!input.firstName ? ['firstName'] : []),
+          ...(!input.lastName ? ['lastName'] : []),
+          ...(!input.email ? ['email'] : []),
+        ];
+        return {
+          needsInfo: true,
+          message: 'firstName, lastName, and email are required to create a new store',
+          missingFields: missing,
+        };
       }
 
       // Create new store
@@ -711,7 +728,7 @@ export const manageProductsTool: SkillToolDefinition = {
       )
       .optional()
       .describe('Optional product attributes and values for createProduct'),
-    skus: z.array(z.object({ label: z.string().optional() }).passthrough()).optional().describe('Array of SKU objects for createProduct (manual mode)'),
+    skus: z.array(z.record(z.string(), z.unknown())).optional().describe('Array of SKU objects for createProduct (manual mode)'),
   }),
   execute: async (input: any, context?: any) => {
     const appId = context?.metadata?.appId as string | undefined;
@@ -1026,18 +1043,22 @@ export const manageInventoryTool: SkillToolDefinition = {
           if (!input.locationLabel) {
             throw new Error('locationLabel is required for createLocation');
           }
+          if (!input.addressLine1 || !input.countryCode) {
+            throw new Error('addressLine1 and countryCode are required for createLocation');
+          }
           const location: any = {
             label: input.locationLabel,
             status: 'ACTIVE',
-            address: {},
+            address: {
+              addressLine1: input.addressLine1,
+              countryCode: input.countryCode,
+            },
           };
           if (input.locationName) location.name = slugify(input.locationName);
-          if (input.addressLine1) location.address.addressLine1 = input.addressLine1;
           if (input.addressLine2) location.address.addressLine2 = input.addressLine2;
           if (input.adminArea1) location.address.adminArea1 = input.adminArea1;
           if (input.adminArea2) location.address.adminArea2 = input.adminArea2;
           if (input.postalCode) location.address.postalCode = input.postalCode;
-          if (input.countryCode) location.address.countryCode = input.countryCode;
           const response = await godaddy.createLocation(
             { storeId: input.storeId, location },
             accessToken,

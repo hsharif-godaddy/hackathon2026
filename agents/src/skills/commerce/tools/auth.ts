@@ -19,12 +19,21 @@ function extractCustomerId(sub: string): string {
 }
 
 export type CommerceAuthResult<T> =
-  | { success: true; data: T; needsAuth?: never }
-  | { needsAuth: true; redirectUrl: string; state: string; scopes: string[]; success?: never; data?: never };
+  | { success: true; data: T; needsAuth?: never; error?: never }
+  | { needsAuth: true; redirectUrl: string; state: string; scopes: string[]; success?: never; data?: never; error?: never }
+  | { success: false; error: string; needsAuth?: never; data?: never };
 
 /**
  * Shared auth wrapper for all commerce skill tools.
  * Handles token retrieval and AuthRequiredError -> needAuth conversion.
+ *
+ * IMPORTANT: This wrapper catches ALL errors and returns them as
+ * { success: false, error } instead of re-throwing.  Commerce tools
+ * are executed inside the agent-factory's tool wrapper, whose catch
+ * block serialises `context.metadata` via the logger.  That metadata
+ * contains non-serializable objects (state machines, sockets, etc.)
+ * which cause "Maximum call stack size exceeded" during JSON.stringify.
+ * By never throwing, we bypass that code path entirely.
  */
 export async function withCommerceAuth<T>(
   appId: string,
@@ -33,7 +42,7 @@ export async function withCommerceAuth<T>(
   try {
     const { accessToken, sub } = await AuthService.getAccessToken({ appId });
     if (!sub) {
-      throw new Error('Access token missing sub claim');
+      return { success: false, error: 'Access token missing sub claim — please re-authenticate.' };
     }
     const customerId = extractCustomerId(sub);
     const data = await fn(accessToken, customerId);
@@ -43,6 +52,8 @@ export async function withCommerceAuth<T>(
       logger.info('commerce.skill.auth.required', { appId, scopes: err.scopes });
       return { needsAuth: true, redirectUrl: err.redirectUrl, state: err.state, scopes: err.scopes };
     }
-    throw err;
+    const message = err instanceof Error ? err.message : String(err);
+    logger.error('commerce.skill.auth.error', { appId, error: message });
+    return { success: false, error: message };
   }
 }
