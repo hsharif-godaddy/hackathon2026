@@ -1,5 +1,6 @@
-import type { EventSubscriber, StreamingEvent } from '../interfaces.js'
+import type { StreamingEvent } from '../interfaces.js'
 import { EventCoalescer, type CoalescerConfig, type CoalescedMessage } from './event-coalescer.js'
+import { BaseEventSubscriber } from './base-subscriber.js'
 
 /**
  * WebSocket message format for Socket.IO emission
@@ -21,18 +22,7 @@ export type IsDisconnectedFn = (socketId: string) => boolean
  * Coalesces consecutive chunk/tool_input_delta events into single emits.
  * Skips events during disconnection (buffering happens in event channel)
  */
-export class WebSocketSubscriber implements EventSubscriber {
-  id: string
-
-  /**
-   * Blocking subscriber — onEvent() resolves immediately after buffering
-   * (synchronous push). The event channel awaits the buffer-add, not the
-   * socket emit. Actual emission happens asynchronously via the coalescer's
-   * flush timer. Emit errors are caught in emitMessages() to prevent
-   * uncaught exceptions in the timer callback.
-   */
-  blocking = true
-
+export class WebSocketSubscriber extends BaseEventSubscriber {
   private socket: any // Socket.IO socket
   private isDisconnected: IsDisconnectedFn
   private coalescer: EventCoalescer
@@ -42,48 +32,44 @@ export class WebSocketSubscriber implements EventSubscriber {
     isDisconnected: IsDisconnectedFn,
     coalescerConfig?: CoalescerConfig
   ) {
+    super(`websocket-${socket.id}`)
     this.socket = socket
     this.isDisconnected = isDisconnected
-    this.id = `websocket-${socket.id}`
-
     this.coalescer = new EventCoalescer(
       (messages) => this.emitMessages(messages),
       coalescerConfig
     )
   }
 
-  async onEvent(event: StreamingEvent): Promise<void> {
-    if (this.isDisconnected(this.socket.id)) {
-      return
-    }
+  isConnected(): boolean {
+    return !this.isDisconnected(this.socket.id) && this.socket.connected
+  }
 
-    if (this.socket.connected) {
-      const message = this.toWebSocketMessage(event)
-      this.coalescer.push(message)
-    }
+  protected async deliver(event: StreamingEvent): Promise<void> {
+    const message = this.toWebSocketMessage(event)
+    this.coalescer.push(message)
+  }
+
+  protected deliverError(error: Error): void {
+    if (!this.socket.connected) return
+    // Flush pending events before emitting error (non-terminal — coalescer stays usable)
+    this.coalescer.flush()
+    this.socket.emit('message', {
+      type: 'error',
+      content: error.message,
+      data: {
+        error: error.message,
+        timestamp: new Date().toISOString()
+      }
+    })
   }
 
   /**
    * Flush pending buffer and release timer resources.
    * MUST be called on socket disconnect to avoid leaking buffered events.
    */
-  dispose(): void {
+  protected onDispose(): void {
     this.coalescer.dispose()
-  }
-
-  onError(error: Error): void {
-    if (this.socket.connected) {
-      // Flush pending events before emitting error (non-terminal — coalescer stays usable)
-      this.coalescer.flush()
-      this.socket.emit('message', {
-        type: 'error',
-        content: error.message,
-        data: {
-          error: error.message,
-          timestamp: new Date().toISOString()
-        }
-      })
-    }
   }
 
   filter(_event: StreamingEvent): boolean {

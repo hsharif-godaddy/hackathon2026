@@ -185,6 +185,9 @@ export interface PersistenceStreamingEvent {
  * Context for conversation persistence operations
  */
 export interface ConversationContext {
+  /** Transport-neutral connection identifier. Optional during migration from socketId. */
+  connectionId?: string
+  /** @deprecated Use connectionId. Retained for backward compat with ai-lib/ai-grants consumers. */
   socketId: string
   agentName: string
   appId?: string
@@ -325,6 +328,9 @@ export type StreamingEventType =
   | 'catchup_complete'
   | 'server_config'
   | 'client_action'
+  | 'budget_update'
+  | 'video'
+  | 'request_grant_refresh'
 
 /**
  * Normalized streaming event structure for event channel

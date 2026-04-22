@@ -44,9 +44,13 @@ export {
 } from './noop-persistence.js'
 
 // Event Subscribers
+export { BaseEventSubscriber } from './subscribers/base-subscriber.js'
 export {
   WebSocketSubscriber
 } from './subscribers/websocket-subscriber.js'
+export {
+  SSESubscriber
+} from './subscribers/sse-subscriber.js'
 export {
   PersistenceSubscriber
 } from './subscribers/persistence-subscriber.js'
@@ -81,8 +85,19 @@ export type {
   StateManagerLogger
 } from './connection-state-manager.js'
 
+// SSE Formatting
+export { formatSSEEvent } from './sse-format.js'
+
 // Event Coalescing (recovery replay)
 export { coalesceEvents } from './coalesce-events.js'
+
+// Stream Part Processing
+export { StreamPartProcessor } from './stream-part-processor.js'
+export type { PartProcessorCallbacks, PartProcessorState, ToolCallRecord } from './stream-part-processor.js'
+
+// Client Action Registry
+export { ClientActionRegistry } from './client-action-registry.js'
+export type { ClientActionHandler, ClientActionRequest, ClientActionResult } from './client-action-registry.js'
 
 // Connection Recovery Management
 export {
