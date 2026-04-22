@@ -808,38 +808,43 @@ func (p *Pipeline) FetchRollbackSnapshot(ctx context.Context) error {
 			return fmt.Errorf("listing image tag runs: %w", err)
 		}
 
-		var targetRun *gh.RunListEntry
+		var found bool
 		for _, run := range runs {
-			if matchesFilter(run.Name, imgSrc.Filter) {
-				targetRun = &run
-				break
+			if !matchesFilter(run.Name, imgSrc.Filter) {
+				continue
 			}
-		}
 
-		if targetRun == nil {
-			return fmt.Errorf("could not find successful PROD preprov-management run")
-		}
-
-		p.Snapshot.ImagesSourceURL = gh.RunURL(imgSrc.Repo, targetRun.ID)
-
-		logs, err := p.Runner.Logs(ctx, imgSrc.Repo, targetRun.ID)
-		if err != nil {
-			return fmt.Errorf("fetching preprov logs: %w", err)
-		}
-
-		for key, pattern := range imgSrc.Patterns {
-			value, err := gh.ParseOutputsFromLogs(logs, imgSrc.JobMatch, pattern)
+			logs, err := p.Runner.Logs(ctx, imgSrc.Repo, run.ID)
 			if err != nil {
-				return fmt.Errorf("extracting %s: %w", key, err)
+				logger.Log("snapshot.skipping-run: id=%d err=%v", run.ID, err)
+				continue
 			}
-			switch key {
-			case "agent_image_tag":
-				p.Snapshot.AgentImageTag = value
-			case "preview_image_tag":
-				p.Snapshot.PreviewImageTag = value
-			case "publish_image_tag":
-				p.Snapshot.PublishImageTag = value
+
+			parsed := make(map[string]string)
+			var parseErr error
+			for key, pattern := range imgSrc.Patterns {
+				value, err := gh.ParseOutputsFromLogs(logs, imgSrc.JobMatch, pattern)
+				if err != nil {
+					parseErr = err
+					break
+				}
+				parsed[key] = value
 			}
+			if parseErr != nil {
+				logger.Log("snapshot.skipping-run: id=%d err=%v", run.ID, parseErr)
+				continue
+			}
+
+			p.Snapshot.ImagesSourceURL = gh.RunURL(imgSrc.Repo, run.ID)
+			p.Snapshot.AgentImageTag = parsed["agent_image_tag"]
+			p.Snapshot.PreviewImageTag = parsed["preview_image_tag"]
+			p.Snapshot.PublishImageTag = parsed["publish_image_tag"]
+			found = true
+			break
+		}
+
+		if !found {
+			return fmt.Errorf("could not find successful PROD preprov-management run with image tags in last %d runs", len(runs))
 		}
 	}
 

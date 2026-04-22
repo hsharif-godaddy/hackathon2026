@@ -1038,6 +1038,87 @@ Upsert Template Images	PUBLISH_TAG="pi-eee555-ext-fff666"`, nil
 	}
 }
 
+func TestFetchRollbackSnapshotSkipsRunsWithEmptyTags(t *testing.T) {
+	runner := &mockRunner{
+		listRunsFn: func(_ context.Context, _, workflow, _ string, _ int) ([]gh.RunListEntry, error) {
+			switch workflow {
+			case "promote-artifact.yml":
+				return []gh.RunListEntry{
+					{ID: 100, Name: "[app] Promoting 12345 to prod"},
+				}, nil
+			case "airo-preprov-management-unified.yml":
+				return []gh.RunListEntry{
+					{ID: 300, Name: "Upsert + Reload Pre-Prov in PROD"},
+					{ID: 200, Name: "Upsert + Reload Pre-Prov in PROD"},
+				}, nil
+			}
+			return nil, nil
+		},
+		logsFn: func(_ context.Context, _ string, runID int64) (string, error) {
+			switch runID {
+			case 300:
+				// Prestart-only run: tags are empty
+				return `Upsert Template Images	AGENT_TAG=""
+Upsert Template Images	PREVIEW_TAG=""
+Upsert Template Images	PUBLISH_TAG=""`, nil
+			case 200:
+				return `Upsert Template Images	AGENT_TAG="pi-aaa111-ext-bbb222"
+Upsert Template Images	PREVIEW_TAG="pi-ccc333-ext-ddd444"
+Upsert Template Images	PUBLISH_TAG="pi-eee555-ext-fff666"`, nil
+			}
+			return "", nil
+		},
+	}
+
+	cfg := &config.Config{
+		Pipeline: config.PipelineConfig{
+			Environments: map[string]*config.EnvironmentConfig{
+				"test": {Stages: []config.Stage{{ID: "a", Name: "A", Repo: "r", Workflow: "w"}}},
+			},
+			Rollback: config.RollbackConfig{
+				Sources: config.RollbackSources{
+					ArtifactID: config.RollbackSource{
+						Repo:           "org/app",
+						Workflow:       "promote-artifact.yml",
+						Filter:         "displayTitle contains '[app]' and 'prod'",
+						ExtractPattern: `Promoting (\d+) to prod`,
+					},
+					ImageTags: config.RollbackImageTags{
+						Repo:     "org/infra",
+						Workflow: "airo-preprov-management-unified.yml",
+						Filter:   "displayTitle contains 'Upsert + Reload Pre-Prov' and 'PROD'",
+						JobMatch: "Upsert Template Images",
+						Patterns: map[string]string{
+							"agent_image_tag":   `AGENT_TAG="(pi-[a-f0-9]+-ext-[a-f0-9]+)"`,
+							"preview_image_tag": `PREVIEW_TAG="(pi-[a-f0-9]+-ext-[a-f0-9]+)"`,
+							"publish_image_tag": `PUBLISH_TAG="(pi-[a-f0-9]+-ext-[a-f0-9]+)"`,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	p := New(cfg, runner, false, "main", nil)
+	if err := p.FetchRollbackSnapshot(context.Background()); err != nil {
+		t.Fatalf("FetchRollbackSnapshot error: %v", err)
+	}
+
+	if p.Snapshot.AgentImageTag != "pi-aaa111-ext-bbb222" {
+		t.Errorf("AgentImageTag = %q, want pi-aaa111-ext-bbb222", p.Snapshot.AgentImageTag)
+	}
+	if p.Snapshot.PreviewImageTag != "pi-ccc333-ext-ddd444" {
+		t.Errorf("PreviewImageTag = %q, want pi-ccc333-ext-ddd444", p.Snapshot.PreviewImageTag)
+	}
+	if p.Snapshot.PublishImageTag != "pi-eee555-ext-fff666" {
+		t.Errorf("PublishImageTag = %q, want pi-eee555-ext-fff666", p.Snapshot.PublishImageTag)
+	}
+	wantURL := gh.RunURL("org/infra", 200)
+	if p.Snapshot.ImagesSourceURL != wantURL {
+		t.Errorf("ImagesSourceURL = %q, want %q", p.Snapshot.ImagesSourceURL, wantURL)
+	}
+}
+
 func TestFetchRollbackSnapshotNoMatchingRuns(t *testing.T) {
 	runner := &mockRunner{
 		listRunsFn: func(_ context.Context, _, _ string, _ string, _ int) ([]gh.RunListEntry, error) {
