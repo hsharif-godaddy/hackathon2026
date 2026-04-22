@@ -2074,9 +2074,10 @@ export class WebSocketServer {
     const appId = extractAppIdFromMessageContext(data.context)
     const BUSINESS_CONTEXT_SCHEMA_ID = 'urn:shared:user:business-context:/airo-app-builder/v1';
 
-    // Build screenshot URL so the observability system (Event Bus / Langfuse) can
-    // link directly to the app screenshot stored in debug-console without relative paths.
+    // Build screenshot URLs so the observability system (Event Bus / Langfuse) can
+    // link directly to app screenshots stored in debug-console without relative paths.
     let screenshotUrl: string | undefined
+    let listPublishedSnapshotsUrl: string | undefined
     if (appId) {
       const apiUrl = process.env.GODADDY_API_BASE_URL
       if (apiUrl) {
@@ -2085,6 +2086,7 @@ export class WebSocketServer {
           ? 'https://console.airo-builder.test-godaddy.com'
           : 'https://console.airo-builder.godaddy.com'
         screenshotUrl = `${host}/api/screenshots/default/${encodeURIComponent(appId)}`
+        listPublishedSnapshotsUrl = `${host}/api/screenshots/publishes/${encodeURIComponent(appId)}`
       }
     }
 
@@ -2095,7 +2097,10 @@ export class WebSocketServer {
           schemaId: BUSINESS_CONTEXT_SCHEMA_ID,
           data: {
             appId,
-            ...(screenshotUrl && { defaultScreenshotUrl: screenshotUrl })
+            ...(screenshotUrl && {
+              defaultScreenshotUrl: screenshotUrl,
+              listPublishedSnapshotsUrl,
+            }),
           }
         }
       })

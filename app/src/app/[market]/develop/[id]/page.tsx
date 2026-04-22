@@ -12,7 +12,7 @@ import ChatToolbar from '@/app/[market]/develop/components/chat/ChatToolbar'
 import DevelopHeader from '@/app/[market]/develop/components/layout/Header'
 import MediaPanel from '@/app/[market]/develop/components/media/MediaPanel'
 import { DevelopCreditsModal, PaywallErrorFallback, RenewalPollingModal, UpgradeContainer, UpgradePollingModal } from '@/app/[market]/develop/components/paywall'
-import PreviewPane from '@/app/[market]/develop/components/preview/PreviewPane'
+import PreviewPane, { type PublishSnapshotRequestDetail } from '@/app/[market]/develop/components/preview/PreviewPane'
 import ResizableDivider from '@/app/[market]/develop/components/ResizableDivider'
 import AnalyticsPanel from '@/app/[market]/develop/components/settings/Analytics/AnalyticsPanel'
 import SettingsView from '@/app/[market]/develop/components/settings/SettingsView'
@@ -24,6 +24,7 @@ import { clearExpiredWidgetStates } from '@/app/[market]/develop/components/widg
 import { type PendingError,useErrorFixState } from '@/app/[market]/develop/hooks/useErrorFixState'
 import { useEvalSnapshotCapture } from '@/app/[market]/develop/hooks/useEvalSnapshotCapture'
 import { useInitialization } from '@/app/[market]/develop/hooks/useInitialization'
+import { usePublishSnapshotCapture } from '@/app/[market]/develop/hooks/usePublishSnapshotCapture'
 import { broadcast as broadcastProcessingState, handle as handleProcessingState } from '@/app/[market]/develop/utils/iframeProcessingState'
 import { ProtectedRoute } from '@/components/auth'
 import ErrorBoundary from '@/components/ErrorBoundary'
@@ -118,6 +119,24 @@ function DevelopPageContent() {
 
   // Eval snapshot capture - captures screenshot on first build completion
   const { triggerEvalSnapshot, handleEvalViewportScreenshot } = useEvalSnapshotCapture({ appId })
+
+  // Publish snapshot capture - captures screenshot after each successful publish
+  const { upload: uploadPublishSnapshot } = usePublishSnapshotCapture()
+  const pendingPublishSnapshotRef = useRef(false)
+  const handlePublishSnapshot = useCallback(
+    (screenshotDataUrl: string, detail: PublishSnapshotRequestDetail) => {
+      void uploadPublishSnapshot(screenshotDataUrl, detail)
+      // Defer reset to a microtask so page.tsx's own message handler still
+      // sees the ref as true when it fires synchronously after PreviewPane's.
+      void Promise.resolve().then(() => { pendingPublishSnapshotRef.current = false })
+    },
+    [uploadPublishSnapshot]
+  )
+  useEffect(() => {
+    function markPending() { pendingPublishSnapshotRef.current = true }
+    window.addEventListener('publish-snapshot-request', markPending)
+    return () => window.removeEventListener('publish-snapshot-request', markPending)
+  }, [])
 
   // Server polling store - only used for cleanup on unmount
   // Note: Server polling lifecycle is managed by PreviewPane component
@@ -798,7 +817,11 @@ function DevelopPageContent() {
           }
           break
         case 'VIEWPORT_SCREENSHOT_RESPONSE':
-          if (event.data.screenshot) {
+          if (pendingPublishSnapshotRef.current) {
+            // PreviewPane handles the publish path; reset boolean via microtask
+            // so this handler's guard fires before the reset settles.
+            void Promise.resolve().then(() => { pendingPublishSnapshotRef.current = false })
+          } else if (event.data.screenshot) {
             handleEvalViewportScreenshot(event.data.screenshot)
           }
           break
@@ -1120,6 +1143,7 @@ function DevelopPageContent() {
                     imageReloadFailed={!!imageReadiness.error}
                     onRetryImageReload={() => imageReadiness.retry()}
                     isMobile={false}
+                    onPublishSnapshot={handlePublishSnapshot}
                   />
                 </div>
               </div>
@@ -1195,6 +1219,7 @@ function DevelopPageContent() {
                         imageReloadFailed={!!imageReadiness.error}
                         onRetryImageReload={() => imageReadiness.retry()}
                         isMobile={true}
+                        onPublishSnapshot={handlePublishSnapshot}
                       />
                     </div>
 

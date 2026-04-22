@@ -3253,6 +3253,9 @@ describe('BusinessContext Enrichment', () => {
     expect(callArgs.businessContext.data.defaultScreenshotUrl).toBe(
       'https://console.airo-builder.test-godaddy.com/api/screenshots/default/test-app-id-123'
     )
+    expect(callArgs.businessContext.data.listPublishedSnapshotsUrl).toBe(
+      'https://console.airo-builder.test-godaddy.com/api/screenshots/publishes/test-app-id-123'
+    )
 
     vi.unstubAllEnvs()
     server.close()
@@ -3277,6 +3280,9 @@ describe('BusinessContext Enrichment', () => {
     expect(callArgs.businessContext.data.defaultScreenshotUrl).toBe(
       'https://console.airo-builder.godaddy.com/api/screenshots/default/test-app-id-123'
     )
+    expect(callArgs.businessContext.data.listPublishedSnapshotsUrl).toBe(
+      'https://console.airo-builder.godaddy.com/api/screenshots/publishes/test-app-id-123'
+    )
 
     vi.unstubAllEnvs()
     server.close()
@@ -3299,6 +3305,7 @@ describe('BusinessContext Enrichment', () => {
 
     const callArgs = mockCreateTraceContext.mock.calls[0]?.[0]
     expect(callArgs.businessContext.data.defaultScreenshotUrl).toBeUndefined()
+    expect(callArgs.businessContext.data.listPublishedSnapshotsUrl).toBeUndefined()
 
     vi.unstubAllEnvs()
     server.close()
@@ -3322,6 +3329,9 @@ describe('BusinessContext Enrichment', () => {
     const callArgs = mockCreateTraceContext.mock.calls[0]?.[0]
     expect(callArgs.businessContext.data.defaultScreenshotUrl).toBe(
       'https://console.airo-builder.godaddy.com/api/screenshots/default/app%20id%2Fspecial'
+    )
+    expect(callArgs.businessContext.data.listPublishedSnapshotsUrl).toBe(
+      'https://console.airo-builder.godaddy.com/api/screenshots/publishes/app%20id%2Fspecial'
     )
 
     vi.unstubAllEnvs()
