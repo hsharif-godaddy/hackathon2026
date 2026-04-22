@@ -399,7 +399,6 @@ Phase 3 — Page (after Phase 1 & 2 are complete):
 - Build homepage (index.tsx) with all sections and animations
 
 Phase 4 — Finalize:
-- The type checker runs continuously - if type errors remain, they will be reported automatically. Do NOT run `npm run type-check` manually.
 - Mark the Homepage todo item as COMPLETE using the todoList tool
 - Show the completed design using suggestedResponse
 
@@ -477,7 +476,6 @@ Phase 2 — Page (after Phase 1):
 - Build main app structure (index.tsx) with [app-specific layout] and animations
 
 Phase 3 — Finalize:
-- The type checker runs continuously - if type errors remain, they will be reported automatically. Do NOT run `npm run type-check` manually.
 - Mark the Homepage todo item as COMPLETE using the todoList tool
 - Show the completed design using suggestedResponse
 

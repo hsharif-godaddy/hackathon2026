@@ -209,6 +209,38 @@ export interface WebSocketConfig {
     commitHash?: string | null
     [key: string]: unknown
   } | void>
+  /**
+   * Called AFTER the primary agent stream completes (and after any tool-triggered
+   * auto-continuation has been detected) but BEFORE `beforeMessageComplete` /
+   * `completeConversation`. Lets the caller run server-side validation on what the
+   * agent just produced (e.g. a type check against the preview workspace) and
+   * request an additional in-loop continuation turn using a synthetic user prompt.
+   *
+   * The hook is invoked once per completed `streamAgentResponse` iteration. If it
+   * returns `{ continuationPrompt }`, the same while loop that handles
+   * auto-continuation and handoffs will re-run the current agent with that prompt
+   * as the next "user" message. This happens before the git squash-merge in
+   * `beforeMessageComplete`, so any files written by the continuation land in the
+   * same squashed commit. The caller is responsible for its own retry cap — the
+   * server will only bail on the overall `maxHandoffs` loop guard.
+   *
+   * `toolCalls` contains the tool calls that ran during the just-completed stream
+   * (same shape as the data fed to `onLlmEnd`). `abortSignal` is the socket's
+   * stream-abort signal; respect it to cancel slow validations when the user
+   * stops the turn or disconnects. `emitChunk(text)` publishes a `chunk` event
+   * appended to the just-completed assistant message; persistence relies on
+   * the server's normal stream completion pipeline (not `updateAgentTurn`,
+   * which only fires on `tool_result` events). Use this to tell the user
+   * when validation couldn't be resolved without burning another LLM call.
+   */
+  postStreamValidator?: (params: {
+    socketId: string
+    context: Record<string, unknown>
+    agentName: string
+    toolCalls: Array<{ toolName: string; args?: unknown }>
+    abortSignal: AbortSignal
+    emitChunk: (text: string) => Promise<void>
+  }) => Promise<{ continuationPrompt: string } | null | undefined | void>
   onMessageComplete?: (socketId: string, result: {
     agentName: string
     duration: string
@@ -2351,12 +2383,85 @@ export class WebSocketServer {
         const conversationAfterStream = this.getConversation(socketId)
         const updatedContext = conversationAfterStream?.context
 
-        if (updatedContext?.metadata?.__autoContinue === true) {
-          const continuationPrompt = (updatedContext.metadata.__continuationPrompt as string) || 'Continue processing'
+        // `updatedContext` can be undefined when the conversation was cleaned
+        // up between stream end and here (disconnect / abort race). The
+        // validator still needs a context object to flag, and the
+        // auto-continuation branch below needs to read back from the SAME
+        // object the validator wrote to — otherwise the flag lives on
+        // `processedContext` while the subsequent check reads from
+        // `updatedContext?.…`, short-circuits to undefined, and silently
+        // drops the continuation.
+        const continuationContext = (updatedContext ?? processedContext) as Record<string, unknown>
+
+        // Run optional post-stream validator (e.g. post-hook tsc check). Fires
+        // once per completed stream iteration, BEFORE the auto-continuation
+        // check below, so the validator can opt into the same continuation
+        // mechanism by returning a synthetic prompt. If it returns one, we set
+        // the __autoContinue/__continuationPrompt flags on the conversation
+        // context and let the existing block below handle re-entering the loop.
+        //
+        // If a tool (via `afterToolExecution` or similar) has ALREADY set
+        // `__autoContinue = true`, we defer: running the validator now would
+        // either overwrite the tool's continuation prompt or spend latency on
+        // a check whose results would be invalidated by the tool's continuation
+        // anyway. The validator will naturally fire on the next iteration once
+        // the tool's continuation has run.
+        const continuationMetadata = (continuationContext.metadata as Record<string, unknown> | undefined) ?? {}
+        const toolSetAutoContinue = continuationMetadata.__autoContinue === true
+        if (this.config.postStreamValidator && !toolSetAutoContinue) {
+          const validatorToolCalls = conversationAfterStream?.pendingToolCalls
+            ? Array.from(conversationAfterStream.pendingToolCalls.values()).map((tc: any) => ({
+              toolName: tc.name,
+              ...(tc.input !== undefined && { args: tc.input })
+            }))
+            : []
+          try {
+            const resolvedAgentName = agentName || this.config.defaultAgent || 'unknown'
+            const validatorResult = await this.config.postStreamValidator({
+              socketId,
+              context: continuationContext,
+              agentName: resolvedAgentName,
+              toolCalls: validatorToolCalls,
+              abortSignal,
+              emitChunk: async (text: string) => {
+                if (!text) return
+                await this.publishToEventChannel(
+                  socketId,
+                  'chunk',
+                  text,
+                  { agentId: resolvedAgentName },
+                  resolvedAgentName
+                )
+              }
+            })
+
+            if (
+              validatorResult &&
+              typeof validatorResult === 'object' &&
+              typeof (validatorResult as { continuationPrompt?: unknown }).continuationPrompt === 'string' &&
+              !abortSignal.aborted
+            ) {
+              const continuationPrompt = (validatorResult as { continuationPrompt: string }).continuationPrompt
+              continuationMetadata.__autoContinue = true
+              continuationMetadata.__continuationPrompt = continuationPrompt
+              continuationContext.metadata = continuationMetadata
+            }
+          } catch (validatorError) {
+            // Validator is additive; failures must never block message completion.
+            this.logger.warn('post_stream_validator.failure', {
+              socketId,
+              agentName,
+              error: validatorError instanceof Error ? validatorError.message : String(validatorError)
+            })
+          }
+        }
+
+        if (continuationMetadata.__autoContinue === true) {
+          const continuationPrompt = (continuationMetadata.__continuationPrompt as string) || 'Continue processing'
 
           // Clear the flags so they're not reused in subsequent iterations
-          delete (updatedContext.metadata as any).__autoContinue
-          delete (updatedContext.metadata as any).__continuationPrompt
+          delete continuationMetadata.__autoContinue
+          delete continuationMetadata.__continuationPrompt
 
           this.logger.info('auto_continuation.detected', {
             socketId,
@@ -2368,8 +2473,12 @@ export class WebSocketServer {
           // Update message for next iteration (agent stays the same)
           currentMessage = continuationPrompt
 
-          // Update processedContext with the updated context from conversation
-          processedContext = updatedContext
+          // Update processedContext with the context we just flagged so the
+          // next iteration's downstream reads see the same object. When
+          // `updatedContext` was present we pick up whatever the state
+          // manager has; when it was undefined we keep processedContext,
+          // which is what we mutated in place.
+          processedContext = continuationContext as typeof processedContext
 
           // Re-inject conversationId since updatedContext comes from state manager snapshot
           this.attachConversationId(processedContext, socketId)

@@ -6,7 +6,6 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Loader } from '@airo-ux/loader'
 import Button from '@ux/button'
 
-import MessageOverlay from '@/app/[market]/develop/components/dev-tools/MessageOverlay'
 import DomainBar from '@/app/[market]/develop/components/layout/DomainBar'
 import { getDevicePreset } from '@/app/[market]/develop/components/preview/devicePresets'
 import PreviewCode from '@/app/[market]/develop/components/preview/PreviewCode'
@@ -70,8 +69,6 @@ interface PreviewPaneProps {
   isMobile?: boolean
   showBuildingOverlay?: boolean
   isCreationFlow?: boolean
-  fixingOverlayMessage?: string | null
-  unresolvedError?: { message: string; onFix: () => void; onDismiss?: () => void } | null
   isHibernated?: boolean
   isResuming?: boolean
   resumeFailed?: boolean
@@ -87,8 +84,6 @@ export default function PreviewPane({
   isMobile = false,
   showBuildingOverlay = false,
   isCreationFlow = false,
-  fixingOverlayMessage = null,
-  unresolvedError = null,
   isHibernated = false,
   isResuming = false,
   resumeFailed = false,
@@ -747,31 +742,6 @@ export default function PreviewPane({
                 <div className="absolute inset-0 bg-intents-ux-boxLowContrast-backgroundColor rounded-lg">
                   <Tips buildingMessage={t('builder_preview_building_app')} />
                 </div>
-              )}
-              {fixingOverlayMessage && (
-                <div className="absolute inset-0 bg-intents-ux-boxLowContrast-backgroundColor rounded-lg">
-                  <Tips buildingMessage={fixingOverlayMessage} />
-                </div>
-              )}
-              {unresolvedError && viewMode !== ViewMode.CODE && (
-                <MessageOverlay
-                  title={t('builder_preview_error_title')}
-                  message={unresolvedError.message}
-                >
-                  <Button
-                    onClick={unresolvedError.onFix}
-                    design="primary"
-                    data-partial="componentAiro"
-                    text={t('builder_common_ask_airo_to_fix', undefined, 'Ask Airo to fix')}
-                  />
-                  {unresolvedError.onDismiss && (
-                    <Button
-                      onClick={unresolvedError.onDismiss}
-                      design="secondary"
-                      text={t('builder_common_dismiss', undefined, 'Dismiss')}
-                    />
-                  )}
-                </MessageOverlay>
               )}
             </div>
           </div>

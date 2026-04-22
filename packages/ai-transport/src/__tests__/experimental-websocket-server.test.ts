@@ -3626,3 +3626,95 @@ describe('WebSocketServer - messageMiddleware', function middlewareTests() {
   })
 })
 
+describe('WebSocketServer - postStreamValidator continuation', () => {
+  let httpServer: HTTPServer
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    httpServer = new HTTPServer()
+  })
+
+  function mockSingleShotStream(text: string) {
+    return {
+      baseStream: null,
+      textStream: (async function* () { yield text })(),
+      getFinalResult: vi.fn().mockResolvedValue({
+        usage: { inputTokens: 10, outputTokens: 5 },
+        toolCalls: []
+      })
+    }
+  }
+
+  // Regression test for a silent-drop bug where the validator flagged
+  // `__autoContinue` on `processedContext` (via `updatedContext ?? processedContext`)
+  // while the subsequent re-entry check read from `updatedContext?.metadata?.…`.
+  // When `getConversation(socketId)` returned undefined between stream end and
+  // validator invocation (disconnect / abort race), the optional-chain
+  // short-circuited and the continuation was silently dropped — no log, no
+  // error, just a missing second stream iteration.
+  it('fires validator continuation even when the post-stream conversation snapshot is undefined', async () => {
+    ;(mockAgent.streamGenerate as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(mockSingleShotStream('first'))
+      .mockResolvedValueOnce(mockSingleShotStream('second'))
+
+    const postStreamValidator = vi.fn()
+      .mockResolvedValueOnce({ continuationPrompt: 'fix the errors' })
+      .mockResolvedValueOnce(null)
+
+    const { server, messageHandler } = await setupServerWithConnection(httpServer, {
+      agents: mockAgents,
+      defaultAgent: 'test-agent',
+      postStreamValidator
+    } as any)
+
+    // Force every `getConversation` call to return undefined. This is a
+    // superset of the real race (which only nukes the post-stream snapshot)
+    // and exercises the same code path the bug hid behind. The earlier
+    // callsites in `handleChatMessageInternal` gracefully tolerate undefined
+    // (subscriber registration and budget-meta write are both gated on
+    // `if (conversation)`), so the test remains focused on the validator
+    // re-entry logic.
+    ;(server as any).getConversation = vi.fn().mockReturnValue(undefined)
+
+    await messageHandler({ message: 'initial', agentId: 'test-agent' })
+
+    expect(postStreamValidator).toHaveBeenCalledTimes(2)
+    expect(mockAgent.streamGenerate).toHaveBeenCalledTimes(2)
+    // Second stream must be driven by the validator's continuationPrompt,
+    // not the original user message. This is the observable signal that the
+    // `__autoContinue` flag was read from the same object the validator
+    // wrote to.
+    expect((mockAgent.streamGenerate as ReturnType<typeof vi.fn>).mock.calls[1][0]).toBe('fix the errors')
+
+    server.close()
+  })
+
+  // Companion happy-path test: with a live conversation snapshot the same
+  // continuation flow must still work. Pairs with the regression above so a
+  // future refactor that accidentally inverts the nullish-coalesce (or drops
+  // the `continuationContext` binding) fails loudly on both branches.
+  it('fires validator continuation when the post-stream conversation snapshot is present', async () => {
+    ;(mockAgent.streamGenerate as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(mockSingleShotStream('first'))
+      .mockResolvedValueOnce(mockSingleShotStream('second'))
+
+    const postStreamValidator = vi.fn()
+      .mockResolvedValueOnce({ continuationPrompt: 'retry with fix' })
+      .mockResolvedValueOnce(null)
+
+    const { server, messageHandler } = await setupServerWithConnection(httpServer, {
+      agents: mockAgents,
+      defaultAgent: 'test-agent',
+      postStreamValidator
+    } as any)
+
+    await messageHandler({ message: 'initial', agentId: 'test-agent' })
+
+    expect(postStreamValidator).toHaveBeenCalledTimes(2)
+    expect(mockAgent.streamGenerate).toHaveBeenCalledTimes(2)
+    expect((mockAgent.streamGenerate as ReturnType<typeof vi.fn>).mock.calls[1][0]).toBe('retry with fix')
+
+    server.close()
+  })
+})
+

@@ -21,7 +21,6 @@ import { ChatTab, IframeMessageType, MobileMode } from '@/app/[market]/develop/c
 import { extractNewPageRoute, handlePreviewRefresh, navigatePreviewToRoute, requestPreviewScreenshot, useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import VersionHistory from '@/app/[market]/develop/components/VersionHistory'
 import { clearExpiredWidgetStates } from '@/app/[market]/develop/components/widgets'
-import { type PendingError,useErrorFixState } from '@/app/[market]/develop/hooks/useErrorFixState'
 import { useEvalSnapshotCapture } from '@/app/[market]/develop/hooks/useEvalSnapshotCapture'
 import { useInitialization } from '@/app/[market]/develop/hooks/useInitialization'
 import { usePublishSnapshotCapture } from '@/app/[market]/develop/hooks/usePublishSnapshotCapture'
@@ -72,6 +71,7 @@ import {
   useStreamingConversationStore
 } from '@/stores/useStreamingConversationStore'
 import { useTodoListStore } from '@/stores/useTodoListStore'
+import type { RuntimeErrorData } from '@/types/runtime-error'
 import { logAiroHQEvent, logImpressionEvent, setInstrumentationAppId } from '@/utils/instrumentation'
 import { postMessageToIframe } from '@/utils/postMessage'
 
@@ -440,43 +440,28 @@ function DevelopPageContent() {
     broadcastProcessingState(isProcessing)
   }, [isProcessing])
 
-  // Three-state error fix lifecycle: none → pending → unresolved (see useErrorFixState)
-  const fixAttemptCountRef = useRef(0)
-  const errorFixSendHandler = useCallback((error: PendingError) => {
-    if (error.errorData) {
-      const { message, name, stack, componentStack, url, timestamp } = error.errorData
-      setInputValue(t('builder_develop_fix_runtime_error', undefined, 'Please analyze and fix this runtime error.'))
-      scheduleMicrotask(() => {
-        void ws.actions.send({
-          content: 'Please analyze and fix this runtime error.',
-          aiEditContext: null,
-          isActionRequest: false,
-          customContext: {
-            type: 'runtime_error',
-            data: { message, name, stack, componentStack, url, timestamp, attemptNumber: fixAttemptCountRef.current + 1 },
-            persistence: 'ephemeral',
-            source: 'error-boundary'
-          }
-        })
+  // Runtime errors thrown inside the preview iframe are handled entirely
+  // by `AiroErrorBoundary` in the app template: it shows its own overlay
+  // (suppressed while the agent is actively processing), and when the user
+  // clicks "Ask Airo to Fix Code" it posts an `error-fix-user-requested`
+  // message that we forward to the agent here.
+  const sendUserRequestedFix = useCallback((errorData: RuntimeErrorData) => {
+    const { message, name, stack, componentStack, url, timestamp } = errorData
+    setInputValue(t('builder_develop_fix_runtime_error', undefined, 'Please analyze and fix this runtime error.'))
+    scheduleMicrotask(() => {
+      void ws.actions.send({
+        content: 'Please analyze and fix this runtime error.',
+        aiEditContext: null,
+        isActionRequest: false,
+        customContext: {
+          type: 'runtime_error',
+          data: { message, name, stack, componentStack, url, timestamp },
+          persistence: 'ephemeral',
+          source: 'error-boundary'
+        }
       })
-    } else if (error.errorMessage) {
-      setInputValue(t('builder_develop_fix_compile_error', { errorMessage: error.errorMessage }, `Please fix this error: ${error.errorMessage}`))
-      scheduleMicrotask(() => {
-        void ws.actions.send({
-          content: `Please fix this error: ${error.errorMessage}`,
-          aiEditContext: null
-        })
-      })
-    }
+    })
   }, [scheduleMicrotask, setInputValue, ws.actions, t])
-  const {
-    errorFixState,
-    userRequestedFix,
-    pendingError,
-    fixAttemptCount,
-    actions: errorFixActions
-  } = useErrorFixState(isProcessing, errorFixSendHandler)
-  fixAttemptCountRef.current = fixAttemptCount
 
   const handleScreenshotUpload = useCallback(async (screenshotDataUrl: string) => {
     if (!appId) return
@@ -731,23 +716,57 @@ function DevelopPageContent() {
           break
         }
         case 'error-fix-request': {
-          if (event.data.errorData) {
-            const errorData = event.data.errorData as import('@/types/runtime-error').RuntimeErrorData
-            logger.info('develop-page.error-fix-request', {
-              appId,
-              errorName: errorData.name,
-              errorMessage: errorData.message,
-              hasStack: !!errorData.stack,
-              hasComponentStack: !!errorData.componentStack
-            })
-            errorFixActions.handleErrorFixRequest({ errorData })
-          } else if (event.data.errorMessage) {
-            logger.info('develop-page.error-fix-request.compile', {
-              appId,
-              errorMessage: event.data.errorMessage
-            })
-            errorFixActions.handleErrorFixRequest({ errorMessage: event.data.errorMessage })
+          // Auto-sent by AiroErrorBoundary on every caught error. Purely
+          // informational: we forward the payload to the agents' runtime-
+          // error buffer so the post-stream validator can pick it up on
+          // the next turn. The overlay itself is owned by the iframe.
+          if (!event.data.errorData) break
+          const errorData = event.data.errorData as RuntimeErrorData
+          logger.info('develop-page.error-fix-request', {
+            appId,
+            errorName: errorData.name,
+            errorMessage: errorData.message,
+            hasStack: !!errorData.stack,
+            hasComponentStack: !!errorData.componentStack
+          })
+          // Fire-and-forget: a dropped POST just means the next turn won't
+          // auto-continue on this error; the user can still click "Ask
+          // Airo to Fix" on the iframe overlay.
+          void (async () => {
+            try {
+              const url = await buildDynamicApiUrl('runtime-errors', appId)
+              await agentFetch(url, {
+                method: 'POST',
+                siteId: appId,
+                body: JSON.stringify(errorData)
+              })
+            } catch (err) {
+              logger.warn('develop-page.runtime-error.forward.failed', {
+                appId,
+                error: err instanceof Error ? err.message : String(err)
+              })
+            }
+          })()
+          break
+        }
+        case 'error-fix-user-requested': {
+          if (!event.data.errorData) break
+          // The iframe overlay hides its button while the agent is
+          // processing, but a slow `AGENT_PROCESSING_STATE` broadcast
+          // could let a stray click through. Drop it rather than kicking
+          // off a concurrent chat send that would collide with the
+          // in-flight stream.
+          if (isProcessingRef.current) {
+            logger.info('develop-page.error-fix-user-requested.skipped-processing', { appId })
+            break
           }
+          const errorData = event.data.errorData as RuntimeErrorData
+          logger.info('develop-page.error-fix-user-requested', {
+            appId,
+            errorName: errorData.name,
+            errorMessage: errorData.message,
+          })
+          sendUserRequestedFix(errorData)
           break
         }
         case 'request-processing-state':
@@ -836,19 +855,8 @@ function DevelopPageContent() {
             }
           }
           break
-        case 'error-fix-resolved':
-          errorFixActions.handleErrorFixResolved()
-          break
         case 'IFRAME_READY':
-          // Send edit mode state when iframe signals it is ready
           sendEditModeMessage(isEditModeEnabled)
-          // Agent edits trigger full iframe reloads (not HMR) due to git
-          // operations touching many files. The iframe's window.load handler
-          // sends error-fix-resolved, but rapid successive reloads cause the
-          // parent's contentWindow reference to change before the message
-          // arrives, silently dropping it. IFRAME_READY is sent from the
-          // final settled contentWindow so it always gets through.
-          errorFixActions.handleErrorFixResolved()
           break
         case 'AUTO_IMPORT_MEDIA_SLOT': {
           const { imageUrl, devContext, imageAlt, imageType } = event.data
@@ -861,7 +869,7 @@ function DevelopPageContent() {
 
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)
-  }, [sendTextUpdate, setAiEditContext, ws.actions.send, setInputValue, handleScreenshotUpload, handleEvalViewportScreenshot, setIsAssetManagerOpen, appId, scheduleMicrotask, sendEditModeMessage, isEditModeEnabled, handleAutoImportMediaSlot, errorFixActions])
+  }, [sendTextUpdate, setAiEditContext, ws.actions.send, setInputValue, handleScreenshotUpload, handleEvalViewportScreenshot, setIsAssetManagerOpen, appId, scheduleMicrotask, sendEditModeMessage, isEditModeEnabled, handleAutoImportMediaSlot, sendUserRequestedFix])
   // Warn user before leaving page with unsaved changes
   useEffect(() => {
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -1133,8 +1141,6 @@ function DevelopPageContent() {
                   <PreviewPane
                     onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
                     showBuildingOverlay={init.ui.showPreviewLoader}
-                    fixingOverlayMessage={userRequestedFix && errorFixState === 'pending' ? t('builder_preview_fixing_error') : null}
-                    unresolvedError={errorFixState === 'unresolved' && pendingError ? { message: pendingError.errorMessage || pendingError.errorData?.message || '', onFix: errorFixActions.handleFixError, onDismiss: errorFixActions.handleDismissError } : null}
                     isHibernated={hibernation.isHibernated}
                     isResuming={hibernation.isResuming}
                     resumeFailed={hibernation.resumeFailed}
@@ -1209,8 +1215,6 @@ function DevelopPageContent() {
                       <PreviewPane
                         onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
                         showBuildingOverlay={init.ui.showPreviewLoader}
-                        fixingOverlayMessage={userRequestedFix && errorFixState === 'pending' ? t('builder_preview_fixing_error') : null}
-                        unresolvedError={errorFixState === 'unresolved' && pendingError ? { message: pendingError.errorMessage || pendingError.errorData?.message || '', onFix: errorFixActions.handleFixError, onDismiss: errorFixActions.handleDismissError } : null}
                         isHibernated={hibernation.isHibernated}
                         isResuming={hibernation.isResuming}
                         resumeFailed={hibernation.resumeFailed}

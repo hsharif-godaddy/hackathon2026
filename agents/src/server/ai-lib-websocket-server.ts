@@ -72,6 +72,11 @@ import {
   getKnowledgeServiceDriver,
 } from '../tools/ai-lib-tools/drivers/knowledge-service-driver.js'
 import { GitHookService } from '../services/git-hook-service.js'
+import { TypecheckService } from '../services/typecheck-service.js'
+import { RuntimeErrorService } from '../services/runtime-error-service.js'
+import { createPostStreamValidator } from './post-stream-validator.js'
+import { GitUtils } from '../utils/git.js'
+import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js'
 import { ClientActionService } from '../services/ClientActionService.js'
 import { hasUnbuiltRebuildPages } from '../tools/ai-lib-tools/suggested-response.js'
 import { getAssessmentAgent, type AssessmentOutcome, AssessmentTaskType } from '../agents/assessment-agent/index.js'
@@ -158,6 +163,118 @@ const tracedSearchDocumentation = observe(searchDocumentation, {
  * Shared GitHookService instance for tracking feature branches across connections
  */
 const gitHookService = new GitHookService()
+
+/**
+ * Shared TypecheckService instance for post-hook TypeScript validation.
+ * Stateless, so a single instance is fine for the whole process.
+ */
+const typecheckService = new TypecheckService()
+
+/**
+ * Shared RuntimeErrorService instance for post-hook runtime-error validation.
+ * Stateless — see TypecheckService note above.
+ */
+const runtimeErrorService = new RuntimeErrorService()
+
+/**
+ * Maximum number of automatic tsc-fix continuations the post-stream validator
+ * will trigger for a single user turn. We cap this aggressively because:
+ *  - Each retry is an additional LLM call (cost + latency).
+ *  - After two focused attempts, if tsc still fails it usually indicates a
+ *    structural problem the agent can't fix without user input.
+ *  - It keeps us well inside the ai-transport `maxHandoffs = 10` loop guard
+ *    when combined with normal handoffs.
+ */
+const MAX_TYPECHECK_RETRIES = 2
+
+/**
+ * Maximum number of automatic runtime-error-fix continuations per turn.
+ * Matches the tsc budget; the two are tracked independently so a user turn
+ * can burn both without either starving the other.
+ */
+const MAX_RUNTIME_ERROR_RETRIES = 2
+
+/**
+ * Runtime-error poll budget. The poll uses a quiet-window strategy — once
+ * at least one error has arrived it returns as soon as no new errors have
+ * shown up for `QUIET_WINDOW_MS`, capped at `MAX_WAIT_MS`. See
+ * `RuntimeErrorService.pollRuntimeErrors`.
+ *
+ * 10s max / 1.5s quiet matches the observed end-to-end propagation for
+ * runtime errors: agent file-edit → filesystem write → Vite watcher picks
+ * up → HMR update broadcast → browser re-imports / React re-renders /
+ * useEffect fires → error throws → iframe postMessage → builder parent →
+ * agentFetch POST /apps/:id/runtime-errors → RuntimeErrorBuffer. 10-15s is
+ * typical on cold dependency graphs; 4s reliably missed these.
+ *
+ * Clean (error-free) turns INTENTIONALLY wait the full `MAX_WAIT_MS`.
+ * There is no early-exit for "buffer stayed empty" on purpose — the
+ * preview boot and first-paint window is exactly the interval where a
+ * newly-introduced crash would show up, and cutting the wait short would
+ * defeat the post-hook's whole reason to exist. The budget is bounded
+ * by browser-side propagation time, not by agents-container round-trips.
+ *
+ * The runtime phase runs in parallel with the tsc phase (see
+ * `post-stream-validator.ts`), so most of this wait happens concurrently
+ * with tsc execution on turns where tsc also runs (tsc typically 2-10s).
+ * On turns where tsc completes faster than the poll budget, the tail of
+ * the poll is the visible post-stream latency floor — and that is the
+ * cost of reliably catching runtime errors that only surface after the
+ * preview has actually finished rendering. If you need to change this,
+ * also update `ERROR_CAUGHT_GRACE_MS` in
+ * `app-templates/v8/dev-tools/src/AiroErrorBoundary.tsx` so the preview's
+ * manual-fix dialog stays suppressed for the full server poll window.
+ */
+const RUNTIME_ERROR_POLL_MAX_WAIT_MS = 10_000
+const RUNTIME_ERROR_QUIET_WINDOW_MS = 1500
+
+/**
+ * Same `git status --porcelain` check `gitHookService.handleConnectionEnd`
+ * uses — keeps the validator's skip-gate in lockstep with the squash-merge.
+ */
+async function appHasUncommittedChanges(appId: string): Promise<boolean> {
+  const app = appRepo.findById(appId)
+  if (!app) {
+    throw new Error(`App not found: ${appId}`)
+  }
+  const devSupervisor = DevSupervisorClientFactory.createForApp(appId)
+  if (!devSupervisor) {
+    throw new Error(`DevSupervisor not available for app: ${appId}`)
+  }
+  const gitUtils = new GitUtils(devSupervisor)
+  return gitUtils.hasUncommittedChanges(app.path)
+}
+
+/**
+ * Per-socket retry counter for the post-stream typecheck validator. Reset to
+ * zero at the start of each user turn (see `onMessageStart`). We key on
+ * socketId rather than conversationId because the ai-transport hook only has
+ * socketId available, and the counter is legitimately per-turn.
+ */
+const typecheckRetryCountBySocket = new Map<string, number>()
+
+/**
+ * Per-socket retry counter for the post-stream runtime-error validator.
+ * Independent from `typecheckRetryCountBySocket` — each phase has its own
+ * budget of 2 per turn.
+ */
+const runtimeErrorRetryCountBySocket = new Map<string, number>()
+
+/**
+ * Per-socket buffer watermark (ms epoch) used as `since` when draining
+ * `runtimeErrorBuffer`. Seeded in `onMessageStart` to the start of the
+ * current user turn so stale errors from a previous turn's crash loop
+ * don't bleed in, then advanced by the runtime phase itself after each
+ * `continue`/`exhausted` outcome so the next iteration only sees errors
+ * that were pushed *after* the agent had a chance to react. That
+ * cross-iteration advance is what lets re-throws of unfixed errors
+ * surface again — they get a fresh `pushedAt` from the buffer.
+ *
+ * Keyed by socketId (not appId) on purpose: two builder tabs open to
+ * the same app each get their own watermark, and one tab's iteration
+ * boundaries don't clobber the other's.
+ */
+const turnStartedAtBySocket = new Map<string, number>()
 
 /**
  * Map to track active WebSocket transactions for APM
@@ -1491,6 +1608,20 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         const typedContext = context as AgentsAppContext;
         const siteId = typedContext?.metadata?.appId;
 
+        // Reset the post-hook retry counters for this turn. Any leftover
+        // count from a prior message on the same socket would incorrectly
+        // shrink either retry budget here.
+        typecheckRetryCountBySocket.delete(socketId);
+        runtimeErrorRetryCountBySocket.delete(socketId);
+
+        // Pin the start of this user turn so the runtime-error post-hook
+        // only surfaces errors that occurred after the user sent this
+        // message. No clock-skew adjustment is needed: this timestamp
+        // and the buffer's `pushedAt` are both `Date.now()` from the
+        // same Node process, so the `since >= pushedAt` comparison in
+        // `RuntimeErrorBuffer.drainForTurn` is on a single clock.
+        turnStartedAtBySocket.set(socketId, Date.now());
+
         // Track memory at request start for leak detection
         // Store in dedicated Map to avoid polluting context.metadata
         const startMemory = process.memoryUsage();
@@ -1771,6 +1902,40 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         });
       },
 
+      /**
+       * Post-stream validator — runs after every completed agent stream
+       * iteration, before `beforeMessageComplete`. When the agent has
+       * just edited files, we shell out to `tsc --noEmit` inside the
+       * preview container and drain the per-app runtime-error buffer in
+       * parallel; if either surfaces problems, we trigger another LLM
+       * turn with a synthetic prompt listing the errors.
+       *
+       * Retry budget is enforced here (not inside the service) because the
+       * ai-transport hook is the only place with a stable per-turn socketId.
+       * The validator is additive: any failure — missing appId, dev-supervisor
+       * unreachable, exec crash, etc. — falls through silently so the user's
+       * message still finalizes normally and git-squash still runs.
+       */
+      postStreamValidator: createPostStreamValidator({
+        typecheck: {
+          typecheckService,
+          retryCounters: typecheckRetryCountBySocket,
+          maxRetries: MAX_TYPECHECK_RETRIES,
+          logger,
+        },
+        runtimeErrors: {
+          runtimeErrorService,
+          retryCounters: runtimeErrorRetryCountBySocket,
+          turnStartedAtBySocket,
+          maxRetries: MAX_RUNTIME_ERROR_RETRIES,
+          maxWaitMs: RUNTIME_ERROR_POLL_MAX_WAIT_MS,
+          quietWindowMs: RUNTIME_ERROR_QUIET_WINDOW_MS,
+          logger,
+        },
+        hasUncommittedChanges: appHasUncommittedChanges,
+        logger,
+      }),
+
       // Pre-completion callback for git operations and free grants flag
       beforeMessageComplete: async (socketId: string, context: Record<string, unknown>) => {
         const typedContext = context as AgentsAppContext
@@ -1873,6 +2038,9 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         // Clean up per-message socket state
         assessmentOutcomes.delete(socketId)
         pendingBudgetOverrides.delete(socketId)
+        typecheckRetryCountBySocket.delete(socketId)
+        runtimeErrorRetryCountBySocket.delete(socketId)
+        turnStartedAtBySocket.delete(socketId)
 
         if (appId) {
           const contextLogger = log.forApp(appId);
@@ -1960,6 +2128,9 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         pendingBudgetOverrides.delete(socketId)
         lastUserMessageCache.delete(socketId)
         lastAssessmentTaskTypeCache.delete(socketId)
+        typecheckRetryCountBySocket.delete(socketId)
+        runtimeErrorRetryCountBySocket.delete(socketId)
+        turnStartedAtBySocket.delete(socketId)
 
         // Cleanup ClientActionService
         cleanupClientActionService(socketId)
@@ -2094,6 +2265,9 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         // Clean up assessment tracking (prevent stale overrides on next message)
         assessmentOutcomes.delete(socketId)
         pendingBudgetOverrides.delete(socketId)
+        typecheckRetryCountBySocket.delete(socketId)
+        runtimeErrorRetryCountBySocket.delete(socketId)
+        turnStartedAtBySocket.delete(socketId)
 
         // Git hook: Squash merge to main on error (if we have appId)
         if (appId) {

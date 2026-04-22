@@ -2,7 +2,6 @@ import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
 import * as esbuild from "esbuild";
-import { tscWatchPlugin } from "./dev-tools/src/vite-tsc-plugin";
 import sourceMapperPlugin from "./source-mapper/src/index";
 import { devToolsPlugin } from "./dev-tools/src/vite-plugin";
 import { fullStoryPlugin } from "./fullstory-plugin";
@@ -91,7 +90,6 @@ export default defineConfig(({ mode }) => ({
 		}),
 		...(mode === "development"
 			? [
-					tscWatchPlugin(),
 					devToolsPlugin() as Plugin,
 					fullStoryPlugin(),
 					errorInterceptorPlugin(),

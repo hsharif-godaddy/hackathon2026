@@ -1,9 +1,30 @@
 import { safePostMessage } from './utils/postMessage';
 
-function parseViteError(data: any): { message: string; file?: string; frame?: string } {
+/**
+ * postMessage helper that short-circuits when the preview is loaded
+ * standalone (`window.parent === window`). Posting to self would be
+ * picked up by any listeners installed on this same window and could
+ * cause spurious state transitions.
+ */
+function postToParent(message: unknown): void {
+  if (window.parent === window) {
+    return;
+  }
+  safePostMessage(window.parent, message);
+}
+
+function parseViteError(data: any): {
+  message: string;
+  file?: string;
+  frame?: string;
+  name?: string;
+  stack?: string;
+} {
   const err = data?.err || data || {};
   const message = err.message || 'Unknown compilation error occurred';
   const frame = err.frame || '';
+  const name = typeof err.name === 'string' && err.name.length > 0 ? err.name : undefined;
+  const stack = typeof err.stack === 'string' && err.stack.length > 0 ? err.stack : undefined;
 
   const loc = err.loc;
   const file =
@@ -11,24 +32,61 @@ function parseViteError(data: any): { message: string; file?: string; frame?: st
       ? `${loc.file}${loc.line != null ? `:${loc.line}` : ''}${loc.column != null ? `:${loc.column}` : ''}`
       : undefined;
 
-  return { message, file, frame };
+  return { message, file, frame, name, stack };
+}
+
+interface ForwardedErrorData {
+  message: string;
+  name: string;
+  stack?: string;
+  url?: string;
+  timestamp: number;
+}
+
+/**
+ * Forward a Vite compile/initial error to the parent builder so it can
+ * post the payload to the agents' authenticated runtime-error buffer for
+ * the next-turn post-hook. Async runtime errors take a different path —
+ * `AiroErrorBoundary` handles those once React has mounted — so this
+ * helper is only used for the Vite-specific events below.
+ *
+ * On top-level pages (preview loaded standalone rather than embedded in
+ * the builder) `window.parent === window`; `postToParent` short-circuits
+ * so we don't post messages to ourself.
+ */
+function notifyParentOfError(errorData: ForwardedErrorData): void {
+  try {
+    postToParent({
+      type: 'error-fix-request',
+      errorData
+    });
+  } catch (err) {
+    console.error('Failed to notify parent of error:', err);
+  }
 }
 
 function sendCompileErrorToParent(data: any) {
   try {
-    const { message, file, frame } = parseViteError(data);
-    const stack = [file && `  at ${file}`, frame && `\n${frame}`].filter(Boolean).join('\n');
+    const parsed = parseViteError(data);
+    const { message, file, frame, name: parsedName, stack: parsedStack } = parsed;
+    // Prefer the underlying error's name (TypeError, ReferenceError, etc.)
+    // when available — `vite:initial-error` wraps a genuine runtime throw
+    // from the entry module, and the agent fixes it better when it sees
+    // the real class. Fall back to `CompileError` only for true Vite
+    // compile failures (err.name missing).
+    const name = parsedName ?? 'CompileError';
+    const composedStack = [file && `  at ${file}`, frame && `\n${frame}`]
+      .filter(Boolean)
+      .join('\n');
+    const errorData: ForwardedErrorData = {
+      message,
+      name,
+      stack: parsedStack ?? (composedStack || undefined),
+      url: file,
+      timestamp: Date.now()
+    };
 
-    safePostMessage(window.parent, {
-      type: 'error-fix-request',
-      errorData: {
-        message,
-        name: 'CompileError',
-        stack: stack || undefined,
-        url: file,
-        timestamp: Date.now(),
-      },
-    });
+    notifyParentOfError(errorData);
   } catch (err) {
     console.error('Failed to send message to parent from error-client:', err);
   }
@@ -67,7 +125,15 @@ function removeInactiveOverlay() {
   }
 }
 
-// Catch initial page load failures (import errors before HMR is connected)
+// Catch initial page load failures (import errors before HMR is connected).
+//
+// Global `window.error` / `unhandledrejection` capture is owned by
+// `AiroErrorBoundary` (see its `componentDidMount`) so there's a single
+// path from "async error" → parent POST, which also drives the in-iframe
+// overlay. Doubling the capture here would produce two POSTs per error
+// (the buffer's push-dedup window collapses them today, but that's a
+// correctness trap if the dedup ever loosens). This file is now solely
+// responsible for Vite-specific events.
 if (import.meta.env.MODE === 'development') {
   window.addEventListener('vite:initial-error', ((event: CustomEvent) => {
     if (hasDetailedError) return; // HMR already sent a detailed error; ignore the generic import failure
@@ -75,14 +141,14 @@ if (import.meta.env.MODE === 'development') {
     sendCompileErrorToParent(event.detail);
 
     // The error may be transient (e.g. Vite dep optimization). Watch for React
-    // mounting into #app -- if children appear, the app recovered on its own.
+    // mounting into #app -- if children appear, the app recovered on its own,
+    // so we can tear down the local overlay.
     const appEl = document.getElementById('app');
     if (appEl) {
       const observer = new MutationObserver(() => {
         if (appEl.children.length > 0) {
           observer.disconnect();
           removeInactiveOverlay();
-          safePostMessage(window.parent, { type: 'error-fix-resolved' });
         }
       });
       observer.observe(appEl, { childList: true });
@@ -90,39 +156,6 @@ if (import.meta.env.MODE === 'development') {
       setTimeout(() => observer.disconnect(), 30000);
     }
   }) as EventListener);
-
-  // After a full page reload (e.g., recovering from a compile error), the module
-  // re-initializes with clean state and the parent never receives error-fix-resolved.
-  // Wait for React to actually mount into #app before signaling — sending too early
-  // creates a race where error-fix-resolved clears parent dedup state, then the same
-  // runtime error immediately fires error-fix-request and gets auto-sent again.
-  window.addEventListener('load', () => {
-    const appEl = document.getElementById('app');
-    if (appEl && appEl.children.length > 0) {
-      safePostMessage(window.parent, { type: 'error-fix-resolved' });
-      return;
-    }
-    if (appEl) {
-      let resolved = false;
-      const observer = new MutationObserver(() => {
-        if (appEl.children.length > 0) {
-          resolved = true;
-          observer.disconnect();
-          safePostMessage(window.parent, { type: 'error-fix-resolved' });
-        }
-      });
-      observer.observe(appEl, { childList: true });
-      setTimeout(() => {
-        observer.disconnect();
-        // Only signal if React actually mounted — if children are still absent,
-        // there's likely still an error and firing here would clear parent dedup
-        // state, re-triggering the auto-send loop we're preventing.
-        if (!resolved && appEl.children.length > 0) {
-          safePostMessage(window.parent, { type: 'error-fix-resolved' });
-        }
-      }, 5000);
-    }
-  });
 }
 
 // Hook into Vite HMR for errors during development
@@ -139,42 +172,15 @@ if (import.meta.env.MODE === 'development' && import.meta.hot) {
   };
 
   const handleAfterUpdate = () => {
-    // Check both hasErrorOverlay (for HMR errors) and overlayElement (for initial-error,
-    // where hasErrorOverlay is not set because it's scoped to this block).
-    // Sends error-fix-resolved immediately (no deferral) because compile errors flow
-    // through useErrorFixState's non-runtime branch — no dedup signature is set, so a
-    // premature signal can't trigger the auto-send loop.
+    // Check both hasErrorOverlay (for HMR errors) and overlayElement (for
+    // initial-error, where hasErrorOverlay is not set because it's scoped
+    // to this block). On a successful HMR update that follows an error,
+    // tear down the inactive overlay we showed.
     if (hasErrorOverlay || overlayElement) {
       hasErrorOverlay = false;
       hasDetailedError = false;
       removeInactiveOverlay();
-      safePostMessage(window.parent, { type: 'error-fix-resolved' });
     }
-  };
-
-  // Handle on-demand tsc type check results from vite-tsc-plugin
-  const handleTscError = (data: any) => {
-    const errors = data?.errors;
-    if (!errors || errors.length === 0) return;
-
-    const first = errors[0];
-    const errorLines = errors
-      .map((e: any) => `${e.file}(${e.line},${e.column}): error ${e.code}: ${e.message}`);
-    if (errors.length > 1) {
-      const fileCount = new Set(errors.map((e: any) => e.file)).size;
-      errorLines.push(`[+${errors.length - 1} more error${errors.length > 2 ? 's' : ''} across ${fileCount} file${fileCount > 1 ? 's' : ''}]`);
-    }
-    const message = errorLines.join('\n');
-
-    hasErrorOverlay = true;
-    hasDetailedError = true;
-    showInactiveOverlay();
-    sendCompileErrorToParent({
-      err: {
-        message,
-        loc: { file: first.file, line: first.line, column: first.column },
-      },
-    });
   };
 
   // Standard Vite error event
@@ -183,16 +189,11 @@ if (import.meta.env.MODE === 'development' && import.meta.hot) {
   // Custom compile error event emitted by our error interceptor plugin
   import.meta.hot.on('compile-error', handleHmrError);
 
-  // On-demand tsc type check errors from vite-tsc-plugin
-  import.meta.hot.on('tsc-error', handleTscError);
-
-  // tsc errors resolved (0 errors after a previous failure)
-  import.meta.hot.on('tsc-error-resolved', handleAfterUpdate);
-
   // Recover after a successful HMR update clears a previous error
   import.meta.hot.on('vite:afterUpdate', handleAfterUpdate);
 
-  // Clear overlay before full reload -- the reloaded page sends error-fix-resolved on load
+  // Clear overlay before full reload so a stale one doesn't flash as the
+  // new page is initializing.
   const handleBeforeFullReload = () => {
     if (hasErrorOverlay || overlayElement) {
       hasErrorOverlay = false;
@@ -209,8 +210,6 @@ if (import.meta.env.MODE === 'development' && import.meta.hot) {
     removeInactiveOverlay();
     import.meta.hot!.off('vite:error', handleHmrError);
     import.meta.hot!.off('compile-error', handleHmrError);
-    import.meta.hot!.off('tsc-error', handleTscError);
-    import.meta.hot!.off('tsc-error-resolved', handleAfterUpdate);
     import.meta.hot!.off('vite:afterUpdate', handleAfterUpdate);
     import.meta.hot!.off('vite:beforeFullReload', handleBeforeFullReload);
   });

@@ -133,7 +133,8 @@ const SYNC_MANIFEST = [
       '23983daa85eb1afd36bd4e4c818f0d84', // 13898857b - resolve.dedupe, before ESM bundle (still CJS)
       'e35e331c50f1818c26185fda8721c9bc', // Before mediaVersionsPlugin
       'c756114664418042ae7d4c2622ec6a24', // efb47df1 - mediaVersionsPlugin, before tscWatchPlugin
-      '3e9501608607628f08fd458d8831ecb8'  // tscWatchPlugin, before extractHostname .host -> .hostname fix
+      '3e9501608607628f08fd458d8831ecb8', // tscWatchPlugin, before extractHostname .host -> .hostname fix
+      '0cd4b63e3ebfaa63088ac218924a9e6f'  // before tscWatchPlugin removal (post-hook tsc migration)
     ],
     force: false
   },

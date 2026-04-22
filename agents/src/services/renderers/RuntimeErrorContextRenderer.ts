@@ -128,13 +128,13 @@ export class RuntimeErrorContextRenderer implements ContextAttachmentRenderer<Ru
         sections.push('')
         sections.push('2. Fix: Make minimal changes to resolve the type or compilation error')
         sections.push('')
-        sections.push('3. The type checker runs continuously - if errors remain after your fix, they will be reported automatically. Do NOT run `npm run type-check` manually.')
+        sections.push('3. The type checker and a runtime-error check both run automatically after your edits. If either surfaces problems, they will be fed back to you as a follow-up prompt — do NOT run `npm run type-check` (or any other type/compile command) and do NOT try to reproduce runtime errors yourself.')
       } else {
         sections.push('1. Analyze: Examine stack trace (topmost frame = error location), review component stack, identify root cause')
         sections.push('')
         sections.push('2. Fix: Make minimal changes following existing patterns')
         sections.push('')
-        sections.push('3. The type checker runs continuously - if type errors remain after your fix, they will be reported automatically. Do NOT run `npm run type-check` manually.')
+        sections.push('3. The type checker and a runtime-error check both run automatically after your edits. If either surfaces problems, they will be fed back to you as a follow-up prompt — do NOT run `npm run type-check` (or any other type/compile command) and do NOT try to reproduce runtime errors yourself.')
       }
       sections.push('')
       

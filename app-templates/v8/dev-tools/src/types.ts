@@ -12,9 +12,22 @@ export interface RuntimeErrorData {
 
 /**
  * Message types for postMessage communication between app and builder
+ *
+ * `error-fix-request`       — auto-sent from the iframe on every caught error.
+ *                             Parent forwards it to the runtime-error buffer
+ *                             so the server-side post-hook validator can pick
+ *                             it up on the next turn. Informational only.
+ * `error-fix-user-requested`— sent when the user clicks the "Ask Airo to Fix
+ *                             Code" button on the iframe's error overlay.
+ *                             Parent sends a chat message to the agent.
  */
 export interface ErrorFixRequestMessage {
   type: 'error-fix-request'
+  errorData: RuntimeErrorData
+}
+
+export interface ErrorFixUserRequestedMessage {
+  type: 'error-fix-user-requested'
   errorData: RuntimeErrorData
 }
 
