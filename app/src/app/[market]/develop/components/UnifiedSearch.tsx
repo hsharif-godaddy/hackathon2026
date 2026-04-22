@@ -43,7 +43,6 @@ interface UnifiedSearchProps {
 
 export default function UnifiedSearch({ appId, files, onResultClick, initialState, onStateChange }: UnifiedSearchProps) {
   const t = useTranslations()
-  const inputRef = useRef<HTMLInputElement>(null)
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
 
@@ -56,11 +55,6 @@ export default function UnifiedSearch({ appId, files, onResultClick, initialStat
   const [truncated, setTruncated] = useState(initialState?.truncated ?? false)
   const [filesExpanded, setFilesExpanded] = useState(true)
   const [codeExpanded, setCodeExpanded] = useState(true)
-
-  // Focus input on mount
-  useEffect(() => {
-    inputRef.current?.focus()
-  }, [])
 
 
   // Cleanup debounce timeout and abort in-flight requests on unmount
@@ -93,6 +87,9 @@ export default function UnifiedSearch({ appId, files, onResultClick, initialStat
     }
 
     if (!searchQuery || searchQuery.trim().length === 0) {
+      // Abort any in-flight request and reset loading state
+      abortControllerRef.current?.abort()
+      setIsSearching(false)
       setFileResults([])
       setCodeResults([])
       setTotalCodeMatches(0)
@@ -169,11 +166,6 @@ export default function UnifiedSearch({ appId, files, onResultClick, initialStat
     }, 300)
   }, [appId, files, t])
 
-  const handleQueryChange = useCallback((value: string) => {
-    setQuery(value)
-    debouncedSearch(value)
-  }, [debouncedSearch])
-
   // Sync query from external source (left nav input) and trigger search
   const prevExternalQuery = useRef(initialState?.query)
   useEffect(() => {
@@ -184,16 +176,6 @@ export default function UnifiedSearch({ appId, files, onResultClick, initialStat
       debouncedSearch(externalQuery)
     }
   }, [initialState?.query, debouncedSearch])
-
-  const handleClearSearch = useCallback(() => {
-    setQuery('')
-    setIsSearching(false)
-    // Abort any in-flight request
-    abortControllerRef.current?.abort()
-    // Also call debouncedSearch with empty string to cancel any pending search
-    debouncedSearch('')
-    inputRef.current?.focus()
-  }, [debouncedSearch])
 
   const highlightMatch = (text: string, matchStart: number, matchEnd: number) => {
     if (!text || matchStart === undefined || matchEnd === undefined) {
@@ -222,30 +204,6 @@ export default function UnifiedSearch({ appId, files, onResultClick, initialStat
       data-testid="search-panel"
       className="h-full flex flex-col bg-intents-ux-box-backgroundColor"
     >
-      {/* Search Input */}
-      <div className="flex items-center gap-2 p-2 border-b">
-        <input
-          ref={inputRef}
-          type="text"
-          value={query}
-          onChange={(e) => handleQueryChange(e.target.value)}
-          placeholder={t('builder_code_search_placeholder_code', undefined, 'Search files and code by name or content...')}
-          className="flex-1 bg-transparent text-sm focus:outline-none"
-          data-testid="search-input"
-          aria-label={t('builder_code_search_placeholder_code', undefined, 'Search files and code by name or content...')}
-        />
-        {query && (
-          <button
-            type="button"
-            onClick={handleClearSearch}
-            className="text-xs underline opacity-60 hover:opacity-100"
-            aria-label={t('builder_common_clear', undefined, 'Clear')}
-          >
-            {t('builder_common_clear', undefined, 'Clear')}
-          </button>
-        )}
-      </div>
-
       {/* Loading */}
       {isSearching && (
         <div className="p-3 flex items-center justify-center gap-2 text-sm">

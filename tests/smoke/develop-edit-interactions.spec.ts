@@ -234,7 +234,7 @@ test.describe('Edit Interactions', () => {
     // ========================================
     console.log('Step 4: Searching for files...');
 
-    const searchInput = page.getByTestId('search-input');
+    const searchInput = page.getByTestId('search-input-header');
     await expect(searchInput).toBeVisible();
     await searchInput.fill('index');
 
@@ -286,20 +286,17 @@ test.describe('Edit Interactions', () => {
 
     // Type something to make clear button appear
     await searchInput.fill('test');
-    await page.waitForTimeout(100);
 
-    // Find and click clear button
-    const clearButton = searchPanel.locator('button', { hasText: /clear/i });
-    const hasClearButton = await clearButton.isVisible().catch(() => false);
+    // Find and click clear button (scoped to search input's parent container)
+    const clearButton = page.getByTestId('search-input-header')
+      .locator('xpath=..')
+      .locator('button[aria-label="Clear"]');
+    await expect(clearButton).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+    await clearButton.click();
 
-    if (hasClearButton) {
-      await clearButton.click();
-      // Verify input is cleared
-      await expect(searchInput).toHaveValue('');
-      console.log('  Clear button works');
-    } else {
-      console.log('  Clear button not visible (input may be empty)');
-    }
+    // Verify input is cleared
+    await expect(searchInput).toHaveValue('');
+    console.log('  Clear button works');
 
     console.log('Unified search test passed!');
   });
