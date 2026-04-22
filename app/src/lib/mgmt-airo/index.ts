@@ -10,6 +10,8 @@ export type {
   AiroApiErrorV2,
   AiroApp,
   AiroAppDetails,
+  AiroArchiveRestoreResponse,
+  AiroArchiveStatusResponse,
   AiroAttribute,
   AiroCreateAppPayload,
   AiroCreateAppResponse,

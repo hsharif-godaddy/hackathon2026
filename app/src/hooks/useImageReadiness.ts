@@ -5,6 +5,7 @@ import type { ImageStatusResponse } from '@/lib/control-plane/types';
 import { appFetch } from '@/lib/gasket-config';
 import { logger } from '@/lib/request-context';
 import { useServerPollingStore } from '@/stores/useServerPollingStore';
+import type { UseAppArchiveRestoreReturn } from './useAppArchiveRestore';
 import type { UseAppHibernationReturn } from './useAppHibernation';
 import { useSwitchboard } from './useSwitchboard';
 
@@ -68,10 +69,23 @@ async function triggerReload(appId: string): Promise<void> {
 export function useImageReadiness(
   hibernation: UseAppHibernationReturn,
   appId: string | null,
-  isCreateFlow = false
+  isCreateFlow = false,
+  archiveRestore?: UseAppArchiveRestoreReturn
 ): UseImageReadinessReturn {
   const { data: isFeatureEnabled, isLoading: isFeatureLoading } = useSwitchboard('app-builder-app-on-demand-reload');
-  const canProceed = isFeatureEnabled === true && !isCreateFlow && !hibernation.isHibernated && !hibernation.isResuming && !hibernation.resumeFailed;
+  const archiveBlocksReady =
+    archiveRestore &&
+    !archiveRestore.archiveRestoreFailed &&
+    (archiveRestore.archiveGatePending ||
+      archiveRestore.isArchivedForRestore ||
+      archiveRestore.isRestoringFromArchive);
+  const canProceed =
+    isFeatureEnabled === true &&
+    !isCreateFlow &&
+    !hibernation.isHibernated &&
+    !hibernation.isResuming &&
+    !hibernation.resumeFailed &&
+    !archiveBlocksReady;
 
   const startPollingForServer = useServerPollingStore((state) => state.startPollingForServer);
   const serverState = useServerPollingStore((state) =>
@@ -296,6 +310,10 @@ export function useImageReadiness(
 
   // Resume failed is handled by the hibernation layer; don't block
   if (hibernation.resumeFailed) {
+    return IMAGES_READY;
+  }
+
+  if (archiveRestore?.archiveRestoreFailed) {
     return IMAGES_READY;
   }
 

@@ -110,7 +110,12 @@ export interface UseStreamingWebSocketReturn {
     /** Stop the current generation */
     stop: () => void
     /** Load more history messages */
-    loadMore: (params: { cursor: string; limit?: number }) => boolean
+    loadHistory: (params: { cursor: string; limit?: number }) => boolean
+    /**
+     * Reconnect with a fresh agent URL and clean history state.
+     * Use after cold-archive restore to pick up the new agent_url and reload history.
+     */
+    reconnect: () => Promise<void>
   }
 
   /** WebSocket connection state */
@@ -422,11 +427,16 @@ export function useStreamingWebSocket() {
     []
   )
 
+  const reconnect = useCallback(async (): Promise<void> => {
+    await controllerRef.current?.reconnect()
+  }, [])
+
   return {
     actions: {
       send: sendMessage,
       stop: stopGeneration,
-      loadHistory
+      loadHistory,
+      reconnect,
     },
     connection: {
       isConnected: webSocketState.connected,

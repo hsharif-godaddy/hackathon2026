@@ -97,6 +97,8 @@ func NewRouter(db *store.DB, jwtService *auth.JWTService, ssoMW *auth.SSOMiddlew
 	v1.HandleFunc("/subscriptions/{subId}/systems/{sysId}/apps/{appId}/secrets", srv.GetSecrets).Methods("GET")
 	v1.HandleFunc("/subscriptions/{subId}/systems/{sysId}/apps/{appId}/secrets", srv.UpdateSecrets).Methods("POST")
 	v1.HandleFunc("/subscriptions/{subId}/systems/{sysId}/apps/{appId}/image-status", srv.GetImageStatus).Methods("GET")
+	v1.HandleFunc("/subscriptions/{subId}/systems/{sysId}/apps/{appId}/archive-status", srv.GetArchiveStatus).Methods("GET")
+	v1.HandleFunc("/subscriptions/{subId}/systems/{sysId}/apps/{appId}/restore", srv.ArchiveRestore).Methods("POST")
 	v1.HandleFunc("/subscriptions/{subId}/systems/{sysId}/apps/{appId}/reload", srv.ReloadImages).Methods("POST")
 	v1.HandleFunc("/subscriptions/{subId}/systems/{sysId}/apps/{appId}/exports", srv.RecordExport).Methods("POST")
 	v1.HandleFunc("/subscriptions/{subId}/systems/{sysId}/apps/{appId}/exports", srv.GetAppExports).Methods("GET")

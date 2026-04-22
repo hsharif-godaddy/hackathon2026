@@ -8,7 +8,7 @@ import { screen, waitFor } from '@testing-library/react';
 
 import { SiteCreationPhase } from '@/stores/useSiteCreationStore';
 import { renderWithProviders } from '@/tests/test-utils';
-import ChatPaneLoader from './ChatPaneLoader';
+import ChatPaneLoader, { ResumeLoaderPhase } from './ChatPaneLoader';
 
 describe('ChatPaneLoader', () => {
   const defaultProps = {
@@ -68,7 +68,18 @@ describe('ChatPaneLoader', () => {
     renderWithProviders(<ChatPaneLoader {...defaultProps} />);
 
     expect(screen.getByText('builder_chatpane_loading_1')).toBeInTheDocument();
-    expect(screen.getByText("builder_chatpane_loading_2")).toBeInTheDocument();
+    expect(screen.getByText('builder_chatpane_loading_2')).toBeInTheDocument();
+  });
+
+  it('should display archive restore timing copy when restoring from archive', () => {
+    renderWithProviders(
+      <ChatPaneLoader {...defaultProps} phase={ResumeLoaderPhase.RESTORING_FROM_ARCHIVE} />
+    );
+
+    expect(screen.getByText('builder_chatpane_phase_restoring_archive')).toBeInTheDocument();
+    expect(screen.getByText('builder_chatpane_loading_archive_1')).toBeInTheDocument();
+    expect(screen.getByText('builder_chatpane_loading_2')).toBeInTheDocument();
+    expect(screen.queryByText('builder_chatpane_loading_1')).not.toBeInTheDocument();
   });
 
   it('should render error state when error is provided', () => {

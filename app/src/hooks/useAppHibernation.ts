@@ -71,9 +71,10 @@ const NOT_HIBERNATED: UseAppHibernationReturn = {
 export function useAppHibernation(
   appDetails: AppDetailsResponse | null | undefined,
   appId: string | null | undefined,
-  autoResume = false
+  autoResume = false,
+  suppressForColdArchive = false
 ): UseAppHibernationReturn {
-  const isHibernated = checkHibernated(appDetails);
+  const isHibernated = suppressForColdArchive ? false : checkHibernated(appDetails);
   const isRunning = checkRunning(appDetails);
 
   // Subscribe to server state with a reactive selector
@@ -112,7 +113,8 @@ export function useAppHibernation(
   });
 
   // Poll until BOTH lifecycle is RUNNING AND server is ready
-  const shouldPoll = mutation.isSuccess && !timedOut && (!isRunning || !isServerReady);
+  const shouldPoll =
+    !suppressForColdArchive && mutation.isSuccess && !timedOut && (!isRunning || !isServerReady);
 
   useQuery({
     queryKey: ['hibernation-poll', appId],
@@ -138,7 +140,7 @@ export function useAppHibernation(
 
   // Resume is complete only when lifecycle is RUNNING AND server is healthy
   useEffect(() => {
-    if (!mutation.isSuccess || !isRunning || !isServerReady || !appId) return;
+    if (suppressForColdArchive || !mutation.isSuccess || !isRunning || !isServerReady || !appId) return;
     if (hasHandledCompletionRef.current) return;
 
     hasHandledCompletionRef.current = true;
@@ -153,16 +155,16 @@ export function useAppHibernation(
 
     // Reset mutation so the hook returns to normal state
     mutation.reset();
-  }, [mutation, isRunning, isServerReady, appId, queryClient]);
+  }, [suppressForColdArchive, mutation, isRunning, isServerReady, appId, queryClient]);
 
   // Auto-resume once
   useEffect(() => {
-    if (!isHibernated || !autoResume || !appId) return;
+    if (suppressForColdArchive || !isHibernated || !autoResume || !appId) return;
     if (hasAutoResumedRef.current || mutation.isPending) return;
 
     hasAutoResumedRef.current = true;
     mutation.mutate();
-  }, [autoResume, appId, isHibernated, mutation]);
+  }, [suppressForColdArchive, autoResume, appId, isHibernated, mutation]);
 
   // Reset on app change
   useEffect(() => {

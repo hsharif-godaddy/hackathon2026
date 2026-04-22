@@ -462,10 +462,44 @@ func (s *Server) PurgeCache(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func mapDBJobStatusToAiro(status string) string {
+	switch status {
+	case "pending":
+		return "queued"
+	case "running":
+		return "in_progress"
+	case "completed":
+		return "success"
+	case "failed":
+		return "failure"
+	default:
+		return "in_progress"
+	}
+}
+
 func (s *Server) GetJob(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	jobID := vars["jobId"]
 	now := time.Now().UTC()
+
+	if s.DB != nil {
+		job, err := s.DB.GetJob(jobID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if job != nil {
+			writeJSON(w, http.StatusOK, map[string]any{
+				"id":        job.ID,
+				"jobType":   job.JobType,
+				"status":    mapDBJobStatusToAiro(job.Status),
+				"ownerType": "app",
+				"createdAt": job.CreatedAt.Format(time.RFC3339),
+				"updatedAt": now.Format(time.RFC3339),
+			})
+			return
+		}
+	}
 
 	purgeJobStartTimesMu.Lock()
 	startTime, tracked := purgeJobStartTimes[jobID]

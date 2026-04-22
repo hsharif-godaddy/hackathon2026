@@ -591,7 +591,7 @@ describe('StreamingMessageList', function packageTests() {
   })
 
   describe('history loading gate', function historyLoadingGate() {
-    it('should show full-screen skeleton and hide messages when historyLoadingComplete is false with messages present', function showSkeletonAndHideMessagesWhileHistoryLoads() {
+    it('should show messages with top skeleton when historyLoadingComplete is false but messages already arrived', function showMessagesWithTopSkeletonWhileHistoryLoads() {
       mockStreamingStore.historyLoadingComplete = false;
 
       const messages = [
@@ -601,10 +601,8 @@ describe('StreamingMessageList', function packageTests() {
 
       const { container } = renderWithProviders(<StreamingMessageList allMessages={messages} />);
 
-      // Messages are hidden until history is fully loaded — prevents flash of top-of-chat
-      expect(screen.queryByTestId('message-msg-1')).not.toBeInTheDocument();
-      expect(screen.queryByTestId('message-msg-2')).not.toBeInTheDocument();
-      // Full-screen skeleton shown instead
+      expect(screen.getByTestId('message-msg-1')).toBeInTheDocument();
+      expect(screen.getByTestId('message-msg-2')).toBeInTheDocument();
       expect(container.querySelector('.ux-skeleton')).toBeInTheDocument();
     });
 

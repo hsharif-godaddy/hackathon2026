@@ -67,6 +67,9 @@ proxy-logs/
 .worktrees/
 .claude/worktrees/
 
+# Local control plane ad-hoc server binary (see local-control-plane/.gitignore; enforced in .husky/pre-commit)
+local-control-plane/server
+
 # GoDaddy Golden Container Image metadata (fetch from s3://gd-goldenami-prod-ecr-repolist/gci-metadata.json)
 gci-metadata.json
 all.log

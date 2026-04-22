@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 
-import type { SiteStatus } from '@/lib/control-plane/types';
+import type { SiteStatus, SiteVariant } from '@/lib/control-plane/types';
 import { appFetch } from '@/lib/gasket-config';
 import { logger } from '@/lib/request-context';
 
@@ -29,10 +29,7 @@ export interface AppDetailsResponse {
   status: SiteStatus;
   domains?: AppDomain[];
   variants?: string[];
-  variantsWithLifecycle?: Array<{
-    variant: string;
-    status: string;
-  }>;
+  variantsWithLifecycle?: SiteVariant[];
   [key: string]: any;
 }
 

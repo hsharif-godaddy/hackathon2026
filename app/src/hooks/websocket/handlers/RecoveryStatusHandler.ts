@@ -32,7 +32,6 @@ export class RecoveryStatusHandler implements MessageHandler {
     }
 
     if (data.data?.streamCompleted && !data.data?.hasBufferedEvents) {
-      // Stream completed with no buffered events - finalize and load history
       await this.handleStreamCompleted(data, context)
     } else if (data.data?.isRecovering === false) {
       this.handleRecoveryFinalized(data, context)

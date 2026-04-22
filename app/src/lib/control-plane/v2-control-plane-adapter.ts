@@ -4,7 +4,7 @@ import { checkSwitchboardFlag } from '@/lib/switchboard/server';
 import { getDatacenterFromMarketId } from '@/lib/utils/dc-mapping';
 import { extractCustomerId } from '@/lib/utils/jwt-utils';
 import { useSubscriptionCacheStore } from '@/stores/useSubscriptionCacheStore';
-import { CreateSiteParams, CreateSiteResult, DeploySiteOptions, DomainStatus, DomainType, IControlPlaneAdapter, ImageStatusResponse, ReloadImagesResponse, SecretOperations, SecretOperationsResult, SecretsDiffResult, SecretsResponse, SecretUpdate, SiteDomain, SiteInfo, SiteStatus, SiteVariant } from './types';
+import { ArchiveRestoreResponse, ArchiveStatusResponse, CreateSiteParams, CreateSiteResult, DeploySiteOptions, DomainStatus, DomainType, IControlPlaneAdapter, ImageStatusResponse, ReloadImagesResponse, SecretOperations, SecretOperationsResult, SecretsDiffResult, SecretsResponse, SecretUpdate, SiteDomain, SiteInfo, SiteStatus, SiteVariant } from './types';
 import gasket from '../../../gasket.ts';
 
 /**
@@ -941,6 +941,61 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
     }
   }
 
+  async getArchiveStatus(siteId: string, jwt: string): Promise<ArchiveStatusResponse> {
+    try {
+      const site = await this.getSite(siteId, jwt);
+
+      if (!site) {
+        return { isArchived: false, canRestore: false };
+      }
+
+      if (!site.system_id || !site.subscription_id) {
+        return { isArchived: false, canRestore: false };
+      }
+
+      const client = this.createClient(jwt);
+      return await client.getArchiveStatus(site.subscription_id, site.system_id, siteId);
+    } catch (error: any) {
+      if (typeof error?.status === 'number') {
+        throw error;
+      }
+      logger.error('v2-control-plane.archive-status.error', {
+        siteId,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+      throw error;
+    }
+  }
+
+  async startArchiveRestore(siteId: string, jwt: string, options?: { targetCell?: string }): Promise<ArchiveRestoreResponse> {
+    try {
+      const site = await this.getSite(siteId, jwt);
+
+      if (!site?.system_id || !site.subscription_id) {
+        throw new Error('Site not found or missing system_id/subscription_id');
+      }
+
+      const client = this.createClient(jwt);
+      const result = await client.restoreArchivedApp(site.subscription_id, site.system_id, siteId, options);
+
+      logger.info('v2-control-plane.archive-restore.started', {
+        siteId,
+        statusJobId: result.statusJobId,
+      });
+
+      return result;
+    } catch (error: any) {
+      if (typeof error?.status === 'number') {
+        throw error;
+      }
+      logger.error('v2-control-plane.archive-restore.error', {
+        siteId,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+      throw new Error(`Archive restore failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
   async getImageStatus(siteId: string, jwt: string): Promise<ImageStatusResponse> {
     try {
       const site = await this.getSite(siteId, jwt);
@@ -1256,6 +1311,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
       case 'pending': return SiteStatus.Creating;
       case 'provisioning': return SiteStatus.Creating;
       case 'active': return SiteStatus.Running;
+      case 'paused': return SiteStatus.Stopped;
       case 'suspended': return SiteStatus.Suspended;
       case 'error': return SiteStatus.Failed;
       case null:

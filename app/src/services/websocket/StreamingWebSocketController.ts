@@ -20,6 +20,7 @@ import type { AgentsAppChatMessage } from '@airo/shared/websocket'
 
 import type { AssetManagerItem } from '@/app/[market]/develop/components/chat/AssetTypes'
 import type { VisualContext } from '@/app/[market]/develop/components/visualContextCapture'
+import { dynamicApiConfigService } from '@/config/dynamic-api'
 import type {
   MessageHandlerActions,
   MessageHandlerHelpers,
@@ -34,6 +35,7 @@ import {
 import { JourneyTracker } from '@/lib/journeyTracker'
 import { logger } from '@/lib/request-context'
 import { toWebSocketError, WebSocketError, WebSocketErrorCode } from '@/lib/websocket-errors'
+import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
 import {
   type AIEditContext,
   type BuildError,
@@ -267,6 +269,34 @@ export class StreamingWebSocketController extends EventEmitter {
 
     this.supervisor.disconnect()
     this.supervisor.clearRetryState()
+  }
+
+  /**
+   * Reconnect to the WebSocket with a fresh agent URL and clean history state.
+   *
+   * Use after cold-archive restore: the pre-archive agent_url is stale, and the
+   * store's historyLoadingComplete flag would prevent history from loading again.
+   * This clears both so the next connect fetches the new URL and re-requests history.
+   *
+   * Whether history actually reloads depends on the conversationId cookie being present
+   * at connect time — the server uses handshake.auth.conversationId to enter 'initial'
+   * recovery mode and replay history. If the cookie is missing, the server treats this
+   * as a fresh connection and sends no history.
+   */
+  async reconnect(): Promise<void> {
+    if (!this.currentAppId) return
+
+    const appId = this.currentAppId
+
+    dynamicApiConfigService.clearCache(appId)
+
+    const store = useStreamingConversationStore.getState()
+    store.clearMessages()
+    store.setHistoryLoadingComplete(false)
+    store.setHistoryLoadRequested(false)
+
+    this.disconnect()
+    await this.connect(appId)
   }
 
   /**

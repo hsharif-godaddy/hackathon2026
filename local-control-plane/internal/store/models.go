@@ -3,19 +3,19 @@ package store
 import "time"
 
 type App struct {
-	ID                     string            `json:"id"`
-	SubscriptionID         string            `json:"subscriptionId"`
-	SystemID               string            `json:"systemId"`
-	Status                 string            `json:"status"`
-	Variables              map[string]any    `json:"variables,omitempty"`
-	Variants               []string          `json:"variants,omitempty"`
-	CreatedAt              time.Time         `json:"createdAt"`
-	UpdatedAt              time.Time         `json:"updatedAt"`
-	PreviewPort            int               `json:"previewPort,omitempty"`
-	PublishPort            int               `json:"publishPort,omitempty"`
-	SupervisorPort         int               `json:"supervisorPort,omitempty"`
-	PublishSupervisorPort  int               `json:"publishSupervisorPort,omitempty"`
-	URLs                   map[string]string `json:"urls,omitempty"`
+	ID                    string            `json:"id"`
+	SubscriptionID        string            `json:"subscriptionId"`
+	SystemID              string            `json:"systemId"`
+	Status                string            `json:"status"`
+	Variables             map[string]any    `json:"variables,omitempty"`
+	Variants              []string          `json:"variants,omitempty"`
+	CreatedAt             time.Time         `json:"createdAt"`
+	UpdatedAt             time.Time         `json:"updatedAt"`
+	PreviewPort           int               `json:"previewPort,omitempty"`
+	PublishPort           int               `json:"publishPort,omitempty"`
+	SupervisorPort        int               `json:"supervisorPort,omitempty"`
+	PublishSupervisorPort int               `json:"publishSupervisorPort,omitempty"`
+	URLs                  map[string]string `json:"urls,omitempty"`
 }
 
 type Job struct {
@@ -23,6 +23,7 @@ type Job struct {
 	AppID     string    `json:"appId"`
 	Status    string    `json:"status"`
 	Error     string    `json:"error,omitempty"`
+	JobType   string    `json:"jobType"`
 	CreatedAt time.Time `json:"createdAt"`
 }
 
@@ -67,4 +68,28 @@ const (
 	DefaultCustomerID     = "local-customer-001"
 	DefaultDatacenter     = "local-dc"
 	DefaultProductID      = "aab-v1"
+)
+
+// Lifecycle state constants (matching hosting backend)
+const (
+	LifecycleStateRunning      = "running"
+	LifecycleStatePaused       = "paused"
+	LifecycleStateReloading    = "reloading"
+	LifecycleStateProvisioning = "provisioning"
+	LifecycleStateDeleting     = "deleting"
+	LifecycleStateFailed       = "failed"
+)
+
+// Lifecycle reason constants (matching hosting backend)
+const (
+	LifecycleReasonHibernation         = "hibernation"
+	LifecycleReasonUserRequest         = "user_request"
+	LifecycleReasonMaintenance         = "maintenance"
+	LifecycleReasonDeploymentComplete  = "deployment_complete"
+	LifecycleReasonUserResumed         = "user_resumed"
+	LifecycleReasonFleetReload         = "fleet_reload"
+	LifecycleReasonDeployment          = "deployment"
+	LifecycleReasonReloadComplete      = "reload_complete"
+	LifecycleReasonOnDemandStaleImages = "on_demand_stale_images"
+	LifecycleReasonColdArchive         = "cold_archive"
 )

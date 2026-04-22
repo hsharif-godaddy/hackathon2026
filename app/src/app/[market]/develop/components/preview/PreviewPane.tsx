@@ -73,6 +73,10 @@ interface PreviewPaneProps {
   isResuming?: boolean
   resumeFailed?: boolean
   onRetryResume?: () => void
+  archiveGatePending?: boolean
+  archiveResumeFailed?: boolean
+  onRetryArchiveRestore?: () => void
+  showArchiveResumeMessage?: boolean
   isImageReloading?: boolean
   imageReloadFailed?: boolean
   onRetryImageReload?: () => void
@@ -88,6 +92,10 @@ export default function PreviewPane({
   isResuming = false,
   resumeFailed = false,
   onRetryResume,
+  archiveGatePending = false,
+  archiveResumeFailed = false,
+  onRetryArchiveRestore,
+  showArchiveResumeMessage = false,
   isImageReloading = false,
   imageReloadFailed = false,
   onRetryImageReload,
@@ -578,6 +586,29 @@ export default function PreviewPane({
     setIframeError(true)
   }
 
+  if (archiveGatePending) {
+    return (
+      <div data-testid="develop-preview-archive-gate">
+        <Tips
+          buildingMessage={t('builder_preview_resuming_message')}
+        />
+      </div>
+    )
+  }
+
+  if (archiveResumeFailed) {
+    return (
+      <div data-testid="develop-preview-archive-restore-failed">
+        <PreviewError
+          title={t('builder_preview_archive_restore_failed_title')}
+          error={t('builder_preview_archive_restore_failed_message')}
+          buttonText={t('builder_common_try_again')}
+          buttonOnClick={onRetryArchiveRestore || onPreviewRefresh}
+        />
+      </div>
+    )
+  }
+
   // Show error state when resume failed
   if (resumeFailed) {
     return (
@@ -587,6 +618,17 @@ export default function PreviewPane({
         buttonText={t('builder_common_try_again')}
         buttonOnClick={onRetryResume || onPreviewRefresh}
       />
+    )
+  }
+
+  if (showArchiveResumeMessage) {
+    return (
+      <div data-testid="develop-preview-archive-restoring">
+        <Tips
+          buildingMessage={t('builder_preview_archive_restore_message')}
+          buildingDescription={t('builder_preview_archive_restore_description')}
+        />
+      </div>
     )
   }
 

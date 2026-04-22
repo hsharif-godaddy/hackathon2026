@@ -372,6 +372,54 @@ describe('useAppHibernation', function useAppHibernationTests() {
     });
   });
 
+  describe('#suppressForColdArchive', function suppressTests() {
+    it('should mask hibernation when suppressForColdArchive is true', function maskHibernation() {
+      const appDetails = createMockAppDetails(createHibernatedVariant());
+
+      const { result } = renderHook(
+        () => useAppHibernation(appDetails, 'test-app-123', false, true),
+        { wrapper: createWrapper() }
+      );
+
+      expect(result.current.isHibernated).toBe(false);
+    });
+
+    it('should not auto-resume when suppressForColdArchive is true', async function noAutoResumeWhenSuppressed() {
+      const appDetails = createMockAppDetails(createHibernatedVariant());
+
+      renderHook(
+        () => useAppHibernation(appDetails, 'test-app-123', true, true),
+        { wrapper: createWrapper() }
+      );
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+      expect(appFetch).not.toHaveBeenCalled();
+    });
+
+    it('should not suppress when suppressForColdArchive is false', function noSuppressWhenFalse() {
+      const appDetails = createMockAppDetails(createHibernatedVariant());
+
+      const { result } = renderHook(
+        () => useAppHibernation(appDetails, 'test-app-123', false, false),
+        { wrapper: createWrapper() }
+      );
+
+      expect(result.current.isHibernated).toBe(true);
+    });
+
+    it('should still detect running state when suppressed', function runningDetectedWhenSuppressed() {
+      const appDetails = createMockAppDetails(createRunningVariant());
+
+      const { result } = renderHook(
+        () => useAppHibernation(appDetails, 'test-app-123', false, true),
+        { wrapper: createWrapper() }
+      );
+
+      expect(result.current.isHibernated).toBe(false);
+      expect(result.current.isResuming).toBe(false);
+    });
+  });
+
   describe('#state transitions', function stateTransitionTests() {
     it('should transition from hibernated to running', async function transitionToRunning() {
       const hibernatedDetails = createMockAppDetails(createHibernatedVariant());

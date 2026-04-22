@@ -868,6 +868,33 @@ export interface AiroTransferCancelResponse {
 }
 
 /**
+ * Cold archive status from GET .../archive-status
+ */
+export interface AiroArchiveStatusResponse {
+  isArchived: boolean;
+  canRestore: boolean;
+  status?: string;
+  inProgress?: boolean;
+  archiveId?: number;
+  backupId?: string;
+  backupRegion?: string;
+  originalCellId?: string;
+  originalDatabaseId?: string;
+  originalFilesystemId?: string;
+  archiveRequestedAt?: string;
+  archivedAt?: string;
+}
+
+/**
+ * Archive restore response from POST .../restore
+ */
+export interface AiroArchiveRestoreResponse {
+  statusJobId: string;
+  estimatedRestoreTime?: string;
+  message?: string;
+}
+
+/**
  * Purge cache response from POST .../purge-cache
  */
 export interface AiroPurgeCacheResponse {

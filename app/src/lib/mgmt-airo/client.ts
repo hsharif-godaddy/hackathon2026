@@ -7,6 +7,8 @@ import {
   type AiroApiErrorV2,
   type AiroApp,
   type AiroAppDetails,
+  type AiroArchiveRestoreResponse,
+  type AiroArchiveStatusResponse,
   type AiroAttribute,
   type AiroBulkAppsResponse,
   type AiroCreateAppPayload,
@@ -471,6 +473,39 @@ export class AiroMgmtClient {
       `/api/airo/v1/subscriptions/${subscriptionId}/systems/${systemId}/apps/${appId}/purge-cache`,
       undefined,
       { logEvent: 'mgmt-airo.purge-cache' }
+    );
+  }
+
+  /**
+   * Whether the app is in cold archive and may be restored.
+   */
+  async getArchiveStatus(
+    subscriptionId: string,
+    systemId: string,
+    appId: string
+  ): Promise<AiroArchiveStatusResponse> {
+    return this.request<AiroArchiveStatusResponse>(
+      'GET',
+      `/api/airo/v1/subscriptions/${subscriptionId}/systems/${systemId}/apps/${appId}/archive-status`,
+      undefined,
+      { logEvent: 'mgmt-airo.archive-status' }
+    );
+  }
+
+  /**
+   * Start async restore from cold archive.
+   */
+  async restoreArchivedApp(
+    subscriptionId: string,
+    systemId: string,
+    appId: string,
+    payload?: { targetCell?: string }
+  ): Promise<AiroArchiveRestoreResponse> {
+    return this.request<AiroArchiveRestoreResponse>(
+      'POST',
+      `/api/airo/v1/subscriptions/${subscriptionId}/systems/${systemId}/apps/${appId}/restore`,
+      payload,
+      { logEvent: 'mgmt-airo.archive-restore' }
     );
   }
 

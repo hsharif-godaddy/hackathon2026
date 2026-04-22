@@ -21,6 +21,7 @@ import { ChatTab, IframeMessageType, MobileMode } from '@/app/[market]/develop/c
 import { extractNewPageRoute, handlePreviewRefresh, navigatePreviewToRoute, requestPreviewScreenshot, useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import VersionHistory from '@/app/[market]/develop/components/VersionHistory'
 import { clearExpiredWidgetStates } from '@/app/[market]/develop/components/widgets'
+import { useChatPaneLoadingState } from '@/app/[market]/develop/hooks/useChatPaneLoadingState'
 import { useEvalSnapshotCapture } from '@/app/[market]/develop/hooks/useEvalSnapshotCapture'
 import { useInitialization } from '@/app/[market]/develop/hooks/useInitialization'
 import { usePublishSnapshotCapture } from '@/app/[market]/develop/hooks/usePublishSnapshotCapture'
@@ -34,6 +35,7 @@ import PostPublishGoLiveModal from '@/components/layout/PostPublishGoLiveModal'
 import PublishLimitModal from '@/components/layout/PublishLimitModal'
 import { buildDynamicApiUrl, dynamicApiConfigService } from '@/config/dynamic-api'
 import { WebSocketProvider } from '@/contexts/WebSocketContext'
+import { useAppArchiveRestore } from '@/hooks/useAppArchiveRestore'
 import { useAppDetails } from '@/hooks/useAppDetails'
 import { useAppHibernation } from '@/hooks/useAppHibernation'
 import { useChatTabs } from '@/hooks/useChatTabs'
@@ -53,12 +55,13 @@ import { PAYWALL_ITC } from '@/lib/paywall/shared'
 import { logger } from '@/lib/request-context'
 import { claimTodoListHandoff, releaseTodoListHandoff } from '@/lib/todo-list-handoff-dedupe'
 import { cn } from '@/lib/utils'
-import { appService } from '@/services/AppService'
+import { appService, gitHistoryFailureHttpStatus } from '@/services/AppService'
 import { todoListService } from '@/services/TodoListService'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useMediaSlotDialogStore } from '@/stores/useMediaSlotDialogStore'
 import { useSecurityQuickFixHandoffStore } from '@/stores/useSecurityQuickFixHandoffStore'
 import { useServerPollingStore } from '@/stores/useServerPollingStore'
+import { useSiteStore } from '@/stores/useSiteStore'
 import {
   useActiveStream,
   useAutoSendInitialMessage,
@@ -74,6 +77,7 @@ import { useTodoListStore } from '@/stores/useTodoListStore'
 import type { RuntimeErrorData } from '@/types/runtime-error'
 import { logAiroHQEvent, logImpressionEvent, setInstrumentationAppId } from '@/utils/instrumentation'
 import { postMessageToIframe } from '@/utils/postMessage'
+
 
 function DevelopPageContent() {
   const t = useTranslations();
@@ -100,12 +104,19 @@ function DevelopPageContent() {
 
   // Hibernation handling - auto-resume when app is hibernated
   const appDetails = useAppDetails(appId);
-  const hibernation = useAppHibernation(appDetails.data, appId, true);
+  // Cold-archive restore runs before hibernation resume (suppressForColdArchive) so we never POST /resume while archive-status is unknown or restore is in flight.
+  const archiveRestore = useAppArchiveRestore(appDetails.data, appId, !isJobId, true);
+  const suppressHibernationForArchive =
+    archiveRestore.archiveGatePending ||
+    archiveRestore.isArchivedForRestore ||
+    archiveRestore.isRestoringFromArchive ||
+    archiveRestore.archiveRestoreFailed;
+  const hibernation = useAppHibernation(appDetails.data, appId, true, suppressHibernationForArchive);
 
   // Image readiness - runs after hibernation resolves or immediately for non-hibernated apps.
   // hasInitialPrompt is hydrated from sessionStorage on each RESET; it becomes false within
   // the same page session once the initial prompt is sent and the sessionStorage keys clear.
-  const imageReadiness = useImageReadiness(hibernation, appId, init.context.hasInitialPrompt);
+  const imageReadiness = useImageReadiness(hibernation, appId, init.context.hasInitialPrompt, archiveRestore);
 
   // Log when resume completes - history will be loaded via WebSocket
   useEffect(() => {
@@ -115,7 +126,7 @@ function DevelopPageContent() {
         message: 'Resume complete, WebSocket will stream history'
       });
     }
-  }, [hibernation.resumeComplete, appId]);
+  }, [hibernation.resumeComplete, appId, archiveRestore.archiveRestoreComplete]);
 
   // Eval snapshot capture - captures screenshot on first build completion
   const { triggerEvalSnapshot, handleEvalViewportScreenshot } = useEvalSnapshotCapture({ appId })
@@ -151,6 +162,53 @@ function DevelopPageContent() {
   const ws = useStreamingWebSocket()
   const isLoading = useIsLoading()
   const isStreaming = useIsActivelyStreaming()
+
+  // After cold-archive restore the WebSocket controller and dynamic-api cache hold the
+  // pre-archive agent_url, and the chat store's historyLoadingComplete flag is still true
+  // from the original page load — so AgentsAvailableHandler's emitLoadHistoryIfNeeded
+  // short-circuits and the chat keeps rendering stale pre-archive messages.
+  //
+  // useAppArchiveRestore calls startPollingForServer on mutation success, so by the time
+  // archiveRestoreComplete flips true the server-health poller is already running.
+  // Wait for isServerReady (agent HTTP health passing) then force-refetch the site record
+  // before reconnecting — useSiteStore caches indefinitely and may still hold
+  // status=stopped. fetchSite(force=true) primes the cache with the current status so
+  // DynamicApiConfigService.getConfigForSite does not throw "agent is not ready yet".
+  //
+  // We intentionally do NOT wait for hibernation.resumeComplete here: after archive
+  // restore the variant may be in RELOADING state (not PAUSED+HIBERNATION), so
+  // checkHibernated returns false, useAppHibernation short-circuits, and resumeComplete
+  // never becomes true.
+  const isServerReadyForAppId = useServerPollingStore((state) =>
+    appId ? state.servers.get(appId)?.server?.isReady ?? false : false
+  )
+  const hasReconnectedAfterArchiveRef = useRef(false)
+  useEffect(() => {
+    hasReconnectedAfterArchiveRef.current = false
+  }, [appId])
+  useEffect(() => {
+    if (!appId) return
+    if (!archiveRestore.archiveRestoreComplete) return
+    if (!isServerReadyForAppId) return
+    if (hasReconnectedAfterArchiveRef.current) return
+    hasReconnectedAfterArchiveRef.current = true
+    void (async () => {
+      try {
+        await useSiteStore.getState().fetchSite(appId, true)
+      } catch (error) {
+        logger.warn('develop.post_archive_restore.site_refetch_failed', {
+          appId,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
+      await ws.actions.reconnect()
+    })()
+  }, [
+    appId,
+    archiveRestore.archiveRestoreComplete,
+    isServerReadyForAppId,
+    ws.actions.reconnect,
+  ])
 
   const chatPaneWidth = useDevelopPageStore((state) => state.chatPaneWidth)
   const hasUnsavedChanges = useDevelopPageStore((state) => state.hasUnsavedChanges)
@@ -189,10 +247,86 @@ function DevelopPageContent() {
   const setShowPublishLimitModal = useDevelopPageStore((state) => state.setShowPublishLimitModal);
   const setShowPaywallModal = useDevelopPageStore((state) => state.setShowPaywallModal);
 
-  useGitHistoryQuery({
+  const gitHistoryQuery = useGitHistoryQuery({
     appId: appId || '',
     enabled: loadingPhase === 'ready' && !!appId && !!site?.agent_url
-  })
+  });
+
+  const postArchiveGitRecoveryKey = appId ? `airo_post_archive_git_${appId}` : '';
+
+  useEffect(() => {
+    if (!appId || !postArchiveGitRecoveryKey) return;
+    if (!archiveRestore.archiveRestoreComplete) return;
+    try {
+      sessionStorage.setItem(postArchiveGitRecoveryKey, '1');
+    } catch {
+      // ignore
+    }
+  }, [appId, archiveRestore.archiveRestoreComplete, postArchiveGitRecoveryKey]);
+
+  useEffect(() => {
+    if (!appId || !postArchiveGitRecoveryKey) return;
+    if (loadingPhase !== 'ready') return;
+    if (!gitHistoryQuery.isError || !gitHistoryQuery.error) return;
+
+    const status = gitHistoryFailureHttpStatus(gitHistoryQuery.error);
+
+    let pendingPostArchive = false;
+    try {
+      pendingPostArchive = sessionStorage.getItem(postArchiveGitRecoveryKey) === '1';
+    } catch {
+      return;
+    }
+
+    if (status !== 400 && status !== 404) {
+      if (pendingPostArchive || archiveRestore.archiveRestoreComplete) {
+        logger.warn('develop.git_history.reload_skip', {
+          appId,
+          resolvedStatus: status,
+          errorMessage:
+            gitHistoryQuery.error instanceof Error
+              ? gitHistoryQuery.error.message
+              : String(gitHistoryQuery.error),
+        });
+      }
+      return;
+    }
+
+    if (!pendingPostArchive && !archiveRestore.archiveRestoreComplete) return;
+
+    const reloadKey = `airo_develop_git_reload_${appId}`;
+    try {
+      if (sessionStorage.getItem(reloadKey)) return;
+      sessionStorage.setItem(reloadKey, '1');
+    } catch {
+      return;
+    }
+
+    logger.info('develop.git_history.reload_once', {
+      appId,
+      status,
+      message: 'Reloading once after cold-archive restore so git history bootstrap fresh',
+    });
+
+    window.location.reload();
+  }, [
+    appId,
+    postArchiveGitRecoveryKey,
+    loadingPhase,
+    archiveRestore.archiveRestoreComplete,
+    gitHistoryQuery.isError,
+    gitHistoryQuery.error
+  ]);
+
+  useEffect(() => {
+    if (!appId || !postArchiveGitRecoveryKey) return;
+    if (!gitHistoryQuery.isSuccess) return;
+    try {
+      sessionStorage.removeItem(postArchiveGitRecoveryKey);
+    } catch {
+      // ignore
+    }
+  }, [appId, postArchiveGitRecoveryKey, gitHistoryQuery.isSuccess]);
 
   useEffect(function syncAppId() {
     if (appId) {
@@ -225,6 +359,15 @@ function DevelopPageContent() {
   const firstEditTrackedRef = useRef(false)
   const previewMilestoneTrackedRef = useRef(false)
   const historyLoadingComplete = useHistoryLoadingComplete()
+
+  const { loadingMessage: chatLoadingMessage } =
+    useChatPaneLoadingState({
+      initUi: init.ui,
+      isCreateFlowSession,
+      archiveRestore,
+      hibernation,
+      imageReadiness,
+    })
 
   const scheduleMicrotask = useCallback((task: () => void | Promise<void>) => {
     if (typeof window === 'undefined') {
@@ -1095,49 +1238,14 @@ function DevelopPageContent() {
                 pointerEvents: isChatPaneCollapsed ? 'none' : 'auto'
               }}
             >
-              {init.ui.showChatLoader ? (
-                <ChatPaneLoader
-                  phase={init.ui.chatLoaderPhase}
-                  error={init.ui.chatLoaderError}
-                  retryCount={init.retryCount}
-                  maxRetries={init.maxRetries}
-                  onRetry={init.actions.retry}
-                  onCancel={init.actions.cancel}
-                />
-              ) : hibernation.isHibernated || hibernation.isResuming ? (
-                <ChatPaneLoader
-                  phase={ResumeLoaderPhase.RESUMING}
-                  error={null}
-                  retryCount={0}
-                  maxRetries={0}
-                  onRetry={() => {}}
-                  onCancel={() => {}}
-                />
-              ) : imageReadiness.isChecking ? (
-                <ChatPaneLoader
-                  phase={ImageReloadLoaderPhase.CHECKING_IMAGES}
-                  error={null}
-                  retryCount={0}
-                  maxRetries={0}
-                  onRetry={() => {}}
-                  onCancel={() => router.push('/')}
-                />
-              ) : imageReadiness.isImageUpdating || imageReadiness.error ? (
-                <ChatPaneLoader
-                  phase={ImageReloadLoaderPhase.UPDATING_IMAGES}
-                  error={imageReadiness.error}
-                  retryCount={0}
-                  maxRetries={1}
-                  onRetry={() => imageReadiness.retry()}
-                  onCancel={() => router.push('/')}
-                />
-              ) : (
-                <ChatPane
-                  sendMessage={ws.actions.send}
-                  stopGeneration={ws.actions.stop}
-                  isCreateFlowSession={isCreateFlowSession}
-                />
-              )}
+              <ChatPane
+                sendMessage={ws.actions.send}
+                stopGeneration={ws.actions.stop}
+                isCreateFlowSession={isCreateFlowSession}
+                hasInitialPrompt={init.context.hasInitialPrompt}
+                initialPromptText={init.context.initialPromptText}
+                loadingMessage={chatLoadingMessage}
+              />
             </motion.div>
 
             {/* Resizable Divider */}
@@ -1179,6 +1287,12 @@ function DevelopPageContent() {
                     isResuming={hibernation.isResuming}
                     resumeFailed={hibernation.resumeFailed}
                     onRetryResume={() => hibernation.resume()}
+                    archiveGatePending={archiveRestore.archiveGatePending}
+                    archiveResumeFailed={archiveRestore.archiveRestoreFailed}
+                    onRetryArchiveRestore={() => archiveRestore.restoreFromArchive()}
+                    showArchiveResumeMessage={
+                      archiveRestore.isArchivedForRestore || archiveRestore.isRestoringFromArchive
+                    }
                     isImageReloading={imageReadiness.isImageUpdating}
                     imageReloadFailed={!!imageReadiness.error}
                     onRetryImageReload={() => imageReadiness.retry()}
@@ -1253,6 +1367,12 @@ function DevelopPageContent() {
                         isResuming={hibernation.isResuming}
                         resumeFailed={hibernation.resumeFailed}
                         onRetryResume={() => hibernation.resume()}
+                        archiveGatePending={archiveRestore.archiveGatePending}
+                        archiveResumeFailed={archiveRestore.archiveRestoreFailed}
+                        onRetryArchiveRestore={() => archiveRestore.restoreFromArchive()}
+                        showArchiveResumeMessage={
+                          archiveRestore.isArchivedForRestore || archiveRestore.isRestoringFromArchive
+                        }
                         isImageReloading={imageReadiness.isImageUpdating}
                         imageReloadFailed={!!imageReadiness.error}
                         onRetryImageReload={() => imageReadiness.retry()}
@@ -1274,6 +1394,9 @@ function DevelopPageContent() {
                         sendMessage={ws.actions.send}
                         stopGeneration={ws.actions.stop}
                         isCreateFlowSession={isCreateFlowSession}
+                        hasInitialPrompt={init.context.hasInitialPrompt}
+                        initialPromptText={init.context.initialPromptText}
+                        loadingMessage={chatLoadingMessage}
                       />
                     </div>
 

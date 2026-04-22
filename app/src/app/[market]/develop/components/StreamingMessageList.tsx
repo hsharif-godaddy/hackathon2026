@@ -559,7 +559,7 @@ export default function StreamingMessageList({
   // Show loading state during app transitions to prevent showing stale messages
   const isAppTransitioning = currentAppId !== appIdFromParams
 
-  if (allMessages.length === 0 || isAppTransitioning || (isInitialLoad && !historyLoadingComplete)) {
+  if (allMessages.length === 0 || isAppTransitioning) {
     // Creation flow with initial prompt: show the user's prompt as a real message + thinking indicator
     if (hasInitialPrompt && initialPromptText && allMessages.length === 0) {
       return (

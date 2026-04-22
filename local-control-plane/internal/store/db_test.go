@@ -262,7 +262,7 @@ func TestDeleteApp(t *testing.T) {
 	db := newTestDB(t)
 
 	created, _ := db.CreateApp("sub-1", "sys-1", nil, nil)
-	job, _ := db.CreateJob(created.ID)
+	job, _ := db.CreateJob(created.ID, "airo-test")
 	db.UpsertSecret(created.ID, "shared", "KEY", "VAL", false)
 
 	err := db.DeleteApp(created.ID)
@@ -294,7 +294,7 @@ func TestDeleteApp(t *testing.T) {
 func TestCreateJob(t *testing.T) {
 	db := newTestDB(t)
 
-	job, err := db.CreateJob("app-1")
+	job, err := db.CreateJob("app-1", "airo-test")
 	if err != nil {
 		t.Fatalf("CreateJob: %v", err)
 	}
@@ -312,7 +312,7 @@ func TestCreateJob(t *testing.T) {
 func TestGetJob(t *testing.T) {
 	db := newTestDB(t)
 
-	created, _ := db.CreateJob("app-1")
+	created, _ := db.CreateJob("app-1", "airo-test")
 	job, err := db.GetJob(created.ID)
 	if err != nil {
 		t.Fatalf("GetJob: %v", err)
@@ -340,7 +340,7 @@ func TestGetJobNotFound(t *testing.T) {
 func TestUpdateJobStatus(t *testing.T) {
 	db := newTestDB(t)
 
-	job, _ := db.CreateJob("app-1")
+	job, _ := db.CreateJob("app-1", "airo-test")
 	err := db.UpdateJobStatus(job.ID, "completed", "")
 	if err != nil {
 		t.Fatalf("UpdateJobStatus: %v", err)
@@ -355,7 +355,7 @@ func TestUpdateJobStatus(t *testing.T) {
 func TestUpdateJobStatusWithError(t *testing.T) {
 	db := newTestDB(t)
 
-	job, _ := db.CreateJob("app-1")
+	job, _ := db.CreateJob("app-1", "airo-test")
 	err := db.UpdateJobStatus(job.ID, "failed", "something broke")
 	if err != nil {
 		t.Fatalf("UpdateJobStatus: %v", err)

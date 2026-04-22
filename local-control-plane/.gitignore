@@ -4,3 +4,7 @@ dist/
 *.db-shm
 *.db-wal
 dev.log
+
+# Local Go server binary (e.g. go build -o server ./cmd/server); use make build -> dist/
+/server
+/cmd/server/server

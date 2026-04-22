@@ -360,14 +360,13 @@ describe('ChatPane', () => {
     });
   });
 
-  describe('input disabled during recovery', () => {
+  describe('full-pane loader during recovery', () => {
     it('should disable input when loadingMessage is set', () => {
       mockStreamingStore.isLoading = false;
       mockStreamingStore.isActivelyStreaming = false;
       renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} loadingMessage="Loading..." />);
 
-      const chatInput = screen.getByTestId('chat-input');
-      expect(chatInput).toHaveAttribute('data-disabled', 'true');
+      expect(screen.getByTestId('chat-input')).toHaveAttribute('data-disabled', 'true');
     });
 
     it('should enable input when loadingMessage is null and not streaming', () => {

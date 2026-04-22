@@ -30,6 +30,23 @@ export interface GitCommit {
 /** Page size for `getGitHistory`; keep default in sync with agents `GIT_HISTORY_DEFAULT_COUNT` in `git.ts` routes. */
 export const GIT_HISTORY_PAGE_SIZE = 30
 
+/** HTTP status from `getGitHistory` failures (React Query may not keep non-standard `Error` fields). */
+export function gitHistoryFailureHttpStatus(error: unknown): number | undefined {
+  if (error && typeof error === 'object' && 'status' in error) {
+    const s = (error as { status: unknown }).status
+    if (typeof s === 'number' && Number.isFinite(s)) {
+      return s
+    }
+  }
+  if (error instanceof Error) {
+    const m = error.message.match(/Failed to load commit history:\s*(\d+)/)
+    if (m?.[1]) {
+      return parseInt(m[1], 10)
+    }
+  }
+  return undefined
+}
+
 export interface GitHistoryResponse {
   commits: GitCommit[]
   currentCommit: string | null
@@ -227,7 +244,11 @@ export class AppService {
     const response = await agentFetch(apiUrl, { siteId: appId })
 
     if (!response.ok) {
-      throw new Error(`Failed to load commit history: ${response.status}`)
+      const err = new Error(`Failed to load commit history: ${response.status}`) as Error & {
+        status: number;
+      };
+      err.status = response.status;
+      throw err;
     }
 
     const data = await response.json()

@@ -10,7 +10,8 @@ dotenv.config({ path: path.resolve(__dirname, 'tests/.env') });
  * Playwright E2E Test Configuration
  *
  * Tests migrated from Cypress (e2e/cypress/tests/) to Playwright (tests/smoke/)
- * All 30 tests covering: apps page, authentication, navigation, develop page features
+ * Smoke tests covering: apps page, authentication, navigation, develop page features,
+ * publish, media, and cold archive restore (see tests/smoke/)
  *
  * @see https://playwright.dev/docs/test-configuration
  */

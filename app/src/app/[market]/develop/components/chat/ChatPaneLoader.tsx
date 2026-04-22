@@ -6,6 +6,7 @@ import { SiteCreationPhase } from '@/stores/useSiteCreationStore'
 
 export enum ResumeLoaderPhase {
   RESUMING = 'resuming',
+  RESTORING_FROM_ARCHIVE = 'restoring-from-archive',
 }
 
 export enum ImageReloadLoaderPhase {
@@ -33,6 +34,7 @@ const phaseMessageKeys: Record<LoaderPhase, string> = {
   'complete': 'builder_chatpane_phase_complete',
   'error': 'builder_chatpane_phase_error',
   [ResumeLoaderPhase.RESUMING]: 'builder_chatpane_phase_resuming',
+  [ResumeLoaderPhase.RESTORING_FROM_ARCHIVE]: 'builder_chatpane_phase_restoring_archive',
   [ImageReloadLoaderPhase.CHECKING_IMAGES]: 'builder_chatpane_phase_checking_images',
   [ImageReloadLoaderPhase.UPDATING_IMAGES]: 'builder_chatpane_phase_updating_images'
 }
@@ -43,14 +45,20 @@ export default function ChatPaneLoader({
   retryCount,
   maxRetries,
   onRetry,
-  onCancel
+  onCancel,
 }: ChatPaneLoaderProps) {
   const t = useTranslations();
   const phaseMessage = t(phaseMessageKeys[phase]);
+  const isArchiveRestore = phase === ResumeLoaderPhase.RESTORING_FROM_ARCHIVE;
 
   if (error) {
     return (
-      <div className="absolute inset-0 flex items-center justify-center bg-intents-ux-boxLowContrast-backgroundColor">
+      <div
+        className="absolute inset-0 flex items-center justify-center bg-intents-ux-boxLowContrast-backgroundColor"
+        data-testid="develop-chat-pane-loader"
+        data-phase={phase}
+        data-has-error="true"
+      >
         <div className="text-center p-3 max-w-md">
           <h2 className="text-xl font-bold mb-1">{t('builder_chatpane_setup_failed')}</h2>
           <p className="mb-3 text-sm">{error}</p>
@@ -74,7 +82,12 @@ export default function ChatPaneLoader({
   }
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center bg-intents-ux-boxLowContrast-backgroundColor">
+    <div
+      className="absolute inset-0 flex items-center justify-center bg-intents-ux-boxLowContrast-backgroundColor"
+      data-testid="develop-chat-pane-loader"
+      data-phase={phase}
+      data-has-error="false"
+    >
       <div className="text-center w-full px-3">
         <Box gap="lg">
           <div className="h-16 w-full mb-3 flex flex-col justify-end overflow-hidden">
@@ -95,8 +108,16 @@ export default function ChatPaneLoader({
           </Box>
 
           <Box className="text-sm" gap="sm">
-            <p>{t('builder_chatpane_loading_1')}</p>
-            <p>{t('builder_chatpane_loading_2')}</p>
+            <p>
+              {t(
+                isArchiveRestore
+                  ? 'builder_chatpane_loading_archive_1'
+                  : 'builder_chatpane_loading_1'
+              )}
+            </p>
+            <p>
+              {t('builder_chatpane_loading_2')}
+            </p>
           </Box>
         </Box>
       </div>

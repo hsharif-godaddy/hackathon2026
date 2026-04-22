@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { isEmployeeAuthType } from '@airo/shared/auth'
+import Box from '@ux/box'
 import Growl from '@ux/growl'
 
 import { AssetManagerItem, MediaType } from '@/app/[market]/develop/components/chat/AssetTypes'

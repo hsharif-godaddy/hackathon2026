@@ -795,7 +795,7 @@ func TestGetJobAppsHandlerCompleted(t *testing.T) {
 	srv := newTestServer(t)
 
 	app, _ := srv.DB.CreateApp("sub-1", "sys-1", nil, nil)
-	job, _ := srv.DB.CreateJob(app.ID)
+	job, _ := srv.DB.CreateJob(app.ID, "airo-test")
 	srv.DB.UpdateJobStatus(job.ID, "completed", "")
 
 	req := httptest.NewRequest("GET", "/jobs/"+job.ID+"/apps", nil)
@@ -823,7 +823,7 @@ func TestGetJobAppsHandlerPending(t *testing.T) {
 	srv := newTestServer(t)
 
 	app, _ := srv.DB.CreateApp("sub-1", "sys-1", nil, nil)
-	job, _ := srv.DB.CreateJob(app.ID)
+	job, _ := srv.DB.CreateJob(app.ID, "airo-test")
 
 	req := httptest.NewRequest("GET", "/jobs/"+job.ID+"/apps", nil)
 	req = setMuxVars(req, map[string]string{"jobId": job.ID})

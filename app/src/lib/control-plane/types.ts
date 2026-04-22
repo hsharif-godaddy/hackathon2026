@@ -15,6 +15,7 @@ import type {
 export enum LifecycleState {
   RUNNING = 'running',
   PAUSED = 'paused',
+  RELOADING = 'reloading',
   PROVISIONING = 'provisioning',
   DELETING = 'deleting',
   FAILED = 'failed',
@@ -29,6 +30,10 @@ export enum LifecycleReason {
   MAINTENANCE = 'maintenance',
   DEPLOYMENT_COMPLETE = 'deployment_complete',
   USER_RESUMED = 'user_resumed',
+  FLEET_RELOAD = 'fleet_reload',
+  DEPLOYMENT = 'deployment',
+  RELOAD_COMPLETE = 'reload_complete',
+  ON_DEMAND_STALE_IMAGES = 'on_demand_stale_images',
 }
 
 /**
@@ -73,6 +78,7 @@ export enum SiteStatus {
   Stopped = 'stopped',
   Error = 'error',
   Suspended = 'suspended',
+  Paused = 'paused',
 }
 
 /**
@@ -216,6 +222,33 @@ export interface ReloadImagesResponse {
 }
 
 /**
+ * Cold archive status for an app
+ */
+export interface ArchiveStatusResponse {
+  isArchived: boolean;
+  canRestore: boolean;
+  status?: string;
+  inProgress?: boolean;
+  archiveId?: number;
+  backupId?: string;
+  backupRegion?: string;
+  originalCellId?: string;
+  originalDatabaseId?: string;
+  originalFilesystemId?: string;
+  archiveRequestedAt?: string;
+  archivedAt?: string;
+}
+
+/**
+ * Response when starting archive restore (async job)
+ */
+export interface ArchiveRestoreResponse {
+  statusJobId: string;
+  estimatedRestoreTime?: string;
+  message?: string;
+}
+
+/**
  * Control Plane Adapter Interface
  */
 export interface IControlPlaneAdapter {
@@ -291,6 +324,16 @@ export interface IControlPlaneAdapter {
    * @returns Resume result with success status
    */
   resumeSite(siteId: string, variant: string, jwt: string): Promise<{ success: boolean; message: string }>;
+
+  /**
+   * Cold archive status (whether the app is archived and may be restored)
+   */
+  getArchiveStatus(siteId: string, jwt: string): Promise<ArchiveStatusResponse>;
+
+  /**
+   * Start async restore from cold archive
+   */
+  startArchiveRestore(siteId: string, jwt: string, options?: { targetCell?: string }): Promise<ArchiveRestoreResponse>;
 
   /**
    * Get image status for an app

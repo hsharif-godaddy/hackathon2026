@@ -26,7 +26,7 @@ const (
 	previewReadyTimeout      = 45 * time.Second
 	previewReadyPollInterval = 500 * time.Millisecond
 
-	registerMaxAttempts     = 5
+	registerMaxAttempts    = 5
 	registerBaseDelay      = 2 * time.Second
 	registerMaxDelay       = 15 * time.Second
 	registerHTTPTimeout    = 30 * time.Second
@@ -46,18 +46,52 @@ var previewReadyHTTPClient = &http.Client{
 }
 
 func appToResponse(app *store.App) map[string]any {
+	appStatus := app.Status
+	lifecycleState := store.LifecycleStateRunning
+	lifecycleReason := ""
+
+	if archiveStubIsArchived(app.ID) {
+		// The stub reports hibernation as the archive cause so the develop UI's
+		// hibernation-gated auto-restore path can be exercised in local dev. The real
+		// hosting backend distinguishes cold_archive (compliance/admin) from hibernation;
+		// mirroring that here would require a second env var with no functional benefit
+		// in local since neither path actually moves data.
+		appStatus = "paused"
+		lifecycleState = store.LifecycleStatePaused
+		lifecycleReason = store.LifecycleReasonHibernation
+	} else if app.Status == "paused" {
+		lifecycleState = store.LifecycleStatePaused
+	}
+
+	variantsWithLifecycle := make([]map[string]any, 0, len(app.Variants))
+	for _, v := range app.Variants {
+		lifecycle := map[string]any{
+			"lifecycleState": lifecycleState,
+			"stateChangedAt": app.UpdatedAt,
+		}
+		if lifecycleReason != "" {
+			lifecycle["reason"] = lifecycleReason
+		}
+		variantsWithLifecycle = append(variantsWithLifecycle, map[string]any{
+			"variant":   v,
+			"status":    appStatus,
+			"lifecycle": lifecycle,
+		})
+	}
+
 	resp := map[string]any{
-		"id":              app.ID,
-		"subscriptionId":  app.SubscriptionID,
-		"systemId":        app.SystemID,
-		"status":          app.Status,
-		"variables":       app.Variables,
-		"variants":        app.Variants,
-		"appTemplateName": "default",
-		"createdAt":       app.CreatedAt,
-		"updatedAt":       app.UpdatedAt,
-		"cellId":          "local-dev",
-		"compositionId":   "ai-builder",
+		"id":                    app.ID,
+		"subscriptionId":        app.SubscriptionID,
+		"systemId":              app.SystemID,
+		"status":                appStatus,
+		"variables":             app.Variables,
+		"variants":              app.Variants,
+		"variantsWithLifecycle": variantsWithLifecycle,
+		"appTemplateName":       "default",
+		"createdAt":             app.CreatedAt,
+		"updatedAt":             app.UpdatedAt,
+		"cellId":                "local-dev",
+		"compositionId":         "ai-builder",
 		"system": map[string]any{
 			"ownerProduct": "AiroAppBuilder",
 			"productId":    store.DefaultProductID,
@@ -155,7 +189,7 @@ func (s *Server) CreateApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	job, err := s.DB.CreateJob(app.ID)
+	job, err := s.DB.CreateJob(app.ID, "airo-app-create")
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -224,7 +258,7 @@ func (s *Server) Signup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	job, err := s.DB.CreateJob(app.ID)
+	job, err := s.DB.CreateJob(app.ID, "airo-app-provision")
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -376,7 +410,7 @@ func (s *Server) PublishApp(w http.ResponseWriter, r *http.Request) {
 
 	slog.Info("app.published", "app_id", appID, "git_hash", body.GitHash)
 
-	job, err := s.DB.CreateJob(appID)
+	job, err := s.DB.CreateJob(appID, "airo-app-publish")
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

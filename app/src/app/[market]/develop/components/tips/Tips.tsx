@@ -13,8 +13,8 @@ import { useTranslations } from '@/hooks/useTranslations'
  * Props for the Tips component.
  */
 interface TipsProps {
-  /** Message to display in the loader description */
   buildingMessage?: string | null
+  buildingDescription?: string | null
   showTips?: boolean
 }
 
@@ -26,7 +26,7 @@ interface TipsProps {
  * @param props - Component props
  * @returns The Tips component with loader and carousel
  */
-export default function Tips({ buildingMessage = null, showTips = true }: TipsProps) {
+export default function Tips({ buildingMessage = null, buildingDescription = null, showTips = true }: TipsProps) {
   const t = useTranslations();
 
   // Randomize tips once on mount
@@ -56,7 +56,10 @@ export default function Tips({ buildingMessage = null, showTips = true }: TipsPr
   return (
     <Box className="h-full mt-6" blockAlignChildren="center" inlineAlignChildren="center" gap="xl">
       {/* Loader spinner with building message */}
-      <Loader title={buildingMessage ?? t('builder_tips_message')} />
+      <Loader
+        title={buildingMessage ?? t('builder_tips_message')}
+        description={buildingDescription ?? undefined}
+      />
 
       {/* Tips section below loader */}
       {showTips && (

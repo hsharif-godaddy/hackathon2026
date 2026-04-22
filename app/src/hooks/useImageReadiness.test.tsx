@@ -9,6 +9,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react';
 
 import { appFetch } from '@/lib/gasket-config';
+import type { UseAppArchiveRestoreReturn } from './useAppArchiveRestore';
 import type { UseAppHibernationReturn } from './useAppHibernation';
 import { useImageReadiness } from './useImageReadiness';
 
@@ -70,6 +71,56 @@ const RESUME_FAILED: UseAppHibernationReturn = {
   resumeComplete: false,
   resume: () => {},
   error: 'Resume failed',
+};
+
+const ARCHIVE_NOT_RESTORING: UseAppArchiveRestoreReturn = {
+  archiveGatePending: false,
+  isArchivedForRestore: false,
+  isRestoringFromArchive: false,
+  archiveRestoreFailed: false,
+  archiveRestoreComplete: false,
+  restoreFromArchive: () => {},
+  error: null,
+};
+
+const ARCHIVE_GATE_PENDING: UseAppArchiveRestoreReturn = {
+  archiveGatePending: true,
+  isArchivedForRestore: false,
+  isRestoringFromArchive: false,
+  archiveRestoreFailed: false,
+  archiveRestoreComplete: false,
+  restoreFromArchive: () => {},
+  error: null,
+};
+
+const ARCHIVE_RESTORING: UseAppArchiveRestoreReturn = {
+  archiveGatePending: false,
+  isArchivedForRestore: false,
+  isRestoringFromArchive: true,
+  archiveRestoreFailed: false,
+  archiveRestoreComplete: false,
+  restoreFromArchive: () => {},
+  error: null,
+};
+
+const ARCHIVE_DETECTED: UseAppArchiveRestoreReturn = {
+  archiveGatePending: false,
+  isArchivedForRestore: true,
+  isRestoringFromArchive: false,
+  archiveRestoreFailed: false,
+  archiveRestoreComplete: false,
+  restoreFromArchive: () => {},
+  error: null,
+};
+
+const ARCHIVE_FAILED: UseAppArchiveRestoreReturn = {
+  archiveGatePending: false,
+  isArchivedForRestore: false,
+  isRestoringFromArchive: false,
+  archiveRestoreFailed: true,
+  archiveRestoreComplete: false,
+  restoreFromArchive: () => {},
+  error: 'Archive restore failed',
 };
 
 function mockImageStatusResponse(status: string) {
@@ -601,6 +652,106 @@ describe('useImageReadiness', function useImageReadinessTests() {
 
       nowSpy.mockRestore();
     }, 20000);
+  });
+
+  describe('#archive restore gate', function archiveRestoreGateTests() {
+    it('should not call image-status API while archiveGatePending is true', async function blockedByGatePending() {
+      const { result } = renderHook(
+        () => useImageReadiness(NOT_HIBERNATED, 'test-app-123', false, ARCHIVE_GATE_PENDING),
+        { wrapper: createWrapper() }
+      );
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+      expect(appFetch).not.toHaveBeenCalled();
+      expect(result.current.isReady).toBe(false);
+    });
+
+    it('should not call image-status API while isArchivedForRestore is true', async function blockedByArchiveDetected() {
+      const { result } = renderHook(
+        () => useImageReadiness(NOT_HIBERNATED, 'test-app-123', false, ARCHIVE_DETECTED),
+        { wrapper: createWrapper() }
+      );
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+      expect(appFetch).not.toHaveBeenCalled();
+      expect(result.current.isReady).toBe(false);
+    });
+
+    it('should not call image-status API while isRestoringFromArchive is true', async function blockedByRestoring() {
+      const { result } = renderHook(
+        () => useImageReadiness(NOT_HIBERNATED, 'test-app-123', false, ARCHIVE_RESTORING),
+        { wrapper: createWrapper() }
+      );
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+      expect(appFetch).not.toHaveBeenCalled();
+      expect(result.current.isReady).toBe(false);
+    });
+
+    it('should proceed and return IMAGES_READY when archiveRestoreFailed is true', async function proceedsOnFailure() {
+      const { result } = renderHook(
+        () => useImageReadiness(NOT_HIBERNATED, 'test-app-123', false, ARCHIVE_FAILED),
+        { wrapper: createWrapper() }
+      );
+
+      expect(result.current.isReady).toBe(true);
+      expect(appFetch).not.toHaveBeenCalled();
+    });
+
+    it('should proceed to image-status check when archive restore is not active', async function proceedsWhenNotArchived() {
+      (appFetch as any).mockResolvedValueOnce(mockImageStatusResponse('current'));
+
+      renderHook(
+        () => useImageReadiness(NOT_HIBERNATED, 'test-app-123', false, ARCHIVE_NOT_RESTORING),
+        { wrapper: createWrapper() }
+      );
+
+      await waitFor(() => {
+        expect(appFetch).toHaveBeenCalledWith('/api/sites/test-app-123/image-status');
+      });
+    });
+
+    it('should resume image checks when archive gate pending transitions to cleared', async function resumesAfterGateClears() {
+      (appFetch as any).mockResolvedValueOnce(mockImageStatusResponse('current'));
+
+      const { rerender } = renderHook(
+        ({ archiveRestore }) => useImageReadiness(NOT_HIBERNATED, 'test-app-123', false, archiveRestore),
+        {
+          wrapper: createWrapper(),
+          initialProps: { archiveRestore: ARCHIVE_GATE_PENDING },
+        }
+      );
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+      expect(appFetch).not.toHaveBeenCalled();
+
+      rerender({ archiveRestore: ARCHIVE_NOT_RESTORING });
+
+      await waitFor(() => {
+        expect(appFetch).toHaveBeenCalledWith('/api/sites/test-app-123/image-status');
+      });
+    });
+
+    it('should resume image checks when restore completes (isRestoringFromArchive transitions to false)', async function resumesAfterRestoreCompletes() {
+      (appFetch as any).mockResolvedValueOnce(mockImageStatusResponse('current'));
+
+      const { rerender } = renderHook(
+        ({ archiveRestore }) => useImageReadiness(NOT_HIBERNATED, 'test-app-123', false, archiveRestore),
+        {
+          wrapper: createWrapper(),
+          initialProps: { archiveRestore: ARCHIVE_RESTORING },
+        }
+      );
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+      expect(appFetch).not.toHaveBeenCalled();
+
+      rerender({ archiveRestore: ARCHIVE_NOT_RESTORING });
+
+      await waitFor(() => {
+        expect(appFetch).toHaveBeenCalledWith('/api/sites/test-app-123/image-status');
+      });
+    });
   });
 
   describe('#server health timeout', function serverHealthTimeoutTests() {

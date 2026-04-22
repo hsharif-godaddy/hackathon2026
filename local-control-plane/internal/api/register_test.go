@@ -196,4 +196,3 @@ func TestRegisterWithAgentExhaustsRetries(t *testing.T) {
 		t.Errorf("expected %d calls, got %d", registerMaxAttempts, calls.Load())
 	}
 }
-

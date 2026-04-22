@@ -122,6 +122,12 @@ func (d *DB) migrate() error {
 		}
 	}
 
+	if _, err := d.db.Exec(`ALTER TABLE jobs ADD COLUMN job_type TEXT DEFAULT 'airo-job'`); err != nil {
+		if !strings.Contains(err.Error(), "duplicate column") {
+			return fmt.Errorf("add job_type column: %w", err)
+		}
+	}
+
 	if _, err := d.db.Exec(`CREATE TABLE IF NOT EXISTS subscriptions (
 		id TEXT PRIMARY KEY,
 		product_id TEXT NOT NULL DEFAULT 'aab-v1',
@@ -387,7 +393,7 @@ func (d *DB) DeleteApp(id string) error {
 }
 
 // CreateJob inserts a new job record with pending status.
-func (d *DB) CreateJob(appID string) (*Job, error) {
+func (d *DB) CreateJob(appID string, jobType string) (*Job, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
@@ -398,8 +404,8 @@ func (d *DB) CreateJob(appID string) (*Job, error) {
 	now := time.Now().UTC()
 
 	_, err = d.db.Exec(
-		`INSERT INTO jobs (id, app_id, status, created_at) VALUES (?, ?, 'pending', ?)`,
-		id, appID, now.Format(time.RFC3339),
+		`INSERT INTO jobs (id, app_id, status, job_type, created_at) VALUES (?, ?, 'pending', ?, ?)`,
+		id, appID, jobType, now.Format(time.RFC3339),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("insert job: %w", err)
@@ -409,6 +415,7 @@ func (d *DB) CreateJob(appID string) (*Job, error) {
 		ID:        id,
 		AppID:     appID,
 		Status:    "pending",
+		JobType:   jobType,
 		CreatedAt: now,
 	}, nil
 }
@@ -436,8 +443,8 @@ func (d *DB) GetJob(id string) (*Job, error) {
 	)
 
 	err := d.db.QueryRow(
-		`SELECT id, app_id, status, error, created_at FROM jobs WHERE id = ?`, id,
-	).Scan(&job.ID, &job.AppID, &job.Status, &job.Error, &createdAt)
+		`SELECT id, app_id, status, error, job_type, created_at FROM jobs WHERE id = ?`, id,
+	).Scan(&job.ID, &job.AppID, &job.Status, &job.Error, &job.JobType, &createdAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
