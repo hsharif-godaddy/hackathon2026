@@ -1,7 +1,7 @@
 // load-test/contention.js — Single-budget lock contention test.
 //
-// All VUs hammer the SAME budget, exposing row-lock serialization on budget_items
-// (SELECT ... FOR UPDATE) and the ledger trigger (UPDATE credits_used).
+// All VUs hammer the SAME budget, exposing optimistic concurrency retries on
+// budget_items and the ledger trigger (UPDATE credits_used).
 //
 // Run: k6 run load-test/contention.js
 //      k6 run --env BASE_URL=http://localhost:8080 load-test/contention.js

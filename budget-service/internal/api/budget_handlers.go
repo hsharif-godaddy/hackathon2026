@@ -157,6 +157,14 @@ func writeBudgetStoreError(w http.ResponseWriter, op string, err error) {
 		writeError(w, http.StatusBadRequest, "DUPLICATE_CALL_REQUEST_ID", "callRequestId already used for this session")
 		return
 	}
+	if errors.Is(err, store.ErrOptimisticRetryExhausted) {
+		writeError(w, http.StatusConflict, "CONFLICT", "concurrent budget modification; retry the request")
+		return
+	}
+	if errors.Is(err, store.ErrBudgetMismatch) {
+		writeError(w, http.StatusConflict, "CONFLICT", "session budget changed during operation; retry the request")
+		return
+	}
 	if errors.Is(err, credits.ErrInvalid) || errors.Is(err, credits.ErrOutOfRange) {
 		writeError(w, http.StatusBadRequest, "BAD_REQUEST", err.Error())
 		return

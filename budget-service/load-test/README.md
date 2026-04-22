@@ -29,15 +29,16 @@ make load-test-lifecycle      # Full session lifecycle at steady rate
 
 ### 1. Single-Budget Contention (`contention.js`)
 
-**What it tests:** Many concurrent sessions targeting the _same_ budget. This is the
-highest-risk scenario because `SELECT ... FOR UPDATE` on `budget_items` serializes
-all session operations for one budget, and the ledger trigger UPDATEs the same rows.
+**What it tests:** Many concurrent sessions targeting the _same_ budget. Spend uses
+optimistic concurrency (read without lock → short write lock + verify), so sessions
+no longer serialize for the full replay+compute duration. The ledger trigger still
+UPDATEs the same `budget_items` rows, so contention isn't eliminated — just reduced.
 
 - Creates 1 product + 1 budget with a large credit pool
-- Ramps VUs from 5 → 25 against that single budget
+- Ramps VUs from 2 → 5 → 10 → 20 → 25 against that single budget
 - Each VU: open session → 3 spend lines → close with report
 
-**What to watch:** p95/p99 latency on PATCH (spend), 409 conflict rate, Postgres lock waits.
+**What to watch:** p95/p99 latency on PATCH (spend), 409 conflict/retry rate, Postgres lock waits.
 
 ### 2. Multi-Budget Throughput (`throughput.js`)
 
@@ -113,7 +114,7 @@ http_req_failed .......: 2.1%  ✗ 84  ✓ 3916
 
 - p95 < 500ms, p99 < 2s
 - Error rate < 5%
-- No 500s (409 ALREADY_RECONCILED is expected at high concurrency)
+- No 500s (409 CONFLICT from optimistic retries and ALREADY_RECONCILED are expected at high concurrency)
 
 **Red flags:**
 

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"strings"
 	"time"
 
@@ -681,7 +682,9 @@ func (s *Store) CreateBudgetSession(ctx context.Context, budgetID, sessionID str
 		return err
 	}
 
-	states, err := loadBudgetConsumptionStatesTx(ctx, tx, budgetID, true)
+	// Read-only capacity check — no FOR UPDATE needed since we only INSERT into budget_sessions,
+	// not mutate budget_items. This avoids serializing session opens behind spend transactions.
+	states, err := loadBudgetConsumptionStatesTx(ctx, tx, budgetID, false)
 	if err != nil {
 		return err
 	}
@@ -801,19 +804,55 @@ func (s *Store) DebugSessionCreditsReplay(ctx context.Context, sessionID string)
 // AppendSessionItems records GoCode USD per line and credits_charged from priority consumption.
 // Prior lines are replayed first so a second PATCH sees the same virtual pool as if one batch had been sent.
 // On success, the returned budgetID is the session's budget (for callers that need it without a follow-up load).
+//
+// Uses optimistic concurrency: a read transaction locks the session, applies due interval resets
+// and commits, then computes allocations without locking budget_items. A short write transaction
+// locks budget_items, verifies credits_used, and inserts. This shortens the budget_items lock
+// window from full replay+compute+insert to verify+insert.
 func (s *Store) AppendSessionItems(ctx context.Context, sessionID string, lines []SessionLine) ([]SessionAppendMathLine, string, error) {
 	if _, err := uuid.Parse(sessionID); err != nil {
 		return nil, "", err
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, "", err
-	}
-	defer func() { _ = tx.Rollback() }()
 
-	// Serialize concurrent PATCHes against the same session + budget_items consumption state.
+	const maxRetries = 3
+	for attempt := range maxRetries {
+		out, budgetID, retry, err := s.appendSessionItemsOptimistic(ctx, sessionID, lines)
+		if err != nil {
+			if retry && attempt < maxRetries-1 {
+				// Jitter before retry to spread out concurrent retriers.
+				jitter := time.Duration(attempt+1)*5*time.Millisecond + time.Duration(rand.IntN(5))*time.Millisecond
+				time.Sleep(jitter)
+				continue
+			}
+			return nil, "", err
+		}
+		return out, budgetID, nil
+	}
+	// Unreachable: the loop always returns, but the compiler requires this.
+	return nil, "", ErrOptimisticRetryExhausted
+}
+
+// appendSessionItemsOptimistic runs one attempt of the two-phase optimistic append.
+// Returns retry=true if budget_items.credits_used changed between the read and write phases.
+func (s *Store) appendSessionItemsOptimistic(ctx context.Context, sessionID string, lines []SessionLine) (
+	[]SessionAppendMathLine, string, bool, error,
+) {
+	// ── Phase 1: Read — lock session, load states WITHOUT locking budget_items, replay + compute. ──
+
+	readTx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, "", false, err
+	}
+	readCommitted := false
+	defer func() {
+		if !readCommitted {
+			_ = readTx.Rollback()
+		}
+	}()
+
+	// Lock the session row to serialize concurrent PATCHes against the same session.
 	var budgetID string
-	err = tx.QueryRowContext(ctx, `
+	err = readTx.QueryRowContext(ctx, `
 		SELECT bs.budget_id FROM budget_sessions bs
 		INNER JOIN budgets b ON b.id = bs.budget_id AND b.deleted_at IS NULL
 		WHERE bs.id = $1 AND bs.reconciled_at IS NULL
@@ -821,100 +860,202 @@ func (s *Store) AppendSessionItems(ctx context.Context, sessionID string, lines 
 	`, sessionID).Scan(&budgetID)
 	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
-			return nil, "", err
+			return nil, "", false, err
 		}
 		var rec sql.NullTime
-		err = tx.QueryRowContext(ctx, `
+		err = readTx.QueryRowContext(ctx, `
 			SELECT reconciled_at FROM budget_sessions WHERE id = $1
 		`, sessionID).Scan(&rec)
 		if err != nil {
-			return nil, "", mapNotFound(err)
+			return nil, "", false, mapNotFound(err)
 		}
 		if rec.Valid {
-			return nil, "", ErrAlreadyReconciled
+			return nil, "", false, ErrAlreadyReconciled
 		}
-		// Row exists with reconciled_at null but first query missed it: should be unreachable; surface as not found.
-		return nil, "", ErrNotFound
-	}
-	if err := applyDueResetsForBudgetTx(ctx, tx, budgetID); err != nil {
-		return nil, "", err
+		return nil, "", false, ErrNotFound
 	}
 
-	states, err := loadBudgetConsumptionStatesTx(ctx, tx, budgetID, true)
+	// Apply due resets in this transaction and commit (below) so Phase 2 verification never
+	// undoes a reset on rollback — that was the cause of spurious 409s when a reset fired in writeTx.
+	if err := applyDueResetsForBudgetTx(ctx, readTx, budgetID); err != nil {
+		return nil, "", false, err
+	}
+
+	// Load budget_items WITHOUT FOR UPDATE — this is the key optimization.
+	states, err := loadBudgetConsumptionStatesTx(ctx, readTx, budgetID, false)
 	if err != nil {
-		return nil, "", err
+		return nil, "", false, err
+	}
+
+	// Snapshot credits_used per item before consumption for optimistic verification.
+	usedSnapshot := make(map[string]decimal.Decimal, len(states))
+	for _, st := range states {
+		usedSnapshot[st.id] = st.used
 	}
 
 	now := time.Now()
 
-	// Replay existing lines so new lines stack on the same consumption order as a single chronological stream.
-	priorRows, err := tx.QueryContext(ctx, `
+	// Replay existing lines so new lines stack on the same consumption order.
+	// Track count for stale-replay detection in Phase 2.
+	var priorItemCount int
+	priorRows, err := readTx.QueryContext(ctx, `
 		SELECT cost_usd FROM budget_session_items WHERE session_id = $1 ORDER BY id
 	`, sessionID)
 	if err != nil {
-		return nil, "", err
+		return nil, "", false, err
 	}
 	for priorRows.Next() {
+		priorItemCount++
 		var costD decimal.Decimal
 		if err := priorRows.Scan(&costD); err != nil {
 			_ = priorRows.Close()
-			return nil, "", err
+			return nil, "", false, err
 		}
 		if _, err := consumeBudgetCostUSDSession(costD, states, now); err != nil {
 			_ = priorRows.Close()
-			return nil, "", err
+			return nil, "", false, err
 		}
 	}
 	if err := priorRows.Close(); err != nil {
-		return nil, "", err
+		return nil, "", false, err
 	}
 	if err := priorRows.Err(); err != nil {
-		return nil, "", err
+		return nil, "", false, err
 	}
 
-	out := make([]SessionAppendMathLine, 0, len(lines))
+	// Compute new line allocations.
+	type precomputedLine struct {
+		costStr    string
+		chargedStr string
+		chunks     []budgetCreditChunk
+	}
+	precomputed := make([]precomputedLine, 0, len(lines))
 	for i := range lines {
 		costD, err := credits.ParseNonNegative(lines[i].Cost)
 		if err != nil {
-			return nil, "", err
+			return nil, "", false, err
 		}
 		costStr := credits.Format(costD)
 		chunks, err := consumeBudgetCostUSDSession(costD, states, now)
 		if err != nil {
-			return nil, "", err
+			return nil, "", false, err
 		}
 		var chargedSum decimal.Decimal
 		for j := range chunks {
 			chargedSum = chargedSum.Add(chunks[j].credits)
 		}
-		chargedStr := credits.Format(chargedSum)
-		if _, err = tx.ExecContext(ctx, `
+		precomputed = append(precomputed, precomputedLine{
+			costStr:    costStr,
+			chargedStr: credits.Format(chargedSum),
+			chunks:     chunks,
+		})
+	}
+
+	if err := readTx.Commit(); err != nil {
+		return nil, "", false, err
+	}
+	readCommitted = true
+
+	// ── Phase 2: Write — lock budget_items, verify snapshot, insert rows. ──
+
+	writeTx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, "", false, err
+	}
+	defer func() { _ = writeTx.Rollback() }()
+
+	// Re-lock session row in write tx.
+	var budgetIDCheck string
+	err = writeTx.QueryRowContext(ctx, `
+		SELECT bs.budget_id FROM budget_sessions bs
+		INNER JOIN budgets b ON b.id = bs.budget_id AND b.deleted_at IS NULL
+		WHERE bs.id = $1 AND bs.reconciled_at IS NULL
+		FOR UPDATE OF bs
+	`, sessionID).Scan(&budgetIDCheck)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, "", false, ErrAlreadyReconciled
+		}
+		return nil, "", false, err
+	}
+
+	// Verify the session still points at the same budget as Phase 1.
+	// This is not a transient conflict — retrying won't help.
+	if budgetIDCheck != budgetID {
+		return nil, "", false, ErrBudgetMismatch
+	}
+
+	// Verify no other writer added items to this session between phases.
+	var currentItemCount int
+	err = writeTx.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM budget_session_items WHERE session_id = $1
+	`, sessionID).Scan(&currentItemCount)
+	if err != nil {
+		return nil, "", false, err
+	}
+	if currentItemCount != priorItemCount {
+		// Another PATCH slipped in between phases — retry with fresh replay.
+		return nil, "", true, ErrOptimisticRetryExhausted
+	}
+
+	// Re-run lazy resets: usually no-op (Phase 1 already committed), but a reset that becomes
+	// due in the gap after readTx commit must run before we insert. If that changes
+	// credits_used vs. usedSnapshot, we retry — one slot may burn on a rare interval edge.
+	// (Do not move this after the optimistic check while still inserting precomputed lines from
+	// Phase 1: a fresh reset there would require recomputing allocations, not a line reorder.)
+	if err := applyDueResetsForBudgetTx(ctx, writeTx, budgetIDCheck); err != nil {
+		return nil, "", false, err
+	}
+
+	// Lock and load budget_items — this is the critical section we've shortened.
+	currentStates, err := loadBudgetConsumptionStatesTx(ctx, writeTx, budgetIDCheck, true)
+	if err != nil {
+		return nil, "", false, err
+	}
+
+	// Optimistic verification: check that credits_used hasn't changed since Phase 1.
+	for _, cur := range currentStates {
+		if prev, ok := usedSnapshot[cur.id]; ok {
+			if !cur.used.Equal(prev) {
+				// Another transaction modified credits_used — retry.
+				return nil, "", true, ErrOptimisticRetryExhausted
+			}
+		}
+		// New items that appeared after Phase 1 are fine — they don't invalidate our computation.
+	}
+	// Items that disappeared (deleted between phases) would cause insert FK failures below.
+
+	// Insert the precomputed rows.
+	out := make([]SessionAppendMathLine, 0, len(lines))
+	for i := range precomputed {
+		pc := &precomputed[i]
+		if _, err = writeTx.ExecContext(ctx, `
 			INSERT INTO budget_session_items (session_id, cost_usd, credits_charged, call_request_id)
 			VALUES ($1, $2, $3, $4)
-		`, sessionID, costStr, chargedStr, lines[i].CallRequestID); err != nil {
-			return nil, "", mapSessionCallRequestUnique(err)
+		`, sessionID, pc.costStr, pc.chargedStr, lines[i].CallRequestID); err != nil {
+			return nil, "", false, mapSessionCallRequestUnique(err)
 		}
-		math := SessionAppendMathLine{CostUsd: costStr, CreditsCharged: chargedStr}
-		for j := range chunks {
+		math := SessionAppendMathLine{CostUsd: pc.costStr, CreditsCharged: pc.chargedStr}
+		for j := range pc.chunks {
 			math.Allocations = append(math.Allocations, struct {
 				BudgetItemID string `json:"budgetItemId"`
 				UsdChunk     string `json:"usdChunk"`
 				Credits      string `json:"credits"`
 			}{
-				BudgetItemID: chunks[j].budgetItemID,
-				UsdChunk:     credits.Format(chunks[j].usdChunk),
-				Credits:      credits.Format(chunks[j].credits),
+				BudgetItemID: pc.chunks[j].budgetItemID,
+				UsdChunk:     credits.Format(pc.chunks[j].usdChunk),
+				Credits:      credits.Format(pc.chunks[j].credits),
 			})
 		}
 		out = append(out, math)
 	}
-	if _, err = tx.ExecContext(ctx, `UPDATE budget_sessions SET updated_at = now() WHERE id = $1`, sessionID); err != nil {
-		return nil, "", err
+	if _, err = writeTx.ExecContext(ctx, `UPDATE budget_sessions SET updated_at = now() WHERE id = $1`, sessionID); err != nil {
+		return nil, "", false, err
 	}
-	if err := tx.Commit(); err != nil {
-		return nil, "", err
+	if err := writeTx.Commit(); err != nil {
+		return nil, "", false, err
 	}
-	return out, budgetID, nil
+	return out, budgetID, false, nil
 }
 
 func (s *Store) GetBudgetSession(ctx context.Context, sessionID string) (*BudgetSessionDetail, error) {

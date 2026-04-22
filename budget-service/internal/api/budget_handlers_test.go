@@ -532,6 +532,77 @@ func TestPatchReconciledSessionReturns409(t *testing.T) {
 	}
 }
 
+func TestPatchConcurrentSessionsEventuallySucceed(t *testing.T) {
+	ctx := context.Background()
+	st := testStore(t)
+	key := "patch-concurrent-" + uuid.NewString()
+	if _, err := st.CreateProduct(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	budgetID := uuid.NewString()
+	if err := st.CreateBudget(ctx, budgetID, key, []store.ItemInput{
+		{CreditsTotal: "1000.000000", CostCreditRatio: "1.000000"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	a := auth.NewMiddleware("none")
+	h := NewRouter(&Server{Store: st}, a)
+
+	// Create multiple sessions.
+	const n = 5
+	sessionIDs := make([]string, n)
+	for i := range sessionIDs {
+		recS := httptest.NewRecorder()
+		reqS := httptest.NewRequest(http.MethodPost, "/api/v1/sessions", strings.NewReader(`{"budgetId":"`+budgetID+`"}`))
+		reqS.Header.Set("Content-Type", "application/json")
+		h.ServeHTTP(recS, reqS)
+		if recS.Code != http.StatusCreated {
+			t.Fatalf("post session %d: %d %s", i, recS.Code, recS.Body.String())
+		}
+		var sess struct {
+			SessionID string `json:"sessionId"`
+		}
+		if err := json.Unmarshal(recS.Body.Bytes(), &sess); err != nil {
+			t.Fatal(err)
+		}
+		sessionIDs[i] = sess.SessionID
+	}
+
+	// Race concurrent PATCHes against different sessions (same budget).
+	var wg sync.WaitGroup
+	codes := make([]int, n)
+	wg.Add(n)
+	for i := range sessionIDs {
+		go func(idx int) {
+			defer wg.Done()
+			body := fmt.Sprintf(`{"sessionItems":[{"cost":"1","callRequestId":"race-%d"}]}`, idx)
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodPatch, "/api/v1/sessions/"+sessionIDs[idx], strings.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+			req = req.WithContext(ctx)
+			h.ServeHTTP(rec, req)
+			codes[idx] = rec.Code
+		}(i)
+	}
+	wg.Wait()
+
+	var ok, conflict int
+	for _, code := range codes {
+		switch code {
+		case http.StatusOK:
+			ok++
+		case http.StatusConflict:
+			conflict++
+		default:
+			t.Fatalf("unexpected status %d", code)
+		}
+	}
+	t.Logf("concurrent PATCH results: %d OK, %d 409 Conflict", ok, conflict)
+	if ok == 0 {
+		t.Fatal("expected at least one successful PATCH")
+	}
+}
+
 func TestPatchNonexistentSessionReturns404(t *testing.T) {
 	ctx := context.Background()
 	st := testStore(t)
