@@ -1,8 +1,8 @@
+import { decodeTokenPayload } from '@/lib/auth-utils';
 import { AIRO_OWNER_PRODUCTS, AIRO_PRODUCT_IDS, AiroMgmtClient, getOwnerProductFromProductId } from '@/lib/mgmt-airo';
 import { logger } from '@/lib/request-context';
 import { checkSwitchboardFlag } from '@/lib/switchboard/server';
 import { getDatacenterFromMarketId } from '@/lib/utils/dc-mapping';
-import { extractCustomerId } from '@/lib/utils/jwt-utils';
 import { useSubscriptionCacheStore } from '@/stores/useSubscriptionCacheStore';
 import { CreateSiteParams, CreateSiteResult, DeploySiteOptions, DomainStatus, DomainType, IControlPlaneAdapter, ImageStatusResponse, ReloadImagesResponse, SecretOperations, SecretOperationsResult, SecretsDiffResult, SecretsResponse, SecretUpdate, SiteDomain, SiteInfo, SiteStatus, SiteVariant } from './types';
 import gasket from '../../../gasket.ts';
@@ -374,7 +374,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
    */
   async appExists(siteId: string, jwt: string, owningProduct?: string): Promise<boolean> {
     try {
-      const customerId = extractCustomerId(jwt);
+      const customerId = decodeTokenPayload(jwt)?.cid ?? null;
       if (!customerId) {
         return false;
       }
@@ -435,7 +435,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
 
   async getSite(siteId: string, jwt: string, owningProduct?: string, options?: { includeCdn?: boolean }): Promise<SiteInfo | null> {
     try {
-      const customerId = extractCustomerId(jwt);
+      const customerId = decodeTokenPayload(jwt)?.cid ?? null;
       if (!customerId) {
         throw new Error('Failed to extract customer ID from JWT');
       }
@@ -605,7 +605,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
 
   async listSites(jwt: string): Promise<SiteInfo[]> {
     try {
-      const customerId = extractCustomerId(jwt);
+      const customerId = decodeTokenPayload(jwt)?.cid ?? null;
       if (!customerId) {
         return [];
       }
@@ -652,7 +652,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
     jwt: string
   ): Promise<{ systemId: string; subscriptionId: string } | null> {
     try {
-      const customerId = extractCustomerId(jwt);
+      const customerId = decodeTokenPayload(jwt)?.cid ?? null;
       if (!customerId) {
         return null;
       }

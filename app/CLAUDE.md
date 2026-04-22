@@ -56,7 +56,7 @@ gd-auth supports three authentication levels. Default is level 1; sensitive oper
 | Level | Check | Expiration (persistent) | Expiration (non-persistent) |
 | ----- | ----- | ----------------------- | --------------------------- |
 | 1-2   | IAT   | <= 30 days              | <= 12 hours                 |
-| 3     | HBI   | <= 12 hours             | <= 12 hours                 |
+| 3     | HBI   | <= 1 hour               | <= 1 hour                   |
 
 e2s (impersonation) tokens always use a fixed 2-hour expiration (no HBI claim).
 

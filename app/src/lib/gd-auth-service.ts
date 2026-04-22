@@ -1,117 +1,73 @@
 /**
- * GoDaddy Auth Service using official gd-auth library
- * Handles JWT validation and automatic heartbeat for IDP tokens
+ * GoDaddy Auth Service using @godaddy/gd-auth-lib (Rust + NAPI)
+ * Server-only - handles JWT validation for IDP tokens.
+ *
+ * Browser-safe utilities (extractTokenFromRequest, decodeTokenPayload)
+ * live in auth-utils.ts to avoid bundling the NAPI module into the client.
  */
 
+import { GdAuth, GdAuthErrorCode, SecurityLevel } from '@godaddy/gd-auth-lib';
+
+import { extractTokenFromRequest as extractToken } from '@/lib/auth-utils';
+import { SsoExpirationCode } from '@/lib/features';
 import { authConfigs, getSsoHostSync } from '@/lib/gasket-config';
 import { logger } from '@/lib/request-context';
 
-/**
- * Extract auth token from request headers or cookies (lightweight, no service instantiation)
- * Use this for quick token presence checks without initializing gd-auth
- */
-export function extractTokenFromRequest(request: any): string | null {
-  // Try Authorization header first
-  const authHeader = request.headers.get('authorization');
-  if (authHeader?.startsWith('Bearer ')) {
-    return authHeader.substring(7);
-  } else if (authHeader?.includes('sso-jwt ')) {
-    return authHeader.split('sso-jwt ')[1];
-  }
+// Re-export browser-safe functions for backward compatibility with existing callers
+export { decodeTokenPayload, extractTokenFromRequest } from '@/lib/auth-utils';
 
-  // Try cookies
-  const cookieToken = request.cookies?.get('auth_idp')?.value;
-  if (cookieToken) {
-    return cookieToken;
-  }
-
-  return null;
-}
-
-/**
- * Decode JWT payload without validation (for APM labeling only)
- *
- * SECURITY EXCEPTION: This function intentionally bypasses gd-auth validation.
- * This is an approved exception to CLAUDE.md's "use gd-auth for JWT" rule because:
- * 1. Used ONLY for APM observability labels, never for authorization
- * 2. Full gd-auth validation still happens before any business logic
- * 3. Enables debugging auth failures by capturing cid before validation fails
- * 4. Silently fails on malformed tokens (returns null)
- *
- * WARNING: Do NOT use this function for authorization decisions.
- */
-export function decodeTokenPayload(token: string): { cid?: string; shopperId?: string; auth?: string } | null {
-  try {
-    const parts = token.split('.');
-    if (parts.length !== 3) return null;
-
-    const payload = parts[1];
-    const decoded = Buffer.from(payload, 'base64url').toString('utf8');
-    const claims = JSON.parse(decoded);
-
-    // For e2s tokens, cid and shopperId are nested in the e2s object
-    const cid = claims.cid || claims.customerId || claims.e2s?.cid;
-    const shopperId = claims.shopperId || claims.sub || claims.e2s?.shopperId;
-
-    return {
-      cid,
-      shopperId,
-      auth: claims.auth
-    };
-  } catch {
-    return null;
-  }
-}
+// Known authentication error codes that warrant authReason routing
+const AUTH_ERROR_CODES = new Set([
+  GdAuthErrorCode.TOKEN_EXPIRED,
+  GdAuthErrorCode.INVALID_TOKEN_SIGNATURE,
+  GdAuthErrorCode.INVALID_TOKEN,
+  GdAuthErrorCode.INVALID_AUTH_TYPE,
+  GdAuthErrorCode.TOKEN_TYPE_NOT_ALLOWED,
+  GdAuthErrorCode.TOKEN_AUTH_RESTRICTED,
+]);
 
 export class GdAuthService {
-  private gdAuth: any;
-  private ssoHost: string;
+  private gdAuth: GdAuth | null;
+  private ssoOptions: Record<number, { godaddySso: { host: string; securityLevel: SecurityLevel; auths: string[]; authType: string; allowHeartbeat: boolean } }>;
 
   constructor() {
-    // Log service initialization for diagnostics
     logger.debug('gdauth.service.constructor', {
-      message: 'GdAuthService initializing',
       authType: process.env.AUTH_TYPE,
       nodeEnv: process.env.NODE_ENV
     });
 
-    this.ssoHost = getSsoHostSync();
+    const ssoHost = getSsoHostSync();
+    const host = ssoHost.startsWith('https://') ? ssoHost : `https://${ssoHost}`;
+    const auths = ['basic', 'e2s', 's2s', 'e2s2s', 'e2s2p', 'e2s2snpr', 'cert2s', 'e2p', 's2p', 's2snpr'];
+    const authType = authConfigs.user.realm;
+    const allowHeartbeat = authConfigs.user.allowHeartbeat;
 
-    // Only initialize gd-auth if we're using JWT authentication
-    const authType = process.env.AUTH_TYPE?.toLowerCase() || 'jwt';
-    const isJWTMode = authType === 'jwt' || (process.env.NODE_ENV === 'production' && !authType);
+    this.ssoOptions = {
+      0: { godaddySso: { host, securityLevel: SecurityLevel.NONE, auths, authType, allowHeartbeat } },
+      1: { godaddySso: { host, securityLevel: SecurityLevel.LOW, auths, authType, allowHeartbeat } },
+      2: { godaddySso: { host, securityLevel: SecurityLevel.MEDIUM, auths, authType, allowHeartbeat } },
+      3: { godaddySso: { host, securityLevel: SecurityLevel.HIGH, auths, authType, allowHeartbeat } },
+    };
+
+    const envAuthType = process.env.AUTH_TYPE?.toLowerCase() || 'jwt';
+    const isJWTMode = envAuthType === 'jwt' || (process.env.NODE_ENV === 'production' && !envAuthType);
 
     if (isJWTMode) {
-      this.initializeGdAuth();
+      this.gdAuth = new GdAuth();
+      this.gdAuth.setAppConfig({
+        app: 'airo-builder',
+        client: 'airo-builder.godaddy.com',
+        pcpId: '8606',
+        testMode: false
+      });
     } else {
       this.gdAuth = null;
     }
   }
 
-  private initializeGdAuth() {
-    const { GdAuth } = require('gd-auth'); // eslint-disable-line
-
-    // Initialize gd-auth using centralized auth config
-    this.gdAuth = new GdAuth({
-      app: 'airo-builder',
-      type: authConfigs.user.realm,
-      auths: authConfigs.user.type,
-      allowHeartbeat: authConfigs.user.allowHeartbeat,
-      useNewExpiration: authConfigs.user.use12HourExpiration,
-      fetchKey: require('gd-auth/src/fetch-key') // eslint-disable-line @typescript-eslint/no-require-imports
-    });
-  }
-
-  /**
-   * Authenticate token using gd-auth (handles heartbeat automatically)
-   */
   async authenticate(token: string, level: 1 | 2 | 3 = 1): Promise<{ valid: boolean; payload?: any; reason?: string; authReason?: number }> {
     try {
-      // If auth is disabled or not JWT mode, return mock success
-      const envAuthType = process.env.AUTH_TYPE?.toLowerCase() || 'jwt';
-      const isJWTMode = envAuthType === 'jwt' || (process.env.NODE_ENV === 'production' && !envAuthType);
-
-      if (!isJWTMode || !this.gdAuth) {
+      if (!this.gdAuth) {
         return {
           valid: true,
           payload: {
@@ -121,77 +77,61 @@ export class GdAuthService {
             iat: Math.floor(Date.now() / 1000),
             authType: 'basic'
           },
-          reason: `Authentication bypassed (${envAuthType} mode)`
+          reason: `Authentication bypassed (${process.env.AUTH_TYPE} mode)`
         };
       }
 
-      // Use gd-auth for authentication at the specified risk level
-      // With useNewExpiration=true (gd-auth 1.5.0), this enforces:
-      // - VAT <= 5 minutes for basic/s2s tokens (e2s tokens skip VAT check)
-      // - Level 1-2: IAT <= 30 days (per=true) or <= 12 hours (per=false)
-      // - Level 3: HBI <= 12 hours (requires recent heartbeat)
-      // - e2s tokens: fixed 2 hour expiration (no HBI claim)
-      const jwt = await this.gdAuth.authenticate(this.ssoHost, token, level);
+      const claims = this.gdAuth.parseToken(token, this.ssoOptions[level]);
 
-      // Use gd-auth's built-in methods to extract shopper/customer info
-      // These handle all auth types: basic, e2s, s2s, e2s2s, s2snpr, cert2s, etc.
-      const shopperId = jwt.getShopperId();
-      const cid = jwt.getCustomerId();
+      const shopperId = this.gdAuth.getShopperId(claims);
+      const cid = this.gdAuth.getCustomerId(claims);
+      const payload = this.gdAuth.getPayload(claims);
 
       return {
         valid: true,
         payload: {
-          // Spread jwt.payload first, then override with extracted values to prevent field overwrites
-          ...jwt.payload,
+          ...payload,
           shopperId,
           cid,
-          exp: jwt.exp,
-          iat: jwt.iat,
-          authType: jwt.auth
+          authType: payload.auth || 'basic'
         }
       };
-    } catch (error: any) {
-      const errorData: any = {
-        message: error.message
-      };
-
-      if (error.ssoCode) errorData.ssoCode = error.ssoCode;
-      if (error.code) errorData.code = error.code;
-      if (error.status) errorData.status = error.status;
+    } catch (error: unknown) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      const code = (error as { code?: number }).code;
 
       logger.error('gd-auth.authenticate.error', {
         message: 'Authentication failed',
-        ...errorData
+        errorMessage: err.message,
+        ...(code !== undefined ? { code } : {})
       });
+
+      // Only set authReason for known auth failures (token expired, invalid signature, etc.)
+      // Transient errors (network timeout, key fetch failure) return plain 401 without authReason
+      // so the client doesn't spuriously redirect to /login.
+      if (code !== undefined && AUTH_ERROR_CODES.has(code)) {
+        // Level 3 (HIGH) checks HBI claim -> authReason 2 routes client to /hbi.
+        // All other auth failures -> authReason 1 routes client to /login.
+        const authReason = (code === GdAuthErrorCode.TOKEN_EXPIRED && level === 3)
+          ? SsoExpirationCode.HBI
+          : SsoExpirationCode.LOGIN;
+
+        return {
+          valid: false,
+          reason: err.message || 'Authentication failed',
+          authReason
+        };
+      }
 
       return {
         valid: false,
-        reason: error.message || 'Authentication failed',
-        // ssoCode values: 1=login, 2=hbi, 3=vat (0 is not a valid value)
-        ...(error.ssoCode !== undefined ? { authReason: error.ssoCode } : {})
+        reason: err.message || 'Authentication failed'
       };
     }
   }
 
-  /**
-   * Get token from request (headers or cookies)
-   */
   extractTokenFromRequest(request: any): string | null {
-    // Try Authorization header first
-    const authHeader = request.headers.get('authorization');
-    if (authHeader?.startsWith('Bearer ')) {
-      return authHeader.substring(7);
-    } else if (authHeader?.includes('sso-jwt ')) {
-      return authHeader.split('sso-jwt ')[1];
-    }
-
-    // Try cookies
-    const cookieToken = request.cookies.get('auth_idp')?.value;
-    if (cookieToken) {
-      return cookieToken;
-    }
-
-    return null;
+    return extractToken(request);
   }
 }
 
@@ -206,7 +146,6 @@ export const gdAuthService = {
   get instance(): GdAuthService {
     if (!globalThis.__gdAuthService) {
       logger.info('gd-auth-service.singleton.create', {
-        message: 'Creating gdAuthService singleton (lazy)',
         authType: process.env.AUTH_TYPE,
         nodeEnv: process.env.NODE_ENV,
       });
@@ -215,7 +154,6 @@ export const gdAuthService = {
     return globalThis.__gdAuthService;
   },
 
-  // Delegate methods for backward compatibility
   extractTokenFromRequest(request: any): string | null {
     return this.instance.extractTokenFromRequest(request);
   },

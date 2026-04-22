@@ -1,7 +1,9 @@
 /**
- * GoDaddy Auth Service using official gd-auth library
- * Handles JWT validation and automatic heartbeat for JOMAX tokens
+ * GoDaddy Auth Service using @godaddy/gd-auth-lib (Rust + NAPI)
+ * Handles JWT validation for JOMAX tokens
  */
+import { GdAuth, SecurityLevel } from '@godaddy/gd-auth-lib';
+
 interface AuthPayload {
     shopperId: string;
     cid: string;
@@ -11,56 +13,48 @@ interface AuthPayload {
     [key: string]: unknown;
 }
 
-interface GdAuthInstance {
-    authenticate(host: string, token: string, options: number): Promise<{
-        auth: string;
-        accountName: string;
-        shopperId: string;
-        cid: string;
-        exp: number;
-        iat: number;
-        payload: Record<string, unknown>;
-        e2s?: { shopperId: string; cid: string };
-    }>;
-}
-
 export class GdAuthService {
-    private gdAuth: GdAuthInstance;
+    private gdAuth: GdAuth;
     private ssoHost: string;
 
     constructor() {
-        // gd-auth wants a bare hostname, not a URL. We pick which env to talk
-        // to based on whether SSO_LOGIN_URL points at the test stack.
         const isTestEnv = (process.env.SSO_LOGIN_URL || '').includes('test')
             || !process.env.SSO_LOGIN_URL;
         this.ssoHost = isTestEnv ? 'sso.test-godaddy.com' : 'sso.godaddy.com';
 
-        // Lazy import to avoid issues with ES modules
-        const { GdAuth } = require('gd-auth'); // eslint-disable-line @typescript-eslint/no-require-imports
-        const fetchKey = require('gd-auth/src/fetch-key'); // eslint-disable-line @typescript-eslint/no-require-imports
-
-        this.gdAuth = new GdAuth({
+        this.gdAuth = new GdAuth();
+        this.gdAuth.setAppConfig({
             app: 'console.airo-builder',
-            type: 'jomax',
-            auths: ['basic'],
-            allowHeartbeat: true,
-            fetchKey
+            client: 'airo-builder.godaddy.com',
+            pcpId: '8606',
+            testMode: false
         });
     }
 
     async authenticate(token: string): Promise<{ valid: boolean; payload?: AuthPayload; reason?: string }> {
         try {
-            const jwt = await this.gdAuth.authenticate(this.ssoHost, token, 0);
-            const isE2S = jwt.auth === 'e2s';
+            const claims = this.gdAuth.parseToken(token, {
+                godaddySso: {
+                    host: `https://${this.ssoHost}`,
+                    securityLevel: SecurityLevel.NONE,
+                    auths: ['basic'],
+                    authType: 'jomax',
+                    allowHeartbeat: true
+                }
+            });
+
+            const payload = this.gdAuth.getPayload(claims);
+            const isE2S = this.gdAuth.isImpersonation(claims);
+            const delegation = isE2S ? this.gdAuth.getDelegationPayload(claims) : null;
 
             return {
                 valid: true,
                 payload: {
-                    shopperId: (isE2S && jwt.e2s ? jwt.e2s.shopperId : jwt.shopperId) ?? jwt.accountName,
-                    cid: isE2S && jwt.e2s ? jwt.e2s.cid : jwt.cid,
-                    exp: jwt.exp,
-                    iat: jwt.iat,
-                    ...jwt.payload
+                    ...payload,
+                    shopperId: (isE2S && delegation?.shopperId) ? delegation.shopperId : (this.gdAuth.getShopperId(claims) ?? payload.accountName),
+                    cid: (isE2S && delegation?.cid) ? delegation.cid : this.gdAuth.getCustomerId(claims),
+                    exp: payload.exp,
+                    iat: payload.iat,
                 }
             };
         } catch (error: unknown) {

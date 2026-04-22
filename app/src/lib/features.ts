@@ -5,14 +5,10 @@
 import { SUPPORTED_AUTH_TYPES } from '@airo/shared/auth';
 
 import { logger } from '@/lib/request-context';
-import { decodeJWT } from '@/lib/utils/jwt-utils';
 
 /**
- * Authentication types supported by the application
- */
-/**
- * SSO expiration codes from gd-auth (mirrors gd-auth/src/expiration-codes.js)
- * Used by TokenExpiredError.ssoCode to indicate why a token was rejected.
+ * Auth failure reason codes sent to the client as `authReason` in 401 responses.
+ * The SsoLogin component routes to /hbi for HBI failures, /login for all others.
  */
 export const SsoExpirationCode = {
   NOT_EXPIRED: 0,
@@ -172,60 +168,11 @@ export const authUtils = {
    * is not in this array, gd-auth will throw TokenAuthMismatchError and reject it.
    * This list must include ALL auth types we want to support.
    *
-   * Auth types (from gd-auth source):
-   * - basic: Normal authentication
-   * - e2s: Employee-to-shopper impersonation
-   * - s2s: Shopper-to-shopper delegation
-   * - e2s2s: Employee-to-shopper-to-shopper
-   * - e2s2p: Employee-to-shopper-to-partner
-   * - e2s2snpr: Employee-to-shopper-to-shopper (NPR)
-   * - e2s2s2p: Employee-to-shopper-to-shopper-to-partner
-   * - cert2s: Certificate-to-shopper
-   * - e2p: Employee-to-partner
-   * - s2p: Shopper-to-partner
-   * - s2snpr: Shopper-to-shopper (non-personalized reseller)
-   * - s2s2p: Shopper-to-shopper-to-partner
+   * Auth types accepted by gd-auth-lib's Auths enum.
+   * See SUPPORTED_AUTH_TYPES in @airo/shared/auth for the full list.
    */
   getSupportedAuthTypes: (): string[] => {
     return [...SUPPORTED_AUTH_TYPES];
-  },
-
-  /**
-   * Detect auth type from a JWT token
-   * @param token - JWT token string
-   * @returns Detected auth type or 'basic' as fallback
-   */
-  detectAuthTypeFromToken: (token: string): string => {
-    if (!token) return 'basic';
-
-    const payload = decodeJWT(token);
-    if (!payload) return 'basic';
-
-    // Check for auth field first (gd-auth sets this)
-    if (payload.auth) {
-      return payload.auth;
-    }
-
-    // Check for e2s (employee-to-shopper impersonation)
-    if (payload.e2s && typeof payload.e2s === 'object') {
-      return 'e2s';
-    }
-
-    // Check for s2s (shopper-to-shopper delegation)
-    if (payload.s2s && typeof payload.s2s === 'object') {
-      return 's2s';
-    }
-
-    // Check for other nested auth types (delegation chains and impersonation)
-    const nestedAuthTypes = ['cert2s', 'e2s2s', 'e2s2p', 'e2s2snpr', 'e2s2s2p', 'e2p', 's2p', 's2snpr', 's2s2p'];
-    for (const authType of nestedAuthTypes) {
-      if (payload[authType] && typeof payload[authType] === 'object') {
-        return authType;
-      }
-    }
-
-    // Default to basic auth
-    return 'basic';
   }
 } as const
 

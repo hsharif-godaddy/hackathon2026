@@ -100,7 +100,7 @@
     "execa": "catalog:",
     "express": "catalog:",
     "express-rate-limit": "^7.4.1",
-    "gd-auth": "catalog:",
+    "@godaddy/gd-auth-lib": "catalog:",
     "glob": "^11.1.0",
     "gray-matter": "catalog:",
     "helmet": "catalog:",

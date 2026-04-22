@@ -1,7 +1,7 @@
 import { context as otelContext, propagation } from '@opentelemetry/api';
 
+import { decodeTokenPayload } from '@/lib/auth-utils';
 import { logger } from '@/lib/request-context';
-import { extractCustomerId as extractCustomerIdFromJWT } from '@/lib/utils/jwt-utils';
 import {
   type AiroApiError,
   type AiroApiErrorV2,
@@ -264,14 +264,8 @@ export class AiroMgmtClient {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 
-  /**
-   * Extract customer ID from JWT using shared jwt-utils
-   *
-   * Note: This uses the jwt-utils module for proper JWT parsing without signature verification.
-   * Signature verification is handled by mgmt-airo when the JWT is passed in the Authorization header.
-   */
   private extractCustomerId(): string | null {
-    return extractCustomerIdFromJWT(this.jwt);
+    return decodeTokenPayload(this.jwt)?.cid ?? null;
   }
 
   /**

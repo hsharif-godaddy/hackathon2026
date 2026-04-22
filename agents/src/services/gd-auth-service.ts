@@ -1,21 +1,10 @@
 /**
  * GD Auth Service for Agents
- * Validates JOMAX tokens using gd-auth library
+ * Validates JOMAX tokens using @godaddy/gd-auth-lib (Rust + NAPI)
  */
-import { createRequire } from 'module';
+import { GdAuth, SecurityLevel } from '@godaddy/gd-auth-lib';
+
 import { logger } from '../logging/index.js';
-
-// Lazy-load gd-auth to avoid loading it during test imports
-let GdAuth: any = null;
-let fetchKey: any = null;
-
-function loadGdAuth() {
-  if (!GdAuth) {
-    const require = createRequire(import.meta.url);
-    GdAuth = require('gd-auth').GdAuth;
-    fetchKey = require('gd-auth/src/fetch-key');
-  }
-}
 
 export interface JomaxValidationResult {
   valid: boolean;
@@ -29,40 +18,33 @@ export interface JomaxValidationResult {
 }
 
 class GdAuthService {
-  private gdAuth: any;
-  private ssoHost: string;
+  private gdAuth: GdAuth;
+  private host: string;
 
   constructor() {
-    this.ssoHost = this.getSsoHost();
+    const ssoHost = this.requireSsoHost();
+    this.host = ssoHost.startsWith('https://') ? ssoHost : `https://${ssoHost}`;
 
-    // Lazy-load gd-auth library
-    loadGdAuth();
-
-    this.gdAuth = new GdAuth({
+    this.gdAuth = new GdAuth();
+    this.gdAuth.setAppConfig({
       app: 'airo-builder-agents',
-      type: 'jomax',
-      auths: ['basic'],
-      riskLevel: 0,
-      fetchKey
+      client: 'airo-builder.godaddy.com',
+      pcpId: '8606',
+      testMode: false
     });
 
-    logger.info('gd-auth.initialized', {
-      ssoHost: this.ssoHost,
-      app: 'airo-builder-agents'
-    });
+    logger.info('gd-auth.initialized', { ssoHost, app: 'airo-builder-agents' });
   }
 
-  private getSsoHost(): string {
+  private requireSsoHost(): string {
     const ssoHost = process.env.SSO_HOST;
 
     if (!ssoHost) {
-      // Log detailed error for operators (internal only)
       logger.error('gd-auth.config.missing_sso_host', {
         message: 'SSO_HOST environment variable not configured',
         hint: 'Set SSO_HOST to sso.dev-godaddy.com, sso.test-godaddy.com, or sso.godaddy.com',
       });
 
-      // Throw generic error (could be exposed in logs)
       throw new Error('SSO_HOST environment variable not configured');
     }
 
@@ -71,21 +53,30 @@ class GdAuthService {
 
   async authenticate(token: string): Promise<JomaxValidationResult> {
     try {
-      const jwt = await this.gdAuth.authenticate(this.ssoHost, token, 0);
+      const claims = this.gdAuth.parseToken(token, {
+        godaddySso: {
+          host: this.host,
+          securityLevel: SecurityLevel.NONE,
+          auths: ['basic'],
+          authType: 'jomax'
+        }
+      });
+
+      const payload = this.gdAuth.getPayload(claims);
 
       return {
         valid: true,
         payload: {
-          shopperId: jwt.shopperId,
-          cid: jwt.cid,
-          exp: jwt.exp,
-          iat: jwt.iat
+          shopperId: this.gdAuth.getShopperId(claims) || String(payload.accountName ?? ''),
+          cid: this.gdAuth.getCustomerId(claims) ?? '',
+          exp: Number(payload.exp),
+          iat: Number(payload.iat)
         }
       };
     } catch (error: unknown) {
       logger.warn('gd-auth.authenticate.failed', {
         error: error instanceof Error ? error.message : String(error),
-        ssoHost: this.ssoHost
+        host: this.host
       });
 
       return {
@@ -100,7 +91,6 @@ class GdAuthService {
 
     if (!authHeader) return null;
 
-    // Support "Bearer <token>" or "jomax-jwt <token>"
     if (authHeader.startsWith('Bearer ')) {
       return authHeader.substring(7);
     }

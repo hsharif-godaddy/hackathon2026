@@ -22,7 +22,7 @@ import type { ReadonlyHeaders } from 'next/dist/server/web/spec-extension/adapte
 import type { NextRequest, NextResponse } from 'next/server';
 import { context, Span, SpanStatusCode, trace } from '@opentelemetry/api';
 
-import { decodeTokenPayload, extractTokenFromRequest } from '@/lib/gd-auth-service';
+import { decodeTokenPayload, extractTokenFromRequest } from '@/lib/auth-utils';
 
 interface ApmAuthContext {
   user?: {

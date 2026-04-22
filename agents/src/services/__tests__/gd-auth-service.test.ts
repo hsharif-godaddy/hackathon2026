@@ -1,10 +1,20 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
+
+vi.mock('@godaddy/gd-auth-lib', () => ({
+  GdAuth: vi.fn().mockImplementation(() => ({
+    setAppConfig: vi.fn(),
+    parseToken: vi.fn(),
+    getShopperId: vi.fn(),
+    getCustomerId: vi.fn(),
+    getPayload: vi.fn()
+  })),
+  SecurityLevel: { NONE: 0, LOW: 1, MEDIUM: 2, HIGH: 3 }
+}));
 
 describe('GdAuthService', () => {
   const originalEnv = process.env.SSO_HOST;
 
   afterEach(() => {
-    // Restore original SSO_HOST
     if (originalEnv !== undefined) {
       process.env.SSO_HOST = originalEnv;
     } else {
@@ -17,7 +27,6 @@ describe('GdAuthService', () => {
     it('should throw error when SSO_HOST is not set', async () => {
       delete process.env.SSO_HOST;
 
-      // Need to dynamically import to get fresh module after env change
       await expect(async () => {
         const { getGdAuthService } = await import('../gd-auth-service.js');
         getGdAuthService();
