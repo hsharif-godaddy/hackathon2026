@@ -8,7 +8,6 @@ import { makeLayout } from '@godaddy/gasket-next/layout';
 
 import AuthBoundary from "@/components/auth/AuthBoundary";
 import GlobalSsoLogin from "@/components/auth/GlobalSsoLogin";
-import SessionTimeoutManager from "@/components/auth/SessionTimeoutManager";
 import AuthProvider from "@/components/providers/AuthProvider";
 import FullStoryProvider from "@/components/providers/FullStoryProvider";
 import { QueryClientProvider } from "@/components/providers/QueryClientProvider";
@@ -197,7 +196,6 @@ async function MarketLayout({
             <AuthProvider homepageEngagementCohort={homepageEngagementCohort}>
               <JourneyTrackerAuth />
               <SubscriptionCacheProvider>
-                <SessionTimeoutManager />
                 <AuthBoundary>
                   <main className="flex-1 relative min-h-dvh">
                     {children}

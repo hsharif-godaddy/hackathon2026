@@ -61,7 +61,6 @@ vi.mock('@godaddy/gasket-next/layout', () => ({
 
 vi.mock('@/components/auth/AuthBoundary', () => ({ default: ({ children }: { children: React.ReactNode }) => <>{children}</> }));
 vi.mock('@/components/auth/GlobalSsoLogin', () => ({ default: () => null }));
-vi.mock('@/components/auth/SessionTimeoutManager', () => ({ default: () => null }));
 vi.mock('@/components/providers/AuthProvider', () => ({ default: ({ children }: { children: React.ReactNode }) => <>{children}</> }));
 vi.mock('@/components/providers/FullStoryProvider', () => ({ default: ({ children }: { children: React.ReactNode }) => <>{children}</> }));
 vi.mock('@/components/providers/QueryClientProvider', () => ({ QueryClientProvider: ({ children }: { children: React.ReactNode }) => <>{children}</> }));
