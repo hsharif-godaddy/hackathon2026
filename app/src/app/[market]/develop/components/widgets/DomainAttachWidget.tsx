@@ -543,6 +543,7 @@ export default function DomainAttachWidget({
     hasActiveOrPendingDomain ||
     requiresPublish ||
     modifyDomainsMutation.isPending;
+  const isDomainDataReady = isDomainsFetched && isAppDetailsFetched;
 
   // Don't render if feature flag is disabled or still loading
   if (isLoadingFlag || !isDomainAttachEnabled) {
@@ -740,58 +741,62 @@ export default function DomainAttachWidget({
         )}
       </Box>
 
-      {/* Section 2: Connect External Domain */}
-      <Box className="rounded-md bg-intents-ux-boxLowContrast-backgroundColor p-3" orientation="vertical" gap="sm">
-        <text.h4>
-          {t('builder_domain_attach_external_title')}
-        </text.h4>
+      {isDomainDataReady && !hasActiveOrPendingCustomDomain && (
+        <>
+          {/* Section 2: Connect External Domain */}
+          <Box className="rounded-md bg-intents-ux-boxLowContrast-backgroundColor p-3" orientation="vertical" gap="sm">
+            <text.h4>
+              {t('builder_domain_attach_external_title')}
+            </text.h4>
 
-        {!showCustomDomainConfirmation && (
-          <ExternalDomainInput
-            value={customDomain}
-            onChange={handleCustomDomainChange}
-            disabled={shouldDisableAddingDomain}
-            errorMessage={
-              isAiroDomainBlocked || (customDomain === debouncedDomain && !isValidatingDomain)
-                ? getValidationErrorMessage()
-                : undefined
-            }
-            isValidating={isValidatingDomain}
-            isValidationComplete={customDomain === debouncedDomain}
-            isAvailable={!hasValidationError && validationData?.available !== false && !isAiroDomainBlocked}
-            onAdd={handleAddCustomDomain}
-          />
-        )}
+            {!showCustomDomainConfirmation && (
+              <ExternalDomainInput
+                value={customDomain}
+                onChange={handleCustomDomainChange}
+                disabled={shouldDisableAddingDomain}
+                errorMessage={
+                  isAiroDomainBlocked || (customDomain === debouncedDomain && !isValidatingDomain)
+                    ? getValidationErrorMessage()
+                    : undefined
+                }
+                isValidating={isValidatingDomain}
+                isValidationComplete={customDomain === debouncedDomain}
+                isAvailable={!hasValidationError && validationData?.available !== false && !isAiroDomainBlocked}
+                onAdd={handleAddCustomDomain}
+              />
+            )}
 
-        {showCustomDomainConfirmation && (
-          <Box
-            className="rounded-md bg-intents-ux-box-backgroundColor p-3"
-            orientation="vertical"
-            gap="sm"
-          >
-            <text.strong size={-1}>
-              {t('builder_domain_connect_confirmation_title')}
-            </text.strong>
-            <text.span size={-1}>
-              {t('builder_domain_connect_confirmation_description')}
-            </text.span>
-            <Box orientation="horizontal" gap="sm">
-              <Button
-                design="primary"
-                size="sm"
-                text={t('builder_custom_domain_modal_button_continue')}
-                onClick={handleConfirmAddCustomDomain}
-              />
-              <Button
-                design="secondary"
-                size="sm"
-                text={t('builder_custom_domain_modal_button_cancel')}
-                onClick={handleCancelAddCustomDomain}
-              />
-            </Box>
+            {showCustomDomainConfirmation && (
+              <Box
+                className="rounded-md bg-intents-ux-box-backgroundColor p-3"
+                orientation="vertical"
+                gap="sm"
+              >
+                <text.strong size={-1}>
+                  {t('builder_domain_connect_confirmation_title')}
+                </text.strong>
+                <text.span size={-1}>
+                  {t('builder_domain_connect_confirmation_description')}
+                </text.span>
+                <Box orientation="horizontal" gap="sm">
+                  <Button
+                    design="primary"
+                    size="sm"
+                    text={t('builder_custom_domain_modal_button_continue')}
+                    onClick={handleConfirmAddCustomDomain}
+                  />
+                  <Button
+                    design="secondary"
+                    size="sm"
+                    text={t('builder_custom_domain_modal_button_cancel')}
+                    onClick={handleCancelAddCustomDomain}
+                  />
+                </Box>
+              </Box>
+            )}
           </Box>
-        )}
-      </Box>
+        </>
+      )}
 
       {/* Custom Domains Added Section */}
       {customDomains.length > 0 && (

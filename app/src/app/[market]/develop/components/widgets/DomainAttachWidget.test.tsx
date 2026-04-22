@@ -357,7 +357,7 @@ describe('DomainAttachWidget', function domainAttachWidgetTests() {
       ).toBeInTheDocument();
     });
 
-    it('should not pre-fill external domain when brand is a non-owned domain already active on app', async function skipCase3() {
+    it('should hide external domain section when brand is a non-owned domain already active on app', async function skipCase3() {
       const { useDomainsQuery } = await import('@/hooks/useDomainsQuery');
       const { useAppDetails } = await import('@/hooks/useAppDetails');
 
@@ -389,10 +389,9 @@ describe('DomainAttachWidget', function domainAttachWidgetTests() {
         <DomainAttachWidget appId="test-app-123" brandName="external-only.com" />
       );
 
-      await waitFor(function waitForExternalInput() {
-        const input = document.getElementById('external-domain-input');
-        expect(input).toBeTruthy();
-        expect(input).toHaveValue('');
+      await waitFor(function waitForExternalSectionHidden() {
+        expect(screen.queryByText('builder_domain_attach_external_title')).not.toBeInTheDocument();
+        expect(document.getElementById('external-domain-input')).toBeNull();
       });
 
       expect(screen.getByText('builder_domain_attach_widget_description')).toBeInTheDocument();
@@ -403,6 +402,28 @@ describe('DomainAttachWidget', function domainAttachWidgetTests() {
   });
 
   describe('airoapp.ai domain blocking', function blockedDomainTests() {
+    beforeEach(async function setup() {
+      const { useAppDetails } = await import('@/hooks/useAppDetails');
+      const { useDomainsQuery } = await import('@/hooks/useDomainsQuery');
+
+      vi.mocked(useDomainsQuery).mockReturnValue({
+        data: [],
+        isLoading: false,
+        error: null,
+        isFetched: true,
+      } as any);
+
+      vi.mocked(useAppDetails).mockReturnValue({
+        data: {
+          id: 'test-app-123',
+          name: 'Test App',
+          status: 'running',
+          domains: [],
+        },
+        isFetched: true,
+      } as any);
+    });
+
     it('should show error immediately when typing a .airoapp.ai domain', async function blocksAiroappAi() {
       renderWithProviders(<DomainAttachWidget appId="test-app-123" />);
 
@@ -486,6 +507,22 @@ describe('DomainAttachWidget', function domainAttachWidgetTests() {
       const { container } = renderWithProviders(<DomainAttachWidget appId="test-app-123" />);
 
       expect(container.innerHTML).toBe('');
+    });
+  });
+
+  it('does not render external domain section until app details are fetched', async function waitForAppDetailsFetch() {
+    const { useAppDetails } = await import('@/hooks/useAppDetails');
+
+    vi.mocked(useAppDetails).mockReturnValue({
+      data: undefined,
+      isFetched: false,
+    } as any);
+
+    renderWithProviders(<DomainAttachWidget appId="test-app-123" />);
+
+    await waitFor(function waitForExternalSectionToHide() {
+      expect(screen.queryByText('builder_domain_attach_external_title')).not.toBeInTheDocument();
+      expect(document.getElementById('external-domain-input')).toBeNull();
     });
   });
 });

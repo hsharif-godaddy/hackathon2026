@@ -393,6 +393,7 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
     hasActiveOrPendingDomain ||
     !isPublished ||
     modifyDomainsMutation.isPending;
+  const isDomainDataReady = isDomainsFetched && isAppDetailsFetched;
 
   const customDomainSectionStatus = useMemo(() => {
     const connectedDomains = appDetails?.domains?.filter((d) => d.domainType !== 'prefix') || [];
@@ -580,47 +581,51 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
         </Box>
       </Box>
 
-      {/* Custom Domain Input */}
-      <Box
-        orientation="vertical"
-        blockAlignChildren="start"
-        gap="sm"
-        inlineAlignChildren="start"
-      >
-        <text.span as="label" text={t('builder_custom_domain_input_label')} />
-        <TextInput
-          className="w-full"
-          id="custom-domain-slug"
-          label={null}
-          onChange={handleCustomDomainChange}
-          helpMessage={t('builder_custom_domain_input_help')}
-          value={customDomain}
-          disabled={shouldDisableAddingDomain}
-          errorMessage={getValidationErrorMessage()}
-        />
-      </Box>
-      {customDomain && (
-        <div>
-          <Button
-            text={isValidatingDomain || (customDomain !== debouncedDomain)
-              ? t('builder_custom_domain_button_checking')
-              : t('builder_custom_domain_button_add')
-            }
-            design="primary"
-            onClick={() => setShowAddConfirmation(true)}
-            disabled={shouldDisableAddingDomain ||
-              customDomain.length === 0 ||
-              isAiroDomainBlocked ||
-              isValidatingDomain ||
-              hasValidationError ||
-              (customDomain !== debouncedDomain) ||
-              (validationData && !validationData.available)
-            }
-            data-eid={generateClickEID(`settings.domains.add_domain`)}
-            className="!hover:bg-transparent"
-            size="sm"
-          />
-        </div>
+      {isDomainDataReady && !hasActiveOrPendingCustomDomain && (
+        <>
+          {/* Custom Domain Input */}
+          <Box
+            orientation="vertical"
+            blockAlignChildren="start"
+            gap="sm"
+            inlineAlignChildren="start"
+          >
+            <text.span as="label" text={t('builder_custom_domain_input_label')} />
+            <TextInput
+              className="w-full"
+              id="custom-domain-slug"
+              label={null}
+              onChange={handleCustomDomainChange}
+              helpMessage={t('builder_custom_domain_input_help')}
+              value={customDomain}
+              disabled={shouldDisableAddingDomain}
+              errorMessage={getValidationErrorMessage()}
+            />
+          </Box>
+          {customDomain && (
+            <div>
+              <Button
+                text={isValidatingDomain || (customDomain !== debouncedDomain)
+                  ? t('builder_custom_domain_button_checking')
+                  : t('builder_custom_domain_button_add')
+                }
+                design="primary"
+                onClick={() => setShowAddConfirmation(true)}
+                disabled={shouldDisableAddingDomain ||
+                  customDomain.length === 0 ||
+                  isAiroDomainBlocked ||
+                  isValidatingDomain ||
+                  hasValidationError ||
+                  (customDomain !== debouncedDomain) ||
+                  (validationData && !validationData.available)
+                }
+                data-eid={generateClickEID(`settings.domains.add_domain`)}
+                className="!hover:bg-transparent"
+                size="sm"
+              />
+            </div>
+          )}
+        </>
       )}
 
       {showAddConfirmation && (

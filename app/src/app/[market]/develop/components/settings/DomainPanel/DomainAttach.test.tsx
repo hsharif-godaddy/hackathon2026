@@ -203,4 +203,29 @@ describe('DomainAttach', function domainAttachTests() {
       expect(screen.queryByText('builder_domain_dns_instructions')).not.toBeInTheDocument();
     });
   });
+
+  it('hides custom domain input when non-customer custom domain is already active', async function hideInputForExistingCustomDomain() {
+    const activeCustomDomain: AppDomain = {
+      fqdn: 'external-only.com',
+      isPrimary: false,
+      status: DomainStatus.ACTIVE,
+      domainType: 'custom',
+    };
+
+    renderWithProviders(
+      <DomainAttach
+        appDetails={{
+          id: 'test-app-123',
+          name: 'Test App',
+          status: 'running',
+          domains: [activeCustomDomain],
+        } as any}
+        isAppDetailsFetched={true}
+      />
+    );
+
+    await waitFor(function waitForCustomDomainInputToHide() {
+      expect(document.getElementById('custom-domain-slug')).toBeNull();
+    });
+  });
 });
