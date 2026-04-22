@@ -1,7 +1,7 @@
 import text from '@ux/text'
 
+import { InfoTooltip } from '@/components/ui/InfoTooltip'
 import { useTranslations } from '@/hooks/useTranslations'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/lib/shadcn/tooltip'
 
 interface ColumnDef<T> {
   key: keyof T
@@ -53,16 +53,11 @@ export function AnalyticsDetailTable<T>({
         <span className="inline-block w-[7px] h-[7px] rounded-full flex-shrink-0" style={{ background: 'var(--color-ai)', boxShadow: '0 0 6px var(--color-ai-glow)' }} />
         <text.p className="!text-[13px] !font-semibold !mb-0">{title}</text.p>
         {tooltip && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button type="button" aria-label="More information" className="shrink-0 text-muted-foreground/40 hover:text-muted-foreground transition-colors">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="top" className="max-w-[240px] text-xs">
-              {tooltip}
-            </TooltipContent>
-          </Tooltip>
+          <InfoTooltip
+            content={tooltip}
+            iconClassName="size-[13px] text-muted-foreground/40 hover:text-muted-foreground transition-colors"
+            contentClassName="p-1 max-w-[240px] text-xs"
+          />
         )}
         {subtitle && (
           <text.p emphasis="passive" className="!text-[11px] !mt-0.5 !mb-0 !pl-[14px]">{subtitle}</text.p>

@@ -4,7 +4,6 @@ import Button from '@ux/button';
 
 import { DISCORD_INVITE_URL } from '@/constants';
 import { useTranslations } from '@/hooks/useTranslations';
-import { Button as ShadcnButton } from '@/lib/shadcn/button';
 import { generateClickEID } from '@/utils/instrumentation';
 
 export enum DiscordLinkVariant {
@@ -42,15 +41,14 @@ export default function DiscordLink({
 
   if (variant === DiscordLinkVariant.MenuItem) {
     return (
-      <ShadcnButton
-        variant='ghost'
+      <Button
+        design='tertiary'
         className='justify-start gap-1 px-1 hover:cursor-pointer'
+        icon={<DiscordIcon className='size-2' />}
+        text={t('builder_usermenu_discord')}
         onClick={open}
         data-eid={generateClickEID(`${location}.user_menu.discord`)}
-      >
-        <DiscordIcon className='size-2' />
-        {t('builder_usermenu_discord')}
-      </ShadcnButton>
+      />
     );
   }
 

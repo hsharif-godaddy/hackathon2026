@@ -7,7 +7,6 @@ import LinkIcon from '@ux/icon/link';
 import InviteFriendsModal from '@/components/layout/InviteFriendsModal';
 import { useAuthContext } from '@/components/providers/AuthProvider';
 import { useTranslations } from '@/hooks/useTranslations';
-import { Button as ShadcnButton } from '@/lib/shadcn/button';
 import { generateClickEID } from '@/utils/instrumentation';
 
 export enum InviteFriendsVariant {
@@ -51,15 +50,14 @@ export default function InviteFriends({ location = 'unknown', variant = InviteFr
   // Menu item variant: text button for dropdown menus
   if (variant === InviteFriendsVariant.MenuItem) {
     return (
-      <ShadcnButton
-        variant='ghost'
+      <Button
+        design='tertiary'
         className='justify-start gap-1 px-1 hover:cursor-pointer'
+        icon={<LinkIcon className='size-2' />}
+        text={t('builder_invite_friend_title')}
         onClick={handleClick}
         data-eid={generateClickEID(`${location}.user_menu.invite_friends`)}
-      >
-        <LinkIcon className='size-2' />
-        {t('builder_invite_friend_title')}
-      </ShadcnButton>
+      />
     );
   }
 

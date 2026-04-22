@@ -9,8 +9,8 @@ import {
 } from 'recharts'
 import text from '@ux/text'
 
+import { InfoTooltip } from '@/components/ui/InfoTooltip'
 import { useTranslations } from '@/hooks/useTranslations'
-import { Tooltip as InfoTooltip, TooltipContent, TooltipTrigger } from '@/lib/shadcn/tooltip'
 import { ChartTooltip } from './ChartTooltip'
 
 interface ChartDataPoint {
@@ -81,16 +81,11 @@ export function AnalyticsPieChart({ data, label = 'Distribution', tooltip }: Ana
         <span className="inline-block w-[6px] h-[6px] rounded-full flex-shrink-0" style={{ background: 'var(--color-chart-pink)', boxShadow: '0 0 8px color-mix(in srgb, var(--color-chart-pink) 30%, transparent)' }} />
         <text.span className="!text-[13px] !font-bold !tracking-tight">{label}</text.span>
         {tooltip && (
-          <InfoTooltip>
-            <TooltipTrigger asChild>
-              <button type="button" aria-label="More information" className="shrink-0 text-muted-foreground/40 hover:text-muted-foreground transition-colors">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="top" className="max-w-[240px] text-xs">
-              {tooltip}
-            </TooltipContent>
-          </InfoTooltip>
+          <InfoTooltip
+            content={tooltip}
+            iconClassName="size-[13px] text-muted-foreground/40 hover:text-muted-foreground transition-colors"
+            contentClassName="p-1 max-w-[240px] text-xs"
+          />
         )}
       </div>
       <ResponsiveContainer width="100%" height={200} minHeight={140}>

@@ -1,7 +1,7 @@
 import text from '@ux/text'
 
+import { ContentTooltip } from '@/components/ui/ContentTooltip'
 import { useTranslations } from '@/hooks/useTranslations'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/lib/shadcn/tooltip'
 
 interface PageData {
   page: string
@@ -59,20 +59,21 @@ export function AnalyticsTables({
               const description = getDescription(row)
 
               return (
-                <Tooltip key={index}>
-                  <TooltipTrigger asChild>
-                    <div className="flex items-center justify-between gap-3 text-sm cursor-pointer hover:opacity-80 transition-opacity">
-                      <text.span className="!truncate !min-w-0">{value}</text.span>
-                      <text.span className="!flex-shrink-0 !tabular-nums !font-semibold">{row.visitors}</text.span>
-                    </div>
-                  </TooltipTrigger>
-                  <TooltipContent side="top" className="bg-background text-foreground border border-border shadow-lg">
+                <ContentTooltip
+                  key={value}
+                  content={
                     <div className="flex flex-col gap-0">
                       <div className="text-sm font-semibold leading-none">{t('builder_analytics_table_count_visitors', {count: row.visitors})}</div>
                       <div className="text-xs text-muted-foreground mt-1.5">{description}</div>
                     </div>
-                  </TooltipContent>
-                </Tooltip>
+                  }
+                  contentClassName="p-1"
+                >
+                  <div className="flex items-center justify-between gap-3 text-sm cursor-pointer hover:opacity-80 transition-opacity">
+                    <text.span className="!truncate !min-w-0">{value}</text.span>
+                    <text.span className="!flex-shrink-0 !tabular-nums !font-semibold">{row.visitors}</text.span>
+                  </div>
+                </ContentTooltip>
               )
             })}
           </div>

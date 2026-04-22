@@ -1,8 +1,9 @@
 import { useIntl } from 'react-intl'
 import text from '@ux/text'
 
+import { ContentTooltip } from '@/components/ui/ContentTooltip'
+import { InfoTooltip } from '@/components/ui/InfoTooltip'
 import { useTranslations } from '@/hooks/useTranslations'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/lib/shadcn/tooltip'
 
 export interface StatProgressItem {
   label: string
@@ -70,16 +71,11 @@ export function StatProgressList({
         />
         <text.span className="!text-[13px] !font-bold !tracking-tight">{title}</text.span>
         {tooltip && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button type="button" aria-label="More information" className="shrink-0 text-muted-foreground/40 hover:text-muted-foreground transition-colors">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="top" className="max-w-[240px] text-xs">
-              {tooltip}
-            </TooltipContent>
-          </Tooltip>
+          <InfoTooltip
+            content={tooltip}
+            iconClassName="size-[13px] text-muted-foreground/40 hover:text-muted-foreground transition-colors"
+            contentClassName="p-1 max-w-[240px] text-xs"
+          />
         )}
       </div>
       {subtitle && (
@@ -94,53 +90,49 @@ export function StatProgressList({
           const barColor = item.color || color
 
           return (
-            <Tooltip key={`${item.label}-${idx}`}>
-              <TooltipTrigger asChild>
-                <div className="group flex items-center gap-2 cursor-default">
-                  {/* Rank number */}
-                  <text.span className="!text-[10px] !font-bold !text-muted-foreground/50 !w-4 !text-right !tabular-nums !shrink-0">
-                    {idx + 1}
-                  </text.span>
-
-                  {/* Icon (flag, device icon, etc.) */}
-                  {item.icon && <span className="shrink-0 flex items-center">{item.icon}</span>}
-
-                  {/* Label */}
-                  <text.span className="!text-xs !font-medium !truncate !min-w-0 !max-w-[50%] shrink">
-                    {item.label}
-                  </text.span>
-
-                  {/* Progress bar */}
-                  <div className="flex-1 h-[6px] rounded-full bg-muted/40 overflow-hidden min-w-[40px]">
-                    <div
-                      className="h-full rounded-full transition-all duration-500 ease-out"
-                      style={{
-                        width: `${Math.max(barWidth, 2)}%`,
-                        background: `linear-gradient(90deg, ${barColor}, color-mix(in srgb, ${barColor} 70%, transparent))`,
-                      }}
-                    />
-                  </div>
-
-                  {/* Value + percentage */}
-                  <div className="flex items-baseline gap-1.5 shrink-0 tabular-nums">
-                    <text.span className="!text-xs !font-bold" style={{ color: barColor }}>
-                      {item.value.toLocaleString()}
-                    </text.span>
-                    {showPercent && (
-                      <text.span className="!text-[10px] !text-muted-foreground">
-                        {pct.toFixed(0)}%
-                      </text.span>
-                    )}
-                  </div>
-                </div>
-              </TooltipTrigger>
-              <TooltipContent side="top" className="text-xs">
+            <ContentTooltip
+              key={`${item.label}-${idx}`}
+              content={
                 <div className="flex flex-col gap-0.5">
                   <span className="font-semibold">{item.label}</span>
                   <span>{intl.formatMessage({ id: 'builder_analytics_tooltip_stat_row', defaultMessage: '{value} — {pct}% of total' }, { value: item.value.toLocaleString(), pct: pct.toFixed(1) })}</span>
                 </div>
-              </TooltipContent>
-            </Tooltip>
+              }
+              contentClassName="p-1 text-xs"
+            >
+              <div className="group flex items-center gap-2 cursor-default">
+                <text.span className="!text-[10px] !font-bold !text-muted-foreground/50 !w-4 !text-right !tabular-nums !shrink-0">
+                  {idx + 1}
+                </text.span>
+
+                {item.icon && <span className="shrink-0 flex items-center">{item.icon}</span>}
+
+                <text.span className="!text-xs !font-medium !truncate !min-w-0 !max-w-[50%] shrink">
+                  {item.label}
+                </text.span>
+
+                <div className="flex-1 h-[6px] rounded-full bg-muted/40 overflow-hidden min-w-[40px]">
+                  <div
+                    className="h-full rounded-full transition-all duration-500 ease-out"
+                    style={{
+                      width: `${Math.max(barWidth, 2)}%`,
+                      background: `linear-gradient(90deg, ${barColor}, color-mix(in srgb, ${barColor} 70%, transparent))`,
+                    }}
+                  />
+                </div>
+
+                <div className="flex items-baseline gap-1.5 shrink-0 tabular-nums">
+                  <text.span className="!text-xs !font-bold" style={{ color: barColor }}>
+                    {item.value.toLocaleString()}
+                  </text.span>
+                  {showPercent && (
+                    <text.span className="!text-[10px] !text-muted-foreground">
+                      {pct.toFixed(0)}%
+                    </text.span>
+                  )}
+                </div>
+              </div>
+            </ContentTooltip>
           )
         })}
       </div>

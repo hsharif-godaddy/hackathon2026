@@ -20,6 +20,7 @@ import { MetricCard } from '@/components/analytics/MetricCard'
 import type { StatProgressItem } from '@/components/analytics/StatProgressList'
 import { StatProgressList } from '@/components/analytics/StatProgressList'
 import EmptyStateCard from '@/components/layout/EmptyStateCard'
+import { InfoTooltip } from '@/components/ui/InfoTooltip'
 import { useClickhouseAnalytics } from '@/hooks/useClickhouseAnalytics'
 import { useInsightsAnalytics } from '@/hooks/useInsightsAnalytics'
 import { useSubscription } from '@/hooks/useSubscription'
@@ -29,7 +30,6 @@ import type {
   TopPageRow,
 } from '@/lib/insights/clickhouse-types'
 import { isProfessionalOrAbove, PLAN_PRIORITY } from '@/lib/paywall/shared'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/lib/shadcn/tooltip'
 import { SubscriptionPlan } from '@/types/credits'
 import { getPlanFromSubscription } from '@/utils/credits'
 
@@ -72,16 +72,11 @@ function SectionHeader({ title, badge, icon, tooltip }: { title: string; badge?:
       {icon && <span className="text-muted-foreground">{icon}</span>}
       <h3 className="text-[13px] font-bold tracking-tight uppercase text-foreground/80">{title}</h3>
       {tooltip && (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button type="button" aria-label="More information" className="text-muted-foreground/50 hover:text-muted-foreground cursor-help transition-colors">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-            </button>
-          </TooltipTrigger>
-          <TooltipContent side="top" className="max-w-[260px] text-xs">
-            {tooltip}
-          </TooltipContent>
-        </Tooltip>
+        <InfoTooltip
+          content={tooltip}
+          iconClassName="size-[13px] text-muted-foreground/50 hover:text-muted-foreground cursor-help transition-colors"
+          contentClassName="p-1 max-w-[260px] text-xs"
+        />
       )}
       {badge && (
         <text.span className="!text-[9px] !font-bold !px-2 !py-0.5 !rounded-full !bg-ai/10 !text-ai !uppercase !tracking-widest">{badge}</text.span>
@@ -603,7 +598,6 @@ export default function RUM() {
       )}
       className="pb-2 px-1.5 md:px-0.5"
     >
-      <TooltipProvider>
         <div className="h-full overflow-y-auto @container">
           <Box gap="md">
             {/* Key Metrics — Row 1: Core Overview */}
@@ -1098,7 +1092,6 @@ export default function RUM() {
             }
           </Box>
         </div>
-      </TooltipProvider>
     </SettingsSection>
   )
 }
