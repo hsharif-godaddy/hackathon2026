@@ -213,6 +213,78 @@ describe('DomainAttachWidget', function domainAttachWidgetTests() {
       });
     });
 
+    it('should not render DNS instructions when gd-domain data exists and refetch errors', async function hideDnsForStaleGdDataOnError() {
+      const { useCustomerDomainAttach } = await import('@/hooks/useCustomerDomainAttach');
+      const { useAppDetails } = await import('@/hooks/useAppDetails');
+      const { useDomainDnsOwnership } = await import('@/hooks/useDomainDnsOwnership');
+
+      vi.mocked(useCustomerDomainAttach).mockReturnValue({
+        pendingCustomerDomain,
+        isPolling: true,
+        hasExternalNameservers: true,
+        requiresManualDnsSetup: true,
+      });
+
+      vi.mocked(useAppDetails).mockReturnValue({
+        data: {
+          id: 'test-app-123',
+          name: 'Test App',
+          status: 'running',
+          domains: [pendingCustomerDomain],
+        },
+        isFetched: true,
+      } as any);
+
+      vi.mocked(useDomainDnsOwnership).mockReturnValue({
+        data: { isGdDomain: true },
+        isPending: false,
+        isLoading: false,
+        isError: true,
+      } as any);
+
+      renderWithProviders(<DomainAttachWidget appId="test-app-123" />);
+
+      await waitFor(function waitForNoDnsTitle() {
+        expect(screen.queryByText('builder_domain_attach_dns_title')).not.toBeInTheDocument();
+      });
+    });
+
+    it('renders DNS instructions when domain-dns-ownership errors', async function renderDnsOnOwnershipError() {
+      const { useCustomerDomainAttach } = await import('@/hooks/useCustomerDomainAttach');
+      const { useAppDetails } = await import('@/hooks/useAppDetails');
+      const { useDomainDnsOwnership } = await import('@/hooks/useDomainDnsOwnership');
+
+      vi.mocked(useCustomerDomainAttach).mockReturnValue({
+        pendingCustomerDomain,
+        isPolling: true,
+        hasExternalNameservers: true,
+        requiresManualDnsSetup: true,
+      });
+
+      vi.mocked(useAppDetails).mockReturnValue({
+        data: {
+          id: 'test-app-123',
+          name: 'Test App',
+          status: 'running',
+          domains: [pendingCustomerDomain],
+        },
+        isFetched: true,
+      } as any);
+
+      vi.mocked(useDomainDnsOwnership).mockReturnValue({
+        data: undefined,
+        isPending: false,
+        isLoading: false,
+        isError: true,
+      } as any);
+
+      renderWithProviders(<DomainAttachWidget appId="test-app-123" />);
+
+      await waitFor(function waitForDnsTitle() {
+        expect(screen.getByText('builder_domain_attach_dns_title')).toBeInTheDocument();
+      });
+    });
+
     it('should not render DNS instructions when requiresManualDnsSetup is false and domain is active', async function noDns() {
       const { useCustomerDomainAttach } = await import('@/hooks/useCustomerDomainAttach');
       const { useAppDetails } = await import('@/hooks/useAppDetails');

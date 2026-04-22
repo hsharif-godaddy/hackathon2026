@@ -96,5 +96,7 @@ export function useDomainDnsOwnership({
     },
     staleTime: 0,
     gcTime: 0,
+    retry: 1,
+    retryDelay: 1000,
   });
 }

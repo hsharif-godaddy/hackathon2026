@@ -162,10 +162,16 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
     !domainDnsOwnershipData &&
     !isDomainDnsOwnershipError;
 
+  // Prefer last successful ownership data when present (refetch errors can coexist
+  // with cached data). Assume external only when there is no data yet and the query errored.
+  const treatAsExternal = !domainDnsOwnershipData
+    ? isDomainDnsOwnershipError
+    : domainDnsOwnershipData.isGdDomain !== true;
+
   const showDomainDNS =
     !!pendingDomainDetails &&
     !hideDomainDnsUntilOwnershipResolved &&
-    domainDnsOwnershipData?.isGdDomain !== true;
+    treatAsExternal;
 
   // Cleanup validation timeout on unmount
   useEffect(() => {

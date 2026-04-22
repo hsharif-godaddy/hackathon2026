@@ -170,9 +170,12 @@ describe('useDomainDnsOwnership', function useDomainDnsOwnershipTests() {
         });
       });
 
-      await waitFor(function waitError() {
-        expect(result.current.isError).toBe(true);
-      });
+      await waitFor(
+        function waitError() {
+          expect(result.current.isError).toBe(true);
+        },
+        { timeout: 5000 }
+      );
 
       expect(result.current.error).toBeInstanceOf(Error);
       expect((result.current.error as Error).message).toBe(
