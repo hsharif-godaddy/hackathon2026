@@ -32,8 +32,8 @@ function makeDeps(overrides: {
   rtMaxRetries?: number;
   tscRetryCount?: number;
   rtRetryCount?: number;
-  turnStartedAt?: number;
   hasUncommittedChanges?: boolean | (() => Promise<boolean>);
+  cycleEstablished?: boolean;
 } = {}) {
   const logger = { info: vi.fn(), warn: vi.fn() };
   const typecheckService = {
@@ -44,7 +44,12 @@ function makeDeps(overrides: {
   const runtimeErrorService = {
     pollRuntimeErrors: vi.fn<[string, unknown], Promise<RuntimeErrorResult>>(async () =>
       overrides.runtimeResult ?? { ok: true, errors: [] }
-    )
+    ),
+    // Default to `true` so existing tests (which assert clean/fail
+    // behavior in isolation) don't fire the "no cycle established"
+    // warning path. The dedicated observability test below overrides
+    // this to `false`.
+    hasCycleEstablished: vi.fn<[string], boolean>(() => overrides.cycleEstablished ?? true)
   };
   const tscCounters = new Map<string, number>();
   if (overrides.tscRetryCount !== undefined) {
@@ -53,12 +58,6 @@ function makeDeps(overrides: {
   const rtCounters = new Map<string, number>();
   if (overrides.rtRetryCount !== undefined) {
     rtCounters.set(SOCKET_ID, overrides.rtRetryCount);
-  }
-  const turnStartedAtBySocket = new Map<string, number>();
-  if (overrides.turnStartedAt !== undefined) {
-    turnStartedAtBySocket.set(SOCKET_ID, overrides.turnStartedAt);
-  } else {
-    turnStartedAtBySocket.set(SOCKET_ID, Date.now());
   }
   const hasUncommittedChangesFn = (() => {
     const override = overrides.hasUncommittedChanges;
@@ -77,7 +76,6 @@ function makeDeps(overrides: {
       runtimeErrors: {
         runtimeErrorService,
         retryCounters: rtCounters,
-        turnStartedAtBySocket,
         maxRetries: overrides.rtMaxRetries ?? 2,
         logger
       },
@@ -88,10 +86,10 @@ function makeDeps(overrides: {
       logger,
       runTypecheck: typecheckService.runTypecheck,
       pollRuntimeErrors: runtimeErrorService.pollRuntimeErrors,
+      hasCycleEstablished: runtimeErrorService.hasCycleEstablished,
       hasUncommittedChanges: hasUncommittedChangesFn,
       tscCounters,
-      rtCounters,
-      turnStartedAtBySocket
+      rtCounters
     }
   };
 }
@@ -375,25 +373,12 @@ describe('createPostStreamValidator', () => {
     expect(second.mocks.rtCounters.get(SOCKET_ID)).toBe(1);
   });
 
-  it('skips runtime phase when no turnStartedAt is recorded', async () => {
-    const { deps, mocks } = makeDeps();
-    deps.runtimeErrors.turnStartedAtBySocket.delete(SOCKET_ID);
-    const validator = createPostStreamValidator(deps);
-    const result = await validator(makeArgs());
-    expect(result).toBeUndefined();
-    expect(mocks.pollRuntimeErrors).not.toHaveBeenCalled();
-    expect(mocks.logger.warn).toHaveBeenCalledWith(
-      'agent.runtime_errors.skipped',
-      expect.objectContaining({ reason: 'no_turn_started_at' })
-    );
-  });
-
-  it('does not pass a seenSignatures Set across iterations (watermark handles dedup)', async () => {
-    // We deliberately rely on `RuntimeErrorService.pollRuntimeErrors`
-    // to mint a fresh in-call Set so its 250ms polling loop doesn't
-    // double-count. Cross-iteration dedup is the watermark's job —
-    // sharing a Set across iterations was the bug that hid re-thrown
-    // errors after partial fixes.
+  it('does not pass a seenSignatures Set across iterations (cycle rotation handles dedup)', async () => {
+    // Sharing a signature Set across iterations would hide a genuinely
+    // unfixed error that re-throws under the new cycle after HMR.
+    // `RuntimeErrorService.pollRuntimeErrors` mints its own per-call
+    // Set to handle the 250ms polling loop's in-call dedup; cross-
+    // iteration dedup is the buffer's job via cycle rotation.
     const { deps, mocks } = makeDeps();
     const validator = createPostStreamValidator(deps);
 
@@ -411,113 +396,52 @@ describe('createPostStreamValidator', () => {
     expect(secondCallOpts.seenSignatures).toBeUndefined();
   });
 
-  it('advances the runtime watermark after a continue outcome', async () => {
-    // After surfacing errors in iteration N, the watermark must move
-    // forward so iteration N+1's drain only sees errors pushed *after*
-    // the agent had a chance to react. Otherwise stale buffer entries
-    // re-match `pushedAt >= since` forever and the runtime phase
-    // either re-feeds resolved errors or (with naive dedup) hides
-    // genuine re-throws.
-    const initialWatermark = 1_000;
-    const { deps, mocks } = makeDeps({
-      turnStartedAt: initialWatermark,
-      runtimeResult: {
-        ok: false,
-        errors: [{ name: 'TypeError', message: 'x is undefined', timestamp: 1 }]
-      }
-    });
-    const validator = createPostStreamValidator(deps);
-    const before = Date.now();
-    await validator(makeArgs());
-    const after = Date.now();
-    const advanced = mocks.turnStartedAtBySocket.get(SOCKET_ID)!;
-    expect(advanced).toBeGreaterThanOrEqual(before);
-    expect(advanced).toBeLessThanOrEqual(after);
-    expect(advanced).toBeGreaterThan(initialWatermark);
-  });
-
-  it('advances the runtime watermark after an exhausted outcome', async () => {
-    // Even when we give up, advance so a subsequent message on the
-    // same socket starts from a clean slate rather than re-surfacing
-    // the entries we just gave up on.
-    const initialWatermark = 1_000;
-    const { deps, mocks } = makeDeps({
-      turnStartedAt: initialWatermark,
-      runtimeResult: {
-        ok: false,
-        errors: [{ name: 'Err', message: 'oops', timestamp: 1 }]
-      },
-      rtRetryCount: 2,
-      rtMaxRetries: 2
-    });
-    const validator = createPostStreamValidator(deps);
-    await validator(makeArgs({ emitChunk: vi.fn(async () => {}) }));
-    expect(mocks.turnStartedAtBySocket.get(SOCKET_ID)).toBeGreaterThan(initialWatermark);
-  });
-
-  it('does not advance the runtime watermark on a clean outcome', async () => {
-    // Clean iterations don't move the cursor — a future iteration in
-    // the same turn should still inherit the original turn-start
-    // watermark, not a "now" stamp that would skip pre-existing
-    // late-arriving errors from async effects.
-    const initialWatermark = 1_000;
-    const { deps, mocks } = makeDeps({
-      turnStartedAt: initialWatermark
-      // runtime defaults to clean
-    });
-    const validator = createPostStreamValidator(deps);
-    await validator(makeArgs());
-    expect(mocks.turnStartedAtBySocket.get(SOCKET_ID)).toBe(initialWatermark);
-  });
-
-  it('does NOT advance the watermark at phase start on the first iteration', async () => {
-    // First iteration must use the `onMessageStart` watermark as-is so
-    // any errors the user left in the editor before sending the message
-    // are still caught. Advancing here would filter out pre-turn bugs
-    // that the agent was asked to fix.
-    const initialWatermark = 1_000;
-    const { deps, mocks } = makeDeps({
-      turnStartedAt: initialWatermark
-      // runtime defaults to clean, retryCount defaults to 0
-    });
+  it('does not pass a since watermark to pollRuntimeErrors', async () => {
+    // Regression guard: freshness is owned entirely by the buffer's
+    // cycle-id filter. The validator must stay stateless and not
+    // re-introduce a timestamp watermark.
+    const { deps, mocks } = makeDeps();
     const validator = createPostStreamValidator(deps);
     await validator(makeArgs());
 
-    const sinceArg = (mocks.pollRuntimeErrors.mock.calls[0][1] as { since: number }).since;
-    expect(sinceArg).toBe(initialWatermark);
+    const opts = mocks.pollRuntimeErrors.mock.calls[0][1] as Record<string, unknown>;
+    expect(opts.since).toBeUndefined();
   });
 
-  it('advances the watermark at phase START on retry iterations to filter mid-edit ghosts', async () => {
-    // Regression for the "ghost re-report" bug: during iter N+1 the
-    // agent's preceding stream produced multiple mid-edit HMR states
-    // that each pushed a brief runtime error to the buffer between the
-    // previous drain's end and this iteration's start. Using the old
-    // (phase-end) watermark would let all those intermediate entries
-    // pass `pushedAt >= since` and re-report as if they were bugs in
-    // the stable post-stream code. Advancing the watermark at phase
-    // START on retry iterations is what suppresses them.
-    const staleWatermark = 1_000;
-    const { deps, mocks } = makeDeps({
-      turnStartedAt: staleWatermark,
-      rtRetryCount: 1 // retry iteration
-      // runtime defaults to clean — we only care that `since` gets advanced
-    });
+  it('warns when runtime phase passes but no cycle was ever established', async () => {
+    // If the preview never sent a cycle beacon (postMessage broken,
+    // forwarding failed, etc.), `drainForTurn` silently returns `[]`
+    // and the phase would otherwise report clean with no indication
+    // that the freshness signal is missing. Logging a dedicated warn
+    // event lets an operator catch a regression in the beacon pipeline
+    // before it starts hiding real errors.
+    const { deps, mocks } = makeDeps({ cycleEstablished: false });
     const validator = createPostStreamValidator(deps);
-    const before = Date.now();
     await validator(makeArgs());
-    const after = Date.now();
 
-    // The `since` passed to `pollRuntimeErrors` must be a fresh
-    // phase-start timestamp, not the stale phase-end value from the
-    // prior iteration.
-    const sinceArg = (mocks.pollRuntimeErrors.mock.calls[0][1] as { since: number }).since;
-    expect(sinceArg).toBeGreaterThanOrEqual(before);
-    expect(sinceArg).toBeLessThanOrEqual(after);
-    expect(sinceArg).toBeGreaterThan(staleWatermark);
+    expect(mocks.logger.warn).toHaveBeenCalledWith(
+      'agent.runtime_errors.pass.no_cycle_established',
+      expect.objectContaining({ appId: APP_ID, socketId: SOCKET_ID })
+    );
+    expect(mocks.logger.info).not.toHaveBeenCalledWith(
+      'agent.runtime_errors.pass',
+      expect.any(Object)
+    );
+  });
 
-    // And the persisted watermark reflects the advance so future
-    // iterations (and cleanup paths) see a consistent value.
-    expect(mocks.turnStartedAtBySocket.get(SOCKET_ID)).toBeGreaterThanOrEqual(sinceArg);
+  it('logs the normal pass event when a cycle has been established', async () => {
+    const { deps, mocks } = makeDeps({ cycleEstablished: true });
+    const validator = createPostStreamValidator(deps);
+    await validator(makeArgs());
+
+    expect(mocks.logger.info).toHaveBeenCalledWith(
+      'agent.runtime_errors.pass',
+      expect.objectContaining({ appId: APP_ID, socketId: SOCKET_ID })
+    );
+    expect(mocks.logger.warn).not.toHaveBeenCalledWith(
+      'agent.runtime_errors.pass.no_cycle_established',
+      expect.any(Object)
+    );
   });
 
   it('tsc unexpected_error falls through to runtime phase', async () => {

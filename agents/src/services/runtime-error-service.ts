@@ -55,17 +55,32 @@ const POLL_INTERVAL_MS = 250;
  * populated exclusively via the authenticated
  * `POST /apps/:id/runtime-errors` route (see `routes/runtime-errors.ts`)
  * and is the sole source of truth.
+ *
+ * Cross-turn freshness is handled by the buffer itself via cycle
+ * rotation — entries from prior render generations are evicted when
+ * the preview HMRs. The service just drains whatever the buffer
+ * considers current for this app, and the shared-per-call
+ * `seenSignatures` Set prevents the 250ms polling loop from
+ * double-counting within a single drain window.
  */
 export class RuntimeErrorService {
+  /**
+   * True once the preview has announced at least one cycle for `appId`.
+   * The `runtime-errors-cycle` beacon is the only thing that gates the
+   * buffer into a "drainable" state; if it never arrives (postMessage
+   * not wired, network failure on the forwarded POST, extension-blocked
+   * parent window), `drainForTurn` silently returns `[]` and the
+   * validator would report clean. Callers use this to distinguish
+   * "genuinely clean turn" from "no signal from the preview at all"
+   * and log accordingly.
+   */
+  hasCycleEstablished(appId: string): boolean {
+    return runtimeErrorBuffer.getCurrentCycleId(appId) !== undefined;
+  }
+
   async pollRuntimeErrors(
     appId: string,
     options: {
-      /**
-       * Millisecond epoch — the start of the current user turn. Entries
-       * pushed before this are ignored. No clock-skew adjustment: the
-       * buffer stamps `pushedAt` with `Date.now()` in this same process.
-       */
-      since: number;
       maxWaitMs?: number;
       quietWindowMs?: number;
       signal?: AbortSignal;
@@ -73,12 +88,9 @@ export class RuntimeErrorService {
        * Optional Set for caller-side dedup. When omitted, the service
        * mints a fresh Set scoped to this single `pollRuntimeErrors`
        * call so its 250ms polling loop doesn't double-count buffered
-       * entries across consecutive drains. The post-stream validator
-       * intentionally omits this — cross-iteration dedup is handled
-       * by advancing the `since` watermark, which (unlike a shared
-       * signature Set) doesn't hide genuine re-throws of unfixed
-       * errors. Present mainly for tests and any future caller that
-       * wants to share dedup state across calls.
+       * entries across consecutive drains. Present mainly for tests
+       * and any future caller that wants to share dedup state across
+       * calls.
        */
       seenSignatures?: Set<string>;
     }
@@ -106,10 +118,7 @@ export class RuntimeErrorService {
         };
       }
 
-      const fresh = runtimeErrorBuffer.drainForTurn(appId, {
-        since: options.since,
-        seenSignatures
-      });
+      const fresh = runtimeErrorBuffer.drainForTurn(appId, { seenSignatures });
       if (fresh.length > 0) {
         errors.push(...fresh);
         lastNewErrorAt = Date.now();

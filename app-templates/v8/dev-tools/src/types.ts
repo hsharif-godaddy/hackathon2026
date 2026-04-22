@@ -1,9 +1,18 @@
 /**
- * Runtime error data structure sent from AiroErrorBoundary to the parent window
+ * Runtime error data structure sent from AiroErrorBoundary to the parent window.
+ *
+ * `cycleId` is a monotonic generation counter managed by the dev-tools
+ * client — advanced on Vite HMR `beforeUpdate`, full reloads, and on
+ * module init. The builder parent forwards it through to the agents'
+ * runtime-error buffer so the server can drop errors from superseded
+ * render generations (the "ghost error" fix). See `cycle-state.ts`
+ * and `RuntimeErrorBuffer` in
+ * `agents/src/services/runtime-error-buffer.ts` for the full story.
  */
 export interface RuntimeErrorData {
   message: string
   name: string
+  cycleId: number
   stack?: string
   componentStack?: string
   url?: string
@@ -20,6 +29,12 @@ export interface RuntimeErrorData {
  * `error-fix-user-requested`— sent when the user clicks the "Ask Airo to Fix
  *                             Code" button on the iframe's error overlay.
  *                             Parent sends a chat message to the agent.
+ * `runtime-errors-cycle`    — auto-sent on HMR boundaries and on dev-tools
+ *                             init. Parent forwards `{ cycleId }` to
+ *                             `POST /apps/:id/runtime-errors/cycle` so
+ *                             the server can evict buffered errors from
+ *                             the previous render generation. See
+ *                             `error-client.ts`.
  */
 export interface ErrorFixRequestMessage {
   type: 'error-fix-request'
@@ -29,6 +44,11 @@ export interface ErrorFixRequestMessage {
 export interface ErrorFixUserRequestedMessage {
   type: 'error-fix-user-requested'
   errorData: RuntimeErrorData
+}
+
+export interface RuntimeErrorsCycleMessage {
+  type: 'runtime-errors-cycle'
+  cycleId: number
 }
 
 /**

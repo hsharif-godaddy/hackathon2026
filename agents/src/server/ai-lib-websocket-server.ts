@@ -261,22 +261,6 @@ const typecheckRetryCountBySocket = new Map<string, number>()
 const runtimeErrorRetryCountBySocket = new Map<string, number>()
 
 /**
- * Per-socket buffer watermark (ms epoch) used as `since` when draining
- * `runtimeErrorBuffer`. Seeded in `onMessageStart` to the start of the
- * current user turn so stale errors from a previous turn's crash loop
- * don't bleed in, then advanced by the runtime phase itself after each
- * `continue`/`exhausted` outcome so the next iteration only sees errors
- * that were pushed *after* the agent had a chance to react. That
- * cross-iteration advance is what lets re-throws of unfixed errors
- * surface again — they get a fresh `pushedAt` from the buffer.
- *
- * Keyed by socketId (not appId) on purpose: two builder tabs open to
- * the same app each get their own watermark, and one tab's iteration
- * boundaries don't clobber the other's.
- */
-const turnStartedAtBySocket = new Map<string, number>()
-
-/**
  * Map to track active WebSocket transactions for APM
  * Key: socketId, Value: APM transaction object
  */
@@ -1618,14 +1602,6 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         typecheckRetryCountBySocket.delete(socketId);
         runtimeErrorRetryCountBySocket.delete(socketId);
 
-        // Pin the start of this user turn so the runtime-error post-hook
-        // only surfaces errors that occurred after the user sent this
-        // message. No clock-skew adjustment is needed: this timestamp
-        // and the buffer's `pushedAt` are both `Date.now()` from the
-        // same Node process, so the `since >= pushedAt` comparison in
-        // `RuntimeErrorBuffer.drainForTurn` is on a single clock.
-        turnStartedAtBySocket.set(socketId, Date.now());
-
         // Track memory at request start for leak detection
         // Store in dedicated Map to avoid polluting context.metadata
         const startMemory = process.memoryUsage();
@@ -1931,7 +1907,6 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         runtimeErrors: {
           runtimeErrorService,
           retryCounters: runtimeErrorRetryCountBySocket,
-          turnStartedAtBySocket,
           maxRetries: MAX_RUNTIME_ERROR_RETRIES,
           maxWaitMs: RUNTIME_ERROR_POLL_MAX_WAIT_MS,
           quietWindowMs: RUNTIME_ERROR_QUIET_WINDOW_MS,
@@ -2045,7 +2020,6 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         pendingBudgetOverrides.delete(socketId)
         typecheckRetryCountBySocket.delete(socketId)
         runtimeErrorRetryCountBySocket.delete(socketId)
-        turnStartedAtBySocket.delete(socketId)
 
         if (appId) {
           const contextLogger = log.forApp(appId);
@@ -2135,7 +2109,6 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         lastAssessmentTaskTypeCache.delete(socketId)
         typecheckRetryCountBySocket.delete(socketId)
         runtimeErrorRetryCountBySocket.delete(socketId)
-        turnStartedAtBySocket.delete(socketId)
 
         // Cleanup ClientActionService
         cleanupClientActionService(socketId)
@@ -2272,7 +2245,6 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         pendingBudgetOverrides.delete(socketId)
         typecheckRetryCountBySocket.delete(socketId)
         runtimeErrorRetryCountBySocket.delete(socketId)
-        turnStartedAtBySocket.delete(socketId)
 
         // Git hook: Squash merge to main on error (if we have appId)
         if (appId) {

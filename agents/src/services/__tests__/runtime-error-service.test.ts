@@ -18,6 +18,7 @@ import {
 import { runtimeErrorBuffer } from '../runtime-error-buffer.js';
 
 const TEST_APP_ID = 'test-app-runtime';
+const CYCLE = 100;
 
 function makeEntry(overrides: Partial<RuntimeErrorEntry> = {}): RuntimeErrorEntry {
   return {
@@ -56,14 +57,13 @@ describe('RuntimeErrorService.pollRuntimeErrors', () => {
     const service = new RuntimeErrorService();
     const ac = new AbortController();
     ac.abort();
-    const result = await service.pollRuntimeErrors(TEST_APP_ID, { since: Date.now(), signal: ac.signal });
+    const result = await service.pollRuntimeErrors(TEST_APP_ID, { signal: ac.signal });
     expect(result).toEqual({ ok: true, errors: [], skipped: true, reason: 'aborted' });
   });
 
   it('returns ok:true, errors:[] when buffer is empty within the wait budget', async () => {
     const service = new RuntimeErrorService();
     const result = await service.pollRuntimeErrors(TEST_APP_ID, {
-      since: Date.now(),
       maxWaitMs: 150,
       quietWindowMs: 50
     });
@@ -73,11 +73,9 @@ describe('RuntimeErrorService.pollRuntimeErrors', () => {
   });
 
   it('returns buffered errors and exits after quiet-window', async () => {
-    const since = Date.now();
-    runtimeErrorBuffer.push(TEST_APP_ID, makeEntry());
+    runtimeErrorBuffer.push(TEST_APP_ID, makeEntry(), CYCLE);
     const service = new RuntimeErrorService();
     const result = await service.pollRuntimeErrors(TEST_APP_ID, {
-      since,
       maxWaitMs: 3000,
       quietWindowMs: 100
     });
@@ -87,12 +85,13 @@ describe('RuntimeErrorService.pollRuntimeErrors', () => {
     expect(result.durationMs ?? 0).toBeLessThan(1500);
   });
 
-  it('ignores entries pushed before `since`', async () => {
-    runtimeErrorBuffer.push(TEST_APP_ID, makeEntry({ message: 'before' }));
-    // `since` in the future — nothing qualifies.
+  it('ignores entries from superseded cycles', async () => {
+    // Push under cycle 100, then rotate to 200 — the entry should be
+    // evicted and the poll should come up clean.
+    runtimeErrorBuffer.push(TEST_APP_ID, makeEntry({ message: 'stale' }), 100);
+    runtimeErrorBuffer.rotateCycle(TEST_APP_ID, 200);
     const service = new RuntimeErrorService();
     const result = await service.pollRuntimeErrors(TEST_APP_ID, {
-      since: Date.now() + 60_000,
       maxWaitMs: 100,
       quietWindowMs: 30
     });
@@ -104,11 +103,9 @@ describe('RuntimeErrorService.pollRuntimeErrors', () => {
     const service = new RuntimeErrorService();
     const seenSignatures = new Set<string>();
 
-    const since1 = Date.now();
-    runtimeErrorBuffer.push(TEST_APP_ID, makeEntry());
+    runtimeErrorBuffer.push(TEST_APP_ID, makeEntry(), CYCLE);
 
     const first = await service.pollRuntimeErrors(TEST_APP_ID, {
-      since: since1,
       maxWaitMs: 3000,
       quietWindowMs: 100,
       seenSignatures
@@ -117,7 +114,6 @@ describe('RuntimeErrorService.pollRuntimeErrors', () => {
     expect(seenSignatures.size).toBe(1);
 
     const second = await service.pollRuntimeErrors(TEST_APP_ID, {
-      since: since1,
       maxWaitMs: 150,
       quietWindowMs: 50,
       seenSignatures
@@ -129,10 +125,8 @@ describe('RuntimeErrorService.pollRuntimeErrors', () => {
   it('honors abort during polling', async () => {
     const ac = new AbortController();
     const service = new RuntimeErrorService();
-    // Abort after the first poll tick
     setTimeout(() => ac.abort(), 50);
     const result = await service.pollRuntimeErrors(TEST_APP_ID, {
-      since: Date.now(),
       maxWaitMs: 5000,
       quietWindowMs: 100,
       signal: ac.signal
@@ -142,21 +136,23 @@ describe('RuntimeErrorService.pollRuntimeErrors', () => {
   });
 
   it('hits max-wait timeout when errors keep arriving', async () => {
-    const since = Date.now();
     const service = new RuntimeErrorService();
     // Drip one new error per tick so the quiet window never closes.
     let counter = 0;
     const interval = setInterval(() => {
       counter += 1;
-      runtimeErrorBuffer.push(TEST_APP_ID, makeEntry({
-        message: `oops-${counter}`,
-        stack: `at a${counter}`
-      }));
+      runtimeErrorBuffer.push(
+        TEST_APP_ID,
+        makeEntry({
+          message: `oops-${counter}`,
+          stack: `at a${counter}`
+        }),
+        CYCLE
+      );
     }, 60);
     try {
       const begin = Date.now();
       const result = await service.pollRuntimeErrors(TEST_APP_ID, {
-        since,
         maxWaitMs: 400,
         quietWindowMs: 10_000 // unreachable
       });

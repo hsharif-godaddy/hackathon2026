@@ -1,4 +1,5 @@
 import { safePostMessage } from './utils/postMessage';
+import { advanceCycleId, getCurrentCycleId } from './cycle-state';
 
 /**
  * postMessage helper that short-circuits when the preview is loaded
@@ -11,6 +12,29 @@ function postToParent(message: unknown): void {
     return;
   }
   safePostMessage(window.parent, message);
+}
+
+/**
+ * Advance to a new render generation and announce it to the parent.
+ * Called from Vite HMR events (`vite:beforeUpdate`, `vite:beforeFullReload`)
+ * and once at module init to cover cold-start / full-reload scenarios.
+ *
+ * The parent is responsible for forwarding the announcement to
+ * `POST /apps/:id/runtime-errors/cycle`; that server endpoint then
+ * evicts buffered errors tagged with an older cycleId so the post-stream
+ * validator only ever sees errors from the currently rendering code.
+ *
+ * The counter itself lives in `./cycle-state.ts` so `AiroErrorBoundary`
+ * can read it without pulling this module's import-time side effects
+ * (HMR listeners, initial cycle beacon) into production bundles.
+ */
+function beginNewRenderCycle(): void {
+  const cycleId = advanceCycleId();
+  try {
+    postToParent({ type: 'runtime-errors-cycle', cycleId });
+  } catch (err) {
+    console.error('Failed to announce runtime-error cycle to parent:', err);
+  }
 }
 
 function parseViteError(data: any): {
@@ -41,6 +65,7 @@ interface ForwardedErrorData {
   stack?: string;
   url?: string;
   timestamp: number;
+  cycleId: number;
 }
 
 /**
@@ -83,7 +108,8 @@ function sendCompileErrorToParent(data: any) {
       name,
       stack: parsedStack ?? (composedStack || undefined),
       url: file,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      cycleId: getCurrentCycleId()
     };
 
     notifyParentOfError(errorData);
@@ -124,6 +150,13 @@ function removeInactiveOverlay() {
     overlayElement = null;
   }
 }
+
+// Announce the initial cycle to the parent as soon as this module loads.
+// Full-page reloads re-run this module (it's dynamically imported from
+// `index.html` under the dev-mode guard) and the server sees a fresh
+// cycleId, so any stale entries from the prior page session are evicted
+// before the next render starts throwing.
+beginNewRenderCycle();
 
 // Catch initial page load failures (import errors before HMR is connected).
 //
@@ -183,6 +216,16 @@ if (import.meta.env.MODE === 'development' && import.meta.hot) {
     }
   };
 
+  // Start a fresh render generation before each HMR update applies.
+  // Fires BEFORE the new module code runs, so the cycle rotation lands
+  // at the server first and any buffered errors from the about-to-be-
+  // replaced render are evicted. Errors thrown by the subsequent render
+  // will be POSTed under the new cycleId and surface on the next
+  // validator drain.
+  const handleBeforeUpdate = () => {
+    beginNewRenderCycle();
+  };
+
   // Standard Vite error event
   import.meta.hot.on('vite:error', handleHmrError);
 
@@ -192,14 +235,22 @@ if (import.meta.env.MODE === 'development' && import.meta.hot) {
   // Recover after a successful HMR update clears a previous error
   import.meta.hot.on('vite:afterUpdate', handleAfterUpdate);
 
+  // New render generation marker
+  import.meta.hot.on('vite:beforeUpdate', handleBeforeUpdate);
+
   // Clear overlay before full reload so a stale one doesn't flash as the
-  // new page is initializing.
+  // new page is initializing. Also start a new cycle here: even though
+  // the full reload will re-run this module (and fire `beginNewRenderCycle`
+  // again at top-level), announcing it now guarantees a rotation lands
+  // at the server even if the new page's init never runs (e.g. the
+  // reload fails partway).
   const handleBeforeFullReload = () => {
     if (hasErrorOverlay || overlayElement) {
       hasErrorOverlay = false;
       hasDetailedError = false;
       removeInactiveOverlay();
     }
+    beginNewRenderCycle();
   };
   import.meta.hot.on('vite:beforeFullReload', handleBeforeFullReload);
 
@@ -211,6 +262,7 @@ if (import.meta.env.MODE === 'development' && import.meta.hot) {
     import.meta.hot!.off('vite:error', handleHmrError);
     import.meta.hot!.off('compile-error', handleHmrError);
     import.meta.hot!.off('vite:afterUpdate', handleAfterUpdate);
+    import.meta.hot!.off('vite:beforeUpdate', handleBeforeUpdate);
     import.meta.hot!.off('vite:beforeFullReload', handleBeforeFullReload);
   });
 }

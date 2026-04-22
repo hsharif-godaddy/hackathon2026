@@ -4,6 +4,7 @@ import { isOriginAllowed, safePostMessage } from './utils/postMessage';
 import type { RuntimeErrorData } from './types';
 import MessageOverlay from './components/MessageOverlay';
 import Button from './components/Button';
+import { getCurrentCycleId } from './cycle-state';
 
 interface Props {
   children: ReactNode;
@@ -215,6 +216,11 @@ export default class AiroErrorBoundary extends Component<Props, State> {
     // informational — the overlay itself is driven by this boundary.
     if (isStandalonePreview()) return;
     try {
+      // Stamp with the cycleId that was active when this error was
+      // caught. If a later HMR advances the cycle before the server
+      // processes this POST, the buffer will treat this entry as stale
+      // and drop it — which is exactly what we want: by then, whatever
+      // the user was looking at is no longer what's rendering.
       const errorData: RuntimeErrorData = {
         message: error.message || 'An unexpected error occurred',
         name: error.name || 'Error',
@@ -222,6 +228,7 @@ export default class AiroErrorBoundary extends Component<Props, State> {
         componentStack: errorInfo?.componentStack ?? undefined,
         url: window.location.href,
         timestamp: Date.now(),
+        cycleId: getCurrentCycleId(),
       };
       safePostMessage(window.parent, {
         type: 'error-fix-request',
@@ -238,6 +245,9 @@ export default class AiroErrorBoundary extends Component<Props, State> {
 
     this.setState({ isFixing: true });
 
+    // The user-requested fix path doesn't hit the runtime-error buffer
+    // (the parent sends a chat message on the user's behalf), so
+    // `cycleId` is informational here rather than load-bearing.
     const errorData: RuntimeErrorData = {
       message: error.message || 'An unexpected error occurred',
       name: error.name || 'Error',
@@ -245,6 +255,7 @@ export default class AiroErrorBoundary extends Component<Props, State> {
       componentStack: errorInfo?.componentStack ?? undefined,
       url: window.location.href,
       timestamp: Date.now(),
+      cycleId: getCurrentCycleId(),
     };
 
     try {

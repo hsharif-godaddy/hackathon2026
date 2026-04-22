@@ -68,27 +68,8 @@ export interface TypecheckPhaseDeps {
 }
 
 export interface RuntimeErrorPhaseDeps {
-  runtimeErrorService: Pick<RuntimeErrorService, 'pollRuntimeErrors'>;
+  runtimeErrorService: Pick<RuntimeErrorService, 'pollRuntimeErrors' | 'hasCycleEstablished'>;
   retryCounters: Map<string, number>;
-  /**
-   * Per-socket watermark used as `since` when draining the runtime-error
-   * buffer. Initialized to the user-turn start in `onMessageStart` so the
-   * first iteration still catches errors the user left in the editor
-   * before sending the message. On every *retry* iteration (retryCount
-   * > 0) the runtime phase advances the watermark to `Date.now()` at
-   * phase start — i.e. roughly the moment the agent's stream ended and
-   * files stabilized. This filters out "ghost" entries pushed during the
-   * agent's mid-edit window: a long `str_replace_based_edit_tool`
-   * sequence produces multiple intermediate file states, each of which
-   * Vite HMRs into the iframe, and each of which can throw briefly
-   * before the next edit stabilizes it. Those entries no longer reflect
-   * the stable post-stream state and must not be re-reported to the
-   * agent as if they were genuine bugs in the final code. Genuinely
-   * unfixed errors still re-surface because the iframe keeps HMR-ing
-   * and re-throwing them *after* the watermark, where the `pollRuntimeErrors`
-   * drain picks them up within its maxWaitMs window.
-   */
-  turnStartedAtBySocket: Map<string, number>;
   maxRetries: number;
   maxWaitMs?: number;
   quietWindowMs?: number;
@@ -215,6 +196,12 @@ export async function runTypecheckPhase(
  * during the same window are generally still relevant: Vite transpiles
  * TS-with-type-errors to JS and the browser runs it, so type errors
  * don't suppress runtime errors.
+ *
+ * Freshness is owned entirely by the buffer: every POST carries a
+ * `cycleId` stamped by the preview, and the buffer evicts entries from
+ * superseded cycles on HMR rotation. The phase itself is stateless across
+ * iterations — it just drains "what's current for this app" and runs
+ * its own retry counter.
  */
 export async function runRuntimeErrorPhase(
   args: PostStreamValidatorArgs,
@@ -223,63 +210,28 @@ export async function runRuntimeErrorPhase(
 ): Promise<PhaseOutcome> {
   const { socketId, agentName, abortSignal } = args;
   const { appId, conversationId } = meta;
-  const {
-    runtimeErrorService,
-    retryCounters,
-    turnStartedAtBySocket,
-    maxRetries,
-    maxWaitMs,
-    quietWindowMs,
-    logger
-  } = deps;
-
-  // The watermark is seeded in `onMessageStart`. On the first iteration
-  // (retryCount === 0) we use it as-is so the drain catches any errors
-  // the user left lingering in the editor before sending the message.
-  // On retry iterations we advance it to NOW — i.e. roughly the moment
-  // the agent's stream ended — so the drain only considers entries
-  // pushed *after* the agent's final edit stabilized. That suppresses
-  // ghosts from mid-stream HMR re-renders (see `turnStartedAtBySocket`
-  // doc on RuntimeErrorPhaseDeps). Genuine re-throws of unfixed errors
-  // still surface because the iframe keeps HMR-ing and re-firing them
-  // inside the subsequent `pollRuntimeErrors` window.
-  const existing = turnStartedAtBySocket.get(socketId);
-  if (existing === undefined) {
-    logger.warn('agent.runtime_errors.skipped', {
-      socketId,
-      appId,
-      conversationId,
-      agentName,
-      reason: 'no_turn_started_at'
-    });
-    return { kind: 'clean' };
-  }
+  const { runtimeErrorService, retryCounters, maxRetries, maxWaitMs, quietWindowMs, logger } =
+    deps;
 
   const retryCount = retryCounters.get(socketId) ?? 0;
-
-  let turnStartedAt = existing;
-  if (retryCount > 0) {
-    turnStartedAt = Date.now();
-    turnStartedAtBySocket.set(socketId, turnStartedAt);
-  }
 
   logger.info('agent.runtime_errors.begin', {
     socketId,
     appId,
     conversationId,
     agentName,
-    retryCount,
-    since: turnStartedAt
+    retryCount
   });
 
   let result: RuntimeErrorResult;
   try {
-    // Intentionally no `seenSignatures` here. `pollRuntimeErrors`
-    // creates a fresh in-call Set so its 250ms polling loop doesn't
-    // double-count entries within a single drain window. Cross-call
-    // dedup is the watermark's job, not the signature's.
+    // `pollRuntimeErrors` mints a fresh per-call `seenSignatures` Set
+    // so its 250ms polling loop doesn't double-count within a single
+    // drain window. Cross-iteration dedup is handled by the buffer's
+    // cycle rotation — once the preview HMRs, prior-cycle entries are
+    // evicted, and a still-broken error gets re-pushed under the new
+    // cycle on the next render.
     result = await runtimeErrorService.pollRuntimeErrors(appId, {
-      since: turnStartedAt,
       maxWaitMs,
       quietWindowMs,
       signal: abortSignal
@@ -307,14 +259,31 @@ export async function runRuntimeErrorPhase(
   }
 
   if (result.ok) {
-    logger.info('agent.runtime_errors.pass', {
-      socketId,
-      appId,
-      conversationId,
-      agentName,
-      retryCount,
-      durationMs: result.durationMs
-    });
+    // A clean result with no cycle ever established for this app means
+    // the preview never sent its `runtime-errors-cycle` beacon — most
+    // likely the postMessage forwarding path is broken, not that the
+    // app is genuinely error-free. Surface it as a warning so an
+    // operator can catch a regression in the beacon pipeline before it
+    // starts silently hiding real errors.
+    if (!deps.runtimeErrorService.hasCycleEstablished(appId)) {
+      logger.warn('agent.runtime_errors.pass.no_cycle_established', {
+        socketId,
+        appId,
+        conversationId,
+        agentName,
+        retryCount,
+        durationMs: result.durationMs
+      });
+    } else {
+      logger.info('agent.runtime_errors.pass', {
+        socketId,
+        appId,
+        conversationId,
+        agentName,
+        retryCount,
+        durationMs: result.durationMs
+      });
+    }
     return { kind: 'clean' };
   }
 
@@ -331,15 +300,6 @@ export async function runRuntimeErrorPhase(
       message: e.message.slice(0, 200)
     }))
   });
-
-  // Also stamp the watermark at phase END. This is technically redundant
-  // with the retry-iteration advance at phase START above (retry iter N+1
-  // will overwrite this with its own Date.now() before reading). We keep
-  // it so a validator that somehow runs *without* a subsequent retry
-  // still leaves the socket in a consistent state — for example a test
-  // harness that invokes the validator twice in a row, or any future
-  // caller that skips the retry-counter bump.
-  turnStartedAtBySocket.set(socketId, Date.now());
 
   if (retryCount >= maxRetries) {
     logger.warn('agent.runtime_errors.exceeded', {

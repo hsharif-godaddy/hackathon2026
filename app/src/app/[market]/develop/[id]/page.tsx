@@ -727,7 +727,8 @@ function DevelopPageContent() {
             errorName: errorData.name,
             errorMessage: errorData.message,
             hasStack: !!errorData.stack,
-            hasComponentStack: !!errorData.componentStack
+            hasComponentStack: !!errorData.componentStack,
+            cycleId: errorData.cycleId
           })
           // Fire-and-forget: a dropped POST just means the next turn won't
           // auto-continue on this error; the user can still click "Ask
@@ -743,6 +744,39 @@ function DevelopPageContent() {
             } catch (err) {
               logger.warn('develop-page.runtime-error.forward.failed', {
                 appId,
+                error: err instanceof Error ? err.message : String(err)
+              })
+            }
+          })()
+          break
+        }
+        case 'runtime-errors-cycle': {
+          // Auto-sent by the iframe's dev-tools client on every Vite HMR
+          // boundary and on module init. Announces that the preview has
+          // entered a new render generation; forward it to the server
+          // so the runtime-error buffer can evict entries from the
+          // superseded generation. This is the core defense against
+          // the "mid-turn transient error becomes a ghost" class of
+          // bug — see `agents/src/services/runtime-error-buffer.ts`.
+          const rawCycleId = (event.data as { cycleId?: unknown }).cycleId
+          if (typeof rawCycleId !== 'number' || !Number.isFinite(rawCycleId)) break
+          const cycleId = rawCycleId
+          void (async () => {
+            try {
+              const url = await buildDynamicApiUrl('runtime-errors/cycle', appId)
+              await agentFetch(url, {
+                method: 'POST',
+                siteId: appId,
+                body: JSON.stringify({ cycleId })
+              })
+            } catch (err) {
+              // Fire-and-forget: a dropped cycle POST means the buffer
+              // may briefly retain entries from a prior render. The
+              // next successful cycle POST (on the next HMR) evicts
+              // them.
+              logger.warn('develop-page.runtime-errors-cycle.forward.failed', {
+                appId,
+                cycleId,
                 error: err instanceof Error ? err.message : String(err)
               })
             }
