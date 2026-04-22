@@ -181,24 +181,14 @@ func (pm *ProcessManager) startLocked(req validation.ProcessStartRequest) error 
 	outputToStructuredLog := pm.outputToStructuredLog
 	pm.mu.Unlock() // UNLOCK pm.mu before blocking
 
-	// Merge customer env from NOMAD_ALLOC_DIR/config.json (via alloc config loader
+	// Merge env from NOMAD_ALLOC_DIR/config.json (via alloc config loader
 	// so we pick up config changes within the loader TTL and share singleflight).
 	allocLoader := pm.allocLoader
 	if allocLoader == nil {
 		allocLoader = allocconfig.Default()
 	}
 	allocConfig, _ := allocLoader.Load()
-	if allocConfig != nil && len(allocConfig.CustomerEnv) > 0 {
-		if req.Env == nil {
-			req.Env = make(map[string]string)
-		}
-		for k, v := range allocConfig.CustomerEnv {
-			if _, ok := req.Env[k]; !ok {
-				req.Env[k] = v
-			}
-		}
-		slog.Info("customer_env.loaded", "count", len(allocConfig.CustomerEnv))
-	}
+	req.Env = mergeAllocEnv(req.Env, allocConfig)
 
 	// Blocking operations (no pm.mu, but lifecycleMu still held)
 	managedProcess, err := NewManagedProcess(req)
@@ -394,13 +384,7 @@ func (pm *ProcessManager) Restart(req ProcessRestartRequest) error {
 	}
 	allocLoader.InvalidateCache()
 	allocConfig, _ := allocLoader.Load()
-	if allocConfig != nil && len(allocConfig.CustomerEnv) > 0 {
-		if config.Env == nil {
-			config.Env = make(map[string]string)
-		}
-		maps.Copy(config.Env, allocConfig.CustomerEnv)
-		slog.Info("customer_env.loaded", "count", len(allocConfig.CustomerEnv))
-	}
+	config.Env = mergeAllocEnv(config.Env, allocConfig)
 
 	// Create and start a completely new managed process with the same config
 	slog.Info("starting new process", "command", config.Command, "working_dir", config.WorkingDir)
@@ -875,6 +859,30 @@ func (pm *ProcessManager) stopProcessForRestart(
 	}
 
 	return nil
+}
+
+// mergeAllocEnv merges customer env and database env from alloc config.
+// Customer env is applied first, then DB env (platform credentials always win).
+func mergeAllocEnv(env map[string]string, config *allocconfig.Config) map[string]string {
+	if config == nil {
+		return env
+	}
+	if len(config.CustomerEnv) == 0 && config.Database == nil {
+		return env
+	}
+	if env == nil {
+		env = make(map[string]string)
+	}
+	maps.Copy(env, config.CustomerEnv)
+	if len(config.CustomerEnv) > 0 {
+		slog.Info("customer_env.loaded", "count", len(config.CustomerEnv))
+	}
+	dbEnv := config.DatabaseEnv()
+	maps.Copy(env, dbEnv)
+	if len(dbEnv) > 0 {
+		slog.Info("database_env.loaded", "count", len(dbEnv))
+	}
+	return env
 }
 
 // Compile-time interface verification

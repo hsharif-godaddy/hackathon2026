@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"sync"
 	"time"
 
@@ -61,6 +62,23 @@ type Config struct {
 	JWTRedirectURL *Secret[string]         `json:"JWT_REDIRECT_URL"`
 	ProductID      *Secret[string]         `json:"PRODUCT_ID"`
 	CustomerEnv    map[string]string       `json:"-"` // Populated from other top-level entries; not from JSON tag
+}
+
+// DatabaseEnv returns database credentials as environment variables.
+// Returns nil if DATABASE is not configured.
+func (c *Config) DatabaseEnv() map[string]string {
+	if c == nil || c.Database == nil {
+		return nil
+	}
+
+	db := c.Database.Value
+	return map[string]string{
+		"DB_HOST":     db.Host,
+		"DB_PORT":     strconv.Itoa(db.Port),
+		"DB_NAME":     db.Name,
+		"DB_USER":     db.Username,
+		"DB_PASSWORD": db.Password,
+	}
 }
 
 // Copy returns a deep copy of the Config

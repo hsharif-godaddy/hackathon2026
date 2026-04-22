@@ -87,6 +87,7 @@ if [[ -f "${APP_DIR}/dist/server.bundle.mjs" ]]; then
     log "Detected pre-built artifacts (server.bundle.mjs) - using fast path"
 
     load_customer_environment_variables
+    load_database_environment_variables
 
     # Create .env file and start application
     create_env_file "${APP_DIR}/dist"
@@ -98,6 +99,7 @@ elif [[ -f "${APP_DIR}/dist/server.bundle.cjs" ]]; then
     log "Detected pre-built artifacts (server.bundle.cjs) - using legacy fast path"
 
     load_customer_environment_variables
+    load_database_environment_variables
 
     create_env_file "${APP_DIR}/dist"
 

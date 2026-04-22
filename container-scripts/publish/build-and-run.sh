@@ -104,6 +104,7 @@ fi
 # Default path tries: dist/app.js, dist/index.js, dist/server.js, dist/main.js (first found wins)
 
 load_customer_environment_variables
+load_database_environment_variables
 
 if [[ -n "$CUSTOM_SERVE_CMD" ]]; then
     # Custom config path - use the serve command from .airo/config.json

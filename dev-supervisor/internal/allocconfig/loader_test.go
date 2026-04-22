@@ -924,6 +924,103 @@ func TestGetProductIDOrDefaultWithLoader(t *testing.T) {
 	})
 }
 
+func TestConfig_DatabaseEnv(t *testing.T) {
+	t.Run("returns env vars when DATABASE is present", func(t *testing.T) {
+		config := &Config{
+			Database: &Secret[DatabaseConfig]{
+				SystemManaged: true,
+				Value: DatabaseConfig{
+					Name:     "testdb",
+					Host:     "mysql.example.com",
+					Port:     3306,
+					Username: "dbuser",
+					Password: "secret",
+				},
+			},
+		}
+
+		env := config.DatabaseEnv()
+		if env == nil {
+			t.Fatal("DatabaseEnv() returned nil")
+		}
+
+		if env["DB_HOST"] != "mysql.example.com" {
+			t.Errorf("DB_HOST = %q, want %q", env["DB_HOST"], "mysql.example.com")
+		}
+		if env["DB_PORT"] != "3306" {
+			t.Errorf("DB_PORT = %q, want %q", env["DB_PORT"], "3306")
+		}
+		if env["DB_NAME"] != "testdb" {
+			t.Errorf("DB_NAME = %q, want %q", env["DB_NAME"], "testdb")
+		}
+		if env["DB_USER"] != "dbuser" {
+			t.Errorf("DB_USER = %q, want %q", env["DB_USER"], "dbuser")
+		}
+		if env["DB_PASSWORD"] != "secret" {
+			t.Errorf("DB_PASSWORD = %q, want %q", env["DB_PASSWORD"], "secret")
+		}
+	})
+
+	t.Run("returns nil when DATABASE is nil", func(t *testing.T) {
+		config := &Config{}
+
+		env := config.DatabaseEnv()
+		if env != nil {
+			t.Errorf("DatabaseEnv() = %v, want nil", env)
+		}
+	})
+
+	t.Run("returns nil when config is nil", func(t *testing.T) {
+		var config *Config
+
+		env := config.DatabaseEnv()
+		if env != nil {
+			t.Errorf("DatabaseEnv() = %v, want nil", env)
+		}
+	})
+
+	t.Run("returns all 5 env vars with correct keys", func(t *testing.T) {
+		config := &Config{
+			Database: &Secret[DatabaseConfig]{
+				Value: DatabaseConfig{
+					Name:     "db",
+					Host:     "host",
+					Port:     5432,
+					Username: "user",
+					Password: "pass",
+				},
+			},
+		}
+
+		env := config.DatabaseEnv()
+		if len(env) != 5 {
+			t.Errorf("DatabaseEnv() returned %d vars, want 5", len(env))
+		}
+
+		expectedKeys := []string{"DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD"}
+		for _, key := range expectedKeys {
+			if _, ok := env[key]; !ok {
+				t.Errorf("DatabaseEnv() missing key %q", key)
+			}
+		}
+	})
+
+	t.Run("converts port to string", func(t *testing.T) {
+		config := &Config{
+			Database: &Secret[DatabaseConfig]{
+				Value: DatabaseConfig{
+					Port: 5432,
+				},
+			},
+		}
+
+		env := config.DatabaseEnv()
+		if env["DB_PORT"] != "5432" {
+			t.Errorf("DB_PORT = %q, want %q", env["DB_PORT"], "5432")
+		}
+	})
+}
+
 // writeTestConfig is a helper that writes test config data to a file
 func writeTestConfig(t *testing.T, path string, data map[string]any) {
 	t.Helper()

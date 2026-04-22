@@ -19,6 +19,28 @@ log_warn() {
     echo "[WARN] $(date '+%Y-%m-%d %H:%M:%S') - $1" >&2
 }
 
+# Load database credentials as environment variables
+# Exports: DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD
+load_database_environment_variables() {
+    local config_path="${NOMAD_ALLOC_DIR}/config.json"
+    if [[ ! -f "$config_path" ]]; then
+        return 0
+    fi
+
+    # Check if DATABASE node exists
+    if ! jq -e '.DATABASE' "$config_path" >/dev/null 2>&1; then
+        return 0
+    fi
+
+    log "Loading database credentials from ${config_path}"
+    export DB_HOST="$(jq -r '.DATABASE.VALUE.HOST // empty' "$config_path")"
+    export DB_PORT="$(jq -r '.DATABASE.VALUE.PORT // "3306"' "$config_path")"
+    export DB_NAME="$(jq -r '.DATABASE.VALUE.NAME // empty' "$config_path")"
+    export DB_USER="$(jq -r '.DATABASE.VALUE.USERNAME // empty' "$config_path")"
+    export DB_PASSWORD="$(jq -r '.DATABASE.VALUE.PASSWORD // empty' "$config_path")"
+    log "Database credentials loaded"
+}
+
 # Load customer environment variables (SYSTEM_MANAGED=false only) from config.json and export each in the shell
 load_customer_environment_variables() {
     if [[ ! -f "${NOMAD_ALLOC_DIR}/config.json" ]]; then

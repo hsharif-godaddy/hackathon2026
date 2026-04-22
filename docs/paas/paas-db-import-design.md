@@ -1,18 +1,29 @@
-# PaaS Database Import — Design Spec
+# PaaS Database — Design Spec
 
 **Date:** 2026-03-17
+**Updated:** 2026-04-21
 **Status:** Draft
 **Scope:** MySQL only (extensible to other engines later)
 
 ## Problem
 
-PaaS users deploy their own apps via the PaaS flow (zip import or git push). These apps often need a pre-populated database — existing data from development, staging, or migration from another platform. Currently, the platform provisions an empty MySQL database per app, but there's no way to load data into it. Users must manually connect and run SQL, which breaks the self-service model.
+PaaS users deploy their own apps via the PaaS flow (zip import or git push). These apps have two database-related needs:
 
-## Goal
+1. **Data Import** — Apps often need a pre-populated database — existing data from development, staging, or migration from another platform. Currently, the platform provisions an empty MySQL database per app, but there's no way to load data into it.
 
-Enable PaaS users to import a `.sql` dump into their platform-provisioned MySQL database via a dedicated API endpoint on the agents service.
+2. **Credential Consumption** — BYOC (Bring Your Own Code) apps don't have Airo's generated database templates. They need a standard way to access the provisioned database credentials (connection string, host, port, user, password).
+
+3. **Database Management APIs** — PaaS apps need access to the same database management APIs (list tables, view schema, query data) that AAB apps use, but the current implementation assumes an app record exists in agents SQLite.
+
+## Goals
+
+1. Enable PaaS users to import a `.sql` dump into their platform-provisioned MySQL database via a dedicated API endpoint
+2. Provide database credentials to PaaS apps via standard environment variables
+3. Ensure existing database management APIs work for PaaS apps
 
 ## Requirements
+
+### Database Import
 
 - **Separate API endpoint** on agents service (not bundled with code deployment)
 - **Flexible timing** — import works anytime (during or after deployment)
@@ -21,6 +32,17 @@ Enable PaaS users to import a `.sql` dump into their platform-provisioned MySQL 
 - **Configurable size limit** — initially up to 100MB (V1), extensible to 250MB+ with Ceph storage
 - **Background processing** with status polling (same pattern as zip import)
 - **Import only** — no export endpoint in this phase
+
+### Database Credential Consumption
+
+- **Environment variables** — inject standard DB credentials as env vars in preview/publish containers
+- **Industry standard** — use individual env vars (`DB_HOST`, `DB_PORT`, etc.) that work with any framework
+- **No code changes** — PaaS apps should not need Airo-specific code to access the database
+
+### Database Management APIs
+
+- **PaaS-compatible** — existing APIs must work without requiring an app record in agents SQLite
+- **Dual-product support** — APIs should load credentials from Nomad alloc config (PaaS) or app record (AAB)
 
 ## Non-Goals
 
@@ -643,7 +665,133 @@ These are explicitly out of scope now but the design accommodates them:
 
 ---
 
-## File Changes Summary
+# Part 2: Database Credential Consumption (PaaS)
+
+## Problem
+
+PaaS apps are BYOC (Bring Your Own Code) — they don't have Airo's generated database templates. They need a standard way to access the provisioned database credentials.
+
+## Context: Existing Customer Secrets Loading (PR #1908)
+
+PR [#1908](https://github.com/gdcorp-partners/airo-app-builder/pull/1908) already loads **customer-managed secrets** (`SYSTEM_MANAGED=false`) as environment variables. This handles user-defined secrets like API keys.
+
+DATABASE credentials need separate handling — they should be exported as `DB_*` env vars when the DATABASE node exists in config.json.
+
+## Solution: Export DB Credentials When DATABASE Exists
+
+Export DATABASE credentials from `config.json` when the DATABASE node is present:
+
+| Variable      | Source in config.json     | Description       |
+| ------------- | ------------------------- | ----------------- |
+| `DB_HOST`     | `DATABASE.VALUE.HOST`     | Database hostname |
+| `DB_PORT`     | `DATABASE.VALUE.PORT`     | Database port     |
+| `DB_NAME`     | `DATABASE.VALUE.NAME`     | Database name     |
+| `DB_USER`     | `DATABASE.VALUE.USERNAME` | Database username |
+| `DB_PASSWORD` | `DATABASE.VALUE.PASSWORD` | Database password |
+
+Customer apps read these directly — no Airo-specific code required.
+
+## Implementation
+
+### dev-supervisor
+
+The `allocconfig.Loader` already parses DATABASE into `Config.Database` with typed `DatabaseConfig`. Add a method to return DB env vars:
+
+```go
+// In allocconfig/loader.go
+
+// DatabaseEnv returns database credentials as environment variables.
+// Returns nil if DATABASE is not configured.
+func (c *Config) DatabaseEnv() map[string]string {
+    if c == nil || c.Database == nil {
+        return nil
+    }
+
+    db := c.Database.Value
+    return map[string]string{
+        "DB_HOST":     db.Host,
+        "DB_PORT":     strconv.Itoa(db.Port),
+        "DB_NAME":     db.Name,
+        "DB_USER":     db.Username,
+        "DB_PASSWORD": db.Password,
+    }
+}
+```
+
+In `processmanager/manager.go`, merge DB env alongside customer env:
+
+```go
+// Load config once
+config, err := allocconfig.Default().Load()
+if err == nil && config != nil {
+    // Merge customer env (SYSTEM_MANAGED=false)
+    for k, v := range config.CustomerEnv {
+        req.Env[k] = v
+    }
+
+    // Merge database env (whitelisted as DB_*)
+    if dbEnv := config.DatabaseEnv(); dbEnv != nil {
+        for k, v := range dbEnv {
+            req.Env[k] = v
+        }
+    }
+}
+```
+
+### Publish Container
+
+In `container-scripts/publish/common.sh`, add function for system-managed env:
+
+```bash
+# Load database credentials as environment variables (DATABASE → DB_*)
+load_database_environment_variables() {
+    local config_file="${NOMAD_ALLOC_DIR}/config.json"
+
+    if [[ ! -f "$config_file" ]]; then
+        return
+    fi
+
+    # Check if DATABASE node exists
+    if jq -e '.DATABASE' "$config_file" >/dev/null 2>&1; then
+        log "Loading database credentials from config.json"
+        export DB_HOST="$(jq -r '.DATABASE.VALUE.HOST // empty' "$config_file")"
+        export DB_PORT="$(jq -r '.DATABASE.VALUE.PORT // "3306"' "$config_file")"
+        export DB_NAME="$(jq -r '.DATABASE.VALUE.NAME // empty' "$config_file")"
+        export DB_USER="$(jq -r '.DATABASE.VALUE.USERNAME // empty' "$config_file")"
+        export DB_PASSWORD="$(jq -r '.DATABASE.VALUE.PASSWORD // empty' "$config_file")"
+        log "Database credentials loaded"
+    fi
+}
+```
+
+Call in `build-and-run.sh` and `run-app.sh`:
+
+```bash
+load_customer_environment_variables  # existing (SYSTEM_MANAGED=false)
+load_database_environment_variables  # DATABASE → DB_*
+```
+
+---
+
+# Part 3: Database Management APIs
+
+**No changes needed.** PaaS apps are created via `/api/sites/quick-create` API which creates the app record in agents SQLite. The existing database management APIs already work for PaaS:
+
+| Method   | Path                                               | Purpose                    |
+| -------- | -------------------------------------------------- | -------------------------- |
+| `GET`    | `/apps/{appId}/database/tables`                    | List all tables            |
+| `GET`    | `/apps/{appId}/database/tables/{tableName}/schema` | Get table schema           |
+| `GET`    | `/apps/{appId}/database/tables/{tableName}/data`   | Get table data (paginated) |
+| `POST`   | `/apps/{appId}/database/tables/{tableName}/rows`   | Insert row                 |
+| `PUT`    | `/apps/{appId}/database/tables/{tableName}/rows`   | Update row                 |
+| `DELETE` | `/apps/{appId}/database/tables/{tableName}/rows`   | Delete row                 |
+| `GET`    | `/apps/{appId}/database/tables/{tableName}/export` | Export table as CSV/JSON   |
+
+---
+
+## File Changes Summary (Complete)
+
+### Part 1: Database Import (Already Implemented)
 
 | File                                                        | Change | Description                          |
 | ----------------------------------------------------------- | ------ | ------------------------------------ |
@@ -654,3 +802,14 @@ These are explicitly out of scope now but the design accommodates them:
 | `agents/src/types/db-import.ts`                             | New    | TypeScript interfaces                |
 | `agents/src/database/schema.ts`                             | Modify | Add `db_import_jobs` table + indexes |
 | `agents/src/server/app.ts`                                  | Modify | Mount import routes                  |
+
+### Part 2: Database Credential Consumption
+
+| File                                                 | Change | Description                                   |
+| ---------------------------------------------------- | ------ | --------------------------------------------- |
+| `dev-supervisor/internal/allocconfig/loader.go`      | Modify | Add `DatabaseEnv()` method to `Config`        |
+| `dev-supervisor/internal/allocconfig/loader_test.go` | Modify | Add tests for `DatabaseEnv()`                 |
+| `dev-supervisor/internal/processmanager/manager.go`  | Modify | Merge `config.DatabaseEnv()` into process env |
+| `container-scripts/publish/common.sh`                | Modify | Add `load_database_environment_variables()`   |
+| `container-scripts/publish/build-and-run.sh`         | Modify | Call new function                             |
+| `container-scripts/publish/run-app.sh`               | Modify | Call new function                             |
