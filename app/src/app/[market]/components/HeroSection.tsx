@@ -36,6 +36,8 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
   onExampleClick,
   selectedTemplate = 'default',
   onTemplateChange,
+  headingText,
+  subheadingText,
 }, ref) => {
   const t = useTranslations();
   const { isAuthenticated } = useAuthContext()
@@ -440,14 +442,14 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
         size={isBelowSmBreakpoint ? 2 : isMdBreakpoint ? 3 : 4}
         className="text-center max-w-screen-md"
       >
-        {t('builder_homepage_hero_title')}
+        {headingText || t('builder_homepage_hero_title')}
       </text.h1>
 
       <text.p
         size={2}
         className='max-w-xl mx-auto !font-thin text-center text-pretty'
       >
-        {t('builder_homepage_hero_text')}
+        {subheadingText || t('builder_homepage_hero_text')}
       </text.p>
 
       {/* Error Display */}

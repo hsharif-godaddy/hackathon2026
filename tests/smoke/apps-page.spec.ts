@@ -424,6 +424,38 @@ test.describe('Apps Page & Navigation', () => {
     console.log('🎉 All input validation tests passed!');
   });
 
+  test('Homepage Logo Designer Template - Custom Hero Content', async ({ page }) => {
+    // ========================================
+    // STEP 1: Navigate with template query param
+    // ========================================
+    console.log('🎨 Step 1: Navigating to homepage with ?template=logo-designer...');
+    await page.goto('/?template=logo-designer');
+
+    const promptInput = page.getByTestId('homepage-prompt-input');
+    await promptInput.waitFor({ state: 'visible', timeout: LONG_TIMEOUT });
+    console.log('  ✓ Homepage loaded');
+
+    // ========================================
+    // STEP 2: Verify custom hero heading
+    // ========================================
+    console.log('📝 Step 2: Verifying custom hero heading...');
+    const heading = page.getByRole('heading', { level: 1 });
+    await expect(heading).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+    // Should show logo-specific heading
+    await expect(heading).toContainText(/design a logo that defines your brand/i);
+    console.log('  ✓ Custom logo heading displayed');
+
+    // ========================================
+    // STEP 3: Verify prompt input is functional
+    // ========================================
+    console.log('✍️ Step 3: Verifying prompt input works with template...');
+    await promptInput.fill('A minimalist tech startup logo with a geometric icon');
+    await expect(page.locator('[data-eid*="homepage.prompt.submit"]')).not.toBeDisabled();
+    console.log('  ✓ Submit enabled with prompt text');
+
+    console.log('🎉 Logo designer template test passed!');
+  });
+
   test.afterEach(async ({ page }, testInfo) => {
     await logTestResult(page, testInfo);
 

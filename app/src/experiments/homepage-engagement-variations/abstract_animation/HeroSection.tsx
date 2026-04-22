@@ -35,6 +35,8 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
   onExampleClick,
   selectedTemplate = 'default',
   onTemplateChange,
+  headingText,
+  subheadingText,
 }, ref) => {
   const t = useTranslations();
   const { isAuthenticated } = useAuthContext()
@@ -391,16 +393,26 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
         size={isBelowSmBreakpoint ? 2 : isMdBreakpoint ? 3 : 4}
         className="text-center max-w-screen-md"
       >
-        <FormattedMessage
-          id="builder_homepage_hero_content_headline"
-          defaultMessage="Describe <idea>your idea</idea>. Get a <site>live website</site> in minutes."
-          values={{
-            idea: (chunks) => <span className="text-ai-light">{chunks}</span>,
-            site: (chunks) => <span className="text-ai">{chunks}</span>,
-          }}
-        />
+        {headingText || (
+          <FormattedMessage
+            id="builder_homepage_hero_content_headline"
+            defaultMessage="Describe <idea>your idea</idea>. Get a <site>live website</site> in minutes."
+            values={{
+              idea: (chunks) => <span className="text-ai-light">{chunks}</span>,
+              site: (chunks) => <span className="text-ai">{chunks}</span>,
+            }}
+          />
+        )}
       </text.h1>
 
+      {subheadingText ? (
+        <text.p
+          size={2}
+          className='max-w-xl mx-auto !font-thin text-center text-pretty'
+        >
+          {subheadingText}
+        </text.p>
+      ) : (
       <div className="mx-auto flex flex-col items-center justify-center gap-0.5 opacity-60 sm:flex-row sm:gap-1.5">
         <div className="flex flex-wrap items-center justify-center gap-1 sm:gap-1.5">
           <text.p size={1} className="!font-normal max-sm:!text-xs whitespace-nowrap">
@@ -423,6 +435,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
           {t('builder_homepage_hero_value_prop_no_card', undefined, 'No credit card required')}
         </text.p>
       </div>
+      )}
 
       {/* Error Display */}
       {error && (

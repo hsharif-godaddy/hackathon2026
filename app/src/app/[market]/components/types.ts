@@ -1,3 +1,10 @@
+export const LOGO_DESIGNER_TEMPLATE = 'logo-designer'
+const VALID_TEMPLATES: string[] = ['default', 'business-plan', LOGO_DESIGNER_TEMPLATE]
+
+export function validateTemplate(template: string | null): string {
+  return template && VALID_TEMPLATES.includes(template) ? template : 'default'
+}
+
 export interface Example {
   title: string
   prompt: string
@@ -25,6 +32,8 @@ export interface HeroSectionProps {
   onExampleClick?: (prompt: string) => void
   selectedTemplate?: string
   onTemplateChange?: (template: string) => void
+  headingText?: string
+  subheadingText?: string
 }
 
 export interface HeroSectionRef {

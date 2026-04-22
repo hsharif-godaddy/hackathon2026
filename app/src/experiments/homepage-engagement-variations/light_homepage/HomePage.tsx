@@ -9,7 +9,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import HelpSection from '@/app/[market]/components/HelpSection'
 import InfraSection from '@/app/[market]/components/InfraSection'
 import StartSection from '@/app/[market]/components/StartSection'
-import { HeroSectionRef } from '@/app/[market]/components/types'
+import { HeroSectionRef, LOGO_DESIGNER_TEMPLATE, validateTemplate } from '@/app/[market]/components/types'
 import { UpgradeContainer } from '@/app/[market]/develop/components/paywall'
 import { MockLoginDialog } from '@/components/auth/MockLogin'
 import FAQSection from '@/components/layout/FAQSection'
@@ -44,14 +44,16 @@ type SubmitSource = 'example' | 'text'
 export function LightHomepageHomePage({ serverFeatures }: HomeContentProps) {
   const t = useTranslations();
   const [promptText, setPromptText] = useState("")
-  const [selectedTemplate, setSelectedTemplate] = useState('default')
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const templateParam = searchParams.get('template')
+  const [selectedTemplate, setSelectedTemplate] = useState(validateTemplate(templateParam))
+  const isLogoMode = templateParam === LOGO_DESIGNER_TEMPLATE
   const { data: isTemplateSelectorEnabled } = useSwitchboard('appbuilder-template-selector')
   const [isLoading, setIsLoading] = useState(false)
   const [isRedirecting, setIsRedirecting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showMockLogin, setShowMockLogin] = useState(false)
-  const router = useRouter()
-  const searchParams = useSearchParams()
   const heroSectionRef = useRef<HeroSectionRef>(null)
   const homepageViewRecordedRef = useRef(false)
   const scrollMilestonesLoggedRef = useRef<Set<number>>(new Set())
@@ -340,7 +342,7 @@ export function LightHomepageHomePage({ serverFeatures }: HomeContentProps) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          initialPrompt: promptToUse
+          initialPrompt: promptToUse,
         })
       }, { setAuthState: false })
 
@@ -542,6 +544,10 @@ export function LightHomepageHomePage({ serverFeatures }: HomeContentProps) {
             {...(isTemplateSelectorEnabled && {
               selectedTemplate,
               onTemplateChange: setSelectedTemplate,
+            })}
+            {...(isLogoMode && {
+              headingText: t('builder_homepage_experiment_logo_header', undefined, 'Design a logo that defines your brand'),
+              subheadingText: t('builder_homepage_experiment_logo_subheader', undefined, 'Describe your style and our AI will craft a unique logo in minutes'),
             })}
           />
 
