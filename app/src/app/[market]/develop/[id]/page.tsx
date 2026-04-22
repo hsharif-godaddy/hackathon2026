@@ -87,14 +87,18 @@ function DevelopPageContent() {
   const appId = useAppIdFromParams()
   const isJobId = searchParams.get('type') === 'job'
 
-  // Set appId for instrumentation before paint so early clicks include appId in custom_properties
+  // Only set once the route carries a real app id (job creation URLs use a UUID in :id until replace)
   useLayoutEffect(() => {
-    setInstrumentationAppId(appId);
+    if (appId && !isJobId) {
+      setInstrumentationAppId(appId);
+    } else {
+      setInstrumentationAppId(null);
+    }
 
     return () => {
       setInstrumentationAppId(null);
     };
-  }, [appId]);
+  }, [appId, isJobId]);
 
   // Prefetch paywall data early for faster eligibility checks
   usePaywallPrefetch()

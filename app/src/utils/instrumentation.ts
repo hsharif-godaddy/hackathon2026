@@ -20,6 +20,13 @@ let currentAppId: string | null = null;
 
 const WINDOW_INSTRUMENTATION_APP_ID = '__airoInstrumentationAppId';
 
+/** Job / control-plane UUIDs must never be sent as `appId` (same charset as URL-safe ids at some lengths). */
+const UUID_IN_PATH_SHAPE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** URL-safe nanoid-style ids (length may change server-side; bounds keep obvious junk out). */
+const INSTRUMENTATION_APP_ID_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
+
 function readGlobalInstrumentationAppId(): string | null {
   if (typeof window === 'undefined') {
     return currentAppId;
@@ -36,6 +43,9 @@ function readGlobalInstrumentationAppId(): string | null {
 
 function normalizedAppId(value: string | null | undefined): string | undefined {
   if (value == null || value === '') {
+    return undefined;
+  }
+  if (UUID_IN_PATH_SHAPE.test(value) || !INSTRUMENTATION_APP_ID_PATTERN.test(value)) {
     return undefined;
   }
   return value;
@@ -68,8 +78,9 @@ export const setInstrumentationAppId = (appId: string | null): void => {
 const mergeCustomPropertiesWithAppId = (customProperties?: Record<string, boolean | string | number>): Record<string, boolean | string | number> => {
   const raw = customProperties ?? {};
   const { appId: callerAppIdCandidate, ...rest } = raw;
-  const callerAppId =
-    typeof callerAppIdCandidate === 'string' && callerAppIdCandidate.length > 0 ? callerAppIdCandidate : undefined;
+  const callerAppId = normalizedAppId(
+    typeof callerAppIdCandidate === 'string' ? callerAppIdCandidate : undefined
+  );
   const baseProperties = rest as Record<string, boolean | string | number>;
 
   const moduleAppId = normalizedAppId(readGlobalInstrumentationAppId());

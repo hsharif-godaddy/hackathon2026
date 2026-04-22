@@ -23,6 +23,22 @@ vi.mock('@/lib/request-context', () => ({
 
 import { logger } from '@/lib/request-context';
 
+/** Valid nanoid-style app IDs (see `INSTRUMENTATION_APP_ID_PATTERN` in instrumentation.ts). */
+const VALID_APP_ID_1 = 'testap1234';
+const VALID_APP_ID_2 = 'testap4567';
+const VALID_APP_ID_3 = 'routap1234';
+const VALID_APP_ID_4 = 'action7890';
+const VALID_APP_ID_5 = 'mergeapp32';
+const VALID_APP_ID_6 = 'impress999';
+const VALID_APP_ID_7 = 'mergimpr11';
+const VALID_APP_ID_8 = 'diffrent12';
+const VALID_APP_ID_9 = 'persist123';
+const VALID_APP_ID_10 = 'validap123';
+const VALID_APP_ID_11 = 'currnt1234';
+const VALID_APP_ID_12 = 'callr78901';
+const VALID_APP_ID_13 = 'sameap1234';
+const VALID_APP_ID_14 = 'server1234';
+
 describe('instrumentation utilities', () => {
   let mockDataLayer: any[];
 
@@ -172,19 +188,19 @@ describe('instrumentation utilities', () => {
     });
 
     it('should automatically add appId when appId is set', () => {
-      setInstrumentationAppId('test-app-123');
+      setInstrumentationAppId(VALID_APP_ID_1);
 
       const logClick = logClickEvent('product.section.widget');
       logClick();
 
       expect(mockDataLayer).toHaveLength(1);
       expect(mockDataLayer[0].data.traffic?.customProperties).toEqual({
-        appId: 'test-app-123',
+        appId: VALID_APP_ID_1,
       });
     });
 
     it('should merge custom_properties with appId when appId is set', () => {
-      setInstrumentationAppId('test-app-456');
+      setInstrumentationAppId(VALID_APP_ID_2);
 
       const logClick = logClickEvent('product.section.widget', { userId: 'user789' });
       logClick();
@@ -192,7 +208,7 @@ describe('instrumentation utilities', () => {
       expect(mockDataLayer).toHaveLength(1);
       expect(mockDataLayer[0].data.traffic?.customProperties).toEqual({
         userId: 'user789',
-        appId: 'test-app-456',
+        appId: VALID_APP_ID_2,
       });
     });
 
@@ -208,13 +224,32 @@ describe('instrumentation utilities', () => {
     });
 
     it('should include appId from custom_properties when module appId is unset', () => {
-      const logClick = logClickEvent('product.section.widget', { appId: 'route-app-1' });
+      const logClick = logClickEvent('product.section.widget', { appId: VALID_APP_ID_3 });
       logClick();
 
       expect(mockDataLayer).toHaveLength(1);
       expect(mockDataLayer[0].data.traffic?.customProperties).toEqual({
-        appId: 'route-app-1',
+        appId: VALID_APP_ID_3,
       });
+      expect(logger.warn).not.toHaveBeenCalled();
+    });
+
+    it('should omit appId from custom_properties when id is too short for bounds', () => {
+      const logClick = logClickEvent('product.section.widget', { appId: 'short' });
+      logClick();
+
+      expect(mockDataLayer).toHaveLength(1);
+      expect(mockDataLayer[0].data.traffic?.customProperties).toEqual({});
+      expect(logger.warn).not.toHaveBeenCalled();
+    });
+
+    it('should accept longer nanoid-style app IDs in custom_properties', () => {
+      const id21 = 'V1StGXR8_Z5jdHi6B-my';
+      const logClick = logClickEvent('product.section.widget', { appId: id21 });
+      logClick();
+
+      expect(mockDataLayer).toHaveLength(1);
+      expect(mockDataLayer[0].data.traffic?.customProperties).toEqual({ appId: id21 });
       expect(logger.warn).not.toHaveBeenCalled();
     });
 
@@ -311,19 +346,19 @@ describe('instrumentation utilities', () => {
     });
 
     it('should automatically add appId when appId is set', () => {
-      setInstrumentationAppId('action-app-789');
+      setInstrumentationAppId(VALID_APP_ID_4);
 
       const logAction = logActionEvent({ eid: 'product.section.widget', action: 'focus' });
       logAction();
 
       expect(mockDataLayer).toHaveLength(1);
       expect(mockDataLayer[0].data.custom_properties).toEqual({
-        appId: 'action-app-789',
+        appId: VALID_APP_ID_4,
       });
     });
 
     it('should merge custom_properties with appId when appId is set', () => {
-      setInstrumentationAppId('merge-app-321');
+      setInstrumentationAppId(VALID_APP_ID_5);
 
       const logAction = logActionEvent({ 
         eid: 'product.section.widget', 
@@ -335,7 +370,7 @@ describe('instrumentation utilities', () => {
       expect(mockDataLayer).toHaveLength(1);
       expect(mockDataLayer[0].data.custom_properties).toEqual({
         trackingId: 'track456',
-        appId: 'merge-app-321',
+        appId: VALID_APP_ID_5,
       });
     });
 
@@ -459,19 +494,19 @@ describe('instrumentation utilities', () => {
     });
 
     it('should automatically add appId when appId is set', () => {
-      setInstrumentationAppId('impression-app-999');
+      setInstrumentationAppId(VALID_APP_ID_6);
 
       const logImpression = logImpressionEvent('chat.banner.view');
       logImpression();
 
       expect(mockDataLayer).toHaveLength(1);
       expect(mockDataLayer[0].data.custom_properties).toEqual({
-        appId: 'impression-app-999',
+        appId: VALID_APP_ID_6,
       });
     });
 
     it('should merge custom_properties with appId when appId is set', () => {
-      setInstrumentationAppId('merge-impression-111');
+      setInstrumentationAppId(VALID_APP_ID_7);
 
       const logImpression = logImpressionEvent('chat.modal.view', {
         modalType: 'upgrade',
@@ -483,7 +518,7 @@ describe('instrumentation utilities', () => {
       expect(mockDataLayer[0].data.custom_properties).toEqual({
         modalType: 'upgrade',
         userTier: 'free',
-        appId: 'merge-impression-111',
+        appId: VALID_APP_ID_7,
       });
     });
 
@@ -630,27 +665,27 @@ describe('instrumentation utilities', () => {
       logClickEvent('test.section.widget')();
       expect(mockDataLayer[0].data.traffic?.customProperties?.appId).toBeUndefined();
 
-      setInstrumentationAppId('test-app-123');
+      setInstrumentationAppId(VALID_APP_ID_1);
       logClickEvent('test.section.widget')();
-      expect(mockDataLayer[1].data.traffic?.customProperties?.appId).toBe('test-app-123');
+      expect(mockDataLayer[1].data.traffic?.customProperties?.appId).toBe(VALID_APP_ID_1);
 
-      setInstrumentationAppId('different-app-456');
+      setInstrumentationAppId(VALID_APP_ID_8);
       logClickEvent('test.section.widget')();
-      expect(mockDataLayer[2].data.traffic?.customProperties?.appId).toBe('different-app-456');
+      expect(mockDataLayer[2].data.traffic?.customProperties?.appId).toBe(VALID_APP_ID_8);
 
       setInstrumentationAppId(null);
       logClickEvent('test.section.widget')();
       expect(mockDataLayer[3].data.traffic?.customProperties?.appId).toBeUndefined();
     });
 
-    it('should handle UUID-style app IDs', () => {
+    it('should omit UUID-style app IDs from instrumentation', () => {
       const uuidAppId = '550e8400-e29b-41d4-a716-446655440000';
       setInstrumentationAppId(uuidAppId);
       
       const logClick = logClickEvent('test.section.widget');
       logClick();
 
-      expect(mockDataLayer[0].data.traffic?.customProperties?.appId).toBe(uuidAppId);
+      expect(mockDataLayer[0].data.traffic?.customProperties?.appId).toBeUndefined();
     });
 
     it('should treat empty string appId as unset', () => {
@@ -663,50 +698,67 @@ describe('instrumentation utilities', () => {
     });
 
     it('should persist appId across multiple events', () => {
-      setInstrumentationAppId('persistent-app-789');
-      
+      setInstrumentationAppId(VALID_APP_ID_9);
+
       // Multiple different event types should all include the same appId
       logClickEvent('test.click.widget')();
       logActionEvent({ eid: 'test.action.widget', action: 'hover' })();
       logImpressionEvent('test.impression.widget')();
 
       expect(mockDataLayer).toHaveLength(3);
-      expect(mockDataLayer[0].data.traffic?.customProperties?.appId).toBe('persistent-app-789');
-      expect(mockDataLayer[1].data.custom_properties?.appId).toBe('persistent-app-789');
-      expect(mockDataLayer[2].data.custom_properties?.appId).toBe('persistent-app-789');
+      expect(mockDataLayer[0].data.traffic?.customProperties?.appId).toBe(VALID_APP_ID_9);
+      expect(mockDataLayer[1].data.custom_properties?.appId).toBe(VALID_APP_ID_9);
+      expect(mockDataLayer[2].data.custom_properties?.appId).toBe(VALID_APP_ID_9);
+    });
+
+    it('should use module appId when customProperties appId is not exactly 10 chars', () => {
+      setInstrumentationAppId(VALID_APP_ID_10);
+
+      const uuidLike = '550e8400-e29b-41d4-a716-446655440000';
+      logImpressionEvent('test.invalidCaller.widget', {
+        appId: uuidLike,
+        otherProp: 'kept',
+      })();
+
+      expect(mockDataLayer).toHaveLength(1);
+      expect(mockDataLayer[0].data.custom_properties).toEqual({
+        otherProp: 'kept',
+        appId: VALID_APP_ID_10,
+      });
+      expect(logger.warn).not.toHaveBeenCalled();
     });
 
     it('should warn when caller appId differs from currentAppId', () => {
-      setInstrumentationAppId('current-app-123');
+      setInstrumentationAppId(VALID_APP_ID_11);
 
       logImpressionEvent('test.warning.widget', {
         userId: 'user456',
-        appId: 'caller-app-789',
+        appId: VALID_APP_ID_12,
       })();
 
       expect(mockDataLayer).toHaveLength(1);
       expect(mockDataLayer[0].data.custom_properties).toEqual({
         userId: 'user456',
-        appId: 'current-app-123',
+        appId: VALID_APP_ID_11,
       });
 
       expect(logger.warn).toHaveBeenCalledWith(
         'instrumentation.mergeCustomProperties.conflict',
         expect.objectContaining({
           message: 'appId in customProperties differs from currentAppId; using currentAppId',
-          callerAppId: 'caller-app-789',
-          currentAppId: 'current-app-123',
+          callerAppId: VALID_APP_ID_12,
+          currentAppId: VALID_APP_ID_11,
         })
       );
     });
 
     it('should not warn when caller appId matches currentAppId', () => {
-      setInstrumentationAppId('same-app');
+      setInstrumentationAppId(VALID_APP_ID_13);
 
-      logClickEvent('test.section.widget', { appId: 'same-app' })();
+      logClickEvent('test.section.widget', { appId: VALID_APP_ID_13 })();
 
       expect(mockDataLayer).toHaveLength(1);
-      expect(mockDataLayer[0].data.traffic?.customProperties).toEqual({ appId: 'same-app' });
+      expect(mockDataLayer[0].data.traffic?.customProperties).toEqual({ appId: VALID_APP_ID_13 });
       expect(logger.warn).not.toHaveBeenCalled();
     });
 
@@ -716,14 +768,14 @@ describe('instrumentation utilities', () => {
       delete (global as any).window;
 
       // Should not crash and should not set appId
-      setInstrumentationAppId('server-app-123');
+      setInstrumentationAppId(VALID_APP_ID_14);
 
       // Should warn about server-side usage
       expect(logger.warn).toHaveBeenCalledWith(
         'instrumentation.setAppId.server-side',
         expect.objectContaining({
           message: 'setInstrumentationAppId called on server - this may cause cross-request state leakage',
-          appId: 'server-app-123'
+          appId: VALID_APP_ID_14
         })
       );
 
