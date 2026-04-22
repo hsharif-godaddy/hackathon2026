@@ -7,6 +7,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+
+	"github.com/airo-ai-builder/local-control-plane/internal/projectenv"
 )
 
 // DBCredentials holds MySQL database credentials from provisioning.
@@ -224,14 +226,14 @@ func (t *TemplateSetup) writeConfigFiles(basePath, appID string, dbCreds *DBCred
 		},
 	}
 
-	// Add OAuth credentials if available in environment
-	if clientID := os.Getenv("GODADDY_OAUTH_CLIENT_ID"); clientID != "" {
+	// Add OAuth credentials if available in process env or project env files
+	if clientID := projectenv.Resolve("GODADDY_OAUTH_CLIENT_ID"); clientID != "" {
 		config["GODADDY_OAUTH_CLIENT_ID"] = map[string]any{
 			"SYSTEM_MANAGED": true,
 			"VALUE":          clientID,
 		}
 	}
-	if clientSecret := os.Getenv("GODADDY_OAUTH_CLIENT_SECRET"); clientSecret != "" {
+	if clientSecret := projectenv.Resolve("GODADDY_OAUTH_CLIENT_SECRET"); clientSecret != "" {
 		config["GODADDY_OAUTH_CLIENT_SECRET"] = map[string]any{
 			"SYSTEM_MANAGED": true,
 			"VALUE":          clientSecret,

@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/airo-ai-builder/local-control-plane/internal/projectenv"
 	"github.com/airo-ai-builder/local-control-plane/internal/store"
 )
 
@@ -249,7 +250,7 @@ func generatePreviewEnvironment(app *store.App) map[string]string {
 		env["DEV_SUPERVISOR_AGENTS_BASE_URL"] = agentsBaseURL
 	}
 
-	if v := os.Getenv("GODADDY_API_BASE_URL"); v != "" {
+	if v := projectenv.Resolve("GODADDY_API_BASE_URL"); v != "" {
 		env["GODADDY_API_BASE_URL"] = v
 	}
 

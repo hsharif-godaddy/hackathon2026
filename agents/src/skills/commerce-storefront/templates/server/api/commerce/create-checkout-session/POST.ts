@@ -163,6 +163,9 @@ interface GraphQLCheckoutResponse {
 			id: string;
 			storeId: string;
 			url: string;
+			draftOrder?: {
+				id: string;
+			} | null;
 		};
 	};
 	errors?: Array<{
@@ -256,7 +259,14 @@ async function getAccessToken(): Promise<string> {
 async function createCheckoutSession(
 	accessToken: string,
 	params: CreateCheckoutSessionRequest,
-): Promise<{ id: string; storeId: string; url: string }> {
+): Promise<{
+	id: string;
+	storeId: string;
+	url: string;
+	draftOrder?: {
+		id: string;
+	} | null;
+}> {
 	const config = getCommerceConfigCached();
 	const checkoutApiBaseUrl = config.checkoutApiBaseUrl;
 
@@ -300,6 +310,9 @@ async function createCheckoutSession(
 					storeId
           businessId
 					url
+					draftOrder {
+					  id
+					}
 				}
 			}
 		`,
@@ -400,6 +413,7 @@ export default async function handler(req: Request, res: Response) {
 			checkoutSessionId: checkoutSession.id,
 			checkoutUrl: checkoutSession.url,
 			storeId: checkoutSession.storeId,
+			draftOrderId: checkoutSession.draftOrder?.id,
 		});
 	} catch (error) {
 		const errorMessage =

@@ -15,6 +15,7 @@ import { appRepository } from '../../../database/repositories/index.js';
 import { withCommerceAuth, type CommerceAuthResult } from './auth.js';
 import type { SkillToolDefinition, SkillHooks } from '@airo/ai-skills';
 import { ensureViteResolveDedupe } from '../../../services/vite-dedupe.js';
+import { ServerManagementTool } from '../../../tools/server-management-tool.js';
 
 const logger = Logger.create({ component: 'commerce.skill' });
 
@@ -33,6 +34,96 @@ type CommerceManageLinks = {
   catalogUrl: string;
 };
 
+type CommerceStoreOwnerIdentity = {
+  firstName: string;
+  lastName: string;
+  email: string;
+};
+
+type CommerceStorePreference = 'existing' | 'new';
+
+type CommerceStoreSummary = {
+  storeId: string;
+  storeName?: string;
+  businessId?: string;
+  businessName?: string;
+};
+
+type CommerceStoreSummaryResponse = {
+  businesses?: Array<{
+    businessId?: string;
+    legalName?: string;
+    stores?: Array<{
+      storeId?: string;
+      displayName?: string;
+    }>;
+  }>;
+};
+
+type CommerceStoreReferenceInput = {
+  storeId?: string;
+  storeUrl?: string;
+};
+
+type SetupStoreInput = CommerceStoreReferenceInput & {
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  storeName?: string;
+  storePreference?: CommerceStorePreference;
+};
+
+type FetchCatalogInput = CommerceStoreReferenceInput & {
+  query?: string;
+  after?: string;
+  first?: number;
+};
+
+type CommerceToolContext = {
+  metadata?: {
+    appId?: string;
+  };
+  socketId?: string;
+};
+
+const PLACEHOLDER_OWNER_EMAILS = new Set([
+  'dev@example.com',
+  'developer@example.com',
+  'mock@example.com',
+  'unknown@example.com',
+  'user@example.com',
+]);
+
+const DISALLOWED_OWNER_EMAIL_DOMAINS = new Set([
+  'airoapp.ai',
+]);
+
+const PLACEHOLDER_OWNER_FULL_NAMES = new Set([
+  'dev user',
+  'developer user',
+  'mock user',
+  'unknown',
+  'unknown user',
+]);
+
+const SUSPICIOUS_OWNER_EMAIL_LOCAL_PARTS = new Set([
+  'admin',
+  'hello',
+  'info',
+  'noreply',
+  'no-reply',
+  'support',
+]);
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const REQUIRED_OWNER_IDENTITY_FIELDS = ['firstName', 'lastName', 'email'] as const;
+
+const setupStoreInFlight = new Map<string, Promise<unknown>>();
+
+function getAppIdFromContext(context?: CommerceToolContext): string | undefined {
+  return context?.metadata?.appId;
+}
+
 function buildManageLinks(storeId: string): CommerceManageLinks {
   return {
     homeUrl: godaddy.getStoreManagementUrl(storeId),
@@ -48,6 +139,489 @@ function buildDashboardLinksMarkdown(manageLinks: CommerceManageLinks): string {
     `- Orders: ${manageLinks.ordersUrl}`,
     `- Catalog: ${manageLinks.catalogUrl}`,
   ].join('\n');
+}
+
+function normalizeNonEmptyString(value: unknown): string | undefined {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function buildSetupStoreInFlightKey(appId: string, input: SetupStoreInput): string {
+  const explicitStoreId = getExplicitStoreId(input);
+
+  return JSON.stringify({
+    appId,
+    explicitStoreId,
+    requestedStoreReference:
+      explicitStoreId ? undefined : normalizeNonEmptyString(input.storeId) || normalizeNonEmptyString(input.storeUrl),
+    storePreference: input.storePreference,
+    storeName: normalizeNonEmptyString(input.storeName),
+    firstName: normalizeNonEmptyString(input.firstName),
+    lastName: normalizeNonEmptyString(input.lastName),
+    email: normalizeNonEmptyString(input.email)?.toLowerCase(),
+  });
+}
+
+function containsNonAscii(value: string | undefined): boolean {
+  if (!value) {
+    return false;
+  }
+
+  for (let i = 0; i < value.length; i += 1) {
+    if (value.charCodeAt(i) > 0x7f) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function isDuplicateOnboardingConflict(error: unknown): boolean {
+  const message = getErrorMessage(error).toLowerCase();
+
+  return (
+    message.includes('commerce onboarding api error (409)') ||
+    message.includes('duplicated request was detected')
+  );
+}
+
+function isRetryableOnboardingServiceError(error: unknown): boolean {
+  const message = getErrorMessage(error).toLowerCase();
+
+  return (
+    /commerce onboarding api error \((429|500|502|503|504)\)/.test(message) ||
+    message.includes('external_service_error') ||
+    message.includes('service unavailable')
+  );
+}
+
+function extractStoreIdFromStoreUrl(value: string | undefined): string | undefined {
+  const normalized = normalizeNonEmptyString(value);
+  if (!normalized) {
+    return undefined;
+  }
+
+  try {
+    const parsed = new URL(normalized);
+    return normalizeNonEmptyString(parsed.searchParams.get('storeId'));
+  } catch {
+    const match = normalized.match(/[?&]storeId=([^&#]+)/i);
+    if (!match?.[1]) {
+      return undefined;
+    }
+
+    try {
+      return normalizeNonEmptyString(decodeURIComponent(match[1]));
+    } catch {
+      return normalizeNonEmptyString(match[1]);
+    }
+  }
+}
+
+function isLikelyStoreName(value: string | undefined): boolean {
+  const normalized = normalizeNonEmptyString(value);
+  if (!normalized) {
+    return false;
+  }
+
+  if (extractStoreIdFromStoreUrl(normalized)) {
+    return false;
+  }
+
+  if (UUID_PATTERN.test(normalized)) {
+    return false;
+  }
+
+  return /\s/.test(normalized) || /[A-Z]/.test(normalized) || /[^A-Za-z0-9_-]/.test(normalized);
+}
+
+function getExplicitStoreId(input: CommerceStoreReferenceInput): string | undefined {
+  const normalizedStoreId = normalizeNonEmptyString(input.storeId);
+  const extractedStoreId = extractStoreIdFromStoreUrl(normalizedStoreId);
+  if (extractedStoreId) {
+    return extractedStoreId;
+  }
+
+  if (normalizedStoreId && !isLikelyStoreName(normalizedStoreId)) {
+    return normalizedStoreId;
+  }
+
+  return extractStoreIdFromStoreUrl(input.storeUrl);
+}
+
+function buildFetchCatalogStoreResolutionError(providedReference?: string): string {
+  if (providedReference) {
+    return 'commerce__fetch_catalog could not resolve a Commerce store ID from the provided store reference. Pass the storeId returned by commerce__setup_store or a Commerce Home storeUrl instead of the business/store name.';
+  }
+
+  return 'commerce__fetch_catalog needs a Commerce store ID from commerce__setup_store or a Commerce Home storeUrl.';
+}
+
+function getCommerceStoresFromSummary(summary: CommerceStoreSummaryResponse): CommerceStoreSummary[] {
+  const stores: CommerceStoreSummary[] = [];
+  const seenStoreIds = new Set<string>();
+
+  for (const business of summary.businesses ?? []) {
+    for (const store of business.stores ?? []) {
+      const storeId = normalizeNonEmptyString(store.storeId);
+      if (!storeId || seenStoreIds.has(storeId)) {
+        continue;
+      }
+
+      seenStoreIds.add(storeId);
+      stores.push({
+        storeId,
+        storeName: normalizeNonEmptyString(store.displayName),
+        businessId: normalizeNonEmptyString(business.businessId),
+        businessName: normalizeNonEmptyString(business.legalName),
+      });
+    }
+  }
+
+  return stores;
+}
+
+function findCommerceStoreById(
+  stores: CommerceStoreSummary[],
+  storeId: string | undefined,
+): CommerceStoreSummary | undefined {
+  const normalizedStoreId = normalizeNonEmptyString(storeId);
+  if (!normalizedStoreId) {
+    return undefined;
+  }
+
+  return stores.find((store) => store.storeId === normalizedStoreId);
+}
+
+function findCommerceStoreByName(
+  stores: CommerceStoreSummary[],
+  storeName: string | undefined,
+): CommerceStoreSummary | undefined {
+  const normalizedStoreName = normalizeNonEmptyString(storeName)?.toLowerCase();
+  if (!normalizedStoreName) {
+    return undefined;
+  }
+
+  return stores.find((store) => store.storeName?.toLowerCase() === normalizedStoreName);
+}
+
+function buildStoreChoiceRequiredResult(args: {
+  appId: string;
+  storeId: string;
+  storeName?: string;
+  channelId?: string;
+  message?: string;
+  requestedPreference?: CommerceStorePreference;
+}) {
+  logger.info('commerce.skill.setup_store.choice_required', {
+    appId: args.appId,
+    storeId: args.storeId,
+    requestedPreference: args.requestedPreference,
+  });
+
+  return {
+    storeChoiceRequired: true,
+    storeId: args.storeId,
+    storeName: args.storeName,
+    channelId: args.channelId,
+    manageUrl: godaddy.getStoreManagementUrl(args.storeId),
+    created: false,
+    message:
+      args.message ||
+      'An existing Commerce store was found. Ask the user whether to use the existing store or create a new one before continuing.',
+  };
+}
+
+function buildNoExistingStoreFoundResult(args: {
+  storeName?: string;
+  requestedPreference?: CommerceStorePreference;
+}) {
+  return {
+    noExistingStoreFound: true,
+    requestedPreference: args.requestedPreference,
+    message:
+      'No existing Commerce store was found for this account. Ask the user whether to create a new store instead.',
+    ...(args.storeName && { storeName: args.storeName }),
+  };
+}
+
+function extractCommerceOnboardingApiErrorDetails(error: unknown): {
+  upstreamError: string;
+  upstreamStatusCode?: number;
+  upstreamResponse?: Record<string, unknown>;
+} {
+  const upstreamError = getErrorMessage(error);
+  const result: {
+    upstreamError: string;
+    upstreamStatusCode?: number;
+    upstreamResponse?: Record<string, unknown>;
+  } = { upstreamError };
+
+  const statusMatch = upstreamError.match(/commerce onboarding api error \((\d+)\):/i);
+  if (statusMatch?.[1]) {
+    const parsedStatus = Number(statusMatch[1]);
+    if (Number.isFinite(parsedStatus)) {
+      result.upstreamStatusCode = parsedStatus;
+    }
+  }
+
+  const jsonMatch = upstreamError.match(/:\s*(\{.*\})$/s);
+  if (jsonMatch?.[1]) {
+    try {
+      const parsed = JSON.parse(jsonMatch[1]);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        result.upstreamResponse = parsed as Record<string, unknown>;
+      }
+    } catch {
+      // Keep raw upstreamError only when the response body is not valid JSON.
+    }
+  }
+
+  return result;
+}
+
+function buildRetryableOnboardingServiceErrorResult(args: {
+  storeName?: string;
+  retryAfterSeconds?: number;
+  error: unknown;
+}) {
+  return {
+    onboardingServiceUnavailable: true,
+    retryAfterSeconds: args.retryAfterSeconds ?? 10,
+    message:
+      'Commerce store setup is temporarily unavailable because an upstream onboarding dependency returned Service Unavailable. Wait a moment and retry commerce__setup_store.',
+    ...extractCommerceOnboardingApiErrorDetails(args.error),
+    ...(args.storeName && { storeName: args.storeName }),
+  };
+}
+
+async function ensureStoreLocation(args: {
+  appId: string;
+  storeId: string;
+  accessToken: string;
+}): Promise<string | undefined> {
+  let locationId: string | undefined;
+
+  try {
+    const locResponse = await godaddy.getLocations({ storeId: args.storeId }, args.accessToken);
+    if (locResponse.success) {
+      const firstLocation = locResponse.data.locations.edges[0]?.node;
+      if (firstLocation) {
+        locationId = firstLocation.id;
+      }
+    }
+
+    if (!locationId) {
+      const createResponse = await godaddy.createLocation(
+        {
+          storeId: args.storeId,
+          location: {
+            label: 'Default',
+            name: 'default',
+            status: 'ACTIVE',
+            address: { addressLine1: 'Default', countryCode: 'US' },
+          },
+        },
+        args.accessToken,
+      );
+
+      if (createResponse.success) {
+        locationId = createResponse.data.createLocation.id;
+      }
+    }
+  } catch (err) {
+    logger.warn('commerce.skill.setup_store.existing_location.failed', {
+      appId: args.appId,
+      storeId: args.storeId,
+      error: getErrorMessage(err),
+    });
+  }
+
+  return locationId;
+}
+
+async function buildExistingStoreSetupResult(args: {
+  appId: string;
+  storeId: string;
+  channelId?: string;
+  accessToken: string;
+  enablePayments: boolean;
+}): Promise<{
+  storeId: string;
+  channelId?: string;
+  manageUrl: string;
+  created: false;
+  locationId?: string;
+  errors?: string[];
+}> {
+  const errors: string[] = [];
+  const enablementTasks: Promise<unknown>[] = [
+    godaddy.enableCatalogV2({ storeId: args.storeId }, args.accessToken),
+  ];
+
+  if (args.enablePayments) {
+    enablementTasks.push(godaddy.enableGoDaddyPaymentsApplication({ storeId: args.storeId }, args.accessToken));
+  }
+
+  const enablementResults = await Promise.allSettled(enablementTasks);
+  const catalogResult = enablementResults[0];
+  const paymentsResult = args.enablePayments ? enablementResults[1] : undefined;
+
+  if (catalogResult?.status === 'rejected') {
+    logger.error('commerce.skill.setup_store.catalog_v2.failed', {
+      appId: args.appId,
+      storeId: args.storeId,
+      error: getErrorMessage(catalogResult.reason),
+    });
+    errors.push('catalog_v2_enablement_failed');
+  }
+
+  if (paymentsResult?.status === 'rejected') {
+    throw paymentsResult.reason;
+  }
+
+  const locationId = await ensureStoreLocation({
+    appId: args.appId,
+    storeId: args.storeId,
+    accessToken: args.accessToken,
+  });
+
+  return {
+    storeId: args.storeId,
+    channelId: args.channelId,
+    manageUrl: godaddy.getStoreManagementUrl(args.storeId),
+    created: false,
+    ...(locationId && { locationId }),
+    ...(errors.length > 0 && { errors }),
+  };
+}
+
+function isPlaceholderOwnerIdentity(firstName: string, lastName: string): boolean {
+  const normalizedFirstName = firstName.trim().toLowerCase();
+  const normalizedLastName = lastName.trim().toLowerCase();
+  const normalizedFullName = `${normalizedFirstName} ${normalizedLastName}`.trim();
+
+  return (
+    PLACEHOLDER_OWNER_FULL_NAMES.has(normalizedFullName) ||
+    normalizedFirstName === 'unknown' ||
+    normalizedLastName === 'unknown'
+  );
+}
+
+function isPlaceholderOwnerEmail(value: string): boolean {
+  return PLACEHOLDER_OWNER_EMAILS.has(value.trim().toLowerCase());
+}
+
+function getEmailDomain(value: string): string | undefined {
+  const [, domain] = value.trim().toLowerCase().split('@');
+  return domain || undefined;
+}
+
+function getEmailLocalPart(value: string): string | undefined {
+  const [localPart] = value.trim().toLowerCase().split('@');
+  return localPart || undefined;
+}
+
+function isDisallowedOwnerEmailDomain(value: string): boolean {
+  const domain = getEmailDomain(value);
+  return !!domain && DISALLOWED_OWNER_EMAIL_DOMAINS.has(domain);
+}
+
+function tokenizeIdentityWords(value: string): string[] {
+  return value
+    .trim()
+    .toLowerCase()
+    .split(/[^a-z0-9]+/g)
+    .filter(Boolean);
+}
+
+function isOwnerIdentityDerivedFromStoreName(
+  identity: Partial<CommerceStoreOwnerIdentity>,
+  storeName: string | undefined,
+): boolean {
+  const firstName = normalizeNonEmptyString(identity.firstName);
+  const lastName = normalizeNonEmptyString(identity.lastName);
+
+  if (!firstName || !lastName || !storeName) {
+    return false;
+  }
+
+  const storeNameTokens = new Set(tokenizeIdentityWords(storeName));
+  const firstNameTokens = tokenizeIdentityWords(firstName);
+  const lastNameTokens = tokenizeIdentityWords(lastName);
+
+  if (firstNameTokens.length !== 1 || lastNameTokens.length !== 1) {
+    return false;
+  }
+
+  return (
+    storeNameTokens.has(firstNameTokens[0] as string) &&
+    storeNameTokens.has(lastNameTokens[0] as string)
+  );
+}
+
+function getMissingOwnerIdentityFields(
+  input: { firstName?: string; lastName?: string; email?: string },
+): Array<(typeof REQUIRED_OWNER_IDENTITY_FIELDS)[number]> {
+  return REQUIRED_OWNER_IDENTITY_FIELDS.filter((field) => !normalizeNonEmptyString(input[field]));
+}
+
+function parseExplicitStoreOwnerIdentity(
+  input: { firstName?: string; lastName?: string; email?: string; storeName?: string },
+  appId: string,
+): CommerceStoreOwnerIdentity | undefined {
+  const firstName = normalizeNonEmptyString(input.firstName);
+  const lastName = normalizeNonEmptyString(input.lastName);
+  const email = normalizeNonEmptyString(input.email);
+
+  if (!firstName || !lastName || !email) {
+    return undefined;
+  }
+
+  if (
+    isPlaceholderOwnerIdentity(firstName, lastName) ||
+    isPlaceholderOwnerEmail(email) ||
+    isDisallowedOwnerEmailDomain(email)
+  ) {
+    return undefined;
+  }
+
+  const emailLocalPart = getEmailLocalPart(email);
+  if (
+    emailLocalPart &&
+    SUSPICIOUS_OWNER_EMAIL_LOCAL_PARTS.has(emailLocalPart) &&
+    isOwnerIdentityDerivedFromStoreName({ firstName, lastName }, input.storeName)
+  ) {
+    logger.warn('commerce.skill.setup_store.owner_identity.suspicious_explicit', {
+      appId,
+      hasStoreName: !!normalizeNonEmptyString(input.storeName),
+      emailDomain: getEmailDomain(email),
+      emailLocalPart,
+    });
+    return undefined;
+  }
+
+  return { firstName, lastName, email };
+}
+
+function requiresManualPaymentsSetup(args: {
+  firstName: string;
+  lastName: string;
+  storeName?: string;
+}): boolean {
+  return (
+    containsNonAscii(args.firstName) ||
+    containsNonAscii(args.lastName) ||
+    containsNonAscii(normalizeNonEmptyString(args.storeName))
+  );
 }
 
 function withManageLinks(
@@ -239,193 +813,344 @@ function generateSkusFromAttributes(args: {
 export const setupStoreTool: SkillToolDefinition = {
   name: 'setup_store',
   description:
-    'Set up a GoDaddy Commerce store. Checks for an existing store, creates one if needed, enables Catalog V2 and GoDaddy Payments. Returns storeId, channelId, and management URL.',
+    'Set up a GoDaddy Commerce store. Checks for an existing store, creates one if needed, and returns storeId plus management URLs, and channelId when it is available from onboarding. If an existing store is found and no storePreference is provided, the tool returns storeChoiceRequired so the user can choose between the existing store and creating a new one. Commerce accounts can have multiple stores—when storePreference is "new", this tool will create an additional store (it does not assume a one-store-per-account limit). If the user already provided a Commerce Home URL or Store ID, pass storeUrl or storeId to use that existing store directly. Explicit store references must belong to the authenticated customer. Only require firstName, lastName, and email when creating a new store. Never invent firstName, lastName, or email, and never derive them from storeName. If owner identity is unavailable, the tool returns needsOwnerIdentity instead of creating a store. If onboarding names contain non-ASCII characters, automatic payments setup may be skipped and the user will need to finish it in Commerce Home.',
   parameters: z.object({
-    firstName: z.string().optional().describe('First name of the store owner (required if no existing store)'),
-    lastName: z.string().optional().describe('Last name of the store owner (required if no existing store)'),
-    email: z.string().optional().describe('Email address of the store owner (required if no existing store)'),
-    storeName: z.string().optional().describe('Optional store name'),
+    firstName: z
+      .string()
+      .trim()
+      .min(1)
+      .optional()
+      .describe('First name of the store owner. Required for first-time store creation. Do not infer it from storeName.'),
+    lastName: z
+      .string()
+      .trim()
+      .min(1)
+      .optional()
+      .describe('Last name of the store owner. Required for first-time store creation. Do not infer it from storeName.'),
+    email: z
+      .string()
+      .trim()
+      .email()
+      .optional()
+      .describe('Email address of the store owner. Required for first-time store creation. Do not synthesize fallback addresses like noreply@airoapp.ai.'),
+    storeName: z.string().trim().min(1).optional().describe('Optional store name'),
+    storePreference: z.enum(['existing', 'new']).optional().describe('Use "existing" to reuse a discovered store, "new" to create a new one. If omitted and an existing store is found, the tool returns storeChoiceRequired.'),
+    storeId: z.string().trim().min(1).optional().describe('Optional existing Commerce store ID to link directly. Use this when the user already shared their Store ID.'),
+    storeUrl: z.string().trim().url().optional().describe('Optional Commerce Home store URL. The tool extracts storeId from the URL and reuses that store directly.'),
   }),
   execute: async (
-    input: { firstName?: string; lastName?: string; email?: string; storeName?: string },
-    context?: any,
+    input: SetupStoreInput,
+    context?: CommerceToolContext,
   ) => {
-    const appId = context?.metadata?.appId as string | undefined;
+    const appId = getAppIdFromContext(context);
 
     if (!appId) {
       return { error: 'App ID is required. Pass context.metadata.appId.' };
     }
 
-    const authResult = await withCommerceAuth(appId, async (accessToken, customerId) => {
-      // Check for existing store
-      const summary = (await godaddy.getStoreSummary({ customerId }, accessToken)) as {
-        storeId?: string;
-        channelId?: string;
-      };
+    const inFlightKey = buildSetupStoreInFlightKey(appId, input);
+    const inFlight = setupStoreInFlight.get(inFlightKey);
+    if (inFlight) {
+      logger.info('commerce.skill.setup_store.coalesced', { appId });
+      return await inFlight;
+    }
 
-      if (summary.storeId) {
-        logger.info('commerce.skill.setup_store.existing', {
-          appId,
-          storeId: summary.storeId,
-        });
+    const executionPromise = (async () => {
+      const authResult = await withCommerceAuth(appId, async (accessToken, customerId) => {
+        const summary = (await godaddy.getStoreSummary({ customerId }, accessToken)) as CommerceStoreSummaryResponse;
+        const existingStores = getCommerceStoresFromSummary(summary);
+        const discoveredStore = existingStores[0];
+        const explicitStoreId = getExplicitStoreId(input);
 
-        // Enable GoDaddy Payments for existing stores (idempotent, non-fatal)
-        try {
-          await godaddy.enableGoDaddyPaymentsApplication({ storeId: summary.storeId }, accessToken);
-        } catch (err) {
-          logger.warn('commerce.skill.setup_store.existing_payments.failed', {
+        if (explicitStoreId) {
+          const explicitStore = findCommerceStoreById(existingStores, explicitStoreId);
+          if (!explicitStore) {
+            return {
+              error:
+                'The provided Commerce store was not found for the authenticated account. Pass a storeId or Commerce Home storeUrl that belongs to this customer.',
+            };
+          }
+
+          logger.info('commerce.skill.setup_store.explicit_store', {
             appId,
-            storeId: summary.storeId,
-            error: err instanceof Error ? err.message : String(err),
+            storeId: explicitStore.storeId,
+            providedStoreUrl: !!normalizeNonEmptyString(input.storeUrl),
+          });
+
+          return buildExistingStoreSetupResult({
+            appId,
+            storeId: explicitStore.storeId,
+            accessToken,
+            enablePayments: true,
           });
         }
 
-        // Ensure the store has a location so the agent can stock inventory
+        if (discoveredStore && input.storePreference !== 'new') {
+          if (input.storePreference !== 'existing') {
+            return buildStoreChoiceRequiredResult({
+              appId,
+              storeId: discoveredStore.storeId,
+              storeName: discoveredStore.storeName,
+            });
+          }
+
+          logger.info('commerce.skill.setup_store.existing', {
+            appId,
+            storeId: discoveredStore.storeId,
+          });
+
+          return buildExistingStoreSetupResult({
+            appId,
+            storeId: discoveredStore.storeId,
+            accessToken,
+            enablePayments: true,
+          });
+        }
+
+        if (discoveredStore && input.storePreference === 'new') {
+          logger.info('commerce.skill.setup_store.new_store_requested_with_existing', {
+            appId,
+            existingStoreId: discoveredStore.storeId,
+          });
+        }
+
+        if (input.storePreference === 'existing') {
+          return buildNoExistingStoreFoundResult({
+            storeName: normalizeNonEmptyString(input.storeName),
+            requestedPreference: input.storePreference,
+          });
+        }
+
+        const ownerIdentity = parseExplicitStoreOwnerIdentity(input, appId);
+
+        // Validate required fields for store creation
+        if (!ownerIdentity) {
+          const missingFields = getMissingOwnerIdentityFields(input);
+          const message = missingFields.length > 0
+            ? `Ask the user for ${missingFields.join(', ')} before retrying commerce__setup_store.`
+            : 'Ask the user to provide a real firstName, lastName, and email before retrying commerce__setup_store.';
+
+          return {
+            needsOwnerIdentity: true,
+            missingFields,
+            message,
+            storeName: normalizeNonEmptyString(input.storeName),
+          };
+        }
+
+        const paymentsManualSetupRequired = requiresManualPaymentsSetup({
+          firstName: ownerIdentity.firstName,
+          lastName: ownerIdentity.lastName,
+          storeName: input.storeName,
+        });
+
+        let onboardResult;
+        try {
+          onboardResult = await godaddy.onboardApplication(
+            {
+              appId,
+              customerId,
+              storeName: normalizeNonEmptyString(input.storeName),
+              firstName: ownerIdentity.firstName,
+              lastName: ownerIdentity.lastName,
+              email: ownerIdentity.email,
+              includePaymentsProduct: !paymentsManualSetupRequired,
+            },
+            accessToken,
+          );
+        } catch (error) {
+          if (isDuplicateOnboardingConflict(error)) {
+            logger.warn('commerce.skill.setup_store.onboarding.duplicate_conflict', {
+              appId,
+              error: getErrorMessage(error),
+            });
+
+            const recoveredSummary = (await godaddy.getStoreSummary({ customerId }, accessToken)) as CommerceStoreSummaryResponse;
+            const recoveredStores = getCommerceStoresFromSummary(recoveredSummary);
+            const recoveredStoreByName =
+              findCommerceStoreByName(recoveredStores, normalizeNonEmptyString(input.storeName));
+            const existingStoreIds = new Set(existingStores.map((store) => store.storeId));
+            const newlyDiscoveredStores = recoveredStores.filter((store) => !existingStoreIds.has(store.storeId));
+            const recoveredStore =
+              recoveredStoreByName ||
+              (newlyDiscoveredStores.length === 1 ? newlyDiscoveredStores[0] : undefined);
+
+            if (!recoveredStore) {
+              return {
+                storeProvisioningInProgress: true,
+                retryAfterSeconds: 5,
+                message:
+                  'A Commerce store setup request is already in progress. Wait a moment and retry commerce__setup_store instead of starting a new onboarding request.',
+                storeName: normalizeNonEmptyString(input.storeName),
+              };
+            }
+
+            logger.info('commerce.skill.setup_store.onboarding.duplicate_conflict.recovered', {
+              appId,
+              storeId: recoveredStore.storeId,
+            });
+
+            const warnings: string[] = [];
+            if (paymentsManualSetupRequired) {
+              warnings.push('payments_manual_setup_required');
+            }
+
+            const recoveredResult = await buildExistingStoreSetupResult({
+              appId,
+              storeId: recoveredStore.storeId,
+              accessToken,
+              enablePayments: !paymentsManualSetupRequired,
+            });
+
+            return {
+              ...recoveredResult,
+              recoveredFromDuplicateConflict: true,
+              paymentsAutoEnabled: !paymentsManualSetupRequired,
+              ...(paymentsManualSetupRequired && {
+                paymentsManualSetupRequired: true,
+                paymentsSetupReason: 'non_ascii_onboarding_name',
+                paymentsSetupMessage:
+                  'Automatic GoDaddy Payments setup was skipped because the onboarding API rejects non-ASCII characters in owner or business names. Finish payments setup in Commerce Home.',
+              }),
+              ...(warnings.length > 0 && { warnings }),
+            };
+          }
+
+          if (isRetryableOnboardingServiceError(error)) {
+            logger.warn('commerce.skill.setup_store.onboarding.service_unavailable', {
+              appId,
+              error: getErrorMessage(error),
+            });
+
+            return buildRetryableOnboardingServiceErrorResult({
+              storeName: normalizeNonEmptyString(input.storeName),
+              error,
+            });
+          }
+
+          throw error;
+        }
+
+        const storeId = onboardResult.metadata.storeId;
+        const channelId = onboardResult.metadata.channelId;
+
+        if (!storeId) {
+          throw new Error('Store onboarding succeeded but no storeId was returned');
+        }
+
+        const errors: string[] = [];
+        const warnings: string[] = [];
+
+        if (paymentsManualSetupRequired) {
+          warnings.push('payments_manual_setup_required');
+          logger.warn('commerce.skill.setup_store.payments.manual_setup_required', {
+            appId,
+            storeId,
+            reason: 'non_ascii_onboarding_name',
+          });
+        }
+
+        // Enable Catalog V2 (non-fatal) and GoDaddy Payments (required when auto-payments onboarding is allowed)
+        const enablementTasks = [
+          godaddy.enableCatalogV2({ storeId }, accessToken),
+        ];
+
+        if (!paymentsManualSetupRequired) {
+          enablementTasks.push(godaddy.enableGoDaddyPaymentsApplication({ storeId }, accessToken));
+        }
+
+        const enablementResults = await Promise.allSettled(enablementTasks);
+        const catalogResult = enablementResults[0];
+        const paymentsResult = !paymentsManualSetupRequired ? enablementResults[1] : undefined;
+
+        if (catalogResult && catalogResult.status === 'rejected') {
+          logger.error('commerce.skill.setup_store.catalog_v2.failed', {
+            appId,
+            storeId,
+            error: catalogResult.reason instanceof Error ? catalogResult.reason.message : String(catalogResult.reason),
+          });
+          errors.push('catalog_v2_enablement_failed');
+        }
+
+        if (paymentsResult?.status === 'rejected') {
+          throw paymentsResult.reason;
+        }
+
+        // Create default location so products can have inventory (non-fatal)
         let locationId: string | undefined;
         try {
-          const locResponse = await godaddy.getLocations({ storeId: summary.storeId }, accessToken);
-          if (locResponse.success) {
-            const firstLocation = locResponse.data.locations.edges[0]?.node;
-            if (firstLocation) {
-              locationId = firstLocation.id;
-            }
-          }
-          // No locations — create a default one, same as new store path
-          if (!locationId) {
-            const createResponse = await godaddy.createLocation(
-              {
-                storeId: summary.storeId,
-                location: {
-                  label: 'Default',
-                  name: 'default',
-                  status: 'ACTIVE',
-                  address: { addressLine1: 'Default', countryCode: 'US' },
-                },
+          const locationResponse = await godaddy.createLocation(
+            {
+              storeId,
+              location: {
+                label: 'Default',
+                name: 'default',
+                status: 'ACTIVE',
+                address: { addressLine1: 'Default', countryCode: 'US' },
               },
-              accessToken,
-            );
-            if (createResponse.success) {
-              locationId = createResponse.data.createLocation.id;
-            }
+            },
+            accessToken,
+          );
+          if (locationResponse.success) {
+            locationId = locationResponse.data.createLocation.id;
+          } else {
+            errors.push('default_location_failed');
           }
         } catch (err) {
-          logger.warn('commerce.skill.setup_store.existing_location.failed', {
+          logger.error('commerce.skill.setup_store.default_location.failed', {
             appId,
-            storeId: summary.storeId,
+            storeId,
             error: err instanceof Error ? err.message : String(err),
           });
-        }
-
-        return {
-          storeId: summary.storeId,
-          channelId: summary.channelId,
-          manageUrl: godaddy.getStoreManagementUrl(summary.storeId),
-          created: false,
-          ...(locationId && { locationId }),
-        };
-      }
-
-      // No existing store — tell the AI what info is needed to create one
-      if (!input.firstName || !input.lastName || !input.email) {
-        const missing = [
-          ...(!input.firstName ? ['firstName'] : []),
-          ...(!input.lastName ? ['lastName'] : []),
-          ...(!input.email ? ['email'] : []),
-        ];
-        return {
-          needsInfo: true,
-          message: 'firstName, lastName, and email are required to create a new store',
-          missingFields: missing,
-        };
-      }
-
-      // Create new store
-      const onboardResult = await godaddy.onboardApplication(
-        {
-          appId,
-          customerId,
-          storeName: input.storeName,
-          firstName: input.firstName,
-          lastName: input.lastName,
-          email: input.email,
-        },
-        accessToken,
-      );
-
-      const storeId = onboardResult.metadata.storeId;
-      const channelId = onboardResult.metadata.channelId;
-
-      if (!storeId) {
-        throw new Error('Store onboarding succeeded but no storeId was returned');
-      }
-
-      const errors: string[] = [];
-
-      // Enable Catalog V2 (non-fatal) and GoDaddy Payments (required) concurrently
-      const [catalogResult, paymentsResult] = await Promise.allSettled([
-        godaddy.enableCatalogV2({ storeId }, accessToken),
-        godaddy.enableGoDaddyPaymentsApplication({ storeId }, accessToken),
-      ]);
-
-      if (catalogResult.status === 'rejected') {
-        logger.error('commerce.skill.setup_store.catalog_v2.failed', {
-          appId,
-          storeId,
-          error: catalogResult.reason instanceof Error ? catalogResult.reason.message : String(catalogResult.reason),
-        });
-        errors.push('catalog_v2_enablement_failed');
-      }
-
-      if (paymentsResult.status === 'rejected') {
-        throw paymentsResult.reason;
-      }
-
-      // Create default location so products can have inventory (non-fatal)
-      let locationId: string | undefined;
-      try {
-        const locationResponse = await godaddy.createLocation(
-          {
-            storeId,
-            location: {
-              label: 'Default',
-              name: 'default',
-              status: 'ACTIVE',
-              address: { addressLine1: 'Default', countryCode: 'US' },
-            },
-          },
-          accessToken,
-        );
-        if (locationResponse.success) {
-          locationId = locationResponse.data.createLocation.id;
-        } else {
           errors.push('default_location_failed');
         }
-      } catch (err) {
-        logger.error('commerce.skill.setup_store.default_location.failed', {
-          appId,
+
+        logger.info('commerce.skill.setup_store.created', { appId, storeId });
+
+        return {
           storeId,
-          error: err instanceof Error ? err.message : String(err),
-        });
-        errors.push('default_location_failed');
+          channelId,
+          manageUrl: godaddy.getStoreManagementUrl(storeId),
+          created: true,
+          paymentsAutoEnabled: !paymentsManualSetupRequired,
+          ...(paymentsManualSetupRequired && {
+            paymentsManualSetupRequired: true,
+            paymentsSetupReason: 'non_ascii_onboarding_name',
+            paymentsSetupMessage:
+              'Automatic GoDaddy Payments setup was skipped because the onboarding API rejects non-ASCII characters in owner or business names. Finish payments setup in Commerce Home.',
+          }),
+          ...(locationId && { locationId }),
+          ...(errors.length > 0 && { errors }),
+          ...(warnings.length > 0 && { warnings }),
+        };
+      });
+
+      const resolvedStoreId =
+        'success' in authResult && typeof (authResult as any).data?.storeId === 'string'
+          ? (authResult as any).data.storeId
+          : undefined;
+
+      if (!('success' in authResult) || authResult.success !== true) {
+        return authResult;
       }
 
-      logger.info('commerce.skill.setup_store.created', { appId, storeId });
+      const authData = (authResult.data ?? {}) as { error?: string; [key: string]: unknown };
+      if (typeof authData.error === 'string') {
+        return { error: authData.error };
+      }
 
-      return {
-        storeId,
-        channelId,
-        manageUrl: godaddy.getStoreManagementUrl(storeId),
-        created: true,
-        ...(locationId && { locationId }),
-        ...(errors.length > 0 && { errors }),
-      };
-    });
+      return withManageLinks(authResult, resolvedStoreId);
+    })();
 
-    const resolvedStoreId =
-      'success' in authResult && typeof (authResult as any).data?.storeId === 'string'
-        ? (authResult as any).data.storeId
-        : undefined;
-    return withManageLinks(authResult, resolvedStoreId);
+    setupStoreInFlight.set(inFlightKey, executionPromise);
+
+    try {
+      return await executionPromise;
+    } finally {
+      if (setupStoreInFlight.get(inFlightKey) === executionPromise) {
+        setupStoreInFlight.delete(inFlightKey);
+      }
+    }
   },
 };
 
@@ -436,27 +1161,54 @@ export const setupStoreTool: SkillToolDefinition = {
 export const fetchCatalogTool: SkillToolDefinition = {
   name: 'fetch_catalog',
   description:
-    'Fetch products from a GoDaddy Commerce store catalog. Returns one page of products with pagination metadata. Use the `after` cursor to fetch subsequent pages.',
+    'Fetch products from a GoDaddy Commerce store catalog. Accepts a canonical storeId or Commerce Home storeUrl, and can fall back to the authenticated account store when a real store ID is not provided. Returns one page of products with pagination metadata. Use the `after` cursor to fetch subsequent pages.',
   parameters: z.object({
-    storeId: z.string().describe('The store ID to fetch products from'),
+    storeId: z.string().trim().optional().describe('Optional Commerce store ID. Prefer the storeId returned by commerce__setup_store.'),
+    storeUrl: z.string().trim().url().optional().describe('Optional Commerce Home store URL. The tool extracts storeId from the URL before fetching products.'),
     query: z.string().optional().describe('Optional search filter for product labels'),
     after: z.string().optional().describe('Pagination cursor from a previous response to fetch the next page'),
     first: z.coerce.number().int().min(1).max(100).optional().describe('Number of products per page (default 50, max 100)'),
   }),
-  execute: async (
-    input: { storeId: string; query?: string; after?: string; first?: number },
-    context?: any,
-  ) => {
-    const appId = context?.metadata?.appId as string | undefined;
+  execute: async (input: FetchCatalogInput, context?: CommerceToolContext) => {
+    const appId = getAppIdFromContext(context);
 
     if (!appId) {
       return { error: 'App ID is required. Pass context.metadata.appId.' };
     }
 
-    const authResult = await withCommerceAuth(appId, async (accessToken) => {
+    const authResult = await withCommerceAuth(appId, async (accessToken, customerId) => {
+      const providedStoreId = normalizeNonEmptyString(input.storeId);
+      const providedStoreReference = providedStoreId || normalizeNonEmptyString(input.storeUrl);
+      const explicitStoreId = getExplicitStoreId(input);
+      const providedNameLikeStoreId = isLikelyStoreName(providedStoreId);
+      const shouldResolveFromSummary = !explicitStoreId || providedNameLikeStoreId;
+      let resolvedStoreId = explicitStoreId;
+
+      if (shouldResolveFromSummary) {
+        const summary = (await godaddy.getStoreSummary({ customerId }, accessToken)) as CommerceStoreSummaryResponse;
+        const summaryStores = getCommerceStoresFromSummary(summary);
+        const resolvedSummaryStore =
+          findCommerceStoreByName(summaryStores, providedNameLikeStoreId ? providedStoreId : undefined) ||
+          summaryStores[0];
+
+        if (resolvedSummaryStore) {
+          logger.info('commerce.skill.fetch_catalog.store_id.resolved_from_summary', {
+            appId,
+            providedStoreId: normalizeNonEmptyString(input.storeId),
+            providedStoreUrl: !!normalizeNonEmptyString(input.storeUrl),
+            resolvedStoreId: resolvedSummaryStore.storeId,
+          });
+          resolvedStoreId = resolvedSummaryStore.storeId;
+        }
+      }
+
+      if (!resolvedStoreId || (providedNameLikeStoreId && resolvedStoreId === providedStoreId)) {
+        return { error: buildFetchCatalogStoreResolutionError(providedStoreReference) };
+      }
+
       const response: GetSkuGroupsResponse = await godaddy.getSkuGroups(
         {
-          storeId: input.storeId,
+          storeId: resolvedStoreId,
           first: input.first ?? 50,
           after: input.after,
           query: input.query,
@@ -495,12 +1247,13 @@ export const fetchCatalogTool: SkillToolDefinition = {
 
       logger.info('commerce.skill.fetch_catalog.complete', {
         appId,
-        storeId: input.storeId,
+        storeId: resolvedStoreId,
         productCount: products.length,
         totalCount,
       });
 
       return {
+        storeId: resolvedStoreId,
         products,
         totalCount,
         hasMore: pageInfo.hasNextPage,
@@ -508,7 +1261,21 @@ export const fetchCatalogTool: SkillToolDefinition = {
       };
     });
 
-    return withManageLinks(authResult, input.storeId);
+    if (!('success' in authResult) || authResult.success !== true) {
+      return authResult;
+    }
+
+    const {
+      storeId: resolvedStoreId,
+      error,
+      ...responseData
+    } = (authResult.data ?? {}) as { storeId?: string; error?: string; [key: string]: unknown };
+
+    if (error) {
+      return { error };
+    }
+
+    return withManageLinks({ success: true, data: responseData }, resolvedStoreId);
   },
 };
 
@@ -629,6 +1396,32 @@ export const installStorefrontTool: SkillToolDefinition = {
 
     await writeFile(envPath, envContent);
 
+    let serverRestarted = false;
+    let serverRestartError: string | undefined;
+    try {
+      const serverTool = new ServerManagementTool();
+      const restartResult = await serverTool.restartServer(
+        { reason: 'commerce__install_storefront updated Commerce env vars' },
+        appId,
+      );
+      serverRestarted = restartResult.success;
+      if (!restartResult.success) {
+        serverRestartError = restartResult.error || restartResult.message;
+        logger.warn('commerce.skill.install_storefront.server_restart_failed', {
+          appId,
+          storeId: input.storeId,
+          error: serverRestartError,
+        });
+      }
+    } catch (error) {
+      serverRestartError = error instanceof Error ? error.message : String(error);
+      logger.warn('commerce.skill.install_storefront.server_restart_failed', {
+        appId,
+        storeId: input.storeId,
+        error: serverRestartError,
+      });
+    }
+
     if (!clientId || !apiHost || !apiBaseUrl) {
       logger.warn('commerce.skill.install_storefront.missing_optional_vars', {
         appId,
@@ -651,6 +1444,8 @@ export const installStorefrontTool: SkillToolDefinition = {
       storeId: input.storeId,
       channelId: input.channelId,
       envVarsWritten,
+      serverRestarted,
+      ...(serverRestartError && { serverRestartError }),
       manageUrl: godaddy.getStoreManagementUrl(input.storeId),
       manageLinks,
       dashboardLinks: buildDashboardLinksMarkdown(manageLinks),
@@ -1015,8 +1810,8 @@ export const manageInventoryTool: SkillToolDefinition = {
     delta: z.coerce.number().int().optional().describe('Inventory adjustment delta (positive to add, negative to remove) — required for adjustInventory'),
     quantity: z.coerce.number().int().optional().describe('Absolute inventory quantity to set — required for stockInventory'),
   }),
-  execute: async (input: any, context?: any) => {
-    const appId = context?.metadata?.appId as string | undefined;
+  execute: async (input: any, context?: CommerceToolContext) => {
+    const appId = getAppIdFromContext(context);
 
     if (!appId) {
       return { error: 'App ID is required. Pass context.metadata.appId.' };
@@ -1211,8 +2006,8 @@ export const manageMediaTool: SkillToolDefinition = {
     mediaObjects: z.any().optional().describe('Array of media objects [{url, type, label?, name?}] for addMedia'),
     mediaObjectIds: z.any().optional().describe('Array of media object IDs to remove for removeMedia'),
   }),
-  execute: async (input: any, context?: any) => {
-    const appId = context?.metadata?.appId as string | undefined;
+  execute: async (input: any, context?: CommerceToolContext) => {
+    const appId = getAppIdFromContext(context);
 
     if (!appId) {
       return { error: 'App ID is required. Pass context.metadata.appId.' };
@@ -1279,9 +2074,9 @@ export const getOrdersTool: SkillToolDefinition = {
   }),
   execute: async (
     input: { storeId: string; orderId?: string; pageSize?: number; pageToken?: string },
-    context?: any,
+    context?: CommerceToolContext,
   ) => {
-    const appId = context?.metadata?.appId as string | undefined;
+    const appId = getAppIdFromContext(context);
 
     if (!appId) {
       return { error: 'App ID is required. Pass context.metadata.appId.' };

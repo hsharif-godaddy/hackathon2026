@@ -114,6 +114,8 @@ export interface CreateCheckoutSessionResponse {
 	checkoutUrl?: string;
 	/** Store ID (if successful) */
 	storeId?: string;
+	/** Draft order ID created or used for checkout (if available) */
+	draftOrderId?: string;
 	/** Error message (if failed) */
 	error?: string;
 }

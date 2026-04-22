@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/airo-ai-builder/local-control-plane/internal/projectenv"
 	"github.com/airo-ai-builder/local-control-plane/internal/setup"
 	"github.com/gorilla/mux"
 )
@@ -174,10 +175,10 @@ func (s *Server) seedSystemSecrets(appID string, dbCreds *setup.DBCredentials) {
 		"DATABASE": string(dbValue),
 	}
 
-	if clientID := os.Getenv("GODADDY_OAUTH_CLIENT_ID"); clientID != "" {
+	if clientID := projectenv.Resolve("GODADDY_OAUTH_CLIENT_ID"); clientID != "" {
 		secrets["GODADDY_OAUTH_CLIENT_ID"] = clientID
 	}
-	if clientSecret := os.Getenv("GODADDY_OAUTH_CLIENT_SECRET"); clientSecret != "" {
+	if clientSecret := projectenv.Resolve("GODADDY_OAUTH_CLIENT_SECRET"); clientSecret != "" {
 		secrets["GODADDY_OAUTH_CLIENT_SECRET"] = clientSecret
 	}
 

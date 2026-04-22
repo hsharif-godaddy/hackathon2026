@@ -1,11 +1,39 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+function createStoreSummaryResponse(
+  stores: Array<{
+    storeId: string;
+    displayName?: string;
+    businessId?: string;
+    legalName?: string;
+  }> = [],
+) {
+  if (stores.length === 0) {
+    return { businesses: [] };
+  }
+
+  return {
+    businesses: [
+      {
+        businessId: stores[0]?.businessId ?? 'business-1',
+        legalName: stores[0]?.legalName ?? 'Acme Business',
+        stores: stores.map((store) => ({
+          storeId: store.storeId,
+          displayName: store.displayName ?? store.storeId,
+        })),
+      },
+    ],
+  };
+}
+
 const mockGetSkuGroups = vi.fn();
+const mockGetStoreSummary = vi.fn();
 const mockWithCommerceAuth = vi.fn();
 
 vi.mock('../../../../lib/godaddy-commerce.js', () => ({
   GoDaddyCommerce: vi.fn().mockImplementation(() => ({
     getSkuGroups: mockGetSkuGroups,
+    getStoreSummary: mockGetStoreSummary,
     getStoreManagementUrl: vi.fn().mockReturnValue('https://manage.godaddy.com/store/store-1'),
     getOrdersManagementUrl: vi.fn().mockReturnValue('https://manage.godaddy.com/orders'),
     getCatalogManagementUrl: vi.fn().mockReturnValue('https://manage.godaddy.com/catalog'),
@@ -233,6 +261,142 @@ describe('commerce__fetch_catalog', () => {
       expect.objectContaining({ query: 'shirt' }),
       'token-abc',
     );
+  });
+
+  it('should extract storeId from a Commerce Home store URL', async () => {
+    mockWithCommerceAuth.mockImplementation(async (_appId: string, fn: (token: string, customerId: string) => Promise<unknown>) => {
+      const result = await fn('token-abc', 'customer-1');
+      return { success: true, data: result };
+    });
+    mockGetSkuGroups.mockResolvedValue({
+      success: true,
+      data: {
+        skuGroups: {
+          edges: [],
+          pageInfo: { hasNextPage: false },
+          totalCount: 0,
+        },
+      },
+    });
+
+    await fetchCatalogTool.execute(
+      { storeUrl: 'https://spa.commerce.godaddy.com/home/store?storeId=store-from-url' },
+      context,
+    );
+
+    expect(mockGetSkuGroups).toHaveBeenCalledWith(
+      expect.objectContaining({ storeId: 'store-from-url' }),
+      'token-abc',
+    );
+    expect(mockGetStoreSummary).not.toHaveBeenCalled();
+  });
+
+  it('should resolve storeId from store summary when no explicit store reference is provided', async () => {
+    mockWithCommerceAuth.mockImplementation(async (_appId: string, fn: (token: string, customerId: string) => Promise<unknown>) => {
+      const result = await fn('token-abc', 'customer-1');
+      return { success: true, data: result };
+    });
+    mockGetStoreSummary.mockResolvedValue(createStoreSummaryResponse([
+      { storeId: 'store-summary', displayName: 'Summary Store' },
+    ]));
+    mockGetSkuGroups.mockResolvedValue({
+      success: true,
+      data: {
+        skuGroups: {
+          edges: [],
+          pageInfo: { hasNextPage: false },
+          totalCount: 0,
+        },
+      },
+    });
+
+    await fetchCatalogTool.execute(
+      {} as any,
+      context,
+    );
+
+    expect(mockGetStoreSummary).toHaveBeenCalledWith({ customerId: 'customer-1' }, 'token-abc');
+    expect(mockGetSkuGroups).toHaveBeenCalledWith(
+      expect.objectContaining({ storeId: 'store-summary' }),
+      'token-abc',
+    );
+  });
+
+  it('should resolve a name-like storeId from store summary before fetching catalog', async () => {
+    mockWithCommerceAuth.mockImplementation(async (_appId: string, fn: (token: string, customerId: string) => Promise<unknown>) => {
+      const result = await fn('token-abc', 'customer-1');
+      return { success: true, data: result };
+    });
+    mockGetStoreSummary.mockResolvedValue(createStoreSummaryResponse([
+      { storeId: 'store-summary', displayName: 'The Hawkins Consulting Firm' },
+    ]));
+    mockGetSkuGroups.mockResolvedValue({
+      success: true,
+      data: {
+        skuGroups: {
+          edges: [],
+          pageInfo: { hasNextPage: false },
+          totalCount: 0,
+        },
+      },
+    });
+
+    await fetchCatalogTool.execute(
+      { storeId: 'The Hawkins Consulting Firm' },
+      context,
+    );
+
+    expect(mockGetStoreSummary).toHaveBeenCalledWith({ customerId: 'customer-1' }, 'token-abc');
+    expect(mockGetSkuGroups).toHaveBeenCalledWith(
+      expect.objectContaining({ storeId: 'store-summary' }),
+      'token-abc',
+    );
+  });
+
+  it('should treat an uppercase UUID storeId as an explicit store ID', async () => {
+    const explicitStoreId = 'A1B2C3D4-E5F6-7890-ABCD-EF1234567890';
+
+    mockWithCommerceAuth.mockImplementation(async (_appId: string, fn: (token: string, customerId: string) => Promise<unknown>) => {
+      const result = await fn('token-abc', 'customer-1');
+      return { success: true, data: result };
+    });
+    mockGetSkuGroups.mockResolvedValue({
+      success: true,
+      data: {
+        skuGroups: {
+          edges: [],
+          pageInfo: { hasNextPage: false },
+          totalCount: 0,
+        },
+      },
+    });
+
+    await fetchCatalogTool.execute(
+      { storeId: explicitStoreId },
+      context,
+    );
+
+    expect(mockGetStoreSummary).not.toHaveBeenCalled();
+    expect(mockGetSkuGroups).toHaveBeenCalledWith(
+      expect.objectContaining({ storeId: explicitStoreId }),
+      'token-abc',
+    );
+  });
+
+  it('should return a clear error when no canonical storeId can be resolved', async () => {
+    mockWithCommerceAuth.mockImplementation(async (_appId: string, fn: (token: string, customerId: string) => Promise<unknown>) => {
+      const result = await fn('token-abc', 'customer-1');
+      return { success: true, data: result };
+    });
+    mockGetStoreSummary.mockResolvedValue(createStoreSummaryResponse());
+
+    const result = await fetchCatalogTool.execute(
+      { storeId: 'The Hawkins Consulting Firm' },
+      context,
+    );
+
+    expect(result.error).toContain('could not resolve a Commerce store ID');
+    expect(mockGetSkuGroups).not.toHaveBeenCalled();
   });
 
   it('should return needsAuth when not authenticated', async () => {

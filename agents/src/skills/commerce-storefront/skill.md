@@ -103,7 +103,7 @@ Preferred: if available in current flow, use `commerce__install_storefront` from
 Otherwise, add/update `.env` manually:
 
 ```bash
-VITE_GODADDY_CLIENT_ID=<from task-local config.json GODADDY_OAUTH_CLIENT_ID.VALUE>
+VITE_GODADDY_CLIENT_ID=<from /alloc/config.json GODADDY_OAUTH_CLIENT_ID.VALUE>
 VITE_GODADDY_API_HOST=<hostname from GODADDY_API_BASE_URL, no https://>
 GODADDY_API_BASE_URL=https://<same-host-as-VITE_GODADDY_API_HOST>
 VITE_GODADDY_STORE_ID=<storeId from commerce__setup_store>
@@ -142,10 +142,12 @@ import './styles/globals.css';
 import '@godaddy/react/styles-tailwind.css';
 ```
 
-2. Wrap app with `StorefrontProvider` **inside** existing `QueryClientProvider`.
-3. Do not create a second QueryClientProvider.
+This matches the official `@godaddy/react` examples in `godaddy/javascript/examples/nextjs`, and the package exports `./styles-tailwind.css` from `@godaddy/react`.
 
-`StorefrontProvider` calls `useQueryClient()`, so it must be under the QueryClient context.
+2. If the app already has a shared `QueryClientProvider`, keep using that single client and pass it into `GoDaddyProvider` via `StorefrontProvider`.
+3. Do not create a second **QueryClient instance** just for storefront.
+
+The official examples show `GoDaddyProvider` can own the React Query provider itself. In this template integration, `StorefrontProvider` uses the app's existing query client (`useQueryClient()`) and passes it through to `GoDaddyProvider`, so it must stay under the existing `QueryClientProvider`.
 
 ---
 

@@ -9,6 +9,7 @@
 
 import AskQuestionToolRenderer from './AskQuestionToolRenderer'
 import ColorSchemeToolRenderer from './ColorSchemeToolRenderer'
+import CommerceInstallStorefrontToolRenderer from './CommerceInstallStorefrontToolRenderer'
 import CommerceToolRenderer from './CommerceToolRenderer'
 import CssColorToolRenderer from './CssColorToolRenderer'
 import CssSuggestToolRenderer from './CssSuggestToolRenderer'
@@ -57,6 +58,14 @@ export type ToolRendererProps = DefaultToolRendererProps
 export const toolRendererRegistry = {
   askQuestion: AskQuestionToolRenderer,
   colorScheme: ColorSchemeToolRenderer,
+  commerce__setup_store: CommerceToolRenderer,
+  commerce__fetch_catalog: CommerceToolRenderer,
+  commerce__install_storefront: CommerceInstallStorefrontToolRenderer,
+  commerce__manage_products: CommerceToolRenderer,
+  commerce__manage_inventory: CommerceToolRenderer,
+  commerce__manage_pricing: CommerceToolRenderer,
+  commerce__manage_media: CommerceToolRenderer,
+  commerce__get_orders: CommerceToolRenderer,
   cssColor: CssColorToolRenderer,
   cssSuggest: CssSuggestToolRenderer,
   'custom-domain__domainPurchase': DomainToolRenderer,
@@ -69,7 +78,7 @@ export const toolRendererRegistry = {
   readFile: ReadFileToolRenderer,
   fileEdit: FileEditToolRenderer,
   str_replace_based_edit_tool: TextEditorToolRenderer,
-  textEditor: TextEditorToolRenderer,  // Legacy name for old chat history
+  textEditor: TextEditorToolRenderer, // Legacy name for old chat history
   terminalCommand: TerminalCommandToolRenderer,
   media: MediaSlotToolRenderer,
   mediaSearch: MediaSearchToolRenderer,
@@ -88,14 +97,6 @@ export const toolRendererRegistry = {
   'media-image__generate_image': ImageGeneratorToolRenderer,
   'media-image__edit_image': ImageGeneratorToolRenderer,
   'media-video__generate_video': VideoGeneratorToolRenderer,
-  commerce__setup_store: CommerceToolRenderer,
-  commerce__fetch_catalog: CommerceToolRenderer,
-  commerce__install_storefront: CommerceToolRenderer,
-  commerce__manage_products: CommerceToolRenderer,
-  commerce__manage_inventory: CommerceToolRenderer,
-  commerce__manage_pricing: CommerceToolRenderer,
-  commerce__manage_media: CommerceToolRenderer,
-  commerce__get_orders: CommerceToolRenderer,
 } as const
 
 /**
@@ -132,6 +133,7 @@ export function getToolRenderer(toolName: string) {
 export {
   AskQuestionToolRenderer,
   ColorSchemeToolRenderer,
+  CommerceInstallStorefrontToolRenderer,
   CommerceToolRenderer,
   CssColorToolRenderer,
   CssSuggestToolRenderer,

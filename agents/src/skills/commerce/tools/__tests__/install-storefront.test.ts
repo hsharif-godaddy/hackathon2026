@@ -5,6 +5,7 @@ const mockWriteFile = vi.fn();
 const mockWithCommerceAuth = vi.fn();
 const mockGetNomadAllocConfig = vi.fn();
 const mockFindById = vi.fn();
+const mockRestartServer = vi.fn();
 
 vi.mock('fs/promises', () => ({
   readFile: mockReadFile,
@@ -33,6 +34,12 @@ vi.mock('../auth.js', () => ({
   withCommerceAuth: mockWithCommerceAuth,
 }));
 
+vi.mock('../../../../tools/server-management-tool.js', () => ({
+  ServerManagementTool: vi.fn().mockImplementation(() => ({
+    restartServer: mockRestartServer,
+  })),
+}));
+
 const { installStorefrontTool } = await import('../index.js');
 
 describe('commerce__install_storefront', () => {
@@ -45,6 +52,7 @@ describe('commerce__install_storefront', () => {
     mockReadFile.mockResolvedValue('EXISTING_VAR=foo\n');
     mockWriteFile.mockResolvedValue(undefined);
     mockFindById.mockResolvedValue({ path: '/tmp/airo-app-builder/site-1/preview' });
+    mockRestartServer.mockResolvedValue({ success: true, message: 'Server restarted successfully' });
   });
 
   it('should have correct tool definition shape', () => {
@@ -158,8 +166,28 @@ describe('commerce__install_storefront', () => {
     expect(writtenContent.match(/VITE_GODADDY_CLIENT_ID/g)?.length).toBe(1);
   });
 
-  it('should return storeId and channelId in result', async () => {
+  it('should restart the app server after writing storefront env vars', async () => {
     mockGetNomadAllocConfig.mockReturnValue(null);
+
+    const result = await installStorefrontTool.execute(
+      { storeId: 'store-1', channelId: 'ch-1' },
+      context,
+    );
+
+    expect(mockRestartServer).toHaveBeenCalledWith(
+      { reason: 'commerce__install_storefront updated Commerce env vars' },
+      'app-123',
+    );
+    expect(result.serverRestarted).toBe(true);
+  });
+
+  it('should return restart errors without failing env wiring', async () => {
+    mockGetNomadAllocConfig.mockReturnValue(null);
+    mockRestartServer.mockResolvedValue({
+      success: false,
+      message: 'Failed to restart server',
+      error: 'Dev supervisor not available for this app',
+    });
 
     const result = await installStorefrontTool.execute(
       { storeId: 'store-1', channelId: 'ch-1' },
@@ -168,6 +196,8 @@ describe('commerce__install_storefront', () => {
 
     expect(result.storeId).toBe('store-1');
     expect(result.channelId).toBe('ch-1');
+    expect(result.serverRestarted).toBe(false);
+    expect(result.serverRestartError).toBe('Dev supervisor not available for this app');
   });
 
   it('should fail if appId is missing', async () => {

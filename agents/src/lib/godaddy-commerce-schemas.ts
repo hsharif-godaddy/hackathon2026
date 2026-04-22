@@ -9,10 +9,20 @@ import { z } from 'zod';
  * the fields our code consumes; extra fields are silently stripped.
  */
 
-export const StoreSummarySchema = z.object({
+const StoreSummaryItemSchema = z.object({
   storeId: z.string().optional(),
-  storeName: z.string().optional(),
-  channelId: z.string().optional(),
+  displayName: z.string().optional(),
+  ventureId: z.string().optional(),
+});
+
+const BusinessSummarySchema = z.object({
+  businessId: z.string().optional(),
+  legalName: z.string().optional(),
+  stores: z.array(StoreSummaryItemSchema).optional(),
+});
+
+export const StoreSummarySchema = z.object({
+  businesses: z.array(BusinessSummarySchema).optional(),
 });
 
 export const OnboardingResponseSchema = z.object({

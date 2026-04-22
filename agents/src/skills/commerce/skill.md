@@ -69,15 +69,24 @@ Do **not** use this skill alone for rendering storefront pages/components. Hand 
 Follow this order for management work:
 
 1. Call `oauthConnect`.
-2. Collect first name, last name, and email if needed for new store creation.
-3. Call `commerce__setup_store` to get `storeId`, `channelId`, and `locationId`.
-4. Call `commerce__fetch_catalog` to inspect existing products.
-5. If catalog is empty and user wants starter data, create **up to 2** relevant starter products.
-6. Ensure each SKU has:
+2. If the user already shared a Commerce Home URL or Store ID, call `commerce__setup_store` with `storeUrl` or `storeId` so the existing store is linked directly.
+3. Otherwise call `commerce__setup_store` once to discover store state.
+   If the tool returns `storeChoiceRequired: true`, stop and ask whether to use the existing store or create a new one. Use `suggestedResponse`. Do not retry `commerce__setup_store` again in the same turn.
+   If the tool returns `needsOwnerIdentity: true`, ask the user for first name, last name, and email, then retry `commerce__setup_store` with `storePreference: "new"`.
+   If the tool returns `noExistingStoreFound: true`, ask for first name, last name, and email, then retry `commerce__setup_store` with `storePreference: "new"`.
+   If the tool returns `storeProvisioningInProgress: true`, tell the user Commerce store setup is still finishing and do not immediately call `commerce__setup_store` again.
+   If the tool returns `paymentsManualSetupRequired: true`, tell the user the store was created but GoDaddy Payments must be finished manually in Commerce Home.
+4. After the user chooses a path, call `commerce__setup_store` with the explicit preference when needed:
+   - `storePreference: "existing"` to reuse the discovered store
+   - `storePreference: "new"` to create a new store
+5. Reuse the resulting `storeId`, `channelId`, and `locationId` for the rest of the flow. Do not call `commerce__setup_store` again in the same flow just to recover `channelId` or re-check an existing store.
+6. Call `commerce__fetch_catalog` to inspect existing products.
+7. If catalog is empty and user wants starter data, create **up to 2** relevant starter products.
+8. Ensure each SKU has:
    - price (`commerce__manage_pricing` if needed)
    - inventory (`commerce__manage_inventory` with `stockInventory`, usually quantity 50)
    - media (`commerce__manage_media`)
-7. If the user wants UI pages/components, then load the appropriate UI skill:
+9. If the user wants UI pages/components, then load the appropriate UI skill:
    - `commerce-storefront` (catalog/cart storefront)
    - `commerce-one-time-payment` (simple buy-now flow)
      </workflow>
@@ -86,6 +95,9 @@ Follow this order for management work:
 Use these tools for Commerce management:
 
 - `commerce__setup_store` — create/reuse store and return `storeId`, `channelId`, `locationId`
+  This is both the store-discovery and store-setup tool. If an existing store is found and no `storePreference` is provided, it returns `storeChoiceRequired` instead of deciding for the user.
+  Pass `storeId` or `storeUrl` when the user already shared an existing Commerce store link.
+  Only require `firstName`, `lastName`, and `email` when creating a new store. Never synthesize them from the business name.
 - `commerce__fetch_catalog` — list products/SKUs with pagination
 - `commerce__manage_products` — create/update/delete products and update SKUs
 - `commerce__manage_inventory` — locations + stock updates
@@ -173,6 +185,8 @@ After commerce operations, share dashboard links returned by tools:
 Use `suggestedResponse` for confirmation points:
 
 - after `oauthConnect`: "I've connected my GoDaddy account"
+- when `storeChoiceRequired` is returned: "I found your existing Commerce store. Do you want to use it or create a new one?"
+- before `setup_store` when owner identity is missing: "I need your first name, last name, and email address to create your Commerce store."
 - after `setup_store`: "My store is ready, let's manage products"
 - after product/inventory/media updates: "Products look good" / "I'd like to make changes"
 - if UI is requested: "Let's build the storefront UI" or "Let's set up one-time checkout UI"

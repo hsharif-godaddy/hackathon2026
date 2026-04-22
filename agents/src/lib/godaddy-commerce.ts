@@ -342,7 +342,15 @@ export class GoDaddyCommerce {
   }
 
   public async onboardApplication(
-    args: { appId: string; customerId: string; storeName?: string | undefined; email: string; firstName: string; lastName: string },
+    args: {
+      appId: string;
+      customerId: string;
+      storeName?: string | undefined;
+      email: string;
+      firstName: string;
+      lastName: string;
+      includePaymentsProduct?: boolean;
+    },
     accessToken: string
   ) {
     const baseUrl = this.requireBaseUrl();
@@ -377,11 +385,13 @@ export class GoDaddyCommerce {
         appId: args.appId,
       },
       intent: 'CREATE_BUSINESS',
-      products: [
-        {
-          name: 'PAYMENTS',
-        },
-      ],
+      ...(args.includePaymentsProduct !== false && {
+        products: [
+          {
+            name: 'PAYMENTS',
+          },
+        ],
+      }),
     };
 
     const result = await fetchWithRetry(url, {

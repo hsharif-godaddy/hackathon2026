@@ -10,14 +10,24 @@ describe('Commerce API Response Schemas', () => {
   describe('StoreSummarySchema', () => {
     it('should parse valid store summary', () => {
       const result = StoreSummarySchema.safeParse({
-        storeId: 'store-123',
-        storeName: 'My Store',
+        businesses: [
+          {
+            businessId: 'business-123',
+            legalName: 'My Business',
+            stores: [
+              {
+                storeId: 'store-123',
+                displayName: 'My Store',
+              },
+            ],
+          },
+        ],
       });
       expect(result.success).toBe(true);
     });
 
-    it('should accept missing storeId (no store found case)', () => {
-      const result = StoreSummarySchema.safeParse({ storeName: 'test' });
+    it('should accept missing businesses (no store found case)', () => {
+      const result = StoreSummarySchema.safeParse({});
       expect(result.success).toBe(true);
     });
   });

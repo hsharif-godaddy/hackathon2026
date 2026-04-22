@@ -228,9 +228,10 @@ export class AuthService {
     appId: string;
     provider?: string;
     redirectUri?: string;
+    forceRefresh?: boolean;
   }): Promise<{ accessToken: string; expiresAt: number; sub?: string }> {
     const config = getConfig();
-    const { appId, provider = 'godaddy', redirectUri = config.redirectUri } = params;
+    const { appId, provider = 'godaddy', redirectUri = config.redirectUri, forceRefresh = false } = params;
     let scopeKey = OAuthScopes.sort().join(' ');
 
     // Check for valid token in storage
@@ -240,7 +241,7 @@ export class AuthService {
 
     if (record) {
       // Validate that stored token has all requested scopes
-      if (record.expiresAt - Date.now() > 60_000) {
+      if (!forceRefresh && record.expiresAt - Date.now() > 60_000) {
         // Token has required scopes and is not expired
         const stored = TokenStore.findValid({ appId, provider });
         if (stored) {
@@ -267,7 +268,7 @@ export class AuthService {
           );
 
           if (refreshed) {
-            logger.info('auth-service.get-token.refreshed', { appId });
+            logger.info(forceRefresh ? 'auth-service.get-token.force-refreshed' : 'auth-service.get-token.refreshed', { appId });
             return { accessToken: refreshed.accessToken, expiresAt: refreshed.expiresAt, sub: this.parseSubClaim(refreshed.accessToken) };
           }
           // Refresh failed - fall through to new OAuth flow
