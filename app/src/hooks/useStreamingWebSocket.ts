@@ -10,7 +10,6 @@ import { useCallback, useEffect, useRef } from 'react'
 import type { AssetManagerItem } from '@/app/[market]/develop/components/chat/AssetTypes'
 import type { VisualContext } from '@/app/[market]/develop/components/visualContextCapture'
 import { captureVisualContext } from '@/app/[market]/develop/components/visualContextCapture'
-import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
 import {
@@ -58,7 +57,6 @@ import {
   useGrantContext,
   useWebSocketHelpers,
 } from './websocket'
-import { useBudgetUpdate } from './websocket/useBudgetUpdate'
 import {
   clearConversationIdCookie,
   getConversationIdFromCookie,
@@ -146,8 +144,6 @@ export function useStreamingWebSocket() {
     if (!currentAppId) return undefined
     return state.getSite(currentAppId)?.subscription_id
   })
-
-  const { data: isBudgetServiceEnabled = false } = useSwitchboard('app-builder-budget-service')
 
   const t = useTranslations()
 
@@ -293,19 +289,10 @@ export function useStreamingWebSocket() {
   }, [])
 
   // Synchronize grant context with agent via controller interface
-  // Disabled when budget-service flag is ON to avoid unnecessary grant API calls
   useGrantContext({
     controller: controllerRef.current,
     subscriptionId,
     isConnected: webSocketState.connected,
-    enabled: !isBudgetServiceEnabled,
-  })
-
-  // Listen for budget_update WS events and update query cache
-  useBudgetUpdate({
-    controller: controllerRef.current,
-    subscriptionId,
-    enabled: isBudgetServiceEnabled,
   })
 
 

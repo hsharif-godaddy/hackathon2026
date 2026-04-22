@@ -20,6 +20,10 @@ export interface BudgetItem {
   readonly startsAt: string | null
   readonly expiresAt: string | null
   readonly resetInterval: string | null
+  // Next reset timestamp for recurring items (plan-monthly). Null for one-time items.
+  readonly resetsAt?: string | null
+  // Type label from BMS (e.g., 'plan-monthly', 'credit-pack'). Not used in the frontend.
+  readonly label?: string | null
 }
 
 // ── GET /api/v1/budgets/:budgetId ──

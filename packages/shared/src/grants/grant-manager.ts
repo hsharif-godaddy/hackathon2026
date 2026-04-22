@@ -40,11 +40,14 @@ export class GrantManager {
     // Budget exceeded check: creditsSpent >= creditsMax means grant is exhausted
     const hasRemainingCredits = creditsSpent < creditsMax
 
+    // No useBefore means no expiration (always valid from time perspective)
+    const notExpired = !grant.useBefore || new Date(grant.useBefore) > new Date()
+
     return (
       grant.isAvailable &&
       notInFinalState &&
       hasRemainingCredits &&
-      new Date(grant.useBefore) > new Date()
+      notExpired
     )
   }
 
@@ -61,19 +64,26 @@ export class GrantManager {
     const spent = Number(grant.creditsSpent)
     const max = Number(grant.creditsMax)
     if (isNaN(spent) || isNaN(max) || spent >= max) return GrantUnusableReason.Exhausted
-    if (new Date(grant.useBefore) <= new Date()) return GrantUnusableReason.Expired
+    // No useBefore means no expiration
+    if (grant.useBefore && new Date(grant.useBefore) <= new Date()) return GrantUnusableReason.Expired
     return null
   }
 
   /**
    * Select the best grant from a list
-   * Returns first usable grant sorted by useBefore (earliest expiration first)
+   * Returns first usable grant sorted by useBefore (earliest expiration first, no expiration last)
    */
   static selectBestGrant(grants: CreditGrant[]): CreditGrant | null {
     return (
       grants
         .filter((grant) => GrantManager.isGrantUsable(grant))
-        .sort((a, b) => new Date(a.useBefore).getTime() - new Date(b.useBefore).getTime())[0] ??
+        .sort((a, b) => {
+          // Grants without useBefore (no expiration) go last
+          if (!a.useBefore && !b.useBefore) return 0
+          if (!a.useBefore) return 1
+          if (!b.useBefore) return -1
+          return new Date(a.useBefore).getTime() - new Date(b.useBefore).getTime()
+        })[0] ??
       null
     )
   }

@@ -33,6 +33,7 @@ export interface AgentContext {
   useTestBudget?: boolean; // Bypass grants and use test-accounts budget
   budgetServiceEnabled?: boolean; // Use Budget Service flow instead of legacy grants
   subscriptionId?: string; // Subscription ID for Budget Service API calls
+  bmsBudgetId?: string; // BMS budget ID for cost allocation (undefined = cost to GoDaddy)
   enableAssessmentAgent?: boolean; // Enable assessment agent for prompt classification
   enableAssessmentOverride?: boolean; // Apply budget override from assessment (requires enableAssessmentAgent)
   product: ProductType;    // Product type: 'AiroAppBuilder' (default) or 'PaaSNodeJS'
@@ -64,6 +65,7 @@ export function buildAgentContext(raw: Record<string, unknown>): AgentContext {
     useTestBudget: (raw.useTestBudget as boolean) ?? false,
     budgetServiceEnabled: (raw.budgetServiceEnabled as boolean) ?? false,
     subscriptionId: raw.subscriptionId as string | undefined,
+    bmsBudgetId: raw.bmsBudgetId as string | undefined,
     enableAssessmentAgent: (raw.enableAssessmentAgent as boolean) ?? false,
     enableAssessmentOverride: (raw.enableAssessmentOverride as boolean) ?? false,
     product: coerceProductType(raw.product as string | undefined),

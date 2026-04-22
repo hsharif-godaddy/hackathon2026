@@ -1,8 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
+import {
+  BudgetServiceAuthError,
+  BudgetServiceError,
+  BudgetServiceTimeoutError,
+  BudgetServiceUnavailableError,
+} from '@airo/shared/budget';
 
+import { getBudgetServiceClient } from '@/lib/budget-service/client';
+import { adaptBudgetToGrants } from '@/lib/credit-adapter';
 import { type CustomerAuthContext, withCustomerAuth } from '@/lib/customer-auth';
 import { AiroHttpError, AiroMgmtClient } from '@/lib/mgmt-airo';
 import { logger } from '@/lib/request-context';
+import { checkSwitchboardFlag } from '@/lib/switchboard/server';
+import { CreditsSource } from '@/types/credits';
 
 // Force dynamic rendering
 export const dynamic = 'force-dynamic';
@@ -10,8 +20,10 @@ export const dynamic = 'force-dynamic';
 /**
  * GET /api/credits/grants - Get credit grants for a subscription
  *
- * Returns the credit grants (monthly plan and credit packs) for a subscription.
- * Grants are ordered by `useBefore` date to determine which should be used first.
+ * Returns credit grants (monthly plan and credit packs) for a subscription.
+ * When BMS is enabled (flag ON + subscription.bmsBudgetId present + budget client
+ * available), data comes from BMS and is adapted to CreditGrant[] format for
+ * backwards compatibility. Otherwise, data comes from the legacy mgmt-airo grants API.
  *
  * Query Parameters:
  * - subscriptionId: The subscription ID to get grants for (required)
@@ -36,32 +48,126 @@ export const GET = withCustomerAuth(async (
     }
 
     logger.info('credits.grants.api.start', {
-      message: 'Fetching credit grants via API route',
       subscriptionId,
       syncSpend,
     });
 
     const baseUrl = process.env.MGMT_AIRO_BASE_URL || 'https://mgmt.nstk.net';
-    const client = new AiroMgmtClient({ baseUrl, jwt: authContext.jwt });
+    const mgmtClient = new AiroMgmtClient({ baseUrl, jwt: authContext.jwt });
 
-    const grants = await client.getCreditGrants(subscriptionId, syncSpend);
+    // Check if BMS flag is enabled first (avoids subscription fetch on legacy path)
+    const isBudgetFlagEnabled = await checkSwitchboardFlag(
+      'app-builder-budget-service',
+      authContext.jwt,
+      request.headers
+    );
+    const budgetClient = getBudgetServiceClient(request.headers);
+
+    let grants;
+    let source: CreditsSource;
+
+    // Only fetch subscription when BMS path is possible (flag enabled + client available)
+    if (isBudgetFlagEnabled && budgetClient) {
+      const subscription = await mgmtClient.getSubscription(subscriptionId);
+      const bmsBudgetId = subscription.bmsBudgetId;
+
+      if (!bmsBudgetId) {
+        // BMS enabled but subscription has no bmsBudgetId - return empty grants with unavailable source
+        logger.error('credits.grants.api.missingBmsBudgetId', {
+          subscriptionId,
+          reason: 'BMS enabled but subscription has no bmsBudgetId',
+        });
+        return NextResponse.json({
+          success: true,
+          data: [],
+          source: CreditsSource.Unavailable,
+        });
+      }
+
+      // BMS path: fetch from budget service and adapt to CreditGrant[] format
+      logger.info('credits.grants.api.sourceSelection', {
+        subscriptionId,
+        source: 'bms',
+        bmsBudgetId,
+      });
+
+      const budget = await budgetClient.getBudget(bmsBudgetId);
+      grants = adaptBudgetToGrants(budget, subscriptionId);
+      source = CreditsSource.Bms;
+
+      logger.info('credits.grants.api.success', {
+        subscriptionId,
+        source,
+        budgetId: bmsBudgetId,
+        grantCount: grants.length,
+      });
+
+      return NextResponse.json({
+        success: true,
+        data: grants,
+        source,
+      });
+    } else {
+      logger.info('credits.grants.api.sourceSelection', {
+        subscriptionId,
+        source: 'grants',
+        reason: !isBudgetFlagEnabled ? 'flag disabled' : 'no budget client',
+      });
+    }
+
+    // Legacy grants path
+    grants = await mgmtClient.getCreditGrants(subscriptionId, syncSpend);
+    source = CreditsSource.Grants;
 
     logger.info('credits.grants.api.success', {
       subscriptionId,
+      source,
       grantCount: grants.length,
     });
 
     return NextResponse.json({
       success: true,
       data: grants,
+      source,
     });
 
   } catch (error) {
     logger.error('credits.grants.api.error', {
       message: 'Failed to fetch credit grants',
       error: error instanceof Error ? error.message : 'Unknown error',
+      errorType: error instanceof Error ? error.constructor.name : 'Unknown',
     });
 
+    // Handle BMS-specific errors
+    if (error instanceof BudgetServiceAuthError) {
+      return NextResponse.json(
+        { error: 'Budget service authentication failed' },
+        { status: 401 }
+      );
+    }
+
+    if (error instanceof BudgetServiceTimeoutError) {
+      return NextResponse.json(
+        { error: 'Budget service request timed out' },
+        { status: 504 }
+      );
+    }
+
+    if (error instanceof BudgetServiceUnavailableError) {
+      return NextResponse.json(
+        { error: 'Budget service unavailable' },
+        { status: 503 }
+      );
+    }
+
+    if (error instanceof BudgetServiceError) {
+      return NextResponse.json(
+        { error: 'Budget service error' },
+        { status: error.statusCode || 500 }
+      );
+    }
+
+    // Handle mgmt-airo errors
     if (error instanceof AiroHttpError) {
       return NextResponse.json(
         { error: error.status === 404 ? 'No grants found' : 'Failed to fetch credit grants' },

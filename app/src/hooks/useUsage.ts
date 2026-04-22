@@ -2,7 +2,6 @@
 
 import { useMemo } from 'react'
 
-import { useBudgetService } from '@/hooks/useBudgetService'
 import { useCreditGrants } from '@/hooks/useCreditGrants'
 import { useSubscription } from '@/hooks/useSubscription'
 import { WarningLevel } from '@/types/usage'
@@ -17,7 +16,6 @@ const EXCEEDED_THRESHOLD = 100
 export interface UseUsageOptions {
   appId: string | null
   enabled?: boolean
-  isBudgetServiceEnabled?: boolean
   subscriptionId?: string | undefined
 }
 
@@ -41,40 +39,31 @@ function computeWarningLevel(percentage: number): {
   return { warningLevel, isWarningBannerActive }
 }
 
+/**
+ * Hook to compute credit usage percentage and warning levels.
+ *
+ * Data source (BMS vs legacy grants) is determined by the BFF based on
+ * feature flag and subscription.bmsBudgetId. The client always receives
+ * CreditGrant[] format for backwards compatibility.
+ */
 export function useUsage({
   appId: _appId,
   enabled = true,
-  isBudgetServiceEnabled = false,
   subscriptionId: externalSubscriptionId,
 }: UseUsageOptions): UseUsageResult {
   const { data: subscription, isLoading: isSubscriptionLoading } = useSubscription()
   const resolvedSubscriptionId = externalSubscriptionId ?? subscription?.id
 
-  // Gate grants fetch: disabled when budget path active
-  const { data: grants, isLoading: isGrantsDataLoading } = useCreditGrants({
-    subscriptionId: enabled && !isBudgetServiceEnabled ? resolvedSubscriptionId : undefined,
+  const { data: grants, isLoading: isGrantsLoading } = useCreditGrants({
+    subscriptionId: enabled ? resolvedSubscriptionId : undefined,
   })
 
-  // Budget path: React Query deduplicates with other callers
-  const { data: budgetData, isLoading: isBudgetDataLoading } = useBudgetService({
-    subscriptionId: resolvedSubscriptionId,
-    enabled: enabled && isBudgetServiceEnabled,
-  })
+  // Only treat subscription as "missing" if we're relying on useSubscription() to provide it
+  // (i.e., no external subscriptionId was passed)
+  const isSubscriptionMissing =
+    enabled && !isSubscriptionLoading && !resolvedSubscriptionId
 
-  const budgetResult = useMemo(() => {
-    if (!budgetData) return { percentage: 0, warningLevel: WarningLevel.NONE, isWarningBannerActive: false }
-
-    const used = Math.min(budgetData.creditsUsedNumeric, budgetData.creditsTotalNumeric)
-    const percentage = budgetData.creditsTotalNumeric > 0
-      ? (used / budgetData.creditsTotalNumeric) * 100
-      : 0
-
-    return { percentage, ...computeWarningLevel(percentage) }
-  }, [budgetData])
-
-  const isSubscriptionMissing = enabled && !isBudgetServiceEnabled && !isSubscriptionLoading && !subscription
-
-  const grantsResult = useMemo(() => {
+  const result = useMemo(() => {
     const activeGrants = getActiveGrants(grants ?? [])
     const totalCreditsSpent = activeGrants.reduce(
       (sum, g) => sum + getEffectiveCreditsSpent(g.creditsSpent, g.creditsMax),
@@ -88,11 +77,7 @@ export function useUsage({
     return { percentage, ...computeWarningLevel(percentage) }
   }, [grants])
 
-  const isLoading = isBudgetServiceEnabled
-    ? (enabled && (isSubscriptionLoading || isBudgetDataLoading))
-    : (isSubscriptionLoading || isGrantsDataLoading || isSubscriptionMissing)
-
-  const result = isBudgetServiceEnabled ? budgetResult : grantsResult
+  const isLoading = isSubscriptionLoading || isGrantsLoading || isSubscriptionMissing
 
   return {
     percentage: result.percentage,

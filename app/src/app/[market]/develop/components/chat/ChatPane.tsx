@@ -28,7 +28,6 @@ import { ChatTab } from '@/app/[market]/develop/components/types'
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import VersionHistory from '@/app/[market]/develop/components/VersionHistory'
 import { useAuthContext } from '@/components/providers/AuthProvider'
-import { useBudgetService } from '@/hooks/useBudgetService'
 import { useChatTabs } from '@/hooks/useChatTabs'
 import { useCreditGrants } from '@/hooks/useCreditGrants'
 import type { SendMessageOptions } from '@/hooks/useStreamingWebSocket'
@@ -176,18 +175,11 @@ export default function ChatPane({
   const setCurrentAppId = useSetCurrentAppId()
 
   const { data: subscription } = useSubscription()
-  const { data: isBudgetServiceEnabled = false } = useSwitchboard('app-builder-budget-service')
   const { data: areChatPlansEnabled } = useSwitchboard('airo-builder-chat-plans')
 
-  // Gate grants fetch: disabled when budget path active
+  // Unified grants fetch - works for both BMS and legacy paths
   const { data: grants, isFetching: isGrantsFetching } = useCreditGrants({
-    subscriptionId: !isBudgetServiceEnabled ? subscription?.id : undefined,
-  })
-
-  // Budget path: fetch credit status from BFF
-  const { data: budgetData, isFetching: isBudgetFetching } = useBudgetService({
     subscriptionId: subscription?.id,
-    enabled: isBudgetServiceEnabled,
   })
 
   const { authState } = useAuthContext()
@@ -196,15 +188,11 @@ export default function ChatPane({
 
   const isImpersonating = isEmployeeAuthType((authState as any)?.authType)
 
-  // Dual-path credit availability check
-  const hasAvailableCredits = isBudgetServiceEnabled
-    ? budgetData !== undefined && (budgetData.creditsTotalNumeric - budgetData.creditsUsedNumeric) > 0
-    : grants !== undefined && getActiveGrant(grants) !== undefined
+  // Credit availability check using unified grants
+  const hasAvailableCredits = grants !== undefined && getActiveGrant(grants) !== undefined
 
   // Data loaded gate: prevents false "budget exceeded" during fetches
-  const dataLoaded = isBudgetServiceEnabled
-    ? budgetData !== undefined && !isBudgetFetching
-    : grants !== undefined && !isGrantsFetching
+  const dataLoaded = grants !== undefined && !isGrantsFetching
 
   // CRM skip / impersonation sessions always have chat enabled regardless of credits
   const budgetExceeded = !isImpersonating && !hasAvailableCredits && (dataLoaded || budgetExceededFlag)
@@ -213,10 +201,9 @@ export default function ChatPane({
   // Reset dismissal only when credit data is stable and credits are no longer exhausted.
   // Excluding fetching state prevents a background refetch from briefly flipping
   // budgetExceeded=false (via dataLoaded) and resetting a dismissal the user just made.
-  const isCreditFetching = isBudgetServiceEnabled ? isBudgetFetching : isGrantsFetching
   useEffect(() => {
-    if (!budgetExceeded && !isCreditFetching) setIsProactiveBannerDismissed(false)
-  }, [budgetExceeded, isCreditFetching])
+    if (!budgetExceeded && !isGrantsFetching) setIsProactiveBannerDismissed(false)
+  }, [budgetExceeded, isGrantsFetching])
 
   // Only show the proactive banner when budgetExceededFlag is false — the mid-stream
   // case already shows an identical banner inline in the message list.

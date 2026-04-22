@@ -78,22 +78,7 @@ vi.mock('@/stores/useDevelopPageStore', () => ({
 }));
 
 vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: vi.fn((flag: string) => {
-    // Budget service OFF by default so grants-mode tests pass unchanged
-    if (flag === 'app-builder-budget-service') return { data: false, isLoading: false, error: null };
-    return { data: true, isLoading: false, error: null };
-  }),
-}));
-
-vi.mock('@/hooks/useBudgetService', () => ({
-  useBudgetService: vi.fn(() => ({
-    data: undefined,
-    isFetching: false,
-    isLoading: false,
-    isError: false,
-    error: null,
-    refetch: vi.fn(),
-  })),
+  useSwitchboard: vi.fn(() => ({ data: true, isLoading: false, error: null })),
 }));
 
 vi.mock('@/lib/logging', () => ({

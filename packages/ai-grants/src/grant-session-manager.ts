@@ -203,9 +203,13 @@ export class GrantSessionManager {
    * This ensures multiple sockets for the same subscription share grant state.
    */
   setGrants(sessionId: string, grants: CreditGrant[]): void {
-    const sortedGrants = [...grants].sort(
-      (a, b) => new Date(a.useBefore).getTime() - new Date(b.useBefore).getTime()
-    )
+    // Sort by useBefore (earliest first), grants without useBefore go last
+    const sortedGrants = [...grants].sort((a, b) => {
+      if (!a.useBefore && !b.useBefore) return 0
+      if (!a.useBefore) return 1
+      if (!b.useBefore) return -1
+      return new Date(a.useBefore).getTime() - new Date(b.useBefore).getTime()
+    })
 
     const subscriptionId = sortedGrants[0]?.subscriptionId
     if (!subscriptionId) {

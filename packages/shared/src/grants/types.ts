@@ -54,7 +54,8 @@ export interface CreditGrant {
   isAvailable: boolean
   // Optional because API omits this field when null/not set
   finalState?: GrantFinalState | null
-  useBefore: string
+  // Optional - null means no expiration
+  useBefore?: string | null
   consumedAt?: string | null
   createdAt: string
   updatedAt: string

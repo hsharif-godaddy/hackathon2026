@@ -1,7 +1,14 @@
 import { NextRequest } from 'next/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  BudgetServiceAuthError,
+  BudgetServiceError,
+  BudgetServiceTimeoutError,
+  BudgetServiceUnavailableError,
+} from '@airo/shared/budget';
 
 import { type AiroCreditGrant, AiroGrantFinalState, AiroGrantType } from '@/lib/mgmt-airo';
+import { CreditsSource } from '@/types/credits';
 
 // Mock dependencies before importing the route
 vi.mock('@/lib/mgmt-airo');
@@ -14,6 +21,18 @@ vi.mock('@/lib/request-context', () => ({
     warn: vi.fn(),
     error: vi.fn(),
   },
+}));
+vi.mock('@/lib/switchboard/server', () => ({
+  checkSwitchboardFlag: vi.fn().mockResolvedValue(false),
+}));
+vi.mock('@/lib/budget-service/client', () => ({
+  getBudgetServiceClient: vi.fn().mockReturnValue(null),
+}));
+vi.mock('@/utils/getRootDomain', () => ({
+  getRootDomainFromHeaders: vi.fn().mockReturnValue('test-godaddy.com'),
+}));
+vi.mock('@/lib/credit-adapter', () => ({
+  adaptBudgetToGrants: vi.fn(),
 }));
 
 describe('GET /api/credits/grants', () => {
@@ -59,6 +78,10 @@ describe('GET /api/credits/grants', () => {
     // Create mock client
     mockClient = {
       getCreditGrants: vi.fn(),
+      getSubscription: vi.fn().mockResolvedValue({
+        id: 'sub-123',
+        bmsBudgetId: null, // No BMS budget by default - uses grants path
+      }),
     };
 
     // Mock AiroMgmtClient constructor
@@ -172,6 +195,186 @@ describe('GET /api/credits/grants', () => {
 
       expect(response.status).toBe(500);
       expect(data.error).toBe('Failed to fetch credit grants');
+    });
+  });
+
+  describe('BMS path (feature flag ON)', () => {
+    let mockBudgetClient: any;
+    let mockAdaptBudgetToGrants: any;
+    let mockCheckSwitchboardFlag: any;
+    let mockGetBudgetServiceClient: any;
+
+    beforeEach(async () => {
+      // Reset mocks to enable BMS path
+      const { checkSwitchboardFlag } = await import('@/lib/switchboard/server');
+      const { getBudgetServiceClient } = await import('@/lib/budget-service/client');
+      const { adaptBudgetToGrants } = await import('@/lib/credit-adapter');
+
+      mockCheckSwitchboardFlag = vi.mocked(checkSwitchboardFlag);
+      mockGetBudgetServiceClient = vi.mocked(getBudgetServiceClient);
+      mockAdaptBudgetToGrants = vi.mocked(adaptBudgetToGrants);
+
+      mockBudgetClient = {
+        getBudget: vi.fn(),
+      };
+
+      // Enable BMS: flag ON + subscription has bmsBudgetId + client available
+      mockCheckSwitchboardFlag.mockResolvedValue(true);
+      mockGetBudgetServiceClient.mockReturnValue(mockBudgetClient);
+      mockClient.getSubscription.mockResolvedValue({
+        id: 'sub-123',
+        bmsBudgetId: 'budget-uuid-123',
+      });
+    });
+
+    it('should use BMS path when flag enabled and subscription has bmsBudgetId', async () => {
+      const request = new NextRequest('http://localhost/api/credits/grants?subscriptionId=sub-123');
+      const authContext = createAuthContext('jwt-token');
+
+      const mockBudget = {
+        budgetId: 'budget-uuid-123',
+        items: [{ budgetItemId: 'item-1', creditsTotal: '1000', creditsUsed: '500' }],
+      };
+      const mockAdaptedGrants = [
+        { id: 'grant-1', type: AiroGrantType.PlanMonthly, creditsMax: 1000, creditsSpent: 500 },
+      ];
+
+      mockBudgetClient.getBudget.mockResolvedValue(mockBudget);
+      mockAdaptBudgetToGrants.mockReturnValue(mockAdaptedGrants);
+
+      const response = await GET(request, authContext);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.success).toBe(true);
+      expect(data.source).toBe(CreditsSource.Bms);
+      expect(data.data).toEqual(mockAdaptedGrants);
+      // Uses bmsBudgetId from subscription
+      expect(mockBudgetClient.getBudget).toHaveBeenCalledWith('budget-uuid-123');
+      expect(mockAdaptBudgetToGrants).toHaveBeenCalledWith(mockBudget, 'sub-123');
+      // Should NOT call legacy grants API
+      expect(mockClient.getCreditGrants).not.toHaveBeenCalled();
+    });
+
+    it('should return empty grants when subscription has no bmsBudgetId', async () => {
+      const request = new NextRequest('http://localhost/api/credits/grants?subscriptionId=sub-123');
+      const authContext = createAuthContext('jwt-token');
+
+      // Subscription has no bmsBudgetId
+      mockClient.getSubscription.mockResolvedValue({
+        id: 'sub-123',
+        bmsBudgetId: null,
+      });
+
+      const response = await GET(request, authContext);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.success).toBe(true);
+      expect(data.data).toEqual([]);
+      expect(data.source).toBe(CreditsSource.Unavailable);
+      expect(mockBudgetClient.getBudget).not.toHaveBeenCalled();
+      expect(mockClient.getCreditGrants).not.toHaveBeenCalled();
+    });
+
+    it('should fall back to grants path when budget client unavailable', async () => {
+      const request = new NextRequest('http://localhost/api/credits/grants?subscriptionId=sub-123');
+      const authContext = createAuthContext('jwt-token');
+
+      // Budget client unavailable
+      mockGetBudgetServiceClient.mockReturnValue(null);
+      mockClient.getCreditGrants.mockResolvedValue(MOCK_GRANTS);
+
+      const response = await GET(request, authContext);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.source).toBe(CreditsSource.Grants);
+      expect(mockClient.getCreditGrants).toHaveBeenCalled();
+    });
+
+    it('should fall back to grants path when flag disabled', async () => {
+      const request = new NextRequest('http://localhost/api/credits/grants?subscriptionId=sub-123');
+      const authContext = createAuthContext('jwt-token');
+
+      // Flag disabled
+      mockCheckSwitchboardFlag.mockResolvedValue(false);
+      mockClient.getCreditGrants.mockResolvedValue(MOCK_GRANTS);
+
+      const response = await GET(request, authContext);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.source).toBe(CreditsSource.Grants);
+      expect(mockClient.getCreditGrants).toHaveBeenCalledWith('sub-123', true);
+      expect(mockBudgetClient.getBudget).not.toHaveBeenCalled();
+    });
+
+    describe('BMS error handling', () => {
+      it('should return 401 on BudgetServiceAuthError', async () => {
+        const request = new NextRequest('http://localhost/api/credits/grants?subscriptionId=sub-123');
+        const authContext = createAuthContext('jwt-token');
+
+        mockBudgetClient.getBudget.mockRejectedValue(new BudgetServiceAuthError('Auth failed', 401, ''));
+
+        const response = await GET(request, authContext);
+        const data = await response.json();
+
+        expect(response.status).toBe(401);
+        expect(data.error).toBe('Budget service authentication failed');
+      });
+
+      it('should return 504 on BudgetServiceTimeoutError', async () => {
+        const request = new NextRequest('http://localhost/api/credits/grants?subscriptionId=sub-123');
+        const authContext = createAuthContext('jwt-token');
+
+        mockBudgetClient.getBudget.mockRejectedValue(new BudgetServiceTimeoutError('Timeout'));
+
+        const response = await GET(request, authContext);
+        const data = await response.json();
+
+        expect(response.status).toBe(504);
+        expect(data.error).toBe('Budget service request timed out');
+      });
+
+      it('should return 503 on BudgetServiceUnavailableError', async () => {
+        const request = new NextRequest('http://localhost/api/credits/grants?subscriptionId=sub-123');
+        const authContext = createAuthContext('jwt-token');
+
+        mockBudgetClient.getBudget.mockRejectedValue(new BudgetServiceUnavailableError('Unavailable'));
+
+        const response = await GET(request, authContext);
+        const data = await response.json();
+
+        expect(response.status).toBe(503);
+        expect(data.error).toBe('Budget service unavailable');
+      });
+
+      it('should return 500 on generic BudgetServiceError', async () => {
+        const request = new NextRequest('http://localhost/api/credits/grants?subscriptionId=sub-123');
+        const authContext = createAuthContext('jwt-token');
+
+        mockBudgetClient.getBudget.mockRejectedValue(new BudgetServiceError('Generic error', 500, ''));
+
+        const response = await GET(request, authContext);
+        const data = await response.json();
+
+        expect(response.status).toBe(500);
+        expect(data.error).toBe('Budget service error');
+      });
+
+      it('should use statusCode from BudgetServiceError when available', async () => {
+        const request = new NextRequest('http://localhost/api/credits/grants?subscriptionId=sub-123');
+        const authContext = createAuthContext('jwt-token');
+
+        mockBudgetClient.getBudget.mockRejectedValue(new BudgetServiceError('Rate limited', 429, ''));
+
+        const response = await GET(request, authContext);
+        const data = await response.json();
+
+        expect(response.status).toBe(429);
+        expect(data.error).toBe('Budget service error');
+      });
     });
   });
 });

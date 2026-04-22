@@ -1,9 +1,9 @@
 /**
  * Budget Service credit status types
  *
- * Represents the BFF-enriched response from GET /api/credits/status.
- * This is the BMS BudgetResponse joined with mgmt-airo grants to add
- * type labels and pre-parsed numeric credit amounts.
+ * Represents the BFF-enriched response derived from GET /api/credits/grants.
+ * When BMS is enabled, this is the BMS BudgetResponse adapted to CreditGrant[]
+ * format with pre-parsed numeric credit amounts.
  *
  * Local to the app package (not shared) because it includes BFF enrichment
  * fields (numeric conversions, grant type join) that don't exist in raw BMS types.
@@ -33,5 +33,3 @@ export interface CreditStatusResponse {
   readonly creditsPendingNumeric: number
   readonly items: CreditStatusItem[]
 }
-
-export const BUDGET_STATUS_QUERY_KEY = 'budget-status'

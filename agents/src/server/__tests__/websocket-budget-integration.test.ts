@@ -63,15 +63,16 @@ describe('performBudgetPreCheck', () => {
     const deps = makeDeps({ getClient: () => client })
 
     const result = await performBudgetPreCheck(
-      { budgetServiceEnabled: true, subscriptionId: 'sub-1', appId: 'app-1' },
+      { budgetServiceEnabled: true, subscriptionId: 'sub-1', bmsBudgetId: 'budget-1', appId: 'app-1' },
       deps,
     )
 
-    expect(result).toEqual({ budgetId: 'sub-1', sessionId: 'sess-abc' })
-    expect(client.getBudget).toHaveBeenCalledWith('sub-1')
-    expect(client.createSession).toHaveBeenCalledWith('sub-1')
+    expect(result).toEqual({ budgetId: 'budget-1', sessionId: 'sess-abc' })
+    expect(client.getBudget).toHaveBeenCalledWith('budget-1')
+    expect(client.createSession).toHaveBeenCalledWith('budget-1')
     expect(deps.logger.info).toHaveBeenCalledWith('budget.session.started', expect.objectContaining({
       subscriptionId: 'sub-1',
+      budgetId: 'budget-1',
       sessionId: 'sess-abc',
     }))
   })
@@ -85,14 +86,14 @@ describe('performBudgetPreCheck', () => {
     })
 
     await expect(performBudgetPreCheck(
-      { budgetServiceEnabled: true, subscriptionId: 'sub-1' },
+      { budgetServiceEnabled: true, subscriptionId: 'sub-1', bmsBudgetId: 'budget-1' },
       makeDeps({ getClient: () => client }),
     )).rejects.toSatisfy((err: any) => {
       expect(BudgetExceededError.isInstance(err)).toBe(true)
       expect(err.statusCode).toBe(402)
       expect(err.message).toBe('Your AI usage budget has been reached.')
       // budgetId in responseBody only, not in message
-      expect(JSON.parse(err.responseBody).budgetId).toBe('sub-1')
+      expect(JSON.parse(err.responseBody).budgetId).toBe('budget-1')
       return true
     })
   })
@@ -106,7 +107,7 @@ describe('performBudgetPreCheck', () => {
     })
 
     await expect(performBudgetPreCheck(
-      { budgetServiceEnabled: true, subscriptionId: 'sub-1' },
+      { budgetServiceEnabled: true, subscriptionId: 'sub-1', bmsBudgetId: 'budget-1' },
       makeDeps({ getClient: () => client }),
     )).rejects.toSatisfy((err: any) => {
       expect(BudgetExceededError.isInstance(err)).toBe(true)
@@ -132,14 +133,21 @@ describe('performBudgetPreCheck', () => {
 
   it('throws BudgetServiceUnavailableError when subscriptionId missing', async () => {
     await expect(performBudgetPreCheck(
-      { budgetServiceEnabled: true },
+      { budgetServiceEnabled: true, bmsBudgetId: 'budget-1' },
       makeDeps(),
+    )).rejects.toThrow(BudgetServiceUnavailableError)
+  })
+
+  it('throws BudgetServiceUnavailableError when bmsBudgetId missing', async () => {
+    await expect(performBudgetPreCheck(
+      { budgetServiceEnabled: true, subscriptionId: 'sub-1' },
+      makeDeps({ getClient: () => mockClient() }),
     )).rejects.toThrow(BudgetServiceUnavailableError)
   })
 
   it('throws BudgetServiceUnavailableError when client not configured', async () => {
     await expect(performBudgetPreCheck(
-      { budgetServiceEnabled: true, subscriptionId: 'sub-1' },
+      { budgetServiceEnabled: true, subscriptionId: 'sub-1', bmsBudgetId: 'budget-1' },
       makeDeps({ getClient: () => null }),
     )).rejects.toThrow(BudgetServiceUnavailableError)
   })
@@ -150,7 +158,7 @@ describe('performBudgetPreCheck', () => {
     })
 
     await expect(performBudgetPreCheck(
-      { budgetServiceEnabled: true, subscriptionId: 'sub-1' },
+      { budgetServiceEnabled: true, subscriptionId: 'sub-1', bmsBudgetId: 'budget-1' },
       makeDeps({ getClient: () => client }),
     )).rejects.toThrow(BudgetServiceTimeoutError)
   })
@@ -161,7 +169,7 @@ describe('performBudgetPreCheck', () => {
     })
 
     await expect(performBudgetPreCheck(
-      { budgetServiceEnabled: true, subscriptionId: 'sub-1' },
+      { budgetServiceEnabled: true, subscriptionId: 'sub-1', bmsBudgetId: 'budget-1' },
       makeDeps({ getClient: () => client }),
     )).rejects.toThrow(BudgetServiceUnavailableError)
   })
@@ -172,7 +180,7 @@ describe('performBudgetPreCheck', () => {
     })
 
     await expect(performBudgetPreCheck(
-      { budgetServiceEnabled: true, subscriptionId: 'sub-1' },
+      { budgetServiceEnabled: true, subscriptionId: 'sub-1', bmsBudgetId: 'budget-1' },
       makeDeps({ getClient: () => client }),
     )).rejects.toThrow(BudgetServiceTimeoutError)
   })
@@ -186,7 +194,7 @@ describe('performBudgetPreCheck', () => {
     })
 
     await expect(performBudgetPreCheck(
-      { budgetServiceEnabled: true, subscriptionId: 'sub-1' },
+      { budgetServiceEnabled: true, subscriptionId: 'sub-1', bmsBudgetId: 'budget-1' },
       makeDeps({ getClient: () => client }),
     )).rejects.toThrow()
 

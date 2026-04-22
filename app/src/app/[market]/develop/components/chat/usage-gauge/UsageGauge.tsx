@@ -3,10 +3,8 @@
 import clsx from 'clsx'
 import { memo, useEffect, useRef, useState } from 'react'
 
-import { useBudgetService } from '@/hooks/useBudgetService'
 import { useCreditGrants } from '@/hooks/useCreditGrants'
 import { useSubscription } from '@/hooks/useSubscription'
-import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import CircularGauge from '@/lib/CircularGauge'
 import { shipAnalyticsLog } from '@/lib/logging'
@@ -16,7 +14,7 @@ import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { SubscriptionPlan } from '@/types/credits'
 import { getActiveGrants, getEffectiveCreditsSpent, getPlanFromSubscription } from '@/utils/credits'
 import { generateClickEID, logImpressionEvent } from '@/utils/instrumentation'
-import { BudgetPopoverContent, GrantsPopoverContent } from '.'
+import { GrantsPopoverContent } from '.'
 
 /** Internal Tracking Codes for usage gauge */
 const USAGE_GAUGE_ITC = {
@@ -28,6 +26,12 @@ interface UsageGaugeProps {
   appId: string | null
 }
 
+/**
+ * Credit usage gauge component.
+ *
+ * Data source (BMS vs legacy grants) is determined by the BFF based on
+ * feature flag. The client always receives CreditGrant[] format.
+ */
 export default memo(function UsageGauge({ appId }: UsageGaugeProps) {
   const t = useTranslations()
   const [open, setOpen] = useState(false)
@@ -36,18 +40,9 @@ export default memo(function UsageGauge({ appId }: UsageGaugeProps) {
   const openUpgradeModal = useDevelopPageStore((state) => state.openUpgradeModal)
   const openCreditsModal = useDevelopPageStore((state) => state.openCreditsModal)
 
-  const { data: isBudgetServiceEnabled = false } = useSwitchboard('app-builder-budget-service')
   const { data: subscription, isLoading: isSubscriptionLoading } = useSubscription()
-
-  // Gate grants fetch: disabled when budget path active
   const { data: grants, isLoading: isGrantsLoading } = useCreditGrants({
-    subscriptionId: !isBudgetServiceEnabled ? subscription?.id : undefined,
-  })
-
-  // Budget path: React Query deduplicates with other callers
-  const { data: budgetData, isLoading: isBudgetLoading } = useBudgetService({
     subscriptionId: subscription?.id,
-    enabled: isBudgetServiceEnabled,
   })
 
   useEffect(function logPopoverImpression() {
@@ -58,24 +53,15 @@ export default memo(function UsageGauge({ appId }: UsageGaugeProps) {
 
   const currentPlan = subscription ? getPlanFromSubscription(subscription) : SubscriptionPlan.None
 
-  // Dual-path percentage computation:
+  // Compute percentage from grants (BFF handles source selection)
   // Semantically: 0% = credits available but not used; 100% = no usable credits left
-  let percentage: number
-  if (isBudgetServiceEnabled && budgetData) {
-    const used = Math.min(budgetData.creditsUsedNumeric, budgetData.creditsTotalNumeric)
-    // When no budget total, show 100% (exhausted) instead of 0% (available)
-    percentage = budgetData.creditsTotalNumeric > 0 ? (used / budgetData.creditsTotalNumeric) * 100 : 100
-  } else {
-    const activeGrants = grants ? getActiveGrants(grants) : []
-    const totalCreditsSpent = activeGrants.reduce((sum, g) => sum + getEffectiveCreditsSpent(g.creditsSpent, g.creditsMax), 0)
-    const totalCreditsMax = activeGrants.reduce((sum, g) => sum + g.creditsMax, 0)
-    // When no active grants remain, show 100% (exhausted) instead of 0% (available)
-    percentage = totalCreditsMax > 0 ? (totalCreditsSpent / totalCreditsMax) * 100 : 100
-  }
+  const activeGrants = grants ? getActiveGrants(grants) : []
+  const totalCreditsSpent = activeGrants.reduce((sum, g) => sum + getEffectiveCreditsSpent(g.creditsSpent, g.creditsMax), 0)
+  const totalCreditsMax = activeGrants.reduce((sum, g) => sum + g.creditsMax, 0)
+  // When no active grants remain, show 100% (exhausted) instead of 0% (available)
+  const percentage = totalCreditsMax > 0 ? (totalCreditsSpent / totalCreditsMax) * 100 : 100
 
-  const showLoading = isBudgetServiceEnabled
-    ? (isSubscriptionLoading || isBudgetLoading)
-    : (isSubscriptionLoading || isGrantsLoading)
+  const showLoading = isSubscriptionLoading || isGrantsLoading
 
   useEffect(function trackCreditThresholds() {
     // Don't track thresholds until data is ready to avoid false crossings on initial load
@@ -147,19 +133,11 @@ export default memo(function UsageGauge({ appId }: UsageGaugeProps) {
         className="w-48 p-3"
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
-        {isBudgetServiceEnabled && budgetData ? (
-          <BudgetPopoverContent
-            data={budgetData}
-            onUpgradeClick={handleUpgradeClick}
-            onBuyCreditsClick={handleBuyCreditsClick}
-          />
-        ) : (
-          <GrantsPopoverContent
-            grants={grants}
-            onUpgradeClick={handleUpgradeClick}
-            onBuyCreditsClick={handleBuyCreditsClick}
-          />
-        )}
+        <GrantsPopoverContent
+          grants={grants}
+          onUpgradeClick={handleUpgradeClick}
+          onBuyCreditsClick={handleBuyCreditsClick}
+        />
       </PopoverContent>
     </Popover>
   )

@@ -722,6 +722,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
                 useTestBudget?: boolean
                 budgetServiceEnabled?: boolean
                 subscriptionId?: string
+                bmsBudgetId?: string
               } | undefined
               // Use authType to distinguish employee sessions (e2s, e2s2s, etc.) from delegate (s2s)
               const isEmployeeSession = isEmployeeAuthType(agentContext?.authType)
@@ -782,11 +783,14 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
 
               // Budget Service flag: propagate to metadata for pre-execution check.
               // Skip for employee/test sessions (not subject to budget limits).
-              // Use JWT subscriptionId (not app DB) since the app record can be stale.
+              // Use JWT subscriptionId/bmsBudgetId (not app DB) since the app record can be stale.
               if (agentContext?.budgetServiceEnabled && !isEmployeeSession && !useTestBudget) {
                 agentsAppContext.metadata.budgetServiceEnabled = true
                 if (agentContext.subscriptionId) {
                   agentsAppContext.metadata.subscriptionId = agentContext.subscriptionId
+                }
+                if (agentContext.bmsBudgetId) {
+                  agentsAppContext.metadata.bmsBudgetId = agentContext.bmsBudgetId
                 }
               }
 
@@ -1764,6 +1768,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           {
             budgetServiceEnabled: typedContext?.metadata?.budgetServiceEnabled,
             subscriptionId: typedContext?.metadata?.subscriptionId as string | undefined,
+            bmsBudgetId: typedContext?.metadata?.bmsBudgetId as string | undefined,
             appId: siteId,
           },
           { getClient: getBudgetServiceClient, logger },

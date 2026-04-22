@@ -203,12 +203,6 @@ vi.mock('@/hooks/useSwitchboard', () => ({
   useSwitchboard: (flag: string) => mockSwitchboardValues[flag] ?? { data: false, isLoading: false, error: null },
 }));
 
-// Mock budget service — default to no data
-const mockBudgetServiceData: { data: any; isFetching: boolean } = { data: undefined, isFetching: false };
-vi.mock('@/hooks/useBudgetService', () => ({
-  useBudgetService: () => mockBudgetServiceData,
-}));
-
 // Mock auth context — default to non-impersonation session
 const mockAuthContextState: { authState: any } = { authState: null };
 vi.mock('@/components/providers/AuthProvider', () => ({
@@ -256,10 +250,8 @@ describe('ChatPane', () => {
     // Reset auth context mock to non-impersonation session
     mockAuthContextState.authState = null;
 
-    // Reset budget-service mocks
+    // Reset switchboard mocks
     Object.keys(mockSwitchboardValues).forEach((k) => delete mockSwitchboardValues[k]);
-    mockBudgetServiceData.data = undefined;
-    mockBudgetServiceData.isFetching = false;
 
     // Mock fetch for ventureId
     global.fetch = vi.fn(() =>
@@ -826,47 +818,4 @@ describe('ChatPane', () => {
     });
   });
 
-  describe('budget exceeded with budget-service path', () => {
-    beforeEach(() => {
-      mockSwitchboardValues['app-builder-budget-service'] = { data: true, isLoading: false, error: null };
-    });
-
-    it('should NOT disable input when budget-service ON and credits available', () => {
-      mockBudgetServiceData.data = { creditsTotalNumeric: 100, creditsUsedNumeric: 20 };
-
-      renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
-
-      const chatInput = screen.getByTestId('chat-input');
-      expect(chatInput).toHaveAttribute('data-budget-exceeded', 'false');
-    });
-
-    it('should disable input when budget-service ON and no credits remaining', () => {
-      mockBudgetServiceData.data = { creditsTotalNumeric: 100, creditsUsedNumeric: 100 };
-
-      renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
-
-      const chatInput = screen.getByTestId('chat-input');
-      expect(chatInput).toHaveAttribute('data-budget-exceeded', 'true');
-    });
-
-    it('should NOT disable input while budget-service data is loading', () => {
-      mockBudgetServiceData.data = undefined;
-      mockBudgetServiceData.isFetching = true;
-
-      renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
-
-      const chatInput = screen.getByTestId('chat-input');
-      expect(chatInput).toHaveAttribute('data-budget-exceeded', 'false');
-    });
-
-    it('should NOT disable input for impersonation session even with zero budget credits', () => {
-      mockAuthContextState.authState = { authType: 'e2s' };
-      mockBudgetServiceData.data = { creditsTotalNumeric: 100, creditsUsedNumeric: 100 };
-
-      renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
-
-      const chatInput = screen.getByTestId('chat-input');
-      expect(chatInput).toHaveAttribute('data-budget-exceeded', 'false');
-    });
-  });
 });

@@ -4,6 +4,9 @@
  * Auth: IAM S2S JWT via getIamToken (gd-auth-client IamTokenClient).
  * BMS expects: Authorization: Bearer <token>
  *
+ * URL is derived from request headers (like switchboard):
+ *   https://budget-service.airo-builder.{rootDomain}
+ *
  * Only exposes getBudget() -- session/report methods are agent-side only.
  */
 
@@ -18,6 +21,7 @@ import {
 
 import { getIamToken } from '@/lib/iam-token'
 import { logger } from '@/lib/request-context'
+import { getRootDomainFromHeaders } from '@/utils/getRootDomain'
 
 // ── Config ──
 
@@ -97,7 +101,7 @@ export class BudgetServiceBffClient {
 
   /**
    * Fetch budget by ID.
-   * Note: budgetId === subscriptionId (1:1 mapping until control plane adds bmsBudgetId).
+   * Callers should pass subscription.bmsBudgetId, not subscriptionId.
    */
   async getBudget(budgetId: string): Promise<BudgetResponse> {
     const data = await this.request(
@@ -189,30 +193,49 @@ export class BudgetServiceBffClient {
   }
 }
 
-// ── Singleton ──
-// undefined = not initialized, null = disabled/failed (cached), instance = active
+// ── URL Builder ──
 
-let _client: BudgetServiceBffClient | null | undefined
+const BUDGET_SERVICE_HOST_PREFIX = 'budget-service.airo-builder'
 
-export function getBudgetServiceClient(): BudgetServiceBffClient | null {
-  if (_client !== undefined) return _client
-  const baseUrl = process.env.BUDGET_SERVICE_URL
-  if (!baseUrl) {
-    logger.info('budget.bff.client.disabled', { reason: 'BUDGET_SERVICE_URL not set' })
-    _client = null
+/**
+ * Build Budget Service URL from request headers.
+ * Pattern: https://budget-service.airo-builder.{rootDomain}
+ */
+export function getBudgetServiceUrl(headers: Headers): string | null {
+  const rootDomain = getRootDomainFromHeaders(headers)
+  if (!rootDomain) {
+    logger.warn('budget.bff.client.noRootDomain', {
+      message: 'Cannot determine Budget Service URL: no root domain from headers',
+    })
     return null
   }
-  try {
-    _client = new BudgetServiceBffClient({ baseUrl })
-    logger.info('budget.bff.client.initialized', { baseUrl })
-  } catch (err) {
-    logger.error('budget.bff.client.initFailed', { error: err instanceof Error ? err.message : String(err) })
-    _client = null
-  }
-  return _client
+
+  return `https://${BUDGET_SERVICE_HOST_PREFIX}.${rootDomain}`
 }
 
-/** Reset singleton (for testing). */
-export function resetBudgetServiceClient(): void {
-  _client = undefined
+// ── Factory ──
+
+/**
+ * Create a Budget Service client for the current request.
+ * URL is derived from request headers (environment-aware).
+ *
+ * Returns null if URL cannot be determined.
+ */
+export function getBudgetServiceClient(headers: Headers): BudgetServiceBffClient | null {
+  const baseUrl = getBudgetServiceUrl(headers)
+  if (!baseUrl) {
+    return null
+  }
+
+  try {
+    const client = new BudgetServiceBffClient({ baseUrl })
+    logger.debug('budget.bff.client.created', { baseUrl })
+    return client
+  } catch (err) {
+    logger.error('budget.bff.client.createFailed', {
+      baseUrl,
+      error: err instanceof Error ? err.message : String(err),
+    })
+    return null
+  }
 }

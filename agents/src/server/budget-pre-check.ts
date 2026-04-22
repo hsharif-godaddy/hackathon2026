@@ -24,7 +24,7 @@ export interface BudgetPreCheckResult {
  * Throws BudgetExceededError or BudgetServiceUnavailableError on failure (fail-closed).
  */
 export async function performBudgetPreCheck(
-  metadata: { budgetServiceEnabled?: boolean; subscriptionId?: string; appId?: string },
+  metadata: { budgetServiceEnabled?: boolean; subscriptionId?: string; bmsBudgetId?: string; appId?: string },
   deps: BudgetPreCheckDeps,
 ): Promise<BudgetPreCheckResult | null> {
   if (metadata.budgetServiceEnabled !== true) return null
@@ -44,26 +44,32 @@ export async function performBudgetPreCheck(
     throw new BudgetServiceUnavailableError('Budget Service client not configured (missing BUDGET_SERVICE_URL)')
   }
 
+  const budgetId = metadata.bmsBudgetId
+  if (!budgetId) {
+    throw new BudgetServiceUnavailableError('Budget Service is enabled but bmsBudgetId is missing from context metadata')
+  }
+
   // Pre-execution credit check (fail-closed)
   // !(remaining > 0) catches NaN from malformed BMS strings (NaN <= 0 is false)
-  const budget = await budgetClient.getBudget(subscriptionId)
+  const budget = await budgetClient.getBudget(budgetId)
   const remaining = computeRemaining(budget.creditsTotal, budget.creditsUsed)
   if (!(remaining > 0)) {
-    throw BudgetExceededError.fromBudgetCheck(subscriptionId)
+    throw BudgetExceededError.fromBudgetCheck(budgetId)
   }
 
   // Create BMS session for this prompt
-  const session = await budgetClient.createSession(subscriptionId)
+  const session = await budgetClient.createSession(budgetId)
 
   deps.logger.info('budget.session.started', {
     appId: metadata.appId,
     subscriptionId,
+    budgetId,
     sessionId: session.sessionId,
     remaining,
   })
 
   return {
-    budgetId: subscriptionId,
+    budgetId,
     sessionId: session.sessionId,
   }
 }

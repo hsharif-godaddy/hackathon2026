@@ -14,7 +14,7 @@ import { clearSiteValidationCache } from '../site-validation-cache';
 /**
  * Mock dependencies using vi.hoisted to avoid hoisting issues
  */
-const { mockJWTService, mockAuthenticateCustomer, mockControlPlaneAdapter, mockCheckSwitchboardFlag, mockCheckSwitchboardValue } = vi.hoisted(function setup() {
+const { mockJWTService, mockAuthenticateCustomer, mockControlPlaneAdapter, mockCheckSwitchboardFlag, mockCheckSwitchboardValue, mockMgmtClient } = vi.hoisted(function setup() {
   return {
     mockJWTService: {
       getToken: vi.fn(),
@@ -26,7 +26,10 @@ const { mockJWTService, mockAuthenticateCustomer, mockControlPlaneAdapter, mockC
     },
     mockAuthenticateCustomer: vi.fn(),
     mockCheckSwitchboardFlag: vi.fn(),
-    mockCheckSwitchboardValue: vi.fn()
+    mockCheckSwitchboardValue: vi.fn(),
+    mockMgmtClient: {
+      getSubscription: vi.fn()
+    }
   };
 });
 
@@ -45,6 +48,16 @@ vi.mock('@/lib/jwt-service', function mockJWTServiceModule() {
 vi.mock('@/lib/control-plane', function mockControlPlaneModule() {
   return {
     getControlPlaneAdapter: vi.fn().mockReturnValue(mockControlPlaneAdapter),
+  };
+});
+
+/**
+ * Mock mgmt-airo client
+ */
+vi.mock('@/lib/mgmt-airo', function mockMgmtAiroModule() {
+  return {
+    AiroMgmtClient: vi.fn().mockImplementation(() => mockMgmtClient),
+    AIRO_OWNER_PRODUCTS: { AIRO_APP_BUILDER: 'AiroAppBuilder' }
   };
 });
 
@@ -164,6 +177,7 @@ describe('agent-token', function packageTests() {
       mockCheckSwitchboardFlag.mockResolvedValue(false);
       mockCheckSwitchboardValue.mockResolvedValue(null);
       mockControlPlaneAdapter.appExists.mockResolvedValue(true);
+      mockMgmtClient.getSubscription.mockResolvedValue({ bmsBudgetId: null });
       mockJWTService.getToken.mockResolvedValue({
         token: MOCK_JWT_TOKEN,
         expires: MOCK_TOKEN_EXPIRES
@@ -516,7 +530,10 @@ describe('agent-token', function packageTests() {
         });
 
         mockControlPlaneAdapter.appExists.mockResolvedValue(true);
-        mockCheckSwitchboardFlag.mockResolvedValue(true);
+        // Only enable useTestBudget and canPurchaseDomain, NOT budget service
+        mockCheckSwitchboardFlag.mockImplementation((flag: string) =>
+          Promise.resolve(flag === 'appbuilder-test-budget' || flag === 'appbuilder-domain-purchase')
+        );
 
         const request = createMockRequest({ siteId: MOCK_SITE_ID });
         const response = await POST(request);
@@ -542,6 +559,7 @@ describe('agent-token', function packageTests() {
           Promise.resolve(flag === 'app-builder-budget-service')
         );
         mockControlPlaneAdapter.getSite.mockResolvedValue({ subscription_id: 'sub-123' });
+        mockMgmtClient.getSubscription.mockResolvedValue({ bmsBudgetId: 'budget-123' });
 
         const request = createMockRequest({ siteId: MOCK_SITE_ID });
         const response = await POST(request);
@@ -550,12 +568,13 @@ describe('agent-token', function packageTests() {
         expect(mockJWTService.getToken).toHaveBeenCalledWith(
           expect.objectContaining({
             budgetServiceEnabled: true,
-            subscriptionId: 'sub-123'
+            subscriptionId: 'sub-123',
+            bmsBudgetId: 'budget-123'
           })
         );
       });
 
-      it('should fall back to budgetServiceEnabled=false when getSite rejects', async function budgetServiceGetSiteRejects() {
+      it('should succeed with undefined bmsBudgetId when getSite rejects and budget service is enabled', async function budgetServiceGetSiteRejects() {
         mockAuthenticateCustomer.mockResolvedValue({
           isAuthenticated: true,
           user: MOCK_USER,
@@ -571,16 +590,13 @@ describe('agent-token', function packageTests() {
         const request = createMockRequest({ siteId: MOCK_SITE_ID });
         const response = await POST(request);
 
+        // Graceful degradation: returns 200 with budgetServiceEnabled but no bmsBudgetId
         expect(response.status).toBe(200);
-        expect(mockJWTService.getToken).toHaveBeenCalledWith(
-          expect.objectContaining({
-            budgetServiceEnabled: false,
-            subscriptionId: undefined
-          })
-        );
+        const body = await response.json();
+        expect(body.token).toBeDefined();
       });
 
-      it('should fall back to budgetServiceEnabled=false when getSite rejects (cache-hit path)', async function budgetServiceGetSiteRejectsCacheHit() {
+      it('should succeed with undefined bmsBudgetId when getSite rejects on cache-hit path and budget service is enabled', async function budgetServiceGetSiteRejectsCacheHit() {
         mockAuthenticateCustomer.mockResolvedValue({
           isAuthenticated: true,
           user: MOCK_USER,
@@ -594,6 +610,7 @@ describe('agent-token', function packageTests() {
 
         // First request: populate the site validation cache with a successful getSite
         mockControlPlaneAdapter.getSite.mockResolvedValue({ subscription_id: 'sub-123' });
+        mockMgmtClient.getSubscription.mockResolvedValue({ bmsBudgetId: 'budget-123' });
         const request1 = createMockRequest({ siteId: MOCK_SITE_ID });
         await POST(request1);
 
@@ -602,18 +619,15 @@ describe('agent-token', function packageTests() {
         const request2 = createMockRequest({ siteId: MOCK_SITE_ID });
         const response2 = await POST(request2);
 
+        // Graceful degradation: returns 200 with budgetServiceEnabled but no bmsBudgetId
         expect(response2.status).toBe(200);
         // Verify cache-hit path was taken: appExists should only have been called once (first request)
         expect(mockControlPlaneAdapter.appExists).toHaveBeenCalledTimes(1);
-        expect(mockJWTService.getToken).toHaveBeenLastCalledWith(
-          expect.objectContaining({
-            budgetServiceEnabled: false,
-            subscriptionId: undefined
-          })
-        );
+        const body = await response2.json();
+        expect(body.token).toBeDefined();
       });
 
-      it('should fall back to budgetServiceEnabled=false when subscriptionId is missing', async function budgetServiceMissingSubscription() {
+      it('should succeed with undefined bmsBudgetId when subscriptionId is missing and budget service is enabled', async function budgetServiceMissingSubscription() {
         mockAuthenticateCustomer.mockResolvedValue({
           isAuthenticated: true,
           user: MOCK_USER,
@@ -629,12 +643,57 @@ describe('agent-token', function packageTests() {
         const request = createMockRequest({ siteId: MOCK_SITE_ID });
         const response = await POST(request);
 
+        // Graceful degradation: returns 200 with budgetServiceEnabled but no bmsBudgetId
+        expect(response.status).toBe(200);
+        const body = await response.json();
+        expect(body.token).toBeDefined();
+      });
+
+      it('should succeed with undefined bmsBudgetId when bmsBudgetId is missing from subscription', async function budgetServiceMissingBmsBudgetId() {
+        mockAuthenticateCustomer.mockResolvedValue({
+          isAuthenticated: true,
+          user: MOCK_USER,
+          jwt: 'user-jwt-token'
+        });
+
+        mockControlPlaneAdapter.appExists.mockResolvedValue(true);
+        mockCheckSwitchboardFlag.mockImplementation((flag: string) =>
+          Promise.resolve(flag === 'app-builder-budget-service')
+        );
+        mockControlPlaneAdapter.getSite.mockResolvedValue({ subscription_id: 'sub-123' });
+        mockMgmtClient.getSubscription.mockResolvedValue({ bmsBudgetId: null });
+
+        const request = createMockRequest({ siteId: MOCK_SITE_ID });
+        const response = await POST(request);
+
+        // Graceful degradation: returns 200 with budgetServiceEnabled but bmsBudgetId undefined
         expect(response.status).toBe(200);
         expect(mockJWTService.getToken).toHaveBeenCalledWith(
-          expect.objectContaining({
-            budgetServiceEnabled: false,
-            subscriptionId: undefined
-          })
+          expect.objectContaining({ budgetServiceEnabled: true, bmsBudgetId: undefined })
+        );
+      });
+
+      it('should succeed with undefined bmsBudgetId when getSubscription throws', async function budgetServiceSubscriptionFetchFailed() {
+        mockAuthenticateCustomer.mockResolvedValue({
+          isAuthenticated: true,
+          user: MOCK_USER,
+          jwt: 'user-jwt-token'
+        });
+
+        mockControlPlaneAdapter.appExists.mockResolvedValue(true);
+        mockCheckSwitchboardFlag.mockImplementation((flag: string) =>
+          Promise.resolve(flag === 'app-builder-budget-service')
+        );
+        mockControlPlaneAdapter.getSite.mockResolvedValue({ subscription_id: 'sub-123' });
+        mockMgmtClient.getSubscription.mockRejectedValue(new Error('mgmt-airo down'));
+
+        const request = createMockRequest({ siteId: MOCK_SITE_ID });
+        const response = await POST(request);
+
+        // Graceful degradation: returns 200 with budgetServiceEnabled but bmsBudgetId undefined
+        expect(response.status).toBe(200);
+        expect(mockJWTService.getToken).toHaveBeenCalledWith(
+          expect.objectContaining({ budgetServiceEnabled: true, bmsBudgetId: undefined })
         );
       });
     });

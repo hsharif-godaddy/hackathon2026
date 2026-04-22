@@ -14,7 +14,7 @@ import { isEmployeeAuthType, type ProductType } from '@airo/shared/auth';
 import { getControlPlaneAdapter } from '@/lib/control-plane';
 import { createCustomerAuthError, type CustomerAuthContext, customerHasAccount, type CustomerUser, withCustomerAuth } from '@/lib/customer-auth';
 import { getJWTService } from '@/lib/jwt-service';
-import { AIRO_OWNER_PRODUCTS } from '@/lib/mgmt-airo';
+import { AIRO_OWNER_PRODUCTS, AiroMgmtClient } from '@/lib/mgmt-airo';
 import { checkPaywallEligibility, PaywallAction } from '@/lib/paywall/core';
 import { ServerPaywallProvider } from '@/lib/paywall/server-provider';
 import { PaywallDenialReason } from '@/lib/paywall/shared';
@@ -312,10 +312,24 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       agentProfile = rawAgentProfile && rawAgentProfile !== 'default' ? rawAgentProfile : undefined;
     }
 
-    // Fail-safe: disable budget service and fall back to legacy grants
-    if (budgetServiceEnabled && !subscriptionId) {
-      logger.warn('agent-token.budget-service.missing-subscription-id', { siteId: body.siteId, customerId: user.customerId });
-      budgetServiceEnabled = false;
+    // Fetch bmsBudgetId from subscription when budget service is enabled
+    // If fetch fails, bmsBudgetId stays undefined (cost assigned to GoDaddy)
+    let bmsBudgetId: string | undefined;
+    if (budgetServiceEnabled && subscriptionId) {
+      try {
+        const baseUrl = process.env.MGMT_AIRO_BASE_URL || 'https://mgmt.nstk.net';
+        const mgmtClient = new AiroMgmtClient({ baseUrl, jwt: authContext.jwt || '' });
+        const subscription = await mgmtClient.getSubscription(subscriptionId);
+        bmsBudgetId = subscription.bmsBudgetId ?? undefined;
+      } catch (err) {
+        logger.error('agent-token.bms-budget-id-fetch-failed', {
+          siteId: body.siteId,
+          customerId: user.customerId,
+          subscriptionId,
+          error: err instanceof Error ? err.message : 'Unknown',
+        });
+        // bmsBudgetId stays undefined → cost assigned to GoDaddy
+      }
     }
     // Enforce dependency: enableAssessmentOverride requires enableAssessmentAgent
     // If agent is disabled, override can't function (classification is short-circuited)
@@ -356,6 +370,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       useTestBudget,
       budgetServiceEnabled,
       subscriptionId,
+      bmsBudgetId,
       enableAssessmentAgent,
       enableAssessmentOverride,
       product,

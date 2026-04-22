@@ -36,6 +36,8 @@ export interface AiroSubscription {
   reason?: SubscriptionSuspendReason | string;
   createdAt: string;
   updatedAt: string;
+  /** BMS budget ID when subscription uses Budget Service (null = legacy grants) */
+  bmsBudgetId?: string | null;
 }
 
 /**
@@ -773,6 +775,8 @@ export interface AiroCreditGrant {
   consumedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  /** BMS budget item ID mapping (set when subscription uses BMS) */
+  bmsBudgetItemId?: string | null;
 }
 
 /**

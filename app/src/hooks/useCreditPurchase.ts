@@ -5,7 +5,6 @@ import { useQueryClient } from '@tanstack/react-query'
 import { getErrorMessage } from '@/lib/errors'
 import { logger } from '@/lib/request-context'
 import { grantPollingService } from '@/services/GrantPollingService'
-import { BUDGET_STATUS_QUERY_KEY } from '@/types/budget'
 
 /** Global store for credit purchase polling state (survives component unmounts) */
 interface CreditPurchaseStore {
@@ -60,7 +59,6 @@ export function useCreditPurchase(): UseCreditPurchaseResult {
   const invalidateQueries = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ['subscriptions'] })
     queryClient.invalidateQueries({ queryKey: ['credit-grants'] })
-    queryClient.invalidateQueries({ queryKey: [BUDGET_STATUS_QUERY_KEY] })
   }, [queryClient])
 
   const handlePurchaseSuccess = useCallback(async (

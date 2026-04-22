@@ -10,7 +10,7 @@ import {
   BudgetServiceBffClient,
   type BudgetServiceBffClientConfig,
   getBudgetServiceClient,
-  resetBudgetServiceClient,
+  getBudgetServiceUrl,
 } from '../client';
 
 vi.mock('@/lib/iam-token', () => ({
@@ -18,8 +18,15 @@ vi.mock('@/lib/iam-token', () => ({
 }));
 
 vi.mock('@/lib/request-context', () => ({
-  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
+
+vi.mock('@/utils/getRootDomain', () => ({
+  getRootDomainFromHeaders: vi.fn(),
+}));
+
+import { getRootDomainFromHeaders } from '@/utils/getRootDomain';
+const mockGetRootDomain = vi.mocked(getRootDomainFromHeaders);
 
 const TEST_CONFIG: BudgetServiceBffClientConfig = {
   baseUrl: 'https://budget.example.com',
@@ -60,7 +67,7 @@ function clientWith(fetchImpl: typeof globalThis.fetch) {
 describe('BudgetServiceBffClient', () => {
   afterEach(() => {
     vi.restoreAllMocks();
-    resetBudgetServiceClient();
+    delete process.env.BUDGET_SERVICE_URL;
   });
 
   // ── Construction ──
@@ -251,33 +258,74 @@ describe('BudgetServiceBffClient', () => {
     });
   });
 
-  // ── Singleton ──
+  // ── URL Builder ──
+
+  describe('getBudgetServiceUrl', () => {
+    const mockHeaders = new Headers({ host: 'airo-builder.test-godaddy.com' });
+
+    beforeEach(() => {
+      mockGetRootDomain.mockReset();
+    });
+
+    it('builds URL from root domain', () => {
+      mockGetRootDomain.mockReturnValue('test-godaddy.com');
+
+      const url = getBudgetServiceUrl(mockHeaders);
+
+      expect(url).toBe('https://budget-service.airo-builder.test-godaddy.com');
+    });
+
+    it('returns null when root domain cannot be determined', () => {
+      mockGetRootDomain.mockReturnValue(null);
+
+      const url = getBudgetServiceUrl(mockHeaders);
+
+      expect(url).toBeNull();
+    });
+
+    it('handles production domain', () => {
+      mockGetRootDomain.mockReturnValue('godaddy.com');
+
+      const url = getBudgetServiceUrl(mockHeaders);
+
+      expect(url).toBe('https://budget-service.airo-builder.godaddy.com');
+    });
+  });
+
+  // ── Factory ──
 
   describe('getBudgetServiceClient', () => {
+    const mockHeaders = new Headers({ host: 'airo-builder.test-godaddy.com' });
+
     beforeEach(() => {
-      resetBudgetServiceClient();
+      mockGetRootDomain.mockReset();
     });
 
-    it('returns null when BUDGET_SERVICE_URL not set', () => {
-      delete process.env.BUDGET_SERVICE_URL;
-      expect(getBudgetServiceClient()).toBeNull();
+    it('returns null when URL cannot be determined', () => {
+      mockGetRootDomain.mockReturnValue(null);
+
+      const client = getBudgetServiceClient(mockHeaders);
+
+      expect(client).toBeNull();
     });
 
-    it('returns same instance on repeated calls', () => {
-      process.env.BUDGET_SERVICE_URL = 'https://budget.example.com';
-      const a = getBudgetServiceClient();
-      const b = getBudgetServiceClient();
-      expect(a).toBe(b);
+    it('returns client when URL can be determined', () => {
+      mockGetRootDomain.mockReturnValue('test-godaddy.com');
+
+      const client = getBudgetServiceClient(mockHeaders);
+
+      expect(client).toBeInstanceOf(BudgetServiceBffClient);
+    });
+
+    it('creates new client for each call (not singleton)', () => {
+      mockGetRootDomain.mockReturnValue('test-godaddy.com');
+
+      const a = getBudgetServiceClient(mockHeaders);
+      const b = getBudgetServiceClient(mockHeaders);
+
+      expect(a).not.toBe(b);
       expect(a).toBeInstanceOf(BudgetServiceBffClient);
-      delete process.env.BUDGET_SERVICE_URL;
-    });
-
-    it('returns null for invalid URL and caches the result', () => {
-      process.env.BUDGET_SERVICE_URL = 'not-a-url';
-      expect(getBudgetServiceClient()).toBeNull();
-      // Second call returns cached null without retrying
-      expect(getBudgetServiceClient()).toBeNull();
-      delete process.env.BUDGET_SERVICE_URL;
+      expect(b).toBeInstanceOf(BudgetServiceBffClient);
     });
   });
 });

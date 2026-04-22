@@ -38,10 +38,6 @@ vi.mock('@/hooks/useCreditGrants', () => ({
   useCreditGrants: () => mockGrantsData,
 }));
 
-vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: () => ({ data: false, isLoading: false }),
-}));
-
 vi.mock('@/stores/useDevelopPageStore', () => ({
   useDevelopPageStore: (selector: (state: Record<string, unknown>) => unknown) =>
     selector({ openUpgradeModal: mockOpenUpgradeModal, openCreditsModal: mockOpenCreditsModal, site: mockSite }),

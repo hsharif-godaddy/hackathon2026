@@ -3,7 +3,6 @@ import { useIsMutating, useMutation, useQueryClient } from '@tanstack/react-quer
 import { getErrorMessage } from '@/lib/errors'
 import { waitForQueryUpdate } from '@/lib/query-utils'
 import { logger } from '@/lib/request-context'
-import { BUDGET_STATUS_QUERY_KEY } from '@/types/budget'
 import type { CreditGrant } from '@/types/credits'
 import { GrantType } from '@/types/credits'
 
@@ -158,7 +157,6 @@ export function useUpgradePurchase(): UseUpgradePurchaseResult {
       queryClient.invalidateQueries({ queryKey: ['active-subscription'] })
       queryClient.invalidateQueries({ queryKey: ['paywall-feature-flags'] })
       queryClient.invalidateQueries({ queryKey: ['credit-grants'] })
-      queryClient.invalidateQueries({ queryKey: [BUDGET_STATUS_QUERY_KEY] })
     },
     onError: (error, { planBeforePurchase, isUpgrade }) => {
       const changeType = isUpgrade ? 'upgrade' : 'downgrade'

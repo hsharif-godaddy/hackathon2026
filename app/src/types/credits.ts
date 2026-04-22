@@ -8,11 +8,24 @@ export type { CreditGrant, GrantContextPayload } from '@airo/shared/grants'
 export { GrantFinalState, GrantType } from '@airo/shared/grants'
 
 /**
+ * Source of credit data - BMS (Budget Management Service) or legacy grants API
+ */
+export const CreditsSource = {
+  Bms: 'bms',
+  Grants: 'grants',
+  /** BMS enabled but budget not configured for subscription */
+  Unavailable: 'unavailable',
+} as const
+
+export type CreditsSource = (typeof CreditsSource)[keyof typeof CreditsSource]
+
+/**
  * API response for credit grants
  */
 export interface CreditGrantsResponse {
   success: boolean
   data: CreditGrantType[]
+  source?: CreditsSource
 }
 
 /**
