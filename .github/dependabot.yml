@@ -65,11 +65,14 @@ updates:
           - "@typescript-eslint/*"
           - "prettier"
           - "typescript"
-      # Group AI SDK packages
+      # Group AI SDK packages (minor/patch only - prevents downgrade to pre-v6 line)
       ai-sdk:
         patterns:
           - "ai"
           - "@ai-sdk/*"
+        update-types:
+          - "minor"
+          - "patch"
 
   # app-templates: standalone npm (excluded from pnpm workspace; see pnpm-workspace.yaml)
   # No registries — v8 template uses only public npm packages. Using JFrog here
