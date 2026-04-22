@@ -34,12 +34,11 @@ export function usePublishFlow(
     instagramImageRequired: t('builder_social_error_instagram_image_required'),
     platformNotSupported: t('builder_social_error_platform_not_supported', { platform: '' }),
     commonError: t('builder_common_unknown_error'),
-    noConnectionFound: t('builder_social_error_no_connection_found', { platform: '' }),
     connectionFetchFailed: t('builder_social_error_connection_fetch_failed', { platform: '' }),
     noPlatformSpecified: t('builder_social_error_no_platform_specified')
   }), [t])
 
-  const { data: associationsData, isLoading: isLoadingAssociations } = useSiteAssociations(appId, isActiveFlow)
+  const { data: associationsData, isLoading: isLoadingAssociations, isError: isAssociationsError } = useSiteAssociations(appId, isActiveFlow)
 
   const isPublishingRef = useRef(false)
   const initiatedPublishIds = useRef<Set<string>>(new Set())
@@ -191,7 +190,7 @@ export function usePublishFlow(
     if (!isActiveFlow || !pendingPublish) return
     if (initiatedPublishIds.current.has(publishId)) return
     if (isLoadingAssociations) return
-    if (isConnectionError) {
+    if (isAssociationsError) {
       onOverallStatusChange(PublishFlowState.Error)
       pendingPublish.platforms.forEach(platform => {
         onPlatformStatusChange(platform, PublishFlowState.Error)
@@ -200,12 +199,10 @@ export function usePublishFlow(
       return
     }
 
-    // Wait for at least one connection to be loaded
-    if (!connection) return
-
     const associations = associationsData?.associations || []
 
-    // Check if we have associations for all platforms
+    // Check for missing platforms BEFORE waiting for connection —
+    // prevents silent stall when no associations exist
     const missingPlatforms = pendingPublish.platforms.filter(
       platform => !findMatchingAssociation(associations, platform)
     )
@@ -215,11 +212,22 @@ export function usePublishFlow(
       missingPlatforms.forEach(platform => {
         onPlatformStatusChange(platform, PublishFlowState.Error)
         onPlatformResultChange(platform, {
-          error: t('builder_social_error_platform_not_supported', { platform })
+          error: t('builder_social_error_no_connection_found', { platform })
         })
       })
       return
     }
+
+    if (isConnectionError) {
+      onOverallStatusChange(PublishFlowState.Error)
+      pendingPublish.platforms.forEach(platform => {
+        onPlatformStatusChange(platform, PublishFlowState.Error)
+        onPlatformResultChange(platform, { error: errorMessages.commonError })
+      })
+      return
+    }
+
+    if (!connection) return
 
     // Start parallel publishing
     initiatedPublishIds.current.add(publishId)
@@ -230,6 +238,7 @@ export function usePublishFlow(
     publishId,
     associationsData,
     isLoadingAssociations,
+    isAssociationsError,
     connection,
     isConnectionError,
     executeMultiPlatformPublish,

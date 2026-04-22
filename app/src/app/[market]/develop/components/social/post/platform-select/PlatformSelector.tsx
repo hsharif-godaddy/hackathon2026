@@ -10,6 +10,7 @@ import ToggleButton from '@ux/toggle-button'
 
 import { useTranslations } from '@/hooks/useTranslations'
 import { type PublishablePlatform } from '@/lib/social-platforms'
+import type { SiteAssociation } from '@/types/social'
 
 export interface PlatformValidation {
   valid: boolean
@@ -18,16 +19,24 @@ export interface PlatformValidation {
   errors: string[]
 }
 
+function hasAssociation(associations: SiteAssociation[], platform: string): boolean {
+  return associations.some(a => a.platform.toLowerCase() === platform.toLowerCase())
+}
+
 interface PlatformSelectorProps {
   selectedPlatforms: Set<PublishablePlatform>
   onPlatformToggle: (platform: PublishablePlatform) => void
   validation: Record<PublishablePlatform, PlatformValidation>
+  associations?: SiteAssociation[]
+  isAssociationsUnavailable?: boolean
 }
 
 export const PlatformSelector = memo(({
   selectedPlatforms,
   onPlatformToggle,
-  validation
+  validation,
+  associations,
+  isAssociationsUnavailable
 }: PlatformSelectorProps) => {
   const t = useTranslations()
 
@@ -46,6 +55,7 @@ export const PlatformSelector = memo(({
         const isSelected = selectedPlatforms.has(key)
         const platformValidation = validation[key]
         const isValid = platformValidation?.valid ?? true
+        const isConnected = !associations || hasAssociation(associations, key)
 
         return (
           <div key={key}>
@@ -63,12 +73,18 @@ export const PlatformSelector = memo(({
                 />
               </Box>
 
-              {isSelected && (
+              {isSelected && !isAssociationsUnavailable && (
                 <Box orientation="vertical" gap="sm" className="ml-3">
-                  <text.span size={-2} emphasis={isValid ? 'success' : 'warning'}>
-                    {isValid ? t('builder_social_platform_ready') : `${platformValidation.charCount} / ${platformValidation.maxChars}`}
-                  </text.span>
-                  {!isValid && platformValidation?.errors?.map((error, idx) => (
+                  {!isConnected ? (
+                    <text.span size={-2} emphasis="passive">
+                      {t('builder_social_status_not_connected')}
+                    </text.span>
+                  ) : (
+                    <text.span size={-2} emphasis={isValid ? 'success' : 'warning'}>
+                      {isValid ? t('builder_social_platform_ready') : `${platformValidation.charCount} / ${platformValidation.maxChars}`}
+                    </text.span>
+                  )}
+                  {isConnected && !isValid && platformValidation?.errors?.map((error, idx) => (
                     <text.span
                       key={idx}
                       size={-2}

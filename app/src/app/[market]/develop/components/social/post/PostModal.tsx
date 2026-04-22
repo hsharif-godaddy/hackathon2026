@@ -55,7 +55,7 @@ export const PostModal = memo(({
 }: SocialPostModalProps) => {
   const t = useTranslations()
   const { sendMessage } = useWebSocketContext()
-  const { data: associationsData } = useSiteAssociations(appId)
+  const { data: associationsData, isLoading: isLoadingAssociations, isError: isAssociationsError } = useSiteAssociations(appId)
 
   const [isEditMode, setIsEditMode] = useState(false)
   const [selectedPlatforms, setSelectedPlatforms] = useState<Set<PublishablePlatform>>(
@@ -406,6 +406,8 @@ export const PostModal = memo(({
                   selectedPlatforms={selectedPlatforms}
                   onPlatformToggle={handlePlatformToggle}
                   validation={platformValidation}
+                  associations={associationsData?.associations}
+                  isAssociationsUnavailable={isLoadingAssociations || isAssociationsError}
                 />
               </div>
 
