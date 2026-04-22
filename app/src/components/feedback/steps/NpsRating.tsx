@@ -19,7 +19,7 @@ export function NpsRating({ label, value, onChange, error }: NpsRatingProps) {
       <text.p size={-1} emphasis="passive">
         {label}
       </text.p>
-      <div className="flex gap-1">
+      <div className="nps-rating-buttons flex gap-1">
         {[1, 2, 3, 4, 5, 6, 7].map((n) => (
           <Button
             key={n}

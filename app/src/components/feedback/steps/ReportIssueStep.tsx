@@ -55,8 +55,8 @@ export function ReportIssueStep({ onBack, onSubmit, onDone }: ReportIssueStepPro
   };
 
   return (
-    <div className="flex flex-col flex-1">
-      <Box gap="lg" className="flex-1">
+    <div className="flex flex-col flex-1 min-h-0">
+      <Box gap="lg" className="flex-1 overflow-y-auto min-h-0">
         <Box gap="sm">
           <TopicChips
             label={t('builder_feedback_issue_topics_label')}

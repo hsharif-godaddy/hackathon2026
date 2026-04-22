@@ -196,7 +196,7 @@ export function FeedbackMultiStep(props: FeedbackProps) {
       id="feedback-modal"
       onClose={onClose}
     >
-      <div className="flex flex-col min-h-[20rem] max-h-[70vh] w-full">
+      <div className="flex flex-col min-h-[20rem] max-h-[70vh] w-full overflow-hidden">
         {step === 'category' && (
           <CategorySelectStep onSelectCategory={handleSelectCategory} />
         )}

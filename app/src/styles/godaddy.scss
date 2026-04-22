@@ -10,6 +10,15 @@ html, body {
   align-items: center;
 }
 
+#feedback-modal.ux-modal {
+  max-width: min(42rem, calc(100vw - 2rem));
+}
+
+#feedback-modal .nps-rating-buttons .ux-button {
+  min-width: 0;
+  flex-shrink: 1;
+}
+
 .airo-sentinel-background {
   max-width: 100vw !important;
   min-height: 100% !important;

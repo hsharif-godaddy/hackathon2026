@@ -56,8 +56,8 @@ export function ShareFeedbackStep({ onBack, onSubmit, onDone, hideRating }: Shar
   };
 
   return (
-    <div className="flex flex-col flex-1">
-      <Box gap="lg" className="flex-1">
+    <div className="flex flex-col flex-1 min-h-0">
+      <Box gap="lg" className="flex-1 overflow-y-auto min-h-0">
         {!hideRating && (
           <NpsRating
             label={t('builder_feedback_share_rating_label')}
