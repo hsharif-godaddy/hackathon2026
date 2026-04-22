@@ -189,6 +189,30 @@ func (s *Server) GetDomainJob(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Server) GetDomainDnsOwnership(w http.ResponseWriter, r *http.Request) {
+	fqdns := r.URL.Query().Get("fqdns")
+	if strings.TrimSpace(fqdns) == "" {
+		writeError(w, http.StatusBadRequest, "fqdns query parameter required")
+		return
+	}
+	if strings.TrimSpace(r.URL.Query().Get("customerId")) == "" || strings.TrimSpace(r.URL.Query().Get("shopperId")) == "" {
+		writeError(w, http.StatusBadRequest, "customerId and shopperId query parameters required")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"isGdDomain":             false,
+		"isGDDomainOwner":        false,
+		"isGoDaddyDns":           false,
+		"pendingNsPropagation":   false,
+		"domainCreatedAt":        nil,
+		"zoneMatchedAt":          nil,
+		"nameserverType":         "EXTERNAL",
+		"nameservers":            []string{},
+		"dnsApiResponseCode":     nil,
+		"domainsApiResponseCode": nil,
+	})
+}
+
 // Image status stubs
 
 func (s *Server) GetImageStatus(w http.ResponseWriter, r *http.Request) {

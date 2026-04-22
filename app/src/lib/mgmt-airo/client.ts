@@ -745,7 +745,7 @@ export class AiroMgmtClient {
   /**
    * Get domain DNS ownership details for one or more FQDNs (comma-separated in query)
    *
-   * GET /airo/v1/subscriptions/:subscriptionId/systems/:systemId/apps/:appId/domain-dns-ownership
+   * GET /api/airo/v1/subscriptions/:subscriptionId/systems/:systemId/apps/:appId/domain-dns-ownership
    *
    * @param subscriptionId - Subscription ID
    * @param systemId - System ID
@@ -765,7 +765,7 @@ export class AiroMgmtClient {
     });
     return this.request<AiroDomainDnsOwnershipResponse>(
       'GET',
-      `/airo/v1/subscriptions/${subscriptionId}/systems/${systemId}/apps/${appId}/domain-dns-ownership?${params.toString()}`,
+      `/api/airo/v1/subscriptions/${subscriptionId}/systems/${systemId}/apps/${appId}/domain-dns-ownership?${params.toString()}`,
       undefined,
       { logEvent: 'mgmt-airo.get-domain-dns-ownership' }
     );
