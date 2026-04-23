@@ -540,6 +540,7 @@ export class GitOpsService {
       // Perform restart cycle with custom commands and build tool type
       const restartResult = await appRestartService.performFullRestartCycle(appId, appPath, {
         buildToolType,
+        installOptions: { legacyPeerDeps: true },
         commands: options.commands,
       });
 

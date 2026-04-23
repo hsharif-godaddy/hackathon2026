@@ -30,6 +30,19 @@ export const PAAS_NODEJS_V1_PRODUCT_ID = 'paas-nodejs-v1';
  */
 export type PackageManager = 'npm' | 'yarn' | 'pnpm';
 
+export interface InstallCommandOptions {
+  legacyPeerDeps?: boolean;
+}
+
+/**
+ * Per-package-manager flag mappings for install options.
+ * Each key maps to the CLI flag for each package manager (null = no equivalent).
+ * To add a new option: add a row here and a matching field to InstallCommandOptions.
+ */
+const INSTALL_FLAGS: Record<keyof InstallCommandOptions, Record<PackageManager, string | null>> = {
+  legacyPeerDeps: { npm: '--legacy-peer-deps', pnpm: '--no-strict-peer-dependencies', yarn: null },
+};
+
 /**
  * Get the install command for the given package manager.
  * Note: npm uses --include=dev to ensure devDependencies are installed (needed for build tools like Vite).
@@ -37,16 +50,26 @@ export type PackageManager = 'npm' | 'yarn' | 'pnpm';
  * so no additional flags are needed. These commands run in the preview container which has
  * NODE_ENV=development by default.
  */
-export function getInstallCommand(packageManager: PackageManager = 'npm'): string {
-  switch (packageManager) {
-    case 'pnpm':
-      return 'pnpm install';
-    case 'yarn':
-      return 'yarn install';
-    case 'npm':
-    default:
-      return 'npm install --include=dev';
+export function getInstallCommand(
+  packageManager: PackageManager = 'npm',
+  options: InstallCommandOptions = {}
+): string {
+  const baseCommands: Record<PackageManager, string[]> = {
+    npm: ['npm', 'install', '--include=dev'],
+    pnpm: ['pnpm', 'install'],
+    yarn: ['yarn', 'install'],
+  };
+
+  const parts = [...baseCommands[packageManager]];
+
+  for (const [key, flagMap] of Object.entries(INSTALL_FLAGS)) {
+    if (options[key as keyof InstallCommandOptions]) {
+      const flag = flagMap[packageManager];
+      if (flag) parts.push(flag);
+    }
   }
+
+  return parts.join(' ');
 }
 
 /**
@@ -132,6 +155,8 @@ export interface CommandOverrides {
 export interface RestartCycleOptions {
   skipInstall?: boolean;
   skipBuild?: boolean;
+  /** Options passed to getInstallCommand (e.g. legacyPeerDeps) */
+  installOptions?: InstallCommandOptions;
   /** @deprecated Use commands.start instead */
   devCommand?: string;
   /** Build tool type to determine default commands */
@@ -227,7 +252,7 @@ export class AppRestartService {
       // Step 2: Run install (unless skipped)
       let installDurationMs: number | undefined;
       if (!options?.skipInstall) {
-        const installCommand = options?.commands?.install || getInstallCommand(packageManager);
+        const installCommand = options?.commands?.install || getInstallCommand(packageManager, options?.installOptions ?? {});
         const installStartTime = Date.now();
         const installResult = await this.runCommand(appId, appPath, installCommand, 'install');
         installDurationMs = Date.now() - installStartTime;
@@ -415,11 +440,13 @@ export class AppRestartService {
    * @param appId - App ID
    * @param appPath - Path to the app directory
    * @param packageManager - Package manager to use (npm, yarn, pnpm)
+   * @param installOptions - Options passed to getInstallCommand
    */
   async runInstall(
     appId: string,
     appPath: string,
-    packageManager: PackageManager = 'npm'
+    packageManager: PackageManager = 'npm',
+    installOptions: InstallCommandOptions = {}
   ): Promise<{ success: boolean; output?: string; error?: string; exitCode?: number }> {
     try {
       const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
@@ -432,7 +459,7 @@ export class AppRestartService {
       }
 
       const terminalTool = new TerminalTool(devSupervisor);
-      const installCommand = getInstallCommand(packageManager);
+      const installCommand = getInstallCommand(packageManager, installOptions);
 
       this.logger.info('app-restart.install.begin', { appId, packageManager, command: installCommand });
 

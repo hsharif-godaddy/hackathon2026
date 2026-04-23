@@ -820,20 +820,32 @@ describe('AppRestartService', () => {
 
 describe('Package Manager Utilities', () => {
   describe('getInstallCommand', () => {
-    it('should return npm install --include=dev for npm', () => {
+    it('should return npm install --include=dev for npm', function npmDefault() {
       expect(getInstallCommand('npm')).toBe('npm install --include=dev');
     });
 
-    it('should return pnpm install for pnpm', () => {
+    it('should return pnpm install for pnpm', function pnpmDefault() {
       expect(getInstallCommand('pnpm')).toBe('pnpm install');
     });
 
-    it('should return yarn install for yarn', () => {
+    it('should return yarn install for yarn', function yarnDefault() {
       expect(getInstallCommand('yarn')).toBe('yarn install');
     });
 
-    it('should default to npm', () => {
+    it('should default to npm', function defaultNpm() {
       expect(getInstallCommand()).toBe('npm install --include=dev');
+    });
+
+    it('should add --legacy-peer-deps for npm', function npmLegacy() {
+      expect(getInstallCommand('npm', { legacyPeerDeps: true })).toBe('npm install --include=dev --legacy-peer-deps');
+    });
+
+    it('should add --no-strict-peer-dependencies for pnpm', function pnpmLegacy() {
+      expect(getInstallCommand('pnpm', { legacyPeerDeps: true })).toBe('pnpm install --no-strict-peer-dependencies');
+    });
+
+    it('should not change yarn install with legacyPeerDeps', function yarnLegacy() {
+      expect(getInstallCommand('yarn', { legacyPeerDeps: true })).toBe('yarn install');
     });
   });
 

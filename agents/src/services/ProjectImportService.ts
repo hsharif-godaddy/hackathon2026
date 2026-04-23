@@ -434,7 +434,7 @@ export class ProjectImportService {
       await this.updateStatus(jobId, ImportJobStatus.INSTALLING);
       const detectedPm = validation.packageManager || 'npm';
       const installStartTime = Date.now();
-      const installResult = await appRestartService.runInstall(appId, app.path, detectedPm);
+      const installResult = await appRestartService.runInstall(appId, app.path, detectedPm, { legacyPeerDeps: true });
       const installDurationMs = Date.now() - installStartTime;
 
       if (installResult.output) {
@@ -442,7 +442,7 @@ export class ProjectImportService {
       }
 
       if (!installResult.success) {
-        const installCommand = getInstallCommand(detectedPm);
+        const installCommand = getInstallCommand(detectedPm, { legacyPeerDeps: true });
         const installFailedMsg = installResult.error || `${installCommand} failed`;
         this.logger.error('project-import.install.failed', {
           jobId,
