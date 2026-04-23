@@ -35,6 +35,26 @@ function isScopesSuperset(storedScopes: string, requestedScopes: string[]): bool
 }
 
 /**
+ * Custom error thrown when OAuth configuration is missing from environment
+ *
+ * Contains the names of missing environment variables for diagnostic purposes.
+ * This is an unrecoverable configuration error - the values cannot be obtained at runtime.
+ */
+export class MissingOAuthConfigError extends Error {
+  code = 'MISSING_OAUTH_CONFIG';
+  missing: string[];
+
+  constructor(missing: string[]) {
+    super(
+      `Missing required OAuth configuration: ${missing.join(', ')}. ` +
+        'Cannot perform authentication without these values.'
+    );
+    this.name = 'MissingOAuthConfigError';
+    this.missing = missing;
+  }
+}
+
+/**
  * Get OAuth configuration from environment variables and Nomad alloc config
  * Called at runtime to support test environment variable changes
  *
@@ -75,10 +95,7 @@ function getConfig(): {
       missing,
       hasNomadConfig: !!nomadConfig,
     });
-    throw new Error(
-      `Missing required OAuth configuration: ${missing.join(', ')}. ` +
-      'Cannot perform authentication without these values.'
-    );
+    throw new MissingOAuthConfigError(missing);
   }
 
   // TypeScript now knows these values are defined

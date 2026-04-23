@@ -1,6 +1,6 @@
 import { createTool, type Tool } from '@airo/ai-lib';
 import { z } from 'zod';
-import { AuthService, AuthRequiredError, OAuthScopes } from '../../services/auth-service.js';
+import { AuthService, AuthRequiredError, MissingOAuthConfigError, OAuthScopes } from '../../services/auth-service.js';
 
 /**
  * OAuth Authorization Tool for AI-Lib
@@ -49,7 +49,15 @@ export const oauthConnect: Tool = createTool(
           },
         };
       }
-      // Unexpected errors still throw
+      // Throwing causes the SDK to retry the same call, wasting LLM rounds on an
+      // unrecoverable error. Returning a result lets the agent inform the user.
+      if (err instanceof MissingOAuthConfigError) {
+        return {
+          success: false,
+          error: `OAuth is not configured in this environment. Missing: ${err.missing.join(', ')}. Commerce features requiring OAuth authentication are not available.`,
+          recoverable: false,
+        };
+      }
       throw err;
     }
   }
