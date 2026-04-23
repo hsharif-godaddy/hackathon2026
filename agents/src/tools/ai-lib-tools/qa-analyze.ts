@@ -1,6 +1,7 @@
 import { createTool, generateTextWithTracking, type Tool, type AgentContext } from '@airo/ai-lib'
 import { llmMetadataContext, type LitellmMetadata } from '@airo/ai-common'
 import { buildLitellmMetadataFromContext, LlmCallSource, type ExecutionContext } from '@airo/ai-grants'
+import { extractBudgetContext, withBudgetFields, type ToolBudgetContext } from './tool-budget-context.js'
 import { z } from 'zod'
 import { readFile, writeFile, mkdir, access } from 'node:fs/promises'
 import { join, dirname } from 'node:path'
@@ -781,7 +782,8 @@ async function analyzeWithLLM(
     socketId?: string,
     customerId?: string,
     customTags?: string[],
-    subscriptionId?: string
+    subscriptionId?: string,
+    budgetContext?: ToolBudgetContext
 ): Promise<QAIssue[]> {
     const { model, modelName } = await getAgentModelWithName('fast')
 
@@ -851,16 +853,15 @@ Return ONLY the JSON object with issues array. No markdown, no code blocks, no e
     if (appId) contextData.appId = appId
     if (sessionId) contextData.conversationId = sessionId
 
-    // Build execution context for grant-aware metadata
     const executionContext: ExecutionContext | undefined = (appId || sessionId || socketId) ? {
         socketId,
-        metadata: {
+        metadata: withBudgetFields({
             appId,
             sessionId,
             agentId,
             customerId,
             subscriptionId,
-        }
+        }, budgetContext)
     } : undefined
 
     // Additional tags to always include (tool-specific and custom)
@@ -1019,6 +1020,7 @@ OUTPUT:
         const socketId = (context as any)?.socketId as string | undefined
         const customerId = context?.metadata?.customerId as string | undefined
         const subscriptionId = context?.metadata?.subscriptionId as string | undefined
+        const budgetContext = extractBudgetContext(context)
 
         if (!appId) {
             throw new Error('App ID is required for QA analysis')
@@ -1131,7 +1133,7 @@ OUTPUT:
 
                 const agentId = context?.metadata?.agentId as string | undefined
                 const customTags = context?.metadata?.tags as string[] | undefined
-                const issues = await analyzeWithLLM(businessContext, fileContents, appId, sessionId, agentId, socketId, customerId, customTags, subscriptionId)
+                const issues = await analyzeWithLLM(businessContext, fileContents, appId, sessionId, agentId, socketId, customerId, customTags, subscriptionId, budgetContext)
 
                 logger.info('qa_analyze.analysis_complete', {
                     appId,

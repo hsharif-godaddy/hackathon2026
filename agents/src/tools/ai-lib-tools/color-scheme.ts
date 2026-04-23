@@ -4,6 +4,7 @@ import { buildLitellmMetadataFromContext, LlmCallSource, type ExecutionContext }
 import { z } from 'zod'
 
 import { generatePalette, updateCssColorPalette, type ColorPalette } from '../css-color-tool.js'
+import { extractBudgetContext, withBudgetFields, type ToolBudgetContext } from './tool-budget-context.js'
 
 interface ColorPaletteGridWidget {
   widgetType: 'color-palette-grid'
@@ -127,7 +128,8 @@ async function generatePalettesWithLLM(
   customTags?: string[],
   socketId?: string,
   subscriptionId?: string,
-  customerId?: string
+  customerId?: string,
+  budgetContext?: ToolBudgetContext
 ): Promise<Array<{ name: string; primary: string; background: string }>> {
   const { model, modelName } = await getAgentModelWithName('fast')
 
@@ -150,16 +152,15 @@ Return ONLY the JSON object with the palettes array. No markdown, no code blocks
   if (appId) contextData.appId = appId
   if (sessionId) contextData.conversationId = sessionId
 
-  // Build execution context for grant-aware metadata
   const executionContext: ExecutionContext | undefined = (appId || sessionId || socketId) ? {
     socketId,
-    metadata: {
+    metadata: withBudgetFields({
       appId,
       sessionId,
       agentId,
       subscriptionId,
       customerId,
-    }
+    }, budgetContext)
   } : undefined
 
   // Additional tags to always include (tool-specific and custom)
@@ -334,6 +335,7 @@ IMPORTANT:
       const agentId = context?.metadata?.agentId as string | undefined
       const customTags = context?.metadata?.tags as string[] | undefined
       const socketId = (context as any)?.socketId as string | undefined
+      const budgetContext = extractBudgetContext(context)
       const llmPalettes = await generatePalettesWithLLM(
         input.description,
         input.count,
@@ -344,7 +346,8 @@ IMPORTANT:
         customTags,
         socketId,
         subscriptionId,
-        customerId
+        customerId,
+        budgetContext
       )
 
       const generatedPalettes = llmPalettes.map((paletteInput) => {
@@ -582,6 +585,7 @@ IMPORTANT:
       const agentId = context?.metadata?.agentId as string | undefined
       const customTags = context?.metadata?.tags as string[] | undefined
       const socketId = (context as any)?.socketId as string | undefined
+      const budgetContext = extractBudgetContext(context)
       const llmPalettes = await generatePalettesWithLLM(
         input.description,
         1,
@@ -592,7 +596,8 @@ IMPORTANT:
         customTags,
         socketId,
         subscriptionId,
-        customerId
+        customerId,
+        budgetContext
       )
 
       if (!llmPalettes.length) {

@@ -1,6 +1,7 @@
-import { createTool, generateTextWithTracking, type Tool, createPromptBuilder } from '@airo/ai-lib'
+import { createTool, generateTextWithTracking, type Tool, createPromptBuilder, type AgentContext } from '@airo/ai-lib'
 import { llmMetadataContext, type LitellmMetadata } from '@airo/ai-common'
 import { buildLitellmMetadataFromContext, LlmCallSource, type ExecutionContext } from '@airo/ai-grants'
+import { extractBudgetContext, withBudgetFields, type ToolBudgetContext } from './tool-budget-context.js'
 import path from 'node:path'
 import { readFile, writeFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
@@ -340,7 +341,8 @@ export async function generateFontsWithLLM(
   socketId?: string,
   customTags?: string[],
   subscriptionId?: string,
-  customerId?: string
+  customerId?: string,
+  budgetContext?: ToolBudgetContext
 ): Promise<LLMFontPairing[]> {
   const { model, modelName } = await getAgentModelWithName('fast')
   const systemPrompt = await loadFontGenerationPrompt()
@@ -362,16 +364,15 @@ Return ONLY the JSON object with the fonts array containing headerFont and bodyF
   if (appId) contextData.appId = appId
   if (sessionId) contextData.conversationId = sessionId
 
-  // Build execution context for grant-aware metadata
   const executionContext: ExecutionContext | undefined = (appId || sessionId || socketId) ? {
     socketId,
-    metadata: {
+    metadata: withBudgetFields({
       appId,
       sessionId,
       agentId,
       subscriptionId,
       customerId,
-    }
+    }, budgetContext)
   } : undefined
 
   // Additional tags to always include (tool-specific and custom)
@@ -895,6 +896,7 @@ MODE SELECTION GUIDE:
       const socketId = (context as any)?.socketId as string | undefined
       const subscriptionId = context?.metadata?.subscriptionId as string | undefined
       const customerId = context?.metadata?.customerId as string | undefined
+      const budgetContext = extractBudgetContext(context as AgentContext | undefined)
 
       if (input.mode === 'set') {
         if (!appId) {
@@ -922,7 +924,8 @@ MODE SELECTION GUIDE:
           socketId,
           customTags,
           subscriptionId,
-          customerId
+          customerId,
+          budgetContext
         )
 
         if (llmFonts.length === 0) {
@@ -1004,7 +1007,8 @@ MODE SELECTION GUIDE:
           socketId,
           suggestCustomTags,
           subscriptionId,
-          customerId
+          customerId,
+          budgetContext
         )
 
         const themes = llmFonts.map(font => ({
