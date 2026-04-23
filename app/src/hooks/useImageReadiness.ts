@@ -50,10 +50,11 @@ async function fetchImageStatus(appId: string): Promise<ImageStatusResponse> {
 }
 
 async function triggerReload(appId: string): Promise<void> {
-  const response = await appFetch(`/api/sites/${appId}/reload-images`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-  });
+  const response = await appFetch(
+    `/api/sites/${appId}/reload-images`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json' } },
+    { setAuthState: false },
+  );
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
     throw new Error(data.error || `Reload failed: ${response.status}`);

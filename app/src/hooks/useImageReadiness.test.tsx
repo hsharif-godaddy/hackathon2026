@@ -155,6 +155,16 @@ function mockFailedResponse() {
   };
 }
 
+function mock401Response() {
+  return {
+    ok: false,
+    status: 401,
+    headers: { get: () => 'application/json' },
+    json: () => Promise.resolve({ error: 'Unauthorized' }),
+    clone: () => mock401Response(),
+  };
+}
+
 describe('useImageReadiness', function useImageReadinessTests() {
   let queryClient: QueryClient;
 
@@ -323,7 +333,7 @@ describe('useImageReadiness', function useImageReadinessTests() {
       await waitFor(() => {
         expect(appFetch).toHaveBeenCalledWith('/api/sites/test-app-123/reload-images', expect.objectContaining({
           method: 'POST',
-        }));
+        }), { setAuthState: false });
       });
 
       expect(result.current.isImageUpdating).toBe(true);
@@ -361,6 +371,30 @@ describe('useImageReadiness', function useImageReadinessTests() {
 
       await waitFor(() => {
         expect(result.current.isReady).toBe(true);
+      });
+    });
+
+    it('should pass setAuthState:false to reload so a 401 does not trigger the SSO modal', async function reload401NoSso() {
+      (appFetch as any)
+        .mockResolvedValueOnce(mockImageStatusResponse('stale'))
+        .mockResolvedValueOnce(mock401Response());
+
+      const { result } = renderHook(
+        () => useImageReadiness(NOT_HIBERNATED, 'test-app-123'),
+        { wrapper: createWrapper() }
+      );
+
+      await waitFor(() => {
+        expect(appFetch).toHaveBeenCalledWith(
+          '/api/sites/test-app-123/reload-images',
+          expect.any(Object),
+          { setAuthState: false },
+        );
+      });
+
+      await waitFor(() => {
+        expect(result.current.isReady).toBe(true);
+        expect(result.current.error).toBeNull();
       });
     });
   });
@@ -633,7 +667,7 @@ describe('useImageReadiness', function useImageReadinessTests() {
       );
 
       await waitFor(() => {
-        expect(appFetch).toHaveBeenCalledWith('/api/sites/test-app-123/reload-images', expect.any(Object));
+        expect(appFetch).toHaveBeenCalledWith('/api/sites/test-app-123/reload-images', expect.any(Object), { setAuthState: false });
       }, { timeout: 5000 });
 
       now += 91_000;
