@@ -58,6 +58,16 @@ export default gasket.actions.getNextConfig({
         './jwt-service': 'commonjs ./jwt-service',
       });
 
+      // gasket-plugin-auth normally aliases these to false for client builds,
+      // but it only loads in JWT mode. In mock mode the hook never runs and
+      // webpack follows gd-auth-lib's dynamic native require to the .node
+      // binaries, which it can't parse. Mirror the alias unconditionally.
+      config.resolve.alias = {
+        ...config.resolve.alias,
+        'gd-auth': false,
+        '@godaddy/gd-auth-lib': false,
+      };
+
       // Add fallbacks for Node.js modules that Gasket plugins try to import
       // These modules are not available in the browser, so we provide empty fallbacks
       config.resolve.fallback = {
