@@ -175,6 +175,28 @@ export class ClientLogBuffer {
   }
 
   /**
+   * Flush buffered logs via navigator.sendBeacon.
+   *
+   * Why this exists alongside flush(): the default flush() uses fetch with
+   * keepalive, which browsers treat as best-effort during tab close and can
+   * cancel if the body is large, the connection is contested, or the process
+   * is torn down quickly. sendBeacon is the platform primitive specifically
+   * designed for unload-time delivery — the browser commits the request
+   * before the call returns, so events queued from pagehide / visibilitychange
+   * handlers are guaranteed to leave the page.
+   *
+   * Falls back to keepalive fetch if sendBeacon is unavailable or the browser
+   * rejects the request (typically when the 64KB per-origin beacon quota is
+   * exhausted).
+   */
+  static flushBeacon(): void {
+    if (!isBrowser()) return;
+    if (!ClientLogBuffer.instance) return;
+
+    ClientLogBuffer.instance.flushLogsBeacon();
+  }
+
+  /**
    * Get or create session ID for log correlation
    * Static method for convenience
    *
@@ -316,6 +338,48 @@ export class ClientLogBuffer {
     setTimeout(() => {
       this.flushLogs();
     }, delay);
+  }
+
+  /**
+   * Flush buffered logs via sendBeacon (synchronous) with keepalive fetch
+   * fallback. No retry — terminal handlers can't await, and the page is
+   * likely gone by the time a retry would fire.
+   */
+  private flushLogsBeacon(): void {
+    if (this.buffer.length === 0) return;
+
+    const batch = this.buffer.splice(0, this.config.maxBuffer);
+    const payload = JSON.stringify({ logs: batch });
+
+    let sent = false;
+    try {
+      if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+        const blob = new Blob([payload], { type: 'application/json' });
+        sent = navigator.sendBeacon(this.config.endpoint, blob);
+      }
+    } catch {
+      sent = false;
+    }
+
+    if (sent) return;
+
+    try {
+      fetch(this.config.endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-XSRF-TOKEN': '1',
+        },
+        credentials: 'include',
+        body: payload,
+        keepalive: true,
+      }).catch(function swallowBeaconFallbackFailure() {});
+    } catch {
+      // Re-queue so a later non-terminal flush can retry. If we really are
+      // unloading, the buffer dies with the page and these are lost — same
+      // outcome as any other unload-time failure.
+      this.buffer.unshift(...batch);
+    }
   }
 
   /**

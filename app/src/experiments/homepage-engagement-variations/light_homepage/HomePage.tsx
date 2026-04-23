@@ -21,6 +21,7 @@ import Header from '@/experiments/homepage-engagement-variations/light_homepage/
 import HeroSection from '@/experiments/homepage-engagement-variations/light_homepage/HeroSection'
 import { useAnalytics } from '@/hooks/useAnalytics'
 import { useAuthGateTracking } from '@/hooks/useAuthGateTracking'
+import { useHomepageBounceTracking } from '@/hooks/useHomepageBounceTracking'
 import { useSafariClass } from '@/hooks/useSafariClass'
 import { useSsoSignIn } from '@/hooks/useSsoSignIn'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
@@ -118,6 +119,7 @@ export function LightHomepageHomePage({ serverFeatures }: HomeContentProps) {
 
   useSafariClass()
   useAuthGateTracking(logAnalytics, { authGateShownAtRef, promptTextRef })
+  const { markEngaged: markHomepageEngaged } = useHomepageBounceTracking(logAnalytics)
 
   useEffect(() => {
     if (authIsLoading || homepageViewRecordedRef.current) {
@@ -256,6 +258,10 @@ export function LightHomepageHomePage({ serverFeatures }: HomeContentProps) {
     promptToUse = promptToUse.replace(/https?:\/\/example\.com\s*/gi, '').trim()
 
     if (!promptToUse || isRedirecting || isLoading) return
+
+    // Submit attempt counts as engagement even when invoked programmatically
+    // (e.g. auto-resubmit after SSO round-trip). Idempotent with DOM click.
+    markHomepageEngaged()
 
     const preClampPromptLength = promptToUse.length
     const validated = validateAndClampPrompt(promptToUse)
@@ -440,7 +446,7 @@ export function LightHomepageHomePage({ serverFeatures }: HomeContentProps) {
       setIsLoading(false)
       setIsRedirecting(false)
     }
-  }, [authIsLoading, isAuthenticated, isLoading, isRedirecting, logAnalytics, router, savePromptForRetry, selectedTemplate, signIn, t])
+  }, [authIsLoading, isAuthenticated, isLoading, isRedirecting, logAnalytics, markHomepageEngaged, router, savePromptForRetry, selectedTemplate, signIn, t])
 
   // Restore prompt from localStorage after login and clear it
   useEffect(() => {
