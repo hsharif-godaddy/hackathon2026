@@ -9,7 +9,7 @@
 
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { getEditPaths, isCompletedFileEdit } from './useInitialization';
+import { getEditPaths, isCompletedFileEdit, isSiteForCurrentApp } from './useInitialization';
 
 describe('useInitialization', function hookTests() {
   
@@ -410,6 +410,49 @@ describe('useInitialization', function hookTests() {
         const toolCalls = [makeTc({ input: { command: 'view', path: 'src/pages/index.tsx' } })];
         expect(shouldReveal(toolCalls)).toBe(false);
       });
+    });
+  });
+
+  // Regression: creating a second app after a first one caused the first app's
+  // initial prompt to be displayed during the jobId stage because the
+  // useDevelopPageStore.site object persisted across navigations. Ensure the
+  // helper only matches sites whose id lines up with the current app or its
+  // real (post-conversion) app id.
+  describe('isSiteForCurrentApp', function isSiteForCurrentAppTests() {
+    it('returns false when site is null', function noSite() {
+      expect(isSiteForCurrentApp(null, 'app-1', null)).toBe(false);
+    });
+
+    it('returns false when site is undefined', function undefinedSite() {
+      expect(isSiteForCurrentApp(undefined, 'app-1', null)).toBe(false);
+    });
+
+    it('returns true when site id matches appId', function matchesAppId() {
+      expect(isSiteForCurrentApp({ id: 'app-1' }, 'app-1', null)).toBe(true);
+    });
+
+    it('returns true when site id matches realAppId (job→app conversion)', function matchesRealAppId() {
+      // During job→app conversion, URL appId is still the jobId but site
+      // already reflects the real app id.
+      expect(isSiteForCurrentApp({ id: 'app-1' }, 'job-xyz', 'app-1')).toBe(true);
+    });
+
+    it('returns false when site is for a different (previous) app', function differentApp() {
+      // Bug scenario: first app's site is still loaded while jobId for second
+      // app is in the URL; no realAppId yet for the new app.
+      expect(isSiteForCurrentApp({ id: 'app-1' }, 'job-2', null)).toBe(false);
+    });
+
+    it('returns false when site id does not match appId or realAppId', function noMatch() {
+      expect(isSiteForCurrentApp({ id: 'app-1' }, 'job-2', 'app-2')).toBe(false);
+    });
+
+    it('returns false when appId is null and realAppId does not match', function nullAppId() {
+      expect(isSiteForCurrentApp({ id: 'app-1' }, null, 'app-2')).toBe(false);
+    });
+
+    it('returns false when both appId and realAppId are null', function bothNull() {
+      expect(isSiteForCurrentApp({ id: 'app-1' }, null, null)).toBe(false);
     });
   });
 });

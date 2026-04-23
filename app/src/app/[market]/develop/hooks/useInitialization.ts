@@ -274,6 +274,38 @@ export function getEditPaths(tc: { input?: Record<string, unknown> }): string[] 
   return paths
 }
 
+/**
+ * Check if the loaded site corresponds to the app we're currently viewing.
+ *
+ * The `useDevelopPageStore.site` is a global zustand store that persists across
+ * navigations — when you leave one app and open another, the old site object is
+ * still in memory until `initializePage` replaces it. During the jobId stage of
+ * a newly-created app (before job→app conversion completes) the store can hold
+ * the *previous* app's site, whose `initial_prompt` must NOT be shown for the
+ * new app.
+ *
+ * `realAppId` is safe to consult here because `useSiteCreationStore.reset()`
+ * clears it both (a) when navigating to a real app page (`!isJobId && realAppId`
+ * effect) and (b) at the start of every new creation via `initializeSite`. So
+ * by the time we're rendering a new creation flow it cannot leak from a prior
+ * session in normal use.
+ *
+ * Type-predicate signature lets the caller drop optional chaining on `site`
+ * inside the `true` branch.
+ *
+ * Exported for testing.
+ */
+export function isSiteForCurrentApp<T extends { id: string }>(
+  site: T | null | undefined,
+  appId: string | null,
+  realAppId: string | null,
+): site is T {
+  if (!site) return false
+  if (appId && site.id === appId) return true
+  if (realAppId && site.id === realAppId) return true
+  return false
+}
+
 // ============================================================================
 // PURE COMPUTATION FUNCTIONS
 // ============================================================================
@@ -530,6 +562,15 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
   // Get current initialJobId from machine context or sessionStorage
   const initialJobId = state.context.initialJobId || getInitialJobIdFromStorage(appId)
 
+  // Only trust site.initial_prompt when the loaded site matches the current app.
+  // The site store persists across navigations, so during the jobId stage of a NEW
+  // app it can still hold the previous app's data (and prompt). Without this guard,
+  // the freshly-stored sessionStorage prompt for the new job would be shadowed by
+  // the stale site.initial_prompt until the page initialization replaces it.
+  const sitePromptForCurrentApp = isSiteForCurrentApp(site, appId, realAppId)
+    ? site.initial_prompt
+    : null
+
   const context: InitializationContext = {
     appId,
     initialJobId,
@@ -546,7 +587,7 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
     // For rebuild mode, prioritize sessionStorage prompt over site.initial_prompt
     initialPromptText: isRebuildModePrompt(initialJobId, appId)
       ? getStoredInitialPrompt(initialJobId, appId)
-      : (site?.initial_prompt ?? getStoredInitialPrompt(initialJobId, appId)),
+      : (sitePromptForCurrentApp ?? getStoredInitialPrompt(initialJobId, appId)),
     isRebuildModePrompt: isRebuildModePrompt(initialJobId, appId),
   }
 
