@@ -2,8 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 /**
  * @vitest-environment jsdom
  */
-import { act, renderHook } from '@testing-library/react'
+import { act } from '@testing-library/react'
 
+import { renderHookWithProviders } from '@/tests/test-utils'
 import { PublishTiming } from '@/types/social-posts'
 import { useScheduling } from './useScheduling'
 
@@ -23,7 +24,7 @@ function formatTimeStr(d: Date): string {
 describe('useScheduling', () => {
   describe('default initialization', () => {
     it('should initialize with NOW timing by default', () => {
-      const { result } = renderHook(() => useScheduling())
+      const { result } = renderHookWithProviders(() => useScheduling())
 
       expect(result.current.timing).toBe(PublishTiming.NOW)
       expect(result.current.date).toHaveLength(1)
@@ -33,7 +34,7 @@ describe('useScheduling', () => {
 
   describe('initialization with custom values', () => {
     it('should initialize with provided timing', () => {
-      const { result } = renderHook(() => useScheduling({
+      const { result } = renderHookWithProviders(() => useScheduling({
         initialTiming: PublishTiming.LATER
       }))
 
@@ -41,7 +42,7 @@ describe('useScheduling', () => {
     })
 
     it('should initialize with provided date', () => {
-      const { result } = renderHook(() => useScheduling({
+      const { result } = renderHookWithProviders(() => useScheduling({
         initialDate: '2026-02-14'
       }))
 
@@ -49,7 +50,7 @@ describe('useScheduling', () => {
     })
 
     it('should initialize with provided time', () => {
-      const { result } = renderHook(() => useScheduling({
+      const { result } = renderHookWithProviders(() => useScheduling({
         initialTime: '5:00 AM'
       }))
 
@@ -57,7 +58,7 @@ describe('useScheduling', () => {
     })
 
     it('should initialize with all custom values for NLP scheduling', () => {
-      const { result } = renderHook(() => useScheduling({
+      const { result } = renderHookWithProviders(() => useScheduling({
         initialTiming: PublishTiming.LATER,
         initialDate: '2026-02-14',
         initialTime: '5:00 AM'
@@ -71,7 +72,7 @@ describe('useScheduling', () => {
 
   describe('validation', () => {
     it('should be valid when timing is NOW', () => {
-      const { result } = renderHook(() => useScheduling({
+      const { result } = renderHookWithProviders(() => useScheduling({
         initialTiming: PublishTiming.NOW
       }))
 
@@ -82,7 +83,7 @@ describe('useScheduling', () => {
       const futureDate = new Date()
       futureDate.setDate(futureDate.getDate() + 2) // 2 days in future for safety
 
-      const { result } = renderHook(() => useScheduling({
+      const { result } = renderHookWithProviders(() => useScheduling({
         initialTiming: PublishTiming.LATER,
         initialDate: formatDateStr(futureDate),
         initialTime: '2:00 PM'
@@ -108,7 +109,7 @@ describe('useScheduling', () => {
 
       const setTimeoutSpy = vi.spyOn(global, 'setTimeout')
 
-      renderHook(() => useScheduling({
+      renderHookWithProviders(() => useScheduling({
         initialTiming: PublishTiming.LATER,
         initialDate: formatDateStr(futureDate),
         initialTime: formatTimeStr(futureDate)
@@ -126,7 +127,7 @@ describe('useScheduling', () => {
 
       const clearTimeoutSpy = vi.spyOn(global, 'clearTimeout')
 
-      const { result } = renderHook(() => useScheduling({
+      const { result } = renderHookWithProviders(() => useScheduling({
         initialTiming: PublishTiming.LATER,
         initialDate: formatDateStr(futureDate),
         initialTime: formatTimeStr(futureDate)
@@ -150,7 +151,7 @@ describe('useScheduling', () => {
 
       const clearTimeoutSpy = vi.spyOn(global, 'clearTimeout')
 
-      const { unmount } = renderHook(() => useScheduling({
+      const { unmount } = renderHookWithProviders(() => useScheduling({
         initialTiming: PublishTiming.LATER,
         initialDate: formatDateStr(futureDate),
         initialTime: formatTimeStr(futureDate)
@@ -168,7 +169,7 @@ describe('useScheduling', () => {
     it('should not set timeout when timing is NOW', () => {
       const setTimeoutSpy = vi.spyOn(global, 'setTimeout')
 
-      renderHook(() => useScheduling({
+      renderHookWithProviders(() => useScheduling({
         initialTiming: PublishTiming.NOW
       }))
 
@@ -183,7 +184,7 @@ describe('useScheduling', () => {
       const futureDate = new Date()
       futureDate.setDate(futureDate.getDate() + 2) // 2 days in future
 
-      const { result } = renderHook(() => useScheduling({
+      const { result } = renderHookWithProviders(() => useScheduling({
         initialTiming: PublishTiming.LATER,
         initialDate: formatDateStr(futureDate),
         initialTime: '2:00 PM'
@@ -206,7 +207,7 @@ describe('useScheduling', () => {
       const pastDate = new Date()
       pastDate.setDate(pastDate.getDate() - 1)
 
-      const { result } = renderHook(() => useScheduling({
+      const { result } = renderHookWithProviders(() => useScheduling({
         initialTiming: PublishTiming.LATER,
         initialDate: formatDateStr(pastDate),
         initialTime: '2:00 PM'
@@ -224,7 +225,7 @@ describe('useScheduling', () => {
       futureDate.setDate(futureDate.getDate() + 2) // 2 days in future
       const dateStr = formatDateStr(futureDate)
 
-      const { result } = renderHook(() => useScheduling({
+      const { result } = renderHookWithProviders(() => useScheduling({
         initialTiming: PublishTiming.LATER,
         initialDate: dateStr,
         initialTime: '2:00 PM'
@@ -241,7 +242,7 @@ describe('useScheduling', () => {
       futureDate.setDate(futureDate.getDate() + 3) // 3 days in future
       const dateStr = formatDateStr(futureDate)
 
-      const { result } = renderHook(() => useScheduling({
+      const { result } = renderHookWithProviders(() => useScheduling({
         initialTiming: PublishTiming.LATER,
         initialDate: dateStr,
         initialTime: '10:00 AM'
@@ -258,7 +259,7 @@ describe('useScheduling', () => {
       futureDate.setDate(futureDate.getDate() + 2) // 2 days in future
       const dateStr = formatDateStr(futureDate)
 
-      const { result } = renderHook(() => useScheduling({
+      const { result } = renderHookWithProviders(() => useScheduling({
         initialTiming: PublishTiming.LATER,
         initialDate: dateStr,
         initialTime: '3:00 PM'
@@ -278,7 +279,7 @@ describe('useScheduling', () => {
 
       const setTimeoutSpy = vi.spyOn(global, 'setTimeout')
 
-      renderHook(() => useScheduling({
+      renderHookWithProviders(() => useScheduling({
         initialTiming: PublishTiming.LATER,
         initialDate: formatDateStr(futureDate),
         initialTime: formatTimeStr(futureDate)

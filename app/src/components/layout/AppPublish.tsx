@@ -710,10 +710,10 @@ export default function AppPublish({ location = 'develop' }: { location?: string
                     visualSize='sm'
                     readOnly
                     disabled={isFirstTimePublishing}
-                    className='[&_#AppPublishDomainEdit]:!pr-[80px] [&_#AppPublishDomainEdit]:truncate'
+                    className='[&_#AppPublishDomainEdit]:!pe-[80px] [&_#AppPublishDomainEdit]:truncate'
                   />
                   {!isFirstTimePublishing && (
-                    <div className='absolute right-[5px] top-1/2 -translate-y-1/2 flex gap-0.5 items-center'>
+                    <div className='absolute end-[5px] top-1/2 -translate-y-1/2 flex gap-0.5 items-center'>
                       <IconButton
                         icon={<InlineEditIcon className='size-2' />}
                         onClick={handleViewDomain}

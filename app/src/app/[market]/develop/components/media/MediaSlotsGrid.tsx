@@ -73,7 +73,7 @@ export function MediaSlotsGrid({
             type="button"
             key={name}
             onClick={() => onSelectSlot(name)}
-            className="flex flex-col gap-1 text-left group hover:cursor-pointer"
+            className="flex flex-col gap-1 text-start group hover:cursor-pointer"
             data-eid={generateClickEID("develop.media_panel.slot")}
           >
             <div className="relative aspect-square w-full overflow-hidden rounded-md bg-intents-ux-box-backgroundColor border border-intents-ux-box-borderColor group-hover:border-intents-ux-ring-borderColor transition-colors">

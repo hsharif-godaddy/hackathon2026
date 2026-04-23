@@ -121,7 +121,7 @@ export default function FirstPublishCongratsModal({ appId }: FirstPublishCongrat
             readOnly
             label={null}
           />
-          <div className='absolute right-[6px] top-1/2 -translate-y-1/2 flex gap-0.5 items-center'>
+          <div className='absolute end-[6px] top-1/2 -translate-y-1/2 flex gap-0.5 items-center'>
             <IconButton
               icon={
                 copied ? (

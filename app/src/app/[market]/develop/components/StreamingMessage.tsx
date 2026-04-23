@@ -51,8 +51,8 @@ function getMessageClasses(message: ChatMessage | StreamingMessageType, isSuppor
   switch (message.role) {
     case 'user':
       return isSupport
-        ? clsx(baseClasses, 'bg-ai/10 px-2 py-1.5 border ml-4 my-0.5')
-        : clsx(baseClasses, 'bg-intents-ux-actionHovered-backgroundColor px-2 py-1.5 border ml-4 my-0.5')
+        ? clsx(baseClasses, 'bg-ai/10 px-2 py-1.5 border ms-4 my-0.5')
+        : clsx(baseClasses, 'bg-intents-ux-actionHovered-backgroundColor px-2 py-1.5 border ms-4 my-0.5')
 
     case 'assistant':
       return clsx(baseClasses, 'max-w-full p-0')

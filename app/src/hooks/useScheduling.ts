@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 
+import { useUserLocale } from '@/hooks/useUserLocale'
 import { PublishTiming } from '@/types/social-posts'
-import { getUserLocale } from '@/utils/common'
 import { createLocalDateTime, getInitialScheduleDate, getInitialScheduleTime, isValidScheduleTime } from '@/utils/social/scheduling'
 
 interface UseSchedulingReturn {
@@ -25,12 +25,13 @@ interface UseSchedulingOptions {
  * Handles date/time selection and validates scheduling requirements
  */
 export function useScheduling(options?: UseSchedulingOptions): UseSchedulingReturn {
+    const locale = useUserLocale()
     const [timing, setTiming] = useState<PublishTiming>(options?.initialTiming || PublishTiming.NOW)
     const [date, setDate] = useState<string[]>(() =>
         options?.initialDate ? [options.initialDate] : [getInitialScheduleDate()]
     )
     const [time, setTime] = useState<string>(() =>
-        options?.initialTime || getInitialScheduleTime(getUserLocale())
+        options?.initialTime || getInitialScheduleTime(locale)
     )
     const [validationTick, setValidationTick] = useState(0)
 

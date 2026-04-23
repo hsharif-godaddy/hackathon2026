@@ -78,7 +78,7 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
   return (
     <header data-testid="airo-header" className="flex">
       <motion.div
-        className="p-1.5 md:pl-2.5 md:pr-0 shrink-0 flex items-center gap-1.5"
+        className="p-1.5 md:ps-2.5 md:pe-0 shrink-0 flex items-center gap-1.5"
         animate={{
           width: (isChatPaneCollapsed || isMobile) ? undefined : `${chatPaneWidth}px`,
           justifyContent: isChatPaneCollapsed ? 'flex-start' : 'space-between'
@@ -103,7 +103,7 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
         {!isMobile && (
           <motion.div layout>
             <IconButton
-              icon={isChatPaneCollapsed ? <SidebarExpandIcon className="size-2.5" /> : <SidebarCollapseIcon className="size-2.5" />}
+              icon={isChatPaneCollapsed ? <SidebarExpandIcon className="size-2.5 rtl:scale-x-[-1]" /> : <SidebarCollapseIcon className="size-2.5 rtl:scale-x-[-1]" />}
               onClick={() => {
                 toggleChatPaneCollapse();
                 logClickEvent(`develop.header.chat_pane_${isChatPaneCollapsed ? 'expand' : 'collapse'}`, clickContext)();

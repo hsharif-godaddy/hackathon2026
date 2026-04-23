@@ -4,8 +4,9 @@
 import '@testing-library/jest-dom'
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, screen } from '@testing-library/react'
 
+import { renderWithProviders } from '@/tests/test-utils'
 import { PublishTiming } from '@/types/social-posts'
 import { SchedulingView } from './SchedulingView'
 
@@ -53,28 +54,28 @@ describe('SchedulingView', () => {
 
   describe('rendering', () => {
     it('should render timing options', () => {
-      render(<SchedulingView {...defaultProps} />)
+      renderWithProviders(<SchedulingView {...defaultProps} />)
 
       expect(screen.getByLabelText('builder_social_schedule_now')).toBeInTheDocument()
       expect(screen.getByLabelText('builder_social_schedule_later')).toBeInTheDocument()
     })
 
     it('should not show date/time pickers when timing is NOW', () => {
-      render(<SchedulingView {...defaultProps} timing={PublishTiming.NOW} />)
+      renderWithProviders(<SchedulingView {...defaultProps} timing={PublishTiming.NOW} />)
 
       expect(screen.queryByText('builder_social_schedule_date_label')).not.toBeInTheDocument()
       expect(screen.queryByText('builder_social_schedule_time_label')).not.toBeInTheDocument()
     })
 
     it('should show date/time pickers when timing is LATER', () => {
-      render(<SchedulingView {...defaultProps} timing={PublishTiming.LATER} />)
+      renderWithProviders(<SchedulingView {...defaultProps} timing={PublishTiming.LATER} />)
 
       expect(screen.getByText('builder_social_schedule_date_label')).toBeInTheDocument()
       expect(screen.getByText('builder_social_schedule_time_label')).toBeInTheDocument()
     })
 
     it('should display timezone information when scheduling', () => {
-      render(<SchedulingView {...defaultProps} timing={PublishTiming.LATER} />)
+      renderWithProviders(<SchedulingView {...defaultProps} timing={PublishTiming.LATER} />)
 
       expect(screen.getByText(/Timezone:/)).toBeInTheDocument()
     })
@@ -82,7 +83,7 @@ describe('SchedulingView', () => {
 
   describe('timing selection', () => {
     it('should call onTimingChange when NOW is selected', () => {
-      render(<SchedulingView {...defaultProps} timing={PublishTiming.LATER} />)
+      renderWithProviders(<SchedulingView {...defaultProps} timing={PublishTiming.LATER} />)
 
       const nowRadio = screen.getByLabelText('builder_social_schedule_now')
       fireEvent.click(nowRadio)
@@ -91,7 +92,7 @@ describe('SchedulingView', () => {
     })
 
     it('should call onTimingChange when LATER is selected', () => {
-      render(<SchedulingView {...defaultProps} timing={PublishTiming.NOW} />)
+      renderWithProviders(<SchedulingView {...defaultProps} timing={PublishTiming.NOW} />)
 
       const laterRadio = screen.getByLabelText('builder_social_schedule_later')
       fireEvent.click(laterRadio)
@@ -100,7 +101,7 @@ describe('SchedulingView', () => {
     })
 
     it('should check the correct radio button based on timing prop', () => {
-      const { rerender } = render(<SchedulingView {...defaultProps} timing={PublishTiming.NOW} />)
+      const { rerender } = renderWithProviders(<SchedulingView {...defaultProps} timing={PublishTiming.NOW} />)
 
       expect(screen.getByLabelText('builder_social_schedule_now')).toBeChecked()
       expect(screen.getByLabelText('builder_social_schedule_later')).not.toBeChecked()
@@ -118,7 +119,7 @@ describe('SchedulingView', () => {
       pastDate.setDate(pastDate.getDate() - 1)
       const { dateStr } = formatDateTime(pastDate)
 
-      render(
+      renderWithProviders(
         <SchedulingView
           {...defaultProps}
           timing={PublishTiming.LATER}
@@ -134,7 +135,7 @@ describe('SchedulingView', () => {
       const tooSoonDate = new Date(Date.now() + 10 * 60 * 1000)
       const { dateStr, timeStr } = formatDateTime(tooSoonDate)
 
-      render(
+      renderWithProviders(
         <SchedulingView
           {...defaultProps}
           timing={PublishTiming.LATER}
@@ -151,7 +152,7 @@ describe('SchedulingView', () => {
       validDate.setDate(validDate.getDate() + 1)
       const dateStr = validDate.toISOString().split('T')[0]
 
-      render(
+      renderWithProviders(
         <SchedulingView
           {...defaultProps}
           timing={PublishTiming.LATER}
@@ -169,7 +170,7 @@ describe('SchedulingView', () => {
       pastDate.setDate(pastDate.getDate() - 1)
       const { dateStr } = formatDateTime(pastDate)
 
-      render(
+      renderWithProviders(
         <SchedulingView
           {...defaultProps}
           timing={PublishTiming.NOW}
@@ -190,7 +191,7 @@ describe('SchedulingView', () => {
       const day = String(today.getDate()).padStart(2, '0')
       const dateStr = `${month}/${day}/${year}`
 
-      render(
+      renderWithProviders(
         <SchedulingView
           {...defaultProps}
           timing={PublishTiming.LATER}
@@ -207,7 +208,7 @@ describe('SchedulingView', () => {
       futureDate.setDate(futureDate.getDate() + 2)
       const dateStr = futureDate.toISOString().split('T')[0]
 
-      render(
+      renderWithProviders(
         <SchedulingView
           {...defaultProps}
           timing={PublishTiming.LATER}
@@ -223,7 +224,7 @@ describe('SchedulingView', () => {
       const tooSoonDate = new Date(Date.now() + 5 * 60 * 1000)
       const { dateStr, timeStr } = formatDateTime(tooSoonDate)
 
-      render(
+      renderWithProviders(
         <SchedulingView
           {...defaultProps}
           timing={PublishTiming.LATER}
@@ -239,7 +240,7 @@ describe('SchedulingView', () => {
 
   describe('date picker behavior', () => {
     it('should disable time picker when no date is selected', () => {
-      render(
+      renderWithProviders(
         <SchedulingView
           {...defaultProps}
           timing={PublishTiming.LATER}
@@ -257,7 +258,7 @@ describe('SchedulingView', () => {
       tomorrow.setDate(tomorrow.getDate() + 1)
       const { dateStr } = formatDateTime(tomorrow)
 
-      render(
+      renderWithProviders(
         <SchedulingView
           {...defaultProps}
           timing={PublishTiming.LATER}

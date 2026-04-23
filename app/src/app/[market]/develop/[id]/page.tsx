@@ -1237,6 +1237,9 @@ function DevelopPageContent() {
     }
   };
 
+  const isLayoutRtl =
+    typeof document !== 'undefined' && document.documentElement.dir === 'rtl'
+
   return (
     <WebSocketProvider sendMessage={ws.actions.send} loadHistory={ws.actions.loadHistory}>
       <div
@@ -1256,9 +1259,11 @@ function DevelopPageContent() {
           <div className="relative h-full w-full overflow-hidden">
             {/* Sidebar (Chat, History, Settings menu) */}
             <motion.div
-              className="absolute top-0 left-0 bottom-0 isolate"
+              className="absolute top-0 start-0 bottom-0 isolate"
               animate={{
-                x: isChatPaneCollapsed ? -(chatPaneWidth + 16) : 0,
+                x: isChatPaneCollapsed
+                  ? (isLayoutRtl ? chatPaneWidth + 16 : -(chatPaneWidth + 16))
+                  : 0,
                 width: chatPaneWidth
               }}
               transition={{
@@ -1286,16 +1291,16 @@ function DevelopPageContent() {
                 minLeftWidth={300}
                 minRightWidth={Math.max(600, typeof window !== 'undefined' ? window.innerWidth * 0.5 : 600)}
                 style={{
-                  left: `${chatPaneWidth + 10}px`
+                  insetInlineStart: `${chatPaneWidth + 10}px`
                 }}
               />
             )}
 
             {/* Content (Preview, Settings, Code) */}
             <motion.div
-              className="absolute top-0 right-0 bottom-0 flex flex-col"
+              className="absolute top-0 end-0 bottom-0 flex flex-col"
               animate={{
-                left: isChatPaneCollapsed ? 8 : chatPaneWidth + 16
+                insetInlineStart: isChatPaneCollapsed ? 8 : chatPaneWidth + 16
               }}
               transition={{
                 duration: 0.3,

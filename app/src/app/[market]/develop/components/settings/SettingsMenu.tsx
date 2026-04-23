@@ -9,6 +9,7 @@ import { useSettingsNavItems } from '@/app/[market]/develop/components/settings/
 import { ChatTab, SettingsSection } from '@/app/[market]/develop/components/types';
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils';
 import { useChatTabs } from '@/hooks/useChatTabs';
+import { useTranslations } from '@/hooks/useTranslations';
 import {
   Popover,
   PopoverAnchor,
@@ -26,6 +27,7 @@ export interface SettingsMenuRef {
 }
 
 const SettingsMenu = forwardRef<SettingsMenuRef>((props, ref) => {
+  const t = useTranslations();
   const appId = useAppIdFromParams();
   const clickContext = useMemo(() => (appId ? { appId } : undefined), [appId]);
 
@@ -59,7 +61,7 @@ const SettingsMenu = forwardRef<SettingsMenuRef>((props, ref) => {
           ref={anchorRef}
           value={ChatTab.SETTINGS}
           icon={<MenuIcon className="size-2.5" />}
-          label="Settings"
+          label={t('builder_chat_toolbar_button_settings')}
           onClick={() => setOpen(prev => !prev)}
           aria-expanded={open}
           aria-haspopup="dialog"

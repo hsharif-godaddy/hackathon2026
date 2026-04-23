@@ -165,7 +165,7 @@ export default function ChatToolbar({
           >
             <ButtonGroup.Item
               value={ChatTab.CHAT}
-              icon={<CommentsIcon className="size-2.5" />}
+              icon={<CommentsIcon className="size-2.5 rtl:scale-x-[-1]" />}
               label={t('builder_chat_toolbar_button_chat')}
             />
             <ButtonGroup.Item
@@ -181,7 +181,7 @@ export default function ChatToolbar({
             {isAnalyticsEnabled && (
               <ButtonGroup.Item
                 value={ChatTab.ANALYTICS}
-                icon={<GraphIcon className="size-2.5" />}
+                icon={<GraphIcon className="size-2.5 rtl:scale-x-[-1]" />}
                 label={t('builder_settings_nav_analytics')}
               />
             )}

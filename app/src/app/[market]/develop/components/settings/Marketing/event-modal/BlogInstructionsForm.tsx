@@ -8,8 +8,8 @@ import TextLockup from '@ux/text-lockup';
 import TimePicker from '@ux/time-picker';
 
 import { useTranslations } from '@/hooks/useTranslations';
+import { useUserLocale } from '@/hooks/useUserLocale';
 import { CalendarEvent } from '@/types/marketing';
-import { getUserLocale } from '@/utils/common';
 
 interface BlogInstructionsFormProps {
   selectedEvent: CalendarEvent | null;
@@ -37,6 +37,7 @@ export default function BlogInstructionsForm({
   onSubmit
 }: BlogInstructionsFormProps) {
   const t = useTranslations();
+  const locale = useUserLocale();
 
   return (
     <Box gap="xl">
@@ -69,7 +70,7 @@ export default function BlogInstructionsForm({
           required
           hour12={true}
           minuteInterval={15}
-          locale={getUserLocale()}
+          locale={locale}
           shouldDisableTime={shouldDisableTime}
           helpMessage={t('builder_social_schedule_timezone', { timezone: userTimezone })}
           errorMessage={

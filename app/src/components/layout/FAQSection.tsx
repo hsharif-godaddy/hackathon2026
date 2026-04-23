@@ -47,7 +47,7 @@ function AnimatedFAQItem({ index, onToggle }: AnimatedFAQItemProps) {
       <div className="overflow-hidden">
         <button
           onClick={toggle}
-          className="w-full text-left p-0 flex items-center justify-between hover:cursor-pointer"
+          className="w-full text-start p-0 flex items-center justify-between hover:cursor-pointer gap-2"
           aria-expanded={isOpen}
           aria-controls={`faq-answer-${index}`}
           data-eid={generateClickEID(`homepage.faq.item_${index + 1}`)}
@@ -83,7 +83,7 @@ function AnimatedFAQItem({ index, onToggle }: AnimatedFAQItemProps) {
           itemProp="acceptedAnswer"
           itemType="https://schema.org/Answer"
         >
-          <div className="pt-2 pr-6">
+          <div className="pt-2 pe-8">
             <text.p size={0} itemProp="text">
               {t(`builder_faq_${index + 1}_answer`)}
             </text.p>

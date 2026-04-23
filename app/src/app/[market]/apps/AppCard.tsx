@@ -743,7 +743,7 @@ export const TransferAppCard = ({ onAcceptTransfer, isTransferEnabled }: { onAcc
         onClick={onAcceptTransfer}
         className="w-full h-full flex flex-col gap-1 items-center justify-center cursor-pointer"
       >
-        <ArrowRightIcon className="size-3 text-ai" />
+        <ArrowRightIcon className="size-3 text-ai rtl:scale-x-[-1]" />
         <text.p>{t('builder_transfer_accept_button', undefined, 'Accept Transfer')}</text.p>
       </button>
     </Card>

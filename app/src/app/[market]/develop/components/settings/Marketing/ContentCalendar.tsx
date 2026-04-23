@@ -288,7 +288,7 @@ export default function ContentCalendar({ appId, onLoadingChange }: ContentCalen
         </div>
 
         {/* Month Navigation */}
-        <div className="flex items-center justify-center gap-3">
+        <div className="flex items-center justify-center gap-3 rtl:flex-row-reverse">
           <Button
             onClick={handlePrevMonth}
             design="minimal"

@@ -67,7 +67,7 @@ export default function DomainMenu() {
       <PopoverTrigger asChild>
         <div>
           <IconButton
-            icon={<WindowNewIcon className="size-2.5" />}
+            icon={<WindowNewIcon className="size-2.5 rtl:scale-x-[-1]" />}
             label={t('builder_domain_button_visit')}
             showLabelWhenActive={false}
             onClick={() => {
@@ -85,7 +85,7 @@ export default function DomainMenu() {
               design="option"
               size="sm"
               text={t('builder_domain_menu_preview')}
-              className="!justify-start"
+              className="justify-start"
               onClick={() => handleUrlClick(previewUrl, 'preview')}
             />
           )}
@@ -94,7 +94,7 @@ export default function DomainMenu() {
               design="option"
               size="sm"
               text={t('builder_domain_menu_published')}
-              className="!justify-start"
+              className="justify-start"
               onClick={() => handleUrlClick(publishedUrl, 'publish')}
             />
           )}
@@ -103,7 +103,7 @@ export default function DomainMenu() {
             design="option"
             size="sm"
             text={t('builder_project_domain_title')}
-            className="!justify-start"
+            className="justify-start"
             onClick={handleDomainSettings}
           />
         </div>

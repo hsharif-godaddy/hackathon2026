@@ -3,6 +3,28 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
+function isRtl(el: HTMLElement | null): boolean {
+  return el ? getComputedStyle(el).direction === 'rtl' : false
+}
+
+function buildPlaceholderStyle(style?: React.CSSProperties): React.CSSProperties {
+  const sizing: React.CSSProperties = {
+    width: '16px',
+    marginInlineStart: '-8px',
+  }
+  if (!style) {
+    return sizing
+  }
+  const { left, insetInlineStart, ...rest } = style
+  if (insetInlineStart !== undefined) {
+    return { ...rest, insetInlineStart, ...sizing }
+  }
+  if (left !== undefined) {
+    return { ...rest, insetInlineStart: left, ...sizing }
+  }
+  return { ...rest, ...sizing }
+}
+
 interface ResizableDividerProps {
   onResize: (leftWidth: number) => void
   minLeftWidth?: number
@@ -54,7 +76,7 @@ export default function ResizableDivider({
       window.removeEventListener('resize', updatePosition)
       window.removeEventListener('scroll', updatePosition)
     }
-  }, [style?.left])
+  }, [style?.left, style?.insetInlineStart])
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
@@ -71,13 +93,13 @@ export default function ResizableDivider({
 
       const containerRect = containerRef.current.getBoundingClientRect()
       const containerWidth = containerRect.width
-      const newLeftWidth = clientX - containerRect.left
+      const rtl = isRtl(containerRef.current)
+      const rawWidth = rtl
+        ? containerRect.right - clientX
+        : clientX - containerRect.left
 
-      // Calculate dynamic max width based on container size
       const maxLeftWidth = containerWidth - minRightWidth
-
-      // Apply constraints
-      const constrainedWidth = Math.max(minLeftWidth, Math.min(maxLeftWidth, newLeftWidth))
+      const constrainedWidth = Math.max(minLeftWidth, Math.min(maxLeftWidth, rawWidth))
 
       onResize(constrainedWidth)
     },
@@ -166,11 +188,7 @@ export default function ResizableDivider({
       <div
         ref={placeholderRef}
         className="absolute top-2 bottom-2 pointer-events-none"
-        style={{
-          ...style,
-          width: '16px',
-          transform: 'translateX(-8px)',
-        }}
+        style={buildPlaceholderStyle(style)}
       />
 
       {/* Portal: Renders divider at end of document body (naturally on top, no z-index, modals attach later in document so no stacking issue) */}

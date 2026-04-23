@@ -193,7 +193,7 @@ describe('SettingsMenu', () => {
     const { container } = renderWithProviders(<SettingsMenu />);
 
     const trigger = container.querySelector('[data-testid="chat-toolbar-settings-button"]')!;
-    expect(trigger).toHaveAttribute('aria-label', 'Settings');
+    expect(trigger).toHaveAttribute('aria-label', 'builder_chat_toolbar_button_settings');
   });
 
   it('should log click when settings nav item clicked', async () => {

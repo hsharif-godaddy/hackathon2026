@@ -808,7 +808,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
         </>
       ) : (
         // Desktop: Fixed sidebar
-        <div className="border-r min-h-0 w-[250px] flex-shrink-0 flex flex-col">
+        <div className="border-e min-h-0 w-[250px] flex-shrink-0 flex flex-col">
           <div className="flex items-center justify-between px-2 border-b h-6 my-0.5">
             {/* Files title - hidden when search is expanded */}
             <Text.p

@@ -146,7 +146,7 @@ describe('ChatToolbar', () => {
 
     const { container } = renderWithProviders(<ChatToolbar {...defaultProps} />);
 
-    const settingsButton = screen.getByRole('radio', { name: 'Settings' });
+    const settingsButton = screen.getByRole('radio', { name: 'builder_chat_toolbar_button_settings' });
     expect(settingsButton).toBeInTheDocument();
   });
 
@@ -216,7 +216,7 @@ describe('ChatToolbar', () => {
 
     const { container } = renderWithProviders(<ChatToolbar {...defaultProps} />);
 
-    const settingsButton = screen.getByRole('radio', { name: 'Settings' });
+    const settingsButton = screen.getByRole('radio', { name: 'builder_chat_toolbar_button_settings' });
     expect(settingsButton).toBeInTheDocument();
   });
 

@@ -2,10 +2,10 @@ import { useCallback, useState } from 'react'
 
 import { useWebSocketContext } from '@/contexts/WebSocketContext'
 import { useTranslations } from '@/hooks/useTranslations'
+import { useUserLocale } from '@/hooks/useUserLocale'
 import { PLATFORM_TRANSFORMS } from '@/lib/social-platforms'
 import { CONNECT_REQUEST_FROM_PUBLISH, type SiteAssociation } from '@/types/social'
 import { PublishTiming, SocialPostData } from '@/types/social-posts'
-import { getUserLocale } from '@/utils/common'
 import { formatHashtags, formatPlatformName } from '@/utils/social/format'
 import { parseTimeToDate } from '@/utils/social/scheduling'
 
@@ -39,6 +39,7 @@ export function useSocialPublish({
     onComplete,
 }: UseSocialPublishOptions): UseSocialPublishReturn {
     const t = useTranslations()
+    const locale = useUserLocale()
     const { sendMessage } = useWebSocketContext()
     const [isPublishing, setIsPublishing] = useState(false)
 
@@ -93,7 +94,7 @@ export function useSocialPublish({
                         ? t('builder_social_chat_schedule', {
                             styleName: post.styleLabel,
                             platformName,
-                            dateTime: scheduledAt.toLocaleString(getUserLocale(), {
+                            dateTime: scheduledAt.toLocaleString(locale, {
                                 month: 'short',
                                 day: 'numeric',
                                 hour: 'numeric',
@@ -148,7 +149,7 @@ export function useSocialPublish({
                 setIsPublishing(false)
             }
         },
-        [associations, onSave, onPublish, onComplete, t, sendMessage]
+        [associations, locale, onSave, onPublish, onComplete, t, sendMessage]
     )
 
     return {

@@ -100,7 +100,7 @@ export default function FileTree({ files, selectedFile, onFileSelect, getFileSta
         >
           {item.type === 'folder' && (
             <ChevronRightIcon className={clsx(
-              "w-2 h-2 mr-0.5 transition-transform duration-100", {
+              "w-2 h-2 mr-0.5 transition-transform duration-100 rtl:scale-x-[-1]", {
                 "rotate-90": isExpanded
               }
             )} />

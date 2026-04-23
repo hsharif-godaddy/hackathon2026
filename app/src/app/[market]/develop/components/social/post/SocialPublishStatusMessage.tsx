@@ -7,7 +7,7 @@ import Button from '@ux/button'
 import text, { type Emphasis } from '@ux/text'
 
 import { useTranslations } from '@/hooks/useTranslations'
-import { getUserLocale } from '@/utils/common'
+import { useUserLocale } from '@/hooks/useUserLocale'
 import { generateClickEID } from '@/utils/instrumentation'
 
 export enum SocialPublishStatus {
@@ -50,11 +50,12 @@ export const SocialPublishStatusMessage = memo(function SocialPublishStatusMessa
   scheduledAt
 }: SocialPublishStatusMessageProps) {
   const t = useTranslations()
+  const locale = useUserLocale()
   const config = statusConfig[status]
   const isScheduled = !!scheduledAt
 
   const scheduledDateTime = scheduledAt
-    ? scheduledAt.toLocaleString(getUserLocale(), {
+    ? scheduledAt.toLocaleString(locale, {
         month: 'short',
         day: 'numeric',
         hour: 'numeric',

@@ -8,8 +8,8 @@ import text from '@ux/text';
 import TimePicker from '@ux/time-picker';
 
 import { useTranslations } from '@/hooks/useTranslations';
+import { useUserLocale } from '@/hooks/useUserLocale';
 import { PublishTiming } from '@/types/social-posts';
-import { getUserLocale } from '@/utils/common';
 import { getMaximumScheduleTime, getMinimumScheduleTime, MAX_SCHEDULE_DAYS } from '@/utils/social/scheduling';
 
 interface SchedulingViewProps {
@@ -30,14 +30,15 @@ export const SchedulingView = memo(({
   onTimeChange
 }: SchedulingViewProps) => {
   const t = useTranslations();
+  const locale = useUserLocale();
 
   const timezoneDisplay = useMemo(() => {
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    const abbr = new Date().toLocaleTimeString(getUserLocale(), {
-      timeZoneName: 'short'
-    }).split(' ')[2];
-    return `${tz} (${abbr})`;
-  }, []);
+    const abbr = new Intl.DateTimeFormat(locale, { timeZoneName: 'short' })
+      .formatToParts(new Date())
+      .find((p) => p.type === 'timeZoneName')?.value;
+    return abbr ? `${tz} (${abbr})` : tz;
+  }, [locale]);
 
   const shouldDisableDate = useCallback((dateStr: string) => {
     const selectedDate = new Date(dateStr);
@@ -95,12 +96,12 @@ export const SchedulingView = memo(({
     if (!isToday) return null;
     const now = new Date();
     const minimum = new Date(now.getTime() + 20 * 60 * 1000);
-    return minimum.toLocaleTimeString('en-US', {
+    return minimum.toLocaleTimeString(locale, {
       hour: 'numeric',
       minute: '2-digit',
       hour12: true
     });
-  }, [isToday]);
+  }, [isToday, locale]);
 
   return (
     <Box orientation="vertical" gap="md">
@@ -140,7 +141,7 @@ export const SchedulingView = memo(({
                 label={t('builder_social_schedule_date_label')}
                 value={date}
                 onChange={onDateChange}
-                locale={getUserLocale()}
+                locale={locale}
                 shouldDisableDate={shouldDisableDate}
                 portalElem={document.body}
                 required
@@ -157,7 +158,7 @@ export const SchedulingView = memo(({
                 required
                 hour12={true}
                 minuteInterval={15}
-                locale={getUserLocale()}
+                locale={locale}
                 disabled={!date.length}
               />
               {isToday && minimumTime && !scheduleValidation.message && (

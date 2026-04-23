@@ -203,7 +203,7 @@ export function TableDataBrowser({ appId, tableName, onBack }: TableDataBrowserP
         <div className="flex">
           <Button
             text={t('builder_common_back')}
-            icon={<ArrowLeftIcon />}
+            icon={<ArrowLeftIcon className="rtl:scale-x-[-1]" />}
             onClick={onBack}
             design="inline"
             size="sm"
@@ -222,7 +222,11 @@ export function TableDataBrowser({ appId, tableName, onBack }: TableDataBrowserP
 
   const getDescription = () => {
     if (data.length === 0) return undefined;
-    return `Showing ${((pagination.page - 1) * pagination.limit) + 1}-${Math.min(pagination.page * pagination.limit, pagination.total)} of ${pagination.total} ${pagination.total === 1 ? 'row' : 'rows'}`;
+    return t('builder_settings_database_showing_row', {
+      from: ((pagination.page - 1) * pagination.limit) + 1,
+      to: Math.min(pagination.page * pagination.limit, pagination.total),
+      total: pagination.total,
+    })
   };
 
   return (
@@ -230,7 +234,7 @@ export function TableDataBrowser({ appId, tableName, onBack }: TableDataBrowserP
       <div className="flex">
         <Button
           text={t('builder_common_back')}
-          icon={<ArrowLeftIcon />}
+          icon={<ArrowLeftIcon className="rtl:scale-x-[-1]" />}
           onClick={onBack}
           design="inline"
           size="sm"

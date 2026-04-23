@@ -1,6 +1,15 @@
+/** Market locale from `window.gasketData.intl` (same source as Gasket intl); en-US when absent (SSR/tests). */
+export function getAppLocale(): string {
+  if (typeof window === 'undefined') {
+    return 'en-US'
+  }
+  const locale = window.gasketData?.intl?.locale
+  return typeof locale === 'string' && locale.length > 0 ? locale : 'en-US'
+}
+
 export const formatDate = (date: string | Date, detailed = false) => {
   const dateObj = date instanceof Date ? date : new Date(date)
-  return new Intl.DateTimeFormat('en-US', {
+  return new Intl.DateTimeFormat(getAppLocale(), {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
@@ -8,15 +17,6 @@ export const formatDate = (date: string | Date, detailed = false) => {
     minute: detailed ? '2-digit' : undefined,
     timeZone: 'UTC',
   }).format(dateObj)
-}
-
-/**
- * Get the user's locale from the browser, with fallback to en-US
- *
- * @returns User's locale (e.g., "en-US", "es-ES", "fr-FR")
- */
-export const getUserLocale = (): string => {
-  return typeof navigator !== 'undefined' ? navigator.language : 'en-US'
 }
 
 /**

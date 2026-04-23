@@ -8,8 +8,8 @@ import TextLockup from '@ux/text-lockup';
 import TimePicker from '@ux/time-picker';
 
 import { useTranslations } from '@/hooks/useTranslations';
+import { useUserLocale } from '@/hooks/useUserLocale';
 import { CalendarEvent } from '@/types/marketing';
-import { getUserLocale } from '@/utils/common';
 import PlatformSelector from './PlatformSelector';
 
 interface SocialInstructionsFormProps {
@@ -42,6 +42,7 @@ export default function SocialInstructionsForm({
   onSubmit
 }: SocialInstructionsFormProps) {
   const t = useTranslations();
+  const locale = useUserLocale();
 
   return (
     <Box gap="xl">
@@ -80,7 +81,7 @@ export default function SocialInstructionsForm({
           required
           hour12={true}
           minuteInterval={15}
-          locale={getUserLocale()}
+          locale={locale}
           shouldDisableTime={shouldDisableTime}
           helpMessage={t('builder_social_schedule_timezone', { timezone: userTimezone })}
           errorMessage={

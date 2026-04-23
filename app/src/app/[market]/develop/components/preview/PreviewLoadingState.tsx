@@ -29,7 +29,7 @@ export default function PreviewLoadingState({ message, isMobile = false }: Previ
   const deviceVerticalMargin = Math.round(32 - ((clampedHeight - minHeight) / (maxHeight - minHeight)) * 28)
 
   return (
-    <div className="h-full flex flex-col pr-1 md:pr-2.5 pl-1">
+    <div className="h-full flex flex-col pe-1 md:pe-2.5 ps-1">
       <div className="inset-0 relative h-full">
         <div className="flex flex-col items-center justify-center h-full bg-intents-ux-boxLowContrast-backgroundColor rounded-lg md:rounded-b-none">
           <div className="flex-1 flex items-center justify-center pb-1 md:pb-0 px-1 md:px-0 w-full">

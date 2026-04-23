@@ -84,7 +84,7 @@ export default function DevelopSkeleton({ isFallback = false }: { isFallback?: b
       ) : (
         <>
           <header className="flex">
-            <div className="p-1.5 md:pl-2.5 md:pr-0 shrink-0 flex items-center justify-between gap-1.5" style={{ width: DEFAULT_CHAT_PANE_WIDTH }}>
+            <div className="p-1.5 md:ps-2.5 md:pe-0 shrink-0 flex items-center justify-between gap-1.5" style={{ width: DEFAULT_CHAT_PANE_WIDTH }}>
               <div className="flex items-center gap-1">
                 <StaticSkeleton width="60px" height="24px" />
                 <StaticSkeleton width="40px" height="20px" />

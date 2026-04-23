@@ -84,7 +84,7 @@ export default function MediaPanel() {
           onClick={handleBack}
           className="shrink-0 flex items-center gap-1 text-sm text-intents-ux-textSubtle-textColor hover:text-intents-ux-text-textColor transition-colors hover:cursor-pointer"
         >
-          <ChevronLeftIcon className="size-2" />
+          <ChevronLeftIcon className="size-2 rtl:scale-x-[-1]" />
           <span>{t('builder_common_back')}</span>
         </button>
         <div className="flex-1 min-h-0 flex flex-col">

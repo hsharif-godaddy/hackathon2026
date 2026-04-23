@@ -740,7 +740,7 @@ export default function PreviewPane({
   // Success state - show the preview
   if (previewUrl && serverState?.isReady) {
     return (
-      <div className="h-full flex flex-col pr-1 md:pr-2.5 pl-1">
+      <div className="h-full flex flex-col pr-e md:pe-2.5 ps-1">
         <div className="inset-0 relative h-full">
           <div className="flex flex-col items-center justify-center h-full bg-intents-ux-boxLowContrast-backgroundColor rounded-lg md:rounded-b-none">
             <div className="flex flex-col h-full w-full bg-intents-ux-boxLowContrast-backgroundColor relative rounded-lg md:rounded-b-none">
