@@ -25,31 +25,90 @@ function makeArgs(overrides: Partial<Parameters<ReturnType<typeof createPostStre
   };
 }
 
+type RestartPreviewFn = (
+  appId: string,
+  signal: AbortSignal
+) => Promise<{ success: boolean; error?: string }>;
+
+type WaitForCycleAdvanceFn = (
+  appId: string,
+  previousCycleId: number | undefined,
+  opts: { timeoutMs: number; signal?: AbortSignal }
+) => Promise<{ advanced: boolean; newCycleId?: number; durationMs: number }>;
+
 function makeDeps(overrides: {
   typecheckResult?: TypecheckResult;
   runtimeResult?: RuntimeErrorResult;
+  /** Override for the re-poll after a successful restart + beacon wait. */
+  rePollResult?: RuntimeErrorResult;
   tscMaxRetries?: number;
   rtMaxRetries?: number;
   tscRetryCount?: number;
   rtRetryCount?: number;
   hasUncommittedChanges?: boolean | (() => Promise<boolean>);
   cycleEstablished?: boolean;
+  /** Preset cycleId reported before the restart fires. */
+  previousCycleId?: number;
+  /**
+   * Inject restart wiring. `false` / undefined keeps the deps identical
+   * to pre-restart behavior (no restart callback on deps, no
+   * `waitForCycleAdvance` exercised), which lets us assert the
+   * regression case from the plan.
+   */
+  restartPreview?: RestartPreviewFn;
+  /**
+   * Override for the cycle-advance wait. Defaults to
+   * `{ advanced: true, newCycleId: previousCycleId + 1 }` when
+   * `restartPreview` is set, so happy-path tests don't have to wire
+   * both overrides.
+   */
+  waitForCycleAdvance?: WaitForCycleAdvanceFn;
+  restartBeaconWaitMs?: number;
 } = {}) {
   const logger = { info: vi.fn(), warn: vi.fn() };
   const typecheckService = {
-    runTypecheck: vi.fn<[string, unknown], Promise<TypecheckResult>>(async () =>
-      overrides.typecheckResult ?? { ok: true, errors: [] }
+    runTypecheck: vi.fn(
+      async (_appId: string, _opts: unknown): Promise<TypecheckResult> =>
+        overrides.typecheckResult ?? { ok: true, errors: [] }
     )
   };
-  const runtimeErrorService = {
-    pollRuntimeErrors: vi.fn<[string, unknown], Promise<RuntimeErrorResult>>(async () =>
+  const previousCycleId = overrides.previousCycleId;
+  const pollRuntimeErrors = vi.fn(
+    async (_appId: string, _opts: unknown): Promise<RuntimeErrorResult> =>
       overrides.runtimeResult ?? { ok: true, errors: [] }
-    ),
+  );
+  // Re-poll replaces the first-poll result on the next call. We wire
+  // this via `mockImplementationOnce` in the restart tests rather than
+  // here, but default the first/second calls to the same result so a
+  // test that doesn't care about the re-poll shape still gets sane
+  // behavior.
+  if (overrides.rePollResult !== undefined) {
+    pollRuntimeErrors.mockImplementationOnce(async () => overrides.runtimeResult ?? { ok: true, errors: [] });
+    pollRuntimeErrors.mockImplementationOnce(async () => overrides.rePollResult!);
+  }
+  const waitForCycleAdvance = vi.fn(
+    async (
+      appId: string,
+      prev: number | undefined,
+      opts: { timeoutMs: number; signal?: AbortSignal }
+    ): Promise<{ advanced: boolean; newCycleId?: number; durationMs: number }> =>
+      overrides.waitForCycleAdvance
+        ? overrides.waitForCycleAdvance(appId, prev, opts)
+        : {
+            advanced: true,
+            newCycleId: (prev ?? 0) + 1,
+            durationMs: 10
+          }
+  );
+  const runtimeErrorService = {
+    pollRuntimeErrors,
     // Default to `true` so existing tests (which assert clean/fail
     // behavior in isolation) don't fire the "no cycle established"
     // warning path. The dedicated observability test below overrides
     // this to `false`.
-    hasCycleEstablished: vi.fn<[string], boolean>(() => overrides.cycleEstablished ?? true)
+    hasCycleEstablished: vi.fn((_appId: string): boolean => overrides.cycleEstablished ?? true),
+    getCurrentCycleId: vi.fn((_appId: string): number | undefined => previousCycleId),
+    waitForCycleAdvance
   };
   const tscCounters = new Map<string, number>();
   if (overrides.tscRetryCount !== undefined) {
@@ -65,6 +124,28 @@ function makeDeps(overrides: {
     if (typeof override === 'boolean') return vi.fn(async () => override);
     return vi.fn(async () => true);
   })();
+  const restartPreviewMock = overrides.restartPreview
+    ? vi.fn(overrides.restartPreview)
+    : undefined;
+  const runtimeErrorsDeps: {
+    runtimeErrorService: typeof runtimeErrorService;
+    retryCounters: Map<string, number>;
+    maxRetries: number;
+    logger: typeof logger;
+    restartPreview?: RestartPreviewFn;
+    restartBeaconWaitMs?: number;
+  } = {
+    runtimeErrorService,
+    retryCounters: rtCounters,
+    maxRetries: overrides.rtMaxRetries ?? 2,
+    logger
+  };
+  if (restartPreviewMock) {
+    runtimeErrorsDeps.restartPreview = restartPreviewMock;
+  }
+  if (overrides.restartBeaconWaitMs !== undefined) {
+    runtimeErrorsDeps.restartBeaconWaitMs = overrides.restartBeaconWaitMs;
+  }
   return {
     deps: {
       typecheck: {
@@ -73,12 +154,7 @@ function makeDeps(overrides: {
         maxRetries: overrides.tscMaxRetries ?? 2,
         logger
       },
-      runtimeErrors: {
-        runtimeErrorService,
-        retryCounters: rtCounters,
-        maxRetries: overrides.rtMaxRetries ?? 2,
-        logger
-      },
+      runtimeErrors: runtimeErrorsDeps,
       hasUncommittedChanges: hasUncommittedChangesFn,
       logger
     },
@@ -87,7 +163,10 @@ function makeDeps(overrides: {
       runTypecheck: typecheckService.runTypecheck,
       pollRuntimeErrors: runtimeErrorService.pollRuntimeErrors,
       hasCycleEstablished: runtimeErrorService.hasCycleEstablished,
+      getCurrentCycleId: runtimeErrorService.getCurrentCycleId,
+      waitForCycleAdvance: runtimeErrorService.waitForCycleAdvance,
       hasUncommittedChanges: hasUncommittedChangesFn,
+      restartPreview: restartPreviewMock,
       tscCounters,
       rtCounters
     }
@@ -457,5 +536,246 @@ describe('createPostStreamValidator', () => {
       expect.any(Object)
     );
     expect(mocks.pollRuntimeErrors).toHaveBeenCalledTimes(1);
+  });
+
+  describe('runtime phase — 2nd-run restart recovery', () => {
+    const runtimeErrors = [
+      { name: 'TypeError', message: 'obj is undefined', timestamp: 1 }
+    ];
+    const freshErrors = [
+      { name: 'ReferenceError', message: 'foo is not defined', timestamp: 2 }
+    ];
+
+    it('does NOT trigger restart on the 1st runtime-phase run even if restartPreview is wired', async () => {
+      const { deps, mocks } = makeDeps({
+        runtimeResult: { ok: false, errors: runtimeErrors },
+        restartPreview: async () => ({ success: true })
+      });
+      const validator = createPostStreamValidator(deps);
+      const result = await validator(makeArgs());
+      expect(result).toMatchObject({
+        continuationPrompt: expect.stringContaining('obj is undefined')
+      });
+      expect(mocks.restartPreview).not.toHaveBeenCalled();
+      expect(mocks.pollRuntimeErrors).toHaveBeenCalledTimes(1);
+      expect(mocks.rtCounters.get(SOCKET_ID)).toBe(1);
+    });
+
+    it('on 2nd run with errors: restart + clean re-poll returns void and does not emit a continuation', async () => {
+      const { deps, mocks } = makeDeps({
+        rtRetryCount: 1,
+        runtimeResult: { ok: false, errors: runtimeErrors },
+        rePollResult: { ok: true, errors: [] },
+        previousCycleId: 100,
+        restartPreview: async () => ({ success: true }),
+        restartBeaconWaitMs: 7_500
+      });
+      const validator = createPostStreamValidator(deps);
+      const result = await validator(makeArgs());
+      expect(result).toBeUndefined();
+      expect(mocks.restartPreview).toHaveBeenCalledTimes(1);
+      expect(mocks.waitForCycleAdvance).toHaveBeenCalledTimes(1);
+      expect(mocks.waitForCycleAdvance.mock.calls[0]![1]).toBe(100);
+      expect(mocks.waitForCycleAdvance.mock.calls[0]![2]).toMatchObject({
+        timeoutMs: 7_500,
+        signal: expect.any(AbortSignal)
+      });
+      expect(mocks.pollRuntimeErrors).toHaveBeenCalledTimes(2);
+      // The counter is NOT bumped on a resolved re-poll — the fix
+      // actually worked, we should exit the retry loop.
+      expect(mocks.rtCounters.get(SOCKET_ID)).toBe(1);
+      expect(mocks.logger.info).toHaveBeenCalledWith(
+        'agent.runtime_errors.restart.begin',
+        expect.objectContaining({ previousCycleId: 100, retryCount: 1 })
+      );
+      expect(mocks.logger.info).toHaveBeenCalledWith(
+        'agent.runtime_errors.restart.resolved',
+        expect.any(Object)
+      );
+    });
+
+    it('on 2nd run with errors: restart + still-dirty re-poll emits a continuation with the fresh errors', async () => {
+      const { deps, mocks } = makeDeps({
+        rtRetryCount: 1,
+        runtimeResult: { ok: false, errors: runtimeErrors },
+        rePollResult: { ok: false, errors: freshErrors },
+        previousCycleId: 100,
+        restartPreview: async () => ({ success: true })
+      });
+      const validator = createPostStreamValidator(deps);
+      const result = await validator(makeArgs());
+      expect(result).toMatchObject({
+        continuationPrompt: expect.stringContaining('foo is not defined')
+      });
+      // Original errors must NOT leak through — the re-poll is the
+      // source of truth once a restart succeeded.
+      expect((result as { continuationPrompt: string }).continuationPrompt).not.toContain(
+        'obj is undefined'
+      );
+      expect(mocks.rtCounters.get(SOCKET_ID)).toBe(2);
+      expect(mocks.logger.warn).toHaveBeenCalledWith(
+        'agent.runtime_errors.restart.persisted',
+        expect.any(Object)
+      );
+    });
+
+    it('on 2nd run with errors: unsuccessful restart falls through with the original stale errors and warns', async () => {
+      const { deps, mocks } = makeDeps({
+        rtRetryCount: 1,
+        runtimeResult: { ok: false, errors: runtimeErrors },
+        restartPreview: async () => ({ success: false, error: 'DevSupervisor not available' })
+      });
+      const validator = createPostStreamValidator(deps);
+      const result = await validator(makeArgs());
+      expect(result).toMatchObject({
+        continuationPrompt: expect.stringContaining('obj is undefined')
+      });
+      // Re-poll must not happen if the restart didn't actually succeed.
+      expect(mocks.waitForCycleAdvance).not.toHaveBeenCalled();
+      expect(mocks.pollRuntimeErrors).toHaveBeenCalledTimes(1);
+      expect(mocks.logger.warn).toHaveBeenCalledWith(
+        'agent.runtime_errors.restart.failed',
+        expect.objectContaining({
+          reason: 'restart_unsuccessful',
+          error: 'DevSupervisor not available'
+        })
+      );
+    });
+
+    it('on 2nd run with errors: restart throwing is caught, falls through with original errors', async () => {
+      const { deps, mocks } = makeDeps({
+        rtRetryCount: 1,
+        runtimeResult: { ok: false, errors: runtimeErrors },
+        restartPreview: async () => {
+          throw new Error('socket hang up');
+        }
+      });
+      const validator = createPostStreamValidator(deps);
+      const result = await validator(makeArgs());
+      expect(result).toMatchObject({
+        continuationPrompt: expect.stringContaining('obj is undefined')
+      });
+      expect(mocks.logger.warn).toHaveBeenCalledWith(
+        'agent.runtime_errors.restart.failed',
+        expect.objectContaining({ reason: 'restart_threw', error: 'socket hang up' })
+      );
+    });
+
+    it('on 2nd run with errors: re-poll throwing after a successful restart falls through with the original errors', async () => {
+      // Structural parity with `restart_threw`: the re-poll's try/catch
+      // is a separate branch in `attemptRestartAndRepoll`, so it
+      // deserves its own coverage.
+      const { deps, mocks } = makeDeps({
+        rtRetryCount: 1,
+        runtimeResult: { ok: false, errors: runtimeErrors },
+        previousCycleId: 100,
+        restartPreview: async () => ({ success: true })
+      });
+      mocks.pollRuntimeErrors
+        .mockReset()
+        .mockImplementationOnce(async () => ({ ok: false, errors: runtimeErrors }))
+        .mockImplementationOnce(async () => {
+          throw new Error('buffer gone');
+        });
+      const validator = createPostStreamValidator(deps);
+      const result = await validator(makeArgs());
+      expect(result).toMatchObject({
+        continuationPrompt: expect.stringContaining('obj is undefined')
+      });
+      expect(mocks.pollRuntimeErrors).toHaveBeenCalledTimes(2);
+      expect(mocks.logger.warn).toHaveBeenCalledWith(
+        'agent.runtime_errors.restart.failed',
+        expect.objectContaining({ reason: 'repoll_threw', error: 'buffer gone' })
+      );
+    });
+
+    it('on 2nd run with errors: beacon timeout falls through with original errors and logs a dedicated warn', async () => {
+      const { deps, mocks } = makeDeps({
+        rtRetryCount: 1,
+        runtimeResult: { ok: false, errors: runtimeErrors },
+        previousCycleId: 100,
+        restartPreview: async () => ({ success: true }),
+        waitForCycleAdvance: async () => ({ advanced: false, durationMs: 15_000 })
+      });
+      const validator = createPostStreamValidator(deps);
+      const result = await validator(makeArgs());
+      expect(result).toMatchObject({
+        continuationPrompt: expect.stringContaining('obj is undefined')
+      });
+      // Re-poll must be skipped — we don't trust a drain under the
+      // old cycle after a restart whose beacon never arrived.
+      expect(mocks.pollRuntimeErrors).toHaveBeenCalledTimes(1);
+      expect(mocks.logger.warn).toHaveBeenCalledWith(
+        'agent.runtime_errors.restart.beacon_timeout',
+        expect.objectContaining({ previousCycleId: 100 })
+      );
+    });
+
+    it('on 2nd run with errors: abort during the restart sequence returns void with no counter bump', async () => {
+      const ac = new AbortController();
+      const { deps, mocks } = makeDeps({
+        rtRetryCount: 1,
+        runtimeResult: { ok: false, errors: runtimeErrors },
+        restartPreview: async () => {
+          ac.abort();
+          return { success: true };
+        }
+      });
+      const validator = createPostStreamValidator(deps);
+      const result = await validator(makeArgs({ abortSignal: ac.signal }));
+      expect(result).toBeUndefined();
+      // Counter must NOT advance on abort — the turn is going away.
+      expect(mocks.rtCounters.get(SOCKET_ID)).toBe(1);
+    });
+
+    it('when restartPreview is omitted from deps, 2nd-run behavior is identical to pre-restart (regression guard)', async () => {
+      const { deps, mocks } = makeDeps({
+        rtRetryCount: 1,
+        runtimeResult: { ok: false, errors: runtimeErrors }
+        // No `restartPreview` → phase must not touch the restart path.
+      });
+      const validator = createPostStreamValidator(deps);
+      const result = await validator(makeArgs());
+      expect(result).toMatchObject({
+        continuationPrompt: expect.stringContaining('obj is undefined')
+      });
+      expect(mocks.waitForCycleAdvance).not.toHaveBeenCalled();
+      expect(mocks.pollRuntimeErrors).toHaveBeenCalledTimes(1);
+      // No restart-related log events fired.
+      const restartEvents = mocks.logger.info.mock.calls
+        .concat(mocks.logger.warn.mock.calls)
+        .map((c) => c[0] as string)
+        .filter((name) => name.startsWith('agent.runtime_errors.restart.'));
+      expect(restartEvents).toEqual([]);
+    });
+
+    it('at budget exhaustion on 2nd run: persisted errors after restart surface the gave-up chunk', async () => {
+      // When rtRetryCount is already at maxRetries before the phase
+      // runs and the re-poll confirms errors persist, the counter
+      // bump inside the phase would push to maxRetries+1; the
+      // exhausted message path must still emit its gave-up chunk.
+      const { deps, mocks } = makeDeps({
+        rtRetryCount: 2,
+        rtMaxRetries: 2,
+        runtimeResult: { ok: false, errors: runtimeErrors },
+        rePollResult: { ok: false, errors: freshErrors },
+        previousCycleId: 100,
+        restartPreview: async () => ({ success: true })
+      });
+      const emitChunk = vi.fn(async (_text: string) => {});
+      const validator = createPostStreamValidator(deps);
+      const result = await validator(makeArgs({ emitChunk }));
+      expect(result).toBeUndefined();
+      expect(emitChunk).toHaveBeenCalledTimes(1);
+      expect(emitChunk.mock.calls[0]![0]).toContain('runtime errors');
+      expect(mocks.logger.warn).toHaveBeenCalledWith(
+        'agent.runtime_errors.restart.persisted',
+        expect.any(Object)
+      );
+      expect(mocks.logger.warn).toHaveBeenCalledWith(
+        'agent.runtime_errors.exceeded',
+        expect.any(Object)
+      );
+    });
   });
 });

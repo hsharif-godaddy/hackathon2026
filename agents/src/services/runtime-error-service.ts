@@ -44,6 +44,25 @@ const DEFAULT_MAX_WAIT_MS = 10_000;
 const DEFAULT_QUIET_WINDOW_MS = 1500;
 const POLL_INTERVAL_MS = 250;
 
+// Default poll cadence for `waitForCycleAdvance`. Tighter than
+// `POLL_INTERVAL_MS` so the validator reacts quickly once the new preview
+// process finishes booting and the initial cycle beacon lands — the
+// overall wait is dominated by dev-server boot time, not this cadence.
+const CYCLE_WAIT_POLL_INTERVAL_MS = 150;
+
+/**
+ * Outcome of `waitForCycleAdvance`. `advanced: true` means the buffer's
+ * current cycleId for `appId` is different from the caller-supplied
+ * `previousCycleId` (the preview restarted and its new `error-client.ts`
+ * pushed a fresh beacon). `advanced: false` means the timeout or abort
+ * signal fired before the cycleId changed.
+ */
+export interface CycleAdvanceResult {
+  advanced: boolean;
+  newCycleId?: number;
+  durationMs: number;
+}
+
 /**
  * Post-hook runtime-error checker.
  *
@@ -76,6 +95,76 @@ export class RuntimeErrorService {
    */
   hasCycleEstablished(appId: string): boolean {
     return runtimeErrorBuffer.getCurrentCycleId(appId) !== undefined;
+  }
+
+  /**
+   * Current cycle generation for `appId`, or `undefined` if the preview
+   * has never announced one. Thin pass-through over
+   * `runtimeErrorBuffer.getCurrentCycleId` so callers (notably the
+   * post-stream validator's restart path) can read the pre-restart
+   * cycleId through the service and stay decoupled from the buffer
+   * singleton for testability.
+   */
+  getCurrentCycleId(appId: string): number | undefined {
+    return runtimeErrorBuffer.getCurrentCycleId(appId);
+  }
+
+  /**
+   * Resolve once the buffer's current cycleId for `appId` differs from
+   * `previousCycleId`, capped at `opts.timeoutMs`.
+   *
+   * Used by the post-stream validator's preview-restart recovery: after
+   * asking dev-supervisor to restart the preview process, we wait for
+   * the new preview's `error-client.ts` to emit its initial cycle
+   * beacon (which rotates the buffer's cycleId) before re-polling
+   * runtime errors. Resolving early matters because dev-server boot
+   * time varies widely across cold vs warm dep graphs; a fixed sleep
+   * would either be wasteful most of the time or truncate cold boots.
+   *
+   * Honors `opts.signal` — an abort resolves immediately with
+   * `advanced: false` rather than throwing, so the caller can fall
+   * through to its existing cleanup path without special-casing abort
+   * in a try/catch.
+   *
+   * `previousCycleId` may be `undefined` (preview never announced a
+   * cycle before the restart — e.g. restart fires on the very first
+   * turn). In that case *any* non-undefined cycleId counts as an
+   * advance.
+   */
+  async waitForCycleAdvance(
+    appId: string,
+    previousCycleId: number | undefined,
+    opts: { timeoutMs: number; signal?: AbortSignal }
+  ): Promise<CycleAdvanceResult> {
+    const begin = Date.now();
+
+    if (opts.signal?.aborted) {
+      return { advanced: false, durationMs: 0 };
+    }
+
+    while (true) {
+      const current = runtimeErrorBuffer.getCurrentCycleId(appId);
+      if (current !== undefined && current !== previousCycleId) {
+        return {
+          advanced: true,
+          newCycleId: current,
+          durationMs: Date.now() - begin
+        };
+      }
+
+      const elapsed = Date.now() - begin;
+      if (elapsed >= opts.timeoutMs) {
+        return { advanced: false, durationMs: elapsed };
+      }
+
+      if (opts.signal?.aborted) {
+        return { advanced: false, durationMs: elapsed };
+      }
+
+      const remaining = opts.timeoutMs - elapsed;
+      const sleepMs = Math.min(CYCLE_WAIT_POLL_INTERVAL_MS, remaining);
+      await sleepOrAbort(sleepMs, opts.signal);
+    }
   }
 
   async pollRuntimeErrors(

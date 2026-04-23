@@ -166,6 +166,98 @@ describe('RuntimeErrorService.pollRuntimeErrors', () => {
   });
 });
 
+describe('RuntimeErrorService.getCurrentCycleId', () => {
+  beforeEach(() => {
+    runtimeErrorBuffer._resetForTests();
+  });
+
+  it('returns undefined when no cycle has been announced', () => {
+    const service = new RuntimeErrorService();
+    expect(service.getCurrentCycleId(TEST_APP_ID)).toBeUndefined();
+  });
+
+  it('mirrors the buffer after rotation', () => {
+    runtimeErrorBuffer.rotateCycle(TEST_APP_ID, 42);
+    const service = new RuntimeErrorService();
+    expect(service.getCurrentCycleId(TEST_APP_ID)).toBe(42);
+  });
+});
+
+describe('RuntimeErrorService.waitForCycleAdvance', () => {
+  beforeEach(() => {
+    runtimeErrorBuffer._resetForTests();
+  });
+
+  it('resolves immediately when the cycleId already differs from previousCycleId', async () => {
+    runtimeErrorBuffer.rotateCycle(TEST_APP_ID, 200);
+    const service = new RuntimeErrorService();
+    const begin = Date.now();
+    const result = await service.waitForCycleAdvance(TEST_APP_ID, 100, {
+      timeoutMs: 1000
+    });
+    expect(result.advanced).toBe(true);
+    expect(result.newCycleId).toBe(200);
+    expect(Date.now() - begin).toBeLessThan(200);
+  });
+
+  it('resolves with advanced:true when the buffer rotates during the wait', async () => {
+    runtimeErrorBuffer.rotateCycle(TEST_APP_ID, 100);
+    const service = new RuntimeErrorService();
+    setTimeout(() => runtimeErrorBuffer.rotateCycle(TEST_APP_ID, 250), 120);
+    const result = await service.waitForCycleAdvance(TEST_APP_ID, 100, {
+      timeoutMs: 2000
+    });
+    expect(result.advanced).toBe(true);
+    expect(result.newCycleId).toBe(250);
+  });
+
+  it('treats any non-undefined cycleId as an advance when previousCycleId is undefined', async () => {
+    const service = new RuntimeErrorService();
+    setTimeout(() => runtimeErrorBuffer.rotateCycle(TEST_APP_ID, 7), 80);
+    const result = await service.waitForCycleAdvance(TEST_APP_ID, undefined, {
+      timeoutMs: 1500
+    });
+    expect(result.advanced).toBe(true);
+    expect(result.newCycleId).toBe(7);
+  });
+
+  it('returns advanced:false and records durationMs when the timeout fires', async () => {
+    runtimeErrorBuffer.rotateCycle(TEST_APP_ID, 100);
+    const service = new RuntimeErrorService();
+    const result = await service.waitForCycleAdvance(TEST_APP_ID, 100, {
+      timeoutMs: 200
+    });
+    expect(result.advanced).toBe(false);
+    expect(result.newCycleId).toBeUndefined();
+    expect(result.durationMs).toBeGreaterThanOrEqual(150);
+  });
+
+  it('returns advanced:false immediately when the signal is already aborted', async () => {
+    const service = new RuntimeErrorService();
+    const ac = new AbortController();
+    ac.abort();
+    const result = await service.waitForCycleAdvance(TEST_APP_ID, 100, {
+      timeoutMs: 5000,
+      signal: ac.signal
+    });
+    expect(result.advanced).toBe(false);
+    expect(result.durationMs).toBe(0);
+  });
+
+  it('honors signal abort mid-wait without throwing', async () => {
+    runtimeErrorBuffer.rotateCycle(TEST_APP_ID, 100);
+    const service = new RuntimeErrorService();
+    const ac = new AbortController();
+    setTimeout(() => ac.abort(), 60);
+    const result = await service.waitForCycleAdvance(TEST_APP_ID, 100, {
+      timeoutMs: 5000,
+      signal: ac.signal
+    });
+    expect(result.advanced).toBe(false);
+    expect(result.durationMs).toBeLessThan(1000);
+  });
+});
+
 // Helper: extract the text between the *real* untrusted fence in the
 // formatted prompt. The header preamble mentions the tag name by
 // reference, so the real fence is always the last

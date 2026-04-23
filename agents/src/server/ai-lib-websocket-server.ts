@@ -1910,6 +1910,28 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           maxRetries: MAX_RUNTIME_ERROR_RETRIES,
           maxWaitMs: RUNTIME_ERROR_POLL_MAX_WAIT_MS,
           quietWindowMs: RUNTIME_ERROR_QUIET_WINDOW_MS,
+          // 2nd-run restart recovery: when the runtime phase has
+          // already surfaced errors once for this socket and errors
+          // are still present on the next run, the most likely cause
+          // is that HMR didn't propagate the agent's fix (e.g. a
+          // top-level module throw crashed the page before
+          // `error-client.ts` wired its HMR listeners, so the
+          // buffer's cycleId never advances). Restart the preview
+          // process via dev-supervisor; the phase then waits for a
+          // fresh cycleId beacon and re-polls once before deciding.
+          // If the supervisor isn't reachable we return a benign
+          // failure and the phase falls through to its existing
+          // continuation logic.
+          restartPreview: async (appId, signal) => {
+            const ds = DevSupervisorClientFactory.createForApp(appId)
+            if (!ds) {
+              return { success: false, error: 'DevSupervisor not available' }
+            }
+            if (signal.aborted) {
+              return { success: false, error: 'aborted' }
+            }
+            return ds.restartProcess({ graceful: true })
+          },
           logger,
         },
         hasUncommittedChanges: appHasUncommittedChanges,

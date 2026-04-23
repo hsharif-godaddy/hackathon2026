@@ -27,6 +27,7 @@
  */
 
 import type { ILogger } from '../logging/types.js';
+import type { RestartResult } from '../services/DevSupervisorClient.js';
 import {
   TypecheckService,
   formatTscErrorsForPrompt,
@@ -68,13 +69,41 @@ export interface TypecheckPhaseDeps {
 }
 
 export interface RuntimeErrorPhaseDeps {
-  runtimeErrorService: Pick<RuntimeErrorService, 'pollRuntimeErrors' | 'hasCycleEstablished'>;
+  runtimeErrorService: Pick<
+    RuntimeErrorService,
+    'pollRuntimeErrors' | 'hasCycleEstablished' | 'getCurrentCycleId' | 'waitForCycleAdvance'
+  >;
   retryCounters: Map<string, number>;
   maxRetries: number;
   maxWaitMs?: number;
   quietWindowMs?: number;
+  /**
+   * Optional. When provided, invoked on the 2nd+ runtime-phase run for
+   * a socket (`retryCount >= 1`) if errors are still present, to cover
+   * the "HMR didn't propagate the fix, buffer is stale" case
+   * (typically a top-level module throw that crashes the page before
+   * `error-client.ts` wires its HMR listeners). Called *before* the
+   * retry-budget / continuation decision: on success we wait for a
+   * fresh cycleId beacon, re-poll once, and only report errors that
+   * survive the restart.
+   *
+   * If omitted, the phase behaves exactly as it did before this
+   * recovery path existed — useful for the composite's broader tests
+   * that don't care about this branch.
+   */
+  restartPreview?: (appId: string, signal: AbortSignal) => Promise<RestartResult>;
+  /**
+   * Upper bound on how long `waitForCycleAdvance` blocks after a
+   * successful restart before falling through to the phase's existing
+   * continuation logic. Sized to cover a cold dep-graph boot
+   * (~2-5s process start + Vite re-optimize + initial render); defaults
+   * to 15s.
+   */
+  restartBeaconWaitMs?: number;
   logger: PhaseLogger;
 }
+
+const DEFAULT_RESTART_BEACON_WAIT_MS = 15_000;
 
 export interface CompositePostStreamValidatorDeps {
   typecheck: TypecheckPhaseDeps;
@@ -187,6 +216,185 @@ export async function runTypecheckPhase(
   return { kind: 'continue', prompt: formatTscErrorsForPrompt(result.errors) };
 }
 
+interface RestartAndRepollMeta {
+  appId: string;
+  conversationId?: string;
+  socketId: string;
+  agentName: string;
+  retryCount: number;
+}
+
+interface RestartAndRepollDeps {
+  runtimeErrorService: Pick<
+    RuntimeErrorService,
+    'pollRuntimeErrors' | 'getCurrentCycleId' | 'waitForCycleAdvance'
+  >;
+  restartPreview: (appId: string, signal: AbortSignal) => Promise<RestartResult>;
+  restartBeaconWaitMs: number;
+  maxWaitMs: number | undefined;
+  quietWindowMs: number | undefined;
+  abortSignal: AbortSignal;
+  logger: PhaseLogger;
+}
+
+interface RestartAndRepollOutcome {
+  /**
+   * `null` means "don't trust a re-poll" — either the restart call
+   * failed, the beacon never arrived, or the re-poll itself bailed
+   * without a usable result. Caller should keep the phase's existing
+   * result and fall through to its normal continue/exhausted logic.
+   *
+   * A non-null `result` means a re-poll completed against the new
+   * cycle; caller should use this in place of the original poll
+   * result. `result.ok === true` signals the "HMR was the problem"
+   * happy path.
+   */
+  result: RuntimeErrorResult | null;
+  /**
+   * True if the abort signal fired at any point during the restart
+   * sequence. Caller should treat this like the phase's initial
+   * aborted-skip path (return `clean`, no counter bump, no chunk).
+   */
+  aborted: boolean;
+}
+
+/**
+ * Restart the preview and, on success, wait for a fresh cycleId
+ * beacon and re-poll runtime errors once. Factored out of
+ * `runRuntimeErrorPhase` so the restart branch there reads as a
+ * single decision point and the multi-step orchestration (which has
+ * its own logging and abort handling) lives in one place.
+ */
+async function attemptRestartAndRepoll(
+  meta: RestartAndRepollMeta,
+  deps: RestartAndRepollDeps
+): Promise<RestartAndRepollOutcome> {
+  const { appId, conversationId, socketId, agentName, retryCount } = meta;
+  const {
+    runtimeErrorService,
+    restartPreview,
+    restartBeaconWaitMs,
+    maxWaitMs,
+    quietWindowMs,
+    abortSignal,
+    logger
+  } = deps;
+
+  const previousCycleId = runtimeErrorService.getCurrentCycleId(appId);
+
+  logger.info('agent.runtime_errors.restart.begin', {
+    socketId,
+    appId,
+    conversationId,
+    agentName,
+    retryCount,
+    previousCycleId
+  });
+
+  let restartRes: RestartResult;
+  try {
+    restartRes = await restartPreview(appId, abortSignal);
+  } catch (err) {
+    logger.warn('agent.runtime_errors.restart.failed', {
+      socketId,
+      appId,
+      conversationId,
+      agentName,
+      error: err instanceof Error ? err.message : String(err),
+      reason: 'restart_threw'
+    });
+    return { result: null, aborted: abortSignal.aborted };
+  }
+
+  if (abortSignal.aborted) {
+    return { result: null, aborted: true };
+  }
+
+  if (!restartRes.success) {
+    logger.warn('agent.runtime_errors.restart.failed', {
+      socketId,
+      appId,
+      conversationId,
+      agentName,
+      error: restartRes.error,
+      reason: 'restart_unsuccessful'
+    });
+    return { result: null, aborted: false };
+  }
+
+  const waitRes = await runtimeErrorService.waitForCycleAdvance(appId, previousCycleId, {
+    timeoutMs: restartBeaconWaitMs,
+    signal: abortSignal
+  });
+
+  if (abortSignal.aborted) {
+    return { result: null, aborted: true };
+  }
+
+  if (!waitRes.advanced) {
+    logger.warn('agent.runtime_errors.restart.beacon_timeout', {
+      socketId,
+      appId,
+      conversationId,
+      agentName,
+      previousCycleId,
+      waitDurationMs: waitRes.durationMs,
+      timeoutMs: restartBeaconWaitMs
+    });
+    return { result: null, aborted: false };
+  }
+
+  let rePoll: RuntimeErrorResult;
+  try {
+    rePoll = await runtimeErrorService.pollRuntimeErrors(appId, {
+      maxWaitMs,
+      quietWindowMs,
+      signal: abortSignal
+    });
+  } catch (err) {
+    logger.warn('agent.runtime_errors.restart.failed', {
+      socketId,
+      appId,
+      conversationId,
+      agentName,
+      error: err instanceof Error ? err.message : String(err),
+      reason: 'repoll_threw'
+    });
+    return { result: null, aborted: abortSignal.aborted };
+  }
+
+  if (rePoll.skipped) {
+    // Aborted during the re-poll — treat like an early-out, don't
+    // attribute the original stale errors to the user.
+    return { result: null, aborted: true };
+  }
+
+  if (rePoll.ok) {
+    logger.info('agent.runtime_errors.restart.resolved', {
+      socketId,
+      appId,
+      conversationId,
+      agentName,
+      newCycleId: waitRes.newCycleId,
+      waitDurationMs: waitRes.durationMs,
+      rePollDurationMs: rePoll.durationMs
+    });
+  } else {
+    logger.warn('agent.runtime_errors.restart.persisted', {
+      socketId,
+      appId,
+      conversationId,
+      agentName,
+      newCycleId: waitRes.newCycleId,
+      waitDurationMs: waitRes.durationMs,
+      rePollDurationMs: rePoll.durationMs,
+      errorCount: rePoll.errors.length
+    });
+  }
+
+  return { result: rePoll, aborted: false };
+}
+
 /**
  * Run the runtime-error phase. Safe to execute in parallel with tsc —
  * both phases are independent (separate retry counters, separate error
@@ -210,8 +418,16 @@ export async function runRuntimeErrorPhase(
 ): Promise<PhaseOutcome> {
   const { socketId, agentName, abortSignal } = args;
   const { appId, conversationId } = meta;
-  const { runtimeErrorService, retryCounters, maxRetries, maxWaitMs, quietWindowMs, logger } =
-    deps;
+  const {
+    runtimeErrorService,
+    retryCounters,
+    maxRetries,
+    maxWaitMs,
+    quietWindowMs,
+    restartPreview,
+    restartBeaconWaitMs,
+    logger
+  } = deps;
 
   const retryCount = retryCounters.get(socketId) ?? 0;
 
@@ -256,6 +472,62 @@ export async function runRuntimeErrorPhase(
       durationMs: result.durationMs
     });
     return { kind: 'clean' };
+  }
+
+  // Stale-HMR recovery on the 2nd+ runtime-phase run. When the phase
+  // has already surfaced errors at least once this socket's turn-chain
+  // (`retryCount >= 1`) and errors are *still* present, the most
+  // likely explanation is that HMR didn't propagate the agent's fix —
+  // classically a top-level module throw that crashes the page before
+  // `error-client.ts` has wired up its HMR listeners, so the buffer's
+  // cycleId never advances and `drainForTurn` keeps returning
+  // pre-fix errors. Force a preview restart, wait for the new
+  // `error-client.ts` to emit its initial cycle beacon, then re-drain
+  // once. If the re-drain is clean the agent's fix was actually
+  // correct (HMR was the problem); if errors persist they're genuinely
+  // current and get fed to the continuation prompt below.
+  //
+  // Fires on *every* subsequent retry (not just retryCount === 1):
+  // the agent's 2nd fix can independently crash the page in the same
+  // way, so we need to re-confirm via restart each time. Worst-case
+  // latency is (MAX_RUNTIME_ERROR_RETRIES) × restart_sequence_ms,
+  // bounded by the retry budget.
+  //
+  // Guarded on `restartPreview` being injected so test callers that
+  // don't care about this branch keep the pre-existing behavior.
+  if (
+    !result.ok &&
+    retryCount >= 1 &&
+    restartPreview !== undefined &&
+    !abortSignal.aborted
+  ) {
+    const restartOutcome = await attemptRestartAndRepoll(
+      { appId, conversationId, socketId, agentName, retryCount },
+      {
+        runtimeErrorService,
+        restartPreview,
+        restartBeaconWaitMs: restartBeaconWaitMs ?? DEFAULT_RESTART_BEACON_WAIT_MS,
+        maxWaitMs,
+        quietWindowMs,
+        abortSignal,
+        logger
+      }
+    );
+    if (restartOutcome.aborted) {
+      // Abort during restart / beacon-wait / re-poll. Treat like the
+      // initial aborted-skip path: leave counters untouched, no chunk.
+      return { kind: 'clean' };
+    }
+    if (restartOutcome.result) {
+      result = restartOutcome.result;
+      if (result.ok) {
+        return { kind: 'clean' };
+      }
+    }
+    // restartOutcome.result === null: restart failed or beacon never
+    // arrived. Fall through with the *original* stale errors — no
+    // worse than today's behavior, and the continuation logic below
+    // still runs.
   }
 
   if (result.ok) {
