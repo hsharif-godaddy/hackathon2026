@@ -53,7 +53,7 @@ interface ActiveTransfer {
   expiresAt?: string
 }
 
-export default function AppCard({ site }: { site: SiteInfo }) {
+export default function AppCard({ site, isTLA = false }: { site: SiteInfo; isTLA?: boolean }) {
   const router = useRouter();
   const t = useTranslations();
 
@@ -112,11 +112,11 @@ export default function AppCard({ site }: { site: SiteInfo }) {
   }, [site.id])
 
   useEffect(function loadTransferStatus() {
-    if (!isTransferEnabled) return
+    if (!isTransferEnabled || isTLA) return
     const controller = new AbortController()
     fetchTransferStatus(controller.signal)
     return () => controller.abort()
-  }, [site.id, fetchTransferStatus, isTransferEnabled])
+  }, [site.id, fetchTransferStatus, isTransferEnabled, isTLA])
 
   const handleDeleteSite = async (siteId: string) => {
     setActionLoading(siteId)
@@ -432,7 +432,7 @@ export default function AppCard({ site }: { site: SiteInfo }) {
               <text.span>{t('builder_common_rename')}</text.span>
             </Box>
           </MenuItem>
-          {isTransferEnabled && !hasActiveTransfer && transferMenuItem}
+          {isTransferEnabled && !isTLA && !hasActiveTransfer && transferMenuItem}
           <MenuSeparator />
           <MenuItem
             onClick={() => showDeleteAlert(site.id, site.name || t('builder_apps_alert_delete_untitled'))}
@@ -509,7 +509,7 @@ export default function AppCard({ site }: { site: SiteInfo }) {
     </div>
   )
 
-  if (isTransferEnabled && hasActiveTransfer) {
+  if (isTransferEnabled && !isTLA && hasActiveTransfer) {
     return (
       <>
         <Card className="relative">
@@ -626,7 +626,7 @@ export default function AppCard({ site }: { site: SiteInfo }) {
       </div>
 
       {/* Transfer Dialog */}
-      {isTransferEnabled && isTransferDialogOpen && (
+      {isTransferEnabled && !isTLA && isTransferDialogOpen && (
         <TransferInitiateDialog
           appId={site.id}
           appName={site.name || t('builder_apps_alert_delete_untitled')}

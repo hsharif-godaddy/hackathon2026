@@ -654,6 +654,36 @@ describe('AppCard', () => {
     });
   });
 
+  describe('hides transfer UI for TLA accounts', () => {
+    it('should not show transfer menu item for TLA users', async function hideTransferForTLA() {
+      const { user } = renderWithProviders(<AppCard site={mockSite} isTLA={true} />);
+
+      const actionsMenuButton = screen.getByRole('button', { name: 'builder_apps_menu_actions' });
+      await user.click(actionsMenuButton);
+
+      await waitFor(() => {
+        expect(screen.getByText('builder_apps_menu_settings')).toBeInTheDocument();
+      });
+
+      expect(screen.queryByText('Transfer')).not.toBeInTheDocument();
+    });
+
+    it('should skip transfer status fetch for TLA users', async function skipFetchForTLA() {
+      renderWithProviders(<AppCard site={mockSite} isTLA={true} />);
+
+      // Wait for component to mount and effects to flush
+      await screen.findByRole('button', { name: 'builder_apps_menu_actions' });
+
+      expect(appFetch).not.toHaveBeenCalledWith(
+        expect.stringContaining('/transfer'),
+        expect.anything()
+      );
+      expect(screen.queryByText('TRANSFER PENDING')).not.toBeInTheDocument();
+      expect(screen.queryByText('Copy Code')).not.toBeInTheDocument();
+      expect(screen.queryByText('Cancel Transfer')).not.toBeInTheDocument();
+    });
+  });
+
   describe('transfer menu states', () => {
     it('should show transfer menu item when no active transfer', async function showTransferItem() {
       vi.mocked(appFetch).mockImplementation(async (url: string) => {

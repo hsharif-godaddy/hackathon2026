@@ -33,8 +33,8 @@ function SitesPageContent() {
   const { data: isTransferEnabled } = useSwitchboard('appbuilder-transfer-ownership')
 
   const { shopperId } = getUserInfo();
-  // TLA (Three Letter Account) shopperIds have 3 or fewer characters
-  const isTLA = typeof shopperId === 'string' && shopperId.length <= 3;
+  // TLA (Three Letter Account) shopperIds have exactly 3 characters
+  const isTLA = typeof shopperId === 'string' && shopperId.length === 3;
 
   const sites = useSitesStore((state) => state.allSites)
   const isLoading = useSitesStore((state) => state.isLoadingAll)
@@ -170,6 +170,7 @@ function SitesPageContent() {
             <AppCard
               key={site.id}
               site={site}
+              isTLA={isTLA}
             />
           ))}
         </div>
