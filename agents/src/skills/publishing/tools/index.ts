@@ -4,7 +4,6 @@ import type { SkillToolDefinition } from '@airo/ai-skills';
 import { AppRepository } from '../../../database/repositories/AppRepository.js';
 import { logger } from '../../../logging/index.js';
 import { getClientActionService } from '../../../server/ai-lib-websocket-server.js';
-import type { PublishStatusResponse } from '../../../services/DevSupervisorClient.js';
 import { DevSupervisorClientFactory } from '../../../utils/dev-supervisor-client-factory.js';
 import { validateDomainName } from '../../../utils/domain-validation.js';
 import { MemoryTool } from '../../../tools/memory-tool.js';
@@ -112,18 +111,21 @@ export const publishTool: SkillToolDefinition = {
     let shouldSuggestDomain = false;
     let purchasedDomain: string | null = null;
     let autoAttachedDomain: string | null = null;
+    let publishedUrl: string | undefined;
     const domainAttachEnabled = (context?.metadata as any)?.permissions?.canPurchaseDomain ?? false;
 
-    if (domainAttachEnabled) {
-      try {
-        const siteDataResult = await clientActionService.executeAction({
-          action: 'getSiteData',
-          params: { appId },
-          timeoutMs: 10000,
-        });
+    try {
+      const siteDataResult = await clientActionService.executeAction({
+        action: 'getSiteData',
+        params: { appId },
+        timeoutMs: 10000,
+      });
 
-        if (siteDataResult.success && siteDataResult.result) {
-          const siteData = siteDataResult.result as { domains?: SiteDomain[] };
+      if (siteDataResult.success && siteDataResult.result) {
+        const siteData = siteDataResult.result as { publishedUrl?: string; domains?: SiteDomain[] };
+        publishedUrl = siteData.publishedUrl;
+
+        if (domainAttachEnabled) {
           const hasCustom = hasCustomDomain(siteData.domains);
           shouldSuggestDomain = !hasCustom;
 
@@ -172,6 +174,24 @@ export const publishTool: SkillToolDefinition = {
                         autoAttachedDomain = purchasedDomain;
                         shouldSuggestDomain = false;
                         message += `\n\nConnected domain: ${purchasedDomain}`;
+
+                        // Refetch to get canonical URL from control plane (resolves prefix/custom domain priority)
+                        try {
+                          const refreshResult = await clientActionService.executeAction({
+                            action: 'getSiteData',
+                            params: { appId },
+                            timeoutMs: 10000,
+                          });
+                          if (refreshResult.success && refreshResult.result) {
+                            publishedUrl = (refreshResult.result as { publishedUrl?: string }).publishedUrl;
+                          }
+                        } catch (refreshError) {
+                          logger.warn('skill.publishing.publish.canonical-url-refresh-failed', {
+                            appId,
+                            domainName: purchasedDomain,
+                            error: refreshError instanceof Error ? refreshError.message : String(refreshError),
+                          });
+                        }
 
                         try {
                           await memoryTool.setMemory(
@@ -232,12 +252,16 @@ export const publishTool: SkillToolDefinition = {
             autoAttachedDomain,
           });
         }
-      } catch (error) {
-        logger.warn('skill.publishing.publish.domain-check-failed', {
-          appId,
-          error: error instanceof Error ? error.message : String(error),
-        });
       }
+    } catch (error) {
+      logger.warn('skill.publishing.publish.site-data-failed', {
+        appId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    if (publishedUrl) {
+      message += `\npublishedUrl: ${publishedUrl}`;
     }
 
     if (shouldSuggestDomain && domainAttachEnabled && !autoAttachedDomain) {
@@ -255,6 +279,7 @@ export const publishTool: SkillToolDefinition = {
       message,
       deploymentId: result.deploymentId,
       commitHash: result.commitHash,
+      publishedUrl,
       shouldSuggestDomain,
       domainAttachEnabled,
       purchasedDomain: purchasedDomain || undefined,
@@ -296,18 +321,42 @@ export const statusTool: SkillToolDefinition = {
       return 'Publish supervisor unavailable — app may not be published yet, or publish task is not running. Try publishing first.';
     }
 
-    let status: PublishStatusResponse;
-    try {
-      status = await publishSupervisor.getPublishStatus({
-        lines: input.lines ?? 200,
-        includeLogs: input.includeLogs ?? true,
+    // Run getSiteData (URL enrichment) and getPublishStatus in parallel — URL is best-effort
+    const socketId = (context as any)?.socketId;
+    const clientActionService = socketId && typeof socketId === 'string'
+      ? getClientActionService(socketId)
+      : null;
+
+    const siteDataPromise = clientActionService
+      ? clientActionService.executeAction({ action: 'getSiteData', params: { appId }, timeoutMs: 10000 })
+      : Promise.resolve(null);
+
+    const [siteDataSettled, statusSettled] = await Promise.allSettled([
+      siteDataPromise,
+      publishSupervisor.getPublishStatus({ lines: input.lines ?? 200, includeLogs: input.includeLogs ?? true }),
+    ]);
+
+    let publishedUrl: string | undefined;
+    if (siteDataSettled.status === 'fulfilled' && siteDataSettled.value?.success && siteDataSettled.value?.result) {
+      publishedUrl = (siteDataSettled.value.result as { publishedUrl?: string }).publishedUrl;
+    } else if (siteDataSettled.status === 'rejected') {
+      logger.warn('skill.publishing.status.site-data-fetch-failed', {
+        appId,
+        error: siteDataSettled.reason instanceof Error ? siteDataSettled.reason.message : String(siteDataSettled.reason),
       });
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      throw new Error(`Failed to get publish status: ${errorMessage}`);
     }
 
-    let message = `Version: ${status.version ? `${status.version.substring(0, 7)} (${status.version})` : 'none'}\n`;
+    if (statusSettled.status === 'rejected') {
+      const errorMessage = statusSettled.reason instanceof Error ? statusSettled.reason.message : String(statusSettled.reason);
+      throw new Error(`Failed to get publish status: ${errorMessage}`);
+    }
+    const status = statusSettled.value;
+
+    let message = '';
+    if (publishedUrl) {
+      message += `publishedUrl: ${publishedUrl}\n`;
+    }
+    message += `Version: ${status.version ? `${status.version.substring(0, 7)} (${status.version})` : 'none'}\n`;
     message += `Health: ${status.health.status}`;
     if (status.health.message) message += ` — ${status.health.message}`;
     message += `\nProcess: ${status.process.state}`;

@@ -234,7 +234,12 @@ describe('publishing skill publish-tools', () => {
         memoryInstance.setMemory.mockResolvedValue({ success: true })
       })
 
-      it('should not enter domain block when canPurchaseDomain is false', async () => {
+      it('should fetch URL but skip domain logic when canPurchaseDomain is false', async () => {
+        mockClientActionService.executeAction.mockResolvedValue({
+          success: true,
+          result: { publishedUrl: 'https://app-1.c4.airoapp.ai', domains: [] },
+        })
+
         const context = {
           metadata: { appId: 'app-1', permissions: { canPublish: true, canPurchaseDomain: false } },
           socketId: 'sock-1',
@@ -242,7 +247,15 @@ describe('publishing skill publish-tools', () => {
 
         const result = await runPublishTool({}, { experimental_context: context })
 
-        expect(mockClientActionService.executeAction).not.toHaveBeenCalled()
+        // getSiteData is called for the URL even without domain permissions
+        expect(mockClientActionService.executeAction).toHaveBeenCalledWith(
+          expect.objectContaining({ action: 'getSiteData' })
+        )
+        // But no domain-specific actions (attachDomain, etc.)
+        expect(mockClientActionService.executeAction).not.toHaveBeenCalledWith(
+          expect.objectContaining({ action: 'attachDomain' })
+        )
+        expect(result.publishedUrl).toBe('https://app-1.c4.airoapp.ai')
         expect(result.domainAttachEnabled).toBe(false)
         expect(result.shouldSuggestDomain).toBe(false)
       })
@@ -251,6 +264,7 @@ describe('publishing skill publish-tools', () => {
         mockClientActionService.executeAction.mockResolvedValue({
           success: true,
           result: {
+            publishedUrl: 'https://mysite.com',
             domains: [{ fqdn: 'mysite.com', domainType: 'custom', status: 'active' }],
           },
         })
@@ -258,6 +272,8 @@ describe('publishing skill publish-tools', () => {
         const result = await runPublishTool({}, { experimental_context: baseContext })
 
         expect(result.shouldSuggestDomain).toBe(false)
+        expect(result.publishedUrl).toBe('https://mysite.com')
+        expect(result.message).toContain('publishedUrl: https://mysite.com')
         expect(result.message).not.toContain('[NEXT:')
       })
 
@@ -294,11 +310,11 @@ describe('publishing skill publish-tools', () => {
       })
 
       it('should auto-attach validated purchased domain and update memory', async () => {
-        mockClientActionService.executeAction.mockImplementation(async ({ action }: { action: string }) => {
-          if (action === 'getSiteData') return { success: true, result: { domains: [] } }
-          if (action === 'attachDomain') return { success: true }
-          return { success: false }
-        })
+        // Three sequential calls: initial getSiteData → attachDomain → refetch getSiteData (canonical URL)
+        mockClientActionService.executeAction
+          .mockResolvedValueOnce({ success: true, result: { publishedUrl: 'https://app-1.c4.airoapp.ai', domains: [] } })
+          .mockResolvedValueOnce({ success: true }) // attachDomain
+          .mockResolvedValueOnce({ success: true, result: { publishedUrl: 'https://mysite.com', domains: [{ fqdn: 'mysite.com', domainType: 'custom', status: 'active' }] } }) // refetch
         memoryInstance.readMemory.mockResolvedValue({
           success: true, exists: true,
           value: { fqdn: 'mysite.com', connectedToProject: false },
@@ -309,6 +325,9 @@ describe('publishing skill publish-tools', () => {
         expect(result.autoAttachedDomain).toBe('mysite.com')
         expect(result.shouldSuggestDomain).toBe(false)
         expect(result.message).toContain('Connected domain: mysite.com')
+        // publishedUrl comes from the control plane refetch, not string construction
+        expect(result.publishedUrl).toBe('https://mysite.com')
+        expect(result.message).toContain('publishedUrl: https://mysite.com')
         expect(memoryInstance.setMemory).toHaveBeenCalledWith(
           expect.objectContaining({
             key: 'domain.purchased',
@@ -317,6 +336,25 @@ describe('publishing skill publish-tools', () => {
           '/apps/app-1',
           'app-1'
         )
+      })
+
+      it('should preserve pre-attach publishedUrl when canonical URL refetch fails', async () => {
+        mockClientActionService.executeAction
+          .mockResolvedValueOnce({ success: true, result: { publishedUrl: 'https://app-1.c4.airoapp.ai', domains: [] } })
+          .mockResolvedValueOnce({ success: true }) // attachDomain
+          .mockRejectedValueOnce(new Error('timeout')) // refetch fails
+        memoryInstance.readMemory.mockResolvedValue({
+          success: true, exists: true,
+          value: { fqdn: 'mysite.com', connectedToProject: false },
+        })
+
+        const result = await runPublishTool({}, { experimental_context: baseContext })
+
+        expect(result.autoAttachedDomain).toBe('mysite.com')
+        // Falls back to the initial getSiteData URL, not a string-constructed guess
+        expect(result.publishedUrl).toBe('https://app-1.c4.airoapp.ai')
+        expect(result.publishedUrl).not.toBe('https://mysite.com')
+        expect(result.success).toBe(true)
       })
 
       it('should fall back to suggest when attachDomain returns success: false', async () => {
@@ -419,12 +457,16 @@ describe('publishing skill publish-tools', () => {
     const mockSupervisor = {
       getPublishStatus: vi.fn(),
     }
+    const mockStatusClientActionService = {
+      executeAction: vi.fn(),
+    }
 
     beforeEach(() => {
       vi.clearAllMocks()
       vi.mocked(DevSupervisorClientFactory.createForPublishSupervisor).mockReturnValue(
         mockSupervisor as any
       )
+      vi.mocked(getClientActionService).mockReturnValue(mockStatusClientActionService as any)
     })
 
     it('throws when appId is missing', async () => {
@@ -467,6 +509,44 @@ describe('publishing skill publish-tools', () => {
       expect(out).toContain('running')
       expect(out).toContain('PID 42')
       expect(out).toContain('1h')
+    })
+
+    it('includes publishedUrl when available via getSiteData', async () => {
+      mockStatusClientActionService.executeAction.mockResolvedValue({
+        success: true,
+        result: { publishedUrl: 'https://mysite.com' },
+      })
+      mockSupervisor.getPublishStatus.mockResolvedValue({
+        version: 'abc1234',
+        health: { status: 'healthy', message: 'ok' },
+        process: { state: 'running', pid: 1, uptime: '5m' },
+      })
+
+      const out = await runStatusTool(
+        {},
+        { experimental_context: { metadata: { appId: 'app-1' }, socketId: 'sock-1' } }
+      )
+
+      expect(out).toContain('publishedUrl: https://mysite.com')
+      expect(out).toContain('Version:')
+    })
+
+    it('works without publishedUrl when getSiteData fails', async () => {
+      mockStatusClientActionService.executeAction.mockRejectedValue(new Error('timeout'))
+      mockSupervisor.getPublishStatus.mockResolvedValue({
+        version: 'abc1234',
+        health: { status: 'healthy', message: 'ok' },
+        process: { state: 'running', pid: 1, uptime: '5m' },
+      })
+
+      const out = await runStatusTool(
+        {},
+        { experimental_context: { metadata: { appId: 'app-1' }, socketId: 'sock-1' } }
+      )
+
+      expect(out).not.toContain('publishedUrl:')
+      expect(out).toContain('Version:')
+      expect(out).toContain('healthy')
     })
 
     it('forwards lines and includeLogs to getPublishStatus', async () => {
