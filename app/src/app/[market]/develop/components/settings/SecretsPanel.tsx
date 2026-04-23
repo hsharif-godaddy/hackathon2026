@@ -20,8 +20,10 @@ import text from '@ux/text';
 import TextInput from '@ux/text-input';
 
 import IconButton from '@/app/[market]/develop/components/IconButton';
+import PanelSkeleton from '@/app/[market]/develop/components/PanelSkeleton';
 import { SettingsLoadingState } from '@/app/[market]/develop/components/settings/components/SettingsLoadingState';
 import SettingsSection from '@/app/[market]/develop/components/settings/SettingsSection';
+import { ChatTab, SettingsSection as SettingsSectionType } from '@/app/[market]/develop/components/types';
 import EmptyStateCard from '@/components/layout/EmptyStateCard';
 import { useSecretOperations } from '@/hooks/useSecretOperations';
 import { type Secret, useSecrets } from '@/hooks/useSecrets';
@@ -576,10 +578,9 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
 
   if (isLoading) {
     return (
-      <SettingsLoadingState
-        fullPage
-        description={t('builder_common_loading_description')}
-      />
+      <PanelSkeleton
+        panelType={ChatTab.SETTINGS}
+        settingsSection={SettingsSectionType.SECRETS} />
     );
   }
 

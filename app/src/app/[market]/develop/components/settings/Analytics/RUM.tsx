@@ -8,8 +8,9 @@ import Select from '@ux/select'
 import Spinner from '@ux/spinner'
 import text from '@ux/text'
 
-import { SettingsLoadingState } from '@/app/[market]/develop/components/settings/components/SettingsLoadingState'
+import PanelSkeleton from '@/app/[market]/develop/components/PanelSkeleton'
 import SettingsSection from '@/app/[market]/develop/components/settings/SettingsSection'
+import { ChatTab } from '@/app/[market]/develop/components/types'
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import { usePublishedUrl } from '@/app/[market]/develop/hooks/usePublishedUrl'
 import { AnalyticsChart } from '@/components/analytics/AnalyticsChart'
@@ -507,12 +508,7 @@ export default function RUM() {
   // Show loading state only on initial load (when no data exists)
   // If we have data, show it even if refreshing in background
   if (isLoading && dailyHostPageViews.length === 0 && totalHostPageViews === 0) {
-    return (
-      <SettingsLoadingState
-        fullPage
-        title={t('builder_analytics_fetching_data')}
-      />
-    )
+    return <PanelSkeleton panelType={ChatTab.ANALYTICS} isPublished />
   }
 
   // Show error state with actionable message

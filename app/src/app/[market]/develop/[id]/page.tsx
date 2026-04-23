@@ -1,25 +1,22 @@
 'use client'
 
 import { motion } from 'framer-motion'
+import dynamic from 'next/dynamic'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import Growl from '@ux/growl'
 
-import AppNotFound from '@/app/[market]/develop/components/AppNotFound'
 import ChatPane from '@/app/[market]/develop/components/chat/ChatPane'
 import ChatPaneLoader, { ImageReloadLoaderPhase, ResumeLoaderPhase } from '@/app/[market]/develop/components/chat/ChatPaneLoader'
 import ChatToolbar from '@/app/[market]/develop/components/chat/ChatToolbar'
+import DevelopSkeleton from '@/app/[market]/develop/components/DevelopSkeleton'
 import DevelopHeader from '@/app/[market]/develop/components/layout/Header'
-import MediaPanel from '@/app/[market]/develop/components/media/MediaPanel'
+import PanelSkeleton, { AnalyticsPanelSkeleton } from '@/app/[market]/develop/components/PanelSkeleton'
 import { DevelopCreditsModal, PaywallErrorFallback, RenewalPollingModal, UpgradeContainer, UpgradePollingModal } from '@/app/[market]/develop/components/paywall'
 import PreviewPane, { type PublishSnapshotRequestDetail } from '@/app/[market]/develop/components/preview/PreviewPane'
 import ResizableDivider from '@/app/[market]/develop/components/ResizableDivider'
-import AnalyticsPanel from '@/app/[market]/develop/components/settings/Analytics/AnalyticsPanel'
-import SettingsView from '@/app/[market]/develop/components/settings/SettingsView'
-import { AppIntroTour } from '@/app/[market]/develop/components/tour/AppIntroTour'
-import { ChatTab, IframeMessageType, MobileMode, ViewMode } from '@/app/[market]/develop/components/types'
+import { ChatTab, IframeMessageType, MobileMode, SettingsSection, ViewMode } from '@/app/[market]/develop/components/types'
 import { extractNewPageRoute, handlePreviewRefresh, navigatePreviewToRoute, requestPreviewScreenshot, useAppIdFromParams } from '@/app/[market]/develop/components/utils'
-import VersionHistory from '@/app/[market]/develop/components/VersionHistory'
 import { clearExpiredWidgetStates } from '@/app/[market]/develop/components/widgets'
 import { useChatPaneLoadingState } from '@/app/[market]/develop/hooks/useChatPaneLoadingState'
 import { useEvalSnapshotCapture } from '@/app/[market]/develop/hooks/useEvalSnapshotCapture'
@@ -28,13 +25,10 @@ import { usePublishSnapshotCapture } from '@/app/[market]/develop/hooks/usePubli
 import { broadcast as broadcastProcessingState, handle as handleProcessingState } from '@/app/[market]/develop/utils/iframeProcessingState'
 import { ProtectedRoute } from '@/components/auth'
 import ErrorBoundary from '@/components/ErrorBoundary'
-import { Feedback } from '@/components/feedback/Feedback'
 import { FEEDBACK_ID } from '@/components/feedback/utils'
-import FirstPublishCongratsModal from '@/components/layout/FirstPublishCongratsModal'
-import PostPublishGoLiveModal from '@/components/layout/PostPublishGoLiveModal'
-import PublishLimitModal from '@/components/layout/PublishLimitModal'
 import { buildDynamicApiUrl, dynamicApiConfigService } from '@/config/dynamic-api'
 import { WebSocketProvider } from '@/contexts/WebSocketContext'
+import { useAotPreload } from '@/hooks/useAotPreload'
 import { useAppArchiveRestore } from '@/hooks/useAppArchiveRestore'
 import { useAppDetails } from '@/hooks/useAppDetails'
 import { useAppHibernation } from '@/hooks/useAppHibernation'
@@ -48,6 +42,7 @@ import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useSyncResponsiveState } from '@/hooks/useSyncResponsiveState'
 import { useTranslations } from '@/hooks/useTranslations'
 import { useIsUpgradePolling } from '@/hooks/useUpgradePurchase'
+import { useVisitedTabs } from '@/hooks/useVisitedTabs'
 import { agentFetch } from '@/lib/agent-fetch'
 import { JourneyTracker } from '@/lib/journeyTracker'
 import { regenerateToken } from '@/lib/jwt-regeneration'
@@ -79,6 +74,26 @@ import type { RuntimeErrorData } from '@/types/runtime-error'
 import { logAiroHQEvent, logImpressionEvent, setInstrumentationAppId } from '@/utils/instrumentation'
 import { postMessageToIframe } from '@/utils/postMessage'
 
+// Lazy-load features that are conditionally rendered or behind user interaction
+const AnalyticsPanel = dynamic(() => import('@/app/[market]/develop/components/settings/Analytics/AnalyticsPanel'), { loading: AnalyticsPanelSkeleton })
+const AppIntroTour = dynamic(() => import('@/app/[market]/develop/components/tour/AppIntroTour').then(m => ({ default: m.AppIntroTour })), { ssr: false })
+const AppNotFound = dynamic(() => import('@/app/[market]/develop/components/AppNotFound'))
+const MediaPanel = dynamic(() => import('@/app/[market]/develop/components/media/MediaPanel'), { loading: () => <PanelSkeleton panelType={ChatTab.MEDIAS} /> })
+const PostPublishGoLiveModal = dynamic(() => import('@/components/layout/PostPublishGoLiveModal'))
+const VersionHistory = dynamic(() => import('@/app/[market]/develop/components/VersionHistory'), { loading: () => <PanelSkeleton panelType={ChatTab.HISTORY} className="p-2 sm:p-0" /> })
+
+// Lazy-loaded but preloaded on idle after mount
+// We do them AOT to avoid skeleton/loader flashes - purely UX and non-blocking.
+const importFeedback = () => import('@/components/feedback/Feedback').then(m => ({ default: m.Feedback }))
+const importFirstPublishCongratsModal = () => import('@/components/layout/FirstPublishCongratsModal')
+const importPublishLimitModal = () => import('@/components/layout/PublishLimitModal')
+const importSettingsView = () => import('@/app/[market]/develop/components/settings/SettingsView')
+const Feedback = dynamic(importFeedback)
+const FirstPublishCongratsModal = dynamic(importFirstPublishCongratsModal)
+const PublishLimitModal = dynamic(importPublishLimitModal)
+const SettingsView = dynamic(importSettingsView)
+
+const aotImports = [importFeedback, importFirstPublishCongratsModal, importPublishLimitModal, importSettingsView]
 
 function DevelopPageContent() {
   const t = useTranslations();
@@ -103,6 +118,8 @@ function DevelopPageContent() {
 
   // Prefetch paywall data early for faster eligibility checks
   usePaywallPrefetch()
+
+  useAotPreload(aotImports)
 
   // Unified initialization hook - handles all sequencing and UI state
   const init = useInitialization({ appId, isJobId })
@@ -351,6 +368,7 @@ function DevelopPageContent() {
   const isEditModeEnabled = useDevelopPageStore((state) => state.isEditModeEnabled)
   // Optimistic mobile tab state for instant transitions
   const [optimisticMobileTab, setOptimisticMobileTab] = useState<ChatTab>(activeChatTab)
+  const visitedTabs = useVisitedTabs(optimisticMobileTab)
   const securityQuickFixFailCountRef = useRef<Map<string, number>>(new Map())
   const [securityHandoffRetryNonce, setSecurityHandoffRetryNonce] = useState(0)
 
@@ -1413,53 +1431,61 @@ function DevelopPageContent() {
                       />
                     </div>
 
-                    {/* History Tab */}
-                    <div
-                      className="absolute inset-0 flex flex-col overflow-y-auto transition-opacity duration-150"
-                      style={{
-                        opacity: mobileMode === MobileMode.TOOLS && optimisticMobileTab === ChatTab.HISTORY ? 1 : 0,
-                        pointerEvents: mobileMode === MobileMode.TOOLS && optimisticMobileTab === ChatTab.HISTORY ? 'auto' : 'none',
-                        willChange: 'opacity'
-                      }}
-                    >
-                      <VersionHistory />
-                    </div>
+                    {/* History Tab - Mount on first visit, then CSS-hide to preserve state */}
+                    {(optimisticMobileTab === ChatTab.HISTORY || visitedTabs.has(ChatTab.HISTORY)) && (
+                      <div
+                        className="absolute inset-0 flex flex-col overflow-y-auto transition-opacity duration-150"
+                        style={{
+                          opacity: mobileMode === MobileMode.TOOLS && optimisticMobileTab === ChatTab.HISTORY ? 1 : 0,
+                          pointerEvents: mobileMode === MobileMode.TOOLS && optimisticMobileTab === ChatTab.HISTORY ? 'auto' : 'none',
+                          willChange: 'opacity'
+                        }}
+                      >
+                        <VersionHistory />
+                      </div>
+                    )}
 
-                    {/* Media Tab */}
-                    <div
-                      className="absolute inset-0 flex flex-col overflow-hidden transition-opacity duration-150"
-                      style={{
-                        opacity: mobileMode === MobileMode.TOOLS && optimisticMobileTab === ChatTab.MEDIAS ? 1 : 0,
-                        pointerEvents: mobileMode === MobileMode.TOOLS && optimisticMobileTab === ChatTab.MEDIAS ? 'auto' : 'none',
-                        willChange: 'opacity'
-                      }}
-                    >
-                      <MediaPanel />
-                    </div>
+                    {/* Media Tab - Mount on first visit, then CSS-hide to preserve state */}
+                    {(optimisticMobileTab === ChatTab.MEDIAS || visitedTabs.has(ChatTab.MEDIAS)) && (
+                      <div
+                        className="absolute inset-0 flex flex-col overflow-hidden transition-opacity duration-150"
+                        style={{
+                          opacity: mobileMode === MobileMode.TOOLS && optimisticMobileTab === ChatTab.MEDIAS ? 1 : 0,
+                          pointerEvents: mobileMode === MobileMode.TOOLS && optimisticMobileTab === ChatTab.MEDIAS ? 'auto' : 'none',
+                          willChange: 'opacity'
+                        }}
+                      >
+                        <MediaPanel />
+                      </div>
+                    )}
 
-                    {/* Analytics Tab */}
-                    <div
-                      className="absolute inset-0 flex flex-col overflow-y-auto transition-opacity duration-150"
-                      style={{
-                        opacity: mobileMode === MobileMode.TOOLS && optimisticMobileTab === ChatTab.ANALYTICS ? 1 : 0,
-                        pointerEvents: mobileMode === MobileMode.TOOLS && optimisticMobileTab === ChatTab.ANALYTICS ? 'auto' : 'none',
-                        willChange: 'opacity'
-                      }}
-                    >
-                      <AnalyticsPanel />
-                    </div>
+                    {/* Analytics Tab - Mount on first visit, then CSS-hide to preserve state */}
+                    {(optimisticMobileTab === ChatTab.ANALYTICS || visitedTabs.has(ChatTab.ANALYTICS)) && (
+                      <div
+                        className="absolute inset-0 flex flex-col overflow-y-auto transition-opacity duration-150"
+                        style={{
+                          opacity: mobileMode === MobileMode.TOOLS && optimisticMobileTab === ChatTab.ANALYTICS ? 1 : 0,
+                          pointerEvents: mobileMode === MobileMode.TOOLS && optimisticMobileTab === ChatTab.ANALYTICS ? 'auto' : 'none',
+                          willChange: 'opacity'
+                        }}
+                      >
+                        <AnalyticsPanel />
+                      </div>
+                    )}
 
-                    {/* Settings Tab */}
-                    <div
-                      className="absolute inset-0 flex flex-col transition-opacity duration-150"
-                      style={{
-                        opacity: mobileMode === MobileMode.TOOLS && optimisticMobileTab === ChatTab.SETTINGS ? 1 : 0,
-                        pointerEvents: mobileMode === MobileMode.TOOLS && optimisticMobileTab === ChatTab.SETTINGS ? 'auto' : 'none',
-                        willChange: 'opacity'
-                      }}
-                    >
-                      <SettingsView />
-                    </div>
+                    {/* Settings Tab - Mount on first visit, then CSS-hide to preserve state */}
+                    {(optimisticMobileTab === ChatTab.SETTINGS || visitedTabs.has(ChatTab.SETTINGS)) && (
+                      <div
+                        className="absolute inset-0 flex flex-col transition-opacity duration-150"
+                        style={{
+                          opacity: mobileMode === MobileMode.TOOLS && optimisticMobileTab === ChatTab.SETTINGS ? 1 : 0,
+                          pointerEvents: mobileMode === MobileMode.TOOLS && optimisticMobileTab === ChatTab.SETTINGS ? 'auto' : 'none',
+                          willChange: 'opacity'
+                        }}
+                      >
+                        <SettingsView />
+                      </div>
+                    )}
                   </div>
                 </>
               )}
@@ -1561,8 +1587,9 @@ export default function Develop() {
   return (
     <ProtectedRoute
       unauthorizedMessage={t('builder_develop_protected_route')}
+      loadingFallback={<DevelopSkeleton isFallback={true} />}
     >
-      <Suspense fallback={<div>{t('builder_develop_loading')}</div>}>
+      <Suspense fallback={<DevelopSkeleton isFallback={true} />}>
         <DevelopPageContent />
       </Suspense>
     </ProtectedRoute>

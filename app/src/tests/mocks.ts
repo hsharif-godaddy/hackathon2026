@@ -102,7 +102,7 @@ export function mockInstrumentation() {
     logImpressionEvent: vi.fn(() => vi.fn()),
     logClickEvent: vi.fn(() => vi.fn()),
     logActionEvent: vi.fn(() => vi.fn()),
-    generateClickEID: vi.fn((event: string) => `${event}.click`),
+    generateClickEID: vi.fn((event: string) => `appbuilder.${event}.click`),
     logAiroHQEvent: vi.fn(() => vi.fn()),
   };
 }

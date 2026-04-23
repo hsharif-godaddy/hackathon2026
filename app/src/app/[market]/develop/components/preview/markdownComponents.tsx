@@ -1,6 +1,11 @@
+import dynamic from 'next/dynamic';
 import type { Components } from 'react-markdown';
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
+
+import CodeBlockFallback from '@/app/[market]/develop/components/CodeBlockFallback';
+
+const CodeBlock = dynamic(() => import('@/app/[market]/develop/components/CodeBlock'), {
+  loading: () => <CodeBlockFallback />,
+});
 
 /**
  * Custom component styles for ReactMarkdown rendering
@@ -24,14 +29,9 @@ export const markdownComponents: Components = {
     const { inline, className, children } = props;
     const match = /language-(\w+)/.exec(className || '');
     return !inline && match ? (
-      <SyntaxHighlighter
-        style={oneDark}
-        language={match[1]}
-        PreTag="div"
-        className="rounded-md my-3"
-      >
+      <CodeBlock language={match[1]} className="rounded-md my-3">
         {String(children).replace(/\n$/, '')}
-      </SyntaxHighlighter>
+      </CodeBlock>
     ) : inline ? (
       <code className="bg-intents-ux-boxLowContrast-backgroundColor text-intents-ux-feedbackCritical-feedbackColor px-1.5 py-0.5 rounded text-sm font-mono" {...props}>
         {children}

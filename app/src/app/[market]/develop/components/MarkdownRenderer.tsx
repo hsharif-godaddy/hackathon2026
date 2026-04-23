@@ -1,10 +1,16 @@
 'use client'
 
+import dynamic from 'next/dynamic'
 import { useEffect, useMemo, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
-import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import remarkGfm from 'remark-gfm'
+
+import CodeBlockFallback from '@/app/[market]/develop/components/CodeBlockFallback'
+
+// SyntaxHighlighter + Prism is ~150KB gz; lazy-load since most messages have no code blocks
+const CodeBlock = dynamic(() => import('@/app/[market]/develop/components/CodeBlock'), {
+  loading: () => <CodeBlockFallback />,
+})
 
 interface MarkdownRendererProps {
   content: string
@@ -82,15 +88,9 @@ export default function MarkdownRenderer({
             const { inline, className, children } = props
             const match = /language-(\w+)/.exec(className || '')
             return !inline && match ? (
-              <SyntaxHighlighter
-                style={oneDark}
-                language={match[1]}
-                PreTag="div"
-                className="rounded-md"
-                {...props}
-              >
+              <CodeBlock language={match[1]}>
                 {String(children).replace(/\n$/, '')}
-              </SyntaxHighlighter>
+              </CodeBlock>
             ) : (
               <code className="bg-intents-ux-boxLowContrast-backgroundColor text-xs px-0.5 py-0.5 font-mono" {...props}>
                 {children}

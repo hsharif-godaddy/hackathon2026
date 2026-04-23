@@ -69,6 +69,19 @@ vi.mock('@/app/[market]/develop/components/settings/SettingsView', () => ({
   default: () => <div data-testid="settings-view">Settings View</div>,
 }));
 
+vi.mock('@/app/[market]/develop/components/settings/Analytics/AnalyticsPanel', () => ({
+  default: () => <div data-testid="analytics-panel">Analytics Panel</div>,
+}));
+
+vi.mock('@/app/[market]/develop/components/media/MediaPanel', () => ({
+  default: () => <div data-testid="media-panel">Media Panel</div>,
+}));
+
+vi.mock('@/app/[market]/develop/components/PanelSkeleton', () => ({
+  default: () => <div data-testid="panel-skeleton">Loading...</div>,
+  AnalyticsPanelSkeleton: () => <div data-testid="analytics-panel-skeleton">Loading...</div>,
+}));
+
 vi.mock('@/app/[market]/develop/components/PlanTracker', () => ({
   default: () => <div data-testid="plan-tracker">Plan Tracker</div>,
 }));
@@ -286,12 +299,76 @@ describe('ChatPane', () => {
     expect(screen.getByTestId('message-list')).toBeInTheDocument();
   });
 
-  it('should show version history when HISTORY tab is active', () => {
+  it('should show version history when HISTORY tab is active', async () => {
     mockChatTabs.activeChatTab = ChatTab.HISTORY;
 
     renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
 
+    await waitFor(() => {
+      expect(screen.getByTestId('version-history')).toBeInTheDocument();
+    });
+  });
+
+  it('should show media panel when MEDIAS tab is active', async () => {
+    mockChatTabs.activeChatTab = ChatTab.MEDIAS;
+
+    renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('media-panel')).toBeInTheDocument();
+    });
+  });
+
+  it('should show analytics panel when ANALYTICS tab is active', async () => {
+    mockChatTabs.activeChatTab = ChatTab.ANALYTICS;
+
+    renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('analytics-panel')).toBeInTheDocument();
+    });
+  });
+
+  it('should show settings view when SETTINGS tab is active', async () => {
+    mockChatTabs.activeChatTab = ChatTab.SETTINGS;
+
+    renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('settings-view')).toBeInTheDocument();
+    });
+  });
+
+  it('should not mount tab panels until their tab is visited', () => {
+    mockChatTabs.activeChatTab = ChatTab.CHAT;
+
+    renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
+
+    expect(screen.queryByTestId('version-history')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('media-panel')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('analytics-panel')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('settings-view')).not.toBeInTheDocument();
+  });
+
+  it('should keep a visited panel in the DOM with display:none after switching away', async () => {
+    mockChatTabs.activeChatTab = ChatTab.HISTORY;
+
+    const { rerender } = renderWithProviders(
+      <ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('version-history')).toBeInTheDocument();
+    });
+
+    const historyWrapper = screen.getByTestId('version-history').parentElement!;
+    expect(historyWrapper.style.display).toBe('flex');
+
+    mockChatTabs.activeChatTab = ChatTab.CHAT;
+    rerender(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
+
     expect(screen.getByTestId('version-history')).toBeInTheDocument();
+    expect(historyWrapper.style.display).toBe('none');
   });
 
   it('should fall back to CHAT tab on desktop if PREVIEW is selected', () => {

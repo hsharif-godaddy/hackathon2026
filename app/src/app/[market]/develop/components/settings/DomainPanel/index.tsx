@@ -3,9 +3,10 @@ import Button from "@ux/button";
 import WebsiteIcon from '@ux/icon/website';
 import text from "@ux/text";
 
-import { SettingsLoadingState } from '@/app/[market]/develop/components/settings/components/SettingsLoadingState';
+import PanelSkeleton from "@/app/[market]/develop/components/PanelSkeleton";
 import DomainAttach from "@/app/[market]/develop/components/settings/DomainPanel/DomainAttach";
 import ProjectDomain from "@/app/[market]/develop/components/settings/DomainPanel/ProjectDomain";
+import { ChatTab, SettingsSection } from "@/app/[market]/develop/components/types";
 import { useAppIdFromParams } from "@/app/[market]/develop/components/utils";
 import EmptyStateCard from '@/components/layout/EmptyStateCard';
 import { useDomainPolling } from '@/hooks/useDomainPolling';
@@ -53,12 +54,7 @@ export default function DomainPanel() {
   ) ?? false;
 
   if (isDomainAttachLoading || isProjectDomainLoading || isSiteLoading || isPaywallLoading) {
-    return (
-      <SettingsLoadingState
-        fullPage
-        description={t('builder_common_loading_description')}
-      />
-    );
+    return <PanelSkeleton panelType={ChatTab.SETTINGS} settingsSection={SettingsSection.DOMAIN} />;
   }
 
   // Show upgrade screen for free users who haven't published (no domains to clean up)

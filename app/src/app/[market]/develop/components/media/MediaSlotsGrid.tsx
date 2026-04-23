@@ -1,9 +1,9 @@
 'use client'
 
-import Skeleton from '@ux/skeleton'
-
 import { formatSlotName } from '@/app/[market]/develop/components/media/MediaSlotDetail'
 import type { MediaSlot } from '@/app/[market]/develop/components/media/types'
+import PanelSkeleton from '@/app/[market]/develop/components/PanelSkeleton'
+import { ChatTab } from '@/app/[market]/develop/components/types'
 import { useTranslations } from '@/hooks/useTranslations'
 import { useServerPollingStore } from '@/stores/useServerPollingStore'
 import { generateClickEID } from '@/utils/instrumentation'
@@ -30,14 +30,7 @@ export function MediaSlotsGrid({
 
   if (isLoading) {
     return (
-      <div className="grid grid-cols-2 gap-3 px-3 md:px-0 pt-3 md:pt-0">
-        {[1, 2, 3, 4, 5, 6].map((i) => (
-          <div key={i} className="flex flex-col gap-1">
-            <Skeleton width="100%" height="0" className="aspect-square rounded-md" />
-            <Skeleton width="80%" height="14px" />
-          </div>
-        ))}
-      </div>
+      <PanelSkeleton panelType={ChatTab.MEDIAS} />
     )
   }
 

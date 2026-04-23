@@ -66,7 +66,7 @@ describe('DomainPanel', function domainPanelTests() {
   });
 
   describe('loading states', function loadingTests() {
-    it('should show loading spinner when domain attach feature is loading', async function domainAttachLoading() {
+    it('should show skeleton when domain attach feature is loading', async function domainAttachLoading() {
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
 
       vi.mocked(useSwitchboard).mockImplementation((feature: string) => {
@@ -78,10 +78,10 @@ describe('DomainPanel', function domainPanelTests() {
 
       renderWithProviders(<DomainPanel />);
 
-      expect(screen.getByText('builder_common_loading_description')).toBeInTheDocument();
+      expect(screen.getByTestId('panel-skeleton')).toBeInTheDocument();
     });
 
-    it('should show loading spinner when project domain feature is loading', async function projectDomainLoading() {
+    it('should show skeleton when project domain feature is loading', async function projectDomainLoading() {
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
 
       vi.mocked(useSwitchboard).mockImplementation((feature: string) => {
@@ -93,10 +93,10 @@ describe('DomainPanel', function domainPanelTests() {
 
       renderWithProviders(<DomainPanel />);
 
-      expect(screen.getByText('builder_common_loading_description')).toBeInTheDocument();
+      expect(screen.getByTestId('panel-skeleton')).toBeInTheDocument();
     });
 
-    it('should show loading spinner when site is loading', async function siteLoading() {
+    it('should show skeleton when site is loading', async function siteLoading() {
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
       const { useSiteStore } = await import('@/stores/useSiteStore');
 
@@ -111,10 +111,10 @@ describe('DomainPanel', function domainPanelTests() {
 
       renderWithProviders(<DomainPanel />);
 
-      expect(screen.getByText('builder_common_loading_description')).toBeInTheDocument();
+      expect(screen.getByTestId('panel-skeleton')).toBeInTheDocument();
     });
 
-    it('should show loading spinner when paywall eligibility is loading', async function paywallLoading() {
+    it('should show skeleton when paywall eligibility is loading', async function paywallLoading() {
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
       const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
 
@@ -123,7 +123,7 @@ describe('DomainPanel', function domainPanelTests() {
 
       renderWithProviders(<DomainPanel />);
 
-      expect(screen.getByText('builder_common_loading_description')).toBeInTheDocument();
+      expect(screen.getByTestId('panel-skeleton')).toBeInTheDocument();
     });
   });
 

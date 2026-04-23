@@ -22,6 +22,7 @@ const LOCAL_FEATURE_OVERRIDES: Record<string, boolean> = {
   'appbuilder-publish-button': true,
   'appbuilder-manage-plan': true,
   'appbuilder-settings-secrets': true,
+  'appbuilder-settings-visualscan': true,
   'appbuilder-settings-team': true,
   'appbuilder-settings-marketing': true,
   'appbuilder-share-links': true,

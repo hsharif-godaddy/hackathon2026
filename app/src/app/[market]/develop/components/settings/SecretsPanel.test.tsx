@@ -136,13 +136,13 @@ describe('SecretsPanel', () => {
   });
 
   describe('loading state', () => {
-    it('should display loading spinner when fetching secrets', async () => {
+    it('should display skeleton when fetching secrets', async () => {
       vi.mocked(useSecrets).mockReturnValue(createMockQueryResult({ isLoading: true, dataUpdatedAt: 0 }));
 
       renderSecretsPanel();
 
-      await waitFor(function waitForSpinner() {
-        expect(screen.getByText('builder_common_loading')).toBeInTheDocument();
+      await waitFor(function waitForSkeleton() {
+        expect(screen.getByTestId('panel-skeleton')).toBeInTheDocument();
       });
     });
   });

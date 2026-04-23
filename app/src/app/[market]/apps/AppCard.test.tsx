@@ -993,7 +993,7 @@ describe('AppCardEmptyState', () => {
   it('should have data-eid for analytics tracking', () => {
     renderWithProviders(<AppCardEmptyState />);
 
-    expect(screen.getByTestId('create-app-card')).toHaveAttribute('data-eid', 'apps.app_list.new_app.click');
+    expect(screen.getByTestId('create-app-card')).toHaveAttribute('data-eid', 'appbuilder.apps.app_list.new_app.click');
   });
 
   it('should navigate to home page when clicked', async () => {
@@ -1014,7 +1014,7 @@ describe('TransferAppCard', () => {
 
     const transferCard = screen.getByTestId('transfer-app-card');
     expect(transferCard).toBeInTheDocument();
-    expect(transferCard).toHaveAttribute('data-eid', 'apps.emptystate.accept_transfer.click');
+    expect(transferCard).toHaveAttribute('data-eid', 'appbuilder.apps.emptystate.accept_transfer.click');
   });
 
   it('should call onAcceptTransfer when clicked', async () => {

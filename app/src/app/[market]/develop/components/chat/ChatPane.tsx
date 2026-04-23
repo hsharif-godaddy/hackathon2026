@@ -1,5 +1,6 @@
 'use client'
 
+import dynamic from 'next/dynamic'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { isEmployeeAuthType } from '@airo/shared/auth'
@@ -8,27 +9,23 @@ import Growl from '@ux/growl'
 
 import { AssetManagerItem, MediaType } from '@/app/[market]/develop/components/chat/AssetTypes'
 import ChatBanners from '@/app/[market]/develop/components/chat/banners/ChatBanners'
-import BudgetExceededBanner from '@/app/[market]/develop/components/chat/BudgetExceededBanner'
 import { ChatContext, type SendMessageOptions as SendChatMessageOptions } from '@/app/[market]/develop/components/chat/ChatContext'
 import ChatInput, { type StagedChatFile } from '@/app/[market]/develop/components/chat/ChatInput'
 import ChatToolbar from '@/app/[market]/develop/components/chat/ChatToolbar'
 import { UploadedFile } from '@/app/[market]/develop/components/chat/FileUploadButton'
-import PostPublishFeatureSelection from '@/app/[market]/develop/components/chat/PostPublishFeatureSelection'
 import {
   getStagedFilePreviewUrl,
   revokeStagedFilePreviewIfCached,
 } from '@/app/[market]/develop/components/chat/stagedFilePreviewUrl'
 import { uploadChatFiles } from '@/app/[market]/develop/components/chat/uploadChatFiles'
-import MediaPanel from '@/app/[market]/develop/components/media/MediaPanel'
+import PanelSkeleton, { AnalyticsPanelSkeleton } from '@/app/[market]/develop/components/PanelSkeleton'
 import PersistentTodoList from '@/app/[market]/develop/components/PersistentTodoList'
 import PlanTracker from '@/app/[market]/develop/components/PlanTracker'
-import AnalyticsPanel from '@/app/[market]/develop/components/settings/Analytics/AnalyticsPanel'
-import SettingsView from '@/app/[market]/develop/components/settings/SettingsView'
 import StreamingMessageList from '@/app/[market]/develop/components/StreamingMessageList'
-import { ChatTab } from '@/app/[market]/develop/components/types'
+import { ChatTab, SettingsSection } from '@/app/[market]/develop/components/types'
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
-import VersionHistory from '@/app/[market]/develop/components/VersionHistory'
 import { useAuthContext } from '@/components/providers/AuthProvider'
+import { useAotPreload } from '@/hooks/useAotPreload'
 import { useChatTabs } from '@/hooks/useChatTabs'
 import { useCreditGrants } from '@/hooks/useCreditGrants'
 import type { SendMessageOptions } from '@/hooks/useStreamingWebSocket'
@@ -36,6 +33,7 @@ import { useSubscription } from '@/hooks/useSubscription'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTodoListLoader } from '@/hooks/useTodoListLoader'
 import { useTranslations } from '@/hooks/useTranslations'
+import { useVisitedTabs } from '@/hooks/useVisitedTabs'
 import { appFetch } from '@/lib/gasket-config'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { logger } from '@/lib/request-context'
@@ -63,6 +61,23 @@ import { getActiveGrant } from '@/utils/credits'
 import { MAX_TOTAL_ASSETS, validateForStaging } from '@/utils/file-upload-validation'
 import { logAiroHQEvent } from '@/utils/instrumentation'
 import { postMessageToIframe } from '@/utils/postMessage'
+
+// Lazy-load features that are conditionally rendered or behind user interaction
+const AnalyticsPanel = dynamic(() => import('@/app/[market]/develop/components/settings/Analytics/AnalyticsPanel'), { loading: AnalyticsPanelSkeleton })
+const MediaPanel = dynamic(() => import('@/app/[market]/develop/components/media/MediaPanel'), { loading: () => <PanelSkeleton panelType={ChatTab.MEDIAS} /> })
+const VersionHistory = dynamic(() => import('@/app/[market]/develop/components/VersionHistory'), { loading: () => <PanelSkeleton panelType={ChatTab.HISTORY} className="p-2 sm:p-0" /> })
+
+// SettingsView is AOT-preloaded by page.tsx
+const SettingsView = dynamic(() => import('@/app/[market]/develop/components/settings/SettingsView'))
+
+// Lazy-loaded but preloaded on idle after mount
+// We do them AOT to avoid skeleton/loader flashes - purely UX and non-blocking.
+const importBudgetExceededBanner = () => import('@/app/[market]/develop/components/chat/BudgetExceededBanner')
+const importPostPublishFeatureSelection = () => import('@/app/[market]/develop/components/chat/PostPublishFeatureSelection')
+const BudgetExceededBanner = dynamic(importBudgetExceededBanner)
+const PostPublishFeatureSelection = dynamic(importPostPublishFeatureSelection)
+
+const aotImports = [importBudgetExceededBanner, importPostPublishFeatureSelection]
 
 interface ChatPaneProps {
   sendMessage: (options: SendMessageOptions) => Promise<void>
@@ -199,6 +214,8 @@ export default function ChatPane({
   const budgetExceeded = !isImpersonating && !hasAvailableCredits && (dataLoaded || budgetExceededFlag)
   const [isProactiveBannerDismissed, setIsProactiveBannerDismissed] = useState(false)
 
+  useAotPreload(aotImports)
+
   // Reset dismissal only when credit data is stable and credits are no longer exhausted.
   // Excluding fetching state prevents a background refetch from briefly flipping
   // budgetExceeded=false (via dataLoaded) and resetting a dismissal the user just made.
@@ -217,6 +234,7 @@ export default function ChatPane({
   const isMobile = useDevelopPageStore((state) => state.isMobile)
   const setIsVersionHistoryOpen = useDevelopPageStore((state) => state.setIsVersionHistoryOpen)
   const { activeChatTab, setActiveChatTab } = useChatTabs()
+  const visitedTabs = useVisitedTabs(activeChatTab)
 
   const appId = useAppIdFromParams()
 
@@ -1138,37 +1156,45 @@ export default function ChatPane({
           </div>
         </div>
 
-        {/* History Tab - Keep mounted, hide with CSS */}
-        <div
-          className="flex flex-col flex-1 min-h-0"
-          style={{ display: activeChatTab === ChatTab.HISTORY ? 'flex' : 'none' }}
-        >
-          <VersionHistory />
-        </div>
+        {/* History Tab - Mount on first visit, then CSS-hide to preserve state */}
+        {(activeChatTab === ChatTab.HISTORY || visitedTabs.has(ChatTab.HISTORY)) && (
+          <div
+            className="flex flex-col flex-1 min-h-0"
+            style={{ display: activeChatTab === ChatTab.HISTORY ? 'flex' : 'none' }}
+          >
+            <VersionHistory />
+          </div>
+        )}
 
-        {/* Media Tab - Keep mounted, hide with CSS */}
-        <div
-          className="flex flex-col flex-1 min-h-0"
-          style={{ display: activeChatTab === ChatTab.MEDIAS ? 'flex' : 'none' }}
-        >
-          <MediaPanel />
-        </div>
+        {/* Media Tab - Mount on first visit, then CSS-hide to preserve state */}
+        {(activeChatTab === ChatTab.MEDIAS || visitedTabs.has(ChatTab.MEDIAS)) && (
+          <div
+            className="flex flex-col flex-1 min-h-0"
+            style={{ display: activeChatTab === ChatTab.MEDIAS ? 'flex' : 'none' }}
+          >
+            <MediaPanel />
+          </div>
+        )}
 
-        {/* Analytics Tab - Keep mounted, hide with CSS */}
-        <div
-          className="flex flex-col flex-1 min-h-0 overflow-y-auto"
-          style={{ display: activeChatTab === ChatTab.ANALYTICS ? 'flex' : 'none' }}
-        >
-          <AnalyticsPanel />
-        </div>
+        {/* Analytics Tab - Mount on first visit, then CSS-hide to preserve state */}
+        {(activeChatTab === ChatTab.ANALYTICS || visitedTabs.has(ChatTab.ANALYTICS)) && (
+          <div
+            className="flex flex-col flex-1 min-h-0 overflow-y-auto"
+            style={{ display: activeChatTab === ChatTab.ANALYTICS ? 'flex' : 'none' }}
+          >
+            <AnalyticsPanel />
+          </div>
+        )}
 
-        {/* Settings Tab - Keep mounted, hide with CSS */}
-        <div
-          className="flex flex-col flex-1 min-h-0"
-          style={{ display: activeChatTab === ChatTab.SETTINGS ? 'flex' : 'none' }}
-        >
-          <SettingsView />
-        </div>
+        {/* Settings Tab - Mount on first visit, then CSS-hide to preserve state */}
+        {(activeChatTab === ChatTab.SETTINGS || visitedTabs.has(ChatTab.SETTINGS)) && (
+          <div
+            className="flex flex-col flex-1 min-h-0"
+            style={{ display: activeChatTab === ChatTab.SETTINGS ? 'flex' : 'none' }}
+          >
+            <SettingsView />
+          </div>
+        )}
 
         <ChatToolbar />
       </div>

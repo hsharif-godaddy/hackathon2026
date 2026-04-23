@@ -8,10 +8,10 @@ import CheckboxFilledIcon from '@ux/icon/checkbox-filled'
 import ChevronDownIcon from '@ux/icon/chevron-down'
 import ChevronRightIcon from '@ux/icon/chevron-right'
 import EditIcon from '@ux/icon/edit'
-import Spinner from '@ux/spinner'
 import Tag from '@ux/tag'
 import Tooltip from '@ux/tooltip'
 
+import PanelSkeleton from '@/app/[market]/develop/components/PanelSkeleton'
 import { useChatTabs } from '@/hooks/useChatTabs'
 import { useDeploymentsQuery } from '@/hooks/useDeploymentsQuery'
 import { useGitHistoryQuery } from '@/hooks/useGitHistory'
@@ -530,9 +530,7 @@ export default function VersionHistory() {
         )}
 
         {loading && (
-          <div className="flex justify-center items-center h-full">
-            <Spinner />
-          </div>
+          <PanelSkeleton panelType={ChatTab.HISTORY} />
         )}
 
         {!loading && allCommits.length === 0 && !error && (
