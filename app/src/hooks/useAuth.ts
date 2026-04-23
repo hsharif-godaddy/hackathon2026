@@ -7,6 +7,7 @@ import {
   type GasketConfig,
   getAuthTypeSync,
   getGasketConfig,
+  getLoginUrl,
   getLogoutUrl,
   isAuthJWTSync,
   isAuthMockSync,
@@ -14,11 +15,24 @@ import {
 import { logger } from '@/lib/request-context';
 import { useAuthUIStore } from '@/stores/useAuthUIStore';
 
+interface UseAuthOptions {
+  onShowMockLogin?: () => void;
+}
+
 /**
- * Auth hook supporting JWT (production) and mock (development) modes.
+ * Auth hook supporting multiple authentication modes
+ *
+ * Supports JWT (production), MOCK (development), and NONE (local dev) authentication.
  * Uses Gasket Auth for JWT mode and custom mock auth for development.
  */
-export function useAuth() {
+export function useAuth(options: UseAuthOptions = {}) {
+  // @deprecated The old `useAuth(callback)` signature is deprecated.
+  // Use `useAuth({ onShowMockLogin: callback })` instead. This backward
+  // compatibility will be removed in a future release.
+  const { onShowMockLogin } = typeof options === 'function'
+    ? { onShowMockLogin: options }
+    : options;
+
   const [config, setConfig] = useState<GasketConfig | null>(null);
   const [configLoading, setConfigLoading] = useState(true);
   const [configError, setConfigError] = useState<string | null>(null);
@@ -204,6 +218,41 @@ export function useAuth() {
     }
   };
 
+  // Handle sign in - different behavior per auth mode
+  const handleSignIn = async (redirectUrl?: string) => {
+    if (configError) {
+      logger.error('auth.signin.config_error', 'Cannot sign in: configuration not loaded');
+      return { showModal: false };
+    }
+
+    if (isMockAuth) {
+      if (onShowMockLogin) {
+        onShowMockLogin();
+      } else {
+        mockAuth.login();
+      }
+      return { showModal: !onShowMockLogin };
+    }
+
+    try {
+      // If no redirect URL provided, capture current page to preserve path after SSO
+      // This ensures direct SSO redirects (non-modal flow) return to the same page
+      const finalRedirectUrl = redirectUrl || (
+        typeof window !== 'undefined'
+          ? window.location.href  // Full current URL with path
+          : undefined
+      );
+
+      window.location.href = await getLoginUrl(finalRedirectUrl);
+    } catch (error) {
+      logger.error('auth.signin.url_error', {
+        message: 'Failed to get login URL',
+        error: error as Error,
+      });
+    }
+    return { showModal: false };
+  };
+
   // Determine authentication state based on mode
   /**
    * Determines authentication state based on auth mode and validates session status.
@@ -269,6 +318,7 @@ export function useAuth() {
     getUserInfo,
 
     // Auth actions
+    handleSignIn,
     handleSignOut,
 
     // Auth status and mode
