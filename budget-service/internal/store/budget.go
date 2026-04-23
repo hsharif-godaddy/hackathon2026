@@ -128,6 +128,24 @@ const (
 	ListSessionReportsMaxLimit     = 500
 )
 
+// ReportItemCostAggregateFilter selects report lines for aggregate totals: SUM(budget_cost) and SUM(product_cost) over those rows. To is exclusive on br.created_at.
+// At least one of ProductKey or Label should be non-empty; empty fields skip that predicate.
+type ReportItemCostAggregateFilter struct {
+	ProductKey string
+	Label      string
+	From       time.Time
+	To         time.Time
+	BudgetID   string
+	SessionID  string
+}
+
+// ReportItemCostAggregateResult is the aggregate totals for matching report line items.
+type ReportItemCostAggregateResult struct {
+	BudgetCostTotal  string
+	ProductCostTotal string
+	LineCount        int64
+}
+
 type BudgetDetail struct {
 	BudgetID       string
 	ProductKey     string
@@ -1495,6 +1513,56 @@ JOIN budgets b ON b.id = bs.budget_id
 		out = []SessionReportListRow{}
 	}
 	return out, total, nil
+}
+
+// SumReportItemCostsByLabelAndProduct returns sums and line count for report items matching
+// optional product key and/or label (at least one required), optional budget/session, and
+// br.created_at in [From, To) (To exclusive).
+func (s *Store) SumReportItemCostsByLabelAndProduct(ctx context.Context, f ReportItemCostAggregateFilter) (ReportItemCostAggregateResult, error) {
+	var out ReportItemCostAggregateResult
+	pk := strings.TrimSpace(f.ProductKey)
+	lbl := strings.TrimSpace(f.Label)
+	if pk == "" && lbl == "" {
+		return out, ErrReportAggregateNoFilter
+	}
+	args := []any{f.From, f.To}
+	q := `
+SELECT COALESCE(SUM(ri.budget_cost), 0), COALESCE(SUM(ri.product_cost), 0), COUNT(*)
+FROM budget_session_report_items ri
+INNER JOIN budget_session_reports br ON br.id = ri.report_id
+INNER JOIN budget_sessions bs ON bs.id = br.session_id
+INNER JOIN budgets b ON b.id = bs.budget_id AND b.deleted_at IS NULL
+WHERE br.created_at >= $1 AND br.created_at < $2`
+	argN := 2
+	if pk != "" {
+		argN++
+		q += " AND b.product_key = $" + strconv.Itoa(argN)
+		args = append(args, pk)
+	}
+	if lbl != "" {
+		argN++
+		q += " AND ri.label = $" + strconv.Itoa(argN)
+		args = append(args, lbl)
+	}
+	if bid := strings.TrimSpace(f.BudgetID); bid != "" {
+		argN++
+		q += " AND b.id = $" + strconv.Itoa(argN)
+		args = append(args, bid)
+	}
+	if sid := strings.TrimSpace(f.SessionID); sid != "" {
+		argN++
+		q += " AND br.session_id = $" + strconv.Itoa(argN)
+		args = append(args, sid)
+	}
+	var bSum, pSum decimal.Decimal
+	var lineCount int64
+	if err := s.db.QueryRowContext(ctx, q, args...).Scan(&bSum, &pSum, &lineCount); err != nil {
+		return out, err
+	}
+	out.BudgetCostTotal = credits.Format(bSum)
+	out.ProductCostTotal = credits.Format(pSum)
+	out.LineCount = lineCount
+	return out, nil
 }
 
 func (s *Store) SoftDeleteBudget(ctx context.Context, budgetID string) error {

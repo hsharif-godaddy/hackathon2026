@@ -2704,9 +2704,9 @@ func TestPostBudgetSessionReportEmitsSuccessLog(t *testing.T) {
 	t.Cleanup(func() { slog.SetDefault(previous) })
 
 	st := testStore(t)
-	auth := auth.NewMiddleware("none")
+	mw := auth.NewMiddleware("none", nil, nil)
 	srv := &Server{Store: st}
-	h := NewRouter(srv, auth)
+	h := NewRouter(srv, mw)
 	pk := "success-log-" + uuid.NewString()
 	reqP := httptest.NewRequest(http.MethodPost, "/api/v1/products", strings.NewReader(`{"productKey":"`+pk+`"}`))
 	reqP.Header.Set("Content-Type", "application/json")
@@ -2793,5 +2793,438 @@ func TestPostBudgetSessionReportEmitsSuccessLog(t *testing.T) {
 	}
 	if bcu < 0.999999 || bcu > 1.000001 {
 		t.Fatalf("budgetCostTotalUsd: got %g", bcu)
+	}
+}
+
+func TestReportsAggregateSumsWithExplicitFromTo(t *testing.T) {
+	h := NewRouter(&Server{Store: testStore(t)}, auth.NewMiddleware("none", nil, nil))
+	pk := "agg1-" + uuid.NewString()
+	reqP := httptest.NewRequest(http.MethodPost, "/api/v1/products", strings.NewReader(`{"productKey":"`+pk+`"}`))
+	reqP.Header.Set("Content-Type", "application/json")
+	recP := httptest.NewRecorder()
+	h.ServeHTTP(recP, reqP)
+	if recP.Code != http.StatusCreated {
+		t.Fatalf("post product: %d", recP.Code)
+	}
+	reqB := httptest.NewRequest(http.MethodPost, "/api/v1/budgets", strings.NewReader(
+		`{"productKey":"`+pk+`","items":[{"creditsTotal":"100.000000","costToCreditRatio":"1"}]}`,
+	))
+	reqB.Header.Set("Content-Type", "application/json")
+	recB := httptest.NewRecorder()
+	h.ServeHTTP(recB, reqB)
+	if recB.Code != http.StatusCreated {
+		t.Fatalf("post budget: %d %s", recB.Code, recB.Body.String())
+	}
+	budgetID := decodeJSONMapUseNumber(t, recB.Body.String())["budgetId"].(string)
+	reqS := httptest.NewRequest(http.MethodPost, "/api/v1/sessions", strings.NewReader(`{"budgetId":"`+budgetID+`"}`))
+	reqS.Header.Set("Content-Type", "application/json")
+	recS := httptest.NewRecorder()
+	h.ServeHTTP(recS, reqS)
+	if recS.Code != http.StatusCreated {
+		t.Fatalf("post session: %d", recS.Code)
+	}
+	sessionID := decodeJSONMapUseNumber(t, recS.Body.String())["sessionId"].(string)
+	repBody := `{"reportItems":[{"budgetCost":"3.500000","productCost":"1.250000","label":"usg"},{"budgetCost":"2.000000","productCost":"0.500000","label":"usg"}]}`
+	reqR := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sessionID+"/reports", strings.NewReader(repBody))
+	reqR.Header.Set("Content-Type", "application/json")
+	recR := httptest.NewRecorder()
+	h.ServeHTTP(recR, reqR)
+	if recR.Code != http.StatusCreated {
+		t.Fatalf("post report: %d %s", recR.Code, recR.Body.String())
+	}
+	agg := "/api/v1/reports/aggregate?productKey=" + pk + "&label=usg&from=2000-01-01T00:00:00Z&to=2100-01-01T00:00:00Z"
+	reqA := httptest.NewRequest(http.MethodGet, agg, nil)
+	recA := httptest.NewRecorder()
+	h.ServeHTTP(recA, reqA)
+	if recA.Code != http.StatusOK {
+		t.Fatalf("aggregate: %d %s", recA.Code, recA.Body.String())
+	}
+	m := decodeJSONMapUseNumber(t, recA.Body.String())
+	if m["productKey"].(string) != pk {
+		t.Fatalf("productKey")
+	}
+	if m["label"].(string) != "usg" {
+		t.Fatalf("label")
+	}
+	if m["reportLineCount"].(json.Number) != "2" {
+		t.Fatalf("reportLineCount want 2, got %v", m["reportLineCount"])
+	}
+	if m["budgetCostTotal"].(json.Number) != "5.500000" {
+		t.Fatalf("budgetCostTotal: %v", m["budgetCostTotal"])
+	}
+	if m["productCostTotal"].(json.Number) != "1.750000" {
+		t.Fatalf("productCostTotal: %v", m["productCostTotal"])
+	}
+	if _, err := time.Parse(time.RFC3339Nano, m["from"].(string)); err != nil {
+		t.Fatalf("from: %v", err)
+	}
+	if _, err := time.Parse(time.RFC3339Nano, m["to"].(string)); err != nil {
+		t.Fatalf("to: %v", err)
+	}
+	aggNo := "/api/v1/reports/aggregate?productKey=" + pk + "&label=nomatch&from=2000-01-01T00:00:00Z&to=2100-01-01T00:00:00Z"
+	reqN := httptest.NewRequest(http.MethodGet, aggNo, nil)
+	recN := httptest.NewRecorder()
+	h.ServeHTTP(recN, reqN)
+	if recN.Code != http.StatusOK {
+		t.Fatalf("aggregate nomatch: %d", recN.Code)
+	}
+	mn := decodeJSONMapUseNumber(t, recN.Body.String())
+	if mn["reportLineCount"].(json.Number) != "0" {
+		t.Fatalf("line count 0, got %v", mn["reportLineCount"])
+	}
+}
+
+func TestReportsAggregateSessionFilter(t *testing.T) {
+	h := NewRouter(&Server{Store: testStore(t)}, auth.NewMiddleware("none", nil, nil))
+	pk := "agg2-" + uuid.NewString()
+	reqP := httptest.NewRequest(http.MethodPost, "/api/v1/products", strings.NewReader(`{"productKey":"`+pk+`"}`))
+	reqP.Header.Set("Content-Type", "application/json")
+	recP := httptest.NewRecorder()
+	h.ServeHTTP(recP, reqP)
+	if recP.Code != http.StatusCreated {
+		t.Fatal("product")
+	}
+	budget1 := `{"productKey":"` + pk + `","items":[{"creditsTotal":"10.000000","costToCreditRatio":"1"}]}`
+	reqB1 := httptest.NewRequest(http.MethodPost, "/api/v1/budgets", strings.NewReader(budget1))
+	reqB1.Header.Set("Content-Type", "application/json")
+	recB1 := httptest.NewRecorder()
+	h.ServeHTTP(recB1, reqB1)
+	if recB1.Code != http.StatusCreated {
+		t.Fatal("budget1")
+	}
+	bid1 := decodeJSONMapUseNumber(t, recB1.Body.String())["budgetId"].(string)
+	reqB2 := httptest.NewRequest(http.MethodPost, "/api/v1/budgets", strings.NewReader(budget1))
+	reqB2.Header.Set("Content-Type", "application/json")
+	recB2 := httptest.NewRecorder()
+	h.ServeHTTP(recB2, reqB2)
+	if recB2.Code != http.StatusCreated {
+		t.Fatal("budget2")
+	}
+	bid2 := decodeJSONMapUseNumber(t, recB2.Body.String())["budgetId"].(string)
+	mkSession := func(budgetID string) string {
+		reqS := httptest.NewRequest(http.MethodPost, "/api/v1/sessions", strings.NewReader(`{"budgetId":"`+budgetID+`"}`))
+		reqS.Header.Set("Content-Type", "application/json")
+		recS := httptest.NewRecorder()
+		h.ServeHTTP(recS, reqS)
+		if recS.Code != http.StatusCreated {
+			t.Fatalf("session: %d", recS.Code)
+		}
+		return decodeJSONMapUseNumber(t, recS.Body.String())["sessionId"].(string)
+	}
+	s1 := mkSession(bid1)
+	s2 := mkSession(bid2)
+	postReport := func(sid string) {
+		body := `{"reportItems":[{"budgetCost":"1","productCost":"0","label":"sf"}]}`
+		reqR := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sid+"/reports", strings.NewReader(body))
+		reqR.Header.Set("Content-Type", "application/json")
+		recR := httptest.NewRecorder()
+		h.ServeHTTP(recR, reqR)
+		if recR.Code != http.StatusCreated {
+			t.Fatalf("report: %d %s", recR.Code, recR.Body.String())
+		}
+	}
+	postReport(s1)
+	postReport(s2)
+	qs := "from=2000-01-01T00:00:00Z&to=2100-01-01T00:00:00Z"
+	aggAll := "/api/v1/reports/aggregate?productKey=" + pk + "&label=sf&" + qs
+	reqAll := httptest.NewRequest(http.MethodGet, aggAll, nil)
+	recAll := httptest.NewRecorder()
+	h.ServeHTTP(recAll, reqAll)
+	if recAll.Code != http.StatusOK {
+		t.Fatalf("all: %d", recAll.Code)
+	}
+	if decodeJSONMapUseNumber(t, recAll.Body.String())["reportLineCount"].(json.Number) != "2" {
+		t.Fatalf("all sessions: want 2 lines")
+	}
+	aggS1 := "/api/v1/reports/aggregate?productKey=" + pk + "&label=sf&sessionId=" + s1 + "&" + qs
+	req1 := httptest.NewRequest(http.MethodGet, aggS1, nil)
+	r1 := httptest.NewRecorder()
+	h.ServeHTTP(r1, req1)
+	if r1.Code != http.StatusOK {
+		t.Fatalf("session1: %d", r1.Code)
+	}
+	if decodeJSONMapUseNumber(t, r1.Body.String())["reportLineCount"].(json.Number) != "1" {
+		t.Fatalf("one session: want 1 line")
+	}
+}
+
+func TestReportsAggregateQueryValidation(t *testing.T) {
+	t.Parallel()
+	h := NewRouter(&Server{Store: nil}, auth.NewMiddleware("none", nil, nil))
+	pk := "k"
+	lab := "L"
+	qs2000 := "2000-01-01T00:00:00Z"
+	qs2100 := "2100-01-01T00:00:00Z"
+	cases := []struct {
+		path string
+		want int
+	}{
+		{"/api/v1/reports/aggregate", http.StatusBadRequest},
+		{"/api/v1/reports/aggregate?from=" + qs2000 + "&to=" + qs2100, http.StatusBadRequest},
+		{"/api/v1/reports/aggregate?productKey=" + pk, http.StatusServiceUnavailable},
+		{"/api/v1/reports/aggregate?label=" + lab, http.StatusServiceUnavailable},
+		{"/api/v1/reports/aggregate?productKey=" + pk + "&label=" + lab + "&from=" + qs2000, http.StatusBadRequest},
+		{"/api/v1/reports/aggregate?productKey=" + pk + "&label=" + lab + "&to=" + qs2100, http.StatusBadRequest},
+		{"/api/v1/reports/aggregate?productKey=" + pk + "&label=" + lab + "&from=" + qs2100 + "&to=" + qs2000, http.StatusBadRequest},
+		{"/api/v1/reports/aggregate?productKey=" + pk + "&label=" + lab + "&budgetId=not-uuid&from=" + qs2000 + "&to=" + qs2100, http.StatusBadRequest},
+		{"/api/v1/reports/aggregate?productKey=" + pk + "&label=" + strings.Repeat("a", 257) + "&from=" + qs2000 + "&to=" + qs2100, http.StatusBadRequest},
+		{"/api/v1/reports/aggregate?productKey=" + strings.Repeat("a", 257) + "&label=" + lab, http.StatusBadRequest},
+	}
+	for _, tc := range cases {
+		t.Run(tc.path, func(t *testing.T) {
+			t.Parallel()
+			req := httptest.NewRequest(http.MethodGet, tc.path, nil)
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+			if rec.Code != tc.want {
+				t.Fatalf("status %d want %d body %s", rec.Code, tc.want, rec.Body.String())
+			}
+		})
+	}
+}
+
+func TestReportsAggregateOversizedProductKey(t *testing.T) {
+	t.Parallel()
+	h := NewRouter(&Server{Store: nil}, auth.NewMiddleware("none", nil, nil))
+	longPK := strings.Repeat("a", productKeyMaxLen+1)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/reports/aggregate?productKey="+longPK+"&label=x", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d", rec.Code)
+	}
+}
+
+func TestReportsAggregateDefaultTimeWindowOmitted(t *testing.T) {
+	h := NewRouter(&Server{Store: testStore(t)}, auth.NewMiddleware("none", nil, nil))
+	pk := "aggdef-" + uuid.NewString()
+	reqP := httptest.NewRequest(http.MethodPost, "/api/v1/products", strings.NewReader(`{"productKey":"`+pk+`"}`))
+	reqP.Header.Set("Content-Type", "application/json")
+	recP := httptest.NewRecorder()
+	h.ServeHTTP(recP, reqP)
+	if recP.Code != http.StatusCreated {
+		t.Fatalf("post product: %d", recP.Code)
+	}
+	agg := "/api/v1/reports/aggregate?productKey=" + pk
+	reqA := httptest.NewRequest(http.MethodGet, agg, nil)
+	recA := httptest.NewRecorder()
+	h.ServeHTTP(recA, reqA)
+	if recA.Code != http.StatusOK {
+		t.Fatalf("aggregate: %d %s", recA.Code, recA.Body.String())
+	}
+	m := decodeJSONMapUseNumber(t, recA.Body.String())
+	if m["reportLineCount"].(json.Number) != "0" {
+		t.Fatalf("reportLineCount: %v", m["reportLineCount"])
+	}
+	if m["label"].(string) != "" {
+		t.Fatalf("label echo want empty, got %q", m["label"])
+	}
+	_, err := time.Parse(time.RFC3339Nano, m["from"].(string))
+	if err != nil {
+		t.Fatalf("from: %v", err)
+	}
+	_, err = time.Parse(time.RFC3339Nano, m["to"].(string))
+	if err != nil {
+		t.Fatalf("to: %v", err)
+	}
+}
+
+func TestReportsAggregateProductKeyOnlySumsAllLabelsInWindow(t *testing.T) {
+	h := NewRouter(&Server{Store: testStore(t)}, auth.NewMiddleware("none", nil, nil))
+	pk := "pkonly-" + uuid.NewString()
+	reqP := httptest.NewRequest(http.MethodPost, "/api/v1/products", strings.NewReader(`{"productKey":"`+pk+`"}`))
+	reqP.Header.Set("Content-Type", "application/json")
+	recP := httptest.NewRecorder()
+	h.ServeHTTP(recP, reqP)
+	if recP.Code != http.StatusCreated {
+		t.Fatalf("post product: %d", recP.Code)
+	}
+	reqB := httptest.NewRequest(http.MethodPost, "/api/v1/budgets", strings.NewReader(
+		`{"productKey":"`+pk+`","items":[{"creditsTotal":"100.000000","costToCreditRatio":"1"}]}`,
+	))
+	reqB.Header.Set("Content-Type", "application/json")
+	recB := httptest.NewRecorder()
+	h.ServeHTTP(recB, reqB)
+	if recB.Code != http.StatusCreated {
+		t.Fatalf("post budget: %d", recB.Code)
+	}
+	bid := decodeJSONMapUseNumber(t, recB.Body.String())["budgetId"].(string)
+	reqS := httptest.NewRequest(http.MethodPost, "/api/v1/sessions", strings.NewReader(`{"budgetId":"`+bid+`"}`))
+	reqS.Header.Set("Content-Type", "application/json")
+	recS := httptest.NewRecorder()
+	h.ServeHTTP(recS, reqS)
+	if recS.Code != http.StatusCreated {
+		t.Fatalf("post session: %d", recS.Code)
+	}
+	sid := decodeJSONMapUseNumber(t, recS.Body.String())["sessionId"].(string)
+	repBody := `{"reportItems":[{"budgetCost":"1","productCost":"0.5","label":"A"},{"budgetCost":"4","productCost":"1.5","label":"B"}]}`
+	reqR := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sid+"/reports", strings.NewReader(repBody))
+	reqR.Header.Set("Content-Type", "application/json")
+	recR := httptest.NewRecorder()
+	h.ServeHTTP(recR, reqR)
+	if recR.Code != http.StatusCreated {
+		t.Fatalf("post report: %d %s", recR.Code, recR.Body.String())
+	}
+	agg := "/api/v1/reports/aggregate?productKey=" + pk + "&from=2000-01-01T00:00:00Z&to=2100-01-01T00:00:00Z"
+	reqA := httptest.NewRequest(http.MethodGet, agg, nil)
+	recA := httptest.NewRecorder()
+	h.ServeHTTP(recA, reqA)
+	if recA.Code != http.StatusOK {
+		t.Fatalf("aggregate: %d %s", recA.Code, recA.Body.String())
+	}
+	m := decodeJSONMapUseNumber(t, recA.Body.String())
+	if m["label"].(string) != "" {
+		t.Fatalf("label")
+	}
+	if m["productKey"].(string) != pk {
+		t.Fatalf("productKey")
+	}
+	if m["reportLineCount"].(json.Number) != "2" {
+		t.Fatalf("line count: %v", m["reportLineCount"])
+	}
+	if m["budgetCostTotal"].(json.Number) != "5.000000" {
+		t.Fatalf("budgetCostTotal: %v", m["budgetCostTotal"])
+	}
+	if m["productCostTotal"].(json.Number) != "2.000000" {
+		t.Fatalf("productCostTotal: %v", m["productCostTotal"])
+	}
+}
+
+func TestReportsAggregateLabelOnlySumsAcrossProducts(t *testing.T) {
+	h := NewRouter(&Server{Store: testStore(t)}, auth.NewMiddleware("none", nil, nil))
+	pk1 := "lbl-1-" + uuid.NewString()
+	pk2 := "lbl-2-" + uuid.NewString()
+	for _, pkk := range []string{pk1, pk2} {
+		reqP := httptest.NewRequest(http.MethodPost, "/api/v1/products", strings.NewReader(`{"productKey":"`+pkk+`"}`))
+		reqP.Header.Set("Content-Type", "application/json")
+		recP := httptest.NewRecorder()
+		h.ServeHTTP(recP, reqP)
+		if recP.Code != http.StatusCreated {
+			t.Fatalf("post product %q: %d", pkk, recP.Code)
+		}
+	}
+	for _, pkk := range []string{pk1, pk2} {
+		reqB := httptest.NewRequest(http.MethodPost, "/api/v1/budgets", strings.NewReader(
+			`{"productKey":"`+pkk+`","items":[{"creditsTotal":"20.000000","costToCreditRatio":"1"}]}`,
+		))
+		reqB.Header.Set("Content-Type", "application/json")
+		recB := httptest.NewRecorder()
+		h.ServeHTTP(recB, reqB)
+		if recB.Code != http.StatusCreated {
+			t.Fatalf("post budget: %d", recB.Code)
+		}
+		bid := decodeJSONMapUseNumber(t, recB.Body.String())["budgetId"].(string)
+		reqS := httptest.NewRequest(http.MethodPost, "/api/v1/sessions", strings.NewReader(`{"budgetId":"`+bid+`"}`))
+		reqS.Header.Set("Content-Type", "application/json")
+		recS := httptest.NewRecorder()
+		h.ServeHTTP(recS, reqS)
+		if recS.Code != http.StatusCreated {
+			t.Fatalf("post session: %d", recS.Code)
+		}
+		sid := decodeJSONMapUseNumber(t, recS.Body.String())["sessionId"].(string)
+		reqR := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sid+"/reports", strings.NewReader(
+			`{"reportItems":[{"budgetCost":"3","productCost":"1","label":"sharedZ"}]}`,
+		))
+		reqR.Header.Set("Content-Type", "application/json")
+		recR := httptest.NewRecorder()
+		h.ServeHTTP(recR, reqR)
+		if recR.Code != http.StatusCreated {
+			t.Fatalf("post report: %d %s", recR.Code, recR.Body.String())
+		}
+	}
+	agg := "/api/v1/reports/aggregate?label=sharedZ&from=2000-01-01T00:00:00Z&to=2100-01-01T00:00:00Z"
+	reqA := httptest.NewRequest(http.MethodGet, agg, nil)
+	recA := httptest.NewRecorder()
+	h.ServeHTTP(recA, reqA)
+	if recA.Code != http.StatusOK {
+		t.Fatalf("aggregate: %d %s", recA.Code, recA.Body.String())
+	}
+	m := decodeJSONMapUseNumber(t, recA.Body.String())
+	if m["productKey"].(string) != "" {
+		t.Fatalf("productKey want empty, got %q", m["productKey"])
+	}
+	if m["label"].(string) != "sharedZ" {
+		t.Fatalf("label: %v", m["label"])
+	}
+	if m["reportLineCount"].(json.Number) != "2" {
+		t.Fatalf("line count: %v", m["reportLineCount"])
+	}
+	if m["budgetCostTotal"].(json.Number) != "6.000000" {
+		t.Fatalf("budgetCostTotal: %v", m["budgetCostTotal"])
+	}
+	if m["productCostTotal"].(json.Number) != "2.000000" {
+		t.Fatalf("productCostTotal: %v", m["productCostTotal"])
+	}
+}
+
+func TestReportsAggregateBudgetIdFilter(t *testing.T) {
+	h := NewRouter(&Server{Store: testStore(t)}, auth.NewMiddleware("none", nil, nil))
+	pk := "bidf-" + uuid.NewString()
+	reqP := httptest.NewRequest(http.MethodPost, "/api/v1/products", strings.NewReader(`{"productKey":"`+pk+`"}`))
+	reqP.Header.Set("Content-Type", "application/json")
+	recP := httptest.NewRecorder()
+	h.ServeHTTP(recP, reqP)
+	if recP.Code != http.StatusCreated {
+		t.Fatalf("post product: %d", recP.Code)
+	}
+	mk := func() string {
+		reqB := httptest.NewRequest(http.MethodPost, "/api/v1/budgets", strings.NewReader(
+			`{"productKey":"`+pk+`","items":[{"creditsTotal":"20.000000","costToCreditRatio":"1"}]}`,
+		))
+		reqB.Header.Set("Content-Type", "application/json")
+		recB := httptest.NewRecorder()
+		h.ServeHTTP(recB, reqB)
+		if recB.Code != http.StatusCreated {
+			t.Fatalf("post budget: %d %s", recB.Code, recB.Body.String())
+		}
+		return decodeJSONMapUseNumber(t, recB.Body.String())["budgetId"].(string)
+	}
+	bid1 := mk()
+	bid2 := mk()
+	openSession := func(bid string) string {
+		reqS := httptest.NewRequest(http.MethodPost, "/api/v1/sessions", strings.NewReader(`{"budgetId":"`+bid+`"}`))
+		reqS.Header.Set("Content-Type", "application/json")
+		recS := httptest.NewRecorder()
+		h.ServeHTTP(recS, reqS)
+		if recS.Code != http.StatusCreated {
+			t.Fatalf("post session: %d", recS.Code)
+		}
+		return decodeJSONMapUseNumber(t, recS.Body.String())["sessionId"].(string)
+	}
+	s1 := openSession(bid1)
+	s2 := openSession(bid2)
+	for _, sid := range []string{s1, s2} {
+		reqR := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sid+"/reports", strings.NewReader(
+			`{"reportItems":[{"budgetCost":"5","productCost":"2","label":"bf1"}]}`,
+		))
+		reqR.Header.Set("Content-Type", "application/json")
+		recR := httptest.NewRecorder()
+		h.ServeHTTP(recR, reqR)
+		if recR.Code != http.StatusCreated {
+			t.Fatalf("post report: %d %s", recR.Code, recR.Body.String())
+		}
+	}
+	qs := "from=2000-01-01T00:00:00Z&to=2100-01-01T00:00:00Z"
+	reqAll := httptest.NewRequest(http.MethodGet, "/api/v1/reports/aggregate?productKey="+pk+"&label=bf1&"+qs, nil)
+	recAll := httptest.NewRecorder()
+	h.ServeHTTP(recAll, reqAll)
+	if recAll.Code != http.StatusOK {
+		t.Fatalf("all: %d", recAll.Code)
+	}
+	if decodeJSONMapUseNumber(t, recAll.Body.String())["reportLineCount"].(json.Number) != "2" {
+		t.Fatalf("all budgets: want 2 lines")
+	}
+	reqOne := httptest.NewRequest(http.MethodGet, "/api/v1/reports/aggregate?productKey="+pk+"&label=bf1&budgetId="+bid1+"&"+qs, nil)
+	recOne := httptest.NewRecorder()
+	h.ServeHTTP(recOne, reqOne)
+	if recOne.Code != http.StatusOK {
+		t.Fatalf("one budget: %d", recOne.Code)
+	}
+	m1 := decodeJSONMapUseNumber(t, recOne.Body.String())
+	if m1["reportLineCount"].(json.Number) != "1" {
+		t.Fatalf("one budget: line count: %v", m1["reportLineCount"])
+	}
+	if m1["budgetCostTotal"].(json.Number) != "5.000000" {
+		t.Fatalf("budgetCostTotal: %v", m1["budgetCostTotal"])
 	}
 }

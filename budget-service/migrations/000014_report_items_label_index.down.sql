@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS idx_budget_session_report_items_label;

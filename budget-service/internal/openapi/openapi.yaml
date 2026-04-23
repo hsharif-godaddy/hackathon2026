@@ -326,6 +326,70 @@ paths:
         "503":
           $ref: "#/components/responses/Error"
 
+  /api/v1/reports/aggregate:
+    get:
+      tags: [v1]
+      summary: Aggregate report line costs by product and/or label
+      description: |
+        Sums `budgetCost` and `productCost` from `reportItems` lines whose parent report’s `created_at` is in `[from, to)` (half-open; `to` is exclusive). **At least one** of `productKey` or `label` must be set. When both are set, both filters apply. When only `productKey` is set, all labels for that product in the window are included. When only `label` is set, that label is summed across all products. Only budgets with `deleted_at` IS NULL are included. String filters use exact match after trim.
+
+        When `from` and `to` are both omitted, the window is one calendar month ending at the server’s current time in UTC: `to = now()`, `from = to` minus one month (via `AddDate(0,-1,0)`). When both are provided, they must be RFC3339 or RFC3339Nano; you must not send only one of them.
+      parameters:
+        - name: productKey
+          in: query
+          required: false
+          description: |
+            When set, restricts to this `budgets.product_key` (exact). Omitted when aggregating by `label` only. Max length 256.
+          schema:
+            type: string
+            maxLength: 256
+        - name: label
+          in: query
+          required: false
+          description: When set, restricts to this `budget_session_report_items.label` (exact). Omitted when aggregating by `productKey` only. Max length 256.
+          schema:
+            type: string
+            maxLength: 256
+        - name: budgetId
+          in: query
+          required: false
+          description: Optional filter to one budget
+          schema:
+            type: string
+            format: uuid
+        - name: sessionId
+          in: query
+          required: false
+          description: Optional filter to one session’s reports
+          schema:
+            type: string
+            format: uuid
+        - name: from
+          in: query
+          required: false
+          description: Inclusive start (RFC3339 or RFC3339Nano). Omit with `to` to use the default one-month window.
+          schema:
+            type: string
+        - name: to
+          in: query
+          required: false
+          description: Exclusive end — rows with `br.created_at < to` are included.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportAggregateResponse"
+        "400":
+          $ref: "#/components/responses/Error"
+        "500":
+          $ref: "#/components/responses/Error"
+        "503":
+          $ref: "#/components/responses/Error"
+
   /api/v1/budgets:
     post:
       tags: [v1]
@@ -938,6 +1002,39 @@ components:
           type: string
         updatedAt:
           type: string
+
+    ReportAggregateResponse:
+      type: object
+      required: [from, to, budgetCostTotal, productCostTotal, reportLineCount]
+      properties:
+        productKey:
+          type: string
+          description: Echo of query; empty when the request did not set `productKey`
+        label:
+          type: string
+          description: Echo of query; empty when the request did not set `label`
+        from:
+          type: string
+          description: Effective window start (UTC, RFC3339 nanoseconds)
+        to:
+          type: string
+          description: Effective window end (UTC), exclusive in the query
+        budgetCostTotal:
+          description: |
+            Non-negative total; this API encodes the value as a JSON number. `oneOf` string/number matches other money fields in this spec; for this response expect a number.
+          oneOf:
+            - type: string
+            - type: number
+        productCostTotal:
+          description: |
+            Non-negative total; this API encodes the value as a JSON number. `oneOf` string/number matches other money fields in this spec; for this response expect a number.
+          oneOf:
+            - type: string
+            - type: number
+        reportLineCount:
+          type: integer
+          description: Count of matching `budget_session_report_items` rows
+          minimum: 0
 
     ReportListResponse:
       type: object

@@ -166,6 +166,10 @@ func writeBudgetStoreError(w http.ResponseWriter, op string, err error) {
 		writeError(w, http.StatusConflict, "CONFLICT", "session budget changed during operation; retry the request")
 		return
 	}
+	if errors.Is(err, store.ErrReportAggregateNoFilter) {
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "at least one of productKey and label is required")
+		return
+	}
 	if errors.Is(err, credits.ErrInvalid) || errors.Is(err, credits.ErrOutOfRange) {
 		writeError(w, http.StatusBadRequest, "BAD_REQUEST", err.Error())
 		return
@@ -1215,6 +1219,114 @@ func (s *Server) getReports(w http.ResponseWriter, r *http.Request) {
 		"limit":   limit,
 		"offset":  offset,
 		"hasMore": hasMore,
+	})
+}
+
+func parseRFC3339Time(s string) (time.Time, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return time.Time{}, fmt.Errorf("empty time")
+	}
+	if t, err := time.Parse(time.RFC3339Nano, s); err == nil {
+		return t.UTC(), nil
+	}
+	t, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return t.UTC(), nil
+}
+
+func (s *Server) getReportsAggregate(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	pk := strings.TrimSpace(q.Get("productKey"))
+	if len(pk) > productKeyMaxLen {
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "productKey exceeds maximum length")
+		return
+	}
+	label := strings.TrimSpace(q.Get("label"))
+	if len(label) > productKeyMaxLen {
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "label exceeds maximum length")
+		return
+	}
+	if pk == "" && label == "" {
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "at least one of productKey and label is required")
+		return
+	}
+	budgetID := strings.TrimSpace(q.Get("budgetId"))
+	if budgetID != "" {
+		if _, err := uuid.Parse(budgetID); err != nil {
+			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "budgetId must be a valid UUID")
+			return
+		}
+	}
+	sessionID := strings.TrimSpace(q.Get("sessionId"))
+	if sessionID != "" {
+		if _, err := uuid.Parse(sessionID); err != nil {
+			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "sessionId must be a valid UUID")
+			return
+		}
+	}
+	fromRaw := strings.TrimSpace(q.Get("from"))
+	toRaw := strings.TrimSpace(q.Get("to"))
+	var fromTime, toTime time.Time
+	switch {
+	case fromRaw == "" && toRaw == "":
+		toTime = time.Now().UTC()
+		fromTime = toTime.AddDate(0, -1, 0)
+	case fromRaw == "" || toRaw == "":
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "from and to must both be set, or both omitted (default last calendar month to now)")
+		return
+	default:
+		var err error
+		fromTime, err = parseRFC3339Time(fromRaw)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "from must be RFC3339 or RFC3339Nano")
+			return
+		}
+		toTime, err = parseRFC3339Time(toRaw)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "to must be RFC3339 or RFC3339Nano")
+			return
+		}
+		if !fromTime.Before(toTime) {
+			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "from must be before to")
+			return
+		}
+	}
+	if !s.requireStore(w) {
+		return
+	}
+	res, err := s.Store.SumReportItemCostsByLabelAndProduct(r.Context(), store.ReportItemCostAggregateFilter{
+		ProductKey: pk,
+		Label:      label,
+		From:       fromTime,
+		To:         toTime,
+		BudgetID:   budgetID,
+		SessionID:  sessionID,
+	})
+	if err != nil {
+		writeBudgetStoreError(w, "reports.aggregate", err)
+		return
+	}
+	bc, err := sessionCostJSONNumber(res.BudgetCostTotal)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "INTERNAL", "aggregate response")
+		return
+	}
+	pc, err := sessionCostJSONNumber(res.ProductCostTotal)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "INTERNAL", "aggregate response")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"productKey":       pk,
+		"label":            label,
+		"from":             fromTime.UTC().Format(time.RFC3339Nano),
+		"to":               toTime.UTC().Format(time.RFC3339Nano),
+		"budgetCostTotal":  bc,
+		"productCostTotal": pc,
+		"reportLineCount":  res.LineCount,
 	})
 }
 
