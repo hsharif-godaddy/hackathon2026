@@ -8,6 +8,7 @@ import { MonitoringStack } from '../lib/monitoring-stack';
 import { GocaasSpendLambdaStack } from "../lib/gocaas-spend-lambda-stack";
 import { ImageSearchStack } from "../lib/image-search-stack";
 import { EvalSnapshotsStack } from "../lib/eval-snapshots-stack";
+import { FeedbackS3Stack } from "../lib/feedback-s3-stack";
 import { QdrantStack } from "../lib/qdrant-stack";
 import { QdrantEcrStack } from "../lib/qdrant-ecr-stack";
 
@@ -53,6 +54,13 @@ async function main() {
 
   // Create Eval Snapshots infrastructure (S3 bucket for evaluation screenshots + data)
   new EvalSnapshotsStack(app, 'EvalSnapshotsStack', { env });
+
+  // Create Feedback S3 infrastructure (S3 bucket for user feedback submissions).
+  // Deployed to dev and prod only — feedback data is not needed in the test environment.
+  // test is technically deployable via cdk.yml but is intentionally excluded here.
+  if (config.envName === 'dev' || config.envName === 'prod') {
+    new FeedbackS3Stack(app, 'FeedbackS3Stack', { env });
+  }
 
   // Create Qdrant ECR repository (dev and prod only)
   // Deploy this first to allow pre-populating Docker images
