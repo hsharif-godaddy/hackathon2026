@@ -39,6 +39,7 @@ func NewRouter(s *Server, authMW *auth.Middleware) http.Handler {
 	v1.HandleFunc("/webhooks", s.getWebhooks).Methods(http.MethodGet)
 	v1.HandleFunc("/webhooks", s.postWebhook).Methods(http.MethodPost)
 
+	v1.HandleFunc("/reports", s.getReports).Methods(http.MethodGet)
 	v1.HandleFunc("/sessions/{sessionId}/reports/{reportId}", s.getBudgetSessionReport).Methods(http.MethodGet)
 	v1.HandleFunc("/sessions/{sessionId}/reports", s.postBudgetSessionReport).Methods(http.MethodPost)
 	v1.HandleFunc("/sessions/{sessionId}", s.getBudgetSession).Methods(http.MethodGet)

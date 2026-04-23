@@ -2357,3 +2357,339 @@ func TestPostBudgetCreditsUsedZeroSkipsLedger(t *testing.T) {
 		t.Fatalf("ledger entry count %d want 0 (zero creditsUsed should skip ledger)", count)
 	}
 }
+
+func TestListReportsBySessionIdProductKeyBudgetId(t *testing.T) {
+	st := testStore(t)
+	h := NewRouter(&Server{Store: st}, auth.NewMiddleware("none"))
+	prodBody := `{"productKey":"list-rep-` + uuid.NewString() + `"}`
+	reqP := httptest.NewRequest(http.MethodPost, "/api/v1/products", strings.NewReader(prodBody))
+	reqP.Header.Set("Content-Type", "application/json")
+	recP := httptest.NewRecorder()
+	h.ServeHTTP(recP, reqP)
+	if recP.Code != http.StatusCreated {
+		t.Fatalf("post product: %d %s", recP.Code, recP.Body.String())
+	}
+	var prodResp struct {
+		ProductKey string `json:"productKey"`
+	}
+	if err := json.Unmarshal(recP.Body.Bytes(), &prodResp); err != nil {
+		t.Fatal(err)
+	}
+	pk := prodResp.ProductKey
+	budgetBody := `{"productKey":"` + pk + `","items":[{"creditsTotal":"10.000000","costToCreditRatio":"1"}]}`
+	reqB := httptest.NewRequest(http.MethodPost, "/api/v1/budgets", strings.NewReader(budgetBody))
+	reqB.Header.Set("Content-Type", "application/json")
+	recB := httptest.NewRecorder()
+	h.ServeHTTP(recB, reqB)
+	if recB.Code != http.StatusCreated {
+		t.Fatalf("post budget: %d %s", recB.Code, recB.Body.String())
+	}
+	var budgetResp struct {
+		BudgetID string `json:"budgetId"`
+	}
+	if err := json.Unmarshal(recB.Body.Bytes(), &budgetResp); err != nil {
+		t.Fatal(err)
+	}
+	budgetID := budgetResp.BudgetID
+	reqS := httptest.NewRequest(http.MethodPost, "/api/v1/sessions", strings.NewReader(`{"budgetId":"`+budgetID+`"}`))
+	reqS.Header.Set("Content-Type", "application/json")
+	recS := httptest.NewRecorder()
+	h.ServeHTTP(recS, reqS)
+	if recS.Code != http.StatusCreated {
+		t.Fatalf("post session: %d %s", recS.Code, recS.Body.String())
+	}
+	var sessResp struct {
+		SessionID string `json:"sessionId"`
+	}
+	if err := json.Unmarshal(recS.Body.Bytes(), &sessResp); err != nil {
+		t.Fatal(err)
+	}
+	sessionID := sessResp.SessionID
+	repBody := `{"reportItems":[{"budgetCost":"1","productCost":"0","label":"a"}]}`
+	reqRep := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sessionID+"/reports", strings.NewReader(repBody))
+	reqRep.Header.Set("Content-Type", "application/json")
+	recRep := httptest.NewRecorder()
+	h.ServeHTTP(recRep, reqRep)
+	if recRep.Code != http.StatusCreated {
+		t.Fatalf("post report: %d %s", recRep.Code, recRep.Body.String())
+	}
+	var reportResp struct {
+		ReportID string `json:"reportId"`
+	}
+	if err := json.Unmarshal(recRep.Body.Bytes(), &reportResp); err != nil {
+		t.Fatal(err)
+	}
+	for _, u := range []string{
+		"/api/v1/reports?sessionId=" + sessionID,
+		"/api/v1/reports?productKey=" + pk,
+		"/api/v1/reports?budgetId=" + budgetID,
+	} {
+		name := u[strings.Index(u, "?")+1:]
+		t.Run("filter "+name, func(t *testing.T) {
+			t.Parallel()
+			req := httptest.NewRequest(http.MethodGet, u, nil)
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("list reports: %d %s", rec.Code, rec.Body.String())
+			}
+			var list struct {
+				Reports []map[string]any `json:"reports"`
+				Total   int              `json:"total"`
+				Limit   int              `json:"limit"`
+				Offset  int              `json:"offset"`
+				HasMore bool             `json:"hasMore"`
+			}
+			if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil {
+				t.Fatal(err)
+			}
+			if list.Total != 1 || len(list.Reports) != 1 {
+				t.Fatalf("total=%d len=%d", list.Total, len(list.Reports))
+			}
+			if list.Limit != 50 || list.Offset != 0 || list.HasMore {
+				t.Fatalf("pagination: limit=%d offset=%d hasMore=%v", list.Limit, list.Offset, list.HasMore)
+			}
+			if list.Reports[0]["reportId"].(string) != reportResp.ReportID {
+				t.Fatalf("reportId")
+			}
+			if list.Reports[0]["sessionId"].(string) != sessionID {
+				t.Fatalf("sessionId")
+			}
+			if list.Reports[0]["budgetId"].(string) != budgetID {
+				t.Fatalf("budgetId")
+			}
+			if list.Reports[0]["productKey"].(string) != pk {
+				t.Fatalf("productKey")
+			}
+			if _, err := time.Parse(time.RFC3339Nano, list.Reports[0]["createdAt"].(string)); err != nil {
+				t.Fatalf("createdAt: %v", err)
+			}
+			if list.Reports[0]["reportItems"] != nil {
+				t.Fatalf("list row must not include reportItems")
+			}
+		})
+	}
+}
+
+func TestListReportsQueryValidation(t *testing.T) {
+	t.Parallel()
+	h := NewRouter(&Server{Store: nil}, auth.NewMiddleware("none"))
+	cases := []struct {
+		path string
+		want int
+	}{
+		{"/api/v1/reports?budgetId=not-a-uuid", http.StatusBadRequest},
+		{"/api/v1/reports?sessionId=not-a-uuid", http.StatusBadRequest},
+		{"/api/v1/reports?sort=other", http.StatusBadRequest},
+		{"/api/v1/reports?order=both", http.StatusBadRequest},
+		{"/api/v1/reports?limit=0", http.StatusBadRequest},
+		{"/api/v1/reports?limit=501", http.StatusBadRequest},
+		{"/api/v1/reports?offset=-1", http.StatusBadRequest},
+		{"/api/v1/reports?limit=abc", http.StatusBadRequest},
+	}
+	for _, tc := range cases {
+		t.Run(tc.path, func(t *testing.T) {
+			t.Parallel()
+			req := httptest.NewRequest(http.MethodGet, tc.path, nil)
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+			if rec.Code != tc.want {
+				t.Fatalf("status %d body %s", rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
+func TestListReportsUnfiltered(t *testing.T) {
+	h := NewRouter(&Server{Store: testStore(t)}, auth.NewMiddleware("none"))
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/reports", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list: %d %s", rec.Code, rec.Body.String())
+	}
+	var out struct {
+		Reports []any `json:"reports"`
+		Total   int   `json:"total"`
+		Limit   int   `json:"limit"`
+		Offset  int   `json:"offset"`
+		HasMore bool  `json:"hasMore"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if out.Limit != 50 || out.Offset != 0 {
+		t.Fatalf("defaults: limit=%d offset=%d", out.Limit, out.Offset)
+	}
+	if out.Total < 0 || len(out.Reports) > 50 {
+		t.Fatalf("total=%d len(reports)=%d", out.Total, len(out.Reports))
+	}
+	if out.Total < len(out.Reports) {
+		t.Fatalf("total must be >= len(reports) on first page, total=%d len=%d", out.Total, len(out.Reports))
+	}
+	wantHasMore := out.Offset+len(out.Reports) < out.Total
+	if out.HasMore != wantHasMore {
+		t.Fatalf("hasMore: got %v want %v (offset=%d len=%d total=%d)", out.HasMore, wantHasMore, out.Offset, len(out.Reports), out.Total)
+	}
+}
+
+func TestListReportsOversizedProductKey(t *testing.T) {
+	t.Parallel()
+	h := NewRouter(&Server{Store: nil}, auth.NewMiddleware("none"))
+	longPK := strings.Repeat("a", productKeyMaxLen+1)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/reports?productKey="+longPK, nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d", rec.Code)
+	}
+}
+
+func TestListReportsEmptyUnknownSession(t *testing.T) {
+	h := NewRouter(&Server{Store: testStore(t)}, auth.NewMiddleware("none"))
+	id := uuid.NewString()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/reports?sessionId="+id, nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list: %d %s", rec.Code, rec.Body.String())
+	}
+	var list struct {
+		Reports []any `json:"reports"`
+		Total   int   `json:"total"`
+		Limit   int   `json:"limit"`
+		Offset  int   `json:"offset"`
+		HasMore bool  `json:"hasMore"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil {
+		t.Fatal(err)
+	}
+	if list.Total != 0 || len(list.Reports) != 0 || list.HasMore {
+		t.Fatalf("want empty total=0 got total=%d len=%d hasMore=%v", list.Total, len(list.Reports), list.HasMore)
+	}
+	if list.Limit != 50 || list.Offset != 0 {
+		t.Fatalf("default limit/offset: %d %d", list.Limit, list.Offset)
+	}
+}
+
+func TestListReportsPaginationAndOrder(t *testing.T) {
+	st := testStore(t)
+	h := NewRouter(&Server{Store: st}, auth.NewMiddleware("none"))
+	pk := "list-page-" + uuid.NewString()
+	prodBody := `{"productKey":"` + pk + `"}`
+	reqP := httptest.NewRequest(http.MethodPost, "/api/v1/products", strings.NewReader(prodBody))
+	reqP.Header.Set("Content-Type", "application/json")
+	recP := httptest.NewRecorder()
+	h.ServeHTTP(recP, reqP)
+	if recP.Code != http.StatusCreated {
+		t.Fatalf("post product: %d", recP.Code)
+	}
+	var rids [2]string
+	for i := 0; i < 2; i++ {
+		budgetBody := `{"productKey":"` + pk + `","items":[{"creditsTotal":"10.000000","costToCreditRatio":"1"}]}`
+		reqB := httptest.NewRequest(http.MethodPost, "/api/v1/budgets", strings.NewReader(budgetBody))
+		reqB.Header.Set("Content-Type", "application/json")
+		recB := httptest.NewRecorder()
+		h.ServeHTTP(recB, reqB)
+		if recB.Code != http.StatusCreated {
+			t.Fatalf("post budget: %d %s", recB.Code, recB.Body.String())
+		}
+		var bResp struct {
+			BudgetID string `json:"budgetId"`
+		}
+		if err := json.Unmarshal(recB.Body.Bytes(), &bResp); err != nil {
+			t.Fatal(err)
+		}
+		reqS := httptest.NewRequest(http.MethodPost, "/api/v1/sessions", strings.NewReader(`{"budgetId":"`+bResp.BudgetID+`"}`))
+		reqS.Header.Set("Content-Type", "application/json")
+		recS := httptest.NewRecorder()
+		h.ServeHTTP(recS, reqS)
+		if recS.Code != http.StatusCreated {
+			t.Fatalf("post session: %d", recS.Code)
+		}
+		var sResp struct {
+			SessionID string `json:"sessionId"`
+		}
+		if err := json.Unmarshal(recS.Body.Bytes(), &sResp); err != nil {
+			t.Fatal(err)
+		}
+		if i == 1 {
+			time.Sleep(5 * time.Millisecond)
+		}
+		reqR := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sResp.SessionID+"/reports",
+			strings.NewReader(`{"reportItems":[{"budgetCost":"1","productCost":"0","label":"x"}]}`))
+		reqR.Header.Set("Content-Type", "application/json")
+		recR := httptest.NewRecorder()
+		h.ServeHTTP(recR, reqR)
+		if recR.Code != http.StatusCreated {
+			t.Fatalf("post report: %d %s", recR.Code, recR.Body.String())
+		}
+		var rep struct {
+			ReportID string `json:"reportId"`
+		}
+		if err := json.Unmarshal(recR.Body.Bytes(), &rep); err != nil {
+			t.Fatal(err)
+		}
+		rids[i] = rep.ReportID
+	}
+	var listDesc struct {
+		Reports []map[string]any `json:"reports"`
+		Total   int              `json:"total"`
+		HasMore bool             `json:"hasMore"`
+	}
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/reports?productKey="+pk+"&order=desc&limit=10&offset=0", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list: %d %s", rec.Code, rec.Body.String())
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &listDesc); err != nil {
+		t.Fatal(err)
+	}
+	if listDesc.Total != 2 {
+		t.Fatalf("total %d", listDesc.Total)
+	}
+	if listDesc.HasMore {
+		t.Fatalf("desc with limit=10: hasMore should be false, got true")
+	}
+	older, newer := rids[0], rids[1]
+	reqAsc := httptest.NewRequest(http.MethodGet, "/api/v1/reports?productKey="+pk+"&order=asc&limit=1&offset=0", nil)
+	recA := httptest.NewRecorder()
+	h.ServeHTTP(recA, reqAsc)
+	if recA.Code != http.StatusOK {
+		t.Fatalf("list asc: %d", recA.Code)
+	}
+	var page0 struct {
+		Reports []map[string]any `json:"reports"`
+		HasMore bool             `json:"hasMore"`
+		Limit   int              `json:"limit"`
+		Offset  int              `json:"offset"`
+	}
+	if err := json.Unmarshal(recA.Body.Bytes(), &page0); err != nil {
+		t.Fatal(err)
+	}
+	if !page0.HasMore || page0.Limit != 1 || page0.Offset != 0 {
+		t.Fatalf("asc page0: hasMore=%v limit=%d offset=%d", page0.HasMore, page0.Limit, page0.Offset)
+	}
+	if len(page0.Reports) != 1 || page0.Reports[0]["reportId"].(string) != older {
+		t.Fatalf("asc first: got %v want %q", page0.Reports, older)
+	}
+	reqL := httptest.NewRequest(http.MethodGet, "/api/v1/reports?productKey="+pk+"&order=asc&limit=1&offset=1", nil)
+	recL := httptest.NewRecorder()
+	h.ServeHTTP(recL, reqL)
+	if recL.Code != http.StatusOK {
+		t.Fatalf("list page2: %d", recL.Code)
+	}
+	if err := json.Unmarshal(recL.Body.Bytes(), &page0); err != nil {
+		t.Fatal(err)
+	}
+	if page0.HasMore {
+		t.Fatalf("asc last page: hasMore should be false")
+	}
+	if len(page0.Reports) != 1 || page0.Reports[0]["reportId"].(string) != newer {
+		t.Fatalf("asc second: got %v want %q", page0.Reports, newer)
+	}
+	if listDesc.Reports[0]["reportId"].(string) != newer {
+		t.Fatalf("desc first should be newer report %s got %s", newer, listDesc.Reports[0]["reportId"])
+	}
+}

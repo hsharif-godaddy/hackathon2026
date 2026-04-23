@@ -80,7 +80,7 @@ sequenceDiagram
 | Budgets | `POST /api/v1/budgets`, `GET/PATCH/DELETE .../budgets/{budgetId}` | `budgets`, `budget_items` |
 | Budget items | `POST .../budget-items`, `GET/PATCH/DELETE .../budget-items/{budgetItemId}` | `budget_items`, `budget_items_history` on some updates |
 | Sessions | `POST /api/v1/sessions`, `GET/PATCH .../sessions/{sessionId}` | `budget_sessions`, `budget_session_items`; may enqueue `webhook_outbox` (e.g. `budget-item.exhausted`) |
-| Reports | `POST/GET .../sessions/{sessionId}/reports[...]` | `budget_session_reports`, `budget_session_report_items`, allocations, `budget_item_credit_ledger`, `webhook_outbox` |
+| Reports | `POST/GET .../sessions/{sessionId}/reports[...]`, `GET /api/v1/reports` | `budget_session_reports`, `budget_session_report_items`, allocations, `budget_item_credit_ledger`, `webhook_outbox` (list: paged summary rows from list query + count; no per-row report detail load) |
 
 Exact columns and constraints: [database-design.md](database-design.md). Machine-readable paths: [`internal/openapi/openapi.yaml`](../internal/openapi/openapi.yaml).
 

@@ -56,6 +56,7 @@ For each resource with read/write APIs, successful `POST`/`PATCH` responses are 
 | `POST`                   | `/api/v1/sessions`                                               | Body: `budgetId`, optional `metadata`; response matches session `GET`; **402** when no capacity                                              |
 | `GET`, `PATCH`           | `/api/v1/sessions/{sessionId}`                                   | `PATCH` append: partial virtual `credits_charged` ok; response matches session `GET`; GET 404 if reconciled                                  |
 | `POST`, `GET`            | `/api/v1/sessions/{sessionId}/reports`, `.../reports/{reportId}` | `POST`: strict `budgetCost`; **400** `INSUFFICIENT_CREDITS` if allocation fails; response matches report `GET`                               |
+| `GET`                    | `/api/v1/reports`                                                 | List session report **summaries** (`reportId`, `sessionId`, `budgetId`, `productKey`, `createdAt` per row). Full report: `GET .../reports/{reportId}`. Query: `productKey`, `budgetId`, `sessionId` (optional); `limit` (default 50, max 500), `offset`; `sort=createdAt`, `order=asc\|desc` (default `desc`). Response: `{ "reports", "total", "limit", "offset", "hasMore" }` |
 
 Auth: `packages/go-auth` `AuthenticateAWSIAMService` by default (`Bearer` or `sso-jwt`). `LOCAL_AUTH_DISABLE=true` skips auth (local only).
 

@@ -249,6 +249,83 @@ paths:
         "404":
           $ref: "#/components/responses/Error"
 
+  /api/v1/reports:
+    get:
+      tags: [v1]
+      summary: List session reports
+      description: |
+        Returns **summary** rows (`reportId`, `sessionId`, `budgetId`, `productKey`, `createdAt`) per report, optionally filtered. For the full report body (totals, `reportItems`, allocations), call `GET /api/v1/sessions/{sessionId}/reports/{reportId}` for each id.
+        Response includes `limit`, `offset`, and `hasMore` for pagination. Default `limit` is 50, maximum 500. Default `offset` is 0. Default sort is `createdAt` with `order=desc`.
+
+        `productKey` (when set) matches `budgets.product_key` (exact string). A non-empty but non-matching key returns `{"reports":[],"total":0,...}` (not 404) — the same as no rows in the DB for that key.
+      parameters:
+        - name: productKey
+          in: query
+          required: false
+          description: |
+            Return only reports whose session’s budget has this `product_key` (exact). Omit to include all reports (no product filter). Max length 256.
+          schema:
+            type: string
+            maxLength: 256
+            example: dev-ui-product
+        - name: budgetId
+          in: query
+          required: false
+          description: Filter by budget UUID
+          schema:
+            type: string
+            format: uuid
+        - name: sessionId
+          in: query
+          required: false
+          description: Filter by session UUID
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+            maximum: 500
+        - name: offset
+          in: query
+          required: false
+          description: Skipped rows (0-based)
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+        - name: sort
+          in: query
+          required: false
+          description: Only `createdAt` is supported; omit to use the default
+          schema:
+            type: string
+            enum: [createdAt]
+        - name: order
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportListResponse"
+        "400":
+          $ref: "#/components/responses/Error"
+        "500":
+          $ref: "#/components/responses/Error"
+        "503":
+          $ref: "#/components/responses/Error"
+
   /api/v1/budgets:
     post:
       tags: [v1]
@@ -624,7 +701,7 @@ components:
       name: productKey
       in: query
       required: false
-      description: Filter by product key; omit for all webhooks. Requests with values longer than 256 characters are rejected.
+      description: Filter by `productKey` (exact). Omit to list all rows this endpoint returns. Reject requests longer than 256 characters with 400.
       schema:
         type: string
         maxLength: 256
@@ -861,6 +938,50 @@ components:
           type: string
         updatedAt:
           type: string
+
+    ReportListResponse:
+      type: object
+      required: [reports, total, limit, offset, hasMore]
+      properties:
+        reports:
+          type: array
+          description: Summary rows; not the full SessionReport from single-report GET
+          items:
+            $ref: "#/components/schemas/SessionReportListItem"
+        total:
+          type: integer
+          description: Count matching the filters, before limit/offset
+          minimum: 0
+        limit:
+          type: integer
+          description: Page size applied
+          minimum: 1
+          maximum: 500
+        offset:
+          type: integer
+          description: Skipped rows
+          minimum: 0
+        hasMore:
+          type: boolean
+          description: True when more rows exist after this page (offset + len(reports) < total)
+
+    SessionReportListItem:
+      type: object
+      required: [reportId, sessionId, budgetId, productKey, createdAt]
+      description: List entry; use GET .../sessions/{sessionId}/reports/{reportId} for full report
+      properties:
+        reportId:
+          type: string
+        sessionId:
+          type: string
+        budgetId:
+          type: string
+        productKey:
+          type: string
+          description: Empty string when the budget has no product_key
+        createdAt:
+          type: string
+          description: RFC3339 (nanosecond precision in responses)
 
     SessionReport:
       type: object

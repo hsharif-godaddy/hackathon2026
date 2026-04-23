@@ -174,6 +174,24 @@ st=$(api_req PATCH "/api/v1/sessions/${SESSION_ID}" \
   "PATCH session: happy-path spend line")
 expect_status "$st" 200 "happy patch"
 
+st=$(api_req POST "/api/v1/sessions/${SESSION_ID}/reports" \
+  '{"reportItems":[{"budgetCost":"2.000000","productCost":"1.000000","label":"e2e-pr"}]}' \
+  "POST session report (reconcile for list test)")
+expect_status "$st" 201 "post report for list"
+E2E_REPORT_ID=$(jq -r .reportId "$RESP_FILE")
+st=$(api_req GET "/api/v1/reports?sessionId=${SESSION_ID}" "" \
+  "List reports filtered by sessionId")
+expect_status "$st" 200 "list reports"
+if ! jq -e --arg r "$E2E_REPORT_ID" --arg pk "$MAIN_PK" --arg sid "$SESSION_ID" \
+  '(.total == 1) and ((.reports | length) == 1) and (.reports[0].reportId == $r) and (.reports[0].productKey == $pk) and
+   (.reports[0].sessionId == $sid) and ((.reports[0].createdAt | length) > 0) and
+   (.limit == 50) and (.offset == 0) and (.hasMore | not) and
+   (.reports[0].reportItems == null)' \
+  "$RESP_FILE" >/dev/null; then
+  echo "e2e-pr: list reports body=$(cat "$RESP_FILE")" >&2
+  exit 1
+fi
+
 # --- Webhooks CRUD ---
 echo >&2
 echo "# --- Webhooks CRUD ---" >&2

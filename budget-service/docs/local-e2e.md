@@ -4,13 +4,13 @@ Tools in this module for **local and CI-style integration only**. They are not u
 
 ## Pieces
 
-| Piece | Purpose |
-|-------|---------|
-| Postgres | `make up` — same as everyday dev |
-| `webhook-sink` | Docker service (compose **profile `e2e`**) — receives POST webhooks; `GET /__e2e/last` returns the last body as JSON |
-| `scripts/e2e-local.sh` | Scripted flow: product → budget → session → PATCH spend → register webhook → report → assert API + sink |
-| `scripts/e2e-pr.sh` | PR/CI curl suite (no report/webhook delivery); run in GitHub Actions [budget-service-ci.yml](../../.github/workflows/budget-service-ci.yml) |
-| `cmd/dev-budget-ui` | Browser UI + reverse proxy; see [Dev UI (`dev-budget-ui`)](#dev-ui-dev-budget-ui) |
+| Piece                  | Purpose                                                                                                                                     |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Postgres               | `make up` — same as everyday dev                                                                                                            |
+| `webhook-sink`         | Docker service (compose **profile `e2e`**) — receives POST webhooks; `GET /__e2e/last` returns the last body as JSON                        |
+| `scripts/e2e-local.sh` | Scripted flow: product → budget → session → PATCH spend → register webhook → report → assert API + sink                                     |
+| `scripts/e2e-pr.sh`    | PR/CI curl suite (no report/webhook delivery); run in GitHub Actions [budget-service-ci.yml](../../.github/workflows/budget-service-ci.yml) |
+| `cmd/dev-budget-ui`    | Browser UI + reverse proxy; see [Dev UI (`dev-budget-ui`)](#dev-ui-dev-budget-ui)                                                           |
 
 ## Quick start (auth disabled)
 
@@ -53,10 +53,10 @@ Defaults: `BUDGET_SERVICE_URL=http://127.0.0.1:8080`, `WEBHOOK_SINK_URL=http://1
 
 ### Environment
 
-| Variable | Default | Purpose |
-| -------- | ------- | ------- |
+| Variable             | Default                 | Purpose                                                                                                                                                     |
+| -------------------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `BUDGET_SERVICE_URL` | `http://127.0.0.1:8080` | Base URL of the budget API (`cmd/server`). May be **`https://…`** on a **remote** host your machine can reach (VPN, etc.). Must not be the dev UI URL/port. |
-| `DEV_BUDGET_UI_ADDR` | `:9980` | Listen address for the dev UI + proxy. |
+| `DEV_BUDGET_UI_ADDR` | `:9980`                 | Listen address for the dev UI + proxy.                                                                                                                      |
 
 Set variables in the **shell** that runs the process, or prefix the command, e.g. `BUDGET_SERVICE_URL=https://budget-service.example.com make dev-budget-ui`. **`make dev-budget-ui`** does **not** source `.env` / `.env.local` (only **`make dev`** does).
 
@@ -84,7 +84,7 @@ Point **`BUDGET_SERVICE_URL`** at the deployed base URL (no trailing path; same 
 
 ### UI behavior
 
-The UI calls **`/api/v1/…`** and **`/health`** on the dev UI origin; those requests are proxied to `BUDGET_SERVICE_URL`. **Single budget item:** fill `budgetId` and `budgetItemId`, then **GET …/budget-items/{budgetItemId}**.
+The UI calls **`/api/v1/…`** and **`/health`** on the dev UI origin; those requests are proxied to `BUDGET_SERVICE_URL`. The default **productKey** in the form is `dev-ui-product` (`e2e/dev-ui/app.js`); use that exact value for `GET /api/v1/reports?productKey=…` (or whatever you `POST` on `/api/v1/products` / budgets) — a different string (e.g. a typo) yields an empty `reports` list. **Single budget item:** fill `budgetId` and `budgetItemId`, then **GET …/budget-items/{budgetItemId}**.
 
 ## Networking notes
 
@@ -99,12 +99,12 @@ The UI calls **`/api/v1/…`** and **`/health`** on the dev UI origin; those req
 
 ## Makefile targets
 
-| Target | Action |
-|--------|--------|
-| `make up` | Postgres only (unchanged) |
-| `make e2e-up` | `docker compose --profile e2e up -d` (sink + ensures postgres up) |
-| `make e2e-down` | Stop e2e profile services (postgres unchanged) |
-| `make e2e-local` | Run `scripts/e2e-local.sh` with standard env defaults |
+| Target               | Action                                                                                                              |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `make up`            | Postgres only (unchanged)                                                                                           |
+| `make e2e-up`        | `docker compose --profile e2e up -d` (sink + ensures postgres up)                                                   |
+| `make e2e-down`      | Stop e2e profile services (postgres unchanged)                                                                      |
+| `make e2e-local`     | Run `scripts/e2e-local.sh` with standard env defaults                                                               |
 | `make dev-budget-ui` | `go run ./cmd/dev-budget-ui` (env: `BUDGET_SERVICE_URL`, `DEV_BUDGET_UI_ADDR` — see [above](#dev-ui-dev-budget-ui)) |
 
 `make test` does **not** run the shell E2E script (keeps CI fast). Go tests with `TEST_DATABASE_URL` remain the hermetic option.

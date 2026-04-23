@@ -74,6 +74,19 @@ GOT=$(api GET "/api/v1/sessions/${SESSION_ID}/reports/${REPORT_ID}")
 echo "$GOT" | jq .
 [[ "$(echo "$GOT" | jq -r .reportId)" == "$REPORT_ID" ]]
 
+echo "e2e-local: GET /api/v1/reports?sessionId= (list report summaries + pagination)"
+LIST=$(api GET "/api/v1/reports?sessionId=${SESSION_ID}")
+echo "$LIST" | jq .
+[[ "$(echo "$LIST" | jq -r .total)" == "1" ]]
+[[ "$(echo "$LIST" | jq -r .limit)" == "50" ]]
+[[ "$(echo "$LIST" | jq -r .offset)" == "0" ]]
+[[ "$(echo "$LIST" | jq -r .hasMore)" == "false" ]]
+[[ "$(echo "$LIST" | jq -r '.reports[0].reportId')" == "$REPORT_ID" ]]
+[[ "$(echo "$LIST" | jq -r '.reports[0].sessionId')" == "$SESSION_ID" ]]
+[[ "$(echo "$LIST" | jq -r '.reports[0].productKey')" == "$PRODUCT_KEY" ]]
+[[ -n "$(echo "$LIST" | jq -r '.reports[0].createdAt')" ]]
+[[ "$(echo "$LIST" | jq '.reports[0] | has("reportItems")')" == "false" ]]
+
 echo "e2e-local: fetch webhook sink last POST"
 LAST=$(curl -sS "${SINK}/__e2e/last")
 echo "$LAST" | jq .

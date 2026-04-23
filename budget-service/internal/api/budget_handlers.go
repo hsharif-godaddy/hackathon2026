@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -1112,6 +1113,98 @@ func (s *Server) postBudgetSessionReport(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusCreated, out)
 }
 
+func (s *Server) getReports(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	pk := strings.TrimSpace(q.Get("productKey"))
+	if len(pk) > productKeyMaxLen {
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "productKey exceeds maximum length")
+		return
+	}
+	budgetID := strings.TrimSpace(q.Get("budgetId"))
+	if budgetID != "" {
+		if _, err := uuid.Parse(budgetID); err != nil {
+			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "budgetId must be a valid UUID")
+			return
+		}
+	}
+	sessionID := strings.TrimSpace(q.Get("sessionId"))
+	if sessionID != "" {
+		if _, err := uuid.Parse(sessionID); err != nil {
+			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "sessionId must be a valid UUID")
+			return
+		}
+	}
+	sortName := strings.TrimSpace(q.Get("sort"))
+	if sortName == "" {
+		sortName = "createdAt"
+	}
+	if sortName != "createdAt" {
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "sort must be createdAt")
+		return
+	}
+	// Store order is fixed to budget_session_reports.created_at (+ id). `sort` is reserved for future sort keys.
+	order := strings.ToLower(strings.TrimSpace(q.Get("order")))
+	if order == "" {
+		order = "desc"
+	}
+	var sortDesc bool
+	switch order {
+	case "desc":
+		sortDesc = true
+	case "asc":
+		sortDesc = false
+	default:
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "order must be asc or desc")
+		return
+	}
+	limit := store.ListSessionReportsDefaultLimit
+	if raw := strings.TrimSpace(q.Get("limit")); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 1 || n > store.ListSessionReportsMaxLimit {
+			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "limit must be an integer from 1 to "+strconv.Itoa(store.ListSessionReportsMaxLimit))
+			return
+		}
+		limit = n
+	}
+	offset := 0
+	if raw := strings.TrimSpace(q.Get("offset")); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 0 {
+			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "offset must be a non-negative integer")
+			return
+		}
+		offset = n
+	}
+	if !s.requireStore(w) {
+		return
+	}
+	rows, total, err := s.Store.ListSessionReports(r.Context(), store.ListSessionReportsFilter{
+		ProductKey: pk,
+		BudgetID:   budgetID,
+		SessionID:  sessionID,
+		Limit:      limit,
+		Offset:     offset,
+		SortDesc:   sortDesc,
+	})
+	if err != nil {
+		slog.Error("reports.list", "error", err)
+		writeError(w, http.StatusInternalServerError, "INTERNAL", "internal error")
+		return
+	}
+	rep := make([]map[string]any, 0, len(rows))
+	for i := range rows {
+		rep = append(rep, sessionReportListRowToMap(rows[i]))
+	}
+	hasMore := offset+len(rep) < total
+	writeJSON(w, http.StatusOK, map[string]any{
+		"reports": rep,
+		"total":   total,
+		"limit":   limit,
+		"offset":  offset,
+		"hasMore": hasMore,
+	})
+}
+
 func (s *Server) getBudgetSessionReport(w http.ResponseWriter, r *http.Request) {
 	sessionID := strings.TrimSpace(mux.Vars(r)["sessionId"])
 	reportID := strings.TrimSpace(mux.Vars(r)["reportId"])
@@ -1134,6 +1227,16 @@ func (s *Server) getBudgetSessionReport(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+func sessionReportListRowToMap(row store.SessionReportListRow) map[string]any {
+	return map[string]any{
+		"reportId":   row.ReportID,
+		"sessionId":  row.SessionID,
+		"budgetId":   row.BudgetID,
+		"productKey": row.ProductKey,
+		"createdAt":  row.CreatedAt.UTC().Format(time.RFC3339Nano),
+	}
 }
 
 func sessionReportToResponse(d *store.SessionReportDetail) (map[string]any, error) {

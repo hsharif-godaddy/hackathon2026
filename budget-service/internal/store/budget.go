@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand/v2"
+	"strconv"
 	"strings"
 	"time"
 
@@ -101,6 +102,31 @@ type SessionReportDetail struct {
 	CreditsAvailable string
 	Items            []SessionReportItemOut
 }
+
+// SessionReportListRow is a summary row for ListSessionReports.
+type SessionReportListRow struct {
+	ReportID   string
+	SessionID  string
+	BudgetID   string
+	ProductKey string
+	CreatedAt  time.Time
+}
+
+// ListSessionReportsFilter selects and pages session reports. Empty ProductKey, BudgetID, SessionID mean no filter for that field.
+type ListSessionReportsFilter struct {
+	ProductKey string
+	BudgetID   string
+	SessionID  string
+	Limit      int
+	Offset     int
+	SortDesc   bool
+}
+
+// List session reports (GET /api/v1/reports) defaults and upper bound; validate in the HTTP layer.
+const (
+	ListSessionReportsDefaultLimit = 50
+	ListSessionReportsMaxLimit     = 500
+)
 
 type BudgetDetail struct {
 	BudgetID       string
@@ -1397,6 +1423,78 @@ func (s *Store) GetSessionReport(ctx context.Context, sessionID, reportID string
 	}
 	d.Items = pending
 	return &d, nil
+}
+
+// ListSessionReports returns report id/session/budget id/product_key/created_at rows and a total count (before limit/offset) for the list response.
+func (s *Store) ListSessionReports(ctx context.Context, f ListSessionReportsFilter) ([]SessionReportListRow, int, error) {
+	if f.Limit < 1 {
+		f.Limit = ListSessionReportsDefaultLimit
+	}
+	var whereParts []string
+	var args []any
+	if pk := strings.TrimSpace(f.ProductKey); pk != "" {
+		whereParts = append(whereParts, "b.product_key = $"+strconv.Itoa(len(args)+1))
+		args = append(args, pk)
+	}
+	if f.BudgetID != "" {
+		whereParts = append(whereParts, "b.id = $"+strconv.Itoa(len(args)+1))
+		args = append(args, f.BudgetID)
+	}
+	if f.SessionID != "" {
+		whereParts = append(whereParts, "br.session_id = $"+strconv.Itoa(len(args)+1))
+		args = append(args, f.SessionID)
+	}
+	var whereClause string
+	if len(whereParts) > 0 {
+		whereClause = " WHERE " + strings.Join(whereParts, " AND ")
+	}
+	baseFrom := `
+FROM budget_session_reports br
+JOIN budget_sessions bs ON bs.id = br.session_id
+JOIN budgets b ON b.id = bs.budget_id
+`
+	order := "ASC"
+	if f.SortDesc {
+		order = "DESC"
+	}
+	n := len(args)
+	countQ := "SELECT count(*)" + baseFrom + whereClause
+	var total int
+	if err := s.db.QueryRowContext(ctx, countQ, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	dataArgs := make([]any, 0, len(args)+2)
+	dataArgs = append(dataArgs, args...)
+	dataArgs = append(dataArgs, f.Limit, f.Offset)
+	limitArg := strconv.Itoa(n + 1)
+	offsetArg := strconv.Itoa(n + 2)
+	selectQ := "SELECT br.id, br.session_id, b.id, b.product_key, br.created_at" +
+		baseFrom + whereClause + "\nORDER BY br.created_at " + order + ", br.id " + order +
+		"\nLIMIT $" + limitArg + " OFFSET $" + offsetArg
+	rows, err := s.db.QueryContext(ctx, selectQ, dataArgs...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer func() { _ = rows.Close() }()
+	var out []SessionReportListRow
+	for rows.Next() {
+		var r SessionReportListRow
+		var pk sql.NullString
+		if err := rows.Scan(&r.ReportID, &r.SessionID, &r.BudgetID, &pk, &r.CreatedAt); err != nil {
+			return nil, 0, err
+		}
+		if pk.Valid {
+			r.ProductKey = pk.String
+		}
+		out = append(out, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+	if out == nil {
+		out = []SessionReportListRow{}
+	}
+	return out, total, nil
 }
 
 func (s *Store) SoftDeleteBudget(ctx context.Context, budgetID string) error {
