@@ -6,7 +6,7 @@ export const config = {
   matcher: [
     '/',
     // Match other paths EXCEPT /api, /_next, static assets, /.well-known, etc.
-    '/((?!api|_next|images|favicon.ico|sitemap.xml|robots.txt|\\.well-known).*)'
+    '/((?!api|_next|images|favicon.ico|sitemap.xml|robots.txt|notification-beep.wav|\\.well-known).*)'
   ]
 }
 

@@ -60,6 +60,7 @@ describe('middleware', () => {
       expect(matcherRe.test('/sitemap.xml')).toBe(false);
       expect(matcherRe.test('/robots.txt')).toBe(false);
       expect(matcherRe.test('/images/logo.png')).toBe(false);
+      expect(matcherRe.test('/notification-beep.wav')).toBe(false);
     });
 
     it('should not match /.well-known paths', () => {
