@@ -1110,6 +1110,19 @@ func (s *Server) postBudgetSessionReport(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	pc, _ := credits.ParseNonNegative(d.ProductCostTotal)
+	bc, _ := credits.ParseNonNegative(d.BudgetCostTotal)
+	slog.Info("budget.session.report.success",
+		"budgetCostTotal", d.BudgetCostTotal,
+		"budgetCostTotalUsd", bc.InexactFloat64(),
+		"budgetId", d.BudgetID,
+		"productCostTotal", d.ProductCostTotal,
+		"productCostTotalUsd", pc.InexactFloat64(),
+		"productKey", d.ProductKey,
+		"reportId", d.ReportID,
+		"sessionId", d.SessionID,
+	)
+
 	writeJSON(w, http.StatusCreated, out)
 }
 
