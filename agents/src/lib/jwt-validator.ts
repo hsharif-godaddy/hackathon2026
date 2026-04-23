@@ -121,6 +121,7 @@ export interface JWTClaims {
   product?: ProductType; // Product type: 'AiroAppBuilder' (default) or 'PaaSNodeJS'
   modelOverride?: string; // When set, override the default agent model (switchboard: appbuilder-model-override)
   modelSelectorEnabled?: boolean; // When true, allow per-project model selection from frontend (switchboard: appbuilder-model-selector)
+  costAttributionDryRun?: boolean; // When true, run cost attribution analysis and log but skip BMS reconciliation (switchboard: appbuilder-cost-attribution-dry-run)
 }
 
 export interface ValidationResult {

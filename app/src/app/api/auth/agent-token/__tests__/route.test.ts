@@ -227,6 +227,7 @@ describe('agent-token', function packageTests() {
         modelOverride: undefined,
         agentProfileSelectorEnabled: false,
         agentProfile: undefined,
+        costAttributionDryRun: false,
       });
     });
 
@@ -371,7 +372,7 @@ describe('agent-token', function packageTests() {
         expect(response.status).toBe(200);
         expect(data.expiresInSeconds).toBe(expiresInSeconds);
         expect(mockJWTService.createToken).toHaveBeenCalledWith(
-          { siteId: MOCK_SITE_ID, customerId: 'customer-789', canDownload: false, canPublish: false, canPurchaseDomain: false, authType: 'basic', isE2S: false, useTestBudget: false, budgetServiceEnabled: false, subscriptionId: undefined, enableAssessmentAgent: false, enableAssessmentOverride: false, product: 'AiroAppBuilder', modelSelectorEnabled: false, modelOverride: undefined, agentProfileSelectorEnabled: false, agentProfile: undefined },
+          { siteId: MOCK_SITE_ID, customerId: 'customer-789', canDownload: false, canPublish: false, canPurchaseDomain: false, authType: 'basic', isE2S: false, useTestBudget: false, budgetServiceEnabled: false, subscriptionId: undefined, enableAssessmentAgent: false, enableAssessmentOverride: false, product: 'AiroAppBuilder', modelSelectorEnabled: false, modelOverride: undefined, agentProfileSelectorEnabled: false, agentProfile: undefined, costAttributionDryRun: false },
           expiresInSeconds
         );
         expect(mockJWTService.getToken).not.toHaveBeenCalled();
@@ -455,6 +456,7 @@ describe('agent-token', function packageTests() {
           modelOverride: undefined,
           agentProfileSelectorEnabled: false,
           agentProfile: undefined,
+          costAttributionDryRun: false,
         });
       });
 
@@ -493,6 +495,7 @@ describe('agent-token', function packageTests() {
           modelOverride: undefined,
           agentProfileSelectorEnabled: false,
           agentProfile: undefined,
+          costAttributionDryRun: false,
         });
       });
     });
@@ -835,6 +838,20 @@ describe('agent-token', function packageTests() {
         expect(response.status).toBe(200);
         expect(mockJWTService.getToken).toHaveBeenCalledWith(
           expect.objectContaining({ authType: 's2s', modelSelectorEnabled: false })
+        );
+      });
+
+      it('should set costAttributionDryRun when switchboard returns true', async function costAttributionDryRunEnabled() {
+        mockCheckSwitchboardFlag.mockImplementation((flag: string) =>
+          Promise.resolve(flag === 'appbuilder-cost-attribution-dry-run')
+        );
+
+        const request = createMockRequest({ siteId: MOCK_SITE_ID });
+        const response = await POST(request);
+
+        expect(response.status).toBe(200);
+        expect(mockJWTService.getToken).toHaveBeenCalledWith(
+          expect.objectContaining({ costAttributionDryRun: true })
         );
       });
     });

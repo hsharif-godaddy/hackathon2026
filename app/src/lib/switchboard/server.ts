@@ -29,6 +29,7 @@ const SERVER_LOCAL_FEATURE_OVERRIDES: Record<string, boolean> = {
   'appbuilder-model-selector': true,
   'appbuilder-agent-profile-selector': true,
   'appbuilder-post-publish-feature-selection': true,
+  'appbuilder-cost-attribution-dry-run': false,
 };
 
 /**
