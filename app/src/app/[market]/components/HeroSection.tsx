@@ -187,9 +187,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
         intl.formatMessage({ id: 'builder_homepage_placeholder_4' }),
         intl.formatMessage({ id: 'builder_homepage_placeholder_5' }),
       ].sort(() => Math.random() - 0.5)
-    },
-    [intl],
-  )
+    }, [intl])
   const isUserTypingRef = useRef(false)
   const promptTextareaRef = useRef<HTMLTextAreaElement>(null)
   const promptTextareaResizeRafRef = useRef<number | null>(null)
@@ -621,11 +619,13 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
               </Box>
             </Box>
           </div>
-          {/* Template selector */}
+
+          {/* Template Selector */}
           {/* Template selector is used for internal experiments in TLA accounts only; customers won't see it. */}
           {onTemplateChange && (
             <TemplateSelector selectedTemplate={selectedTemplate} onTemplateChange={onTemplateChange} />
           )}
+
           {/* Disclaimer */}
           <text.p size={-1} className='max-w-lg mx-auto opacity-40 mb-2 md:mb-4 text-center'>
             <FormattedMessage

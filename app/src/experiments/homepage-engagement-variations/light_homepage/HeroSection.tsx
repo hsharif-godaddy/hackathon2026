@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { FormattedMessage, useIntl } from 'react-intl'
 import Alert from '@ux/alert'
 import Box from '@ux/box'
@@ -103,8 +103,6 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
     onStartBuilding()
   }
 
-  // Keep expanded if focused OR has content OR listening
-  const isExpanded = isFocused || displayText.trim().length > 0 || isListening
   const animationQueueRef = useRef<string[]>([])
   const lastErrorClearRef = useRef<string>('')
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null)
@@ -178,25 +176,56 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
 
   const { isBelowSmBreakpoint, isMdBreakpoint } = useBreakpoints()
 
-  // Memoize and shuffle placeholders once on mount
-  // Use mobile-specific placeholders on mobile to prevent truncation
-  const placeholders = useMemo(() => {
-    if (isBelowSmBreakpoint) {
+  const placeholders = useMemo(
+    function buildShuffledPlaceholders() {
       return [
-        t('builder_homepage_placeholder_mobile_1'),
-        t('builder_homepage_placeholder_mobile_2'),
-        t('builder_homepage_placeholder_mobile_3')
-      ]
-    }
-    return [
-      t('builder_homepage_placeholder_1'),
-      t('builder_homepage_placeholder_2'),
-      t('builder_homepage_placeholder_3'),
-      t('builder_homepage_placeholder_4'),
-      t('builder_homepage_placeholder_5')
-    ].sort(() => Math.random() - 0.5)
-  }, [isBelowSmBreakpoint])
+        intl.formatMessage({ id: 'builder_homepage_placeholder_1' }),
+        intl.formatMessage({ id: 'builder_homepage_placeholder_2' }),
+        intl.formatMessage({ id: 'builder_homepage_placeholder_3' }),
+        intl.formatMessage({ id: 'builder_homepage_placeholder_4' }),
+        intl.formatMessage({ id: 'builder_homepage_placeholder_5' }),
+      ].sort(() => Math.random() - 0.5)
+    }, [intl])
   const isUserTypingRef = useRef(false)
+  const promptTextareaRef = useRef<HTMLTextAreaElement>(null)
+  const promptTextareaResizeRafRef = useRef<number | null>(null)
+
+  const fitPromptTextarea = useCallback(function fitPromptTextarea() {
+    const el = promptTextareaRef.current
+    if (!el) return
+    const maxHeightPx = parseFloat(getComputedStyle(el).maxHeight)
+    el.style.height = '0px'
+    const scrollHeight = el.scrollHeight
+    const capped =
+      Number.isFinite(maxHeightPx) && maxHeightPx > 0
+        ? Math.min(scrollHeight, maxHeightPx)
+        : scrollHeight
+    el.style.height = `${capped}px`
+  }, [])
+
+  useLayoutEffect(function syncPromptTextareaHeight() {
+    fitPromptTextarea()
+  }, [displayText, fitPromptTextarea, isBelowSmBreakpoint, isMdBreakpoint])
+
+  useEffect(function syncPromptTextareaHeightOnResize() {
+    function onResize() {
+      if (promptTextareaResizeRafRef.current !== null) {
+        cancelAnimationFrame(promptTextareaResizeRafRef.current)
+      }
+      promptTextareaResizeRafRef.current = requestAnimationFrame(function runFitPromptTextarea() {
+        promptTextareaResizeRafRef.current = null
+        fitPromptTextarea()
+      })
+    }
+    window.addEventListener('resize', onResize, { passive: true })
+    return function cleanupPromptTextareaResize() {
+      window.removeEventListener('resize', onResize)
+      if (promptTextareaResizeRafRef.current !== null) {
+        cancelAnimationFrame(promptTextareaResizeRafRef.current)
+        promptTextareaResizeRafRef.current = null
+      }
+    }
+  }, [fitPromptTextarea])
 
   useEffect(() => {
     // Only sync if not from user input (e.g., example click)
@@ -384,7 +413,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
 
   const bytesRemaining = MAX_PROMPT_BYTES - getByteLength(displayText)
   const isOverLimit = bytesRemaining < 0
-  const showCharCount = isExpanded && bytesRemaining <= 20
+  const showCharCount = bytesRemaining <= 20
 
   return (
     <Box className="flex flex-col gap-2 md:gap-3 px-2 sm:px-3 lg:px-4 pt-6 md:pt-12 min-h-[calc(100vh-3rem)] items-center justify-center">
@@ -405,7 +434,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
 
       {/* Error Display */}
       {error && (
-        <div className="w-full max-w-2xl mx-auto mt-6">
+        <div className="w-full max-w-2xl mx-auto mt-2 md:mt-4">
           <Alert
             emphasis="critical"
             title={t('builder_status_error')}
@@ -422,17 +451,13 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
             'glowing-input--disabled': isLoading
           })}>
             <Box
-              className={clsx(
-                'relative transition-all duration-300 ease-out !bg-transparent',
-                'outline-none ring-1 ring-inset ring-[rgba(74,61,107,0.14)] shadow-sm',
-                {
-                  'rounded-2xl!': isExpanded,
-                  'rounded-[3rem]!': !isExpanded,
-                },
-              )}
+              className="rounded-2xl! p-2 transition-all duration-300 ease-out bg-intents-ux-box-backgroundColor outline-4 outline-solid outline-[rgba(0,0,0,0.15)]"
               elevation="float"
+              gap={isBelowSmBreakpoint ? 'sm' : 'md'}
             >
+              {/* Prompt Textarea */}
               <textarea
+                ref={promptTextareaRef}
                 data-testid="homepage-prompt-input"
                 aria-describedby="prompt-char-count"
                 value={displayText}
@@ -508,84 +533,83 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                   setIsFocused(false)
                   isUserTypingRef.current = false
                 }}
-                rows={5}
                 dir="auto"
                 disabled={isLoading || isListening}
-                className={clsx('!bg-intents-ux-box-backgroundColor relative ps-3 sm:ps-4 pe-8 sm:pe-12 py-2.5 sm:py-3 w-full text-md sm:text-xl leading-[1.5] font-light resize-none disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300', {
-                  'h-24 md:h-32 rounded-2xl': isExpanded,
-                  'h-8 sm:h-10 rounded-[3rem]': !isExpanded
-                })}
+                className="w-full min-h-6 md:min-h-8 max-h-20 md:max-h-24 bg-transparent overflow-y-auto text-md sm:text-xl font-light resize-none focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed transition-opacity duration-300"
                 placeholder={isTyping ? "" : animatedPlaceholder}
               />
 
+              <Box orientation="horizontal" blockAlignChildren="spaceBetween" inlineAlignChildren="end">
+                {/* Character Counter */}
+                <div
+                  id="prompt-char-count"
+                  role="status"
+                  aria-live="polite"
+                >
+                  {showCharCount && (
+                    <text.p
+                      size={0}
+                      className={clsx('font-medium', { 'opacity-50': !isOverLimit })}
+                      emphasis={isOverLimit ? 'critical' : undefined}
+                    >
+                      <span aria-hidden="true">
+                        {isOverLimit ? `-${Math.abs(bytesRemaining)}` : bytesRemaining}
+                      </span>
+                      <span className="sr-only">
+                        {isOverLimit
+                          ? t('builder_homepage_hero_chars_over_limit', { count: Math.abs(bytesRemaining) },
+                            `${Math.abs(bytesRemaining)} characters over limit`)
+                          : t('builder_homepage_hero_chars_remaining', { count: bytesRemaining },
+                            `${bytesRemaining} characters remaining`)}
+                      </span>
+                    </text.p>
+                  )}
+                </div>
 
-              <div
-                id="prompt-char-count"
-                role="status"
-                aria-live="polite"
-                className="absolute top-2.5 end-2 sm:top-3 sm:end-3 md:end-3.5"
-              >
-                {showCharCount && (
-                  <text.p
-                    size={0}
-                    className={clsx('font-medium', { 'opacity-50': !isOverLimit })}
-                    emphasis={isOverLimit ? 'critical' : undefined}
-                  >
-                    <span aria-hidden="true">
-                      {isOverLimit ? `-${Math.abs(bytesRemaining)}` : bytesRemaining}
-                    </span>
-                    <span className="sr-only">
-                      {isOverLimit
-                        ? t('builder_homepage_hero_chars_over_limit', { count: Math.abs(bytesRemaining) },
-                          `${Math.abs(bytesRemaining)} characters over limit`)
-                        : t('builder_homepage_hero_chars_remaining', { count: bytesRemaining },
-                          `${bytesRemaining} characters remaining`)}
-                    </span>
-                  </text.p>
-                )}
-              </div>
-
-              {/* Action Buttons Container */}
-              <div className={clsx('absolute flex items-center end-1.5 gap-0.5 transition-all duration-300', {
-                'bottom-1/2 translate-y-1/2 -space-x-1': !isExpanded,
-                'bottom-1.5': isExpanded
-              })}>
-                {isSpeechSupported && (
+                {/* Action Buttons Container */}
+                <Box orientation="horizontal" gap="sm">
+                  {isSpeechSupported && (
+                    <Button
+                      onClick={() => {
+                        logAnalytics('homepage.prompt.speech_toggled', { active: !isListening })
+                        toggleSpeech()
+                      }}
+                      onMouseDown={(e) => e.preventDefault()}
+                      data-eid={generateClickEID('homepage.prompt.speech')}
+                      disabled={isLoading || isTyping}
+                      design={isListening ? 'primary' : 'control'}
+                      className={clsx('cursor-pointer !rounded-full aspect-square !border-none', {
+                        '!bg-intents-ux-feedbackHighContrastCritical-feedbackColor': isListening,
+                        '!bg-transparent hover:!bg-intents-ux-boxLowContrast-backgroundColor': !isListening,
+                      })}
+                      icon={<MicIcon />}
+                      aria-label={microphoneAriaLabel}
+                      size={isBelowSmBreakpoint ? 'sm' : 'md'}
+                    />
+                  )}
                   <Button
-                    onClick={() => {
-                      logAnalytics('homepage.prompt.speech_toggled', { active: !isListening })
-                      toggleSpeech()
-                    }}
-                    onMouseDown={(e) => e.preventDefault()}
-                    data-eid={generateClickEID('homepage.prompt.speech')}
-                    disabled={isLoading || isTyping}
-                    design={isListening ? 'primary' : 'control'}
-                    className={clsx('cursor-pointer !rounded-full aspect-square !border-none', {
-                      '!bg-intents-ux-feedbackHighContrastCritical-feedbackColor': isListening,
-                      '!bg-transparent hover:!bg-intents-ux-boxLowContrast-backgroundColor': !isListening,
-                    })}
-                    icon={<MicIcon />}
-                    aria-label={microphoneAriaLabel}
+                    onClick={handleStartBuilding}
+                    data-partial="componentAiro"
+                    data-eid={generateClickEID('homepage.prompt.submit')}
+                    disabled={!displayText.trim() || isLoading || isTyping || isOverLimit}
+                    design='primary'
+                    className='cursor-pointer !rounded-full aspect-square !border-none'
+                    icon={isLoading ? <Spinner size='sm' /> : <SendIcon />}
+                    aria-label={isLoading ? t('builder_homepage_hero_prompt_button_loading') : t('builder_homepage_hero_prompt_button')}
                     size={isBelowSmBreakpoint ? 'sm' : 'md'}
                   />
-                )}
-                <Button
-                  onClick={handleStartBuilding}
-                  data-partial="componentAiro"
-                  data-eid={generateClickEID('homepage.prompt.submit')}
-                  disabled={!displayText.trim() || isLoading || isTyping || isOverLimit}
-                  design='primary'
-                  className='cursor-pointer !rounded-full aspect-square !border-none'
-                  icon={isLoading ? <Spinner size='sm' /> : <SendIcon />}
-                  aria-label={isLoading ? t('builder_homepage_hero_prompt_button_loading') : t('builder_homepage_hero_prompt_button')}
-                  size={isBelowSmBreakpoint ? 'sm' : 'md'}
-                />
-              </div>
+                </Box>
+              </Box>
             </Box>
           </div>
+
+          {/* Template Selector */}
+          {/* Template selector is used for internal experiments in TLA accounts only; customers won't see it. */}
           {onTemplateChange && (
             <TemplateSelector selectedTemplate={selectedTemplate} onTemplateChange={onTemplateChange} />
           )}
+
+          {/* Disclaimer */}
           <text.p
             size={-1}
             className={clsx(
