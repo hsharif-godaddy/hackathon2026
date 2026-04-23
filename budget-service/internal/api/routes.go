@@ -25,8 +25,15 @@ func NewRouter(s *Server, authMW *auth.Middleware) http.Handler {
 	v1.Use(authMW.AuthenticateAWSIAMService)
 
 	v1.HandleFunc("/auth-check", func(w http.ResponseWriter, r *http.Request) {
+		claims := auth.GetClaims(r)
+		if claims == nil {
+			writeJSON(w, http.StatusOK, map[string]any{
+				"message": "none (auth disabled)",
+			})
+			return
+		}
 		writeJSON(w, http.StatusOK, map[string]any{
-			"message": "IAM or Cert-class service JWT accepted",
+			"message": claims.GetType() + "-class service JWT accepted",
 		})
 	}).Methods(http.MethodGet)
 

@@ -432,7 +432,7 @@ func TestPostSessionReturns402WhenBudgetExhausted(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	auth := auth.NewMiddleware("none")
+	auth := auth.NewMiddleware("none", nil, nil)
 	h := NewRouter(&Server{Store: st}, auth)
 
 	reqS1 := httptest.NewRequest(http.MethodPost, "/api/v1/sessions", strings.NewReader(`{"budgetId":"`+budgetID+`"}`))
@@ -490,7 +490,7 @@ func TestPatchReconciledSessionReturns409(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	auth := auth.NewMiddleware("none")
+	auth := auth.NewMiddleware("none", nil, nil)
 	h := NewRouter(&Server{Store: st}, auth)
 
 	recS := httptest.NewRecorder()
@@ -547,7 +547,7 @@ func TestPatchConcurrentSessionsEventuallySucceed(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	a := auth.NewMiddleware("none")
+	a := auth.NewMiddleware("none", nil, nil)
 	h := NewRouter(&Server{Store: st}, a)
 
 	// Create multiple sessions.
@@ -618,7 +618,7 @@ func TestPatchNonexistentSessionReturns404(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	auth := auth.NewMiddleware("none")
+	auth := auth.NewMiddleware("none", nil, nil)
 	h := NewRouter(&Server{Store: st}, auth)
 
 	fakeSessionID := uuid.NewString()
@@ -654,7 +654,7 @@ func TestPatchSessionDuplicateCallRequestID(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	auth := auth.NewMiddleware("none")
+	auth := auth.NewMiddleware("none", nil, nil)
 	h := NewRouter(&Server{Store: st}, auth)
 
 	recS := httptest.NewRecorder()
@@ -724,7 +724,7 @@ func TestPatchSessionDuplicateCallRequestID(t *testing.T) {
 
 func TestGoCodeSpendMathOverHTTP(t *testing.T) {
 	st := testStore(t)
-	auth := auth.NewMiddleware("none")
+	auth := auth.NewMiddleware("none", nil, nil)
 	srv := &Server{Store: st}
 	h := NewRouter(srv, auth)
 
@@ -873,7 +873,7 @@ func TestGoCodeSpendMathOverHTTP(t *testing.T) {
 
 func TestPatchSessionPartialCreditsReportRejectsExcessBudgetCost(t *testing.T) {
 	st := testStore(t)
-	auth := auth.NewMiddleware("none")
+	auth := auth.NewMiddleware("none", nil, nil)
 	srv := &Server{Store: st}
 	h := NewRouter(srv, auth)
 
@@ -1721,7 +1721,7 @@ func TestGetBudgetItem(t *testing.T) {
 
 func TestReportAllocatesRenewalItemBeforePlainItem(t *testing.T) {
 	st := testStore(t)
-	auth := auth.NewMiddleware("none")
+	auth := auth.NewMiddleware("none", nil, nil)
 	srv := &Server{Store: st}
 	h := NewRouter(srv, auth)
 
@@ -1835,7 +1835,7 @@ func TestReportAllocatesRenewalItemBeforePlainItem(t *testing.T) {
 
 func TestWriteEndpointsReturnCanonicalGetPayloads(t *testing.T) {
 	st := testStore(t)
-	auth := auth.NewMiddleware("none")
+	auth := auth.NewMiddleware("none", nil, nil)
 	h := NewRouter(&Server{Store: st}, auth)
 
 	productKey := "parity-" + uuid.NewString()
@@ -2362,7 +2362,7 @@ func TestPostBudgetCreditsUsedZeroSkipsLedger(t *testing.T) {
 
 func TestListReportsBySessionIdProductKeyBudgetId(t *testing.T) {
 	st := testStore(t)
-	h := NewRouter(&Server{Store: st}, auth.NewMiddleware("none"))
+	h := NewRouter(&Server{Store: st}, auth.NewMiddleware("none", nil, nil))
 	prodBody := `{"productKey":"list-rep-` + uuid.NewString() + `"}`
 	reqP := httptest.NewRequest(http.MethodPost, "/api/v1/products", strings.NewReader(prodBody))
 	reqP.Header.Set("Content-Type", "application/json")
@@ -2475,7 +2475,7 @@ func TestListReportsBySessionIdProductKeyBudgetId(t *testing.T) {
 
 func TestListReportsQueryValidation(t *testing.T) {
 	t.Parallel()
-	h := NewRouter(&Server{Store: nil}, auth.NewMiddleware("none"))
+	h := NewRouter(&Server{Store: nil}, auth.NewMiddleware("none", nil, nil))
 	cases := []struct {
 		path string
 		want int
@@ -2503,7 +2503,7 @@ func TestListReportsQueryValidation(t *testing.T) {
 }
 
 func TestListReportsUnfiltered(t *testing.T) {
-	h := NewRouter(&Server{Store: testStore(t)}, auth.NewMiddleware("none"))
+	h := NewRouter(&Server{Store: testStore(t)}, auth.NewMiddleware("none", nil, nil))
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/reports", nil)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -2537,7 +2537,7 @@ func TestListReportsUnfiltered(t *testing.T) {
 
 func TestListReportsOversizedProductKey(t *testing.T) {
 	t.Parallel()
-	h := NewRouter(&Server{Store: nil}, auth.NewMiddleware("none"))
+	h := NewRouter(&Server{Store: nil}, auth.NewMiddleware("none", nil, nil))
 	longPK := strings.Repeat("a", productKeyMaxLen+1)
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/reports?productKey="+longPK, nil)
 	rec := httptest.NewRecorder()
@@ -2548,7 +2548,7 @@ func TestListReportsOversizedProductKey(t *testing.T) {
 }
 
 func TestListReportsEmptyUnknownSession(t *testing.T) {
-	h := NewRouter(&Server{Store: testStore(t)}, auth.NewMiddleware("none"))
+	h := NewRouter(&Server{Store: testStore(t)}, auth.NewMiddleware("none", nil, nil))
 	id := uuid.NewString()
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/reports?sessionId="+id, nil)
 	rec := httptest.NewRecorder()
@@ -2576,7 +2576,7 @@ func TestListReportsEmptyUnknownSession(t *testing.T) {
 
 func TestListReportsPaginationAndOrder(t *testing.T) {
 	st := testStore(t)
-	h := NewRouter(&Server{Store: st}, auth.NewMiddleware("none"))
+	h := NewRouter(&Server{Store: st}, auth.NewMiddleware("none", nil, nil))
 	pk := "list-page-" + uuid.NewString()
 	prodBody := `{"productKey":"` + pk + `"}`
 	reqP := httptest.NewRequest(http.MethodPost, "/api/v1/products", strings.NewReader(prodBody))

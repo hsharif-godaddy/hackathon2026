@@ -4,7 +4,7 @@ How HTTP requests move through **logging**, **auth**, **handlers**, and the **st
 
 ## Typical authenticated `/api/v1` request
 
-The router applies **logging** around the entire mux (`internal/api/middleware.go`); `/api/v1` routes use **JWT middleware** then the handler (`internal/api/routes.go`).
+The router applies **logging** around the entire mux (`internal/api/middleware.go`); `/api/v1` routes use **JWT middleware** then the handler (`internal/api/routes.go`). When `AUTH_ALLOWED_ROLES` or `AUTH_ALLOWED_CERTS` is configured, the middleware additionally checks the caller's IAM ARN or cert CommonName against the respective allowlist after token validation (403 if not matched).
 
 ```mermaid
 sequenceDiagram

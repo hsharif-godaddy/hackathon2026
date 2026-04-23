@@ -2,6 +2,7 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -45,6 +46,16 @@ type Config struct {
 	OutboxMaxAttempts    int
 	OutboxDrainBatchSize int
 	OutboxRetentionDays  int
+
+	// AuthAllowedRoles is a list of allowed AWS IAM role ARN patterns.
+	// Supports exact match and trailing wildcard (e.g. "arn:aws:iam::123:role/airo-*").
+	// Empty = allow all authenticated tokens (backward-compatible default).
+	AuthAllowedRoles []string
+
+	// AuthAllowedCerts is a list of allowed cert CommonName patterns.
+	// Supports exact match (e.g. "*.airo-builder.godaddy.com").
+	// Empty = allow all authenticated cert tokens (backward-compatible default).
+	AuthAllowedCerts []string
 }
 
 // Load reads env and checks LOCAL_AUTH_DISABLE / SSO_HOST / TLS pair consistency.
@@ -72,6 +83,14 @@ func Load() (Config, error) {
 		OutboxDrainBatchSize: getEnvInt("OUTBOX_DRAIN_BATCH_SIZE", 100),
 		OutboxRetentionDays:  getEnvInt("OUTBOX_RETENTION_DAYS", 7),
 	}
+	var err error
+	if cfg.AuthAllowedRoles, err = parseJSONStringSlice("AUTH_ALLOWED_ROLES"); err != nil {
+		return Config{}, err
+	}
+	if cfg.AuthAllowedCerts, err = parseJSONStringSlice("AUTH_ALLOWED_CERTS"); err != nil {
+		return Config{}, err
+	}
+
 	if cfg.MigrateDatabaseURL != "" && cfg.DatabaseURL == "" {
 		return Config{}, fmt.Errorf("MIGRATE_DATABASE_URL requires DATABASE_URL")
 	}
@@ -162,6 +181,18 @@ func getEnvBoolDefault(key string, fallback bool) bool {
 	default:
 		return fallback
 	}
+}
+
+func parseJSONStringSlice(key string) ([]string, error) {
+	v := strings.TrimSpace(os.Getenv(key))
+	if v == "" {
+		return nil, nil
+	}
+	var result []string
+	if err := json.Unmarshal([]byte(v), &result); err != nil {
+		return nil, fmt.Errorf("%s: invalid JSON: %w", key, err)
+	}
+	return result, nil
 }
 
 // SlogLevel maps config strings (debug, warn, error, info) to slog.Level.

@@ -132,3 +132,51 @@ func TestLoadMigrateDatabaseURLRequiresDatabaseURL(t *testing.T) {
 		t.Fatalf("error %q should mention MIGRATE_DATABASE_URL", err.Error())
 	}
 }
+
+func TestLoadRejectsInvalidAllowedRolesJSON(t *testing.T) {
+	t.Setenv("LOCAL_AUTH_DISABLE", "true")
+	t.Setenv("SSO_HOST", "")
+	t.Setenv("DATABASE_URL", "")
+	t.Setenv("AUTH_ALLOWED_ROLES", `["malformed`)
+	t.Setenv("AUTH_ALLOWED_CERTS", "")
+	_, err := Load()
+	if err == nil {
+		t.Fatal("expected error for malformed AUTH_ALLOWED_ROLES")
+	}
+	if !strings.Contains(err.Error(), "AUTH_ALLOWED_ROLES") {
+		t.Fatalf("error %q should mention AUTH_ALLOWED_ROLES", err.Error())
+	}
+}
+
+func TestLoadRejectsInvalidAllowedCertsJSON(t *testing.T) {
+	t.Setenv("LOCAL_AUTH_DISABLE", "true")
+	t.Setenv("SSO_HOST", "")
+	t.Setenv("DATABASE_URL", "")
+	t.Setenv("AUTH_ALLOWED_ROLES", "")
+	t.Setenv("AUTH_ALLOWED_CERTS", `not-json`)
+	_, err := Load()
+	if err == nil {
+		t.Fatal("expected error for malformed AUTH_ALLOWED_CERTS")
+	}
+	if !strings.Contains(err.Error(), "AUTH_ALLOWED_CERTS") {
+		t.Fatalf("error %q should mention AUTH_ALLOWED_CERTS", err.Error())
+	}
+}
+
+func TestLoadAcceptsValidAllowlistJSON(t *testing.T) {
+	t.Setenv("LOCAL_AUTH_DISABLE", "true")
+	t.Setenv("SSO_HOST", "")
+	t.Setenv("DATABASE_URL", "")
+	t.Setenv("AUTH_ALLOWED_ROLES", `["arn:aws:iam::123:role/airo-*"]`)
+	t.Setenv("AUTH_ALLOWED_CERTS", `["*.airo-builder.godaddy.com"]`)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(cfg.AuthAllowedRoles) != 1 {
+		t.Fatalf("AuthAllowedRoles: want 1 entry, got %d", len(cfg.AuthAllowedRoles))
+	}
+	if len(cfg.AuthAllowedCerts) != 1 {
+		t.Fatalf("AuthAllowedCerts: want 1 entry, got %d", len(cfg.AuthAllowedCerts))
+	}
+}

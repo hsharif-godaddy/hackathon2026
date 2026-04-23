@@ -25,11 +25,18 @@ type tokenParser interface {
 	ParseToken(token string, opts *gdauth.AuthOptions) (*gdauth.TokenClaims, error)
 }
 
+// claimGetter extracts a string claim from token claims (test seam for GDAuth.GetAwsIamArn / GetCommonName).
+type claimGetter func(claims *gdauth.TokenClaims) (string, error)
+
 // testableMiddleware is a test-only middleware that accepts an injected tokenParser.
 type testableMiddleware struct {
-	parser   tokenParser
-	ssoHost  string
-	authType string
+	parser       tokenParser
+	ssoHost      string
+	authType     string
+	allowedRoles []string
+	allowedCerts []string
+	getArn       claimGetter
+	getCN        claimGetter
 }
 
 func (m *testableMiddleware) AuthenticateAWSIAMService(next http.Handler) http.Handler {
@@ -70,6 +77,30 @@ func (m *testableMiddleware) AuthenticateAWSIAMService(next http.Handler) http.H
 		if tokenType != string(gdauth.AuthTypeAWSIAM) && tokenType != string(gdauth.AuthTypeCERT) {
 			http.Error(w, `{"error":"unauthorized token type"}`, http.StatusUnauthorized)
 			return
+		}
+
+		if tokenType == string(gdauth.AuthTypeAWSIAM) && len(m.allowedRoles) > 0 {
+			arn, err := m.getArn(claims)
+			if err != nil {
+				http.Error(w, `{"error":"forbidden: unable to extract IAM role"}`, http.StatusForbidden)
+				return
+			}
+			if !matchesAllowlist(arn, m.allowedRoles) {
+				http.Error(w, `{"error":"forbidden: IAM role not in allowlist"}`, http.StatusForbidden)
+				return
+			}
+		}
+
+		if tokenType == string(gdauth.AuthTypeCERT) && len(m.allowedCerts) > 0 {
+			cn, err := m.getCN(claims)
+			if err != nil {
+				http.Error(w, `{"error":"forbidden: unable to extract cert CommonName"}`, http.StatusForbidden)
+				return
+			}
+			if !matchesAllowlist(cn, m.allowedCerts) {
+				http.Error(w, `{"error":"forbidden: cert CommonName not in allowlist"}`, http.StatusForbidden)
+				return
+			}
 		}
 
 		ctx := context.WithValue(r.Context(), ClaimsKey, claims)
@@ -357,5 +388,302 @@ func TestGetClaims_NoClaims(t *testing.T) {
 	retrieved := GetClaims(req)
 	if retrieved != nil {
 		t.Errorf("expected nil, got %+v", retrieved)
+	}
+}
+
+// --- Role allowlist tests ---
+
+func newIAMMockParser(arn string) *mockGDAuth {
+	return &mockGDAuth{
+		parseTokenFunc: func(token string, opts *gdauth.AuthOptions) (*gdauth.TokenClaims, error) {
+			return gdauth.NewTokenClaims(map[string]any{
+				"typ": string(gdauth.AuthTypeAWSIAM),
+				"jti": "test-jti",
+			}), nil
+		},
+	}
+}
+
+func staticClaimGetter(value string) claimGetter {
+	return func(_ *gdauth.TokenClaims) (string, error) { return value, nil }
+}
+
+func TestAllowedRoles_MatchExact(t *testing.T) {
+	t.Parallel()
+
+	arn := "arn:aws:iam::123456789:role/budget-caller"
+	m := &testableMiddleware{
+		parser:       newIAMMockParser(arn),
+		ssoHost:      "https://sso.test.godaddy.com",
+		authType:     "jwt",
+		allowedRoles: []string{"arn:aws:iam::123456789:role/budget-caller"},
+		getArn:       staticClaimGetter(arn),
+	}
+
+	handler := m.AuthenticateAWSIAMService(dummyHandler())
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.Header.Set("Authorization", "Bearer valid-iam-token")
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAllowedRoles_MatchWildcard(t *testing.T) {
+	t.Parallel()
+
+	arn := "arn:aws:iam::123456789:role/airo-budget-service"
+	m := &testableMiddleware{
+		parser:       newIAMMockParser(arn),
+		ssoHost:      "https://sso.test.godaddy.com",
+		authType:     "jwt",
+		allowedRoles: []string{"arn:aws:iam::123456789:role/airo-*"},
+		getArn:       staticClaimGetter(arn),
+	}
+
+	handler := m.AuthenticateAWSIAMService(dummyHandler())
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.Header.Set("Authorization", "Bearer valid-iam-token")
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAllowedRoles_Denied(t *testing.T) {
+	t.Parallel()
+
+	arn := "arn:aws:iam::999999999:role/unknown-service"
+	m := &testableMiddleware{
+		parser:       newIAMMockParser(arn),
+		ssoHost:      "https://sso.test.godaddy.com",
+		authType:     "jwt",
+		allowedRoles: []string{"arn:aws:iam::123456789:role/airo-*"},
+		getArn:       staticClaimGetter(arn),
+	}
+
+	handler := m.AuthenticateAWSIAMService(dummyHandler())
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.Header.Set("Authorization", "Bearer valid-iam-token")
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("expected 403, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "IAM role not in allowlist") {
+		t.Errorf("expected allowlist error, got %s", rec.Body.String())
+	}
+}
+
+func TestAllowedRoles_EmptyList(t *testing.T) {
+	t.Parallel()
+
+	m := &testableMiddleware{
+		parser:       newIAMMockParser("arn:aws:iam::123:role/anything"),
+		ssoHost:      "https://sso.test.godaddy.com",
+		authType:     "jwt",
+		allowedRoles: nil,
+	}
+
+	handler := m.AuthenticateAWSIAMService(dummyHandler())
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.Header.Set("Authorization", "Bearer valid-iam-token")
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200 (empty allowlist = allow all), got %d; body: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAllowedRoles_CertTokenSkipped(t *testing.T) {
+	t.Parallel()
+
+	m := &testableMiddleware{
+		parser: &mockGDAuth{
+			parseTokenFunc: func(token string, opts *gdauth.AuthOptions) (*gdauth.TokenClaims, error) {
+				return gdauth.NewTokenClaims(map[string]any{
+					"typ": string(gdauth.AuthTypeCERT),
+					"jti": "test-jti",
+				}), nil
+			},
+		},
+		ssoHost:      "https://sso.test.godaddy.com",
+		authType:     "jwt",
+		allowedRoles: []string{"arn:aws:iam::123456789:role/specific-only"},
+	}
+
+	handler := m.AuthenticateAWSIAMService(dummyHandler())
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.Header.Set("Authorization", "sso-jwt valid-cert-token")
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200 (cert tokens bypass role allowlist), got %d; body: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestMatchesAllowlist(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		value    string
+		patterns []string
+		want     bool
+	}{
+		{"exact match", "arn:aws:iam::123:role/foo", []string{"arn:aws:iam::123:role/foo"}, true},
+		{"wildcard match", "arn:aws:iam::123:role/airo-svc", []string{"arn:aws:iam::123:role/airo-*"}, true},
+		{"no match", "arn:aws:iam::999:role/bad", []string{"arn:aws:iam::123:role/airo-*"}, false},
+		{"multiple patterns", "arn:aws:iam::456:role/other", []string{"arn:aws:iam::123:role/foo", "arn:aws:iam::456:role/other"}, true},
+		{"empty patterns", "arn:aws:iam::123:role/foo", nil, false},
+		{"empty value", "", []string{"arn:aws:iam::123:role/*"}, false},
+		{"wildcard only prefix", "arn:aws:iam::123:role/airo-budget", []string{"arn:aws:iam::123:role/airo-*", "arn:aws:iam::456:role/exact"}, true},
+		{"cert cn exact", "service-a.example.com", []string{"service-a.example.com"}, true},
+		{"cert cn wildcard", "budget.airo-builder.godaddy.com", []string{"*.airo-builder.godaddy.com"}, false},
+		{"cert cn prefix wildcard", "airo-builder.godaddy.com/budget", []string{"airo-builder.godaddy.com/*"}, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := matchesAllowlist(tt.value, tt.patterns)
+			if got != tt.want {
+				t.Errorf("matchesAllowlist(%q, %v) = %v, want %v", tt.value, tt.patterns, got, tt.want)
+			}
+		})
+	}
+}
+
+// --- Cert allowlist tests ---
+
+func newCertMockParser() *mockGDAuth {
+	return &mockGDAuth{
+		parseTokenFunc: func(token string, opts *gdauth.AuthOptions) (*gdauth.TokenClaims, error) {
+			return gdauth.NewTokenClaims(map[string]any{
+				"typ": string(gdauth.AuthTypeCERT),
+				"jti": "test-jti",
+			}), nil
+		},
+	}
+}
+
+func TestAllowedCerts_MatchExact(t *testing.T) {
+	t.Parallel()
+
+	cn := "service-a.airo-builder.godaddy.com"
+	m := &testableMiddleware{
+		parser:       newCertMockParser(),
+		ssoHost:      "https://sso.test.godaddy.com",
+		authType:     "jwt",
+		allowedCerts: []string{"service-a.airo-builder.godaddy.com"},
+		getCN:        staticClaimGetter(cn),
+	}
+
+	handler := m.AuthenticateAWSIAMService(dummyHandler())
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.Header.Set("Authorization", "sso-jwt valid-cert-token")
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAllowedCerts_MatchWildcard(t *testing.T) {
+	t.Parallel()
+
+	cn := "airo-builder.godaddy.com/budget-service"
+	m := &testableMiddleware{
+		parser:       newCertMockParser(),
+		ssoHost:      "https://sso.test.godaddy.com",
+		authType:     "jwt",
+		allowedCerts: []string{"airo-builder.godaddy.com/*"},
+		getCN:        staticClaimGetter(cn),
+	}
+
+	handler := m.AuthenticateAWSIAMService(dummyHandler())
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.Header.Set("Authorization", "sso-jwt valid-cert-token")
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAllowedCerts_Denied(t *testing.T) {
+	t.Parallel()
+
+	cn := "unknown-service.example.com"
+	m := &testableMiddleware{
+		parser:       newCertMockParser(),
+		ssoHost:      "https://sso.test.godaddy.com",
+		authType:     "jwt",
+		allowedCerts: []string{"service-a.airo-builder.godaddy.com"},
+		getCN:        staticClaimGetter(cn),
+	}
+
+	handler := m.AuthenticateAWSIAMService(dummyHandler())
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.Header.Set("Authorization", "sso-jwt valid-cert-token")
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("expected 403, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "cert CommonName not in allowlist") {
+		t.Errorf("expected cert allowlist error, got %s", rec.Body.String())
+	}
+}
+
+func TestAllowedCerts_EmptyList(t *testing.T) {
+	t.Parallel()
+
+	m := &testableMiddleware{
+		parser:       newCertMockParser(),
+		ssoHost:      "https://sso.test.godaddy.com",
+		authType:     "jwt",
+		allowedCerts: nil,
+	}
+
+	handler := m.AuthenticateAWSIAMService(dummyHandler())
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.Header.Set("Authorization", "sso-jwt valid-cert-token")
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200 (empty allowlist = allow all), got %d; body: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAllowedCerts_IAMTokenSkipped(t *testing.T) {
+	t.Parallel()
+
+	m := &testableMiddleware{
+		parser:       newIAMMockParser("arn:aws:iam::123:role/anything"),
+		ssoHost:      "https://sso.test.godaddy.com",
+		authType:     "jwt",
+		allowedCerts: []string{"specific-cert-only.godaddy.com"},
+	}
+
+	handler := m.AuthenticateAWSIAMService(dummyHandler())
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.Header.Set("Authorization", "Bearer valid-iam-token")
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200 (IAM tokens bypass cert allowlist), got %d; body: %s", rec.Code, rec.Body.String())
 	}
 }

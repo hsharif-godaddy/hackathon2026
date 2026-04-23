@@ -20,16 +20,22 @@ const (
 
 // Middleware provides HTTP middleware for GoDaddy SSO JWT authentication.
 type Middleware struct {
-	client   *Client
-	authType string
+	client       *Client
+	authType     string
+	allowedRoles []string
+	allowedCerts []string
 }
 
 // NewMiddleware creates auth middleware using the singleton GDAuth client.
 // authType: "jwt" to enforce validation, "none" to bypass (local dev only).
+// allowedRoles: IAM ARN patterns; empty slice means allow all.
+// allowedCerts: cert CommonName patterns; empty slice means allow all.
 // Requires InitClient() to have been called first when authType is "jwt".
-func NewMiddleware(authType string) *Middleware {
+func NewMiddleware(authType string, allowedRoles []string, allowedCerts []string) *Middleware {
 	m := &Middleware{
-		authType: authType,
+		authType:     authType,
+		allowedRoles: allowedRoles,
+		allowedCerts: allowedCerts,
 	}
 
 	if authType == "none" {
@@ -44,7 +50,7 @@ func NewMiddleware(authType string) *Middleware {
 		return m
 	}
 
-	slog.Debug("auth.init", "authType", authType, "ssoHost", m.client.SSOHost)
+	slog.Debug("auth.init", "authType", authType, "ssoHost", m.client.SSOHost, "allowedRoles", len(m.allowedRoles), "allowedCerts", len(m.allowedCerts))
 	return m
 }
 
@@ -122,10 +128,51 @@ func (m *Middleware) AuthenticateAWSIAMService(next http.Handler) http.Handler {
 			return
 		}
 
+		if tokenType == string(gdauth.AuthTypeAWSIAM) && len(m.allowedRoles) > 0 {
+			arn, err := m.client.GDAuth.GetAwsIamArn(claims)
+			if err != nil {
+				slog.Warn("auth.validate.arn_extraction_failed", "error", err, "method", r.Method, "path", r.URL.Path)
+				http.Error(w, `{"error":"forbidden: unable to extract IAM role"}`, http.StatusForbidden)
+				return
+			}
+			if !matchesAllowlist(arn, m.allowedRoles) {
+				slog.Warn("auth.validate.role_denied", "arn", arn, "method", r.Method, "path", r.URL.Path)
+				http.Error(w, `{"error":"forbidden: IAM role not in allowlist"}`, http.StatusForbidden)
+				return
+			}
+		}
+
+		if tokenType == string(gdauth.AuthTypeCERT) && len(m.allowedCerts) > 0 {
+			cn, err := m.client.GDAuth.GetCommonName(claims)
+			if err != nil {
+				slog.Warn("auth.validate.cn_extraction_failed", "error", err, "method", r.Method, "path", r.URL.Path)
+				http.Error(w, `{"error":"forbidden: unable to extract cert CommonName"}`, http.StatusForbidden)
+				return
+			}
+			if !matchesAllowlist(cn, m.allowedCerts) {
+				slog.Warn("auth.validate.cert_denied", "commonName", cn, "method", r.Method, "path", r.URL.Path)
+				http.Error(w, `{"error":"forbidden: cert CommonName not in allowlist"}`, http.StatusForbidden)
+				return
+			}
+		}
+
 		// Store claims in context for downstream handlers
 		ctx := context.WithValue(r.Context(), ClaimsKey, claims)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+func matchesAllowlist(value string, patterns []string) bool {
+	for _, p := range patterns {
+		if strings.HasSuffix(p, "*") {
+			if strings.HasPrefix(value, strings.TrimSuffix(p, "*")) {
+				return true
+			}
+		} else if value == p {
+			return true
+		}
+	}
+	return false
 }
 
 // GetClaims retrieves the validated token claims from the request context.

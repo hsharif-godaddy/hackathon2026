@@ -11,7 +11,7 @@ import (
 
 func TestRouterNotFoundReturnsJSONEnvelope(t *testing.T) {
 	t.Parallel()
-	h := NewRouter(&Server{}, auth.NewMiddleware("none"))
+	h := NewRouter(&Server{}, auth.NewMiddleware("none", nil, nil))
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/not-a-route", nil)
@@ -27,7 +27,7 @@ func TestRouterNotFoundReturnsJSONEnvelope(t *testing.T) {
 
 func TestRouterMethodNotAllowedReturnsJSONEnvelope(t *testing.T) {
 	t.Parallel()
-	h := NewRouter(&Server{}, auth.NewMiddleware("none"))
+	h := NewRouter(&Server{}, auth.NewMiddleware("none", nil, nil))
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/health", nil)
@@ -43,7 +43,7 @@ func TestRouterMethodNotAllowedReturnsJSONEnvelope(t *testing.T) {
 
 func TestRouterOpenAPIPublic(t *testing.T) {
 	t.Parallel()
-	h := NewRouter(&Server{}, auth.NewMiddleware("none"))
+	h := NewRouter(&Server{}, auth.NewMiddleware("none", nil, nil))
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/openapi.yaml", nil)

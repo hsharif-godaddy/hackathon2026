@@ -101,7 +101,7 @@ func main() {
 		}
 	}
 
-	authMW := auth.NewMiddleware(authType)
+	authMW := auth.NewMiddleware(authType, cfg.AuthAllowedRoles, cfg.AuthAllowedCerts)
 
 	// Token generator is required for webhook delivery when auth is enabled.
 	// Fail fast at startup if token generation is not working.

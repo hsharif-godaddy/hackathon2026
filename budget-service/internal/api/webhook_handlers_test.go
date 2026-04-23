@@ -92,7 +92,7 @@ func TestGetWebhooksFiltersByProductKey(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	authMW := auth.NewMiddleware("none")
+	authMW := auth.NewMiddleware("none", nil, nil)
 	h := NewRouter(&Server{Store: st}, authMW)
 
 	rec := httptest.NewRecorder()
@@ -298,7 +298,7 @@ func TestPostWebhookReturnsSamePayloadAsGetWebhook(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	authMW := auth.NewMiddleware("none")
+	authMW := auth.NewMiddleware("none", nil, nil)
 	h := NewRouter(&Server{Store: st}, authMW)
 
 	body := `{"eventType":"report.created","productKey":"` + pk + `","url":"https://example.godaddy.com/hook"}`
