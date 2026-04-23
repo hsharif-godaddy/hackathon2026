@@ -64,9 +64,6 @@ let mockGasketConfig = { ...defaultTestConfig };
 
 vi.mock('@/lib/gasket-config', () => ({
   getGasketConfig: vi.fn(() => Promise.resolve(mockGasketConfig)),
-  getLoginUrl: vi.fn((returnUrl?: string) =>
-    Promise.resolve(`${mockGasketConfig.sso.loginUrl}?app=airo-builder${returnUrl ? `&path=${encodeURIComponent(returnUrl)}` : ''}`)
-  ),
   getLogoutUrl: vi.fn(() => {
     return Promise.resolve(`${mockGasketConfig.sso.logoutUrl}?app=airo-builder&redirect=${encodeURIComponent(mockGasketConfig.redirects.logoutRedirectUrl)}`);
   }),
@@ -177,12 +174,6 @@ describe('useAuth', () => {
     const userInfo = result.current.getUserInfo();
     expect(userInfo).toHaveProperty('customerId');
     expect(userInfo).toHaveProperty('email');
-  });
-
-  it('should provide handleSignIn function', () => {
-    const { result } = renderHook(() => useAuth());
-
-    expect(typeof result.current.handleSignIn).toBe('function');
   });
 
   it('should provide handleSignOut function', () => {

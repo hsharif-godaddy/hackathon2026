@@ -21,7 +21,6 @@ let mockUseAuthReturn = {
     accountName: 'Test',
     email: 'test@example.com',
   }),
-  handleSignIn: vi.fn(),
   handleSignOut: vi.fn(),
   
   authType: 'jwt',

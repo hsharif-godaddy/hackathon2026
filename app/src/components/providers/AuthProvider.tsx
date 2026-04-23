@@ -153,7 +153,6 @@ export function useAuthContext() {
         accountName: 'Unknown',
         email: 'unknown@example.com',
       }),
-      handleSignIn: () => {},
       handleSignOut: () => {},
       authType: actualAuthType,
       isMockAuth: actualIsMock,
