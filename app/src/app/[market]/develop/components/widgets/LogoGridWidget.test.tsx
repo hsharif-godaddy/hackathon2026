@@ -8,7 +8,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 
 import { renderWithProviders } from '@/tests/test-utils';
-import LogoGridWidget, { getLogoDisplayUrl, type LogoData } from './LogoGridWidget';
+import LogoGridWidget, { getLogoDisplayUrl, getLogoSlotName, getLogoSlotNames, type LogoData } from './LogoGridWidget';
 
 const { streamingMocks, mockSendUserMessage } = vi.hoisted(() => ({
   streamingMocks: { isStreaming: false, isLoading: false },
@@ -91,6 +91,76 @@ describe('LogoGridWidget', function logoGridWidget() {
         watermarkedSolidUrl: 'https://cdn.example.com/ws.png',
       };
       expect(getLogoDisplayUrl(logo)).toBe('https://cdn.example.com/s.png');
+    });
+
+    it('falls back to horizontal transparent URL when square is missing', function horizontalFallback() {
+      const logo: LogoData = {
+        id: 'h1',
+        horizontalTransparentUrl: 'https://cdn.example.com/ht.png',
+        horizontalSolidUrl: 'https://cdn.example.com/hs.png',
+      };
+      expect(getLogoDisplayUrl(logo)).toBe('https://cdn.example.com/ht.png');
+    });
+
+    it('falls back to vertical transparent URL when square and horizontal are missing', function verticalFallback() {
+      const logo: LogoData = {
+        id: 'v1',
+        verticalTransparentUrl: 'https://cdn.example.com/vt.png',
+      };
+      expect(getLogoDisplayUrl(logo)).toBe('https://cdn.example.com/vt.png');
+    });
+  });
+
+  describe('#getLogoSlotName', function getLogoSlotNameTests() {
+    it('returns logo/primary for square logos', function squareSlot() {
+      const logo: LogoData = { id: 's1', transparentUrl: 'https://cdn.example.com/t.png' };
+      expect(getLogoSlotName(logo)).toBe('logo/primary');
+    });
+
+    it('returns logo/horizontal for horizontal-only logos', function horizontalSlot() {
+      const logo: LogoData = { id: 'h1', horizontalTransparentUrl: 'https://cdn.example.com/ht.png' };
+      expect(getLogoSlotName(logo)).toBe('logo/horizontal');
+    });
+
+    it('returns logo/vertical for vertical-only logos', function verticalSlot() {
+      const logo: LogoData = { id: 'v1', verticalTransparentUrl: 'https://cdn.example.com/vt.png' };
+      expect(getLogoSlotName(logo)).toBe('logo/vertical');
+    });
+
+    it('returns logo/primary when logo has both square and horizontal URLs', function squarePriority() {
+      const logo: LogoData = {
+        id: 'both',
+        transparentUrl: 'https://cdn.example.com/t.png',
+        horizontalTransparentUrl: 'https://cdn.example.com/ht.png',
+      };
+      expect(getLogoSlotName(logo)).toBe('logo/primary');
+    });
+
+    it('returns logo/primary for empty logo', function emptyFallback() {
+      const logo: LogoData = { id: 'empty' };
+      expect(getLogoSlotName(logo)).toBe('logo/primary');
+    });
+  });
+
+  describe('#getLogoSlotNames', function getLogoSlotNamesTests() {
+    it('returns all populated orientation slots', function allOrientations() {
+      const logo: LogoData = {
+        id: 'all',
+        transparentUrl: 'https://cdn.example.com/t.png',
+        horizontalTransparentUrl: 'https://cdn.example.com/ht.png',
+        verticalTransparentUrl: 'https://cdn.example.com/vt.png',
+      };
+      expect(getLogoSlotNames(logo)).toEqual(['logo/primary', 'logo/horizontal', 'logo/vertical']);
+    });
+
+    it('returns only populated slots', function partialOrientations() {
+      const logo: LogoData = { id: 'h1', horizontalSolidUrl: 'https://cdn.example.com/hs.png' };
+      expect(getLogoSlotNames(logo)).toEqual(['logo/horizontal']);
+    });
+
+    it('falls back to logo/primary for empty logo', function emptyFallback() {
+      const logo: LogoData = { id: 'empty' };
+      expect(getLogoSlotNames(logo)).toEqual(['logo/primary']);
     });
   });
 

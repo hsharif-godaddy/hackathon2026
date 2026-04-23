@@ -118,7 +118,7 @@ export const generateImageTool: SkillToolDefinition = {
 
 export const editImageTool: SkillToolDefinition = {
   name: 'edit_image',
-  description: 'Apply AI edits to an existing image. Renders onto an opaque canvas — no transparency. For logos, load media-logo skill and use media-logo__generate_logo instead (provides transparent variant).',
+  description: 'Apply AI edits to an existing image. Renders onto an opaque canvas — no transparency. For editing logos, load media-logo skill and use media-logo__edit_logo instead (provides transparent variant).',
   parameters: EditImageInputSchema,
 
   async execute(input: EditImageInput, context?: unknown) {

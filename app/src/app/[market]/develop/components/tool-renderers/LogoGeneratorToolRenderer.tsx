@@ -18,7 +18,7 @@ type LogoResult = LogoData
  * Users can click to select a logo, which opens a modal with larger view.
  */
 export default function LogoGeneratorToolRenderer({
-  toolName: _toolName,
+  toolName,
   toolStatus,
   input: _input,
   result
@@ -131,10 +131,15 @@ export default function LogoGeneratorToolRenderer({
 
   const selectedLogo = logos[selectedLogoIndex]
 
-  // Build display name based on state
+  // Build display name based on state and tool type
+  const isEdit = toolName === 'media-logo__edit_logo'
   const displayName = toolStatus === 'completed' && hasLogos
-    ? `Generated ${logoCount} logo${logoCount !== 1 ? 's' : ''} for "${brandName}"`
-    : 'Generating logos...'
+    ? isEdit
+      ? `Edited logo — ${logoCount} variation${logoCount !== 1 ? 's' : ''}`
+      : `Generated ${logoCount} logo${logoCount !== 1 ? 's' : ''} for "${brandName}"`
+    : isEdit
+      ? 'Editing logo...'
+      : 'Generating logos...'
 
   return (
     <div>
@@ -219,11 +224,11 @@ export default function LogoGeneratorToolRenderer({
           </div>
 
           {/* Mockup preview if available */}
-          {selectedLogo?.mockupUrl && (
+          {(selectedLogo?.mockupUrl || selectedLogo?.horizontalMockupUrl || selectedLogo?.verticalMockupUrl) && (
             <div className="mt-4 bg-intents-ux-boxLowContrast-backgroundColor rounded-lg p-4 flex items-center justify-center">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={selectedLogo.mockupUrl}
+                src={selectedLogo.mockupUrl || selectedLogo.horizontalMockupUrl || selectedLogo.verticalMockupUrl}
                 alt="Logo mockup"
                 className="max-w-full max-h-[30vh] object-contain rounded"
               />

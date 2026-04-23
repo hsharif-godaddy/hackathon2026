@@ -310,6 +310,7 @@ When a user uploads an image and wants to use it for a specific location:
 | Stock photo search    | `media({ slot: "...", query: "..." })`    |
 | Stock video search    | `media({ ..., mediaType: "video" })`      |
 | Logo generation       | Load `media-logo` skill                   |
+| Logo editing          | Load `media-logo` skill                   |
 | AI-generated image    | Load `media-image` skill                  |
 | Edit existing image   | Load `media-image` skill                  |
 | Video generation      | Load `media-video` skill                  |

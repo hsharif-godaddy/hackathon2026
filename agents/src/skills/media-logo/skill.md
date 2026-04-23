@@ -1,7 +1,7 @@
 ---
 name: media-logo
-description: AI logo generation. Load when user wants to generate or redesign a logo.
-whenToUse: User wants to create, generate or edit a logo. Phrases like "make a logo", "edit the logo", "add X to the logo", "make the logo more X".
+description: AI logo generation. Load when user wants to generate, redesign, or edit a logo.
+whenToUse: User wants to create, generate or edit a logo. Phrases like "make a logo", "edit the logo", "add X to the logo", "make the logo more X", "change the 2nd logo to be blue".
 ---
 
 ## Slot URL Usage in Source Code
@@ -9,12 +9,20 @@ whenToUse: User wants to create, generate or edit a logo. Phrases like "make a l
 Generated logos auto-save to the media slot system. Use the returned `slotUrl` in all code placements:
 
 ```tsx
-// Transparent (default) — use on light backgrounds:
+// Header/navbar — horizontal slot
+<img src="/airo-assets/images/logo/horizontal" alt="Sunrise Cafe logo" />
+
+// Hero section or sidebar — vertical slot
+<img src="/airo-assets/images/logo/vertical" alt="Sunrise Cafe logo" />
+
+// Favicon/app icon — square slot (default)
 <img src="/airo-assets/images/logo/primary" alt="Sunrise Cafe logo" />
 
-// Solid — use on dark backgrounds:
-<img src="/airo-assets/images/logo/primary?variant=solid" alt="Sunrise Cafe logo" />
+// Dark background — append ?variant=solid to any slot
+<img src="/airo-assets/images/logo/horizontal?variant=solid" alt="Sunrise Cafe logo" />
 ```
+
+**IMPORTANT:** Always use the slot URL, never hardcode the generated CDN URLs directly in source code.
 
 The user can swap logos anytime via the LogoGridWidget — the slot URL stays the same.
 
@@ -32,27 +40,55 @@ Before calling `media-logo__generate_logo`, check conversation context for brand
 <example>
 User: "Move the company name to the right of the icon and make the background transparent"
 
-Correct — regenerate with adjusted style description:
+Correct - use the edit tool with the source logo reference:
 
 ```typescript
-media-logo__generate_logo({
-    brandName: 'Sunrise Cafe',
-    brandDescription: 'A cozy neighborhood coffee shop',
-    style: 'handmade',
-    styleDescription:
-      'Icon on the left, company name "Sunrise Cafe" on the right in a horizontal side-by-side layout.',
-    symbol: 'coffee cup with sunrise',
-    brandColors: 'warm earth tones with orange accents',
-    count: 4,
-  });
-// Use the returned slotUrl — transparentUrl is the default
+// Edit the current saved logo — sessionId and logoId auto-resolved from slot
+media-logo__edit_logo({
+  prompt: 'Make the logo blue and remove the tagline',
+});
+
+// Edit a specific logo from a known session
+media-logo__edit_logo({
+  sourceSessionId: 'abc-123-session',
+  sourceLogoId: 'logo-1',
+  prompt: 'Make the logo blue and remove the tagline',
+  layout: 'horizontal',
+  count: 2,
+});
 ```
 
-Wrong — editing the existing logo:
+Wrong — editing the existing logo using the generic image editor or bypassing the slot system:
 
 ```typescript
 media-image__edit_image({ prompt: 'Move text to the right...', imageUrl: '...' }); // Loses transparency, can't reposition
 terminalCommand({ command: 'curl ... -o public/assets/logo.png' }); // Bypasses delivery infrastructure
+```
+
+</example>
+
+<example>
+User: "Actually I want the logo with a 3d style"
+
+Correct - generate a new logo with the new style, using the same inputs as the original generation (brand name, description, colors) to maintain consistency:
+
+```typescript
+// Generate logos in all orientations for a full brand kit
+media-logo__generate_logo({
+  brandName: 'Sunrise Cafe',
+  brandDescription: 'A cozy neighborhood coffee shop serving artisan coffee and fresh pastries',
+  style: '3D',
+  styleDescription: 'warm and welcoming',
+  brandColors: 'warm earth tones with orange accents',
+  symbol: 'coffee cup with sunrise',
+  layout: 'all',
+});
+```
+
+Wrong — asking for edits to the existing logo without referencing it, which may lead to a new unrelated design:
+
+```typescript
+media-logo__edit_logo({ prompt: 'Make the logo 3D and warm' }); // May not understand to keep existing design elements
 ```
 
 </example>

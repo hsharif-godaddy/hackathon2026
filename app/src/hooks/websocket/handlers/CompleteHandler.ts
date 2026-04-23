@@ -102,11 +102,10 @@ function showFeedbackBanner(promptCount: number): void {
   })
 }
 
-function isMediaTool(toolName: string): boolean {
+function isMediaRelatedTool(toolName: string): boolean {
   return toolName === 'media'
+    || toolName.startsWith('media__')
     || toolName.startsWith('media-logo__')
-    || toolName.startsWith('media-image__')
-    || toolName.startsWith('media-video__')
 }
 
 export class CompleteHandler implements MessageHandler {
@@ -169,7 +168,7 @@ export class CompleteHandler implements MessageHandler {
     // Invalidate media manifest cache so the Media tab picks up newly created slots.
     // Check the finalized message for media-related tool calls to avoid unnecessary refetches.
     const hadMediaTools = lastMsg?.role === 'assistant' &&
-      lastMsg.toolCalls?.some((tc) => isMediaTool(tc.name))
+      lastMsg.toolCalls?.some((tc) => isMediaRelatedTool(tc.name))
 
     if (hadMediaTools && appId) {
       getQueryClient()?.invalidateQueries({ queryKey: ['mediaManifest', appId] })

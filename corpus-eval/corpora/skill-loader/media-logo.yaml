@@ -29,6 +29,12 @@ cases:
     tags: [positive]
     rationale: Make a logo is a whenToUse trigger phrase
 
+  - id: edit-logo-color
+    prompt: "Make the logo blue and remove the tagline"
+    expectedSkill: media-logo
+    tags: [positive]
+    rationale: Editing an existing logo — triggers media-logo skill's edit_logo tool
+
   - id: change-logo
     prompt: "Change my logo to something more modern"
     expectedSkill: media-logo
@@ -45,7 +51,7 @@ cases:
     prompt: "I don't like the current logo, can you redesign it?"
     expectedSkill: media-logo
     tags: [positive]
-    rationale: Logo redesign requires regeneration via generate_logo
+    rationale: Logo redesign requires regeneration via media-logo's generate_logo tool
 
   # --- Positive: harder cases ---
 

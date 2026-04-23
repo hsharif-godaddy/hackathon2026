@@ -95,9 +95,15 @@ export const toolRendererRegistry = {
   websiteRebuild: WebsiteRebuildToolRenderer,
   rebuildPageSelector: RebuildPageSelectorToolRenderer,
   'media-logo__generate_logo': LogoGeneratorToolRenderer,
+  'media-logo__edit_logo': LogoGeneratorToolRenderer,
   'media-image__generate_image': ImageGeneratorToolRenderer,
   'media-image__edit_image': ImageGeneratorToolRenderer,
   'media-video__generate_video': VideoGeneratorToolRenderer,
+  // Legacy names for existing chat history
+  media__generate_logo: LogoGeneratorToolRenderer,
+  media__generate_image: ImageGeneratorToolRenderer,
+  media__edit_image: ImageGeneratorToolRenderer,
+  media__generate_video: VideoGeneratorToolRenderer,
 } as const
 
 /**

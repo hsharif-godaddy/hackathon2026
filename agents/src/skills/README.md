@@ -248,7 +248,7 @@ pnpm --filter @airo/agents dev
 
 Use `skill({ action: "list" })` to see all available skills with descriptions.
 
-Current skills (20):
+Current skills (22):
 
 - **ai-agent** - Streaming AI chatbot or agent with tool use (OpenAI, Anthropic, Google)
 - **authentication** - User authentication and login flows
@@ -262,7 +262,9 @@ Current skills (20):
 - **email** - Send emails via Nodemailer and local SMTP relay
 - **google-maps** - Google Maps integration and location features
 - **i18n** - Internationalization and multi-language support
-- **media** - Media management and image handling
+- **media-logo** - AI logo generation with transparent/solid variants
+- **media-image** - AI image generation and editing
+- **media-video** - AI video generation from text prompts
 - **online-appointments** - Online appointment booking system
 - **publishing** - Publish to production, check status, troubleshoot build/deploy
 - **seo** - Search engine optimization tools and metadata

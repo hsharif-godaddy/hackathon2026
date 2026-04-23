@@ -1,30 +1,24 @@
+/**
+ * Logo Skill Tools
+ *
+ * Provides tools for:
+ * - Logo generation (auto-saves all variants into a media slot)
+ * - Logo editing (edit an existing generated logo via AI, auto-saves variants into a media slot)
+ */
+
 import { z } from 'zod';
 import { logger } from '../../../logging/index.js';
 import { grantSessionManager } from '@airo/ai-grants';
 import type { SkillToolDefinition } from '@airo/ai-skills';
-import { logoService } from '../../../services/LogoService.js';
+import { logoService, type ProcessedLogo } from '../../../services/LogoService.js';
 import { mediaManifestService } from '../../../services/MediaManifestService.js';
 import { appRepository } from '../../../database/repositories/index.js';
 import { appPlanTool } from '../../../tools/app-plan-tool.js';
-import { MemoryRepository } from '../../../database/repositories/MemoryRepository.js';
-import { buildBrandLogoData } from '../../../utils/brand-data.js';
 
-const memoryRepo = new MemoryRepository();
-
-type LogoStyle =
-  | 'line'
-  | 'glyph'
-  | 'full-color'
-  | 'dual-tone'
-  | '3d'
-  | 'badge'
-  | 'colored-line'
-  | 'handmade'
-  | 'mascot'
-  | 'monogram'
-  | 'name-mark';
-
-const LOGO_STYLES: LogoStyle[] = [
+// ============================================================================
+// Input Schemas
+// ============================================================================
+const LOGO_STYLES = [
   'line',
   'glyph',
   'full-color',
@@ -35,8 +29,8 @@ const LOGO_STYLES: LogoStyle[] = [
   'handmade',
   'mascot',
   'monogram',
-  'name-mark'
-];
+  'name-mark',
+] as const;
 
 const GenerateLogoInputSchema = z.object({
   brandName: z.string().min(1).max(100).describe('Primary text for the logo (business/brand name)'),
@@ -50,11 +44,11 @@ const GenerateLogoInputSchema = z.object({
     .describe('What the business does - informs visual choices for the logo design'),
 
   style: z
-    .enum(LOGO_STYLES as [string, ...string[]])
+    .enum(LOGO_STYLES)
     .describe(
       'Logo visual style preset. Options: line (minimalist line art), glyph (iconic symbol), ' +
         'full-color (vibrant illustrated), dual-tone (two colors), 3d (depth/dimension), ' +
-        'badge (emblem/seal), flat (modern flat design), colored-line (line art with color), ' +
+        'badge (emblem/seal), colored-line (line art with color), ' +
         'handmade (hand-drawn feel), mascot (character illustration), monogram (initials/lettermark), ' +
         'name-mark (stylized typography)'
     ),
@@ -94,20 +88,244 @@ const GenerateLogoInputSchema = z.object({
     .describe('Target audience description (e.g., "young professionals", "families with children")'),
 
   count: z.coerce.number().int().min(1).max(4).default(4).describe('Number of logo variations to generate (1-4, default: 4)'),
+
+  layout: z
+    .enum(['square', 'horizontal', 'vertical', 'all'])
+    .default('square')
+    .describe(
+      'Which layout orientation to generate. ' +
+        'square (1024x1024, default — app icons, social profiles), ' +
+        'horizontal (1536x1024 — headers, navbars, email signatures), ' +
+        'vertical (1024x1536 — sidebars, mobile, signage), ' +
+        'or all (generates all three orientations). ' +
+        'Each logo in the response includes URLs only for the requested layout(s).'
+    ),
 });
 
-type GenerateLogoInput = z.infer<typeof GenerateLogoInputSchema>;
+const EditLogoInputSchema = z.object({
+  sourceSessionId: z
+    .string()
+    .min(1)
+    .optional()
+    .describe('The sessionId from a previous logo generation result. If omitted, automatically resolved from the current saved logo slot.'),
 
-const LOGO_SLOT_PATH = 'logo/primary';
+  sourceLogoId: z
+    .string()
+    .min(1)
+    .optional()
+    .describe('The id of the specific logo to edit. If omitted, automatically resolved from the current saved logo slot.'),
+
+  prompt: z
+    .string()
+    .min(1)
+    .max(1000)
+    .describe('Description of the edits to make to the logo (e.g., "Make the logo blue", "Remove the tagline", "Make the icon larger")'),
+
+  layout: z
+    .enum(['square', 'horizontal', 'vertical', 'all'])
+    .optional()
+    .describe(
+      'Which layout orientation to edit. If omitted, uses the same layout as the source logo. ' +
+        'square (1024x1024), horizontal (1536x1024), vertical (1024x1536), or all.'
+    ),
+
+  count: z.coerce.number().int().min(1).max(4).default(1).describe('Number of edited logo variations to generate (1-4, default: 1)'),
+});
+
+// ============================================================================
+// Type Aliases for Tool Inputs
+// ============================================================================
+
+type GenerateLogoInput = z.infer<typeof GenerateLogoInputSchema>;
+type EditLogoInput = z.infer<typeof EditLogoInputSchema>;
+
+// ============================================================================
+// Tool Definitions
+// ============================================================================
+
+/**
+ * Per-orientation logo slot paths.
+ * Each orientation gets its own slot so they can be used independently
+ * (e.g., horizontal in header, vertical in hero, square for favicon).
+ */
+type LogoLayout = 'square' | 'horizontal' | 'vertical';
+
+const LOGO_SLOT_PATHS: Record<LogoLayout, string> = {
+  square: 'logo/primary',
+  horizontal: 'logo/horizontal',
+  vertical: 'logo/vertical',
+};
+
+/** Default slot path used for backwards compatibility and auto-resolution. */
+const DEFAULT_LOGO_SLOT_PATH = 'logo/primary';
+
+/** URL getters per orientation from a ProcessedLogo. */
+const LAYOUT_URL_GETTERS: Record<LogoLayout, {
+  transparent: (l: ProcessedLogo) => string | undefined;
+  solid: (l: ProcessedLogo) => string | undefined;
+}> = {
+  square: {
+    transparent: (l) => l.transparentUrl,
+    solid: (l) => l.solidUrl,
+  },
+  horizontal: {
+    transparent: (l) => l.horizontalTransparentUrl,
+    solid: (l) => l.horizontalSolidUrl,
+  },
+  vertical: {
+    transparent: (l) => l.verticalTransparentUrl,
+    solid: (l) => l.verticalSolidUrl,
+  },
+};
+
+/**
+ * Determine which orientations are present in the logo results.
+ *
+ * Assumption: all logos in a generation batch share the same orientation set.
+ * Only the first logo is inspected. If the API ever returns heterogeneous
+ * orientations across logos in a single batch, logos beyond the first may be
+ * saved to the wrong slot.
+ */
+function getLayoutsFromLogos(logos: ProcessedLogo[]): LogoLayout[] {
+  const layouts: LogoLayout[] = [];
+  const first = logos[0];
+  if (!first) return ['square'];
+  if (first.transparentUrl || first.solidUrl) layouts.push('square');
+  if (first.horizontalTransparentUrl || first.horizontalSolidUrl) layouts.push('horizontal');
+  if (first.verticalTransparentUrl || first.verticalSolidUrl) layouts.push('vertical');
+
+  // Warn if any subsequent logo has a different orientation set — this would
+  // indicate the homogeneous-batch assumption no longer holds.
+  if (logos.length > 1) {
+    for (let i = 1; i < logos.length; i++) {
+      const l = logos[i]!;
+      const hasSquare = !!(l.transparentUrl || l.solidUrl);
+      const hasHorizontal = !!(l.horizontalTransparentUrl || l.horizontalSolidUrl);
+      const hasVertical = !!(l.verticalTransparentUrl || l.verticalSolidUrl);
+      const otherLayouts: LogoLayout[] = [];
+      if (hasSquare) otherLayouts.push('square');
+      if (hasHorizontal) otherLayouts.push('horizontal');
+      if (hasVertical) otherLayouts.push('vertical');
+      if (otherLayouts.length === 0) otherLayouts.push('square');
+
+      if (otherLayouts.length !== layouts.length || otherLayouts.some((lay, idx) => lay !== layouts[idx])) {
+        logger.warn('logo.layouts.mismatch', {
+          message: 'Logo batch contains heterogeneous orientation sets — only the first logo was used to determine layouts',
+          firstLogoLayouts: layouts,
+          mismatchIndex: i,
+          mismatchLayouts: otherLayouts,
+        });
+        break;
+      }
+    }
+  }
+
+  return layouts.length > 0 ? layouts : ['square'];
+}
+
+/**
+ * Save logos to per-orientation media slots. Each layout present in the results
+ * gets its own slot, enabling independent use in different placements.
+ */
+const SLOT_SAVED_EVENTS = {
+  generate_logo: 'skills.media-logo.tools.generate_logo.slot_saved',
+  edit_logo: 'skills.media-logo.tools.edit_logo.slot_saved',
+} as const;
+
+async function saveLogosToSlots(
+  appId: string,
+  logos: ProcessedLogo[],
+  sessionId: string,
+  searchQuery: string,
+  toolName: keyof typeof SLOT_SAVED_EVENTS,
+): Promise<{ savedSlots: Record<string, string> }> {
+  const layouts = getLayoutsFromLogos(logos);
+  const savedSlots: Record<string, string> = {};
+
+  for (const layout of layouts) {
+    const slotPath = LOGO_SLOT_PATHS[layout];
+    const getters = LAYOUT_URL_GETTERS[layout];
+
+    const transparentUrls = logos
+      .map(l => getters.transparent(l))
+      .filter(Boolean) as string[];
+
+    if (transparentUrls.length === 0) continue;
+
+    const solidUrlMap: Record<string, string> = {};
+    const logoSourceMap: Record<string, { sessionId: string; logoId: string }> = {};
+    for (const logo of logos) {
+      const tUrl = getters.transparent(logo);
+      const sUrl = getters.solid(logo);
+      if (tUrl && sUrl) solidUrlMap[tUrl] = sUrl;
+      if (tUrl) logoSourceMap[tUrl] = { sessionId, logoId: logo.id };
+    }
+
+    // Merge with existing slot
+    const existingResult = await mediaManifestService.getSlot(appId, slotPath);
+    const existingSlot = existingResult.success ? existingResult.slot : undefined;
+    let mergedAlternatives = transparentUrls.slice(1);
+    let mergedSolidUrlMap = { ...solidUrlMap };
+    let mergedLogoSourceMap = { ...logoSourceMap };
+
+    if (existingSlot) {
+      const existingUrls = [existingSlot.currentUrl, ...(existingSlot.alternatives || [])];
+      const newUrlSet = new Set(transparentUrls);
+      const oldUrls = existingUrls.filter(url => !newUrlSet.has(url));
+      mergedAlternatives = [...mergedAlternatives, ...oldUrls];
+      mergedSolidUrlMap = { ...(existingSlot.solidUrlMap || {}), ...solidUrlMap };
+      mergedLogoSourceMap = { ...(existingSlot.logoSourceMap || {}), ...logoSourceMap };
+    }
+
+    const now = new Date().toISOString();
+
+    await mediaManifestService.setSlot(appId, slotPath, {
+      mediaType: 'logo',
+      currentUrl: transparentUrls[0]!,
+      searchQuery: existingSlot?.searchQuery || searchQuery,
+      alternatives: mergedAlternatives,
+      solidUrlMap: mergedSolidUrlMap,
+      logoSourceMap: mergedLogoSourceMap,
+      userModified: false,
+      createdAt: existingSlot?.createdAt || now,
+      lastUpdated: now,
+    });
+
+    const slotUrl = `/airo-assets/images/${slotPath}`;
+    savedSlots[layout] = slotUrl;
+
+    logger.info(SLOT_SAVED_EVENTS[toolName], {
+      appId,
+      slotPath,
+      layout,
+      logoCount: logos.length,
+      totalLogos: mergedAlternatives.length + 1,
+    });
+  }
+
+  return { savedSlots };
+}
+
+/**
+ * Build slot URL summary text for the agent.
+ */
+function buildSlotSummary(savedSlots: Record<string, string>): string {
+  const entries = Object.entries(savedSlots);
+  if (entries.length === 0) {
+    return 'No slot URLs saved — logos are available via CDN URLs in the structured result.';
+  }
+  if (entries.length === 1) {
+    const [layout, url] = entries[0]!;
+    return `Slot URL: ${url} (transparent), ${url}?variant=solid (solid). Layout: ${layout}.`;
+  }
+  return 'Slot URLs: ' + entries.map(([layout, url]) => `${layout}: ${url}`).join(', ') +
+    '. Append ?variant=solid for solid backgrounds. Use the orientation-specific slot URL matching the placement context.';
+}
 
 export const generateLogoTool: SkillToolDefinition = {
   name: 'generate_logo',
-  description: `Generate professional logos using AI. Auto-saves to media slot system; returns slotUrl for source code placement.
-
-## Rules
-
-1. Generate 3-4 variations for user choice.
-2. To change logos, call again with **adjusted style/symbol/colors**`,
+  description:
+    'Generate professional logos for a business using AI. Automatically saves all generated logos into the media slot system. Returns slot URL for use in source code, plus logo preview data. Requires business name and description.',
 
   parameters: GenerateLogoInputSchema,
 
@@ -174,60 +392,12 @@ export const generateLogoTool: SkillToolDefinition = {
       logoCount: result.logos.length,
     });
 
-    // 5. Auto-save all logos into a single media slot (merge with existing)
-    const slotUrl = `/airo-assets/images/${LOGO_SLOT_PATH}`;
+    // 5. Auto-save logos to per-orientation slots
+    let savedSlots: Record<string, string> = {};
     if (appId && result.logos.length > 0) {
       try {
-        const transparentUrls = result.logos.map(l => l.transparentUrl);
-        const solidUrlMap: Record<string, string> = {};
-        for (const logo of result.logos) {
-          solidUrlMap[logo.transparentUrl] = logo.solidUrl;
-        }
-
-        // Merge with existing slot so regeneration appends instead of overwriting
-        const existingResult = await mediaManifestService.getSlot(appId, LOGO_SLOT_PATH);
-        const existingSlot = existingResult.success ? existingResult.slot : undefined;
-        let mergedAlternatives = transparentUrls.slice(1);
-        let mergedSolidUrlMap = { ...solidUrlMap };
-
-        if (existingSlot) {
-          const existingUrls = [existingSlot.currentUrl, ...(existingSlot.alternatives || [])];
-          const newUrlSet = new Set(transparentUrls);
-          const oldUrls = existingUrls.filter(url => !newUrlSet.has(url));
-          mergedAlternatives = [...mergedAlternatives, ...oldUrls];
-          mergedSolidUrlMap = { ...(existingSlot.solidUrlMap || {}), ...solidUrlMap };
-        }
-
-        const now = new Date().toISOString();
-
-        await mediaManifestService.setSlot(appId, LOGO_SLOT_PATH, {
-          mediaType: 'logo',
-          currentUrl: transparentUrls[0]!,
-          searchQuery: input.brandName,
-          alternatives: mergedAlternatives,
-          solidUrlMap: mergedSolidUrlMap,
-          userModified: false,
-          createdAt: now,
-          lastUpdated: now,
-        });
-
-        logger.info('skills.media-logo.tools.generate_logo.slot_saved', {
-          appId,
-          slotPath: LOGO_SLOT_PATH,
-          logoCount: result.logos.length,
-          totalLogos: mergedAlternatives.length + 1,
-        });
-
-        // Save first logo to brand.logo memory key for the brand book
-        const firstLogo = result.logos[0];
-        if (firstLogo) {
-          memoryRepo.set(appId, 'brand.logo', buildBrandLogoData(firstLogo)).catch((error) => {
-            logger.warn('skills.media.tools.generate_logo.brandData_failed', {
-              appId,
-              error: error instanceof Error ? error.message : String(error),
-            });
-          });
-        }
+        const saveResult = await saveLogosToSlots(appId, result.logos, result.sessionId, input.brandName, 'generate_logo');
+        savedSlots = saveResult.savedSlots;
       } catch (e) {
         logger.warn('skills.media-logo.tools.generate_logo.slot_save_failed', {
           appId,
@@ -236,15 +406,193 @@ export const generateLogoTool: SkillToolDefinition = {
       }
     }
 
+    if (Object.keys(savedSlots).length === 0 && result.logos.length > 0) {
+      logger.warn('skills.media-logo.tools.generate_logo.no_slots_saved', {
+        appId,
+        logoCount: result.logos.length,
+        sessionId: result.sessionId,
+      });
+    }
+
     // 6. Return structured result for the frontend + instructions for the agent
+    const primaryLayout = savedSlots.square ? 'square' : savedSlots.horizontal ? 'horizontal' : savedSlots.vertical ? 'vertical' : 'square';
+    const primarySlotPath = LOGO_SLOT_PATHS[primaryLayout as LogoLayout] ?? DEFAULT_LOGO_SLOT_PATH;
+    const primarySlotUrl = savedSlots[primaryLayout] || `/airo-assets/images/${primarySlotPath}`;
+
     return {
-      text: `Generated ${result.logos.length} logos and saved to slot "${LOGO_SLOT_PATH}". ` +
-        `Logo 1 is set as the default. Slot URL: ${slotUrl} (transparent), ${slotUrl}?variant=solid (solid background).`,
+      text: `Generated ${result.logos.length} logos. ${buildSlotSummary(savedSlots)} ` +
+        `Logo 1 is set as the default. ` +
+        `If the user's request includes placement (e.g. "add logo to header"), place the appropriate slot URL in source code now. ` +
+        `Otherwise, present the logos and let the user decide — they can swap via the widget and ask you to place it later.`,
       structuredContent: {
         logos: result.logos,
         sessionId: result.sessionId,
-        slotUrl,
-        slotPath: LOGO_SLOT_PATH,
+        slotUrl: primarySlotUrl,
+        slotPath: primarySlotPath,
+        savedSlots,
+      },
+    };
+  },
+
+  config: {
+    timeout: 120000,
+  },
+};
+
+/**
+ * Logo editing tool using direct REST API call via LogoService
+ */
+export const editLogoTool: SkillToolDefinition = {
+  name: 'edit_logo',
+  description:
+    'Edit an existing generated logo using AI. Optionally provide sourceSessionId and sourceLogoId from a previous generate_logo result, ' +
+    'or omit them to automatically edit the current saved logo from the slot system. ' +
+    'Describe the changes you want (e.g., "Make it blue", "Remove the tagline", "Make the icon larger"). ' +
+    'Returns new logo variants with transparent/solid/mockup versions, auto-saved to the slot system.',
+
+  parameters: EditLogoInputSchema,
+
+  async execute(input: EditLogoInput, context?: unknown) {
+    const appId = (context as { metadata?: { appId?: string } })?.metadata?.appId;
+    const socketId = (context as { socketId?: string })?.socketId;
+
+    logger.info('skills.media-logo.tools.edit_logo.start', {
+      sourceSessionId: input.sourceSessionId,
+      sourceLogoId: input.sourceLogoId,
+      promptLength: input.prompt.length,
+      count: input.count,
+      appId,
+    });
+
+    // 1. Get customer context from app database
+    const app = appId ? appRepository.findById(appId) : null;
+    const customerId = app?.customerId;
+
+    if (!customerId) {
+      logger.error('skills.media-logo.tools.edit_logo.no_customer', { appId });
+      return { error: 'Unable to determine customer identity for logo editing' };
+    }
+
+    // 2. Get budget user from grant system (required — logo editing must be billed)
+    const budgetUserId = socketId
+      ? grantSessionManager.getCurrentUserId(socketId, customerId)
+      : customerId;
+
+    if (!budgetUserId) {
+      logger.error('skills.media-logo.tools.edit_logo.grants_exhausted', { appId, socketId, budgetUserId });
+      return { error: 'All credit grants have been exhausted. Please purchase additional credits to edit logos.' };
+    }
+
+    // 3. Resolve sourceSessionId/sourceLogoId from slot if not provided
+    let { sourceSessionId, sourceLogoId } = input;
+
+    if (!sourceSessionId || !sourceLogoId) {
+      if (!appId) {
+        return { error: 'Cannot auto-resolve logo source: no appId available. Provide sourceSessionId and sourceLogoId explicitly.' };
+      }
+      try {
+        // Check all orientation slots for a logo with source tracking
+        const slotPathsToCheck = Object.values(LOGO_SLOT_PATHS);
+        const checked = new Set<string>();
+        let resolved = false;
+        let slotFoundButNoMetadata = false;
+
+        for (const slotPath of slotPathsToCheck) {
+          if (checked.has(slotPath)) continue;
+          checked.add(slotPath);
+          const slotResult = await mediaManifestService.getSlot(appId, slotPath);
+          if (slotResult.success && slotResult.slot) {
+            if (!slotResult.slot.logoSourceMap) {
+              slotFoundButNoMetadata = true;
+              continue;
+            }
+            const source = slotResult.slot.logoSourceMap[slotResult.slot.currentUrl];
+            if (source) {
+              sourceSessionId = source.sessionId;
+              sourceLogoId = source.logoId;
+              resolved = true;
+              logger.info('skills.media-logo.tools.edit_logo.auto_resolved', {
+                appId,
+                sourceSessionId,
+                sourceLogoId,
+                slotPath,
+                currentUrl: slotResult.slot.currentUrl,
+              });
+              break;
+            }
+          }
+        }
+
+        if (!resolved) {
+          return {
+            error: slotFoundButNoMetadata
+              ? "Your existing logo doesn't have edit metadata. Regenerate it with media-logo__generate_logo first, then you can edit it."
+              : 'No saved logo found to edit. Generate a logo first with media-logo__generate_logo, then edit it.',
+          };
+        }
+      } catch (e) {
+        logger.error('skills.media-logo.tools.edit_logo.auto_resolve_failed', {
+          appId,
+          error: e instanceof Error ? e.message : String(e),
+        });
+        return { error: 'Failed to look up the current logo. Provide sourceSessionId and sourceLogoId explicitly.' };
+      }
+    }
+
+    // 4. Call logo edit API — sourceSessionId/sourceLogoId are guaranteed defined
+    // (either provided by caller or resolved from slot above, with early returns on failure)
+    const result = await logoService.editLogos({
+      sourceSessionId: sourceSessionId!,
+      sourceLogoId: sourceLogoId!,
+      prompt: input.prompt,
+      layout: input.layout,
+      count: input.count,
+      customerId,
+      budgetUserId,
+    });
+
+    logger.info('skills.media-logo.tools.edit_logo.success', {
+      sourceSessionId,
+      sessionId: result.sessionId,
+      logoCount: result.logos.length,
+    });
+
+    // 5. Auto-save edited logos to per-orientation slots
+    let savedSlots: Record<string, string> = {};
+    if (appId && result.logos.length > 0) {
+      try {
+        const saveResult = await saveLogosToSlots(appId, result.logos, result.sessionId, 'edited logo', 'edit_logo');
+        savedSlots = saveResult.savedSlots;
+      } catch (e) {
+        logger.warn('skills.media-logo.tools.edit_logo.slot_save_failed', {
+          appId,
+          error: e instanceof Error ? e.message : String(e),
+        });
+      }
+    }
+
+    if (Object.keys(savedSlots).length === 0 && result.logos.length > 0) {
+      logger.warn('skills.media-logo.tools.edit_logo.no_slots_saved', {
+        appId,
+        logoCount: result.logos.length,
+        sessionId: result.sessionId,
+      });
+    }
+
+    // 6. Return structured result for the frontend + instructions for the agent
+    const primaryLayout = savedSlots.square ? 'square' : savedSlots.horizontal ? 'horizontal' : savedSlots.vertical ? 'vertical' : 'square';
+    const primarySlotPath = LOGO_SLOT_PATHS[primaryLayout as LogoLayout] ?? DEFAULT_LOGO_SLOT_PATH;
+    const primarySlotUrl = savedSlots[primaryLayout] || `/airo-assets/images/${primarySlotPath}`;
+
+    return {
+      text: `Edited logo and generated ${result.logos.length} variation(s). ${buildSlotSummary(savedSlots)} ` +
+        `The edited logo is now the default in the slot. Previous logos are preserved as alternatives.`,
+      structuredContent: {
+        logos: result.logos,
+        sessionId: result.sessionId,
+        slotUrl: primarySlotUrl,
+        slotPath: primarySlotPath,
+        savedSlots,
       },
     };
   },

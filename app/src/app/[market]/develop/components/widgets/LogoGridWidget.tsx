@@ -22,10 +22,18 @@ import { postMessageToIframe } from '@/utils/postMessage'
  */
 export interface LogoData {
   id: string
-  // V2 URLs
+  // Square layout URLs
   transparentUrl?: string
   solidUrl?: string
   mockupUrl?: string
+  // Horizontal layout URLs
+  horizontalTransparentUrl?: string
+  horizontalSolidUrl?: string
+  horizontalMockupUrl?: string
+  // Vertical layout URLs
+  verticalTransparentUrl?: string
+  verticalSolidUrl?: string
+  verticalMockupUrl?: string
   // V1 Extra Urls when not entitled or deprecated
   watermarkedTransparentUrl?: string
   watermarkedSolidUrl?: string
@@ -50,22 +58,64 @@ export interface LogoData {
 export function getLogoDisplayUrl(
   logo: LogoData,
 ): string | undefined {
-  return logo.transparentUrl || logo.url || logo.watermarkedTransparentUrl || logo.solidUrl || logo.watermarkedSolidUrl;
+  return logo.transparentUrl
+    || logo.horizontalTransparentUrl
+    || logo.verticalTransparentUrl
+    || logo.url
+    || logo.watermarkedTransparentUrl
+    || logo.solidUrl
+    || logo.horizontalSolidUrl
+    || logo.verticalSolidUrl
+    || logo.watermarkedSolidUrl;
 }
 
-const LOGO_SLOT_NAME = 'logo/primary';
+const DEFAULT_LOGO_SLOT_NAME = 'logo/primary';
+
+/**
+ * Return all slot names that a logo populates, based on which URL fields are present.
+ * Each orientation has its own slot: square → logo/primary, horizontal → logo/horizontal, vertical → logo/vertical.
+ * Falls back to ['logo/primary'] when no orientation fields are populated.
+ */
+export function getLogoSlotNames(logo: LogoData): string[] {
+  const slots: string[] = [];
+  if (logo.transparentUrl || logo.solidUrl || logo.url || logo.watermarkedTransparentUrl || logo.watermarkedSolidUrl) {
+    slots.push('logo/primary');
+  }
+  if (logo.horizontalTransparentUrl || logo.horizontalSolidUrl) {
+    slots.push('logo/horizontal');
+  }
+  if (logo.verticalTransparentUrl || logo.verticalSolidUrl) {
+    slots.push('logo/vertical');
+  }
+  return slots.length > 0 ? slots : [DEFAULT_LOGO_SLOT_NAME];
+}
+
+/**
+ * Determine the correct slot name for a logo based on which URL fields are populated.
+ * Returns the first (highest-priority) matching slot.
+ */
+export function getLogoSlotName(logo: LogoData): string {
+  return getLogoSlotNames(logo)[0]!;
+}
 
 /** Agent-facing placement directive for `logo_slot_placement` context (version in-repo, not user-visible). */
 const LOGO_SLOT_PLACEMENT_INSTRUCTIONS =
-  'The user saved their logo in the primary media slot. Update the codebase so that logo appears everywhere it should: use urls.default on light backgrounds (img src, framework Image components, CSS when appropriate) and urls.solidOnDark on dark backgrounds. Add or update header, navigation, footer, favicon, and other branding; replace hardcoded logo image URLs with these slot paths where the live primary logo should show.';
+  'The user saved their logo. Update the codebase so that logo appears everywhere it should: use urls.default on light backgrounds (img src, framework Image components, CSS when appropriate) and urls.solidOnDark on dark backgrounds. Add or update header, navigation, footer, favicon, and other branding; replace hardcoded logo image URLs with the provided slotPath wherever this logo orientation should appear.';
 
-function buildLogoPlacementContext(): CustomContext {
-  const slotBase = `/airo-assets/images/${LOGO_SLOT_NAME}`
+function buildLogoPlacementContext(slotNames: string[]): CustomContext {
+  const primarySlot = slotNames[0] ?? DEFAULT_LOGO_SLOT_NAME
+  const slotBase = `/airo-assets/images/${primarySlot}`
   return {
     type: 'logo_slot_placement',
     data: {
       event: 'user_saved_logo_selection',
-      slotPath: LOGO_SLOT_NAME,
+      slotPath: primarySlot,
+      ...(slotNames.length > 1 && {
+        allSlotPaths: slotNames,
+        allSlotUrls: Object.fromEntries(
+          slotNames.map(s => [s, `/airo-assets/images/${s}`])
+        ),
+      }),
       urls: {
         default: slotBase,
         solidOnDark: `${slotBase}?variant=solid`,
@@ -135,18 +185,17 @@ export default function LogoGridWidget({ logos, className = '' }: LogoGridWidget
    * The slot name contains a slash — do NOT encodeURIComponent it,
    * the Express wildcard route /:slotName(*) expects the raw path.
    */
-  const swapSlot = useCallback(async (newUrl: string): Promise<boolean> => {
+  const swapSlot = useCallback(async (newUrl: string, slotName: string): Promise<boolean> => {
     if (!appId) return false
 
     setIsSwapping(true)
-    setSwapError(null)
     try {
       const tokenResult = await regenerateToken({ siteId: appId, force: true })
       const apiConfig = await dynamicApiConfigService.getConfigForSite(appId)
       if (!apiConfig.agentUrl) throw new Error('Agent URL not available')
 
       const response = await fetch(
-        `${apiConfig.agentUrl}/media/${appId}/slots/${LOGO_SLOT_NAME}`,
+        `${apiConfig.agentUrl}/media/${appId}/slots/${slotName}`,
         {
           method: 'PUT',
           headers: {
@@ -162,13 +211,13 @@ export default function LogoGridWidget({ logos, className = '' }: LogoGridWidget
         throw new Error(errorData.error || `Failed to swap slot: ${response.status}`)
       }
 
-      logger.info('logo_grid.slot.swapped', { appId, newUrl })
+      logger.info('logo_grid.slot.swapped', { appId, slotName, newUrl })
 
       queryClient.invalidateQueries({ queryKey: ['mediaManifest', appId] })
 
       const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement
       if (iframe) {
-        postMessageToIframe(iframe, { type: 'RELOAD_MEDIA_SLOT', slotPath: LOGO_SLOT_NAME })
+        postMessageToIframe(iframe, { type: 'RELOAD_MEDIA_SLOT', slotPath: slotName })
       }
 
       return true
@@ -212,15 +261,42 @@ export default function LogoGridWidget({ logos, className = '' }: LogoGridWidget
     if (isSwapping || isProcessing) return
 
     const selectedLogo = logos[selectedIndex]
-    const urlToSwap = selectedLogo ? getLogoDisplayUrl(selectedLogo) : undefined
-    if (!urlToSwap) {
+    if (!selectedLogo) {
       setSwapError(t('builder_common_error_generic'))
       return
     }
 
     setSwapError(null)
-    const swapped = await swapSlot(urlToSwap)
-    if (!swapped) return
+
+    // Collect all populated orientation slots so layout:'all' logos update every slot
+    const slotsToSwap: Array<{ url: string; slotName: string }> = []
+    if (selectedLogo.transparentUrl) {
+      slotsToSwap.push({ url: selectedLogo.transparentUrl, slotName: 'logo/primary' })
+    }
+    if (selectedLogo.horizontalTransparentUrl) {
+      slotsToSwap.push({ url: selectedLogo.horizontalTransparentUrl, slotName: 'logo/horizontal' })
+    }
+    if (selectedLogo.verticalTransparentUrl) {
+      slotsToSwap.push({ url: selectedLogo.verticalTransparentUrl, slotName: 'logo/vertical' })
+    }
+
+    // Fallback: if no transparent URLs, use getLogoDisplayUrl for the primary slot
+    if (slotsToSwap.length === 0) {
+      const fallbackUrl = getLogoDisplayUrl(selectedLogo)
+      if (!fallbackUrl) {
+        setSwapError(t('builder_common_error_generic'))
+        return
+      }
+      slotsToSwap.push({ url: fallbackUrl, slotName: getLogoSlotName(selectedLogo) })
+    }
+
+    // Swap all slots — continue on failure so partial success doesn't leave state inconsistent
+    let anyFailed = false
+    for (const { url, slotName } of slotsToSwap) {
+      const swapped = await swapSlot(url, slotName)
+      if (!swapped) anyFailed = true
+    }
+    if (anyFailed) return
 
     if (sendUserMessage) {
       setPostSaveSuggestionsVisible(true)
@@ -229,11 +305,15 @@ export default function LogoGridWidget({ logos, className = '' }: LogoGridWidget
 
   function handleApplyLogoPlacement() {
     if (isProcessing || !sendUserMessage) return
+    const selectedLogo = logos[selectedIndex]
+
+    const slotNames = selectedLogo ? getLogoSlotNames(selectedLogo) : [DEFAULT_LOGO_SLOT_NAME]
+
     sendUserMessage(
       t('builder_logo_grid_next_apply', undefined, 'Apply logo across the site'),
       {
         isActionRequest: true,
-        customContext: buildLogoPlacementContext(),
+        customContext: buildLogoPlacementContext(slotNames),
       }
     )
     setPostSaveSuggestionsVisible(false)

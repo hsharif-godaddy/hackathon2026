@@ -37,15 +37,23 @@ export interface LogoGenerateInput {
 
 export interface ProcessedLogo {
   id: string;
-  transparentUrl: string;
-  solidUrl: string;
-  mockupUrl: string;
+  // Square layout (default)
+  transparentUrl?: string;
+  solidUrl?: string;
+  mockupUrl?: string;
+  // Horizontal layout
   horizontalTransparentUrl?: string;
   horizontalSolidUrl?: string;
   horizontalMockupUrl?: string;
+  // Vertical layout
   verticalTransparentUrl?: string;
   verticalSolidUrl?: string;
   verticalMockupUrl?: string;
+}
+
+export interface LogoGenerateResult {
+  sessionId: string;
+  logos: ProcessedLogo[];
 }
 
 export interface LogoEditInput {
@@ -59,11 +67,6 @@ export interface LogoEditInput {
   budgetUserId: string;
 }
 
-export interface LogoGenerateResult {
-  sessionId: string;
-  logos: ProcessedLogo[];
-}
-
 const logoUrls = {
   dev: 'https://logo-agent.mvci.api.dev-godaddy.com',
   test: 'https://logo-agent.mvci.api.test-godaddy.com',
@@ -75,20 +78,31 @@ function getLogoApiBaseUrl(): string {
   return logoUrls[resolveEnv()];
 }
 
+const LOG_EVENTS = {
+  generate: {
+    budget_exceeded: 'logo.generate.budget_exceeded',
+    api_error: 'logo.generate.api_error',
+    success: 'logo.generate.success',
+    timeout: 'logo.generate.timeout',
+    aborted: 'logo.generate.aborted',
+    error: 'logo.generate.error',
+  },
+  edit: {
+    budget_exceeded: 'logo.edit.budget_exceeded',
+    api_error: 'logo.edit.api_error',
+    success: 'logo.edit.success',
+    timeout: 'logo.edit.timeout',
+    aborted: 'logo.edit.aborted',
+    error: 'logo.edit.error',
+  },
+} as const;
+
 class LogoService {
   private readonly appKey = 'airo-app-builder';
 
-  async generateLogos(input: LogoGenerateInput): Promise<LogoGenerateResult> {
+  private async callLogoApi(endpoint: string, body: Record<string, unknown>, customerId: string, budgetUserId: string, operation: keyof typeof LOG_EVENTS): Promise<LogoGenerateResult> {
     const baseUrl = getLogoApiBaseUrl();
-    const url = `${baseUrl}/api/logo`;
-
-    logger.info('logo.generate.begin', {
-      brandName: input.brandName,
-      style: input.style,
-      count: input.count ?? 4,
-      customerId: input.customerId,
-      url: url,
-    });
+    const url = `${baseUrl}${endpoint}`;
 
     try {
       const token = await getS2SToken();
@@ -98,23 +112,8 @@ class LogoService {
         Accept: 'application/json',
         Authorization: `Bearer ${token}`,
         'x-app-key': this.appKey,
-        'x-customer-id': input.customerId,
-        'x-budget-user-id': input.budgetUserId,
-      };
-
-      // Build request body (exclude caller context fields)
-      const body = {
-        brandName: input.brandName,
-        brandDescription: input.brandDescription,
-        style: input.style,
-        ...(input.brandTagline && { brandTagline: input.brandTagline }),
-        ...(input.brandColors && { brandColors: input.brandColors }),
-        ...(input.brandPersonality && { brandPersonality: input.brandPersonality }),
-        ...(input.brandAudience && { brandAudience: input.brandAudience }),
-        ...(input.styleDescription && { styleDescription: input.styleDescription }),
-        ...(input.symbol && { symbol: input.symbol }),
-        ...(input.count && { count: input.count }),
-        ...(input.layout && { layout: input.layout }),
+        'x-customer-id': customerId,
+        'x-budget-user-id': budgetUserId,
       };
 
       const response = await fetch(url, {
@@ -127,23 +126,15 @@ class LogoService {
       if (!response.ok) {
         const errorText = await response.text();
 
-        // HTTP 402 = budget exceeded during image generation in the logo API
         if (response.status === 402) {
-          logger.warn('logo.generate.budget_exceeded', {
-            customerId: input.customerId,
-            budgetUserId: input.budgetUserId,
-          });
-          throw new BudgetExceededError(
-            'Logo generation budget exceeded',
-            402,
-            errorText,
-          );
+          logger.warn(LOG_EVENTS[operation].budget_exceeded, { customerId, budgetUserId });
+          throw new BudgetExceededError(`Logo ${operation} budget exceeded`, 402, errorText);
         }
 
-        logger.error('logo.generate.api_error', {
+        logger.error(LOG_EVENTS[operation].api_error, {
           status: response.status,
           error: errorText.slice(0, 500),
-          customerId: input.customerId,
+          customerId,
         });
 
         throw new Error(`Logo API error: ${response.status} ${errorText.slice(0, 500)}`);
@@ -151,141 +142,82 @@ class LogoService {
 
       const result = (await response.json()) as LogoGenerateResult;
 
-      logger.info('logo.generate.success', {
+      logger.info(LOG_EVENTS[operation].success, {
         sessionId: result.sessionId,
         logoCount: result.logos.length,
-        customerId: input.customerId,
+        customerId,
       });
 
       return result;
     } catch (error) {
-      // Let BudgetExceededError propagate for grant advancement
       if (BudgetExceededError.isInstance(error)) {
         throw error;
       }
 
-      // Handle timeout/abort errors distinctly
       if (error instanceof DOMException && error.name === 'TimeoutError') {
-        logger.error('logo.generate.timeout', {
-          timeoutMs: 120_000,
-          customerId: input.customerId,
-        });
+        logger.error(LOG_EVENTS[operation].timeout, { timeoutMs: 120_000, customerId });
         throw error;
       }
 
       if (error instanceof DOMException && error.name === 'AbortError') {
-        logger.error('logo.generate.aborted', {
-          customerId: input.customerId,
-        });
+        logger.error(LOG_EVENTS[operation].aborted, { customerId });
         throw error;
       }
 
-      logger.error('logo.generate.error', {
+      logger.error(LOG_EVENTS[operation].error, {
         error: error instanceof Error ? error.message : String(error),
         cause: error instanceof Error ? (error.cause !== undefined ? (error.cause instanceof Error ? error.cause.message : String(error.cause)) : undefined) : undefined,
-        customerId: input.customerId,
+        customerId,
       });
 
       const normalizedError = error instanceof Error ? error : new Error(String(error), { cause: error });
       throw normalizedError;
     }
   }
-  async editLogos(input: LogoEditInput): Promise<LogoGenerateResult> {
-    const baseUrl = getLogoApiBaseUrl();
-    const url = `${baseUrl}/api/logo/edit`;
 
-    logger.info('logo.edit.begin', {
-      sourceSessionId: input.sourceSessionId,
-      sourceLogoId: input.sourceLogoId,
-      prompt: input.prompt.slice(0, 100),
+  async generateLogos(input: LogoGenerateInput): Promise<LogoGenerateResult> {
+    logger.info('logo.generate.begin', {
+      brandName: input.brandName,
+      style: input.style,
+      count: input.count ?? 4,
       customerId: input.customerId,
     });
 
-    try {
-      const token = await getS2SToken();
+    const body = {
+      brandName: input.brandName,
+      brandDescription: input.brandDescription,
+      style: input.style,
+      ...(input.brandTagline && { brandTagline: input.brandTagline }),
+      ...(input.brandColors && { brandColors: input.brandColors }),
+      ...(input.brandPersonality && { brandPersonality: input.brandPersonality }),
+      ...(input.brandAudience && { brandAudience: input.brandAudience }),
+      ...(input.styleDescription && { styleDescription: input.styleDescription }),
+      ...(input.symbol && { symbol: input.symbol }),
+      ...(input.count && { count: input.count }),
+      ...(input.layout && { layout: input.layout }),
+    };
 
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-        Authorization: `Bearer ${token}`,
-        'x-app-key': this.appKey,
-        'x-customer-id': input.customerId,
-        'x-budget-user-id': input.budgetUserId,
-      };
+    return this.callLogoApi('/api/logo', body, input.customerId, input.budgetUserId, 'generate');
+  }
 
-      const body = {
-        sourceSessionId: input.sourceSessionId,
-        sourceLogoId: input.sourceLogoId,
-        prompt: input.prompt,
-        ...(input.layout && { layout: input.layout }),
-        ...(input.count && { count: input.count }),
-      };
+  async editLogos(input: LogoEditInput): Promise<LogoGenerateResult> {
+    logger.info('logo.edit.begin', {
+      sourceSessionId: input.sourceSessionId,
+      sourceLogoId: input.sourceLogoId,
+      promptLength: input.prompt.length,
+      count: input.count ?? 1,
+      customerId: input.customerId,
+    });
 
-      const response = await fetch(url, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(120_000),
-      });
+    const body = {
+      sourceSessionId: input.sourceSessionId,
+      sourceLogoId: input.sourceLogoId,
+      prompt: input.prompt,
+      ...(input.layout && { layout: input.layout }),
+      ...(input.count && { count: input.count }),
+    };
 
-      if (!response.ok) {
-        const errorText = await response.text();
-
-        if (response.status === 402) {
-          logger.warn('logo.edit.budget_exceeded', {
-            customerId: input.customerId,
-            budgetUserId: input.budgetUserId,
-          });
-          throw new BudgetExceededError('Logo edit budget exceeded', 402, errorText);
-        }
-
-        logger.error('logo.edit.api_error', {
-          status: response.status,
-          error: errorText.slice(0, 500),
-          endpoint: url,
-          customerId: input.customerId,
-        });
-
-        throw new Error(`Logo edit API error: ${response.status} ${errorText.slice(0, 500)}`);
-      }
-
-      const result = (await response.json()) as LogoGenerateResult;
-
-      logger.info('logo.edit.success', {
-        sessionId: result.sessionId,
-        logoCount: result.logos.length,
-        customerId: input.customerId,
-      });
-
-      return result;
-    } catch (error) {
-      if (BudgetExceededError.isInstance(error)) {
-        throw error;
-      }
-
-      if (error instanceof DOMException && error.name === 'TimeoutError') {
-        logger.error('logo.edit.timeout', {
-          timeoutMs: 120_000,
-          customerId: input.customerId,
-        });
-        throw error;
-      }
-
-      if (error instanceof DOMException && error.name === 'AbortError') {
-        logger.error('logo.edit.aborted', {
-          customerId: input.customerId,
-        });
-        throw error;
-      }
-
-      logger.error('logo.edit.error', {
-        error: error instanceof Error ? error.message : String(error),
-        customerId: input.customerId,
-      });
-
-      const normalizedError = error instanceof Error ? error : new Error(String(error), { cause: error });
-      throw normalizedError;
-    }
+    return this.callLogoApi('/api/logo/edit', body, input.customerId, input.budgetUserId, 'edit');
   }
 }
 

@@ -116,7 +116,7 @@ describe('generateLogoTool', () => {
       {
         brandName: 'My Brand',
         brandDescription: 'A cool brand',
-        style: 'flat',
+        style: 'glyph',
       },
       context
     );
@@ -125,7 +125,7 @@ describe('generateLogoTool', () => {
       expect.objectContaining({
         brandName: 'My Brand',
         brandDescription: 'A cool brand',
-        style: 'flat',
+        style: 'glyph',
         customerId: 'cust-abc',
         budgetUserId: 'budget-user-111',
       })
@@ -144,13 +144,13 @@ describe('generateLogoTool', () => {
       {
         brandName: 'My Brand',
         brandDescription: 'A cool brand',
-        style: 'flat',
+        style: 'glyph',
       },
       context
     );
 
     expect(result).toEqual({
-      text: expect.stringContaining('Generated 2 logos and saved to slot'),
+      text: expect.stringContaining('Generated 2 logos'),
       structuredContent: {
         sessionId: 'sess-123',
         logos: expect.arrayContaining([
@@ -159,6 +159,7 @@ describe('generateLogoTool', () => {
         ]),
         slotUrl: '/airo-assets/images/logo/primary',
         slotPath: 'logo/primary',
+        savedSlots: { square: '/airo-assets/images/logo/primary' },
       },
     });
   });
@@ -175,7 +176,7 @@ describe('generateLogoTool', () => {
       {
         brandName: 'My Brand',
         brandDescription: 'A cool brand',
-        style: 'flat',
+        style: 'glyph',
       },
       context
     );
@@ -188,6 +189,10 @@ describe('generateLogoTool', () => {
       solidUrlMap: {
         'https://cdn/t1.png': 'https://cdn/s1.png',
         'https://cdn/t2.png': 'https://cdn/s2.png',
+      },
+      logoSourceMap: {
+        'https://cdn/t1.png': { sessionId: 'sess-123', logoId: 'logo-1' },
+        'https://cdn/t2.png': { sessionId: 'sess-123', logoId: 'logo-2' },
       },
       userModified: false,
     }));
@@ -207,13 +212,53 @@ describe('generateLogoTool', () => {
       {
         brandName: 'My Brand',
         brandDescription: 'A cool brand',
-        style: 'flat',
+        style: 'glyph',
       },
       context
     );
 
     expect(result).toHaveProperty('structuredContent.logos');
     expect(result).toHaveProperty('structuredContent.slotUrl');
+  });
+
+  it('should handle logos with no transparent URLs (empty savedSlots)', async () => {
+    // Logos with only mockup URLs — no transparent or solid URLs for any orientation
+    mockGenerateLogos.mockResolvedValue({
+      sessionId: 'sess-no-urls',
+      logos: [
+        { id: 'logo-1', mockupUrl: 'https://cdn/m1.png' },
+        { id: 'logo-2', mockupUrl: 'https://cdn/m2.png' },
+      ],
+    });
+
+    const { generateLogoTool } = await import('../index.js');
+    const { logger } = await import('../../../../logging/index.js');
+
+    const context = {
+      socketId: 'socket-1',
+      metadata: { appId: 'app-123' },
+    };
+
+    const result = await generateLogoTool.execute(
+      {
+        brandName: 'My Brand',
+        brandDescription: 'A cool brand',
+        style: 'glyph',
+      },
+      context
+    );
+
+    // No slots should be saved
+    expect(mockSetSlot).not.toHaveBeenCalled();
+    // Result text should indicate no slots saved
+    expect(result).toHaveProperty('text');
+    expect((result as { text: string }).text).toContain('No slot URLs saved');
+    // Warning should be logged
+    expect(logger.warn).toHaveBeenCalledWith('skills.media-logo.tools.generate_logo.no_slots_saved', expect.objectContaining({
+      appId: 'app-123',
+      logoCount: 2,
+      sessionId: 'sess-no-urls',
+    }));
   });
 
   it('should return error when customerId not found', async () => {
@@ -230,7 +275,7 @@ describe('generateLogoTool', () => {
       {
         brandName: 'Test',
         brandDescription: 'Test',
-        style: 'flat',
+        style: 'glyph',
       },
       context
     );
@@ -257,7 +302,7 @@ describe('generateLogoTool', () => {
         {
           brandName: 'Test',
           brandDescription: 'Test',
-          style: 'flat',
+          style: 'glyph',
         },
         context
       )
@@ -280,7 +325,7 @@ describe('generateLogoTool', () => {
       {
         brandName: 'Test',
         brandDescription: 'Test',
-        style: 'flat',
+        style: 'glyph',
       },
       context
     );
@@ -316,7 +361,7 @@ describe('generateLogoTool', () => {
       {
         brandName: 'My Brand',
         brandDescription: 'A cool brand',
-        style: 'flat',
+        style: 'glyph',
       },
       context
     );
@@ -329,6 +374,69 @@ describe('generateLogoTool', () => {
         'https://cdn/old-t2.png': 'https://cdn/old-s2.png',
         'https://cdn/t1.png': 'https://cdn/s1.png',
         'https://cdn/t2.png': 'https://cdn/s2.png',
+      },
+    }));
+  });
+
+  it('should pass layout parameter to logoService', async () => {
+    const { generateLogoTool } = await import('../index.js');
+
+    const context = {
+      socketId: 'socket-1',
+      metadata: { appId: 'app-123' },
+    };
+
+    await generateLogoTool.execute(
+      {
+        brandName: 'My Brand',
+        brandDescription: 'A cool brand',
+        style: 'glyph',
+        layout: 'all',
+      },
+      context
+    );
+
+    expect(mockGenerateLogos).toHaveBeenCalledWith(
+      expect.objectContaining({
+        layout: 'all',
+      })
+    );
+  });
+
+  it('should handle horizontal-only logos in slot saving', async () => {
+    mockGenerateLogos.mockResolvedValue({
+      sessionId: 'sess-horiz',
+      logos: [
+        {
+          id: 'logo-h1',
+          horizontalTransparentUrl: 'https://cdn/ht1.png',
+          horizontalSolidUrl: 'https://cdn/hs1.png',
+          horizontalMockupUrl: 'https://cdn/hm1.png',
+        },
+      ],
+    });
+
+    const { generateLogoTool } = await import('../index.js');
+
+    const context = {
+      socketId: 'socket-1',
+      metadata: { appId: 'app-123' },
+    };
+
+    await generateLogoTool.execute(
+      {
+        brandName: 'My Brand',
+        brandDescription: 'A cool brand',
+        style: 'glyph',
+        layout: 'horizontal',
+      },
+      context
+    );
+
+    expect(mockSetSlot).toHaveBeenCalledWith('app-123', 'logo/horizontal', expect.objectContaining({
+      currentUrl: 'https://cdn/ht1.png',
+      solidUrlMap: {
+        'https://cdn/ht1.png': 'https://cdn/hs1.png',
       },
     }));
   });
@@ -351,7 +459,7 @@ describe('generateLogoTool', () => {
       const context = { socketId: 'socket-1', metadata: { appId: 'app-123' } };
 
       await generateLogoTool.execute(
-        { brandName: 'Test', brandDescription: 'Test', style: 'flat' },
+        { brandName: 'Test', brandDescription: 'Test', style: 'glyph' },
         context
       );
 

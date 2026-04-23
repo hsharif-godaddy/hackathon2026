@@ -73,6 +73,10 @@ export interface MediaSlot {
   /** Maps transparent URL → solid-background URL for logo variants.
    *  Only populated when mediaType === 'logo'. */
   solidUrlMap?: Record<string, string>;
+  /** Maps transparent URL → { sessionId, logoId } for logo edit traceability.
+   *  Only populated when mediaType === 'logo'. Allows edit_logo to find the
+   *  source session/logo for any saved logo variant. */
+  logoSourceMap?: Record<string, { sessionId: string; logoId: string }>;
 }
 
 /**
