@@ -34,6 +34,31 @@ function resolveApiBaseUrl(): string | undefined {
 	return `https://${normalizedHost}`;
 }
 
+function resolveCheckoutEnvironment(apiBaseUrl: string): "dev" | "test" | "prod" {
+	let hostname: string;
+
+	try {
+		hostname = new URL(apiBaseUrl).hostname;
+	} catch {
+		throw new Error(
+			`Invalid GODADDY_API_BASE_URL for checkout environment resolution: ${apiBaseUrl}`,
+		);
+	}
+
+	switch (hostname) {
+		case "api.dev-godaddy.com":
+			return "dev";
+		case "api.test-godaddy.com":
+			return "test";
+		case "api.godaddy.com":
+			return "prod";
+		default:
+			throw new Error(
+				`Unsupported GODADDY_API_BASE_URL hostname for checkout environment resolution: ${hostname}. Expected one of: api.dev-godaddy.com, api.test-godaddy.com, api.godaddy.com`,
+			);
+	}
+}
+
 /**
  * Load commerce credentials from config files and environment
  *
@@ -96,20 +121,8 @@ function getCommerceConfig() {
 
 	const checkoutApiBaseUrl = deriveCheckoutUrl(apiBaseUrl!);
 
-	// Derive environment from API hostname (dev-* or test-* → "dev", otherwise "production")
-	let environment: "dev" | "production" = "production";
-	try {
-		const hostname = new URL(apiBaseUrl!).hostname;
-		if (
-			hostname.startsWith("dev-") ||
-			hostname.startsWith("test-") ||
-			hostname.includes("dev-godaddy")
-		) {
-			environment = "dev";
-		}
-	} catch {
-		// Fall back to production if URL parsing fails
-	}
+	// Derive checkout environment from API hostname (dev/test/prod).
+	const environment = resolveCheckoutEnvironment(apiBaseUrl!);
 
 	return {
 		clientId: clientId!,
