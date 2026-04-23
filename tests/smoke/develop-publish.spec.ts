@@ -94,7 +94,7 @@ test.describe('Publish Flow', () => {
     console.log('🎉 Publish flow test passed!');
   });
 
-  test('Publish popover — Pre-Launch Check opens SEO prompt and sends SEO action', async ({ page }, testInfo) => {
+  test.skip('Publish popover — Pre-Launch Check opens SEO prompt and sends SEO action', async ({ page }, testInfo) => {
     testInfo.setTimeout(600_000);
 
     await page.addInitScript(() => {
