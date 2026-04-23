@@ -44,7 +44,7 @@ function LandingPageContent({ data }: LandingPageProps) {
   const promptTextRef = useRef(promptText)
   promptTextRef.current = promptText
 
-  const { isAuthenticated, isAuthDisabled, isLoading: authIsLoading } = useAuthContext()
+  const { isAuthenticated, isLoading: authIsLoading } = useAuthContext()
   const { signIn } = useSsoSignIn()
   const setRedirectUrl = useAuthUIStore((state) => state.setRedirectUrl)
 
@@ -123,7 +123,7 @@ function LandingPageContent({ data }: LandingPageProps) {
     })();
 
     try {
-      if (!isAuthDisabled && !isAuthenticated) {
+      if (!isAuthenticated) {
         logger.info('landing.auth.sso-login', { action: 'showing-sso-login' });
         savePromptForRetry(promptToUse, 'login');
         signInFromLanding();
@@ -185,7 +185,7 @@ function LandingPageContent({ data }: LandingPageProps) {
       setIsLoading(false)
       setIsRedirecting(false)
     }
-  }, [router, isRedirecting, isLoading, isAuthenticated, isAuthDisabled, authIsLoading, signInFromLanding, savePromptForRetry, t, slug])
+  }, [router, isRedirecting, isLoading, isAuthenticated, authIsLoading, signInFromLanding, savePromptForRetry, t, slug])
 
   useEffect(function restorePromptAfterLogin() {
     if (!isAuthenticated || authIsLoading) return

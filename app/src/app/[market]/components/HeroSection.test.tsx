@@ -34,7 +34,6 @@ vi.mock('@/app/[market]/components/HeroExamples', () => ({
 vi.mock('@/components/providers/AuthProvider', () => ({
   useAuthContext: () => ({
     isAuthenticated: false,
-    isAuthDisabled: true,
     isLoading: false,
   }),
 }));

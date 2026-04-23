@@ -188,7 +188,6 @@ function mockAuth(authType: string | undefined, shopperId = '12345678') {
     getUserInfo: vi.fn(() => ({ customerId: 'cust-123', shopperId })),
     handleSignIn: vi.fn(),
     handleSignOut: vi.fn(),
-    isAuthDisabled: false,
     authType: 'jwt',
     isMockAuth: false,
     mockAuth: null,

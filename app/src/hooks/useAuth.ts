@@ -9,7 +9,6 @@ import {
   getGasketConfig,
   getLoginUrl,
   getLogoutUrl,
-  isAuthDisabledSync,
   isAuthJWTSync,
   isAuthMockSync,
 } from '@/lib/gasket-config';
@@ -48,7 +47,6 @@ export function useAuth(options: UseAuthOptions = {}) {
   // Memoize auth configuration to prevent unnecessary re-renders
   const authType = useMemo(() => config?.auth?.authType || getAuthTypeSync(), [config?.auth?.authType]);
   const isMockAuth = useMemo(() => config?.auth?.isMock ?? isAuthMockSync(), [config?.auth?.isMock]);
-  const isAuthDisabled = useMemo(() => config?.auth?.isDisabled ?? isAuthDisabledSync(), [config?.auth?.isDisabled]);
   const shouldUseJWT = useMemo(() => config?.auth?.isJWT ?? isAuthJWTSync(), [config?.auth?.isJWT]);
 
   // Mock auth integration
@@ -104,7 +102,7 @@ export function useAuth(options: UseAuthOptions = {}) {
   // Clear needsReauth when auth transitions to valid after a fresh validation cycle (JWT mode only)
   // Only clears after seeing a validation cycle (loading state), not on cached authState.valid
   useEffect(() => {
-    if (!shouldUseJWT || isMockAuth || isAuthDisabled) {
+    if (!shouldUseJWT || isMockAuth) {
       previousAuthValidRef.current = authState.valid;
       previousNeedsReauthRef.current = needsReauth;
       return;
@@ -166,17 +164,13 @@ export function useAuth(options: UseAuthOptions = {}) {
 
     previousAuthValidRef.current = authState.valid;
     previousNeedsReauthRef.current = needsReauth;
-  }, [authState.valid, authState.status, shouldUseJWT, isMockAuth, isAuthDisabled, needsReauth, needsReauthSeq]);
+  }, [authState.valid, authState.status, shouldUseJWT, isMockAuth, needsReauth, needsReauthSeq]);
 
-  // Helper function to get user email from auth details
   const getUserEmail = () => {
     if (isMockAuth && mockAuth.isAuthenticated) {
       return mockAuth.user?.email || 'mock@example.com';
     }
-    if (shouldUseJWT) {
-      return authState.details?.email || authState.details?.cid || 'user@example.com';
-    }
-    return 'dev@example.com'; // No auth mode
+    return authState.details?.email || authState.details?.cid || 'user@example.com';
   };
 
   // Get user account information
@@ -189,20 +183,11 @@ export function useAuth(options: UseAuthOptions = {}) {
         email: mockAuth.user?.email || 'mock@example.com',
       };
     }
-    if (shouldUseJWT) {
-      return {
-        customerId: authState.details?.cid,
-        shopperId: authState.details?.shopperId,
-        accountName: authState.details?.accountName,
-        email: getUserEmail(),
-      };
-    }
-    // No auth mode
     return {
-      customerId: 'dev-customer',
-      shopperId: 'dev-shopper',
-      accountName: 'Dev User',
-      email: 'dev@example.com',
+      customerId: authState.details?.cid,
+      shopperId: authState.details?.shopperId,
+      accountName: authState.details?.accountName,
+      email: getUserEmail(),
     };
   };
 
@@ -220,11 +205,6 @@ export function useAuth(options: UseAuthOptions = {}) {
 
     if (isMockAuth) {
       mockAuth.logout();
-      return;
-    }
-
-    if (isAuthDisabled) {
-      // No auth mode - nothing to do
       return;
     }
 
@@ -252,11 +232,6 @@ export function useAuth(options: UseAuthOptions = {}) {
         mockAuth.login();
       }
       return { showModal: !onShowMockLogin };
-    }
-
-    if (isAuthDisabled) {
-      // No auth mode - nothing to do
-      return { showModal: false };
     }
 
     try {
@@ -299,9 +274,6 @@ export function useAuth(options: UseAuthOptions = {}) {
       return { isAuthenticated: false, isLoading: false };
     }
 
-    if (isAuthDisabled) {
-      return { isAuthenticated: true, isLoading: false }; // No auth required
-    }
     if (isMockAuth) {
       // Mock auth doesn't use the needsReauth flow - it has its own state management
       return {
@@ -350,7 +322,6 @@ export function useAuth(options: UseAuthOptions = {}) {
     handleSignOut,
 
     // Auth status and mode
-    isAuthDisabled,
     authType,
     isMockAuth,
 

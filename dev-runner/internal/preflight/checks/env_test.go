@@ -9,7 +9,7 @@ import (
 func TestCheckEnvFile_Missing(t *testing.T) {
 	dir := t.TempDir()
 	// Use a project root where the env file definitely does not exist.
-	result := checkEnvFile(dir, "app/.env", []string{"NODE_ENV"}, "Test Check", "Environment")
+	result, _ := checkEnvFile(dir, "app/.env", []string{"NODE_ENV"}, "Test Check", "Environment")
 
 	if result.Status != preflight.StatusFail {
 		t.Errorf("expected StatusFail for missing file, got %v", result.Status)

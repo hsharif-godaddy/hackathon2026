@@ -28,14 +28,14 @@ export default function Header({
   className,
 }: HeaderProps) {
   const t = useTranslations();
-  const { isAuthenticated, isAuthDisabled, isLoading } = useAuthContext();
+  const { isAuthenticated, isLoading } = useAuthContext();
   const { isBelowSmBreakpoint } = useBreakpoints();
   const pathname = usePathname();
   const isDevelopPage = pathname?.includes('/develop');
 
   // Only show authenticated UI components when auth is confirmed (not loading) and user is authenticated
   // This prevents authenticated API calls from being made
-  const showAuthenticatedUI = !isLoading && (isAuthenticated || isAuthDisabled);
+  const showAuthenticatedUI = !isLoading && isAuthenticated;
 
   const isHomepage = location === 'homepage';
   const godaddyUrl = 'https://www.godaddy.com';

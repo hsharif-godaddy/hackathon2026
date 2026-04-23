@@ -47,8 +47,9 @@ func (f *EnvFixer) FormFields() []preflight.FormField {
 		},
 		{
 			Key:     "authType",
-			Label:   "Auth Type (jwt/mock/none)",
+			Label:   "Auth Type",
 			Default: defaults.AuthType,
+			Options: []string{"jwt", "mock"},
 		},
 		{
 			Key:         "awsProfile",
@@ -60,10 +61,14 @@ func (f *EnvFixer) FormFields() []preflight.FormField {
 }
 
 func (f *EnvFixer) SetFormValues(values map[string]string) {
+	authType := strings.TrimSpace(values["authType"])
+	if authType == "none" {
+		authType = "mock"
+	}
 	f.Values = &EnvValues{
 		APIKey:     strings.TrimSpace(values["apiKey"]),
 		BaseURL:    strings.TrimSpace(values["baseURL"]),
-		AuthType:   strings.TrimSpace(values["authType"]),
+		AuthType:   authType,
 		AWSProfile: strings.TrimSpace(values["awsProfile"]),
 	}
 }
@@ -121,11 +126,10 @@ NODE_ENV=development
 PORT=3000
 
 AUTH_TYPE=%s
-NEXT_PUBLIC_USE_MOCK_LOGIN=%s
 
 # AWS Configuration
 AWS_PROFILE=%s
-`, v.AuthType, boolStr(v.AuthType == "mock"), v.AWSProfile)
+`, v.AuthType, v.AWSProfile)
 
 	if err := writeFileAtomic(filepath.Join(projectRoot, "app/.env"), content); err != nil {
 		return err
@@ -285,13 +289,6 @@ SSO_HOST=%s
 		}
 	}
 	return nil
-}
-
-func boolStr(b bool) string {
-	if b {
-		return "true"
-	}
-	return "false"
 }
 
 func writeFileAtomic(path string, content string) error {

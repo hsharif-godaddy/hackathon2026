@@ -26,7 +26,6 @@ const mockDevelopStore = {
 
 const mockAuthContext = {
   isAuthenticated: true,
-  isAuthDisabled: false,
   isLoading: false,
 };
 

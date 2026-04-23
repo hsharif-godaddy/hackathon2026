@@ -153,14 +153,12 @@ export function mockFeatures(overrides: { [key: string]: boolean } = {}) {
  */
 export function mockAuthContext(overrides: {
   isAuthenticated?: boolean;
-  isAuthDisabled?: boolean;
   gasketConfig?: any;
   isMockAuth?: boolean;
   isLoading?: boolean;
 } = {}) {
   return {
     isAuthenticated: false,
-    isAuthDisabled: true,
     gasketConfig: null,
     isMockAuth: false,
     isLoading: false,

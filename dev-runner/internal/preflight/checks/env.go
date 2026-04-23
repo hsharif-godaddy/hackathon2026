@@ -11,7 +11,8 @@ import (
 )
 
 // checkEnvFile is the shared implementation for env file checks.
-func checkEnvFile(projectRoot, relPath string, requiredVars []string, name, category string) preflight.CheckResult {
+// Returns the parsed env alongside the result so callers can inspect values.
+func checkEnvFile(projectRoot, relPath string, requiredVars []string, name, category string) (preflight.CheckResult, map[string]string) {
 	absPath := filepath.Join(projectRoot, relPath)
 
 	env, err := preflight.ParseEnvFile(absPath)
@@ -23,14 +24,14 @@ func checkEnvFile(projectRoot, relPath string, requiredVars []string, name, cate
 				Category:     category,
 				Message:      fmt.Sprintf("%s not found", relPath),
 				FixAvailable: true,
-			}
+			}, nil
 		}
 		return preflight.CheckResult{
 			Status:   preflight.StatusFail,
 			Name:     name,
 			Category: category,
 			Message:  fmt.Sprintf("could not read %s: %v", relPath, err),
-		}
+		}, nil
 	}
 
 	var missing []string
@@ -48,7 +49,7 @@ func checkEnvFile(projectRoot, relPath string, requiredVars []string, name, cate
 			Category:     category,
 			Message:      fmt.Sprintf("%s missing required vars: %s", relPath, strings.Join(missing, ", ")),
 			FixAvailable: true,
-		}
+		}, env
 	}
 
 	return preflight.CheckResult{
@@ -56,7 +57,7 @@ func checkEnvFile(projectRoot, relPath string, requiredVars []string, name, cate
 		Name:     name,
 		Category: category,
 		Message:  fmt.Sprintf("%s present with required vars", relPath),
-	}
+	}, env
 }
 
 // AppEnvCheck verifies that app/.env exists and contains required variables.
@@ -66,11 +67,19 @@ func (c *AppEnvCheck) Name() string     { return "App .env" }
 func (c *AppEnvCheck) Category() string { return preflight.CategoryEnvironment }
 
 func (c *AppEnvCheck) Run(_ context.Context, projectRoot string) preflight.CheckResult {
-	return checkEnvFile(projectRoot, "app/.env", []string{
+	result, env := checkEnvFile(projectRoot, "app/.env", []string{
 		"NODE_ENV",
 		"AUTH_TYPE",
 		"AWS_PROFILE",
 	}, c.Name(), c.Category())
+
+	if result.Status == preflight.StatusPass && env["AUTH_TYPE"] == "none" {
+		result.Status = preflight.StatusFail
+		result.Message = "AUTH_TYPE=none is no longer supported; use jwt or mock"
+		result.FixAvailable = true
+	}
+
+	return result
 }
 
 // AgentsEnvCheck verifies that agents/.env exists and contains required variables.
@@ -80,7 +89,7 @@ func (c *AgentsEnvCheck) Name() string     { return "Agents .env" }
 func (c *AgentsEnvCheck) Category() string { return preflight.CategoryEnvironment }
 
 func (c *AgentsEnvCheck) Run(_ context.Context, projectRoot string) preflight.CheckResult {
-	return checkEnvFile(
+	result, _ := checkEnvFile(
 		projectRoot,
 		"agents/.env",
 		[]string{
@@ -94,4 +103,5 @@ func (c *AgentsEnvCheck) Run(_ context.Context, projectRoot string) preflight.Ch
 		c.Name(),
 		c.Category(),
 	)
+	return result
 }

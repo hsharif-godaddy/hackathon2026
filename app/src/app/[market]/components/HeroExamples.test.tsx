@@ -18,7 +18,6 @@ vi.mock('@/hooks/useAnalytics', () => ({
 vi.mock('@/components/providers/AuthProvider', () => ({
   useAuthContext: () => ({
     isAuthenticated: false,
-    isAuthDisabled: true,
     isLoading: false,
   }),
 }));

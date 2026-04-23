@@ -32,7 +32,6 @@ vi.mock('@/lib/features', () => ({
   auth: {
     getType: vi.fn(() => 'MOCK'),
     isMock: vi.fn(() => true),
-    isDisabled: vi.fn(() => false),
     isJWT: vi.fn(() => false),
   },
   authUtils: {
@@ -47,7 +46,6 @@ const defaultTestConfig = {
     risk: 'low',
     type: ['sso'],
     authType: 'MOCK',
-    isDisabled: false,
     isMock: true,
     isJWT: false,
   },
@@ -81,7 +79,6 @@ vi.mock('@/lib/gasket-config', () => ({
       use12HourExpiration: true,
     },
   },
-  isAuthDisabledSync: vi.fn(() => false),
   isAuthMockSync: vi.fn(() => true),
   isAuthJWTSync: vi.fn(() => false),
   getAuthTypeSync: vi.fn(() => 'MOCK'),
@@ -145,7 +142,6 @@ describe('useAuth', () => {
     // Reset getGasketConfig mock implementation
     const gasketConfigModule = await import('@/lib/gasket-config');
     vi.mocked(gasketConfigModule.getGasketConfig).mockImplementation(() => Promise.resolve(mockGasketConfig));
-    vi.mocked(gasketConfigModule.isAuthDisabledSync).mockReturnValue(false);
     vi.mocked(gasketConfigModule.isAuthMockSync).mockReturnValue(true);
     vi.mocked(gasketConfigModule.isAuthJWTSync).mockReturnValue(false);
     vi.mocked(gasketConfigModule.getAuthTypeSync).mockReturnValue('MOCK');

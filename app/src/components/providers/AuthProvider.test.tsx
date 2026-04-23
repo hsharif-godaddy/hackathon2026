@@ -23,7 +23,7 @@ let mockUseAuthReturn = {
   }),
   handleSignIn: vi.fn(),
   handleSignOut: vi.fn(),
-  isAuthDisabled: false,
+  
   authType: 'jwt',
   isMockAuth: false,
   mockAuth: null,
@@ -37,8 +37,8 @@ vi.mock('@/lib/gasket-config', () => ({
   getGasketConfig: vi.fn().mockResolvedValue({ auth: { isJWT: false } }),
   isAuthJWTSync: vi.fn(() => false),
   isAuthMockSync: vi.fn(() => false),
-  isAuthDisabledSync: vi.fn(() => true),
-  getAuthTypeSync: vi.fn(() => 'none'),
+  
+  getAuthTypeSync: vi.fn(() => 'mock'),
 }));
 
 vi.mock('@/lib/request-context', () => ({

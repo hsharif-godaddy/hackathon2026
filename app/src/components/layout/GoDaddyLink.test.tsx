@@ -25,7 +25,7 @@ const { useAuthContext } = await import('@/components/providers/AuthProvider');
 describe('GoDaddyLink', () => {
   it('should render link to godaddy.com when unauthenticated', () => {
     vi.mocked(useAuthContext).mockReturnValue(
-      mockAuthContext({ isAuthenticated: false, isAuthDisabled: false, isLoading: false })
+      mockAuthContext({ isAuthenticated: false, isLoading: false })
     );
 
     renderWithProviders(<GoDaddyLink location="homepage" />);
@@ -56,9 +56,9 @@ describe('GoDaddyLink', () => {
     expect(link).toHaveAttribute('href', 'https://www.godaddy.com');
   });
 
-  it('should render link to My Products when auth is disabled', () => {
+  it('should render link to My Products when authenticated', () => {
     vi.mocked(useAuthContext).mockReturnValue(
-      mockAuthContext({ isAuthenticated: false, isAuthDisabled: true, isLoading: false })
+      mockAuthContext({ isAuthenticated: true, isLoading: false })
     );
 
     renderWithProviders(<GoDaddyLink location="homepage" />);

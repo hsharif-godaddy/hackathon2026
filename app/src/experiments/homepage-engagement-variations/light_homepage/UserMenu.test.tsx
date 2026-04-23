@@ -77,7 +77,7 @@ describe('light_homepage UserMenu', function lightHomepageUserMenuTests() {
   beforeEach(function setup() {
     vi.clearAllMocks();
     mockPush.mockClear();
-    mockUseAuthContext.mockReturnValue(mockAuthContext({ isAuthenticated: true, isAuthDisabled: false }));
+    mockUseAuthContext.mockReturnValue(mockAuthContext({ isAuthenticated: true }));
     mockUseSwitchboard.mockReturnValue({ data: false, isLoading: false });
     mockUseSubscription.mockReturnValue({ data: undefined, isLoading: false });
   });
@@ -90,7 +90,7 @@ describe('light_homepage UserMenu', function lightHomepageUserMenuTests() {
     });
 
     it('should not prefetch /apps when unauthenticated', function noPrefetchWhenUnauthed() {
-      mockUseAuthContext.mockReturnValue(mockAuthContext({ isAuthenticated: false, isAuthDisabled: false }));
+      mockUseAuthContext.mockReturnValue(mockAuthContext({ isAuthenticated: false }));
 
       renderWithProviders(<UserMenu location="develop" />);
 
@@ -122,7 +122,7 @@ describe('light_homepage UserMenu', function lightHomepageUserMenuTests() {
     });
 
     it('should not prefetch /manage-plan when unauthenticated even if showManagePlan would be true', function noPrefetchManagePlanUnauthed() {
-      mockUseAuthContext.mockReturnValue(mockAuthContext({ isAuthenticated: false, isAuthDisabled: false }));
+      mockUseAuthContext.mockReturnValue(mockAuthContext({ isAuthenticated: false }));
       mockUseSwitchboard.mockReturnValue({ data: true, isLoading: false });
       mockUseSubscription.mockReturnValue({
         data: { id: 'sub-1', builderEntitlementId: 'entitlement-123' },

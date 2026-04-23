@@ -20,6 +20,8 @@ type envFormField struct {
 	Description string
 	Required    bool
 	Input       textinput.Model
+	Options     []string // when set, left/right cycles options instead of free text
+	OptionIndex int
 }
 
 // initFixerForm sets up the inline form fields from a FormFixer's declarations.
@@ -43,12 +45,24 @@ func (m *Model) initFixerForm(ff preflight.FormFixer) {
 		if i == 0 {
 			ti.Focus()
 		}
+		optionIndex := 0
+		if len(f.Options) > 0 {
+			for j, opt := range f.Options {
+				if opt == f.Default {
+					optionIndex = j
+					break
+				}
+			}
+			ti.SetValue(f.Options[optionIndex])
+		}
 		m.envFormFields[i] = envFormField{
 			Key:         f.Key,
 			Label:       f.Label,
 			Description: f.Description,
 			Required:    f.Required,
 			Input:       ti,
+			Options:     f.Options,
+			OptionIndex: optionIndex,
 		}
 	}
 	m.envFormCursor = 0
@@ -88,7 +102,20 @@ func (m *Model) handleEnvFormKey(msg tea.KeyPressMsg) tea.Cmd {
 		return m.submitEnvForm()
 	}
 
-	// Pass key to active textinput
+	// Options field: cycle with left/right, block free text
+	active := &m.envFormFields[m.envFormCursor]
+	if len(active.Options) > 0 {
+		switch msg.String() {
+		case "left", "h":
+			active.OptionIndex = (active.OptionIndex - 1 + len(active.Options)) % len(active.Options)
+			active.Input.SetValue(active.Options[active.OptionIndex])
+		case "right", "l":
+			active.OptionIndex = (active.OptionIndex + 1) % len(active.Options)
+			active.Input.SetValue(active.Options[active.OptionIndex])
+		}
+		return nil
+	}
+
 	var cmd tea.Cmd
 	m.envFormFields[m.envFormCursor].Input, cmd = m.envFormFields[m.envFormCursor].Input.Update(msg)
 	return cmd
@@ -153,7 +180,24 @@ func (m Model) renderPreflightEnvForm() string {
 		}
 
 		// Input field
-		if isActive {
+		if len(field.Options) > 0 {
+			// Render as option selector: < opt1 | opt2 | opt3 >
+			var opts []string
+			selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("14")).Bold(true)
+			for j, opt := range field.Options {
+				if j == field.OptionIndex {
+					opts = append(opts, selectedStyle.Render(opt))
+				} else {
+					opts = append(opts, dimStyle.Render(opt))
+				}
+			}
+			selector := strings.Join(opts, dimStyle.Render(" | "))
+			if isActive {
+				b.WriteString(fmt.Sprintf("    %s %s %s\n", dimStyle.Render("<"), selector, dimStyle.Render(">")))
+			} else {
+				b.WriteString(fmt.Sprintf("    %s\n", field.Options[field.OptionIndex]))
+			}
+		} else if isActive {
 			b.WriteString(fmt.Sprintf("    %s\n", field.Input.View()))
 		} else {
 			val := field.Input.Value()

@@ -2,8 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { withApmRoute } from '@/lib/apm-context';
 import { isFeatureEnabled } from '@/lib/features';
-// Lazy import to avoid initializing gd-auth during module loading
-import { isAuthDisabled } from '@/lib/gasket-config';
 import { MOCK_USER } from '@/lib/mock-auth';
 import { logger } from '@/lib/request-context';
 
@@ -41,20 +39,6 @@ async function validateHandler(request: NextRequest) {
       }
     }
 
-    // Skip JWT validation if auth is disabled in development
-    if (await isAuthDisabled()) {
-      logger.info('auth.validate.dev.bypassed', { message: 'Auth validation bypassed - development mode' });
-      return NextResponse.json({
-        valid: true,
-        payload: {
-          shopperId: "dev-user",
-          cid: "dev-customer-123",
-          exp: Math.floor(Date.now() / 1000) + 3600, // 1 hour from now
-          iat: Math.floor(Date.now() / 1000)
-        },
-        reason: 'Development mode - authentication disabled'
-      }, { status: 200 });
-    }
     // Extract token using gd-auth service (lazy import)
     const { gdAuthService } = await import('@/lib/gd-auth-service');
     const token = gdAuthService.extractTokenFromRequest(request);

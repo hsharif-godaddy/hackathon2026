@@ -16,7 +16,6 @@ import {
   startApmTransaction
 } from '@/lib/apm-context';
 import { isFeatureEnabled } from '@/lib/features';
-import { isAuthDisabled } from '@/lib/gasket-config';
 import { MOCK_USER } from '@/lib/mock-auth';
 import { logger, type RequestContext, RequestContextService } from '@/lib/request-context';
 
@@ -110,31 +109,6 @@ export async function authenticateCustomer(request: NextRequest, level?: 1 | 2 |
           isE2S: false
         },
         jwt: 'mock-jwt-token' // Mock JWT for development
-      };
-    }
-
-    // Skip JWT validation if auth is disabled in development
-    if (await isAuthDisabled()) {
-      logger.info('auth.dev.bypass', 'Customer auth bypassed - development mode', { tags: ['security'] });
-
-      // Derive dev account from hardcoded dev identity
-      const devShopperId = 'dev-user';
-      const devCustomerId = 'dev-customer-123';
-
-      const devAccount = getOrCreateAccount(devShopperId, devCustomerId);
-      logger.info('auth.dev.account.ready', { message: 'Dev account ready for testing', accountId: devAccount.id }, { tags: ['security'] });
-
-      return {
-        isAuthenticated: true,
-        user: {
-          shopperId: devShopperId,
-          customerId: devCustomerId,
-          accountId: devAccount?.id, // Derived from customerId
-          exp: Math.floor(Date.now() / 1000) + 3600,
-          iat: Math.floor(Date.now() / 1000),
-          isE2S: false
-        },
-        jwt: 'dev-jwt-token' // Dev JWT for development
       };
     }
 

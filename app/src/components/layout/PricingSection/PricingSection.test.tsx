@@ -182,7 +182,7 @@ vi.mock('@/components/layout/PricingSection/PlanPriceDisplay', () => ({
 import { logImpressionEvent } from '@/utils/instrumentation'
 
 // Default to unauthenticated state
-let authContextOverrides = { isAuthenticated: false, isAuthDisabled: false, isLoading: false }
+let authContextOverrides = { isAuthenticated: false, isLoading: false }
 
 vi.mock('@/components/providers/AuthProvider', () => ({
   useAuthContext: () => mockAuthContext(authContextOverrides),
@@ -208,7 +208,7 @@ describe('PricingSection', () => {
     mockUseIsUpgradePolling.mockReturnValue(false)
     mockInViewValue = false
     sessionStorage.clear()
-    authContextOverrides = { isAuthenticated: false, isAuthDisabled: false, isLoading: false }
+    authContextOverrides = { isAuthenticated: false, isLoading: false }
 
     // Mock scrollIntoView
     Element.prototype.scrollIntoView = vi.fn()
@@ -266,7 +266,7 @@ describe('PricingSection', () => {
     })
 
     it('should disable Starter CTA when auth is loading', async () => {
-      authContextOverrides = { isAuthenticated: false, isAuthDisabled: false, isLoading: true }
+      authContextOverrides = { isAuthenticated: false, isLoading: true }
 
       renderWithProviders(<PricingSection />)
 
@@ -321,7 +321,7 @@ describe('PricingSection', () => {
 
   describe('unauthenticated user - Starter CTA click', () => {
     beforeEach(() => {
-      authContextOverrides = { isAuthenticated: false, isAuthDisabled: false, isLoading: false }
+      authContextOverrides = { isAuthenticated: false, isLoading: false }
     })
 
     it('should save pending upgrade flag to sessionStorage', async () => {
@@ -354,7 +354,7 @@ describe('PricingSection', () => {
 
   describe('authenticated user - Starter CTA click', () => {
     beforeEach(() => {
-      authContextOverrides = { isAuthenticated: true, isAuthDisabled: false, isLoading: false }
+      authContextOverrides = { isAuthenticated: true, isLoading: false }
     })
 
     it('should call openUpgradeModal directly', async () => {
@@ -385,35 +385,11 @@ describe('PricingSection', () => {
     })
   })
 
-  describe('auth disabled - Starter CTA click', () => {
-    beforeEach(() => {
-      authContextOverrides = { isAuthenticated: false, isAuthDisabled: true, isLoading: false }
-    })
-
-    it('should call openUpgradeModal directly when auth is disabled', async () => {
-      const { user } = renderWithProviders(<PricingSection />)
-
-      const starterButton = screen.getByText('builder_pricing_starter_cta')
-      await user.click(starterButton)
-
-      expect(mockOpenUpgradeModal).toHaveBeenCalledWith('pricing_section.upgrade', 'slp_airo_ai_builder')
-    })
-
-    it('should NOT call signIn when auth is disabled', async () => {
-      const { user } = renderWithProviders(<PricingSection />)
-
-      const starterButton = screen.getByText('builder_pricing_starter_cta')
-      await user.click(starterButton)
-
-      expect(mockSignIn).not.toHaveBeenCalled()
-    })
-  })
-
   describe('pending upgrade restoration after login', () => {
     it('should open upgrade modal when authenticated with pending flag', async () => {
       // Set pending flag before render
       sessionStorage.setItem(PENDING_UPGRADE_KEY, 'true')
-      authContextOverrides = { isAuthenticated: true, isAuthDisabled: false, isLoading: false }
+      authContextOverrides = { isAuthenticated: true, isLoading: false }
 
       renderWithProviders(<PricingSection />)
 
@@ -424,7 +400,7 @@ describe('PricingSection', () => {
 
     it('should clear sessionStorage flag after restoration', async () => {
       sessionStorage.setItem(PENDING_UPGRADE_KEY, 'true')
-      authContextOverrides = { isAuthenticated: true, isAuthDisabled: false, isLoading: false }
+      authContextOverrides = { isAuthenticated: true, isLoading: false }
 
       renderWithProviders(<PricingSection />)
 
@@ -435,7 +411,7 @@ describe('PricingSection', () => {
 
     it('should call refetchSubscription after login', async () => {
       sessionStorage.setItem(PENDING_UPGRADE_KEY, 'true')
-      authContextOverrides = { isAuthenticated: true, isAuthDisabled: false, isLoading: false }
+      authContextOverrides = { isAuthenticated: true, isLoading: false }
 
       renderWithProviders(<PricingSection />)
 
@@ -446,7 +422,7 @@ describe('PricingSection', () => {
 
     it('should scroll to pricing section after login', async () => {
       sessionStorage.setItem(PENDING_UPGRADE_KEY, 'true')
-      authContextOverrides = { isAuthenticated: true, isAuthDisabled: false, isLoading: false }
+      authContextOverrides = { isAuthenticated: true, isLoading: false }
 
       renderWithProviders(<PricingSection />)
 
@@ -459,7 +435,7 @@ describe('PricingSection', () => {
     })
 
     it('should NOT open modal when no pending flag exists', async () => {
-      authContextOverrides = { isAuthenticated: true, isAuthDisabled: false, isLoading: false }
+      authContextOverrides = { isAuthenticated: true, isLoading: false }
 
       renderWithProviders(<PricingSection />)
 
@@ -473,7 +449,7 @@ describe('PricingSection', () => {
 
     it('should NOT process pending flag while auth is loading', async () => {
       sessionStorage.setItem(PENDING_UPGRADE_KEY, 'true')
-      authContextOverrides = { isAuthenticated: false, isAuthDisabled: false, isLoading: true }
+      authContextOverrides = { isAuthenticated: false, isLoading: true }
 
       renderWithProviders(<PricingSection />)
 
@@ -500,11 +476,11 @@ describe('PricingSection', () => {
 
   describe('4-tier layout CTA clicks', () => {
     beforeEach(() => {
-      authContextOverrides = { isAuthenticated: true, isAuthDisabled: false, isLoading: false }
+      authContextOverrides = { isAuthenticated: true, isLoading: false }
     })
 
     it('should disable Professional CTA when auth is loading', async () => {
-      authContextOverrides = { isAuthenticated: false, isAuthDisabled: false, isLoading: true }
+      authContextOverrides = { isAuthenticated: false, isLoading: true }
 
       renderWithProviders(<PricingSection />)
 
@@ -515,7 +491,7 @@ describe('PricingSection', () => {
     })
 
     it('should disable Ultimate CTA when auth is loading', async () => {
-      authContextOverrides = { isAuthenticated: false, isAuthDisabled: false, isLoading: true }
+      authContextOverrides = { isAuthenticated: false, isLoading: true }
 
       renderWithProviders(<PricingSection />)
 

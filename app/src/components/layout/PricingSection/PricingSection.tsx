@@ -89,7 +89,7 @@ export default function PricingSection({ onPricingViewEnd }: PricingSectionProps
   const openUpgradeModal = useDevelopPageStore((state) => state.openUpgradeModal)
   const isUpgradePolling = useIsUpgradePolling()
 
-  const { isAuthenticated, isAuthDisabled, isLoading: authIsLoading } = useAuthContext()
+  const { isAuthenticated, isLoading: authIsLoading } = useAuthContext()
   const { signIn } = useSsoSignIn()
   // Disabled by default - only refetch when restoring pending upgrade to avoid unnecessary API calls
   const { refetch: refetchSubscription } = useSubscription({ enabled: false })
@@ -160,7 +160,7 @@ export default function PricingSection({ onPricingViewEnd }: PricingSectionProps
   }, [authIsLoading, isAuthenticated, refetchSubscription, openUpgradeModal])
 
   const handleUpgradeClick = useCallback(() => {
-    if (!isAuthDisabled && !isAuthenticated) {
+    if (!isAuthenticated) {
       try {
         sessionStorage.setItem(PENDING_UPGRADE_KEY, 'true')
       } catch (error) {
@@ -174,7 +174,7 @@ export default function PricingSection({ onPricingViewEnd }: PricingSectionProps
     }
 
     openUpgradeModal('pricing_section.upgrade', 'slp_airo_ai_builder')
-  }, [isAuthDisabled, isAuthenticated, signIn, openUpgradeModal])
+  }, [isAuthenticated, signIn, openUpgradeModal])
 
   const handleStartBuildingClick = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' })

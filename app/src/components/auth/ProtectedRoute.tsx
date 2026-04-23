@@ -40,7 +40,6 @@ export default function ProtectedRoute({
   const {
     isAuthenticated,
     isLoading: authLoading,
-    isAuthDisabled,
     isMockAuth
   } = useAuthContext();
 
@@ -69,12 +68,6 @@ export default function ProtectedRoute({
     allowHeartbeat: false,
     use12HourExpiration: true
   };
-
-  // Handle different authentication modes
-  if (isAuthDisabled) {
-    // No auth required - render children directly
-    return <>{children}</>;
-  }
 
   if (isMockAuth) {
     // Mock auth mode - check mock auth state

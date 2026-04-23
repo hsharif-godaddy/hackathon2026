@@ -4,7 +4,6 @@
 
 import { JWTAuthService } from './implementations/JWTAuthService';
 import { MockAuthService } from './implementations/MockAuthService';
-import { NoAuthService } from './implementations/NoAuthService';
 import { IAuthService } from './types';
 import { auth, AuthType } from '../features';
 
@@ -39,17 +38,11 @@ export class AuthServiceFactory {
     const authType = auth.getType();
 
     switch (authType) {
-      case AuthType.NONE:
-        return new NoAuthService();
-      
       case AuthType.MOCK:
         return new MockAuthService();
-      
+
       case AuthType.JWT:
-        return new JWTAuthService();
-      
       default:
-        // Fallback to JWT for security
         return new JWTAuthService();
     }
   }

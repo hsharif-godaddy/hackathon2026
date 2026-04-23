@@ -69,7 +69,7 @@ export function LightHomepageHomePage({ serverFeatures }: HomeContentProps) {
   // Ensure ref always mirrors latest prompt text without extra renders
   promptTextRef.current = promptText
 
-  const { isAuthenticated, isAuthDisabled, isLoading: authIsLoading } = useAuthContext()
+  const { isAuthenticated, isLoading: authIsLoading } = useAuthContext()
   const { cohort, logAnalytics } = useAnalytics({
     experimentId: EXPERIMENT_IDS.homepageEngagement,
     baseData: { isAuthenticated },
@@ -311,7 +311,7 @@ export function LightHomepageHomePage({ serverFeatures }: HomeContentProps) {
     try {
       // Step 1: Quick auth check - show in-app SSO login if needed
       // Auth state is now definitively resolved (authIsLoading is false)
-      if (!isAuthDisabled && !isAuthenticated) {
+      if (!isAuthenticated) {
         logger.info('page.auth.sso-login', {
           action: 'showing-sso-login'
         });
@@ -440,7 +440,7 @@ export function LightHomepageHomePage({ serverFeatures }: HomeContentProps) {
       setIsLoading(false)
       setIsRedirecting(false)
     }
-  }, [authIsLoading, isAuthDisabled, isAuthenticated, isLoading, isRedirecting, logAnalytics, router, savePromptForRetry, selectedTemplate, signIn, t])
+  }, [authIsLoading, isAuthenticated, isLoading, isRedirecting, logAnalytics, router, savePromptForRetry, selectedTemplate, signIn, t])
 
   // Restore prompt from localStorage after login and clear it
   useEffect(() => {

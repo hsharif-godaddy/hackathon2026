@@ -33,12 +33,12 @@ func (c *S2SCertsCheck) Run(_ context.Context, projectRoot string) preflight.Che
 	}
 
 	authType := strings.TrimSpace(env["AUTH_TYPE"])
-	if authType == "" || authType == "none" {
+	if authType == "" || authType == "mock" {
 		return preflight.CheckResult{
 			Status:   preflight.StatusSkip,
 			Name:     c.Name(),
 			Category: c.Category(),
-			Message:  "AUTH_TYPE is none; S2S certs not required",
+			Message:  "AUTH_TYPE is mock; S2S certs not required",
 		}
 	}
 
@@ -64,7 +64,7 @@ func (c *S2SCertsCheck) Run(_ context.Context, projectRoot string) preflight.Che
 			FixAvailable: true,
 			Message: fmt.Sprintf(
 				"AUTH_TYPE=%s but missing %s in app/.env — S2S API calls will fail. "+
-					"Set AUTH_TYPE=none for mock mode, or fetch certs via ./setup.sh",
+					"Set AUTH_TYPE=mock to skip certs, or fetch certs via ./setup.sh",
 				authType, strings.Join(missing, ", "),
 			),
 			InstallHint: "./setup.sh",

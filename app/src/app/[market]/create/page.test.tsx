@@ -58,7 +58,6 @@ describe('CreatePage', () => {
     ;(useSearchParams as any).mockReturnValue(mockSearchParams)
     ;(useAuthContext as any).mockReturnValue({
       isAuthenticated: false,
-      isAuthDisabled: false,
       isLoading: false,
     })
     ;(useAuthUIStore as any).mockImplementation((selector: any) => {

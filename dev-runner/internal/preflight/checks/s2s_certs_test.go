@@ -33,13 +33,13 @@ func writeAgentsEnv(t *testing.T, projectRoot, content string) {
 	}
 }
 
-func TestS2SCertsCheck_AuthTypeNone(t *testing.T) {
+func TestS2SCertsCheck_AuthTypeMock(t *testing.T) {
 	root := t.TempDir()
-	writeAppEnv(t, root, "AUTH_TYPE=none\n")
+	writeAppEnv(t, root, "AUTH_TYPE=mock\n")
 
 	result := (&S2SCertsCheck{}).Run(context.Background(), root)
 	if result.Status != preflight.StatusSkip {
-		t.Errorf("expected Skip for AUTH_TYPE=none, got %v: %s", result.Status, result.Message)
+		t.Errorf("expected Skip for AUTH_TYPE=mock, got %v: %s", result.Status, result.Message)
 	}
 }
 

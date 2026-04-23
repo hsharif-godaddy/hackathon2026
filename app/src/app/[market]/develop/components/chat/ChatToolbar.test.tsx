@@ -96,7 +96,6 @@ vi.mock('@/app/[market]/develop/components/chat/AssetManagerModal', () => ({
 vi.mock('@/components/providers/AuthProvider', () => ({
   useAuthContext: () => ({
     isAuthenticated: true,
-    isAuthDisabled: false,
     isLoading: false,
   }),
 }));

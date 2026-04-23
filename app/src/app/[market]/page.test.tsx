@@ -55,7 +55,7 @@ vi.mock('@/lib/features', () => ({
   },
 }));
 vi.mock('@/components/providers/AuthProvider', () => ({
-  useAuthContext: () => mockAuthContext({ isAuthenticated: true, isAuthDisabled: false }),
+  useAuthContext: () => mockAuthContext({ isAuthenticated: true }),
 }));
 vi.mock('@/hooks/useSafariClass', () => ({
   useSafariClass: vi.fn(),
@@ -301,7 +301,7 @@ describe('Home Page', () => {
       const mod = await import('@/components/providers/AuthProvider')
       const originalUseAuthContext = mod.useAuthContext
       try {
-        const mockUnauthContext = vi.fn(() => mockAuthContext({ isAuthenticated: false, isAuthDisabled: false }))
+        const mockUnauthContext = vi.fn(() => mockAuthContext({ isAuthenticated: false }))
         vi.mocked(mod).useAuthContext = mockUnauthContext as any
 
         renderWithProviders(<HomeContent serverFeatures={{ showPricingSection: true }} />)

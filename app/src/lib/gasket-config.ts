@@ -9,7 +9,6 @@ import { logger } from './request-context';
 // Extend globalThis interface for auth logging flag and config cache
 declare global {
   interface GlobalThis {
-    __authDisabledLogged?: boolean;
     __gasketConfigCache?: GasketConfig;
     __gasketConfigPromise?: Promise<GasketConfig>;
   }
@@ -21,7 +20,6 @@ export interface GasketConfig {
     risk: string;
     type: string[];
     authType: string;
-    isDisabled: boolean;
     isMock: boolean;
     isJWT: boolean;
   };
@@ -47,7 +45,6 @@ async function loadRuntimeConfig(): Promise<GasketConfig> {
         risk: 'low',
         type: [...SUPPORTED_AUTH_TYPES],
         authType: auth.getType(),
-        isDisabled: auth.isDisabled(),
         isMock: auth.isMock(),
         isJWT: auth.isJWT(),
         allowHeartbeat: false,
@@ -189,18 +186,7 @@ export async function getLogoutUrl(): Promise<string> {
   return `${baseUrl}?${params.toString()}`;
 }
 
-// Helper function to check if auth is disabled (now uses centralized auth system)
-export async function isAuthDisabled(): Promise<boolean> {
-  const { auth } = await import('./features');
-  const disabled = auth.isDisabled();
-  if (disabled && typeof globalThis !== 'undefined' && !globalThis.__authDisabledLogged) {
-    globalThis.__authDisabledLogged = true;
-  }
-  return disabled;
-}
-
 // Sync auth helpers for contexts that can't await (useMemo, useCallback, constructors)
-export function isAuthDisabledSync(): boolean { return auth.isDisabled(); }
 export function isAuthMockSync(): boolean { return auth.isMock(); }
 export function isAuthJWTSync(): boolean { return auth.isJWT(); }
 export function getAuthTypeSync(): string { return auth.getType(); }

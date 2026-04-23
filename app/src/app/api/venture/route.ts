@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { CustomerAuthContext, withCustomerAuth } from '@/lib/customer-auth';
+import { auth } from '@/lib/features';
 import { logger } from '@/lib/request-context';
 import { VentureService } from '@/lib/venture-service';
 
@@ -28,7 +29,7 @@ export const GET = withCustomerAuth(
 
             // In development mode, skip venture API calls and return mock venture ID
             // This avoids 5-15 second delays from failed authentication attempts
-            if (process.env.AUTH_TYPE === 'none') {
+            if (auth.isMock()) {
                 logger.info('api.venture.get.mock', {
                     message: 'Skipping venture API call in development mode',
                     customerId: user.customerId,

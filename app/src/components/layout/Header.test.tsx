@@ -21,7 +21,7 @@ vi.mock('@/utils/instrumentation', () => ({
   logImpressionEvent: vi.fn(() => vi.fn()),
 }));
 vi.mock('@/components/providers/AuthProvider', () => ({
-  useAuthContext: () => mockAuthContext({ isAuthenticated: false, isAuthDisabled: true }),
+  useAuthContext: () => mockAuthContext({ isAuthenticated: false }),
 }));
 vi.mock('@/stores/useSitesStore', () => ({
   useSites: () => ({ sites: [], isLoading: false }),

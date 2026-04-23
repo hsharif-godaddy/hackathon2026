@@ -10,8 +10,8 @@ import (
 )
 
 // LCPEnvFixer generates local-control-plane/.env, deriving AUTH_TYPE from
-// app/.env for local-control-plane while normalizing unsupported app modes
-// (for example, "mock") to "none".
+// app/.env. The LCP only supports "jwt" (validate tokens) or "none" (skip
+// validation), so non-jwt app modes map to "none".
 type LCPEnvFixer struct{}
 
 func (f *LCPEnvFixer) Fix(_ context.Context, projectRoot string) error {

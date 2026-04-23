@@ -133,9 +133,8 @@ export function useAuthContext() {
   if (!context) {
     // During logout/unmounting, create a minimal auth hook to avoid errors
     // Use sync gasket-config helpers to get auth state without async
-    const { isAuthMockSync, isAuthDisabledSync, getAuthTypeSync } = require('@/lib/gasket-config'); // eslint-disable-line
+    const { isAuthMockSync, getAuthTypeSync } = require('@/lib/gasket-config'); // eslint-disable-line
     const actualIsMock = isAuthMockSync();
-    const actualIsDisabled = isAuthDisabledSync();
     const actualAuthType = getAuthTypeSync();
 
     return {
@@ -156,7 +155,6 @@ export function useAuthContext() {
       }),
       handleSignIn: () => {},
       handleSignOut: () => {},
-      isAuthDisabled: actualIsDisabled,
       authType: actualAuthType,
       isMockAuth: actualIsMock,
       mockAuth: null,

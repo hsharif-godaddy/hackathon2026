@@ -64,7 +64,7 @@ export function AbstractAnimationHomePage({ serverFeatures }: HomeContentProps) 
   const submitSourceRef = useRef<SubmitSource>('text')
   promptTextRef.current = promptText
 
-  const { isAuthenticated, isAuthDisabled, isLoading: authIsLoading } = useAuthContext()
+  const { isAuthenticated, isLoading: authIsLoading } = useAuthContext()
   const { cohort, logAnalytics } = useAnalytics({
     experimentId: EXPERIMENT_IDS.homepageEngagement,
     baseData: { isAuthenticated },
@@ -288,7 +288,7 @@ export function AbstractAnimationHomePage({ serverFeatures }: HomeContentProps) 
     })();
 
     try {
-      if (!isAuthDisabled && !isAuthenticated) {
+      if (!isAuthenticated) {
         logger.info('page.auth.sso-login', {
           action: 'showing-sso-login'
         });
@@ -408,7 +408,7 @@ export function AbstractAnimationHomePage({ serverFeatures }: HomeContentProps) 
       setIsLoading(false)
       setIsRedirecting(false)
     }
-  }, [authIsLoading, isAuthDisabled, isAuthenticated, isLoading, isRedirecting, logAnalytics, router, savePromptForRetry, signIn, t])
+  }, [authIsLoading, isAuthenticated, isLoading, isRedirecting, logAnalytics, router, savePromptForRetry, signIn, t])
 
   useEffect(() => {
     if (!isAuthenticated || authIsLoading) return

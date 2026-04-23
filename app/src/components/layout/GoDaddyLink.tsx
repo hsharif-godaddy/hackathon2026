@@ -15,10 +15,10 @@ interface GoDaddyLinkProps {
 
 export default function GoDaddyLink({ location = 'unknown', className = '' }: GoDaddyLinkProps) {
   const t = useTranslations();
-  const { isAuthenticated, isAuthDisabled, isLoading } = useAuthContext();
+  const { isAuthenticated, isLoading } = useAuthContext();
 
   // Only show authenticated UI when auth is confirmed (not loading) and user is authenticated
-  const showAuthenticatedUI = !isLoading && (isAuthenticated || isAuthDisabled);
+  const showAuthenticatedUI = !isLoading && isAuthenticated;
 
   const godaddyUrl = 'https://www.godaddy.com';
   const getMyProductsUrl = () => `https://account.${getRootDomain() || 'godaddy.com'}/products`;

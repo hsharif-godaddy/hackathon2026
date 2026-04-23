@@ -18,7 +18,7 @@ func (c *ImageSearchEnvCheck) Name() string     { return "Image Search .env" }
 func (c *ImageSearchEnvCheck) Category() string { return preflight.CategoryEnvironment }
 
 func (c *ImageSearchEnvCheck) Run(_ context.Context, projectRoot string) preflight.CheckResult {
-	result := checkEnvFile(projectRoot, "image-search-service/.env", []string{
+	result, _ := checkEnvFile(projectRoot, "image-search-service/.env", []string{
 		"AWS_PROFILE",
 		"GETTY_AUTH_TYPE",
 		"ANTHROPIC_API_URL",
