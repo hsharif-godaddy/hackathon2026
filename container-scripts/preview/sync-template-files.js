@@ -50,7 +50,8 @@ const SYNC_MANIFEST = [
       '4e602bf93117af87df4621edc156282c', // Before import.meta.url fix - uses express.static("client")
       'f31a3e2c5c87fb16212a911612d7a3fd', // Before database extraction to skill - on origin/main
       '5fbbdcc5d9cf08913df35a0c72885356', // Before cache-control headers
-      'd04ac7a6e682dd3cefdd5310f6caaa96'  // Cache-control headers, before vite-ignore fix
+      'd04ac7a6e682dd3cefdd5310f6caaa96', // Before opaque-path fix (#2307)
+      'bb23c13456e2fdf15ac7b1d363605097'  // Opaque-path fix, before /* @vite-ignore */ comment
     ],
     force: false
   },

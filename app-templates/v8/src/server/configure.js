@@ -46,7 +46,7 @@ export const serverBefore = (server) => {
       // Opaque path prevents vite-plugin-api-routes from resolving at build time.
       // At runtime, the try/catch handles the missing module gracefully.
       const dbClient = "./db/client" + ".js";
-      const { closeConnection } = await import(dbClient);
+      const { closeConnection } = await import(/* @vite-ignore */ dbClient);
       await closeConnection();
       console.log("Database connections closed");
     } catch (error) {
