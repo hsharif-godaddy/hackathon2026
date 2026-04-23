@@ -61,7 +61,7 @@ vi.mock('@/hooks/useSafariClass', () => ({
   useSafariClass: vi.fn(),
 }));
 vi.mock('@/hooks/useSsoSignIn', () => ({
-  useSsoSignIn: () => ({ signIn: mockSignIn }),
+  useSsoSignIn: () => ({ signIn: mockSignIn, useSsoModal: true }),
 }));
 
 function mockResponse(body: object, status: number) {
