@@ -71,7 +71,11 @@ export function getToolDisplayName(toolName: string): string {
       return 'Social Post Create'
     case 'websiteScraper':
       return 'Website Details'
-    default:
-      return toolName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+    default: {
+      // Skill-namespaced tools use `skill__tool` — collapse the `__` separator
+      // into a single space so we don't render redundant double-spaces.
+      const normalized = toolName.replace(/__+/g, '_')
+      return normalized.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+    }
   }
 }

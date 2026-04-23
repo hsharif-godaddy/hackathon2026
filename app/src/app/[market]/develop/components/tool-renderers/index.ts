@@ -91,6 +91,7 @@ export const toolRendererRegistry = {
   socialConnect: SocialConnectToolRenderer,
   skill: SkillToolRenderer,
   publishClient: PublishClientToolRenderer,
+  publishing__publish: PublishClientToolRenderer,
   websiteRebuild: WebsiteRebuildToolRenderer,
   rebuildPageSelector: RebuildPageSelectorToolRenderer,
   'media-logo__generate_logo': LogoGeneratorToolRenderer,

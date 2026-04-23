@@ -16,29 +16,35 @@ interface PublishClientInput {
 }
 
 /**
- * Extract commit SHA from result string
- * Result format: "Successfully published commit abc1234\n\nArchive path: /publish/dist/abc1234567890.tar.gz"
- * Prioritizes the full 40-character hash from archive path over short hash
+ * Extract commit SHA from tool result.
+ *
+ * Supports three shapes (in priority order):
+ *   1. Object result with `commitHash` — returned by the `publishing__publish`
+ *      skill tool.
+ *   2. String result with archive path `/publish/dist/{fullSHA}.tar.gz` — full
+ *      40-char hash from the legacy `publishClient` tool.
+ *   3. String result with `Successfully published commit {sha}` (legacy) or
+ *      `Published commit {sha}` (skill tool) message prefix.
  */
-function extractCommitHash(result: string | Record<string, unknown> | undefined, input: PublishClientInput): string | undefined {
+export function extractCommitHash(result: string | Record<string, unknown> | undefined, input: PublishClientInput): string | undefined {
   if (!result) return input?.commitHash
 
-  // If result is a string, parse it
+  if (typeof result === 'object' && typeof result.commitHash === 'string') {
+    return result.commitHash
+  }
+
   if (typeof result === 'string') {
-    // FIRST: Try to extract full 40-char hash from archive path: /publish/dist/{fullSHA}.tar.gz
     const archiveMatch = result.match(/\/publish\/dist\/([a-f0-9]{40})\.tar\.gz/i)
     if (archiveMatch) {
       return archiveMatch[1]
     }
 
-    // FALLBACK: Extract short hash from "Successfully published commit {sha}" line
-    const commitMatch = result.match(/Successfully published commit ([a-f0-9]{7,40})/i)
+    const commitMatch = result.match(/(?:Successfully p|P)ublished commit ([a-f0-9]{7,40})/i)
     if (commitMatch) {
       return commitMatch[1]
     }
   }
 
-  // Fallback to input
   return input?.commitHash
 }
 

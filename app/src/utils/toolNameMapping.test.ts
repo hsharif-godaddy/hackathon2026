@@ -1,6 +1,3 @@
-/**
- * @vitest-environment jsdom
- */
 import { describe, expect, it } from 'vitest';
 
 import { getToolDisplayName } from './toolNameMapping';
@@ -228,6 +225,16 @@ describe('getToolDisplayName', () => {
     });
   });
 
+  describe('skill-namespaced fallback (skill__tool)', () => {
+    it('should render unmapped skill tools without duplicated whitespace', () => {
+      expect(getToolDisplayName('blog__write')).toBe('Blog Write');
+    });
+
+    it('should render snake_case tool names within a skill namespace', () => {
+      expect(getToolDisplayName('database__run_query')).toBe('Database Run Query');
+    });
+  });
+
   describe('default fallback formatting', () => {
     it('should format snake_case to Title Case', () => {
       expect(getToolDisplayName('unknown_tool_name')).toBe('Unknown Tool Name');
@@ -258,8 +265,8 @@ describe('getToolDisplayName', () => {
       expect(getToolDisplayName('unknownToolName')).toBe('UnknownToolName');
     });
 
-    it('should handle multiple underscores', () => {
-      expect(getToolDisplayName('tool__with___many____underscores')).toBe('Tool  With   Many    Underscores');
+    it('should collapse consecutive underscores into a single space', () => {
+      expect(getToolDisplayName('tool__with___many____underscores')).toBe('Tool With Many Underscores');
     });
 
     it('should handle leading underscore', () => {
