@@ -149,32 +149,6 @@ export const authConfigs = {
   }
 };
 
-// GoDaddy SSO recognized params: realm, path, app, auth_reason.
-// 'path' is a URI-encoded relative path; SSO appends it to the app's
-// registered domain when redirecting back after authentication.
-export async function getLoginUrl(returnUrl?: string): Promise<string> {
-  const gasketConfig = await getGasketConfig();
-  const params = new URLSearchParams({ app: gasketConfig.sso.appName });
-
-  const target = returnUrl || gasketConfig.redirects.loginRedirectUrl;
-  if (target) {
-    try {
-      const url = new URL(target, typeof window !== 'undefined' ? window.location.origin : 'http://localhost');
-      const path = url.pathname + url.search + url.hash;
-      if (path.startsWith('/') && path !== '/') {
-        // URLSearchParams encodes /, ?, = etc., keeping the value opaque to SSO
-        params.set('path', path);
-      }
-    } catch {
-      if (target.startsWith('/') && target !== '/') {
-        params.set('path', target);
-      }
-    }
-  }
-
-  return `${gasketConfig.sso.loginUrl}?${params.toString()}`;
-}
-
 // Helper function to get logout URL (async version for runtime config)
 export async function getLogoutUrl(): Promise<string> {
   const gasketConfig = await getGasketConfig();

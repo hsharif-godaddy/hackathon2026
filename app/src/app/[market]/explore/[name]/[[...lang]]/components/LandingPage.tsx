@@ -57,7 +57,6 @@ function LandingPageContent({ data }: LandingPageProps) {
       window.location.pathname + window.location.search + window.location.hash
     )
     signIn({
-      redirectUrl: window.location.href,
       onShowMockLogin: () => setShowMockLogin(true),
     })
   }, [setRedirectUrl, signIn])
