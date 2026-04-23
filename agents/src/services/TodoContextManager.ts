@@ -63,32 +63,15 @@ export class TodoContextManager {
         return '[Current Todo List]\n\nNo active todo list. Create one with todoList tool if starting a new feature.';
       }
 
-      // Check if list is 100% complete (all items done)
-      const totalItems = todoList.items?.length || 0;
-      const completedCount = todoList.items?.filter((item: any) => item.completed).length || 0;
-      const isFullyComplete = totalItems > 0 && completedCount === totalItems;
-
-      // If list is fully complete, treat as "no active work" (edit mode)
-      if (isFullyComplete) {
-        logger.debug('todo.context.fully_complete', {
-          appId,
-          todoListId: selectedTodoListId,
-          listName: todoList.name,
-          itemCount: totalItems,
-          message: 'All items complete - treating as no active work'
-        });
-        return '[Current Todo List]\n\nNo active todo list. All work complete. Create a new list with todoList tool if starting a new feature.';
-      }
-
-      // Format the todo list context
+      // Format the todo list context (including fully complete lists so the agent knows what was built)
       const formattedContext = this.formatTodoList(todoList);
 
       logger.debug('todo.context.generated', {
         appId,
         todoListId: selectedTodoListId,
         listName: todoList.name,
-        itemCount: totalItems,
-        completedCount
+        itemCount: todoList.items?.length || 0,
+        completedCount: todoList.items?.filter((item: any) => item.completed).length || 0
       });
 
       return formattedContext;
@@ -154,7 +137,11 @@ export class TodoContextManager {
       sections.push('');
     }
 
-    sections.push('Note: This is your active todo list. Mark items complete immediately after finishing each task using todoList tool with operation: "mark_done" and the item ID(s). Use operation: "show_list" to display your completed work.');
+    if (totalItems > 0 && todoList.items.some((item: any) => !item.completed)) {
+      sections.push('Note: This is your active todo list. Mark items complete immediately after finishing each task using todoList tool with operation: "mark_done" and the item ID(s). Use operation: "show_list" to display your completed work.');
+    } else if (totalItems > 0) {
+      sections.push('Note: All items complete. Do not create a new list unless the user explicitly requests a new multi-step feature.');
+    }
 
     return sections.join('\n');
   }

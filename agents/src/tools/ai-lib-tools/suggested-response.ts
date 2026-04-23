@@ -4,11 +4,13 @@ import path from 'node:path'
 import { z } from 'zod'
 
 import { AppRepository } from '../../database/repositories/AppRepository.js'
+import { TodoListRepository } from '../../database/repositories/TodoListRepository.js'
 import { Logger } from '../../logging/index.js'
 import type { RebuildWorkflowState, SitemapData } from '../../types/rebuild.js'
 
 const logger = Logger.create({ component: 'suggested-response-tool' })
 const appRepo = new AppRepository()
+const todoListRepo = new TodoListRepository()
 
 /**
  * Suggestion schema
@@ -218,8 +220,48 @@ Example use cases:
       })
     }
     
+    // Check for pending todo items that should be marked done.
+    // The LLM sees this reminder in the tool result and calls mark_done itself.
+    let todoReminder = ''
+    try {
+      const sessionId = context?.metadata?.sessionId as string
+      const stateManager = context?.metadata?.stateManager as { getSelectedTodoList: (id: string) => string | undefined } | undefined
+      if (sessionId && stateManager?.getSelectedTodoList) {
+        const selectedListId = stateManager.getSelectedTodoList(sessionId)
+        if (selectedListId) {
+          const list = todoListRepo.getListById(selectedListId)
+          const pendingItems = list && list.appId === appId
+            ? list.items?.filter(item => !item.completed) || []
+            : []
+          if (pendingItems.length > 0) {
+            const itemList = pendingItems
+              .map(item => `- "${item.title.replace(/[\n\r]/g, ' ')}" (ID: ${item.id})`)
+              .join('\n')
+            todoReminder = `\n\nACTION REQUIRED: You have uncompleted todo items. If you finished any of these, call todoList with operation "mark_done" and the item ID(s) NOW before ending your turn:\n${itemList}`
+            logger.info('suggested-response.todo-reminder-injected', {
+              appId,
+              pendingCount: pendingItems.length,
+            })
+          }
+        }
+      }
+    } catch (error) {
+      logger.warn('suggested-response.todo-check-failed', {
+        appId,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+
+    // Build message in one place
+    let message = `Suggested response rendered with ${suggestions.length} option${suggestions.length === 1 ? '' : 's'}`
+    if (rebuildWidget) {
+      message += ' (with rebuild page selector)'
+    }
+    if (todoReminder) {
+      message += todoReminder
+    }
+
     // Return structured data that will be handled by the frontend
-    // The WebSocket server will transform this into a widget segment
     const result: any = {
       success: true,
       widgetType: 'suggested-response',
@@ -228,15 +270,13 @@ Example use cases:
         question,
         suggestions
       },
-      message: `Suggested response rendered with ${suggestions.length} option${suggestions.length === 1 ? '' : 's'}`
+      message
     }
-    
-    // Include rebuild widget if available
+
     if (rebuildWidget) {
       result.rebuildWidget = rebuildWidget
-      result.message += ` (with rebuild page selector)`
     }
-    
+
     return result
   }
 )
