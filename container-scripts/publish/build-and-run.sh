@@ -35,6 +35,25 @@ if ! command -v "$PACKAGE_MANAGER" &> /dev/null; then
 fi
 log "$PACKAGE_MANAGER version: $($PACKAGE_MANAGER --version)"
 
+# =============================================================================
+# PaaS OPTIMIZATION: Skip install/build if pre-packaged
+# =============================================================================
+# If node_modules exists, skip npm install (dependencies pre-packaged from preview)
+# If dist exists, skip build (already built in preview)
+SKIP_INSTALL=false
+SKIP_BUILD=false
+
+if [[ -d "node_modules" ]]; then
+    log "Detected pre-packaged node_modules - skipping dependency installation"
+    SKIP_INSTALL=true
+fi
+
+if [[ -d "dist" ]]; then
+    log "Detected pre-built dist/ - skipping build step"
+    SKIP_BUILD=true
+fi
+# =============================================================================
+
 CONFIG_EXISTS=false
 if [[ ! -f "${NOMAD_ALLOC_DIR}/config.json" ]]; then
     log_warn "Nomad allocation config not found at ${NOMAD_ALLOC_DIR}/config.json. Proceeding without it."
@@ -43,14 +62,18 @@ else
     CONFIG_EXISTS=true
 fi
 
-# Install dependencies
-log "Installing dependencies with $PACKAGE_MANAGER"
-if [[ $PACKAGE_MANAGER == "pnpm" ]]; then
-    CI=true pnpm install --frozen-lockfile || error_exit "Failed to install dependencies with pnpm"
+# Install dependencies (skip if pre-packaged)
+if [[ "$SKIP_INSTALL" == "true" ]]; then
+    log "Skipping dependency installation (node_modules pre-packaged)"
 else
-    CI=true NODE_ENV=development npm install --legacy-peer-deps --no-fund --no-audit || error_exit "Failed to install dependencies with npm"
+    log "Installing dependencies with $PACKAGE_MANAGER"
+    if [[ $PACKAGE_MANAGER == "pnpm" ]]; then
+        CI=true pnpm install --frozen-lockfile || error_exit "Failed to install dependencies with pnpm"
+    else
+        CI=true NODE_ENV=development npm install --legacy-peer-deps --no-fund --no-audit || error_exit "Failed to install dependencies with npm"
+    fi
+    log "Dependencies installed successfully"
 fi
-log "Dependencies installed successfully"
 
 # Read custom commands from .airo/config.json (if exists)
 CUSTOM_BUILD_CMD=""
@@ -60,15 +83,19 @@ if [[ -f ".airo/config.json" ]]; then
     CUSTOM_SERVE_CMD=$(jq -er '.runtime.serve.command // empty' .airo/config.json 2>/dev/null || echo "")
 fi
 
-# Build project - use custom build command if provided
-BUILD_CMD="$PACKAGE_MANAGER run build"
-if [[ -n "$CUSTOM_BUILD_CMD" ]]; then
-    BUILD_CMD="$CUSTOM_BUILD_CMD"
-    log "Using custom build command from .airo/config.json"
+# Build project (skip if pre-built)
+if [[ "$SKIP_BUILD" == "true" ]]; then
+    log "Skipping build (dist/ pre-built)"
+else
+    BUILD_CMD="$PACKAGE_MANAGER run build"
+    if [[ -n "$CUSTOM_BUILD_CMD" ]]; then
+        BUILD_CMD="$CUSTOM_BUILD_CMD"
+        log "Using custom build command from .airo/config.json"
+    fi
+    log "Building project with command: $BUILD_CMD"
+    sh -c "$BUILD_CMD" || error_exit "Failed to build project"
+    log "Project built successfully"
 fi
-log "Building project with command: $BUILD_CMD"
-sh -c "$BUILD_CMD" || error_exit "Failed to build project"
-log "Project built successfully"
 
 # Verify dist directory was created (only if using default serve command)
 # Custom serve commands may not require a dist directory
@@ -83,8 +110,30 @@ else
     log "Using custom serve command - skipping dist directory check"
 fi
 
-# Push database migrations if applicable
-if [[ "$CONFIG_EXISTS" == "false" ]]; then
+# Detect PaaS flow by checking productId from config files
+# PaaS apps skip migrations here because preview already ran them on shared DB
+IS_PAAS_FLOW=false
+
+# Check .airo/config.json for productId (e.g., "paas-nodejs-v1")
+if [[ -f ".airo/config.json" ]]; then
+    PRODUCT_ID=$(jq -r '.productId // empty' .airo/config.json 2>/dev/null || echo "")
+    if [[ "$PRODUCT_ID" == paas-* ]]; then
+        IS_PAAS_FLOW=true
+    fi
+fi
+
+# Fallback: check /alloc/config.json for PRODUCT_ID.VALUE
+if [[ "$IS_PAAS_FLOW" == "false" && -f "${NOMAD_ALLOC_DIR}/config.json" ]]; then
+    PRODUCT_ID=$(jq -r '.PRODUCT_ID.VALUE // empty' "${NOMAD_ALLOC_DIR}/config.json" 2>/dev/null || echo "")
+    if [[ "$PRODUCT_ID" == paas-* ]]; then
+        IS_PAAS_FLOW=true
+    fi
+fi
+
+# Push database migrations if applicable (AAB only - PaaS runs migrations in preview)
+if [[ "$IS_PAAS_FLOW" == "true" ]]; then
+    log "Skipping database migrations (PaaS flow - preview handles migrations)"
+elif [[ "$CONFIG_EXISTS" == "false" ]]; then
     log "Skipping database migrations because Nomad allocation config was not found"
 elif [[ ! -d "drizzle" ]]; then
     log "Skipping database migrations because drizzle/ folder not found"

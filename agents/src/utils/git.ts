@@ -86,6 +86,13 @@ export interface ArchiveOptions extends GitCommandOptions {
   includeSource?: boolean;
   /** Exclude git-untracked files from full source archives (default: false) */
   excludeUntracked?: boolean;
+  /**
+   * Include node_modules in full source archive (PaaS optimization).
+   * When true, node_modules is NOT excluded from the archive, allowing
+   * the publish container to skip npm install entirely.
+   * Default: false (exclude node_modules)
+   */
+  includeNodeModules?: boolean;
 }
 
 /**
@@ -614,7 +621,13 @@ export class GitUtils {
 
     // Create archive using appropriate strategy
     if (includeSource) {
-      await this.createFullSourceArchive(archivePath, outputDir, timeout, options.excludeUntracked === true);
+      await this.createFullSourceArchive(
+        archivePath,
+        outputDir,
+        timeout,
+        options.excludeUntracked === true,
+        options.includeNodeModules === true
+      );
     } else {
       await this.createDistOnlyArchive(archivePath, outputDir, timeout);
     }
@@ -696,15 +709,17 @@ export class GitUtils {
   }
 
   /**
-   * Create archive containing full source code with exclusions.
+   * Create archive containing full source code.
    * Used for PaaS apps without bundled server (fallback path).
-   * Excludes: node_modules/, .git/, .env* files
+   * Always excludes: .git/
+   * Conditionally excludes: node_modules/ (unless includeNodeModules=true)
    */
   private async createFullSourceArchive(
     archivePath: string,
     outputDir: string,
     timeout: number,
-    excludeUntracked: boolean
+    excludeUntracked: boolean,
+    includeNodeModules: boolean = false
   ): Promise<void> {
     // Create output directory
     const mkdirResult = await this.devSupervisor!.exec({
@@ -721,11 +736,23 @@ export class GitUtils {
       ? []
       : await this.getUntrackedExclusions();
 
+    // Build tar exclusions - always exclude .git
+    const tarExclusions = ['--exclude=.git'];
+    // Only exclude node_modules if NOT including them (default behavior)
+    if (!includeNodeModules) {
+      tarExclusions.push('--exclude=node_modules');
+    }
+
+    logger.info('git.archive.create.start', {
+      archivePath,
+      includeNodeModules,
+      exclusionCount: tarExclusions.length + untrackedExclusions.length,
+    });
+
     // Create tar.gz archive with exclusions
     const tarArgs = [
       'tar', '-czf', archivePath,
-      '--exclude=node_modules',
-      '--exclude=.git',
+      ...tarExclusions,
       ...untrackedExclusions.map(file => `--exclude=${file}`),
       '-C', '/app', '.'
     ];

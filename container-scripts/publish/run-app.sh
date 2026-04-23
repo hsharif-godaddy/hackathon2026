@@ -78,12 +78,17 @@ log "Archive extracted successfully, extractDurationMs=${EXTRACT_DURATION_MS}"
 cd "$APP_DIR" || error_exit "Failed to change directory to $APP_DIR"
 log "Changed to app directory: $APP_DIR"
 
-# Detect if archive contains pre-built artifacts or needs to be built
-# Check for ESM bundle first (current), then fall back to CJS (legacy archives)
+# ============================================================================
+# ARCHIVE TYPE DETECTION
+# ============================================================================
+# Archives can be:
+# 1. AAB pre-built bundle (server.bundle.mjs/cjs) → fastest path, just run
+# 2. Source/PaaS archive → delegate to build-and-run.sh (handles node_modules/dist detection)
 # CROSS-SERVICE: Archive content strategy determined by agents/src/utils/git.ts createArchive()
-# - dist-only archives: contain pre-built server.bundle.mjs/cjs → fast path below
-# - full-source archives (PaaS): contain source + package.json → build-and-run.sh path
+# ============================================================================
+
 if [[ -f "${APP_DIR}/dist/server.bundle.mjs" ]]; then
+    # AAB pre-built bundle - fastest path
     log "Detected pre-built artifacts (server.bundle.mjs) - using fast path"
 
     load_customer_environment_variables
@@ -95,7 +100,9 @@ if [[ -f "${APP_DIR}/dist/server.bundle.mjs" ]]; then
     log "Starting application script ./server.bundle.mjs"
     cd "${APP_DIR}/dist" || error_exit "Failed to change to directory: ${APP_DIR}/dist"
     exec /usr/local/bin/node "${APP_DIR}/dist/server.bundle.mjs"
+
 elif [[ -f "${APP_DIR}/dist/server.bundle.cjs" ]]; then
+    # AAB legacy bundle - fast path
     log "Detected pre-built artifacts (server.bundle.cjs) - using legacy fast path"
 
     load_customer_environment_variables
@@ -106,10 +113,10 @@ elif [[ -f "${APP_DIR}/dist/server.bundle.cjs" ]]; then
     log "Starting application script ./server.bundle.cjs"
     cd "${APP_DIR}/dist" || error_exit "Failed to change to directory: ${APP_DIR}/dist"
     exec /usr/local/bin/node "${APP_DIR}/dist/server.bundle.cjs"
-else
-    log "No pre-built artifacts detected - falling back to build process"
-    log "Delegating to build-and-run.sh for build and deployment"
 
-    # Archive has already been extracted, build-and-run.sh will build and run
+else
+    # Source or PaaS archive - delegate to build-and-run.sh
+    # build-and-run.sh detects node_modules/dist and skips install/build if present
+    log "No pre-built bundle detected - delegating to build-and-run.sh"
     exec /publish/build-and-run.sh
 fi

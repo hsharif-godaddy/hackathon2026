@@ -47,142 +47,10 @@ describe('PaaSPublishStrategy', () => {
     };
   });
 
-  describe('package manager detection', () => {
-    it('should detect pnpm when pnpm-lock.yaml exists', async () => {
-      mockDevSupervisor.exec
-        .mockResolvedValueOnce({ stdout: '200', success: true }) // curl health check
-        .mockResolvedValueOnce({ stdout: 'found', success: true }) // pnpm check - found
-        .mockResolvedValueOnce({ success: true, exit_code: 0, execution_time: 100 }); // build
-
-      await strategy.prepareBuild(mockContext);
-
-      // Verify pnpm-lock.yaml was checked
-      expect(mockDevSupervisor.exec).toHaveBeenCalledWith(
-        expect.objectContaining({
-          command: 'test -f "/app/pnpm-lock.yaml" && echo "found"',
-        })
-      );
-
-      // Verify pnpm build command was used
-      expect(mockDevSupervisor.exec).toHaveBeenCalledWith(
-        expect.objectContaining({
-          command: 'NODE_ENV=production pnpm run build',
-          working_dir: '/app',
-        })
-      );
-
-      // Verify logging
-      expect(mockLogger.info).toHaveBeenCalledWith(
-        'route.publish.paas.package-manager.detected',
-        { packageManager: 'pnpm' }
-      );
-    });
-
-    it('should detect yarn when yarn.lock exists', async () => {
-      mockDevSupervisor.exec
-        .mockResolvedValueOnce({ stdout: '200', success: true }) // curl health check
-        .mockResolvedValueOnce({ stdout: '', success: true }) // pnpm check - not found
-        .mockResolvedValueOnce({ stdout: 'found', success: true }) // yarn check - found
-        .mockResolvedValueOnce({ success: true, exit_code: 0, execution_time: 100 }); // build
-
-      await strategy.prepareBuild(mockContext);
-
-      // Verify yarn.lock was checked
-      expect(mockDevSupervisor.exec).toHaveBeenCalledWith(
-        expect.objectContaining({
-          command: 'test -f "/app/yarn.lock" && echo "found"',
-        })
-      );
-
-      // Verify yarn build command was used
-      expect(mockDevSupervisor.exec).toHaveBeenCalledWith(
-        expect.objectContaining({
-          command: 'NODE_ENV=production yarn run build',
-          working_dir: '/app',
-        })
-      );
-
-      // Verify logging
-      expect(mockLogger.info).toHaveBeenCalledWith(
-        'route.publish.paas.package-manager.detected',
-        { packageManager: 'yarn' }
-      );
-    });
-
-    it('should default to npm when no lock file exists', async () => {
-      mockDevSupervisor.exec
-        .mockResolvedValueOnce({ stdout: '200', success: true }) // curl health check
-        .mockResolvedValueOnce({ stdout: '', success: true }) // pnpm check - not found
-        .mockResolvedValueOnce({ stdout: '', success: true }) // yarn check - not found
-        .mockResolvedValueOnce({ success: true, exit_code: 0, execution_time: 100 }); // build
-
-      await strategy.prepareBuild(mockContext);
-
-      // Verify npm build command was used
-      expect(mockDevSupervisor.exec).toHaveBeenCalledWith(
-        expect.objectContaining({
-          command: 'NODE_ENV=production npm run build',
-          working_dir: '/app',
-        })
-      );
-
-      // Verify logging
-      expect(mockLogger.info).toHaveBeenCalledWith(
-        'route.publish.paas.package-manager.detected',
-        { packageManager: 'npm' }
-      );
-    });
-
-    it('should fall back to npm when exec throws during detection', async () => {
-      mockDevSupervisor.exec
-        .mockResolvedValueOnce({ stdout: '200', success: true }) // curl health check
-        .mockRejectedValueOnce(new Error('Container unreachable')) // pnpm check throws
-        .mockResolvedValueOnce({ success: true, exit_code: 0, execution_time: 100 }); // build
-
-      await strategy.prepareBuild(mockContext);
-
-      // Verify npm build command was used as fallback
-      expect(mockDevSupervisor.exec).toHaveBeenCalledWith(
-        expect.objectContaining({
-          command: 'NODE_ENV=production npm run build',
-          working_dir: '/app',
-        })
-      );
-
-      // Verify logging shows npm
-      expect(mockLogger.info).toHaveBeenCalledWith(
-        'route.publish.paas.package-manager.detected',
-        { packageManager: 'npm' }
-      );
-    });
-
-    it('should fall back to npm when exec throws during yarn check', async () => {
-      mockDevSupervisor.exec
-        .mockResolvedValueOnce({ stdout: '200', success: true }) // curl health check
-        .mockResolvedValueOnce({ stdout: '', success: true }) // pnpm check - not found
-        .mockRejectedValueOnce(new Error('Timeout')) // yarn check throws
-        .mockResolvedValueOnce({ success: true, exit_code: 0, execution_time: 100 }); // build
-
-      await strategy.prepareBuild(mockContext);
-
-      // Verify npm build command was used as fallback
-      expect(mockDevSupervisor.exec).toHaveBeenCalledWith(
-        expect.objectContaining({
-          command: 'NODE_ENV=production npm run build',
-          working_dir: '/app',
-        })
-      );
-    });
-  });
-
-  describe('publish flow', () => {
+  describe('prepareBuild', () => {
     beforeEach(() => {
-      // Default: curl healthy, no lock files, npm
-      mockDevSupervisor.exec
-        .mockResolvedValueOnce({ stdout: '200', success: true }) // curl health check
-        .mockResolvedValueOnce({ stdout: '', success: true }) // pnpm check
-        .mockResolvedValueOnce({ stdout: '', success: true }) // yarn check
-        .mockResolvedValueOnce({ success: true, exit_code: 0, execution_time: 100 }); // build
+      // Default: curl returns 200 (healthy preview)
+      mockDevSupervisor.exec.mockResolvedValue({ stdout: '200', success: true });
     });
 
     it('should generate hex timestamp identifier', async () => {
@@ -192,14 +60,14 @@ describe('PaaSPublishStrategy', () => {
       expect(result.commitHash).toMatch(/^[a-f0-9]{12}$/);
     });
 
-    it('should create archive with includeSource: true', async () => {
+    it('should create archive with includeSource, includeNodeModules, and extended timeout', async () => {
       await strategy.prepareBuild(mockContext);
 
       expect(mockGitUtils.createArchive).toHaveBeenCalledWith(
         '/tmp/test-app',
         expect.any(String),
         '/dist',
-        { includeSource: true, excludeUntracked: true }
+        { includeSource: true, excludeUntracked: true, includeNodeModules: true, timeout: 120000 }
       );
     });
 
@@ -209,77 +77,36 @@ describe('PaaSPublishStrategy', () => {
       expect(result.archivePath).toBe('/dist/test-archive.tar.gz');
     });
 
-    it('should log build begin with package manager info', async () => {
+    it('should log git-skipped message', async () => {
       await strategy.prepareBuild(mockContext);
 
       expect(mockLogger.info).toHaveBeenCalledWith(
-        'route.publish.paas.build.begin',
+        'route.publish.paas.git-skipped',
         expect.objectContaining({
-          packageManager: 'npm',
-          command: 'NODE_ENV=production npm run build',
+          message: 'PaaS strategy: skipping git operations',
         })
       );
     });
 
-    it('should log build success with package manager info', async () => {
+    it('should log archive begin with includeNodeModules', async () => {
       await strategy.prepareBuild(mockContext);
 
       expect(mockLogger.info).toHaveBeenCalledWith(
-        'route.publish.paas.build.success',
+        'route.publish.paas.archive.begin',
         expect.objectContaining({
-          packageManager: 'npm',
-          executionTime: 100,
+          includeSource: true,
+          includeNodeModules: true,
         })
       );
     });
-  });
 
-  describe('build failure', () => {
-    it('should throw BuildError when build fails', async () => {
-      mockDevSupervisor.exec
-        .mockResolvedValueOnce({ stdout: '200', success: true }) // curl health check
-        .mockResolvedValueOnce({ stdout: '', success: true }) // pnpm check
-        .mockResolvedValueOnce({ stdout: '', success: true }) // yarn check
-        .mockResolvedValueOnce({
-          success: false,
-          exit_code: 127,
-          stderr: 'sh: vite: not found',
-        }); // build fails
+    it('should log archive success', async () => {
+      await strategy.prepareBuild(mockContext);
 
-      try {
-        await strategy.prepareBuild(mockContext);
-        expect.fail('Expected BuildError to be thrown');
-      } catch (error) {
-        expect(error).toBeInstanceOf(BuildError);
-        expect((error as BuildError).name).toBe('BuildError');
-        expect((error as BuildError).details).toBe('sh: vite: not found');
-        expect((error as BuildError).exitCode).toBe(127);
-      }
-    });
-
-    it('should log build failure with package manager info', async () => {
-      mockDevSupervisor.exec
-        .mockResolvedValueOnce({ stdout: '200', success: true }) // curl health check
-        .mockResolvedValueOnce({ stdout: '', success: true }) // pnpm check
-        .mockResolvedValueOnce({ stdout: '', success: true }) // yarn check
-        .mockResolvedValueOnce({
-          success: false,
-          exit_code: 1,
-          stderr: 'Build error',
-        }); // build fails
-
-      try {
-        await strategy.prepareBuild(mockContext);
-      } catch {
-        // Expected
-      }
-
-      expect(mockLogger.error).toHaveBeenCalledWith(
-        'route.publish.paas.build.failed',
+      expect(mockLogger.info).toHaveBeenCalledWith(
+        'route.publish.paas.archive.success',
         expect.objectContaining({
-          packageManager: 'npm',
-          exitCode: 1,
-          stderr: 'Build error',
+          archivePath: '/dist/test-archive.tar.gz',
         })
       );
     });
@@ -293,11 +120,7 @@ describe('PaaSPublishStrategy', () => {
 
   describe('preview health check', () => {
     it('should proceed when HTTP returns 200', async () => {
-      mockDevSupervisor.exec
-        .mockResolvedValueOnce({ stdout: '200', success: true }) // curl health check
-        .mockResolvedValueOnce({ stdout: '', success: true }) // pnpm check
-        .mockResolvedValueOnce({ stdout: '', success: true }) // yarn check
-        .mockResolvedValueOnce({ success: true, exit_code: 0, execution_time: 100 }); // build
+      mockDevSupervisor.exec.mockResolvedValue({ stdout: '200', success: true });
 
       const result = await strategy.prepareBuild(mockContext);
 
@@ -313,11 +136,7 @@ describe('PaaSPublishStrategy', () => {
     });
 
     it('should proceed when HTTP returns 301 (3xx)', async () => {
-      mockDevSupervisor.exec
-        .mockResolvedValueOnce({ stdout: '301', success: true }) // curl health check
-        .mockResolvedValueOnce({ stdout: '', success: true }) // pnpm check
-        .mockResolvedValueOnce({ stdout: '', success: true }) // yarn check
-        .mockResolvedValueOnce({ success: true, exit_code: 0, execution_time: 100 }); // build
+      mockDevSupervisor.exec.mockResolvedValue({ stdout: '301', success: true });
 
       const result = await strategy.prepareBuild(mockContext);
 
@@ -325,25 +144,25 @@ describe('PaaSPublishStrategy', () => {
     });
 
     it('should throw PreviewNotRunningError when HTTP returns 404', async () => {
-      mockDevSupervisor.exec.mockResolvedValueOnce({ stdout: '404', success: true });
+      mockDevSupervisor.exec.mockResolvedValue({ stdout: '404', success: true });
 
       await expect(strategy.prepareBuild(mockContext)).rejects.toThrow(PreviewNotRunningError);
     });
 
     it('should throw PreviewNotRunningError when HTTP returns 500', async () => {
-      mockDevSupervisor.exec.mockResolvedValueOnce({ stdout: '500', success: true });
+      mockDevSupervisor.exec.mockResolvedValue({ stdout: '500', success: true });
 
       await expect(strategy.prepareBuild(mockContext)).rejects.toThrow(PreviewNotRunningError);
     });
 
     it('should throw PreviewNotRunningError when curl fails (connection refused)', async () => {
-      mockDevSupervisor.exec.mockResolvedValueOnce({ stdout: '000', success: false });
+      mockDevSupervisor.exec.mockResolvedValue({ stdout: '000', success: false });
 
       await expect(strategy.prepareBuild(mockContext)).rejects.toThrow(PreviewNotRunningError);
     });
 
     it('should throw PreviewNotRunningError with isSystemError when exec throws', async () => {
-      mockDevSupervisor.exec.mockRejectedValueOnce(new Error('Connection refused'));
+      mockDevSupervisor.exec.mockRejectedValue(new Error('Connection refused'));
 
       const error = await strategy.prepareBuild(mockContext).catch((e) => e);
       expect(error).toBeInstanceOf(PreviewNotRunningError);

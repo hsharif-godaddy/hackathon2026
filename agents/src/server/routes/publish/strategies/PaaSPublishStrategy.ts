@@ -1,7 +1,6 @@
 import type { PublishStrategy, PublishContext, BuildResult, DeploymentStrategy } from './PublishStrategy.js';
 import type { DevSupervisorClient, ProcessInfo, PublishRequest, PublishResponse } from '../../../../services/DevSupervisorClient.js';
 import type { ILogger } from '../../../../logging/types.js';
-import { detectPackageManager, getBuildCommand } from '../../../../services/AppRestartService.js';
 
 // =============================================================================
 // PaaS Publish Recovery Configuration
@@ -82,49 +81,12 @@ export class PaaSPublishStrategy implements PublishStrategy {
       message: 'PaaS strategy: skipping git operations',
     });
 
-    // Detect package manager from lock files (uses shared utility)
-    const packageManager = await detectPackageManager(devSupervisor);
-    logger.info(`route.publish.${this.key}.package-manager.detected`, { packageManager });
-    const buildCommand = getBuildCommand(packageManager, true); // production=true for publish
-
-    // Build the application
-    logger.info(`route.publish.${this.key}.build.begin`, {
-      commitHash: commitHash.substring(0, 7),
-      packageManager,
-      command: buildCommand,
-    });
-
-    const buildResult = await devSupervisor.exec({
-      command: buildCommand,
-      working_dir: '/app',
-      timeout: 120,
-      capture_output: true,
-    });
-
-    if (!buildResult.success) {
-      logger.error(`route.publish.${this.key}.build.failed`, {
-        commitHash: commitHash.substring(0, 7),
-        packageManager,
-        exitCode: buildResult.exit_code,
-        stderr: buildResult.stderr,
-      });
-      throw new BuildError(
-        'Build failed',
-        buildResult.stderr || buildResult.stdout,
-        buildResult.exit_code
-      );
-    }
-
-    logger.info(`route.publish.${this.key}.build.success`, {
-      commitHash: commitHash.substring(0, 7),
-      packageManager,
-      executionTime: buildResult.execution_time,
-    });
-
-    // Create archive with full source (includeSource: true)
+    // Create archive with full source INCLUDING node_modules (PaaS optimization)
+    // This allows publish container to skip npm install entirely
     logger.info(`route.publish.${this.key}.archive.begin`, {
       commitHash: commitHash.substring(0, 7),
       includeSource: true,
+      includeNodeModules: true,
     });
 
     const archiveStartTime = Date.now();
@@ -132,7 +94,8 @@ export class PaaSPublishStrategy implements PublishStrategy {
       appPath,
       commitHash,
       targetDir,
-      { includeSource: true, excludeUntracked: true }
+      // PaaS archives include node_modules (~500MB), so use longer timeout (120s vs default 60s)
+      { includeSource: true, excludeUntracked: true, includeNodeModules: true, timeout: 120000 }
     );
     const archiveDurationMs = Date.now() - archiveStartTime;
 
