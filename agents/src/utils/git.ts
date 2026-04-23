@@ -712,7 +712,12 @@ export class GitUtils {
    * Create archive containing full source code.
    * Used for PaaS apps without bundled server (fallback path).
    * Always excludes: .git/
-   * Conditionally excludes: node_modules/ (unless includeNodeModules=true)
+   * Conditionally excludes:
+   *   - node_modules/ (unless includeNodeModules=true)
+   *   - .ssl/ (only in local dev; local-control-plane bind-mounts /app/.ssl read-only
+   *     into the publish container, so bundling those files causes tar extraction to
+   *     fail with "Read-only file system". Nomad production deployments have no such
+   *     mount, so the exclusion is skipped there.)
    */
   private async createFullSourceArchive(
     archivePath: string,
@@ -736,11 +741,19 @@ export class GitUtils {
       ? []
       : await this.getUntrackedExclusions();
 
-    // Build tar exclusions - always exclude .git
     const tarExclusions = ['--exclude=.git'];
-    // Only exclude node_modules if NOT including them (default behavior)
     if (!includeNodeModules) {
       tarExclusions.push('--exclude=node_modules');
+    }
+    // Absence of NOMAD_ALLOC_DIR is the project's canonical "local dev" signal
+    // (see DefaultPublishStrategy, publish route, AppRepository). The read-only
+    // /app/.ssl bind-mount is specific to local-control-plane's publish container,
+    // so bundling those files would make tar extraction fail there with
+    // "Read-only file system". Nomad has no such mount, so the exclusion is a
+    // no-op there and we skip it to keep prod archive contents unchanged.
+    const isLocalDev = !process.env.NOMAD_ALLOC_DIR;
+    if (isLocalDev) {
+      tarExclusions.push('--exclude=.ssl');
     }
 
     logger.info('git.archive.create.start', {

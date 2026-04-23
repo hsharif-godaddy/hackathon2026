@@ -115,9 +115,7 @@ Archive full source with exclusions:
 tar -czf {archivePath} \
   --exclude='node_modules' \
   --exclude='.git' \
-  --exclude='.env' \
-  --exclude='.env.*' \
-  --exclude='.env.local' \
+  # --exclude='.ssl' added only in local dev (see note below)
   -C /app .
 ```
 
@@ -138,7 +136,12 @@ tar -czf {archivePath} \
 
 - `node_modules/` (will be installed on deploy)
 - `.git/` (version control data)
-- `.env*` files (secrets - must not be in archive)
+- `.ssl/` — only in local dev (detected via `!process.env.NOMAD_ALLOC_DIR`, the
+  project's canonical local-vs-Nomad signal). The local-control-plane publish
+  container bind-mounts `/app/.ssl` read-only, so bundling those files causes tar
+  extraction to fail with "Read-only file system". Nomad production deployments
+  have no such bind-mount, so the exclusion is skipped there to keep archive
+  contents unchanged.
 
 ### Usage in publish.ts
 

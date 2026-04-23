@@ -587,11 +587,50 @@ describe('GitUtils', () => {
 
           await gitUtils.createArchive('/app', commitHash, undefined, { includeSource: true });
 
-          // Verify all exclusions are present
           const tarCallArgs = mockDevSupervisor.exec.mock.calls[1][0];
           expect(tarCallArgs.command).toMatch(/--exclude.*node_modules/);
           expect(tarCallArgs.command).toMatch(/--exclude.*\.git/);
           expect(tarCallArgs.command).not.toMatch(/--exclude.*\.env/);
+        });
+
+        it('should exclude .ssl in full source archive in local dev (NOMAD_ALLOC_DIR unset)', async () => {
+          vi.stubEnv('NOMAD_ALLOC_DIR', '');
+          try {
+            const commitHash = 'abc1234';
+
+            mockDevSupervisor.exec
+              .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' })  // mkdir output dir
+              .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' }); // tar
+
+            await gitUtils.createArchive('/app', commitHash, undefined, { includeSource: true });
+
+            // .ssl is bind-mounted read-only into the local-control-plane publish container;
+            // it must be excluded to prevent tar extraction from failing with "Read-only file system"
+            const tarCallArgs = mockDevSupervisor.exec.mock.calls[1][0];
+            expect(tarCallArgs.command).toMatch(/--exclude.*\.ssl/);
+          } finally {
+            vi.unstubAllEnvs();
+          }
+        });
+
+        it('should NOT exclude .ssl in full source archive in Nomad/prod (NOMAD_ALLOC_DIR set)', async () => {
+          vi.stubEnv('NOMAD_ALLOC_DIR', '/alloc');
+          try {
+            const commitHash = 'abc1234';
+
+            mockDevSupervisor.exec
+              .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' })  // mkdir output dir
+              .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' }); // tar
+
+            await gitUtils.createArchive('/app', commitHash, undefined, { includeSource: true });
+
+            // Nomad/production has no read-only .ssl bind-mount, so the exclusion is skipped
+            // to keep archive contents identical to pre-fix behavior.
+            const tarCallArgs = mockDevSupervisor.exec.mock.calls[1][0];
+            expect(tarCallArgs.command).not.toMatch(/--exclude.*\.ssl/);
+          } finally {
+            vi.unstubAllEnvs();
+          }
         });
 
         it('should exclude untracked files in full source archive when git reports them', async () => {
