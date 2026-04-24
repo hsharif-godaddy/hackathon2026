@@ -17,6 +17,7 @@ import ExamplesSection from '@/experiments/homepage-engagement-variations/hero_c
 import { useAnalytics } from '@/hooks/useAnalytics'
 import { useBreakpoints } from '@/hooks/useBreakpoints'
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition'
+import { useTextareaHoverTracking } from '@/hooks/useTextareaHoverTracking'
 import { useTranslations } from '@/hooks/useTranslations'
 import { JourneyTracker } from '@/lib/journeyTracker'
 import { getByteLength, MAX_PROMPT_BYTES, validateAndClampPrompt } from '@/lib/waf-validation'
@@ -110,6 +111,12 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
   const hasLoggedFirstInputRef = useRef(false)
   const firstInputTimeRef = useRef<number | null>(null)
   const placeholderTimerRef = useRef<NodeJS.Timeout | null>(null)
+
+  const {
+    onMouseEnter: onPromptBoxMouseEnter,
+    onMouseLeave: onPromptBoxMouseLeave,
+    snapshotHoverMs,
+  } = useTextareaHoverTracking(logAnalytics)
 
   // Track prompt abandonment when user leaves with unsent text
   const isLoadingRef = useRef(isLoading)
@@ -481,9 +488,13 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
 
       <div className="w-full max-w-2xl mx-auto my-2 md:my-4">
         <Box gap={isMdBreakpoint ? 'md' : 'lg'}>
-          <div className={clsx('relative transition-all duration-300 ease-out glowing-input', {
-            'glowing-input--disabled': isLoading
-          })}>
+          <div
+            className={clsx('relative transition-all duration-300 ease-out glowing-input', {
+              'glowing-input--disabled': isLoading
+            })}
+            onMouseEnter={onPromptBoxMouseEnter}
+            onMouseLeave={onPromptBoxMouseLeave}
+          >
             <Box
               className="rounded-2xl! p-2 transition-all duration-300 ease-out bg-intents-ux-box-backgroundColor outline-4 outline-solid outline-[rgba(0,0,0,0.15)]"
               elevation="float"
@@ -548,11 +559,12 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                 onFocus={() => {
                   setIsFocused(true)
                   if (!hasLoggedFocusRef.current) {
-                    hasLoggedFocusRef.current = true
+                    const hoverMsBeforeFocus = snapshotHoverMs()
                     logAnalytics(
                       'homepage.prompt.focus',
                       {
                         msFromPageLoad: Math.round(performance.now()),
+                        hoverMsBeforeFocus,
                       },
                       {
                         kind: 'action',
@@ -560,6 +572,21 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                         action: 'focus',
                       },
                     )
+                    // Flip the guard only after the focus log succeeds — if
+                    // logAnalytics throws, a future onFocus retries the
+                    // emission (matches useTextareaHoverTracking's retry-on-
+                    // throw rationale). Placing it before the hover_time
+                    // emission avoids a duplicate focus event if the
+                    // hover_time call alone throws; hover_time has no retry
+                    // path anyway because snapshotHoverMs already consumed
+                    // the accumulator above.
+                    hasLoggedFocusRef.current = true
+                    if (hoverMsBeforeFocus > 0) {
+                      logAnalytics('homepage.prompt.hover_time', {
+                        totalHoverMs: hoverMsBeforeFocus,
+                        trigger: 'focus',
+                      })
+                    }
                     JourneyTracker.current()?.trackMilestone('homepage_prompt_focused')
                   }
                 }}
