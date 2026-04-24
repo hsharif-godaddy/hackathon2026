@@ -110,24 +110,12 @@ else
     log "Using custom serve command - skipping dist directory check"
 fi
 
-# Detect PaaS flow by checking productId from config files
-# PaaS apps skip migrations here because preview already ran them on shared DB
+# Detect PaaS allocations (helper defined in common.sh, see is_paas_flow).
+# PaaS apps skip migrations here because preview already ran them on the
+# shared DB.
 IS_PAAS_FLOW=false
-
-# Check .airo/config.json for productId (e.g., "paas-nodejs-v1")
-if [[ -f ".airo/config.json" ]]; then
-    PRODUCT_ID=$(jq -r '.productId // empty' .airo/config.json 2>/dev/null || echo "")
-    if [[ "$PRODUCT_ID" == paas-* ]]; then
-        IS_PAAS_FLOW=true
-    fi
-fi
-
-# Fallback: check /alloc/config.json for PRODUCT_ID.VALUE
-if [[ "$IS_PAAS_FLOW" == "false" && -f "${NOMAD_ALLOC_DIR}/config.json" ]]; then
-    PRODUCT_ID=$(jq -r '.PRODUCT_ID.VALUE // empty' "${NOMAD_ALLOC_DIR}/config.json" 2>/dev/null || echo "")
-    if [[ "$PRODUCT_ID" == paas-* ]]; then
-        IS_PAAS_FLOW=true
-    fi
+if is_paas_flow; then
+    IS_PAAS_FLOW=true
 fi
 
 # Push database migrations if applicable (AAB only - PaaS runs migrations in preview)

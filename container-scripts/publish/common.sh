@@ -19,6 +19,38 @@ log_warn() {
     echo "[WARN] $(date '+%Y-%m-%d %H:%M:%S') - $1" >&2
 }
 
+# Detect PaaS allocations by matching productId against ^paas-.+.
+# *** KEEP IN SYNC with container-scripts/preview/nomad_setup.sh ***
+# Preview and publish are separate containers; no shared runtime source.
+is_paas_flow() {
+    if ! command -v jq >/dev/null 2>&1; then
+        log_warn "is_paas_flow: jq missing; defaulting to AAB path"
+        return 1
+    fi
+
+    local alloc_dir="${NOMAD_ALLOC_DIR:-/alloc}"
+    local product_id=""
+    local source="none"
+
+    if [[ -f "${alloc_dir}/config.json" ]]; then
+        product_id=$(jq -r '.PRODUCT_ID.VALUE // empty' "${alloc_dir}/config.json" 2>/dev/null || true)
+        [[ -n "$product_id" ]] && source="alloc"
+    fi
+
+    # Fallback only when alloc yielded nothing — alloc is authoritative.
+    if [[ -z "$product_id" && -f ".airo/config.json" ]]; then
+        product_id=$(jq -r '.productId // empty' .airo/config.json 2>/dev/null || true)
+        [[ -n "$product_id" ]] && source="airo"
+    fi
+
+    if [[ "$product_id" =~ ^paas-.+ ]]; then
+        log "is_paas_flow: productId='${product_id}' source=${source} paas=true"
+        return 0
+    fi
+    log "is_paas_flow: productId='${product_id}' source=${source} paas=false"
+    return 1
+}
+
 # Load database credentials as environment variables
 # Exports: DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD
 load_database_environment_variables() {
