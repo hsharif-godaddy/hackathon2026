@@ -51,10 +51,10 @@ func periodicResetCount(t *testing.T, st *Store, itemID string) int {
 	return count
 }
 
-func itemResetState(t *testing.T, st *Store, itemID string) (decimal.Decimal, time.Time) {
+func itemResetState(t *testing.T, st *Store, itemID string) (decimal.Decimal, sql.NullTime) {
 	t.Helper()
 	var used decimal.Decimal
-	var resetsAt time.Time
+	var resetsAt sql.NullTime
 	if err := st.db.QueryRow(`
 		SELECT credits_used, resets_at
 		FROM budget_items
@@ -136,8 +136,11 @@ func TestCreateBudgetSessionAppliesDueResetAndIsIdempotent(t *testing.T) {
 	if !usedBefore.Equal(decimal.RequireFromString("10")) {
 		t.Fatalf("credits_used before reset = %s want 10", usedBefore.StringFixed(6))
 	}
-	if !oldResetsAt.Before(time.Now().UTC()) {
-		t.Fatalf("resets_at should be due, got %s", oldResetsAt.Format(time.RFC3339Nano))
+	if !oldResetsAt.Valid {
+		t.Fatalf("resets_at should be set, got null")
+	}
+	if !oldResetsAt.Time.Before(time.Now().UTC()) {
+		t.Fatalf("resets_at should be due, got %s", oldResetsAt.Time.Format(time.RFC3339Nano))
 	}
 
 	if err := st.CreateBudgetSession(ctx, budgetID, uuid.NewString(), nil); err != nil {
@@ -148,8 +151,11 @@ func TestCreateBudgetSessionAppliesDueResetAndIsIdempotent(t *testing.T) {
 	if !usedAfter.Equal(decimal.Zero) {
 		t.Fatalf("credits_used after reset = %s want 0", usedAfter.StringFixed(6))
 	}
-	if !newResetsAt.After(time.Now().UTC()) {
-		t.Fatalf("resets_at after reset should be in future, got %s", newResetsAt.Format(time.RFC3339Nano))
+	if !newResetsAt.Valid {
+		t.Fatalf("resets_at after reset should be set, got null")
+	}
+	if !newResetsAt.Time.After(time.Now().UTC()) {
+		t.Fatalf("resets_at after reset should be in future, got %s", newResetsAt.Time.Format(time.RFC3339Nano))
 	}
 	if got := periodicResetCount(t, st, itemID); got != 1 {
 		t.Fatalf("periodic_reset rows = %d want 1", got)
@@ -202,8 +208,11 @@ func TestProcessDueBudgetItemResetsAdvancesScheduleWithoutLedgerWhenUnused(t *te
 	if !usedAfter.Equal(decimal.Zero) {
 		t.Fatalf("credits_used after reset processor = %s want 0", usedAfter.StringFixed(6))
 	}
-	if !newResetsAt.After(time.Now().UTC()) {
-		t.Fatalf("resets_at after reset processor should be in future, got %s", newResetsAt.Format(time.RFC3339Nano))
+	if !newResetsAt.Valid {
+		t.Fatalf("resets_at after reset processor should be set, got null")
+	}
+	if !newResetsAt.Time.After(time.Now().UTC()) {
+		t.Fatalf("resets_at after reset processor should be in future, got %s", newResetsAt.Time.Format(time.RFC3339Nano))
 	}
 	if got := periodicResetCount(t, st, itemID); got != 0 {
 		t.Fatalf("periodic_reset rows = %d want 0", got)
@@ -273,8 +282,11 @@ func TestProcessDueResetsWithOutboxCreatesLedgerAndOutboxForUsedCredits(t *testi
 	if !usedAfter.Equal(decimal.Zero) {
 		t.Fatalf("credits_used after = %s want 0", usedAfter.StringFixed(6))
 	}
-	if !newResetsAt.After(now) {
-		t.Fatalf("resets_at should be in future, got %s", newResetsAt.Format(time.RFC3339Nano))
+	if !newResetsAt.Valid {
+		t.Fatalf("resets_at should be set, got null")
+	}
+	if !newResetsAt.Time.After(now) {
+		t.Fatalf("resets_at should be in future, got %s", newResetsAt.Time.Format(time.RFC3339Nano))
 	}
 
 	// Verify outbox event was created
@@ -335,8 +347,11 @@ func TestProcessDueResetsWithOutboxNoLedgerOrOutboxWhenUnused(t *testing.T) {
 
 	// resets_at should still be advanced
 	_, newResetsAt := itemResetState(t, st, itemID)
-	if !newResetsAt.After(now) {
-		t.Fatalf("resets_at should be in future, got %s", newResetsAt.Format(time.RFC3339Nano))
+	if !newResetsAt.Valid {
+		t.Fatalf("resets_at should be set, got null")
+	}
+	if !newResetsAt.Time.After(now) {
+		t.Fatalf("resets_at should be in future, got %s", newResetsAt.Time.Format(time.RFC3339Nano))
 	}
 }
 
@@ -847,7 +862,13 @@ func TestCreateSessionReportNoExhaustedWebhookWhenAlreadyExhausted(t *testing.T)
 	}
 	itemID := budget.Items[0].ID
 
-	// Pre-exhaust the item via direct ledger entry
+	// Open session while the pool still has capacity (CreateBudgetSession rejects 402 when nothing is left).
+	sessionID := uuid.NewString()
+	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	// Pre-exhaust the item via direct ledger entry; report will still see the item as already exhausted.
 	if _, err := st.db.ExecContext(ctx, `
 		INSERT INTO budget_item_credit_ledger (id, budget_item_id, entry_kind, credits_delta)
 		VALUES ($1, $2, 'session_spend', $3)
@@ -859,12 +880,6 @@ func TestCreateSessionReportNoExhaustedWebhookWhenAlreadyExhausted(t *testing.T)
 	used, _ := itemResetState(t, st, itemID)
 	if !used.Equal(decimal.RequireFromString("10")) {
 		t.Fatalf("credits_used = %s want 10", used.StringFixed(6))
-	}
-
-	// Create session (will see item as already exhausted)
-	sessionID := uuid.NewString()
-	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil); err != nil {
-		t.Fatal(err)
 	}
 
 	// Create report with zero budget cost (nothing to allocate)

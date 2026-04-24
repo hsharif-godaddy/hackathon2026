@@ -1082,5 +1082,11 @@ components:
 
     SessionReport:
       type: object
-      description: Report shape matches GET after POST
+      description: Report shape matches GET after POST. Includes sessionCallRequestIds (all callRequestId values from PATCH spend for the session, id order).
       additionalProperties: true
+      properties:
+        sessionCallRequestIds:
+          type: array
+          description: callRequestId from each row in budget_session_items for this session, in id order
+          items:
+            type: string

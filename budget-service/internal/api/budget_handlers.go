@@ -19,6 +19,8 @@ import (
 	"github.com/gdcorp-partners/airo-app-builder/budget-service/internal/store"
 )
 
+const maxSessionCallRequestIDsInLog = 100
+
 // flexAmount unmarshals JSON string or number into a normalized decimal string.
 type flexAmount string
 
@@ -1116,14 +1118,25 @@ func (s *Server) postBudgetSessionReport(w http.ResponseWriter, r *http.Request)
 
 	pc, _ := credits.ParseNonNegative(d.ProductCostTotal)
 	bc, _ := credits.ParseNonNegative(d.BudgetCostTotal)
+	ids := d.SessionCallRequestIDs
+	logCallReqIDs := any(ids)
+	cridN := len(ids)
+	trunc := false
+	if cridN > maxSessionCallRequestIDsInLog {
+		logCallReqIDs = append([]string(nil), ids[:maxSessionCallRequestIDsInLog]...)
+		trunc = true
+	}
 	slog.Info("budget.session.report.success",
 		"budgetCostTotal", d.BudgetCostTotal,
 		"budgetCostTotalUsd", bc.InexactFloat64(),
 		"budgetId", d.BudgetID,
+		"callRequestIdCount", cridN,
+		"callRequestIdsTruncated", trunc,
 		"productCostTotal", d.ProductCostTotal,
 		"productCostTotalUsd", pc.InexactFloat64(),
 		"productKey", d.ProductKey,
 		"reportId", d.ReportID,
+		"sessionCallRequestIds", logCallReqIDs,
 		"sessionId", d.SessionID,
 	)
 
@@ -1410,14 +1423,20 @@ func sessionReportToResponse(d *store.SessionReportDetail) (map[string]any, erro
 		}
 	}
 
+	sessCRIDs := d.SessionCallRequestIDs
+	if sessCRIDs == nil {
+		sessCRIDs = []string{}
+	}
+
 	return map[string]any{
-		"productKey":       d.ProductKey,
-		"budgetId":         d.BudgetID,
-		"sessionId":        d.SessionID,
-		"reportId":         d.ReportID,
-		"budgetCostTotal":  bct,
-		"productCostTotal": pct,
-		"creditsAvailable": cav,
-		"reportItems":      items,
+		"productKey":            d.ProductKey,
+		"budgetId":              d.BudgetID,
+		"sessionId":             d.SessionID,
+		"reportId":              d.ReportID,
+		"budgetCostTotal":       bct,
+		"productCostTotal":      pct,
+		"creditsAvailable":      cav,
+		"sessionCallRequestIds": sessCRIDs,
+		"reportItems":           items,
 	}, nil
 }

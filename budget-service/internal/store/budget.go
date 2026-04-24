@@ -93,14 +93,15 @@ type SessionReportItemOut struct {
 }
 
 type SessionReportDetail struct {
-	ProductKey       string
-	BudgetID         string
-	SessionID        string
-	ReportID         string
-	BudgetCostTotal  string
-	ProductCostTotal string
-	CreditsAvailable string
-	Items            []SessionReportItemOut
+	ProductKey            string
+	BudgetID              string
+	SessionID             string
+	ReportID              string
+	BudgetCostTotal       string
+	ProductCostTotal      string
+	CreditsAvailable      string
+	SessionCallRequestIDs []string
+	Items                 []SessionReportItemOut
 }
 
 // SessionReportListRow is a summary row for ListSessionReports.
@@ -1383,6 +1384,28 @@ func (s *Store) GetSessionReport(ctx context.Context, sessionID, reportID string
 	d.BudgetCostTotal = credits.Format(bcTot)
 	d.ProductCostTotal = credits.Format(pcTot)
 	d.CreditsAvailable = credits.Format(credAvail)
+
+	d.SessionCallRequestIDs = make([]string, 0)
+	crRows, err := s.db.QueryContext(ctx, `
+		SELECT call_request_id FROM budget_session_items WHERE session_id = $1 ORDER BY id
+	`, d.SessionID)
+	if err != nil {
+		return nil, err
+	}
+	for crRows.Next() {
+		var id string
+		if err := crRows.Scan(&id); err != nil {
+			_ = crRows.Close()
+			return nil, err
+		}
+		d.SessionCallRequestIDs = append(d.SessionCallRequestIDs, id)
+	}
+	if err := crRows.Close(); err != nil {
+		return nil, err
+	}
+	if err := crRows.Err(); err != nil {
+		return nil, err
+	}
 
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, budget_cost, product_cost, label, created_at

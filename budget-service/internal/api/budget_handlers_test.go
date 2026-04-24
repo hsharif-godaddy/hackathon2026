@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"reflect"
 	"strings"
@@ -858,6 +859,13 @@ func TestGoCodeSpendMathOverHTTP(t *testing.T) {
 	}
 	if rep["budgetId"].(string) != budgetID {
 		t.Fatalf("report budgetId")
+	}
+	scr, ok := rep["sessionCallRequestIds"].([]any)
+	if !ok || len(scr) != 1 {
+		t.Fatalf("sessionCallRequestIds: %v", rep["sessionCallRequestIds"])
+	}
+	if scr[0].(string) != "gocode-req-1" {
+		t.Fatalf("sessionCallRequestIds[0] want gocode-req-1 got %v", scr[0])
 	}
 	if rep["reportItems"].([]any)[0].(map[string]any)["label"].(string) != "usage" {
 		t.Fatalf("report label")
@@ -1820,6 +1828,17 @@ func TestReportAllocatesRenewalItemBeforePlainItem(t *testing.T) {
 	if err := dec.Decode(&rep); err != nil {
 		t.Fatal(err)
 	}
+	rawSCR, ok := rep["sessionCallRequestIds"]
+	if !ok {
+		t.Fatal("sessionCallRequestIds key missing from report response")
+	}
+	emptyCR, ok := rawSCR.([]any)
+	if !ok {
+		t.Fatalf("sessionCallRequestIds: want array, got %T", rawSCR)
+	}
+	if len(emptyCR) != 0 {
+		t.Fatalf("sessionCallRequestIds want empty, got %v", rep["sessionCallRequestIds"])
+	}
 	ritems := rep["reportItems"].([]any)
 	line0 := ritems[0].(map[string]any)
 	budgetItems := line0["budgetItems"].([]any)
@@ -2734,6 +2753,16 @@ func TestPostBudgetSessionReportEmitsSuccessLog(t *testing.T) {
 	}
 	sessionID := decodeJSONMapUseNumber(t, recS.Body.String())["sessionId"].(string)
 
+	reqPatch := httptest.NewRequest(http.MethodPatch, "/api/v1/sessions/"+sessionID, strings.NewReader(
+		`{"sessionItems":[{"cost":"0.500000","callRequestId":"slog-req-1"}]}`,
+	))
+	reqPatch.Header.Set("Content-Type", "application/json")
+	recPatch := httptest.NewRecorder()
+	h.ServeHTTP(recPatch, reqPatch)
+	if recPatch.Code != http.StatusOK {
+		t.Fatalf("patch session: %d %s", recPatch.Code, recPatch.Body.String())
+	}
+
 	repBody := `{"reportItems":[{"budgetCost":"1.000000","productCost":"2.500000","label":"slog"}]}`
 	reqR := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sessionID+"/reports", strings.NewReader(repBody))
 	reqR.Header.Set("Content-Type", "application/json")
@@ -2793,6 +2822,125 @@ func TestPostBudgetSessionReportEmitsSuccessLog(t *testing.T) {
 	}
 	if bcu < 0.999999 || bcu > 1.000001 {
 		t.Fatalf("budgetCostTotalUsd: got %g", bcu)
+	}
+	ids, ok := success["sessionCallRequestIds"].([]any)
+	if !ok {
+		t.Fatalf("sessionCallRequestIds: want array, got %T %v", success["sessionCallRequestIds"], success["sessionCallRequestIds"])
+	}
+	if len(ids) != 1 || ids[0].(string) != "slog-req-1" {
+		t.Fatalf("sessionCallRequestIds: %v", ids)
+	}
+	nCR, ok := success["callRequestIdCount"].(float64)
+	if !ok || nCR != 1 {
+		t.Fatalf("callRequestIdCount: got %v", success["callRequestIdCount"])
+	}
+	if tr, ok := success["callRequestIdsTruncated"].(bool); !ok || tr {
+		t.Fatalf("callRequestIdsTruncated: got %v", success["callRequestIdsTruncated"])
+	}
+}
+
+func TestPostBudgetSessionReportLogTruncatesSessionCallRequestIds(t *testing.T) {
+	var logBuf bytes.Buffer
+	logH := slog.NewJSONHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelInfo})
+	previous := slog.Default()
+	slog.SetDefault(slog.New(logH))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+
+	st := testStore(t)
+	mw := auth.NewMiddleware("none", nil, nil)
+	srv := &Server{Store: st}
+	h := NewRouter(srv, mw)
+	pk := "log-trunc-" + uuid.NewString()
+	reqP := httptest.NewRequest(http.MethodPost, "/api/v1/products", strings.NewReader(`{"productKey":"`+pk+`"}`))
+	reqP.Header.Set("Content-Type", "application/json")
+	recP := httptest.NewRecorder()
+	h.ServeHTTP(recP, reqP)
+	if recP.Code != http.StatusCreated {
+		t.Fatalf("post product: %d %s", recP.Code, recP.Body.String())
+	}
+	reqB := httptest.NewRequest(http.MethodPost, "/api/v1/budgets", strings.NewReader(
+		`{"productKey":"`+pk+`","items":[{"creditsTotal":"200.000000","costToCreditRatio":"1"}]}`,
+	))
+	reqB.Header.Set("Content-Type", "application/json")
+	recB := httptest.NewRecorder()
+	h.ServeHTTP(recB, reqB)
+	if recB.Code != http.StatusCreated {
+		t.Fatalf("post budget: %d %s", recB.Code, recB.Body.String())
+	}
+	budgetID := decodeJSONMapUseNumber(t, recB.Body.String())["budgetId"].(string)
+	reqS := httptest.NewRequest(http.MethodPost, "/api/v1/sessions", strings.NewReader(`{"budgetId":"`+budgetID+`"}`))
+	reqS.Header.Set("Content-Type", "application/json")
+	recS := httptest.NewRecorder()
+	h.ServeHTTP(recS, reqS)
+	if recS.Code != http.StatusCreated {
+		t.Fatalf("post session: %d %s", recS.Code, recS.Body.String())
+	}
+	sessionID := decodeJSONMapUseNumber(t, recS.Body.String())["sessionId"].(string)
+
+	var patchBody strings.Builder
+	patchBody.WriteString(`{"sessionItems":[`)
+	for i := range 101 {
+		if i > 0 {
+			patchBody.WriteString(",")
+		}
+		fmt.Fprintf(&patchBody, `{"cost":"0.01","callRequestId":"tr-%d"}`, i)
+	}
+	patchBody.WriteString("]}")
+	reqPatch := httptest.NewRequest(http.MethodPatch, "/api/v1/sessions/"+sessionID, strings.NewReader(patchBody.String()))
+	reqPatch.Header.Set("Content-Type", "application/json")
+	recPatch := httptest.NewRecorder()
+	h.ServeHTTP(recPatch, reqPatch)
+	if recPatch.Code != http.StatusOK {
+		t.Fatalf("patch session: %d %s", recPatch.Code, recPatch.Body.String())
+	}
+
+	repBody := `{"reportItems":[{"budgetCost":"0.000000","productCost":"0","label":"z"}]}`
+	reqR := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sessionID+"/reports", strings.NewReader(repBody))
+	reqR.Header.Set("Content-Type", "application/json")
+	recR := httptest.NewRecorder()
+	h.ServeHTTP(recR, reqR)
+	if recR.Code != http.StatusCreated {
+		t.Fatalf("post report: %d %s", recR.Code, recR.Body.String())
+	}
+	postReport := decodeJSONMapUseNumber(t, recR.Body.String())
+	sids, ok := postReport["sessionCallRequestIds"].([]any)
+	if !ok {
+		t.Fatalf("POST report sessionCallRequestIds: want []any, got %T", postReport["sessionCallRequestIds"])
+	}
+	if len(sids) != 101 {
+		t.Fatalf("response sessionCallRequestIds len: got %d want 101 (not truncated in API body)", len(sids))
+	}
+
+	var success map[string]any
+	for _, line := range strings.Split(logBuf.String(), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var m map[string]any
+		if err := json.Unmarshal([]byte(line), &m); err != nil {
+			continue
+		}
+		if m["msg"] == "budget.session.report.success" {
+			success = m
+			break
+		}
+	}
+	if success == nil {
+		t.Fatalf("missing budget.session.report.success: %s", logBuf.String())
+	}
+	logIDs, ok := success["sessionCallRequestIds"].([]any)
+	if !ok {
+		t.Fatalf("log sessionCallRequestIds: want array, got %T", success["sessionCallRequestIds"])
+	}
+	if len(logIDs) != 100 {
+		t.Fatalf("log sessionCallRequestIds len: got %d want 100 (truncated)", len(logIDs))
+	}
+	if n, ok := success["callRequestIdCount"].(float64); !ok || n != 101 {
+		t.Fatalf("callRequestIdCount: got %v want 101", success["callRequestIdCount"])
+	}
+	if tr, ok := success["callRequestIdsTruncated"].(bool); !ok || !tr {
+		t.Fatalf("callRequestIdsTruncated: want true, got %v", success["callRequestIdsTruncated"])
 	}
 }
 
@@ -3092,6 +3240,7 @@ func TestReportsAggregateProductKeyOnlySumsAllLabelsInWindow(t *testing.T) {
 
 func TestReportsAggregateLabelOnlySumsAcrossProducts(t *testing.T) {
 	h := NewRouter(&Server{Store: testStore(t)}, auth.NewMiddleware("none", nil, nil))
+	sharedLabel := "sharedZ-" + uuid.NewString()
 	pk1 := "lbl-1-" + uuid.NewString()
 	pk2 := "lbl-2-" + uuid.NewString()
 	for _, pkk := range []string{pk1, pk2} {
@@ -3123,7 +3272,7 @@ func TestReportsAggregateLabelOnlySumsAcrossProducts(t *testing.T) {
 		}
 		sid := decodeJSONMapUseNumber(t, recS.Body.String())["sessionId"].(string)
 		reqR := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sid+"/reports", strings.NewReader(
-			`{"reportItems":[{"budgetCost":"3","productCost":"1","label":"sharedZ"}]}`,
+			`{"reportItems":[{"budgetCost":"3","productCost":"1","label":"`+sharedLabel+`"}]}`,
 		))
 		reqR.Header.Set("Content-Type", "application/json")
 		recR := httptest.NewRecorder()
@@ -3132,7 +3281,7 @@ func TestReportsAggregateLabelOnlySumsAcrossProducts(t *testing.T) {
 			t.Fatalf("post report: %d %s", recR.Code, recR.Body.String())
 		}
 	}
-	agg := "/api/v1/reports/aggregate?label=sharedZ&from=2000-01-01T00:00:00Z&to=2100-01-01T00:00:00Z"
+	agg := "/api/v1/reports/aggregate?label=" + url.QueryEscape(sharedLabel) + "&from=2000-01-01T00:00:00Z&to=2100-01-01T00:00:00Z"
 	reqA := httptest.NewRequest(http.MethodGet, agg, nil)
 	recA := httptest.NewRecorder()
 	h.ServeHTTP(recA, reqA)
@@ -3143,7 +3292,7 @@ func TestReportsAggregateLabelOnlySumsAcrossProducts(t *testing.T) {
 	if m["productKey"].(string) != "" {
 		t.Fatalf("productKey want empty, got %q", m["productKey"])
 	}
-	if m["label"].(string) != "sharedZ" {
+	if m["label"].(string) != sharedLabel {
 		t.Fatalf("label: %v", m["label"])
 	}
 	if m["reportLineCount"].(json.Number) != "2" {
