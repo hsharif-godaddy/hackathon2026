@@ -103,7 +103,7 @@ vi.mock('@/hooks/useSwitchboard', () => ({
 
 vi.mock('@/hooks/useAuth', () => ({
   useAuth: vi.fn(() => ({
-    getUserInfo: () => ({ shopperId: '123456789' }),
+    authState: { details: { shopperId: '123456789' } },
   })),
 }));
 
@@ -413,15 +413,48 @@ describe('Sites Page', () => {
   });
 
   describe('hides transfer UI for TLA accounts', () => {
-    it('should not show transfer card when user is a TLA (shopperId <= 3 chars)', async () => {
+    beforeEach(() => {
+      vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false, error: null } as ReturnType<typeof useSwitchboard>);
+    });
+
+    afterEach(async () => {
       const { useAuth } = await import('@/hooks/useAuth');
       vi.mocked(useAuth).mockReturnValue({
-        getUserInfo: () => ({ shopperId: 'abc' }),
+        authState: { details: { shopperId: '123456789' } },
+      } as ReturnType<typeof useAuth>);
+    });
+
+    it('should not show transfer card when user is a TLA (shopperId === 3 chars)', async () => {
+      const { useAuth } = await import('@/hooks/useAuth');
+      vi.mocked(useAuth).mockReturnValue({
+        authState: { details: { shopperId: 'abc' } },
       } as ReturnType<typeof useAuth>);
 
       renderWithProviders(<Sites />);
 
       expect(screen.queryByTestId('transfer-app-card')).not.toBeInTheDocument();
+    });
+
+    it('should show transfer card when shopperId is longer than 3 chars', async () => {
+      const { useAuth } = await import('@/hooks/useAuth');
+      vi.mocked(useAuth).mockReturnValue({
+        authState: { details: { shopperId: '123456789' } },
+      } as ReturnType<typeof useAuth>);
+
+      renderWithProviders(<Sites />);
+
+      expect(screen.getByTestId('transfer-app-card')).toBeInTheDocument();
+    });
+
+    it('should show transfer card when authState is null (non-JWT/mock-auth mode)', async () => {
+      const { useAuth } = await import('@/hooks/useAuth');
+      vi.mocked(useAuth).mockReturnValue({
+        authState: null,
+      } as ReturnType<typeof useAuth>);
+
+      renderWithProviders(<Sites />);
+
+      expect(screen.getByTestId('transfer-app-card')).toBeInTheDocument();
     });
   });
 

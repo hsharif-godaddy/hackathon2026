@@ -26,16 +26,11 @@ import { logImpressionEvent } from '@/utils/instrumentation'
 function SitesPageContent() {
   const t = useTranslations();
   const router = useRouter();
-  const { getUserInfo } = useAuth();
+  const { authState } = useAuth();
   const [adminActionLoading, setAdminActionLoading] = useState<string | null>(null)
   const [isAcceptTransferOpen, setIsAcceptTransferOpen] = useState(false)
   const [appsPage, setAppsPage] = useState(1)
   const { data: isTransferEnabled } = useSwitchboard('appbuilder-transfer-ownership')
-
-  const { shopperId } = getUserInfo();
-  // TLA (Three Letter Account) shopperIds have exactly 3 characters
-  const isTLA = typeof shopperId === 'string' && shopperId.length === 3;
-
   const sites = useSitesStore((state) => state.allSites)
   const isLoading = useSitesStore((state) => state.isLoadingAll)
   const error = useSitesStore((state) => state.error)
@@ -59,6 +54,12 @@ function SitesPageContent() {
     () => Math.max(1, Math.ceil(Math.max(0, totalSites) / APPS_GRID_PAGE_SIZE)),
     [totalSites]
   )
+
+  const isTLA = useMemo(() => {
+    const sid = authState?.details?.shopperId;
+    return typeof sid === 'string' && sid.length === 3;
+  }, [authState]);     
+
 
   useEffect(() => {
     setAppsPage((p) => Math.min(p, appsTotalPages))
@@ -162,10 +163,14 @@ function SitesPageContent() {
 
         <div className="grid gap-2 md:gap-3 md:grid-cols-2 xl:grid-cols-3">
           <AppCardEmptyState />
-          <TransferAppCard
-            isTransferEnabled={isTransferEnabled && !isTLA}
-            onAcceptTransfer={() => setIsAcceptTransferOpen(true)}
-          />
+          
+          {!isTLA && (
+            <TransferAppCard
+              isTransferEnabled={isTransferEnabled}
+              onAcceptTransfer={() => setIsAcceptTransferOpen(true)}
+            />
+          )}
+
           {totalSites > 0 && paginatedSites.map((site) => (
             <AppCard
               key={site.id}
