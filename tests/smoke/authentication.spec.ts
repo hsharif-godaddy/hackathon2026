@@ -124,11 +124,25 @@ test.describe('Authentication', () => {
     // Navigate to /apps - the client-side fetch to /api/sites triggers the 401 mock
     await page.goto('/apps');
 
+    // Confirm the 401 mock actually fired before racing for UI. If /api/sites is
+    // never fetched (e.g. cached response, SSR-only), the race would time out on
+    // a page with no auth UI and produce a confusing "expected ... not null" error.
+    await expect
+      .poll(() => intercepted, {
+        message: 'Route mock for /api/sites was never triggered',
+        timeout: DEFAULT_TIMEOUT,
+      })
+      .toBe(true);
+
     // 6a: Detect which auth UI appeared after the mocked 401.
-    // Three possible states depending on environment and deploy status:
-    //   'sso-iframe'  - prod post-deploy: SsoDeck renders iframe inside SsoLogin Modal
-    //   'sso-redirect' - test post-deploy: SsoLogin Modal opens but SsoDeck uses redirect (no iframe)
-    //   'fallback'    - pre-deploy: old AuthBoundary shows "Sign In Required" modal directly
+    // Four possible states depending on environment and deploy status:
+    //   'sso-iframe'        - prod / local dev: SsoDeck renders iframe inside SsoLogin Modal
+    //   'sso-modal'         - modal opened but iframe never loaded (edge case / misconfig)
+    //   'sso-full-redirect' - deployed test/dev: AuthBoundary -> signIn() -> handleSignIn()
+    //                         does window.location.href = sso.<root>/login. The env gate
+    //                         in useSsoSignIn skips the modal because PNA blocks the iframe.
+    //                         See docs/sso-login-env-gating.md.
+    //   'fallback'          - pre-deploy: old AuthBoundary shows "Sign In Required" modal directly
     // TODO: Remove fallback branch after #2789 deploys to prod.
     const ssoIframe = page.locator('iframe[title="Container for sign in"]');
     const ssoModal = page.locator('.sso-login-modal');
@@ -141,19 +155,48 @@ test.describe('Authentication', () => {
         .catch(() => null),
       ssoModal
         .waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT })
-        .then(() => 'sso-redirect' as const)
+        .then(async () => {
+          // In prod / local dev the modal wrapper renders before the iframe loads.
+          // Give the iframe a brief window to appear; if it does, classify as
+          // 'sso-iframe' so the race exercises the full dismiss/fallback flow
+          // instead of short-circuiting to the 'sso-modal' edge-case branch.
+          const iframeFollowed = await ssoIframe
+            .waitFor({ state: 'visible', timeout: 1000 })
+            .then(() => true)
+            .catch(() => false);
+          return iframeFollowed ? ('sso-iframe' as const) : ('sso-modal' as const);
+        })
         .catch(() => null),
       fallbackModal
         .waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT })
         .then(() => 'fallback' as const)
         .catch(() => null),
+      page
+        .waitForURL(
+          (url) =>
+            url.hostname.startsWith('sso.') && url.hostname.endsWith('godaddy.com'),
+          {
+            timeout: DEFAULT_TIMEOUT,
+            // 'commit' resolves as soon as the browser commits the navigation
+            // (response headers received). Without this, waitForURL waits for the
+            // cross-origin SSO page's 'load' event, which often exceeds
+            // DEFAULT_TIMEOUT or is blocked by the runner, causing this arm to
+            // resolve to null alongside the three waitFor arms.
+            waitUntil: 'commit',
+          }
+        )
+        .then(() => 'sso-full-redirect' as const)
+        .catch(() => null),
     ]);
 
-    expect(authUiState, 'Expected SSO iframe, SSO modal, or fallback dialog after 401').not.toBeNull();
+    expect(
+      authUiState,
+      'Expected SSO iframe, SSO modal, full-page SSO redirect, or fallback dialog after 401'
+    ).not.toBeNull();
     console.log(`  [6a] Auth UI detected: ${authUiState}`);
 
     if (authUiState === 'sso-iframe') {
-      // Prod post-deploy: full auto-open/dismiss/fallback flow
+      // Prod / local dev: full auto-open/dismiss/fallback flow
       // 6b: Dismiss SSO without completing auth.
       const closeButton = page.getByRole('button', { name: /close/i });
       if (await closeButton.isVisible({ timeout: 2000 }).catch(() => false)) {
@@ -173,9 +216,16 @@ test.describe('Authentication', () => {
       await signInButton.click();
       await expect(ssoIframe).toBeVisible({ timeout: DEFAULT_TIMEOUT });
       console.log('  [6d] SSO Deck re-opened from fallback Sign In button');
-    } else if (authUiState === 'sso-redirect') {
-      // Test env post-deploy: SsoLogin Modal opened but SsoDeck uses redirect, not iframe
-      console.log('  [6b] SsoLogin modal opened (redirect-based SSO, no iframe)');
+    } else if (authUiState === 'sso-modal') {
+      // Edge case: SsoLogin Modal opened but iframe did not load (transient / misconfig)
+      console.log('  [6b] SsoLogin modal opened (iframe not loaded)');
+    } else if (authUiState === 'sso-full-redirect') {
+      // Deployed test/dev: AuthBoundary -> useSsoSignIn.signIn() -> handleSignIn()
+      // does window.location.href to sso.<root>/login. Assert the landing path to
+      // catch a broken 401 handler that redirects somewhere unexpected - waitForURL
+      // alone could coincidentally match any navigation to an sso.*.godaddy.com host.
+      expect(page.url(), 'Full-page SSO redirect should land on /login').toMatch(/\/login/);
+      console.log(`  [6b] Full-page redirect to SSO: ${page.url()}`);
     } else {
       // Pre-deploy: old AuthBoundary shows fallback modal directly
       console.log('  [6b] Fallback modal shown (pre-deploy, auto-open not yet active)');
@@ -184,6 +234,8 @@ test.describe('Authentication', () => {
     // Clean up route mock and navigate to homepage to clear AuthBoundary state.
     // The 401 was mocked (not a real session expiry), so the user is still
     // authenticated - navigating to homepage clears the modal without re-auth.
+    // If we're on the SSO host after a full-page redirect, page.goto('/') resolves
+    // against baseURL and brings us back to the app origin with the real session.
     await page.unroute('**/api/sites');
     await page.goto('/');
     await page.getByTestId('homepage-prompt-input').waitFor({ state: 'visible', timeout: LONG_TIMEOUT });
