@@ -38,7 +38,13 @@ export interface AiroSubscription {
   updatedAt: string;
   /** BMS budget ID when subscription uses Budget Service (null = legacy grants) */
   bmsBudgetId?: string | null;
+  /** Subscription attributes from mgmt-airo (requires includeAttributes=true) */
+  attributes?: AiroAttribute[];
 }
+
+export const ATTRIBUTE_KEYS = {
+  FREE_PLAN: 'free-plan',
+} as const;
 
 /**
  * System response from mgmt-airo

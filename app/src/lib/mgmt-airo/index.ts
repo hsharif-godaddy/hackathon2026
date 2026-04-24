@@ -64,6 +64,7 @@ export {
   AiroGrantFinalState,
   AiroGrantType,
   AiroHttpError,
+  ATTRIBUTE_KEYS,
   DEFAULT_OWNER_PRODUCT,
   DomainMode,
   DomainValidationError} from './types';

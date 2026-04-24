@@ -27,6 +27,7 @@ import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import { useAuthContext } from '@/components/providers/AuthProvider'
 import { useAotPreload } from '@/hooks/useAotPreload'
 import { useChatTabs } from '@/hooks/useChatTabs'
+import { useConversionEvent } from '@/hooks/useConversionEvent'
 import { useCreditGrants } from '@/hooks/useCreditGrants'
 import type { SendMessageOptions } from '@/hooks/useStreamingWebSocket'
 import { useSubscription } from '@/hooks/useSubscription'
@@ -191,6 +192,7 @@ export default function ChatPane({
   const setCurrentAppId = useSetCurrentAppId()
 
   const { data: subscription } = useSubscription()
+  useConversionEvent(subscription)
   const { data: areChatPlansEnabled } = useSwitchboard('airo-builder-chat-plans')
 
   // Unified grants fetch - works for both BMS and legacy paths

@@ -53,6 +53,7 @@ import {
   type AiroUpdateProjectDomainResponse,
   type AiroUpdateSecretsPayload,
   type AiroUpdateSecretsResponse,
+  ATTRIBUTE_KEYS,
   type CustomerTree,
   DEFAULT_OWNER_PRODUCT,
   DomainMode} from './types';
@@ -312,8 +313,14 @@ export class AiroMgmtClient {
    *
    * @param ownerProduct - Filter by product family (defaults to AiroAppBuilder)
    */
-  async getSubscriptions(ownerProduct: string = DEFAULT_OWNER_PRODUCT): Promise<AiroSubscription[]> {
+  async getSubscriptions(
+    ownerProduct: string = DEFAULT_OWNER_PRODUCT,
+    options: { includeAttributes?: boolean } = {}
+  ): Promise<AiroSubscription[]> {
     const params = new URLSearchParams({ ownerProduct });
+    if (options.includeAttributes) {
+      params.set('includeAttributes', 'true');
+    }
     const response = await this.request<AiroSubscription[] | { subscriptions: AiroSubscription[] }>(
       'GET',
       `/api/airo/v1/subscriptions?${params.toString()}`,
@@ -344,11 +351,12 @@ export class AiroMgmtClient {
    */
   async getSubscription(
     subscriptionId: string,
-    options: { noCache?: boolean } = {}
+    options: { noCache?: boolean; includeAttributes?: boolean } = {}
   ): Promise<AiroSubscription> {
+    const params = options.includeAttributes ? '?includeAttributes=true' : '';
     return this.request<AiroSubscription>(
       'GET',
-      `/api/airo/v1/subscriptions/${subscriptionId}`,
+      `/api/airo/v1/subscriptions/${subscriptionId}${params}`,
       undefined,
       { logEvent: 'mgmt-airo.get-subscription', noCache: options.noCache }
     );
@@ -816,6 +824,19 @@ export class AiroMgmtClient {
       payload,
       { logEvent: 'mgmt-airo.update-entitlement' }
     );
+  }
+
+  async acknowledgeConversion(subscription: AiroSubscription): Promise<AiroAttribute> {
+    const attribute = subscription.attributes?.find(a => a.key === ATTRIBUTE_KEYS.FREE_PLAN);
+    if (!attribute) {
+      throw new AiroHttpError(404, 'Not Found', 'free-plan attribute not found');
+    }
+    if (attribute.value?.conversionEventDate) {
+      return attribute;
+    }
+    return this.updateAttribute(attribute.id, {
+      value: { ...attribute.value, conversionEventDate: new Date().toISOString() },
+    });
   }
 
   /**

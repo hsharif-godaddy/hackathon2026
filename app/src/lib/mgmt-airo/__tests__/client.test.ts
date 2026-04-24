@@ -8,9 +8,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AiroMgmtClient } from '../client';
-import type { 
+import type {
   AiroApp,
   AiroAppDetails,
+  AiroAttribute,
   AiroCreateAppPayload,
   AiroJobStatus,
   AiroMgmtClientConfig,
@@ -19,6 +20,7 @@ import type {
   AiroSystem,
   AiroUpdateAppPayload
 } from '../types';
+import { AiroHttpError } from '../types';
 
 /**
  * Mock fetch globally
@@ -1226,6 +1228,57 @@ describe('AiroMgmtClient', () => {
 
       await expect(client.reloadImages('sub-123', 'sys-456', 'app-789'))
         .rejects.toThrow();
+    });
+  });
+
+  describe('acknowledgeConversion', () => {
+    const FREE_PLAN_ATTR: AiroAttribute = {
+      id: 'attr-1',
+      ownerType: 'subscription',
+      ownerId: 'sub-123',
+      key: 'free-plan',
+      value: { orderId: 'order-1', conversionEventDate: null },
+      createdAt: '2025-01-01T00:00:00Z',
+      updatedAt: '2025-01-01T00:00:00Z',
+    };
+
+    it('throws 404 when free-plan attribute missing', async () => {
+      const sub = { ...MOCK_SUBSCRIPTION, attributes: [] };
+
+      await expect(client.acknowledgeConversion(sub)).rejects.toThrow(AiroHttpError);
+      await expect(client.acknowledgeConversion(sub)).rejects.toMatchObject({ status: 404 });
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('returns attribute unchanged when conversionEventDate already set', async () => {
+      const attr = { ...FREE_PLAN_ATTR, value: { orderId: 'order-1', conversionEventDate: '2026-04-23T12:00:00Z' } };
+      const sub = { ...MOCK_SUBSCRIPTION, attributes: [attr] };
+
+      const result = await client.acknowledgeConversion(sub);
+
+      expect(result).toBe(attr);
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('calls updateAttribute when conversionEventDate is null', async () => {
+      const sub = { ...MOCK_SUBSCRIPTION, attributes: [FREE_PLAN_ATTR] };
+      const updatedAttr = { ...FREE_PLAN_ATTR, value: { orderId: 'order-1', conversionEventDate: '2026-04-24T00:00:00Z' } };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => updatedAttr,
+      });
+
+      const result = await client.acknowledgeConversion(sub);
+
+      expect(result).toEqual(updatedAttr);
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://mgmt.test.com/api/airo/v1/attributes/attr-1',
+        expect.objectContaining({
+          method: 'PUT',
+          body: expect.stringContaining('conversionEventDate'),
+        }),
+      );
     });
   });
 });

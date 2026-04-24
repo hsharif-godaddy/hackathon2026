@@ -48,7 +48,7 @@ export const GET = withCustomerAuth(async (
       customerId: authContext.user.customerId,
     });
 
-    const subscriptions = await client.getSubscriptions(AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER);
+    const subscriptions = await client.getSubscriptions(AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER, { includeAttributes: true });
 
     logger.info('subscriptions.api.fetched', {
       count: subscriptions.length,
