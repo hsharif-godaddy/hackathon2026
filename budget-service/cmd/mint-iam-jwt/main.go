@@ -29,7 +29,7 @@ func main() {
 	// Create gd-auth client (same config as budget-service)
 	gdClient, err := gdauth.New(
 		gdauth.WithApp("budget-service"),
-		gdauth.WithClient("budget-service.airo-builder.godaddy.com"),
+		gdauth.WithClient("budget-service.api.int.godaddy.com"),
 		gdauth.WithPCPID("8606"),
 		gdauth.WithTestMode(false),
 	)

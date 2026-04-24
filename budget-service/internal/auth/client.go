@@ -31,7 +31,7 @@ func InitClient(ssoHost string) error {
 	clientOnce.Do(func() {
 		gdClient, err := gdauth.New(
 			gdauth.WithApp("budget-service"),
-			gdauth.WithClient("budget-service.airo-builder.godaddy.com"),
+			gdauth.WithClient("budget-service.api.int.godaddy.com"),
 			gdauth.WithPCPID("8606"),
 			gdauth.WithTestMode(false),
 		)

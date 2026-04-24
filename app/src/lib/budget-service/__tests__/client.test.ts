@@ -273,7 +273,7 @@ describe('BudgetServiceBffClient', () => {
 
       const url = getBudgetServiceUrl(mockHeaders);
 
-      expect(url).toBe('https://budget-service.airo-builder.test-godaddy.com');
+      expect(url).toBe('https://budget-service.api.int.test-godaddy.com');
     });
 
     it('returns null when root domain cannot be determined', () => {
@@ -289,7 +289,7 @@ describe('BudgetServiceBffClient', () => {
 
       const url = getBudgetServiceUrl(mockHeaders);
 
-      expect(url).toBe('https://budget-service.airo-builder.godaddy.com');
+      expect(url).toBe('https://budget-service.api.int.godaddy.com');
     });
   });
 

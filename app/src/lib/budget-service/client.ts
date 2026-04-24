@@ -5,7 +5,7 @@
  * BMS expects: Authorization: Bearer <token>
  *
  * URL is derived from request headers (like switchboard):
- *   https://budget-service.airo-builder.{rootDomain}
+ *   https://budget-service.api.int.{rootDomain}
  *
  * Only exposes getBudget() -- session/report methods are agent-side only.
  */
@@ -202,11 +202,11 @@ export class BudgetServiceBffClient {
 
 // ── URL Builder ──
 
-const BUDGET_SERVICE_HOST_PREFIX = 'budget-service.airo-builder'
+const BUDGET_SERVICE_HOST_PREFIX = 'budget-service.api.int'
 
 /**
  * Build Budget Service URL from request headers.
- * Pattern: https://budget-service.airo-builder.{rootDomain}
+ * Pattern: https://budget-service.api.int.{rootDomain}
  */
 export function getBudgetServiceUrl(headers: Headers): string | null {
   const rootDomain = getRootDomainFromHeaders(headers)
