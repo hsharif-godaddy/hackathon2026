@@ -1,6 +1,10 @@
 #!/usr/bin/env sh
 . "$(dirname -- "$0")/_/husky.sh"
 
+# Abort on the first failing check so a later passing check cannot mask
+# an earlier failure (the hook's exit code is otherwise just the last
+# command's exit code).
+set -e
 
 # Load mise or NVM to ensure node/npx are on PATH (for GUI git clients)
 if command -v mise > /dev/null 2>&1; then
@@ -12,7 +16,17 @@ if [ -n "$MISE_NODE_DIR" ]; then
   export PATH="$MISE_NODE_DIR/bin:$PATH"
 else
   export NVM_DIR="$HOME/.nvm"
-  [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+  # `|| true` makes the intent explicit under `set -e`: a missing NVM
+  # install must not abort the hook (the next step will surface a real
+  # missing-node error if it matters). POSIX already exempts the AND
+  # branch from `set -e`, but spelling it out keeps the contract obvious.
+  [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" || true
 fi
+
+# Run template-sync validation FIRST. This protects customer apps from
+# silent base-template drift and is more critical than style/lint checks
+# — keeping it ahead means it still runs even if a developer is racing
+# to bypass a noisy lint failure.
+node scripts/validate-template-sync.mjs
 
 npx lint-staged
