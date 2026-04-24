@@ -2,12 +2,15 @@ package checks
 
 import (
 	"context"
+	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
+	"time"
 
 	"github.com/airo-ai-builder/dev-runner/internal/preflight"
+	"github.com/airo-ai-builder/dev-runner/internal/preflight/jfrog"
 )
 
 // fakeGo writes a shell script (or batch file on Windows) to dir that
@@ -38,9 +41,12 @@ func fakeGo(t *testing.T, dir, goproxy, gonoproxy, gonosumdb, goprivate string) 
 	}
 }
 
+const fakeGoProxyWithToken = "https://:tok@gdartifactory1.jfrog.io/artifactory/api/go/go-virt,direct"
+
 func TestGoProxyCheck_Pass(t *testing.T) {
+	stubProbe(t, http.StatusOK)
 	bin := t.TempDir()
-	fakeGo(t, bin, "https://token@gdartifactory1.jfrog.io/artifactory/api/go/go-virt,direct", "none", "github.com/gdcorp-*", "")
+	fakeGo(t, bin, fakeGoProxyWithToken, "none", "github.com/gdcorp-*", "")
 	t.Setenv("PATH", bin)
 
 	r := (&GoProxyCheck{}).Run(context.Background(), "")
@@ -50,13 +56,63 @@ func TestGoProxyCheck_Pass(t *testing.T) {
 }
 
 func TestGoProxyCheck_PassEmptyGONOPROXY(t *testing.T) {
+	stubProbe(t, http.StatusOK)
 	bin := t.TempDir()
-	fakeGo(t, bin, "https://token@gdartifactory1.jfrog.io/artifactory/api/go/go-virt,direct", "", "github.com/gdcorp-*", "")
+	fakeGo(t, bin, fakeGoProxyWithToken, "", "github.com/gdcorp-*", "")
 	t.Setenv("PATH", bin)
 
 	r := (&GoProxyCheck{}).Run(context.Background(), "")
 	if r.Status != preflight.StatusPass {
 		t.Errorf("expected Pass (empty GONOPROXY is valid), got %v: %s", r.Status, r.Message)
+	}
+}
+
+func TestGoProxyCheck_FailExpiredToken(t *testing.T) {
+	stubProbe(t, http.StatusUnauthorized)
+	bin := t.TempDir()
+	fakeGo(t, bin, fakeGoProxyWithToken, "none", "github.com/gdcorp-*", "")
+	t.Setenv("PATH", bin)
+
+	r := (&GoProxyCheck{}).Run(context.Background(), "")
+	if r.Status != preflight.StatusFail {
+		t.Fatalf("expected Fail for 401, got %v: %s", r.Status, r.Message)
+	}
+	if !r.FixAvailable {
+		t.Error("expected FixAvailable=true so dev-runner offers to rewrite GOPROXY")
+	}
+}
+
+func TestGoProxyCheck_FailMissingEmbeddedToken(t *testing.T) {
+	stubProbe(t, http.StatusOK)
+	bin := t.TempDir()
+	// Artifactory host present but no credentials section -- Go will 401.
+	fakeGo(t, bin, "https://gdartifactory1.jfrog.io/artifactory/api/go/go-virt,direct", "none", "github.com/gdcorp-*", "")
+	t.Setenv("PATH", bin)
+
+	r := (&GoProxyCheck{}).Run(context.Background(), "")
+	if r.Status != preflight.StatusFail {
+		t.Errorf("expected Fail when GOPROXY has no token, got %v: %s", r.Status, r.Message)
+	}
+	if !r.FixAvailable {
+		t.Error("expected FixAvailable=true")
+	}
+}
+
+func TestGoProxyCheck_PassOffline(t *testing.T) {
+	// See stubProbeUnreachable comment for why we don't use TEST-NET-1.
+	stubProbeUnreachable(t)
+
+	prevTimeout := jfrog.ProbeTimeout
+	jfrog.ProbeTimeout = 100 * time.Millisecond
+	t.Cleanup(func() { jfrog.ProbeTimeout = prevTimeout })
+
+	bin := t.TempDir()
+	fakeGo(t, bin, fakeGoProxyWithToken, "none", "github.com/gdcorp-*", "")
+	t.Setenv("PATH", bin)
+
+	r := (&GoProxyCheck{}).Run(context.Background(), "")
+	if r.Status != preflight.StatusPass {
+		t.Errorf("expected Pass when offline, got %v: %s", r.Status, r.Message)
 	}
 }
 
@@ -76,7 +132,7 @@ func TestGoProxyCheck_FailNoProxy(t *testing.T) {
 
 func TestGoProxyCheck_FailBadGONOPROXY(t *testing.T) {
 	bin := t.TempDir()
-	fakeGo(t, bin, "https://token@gdartifactory1.jfrog.io/artifactory/api/go/go-virt,direct", "github.com/gdcorp-*", "github.com/gdcorp-*", "")
+	fakeGo(t, bin, fakeGoProxyWithToken, "github.com/gdcorp-*", "github.com/gdcorp-*", "")
 	t.Setenv("PATH", bin)
 
 	r := (&GoProxyCheck{}).Run(context.Background(), "")
@@ -90,7 +146,7 @@ func TestGoProxyCheck_FailBadGONOPROXY(t *testing.T) {
 
 func TestGoProxyCheck_FailNoGONOSUMDB(t *testing.T) {
 	bin := t.TempDir()
-	fakeGo(t, bin, "https://token@gdartifactory1.jfrog.io/artifactory/api/go/go-virt,direct", "none", "", "")
+	fakeGo(t, bin, fakeGoProxyWithToken, "none", "", "")
 	t.Setenv("PATH", bin)
 
 	r := (&GoProxyCheck{}).Run(context.Background(), "")
@@ -105,7 +161,7 @@ func TestGoProxyCheck_FailNoGONOSUMDB(t *testing.T) {
 func TestGoProxyCheck_WarnGOPRIVATE(t *testing.T) {
 	bin := t.TempDir()
 	// GONOPROXY="" means GOPRIVATE controls proxy bypass -- warn is valid
-	fakeGo(t, bin, "https://token@gdartifactory1.jfrog.io/artifactory/api/go/go-virt,direct", "", "github.com/gdcorp-*", "github.com/gdcorp-golang/*")
+	fakeGo(t, bin, fakeGoProxyWithToken, "", "github.com/gdcorp-*", "github.com/gdcorp-golang/*")
 	t.Setenv("PATH", bin)
 
 	r := (&GoProxyCheck{}).Run(context.Background(), "")
@@ -118,9 +174,10 @@ func TestGoProxyCheck_WarnGOPRIVATE(t *testing.T) {
 }
 
 func TestGoProxyCheck_PassGONOPROXYNoneWithGOPRIVATE(t *testing.T) {
+	stubProbe(t, http.StatusOK)
 	bin := t.TempDir()
 	// GONOPROXY="none" forces all modules through proxy, so GOPRIVATE is harmless
-	fakeGo(t, bin, "https://token@gdartifactory1.jfrog.io/artifactory/api/go/go-virt,direct", "none", "github.com/gdcorp-*", "github.com/gdcorp-golang/*")
+	fakeGo(t, bin, fakeGoProxyWithToken, "none", "github.com/gdcorp-*", "github.com/gdcorp-golang/*")
 	t.Setenv("PATH", bin)
 
 	r := (&GoProxyCheck{}).Run(context.Background(), "")

@@ -2,11 +2,13 @@ package checks
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
 
 	"github.com/airo-ai-builder/dev-runner/internal/preflight"
+	"github.com/airo-ai-builder/dev-runner/internal/preflight/jfrog"
 )
 
 // GoProxyCheck verifies that GOPROXY is configured to use GoDaddy's
@@ -73,8 +75,37 @@ func (c *GoProxyCheck) Run(ctx context.Context, _ string) preflight.CheckResult 
 		}
 	}
 
+	// Config is correct; now confirm the JWT embedded in GOPROXY still
+	// authenticates. Expired / revoked tokens here cause private gdcorp Go
+	// modules to fail with 401 during build.
+	token := jfrog.TokenFromProxyURL(goproxy)
+	if token == "" {
+		return preflight.CheckResult{
+			Status: preflight.StatusFail, Name: c.Name(), Category: c.Category(),
+			Message:      "GOPROXY has no embedded Artifactory token -- private gdcorp Go modules will fail to download",
+			FixAvailable: true,
+		}
+	}
+
+	if err := jfrog.Probe(ctx, token); err != nil {
+		if errors.Is(err, jfrog.ErrUnauthorized) {
+			return preflight.CheckResult{
+				Status: preflight.StatusFail, Name: c.Name(), Category: c.Category(),
+				Message:      "Artifactory rejected the token embedded in GOPROXY (expired or revoked) -- go build will fail with 401",
+				FixAvailable: true,
+			}
+		}
+		// Anything else (timeout, DNS, TLS, 5xx) is inconclusive. Surface
+		// the underlying error so a developer with e.g. a corporate-MITM
+		// cert error doesn't chase phantom "offline" causes.
+		return preflight.CheckResult{
+			Status: preflight.StatusPass, Name: c.Name(), Category: c.Category(),
+			Message: fmt.Sprintf("GOPROXY configured for Artifactory (probe inconclusive: %v)", err),
+		}
+	}
+
 	return preflight.CheckResult{
 		Status: preflight.StatusPass, Name: c.Name(), Category: c.Category(),
-		Message: "GOPROXY configured for Artifactory",
+		Message: "GOPROXY configured for Artifactory, token verified",
 	}
 }
