@@ -2,10 +2,12 @@
 
 ## What Was Created
 
-### 1. Monitoring Script (`scripts/check-cache-metrics.sh`)
+### 1. Monitoring Script (`scripts/check-cache-metrics.sh`) - DEPRECATED
 
-**Purpose:** Quick command-line reports on cache performance
-**Usage:**
+> The script queries the deprecated pioneerc1 ES cluster and will return "No cache data". Use Grafana Explore (section 2 below) until the script is re-pointed at Loki.
+
+**Purpose (historical):** Quick command-line reports on cache performance
+**Usage (historical):**
 
 ```bash
 cd agents
@@ -20,19 +22,19 @@ cd agents
 - Average context sizes
 - Cost savings estimate
 
-### 2. Kibana Dashboard (Pre-Created)
+### 2. Grafana Dashboard (V2 Logs)
 
 **Purpose:** Visual dashboard for ongoing monitoring
-**URL:** https://pioneerc1-prod-usw2.kb.us-west-2.aws.found.io:9243/app/dashboards#/view/0868e967-ab36-48d5-b08b-981a11cc14f4
 
-**Status:** Empty dashboard created, needs visualizations added
+Agent logs now flow into **Grafana Loki** (V2 logging); the old pioneerc1 Kibana dashboard
+is deprecated. Build or link cache-effectiveness panels against the Loki `{job="airo-agents"}`
+stream and Mimir metrics.
 
-**Add visualizations:**
+- Grafana entry point + per-env links: [Airo Builder Logs (Confluence)](https://godaddy-corp.atlassian.net/wiki/spaces/PAR/pages/3975512110/Airo+Builder+Logs)
+- Required AD groups: `JOMAX\okta_lgtm-grafana_mwpv2_viewer`, `JOMAX\okta_observability_grafana`
+- The `scripts/create-kibana-dashboard.sh` helper and `KIBANA-SETUP.md` are kept for historical reference only
 
-- Run `./scripts/create-kibana-dashboard.sh` (interactive guide)
-- Or follow manual steps in `KIBANA-SETUP.md`
-
-**Planned visualizations:**
+**Planned Grafana panels (mirror of the old Kibana ones, not yet built):**
 
 - Cache hit rate over time (line chart)
 - Cache read vs write tokens (stacked area)
@@ -52,12 +54,17 @@ cd agents
 
 **CACHE-MONITORING.md:**
 
-- Kibana query patterns
-- Elasticsearch aggregations
+- LogQL/Loki query patterns (V2) and legacy Elasticsearch aggregations
 - Expected behavior patterns
 - Cost impact analysis
 - Alerting recommendations
 - Troubleshooting guide
+
+> NOTE: The raw `curl` snippets below point at the deprecated pioneerc1 ES cluster
+> (`6f2c29a49ba64dbfb4be9584fa6e5cef.us-west-2.aws.found.io`). New data lands in
+> Grafana Loki; these are retained only for historical replay against surviving
+> ES indices until they age out. Translate `event.keyword` / `data.*` fields into
+> LogQL label + JSON filters for live queries.
 
 ## Current Production Metrics (March 29, 2026)
 
@@ -186,14 +193,14 @@ watch -n 5 'curl -s -X POST "https://6f2c29a49ba64dbfb4be9584fa6e5cef.us-west-2.
 
 ### After PR Deployment
 
-1. Run `./scripts/check-cache-metrics.sh` to compare
+1. Compare against baseline via Grafana Explore (`{job="airo-agents", env="prod"}` with the LogQL queries in `CACHE-MONITORING.md`). The legacy `check-cache-metrics.sh` queries pioneerc1 and is no longer reliable.
 2. Verify invalidation events drop to <100/day
 3. Check that hit rates improve to 95-99%+
 4. Monitor for unexpected regressions
 
 ### Set Up Alerts (Recommended)
 
-Use Kibana Watcher or Elastic alerting to notify on:
+Use Grafana alerting against the Loki agent stream to notify on:
 
 - Cache hit rate <85% for 15+ minutes (critical)
 - Average cacheWriteTokens >5K per app (warning)
@@ -203,15 +210,9 @@ Use Kibana Watcher or Elastic alerting to notify on:
 
 ### Script returns "No cache data"
 
-- Check Elasticsearch connectivity
-- Verify API key is valid
-- Confirm index name is correct (`airo-agents-prod`)
-
-### Kibana import fails
-
-- Ensure Kibana version matches (8.17.x)
-- Check data view exists for `airo-agents-prod`
-- Verify field names match production mapping
+- Confirm you are querying Grafana Loki (V2); the pioneerc1 ES cluster no longer receives new data
+- Verify Grafana auth (AD groups `JOMAX\okta_lgtm-grafana_mwpv2_viewer`, `JOMAX\okta_observability_grafana`)
+- Confirm the Loki stream label (`{job="airo-agents", env="prod"}`)
 
 ### Unexpected cache invalidations
 

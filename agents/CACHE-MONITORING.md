@@ -1,12 +1,18 @@
 # Agent Cache Effectiveness - Detailed Monitoring Guide
 
-This document provides detailed Elasticsearch queries and advanced monitoring techniques.
+This document provides detailed log queries and advanced monitoring techniques.
 
 **For quick start and dashboard access, see `CACHE-DASHBOARD-README.md`**
 
+> Agent logs now live in **Grafana Loki** (V2). The pioneerc1 Elasticsearch cluster
+> at `6f2c29a49ba64dbfb4be9584fa6e5cef.us-west-2.aws.found.io` is deprecated - the
+> raw `curl` recipes below are kept only for replay against surviving ES data. For
+> live queries use Grafana / LogQL against `{job="airo-agents", env="prod"}`.
+> Access: [Airo Builder Logs (Confluence)](https://godaddy-corp.atlassian.net/wiki/spaces/PAR/pages/3975512110/Airo+Builder+Logs).
+
 ## Prerequisites
 
-All queries require the `ES_API_KEY` environment variable:
+Legacy ES queries require the `ES_API_KEY` environment variable:
 
 ```bash
 export ES_API_KEY='your-elasticsearch-api-key'
@@ -26,9 +32,17 @@ export ES_API_KEY='your-elasticsearch-api-key'
 - Cache write reduction: **~97%** (40-50K → 147-455 tokens per turn)
 - Additional savings: **~$9 per equivalent dataset**
 
-## Using Kibana Discover
+## Using Grafana Explore (LogQL)
 
-For ad-hoc investigation, use Kibana Discover with these patterns:
+For ad-hoc investigation, use Grafana Explore with the Loki datasource. Examples:
+
+Prefer literal line filters on JSON fields (cheaper than parsing, and matches `debug-console/src/lib/loki-client.ts` - `app_id` is a field in the log line, not a Loki label):
+
+```logql
+{job="airo-agents", env="prod"} |= "\"event\":\"agent.step.finish\"" | json | data_cacheWriteTokens > 10000
+{job="airo-agents", env="prod"} |= "\"event\":\"app.context.generate.success\""
+{job="airo-agents", env="prod"} |= "\"app_id\":\"abc123xyz\""
+```
 
 ## Dashboard Visualizations
 
@@ -46,7 +60,7 @@ Time series showing token usage trends. Reads should be 10-20x higher than write
 ### 4. Top Apps by Cache Usage
 Table showing top 10 apps by total cache reads, with write counts and hit rates.
 
-## Manual Queries (Kibana Discover)
+## Legacy Kibana Discover Patterns (deprecated pioneerc1 cluster)
 
 ### Find cache invalidation events
 ```

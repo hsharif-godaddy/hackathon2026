@@ -208,11 +208,20 @@ To update the SNS topic ARN used by CloudWatch alarms:
 - Routes to: **Slack, BigPanda**
 - Severity: **P0** (impacts uptime SLA)
 
-#### ESSP (Elastic Stack Service Platform) Monitoring
+#### ESSP APM + Grafana Loki Monitoring
 
-**Access:** Login to ESSP through PCP Logging Cluster → APM Dashboards
+Two observability stacks cover the platform:
 
-**Alert Rules:**
+- **APM metrics** live in the airobuilde ESSP cluster (Kibana APM dashboards).
+  Access via AD group `GD-AWS-USA-CPO-AiroBuilde-ES-prod-ReadOnly` at
+  https://airobuilde-prod-usw2.kb.us-west-2.aws.found.io:9243.
+- **Customer app / agent / preview / publish logs** live in **Grafana Loki** (V2).
+  The legacy pioneerc1 Elasticsearch cluster is deprecated. Direct links per
+  service/env are in [Airo Builder Logs (Confluence)](https://godaddy-corp.atlassian.net/wiki/spaces/PAR/pages/3975512110/Airo+Builder+Logs).
+  Required AD groups: `JOMAX\okta_lgtm-grafana_mwpv2_viewer`,
+  `JOMAX\okta_observability_grafana`.
+
+**Alert Rules (APM):**
 
 - **APM Anomaly (P0)** - Detects anomalous behavior patterns
   - Routes to: Slack, BigPanda
@@ -339,8 +348,8 @@ To ensure the platform is functioning as intended, we have implemented the follo
 #### Monitoring Strategy
 
 - **System Health Checks:** CloudWatch dashboards + ESSP APM monitor API response times, service availability, and error rates.
-- **Operational Alerts:** Alarms are configured in CloudWatch using CDK + ESSP (with BigPanda) to detect failures.
-- **Log Aggregation:** AWS CloudWatch + ESSP logs store all scan results, API interactions, and system events for debugging.
+- **Operational Alerts:** Alarms are configured in CloudWatch using CDK + ESSP APM / Grafana (with BigPanda) to detect failures.
+- **Log Aggregation:** AWS CloudWatch (infra) + Grafana Loki (customer app / agent / preview / publish containers) + airobuilde ESSP (Katana FOS) store system events for debugging. The pioneerc1 ES cluster is deprecated.
 - **Metric Thresholds:** Key performance indicators (KPIs) such as request latency, error rates, and uptime are continuously monitored.
 - **Alert Routing:** CloudWatch alarms → SNS topics → Lambda (`gd-sns-notify`) → Slack channels (webhook from env var)
 

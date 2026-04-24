@@ -118,7 +118,15 @@ pnpm --filter website test "pattern"                  # App package
 # pnpm test at root runs all packages via Turborepo (excludes @airo/agents)
 ```
 
-**ESSP / Elasticsearch logs:**
+**Logs:**
+
+Customer-app container logs (agents / preview / publish / pre-start / db-init) live in **Grafana Loki** (V2). The old pioneerc1 Elasticsearch cluster is deprecated.
+
+- Grafana base: https://grafana.monitoring.gd3p.tools/ (AD groups: `JOMAX\okta_lgtm-grafana_mwpv2_viewer`, `JOMAX\okta_observability_grafana`)
+- Direct links per service/env: see [Airo Builder Logs (Confluence)](https://godaddy-corp.atlassian.net/wiki/spaces/PAR/pages/3975512110/Airo+Builder+Logs)
+- Query in LogQL with a literal line filter on the JSON field (matches `debug-console/src/lib/loki-client.ts`): `{job="airo-agents", env="prod"} |= "\"app_id\":\"<id>\""`. `app_id` is a JSON field in the log line (not a Loki label), and app-scoped services emit it on most lines - but not every line (system/pre-start logs may omit it).
+
+Builder frontend (Katana/FOS) logs still live in the airobuilde ESSP cluster:
 
 ```bash
 ./scripts/essp-creds.sh dev    # Profile: airobuild-dev-private-sso

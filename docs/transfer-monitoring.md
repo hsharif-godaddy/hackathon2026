@@ -1,17 +1,22 @@
 # Transfer Operations - Monitoring Guide
 
-Operational monitoring for the app ownership transfer flow. Covers Kibana queries,
-Elasticsearch field mappings, and alerting guidance.
+Operational monitoring for the app ownership transfer flow. Covers log queries,
+field mappings, and alerting guidance.
 
-**Dashboard:** Import `kibana-dashboards/transfer-operations.ndjson` into Kibana.
+**Dashboard:** Import `kibana-dashboards/transfer-operations.ndjson` into Kibana for BFF logs.
+Agent-side queries run in Grafana Loki (see below).
 
 ## Prerequisites
 
 Transfer logs from the BFF (Next.js app) land in the **Airo Builder ES cluster** on the
-`logs-*` index pattern. Agent-side transfer validation logs land in the **Pioneer ES cluster**
-on `airo-agents-prod` / `airo-agents-dev`.
+`logs-*` index pattern. Agent-side transfer validation logs now live in **Grafana Loki**
+(V2 logging) - the old pioneerc1 `airo-agents-prod` / `airo-agents-dev` Elasticsearch
+indices are deprecated.
 
-For ESSP credentials:
+- Agent logs (Loki): see [Airo Builder Logs (Confluence)](https://godaddy-corp.atlassian.net/wiki/spaces/PAR/pages/3975512110/Airo+Builder+Logs) for direct Grafana links per env
+- Required AD groups: `JOMAX\okta_lgtm-grafana_mwpv2_viewer`, `JOMAX\okta_observability_grafana`
+
+For ESSP credentials (BFF logs only):
 
 ```bash
 ./scripts/essp-creds.sh dev   # Profile: airobuild-dev-private-sso
@@ -30,7 +35,13 @@ For ESSP credentials:
 | Log level                | `level`        | `info`, `warn`, `error`               |
 | Trace ID                 | `trace.id`     | OpenTelemetry trace correlation       |
 
-For agents logs (`airo-agents-*`), `appId` maps to `app_id` (underscore, not camelCase).
+For agent logs (Grafana Loki, `{job="airo-agents"}`), `appId` maps to `app_id` (underscore, not camelCase).
+
+Prefer label selectors and literal line filters before parsing JSON - `app_id` is a field in the log line, not a Loki label (matches `debug-console/src/lib/loki-client.ts`):
+
+```logql
+{job="airo-agents", env="prod"} |= "\"event\":\"transfer." |= "\"app_id\":\"<id>\""
+```
 
 ## Transfer Event Catalog
 
