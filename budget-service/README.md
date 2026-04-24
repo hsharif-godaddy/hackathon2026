@@ -90,7 +90,7 @@ Use a real JFrog identity token for `YOUR_JFROG_TOKEN`. If you previously set `G
 
 Inspect or clear: `go env GOPROXY GONOPROXY GOPRIVATE GONOSUMDB`, `go env -u GOPROXY`, etc.
 
-**Shell alternative:** export the same variables in `~/.zshrc` (or source a gitignored file). **`make dev`** sources **`.env.local`** or **`.env`** for the Air parent process (handy for `GOPROXY` and related vars). **`make build`**, **`make test`**, and **`make dev-budget-ui`** do not load `.env` — export vars in the shell or prefix the command. The **`go`** toolchain does not read `.env` by itself; `go env -w` or exported env applies to every module download.
+**Shell alternative:** export the same variables in `~/.zshrc` (or source a gitignored file). **`make dev`** sources **`.env.local`** or **`.env`** for the Air parent process (handy for `GOPROXY` and related vars). **`make build`** and **`make test`** do not load `.env` — export vars in the shell or prefix the command. **`make dev-budget-ui`** sources **`.env.local`** or **`.env`** (same as **`make dev`**), so `BUDGET_SERVICE_URL` there is picked up. Raw **`go run ./cmd/dev-budget-ui`** does not. The **`go`** toolchain does not read `.env` by itself; `go env -w` or exported env applies to every module download.
 
 ## Testing JWT locally
 

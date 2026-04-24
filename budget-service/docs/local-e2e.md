@@ -58,7 +58,7 @@ Defaults: `BUDGET_SERVICE_URL=http://127.0.0.1:8080`, `WEBHOOK_SINK_URL=http://1
 | `BUDGET_SERVICE_URL` | `http://127.0.0.1:8080` | Base URL of the budget API (`cmd/server`). May be **`https://…`** on a **remote** host your machine can reach (VPN, etc.). Must not be the dev UI URL/port. |
 | `DEV_BUDGET_UI_ADDR` | `:9980`                 | Listen address for the dev UI + proxy.                                                                                                                      |
 
-Set variables in the **shell** that runs the process, or prefix the command, e.g. `BUDGET_SERVICE_URL=https://budget-service.example.com make dev-budget-ui`. **`make dev-budget-ui`** does **not** source `.env` / `.env.local` (only **`make dev`** does).
+Set variables in the **shell** that runs the process, prefix the command, or put `BUDGET_SERVICE_URL=...` in **`.env.local`** / **`.env`**: **`make dev-budget-ui`** sources the same file as **`make dev`**. Raw **`go run ./cmd/dev-budget-ui`** does not read `.env`; export or prefix env vars in that case.
 
 ### Local API (typical)
 

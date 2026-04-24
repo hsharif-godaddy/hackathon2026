@@ -46,7 +46,14 @@ verify-iam-auth:
 	@"$(_BUDGET_SVC_DIR)scripts/verify-iam-auth.sh"
 
 dev-budget-ui:
-	cd $(_BUDGET_SVC_DIR) && go run ./cmd/dev-budget-ui
+	cd $(_BUDGET_SVC_DIR) && \
+	if [ -f .env.local ]; then \
+		set -a && . ./.env.local && set +a && go run ./cmd/dev-budget-ui; \
+	elif [ -f .env ]; then \
+		set -a && . ./.env && set +a && go run ./cmd/dev-budget-ui; \
+	else \
+		go run ./cmd/dev-budget-ui; \
+	fi
 
 up:
 	$(_COMPOSE) up -d --build postgres
