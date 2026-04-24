@@ -1,35 +1,35 @@
-import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, beforeAll, vi, afterEach } from 'vitest';
 import { generateKeyPairSync, createPublicKey, type JsonWebKey } from 'node:crypto';
-import https from 'node:https';
+import { SignJWT, importPKCS8, type KeyObject } from 'jose';
+import { MockAgent, setGlobalDispatcher, getGlobalDispatcher, type Dispatcher } from 'undici';
 
-// Generate RSA key pair for testing
 const { publicKey, privateKey } = generateKeyPairSync('rsa', {
   modulusLength: 2048,
   publicKeyEncoding: { type: 'spki', format: 'pem' },
   privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
 });
 
-const testJwk = createPublicKey(publicKey).export({ format: 'jwk' }) as JsonWebKey & { kid: string };
+const testJwk = createPublicKey(publicKey).export({ format: 'jwk' }) as JsonWebKey & { kid: string; alg?: string };
 testJwk.kid = 'test-kid-1';
+testJwk.alg = 'RS256';
 
 const rotatedJwk = { ...testJwk, kid: 'rotated-kid-2' };
 
-// Hoist mocks
-const { mockFetch, mockLoggerInfo, mockLoggerError, mockGetFeatures, mockGetJWTAgentConfig } = vi.hoisted(() => ({
-  mockFetch: vi.fn(),
-  mockLoggerInfo: vi.fn(),
-  mockLoggerError: vi.fn(),
+const TEST_CONFIG = {
+  jwksUrl: 'https://example.com/.well-known/jwks.json',
+  issuer: 'airo-app',
+  audience: 'agents-service',
+  algorithms: ['RS256'],
+};
+
+const { mockGetFeatures, mockGetJWTAgentConfig } = vi.hoisted(() => ({
   mockGetFeatures: vi.fn().mockReturnValue({ nodeEnv: 'production' }),
-  mockGetJWTAgentConfig: vi.fn().mockReturnValue({
-    jwksUrl: 'https://example.com/.well-known/jwks.json',
-    issuer: 'airo-app',
-    audience: 'agents-service',
-    algorithms: ['RS256'],
-  }),
+  mockGetJWTAgentConfig: vi.fn(),
 }));
 
 vi.mock('../../services/features.js', () => ({
   getFeatures: mockGetFeatures,
+  BYPASS_SITE_IDS: ['bypass-site', 'default-site', 'local-dev-site', 'mock-site-id', 'unknown-site'],
   auth: {
     getJWKSUrl: () => 'https://example.com/.well-known/jwks.json',
     getSiteId: () => 'bypass-site',
@@ -41,283 +41,185 @@ vi.mock('../jwks-config.js', () => ({
   validateJWTAgentConfig: () => ({ valid: true, errors: [] }),
 }));
 
-vi.mock('../../logging/index.js', () => ({
-  logger: {
-    info: mockLoggerInfo,
-    error: mockLoggerError,
-    warn: vi.fn(),
-    debug: vi.fn(),
-  },
-}));
-
-// Mock global fetch
-vi.stubGlobal('fetch', mockFetch);
-
-// Restore mock defaults after clearAllMocks
-beforeEach(() => {
-  mockGetFeatures.mockReturnValue({ nodeEnv: 'production' });
-  mockGetJWTAgentConfig.mockReturnValue({
-    jwksUrl: 'https://example.com/.well-known/jwks.json',
-    issuer: 'airo-app',
-    audience: 'agents-service',
-    algorithms: ['RS256'],
-  });
-});
-
-// Use real jsonwebtoken for creating test tokens
-import { createRequire } from 'module';
-const require = createRequire(import.meta.url);
-const jwt = require('jsonwebtoken');
-
 import { JWTValidator } from '../jwt-validator.js';
 
-function createTestToken(kid: string): string {
-  return jwt.sign(
-    {
-      iss: 'airo-app',
-      aud: 'agents-service',
-      siteId: 'bypass-site',
-    },
-    privateKey,
-    {
-      algorithm: 'RS256',
-      expiresIn: '1h',
-      header: { kid },
-    }
-  );
-}
+let originalDispatcher: Dispatcher;
+let mockAgent: MockAgent;
+let signingKey: KeyObject;
 
-function mockFetchResponse(keys: Array<JsonWebKey & { kid: string }>) {
-  return Promise.resolve({
-    ok: true,
-    json: () => Promise.resolve({ keys }),
-  });
-}
-
-describe('JWTValidator JWKS cache-busting', () => {
-  let validator: JWTValidator;
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    validator = new JWTValidator();
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  it('should fetch key on cache miss and cache it', async () => {
-    mockFetch.mockReturnValueOnce(mockFetchResponse([testJwk]));
-
-    const token = createTestToken('test-kid-1');
-    const result = await validator.validateToken(token);
-
-    expect(result.valid).toBe(true);
-    expect(mockFetch).toHaveBeenCalledTimes(1);
-    expect(mockLoggerInfo).toHaveBeenCalledWith('jwks.key.fetched', expect.objectContaining({ kid: 'test-kid-1' }));
-  });
-
-  it('should use cached key on subsequent requests', async () => {
-    mockFetch.mockReturnValueOnce(mockFetchResponse([testJwk]));
-
-    const token = createTestToken('test-kid-1');
-    await validator.validateToken(token);
-    await validator.validateToken(token);
-
-    expect(mockFetch).toHaveBeenCalledTimes(1);
-  });
-
-  it('should retry with cache-busting headers when kid not found on first fetch', async () => {
-    // First fetch returns old key only; cache-bust retry returns rotated key
-    mockFetch
-      .mockReturnValueOnce(mockFetchResponse([testJwk]))
-      .mockReturnValueOnce(mockFetchResponse([testJwk, rotatedJwk]));
-
-    const token = createTestToken('rotated-kid-2');
-    const result = await validator.validateToken(token);
-
-    expect(result.valid).toBe(true);
-    expect(mockFetch).toHaveBeenCalledTimes(2);
-
-    // Verify cache-bust headers on retry
-    const retryCall = mockFetch.mock.calls[1];
-    expect(retryCall[1].headers).toHaveProperty('Cache-Control', 'no-cache, no-store');
-    expect(retryCall[1].headers).toHaveProperty('Pragma', 'no-cache');
-
-    // First call should NOT have cache-bust headers
-    const firstCall = mockFetch.mock.calls[0];
-    expect(firstCall[1].headers).not.toHaveProperty('Cache-Control');
-  });
-
-  it('should log jwks.key.miss when kid not found on first fetch', async () => {
-    mockFetch
-      .mockReturnValueOnce(mockFetchResponse([testJwk]))
-      .mockReturnValueOnce(mockFetchResponse([testJwk, rotatedJwk]));
-
-    const token = createTestToken('rotated-kid-2');
-    await validator.validateToken(token);
-
-    expect(mockLoggerInfo).toHaveBeenCalledWith('jwks.key.miss', expect.objectContaining({
-      kid: 'rotated-kid-2',
-      availableKids: ['test-kid-1'],
-    }));
-  });
-
-  it('should fail when kid not found even after cache-bust retry', async () => {
-    mockFetch
-      .mockReturnValueOnce(mockFetchResponse([testJwk]))
-      .mockReturnValueOnce(mockFetchResponse([testJwk]));
-
-    const token = createTestToken('unknown-kid');
-    const result = await validator.validateToken(token);
-
-    expect(result.valid).toBe(false);
-    expect(result.reason).toContain('Failed to fetch public key');
-    expect(mockFetch).toHaveBeenCalledTimes(2);
-    expect(mockLoggerError).toHaveBeenCalledWith('jwks.fetch.error', expect.objectContaining({ kid: 'unknown-kid' }));
-  });
-
-  it('should cache key after successful cache-bust retry', async () => {
-    mockFetch
-      .mockReturnValueOnce(mockFetchResponse([testJwk]))
-      .mockReturnValueOnce(mockFetchResponse([testJwk, rotatedJwk]));
-
-    const token = createTestToken('rotated-kid-2');
-    await validator.validateToken(token);
-
-    // Second call should use cache, no additional fetch
-    await validator.validateToken(token);
-    expect(mockFetch).toHaveBeenCalledTimes(2);
-  });
+beforeAll(async () => {
+  signingKey = await importPKCS8(privateKey, 'RS256') as KeyObject;
 });
 
-describe('fetchJson http/https branching', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
+beforeEach(() => {
+  originalDispatcher = getGlobalDispatcher();
+  mockAgent = new MockAgent();
+  mockAgent.disableNetConnect();
+  setGlobalDispatcher(mockAgent);
 
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
+  mockGetFeatures.mockReturnValue({ nodeEnv: 'production' });
+  mockGetJWTAgentConfig.mockReturnValue(TEST_CONFIG);
+});
 
-  it('should use fetch() not https.request for http:// local URLs in development', async () => {
-    mockGetFeatures.mockReturnValue({ nodeEnv: 'development' });
-    mockGetJWTAgentConfig.mockReturnValue({
-      jwksUrl: 'http://localhost:4100/.well-known/jwks.json',
-      issuer: 'airo-app',
-      audience: 'agents-service',
-      algorithms: ['RS256'],
-    });
+afterEach(async () => {
+  await mockAgent.close();
+  setGlobalDispatcher(originalDispatcher);
+  vi.clearAllMocks();
+});
 
-    const httpsSpy = vi.spyOn(https, 'request');
+async function signTestToken(
+  kid: string,
+  claims: Record<string, unknown> = {},
+  overrides: { issuer?: string; audience?: string; iat?: number; exp?: number | string } = {},
+): Promise<string> {
+  const jwt = new SignJWT({ siteId: 'bypass-site', ...claims })
+    .setProtectedHeader({ alg: 'RS256', kid })
+    .setIssuer(overrides.issuer ?? 'airo-app')
+    .setAudience(overrides.audience ?? 'agents-service')
+    .setIssuedAt(overrides.iat)
+    .setExpirationTime(overrides.exp ?? '1h');
+  return jwt.sign(signingKey);
+}
 
-    mockFetch.mockReturnValueOnce(
-      Promise.resolve({ ok: true, json: () => Promise.resolve({ keys: [testJwk] }) })
-    );
+function mockJwksResponse(keys: Array<Record<string, unknown>>, times: number = 1) {
+  const pool = mockAgent.get('https://example.com');
+  pool
+    .intercept({ path: '/.well-known/jwks.json', method: 'GET' })
+    .reply(200, { keys }, { headers: { 'content-type': 'application/json' } })
+    .times(times);
+}
 
-    const validator = new JWTValidator();
-    const token = createTestToken('test-kid-1');
-    await validator.validateToken(token);
-
-    expect(httpsSpy).not.toHaveBeenCalled();
-    expect(mockFetch).toHaveBeenCalledTimes(1);
-    expect(mockFetch).toHaveBeenCalledWith(
-      'http://localhost:4100/.well-known/jwks.json',
-      expect.anything()
-    );
-  });
-
-  it('should use https.request with rejectUnauthorized:false for https:// local URLs in development', async () => {
-    mockGetFeatures.mockReturnValue({ nodeEnv: 'development' });
-    mockGetJWTAgentConfig.mockReturnValue({
-      jwksUrl: 'https://local.gasket.dev-godaddy.com:8443/.well-known/jwks.json',
-      issuer: 'airo-app',
-      audience: 'agents-service',
-      algorithms: ['RS256'],
-    });
-
-    const jwksPayload = JSON.stringify({ keys: [testJwk] });
-    const mockRes = {
-      statusCode: 200,
-      on: vi.fn((event: string, cb: (chunk?: string) => void) => {
-        if (event === 'data') cb(jwksPayload);
-        if (event === 'end') cb();
-        return mockRes;
-      }),
-    };
-    const mockReq = {
-      on: vi.fn().mockReturnThis(),
-      end: vi.fn(),
-      destroy: vi.fn(),
-    };
-
-    const httpsSpy = vi.spyOn(https, 'request').mockImplementation((_opts: any, cb: any) => {
-      cb(mockRes);
-      return mockReq as any;
-    });
+describe('JWTValidator JWKS fetching', () => {
+  it('fetches key and validates token on cache miss', async () => {
+    mockJwksResponse([testJwk]);
 
     const validator = new JWTValidator();
-    const token = createTestToken('test-kid-1');
-    await validator.validateToken(token);
+    const token = await signTestToken('test-kid-1');
+    const result = await validator.validateToken(token);
 
-    expect(httpsSpy).toHaveBeenCalledTimes(1);
-    const opts = httpsSpy.mock.calls[0][0] as https.RequestOptions;
-    expect(opts.rejectUnauthorized).toBe(false);
-    expect(opts.hostname).toBe('local.gasket.dev-godaddy.com');
-    expect(opts.port).toBe('8443');
-    expect(mockFetch).not.toHaveBeenCalled();
+    expect(result.valid).toBe(true);
+    expect(result.claims?.siteId).toBe('bypass-site');
+  });
+
+  it('uses cached key on subsequent requests within cacheMaxAge', async () => {
+    mockJwksResponse([testJwk], 1);
+
+    const validator = new JWTValidator();
+    const token = await signTestToken('test-kid-1');
+
+    const first = await validator.validateToken(token);
+    const second = await validator.validateToken(token);
+
+    expect(first.valid).toBe(true);
+    expect(second.valid).toBe(true);
+    mockAgent.assertNoPendingInterceptors();
+  });
+
+  it('refetches JWKS on kid miss (key rotation) after cooldown elapses', async () => {
+    const pool = mockAgent.get('https://example.com');
+    pool.intercept({ path: '/.well-known/jwks.json', method: 'GET' })
+      .reply(200, { keys: [testJwk] });
+    pool.intercept({ path: '/.well-known/jwks.json', method: 'GET' })
+      .reply(200, { keys: [testJwk, rotatedJwk] });
+
+    const validator = new JWTValidator();
+    const oldToken = await signTestToken('test-kid-1');
+    const newToken = await signTestToken('rotated-kid-2');
+
+    expect((await validator.validateToken(oldToken)).valid).toBe(true);
+
+    // jose's cooldownDuration gates refetch. Wait past the 30s window so the
+    // kid miss triggers a refresh instead of immediately throwing.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(Date.now() + 31_000);
+
+    try {
+      expect((await validator.validateToken(newToken)).valid).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+    mockAgent.assertNoPendingInterceptors();
+  });
+
+  it('fails with signature error when kid still missing after refetch', async () => {
+    mockJwksResponse([testJwk], 2);
+
+    const validator = new JWTValidator();
+    const token = await signTestToken('unknown-kid');
+
+    const firstAttempt = await validator.validateToken(token);
+    expect(firstAttempt.valid).toBe(false);
+    expect(firstAttempt.reason).toBe('Invalid token signature');
+
+    // Force jose past its 30s cooldown so the second attempt triggers a fresh JWKS fetch.
+    // Asserting no pending interceptors proves both interceptors were consumed.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(Date.now() + 31_000);
+    try {
+      const secondAttempt = await validator.validateToken(token);
+      expect(secondAttempt.valid).toBe(false);
+      expect(secondAttempt.reason).toBe('Invalid token signature');
+    } finally {
+      vi.useRealTimers();
+    }
+    mockAgent.assertNoPendingInterceptors();
+  });
+
+  it('fails with Token expired when exp has passed', async () => {
+    mockJwksResponse([testJwk]);
+    const now = Math.floor(Date.now() / 1000);
+    const expired = await signTestToken('test-kid-1', {}, { iat: now - 7200, exp: now - 3600 });
+
+    const result = await new JWTValidator().validateToken(expired);
+    expect(result.valid).toBe(false);
+    expect(result.reason).toBe('Token expired');
+  });
+
+  it('fails with Invalid token audience on wrong aud', async () => {
+    mockJwksResponse([testJwk]);
+    const token = await signTestToken('test-kid-1', {}, { audience: 'wrong-audience' });
+
+    const result = await new JWTValidator().validateToken(token);
+    expect(result.valid).toBe(false);
+    expect(result.reason).toBe('Invalid token audience');
+  });
+
+  it('returns No token provided for empty token', async () => {
+    const result = await new JWTValidator().validateToken('');
+    expect(result.valid).toBe(false);
+    expect(result.reason).toBe('No token provided');
   });
 });
 
 describe('JWTValidator model override claims', () => {
-  let validator: JWTValidator;
-
   beforeEach(() => {
-    vi.clearAllMocks();
-    validator = new JWTValidator();
-    mockFetch.mockReturnValue(mockFetchResponse([testJwk]));
+    mockJwksResponse([testJwk], 4);
   });
 
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  function createTokenWithClaims(claims: Record<string, unknown>): string {
-    return jwt.sign(
-      { iss: 'airo-app', aud: 'agents-service', siteId: 'bypass-site', ...claims },
-      privateKey,
-      { algorithm: 'RS256', expiresIn: '1h', header: { kid: 'test-kid-1' } }
-    );
-  }
-
-  it('should extract modelOverride claim from signed token', async function extractModelOverride() {
-    const token = createTokenWithClaims({ modelOverride: 'claude-sonnet-4-5' });
-    const result = await validator.validateToken(token);
-
+  it('extracts modelOverride claim from signed token', async () => {
+    const token = await signTestToken('test-kid-1', { modelOverride: 'claude-sonnet-4-5' });
+    const result = await new JWTValidator().validateToken(token);
     expect(result.valid).toBe(true);
     expect(result.claims?.modelOverride).toBe('claude-sonnet-4-5');
   });
 
-  it('should extract modelSelectorEnabled claim from signed token', async function extractModelSelectorEnabled() {
-    const token = createTokenWithClaims({ modelSelectorEnabled: true });
-    const result = await validator.validateToken(token);
-
+  it('extracts modelSelectorEnabled claim from signed token', async () => {
+    const token = await signTestToken('test-kid-1', { modelSelectorEnabled: true });
+    const result = await new JWTValidator().validateToken(token);
     expect(result.valid).toBe(true);
     expect(result.claims?.modelSelectorEnabled).toBe(true);
   });
 
-  it('should default modelOverride to undefined when missing', async function defaultModelOverride() {
-    const token = createTokenWithClaims({});
-    const result = await validator.validateToken(token);
-
+  it('leaves modelOverride undefined when missing', async () => {
+    const token = await signTestToken('test-kid-1');
+    const result = await new JWTValidator().validateToken(token);
     expect(result.valid).toBe(true);
     expect(result.claims?.modelOverride).toBeUndefined();
   });
 
-  it('should default modelSelectorEnabled to undefined when missing', async function defaultModelSelectorEnabled() {
-    const token = createTokenWithClaims({});
-    const result = await validator.validateToken(token);
-
+  it('leaves modelSelectorEnabled undefined when missing', async () => {
+    const token = await signTestToken('test-kid-1');
+    const result = await new JWTValidator().validateToken(token);
     expect(result.valid).toBe(true);
     expect(result.claims?.modelSelectorEnabled).toBeUndefined();
   });
