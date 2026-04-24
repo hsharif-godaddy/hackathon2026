@@ -67,10 +67,10 @@ export class FeedbackS3Stack extends GDStack {
     });
 
     // Readers: Lake Formation / Athena roles need read-only access for querying.
-    // Account 645584687727 is the GoDaddy shared data platform account (ckpgluecatal)
-    // which hosts the central Glue catalog and Lake Formation. This is intentionally
-    // cross-account — the data lake is a separate shared AWS account, not the same
-    // account as dev (694282668781) or prod (644094189644).
+    // Two ckpgluecatal accounts are used: 645584687727 (test) and 028140660016 (prod).
+    // Both are GoDaddy shared data platform accounts hosting the central Glue catalog
+    // and Lake Formation. This is intentionally cross-account — the data lake is a
+    // separate shared AWS account, not the same as dev (694282668781) or prod (644094189644).
     const readerPolicy = new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
       actions: [
@@ -84,6 +84,8 @@ export class FeedbackS3Stack extends GDStack {
       principals: [
         new iam.ArnPrincipal('arn:aws:iam::645584687727:role/aws-service-role/lakeformation.amazonaws.com/AWSServiceRoleForLakeFormationDataAccess'),
         new iam.ArnPrincipal('arn:aws:iam::645584687727:role/ckpgluecatal-custom-DataLakeProducerDataAccessRole'),
+        new iam.ArnPrincipal('arn:aws:iam::028140660016:role/aws-service-role/lakeformation.amazonaws.com/AWSServiceRoleForLakeFormationDataAccess'),
+        new iam.ArnPrincipal('arn:aws:iam::028140660016:role/ckpgluecatal-custom-DataLakeProducerDataAccessRole'),
       ],
     });
 
