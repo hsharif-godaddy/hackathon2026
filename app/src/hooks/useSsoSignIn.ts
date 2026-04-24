@@ -5,29 +5,47 @@ import { useAuthUIStore } from '@/stores/useAuthUIStore';
 import { getRootDomain } from '@/utils/getRootDomain';
 
 /**
- * Hook for handling SSO sign-in based on environment
+ * Single entry point for triggering SSO sign-in. Every caller that wants to
+ * prompt the user to authenticate MUST go through this hook - do not call
+ * `openSsoLogin()` or `handleSignIn()` directly. The environment decision
+ * below lives here and only here.
  *
- * In production (godaddy.com), uses the SSO modal.
- * In test/dev environments, redirects to SSO login page.
+ * Why the env gate:
+ *   Chrome's Private Network Access (PNA) check blocks the SSO Deck iframe
+ *   in `test-godaddy.com` and `dev-godaddy.com`, because those envs serve the
+ *   app from a public edge but resolve `sso.<root>` to a GoDaddy internal IP.
+ *   Public -> private subresource loads are blocked with
+ *   `ERR_BLOCKED_BY_LOCAL_NETWORK_ACCESS_CHECKS` unless SSO sends
+ *   `Access-Control-Allow-Private-Network: true`, which it does not.
+ *   Prod works because `sso.godaddy.com` is public. Local dev works because
+ *   the origin is localhost (PNA "local" tier, unrestricted).
+ *
+ *   See `docs/sso-login-env-gating.md` for the full write-up and incident
+ *   history (PRs #871, #3089, #3123). Do not remove this gate until the
+ *   identity/infra teams confirm the PNA block is lifted.
  */
 export function useSsoSignIn() {
   const { handleSignIn, isMockAuth } = useAuthContext();
   const { openSsoLogin } = useAuthUIStore();
 
-  // Use SSO modal in production and local development, redirect in deployed test environments
   const useSsoModal = useMemo(() => {
-    // Local development - use modal (local overrides test-godaddy.com via hosts file)
+    // Local dev: hosts-file-mapped to localhost, PNA "local" -> modal works.
     if (process.env.NODE_ENV === 'development') return true;
-    // Production (godaddy.com) - use modal
-    // Deployed test environments (test-godaddy.com, dev-godaddy.com) - use redirect
+    // Prod: sso.godaddy.com is public -> modal works.
+    // Deployed test/dev: sso.<root> is private -> must redirect.
     return getRootDomain() === 'godaddy.com';
   }, []);
 
   /**
-   * Trigger sign-in flow based on environment
+   * Trigger sign-in. Picks modal / redirect / mock-dialog based on env.
    *
-   * @param options.redirectUrl - URL to redirect after successful login (used for redirect mode)
-   * @param options.onShowMockLogin - Callback for mock login (development only)
+   * @param options.redirectUrl   Where to return after SSO. Only used by the
+   *                              redirect path; modal callers set this via
+   *                              `useAuthUIStore.setRedirectUrl` before the
+   *                              modal opens.
+   * @param options.onShowMockLogin Callback invoked when `AUTH_TYPE=mock`.
+   *                              Host component is responsible for rendering
+   *                              the `MockLoginDialog`.
    */
   const signIn = useCallback((options?: {
     redirectUrl?: string;
@@ -35,15 +53,11 @@ export function useSsoSignIn() {
   }) => {
     const { redirectUrl, onShowMockLogin } = options || {};
 
-    // Mock auth takes precedence
     if (isMockAuth) {
-      if (onShowMockLogin) {
-        onShowMockLogin();
-      }
+      onShowMockLogin?.();
       return;
     }
 
-    // Production uses modal, test/dev uses redirect
     if (useSsoModal) {
       openSsoLogin();
     } else {

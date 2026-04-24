@@ -27,6 +27,14 @@ vi.mock('@/stores/useAuthUIStore', () => ({
   useAuthUIStore: vi.fn(),
 }))
 
+// useSsoSignIn is the single env gate (see useSsoSignIn.ts); stub it so this
+// test does not need to wire up AuthProvider. The signIn() stub forwards to
+// openSsoLogin to preserve the existing assertion surface.
+const mockSignIn = vi.fn()
+vi.mock('@/hooks/useSsoSignIn', () => ({
+  useSsoSignIn: () => ({ signIn: mockSignIn }),
+}))
+
 vi.mock('@/lib/logging', () => ({
   shipAnalyticsLog: vi.fn(),
 }))
@@ -125,7 +133,7 @@ describe('CreatePage', () => {
     onAuthRequiredCallback('test prompt')
 
     expect(mockSetRedirectUrl).toHaveBeenCalledWith('/create?initialPrompt=test%20prompt')
-    expect(mockOpenSsoLogin).toHaveBeenCalled()
+    expect(mockSignIn).toHaveBeenCalledWith({ redirectUrl: '/create?initialPrompt=test%20prompt' })
   })
 
   it('redirects to homepage on SSO dismiss', async () => {

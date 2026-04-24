@@ -7,6 +7,7 @@ import Modal from '@ux/modal';
 import text from '@ux/text';
 
 import { isLandingPagePathname } from '@/data/landing-pages/landing-page-paths';
+import { useSsoSignIn } from '@/hooks/useSsoSignIn';
 import { useTranslations } from '@/hooks/useTranslations';
 import { shipAnalyticsLog } from '@/lib/logging';
 import { logger } from '@/lib/request-context';
@@ -41,7 +42,8 @@ interface AuthBoundaryProps {
 export default function AuthBoundary({ children }: AuthBoundaryProps) {
   const t = useTranslations();
   const pathname = usePathname();
-  const { needsReauth, reauthReason, openSsoLogin, isSsoLoginOpen, setRedirectUrl, ssoCloseReason, redirectUrl } = useAuthUIStore();
+  const { needsReauth, reauthReason, isSsoLoginOpen, setRedirectUrl, ssoCloseReason, redirectUrl } = useAuthUIStore();
+  const { signIn } = useSsoSignIn();
   const hasLoggedModalShown = useRef(false);
   const hasAutoOpened = useRef(false);
   const reauthReasonRef = useRef(reauthReason);
@@ -69,14 +71,14 @@ export default function AuthBoundary({ children }: AuthBoundaryProps) {
       if (isSsoLoginOpen) {
         hasAutoOpened.current = true;
       } else if (!hasAutoOpened.current) {
-        openSsoLogin();
+        signIn();
         hasAutoOpened.current = true;
       }
     }
     if (!needsReauth) {
       hasAutoOpened.current = false;
     }
-  }, [needsReauth, isSsoLoginOpen, isHomepage, isLandingPage, openSsoLogin]);
+  }, [needsReauth, isSsoLoginOpen, isHomepage, isLandingPage, signIn]);
 
   // Track when modal is shown for analytics
   useEffect(() => {
@@ -124,7 +126,7 @@ export default function AuthBoundary({ children }: AuthBoundaryProps) {
       });
     }
 
-    openSsoLogin();
+    signIn({ redirectUrl: redirectUrl ?? undefined });
   };
 
   // Determine message based on reason

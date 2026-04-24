@@ -5,6 +5,7 @@ import { Suspense, useEffect, useRef } from 'react'
 import Box from '@ux/box'
 import Spinner from '@ux/spinner'
 
+import { useSsoSignIn } from '@/hooks/useSsoSignIn'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { logger } from '@/lib/request-context'
 import { createSiteAndRedirect } from '@/lib/site-creation'
@@ -13,7 +14,7 @@ import { useAuthUIStore } from '@/stores/useAuthUIStore'
 function CreatePageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const openSsoLogin = useAuthUIStore((state) => state.openSsoLogin)
+  const { signIn } = useSsoSignIn()
   const setRedirectUrl = useAuthUIStore((state) => state.setRedirectUrl)
   const ssoCloseReason = useAuthUIStore((state) => state.ssoCloseReason)
   const clearSsoCloseReason = useAuthUIStore((state) => state.clearSsoCloseReason)
@@ -78,12 +79,16 @@ function CreatePageContent() {
             promptLength: prompt.length,
           })
 
-          // Set redirect URL so SSO returns to this page after auth
+          // Set redirect URL so SSO returns to this page after auth. Modal
+          // path uses this via the store; redirect path consumes it from the
+          // `redirectUrl` arg to signIn below.
           const redirectUrl = `/create?initialPrompt=${encodeURIComponent(trimmedPrompt)}`
           setRedirectUrl(redirectUrl)
 
-          // Trigger SSO modal directly (bypasses mock auth check)
-          openSsoLogin()
+          // Route through useSsoSignIn so the env gate decides modal vs
+          // redirect. Mock auth is not reached here because this callback
+          // only fires on a 401 from the server.
+          signIn({ redirectUrl })
         },
         onError: (error) => {
           logger.error('create_page.create_failed', { error })
@@ -96,7 +101,7 @@ function CreatePageContent() {
       },
       router
     )
-  }, [initialPrompt, router, openSsoLogin, setRedirectUrl])
+  }, [initialPrompt, router, signIn, setRedirectUrl])
 
   // All states show the same UI: centered spinner
   return (

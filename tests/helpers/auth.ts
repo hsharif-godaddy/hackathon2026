@@ -15,7 +15,23 @@ export function userMenuTrigger(page: Page) {
 export type SsoDetectionResult = 'iframe' | 'redirect' | 'authenticated' | 'timeout' | null;
 
 /**
- * Detect SSO type - shared helper for iframe modal vs redirect detection
+ * Detect SSO type - races the two sign-in paths the app exposes.
+ *
+ * The app uses ONE of these paths depending on environment (see
+ * `useSsoSignIn.ts` and `docs/sso-login-env-gating.md`):
+ *
+ *   - 'iframe' branch: SSO Deck modal, used in prod (airo-builder.godaddy.com)
+ *     and in local dev (NODE_ENV=development). Deployed test/dev would also
+ *     use this if Chrome's Private Network Access check did not block
+ *     `sso.<test|dev>-godaddy.com` as a private-IP subresource.
+ *   - 'redirect' branch: full-page redirect to /login, used in deployed test
+ *     and dev envs.
+ *
+ * Both branches are kept here because a single Playwright run may hit different
+ * envs via `--base-url`. If the env gate is ever removed (prod-only behaviour
+ * everywhere), the redirect branch can be dropped - but first read the doc
+ * above so you understand why it exists.
+ *
  * @param page - Playwright page
  * @param includeAuthenticatedCheck - If true, also checks for develop page URL (already authenticated)
  * @returns Detection result: 'iframe', 'redirect', 'authenticated', 'timeout', or null

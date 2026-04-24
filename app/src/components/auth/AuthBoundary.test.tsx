@@ -57,6 +57,22 @@ vi.mock('@/lib/logging', () => ({
   shipAnalyticsLog: vi.fn(),
 }));
 
+// Mock useSsoSignIn so these tests don't depend on AuthProvider context.
+// The hook is the single env gate (see useSsoSignIn.ts); in JWT mode it
+// delegates to openSsoLogin() which is what these tests verify.
+vi.mock('@/hooks/useSsoSignIn', async () => {
+  const store = await vi.importActual<typeof import('@/stores/useAuthUIStore')>(
+    '@/stores/useAuthUIStore'
+  );
+  return {
+    useSsoSignIn: () => ({
+      signIn: () => {
+        store.useAuthUIStore.getState().openSsoLogin();
+      },
+    }),
+  };
+});
+
 describe('AuthBoundary', () => {
   beforeEach(async () => {
     // Reset the store to initial state before each test
