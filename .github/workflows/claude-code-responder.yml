@@ -24,4 +24,5 @@ jobs:
       runner_labels_json: '["self-hosted"]'
       gocode_environment: prod
       trigger_phrase: "@claude"
+      track_progress: "true"
       max_turns: "50"

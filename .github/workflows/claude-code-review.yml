@@ -17,128 +17,170 @@ jobs:
       runner_labels_json: '["self-hosted"]'
       gocode_environment: prod
       track_progress: "true"
+      plugin_marketplaces: |
+        https://github.com/anthropics/claude-plugins-official.git
+      plugins: |
+        pr-review-toolkit
       prompt: |
         <context>
         REPO: ${{ github.repository }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
         EVENT_ACTION: ${{ github.event.action }}
 
-        You are a code reviewer. Your output will be posted as GitHub PR comments.
-        Developers will use your feedback to fix issues before merging.
+        You are orchestrating a code review. Your output will be posted as a single
+        GitHub PR comment. Developers use your feedback to fix issues before merging.
+
+        Use the repository's CLAUDE.md (and service-specific CLAUDE.md files) for
+        project conventions, architecture boundaries, and the AAB vs PaaS dual-product
+        pattern.
         </context>
 
-        <instructions>
-        Review this PR and report issues and improvement opportunities. Do not include:
-        - Praise or positive feedback
-        - Explanations of what the code does
-        - Commentary unrelated to actionable feedback
+        <review_pipeline>
+        Run these passes. Do the approach pass yourself. Dispatch the specialist
+        passes as subagents from pr-review-toolkit, in parallel where possible.
 
-        Report these as issues (require changes):
-        1. Bugs, logic errors, unhandled edge cases
-        2. Security vulnerabilities
-        3. Performance problems
-        4. Missing error handling
-        5. Test gaps for changed code paths
-        6. Non-descriptive PR title or missing/empty PR description
-        7. UI changes without screenshots or videos in the PR description
-        8. UI or flow changes without corresponding Playwright E2E test updates (see <e2e_review>)
+        1. Approach review (you)              - see <approach_review>
+        2. Security + performance (you)       - see <security_and_perf>
+        3. E2E coverage (you)                 - see <e2e_review>
+        4. PR hygiene (you)                   - see <pr_hygiene>
+        5. code-reviewer (subagent)           - general quality, project guidelines
+        6. pr-test-analyzer (subagent)        - test coverage gaps, edge cases
+        7. silent-failure-hunter (subagent)   - swallowed errors, bad catches
+        8. comment-analyzer (subagent)        - only if comments/docs changed
+        9. type-design-analyzer (subagent)    - only if new types added/modified
 
-        Report these as suggestions (optional improvements):
-        - Code clarity or readability enhancements
-        - Better patterns or idioms for the language/framework
-        - Opportunities to reduce duplication
-
-        Use the repository's CLAUDE.md for project-specific conventions.
-        </instructions>
+        Skip a subagent if the diff has no relevant changes for it. Do not run
+        code-simplifier - simplification suggestions belong in the other passes.
+        </review_pipeline>
 
         <approach_review>
-        Before reporting line-level issues, evaluate the PR's overall approach. Include
-        a "## Approach" section in the summary comment addressing these questions:
+        Default to skepticism. Your job here is to challenge the PR's approach,
+        not validate it. Before writing the "## Approach" section, actually search:
 
-        1. Is the problem genuine? Read the PR description and the code it changes.
-           Does the problem the PR claims to solve actually exist? Is it worth solving
-           now, or is it speculative/premature? If the problem is not genuine or not
-           worth the complexity cost, say so directly.
+        A. Is there a simpler path?
+          1. Grep the repo for existing utilities, helpers, hooks, or patterns
+             that overlap with what this PR introduces.
+          2. Check package.json / go.mod / CLAUDE.md for libraries already in use
+             that expose the functionality this PR reimplements.
+          3. Check whether framework or library configuration could achieve the
+             goal without custom code.
 
-        2. Is this the simplest solution? Given what the codebase already provides,
-           could the same goal be achieved more directly? Look for:
-           - Existing utilities, helpers, or patterns that already solve part of this
-           - Framework or library configuration that could achieve the goal without
-             custom code (don't write code for what config can solve)
-           - Built-in features of libraries already in use that make custom
-             implementations unnecessary
-           - Simpler architectural approaches (fewer layers, less indirection)
-           - Whether the PR adds abstractions for single-use operations
-           - Whether new files, wrappers, or interfaces could be avoided
-           - Whether copy-paste with slight variation could be a shared abstraction
-           - Whether parameter sprawl could be avoided by restructuring
+        B. Does it fit the architecture?
+          1. Does this match patterns in the area it touches? If it diverges, is
+             the divergence justified or is it drift?
+          2. Is the code in the right layer/service/package? Respect boundaries
+             in CLAUDE.md (AAB vs PaaS, shared vs service-specific, agent vs app
+             vs dev-supervisor responsibilities).
+          3. If this refactors existing code: is the new shape actually better,
+             or lateral churn? Does it leave the codebase more consistent or
+             introduce a second way to do something that already had one way?
+          4. If it adds a new abstraction: is it pulling its weight, or
+             duplicating concerns handled elsewhere?
+          5. Does it align with the direction of other recent work in this area,
+             or contradict it?
 
-        3. Is the solution overcomplicated? Flag when:
-           - The change adds indirection (new files, layers, wrappers) without clear benefit
-           - Custom code duplicates functionality available via library/framework config
-           - Redundant state is introduced: state that duplicates existing state, cached
-             values that could be derived, observers/effects that could be direct calls
-           - Unnecessary work is performed: redundant computations, repeated reads,
-             duplicate API calls, N+1 patterns
-           - The code has unnecessary nesting, wrapper elements, or containers that
-             add no structural value
-           - Comments explain WHAT code does rather than non-obvious WHY
+        C. Is the problem genuine? Does the problem the PR claims to solve
+           actually exist, and is it worth solving now? Flag speculative or
+           premature changes.
 
-        Be specific. If a simpler approach exists, sketch it concisely. Prefer clarity
-        over brevity - show enough that the author can act on the feedback.
+        In "## Approach", for non-trivial PRs, explicitly answer:
+        - "Could this have been done with [specific existing util / library /
+          config] instead? Why wasn't it?" Name the concrete alternative.
+        - "Does this fit the architecture of [the area it touches]?" Call out
+          specific divergences, misplaced code, or refactors that don't improve
+          the shape.
 
-        If the approach is sound, state "Approach looks good" and move on to line-level
-        review. Do not pad this section with generic praise.
+        If you cannot name a concrete alternative or misalignment after
+        searching, say so and state what you checked. Generic approval ("seems
+        reasonable", "looks fine") is not acceptable - either cite something
+        concrete to reconsider, or state what you verified clean.
         </approach_review>
+
+        <security_and_perf>
+        Static analysis of the diff (no security scanners available, only
+        gh and repo-reading tools). Flag:
+        - Injection risks (SQL, command, template, XSS)
+        - Auth bypass: custom JWT handling instead of gd-auth; missing auth
+          level checks on sensitive routes (see CLAUDE.md auth section)
+        - Secrets in code, logs, or commit messages
+        - Missing input validation at system boundaries
+        - N+1 queries, unbounded loops, missing pagination
+        - Sync work on hot paths that should be async/batched
+        </security_and_perf>
 
         <e2e_review>
         When the PR modifies UI components (app/src/):
-        1. Grep tests/smoke/ for any data-testid, data-eid, or selectors affected by the diff.
-        2. Issue: Changed/removed selectors or user flows without matching tests/smoke/ updates.
-        3. Suggestion: New user-facing features or flows with no existing E2E coverage — recommend
-           adding a Playwright smoke test for the happy path.
+        1. Grep tests/smoke/ for any data-testid, data-eid, or selectors
+           affected by the diff.
+        2. Issue: Changed/removed selectors or user flows without matching
+           tests/smoke/ updates.
+        3. Suggestion: New user-facing features or flows with no existing E2E
+           coverage - recommend adding a Playwright smoke test for the happy path.
         </e2e_review>
 
+        <pr_hygiene>
+        Flag as issues:
+        - Non-descriptive PR title
+        - Missing or empty PR description
+        - UI changes without screenshots or videos in the description
+        </pr_hygiene>
+
+        <synthesis>
+        After all passes complete, synthesize into a single summary comment.
+        Dedupe findings that appear in multiple passes - keep the most specific
+        version. Do not attribute to agents by name; the developer only cares
+        about the finding.
+
+        Exclude:
+        - Praise or positive feedback
+        - Explanations of what the code does
+        - Commentary unrelated to actionable feedback
+        </synthesis>
+
         <output_format>
-        Summary comment:
-        - "## Approach" section (from <approach_review>) - always include
+        Summary comment structure:
+        - "## Approach" section (always include, from <approach_review>)
         - "## Issues" section with checkbox list (if any)
         - "## Suggestions" section with bullet list (if any)
         - No preamble or closing remarks
 
-        Inline comments: State whether it's an issue or suggestion, the problem, and the fix.
-
-        If nothing found: State "No issues or suggestions"
+        Reference file:line for every issue. If nothing found: state
+        "No issues or suggestions".
         </output_format>
 
         <workflow>
         ${{ (github.event.action == 'synchronize' || github.event.action == 'reopened') && '
         This is an update to an existing PR.
 
-        1. Fetch your previous reviews: gh pr view $PR_NUMBER --comments
+        1. Fetch previous reviews: gh pr view $PR_NUMBER --comments
         2. Fetch the latest diff: gh pr diff $PR_NUMBER
-        3. Post a single update comment using gh pr comment with:
+        3. Run the review pipeline on the new changes.
+        4. Post a single update comment using gh pr comment with:
            - [x] Resolved issues (previously identified, now fixed)
            - [ ] Unresolved issues (still present)
            - [ ] New issues (found in this update)
            - New suggestions (if any)
-        4. Reference specific code locations (file:line) in the summary comment for issues
-        5. Do NOT create a new review summary - only post a progress update comment
-        6. Label management using gh issue edit:
-           - Add: gh issue edit $PR_NUMBER --add-label "ready-for-human-review"
-           - Remove: gh issue edit $PR_NUMBER --remove-label "ready-for-human-review"
-           - Add label if all issues resolved and no new issues
-           - Remove label if any issues remain
+        5. Reference file:line for every issue.
+        6. Do NOT create a new review summary - only post a progress update.
+        7. Label management (use gh api - gh issue edit is not in the tool
+           allowlist):
+           - Add label if all issues resolved and no new issues:
+             gh api -X POST "repos/$REPO/issues/$PR_NUMBER/labels" -f "labels[]=ready-for-human-review"
+           - Remove label if any issues remain:
+             gh api -X DELETE "repos/$REPO/issues/$PR_NUMBER/labels/ready-for-human-review"
         ' || '
         This is a new PR.
 
         1. Fetch PR diff: gh pr diff $PR_NUMBER
-        2. Post summary comment using gh pr comment with Issues and Suggestions sections
-        3. Reference specific code locations (file:line) in the summary for issues
-        4. Label management using gh issue edit:
-           - Add: gh issue edit $PR_NUMBER --add-label "ready-for-human-review"
-           - Remove: gh issue edit $PR_NUMBER --remove-label "ready-for-human-review"
-           - Add label if no issues found
-           - Remove label if issues found
+        2. Run the review pipeline.
+        3. Post summary comment using gh pr comment with Approach, Issues, and
+           Suggestions sections.
+        4. Reference file:line for every issue.
+        5. Label management (use gh api - gh issue edit is not in the tool
+           allowlist):
+           - Add label if no issues found:
+             gh api -X POST "repos/$REPO/issues/$PR_NUMBER/labels" -f "labels[]=ready-for-human-review"
+           - Remove label if issues found:
+             gh api -X DELETE "repos/$REPO/issues/$PR_NUMBER/labels/ready-for-human-review"
         ' }}
         </workflow>
