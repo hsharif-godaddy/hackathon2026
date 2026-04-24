@@ -5,6 +5,7 @@ import {
   BudgetServiceAuthError,
   BudgetServiceTimeoutError,
   BudgetServiceUnavailableError,
+  BudgetNotFoundError,
 } from '../errors.js'
 
 const TEST_CONFIG = {
@@ -420,10 +421,24 @@ describe('BudgetServiceClient', () => {
       await expect(client.getBudget('b-1')).rejects.toThrow(BudgetServiceAuthError)
     })
 
-    it('throws BudgetServiceError on 4xx', async () => {
+    it('throws BudgetNotFoundError on 404', async () => {
+      const client = clientWith(mockFetchWithText(false, 404, '{"error":"Not found"}'))
+      await expect(client.getBudget('b-1')).rejects.toThrow(BudgetNotFoundError)
+    })
+
+    it('throws BudgetServiceError (not a subclass) on other 4xx', async () => {
       const client = clientWith(mockFetchWithText(false, 400, '{"error":"Bad request"}'))
-      await expect(client.getBudget('b-1')).rejects.toThrow(BudgetServiceError)
-      await expect(client.getBudget('b-1')).rejects.not.toThrow(BudgetServiceAuthError)
+
+      try {
+        await client.getBudget('b-1')
+        expect.unreachable()
+      } catch (err) {
+        expect(err).toBeInstanceOf(BudgetServiceError)
+        // Ensure it's the base class, not a subclass
+        expect(err).not.toBeInstanceOf(BudgetServiceAuthError)
+        expect(err).not.toBeInstanceOf(BudgetNotFoundError)
+        expect((err as BudgetServiceError).statusCode).toBe(400)
+      }
     })
 
     it('throws BudgetServiceError on 5xx with status and body', async () => {

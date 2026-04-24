@@ -25,6 +25,7 @@ import {
   BudgetServiceAuthError,
   BudgetServiceTimeoutError,
   BudgetServiceUnavailableError,
+  BudgetNotFoundError,
 } from './errors.js'
 
 // ── Config ──
@@ -274,6 +275,12 @@ export class BudgetServiceClient {
         throw new BudgetServiceAuthError(
           `Budget Service auth failed: ${response.status} ${method} ${path}`,
           response.status,
+          text
+        )
+      }
+      if (response.status === 404) {
+        throw new BudgetNotFoundError(
+          `Budget Service not found: ${method} ${path}`,
           text
         )
       }

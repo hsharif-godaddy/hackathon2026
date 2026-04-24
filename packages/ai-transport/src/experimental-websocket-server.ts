@@ -7,6 +7,7 @@ import type { AgentFactory, AgentWrapper, PipelineContextMessage } from '@airo/a
 import { createAgentFactory } from '@airo/ai-lib'
 import { buildTokenUsage, calculateCostEstimate, formatCostEstimate, getCacheHitRate } from '@airo/ai-lib'
 import { classifyError, BudgetExceededError, isBudgetExceededAPIError, createLogger } from '@airo/ai-common'
+import { isBudgetServiceError, mapBudgetErrorToResponse } from '@airo/shared/budget'
 import type { AgentsCollection } from '@airo/ai-lib'
 import type { HandoffStateManager } from '@airo/ai-lib'
 import type {
@@ -2707,17 +2708,12 @@ export class WebSocketServer {
         errorType = 'BUDGET_EXCEEDED';
         statusCode = error.statusCode;
       }
-      // Any BudgetService* error (unavailable, timeout, auth, 5xx, 4xx) — surface as unavailable.
-      // Prevents raw BMS API paths from leaking to the client.
-      else if (error instanceof Error && (
-        error.name === 'BudgetServiceUnavailableError' ||
-        error.name === 'BudgetServiceTimeoutError' ||
-        error.name === 'BudgetServiceAuthError' ||
-        error.name === 'BudgetServiceError'
-      )) {
-        errorMessage = 'Budget service temporarily unavailable';
-        errorType = 'BUDGET_SERVICE_UNAVAILABLE';
-        statusCode = 503;
+      // BudgetService errors — use shared utility to map to sanitized response
+      else if (isBudgetServiceError(error)) {
+        const response = mapBudgetErrorToResponse(error)
+        errorMessage = response.message
+        errorType = response.errorType
+        statusCode = response.statusCode
       }
       // Check if it's AI SDK's RetryError
       else if (RetryError.isInstance(error)) {
@@ -2785,7 +2781,7 @@ export class WebSocketServer {
           errorType: errorType || error?.constructor?.name || 'Error',
           errorMessage,
           errorPhase: 'execution',
-          isRetryable: errorType === 'RETRY_ERROR' || statusCode === 503 || statusCode === 429,
+          isRetryable: errorType === 'RETRY_ERROR' || statusCode === 503 || statusCode === 429 || (errorType === 'BUDGET_SERVICE_ERROR' && statusCode !== undefined && statusCode >= 500),
           ...(error instanceof Error ? { errorStack: error.stack } : {})
         })
       })

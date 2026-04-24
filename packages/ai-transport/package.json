@@ -24,6 +24,7 @@
   "dependencies": {
     "@airo/ai-common": "workspace:*",
     "@airo/ai-lib": "workspace:*",
+    "@airo/shared": "workspace:*",
     "@godaddy/agent-observability-events": "catalog:",
     "@godaddy/agent-otel-sdk": "catalog:",
     "@opentelemetry/api": "catalog:",

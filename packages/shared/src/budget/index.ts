@@ -18,4 +18,10 @@ export {
   BudgetServiceAuthError,
   BudgetServiceTimeoutError,
   BudgetServiceUnavailableError,
+  BudgetNotFoundError,
+  BudgetErrorType,
+  mapBudgetErrorToResponse,
+  isBudgetServiceError,
 } from './errors.js'
+
+export type { BudgetErrorResponse } from './errors.js'

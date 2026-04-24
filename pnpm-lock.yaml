@@ -1393,6 +1393,9 @@ importers:
       '@airo/ai-lib':
         specifier: workspace:*
         version: link:../ai-lib
+      '@airo/shared':
+        specifier: workspace:*
+        version: link:../shared
       '@godaddy/agent-observability-events':
         specifier: 'catalog:'
         version: 2.0.0

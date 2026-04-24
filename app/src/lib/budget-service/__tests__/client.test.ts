@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  BudgetNotFoundError,
   BudgetServiceAuthError,
   BudgetServiceError,
   BudgetServiceTimeoutError,
@@ -200,9 +201,9 @@ describe('BudgetServiceBffClient', () => {
       await expect(client.getBudget('b-1')).rejects.toThrow(BudgetServiceAuthError);
     });
 
-    it('throws BudgetServiceError on 404', async () => {
+    it('throws BudgetNotFoundError on 404', async () => {
       const client = clientWith(mockFetch(false, 404, 'Not Found'));
-      await expect(client.getBudget('b-1')).rejects.toThrow(BudgetServiceError);
+      await expect(client.getBudget('b-1')).rejects.toThrow(BudgetNotFoundError);
       await expect(client.getBudget('b-1')).rejects.toMatchObject({ statusCode: 404 });
     });
 

@@ -5,8 +5,10 @@ import {
   BudgetServiceTimeoutError,
   BudgetServiceError,
   BudgetServiceAuthError,
+  BudgetNotFoundError,
   toBudgetUpdatePayload,
 } from '@airo/ai-lib/budget'
+import { isBudgetServiceError, mapBudgetErrorToResponse, BudgetErrorType } from '@airo/shared/budget'
 import { BudgetOverride } from '@airo/ai-grants'
 import { performBudgetPreCheck, type BudgetPreCheckDeps } from '../budget-pre-check.js'
 
@@ -203,8 +205,8 @@ describe('performBudgetPreCheck', () => {
 })
 
 // ── Group 2: Error mapping contract tests ──
-// Verifies budget error instances match the conditions used in
-// experimental-websocket-server.ts catch block (lines 2225-2255).
+// Verifies budget error instances are detected by isBudgetServiceError() and
+// mapBudgetErrorToResponse() returns sanitized client-safe responses.
 
 describe('budget error mapping contracts', () => {
   it('BudgetExceededError.fromBudgetCheck is detected by isInstance', () => {
@@ -216,59 +218,62 @@ describe('budget error mapping contracts', () => {
     expect(err.message).not.toContain('sub-1')
   })
 
-  it('BudgetServiceUnavailableError matches name check', () => {
-    const err = new BudgetServiceUnavailableError('unavailable')
-    expect(err).toBeInstanceOf(Error)
-    expect(err.name).toBe('BudgetServiceUnavailableError')
+  it('all BudgetServiceError subclasses detected by isBudgetServiceError', () => {
+    expect(isBudgetServiceError(new BudgetServiceUnavailableError('unavailable'))).toBe(true)
+    expect(isBudgetServiceError(new BudgetServiceTimeoutError('timeout'))).toBe(true)
+    expect(isBudgetServiceError(new BudgetServiceAuthError('auth failed', 401, '{}'))).toBe(true)
+    expect(isBudgetServiceError(new BudgetNotFoundError('not found', '{}'))).toBe(true)
+    expect(isBudgetServiceError(new BudgetServiceError('generic', 500, '{}'))).toBe(true)
   })
 
-  it('BudgetServiceTimeoutError matches name check', () => {
-    const err = new BudgetServiceTimeoutError('timeout')
-    expect(err).toBeInstanceOf(Error)
-    expect(err.name).toBe('BudgetServiceTimeoutError')
+  it('isBudgetServiceError rejects non-budget errors', () => {
+    expect(isBudgetServiceError(new Error('plain error'))).toBe(false)
+    expect(isBudgetServiceError(null)).toBe(false)
+    expect(isBudgetServiceError({ message: 'fake' })).toBe(false)
   })
 
-  it('BudgetServiceError 5xx matches name + statusCode check', () => {
-    const err = new BudgetServiceError('server error', 500, '{}')
-    expect(err).toBeInstanceOf(Error)
-    expect(err.name).toBe('BudgetServiceError')
-    expect(err.statusCode).toBeGreaterThanOrEqual(500)
+  it('BudgetServiceUnavailableError maps to 503 unavailable', () => {
+    const response = mapBudgetErrorToResponse(new BudgetServiceUnavailableError('unavailable'))
+    expect(response.errorType).toBe(BudgetErrorType.BUDGET_SERVICE_UNAVAILABLE)
+    expect(response.statusCode).toBe(503)
+    expect(response.message).toBe('Budget service temporarily unavailable')
   })
 
-  it('BudgetServiceError 429 matches name + statusCode check', () => {
-    const err = new BudgetServiceError('rate limited', 429, '{}')
-    expect(err.name).toBe('BudgetServiceError')
-    expect(err.statusCode).toBe(429)
+  it('BudgetServiceTimeoutError maps to 503 unavailable', () => {
+    const response = mapBudgetErrorToResponse(new BudgetServiceTimeoutError('timeout'))
+    expect(response.errorType).toBe(BudgetErrorType.BUDGET_SERVICE_UNAVAILABLE)
+    expect(response.statusCode).toBe(503)
   })
 
-  it('BudgetServiceAuthError matches name check', () => {
-    const err = new BudgetServiceAuthError('auth failed', 401, '{}')
-    expect(err).toBeInstanceOf(Error)
-    expect(err.name).toBe('BudgetServiceAuthError')
+  it('BudgetServiceAuthError maps to auth error preserving status code', () => {
+    const response401 = mapBudgetErrorToResponse(new BudgetServiceAuthError('unauthorized', 401, '{}'))
+    expect(response401.errorType).toBe(BudgetErrorType.BUDGET_SERVICE_AUTH_ERROR)
+    expect(response401.statusCode).toBe(401)
+
+    const response403 = mapBudgetErrorToResponse(new BudgetServiceAuthError('forbidden', 403, '{}'))
+    expect(response403.errorType).toBe(BudgetErrorType.BUDGET_SERVICE_AUTH_ERROR)
+    expect(response403.statusCode).toBe(403)
   })
 
-  it('BudgetServiceError 404 falls through to catch-all (name only)', () => {
-    const err = new BudgetServiceError('not found', 404, '{}')
-    // Not matched by 5xx/429 branch
-    expect(err.statusCode).not.toBeGreaterThanOrEqual(500)
-    expect(err.statusCode).not.toBe(429)
-    // Not BudgetServiceAuthError
-    expect(err.name).not.toBe('BudgetServiceAuthError')
-    // Caught by catch-all: name === 'BudgetServiceError'
-    expect(err.name).toBe('BudgetServiceError')
+  it('BudgetNotFoundError maps to 404 not found', () => {
+    const response = mapBudgetErrorToResponse(new BudgetNotFoundError('not found', '{}'))
+    expect(response.errorType).toBe(BudgetErrorType.BUDGET_NOT_FOUND)
+    expect(response.statusCode).toBe(404)
+    expect(response.message).toBe('Budget resource not found')
   })
 
-  it('BudgetServiceError subclasses share BudgetServiceError name ancestry', () => {
-    // UnavailableError and TimeoutError extend BudgetServiceError but override name.
-    // The catch block checks name strings, so subclass names must NOT match
-    // the base 'BudgetServiceError' to avoid falling into the wrong branch.
-    const unavailable = new BudgetServiceUnavailableError('down')
-    const timeout = new BudgetServiceTimeoutError('slow')
-    const auth = new BudgetServiceAuthError('bad creds', 401, '{}')
+  it('generic BudgetServiceError 5xx maps to service error', () => {
+    const response = mapBudgetErrorToResponse(new BudgetServiceError('server error', 500, '{}'))
+    expect(response.errorType).toBe(BudgetErrorType.BUDGET_SERVICE_ERROR)
+    expect(response.statusCode).toBe(500)
+    expect(response.message).toBe('Budget service error')
+  })
 
-    expect(unavailable.name).not.toBe('BudgetServiceError')
-    expect(timeout.name).not.toBe('BudgetServiceError')
-    expect(auth.name).not.toBe('BudgetServiceError')
+  it('generic BudgetServiceError 4xx maps to request failed', () => {
+    const response = mapBudgetErrorToResponse(new BudgetServiceError('bad request', 400, '{}'))
+    expect(response.errorType).toBe(BudgetErrorType.BUDGET_SERVICE_ERROR)
+    expect(response.statusCode).toBe(400)
+    expect(response.message).toBe('Budget service request failed')
   })
 })
 

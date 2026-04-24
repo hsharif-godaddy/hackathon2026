@@ -13,6 +13,7 @@
 import { z } from 'zod'
 import type { BudgetItem, BudgetResponse } from '@airo/shared/budget'
 import {
+  BudgetNotFoundError,
   BudgetServiceAuthError,
   BudgetServiceError,
   BudgetServiceTimeoutError,
@@ -167,6 +168,12 @@ export class BudgetServiceBffClient {
         throw new BudgetServiceAuthError(
           `Budget Service auth failed: ${response.status} ${method} ${path}`,
           response.status,
+          text
+        )
+      }
+      if (response.status === 404) {
+        throw new BudgetNotFoundError(
+          `Budget Service not found: ${method} ${path}`,
           text
         )
       }

@@ -5,6 +5,7 @@ export {
   BudgetServiceAuthError,
   BudgetServiceTimeoutError,
   BudgetServiceUnavailableError,
+  BudgetNotFoundError,
 } from './errors.js'
 export type {
   ReportItemRequest,
