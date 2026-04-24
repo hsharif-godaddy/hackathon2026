@@ -2,7 +2,7 @@
  * Tests for model-normalization.ts
  */
 
-import { describe, it, expect } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import {
   normalizeModelName,
   getAvailableModels,
@@ -12,6 +12,7 @@ import {
   getModelProvider,
   getModelInfo,
   getLegacyModelMappings,
+  supportsEffort,
   MODELS,
   ALIASES
 } from '../model-normalization.js'
@@ -244,6 +245,24 @@ describe('model-normalization', () => {
     it('should handle special characters in input', () => {
       const result = normalizeModelName('claude-4@#$%')
       expect(result.isSupported).toBe(false)
+    })
+  })
+
+  describe('supportsEffort', () => {
+    it('returns true for claude-sonnet-4-6', () => {
+      expect(supportsEffort('claude-sonnet-4-6')).toBe(true)
+    })
+
+    it('returns true for claude-opus-4-6', () => {
+      expect(supportsEffort('claude-opus-4-6')).toBe(true)
+    })
+
+    it('returns false for claude-haiku-4-5', () => {
+      expect(supportsEffort('claude-haiku-4-5')).toBe(false)
+    })
+
+    it('returns false for gpt-4o', () => {
+      expect(supportsEffort('gpt-4o')).toBe(false)
     })
   })
 })

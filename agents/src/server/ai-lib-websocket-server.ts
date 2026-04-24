@@ -4,7 +4,11 @@
  */
 
 import { Server as HTTPServer } from 'node:http'
-import { calculateCostEstimate, type AgentWrapper } from '@airo/ai-lib'
+import {
+  calculateCostEstimate,
+  parseChunkTimeoutMs,
+  type AgentWrapper,
+} from '@airo/ai-lib'
 import {
   createWebSocketServer,
   type MessageProvider,
@@ -1375,6 +1379,9 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         })
         return 'develop'
       },
+
+      // Transport-layer chunk timeout (env override: AI_CHUNK_TIMEOUT_MS)
+      chunkTimeoutMs: parseChunkTimeoutMs(),
 
       // Socket.IO options for handling large payloads (screenshots, etc.)
       socketOptions: {

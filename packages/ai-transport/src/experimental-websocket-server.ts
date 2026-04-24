@@ -34,6 +34,11 @@ import {
   emitHandoff
 } from '@godaddy/agent-otel-sdk'
 import { createTraceContext } from '@signals/otel-sdk'
+import {
+  StreamTimingTracker,
+  type StreamTimingData,
+} from './stream-timing-tracker.js'
+import { ChunkTimeoutGuard } from './chunk-timeout-guard.js'
 
 /**
  * APM agent type for tool execution tracking
@@ -369,6 +374,13 @@ export interface WebSocketConfig {
     context: Record<string, unknown> | undefined,
     execute: () => Promise<void>
   ) => Promise<void>
+
+  /**
+   * Transport-layer chunk timeout in ms (default: 180_000).
+   * Aborts the per-socket AbortController when no chunk arrives
+   * within this window. Pauses during tool execution.
+   */
+  chunkTimeoutMs?: number
 }
 
 /**
@@ -757,7 +769,7 @@ export class WebSocketServer {
           // Set timeout to abort if client doesn't reconnect
           const timeoutId = setTimeout(() => {
             this.logger.warn('socket.disconnect.recovery_expired', { socketId })
-            stateData.abortController?.abort()
+            stateData.abortController?.abort('user_cancel')
             // Don't call cleanupConversation here — it races with completeConversation
             // in handleChatMessageInternal. completeConversation persists the message
             // first, then handleChatMessageInternal cleans up state after.
@@ -782,7 +794,7 @@ export class WebSocketServer {
 
           const timeoutId = setTimeout(() => {
             this.logger.warn('deferred_cleanup.expired', { socketId })
-            placeholderController.abort()
+            placeholderController.abort('user_cancel')
             this.cleanupConversation(socketId).catch((error) => {
               this.logger.error('deferred_cleanup.error', error)
             })
@@ -1497,12 +1509,19 @@ export class WebSocketServer {
   /**
    * Process stream with real-time tool events from baseStream
    */
-  private async processStreamWithToolEvents(socket: any, streamResult: any, currentStep: number, agentName: string): Promise<void> {
+  private async processStreamWithToolEvents(
+    socket: any,
+    streamResult: any,
+    currentStep: number,
+    agentName: string,
+    modelName: string
+  ): Promise<StreamTimingData> {
     const baseStream = streamResult.baseStream
     if (!baseStream) {
       // Fallback to text-only streaming if baseStream is not available
-      await this.processTextOnlyStream(socket, streamResult, currentStep, agentName)
-      return
+      return this.processTextOnlyStream(
+        socket, streamResult, currentStep, agentName, modelName
+      )
     }
 
     let reader: ReadableStreamDefaultReader | null = null
@@ -1513,14 +1532,36 @@ export class WebSocketServer {
     const activeConversation = this.getConversation(socketId)
     const agentMessageId = activeConversation?.context?.agentMessageId
 
-    // Stream diagnostics — track progress so error logs can report how far the stream got
-    const streamStartTime = Date.now()
-    let chunksRead = 0
+    // Stream diagnostics — track progress and inter-chunk timing
+    const tracker = new StreamTimingTracker({
+      socket, agentName, modelName,
+      logger: this.logger,
+      ...(abortController && { abortController }),
+    })
+    const guard = abortController
+      ? new ChunkTimeoutGuard(
+          {
+            abortController,
+            logger: this.logger,
+            socketId,
+            agentName,
+            modelName,
+          },
+          this.config.chunkTimeoutMs
+        )
+      : null
+    let timingData: StreamTimingData = {
+      timeToFirstTextChunkMs: null,
+      maxChunkGapMs: 0,
+      chunksRead: 0,
+      streamDurationMs: 0,
+    }
 
     try {
       reader = baseStream.getReader()
       const accumulatedToolInput = new Map<string, string>() // Track tool input deltas
 
+      guard?.arm()
 
       while (true) { // Intentional infinite loop until stream is done
         // Check if the stream was cancelled
@@ -1533,15 +1574,19 @@ export class WebSocketServer {
         try {
           readResult = await reader!.read()
         } catch (readError: unknown) {
-          // Handle specific stream read errors
+          const errorMessage = readError instanceof Error
+            ? readError.message
+            : String(readError)
+          if (abortController?.signal.reason === 'chunk_timeout') {
+            tracker.recordTimeout(errorMessage)
+          }
           if (this.isNetworkError(readError)) {
-            const errorMessage = readError instanceof Error ? readError.message : String(readError)
             this.logger.warn('stream.read.network_error', {
               socketId,
               agentName,
               error: errorMessage,
-              chunksRead,
-              streamElapsedMs: Date.now() - streamStartTime,
+              chunksRead: tracker.chunksRead,
+              streamElapsedMs: tracker.streamElapsedMs,
               abortSignalAborted: abortController?.signal.aborted ?? false,
             })
             throw readError // Re-throw to trigger fallback
@@ -1555,7 +1600,8 @@ export class WebSocketServer {
           break
         }
 
-        chunksRead++
+        tracker.recordChunk()
+        guard?.reset()
 
         if (value?.part) {
           const part = value.part
@@ -1590,6 +1636,7 @@ export class WebSocketServer {
             }
 
             case 'text-delta': {
+              tracker.recordTextChunk()
               // Handle text chunks
               const textData = {
                 step: currentStep,
@@ -1649,6 +1696,8 @@ export class WebSocketServer {
             }
 
             case 'tool-call': {
+              guard?.pause()
+              tracker.pauseGapTracking(part.toolName)
               // Tool call is complete with full input - emit with accumulated input
               const toolId = part.id || part.toolCallId
               const fullInput = accumulatedToolInput.get(toolId) || '{}'
@@ -1685,6 +1734,8 @@ export class WebSocketServer {
             }
 
             case 'tool-result': {
+              guard?.reset()
+              tracker.resumeGapTracking()
               // Tool execution completed with result
               const toolId = part.id || part.toolCallId
 
@@ -1715,6 +1766,8 @@ export class WebSocketServer {
             }
 
             case 'tool-error': {
+              guard?.reset()
+              tracker.resumeGapTracking()
               // Tool execution failed with error - communicate this clearly to frontend and LLM
               const toolId = part.id || part.toolCallId || part.toolId
 
@@ -1750,6 +1803,7 @@ export class WebSocketServer {
           }
         }
       }
+      timingData = tracker.finalize()
     } catch (error: unknown) {
       // Non-retryable errors (budget exceeded, auth, etc.) should propagate immediately
       const classification = classifyError(error);
@@ -1802,8 +1856,8 @@ export class WebSocketServer {
           isAbortError: errorInfo.isAbortError,
           step: currentStep,
           classification: classification.category,
-          chunksRead,
-          streamElapsedMs: Date.now() - streamStartTime,
+          chunksRead: tracker.chunksRead,
+          streamElapsedMs: tracker.streamElapsedMs,
           abortSignalAborted: abortController?.signal.aborted ?? false,
           responseHeaders: responseMeta.headers,
           responseId: responseMeta.responseId,
@@ -1813,7 +1867,9 @@ export class WebSocketServer {
 
       // Fallback to text-only streaming with better error handling
       try {
-        await this.processTextOnlyStream(socket, streamResult, currentStep, agentName)
+        timingData = await this.processTextOnlyStream(
+          socket, streamResult, currentStep, agentName, modelName
+        )
       } catch (fallbackError: unknown) {
         const fallbackInfo = this.analyzeStreamError(fallbackError);
         this.extractResponseMetadata(streamResult).then(responseMeta => {
@@ -1841,15 +1897,23 @@ export class WebSocketServer {
         throw fallbackError;
       }
     } finally {
+      guard?.dispose()
       // Ensure reader is always cleaned up
       await this.safeCleanupReader(reader)
     }
+    return timingData
   }
 
   /**
    * Helper method to safely process text-only streaming
    */
-  private async processTextOnlyStream(socket: any, streamResult: any, currentStep: number, agentName: string): Promise<void> {
+  private async processTextOnlyStream(
+    socket: any,
+    streamResult: any,
+    currentStep: number,
+    agentName: string,
+    modelName: string
+  ): Promise<StreamTimingData> {
     const socketId = socket.id
     const abortController = this.stateManager.getAbortController(socketId)
 
@@ -1857,7 +1921,27 @@ export class WebSocketServer {
     const activeConversation = this.getConversation(socketId)
     const agentMessageId = activeConversation?.context?.agentMessageId
 
+    // Inter-chunk timing diagnostics
+    const tracker = new StreamTimingTracker({
+      socket, agentName, modelName,
+      logger: this.logger,
+      ...(abortController && { abortController }),
+    })
+    const guard = abortController
+      ? new ChunkTimeoutGuard(
+          {
+            abortController,
+            logger: this.logger,
+            socketId,
+            agentName,
+            modelName,
+          },
+          this.config.chunkTimeoutMs
+        )
+      : null
+
     try {
+      guard?.arm()
       for await (const chunk of streamResult.textStream) {
         // Check if the stream was cancelled
         if (abortController?.signal.aborted) {
@@ -1865,19 +1949,32 @@ export class WebSocketServer {
           break
         }
 
+        // Record chunk arrival before publishing so timestamps
+        // reflect when the chunk was received. Measured gaps
+        // include publish overhead and for-await backpressure,
+        // but these are small relative to the 90s slow-gap
+        // threshold.
+        tracker.recordChunk()
+        guard?.reset()
+        tracker.recordTextChunk()
+
         const chunkData = {
           step: currentStep,
           source: 'ai_response',
           agentId: agentName,
-          messageId: agentMessageId  // NEW: Include message ID for pending message tracking
+          messageId: agentMessageId,
         }
 
-        // Publish to event channel - subscribers handle delivery and persistence
-        await this.publishToEventChannel(socketId, 'chunk', chunk, chunkData, agentName)
+        await this.publishToEventChannel(
+          socketId, 'chunk', chunk, chunkData, agentName
+        )
       }
     } catch (error: unknown) {
       const errorInfo = this.analyzeStreamError(error)
 
+      if (abortController?.signal.reason === 'chunk_timeout') {
+        tracker.recordTimeout(errorInfo.message)
+      }
       if (!errorInfo.isAbortError) {
         const activeConv = this.getConversation(socketId)
         const convAppId = activeConv?.context?.metadata && typeof (activeConv.context.metadata as any).appId === 'string'
@@ -1903,7 +2000,10 @@ export class WebSocketServer {
         })
         throw error
       }
+    } finally {
+      guard?.dispose()
     }
+    return tracker.finalize()
   }
 
   /**
@@ -2302,7 +2402,7 @@ export class WebSocketServer {
           // Reset timeout for the full recovery window
           const newTimeoutId = setTimeout(() => {
             this.logger.warn('disconnect.recovery_expired_early', { socketId })
-            controller.abort()
+            controller.abort('user_cancel')
             // Don't call cleanupConversation here — same race as the primary timeout.
             // handleChatMessageInternal cleans up after completeConversation finishes.
           }, this.STREAM_RECOVERY_WINDOW)
@@ -3660,7 +3760,11 @@ Please try again with corrected formatting.`
       }
 
       // Process both text chunks and tool events from baseStream
-      await this.processStreamWithToolEvents(socket, streamResult, currentStep, agentName)
+      const processStreamStartMs = Date.now()
+      const streamTiming = await this.processStreamWithToolEvents(
+        socket, streamResult, currentStep, agentName, modelName
+      )
+      const streamProcessingMs = Date.now() - processStreamStartMs
 
       // Get accumulated content from the active conversation (streamed text before/between tool calls)
       // Refresh reference after streaming - the conversation object may have been updated during streaming
@@ -3710,7 +3814,27 @@ Please try again with corrected formatting.`
       }
 
       // Get final result with usage and tool calls
+      const getFinalResultStartMs = Date.now()
       const finalResult = await streamResult.getFinalResult() as AgentExecutionResult
+      const getFinalResultMs = Date.now() - getFinalResultStartMs
+
+      const timingSummary = {
+        socketId: socket.id,
+        agentName,
+        modelName,
+        appId,
+        timeToStreamStartMs: processStreamStartMs - startTime,
+        streamProcessingMs,
+        getFinalResultMs,
+        timeToFirstTextChunkMs: streamTiming.timeToFirstTextChunkMs,
+        maxChunkGapMs: streamTiming.maxChunkGapMs,
+        chunksRead: streamTiming.chunksRead,
+        streamDurationMs: streamTiming.streamDurationMs,
+      }
+      this.logger.debug('stream.timing.summary', timingSummary)
+      if (process.env.SOCKET_DIAGNOSTICS === 'true') {
+        socket.emit('stream.timing.summary', timingSummary)
+      }
 
       // Log token and cache usage information
       // Use totalUsage for accurate multi-step token tracking (sums all steps)

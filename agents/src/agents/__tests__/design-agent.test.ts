@@ -62,6 +62,12 @@ describe('design-agent', function designAgentTests() {
       expect(config.temperature).toBe(0.7);
     });
 
+    it('should have step timeout configured', async function timeout() {
+      const config = await createDesignAgent();
+
+      expect(config.timeout).toEqual({ stepMs: 600_000 });
+    });
+
     it('should use effort:low provider option for latency', async function effort() {
       const config = await createDesignAgent();
 
