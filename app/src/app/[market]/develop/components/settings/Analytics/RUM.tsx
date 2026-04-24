@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useIntl } from 'react-intl'
 import Box from '@ux/box'
+import Collapsible from '@ux/collapsible'
 import AlertIcon from '@ux/icon/alert'
 import Select from '@ux/select'
 import Spinner from '@ux/spinner'
@@ -36,6 +37,11 @@ import { getPlanFromSubscription } from '@/utils/credits'
 
 /* ─── Flighty-inspired UI primitives ──────────────────── */
 
+/** Shared wrapper for content inside a Collapsible — single place to tweak spacing */
+function CollapsibleContent({ children }: { children: React.ReactNode }) {
+  return <Box gap="md" className="pt-1 pb-3">{children}</Box>
+}
+
 /** Segmented control button group */
 function SegmentedControl<T extends string>({
   options,
@@ -62,27 +68,6 @@ function SegmentedControl<T extends string>({
           {opt.label}
         </button>
       ))}
-    </div>
-  )
-}
-
-/** Clean section divider with title, optional badge, and horizontal rule */
-function SectionHeader({ title, badge, icon, tooltip }: { title: string; badge?: string; icon?: React.ReactNode; tooltip?: string }) {
-  return (
-    <div className="flex items-center gap-3 mt-8 mb-3">
-      {icon && <span className="text-muted-foreground">{icon}</span>}
-      <h3 className="text-[13px] font-bold tracking-tight uppercase text-foreground/80">{title}</h3>
-      {tooltip && (
-        <InfoTooltip
-          content={tooltip}
-          iconClassName="size-[13px] text-muted-foreground/50 hover:text-muted-foreground cursor-help transition-colors"
-          contentClassName="p-1 max-w-[260px] text-xs"
-        />
-      )}
-      {badge && (
-        <text.span className="!text-[9px] !font-bold !px-2 !py-0.5 !rounded-full !bg-ai/10 !text-ai !uppercase !tracking-widest">{badge}</text.span>
-      )}
-      <div className="flex-1 h-px bg-border/60" />
     </div>
   )
 }
@@ -528,11 +513,11 @@ export default function RUM() {
 
   return (
     <SettingsSection
-      title={t('builder_analytics_rum_title')}
+      title={t('builder_analytics_title')}
       description={t('builder_analytics_rum_description')}
       hideStatus
       button={(
-        <div className="flex items-end gap-2">
+        <div className="flex items-center gap-2">
           {/* TODO: Re-enable filter dropdowns once cross-filter backend support is added
           <Select
             value={filterCountry}
@@ -570,10 +555,10 @@ export default function RUM() {
           </Select>
           */}
           {isRefreshing && (
-            <div className="flex items-center gap-1.5 pb-1">
+            <div className="flex items-center gap-0.5 shrink-0">
               <Spinner size="sm" />
-              <text.span className="!text-xs !text-intents-ux-feedbackHighContrastPassive-feedbackColor hidden @lg:inline">
-                {t('builder_common_loading')}
+              <text.span emphasis="passive" size={-1} className="hidden @lg:inline">
+                {t('builder_analytics_refreshing')}
               </text.span>
             </div>
           )}
@@ -582,8 +567,9 @@ export default function RUM() {
             id="period-select"
             name="period-select"
             onChange={(value) => setSelectedPeriod(value as TimePeriod)}
-            label={t('builder_analytics_select_period')}
-            visualSize="md"
+            aria-label={t('builder_analytics_select_period')}
+            visualSize="sm"
+            className="bg-intents-ux-box-backgroundColor rounded-md"
           >
             <option value="7">{t('builder_analytics_last_7_days')}</option>
             {isPro && <option value="15">{t('builder_analytics_last_15_days')}</option>}
@@ -594,9 +580,15 @@ export default function RUM() {
       )}
       className="pb-2 px-1.5 md:px-0.5"
     >
-        <div className="h-full overflow-y-auto @container">
-          <Box gap="md">
-            {/* Key Metrics — Row 1: Core Overview */}
+      <div>
+        {/* ═══════════ OVERVIEW ═══════════ */}
+        <Collapsible
+          id="overview"
+          size="sm"
+          defaultOpen
+          title={<text.span as="title" size={-2}>{t('builder_analytics_overview')}</text.span>}
+        >
+          <CollapsibleContent>
             <div className="grid grid-cols-2 @sm:grid-cols-3 @lg:grid-cols-5 gap-2">
               <MetricCard
                 label={t('builder_analytics_pageviews')}
@@ -625,7 +617,7 @@ export default function RUM() {
               />
             </div>
 
-            {/* Key Metrics — Row 2: Engagement Deep Dive (Professional+) */}
+            {/* Engagement Deep Dive (Professional+) */}
             {isPro && <div className="grid grid-cols-2 @sm:grid-cols-3 @lg:grid-cols-5 gap-2">
               <MetricCard
                 label={t('builder_analytics_total_clicks')}
@@ -653,62 +645,67 @@ export default function RUM() {
                 description={t('builder_analytics_avg_session_length')}
               />
             </div>}
+          </CollapsibleContent>
+        </Collapsible>
 
-            {/* ═══════════ TRAFFIC TRENDS ═══════════ */}
-            <SectionHeader
-              title={t('builder_analytics_visitors_traffic')}
-              badge={t('builder_analytics_badge_realtime')}
-              icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>}
-              tooltip={intl.formatMessage({ id: 'builder_analytics_tooltip_traffic_trends', defaultMessage: 'Daily traffic trends showing new vs returning visitors, total sessions, and page views over the selected period.' })}
-            />
-            <div className="[&>*]:min-w-0">
-              <div
-                data-slot="chart"
-                className="flex flex-col w-full rounded-lg border bg-intents-ux-box-backgroundColor p-2 shadow-sm transition-all duration-200 ease-out hover:shadow-md hover:border-light-purple-solid hover:-translate-y-px"
-              >
-                <div className="mb-4">
-                  <SegmentedControl
-                    options={[
-                      { value: 'total-visitors' as const, label: t('builder_analytics_visitors') },
-                      ...(isPro ? [{ value: 'visitors' as const, label: t('builder_analytics_new_vs_returning') }] : []),
-                      { value: 'sessions' as const, label: t('builder_analytics_total_sessions') },
-                      { value: 'pageviews' as const, label: t('builder_analytics_page_views') },
-                    ]}
-                    value={liveDataTab}
-                    onChange={(v) => setLiveDataTab(v as typeof liveDataTab)}
-                  />
-                </div>
-                {liveDataTab === 'total-visitors' ? (
-                  <AnalyticsChart data={dailyUniqueVisitors} label={t('builder_analytics_visitors')} embedded />
-                ) : liveDataTab === 'pageviews' ? (
-                  <AnalyticsChart data={chartData} label={t('builder_analytics_page_views')} embedded />
-                ) : liveDataTab === 'visitors' && isPro ? (
-                  <AnalyticsMultiAreaChart
-                    data={newVsReturningData}
-                    label={t('builder_analytics_visitors')}
-                    series={[
-                      { key: 'new_visitors', name: t('builder_analytics_new_visitors'), color: 'var(--color-ai)' },
-                      { key: 'returning_visitors', name: t('builder_analytics_returning_visitors'), color: 'var(--color-ai-muted)', strokeDasharray: '5 5' }
-                    ]}
-                    embedded
-                  />
-                ) : (
-                  <AnalyticsChart
-                    data={dailyTotalSessions}
-                    label={t('builder_analytics_sessions')}
-                    embedded
-                  />
-                )}
+        {/* ═══════════ TRAFFIC TRENDS ═══════════ */}
+        <Collapsible
+          id="traffic-trends"
+          size="sm"
+          title={<text.span as="title" size={-2}>{t('builder_analytics_visitors_traffic')}</text.span>}
+          className="[&_*]:min-w-0"
+        >
+          <CollapsibleContent>
+            <text.p>{t('builder_analytics_tooltip_traffic_trends')}</text.p>
+            <div
+              data-slot="chart"
+              className="flex flex-col w-full rounded-lg border bg-intents-ux-box-backgroundColor p-2 shadow-sm transition-all duration-200 ease-out hover:shadow-md hover:border-light-purple-solid hover:-translate-y-px overflow-x-auto"
+            >
+              <div className="mb-4">
+                <SegmentedControl
+                  options={[
+                    { value: 'total-visitors' as const, label: t('builder_analytics_visitors') },
+                    ...(isPro ? [{ value: 'visitors' as const, label: t('builder_analytics_new_vs_returning') }] : []),
+                    { value: 'sessions' as const, label: t('builder_analytics_total_sessions') },
+                    { value: 'pageviews' as const, label: t('builder_analytics_page_views') },
+                  ]}
+                  value={liveDataTab}
+                  onChange={(v) => setLiveDataTab(v as typeof liveDataTab)}
+                />
               </div>
+              {liveDataTab === 'total-visitors' ? (
+                <AnalyticsChart data={dailyUniqueVisitors} label={t('builder_analytics_visitors')} embedded />
+              ) : liveDataTab === 'pageviews' ? (
+                <AnalyticsChart data={chartData} label={t('builder_analytics_page_views')} embedded />
+              ) : liveDataTab === 'visitors' && isPro ? (
+                <AnalyticsMultiAreaChart
+                  data={newVsReturningData}
+                  label={t('builder_analytics_visitors')}
+                  series={[
+                    { key: 'new_visitors', name: t('builder_analytics_new_visitors'), color: 'var(--color-ai)' },
+                    { key: 'returning_visitors', name: t('builder_analytics_returning_visitors'), color: 'var(--color-ai-muted)', strokeDasharray: '5 5' }
+                  ]}
+                  embedded
+                />
+              ) : (
+                <AnalyticsChart
+                  data={dailyTotalSessions}
+                  label={t('builder_analytics_sessions')}
+                  embedded
+                />
+              )}
             </div>
+          </CollapsibleContent>
+        </Collapsible>
 
-            {/* ═══════════ GEOGRAPHIC ═══════════ */}
-            <SectionHeader
-              title={t('builder_analytics_geographic')}
-              badge={t('builder_analytics_badge_geo')}
-              icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>}
-            />
-            <div className="grid grid-cols-1 @sm:grid-cols-2 gap-3 [&>*]:min-w-0">
+        {/* ═══════════ GEOGRAPHIC ═══════════ */}
+        <Collapsible
+          id="geographic"
+          size="sm"
+          title={<text.span as="title" size={-2}>{t('builder_analytics_geographic')}</text.span>}
+        >
+          <CollapsibleContent>
+            <div className="grid grid-cols-1 @sm:grid-cols-2 gap-2 [&>*]:min-w-0">
               <StatProgressList
                 items={countryProgressItems}
                 title={t('builder_analytics_visitors_by_country')}
@@ -770,14 +767,17 @@ export default function RUM() {
                 ]}
               />
             ) : null}
+          </CollapsibleContent>
+        </Collapsible>
 
-            {/* ═══════════ DEVICES & SOURCES ═══════════ */}
-            <SectionHeader
-              title={t('builder_analytics_devices_sources')}
-              badge={t('builder_analytics_badge_audience')}
-              icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>}
-            />
-            <div className="grid grid-cols-1 @sm:grid-cols-2 gap-3 [&>*]:min-w-0">
+        {/* ═══════════ DEVICE SOURCES ═══════════ */}
+        <Collapsible
+          id="devices-sources"
+          size="sm"
+          title={<text.span as="title" size={-2}>{t('builder_analytics_devices_sources')}</text.span>}
+        >
+          <CollapsibleContent>
+            <div className="grid grid-cols-1 @sm:grid-cols-2 gap-2 [&>*]:min-w-0">
               <AnalyticsPieChart data={sessionsByDeviceData} label={t('builder_analytics_sessions_by_device')} tooltip={intl.formatMessage({ id: 'builder_analytics_tooltip_device_breakdown', defaultMessage: 'Breakdown of sessions by device type (desktop, mobile, tablet) for the selected period.' })} />
               <StatProgressList
                 items={referrerProgressItems}
@@ -874,14 +874,16 @@ export default function RUM() {
                 ]}
               />
             ) : null}
+          </CollapsibleContent>
+        </Collapsible>
 
-            {/* ═══════════ ACTIVITY ═══════════ */}
-            {isStarter && <>
-            <SectionHeader
-              title={t('builder_analytics_activity')}
-              badge={t('builder_analytics_badge_pages')}
-              icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>}
-            />
+        {/* ═══════════ ACTIVITY ═══════════ */}
+        {isStarter && <Collapsible
+          id="activity"
+          size="sm"
+          title={<text.span as="title" size={-2}>{t('builder_analytics_activity')}</text.span>}
+        >
+          <CollapsibleContent>
             <AnalyticsDetailTable<ActivityHitRow>
               data={enrichedActivityHits}
               title={t('builder_analytics_activity_last_20')}
@@ -925,34 +927,33 @@ export default function RUM() {
               ]}
             />
 
-            {/* Page-level path bars (Starter+) */}
-            {isStarter &&
-              <div className="grid grid-cols-1 @sm:grid-cols-2 gap-3 [&>*]:min-w-0">
-                <StatProgressList
-                  items={pageViewsByPathData.slice().sort((a, b) => b.value - a.value).slice(0, 10).map((d) => ({ label: d.date === '/' ? t('builder_analytics_home_page') : d.date, value: d.value }))}
-                  title={t('builder_analytics_pageviews_by_path')}
-                  tooltip={intl.formatMessage({ id: 'builder_analytics_tooltip_page_views_by_path', defaultMessage: 'Total page loads per URL path. Includes repeat views by the same visitor.' })}
-                  color="var(--color-ai)"
-                />
-                <StatProgressList
-                  items={uniqueVisitorsByPageData.slice().sort((a, b) => b.value - a.value).slice(0, 10).map((d) => ({ label: d.date === '/' ? t('builder_analytics_home_page') : d.date, value: d.value }))}
-                  title={t('builder_analytics_unique_visitors_by_page')}
-                  tooltip={intl.formatMessage({ id: 'builder_analytics_tooltip_unique_visitors_page', defaultMessage: 'Distinct visitors per page. Each visitor is counted once regardless of repeat views.' })}
-                  color="var(--color-chart-blue)"
-                />
-              </div>
-            }
-            </>
-            }
+            {/* Page-level path bars */}
+            <div className="grid grid-cols-1 @sm:grid-cols-2 gap-2 [&>*]:min-w-0">
+              <StatProgressList
+                items={pageViewsByPathData.slice().sort((a, b) => b.value - a.value).slice(0, 10).map((d) => ({ label: d.date === '/' ? t('builder_analytics_home_page') : d.date, value: d.value }))}
+                title={t('builder_analytics_pageviews_by_path')}
+                tooltip={intl.formatMessage({ id: 'builder_analytics_tooltip_page_views_by_path', defaultMessage: 'Total page loads per URL path. Includes repeat views by the same visitor.' })}
+                color="var(--color-ai)"
+              />
+              <StatProgressList
+                items={uniqueVisitorsByPageData.slice().sort((a, b) => b.value - a.value).slice(0, 10).map((d) => ({ label: d.date === '/' ? t('builder_analytics_home_page') : d.date, value: d.value }))}
+                title={t('builder_analytics_unique_visitors_by_page')}
+                tooltip={intl.formatMessage({ id: 'builder_analytics_tooltip_unique_visitors_page', defaultMessage: 'Distinct visitors per page. Each visitor is counted once regardless of repeat views.' })}
+                color="var(--color-chart-blue)"
+              />
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
+        }
 
-            {/* ═══════════ ENGAGEMENT ═══════════ */}
-            {isStarter && <>
-            <SectionHeader
-              title={t('builder_analytics_engagement')}
-              badge={t('builder_analytics_badge_clicks')}
-              icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5"/></svg>}
-              tooltip={intl.formatMessage({ id: 'builder_analytics_tooltip_engagement', defaultMessage: 'User interactions on your site. Click Trends shows daily click volume; Total Sessions tracks active browsing sessions over the selected period.' })}
-            />
+        {/* ═══════════ ENGAGEMENT ═══════════ */}
+        {isStarter && <Collapsible
+          id="engagement"
+          size="sm"
+          title={<text.span as="title" size={-2}>{t('builder_analytics_engagement')}</text.span>}
+        >
+          <CollapsibleContent>
+            <text.p>{t('builder_analytics_tooltip_engagement')}</text.p>
             <div className="[&>*]:min-w-0">
               <div
                 data-slot="chart"
@@ -983,63 +984,64 @@ export default function RUM() {
             {/* CTA Table: links + buttons combined (Professional+) */}
             {isPro ? (
               <AnalyticsDetailTable<CTATableRow>
-              data={ctaTableData}
-              title={t('builder_analytics_ctas_links_buttons')}
-              subtitle={t('builder_analytics_click_performance')}
-              tooltip={intl.formatMessage({ id: 'builder_analytics_tooltip_click_metrics', defaultMessage: 'Click metrics for links and buttons. Shows total clicks, unique visitors who clicked, and click-per-visitor ratio.' })}
-              maxHeight={300}
-              columns={[
-                { key: 'element', header: t('builder_analytics_element_name'), render: (v, row) => {
-                  const name = String(v)
-                  const maxClicks = Math.max(...ctaTableData.map((d) => d.clicks), 1)
-                  const barPct = (row.clicks / maxClicks) * 100
-                  return (
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="relative flex-1 min-w-0">
-                        {/* Background bar */}
-                        <div
-                          className="absolute inset-y-0 left-0 rounded-r-sm opacity-[0.08]"
-                          style={{ width: `${barPct}%`, background: 'var(--color-ai)' }}
-                        />
-                        <span className="relative text-xs font-medium truncate block px-1 py-0.5" title={name}>
-                          {name}
-                        </span>
+                data={ctaTableData}
+                title={t('builder_analytics_ctas_links_buttons')}
+                subtitle={t('builder_analytics_click_performance')}
+                tooltip={intl.formatMessage({ id: 'builder_analytics_tooltip_click_metrics', defaultMessage: 'Click metrics for links and buttons. Shows total clicks, unique visitors who clicked, and click-per-visitor ratio.' })}
+                maxHeight={300}
+                columns={[
+                  { key: 'element', header: t('builder_analytics_element_name'), render: (v, row) => {
+                    const name = String(v)
+                    const maxClicks = Math.max(...ctaTableData.map((d) => d.clicks), 1)
+                    const barPct = (row.clicks / maxClicks) * 100
+                    return (
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="relative flex-1 min-w-0">
+                          {/* Background bar */}
+                          <div
+                            className="absolute inset-y-0 left-0 rounded-r-sm opacity-[0.08]"
+                            style={{ width: `${barPct}%`, background: 'var(--color-ai)' }}
+                          />
+                          <span className="relative text-xs font-medium truncate block px-1 py-0.5" title={name}>
+                            {name}
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                  )
-                }},
-                { key: 'clicks', header: t('builder_analytics_clicks'), align: 'right' as const, render: (v) => (
-                  <span className="text-xs font-bold tabular-nums">{Number(v).toLocaleString()}</span>
-                )},
-                { key: 'uniqueClicks', header: t('builder_analytics_unique_visitors'), align: 'right' as const, render: (v) => (
-                  <span className="text-xs tabular-nums text-muted-foreground">{Number(v).toLocaleString()}</span>
-                )},
-                { key: 'clicksPerSession', header: t('builder_analytics_clicks_per_visitor'), align: 'right' as const, render: (v) => {
-                  const val = parseFloat(String(v))
-                  const intensity = Math.min(val / 5, 1) // scale 0–5 to 0–1
-                  return (
-                    <span
-                      className="inline-flex items-center gap-1 text-xs font-semibold tabular-nums"
-                      style={{ color: `color-mix(in srgb, var(--color-ai) ${Math.round(40 + intensity * 60)}%, var(--color-ai-light))` }}
-                    >
-                      {String(v)}
-                      {val >= 3 && <span title={t('builder_analytics_high_engagement')}>🔥</span>}
-                    </span>
-                  )
-                }},
-              ]}
-            />
+                    )
+                  }},
+                  { key: 'clicks', header: t('builder_analytics_clicks'), align: 'right' as const, render: (v) => (
+                    <span className="text-xs font-bold tabular-nums">{Number(v).toLocaleString()}</span>
+                  )},
+                  { key: 'uniqueClicks', header: t('builder_analytics_unique_visitors'), align: 'right' as const, render: (v) => (
+                    <span className="text-xs tabular-nums text-muted-foreground">{Number(v).toLocaleString()}</span>
+                  )},
+                  { key: 'clicksPerSession', header: t('builder_analytics_clicks_per_visitor'), align: 'right' as const, render: (v) => {
+                    const val = parseFloat(String(v))
+                    const intensity = Math.min(val / 5, 1) // scale 0–5 to 0–1
+                    return (
+                      <span
+                        className="inline-flex items-center gap-1 text-xs font-semibold tabular-nums"
+                        style={{ color: `color-mix(in srgb, var(--color-ai) ${Math.round(40 + intensity * 60)}%, var(--color-ai-light))` }}
+                      >
+                        {String(v)}
+                        {val >= 3 && <span title={t('builder_analytics_high_engagement')}>🔥</span>}
+                      </span>
+                    )
+                  }},
+                ]}
+              />
             ) : null}
-            </>
-            }
+          </CollapsibleContent>
+        </Collapsible>
+        }
 
-            {/* ═══════════ CONTENT ═══════════ */}
-            {isStarter && <>
-            <SectionHeader
-              title={t('builder_analytics_content')}
-              badge={t('builder_analytics_badge_top_pages')}
-              icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>}
-            />
+        {/* ═══════════ CONTENT ═══════════ */}
+        {isStarter && <Collapsible
+          id="content"
+          size="sm"
+          title={<text.span as="title" size={-2}>{t('builder_analytics_content')}</text.span>}
+        >
+          <CollapsibleContent>
             <AnalyticsDetailTable<TopPageRow>
               data={topPagesData}
               title={t('builder_analytics_top_pages')}
@@ -1084,10 +1086,10 @@ export default function RUM() {
                 }},
               ]}
             />
-            </>
-            }
-          </Box>
-        </div>
+          </CollapsibleContent>
+        </Collapsible>
+        }
+      </div>
     </SettingsSection>
   )
 }

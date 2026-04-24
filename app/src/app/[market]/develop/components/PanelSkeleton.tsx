@@ -5,6 +5,8 @@ import StaticSkeleton from '@/app/[market]/develop/components/StaticSkeleton'
 import { ChatTab, SettingsSection } from '@/app/[market]/develop/components/types'
 import { usePublishedUrl } from '@/app/[market]/develop/hooks/usePublishedUrl'
 
+const ANALYTICS_ROW_WIDTHS = [210, 180, 250, 165, 195, 220] as const
+
 function AnalyticsUnpublishedSkeleton({ className }: { className?: string }) {
   return (
     <div className={`@container flex flex-col gap-4 ${className ?? ''}`.trim()}>
@@ -31,29 +33,27 @@ function AnalyticsPublishedSkeleton({ className }: { className?: string }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 @sm:grid-cols-3 @lg:grid-cols-5 gap-2">
-        {[1, 2, 3, 4, 5].map((i) => (
-          <div key={i} className="flex flex-col justify-between rounded-lg border p-2 pt-2.5 bg-intents-ux-box-backgroundColor min-h-[76px]">
-            <StaticSkeleton width="70%" height="10px" />
-            <StaticSkeleton width="40%" height="24px" className="mt-auto" />
-          </div>
-        ))}
-      </div>
-
-      <div className="flex items-center gap-3 mt-4 mb-1">
-        <StaticSkeleton width="14px" height="14px" rounding="full" />
-        <StaticSkeleton width="120px" height="13px" />
-        <StaticSkeleton width="60px" height="18px" rounding="full" />
-        <div className="flex-1 h-px bg-border/60" />
-      </div>
-
-      <div className="rounded-lg border bg-intents-ux-box-backgroundColor p-2">
-        <div className="flex gap-0.5 mb-4">
-          {[1, 2, 3].map((i) => (
-            <StaticSkeleton key={i} width="80px" height="30px" className="rounded-md" />
+      <div>
+        <div className="flex justify-between border-b py-1">
+          <StaticSkeleton width="200px" height="30px" className="rounded-md" />
+          <StaticSkeleton width="30px" height="30px" className="rounded-md" />
+        </div>
+        <div className="grid grid-cols-2 @sm:grid-cols-3 @lg:grid-cols-5 gap-2 py-1">
+          {[1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="flex flex-col justify-between rounded-lg border p-2 pt-2.5 bg-intents-ux-box-backgroundColor min-h-[76px]">
+              <StaticSkeleton width="70%" height="10px" />
+              <StaticSkeleton width="40%" height="24px" className="mt-auto" />
+            </div>
           ))}
         </div>
-        <StaticSkeleton width="100%" height="260px" className="rounded-md" />
+        <div>
+          {ANALYTICS_ROW_WIDTHS.map((width, i) => (
+            <div key={i} className="flex justify-between border-b py-1">
+              <StaticSkeleton width={`${width}px`} height="30px" className="rounded-md" />
+              <StaticSkeleton width="30px" height="30px" className="rounded-md" />
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   )

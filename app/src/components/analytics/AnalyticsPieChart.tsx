@@ -42,7 +42,10 @@ export function AnalyticsPieChart({ data, label = 'Distribution', tooltip }: Ana
 
   if (!data || data.length === 0) {
     return (
-      <text.p emphasis="passive" className="!text-center !py-8">{t('builder_analytics_no_data')}</text.p>
+      <div className="flex flex-col gap-2 rounded-xl border bg-intents-ux-box-backgroundColor p-5">
+        <text.span className="!text-[13px] !font-bold !tracking-tight">{label}</text.span>
+        <text.p emphasis="passive" className="!text-xs !mb-0">{t('builder_analytics_no_data')}</text.p>
+      </div>
     )
   }
 
