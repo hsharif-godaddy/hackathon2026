@@ -138,6 +138,7 @@ func (d *DB) migrate() error {
 		is_trial INTEGER NOT NULL DEFAULT 1,
 		had_airo_plus INTEGER NOT NULL DEFAULT 0,
 		token_budget_id TEXT NOT NULL DEFAULT 'trial',
+		bms_budget_id TEXT NOT NULL DEFAULT '',
 		plan TEXT NOT NULL DEFAULT 'free',
 		created_at TEXT NOT NULL,
 		updated_at TEXT NOT NULL
@@ -149,6 +150,13 @@ func (d *DB) migrate() error {
 	if _, err := d.db.Exec(`ALTER TABLE subscriptions ADD COLUMN reason TEXT NOT NULL DEFAULT ''`); err != nil {
 		if !strings.Contains(err.Error(), "duplicate column") {
 			return fmt.Errorf("add reason column: %w", err)
+		}
+	}
+
+	// Add bms_budget_id column to existing subscriptions tables (idempotent)
+	if _, err := d.db.Exec(`ALTER TABLE subscriptions ADD COLUMN bms_budget_id TEXT NOT NULL DEFAULT ''`); err != nil {
+		if !strings.Contains(err.Error(), "duplicate column") {
+			return fmt.Errorf("add bms_budget_id column: %w", err)
 		}
 	}
 
@@ -637,11 +645,11 @@ func (d *DB) getSubscriptionUnlocked(id string) (*Subscription, error) {
 
 	err := d.db.QueryRow(
 		`SELECT id, product_id, owner_product, customer_id, status, reason, is_trial, had_airo_plus,
-		        token_budget_id, plan, created_at, updated_at
+		        token_budget_id, bms_budget_id, plan, created_at, updated_at
 		 FROM subscriptions WHERE id = ?`, id,
 	).Scan(
 		&sub.ID, &sub.ProductID, &sub.OwnerProduct, &sub.CustomerID, &sub.Status, &sub.Reason,
-		&isTrial, &hadAiroPlus, &sub.TokenBudgetID, &sub.Plan, &sub.CreatedAt, &sub.UpdatedAt,
+		&isTrial, &hadAiroPlus, &sub.TokenBudgetID, &sub.BMSBudgetID, &sub.Plan, &sub.CreatedAt, &sub.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -669,7 +677,7 @@ func (d *DB) ListSubscriptions() ([]*Subscription, error) {
 
 	rows, err := d.db.Query(
 		`SELECT id, product_id, owner_product, customer_id, status, reason, is_trial, had_airo_plus,
-		        token_budget_id, plan, created_at, updated_at
+		        token_budget_id, bms_budget_id, plan, created_at, updated_at
 		 FROM subscriptions ORDER BY created_at`,
 	)
 	if err != nil {
@@ -683,7 +691,7 @@ func (d *DB) ListSubscriptions() ([]*Subscription, error) {
 		var isTrial, hadAiroPlus int
 		if err := rows.Scan(
 			&sub.ID, &sub.ProductID, &sub.OwnerProduct, &sub.CustomerID, &sub.Status, &sub.Reason,
-			&isTrial, &hadAiroPlus, &sub.TokenBudgetID, &sub.Plan, &sub.CreatedAt, &sub.UpdatedAt,
+			&isTrial, &hadAiroPlus, &sub.TokenBudgetID, &sub.BMSBudgetID, &sub.Plan, &sub.CreatedAt, &sub.UpdatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("scan subscription: %w", err)
 		}
@@ -737,6 +745,11 @@ func (d *DB) UpdateSubscription(id string, fields map[string]any) (*Subscription
 			sub.HadAiroPlus = b
 		}
 	}
+	if v, ok := fields["bmsBudgetId"]; ok {
+		if s, ok := v.(string); ok {
+			sub.BMSBudgetID = s
+		}
+	}
 
 	now := time.Now().UTC().Format(time.RFC3339)
 	isTrial := 0
@@ -749,8 +762,8 @@ func (d *DB) UpdateSubscription(id string, fields map[string]any) (*Subscription
 	}
 
 	_, err = d.db.Exec(
-		`UPDATE subscriptions SET status = ?, reason = ?, is_trial = ?, had_airo_plus = ?, plan = ?, token_budget_id = ?, updated_at = ? WHERE id = ?`,
-		sub.Status, sub.Reason, isTrial, hadAiroPlus, sub.Plan, sub.TokenBudgetID, now, id,
+		`UPDATE subscriptions SET status = ?, reason = ?, is_trial = ?, had_airo_plus = ?, plan = ?, token_budget_id = ?, bms_budget_id = ?, updated_at = ? WHERE id = ?`,
+		sub.Status, sub.Reason, isTrial, hadAiroPlus, sub.Plan, sub.TokenBudgetID, sub.BMSBudgetID, now, id,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("update subscription: %w", err)

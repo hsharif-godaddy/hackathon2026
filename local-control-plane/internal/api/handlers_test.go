@@ -1974,6 +1974,50 @@ func TestUpdateSubscriptionPatchReasonRoundTrips(t *testing.T) {
 	}
 }
 
+func TestUpdateSubscriptionPatchBmsBudgetIdRoundTrips(t *testing.T) {
+	srv := newTestServer(t)
+
+	// Set bmsBudgetId
+	body := strings.NewReader(`{"bmsBudgetId":"bms-123"}`)
+	req := httptest.NewRequest("PATCH", "/subscriptions/local-sub-001", body)
+	req.Header.Set("Content-Type", "application/json")
+	req = setMuxVars(req, map[string]string{"subId": "local-sub-001"})
+
+	w := httptest.NewRecorder()
+	srv.UpdateSubscriptionHandler(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]any
+	decodeJSON(t, w, &resp)
+
+	if resp["bmsBudgetId"] != "bms-123" {
+		t.Errorf("expected bmsBudgetId bms-123, got %v", resp["bmsBudgetId"])
+	}
+
+	// Clear bmsBudgetId
+	body2 := strings.NewReader(`{"bmsBudgetId":""}`)
+	req2 := httptest.NewRequest("PATCH", "/subscriptions/local-sub-001", body2)
+	req2.Header.Set("Content-Type", "application/json")
+	req2 = setMuxVars(req2, map[string]string{"subId": "local-sub-001"})
+
+	w2 := httptest.NewRecorder()
+	srv.UpdateSubscriptionHandler(w2, req2)
+
+	if w2.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w2.Code, w2.Body.String())
+	}
+
+	var resp2 map[string]any
+	decodeJSON(t, w2, &resp2)
+
+	if resp2["bmsBudgetId"] != "" {
+		t.Errorf("expected bmsBudgetId to be empty string, got %v", resp2["bmsBudgetId"])
+	}
+}
+
 func TestUpdateSubscriptionPatchCreatesIfNotExists(t *testing.T) {
 	srv := newTestServer(t)
 

@@ -9,21 +9,21 @@ import (
 )
 
 func subscriptionToResponse(sub *store.Subscription) map[string]any {
-	resp := map[string]any{
+	return map[string]any{
 		"id":            sub.ID,
 		"productId":     sub.ProductID,
 		"ownerProduct":  sub.OwnerProduct,
 		"customerId":    sub.CustomerID,
 		"status":        sub.Status,
+		"reason":        sub.Reason,
 		"isTrial":       sub.IsTrial,
 		"hadAiroPlus":   sub.HadAiroPlus,
 		"tokenBudgetId": sub.TokenBudgetID,
+		"bmsBudgetId":   sub.BMSBudgetID,
 		"plan":          sub.Plan,
 		"createdAt":     sub.CreatedAt,
 		"updatedAt":     sub.UpdatedAt,
 	}
-	resp["reason"] = sub.Reason
-	return resp
 }
 
 func (s *Server) ListSubscriptions(w http.ResponseWriter, r *http.Request) {

@@ -57,6 +57,7 @@ type Subscription struct {
 	IsTrial       bool   `json:"isTrial"`
 	HadAiroPlus   bool   `json:"hadAiroPlus"`
 	TokenBudgetID string `json:"tokenBudgetId"`
+	BMSBudgetID   string `json:"bmsBudgetId"`
 	Plan          string `json:"plan"`
 	CreatedAt     string `json:"createdAt"`
 	UpdatedAt     string `json:"updatedAt"`
