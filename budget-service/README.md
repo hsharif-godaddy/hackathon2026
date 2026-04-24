@@ -129,6 +129,10 @@ TOKEN="$(go run ./cmd/mint-iam-jwt)"
 curl -sS -H "Authorization: sso-jwt $TOKEN" "http://localhost:8080/api/v1/auth-check"
 ```
 
+**All-in-one check** (STS identity, mint, `GET /api/v1/auth-check`): after `aws sso login`, run from `budget-service/`
+
+`./scripts/verify-iam-auth.sh` or `AWS_PROFILE=your-profile ./scripts/verify-iam-auth.sh`. Optional: `-p profile`, `-u baseUrl` (or `BUDGET_SERVICE_URL`), `-r <role-arn>` to `sts assume-role` first. Same env as the server: `LOCAL_AUTH_DISABLE` off, `SSO_HOST` in `.env`, and `AUTH_ALLOWED_ROLES` including the minted role. `make verify-iam-auth` runs the script (env-only flags; use the script for `-p`/`-r`).
+
 ## Environment
 
 | Variable                              | Default | Notes                                                                                                                                                                                                                                                                                                    |

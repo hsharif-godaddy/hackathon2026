@@ -1,6 +1,6 @@
 # budget-service — see README.md, docs/budget-service-spec.md, docs/local-e2e.md
 
-.PHONY: build dev test clean up down logs data e2e-up e2e-down e2e-local dev-budget-ui \
+.PHONY: build dev test clean up down logs data e2e-up e2e-down e2e-local dev-budget-ui verify-iam-auth \
        load-test load-test-contention load-test-throughput load-test-lifecycle load-test-monitor
 
 _BUDGET_SVC_DIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
@@ -40,6 +40,10 @@ e2e-local:
 	@BUDGET_SERVICE_URL="$${BUDGET_SERVICE_URL:-http://127.0.0.1:8080}" \
 		WEBHOOK_SINK_URL="$${WEBHOOK_SINK_URL:-http://127.0.0.1:9999}" \
 		"$(_BUDGET_SVC_DIR)scripts/e2e-local.sh"
+
+# AWS creds + mint IAM JWT + GET /api/v1/auth-check. Optional: AWS_PROFILE, BUDGET_SERVICE_URL; args: make verify-iam-auth AWS_PROFILE=p BUDGET_SERVICE_URL=u
+verify-iam-auth:
+	@"$(_BUDGET_SVC_DIR)scripts/verify-iam-auth.sh"
 
 dev-budget-ui:
 	cd $(_BUDGET_SVC_DIR) && go run ./cmd/dev-budget-ui
