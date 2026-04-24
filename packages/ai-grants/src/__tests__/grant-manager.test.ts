@@ -85,6 +85,11 @@ describe('grant-manager', function grantManagerTests() {
       })
       expect(GrantManager.isGrantUsable(grant)).toBe(false)
     })
+
+    it('should return true when useBefore is null (never expires)', function nullUseBefore() {
+      const grant = createGrant({ useBefore: null })
+      expect(GrantManager.isGrantUsable(grant)).toBe(true)
+    })
   })
 
   describe('#getUnusableReason', function reasonTests() {
@@ -250,6 +255,63 @@ describe('grant-manager', function grantManagerTests() {
 
       const selected = GrantManager.selectBestGrant(grants)
       expect(selected?.id).toBe('plan-monthly')
+    })
+
+    it('should select timed grant over BMS grant with null useBefore', function nullUseBeforeSortedLast() {
+      const now = Date.now()
+      const grants = [
+        createGrant({
+          id: 'bms-grant',
+          type: GrantType.CreditPack,
+          useBefore: null, // BMS grant - never expires
+        }),
+        createGrant({
+          id: 'timed-grant',
+          type: GrantType.CreditPack,
+          useBefore: new Date(now + 10 * 24 * 60 * 60 * 1000).toISOString(), // 10 days
+        }),
+      ]
+
+      const selected = GrantManager.selectBestGrant(grants)
+      expect(selected?.id).toBe('timed-grant')
+    })
+
+    it('should select BMS grant when it is the only usable grant', function nullUseBeforeOnlyUsable() {
+      const now = Date.now()
+      const grants = [
+        createGrant({
+          id: 'bms-grant',
+          type: GrantType.CreditPack,
+          useBefore: null, // BMS grant - never expires
+        }),
+        createGrant({
+          id: 'expired-grant',
+          type: GrantType.CreditPack,
+          useBefore: new Date(now - 24 * 60 * 60 * 1000).toISOString(), // yesterday
+        }),
+      ]
+
+      const selected = GrantManager.selectBestGrant(grants)
+      expect(selected?.id).toBe('bms-grant')
+    })
+
+    it('should handle two BMS grants with null useBefore', function twoNullUseBefore() {
+      const grants = [
+        createGrant({
+          id: 'bms-grant-1',
+          type: GrantType.CreditPack,
+          useBefore: null,
+        }),
+        createGrant({
+          id: 'bms-grant-2',
+          type: GrantType.CreditPack,
+          useBefore: null,
+        }),
+      ]
+
+      const selected = GrantManager.selectBestGrant(grants)
+      // Either is fine since both have no expiration
+      expect(['bms-grant-1', 'bms-grant-2']).toContain(selected?.id)
     })
   })
 })

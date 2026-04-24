@@ -2,7 +2,7 @@ import { GrantManager } from '@airo/shared/grants'
 
 import type { AiroSubscription } from '@/lib/mgmt-airo';
 import type { CreditGrant } from '@/types/credits';
-import { GrantFinalState, GrantType, SubscriptionPlan } from '@/types/credits';
+import { GrantType, SubscriptionPlan } from '@/types/credits';
 
 /**
  * Get the effective credits spent, capped at creditsMax.
@@ -51,8 +51,8 @@ export function getCreditPackGrants(grants: CreditGrant[]): CreditGrant[] {
       return grant.type === GrantType.CreditPack;
     })
     .sort(function sortByExpiration(a, b) {
-      const aExpired = !a.isAvailable || a.finalState !== null || new Date(a.useBefore) <= now;
-      const bExpired = !b.isAvailable || b.finalState !== null || new Date(b.useBefore) <= now;
+      const aExpired = !a.isAvailable || a.finalState != null || !!(a.useBefore && new Date(a.useBefore) <= now);
+      const bExpired = !b.isAvailable || b.finalState != null || !!(b.useBefore && new Date(b.useBefore) <= now);
 
       // Non-expired grants come before expired grants
       if (aExpired !== bExpired) {
@@ -60,7 +60,14 @@ export function getCreditPackGrants(grants: CreditGrant[]): CreditGrant[] {
       }
 
       // Within same group, sort by useBefore (closest to expiration first)
-      return new Date(a.useBefore).getTime() - new Date(b.useBefore).getTime();
+      // Sort by useBefore (null = never expires, sort to end)
+      if (!a.useBefore && !b.useBefore) return 0;
+      if (!a.useBefore) return 1;
+      if (!b.useBefore) return -1;
+      const aTime = new Date(a.useBefore).getTime();
+      const bTime = new Date(b.useBefore).getTime();
+      if (isNaN(aTime) || isNaN(bTime)) return 0;
+      return aTime - bTime;
     });
 }
 
@@ -74,11 +81,7 @@ export const isGrantUsable = GrantManager.isGrantUsable
  * Get only active grants with remaining credits for UI display.
  * Used for calculating remaining credit percentages for gauge and warnings.
  *
- * Aligns with GrantManager.isGrantUsable() for consistency:
- * - Excludes consumed/expired grants (not available to use)
- * - Excludes exhausted grants (creditsSpent >= creditsMax)
- * - Excludes date-expired grants (useBefore <= now)
- * - Excludes unavailable grants (isAvailable === false)
+ * Delegates to GrantManager.isGrantUsable() for consistency with agent-side logic.
  *
  * When NO grants remain with available credits, the gauge should show 100%
  * (everything is exhausted), not 0% (which would imply credits available).
@@ -87,21 +90,7 @@ export const isGrantUsable = GrantManager.isGrantUsable
  * @returns Array of active grants with remaining credits for display purposes
  */
 export function getActiveGrants(grants: CreditGrant[]): CreditGrant[] {
-  const now = new Date()
-  return grants.filter(function filterActive(grant) {
-    // Exclude consumed grants
-    if (grant.finalState === GrantFinalState.Consumed) return false
-    // Exclude expired grants by finalState
-    if (grant.finalState === GrantFinalState.Expired) return false
-    // Exclude unavailable grants
-    if (!grant.isAvailable) return false
-    // Exclude grants past expiration date
-    if (new Date(grant.useBefore) <= now) return false
-    // Exclude exhausted grants (matching GrantManager.isGrantUsable logic)
-    const hasRemainingCredits = grant.creditsSpent < grant.creditsMax
-    if (!hasRemainingCredits) return false
-    return true
-  })
+  return grants.filter(GrantManager.isGrantUsable)
 }
 
 /**

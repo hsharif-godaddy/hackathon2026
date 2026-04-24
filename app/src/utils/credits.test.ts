@@ -124,6 +124,95 @@ describe('credits', function creditsTests() {
 
       expect(result).toHaveLength(0);
     });
+
+    it('should treat useBefore: null as non-expired and sort it after dated grants', function nullUseBeforeSortedLast() {
+      const now = new Date();
+      const nullUseBeforeGrant = createMockGrant({
+        id: 'no-expiry-1',
+        useBefore: null,
+        isAvailable: true,
+        finalState: null,
+      });
+      const soonExpiringGrant = createMockGrant({
+        id: 'soon-expiring-1',
+        useBefore: new Date(now.getTime() + 10 * 24 * 60 * 60 * 1000).toISOString(), // 10 days
+        isAvailable: true,
+        finalState: null,
+      });
+      const grants = [nullUseBeforeGrant, soonExpiringGrant];
+
+      const result = getCreditPackGrants(grants);
+
+      expect(result[0].id).toBe('soon-expiring-1');
+      expect(result[1].id).toBe('no-expiry-1');
+    });
+
+    it('should sort useBefore: null grants before expired grants', function nullUseBeforeBeforeExpired() {
+      const now = new Date();
+      const nullUseBeforeGrant = createMockGrant({
+        id: 'no-expiry-1',
+        useBefore: null,
+        isAvailable: true,
+        finalState: null,
+      });
+      const expiredGrant = createMockGrant({
+        id: 'expired-1',
+        useBefore: new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString(), // yesterday
+        isAvailable: true,
+        finalState: null,
+      });
+      const grants = [expiredGrant, nullUseBeforeGrant];
+
+      const result = getCreditPackGrants(grants);
+
+      expect(result[0].id).toBe('no-expiry-1');
+      expect(result[1].id).toBe('expired-1');
+    });
+
+    it('should handle two grants with useBefore: null', function twoNullUseBefore() {
+      const nullGrant1 = createMockGrant({
+        id: 'no-expiry-1',
+        useBefore: null,
+        isAvailable: true,
+        finalState: null,
+      });
+      const nullGrant2 = createMockGrant({
+        id: 'no-expiry-2',
+        useBefore: null,
+        isAvailable: true,
+        finalState: null,
+      });
+      const grants = [nullGrant1, nullGrant2];
+
+      const result = getCreditPackGrants(grants);
+
+      expect(result).toHaveLength(2);
+      // Order is stable (original order preserved)
+      expect(result.map((g) => g.id)).toContain('no-expiry-1');
+      expect(result.map((g) => g.id)).toContain('no-expiry-2');
+    });
+
+    it('should sort consumed BMS grant (useBefore: null, finalState: Consumed) after active grants', function consumedBmsGrantSortedLast() {
+      const now = new Date();
+      const consumedBmsGrant = createMockGrant({
+        id: 'consumed-bms-1',
+        useBefore: null,
+        isAvailable: false,
+        finalState: GrantFinalState.Consumed,
+      });
+      const activeGrant = createMockGrant({
+        id: 'active-1',
+        useBefore: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+        isAvailable: true,
+        finalState: null,
+      });
+      const grants = [consumedBmsGrant, activeGrant];
+
+      const result = getCreditPackGrants(grants);
+
+      expect(result[0].id).toBe('active-1');
+      expect(result[1].id).toBe('consumed-bms-1');
+    });
   });
 
   describe('#getActiveGrant', function getActiveGrantTests() {
@@ -368,6 +457,70 @@ describe('credits', function creditsTests() {
       const result = getActiveGrants([]);
 
       expect(result).toHaveLength(0);
+    });
+
+    it('should include grants with useBefore: null as active (never expires)', function nullUseBeforeActive() {
+      const nullUseBeforeGrant = createMockGrant({
+        id: 'no-expiry-1',
+        useBefore: null,
+        isAvailable: true,
+        finalState: null,
+        creditsSpent: 100,
+        creditsMax: 5000,
+      });
+
+      const result = getActiveGrants([nullUseBeforeGrant]);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe('no-expiry-1');
+    });
+
+    it('should exclude exhausted grants with useBefore: null', function nullUseBeforeExhausted() {
+      const exhaustedBmsGrant = createMockGrant({
+        id: 'exhausted-bms-1',
+        useBefore: null,
+        isAvailable: true,
+        finalState: null,
+        creditsSpent: 5000,
+        creditsMax: 5000,
+      });
+
+      const result = getActiveGrants([exhaustedBmsGrant]);
+
+      expect(result).toHaveLength(0);
+    });
+
+    it('should handle mixed null and dated useBefore grants', function mixedNullAndDatedUseBefore() {
+      const now = new Date();
+      const futureDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
+      const pastDate = new Date(now.getTime() - 1 * 24 * 60 * 60 * 1000).toISOString();
+
+      const nullUseBeforeGrant = createMockGrant({
+        id: 'no-expiry-1',
+        useBefore: null,
+        isAvailable: true,
+        finalState: null,
+      });
+      const futureGrant = createMockGrant({
+        id: 'future-1',
+        useBefore: futureDate,
+        isAvailable: true,
+        finalState: null,
+      });
+      const pastGrant = createMockGrant({
+        id: 'past-1',
+        useBefore: pastDate,
+        isAvailable: true,
+        finalState: null,
+      });
+      const grants = [nullUseBeforeGrant, futureGrant, pastGrant];
+
+      const result = getActiveGrants(grants);
+
+      expect(result).toHaveLength(2);
+      expect(result.map((g) => g.id)).toContain('no-expiry-1');
+      expect(result.map((g) => g.id)).toContain('future-1');
+      expect(result.map((g) => g.id)).not.toContain('past-1');
     });
 
     it('should handle mixed consumed and expired grants correctly', function mixedInactive() {

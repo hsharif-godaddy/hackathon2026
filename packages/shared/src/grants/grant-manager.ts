@@ -82,7 +82,10 @@ export class GrantManager {
           if (!a.useBefore && !b.useBefore) return 0
           if (!a.useBefore) return 1
           if (!b.useBefore) return -1
-          return new Date(a.useBefore).getTime() - new Date(b.useBefore).getTime()
+          const aTime = new Date(a.useBefore).getTime()
+          const bTime = new Date(b.useBefore).getTime()
+          if (isNaN(aTime) || isNaN(bTime)) return 0
+          return aTime - bTime
         })[0] ??
       null
     )

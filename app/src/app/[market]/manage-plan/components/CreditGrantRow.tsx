@@ -20,7 +20,7 @@ interface CreditGrantRowProps {
  */
 export default function CreditGrantRow({ grant, isActive = false, locale }: CreditGrantRowProps) {
   const t = useTranslations();
-  const isExpiredByDate = new Date(grant.useBefore) <= new Date();
+  const isExpiredByDate = grant.useBefore ? new Date(grant.useBefore) <= new Date() : false;
   const isUnavailable = !grant.isAvailable || isExpiredByDate;
 
   return (
@@ -39,16 +39,20 @@ export default function CreditGrantRow({ grant, isActive = false, locale }: Cred
           emphasis={isUnavailable ? 'passive' : undefined}
           text={t('builder_manageplan_pack', { credits: grant.creditsMax })}
         />
-        <text.span
-          as="caption"
-          emphasis={isUnavailable ? 'passive' : undefined}
-          text={grant.finalState === GrantFinalState.Consumed
-            ? t('builder_manageplan_expired', { date: formatCreditDate(grant.consumedAt || grant.useBefore, locale) })
-            : grant.finalState === GrantFinalState.Expired
-              ? t('builder_manageplan_expired', { date: formatCreditDate(grant.useBefore, locale) })
-              : t('builder_manageplan_expires', { date: formatCreditDate(grant.useBefore, locale) })
-          }
-        />
+        {(grant.useBefore || grant.consumedAt) && (
+          <text.span
+            as="caption"
+            emphasis={isUnavailable ? 'passive' : undefined}
+            text={grant.finalState === GrantFinalState.Consumed
+              ? t('builder_manageplan_expired', { date: formatCreditDate(grant.consumedAt ?? grant.useBefore ?? '', locale) })
+              : grant.finalState === GrantFinalState.Expired && grant.useBefore
+                ? t('builder_manageplan_expired', { date: formatCreditDate(grant.useBefore, locale) })
+                : grant.useBefore
+                  ? t('builder_manageplan_expires', { date: formatCreditDate(grant.useBefore, locale) })
+                  : null
+            }
+          />
+        )}
       </div>
       <div className={clsx('flex flex-col gap-1 w-full md:w-[300px] lg:w-[400px] md:flex-shrink-0', isUnavailable && 'md:items-end')}>
         {isActive && <span className="hidden md:block"><ActiveTag tooltipText={t('builder_manageplan_using_creditpack')} /></span>}

@@ -113,6 +113,43 @@ describe('CreditGrantRow', function creditGrantRowTests() {
       expect(screen.getByText(/builder_manageplan_expires/)).toBeInTheDocument();
     });
 
+    it('should not show expiration text when useBefore is null', function noExpirationTextWhenNullUseBefore() {
+      renderWithProviders(
+        <CreditGrantRow
+          grant={createMockGrant({
+            isAvailable: true,
+            finalState: null,
+            useBefore: null,
+          })}
+          locale="en-US"
+        />
+      );
+
+      // Should not render any expiration-related text
+      expect(screen.queryByText(/builder_manageplan_expires/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/builder_manageplan_expired$/)).not.toBeInTheDocument();
+    });
+
+    it('should not mark grant as unavailable when useBefore is null', function notUnavailableWhenNullUseBefore() {
+      const { container } = renderWithProviders(
+        <CreditGrantRow
+          grant={createMockGrant({
+            isAvailable: true,
+            finalState: null,
+            useBefore: null,
+          })}
+          locale="en-US"
+        />
+      );
+
+      // Progress bar should be present (grant is available)
+      const progressBar = container.querySelector('[role="progressbar"]');
+      expect(progressBar).toBeInTheDocument();
+      // Should not show expired or used tags
+      expect(screen.queryByText('builder_manageplan_expired_tag')).not.toBeInTheDocument();
+      expect(screen.queryByText('builder_manageplan_used')).not.toBeInTheDocument();
+    });
+
     it('should show expired text for consumed grant', function showExpiredConsumed() {
       renderWithProviders(
         <CreditGrantRow
@@ -172,6 +209,71 @@ describe('CreditGrantRow', function creditGrantRowTests() {
       expect(screen.getByText('builder_manageplan_used')).toBeInTheDocument();
     });
 
+    it('should show USED tag for consumed BMS grant with null useBefore', function showUsedTagForConsumedBmsGrant() {
+      renderWithProviders(
+        <CreditGrantRow grant={createMockGrant({
+          isAvailable: false,
+          finalState: GrantFinalState.Consumed,
+          creditsSpent: 5000,
+          creditsMax: 5000,
+          useBefore: null,
+          consumedAt: '2026-01-15T00:00:00.000Z',
+        })} />
+      );
+
+      // Should show USED tag (not EXPIRED) for consumed BMS grant
+      expect(screen.getByText('builder_manageplan_used')).toBeInTheDocument();
+      expect(screen.queryByText('builder_manageplan_expired_tag')).not.toBeInTheDocument();
+    });
+
+    it('should show consumed date for consumed BMS grant with null useBefore', function showConsumedDateForBmsGrant() {
+      renderWithProviders(
+        <CreditGrantRow grant={createMockGrant({
+          isAvailable: false,
+          finalState: GrantFinalState.Consumed,
+          useBefore: null,
+          consumedAt: '2026-01-15T00:00:00.000Z',
+        })} locale="en-US" />
+      );
+
+      // Should render the expired text with consumedAt date
+      expect(screen.getByText('builder_manageplan_expired')).toBeInTheDocument();
+    });
+
+    it('should not render epoch date when both useBefore and consumedAt are null', function noEpochDateWhenBothNull() {
+      renderWithProviders(
+        <CreditGrantRow grant={createMockGrant({
+          isAvailable: false,
+          finalState: GrantFinalState.Consumed,
+          useBefore: null,
+          consumedAt: null,
+        })} locale="en-US" />
+      );
+
+      // Should not render any date text (no epoch "Dec 31, 1969" or "Jan 1, 1970")
+      expect(screen.queryByText(/1969/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/1970/)).not.toBeInTheDocument();
+      // Should not render expires/expired caption at all
+      expect(screen.queryByText(/builder_manageplan_expires/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/builder_manageplan_expired$/)).not.toBeInTheDocument();
+    });
+
+    it('should not render Invalid Date when consumedAt is set but useBefore and finalState are null', function noInvalidDateWhenOnlyConsumedAt() {
+      renderWithProviders(
+        <CreditGrantRow grant={createMockGrant({
+          isAvailable: true,
+          finalState: null,
+          useBefore: null,
+          consumedAt: '2026-01-15T00:00:00.000Z',
+        })} locale="en-US" />
+      );
+
+      // Should not render "Invalid Date"
+      expect(screen.queryByText(/Invalid Date/)).not.toBeInTheDocument();
+      // Should not render expires text since useBefore is null
+      expect(screen.queryByText(/builder_manageplan_expires/)).not.toBeInTheDocument();
+    });
+
     it('should show EXPIRED tag when grant expired by time', function showExpiredTag() {
       renderWithProviders(
         <CreditGrantRow grant={createMockGrant({
@@ -184,6 +286,22 @@ describe('CreditGrantRow', function creditGrantRowTests() {
       );
 
       // Should show EXPIRED tag when useBefore date has passed
+      expect(screen.getByText('builder_manageplan_expired_tag')).toBeInTheDocument();
+    });
+
+    it('should not render consumedAt as expiry date for Expired grant with null useBefore', function noConsumedAtAsExpiryDate() {
+      renderWithProviders(
+        <CreditGrantRow grant={createMockGrant({
+          isAvailable: false,
+          finalState: GrantFinalState.Expired,
+          useBefore: null,
+          consumedAt: '2026-01-15T00:00:00.000Z',
+        })} locale="en-US" />
+      );
+
+      // Should not render expiry date caption (consumedAt is not an expiry date)
+      expect(screen.queryByText(/builder_manageplan_expired$/)).not.toBeInTheDocument();
+      // Should still show the EXPIRED tag
       expect(screen.getByText('builder_manageplan_expired_tag')).toBeInTheDocument();
     });
 
