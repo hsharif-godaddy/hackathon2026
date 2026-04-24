@@ -1,8 +1,13 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 /**
  * @vitest-environment jsdom
  */
+
+vi.mock('@/lib/request-context', () => ({
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+}));
+
 import { getRootDomain, getRootDomainFromHeaders } from './getRootDomain';
 
 describe('getRootDomain', () => {
@@ -20,7 +25,7 @@ describe('getRootDomain', () => {
     });
   });
 
-  describe('client-side with valid hostnames', () => {
+  describe('client-side with valid GoDaddy hostnames', () => {
     it('should extract root domain from subdomain', () => {
       global.window = {
         location: { hostname: 'airo-builder.test-godaddy.com' },
@@ -37,103 +42,55 @@ describe('getRootDomain', () => {
       expect(getRootDomain()).toBe('godaddy.com');
     });
 
-    it('should extract root domain from simple subdomain', () => {
+    it('should handle dev domain', () => {
+      global.window = {
+        location: { hostname: 'airo-builder.dev-godaddy.com' },
+      } as Window & typeof globalThis;
+
+      expect(getRootDomain()).toBe('dev-godaddy.com');
+    });
+
+    it('should handle stg domain', () => {
+      global.window = {
+        location: { hostname: 'airo-builder.stg-godaddy.com' },
+      } as Window & typeof globalThis;
+
+      expect(getRootDomain()).toBe('stg-godaddy.com');
+    });
+
+    it('should fall back to godaddy.com for non-GoDaddy domains', () => {
       global.window = {
         location: { hostname: 'www.example.com' },
       } as Window & typeof globalThis;
 
-      expect(getRootDomain()).toBe('example.com');
+      // Client-side falls back to godaddy.com since window.location can't be spoofed
+      expect(getRootDomain()).toBe('godaddy.com');
     });
 
-    it('should extract root domain from multi-level subdomain', () => {
+    it('should fall back to godaddy.com for arbitrary domains', () => {
       global.window = {
         location: { hostname: 'api.staging.example.com' },
       } as Window & typeof globalThis;
 
-      expect(getRootDomain()).toBe('example.com');
-    });
-
-    it('should handle root domain without subdomain', () => {
-      global.window = {
-        location: { hostname: 'example.com' },
-      } as Window & typeof globalThis;
-
-      expect(getRootDomain()).toBe('example.com');
-    });
-
-    it('should handle .org TLD', () => {
-      global.window = {
-        location: { hostname: 'subdomain.example.org' },
-      } as Window & typeof globalThis;
-
-      expect(getRootDomain()).toBe('example.org');
-    });
-
-    it('should handle .net TLD', () => {
-      global.window = {
-        location: { hostname: 'app.example.net' },
-      } as Window & typeof globalThis;
-
-      expect(getRootDomain()).toBe('example.net');
-    });
-
-    it('should handle hyphenated domains', () => {
-      global.window = {
-        location: { hostname: 'app.my-domain.com' },
-      } as Window & typeof globalThis;
-
-      expect(getRootDomain()).toBe('my-domain.com');
-    });
-
-    it('should handle deeply nested subdomains', () => {
-      global.window = {
-        location: { hostname: 'a.b.c.d.example.com' },
-      } as Window & typeof globalThis;
-
-      expect(getRootDomain()).toBe('example.com');
+      expect(getRootDomain()).toBe('godaddy.com');
     });
   });
 
   describe('ote to stg replacement', () => {
-    it('should replace "ote" with "stg" in root domain', () => {
+    it('should replace "ote" with "stg" for ote-godaddy.com', () => {
       global.window = {
-        location: { hostname: 'airo-builder.test-godaddy-ote.com' },
+        location: { hostname: 'airo-builder.ote-godaddy.com' },
       } as Window & typeof globalThis;
 
-      expect(getRootDomain()).toBe('test-godaddy-stg.com');
-    });
-
-    it('should replace "ote" in domain name', () => {
-      global.window = {
-        location: { hostname: 'app.example-ote.com' },
-      } as Window & typeof globalThis;
-
-      expect(getRootDomain()).toBe('example-stg.com');
+      expect(getRootDomain()).toBe('stg-godaddy.com');
     });
 
     it('should not replace "ote" when not present', () => {
       global.window = {
-        location: { hostname: 'app.example.com' },
+        location: { hostname: 'airo-builder.godaddy.com' },
       } as Window & typeof globalThis;
 
-      expect(getRootDomain()).toBe('example.com');
-    });
-
-    it('should handle multiple "ote" occurrences', () => {
-      global.window = {
-        location: { hostname: 'app.ote-domain-ote.com' },
-      } as Window & typeof globalThis;
-
-      // Note: replace() only replaces first occurrence
-      expect(getRootDomain()).toBe('stg-domain-ote.com');
-    });
-
-    it('should replace "ote" in TLD part', () => {
-      global.window = {
-        location: { hostname: 'app.example-note.com' },
-      } as Window & typeof globalThis;
-
-      expect(getRootDomain()).toBe('example-nstg.com');
+      expect(getRootDomain()).toBe('godaddy.com');
     });
   });
 
@@ -162,37 +119,28 @@ describe('getRootDomain', () => {
       expect(getRootDomain()).toBe('dev-godaddy.com');
     });
 
-    it('should return null for single word hostname', () => {
+    it('should fall back to godaddy.com for single word hostname', () => {
       global.window = {
         location: { hostname: 'singleword' },
       } as Window & typeof globalThis;
 
-      expect(getRootDomain()).toBeNull();
+      expect(getRootDomain()).toBe('godaddy.com');
     });
 
-    it('should handle IP addresses', () => {
+    it('should fall back to godaddy.com for IP addresses', () => {
       global.window = {
         location: { hostname: '192.168.1.1' },
       } as Window & typeof globalThis;
 
-      // IP addresses won't match the domain pattern
-      expect(getRootDomain()).toBe('1.1');
+      expect(getRootDomain()).toBe('godaddy.com');
     });
 
-    it('should handle domains with numbers', () => {
+    it('should fall back to godaddy.com for non-GoDaddy domains with numbers', () => {
       global.window = {
         location: { hostname: 'app.example123.com' },
       } as Window & typeof globalThis;
 
-      expect(getRootDomain()).toBe('example123.com');
-    });
-
-    it('should handle domains starting with numbers', () => {
-      global.window = {
-        location: { hostname: 'app.123example.com' },
-      } as Window & typeof globalThis;
-
-      expect(getRootDomain()).toBe('123example.com');
+      expect(getRootDomain()).toBe('godaddy.com');
     });
   });
 
@@ -213,14 +161,6 @@ describe('getRootDomain', () => {
       expect(getRootDomain()).toBe('test-godaddy.com');
     });
 
-    it('should handle secureserver.net domain', () => {
-      global.window = {
-        location: { hostname: 'app.secureserver.net' },
-      } as Window & typeof globalThis;
-
-      expect(getRootDomain()).toBe('secureserver.net');
-    });
-
     it('should transform ote environment to stg', () => {
       global.window = {
         location: { hostname: 'airo-builder.ote-godaddy.com' },
@@ -233,14 +173,14 @@ describe('getRootDomain', () => {
   describe('consistency', () => {
     it('should return consistent results for same hostname', () => {
       global.window = {
-        location: { hostname: 'app.example.com' },
+        location: { hostname: 'airo-builder.godaddy.com' },
       } as Window & typeof globalThis;
 
       const result1 = getRootDomain();
       const result2 = getRootDomain();
 
       expect(result1).toBe(result2);
-      expect(result1).toBe('example.com');
+      expect(result1).toBe('godaddy.com');
     });
   });
 });
@@ -286,13 +226,33 @@ describe('getRootDomainFromHeaders', () => {
     expect(getRootDomainFromHeaders(headers)).toBe('stg-godaddy.com');
   });
 
-  it('should handle multi-level subdomains', () => {
-    const headers = new Headers({ host: 'api.staging.example.com' });
-    expect(getRootDomainFromHeaders(headers)).toBe('example.com');
-  });
-
   it('should return null for invalid hostname', () => {
     const headers = new Headers({ host: 'singleword' });
     expect(getRootDomainFromHeaders(headers)).toBeNull();
+  });
+
+  describe('domain validation (defense-in-depth)', () => {
+    it.each([
+      'godaddy.com',
+      'dev-godaddy.com',
+      'test-godaddy.com',
+      'stg-godaddy.com',
+      'ote-godaddy.com',
+    ])('should allow valid GoDaddy domain: %s', (domain) => {
+      const headers = new Headers({ host: `airo-builder.${domain}` });
+      // ote gets replaced with stg
+      const expected = domain.replace('ote', 'stg');
+      expect(getRootDomainFromHeaders(headers)).toBe(expected);
+    });
+
+    it('should reject unknown domains as defense-in-depth', () => {
+      const headers = new Headers({ host: 'airo-builder.evil-attacker.com' });
+      expect(getRootDomainFromHeaders(headers)).toBeNull();
+    });
+
+    it('should reject arbitrary .com domains', () => {
+      const headers = new Headers({ host: 'api.example.com' });
+      expect(getRootDomainFromHeaders(headers)).toBeNull();
+    });
   });
 });

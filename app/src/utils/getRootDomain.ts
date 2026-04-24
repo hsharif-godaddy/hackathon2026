@@ -1,6 +1,21 @@
 import { logger } from '@/lib/request-context';
 
 /**
+ * Known valid GoDaddy root domains.
+ * Defense-in-depth: validates extracted root domain to prevent spoofed Host
+ * headers from routing requests to unintended servers.
+ *
+ * Note: OTE hostnames (ote-godaddy.com) are covered by stg-godaddy.com since
+ * extractRootDomain() replaces 'ote' with 'stg' before validation.
+ */
+const VALID_ROOT_DOMAINS = new Set([
+  'godaddy.com',
+  'dev-godaddy.com',
+  'test-godaddy.com',
+  'stg-godaddy.com',
+]);
+
+/**
  * Extract root domain from a hostname
  *
  * @param hostname - The hostname to extract root domain from
@@ -11,9 +26,10 @@ function extractRootDomain(hostname: string): string | null {
   const hostWithoutPort = hostname.split(':')[0];
 
   // Development fallback for local development domains
+  // Use exact matches to prevent bypass via hostnames like localhost.evil.com
   if (
-    hostWithoutPort.startsWith('localhost') ||
-    hostWithoutPort.startsWith('127.0.0.1') ||
+    hostWithoutPort === 'localhost' ||
+    hostWithoutPort === '127.0.0.1' ||
     hostWithoutPort === 'local.gasket.dev-godaddy.com'
   ) {
     return process.env.PAYWALL_DEV_DOMAIN || 'dev-godaddy.com';
@@ -21,7 +37,17 @@ function extractRootDomain(hostname: string): string | null {
 
   // Extract root domain (e.g., "builder.test-godaddy.com" -> "test-godaddy.com")
   const matches = hostWithoutPort.match(/([\w-]+\.\w+)$/);
-  return matches ? matches[0].replace('ote', 'stg') : null;
+  if (!matches) return null;
+
+  const rootDomain = matches[0].replace('ote', 'stg');
+
+  // Validate against known GoDaddy domains
+  if (!VALID_ROOT_DOMAINS.has(rootDomain)) {
+    logger.warn('getRootDomain.unknown-domain', { rootDomain });
+    return null;
+  }
+
+  return rootDomain;
 }
 
 /**
@@ -38,7 +64,10 @@ function extractRootDomain(hostname: string): string | null {
 export function getRootDomain(): string | null {
   if (typeof window === 'undefined') return null;
 
-  return extractRootDomain(window.location.hostname);
+  // Client-side: fall back to godaddy.com for safety since window.location.hostname
+  // can't be spoofed (unlike server-side Host headers). This prevents broken URLs
+  // in callers that interpolate the result without null checks.
+  return extractRootDomain(window.location.hostname) ?? 'godaddy.com';
 }
 
 /**
