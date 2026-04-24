@@ -31,7 +31,7 @@ describe('debug-console /api/screenshots/default/[appId] GET', () => {
       send: vi.fn().mockResolvedValue({ Body: mockStream }),
     }))
 
-    const { GET } = await import('../route')
+    const { GET } = await import('../[appId]/route')
 
     const invalidIds = ['app@123', 'app 123', 'app/123', '../app']
 
@@ -60,7 +60,7 @@ describe('debug-console /api/screenshots/default/[appId] GET', () => {
       ),
     }))
 
-    const { GET } = await import('../route')
+    const { GET } = await import('../[appId]/route')
 
     const request = new NextRequest(new URL(devUrl), { method: 'GET' })
     const response = await GET(request, { params: Promise.resolve({ appId: mockAppId }) })
@@ -81,7 +81,7 @@ describe('debug-console /api/screenshots/default/[appId] GET', () => {
       ),
     }))
 
-    const { GET } = await import('../route')
+    const { GET } = await import('../[appId]/route')
 
     const request = new NextRequest(new URL(devUrl), { method: 'GET' })
     const response = await GET(request, { params: Promise.resolve({ appId: mockAppId }) })
@@ -98,7 +98,7 @@ describe('debug-console /api/screenshots/default/[appId] GET', () => {
       send: vi.fn().mockRejectedValue(new Error('Network timeout')),
     }))
 
-    const { GET } = await import('../route')
+    const { GET } = await import('../[appId]/route')
 
     const request = new NextRequest(new URL(devUrl), { method: 'GET' })
     const response = await GET(request, { params: Promise.resolve({ appId: mockAppId }) })
@@ -120,7 +120,7 @@ describe('debug-console /api/screenshots/default/[appId] GET', () => {
       }),
     }))
 
-    const { GET } = await import('../route')
+    const { GET } = await import('../[appId]/route')
 
     const request = new NextRequest(new URL(devUrl), { method: 'GET' })
     const response = await GET(request, { params: Promise.resolve({ appId: mockAppId }) })
@@ -145,7 +145,7 @@ describe('debug-console /api/screenshots/default/[appId] GET', () => {
       }),
     }))
 
-    const { GET } = await import('../route')
+    const { GET } = await import('../[appId]/route')
 
     const request = new NextRequest(new URL(prodUrl), { method: 'GET' })
     const response = await GET(request, { params: Promise.resolve({ appId: mockAppId }) })
@@ -166,7 +166,7 @@ describe('debug-console /api/screenshots/default/[appId] GET', () => {
       send: vi.fn().mockResolvedValue({ Body: mockStream }),
     }))
 
-    const { GET } = await import('../route')
+    const { GET } = await import('../[appId]/route')
 
     const request = new NextRequest(new URL(devUrl), { method: 'GET' })
     const response = await GET(request, { params: Promise.resolve({ appId: mockAppId }) })
@@ -185,7 +185,7 @@ describe('debug-console /api/screenshots/default/[appId] GET', () => {
       send: vi.fn(),
     }))
 
-    const { GET } = await import('../route')
+    const { GET } = await import('../[appId]/route')
 
     const request = new NextRequest(new URL(devUrl), { method: 'GET' })
 
@@ -208,7 +208,7 @@ describe('debug-console /api/screenshots/default/[appId] GET', () => {
       send: vi.fn().mockResolvedValue({ Body: mockStream }),
     }))
 
-    const { GET } = await import('../route')
+    const { GET } = await import('../[appId]/route')
 
     const request = new NextRequest(new URL(devUrl), { method: 'GET' })
     const response = await GET(request, { params: Promise.resolve({ appId: mockAppId }) })
@@ -226,7 +226,7 @@ describe('debug-console /api/screenshots/default/[appId] GET', () => {
       }),
     }))
 
-    const { GET } = await import('../route')
+    const { GET } = await import('../[appId]/route')
 
     const request = new NextRequest(new URL(devUrl), { method: 'GET' })
     const response = await GET(request, { params: Promise.resolve({ appId: mockAppId }) })
