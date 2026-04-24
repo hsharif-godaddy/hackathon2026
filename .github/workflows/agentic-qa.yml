@@ -4,7 +4,7 @@ run-name: "Agentic QA - ${{ inputs.environment || 'prod' }} (${{ github.event_na
 
 on:
   schedule:
-    - cron: "0 */6 * * *" # create-site smoke test every 6h
+    - cron: "0 */6 * * *" # create-site smoke test + friction evals every 6h
     - cron: "0 1 * * *" # credit-small daily at 01:00 UTC
     - cron: "0 9 * * *" # credit-medium daily at 09:00 UTC
     - cron: "0 17 * * *" # credit-large daily at 17:00 UTC
@@ -54,6 +54,10 @@ on:
           - scenarios/golden-dataset/app-types/law-firm.yaml
           - scenarios/golden-dataset/app-types/event-planner.yaml
           - scenarios/golden-dataset/app-types/nonprofit-charity.yaml
+          # Friction Evals (2 scenarios)
+          - friction-evals-all
+          - scenarios/friction-evals/friction-pattern-detection.yaml
+          - scenarios/friction-evals/error-loop-retry-waste.yaml
       headed:
         description: "Run with visible browser"
         required: false
@@ -134,9 +138,11 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
         run: |
           # Define all available scenarios (single-line JSON to avoid output format issues)
-          ALL_SCENARIOS='["scenarios/create-site.yaml","scenarios/golden-dataset/app-types/landing-page.yaml","scenarios/golden-dataset/app-types/ecommerce-store.yaml","scenarios/golden-dataset/app-types/portfolio-site.yaml","scenarios/golden-dataset/app-types/restaurant-site.yaml","scenarios/golden-dataset/app-types/blog-site.yaml","scenarios/golden-dataset/app-types/fitness-studio.yaml","scenarios/golden-dataset/app-types/medical-practice.yaml","scenarios/golden-dataset/app-types/law-firm.yaml","scenarios/golden-dataset/app-types/event-planner.yaml","scenarios/golden-dataset/app-types/nonprofit-charity.yaml"]'
+          ALL_SCENARIOS='["scenarios/create-site.yaml","scenarios/golden-dataset/app-types/landing-page.yaml","scenarios/golden-dataset/app-types/ecommerce-store.yaml","scenarios/golden-dataset/app-types/portfolio-site.yaml","scenarios/golden-dataset/app-types/restaurant-site.yaml","scenarios/golden-dataset/app-types/blog-site.yaml","scenarios/golden-dataset/app-types/fitness-studio.yaml","scenarios/golden-dataset/app-types/medical-practice.yaml","scenarios/golden-dataset/app-types/law-firm.yaml","scenarios/golden-dataset/app-types/event-planner.yaml","scenarios/golden-dataset/app-types/nonprofit-charity.yaml","scenarios/friction-evals/friction-pattern-detection.yaml","scenarios/friction-evals/error-loop-retry-waste.yaml"]'
 
           GOLDEN_DATASET_SCENARIOS='["scenarios/golden-dataset/app-types/landing-page.yaml","scenarios/golden-dataset/app-types/ecommerce-store.yaml","scenarios/golden-dataset/app-types/portfolio-site.yaml","scenarios/golden-dataset/app-types/restaurant-site.yaml","scenarios/golden-dataset/app-types/blog-site.yaml","scenarios/golden-dataset/app-types/fitness-studio.yaml","scenarios/golden-dataset/app-types/medical-practice.yaml","scenarios/golden-dataset/app-types/law-firm.yaml","scenarios/golden-dataset/app-types/event-planner.yaml","scenarios/golden-dataset/app-types/nonprofit-charity.yaml"]'
+
+          FRICTION_EVAL_SCENARIOS='["scenarios/friction-evals/friction-pattern-detection.yaml","scenarios/friction-evals/error-loop-retry-waste.yaml"]'
 
           # Credit scenario groups (pick one randomly per scheduled run)
           CREDIT_SMALL=("scenarios/credit-constraint-runs/trainer-landing-small.yaml")
@@ -163,8 +169,8 @@ jobs:
                 SCENARIOS="[\"$PICK\"]"
                 ;;
               *)
-                echo "ℹ️ Scheduled run: create-site smoke test"
-                SCENARIOS='["scenarios/create-site.yaml"]'
+                echo "ℹ️ Scheduled run: create-site smoke test + friction evals"
+                SCENARIOS='["scenarios/create-site.yaml","scenarios/friction-evals/friction-pattern-detection.yaml","scenarios/friction-evals/error-loop-retry-waste.yaml"]'
                 ;;
             esac
           elif [ "$EVENT_NAME" = "push" ] || [ "$EVENT_NAME" = "pull_request" ]; then
@@ -176,6 +182,9 @@ jobs:
           elif [ "$INPUT_SCENARIO" = "golden-dataset-all" ]; then
             echo "ℹ️ Running golden-dataset scenarios in PARALLEL"
             SCENARIOS="$GOLDEN_DATASET_SCENARIOS"
+          elif [ "$INPUT_SCENARIO" = "friction-evals-all" ]; then
+            echo "ℹ️ Running friction-eval scenarios in PARALLEL"
+            SCENARIOS="$FRICTION_EVAL_SCENARIOS"
           else
             echo "ℹ️ Running single scenario: $INPUT_SCENARIO"
             SCENARIOS="[\"$INPUT_SCENARIO\"]"
@@ -195,7 +204,7 @@ jobs:
         - self-hosted
     strategy:
       fail-fast: false # Don't cancel other scenarios if one fails
-      max-parallel: 11 # Run up to 11 scenarios in parallel
+      max-parallel: 13 # Run all scenarios in parallel (matches ALL_SCENARIOS count)
       matrix: ${{ fromJson(needs.setup.outputs.matrix) }}
 
     steps:

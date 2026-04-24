@@ -1,0 +1,145 @@
+# Friction Pattern Detection: triggers known agent failure patterns and validates detection
+# Covers: READ_SPIRAL, EDIT_LOOP, GREP_SPIRAL, NO_PROGRESS_LOOP, REDUNDANT_EXPLORATION
+name: Friction Pattern Detection
+description: |
+  Deliberately triggers complex multi-file editing tasks that are known to induce
+  agent friction patterns — repeated file reads, failed str_replace cycles, grep
+  spirals, and no-progress loops. The eval validates that these patterns are
+  detectable by tracking tool call sequences, error counts, and state hashes.
+
+  Root cause categories tested:
+    - REPEATED_FILE_READS: same file read 4+ times within 6 turns without an intervening edit
+    - GREP_SPIRAL: 4+ consecutive grep/search calls without an edit
+    - EDIT_LOOP / FAILED_EDIT_LOOP: 2+ consecutive str_replace failures ("No match found")
+    - NO_PROGRESS_LOOP: tools/turn ratio drops below 0.5 for 4+ consecutive turns
+    - REDUNDANT_EXPLORATION: continued reads/greps after target was already located
+
+  Friction trace data references (from production):
+    - Trace d7947510: READ_SPIRAL — 14 turns, readFile×6 on same file, $4.10 est cost
+    - Trace 7432f8c1: EDIT_LOOP — 2 str_replace failures → 4 grep + 6 read recovery
+    - Trace a0b1ec9f: READ_SPIRAL — 7 reads of JobCard.tsx, only 1 edit at the end
+    - Trace 46699a69: NO_PROGRESS_LOOP — 16 turns, 7 tool calls, 0.44 tools/turn ratio
+
+startUrl: https://airo-builder.godaddy.com
+timeout: 900000   # 15 minutes
+maxSteps: 80
+stepsPerMessage: 20
+headed: false
+
+qualityEval:
+  enabled: false
+
+credentials:
+  username: ${TEST_USERNAME}
+  password: ${TEST_PASSWORD}
+
+sitePrompt:
+  prompt: |
+    Create a multi-page portfolio website for a freelance developer named "Alex Chen".
+
+    Pages: Home, Projects, Blog, Contact.
+
+    Home page: Hero section with heading "Alex Chen — Full-Stack Developer" and
+    tagline "Building digital products that matter." Include a skills grid with
+    6 skills: React, Node.js, TypeScript, PostgreSQL, AWS, Docker. Each skill
+    has an icon placeholder and a progress bar showing proficiency (80-95%).
+    Add a "Featured Projects" section with 3 project cards.
+
+    Projects page: Grid of 6 project cards, each with: image placeholder, title,
+    tech stack tags, short description, and a "View Details" link.
+
+    Blog page: List of 4 blog post previews with title, date, excerpt, and
+    "Read More" link.
+
+    Contact page: Form with fields: Name, Email, Subject dropdown (General,
+    Project Inquiry, Collaboration), Message textarea, and Submit button.
+
+    Navigation: Sticky top nav with links to all 4 pages. Footer with social
+    links (GitHub, LinkedIn, Twitter) and copyright.
+
+    Color scheme: Dark theme — background #1a1a2e, card background #16213e,
+    accent electric blue #0f3460, highlight teal #00d2ff, text #e0e0e0.
+
+systemPrompt: |
+  ${common.developPageBase}
+
+  ${common.errorHandlingInstructions}
+
+  ${common.chatInstructions}
+
+  ${common.waitInstructions}
+
+  You will perform multi-step modifications that target complex, deeply-nested
+  components. These are designed to stress-test the agent's ability to locate
+  and edit code accurately.
+
+  STEP 1 — TARGETED MULTI-FILE EDIT (tests EDIT_LOOP / FAILED_EDIT_LOOP detection):
+  Send this chat message:
+  "In the Projects page, change the grid from 3 columns to 2 columns on desktop,
+  and update every project card to include a 'Live Demo' button next to the
+  existing 'View Details' link. Also change the card background from #16213e to
+  #1e2a4a and add a subtle box-shadow on hover."
+  Wait for completion. This exercises str_replace on multiple locations in the same file.
+
+  STEP 2 — DEEP COMPONENT RESTRUCTURE (tests READ_SPIRAL / NO_PROGRESS_LOOP detection):
+  Send this chat message:
+  "Completely restructure the skills section on the Home page. Replace the progress
+  bars with animated circular progress rings using SVG. Each ring should fill to
+  the skill's percentage on scroll-into-view using an IntersectionObserver.
+  Keep the same 6 skills and percentages. Add a tooltip on hover showing the
+  skill name and years of experience (React: 5yr, Node: 4yr, TypeScript: 3yr,
+  PostgreSQL: 3yr, AWS: 2yr, Docker: 2yr)."
+  Wait for completion. This requires reading the component structure, understanding
+  the layout, then making extensive edits — a known trigger for read spirals
+  when the agent re-reads the same file multiple times.
+
+  STEP 3 — CROSS-FILE CONSISTENCY CHANGE (tests GREP_SPIRAL / REDUNDANT_EXPLORATION):
+  Send this chat message:
+  "Change the accent color from #0f3460 to #6c2bd9 (purple) across ALL pages and
+  components — navigation, buttons, links, card borders, form focus states, and
+  footer. Make sure every instance is updated consistently."
+  Wait for completion. This forces the agent to grep across multiple files and
+  risks grep spirals if it searches repeatedly without editing.
+
+  STEP 4 — VALIDATION:
+  After all 3 modifications, verify in the preview:
+  - Projects page shows 2-column grid with "Live Demo" buttons
+  - Skills section shows circular SVG progress rings (not bars)
+  - Accent color has changed from blue to purple across the site
+
+goal: |
+  Complete all 3 chat modifications and verify the results. The primary purpose
+  is to exercise agent patterns and capture friction metrics.
+
+  Success criteria (verify each in preview):
+  1. MULTI-FILE EDIT: Projects page has 2-column grid, "Live Demo" buttons,
+     updated card color #1e2a4a, and hover box-shadow
+  2. COMPONENT RESTRUCTURE: Skills section has SVG circular progress rings
+     instead of progress bars, with IntersectionObserver animation
+  3. CROSS-FILE COLOR: Accent color changed from blue #0f3460 to purple #6c2bd9
+     across all pages consistently
+
+  Friction detection criteria (analyzed from ordered Langfuse trace observations):
+  NOTE: These require per-turn sequencing from raw Langfuse observations, not
+  the aggregated buildMetrics summary. The eval agent should inspect the ordered
+  tool call sequence in the trace to detect these patterns.
+  - REPEATED_FILE_READS: Flag if any file is read 4+ times within 6 turns
+  - EDIT_LOOP: Flag if 2+ consecutive str_replace errors occur
+  - GREP_SPIRAL: Flag if 4+ consecutive grep/search calls occur without an edit
+  - NO_PROGRESS_LOOP: Flag if tools/turn ratio drops below 0.5 for 4+ turns
+  - REDUNDANT_EXPLORATION: Flag if reads continue 3+ turns after successful edit
+
+  Aggregate metrics available from buildMetrics:
+  - toolErrorCount, toolErrors, toolFailedNames (error counts and messages)
+  - turns, totalCostUSD, toolUsage (overall session aggregates)
+
+  Report success if all 3 visual changes are confirmed in preview.
+  Report the friction patterns detected (even on success) in the message field.
+  If buildMetrics is unavailable, report "friction_metrics=unavailable" in the
+  message field so silent Langfuse failures are visible in test reports.
+
+  Report FAILURE if any modification was not applied, or if the agent entered
+  an unrecoverable error loop (5+ consecutive failures).
+
+cleanup:
+  deleteAllSitesViaAPI: false
