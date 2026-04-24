@@ -51,6 +51,14 @@ export default gasket.actions.getNextConfig({
       /Critical dependency: the request of a dependency is an expression/,
     ];
 
+    if (isServer) {
+      config.externals = config.externals || [];
+      config.externals.push({
+        '@azure/functions-core': 'commonjs @azure/functions-core',
+        '@godaddy/gd-auth-lib': 'commonjs @godaddy/gd-auth-lib',
+      });
+    }
+
     if (!isServer) {
       // Exclude server-only modules from client bundle
       config.externals = config.externals || [];
