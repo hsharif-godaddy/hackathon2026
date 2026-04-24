@@ -188,11 +188,77 @@ func parseJSONStringSlice(key string) ([]string, error) {
 	if v == "" {
 		return nil, nil
 	}
-	var result []string
-	if err := json.Unmarshal([]byte(v), &result); err != nil {
-		return nil, fmt.Errorf("%s: invalid JSON: %w", key, err)
+	result, err := unmarshalStringSlice(v)
+	if err != nil {
+		return nil, fmt.Errorf("%s: invalid allowlist (use a JSON string array, optional outer single quotes, or ['a','b'] only when every value is free of a single quote): %w", key, err)
 	}
 	return result, nil
+}
+
+func unmarshalStringSlice(v string) ([]string, error) {
+	var result []string
+	err := json.Unmarshal([]byte(v), &result)
+	if err == nil {
+		return result, nil
+	}
+	first := err
+	// Value wrapped in shell / Katana / YAML style: entire JSON in single quotes.
+	if len(v) >= 2 && v[0] == '\'' && v[len(v)-1] == '\'' {
+		inner := strings.TrimSpace(v[1 : len(v)-1])
+		if err := json.Unmarshal([]byte(inner), &result); err == nil {
+			return result, nil
+		}
+	}
+	if out, isForm, errP := tryParseSingleQuotedStringArrayForm(v); errP != nil {
+		return nil, errP
+	} else if isForm {
+		return out, nil
+	}
+	return nil, first
+}
+
+// tryParseSingleQuotedStringArrayForm parses a bracketed list whose string entries use
+// '...' and no " characters, e.g. ['arn:...','arn:...']. Values with an interior single
+// quote are rejected; use a JSON string array in double quotes for those.
+func tryParseSingleQuotedStringArrayForm(v string) (out []string, isThisForm bool, err error) {
+	v = strings.TrimSpace(v)
+	if len(v) < 2 || v[0] != '[' || v[len(v)-1] != ']' {
+		return nil, false, nil
+	}
+	if strings.Contains(v, `"`) {
+		return nil, false, nil
+	}
+	if !strings.Contains(v, `'`) {
+		return nil, false, nil
+	}
+	inner := strings.TrimSpace(v[1 : len(v)-1])
+	if inner == "" {
+		return nil, true, nil
+	}
+	rest := inner
+	for {
+		rest = strings.TrimLeft(rest, " \t\n,")
+		if rest == "" {
+			return out, true, nil
+		}
+		if rest[0] != '\'' {
+			return nil, true, fmt.Errorf("not a valid 'entry','entry' list: expected ' before %q", firstRestSnippet(rest))
+		}
+		rest = rest[1:]
+		closing := strings.IndexByte(rest, '\'')
+		if closing < 0 {
+			return nil, true, fmt.Errorf("unclosed single-quoted value in %q", v)
+		}
+		out = append(out, rest[:closing])
+		rest = rest[closing+1:]
+	}
+}
+
+func firstRestSnippet(s string) string {
+	if len(s) <= 24 {
+		return s
+	}
+	return s[:24] + "..."
 }
 
 // SlogLevel maps config strings (debug, warn, error, info) to slog.Level.

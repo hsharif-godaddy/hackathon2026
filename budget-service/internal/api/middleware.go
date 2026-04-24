@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -49,7 +50,7 @@ func newLoggingMiddleware(logger *slog.Logger, next http.Handler, logRequestBodi
 		start := time.Now()
 		rw := newResponseWriter(w)
 
-		var requestBodyLog string
+		sanitizedBodyForLog := ""
 		if logRequestBodies && (r.Method == http.MethodPost || r.Method == http.MethodPatch) {
 			body, err := readAndReplaceRequestBody(r, int64(budgetMaxBodyBytes))
 			if err != nil {
@@ -67,7 +68,7 @@ func newLoggingMiddleware(logger *slog.Logger, next http.Handler, logRequestBodi
 				)
 				return
 			}
-			requestBodyLog = sanitizeAndTruncate(string(body), maxPayloadLogLen)
+			sanitizedBodyForLog = sanitizeAndTruncate(string(body), maxPayloadLogLen)
 		}
 
 		next.ServeHTTP(rw, r)
@@ -80,7 +81,11 @@ func newLoggingMiddleware(logger *slog.Logger, next http.Handler, logRequestBodi
 			"userAgent", sanitizeLogValue(r.UserAgent()),
 		}
 		if logRequestBodies && (r.Method == http.MethodPost || r.Method == http.MethodPatch) {
-			attrs = append(attrs, "requestBody", requestBodyLog)
+			if v, ok := requestBodyForLog(sanitizedBodyForLog); ok {
+				attrs = append(attrs, "requestBody", v)
+			} else {
+				attrs = append(attrs, "requestBodyRaw", sanitizedBodyForLog)
+			}
 		}
 		logger.Info("http.request.complete", attrs...)
 	})
@@ -100,6 +105,62 @@ func readAndReplaceRequestBody(r *http.Request, max int64) ([]byte, error) {
 	}
 	r.Body = io.NopCloser(bytes.NewReader(body))
 	return body, nil
+}
+
+// requestBodyForLog returns a parsed object or array and true when the body is JSON
+// and should be logged as structured requestBody. Scalars, non-JSON, and empty bodies
+// are logged under requestBodyRaw to avoid mixed-type conflicts in Elasticsearch
+// and to keep object-shaped bodies on a single mapping.
+func requestBodyForLog(sanitized string) (structural any, ok bool) {
+	if sanitized == "" {
+		return nil, false
+	}
+	var v any
+	if err := json.Unmarshal([]byte(sanitized), &v); err != nil {
+		return nil, false
+	}
+	switch v := v.(type) {
+	case map[string]any:
+		return sanitizeValueTreeForLog(v), true
+	case []any:
+		return sanitizeValueTreeForLog(v), true
+	default:
+		return nil, false
+	}
+}
+
+func sanitizeValueTreeForLog(v any) any {
+	switch t := v.(type) {
+	case map[string]any:
+		m := make(map[string]any, len(t))
+		for k, val := range t {
+			k2 := removeControlFromString(k)
+			if k2 == "" {
+				k2 = k
+			}
+			m[k2] = sanitizeValueTreeForLog(val)
+		}
+		return m
+	case []any:
+		s := make([]any, len(t))
+		for i, x := range t {
+			s[i] = sanitizeValueTreeForLog(x)
+		}
+		return s
+	case string:
+		return removeControlFromString(t)
+	default:
+		return t
+	}
+}
+
+func removeControlFromString(s string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return -1
+		}
+		return r
+	}, s)
 }
 
 func sanitizeAndTruncate(s string, maxRunes int) string {

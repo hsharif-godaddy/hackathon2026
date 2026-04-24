@@ -180,3 +180,71 @@ func TestLoadAcceptsValidAllowlistJSON(t *testing.T) {
 		t.Fatalf("AuthAllowedCerts: want 1 entry, got %d", len(cfg.AuthAllowedCerts))
 	}
 }
+
+func TestLoadAllowlistSingleQuotedStringLiterals(t *testing.T) {
+	t.Setenv("LOCAL_AUTH_DISABLE", "true")
+	t.Setenv("SSO_HOST", "")
+	t.Setenv("DATABASE_URL", "")
+	t.Setenv("AUTH_ALLOWED_ROLES", "['arn:aws:iam::123:role/airo-*']")
+	t.Setenv("AUTH_ALLOWED_CERTS", "['*.airo-builder.godaddy.com']")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(cfg.AuthAllowedRoles) != 1 || cfg.AuthAllowedRoles[0] != "arn:aws:iam::123:role/airo-*" {
+		t.Fatalf("AuthAllowedRoles: got %#v", cfg.AuthAllowedRoles)
+	}
+	if len(cfg.AuthAllowedCerts) != 1 || cfg.AuthAllowedCerts[0] != "*.airo-builder.godaddy.com" {
+		t.Fatalf("AuthAllowedCerts: got %#v", cfg.AuthAllowedCerts)
+	}
+}
+
+func TestLoadAllowlistJSONWrappedInSingleQuotes(t *testing.T) {
+	t.Setenv("LOCAL_AUTH_DISABLE", "true")
+	t.Setenv("SSO_HOST", "")
+	t.Setenv("DATABASE_URL", "")
+	t.Setenv("AUTH_ALLOWED_ROLES", `'["arn:aws:iam::123:role/x"]'`)
+	t.Setenv("AUTH_ALLOWED_CERTS", "")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(cfg.AuthAllowedRoles) != 1 || cfg.AuthAllowedRoles[0] != "arn:aws:iam::123:role/x" {
+		t.Fatalf("AuthAllowedRoles: got %#v", cfg.AuthAllowedRoles)
+	}
+}
+
+func TestLoadAllowlistKatanaStyleOuterQuotesMultiARN(t *testing.T) {
+	// Some Katana/secret UIs let you paste a shell-style quoted string; the
+	// value includes leading/trailing ' around valid JSON.
+	t.Setenv("LOCAL_AUTH_DISABLE", "true")
+	t.Setenv("SSO_HOST", "")
+	t.Setenv("DATABASE_URL", "")
+	t.Setenv("AUTH_ALLOWED_ROLES", `'`+
+		`["arn:aws:iam::694282668781:role/GD-AWS-USA-GD-AiroBuilde-*",`+
+		`"arn:aws:iam::018115330368:role/caasai-custom-KatanaEnvironment5327GlobalEcsTaskRole3B5499FC"]`+
+		`'`)
+	t.Setenv("AUTH_ALLOWED_CERTS", "")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(cfg.AuthAllowedRoles) != 2 {
+		t.Fatalf("AuthAllowedRoles: want 2 entries, got %d: %#v", len(cfg.AuthAllowedRoles), cfg.AuthAllowedRoles)
+	}
+}
+
+func TestLoadRejectsSingleQuotedArrayWithApostropheInValue(t *testing.T) {
+	t.Setenv("LOCAL_AUTH_DISABLE", "true")
+	t.Setenv("SSO_HOST", "")
+	t.Setenv("DATABASE_URL", "")
+	t.Setenv("AUTH_ALLOWED_ROLES", "['O'Reilly']")
+	t.Setenv("AUTH_ALLOWED_CERTS", "")
+	_, err := Load()
+	if err == nil {
+		t.Fatal("expected error: interior single quote is not a valid 'a','b' list")
+	}
+	if !strings.Contains(err.Error(), "AUTH_ALLOWED_ROLES") {
+		t.Fatalf("error: %v", err)
+	}
+}

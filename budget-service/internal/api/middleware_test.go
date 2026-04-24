@@ -136,8 +136,8 @@ func TestLoggingMiddlewareOmitsRequestBodyWhenDisabled(t *testing.T) {
 	mw.ServeHTTP(rec, req)
 
 	out := buf.String()
-	if strings.Contains(out, "requestBody") {
-		t.Fatalf("requestBody should be omitted when logging disabled: %s", out)
+	if strings.Contains(out, `"requestBody":`) || strings.Contains(out, `"requestBodyRaw":`) {
+		t.Fatalf("request body fields should be omitted when logging disabled: %s", out)
 	}
 }
 
@@ -195,8 +195,8 @@ func TestLoggingMiddlewarePostEmptyBody(t *testing.T) {
 		t.Fatal("handler did not run")
 	}
 	out := buf.String()
-	if !strings.Contains(out, `"requestBody"`) {
-		t.Fatalf("expected requestBody key: %s", out)
+	if !strings.Contains(out, `"requestBodyRaw":""`) {
+		t.Fatalf("expected requestBodyRaw empty: %s", out)
 	}
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("status: %d", rec.Code)
@@ -224,8 +224,8 @@ func TestLoggingMiddlewarePostNoRequestReader(t *testing.T) {
 	mw.ServeHTTP(rec, req)
 
 	out := buf.String()
-	if !strings.Contains(out, `"requestBody"`) {
-		t.Fatalf("expected requestBody key: %s", out)
+	if !strings.Contains(out, `"requestBodyRaw":""`) {
+		t.Fatalf("expected requestBodyRaw empty: %s", out)
 	}
 	_ = rec
 }
@@ -251,9 +251,12 @@ func TestLoggingMiddlewareSanitizesControlCharsInRequestBodyLog(t *testing.T) {
 	if err := json.Unmarshal(buf.Bytes(), &line); err != nil {
 		t.Fatalf("log json: %v", err)
 	}
-	rb, ok := line["requestBody"].(string)
-	if !ok || rb != `{"a":1}` {
-		t.Fatalf("requestBody: got %q want {\"a\":1}", rb)
+	rb, ok := line["requestBody"].(map[string]any)
+	if !ok {
+		t.Fatalf("requestBody: want object, got %T %v", line["requestBody"], line["requestBody"])
+	}
+	if rb["a"] != float64(1) {
+		t.Fatalf("requestBody.a: got %v", rb["a"])
 	}
 }
 
@@ -276,12 +279,86 @@ func TestLoggingMiddlewareTruncatesLongRequestBodyInLog(t *testing.T) {
 	if err := json.Unmarshal(buf.Bytes(), &line); err != nil {
 		t.Fatalf("log line json: %v", err)
 	}
-	rb, ok := line["requestBody"].(string)
+	rb, ok := line["requestBodyRaw"].(string)
 	if !ok {
-		t.Fatalf("requestBody missing or not string: %v", line)
+		t.Fatalf("requestBodyRaw missing or not string: %v", line)
 	}
 	if len([]rune(rb)) != maxPayloadLogLen {
 		t.Fatalf("logged body rune count: want %d, got %d", maxPayloadLogLen, len([]rune(rb)))
 	}
 	_ = rec
+}
+
+func TestRequestBodyForLog(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name   string
+		in     string
+		wantOK bool
+		check  func(t *testing.T, v any)
+	}{
+		{
+			name:   "empty",
+			in:     "",
+			wantOK: false,
+		},
+		{
+			name:   "object",
+			in:     `{"a":1}`,
+			wantOK: true,
+			check: func(t *testing.T, v any) {
+				t.Helper()
+				m := v.(map[string]any)
+				if m["a"] != float64(1) {
+					t.Fatalf("a: %v", m["a"])
+				}
+			},
+		},
+		{
+			name:   "array",
+			in:     `[1,2]`,
+			wantOK: true,
+			check: func(t *testing.T, v any) {
+				t.Helper()
+				a := v.([]any)
+				if len(a) != 2 {
+					t.Fatalf("len: %d", len(a))
+				}
+			},
+		},
+		{
+			name:   "scalar number",
+			in:     `42`,
+			wantOK: false,
+		},
+		{
+			name:   "plain text",
+			in:     "not json",
+			wantOK: false,
+		},
+		{
+			name:   "string field control stripped",
+			in:     "{\"k\":\"a\\u0001b\"}",
+			wantOK: true,
+			check: func(t *testing.T, v any) {
+				t.Helper()
+				m := v.(map[string]any)
+				if m["k"] != "ab" {
+					t.Fatalf("k: %q", m["k"])
+				}
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			v, ok := requestBodyForLog(tc.in)
+			if ok != tc.wantOK {
+				t.Fatalf("ok: want %v got %v (v=%#v)", tc.wantOK, ok, v)
+			}
+			if tc.check != nil {
+				tc.check(t, v)
+			}
+		})
+	}
 }
