@@ -28,14 +28,34 @@ aws sso login --profile airobuild-dev-private-sso
 
 ## CLI Flags
 
-| Flag             | Short | Description                                                                                                |
-| ---------------- | ----- | ---------------------------------------------------------------------------------------------------------- |
-| `--dry-run`      | `-n`  | Run full pipeline without triggering any workflows (read-only)                                             |
-| `--auto-approve` |       | Skip interactive confirmations (combine with `--dry-run`)                                                  |
-| `--branch`       |       | Branch to build from (default: `main`)                                                                     |
-| `--fail-stage`   |       | Stage ID to simulate failure in dry-run (repeatable, e.g. `--fail-stage deploy-app --fail-stage e2e-test`) |
-| `--no-slack`     |       | Disable Slack notifications                                                                                |
-| `--force-lock`   |       | Break through an existing deploy lock held by another operator                                             |
+| Flag                     | Short | Description                                                                                                |
+| ------------------------ | ----- | ---------------------------------------------------------------------------------------------------------- |
+| `--dry-run`              | `-n`  | Run full pipeline without triggering any workflows (read-only)                                             |
+| `--auto-approve`         |       | Skip interactive confirmations (combine with `--dry-run`)                                                  |
+| `--branch`               |       | Branch to build from (default: `main`)                                                                     |
+| `--fail-stage`           |       | Stage ID to simulate failure in dry-run (repeatable, e.g. `--fail-stage deploy-app --fail-stage e2e-test`) |
+| `--no-slack`             |       | Disable Slack notifications                                                                                |
+| `--force-lock`           |       | Break through an existing deploy lock held by another operator                                             |
+| `--rollback-artifact-id` |       | Override the previous-good app artifact ID (skips the GitHub lookup for it)                                |
+| `--rollback-agent-tag`   |       | Override the previous-good agent image tag                                                                 |
+| `--rollback-preview-tag` |       | Override the previous-good preview image tag                                                               |
+| `--rollback-publish-tag` |       | Override the previous-good publish image tag                                                               |
+
+### Overriding rollback values
+
+When release-manager starts it fetches the current production state from GitHub (latest successful `promote-artifact.yml` run for the app artifact ID, and latest successful `airo-preprov-management-unified.yml` PROD run for the image tags). If any of those runs don't match the state actually deployed in production — e.g. a failed rollback left GH in an inconsistent state, or a hotfix bypassed the normal pipeline — use the `--rollback-*` flags to force the correct values:
+
+```bash
+./release-manager \
+  --rollback-artifact-id 12345 \
+  --rollback-agent-tag pi-abc123-ext-def456 \
+  --rollback-preview-tag pi-abc123-ext-def456 \
+  --rollback-publish-tag pi-abc123-ext-def456
+```
+
+Any flag that is set wins over whatever was discovered from GitHub. If `--rollback-artifact-id` is set, the artifact-ID GitHub lookup is skipped entirely. If all three image tag flags are set, the image-tags GitHub lookup is skipped entirely — so a broken PROD preprov-management history cannot block a release. Partial overrides are allowed; only the fields you set are replaced.
+
+Overridden values still appear in the "Rollback Snapshot" confirmation step so you can double-check them before the release proceeds.
 
 ## Configuration
 
@@ -59,20 +79,20 @@ pipeline:
 
 ### Stage fields
 
-| Field               | Description                                                                          |
-| ------------------- | ------------------------------------------------------------------------------------ |
-| `id`                | Unique stage identifier (used by `--fail-stage`)                                     |
-| `name`              | Display name in TUI and Slack                                                        |
-| `group`             | Stages with the same group run in parallel                                           |
-| `type`              | Set to `checklist` for manual verification steps                                     |
-| `repo`              | GitHub `owner/repo`                                                                  |
-| `workflow`          | GitHub Actions workflow filename                                                     |
+| Field               | Description                                                                                               |
+| ------------------- | --------------------------------------------------------------------------------------------------------- |
+| `id`                | Unique stage identifier (used by `--fail-stage`)                                                          |
+| `name`              | Display name in TUI and Slack                                                                             |
+| `group`             | Stages with the same group run in parallel                                                                |
+| `type`              | Set to `checklist` for manual verification steps                                                          |
+| `repo`              | GitHub `owner/repo`                                                                                       |
+| `workflow`          | GitHub Actions workflow filename                                                                          |
 | `ref`               | Git ref to trigger the workflow on; use `{{branch}}` — GitHub rejects commit SHAs for `workflow_dispatch` |
-| `active_run_filter` | Only block on active runs whose `displayTitle` contains this string                  |
-| `inputs`            | Workflow inputs; supports `{{env.stage.output}}`, `{{commit}}`, and `{{branch}}`     |
-| `outputs`           | Parsed from run logs via regex (`from: run-log`, `pattern`, `job_match`)             |
-| `matrix`            | List of input sets to run the same workflow multiple times in parallel               |
-| `items`             | Checklist items (for `type: checklist` stages)                                       |
+| `active_run_filter` | Only block on active runs whose `displayTitle` contains this string                                       |
+| `inputs`            | Workflow inputs; supports `{{env.stage.output}}`, `{{commit}}`, and `{{branch}}`                          |
+| `outputs`           | Parsed from run logs via regex (`from: run-log`, `pattern`, `job_match`)                                  |
+| `matrix`            | List of input sets to run the same workflow multiple times in parallel                                    |
+| `items`             | Checklist items (for `type: checklist` stages)                                                            |
 
 ## Pipeline Flow
 
@@ -98,9 +118,9 @@ The pinned commit is displayed in the TUI release notes view and included in Sla
 
 `{{commit}}` must only be used in workflow **inputs**, never as the `ref` field. GitHub's `workflow_dispatch` API only accepts branch or tag names as `ref` — passing a raw commit SHA returns HTTP 422.
 
-| Field | Use | Example |
-|-------|-----|---------|
-| `ref` | Always `{{branch}}` | Triggers the workflow on the branch |
+| Field    | Use                  | Example                                  |
+| -------- | -------------------- | ---------------------------------------- |
+| `ref`    | Always `{{branch}}`  | Triggers the workflow on the branch      |
 | `inputs` | Can use `{{commit}}` | Workflow checks out the exact pinned SHA |
 
 For example, `deploy-app` passes the pinned SHA as a `sha` input to `aws-deploy-app.yml`, which uses it for checkout and Docker image tagging. `build-images` passes it as `airo-app-builder-branch`. Rollback steps use `{{branch}}` for both `ref` and inputs since they deploy known-good artifacts and benefit from the latest workflow definition.

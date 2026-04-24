@@ -1152,6 +1152,273 @@ func TestFetchRollbackSnapshotNoMatchingRuns(t *testing.T) {
 	}
 }
 
+// snapshotTestConfig returns a config with both rollback sources fully
+// configured so FetchRollbackSnapshot would exercise both lookups.
+func snapshotTestConfig() *config.Config {
+	return &config.Config{
+		Pipeline: config.PipelineConfig{
+			Environments: map[string]*config.EnvironmentConfig{
+				"test": {Stages: []config.Stage{{ID: "a", Name: "A", Repo: "r", Workflow: "w"}}},
+			},
+			Rollback: config.RollbackConfig{
+				Sources: config.RollbackSources{
+					ArtifactID: config.RollbackSource{
+						Repo:           "org/app",
+						Workflow:       "promote-artifact.yml",
+						Filter:         "displayTitle contains '[app]' and 'prod'",
+						ExtractPattern: `Promoting (\d+) to prod`,
+					},
+					ImageTags: config.RollbackImageTags{
+						Repo:     "org/infra",
+						Workflow: "airo-preprov-management-unified.yml",
+						Filter:   "displayTitle contains 'Upsert + Reload Pre-Prov' and 'PROD'",
+						JobMatch: "Upsert Template Images",
+						Patterns: map[string]string{
+							"agent_image_tag":   `AGENT_TAG="(pi-[a-f0-9]+-ext-[a-f0-9]+)"`,
+							"preview_image_tag": `PREVIEW_TAG="(pi-[a-f0-9]+-ext-[a-f0-9]+)"`,
+							"publish_image_tag": `PUBLISH_TAG="(pi-[a-f0-9]+-ext-[a-f0-9]+)"`,
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+// discoveryMockRunner returns runner data that, without overrides, yields
+// the "discovered" artifact/image values captured on Snapshot.
+func discoveryMockRunner() *mockRunner {
+	return &mockRunner{
+		listRunsFn: func(_ context.Context, _, workflow, _ string, _ int) ([]gh.RunListEntry, error) {
+			switch workflow {
+			case "promote-artifact.yml":
+				return []gh.RunListEntry{
+					{ID: 100, Name: "[app] Promoting 99999 to prod"},
+				}, nil
+			case "airo-preprov-management-unified.yml":
+				return []gh.RunListEntry{
+					{ID: 200, Name: "Upsert + Reload Pre-Prov in PROD"},
+				}, nil
+			}
+			return nil, nil
+		},
+		logsFn: func(_ context.Context, _ string, runID int64) (string, error) {
+			if runID == 200 {
+				return `Upsert Template Images	AGENT_TAG="pi-aaa111-ext-bbb222"
+Upsert Template Images	PREVIEW_TAG="pi-ccc333-ext-ddd444"
+Upsert Template Images	PUBLISH_TAG="pi-eee555-ext-fff666"`, nil
+			}
+			return "", nil
+		},
+	}
+}
+
+func TestFetchRollbackSnapshotFullOverridesPopulateSnapshot(t *testing.T) {
+	// Full overrides cause both GH lookups to be skipped (asserted by
+	// TestFetchRollbackSnapshotFullOverridesSkipGitHubLookups); this test
+	// asserts the resulting Snapshot + values map reflect the override
+	// values and that source URLs are marked as override-sourced.
+	p := New(snapshotTestConfig(), discoveryMockRunner(), false, "main", nil)
+	p.Overrides = SnapshotOverrides{
+		ArtifactID:      "55555",
+		AgentImageTag:   "pi-override-ext-agent",
+		PreviewImageTag: "pi-override-ext-preview",
+		PublishImageTag: "pi-override-ext-publish",
+	}
+
+	if err := p.FetchRollbackSnapshot(context.Background()); err != nil {
+		t.Fatalf("FetchRollbackSnapshot error: %v", err)
+	}
+
+	if p.Snapshot.ArtifactID != "55555" {
+		t.Errorf("ArtifactID = %q, want %q", p.Snapshot.ArtifactID, "55555")
+	}
+	if p.Snapshot.AgentImageTag != "pi-override-ext-agent" {
+		t.Errorf("AgentImageTag = %q, want override", p.Snapshot.AgentImageTag)
+	}
+	if p.Snapshot.PreviewImageTag != "pi-override-ext-preview" {
+		t.Errorf("PreviewImageTag = %q, want override", p.Snapshot.PreviewImageTag)
+	}
+	if p.Snapshot.PublishImageTag != "pi-override-ext-publish" {
+		t.Errorf("PublishImageTag = %q, want override", p.Snapshot.PublishImageTag)
+	}
+	if p.Snapshot.AppSourceURL != overriddenSourceURL {
+		t.Errorf("AppSourceURL = %q, want override marker", p.Snapshot.AppSourceURL)
+	}
+	if p.Snapshot.ImagesSourceURL != overriddenSourceURL {
+		t.Errorf("ImagesSourceURL = %q, want override marker", p.Snapshot.ImagesSourceURL)
+	}
+
+	vals := p.Values()
+	if vals["previous_good.artifact_id"] != "55555" {
+		t.Errorf("values[previous_good.artifact_id] = %q", vals["previous_good.artifact_id"])
+	}
+	if vals["previous_good.agent_image_tag"] != "pi-override-ext-agent" {
+		t.Errorf("values[previous_good.agent_image_tag] = %q", vals["previous_good.agent_image_tag"])
+	}
+}
+
+func TestFetchRollbackSnapshotFullOverridesSkipGitHubLookups(t *testing.T) {
+	var listCalls, logsCalls atomic.Int32
+	runner := &mockRunner{
+		listRunsFn: func(ctx context.Context, repo, workflow, status string, limit int) ([]gh.RunListEntry, error) {
+			listCalls.Add(1)
+			return discoveryMockRunner().listRunsFn(ctx, repo, workflow, status, limit)
+		},
+		logsFn: func(ctx context.Context, repo string, runID int64) (string, error) {
+			logsCalls.Add(1)
+			return discoveryMockRunner().logsFn(ctx, repo, runID)
+		},
+	}
+
+	p := New(snapshotTestConfig(), runner, false, "main", nil)
+	p.Overrides = SnapshotOverrides{
+		ArtifactID:      "55555",
+		AgentImageTag:   "pi-override-ext-agent",
+		PreviewImageTag: "pi-override-ext-preview",
+		PublishImageTag: "pi-override-ext-publish",
+	}
+
+	if err := p.FetchRollbackSnapshot(context.Background()); err != nil {
+		t.Fatalf("FetchRollbackSnapshot error: %v", err)
+	}
+
+	if listCalls.Load() != 0 {
+		t.Errorf("ListRuns called %d times; full overrides should skip lookups", listCalls.Load())
+	}
+	if logsCalls.Load() != 0 {
+		t.Errorf("Logs called %d times; full overrides should skip lookups", logsCalls.Load())
+	}
+}
+
+func TestFetchRollbackSnapshotFullOverridesToleratesBrokenGitHub(t *testing.T) {
+	runner := &mockRunner{
+		listRunsFn: func(_ context.Context, _, _, _ string, _ int) ([]gh.RunListEntry, error) {
+			return nil, fmt.Errorf("github is on fire")
+		},
+	}
+
+	p := New(snapshotTestConfig(), runner, false, "main", nil)
+	p.Overrides = SnapshotOverrides{
+		ArtifactID:      "55555",
+		AgentImageTag:   "pi-override-ext-agent",
+		PreviewImageTag: "pi-override-ext-preview",
+		PublishImageTag: "pi-override-ext-publish",
+	}
+
+	if err := p.FetchRollbackSnapshot(context.Background()); err != nil {
+		t.Fatalf("FetchRollbackSnapshot should succeed when all values overridden even if GH is broken; got %v", err)
+	}
+	if p.Snapshot.ArtifactID != "55555" {
+		t.Errorf("ArtifactID = %q, want %q", p.Snapshot.ArtifactID, "55555")
+	}
+	if p.Snapshot.AgentImageTag != "pi-override-ext-agent" {
+		t.Errorf("AgentImageTag = %q, want override", p.Snapshot.AgentImageTag)
+	}
+}
+
+func TestFetchRollbackSnapshotPartialOverridesMergeWithDiscovery(t *testing.T) {
+	p := New(snapshotTestConfig(), discoveryMockRunner(), false, "main", nil)
+	// Only override agent tag — artifact ID and other image tags come from discovery.
+	p.Overrides = SnapshotOverrides{
+		AgentImageTag: "pi-hotfix-ext-agent",
+	}
+
+	if err := p.FetchRollbackSnapshot(context.Background()); err != nil {
+		t.Fatalf("FetchRollbackSnapshot error: %v", err)
+	}
+
+	if p.Snapshot.ArtifactID != "99999" {
+		t.Errorf("ArtifactID = %q, want discovered 99999", p.Snapshot.ArtifactID)
+	}
+	if p.Snapshot.AgentImageTag != "pi-hotfix-ext-agent" {
+		t.Errorf("AgentImageTag = %q, want override pi-hotfix-ext-agent", p.Snapshot.AgentImageTag)
+	}
+	if p.Snapshot.PreviewImageTag != "pi-ccc333-ext-ddd444" {
+		t.Errorf("PreviewImageTag = %q, want discovered value", p.Snapshot.PreviewImageTag)
+	}
+	if p.Snapshot.PublishImageTag != "pi-eee555-ext-fff666" {
+		t.Errorf("PublishImageTag = %q, want discovered value", p.Snapshot.PublishImageTag)
+	}
+	// AppSourceURL points at the discovered artifact run (no artifact override).
+	if p.Snapshot.AppSourceURL == overriddenSourceURL {
+		t.Errorf("AppSourceURL should not be marked overridden when artifact ID was discovered")
+	}
+	// ImagesSourceURL should retain the discovered URL but be annotated so
+	// operators don't trust it as a full source-of-truth for the displayed tags.
+	wantImagesURL := gh.RunURL("org/infra", 200) + " " + partialOverrideMarker
+	if p.Snapshot.ImagesSourceURL != wantImagesURL {
+		t.Errorf("ImagesSourceURL = %q, want %q", p.Snapshot.ImagesSourceURL, wantImagesURL)
+	}
+}
+
+func TestFetchRollbackSnapshotPartialImageOverrideFailsWhenGitHubBroken(t *testing.T) {
+	// Partial image override means FetchRollbackSnapshot still needs
+	// successful GH lookups for the other two image tags. This test
+	// pins that behavior so future refactors don't silently start
+	// tolerating a broken GH state with only a partial override.
+	runner := &mockRunner{
+		listRunsFn: func(_ context.Context, _, workflow, _ string, _ int) ([]gh.RunListEntry, error) {
+			if workflow == "airo-preprov-management-unified.yml" {
+				return nil, fmt.Errorf("github is on fire")
+			}
+			return []gh.RunListEntry{{ID: 100, Name: "[app] Promoting 99999 to prod"}}, nil
+		},
+	}
+
+	p := New(snapshotTestConfig(), runner, false, "main", nil)
+	p.Overrides = SnapshotOverrides{AgentImageTag: "pi-hotfix-ext-agent"}
+
+	if err := p.FetchRollbackSnapshot(context.Background()); err == nil {
+		t.Fatal("FetchRollbackSnapshot should fail when a partial image override still needs a broken GH lookup")
+	}
+}
+
+func TestFetchRollbackSnapshotArtifactOverrideSkipsArtifactLookupOnly(t *testing.T) {
+	var artifactLookups, imageLookups atomic.Int32
+	runner := &mockRunner{
+		listRunsFn: func(_ context.Context, _, workflow, _ string, _ int) ([]gh.RunListEntry, error) {
+			switch workflow {
+			case "promote-artifact.yml":
+				artifactLookups.Add(1)
+				return []gh.RunListEntry{{ID: 100, Name: "[app] Promoting 99999 to prod"}}, nil
+			case "airo-preprov-management-unified.yml":
+				imageLookups.Add(1)
+				return []gh.RunListEntry{{ID: 200, Name: "Upsert + Reload Pre-Prov in PROD"}}, nil
+			}
+			return nil, nil
+		},
+		logsFn: func(_ context.Context, _ string, runID int64) (string, error) {
+			if runID == 200 {
+				return `Upsert Template Images	AGENT_TAG="pi-aaa111-ext-bbb222"
+Upsert Template Images	PREVIEW_TAG="pi-ccc333-ext-ddd444"
+Upsert Template Images	PUBLISH_TAG="pi-eee555-ext-fff666"`, nil
+			}
+			return "", nil
+		},
+	}
+
+	p := New(snapshotTestConfig(), runner, false, "main", nil)
+	p.Overrides = SnapshotOverrides{ArtifactID: "55555"}
+
+	if err := p.FetchRollbackSnapshot(context.Background()); err != nil {
+		t.Fatalf("FetchRollbackSnapshot error: %v", err)
+	}
+
+	if artifactLookups.Load() != 0 {
+		t.Errorf("artifact lookup called %d times; should be skipped", artifactLookups.Load())
+	}
+	if imageLookups.Load() != 1 {
+		t.Errorf("image lookup called %d times; want 1", imageLookups.Load())
+	}
+	if p.Snapshot.ArtifactID != "55555" {
+		t.Errorf("ArtifactID = %q, want override 55555", p.Snapshot.ArtifactID)
+	}
+	if p.Snapshot.AgentImageTag != "pi-aaa111-ext-bbb222" {
+		t.Errorf("AgentImageTag = %q, want discovered", p.Snapshot.AgentImageTag)
+	}
+}
+
 func TestRunStageBadRunURL(t *testing.T) {
 	runner := &mockRunner{
 		triggerFn: func(_ context.Context, _, _, _ string, _ map[string]string) (string, error) {

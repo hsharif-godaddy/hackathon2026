@@ -124,6 +124,28 @@ type RollbackSnapshot struct {
 	ImagesSourceURL string
 }
 
+// SnapshotOverrides holds operator-supplied rollback values that take
+// precedence over anything auto-discovered from GitHub. Any non-empty
+// field overrides the corresponding snapshot field; if every field
+// feeding a given source is set, the source's GitHub lookup is skipped
+// entirely (so a broken/out-of-date GH state cannot block a release).
+type SnapshotOverrides struct {
+	ArtifactID      string
+	AgentImageTag   string
+	PreviewImageTag string
+	PublishImageTag string
+}
+
+// overriddenSourceURL is recorded when an override supplies a value
+// instead of discovery, so the UI makes the origin obvious.
+const overriddenSourceURL = "(overridden via CLI flag)"
+
+// partialOverrideMarker is appended to a discovered source URL when
+// some but not all of the values sourced from that URL have been
+// replaced by CLI overrides, so operators don't trust the URL as a
+// full source-of-truth for the displayed tags.
+const partialOverrideMarker = "(partially overridden via CLI flag)"
+
 // Default retry delays for health check stages.
 var defaultHealthCheckDelays = []time.Duration{0, 5 * time.Second, 10 * time.Second, 20 * time.Second}
 
@@ -134,6 +156,7 @@ type Pipeline struct {
 	DryRun            bool
 	Branch            string
 	Snapshot          RollbackSnapshot
+	Overrides         SnapshotOverrides
 	FailStages        map[string]bool
 	HealthCheckDelays []time.Duration
 
@@ -770,11 +793,16 @@ func (p *Pipeline) FailChecklist(idx int, reason string) {
 }
 
 // FetchRollbackSnapshot queries GitHub for the current production state.
+// Any fields set on p.Overrides win over the discovered values, and a
+// source whose fields are fully overridden is skipped entirely so that
+// a broken GH state does not block a release.
 func (p *Pipeline) FetchRollbackSnapshot(ctx context.Context) error {
 	cfg := p.Config.Pipeline.Rollback
+	ov := p.Overrides
 
 	artSrc := cfg.Sources.ArtifactID
-	if artSrc.Repo != "" && artSrc.Workflow != "" {
+	artifactFullyOverridden := ov.ArtifactID != ""
+	if artSrc.Repo != "" && artSrc.Workflow != "" && !artifactFullyOverridden {
 		runs, err := p.Runner.ListRuns(ctx, artSrc.Repo, artSrc.Workflow, "success", 20)
 		if err != nil {
 			return fmt.Errorf("listing artifact runs: %w", err)
@@ -802,7 +830,8 @@ func (p *Pipeline) FetchRollbackSnapshot(ctx context.Context) error {
 	}
 
 	imgSrc := cfg.Sources.ImageTags
-	if imgSrc.Repo != "" && imgSrc.Workflow != "" {
+	imagesFullyOverridden := ov.AgentImageTag != "" && ov.PreviewImageTag != "" && ov.PublishImageTag != ""
+	if imgSrc.Repo != "" && imgSrc.Workflow != "" && !imagesFullyOverridden {
 		runs, err := p.Runner.ListRuns(ctx, imgSrc.Repo, imgSrc.Workflow, "success", 10)
 		if err != nil {
 			return fmt.Errorf("listing image tag runs: %w", err)
@@ -848,13 +877,50 @@ func (p *Pipeline) FetchRollbackSnapshot(ctx context.Context) error {
 		}
 	}
 
+	if ov.ArtifactID != "" || ov.AgentImageTag != "" || ov.PreviewImageTag != "" || ov.PublishImageTag != "" {
+		logger.Log("snapshot.overrides: artifact_id=%q agent=%q preview=%q publish=%q", ov.ArtifactID, ov.AgentImageTag, ov.PreviewImageTag, ov.PublishImageTag)
+	}
+	applySnapshotOverrides(&p.Snapshot, ov)
+
 	p.SetValue("previous_good.artifact_id", p.Snapshot.ArtifactID)
 	p.SetValue("previous_good.agent_image_tag", p.Snapshot.AgentImageTag)
 	p.SetValue("previous_good.preview_image_tag", p.Snapshot.PreviewImageTag)
 	p.SetValue("previous_good.publish_image_tag", p.Snapshot.PublishImageTag)
 
-	logger.Log("snapshot.fetched: artifact_id=%s agent=%s preview=%s publish=%s", p.Snapshot.ArtifactID, p.Snapshot.AgentImageTag, p.Snapshot.PreviewImageTag, p.Snapshot.PublishImageTag)
+	logger.Log("snapshot.resolved: artifact_id=%s agent=%s preview=%s publish=%s", p.Snapshot.ArtifactID, p.Snapshot.AgentImageTag, p.Snapshot.PreviewImageTag, p.Snapshot.PublishImageTag)
 	return nil
+}
+
+// applySnapshotOverrides copies any non-empty override fields onto the
+// snapshot. Source URLs are rewritten so operators can tell at a glance
+// whether the displayed values came from GitHub discovery, a CLI
+// override, or a mix of the two (in which case the discovered URL is
+// annotated as a partial override so it isn't trusted as a full
+// source-of-truth for the displayed tags).
+func applySnapshotOverrides(snap *RollbackSnapshot, ov SnapshotOverrides) {
+	if ov.ArtifactID != "" {
+		snap.ArtifactID = ov.ArtifactID
+		snap.AppSourceURL = overriddenSourceURL
+	}
+	if ov.AgentImageTag != "" {
+		snap.AgentImageTag = ov.AgentImageTag
+	}
+	if ov.PreviewImageTag != "" {
+		snap.PreviewImageTag = ov.PreviewImageTag
+	}
+	if ov.PublishImageTag != "" {
+		snap.PublishImageTag = ov.PublishImageTag
+	}
+	switch {
+	case ov.AgentImageTag != "" && ov.PreviewImageTag != "" && ov.PublishImageTag != "":
+		snap.ImagesSourceURL = overriddenSourceURL
+	case ov.AgentImageTag != "" || ov.PreviewImageTag != "" || ov.PublishImageTag != "":
+		if snap.ImagesSourceURL == "" {
+			snap.ImagesSourceURL = partialOverrideMarker
+		} else {
+			snap.ImagesSourceURL = snap.ImagesSourceURL + " " + partialOverrideMarker
+		}
+	}
 }
 
 // FetchReleaseNotes resolves the target branch to a specific commit SHA,

@@ -114,7 +114,7 @@ type Model struct {
 	err             error
 }
 
-func NewModel(cfg *config.Config, runner gh.Runner, dryRun bool, branch string, autoApprove bool, noSlack bool, noRelease bool, forceLock bool, failStages []string) Model {
+func NewModel(cfg *config.Config, runner gh.Runner, dryRun bool, branch string, autoApprove bool, noSlack bool, noRelease bool, forceLock bool, failStages []string, overrides pipeline.SnapshotOverrides) Model {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	var operator string
@@ -149,10 +149,13 @@ func NewModel(cfg *config.Config, runner gh.Runner, dryRun bool, branch string, 
 		spinner.WithStyle(lipgloss.NewStyle().Foreground(theme.Running)),
 	)
 
+	p := pipeline.New(cfg, runner, dryRun, branch, failStages)
+	p.Overrides = overrides
+
 	return Model{
 		config:      cfg,
 		runner:      runner,
-		pipeline:    pipeline.New(cfg, runner, dryRun, branch, failStages),
+		pipeline:    p,
 		dryRun:      dryRun,
 		autoApprove: autoApprove,
 		noSlack:     noSlack,

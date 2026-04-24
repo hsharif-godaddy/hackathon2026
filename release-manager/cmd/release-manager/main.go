@@ -12,6 +12,7 @@ import (
 	"github.com/airo-ai-builder/release-manager/internal/config"
 	"github.com/airo-ai-builder/release-manager/internal/gh"
 	"github.com/airo-ai-builder/release-manager/internal/logger"
+	"github.com/airo-ai-builder/release-manager/internal/pipeline"
 	"github.com/airo-ai-builder/release-manager/internal/tui"
 )
 
@@ -26,11 +27,22 @@ func main() {
 	noRelease := flag.Bool("no-release", false, "Skip GitHub release creation on successful deploy")
 	forceLock := flag.Bool("force-lock", false, "Break through an existing deploy lock")
 	branch := flag.String("branch", "main", "Branch to build from (resolves {{branch}} templates)")
+	rollbackArtifactID := flag.String("rollback-artifact-id", "", "Override the previous-good app artifact ID (skips GitHub lookup when set)")
+	rollbackAgentTag := flag.String("rollback-agent-tag", "", "Override the previous-good agent image tag")
+	rollbackPreviewTag := flag.String("rollback-preview-tag", "", "Override the previous-good preview image tag")
+	rollbackPublishTag := flag.String("rollback-publish-tag", "", "Override the previous-good publish image tag")
 	flag.Var(&failStages, "fail-stage", "Simulate failure for a stage ID in dry-run (repeatable)")
 	flag.Parse()
 
 	if len(failStages) > 0 && !*dryRun {
 		fmt.Fprintln(os.Stderr, "Warning: --fail-stage has no effect without --dry-run")
+	}
+
+	overrides := pipeline.SnapshotOverrides{
+		ArtifactID:      strings.TrimSpace(*rollbackArtifactID),
+		AgentImageTag:   strings.TrimSpace(*rollbackAgentTag),
+		PreviewImageTag: strings.TrimSpace(*rollbackPreviewTag),
+		PublishImageTag: strings.TrimSpace(*rollbackPublishTag),
 	}
 
 	projectRoot, err := findProjectRoot()
@@ -53,6 +65,9 @@ func main() {
 	if len(failStages) > 0 {
 		logger.Log("config: fail-stages=%s", strings.Join(failStages, ", "))
 	}
+	if overrides.ArtifactID != "" || overrides.AgentImageTag != "" || overrides.PreviewImageTag != "" || overrides.PublishImageTag != "" {
+		logger.Log("config: rollback-overrides artifact_id=%q agent=%q preview=%q publish=%q", overrides.ArtifactID, overrides.AgentImageTag, overrides.PreviewImageTag, overrides.PublishImageTag)
+	}
 	logger.Log("config: loading %s", configPath)
 
 	cfg, err := config.Load(configPath)
@@ -68,7 +83,7 @@ func main() {
 		runner = &gh.DryRunner{Real: &gh.LiveRunner{}}
 	}
 
-	model := tui.NewModel(cfg, runner, *dryRun, *branch, *autoApprove, *noSlack, *noRelease, *forceLock, failStages)
+	model := tui.NewModel(cfg, runner, *dryRun, *branch, *autoApprove, *noSlack, *noRelease, *forceLock, failStages, overrides)
 	p := tea.NewProgram(model)
 	if _, err := p.Run(); err != nil {
 		logger.Log("program: error: %v", err)
