@@ -1,7 +1,7 @@
-import React, { type ReactNode } from 'react';
 /**
  * @vitest-environment jsdom
  */
+import React, { type ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
@@ -46,6 +46,37 @@ describe('useModifyDomains', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
+
+  async function mutateAndGetError({
+    responseBody,
+    payload = { domainsToCreate: [{ fqdn: 'taken.example.com' }] },
+    status = 409,
+  }: {
+    responseBody: Record<string, unknown>;
+    payload?: Record<string, unknown>;
+    status?: number;
+  }) {
+    vi.mocked(appFetch).mockResolvedValue({
+      ok: false,
+      status,
+      json: async () => responseBody,
+    } as unknown as Response);
+
+    const { result } = renderHook(() => useModifyDomains(), {
+      wrapper: createWrapper(),
+    });
+
+    result.current.mutate({
+      siteId: 'app-123',
+      payload,
+    } as any);
+
+    await waitFor(() => {
+      expect(result.current.isError).toBe(true);
+    });
+
+    return result.current.error as DomainMutationError;
+  }
 
   it('should modify domains successfully', async function success() {
     vi.mocked(appFetch).mockResolvedValue({
@@ -301,5 +332,223 @@ describe('useModifyDomains', () => {
 
     const error = result.current.error as DomainMutationError;
     expect(error.details.message).toBe('Domain already in use');
+  });
+
+  it('should extract nestedCode when details.error.code is present', async function extractsNestedCode() {
+    const error = await mutateAndGetError({
+      responseBody: {
+        details: {
+          error: {
+            code: 'DOMAIN_IN_USE_BY_OWN_APP',
+            message: 'Domain already in use',
+          },
+        },
+      },
+    });
+
+    expect(error.details.nestedCode).toBe('DOMAIN_IN_USE_BY_OWN_APP');
+  });
+
+  it('should extract conflictDetails when all required fields are present', async function extractsConflictDetails() {
+    const error = await mutateAndGetError({
+      responseBody: {
+        details: {
+          error: {
+            code: 'DOMAIN_IN_USE_BY_OWN_APP',
+            message: 'Domain already in use',
+            details: {
+              existingAppId: 'app-1',
+              existingSystemId: 'sys-1',
+              existingOwnerType: 'airoSubscriptionId',
+              existingOwnerId: 'sub-1',
+              existingAppName: 'My Existing App',
+              domain: 'taken.example.com',
+            },
+          },
+        },
+      },
+    });
+
+    expect(error.details.conflictDetails).toEqual({
+      existingAppId: 'app-1',
+      existingSystemId: 'sys-1',
+      existingOwnerType: 'airoSubscriptionId',
+      existingOwnerId: 'sub-1',
+      existingAppName: 'My Existing App',
+      domain: 'taken.example.com',
+    });
+  });
+
+  it('should extract nestedCode and conflictDetails from flat details shape', async function extractsFlatConflictDetails() {
+    const error = await mutateAndGetError({
+      responseBody: {
+        details: {
+          code: 'DOMAIN_IN_USE_BY_OWN_APP',
+          message: 'Domain already in use',
+          details: {
+            existingAppId: 'app-1',
+            existingSystemId: 'sys-1',
+            existingOwnerType: 'airoSubscriptionId',
+            existingOwnerId: 'sub-1',
+            existingAppName: 'My Existing App',
+            domain: 'taken.example.com',
+          },
+        },
+      },
+    });
+
+    expect(error.details.nestedCode).toBe('DOMAIN_IN_USE_BY_OWN_APP');
+    expect(error.details.conflictDetails).toEqual({
+      existingAppId: 'app-1',
+      existingSystemId: 'sys-1',
+      existingOwnerType: 'airoSubscriptionId',
+      existingOwnerId: 'sub-1',
+      existingAppName: 'My Existing App',
+      domain: 'taken.example.com',
+    });
+  });
+
+  it('should keep conflictDetails undefined when required fields are missing', async function missingConflictFields() {
+    const error = await mutateAndGetError({
+      responseBody: {
+        details: {
+          error: {
+            code: 'DOMAIN_IN_USE_BY_OWN_APP',
+            message: 'Domain already in use',
+            details: {
+              existingAppId: 'app-1',
+              existingSystemId: 'sys-1',
+              existingOwnerType: 'airoSubscriptionId',
+              existingAppName: 'Missing ownerId and domain',
+            },
+          },
+        },
+      },
+    });
+
+    expect(error.details.conflictDetails).toBeUndefined();
+  });
+
+  it('should keep conflictDetails undefined when required field types are wrong', async function wrongConflictFieldTypes() {
+    const error = await mutateAndGetError({
+      responseBody: {
+        details: {
+          error: {
+            code: 'DOMAIN_IN_USE_BY_OWN_APP',
+            message: 'Domain already in use',
+            details: {
+              existingAppId: 'app-1',
+              existingSystemId: 123,
+              existingOwnerType: 'airoSubscriptionId',
+              existingOwnerId: 'sub-1',
+              domain: 'taken.example.com',
+            },
+          },
+        },
+      },
+    });
+
+    expect(error.details.conflictDetails).toBeUndefined();
+  });
+
+  it('should keep nested fields undefined when details is not an object', async function nonObjectDetails() {
+    const error = await mutateAndGetError({
+      responseBody: {
+        details: 'simple text details',
+      },
+      status: 400,
+    });
+
+    expect(error.details.nestedCode).toBeUndefined();
+    expect(error.details.conflictDetails).toBeUndefined();
+  });
+
+  it('should keep nested fields undefined when details.error is not an object', async function nonObjectNestedError() {
+    const error = await mutateAndGetError({
+      responseBody: {
+        details: {
+          error: 'not-an-object',
+        },
+      },
+    });
+
+    expect(error.details.nestedCode).toBeUndefined();
+    expect(error.details.conflictDetails).toBeUndefined();
+  });
+
+  it('should include existingAppName when present and omit when absent', async function optionalExistingAppName() {
+    const withNameError = await mutateAndGetError({
+      responseBody: {
+        details: {
+          error: {
+            code: 'DOMAIN_IN_USE_BY_OWN_APP',
+            message: 'Domain already in use',
+            details: {
+              existingAppId: 'app-1',
+              existingSystemId: 'sys-1',
+              existingOwnerType: 'airoSubscriptionId',
+              existingOwnerId: 'sub-1',
+              existingAppName: 'Named app',
+              domain: 'taken.example.com',
+            },
+          },
+        },
+      },
+    });
+
+    expect(withNameError.details.conflictDetails?.existingAppName).toBe('Named app');
+
+    const withoutNameError = await mutateAndGetError({
+      responseBody: {
+        details: {
+          error: {
+            code: 'DOMAIN_IN_USE_BY_OWN_APP',
+            message: 'Domain already in use',
+            details: {
+              existingAppId: 'app-1',
+              existingSystemId: 'sys-1',
+              existingOwnerType: 'airoSubscriptionId',
+              existingOwnerId: 'sub-1',
+              domain: 'taken.example.com',
+            },
+          },
+        },
+      },
+    });
+
+    expect(withoutNameError.details.conflictDetails).toBeDefined();
+    expect(withoutNameError.details.conflictDetails).not.toHaveProperty('existingAppName');
+  });
+
+  it('should preserve code, message, and domainSpecificError behavior with nested parsing', async function preservesExistingErrorBehavior() {
+    const error = await mutateAndGetError({
+      responseBody: {
+        code: 'DOMAIN_MODIFY_FAILED',
+        error: 'Failed to modify domains',
+        details: {
+          error: {
+            code: 'DOMAIN_IN_USE_BY_OWN_APP',
+            message: 'Domain already in use',
+            details: {
+              existingAppId: 'app-1',
+              existingSystemId: 'sys-1',
+              existingOwnerType: 'airoSubscriptionId',
+              existingOwnerId: 'sub-1',
+              domain: 'taken.example.com',
+            },
+          },
+        },
+      },
+      payload: {
+        domainsToCreate: [{ fqdn: ' Taken.Example.com ' }],
+      },
+    });
+
+    expect(error.details.code).toBe('DOMAIN_MODIFY_FAILED');
+    expect(error.details.message).toBe('Domain already in use');
+    expect(error.details.domainSpecificError).toEqual({
+      'taken.example.com': 'Domain already in use',
+    });
+    expect(error.details.nestedCode).toBe('DOMAIN_IN_USE_BY_OWN_APP');
   });
 });

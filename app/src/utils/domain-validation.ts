@@ -13,6 +13,7 @@ export enum DomainApiErrorCode {
   DOMAIN_ERROR_FETCH_FAILED = 'DOMAIN_ERROR_FETCH_FAILED',
   DOMAIN_OPERATION_REQUIRED = 'DOMAIN_OPERATION_REQUIRED',
   INVALID_DOMAIN_FORMAT = 'INVALID_DOMAIN_FORMAT',
+  INVALID_TRANSFER_FROM = 'INVALID_TRANSFER_FROM',
   DOMAIN_MODIFY_FAILED = 'DOMAIN_MODIFY_FAILED',
 }
 
@@ -23,7 +24,12 @@ const DOMAIN_API_ERROR_KEYS: Record<string, string> = {
   [DomainApiErrorCode.DOMAIN_ERROR_FETCH_FAILED]: 'builder_domain_api_error_fetch_failed',
   [DomainApiErrorCode.DOMAIN_OPERATION_REQUIRED]: 'builder_domain_api_error_operation_required',
   [DomainApiErrorCode.INVALID_DOMAIN_FORMAT]: 'builder_domain_api_error_invalid_format',
+  [DomainApiErrorCode.INVALID_TRANSFER_FROM]: 'builder_domain_error_invalid_transfer',
   [DomainApiErrorCode.DOMAIN_MODIFY_FAILED]: 'builder_domain_api_error_modify_failed',
+};
+
+const DOMAIN_API_ERROR_DEFAULT_MESSAGES: Partial<Record<DomainApiErrorCode, string>> = {
+  [DomainApiErrorCode.INVALID_TRANSFER_FROM]: 'Invalid domain transfer request.',
 };
 
 /**
@@ -39,7 +45,10 @@ export function translateDomainApiError(
 ): string {
   if (code) {
     const domainKey = DOMAIN_API_ERROR_KEYS[code];
-    if (domainKey) return t(domainKey);
+    if (domainKey) {
+      const defaultMessage = DOMAIN_API_ERROR_DEFAULT_MESSAGES[code as DomainApiErrorCode];
+      return t(domainKey, undefined, defaultMessage);
+    }
   }
   return translateApiError(code, t, fallback);
 }

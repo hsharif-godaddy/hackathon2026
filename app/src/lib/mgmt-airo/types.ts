@@ -386,6 +386,8 @@ export interface DomainToDelete {
   fqdn: string;
 }
 
+export const AIRO_SUBSCRIPTION_OWNER_TYPE = 'airoSubscriptionId';
+
 /**
  * Modify domains request payload
  */
@@ -394,6 +396,11 @@ export interface AiroModifyDomainsPayload {
   domainsToDelete?: DomainToDelete[];
   createCdn?: boolean;
   isWildcardDomain?: boolean;
+  transferFrom?: {
+    appId: string;
+    systemId: string;
+    subscriptionId: string;
+  };
 }
 
 /**

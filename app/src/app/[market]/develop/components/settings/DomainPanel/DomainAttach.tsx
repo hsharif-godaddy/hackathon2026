@@ -11,14 +11,21 @@ import DomainItem from "@/app/[market]/develop/components/settings/components/Do
 import SettingsSection from "@/app/[market]/develop/components/settings/SettingsSection";
 import { Status } from "@/app/[market]/develop/components/types";
 import { useAppIdFromParams } from "@/app/[market]/develop/components/utils";
+import { DomainConflictModal } from '@/app/[market]/develop/components/widgets/DomainConflictModal';
 import type { AppDetailsResponse } from '@/hooks/useAppDetails';
 import { useAuth } from '@/hooks/useAuth';
 import { useCloseOnReauth } from '@/hooks/useCloseOnReauth';
 import { useCustomerDomainAttach } from '@/hooks/useCustomerDomainAttach';
 import { useDomainDnsOwnership } from '@/hooks/useDomainDnsOwnership';
 import { useDomainsQuery } from '@/hooks/useDomainsQuery';
+import { useDomainTransfer } from '@/hooks/useDomainTransfer';
 import { useDomainValidationQuery } from '@/hooks/useDomainValidationQuery';
-import { DomainMutationError, useModifyDomains } from '@/hooks/useModifyDomains';
+import {
+  type DomainMutationDetails,
+  DomainMutationError,
+  useModifyDomains
+} from '@/hooks/useModifyDomains';
+import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import { DomainStatus as ControlPlaneDomainStatus } from '@/lib/control-plane/types';
 import { shipAnalyticsLog } from '@/lib/logging';
@@ -64,10 +71,12 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
   const t = useTranslations();
   const currentAppId = useAppIdFromParams()
   const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const { data: isDomainTransferEnabled } = useSwitchboard('appbuilder-domain-transfer');
   const [customDomain, setCustomDomain] = useState(null);
   const [customDomainError, setCustomDomainError] = useState<string | null>(null);
   const [debouncedDomain, setDebouncedDomain] = useState('');
   const [showAddConfirmation, setShowAddConfirmation] = useState(false);
+  const [conflictData, setConflictData] = useState<DomainMutationDetails['conflictDetails'] | null>(null);
   useCloseOnReauth(showAddConfirmation, () => setShowAddConfirmation(false));
   const validationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -94,6 +103,16 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
   );
 
   const modifyDomainsMutation = useModifyDomains();
+  const { isTransferring, transferError, handleTransferDomain, clearTransferError } = useDomainTransfer({
+    modifyDomainsMutation,
+    conflictData,
+    setConflictData,
+    logger,
+    shipAnalyticsLog,
+    appId: currentAppId,
+    analyticsPrefix: 'domain.custom',
+    unsupportedOwnerTypeErrorMessage: t('builder_custom_domain_error_add_failed'),
+  });
 
   const {
     data: domains = [],
@@ -258,10 +277,22 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
         domainName
       });
     } catch (error) {
+      if (
+        isDomainTransferEnabled &&
+        error instanceof DomainMutationError &&
+        error.details.nestedCode === 'DOMAIN_IN_USE_BY_OWN_APP' &&
+        error.details.conflictDetails
+      ) {
+        setConflictData(error.details.conflictDetails);
+        modifyDomainsMutation.reset();
+        return;
+      }
+
       logger.error('domain-attach.connect.failure', {
         message: 'Failed to connect domain',
         appId: currentAppId,
         domainName,
+        nestedCode: error instanceof DomainMutationError ? error.details.nestedCode : undefined,
         error: error instanceof Error ? error.message : String(error),
       });
       shipAnalyticsLog('domain.custom.connect.failed', {
@@ -653,6 +684,17 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
           </Box>
         </Modal>
       )}
+
+      <DomainConflictModal
+        isOpen={!!conflictData}
+        onClose={() => { setConflictData(null); clearTransferError(); modifyDomainsMutation.reset(); }}
+        onConfirm={handleTransferDomain}
+        isTransferring={isTransferring}
+        domain={conflictData?.domain ?? ''}
+        existingAppName={conflictData?.existingAppName}
+        existingAppId={conflictData?.existingAppId ?? ''}
+        error={transferError}
+      />
     </SettingsSection>
   );
 }

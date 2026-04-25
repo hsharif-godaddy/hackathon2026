@@ -15,14 +15,20 @@ import DomainDNS from '@/app/[market]/develop/components/settings/components/Dom
 import DomainItem from '@/app/[market]/develop/components/settings/components/DomainItem';
 import ExternalDomainInput from '@/app/[market]/develop/components/settings/components/ExternalDomainInput';
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils';
+import { DomainConflictModal } from '@/app/[market]/develop/components/widgets/DomainConflictModal';
 import DomainPurchaseWidget from '@/app/[market]/develop/components/widgets/DomainPurchaseWidget';
 import { useAuth } from '@/hooks/useAuth';
 import { useCustomerDomainAttach } from '@/hooks/useCustomerDomainAttach';
 import { useDomainDnsOwnership } from '@/hooks/useDomainDnsOwnership';
 import { useDomainPolling } from '@/hooks/useDomainPolling';
 import { useDomainsQuery } from '@/hooks/useDomainsQuery';
+import { useDomainTransfer } from '@/hooks/useDomainTransfer';
 import { useDomainValidationQuery } from '@/hooks/useDomainValidationQuery';
-import { DomainMutationError, useModifyDomains } from '@/hooks/useModifyDomains';
+import {
+  type DomainMutationDetails,
+  DomainMutationError,
+  useModifyDomains
+} from '@/hooks/useModifyDomains';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import { shipAnalyticsLog } from '@/lib/logging';
@@ -71,6 +77,7 @@ export default function DomainAttachWidget({
   // Feature flag check
   const { data: isDomainAttachEnabled, isLoading: isLoadingFlag } = useSwitchboard('appbuilder-domain-attach');
   const { data: isDomainPurchaseEnabled } = useSwitchboard('appbuilder-domain-purchase');
+  const { data: isDomainTransferEnabled } = useSwitchboard('appbuilder-domain-transfer');
 
   // Custom domain input state
   const [customDomain, setCustomDomain] = useState<string | null>(null);
@@ -89,6 +96,7 @@ export default function DomainAttachWidget({
   // Confirmation state for attaching owned domain (Case 1)
   const [showOwnedDomainConfirmation, setShowOwnedDomainConfirmation] = useState(false);
   const [matchedOwnedDomain, setMatchedOwnedDomain] = useState<string | null>(null);
+  const [conflictData, setConflictData] = useState<DomainMutationDetails['conflictDetails'] | null>(null);
 
   const site = useSiteStore((state) => appId ? state.getSite(appId) : null);
 
@@ -109,6 +117,22 @@ export default function DomainAttachWidget({
   )
 
   const modifyDomainsMutation = useModifyDomains();
+  const { isTransferring, transferError, handleTransferDomain, clearTransferError } = useDomainTransfer({
+    modifyDomainsMutation,
+    conflictData,
+    setConflictData,
+    logger,
+    shipAnalyticsLog,
+    appId,
+    sendUserMessage,
+    successMessage: t(
+      'builder_domain_transfer_success_message',
+      { domain: conflictData?.domain ?? '' },
+      'Transferred {domain} to this app.'
+    ),
+    analyticsPrefix: 'domain.attach.widget',
+    unsupportedOwnerTypeErrorMessage: t('builder_custom_domain_error_add_failed'),
+  });
 
   const {
     data: domains = [],
@@ -353,10 +377,22 @@ export default function DomainAttachWidget({
         }
       }
     } catch (error) {
+      if (
+        isDomainTransferEnabled &&
+        error instanceof DomainMutationError &&
+        error.details.nestedCode === 'DOMAIN_IN_USE_BY_OWN_APP' &&
+        error.details.conflictDetails
+      ) {
+        setConflictData(error.details.conflictDetails);
+        modifyDomainsMutation.reset();
+        return;
+      }
+
       logger.error('domain-attach-widget.connect.failure', {
         message: 'Failed to connect domain',
         domainName,
         isGoDaddyDomain,
+        nestedCode: error instanceof DomainMutationError ? error.details.nestedCode : undefined,
         error: error instanceof Error ? error.message : String(error),
       });
       shipAnalyticsLog('domain.attach.widget.connect.failed', {
@@ -850,6 +886,17 @@ export default function DomainAttachWidget({
           </Button>
         </Box>
       )}
+
+      <DomainConflictModal
+        isOpen={!!conflictData}
+        onClose={() => { setConflictData(null); clearTransferError(); modifyDomainsMutation.reset(); }}
+        onConfirm={handleTransferDomain}
+        isTransferring={isTransferring}
+        domain={conflictData?.domain ?? ''}
+        existingAppName={conflictData?.existingAppName}
+        existingAppId={conflictData?.existingAppId ?? ''}
+        error={transferError}
+      />
     </Box>
   )
 }

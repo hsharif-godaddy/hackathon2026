@@ -514,7 +514,7 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
         id: `secret-copy-failed-${secret.name}`,
         title: t('builder_status_failed'),
         children: t(
-          'builder_settings_secrets_copy_failed_named',
+          ('builder_settings_secrets_copy_failed_named' as string),
           { name: secret.name },
           'Could not copy {name} to the clipboard. Please try again.'
         ),
@@ -740,8 +740,8 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
                                 icon={visuallyShowingPlaintext ? <HideIcon /> : <ShowIcon />}
                                 label={
                                   visuallyShowingPlaintext
-                                    ? t('builder_settings_secrets_hide_value', undefined, 'Hide value')
-                                    : t('builder_settings_secrets_show_value', undefined, 'Show value')
+                                    ? t(('builder_settings_secrets_hide_value' as string), undefined, 'Hide value')
+                                    : t(('builder_settings_secrets_show_value' as string), undefined, 'Show value')
                                 }
                                 showLabelWhenActive={false}
                                 showLabelAlways={false}
@@ -806,7 +806,7 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
                               closeOnSelect
                             >
                               <MenuButton
-                                aria-label={t('builder_settings_secrets_row_actions', undefined, 'Secret actions')}
+                                aria-label={t(('builder_settings_secrets_row_actions' as string), undefined, 'Secret actions')}
                                 design="control"
                                 size="sm"
                                 icon={<MenuIcon />}

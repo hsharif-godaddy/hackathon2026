@@ -73,7 +73,21 @@ export const POST = withCustomerAuth(async (
 
     // Parse request body
     const body = await request.json();
-    const { domainsToCreate = [], domainsToDelete = [], createCdn = false } = body;
+    const { domainsToCreate = [], domainsToDelete = [], createCdn = false, transferFrom } = body;
+    if (transferFrom !== undefined) {
+      if (
+        typeof transferFrom !== 'object' || transferFrom === null ||
+        typeof transferFrom.appId !== 'string' ||
+        transferFrom.appId.trim().length === 0 ||
+        typeof transferFrom.systemId !== 'string' ||
+        transferFrom.systemId.trim().length === 0 ||
+        typeof transferFrom.subscriptionId !== 'string'
+        || transferFrom.subscriptionId.trim().length === 0
+      ) {
+        logger.warn('sites.domains.modify.invalid-transfer-from', { siteId });
+        return NextResponse.json({ code: DomainApiErrorCode.INVALID_TRANSFER_FROM, error: 'Invalid transferFrom payload' }, { status: 400 });
+      }
+    }
 
     // Validate at least one operation is requested
     if (domainsToCreate.length === 0 && domainsToDelete.length === 0) {
@@ -125,6 +139,7 @@ export const POST = withCustomerAuth(async (
         domainsToDelete,
         createCdn,
         isWildcardDomain: true,
+        transferFrom,
       },
     );
 

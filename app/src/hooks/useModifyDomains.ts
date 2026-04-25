@@ -27,6 +27,11 @@ export interface ModifyDomainsPayload {
   domainsToDelete?: DomainToDelete[];
   createCdn?: boolean;
   isWildcardDomain?: boolean;
+  transferFrom?: {
+    appId: string;
+    systemId: string;
+    subscriptionId: string;
+  };
 }
 
 /**
@@ -42,6 +47,15 @@ export interface DomainMutationDetails {
   code?: string;
   message: string;
   domainSpecificError?: Record<string, string>;
+  nestedCode?: string;
+  conflictDetails?: {
+    existingAppId: string;
+    existingSystemId: string;
+    existingOwnerType: string;
+    existingOwnerId: string;
+    existingAppName?: string;
+    domain: string;
+  };
 }
 
 /**
@@ -99,6 +113,36 @@ export function useModifyDomains() {
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         const details = errorData.details;
+        const nestedError =
+          typeof details === 'object' && details !== null
+            ? (typeof details.error === 'object' && details.error !== null
+                ? details.error
+                : details)
+            : null;
+        const nestedCode = typeof nestedError?.code === 'string' ? nestedError.code : undefined;
+        const rawConflictDetails =
+          nestedCode === 'DOMAIN_IN_USE_BY_OWN_APP' &&
+          typeof nestedError?.details === 'object' &&
+          nestedError.details !== null
+            ? nestedError.details
+            : null;
+        const conflictDetails =
+          rawConflictDetails &&
+          typeof rawConflictDetails.existingAppId === 'string' &&
+          typeof rawConflictDetails.existingSystemId === 'string' &&
+          typeof rawConflictDetails.existingOwnerType === 'string' &&
+          typeof rawConflictDetails.existingOwnerId === 'string' &&
+          typeof rawConflictDetails.domain === 'string'
+            ? {
+              existingAppId: rawConflictDetails.existingAppId,
+              existingSystemId: rawConflictDetails.existingSystemId,
+              existingOwnerType: rawConflictDetails.existingOwnerType,
+              existingOwnerId: rawConflictDetails.existingOwnerId,
+              ...(typeof rawConflictDetails.existingAppName === 'string'
+                && { existingAppName: rawConflictDetails.existingAppName }),
+              domain: rawConflictDetails.domain,
+            }
+            : undefined;
         const errorMessage =
           (typeof details === 'object' ? (details?.message ?? details?.error?.message) : details) ||
           errorData.error ||
@@ -121,6 +165,8 @@ export function useModifyDomains() {
         throw new DomainMutationError({
           code: errorData.code,
           message: errorMessage,
+          ...(nestedCode && { nestedCode }),
+          ...(conflictDetails && { conflictDetails }),
           ...(Object.keys(domainSpecificError).length > 0 && { domainSpecificError }),
         });
       }

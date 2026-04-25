@@ -30,6 +30,7 @@ const LOCAL_FEATURE_OVERRIDES: Record<string, boolean> = {
   'appbuilder-social-video-generation': true,
   'app-builder-app-on-demand-reload': true,
   'appbuilder-domain-purchase': true,
+  'appbuilder-domain-transfer': true,
   'appbuilder-transfer-ownership': true,
   'appbuilder-analytics': true,
   'appbuilder-settings-analytics': true,
