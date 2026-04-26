@@ -12,6 +12,31 @@ import (
 	"github.com/airo-ai-builder/dev-runner/internal/process"
 )
 
+// overlayModal composes a modal string on top of the base content using a
+// lipgloss Compositor, centered horizontally and vertically, so the background
+// view remains visible around the modal instead of being blanked out.
+//
+// Canvas.Compose(layer) does NOT honor a layer's X/Y offsets — it only draws
+// at (0,0). Compositor.flatten() resolves absolute positions and z-order, so
+// we go through it to get the modal placed where we want it.
+func (m Model) overlayModal(base, modal string) string {
+	if m.width <= 0 || m.height <= 0 {
+		return modal
+	}
+	modalW := lipgloss.Width(modal)
+	modalH := lipgloss.Height(modal)
+	x := max((m.width-modalW)/2, 0)
+	y := max((m.height-modalH)/2, 0)
+
+	compositor := lipgloss.NewCompositor(
+		lipgloss.NewLayer(base),
+		lipgloss.NewLayer(modal).X(x).Y(y).Z(1),
+	)
+	canvas := lipgloss.NewCanvas(m.width, m.height)
+	canvas.Compose(compositor)
+	return canvas.Render()
+}
+
 // View renders the full TUI.
 func (m Model) View() tea.View {
 	var content string
@@ -43,16 +68,17 @@ func (m Model) View() tea.View {
 			}
 		}
 
-		base := lipgloss.JoinVertical(lipgloss.Left, sections...)
+		base := truncateHeight(lipgloss.JoinVertical(lipgloss.Left, sections...), m.height)
 
-		if m.confirmQuit {
-			content = lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, m.renderQuitConfirm())
-		} else if m.devSettingsOpen {
-			content = lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, m.renderDevSettings())
-		} else if m.settingsOpen {
-			content = lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, m.renderSettings())
-		} else {
-			content = truncateHeight(base, m.height)
+		switch {
+		case m.quitConfirmForm != nil:
+			content = m.overlayModal(base, m.renderQuitConfirm())
+		case m.devSettingsForm != nil:
+			content = m.overlayModal(base, m.renderDevSettings())
+		case m.settingsForm != nil:
+			content = m.overlayModal(base, m.renderSettings())
+		default:
+			content = base
 		}
 	}
 
@@ -293,11 +319,10 @@ func (m Model) renderStatusRight() string {
 }
 
 func (m Model) renderQuitConfirm() string {
-	title := titleStyle.Render("Quit?")
-	body := "All processes will be stopped."
-	hints := m.help.View(m.confirmQuitKeys)
-	content := title + "\n\n" + body + "\n\n" + hints
-	return settingsBoxStyle.Render(content)
+	if m.quitConfirmForm == nil {
+		return ""
+	}
+	return settingsBoxStyle.Render(m.quitConfirmForm.View())
 }
 
 func statusColorForState(state process.State) color.Color {

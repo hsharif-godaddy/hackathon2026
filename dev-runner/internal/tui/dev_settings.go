@@ -5,11 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
-	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/huh/v2"
 )
 
 type subscriptionPreset struct {
@@ -27,66 +26,86 @@ var subscriptionPresets = []subscriptionPreset{
 	{"cancelled", "Cancelled", map[string]any{"isTrial": false, "plan": "starter", "status": "cancelled", "reason": "", "tokenBudgetId": "airo-plus"}},
 }
 
-func (m Model) renderDevSettings() string {
-	title := titleStyle.Render("Dev Settings")
-
-	section := devSettingsSectionTitle.Render("Subscription Plan")
-
-	var items []string
+func presetByName(name string) *subscriptionPreset {
 	for i, p := range subscriptionPresets {
-		active := p.Name == m.devSettingsPreset
-		focused := i == m.devSettingsCursor
-
-		var radio string
-		if active {
-			radio = devSettingsRadioActive.Render("●")
-		} else {
-			radio = devSettingsRadioInactive.Render("○")
+		if p.Name == name {
+			return &subscriptionPresets[i]
 		}
+	}
+	return nil
+}
 
-		var label string
-		if focused {
-			label = devSettingsCursorStyle.Render(p.Label)
-		} else if active {
-			label = devSettingsRadioActive.Render(p.Label)
-		} else {
-			label = devSettingsRadioInactive.Render(p.Label)
-		}
-
-		items = append(items, fmt.Sprintf("  %s %s", radio, label))
+// openDevSettings constructs a huh.Select form pre-pointed at the current
+// preset and stores it on the model.
+func (m *Model) openDevSettings() tea.Cmd {
+	value := m.devSettingsPreset
+	if value == "" {
+		value = subscriptionPresets[0].Name
 	}
 
-	hints := m.help.View(m.devSettingsKeys)
+	opts := make([]huh.Option[string], len(subscriptionPresets))
+	for i, p := range subscriptionPresets {
+		opts[i] = huh.NewOption(p.Label, p.Name)
+	}
 
-	content := title + "\n\n" + section + "\n\n" + strings.Join(items, "\n") + "\n\n" + hints
+	form := huh.NewForm(
+		huh.NewGroup(
+			huh.NewSelect[string]().
+				Title("Dev Settings - Subscription Plan").
+				Description("Select a preset to apply to the local control plane.").
+				Options(opts...).
+				Value(&value),
+		),
+	).WithShowHelp(true)
+
+	m.devSettingsForm = m.applyModalForm(form)
+	m.devSettingsValue = &value
+	return m.devSettingsForm.Init()
+}
+
+func (m Model) renderDevSettings() string {
+	if m.devSettingsForm == nil {
+		return ""
+	}
+	content := m.devSettingsForm.View()
 	if m.devSettingsError != "" {
 		content += "\n\n" + errorLineStyle.Render(" "+m.devSettingsError+" ")
 	}
 	return settingsBoxStyle.Render(content)
 }
 
-func (m *Model) handleDevSettingsKey(msg tea.KeyPressMsg) tea.Cmd {
-	switch {
-	case key.Matches(msg, m.devSettingsKeys.Close):
-		m.devSettingsOpen = false
+func (m *Model) updateDevSettings(msg tea.Msg) tea.Cmd {
+	if m.devSettingsForm == nil {
 		return nil
-	case key.Matches(msg, m.devSettingsKeys.Down):
-		m.devSettingsCursor = (m.devSettingsCursor + 1) % len(subscriptionPresets)
-	case key.Matches(msg, m.devSettingsKeys.Up):
-		m.devSettingsCursor--
-		if m.devSettingsCursor < 0 {
-			m.devSettingsCursor = len(subscriptionPresets) - 1
-		}
-	case key.Matches(msg, m.devSettingsKeys.Enter):
-		preset := subscriptionPresets[m.devSettingsCursor]
-		if preset.Name == m.devSettingsPreset {
+	}
+	var cmd tea.Cmd
+	m.devSettingsForm, cmd = stepForm(m.devSettingsForm, msg)
+
+	switch m.devSettingsForm.State {
+	case huh.StateCompleted:
+		if m.devSettingsValue == nil {
+			m.closeDevSettings()
 			return nil
 		}
-		m.devSettingsOpen = false
-		// PATCH /api/airo/v1/subscriptions/local-sub-001 (must match store.DefaultSubscriptionID)
-		return applyPresetCmd(m.controlPlaneBaseURL, preset)
+		selected := *m.devSettingsValue
+		m.closeDevSettings()
+		if selected == m.devSettingsPreset {
+			return nil
+		}
+		if p := presetByName(selected); p != nil {
+			return applyPresetCmd(m.controlPlaneBaseURL, *p)
+		}
+		return nil
+	case huh.StateAborted:
+		m.closeDevSettings()
+		return nil
 	}
-	return nil
+	return cmd
+}
+
+func (m *Model) closeDevSettings() {
+	m.devSettingsForm = nil
+	m.devSettingsValue = nil
 }
 
 func applyPresetCmd(baseURL string, preset subscriptionPreset) tea.Cmd {

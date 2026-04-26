@@ -2,9 +2,9 @@ package tui
 
 import (
 	"fmt"
-	"strings"
 
-	"charm.land/lipgloss/v2"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/huh/v2"
 
 	"github.com/airo-ai-builder/dev-runner/internal/config"
 )
@@ -46,21 +46,61 @@ func buildSettingsItems(cfg *config.Config) []SettingsItem {
 	return items
 }
 
-func (m Model) renderSettings() string {
-	title := titleStyle.Render("⚙  Settings")
-
-	var items []string
-	for i, item := range m.settingsItems {
-		if i == m.settingsCursor {
-			items = append(items, settingsSelectedStyle.Render("> "+item.Label))
-		} else {
-			items = append(items, settingsItemStyle.Render("  "+item.Label))
-		}
+// openSettings builds a huh.Select over the settings items, bound by index.
+func (m *Model) openSettings() tea.Cmd {
+	if len(m.settingsItems) == 0 {
+		return nil
 	}
+	var selected int
+	opts := make([]huh.Option[int], len(m.settingsItems))
+	for i, item := range m.settingsItems {
+		opts[i] = huh.NewOption(item.Label, i)
+	}
+	form := huh.NewForm(
+		huh.NewGroup(
+			huh.NewSelect[int]().
+				Title("⚙  Settings").
+				Options(opts...).
+				Value(&selected),
+		),
+	).WithShowHelp(true)
 
-	content := title + "\n\n" + strings.Join(items, "\n") + "\n\n" +
-		m.help.View(m.settingsKeys)
+	m.settingsForm = m.applyModalForm(form)
+	m.settingsValue = &selected
+	return m.settingsForm.Init()
+}
 
-	box := settingsBoxStyle.Render(content)
-	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
+func (m *Model) updateSettings(msg tea.Msg) tea.Cmd {
+	if m.settingsForm == nil {
+		return nil
+	}
+	var cmd tea.Cmd
+	m.settingsForm, cmd = stepForm(m.settingsForm, msg)
+
+	switch m.settingsForm.State {
+	case huh.StateCompleted:
+		if m.settingsValue == nil {
+			m.closeSettings()
+			return nil
+		}
+		idx := *m.settingsValue
+		m.closeSettings()
+		return m.executeSettingsAction(idx)
+	case huh.StateAborted:
+		m.closeSettings()
+		return nil
+	}
+	return cmd
+}
+
+func (m *Model) closeSettings() {
+	m.settingsForm = nil
+	m.settingsValue = nil
+}
+
+func (m Model) renderSettings() string {
+	if m.settingsForm == nil {
+		return ""
+	}
+	return settingsBoxStyle.Render(m.settingsForm.View())
 }

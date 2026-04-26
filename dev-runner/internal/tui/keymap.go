@@ -80,154 +80,30 @@ func (k SearchKeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{k.ShortHelp()}
 }
 
-// SettingsKeyMap defines keybindings for the settings overlay.
-type SettingsKeyMap struct {
-	Close key.Binding
-	Down  key.Binding
-	Up    key.Binding
-	Enter key.Binding
-}
-
-func NewSettingsKeyMap() SettingsKeyMap {
-	return SettingsKeyMap{
-		Close: key.NewBinding(key.WithKeys("esc", "s", "?"), key.WithHelp("Esc", "close")),
-		Down:  key.NewBinding(key.WithKeys("j", "down"), key.WithHelp("j/k", "navigate")),
-		Up:    key.NewBinding(key.WithKeys("k", "up")),
-		Enter: key.NewBinding(key.WithKeys("enter"), key.WithHelp("Enter", "select")),
-	}
-}
-
-func (k SettingsKeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Down, k.Enter, k.Close}
-}
-
-func (k SettingsKeyMap) FullHelp() [][]key.Binding {
-	return [][]key.Binding{k.ShortHelp()}
-}
-
-// DevSettingsKeyMap defines keybindings for the dev settings overlay.
-type DevSettingsKeyMap struct {
-	Close key.Binding
-	Down  key.Binding
-	Up    key.Binding
-	Enter key.Binding
-}
-
-func NewDevSettingsKeyMap() DevSettingsKeyMap {
-	return DevSettingsKeyMap{
-		Close: key.NewBinding(key.WithKeys("esc", "d"), key.WithHelp("Esc", "close")),
-		Down:  key.NewBinding(key.WithKeys("j", "down"), key.WithHelp("j/k", "navigate")),
-		Up:    key.NewBinding(key.WithKeys("k", "up")),
-		Enter: key.NewBinding(key.WithKeys("enter"), key.WithHelp("Enter", "apply")),
-	}
-}
-
-func (k DevSettingsKeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Down, k.Enter, k.Close}
-}
-
-func (k DevSettingsKeyMap) FullHelp() [][]key.Binding {
-	return [][]key.Binding{k.ShortHelp()}
-}
-
-// ConfirmQuitKeyMap defines keybindings for the quit confirmation prompt.
-type ConfirmQuitKeyMap struct {
-	Yes    key.Binding
-	Cancel key.Binding
-}
-
-func NewConfirmQuitKeyMap() ConfirmQuitKeyMap {
-	return ConfirmQuitKeyMap{
-		Yes:    key.NewBinding(key.WithKeys("y", "enter"), key.WithHelp("y/Enter", "quit")),
-		Cancel: key.NewBinding(key.WithHelp("any", "cancel")),
-	}
-}
-
-func (k ConfirmQuitKeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Yes, k.Cancel}
-}
-
-func (k ConfirmQuitKeyMap) FullHelp() [][]key.Binding {
-	return [][]key.Binding{k.ShortHelp()}
-}
 
 // PreflightDashboardKeyMap defines keybindings for the preflight results screen.
 type PreflightDashboardKeyMap struct {
-	Fix  key.Binding
-	Skip key.Binding
-	Quit key.Binding
+	Fix    key.Binding
+	Skip   key.Binding
+	Expand key.Binding
+	Quit   key.Binding
 }
 
 func NewPreflightDashboardKeyMap() PreflightDashboardKeyMap {
 	return PreflightDashboardKeyMap{
-		Fix:  key.NewBinding(key.WithKeys("enter"), key.WithHelp("Enter", "fix")),
-		Skip: key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "skip")),
-		Quit: key.NewBinding(key.WithKeys("q"), key.WithHelp("q", "quit")),
+		Fix:    key.NewBinding(key.WithKeys("enter"), key.WithHelp("Enter", "fix")),
+		Skip:   key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "skip")),
+		Expand: key.NewBinding(key.WithKeys("v"), key.WithHelp("v", "toggle passing")),
+		Quit:   key.NewBinding(key.WithKeys("q"), key.WithHelp("q", "quit")),
 	}
 }
 
 func (k PreflightDashboardKeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Fix, k.Skip, k.Quit}
+	return []key.Binding{k.Fix, k.Skip, k.Expand, k.Quit}
 }
 
 func (k PreflightDashboardKeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{k.ShortHelp()}
 }
 
-// PreflightSelectFixesKeyMap defines keybindings for the fix selector.
-type PreflightSelectFixesKeyMap struct {
-	Toggle key.Binding
-	Down   key.Binding
-	Up     key.Binding
-	All    key.Binding
-	None   key.Binding
-	Apply  key.Binding
-	Cancel key.Binding
-	Quit   key.Binding
-}
 
-func NewPreflightSelectFixesKeyMap() PreflightSelectFixesKeyMap {
-	return PreflightSelectFixesKeyMap{
-		Toggle: key.NewBinding(key.WithKeys("space"), key.WithHelp("Space", "toggle")),
-		Down:   key.NewBinding(key.WithKeys("j", "down"), key.WithHelp("j/k", "navigate")),
-		Up:     key.NewBinding(key.WithKeys("k", "up")),
-		All:    key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "all")),
-		None:   key.NewBinding(key.WithKeys("n"), key.WithHelp("n", "none")),
-		Apply:  key.NewBinding(key.WithKeys("enter"), key.WithHelp("Enter", "apply")),
-		Cancel: key.NewBinding(key.WithKeys("esc"), key.WithHelp("Esc", "back")),
-		Quit:   key.NewBinding(key.WithKeys("q"), key.WithHelp("q", "quit")),
-	}
-}
-
-func (k PreflightSelectFixesKeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Toggle, k.Down, k.All, k.None, k.Apply, k.Cancel, k.Quit}
-}
-
-func (k PreflightSelectFixesKeyMap) FullHelp() [][]key.Binding {
-	return [][]key.Binding{k.ShortHelp()}
-}
-
-// EnvFormKeyMap defines keybindings for the inline env form.
-type EnvFormKeyMap struct {
-	NextField key.Binding
-	PrevField key.Binding
-	Submit    key.Binding
-	Cancel    key.Binding
-}
-
-func NewEnvFormKeyMap() EnvFormKeyMap {
-	return EnvFormKeyMap{
-		NextField: key.NewBinding(key.WithKeys("tab", "down"), key.WithHelp("Tab/dn", "next")),
-		PrevField: key.NewBinding(key.WithKeys("shift+tab", "up"), key.WithHelp("S-Tab/up", "prev")),
-		Submit:    key.NewBinding(key.WithKeys("enter"), key.WithHelp("Enter", "submit")),
-		Cancel:    key.NewBinding(key.WithKeys("esc"), key.WithHelp("Esc", "cancel")),
-	}
-}
-
-func (k EnvFormKeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.NextField, k.PrevField, k.Submit, k.Cancel}
-}
-
-func (k EnvFormKeyMap) FullHelp() [][]key.Binding {
-	return [][]key.Binding{k.ShortHelp()}
-}

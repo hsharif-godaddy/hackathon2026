@@ -31,7 +31,24 @@ func (f *EnvFixer) FormFields() []preflight.FormField {
 		return nil
 	}
 	defaults := DefaultEnvValues()
+	// Order matters: the TUI form renders non-conditional fields in group 1
+	// and conditional (apiKey/baseURL) fields in group 2. gocodeAuth is placed
+	// last in group 1 so that picking "api-key" is immediately followed by the
+	// credential prompts on the next wizard page.
 	return []preflight.FormField{
+		{
+			Key:         "authType",
+			Label:       "App Auth Type",
+			Description: "User authentication to the app (unrelated to GoCode auth)",
+			Default:     defaults.AuthType,
+			Options:     []string{"jwt", "mock"},
+		},
+		{
+			Key:         "awsProfile",
+			Label:       "AWS Profile",
+			Description: "AWS SSO profile for S2S auth (GoCode, logo, budget, knowledge services)",
+			Default:     defaults.AWSProfile,
+		},
 		{
 			Key:         "gocodeAuth",
 			Label:       "GoCode Auth",
@@ -53,19 +70,6 @@ func (f *EnvFixer) FormFields() []preflight.FormField {
 			Label:       "GoCode Base URL",
 			Description: "Only used when GoCode Auth = api-key. Ignored in s2s mode (endpoint derives from NODE_ENV).",
 			Default:     defaults.BaseURL,
-		},
-		{
-			Key:         "authType",
-			Label:       "App Auth Type",
-			Description: "User authentication to the app (unrelated to GoCode auth)",
-			Default:     defaults.AuthType,
-			Options:     []string{"jwt", "mock"},
-		},
-		{
-			Key:         "awsProfile",
-			Label:       "AWS Profile",
-			Description: "AWS SSO profile for S2S auth (GoCode, logo, budget, knowledge services)",
-			Default:     defaults.AWSProfile,
 		},
 	}
 }

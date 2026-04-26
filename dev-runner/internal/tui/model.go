@@ -8,10 +8,12 @@ import (
 	"time"
 
 	"charm.land/bubbles/v2/help"
+	"charm.land/bubbles/v2/progress"
 	"charm.land/bubbles/v2/spinner"
 	"charm.land/bubbles/v2/textinput"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/huh/v2"
 	"charm.land/lipgloss/v2"
 
 	"github.com/airo-ai-builder/dev-runner/internal/config"
@@ -111,12 +113,16 @@ type Model struct {
 	ready          bool
 	quitting       bool
 
-	settingsOpen   bool
-	settingsCursor int
-	settingsItems  []SettingsItem
+	settingsItems []SettingsItem
+	settingsForm  *huh.Form
+	settingsValue *int // selected index into settingsItems
 
-	devSettingsOpen  bool
 	devSettingsError string
+	devSettingsForm  *huh.Form
+	devSettingsValue *string // selected preset name
+
+	quitConfirmForm  *huh.Form
+	quitConfirmValue *bool
 
 	searchOpen  bool
 	searchInput textinput.Model
@@ -129,21 +135,16 @@ type Model struct {
 	hookViewport   viewport.Model
 	hookAutoFollow bool
 
-	help    help.Model
-	spinner spinner.Model
+	help        help.Model
+	spinner     spinner.Model
+	fixProgress progress.Model
 
-	keys            RunningKeyMap
-	searchKeys      SearchKeyMap
-	settingsKeys    SettingsKeyMap
-	devSettingsKeys DevSettingsKeyMap
-	confirmQuitKeys ConfirmQuitKeyMap
-	preflightKeys   PreflightDashboardKeyMap
-	fixSelectorKeys PreflightSelectFixesKeyMap
-	envFormKeys     EnvFormKeyMap
+	keys          RunningKeyMap
+	searchKeys    SearchKeyMap
+	preflightKeys PreflightDashboardKeyMap
 
 	mouseEnabled     bool
 	clickHint        bool
-	confirmQuit      bool
 	bellAllowed      bool
 	healthGeneration []int // per-process generation counter to discard stale health check results
 
@@ -154,21 +155,21 @@ type Model struct {
 	preflightFixQueue   []preflight.CheckWithFixer
 	preflightFixIndex   int
 	preflightFixStatus  string // "Fixing: <name>..."
-	preflightViewport   viewport.Model
-	preflightAutoFollow bool
+	preflightViewport       viewport.Model
+	preflightAutoFollow     bool
+	preflightExpandPassing  bool // 'v' on the dashboard expands passing checks
 
-	// Inline fix selector state
-	fixSelectorItems    []preflight.CheckWithFixer
-	fixSelectorCursor   int
-	fixSelectorSelected []bool
+	// Inline fix selector state (huh-based)
+	fixSelectorItems []preflight.CheckWithFixer
+	fixSelectorForm  *huh.Form
+	fixSelectorValue *[]int // indices into fixSelectorItems
 
-	// Inline env form state
-	envFormFields []envFormField
-	envFormCursor int
-	formFixer     preflight.FormFixer // the fixer waiting for form values
+	// Inline env form state (huh-based)
+	envForm        *huh.Form
+	envFormBuilder *envFormBuilder
+	formFixer      preflight.FormFixer // the fixer waiting for form values
 
 	// Dev settings tab state
-	devSettingsCursor   int
 	devSettingsPreset   string // current preset name
 	controlPlaneBaseURL string
 }
@@ -196,6 +197,8 @@ func NewModel(cfg *config.Config, projectRoot string) Model {
 	s.Spinner = spinner.Dot
 	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
 
+	prog := progress.New(progress.WithDefaultBlend(), progress.WithoutPercentage())
+
 	return Model{
 		config:              cfg,
 		projectRoot:         projectRoot,
@@ -210,14 +213,10 @@ func NewModel(cfg *config.Config, projectRoot string) Model {
 		hookViewport:        newSoftWrapViewport(80, 24),
 		help:                h,
 		spinner:             s,
+		fixProgress:         prog,
 		keys:                NewRunningKeyMap(),
 		searchKeys:          NewSearchKeyMap(),
-		settingsKeys:        NewSettingsKeyMap(),
-		devSettingsKeys:     NewDevSettingsKeyMap(),
-		confirmQuitKeys:     NewConfirmQuitKeyMap(),
 		preflightKeys:       NewPreflightDashboardKeyMap(),
-		fixSelectorKeys:     NewPreflightSelectFixesKeyMap(),
-		envFormKeys:         NewEnvFormKeyMap(),
 		searchInput:         ti,
 		settingsItems:       items,
 		phase:               PhasePreflightChecking,

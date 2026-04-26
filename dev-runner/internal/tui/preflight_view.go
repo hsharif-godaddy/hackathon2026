@@ -71,48 +71,18 @@ func (m Model) renderPreflightDashboard() string {
 	return b.String()
 }
 
-func (m Model) renderPreflightSelectFixes() string {
-	var b strings.Builder
-
-	// Show full check results at top for context
-	b.WriteString(preflightHeaderStyle.Render("Preflight Checks"))
-	b.WriteString("\n")
-	b.WriteString(m.renderCheckResults())
-
-	// Separator + fix selector
-	b.WriteString("\n")
-	b.WriteString(preflightHeaderStyle.Render("Select items to fix"))
-	b.WriteString("\n")
-
-	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
-	cursorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("15")).Background(lipgloss.Color("62")).Bold(true)
-	checkOn := preflightPassStyle.Render("✓")
-	checkOff := dimStyle.Render("·")
-
-	for i, cwf := range m.fixSelectorItems {
-		check := checkOff
-		if m.fixSelectorSelected[i] {
-			check = checkOn
-		}
-		name := cwf.Check.Name()
-		if i == m.fixSelectorCursor {
-			b.WriteString(cursorStyle.Render(fmt.Sprintf("  > [%s] %s", check, name)))
-		} else {
-			b.WriteString(fmt.Sprintf("    [%s] %s", check, name))
-		}
-		b.WriteString("\n")
-	}
-
-	b.WriteString("\n")
-	b.WriteString(preflightFooterStyle.Render(m.help.View(m.fixSelectorKeys)))
-
-	return b.String()
-}
 
 func (m Model) renderPreflightFixing() string {
 	var b strings.Builder
 	b.WriteString(preflightFixTitleStyle.Render("Fixing Issues"))
 	b.WriteString("\n\n")
+
+	if total := len(m.preflightFixQueue); total > 0 {
+		pct := float64(m.preflightFixIndex) / float64(total)
+		b.WriteString("  " + m.fixProgress.ViewAs(pct))
+		b.WriteString(fmt.Sprintf("  %d / %d", m.preflightFixIndex, total))
+		b.WriteString("\n\n")
+	}
 
 	for i, cwf := range m.preflightFixQueue {
 		name := cwf.Check.Name()
@@ -166,25 +136,32 @@ func (m Model) renderCheckResults() string {
 		groups[idx].results = append(groups[idx].results, r)
 	}
 
+	dim := lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
+
 	for _, g := range groups {
 		b.WriteString(preflightCategoryStyle.Render("  " + g.name))
 		b.WriteString("\n")
 
+		var passing []preflight.CheckResult
 		for _, r := range g.results {
+			if r.Status == preflight.StatusPass && !m.preflightExpandPassing {
+				passing = append(passing, r)
+				continue
+			}
 			icon, style := statusIcon(r.Status)
-			line := fmt.Sprintf("    %s %-24s %s",
-				style.Render(icon),
-				r.Name,
-				lipgloss.NewStyle().Foreground(lipgloss.Color("244")).Render(r.Message))
-			b.WriteString(line)
-			b.WriteString("\n")
+			fmt.Fprintf(&b, "    %s %-24s %s\n",
+				style.Render(icon), r.Name, dim.Render(r.Message))
 
 			if (r.Status == preflight.StatusFail || r.Status == preflight.StatusWarn) && r.InstallHint != "" && !r.FixAvailable {
 				for _, hint := range strings.Split(r.InstallHint, "\n") {
-					b.WriteString(fmt.Sprintf("      %s\n",
-						lipgloss.NewStyle().Foreground(lipgloss.Color("244")).Italic(true).Render(hint)))
+					fmt.Fprintf(&b, "      %s\n", dim.Italic(true).Render(hint))
 				}
 			}
+		}
+		if n := len(passing); n > 0 {
+			fmt.Fprintf(&b, "    %s %s\n",
+				preflightPassStyle.Render("✓"),
+				dim.Render(fmt.Sprintf("%d passed (v to expand)", n)))
 		}
 	}
 

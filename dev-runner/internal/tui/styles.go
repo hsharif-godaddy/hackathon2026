@@ -45,16 +45,6 @@ var (
 				Padding(1, 3).
 				Background(lipgloss.Color("235"))
 
-	settingsSelectedStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("15")).
-				Background(lipgloss.Color("62")).
-				Bold(true).
-				Padding(0, 1)
-
-	settingsItemStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("252")).
-				Padding(0, 1)
-
 	searchBarStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("229")).
 			Background(lipgloss.Color("238")).
@@ -71,11 +61,6 @@ var (
 
 	hookOutputStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("250"))
-
-	titleStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("62")).
-			Padding(0, 1)
 
 	preflightPassStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("#00ff00"))
@@ -108,23 +93,6 @@ var (
 				Foreground(lipgloss.Color("62")).
 				MarginBottom(1)
 
-	devSettingsRadioActive = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#00ff00")).
-				Bold(true)
-
-	devSettingsRadioInactive = lipgloss.NewStyle().
-					Foreground(lipgloss.Color("250"))
-
-	devSettingsSectionTitle = lipgloss.NewStyle().
-				Bold(true).
-				Foreground(lipgloss.Color("62")).
-				PaddingLeft(2)
-
-	devSettingsCursorStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("15")).
-				Background(lipgloss.Color("62")).
-				Bold(true).
-				Padding(0, 1)
 )
 
 func helpStyles() help.Styles {

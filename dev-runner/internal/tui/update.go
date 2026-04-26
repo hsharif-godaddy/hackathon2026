@@ -79,7 +79,7 @@ func (m *Model) runNextFixer() tea.Cmd {
 	if ff, ok := fixer.(preflight.FormFixer); ok && len(ff.FormFields()) > 0 {
 		m.initFixerForm(ff)
 		m.phase = PhasePreflightEnvForm
-		return nil
+		return m.envFormInit()
 	}
 
 	// TerminalFixer — suspend TUI so stdin reaches the subprocess (sudo, etc.)
@@ -115,6 +115,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.refreshPanes()
 		m.refreshPreflightViewport()
 		m.refreshHookViewport()
+		m.resizeForms()
+		m.fixProgress.SetWidth(max(min(msg.Width-10, 60), 1))
 		return m, nil
 
 	case spinner.TickMsg:
@@ -134,13 +136,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.PasteMsg, tea.PasteStartMsg, tea.PasteEndMsg:
-		// Forward paste events to the active textinput during env form
-		if m.phase == PhasePreflightEnvForm && len(m.envFormFields) > 0 {
-			var cmd tea.Cmd
-			m.envFormFields[m.envFormCursor].Input, cmd = m.envFormFields[m.envFormCursor].Input.Update(msg)
-			if cmd != nil {
-				cmds = append(cmds, cmd)
-			}
+		if cmd := m.forwardToActiveForm(msg); cmd != nil {
+			cmds = append(cmds, cmd)
 		}
 
 	case preflightAllChecksDoneMsg:
@@ -269,9 +266,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Err == nil {
 			m.devSettingsPreset = msg.Preset
 		} else {
-			m.devSettingsOpen = true
 			m.devSettingsError = fmt.Sprintf("Failed to apply preset: %v", msg.Err)
-			cmds = append(cmds, tea.Tick(5*time.Second, func(_ time.Time) tea.Msg {
+			cmds = append(cmds, m.openDevSettings(), tea.Tick(5*time.Second, func(_ time.Time) tea.Msg {
 				return devSettingsErrorClearMsg{}
 			}))
 		}
@@ -328,10 +324,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		}
+
+	default:
+		// huh drives its state machine via internal messages (nextFieldMsg,
+		// nextGroupMsg, etc.) emitted as tea.Cmds. Forward anything we don't
+		// otherwise consume so the active form can advance to StateCompleted
+		// when the user presses Enter.
+		if cmd := m.forwardToActiveForm(msg); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
 	}
 
 	// Forward to active viewport for keyboard scrolling
-	if m.ready && !m.settingsOpen && !m.searchOpen && m.phase == PhaseRunning {
+	if m.ready && !m.anyModalOpen() && !m.searchOpen && m.phase == PhaseRunning {
 		pane := m.activePanePtr()
 		if pane != nil {
 			prevOffset := pane.Viewport.YOffset()
@@ -368,24 +373,16 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		return m.shutdownCmd()
 	}
 
-	if m.confirmQuit {
-		switch {
-		case key.Matches(msg, m.confirmQuitKeys.Yes):
-			m.confirmQuit = false
-			m.quitting = true
-			return m.shutdownCmd()
-		default:
-			m.confirmQuit = false
-		}
-		return nil
+	if m.quitConfirmForm != nil {
+		return m.updateQuitConfirm(msg)
 	}
 
 	if m.searchOpen {
 		return m.handleSearchKey(msg)
 	}
 
-	if m.settingsOpen {
-		return m.handleSettingsKey(msg)
+	if m.settingsForm != nil {
+		return m.updateSettings(msg)
 	}
 
 	// Preflight phase key handling
@@ -394,14 +391,8 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		case key.Matches(msg, m.preflightKeys.Fix):
 			fixable := m.preflightRunner.FixableChecks(m.preflightResults)
 			if len(fixable) > 0 {
-				m.fixSelectorItems = fixable
-				m.fixSelectorCursor = 0
-				m.fixSelectorSelected = make([]bool, len(fixable))
-				for i, cwf := range fixable {
-					m.fixSelectorSelected[i] = !cwf.OptIn
-				}
 				m.phase = PhasePreflightSelectFixes
-				return nil
+				return m.initFixSelector(fixable)
 			}
 			if !preflight.HasFailures(m.preflightResults) {
 				m.phase = PhaseHooks
@@ -422,6 +413,10 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 				m.hookDone = hookDone
 				return hookCmd
 			}
+		case key.Matches(msg, m.preflightKeys.Expand):
+			m.preflightExpandPassing = !m.preflightExpandPassing
+			m.refreshPreflightViewport()
+			return nil
 		case key.Matches(msg, m.preflightKeys.Quit):
 			m.quitting = true
 			return tea.Quit
@@ -430,11 +425,15 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	}
 
 	if m.phase == PhasePreflightSelectFixes {
-		return m.handleFixSelectorKey(msg)
+		if key.Matches(msg, m.preflightKeys.Quit) {
+			m.quitting = true
+			return tea.Quit
+		}
+		return m.updateFixSelector(msg)
 	}
 
 	if m.phase == PhasePreflightEnvForm {
-		return m.handleEnvFormKey(msg)
+		return m.updateEnvForm(msg)
 	}
 
 	if m.phase < PhaseHooks {
@@ -445,14 +444,13 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 	}
 
-	if m.devSettingsOpen {
-		return m.handleDevSettingsKey(msg)
+	if m.devSettingsForm != nil {
+		return m.updateDevSettings(msg)
 	}
 
 	switch {
 	case key.Matches(msg, m.keys.Quit):
-		m.confirmQuit = true
-		return nil
+		return m.openQuitConfirm()
 	case key.Matches(msg, m.keys.ClearErr):
 		for _, p := range m.manager.Processes {
 			p.ClearErrors()
@@ -491,19 +489,11 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			m.refreshPanes()
 		}
 	case key.Matches(msg, m.keys.DevSetting):
-		m.devSettingsOpen = true
-		m.devSettingsCursor = 0
-		for i, p := range subscriptionPresets {
-			if p.Name == m.devSettingsPreset {
-				m.devSettingsCursor = i
-				break
-			}
-		}
+		return m.openDevSettings()
 	case key.Matches(msg, m.keys.Mouse):
 		m.mouseEnabled = !m.mouseEnabled
 	case key.Matches(msg, m.keys.Settings):
-		m.settingsOpen = true
-		m.settingsCursor = 0
+		return m.openSettings()
 	case key.Matches(msg, m.keys.Follow):
 		pane := m.activePanePtr()
 		if pane != nil {
@@ -587,34 +577,11 @@ func (m *Model) handleSearchKey(msg tea.KeyPressMsg) tea.Cmd {
 	return cmd
 }
 
-func (m *Model) handleSettingsKey(msg tea.KeyPressMsg) tea.Cmd {
-	switch {
-	case key.Matches(msg, m.settingsKeys.Close):
-		m.settingsOpen = false
-		return nil
-	case key.Matches(msg, m.settingsKeys.Down):
-		m.settingsCursor++
-		if m.settingsCursor >= len(m.settingsItems) {
-			m.settingsCursor = 0
-		}
-	case key.Matches(msg, m.settingsKeys.Up):
-		m.settingsCursor--
-		if m.settingsCursor < 0 {
-			m.settingsCursor = len(m.settingsItems) - 1
-		}
-	case key.Matches(msg, m.settingsKeys.Enter):
-		return m.executeSettingsAction()
-	}
-	return nil
-}
-
-func (m *Model) executeSettingsAction() tea.Cmd {
-	if m.settingsCursor < 0 || m.settingsCursor >= len(m.settingsItems) {
+func (m *Model) executeSettingsAction(idx int) tea.Cmd {
+	if idx < 0 || idx >= len(m.settingsItems) {
 		return nil
 	}
-
-	item := m.settingsItems[m.settingsCursor]
-	m.settingsOpen = false
+	item := m.settingsItems[idx]
 
 	switch item.Action {
 	case ActionRestartAll:
@@ -655,53 +622,6 @@ func (m *Model) executeSettingsAction() tea.Cmd {
 		return m.shutdownCmd()
 	}
 
-	return nil
-}
-
-func (m *Model) handleFixSelectorKey(msg tea.KeyPressMsg) tea.Cmd {
-	n := len(m.fixSelectorItems)
-	if n == 0 {
-		return nil
-	}
-
-	switch {
-	case key.Matches(msg, m.fixSelectorKeys.Toggle):
-		m.fixSelectorSelected[m.fixSelectorCursor] = !m.fixSelectorSelected[m.fixSelectorCursor]
-	case key.Matches(msg, m.fixSelectorKeys.Apply):
-		var queue []preflight.CheckWithFixer
-		for i, cwf := range m.fixSelectorItems {
-			if m.fixSelectorSelected[i] {
-				queue = append(queue, cwf)
-			}
-		}
-		if len(queue) > 0 {
-			m.preflightFixQueue = queue
-			m.preflightFixIndex = 0
-			m.phase = PhasePreflightFixing
-			return tea.Batch(m.runNextFixer(), m.spinner.Tick)
-		}
-		m.phase = PhasePreflightDashboard
-	case key.Matches(msg, m.fixSelectorKeys.Cancel):
-		m.phase = PhasePreflightDashboard
-	case key.Matches(msg, m.fixSelectorKeys.Up):
-		m.fixSelectorCursor--
-		if m.fixSelectorCursor < 0 {
-			m.fixSelectorCursor = n - 1
-		}
-	case key.Matches(msg, m.fixSelectorKeys.Down):
-		m.fixSelectorCursor = (m.fixSelectorCursor + 1) % n
-	case key.Matches(msg, m.fixSelectorKeys.All):
-		for i := range m.fixSelectorSelected {
-			m.fixSelectorSelected[i] = true
-		}
-	case key.Matches(msg, m.fixSelectorKeys.None):
-		for i := range m.fixSelectorSelected {
-			m.fixSelectorSelected[i] = false
-		}
-	case key.Matches(msg, m.fixSelectorKeys.Quit):
-		m.quitting = true
-		return tea.Quit
-	}
 	return nil
 }
 
