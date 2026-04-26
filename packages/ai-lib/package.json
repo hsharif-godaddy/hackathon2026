@@ -83,8 +83,8 @@
   },
   "devDependencies": {
     "@airo/eslint-config": "workspace:*",
-    "@aws-sdk/client-sts": "3.1029.0",
-    "@aws-sdk/credential-providers": "3.1029.0",
+    "@aws-sdk/client-sts": "3.1032.0",
+    "@aws-sdk/credential-providers": "3.1032.0",
     "@types/express": "catalog:",
     "@types/node": "catalog:",
     "@vitest/coverage-v8": "catalog:",
