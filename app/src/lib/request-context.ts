@@ -1,3 +1,5 @@
+import type { NextRequest } from 'next/server';
+
 import { getApmTraceIds } from '@/lib/apm-context';
 import { ClientLogBuffer } from '@/lib/logging/client-log-buffer';
 
@@ -67,6 +69,11 @@ export interface LogEvent {
 
   // Request context
   customerId?: string;
+  shopperId?: string;
+  appId?: string;
+  userAgent?: string;
+  path?: string;
+  method?: string;
 
   // APM correlation fields (Elastic APM format)
   'trace.id'?: string;
@@ -96,57 +103,54 @@ export interface LogOptions {
  * Request context interface for storing user information
  */
 export interface RequestContext {
-  customerId: string;     // GoDaddy customer identifier
+  customerId?: string;
+  shopperId?: string;
+  appId?: string;
+  userAgent?: string;
+  path?: string;
+  method?: string;
 }
 
-/**
- * AsyncLocalStorage instance for request-scoped context
- * Only available on server-side
-*/
-const asyncLocalStorage = typeof window === 'undefined' ? new AsyncLocalStorage() : new AsyncLocalStorage();
+function sanitizeHeader(value: string | null, maxLength = 300): string | undefined {
+  if (!value) return undefined;
+  return value.slice(0, maxLength);
+}
+
+export function createRequestContext(request: NextRequest): RequestContext {
+  return {
+    // request.nextUrl.pathname is pre-normalized by Next.js and never throws.
+    // new URL(request.url).pathname looks equivalent but throws on malformed URLs,
+    // which would escape the APM transaction boundary and produce an unlogged 500.
+    path: sanitizeHeader(request.nextUrl.pathname),
+    method: request.method,
+    userAgent: sanitizeHeader(request.headers.get('user-agent')),
+  };
+}
+
+const asyncLocalStorage = new AsyncLocalStorage();
 
 /**
  * Context service for managing request-scoped user context
  */
 export class RequestContextService {
-  /**
-   * Run a function with user context
-   */
   static run<T>(context: RequestContext, fn: () => T): T {
-    if (asyncLocalStorage) {
-      return asyncLocalStorage.run(context, fn);
-    }
-    // Client-side: just execute the function without context
-    return fn();
+    return asyncLocalStorage.run(context, fn);
   }
 
-  /**
-   * Get the current request context
-   */
   static getContext(): RequestContext | undefined {
-    return asyncLocalStorage?.getStore();
+    return asyncLocalStorage.getStore();
   }
 
-
-  /**
-   * Get current customer ID
-   */
   static getCustomerId(): string | undefined {
-    return asyncLocalStorage?.getStore()?.customerId;
+    return asyncLocalStorage.getStore()?.customerId;
   }
 
-  /**
-   * Check if context exists
-   */
   static hasContext(): boolean {
-    return asyncLocalStorage?.getStore() !== undefined;
+    return asyncLocalStorage.getStore() !== undefined;
   }
 
-  /**
-   * Get context for logging (formatted string)
-   */
   static getLogContext(): string {
-    const context = asyncLocalStorage?.getStore();
+    const context = asyncLocalStorage.getStore();
     if (!context) return '';
 
     const parts: string[] = [];
@@ -240,7 +244,12 @@ export class ContextLogger {
 
       // Include request context if available
       ...(context ? {
-        customerId: context.customerId
+        ...(context.customerId ? { customerId: context.customerId } : {}),
+        ...(context.shopperId ? { shopperId: context.shopperId } : {}),
+        ...(context.appId ? { appId: context.appId } : {}),
+        ...(context.userAgent ? { userAgent: context.userAgent } : {}),
+        ...(context.path ? { path: context.path } : {}),
+        ...(context.method ? { method: context.method } : {}),
       } : {}),
 
       // Include OpenTelemetry trace context for APM log correlation
@@ -378,6 +387,15 @@ export class ContextLogger {
     }
 
     console.log(`${color}${levelStr}${c.reset} ${event}${displayMsg}`);
+
+    if (process.env.LOCAL_LOG_CONTEXT === 'true') {
+      const ctxFields = (['method', 'path', 'customerId', 'shopperId', 'appId', 'userAgent'] as const)
+        .filter(k => logOutput[k])
+        .map(k => `${c.dim}${k}=${c.reset}${String(logOutput[k]).slice(0, 60)}`);
+      if (ctxFields.length > 0) {
+        console.log(`      ${c.dim}ctx:${c.reset} ${ctxFields.join('  ')}`);
+      }
+    }
 
     // Show fields indented on next line (max 5 fields)
     if (fields.length > 0) {

@@ -16,6 +16,11 @@
  * UNVERIFIED cid derived from the decoded JWT payload on failed auth responses
  * (such as 401s) to help correlate and debug rejected requests. This unverified
  * cid must not be treated as a security signal and is for observability only.
+ *
+ * When mocking in tests, use vi.mock('@/lib/apm-context', ...) — not '@/lib/apm'
+ * (which does not exist). The correct exports to stub are: startApmTransaction,
+ * addApmContext, extractAppIdFromPath, setApmAppId, setApmCustomerId, setApmJobId,
+ * setApmUserContext.
  */
 
 import type { ReadonlyHeaders } from 'next/dist/server/web/spec-extension/adapters/headers';

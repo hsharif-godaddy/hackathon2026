@@ -3,12 +3,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockAuthenticate = vi.fn();
 const mockExtractToken = vi.fn();
+const mockExtractShopperId = vi.fn();
+const mockExtractCustomerId = vi.fn();
 
 vi.mock('@/lib/gd-auth-service', () => ({
   gdAuthService: {
     extractTokenFromRequest: (...args: unknown[]) => mockExtractToken(...args),
     authenticate: (...args: unknown[]) => mockAuthenticate(...args),
-  }
+  },
+  extractTokenFromRequest: (...args: unknown[]) => mockExtractToken(...args),
 }));
 
 vi.mock('@/lib/features', () => ({
@@ -35,9 +38,19 @@ vi.mock('@/lib/request-context', async (importOriginal) => {
   };
 });
 
-vi.mock('@/lib/apm', () => ({
-  startApmTransaction: vi.fn(),
-  setApmLabel: vi.fn()
+vi.mock('@/lib/apm-context', () => ({
+  startApmTransaction: vi.fn(() => null),
+  addApmContext: vi.fn(),
+  extractAppIdFromPath: vi.fn(() => null),
+  setApmAppId: vi.fn(),
+  setApmCustomerId: vi.fn(),
+  setApmJobId: vi.fn(),
+  setApmUserContext: vi.fn(),
+}));
+
+vi.mock('@/lib/utils/jwt-utils', () => ({
+  extractShopperId: (...args: unknown[]) => mockExtractShopperId(...args),
+  extractCustomerId: (...args: unknown[]) => mockExtractCustomerId(...args),
 }));
 
 const validPayload = {
@@ -219,5 +232,177 @@ describe('withCustomerAuth 401 response with authReason', () => {
     expect(response.status).toBe(401);
     expect(body.error).toBe('Unauthorized');
     expect(body).not.toHaveProperty('authReason');
+  });
+});
+
+describe('withCustomerAuth request context initialization', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockExtractToken.mockReturnValue('test-token');
+    mockAuthenticate.mockResolvedValue({ valid: true, payload: validPayload });
+    mockExtractCustomerId.mockReturnValue('customer-456');
+    mockExtractShopperId.mockReturnValue('shopper-123');
+  });
+
+  it('should initialize context with path, method, and userAgent before auth runs', async () => {
+    const { RequestContextService } = await import('@/lib/request-context');
+    const { withCustomerAuth } = await import('./customer-auth');
+
+    const wrappedHandler = withCustomerAuth(vi.fn().mockResolvedValue(new Response('ok')));
+    const request = new NextRequest('http://localhost/api/sites/abc', {
+      method: 'POST',
+      headers: { 'user-agent': 'TestBrowser/1.0', cookie: 'auth_idp=test-token' }
+    });
+
+    await wrappedHandler(request);
+
+    const runMock = vi.mocked(RequestContextService.run);
+    expect(runMock).toHaveBeenCalledOnce();
+    const ctx = runMock.mock.calls[0][0];
+    expect(ctx.path).toBe('/api/sites/abc');
+    expect(ctx.method).toBe('POST');
+    expect(ctx.userAgent).toBe('TestBrowser/1.0');
+  });
+
+  it('should overwrite pre-decoded context with validated auth values after successful auth', async () => {
+    // Use different pre-decoded values than validPayload to verify the overwrite actually happens
+    mockExtractCustomerId.mockReturnValue('predecoded-customer');
+    mockExtractShopperId.mockReturnValue('predecoded-shopper');
+
+    const { RequestContextService } = await import('@/lib/request-context');
+    const { withCustomerAuth } = await import('./customer-auth');
+
+    const wrappedHandler = withCustomerAuth(vi.fn().mockResolvedValue(new Response('ok')));
+    const request = new NextRequest('http://localhost/api/test', {
+      headers: { cookie: 'auth_idp=test-token' }
+    });
+
+    await wrappedHandler(request);
+
+    const ctx = vi.mocked(RequestContextService.run).mock.calls[0][0];
+    // Should be the validated values from validPayload, not the pre-decoded ones
+    expect(ctx.customerId).toBe('customer-456');
+    expect(ctx.shopperId).toBe('shopper-123');
+  });
+
+  it('should retain pre-decoded customerId in context when auth fails (for log enrichment)', async () => {
+    mockAuthenticate.mockResolvedValue({ valid: false, reason: 'Token expired' });
+    mockExtractCustomerId.mockReturnValue('predecoded-customer');
+    mockExtractShopperId.mockReturnValue('predecoded-shopper');
+
+    const { RequestContextService } = await import('@/lib/request-context');
+    const { withCustomerAuth } = await import('./customer-auth');
+
+    const wrappedHandler = withCustomerAuth(vi.fn().mockResolvedValue(new Response('ok')));
+    const request = new NextRequest('http://localhost/api/test', {
+      headers: { cookie: 'auth_idp=test-token' }
+    });
+
+    await wrappedHandler(request);
+
+    // Best-effort pre-decoded values should be retained so auth-failure logs are enriched
+    const ctx = vi.mocked(RequestContextService.run).mock.calls[0][0];
+    expect(ctx.customerId).toBe('predecoded-customer');
+    expect(ctx.shopperId).toBe('predecoded-shopper');
+  });
+
+  it('should leave customerId undefined when neither pre-decode nor auth provides one', async () => {
+    mockAuthenticate.mockResolvedValue({ valid: false, reason: 'Token expired' });
+    mockExtractCustomerId.mockReturnValue(null);
+    mockExtractShopperId.mockReturnValue(null);
+
+    const { RequestContextService } = await import('@/lib/request-context');
+    const { withCustomerAuth } = await import('./customer-auth');
+
+    const wrappedHandler = withCustomerAuth(vi.fn().mockResolvedValue(new Response('ok')));
+    const request = new NextRequest('http://localhost/api/test', {
+      headers: { cookie: 'auth_idp=test-token' }
+    });
+
+    await wrappedHandler(request);
+
+    const ctx = vi.mocked(RequestContextService.run).mock.calls[0][0];
+    expect(ctx.customerId).toBeUndefined();
+    expect(ctx.shopperId).toBeUndefined();
+  });
+
+  it('should truncate user-agent to 300 characters', async () => {
+    const { RequestContextService } = await import('@/lib/request-context');
+    const { withCustomerAuth } = await import('./customer-auth');
+
+    const wrappedHandler = withCustomerAuth(vi.fn().mockResolvedValue(new Response('ok')));
+    const longUserAgent = 'A'.repeat(500);
+    const request = new NextRequest('http://localhost/api/test', {
+      headers: { 'user-agent': longUserAgent, cookie: 'auth_idp=test-token' }
+    });
+
+    await wrappedHandler(request);
+
+    const ctx = vi.mocked(RequestContextService.run).mock.calls[0][0];
+    expect(ctx.userAgent).toHaveLength(300);
+  });
+
+  it('should skip pre-decode and leave customerId/shopperId undefined when no token is present', async () => {
+    mockExtractToken.mockReturnValue(null);
+
+    const { RequestContextService } = await import('@/lib/request-context');
+    const { withCustomerAuth } = await import('./customer-auth');
+
+    const wrappedHandler = withCustomerAuth(vi.fn().mockResolvedValue(new Response('ok')));
+    const request = new NextRequest('http://localhost/api/test');
+
+    await wrappedHandler(request);
+
+    const ctx = vi.mocked(RequestContextService.run).mock.calls[0][0];
+    expect(ctx.customerId).toBeUndefined();
+    expect(ctx.shopperId).toBeUndefined();
+    expect(mockExtractCustomerId).not.toHaveBeenCalled();
+    expect(mockExtractShopperId).not.toHaveBeenCalled();
+  });
+
+  it('should set appId on context when extractAppIdFromPath returns a value', async () => {
+    const { extractAppIdFromPath } = await import('@/lib/apm-context');
+    vi.mocked(extractAppIdFromPath).mockReturnValue('app-xyz');
+
+    const { RequestContextService } = await import('@/lib/request-context');
+    const { withCustomerAuth } = await import('./customer-auth');
+
+    const wrappedHandler = withCustomerAuth(vi.fn().mockResolvedValue(new Response('ok')));
+    const request = new NextRequest('http://localhost/api/sites/app-xyz', {
+      headers: { cookie: 'auth_idp=test-token' }
+    });
+
+    await wrappedHandler(request);
+
+    const ctx = vi.mocked(RequestContextService.run).mock.calls[0][0];
+    expect(ctx.appId).toBe('app-xyz');
+  });
+});
+
+describe('withCustomerAuth handler-throws path', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockExtractToken.mockReturnValue('test-token');
+    mockAuthenticate.mockResolvedValue({ valid: true, payload: validPayload });
+    mockExtractCustomerId.mockReturnValue('customer-456');
+    mockExtractShopperId.mockReturnValue('shopper-123');
+  });
+
+  it('logs auth.handler.unhandled with context and rethrows when handler throws', async () => {
+    const { logger } = await import('@/lib/request-context');
+    const { withCustomerAuth } = await import('./customer-auth');
+
+    const handlerError = new Error('boom');
+    const wrappedHandler = withCustomerAuth(vi.fn().mockRejectedValue(handlerError));
+    const request = new NextRequest('http://localhost/api/test', {
+      headers: { cookie: 'auth_idp=test-token' }
+    });
+
+    await expect(wrappedHandler(request)).rejects.toThrow('boom');
+    expect(vi.mocked(logger.error)).toHaveBeenCalledWith(
+      'auth.handler.unhandled',
+      expect.objectContaining({ errorMessage: 'boom' }),
+      expect.objectContaining({ tags: ['security'] })
+    );
   });
 });

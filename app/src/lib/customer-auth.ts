@@ -16,8 +16,10 @@ import {
   startApmTransaction
 } from '@/lib/apm-context';
 import { isFeatureEnabled } from '@/lib/features';
+import { extractTokenFromRequest } from '@/lib/gd-auth-service';
 import { MOCK_USER } from '@/lib/mock-auth';
-import { logger, type RequestContext, RequestContextService } from '@/lib/request-context';
+import { createRequestContext, logger, RequestContextService } from '@/lib/request-context';
+import { extractCustomerId, extractShopperId } from '@/lib/utils/jwt-utils';
 
 /**
  * Set appId on the current APM transaction for correlation
@@ -178,7 +180,7 @@ export async function authenticateCustomer(request: NextRequest, level?: 1 | 2 |
       level: level ?? 2,
       tokenAge: result.payload.iat ? now - result.payload.iat : undefined,
       isPersistent: result.payload.per ?? undefined,
-      customerId
+      customerId,
     }, { tags: ['security'] });
 
     return {
@@ -215,109 +217,107 @@ export function withCustomerAuth<T extends unknown[]>(
   options?: WithCustomerAuthOptions
 ) {
   return async (request: NextRequest, ...args: T): Promise<NextResponse> => {
-    // Start APM transaction for this API request
-    const urlPath = new URL(request.url).pathname;
-    const txName = `${request.method} ${urlPath}`;
+    const txName = `${request.method} ${request.nextUrl.pathname}`;
     const transaction = startApmTransaction(txName, 'request');
-
-    // Track if we set cid early (before auth) - used to avoid redundant label setting
     let cidSetEarly = false;
 
-    // EARLY: Extract cid from token BEFORE authentication (best-effort for APM)
-    // This ensures cid is set even when auth fails (401), helping debug auth issues
-    // Use standalone functions to avoid instantiating auth service when no token exists
-    try {
-      const { extractTokenFromRequest, decodeTokenPayload } = await import('@/lib/gd-auth-service');
-      const token = extractTokenFromRequest(request);
-      if (token && transaction) {
-        const claims = decodeTokenPayload(token);
-        if (claims?.cid) {
-          transaction.setLabel('cid', claims.cid);
-          cidSetEarly = true;
-        }
-      }
-    } catch {
-      // Ignore - best effort only
-    }
+    // Initialize context early so all logs during auth automatically carry request metadata.
+    // customerId/shopperId start undefined; pre-decode may fill them from the unvalidated token,
+    // and auth overwrites them with verified values (or leaves them as the pre-decoded best-effort
+    // on failure, so auth-failure logs still carry identifiers).
+    const requestContext = createRequestContext(request);
 
     try {
-      const authContext = await authenticateCustomer(request, options?.level);
+      return await RequestContextService.run(requestContext, async () => {
+        try {
+          // Pre-decode token inside the inner try so unexpected throws reach auth.handler.unhandled.
+          // extractCustomerId/extractShopperId return null on parse errors; they don't throw.
+          const token = extractTokenFromRequest(request);
+          if (token) {
+            const customerId = extractCustomerId(token);
+            if (customerId) {
+              requestContext.customerId = customerId;
+              if (transaction) {
+                transaction.setLabel('cid', customerId);
+                cidSetEarly = true;
+              }
+            }
+            const shopperId = extractShopperId(token);
+            if (shopperId) {
+              requestContext.shopperId = shopperId;
+            }
+          }
 
-      if (!authContext.isAuthenticated) {
-        const unauthContext = authContext as UnauthenticatedCustomerContext;
+          const authContext = await authenticateCustomer(request, options?.level);
 
-        transaction?.end('HTTP 401');
-        return NextResponse.json(
-          {
-            error: 'Unauthorized',
-            message: unauthContext.error,
-            requiresAuth: true,
-            ...(unauthContext.authReason !== undefined ? { authReason: unauthContext.authReason } : {})
-          },
-          { status: 401 }
-        );
-      }
+          if (!authContext.isAuthenticated) {
+            const unauthContext = authContext as UnauthenticatedCustomerContext;
+            transaction?.end('HTTP 401');
+            return NextResponse.json(
+              {
+                error: 'Unauthorized',
+                message: unauthContext.error,
+                requiresAuth: true,
+                ...(unauthContext.authReason !== undefined ? { authReason: unauthContext.authReason } : {})
+              },
+              { status: 401 }
+            );
+          }
 
-      // Set up request context for the entire request lifecycle
-      const requestContext: RequestContext = {
-        customerId: authContext.user.customerId
-      };
+          // Overwrite pre-decoded context values with validated auth results
+          const appIdFromPath = extractAppIdFromPath(request.url);
+          requestContext.customerId = authContext.user.customerId;
+          requestContext.shopperId = authContext.user.shopperId;
+          if (appIdFromPath) requestContext.appId = appIdFromPath;
 
-      // Set APM labels directly on the transaction object we captured
-      // This avoids async context issues that can occur with agent-level APIs
-      // Only set cid if not already set early (validated cid should match early cid)
-      if (transaction && !cidSetEarly) {
-        transaction.setLabel('cid', authContext.user.customerId);
-      }
+          // Set APM labels directly on the transaction object we captured
+          // This avoids async context issues that can occur with agent-level APIs
+          if (transaction && !cidSetEarly) {
+            transaction.setLabel('cid', authContext.user.customerId);
+          }
+          if (transaction) {
+            if (appIdFromPath) {
+              transaction.setLabel('appId', appIdFromPath);
+            }
+            if (authContext.user.authType === 'e2s') {
+              transaction.setLabel('delegated', true);
+            }
+          }
 
-      // Always set appId when present (not dependent on cidSetEarly)
-      if (transaction) {
-        const appIdFromPath = extractAppIdFromPath(request.url);
-        if (appIdFromPath) {
-          transaction.setLabel('appId', appIdFromPath);
+          addApmContext(request, authContext);
+          setApmUserContext(authContext.user.customerId);
+
+          if (options?.level === 3) {
+            // path, method, customerId are injected centrally from request context
+            logger.info('auth.level3.access', {
+              message: 'Level 3 auth for sensitive operation',
+              authType: authContext.user.authType
+            }, { tags: ['security'] });
+          }
+
+          const response = await handler(request, authContext, ...args);
+
+          const status = response.status;
+          if (status >= 200 && status < 300) {
+            transaction?.end('HTTP 2xx');
+          } else if (status >= 400 && status < 500) {
+            transaction?.end('HTTP 4xx');
+          } else if (status >= 500) {
+            transaction?.end('HTTP 5xx');
+          } else {
+            transaction?.end(`HTTP ${status}`);
+          }
+
+          return response;
+        } catch (error) {
+          // Log here (inside run()) so the ALS store is still active and context fields are present
+          logger.error('auth.handler.unhandled', {
+            errorMessage: error instanceof Error ? error.message : String(error)
+          }, { tags: ['security'], error: error instanceof Error ? error : undefined });
+          throw error;
         }
-
-        // Set delegated label for employee-to-shopper impersonation
-        if (authContext.user.authType === 'e2s') {
-          transaction.setLabel('delegated', true);
-        }
-      }
-
-      // Also try agent-level APIs as backup (may work if context is preserved)
-      addApmContext(request, authContext);
-      setApmUserContext(authContext.user.customerId);
-
-      // Log level 3 access for high-impact operation tracking
-      if (options?.level === 3) {
-        logger.info('auth.level3.access', {
-          message: 'Level 3 auth for sensitive operation',
-          route: urlPath,
-          method: request.method,
-          customerId: authContext.user.customerId,
-          authType: authContext.user.authType
-        }, { tags: ['security'] });
-      }
-
-      // Run the handler within the request context
-      const response = await RequestContextService.run(requestContext, () => {
-        return handler(request, authContext, ...args);
       });
-
-      // End transaction with appropriate result based on response status
-      const status = response.status;
-      if (status >= 200 && status < 300) {
-        transaction?.end('HTTP 2xx');
-      } else if (status >= 400 && status < 500) {
-        transaction?.end('HTTP 4xx');
-      } else if (status >= 500) {
-        transaction?.end('HTTP 5xx');
-      } else {
-        transaction?.end(`HTTP ${status}`);
-      }
-
-      return response;
     } catch (error) {
-      // End transaction with error
       transaction?.end('error');
       throw error;
     }
