@@ -131,6 +131,16 @@ function createMockPersistence(overrides: Partial<ReturnType<typeof createNoOpPe
   )
 }
 
+// File-scoped reset: many describes reassign mockAgent.streamGenerate to blocking
+// implementations that only resolve on abort (e.g. Abort Signal Handling, Stop
+// Generation). vi.clearAllMocks() clears call history but not implementations,
+// so without this reset those blocking mocks leak across describes and hang
+// later tests (e.g. BusinessContext Enrichment). Inner describe beforeEach
+// hooks run after this one, so per-test setup can still override as needed.
+beforeEach(() => {
+  mockAgent.streamGenerate = vi.fn()
+})
+
 describe('WebSocketServer - Error Handling', () => {
   let server: WebSocketServer
   let httpServer: HTTPServer
