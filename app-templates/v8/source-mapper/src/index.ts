@@ -53,14 +53,28 @@ export default function jsxSourceMapper(babel: { types: typeof types }): PluginO
           return;
         }
 
-        // Check if attributes already exist
-        const hasSourceAttrs = openingElement.attributes.some((attr: JSXAttribute | any) =>
-          t.isJSXAttribute(attr) &&
-          t.isJSXIdentifier(attr.name) &&
-          (attr.name.name === 'data-dev-file' || attr.name.name === 'data-dev-line')
+        // Mark elements whose children include dynamic expressions
+        const hasDynamic = path.node.children.some(child =>
+          t.isJSXExpressionContainer(child) &&
+          !t.isJSXEmptyExpression(child.expression) &&
+          !t.isStringLiteral(child.expression) &&
+          !(t.isTemplateLiteral(child.expression) && child.expression.expressions.length === 0)
+        );
+        const hasAttr = (name: string) => openingElement.attributes.some((attr) =>
+          t.isJSXAttribute(attr) && t.isJSXIdentifier(attr.name) && attr.name.name === name
         );
 
-        if (hasSourceAttrs) {
+        if (hasDynamic && !hasAttr('data-dev-dynamic')) {
+          openingElement.attributes.push(
+            t.jsxAttribute(
+              t.jsxIdentifier('data-dev-dynamic'),
+              t.stringLiteral('true')
+            )
+          );
+        }
+
+        // Only check data-dev-file; data-dev-line is always pushed alongside it
+        if (hasAttr('data-dev-file')) {
           return;
         }
 

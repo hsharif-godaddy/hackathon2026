@@ -10,6 +10,8 @@ export function isClickable(element: HTMLElement): boolean {
 
 /** Check if an element is suitable for inline text editing */
 export function isTextEditable(element: HTMLElement): boolean {
+  if (element.hasAttribute("data-dev-dynamic") || element.querySelector("[data-dev-dynamic]")) return false;
+
   const tagName = element.tagName.toLowerCase();
   const textContent = element.textContent?.trim() || "";
 
