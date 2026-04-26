@@ -64,6 +64,42 @@ func upsertEnvVarUnquoted(path string, key string, value string) error {
 	return writeEnvLines(path, lines)
 }
 
+// removeEnvVar deletes a key from a .env file. Missing keys and missing files
+// are no-ops. Collapses runs of blank lines left behind. Atomic.
+func removeEnvVar(path string, key string) error {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+
+	prefix := key + "="
+	lines := strings.Split(string(content), "\n")
+	filtered := make([]string, 0, len(lines))
+	for _, line := range lines {
+		if strings.HasPrefix(strings.TrimSpace(line), prefix) {
+			continue
+		}
+		filtered = append(filtered, line)
+	}
+
+	// Collapse runs of 2+ blank lines left by the removal.
+	collapsed := make([]string, 0, len(filtered))
+	prevBlank := false
+	for _, line := range filtered {
+		blank := strings.TrimSpace(line) == ""
+		if blank && prevBlank {
+			continue
+		}
+		collapsed = append(collapsed, line)
+		prevBlank = blank
+	}
+
+	return writeEnvLines(path, collapsed)
+}
+
 // writeEnvLines atomically writes lines to a file via temp-file + rename.
 func writeEnvLines(path string, lines []string) error {
 	dir := filepath.Dir(path)

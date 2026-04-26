@@ -37,7 +37,7 @@ See [dev-runner/README.md](dev-runner/README.md) for keybindings and details.
 
 If you need to change your AI provider, authentication settings, or regenerate environment files:
 
-**Via Dev Runner:** Delete the `.env` file you want to regenerate and run `pnpm run dev` — the preflight checks will detect it's missing and offer to recreate it.
+**Via Dev Runner:** Delete the `.env` file you want to regenerate and run `pnpm run dev` -- the preflight checks will detect it's missing and offer to recreate it.
 
 Environment files generated:
 
@@ -45,6 +45,15 @@ Environment files generated:
 - `app/.env.local.dev` - Dev environment (dev-godaddy.com SSO)
 - `app/.env.local.test` - Test environment (test-godaddy.com SSO)
 - `app/.env.local.prod` - Prod environment (godaddy.com SSO)
+
+### GoCode authentication
+
+The dev-runner env form asks for `GoCode Auth`. Two modes:
+
+- **`s2s` (default, recommended)** - authenticates to GoCode using your AWS SSO credentials and an IAM JWT (same mechanism deployed services use). No personal key needed. All GoCode/Anthropic calls route through `https://api.gocode.caas.dev-gdcorp.tools` (dev GoCode - separate spend bucket from prod). Prerequisite: `aws sso login --profile airobuild-dev-private-sso` before starting `pnpm run dev`. Requires the dev SSO PowerUser role for account `694282668781` to be registered with GoCode (see the [GoCode JWT Authentication Guide](https://godaddy-corp.atlassian.net/wiki/spaces/BI/pages/3903691501) onboarding flow). If `s2s` fails with `"SSO user is not registered"`, fall back to `api-key` until the registration is approved.
+- **`api-key`** - uses a personal GoCode API key from `https://caas.open-webui.godaddy.com/workspace/apiKeys`. Falls back to the prod GoCode proxy at `caas-gocode-prod...onkatana.net`.
+
+Switch modes any time by re-running the env fixer (delete `agents/.env` or set `GOCODE_USE_S2S_AUTH=true/false` manually and restart; the preflight will offer to regenerate).
 
 ## 📋 Manual Setup (Alternative)
 

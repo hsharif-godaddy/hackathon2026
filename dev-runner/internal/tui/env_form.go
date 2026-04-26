@@ -68,6 +68,38 @@ func (m *Model) initFixerForm(ff preflight.FormFixer) {
 	m.envFormCursor = 0
 }
 
+// isFieldHidden reports whether a field should be hidden based on the current
+// value of sibling fields. Currently: apiKey and baseURL are hidden when
+// gocodeAuth is set to "s2s" (the values are unused in that mode).
+func (m *Model) isFieldHidden(f envFormField) bool {
+	if f.Key != "apiKey" && f.Key != "baseURL" {
+		return false
+	}
+	for _, ff := range m.envFormFields {
+		if ff.Key == "gocodeAuth" {
+			return strings.TrimSpace(ff.Input.Value()) == "s2s"
+		}
+	}
+	return false
+}
+
+// nextVisibleField returns the next cursor index whose field is visible,
+// wrapping around. Returns -1 if no field is visible (shouldn't happen).
+func (m *Model) nextVisibleField(from, step int) int {
+	n := len(m.envFormFields)
+	if n == 0 {
+		return -1
+	}
+	i := from
+	for range n {
+		i = (i + step + n) % n
+		if !m.isFieldHidden(m.envFormFields[i]) {
+			return i
+		}
+	}
+	return -1
+}
+
 // handleEnvFormKey processes key presses during the env form phase.
 func (m *Model) handleEnvFormKey(msg tea.KeyPressMsg) tea.Cmd {
 	n := len(m.envFormFields)
@@ -80,22 +112,26 @@ func (m *Model) handleEnvFormKey(msg tea.KeyPressMsg) tea.Cmd {
 		m.phase = PhasePreflightDashboard
 		return nil
 	case key.Matches(msg, m.envFormKeys.NextField):
-		m.envFormFields[m.envFormCursor].Input.Blur()
-		m.envFormCursor = (m.envFormCursor + 1) % n
-		m.envFormFields[m.envFormCursor].Input.Focus()
+		next := m.nextVisibleField(m.envFormCursor, 1)
+		if next >= 0 && next != m.envFormCursor {
+			m.envFormFields[m.envFormCursor].Input.Blur()
+			m.envFormCursor = next
+			m.envFormFields[m.envFormCursor].Input.Focus()
+		}
 		return nil
 	case key.Matches(msg, m.envFormKeys.PrevField):
-		m.envFormFields[m.envFormCursor].Input.Blur()
-		m.envFormCursor--
-		if m.envFormCursor < 0 {
-			m.envFormCursor = n - 1
+		prev := m.nextVisibleField(m.envFormCursor, -1)
+		if prev >= 0 && prev != m.envFormCursor {
+			m.envFormFields[m.envFormCursor].Input.Blur()
+			m.envFormCursor = prev
+			m.envFormFields[m.envFormCursor].Input.Focus()
 		}
-		m.envFormFields[m.envFormCursor].Input.Focus()
 		return nil
 	case key.Matches(msg, m.envFormKeys.Submit):
-		if m.envFormCursor < n-1 {
+		next := m.nextVisibleField(m.envFormCursor, 1)
+		if next > m.envFormCursor {
 			m.envFormFields[m.envFormCursor].Input.Blur()
-			m.envFormCursor++
+			m.envFormCursor = next
 			m.envFormFields[m.envFormCursor].Input.Focus()
 			return nil
 		}
@@ -113,6 +149,16 @@ func (m *Model) handleEnvFormKey(msg tea.KeyPressMsg) tea.Cmd {
 			active.OptionIndex = (active.OptionIndex + 1) % len(active.Options)
 			active.Input.SetValue(active.Options[active.OptionIndex])
 		}
+		// Changing an option may toggle visibility of sibling fields; if the
+		// cursor landed on a now-hidden field, advance it.
+		if m.isFieldHidden(m.envFormFields[m.envFormCursor]) {
+			next := m.nextVisibleField(m.envFormCursor, 1)
+			if next >= 0 {
+				m.envFormFields[m.envFormCursor].Input.Blur()
+				m.envFormCursor = next
+				m.envFormFields[m.envFormCursor].Input.Focus()
+			}
+		}
 		return nil
 	}
 
@@ -123,8 +169,11 @@ func (m *Model) handleEnvFormKey(msg tea.KeyPressMsg) tea.Cmd {
 
 // submitEnvForm collects values from the form fields and continues fixing.
 func (m *Model) submitEnvForm() tea.Cmd {
-	// Validate required fields
+	// Validate required fields (skip hidden ones - their values are not used)
 	for _, f := range m.envFormFields {
+		if m.isFieldHidden(f) {
+			continue
+		}
 		if f.Required && strings.TrimSpace(f.Input.Value()) == "" {
 			m.preflightFixStatus = f.Label + " is required"
 			return nil
@@ -165,6 +214,9 @@ func (m Model) renderPreflightEnvForm() string {
 	inactiveLabel := lipgloss.NewStyle().Foreground(lipgloss.Color("250"))
 
 	for i, field := range m.envFormFields {
+		if m.isFieldHidden(field) {
+			continue
+		}
 		isActive := i == m.envFormCursor
 
 		// Label

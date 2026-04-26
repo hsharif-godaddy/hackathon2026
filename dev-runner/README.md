@@ -47,7 +47,7 @@ On startup, dev-runner runs a comprehensive set of preflight checks before launc
 1. **Checking** — Runs all checks and displays results
 2. **Dashboard** — Shows pass/fail/warn summary with fix options
 3. **Fix Selection** — Inline checkbox list to choose which items to auto-fix (all selected by default)
-4. **Env Form** — Inline form to collect env configuration (GoCode API key, base URL, model, auth type) when .env files need generation
+4. **Env Form** — Inline form to collect env configuration (GoCode auth method, API key, base URL, app auth type, AWS profile) when .env files need generation. `GoCode Auth: s2s` enables IAM JWT via AWS SSO (see GETTING_STARTED.md).
 5. **Fixing** — Runs selected fixers sequentially, re-verifies fixed items
 6. **Hooks** — Pre-start hooks (install, build)
 7. **Running** — Process manager with tabbed views

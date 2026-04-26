@@ -20,6 +20,14 @@ const (
 // ImageSearchEnvFixer generates image-search-service/.env and fetches Getty
 // client certificates from AWS Secrets Manager. It copies the GoCode API keys
 // from agents/.env so the service shares the same credentials.
+//
+// Note: when agents runs in S2S mode (GOCODE_USE_S2S_AUTH=true), agents/.env
+// has no OPENAI_API_KEY/ANTHROPIC_API_KEY. A newly generated
+// image-search-service/.env will therefore contain empty values for those
+// fields; updates to an existing .env preserve any existing non-empty keys
+// (the upsert path skips empty values). image-search-service does not
+// currently support S2S auth; opt-in users who also need image search must
+// supply keys manually in image-search-service/.env.
 type ImageSearchEnvFixer struct{}
 
 func (f *ImageSearchEnvFixer) Fix(ctx context.Context, projectRoot string) error {

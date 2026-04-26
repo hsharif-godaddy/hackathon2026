@@ -282,6 +282,7 @@ func buildPreflightRunner() *preflight.Runner {
 					{Check: &checks.AWSProfileCheck{}},
 					{Check: &checks.AppEnvCheck{}, Fixer: appEnvFixer},
 					{Check: &checks.AgentsEnvCheck{}, Fixer: agentsEnvFixer},
+					{Check: &checks.ShellEnvConflictCheck{}},
 					{Check: &checks.GoProxyCheck{}, Fixer: &fixers.GoProxyFixer{}},
 					{Check: &checks.LCPEnvCheck{}, Fixer: &fixers.LCPEnvFixer{}},
 					{Check: &checks.AWSSSOCheck{}, Fixer: &fixers.AWSSSOFixer{}},
