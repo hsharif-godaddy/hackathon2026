@@ -1,5 +1,5 @@
 import type { PluginObj, PluginPass, types, NodePath } from '@babel/core';
-import type { JSXAttribute, JSXElement } from '@babel/types';
+import type { JSXElement } from '@babel/types';
 
 interface PluginOptions {
   excludePaths?: string[];
