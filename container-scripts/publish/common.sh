@@ -51,34 +51,137 @@ is_paas_flow() {
     return 1
 }
 
+# Check whether the Nomad allocation config is present. Sets global
+# CONFIG_EXISTS to "true"/"false" and returns 0 if found, 1 otherwise.
+check_nomad_config() {
+    local config_path="${NOMAD_ALLOC_DIR:-/alloc}/config.json"
+    if [[ -f "$config_path" ]]; then
+        log "Nomad allocation config found at ${config_path}"
+        CONFIG_EXISTS=true
+        return 0
+    fi
+    log_warn "Nomad allocation config not found at ${config_path}. Proceeding without it."
+    CONFIG_EXISTS=false
+    return 1
+}
+
+# Detect package manager by lockfile. Caller passes a prioritized space-separated
+# list (e.g. "npm pnpm" or "pnpm yarn npm"). Sets global PACKAGE_MANAGER, verifies
+# the binary is on PATH, and logs its version. Errors if no lockfile matches or
+# the detected manager is missing.
+detect_package_manager() {
+    local supported="$1"
+    local pm
+    PACKAGE_MANAGER=""
+    for pm in $supported; do
+        case "$pm" in
+            pnpm)
+                if [[ -f pnpm-lock.yaml ]]; then
+                    PACKAGE_MANAGER=pnpm
+                    log "Found pnpm-lock.yaml"
+                    break
+                fi
+                ;;
+            yarn)
+                if [[ -f yarn.lock ]]; then
+                    PACKAGE_MANAGER=yarn
+                    log "Found yarn.lock"
+                    break
+                fi
+                ;;
+            npm)
+                if [[ -f package-lock.json ]]; then
+                    PACKAGE_MANAGER=npm
+                    log "Found package-lock.json"
+                    break
+                fi
+                ;;
+            *)
+                error_exit "detect_package_manager: unsupported pm '$pm' in supported list"
+                ;;
+        esac
+    done
+    if [[ -z "$PACKAGE_MANAGER" ]]; then
+        error_exit "No supported lockfile found (expected one of: $supported)"
+    fi
+    if ! command -v "$PACKAGE_MANAGER" >/dev/null 2>&1; then
+        error_exit "$PACKAGE_MANAGER command not found. Ensure $PACKAGE_MANAGER is installed."
+    fi
+    log "$PACKAGE_MANAGER version: $($PACKAGE_MANAGER --version)"
+}
+
+# Validate the archive and distribution directory, extract to $APP_DIR, then cd.
+# Requires globals: DIST_DIR, ARCHIVE_PATH, APP_DIR.
+process_archive() {
+    [[ ! -d "$DIST_DIR" ]] && error_exit "Distribution directory not found: $DIST_DIR"
+    [[ ! -f "$ARCHIVE_PATH" ]] && error_exit "Archive file not found: $ARCHIVE_PATH"
+    [[ ! -r "$ARCHIVE_PATH" ]] && error_exit "Archive file is not readable: $ARCHIVE_PATH"
+
+    log "Archive path: $ARCHIVE_PATH"
+    log "Archive size: $(ls -lhL "$ARCHIVE_PATH" | awk '{print $5}')"
+
+    log "Extracting archive to: $APP_DIR"
+    local extract_start_ms extract_end_ms extract_duration_ms tar_err
+    extract_start_ms=$(($(date +%s%N)/1000000))
+    if ! tar_err=$(tar zxf "$ARCHIVE_PATH" -C "$APP_DIR" 2>&1); then
+        error_exit "Failed to extract archive: $tar_err"
+    fi
+    extract_end_ms=$(($(date +%s%N)/1000000))
+    extract_duration_ms=$((extract_end_ms - extract_start_ms))
+    log "Archive extracted successfully, extractDurationMs=${extract_duration_ms}"
+
+    cd "$APP_DIR" || error_exit "Failed to change directory to $APP_DIR"
+    log "Changed to app directory: $APP_DIR"
+}
+
 # Load database credentials as environment variables
 # Exports: DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD
 load_database_environment_variables() {
-    local config_path="${NOMAD_ALLOC_DIR}/config.json"
+    local config_path="${NOMAD_ALLOC_DIR:-/alloc}/config.json"
     if [[ ! -f "$config_path" ]]; then
         return 0
     fi
 
-    # Check if DATABASE node exists
+    # Check if DATABASE node exists. Missing is not fatal — apps without a DB
+    # attachment are valid; just warn so the absence is visible in logs.
     if ! jq -e '.DATABASE' "$config_path" >/dev/null 2>&1; then
+        log_warn "No DATABASE node found in ${config_path}; skipping DB credential export"
         return 0
     fi
 
     log "Loading database credentials from ${config_path}"
-    export DB_HOST="$(jq -r '.DATABASE.VALUE.HOST // empty' "$config_path")"
-    export DB_PORT="$(jq -r '.DATABASE.VALUE.PORT // "3306"' "$config_path")"
-    export DB_NAME="$(jq -r '.DATABASE.VALUE.NAME // empty' "$config_path")"
-    export DB_USER="$(jq -r '.DATABASE.VALUE.USERNAME // empty' "$config_path")"
-    export DB_PASSWORD="$(jq -r '.DATABASE.VALUE.PASSWORD // empty' "$config_path")"
+    # Assign then export: `export VAR=$(cmd)` always returns 0 (export's exit code),
+    # hiding jq failures under set -e. Split so a jq parse error fails loudly
+    # instead of silently exporting empty credentials.
+    local db_host db_port db_name db_user db_password
+    db_host=$(jq -r '.DATABASE.VALUE.HOST // empty' "$config_path") || error_exit "Failed to read DB_HOST from ${config_path}"
+    db_port=$(jq -r '.DATABASE.VALUE.PORT // "3306"' "$config_path") || error_exit "Failed to read DB_PORT from ${config_path}"
+    db_name=$(jq -r '.DATABASE.VALUE.NAME // empty' "$config_path") || error_exit "Failed to read DB_NAME from ${config_path}"
+    db_user=$(jq -r '.DATABASE.VALUE.USERNAME // empty' "$config_path") || error_exit "Failed to read DB_USER from ${config_path}"
+    db_password=$(jq -r '.DATABASE.VALUE.PASSWORD // empty' "$config_path") || error_exit "Failed to read DB_PASSWORD from ${config_path}"
+
+    # Fail early if .DATABASE is declared but required fields are empty —
+    # otherwise migrations would run with empty creds and fail with a cryptic
+    # connection error. Catches infra misconfig in test/staging before prod.
+    [[ -n "$db_host" ]] || error_exit "DATABASE.VALUE.HOST missing or empty in ${config_path}"
+    [[ -n "$db_name" ]] || error_exit "DATABASE.VALUE.NAME missing or empty in ${config_path}"
+    [[ -n "$db_user" ]] || error_exit "DATABASE.VALUE.USERNAME missing or empty in ${config_path}"
+    [[ -n "$db_password" ]] || error_exit "DATABASE.VALUE.PASSWORD missing or empty in ${config_path}"
+
+    export DB_HOST="$db_host"
+    export DB_PORT="$db_port"
+    export DB_NAME="$db_name"
+    export DB_USER="$db_user"
+    export DB_PASSWORD="$db_password"
     log "Database credentials loaded"
 }
 
 # Load customer environment variables (SYSTEM_MANAGED=false only) from config.json and export each in the shell
 load_customer_environment_variables() {
-    if [[ ! -f "${NOMAD_ALLOC_DIR}/config.json" ]]; then
+    local config_path="${NOMAD_ALLOC_DIR:-/alloc}/config.json"
+    if [[ ! -f "$config_path" ]]; then
         return 0
     fi
-    local config_path="${NOMAD_ALLOC_DIR}/config.json"
     if ! jq -e 'type == "object"' "$config_path" >/dev/null 2>&1; then
         log_warn "config.json is invalid or not a JSON object, skipping customer env load"
         return 0

@@ -44,79 +44,49 @@ fi
 
 log "Starting application deployment process"
 
-# Verify Distribution directory exists
-[[ ! -d "$DIST_DIR" ]] && error_exit "Distribution directory not found: $DIST_DIR"
-
-# Verify archive exists and is readable
-[[ ! -f "$ARCHIVE_PATH" ]] && error_exit "Archive file not found: $ARCHIVE_PATH"
-[[ ! -r "$ARCHIVE_PATH" ]] && error_exit "Archive file is not readable: $ARCHIVE_PATH"
-
-# Log archive details
-log "Archive path: $ARCHIVE_PATH"
-log "Archive size: $(ls -lhL "$ARCHIVE_PATH" | awk '{print $5}')"
-
-# Publish cleanup before extraction to remove stale files when explicitly enabled
-AIRO_CONFIG_PATH="${APP_DIR}/.airo/config.json"
-CLEANUP_ENABLED=$(jq -r '.cleanAppDirBeforeExtract // false' "$AIRO_CONFIG_PATH" 2>/dev/null || echo "false")
-
-if [[ "$CLEANUP_ENABLED" == "true" ]]; then
-    log "Cleanup enabled - cleaning app directory before extraction"
-    find "$APP_DIR" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + 2>/dev/null || true
+# ============================================================================
+# FLOW DISPATCH
+# ============================================================================
+# PaaS owns its full lifecycle (cleanup → extract → install/build → start) and
+# is dispatched BEFORE extraction. AAB extracts here, then picks a runtime
+# path based on archive contents.
+# ============================================================================
+if is_paas_flow; then
+    log "PaaS flow detected - delegating to paas-run.sh"
+    export ARCHIVE_PATH
+    exec /publish/paas-run.sh
 else
-    log "Skipping cleanup (cleanAppDirBeforeExtract: ${CLEANUP_ENABLED})"
-fi
+    process_archive
 
-# Extract archive
-log "Extracting archive to: $APP_DIR"
-EXTRACT_START_MS=$(($(date +%s%N)/1000000))
-tar zxf "$ARCHIVE_PATH" -C "$APP_DIR" || error_exit "Failed to extract archive"
-EXTRACT_END_MS=$(($(date +%s%N)/1000000))
-EXTRACT_DURATION_MS=$((EXTRACT_END_MS - EXTRACT_START_MS))
-log "Archive extracted successfully, extractDurationMs=${EXTRACT_DURATION_MS}"
+    # ------------------------------------------------------------------------
+    # AAB ARCHIVE TYPE DETECTION
+    # ------------------------------------------------------------------------
+    # Archives can be:
+    # 1. AAB pre-built bundle (server.bundle.mjs/cjs) → fastest path, just run
+    # 2. AAB source archive → delegate to build-and-run.sh (legacy/fallback)
+    # CROSS-SERVICE: Archive content strategy determined by
+    # agents/src/utils/git.ts createArchive()
+    # ------------------------------------------------------------------------
+    if [[ -f "${APP_DIR}/dist/server.bundle.mjs" ]]; then
+        log "Detected pre-built artifacts (server.bundle.mjs) - using fast path"
 
-# Change to app directory
-cd "$APP_DIR" || error_exit "Failed to change directory to $APP_DIR"
-log "Changed to app directory: $APP_DIR"
+        create_env_file "${APP_DIR}/dist"
 
-# ============================================================================
-# ARCHIVE TYPE DETECTION
-# ============================================================================
-# Archives can be:
-# 1. AAB pre-built bundle (server.bundle.mjs/cjs) → fastest path, just run
-# 2. Source/PaaS archive → delegate to build-and-run.sh (handles node_modules/dist detection)
-# CROSS-SERVICE: Archive content strategy determined by agents/src/utils/git.ts createArchive()
-# ============================================================================
+        log "Starting application script ./server.bundle.mjs"
+        cd "${APP_DIR}/dist" || error_exit "Failed to change to directory: ${APP_DIR}/dist"
+        exec /usr/local/bin/node "${APP_DIR}/dist/server.bundle.mjs"
 
-if [[ -f "${APP_DIR}/dist/server.bundle.mjs" ]]; then
-    # AAB pre-built bundle - fastest path
-    log "Detected pre-built artifacts (server.bundle.mjs) - using fast path"
+    elif [[ -f "${APP_DIR}/dist/server.bundle.cjs" ]]; then
+        log "Detected pre-built artifacts (server.bundle.cjs) - using legacy fast path"
 
-    load_customer_environment_variables
-    load_database_environment_variables
+        create_env_file "${APP_DIR}/dist"
 
-    # Create .env file and start application
-    create_env_file "${APP_DIR}/dist"
+        log "Starting application script ./server.bundle.cjs"
+        cd "${APP_DIR}/dist" || error_exit "Failed to change to directory: ${APP_DIR}/dist"
+        exec /usr/local/bin/node "${APP_DIR}/dist/server.bundle.cjs"
 
-    log "Starting application script ./server.bundle.mjs"
-    cd "${APP_DIR}/dist" || error_exit "Failed to change to directory: ${APP_DIR}/dist"
-    exec /usr/local/bin/node "${APP_DIR}/dist/server.bundle.mjs"
-
-elif [[ -f "${APP_DIR}/dist/server.bundle.cjs" ]]; then
-    # AAB legacy bundle - fast path
-    log "Detected pre-built artifacts (server.bundle.cjs) - using legacy fast path"
-
-    load_customer_environment_variables
-    load_database_environment_variables
-
-    create_env_file "${APP_DIR}/dist"
-
-    log "Starting application script ./server.bundle.cjs"
-    cd "${APP_DIR}/dist" || error_exit "Failed to change to directory: ${APP_DIR}/dist"
-    exec /usr/local/bin/node "${APP_DIR}/dist/server.bundle.cjs"
-
-else
-    # Source or PaaS archive - delegate to build-and-run.sh
-    # build-and-run.sh detects node_modules/dist and skips install/build if present
-    log "No pre-built bundle detected - delegating to build-and-run.sh"
-    exec /publish/build-and-run.sh
+    else
+        log "No pre-built bundle detected - delegating to build-and-run.sh"
+        exec /publish/build-and-run.sh
+    fi
 fi

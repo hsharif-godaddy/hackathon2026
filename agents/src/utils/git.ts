@@ -599,8 +599,6 @@ export class GitUtils {
 
     // Only verify dist/ folder exists for dist-only archives
     // Full source archives include everything in /app, so dist/ is not required
-    // CROSS-SERVICE: Dist validation also exists in container-scripts/publish/build-and-run.sh
-    // When modifying this check, verify the container-side logic is consistent
     if (!includeSource) {
       const distCheckResult = await this.devSupervisor!.exec({
         command: buildShellCommand(['test', '-d', 'dist']),
