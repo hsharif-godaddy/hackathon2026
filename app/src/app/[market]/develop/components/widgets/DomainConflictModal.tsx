@@ -5,7 +5,6 @@ import Button from '@ux/button';
 import Modal from '@ux/modal';
 import text from '@ux/text';
 
-import { useCloseOnReauth } from '@/hooks/useCloseOnReauth';
 import { useTranslations } from '@/hooks/useTranslations';
 
 interface DomainConflictModalProps {
@@ -30,7 +29,6 @@ export function DomainConflictModal({
   existingAppId,
 }: DomainConflictModalProps) {
   const t = useTranslations();
-  useCloseOnReauth(isOpen, onClose);
 
   if (!isOpen) return null;
 

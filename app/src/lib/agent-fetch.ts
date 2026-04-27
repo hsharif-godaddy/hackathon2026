@@ -8,7 +8,6 @@
  */
 
 import { appFetch } from '@/lib/gasket-config'
-import { useAuthUIStore } from '@/stores/useAuthUIStore'
 
 export interface AgentFetchOptions extends RequestInit {
   siteId: string;
@@ -95,25 +94,13 @@ export async function getAgentToken(siteId: string): Promise<string> {
 
 /**
  * Authenticated fetch for agent API calls.
- *
- * Includes a circuit breaker: when the SSO session is expired (needsReauth is set
- * in useAuthUIStore), all requests are rejected immediately without making HTTP calls.
- * This prevents stale-session polling from generating thousands of 401 errors/day.
+ * Uses Bearer token auth with retry-on-401 logic.
  */
 export async function agentFetch(url: string, options: AgentFetchOptions): Promise<Response> {
   const { siteId, ...fetchOptions } = options;
 
-  // Circuit breaker: reject immediately when re-authentication is needed.
-  // appFetch sets needsReauth on 401 from the BFF, so once SSO expires,
-  // all subsequent agent requests short-circuit here instead of hitting the network.
-  if (typeof window !== 'undefined' && useAuthUIStore.getState().needsReauth) {
-    throw new Error('Authentication required - session expired');
-  }
-
-  // Get JWT token
   const token = await getAgentToken(siteId);
 
-  // Don't set Content-Type for FormData (browser will set it with boundary)
   const isFormData = fetchOptions.body instanceof FormData;
   const headers: HeadersInit = {
     'Authorization': `Bearer ${token}`,
@@ -121,24 +108,14 @@ export async function agentFetch(url: string, options: AgentFetchOptions): Promi
     ...(fetchOptions.headers || {})
   };
 
-  // Make request to agent
   const response = await fetch(url, {
     ...fetchOptions,
     headers
   });
 
-  // Handle token expiration by retrying once with a fresh token
   if (response.status === 401) {
     tokenCache.delete(siteId);
 
-    // Re-check circuit breaker before attempting token refresh — SSO may have
-    // expired between the initial check and this point (race window).
-    if (typeof window !== 'undefined' && useAuthUIStore.getState().needsReauth) {
-      throw new Error('Authentication required - session expired');
-    }
-
-    // getAgentToken calls appFetch internally — if SSO is expired, appFetch
-    // will set needsReauth and getAgentToken will throw, stopping the retry.
     const freshToken = await getAgentToken(siteId);
 
     const retryHeaders: HeadersInit = {

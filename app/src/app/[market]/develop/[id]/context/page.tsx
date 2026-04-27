@@ -450,9 +450,7 @@ function ContextDebugPage() {
 
 export default function ContextDebug() {
   return (
-      <ProtectedRoute
-        unauthorizedMessage="You need to be signed in to access the context debug."
-      >
+      <ProtectedRoute>
         <ContextDebugPage />
       </ProtectedRoute>
       )

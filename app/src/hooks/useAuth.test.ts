@@ -94,35 +94,13 @@ vi.mock('@/lib/request-context', () => ({
   },
 }));
 
-const { mockClearNeedsReauth, mockStore, mockUseAuthUIStore } = vi.hoisted(() => {
-  const clearFn = vi.fn();
-  const store = {
-    needsReauthSeq: 0,
-    needsReauth: false,
-    clearNeedsReauth: (expectedSeq?: number) => {
-      clearFn(expectedSeq);
-      // Only clear if sequence hasn't advanced (same logic as real store)
-      if (expectedSeq !== undefined && expectedSeq !== store.needsReauthSeq) {
-        return; // No-op on sequence mismatch
-      }
-      store.needsReauth = false;
-    },
-    setNeedsReauth: (_reason: string) => {
-      store.needsReauthSeq++;
-      store.needsReauth = true;
-    }
-  };
-
-  const useAuthUIStore: any = vi.fn((selector: (state: typeof store) => any) => {
-    return selector(store);
+const { mockUseAuthUIStore } = vi.hoisted(() => {
+  const store = {};
+  const useAuthUIStore: any = vi.fn((selector?: (state: typeof store) => any) => {
+    return selector ? selector(store) : store;
   });
   useAuthUIStore.getState = () => store;
-
-  return {
-    mockClearNeedsReauth: clearFn,
-    mockStore: store,
-    mockUseAuthUIStore: useAuthUIStore,
-  };
+  return { mockUseAuthUIStore: useAuthUIStore };
 });
 
 vi.mock('@/stores/useAuthUIStore', () => ({
@@ -132,9 +110,6 @@ vi.mock('@/stores/useAuthUIStore', () => ({
 describe('useAuth', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
-    // Reset mock store to initial state
-    mockStore.needsReauthSeq = 0;
-    mockStore.needsReauth = false;
 
     // Reset gasket config mock to default
     mockGasketConfig = { ...defaultTestConfig };
@@ -218,197 +193,4 @@ describe('useAuth', () => {
     });
   });
 
-  it('should clear needsReauth flag when JWT validation succeeds', async () => {
-    // Test the NEW validation cycle tracking logic:
-    // 1. needsReauth is set (401 occurred)
-    // 2. Gasket Auth runs validation (status='loading')
-    // 3. Validation completes with valid=true
-    // 4. needsReauth should be cleared
-
-    const { useAuthState } = await import('@godaddy/gasket-auth');
-    const gasketConfigModule = await import('@/lib/gasket-config');
-
-    // Configure gasket-config mocks for JWT mode
-    vi.mocked(gasketConfigModule.isAuthJWTSync).mockReturnValue(true);
-    vi.mocked(gasketConfigModule.isAuthMockSync).mockReturnValue(false);
-
-    // Set JWT config
-    mockGasketConfig = {
-      ...defaultTestConfig,
-      auth: { ...defaultTestConfig.auth, authType: 'JWT', isMock: false, isJWT: true },
-    };
-    vi.mocked(gasketConfigModule.getGasketConfig).mockResolvedValue(mockGasketConfig);
-
-    // Mock Gasket Auth to simulate validation cycle
-    let authStateValue = {
-      status: 'authenticated' as const,
-      valid: true,
-      details: { email: 'test@example.com', cid: 'customer-123' },
-    };
-    vi.mocked(useAuthState).mockImplementation(() => authStateValue);
-
-    const { rerender } = renderHook(() => useAuth());
-
-    // Wait for config to load
-    await waitFor(() => {
-      expect(gasketConfigModule.getGasketConfig).toHaveBeenCalled();
-    });
-
-    // Simulate a 401 error that sets needsReauth
-    mockStore.setNeedsReauth('session_expired');
-    expect(mockStore.needsReauth).toBe(true);
-    expect(mockStore.needsReauthSeq).toBe(1);
-
-    // Simulate Gasket Auth starting a validation cycle
-    authStateValue = { ...authStateValue, status: 'loading' };
-    rerender();
-
-    // Wait for validation cycle to be detected
-    await waitFor(() => {
-      // The effect should detect status='loading' and track the sequence
-    });
-
-    // Simulate validation completing with valid=true
-    authStateValue = { ...authStateValue, status: 'authenticated', valid: true };
-    rerender();
-
-    // Wait for needsReauth to be cleared
-    await waitFor(() => {
-      expect(mockClearNeedsReauth).toHaveBeenCalled();
-    });
-
-    // Verify it was called with the correct sequence
-    expect(mockClearNeedsReauth).toHaveBeenCalledWith(1);
-    expect(mockStore.needsReauth).toBe(false);
-  });
-
-  it('should not clear needsReauth flag when JWT validation fails', async () => {
-    // Test that needsReauth stays set when validation cycle completes with valid=false
-    // 1. needsReauth is set (401 occurred)
-    // 2. Gasket Auth runs validation (status='loading')
-    // 3. Validation completes with valid=false
-    // 4. needsReauth should NOT be cleared (user still needs to reauth)
-
-    const { useAuthState } = await import('@godaddy/gasket-auth');
-    const gasketConfigModule = await import('@/lib/gasket-config');
-
-    // Configure gasket-config mocks for JWT mode
-    vi.mocked(gasketConfigModule.isAuthJWTSync).mockReturnValue(true);
-    vi.mocked(gasketConfigModule.isAuthMockSync).mockReturnValue(false);
-
-    // Set JWT config
-    mockGasketConfig = {
-      ...defaultTestConfig,
-      auth: { ...defaultTestConfig.auth, authType: 'JWT', isMock: false, isJWT: true },
-    };
-    vi.mocked(gasketConfigModule.getGasketConfig).mockResolvedValue(mockGasketConfig);
-
-    // Mock Gasket Auth with invalid token
-    let authStateValue = {
-      status: 'authenticated' as const,
-      valid: false,
-      details: { email: 'test@example.com', cid: 'customer-123' },
-    };
-    vi.mocked(useAuthState).mockImplementation(() => authStateValue);
-
-    const { rerender } = renderHook(() => useAuth());
-
-    // Wait for config to load
-    await waitFor(() => {
-      expect(gasketConfigModule.getGasketConfig).toHaveBeenCalled();
-    });
-
-    // Simulate a 401 error that sets needsReauth
-    mockStore.setNeedsReauth('session_expired');
-    expect(mockStore.needsReauth).toBe(true);
-
-    // Simulate Gasket Auth starting a validation cycle
-    authStateValue = { ...authStateValue, status: 'loading' };
-    rerender();
-
-    // Simulate validation completing with valid=false (token is invalid)
-    authStateValue = { ...authStateValue, status: 'authenticated', valid: false };
-    rerender();
-
-    // Give it time to potentially call clearNeedsReauth (which it shouldn't)
-    await new Promise(resolve => setTimeout(resolve, 100));
-
-    // Verify needsReauth was NOT cleared because valid=false
-    expect(mockClearNeedsReauth).not.toHaveBeenCalled();
-    expect(mockStore.needsReauth).toBe(true);
-  });
-
-  it('should not clear needsReauth if sequence advanced during validation', async () => {
-    // Test sequence-based race condition protection:
-    // 1. needsReauth is set with seq=1 (401 #1)
-    // 2. Gasket Auth runs validation cycle (status='loading') - captures seq=1
-    // 3. Another 401 occurs, advancing seq to 2 (401 #2)
-    // 4. First validation completes with valid=true
-    // 5. needsReauth should NOT be cleared because sequence doesn't match (captured seq=1, current seq=2)
-
-    const { useAuthState } = await import('@godaddy/gasket-auth');
-    const gasketConfigModule = await import('@/lib/gasket-config');
-
-    // Configure gasket-config mocks for JWT mode
-    vi.mocked(gasketConfigModule.isAuthJWTSync).mockReturnValue(true);
-    vi.mocked(gasketConfigModule.isAuthMockSync).mockReturnValue(false);
-
-    // Set JWT config
-    mockGasketConfig = {
-      ...defaultTestConfig,
-      auth: { ...defaultTestConfig.auth, authType: 'JWT', isMock: false, isJWT: true },
-    };
-    vi.mocked(gasketConfigModule.getGasketConfig).mockResolvedValue(mockGasketConfig);
-
-    let authStateValue = {
-      status: 'authenticated' as const,
-      valid: true,
-      details: { email: 'test@example.com', cid: 'customer-123' },
-    };
-    vi.mocked(useAuthState).mockImplementation(() => authStateValue);
-
-    const { rerender } = renderHook(() => useAuth());
-
-    // Wait for config to load
-    await waitFor(() => {
-      expect(gasketConfigModule.getGasketConfig).toHaveBeenCalled();
-    });
-
-    // Simulate first 401 error (seq=1)
-    mockStore.setNeedsReauth('session_expired');
-    expect(mockStore.needsReauth).toBe(true);
-    expect(mockStore.needsReauthSeq).toBe(1);
-
-    // Simulate Gasket Auth starting validation cycle - captures seq=1
-    authStateValue = { ...authStateValue, status: 'loading' };
-    rerender();
-
-    // Wait for validation cycle to be detected with seq=1
-    await waitFor(() => {
-      // The effect detects status='loading' and captures needsReauthSeq=1
-    });
-
-    // Simulate another 401 while validation is in progress (seq advances to 2)
-    mockStore.setNeedsReauth('another_401');
-    expect(mockStore.needsReauthSeq).toBe(2);
-
-    // Simulate validation completing with valid=true (but for the OLD seq=1)
-    authStateValue = { ...authStateValue, status: 'authenticated', valid: true };
-    rerender();
-
-    // Give it time to potentially call clearNeedsReauth
-    await new Promise(resolve => setTimeout(resolve, 100));
-
-    // Verify needsReauth was NOT cleared due to sequence mismatch
-    // The validation was for seq=1 but current seq is 2
-    expect(mockStore.needsReauth).toBe(true);
-    expect(mockStore.needsReauthSeq).toBe(2);
-
-    // clearNeedsReauth may have been called with seq=1, but the store's
-    // clearNeedsReauth implementation should have rejected it due to mismatch
-    if (mockClearNeedsReauth.mock.calls.length > 0) {
-      // If called, verify it was rejected (needsReauth still true)
-      expect(mockStore.needsReauth).toBe(true);
-    }
-  });
 });

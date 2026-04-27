@@ -1,6 +1,7 @@
 import { SUPPORTED_AUTH_TYPES } from '@airo/shared/auth';
 
 import { useAuthUIStore } from '@/stores/useAuthUIStore';
+import { getRootDomain } from '@/utils/getRootDomain';
 import { SHOPPER_AUTH_FAILURE_MESSAGE } from './customer-auth';
 import { auth } from './features';
 import { logger } from './request-context';
@@ -215,15 +216,10 @@ export async function getSsoHost(): Promise<string> {
  */
 export interface AppFetchOptions {
   /**
-   * When true, automatically sets needsReauth in the auth UI store on 401.
-   * Defaults to true. Set to false if you want to handle 401 manually.
-   */
-  setAuthState?: boolean;
-  /**
    * When set, validates auth at this level before making the request.
-   * If validation fails (401), triggers SSO re-auth and waits for completion.
+   * If validation fails (401), opens SSO modal and waits for completion.
    * On successful re-auth, retries validation then proceeds with the request.
-   * On SSO dismiss or timeout, returns the 401 response (caller handles normally).
+   * On SSO dismiss or timeout, returns the 401 response.
    */
   authLevel?: 1 | 2 | 3;
 }
@@ -244,7 +240,10 @@ function waitForSsoOutcome(): Promise<'success' | 'dismiss'> {
 
     const timeout = setTimeout(() => {
       unsubscribe();
-      useAuthUIStore.getState().clearNeedsReauth();
+      // Release the modal flag so a subsequent level-3 action can re-open SSO.
+      // Without this, isSsoLoginOpen remains true and openSsoLogin becomes a
+      // no-op, permanently blocking auth-gated flows.
+      useAuthUIStore.getState().closeSsoLogin('dismiss');
       reject(new Error('Authentication timed out'));
     }, AUTH_PREFLIGHT_TIMEOUT_MS);
 
@@ -261,10 +260,10 @@ function waitForSsoOutcome(): Promise<'success' | 'dismiss'> {
   });
 }
 
-export async function authPreflight(level: 1 | 2 | 3): Promise<AppFetchResponse | null> {
+export async function authPreflight(level: 1 | 2 | 3): Promise<Response | null> {
   if (typeof window === 'undefined') return null;
 
-  const response: AppFetchResponse = await fetch(
+  const response = await fetch(
     `/api/auth/validate?level=${level}`,
     { method: 'GET', credentials: 'include' }
   );
@@ -272,32 +271,64 @@ export async function authPreflight(level: 1 | 2 | 3): Promise<AppFetchResponse 
   if (response.ok) return null;
   if (response.status !== 401) return response;
 
-  let authReason: number | undefined;
-  try {
-    const data = await response.clone().json();
-    authReason = data.authReason;
-  } catch { /* response may not be JSON */ }
+  const body = await response.clone().json().catch((parseErr) => {
+    // WAF / proxy 401 pages are HTML, not JSON -- flag so proxy errors are
+    // diagnosable separately from "backend responded with no authReason".
+    logger.warn('app-fetch.auth-preflight.body-parse-failed', {
+      level,
+      status: response.status,
+      error: parseErr instanceof Error ? parseErr.message : String(parseErr),
+    });
+    return null;
+  });
+  const authReason = typeof body?.authReason === 'number' ? body.authReason : null;
 
   logger.info('app-fetch.auth-preflight.reauth-required', { level, authReason });
 
+  // Env gate mirrors useSsoSignIn: prod (sso.godaddy.com is public) and local
+  // dev (localhost) can render the SSO Deck iframe; deployed test/dev must do
+  // a full-page redirect because Chrome's Private Network Access check blocks
+  // the iframe against sso.<test|dev>-godaddy.com.
+  const canUseSsoModal =
+    process.env.NODE_ENV === 'development' || getRootDomain() === 'godaddy.com';
+
+  if (!canUseSsoModal) {
+    try {
+      window.location.href = await getLoginUrl(window.location.href);
+    } catch (err) {
+      logger.warn('app-fetch.auth-preflight.redirect-url-failed', {
+        level,
+        reason: err instanceof Error ? err.message : String(err),
+      });
+      return response;
+    }
+    // Return a never-resolving promise; the browser is navigating away.
+    return new Promise<Response | null>(() => {});
+  }
+
   if (!pendingSsoPromise) {
-    useAuthUIStore.getState().setNeedsReauth('session_expired', false, authReason);
+    const store = useAuthUIStore.getState();
+    store.setSsoAuthReason(authReason);
+    store.openSsoLogin();
     pendingSsoPromise = waitForSsoOutcome().finally(() => { pendingSsoPromise = null; });
   }
 
   let outcome: 'success' | 'dismiss';
   try {
     outcome = await pendingSsoPromise;
-  } catch {
+  } catch (err) {
+    logger.warn('app-fetch.auth-preflight.sso-wait-failed', {
+      level,
+      reason: err instanceof Error ? err.message : String(err),
+    });
     return response;
   }
 
   if (outcome === 'dismiss') {
-    useAuthUIStore.getState().clearNeedsReauth();
     throw new AuthDismissedError();
   }
 
-  const retryResponse: AppFetchResponse = await fetch(
+  const retryResponse = await fetch(
     `/api/auth/validate?level=${level}`,
     { method: 'GET', credentials: 'include' }
   );
@@ -307,106 +338,31 @@ export async function authPreflight(level: 1 | 2 | 3): Promise<AppFetchResponse 
 }
 
 /**
- * Extended Response type that includes requiresRefresh flag for 401 responses
- */
-export interface AppFetchResponse extends Response {
-  /** Whether the session requires refresh (token is stale but valid) */
-  requiresRefresh?: boolean;
-}
-
-/**
- * Helper function for authenticated API calls.
- * Uses plain fetch with credentials and handles 401 responses at the UI layer.
- *
- * This function NEVER redirects on 401. Instead, it:
- * 1. Extracts auth metadata from the 401 response
- * 2. Sets needsReauth in the auth UI store (unless setAuthState: false)
- * 3. Returns the response for the caller to handle
- *
- * @param url - API endpoint URL
- * @param options - Fetch options (standard RequestInit)
- * @param appOptions - Additional options for appFetch behavior
- * @returns Response from the API, with requiresRefresh flag attached for 401 responses
- *
- * @example
- * ```typescript
- * // Normal usage - 401 sets auth state, no redirect
- * const response = await appFetch('/api/sites');
- * if (response.status === 401) {
- *   // Auth state already set, UI will show login prompt via AuthBoundary
- * }
- *
- * // Handle 401 manually without setting auth state
- * const response = await appFetch('/api/sites', {}, { setAuthState: false });
- * if (response.status === 401) {
- *   // Handle manually
- * }
- * ```
+ * Authenticated fetch. Uses plain fetch with credentials.
+ * 401 responses are returned to the caller -- Gasket Auth detects
+ * expired sessions via its validation cycle and triggers SSO.
  */
 export async function appFetch(
   url: string,
   options?: RequestInit,
   appOptions?: AppFetchOptions
-): Promise<AppFetchResponse> {
-  const { setAuthState = true, authLevel } = appOptions || {};
+): Promise<Response> {
+  const { authLevel } = appOptions || {};
 
-  // Auth preflight: validate session at the required level before making the request
   if (authLevel) {
     const preflightResult = await authPreflight(authLevel);
     if (preflightResult) return preflightResult;
   }
 
-  // Normalize relative URLs for environments where the underlying fetch/auth wrapper
-  // requires absolute URLs (e.g., some server/test runtimes).
   const resolvedUrl =
     typeof window !== 'undefined' && typeof url === 'string' && url.startsWith('/')
       ? new URL(url, window.location.origin).toString()
       : url;
 
-  // Always use plain fetch with credentials - never use authFetch which auto-redirects
-  const response: AppFetchResponse = await fetch(resolvedUrl, {
+  const response = await fetch(resolvedUrl, {
     ...options,
     credentials: 'include'
   });
-
-  // Handle 401 responses at the UI layer
-  if (response.status === 401) {
-    let requiresRefresh = false;
-    let authReason: number | undefined;
-
-    // Extract requiresRefresh and authReason from response body
-    try {
-      const contentType = response.headers.get('content-type');
-      if (contentType?.includes('application/json')) {
-        // Clone response so caller can still read the body
-        const data = await response.clone().json();
-        requiresRefresh = data.requiresRefresh ?? false;
-        response.requiresRefresh = requiresRefresh;
-        authReason = data.authReason ?? undefined;
-
-        logger.debug('app-fetch.auth-required', {
-          message: '401 response - authentication required',
-          requiresRefresh,
-          authReason,
-          url: resolvedUrl
-        });
-      }
-    } catch (error) {
-      logger.debug('app-fetch.parse-error', {
-        message: 'Could not parse 401 response',
-        error: error instanceof Error ? error.message : String(error)
-      });
-    }
-
-    // Set auth state in UI store (client-side only)
-    if (setAuthState && typeof window !== 'undefined') {
-      const reason = requiresRefresh ? 'session_stale' : 'not_authenticated';
-      // Capture current URL for post-auth redirect before opening SSO
-      const currentUrl = window.location.pathname + window.location.search + window.location.hash;
-      useAuthUIStore.getState().setRedirectUrl(currentUrl);
-      useAuthUIStore.getState().setNeedsReauth(reason, requiresRefresh, authReason);
-    }
-  }
 
   // Check specifically for shopper ID authorization failure (403 only)
   if (response.status === 403) {
@@ -414,16 +370,13 @@ export async function appFetch(
       const contentType = response.headers.get('content-type');
       if (contentType?.includes('application/json')) {
         const data = await response.clone().json();
-        // Only redirect for the specific shopper ID authorization error message
         if (data.message && data.message.includes(SHOPPER_AUTH_FAILURE_MESSAGE)) {
-          // Only redirect on client-side
           if (typeof window !== 'undefined') {
             window.location.href = '/coming-soon';
           }
         }
       }
     } catch (error) {
-      // If we can't parse the response, just return it normally
       logger.debug('app-fetch.parse.error', {
         message: 'Could not parse response for access check',
         error: error instanceof Error ? error.message : String(error)

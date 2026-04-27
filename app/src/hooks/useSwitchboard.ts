@@ -89,11 +89,10 @@ export async function fetchFeatureFlag(featureName: string, options?: FetchOptio
 
   const url = `https://bff.pcx.${rootDomain}/api/config/feature/${featureName}?app=airo-app-builder`;
 
-  // appFetch sets needsReauth on 401 → AuthBoundary shows login modal
+  // 401 responses are returned to the caller for handling
   const response = await appFetch(url);
 
   // Throw SwitchboardAuthError separately for React Query error propagation.
-  // This is intentionally separate from appFetch's needsReauth (UI state) -
   // the error allows callers like useSettingsNavItems to surface auth-gated state.
   if (response.status === 401 && options?.throwOnAuth) {
     logger.warn('switchboard.fetch.auth_required', { featureName });

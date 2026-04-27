@@ -58,10 +58,10 @@ export class ClientPaywallProvider implements PaywallDataProvider {
     const [paywallResponse, marketsResponse, bypassResponse] = await Promise.all([
       appFetch(paywallFlagUrl),
       appFetch(marketsFlagUrl),
-      appFetch(bypassFlagUrl, {}, { setAuthState: false }).catch(() => null),
+      appFetch(bypassFlagUrl, {}).catch(() => null),
     ]);
 
-    // Handle 401 separately: appFetch already set needsReauth, AuthBoundary will prompt login.
+    // 401 is handled by Gasket Auth detecting expired session
     // Throw a typed error so callers can distinguish auth failures from service failures.
     if (paywallResponse.status === 401 || marketsResponse.status === 401) {
       logger.warn('paywall.client-provider.flag-fetch.auth-required', {

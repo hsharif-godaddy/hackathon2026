@@ -1,6 +1,8 @@
 import { NextRequest } from 'next/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { AiroHttpError } from '@/lib/mgmt-airo/types';
+
 vi.mock('@/lib/request-context', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }
 }));
@@ -109,5 +111,47 @@ describe('/api/sites/quick-create ITC validation', () => {
     expect(mockCreateSite).toHaveBeenCalledWith(
       expect.not.objectContaining({ itc: expect.anything() })
     );
+  });
+});
+
+describe('/api/sites/quick-create downstream error propagation', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('propagates downstream 401 AiroHttpError as 401 with authReason:2', async () => {
+    mockCreateSite.mockRejectedValue(new AiroHttpError(401, 'Unauthorized', {}));
+
+    const { POST } = await import('../route');
+    const response = await POST(makeRequest({ initialPrompt: 'test' }));
+
+    expect(response.status).toBe(401);
+    const body = await response.json();
+    expect(body).toEqual({ error: 'Unauthorized', authReason: 2 });
+  });
+
+  it('returns 500 for downstream 403 (does not match 401 branch)', async () => {
+    mockCreateSite.mockRejectedValue(new AiroHttpError(403, 'Forbidden', {}));
+
+    const { POST } = await import('../route');
+    const response = await POST(makeRequest({ initialPrompt: 'test' }));
+
+    expect(response.status).toBe(500);
+    const body = await response.json();
+    expect(body.error).toBe('Failed to create site record');
+    expect(body).not.toHaveProperty('authReason');
+  });
+
+  it('returns 500 for non-AiroHttpError with status:401 field (no spurious SSO trigger)', async () => {
+    const fakeError = Object.assign(new Error('boom'), { status: 401 });
+    mockCreateSite.mockRejectedValue(fakeError);
+
+    const { POST } = await import('../route');
+    const response = await POST(makeRequest({ initialPrompt: 'test' }));
+
+    expect(response.status).toBe(500);
+    const body = await response.json();
+    expect(body.error).toBe('Failed to create site record');
+    expect(body).not.toHaveProperty('authReason');
   });
 });

@@ -341,7 +341,7 @@ export function HeroContentImprovementHomePage({ serverFeatures }: HomeContentPr
         return;
       }
 
-      const createSiteResponse = await fetchQuickCreate(promptToUse, { setAuthState: false })
+      const createSiteResponse = await fetchQuickCreate(promptToUse)
 
       if (!createSiteResponse.ok) {
         if (createSiteResponse.status === 401) {

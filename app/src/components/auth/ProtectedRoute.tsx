@@ -5,9 +5,8 @@ import { AuthIdpType, AuthRealmType, AuthRequired, AuthRiskType } from '@godaddy
 
 import { useAuthContext } from '@/components/providers/AuthProvider';
 import { useGasketConfig } from '@/hooks/useGasketConfig';
-import { useTranslations } from '@/hooks/useTranslations';
 import LoadingComponent from './LoadingComponent';
-import UnauthorizedComponent from './UnauthorizedComponent';
+import SsoLoginPrompt from './SsoLoginPrompt';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -15,7 +14,6 @@ interface ProtectedRouteProps {
   groups?: string[];
   risk?: AuthRiskType;
   type?: AuthIdpType[];
-  unauthorizedMessage?: string;
   loadingFallback?: React.ReactNode;
 }
 
@@ -25,15 +23,10 @@ export default function ProtectedRoute({
   groups = [],
   risk,
   type,
-  unauthorizedMessage = null,
   loadingFallback
 }: ProtectedRouteProps) {
-  const t = useTranslations();
-  // State to track if component has hydrated and mock login dialog
   const [isClient, setIsClient] = useState(false);
   const hasInitiallyRendered = useRef(false);
-
-  unauthorizedMessage = unauthorizedMessage || t('builder_auth_protected_message');
 
   // Get gasket configuration and auth state
   const { isLoading: configLoading } = useGasketConfig();
@@ -70,20 +63,14 @@ export default function ProtectedRoute({
   };
 
   if (isMockAuth) {
-    // Mock auth mode - check mock auth state
-    if (!isAuthenticated) {
-      return <UnauthorizedComponent unauthorizedMessage={unauthorizedMessage} />
-    }
-    // Mock user is authenticated
-    return <>{children}</>;
+    return isAuthenticated ? <>{children}</> : <SsoLoginPrompt />;
   }
 
-  // JWT mode - use Gasket AuthRequired
   return (
     <AuthRequired
       {...authParams}
       loading={loadingFallback ?? <LoadingComponent />}
-      alt={<UnauthorizedComponent unauthorizedMessage={unauthorizedMessage} />}
+      alt={<SsoLoginPrompt />}
     >
       <>{children}</>
     </AuthRequired>

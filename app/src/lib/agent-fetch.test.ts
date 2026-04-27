@@ -6,17 +6,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // Mock fetch globally
 global.fetch = vi.fn();
 
-// Mock useAuthUIStore for circuit breaker tests
-const mockNeedsReauth = { value: false };
-vi.mock('@/stores/useAuthUIStore', () => ({
-  useAuthUIStore: {
-    getState: () => ({
-      needsReauth: mockNeedsReauth.value,
-      setNeedsReauth: vi.fn(),
-    }),
-  },
-}));
-
 // Mock gasket-config so appFetch delegates to global.fetch.
 // This lets existing test mocks continue to work for getAgentToken.
 vi.mock('@/lib/gasket-config', () => ({
@@ -29,7 +18,6 @@ describe('agent-fetch', function packageTests() {
   beforeEach(async () => {
     vi.clearAllMocks();
     vi.resetModules();
-    mockNeedsReauth.value = false;
     // Dynamically import to get fresh module with reset caches
     const module = await import('./agent-fetch'); // eslint-disable-line @next/next/no-assign-module-variable
     agentFetch = module.agentFetch;
@@ -222,61 +210,4 @@ describe('agent-fetch', function packageTests() {
     });
   });
 
-  describe('circuit breaker', function circuitBreaker() {
-    it('should reject immediately when needsReauth is true', async function rejectOnReauth() {
-      mockNeedsReauth.value = true;
-
-      await expect(
-        agentFetch('http://localhost:4000/test', { siteId: 'test-site' })
-      ).rejects.toThrow('Authentication required - session expired');
-
-      // No HTTP requests should have been made
-      expect(fetch).not.toHaveBeenCalled();
-    });
-
-    it('should reject even with a valid cached token when needsReauth is true', async function rejectWithCachedToken() {
-      const mockToken = 'cached-token';
-      const mockExpires = new Date(Date.now() + 12 * 60 * 60 * 1000);
-
-      // First call succeeds and caches token
-      vi.mocked(fetch).mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ token: mockToken, expires: mockExpires.toISOString() }),
-      } as Response);
-      vi.mocked(fetch).mockResolvedValueOnce({ ok: true, status: 200 } as Response);
-      await agentFetch('http://localhost:4000/test', { siteId: 'test-site' });
-      expect(fetch).toHaveBeenCalledTimes(2);
-
-      // Now SSO expires
-      mockNeedsReauth.value = true;
-
-      // Circuit breaker rejects before using the cached token
-      await expect(
-        agentFetch('http://localhost:4000/test2', { siteId: 'test-site' })
-      ).rejects.toThrow('Authentication required - session expired');
-
-      // No additional HTTP requests
-      expect(fetch).toHaveBeenCalledTimes(2);
-    });
-
-    it('should allow requests when needsReauth is false', async function allowWhenAuthed() {
-      mockNeedsReauth.value = false;
-      const mockToken = 'test-token';
-      const mockExpires = new Date(Date.now() + 12 * 60 * 60 * 1000);
-
-      vi.mocked(fetch).mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ token: mockToken, expires: mockExpires.toISOString() }),
-      } as Response);
-
-      vi.mocked(fetch).mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-      } as Response);
-
-      await agentFetch('http://localhost:4000/test', { siteId: 'test-site' });
-
-      expect(fetch).toHaveBeenCalledTimes(2);
-    });
-  });
 });

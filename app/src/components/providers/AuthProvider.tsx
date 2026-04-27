@@ -141,7 +141,6 @@ export function useAuthContext() {
       isAuthenticated: false,
       isLoading: false,
       authState: null,
-      needsReauth: false,
       config: null,
       gasketConfig: null,
       configLoading: false,

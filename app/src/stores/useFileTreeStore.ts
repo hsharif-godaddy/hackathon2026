@@ -3,18 +3,15 @@ import { create } from 'zustand';
 import type { FileItem } from '@/app/[market]/develop/components/FileTree';
 import { logger } from '@/lib/request-context';
 import { appService } from '@/services/AppService';
-import { useAuthUIStore } from '@/stores/useAuthUIStore';
 
 const MAX_RETRY_COUNT = 5;
 const RETRY_DELAY_MS = 5000;
 
 interface FileTreeState {
-  // Per-app state
   files: Record<string, FileItem[]>;
   loading: Record<string, boolean>;
   errors: Record<string, string | null>;
   retryCount: Record<string, number>;
-  stoppedForAuth: Record<string, boolean>;
 }
 
 interface FileTreeActions {
@@ -85,7 +82,6 @@ export const useFileTreeStore = create<FileTreeStore>((set, get) => ({
   loading: {},
   errors: {},
   retryCount: {},
-  stoppedForAuth: {},
 
   /**
    * Load files for a specific app with deduplication and retry logic
@@ -113,12 +109,10 @@ export const useFileTreeStore = create<FileTreeStore>((set, get) => ({
       try {
         const result = await appService.getFiles(appId, 5);
 
-        // Success: reset retry count and stoppedForAuth flag
         set((state) => ({
           files: { ...state.files, [appId]: buildFileTree(result.entries || []) },
           loading: { ...state.loading, [appId]: false },
           retryCount: { ...state.retryCount, [appId]: 0 },
-          stoppedForAuth: { ...state.stoppedForAuth, [appId]: false }
         }));
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -127,15 +121,6 @@ export const useFileTreeStore = create<FileTreeStore>((set, get) => ({
           errors: { ...state.errors, [appId]: errorMessage },
           loading: { ...state.loading, [appId]: false }
         }));
-
-        // Auth-aware retry logic
-        // Don't retry when auth has failed — AuthBoundary will prompt reauth
-        if (useAuthUIStore.getState().needsReauth) {
-          set((state) => ({
-            stoppedForAuth: { ...state.stoppedForAuth, [appId]: true }
-          }));
-          return;
-        }
 
         // Don't retry when tab is hidden
         if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
@@ -174,17 +159,9 @@ export const useFileTreeStore = create<FileTreeStore>((set, get) => ({
    * only one API call per app across all consumers
    */
   loadFilesFromCacheOrFetch: async (appId: string) => {
-    const { files, loading, stoppedForAuth } = get();
+    const { files, loading } = get();
 
-    // If files are already cached and not empty, return immediately
-    // Apps are initialized from boilerplate templates that contain multiple files (package.json, index.html, etc.)
-    // so an empty array always indicates an incomplete load or error state, never a valid cached state
     if (files[appId] && files[appId].length > 0) {
-      return;
-    }
-
-    // If stopped for auth, don't retry until reauth completes
-    if (stoppedForAuth[appId]) {
       return;
     }
 
@@ -231,20 +208,17 @@ export const useFileTreeStore = create<FileTreeStore>((set, get) => ({
       const newLoading = { ...state.loading };
       const newErrors = { ...state.errors };
       const newRetryCount = { ...state.retryCount };
-      const newStoppedForAuth = { ...state.stoppedForAuth };
 
       delete newFiles[appId];
       delete newLoading[appId];
       delete newErrors[appId];
       delete newRetryCount[appId];
-      delete newStoppedForAuth[appId];
 
       return {
         files: newFiles,
         loading: newLoading,
         errors: newErrors,
         retryCount: newRetryCount,
-        stoppedForAuth: newStoppedForAuth
       };
     });
   },
@@ -258,33 +232,3 @@ export const useFileTreeStore = create<FileTreeStore>((set, get) => ({
     }));
   }
 }));
-
-// Reauth recovery: when needsReauth clears, retry stopped loads
-let _reauthUnsubscribe: (() => void) | null = null;
-
-if (typeof window !== 'undefined') {
-  let previousNeedsReauth = false;
-
-  // Clean up any existing subscription (important for HMR in development)
-  if (_reauthUnsubscribe) {
-    _reauthUnsubscribe();
-  }
-
-  _reauthUnsubscribe = useAuthUIStore.subscribe((state) => {
-    const currentNeedsReauth = state.needsReauth;
-
-    // Detect transition from true → false (reauth completed)
-    if (previousNeedsReauth && !currentNeedsReauth) {
-      const { stoppedForAuth, loadFiles } = useFileTreeStore.getState();
-
-      // Restart loads for any apps that stopped due to auth failure
-      Object.keys(stoppedForAuth).forEach((appId) => {
-        if (stoppedForAuth[appId]) {
-          loadFiles(appId);
-        }
-      });
-    }
-
-    previousNeedsReauth = currentNeedsReauth;
-  });
-}

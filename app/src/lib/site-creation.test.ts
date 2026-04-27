@@ -3,14 +3,18 @@
  */
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest'
 
-import { appFetch } from './gasket-config'
+import { appFetch, AuthDismissedError } from './gasket-config'
 import { getItcOverride } from './itc'
 import { logger } from './request-context'
 import { createSiteAndRedirect } from './site-creation'
 
-vi.mock('./gasket-config', () => ({
-  appFetch: vi.fn(),
-}))
+vi.mock('./gasket-config', async () => {
+  const actual = await vi.importActual<typeof import('./gasket-config')>('./gasket-config')
+  return {
+    ...actual,
+    appFetch: vi.fn(),
+  }
+})
 
 vi.mock('./itc', () => ({
   getItcOverride: vi.fn(),
@@ -316,5 +320,24 @@ describe('createSiteAndRedirect', () => {
 
     const body = JSON.parse(mockAppFetch.mock.calls[0][1].body)
     expect(body.productId).toBe('aab-v1')
+  })
+
+  it('swallows AuthDismissedError silently without calling onError or redirecting', async () => {
+    mockAppFetch.mockRejectedValue(new AuthDismissedError())
+    const onError = vi.fn()
+    const onSuccess = vi.fn()
+    const onAuthRequired = vi.fn()
+
+    await createSiteAndRedirect(
+      { prompt: 'test prompt', onError, onSuccess, onAuthRequired },
+      mockRouter
+    )
+
+    expect(onError).not.toHaveBeenCalled()
+    expect(onSuccess).not.toHaveBeenCalled()
+    expect(onAuthRequired).not.toHaveBeenCalled()
+    expect(mockRouter.push).not.toHaveBeenCalled()
+    expect(logger.error).not.toHaveBeenCalled()
+    expect(logger.info).toHaveBeenCalledWith('site-creation.auth-dismissed', expect.any(Object))
   })
 })

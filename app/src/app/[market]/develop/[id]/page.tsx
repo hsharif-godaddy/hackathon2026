@@ -1588,12 +1588,8 @@ function DevelopPageContent() {
 }
 
 export default function Develop() {
-  const t = useTranslations();
   return (
-    <ProtectedRoute
-      unauthorizedMessage={t('builder_develop_protected_route')}
-      loadingFallback={<DevelopSkeleton isFallback={true} />}
-    >
+    <ProtectedRoute loadingFallback={<DevelopSkeleton isFallback={true} />}>
       <Suspense fallback={<DevelopSkeleton isFallback={true} />}>
         <DevelopPageContent />
       </Suspense>

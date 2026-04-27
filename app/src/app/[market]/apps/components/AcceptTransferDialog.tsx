@@ -9,7 +9,6 @@ import text from '@ux/text'
 import TextInput from '@ux/text-input'
 
 import { TRANSFER_TOKEN_LENGTH, TRANSFER_TOKEN_PATTERN } from '@/app/[market]/apps/components/transfer-constants'
-import { useCloseOnReauth } from '@/hooks/useCloseOnReauth'
 import { useTranslations } from '@/hooks/useTranslations'
 import { appFetch, AuthDismissedError } from '@/lib/gasket-config'
 import { logger } from '@/lib/request-context'
@@ -29,7 +28,6 @@ const MAX_CONSECUTIVE_ERRORS = 5
 
 export default function AcceptTransferDialog({ onClose, onAccepted }: AcceptTransferDialogProps) {
   const t = useTranslations()
-  useCloseOnReauth(true, onClose)
 
   useEffect(function trackDialogImpression() {
     logImpressionEvent('apps.transfer.accept_dialog')()

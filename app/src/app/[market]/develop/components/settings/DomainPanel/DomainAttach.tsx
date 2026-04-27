@@ -14,7 +14,6 @@ import { useAppIdFromParams } from "@/app/[market]/develop/components/utils";
 import { DomainConflictModal } from '@/app/[market]/develop/components/widgets/DomainConflictModal';
 import type { AppDetailsResponse } from '@/hooks/useAppDetails';
 import { useAuth } from '@/hooks/useAuth';
-import { useCloseOnReauth } from '@/hooks/useCloseOnReauth';
 import { useCustomerDomainAttach } from '@/hooks/useCustomerDomainAttach';
 import { useDomainDnsOwnership } from '@/hooks/useDomainDnsOwnership';
 import { useDomainsQuery } from '@/hooks/useDomainsQuery';
@@ -77,7 +76,6 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
   const [debouncedDomain, setDebouncedDomain] = useState('');
   const [showAddConfirmation, setShowAddConfirmation] = useState(false);
   const [conflictData, setConflictData] = useState<DomainMutationDetails['conflictDetails'] | null>(null);
-  useCloseOnReauth(showAddConfirmation, () => setShowAddConfirmation(false));
   const validationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const site = useSiteStore((state) => {

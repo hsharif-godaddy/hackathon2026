@@ -319,7 +319,7 @@ export function AbstractAnimationHomePage({ serverFeatures }: HomeContentProps) 
         return;
       }
 
-      const createSiteResponse = await fetchQuickCreate(promptToUse, { setAuthState: false })
+      const createSiteResponse = await fetchQuickCreate(promptToUse)
 
       if (!createSiteResponse.ok) {
         if (createSiteResponse.status === 401) {

@@ -26,7 +26,6 @@ import AppThumbnail from '@/app/[market]/apps/AppThumbnail'
 import TransferInitiateDialog from '@/app/[market]/apps/components/TransferInitiateDialog'
 import UnpublishConfirmationModal from '@/components/layout/UnpublishConfirmationModal'
 import { useAppRename } from '@/hooks/useAppRename'
-import { useCloseOnReauth } from '@/hooks/useCloseOnReauth'
 import { useSubscription } from '@/hooks/useSubscription'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
@@ -88,10 +87,6 @@ export default function AppCard({ site, isTLA = false }: { site: SiteInfo; isTLA
   const { data: subscription } = useSubscription()
   const { data: suspendedComplianceBannerEnabled } = useSwitchboard('appbuilder-suspended-compliance-banner')
   const unpublishMutation = useUnpublishApp()
-
-  useCloseOnReauth(isUnpublishModalOpen, () => setIsUnpublishModalOpen(false))
-  useCloseOnReauth(isRenameDialogOpen, () => setIsRenameDialogOpen(false))
-  useCloseOnReauth(alertState.type === 'delete', () => setAlertState({ siteId: null, type: null, message: '' }))
 
   const fetchTransferStatus = useCallback(async (signal?: AbortSignal) => {
     try {

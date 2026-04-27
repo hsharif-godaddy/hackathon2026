@@ -60,12 +60,9 @@ vi.mock('@/hooks/useSwitchboard', () => {
   };
 });
 
-const mockSetNeedsReauth = vi.fn();
-vi.mock('@/stores/useAuthUIStore', () => ({
-  useAuthUIStore: Object.assign(
-    () => ({}),
-    { getState: () => ({ setNeedsReauth: mockSetNeedsReauth }) },
-  ),
+const mockSignIn = vi.fn();
+vi.mock('@/hooks/useSsoSignIn', () => ({
+  useSsoSignIn: () => ({ signIn: mockSignIn }),
 }));
 
 vi.mock('@/utils/instrumentation', () => ({
@@ -276,7 +273,7 @@ describe('SettingsMenu', () => {
     await user.click(projectButton);
 
     await waitFor(() => {
-      expect(mockSetNeedsReauth).toHaveBeenCalledWith('session_expired');
+      expect(mockSignIn).toHaveBeenCalled();
     });
   });
 

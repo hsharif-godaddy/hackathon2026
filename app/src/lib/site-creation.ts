@@ -1,3 +1,4 @@
+import { AuthDismissedError } from '@/lib/gasket-config'
 import { logger } from '@/lib/request-context'
 import { getByteLength, MAX_PROMPT_BYTES } from '@/lib/waf-validation'
 import { buildDevelopUrl, fetchQuickCreate, type QuickCreateResponse, setQuickCreateSessionFlags } from './quick-create'
@@ -51,7 +52,10 @@ export async function createSiteAndRedirect(
       hasProductId: !!productId,
     })
 
-    const createSiteResponse = await fetchQuickCreate(normalizedPrompt, { setAuthState: false }, { productId })
+    // Level 3: mgmt-airo requires HBI for site creation. Preflight ensures
+    // SSO opens for re-auth before the request fires (else the downstream 401
+    // gets wrapped as a 500 and we never trigger re-auth).
+    const createSiteResponse = await fetchQuickCreate(normalizedPrompt, { authLevel: 3 }, { productId })
 
     if (createSiteResponse.status === 401) {
       logger.info('site-creation.auth-required', { source })
@@ -94,6 +98,11 @@ export async function createSiteAndRedirect(
     router.push(redirectUrl)
 
   } catch (error) {
+    // User dismissed the SSO modal during authPreflight -- expected, not an error.
+    if (error instanceof AuthDismissedError) {
+      logger.info('site-creation.auth-dismissed', { source })
+      return
+    }
     const errorMessage = error instanceof Error ? error.message : String(error)
     logger.error('site-creation.error', {
       error: errorMessage,

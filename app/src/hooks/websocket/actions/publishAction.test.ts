@@ -516,7 +516,6 @@ describe('publishAction', () => {
           method: 'POST',
           body: JSON.stringify({ source: 'preview', destination: 'publish' }),
         }),
-        { setAuthState: false }
       )
     })
 

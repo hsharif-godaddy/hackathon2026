@@ -6,7 +6,6 @@ import { Suspense } from "react";
 import { withGasketData } from '@gasket/nextjs/layout';
 import { makeLayout } from '@godaddy/gasket-next/layout';
 
-import AuthBoundary from "@/components/auth/AuthBoundary";
 import GlobalSsoLogin from "@/components/auth/GlobalSsoLogin";
 import AuthProvider from "@/components/providers/AuthProvider";
 import FullStoryProvider from "@/components/providers/FullStoryProvider";
@@ -196,11 +195,9 @@ async function MarketLayout({
             <AuthProvider homepageEngagementCohort={homepageEngagementCohort}>
               <JourneyTrackerAuth />
               <SubscriptionCacheProvider>
-                <AuthBoundary>
-                  <main className="flex-1 relative min-h-dvh">
-                    {children}
-                  </main>
-                </AuthBoundary>
+                <main className="flex-1 relative min-h-dvh">
+                  {children}
+                </main>
                 <GlobalSsoLogin />
               </SubscriptionCacheProvider>
             </AuthProvider>

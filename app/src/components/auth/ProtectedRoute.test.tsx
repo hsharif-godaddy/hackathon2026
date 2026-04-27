@@ -30,10 +30,8 @@ vi.mock('./LoadingComponent', () => ({
   default: () => <div data-testid="loading-component">Loading...</div>,
 }));
 
-vi.mock('./UnauthorizedComponent', () => ({
-  default: ({ unauthorizedMessage }: { unauthorizedMessage: string }) => (
-    <div data-testid="unauthorized">{unauthorizedMessage}</div>
-  ),
+vi.mock('./SsoLoginPrompt', () => ({
+  default: () => <div data-testid="sso-login-prompt">Sign In</div>,
 }));
 
 import ProtectedRoute from './ProtectedRoute';
@@ -136,7 +134,7 @@ describe('ProtectedRoute', () => {
     expect(screen.queryByTestId('loading-component')).not.toBeInTheDocument();
   });
 
-  it('shows UnauthorizedComponent for unauthenticated mock auth users', () => {
+  it('shows SsoLoginPrompt for unauthenticated mock auth users', () => {
     mockIsMockAuth = true;
     mockIsAuthenticated = false;
 
@@ -146,7 +144,7 @@ describe('ProtectedRoute', () => {
       </ProtectedRoute>
     );
 
-    expect(screen.getByTestId('unauthorized')).toBeInTheDocument();
+    expect(screen.getByTestId('sso-login-prompt')).toBeInTheDocument();
     expect(screen.queryByTestId('child-content')).not.toBeInTheDocument();
   });
 });

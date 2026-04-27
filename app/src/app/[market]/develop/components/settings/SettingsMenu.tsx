@@ -9,13 +9,13 @@ import { useSettingsNavItems } from '@/app/[market]/develop/components/settings/
 import { ChatTab, SettingsSection } from '@/app/[market]/develop/components/types';
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils';
 import { useChatTabs } from '@/hooks/useChatTabs';
+import { useSsoSignIn } from '@/hooks/useSsoSignIn';
 import { useTranslations } from '@/hooks/useTranslations';
 import {
   Popover,
   PopoverAnchor,
   PopoverContent,
 } from '@/lib/shadcn/popover';
-import { useAuthUIStore } from '@/stores/useAuthUIStore';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { logClickEvent } from '@/utils/instrumentation';
 
@@ -36,6 +36,7 @@ const SettingsMenu = forwardRef<SettingsMenuRef>((props, ref) => {
   const isMobile = useDevelopPageStore((state) => state.isMobile);
 
   const { activeChatTab, activeSettingsSection, setActiveSettingsSection, setActiveChatTab } = useChatTabs();
+  const { signIn } = useSsoSignIn();
 
   useImperativeHandle(ref, () => ({
     openPopover: () => setOpen(true),
@@ -96,7 +97,7 @@ const SettingsMenu = forwardRef<SettingsMenuRef>((props, ref) => {
               onClick={() => {
                 logClickEvent(`develop.settings_menu.${item.id}`, clickContext)();
                 if (item.needsAuth) {
-                  useAuthUIStore.getState().setNeedsReauth('session_expired');
+                  signIn();
                   setOpen(false);
                 } else if (item.onClick) {
                   item.onClick();

@@ -202,11 +202,8 @@ function SitesPageContent() {
 }
 
 export default function Sites() {
-  const t = useTranslations();
   return (
-    <ProtectedRoute
-      unauthorizedMessage={t('builder_apps_signed_in')}
-    >
+    <ProtectedRoute>
       <SitesPageContent />
     </ProtectedRoute>
   )

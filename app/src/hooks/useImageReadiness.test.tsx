@@ -333,7 +333,7 @@ describe('useImageReadiness', function useImageReadinessTests() {
       await waitFor(() => {
         expect(appFetch).toHaveBeenCalledWith('/api/sites/test-app-123/reload-images', expect.objectContaining({
           method: 'POST',
-        }), { setAuthState: false });
+        }));
       });
 
       expect(result.current.isImageUpdating).toBe(true);
@@ -374,7 +374,7 @@ describe('useImageReadiness', function useImageReadinessTests() {
       });
     });
 
-    it('should pass setAuthState:false to reload so a 401 does not trigger the SSO modal', async function reload401NoSso() {
+    it('should not trigger SSO modal for reload 401 (appFetch no longer intercepts)', async function reload401NoSso() {
       (appFetch as any)
         .mockResolvedValueOnce(mockImageStatusResponse('stale'))
         .mockResolvedValueOnce(mock401Response());
@@ -388,7 +388,6 @@ describe('useImageReadiness', function useImageReadinessTests() {
         expect(appFetch).toHaveBeenCalledWith(
           '/api/sites/test-app-123/reload-images',
           expect.any(Object),
-          { setAuthState: false },
         );
       });
 
@@ -667,7 +666,7 @@ describe('useImageReadiness', function useImageReadinessTests() {
       );
 
       await waitFor(() => {
-        expect(appFetch).toHaveBeenCalledWith('/api/sites/test-app-123/reload-images', expect.any(Object), { setAuthState: false });
+        expect(appFetch).toHaveBeenCalledWith('/api/sites/test-app-123/reload-images', expect.any(Object));
       }, { timeout: 5000 });
 
       now += 91_000;

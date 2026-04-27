@@ -257,31 +257,28 @@ export async function openUserMenu(page: Page): Promise<void> {
  * Handle re-authentication if SSO appeared during a test.
  * Returns true if re-auth was needed and completed, false if no auth UI was present.
  *
- * On 401, the app auto-opens the SSO Deck iframe directly. If the user dismisses
- * SSO without completing auth, the AuthBoundary fallback modal appears with a
- * "Sign In" button. This helper checks for both, SSO iframe first.
+ * With Gasket Auth as single source of truth, SSO is auto-opened by
+ * SsoLoginPrompt when AuthRequired detects invalid authState, or by
+ * authPreflight on a level-3 401. There is no longer a separate fallback
+ * modal - this helper just detects the SSO UI (iframe or redirect) and
+ * completes login.
  */
 export async function handleReauthIfPresent(page: Page): Promise<boolean> {
   const ssoIframe = page.locator('iframe[title="Container for sign in"]');
   const ssoModal = page.locator('.sso-login-modal');
-  const signInModal = page.locator('[role="dialog"]', { hasText: 'Sign In Required' });
 
-  // Check for SSO iframe, SsoLogin modal (redirect-based SSO in test env),
-  // or AuthBoundary fallback modal. Each branch needs its own .catch() so
-  // the losing racer doesn't produce an unhandled rejection.
+  // Check for SSO iframe or SsoLogin modal (redirect-based SSO in deployed
+  // test/dev envs). Each branch needs its own .catch() so the losing racer
+  // doesn't produce an unhandled rejection.
   const detected = await Promise.race([
     ssoIframe.waitFor({ state: 'visible', timeout: SHORT_TIMEOUT }).then(() => 'sso-iframe' as const).catch(() => null),
     ssoModal.waitFor({ state: 'visible', timeout: SHORT_TIMEOUT }).then(() => 'sso-modal' as const).catch(() => null),
-    signInModal.waitFor({ state: 'visible', timeout: SHORT_TIMEOUT }).then(() => 'fallback' as const).catch(() => null),
   ]);
 
   if (!detected) return false;
 
-  if (detected === 'fallback') {
-    console.log('  Sign In Required fallback modal detected, clicking Sign In...');
-    await signInModal.getByRole('button', { name: 'Sign In', exact: true }).click();
-  } else if (detected === 'sso-iframe') {
-    console.log('  SSO iframe detected (auto-opened on 401), completing login...');
+  if (detected === 'sso-iframe') {
+    console.log('  SSO iframe detected (auto-opened on invalid auth), completing login...');
   } else {
     console.log('  SsoLogin modal detected (redirect-based SSO), completing login...');
   }
@@ -295,7 +292,6 @@ export async function handleReauthIfPresent(page: Page): Promise<boolean> {
   // Wait for auth UI to disappear
   await ssoIframe.waitFor({ state: 'hidden', timeout: SSO_TIMEOUT }).catch(() => {});
   await ssoModal.waitFor({ state: 'hidden', timeout: SHORT_TIMEOUT }).catch(() => {});
-  await signInModal.waitFor({ state: 'hidden', timeout: SHORT_TIMEOUT }).catch(() => {});
 
   console.log('  Re-authenticated successfully');
   return true;
@@ -305,8 +301,8 @@ export async function handleReauthIfPresent(page: Page): Promise<boolean> {
 export const dismissAuthModalIfPresent = handleReauthIfPresent;
 
 /**
- * Handle re-authentication if SSO or the AuthBoundary fallback appeared during
- * a long-running test step. No-op if neither is visible.
+ * Handle re-authentication if SSO appeared during a long-running test step.
+ * No-op if no SSO UI is visible.
  *
  * Call before page navigations or critical operations (delete, deploy, unpublish)
  * that are likely to trigger 401s if the session expired during AI generation.

@@ -45,8 +45,7 @@ export async function scheduleInstagramPost(params: {
           scheduleTime: params.scheduleTime
         }
       })
-    },
-    { setAuthState: false }
+    }
   )
 
   if (!response.ok) {

@@ -22,7 +22,6 @@ import AppSiteRow from '@/app/[market]/manage-plan/components/AppSiteRow';
 import { CollapsibleCardBody } from '@/app/[market]/manage-plan/components/CollapsibleCardBody';
 import { APPS_LIST_LOAD_MORE_THRESHOLD_PX, MANAGE_PLAN_APPS_SCROLL_BATCH } from '@/app/[market]/manage-plan/constants';
 import UnpublishConfirmationModal from '@/components/layout/UnpublishConfirmationModal';
-import { useCloseOnReauth } from '@/hooks/useCloseOnReauth';
 import { useDomainDisconnectPolling, useMultipleDeploymentStatusPolling } from '@/hooks/useDeploymentStatusPolling';
 import { usePublishApp } from '@/hooks/usePublishApp';
 import { useSubscription } from '@/hooks/useSubscription';
@@ -182,12 +181,6 @@ export default function AppsAndSitesCard({
   const [isExpanded, setIsExpanded] = useState(true);
   const [selectedApp, setSelectedApp] = useState<SiteInfo | null>(null);
   const [showUnpublishModal, setShowUnpublishModal] = useState(false);
-
-  useCloseOnReauth(showUnpublishModal, () => {
-    setShowUnpublishModal(false);
-    setSelectedApp(null);
-    unpublishMutation.reset();
-  });
 
   const [publishingApps, setPublishingApps] = useState<Set<string>>(new Set());
   const [unpublishingApps, setUnpublishingApps] = useState<Set<string>>(new Set());

@@ -82,4 +82,5 @@ describe('gasket-config', function gasketConfigTests() {
       expect(result).toBe('https://sso.test-godaddy.com/login?app=airo-builder&path=%2Fdevelop%2Fapp%3Fsid%3Dx%26tab%3Dcode%23preview');
     });
   });
+
 });

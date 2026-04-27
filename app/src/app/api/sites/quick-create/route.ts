@@ -9,12 +9,15 @@ import {
   setSpanAppId,
   setSpanJobId,
   withCustomerAuth} from '@/lib/customer-auth';
-import { AIRO_PRODUCT_IDS } from '@/lib/mgmt-airo/types';
+import { AIRO_PRODUCT_IDS,AiroHttpError } from '@/lib/mgmt-airo/types';
 import { logger } from '@/lib/request-context';
 import { detectLocale } from '@/lib/translations/server-intl';
 import { getByteLength, MAX_PROMPT_BYTES } from '@/lib/waf-validation';
 
 // POST /api/sites/quick-create - Fast site creation
+// Level 3 auth: mgmt-airo's POST /apps requires HBI (recent heartbeat).
+// Matching the level here lets the client's authPreflight trigger SSO before
+// the downstream call fires, instead of surfacing a generic 500.
 export const POST = withCustomerAuth(async (request: NextRequest, authContext: CustomerAuthContext) => {
   try {
     const body = await request.json();
@@ -127,7 +130,22 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     }, { status: 201 });
 
   } catch (error) {
+    // Propagate downstream 401 (e.g. mgmt-airo HBI rejection) so the client
+    // opens SSO for a fresher business-level token. Route-level withCustomerAuth
+    // and client-side authPreflight may each accept a token that mgmt-airo's
+    // stricter gdhttp.High check still rejects. This is an expected business
+    // condition, not an error -- log at info so it doesn't trip alerts on
+    // sites.quick-create.error.
+    if (error instanceof AiroHttpError && error.status === 401) {
+      logger.info('sites.quick-create.hbi-expired', { accountId: authContext.user.accountId });
+      return NextResponse.json(
+        { error: 'Unauthorized', authReason: 2 },
+        { status: 401 }
+      );
+    }
+
     logger.error('sites.quick-create.error', { message: 'Quick site creation failed', errorMessage: error instanceof Error ? error.message : 'Unknown error' });
+
     return NextResponse.json(
       {
         error: 'Failed to create site record',
@@ -136,4 +154,4 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       { status: 500 }
     );
   }
-});
+}, { level: 3 });

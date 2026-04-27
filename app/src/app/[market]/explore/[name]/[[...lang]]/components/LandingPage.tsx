@@ -135,8 +135,8 @@ function LandingPageContent({ data }: LandingPageProps) {
       const createSiteResponse = await fetchQuickCreate(promptToUse)
 
       if (!createSiteResponse.ok) {
-        if (createSiteResponse.status === 401 && createSiteResponse.requiresRefresh) {
-          logger.info('landing.session-stale', {
+        if (createSiteResponse.status === 401) {
+          logger.info('landing.session-expired', {
             action: 'triggering-sso-login',
             phase: 'quick-create'
           });

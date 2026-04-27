@@ -592,9 +592,7 @@ export default function ManagePlan() {
   }
 
   return (
-    <ProtectedRoute
-      unauthorizedMessage={t("builder_manageplan_signin_required")}
-    >
+    <ProtectedRoute>
       <ManagePlanContent />
     </ProtectedRoute>
   );

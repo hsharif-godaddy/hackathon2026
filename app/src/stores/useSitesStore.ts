@@ -109,7 +109,6 @@ export const useSitesStore = create<SitesStore>()(
         if (response.status === 401) {
           logger.debug('sites-store.fetch-all.requires-auth', {
             message: 'Sites fetch requires authentication',
-            requiresRefresh: response.requiresRefresh
           })
 
           set((state) => {

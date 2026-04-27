@@ -1,14 +1,56 @@
 package auth
 
 import (
+	"context"
+	"errors"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/gdcorp-golang/auth/gdhttp"
 	"github.com/gdcorp-golang/auth/gdsso"
 	"github.com/gdcorp-golang/auth/gdtoken"
 	"github.com/gorilla/mux"
 )
+
+// hbiWindow matches the production frontdoor's `use-12hr-strategy: optin`
+// setting for `/api/airo/` write routes (pioneermgmt config.yml). Without
+// this, gdtoken.High enforces a 1-hour HBI window which is stricter than
+// what production accepts and forces users to re-authenticate hourly.
+const hbiWindow = 12 * time.Hour
+
+var errHbiExpired = errors.New("token HBI claim is expired or missing")
+
+// activeHighWith12HrHbi matches production's level-3 + 12hr-strategy gating.
+// Only "basic" customer/employee/pass tokens carry HBI claims and get the
+// 12-hour window. All other kinds (delegation chains, cert, AWSIAM, OAuth,
+// etc.) have no HBI claim by design -- CLAUDE.md documents e2s as "2 hours
+// (no HBI)" -- so they delegate to gdtoken.High, which applies each kind's
+// documented expiry rules.
+func activeHighWith12HrHbi() gdhttp.Requirement {
+	return gdhttp.RequirementFunc(func(_ context.Context, token *gdtoken.Token) error {
+		kind := token.Kind()
+		hasHbi := kind == gdtoken.ShopperKind || kind == gdtoken.EmployeeKind || kind == gdtoken.PassKind
+		if !hasHbi {
+			if token.IsExpired(gdtoken.High) {
+				return errHbiExpired
+			}
+			return nil
+		}
+
+		base := token.BaseToken
+		if base.ExpiresAtTime > 0 && time.Unix(base.ExpiresAtTime, 0).Before(time.Now().UTC()) {
+			return errHbiExpired
+		}
+		if base.HbiClaim == 0 {
+			return errHbiExpired
+		}
+		if time.Unix(base.HbiClaim, 0).Add(hbiWindow).Before(time.Now().UTC()) {
+			return errHbiExpired
+		}
+		return nil
+	})
+}
 
 // highRiskRoutes maps "METHOD /path/template" to true for routes classified as
 // HIGH RISK per the mhp-airo Management API Auth Classification. These require
@@ -65,7 +107,7 @@ func NewSSOMiddleware(authType, ssoHost string) (*SSOMiddleware, error) {
 	}
 
 	m.highRisk, err = gdhttp.NewHandler(validator,
-		gdhttp.WithRequirements(gdhttp.Active(gdtoken.High)),
+		gdhttp.WithRequirements(activeHighWith12HrHbi()),
 	)
 	if err != nil {
 		return nil, err

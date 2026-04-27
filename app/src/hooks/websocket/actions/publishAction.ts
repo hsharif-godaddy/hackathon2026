@@ -223,7 +223,7 @@ export const publishAction: ClientActionExecutor = async (params) => {
           source: 'preview',
           destination: 'publish',
         }),
-      }, { setAuthState: false })
+      })
 
       if (!syncResponse.ok) {
         logger.warn('websocket.client-action.publish.secrets-sync-failed', {
@@ -373,7 +373,7 @@ export const publishAction: ClientActionExecutor = async (params) => {
           body: JSON.stringify({
             gitHash: result.commitHash,
           }),
-        }, { setAuthState: false })
+        })
 
         if (!deploymentResponse.ok) {
           const deploymentError = await deploymentResponse.json().catch(() => ({

@@ -236,7 +236,7 @@ export function usePublishApp() {
               source: 'preview',
               destination: 'publish'
             }),
-          }, { setAuthState: false });
+          });
 
           if (!syncResponse.ok) {
             // Log warning but don't fail publish - secrets sync is non-critical
@@ -337,7 +337,7 @@ export function usePublishApp() {
             body: JSON.stringify({
               gitHash: result.commitHash,
             }),
-          }, { setAuthState: false });
+          });
 
           if (!deploymentResponse.ok) {
             const deploymentError = await deploymentResponse.json().catch(() => ({

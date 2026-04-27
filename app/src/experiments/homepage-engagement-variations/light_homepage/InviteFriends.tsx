@@ -26,10 +26,10 @@ export default function InviteFriends({
   onOpenModal,
 }: InviteFriendsProps) {
   const t = useTranslations();
-  const { isAuthenticated, needsReauth } = useAuthContext();
+  const { isAuthenticated } = useAuthContext();
   const [modalOpen, setModalOpen] = useState(false);
 
-  if (!isAuthenticated || needsReauth) {
+  if (!isAuthenticated) {
     return null;
   }
 

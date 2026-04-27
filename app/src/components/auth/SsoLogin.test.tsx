@@ -73,6 +73,24 @@ vi.mock('@/lib/request-context', () => ({
   logger: mockLogger,
 }));
 
+vi.mock('@/components/providers/AuthProvider', () => ({
+  useAuthContext: () => ({
+    isAuthenticated: true,
+    isLoading: false,
+    authState: null,
+    isMockAuth: false,
+    authType: 'jwt',
+    mockAuth: null,
+    config: null,
+    gasketConfig: null,
+    configLoading: false,
+    configError: null,
+    getUserEmail: vi.fn(),
+    getUserInfo: vi.fn(),
+    handleSignOut: vi.fn(),
+  }),
+}));
+
 // Mock store state that can be modified per test
 const mockAuthUIState = {
   isSsoLoginOpen: true,
@@ -81,7 +99,7 @@ const mockAuthUIState = {
   setSsoLoaded: vi.fn(),
   redirectUrl: null as string | null,
   setRedirectUrl: vi.fn(),
-  authReason: null as number | null,
+  ssoAuthReason: null as number | null,
 };
 
 vi.mock('@/stores/useAuthUIStore', () => ({
@@ -136,7 +154,7 @@ describe('SsoLogin redirect handling', function ssoLoginRedirectTests() {
     latestPageToLoadParams = null;
     latestPageToLoad = null;
     mockAuthUIState.redirectUrl = null;
-    mockAuthUIState.authReason = null;
+    mockAuthUIState.ssoAuthReason = null;
   });
 
   it('navigates to same-origin redirect path', async function redirectsToSameOrigin() {
@@ -292,7 +310,7 @@ describe('SsoLogin authReason routing', function ssoLoginAuthReasonTests() {
     latestPageToLoadParams = null;
     latestPageToLoad = null;
     mockAuthUIState.redirectUrl = null;
-    mockAuthUIState.authReason = null;
+    mockAuthUIState.ssoAuthReason = null;
   });
 
   it('routes to /login by default when authReason is null', async function defaultsToLogin() {
@@ -309,7 +327,7 @@ describe('SsoLogin authReason routing', function ssoLoginAuthReasonTests() {
   });
 
   it('routes to /hbi when authReason is HBI', async function routesToHbi() {
-    mockAuthUIState.authReason = SsoExpirationCode.HBI;
+    mockAuthUIState.ssoAuthReason = SsoExpirationCode.HBI;
 
     renderWithProviders(<SsoLogin />);
 
@@ -325,7 +343,7 @@ describe('SsoLogin authReason routing', function ssoLoginAuthReasonTests() {
   });
 
   it('routes to /login when authReason is LOGIN', async function routesToLoginForCode1() {
-    mockAuthUIState.authReason = SsoExpirationCode.LOGIN;
+    mockAuthUIState.ssoAuthReason = SsoExpirationCode.LOGIN;
 
     renderWithProviders(<SsoLogin />);
 
@@ -341,7 +359,7 @@ describe('SsoLogin authReason routing', function ssoLoginAuthReasonTests() {
   });
 
   it('routes to /login when authReason is VAT', async function routesToLoginForCode3() {
-    mockAuthUIState.authReason = SsoExpirationCode.VAT;
+    mockAuthUIState.ssoAuthReason = SsoExpirationCode.VAT;
 
     renderWithProviders(<SsoLogin />);
 

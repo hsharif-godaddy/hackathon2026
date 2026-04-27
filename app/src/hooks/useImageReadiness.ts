@@ -53,7 +53,6 @@ async function triggerReload(appId: string): Promise<void> {
   const response = await appFetch(
     `/api/sites/${appId}/reload-images`,
     { method: 'POST', headers: { 'Content-Type': 'application/json' } },
-    { setAuthState: false },
   );
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));

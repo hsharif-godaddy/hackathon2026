@@ -6,6 +6,7 @@ import Alert from '@ux/alert';
 import Modal from '@ux/modal';
 import Spinner from '@ux/spinner';
 
+import { useAuthContext } from '@/components/providers/AuthProvider';
 import { useBreakpoints } from '@/hooks/useBreakpoints';
 import { SsoExpirationCode } from '@/lib/features';
 import { logger } from '@/lib/request-context';
@@ -69,8 +70,15 @@ export default function SsoLogin() {
   const [currentOrigin, setCurrentOrigin] = useState<string>('');
   const { isSmBreakpoint } = useBreakpoints();
 
-  const { isSsoLoginOpen, isSsoLoading, closeSsoLogin, setSsoLoaded, redirectUrl, setRedirectUrl, authReason } = useAuthUIStore();
+  const { isSsoLoginOpen, isSsoLoading, closeSsoLogin, setSsoLoaded, redirectUrl, setRedirectUrl, ssoAuthReason } = useAuthUIStore();
   const clearRequiresAuth = useSitesStore((state) => state.clearRequiresAuth);
+  const { authState } = useAuthContext();
+  // Prefer preflight-set reason (store) over Gasket authState, since preflight
+  // may detect a 401 before Gasket's next validation cycle updates authState.
+  // Gasket spreads the /api/auth/validate response onto authState; authReason
+  // is not in its typed surface.
+  const gasketAuthReason = (authState as { authReason?: number } | null)?.authReason;
+  const authReason = ssoAuthReason ?? gasketAuthReason ?? null;
 
   function dismissSsoModal() {
     closeSsoLogin('dismiss');
@@ -198,7 +206,7 @@ export default function SsoLogin() {
       return false;
     }
 
-    // Priority 1: Check store redirectUrl (set by AuthBoundary when modal opened)
+    // Priority 1: Check store redirectUrl (set when SSO modal opened)
     if (redirectUrl) {
       if (isValidRedirectUrl(redirectUrl)) {
         logger.info('sso-login.redirect.from-store', {
@@ -234,7 +242,7 @@ export default function SsoLogin() {
       data,
     });
 
-    // Priority 1: Use stored redirect URL (from AuthBoundary) or ?redirect= query param.
+    // Priority 1: Use stored redirect URL (from the store) or ?redirect= query param.
     // Both paths inside applyRedirect() navigate via window.location.assign, so the page
     // unloads entirely — cleanup (closeSsoLogin, clearRequiresAuth) is unnecessary and the
     // SSO modal's loading state covers the visual transition until navigation completes.
@@ -250,7 +258,7 @@ export default function SsoLogin() {
 
     // Priority 2: Use redirect_url from SSO if provided AND it matches our origin
     // This is a fallback for flows where no store redirect was captured (e.g. direct
-    // SSO modal open without AuthBoundary, or session extension)
+    // SSO modal open for session extension)
     const ssoData = data as { data?: { redirect_url?: string } } | undefined;
     if (ssoData?.data?.redirect_url) {
       if (isValidRedirectUrl(ssoData.data.redirect_url)) {
@@ -327,7 +335,7 @@ export default function SsoLogin() {
               pageToLoadParams={(() => {
                 if (!currentOrigin) return {};
 
-                // Build full redirect URL including path from store (captured by AuthBoundary)
+                // Build full redirect URL including path from store (captured before SSO opened)
                 // This ensures SSO redirects back to the specific page (e.g., /develop/abc123)
                 // instead of just the homepage
                 let fullUrl = currentOrigin;

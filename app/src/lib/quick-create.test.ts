@@ -62,12 +62,12 @@ describe('fetchQuickCreate', () => {
   it('passes fetchOptions to appFetch', async () => {
     mockGetItcOverride.mockReturnValue(null)
 
-    await fetchQuickCreate('test', { setAuthState: false })
+    await fetchQuickCreate('test', { authLevel: 3 })
 
     expect(mockAppFetch).toHaveBeenCalledWith(
       '/api/sites/quick-create',
       expect.any(Object),
-      { setAuthState: false },
+      { authLevel: 3 },
     )
   })
 

@@ -11,27 +11,6 @@ vi.mock('@/services/AppService', () => ({
   }
 }));
 
-// Mock useAuthUIStore
-const mockAuthState = { needsReauth: false };
-vi.mock('@/stores/useAuthUIStore', () => {
-  const subscribers: ((state: any) => void)[] = [];
-  return {
-    useAuthUIStore: {
-      getState: () => mockAuthState,
-      subscribe: (callback: (state: any) => void) => {
-        subscribers.push(callback);
-        return () => {
-          const index = subscribers.indexOf(callback);
-          if (index > -1) subscribers.splice(index, 1);
-        };
-      },
-      _triggerSubscribers: () => {
-        subscribers.forEach(sub => sub(mockAuthState));
-      }
-    }
-  };
-});
-
 import type { FileItem } from '@/app/[market]/develop/components/FileTree';
 import { useFileTreeStore } from './useFileTreeStore';
 
@@ -44,7 +23,6 @@ describe('useFileTreeStore', () => {
     vi.clearAllMocks();
     vi.clearAllTimers();
     vi.useFakeTimers();
-    mockAuthState.needsReauth = false;
 
     // Reset store to initial state and clear module-level maps
     act(() => {
@@ -60,7 +38,6 @@ describe('useFileTreeStore', () => {
         loading: {},
         errors: {},
         retryCount: {},
-        stoppedForAuth: {}
       });
     });
 
@@ -218,26 +195,6 @@ describe('useFileTreeStore', () => {
       expect(mockGetFiles).toHaveBeenCalledTimes(1);
     });
 
-    it('should not retry when needsReauth is true', async () => {
-      mockGetFiles.mockRejectedValue(new Error('Network error'));
-      mockAuthState.needsReauth = true;
-
-      await act(async () => {
-        await useFileTreeStore.getState().loadFiles('app1').catch(() => {});
-      });
-
-      const state = useFileTreeStore.getState();
-      expect(state.stoppedForAuth['app1']).toBe(true);
-      expect(mockGetFiles).toHaveBeenCalledTimes(1);
-
-      // Advance time — no retry should happen
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(10000);
-      });
-
-      expect(mockGetFiles).toHaveBeenCalledTimes(1);
-    });
-
     it('should retry up to MAX_RETRY_COUNT times on transient errors', async () => {
       mockGetFiles.mockClear();
       mockGetFiles.mockRejectedValue(new Error('Network error'));
@@ -339,27 +296,6 @@ describe('useFileTreeStore', () => {
 
       const state = useFileTreeStore.getState();
       expect(state.retryCount['app1']).toBe(0);
-      expect(state.stoppedForAuth['app1']).toBe(false);
-    });
-
-    it('should mark stoppedForAuth when auth fails', async () => {
-      mockGetFiles.mockRejectedValue(new Error('Auth required'));
-      mockAuthState.needsReauth = true;
-
-      // Initial load fails with auth error
-      await act(async () => {
-        await useFileTreeStore.getState().loadFiles('app1').catch(() => {});
-      });
-
-      expect(mockGetFiles).toHaveBeenCalledTimes(1);
-      expect(useFileTreeStore.getState().stoppedForAuth['app1']).toBe(true);
-
-      // Verify no retries happen
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(10000);
-      });
-
-      expect(mockGetFiles).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -409,7 +345,6 @@ describe('useFileTreeStore', () => {
       expect(state.loading['app1']).toBeUndefined();
       expect(state.errors['app1']).toBeUndefined();
       expect(state.retryCount['app1']).toBeUndefined();
-      expect(state.stoppedForAuth['app1']).toBeUndefined();
     });
 
     it('should clear pending retry timeouts', async () => {
@@ -503,81 +438,5 @@ describe('useFileTreeStore', () => {
       expect(mockGetFiles).toHaveBeenCalledWith('app1', 5);
     });
 
-    it('should not fetch if app is stopped for auth', async () => {
-      // Mark app as stopped for auth
-      act(() => {
-        useFileTreeStore.setState({
-          stoppedForAuth: { 'app1': true }
-        });
-      });
-
-      mockGetFiles.mockClear();
-
-      await act(async () => {
-        await useFileTreeStore.getState().loadFilesFromCacheOrFetch('app1');
-      });
-
-      expect(mockGetFiles).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('reauth recovery', () => {
-    it('should retry stopped loads when reauth completes', async () => {
-      const { useAuthUIStore } = await import('@/stores/useAuthUIStore');
-
-      // Simulate auth failure
-      mockGetFiles.mockRejectedValue(new Error('Auth required'));
-      mockAuthState.needsReauth = true;
-
-      // First trigger subscribers with needsReauth=true so the subscription's previousNeedsReauth captures it
-      await act(async () => {
-        (useAuthUIStore as any)._triggerSubscribers();
-      });
-
-      await act(async () => {
-        await useFileTreeStore.getState().loadFiles('app1').catch(() => {});
-      });
-
-      expect(useFileTreeStore.getState().stoppedForAuth['app1']).toBe(true);
-      expect(mockGetFiles).toHaveBeenCalledTimes(1);
-
-      // Now simulate successful reauth
-      mockGetFiles.mockClear();
-      mockGetFiles.mockResolvedValue({
-        entries: [{ name: 'index.tsx', isDirectory: false, path: 'index.tsx', depth: 0 }]
-      });
-
-      // Trigger reauth completion by updating needsReauth (true→false transition)
-      await act(async () => {
-        mockAuthState.needsReauth = false;
-        (useAuthUIStore as any)._triggerSubscribers();
-      });
-
-      // Should have retried the load
-      expect(mockGetFiles).toHaveBeenCalledWith('app1', 5);
-      expect(useFileTreeStore.getState().stoppedForAuth['app1']).toBe(false);
-    });
-
-    it('should not retry loads that were not stopped for auth', async () => {
-      const { useAuthUIStore } = await import('@/stores/useAuthUIStore');
-
-      // Simulate successful load
-      await act(async () => {
-        await useFileTreeStore.getState().loadFiles('app1');
-      });
-
-      expect(useFileTreeStore.getState().stoppedForAuth['app1']).toBe(false);
-
-      mockGetFiles.mockClear();
-
-      // Trigger reauth completion
-      await act(async () => {
-        mockAuthState.needsReauth = false;
-        (useAuthUIStore as any)._triggerSubscribers();
-      });
-
-      // Should not have made additional calls
-      expect(mockGetFiles).not.toHaveBeenCalled();
-    });
   });
 });
