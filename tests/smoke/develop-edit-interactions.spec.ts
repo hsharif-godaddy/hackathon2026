@@ -80,11 +80,12 @@ test.describe('Edit Interactions', () => {
 
     // Theme UI has two variants depending on the `airo-builder-theme-selection-chat`
     // switchboard flag. When ON, a `theme-preview-input-panel` renders inside the
-    // NBA section. When OFF (legacy), a `color-palette-grid` renders with different
-    // testids. Race both variants so the test proceeds as soon as either appears
-    // (isVisible() is a synchronous DOM check - its `timeout` option is a no-op).
+    // NBA section (single shared panel). When OFF (legacy), a `color-palette-grid`
+    // is rendered inside each AI chat message - so every new request appends another
+    // grid to the chat history. Scope to `.last()` so the test always targets the
+    // most-recent widget (the one the user would actually interact with).
     const themePanel = page.getByTestId('theme-preview-input-panel');
-    const legacyGrid = page.getByTestId('color-palette-grid');
+    const legacyGrid = page.getByTestId('color-palette-grid').last();
     const themeVariant = await Promise.race([
       themePanel.waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT }).then(() => 'modern' as const),
       legacyGrid.waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT }).then(() => 'legacy' as const),
@@ -163,10 +164,12 @@ test.describe('Edit Interactions', () => {
       console.log('  Theme preview panel hidden after cancel');
     } else {
       // Legacy UI has a Revert button (no cancel equivalent that hides the grid).
+      // Two grids are now in the chat history (one per request), so scope to the
+      // most-recent grid and its sibling revert button.
       await expect(legacyGrid).toBeVisible({ timeout: DEFAULT_TIMEOUT });
       console.log('  Color palette grid visible');
 
-      const revertButton = page.getByTestId('color-palette-revert');
+      const revertButton = page.getByTestId('color-palette-revert').last();
       await expect(revertButton).toBeVisible();
       await revertButton.click();
       console.log('  Revert button clicked (legacy)');
