@@ -110,12 +110,12 @@ jobs:
 
         <e2e_review>
         When the PR modifies UI components (app/src/):
-        1. Grep tests/smoke/ for any data-testid, data-eid, or selectors
-           affected by the diff.
+        1. Grep tests/e2e/ and tests/regression/ for any data-testid, data-eid,
+           or selectors affected by the diff.
         2. Issue: Changed/removed selectors or user flows without matching
-           tests/smoke/ updates.
+           tests/e2e/ or tests/regression/ updates.
         3. Suggestion: New user-facing features or flows with no existing E2E
-           coverage - recommend adding a Playwright smoke test for the happy path.
+           coverage - recommend adding a Playwright test for the happy path.
         </e2e_review>
 
         <pr_hygiene>

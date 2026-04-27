@@ -73,6 +73,16 @@ function getIframeFrame(page: Page, selector: string): FrameLocator {
 }
 
 /**
+ * Predicate: URL is the app, not the SSO host. Used after submitting SSO
+ * credentials to wait for the post-login redirect back to the app without
+ * assuming a specific landing path (SSO honours `?path=...` and may land on
+ * `/develop/<id>`, `/apps`, or the root).
+ */
+function isBackOnApp(url: URL): boolean {
+  return !/^sso\./i.test(url.hostname) && !/\/login\b/.test(url.pathname);
+}
+
+/**
  * Handle SSO authentication - supports both iframe modal (prod) and redirect (test/dev)
  * This performs a full login flow through the UI
  */
@@ -93,12 +103,15 @@ export async function handleSsoLogin(page: Page): Promise<void> {
     // Wait for SSO iframe to close (confirms auth was processed)
     await iframeLocator.waitFor({ state: 'hidden', timeout: SSO_TIMEOUT });
 
-    // Wait for the post-SSO page reload triggered by the parent page
-    await page.waitForURL('**/', { timeout: SSO_TIMEOUT });
+    // Wait for the post-SSO page reload triggered by the parent page. Use a
+    // predicate instead of the glob `**/` - that glob compiles to `^(.*/)$`
+    // which only matches URLs ending with `/`, so a redirect back to
+    // `/develop/<id>` (no trailing slash) would silently time out here.
+    await page.waitForURL(isBackOnApp, { timeout: SSO_TIMEOUT });
   } else if (signInType === 'redirect') {
     console.log('Redirected to sign-in page (test environment)');
     await fillCredentials(page, username, password);
-    await page.waitForURL('**/', { timeout: SSO_TIMEOUT });
+    await page.waitForURL(isBackOnApp, { timeout: SSO_TIMEOUT });
   } else {
     throw new Error('Sign-in failed: Timed out waiting for either iframe modal or login redirect');
   }
@@ -264,21 +277,44 @@ export async function openUserMenu(page: Page): Promise<void> {
  * completes login.
  */
 export async function handleReauthIfPresent(page: Page): Promise<boolean> {
+  // Check for full-page SSO redirect first (session expired, browser navigated away).
+  // dev/test/prod each have their own SSO host: sso.dev-godaddy.com, sso.test-godaddy.com,
+  // sso.godaddy.com. Missing any of these causes the SSO-iframe/modal Promise.race below
+  // to never resolve and the test silently continues against the SSO page.
+  if (/sso\.(test-|dev-)?godaddy\.com\/login/i.test(page.url())) {
+    console.log('  Full-page SSO redirect detected, re-authenticating...');
+    await handleSsoLogin(page);
+    console.log('  Re-authenticated from SSO redirect');
+    return true;
+  }
+
   const ssoIframe = page.locator('iframe[title="Container for sign in"]');
   const ssoModal = page.locator('.sso-login-modal');
+  const ssoRedirectUrl = /sso\.(test-|dev-)?godaddy\.com\/login/i;
 
-  // Check for SSO iframe or SsoLogin modal (redirect-based SSO in deployed
-  // test/dev envs). Each branch needs its own .catch() so the losing racer
-  // doesn't produce an unhandled rejection.
+  // Check for SSO iframe, SsoLogin modal (redirect-based SSO in deployed
+  // test/dev envs), or a full-page SSO redirect that is still in flight at
+  // the time we were called. Each branch needs its own .catch() so the
+  // losing racer doesn't produce an unhandled rejection.
+  //
+  // The full-page redirect racer is load-bearing: gasket-auth fires the
+  // top-window navigation ~1s after reload when VAT is briefly stale, so
+  // the synchronous page.url() check above can return false before the
+  // bounce lands. Without this racer, handleReauthIfPresent silently
+  // returns false and the caller runs against a page that is about to
+  // navigate to SSO.
   const detected = await Promise.race([
     ssoIframe.waitFor({ state: 'visible', timeout: SHORT_TIMEOUT }).then(() => 'sso-iframe' as const).catch(() => null),
     ssoModal.waitFor({ state: 'visible', timeout: SHORT_TIMEOUT }).then(() => 'sso-modal' as const).catch(() => null),
+    page.waitForURL(ssoRedirectUrl, { timeout: SHORT_TIMEOUT }).then(() => 'sso-redirect' as const).catch(() => null),
   ]);
 
   if (!detected) return false;
 
   if (detected === 'sso-iframe') {
     console.log('  SSO iframe detected (auto-opened on invalid auth), completing login...');
+  } else if (detected === 'sso-redirect') {
+    console.log('  Full-page SSO redirect caught in-flight, re-authenticating...');
   } else {
     console.log('  SsoLogin modal detected (redirect-based SSO), completing login...');
   }

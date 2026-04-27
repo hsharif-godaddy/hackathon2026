@@ -3,20 +3,40 @@ import path from 'node:path';
 import { defineConfig, devices } from '@playwright/test';
 import dotenv from 'dotenv';
 
-// Load test environment variables from tests/.env
+import { getEnvConfig } from './tests/helpers/constants';
+
+// Load test environment variables from tests/.env. getEnvConfig() reads
+// process.env lazily at call time, so values from .env are picked up below.
 dotenv.config({ path: path.resolve(__dirname, 'tests/.env') });
+
+const { config: envConfig } = getEnvConfig();
 
 /**
  * Playwright E2E Test Configuration
  *
- * Tests migrated from Cypress (e2e/cypress/tests/) to Playwright (tests/smoke/)
- * Smoke tests covering: apps page, authentication, navigation, develop page features,
- * publish, media, and cold archive restore (see tests/smoke/)
+ * Two test suites:
+ * - e2e: Consolidated single-app critical path test (fast, ~10 min)
+ * - regression: Full test suite with individual feature specs (thorough, ~30+ min)
+ *
+ * Environment selection (resolves baseURL + credentials). The --env flag is
+ * parsed by scripts/e2e.sh and translated to PLAYWRIGHT_ENV; the
+ * PLAYWRIGHT_ENV form is what playwright.config.ts and constants.ts read.
+ *
+ *   pnpm test:e2e --env=<local|dev|pre-test|test|prod> [playwright args...]
+ *   ./scripts/e2e.sh --env=prod --project=e2e --headed
+ *   PLAYWRIGHT_ENV=prod npx playwright test --project=e2e --headed
+ *
+ * Project selection:
+ *   --project=e2e          fast critical path only
+ *   --project=regression   full regression suite
+ *   (no --project)         both
+ *
+ * PLAYWRIGHT_BASE_URL still wins if set (e.g. for one-off URLs not in the
+ * environments map in tests/helpers/constants.ts).
  *
  * @see https://playwright.dev/docs/test-configuration
  */
 export default defineConfig({
-  testDir: './tests/smoke',
   /* Run tests in files in parallel */
   fullyParallel: true,
   /* Fail the build on CI if you accidentally left test.only in the source code. */
@@ -48,8 +68,14 @@ export default defineConfig({
     : [['list'], ['html'], ['./tests/reporters/elasticsearch-reporter.ts']],
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
-    /* Base URL to use in actions like `await page.goto('/')`. */
-    baseURL: process.env.PLAYWRIGHT_BASE_URL || 'https://airo-builder.test-godaddy.com',
+    /**
+     * Base URL to use in actions like `await page.goto('/')`.
+     * Resolution order:
+     *   1. PLAYWRIGHT_BASE_URL (explicit override, e.g. one-off ad-hoc URL)
+     *   2. environments[PLAYWRIGHT_ENV].baseUrl (driven by --env shortcuts)
+     *   3. environments.test.baseUrl (default fallback when nothing is set)
+     */
+    baseURL: process.env.PLAYWRIGHT_BASE_URL || envConfig.baseUrl,
     /* Viewport size matching Cypress config */
     viewport: { width: 1920, height: 1360 },
     /* Action timeout for clicks, fills, etc. */
@@ -67,30 +93,15 @@ export default defineConfig({
   /* Configure projects for major browsers */
   projects: [
     {
-      name: 'chromium',
+      name: 'e2e',
+      testDir: './tests/e2e',
       use: { ...devices['Desktop Chrome'] },
     },
-
-    // Temporarily disabled to focus on Chrome only
-    // {
-    //   name: 'firefox',
-    //   use: { ...devices['Desktop Firefox'] },
-    // },
-
-    // {
-    //   name: 'webkit',
-    //   use: { ...devices['Desktop Safari'] },
-    // },
-
-    // /* Test against mobile viewports. */
-    // {
-    //   name: 'Mobile Chrome',
-    //   use: { ...devices['Pixel 5'] },
-    // },
-    // {
-    //   name: 'Mobile Safari',
-    //   use: { ...devices['iPhone 12'] },
-    // },
+    {
+      name: 'regression',
+      testDir: './tests/regression',
+      use: { ...devices['Desktop Chrome'] },
+    },
   ],
 
   /* Run your local dev server before starting the tests */

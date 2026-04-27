@@ -16,7 +16,7 @@
     "typecheck": "turbo run typecheck",
     "lint": "turbo run lint",
     "test": "./scripts/test.sh",
-    "test:e2e": "playwright test",
+    "test:e2e": "./scripts/e2e.sh",
     "pr-check": "./scripts/pr-check.sh",
     "pr-check:quick": "./scripts/pr-check.sh --quick",
     "prepare": "husky && husky install",

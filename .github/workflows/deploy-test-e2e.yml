@@ -36,7 +36,7 @@ jobs:
     uses: ./.github/workflows/playwright-e2e.yml
     with:
       environment: "test"
-      test_filter: "all"
+      test_filter: "e2e"
     permissions:
       id-token: write
       contents: read

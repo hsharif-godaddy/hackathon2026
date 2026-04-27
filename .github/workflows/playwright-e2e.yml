@@ -3,9 +3,15 @@ name: E2E Tests
 run-name: "E2E Tests - ${{ inputs.environment || 'prod' }}${{ inputs.test_filter && inputs.test_filter != 'all' && format(' [{0}]', inputs.test_filter) || '' }} (by ${{ github.actor }})"
 
 on:
-  # Run every 2 hours against prod
+  # Scheduled runs against prod. github.event.schedule (the cron string itself)
+  # is used below to dispatch to the right test suite.
   schedule:
+    # Critical-path E2E every 2 hours - fast post-deploy/regression gate.
     - cron: "0 */2 * * *"
+    # Full regression suite once per day (06:00 UTC) - covers auth flows,
+    # apps-page, media tab, publish popover, archive restore (otherwise only
+    # exercised on manual dispatch).
+    - cron: "0 6 * * *"
 
   # Allow manual triggering and post-promotion triggering
   workflow_dispatch:
@@ -21,11 +27,13 @@ on:
           - test
           - prod
       test_filter:
-        description: "Run specific test (or 'all' for full suite)"
+        description: "Test suite to run"
         required: false
-        default: "all"
+        default: "e2e"
         type: choice
         options:
+          - e2e
+          - regression
           - all
           - authentication
           - apps-page
@@ -33,6 +41,7 @@ on:
           - develop-edit-interactions
           - develop-media
           - develop-publish
+          - develop-brand-book
       post_promotion:
         description: "Triggered by promotion workflow (internal use)"
         required: false
@@ -48,9 +57,9 @@ on:
         default: "test" # The workflow_call will mostly be called building for the test env
         type: string
       test_filter:
-        description: "Run specific test: all, authentication, apps-page, develop-chat, develop-edit-interactions, develop-media, develop-publish"
+        description: "Test suite: e2e, regression, all, or individual spec name (e.g. authentication, apps-page)"
         required: false
-        default: "all"
+        default: "e2e"
         type: string
       post_promotion:
         description: "Triggered by promotion workflow (internal use)"
@@ -163,7 +172,7 @@ jobs:
           echo "✅ Test credentials retrieved successfully"
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6.3.0
+        uses: actions/setup-node@v6
         with:
           node-version: "22"
 
@@ -234,22 +243,15 @@ jobs:
           fi
 
       - name: Run Playwright tests
-        run: |
-          FILTER="${{ inputs.test_filter || 'all' }}"
-          ALLOWED="all authentication apps-page develop-chat develop-edit-interactions develop-media develop-publish"
-          if [[ ! " $ALLOWED " =~ " $FILTER " ]]; then
-            echo "Invalid test_filter: $FILTER"
-            exit 1
-          fi
-          if [ "$FILTER" != "all" ] && [ -n "$FILTER" ]; then
-            echo "🎯 Running filtered test: $FILTER"
-            npx playwright test "tests/smoke/${FILTER}.spec.ts"
-          else
-            echo "🧪 Running full test suite"
-            npx playwright test
-          fi
         env:
           CI: true
+          # Routed through env: to avoid shell injection from github context.
+          GITHUB_EVENT_SCHEDULE: ${{ github.event.schedule }}
+          INPUT_TEST_FILTER: ${{ inputs.test_filter }}
+          # tests/helpers/constants.ts getCredentials() reads env-specific variables
+          # based on PLAYWRIGHT_ENV (DEV_*, PRE_TEST_*, TEST_*, PROD_*). All four
+          # pairs must be set so the same secret value works for any environment
+          # the workflow can target.
           DEV_USERNAME: ${{ steps.get-credentials.outputs.username }}
           DEV_PASSWORD: ${{ steps.get-credentials.outputs.password }}
           PRE_TEST_USERNAME: ${{ steps.get-credentials.outputs.username }}
@@ -263,6 +265,43 @@ jobs:
           TEST_ENVIRONMENT: ${{ steps.env-config.outputs.environment }}
           ES_URL: ${{ steps.get-es-credentials.outputs.es_url }}
           ES_API_KEY: ${{ steps.get-es-credentials.outputs.es_api_key }}
+        run: |
+          # Schedule-triggered runs don't carry an `inputs` payload, so pick the
+          # filter from the cron string instead. Manual dispatch / workflow_call
+          # use the explicit input.
+          if [ -n "$GITHUB_EVENT_SCHEDULE" ]; then
+            case "$GITHUB_EVENT_SCHEDULE" in
+              "0 6 * * *")
+                FILTER="regression"
+                ;;
+              *)
+                FILTER="e2e"
+                ;;
+            esac
+          elif [ -n "$INPUT_TEST_FILTER" ]; then
+            FILTER="$INPUT_TEST_FILTER"
+          else
+            FILTER="e2e"
+          fi
+          echo "Test filter resolved to: $FILTER"
+          case "$FILTER" in
+            e2e)
+              echo "Running E2E critical path test"
+              npx playwright test --project=e2e
+              ;;
+            regression)
+              echo "Running full regression suite"
+              npx playwright test --project=regression
+              ;;
+            all)
+              echo "Running all tests (E2E + regression)"
+              npx playwright test
+              ;;
+            *)
+              echo "Running filtered regression test: $FILTER"
+              npx playwright test --project=regression "${FILTER}.spec.ts"
+              ;;
+          esac
 
       - name: Upload Test Results
         uses: actions/upload-artifact@v7
@@ -318,7 +357,7 @@ jobs:
             <details>
             <summary>🔧 Test Configuration</summary>
 
-            - **Test Directory:** \`./tests/smoke\`
+            - **Test Directory:** \`./tests/e2e\` (critical path) + \`./tests/regression\` (full suite)
             - **Base URL:** \`${process.env.BASE_URL}\`
             - **Retries:** 0 (no retries)
             - **Workers:** 1 (serial execution)

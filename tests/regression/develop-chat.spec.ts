@@ -485,7 +485,15 @@ test.describe('Develop Page', () => {
 
     await page.reload();
 
-    await expect(page).toHaveURL(/\/develop\//);
+    // Reload can race the SSO Deck heartbeat: VAT briefly tips past the 5-min
+    // window, gasket-auth's /api/auth/validate returns 401 (authReason=3),
+    // and the top window is pushed to sso.<env>-godaddy.com/login?path=
+    // %2Fdevelop%2F<id>. Handle the bounce so the rest of this step doesn't
+    // run against the SSO page (which has no airo-header / chat-input and
+    // fails with a misleading selector error).
+    await ensureAuthenticated(page);
+
+    await expect(page).toHaveURL(/^(?!https:\/\/sso\.)[^?#]*\/develop\//);
     await expect(page.getByTestId('airo-header')).toBeVisible();
     await page.getByTestId('chat-input-textarea').waitFor({ state: 'visible', timeout: CHAT_INPUT_TIMEOUT });
     await expect(page.getByTestId('chat-input-textarea')).not.toBeDisabled();

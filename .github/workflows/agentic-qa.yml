@@ -58,6 +58,10 @@ on:
           - friction-evals-all
           - scenarios/friction-evals/friction-pattern-detection.yaml
           - scenarios/friction-evals/error-loop-retry-waste.yaml
+          # Feature Tests (called from release-manager.yml's validate stage)
+          - scenarios/feature-tests/skill-database.yaml
+          - scenarios/feature-tests/skills-comprehensive.yaml
+          - scenarios/feature-tests/publish-lifecycle.yaml
       headed:
         description: "Run with visible browser"
         required: false

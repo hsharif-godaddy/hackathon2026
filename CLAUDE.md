@@ -209,7 +209,7 @@ See app/src/lib/translations/README.md for full details.
 
 ## E2E Test Maintenance
 
-**When modifying UI components, always check if E2E tests reference affected `data-testid` attributes, selectors, or user flows.** E2E smoke tests live in `tests/smoke/` and run against the real app. If you add, rename, or remove a `data-testid`, change a component's DOM structure, or alter a user interaction flow (e.g., confirmation dialogs, navigation), update the corresponding E2E tests to match. Grep for the test ID in `tests/smoke/` to find affected specs.
+**When modifying UI components, always check if E2E tests reference affected `data-testid` attributes, selectors, or user flows.** E2E tests live in `tests/e2e/` (critical-path single-flow test) and `tests/regression/` (full per-feature suite) and run against the real app. If you add, rename, or remove a `data-testid`, change a component's DOM structure, or alter a user interaction flow (e.g., confirmation dialogs, navigation), update the corresponding E2E tests to match. Grep for the test ID in `tests/e2e/` and `tests/regression/` to find affected specs.
 
 ## PR Checklist
 
@@ -218,5 +218,5 @@ See app/src/lib/translations/README.md for full details.
 - [ ] `pnpm build` passes
 - [ ] Changes tested
 - [ ] Backward compatibility verified
-- [ ] **UI changes:** E2E tests in `tests/smoke/` updated if `data-testid` or user flows changed
+- [ ] **UI changes:** E2E tests in `tests/e2e/` and `tests/regression/` updated if `data-testid` or user flows changed
 - [ ] **dev-supervisor only:** `make check` passes

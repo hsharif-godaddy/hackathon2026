@@ -8,43 +8,132 @@ Playwright-based end-to-end tests for Airo App Builder.
 # Install dependencies
 pnpm install
 
-# Run all tests (headless) - defaults to test environment
-npx playwright test
+# Run E2E critical path test (fast, ~10 min)
+pnpm test:e2e --project=e2e
 
-# Run tests with browser visible
-npx playwright test --headed
+# Run full regression suite (~30+ min)
+pnpm test:e2e --project=regression
 
-# Run specific test file
-npx playwright test develop-publish.spec.ts --headed
+# Run all tests (E2E + regression)
+pnpm test:e2e
 
-# Run against different cloud environments
-PLAYWRIGHT_BASE_URL=https://airo-builder.test-godaddy.com npx playwright test --headed  # test (cloud)
-PLAYWRIGHT_BASE_URL=https://airo-builder.dev-godaddy.com npx playwright test --headed   # dev (cloud)
-PLAYWRIGHT_BASE_URL=https://airo-builder.godaddy.com npx playwright test --headed       # prod
+# Run specific regression test
+pnpm test:e2e --project=regression "authentication.spec.ts"
 
-# Run against local development (requires local server at https://local.gasket.dev-godaddy.com:8443)
-PLAYWRIGHT_BASE_URL=https://local.gasket.dev-godaddy.com:8443 npx playwright test --headed
+# Run with browser visible
+pnpm test:e2e --project=e2e --headed
+
+# Run against different environments via the --env flag. The pnpm script
+# wraps `playwright test` and resolves baseURL + credentials from
+# tests/helpers/constants.ts. Every other Playwright flag (--project,
+# --headed, --grep, spec paths, ...) is forwarded unchanged.
+pnpm test:e2e --env=local --project=e2e --headed   # https://local.gasket.dev-godaddy.com:8443
+pnpm test:e2e --env=dev   --project=e2e --headed   # https://airo-builder.dev-godaddy.com
+pnpm test:e2e --env=test  --project=e2e --headed   # https://airo-builder.test-godaddy.com
+pnpm test:e2e --env=prod  --project=e2e --headed   # https://airo-builder.godaddy.com
+
+# Equivalent direct invocation of the wrapper script (skips the pnpm hop)
+./scripts/e2e.sh --env=prod --project=e2e --headed
+
+# Equivalent env-var form, bypassing the wrapper. PLAYWRIGHT_ENV drives
+# both URL and which *_USERNAME/*_PASSWORD pair getCredentials() reads.
+# PLAYWRIGHT_BASE_URL still wins as an explicit override.
+PLAYWRIGHT_ENV=prod pnpm exec playwright test --project=e2e --headed
 ```
 
 ## Environment Setup
 
-Create `tests/.env` with test credentials:
+Create `tests/.env` with test credentials. For local dev, a single generic
+pair works for every `--env` target (the `environments` map in
+`tests/helpers/constants.ts` only requires env-specific vars when the generic
+fallback isn't set):
 
 ```env
-TEST_USERNAME=your-test-username@example.com
-TEST_PASSWORD=your-test-password
+E2E_USERNAME=your-username@example.com
+E2E_PASSWORD=your-password
 ```
 
-In CI, credentials are fetched from AWS Secrets Manager automatically.
+> **Why `E2E_*` and not `USERNAME`/`PASSWORD`?** `process.env.USERNAME` is set
+> by the OS to the current login name on Linux/macOS — including GitHub
+> Actions runners, where it's `runner` — and would silently override anything
+> you put in `tests/.env`, producing a confusing SSO failure with no obvious
+> cause. The `E2E_` prefix is collision-safe.
 
-## Test Files
+If you need different credentials per environment (rare locally, standard in
+CI), set the env-specific pair instead — they take precedence over the
+generic fallback:
 
-| File                      | Purpose                                                                                       |
-| ------------------------- | --------------------------------------------------------------------------------------------- |
-| `apps-page.spec.ts`       | Apps page, navigation, homepage input validation                                              |
-| `authentication.spec.ts`  | Login/logout flows, session persistence, protected routes                                     |
-| `develop-chat.spec.ts`    | Develop page components, chat, preview, header elements                                       |
-| `develop-publish.spec.ts` | AI agent auto-publish; first-publish congrats or growl; publish popover Pre-Launch SEO prompt |
+```env
+LOCAL_USERNAME=...
+LOCAL_PASSWORD=...
+DEV_USERNAME=...
+DEV_PASSWORD=...
+TEST_USERNAME=...
+TEST_PASSWORD=...
+PROD_USERNAME=...
+PROD_PASSWORD=...
+```
+
+In CI, credentials are fetched from AWS Secrets Manager and injected as the
+env-specific vars automatically.
+
+## Directory Structure
+
+```
+tests/
+  e2e/
+    e2e.spec.ts                      # Consolidated single-app critical path
+  regression/
+    authentication.spec.ts           # Login/logout, session, protected routes
+    apps-page.spec.ts                # Apps listing, navigation, homepage validation
+    develop-chat.spec.ts             # Develop page, chat, preview, header
+    develop-publish.spec.ts          # AI auto-publish, Pre-Launch SEO
+    develop-edit-interactions.spec.ts # Color scheme, edit mode, code search
+    develop-media.spec.ts            # Media tab, image grid, Getty alternatives
+    develop-brand-book.spec.ts       # Brand Book tab
+    develop-archive-restore.spec.ts  # Cold archive restore UX
+  fixtures/
+    test-fixtures.ts                 # Authenticated/unauthenticated page contexts
+  helpers/
+    api.ts                           # API utilities (delete sites, poll deployment)
+    auth.ts                          # SSO login handling
+    constants.ts                     # Timeouts and test prefixes
+    ui.ts                            # UI helpers (wait for page, chat input)
+  reporters/
+    elasticsearch-reporter.ts        # ES indexing for test result tracking
+  .env                               # Local test credentials (git-ignored)
+  tsconfig.json                      # TypeScript config for tests
+  README.md                          # This file
+```
+
+## Test Suites
+
+### E2E (Critical Path)
+
+A single test that creates ONE app and exercises all critical features sequentially:
+
+1. Homepage + SSO Login + App Creation
+2. Verify develop page components (header, preview, chat)
+3. Preview controls (refresh, device selector) + auto-publish verification
+4. Chat input states (disabled/enabled, multi-line)
+5. Send message via send button click
+6. Send message via Enter key
+7. Color scheme preview
+8. Edit mode toggle
+9. Code view + unified search
+10. Publish button verification
+11. Page refresh recovery
+
+Use this for: post-deploy validation, CI, quick smoke checks. Brand Book lives
+in the regression suite (`develop-brand-book.spec.ts`) because it's gated by
+the `appbuilder-brandbook` switchboard flag and isn't enabled for every prod
+account.
+
+### Regression (Full Suite)
+
+Individual spec files covering each feature area in depth. Includes skipped tests for features under development or with known CI issues (media tab, archive restore, etc.).
+
+Use this for: nightly runs, thorough pre-release validation, debugging specific features.
 
 ## Test Strategy
 
@@ -63,6 +152,7 @@ Each test file creates one app and runs all assertions sequentially.
 Some tests leverage AI agent capabilities:
 
 - `develop-publish.spec.ts` - Instructs AI to auto-publish via prompt
+- `e2e.spec.ts` - Same auto-publish approach
 - No manual button clicks needed for publish flow
 
 ### Handling UX Core Components
@@ -71,25 +161,7 @@ Tests handle common UX Core overlays that can block interactions:
 
 - **Coachmark tours** (`.ux-coachmark`) - Dismissed via Escape key
 - **Backdrop overlays** (`.ux-disrupt-backdrop`) - Dismissed via Escape key
-- **Go Live modal** (`[data-testid="go-live-modal-skip"]`) - Success indicator after publish
-
-## Directory Structure
-
-```
-tests/
-├── fixtures/
-│   └── test-fixtures.ts    # Authenticated/unauthenticated page contexts
-├── helpers/
-│   ├── api.ts              # API utilities (delete sites, poll deployment)
-│   ├── auth.ts             # SSO login handling
-│   ├── constants.ts        # Timeouts and test prefixes
-│   └── ui.ts               # UI helpers (wait for page, chat input)
-├── smoke/
-│   └── *.spec.ts           # Test specifications
-├── .env                    # Local test credentials (git-ignored)
-├── tsconfig.json           # TypeScript config for tests
-└── README.md               # This file
-```
+- **Go Live modal** - Success indicator after publish
 
 ## Helpers
 
@@ -141,10 +213,9 @@ import {
 
 Tests run via GitHub Actions workflow (`.github/workflows/playwright-e2e.yml`):
 
-```bash
-# Triggered manually or after promotion
-# Environments: test, dev, prod
-```
+- **Every 2 hours (prod):** Runs E2E critical path test
+- **Post-deploy (test):** Runs E2E critical path test
+- **Manual dispatch:** Choose e2e, regression, all, or individual spec
 
 Artifacts uploaded on failure:
 
@@ -154,7 +225,7 @@ Artifacts uploaded on failure:
 
 ## Elasticsearch Reporting
 
-Test results (pass/fail) are automatically indexed to Elasticsearch when `ES_URL` is configured. This enables Kibana dashboards for tracking test health over time.
+Test results are automatically indexed to Elasticsearch when `ES_URL` is configured.
 
 ### Configuration
 
@@ -177,48 +248,36 @@ A single consolidated document is indexed to `playwright-e2e-results` per run:
 - `environment`, `baseUrl`, `projectName` - target environment
 - CI/CD context (`gitSha`, `gitBranch`, `runId`, `runUrl`, `actor`, etc.)
 
-### Local Usage
-
-```bash
-# With ES configured
-ES_URL=http://localhost:9200 npx playwright test
-
-# Without ES (reporter silently skips)
-npx playwright test
-```
-
-### CI
-
-The GitHub Actions workflow automatically retrieves ES credentials from AWS Secrets Manager (`/airo/elasticsearch-credentials`) — the same secret used by agentic-qa. If credentials are unavailable, tests still run normally without indexing.
-
 ## Debugging
 
 ### View test report
 
 ```bash
-npx playwright show-report
+pnpm exec playwright show-report
 ```
 
 ### Debug mode
 
 ```bash
-npx playwright test --debug
+pnpm test:e2e --project=e2e --debug
 ```
 
 ### Trace viewer
 
 ```bash
-npx playwright test --trace on
-npx playwright show-trace test-results/*/trace.zip
+pnpm test:e2e --project=e2e --trace on
+pnpm exec playwright show-trace test-results/*/trace.zip
 ```
 
 ## Writing New Tests
 
-1. Use single-flow pattern (one test, multiple assertions)
-2. Leverage AI agent for complex actions when possible
-3. Handle coachmark/overlay dismissal
-4. Clean up created apps in `afterEach`
-5. Use helpers for common operations
+1. Add new feature tests to `tests/regression/` as individual spec files
+2. Use single-flow pattern (one test, multiple assertions)
+3. Leverage AI agent for complex actions when possible
+4. Handle coachmark/overlay dismissal
+5. Clean up created apps in `afterEach`
+6. Use helpers for common operations
+7. If the feature is critical, add it as a step in `tests/e2e/e2e.spec.ts`
 
 ### Example
 

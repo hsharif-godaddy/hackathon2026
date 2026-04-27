@@ -35,7 +35,7 @@ export const APPS_GRID_PAGE_SIZE = 12;
 /**
  * Environment configuration
  */
-export type Environment = 'dev' | 'pre-test' | 'test' | 'prod';
+export type Environment = 'local' | 'dev' | 'pre-test' | 'test' | 'prod';
 
 export interface EnvironmentConfig {
   baseUrl: string;
@@ -44,6 +44,14 @@ export interface EnvironmentConfig {
 }
 
 export const environments: Record<Environment, EnvironmentConfig> = {
+  // `local` points at the local Gasket dev shell (see
+  // .claude/skills/local-dev-browser/SKILL.md). Backed by the same SSO as test,
+  // so LOCAL_USERNAME/LOCAL_PASSWORD typically match TEST_USERNAME/TEST_PASSWORD.
+  local: {
+    baseUrl: 'https://local.gasket.dev-godaddy.com:8443',
+    usernameVar: 'LOCAL_USERNAME',
+    passwordVar: 'LOCAL_PASSWORD',
+  },
   dev: {
     baseUrl: 'https://airo-builder.dev-godaddy.com',
     usernameVar: 'DEV_USERNAME',
@@ -67,18 +75,41 @@ export const environments: Record<Environment, EnvironmentConfig> = {
 };
 
 export function getEnvConfig(): { env: Environment; config: EnvironmentConfig } {
-  // Support both PLAYWRIGHT_ENV (preferred) and legacy CYPRESS_ENV
-  const env = (process.env.PLAYWRIGHT_ENV || process.env.CYPRESS_ENV) as Environment || 'test';
-  return { env, config: environments[env] || environments.test };
+  // Support both PLAYWRIGHT_ENV (preferred) and legacy CYPRESS_ENV.
+  const explicit = process.env.PLAYWRIGHT_ENV || process.env.CYPRESS_ENV;
+  const env = (explicit ?? 'test') as Environment;
+  const config = environments[env];
+  if (!config) {
+    // Throw instead of silently remapping to `test`. A typo like --env=prd
+    // would otherwise run the prod-strict assertions against the test env
+    // and report misleading green/red signals. scripts/e2e.sh validates the
+    // allowlist too; this is the second line of defense for callers that
+    // set PLAYWRIGHT_ENV directly.
+    throw new Error(
+      `Unknown environment "${explicit}". Valid values: ${Object.keys(environments).join(', ')}.`,
+    );
+  }
+  return { env, config };
 }
 
 export function getCredentials(): { username: string; password: string } {
   const { config } = getEnvConfig();
-  const username = process.env[config.usernameVar];
-  const password = process.env[config.passwordVar];
+  // Prefer env-specific credentials (CI sets these per environment). Fall
+  // back to generic E2E_USERNAME/E2E_PASSWORD so local dev can keep a single
+  // pair in tests/.env that works for any --env target.
+  //
+  // Deliberately NOT named USERNAME/PASSWORD: process.env.USERNAME is set to
+  // the OS login name on Linux (incl. GitHub-hosted runners, where it's
+  // `runner`) and macOS, so a tests/.env entry would be silently overridden
+  // by the shell — yielding a confusing SSO failure with no obvious cause.
+  const username = process.env[config.usernameVar] || process.env.E2E_USERNAME;
+  const password = process.env[config.passwordVar] || process.env.E2E_PASSWORD;
 
   if (!username || !password) {
-    throw new Error(`${config.usernameVar} and ${config.passwordVar} environment variables must be set`);
+    throw new Error(
+      `${config.usernameVar}/${config.passwordVar} (or generic E2E_USERNAME/E2E_PASSWORD) ` +
+        `environment variables must be set`,
+    );
   }
 
   return { username, password };
