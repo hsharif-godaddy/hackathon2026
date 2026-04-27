@@ -866,12 +866,12 @@ describe('AssessmentAgent', () => {
       expect(outcome.overrideApplied).toBe(false)
     })
 
-    it('should apply billing-safety fallback when Haiku is skipped and embedding returned fix with medium confidence', async () => {
-      // Embedding returns fix with medium similarity (would need Haiku tiebreaker)
+    it('should apply billing-safety fallback when Haiku is skipped and embedding returned fix with low similarity', async () => {
+      // Embedding returns fix with LOW similarity (would need Haiku tiebreaker)
       mockEmbeddingClassify.mockResolvedValue({
         taskType: AssessmentTaskType.Fix,
-        confidence: 65,
-        similarity: 0.60, // Below HIGH_CONFIDENCE_SIMILARITY (0.75)
+        confidence: 40,
+        similarity: 0.40, // Below LOW_CONFIDENCE_SIMILARITY (0.5)
         matchedExample: 'fix the button',
         margin: 0.1,
         method: 'embedding-nn',
@@ -888,12 +888,12 @@ describe('AssessmentAgent', () => {
       expect(outcome.overrideApplied).toBe(false)
     })
 
-    it('should apply billing-safety fallback when Haiku times out and embedding returned fix with medium confidence', async () => {
-      // Embedding returns fix with medium similarity (triggers Haiku tiebreaker)
+    it('should apply billing-safety fallback when Haiku times out and embedding returned fix with low similarity', async () => {
+      // Embedding returns fix with LOW similarity (triggers Haiku tiebreaker)
       mockEmbeddingClassify.mockResolvedValue({
         taskType: AssessmentTaskType.Fix,
-        confidence: 65,
-        similarity: 0.60, // Below HIGH_CONFIDENCE_SIMILARITY (0.75)
+        confidence: 40,
+        similarity: 0.40, // Below LOW_CONFIDENCE_SIMILARITY (0.5)
         matchedExample: 'fix the button',
         margin: 0.1,
         method: 'embedding-nn',
@@ -915,12 +915,12 @@ describe('AssessmentAgent', () => {
       expect(outcome.overrideApplied).toBe(false)
     })
 
-    it('should NOT apply billing-safety fallback for publish/domain tasks on timeout', async () => {
-      // Embedding returns publish with medium similarity
+    it('should NOT apply billing-safety fallback when similarity is above LOW threshold', async () => {
+      // Embedding returns publish with similarity above LOW threshold (0.5)
       mockEmbeddingClassify.mockResolvedValue({
         taskType: AssessmentTaskType.Publish,
         confidence: 70,
-        similarity: 0.70, // Below HIGH_CONFIDENCE_SIMILARITY but publish is not fix
+        similarity: 0.70, // Above LOW_CONFIDENCE_SIMILARITY (0.5) - trustworthy
         matchedExample: 'publish my app',
         margin: 0.1,
         method: 'embedding-nn',
@@ -931,12 +931,108 @@ describe('AssessmentAgent', () => {
       const agent = createAssessmentAgent({ enabled: true, timeoutMs: 100 })
       const outcome = await agent.classify('make my site live')
 
-      // Publish is trusted even on timeout (not a billing-safety concern)
-      // Key assertion: taskType is Publish, not General (no billing-safety fallback)
+      // High enough similarity - trusted even on timeout
       expect(outcome.reason).toBe(AssessmentReason.EmbeddingCompleted)
       expect(outcome.result?.taskType).toBe(AssessmentTaskType.Publish)
       // Override applies since confidence (70) >= MIN_CONFIDENCE_FOR_OVERRIDE (65)
       expect(outcome.overrideApplied).toBe(true)
+    })
+
+    it('should apply billing-safety fallback for domain with low similarity when Haiku is skipped', async () => {
+      // Embedding returns domain with LOW similarity (e.g., "Search by ingredients" -> "search for domains")
+      mockEmbeddingClassify.mockResolvedValue({
+        taskType: AssessmentTaskType.Domain,
+        confidence: 40,
+        similarity: 0.42, // Below LOW_CONFIDENCE_SIMILARITY (0.5) - unreliable
+        matchedExample: 'search for domains',
+        margin: 0.1,
+        method: 'embedding-nn',
+        hasNegation: false,
+      })
+
+      // Very short timeout means no time for Haiku (needs 500ms minimum)
+      const agent = createAssessmentAgent({ enabled: true, timeoutMs: 100 })
+      const outcome = await agent.classify('Search by ingredients')
+
+      // BILLING SAFETY: Low similarity domain should fall back to general
+      expect(outcome.reason).toBe(AssessmentReason.EmbeddingCompleted)
+      expect(outcome.result?.taskType).toBe(AssessmentTaskType.General)
+      expect(outcome.overrideApplied).toBe(false)
+    })
+
+    it('should apply billing-safety fallback for domain with low similarity when Haiku times out', async () => {
+      // Embedding returns domain with LOW similarity (e.g., "Search by ingredients" -> "search for domains")
+      mockEmbeddingClassify.mockResolvedValue({
+        taskType: AssessmentTaskType.Domain,
+        confidence: 40,
+        similarity: 0.42, // Below LOW_CONFIDENCE_SIMILARITY (0.5) - unreliable
+        matchedExample: 'search for domains',
+        margin: 0.1,
+        method: 'embedding-nn',
+        hasNegation: false,
+      })
+
+      // Haiku times out (takes longer than allowed)
+      mockGenerateText.mockImplementation(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 2000))
+        return { text: JSON.stringify({ taskType: AssessmentTaskType.Domain, confidence: 90 }) }
+      })
+
+      const agent = createAssessmentAgent({ enabled: true, timeoutMs: 600 })
+      const outcome = await agent.classify('Search by ingredients')
+
+      // BILLING SAFETY: Low similarity domain should fall back to general on timeout
+      expect(outcome.reason).toBe(AssessmentReason.Timeout)
+      expect(outcome.result?.taskType).toBe(AssessmentTaskType.General)
+      expect(outcome.overrideApplied).toBe(false)
+    })
+
+    it('should apply billing-safety fallback for domain with low similarity when Haiku errors', async () => {
+      // Embedding returns domain with LOW similarity
+      mockEmbeddingClassify.mockResolvedValue({
+        taskType: AssessmentTaskType.Domain,
+        confidence: 40,
+        similarity: 0.42, // Below LOW_CONFIDENCE_SIMILARITY (0.5) - unreliable
+        matchedExample: 'search for domains',
+        margin: 0.1,
+        method: 'embedding-nn',
+        hasNegation: false,
+      })
+
+      // Haiku throws an error (network, 429, etc.)
+      mockGenerateText.mockRejectedValue(new Error('Network error'))
+
+      const agent = createAssessmentAgent({ enabled: true, timeoutMs: 2000 })
+      const outcome = await agent.classify('Search by ingredients')
+
+      // BILLING SAFETY: Low similarity domain should fall back to general on error
+      expect(outcome.reason).toBe(AssessmentReason.Error)
+      expect(outcome.result?.taskType).toBe(AssessmentTaskType.General)
+      expect(outcome.overrideApplied).toBe(false)
+    })
+
+    it('should trust fix classification when similarity is in medium range [0.50, 0.75) and Haiku is skipped', async () => {
+      // Embedding returns fix with MEDIUM similarity (above LOW but below HIGH)
+      // This tests the new contract: medium-confidence fix is trusted when Haiku is unavailable
+      mockEmbeddingClassify.mockResolvedValue({
+        taskType: AssessmentTaskType.Fix,
+        confidence: 60,
+        similarity: 0.60, // Above LOW_CONFIDENCE_SIMILARITY (0.5), below HIGH (0.75)
+        matchedExample: 'fix the button',
+        margin: 0.1,
+        method: 'embedding-nn',
+        hasNegation: false,
+      })
+
+      // Very short timeout means no time for Haiku
+      const agent = createAssessmentAgent({ enabled: true, timeoutMs: 100 })
+      const outcome = await agent.classify('fix this issue')
+
+      // Medium similarity fix should be trusted (no billing safety fallback)
+      expect(outcome.reason).toBe(AssessmentReason.EmbeddingCompleted)
+      expect(outcome.result?.taskType).toBe(AssessmentTaskType.Fix)
+      // Override NOT applied because confidence (60) < MIN_CONFIDENCE_FOR_OVERRIDE (65)
+      expect(outcome.overrideApplied).toBe(false)
     })
 
     it('should NOT apply billing-safety fallback for high-confidence fix', async () => {

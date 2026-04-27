@@ -335,11 +335,12 @@ export class AssessmentAgent {
 
     try {
       if (remainingTime < 500) {
-        // BILLING SAFETY: If embedding returned "fix" with medium confidence (below HIGH threshold),
-        // we needed the tiebreaker but can't run it. Default to "general" to avoid billing for fix.
+        // BILLING SAFETY: If embedding returned a special task (fix/domain/publish) with low similarity
+        // (below LOW threshold), we needed the tiebreaker but can't run it. Default to "general" to
+        // avoid incorrect cost attribution. Low similarity means the embedding match is unreliable.
         const needsBillingSafetyFallback =
-          embeddingResult.taskType === AssessmentTaskType.Fix &&
-          embeddingResult.similarity < HIGH_CONFIDENCE_SIMILARITY
+          embeddingResult.taskType !== AssessmentTaskType.General &&
+          embeddingResult.similarity < LOW_CONFIDENCE_SIMILARITY
 
         const fallbackTaskType = needsBillingSafetyFallback
           ? AssessmentTaskType.General
@@ -357,9 +358,13 @@ export class AssessmentAgent {
           sessionContextGated,
         })
 
+        const fallbackConfidence = needsBillingSafetyFallback
+          ? 100 // High confidence in the safety fallback
+          : Math.round(embeddingResult.similarity * 100)
+
         return this.buildOutcome(
           fallbackTaskType,
-          Math.round(embeddingResult.similarity * 100),
+          fallbackConfidence,
           Date.now() - startTime,
           context,
           AssessmentReason.EmbeddingCompleted,
@@ -386,12 +391,13 @@ export class AssessmentAgent {
       const totalDurationMs = Date.now() - startTime
 
       if (haikuResult === null) {
-        // BILLING SAFETY: If embedding returned "fix" with medium confidence (below HIGH threshold),
-        // we needed the tiebreaker but it timed out. Default to "general" to avoid billing for fix.
-        // For publish/domain tasks, trust the embedding since those are less ambiguous.
+        // BILLING SAFETY: If embedding returned a special task (fix/domain/publish) with low similarity
+        // (below LOW threshold), we needed the tiebreaker but it timed out. Default to "general" to
+        // avoid incorrect cost attribution. Low similarity means the embedding match is unreliable
+        // (e.g., "Search by ingredients" matching "search for domains" at 0.41 similarity).
         const needsBillingSafetyFallback =
-          embeddingResult.taskType === AssessmentTaskType.Fix &&
-          embeddingResult.similarity < HIGH_CONFIDENCE_SIMILARITY
+          embeddingResult.taskType !== AssessmentTaskType.General &&
+          embeddingResult.similarity < LOW_CONFIDENCE_SIMILARITY
 
         const fallbackTaskType = needsBillingSafetyFallback
           ? AssessmentTaskType.General
@@ -455,20 +461,37 @@ export class AssessmentAgent {
     } catch (error) {
       const durationMs = Date.now() - startTime
 
+      // BILLING SAFETY: Same logic as timeout - if embedding returned a special task with low similarity,
+      // default to "general" to avoid incorrect cost attribution on Haiku errors (network, 429, etc.)
+      const needsBillingSafetyFallback =
+        embeddingResult.taskType !== AssessmentTaskType.General &&
+        embeddingResult.similarity < LOW_CONFIDENCE_SIMILARITY
+
+      const fallbackTaskType = needsBillingSafetyFallback
+        ? AssessmentTaskType.General
+        : embeddingResult.taskType
+
+      const fallbackConfidence = needsBillingSafetyFallback
+        ? 100 // High confidence in the safety fallback
+        : Math.round(embeddingResult.similarity * 100)
+
       log.error(logger, 'assessment_agent.haiku.error', error as Error, {
         appId: context?.appId,
         durationMs,
-        fallbackTaskType: embeddingResult.taskType,
-        fallbackSimilarity: embeddingResult.similarity,
+        embeddingTaskType: embeddingResult.taskType,
+        embeddingSimilarity: embeddingResult.similarity,
+        needsBillingSafetyFallback,
+        fallbackTaskType,
+        fallbackConfidence,
       })
 
       return this.buildOutcome(
-        embeddingResult.taskType,
-        Math.round(embeddingResult.similarity * 100),
+        fallbackTaskType,
+        fallbackConfidence,
         durationMs,
         context,
         AssessmentReason.Error,
-        { similarity: embeddingResult.similarity, method: 'embedding-haiku-error', sessionContextGated }
+        { similarity: embeddingResult.similarity, method: 'embedding-haiku-error', billingSafetyApplied: needsBillingSafetyFallback, sessionContextGated }
       )
     }
   }
