@@ -63,12 +63,59 @@ func TestPostWebhookRejectsUnsupportedEventType(t *testing.T) {
 func TestGetWebhooksRejectsOversizedProductKeyQuery(t *testing.T) {
 	t.Parallel()
 	s := &Server{}
-	longPK := strings.Repeat("a", productKeyMaxLen+1)
+	longPK := strings.Repeat("a", maxFieldLen+1)
 	req := httptest.NewRequest(http.MethodGet, "/webhooks?productKey="+longPK, nil)
 	rec := httptest.NewRecorder()
 	s.getWebhooks(rec, req)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestGetWebhooksRejectsInvalidProductKeyCharacters(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	req := httptest.NewRequest(http.MethodGet, "/webhooks?productKey=%3Cscript%3E", nil)
+	rec := httptest.NewRecorder()
+	s.getWebhooks(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "invalid characters") {
+		t.Fatalf("expected 'invalid characters' error, got %s", rec.Body.String())
+	}
+}
+
+func TestPostWebhookRejectsInvalidProductKeyCharacters(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	body := `{"eventType":"report.created","productKey":"<script>","url":"https://example.com/hook"}`
+	req := httptest.NewRequest(http.MethodPost, "/webhooks", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.postWebhook(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "invalid characters") {
+		t.Fatalf("expected 'invalid characters' error, got %s", rec.Body.String())
+	}
+}
+
+func TestPostWebhookRejectsOversizedProductKey(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	longPK := strings.Repeat("a", maxFieldLen+1)
+	body := `{"eventType":"report.created","productKey":"` + longPK + `","url":"https://example.godaddy.com/hook"}`
+	req := httptest.NewRequest(http.MethodPost, "/webhooks", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.postWebhook(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "exceeds maximum length") {
+		t.Fatalf("expected 'exceeds maximum length' error, got %s", rec.Body.String())
 	}
 }
 

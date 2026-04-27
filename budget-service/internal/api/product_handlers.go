@@ -13,8 +13,6 @@ import (
 	"github.com/gdcorp-partners/airo-app-builder/budget-service/internal/store"
 )
 
-const productKeyMaxLen = 256
-
 type postProductBody struct {
 	ProductKey string `json:"productKey"`
 }
@@ -70,8 +68,8 @@ func (s *Server) postProduct(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "productKey is required")
 		return
 	}
-	if len(key) > productKeyMaxLen {
-		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "productKey exceeds maximum length")
+	if msg := validateIdentifier(key); msg != "" {
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "productKey "+msg)
 		return
 	}
 	if !s.requireStore(w) {
@@ -91,8 +89,15 @@ func (s *Server) deleteProduct(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "productKey is required")
 		return
 	}
-	if dec, err := url.PathUnescape(key); err == nil {
-		key = dec
+	dec, err := url.PathUnescape(key)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "productKey contains invalid percent-encoding")
+		return
+	}
+	key = dec
+	if msg := validateIdentifier(key); msg != "" {
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "productKey "+msg)
+		return
 	}
 	if !s.requireStore(w) {
 		return

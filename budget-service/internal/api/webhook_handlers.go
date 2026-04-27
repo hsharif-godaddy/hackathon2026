@@ -283,9 +283,11 @@ func webhookToResponse(row *store.WebhookRow) map[string]any {
 
 func (s *Server) getWebhooks(w http.ResponseWriter, r *http.Request) {
 	pk := strings.TrimSpace(r.URL.Query().Get("productKey"))
-	if len(pk) > productKeyMaxLen {
-		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "productKey exceeds maximum length")
-		return
+	if pk != "" {
+		if msg := validateIdentifier(pk); msg != "" {
+			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "productKey "+msg)
+			return
+		}
 	}
 	if !s.requireStore(w) {
 		return
@@ -323,8 +325,8 @@ func (s *Server) postWebhook(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "productKey is required")
 		return
 	}
-	if len(pk) > productKeyMaxLen {
-		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "productKey exceeds maximum length")
+	if msg := validateIdentifier(pk); msg != "" {
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "productKey "+msg)
 		return
 	}
 	if msg := validateWebhookTargetURL(payload.URL, s.LocalAuthDisable); msg != "" {

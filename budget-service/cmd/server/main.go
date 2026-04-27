@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"database/sql"
 	"errors"
 	"log/slog"
@@ -154,11 +155,23 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
 	errCh := make(chan error, 1)
+	if cfg.TLSCertPath != "" && cfg.TLSKeyPath != "" {
+		cert, err := tls.LoadX509KeyPair(cfg.TLSCertPath, cfg.TLSKeyPath)
+		if err != nil {
+			slog.Error("tls.keypair.load_failed", "certPath", cfg.TLSCertPath, "keyPath", cfg.TLSKeyPath, "error", err)
+			os.Exit(1)
+		}
+		httpSrv.TLSConfig = &tls.Config{
+			Certificates: []tls.Certificate{cert},
+			MinVersion:   tls.VersionTLS13,
+		}
+	}
+
 	go func() {
 		var listenErr error
-		if cfg.TLSCertPath != "" && cfg.TLSKeyPath != "" {
+		if httpSrv.TLSConfig != nil {
 			slog.Info("budget_service.listen.tls", "addr", cfg.Addr, "localAuthDisable", cfg.LocalAuthDisable, "certPath", cfg.TLSCertPath)
-			listenErr = httpSrv.ListenAndServeTLS(cfg.TLSCertPath, cfg.TLSKeyPath)
+			listenErr = httpSrv.ListenAndServeTLS("", "")
 		} else {
 			slog.Info("budget_service.listen", "addr", cfg.Addr, "localAuthDisable", cfg.LocalAuthDisable)
 			listenErr = httpSrv.ListenAndServe()

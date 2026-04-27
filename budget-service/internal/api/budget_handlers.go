@@ -332,6 +332,15 @@ func (b budgetItemBody) toItemInput(validateCreate bool) (store.ItemInput, strin
 			return store.ItemInput{}, "costToCreditRatio must be a valid NUMERIC(20,6) positive value"
 		}
 	}
+	if b.Label != nil {
+		trimmed := strings.TrimSpace(*b.Label)
+		b.Label = &trimmed
+	}
+	if b.Label != nil && *b.Label != "" {
+		if msg := validateLabel(*b.Label); msg != "" {
+			return store.ItemInput{}, "label " + msg
+		}
+	}
 	out := store.ItemInput{
 		CreditsTotal:    formattedCreditsTotal,
 		CreditsUsed:     formattedCreditsUsed,
@@ -457,8 +466,13 @@ func (s *Server) postBudget(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSONBody(w, r, &payload, false) {
 		return
 	}
-	if strings.TrimSpace(payload.ProductKey) == "" {
+	pk := strings.TrimSpace(payload.ProductKey)
+	if pk == "" {
 		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "productKey is required")
+		return
+	}
+	if msg := validateIdentifier(pk); msg != "" {
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "productKey "+msg)
 		return
 	}
 	items := make([]store.ItemInput, len(payload.Items))
@@ -480,7 +494,7 @@ func (s *Server) postBudget(w http.ResponseWriter, r *http.Request) {
 	}
 
 	budgetID := uuid.NewString()
-	if err := s.Store.CreateBudget(r.Context(), budgetID, strings.TrimSpace(payload.ProductKey), items); err != nil {
+	if err := s.Store.CreateBudget(r.Context(), budgetID, pk, items); err != nil {
 		writeBudgetStoreError(w, "budget.post_budget", err)
 		return
 	}
@@ -927,20 +941,24 @@ func (s *Server) appendSessionLines(w http.ResponseWriter, r *http.Request, sess
 	}
 	seenCallRequest := make(map[string]struct{}, len(items))
 	for i := range items {
-		if strings.TrimSpace(items[i].CallRequestID) == "" {
+		crID := strings.TrimSpace(items[i].CallRequestID)
+		if crID == "" {
 			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "each sessionItem requires callRequestId")
+			return nil, "", false
+		}
+		if msg := validateIdentifier(crID); msg != "" {
+			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "callRequestId "+msg)
 			return nil, "", false
 		}
 		if strings.TrimSpace(string(items[i].Cost)) == "" {
 			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "each sessionItem requires cost")
 			return nil, "", false
 		}
-		key := strings.TrimSpace(items[i].CallRequestID)
-		if _, dup := seenCallRequest[key]; dup {
+		if _, dup := seenCallRequest[crID]; dup {
 			writeError(w, http.StatusBadRequest, "DUPLICATE_CALL_REQUEST_ID", "duplicate callRequestId in sessionItems")
 			return nil, "", false
 		}
-		seenCallRequest[key] = struct{}{}
+		seenCallRequest[crID] = struct{}{}
 	}
 
 	if !s.requireStore(w) {
@@ -1052,8 +1070,13 @@ func (s *Server) postBudgetSessionReport(w http.ResponseWriter, r *http.Request)
 	lines := make([]store.ReportLineInput, len(payload.ReportItems))
 	for i := range payload.ReportItems {
 		ri := payload.ReportItems[i]
-		if strings.TrimSpace(ri.Label) == "" {
+		ri.Label = strings.TrimSpace(ri.Label)
+		if ri.Label == "" {
 			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "each reportItem requires label")
+			return
+		}
+		if msg := validateLabel(ri.Label); msg != "" {
+			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "label "+msg)
 			return
 		}
 		if strings.TrimSpace(string(ri.BudgetCost)) == "" || strings.TrimSpace(string(ri.ProductCost)) == "" {
@@ -1071,7 +1094,7 @@ func (s *Server) postBudgetSessionReport(w http.ResponseWriter, r *http.Request)
 		lines[i] = store.ReportLineInput{
 			BudgetCost:  strings.TrimSpace(string(ri.BudgetCost)),
 			ProductCost: strings.TrimSpace(string(ri.ProductCost)),
-			Label:       strings.TrimSpace(ri.Label),
+			Label:       ri.Label,
 		}
 	}
 
@@ -1138,9 +1161,11 @@ func (s *Server) postBudgetSessionReport(w http.ResponseWriter, r *http.Request)
 func (s *Server) getReports(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	pk := strings.TrimSpace(q.Get("productKey"))
-	if len(pk) > productKeyMaxLen {
-		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "productKey exceeds maximum length")
-		return
+	if pk != "" {
+		if msg := validateIdentifier(pk); msg != "" {
+			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "productKey "+msg)
+			return
+		}
 	}
 	budgetID := strings.TrimSpace(q.Get("budgetId"))
 	if budgetID != "" {
@@ -1245,14 +1270,18 @@ func parseRFC3339Time(s string) (time.Time, error) {
 func (s *Server) getReportsAggregate(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	pk := strings.TrimSpace(q.Get("productKey"))
-	if len(pk) > productKeyMaxLen {
-		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "productKey exceeds maximum length")
-		return
+	if pk != "" {
+		if msg := validateIdentifier(pk); msg != "" {
+			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "productKey "+msg)
+			return
+		}
 	}
 	label := strings.TrimSpace(q.Get("label"))
-	if len(label) > productKeyMaxLen {
-		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "label exceeds maximum length")
-		return
+	if label != "" {
+		if msg := validateLabel(label); msg != "" {
+			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "label "+msg)
+			return
+		}
 	}
 	if pk == "" && label == "" {
 		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "at least one of productKey and label is required")

@@ -26,6 +26,21 @@ func TestPostProductRejectsEmptyProductKey(t *testing.T) {
 	}
 }
 
+func TestPostProductRejectsInvalidCharacters(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/products", strings.NewReader(`{"productKey":"<script>alert(1)</script>"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.postProduct(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "invalid characters") {
+		t.Fatalf("expected 'invalid characters' error, got %s", rec.Body.String())
+	}
+}
+
 func TestPostProductRejectsUnknownField(t *testing.T) {
 	t.Parallel()
 	s := &Server{}
@@ -54,6 +69,22 @@ func TestPostProductRejectsLargeBody(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), `"code":"PAYLOAD_TOO_LARGE"`) {
 		t.Fatalf("expected PAYLOAD_TOO_LARGE code, got %s", rec.Body.String())
+	}
+}
+
+func TestPostProductRejectsOversizedProductKey(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	body := `{"productKey":"` + strings.Repeat("a", maxFieldLen+1) + `"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/products", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.postProduct(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "exceeds maximum length") {
+		t.Fatalf("expected 'exceeds maximum length' error, got %s", rec.Body.String())
 	}
 }
 
@@ -113,6 +144,53 @@ func TestPostProductDuplicateConflict(t *testing.T) {
 	s.postProduct(rec2, req2)
 	if rec2.Code != http.StatusConflict {
 		t.Fatalf("second post status %d, body %s", rec2.Code, rec2.Body.String())
+	}
+}
+
+func TestDeleteProductRejectsInvalidCharacters(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	r := mux.NewRouter()
+	r.HandleFunc("/api/v1/products/{productKey}", s.deleteProduct).Methods(http.MethodDelete)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/products/%3Cscript%3E", nil)
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "invalid characters") {
+		t.Fatalf("expected 'invalid characters' error, got %s", rec.Body.String())
+	}
+}
+
+func TestDeleteProductRejectsOversizedProductKey(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	r := mux.NewRouter()
+	r.HandleFunc("/api/v1/products/{productKey}", s.deleteProduct).Methods(http.MethodDelete)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/products/"+strings.Repeat("a", maxFieldLen+1), nil)
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "exceeds maximum length") {
+		t.Fatalf("expected 'exceeds maximum length' error, got %s", rec.Body.String())
+	}
+}
+
+func TestDeleteProductRejectsInvalidPercentEncoding(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/products/test", nil)
+	req = mux.SetURLVars(req, map[string]string{"productKey": "bad%2"})
+	rec := httptest.NewRecorder()
+	s.deleteProduct(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "invalid percent-encoding") {
+		t.Fatalf("expected 'invalid percent-encoding' error, got %s", rec.Body.String())
 	}
 }
 

@@ -234,6 +234,63 @@ func TestLoadAllowlistKatanaStyleOuterQuotesMultiARN(t *testing.T) {
 	}
 }
 
+func TestLoadRequiresTLSWhenAuthEnabled(t *testing.T) {
+	t.Setenv("LOCAL_AUTH_DISABLE", "false")
+	t.Setenv("SSO_HOST", "sso.godaddy.com")
+	t.Setenv("DATABASE_URL", "")
+	t.Setenv("SERVER_CERT_PATH", "")
+	t.Setenv("SERVER_KEY_PATH", "")
+	_, err := Load()
+	if err == nil {
+		t.Fatal("expected error when TLS paths empty and auth enabled")
+	}
+	if !strings.Contains(err.Error(), "SERVER_CERT_PATH") {
+		t.Fatalf("error %q should mention SERVER_CERT_PATH", err.Error())
+	}
+}
+
+func TestLoadAllowsHTTPWhenAuthDisabled(t *testing.T) {
+	t.Setenv("LOCAL_AUTH_DISABLE", "true")
+	t.Setenv("SSO_HOST", "")
+	t.Setenv("DATABASE_URL", "")
+	t.Setenv("SERVER_CERT_PATH", "")
+	t.Setenv("SERVER_KEY_PATH", "")
+	_, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestLoadRejectsHalfConfiguredTLS(t *testing.T) {
+	t.Setenv("LOCAL_AUTH_DISABLE", "true")
+	t.Setenv("SSO_HOST", "")
+	t.Setenv("DATABASE_URL", "")
+	t.Setenv("SERVER_CERT_PATH", "/tmp/cert.pem")
+	t.Setenv("SERVER_KEY_PATH", "")
+	_, err := Load()
+	if err == nil {
+		t.Fatal("expected error when only SERVER_CERT_PATH is set")
+	}
+	if !strings.Contains(err.Error(), "SERVER_CERT_PATH") {
+		t.Fatalf("error %q should mention SERVER_CERT_PATH", err.Error())
+	}
+}
+
+func TestLoadRejectsHalfConfiguredTLSKeyOnly(t *testing.T) {
+	t.Setenv("LOCAL_AUTH_DISABLE", "true")
+	t.Setenv("SSO_HOST", "")
+	t.Setenv("DATABASE_URL", "")
+	t.Setenv("SERVER_CERT_PATH", "")
+	t.Setenv("SERVER_KEY_PATH", "/tmp/key.pem")
+	_, err := Load()
+	if err == nil {
+		t.Fatal("expected error when only SERVER_KEY_PATH is set")
+	}
+	if !strings.Contains(err.Error(), "SERVER_KEY_PATH") {
+		t.Fatalf("error %q should mention SERVER_KEY_PATH", err.Error())
+	}
+}
+
 func TestLoadRejectsSingleQuotedArrayWithApostropheInValue(t *testing.T) {
 	t.Setenv("LOCAL_AUTH_DISABLE", "true")
 	t.Setenv("SSO_HOST", "")

@@ -70,6 +70,303 @@ func testStore(t *testing.T) *store.Store {
 	return store.New(db)
 }
 
+func TestPostBudgetRejectsInvalidProductKeyCharacters(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	body := `{"productKey":"<script>","items":[{"creditsTotal":"100.000000"}]}`
+	req := httptest.NewRequest(http.MethodPost, "/budgets", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.postBudget(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "invalid characters") {
+		t.Fatalf("expected 'invalid characters' error, got %s", rec.Body.String())
+	}
+}
+
+func TestPatchBudgetSessionRejectsInvalidCallRequestId(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	r := mux.NewRouter()
+	r.HandleFunc("/api/v1/sessions/{sessionId}", s.patchBudgetSession).Methods(http.MethodPatch)
+	body := `{"sessionItems":[{"callRequestId":"<script>","cost":"1.000000"}]}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/sessions/"+uuid.NewString(), strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "invalid characters") {
+		t.Fatalf("expected 'invalid characters' error, got %s", rec.Body.String())
+	}
+}
+
+func TestPatchBudgetSessionRejectsOversizedCallRequestId(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	r := mux.NewRouter()
+	r.HandleFunc("/api/v1/sessions/{sessionId}", s.patchBudgetSession).Methods(http.MethodPatch)
+	longID := strings.Repeat("a", maxFieldLen+1)
+	body := `{"sessionItems":[{"callRequestId":"` + longID + `","cost":"1.000000"}]}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/sessions/"+uuid.NewString(), strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "exceeds maximum length") {
+		t.Fatalf("expected 'exceeds maximum length' error, got %s", rec.Body.String())
+	}
+}
+
+func TestPostBudgetSessionReportRejectsInvalidLabelCharacters(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	r := mux.NewRouter()
+	r.HandleFunc("/api/v1/sessions/{sessionId}/reports", s.postBudgetSessionReport).Methods(http.MethodPost)
+	body := `{"reportItems":[{"label":"<script>","budgetCost":"1.000000","productCost":"1.000000"}]}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+uuid.NewString()+"/reports", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "invalid characters") {
+		t.Fatalf("expected 'invalid characters' error, got %s", rec.Body.String())
+	}
+}
+
+func TestPostBudgetSessionReportRejectsOversizedLabel(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	r := mux.NewRouter()
+	r.HandleFunc("/api/v1/sessions/{sessionId}/reports", s.postBudgetSessionReport).Methods(http.MethodPost)
+	longLabel := strings.Repeat("a", maxFieldLen+1)
+	body := `{"reportItems":[{"label":"` + longLabel + `","budgetCost":"1.000000","productCost":"1.000000"}]}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+uuid.NewString()+"/reports", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "exceeds maximum length") {
+		t.Fatalf("expected 'exceeds maximum length' error, got %s", rec.Body.String())
+	}
+}
+
+func TestGetReportsRejectsInvalidProductKeyCharacters(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	req := httptest.NewRequest(http.MethodGet, "/reports?productKey=%3Cscript%3E", nil)
+	rec := httptest.NewRecorder()
+	s.getReports(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "invalid characters") {
+		t.Fatalf("expected 'invalid characters' error, got %s", rec.Body.String())
+	}
+}
+
+func TestGetReportsAggregateRejectsInvalidProductKeyCharacters(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	req := httptest.NewRequest(http.MethodGet, "/reports/aggregate?productKey=%3Cscript%3E", nil)
+	rec := httptest.NewRecorder()
+	s.getReportsAggregate(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "invalid characters") {
+		t.Fatalf("expected 'invalid characters' error, got %s", rec.Body.String())
+	}
+}
+
+func TestGetReportsAggregateRejectsInvalidLabelCharacters(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	req := httptest.NewRequest(http.MethodGet, "/reports/aggregate?label=%3Cscript%3E", nil)
+	rec := httptest.NewRecorder()
+	s.getReportsAggregate(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "invalid characters") {
+		t.Fatalf("expected 'invalid characters' error, got %s", rec.Body.String())
+	}
+}
+
+func TestGetReportsAggregateRejectsOversizedLabel(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	longLabel := strings.Repeat("a", maxFieldLen+1)
+	req := httptest.NewRequest(http.MethodGet, "/reports/aggregate?label="+longLabel, nil)
+	rec := httptest.NewRecorder()
+	s.getReportsAggregate(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "exceeds maximum length") {
+		t.Fatalf("expected 'exceeds maximum length' error, got %s", rec.Body.String())
+	}
+}
+
+func TestPostBudgetRejectsInvalidItemLabelCharacters(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	body := `{"productKey":"valid-key","items":[{"creditsTotal":"100.000000","label":"<script>"}]}`
+	req := httptest.NewRequest(http.MethodPost, "/budgets", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.postBudget(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "invalid characters") {
+		t.Fatalf("expected 'invalid characters' error, got %s", rec.Body.String())
+	}
+}
+
+func TestPatchBudgetRejectsInvalidItemLabelCharacters(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	r := mux.NewRouter()
+	r.HandleFunc("/budgets/{budgetId}", s.patchBudget).Methods(http.MethodPatch)
+	budgetID := uuid.NewString()
+	itemID := uuid.NewString()
+	body := `{"items":[{"budgetItemId":"` + itemID + `","creditsTotal":"100.000000","costToCreditRatio":"1","label":"<script>"}]}`
+	req := httptest.NewRequest(http.MethodPatch, "/budgets/"+budgetID, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "invalid characters") {
+		t.Fatalf("expected 'invalid characters' error, got %s", rec.Body.String())
+	}
+}
+
+func TestPatchBudgetItemRejectsInvalidLabelCharacters(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	r := mux.NewRouter()
+	r.HandleFunc("/budgets/{budgetId}/budget-items/{budgetItemId}", s.patchBudgetItem).Methods(http.MethodPatch)
+	budgetID := uuid.NewString()
+	itemID := uuid.NewString()
+	body := `{"creditsTotal":"100.000000","costToCreditRatio":"1","label":"<script>"}`
+	req := httptest.NewRequest(http.MethodPatch, "/budgets/"+budgetID+"/budget-items/"+itemID, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "invalid characters") {
+		t.Fatalf("expected 'invalid characters' error, got %s", rec.Body.String())
+	}
+}
+
+func TestPatchBudgetRejectsOversizedItemLabel(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	r := mux.NewRouter()
+	r.HandleFunc("/budgets/{budgetId}", s.patchBudget).Methods(http.MethodPatch)
+	budgetID := uuid.NewString()
+	itemID := uuid.NewString()
+	body := `{"items":[{"budgetItemId":"` + itemID + `","creditsTotal":"100.000000","costToCreditRatio":"1","label":"` + strings.Repeat("a", maxFieldLen+1) + `"}]}`
+	req := httptest.NewRequest(http.MethodPatch, "/budgets/"+budgetID, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "exceeds maximum length") {
+		t.Fatalf("expected 'exceeds maximum length' error, got %s", rec.Body.String())
+	}
+}
+
+func TestPatchBudgetItemRejectsOversizedLabel(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	r := mux.NewRouter()
+	r.HandleFunc("/budgets/{budgetId}/budget-items/{budgetItemId}", s.patchBudgetItem).Methods(http.MethodPatch)
+	budgetID := uuid.NewString()
+	itemID := uuid.NewString()
+	body := `{"creditsTotal":"100.000000","costToCreditRatio":"1","label":"` + strings.Repeat("a", maxFieldLen+1) + `"}`
+	req := httptest.NewRequest(http.MethodPatch, "/budgets/"+budgetID+"/budget-items/"+itemID, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "exceeds maximum length") {
+		t.Fatalf("expected 'exceeds maximum length' error, got %s", rec.Body.String())
+	}
+}
+
+func TestPostBudgetRejectsOversizedProductKey(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	body := `{"productKey":"` + strings.Repeat("a", maxFieldLen+1) + `","items":[{"creditsTotal":"100.000000"}]}`
+	req := httptest.NewRequest(http.MethodPost, "/budgets", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.postBudget(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "exceeds maximum length") {
+		t.Fatalf("expected 'exceeds maximum length' error, got %s", rec.Body.String())
+	}
+}
+
+func TestPostBudgetItemRejectsInvalidLabelCharacters(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	r := mux.NewRouter()
+	r.HandleFunc("/budgets/{budgetId}/budget-items", s.postBudgetItem).Methods(http.MethodPost)
+	budgetID := uuid.NewString()
+	body := `{"creditsTotal":"100.000000","label":"<script>"}`
+	req := httptest.NewRequest(http.MethodPost, "/budgets/"+budgetID+"/budget-items", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "invalid characters") {
+		t.Fatalf("expected 'invalid characters' error, got %s", rec.Body.String())
+	}
+}
+
+func TestPostBudgetItemRejectsOversizedLabel(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	r := mux.NewRouter()
+	r.HandleFunc("/budgets/{budgetId}/budget-items", s.postBudgetItem).Methods(http.MethodPost)
+	budgetID := uuid.NewString()
+	body := `{"creditsTotal":"100.000000","label":"` + strings.Repeat("a", maxFieldLen+1) + `"}`
+	req := httptest.NewRequest(http.MethodPost, "/budgets/"+budgetID+"/budget-items", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "exceeds maximum length") {
+		t.Fatalf("expected 'exceeds maximum length' error, got %s", rec.Body.String())
+	}
+}
+
 func TestPostBudgetReturns201AndBudgetId(t *testing.T) {
 	ctx := context.Background()
 	st := testStore(t)
@@ -2557,7 +2854,7 @@ func TestListReportsUnfiltered(t *testing.T) {
 func TestListReportsOversizedProductKey(t *testing.T) {
 	t.Parallel()
 	h := NewRouter(&Server{Store: nil}, auth.NewMiddleware("none", nil, nil))
-	longPK := strings.Repeat("a", productKeyMaxLen+1)
+	longPK := strings.Repeat("a", maxFieldLen+1)
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/reports?productKey="+longPK, nil)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -3134,7 +3431,7 @@ func TestReportsAggregateQueryValidation(t *testing.T) {
 func TestReportsAggregateOversizedProductKey(t *testing.T) {
 	t.Parallel()
 	h := NewRouter(&Server{Store: nil}, auth.NewMiddleware("none", nil, nil))
-	longPK := strings.Repeat("a", productKeyMaxLen+1)
+	longPK := strings.Repeat("a", maxFieldLen+1)
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/reports/aggregate?productKey="+longPK+"&label=x", nil)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)

@@ -101,6 +101,9 @@ func Load() (Config, error) {
 	if (cfg.TLSCertPath != "") != (cfg.TLSKeyPath != "") {
 		return Config{}, fmt.Errorf("SERVER_CERT_PATH and SERVER_KEY_PATH must both be set or both empty")
 	}
+	if !cfg.LocalAuthDisable && cfg.TLSCertPath == "" {
+		return Config{}, fmt.Errorf("SERVER_CERT_PATH and SERVER_KEY_PATH are required unless LOCAL_AUTH_DISABLE is true")
+	}
 	// Validate worker settings are positive (defaults in getEnvInt/getEnvDuration ensure this normally)
 	if cfg.WorkerInterval <= 0 {
 		return Config{}, fmt.Errorf("WORKER_INTERVAL must be positive")
