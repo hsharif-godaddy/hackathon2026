@@ -79,7 +79,6 @@ vi.mock('@/app/[market]/develop/components/media/MediaPanel', () => ({
 
 vi.mock('@/app/[market]/develop/components/PanelSkeleton', () => ({
   default: () => <div data-testid="panel-skeleton">Loading...</div>,
-  AnalyticsPanelSkeleton: () => <div data-testid="analytics-panel-skeleton">Loading...</div>,
 }));
 
 vi.mock('@/app/[market]/develop/components/PlanTracker', () => ({

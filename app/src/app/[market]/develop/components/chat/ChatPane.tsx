@@ -18,9 +18,10 @@ import {
   revokeStagedFilePreviewIfCached,
 } from '@/app/[market]/develop/components/chat/stagedFilePreviewUrl'
 import { uploadChatFiles } from '@/app/[market]/develop/components/chat/uploadChatFiles'
-import PanelSkeleton, { AnalyticsPanelSkeleton } from '@/app/[market]/develop/components/PanelSkeleton'
+import PanelSkeleton from '@/app/[market]/develop/components/PanelSkeleton'
 import PersistentTodoList from '@/app/[market]/develop/components/PersistentTodoList'
 import PlanTracker from '@/app/[market]/develop/components/PlanTracker'
+import { SettingsLoadingState } from '@/app/[market]/develop/components/settings/components/SettingsLoadingState'
 import StreamingMessageList from '@/app/[market]/develop/components/StreamingMessageList'
 import { ChatTab } from '@/app/[market]/develop/components/types'
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
@@ -66,7 +67,7 @@ import { logAiroHQEvent } from '@/utils/instrumentation'
 import { postMessageToIframe } from '@/utils/postMessage'
 
 // Lazy-load features that are conditionally rendered or behind user interaction
-const AnalyticsPanel = dynamic(() => import('@/app/[market]/develop/components/settings/Analytics/AnalyticsPanel'), { loading: AnalyticsPanelSkeleton })
+const AnalyticsPanel = dynamic(() => import('@/app/[market]/develop/components/settings/Analytics/AnalyticsPanel'), { loading: () => <SettingsLoadingState fullPage /> })
 const MediaPanel = dynamic(() => import('@/app/[market]/develop/components/media/MediaPanel'), { loading: () => <PanelSkeleton panelType={ChatTab.MEDIAS} /> })
 const VersionHistory = dynamic(() => import('@/app/[market]/develop/components/VersionHistory'), { loading: () => <PanelSkeleton panelType={ChatTab.HISTORY} className="p-2 sm:p-0" /> })
 

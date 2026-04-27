@@ -3,7 +3,6 @@
 import SettingsPanelSkeleton, { DefaultSkeleton } from '@/app/[market]/develop/components/SettingsPanelSkeleton'
 import StaticSkeleton from '@/app/[market]/develop/components/StaticSkeleton'
 import { ChatTab, SettingsSection } from '@/app/[market]/develop/components/types'
-import { usePublishedUrl } from '@/app/[market]/develop/hooks/usePublishedUrl'
 
 const ANALYTICS_ROW_WIDTHS = [210, 180, 250, 165, 195, 220] as const
 
@@ -89,10 +88,6 @@ function MediasSkeleton({ className }: { className?: string }) {
       ))}
     </div>
   )
-}
-
-export function AnalyticsPanelSkeleton() {
-  return <PanelSkeleton panelType={ChatTab.ANALYTICS} isPublished={!!usePublishedUrl()} />
 }
 
 export default function PanelSkeleton({ panelType, settingsSection, className, isPublished }: { panelType?: ChatTab, settingsSection?: SettingsSection, className?: string, isPublished?: boolean }) {

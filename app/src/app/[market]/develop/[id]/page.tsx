@@ -11,10 +11,11 @@ import ChatPaneLoader, { ImageReloadLoaderPhase, ResumeLoaderPhase } from '@/app
 import ChatToolbar from '@/app/[market]/develop/components/chat/ChatToolbar'
 import DevelopSkeleton from '@/app/[market]/develop/components/DevelopSkeleton'
 import DevelopHeader from '@/app/[market]/develop/components/layout/Header'
-import PanelSkeleton, { AnalyticsPanelSkeleton } from '@/app/[market]/develop/components/PanelSkeleton'
+import PanelSkeleton from '@/app/[market]/develop/components/PanelSkeleton'
 import { DevelopCreditsModal, PaywallErrorFallback, RenewalPollingModal, UpgradeContainer, UpgradePollingModal } from '@/app/[market]/develop/components/paywall'
 import PreviewPane, { type PublishSnapshotRequestDetail } from '@/app/[market]/develop/components/preview/PreviewPane'
 import ResizableDivider from '@/app/[market]/develop/components/ResizableDivider'
+import { SettingsLoadingState } from '@/app/[market]/develop/components/settings/components/SettingsLoadingState'
 import { ChatTab, IframeMessageType, MobileMode, SettingsSection, ViewMode } from '@/app/[market]/develop/components/types'
 import { extractNewPageRoute, handlePreviewRefresh, navigatePreviewToRoute, requestPreviewScreenshot, useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import { clearExpiredWidgetStates } from '@/app/[market]/develop/components/widgets'
@@ -75,7 +76,7 @@ import { logAiroHQEvent, logImpressionEvent, setInstrumentationAppId } from '@/u
 import { postMessageToIframe } from '@/utils/postMessage'
 
 // Lazy-load features that are conditionally rendered or behind user interaction
-const AnalyticsPanel = dynamic(() => import('@/app/[market]/develop/components/settings/Analytics/AnalyticsPanel'), { loading: AnalyticsPanelSkeleton })
+const AnalyticsPanel = dynamic(() => import('@/app/[market]/develop/components/settings/Analytics/AnalyticsPanel'), { loading: () => <SettingsLoadingState fullPage /> })
 const AppIntroTour = dynamic(() => import('@/app/[market]/develop/components/tour/AppIntroTour').then(m => ({ default: m.AppIntroTour })), { ssr: false })
 const AppNotFound = dynamic(() => import('@/app/[market]/develop/components/AppNotFound'))
 const MediaPanel = dynamic(() => import('@/app/[market]/develop/components/media/MediaPanel'), { loading: () => <PanelSkeleton panelType={ChatTab.MEDIAS} /> })

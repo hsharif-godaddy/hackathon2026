@@ -4,6 +4,7 @@ import Box from '@ux/box'
 import GraphIcon from '@ux/icon/graph'
 
 import RUM from '@/app/[market]/develop/components/settings/Analytics/RUM'
+import { SettingsLoadingState } from '@/app/[market]/develop/components/settings/components/SettingsLoadingState'
 import { usePublishForDomain } from '@/app/[market]/develop/components/settings/DomainPanel/usePublishForDomain'
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import { usePublishedUrl } from '@/app/[market]/develop/hooks/usePublishedUrl'
@@ -49,6 +50,12 @@ export default function AnalyticsPanel() {
 
   if (isAnalyticsFlagLoading || !isAnalyticsEnabled) {
     return null
+  }
+
+  // Site fetch hasn't resolved yet — show spinner
+  // We cannot determine which skeleton to show as published state is unknown.
+  if (!site) {
+    return <SettingsLoadingState fullPage />
   }
 
   if (!publishedUrl || !hasBeenPublished(site)) {
