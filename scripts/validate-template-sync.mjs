@@ -8,7 +8,8 @@
  * prior version of an unsynced file:
  *
  * 1. Hash-drift check (HARD FAIL):
- *    For files in app-templates/v8/ (excluding dev-tools/) that are
+ *    For files in app-templates/v8/ (excluding rsync-managed dirs such
+ *    as dev-tools/, source-mapper/, airo-secrets/) that are
  *    tracked in container-scripts/preview/sync-template-files.js
  *    SYNC_MANIFEST and are being modified (status M) in this commit, the
  *    file's PREVIOUS content hash (the version on HEAD) must be present
@@ -22,8 +23,9 @@
  *
  * 2. Untracked-template-file guard (HARD FAIL):
  *    Modifications, additions, and deletions of files in app-templates/v8/
- *    (excluding dev-tools/) that are NOT listed in SYNC_MANIFEST are
- *    blocked. Customer apps only receive updates for files explicitly
+ *    (excluding rsync-managed dirs - see RSYNC_MANAGED_DIRS) that are
+ *    NOT listed in SYNC_MANIFEST are blocked. Customer apps only receive
+ *    updates for files explicitly
  *    tracked in the manifest, so any untracked change risks silent drift
  *    between the base template and in-flight customer apps. Override:
  *
@@ -47,14 +49,15 @@
  *    (same override as #2 — both represent "I know what I'm doing with
  *    customer drift").
  *
- * 4. dev-tools deletion guard (HARD FAIL):
- *    Deletions and renames inside app-templates/v8/dev-tools/ are blocked
+ * 4. Rsync-managed deletion guard (HARD FAIL):
+ *    Deletions and renames inside any rsync-managed directory (dev-tools/,
+ *    source-mapper/, airo-secrets/ - see RSYNC_MANAGED_DIRS) are blocked
  *    outright. Customer apps lag the base template on every dimension
- *    EXCEPT dev-tools/ (which is rsync --delete'd on container start),
- *    so any deletion here can break customers whose vite.config.ts (or
- *    other files) still imports the removed module. Override with:
+ *    EXCEPT these rsync'd directories (rsync --delete'd on container
+ *    start), so any deletion here can break customers whose vite.config.ts
+ *    (or other files) still imports the removed module. Override with:
  *
- *        ALLOW_DEV_TOOLS_DELETE=1 git commit ...
+ *        ALLOW_RSYNC_MANAGED_DELETE=1 git commit ...
  *
  *    when you've verified the import has been removed everywhere AND
  *    that no in-flight customer app references it (or you've left a
@@ -76,7 +79,24 @@ const BOLD = '\x1b[1m';
 const RESET = '\x1b[0m';
 
 const TEMPLATE_DIR = 'app-templates/v8/';
-const DEV_TOOLS_DIR = 'app-templates/v8/dev-tools/';
+// Directories that are rsync'd wholesale into customer apps by
+// container-scripts/preview/nomad_setup.sh. These are exempt from
+// SYNC_MANIFEST enforcement because rsync --delete makes hash-gated
+// sync redundant - the file is overwritten regardless.
+// Keep in sync with the rsync list in nomad_setup.sh.
+const RSYNC_MANAGED_DIRS = [
+  'app-templates/v8/dev-tools/',
+  'app-templates/v8/source-mapper/',
+  'app-templates/v8/airo-secrets/',
+];
+// Prefix-match correctness in isRsyncManaged() depends on each entry
+// ending with `/`. Without it, `startsWith('airo-secrets')` would also
+// exempt a hypothetical `airo-secrets-utils/` sibling.
+for (const d of RSYNC_MANAGED_DIRS) {
+  if (!d.endsWith('/')) {
+    throw new Error(`[template-sync] RSYNC_MANAGED_DIRS entry "${d}" must end with /`);
+  }
+}
 const MANIFEST_PATH = 'container-scripts/preview/sync-template-files.js';
 
 // git exits 128 when the requested path/ref doesn't exist; any other
@@ -229,8 +249,8 @@ function isInTemplate(p) {
   return p && p.startsWith(TEMPLATE_DIR);
 }
 
-function isInDevTools(p) {
-  return p && p.startsWith(DEV_TOOLS_DIR);
+function isRsyncManaged(p) {
+  return !!p && RSYNC_MANAGED_DIRS.some((d) => p.startsWith(d));
 }
 
 function templateRelative(p) {
@@ -275,50 +295,50 @@ function loadManifest() {
   return manifest;
 }
 
-function checkDevToolsDeletions(changes) {
+function checkRsyncManagedDeletions(changes) {
   const failures = [];
   for (const change of changes) {
-    if (change.status === 'D' && isInDevTools(change.path)) {
+    if (change.status === 'D' && isRsyncManaged(change.path)) {
       failures.push(change.path);
       continue;
     }
-    // Type-change (T) is destructive in dev-tools too: a regular file
-    // converted to a symlink (or vice versa) gets rsynced verbatim to
-    // every customer app. A dangling symlink there would break any
-    // import resolving through it — the same class of failure the
-    // dev-tools deletion guard exists to prevent.
-    if (change.status === 'T' && isInDevTools(change.path)) {
+    // Type-change (T) is destructive under rsync --delete: a regular
+    // file converted to a symlink (or vice versa) gets rsynced verbatim
+    // to every customer app. A dangling symlink there would break any
+    // import resolving through it — same class of failure the deletion
+    // guard exists to prevent.
+    if (change.status === 'T' && isRsyncManaged(change.path)) {
       failures.push(`${change.path} (type-changed — destructive under rsync --delete)`);
       continue;
     }
-    // Renames where the OLD path was in dev-tools cause the old filename
-    // to disappear from customer apps (rsync --delete syncs the whole
-    // tree). True whether the new path is inside or outside dev-tools.
-    // Copies (C) preserve the original, so they're explicitly allowed.
-    if (change.status === 'R' && isInDevTools(change.oldPath)) {
-      const where = isInDevTools(change.path)
-        ? `renamed within dev-tools to ${change.path}`
-        : `renamed/moved out of dev-tools to ${change.path}`;
+    // Renames where the OLD path was in an rsync-managed dir cause the
+    // old filename to disappear from customer apps (rsync --delete syncs
+    // the whole tree). True whether the new path is inside or outside
+    // the same dir. Copies (C) preserve the original, so they're allowed.
+    if (change.status === 'R' && isRsyncManaged(change.oldPath)) {
+      const where = isRsyncManaged(change.path)
+        ? `renamed within rsync-managed dir to ${change.path}`
+        : `renamed/moved out of rsync-managed dir to ${change.path}`;
       failures.push(`${change.oldPath} (${where})`);
     }
   }
   if (failures.length === 0) return true;
 
-  if (process.env.ALLOW_DEV_TOOLS_DELETE === '1') {
-    console.log(`${YELLOW}[template-sync] ALLOW_DEV_TOOLS_DELETE=1 set; permitting dev-tools removals:${RESET}`);
+  if (process.env.ALLOW_RSYNC_MANAGED_DELETE === '1') {
+    console.log(`${YELLOW}[template-sync] ALLOW_RSYNC_MANAGED_DELETE=1 set; permitting rsync-managed removals:${RESET}`);
     for (const f of failures) console.log(`  - ${f}`);
     return true;
   }
 
-  console.error(`${RED}${BOLD}[template-sync] Refusing to remove files from app-templates/v8/dev-tools/${RESET}`);
+  console.error(`${RED}${BOLD}[template-sync] Refusing to remove files from rsync-managed v8 directories${RESET}`);
   for (const f of failures) console.error(`  - ${f}`);
   console.error('');
   console.error(`${BOLD}Why this is blocked:${RESET}`);
-  console.error('  Customer apps rsync --delete the dev-tools/ directory on every container');
-  console.error('  start, so removing a file here propagates to every customer immediately.');
-  console.error('  If any in-flight customer vite.config.ts (or other file) still imports');
-  console.error('  the removed module, their preview/build will fail with');
-  console.error('  "Could not resolve" errors at dev-server / build time.');
+  console.error('  Customer apps rsync --delete these directories on every container');
+  console.error(`  start (${RSYNC_MANAGED_DIRS.map((d) => d.replace(TEMPLATE_DIR, '')).join(', ')}),`);
+  console.error('  so removing a file here propagates to every customer immediately.');
+  console.error('  If any in-flight customer file still imports the removed module,');
+  console.error('  their preview/build will fail with "Could not resolve" errors.');
   console.error('');
   console.error(`${BOLD}Safer alternatives:${RESET}`);
   console.error('  1. Replace the file with a no-op stub that satisfies existing imports');
@@ -326,7 +346,7 @@ function checkDevToolsDeletions(changes) {
   console.error('  2. If the import has been removed from the base template AND you have');
   console.error('     verified no customer app could possibly still import it, override:');
   console.error('');
-  console.error(`     ${CYAN}ALLOW_DEV_TOOLS_DELETE=1 git commit ...${RESET}`);
+  console.error(`     ${CYAN}ALLOW_RSYNC_MANAGED_DELETE=1 git commit ...${RESET}`);
   return false;
 }
 
@@ -342,7 +362,7 @@ function checkHashDrift(changes, manifest) {
   const candidates = changes.filter(
     (c) =>
       isInTemplate(c.path) &&
-      !isInDevTools(c.path) &&
+      !isRsyncManaged(c.path) &&
       (c.status === 'M' || c.status === 'T')
   );
 
@@ -416,11 +436,11 @@ function checkUntrackedTemplateFiles(changes, manifest) {
   const violations = [];
 
   for (const change of changes) {
-    if (!isInTemplate(change.path) || isInDevTools(change.path)) {
+    if (!isInTemplate(change.path) || isRsyncManaged(change.path)) {
       // For renames OUT of v8 we still want to flag the old path if it
       // was tracked (since deleting the manifest entry without removing
       // the file means customer drift). Fall through to oldPath check.
-      if (!(change.status === 'R' && isInTemplate(change.oldPath) && !isInDevTools(change.oldPath))) {
+      if (!(change.status === 'R' && isInTemplate(change.oldPath) && !isRsyncManaged(change.oldPath))) {
         continue;
       }
     }
@@ -438,7 +458,7 @@ function checkUntrackedTemplateFiles(changes, manifest) {
 
     if (change.status === 'R') {
       const oldRel = isInTemplate(change.oldPath) ? templateRelative(change.oldPath) : null;
-      const newRel = isInTemplate(change.path) && !isInDevTools(change.path)
+      const newRel = isInTemplate(change.path) && !isRsyncManaged(change.path)
         ? templateRelative(change.path)
         : null;
 
@@ -511,11 +531,11 @@ function main() {
   const manifest = loadManifest();
   if (manifest === null) return 1;
 
-  const devToolsOk = checkDevToolsDeletions(changes);
+  const rsyncManagedOk = checkRsyncManagedDeletions(changes);
   const untrackedOk = checkUntrackedTemplateFiles(changes, manifest);
   const hashOk = checkHashDrift(changes, manifest);
 
-  return devToolsOk && untrackedOk && hashOk ? 0 : 1;
+  return rsyncManagedOk && untrackedOk && hashOk ? 0 : 1;
 }
 
 try {

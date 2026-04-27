@@ -187,11 +187,12 @@ if [ -f "$CUSTOMER_APP_DIR/.git/config" ]; then
     fi
 
     # Sync upstream dev-tools and airo-secrets from base app template
-    log_step "Syncing dev-tools and airo-secrets with rsync..."
+    log_step "Syncing dev-tools, source-mapper, and airo-secrets with rsync..."
     rsync -a --delete "$BASE_APP_DIR/dev-tools/" "$CUSTOMER_APP_DIR/dev-tools/"
+    rsync -a --delete "$BASE_APP_DIR/source-mapper/" "$CUSTOMER_APP_DIR/source-mapper/"
     rsync -a --delete "$BASE_APP_DIR/airo-secrets/" "$CUSTOMER_APP_DIR/airo-secrets/"
-    git add dev-tools airo-secrets && git commit -m "Sync upstream dev tools and airo-secrets $(date +%s)" || true
-    log_step "dev-tools and airo-secrets synced"
+    git add dev-tools source-mapper airo-secrets && git commit -m "Sync upstream dev tools, source-mapper, and airo-secrets $(date +%s)" || true
+    log_step "dev-tools, source-mapper, and airo-secrets synced"
 
     # Sync .npmrc from base app template
     log_step "Syncing .npmrc..."
