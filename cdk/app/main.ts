@@ -9,6 +9,7 @@ import { GocaasSpendLambdaStack } from "../lib/gocaas-spend-lambda-stack";
 import { ImageSearchStack } from "../lib/image-search-stack";
 import { EvalSnapshotsStack } from "../lib/eval-snapshots-stack";
 import { FeedbackS3Stack } from "../lib/feedback-s3-stack";
+import { LakeFormationAdminsStack } from "../lib/lake-formation-admins-stack";
 import { QdrantStack } from "../lib/qdrant-stack";
 import { QdrantEcrStack } from "../lib/qdrant-ecr-stack";
 
@@ -61,6 +62,19 @@ async function main() {
   if (config.envName === 'dev' || config.envName === 'prod') {
     new FeedbackS3Stack(app, 'FeedbackS3Stack', { env });
   }
+
+  // Register Lake Formation data lake administrators and provision the Athena results bucket.
+  // Deployed to all environments — Lake Formation admin settings are required in test
+  // to allow data lake access (unlike FeedbackS3Stack which excludes test intentionally).
+  // Dev: Ops + PowerUser + DataLakeAutomationRole + ServiceCatalogLaunchConstraintRole
+  // Test: Ops + DataLakeAutomationRole + ServiceCatalogLaunchConstraintRole
+  // Prod: Ops + DataLakeAutomationRole + ServiceCatalogLaunchConstraintRole
+  // (baseline roles added automatically via includeBaselineRoles=true)
+  new LakeFormationAdminsStack(app, 'LakeFormationAdminsStack', {
+    env,
+    roleNames: config.dataLakeAdminRoleNames,
+    envName: config.envName as 'dev' | 'test' | 'prod',
+  });
 
   // Create Qdrant ECR repository (dev and prod only)
   // Deploy this first to allow pre-populating Docker images

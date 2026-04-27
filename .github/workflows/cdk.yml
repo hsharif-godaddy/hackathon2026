@@ -26,6 +26,7 @@ on:
           - "GocaasSpendLambdaStack"
           - "EvalSnapshotsStack"
           - "FeedbackS3Stack"
+          - "LakeFormationAdminsStack"
           - "QdrantEcrStack"
           - "QdrantVectorDbStack"
         default: "--all"
@@ -130,6 +131,7 @@ jobs:
           echo "always-auth=true" > .npmrc
           echo "progress=false" >> .npmrc
           echo @godaddy:registry=https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/ >> .npmrc
+          echo @gd-datalake:registry=https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/ >> .npmrc
           echo "//gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/:_authToken=${{ env.ARTIFACTORY_NPM_TOKEN }}" >> .npmrc
           cp .npmrc lambda/gocode-spend-essp-exporter/.npmrc
           cp .npmrc lambda/qdrant-tls-bootstrap/.npmrc

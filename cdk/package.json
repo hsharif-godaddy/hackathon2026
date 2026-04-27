@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-secrets-manager": "^3.1032.0",
+    "@gd-datalake/local-admins": "1.1.1",
     "@gd-safeguard/godaddy-constructs": "^11.0.1",
     "aws-cdk-lib": "^2.245.0",
     "constructs": "^10.6.0",

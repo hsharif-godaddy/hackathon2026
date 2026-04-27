@@ -77,6 +77,7 @@ interface Config {
     gracePeriodDays: number;
   };
   qdrant: QdrantConfig;
+  dataLakeAdminRoleNames: string[];
 }
 
 const devConfig: Config = {
@@ -145,6 +146,10 @@ const devConfig: Config = {
     imageTag: 'v1.16.3-2',
     enableTls: true, // TLS enabled for dev testing
   },
+  dataLakeAdminRoleNames: [
+    'GD-AWS-USA-GD-AiroBuilde-Ops',
+    'GD-AWS-USA-GD-AiroBuilde-Dev-Private-PowerUser',
+  ],
 };
 
 const testConfig: Config = {
@@ -201,6 +206,9 @@ const testConfig: Config = {
     ephemeralStorageGiB: 0,
     imageTag: 'none',
   },
+  dataLakeAdminRoleNames: [
+    'GD-AWS-USA-GD-AiroBuilde-Ops',
+  ],
 };
 
 const prodConfig: Config = {
@@ -259,6 +267,9 @@ const prodConfig: Config = {
     imageTag: 'v1.16.3-2',
     enableTls: true, // TLS required in production
   },
+  dataLakeAdminRoleNames: [
+    'GD-AWS-USA-GD-AiroBuilde-Ops',
+  ],
 };
 
 
