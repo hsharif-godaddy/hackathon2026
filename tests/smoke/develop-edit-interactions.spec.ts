@@ -78,24 +78,53 @@ test.describe('Edit Interactions', () => {
 
     await ensureAuthenticated(page);
 
+    // Theme UI has two variants depending on the `airo-builder-theme-selection-chat`
+    // switchboard flag. When ON, a `theme-preview-input-panel` renders inside the
+    // NBA section. When OFF (legacy), a `color-palette-grid` renders with different
+    // testids. Race both variants so the test proceeds as soon as either appears
+    // (isVisible() is a synchronous DOM check - its `timeout` option is a no-op).
     const themePanel = page.getByTestId('theme-preview-input-panel');
-    await expect(themePanel).toBeVisible({ timeout: DEFAULT_TIMEOUT });
-    console.log('  Theme preview panel visible in chat input');
+    const legacyGrid = page.getByTestId('color-palette-grid');
+    const themeVariant = await Promise.race([
+      themePanel.waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT }).then(() => 'modern' as const),
+      legacyGrid.waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT }).then(() => 'legacy' as const),
+    ]).catch(() => 'none' as const);
+    const usingModernUi = themeVariant === 'modern';
 
-    const paletteOptions = page.getByTestId('theme-preview-option');
-    await expect(paletteOptions).toHaveCount(4, { timeout: DEFAULT_TIMEOUT });
-    console.log('  4 theme options rendered');
+    if (usingModernUi) {
+      console.log('  Theme preview panel visible in chat input (modern)');
 
-    await paletteOptions.first().click();
-    console.log('  Clicked first theme option');
+      const paletteOptions = page.getByTestId('theme-preview-option');
+      await expect(paletteOptions).toHaveCount(4, { timeout: DEFAULT_TIMEOUT });
+      console.log('  4 theme options rendered');
 
-    await expect(page.getByTestId('theme-preview-apply')).toBeVisible();
-    await expect(page.getByTestId('theme-preview-more-options')).toBeVisible();
-    console.log('  Apply and More Options buttons visible');
+      await paletteOptions.first().click();
+      console.log('  Clicked first theme option');
 
-    await waitForChatInput(page);
-    await page.getByTestId('theme-preview-apply').click();
-    console.log('  Apply clicked - message sent to apply color scheme');
+      await expect(page.getByTestId('theme-preview-apply')).toBeVisible();
+      await expect(page.getByTestId('theme-preview-more-options')).toBeVisible();
+      console.log('  Apply and More Options buttons visible');
+
+      await waitForChatInput(page);
+      await page.getByTestId('theme-preview-apply').click();
+      console.log('  Apply clicked - message sent to apply color scheme');
+    } else {
+      await expect(legacyGrid).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+      console.log('  Color palette grid visible (legacy)');
+
+      // Click the first palette card to preview it
+      const firstPalette = legacyGrid.locator('button, [role="button"], label').first();
+      await firstPalette.click({ force: true });
+      console.log('  Clicked first palette');
+
+      await expect(page.getByTestId('color-palette-save')).toBeVisible();
+      await expect(page.getByTestId('color-palette-more-options')).toBeVisible();
+      console.log('  Save and More Options buttons visible');
+
+      await waitForChatInput(page);
+      await page.getByTestId('color-palette-save').click();
+      console.log('  Save clicked - message sent to apply color scheme');
+    }
 
     // Wait for AI to process the save (apply the selected scheme)
     await expect(page.getByTestId('chat-send-button')).toBeVisible({ timeout: AI_RESPONSE_TIMEOUT_MS });
@@ -120,19 +149,28 @@ test.describe('Edit Interactions', () => {
 
     await ensureAuthenticated(page);
 
-    // Verify theme panel is visible
-    await expect(themePanel).toBeVisible({ timeout: DEFAULT_TIMEOUT });
-    console.log('  Theme preview panel visible');
+    if (usingModernUi) {
+      // Modern UI has a Cancel button that dismisses the panel entirely.
+      await expect(themePanel).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+      console.log('  Theme preview panel visible');
 
-    // Click cancel button
-    const cancelButton = page.getByTestId('theme-preview-cancel');
-    await expect(cancelButton).toBeVisible();
-    await cancelButton.click();
-    console.log('  Cancel button clicked');
+      const cancelButton = page.getByTestId('theme-preview-cancel');
+      await expect(cancelButton).toBeVisible();
+      await cancelButton.click();
+      console.log('  Cancel button clicked');
 
-    // Verify theme panel is no longer visible
-    await expect(themePanel).not.toBeVisible({ timeout: DEFAULT_TIMEOUT });
-    console.log('  Theme preview panel hidden after cancel');
+      await expect(themePanel).not.toBeVisible({ timeout: DEFAULT_TIMEOUT });
+      console.log('  Theme preview panel hidden after cancel');
+    } else {
+      // Legacy UI has a Revert button (no cancel equivalent that hides the grid).
+      await expect(legacyGrid).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+      console.log('  Color palette grid visible');
+
+      const revertButton = page.getByTestId('color-palette-revert');
+      await expect(revertButton).toBeVisible();
+      await revertButton.click();
+      console.log('  Revert button clicked (legacy)');
+    }
 
     // ========================================
     // STEP 3: Edit mode toggle

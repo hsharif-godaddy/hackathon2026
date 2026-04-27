@@ -208,6 +208,12 @@ test.describe('Develop Page', () => {
     await expect(openPopover()).toHaveCount(0, { timeout: DEFAULT_TIMEOUT });
     console.log('  ✓ Settings menu closes on second click');
 
+    // Radix Popover suppresses its trigger briefly while the dismissible layer
+    // tears down; clicking immediately after close can be swallowed. A trial
+    // click waits for actionability without firing, so the real click lands
+    // once the trigger is interactive again.
+    await settingsButton.click({ trial: true });
+
     await settingsButton.click({ force: true });
     await expect(openPopover()).toBeVisible({ timeout: DEFAULT_TIMEOUT });
     // Dismiss the popover before continuing

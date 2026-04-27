@@ -277,13 +277,25 @@ test.describe('Authentication', () => {
     await page.getByTestId('homepage-prompt-input').fill('A simple page that displays hello world');
     await page.locator('[data-eid*="homepage.prompt.submit"]').click();
 
-    // SSO can appear as iframe modal (prod) or redirect (test/dev)
+    // SSO can appear as iframe modal (prod/local dev), SsoLogin modal wrapper,
+    // or a full-page redirect (deployed test/dev where PNA blocks the iframe).
+    // Use the same stable selectors as handleSsoLogin / Step 6 and match the
+    // outer-catch race pattern used in Step 4 (so a fast rejection in one arm
+    // doesn't settle the race to null).
+    const submitSsoIframe = page.locator('iframe[title="Container for sign in"]');
+    const submitSsoModal = page.locator('.sso-login-modal');
     const ssoOnSubmit = await Promise.race([
-      page.locator('iframe[src*="sso"], #sso-deck-iframe').waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT }).then(() => 'iframe'),
-      page.waitForURL(/sso/, { timeout: DEFAULT_TIMEOUT }).then(() => 'redirect'),
-    ]).catch(() => 'none');
+      submitSsoIframe.waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT }).then(() => 'iframe' as const),
+      submitSsoModal.waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT }).then(() => 'modal' as const),
+      page.waitForURL(
+        (url) =>
+          (url.hostname.startsWith('sso.') && url.hostname.endsWith('godaddy.com')) ||
+          /\/login|\/sso/.test(url.pathname),
+        { timeout: DEFAULT_TIMEOUT, waitUntil: 'commit' }
+      ).then(() => 'redirect' as const),
+    ]).catch(() => 'none' as const);
 
-    if (ssoOnSubmit === 'iframe') {
+    if (ssoOnSubmit === 'iframe' || ssoOnSubmit === 'modal') {
       console.log('  ✓ SSO modal appears on submit');
     } else if (ssoOnSubmit === 'redirect') {
       console.log('  ✓ Redirected to SSO on submit');
