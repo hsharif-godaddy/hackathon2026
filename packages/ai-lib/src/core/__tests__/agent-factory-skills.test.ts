@@ -311,3 +311,246 @@ describe('AgentFactory skill tool merge gating', () => {
     expect(developConfig.tools).toHaveProperty('skill__foo__doStuff')
   })
 })
+
+describe('AgentWrapper initialSkills auto-registration', () => {
+  let mockAgent: {
+    generate: ReturnType<typeof vi.fn>
+    stream: ReturnType<typeof vi.fn>
+  }
+  let lastSettings: any
+  let MockToolLoopAgent: any
+
+  beforeEach(async () => {
+    mockAgent = {
+      generate: vi.fn(),
+      stream: vi.fn()
+    }
+
+    const aiModule = await import('ai')
+    MockToolLoopAgent = aiModule.ToolLoopAgent as any
+    MockToolLoopAgent.mockImplementation((settings: unknown) => {
+      lastSettings = settings
+      return mockAgent
+    })
+  })
+
+  afterEach(() => {
+    vi.clearAllMocks()
+    lastSettings = undefined
+  })
+
+  it('should call onSkillsLoad on first prepareCall', async () => {
+    const onSkillsLoad = vi.fn(async () => [
+      { role: 'system' as const, content: '# Media Logo\nUse this skill...', insertionOrder: 'after_history' as const }
+    ])
+    const skillProvider = createMockSkillToolProvider()
+
+    const config: AgentConfig = {
+      name: 'test-agent',
+      model: 'test-model' as any,
+      system: 'You are a test assistant',
+      tools: { baseTool: { execute: vi.fn() } as any },
+      onSkillsLoad,
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() }
+    }
+
+    new AgentWrapper(config, skillProvider)
+
+    await lastSettings.prepareCall({
+      prompt: 'test',
+      messages: [],
+      options: { executionContext: { metadata: { conversationId: 'conv-456' } } }
+    })
+
+    expect(onSkillsLoad).toHaveBeenCalledTimes(1)
+    expect(onSkillsLoad).toHaveBeenCalledWith('conv-456')
+  })
+
+  it('should not re-call onSkillsLoad on subsequent prepareCall invocations', async () => {
+    const onSkillsLoad = vi.fn(async () => [
+      { role: 'system' as const, content: 'skill instructions', insertionOrder: 'after_history' as const }
+    ])
+    const skillProvider = createMockSkillToolProvider()
+
+    const config: AgentConfig = {
+      name: 'test-agent',
+      model: 'test-model' as any,
+      system: 'You are a test assistant',
+      tools: { baseTool: { execute: vi.fn() } as any },
+      onSkillsLoad,
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() }
+    }
+
+    new AgentWrapper(config, skillProvider)
+
+    const callArgs = {
+      prompt: 'test',
+      messages: [],
+      options: { executionContext: { metadata: { conversationId: 'conv-456' } } }
+    }
+
+    await lastSettings.prepareCall(callArgs)
+    await lastSettings.prepareCall(callArgs)
+    await lastSettings.prepareCall(callArgs)
+
+    expect(onSkillsLoad).toHaveBeenCalledTimes(1)
+  })
+
+  it('should retry onSkillsLoad when it returns empty array', async () => {
+    let callCount = 0
+    const onSkillsLoad = vi.fn(async () => {
+      callCount++
+      if (callCount >= 2) {
+        return [{ role: 'system' as const, content: 'skill instructions', insertionOrder: 'after_history' as const }]
+      }
+      return []
+    })
+    const skillProvider = createMockSkillToolProvider()
+
+    const config: AgentConfig = {
+      name: 'test-agent',
+      model: 'test-model' as any,
+      system: 'You are a test assistant',
+      tools: { baseTool: { execute: vi.fn() } as any },
+      onSkillsLoad,
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() }
+    }
+
+    new AgentWrapper(config, skillProvider)
+
+    const callArgs = {
+      prompt: 'test',
+      messages: [],
+      options: { executionContext: { metadata: { conversationId: 'conv-456' } } }
+    }
+
+    // First call returns [], should not mark as loaded (will retry next time)
+    await lastSettings.prepareCall(callArgs)
+    expect(onSkillsLoad).toHaveBeenCalledTimes(1)
+
+    // Second call retries and succeeds
+    await lastSettings.prepareCall(callArgs)
+    expect(onSkillsLoad).toHaveBeenCalledTimes(2)
+
+    // Third call is deduplicated (success was recorded)
+    await lastSettings.prepareCall(callArgs)
+    expect(onSkillsLoad).toHaveBeenCalledTimes(2)
+  })
+
+  it('should stop retrying onSkillsLoad after 3 failed attempts', async () => {
+    const onSkillsLoad = vi.fn(async () => [])
+    const skillProvider = createMockSkillToolProvider()
+
+    const config: AgentConfig = {
+      name: 'test-agent',
+      model: 'test-model' as any,
+      system: 'You are a test assistant',
+      tools: { baseTool: { execute: vi.fn() } as any },
+      onSkillsLoad,
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() }
+    }
+
+    new AgentWrapper(config, skillProvider)
+
+    const callArgs = {
+      prompt: 'test',
+      messages: [],
+      options: { executionContext: { metadata: { conversationId: 'conv-456' } } }
+    }
+
+    // 3 attempts, then stops
+    await lastSettings.prepareCall(callArgs)
+    await lastSettings.prepareCall(callArgs)
+    await lastSettings.prepareCall(callArgs)
+    expect(onSkillsLoad).toHaveBeenCalledTimes(3)
+
+    // 4th call — should NOT retry
+    await lastSettings.prepareCall(callArgs)
+    expect(onSkillsLoad).toHaveBeenCalledTimes(3)
+  })
+
+  it('should call onSkillsLoad once per conversation when reused across conversations', async () => {
+    const onSkillsLoad = vi.fn(async () => [
+      { role: 'system' as const, content: 'skill instructions', insertionOrder: 'after_history' as const }
+    ])
+    const skillProvider = createMockSkillToolProvider()
+
+    const config: AgentConfig = {
+      name: 'test-agent',
+      model: 'test-model' as any,
+      system: 'You are a test assistant',
+      tools: { baseTool: { execute: vi.fn() } as any },
+      onSkillsLoad,
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() }
+    }
+
+    new AgentWrapper(config, skillProvider)
+
+    await lastSettings.prepareCall({
+      prompt: 'test', messages: [],
+      options: { executionContext: { metadata: { conversationId: 'conv-first' } } }
+    })
+    await lastSettings.prepareCall({
+      prompt: 'test', messages: [],
+      options: { executionContext: { metadata: { conversationId: 'conv-first' } } }
+    })
+    await lastSettings.prepareCall({
+      prompt: 'test', messages: [],
+      options: { executionContext: { metadata: { conversationId: 'conv-second' } } }
+    })
+    await lastSettings.prepareCall({
+      prompt: 'test', messages: [],
+      options: { executionContext: { metadata: { conversationId: 'conv-second' } } }
+    })
+
+    expect(onSkillsLoad).toHaveBeenCalledTimes(2)
+    expect(onSkillsLoad).toHaveBeenNthCalledWith(1, 'conv-first')
+    expect(onSkillsLoad).toHaveBeenNthCalledWith(2, 'conv-second')
+  })
+
+  it('should not call onSkillsLoad when not configured', async () => {
+    const skillProvider = createMockSkillToolProvider()
+
+    const config: AgentConfig = {
+      name: 'test-agent',
+      model: 'test-model' as any,
+      system: 'You are a test assistant',
+      tools: { baseTool: { execute: vi.fn() } as any },
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() }
+    }
+
+    new AgentWrapper(config, skillProvider)
+
+    // Should complete without error — no onSkillsLoad configured
+    await expect(lastSettings.prepareCall({
+      prompt: 'test',
+      messages: [],
+      options: { executionContext: { metadata: { conversationId: 'conv-456' } } }
+    })).resolves.not.toThrow()
+  })
+
+  it('should handle onSkillsLoad failure gracefully without throwing', async () => {
+    const onSkillsLoad = vi.fn(async () => { throw new Error('skill load failed') })
+    const skillProvider = createMockSkillToolProvider()
+
+    const config: AgentConfig = {
+      name: 'test-agent',
+      model: 'test-model' as any,
+      system: 'You are a test assistant',
+      tools: { baseTool: { execute: vi.fn() } as any },
+      onSkillsLoad,
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() }
+    }
+
+    new AgentWrapper(config, skillProvider)
+
+    // Should not throw — failure is caught and logged
+    await expect(lastSettings.prepareCall({
+      prompt: 'test',
+      messages: [],
+      options: { executionContext: { metadata: { conversationId: 'conv-456' } } }
+    })).resolves.not.toThrow()
+
+    expect(onSkillsLoad).toHaveBeenCalledWith('conv-456')
+  })
+})

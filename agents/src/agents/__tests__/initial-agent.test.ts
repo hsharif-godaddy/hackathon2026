@@ -174,6 +174,31 @@ describe('initial-agent', function initialAgentTests() {
       expect(config.id).toBe('initial');
       expect(config.name).toBe('Initial');
     });
+
+    it('should include skill tool and onSkillsLoad for logo-designer template', async function logoDesignerSkill() {
+      const config = await createInitialAgent(undefined, 'logo-designer');
+
+      expect(config.tools).toHaveProperty('skill');
+      expect(config.tools).toHaveProperty('memorySet');
+      expect(config.onSkillsLoad).toBeTypeOf('function');
+      expect(config.tools).toHaveProperty('brandBook');
+      expect(config.tools).toHaveProperty('colorScheme');
+      expect(config.tools).toHaveProperty('fontTheme');
+    });
+
+    it('should NOT include generateLogo or editLogo for logo-designer template', async function noLegacyLogoTools() {
+      const config = await createInitialAgent(undefined, 'logo-designer');
+
+      expect(config.tools).not.toHaveProperty('generateLogo');
+      expect(config.tools).not.toHaveProperty('editLogo');
+    });
+
+    it('should not set onSkillsLoad for non-template agents', async function noOnSkillsLoad() {
+      const config = await createInitialAgent();
+
+      expect(config.onSkillsLoad).toBeUndefined();
+      expect(config.tools).not.toHaveProperty('skill');
+    });
   });
 
   describe('prompt file loading', function promptLoadingTests() {

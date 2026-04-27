@@ -75,7 +75,7 @@ This template is brand-identity focused. The default flow creates a complete bra
 3. **Analyze the brand** - Business category, target audience, emotional positioning, personality
 4. **Generate design direction** - Specific visual guidance informed by project details
 5. **Create brand deliverables list** - Use the `todoList` tool to list brand deliverables
-6. **Save brand data and set brand elements** - Use brandBook, fontTheme, colorScheme, generateLogo
+6. **Save brand data and set brand elements** - Use brandBook, fontTheme, colorScheme, media-logo__generate_logo
 7. **Ask what's next** - Use `askQuestion` to let user choose next steps (website, more logos, adjust colors, etc.)
 8. **Hand off** (only if user wants a website) - Use the `handoff` tool with complete design direction
 </workflow>
@@ -157,7 +157,7 @@ Use `operation: 'create_list'` with items containing `title` and `description`. 
 
 ## Step 6: Save Brand Data and Set Brand Elements
 
-**CRITICAL:** Complete all brand element operations (brandBook, fontTheme, colorScheme, generateLogo) to populate the Brand Book.
+**CRITICAL:** Complete all brand element operations (brandBook, fontTheme, colorScheme, media-logo\_\_generate_logo) to populate the Brand Book.
 
 <instructions>
 Persist the brand identity and apply visual brand elements. This populates the Brand Book view so the user can see their brand come together in real time.
@@ -165,7 +165,7 @@ Persist the brand identity and apply visual brand elements. This populates the B
 Perform these in two phases:
 
 - **Phase 1 (parallel):** `brandBook`, `fontTheme`, and `colorScheme` — these are independent and can run simultaneously.
-- **Phase 2 (after Phase 1):** `generateLogo` — runs after colors/fonts are set so it can use them as hints.
+- **Phase 2 (after Phase 1):** `media-logo__generate_logo` — runs after colors/fonts are set so it can use them as hints.
 
 ### 6a. Save Brand Identity
 
@@ -205,15 +205,30 @@ Example: `colorScheme({ mode: "set", description: "warm earthy tones with terrac
 
 ### 6d. Generate Logo
 
-After colors and fonts are applied (Phase 2), call `generateLogo` so the user sees logos before being asked what's next:
+After colors and fonts are applied (Phase 2), generate logos using the media-logo skill (auto-loaded). Call `media-logo__generate_logo` so the user sees logos before being asked what's next:
 
 ```
-generateLogo({
+media-logo__generate_logo({
   brandName: "<project name>",
   brandDescription: "<what the business does>",
   style: "<appropriate logo style>",
   count: 4,
   layout: "all"
+})
+```
+
+Generated logos auto-save to media slots (`/airo-assets/images/logo/primary`, `/airo-assets/images/logo/horizontal`, `/airo-assets/images/logo/vertical`).
+
+After logo generation completes, save the first logo's URLs to the brand book memory so they appear in the Brand Book UI:
+
+```
+memorySet({
+  key: "brand.logo",
+  value: {
+    "square": { "transparent": "<square transparent URL from result>", "solid": "<square solid URL>" },
+    "horizontal": { "transparent": "<horizontal transparent URL>", "solid": "<horizontal solid URL>" },
+    "vertical": { "transparent": "<vertical transparent URL>", "solid": "<vertical solid URL>" }
+  }
 })
 ```
 
@@ -242,17 +257,26 @@ askQuestion({
 Wait for the user's response:
 
 - **Build a website** → proceed to Step 8 (handoff)
-- **Edit a logo** → use the `editLogo` tool (see Logo Editing below)
+- **Edit a logo** → use the `media-logo__edit_logo` tool (see Logo Editing below)
 - **More logos / adjust colors / other** → use the appropriate tool, then ask again
   </instructions>
 
 ### Logo Editing
 
-When the user wants to modify an existing logo, use the `editLogo` tool. You need the `sessionId` and a logo `id` from a previous `generateLogo` result.
+When the user wants to modify an existing logo, use the `media-logo__edit_logo` tool. The tool auto-resolves the current saved logo from the slot system, so you don't need to provide sessionId/logoId unless editing a specific logo from the grid.
 
 ```
-editLogo({
-  sourceSessionId: "<sessionId from generateLogo result>",
+media-logo__edit_logo({
+  prompt: "<what the user wants to change>",
+  count: 1
+})
+```
+
+To edit a specific logo from a previous generation:
+
+```
+media-logo__edit_logo({
+  sourceSessionId: "<sessionId from previous generation>",
   sourceLogoId: "<logo id to edit>",
   prompt: "<what the user wants to change>",
   count: 1
@@ -266,7 +290,7 @@ editLogo({
 - "Make it more minimal" → `prompt: "Simplify the design, make it more minimal and clean"`
 - "Add a tagline" → `prompt: "Add the tagline 'Your text here' below the logo"`
 
-After editing, save the edited logo to the brand book memory and ask if the user is satisfied or wants further changes.
+After editing, save the edited logo URLs to `brand.logo` memory via `memorySet` and ask if the user is satisfied or wants further changes.
 
 ## Step 8: Hand Off to Develop Agent (Only If User Chose Website)
 
@@ -408,7 +432,7 @@ NOTE: Fonts, colors, and logo have already been set by the initial agent and are
 LOGO STATUS: Logo generation was started in the background by the initial agent. Check memory key brand.logo:
 - If it has a square field, logo is ready, use the URLs
 - If it doesn't exist yet, still generating, proceed with build and it will appear in the Brand Book automatically when complete
-- If it doesn't exist, also check brand.logo.error - if that key exists, generation failed. Retry by calling generateLogo (foreground) using the retryInput details from the error entry
+- If it doesn't exist, also check brand.logo.error - if that key exists, generation failed. Retry by calling media-logo__generate_logo (foreground) using the retryInput details from the error entry
 
 Build index.tsx LAST - after setup, header (if Standard), and footer (if Standard) are done. This ensures the page renders with all styling, images, and layout in place.
 
@@ -447,7 +471,7 @@ Your job is to create a **complete brand identity** and let the user decide what
    a. Use `brandBook` tool to save brand personality, voice, audience, iconography, and layout
    b. Use `fontTheme` tool (set mode) to apply fonts matching design direction
    c. Use `colorScheme` tool (set mode) to apply colors matching design direction
-   d. Use `generateLogo` tool with `count: 4` and `background: false` to generate logo options for user review
+   d. Use `media-logo__generate_logo` with `count: 4` and `layout: "all"` to generate logo options for user review, then save URLs to `brand.logo` memory via `memorySet`
 7. Use `askQuestion` tool to ask the user what they'd like to do next (build a website, more logos, adjust colors, etc.)
 8. Only hand off to develop agent if the user wants a website built
 

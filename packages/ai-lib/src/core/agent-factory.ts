@@ -262,6 +262,8 @@ export class AgentWrapper {
   private turnCount: number = 0
   private pipeline: ContextPipeline
   private overrideAgents = new Map<string, AgentWrapper>()
+  private onSkillsLoadedConversations = new Set<string>()
+  private onSkillsLoadAttempts = new Map<string, number>()
 
   constructor(config: AgentConfig, skillToolProvider?: GlobalAgentConfig['skillToolProvider']) {
     this.config = config
@@ -343,10 +345,50 @@ export class AgentWrapper {
 
         this.turnCount++
 
+        const executionContext = callOptions.executionContext as Record<string, any> | undefined
+        this.currentConversationId = executionContext?.metadata?.conversationId as string | undefined
+
+        // Call onSkillsLoad callback to inject skill context messages before the pipeline.
+        // Retries up to 3 times on failure/empty return, then gives up for that conversation.
+        const contextMessages = [...(callOptions.contextMessages ?? [])]
+        const maxSkillsLoadAttempts = 3
+        if (
+          this.currentConversationId
+          && this.config.onSkillsLoad
+          && !this.onSkillsLoadedConversations.has(this.currentConversationId)
+          && (this.onSkillsLoadAttempts.get(this.currentConversationId) ?? 0) < maxSkillsLoadAttempts
+        ) {
+          const attempts = (this.onSkillsLoadAttempts.get(this.currentConversationId) ?? 0) + 1
+          this.onSkillsLoadAttempts.set(this.currentConversationId, attempts)
+          try {
+            const skillMessages = await this.config.onSkillsLoad(this.currentConversationId)
+            if (skillMessages.length > 0) {
+              contextMessages.push(...skillMessages)
+              this.onSkillsLoadedConversations.add(this.currentConversationId)
+              this.onSkillsLoadAttempts.delete(this.currentConversationId)
+            } else {
+              logger.warn('agent.on_skills_load.empty_result', {
+                agentName: this.config.name,
+                conversationId: this.currentConversationId,
+                attempt: attempts,
+                maxAttempts: maxSkillsLoadAttempts
+              })
+            }
+          } catch (error) {
+            logger.warn('agent.on_skills_load.failed', {
+              agentName: this.config.name,
+              conversationId: this.currentConversationId,
+              attempt: attempts,
+              maxAttempts: maxSkillsLoadAttempts,
+              error: error instanceof Error ? error.message : String(error)
+            })
+          }
+        }
+
         const transformed = await this.pipeline.transformContext({
           userMessage: basePrompt,
           ...(callOptions.files ? { files: callOptions.files } : {}),
-          contextMessages: callOptions.contextMessages ?? [],
+          contextMessages,
           conversationMessages: conversationMessages,
           executionContext: callOptions.executionContext ?? {},
           turnIndex: this.turnCount - 1,
@@ -361,9 +403,6 @@ export class AgentWrapper {
         if (callOptions.executionContext) {
           ;(preparedCall as typeof preparedCall & { experimental_context?: unknown }).experimental_context = callOptions.executionContext
         }
-
-        const executionContext = callOptions.executionContext as Record<string, any> | undefined
-        this.currentConversationId = executionContext?.metadata?.conversationId as string | undefined
 
         // Compute base tool names once per run (everything except skill tools).
         // Skill cleanup also runs here — not per-step — so tools are never removed

@@ -14,7 +14,7 @@ import type { DataHandlerContext, MessageHandler, WebSocketMessage } from './typ
 
 // Tools whose results should trigger a brand data refetch in the Brand Book view.
 // setProjectName is included because it updates brandData.brandName (the hero heading).
-const BRAND_UPDATE_TOOLS = ['colorScheme', 'fontTheme', 'generateLogo', 'editLogo', 'setProjectName', 'brandBook']
+const BRAND_UPDATE_TOOLS = ['colorScheme', 'fontTheme', 'setProjectName', 'brandBook']
 
 export class ToolResultHandler implements MessageHandler {
   readonly type = 'tool_result'

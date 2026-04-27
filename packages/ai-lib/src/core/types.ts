@@ -1,7 +1,7 @@
 import type { LanguageModel, Tool, ModelMessage } from 'ai'
 import type { z } from 'zod'
 import type { RetryOptions } from '@airo/ai-common'
-import type { ContextPipeline } from './context-pipeline.js'
+import type { ContextPipeline, PipelineContextMessage } from './context-pipeline.js'
 
 // Re-export AI SDK types for convenience
 export type { ModelMessage, LanguageModel, Tool } from 'ai'
@@ -138,6 +138,11 @@ export interface AgentConfig {
   }
   /** Context pipeline for message transformation (two-stage: transformContext → convertToLlm). When omitted, a default pipeline using defaultConvertToLlm is used. */
   contextPipeline?: ContextPipeline
+
+  /** Called before the first LLM step to inject skill context messages.
+   *  On success (non-empty return), the result is cached and the callback is not called again for that conversationId.
+   *  On failure (empty return or throw), retries up to 3 times across subsequent turns, then gives up. */
+  onSkillsLoad?: (conversationId: string) => Promise<PipelineContextMessage[]>
 }
 
 /**

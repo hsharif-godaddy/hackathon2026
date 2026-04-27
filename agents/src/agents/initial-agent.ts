@@ -5,11 +5,15 @@ import {
   type SessionStateManager,
 } from '@airo/ai-lib'
 import { existsSync } from 'fs'
+import type { PipelineContextMessage } from '@airo/ai-lib'
 import { getAgentModelWithName } from '../utils/model-selection.js'
 import { getModularPromptPaths } from '../utils/prompt-utils.js'
 import { allAILibTools } from '../tools/ai-lib-tools/index.js'
 import { createAgentTelemetryLogger } from '../utils/agent-logger.js'
+import { logger } from '../logging/index.js'
 import { getTemplate } from './template-registry.js'
+import { skillToolManager } from '../tools/skill-tool-manager.js'
+import { SkillLoaderTool } from '../tools/skill-loader-tool.js'
 
 /**
  * Initial Agent - Creates single-page preview plans for new apps
@@ -66,6 +70,7 @@ async function buildInitialSystemPrompt(templateId?: string, promptVersion?: str
 
     promptBuilder.file(paths.getSharedFile('communication.md'))
     promptBuilder.file(paths.getSharedFile('security.md'))
+
     return await promptBuilder.build()
   }
 
@@ -137,13 +142,13 @@ export async function createInitialAgent(
     websiteRebuild: allAILibTools.websiteRebuild,
   }
 
-  // Logo-designer template needs brand tools to populate the Brand Book
+  // Logo-designer template needs brand tools + skill system for media-logo
   if (templateId === 'logo-designer') {
     tools.brandBook = allAILibTools.brandBook
     tools.colorScheme = allAILibTools.colorScheme
     tools.fontTheme = allAILibTools.fontTheme
-    tools.generateLogo = allAILibTools.generateLogo
-    tools.editLogo = allAILibTools.editLogo
+    tools.skill = allAILibTools.skill
+    tools.memorySet = allAILibTools.memorySet
   }
 
   if (handoffTool) {
@@ -157,6 +162,32 @@ export async function createInitialAgent(
     model,
     modelName,
     tools,
+    onSkillsLoad: templateId === 'logo-designer'
+      ? async (conversationId: string): Promise<PipelineContextMessage[]> => {
+          // Register skill tools (makes them visible via activeTools)
+          const activation = skillToolManager.registerSkill('media-logo', conversationId)
+          if (!activation.success) {
+            logger.warn('initial_agent.on_skills_load.activation_failed', {
+              skill: 'media-logo', conversationId, error: activation.error
+            })
+            return []
+          }
+          // Run onLoad hook (appPath/appId unavailable here — only passed via skill tool at runtime)
+          await skillToolManager.runHook('media-logo', 'onLoad', { skillName: 'media-logo' })
+          // Load instructions via SkillLoaderTool (single source for reading skill.md)
+          const skillLoader = new SkillLoaderTool()
+          const result = await skillLoader.loadSkill({ skill: 'media-logo' })
+          if (!result.success || !result.instructions?.trim()) {
+            // Unload tools to avoid split state (tools active without instructions)
+            skillToolManager.unloadSkill('media-logo', conversationId)
+            logger.warn('initial_agent.on_skills_load.instructions_failed', {
+              skill: 'media-logo', conversationId, success: result.success
+            })
+            return []
+          }
+          return [{ role: 'system', content: result.instructions, insertionOrder: 'after_history' }]
+        }
+      : undefined,
 
     handoffs: [
       {
