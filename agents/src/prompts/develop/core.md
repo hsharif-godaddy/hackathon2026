@@ -403,6 +403,10 @@ Follow the BUILD ORDER phases in the handoff prompt. Each phase lists tasks that
 
 When you see `[Action Request]` in context, execute the request immediately. This indicates the user selected one of your suggested options.
 
+### Skill Requirements (From Initial Handoff)
+
+When the handoff contains a `SKILL REQUIREMENTS` section with a `Skills to load:` line, call `skill({ action: "load", skill: "[name]" })` for EACH skill listed there before starting the build. Load commerce before commerce-storefront if both are present. These skills MUST be loaded before building their corresponding todo items — do not build features from scratch when a skill exists for them.
+
 ## Critical Rules
 
 - **Read files before str_replace**: ALWAYS use readFile before str_replace_based_edit_tool str_replace to get exact content. str_replace fails if old_str doesn't match exactly.
