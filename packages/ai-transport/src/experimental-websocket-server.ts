@@ -10,16 +10,17 @@ import { classifyError, BudgetExceededError, isBudgetExceededAPIError, createLog
 import { isBudgetServiceError, mapBudgetErrorToResponse } from '@airo/shared/budget'
 import type { AgentsCollection } from '@airo/ai-lib'
 import type { HandoffStateManager } from '@airo/ai-lib'
-import type {
-  MessageProvider,
-  ContextProvider,
-  HistoryProvider,
-  ConversationPersistence,
-  ConversationPersistenceWithCleanup,
-  ConversationMessage,
-  PersistenceStreamingEvent,
-  ConversationContext,
-  StreamingEventType
+import {
+  TOOL_VALIDATION_ERROR_TYPE,
+  type MessageProvider,
+  type ContextProvider,
+  type HistoryProvider,
+  type ConversationPersistence,
+  type ConversationPersistenceWithCleanup,
+  type ConversationMessage,
+  type PersistenceStreamingEvent,
+  type ConversationContext,
+  type StreamingEventType
 } from './interfaces.js'
 import { ConversationEventChannel } from './conversation-event-channel.js'
 import { WebSocketSubscriber } from './subscribers/websocket-subscriber.js'
@@ -3574,7 +3575,7 @@ export class WebSocketServer {
       if (streamResult && (streamResult as any).isToolValidationError) {
         // Publish error event - subscribers handle delivery and persistence
         await this.publishToEventChannel(socket.id, 'error', 'Tool call failed due to invalid input format. The agent is retrying with corrections.', {
-          errorType: 'TOOL_VALIDATION_ERROR',
+          errorType: TOOL_VALIDATION_ERROR_TYPE,
           statusCode: 400,
           timestamp: new Date().toISOString(),
           details: (streamResult as any).validationErrorMessage

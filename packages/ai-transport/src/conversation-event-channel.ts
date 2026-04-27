@@ -1,9 +1,10 @@
 import { randomUUID } from 'node:crypto'
-import type {
-  StreamingEvent,
-  EventSubscriber,
-  EventMetadata,
-  CircularBufferConfig
+import {
+  NON_TERMINAL_ERROR_TYPES,
+  type StreamingEvent,
+  type EventSubscriber,
+  type EventMetadata,
+  type CircularBufferConfig
 } from './interfaces.js'
 
 /**
@@ -299,7 +300,18 @@ export class ConversationEventChannel {
     // Extract messageId from event data
     const messageId = event.data?.messageId as string | undefined
 
-    if (messageId) {
+    // Error events are terminal for the stream — clear all pending messages.
+    // Exception: non-terminal error types (e.g. TOOL_VALIDATION_ERROR) where agent retries.
+    const isTerminalError = event.type === 'error' &&
+      !NON_TERMINAL_ERROR_TYPES.includes(event.data?.errorType as typeof NON_TERMINAL_ERROR_TYPES[number])
+
+    if (isTerminalError) {
+      this.pendingMessages.delete(conversationId)
+    } else if (event.type === 'complete' && !messageId) {
+      // complete is unambiguously terminal. If messageId is absent (e.g. conversation
+      // state already cleaned up on abort/handoff), clear all pending for the conversation.
+      this.pendingMessages.delete(conversationId)
+    } else if (messageId) {
       // Mark message as pending on streaming events (chunk, tool_*, step_*)
       const streamingTypes = ['chunk', 'tool_start', 'tool_input_delta', 'step_start']
       if (streamingTypes.includes(event.type)) {

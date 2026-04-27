@@ -6,6 +6,13 @@
 import type { ModelMessage } from 'ai'
 
 /**
+ * Error types that are non-terminal — the agent retries and the stream continues.
+ * Used by ConversationEventChannel to skip clearing pendingMessageIds.
+ */
+export const TOOL_VALIDATION_ERROR_TYPE = 'TOOL_VALIDATION_ERROR' as const
+export const NON_TERMINAL_ERROR_TYPES = [TOOL_VALIDATION_ERROR_TYPE] as const
+
+/**
  * Tool call structure for assistant messages
  */
 export interface ToolCall {

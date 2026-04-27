@@ -705,6 +705,50 @@ describe('ConnectionRecoveryManager', () => {
         })
       }))
     })
+
+    it('sends streamCompleted: true when pendingMessageIds is empty (terminal error cleared them)', async () => {
+      // Simulate: a terminal error already cleared pendingMessageIds in the event channel
+      eventChannel.getEventsSince.mockReturnValue([])
+      eventChannel.getMetadata.mockReturnValue({
+        conversationId: 'conv-1',
+        totalEvents: 5,
+        firstSequence: 0,
+        lastSequence: 4,
+        pendingMessageIds: [], // Empty — terminal error cleared them
+        oldestTimestamp: new Date(),
+        newestTimestamp: new Date()
+      })
+
+      await manager.handleConversationRecovery(socket, 'conv-1', validateAppId, callbacks)
+
+      const recoveryStatusCall = (socket.emit as any).mock.calls.find(
+        (call: any[]) => call[0] === 'message' && call[1]?.type === 'recovery_status' && call[1]?.data?.isRecovering === true
+      )
+      expect(recoveryStatusCall).toBeDefined()
+      expect(recoveryStatusCall[1].data.streamCompleted).toBe(true)
+    })
+
+    it('sends streamCompleted: false when pendingMessageIds has stale entries', async () => {
+      // Simulate: pendingMessageIds NOT cleared (pre-fix behavior)
+      eventChannel.getEventsSince.mockReturnValue([])
+      eventChannel.getMetadata.mockReturnValue({
+        conversationId: 'conv-1',
+        totalEvents: 5,
+        firstSequence: 0,
+        lastSequence: 4,
+        pendingMessageIds: ['stale-msg-id'], // Stale — error didn't clear
+        oldestTimestamp: new Date(),
+        newestTimestamp: new Date()
+      })
+
+      await manager.handleConversationRecovery(socket, 'conv-1', validateAppId, callbacks)
+
+      const recoveryStatusCall = (socket.emit as any).mock.calls.find(
+        (call: any[]) => call[0] === 'message' && call[1]?.type === 'recovery_status' && call[1]?.data?.isRecovering === true
+      )
+      expect(recoveryStatusCall).toBeDefined()
+      expect(recoveryStatusCall[1].data.streamCompleted).toBe(false)
+    })
   })
 
   describe('beginCatchUpHandshake', () => {

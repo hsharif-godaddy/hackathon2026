@@ -578,6 +578,384 @@ describe('ConversationEventChannel', () => {
     })
   })
 
+  describe('pendingMessageIds lifecycle', () => {
+    it('should add messageId to pendingMessageIds on streaming events and remove on complete', async () => {
+      const subscriber = new MockSubscriber('sub1')
+      channel.subscribe('conv1', subscriber)
+
+      // chunk event with messageId → adds to pending
+      await channel.publish('conv1', {
+        conversationId: 'conv1',
+        type: 'chunk',
+        content: 'Hello',
+        data: { messageId: 'msg-1' },
+        agentName: 'test'
+      })
+
+      const metaAfterChunk = channel.getMetadata('conv1')
+      expect(metaAfterChunk?.pendingMessageIds).toContain('msg-1')
+
+      // complete event with same messageId → removes from pending
+      await channel.publish('conv1', {
+        conversationId: 'conv1',
+        type: 'complete',
+        content: '',
+        data: { messageId: 'msg-1' },
+        agentName: 'test'
+      })
+
+      const metaAfterComplete = channel.getMetadata('conv1')
+      expect(metaAfterComplete?.pendingMessageIds).not.toContain('msg-1')
+      expect(metaAfterComplete?.pendingMessageIds).toHaveLength(0)
+    })
+
+    it('should clear all pendingMessageIds on complete event without messageId (abort/handoff path)', async () => {
+      const subscriber = new MockSubscriber('sub1')
+      channel.subscribe('conv1', subscriber)
+
+      await channel.publish('conv1', {
+        conversationId: 'conv1',
+        type: 'chunk',
+        content: 'Streaming...',
+        data: { messageId: 'msg-abort' },
+        agentName: 'test'
+      })
+
+      expect(channel.getMetadata('conv1')?.pendingMessageIds).toContain('msg-abort')
+
+      // complete event without messageId (conversation state already cleaned up)
+      await channel.publish('conv1', {
+        conversationId: 'conv1',
+        type: 'complete',
+        content: '',
+        data: {},
+        agentName: 'test'
+      })
+
+      expect(channel.getMetadata('conv1')?.pendingMessageIds).toHaveLength(0)
+    })
+
+    it('should clear all pendingMessageIds on error events even when messageId is present (error is terminal)', async () => {
+      const subscriber = new MockSubscriber('sub1')
+      channel.subscribe('conv1', subscriber)
+
+      // Two sibling pending IDs from the same turn
+      await channel.publish('conv1', {
+        conversationId: 'conv1',
+        type: 'tool_start',
+        content: '',
+        data: { messageId: 'msg-tool-A' },
+        agentName: 'test'
+      })
+      await channel.publish('conv1', {
+        conversationId: 'conv1',
+        type: 'step_start',
+        content: '',
+        data: { messageId: 'msg-step-B' },
+        agentName: 'test'
+      })
+
+      expect(channel.getMetadata('conv1')?.pendingMessageIds).toContain('msg-tool-A')
+      expect(channel.getMetadata('conv1')?.pendingMessageIds).toContain('msg-step-B')
+
+      // Error with messageId for only one of them → should still clear ALL
+      await channel.publish('conv1', {
+        conversationId: 'conv1',
+        type: 'error',
+        content: '',
+        data: { messageId: 'msg-step-B', error: 'Some error' },
+        agentName: 'test'
+      })
+
+      expect(channel.getMetadata('conv1')?.pendingMessageIds).toHaveLength(0)
+    })
+
+    it('should clear all pendingMessageIds on error events without messageId (budget error)', async () => {
+      const subscriber = new MockSubscriber('sub1')
+      channel.subscribe('conv1', subscriber)
+
+      // Simulate streaming: chunk adds messageId to pending
+      await channel.publish('conv1', {
+        conversationId: 'conv1',
+        type: 'chunk',
+        content: 'Partial response',
+        data: { messageId: 'msg-budget' },
+        agentName: 'test'
+      })
+
+      expect(channel.getMetadata('conv1')?.pendingMessageIds).toContain('msg-budget')
+
+      // Budget error event — real server shape: no messageId in errorMetadata
+      await channel.publish('conv1', {
+        conversationId: 'conv1',
+        type: 'error',
+        content: 'Your AI usage budget has been reached.',
+        data: { errorType: 'BUDGET_EXCEEDED', statusCode: 429, timestamp: new Date().toISOString(), agentId: 'develop' },
+        agentName: 'test'
+      })
+
+      const metaAfterError = channel.getMetadata('conv1')
+      expect(metaAfterError?.pendingMessageIds).toHaveLength(0)
+    })
+
+    it('should NOT clear pendingMessageIds on TOOL_VALIDATION_ERROR (non-terminal, agent retries)', async () => {
+      const subscriber = new MockSubscriber('sub1')
+      channel.subscribe('conv1', subscriber)
+
+      await channel.publish('conv1', {
+        conversationId: 'conv1',
+        type: 'chunk',
+        content: 'Streaming...',
+        data: { messageId: 'msg-retry' },
+        agentName: 'test'
+      })
+
+      expect(channel.getMetadata('conv1')?.pendingMessageIds).toContain('msg-retry')
+
+      // TOOL_VALIDATION_ERROR — non-terminal, agent retries with corrections
+      await channel.publish('conv1', {
+        conversationId: 'conv1',
+        type: 'error',
+        content: 'Tool call failed due to invalid input format.',
+        data: { errorType: 'TOOL_VALIDATION_ERROR', statusCode: 400 },
+        agentName: 'test'
+      })
+
+      // Should still be pending — stream continues
+      expect(channel.getMetadata('conv1')?.pendingMessageIds).toContain('msg-retry')
+    })
+
+    it('should clear pendingMessageIds on error with no errorType (AbortError, NetworkError, etc.)', async () => {
+      const subscriber = new MockSubscriber('sub1')
+      channel.subscribe('conv1', subscriber)
+
+      await channel.publish('conv1', {
+        conversationId: 'conv1',
+        type: 'chunk',
+        content: 'Streaming...',
+        data: { messageId: 'msg-abort' },
+        agentName: 'test'
+      })
+
+      expect(channel.getMetadata('conv1')?.pendingMessageIds).toContain('msg-abort')
+
+      // Generic error with no errorType — still terminal
+      await channel.publish('conv1', {
+        conversationId: 'conv1',
+        type: 'error',
+        content: 'Connection aborted',
+        data: {},
+        agentName: 'test'
+      })
+
+      expect(channel.getMetadata('conv1')?.pendingMessageIds).toHaveLength(0)
+    })
+
+    it('should only clear pendingMessageIds for the affected conversation (cross-conversation isolation)', async () => {
+      const sub1 = new MockSubscriber('sub1')
+      const sub2 = new MockSubscriber('sub2')
+      channel.subscribe('conv1', sub1)
+      channel.subscribe('conv2', sub2)
+
+      // Add pending messages to both conversations
+      await channel.publish('conv1', {
+        conversationId: 'conv1',
+        type: 'chunk',
+        content: 'Conv1 streaming',
+        data: { messageId: 'msg-conv1' },
+        agentName: 'test'
+      })
+      await channel.publish('conv2', {
+        conversationId: 'conv2',
+        type: 'chunk',
+        content: 'Conv2 streaming',
+        data: { messageId: 'msg-conv2' },
+        agentName: 'test'
+      })
+
+      expect(channel.getMetadata('conv1')?.pendingMessageIds).toContain('msg-conv1')
+      expect(channel.getMetadata('conv2')?.pendingMessageIds).toContain('msg-conv2')
+
+      // Terminal error on conv1 only
+      await channel.publish('conv1', {
+        conversationId: 'conv1',
+        type: 'error',
+        content: 'Budget exceeded',
+        data: { errorType: 'BUDGET_EXCEEDED' },
+        agentName: 'test'
+      })
+
+      // conv1 cleared, conv2 untouched
+      expect(channel.getMetadata('conv1')?.pendingMessageIds).toHaveLength(0)
+      expect(channel.getMetadata('conv2')?.pendingMessageIds).toContain('msg-conv2')
+    })
+
+    it('should clear pendingMessageIds on step_complete events', async () => {
+      const subscriber = new MockSubscriber('sub1')
+      channel.subscribe('conv1', subscriber)
+
+      await channel.publish('conv1', {
+        conversationId: 'conv1',
+        type: 'step_start',
+        content: '',
+        data: { messageId: 'msg-2' },
+        agentName: 'test'
+      })
+
+      expect(channel.getMetadata('conv1')?.pendingMessageIds).toContain('msg-2')
+
+      await channel.publish('conv1', {
+        conversationId: 'conv1',
+        type: 'step_complete',
+        content: '',
+        data: { messageId: 'msg-2' },
+        agentName: 'test'
+      })
+
+      expect(channel.getMetadata('conv1')?.pendingMessageIds).toHaveLength(0)
+    })
+
+    it('step_complete should remove only targeted messageId, not siblings', async () => {
+      const subscriber = new MockSubscriber('sub1')
+      channel.subscribe('conv1', subscriber)
+
+      // Two sibling pending IDs
+      await channel.publish('conv1', {
+        conversationId: 'conv1',
+        type: 'step_start',
+        content: '',
+        data: { messageId: 'msg-A' },
+        agentName: 'test'
+      })
+      await channel.publish('conv1', {
+        conversationId: 'conv1',
+        type: 'step_start',
+        content: '',
+        data: { messageId: 'msg-B' },
+        agentName: 'test'
+      })
+
+      expect(channel.getMetadata('conv1')?.pendingMessageIds).toHaveLength(2)
+
+      // step_complete for msg-A only
+      await channel.publish('conv1', {
+        conversationId: 'conv1',
+        type: 'step_complete',
+        content: '',
+        data: { messageId: 'msg-A' },
+        agentName: 'test'
+      })
+
+      expect(channel.getMetadata('conv1')?.pendingMessageIds).not.toContain('msg-A')
+      expect(channel.getMetadata('conv1')?.pendingMessageIds).toContain('msg-B')
+    })
+
+    it('complete with messageId should remove only targeted messageId, not siblings', async () => {
+      const subscriber = new MockSubscriber('sub1')
+      channel.subscribe('conv1', subscriber)
+
+      await channel.publish('conv1', {
+        conversationId: 'conv1',
+        type: 'chunk',
+        content: '',
+        data: { messageId: 'msg-X' },
+        agentName: 'test'
+      })
+      await channel.publish('conv1', {
+        conversationId: 'conv1',
+        type: 'chunk',
+        content: '',
+        data: { messageId: 'msg-Y' },
+        agentName: 'test'
+      })
+
+      expect(channel.getMetadata('conv1')?.pendingMessageIds).toHaveLength(2)
+
+      // complete for msg-X only
+      await channel.publish('conv1', {
+        conversationId: 'conv1',
+        type: 'complete',
+        content: '',
+        data: { messageId: 'msg-X' },
+        agentName: 'test'
+      })
+
+      expect(channel.getMetadata('conv1')?.pendingMessageIds).not.toContain('msg-X')
+      expect(channel.getMetadata('conv1')?.pendingMessageIds).toContain('msg-Y')
+    })
+
+    it('TOOL_VALIDATION_ERROR preserves pending, then complete clears it (full retry flow)', async () => {
+      const subscriber = new MockSubscriber('sub1')
+      channel.subscribe('conv1', subscriber)
+
+      // Agent streams a chunk
+      await channel.publish('conv1', {
+        conversationId: 'conv1',
+        type: 'chunk',
+        content: 'Partial',
+        data: { messageId: 'msg-retry' },
+        agentName: 'test'
+      })
+
+      expect(channel.getMetadata('conv1')?.pendingMessageIds).toContain('msg-retry')
+
+      // Tool validation error — non-terminal, pending preserved
+      await channel.publish('conv1', {
+        conversationId: 'conv1',
+        type: 'error',
+        content: 'Tool call failed',
+        data: { errorType: 'TOOL_VALIDATION_ERROR', statusCode: 400 },
+        agentName: 'test'
+      })
+
+      expect(channel.getMetadata('conv1')?.pendingMessageIds).toContain('msg-retry')
+
+      // Agent retries and eventually completes
+      await channel.publish('conv1', {
+        conversationId: 'conv1',
+        type: 'complete',
+        content: '',
+        data: { messageId: 'msg-retry' },
+        agentName: 'test'
+      })
+
+      expect(channel.getMetadata('conv1')?.pendingMessageIds).toHaveLength(0)
+    })
+
+    it('should not add messageId to pendingMessageIds for non-streaming event types', async () => {
+      const subscriber = new MockSubscriber('sub1')
+      channel.subscribe('conv1', subscriber)
+
+      await channel.publish('conv1', {
+        conversationId: 'conv1',
+        type: 'agents_available',
+        content: '',
+        data: { messageId: 'msg-3' },
+        agentName: 'test'
+      })
+
+      const meta = channel.getMetadata('conv1')
+      // pendingMessageIds should be empty or not contain msg-3
+      expect(meta?.pendingMessageIds ?? []).not.toContain('msg-3')
+    })
+
+    it('should not modify pendingMessageIds when event has no messageId', async () => {
+      const subscriber = new MockSubscriber('sub1')
+      channel.subscribe('conv1', subscriber)
+
+      await channel.publish('conv1', {
+        conversationId: 'conv1',
+        type: 'chunk',
+        content: 'No messageId',
+        data: {},
+        agentName: 'test'
+      })
+
+      const meta = channel.getMetadata('conv1')
+      expect(meta?.pendingMessageIds ?? []).toHaveLength(0)
+    })
+  })
+
   describe('getActiveConversationCount', () => {
     it('returns number of active conversations', () => {
       expect(channel.getActiveConversationCount()).toBe(0)
