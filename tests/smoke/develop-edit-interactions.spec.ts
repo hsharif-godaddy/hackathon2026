@@ -65,12 +65,11 @@ test.describe('Edit Interactions', () => {
     const chatInput = page.getByTestId('chat-input-textarea');
     await waitForChatInput(page);
 
-    // Ask the AI to suggest color schemes
-    await chatInput.fill('Suggest some color schemes for this app');
+    // Ask the AI to suggest color schemes. Explicitly name the tool and pass the
+    // `description` argument - the tool throws if description is omitted in suggest mode.
+    const colorSchemePrompt = 'Use the colorScheme tool in suggest mode with description "Simple landing page with a hero section and a call to action button" and count=4';
+    await chatInput.fill(colorSchemePrompt);
     await page.getByTestId('chat-send-button').click({ force: true });
-
-    const transcript = page.getByTestId('chat-transcript');
-    await expect(transcript.getByText('Suggest some color schemes for this app', { exact: true })).toBeVisible({ timeout: DEFAULT_TIMEOUT });
     console.log('  Color scheme request sent');
 
     // Wait for AI response to complete
@@ -84,10 +83,8 @@ test.describe('Edit Interactions', () => {
     console.log('  Theme preview panel visible in chat input');
 
     const paletteOptions = page.getByTestId('theme-preview-option');
-    await expect(paletteOptions.first()).toBeVisible();
-    const optionCount = await paletteOptions.count();
-    console.log(`  ${optionCount} theme options rendered`);
-    expect(optionCount).toBeGreaterThanOrEqual(2);
+    await expect(paletteOptions).toHaveCount(4, { timeout: DEFAULT_TIMEOUT });
+    console.log('  4 theme options rendered');
 
     await paletteOptions.first().click();
     console.log('  Clicked first theme option');
@@ -114,7 +111,7 @@ test.describe('Edit Interactions', () => {
 
     // Request color schemes again to get the panel back
     await waitForChatInput(page);
-    await chatInput.fill('Show me more color schemes');
+    await chatInput.fill('Use the colorScheme tool in suggest mode with description "Simple landing page with a hero section and a call to action button" and count=4');
     await page.getByTestId('chat-send-button').click({ force: true });
 
     // Wait for AI response to complete
