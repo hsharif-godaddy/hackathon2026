@@ -250,7 +250,12 @@ Return ONLY the JSON object with the palettes array. No markdown, no code blocks
 export const colorSchemeAITool: Tool = createTool(
   `Generate and apply color schemes for the application.
 
-This tool has two modes:
+This tool has three modes:
+
+**SET MODE** - Generate and apply one color palette directly:
+- Uses AI to choose one palette based on the description
+- Applies the palette immediately without showing options
+- Use for automated flows, rebuilds, or initial setup
 
 **SUGGEST MODE** - Generate color palette options:
 - Uses AI to create diverse, beautiful color schemes
@@ -262,6 +267,11 @@ This tool has two modes:
 - Or provide explicit colors to apply directly
 - Optionally provide semantic color overrides (card, muted, border, etc.)
 - Updates all CSS color variables in one operation
+
+WHEN TO USE SET MODE:
+- Automated flows where you should choose and apply colors directly
+- Initial build or rebuild flows after content/design direction is known
+- User asks you to pick colors rather than show options
 
 WHEN TO USE SUGGEST MODE:
 - User asks for color options: "show me some purple color schemes"
@@ -279,7 +289,13 @@ WHEN TO USE APPLY MODE:
 - User specifies exact colors: "use #9333EA as primary"
 - User requests a specific named theme: "apply the dracula theme"
 
-WORKFLOW:
+WORKFLOW FOR SET MODE (automated flows):
+1. Agent: colorScheme({ mode: 'set', description: 'warm purple tones for bakery' })
+2. Tool generates ONE palette and applies it immediately
+3. Tool confirms which palette was applied
+4. No user interaction needed
+
+WORKFLOW FOR SUGGEST MODE (interactive flows):
 1. User: "Change colors to purple"
 2. You: colorScheme({ mode: 'suggest', description: 'purple color scheme', count: 4 })
 3. Tool returns widget with 4 purple palette options
@@ -294,13 +310,14 @@ CRITICAL OUTPUT RULES:
 - After calling apply mode: Use suggestedResponse to offer next steps
 
 IMPORTANT:
-- Always use 'suggest' mode first to show options
+- Use 'set' mode for automated flows where you should decide and apply immediately
+- Use 'suggest' mode first when the user wants options
 - Use 'apply' mode when user selects or specifies colors
 - The widget has built-in "Apply" buttons and instructions - no additional text needed
 - After apply mode, use suggestedResponse to offer next steps`,
   z.object({
     mode: z.enum(['suggest', 'apply', 'set']).describe('suggest: Generate palette options | apply: Apply a palette to CSS | set: Generate one palette and apply directly (non-interactive)'),
-    description: z.string().optional().describe('For suggest mode: What kind of colors? (e.g., "warm purple tones for bakery", "professional blue", "dark cyberpunk")'),
+    description: z.string().optional().describe('For suggest/set mode: What kind of colors? (e.g., "warm purple tones for bakery", "professional blue", "dark cyberpunk"). Required for suggest and set modes. Ignored for apply mode.'),
     count: z.number().min(2).max(6).default(4).describe('For suggest mode: Number of palette options to generate (2-6, default 4)'),
     theme: z.enum(['light', 'dark', 'both']).default('both').describe('For suggest mode: Generate light, dark, or both types of palettes'),
     paletteName: z.string().optional().describe('For apply mode: Name of a previously suggested palette to apply'),

@@ -231,7 +231,7 @@ bg-primary text-primary-foreground
 
 **For initial build (handoff from initial agent):**
 
-- Use `colorScheme({ mode: 'apply', description: '...' })` to set colors directly
+- Use `colorScheme({ mode: 'set', description: '...' })` to set colors directly
 - Do NOT use suggest mode during initial build - just pick appropriate colors based on design direction
 
 **For user-requested changes:**
@@ -377,7 +377,7 @@ Follow the BUILD ORDER phases in the handoff prompt. Each phase lists tasks that
 **CRITICAL for initial build:**
 
 - Use `fontTheme` with `mode: 'set'` - do NOT show font suggestions
-- Use `colorScheme` with `mode: 'apply'` - do NOT show color suggestions
+- Use `colorScheme` with `mode: 'set'` - do NOT show color suggestions
 - Follow the SECTION-SPECIFIC guidance from the handoff for each section's design
 - Follow the MOTION DESIGN guidance from the handoff for animations
 - Follow the SUGGESTED RESPONSES section from the handoff prompt exactly
