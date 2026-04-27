@@ -591,6 +591,50 @@ func TestHandleImageSlot_LogoCDNRedirect(t *testing.T) {
 	}
 }
 
+func TestHandleImageSlot_YouTubeThumbnailRedirect(t *testing.T) {
+	tmpDir := t.TempDir()
+	manifestPath := filepath.Join(tmpDir, "airo-media.json")
+
+	tests := []struct {
+		name string
+		url  string
+	}{
+		{"img.youtube.com thumbnail", "https://img.youtube.com/vi/dQw4w9WgXcQ/0.jpg"},
+		{"i.ytimg.com CDN", "https://i.ytimg.com/vi/dQw4w9WgXcQ/maxresdefault.jpg"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			manifest := httpproxy.ImageManifest{
+				"pages/home/video-thumb": {CurrentURL: tt.url},
+			}
+			data, err := json.Marshal(manifest)
+			if err != nil {
+				t.Fatalf("failed to marshal manifest: %v", err)
+			}
+			if err := os.WriteFile(manifestPath, data, 0600); err != nil {
+				t.Fatalf("failed to write manifest: %v", err)
+			}
+
+			cache := httpproxy.NewManifestCache(manifestPath)
+			handler := httpproxy.NewImageSlotHandler(cache, []string{filepath.Join(tmpDir, "public", "media")})
+
+			req := httptest.NewRequest(http.MethodGet, "/airo-assets/images/pages/home/video-thumb", nil)
+			rec := httptest.NewRecorder()
+
+			handler.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusFound {
+				t.Errorf("expected status 302, got: %d", rec.Code)
+			}
+			location := rec.Header().Get("Location")
+			if location != tt.url {
+				t.Errorf("expected redirect to %s, got: %s", tt.url, location)
+			}
+		})
+	}
+}
+
 func TestHandleImageSlot_SrcParam_LocalUpload(t *testing.T) {
 	tmpDir := t.TempDir()
 	manifestPath := filepath.Join(tmpDir, "airo-media.json")

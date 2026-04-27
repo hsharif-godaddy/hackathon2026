@@ -363,6 +363,8 @@ var allowedImageRedirectHosts = map[string]struct{}{
 	"isteam.wsimg.com":                          {}, // Logo CDN (genai-assistant logos)
 	"isteam.test-wsimg.com":                     {}, // Logo CDN (test environment)
 	"isteam.dev-wsimg.com":                      {}, // Logo CDN (dev environment)
+	"img.youtube.com":                           {}, // YouTube video thumbnails
+	"i.ytimg.com":                               {}, // YouTube image CDN
 }
 
 // ImageSlotHandler handles requests for image slots.
