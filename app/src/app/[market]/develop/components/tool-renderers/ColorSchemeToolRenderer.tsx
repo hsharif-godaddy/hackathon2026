@@ -29,9 +29,9 @@ function ColorSchemeToolRendererLegacy({
   const t = useTranslations()
   const [isModalOpen, setIsModalOpen] = useState(false)
 
-  const mode = input?.mode as 'suggest' | 'apply' | undefined
+  const mode = input?.mode as 'suggest' | 'apply' | 'set' | undefined
   const isSuggestMode = mode === 'suggest'
-  const isApplyMode = mode === 'apply'
+  const isAppliedMode = mode === 'apply' || mode === 'set'
 
   const resultObj = typeof result === 'object' && result !== null ? (result as Record<string, any>) : {}
   const widget = resultObj.widget as { widgetData?: { palettes?: unknown[] } } | undefined
@@ -45,7 +45,7 @@ function ColorSchemeToolRendererLegacy({
   let displayName = t('builder_tools_css_color_scheme', undefined, 'Color Scheme')
   if (isSuggestMode) {
     displayName = t('builder_tools_css_suggest_scheme_suggest', undefined, 'Color Scheme Suggestions')
-  } else if (isApplyMode && paletteName) {
+  } else if (isAppliedMode && paletteName) {
     const paletteTheme = (palette as unknown as { theme?: string })?.theme
     const themeLabel = paletteTheme === 'dark'
       ? t('builder_tools_css_color_dark', undefined, 'Dark')
@@ -53,7 +53,7 @@ function ColorSchemeToolRendererLegacy({
     displayName = `${t('builder_tools_css_color_scheme', undefined, 'Color Scheme')}: ${paletteName} ${themeLabel}`
   }
 
-  const hasDetails = (isSuggestMode && hasPalettes) || (isApplyMode && hasPalette)
+  const hasDetails = (isSuggestMode && hasPalettes) || (isAppliedMode && hasPalette)
 
   const fullMessage = typeof resultObj.message === 'string' ? resultObj.message : ''
 
@@ -77,7 +77,7 @@ function ColorSchemeToolRendererLegacy({
         </div>
       )}
 
-      {toolStatus === 'completed' && isApplyMode && hasPalette && (
+      {toolStatus === 'completed' && isAppliedMode && hasPalette && (
         <div className="mt-2 mb-2">
           <ColorPaletteWidget
             name={paletteName as string}
@@ -91,8 +91,8 @@ function ColorSchemeToolRendererLegacy({
         onClose={() => setIsModalOpen(false)}
         title={isSuggestMode ? t('builder_tools_css_suggest_title', undefined, 'Color Palette Options') : (paletteName as string)}
         palettes={isSuggestMode ? palettes : undefined}
-        palette={isApplyMode ? palette : undefined}
-        showDetailsTab={isApplyMode && !!fullMessage}
+        palette={isAppliedMode ? palette : undefined}
+        showDetailsTab={isAppliedMode && !!fullMessage}
         detailsContent={fullMessage}
       />
     </div>
@@ -104,16 +104,16 @@ function ColorSchemeToolRendererModern({
   input,
   result
 }: DefaultToolRendererProps) {
-  const mode = input?.mode as 'suggest' | 'apply' | undefined
-  const isApplyMode = mode === 'apply'
+  const mode = input?.mode as 'suggest' | 'apply' | 'set' | undefined
+  const isAppliedMode = mode === 'apply' || mode === 'set'
 
   const resultObj = typeof result === 'object' && result !== null ? (result as Record<string, unknown>) : {}
   const palette = resultObj.palette as (CompletePalette & { theme?: string }) | undefined
   const paletteName = (resultObj.paletteName as string | undefined) || (input?.paletteName as string | undefined) || 'Color Scheme'
   const hasPalette = palette && typeof palette === 'object'
 
-  // Only render the widget for apply mode when completed
-  if (toolStatus === 'completed' && isApplyMode && hasPalette) {
+  // Render direct-apply results from both apply and set modes.
+  if (toolStatus === 'completed' && isAppliedMode && hasPalette) {
     return (
       <div className="mt-2 mb-2">
         <ColorPaletteWidget

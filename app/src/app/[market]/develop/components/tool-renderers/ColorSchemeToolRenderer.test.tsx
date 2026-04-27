@@ -134,6 +134,36 @@ describe('ColorSchemeToolRenderer', () => {
     })
   })
 
+  describe('set mode - completed', () => {
+    it('should render ColorPaletteWidget when mode is set and status is completed', () => {
+      renderWithProviders(
+        <ColorSchemeToolRenderer
+          toolName="colorScheme"
+          toolStatus="completed"
+          input={{ mode: 'set', description: 'bold fitness colors' }}
+          result={{ palette: mockPalette, paletteName: 'Electric Lime Fitness Dark' }}
+        />
+      )
+
+      expect(screen.getByTestId('color-palette-option')).toBeInTheDocument()
+      expect(screen.getByText('Electric Lime Fitness Dark')).toBeInTheDocument()
+    })
+
+    it('should render set mode widget as readOnly', () => {
+      const { container } = renderWithProviders(
+        <ColorSchemeToolRenderer
+          toolName="colorScheme"
+          toolStatus="completed"
+          input={{ mode: 'set', description: 'bold fitness colors' }}
+          result={{ palette: mockPalette, paletteName: 'Electric Lime Fitness Dark' }}
+        />
+      )
+
+      expect(screen.getByTestId('color-palette-option').tagName).toBe('DIV')
+      expect(container.querySelector('button')).not.toBeInTheDocument()
+    })
+  })
+
   describe('apply mode - non-completed states', () => {
     it('should not render anything when status is pending', () => {
       const { container } = renderWithProviders(
@@ -168,6 +198,21 @@ describe('ColorSchemeToolRenderer', () => {
           toolStatus="failed"
           input={{ mode: 'apply', paletteName: 'Test' }}
           result={{ palette: mockPalette }}
+        />
+      )
+
+      expect(container.firstChild).toBeNull()
+    })
+  })
+
+  describe('set mode - non-completed states', () => {
+    it('should not render anything when status is running', () => {
+      const { container } = renderWithProviders(
+        <ColorSchemeToolRenderer
+          toolName="colorScheme"
+          toolStatus="running"
+          input={{ mode: 'set', description: 'bold fitness colors' }}
+          result={{ palette: mockPalette, paletteName: 'Electric Lime Fitness Dark' }}
         />
       )
 
