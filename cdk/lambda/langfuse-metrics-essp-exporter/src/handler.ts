@@ -13,7 +13,6 @@ import {
 
 const secretsClient = new SecretsManagerClient({ region: process.env.AWS_REGION });
 
-// Same JSON secret consumed by .github/workflows/langfuse-metrics-ingest.yml.
 // Shape: { LANGFUSE_BASE_URL, LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY }.
 const LANGFUSE_SECRET_NAME = process.env.LANGFUSE_SECRET_NAME ?? 'langfuse_test';
 const ES_SECRET_NAME = process.env.ES_SECRET_NAME ?? 'essp_deployment_credentials';

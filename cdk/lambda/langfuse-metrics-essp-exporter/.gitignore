@@ -8,6 +8,3 @@ dist/
 *.txt
 *.ndjson
 test-local.js
-
-# Keep this script local-only for now (manual dev loop), not part of PR.
-scripts/run-loop-local.ts

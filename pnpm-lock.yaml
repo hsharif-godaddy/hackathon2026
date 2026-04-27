@@ -1216,18 +1216,6 @@ importers:
         specifier: 'catalog:'
         version: 5.9.3
 
-  langfuse-trace-analyzer:
-    devDependencies:
-      '@types/node':
-        specifier: 'catalog:'
-        version: 22.18.12
-      tsx:
-        specifier: 'catalog:'
-        version: 4.21.0
-      typescript:
-        specifier: 'catalog:'
-        version: 5.9.3
-
   packages/ai-common:
     dependencies:
       '@ai-sdk/provider':

@@ -9,7 +9,6 @@ packages:
   - "debug-console"
   - "agentic-qa"
   - "agentic-qa-langfuse"
-  - "langfuse-trace-analyzer"
   - "design-rag"
   - "ts-bridge"
   - "corpus-eval"

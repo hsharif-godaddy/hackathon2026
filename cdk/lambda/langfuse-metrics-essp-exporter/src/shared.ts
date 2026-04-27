@@ -69,8 +69,7 @@ export interface EsDocument {
 
 export const ES_INDEX = 'langfuse-metrics-hourly';
 
-// Langfuse base URL / keys are read from the `langfuse_test` Secrets Manager
-// JSON (same secret used by .github/workflows/langfuse-metrics-ingest.yml).
+// Langfuse base URL / keys are read from the `langfuse_test` Secrets Manager JSON.
 //
 // NOTE on "test" in the URL: we are still using the test Langfuse cluster as
 // our de facto prod. Do NOT just point this at the EventBridge-backed Langfuse
