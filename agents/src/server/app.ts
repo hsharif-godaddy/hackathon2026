@@ -183,7 +183,7 @@ import compression from 'compression';
 import { createServer } from 'http';
 
 import { corsMiddleware, timingAllowOriginMiddleware, errorHandler, notFoundHandler, requestLogger, jwtAuthMiddleware, validateProductAccess } from './middleware/index.js';
-import { agentsRouter, appsRouter, chatRouter, healthRouter, diagnosticsRouter, gitRouter, debugRouter, filesRouter, filesPublicRouter, publishRouter, downloadRouter, dbRouter, dbImportRouter, todoListRouter, securityScanRouter, securityMisconfigScanRouter, vulnerabilityScanRouter, secretsScanRouter,oauthRouter, videoRouter, conversationsRouter, qaAnalyzeRouter, gitRemoteRouter, goLiveRouter, socialRouter, customerLogsRouter, zipImportRouter, shareRouter, mediaRouter, modelsRouter, profilesRouter, transferValidateRouter, runtimeErrorsRouter, brandDataRouter } from './routes/index.js';
+import { agentsRouter, appsRouter, chatRouter, healthRouter, diagnosticsRouter, gitRouter, debugRouter, filesRouter, filesPublicRouter, publishRouter, downloadRouter, dbRouter, dbImportRouter, todoListRouter, securityScanRouter, securityMisconfigScanRouter, vulnerabilityScanRouter, secretsScanRouter, oauthRouter, videoRouter, conversationsRouter, qaAnalyzeRouter, gitRemoteRouter, goLiveRouter, socialRouter, customerLogsRouter, zipImportRouter, shareRouter, mediaRouter, modelsRouter, profilesRouter, transferValidateRouter, runtimeErrorsRouter, brandDataRouter } from './routes/index.js';
 // Phase 3: Replace legacy WebSocket with AI-Lib WebSocket server
 import { setupAILibWebSocketServer, getWebSocketServerInfo, getGitHookService } from './ai-lib-websocket-server.js';
 import { getDatabase } from '../database/index.js';
@@ -297,6 +297,10 @@ app.get('/', (req, res) => {
 // File serving with signed URLs - must be before JWT-protected routes
 app.use('/files', filesPublicRouter);
 
+// Share router before global JWT: public GET /api/share/validate/:token (preview proxy, no auth header).
+// POST/GET /apps/:id/share still use auth on the share router.
+app.use('/', shareRouter);
+
 // Protected routes: JWT auth + product access applied once via group router
 const protectedRouter = Router();
 protectedRouter.use(jwtAuthMiddleware.authenticate, validateProductAccess);
@@ -332,10 +336,6 @@ protectedRouter.use('/', profilesRouter);
 protectedRouter.use('/', brandDataRouter);
 
 app.use(protectedRouter);
-
-// Share router handles JWT auth internally for protected routes;
-// public route (/api/share/validate/:token) needs no auth
-app.use('/', shareRouter);
 
 // Error handling
 app.use(notFoundHandler);
