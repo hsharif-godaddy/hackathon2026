@@ -1,0 +1,24 @@
+{
+  "name": "langfuse-metrics-essp-exporter",
+  "version": "1.0.0",
+  "description": "Sync Langfuse hourly metrics to Elasticsearch (ESSP) for the tools-behavior dashboard",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "backfill-langfuse": "tsx scripts/backfill-langfuse-to-es.ts"
+  },
+  "dependencies": {
+    "@aws-sdk/client-secrets-manager": "^3.1027.0",
+    "@elastic/elasticsearch": "^8.17.0",
+    "dotenv": "^16.4.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  },
+  "overrides": {
+    "fast-xml-parser": ">=5.3.5"
+  }
+}

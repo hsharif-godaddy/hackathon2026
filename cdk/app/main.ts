@@ -7,6 +7,7 @@ import { AiroJWTKeyStack } from "../lib/airo-jwt-key-stack";
 import { MonitoringStack } from '../lib/monitoring-stack';
 import { GocaasSpendLambdaStack } from "../lib/gocaas-spend-lambda-stack";
 import { ImageSearchStack } from "../lib/image-search-stack";
+import { LangfuseMetricsEsspExporterStack } from "../lib/langfuse-metrics-essp-exporter-stack";
 import { EvalSnapshotsStack } from "../lib/eval-snapshots-stack";
 import { FeedbackS3Stack } from "../lib/feedback-s3-stack";
 import { LakeFormationAdminsStack } from "../lib/lake-formation-admins-stack";
@@ -49,6 +50,9 @@ async function main() {
 
   // Create GoCode Spend ESSP Lambda stack
   new GocaasSpendLambdaStack(app, 'GocaasSpendLambdaStack', { env });
+
+  // Create Langfuse Metrics ESSP Exporter Lambda stack (5-min cron, hourly buckets)
+  new LangfuseMetricsEsspExporterStack(app, 'LangfuseMetricsEsspExporterStack', { env });
 
   // Create Image Search Service infrastructure (S3 bucket for analysis cache)
   new ImageSearchStack(app, 'ImageSearchStack', { env });

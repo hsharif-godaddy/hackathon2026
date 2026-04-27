@@ -24,6 +24,7 @@ on:
           - "PostgresStack"
           - "AiroJWTKeyStack"
           - "GocaasSpendLambdaStack"
+          - "LangfuseMetricsEsspExporterStack"
           - "EvalSnapshotsStack"
           - "FeedbackS3Stack"
           - "LakeFormationAdminsStack"
@@ -134,6 +135,7 @@ jobs:
           echo @gd-datalake:registry=https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/ >> .npmrc
           echo "//gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/:_authToken=${{ env.ARTIFACTORY_NPM_TOKEN }}" >> .npmrc
           cp .npmrc lambda/gocode-spend-essp-exporter/.npmrc
+          cp .npmrc lambda/langfuse-metrics-essp-exporter/.npmrc
           cp .npmrc lambda/qdrant-tls-bootstrap/.npmrc
 
       - name: Install dependencies
