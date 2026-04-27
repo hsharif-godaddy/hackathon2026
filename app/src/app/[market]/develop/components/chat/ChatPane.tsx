@@ -22,8 +22,10 @@ import PanelSkeleton, { AnalyticsPanelSkeleton } from '@/app/[market]/develop/co
 import PersistentTodoList from '@/app/[market]/develop/components/PersistentTodoList'
 import PlanTracker from '@/app/[market]/develop/components/PlanTracker'
 import StreamingMessageList from '@/app/[market]/develop/components/StreamingMessageList'
-import { ChatTab, SettingsSection } from '@/app/[market]/develop/components/types'
+import { ChatTab } from '@/app/[market]/develop/components/types'
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
+import { isColorSuggestPanelVisible } from '@/app/[market]/develop/components/utils/colorSuggestPanelVisibility'
+import { findLatestColorSchemeSuggest } from '@/app/[market]/develop/components/utils/findLatestColorSchemeSuggest'
 import { useAuthContext } from '@/components/providers/AuthProvider'
 import { useAotPreload } from '@/hooks/useAotPreload'
 import { useChatTabs } from '@/hooks/useChatTabs'
@@ -194,6 +196,7 @@ export default function ChatPane({
   const { data: subscription } = useSubscription()
   useConversionEvent(subscription)
   const { data: areChatPlansEnabled } = useSwitchboard('airo-builder-chat-plans')
+  const { data: isThemeSelectionChatEnabled } = useSwitchboard('airo-builder-theme-selection-chat')
 
   // Unified grants fetch - works for both BMS and legacy paths
   const { data: grants, isFetching: isGrantsFetching } = useCreditGrants({
@@ -353,6 +356,19 @@ export default function ChatPane({
 
   // Only show messages and state if they belong to the current app context
   const visibleMessages = (currentAppId === appId) ? allMessages : []
+  const activeColorSchemeSuggestRaw = useMemo(
+    () =>
+      isThemeSelectionChatEnabled && currentAppId === appId
+        ? findLatestColorSchemeSuggest(visibleMessages)
+        : null,
+    [appId, currentAppId, isThemeSelectionChatEnabled, visibleMessages]
+  )
+  const activeColorSchemeSuggest = useMemo(() => {
+    if (!isThemeSelectionChatEnabled) return null
+    if (!activeColorSchemeSuggestRaw) return null
+    if (!isColorSuggestPanelVisible(visibleMessages, activeColorSchemeSuggestRaw, t)) return null
+    return activeColorSchemeSuggestRaw
+  }, [activeColorSchemeSuggestRaw, isThemeSelectionChatEnabled, t, visibleMessages])
   const safeInputValue = (currentAppId === appId) ? (inputValue || '') : ''
   const safeAiEditContext = (currentAppId === appId) ? aiEditContext : null
   const safeBuildErrorContext = (currentAppId === appId) ? buildErrorContext : null
@@ -1017,6 +1033,7 @@ export default function ChatPane({
             </div>
           )}
           <ChatInput
+            activeColorSchemeSuggest={activeColorSchemeSuggest}
             appId={appId}
             inputValue={safeInputValue}
             isDisabled={isProcessing}
@@ -1129,6 +1146,7 @@ export default function ChatPane({
               </div>
             )}
             <ChatInput
+              activeColorSchemeSuggest={activeColorSchemeSuggest}
               appId={appId}
               inputValue={safeInputValue}
               isDisabled={isProcessing}

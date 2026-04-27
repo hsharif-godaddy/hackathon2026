@@ -1,5 +1,5 @@
+import { getWidgetComponent } from '@/app/[market]/develop/components/widgets'
 import { logger } from '@/lib/request-context'
-import { getWidgetComponent } from './widgets'
 
 interface WidgetRendererProps {
   widgetData: {
@@ -29,7 +29,6 @@ export default function WidgetRenderer({ widgetData, className = '' }: WidgetRen
     return null
   }
 
-  // Extract all props except 'type' to pass to the widget component
   const { type: _type, ...widgetProps } = widgetData
 
   logger.info('widget-renderer.component-found', {
@@ -43,4 +42,3 @@ export default function WidgetRenderer({ widgetData, className = '' }: WidgetRen
     </div>
   )
 }
-

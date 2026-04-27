@@ -3,8 +3,8 @@
 import { useEffect, useState } from 'react'
 import Modal from '@ux/modal'
 
+import type { CompletePalette } from '@/app/[market]/develop/components/types/colorScheme'
 import { getDisplayColors } from '@/app/[market]/develop/components/utils/colorPaletteUtils'
-import type { CompletePalette } from '@/app/[market]/develop/components/widgets/ColorPaletteGridWidget'
 import { useTranslations } from '@/hooks/useTranslations'
 
 /**

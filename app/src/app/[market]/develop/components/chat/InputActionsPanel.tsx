@@ -1,17 +1,25 @@
 'use client'
 
 import { AnimatePresence, motion } from 'framer-motion'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
 import { useSendUserMessage } from '@/app/[market]/develop/components/chat/ChatContext'
+import CollapsibleChatInputSection, { CollapseChevron } from '@/app/[market]/develop/components/chat/CollapsibleChatInputSection'
+import ThemePreviewInputPanel from '@/app/[market]/develop/components/chat/ThemePreviewInputPanel'
 import { useLatestNBAs } from '@/app/[market]/develop/components/chat/useLatestNBAs'
 import ThinkingIndicator from '@/app/[market]/develop/components/ThinkingIndicator'
 import OptionButton from '@/app/[market]/develop/components/tool-renderers/OptionButton'
+import { ViewMode } from '@/app/[market]/develop/components/types'
+import { findLatestAppliedColorScheme } from '@/app/[market]/develop/components/utils/findLatestAppliedColorScheme'
+import type { ActiveColorSchemeSuggest } from '@/app/[market]/develop/components/utils/findLatestColorSchemeSuggest'
+import { previewThemeInIframe } from '@/app/[market]/develop/components/utils/previewThemeInIframe'
+import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
 import { todoListService } from '@/services/TodoListService'
-import { useIsActivelyStreaming, useIsLoading } from '@/stores/useStreamingConversationStore'
+import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
+import { useIsActivelyStreaming, useIsLoading, useMessages } from '@/stores/useStreamingConversationStore'
 import type { TodoItem, TodoList } from '@/stores/useTodoListStore'
 import { useCurrentList, useTodoListStore, useViewState } from '@/stores/useTodoListStore'
 
@@ -29,7 +37,13 @@ const MAX_COMBINED_ITEMS = 4
  * - Agent idle + data → "Up next" list (max 4 items) with "View plan" expand
  * - Agent working → compact "thinking..." row with plan count expand
  */
-export default function InputActionsPanel() {
+type InputActionsPanelProps = {
+  activeColorSchemeSuggest?: ActiveColorSchemeSuggest | null
+}
+
+
+/** @deprecated Remove when `airo-builder-theme-selection-chat` is permanently on */
+function InputActionsPanelLegacy() {
   const t = useTranslations()
   const sendUserMessage = useSendUserMessage()
   const nbaData = useLatestNBAs()
@@ -175,8 +189,12 @@ export default function InputActionsPanel() {
           })
         }
         // If no list with undone items, keep current (completed) list
-      } catch {
-        // Silently ignore — keep current list
+      } catch (error) {
+        logger.warn('input-actions-panel.auto-switch-list-failed', {
+          appId,
+          completedListId,
+          error,
+        })
       }
     }
     switchToIncompleteList()
@@ -794,4 +812,531 @@ function TodoListModal({
     </AnimatePresence>,
     document.body
   )
+}
+
+function InputActionsPanelThemeSelection({ activeColorSchemeSuggest = null }: InputActionsPanelProps) {
+  const t = useTranslations()
+  const sendUserMessage = useSendUserMessage()
+  const nbaData = useLatestNBAs()
+  const currentList = useCurrentList()
+  const viewState = useViewState()
+  const isStreaming = useIsActivelyStreaming()
+  const isLoading = useIsLoading()
+  const isProcessing = isStreaming || isLoading
+  const messages = useMessages()
+  const viewMode = useDevelopPageStore((state) => state.viewMode)
+
+  // Get the currently applied theme to prepend to suggestions
+  const currentAppliedTheme = useMemo(() => findLatestAppliedColorScheme(messages), [messages])
+
+  const [fullPlanExpanded, setFullPlanExpanded] = useState(false)
+  const [continueBuildingExpanded, setContinueBuildingExpanded] = useState(true)
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [dismissedColorSuggestId, setDismissedColorSuggestId] = useState<string | null>(null)
+  const [selectedThemeIndex, setSelectedThemeIndex] = useState<number>(0)
+
+  const items = currentList?.items ?? []
+  const uncompletedItems = items.filter(item => !item.completed)
+  const completedItems = items.filter(item => item.completed)
+  const hasPlan = !!currentList && items.length > 0
+  const totalItems = items.length
+  const completedCount = completedItems.length
+
+  // NBAs are only shown when agent is idle
+  const hasNBAs = !isProcessing && !!nbaData && nbaData.suggestions.length > 0
+
+  // Client-side dedup: strip NBAs that overlap with uncompleted plan items.
+  // The agent prompt discourages this, but older responses or edge cases can
+  // still produce duplicates like "Build the about page" ≈ "About page".
+  const dedupedNBASuggestions = hasNBAs
+    ? nbaData!.suggestions.filter(suggestion => {
+        const nbaText = suggestion.text.toLowerCase()
+        return !uncompletedItems.some(item => {
+          const planText = item.title.toLowerCase()
+          // Match if one contains the other, or they share the same key words
+          return nbaText.includes(planText) || planText.includes(nbaText)
+        })
+      })
+    : []
+
+  // Build combined "Up next" list (max 4 items):
+  // - Always reserve at least 1 slot for a plan item if a plan exists
+  // - NBAs fill first; plan items fill the rest
+  // When expanded, plan preview items disappear and the full plan section takes over.
+  const maxNBASlots = hasPlan ? MAX_COMBINED_ITEMS - 1 : MAX_COMBINED_ITEMS
+  const nbaSuggestions = dedupedNBASuggestions.slice(0, maxNBASlots)
+  const remainingSlots = MAX_COMBINED_ITEMS - nbaSuggestions.length
+  const planPreviewItems = uncompletedItems.slice(0, remainingSlots)
+
+  const hasCombinedItems = nbaSuggestions.length > 0 || planPreviewItems.length > 0
+  const showColor = Boolean(activeColorSchemeSuggest) && dismissedColorSuggestId !== activeColorSchemeSuggest?.toolCallId
+  const isPreviewMode = viewMode === ViewMode.PREVIEW || viewMode === ViewMode.EDIT
+
+  // Prepend the current applied theme to the suggestions if it exists, filtering duplicates by name
+  const palettesWithCurrent = useMemo(
+    () =>
+      activeColorSchemeSuggest && currentAppliedTheme
+        ? [currentAppliedTheme, ...activeColorSchemeSuggest.palettes].filter(
+            (palette, index, arr) => arr.findIndex(p => p.name === palette.name) === index
+          )
+        : activeColorSchemeSuggest?.palettes ?? [],
+    [activeColorSchemeSuggest, currentAppliedTheme]
+  )
+
+  // Auto-open "Continue Building" when content is available
+  useEffect(() => {
+    if (hasCombinedItems || hasPlan || showColor) {
+      setContinueBuildingExpanded(true)
+    }
+  }, [showColor, hasCombinedItems, hasPlan])
+
+  // Reset dismissed state and theme selection when color suggest changes
+  useEffect(() => {
+    if (activeColorSchemeSuggest?.toolCallId) {
+      setDismissedColorSuggestId(null)
+      setSelectedThemeIndex(0)
+    }
+  }, [activeColorSchemeSuggest?.toolCallId])
+
+  // Track selected theme index in a ref to avoid effect over-firing
+  const selectedThemeIndexRef = useRef(selectedThemeIndex)
+  useEffect(() => {
+    selectedThemeIndexRef.current = selectedThemeIndex
+  }, [selectedThemeIndex])
+
+  // Handle theme selection when switching view modes
+  useEffect(() => {
+    // If switching TO Brand Book mode (which resets the iframe), reset selection
+    if (viewMode === ViewMode.BRAND) {
+      setSelectedThemeIndex(0)
+    }
+
+    // If in preview/edit mode and have a selection, apply it
+    if (isPreviewMode && selectedThemeIndexRef.current > 0 && palettesWithCurrent[selectedThemeIndexRef.current]) {
+      const palette = palettesWithCurrent[selectedThemeIndexRef.current]
+      previewThemeInIframe(palette.name, palette.palette)
+    }
+  }, [viewMode, palettesWithCurrent, isPreviewMode])
+
+  // Track which list ID we last auto-revealed, so a new list triggers again
+  const revealedListIdRef = useRef<string | null>(null)
+  // Track whether the current expansion was triggered by us (auto) so we know
+  // whether to auto-collapse. If the user opened it manually, leave it alone.
+  const autoExpandedRef = useRef(false)
+  // Ref-based timer so it survives effect re-runs without being cleared
+  const autoCollapseTimerRef = useRef<NodeJS.Timeout | null>(null)
+  // Ref to track fullPlanExpanded state without triggering effect re-runs
+  const fullPlanExpandedRef = useRef(fullPlanExpanded)
+
+  // Keep fullPlanExpandedRef in sync with state
+  useEffect(() => {
+    fullPlanExpandedRef.current = fullPlanExpanded
+  }, [fullPlanExpanded])
+
+  // Clean up auto-collapse timer on unmount only
+  useEffect(() => {
+    return () => {
+      if (autoCollapseTimerRef.current) {
+        clearTimeout(autoCollapseTimerRef.current)
+      }
+    }
+  }, [])
+
+  function startAutoCollapseTimer() {
+    if (autoCollapseTimerRef.current) clearTimeout(autoCollapseTimerRef.current)
+    autoCollapseTimerRef.current = setTimeout(() => {
+      if (autoExpandedRef.current) {
+        setFullPlanExpanded(false)
+        autoExpandedRef.current = false
+      }
+      autoCollapseTimerRef.current = null
+    }, 5000)
+  }
+
+  // Collapse full plan when agent starts working — but not if we just
+  // auto-revealed a new list (let the 5s timer handle that instead).
+  useEffect(() => {
+    if (isProcessing && !autoExpandedRef.current) {
+      setFullPlanExpanded(false)
+    }
+  }, [isProcessing])
+
+  // Auto-expand plan when first created (new list ID) or when an item is
+  // checked off (viewState === 'update'). Auto-collapse after 5s.
+  // New list reveals are allowed even during processing.
+  const currentListId = currentList?.id ?? null
+
+  useEffect(() => {
+    if (!hasPlan) return
+
+    // Don't auto-expand plan when there's an active color scheme suggestion
+    if (activeColorSchemeSuggest) {
+      // Only collapse if it was auto-expanded, don't touch user-opened plans
+      if (autoExpandedRef.current && fullPlanExpandedRef.current) {
+        setFullPlanExpanded(false)
+        autoExpandedRef.current = false
+      }
+      return
+    }
+
+    const isNewList = currentListId !== revealedListIdRef.current
+    const isItemUpdate = viewState === 'update'
+    // Trigger on: new list (even during processing), or item checked off (even during processing)
+    if (!isNewList && !isItemUpdate) return
+
+    revealedListIdRef.current = currentListId
+
+    // If already open by user, leave it — don't auto-collapse
+    if (fullPlanExpandedRef.current && !autoExpandedRef.current) return
+
+    // Open it and start auto-collapse timer
+    autoExpandedRef.current = true
+    setFullPlanExpanded(true)
+    startAutoCollapseTimer()
+  }, [activeColorSchemeSuggest, viewState, hasPlan, isProcessing, currentListId])
+
+  // When all items in the current list are completed, auto-switch to another
+  // list that has undone items. If none exist, keep the completed list showing.
+  const allCompleted = hasPlan && uncompletedItems.length === 0
+  const lastCompletedListIdRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (!allCompleted || !currentList?.appId) {
+      // Reset when switching away from a completed list
+      if (!allCompleted) lastCompletedListIdRef.current = null
+      return
+    }
+    // Only check once per completed list
+    if (lastCompletedListIdRef.current === currentList.id) return
+    lastCompletedListIdRef.current = currentList.id
+
+    const appId = currentList.appId
+    const completedListId = currentList.id
+    async function switchToIncompleteList() {
+      try {
+        const allLists = await todoListService.getAllLists(appId)
+        const listWithUndone = allLists.find(
+          list => list.id !== completedListId && list.items?.some(item => !item.completed)
+        )
+        if (listWithUndone) {
+          // Guard: if user navigated to a different app while fetch was in-flight, bail
+          const currentStoreList = useTodoListStore.getState().currentList
+          if (currentStoreList?.appId !== appId) return
+
+          // Reset revealed ref so the new list triggers an auto-reveal
+          revealedListIdRef.current = null
+          useTodoListStore.getState().setCurrentList(listWithUndone)
+          logger.debug('input-actions-panel.auto-switch-list', {
+            fromListId: completedListId,
+            toListId: listWithUndone.id,
+            toListName: listWithUndone.name,
+          })
+        }
+        // If no list with undone items, keep current (completed) list
+      } catch (error) {
+        logger.warn('input-actions-panel-theme-selection.auto-switch-list-failed', {
+          appId,
+          completedListId,
+          error,
+        })
+      }
+    }
+    switchToIncompleteList()
+  }, [allCompleted, currentListId])
+
+  function handleSuggestionClick(text: string) {
+    if (isProcessing || !sendUserMessage) return
+    sendUserMessage(text, { isActionRequest: true })
+  }
+
+  function handlePlanItemClick(item: TodoItem) {
+    if (isProcessing || !sendUserMessage) return
+
+    sendUserMessage(item.title, {
+      isActionRequest: true,
+      customContext: {
+        type: 'plan_item',
+        data: {
+          action: 'execute',
+          itemId: item.id,
+          listId: item.listId,
+          title: item.title,
+          description: item.description || null,
+          steps: [
+            `Execute the work for "${item.title}". Do not ask for clarification — build or implement it now.`,
+            item.description ? `Use these details: ${item.description}` : null,
+            `When done, call todoList({ operation: 'mark_done', itemIds: ['${item.id}'] })`,
+            'If the work is already done (page/feature exists), verify and call mark_done immediately.',
+            'If ALL items in the list are now complete, call todoList({ operation: \'list_all\' }) then todoList({ operation: \'select_list\', listId: \'<id>\' }) to switch to the next incomplete list.',
+          ].filter(Boolean),
+        },
+        persistence: 'ephemeral',
+        source: 'plan-item',
+      },
+    })
+  }
+
+  function handleColorCancel() {
+    if (activeColorSchemeSuggest) {
+      setDismissedColorSuggestId(activeColorSchemeSuggest.toolCallId)
+    }
+    setSelectedThemeIndex(0)
+  }
+
+
+  // ── Mode C: Agent working ────────────────────────────────────────────────
+  if (isProcessing) {
+    return (
+      <>
+
+        {/* Thinking indicator with optional plan toggle (hide plan when applying theme) */}
+        <div className="flex items-center justify-between px-1 py-0.5 mb-1 min-h-[22px]">
+          <ThinkingIndicator active={true} inline={true} />
+          {hasPlan && !showColor && (
+            <button
+              type="button"
+              className="flex items-center gap-0.5 text-xs text-muted-foreground hover:text-foreground transition-colors flex-shrink-0 ml-2"
+              onClick={() => {
+                setFullPlanExpanded(v => !v)
+                autoExpandedRef.current = false
+              }}
+            >
+              <span>{currentList.name}</span>
+              <CollapseChevron expanded={fullPlanExpanded} />
+            </button>
+          )}
+        </div>
+
+        {/* Nested plan details when expanded (hide when applying theme) */}
+        <AnimatePresence initial={false}>
+          {hasPlan && fullPlanExpanded && !showColor && (
+            <motion.div
+              key="full-plan-processing"
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+              className="overflow-hidden mb-1"
+            >
+              <div className="max-h-48 overflow-y-auto flex flex-col gap-0.5 px-1">
+                {[...completedItems, ...uncompletedItems].length > 0 ? (
+                  <>
+                    {completedItems.map((item) => (
+                      <div
+                        key={item.id}
+                        className="flex items-center gap-1.5 px-1.5 py-0.5 rounded-lg"
+                      >
+                        <CircularCheckbox checked />
+                        <span className="text-sm line-through text-muted-foreground truncate">{item.title}</span>
+                      </div>
+                    ))}
+                    {uncompletedItems.map((item) => (
+                      <div
+                        key={item.id}
+                        className="flex items-center gap-1.5 px-1.5 py-0.5 rounded-lg opacity-50"
+                      >
+                        <CircularCheckbox checked={false} />
+                        <span className="text-sm text-muted-foreground truncate">{item.title}</span>
+                      </div>
+                    ))}
+                  </>
+                ) : (
+                  <div className="text-xs text-muted-foreground text-center py-1">
+                    {t('builder_common_todo_no_items')}
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <div className="-mx-1.5 border-b border-border mb-1" />
+
+        <TodoListModal
+          isOpen={isModalOpen}
+          onClose={() => setIsModalOpen(false)}
+          list={currentList}
+          t={t}
+        />
+      </>
+    )
+  }
+
+  // ── Mode A: Agent idle, nothing to show ──────────────────────────────────
+  if (!hasCombinedItems && !hasPlan && !showColor) {
+    return null
+  }
+
+  const continueBuildingTitle = showColor
+    ? t('builder_theme_preview_panel_title', undefined, 'Choose a color scheme')
+    : nbaSuggestions.length > 0 && nbaData?.question
+      ? nbaData.question
+      : t('builder_todo_continue_building')
+
+  const continueBuildingTodoBody = (
+    <div className="flex flex-col gap-0.5">
+      {planPreviewItems.map((item, index) => (
+        <PlanOptionButton
+          key={item.id}
+          item={item}
+          disabled={isProcessing}
+          onClick={() => handlePlanItemClick(item)}
+          animationDelay={index * 0.1}
+        />
+      ))}
+
+      {hasPlan && (
+        <div className="mt-0.5">
+          <div className="flex min-h-[22px] items-center justify-between px-1 py-0.5">
+            <div className="flex items-center gap-1 min-w-0">
+              <span className="text-xs font-medium text-muted-foreground truncate">{currentList.name}</span>
+              <button
+                type="button"
+                aria-label={t('builder_todo_details')}
+                className="flex-shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setIsModalOpen(true)
+                }}
+              >
+                <svg className="w-2 h-2" fill="none" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" stroke="currentColor">
+                  <circle cx="12" cy="12" r="10" />
+                  <path d="M12 16v-4M12 8h.01" />
+                </svg>
+              </button>
+            </div>
+            <button
+              type="button"
+              className="flex shrink-0 items-center gap-0.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+              onClick={() => {
+                setFullPlanExpanded(v => !v)
+                autoExpandedRef.current = false
+              }}
+              aria-expanded={fullPlanExpanded}
+            >
+              <span>
+                {t('builder_todo_view_plan', { completed: completedCount, total: totalItems })}
+                {viewState === 'update' && (
+                  <span className="ml-1 text-intents-info-color font-medium">
+                    {t('builder_todo_updated')}
+                  </span>
+                )}
+              </span>
+              <CollapseChevron expanded={fullPlanExpanded} />
+            </button>
+          </div>
+          <AnimatePresence initial={false}>
+            {fullPlanExpanded && (
+              <motion.div
+                key="full-plan-nested"
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+                className="overflow-hidden"
+              >
+                <div className="max-h-48 overflow-y-auto flex flex-col gap-0.5 pl-2">
+                  {[...completedItems, ...uncompletedItems].length > 0 ? (
+                    <>
+                      {completedItems.map((item) => (
+                        <div
+                          key={item.id}
+                          className="flex items-center gap-1.5 px-1.5 py-0.5 rounded-lg"
+                        >
+                          <CircularCheckbox checked />
+                          <span className="text-sm line-through text-muted-foreground truncate">{item.title}</span>
+                        </div>
+                      ))}
+                      {uncompletedItems.map((item, index) => (
+                        <PlanOptionButton
+                          key={item.id}
+                          item={item}
+                          disabled={isProcessing}
+                          onClick={() => handlePlanItemClick(item)}
+                          animationDelay={index * 0.05}
+                        />
+                      ))}
+                    </>
+                  ) : (
+                    <div className="text-xs text-muted-foreground text-center py-1">
+                      {t('builder_common_todo_no_items')}
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      )}
+
+      {nbaSuggestions.map((suggestion, index) => (
+        <OptionButton
+          key={`nba-${index}`}
+          text={suggestion.text}
+          disabled={isProcessing}
+          onClick={() => handleSuggestionClick(suggestion.text)}
+          animationDelay={(planPreviewItems.length + index) * 0.1}
+          isSelectable={true}
+        />
+      ))}
+    </div>
+  )
+
+  // ── Mode B: Agent idle, has data ─────────────────────────────────────────
+  return (
+    <>
+      {(hasCombinedItems || hasPlan || showColor) && (
+        <>
+          {showColor && activeColorSchemeSuggest ? (
+            <ThemePreviewInputPanel
+              key={activeColorSchemeSuggest.toolCallId}
+              toolCallId={activeColorSchemeSuggest.toolCallId}
+              palettes={palettesWithCurrent}
+              onCancel={handleColorCancel}
+              selectedIndex={selectedThemeIndex}
+              onSelectedIndexChange={setSelectedThemeIndex}
+              disabled={!isPreviewMode}
+            >
+              {({ body, footer }) => (
+                <CollapsibleChatInputSection
+                  title={continueBuildingTitle}
+                  expanded={continueBuildingExpanded}
+                  onExpandedChange={setContinueBuildingExpanded}
+                  footer={footer}
+                >
+                  {body}
+                </CollapsibleChatInputSection>
+              )}
+            </ThemePreviewInputPanel>
+          ) : (
+            <CollapsibleChatInputSection
+              title={continueBuildingTitle}
+              expanded={continueBuildingExpanded}
+              onExpandedChange={setContinueBuildingExpanded}
+            >
+              {continueBuildingTodoBody}
+            </CollapsibleChatInputSection>
+          )}
+          <div className="-mx-1.5 mb-1 border-b border-border" />
+        </>
+      )}
+
+      <TodoListModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        list={currentList}
+        t={t}
+      />
+    </>
+  )
+}
+
+// ── Sub-components ────────────────────────────────────────────────────────────
+
+export default function InputActionsPanel({ activeColorSchemeSuggest = null }: InputActionsPanelProps) {
+  const { data: isThemeSelectionChatEnabled } = useSwitchboard('airo-builder-theme-selection-chat')
+  if (isThemeSelectionChatEnabled) {
+    return <InputActionsPanelThemeSelection activeColorSchemeSuggest={activeColorSchemeSuggest} />
+  }
+  return <InputActionsPanelLegacy />
 }

@@ -1,0 +1,452 @@
+/**
+ * @vitest-environment jsdom
+ */
+import '@testing-library/jest-dom'
+
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { screen } from '@testing-library/react'
+
+import { ViewMode } from '@/app/[market]/develop/components/types'
+import type { ColorSchemePaletteOption } from '@/app/[market]/develop/components/utils/findLatestColorSchemeSuggest'
+import { previewThemeInIframe } from '@/app/[market]/develop/components/utils/previewThemeInIframe'
+import * as DevelopPageStore from '@/stores/useDevelopPageStore'
+import * as StreamingStore from '@/stores/useStreamingConversationStore'
+import * as TodoListStore from '@/stores/useTodoListStore'
+import { renderWithProviders } from '@/tests/test-utils'
+import * as ChatContext from './ChatContext'
+import InputActionsPanel from './InputActionsPanel'
+import * as useLatestNBAsModule from './useLatestNBAs'
+
+vi.mock('./ChatContext', () => ({
+  useSendUserMessage: vi.fn()
+}))
+
+vi.mock('@/stores/useStreamingConversationStore', () => ({
+  useIsActivelyStreaming: vi.fn(),
+  useIsLoading: vi.fn(),
+  useMessages: vi.fn()
+}))
+
+vi.mock('@/stores/useTodoListStore', () => ({
+  useCurrentList: vi.fn(),
+  useViewState: vi.fn(),
+  useTodoListStore: {
+    getState: vi.fn(() => ({
+      currentList: null,
+      setCurrentList: vi.fn()
+    }))
+  }
+}))
+
+vi.mock('./useLatestNBAs', () => ({
+  useLatestNBAs: vi.fn()
+}))
+
+vi.mock('@/hooks/useSwitchboard', () => ({
+  useSwitchboard: vi.fn((flag: string) => {
+    if (flag === 'airo-builder-theme-selection-chat') {
+      return { data: true, isLoading: false, error: null }
+    }
+    return { data: false, isLoading: false, error: null }
+  }),
+}))
+
+vi.mock('@/stores/useDevelopPageStore', () => ({
+  useDevelopPageStore: vi.fn()
+}))
+
+vi.mock('@/app/[market]/develop/components/utils/previewThemeInIframe', () => ({
+  previewThemeInIframe: vi.fn()
+}))
+
+describe('InputActionsPanel', () => {
+  const mockPalette: ColorSchemePaletteOption['palette'] = {
+    primary: '#3b82f6',
+    primaryForeground: '#ffffff',
+    secondary: '#64748b',
+    secondaryForeground: '#ffffff',
+    accent: '#8b5cf6',
+    accentForeground: '#ffffff',
+    background: '#ffffff',
+    foreground: '#0f172a',
+    muted: '#f1f5f9',
+    mutedForeground: '#64748b',
+    border: '#e2e8f0',
+    destructive: '#ef4444',
+    destructiveForeground: '#ffffff',
+    success: '#10b981',
+    successForeground: '#ffffff',
+    warning: '#f59e0b',
+    warningForeground: '#ffffff',
+    chart1: '#3b82f6',
+    chart2: '#8b5cf6',
+    chart3: '#10b981',
+    chart4: '#f59e0b',
+    chart5: '#ef4444'
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(ChatContext.useSendUserMessage).mockReturnValue(vi.fn())
+    vi.mocked(StreamingStore.useIsActivelyStreaming).mockReturnValue(false)
+    vi.mocked(StreamingStore.useIsLoading).mockReturnValue(false)
+    vi.mocked(StreamingStore.useMessages).mockReturnValue([])
+    vi.mocked(TodoListStore.useCurrentList).mockReturnValue(null)
+    vi.mocked(TodoListStore.useViewState).mockReturnValue(null)
+    vi.mocked(useLatestNBAsModule.useLatestNBAs).mockReturnValue(null)
+    vi.mocked(DevelopPageStore.useDevelopPageStore).mockImplementation((selector: any) =>
+      selector({ viewMode: ViewMode.PREVIEW })
+    )
+  })
+
+  describe('color scheme suggestions with duplicate filtering', () => {
+    it('should not show duplicate themes when current applied theme is in suggestions', () => {
+      const oceanBlue: ColorSchemePaletteOption = {
+        name: 'Ocean Blue',
+        theme: 'light',
+        palette: mockPalette
+      }
+
+      const sunsetOrange: ColorSchemePaletteOption = {
+        name: 'Sunset Orange',
+        theme: 'light',
+        palette: { ...mockPalette, primary: '#ff6b35' }
+      }
+
+      const activeColorSchemeSuggest = {
+        toolCallId: 'test-tool-call',
+        messageId: 'test-message',
+        palettes: [
+          oceanBlue, // Duplicate of current applied theme
+          sunsetOrange
+        ]
+      }
+
+      // Mock that Ocean Blue is the currently applied theme
+      vi.mocked(StreamingStore.useMessages).mockReturnValue([
+        {
+          id: 'msg-1',
+          role: 'assistant',
+          content: 'Applied theme',
+          timestamp: new Date(),
+          toolCalls: [{
+            id: 'apply-1',
+            name: 'colorScheme',
+            status: 'completed',
+            input: { mode: 'apply', paletteName: 'Ocean Blue' },
+            result: { palette: mockPalette, paletteName: 'Ocean Blue' }
+          }]
+        }
+      ])
+
+      renderWithProviders(
+        <InputActionsPanel activeColorSchemeSuggest={activeColorSchemeSuggest} />
+      )
+
+      // Should only have 2 theme options, not 3 (Ocean Blue should appear once)
+      const themeOptions = screen.getAllByTestId('theme-preview-option')
+      expect(themeOptions).toHaveLength(2)
+
+      // Should have Ocean Blue (current) and Sunset Orange
+      expect(screen.getByText('Ocean Blue')).toBeInTheDocument()
+      expect(screen.getByText('Sunset Orange')).toBeInTheDocument()
+    })
+
+    it('should show all themes when no duplicates exist', () => {
+      const oceanBlue: ColorSchemePaletteOption = {
+        name: 'Ocean Blue',
+        theme: 'light',
+        palette: mockPalette
+      }
+
+      const sunsetOrange: ColorSchemePaletteOption = {
+        name: 'Sunset Orange',
+        theme: 'light',
+        palette: { ...mockPalette, primary: '#ff6b35' }
+      }
+
+      const forestGreen: ColorSchemePaletteOption = {
+        name: 'Forest Green',
+        theme: 'dark',
+        palette: { ...mockPalette, primary: '#10b981' }
+      }
+
+      const activeColorSchemeSuggest = {
+        toolCallId: 'test-tool-call',
+        messageId: 'test-message',
+        palettes: [sunsetOrange, forestGreen]
+      }
+
+      // Mock that Ocean Blue is the currently applied theme (not in suggestions)
+      vi.mocked(StreamingStore.useMessages).mockReturnValue([
+        {
+          id: 'msg-1',
+          role: 'assistant',
+          content: 'Applied theme',
+          timestamp: new Date(),
+          toolCalls: [{
+            id: 'apply-1',
+            name: 'colorScheme',
+            status: 'completed',
+            input: { mode: 'apply', paletteName: 'Ocean Blue' },
+            result: { palette: mockPalette, paletteName: 'Ocean Blue' }
+          }]
+        }
+      ])
+
+      renderWithProviders(
+        <InputActionsPanel activeColorSchemeSuggest={activeColorSchemeSuggest} />
+      )
+
+      // Should have 3 theme options (Ocean Blue + 2 suggestions)
+      const themeOptions = screen.getAllByTestId('theme-preview-option')
+      expect(themeOptions).toHaveLength(3)
+
+      // Should have all three themes
+      expect(screen.getByText('Ocean Blue')).toBeInTheDocument()
+      expect(screen.getByText('Sunset Orange')).toBeInTheDocument()
+      expect(screen.getByText('Forest Green')).toBeInTheDocument()
+    })
+
+    it('should show themes when no current applied theme exists', () => {
+      const sunsetOrange: ColorSchemePaletteOption = {
+        name: 'Sunset Orange',
+        theme: 'light',
+        palette: { ...mockPalette, primary: '#ff6b35' }
+      }
+
+      const forestGreen: ColorSchemePaletteOption = {
+        name: 'Forest Green',
+        theme: 'dark',
+        palette: { ...mockPalette, primary: '#10b981' }
+      }
+
+      const activeColorSchemeSuggest = {
+        toolCallId: 'test-tool-call',
+        messageId: 'test-message',
+        palettes: [sunsetOrange, forestGreen]
+      }
+
+      // No applied theme in messages
+      vi.mocked(StreamingStore.useMessages).mockReturnValue([])
+
+      renderWithProviders(
+        <InputActionsPanel activeColorSchemeSuggest={activeColorSchemeSuggest} />
+      )
+
+      // Should have 2 theme options (just the suggestions)
+      const themeOptions = screen.getAllByTestId('theme-preview-option')
+      expect(themeOptions).toHaveLength(2)
+
+      expect(screen.getByText('Sunset Orange')).toBeInTheDocument()
+      expect(screen.getByText('Forest Green')).toBeInTheDocument()
+    })
+
+    it('wraps theme suggest in CollapsibleChatInputSection when theme-selection-chat is on', () => {
+      const sunsetOrange: ColorSchemePaletteOption = {
+        name: 'Sunset Orange',
+        theme: 'light',
+        palette: { ...mockPalette, primary: '#ff6b35' }
+      }
+
+      const forestGreen: ColorSchemePaletteOption = {
+        name: 'Forest Green',
+        theme: 'dark',
+        palette: { ...mockPalette, primary: '#10b981' }
+      }
+
+      const activeColorSchemeSuggest = {
+        toolCallId: 'test-tool-call',
+        messageId: 'test-message',
+        palettes: [sunsetOrange, forestGreen]
+      }
+
+      vi.mocked(StreamingStore.useMessages).mockReturnValue([])
+
+      renderWithProviders(
+        <InputActionsPanel activeColorSchemeSuggest={activeColorSchemeSuggest} />
+      )
+
+      expect(screen.getAllByTestId('theme-preview-option')).toHaveLength(2)
+      expect(screen.getByTestId('theme-preview-apply')).toBeInTheDocument()
+      expect(screen.getByRole('button', { expanded: true })).toBeInTheDocument()
+    })
+  })
+
+  describe('view mode integration', () => {
+    const mockPalettes: ColorSchemePaletteOption[] = [
+      {
+        name: 'Ocean Blue',
+        theme: 'light',
+        palette: mockPalette
+      },
+      {
+        name: 'Sunset Orange',
+        theme: 'light',
+        palette: { ...mockPalette, primary: '#ff6b35' }
+      }
+    ]
+
+    const activeColorSchemeSuggest = {
+      toolCallId: 'test-tool-call',
+      messageId: 'test-message',
+      palettes: mockPalettes
+    }
+
+    beforeEach(() => {
+      vi.mocked(StreamingStore.useMessages).mockReturnValue([])
+    })
+
+    it('should pass disabled=false when in PREVIEW mode', () => {
+      vi.mocked(DevelopPageStore.useDevelopPageStore).mockImplementation((selector: any) =>
+        selector({ viewMode: ViewMode.PREVIEW })
+      )
+
+      renderWithProviders(
+        <InputActionsPanel activeColorSchemeSuggest={activeColorSchemeSuggest} />
+      )
+
+      const radios = screen.getAllByRole('radio') as HTMLInputElement[]
+      radios.forEach(radio => {
+        expect(radio).not.toBeDisabled()
+      })
+    })
+
+    it('should pass disabled=false when in EDIT mode', () => {
+      vi.mocked(DevelopPageStore.useDevelopPageStore).mockImplementation((selector: any) =>
+        selector({ viewMode: ViewMode.EDIT })
+      )
+
+      renderWithProviders(
+        <InputActionsPanel activeColorSchemeSuggest={activeColorSchemeSuggest} />
+      )
+
+      const radios = screen.getAllByRole('radio') as HTMLInputElement[]
+      radios.forEach(radio => {
+        expect(radio).not.toBeDisabled()
+      })
+    })
+
+    it('should pass disabled=true when in CODE mode', () => {
+      vi.mocked(DevelopPageStore.useDevelopPageStore).mockImplementation((selector: any) =>
+        selector({ viewMode: ViewMode.CODE })
+      )
+
+      renderWithProviders(
+        <InputActionsPanel activeColorSchemeSuggest={activeColorSchemeSuggest} />
+      )
+
+      const radios = screen.getAllByRole('radio') as HTMLInputElement[]
+      radios.forEach(radio => {
+        expect(radio).toBeDisabled()
+      })
+    })
+
+    it('should pass disabled=true when in BRAND mode', () => {
+      vi.mocked(DevelopPageStore.useDevelopPageStore).mockImplementation((selector: any) =>
+        selector({ viewMode: ViewMode.BRAND })
+      )
+
+      renderWithProviders(
+        <InputActionsPanel activeColorSchemeSuggest={activeColorSchemeSuggest} />
+      )
+
+      const radios = screen.getAllByRole('radio') as HTMLInputElement[]
+      radios.forEach(radio => {
+        expect(radio).toBeDisabled()
+      })
+    })
+
+    it('should reset selection to 0 when switching to BRAND mode', async () => {
+      const { rerender, user } = renderWithProviders(
+        <InputActionsPanel activeColorSchemeSuggest={activeColorSchemeSuggest} />
+      )
+
+      const radios = screen.getAllByRole('radio') as HTMLInputElement[]
+      await user.click(radios[1])
+      expect(radios[1].checked).toBe(true)
+      expect(radios[0].checked).toBe(false)
+
+      vi.mocked(DevelopPageStore.useDevelopPageStore).mockImplementation((selector: any) =>
+        selector({ viewMode: ViewMode.BRAND })
+      )
+
+      rerender(<InputActionsPanel activeColorSchemeSuggest={activeColorSchemeSuggest} />)
+
+      const radiosAfterBrand = screen.getAllByRole('radio') as HTMLInputElement[]
+      expect(radiosAfterBrand[0].checked).toBe(true)
+    })
+
+    it('should re-apply preview for non-zero theme selection when returning to preview or edit mode', async () => {
+      const { rerender, user } = renderWithProviders(
+        <InputActionsPanel activeColorSchemeSuggest={activeColorSchemeSuggest} />
+      )
+
+      const radios = screen.getAllByRole('radio') as HTMLInputElement[]
+      await user.click(radios[1])
+
+      vi.mocked(previewThemeInIframe).mockClear()
+
+      vi.mocked(DevelopPageStore.useDevelopPageStore).mockImplementation((selector: any) =>
+        selector({ viewMode: ViewMode.CODE })
+      )
+      rerender(<InputActionsPanel activeColorSchemeSuggest={activeColorSchemeSuggest} />)
+
+      vi.mocked(DevelopPageStore.useDevelopPageStore).mockImplementation((selector: any) =>
+        selector({ viewMode: ViewMode.PREVIEW })
+      )
+      rerender(<InputActionsPanel activeColorSchemeSuggest={activeColorSchemeSuggest} />)
+
+      expect(vi.mocked(previewThemeInIframe)).toHaveBeenCalledWith(
+        'Sunset Orange',
+        expect.objectContaining({ primary: '#ff6b35' })
+      )
+    })
+
+    it('should preserve selection when switching between PREVIEW and EDIT modes', async () => {
+      vi.mocked(DevelopPageStore.useDevelopPageStore).mockImplementation((selector: any) =>
+        selector({ viewMode: ViewMode.PREVIEW })
+      )
+
+      const { rerender, user } = renderWithProviders(
+        <InputActionsPanel activeColorSchemeSuggest={activeColorSchemeSuggest} />
+      )
+
+      // Select theme at index 1 to establish a non-zero selection
+      const radios = screen.getAllByRole('radio') as HTMLInputElement[]
+      await user.click(radios[1])
+      expect(radios[1].checked).toBe(true)
+      expect(radios[0].checked).toBe(false)
+
+      // Switch to EDIT mode
+      vi.mocked(DevelopPageStore.useDevelopPageStore).mockImplementation((selector: any) =>
+        selector({ viewMode: ViewMode.EDIT })
+      )
+
+      rerender(<InputActionsPanel activeColorSchemeSuggest={activeColorSchemeSuggest} />)
+
+      // Selection should still be at index 1 (preserved between PREVIEW/EDIT)
+      const radiosAfterSwitch = screen.getAllByRole('radio') as HTMLInputElement[]
+      expect(radiosAfterSwitch[1].checked).toBe(true)
+      expect(radiosAfterSwitch[0].checked).toBe(false)
+    })
+
+    it('should NOT reset selection when switching to CODE mode', () => {
+      const { rerender } = renderWithProviders(
+        <InputActionsPanel activeColorSchemeSuggest={activeColorSchemeSuggest} />
+      )
+
+      // Switch to CODE mode
+      vi.mocked(DevelopPageStore.useDevelopPageStore).mockImplementation((selector: any) =>
+        selector({ viewMode: ViewMode.CODE })
+      )
+
+      rerender(<InputActionsPanel activeColorSchemeSuggest={activeColorSchemeSuggest} />)
+
+      // Selection should still be at index 0, just disabled
+      const radios = screen.getAllByRole('radio') as HTMLInputElement[]
+      expect(radios[0].checked).toBe(true)
+      expect(radios[0]).toBeDisabled()
+    })
+  })
+})

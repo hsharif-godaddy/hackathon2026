@@ -1,4 +1,4 @@
-import type { CompletePalette } from '@/app/[market]/develop/components/widgets/ColorPaletteGridWidget'
+import type { CompletePalette } from '@/app/[market]/develop/components/types/colorScheme'
 
 /**
  * Display color information for rendering color details

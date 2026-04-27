@@ -3,7 +3,7 @@
  *
  * Tests postMessage-based interactions between the builder UI and the preview iframe.
  * Creates one app, then exercises:
- * - Color scheme preview (PREVIEW_THEME / REVERT_THEME)
+ * - Color scheme preview (PREVIEW_THEME in chat input theme strip)
  * - Edit mode toggle (EDIT_MODE_ENABLED / EDIT_MODE_DISABLED)
  *
  * Strategy:
@@ -79,43 +79,63 @@ test.describe('Edit Interactions', () => {
 
     await ensureAuthenticated(page);
 
-    // Wait for the color palette grid to appear
-    const paletteGrid = page.getByTestId('color-palette-grid');
-    await expect(paletteGrid).toBeVisible({ timeout: DEFAULT_TIMEOUT });
-    console.log('  Color palette grid visible');
+    const themePanel = page.getByTestId('theme-preview-input-panel');
+    await expect(themePanel).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+    console.log('  Theme preview panel visible in chat input');
 
-    // Verify palette options rendered
-    const paletteOptions = page.getByTestId('color-palette-option');
+    const paletteOptions = page.getByTestId('theme-preview-option');
     await expect(paletteOptions.first()).toBeVisible();
     const optionCount = await paletteOptions.count();
-    console.log(`  ${optionCount} palette options rendered`);
+    console.log(`  ${optionCount} theme options rendered`);
     expect(optionCount).toBeGreaterThanOrEqual(2);
 
-    // Click first palette option to preview
     await paletteOptions.first().click();
-    console.log('  Clicked first palette option');
+    console.log('  Clicked first theme option');
 
-    // Verify control buttons are visible
-    await expect(page.getByTestId('color-palette-save')).toBeVisible();
-    await expect(page.getByTestId('color-palette-revert')).toBeVisible();
-    await expect(page.getByTestId('color-palette-more-options')).toBeVisible();
-    console.log('  Save, Revert, and More Options buttons visible');
+    await expect(page.getByTestId('theme-preview-apply')).toBeVisible();
+    await expect(page.getByTestId('theme-preview-more-options')).toBeVisible();
+    console.log('  Apply and More Options buttons visible');
 
-    // Click revert to test REVERT_THEME
-    await page.getByTestId('color-palette-revert').click();
-    console.log('  Revert clicked');
-
-    // Select a palette again and save it
-    await paletteOptions.first().click();
     await waitForChatInput(page);
-    await page.getByTestId('color-palette-save').click();
-    console.log('  Save clicked - message sent to apply color scheme');
+    await page.getByTestId('theme-preview-apply').click();
+    console.log('  Apply clicked - message sent to apply color scheme');
 
     // Wait for AI to process the save (apply the selected scheme)
     await expect(page.getByTestId('chat-send-button')).toBeVisible({ timeout: AI_RESPONSE_TIMEOUT_MS });
     console.log('  Color scheme applied');
 
     await ensureAuthenticated(page);
+
+    // ========================================
+    // STEP 2.5: Test Cancel button
+    // ========================================
+    await dismissOverlays(page);
+    console.log('Step 2.5: Testing theme preview cancel...');
+
+    // Request color schemes again to get the panel back
+    await waitForChatInput(page);
+    await chatInput.fill('Show me more color schemes');
+    await page.getByTestId('chat-send-button').click({ force: true });
+
+    // Wait for AI response to complete
+    await expect(page.getByTestId('chat-send-button')).toBeVisible({ timeout: AI_RESPONSE_TIMEOUT_MS });
+    console.log('  Color scheme suggestions received');
+
+    await ensureAuthenticated(page);
+
+    // Verify theme panel is visible
+    await expect(themePanel).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+    console.log('  Theme preview panel visible');
+
+    // Click cancel button
+    const cancelButton = page.getByTestId('theme-preview-cancel');
+    await expect(cancelButton).toBeVisible();
+    await cancelButton.click();
+    console.log('  Cancel button clicked');
+
+    // Verify theme panel is no longer visible
+    await expect(themePanel).not.toBeVisible({ timeout: DEFAULT_TIMEOUT });
+    console.log('  Theme preview panel hidden after cancel');
 
     // ========================================
     // STEP 3: Edit mode toggle

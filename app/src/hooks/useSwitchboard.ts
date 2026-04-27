@@ -46,6 +46,8 @@ const LOCAL_FEATURE_OVERRIDES: Record<string, boolean> = {
   'airo-builder-chat-plans': true, // opt-in: enables combined NBA + plan panel in chat input
   'airo-builder-feedback-multistep': true, // multi-step feedback dialog (support / bug report / feedback)
   'appbuilder-post-publish-feature-selection': true,
+  // Branch theme-selection UX in develop chat; set false to match main until BFF flag exists
+  'airo-builder-theme-selection-chat': true,
   'appbuilder-brandbook': true, // opt-in: brand book view in develop page header
 };
 

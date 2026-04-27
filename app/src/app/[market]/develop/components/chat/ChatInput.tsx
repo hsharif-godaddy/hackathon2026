@@ -16,6 +16,7 @@ import InputActionsPanel from '@/app/[market]/develop/components/chat/InputActio
 import UsageGauge from '@/app/[market]/develop/components/chat/usage-gauge/UsageGauge'
 import { useChatHistoryNavigation } from '@/app/[market]/develop/components/chat/useChatHistoryNavigation'
 import type { AiEditContext } from '@/app/[market]/develop/components/types'
+import type { ActiveColorSchemeSuggest } from '@/app/[market]/develop/components/utils/findLatestColorSchemeSuggest'
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
@@ -81,6 +82,7 @@ interface ChatInputProps {
   onLargePasteDetected?: (content: string) => void
   mediaLimitError?: string | null
   userMessages?: string[]
+  activeColorSchemeSuggest?: ActiveColorSchemeSuggest | null
 }
 
 export default function ChatInput({
@@ -109,6 +111,7 @@ export default function ChatInput({
   onClearAiEditContext,
   onLargePasteDetected,
   userMessages = [],
+  activeColorSchemeSuggest = null,
 }: ChatInputProps) {
   const t = useTranslations();
   const clickContext = useMemo(() => (appId ? { appId } : undefined), [appId]);
@@ -339,8 +342,9 @@ export default function ChatInput({
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
         >
-          {/* Combined NBA + Plan panel — only when airo-builder-chat-plans is enabled */}
-          {areChatPlansEnabled && <InputActionsPanel />}
+          {areChatPlansEnabled ? (
+            <InputActionsPanel activeColorSchemeSuggest={activeColorSchemeSuggest} />
+          ) : null}
 
           {/* AI Edit Context - shows screenshot (works for both Edit with AI and Replace Image) */}
           {aiEditContext && aiEditContext.screenshot && (

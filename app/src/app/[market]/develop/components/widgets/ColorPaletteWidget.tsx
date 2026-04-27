@@ -4,35 +4,12 @@ import clsx from 'clsx'
 import MapPinIcon from '@ux/icon/map-pin'
 import text from '@ux/text'
 
+import type { CompletePalette } from '@/app/[market]/develop/components/types/colorScheme'
+import { similar } from '@/app/[market]/develop/components/utils/colorSimilarity'
+import { previewThemeInIframe } from '@/app/[market]/develop/components/utils/previewThemeInIframe'
+import { useSwitchboard } from '@/hooks/useSwitchboard'
+import { useTranslations } from '@/hooks/useTranslations'
 import { postMessageToIframe } from '@/utils/postMessage'
-
-/**
- * Complete palette data structure
- */
-export interface CompletePalette {
-  primary: string
-  primaryForeground: string
-  secondary: string
-  secondaryForeground: string
-  accent: string
-  accentForeground: string
-  background: string
-  foreground: string
-  muted: string
-  mutedForeground: string
-  border: string
-  destructive: string
-  destructiveForeground: string
-  success: string
-  successForeground: string
-  warning: string
-  warningForeground: string
-  chart1: string
-  chart2: string
-  chart3: string
-  chart4: string
-  chart5: string
-}
 
 /**
  * Color palette widget props
@@ -42,29 +19,109 @@ export interface ColorPaletteWidgetProps {
   palette: CompletePalette
   className?: string
   isSelected?: boolean
+  /** When true, renders a non-interactive summary (e.g. after theme apply). */
+  readOnly?: boolean
 }
 
 /**
  * Color Palette Widget
  */
-export default function ColorPaletteWidget({ name, palette, className = '', isSelected = false }: ColorPaletteWidgetProps) {
+export default function ColorPaletteWidget(props: ColorPaletteWidgetProps) {
+  const { data: isThemeSelectionChatEnabled } = useSwitchboard('airo-builder-theme-selection-chat')
+  if (isThemeSelectionChatEnabled) {
+    return <ColorPaletteWidgetModern {...props} />
+  }
+  return <ColorPaletteWidgetLegacy {...props} />
+}
 
-  /**
-   * Handle click on palette - send preview message to iframe
-   */
+function ColorPaletteWidgetModern({
+  name,
+  palette,
+  className = '',
+  isSelected = false,
+  readOnly = false
+}: ColorPaletteWidgetProps) {
+  const t = useTranslations()
+
+  function handleClick() {
+    if (!name || readOnly) return
+    previewThemeInIframe(name, palette)
+  }
+
+  const renderColorCircle = (color: string) => (
+    <div
+      className="size-3 shrink-0 rounded-full -ml-1 first:ml-0"
+      style={{
+        backgroundColor: color,
+        boxShadow: similar(color, palette?.background)
+        ? `inset 0 0 0 1px ${palette?.foreground}20`
+        : undefined,
+      }}
+    />
+  );
+
+  const shellClass = clsx(
+    'flex w-full flex-row items-center gap-2 rounded-md border-2 border-border px-1.5 py-0.5 relative',
+    !readOnly && 'transition-all duration-200 hover:shadow-md hover:cursor-pointer',
+    className,
+    {
+      'shadow-md': isSelected
+    }
+  )
+
+  const inner = (
+    <>
+      <text.span size={0} className="min-w-0 shrink truncate font-semibold leading-none">
+        {name || t('builder_tools_css_color_scheme', undefined, 'Color Scheme')}
+      </text.span>
+      <div className="ml-auto flex flex-row items-center pl-0.5">
+        {renderColorCircle(palette?.primary)}
+        {renderColorCircle(palette?.secondary)}
+        {renderColorCircle(palette?.accent)}
+        {renderColorCircle(palette?.muted)}
+      </div>
+    </>
+  )
+
+  const style = { backgroundColor: palette?.background, color: palette?.foreground }
+
+  if (readOnly) {
+    return (
+      <div
+        data-testid="color-palette-option"
+        className={shellClass}
+        style={style}
+      >
+        {inner}
+      </div>
+    )
+  }
+
+  return (
+    <button
+      data-testid="color-palette-option"
+      type="button"
+      className={shellClass}
+      style={style}
+      onClick={handleClick}
+    >
+      {inner}
+    </button>
+  )
+}
+
+/** @deprecated Remove when `airo-builder-theme-selection-chat` is permanently on */
+function ColorPaletteWidgetLegacy({ name, palette, className = '', isSelected = false }: ColorPaletteWidgetProps) {
   function handleClick() {
     if (!name) return
 
-    // Use complete palette for preview (matches updateCssColors exactly)
     const paletteData = {
       name,
       ...palette
     }
 
-    // Get the iframe element
     const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement
 
-    // Try to post message to iframe if available (for live preview)
     if (iframe && iframe.contentWindow) {
       postMessageToIframe(iframe, {
         type: 'PREVIEW_THEME',
@@ -72,25 +129,10 @@ export default function ColorPaletteWidget({ name, palette, className = '', isSe
       })
     }
 
-    // Always emit custom event to notify grid of selection
-    // This ensures palette selection works even when preview is not available
     const event = new CustomEvent('palette-preview', {
       detail: paletteData
     })
     window.dispatchEvent(event)
-  }
-
-  /**
-   * Check if two colors are similar
-   */
-  function similar(c1: string, c2: string, threshold = 50): boolean {
-    const parse = (hex: string) => {
-      const h = hex.replace('#', '')
-      return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)]
-    }
-    const [r1, g1, b1] = parse(c1)
-    const [r2, g2, b2] = parse(c2)
-    return Math.abs(r1 - r2) + Math.abs(g1 - g2) + Math.abs(b1 - b2) < threshold
   }
 
   const renderColorCircle = (color: string) => (
