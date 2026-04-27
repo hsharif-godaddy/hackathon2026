@@ -188,17 +188,15 @@ func budgetHasConsumableCapacity(items []budgetConsumptionState, now time.Time) 
 
 // loadBudgetConsumptionStatesTx returns rows in consumption priority: reset interval lines first
 // (reset_interval set), then soonest expires_at, then created_at, then id.
-func loadBudgetConsumptionStatesTx(ctx context.Context, tx *sql.Tx, budgetID string, forUpdate bool) ([]budgetConsumptionState, error) {
-	q := `
-			SELECT bi.id, bi.credits_total, bi.credits_used, bi.cost_credit_ratio, bi.expires_at, bi.reset_interval, bi.created_at
-			FROM budget_items bi
-			WHERE bi.budget_id = $1 AND bi.deleted_at IS NULL
-			ORDER BY (bi.reset_interval IS NULL), bi.expires_at NULLS LAST, bi.created_at, bi.id
-		`
-	if forUpdate {
-		q += ` FOR UPDATE`
-	}
-	rows, err := tx.QueryContext(ctx, q, budgetID)
+// Mutation callers hold the per-budget advisory lock (lockBudgetTx), so no row-level FOR UPDATE is needed.
+// Read-only callers (e.g. DebugSessionCreditsReplay) skip the lock; they accept a potentially stale snapshot.
+func loadBudgetConsumptionStatesTx(ctx context.Context, tx *sql.Tx, budgetID string) ([]budgetConsumptionState, error) {
+	rows, err := tx.QueryContext(ctx, `
+		SELECT bi.id, bi.credits_total, bi.credits_used, bi.cost_credit_ratio, bi.expires_at, bi.reset_interval, bi.created_at
+		FROM budget_items bi
+		WHERE bi.budget_id = $1 AND bi.deleted_at IS NULL
+		ORDER BY (bi.reset_interval IS NULL), bi.expires_at NULLS LAST, bi.created_at, bi.id
+	`, budgetID)
 	if err != nil {
 		return nil, err
 	}

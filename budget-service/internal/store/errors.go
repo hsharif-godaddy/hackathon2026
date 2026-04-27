@@ -24,10 +24,6 @@ var (
 	ErrBudgetHasUnreconciledSessions = errors.New("budget has unreconciled sessions")
 	// ErrDuplicateCallRequestID is returned when a session item reuses an existing callRequestId for that session.
 	ErrDuplicateCallRequestID = errors.New("duplicate callRequestId")
-	// ErrOptimisticRetryExhausted is returned when AppendSessionItems exhausts retries due to concurrent budget_items mutations.
-	ErrOptimisticRetryExhausted = errors.New("optimistic concurrency retries exhausted")
-	// ErrBudgetMismatch is returned when the session's budget_id changed between Phase 1 and Phase 2.
-	ErrBudgetMismatch = errors.New("session budget changed between read and write phases")
 	// ErrReportAggregateNoFilter is returned when neither product key nor label is set for report cost aggregation.
 	ErrReportAggregateNoFilter = errors.New("report aggregate requires product key and/or label")
 )

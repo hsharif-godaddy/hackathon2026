@@ -1,7 +1,8 @@
 # budget-service — see README.md, docs/budget-service-spec.md, docs/local-e2e.md
 
 .PHONY: build dev test clean up down logs data e2e-up e2e-down e2e-local dev-budget-ui verify-iam-auth \
-       load-test load-test-contention load-test-throughput load-test-lifecycle load-test-monitor
+       load-test load-test-contention load-test-throughput load-test-lifecycle load-test-monitor \
+       bench-baseline bench-candidate bench-diff
 
 _BUDGET_SVC_DIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 _COMPOSE := docker compose -f $(_BUDGET_SVC_DIR)docker-compose.yml
@@ -88,4 +89,26 @@ load-test-lifecycle:
 
 load-test-monitor:
 	watch -n 2 'psql "postgres://budget:budget@localhost:5432/budget_test?sslmode=disable" -f $(_BUDGET_SVC_DIR)load-test/pg-monitor.sql'
+
+# ── Bench comparison (local A/B) ────────────────────────────────────
+# Typical flow on a laptop:
+#   git checkout main    && make up && make dev && make bench-baseline  SCENARIO=contention
+#   git checkout feature && make dev                   && make bench-candidate SCENARIO=contention
+#   make bench-diff
+SCENARIO ?= contention
+RUNS     ?= 3
+bench-baseline:
+	@mkdir -p $(_BUDGET_SVC_DIR)load-test/results
+	RUNS=$(RUNS) $(_BUDGET_SVC_DIR)load-test/bench-run.sh $(SCENARIO) > $(_BUDGET_SVC_DIR)load-test/results/baseline.json
+	@echo "wrote baseline: $(_BUDGET_SVC_DIR)load-test/results/baseline.json"
+
+bench-candidate:
+	@mkdir -p $(_BUDGET_SVC_DIR)load-test/results
+	RUNS=$(RUNS) $(_BUDGET_SVC_DIR)load-test/bench-run.sh $(SCENARIO) > $(_BUDGET_SVC_DIR)load-test/results/candidate.json
+	@echo "wrote candidate: $(_BUDGET_SVC_DIR)load-test/results/candidate.json"
+
+bench-diff:
+	$(_BUDGET_SVC_DIR)load-test/bench-diff.sh \
+	  $(_BUDGET_SVC_DIR)load-test/results/baseline.json \
+	  $(_BUDGET_SVC_DIR)load-test/results/candidate.json
 

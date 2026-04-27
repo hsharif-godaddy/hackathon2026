@@ -1,0 +1,273 @@
+name: budget-service load test (PR diff)
+
+on:
+  pull_request:
+    paths:
+      - "budget-service/**"
+      - ".github/workflows/budget-service-load-test.yml"
+  workflow_dispatch:
+    inputs:
+      scenario:
+        description: "k6 scenario to run"
+        type: choice
+        options: [contention, throughput, lifecycle]
+        default: contention
+      runs:
+        description: "number of runs per branch (median taken)"
+        default: "3"
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
+jobs:
+  bench:
+    name: Load test diff vs main
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: budget
+          POSTGRES_PASSWORD: budget
+          POSTGRES_DB: budget_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U budget -d budget_test"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 30
+
+    env:
+      SCENARIO_INPUT: ${{ github.event.inputs.scenario || 'contention' }}
+      RUNS_INPUT: ${{ github.event.inputs.runs || '3' }}
+      BASE_URL: http://127.0.0.1:8080
+      SHORT_SHA: ${{ github.sha }}
+
+    steps:
+      - name: Validate inputs
+        run: |
+          case "$SCENARIO_INPUT" in
+            contention|throughput|lifecycle) ;;
+            *) echo "invalid scenario: $SCENARIO_INPUT" >&2; exit 1 ;;
+          esac
+          if ! [[ "$RUNS_INPUT" =~ ^[1-9][0-9]?$ ]]; then
+            echo "invalid runs (must be 1-99): $RUNS_INPUT" >&2; exit 1
+          fi
+          bench_dir="$(mktemp -d -t bench.XXXXXX)"
+          echo "SCENARIO=$SCENARIO_INPUT" >> "$GITHUB_ENV"
+          echo "RUNS=$RUNS_INPUT" >> "$GITHUB_ENV"
+          echo "BENCH_DIR=${bench_dir}" >> "$GITHUB_ENV"
+
+      - name: Checkout (PR)
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Install k6
+        uses: grafana/setup-k6-action@ffe7d7290dfa715e48c2ccc924d068444c94bde2 # v1.1.0
+
+      - name: Get Artifactory token
+        id: jfrog
+        uses: jfrog/setup-jfrog-cli@1641575d87647fb969c0545f0b6a76873e328b7c # v5.0.0
+        env:
+          JF_URL: ${{ vars.JF_URL }}
+        with:
+          oidc-provider-name: github
+
+      - name: Golden Container Registry login
+        run: |
+          aws ecr get-login-password --region us-west-2 \
+            | docker login 764525110978.dkr.ecr.us-west-2.amazonaws.com -u AWS --password-stdin
+
+      # ── Baseline run (main) ──────────────────────────────────────────
+      - name: Checkout main for baseline
+        run: |
+          git fetch origin main
+          # Self-hosted runner workspace persists between runs — clean up any
+          # leaked worktree from a prior failed run before re-adding.
+          git worktree remove --force ../main-worktree 2>/dev/null || true
+          rm -rf ../main-worktree
+          git worktree add ../main-worktree origin/main
+
+      - name: Build baseline image
+        working-directory: ../main-worktree
+        env:
+          JFROG_TOKEN: ${{ steps.jfrog.outputs.oidc-token }}
+        run: |
+          echo "::add-mask::$JFROG_TOKEN"
+          DOCKER_BUILDKIT=1 docker build --platform linux/amd64 \
+            --secret id=jfrog_token,env=JFROG_TOKEN \
+            --build-arg BUILDKIT_INLINE_CACHE=1 \
+            -f budget-service/Dockerfile \
+            -t budget-bench:baseline \
+            .
+
+      - name: Run baseline container
+        run: |
+          docker rm -f budget-bench 2>/dev/null || true
+          docker run -d --name budget-bench -p 8080:8080 \
+            --no-healthcheck \
+            --add-host=host.docker.internal:host-gateway \
+            -e DATABASE_URL='postgres://budget:budget@host.docker.internal:5432/budget_test?sslmode=disable' \
+            -e LOCAL_AUTH_DISABLE=true \
+            -e SERVER_CERT_PATH= -e SERVER_KEY_PATH= \
+            budget-bench:baseline
+          for i in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:8080/health >/dev/null 2>&1; then exit 0; fi
+            sleep 2
+          done
+          echo "baseline container not healthy" >&2
+          docker logs budget-bench >&2 || true
+          exit 1
+
+      - name: Bench baseline
+        working-directory: budget-service
+        run: |
+          ./load-test/bench-run.sh "$SCENARIO" "$RUNS" > "${BENCH_DIR}/baseline.json"
+          cat "${BENCH_DIR}/baseline.json"
+
+      - name: Stop baseline container
+        if: always()
+        run: docker rm -f budget-bench 2>/dev/null || true
+
+      - name: Reset Postgres between runs
+        run: |
+          # Self-hosted runner has no psql client; run it via the postgres image.
+          docker run --rm --network=host -e PGPASSWORD=budget postgres:16 \
+            psql -h 127.0.0.1 -U budget -d budget_test \
+            -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
+
+      # ── Candidate run (PR HEAD) ──────────────────────────────────────
+      - name: Build candidate image
+        env:
+          JFROG_TOKEN: ${{ steps.jfrog.outputs.oidc-token }}
+        run: |
+          echo "::add-mask::$JFROG_TOKEN"
+          DOCKER_BUILDKIT=1 docker build --platform linux/amd64 \
+            --secret id=jfrog_token,env=JFROG_TOKEN \
+            --cache-from budget-bench:baseline \
+            -f budget-service/Dockerfile \
+            -t budget-bench:candidate \
+            .
+
+      - name: Run candidate container
+        run: |
+          docker rm -f budget-bench 2>/dev/null || true
+          docker run -d --name budget-bench -p 8080:8080 \
+            --no-healthcheck \
+            --add-host=host.docker.internal:host-gateway \
+            -e DATABASE_URL='postgres://budget:budget@host.docker.internal:5432/budget_test?sslmode=disable' \
+            -e LOCAL_AUTH_DISABLE=true \
+            -e SERVER_CERT_PATH= -e SERVER_KEY_PATH= \
+            budget-bench:candidate
+          for i in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:8080/health >/dev/null 2>&1; then exit 0; fi
+            sleep 2
+          done
+          echo "candidate container not healthy" >&2
+          docker logs budget-bench >&2 || true
+          exit 1
+
+      - name: Bench candidate
+        working-directory: budget-service
+        run: |
+          ./load-test/bench-run.sh "$SCENARIO" "$RUNS" > "${BENCH_DIR}/candidate.json"
+          cat "${BENCH_DIR}/candidate.json"
+
+      - name: Stop candidate container
+        if: always()
+        run: docker rm -f budget-bench 2>/dev/null || true
+
+      # ── Diff + PR comment ────────────────────────────────────────────
+      - name: Diff
+        id: diff
+        working-directory: budget-service
+        run: |
+          set +e
+          ./load-test/bench-diff.sh "${BENCH_DIR}/baseline.json" "${BENCH_DIR}/candidate.json" --markdown > "${BENCH_DIR}/diff.md"
+          rc=$?
+          set -e
+          # Exit codes from bench-diff.sh: 0 ok, 1 regression, 2 usage error, 3 input/processing error.
+          case "$rc" in
+            0) status=ok ;;
+            1) status=regression ;;
+            *) status=infra_error ;;
+          esac
+          echo "status=${status}" >> "$GITHUB_OUTPUT"
+          short="${SHORT_SHA:0:7}"
+          {
+            echo "## Budget service load-test diff"
+            echo ""
+            echo "_Baseline: \`origin/main\`. Candidate: this PR (\`${short}\`). Runs: ${RUNS} per branch, median reported. Ratio = candidate/baseline (latency <1.0 = faster, throughput >1.0 = faster). ∞ = baseline was 0 (perfect state); any non-zero candidate counts as a regression. Self-hosted runner; report ratios only, absolute numbers are not production-representative._"
+            echo ""
+            if [ -s "${BENCH_DIR}/diff.md" ]; then
+              cat "${BENCH_DIR}/diff.md"
+              echo ""
+            fi
+            case "$status" in
+              regression)  echo ":rotating_light: **A latency/error metric regressed by >20%.** Investigate before merging." ;;
+              infra_error) echo ":warning: **Bench harness failed (exit ${rc}).** This is not a regression signal — check the workflow logs for the underlying error." ;;
+            esac
+          } > "${BENCH_DIR}/comment.md"
+          cat "${BENCH_DIR}/comment.md"
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: budget-load-bench
+          path: |
+            ${{ env.BENCH_DIR }}/baseline.json
+            ${{ env.BENCH_DIR }}/candidate.json
+            ${{ env.BENCH_DIR }}/diff.md
+
+      - name: Comment on PR
+        if: github.event_name == 'pull_request'
+        env:
+          COMMENT_PATH: ${{ env.BENCH_DIR }}/comment.md
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync(process.env.COMMENT_PATH, 'utf8');
+            const marker = '<!-- budget-load-test-diff -->';
+            const full = marker + '\n' + body;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner, repo: context.repo.repo,
+              issue_number: context.issue.number, per_page: 100,
+            });
+            const existing = comments.find(c => c.body && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                comment_id: existing.id, body: full,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: context.issue.number, body: full,
+              });
+            }
+
+      - name: Remove main worktree
+        if: always()
+        run: |
+          git worktree remove --force ../main-worktree 2>/dev/null || true
+          rm -rf ../main-worktree
+
+      - name: Fail on regression or infra error
+        if: steps.diff.outputs.status != 'ok'
+        run: |
+          case "${{ steps.diff.outputs.status }}" in
+            regression)  echo "load-test regressed >20% on a latency/error metric" >&2 ;;
+            infra_error) echo "bench harness failed; this is not a regression signal" >&2 ;;
+            *)           echo "unexpected bench status: '${{ steps.diff.outputs.status }}'" >&2 ;;
+          esac
+          exit 1

@@ -121,3 +121,36 @@ http_req_failed .......: 2.1%  ✗ 84  ✓ 3916
 - p99 > 5s → row lock contention; check `pg-monitor.sql` output
 - Error rate > 10% → connection pool exhaustion; increase `DB_MAX_OPEN_CONNS`
 - Steady p99 climb → ledger table growth; check row counts
+
+## A/B Comparison (laptop or CI)
+
+`bench-run.sh` runs a scenario N times and emits medians as JSON. `bench-diff.sh` diffs two JSON files into a ratio table. Lets you compare two code revisions on the same hardware without tracking absolute numbers.
+
+Prerequisites: bash 4+, `jq`, `k6`, util-linux `column` (BusyBox `column` on Alpine does not support `-s`).
+
+```bash
+# 1. Check out the baseline branch, start service + DB, record:
+git checkout main
+make up && make dev   # separate terminal
+make bench-baseline   # default SCENARIO=contention, RUNS=3
+
+# 2. Check out the candidate branch, restart service, record:
+git checkout my-feature
+make dev              # restart (keep Postgres running)
+make bench-candidate
+
+# 3. Diff:
+make bench-diff
+# metric                    baseline  candidate  ratio  dir
+# http_req_duration p99     1200      450        0.375  better
+# iterations / sec          85.2      210.7      2.473  better
+# ...
+```
+
+Rules for honest laptop runs: plug in power, close other apps, run three times (default), compare ratios not absolute numbers. A 1.5× ratio is the minimum trustworthy signal on laptop-class hardware.
+
+### CI
+
+`.github/workflows/budget-service-load-test.yml` runs this automatically on PRs touching `budget-service/`. It builds the `main` image, benches it, builds the PR image, benches it, and posts a ratio table as a PR comment. Fails the check if any latency/error metric regresses >20%.
+
+Manual invocation from GitHub UI: Actions → `budget-service load test (PR diff)` → Run workflow → pick scenario + run count.
