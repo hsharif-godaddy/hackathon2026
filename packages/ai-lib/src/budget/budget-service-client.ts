@@ -26,6 +26,7 @@ import {
   BudgetServiceTimeoutError,
   BudgetServiceUnavailableError,
   BudgetNotFoundError,
+  BudgetServiceConflictError,
 } from './errors.js'
 
 // ── Config ──
@@ -177,7 +178,12 @@ export class BudgetServiceClient {
     )
   }
 
-  /** Retries up to reportMaxRetries times on transient failure (timeout, network unreachable). */
+  /**
+   * Create a cost attribution report for a session.
+   * Retries on transient errors.
+   *
+   * @throws BudgetServiceConflictError - report already exists (409)
+   */
   async createReport(
     sessionId: string,
     request: CreateReportRequest
@@ -190,6 +196,8 @@ export class BudgetServiceClient {
       try {
         return await doReport()
       } catch (err) {
+        // 409 = report already exists — don't retry, let caller handle as success
+        if (err instanceof BudgetServiceConflictError) throw err
         lastErr = err
         const isTransient = err instanceof BudgetServiceTimeoutError || err instanceof BudgetServiceUnavailableError
         if (!isTransient || attempt === this.reportMaxRetries) throw err
@@ -281,6 +289,13 @@ export class BudgetServiceClient {
       if (response.status === 404) {
         throw new BudgetNotFoundError(
           `Budget Service not found: ${method} ${path}`,
+          text
+        )
+      }
+      if (response.status === 409) {
+        throw new BudgetServiceConflictError(
+          `Budget Service conflict: ${response.status} ${method} ${path}`,
+          response.status,
           text
         )
       }

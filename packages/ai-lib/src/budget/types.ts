@@ -53,12 +53,25 @@ export function toBudgetUpdatePayload(
   reportResponse: ReportResponse,
   budgetResponse: BudgetResponse
 ): BudgetUpdateSuccess {
+  // Calculate GoDaddy deduction from productCost
+  // TODO: Return all godaddy item categories instead of just the highest-cost one
+  // (needed when per-call attribution produces multiple GoDaddy-covered items with different labels)
+  const godaddyItems = reportResponse.reportItems.filter((ri) => ri.productCost > 0)
+  const godaddyDeduction =
+    godaddyItems.length > 0
+      ? {
+          // Use the category from the item with the highest productCost
+          category: godaddyItems.reduce((prev, curr) =>
+            curr.productCost > prev.productCost ? curr : prev
+          ).category,
+          amount: reportResponse.productCostTotal,
+        }
+      : undefined
+
   return {
     refreshRequired: false,
     customerRemaining: computeRemaining(budgetResponse.creditsTotal, budgetResponse.creditsUsed),
     budgets: budgetResponse.items.map(toBudgetSummary),
-    // Only customer deductions included. GoCode handles GoDaddy attribution
-    // server-side; assignment.godaddy/overflow reserved for a future pass.
     assignment: {
       customer: reportResponse.reportItems.flatMap((ri) =>
         ri.budgetItems.map((bi) => ({
@@ -66,6 +79,7 @@ export function toBudgetUpdatePayload(
           amount: bi.creditsUsed,
         }))
       ),
+      ...(godaddyDeduction && { godaddy: godaddyDeduction }),
     },
   }
 }

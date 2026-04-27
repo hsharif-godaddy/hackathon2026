@@ -205,6 +205,97 @@ describe('budget view types', () => {
       expect(payload.assignment.customer).toEqual([])
       expect(payload.refreshRequired).toBe(false)
     })
+
+    it('includes godaddy assignment when productCost > 0', () => {
+      const reportResponse: ReportResponse = {
+        reportId: 'rpt-1',
+        budgetId: 'b-1',
+        sessionId: 'sess-1',
+        productKey: 'airo-builder',
+        budgetCostTotal: 0,
+        productCostTotal: 5,
+        creditsAvailable: 150,
+        reportItems: [
+          {
+            budgetCost: 0,
+            productCost: 5,
+            category: 'airo-builder:tool-failure',
+            budgetItems: [],
+          },
+        ],
+      }
+      const budgetResponse = makeBudgetResponse()
+
+      const payload = toBudgetUpdatePayload(reportResponse, budgetResponse)
+
+      expect(payload.assignment.godaddy).toEqual({
+        category: 'airo-builder:tool-failure',
+        amount: 5,
+      })
+      expect(payload.assignment.customer).toEqual([])
+    })
+
+    it('uses highest productCost item category for godaddy assignment', () => {
+      const reportResponse: ReportResponse = {
+        reportId: 'rpt-1',
+        budgetId: 'b-1',
+        sessionId: 'sess-1',
+        productKey: 'airo-builder',
+        budgetCostTotal: 2,
+        productCostTotal: 8,
+        creditsAvailable: 148,
+        reportItems: [
+          {
+            budgetCost: 2,
+            productCost: 3,
+            category: 'airo-builder:causal-chain',
+            budgetItems: [{ budgetItemId: 'bi-1', creditsUsed: 2 }],
+          },
+          {
+            budgetCost: 0,
+            productCost: 5,
+            category: 'airo-builder:tool-failure',
+            budgetItems: [],
+          },
+        ],
+      }
+      const budgetResponse = makeBudgetResponse()
+
+      const payload = toBudgetUpdatePayload(reportResponse, budgetResponse)
+
+      // Uses tool-failure (5) over causal-chain (3) since it has higher productCost
+      expect(payload.assignment.godaddy).toEqual({
+        category: 'airo-builder:tool-failure',
+        amount: 8,
+      })
+      expect(payload.assignment.customer).toHaveLength(1)
+    })
+
+    it('omits godaddy assignment when no productCost items', () => {
+      const reportResponse: ReportResponse = {
+        reportId: 'rpt-1',
+        budgetId: 'b-1',
+        sessionId: 'sess-1',
+        productKey: 'airo-builder',
+        budgetCostTotal: 5,
+        productCostTotal: 0,
+        creditsAvailable: 95,
+        reportItems: [
+          {
+            budgetCost: 5,
+            productCost: 0,
+            category: 'airo-builder:general',
+            budgetItems: [{ budgetItemId: 'bi-1', creditsUsed: 5 }],
+          },
+        ],
+      }
+      const budgetResponse = makeBudgetResponse()
+
+      const payload = toBudgetUpdatePayload(reportResponse, budgetResponse)
+
+      expect(payload.assignment.godaddy).toBeUndefined()
+      expect(payload.assignment.customer).toHaveLength(1)
+    })
   })
 
 })

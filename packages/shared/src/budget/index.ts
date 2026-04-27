@@ -22,6 +22,7 @@ export {
   BudgetErrorType,
   mapBudgetErrorToResponse,
   isBudgetServiceError,
+  BudgetServiceConflictError,
 } from './errors.js'
 
 export type { BudgetErrorResponse } from './errors.js'

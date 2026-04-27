@@ -122,3 +122,10 @@ export function mapBudgetErrorToResponse(error: BudgetServiceError): BudgetError
 export function isBudgetServiceError(error: unknown): error is BudgetServiceError {
   return error instanceof BudgetServiceError
 }
+/** Thrown when BMS returns 409 Conflict (e.g., report already exists for session). */
+export class BudgetServiceConflictError extends BudgetServiceError {
+  constructor(message: string, statusCode: number, responseBody: string) {
+    super(message, statusCode, responseBody)
+    this.name = 'BudgetServiceConflictError'
+  }
+}

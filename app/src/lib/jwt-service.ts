@@ -24,6 +24,7 @@ export interface CreateTokenOptions {
   useTestBudget?: boolean; // Bypass grants and use test-accounts budget
   budgetServiceEnabled?: boolean; // Use Budget Service flow instead of legacy grants
   subscriptionId?: string; // Subscription ID for Budget Service API calls
+  bmsBudgetId?: string; // BMS budget ID for direct Budget Service API calls
   enableAssessmentAgent?: boolean; // Enable assessment agent for prompt classification
   enableAssessmentOverride?: boolean; // Apply budget override from assessment (requires enableAssessmentAgent)
   product?: ProductType; // Product type: 'AiroAppBuilder' (default) or 'PaaSNodeJS'
@@ -182,6 +183,7 @@ export class JWTService {
       useTestBudget: options.useTestBudget ?? false,
       budgetServiceEnabled: options.budgetServiceEnabled ?? false,
       subscriptionId: options.subscriptionId,
+      bmsBudgetId: options.bmsBudgetId,
       enableAssessmentAgent: options.enableAssessmentAgent ?? false,
       enableAssessmentOverride: options.enableAssessmentOverride ?? false,
       product: options.product || 'AiroAppBuilder',
@@ -251,7 +253,7 @@ export class JWTService {
    */
   private getCacheKey(options: CreateTokenOptions): string {
     const authType = options.authType || 'basic';
-    return `${options.siteId}:${options.customerId || ''}:${options.canDownload}:${options.canPublish}:${options.canPurchaseDomain ?? false}:${authType}:${options.useTestBudget ?? false}:${options.budgetServiceEnabled ?? false}:${options.subscriptionId || ''}:${options.enableAssessmentAgent ?? false}:${options.enableAssessmentOverride ?? false}:${options.product || 'AiroAppBuilder'}:${options.modelOverride || ''}:${options.modelSelectorEnabled ?? false}:${options.agentProfile || ''}:${options.agentProfileSelectorEnabled ?? false}:${options.costAttributionDryRun ?? false}`;
+    return `${options.siteId}:${options.customerId || ''}:${options.canDownload}:${options.canPublish}:${options.canPurchaseDomain ?? false}:${authType}:${options.useTestBudget ?? false}:${options.budgetServiceEnabled ?? false}:${options.subscriptionId || ''}:${options.enableAssessmentAgent ?? false}:${options.enableAssessmentOverride ?? false}:${options.product || 'AiroAppBuilder'}:${options.modelOverride || ''}:${options.modelSelectorEnabled ?? false}:${options.agentProfile || ''}:${options.agentProfileSelectorEnabled ?? false}:${options.costAttributionDryRun ?? false}:${options.bmsBudgetId || ''}`;
   }
 
   /**

@@ -6,6 +6,7 @@ export {
   BudgetServiceTimeoutError,
   BudgetServiceUnavailableError,
   BudgetNotFoundError,
+  BudgetServiceConflictError,
 } from './errors.js'
 export type {
   ReportItemRequest,
@@ -23,3 +24,5 @@ export {
 } from './types.js'
 export { getBillingMode } from './billing-mode.js'
 export type { BillingMode } from './billing-mode.js'
+
+export * from './cost-attribution/index.js'

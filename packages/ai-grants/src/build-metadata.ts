@@ -120,10 +120,18 @@ export function buildLitellmMetadataFromContext(
 
   // BMS session fields for GoCode cost reporting (x-gocode-budget-* headers)
   // Only present when budget service is enabled and session was created
-  const budgetFields: Pick<LitellmMetadata, 'budgetId' | 'budgetSessionId'> =
-    metadata.bmsBudgetId && metadata.budgetSessionId
-      ? { budgetId: metadata.bmsBudgetId, budgetSessionId: metadata.budgetSessionId }
-      : {}
+  const hasBudgetFields = !!(metadata.bmsBudgetId && metadata.budgetSessionId)
+  const budgetFields: Pick<LitellmMetadata, 'budgetId' | 'budgetSessionId'> = hasBudgetFields
+    ? { budgetId: metadata.bmsBudgetId!, budgetSessionId: metadata.budgetSessionId! }
+    : {}
+  // Only log when budget fields are present to avoid high-volume logs
+  if (hasBudgetFields) {
+    logger.info('budget.metadata.fields', {
+      appId,
+      bmsBudgetId: metadata.bmsBudgetId ?? null,
+      budgetSessionId: metadata.budgetSessionId ?? null,
+    })
+  }
 
   // OTel trace ID for GoCode cross-service log correlation (x-trace-id header)
   const traceFields: Pick<LitellmMetadata, 'traceId'> =

@@ -919,8 +919,8 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       })
     }
 
-    // Extract usedFreeGrants from metadata (comes from complete event)
-    const usedFreeGrants = metadata?.usedFreeGrants ?? activeStream.usedFreeGrants
+    // Extract usedFreeGrants from complete event metadata (both BMS and grants modes)
+    const usedFreeGrants = metadata?.usedFreeGrants || false
 
     logger.debug('streaming-store.stream.finalize', {
       messageId: activeStream.id,

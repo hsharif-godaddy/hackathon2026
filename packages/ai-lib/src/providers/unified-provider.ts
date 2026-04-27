@@ -368,6 +368,15 @@ function createS2SFetchWrapper(s2sAuthConfig?: S2SAuthConfig, options?: { blocke
     if (metadata?.budgetSessionId) {
       headers.set('x-gocode-budget-service-name', 'airo-app-builder')
       headers.set('x-gocode-budget-id', metadata.budgetSessionId)
+      logger.debug('budget.gocode.headers.set', {
+        budgetId: metadata.budgetId,
+        sessionId: metadata.budgetSessionId,
+        url: typeof url === 'string' ? url : url.toString(),
+      })
+    } else if (!metadata) {
+      logger.debug('budget.gocode.headers.no_metadata', {
+        url: typeof url === 'string' ? url : url.toString(),
+      })
     }
 
     if (metadata?.traceId) {
@@ -396,6 +405,16 @@ function createS2SFetchWrapper(s2sAuthConfig?: S2SAuthConfig, options?: { blocke
 
     // Make request with Headers instance and modified body
     let response = await llmFetch(url, modifiedInit)
+
+    if (metadata?.budgetSessionId) {
+      const correlationId = response.headers.get('x-correlation-id')
+      logger.info('budget.gocode.response', {
+        sessionId: metadata.budgetSessionId,
+        correlationId,
+        status: response.status,
+        url: typeof url === 'string' ? url : url.toString(),
+      })
+    }
 
     // Handle budget exceeded with grant fallback
     if (metadata) {
@@ -429,7 +448,6 @@ function createS2SFetchWrapper(s2sAuthConfig?: S2SAuthConfig, options?: { blocke
   }
 }
 
-
 /**
  * Create a fetch wrapper that selectively blocks specific anthropic-beta headers for proxy compatibility.
  * Used for non-S2S Anthropic API calls through GoCode proxy.
@@ -453,6 +471,11 @@ export function createSelectiveBetaHeaderFetch(
     if (metadata?.budgetSessionId) {
       headers.set('x-gocode-budget-service-name', 'airo-app-builder')
       headers.set('x-gocode-budget-id', metadata.budgetSessionId)
+      logger.debug('budget.gocode.headers.set', {
+        budgetId: metadata.budgetId,
+        sessionId: metadata.budgetSessionId,
+        provider: 'anthropic',
+      })
     }
 
     if (metadata?.traceId) {
@@ -499,8 +522,10 @@ function filterAnthropicBetaHeaders(headers: Headers, blockedHeaders?: string[])
   }
 
   const values = betaValue.split(',').map(v => v.trim())
+  // Use exact equality match - substring match would incorrectly filter future headers
+  // that contain a blocked header name as a substring
   const filteredValues = values.filter(value =>
-    !blockedHeaders.some(blocked => value.includes(blocked))
+    !blockedHeaders.some(blocked => value === blocked)
   )
 
   if (filteredValues.length === 0) {

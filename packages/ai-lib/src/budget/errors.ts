@@ -4,4 +4,5 @@ export {
   BudgetServiceTimeoutError,
   BudgetServiceUnavailableError,
   BudgetNotFoundError,
+  BudgetServiceConflictError,
 } from '@airo/shared/budget'

@@ -20,7 +20,18 @@ import {
 import { grantSessionManager, type GrantContextPayload, BudgetOverride } from '@airo/ai-grants'
 import { getBudgetServiceClient } from '../services/budget-service-instance.js'
 import { performBudgetPreCheck } from './budget-pre-check.js'
-import { toBudgetUpdatePayload } from '@airo/ai-lib/budget'
+import {
+  toBudgetUpdatePayload,
+  BudgetServiceError,
+  BudgetServiceConflictError,
+  BudgetServiceTimeoutError,
+  BudgetServiceUnavailableError,
+  logReportCreated,
+  ReportLabel,
+  type ExecutionStep,
+  type AttributionContext,
+} from '@airo/ai-lib/budget'
+import { processBudgetReport } from './budget-report-handler.js'
 import { auth, AuthType, BYPASS_SITE_IDS } from '../services/features.js'
 import { getTemplateIds } from '../agents/template-registry.js'
 import { isEmployeeAuthType, type AuthType as TokenAuthType, type ProductType } from '@airo/shared/auth'
@@ -1747,11 +1758,15 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         });
 
         // Budget Service pre-execution check + session creation
+        // Read budget flags from JWT (socket handshake auth), not client context.
+        // contextProvider enriches metadata later, but pre-check runs before that.
+        const preCheckSocket = getSocket(socketId)
+        const preCheckAgentContext = preCheckSocket?.handshake?.auth?.agentContext
         const budgetResult = await performBudgetPreCheck(
           {
-            budgetServiceEnabled: typedContext?.metadata?.budgetServiceEnabled,
-            subscriptionId: typedContext?.metadata?.subscriptionId as string | undefined,
-            bmsBudgetId: typedContext?.metadata?.bmsBudgetId as string | undefined,
+            budgetServiceEnabled: preCheckAgentContext?.budgetServiceEnabled,
+            subscriptionId: preCheckAgentContext?.subscriptionId as string | undefined,
+            bmsBudgetId: preCheckAgentContext?.bmsBudgetId as string | undefined,
             appId: siteId,
           },
           { getClient: getBudgetServiceClient, logger },
@@ -1950,12 +1965,18 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         const typedContext = context as AgentsAppContext
         const siteId = typedContext?.metadata?.appId
 
-        // Get assessment outcome for free grants flag (before cleanup in onMessageComplete)
-        // Only report usedFreeGrants if override was actually applied (not dry run)
-        const assessmentOutcome = assessmentOutcomes.get(socketId)
+        // Get assessment outcome for free grants flag (legacy mode only)
+        // When BMS is enabled, the budget report determines usedFreeGrants instead
         const socket = getSocket(socketId)
-        const enableAssessmentOverride = socket?.handshake?.auth?.agentContext?.enableAssessmentOverride ?? false
-        const usedFreeGrants = (assessmentOutcome?.overrideApplied && enableAssessmentOverride) ?? false
+        const agentContext = socket?.handshake?.auth?.agentContext
+        const budgetServiceEnabled = agentContext?.budgetServiceEnabled ?? false
+        let usedFreeGrants = false
+
+        if (!budgetServiceEnabled) {
+          const assessmentOutcome = assessmentOutcomes.get(socketId)
+          const enableAssessmentOverride = agentContext?.enableAssessmentOverride ?? false
+          usedFreeGrants = (assessmentOutcome?.overrideApplied && enableAssessmentOverride) ?? false
+        }
 
         if (!siteId) {
           logger.debug('websocket.before_complete.no_app_id', { socketId })
@@ -2030,22 +2051,28 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           initialPromptMetadata.delete(socketId);
         }
 
-        // Log free grants usage (flag is now included in complete event via beforeMessageComplete)
-        const assessmentOutcome = assessmentOutcomes.get(socketId)
+        // Log free grants usage (legacy mode only - when BMS is enabled, budget report is authoritative)
         const socket = getSocket(socketId)
-        const enableAssessmentOverride = socket?.handshake?.auth?.agentContext?.enableAssessmentOverride ?? false
+        const agentContext = socket?.handshake?.auth?.agentContext
+        const budgetServiceEnabled = agentContext?.budgetServiceEnabled ?? false
+        const enableAssessmentOverride = agentContext?.enableAssessmentOverride ?? false
 
-        if (assessmentOutcome?.overrideApplied && enableAssessmentOverride && appId) {
-          logger.info('grants.assessment.free_task_completed', {
-            appId,
-            customerId: promptMeta?.customerId,
-            taskType: assessmentOutcome?.result?.taskType,
-            appliedBudget: assessmentOutcome?.appliedBudget,
-            durationMs: assessmentOutcome?.durationMs,
-          })
+        if (!budgetServiceEnabled) {
+          const assessmentOutcome = assessmentOutcomes.get(socketId)
+          if (assessmentOutcome?.overrideApplied && enableAssessmentOverride && appId) {
+            logger.info('grants.assessment.free_task_completed', {
+              appId,
+              customerId: promptMeta?.customerId,
+              taskType: assessmentOutcome?.result?.taskType,
+              appliedBudget: assessmentOutcome?.appliedBudget,
+              durationMs: assessmentOutcome?.durationMs,
+            })
+          }
+          // Clean up assessmentOutcomes here only when budget service is disabled
+          // When enabled, onBudgetReport handles cleanup after reading the value
+          assessmentOutcomes.delete(socketId)
         }
         // Clean up per-message socket state
-        assessmentOutcomes.delete(socketId)
         pendingBudgetOverrides.delete(socketId)
         typecheckRetryCountBySocket.delete(socketId)
         runtimeErrorRetryCountBySocket.delete(socketId)
@@ -2064,45 +2091,142 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         finalizeMessage(socketId, 'complete', { appId, agentId, steps, ...(typeof duration === 'number' && { duration }) });
       },
 
-      onBudgetReport: async (budgetId: string, sessionId: string) => {
+      onBudgetReport: async (budgetId: string, sessionId: string, socketId: string, originalSocketId: string, steps?: ExecutionStep[], wasUserAborted?: boolean) => {
         const client = getBudgetServiceClient()
         if (!client) {
           throw new Error('Budget service client unavailable')
         }
 
         // Get session cost (GoCode reports cost async, may be 0 due to race)
-        let session
+        // Retry on transient errors since getSession is on the critical path for report filing
+        const maxGetSessionRetries = 2
+        let session: Awaited<ReturnType<typeof client.getSession>> | undefined
+        for (let attempt = 0; attempt <= maxGetSessionRetries; attempt++) {
+          try {
+            session = await client.getSession(sessionId)
+            break
+          } catch (err) {
+            const isTransient = err instanceof BudgetServiceTimeoutError || err instanceof BudgetServiceUnavailableError
+            if (!isTransient || attempt === maxGetSessionRetries) {
+              logger.error('budget.report.getSessionFailed', {
+                budgetId, sessionId, attempt, maxRetries: maxGetSessionRetries,
+                error: err instanceof Error ? err.message : String(err),
+              })
+              throw err
+            }
+            // Full jitter backoff: random delay in [0, min(cap, base * 2^attempt)]
+            const baseDelay = 100
+            const maxDelay = 2000
+            const delay = Math.random() * Math.min(maxDelay, baseDelay * Math.pow(2, attempt))
+            await new Promise((r) => setTimeout(r, delay))
+          }
+        }
+        // TypeScript doesn't know that the loop either assigns session or throws
+        if (!session) throw new Error('getSession failed without throwing')
+
+        // Get assessment outcome for intent-based attribution
+        // Use originalSocketId because assessmentOutcomes is set in onMessageStart with the original socket ID,
+        // but this callback receives the effective socket ID after potential migration
+        // Note: Delete is deferred until after createReport succeeds to allow retry attempts
+        // to access the assessment outcome if createReport fails transiently
+        const assessmentOutcome = assessmentOutcomes.get(originalSocketId)
+
+        // Process cost attribution using rule-based detection
+        // Wrapped in try-catch so attribution errors don't prevent createReport from executing
+        let reportItems: Array<{ budgetCost: string; productCost: string; label: string }>
+        let sessionWasFree: boolean
+        let attributionResult
         try {
-          session = await client.getSession(sessionId)
-        } catch (err) {
-          logger.error('budget.report.getSessionFailed', {
-            budgetId, sessionId, error: err instanceof Error ? err.message : String(err),
+          const result = processBudgetReport({
+            budgetId,
+            sessionId,
+            totalCost: session.costTotal,
+            sessionItems: session.sessionItems,
+            steps,
+            assessmentOutcome,
+            wasUserAborted,
           })
-          throw err
+          reportItems = result.reportItems
+          sessionWasFree = result.sessionWasFree
+          attributionResult = result.attributionResult
+        } catch (err) {
+          // Attribution logic crashed - degrade gracefully so createReport still executes
+          // Customer pays 100% when we can't determine attribution (safe default)
+          logger.error('budget.report.attributionFailed', {
+            budgetId,
+            sessionId,
+            error: err instanceof Error ? err.message : String(err),
+            stack: err instanceof Error ? err.stack : undefined,
+          })
+          reportItems = [{
+            budgetCost: session.costTotal.toString(),
+            productCost: '0',
+            label: ReportLabel.General,
+          }]
+          sessionWasFree = false
         }
 
         // createReport is the critical path (credits deducted). Must not be blocked
         // by getBudget failure. Returns full ReportResponse (BMS parity, PR #2577).
         let report
         try {
-          report = await client.createReport(sessionId, {
-            reportItems: [{
-              budgetCost: session.costTotal.toString(),
-              productCost: '0',
-              label: 'airo-builder:general',
-            }],
-          })
+          report = await client.createReport(sessionId, { reportItems })
         } catch (err) {
+          // 409 Conflict = report already exists for this session (idempotency).
+          // Credits were already deducted by the prior POST. Tell client to refresh
+          // to get accurate balance - we don't have the original report to return.
+          // Preserve sessionWasFree since 409 fires when first attempt succeeded (credits already at $0)
+          if (err instanceof BudgetServiceConflictError) {
+            logger.info('budget.report.conflict_idempotent', {
+              budgetId,
+              sessionId,
+              sessionWasFree,
+              message: 'Report already exists - telling client to refresh',
+            })
+            return { refreshRequired: true, sessionWasFree }
+          }
+
+          const budgetError = err instanceof BudgetServiceError ? err : null
           logger.error('budget.report.createReportFailed', {
-            budgetId, sessionId, error: err instanceof Error ? err.message : String(err),
+            budgetId,
+            sessionId,
+            error: err instanceof Error ? err.message : String(err),
+            statusCode: budgetError?.statusCode,
+            responseBody: budgetError?.responseBody,
           })
           throw err
         }
 
+        // createReport succeeded - safe to clean up assessment outcome now
+        // This must happen after createReport to allow retry attempts to access the outcome
+        assessmentOutcomes.delete(originalSocketId)
+
+        // Log report creation with attribution summary
+        if (attributionResult) {
+          const attributionContext: AttributionContext = {
+            budgetId,
+            sessionId,
+            conversationId: undefined,
+            appId: undefined,
+          }
+          logReportCreated(attributionResult, report.reportId, attributionContext)
+        } else {
+          // Log for default/fallback paths that don't have attributionResult
+          logger.info('budget.report.created', {
+            budgetId,
+            sessionId,
+            reportId: report.reportId,
+            totalCost: session.costTotal,
+            sessionWasFree,
+            attributionPath: 'default',
+          })
+        }
+
         // getBudget for per-item breakdown (post-deduction state). Graceful degradation.
+        // Note: createReport succeeded at this point, so sessionWasFree is valid even if getBudget fails
         try {
           const budget = await client.getBudget(budgetId)
-          return { refreshRequired: false, payload: toBudgetUpdatePayload(report, budget) }
+          return { refreshRequired: false, payload: toBudgetUpdatePayload(report, budget), sessionWasFree, reportId: report.reportId }
         } catch (err) {
           logger.error('budget.report.payload_failed', {
             budgetId,
@@ -2110,7 +2234,9 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
             reportId: report.reportId,
             error: err instanceof Error ? err.message : String(err),
           })
-          return { refreshRequired: true }
+          // Return sessionWasFree so "completed for free" UI signal isn't lost
+          // Client will need to refresh for accurate balance, but free task status is preserved
+          return { refreshRequired: true, sessionWasFree }
         }
       },
 
@@ -2132,7 +2258,12 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         initialPromptMetadata.delete(socketId);
 
         // Clean up assessment tracking
-        assessmentOutcomes.delete(socketId)
+        // Note: assessmentOutcomes is NOT deleted here because:
+        // - When budgetServiceEnabled=true, onBudgetReport handles cleanup using originalSocketId
+        // - When budgetServiceEnabled=false, onMessageComplete handles cleanup using socketId
+        // Deleting here would race with onBudgetReport and cause attribution to fail silently.
+        // Small memory leak risk for sockets that disconnect mid-message before budget report,
+        // but this is acceptable vs incorrect billing.
         pendingBudgetOverrides.delete(socketId)
         lastUserMessageCache.delete(socketId)
         lastAssessmentTaskTypeCache.delete(socketId)
@@ -2269,8 +2400,8 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           initialPromptMetadata.delete(socketId);
         }
 
-        // Clean up assessment tracking (prevent stale overrides on next message)
-        assessmentOutcomes.delete(socketId)
+        // Clean up retry tracking (assessment cleanup happens in onCompletion after
+        // finally-block budget report can use it for intent-based attribution)
         pendingBudgetOverrides.delete(socketId)
         typecheckRetryCountBySocket.delete(socketId)
         runtimeErrorRetryCountBySocket.delete(socketId)

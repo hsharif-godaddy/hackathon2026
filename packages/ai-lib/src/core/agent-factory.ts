@@ -1277,12 +1277,13 @@ Please retry your tool call with corrected input formatting.`
         const finalResult = streamResult
 
         // Await all promises from ToolLoopAgent
-        const [usage, totalUsage, finishReason, toolCalls, toolResults] = await Promise.all([
+        const [usage, totalUsage, finishReason, toolCalls, toolResults, steps] = await Promise.all([
           finalResult.usage,
           finalResult.totalUsage,
           finalResult.finishReason,
           finalResult.toolCalls,
-          finalResult.toolResults
+          finalResult.toolResults,
+          finalResult.steps
         ])
 
         // Use toolResults if available (includes both input and output), otherwise fall back to toolCalls
@@ -1292,7 +1293,8 @@ Please retry your tool call with corrected input formatting.`
           usage,
           totalUsage,
           finishReason,
-          toolCalls: finalToolCalls
+          toolCalls: finalToolCalls,
+          steps
         }
       }
     }

@@ -6,6 +6,7 @@ import { Server as HTTPServer } from 'http'
 import type { AgentFactory, AgentWrapper, PipelineContextMessage } from '@airo/ai-lib'
 import { createAgentFactory } from '@airo/ai-lib'
 import { buildTokenUsage, calculateCostEstimate, formatCostEstimate, getCacheHitRate } from '@airo/ai-lib'
+import type { ExecutionStep } from '@airo/ai-lib/budget'
 import { classifyError, BudgetExceededError, isBudgetExceededAPIError, createLogger } from '@airo/ai-common'
 import { isBudgetServiceError, mapBudgetErrorToResponse } from '@airo/shared/budget'
 import type { AgentsCollection } from '@airo/ai-lib'
@@ -60,6 +61,8 @@ interface AgentExecutionResult {
   toolCalls?: any[]
   /** Summary of reasoning (for models that support extended thinking) */
   reasoningSummary?: string
+  /** SDK execution steps for cost attribution analysis (when budget service flag ON) */
+  steps?: ExecutionStep[]
 }
 
 /**
@@ -359,11 +362,17 @@ export interface WebSocketConfig {
 
   /**
    * Budget report creation callback. Called after prompt execution to reconcile BMS session.
+   * @param budgetId - BMS budget ID
+   * @param sessionId - BMS session ID
+   * @param socketId - Effective socket ID after migration (for emitting events to the connected socket)
+   * @param originalSocketId - Original socket ID from message start (for looking up per-socket state like assessment outcome)
+   * @param steps - SDK execution steps for cost attribution analysis (optional)
+   * @param wasUserAborted - True if user clicked Stop - prevents misattributing aborted sessions as GoDaddy cost
    * @returns payload is BudgetUpdatePayload (from @airo/shared/budget) when refreshRequired is false
    */
-  onBudgetReport?: (budgetId: string, sessionId: string) => Promise<
-    | { refreshRequired: false; payload: Record<string, unknown> }
-    | { refreshRequired: true }
+  onBudgetReport?: (budgetId: string, sessionId: string, socketId: string, originalSocketId: string, steps?: ExecutionStep[], wasUserAborted?: boolean) => Promise<
+    | { refreshRequired: false; payload: Record<string, unknown>; sessionWasFree: boolean; reportId?: string }
+    | { refreshRequired: true; sessionWasFree?: boolean }
   >
 
   /**
@@ -421,6 +430,14 @@ export class WebSocketServer {
    * Key format: "socketId:toolId"
    */
   private activeToolSpans: Map<string, APMSpan> = new Map()
+
+  /**
+   * Store execution steps per socket for cost attribution.
+   * Set in streamAgentResponse after getFinalResult(), consumed in completeConversation.
+   * Cleaned up after passing to onMessageComplete callback.
+   * Key: socketId, Value: ExecutionStep[]
+   */
+  private pendingExecutionSteps: Map<string, ExecutionStep[]> = new Map()
 
   /**
    * Event channel for pub/sub event delivery
@@ -1173,6 +1190,10 @@ export class WebSocketServer {
         [stateData.conversationId]
       )
     }
+
+    // Clean up pending execution steps (cost attribution)
+    this.pendingExecutionSteps.delete(socketId)
+    this.pendingExecutionSteps.delete(effectiveId)
 
     // Delegate state cleanup to state manager (handles timeouts, abort controller, migrations, etc.)
     await this.stateManager.cleanup(socketId)
@@ -2265,6 +2286,7 @@ export class WebSocketServer {
     let budgetSessionSessionId: string | undefined
 
     let budgetReportFiled = false
+    let budgetSessionWasFree = false
 
     try {
       // Validate message
@@ -2428,6 +2450,10 @@ export class WebSocketServer {
       let iterationCount = 0
       const maxHandoffs = 10 // Prevent infinite loops
 
+      // Accumulate execution steps across all agent iterations for cost attribution
+      // Each agent's steps are collected and combined, not overwritten
+      const allExecutionSteps: ExecutionStep[] = []
+
       while (iterationCount < maxHandoffs) {
         iterationCount++
 
@@ -2469,7 +2495,14 @@ export class WebSocketServer {
 
         // Stream agent response (tools execute here, including handoff)
         // Never emit completion during the loop - we'll handle it after
-        await this.streamAgentResponse(socket, agent, iterationData, processedContext, agentName, startTime, false)
+        const streamResult = await this.streamAgentResponse(socket, agent, iterationData, processedContext, agentName, startTime, false)
+
+        // Accumulate steps from this agent iteration
+        if (streamResult.steps.length > 0) {
+          allExecutionSteps.push(...streamResult.steps)
+          // Update Map for finally-block fallback (in case error/abort happens later)
+          this.pendingExecutionSteps.set(socketId, allExecutionSteps)
+        }
 
         // If stream was aborted (e.g., disconnect timeout), skip further processing.
         // Break out of the handoff loop — completeConversation below handles both
@@ -2646,7 +2679,6 @@ export class WebSocketServer {
       // before the client sees the complete event. If reconciliation takes
       // >10s, emit a progress signal so the client knows we're still working.
       if (budgetSessionBudgetId && budgetSessionSessionId && !budgetReportFiled) {
-        budgetReportFiled = true
         let progressTimer: ReturnType<typeof setTimeout> | undefined
         try {
           progressTimer = setTimeout(() => {
@@ -2658,10 +2690,27 @@ export class WebSocketServer {
           }, 10_000)
           if (typeof progressTimer === 'object' && 'unref' in progressTimer) progressTimer.unref()
 
-          const filed = await this.fileBudgetReport(
-            budgetSessionBudgetId, budgetSessionSessionId, socketId,
+          // Use accumulated execution steps from the handoff loop (not Map lookup)
+          // Check if user aborted - prevents misattributing user-aborted sessions as GoDaddy cost
+          const preReportStateData = this.stateManager.getStateData(socketId)
+          const wasUserAborted = abortSignal.aborted && preReportStateData?.userStopped
+          const budgetResult = await this.fileBudgetReport(
+            budgetSessionBudgetId, budgetSessionSessionId, socketId, allExecutionSteps, undefined, wasUserAborted,
           )
-          if (!filed) budgetReportFiled = false
+          // Only mark as filed AFTER we confirm the result - if fileBudgetReport throws
+          // before its internal try block, budgetReportFiled stays false and the finally
+          // block fallback can retry
+          if (budgetResult.filed) {
+            budgetReportFiled = true
+            // Clean up steps only after successful budget report
+            this.pendingExecutionSteps.delete(socketId)
+            budgetSessionWasFree = budgetResult.sessionWasFree
+          }
+          // If !budgetResult.filed: budgetReportFiled stays false, steps preserved for
+          // finally-block fallback retry. TODO: When budget flag is on and report filing
+          // fails, the BMS session remains open with unreconciled costs. Need to implement
+          // a reconciliation strategy (e.g., background retry queue, session cleanup job,
+          // or manual intervention).
         } finally {
           if (progressTimer !== undefined) clearTimeout(progressTimer)
         }
@@ -2676,7 +2725,8 @@ export class WebSocketServer {
       const finishReason = abortSignal.aborted
         ? (completionStateData?.userStopped ? 'user_stopped' : 'aborted')
         : undefined
-      await this.completeConversation(socketId, agentName, startTime, processedContext, finishReason)
+      const budgetServiceEnabled = (processedContext as { metadata?: { budgetServiceEnabled?: boolean } })?.metadata?.budgetServiceEnabled
+      await this.completeConversation(socketId, agentName, startTime, processedContext, finishReason, budgetSessionWasFree, budgetServiceEnabled)
 
       // Clean up state after abort — the disconnect timeout handler defers cleanup
       // to here so it doesn't race with completeConversation above.
@@ -2804,11 +2854,45 @@ export class WebSocketServer {
       }
     } finally {
       // Budget report creation fallback: if normal path didn't file (error/abort), attempt here
+      // TODO: If this fallback also fails, the BMS session remains open with unreconciled costs.
+      // Need to implement reconciliation strategy (background retry, cleanup job, etc.).
       if (budgetSessionBudgetId && budgetSessionSessionId && !budgetReportFiled) {
-        budgetReportFiled = true
-        await this.fileBudgetReport(
-          budgetSessionBudgetId, budgetSessionSessionId, socketId, 'finally',
-        )
+        // Wrap in try-catch to prevent fileBudgetReport errors from replacing the original exception.
+        // If fileBudgetReport throws (e.g., socket.emit fails in its own catch block), the exception
+        // would replace the original error from the outer catch, silently discarding the root cause.
+        try {
+          // In error/abort path, steps may still be available
+          const fallbackSteps = this.pendingExecutionSteps.get(socketId)
+          // Check if user aborted - use state manager since abortSignal may not be initialized if error was thrown early
+          const finallyStateData = this.stateManager.getStateData(socketId)
+          const finallyAbortController = this.stateManager.getAbortController(socketId)
+          const finallyWasUserAborted = finallyAbortController?.signal.aborted && finallyStateData?.userStopped
+          const fallbackResult = await this.fileBudgetReport(
+            budgetSessionBudgetId, budgetSessionSessionId, socketId, fallbackSteps, 'finally', finallyWasUserAborted,
+          )
+          if (fallbackResult.filed) {
+            this.pendingExecutionSteps.delete(socketId)
+          } else {
+            // Both primary and fallback attempts failed - BMS session is unreconciled
+            // Log for operational visibility; steps are preserved for potential future retry
+            this.logger.error('budget.report.fallback_also_failed', {
+              socketId: this.stateManager.getEffectiveSocketId(socketId),
+              budgetId: budgetSessionBudgetId,
+              sessionId: budgetSessionSessionId,
+              stepCount: fallbackSteps?.length ?? 0,
+            })
+            // Still delete steps to prevent memory leak - reconciliation requires external mechanism
+            this.pendingExecutionSteps.delete(socketId)
+          }
+        } catch (fallbackErr) {
+          this.logger.error('budget.report.finally_fallback_threw', {
+            socketId: this.stateManager.getEffectiveSocketId(socketId),
+            budgetId: budgetSessionBudgetId,
+            sessionId: budgetSessionSessionId,
+            error: fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr),
+          })
+          this.pendingExecutionSteps.delete(socketId)
+        }
       }
 
       // Clean up stream tracking via state manager
@@ -3096,32 +3180,48 @@ export class WebSocketServer {
 
   /**
    * File a budget report and emit budget_update to the client.
-   * Returns true if the report was filed (or attempted), false if skipped.
+   * Returns { filed: true, sessionWasFree } if report was created, { filed: false } if skipped.
    */
   private async fileBudgetReport(
     budgetId: string,
     sessionId: string,
     socketId: string,
+    steps?: ExecutionStep[],
     source?: 'finally',
-  ): Promise<boolean> {
-    if (!this.config.onBudgetReport) return false
-    const effectiveSid = this.stateManager.getEffectiveSocketId(socketId)
-    const logData = { socketId: effectiveSid, budgetId, sessionId, ...(source && { source }) }
+    wasUserAborted?: boolean,
+  ): Promise<{ filed: false } | { filed: true; sessionWasFree: boolean }> {
+    if (!this.config.onBudgetReport) return { filed: false }
     try {
-      const reportResult = await this.config.onBudgetReport(budgetId, sessionId)
+      const effectiveSid = this.stateManager.getEffectiveSocketId(socketId)
+      const logData = { socketId: effectiveSid, originalSocketId: socketId, budgetId, sessionId, stepCount: steps?.length ?? 0, ...(source && { source }), ...(wasUserAborted && { wasUserAborted }) }
+      const reportResult = await this.config.onBudgetReport(budgetId, sessionId, effectiveSid, socketId, steps, wasUserAborted)
       const socket = this.io.sockets.sockets.get(effectiveSid)
       if (socket?.connected) {
         socket.emit('budget_update', reportResult.refreshRequired ? { refreshRequired: true } : reportResult.payload)
       }
-      this.logger.info('budget.report.created', { ...logData, refreshRequired: reportResult.refreshRequired })
-      return true
+      // sessionWasFree can be true even with refreshRequired (getBudget failed but createReport succeeded)
+      const sessionWasFree = reportResult.sessionWasFree ?? false
+      const reportId = !reportResult.refreshRequired ? reportResult.reportId : undefined
+      this.logger.info('budget.report.created', { ...logData, refreshRequired: reportResult.refreshRequired, sessionWasFree, ...(reportId && { reportId }) })
+      return { filed: true, sessionWasFree }
     } catch (err) {
-      this.logger.error('budget.report.failed', { ...logData, error: err instanceof Error ? err.message : String(err) })
-      const socket = this.io.sockets.sockets.get(effectiveSid)
+      // Reconstruct context for logging since effectiveSid/logData are inside try
+      const effectiveSidForError = this.stateManager.getEffectiveSocketId(socketId)
+      this.logger.error('budget.report.failed', {
+        socketId: effectiveSidForError,
+        budgetId,
+        sessionId,
+        stepCount: steps?.length ?? 0,
+        ...(source && { source }),
+        ...(wasUserAborted && { wasUserAborted }),
+        error: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : undefined,
+      })
+      const socket = this.io.sockets.sockets.get(effectiveSidForError)
       if (socket?.connected) {
         socket.emit('budget_update', { refreshRequired: true })
       }
-      return false
+      return { filed: false }
     }
   }
 
@@ -3133,7 +3233,9 @@ export class WebSocketServer {
     agentName: string,
     startTime: number,
     processedContext: Record<string, unknown>,
-    finishReason?: string
+    finishReason?: string,
+    budgetSessionWasFree?: boolean,
+    budgetServiceEnabled?: boolean
   ): Promise<void> {
     const duration = `${Date.now() - startTime}ms`
 
@@ -3184,10 +3286,14 @@ export class WebSocketServer {
         (processedContext as { commitHash?: string | null }).commitHash ??
         null
 
-      usedFreeGrants =
-        (conversation.context as { usedFreeGrants?: boolean }).usedFreeGrants ??
-        (processedContext as { usedFreeGrants?: boolean }).usedFreeGrants ??
-        false
+      // Determine if this task was completed for free (publish/domain/fix tasks)
+      if (budgetServiceEnabled) {
+        // BMS mode: use budget report result (cost attribution determines if GoDaddy covered it)
+        usedFreeGrants = budgetSessionWasFree ?? false
+      } else {
+        // Legacy mode: use assessment agent result from beforeMessageComplete
+        usedFreeGrants = conversation.context.usedFreeGrants ?? false
+      }
 
       // Don't delete conversation - keep it active for next user message
       // Only cleanup happens on disconnect or error
@@ -3213,7 +3319,7 @@ export class WebSocketServer {
       agentName,
       duration,
       usage: undefined,
-      toolCalls: []
+      toolCalls: [],
     }, processedContext)
   }
 
@@ -3333,7 +3439,7 @@ export class WebSocketServer {
     agentName: string,
     startTime: number,
     shouldComplete: boolean = true
-  ): Promise<void> {
+  ): Promise<{ steps: ExecutionStep[] }> {
     let currentStep = 1
 
     // Keep the original user prompt intact - no modification!
@@ -3419,6 +3525,9 @@ export class WebSocketServer {
     }
 
     let streamResult
+
+    // Execution steps captured after stream completes (returned for cost attribution)
+    let executionSteps: ExecutionStep[] = []
 
     // Get model information for observability
     let modelName = 'unknown'
@@ -3807,7 +3916,8 @@ Please try again with corrected formatting.`
           finishReason: 'aborted',
         })
 
-        return
+        // Return any steps captured before abort for cost attribution
+        return { steps: executionSteps }
       }
 
       // Get final result with usage and tool calls
@@ -3831,6 +3941,16 @@ Please try again with corrected formatting.`
       this.logger.debug('stream.timing.summary', timingSummary)
       if (process.env.SOCKET_DIAGNOSTICS === 'true') {
         socket.emit('stream.timing.summary', timingSummary)
+      }
+
+      // Capture execution steps for cost attribution (returned to caller for accumulation)
+      executionSteps = finalResult.steps ?? []
+      if (executionSteps.length > 0) {
+        this.logger.info('steps.captured', {
+          socketId: socket.id,
+          stepCount: executionSteps.length,
+          conversationId: conversationAfterStream?.conversationId,
+        })
       }
 
       // Log token and cache usage information
@@ -4052,7 +4172,8 @@ Please try again with corrected formatting.`
         // in handleChatMessageInternal always publishes it after streamAgentResponse
         // returns (covering both throw and clean-return paths). Publishing here
         // would create a duplicate with inconsistent totalSteps.
-        return // Don't rethrow — abort is a clean termination, not an error
+        // Return any steps captured before abort for cost attribution
+        return { steps: executionSteps }
       }
 
       const postErrorInfo = this.analyzeStreamError(postStreamError)
@@ -4080,6 +4201,9 @@ Please try again with corrected formatting.`
 
     // Note: Conversation completion is now handled by completeConversation()
     // This allows multiple agents to contribute to the same conversation during handoffs
+
+    // Return execution steps for cost attribution accumulation
+    return { steps: executionSteps }
   }
 
   /**

@@ -253,4 +253,48 @@ describe('AgentWrapper integration with ToolLoopAgent settings', () => {
       totalUsage: mockFinishEvent.totalUsage
     }))
   })
+
+  it('getFinalResult returns steps from the stream result', async () => {
+    const mockSteps = [
+      {
+        stepType: 'tool-call',
+        response: { headers: { 'x-correlation-id': 'corr-001' } },
+        content: [{ type: 'tool-result', toolName: 'read', result: 'file contents' }]
+      },
+      {
+        stepType: 'tool-call',
+        response: { headers: { 'x-correlation-id': 'corr-002' } },
+        content: [{ type: 'text', text: 'Analysis complete' }]
+      }
+    ]
+
+    mockAgent.stream.mockResolvedValueOnce({
+      textStream: (async function* () {
+        yield 'result'
+      })(),
+      baseStream: null,
+      response: Promise.resolve({ headers: {} }),
+      usage: Promise.resolve({ totalTokens: 100, promptTokens: 50, completionTokens: 50 }),
+      totalUsage: Promise.resolve({ totalTokens: 100, promptTokens: 50, completionTokens: 50 }),
+      finishReason: Promise.resolve('stop'),
+      toolCalls: Promise.resolve([]),
+      toolResults: Promise.resolve([]),
+      steps: Promise.resolve(mockSteps)
+    })
+
+    const streamResult = await agentWrapper.streamGenerate('Test message', {
+      messages: createMockConversationMessages()
+    })
+
+    // Consume the stream
+    for await (const _ of streamResult.textStream) { /* drain */ }
+
+    const finalResult = await streamResult.getFinalResult()
+
+    expect(finalResult.steps).toBeDefined()
+    expect(finalResult.steps).toHaveLength(2)
+    expect(finalResult.steps).toEqual(mockSteps)
+    expect(finalResult.steps[0].response.headers['x-correlation-id']).toBe('corr-001')
+    expect(finalResult.steps[1].response.headers['x-correlation-id']).toBe('corr-002')
+  })
 })

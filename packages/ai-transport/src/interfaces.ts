@@ -202,6 +202,8 @@ export interface ConversationContext {
   sessionId?: string
   bmsBudgetId?: string
   budgetSessionId?: string
+  /** Whether this task was completed for free (assessment-based, legacy mode only) */
+  usedFreeGrants?: boolean
   [key: string]: any
 }
 

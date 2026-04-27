@@ -6,6 +6,7 @@ import {
   BudgetServiceTimeoutError,
   BudgetServiceUnavailableError,
   BudgetNotFoundError,
+  BudgetServiceConflictError,
 } from '../errors.js'
 
 const TEST_CONFIG = {
@@ -358,6 +359,45 @@ describe('BudgetServiceClient', () => {
           reportItems: [{ budgetCost: '3.5', productCost: '0', label: 'airo-builder:general' }],
         })
       ).rejects.toThrow(BudgetServiceAuthError)
+    })
+
+    it('throws BudgetServiceConflictError on 409 Conflict (not base class)', async () => {
+      const fetchMock = mockFetchWithText(false, 409, '{"error":"Report already exists"}')
+      const client = clientWith(fetchMock)
+
+      await expect(
+        client.createReport('sess-abc', {
+          reportItems: [{ budgetCost: '3.5', productCost: '0', label: 'airo-builder:general' }],
+        })
+      ).rejects.toThrow(BudgetServiceConflictError)
+
+      // 409 is idempotent success - should not retry
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+
+      // Also verify it's specifically the conflict error, not just any BudgetServiceError
+      try {
+        await client.createReport('sess-abc', {
+          reportItems: [{ budgetCost: '3.5', productCost: '0', label: 'airo-builder:general' }],
+        })
+      } catch (err) {
+        expect(err).toBeInstanceOf(BudgetServiceConflictError)
+        // Ensure the caller can use instanceof to differentiate from other errors
+        expect(err instanceof BudgetServiceError).toBe(true)
+      }
+    })
+
+    it('does not retry on 409 Conflict', async () => {
+      const fetchMock = mockFetchWithText(false, 409, '{"error":"Report already exists"}')
+      const client = clientWith(fetchMock)
+
+      await expect(
+        client.createReport('sess-abc', {
+          reportItems: [{ budgetCost: '3.5', productCost: '0', label: 'airo-builder:general' }],
+        })
+      ).rejects.toThrow(BudgetServiceConflictError)
+
+      // Should only make one attempt - no retries for 409
+      expect(fetchMock).toHaveBeenCalledTimes(1)
     })
 
   })
