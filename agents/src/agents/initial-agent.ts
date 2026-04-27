@@ -127,10 +127,14 @@ export async function createInitialAgent(
   const agentId = templateId ? `initial-${templateId}` : 'initial'
   const agentName = templateId ? `Initial (${templateId})` : 'Initial'
 
+  const validTargets = templateId === 'logo-designer'
+    ? ['develop', 'initial']
+    : ['develop']
+
   const handoffTool = stateManager
     ? createHandoffTool({
         sourceAgentId: agentId,
-        validTargets: ['develop'],
+        validTargets,
         stateManager
       })
     : undefined
@@ -148,7 +152,8 @@ export async function createInitialAgent(
     tools.colorScheme = allAILibTools.colorScheme
     tools.fontTheme = allAILibTools.fontTheme
     tools.skill = allAILibTools.skill
-    tools.memorySet = allAILibTools.memorySet
+    // No websiteRebuild — logo-designer hands off out-of-scope requests to initial
+    delete tools.websiteRebuild
   }
 
   if (handoffTool) {
@@ -185,19 +190,34 @@ export async function createInitialAgent(
             })
             return []
           }
-          return [{ role: 'system', content: result.instructions, insertionOrder: 'after_history' }]
+          return [{ role: 'user', content: result.instructions, insertionOrder: 'after_history' }]
         }
       : undefined,
 
-    handoffs: [
-      {
-        agentName: 'develop',
-        description: 'Hand off to development agent for all site types - single-page, multi-page, dashboards, games, or apps',
-      },
-    ],
+    handoffs: templateId === 'logo-designer'
+      ? [
+          {
+            agentName: 'develop',
+            description: 'Hand off to development agent for website building and code tasks',
+          },
+          {
+            agentName: 'initial',
+            description: 'Hand off to initial agent for requests outside brand/logo scope (websites, domains, general app creation)',
+          },
+        ]
+      : [
+          {
+            agentName: 'develop',
+            description: 'Hand off to development agent for all site types - single-page, multi-page, dashboards, games, or apps',
+          },
+        ],
 
-    // Stop after websiteRebuild or askQuestion tools
-    stopAfterTools: handoffTool ? ['handoff', 'websiteRebuild', 'askQuestion'] : ['websiteRebuild', 'askQuestion'],
+    // Stop after tools that need user confirmation before continuing
+    stopAfterTools: [
+      ...(handoffTool ? ['handoff'] : []),
+      ...(templateId !== 'logo-designer' ? ['websiteRebuild'] : []),
+      'askQuestion',
+    ],
 
     maxSteps: 10,
     temperature: 0.5,

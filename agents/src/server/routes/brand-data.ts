@@ -2,6 +2,7 @@
  * Brand Data Routes
  *
  * Assembles brand data from the memory table and app DB for the Brand Book view.
+ * Logos are served from media slots (not memory) — see useMediaManifest hook.
  * Prefers structured data from brand.identity and brand.colors.palette keys.
  * Falls back to parsed design.* markdown keys for legacy data.
  */
@@ -21,7 +22,6 @@ import {
   type BrandData,
   type BrandDataPalette,
   type BrandDataTypography,
-  type BrandDataLogo,
 } from '../../utils/brand-data-parsers.js';
 // Inline type for brand identity data stored in memory (avoids dependency on brand-identity tool)
 interface BrandIdentityData {
@@ -61,13 +61,12 @@ router.get('/apps/:id/brand-data', validateAppOwnership, async (req: Request, re
 
     // Fetch all brand data keys in parallel
     const [
-      paletteResult, typographyResult, logoResult, identityResult,
+      paletteResult, typographyResult, identityResult,
       // Legacy markdown keys (fallback)
       personalityResult, voiceResult, iconographyResult, layoutResult, audienceResult,
     ] = await Promise.all([
       memoryRepo.get(appId!, 'brand.colors.palette'),
       memoryRepo.get(appId!, 'brand.typography'),
-      memoryRepo.get(appId!, 'brand.logo'),
       memoryRepo.get(appId!, 'brand.identity'),
       // Legacy fallbacks
       memoryRepo.get(appId!, 'design.brand-personality'),
@@ -81,7 +80,6 @@ router.get('/apps/:id/brand-data', validateAppOwnership, async (req: Request, re
     const allResults = [
       { key: 'brand.colors.palette', result: paletteResult },
       { key: 'brand.typography', result: typographyResult },
-      { key: 'brand.logo', result: logoResult },
       { key: 'brand.identity', result: identityResult },
     ];
     for (const { key, result } of allResults) {
@@ -97,7 +95,6 @@ router.get('/apps/:id/brand-data', validateAppOwnership, async (req: Request, re
       brandName: app?.name || undefined,
       palette: paletteResult.exists ? paletteResult.value as BrandDataPalette : undefined,
       typography: typographyResult.exists ? typographyResult.value as BrandDataTypography : undefined,
-      logo: logoResult.exists ? logoResult.value as BrandDataLogo : undefined,
       // Prefer structured identity data, fall back to parsed markdown
       personality: identity?.personality
         ?? (personalityResult.exists && typeof personalityResult.value === 'string'

@@ -1,13 +1,15 @@
 'use client';
 
+import { useMemo } from 'react';
 import Box from '@ux/box';
 import text from '@ux/text';
 
 import Tips from '@/app/[market]/develop/components/tips/Tips';
 import { useAppName } from '@/hooks/useAppName';
 import { useBrandData } from '@/hooks/useBrandData';
+import { useMediaManifest } from '@/hooks/useMediaManifest';
 import styles from './brand-book.module.css';
-import { useBrandIntentOverrides,useBrandStyle, useGoogleFonts, useSuggestPrompt } from './hooks';
+import { useBrandIntentOverrides, useBrandStyle, useGoogleFonts, useSuggestPrompt } from './hooks';
 import {
   AudienceSection,
   ColorSection,
@@ -42,6 +44,25 @@ export default function BrandBookView({ appId }: BrandBookViewProps) {
   // Override UXCore intent CSS variables so all child components use brand palette
   const intentOverrides = useBrandIntentOverrides(data?.palette, data?.typography);
 
+  // Read media manifest to get logo slot URLs (single source of truth for logo images)
+  const { manifest, isLoading: isManifestLoading } = useMediaManifest({ appId });
+
+  // Derive logo URLs from manifest slots.
+  // While manifest is loading, return null (not undefined) so LogoSection can
+  // distinguish "still loading" from "no logo" and avoid flashing the CTA.
+  const logoUrls = useMemo(() => {
+    if (isManifestLoading) return null;
+
+    const primarySlot = manifest?.['logo/primary'];
+    if (!primarySlot?.currentUrl) return undefined;
+
+    const primarySrc = primarySlot.currentUrl;
+    const verticalSrc = manifest?.['logo/vertical']?.currentUrl;
+    const horizontalSrc = manifest?.['logo/horizontal']?.currentUrl;
+
+    return { primarySrc, verticalSrc, horizontalSrc };
+  }, [manifest, isManifestLoading]);
+
   // Genuine API failure after retries — show error state
   if (error && !data && !isLoading) {
     return (
@@ -74,6 +95,7 @@ export default function BrandBookView({ appId }: BrandBookViewProps) {
         brand={brand}
         onSuggestPrompt={suggestPrompt}
         palette={palette}
+        logoUrls={logoUrls}
       />
       <ColorSection
         data={data}

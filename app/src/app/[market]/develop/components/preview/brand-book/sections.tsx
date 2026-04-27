@@ -78,23 +78,28 @@ export function LogoSection({
   onSuggestPrompt,
   palette,
   inverted,
+  logoUrls,
 }: {
   data: BrandData | null;
   brand: BrandStyle;
   onSuggestPrompt: SuggestPromptFn;
+  logoUrls?: {
+    primarySrc?: string;
+    verticalSrc?: string;
+    horizontalSrc?: string;
+  } | null;
 } & SectionThemeProps) {
-  const logo = data?.logo;
   const pal = data?.palette;
-  // For dark-themed palettes, background is dark and foreground is light — swap for logo panels
   const isDark = pal?.theme === 'dark';
-  const logoPanelLightBg = isDark ? pal?.foreground : pal?.background || '#f5f5f5';
-  const logoPanelDarkBg = isDark ? pal?.background : pal?.foreground || '#1a1a1a';
+  const logoPanelBg = isDark ? pal?.foreground : pal?.background || '#f5f5f5';
 
-  const primaryVariant = logo?.square || logo?.horizontal || logo?.vertical;
-  const primarySrc = primaryVariant?.transparent || primaryVariant?.solid;
+  const primarySrc = logoUrls?.primarySrc;
+  const verticalSrc = logoUrls?.verticalSrc;
+  const horizontalSrc = logoUrls?.horizontalSrc;
 
-  const verticalSrc = logo?.vertical?.transparent || logo?.vertical?.solid;
-  const horizontalSrc = logo?.horizontal?.transparent || logo?.horizontal?.solid;
+  // null = manifest still loading (don't flash placeholder)
+  // undefined = no logo in manifest (show placeholder CTA)
+  const showPlaceholder = logoUrls === undefined;
 
   return (
     <SectionWrapper palette={palette} inverted={inverted}>
@@ -105,47 +110,33 @@ export function LogoSection({
         brand={brand}
       />
 
-      {!logo || !primarySrc ? (
+      {showPlaceholder ? (
         <SectionPlaceholder
           description="Upload or describe your logo to see it displayed here."
           prompt="Help me create a logo for my brand book"
           onSuggestPrompt={onSuggestPrompt}
         />
-      ) : (
+      ) : primarySrc ? (
         <Box gap="lg">
           <div className={styles.logoGrid}>
-            {/* Row 1, Col 1: Light */}
+            {/* Square: primary logo on light background */}
             <div className={styles.logoGridItem} style={{ gridArea: 'light' }}>
-              <div className={styles.logoPanelSquare} style={{ backgroundColor: logoPanelLightBg }}>
+              <div className={styles.logoPanelSquare} style={{ backgroundColor: logoPanelBg }}>
                 <Image
                   src={primarySrc}
-                  alt="Logo on light background"
+                  alt="Logo"
                   fill
                   unoptimized
                   className={styles.logoImage}
                 />
               </div>
-              <text.span as="caption">Transparent / Light</text.span>
+              <text.span as="caption">Primary</text.span>
             </div>
 
-            {/* Row 1, Col 2: Dark */}
-            <div className={styles.logoGridItem} style={{ gridArea: 'dark' }}>
-              <div className={styles.logoPanelSquare} style={{ backgroundColor: logoPanelDarkBg }}>
-                <Image
-                  src={primarySrc}
-                  alt="Logo on dark background"
-                  fill
-                  unoptimized
-                  className={styles.logoImage}
-                />
-              </div>
-              <text.span as="caption">Reversed / Dark</text.span>
-            </div>
-
-            {/* Row 1-2, Col 3: Vertical (spans 2 rows) */}
+            {/* Vertical variant */}
             {verticalSrc && (
               <div className={styles.logoGridItem} style={{ gridArea: 'vert' }}>
-                <div className={styles.logoPanelWide} style={{ backgroundColor: logoPanelLightBg }}>
+                <div className={styles.logoPanelWide} style={{ backgroundColor: logoPanelBg }}>
                   <Image
                     src={verticalSrc}
                     alt="Vertical variant"
@@ -158,10 +149,10 @@ export function LogoSection({
               </div>
             )}
 
-            {/* Row 2, Col 1-2: Horizontal (spans 2 cols) */}
+            {/* Horizontal variant */}
             {horizontalSrc && (
               <div className={styles.logoGridItem} style={{ gridArea: 'horiz' }}>
-                <div className={styles.logoPanelWide} style={{ backgroundColor: logoPanelLightBg }}>
+                <div className={styles.logoPanelWide} style={{ backgroundColor: logoPanelBg }}>
                   <Image
                     src={horizontalSrc}
                     alt="Horizontal variant"
@@ -174,14 +165,8 @@ export function LogoSection({
               </div>
             )}
           </div>
-
-          {logo.guidelines && (
-            <text.p as="paragraph">
-              {logo.guidelines}
-            </text.p>
-          )}
         </Box>
-      )}
+      ) : null}
     </SectionWrapper>
   );
 }

@@ -40,8 +40,6 @@ export type {
   BrandDataColors,
   BrandDataIconography,
   BrandDataLayout,
-  BrandDataLogo,
-  BrandDataLogoVariant,
   BrandDataMission,
   BrandDataPalette,
   BrandDataPersonality,

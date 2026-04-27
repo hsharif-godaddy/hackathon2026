@@ -46,18 +46,6 @@ export interface BrandDataTypography {
   body?: { family: string; weights: string[] };
 }
 
-export interface BrandDataLogoVariant {
-  transparent?: string;
-  solid?: string;
-}
-
-export interface BrandDataLogo {
-  square?: BrandDataLogoVariant;
-  horizontal?: BrandDataLogoVariant;
-  vertical?: BrandDataLogoVariant;
-  guidelines?: string;
-}
-
 export interface BrandDataPersonality {
   description?: string;
   traits?: Array<{ name: string; description: string }>;
@@ -113,7 +101,6 @@ export interface BrandData {
   version: number;
   brandName?: string;
   tagline?: string;
-  logo?: BrandDataLogo;
   palette?: BrandDataPalette;
   typography?: BrandDataTypography;
   personality?: BrandDataPersonality;

@@ -92,7 +92,6 @@ describe('Brand Data Route', () => {
 
       const palette = { primary: '#FF0000', secondary: '#00FF00', accent: '#0000FF' };
       const typography = { headingFont: 'Inter', bodyFont: 'Roboto' };
-      const logo = { url: 'https://example.com/logo.png', variants: [] };
       const identity = {
         personality: { description: 'Bold', traits: [{ name: 'bold', description: 'Bold brand' }] },
         voice: { weAre: ['confident'], weAreNot: ['timid'] },
@@ -110,7 +109,6 @@ describe('Brand Data Route', () => {
         const map: Record<string, unknown> = {
           'brand.colors.palette': palette,
           'brand.typography': typography,
-          'brand.logo': logo,
           'brand.identity': identity,
         };
         if (key in map) return Promise.resolve(memoryResult(map[key]));
@@ -125,7 +123,6 @@ describe('Brand Data Route', () => {
         brandName: 'My App',
         palette,
         typography,
-        logo,
         personality: identity.personality,
         voice: identity.voice,
         tagline: identity.tagline,
@@ -220,7 +217,6 @@ describe('Brand Data Route', () => {
       });
       // All other fields should be absent (undefined is omitted in JSON)
       expect(response.body.typography).toBeUndefined();
-      expect(response.body.logo).toBeUndefined();
       expect(response.body.personality).toBeUndefined();
       expect(response.body.voice).toBeUndefined();
       expect(response.body.tagline).toBeUndefined();

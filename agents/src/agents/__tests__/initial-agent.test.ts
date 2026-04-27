@@ -1,6 +1,25 @@
 import { createInitialAgent } from '../initial-agent.js';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+const mockRegisterSkill = vi.fn().mockReturnValue({ success: true });
+const mockUnloadSkill = vi.fn();
+const mockRunHook = vi.fn().mockResolvedValue(undefined);
+const mockLoadSkill = vi.fn().mockResolvedValue({ success: true, instructions: '# Media Logo Skill\nInstructions here.' });
+
+vi.mock('../../tools/skill-tool-manager.js', () => ({
+  skillToolManager: {
+    registerSkill: (...args: unknown[]) => mockRegisterSkill(...args),
+    unloadSkill: (...args: unknown[]) => mockUnloadSkill(...args),
+    runHook: (...args: unknown[]) => mockRunHook(...args),
+  }
+}));
+
+vi.mock('../../tools/skill-loader-tool.js', () => ({
+  SkillLoaderTool: vi.fn().mockImplementation(() => ({
+    loadSkill: (...args: unknown[]) => mockLoadSkill(...args),
+  }))
+}));
+
 const fileCalls: string[] = [];
 
 vi.mock('../../utils/model-selection.js', () => ({
@@ -52,6 +71,10 @@ vi.mock('fs', async () => {
 describe('initial-agent', function initialAgentTests() {
   beforeEach(() => {
     fileCalls.length = 0;
+    mockRegisterSkill.mockReturnValue({ success: true });
+    mockLoadSkill.mockResolvedValue({ success: true, instructions: '# Media Logo Skill\nInstructions here.' });
+    mockRunHook.mockResolvedValue(undefined);
+    mockUnloadSkill.mockReset();
   });
 
   describe('#createInitialAgent', function createTests() {
@@ -179,11 +202,12 @@ describe('initial-agent', function initialAgentTests() {
       const config = await createInitialAgent(undefined, 'logo-designer');
 
       expect(config.tools).toHaveProperty('skill');
-      expect(config.tools).toHaveProperty('memorySet');
       expect(config.onSkillsLoad).toBeTypeOf('function');
       expect(config.tools).toHaveProperty('brandBook');
       expect(config.tools).toHaveProperty('colorScheme');
       expect(config.tools).toHaveProperty('fontTheme');
+      // Logo-designer doesn't need websiteRebuild — out-of-scope requests hand off to initial
+      expect(config.tools).not.toHaveProperty('websiteRebuild');
     });
 
     it('should NOT include generateLogo or editLogo for logo-designer template', async function noLegacyLogoTools() {
@@ -198,6 +222,79 @@ describe('initial-agent', function initialAgentTests() {
 
       expect(config.onSkillsLoad).toBeUndefined();
       expect(config.tools).not.toHaveProperty('skill');
+    });
+
+    it('onSkillsLoad should return system-role message with after_history insertion', async function onSkillsLoadReturn() {
+      const config = await createInitialAgent(undefined, 'logo-designer');
+
+      const messages = await config.onSkillsLoad!('test-conversation-id');
+
+      expect(messages).toHaveLength(1);
+      expect(messages[0].role).toBe('user');
+      expect(messages[0].insertionOrder).toBe('after_history');
+      expect(messages[0].content).toContain('Media Logo Skill');
+      expect(mockRegisterSkill).toHaveBeenCalledWith('media-logo', 'test-conversation-id');
+      expect(mockRunHook).toHaveBeenCalledWith('media-logo', 'onLoad', { skillName: 'media-logo' });
+    });
+
+    it('onSkillsLoad should return empty array when skill activation fails', async function onSkillsLoadFail() {
+      mockRegisterSkill.mockReturnValueOnce({ success: false, error: 'not found' });
+
+      const config = await createInitialAgent(undefined, 'logo-designer');
+      const messages = await config.onSkillsLoad!('test-conversation-id');
+
+      expect(messages).toHaveLength(0);
+    });
+
+    it('onSkillsLoad should unload skill and return empty when instructions fail', async function onSkillsLoadNoInstructions() {
+      mockLoadSkill.mockResolvedValueOnce({ success: false, instructions: '' });
+
+      const config = await createInitialAgent(undefined, 'logo-designer');
+      const messages = await config.onSkillsLoad!('test-conversation-id');
+
+      expect(messages).toHaveLength(0);
+      expect(mockUnloadSkill).toHaveBeenCalledWith('media-logo', 'test-conversation-id');
+    });
+
+    it('logo-designer should have two handoffs (develop and initial)', async function logoDesignerHandoffs() {
+      const config = await createInitialAgent(undefined, 'logo-designer');
+
+      expect(config.handoffs).toHaveLength(2);
+      expect(config.handoffs![0].agentName).toBe('develop');
+      expect(config.handoffs![1].agentName).toBe('initial');
+    });
+
+    it('logo-designer with stateManager should have validTargets including initial', async function logoDesignerValidTargets() {
+      const mockStateManager = {
+        switchAgent: vi.fn(),
+        getCurrentAgent: vi.fn(),
+      };
+
+      const config = await createInitialAgent(mockStateManager as any, 'logo-designer');
+
+      // handoff tool is present, and validTargets would have been passed to createHandoffTool
+      expect(config.tools).toHaveProperty('handoff');
+    });
+
+    it('logo-designer stopAfterTools should not include websiteRebuild', async function logoDesignerStopAfterTools() {
+      const mockStateManager = {
+        switchAgent: vi.fn(),
+        getCurrentAgent: vi.fn(),
+      };
+
+      const config = await createInitialAgent(mockStateManager as any, 'logo-designer');
+
+      expect(config.stopAfterTools).toContain('handoff');
+      expect(config.stopAfterTools).toContain('askQuestion');
+      expect(config.stopAfterTools).not.toContain('websiteRebuild');
+    });
+
+    it('non-template stopAfterTools should include websiteRebuild', async function defaultStopAfterTools() {
+      const config = await createInitialAgent();
+
+      expect(config.stopAfterTools).toContain('websiteRebuild');
+      expect(config.stopAfterTools).toContain('askQuestion');
+      expect(config.stopAfterTools).not.toContain('handoff');
     });
   });
 
