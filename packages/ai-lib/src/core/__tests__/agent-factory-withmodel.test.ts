@@ -182,7 +182,24 @@ describe('AgentWrapper withModel', function withModelSuite() {
     expect(lastSettings.model).toBe(nextModel)
   })
 
-  it('strips effort when override model does not support it', function stripsEffort() {
+  it('does not add provider options when switching to a model with defaults', function noDuplicateDefaults() {
+    const originalModel = createLanguageModelStub('claude-sonnet-4-5')
+    const nextModel = createLanguageModelStub('claude-sonnet-4-6')
+    const config: AgentConfig = {
+      name: 'test-agent',
+      model: originalModel,
+      modelName: 'claude-sonnet-4-5',
+      system: 'system',
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() }
+    }
+
+    const wrapper = new AgentWrapper(config)
+    wrapper.withModel(nextModel, 'claude-sonnet-4-6')
+
+    expect(lastSettings.providerOptions).toBeUndefined()
+  })
+
+  it('passes explicit provider options through when switching models', function providerOptionsPassthrough() {
     const originalModel = createLanguageModelStub('claude-sonnet-4-6')
     const nextModel = createLanguageModelStub('claude-haiku-4-5')
     const config: AgentConfig = {
@@ -199,9 +216,9 @@ describe('AgentWrapper withModel', function withModelSuite() {
     const wrapper = new AgentWrapper(config)
     wrapper.withModel(nextModel, 'claude-haiku-4-5')
 
-    if (lastSettings.providerOptions?.anthropic) {
-      expect(lastSettings.providerOptions.anthropic.effort).toBeUndefined()
-    }
+    expect(lastSettings.providerOptions).toEqual({
+      anthropic: { effort: 'high', disableParallelToolUse: true }
+    })
   })
 
   it('keeps effort when override model supports it', function keepsEffort() {

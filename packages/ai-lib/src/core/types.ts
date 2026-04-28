@@ -94,7 +94,7 @@ export interface AgentConfig {
   maxSteps?: number
   /** Stop after specific tool calls */
   stopAfterTools?: string[]
-  /** Provider-specific options */
+  /** Explicit provider-specific options. These are passed through as provided; model defaults are set on model definitions. */
   providerOptions?: Record<string, unknown>
   /** Hook called before each tool execution */
   beforeToolExecution?: (toolName: string, args: unknown, context?: AgentContext) => Promise<unknown> | unknown

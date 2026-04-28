@@ -86,11 +86,6 @@ export async function createMarketingAgent(): Promise<AgentConfig> {
     temperature: 0.4,
     maxOutputTokens: 8000,
     timeout: { stepMs: 600_000 },
-    providerOptions: {
-      anthropic: {
-        effort: 'low',
-      },
-    },
     logger: createAgentTelemetryLogger('marketing'),
 
     // Enable prompt caching for cost savings

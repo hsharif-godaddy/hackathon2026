@@ -149,12 +149,10 @@ describe('initial-agent', function initialAgentTests() {
       expect(config.stopAfterTools).toContain('askQuestion');
     });
 
-    it('should use effort:low provider option for concise planning', async function effort() {
+    it('should rely on model defaults for provider options', async function defaults() {
       const config = await createInitialAgent();
 
-      expect(config.providerOptions).toEqual({
-        anthropic: { effort: 'low' }
-      });
+      expect(config.providerOptions).toBeUndefined();
     });
 
     it('should enable prompt caching', async function caching() {

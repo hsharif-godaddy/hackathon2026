@@ -83,12 +83,10 @@ describe('marketing-agent', function marketingAgentTests() {
       expect(config.timeout).toEqual({ stepMs: 600_000 });
     });
 
-    it('should use effort:low provider option for latency', async function effort() {
+    it('should rely on model defaults for provider options', async function defaults() {
       const config = await createMarketingAgent();
 
-      expect(config.providerOptions).toEqual({
-        anthropic: { effort: 'low' }
-      });
+      expect(config.providerOptions).toBeUndefined();
     });
 
     it('should configure metadata preferences', async function metadata() {

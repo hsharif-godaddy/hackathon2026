@@ -281,11 +281,6 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
     temperature: 0.3,
     maxOutputTokens: 32000,
     timeout: { stepMs: 600_000 },
-    providerOptions: {
-      anthropic: {
-        effort: 'low',
-      },
-    },
 
     // Custom stop conditions
     stopWhen: [shouldStopAfterSuggestMode],

@@ -61,13 +61,11 @@ describe('develop-agent', function developAgentTests() {
         expect(config.timeout).toEqual({ stepMs: 600_000 });
       });
 
-    it('should use effort:low provider option',
-      async function effort() {
+    it('should rely on model defaults for provider options',
+      async function defaults() {
         const config = await createDevelopAgent();
 
-        expect(config.providerOptions).toEqual({
-          anthropic: { effort: 'low' }
-        });
+        expect(config.providerOptions).toBeUndefined();
       });
 
     it('should configure handoff to marketing agent',

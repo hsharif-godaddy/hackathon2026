@@ -20,7 +20,7 @@ import type { GlobalAgentConfig, AgentContext, ProcessedFile, AgentConfig } from
 import type { PipelineContextMessage, ContextPipeline } from './context-pipeline.js'
 import { createDefaultPipeline } from './context-normalization.js'
 import { createDuplicateResponseStopCondition } from './duplicate-detection.js'
-import { supportsEffort } from '../utils/model-normalization.js'
+import { mergeProviderOptions } from '../utils/model-normalization.js'
 import { createLogger, serializeError, isBudgetExceededAPIError, BudgetExceededError, retryWithBackoff, type RetryContext } from '@airo/ai-common'
 import { addCacheControlToSystemPrompt, logCachingStats } from '../utils/prompt-caching.js'
 import { getModel, llmMetadataContext, type LitellmMetadata } from '../providers/unified-provider.js'
@@ -323,8 +323,7 @@ export class AgentWrapper {
       ...(config.maxOutputTokens !== undefined && { maxOutputTokens: config.maxOutputTokens }),
       stopWhen: stopWhen.length > 0 ? stopWhen : [stepCountIs(10)], // Default max 10 steps
       // Pass provider-specific options (e.g., effort, disableParallelToolUse for Anthropic)
-
-      ...(config.providerOptions && { providerOptions: this.filterProviderOptions(config.providerOptions, config.model, config.modelName) as any }),
+      ...(config.providerOptions && { providerOptions: config.providerOptions as any }),
       maxRetries,
       // Enable OpenTelemetry telemetry for Elastic APM and Langfuse integration
       experimental_telemetry: { isEnabled: true, functionId: `agent-${config.name}` },
@@ -781,7 +780,7 @@ export class AgentWrapper {
   /**
    * Create a new AgentWrapper with a different model.
    * Preserves all other config (tools, system prompt, temperature, etc.).
-   * The new instance gets its own ToolLoopAgent with correct filterProviderOptions,
+   * The new instance gets its own ToolLoopAgent with model defaults,
    * addCacheControlToSystemPrompt, and prepareCall closure for the new model.
    */
   withModel(model: import('ai').LanguageModel, modelName: string): AgentWrapper {
@@ -1308,41 +1307,6 @@ Please retry your tool call with corrected input formatting.`
   getToolLoopAgent(): ToolLoopAgent<any, any, any> {
     return this.agent
   }
-
-  /**
-   * Strip provider options the current model doesn't support (e.g. effort on older Claude models)
-   */
-  private filterProviderOptions(
-    providerOptions: Record<string, unknown>,
-    model: import('ai').LanguageModel,
-    modelName?: string
-  ): Record<string, unknown> | undefined {
-
-    const anthropic = providerOptions.anthropic as Record<string, any> | undefined
-    if (!anthropic?.effort) {
-      return providerOptions
-    }
-
-    const resolvedName = (model as any).modelId || modelName || ''
-    if (supportsEffort(resolvedName)) {
-      return providerOptions
-    }
-
-    logger.warn('provider_options.effort.unsupported', {
-      model: resolvedName,
-      effort: anthropic.effort,
-      message: `Stripping effort parameter — model '${resolvedName}' does not support it`
-    })
-
-    const { effort: _, ...restAnthropic } = anthropic
-    const filtered: Record<string, unknown> = { ...providerOptions }
-    if (Object.keys(restAnthropic).length > 0) {
-      filtered.anthropic = restAnthropic
-    } else {
-      delete filtered.anthropic
-    }
-    return Object.keys(filtered).length > 0 ? filtered : undefined
-  }
 }
 
 /**
@@ -1642,6 +1606,11 @@ export class AgentFactory {
       temperature: config.temperature ?? this.globalConfig.defaultTemperature ?? 0.3,
       maxOutputTokens: config.maxOutputTokens ?? this.globalConfig.defaultMaxTokens ?? 2000,
       maxSteps: config.maxSteps ?? 8 // Default to 8 reasoning steps
+    }
+
+    const providerOptions = mergeProviderOptions(this.globalConfig.providerOptions, config.providerOptions)
+    if (providerOptions) {
+      merged.providerOptions = providerOptions
     }
 
     // Merge tools (global tools + agent-specific tools, skill tools only if agent has skill loader)

@@ -26,6 +26,8 @@ export interface ModelInfo {
   originalName: string
 }
 
+export type ModelProviderOptions = Record<string, unknown>
+
 /**
  * Model definition with provider-specific identifiers
  */
@@ -36,6 +38,8 @@ interface ModelDefinition {
   openai?: string
   /** Anthropic API model ID */
   anthropic?: string
+  /** Provider-specific default options for this model */
+  providerOptions?: ModelProviderOptions
 }
 
 /**
@@ -83,15 +87,30 @@ const MODELS: Record<string, ModelDefinition> = {
   // Claude Models (available on multiple providers)
   'claude-opus-4-6': {
     normalizedName: 'claude-opus-4-6',
-    anthropic: 'claude-opus-4-6'
+    anthropic: 'claude-opus-4-6',
+    providerOptions: {
+      anthropic: {
+        effort: 'low',
+      },
+    },
   },
   'claude-sonnet-4-6': {
     normalizedName: 'claude-sonnet-4-6',
-    anthropic: 'claude-sonnet-4-6'
+    anthropic: 'claude-sonnet-4-6',
+    providerOptions: {
+      anthropic: {
+        effort: 'low',
+      },
+    },
   },
   'azure/claude-sonnet-4-6': {
     normalizedName: 'claude-sonnet-4-6',
-    anthropic: 'azure/claude-sonnet-4-6'
+    anthropic: 'azure/claude-sonnet-4-6',
+    providerOptions: {
+      anthropic: {
+        effort: 'low',
+      },
+    },
   },
   'claude-sonnet-4-5': {
     normalizedName: 'claude-sonnet-4-5',
@@ -274,17 +293,63 @@ export function getLegacyModelMappings(): Record<string, string> {
   return mappings
 }
 
-const EFFORT_SUPPORTED_MODELS = new Set([
-  'claude-opus-4-6',
-  'claude-sonnet-4-6',
-])
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+const PROTOTYPE_POLLUTION_KEYS = new Set(['__proto__', 'constructor', 'prototype'])
+
+function mergeRecords(
+  base: Record<string, unknown>,
+  override: Record<string, unknown>
+): Record<string, unknown> {
+  const merged: Record<string, unknown> = {}
+
+  for (const [key, value] of Object.entries(base)) {
+    if (PROTOTYPE_POLLUTION_KEYS.has(key)) {
+      continue
+    }
+
+    merged[key] = isRecord(value)
+      ? mergeRecords({}, value)
+      : value
+  }
+
+  for (const [key, value] of Object.entries(override)) {
+    if (PROTOTYPE_POLLUTION_KEYS.has(key)) {
+      continue
+    }
+
+    const existing = merged[key]
+    merged[key] = isRecord(value)
+      ? mergeRecords(isRecord(existing) ? existing : {}, value)
+      : value
+  }
+
+  return merged
+}
 
 /**
- * Check if a model supports the Anthropic `effort` parameter.
+ * Deep merge provider options. Empty objects are treated the same as omitted options.
  */
-export function supportsEffort(modelName: string): boolean {
-  const { normalizedName } = normalizeModelName(modelName)
-  return EFFORT_SUPPORTED_MODELS.has(normalizedName)
+export function mergeProviderOptions(
+  ...providerOptions: Array<ModelProviderOptions | undefined>
+): ModelProviderOptions | undefined {
+  let merged: ModelProviderOptions = {}
+
+  for (const options of providerOptions) {
+    if (options && Object.keys(options).length > 0) {
+      merged = mergeRecords(merged, options)
+    }
+  }
+
+  return Object.keys(merged).length > 0 ? merged : undefined
+}
+
+export function getDefaultProviderOptions(modelName: string): ModelProviderOptions | undefined {
+  const lower = modelName.toLowerCase().trim()
+  const canonicalKey = ALIASES[lower] || lower
+  return MODELS[canonicalKey]?.providerOptions
 }
 
 /**

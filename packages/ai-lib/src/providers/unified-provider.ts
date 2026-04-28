@@ -7,8 +7,8 @@
 
 import { createLogger, containsBudgetExceededPattern, llmMetadataContext, type LitellmMetadata } from '@airo/ai-common'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
-import type { LanguageModel } from 'ai'
-import { wrapLanguageModel } from 'ai'
+import type { LanguageModel, LanguageModelMiddleware } from 'ai'
+import { defaultSettingsMiddleware, wrapLanguageModel } from 'ai'
 import { createAnthropic } from '@ai-sdk/anthropic'
 import { Agent } from 'undici'
 
@@ -34,7 +34,8 @@ import {
   getLegacyModelMappings,
   getAvailableModels as getAvailableModelsFromNormalization,
   isModelSupported as isModelSupportedFromNormalization,
-  getFullModelName as getFullModelNameFromNormalization
+  getFullModelName as getFullModelNameFromNormalization,
+  getDefaultProviderOptions
 } from '../utils/model-normalization.js'
 import { createCostTrackingMiddleware } from './usage-instrumentation-middleware.js'
 import { getS2SProviderConfig, isS2SAuthEnabled, getDefaultAnthropicProxyEndpoint, refreshS2SToken, getS2SToken, type S2SAuthConfig } from '../utils/s2s-auth.js'
@@ -545,6 +546,14 @@ function createAnthropicFetch(options: { useS2S: boolean; s2sAuthConfig?: S2SAut
   return createSelectiveBetaHeaderFetch(options.blockedBetaHeaders)
 }
 
+function getModelMiddleware(modelName: string): LanguageModelMiddleware[] {
+  const providerOptions = getDefaultProviderOptions(modelName)
+  return [
+    ...(providerOptions ? [defaultSettingsMiddleware({ settings: { providerOptions: providerOptions as any } })] : []),
+    createCostTrackingMiddleware(),
+  ]
+}
+
 /**
  * Create OpenAI-compatible provider for LiteLLM
  * Now supports S2S authentication when GOCODE_USE_S2S_AUTH is enabled
@@ -638,7 +647,7 @@ export async function getModel(
       const provider = await createOpenAIProvider(config)
       return wrapLanguageModel({
         model: provider(modelNameToUse),
-        middleware: createCostTrackingMiddleware()
+        middleware: getModelMiddleware(modelName)
       })
 
     } else if (providerType === 'anthropic') {
@@ -662,7 +671,7 @@ export async function getModel(
       const provider = await createAnthropicProvider(config)
       return wrapLanguageModel({
         model: provider(modelNameToUse),
-        middleware: createCostTrackingMiddleware()
+        middleware: getModelMiddleware(modelName)
       })
 
     } else {
@@ -866,4 +875,5 @@ export async function getEmbeddingModel(
 export const __test__ = {
   createS2SFetchWrapper,
   createSelectiveBetaHeaderFetch,
+  getModelMiddleware,
 }

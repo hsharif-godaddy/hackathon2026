@@ -43,7 +43,12 @@ export * from './utils/s2s-auth.js'
 export * from './utils/embeddings.js'
 export * from './utils/tool-llm-helper.js'
 export * from './utils/prompt-caching.js'
-export { supportsEffort, normalizeModelName } from './utils/model-normalization.js'
+export {
+  getDefaultProviderOptions,
+  mergeProviderOptions,
+  normalizeModelName,
+  type ModelProviderOptions,
+} from './utils/model-normalization.js'
 export { parseChunkTimeoutMs } from './utils/env-overrides.js'
 
 // Convenience re-exports

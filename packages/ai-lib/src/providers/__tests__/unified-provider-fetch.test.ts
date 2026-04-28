@@ -99,6 +99,63 @@ describe('createS2SFetchWrapper header injection', () => {
   })
 })
 
+describe('model provider defaults middleware', () => {
+  it('applies provider options from model definitions', async () => {
+    const { __test__ } = await import('../unified-provider.js')
+    const [middleware] = __test__.getModelMiddleware('sonnet')
+    for (const type of ['generate', 'stream'] as const) {
+      const transformed = await middleware.transformParams?.({
+        params: { providerOptions: {} } as any,
+        type,
+        model: { modelId: 'claude-sonnet-4-6' } as any,
+      })
+
+      expect(transformed?.providerOptions).toEqual({
+        anthropic: { effort: 'low' },
+      })
+    }
+  })
+
+  it('lets request provider options override model defaults', async () => {
+    const { __test__ } = await import('../unified-provider.js')
+    const [middleware] = __test__.getModelMiddleware('sonnet')
+    const transformed = await middleware.transformParams?.({
+      params: {
+        providerOptions: {
+          anthropic: { effort: 'medium' },
+        },
+      } as any,
+      type: 'generate',
+      model: { modelId: 'claude-sonnet-4-6' } as any,
+    })
+
+    expect(transformed?.providerOptions).toEqual({
+      anthropic: { effort: 'medium' },
+    })
+  })
+
+  it('applies provider options for azure claude-sonnet-4-6', async () => {
+    const { __test__ } = await import('../unified-provider.js')
+    const [middleware] = __test__.getModelMiddleware('azure/claude-sonnet-4-6')
+    const transformed = await middleware.transformParams?.({
+      params: { providerOptions: {} } as any,
+      type: 'stream',
+      model: { modelId: 'azure/claude-sonnet-4-6' } as any,
+    })
+
+    expect(transformed?.providerOptions).toEqual({
+      anthropic: { effort: 'low' },
+    })
+  })
+
+  it('omits default provider options for models without defaults', async () => {
+    const { __test__ } = await import('../unified-provider.js')
+    const [middleware] = __test__.getModelMiddleware('haiku')
+
+    expect(middleware).not.toHaveProperty('transformParams')
+  })
+})
+
 describe('grant-fallback retry correlation-id', () => {
   let wrapper: typeof fetch
 

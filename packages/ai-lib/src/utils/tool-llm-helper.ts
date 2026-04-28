@@ -5,8 +5,10 @@
  * Ensures proper tracking, metadata injection, and observability.
  */
 
-import { generateText, type LanguageModel } from 'ai'
 import { createLogger } from '@airo/ai-common'
+import { generateText, type LanguageModel } from 'ai'
+
+import type { ModelProviderOptions } from './model-normalization.js'
 
 const logger = createLogger('tool-llm-helper')
 
@@ -40,6 +42,8 @@ export interface GenerateTextWithTrackingOptions {
   temperature?: number
   /** Maximum tokens to generate */
   maxOutputTokens?: number
+  /** Provider-specific options for this tool LLM call */
+  providerOptions?: ModelProviderOptions
   /** Context for tracking and observability */
   context?: ToolLLMContext
   /** Callback for usage tracking (receives usage data) */
@@ -124,6 +128,7 @@ export async function generateTextWithTracking(
     prompt,
     temperature,
     maxOutputTokens,
+    providerOptions,
     context,
     onUsage
   } = options
@@ -147,6 +152,7 @@ export async function generateTextWithTracking(
       prompt,
       ...(temperature !== undefined && { temperature }),
       ...(maxOutputTokens !== undefined && { maxOutputTokens }),
+      ...(providerOptions && { providerOptions: providerOptions as any }),
       experimental_telemetry: {
         isEnabled: true,
         functionId: context?.toolName ? `tool-${context.toolName}` : 'tool-llm'

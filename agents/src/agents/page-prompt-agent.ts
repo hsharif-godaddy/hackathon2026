@@ -265,11 +265,6 @@ export async function createPagePromptAgent(isFirstPage: boolean = true): Promis
     maxSteps: 5,
     temperature: 0.4,
     maxOutputTokens: 4000,
-    providerOptions: {
-      anthropic: {
-        effort: 'low',
-      },
-    },
     logger: createAgentTelemetryLogger('page-prompt'),
     enablePromptCaching: false,
 

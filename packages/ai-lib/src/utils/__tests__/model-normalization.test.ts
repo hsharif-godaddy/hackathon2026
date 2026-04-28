@@ -12,7 +12,8 @@ import {
   getModelProvider,
   getModelInfo,
   getLegacyModelMappings,
-  supportsEffort,
+  getDefaultProviderOptions,
+  mergeProviderOptions,
   MODELS,
   ALIASES
 } from '../model-normalization.js'
@@ -248,21 +249,99 @@ describe('model-normalization', () => {
     })
   })
 
-  describe('supportsEffort', () => {
-    it('returns true for claude-sonnet-4-6', () => {
-      expect(supportsEffort('claude-sonnet-4-6')).toBe(true)
+  describe('getDefaultProviderOptions', () => {
+    it('returns effort low for claude-sonnet-4-6', () => {
+      expect(getDefaultProviderOptions('claude-sonnet-4-6')).toEqual({
+        anthropic: { effort: 'low' }
+      })
     })
 
-    it('returns true for claude-opus-4-6', () => {
-      expect(supportsEffort('claude-opus-4-6')).toBe(true)
+    it('returns effort low for sonnet alias', () => {
+      expect(getDefaultProviderOptions('sonnet')).toEqual({
+        anthropic: { effort: 'low' }
+      })
     })
 
-    it('returns false for claude-haiku-4-5', () => {
-      expect(supportsEffort('claude-haiku-4-5')).toBe(false)
+    it('returns effort low for azure claude-sonnet-4-6', () => {
+      expect(getDefaultProviderOptions('azure/claude-sonnet-4-6')).toEqual({
+        anthropic: { effort: 'low' }
+      })
     })
 
-    it('returns false for gpt-4o', () => {
-      expect(supportsEffort('gpt-4o')).toBe(false)
+    it('returns effort low for claude-opus-4-6', () => {
+      expect(getDefaultProviderOptions('claude-opus-4-6')).toEqual({
+        anthropic: { effort: 'low' }
+      })
+    })
+
+    it('returns undefined for claude-haiku-4-5', () => {
+      expect(getDefaultProviderOptions('claude-haiku-4-5')).toBeUndefined()
+    })
+
+    it('returns undefined for unsupported models', () => {
+      expect(getDefaultProviderOptions('unknown-model')).toBeUndefined()
+    })
+  })
+
+  describe('mergeProviderOptions', () => {
+    it('deep merges provider options with later values taking precedence', () => {
+      expect(mergeProviderOptions(
+        { anthropic: { effort: 'low', cacheControl: { type: 'ephemeral' } } },
+        { anthropic: { effort: 'medium' } }
+      )).toEqual({
+        anthropic: {
+          effort: 'medium',
+          cacheControl: { type: 'ephemeral' }
+        }
+      })
+    })
+
+    it('preserves provider options when later inputs are undefined', () => {
+      expect(mergeProviderOptions(
+        { anthropic: { effort: 'low' } },
+        undefined
+      )).toEqual({
+        anthropic: { effort: 'low' }
+      })
+    })
+
+    it('skips empty inputs before merging later provider options', () => {
+      expect(mergeProviderOptions(
+        {},
+        { anthropic: { effort: 'medium' } }
+      )).toEqual({
+        anthropic: { effort: 'medium' }
+      })
+    })
+
+    it('does not share nested object references with model defaults', () => {
+      const result = mergeProviderOptions(
+        getDefaultProviderOptions('sonnet'),
+        { openai: { reasoningEffort: 'low' } }
+      )
+      const anthropic = result?.anthropic as { effort?: string }
+
+      anthropic.effort = 'medium'
+
+      expect(getDefaultProviderOptions('sonnet')).toEqual({
+        anthropic: { effort: 'low' }
+      })
+    })
+
+    it('drops prototype pollution keys while merging', () => {
+      const maliciousOptions = JSON.parse(
+        '{"anthropic":{"effort":"low","__proto__":{"polluted":true}},"constructor":{"prototype":{"polluted":true}}}'
+      )
+      const result = mergeProviderOptions(maliciousOptions)
+
+      expect(result).toEqual({
+        anthropic: { effort: 'low' }
+      })
+      expect(({} as Record<string, unknown>).polluted).toBeUndefined()
+    })
+
+    it('returns undefined when no options are provided', () => {
+      expect(mergeProviderOptions(undefined)).toBeUndefined()
     })
   })
 })

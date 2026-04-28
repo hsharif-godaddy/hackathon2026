@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { AgentWrapper } from '../agent-factory.js'
+import { AgentFactory, AgentWrapper } from '../agent-factory.js'
 import type { AgentConfig } from '../types.js'
 import type { ContextPipeline } from '../context-pipeline.js'
 import { defaultConvertToLlm } from '../context-normalization.js'
@@ -194,6 +194,58 @@ describe('AgentWrapper integration with ToolLoopAgent settings', () => {
 
   it('disables SDK-native retries (retryWithBackoff handles retries instead)', () => {
     expect(lastSettings.maxRetries).toBe(0)
+  })
+
+  it('does not duplicate model default provider options in ToolLoopAgent settings', () => {
+    new AgentWrapper({
+      name: 'defaults-agent',
+      model: { modelId: 'claude-sonnet-4-6' } as any,
+      tools: {},
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+      contextPipeline: createMockPipeline(),
+    })
+
+    expect(lastSettings.providerOptions).toBeUndefined()
+  })
+
+  it('passes explicit provider options to ToolLoopAgent settings', () => {
+    new AgentWrapper({
+      name: 'override-agent',
+      model: { modelId: 'claude-sonnet-4-6' } as any,
+      tools: {},
+      providerOptions: {
+        anthropic: { effort: 'medium' }
+      },
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+      contextPipeline: createMockPipeline(),
+    })
+
+    expect(lastSettings.providerOptions).toEqual({
+      anthropic: { effort: 'medium' }
+    })
+  })
+
+  it('passes global provider options through AgentFactory', () => {
+    const factory = new AgentFactory({
+      providerOptions: {
+        anthropic: { disableParallelToolUse: true }
+      }
+    })
+    const agents = factory.defineAgents({
+      test: {
+        name: 'factory-agent',
+        model: { modelId: 'claude-sonnet-4-6' } as any,
+        tools: {},
+        logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+        contextPipeline: createMockPipeline(),
+      }
+    })
+
+    agents.get('test')
+
+    expect(lastSettings.providerOptions).toEqual({
+      anthropic: { disableParallelToolUse: true }
+    })
   })
 
   it('invokes structured logger hooks for steps and completion', async () => {

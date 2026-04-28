@@ -127,11 +127,6 @@ export async function createDesignAgent(): Promise<AgentConfig> {
     temperature: 0.7, // Higher temperature for creative design work
     maxOutputTokens: 4000,
     timeout: { stepMs: 600_000 },
-    providerOptions: {
-      anthropic: {
-        effort: 'low',
-      },
-    },
     logger: createAgentTelemetryLogger('design')
   };
 }
