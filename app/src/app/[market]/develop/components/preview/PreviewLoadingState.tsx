@@ -9,10 +9,12 @@ import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 
 interface PreviewLoadingStateProps {
   message: string
+  description?: string
   isMobile?: boolean
+  testId?: string
 }
 
-export default function PreviewLoadingState({ message, isMobile = false }: PreviewLoadingStateProps) {
+export default function PreviewLoadingState({ message, description, isMobile = false, testId }: PreviewLoadingStateProps) {
   const previewViewMode = useDevelopPageStore((state) => state.previewViewMode)
   const selectedDeviceId = useDevelopPageStore((state) => state.selectedDeviceId)
 
@@ -29,7 +31,7 @@ export default function PreviewLoadingState({ message, isMobile = false }: Previ
   const deviceVerticalMargin = Math.round(32 - ((clampedHeight - minHeight) / (maxHeight - minHeight)) * 28)
 
   return (
-    <div className="h-full flex flex-col pe-1 md:pe-2.5 ps-1">
+    <div className="h-full flex flex-col pe-1 md:pe-2.5 ps-1" data-testid={testId}>
       <div className="inset-0 relative h-full">
         <div className="flex flex-col items-center justify-center h-full bg-intents-ux-boxLowContrast-backgroundColor rounded-lg md:rounded-b-none">
           <div className="flex-1 flex items-center justify-center pb-1 md:pb-0 px-1 md:px-0 w-full">
@@ -46,7 +48,7 @@ export default function PreviewLoadingState({ message, isMobile = false }: Previ
                 height: `min(${deviceHeight}px, calc(100% - ${deviceVerticalMargin * 2}px))`
               } : undefined}
             >
-              <Tips buildingMessage={message} />
+              <Tips buildingMessage={message} buildingDescription={description} />
             </div>
           </div>
         </div>

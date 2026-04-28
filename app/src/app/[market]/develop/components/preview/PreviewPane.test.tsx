@@ -4,7 +4,7 @@
 import '@testing-library/jest-dom';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 
 import { renderWithProviders } from '@/tests/test-utils';
 import { postMessageToIframe } from '@/utils/postMessage';
@@ -300,6 +300,54 @@ describe('PreviewPane', () => {
     renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
 
     expect(screen.queryByTestId('brand-book')).not.toBeInTheDocument();
+  });
+
+  it('renders the archive gate loading state when archiveGatePending is true', () => {
+    renderWithProviders(
+      <PreviewPane onPreviewRefresh={vi.fn()} archiveGatePending={true} />
+    );
+
+    expect(screen.getByTestId('develop-preview-archive-gate')).toBeInTheDocument();
+    expect(screen.getByTestId('tips')).toBeInTheDocument();
+    expect(screen.queryByTestId('preview-iframe')).not.toBeInTheDocument();
+  });
+
+  it('renders the archive restoring loading state when showArchiveResumeMessage is true', () => {
+    renderWithProviders(
+      <PreviewPane onPreviewRefresh={vi.fn()} showArchiveResumeMessage={true} />
+    );
+
+    expect(screen.getByTestId('develop-preview-archive-restoring')).toBeInTheDocument();
+    expect(screen.getByTestId('tips')).toBeInTheDocument();
+    expect(screen.queryByTestId('preview-iframe')).not.toBeInTheDocument();
+  });
+
+  it('renders archive-restore-failed and invokes onRetryArchiveRestore when provided', () => {
+    const onRetryArchiveRestore = vi.fn();
+    const onPreviewRefresh = vi.fn();
+    renderWithProviders(
+      <PreviewPane
+        onPreviewRefresh={onPreviewRefresh}
+        archiveResumeFailed={true}
+        onRetryArchiveRestore={onRetryArchiveRestore}
+      />
+    );
+
+    expect(screen.getByTestId('develop-preview-archive-restore-failed')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('builder_common_try_again'));
+    expect(onRetryArchiveRestore).toHaveBeenCalledTimes(1);
+    expect(onPreviewRefresh).not.toHaveBeenCalled();
+  });
+
+  it('falls back to onPreviewRefresh when archive-restore-failed retry has no onRetryArchiveRestore', () => {
+    const onPreviewRefresh = vi.fn();
+    renderWithProviders(
+      <PreviewPane onPreviewRefresh={onPreviewRefresh} archiveResumeFailed={true} />
+    );
+
+    expect(screen.getByTestId('develop-preview-archive-restore-failed')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('builder_common_try_again'));
+    expect(onPreviewRefresh).toHaveBeenCalledTimes(1);
   });
 
 });

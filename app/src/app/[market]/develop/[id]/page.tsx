@@ -20,9 +20,10 @@ import { SettingsLoadingState } from '@/app/[market]/develop/components/settings
 import { ChatTab, IframeMessageType, MobileMode, SettingsSection, ViewMode } from '@/app/[market]/develop/components/types'
 import { extractNewPageRoute, handlePreviewRefresh, navigatePreviewToRoute, requestPreviewScreenshot, useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import { clearExpiredWidgetStates } from '@/app/[market]/develop/components/widgets'
+import { sendPendingAutoSendMessage } from '@/app/[market]/develop/hooks/sendPendingAutoSendMessage'
 import { useChatPaneLoadingState } from '@/app/[market]/develop/hooks/useChatPaneLoadingState'
 import { useEvalSnapshotCapture } from '@/app/[market]/develop/hooks/useEvalSnapshotCapture'
-import { useInitialization } from '@/app/[market]/develop/hooks/useInitialization'
+import { deriveIsAwaitingStream, useInitialization } from '@/app/[market]/develop/hooks/useInitialization'
 import { usePublishSnapshotCapture } from '@/app/[market]/develop/hooks/usePublishSnapshotCapture'
 import { broadcast as broadcastProcessingState, handle as handleProcessingState } from '@/app/[market]/develop/utils/iframeProcessingState'
 import { ProtectedRoute } from '@/components/auth'
@@ -196,6 +197,11 @@ function DevelopPageContent() {
   const ws = useStreamingWebSocket()
   const isLoading = useIsLoading()
   const isStreaming = useIsActivelyStreaming()
+  const isAwaitingStream = deriveIsAwaitingStream(
+    init.context.hasInitialPrompt,
+    init.context.initialPromptSent,
+    isStreaming,
+  )
 
   // After cold-archive restore the WebSocket controller and dynamic-api cache hold the
   // pre-archive agent_url, and the chat store's historyLoadingComplete flag is still true
@@ -1161,26 +1167,18 @@ function DevelopPageContent() {
       autoSendInFlightRef.current = true
       const messageToSend = pendingAutoSendRef.current
 
-      const sendPendingMessage = async () => {
-        try {
-          await ws.actions.send({
-            content: messageToSend,
-            aiEditContext: null,
-            templateId: init.ui.templateId ?? undefined,
-          })
+      void sendPendingAutoSendMessage({
+        messageToSend,
+        appId,
+        templateId: init.ui.templateId ?? null,
+        send: ws.actions.send,
+        setInputValue,
+        markInitialPromptSent: init.actions.markInitialPromptSent,
+        onSettled: () => {
           pendingAutoSendRef.current = null
-          init.actions.markInitialPromptSent()
-        } catch (error) {
-          logger.error('develop-page.auto-send.failed', {
-            error: error instanceof Error ? error.message : String(error),
-            appId
-          })
-        } finally {
           autoSendInFlightRef.current = false
-        }
-      }
-
-      void sendPendingMessage()
+        },
+      })
     }
   }, [
     init.ui.shouldAutoSendPrompt,
@@ -1192,7 +1190,8 @@ function DevelopPageContent() {
     appId,
     init.actions,
     ws.connection.isConnected,
-    messages.length
+    messages.length,
+    setInputValue,
   ])
 
   useEffect(() => {
@@ -1283,6 +1282,7 @@ function DevelopPageContent() {
                 stopGeneration={ws.actions.stop}
                 isCreateFlowSession={isCreateFlowSession}
                 hasInitialPrompt={init.context.hasInitialPrompt}
+                isAwaitingStream={isAwaitingStream}
                 initialPromptText={init.context.initialPromptText}
                 loadingMessage={chatLoadingMessage}
               />
@@ -1435,6 +1435,7 @@ function DevelopPageContent() {
                         stopGeneration={ws.actions.stop}
                         isCreateFlowSession={isCreateFlowSession}
                         hasInitialPrompt={init.context.hasInitialPrompt}
+                        isAwaitingStream={isAwaitingStream}
                         initialPromptText={init.context.initialPromptText}
                         loadingMessage={chatLoadingMessage}
                       />

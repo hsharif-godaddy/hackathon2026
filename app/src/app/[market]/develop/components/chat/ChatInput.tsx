@@ -59,6 +59,12 @@ interface ChatInputProps {
   inputValue?: string
   isDisabled?: boolean
   isStreaming?: boolean
+  /**
+   * Show the stop button (disabled) while a generation has been requested but
+   * the WebSocket stream has not yet started. Lets the user see a stop button
+   * during the early "creating" phase even though there's nothing to stop yet.
+   */
+  isAwaitingStream?: boolean
   isBudgetExceeded?: boolean
   loadingMessage?: string | null
   onInputChange: (value: string) => void
@@ -90,6 +96,7 @@ export default function ChatInput({
   inputValue = '',
   isDisabled,
   isStreaming,
+  isAwaitingStream = false,
   isBudgetExceeded,
   loadingMessage = null,
   onInputChange,
@@ -320,7 +327,7 @@ export default function ChatInput({
       if (
         canSubmit &&
         uploadingStagedFileIds.length === 0 &&
-        !(isStreaming && onStopGeneration)
+        !((isStreaming || isAwaitingStream) && onStopGeneration)
       ) {
         handleSend()
       }
@@ -490,13 +497,15 @@ export default function ChatInput({
                   aria-pressed={isListening}
                 />
               )}
-              {isStreaming && onStopGeneration ? (
+              {(isStreaming || isAwaitingStream) && onStopGeneration ? (
                 <Button
                   data-testid="chat-stop-button"
                   onClick={() => {
+                    if (!isStreaming) return
                     logClickEvent('develop.prompt.stop', clickContext)();
                     onStopGeneration();
                   }}
+                  disabled={!isStreaming}
                   aria-label={t('builder_chatinput_stop')}
                   design="primary"
                   icon={<StopIcon />}

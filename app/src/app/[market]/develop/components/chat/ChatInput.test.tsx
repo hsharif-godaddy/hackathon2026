@@ -370,6 +370,95 @@ describe('ChatInput', () => {
     expect(screen.queryByTestId('chat-stop-button')).not.toBeInTheDocument();
   });
 
+  it('should render disabled stop button when isAwaitingStream is true and not yet streaming', () => {
+    renderWithProviders(
+      <ChatInput
+        {...defaultProps}
+        inputValue="Test"
+        isStreaming={false}
+        isAwaitingStream={true}
+        onStopGeneration={vi.fn()}
+      />
+    );
+
+    const stopButton = screen.getByTestId('chat-stop-button');
+    expect(stopButton).toBeInTheDocument();
+    expect(stopButton).toBeDisabled();
+    expect(screen.queryByTestId('chat-send-button')).not.toBeInTheDocument();
+  });
+
+  // fireEvent.click bypasses the native `disabled` attribute (unlike user-event's
+  // click which respects it), so this verifies the JS-level `if (!isStreaming) return`
+  // guard inside onClick — the second line of defense if a future button wrapper
+  // ever fails to forward `disabled` to the underlying <button>.
+  it('should not call onStopGeneration when the disabled stop button is force-clicked while not streaming', () => {
+    const onStopGeneration = vi.fn();
+    renderWithProviders(
+      <ChatInput
+        {...defaultProps}
+        inputValue="Test"
+        isStreaming={false}
+        isAwaitingStream={true}
+        onStopGeneration={onStopGeneration}
+      />
+    );
+
+    fireEvent.click(screen.getByTestId('chat-stop-button'));
+
+    expect(onStopGeneration).not.toHaveBeenCalled();
+    expect(vi.mocked(logClickEvent)).not.toHaveBeenCalledWith('develop.prompt.stop', expect.anything());
+  });
+
+  it('should render enabled stop button when both isAwaitingStream and isStreaming are true', () => {
+    renderWithProviders(
+      <ChatInput
+        {...defaultProps}
+        inputValue="Test"
+        isStreaming={true}
+        isAwaitingStream={true}
+        onStopGeneration={vi.fn()}
+      />
+    );
+
+    const stopButton = screen.getByTestId('chat-stop-button');
+    expect(stopButton).toBeInTheDocument();
+    expect(stopButton).not.toBeDisabled();
+    expect(screen.queryByTestId('chat-send-button')).not.toBeInTheDocument();
+  });
+
+  it('should render send button when isAwaitingStream is true but no stop handler is provided', () => {
+    renderWithProviders(
+      <ChatInput
+        {...defaultProps}
+        inputValue="Test"
+        isAwaitingStream={true}
+        // onStopGeneration intentionally omitted
+      />
+    );
+
+    expect(screen.getByTestId('chat-send-button')).toBeInTheDocument();
+    expect(screen.queryByTestId('chat-stop-button')).not.toBeInTheDocument();
+  });
+
+  it('should not call onSendMessage via Enter key while awaiting stream', async () => {
+    const onSendMessage = vi.fn();
+    const { user } = renderWithProviders(
+      <ChatInput
+        {...defaultProps}
+        inputValue="Test"
+        onSendMessage={onSendMessage}
+        isAwaitingStream={true}
+        onStopGeneration={vi.fn()}
+      />
+    );
+
+    const textarea = screen.getByRole('textbox');
+    await user.click(textarea);
+    await user.keyboard('{Enter}');
+
+    expect(onSendMessage).not.toHaveBeenCalled();
+  });
+
   it('should disable textarea when isDisabled is true', () => {
     renderWithProviders(<ChatInput {...defaultProps} isDisabled={true} />);
 

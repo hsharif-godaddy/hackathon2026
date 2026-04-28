@@ -88,6 +88,12 @@ interface ChatPaneProps {
   stopGeneration: () => void
   isCreateFlowSession?: boolean
   hasInitialPrompt?: boolean
+  /**
+   * Show the stop button (disabled) while a generation has been requested but
+   * the WebSocket stream has not yet started — typically the post-creation
+   * window between job→app transition and the first stream chunk.
+   */
+  isAwaitingStream?: boolean
   loadingMessage?: string | null
   initialPromptText?: string | null
 }
@@ -171,6 +177,7 @@ export default function ChatPane({
   stopGeneration,
   isCreateFlowSession = false,
   hasInitialPrompt = false,
+  isAwaitingStream = false,
   loadingMessage = null,
   initialPromptText = null,
 }: ChatPaneProps) {
@@ -1038,6 +1045,7 @@ export default function ChatPane({
             inputValue={safeInputValue}
             isDisabled={isProcessing}
             isStreaming={isStreaming}
+            isAwaitingStream={isAwaitingStream}
             isBudgetExceeded={budgetExceeded}
             loadingMessage={loadingMessage}
             onInputChange={setInputValue}
@@ -1151,6 +1159,7 @@ export default function ChatPane({
               inputValue={safeInputValue}
               isDisabled={isProcessing}
               isStreaming={isStreaming}
+              isAwaitingStream={isAwaitingStream}
               isBudgetExceeded={budgetExceeded}
               loadingMessage={loadingMessage}
               onInputChange={setInputValue}

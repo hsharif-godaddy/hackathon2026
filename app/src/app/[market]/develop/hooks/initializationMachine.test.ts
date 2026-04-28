@@ -860,7 +860,7 @@ describe('initializationMachine', () => {
   })
 
   describe('Edge Cases: Out of Order Events', () => {
-    it('should ignore PROMPT_SENT before WEBSOCKET_CONNECTED', () => {
+    it('should release the lock on PROMPT_SENT in waitingForWebSocket without advancing state', () => {
       const actor = createActor(initializationMachine, {
         input: { appId: null, isJobId: false, hasInitialPrompt: false },
       })
@@ -874,18 +874,18 @@ describe('initializationMachine', () => {
       actor.send({ type: 'HISTORY_LOADED', hasHistory: false })
       expect(getSubPhaseFromState(actor.getSnapshot())).toBe('waitingForWebSocket')
 
-      // PROMPT_SENT arrives early (should be ignored)
+      // PROMPT_SENT in waitingForWebSocket is the auto-send catch race path:
+      // ws.actions.send rejected after the socket dropped. The handler must flip
+      // initialPromptSent so deriveIsAwaitingStream releases the chat input lock,
+      // but stay in waitingForWebSocket because we are not actually waiting for an edit.
       actor.send({ type: 'PROMPT_SENT' })
       expect(getSubPhaseFromState(actor.getSnapshot())).toBe('waitingForWebSocket')
-      expect(actor.getSnapshot().context.initialPromptSent).toBe(false)
+      expect(actor.getSnapshot().context.initialPromptSent).toBe(true)
 
-      // Correct sequence now
+      // On reconnect, machine advances normally; no double-send because shouldAutoSendPrompt
+      // requires !initialPromptSent (validated in useInitialization).
       actor.send({ type: 'WEBSOCKET_CONNECTED' })
       expect(getSubPhaseFromState(actor.getSnapshot())).toBe('websocketConnected')
-
-      actor.send({ type: 'PROMPT_SENT' })
-      expect(getSubPhaseFromState(actor.getSnapshot())).toBe('waitingForFirstEdit')
-      expect(actor.getSnapshot().context.initialPromptSent).toBe(true)
     })
 
     it('should ignore FIRST_FILE_EDIT_SEEN in wrong state', () => {

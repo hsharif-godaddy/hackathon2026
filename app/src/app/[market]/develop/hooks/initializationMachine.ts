@@ -392,6 +392,14 @@ export const initializationMachine = setup({
               target: 'websocketConnected',
               actions: ['logTransition'],
             },
+            // Self-transition: if the auto-send catch fires after the socket has already
+            // dropped (PROMPT_SENT racing with WEBSOCKET_DISCONNECTED), still flip
+            // initialPromptSent so deriveIsAwaitingStream releases the chat input lock.
+            // No target: stay disconnected; on reconnect, shouldAutoSendPrompt is false
+            // because initialPromptSent is now true, so no double-send.
+            PROMPT_SENT: {
+              actions: ['markPromptSent', 'logTransition'],
+            },
           },
         },
 

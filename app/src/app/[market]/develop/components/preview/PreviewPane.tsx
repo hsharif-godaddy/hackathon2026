@@ -597,11 +597,11 @@ export default function PreviewPane({
 
   if (archiveGatePending) {
     return (
-      <div data-testid="develop-preview-archive-gate">
-        <Tips
-          buildingMessage={t('builder_preview_resuming_message')}
-        />
-      </div>
+      <PreviewLoadingState
+        message={t('builder_preview_resuming_message')}
+        isMobile={isMobile}
+        testId="develop-preview-archive-gate"
+      />
     )
   }
 
@@ -632,12 +632,12 @@ export default function PreviewPane({
 
   if (showArchiveResumeMessage) {
     return (
-      <div data-testid="develop-preview-archive-restoring">
-        <Tips
-          buildingMessage={t('builder_preview_archive_restore_message')}
-          buildingDescription={t('builder_preview_archive_restore_description')}
-        />
-      </div>
+      <PreviewLoadingState
+        message={t('builder_preview_archive_restore_message')}
+        description={t('builder_preview_archive_restore_description')}
+        isMobile={isMobile}
+        testId="develop-preview-archive-restoring"
+      />
     )
   }
 

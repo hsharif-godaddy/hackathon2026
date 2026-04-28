@@ -7,9 +7,9 @@
  * These tests verify the state machine logic and UI state computation
  */
 
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { getEditPaths, isCompletedFileEdit, isSiteForCurrentApp } from './useInitialization';
+import { deriveIsAwaitingStream, getEditPaths, isCompletedFileEdit, isSiteForCurrentApp, resetStaleAppContext } from './useInitialization';
 
 describe('useInitialization', function hookTests() {
   
@@ -114,6 +114,75 @@ describe('useInitialization', function hookTests() {
       const canAutoSend = isInitialCreationFlow && isWebSocketConnected && !initialPromptSent;
       
       expect(canAutoSend).toBe(false);
+    });
+  });
+
+  describe('resetStaleAppContext', function resetStaleAppContextTests() {
+    it('switches the streaming store and resets the todo list when the URL app id is new', function staleApp() {
+      const setCurrentAppId = vi.fn();
+      const reset = vi.fn();
+
+      const didReset = resetStaleAppContext(
+        { currentAppId: 'app-prev-123', setCurrentAppId },
+        { reset },
+        'job-new-456',
+      );
+
+      expect(didReset).toBe(true);
+      expect(setCurrentAppId).toHaveBeenCalledWith('job-new-456');
+      expect(reset).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not touch either store when the streaming store already matches the URL app id', function alreadyInSync() {
+      const setCurrentAppId = vi.fn();
+      const reset = vi.fn();
+
+      const didReset = resetStaleAppContext(
+        { currentAppId: 'app-current-123', setCurrentAppId },
+        { reset },
+        'app-current-123',
+      );
+
+      expect(didReset).toBe(false);
+      expect(setCurrentAppId).not.toHaveBeenCalled();
+      expect(reset).not.toHaveBeenCalled();
+    });
+
+    it('resets when the streaming store has no current app id (fresh session)', function freshSession() {
+      const setCurrentAppId = vi.fn();
+      const reset = vi.fn();
+
+      const didReset = resetStaleAppContext(
+        { currentAppId: null, setCurrentAppId },
+        { reset },
+        'job-new-456',
+      );
+
+      expect(didReset).toBe(true);
+      expect(setCurrentAppId).toHaveBeenCalledWith('job-new-456');
+      expect(reset).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('deriveIsAwaitingStream', function deriveIsAwaitingStreamTests() {
+    const cases: Array<{
+      name: string;
+      hasInitialPrompt: boolean;
+      initialPromptSent: boolean;
+      isStreaming: boolean;
+      expected: boolean;
+    }> = [
+      { name: 'queued initial prompt before stream starts', hasInitialPrompt: true, initialPromptSent: false, isStreaming: false, expected: true },
+      { name: 'initial prompt already sent (regression: must not stay true)', hasInitialPrompt: true, initialPromptSent: true, isStreaming: false, expected: false },
+      { name: 'stream is in flight', hasInitialPrompt: true, initialPromptSent: false, isStreaming: true, expected: false },
+      { name: 'no initial prompt at all', hasInitialPrompt: false, initialPromptSent: false, isStreaming: false, expected: false },
+      { name: 'no initial prompt while streaming a follow-up', hasInitialPrompt: false, initialPromptSent: false, isStreaming: true, expected: false },
+    ];
+
+    cases.forEach(({ name, hasInitialPrompt, initialPromptSent, isStreaming, expected }) => {
+      it(`returns ${expected} when ${name}`, function deriveCase() {
+        expect(deriveIsAwaitingStream(hasInitialPrompt, initialPromptSent, isStreaming)).toBe(expected);
+      });
     });
   });
 

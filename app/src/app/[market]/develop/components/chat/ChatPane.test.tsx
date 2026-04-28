@@ -19,8 +19,14 @@ vi.mock('@ux/growl', () => ({
 
 // Mock child components
 vi.mock('@/app/[market]/develop/components/chat/ChatInput', () => ({
-  default: ({ onSendMessage, inputValue, onInputChange, isBudgetExceeded, isDisabled, onLargePasteDetected, referencedFiles }: any) => (
-    <div data-testid="chat-input" data-budget-exceeded={isBudgetExceeded} data-disabled={isDisabled}>
+  default: ({ onSendMessage, inputValue, onInputChange, isBudgetExceeded, isDisabled, isAwaitingStream, isStreaming, onLargePasteDetected, referencedFiles }: any) => (
+    <div
+      data-testid="chat-input"
+      data-budget-exceeded={isBudgetExceeded}
+      data-disabled={isDisabled}
+      data-awaiting-stream={isAwaitingStream ? 'true' : 'false'}
+      data-streaming={isStreaming ? 'true' : 'false'}
+    >
       <input
         value={inputValue}
         onChange={(e) => onInputChange(e.target.value)}
@@ -278,6 +284,20 @@ describe('ChatPane', () => {
     renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
 
     expect(screen.getByTestId('chat-input')).toBeInTheDocument();
+  });
+
+  it('should default isAwaitingStream to false on ChatInput when prop omitted', () => {
+    renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
+
+    expect(screen.getByTestId('chat-input')).toHaveAttribute('data-awaiting-stream', 'false');
+  });
+
+  it('should forward isAwaitingStream prop to ChatInput', () => {
+    renderWithProviders(
+      <ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} isAwaitingStream={true} />
+    );
+
+    expect(screen.getByTestId('chat-input')).toHaveAttribute('data-awaiting-stream', 'true');
   });
 
   it('should render chat toolbar', () => {

@@ -9,6 +9,7 @@ import type { Site } from '@/stores/useSitesStore'
 import {
   useStreamingConversationStore,
 } from '@/stores/useStreamingConversationStore'
+import { useTodoListStore } from '@/stores/useTodoListStore'
 import { AppErrorCode } from '@/types/error-codes'
 import {
   getPhaseFromState,
@@ -304,6 +305,43 @@ export function isSiteForCurrentApp<T extends { id: string }>(
   if (appId && site.id === appId) return true
   if (realAppId && site.id === realAppId) return true
   return false
+}
+
+/**
+ * Clear stale streaming state and todo list when navigating to an app the
+ * streaming store does not currently track. Without this, the job-id stage of
+ * a second creation briefly shows the previous app's NBAs and todo list before
+ * `initializePage` runs.
+ *
+ * Returns true when a reset occurred. Exported for testing.
+ */
+export function resetStaleAppContext(
+  streamingStore: { currentAppId: string | null; setCurrentAppId: (id: string) => void },
+  todoListStore: { reset: () => void },
+  appId: string,
+): boolean {
+  if (streamingStore.currentAppId === appId) return false
+  streamingStore.setCurrentAppId(appId)
+  todoListStore.reset()
+  return true
+}
+
+/**
+ * True from the moment a creation flow begins (sessionStorage flag set on the
+ * homepage) until the auto-send actually starts streaming. Covers the job-id
+ * stage and the post-switch waitingForWebSocket → first-chunk window, letting
+ * `ChatInput` render a disabled stop button instead of a misleading send
+ * button before the stream actually starts.
+ *
+ * Dropping `!initialPromptSent` would keep this true after the first prompt
+ * completes, leaving the stop button stuck visible. Exported for testing.
+ */
+export function deriveIsAwaitingStream(
+  hasInitialPrompt: boolean,
+  initialPromptSent: boolean,
+  isStreaming: boolean,
+): boolean {
+  return hasInitialPrompt && !initialPromptSent && !isStreaming
 }
 
 // ============================================================================
@@ -638,6 +676,21 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
   // EFFECT: Initialize on mount
   useEffect(() => {
     if (!appId) return
+
+    // Clear stale streaming state (messages, NBAs, activeStream) and todo list
+    // from a previously-viewed app the moment we land on a new URL. Without
+    // this, the job-id stage of a second creation briefly shows the first
+    // app's NBAs and todo list before initializePage runs.
+    const streamingStoreState = useStreamingConversationStore.getState()
+    const previousAppId = streamingStoreState.currentAppId
+    const wasReset = resetStaleAppContext(
+      streamingStoreState,
+      useTodoListStore.getState(),
+      appId,
+    )
+    if (wasReset) {
+      logger.info('initialization.stale-app-context.reset', { previousAppId, appId })
+    }
 
     // Reset store when navigating to regular app
     if (!isJobId && realAppId) {
