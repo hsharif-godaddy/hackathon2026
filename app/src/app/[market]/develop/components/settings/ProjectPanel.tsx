@@ -35,7 +35,7 @@ export default function ProjectPanel() {
   const rootDomain = getRootDomain() || 'godaddy.com';
   const delegationUrl = `https://sso.${rootDomain}/access`;
 
-  const { data: isTeamEnabled } = useSwitchboard('appbuilder-settings-team');
+  const isTeamEnabled = useSwitchboard('appbuilder-settings-team');
   const { trigger: triggerPurge, status: purgeStatus, errorCode: purgeErrorCode } = usePurgeCache(appId)
 
   const [purgeToast, setPurgeToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null)

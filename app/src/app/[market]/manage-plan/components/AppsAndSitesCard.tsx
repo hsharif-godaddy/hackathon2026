@@ -79,8 +79,8 @@ export default function AppsAndSitesCard({
 }: AppsAndSitesCardProps) {
   const t = useTranslations();
   const router = useRouter();
-  const { data: isUnpublishEnabled } = useSwitchboard('appbuilder-unpublish');
-  const { data: suspendedComplianceBannerEnabled, isLoading: isSuspendedComplianceFeatureLoading } = useSwitchboard('appbuilder-suspended-compliance-banner');
+  const isUnpublishEnabled = useSwitchboard('appbuilder-unpublish');
+  const suspendedComplianceBannerEnabled = useSwitchboard('appbuilder-suspended-compliance-banner');
   const unpublishMutation = useUnpublishApp();
   const publishMutation = usePublishApp();
   const fetchAllSites = useSitesStore((state) => state.fetchAllSites);
@@ -151,8 +151,7 @@ export default function AppsAndSitesCard({
 
   const isAtPublishLimit = publishLimit !== null && publishedCount >= publishLimit;
 
-  const complianceSubscriptionRulesEnabled =
-    !isSuspendedComplianceFeatureLoading && suspendedComplianceBannerEnabled === true;
+  const complianceSubscriptionRulesEnabled = suspendedComplianceBannerEnabled === true;
 
   const isAppBlockedForPublishing = useCallback(
     (site: SiteInfo) =>

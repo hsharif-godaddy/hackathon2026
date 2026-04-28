@@ -193,7 +193,7 @@ export function usePublishApp() {
   const setPublishSuccess = useDevelopPageStore((state) => state.setPublishSuccess);
   const fetchSite = useSiteStore((state) => state.fetchSite);
   const fetchSitesList = useSitesStore((state) => state.fetchSite);
-  const { data: isSecretsSyncEnabled } = useSwitchboard('appbuilder-settings-secrets');
+  const isSecretsSyncEnabled = useSwitchboard('appbuilder-settings-secrets');
 
   return useMutation<PublishResult, Error, PublishParams>({
     mutationFn: async ({ appId }) => {

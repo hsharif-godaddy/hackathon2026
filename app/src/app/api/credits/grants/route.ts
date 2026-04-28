@@ -55,12 +55,19 @@ export const GET = withCustomerAuth(async (
     const baseUrl = process.env.MGMT_AIRO_BASE_URL || 'https://mgmt.nstk.net';
     const mgmtClient = new AiroMgmtClient({ baseUrl, jwt: authContext.jwt });
 
-    // Check if BMS flag is enabled first (avoids subscription fetch on legacy path)
-    const isBudgetFlagEnabled = await checkSwitchboardFlag(
-      'app-builder-budget-service',
-      authContext.jwt,
-      request.headers
-    );
+    // Check if BMS flag is enabled first (avoids subscription fetch on legacy path).
+    // Soft-fail so a switchboard outage doesn't deny this read-only endpoint;
+    // the legacy path below always works and a missed BMS routing decision is
+    // benign compared to a 500.
+    let isBudgetFlagEnabled = false;
+    try {
+      isBudgetFlagEnabled = await checkSwitchboardFlag('app-builder-budget-service', request);
+    } catch (error) {
+      logger.warn('credits.grants.api.bms-flag-lookup.failed', {
+        subscriptionId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
     const budgetClient = getBudgetServiceClient(request.headers);
 
     let grants;

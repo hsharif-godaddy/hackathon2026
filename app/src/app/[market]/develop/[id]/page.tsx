@@ -4,6 +4,7 @@ import { motion } from 'framer-motion'
 import dynamic from 'next/dynamic'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import Growl from '@ux/growl'
 
 import ChatPane from '@/app/[market]/develop/components/chat/ChatPane'
@@ -36,8 +37,8 @@ import { useAppHibernation } from '@/hooks/useAppHibernation'
 import { useChatTabs } from '@/hooks/useChatTabs'
 import { useGitHistoryQuery } from '@/hooks/useGitHistory'
 import { useImageReadiness } from '@/hooks/useImageReadiness'
-import { usePaywallPrefetch } from '@/hooks/usePaywallPrefetch'
 import { useStreamingWebSocket } from '@/hooks/useStreamingWebSocket'
+import { prefetchSubscription } from '@/hooks/useSubscription'
 import { useIsRenewalPolling } from '@/hooks/useSubscriptionRenewal'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useSyncResponsiveState } from '@/hooks/useSyncResponsiveState'
@@ -117,8 +118,10 @@ function DevelopPageContent() {
     };
   }, [appId, isJobId]);
 
-  // Prefetch paywall data early for faster eligibility checks
-  usePaywallPrefetch()
+  const queryClient = useQueryClient()
+  useEffect(() => {
+    prefetchSubscription(queryClient)
+  }, [queryClient])
 
   useAotPreload(aotImports)
 
@@ -126,7 +129,7 @@ function DevelopPageContent() {
   const init = useInitialization({ appId, isJobId })
 
   // Default to Brand Book tab for logo-designer template
-  const { data: isBrandBookEnabled } = useSwitchboard('appbuilder-brandbook')
+  const isBrandBookEnabled = useSwitchboard('appbuilder-brandbook')
   useEffect(() => {
     if (init.ui.templateId === 'logo-designer' && isBrandBookEnabled) {
       useDevelopPageStore.getState().setViewMode(ViewMode.BRAND)

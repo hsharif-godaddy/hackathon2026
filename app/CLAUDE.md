@@ -94,12 +94,28 @@ Two-layer system:
 
 **Layer 1 — Environment variables** (`src/lib/features.ts`): Static flags loaded at startup. `NEXT_PUBLIC_SHOW_CODE_EDITOR`, `NEXT_PUBLIC_ENABLE_LOCAL_FEATURES`, etc.
 
-**Layer 2 — GoDaddy Switchboard** (`src/lib/switchboard/`): Dynamic runtime flags from `https://bff.pcx.{rootDomain}/api/config/feature/`.
+**Layer 2 — GoDaddy Switchboard** (`src/lib/switchboard/`): Dynamic runtime flags loaded via `@godaddy/gasket-plugin-switchboard`. The plugin runs a singleton `@switchboard/client` that polls settings into an in-process cache (~2 min refresh) using IAM auth. `gasket.ts` configures `apps: ['@hivemind', 'airo-app-builder']` so both experiment cohorts and feature flags land in the same per-request tree.
 
-- Server-side: `checkSwitchboardFlag(featureName, jwt, headers)` in `src/lib/switchboard/server.ts`
-- Client-side: `useSwitchboard(featureName)` hook in `src/hooks/useSwitchboard.ts` (React Query, 5-min stale time)
+- Server-side: `checkSwitchboardFlag(featureName, req)` / `checkSwitchboardValue(featureName, req)` in `src/lib/switchboard/server.ts`. `req` is anything with a `headers` field (NextRequest, Request, or `{ headers }`); the plugin uses it for criteria extraction.
+- Client-side: `useSwitchboard(featureName)` in `src/hooks/useSwitchboard.ts` returns `boolean | undefined` synchronously from gasket-data. `undefined` = flag not in the loaded tree (SSR, or key missing). `getSwitchboardFlag` is an alias for non-component call sites.
 
-**Local dev override:** When `NEXT_PUBLIC_ENABLE_LOCAL_FEATURES=true`, a subset of switchboard flags are forced to `true`. The client and server allowlists differ — check `LOCAL_FEATURE_OVERRIDES` in `src/hooks/useSwitchboard.ts` (client) and `localOverrides` in `src/lib/switchboard/server.ts` (server).
+**IAM grants (Switchboard Reader, already in place):**
+
+The Switchboard **dev** and **test** environments are each granted the same three role patterns (which span CDK account `694282668781` for dev and `269423819739` for test):
+
+- `arn:aws:iam::694282668781:role/*`
+- `arn:aws:iam::694282668781:role/airobuilde-custom-*`
+- `arn:aws:iam::269423819739:role/airobuilde-custom-*`
+
+The Switchboard **prod** environment is granted:
+
+- `arn:aws:iam::644094189644:role/airobuilde-custom-*`
+- `arn:aws:iam::694282668781:role/airobuilde-custom-*`
+- `arn:aws:iam::269423819739:role/airobuilde-custom-*`
+
+Local dev inherits the dev grant when `AWS_PROFILE=airobuild-dev-private-sso` is set (account `694282668781`, PowerUser). Without those credentials (or without `NEXT_PUBLIC_ENABLE_LOCAL_FEATURES=true`), flag lookups resolve to the defaults (`false` / `null`) - there is no automatic fallback.
+
+**Local dev override:** When `NEXT_PUBLIC_ENABLE_LOCAL_FEATURES=true`, a subset of switchboard flags are forced to `true` before the client is consulted. The client and server allowlists differ — check `LOCAL_FEATURE_OVERRIDES` in `src/hooks/useSwitchboard.ts` (client) and `SERVER_LOCAL_FEATURE_OVERRIDES` in `src/lib/switchboard/server.ts` (server).
 
 **Finding active flags:** Grep for `useSwitchboard(` and `checkSwitchboardFlag(` to find current flags.
 

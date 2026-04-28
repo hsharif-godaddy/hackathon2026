@@ -78,7 +78,7 @@ vi.mock('@/stores/useDevelopPageStore', () => ({
 }));
 
 vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: vi.fn(() => ({ data: true, isLoading: false, error: null })),
+  useSwitchboard: vi.fn(() => (true)),
 }));
 
 vi.mock('@/lib/logging', () => ({
@@ -114,8 +114,8 @@ describe('UsageGauge', function usageGaugeTests() {
 
       // Budget service OFF for grants-mode tests
       vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
-        if (flag === 'app-builder-budget-service') return { data: false, isLoading: false, error: null } as ReturnType<typeof useSwitchboard>;
-        return { data: true, isLoading: false, error: null } as ReturnType<typeof useSwitchboard>;
+        if (flag === 'app-builder-budget-service') return false;
+        return true;
       });
 
       vi.mocked(useSubscription).mockReturnValue({

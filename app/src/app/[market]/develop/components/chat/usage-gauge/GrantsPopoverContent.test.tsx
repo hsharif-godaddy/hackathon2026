@@ -81,13 +81,7 @@ const mockSubscription = (plan: SubscriptionPlan = SubscriptionPlan.Free, entitl
 };
 
 const mockHigherPlansFlag = (enabled: boolean) => {
-  vi.mocked(useSwitchboard).mockReturnValue({
-    data: enabled,
-    isLoading: false,
-    isError: false,
-    error: null,
-    refetch: vi.fn(),
-  } as unknown as ReturnType<typeof useSwitchboard>);
+  vi.mocked(useSwitchboard).mockReturnValue(enabled);
 };
 
 describe('GrantsPopoverContent', function grantsPopoverContentTests() {

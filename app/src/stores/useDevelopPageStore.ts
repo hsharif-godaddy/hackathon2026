@@ -4,7 +4,7 @@ import { immer } from 'zustand/middleware/immer'
 
 import { DEFAULT_MOBILE_DEVICE, DEFAULT_TABLET_DEVICE } from '@/app/[market]/develop/components/preview/devicePresets'
 import { ChatTab, IframeMessageType, MobileMode, PreviewViewMode, SettingsSection, ViewMode } from '@/app/[market]/develop/components/types'
-import { fetchFeatureFlag } from '@/hooks/useSwitchboard'
+import { getSwitchboardFlag } from '@/hooks/useSwitchboard'
 import type { SiteInfo } from '@/lib/control-plane/types'
 import { logger } from '@/lib/request-context'
 import { type App, appService } from '@/services/AppService'
@@ -804,7 +804,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         })
 
         // Load go-live status from .airo/live.json only if feature is enabled
-        const isGoLiveEnabled = await fetchFeatureFlag('appbuilder-go-live');
+        const isGoLiveEnabled = getSwitchboardFlag('appbuilder-go-live') === true;
 
         if (isGoLiveEnabled) {
           const goLiveStatus = await loadGoLiveStatusAsync(appId);

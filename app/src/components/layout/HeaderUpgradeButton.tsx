@@ -33,7 +33,7 @@ export default function HeaderUpgradeButton({ location = 'unknown' }: HeaderUpgr
   const currentAppId = useDevelopPageStore((state) => state.currentAppId);
   const openUpgradeModal = useDevelopPageStore((state) => state.openUpgradeModal);
 
-  const { data: featureEnabled, isLoading: isFeatureLoading } = useSwitchboard('appbuilder-airoplus-upgrade-button');
+  const featureEnabled = useSwitchboard('appbuilder-airoplus-upgrade-button');
   const { showPaywall, isLoading: isPaywallLoading } = usePaywallEligibility();
   const { data: subscription } = useSubscription();
   const currentPlan = subscription ? getPlanFromSubscription(subscription) : undefined;
@@ -43,7 +43,7 @@ export default function HeaderUpgradeButton({ location = 'unknown' }: HeaderUpgr
   );
 
   // Only show on develop page, when feature enabled, and user can upgrade (non-Ultimate users)
-  if (!isDevelopPage || isFeatureLoading || isPaywallLoading || !featureEnabled ||
+  if (!isDevelopPage || isPaywallLoading || !featureEnabled ||
       (!showPaywall && !canUpgradePlan(currentPlan))) return null;
 
   const handleUpgradeClick = () => {

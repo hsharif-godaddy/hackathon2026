@@ -19,9 +19,7 @@ export function usePublishComplianceGate(
   const t = useTranslations();
   const { enabled = true } = options;
   const { data: subscription } = useSubscription({ enabled });
-  const { data: complianceFlag } = useSwitchboard('appbuilder-suspended-compliance-banner', {
-    enabled,
-  });
+  const complianceFlag = useSwitchboard('appbuilder-suspended-compliance-banner');
   const complianceSubscriptionRulesEnabled = complianceFlag === true;
   const blocked = isPublishBlockedByComplianceRules(
     site,

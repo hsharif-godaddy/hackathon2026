@@ -66,7 +66,7 @@ vi.mock('@/stores/useSiteStore', () => ({
 }));
 
 vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: () => ({ data: true }),
+  useSwitchboard: () => (true),
 }));
 
 vi.mock('@/hooks/useChatTabs', () => ({

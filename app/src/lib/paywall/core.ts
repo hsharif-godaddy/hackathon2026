@@ -221,6 +221,7 @@ export async function checkPaywallEligibility(
     logger.error('paywall.eligibility.check-failed', {
       appId,
       error: error instanceof Error ? error.message : String(error),
+      errorType: error instanceof Error ? error.constructor.name : typeof error,
     });
 
     // Fail closed - deny access if check fails

@@ -10,7 +10,7 @@
  * - Browser-specific behavior (window.location, fetch with credentials)
  */
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { appFetch } from '@/lib/gasket-config';
 import { ClientPaywallProvider } from './client-provider';
@@ -40,254 +40,91 @@ describe('ClientPaywallProvider', () => {
   });
 
   describe('checkSwitchboardFlags', () => {
-    // Helper to create mock responses for switchboard flags
-    function mockSwitchboardFlags(options: {
-      paywall?: { ok: boolean; status?: number; setting?: boolean; json?: () => Promise<any> };
-      markets?: { ok: boolean; status?: number; setting?: boolean; json?: () => Promise<any> };
-      bypass?: { ok: boolean; status?: number; setting?: boolean };
-    }) {
-      const createResponse = (opt?: { ok: boolean; status?: number; setting?: boolean; json?: () => Promise<any> }) => ({
-        ok: opt?.ok ?? true,
-        status: opt?.status ?? 200,
-        json: opt?.json ?? (async () => (opt?.setting !== undefined ? { setting: opt.setting } : {})),
-      });
-
-      vi.mocked(appFetch)
-        .mockResolvedValueOnce(createResponse(options.paywall) as any)
-        .mockResolvedValueOnce(createResponse(options.markets) as any)
-        .mockResolvedValueOnce(createResponse(options.bypass) as any);
+    function stubGasketData(tree: Record<string, unknown> | undefined) {
+      if (tree === undefined) {
+        // @ts-expect-error allow delete
+        delete (window as any).gasketData;
+        return;
+      }
+      (window as any).gasketData = { switchboard: tree };
     }
 
-    it('should return flags when API calls succeed', async () => {
-      mockSwitchboardFlags({
-        paywall: { ok: true, setting: true },
-        markets: { ok: true, setting: true },
-
-        bypass: { ok: true, setting: false },
-      });
-
-      const provider = new ClientPaywallProvider();
-      const result = await provider.checkSwitchboardFlags('godaddy.com');
-
-      expect(result).toEqual({ paywall: true, markets: true, bypassPublishLimit: false });
-      expect(appFetch).toHaveBeenCalledTimes(3);
-      expect(appFetch).toHaveBeenCalledWith(
-        'https://bff.pcx.godaddy.com/api/config/feature/appbuilder-airoplus-paywall?app=airo-app-builder'
-      );
-      expect(appFetch).toHaveBeenCalledWith(
-        'https://bff.pcx.godaddy.com/api/config/feature/appbuilder-airoplus-markets?app=airo-app-builder'
-      );
+    afterEach(() => {
+      stubGasketData(undefined);
     });
 
-    it('should return bypass flag when enabled', async () => {
-      mockSwitchboardFlags({
-        paywall: { ok: true, setting: true },
-        markets: { ok: true, setting: true },
-
-        bypass: { ok: true, setting: true },
+    it('reads all three flags from gasket-data', async () => {
+      stubGasketData({
+        'appbuilder-airoplus-paywall': true,
+        'appbuilder-airoplus-markets': true,
+        'app-builder-bypass-publish-limit': false,
       });
 
       const provider = new ClientPaywallProvider();
-      const result = await provider.checkSwitchboardFlags('godaddy.com');
-
-      expect(result).toEqual({ paywall: true, markets: true, bypassPublishLimit: true });
+      await expect(provider.checkSwitchboardFlags('godaddy.com')).resolves.toEqual({
+        paywall: true,
+        markets: true,
+        bypassPublishLimit: false,
+      });
     });
 
-    it('should throw error when paywall flag fetch fails', async () => {
-      mockSwitchboardFlags({
-        paywall: { ok: false, status: 503 },
-        markets: { ok: true, setting: true },
-
-        bypass: { ok: true, setting: false },
+    it('returns bypass=true when the flag is enabled', async () => {
+      stubGasketData({
+        'appbuilder-airoplus-paywall': true,
+        'appbuilder-airoplus-markets': true,
+        'app-builder-bypass-publish-limit': true,
       });
 
       const provider = new ClientPaywallProvider();
+      await expect(provider.checkSwitchboardFlags('godaddy.com')).resolves.toEqual({
+        paywall: true,
+        markets: true,
+        bypassPublishLimit: true,
+      });
+    });
 
+    it('defaults bypass to false when missing (fail-closed optional flag)', async () => {
+      stubGasketData({
+        'appbuilder-airoplus-paywall': true,
+        'appbuilder-airoplus-markets': true,
+      });
+
+      const provider = new ClientPaywallProvider();
+      await expect(provider.checkSwitchboardFlags('godaddy.com')).resolves.toEqual({
+        paywall: true,
+        markets: true,
+        bypassPublishLimit: false,
+      });
+    });
+
+    it('throws when paywall flag is missing from the tree', async () => {
+      stubGasketData({
+        'appbuilder-airoplus-markets': true,
+      });
+
+      const provider = new ClientPaywallProvider();
       await expect(provider.checkSwitchboardFlags('godaddy.com')).rejects.toThrow(
-        'Switchboard flag fetch failed: appbuilder-airoplus-paywall (status: 503)'
+        /Switchboard flags not loaded/,
       );
     });
 
-    it('should throw error when markets flag fetch fails', async () => {
-      mockSwitchboardFlags({
-        paywall: { ok: true, setting: true },
-        markets: { ok: false, status: 404 },
-
-        bypass: { ok: true, setting: false },
+    it('throws when markets flag is missing from the tree', async () => {
+      stubGasketData({
+        'appbuilder-airoplus-paywall': true,
       });
 
       const provider = new ClientPaywallProvider();
-
       await expect(provider.checkSwitchboardFlags('godaddy.com')).rejects.toThrow(
-        'Switchboard flag fetch failed: appbuilder-airoplus-markets (status: 404)'
+        /Switchboard flags not loaded/,
       );
     });
 
-    it('should throw error when paywall flag JSON parsing fails', async () => {
-      vi.mocked(appFetch)
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => {
-            throw new Error('Invalid JSON');
-          },
-        } as any)
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ setting: true }),
-        } as any)
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ setting: false }),
-        } as any);
-
+    it('throws when gasket-data is not yet hydrated', async () => {
+      stubGasketData(undefined);
       const provider = new ClientPaywallProvider();
-
       await expect(provider.checkSwitchboardFlags('godaddy.com')).rejects.toThrow(
-        'Failed to parse switchboard flag: appbuilder-airoplus-paywall - Invalid JSON'
+        /Switchboard flags not loaded/,
       );
-    });
-
-    it('should throw error when markets flag JSON parsing fails', async () => {
-      vi.mocked(appFetch)
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ setting: true }),
-        } as any)
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => {
-            throw new Error('Invalid JSON');
-          },
-        } as any)
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ setting: false }),
-        } as any);
-
-      const provider = new ClientPaywallProvider();
-
-      await expect(provider.checkSwitchboardFlags('godaddy.com')).rejects.toThrow(
-        'Failed to parse switchboard flag: appbuilder-airoplus-markets - Invalid JSON'
-      );
-    });
-
-    it('should default to false when flag setting is missing', async () => {
-      vi.mocked(appFetch)
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({}),
-        } as any)
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ setting: null }),
-        } as any)
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({}),
-        } as any);
-
-      const provider = new ClientPaywallProvider();
-      const result = await provider.checkSwitchboardFlags('godaddy.com');
-
-      expect(result).toEqual({ paywall: false, markets: false, bypassPublishLimit: false });
-    });
-
-    it('should throw error on network failure', async () => {
-      vi.mocked(appFetch)
-        .mockRejectedValueOnce(new Error('Network error'))
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ setting: true }),
-        } as any)
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ setting: false }),
-        } as any);
-
-      const provider = new ClientPaywallProvider();
-
-      await expect(provider.checkSwitchboardFlags('godaddy.com')).rejects.toThrow('Network error');
-    });
-
-    it('should handle 500 errors', async () => {
-      mockSwitchboardFlags({
-        paywall: { ok: false, status: 500 },
-        markets: { ok: true, setting: true },
-
-        bypass: { ok: true, setting: false },
-      });
-
-      const provider = new ClientPaywallProvider();
-
-      await expect(provider.checkSwitchboardFlags('godaddy.com')).rejects.toThrow(
-        'Switchboard flag fetch failed: appbuilder-airoplus-paywall (status: 500)'
-      );
-    });
-
-    it('should handle 401 unauthorized errors from markets endpoint', async () => {
-      mockSwitchboardFlags({
-        paywall: { ok: true, setting: true },
-        markets: { ok: false, status: 401 },
-
-        bypass: { ok: true, setting: false },
-      });
-
-      const provider = new ClientPaywallProvider();
-
-      // 401s throw "Authentication required" - appFetch separately sets needsReauth for AuthBoundary
-      await expect(provider.checkSwitchboardFlags('godaddy.com')).rejects.toThrow(
-        'Authentication required'
-      );
-    });
-
-    it('should handle 401 unauthorized errors from paywall endpoint', async () => {
-      mockSwitchboardFlags({
-        paywall: { ok: false, status: 401 },
-        markets: { ok: true, setting: true },
-
-        bypass: { ok: true, setting: false },
-      });
-
-      const provider = new ClientPaywallProvider();
-
-      await expect(provider.checkSwitchboardFlags('godaddy.com')).rejects.toThrow(
-        'Authentication required'
-      );
-    });
-
-    it('should treat bypass 401 as failure and return false (optional flag)', async () => {
-      mockSwitchboardFlags({
-        paywall: { ok: true, setting: true },
-        markets: { ok: true, setting: true },
-
-        bypass: { ok: false, status: 401 },
-      });
-
-      const provider = new ClientPaywallProvider();
-      const result = await provider.checkSwitchboardFlags('godaddy.com');
-
-      // Bypass fails gracefully to false, other flags succeed
-      expect(result).toEqual({ paywall: true, markets: true, bypassPublishLimit: false });
-    });
-
-    it('should handle bypass flag fetch failure with fail-closed default', async () => {
-      vi.mocked(appFetch)
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ setting: true }),
-        } as any)
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ setting: true }),
-        } as any)
-        .mockRejectedValueOnce(new Error('Network error')); // bypass fails
-
-      const provider = new ClientPaywallProvider();
-      const result = await provider.checkSwitchboardFlags('godaddy.com');
-
-      expect(result.paywall).toBe(true);
-      expect(result.markets).toBe(true);
-      expect(result.bypassPublishLimit).toBe(false); // fail-closed: assume bypass disabled
     });
   });
 

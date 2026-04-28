@@ -52,7 +52,7 @@ interface DevelopHeaderProps {
 
 export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) {
   const t = useTranslations();
-  const { data: isBrandBookEnabled } = useSwitchboard('appbuilder-brandbook');
+  const isBrandBookEnabled = useSwitchboard('appbuilder-brandbook');
   const location = 'develop';
   const appId = useAppIdFromParams();
   const clickContext = useMemo(() => (appId ? { appId } : undefined), [appId]);

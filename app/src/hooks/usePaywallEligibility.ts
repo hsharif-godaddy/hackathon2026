@@ -1,6 +1,6 @@
 import { isPaidPlanForGrants } from '@/lib/paywall/shared';
-import { usePaywallFeatureFlags } from './usePaywallFeatureFlags';
 import { useSubscription } from './useSubscription';
+import { getSwitchboardFlag } from './useSwitchboard';
 
 interface PaywallEligibilityResult {
   showPaywall: boolean;
@@ -10,38 +10,26 @@ interface PaywallEligibilityResult {
 }
 
 /**
- * Hook to check account-level paywall eligibility
+ * Hook to check account-level paywall eligibility.
  *
- * Uses individual query hooks for each data source.
- * React Query handles caching and deduplication automatically.
- *
- * Paid plan (Starter, Professional, Ultimate) = access granted
- * Non-paid plans (Free, None, AiroPlus) = paywall
- *
- * @returns PaywallEligibilityResult
+ * Paid plan (Starter, Professional, Ultimate) = access granted.
+ * Non-paid plans (Free, None, AiroPlus) = paywall.
  */
 export const usePaywallEligibility = (): PaywallEligibilityResult => {
-  // Step 1: Fetch feature flags
-  const { data: featureFlags, isLoading: isFlagsLoading, isError: isFlagsError } = usePaywallFeatureFlags();
-  const paywallEnabled = featureFlags?.paywall === true && featureFlags?.markets === true;
+  const paywallEnabled =
+    getSwitchboardFlag('appbuilder-airoplus-paywall') === true &&
+    getSwitchboardFlag('appbuilder-airoplus-markets') === true;
 
-  // Step 2: Fetch subscription data
   const { data: subscription, isLoading: isSubscriptionLoading, isError: isSubscriptionError } = useSubscription();
 
   const isActive = subscription?.status === 'active';
   const hasPaidPlan = isActive && isPaidPlanForGrants(subscription?.plan);
-
-  const isLoading = isFlagsLoading || (paywallEnabled && isSubscriptionLoading);
-
   const hasAccess = !paywallEnabled || hasPaidPlan;
 
-  const hasError = isFlagsError || isSubscriptionError;
-  const showPaywall = hasError || !hasAccess;
-
   return {
-    showPaywall,
-    isLoading,
-    isError: hasError,
+    showPaywall: isSubscriptionError || !hasAccess,
+    isLoading: paywallEnabled && isSubscriptionLoading,
+    isError: isSubscriptionError,
     error: null,
   };
 };

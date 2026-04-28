@@ -62,11 +62,7 @@ export const POST = withCustomerAuth(async (
       );
     }
 
-    const isFeatureEnabled = await checkSwitchboardFlag(
-      'appbuilder-unpublish',
-      authContext.jwt,
-      request.headers
-    );
+    const isFeatureEnabled = await checkSwitchboardFlag('appbuilder-unpublish', request);
 
     if (!isFeatureEnabled) {
       logger.warn('unpublish.api.feature_disabled', {

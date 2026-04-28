@@ -12,7 +12,7 @@ import { renderWithProviders } from '@/tests/test-utils';
 
 
 vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: vi.fn(() => ({ data: false, isLoading: false })),
+  useSwitchboard: vi.fn(() => (false)),
 }));
 
 beforeEach(() => {
@@ -80,9 +80,9 @@ describe('DomainDNS', () => {
     const { useSwitchboard } = await import('@/hooks/useSwitchboard');
     vi.mocked(useSwitchboard).mockImplementation((feature: string) => {
       if (feature === 'appbuilder-domain-dcv') {
-        return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
+        return true;
       }
-      return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
+      return false;
     });
 
     renderWithProviders(
@@ -94,7 +94,7 @@ describe('DomainDNS', () => {
 
   it('renders DNS cards with A record for root domain', async () => {
     const { useSwitchboard } = await import('@/hooks/useSwitchboard');
-    vi.mocked(useSwitchboard).mockReturnValue({ data: false, isLoading: false } as ReturnType<typeof useSwitchboard>);
+    vi.mocked(useSwitchboard).mockReturnValue(false);
 
     renderWithProviders(<DomainDNS domainDetails={baseDomain} />);
 
@@ -104,7 +104,7 @@ describe('DomainDNS', () => {
 
   it('renders copy buttons for record values', async () => {
     const { useSwitchboard } = await import('@/hooks/useSwitchboard');
-    vi.mocked(useSwitchboard).mockReturnValue({ data: false, isLoading: false } as ReturnType<typeof useSwitchboard>);
+    vi.mocked(useSwitchboard).mockReturnValue(false);
 
     renderWithProviders(<DomainDNS domainDetails={baseDomain} />);
 
@@ -114,7 +114,7 @@ describe('DomainDNS', () => {
 
   it('renders correct DCV record for root domain when DCV enabled', async () => {
     const { useSwitchboard } = await import('@/hooks/useSwitchboard');
-    vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
+    vi.mocked(useSwitchboard).mockReturnValue(true);
 
     renderWithProviders(
       <DomainDNS
@@ -131,7 +131,7 @@ describe('DomainDNS', () => {
 
   it('renders correct DCV record for subdomain when DCV enabled', async () => {
     const { useSwitchboard } = await import('@/hooks/useSwitchboard');
-    vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
+    vi.mocked(useSwitchboard).mockReturnValue(true);
 
     renderWithProviders(
       <DomainDNS
@@ -151,7 +151,7 @@ describe('DomainDNS', () => {
 
   it('renders correct DCV record for multi-level subdomain when DCV enabled', async () => {
     const { useSwitchboard } = await import('@/hooks/useSwitchboard');
-    vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
+    vi.mocked(useSwitchboard).mockReturnValue(true);
 
     renderWithProviders(
       <DomainDNS

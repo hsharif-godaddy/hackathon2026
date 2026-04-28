@@ -1,19 +1,32 @@
 /**
  * Server-side switchboard flag utilities
  *
- * Provides functions to check feature flags from server-side code.
+ * Backed by `@godaddy/gasket-plugin-switchboard`'s in-process client. The
+ * plugin authenticates to Switchboard via IAM (not user JWT), polls settings
+ * into an in-process cache, and exposes a per-request merged tree through
+ * `gasket.actions.getSwitchboardConfig(req)` that already applies evaluation
+ * criteria (shopperId, customerId, visitor). These helpers are thin wrappers
+ * over that tree lookup.
+ *
+ * Flag flips propagate within `@switchboard/client`'s `cacheRefreshMs`
+ * (default ~2 min). Nothing in this codebase requires lower latency.
+ *
+ * Error contract: the helpers distinguish "flag not in tree / wrong type"
+ * (returns default) from a system failure (re-throws). A system failure is
+ * either the underlying gasket call throwing or it returning no tree at all
+ * (null / undefined) - both indicate the plugin couldn't supply flag state
+ * and must not be misread as "all flags are off". Paywall / security gates
+ * rely on the re-throw to fail closed; UI callers that want a soft default
+ * should wrap in try/catch.
  */
 
 import { logger } from '@/lib/request-context';
-import { getRootDomainFromHeaders } from '@/utils/getRootDomain';
+import gasket from '../../../gasket';
 
-const BFF_HOST_PREFIX = 'bff.pcx';
-const SWITCHBOARD_APP = 'airo-app-builder';
+/** Accepts NextRequest, Request, or a plain `{ headers }` wrapper. */
+export type SwitchboardRequest = { headers: Headers | Record<string, string> };
 
-/**
- * Server-side local development feature flag overrides.
- * Applied when NEXT_PUBLIC_ENABLE_LOCAL_FEATURES=true.
- */
+/** Local dev boolean overrides (NEXT_PUBLIC_ENABLE_LOCAL_FEATURES=true). */
 const SERVER_LOCAL_FEATURE_OVERRIDES: Record<string, boolean> = {
   'appbuilder-publish-button': true,
   'appbuilder-manage-plan': true,
@@ -32,115 +45,69 @@ const SERVER_LOCAL_FEATURE_OVERRIDES: Record<string, boolean> = {
   'appbuilder-cost-attribution-dry-run': false,
 };
 
-/**
- * Server-side local development string value overrides.
- * Applied when NEXT_PUBLIC_ENABLE_LOCAL_FEATURES=true.
- */
+/** Local dev string overrides (NEXT_PUBLIC_ENABLE_LOCAL_FEATURES=true). */
 const SERVER_LOCAL_VALUE_OVERRIDES: Record<string, string> = {
   'appbuilder-model-override': 'default',
   'appbuilder-agent-profile': 'experimental',
 };
 
+function localOverride<T>(featureName: string, overrides: Record<string, T>): T | undefined {
+  if (process.env.NEXT_PUBLIC_ENABLE_LOCAL_FEATURES !== 'true') return undefined;
+  if (!(featureName in overrides)) return undefined;
+  const value = overrides[featureName];
+  logger.info('switchboard.server.local-override', { featureName, value });
+  return value;
+}
+
 /**
- * Fetch a raw feature flag value from Switchboard.
- * Shared implementation for both boolean and string flag lookups.
+ * Read a flag from the gasket-plugin tree. Throws on lookup errors so callers
+ * can fail closed; returns `undefined` when the tree resolves but the key is
+ * absent (distinct states).
  */
-async function fetchSwitchboardSetting<T>(
-  featureName: string,
-  jwt: string,
-  headers: Headers,
-  fallback: T,
-): Promise<T> {
-  const rootDomain = getRootDomainFromHeaders(headers);
-
-  if (!rootDomain) {
-    logger.warn('switchboard.server.no-root-domain', {
-      featureName,
-      message: 'Cannot check feature: no root domain',
-    });
-    return fallback;
-  }
-
-  const url = `https://${BFF_HOST_PREFIX}.${rootDomain}/api/config/feature/${featureName}?app=${SWITCHBOARD_APP}`;
-
+async function lookup(featureName: string, req: SwitchboardRequest): Promise<unknown> {
   try {
-    const response = await fetch(url, {
-      headers: {
-        'Authorization': `sso-jwt ${jwt}`,
-      },
-    });
-
-    if (!response.ok) {
-      logger.warn('switchboard.server.fetch-failure', {
-        featureName,
-        status: response.status,
-        url,
-      });
-      return fallback;
+    const tree = await gasket.actions.getSwitchboardConfig<Record<string, unknown>>(req);
+    if (!tree) {
+      throw new Error('gasket-plugin-switchboard returned no tree');
     }
-
-    const data = await response.json();
-    return data?.setting ?? fallback;
+    return tree[featureName];
   } catch (error) {
-    logger.error('switchboard.server.fetch-error', {
+    logger.error('switchboard.server.lookup-error', {
       featureName,
       error: error instanceof Error ? error.message : String(error),
     });
-    return fallback;
+    throw error;
   }
 }
 
 /**
- * Fetch a string-valued feature flag from the server
- *
- * Unlike checkSwitchboardFlag (boolean), this returns the raw string value
- * or null if unavailable. Used for flags that carry data (e.g., model names).
- *
- * @param featureName - Name of the feature flag
- * @param jwt - JWT token for authentication
- * @param headers - Request headers to extract root domain
- * @returns Promise resolving to string value or null
+ * Fetch a string-valued feature flag. Returns `null` when absent or of a
+ * different type. Throws when the underlying tree lookup fails - callers that
+ * want a soft default should wrap in try/catch.
  */
 export async function checkSwitchboardValue(
   featureName: string,
-  jwt: string,
-  headers: Headers
+  req: SwitchboardRequest,
 ): Promise<string | null> {
-  if (process.env.NEXT_PUBLIC_ENABLE_LOCAL_FEATURES === 'true') {
-    if (featureName in SERVER_LOCAL_VALUE_OVERRIDES) {
-      logger.info('switchboard.server.local-override', {
-        featureName,
-        value: SERVER_LOCAL_VALUE_OVERRIDES[featureName],
-      });
-      return SERVER_LOCAL_VALUE_OVERRIDES[featureName];
-    }
-  }
+  const override = localOverride(featureName, SERVER_LOCAL_VALUE_OVERRIDES);
+  if (override !== undefined) return override;
 
-  return fetchSwitchboardSetting(featureName, jwt, headers, null);
+  const value = await lookup(featureName, req);
+  return typeof value === 'string' ? value : null;
 }
 
 /**
- * Check if a feature flag is enabled on the server
- *
- * @param featureName - Name of the feature flag (e.g., 'appbuilder-manage-plan')
- * @param jwt - JWT token for authentication
- * @param headers - Request headers to extract root domain
- * @returns Promise resolving to boolean indicating if flag is enabled
+ * Fetch a boolean feature flag. Returns `false` when absent or of a different
+ * type. Throws when the underlying tree lookup fails - callers that want a
+ * soft default should wrap in try/catch.
  */
 export async function checkSwitchboardFlag(
   featureName: string,
-  jwt: string,
-  headers: Headers
+  req: SwitchboardRequest,
 ): Promise<boolean> {
-  if (process.env.NEXT_PUBLIC_ENABLE_LOCAL_FEATURES === 'true') {
-    if (featureName in SERVER_LOCAL_FEATURE_OVERRIDES) {
-      logger.info('switchboard.server.local-override', {
-        featureName,
-        value: SERVER_LOCAL_FEATURE_OVERRIDES[featureName],
-      });
-      return SERVER_LOCAL_FEATURE_OVERRIDES[featureName];
-    }
-  }
+  const override = localOverride(featureName, SERVER_LOCAL_FEATURE_OVERRIDES);
+  if (override !== undefined) return override;
 
-  return fetchSwitchboardSetting(featureName, jwt, headers, false);
+  const value = await lookup(featureName, req);
+  return typeof value === 'boolean' ? value : false;
 }

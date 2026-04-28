@@ -70,7 +70,7 @@ export default function DomainPurchaseWidget({
   const site = useSiteStore((state) => state.getSite(appId || ''));
 
   // Feature flag check
-  const { data: isDomainPurchaseEnabled, isLoading: isLoadingFlag } = useSwitchboard('appbuilder-domain-purchase');
+  const isDomainPurchaseEnabled = useSwitchboard('appbuilder-domain-purchase');
 
   // Fetch API key name from server (avoids NEXT_PUBLIC_ exposure)
   const { data: domainConfig } = useQuery({
@@ -312,7 +312,7 @@ export default function DomainPurchaseWidget({
   }
 
   // Don't render if feature flag is disabled
-  if (isLoadingFlag || !isDomainPurchaseEnabled) {
+  if (!isDomainPurchaseEnabled) {
     return null;
   }
 

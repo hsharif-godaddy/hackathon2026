@@ -338,8 +338,13 @@ export default makeGasket({
     depsPath: 'cds'
   },
   switchboard: {
-    // Fetch only Hivemind experiments (no regular Switchboard feature flags due to caching issues)
-    app: '@hivemind',
+    // Load Hivemind experiments and airo-app-builder feature flags.
+    // Hivemind is a restricted app so it requires the `airo-builder` label filter;
+    // airo-app-builder loads its full setting tree. The plugin merges both app
+    // trees into a single per-request config available via
+    // `gasket.actions.getSwitchboardConfig(req)` server-side and
+    // `useGasketData().switchboard` client-side.
+    apps: ['@hivemind', 'airo-app-builder'],
     // Default to production - overridden by environment-specific config in `environments`
     env: 'production',
     appLabels: {

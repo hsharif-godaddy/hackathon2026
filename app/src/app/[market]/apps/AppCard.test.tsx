@@ -20,7 +20,7 @@ vi.mock('@/lib/gasket-config');
 vi.mock('@/app/[market]/apps/components/TransferInitiateDialog', () => ({ default: () => null }));
 
 vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: vi.fn(() => ({ data: true, isLoading: false, error: null })),
+  useSwitchboard: vi.fn(() => (true)),
 }));
 
 vi.mock('@/hooks/useSubscription', () => ({
@@ -62,7 +62,7 @@ describe('AppCard', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false, error: null } as ReturnType<typeof useSwitchboard>);
+    vi.mocked(useSwitchboard).mockReturnValue(true);
     mockWindowOpen.mockClear();
     mockRouterInstance.push.mockClear();
     useSitesStore.setState({
@@ -610,9 +610,9 @@ describe('AppCard', () => {
     it('should not show transfer menu item when flag is off', async function hideTransferItem() {
       vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
         if (flag === 'appbuilder-transfer-ownership') {
-          return { data: false, isLoading: false, error: null } as ReturnType<typeof useSwitchboard>;
+          return false;
         }
-        return { data: true, isLoading: false, error: null } as ReturnType<typeof useSwitchboard>;
+        return true;
       });
 
       const { user } = renderWithProviders(<AppCard site={mockSite} />);
@@ -630,9 +630,9 @@ describe('AppCard', () => {
     it('should not show transfer pending tag when flag is off', async function hidePendingTag() {
       vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
         if (flag === 'appbuilder-transfer-ownership') {
-          return { data: false, isLoading: false, error: null } as ReturnType<typeof useSwitchboard>;
+          return false;
         }
-        return { data: true, isLoading: false, error: null } as ReturnType<typeof useSwitchboard>;
+        return true;
       });
 
       vi.mocked(appFetch).mockImplementation(async (url: string) => {

@@ -40,7 +40,7 @@ vi.mock('@/hooks/useTranslations', () => ({
 }));
 
 vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: () => ({ data: true, isLoading: false }),
+  useSwitchboard: () => (true),
 }));
 
 const mockUnpublishMutate = vi.fn();

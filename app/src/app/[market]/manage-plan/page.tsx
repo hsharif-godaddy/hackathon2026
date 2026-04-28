@@ -146,11 +146,8 @@ function ManagePlanContent() {
     error: renewalError,
     resetError: resetRenewalError,
   } = useSubscriptionRenewal();
-  const { data: isUnpublishEnabled } = useSwitchboard("appbuilder-unpublish");
-  const {
-    data: isSuspendedBannerEnabled,
-    isLoading: isSuspendedFeatureLoading,
-  } = useSwitchboard("appbuilder-suspended-nonpayment-banner");
+  const isUnpublishEnabled = useSwitchboard("appbuilder-unpublish");
+  const isSuspendedBannerEnabled = useSwitchboard("appbuilder-suspended-nonpayment-banner");
 
   const openPaywall = (
     source: string,
@@ -301,7 +298,6 @@ function ManagePlanContent() {
 
   // Show SuspendedNonPaymentAlert when subscription is suspended due to non-payment
   const isSuspendedForNonPayment =
-    !isSuspendedFeatureLoading &&
     isSuspendedBannerEnabled &&
     subscription?.status === SubscriptionStatus.Suspended &&
     subscription?.reason === SubscriptionSuspendReason.NonPayment;
@@ -571,19 +567,18 @@ function ManagePlanContent() {
 export default function ManagePlan() {
   const t = useTranslations();
   const router = useRouter();
-  const { data: isFeatureEnabled, isLoading: isFeatureLoading } =
-    useSwitchboard("appbuilder-manage-plan");
+  const isFeatureEnabled = useSwitchboard("appbuilder-manage-plan");
 
   useEffect(
     function redirectIfDisabled() {
-      if (!isFeatureLoading && !isFeatureEnabled) {
+      if (isFeatureEnabled === false) {
         router.replace("/");
       }
     },
-    [isFeatureEnabled, isFeatureLoading, router],
+    [isFeatureEnabled, router],
   );
 
-  if (isFeatureLoading || !isFeatureEnabled) {
+  if (!isFeatureEnabled) {
     return (
       <PageLayout>
         <ManagePlanSkeleton />

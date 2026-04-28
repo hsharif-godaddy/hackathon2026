@@ -14,11 +14,9 @@ import SocialIcon from '@ux/icon/social';
 
 import { SettingsSection } from '@/app/[market]/develop/components/types';
 import { FEEDBACK_ID } from '@/components/feedback/utils';
-import { SwitchboardAuthError, useSwitchboard } from '@/hooks/useSwitchboard';
+import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
-
-const isAuthError = (error: Error | null) => error instanceof SwitchboardAuthError;
 
 /**
  * Settings navigation item configuration
@@ -28,30 +26,26 @@ export interface SettingsNavItem {
   label: string;
   icon: ReactNode;
   disabled: boolean;
-  needsAuth?: boolean;
   onClick?: () => void;
 }
 
 /**
- * Hook that provides the settings navigation items with their current state
- * Used by SettingsMenu popover
- *
- * @param enabled - Whether to fetch feature flags (defer until menu is visible)
- * @returns Array of settings navigation items with current enabled/disabled state
+ * Hook that provides the settings navigation items with their current state.
+ * Used by SettingsMenu popover.
  */
-export function useSettingsNavItems(enabled: boolean = true): SettingsNavItem[] {
+export function useSettingsNavItems(): SettingsNavItem[] {
   const t = useTranslations();
   const openFeedbackModal = useDevelopPageStore((state) => state.openFeedbackModal);
 
-  const project = useSwitchboard('appbuilder-settings-project', { enabled });
-  const domain = useSwitchboard('appbuilder-settings-domain', { enabled });
-  const backups = useSwitchboard('appbuilder-settings-backups', { enabled });
-  const security = useSwitchboard('appbuilder-settings-security', { enabled });
-  const shareLinks = useSwitchboard('appbuilder-share-links', { enabled });
-  const visualScan = useSwitchboard('appbuilder-settings-visualscan', { enabled });
-  const secrets = useSwitchboard('appbuilder-settings-secrets', { enabled });
-  const social = useSwitchboard('appbuilder-settings-social', { enabled });
-  const marketing = useSwitchboard('appbuilder-settings-marketing', { enabled });
+  const project = useSwitchboard('appbuilder-settings-project');
+  const domain = useSwitchboard('appbuilder-settings-domain');
+  const backups = useSwitchboard('appbuilder-settings-backups');
+  const security = useSwitchboard('appbuilder-settings-security');
+  const shareLinks = useSwitchboard('appbuilder-share-links');
+  const visualScan = useSwitchboard('appbuilder-settings-visualscan');
+  const secrets = useSwitchboard('appbuilder-settings-secrets');
+  const social = useSwitchboard('appbuilder-settings-social');
+  const marketing = useSwitchboard('appbuilder-settings-marketing');
 
   const handleFeedbackClick = () => {
     localStorage.removeItem(`airo-feedback-shown:${FEEDBACK_ID}`);
@@ -63,36 +57,31 @@ export function useSettingsNavItems(enabled: boolean = true): SettingsNavItem[] 
       id: SettingsSection.PROJECT,
       label: t('builder_settings_nav_project'),
       icon: <SettingsIcon />,
-      disabled: !isAuthError(project.error) && project.data !== true,
-      needsAuth: isAuthError(project.error),
+      disabled: project !== true,
     },
     {
       id: SettingsSection.DOMAIN,
       label: t('builder_settings_nav_domain'),
       icon: <LinkIcon />,
-      disabled: !isAuthError(domain.error) && domain.data !== true,
-      needsAuth: isAuthError(domain.error),
+      disabled: domain !== true,
     },
     {
       id: SettingsSection.BACKUPS,
       label: t('builder_settings_nav_backups'),
       icon: <RevertIcon />,
-      disabled: !isAuthError(backups.error) && backups.data !== true,
-      needsAuth: isAuthError(backups.error),
+      disabled: backups !== true,
     },
     {
       id: SettingsSection.SECURITY,
       label: t('builder_settings_nav_security'),
       icon: <LockedIcon />,
-      disabled: !isAuthError(security.error) && security.data !== true,
-      needsAuth: isAuthError(security.error),
+      disabled: security !== true,
     },
-    ...(shareLinks.data || isAuthError(shareLinks.error) ? [{
+    ...(shareLinks ? [{
       id: SettingsSection.SHARE,
       label: t('builder_settings_nav_share'),
       icon: <ShareIcon />,
       disabled: false,
-      needsAuth: isAuthError(shareLinks.error),
     }] : []),
     {
       id: SettingsSection.DATABASE,
@@ -104,29 +93,25 @@ export function useSettingsNavItems(enabled: boolean = true): SettingsNavItem[] 
       id: SettingsSection.SECRETS,
       label: t('builder_settings_nav_secrets'),
       icon: <LockedIcon />,
-      disabled: !isAuthError(secrets.error) && secrets.data !== true,
-      needsAuth: isAuthError(secrets.error),
+      disabled: secrets !== true,
     },
-    ...(social.data || isAuthError(social.error) ? [{
+    ...(social ? [{
       id: SettingsSection.SOCIAL,
       label: t('builder_settings_nav_social'),
       icon: <SocialIcon />,
       disabled: false,
-      needsAuth: isAuthError(social.error),
     }] : []),
-    ...(visualScan.data || isAuthError(visualScan.error) ? [{
+    ...(visualScan ? [{
       id: SettingsSection.VISUAL_SCAN,
       label: t('builder_settings_nav_visualscan'),
       icon: <ContentIcon />,
       disabled: false,
-      needsAuth: isAuthError(visualScan.error),
     }] : []),
-    ...(marketing.data || isAuthError(marketing.error) ? [{
+    ...(marketing ? [{
       id: SettingsSection.MARKETING,
       label: t('builder_settings_nav_marketing'),
       icon: <CalendarIcon />,
       disabled: false,
-      needsAuth: isAuthError(marketing.error),
     }] : []),
     {
       id: SettingsSection.FEEDBACK,

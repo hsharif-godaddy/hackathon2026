@@ -21,7 +21,7 @@ vi.mock('@/hooks/useUsage', () => ({
 }));
 
 vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: vi.fn(() => ({ data: true, isLoading: false })),
+  useSwitchboard: vi.fn(() => (true)),
 }));
 
 vi.mock('@/hooks/usePaywallEligibility', () => ({
@@ -63,7 +63,7 @@ describe('ChatBanners', function chatBannersTests() {
         isLoading: false,
 
       });
-      vi.mocked(useSwitchboard).mockReturnValue({ data: false, isLoading: false } as ReturnType<typeof useSwitchboard>);
+      vi.mocked(useSwitchboard).mockReturnValue(false);
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: false, isLoading: false, isError: false, error: null });
 
       renderWithProviders(<ChatBanners appId="test-app" />);
@@ -86,7 +86,7 @@ describe('ChatBanners', function chatBannersTests() {
         isLoading: false,
 
       });
-      vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
+      vi.mocked(useSwitchboard).mockReturnValue(true);
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
 
       renderWithProviders(<ChatBanners appId="test-app" />);
@@ -113,12 +113,12 @@ describe('ChatBanners', function chatBannersTests() {
       // Mock switchboard to return false for upgrade banner and true for feedback banner
       vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
         if (flag === 'appbuilder-airoplus-upgrade-banner') {
-          return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
+          return false;
         }
         if (flag === 'appbuilder-feedback-banner') {
-          return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
+          return true;
         }
-        return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
+        return false;
       });
 
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: false, isLoading: false, isError: false, error: null });

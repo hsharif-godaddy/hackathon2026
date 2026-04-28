@@ -57,7 +57,7 @@ export default function ChatToolbar({
   const viewMode = useDevelopPageStore((state) => state.viewMode);
   const returnToMain = useGitStore((state) => state.returnToMain);
   const setSelectedCommitHash = useGitStore((state) => state.setSelectedCommitHash);
-  const { data: isAnalyticsEnabled } = useSwitchboard('appbuilder-analytics');
+  const isAnalyticsEnabled = useSwitchboard('appbuilder-analytics');
 
   const { data: gitHistoryData } = useGitHistoryQuery({
     appId: appId || '',

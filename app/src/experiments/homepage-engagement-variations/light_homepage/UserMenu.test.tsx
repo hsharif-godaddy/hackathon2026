@@ -78,7 +78,7 @@ describe('light_homepage UserMenu', function lightHomepageUserMenuTests() {
     vi.clearAllMocks();
     mockPush.mockClear();
     mockUseAuthContext.mockReturnValue(mockAuthContext({ isAuthenticated: true }));
-    mockUseSwitchboard.mockReturnValue({ data: false, isLoading: false });
+    mockUseSwitchboard.mockReturnValue(false);
     mockUseSubscription.mockReturnValue({ data: undefined, isLoading: false });
   });
 
@@ -98,7 +98,7 @@ describe('light_homepage UserMenu', function lightHomepageUserMenuTests() {
     });
 
     it('should prefetch /manage-plan when manage plan is available', function prefetchManagePlan() {
-      mockUseSwitchboard.mockReturnValue({ data: true, isLoading: false });
+      mockUseSwitchboard.mockReturnValue(true);
       mockUseSubscription.mockReturnValue({
         data: { id: 'sub-1', builderEntitlementId: 'entitlement-123' },
         isLoading: false,
@@ -110,7 +110,7 @@ describe('light_homepage UserMenu', function lightHomepageUserMenuTests() {
     });
 
     it('should not prefetch /manage-plan when feature flag is off', function noPrefetchManagePlanFlagOff() {
-      mockUseSwitchboard.mockReturnValue({ data: false, isLoading: false });
+      mockUseSwitchboard.mockReturnValue(false);
       mockUseSubscription.mockReturnValue({
         data: { id: 'sub-1', builderEntitlementId: 'entitlement-123' },
         isLoading: false,
@@ -123,7 +123,7 @@ describe('light_homepage UserMenu', function lightHomepageUserMenuTests() {
 
     it('should not prefetch /manage-plan when unauthenticated even if showManagePlan would be true', function noPrefetchManagePlanUnauthed() {
       mockUseAuthContext.mockReturnValue(mockAuthContext({ isAuthenticated: false }));
-      mockUseSwitchboard.mockReturnValue({ data: true, isLoading: false });
+      mockUseSwitchboard.mockReturnValue(true);
       mockUseSubscription.mockReturnValue({
         data: { id: 'sub-1', builderEntitlementId: 'entitlement-123' },
         isLoading: false,

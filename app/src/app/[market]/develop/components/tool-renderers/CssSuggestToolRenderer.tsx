@@ -19,7 +19,7 @@ import { useTranslations } from '@/hooks/useTranslations'
  * Clickable to open modal with tabs for each palette option.
  */
 export default function CssSuggestToolRenderer(props: DefaultToolRendererProps) {
-  const { data: isThemeSelectionChatEnabled } = useSwitchboard('airo-builder-theme-selection-chat')
+  const isThemeSelectionChatEnabled = useSwitchboard('airo-builder-theme-selection-chat')
   if (!isThemeSelectionChatEnabled) {
     return <CssSuggestToolRendererLegacy {...props} />
   }

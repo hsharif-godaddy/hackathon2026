@@ -106,10 +106,10 @@ function DnsRecordCard({
 export default function DomainDNS({ domainDetails }: { domainDetails: AppDomain }) {
   const t = useTranslations();
   const { fqdn, anycastIp, certificateValidationCname } = domainDetails;
-  const { data: isDCVEnabled, isLoading: isDCVLoading } = useSwitchboard('appbuilder-domain-dcv');
+  const isDCVEnabled = useSwitchboard('appbuilder-domain-dcv');
 
   // Show provisioning message if anycast IP or DCV CNAME is not ready yet
-  if (!anycastIp || isDCVLoading || (isDCVEnabled && !certificateValidationCname)) {
+  if (!anycastIp || (isDCVEnabled && !certificateValidationCname)) {
     return (
       <Box
         orientation="vertical"

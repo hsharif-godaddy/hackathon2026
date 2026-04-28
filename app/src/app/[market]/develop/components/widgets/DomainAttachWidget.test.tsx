@@ -14,7 +14,7 @@ import DomainAttachWidget from './DomainAttachWidget';
 // -- Hook mocks --
 
 vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: vi.fn(() => ({ data: true, isLoading: false })),
+  useSwitchboard: vi.fn(() => (true)),
 }));
 
 vi.mock('@/hooks/useAuth', () => ({
@@ -484,9 +484,9 @@ describe('DomainAttachWidget', function domainAttachWidgetTests() {
 
       vi.mocked(useSwitchboard).mockImplementation((feature: string) => {
         if (feature === 'appbuilder-domain-attach') {
-          return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
+          return false;
         }
-        return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
+        return true;
       });
 
       const { container } = renderWithProviders(<DomainAttachWidget appId="test-app-123" />);
@@ -499,9 +499,9 @@ describe('DomainAttachWidget', function domainAttachWidgetTests() {
 
       vi.mocked(useSwitchboard).mockImplementation((feature: string) => {
         if (feature === 'appbuilder-domain-attach') {
-          return { data: undefined, isLoading: true } as ReturnType<typeof useSwitchboard>;
+          return undefined;
         }
-        return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
+        return true;
       });
 
       const { container } = renderWithProviders(<DomainAttachWidget appId="test-app-123" />);

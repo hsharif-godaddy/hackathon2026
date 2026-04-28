@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { fetchFeatureFlag } from '@/hooks/useSwitchboard';
+import { getSwitchboardFlag } from '@/hooks/useSwitchboard';
 import { appFetch } from '@/lib/gasket-config';
 import { shipAnalyticsLog } from '@/lib/logging';
 import type { AiroDeployment } from '@/lib/mgmt-airo';
@@ -296,7 +296,7 @@ export function useDeploymentsQuery({
             // Always clear publishing state on successful deployment
             setPublishSuccess(appId, true);
 
-            const isGoLiveEnabled = await fetchFeatureFlag('appbuilder-go-live');
+            const isGoLiveEnabled = getSwitchboardFlag('appbuilder-go-live') === true;
             const userHasGoneLive = hasGoneLive(appId);
             const wasDismissed = getPublishState(appId).goLiveModalDismissed;
 

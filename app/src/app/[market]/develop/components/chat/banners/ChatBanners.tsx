@@ -43,10 +43,10 @@ function isUpgradeBannerDismissedToday(): boolean {
  */
 export default function ChatBanners({ appId }: ChatBannersProps) {
   const { isWarningBannerActive } = useUsage({ appId, enabled: !!appId })
-  const { data: upgradeBannerEnabled, isLoading: isUpgradeFeatureLoading } = useSwitchboard('appbuilder-airoplus-upgrade-banner')
-  const { data: feedbackBannerEnabled, isLoading: isFeedbackFeatureLoading } = useSwitchboard('appbuilder-feedback-banner')
-  const { data: suspendedComplianceBannerEnabled, isLoading: isSuspendedComplianceFeatureLoading } = useSwitchboard('appbuilder-suspended-compliance-banner')
-  const { data: suspendedNonPaymentBannerEnabled, isLoading: isSuspendedNonPaymentFeatureLoading } = useSwitchboard('appbuilder-suspended-nonpayment-banner')
+  const upgradeBannerEnabled = useSwitchboard('appbuilder-airoplus-upgrade-banner')
+  const feedbackBannerEnabled = useSwitchboard('appbuilder-feedback-banner')
+  const suspendedComplianceBannerEnabled = useSwitchboard('appbuilder-suspended-compliance-banner')
+  const suspendedNonPaymentBannerEnabled = useSwitchboard('appbuilder-suspended-nonpayment-banner')
   const { showPaywall, isLoading: isPaywallLoading } = usePaywallEligibility()
   const { data: subscription } = useSubscription()
   const showFeedbackBannerFromStore = useDevelopPageStore((state) => state.showFeedbackBanner)
@@ -67,7 +67,6 @@ export default function ChatBanners({ appId }: ChatBannersProps) {
   const currentSite = useSiteStore((state) => appId ? state.getSite(appId) : null)
 
   const isSuspendedForCompliance =
-    !isSuspendedComplianceFeatureLoading &&
     suspendedComplianceBannerEnabled &&
     isPublishBlockedByComplianceRules(
       currentSite,
@@ -76,15 +75,14 @@ export default function ChatBanners({ appId }: ChatBannersProps) {
     )
 
   const isSuspendedForNonPayment =
-    !isSuspendedNonPaymentFeatureLoading &&
     suspendedNonPaymentBannerEnabled &&
     isSubscriptionSuspendedForNonPayment(subscription)
 
   // Determine if upgrade banner should be shown
-  const isUpgradeBannerActive = mounted && !isUpgradeFeatureLoading && !isPaywallLoading && upgradeBannerEnabled && !isUpgradeBannerDismissed && showPaywall
+  const isUpgradeBannerActive = mounted && !isPaywallLoading && upgradeBannerEnabled && !isUpgradeBannerDismissed && showPaywall
 
   // Determine if feedback banner should be shown (feature flag AND store state)
-  const showFeedbackBanner = mounted && !isFeedbackFeatureLoading && feedbackBannerEnabled && showFeedbackBannerFromStore
+  const showFeedbackBanner = mounted && feedbackBannerEnabled && showFeedbackBannerFromStore
 
   // Priority 1: Suspended compliance (critical - user needs to contact support)
   if (isSuspendedForCompliance) {

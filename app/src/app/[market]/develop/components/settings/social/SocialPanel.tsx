@@ -69,7 +69,7 @@ function SocialPlatformsSection({ siteId }: SocialPanelProps) {
 }
 
 export default function SocialPanel({ siteId }: SocialPanelProps) {
-  const { data: isVideoGenerationEnabled } = useSwitchboard('appbuilder-social-video-generation')
+  const isVideoGenerationEnabled = useSwitchboard('appbuilder-social-video-generation')
 
   return (
     <Box gap='lg' className='@container'>

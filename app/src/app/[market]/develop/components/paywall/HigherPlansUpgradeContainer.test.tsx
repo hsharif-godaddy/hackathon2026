@@ -41,7 +41,7 @@ vi.mock('@tanstack/react-query', async () => {
 });
 
 vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: vi.fn(() => ({ data: true, isLoading: false })),
+  useSwitchboard: vi.fn(() => (true)),
 }));
 
 vi.mock('@/hooks/useSubscription', () => ({
@@ -251,7 +251,7 @@ describe('HigherPlansUpgradeContainer', function higherPlansUpgradeContainerTest
 
   it('passes entitlementId when grants are enabled', async function passesEntitlementId() {
     const { useSwitchboard } = await import('@/hooks/useSwitchboard');
-    vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
+    vi.mocked(useSwitchboard).mockReturnValue(true);
 
     renderWithProviders(
       <HigherPlansUpgradeContainer

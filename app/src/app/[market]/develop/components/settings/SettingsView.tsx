@@ -27,23 +27,18 @@ const SocialPanel = dynamic(() => import('@/app/[market]/develop/components/sett
 const VisualScanPanel = dynamic(() => import('@/app/[market]/develop/components/settings/VisualScanPanel'), { loading: () => <PanelSkeleton /> })
 
 export default function SettingsView() {
-  const { activeChatTab, activeSettingsSection } = useChatTabs()
+  const { activeSettingsSection } = useChatTabs()
   const appId = useAppIdFromParams()
 
-  // Defer switchboard calls until settings is actually visible — even after the
-  // first lazy mount the component stays in the DOM (CSS-hidden), so without
-  // this guard every flag fires on subsequent tab switches.
-  const isSettingsActive = activeChatTab === ChatTab.SETTINGS
-
-  const { data: isProjectEnabled } = useSwitchboard('appbuilder-settings-project', { enabled: isSettingsActive });
-  const { data: isDomainEnabled } = useSwitchboard('appbuilder-settings-domain', { enabled: isSettingsActive });
-  const { data: isBackupsEnabled } = useSwitchboard('appbuilder-settings-backups', { enabled: isSettingsActive });
-  const { data: isSecurityEnabled } = useSwitchboard('appbuilder-settings-security', { enabled: isSettingsActive });
-  const { data: isShareLinksEnabled } = useSwitchboard('appbuilder-share-links', { enabled: isSettingsActive });
-  const { data: isVisualScanEnabled } = useSwitchboard('appbuilder-settings-visualscan', { enabled: isSettingsActive });
-  const { data: isSecretsEnabled } = useSwitchboard('appbuilder-settings-secrets', { enabled: isSettingsActive });
-  const { data: isSocialEnabled } = useSwitchboard('appbuilder-settings-social', { enabled: isSettingsActive });
-  const { data: isMarketingEnabled } = useSwitchboard('appbuilder-settings-marketing', { enabled: isSettingsActive });
+  const isProjectEnabled = useSwitchboard('appbuilder-settings-project');
+  const isDomainEnabled = useSwitchboard('appbuilder-settings-domain');
+  const isBackupsEnabled = useSwitchboard('appbuilder-settings-backups');
+  const isSecurityEnabled = useSwitchboard('appbuilder-settings-security');
+  const isShareLinksEnabled = useSwitchboard('appbuilder-share-links');
+  const isVisualScanEnabled = useSwitchboard('appbuilder-settings-visualscan');
+  const isSecretsEnabled = useSwitchboard('appbuilder-settings-secrets');
+  const isSocialEnabled = useSwitchboard('appbuilder-settings-social');
+  const isMarketingEnabled = useSwitchboard('appbuilder-settings-marketing');
 
   const sectionSkeleton = <PanelSkeleton panelType={ChatTab.SETTINGS} settingsSection={activeSettingsSection} />
 

@@ -27,7 +27,7 @@ export interface ColorPaletteGridWidgetProps {
  * Users can preview color schemes before saving them.
  */
 export default function ColorPaletteGridWidget(props: ColorPaletteGridWidgetProps) {
-  const { data: isThemeSelectionChatEnabled } = useSwitchboard('airo-builder-theme-selection-chat')
+  const isThemeSelectionChatEnabled = useSwitchboard('airo-builder-theme-selection-chat')
   if (isThemeSelectionChatEnabled) {
     return <ColorPaletteGridWidgetModern {...props} />
   }

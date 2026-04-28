@@ -9,7 +9,6 @@ import { useSettingsNavItems } from '@/app/[market]/develop/components/settings/
 import { ChatTab, SettingsSection } from '@/app/[market]/develop/components/types';
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils';
 import { useChatTabs } from '@/hooks/useChatTabs';
-import { useSsoSignIn } from '@/hooks/useSsoSignIn';
 import { useTranslations } from '@/hooks/useTranslations';
 import {
   Popover,
@@ -36,7 +35,6 @@ const SettingsMenu = forwardRef<SettingsMenuRef>((props, ref) => {
   const isMobile = useDevelopPageStore((state) => state.isMobile);
 
   const { activeChatTab, activeSettingsSection, setActiveSettingsSection, setActiveChatTab } = useChatTabs();
-  const { signIn } = useSsoSignIn();
 
   useImperativeHandle(ref, () => ({
     openPopover: () => setOpen(true),
@@ -53,7 +51,7 @@ const SettingsMenu = forwardRef<SettingsMenuRef>((props, ref) => {
 
   const isOnSettingsTab = activeChatTab === ChatTab.SETTINGS;
 
-  const items = useSettingsNavItems(open || isOnSettingsTab);
+  const items = useSettingsNavItems();
 
   return (
     <Popover open={open}>
@@ -96,10 +94,7 @@ const SettingsMenu = forwardRef<SettingsMenuRef>((props, ref) => {
               className="!justify-start"
               onClick={() => {
                 logClickEvent(`develop.settings_menu.${item.id}`, clickContext)();
-                if (item.needsAuth) {
-                  signIn();
-                  setOpen(false);
-                } else if (item.onClick) {
+                if (item.onClick) {
                   item.onClick();
                   setOpen(false);
                 } else {

@@ -58,7 +58,7 @@ vi.mock('@/hooks/useSwitchboard', () => ({
   useSwitchboard: (flagName: string) => {
     // If specific flag is set in mockSwitchboardFlags, use that value
     if (flagName in mockSwitchboardFlags) {
-      return { data: mockSwitchboardFlags[flagName], isLoading: false };
+      return mockSwitchboardFlags[flagName];
     }
     // Otherwise fall back to the default mock behavior
     return mockUseSwitchboard();
@@ -205,7 +205,7 @@ describe('ManagePlan', function managePlanTests() {
 
   describe('feature flag gating', function featureFlagTests() {
     it('should show skeleton while feature flag is loading', function loadingSkeleton() {
-      mockUseSwitchboard.mockReturnValue({ data: undefined, isLoading: true });
+      mockUseSwitchboard.mockReturnValue(undefined);
 
       renderWithProviders(<ManagePlan />);
 
@@ -214,7 +214,7 @@ describe('ManagePlan', function managePlanTests() {
     });
 
     it('should redirect to home when feature flag is disabled', async function redirectDisabled() {
-      mockUseSwitchboard.mockReturnValue({ data: false, isLoading: false });
+      mockUseSwitchboard.mockReturnValue(false);
 
       renderWithProviders(<ManagePlan />);
 
@@ -224,7 +224,7 @@ describe('ManagePlan', function managePlanTests() {
     });
 
     it('should render content when feature flag is enabled', function renderContent() {
-      mockUseSwitchboard.mockReturnValue({ data: true, isLoading: false });
+      mockUseSwitchboard.mockReturnValue(true);
       mockUseActiveSubscription.mockReturnValue({
         data: { id: 'sub-1', plan: SubscriptionPlan.Free },
         isLoading: false,
@@ -244,7 +244,7 @@ describe('ManagePlan', function managePlanTests() {
 
   describe('loading states', function loadingTests() {
     beforeEach(function setupFeatureEnabled() {
-      mockUseSwitchboard.mockReturnValue({ data: true, isLoading: false });
+      mockUseSwitchboard.mockReturnValue(true);
     });
 
     it('should show skeleton when subscription is loading', function subscriptionLoading() {
@@ -285,7 +285,7 @@ describe('ManagePlan', function managePlanTests() {
 
   describe('new account zero state', function newAccountZeroStateTests() {
     beforeEach(function setupFeatureEnabled() {
-      mockUseSwitchboard.mockReturnValue({ data: true, isLoading: false });
+      mockUseSwitchboard.mockReturnValue(true);
     });
 
     it('should show new account zero state when subscription does not exist', function showZeroState() {
@@ -327,7 +327,7 @@ describe('ManagePlan', function managePlanTests() {
 
   describe('error states', function errorTests() {
     beforeEach(function setupFeatureEnabled() {
-      mockUseSwitchboard.mockReturnValue({ data: true, isLoading: false });
+      mockUseSwitchboard.mockReturnValue(true);
     });
 
     it('should show error message when subscription fetch fails', function subscriptionError() {
@@ -367,7 +367,7 @@ describe('ManagePlan', function managePlanTests() {
 
   describe('content rendering', function contentTests() {
     beforeEach(function setupFeatureEnabled() {
-      mockUseSwitchboard.mockReturnValue({ data: true, isLoading: false });
+      mockUseSwitchboard.mockReturnValue(true);
     });
 
     it('should render page title', function renderTitle() {
@@ -459,7 +459,7 @@ describe('ManagePlan', function managePlanTests() {
 
   describe('button visibility', function buttonTests() {
     beforeEach(function setupFeatureEnabled() {
-      mockUseSwitchboard.mockReturnValue({ data: true, isLoading: false });
+      mockUseSwitchboard.mockReturnValue(true);
     });
 
     describe('free plan scenarios', function freePlanTests() {
@@ -668,7 +668,7 @@ describe('ManagePlan', function managePlanTests() {
     describe('AiroPlus plan scenarios (grants disabled - legacy behavior)', function airoPlusGrantsDisabledTests() {
       beforeEach(function setupGrantsDisabled() {
         // Override to disable grants - tests legacy AiroPlus behavior
-        mockUseSwitchboard.mockReturnValue({ data: false, isLoading: false });
+        mockUseSwitchboard.mockReturnValue(false);
       });
 
       it('should NOT show cancel plan button for AiroPlus plan (legacy)', function airoPlusNoCancel() {
@@ -744,7 +744,7 @@ describe('ManagePlan', function managePlanTests() {
 
   describe('paywall modal', function paywallTests() {
     beforeEach(function setupFeatureEnabled() {
-      mockUseSwitchboard.mockReturnValue({ data: true, isLoading: false });
+      mockUseSwitchboard.mockReturnValue(true);
     });
 
     it('should open upgrade modal when upgrade button is clicked', async function openUpgradeOnUpgrade() {
@@ -861,7 +861,7 @@ describe('ManagePlan', function managePlanTests() {
 
   describe('cancellation analytics', function cancellationTests() {
     beforeEach(function setupCancellationTests() {
-      mockUseSwitchboard.mockReturnValue({ data: true, isLoading: false });
+      mockUseSwitchboard.mockReturnValue(true);
       mockSetAutoRenewMutate.mockClear();
     });
 
@@ -910,7 +910,7 @@ describe('ManagePlan', function managePlanTests() {
 
   describe('downgrade scheduled alert', function downgradeAlertTests() {
     beforeEach(function setupDowngradeTests() {
-      mockUseSwitchboard.mockReturnValue({ data: true, isLoading: false });
+      mockUseSwitchboard.mockReturnValue(true);
     });
 
     it('should show downgrade alert when subscription has downgradedAt, downgradedPlan, and renewsAt', async function showAlertWithScheduledDowngrade() {
@@ -1039,7 +1039,7 @@ describe('ManagePlan', function managePlanTests() {
 
   describe('prefetches develop route', function prefetchTests() {
     beforeEach(function setupPrefetchTests() {
-      mockUseSwitchboard.mockReturnValue({ data: true, isLoading: false });
+      mockUseSwitchboard.mockReturnValue(true);
     });
 
     it('should prefetch /develop route using the first site id', async function prefetchFirstSite() {

@@ -116,8 +116,8 @@ export default function ChatInput({
   const t = useTranslations();
   const clickContext = useMemo(() => (appId ? { appId } : undefined), [appId]);
   const { locale } = useIntl();
-  const { data: isChatGaugeEnabled } = useSwitchboard('appbuilder-chat-gauge');
-  const { data: areChatPlansEnabled } = useSwitchboard('airo-builder-chat-plans');
+  const isChatGaugeEnabled = useSwitchboard('appbuilder-chat-gauge');
+  const areChatPlansEnabled = useSwitchboard('airo-builder-chat-plans');
   const attachmentSlotsUsed = selectedAssets.length + stagedFiles.length
   const canAddAsset = attachmentSlotsUsed < maxAssets;
 

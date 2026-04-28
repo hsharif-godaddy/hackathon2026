@@ -24,8 +24,8 @@ import { usePublishForDomain } from './usePublishForDomain';
 
 export default function DomainPanel() {
   const t = useTranslations();
-  const { data: isDomainAttachEnabled, isLoading: isDomainAttachLoading } = useSwitchboard('appbuilder-domain-attach');
-  const { data: isProjectDomainEnabled, isLoading: isProjectDomainLoading } = useSwitchboard('appbuilder-project-domain');
+  const isDomainAttachEnabled = useSwitchboard('appbuilder-domain-attach');
+  const isProjectDomainEnabled = useSwitchboard('appbuilder-project-domain');
 
   const currentAppId = useAppIdFromParams();
   const site = useSiteStore((state) => {
@@ -53,7 +53,7 @@ export default function DomainPanel() {
       (d.status === DomainStatus.ACTIVE || d.status === DomainStatus.PENDING)
   ) ?? false;
 
-  if (isDomainAttachLoading || isProjectDomainLoading || isSiteLoading || isPaywallLoading) {
+  if (isSiteLoading || isPaywallLoading) {
     return <PanelSkeleton panelType={ChatTab.SETTINGS} settingsSection={SettingsSection.DOMAIN} />;
   }
 

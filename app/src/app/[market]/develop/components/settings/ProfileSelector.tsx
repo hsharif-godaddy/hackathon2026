@@ -42,15 +42,14 @@ function useAvailableProfiles(siteId: string | undefined, enabled: boolean) {
 export default function ProfileSelector() {
   const t = useTranslations()
   const appId = useAppIdFromParams()
-  const { data: isEnabled, isLoading: isFlagLoading, error: flagError } = useSwitchboard('appbuilder-agent-profile-selector')
+  const isEnabled = useSwitchboard('appbuilder-agent-profile-selector')
 
   const selectedProfile = useDevelopPageStore(s => s.selectedProfile)
   const setSelectedProfile = useDevelopPageStore(s => s.setSelectedProfile)
 
   const { data: profilesData, isLoading: isProfilesLoading, error } = useAvailableProfiles(appId, !!isEnabled)
 
-  if (isFlagLoading) return null
-  if (!isEnabled && !flagError) return null
+  if (!isEnabled) return null
 
   const profiles = profilesData?.profiles ?? []
 
@@ -60,11 +59,7 @@ export default function ProfileSelector() {
       hideStatus
       description={t('builder_settings_agent_profile_desc', undefined, 'Override the agent configuration for this project. "Default" uses the standard configuration. Note: profiles that affect initial agent routing (e.g. prompt version) only apply via Switchboard, not this selector.')}
     >
-      {flagError ? (
-        <Alert emphasis="critical" data-testid="profile-selector-flag-error">
-          {t('builder_settings_agent_profile_flag_error', undefined, 'Unable to check profile selector availability')}
-        </Alert>
-      ) : isProfilesLoading ? (
+      {isProfilesLoading ? (
         <Spinner size="sm" />
       ) : error ? (
         <Alert emphasis="critical" data-testid="profile-selector-error">

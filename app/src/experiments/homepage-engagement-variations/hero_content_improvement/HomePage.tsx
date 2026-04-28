@@ -48,7 +48,7 @@ export function HeroContentImprovementHomePage({ serverFeatures }: HomeContentPr
   const templateParam = searchParams.get('template')
   const [selectedTemplate, setSelectedTemplate] = useState(validateTemplate(templateParam))
   const isLogoMode = templateParam === LOGO_DESIGNER_TEMPLATE
-  const { data: isTemplateSelectorEnabled } = useSwitchboard('appbuilder-template-selector')
+  const isTemplateSelectorEnabled = useSwitchboard('appbuilder-template-selector')
   const [isLoading, setIsLoading] = useState(false)
   const [isRedirecting, setIsRedirecting] = useState(false)
   const [error, setError] = useState<string | null>(null)

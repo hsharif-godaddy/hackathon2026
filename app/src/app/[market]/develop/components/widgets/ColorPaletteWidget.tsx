@@ -27,7 +27,7 @@ export interface ColorPaletteWidgetProps {
  * Color Palette Widget
  */
 export default function ColorPaletteWidget(props: ColorPaletteWidgetProps) {
-  const { data: isThemeSelectionChatEnabled } = useSwitchboard('airo-builder-theme-selection-chat')
+  const isThemeSelectionChatEnabled = useSwitchboard('airo-builder-theme-selection-chat')
   if (isThemeSelectionChatEnabled) {
     return <ColorPaletteWidgetModern {...props} />
   }

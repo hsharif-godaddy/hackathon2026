@@ -21,7 +21,7 @@ vi.mock('@/hooks/useUsage', () => ({
 }));
 
 vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: vi.fn(() => ({ data: false })),
+  useSwitchboard: vi.fn(() => (false)),
 }));
 
 const mockLogImpressionEvent = vi.fn((_eid: string) => vi.fn());
@@ -116,7 +116,7 @@ describe('UsageWarningBanner', function usageWarningBannerTests() {
         warningLevel: WarningLevel.WARNING,
         isLoading: false,
       });
-      vi.mocked(useSwitchboard).mockReturnValue({ data: false, isLoading: false, error: null } as ReturnType<typeof useSwitchboard>);
+      vi.mocked(useSwitchboard).mockReturnValue(false);
 
       const { container } = renderWithProviders(<UsageWarningBanner appId="test-app" />);
 
@@ -138,7 +138,7 @@ describe('UsageWarningBanner', function usageWarningBannerTests() {
         warningLevel: WarningLevel.WARNING,
         isLoading: false,
       });
-      vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false, error: null } as ReturnType<typeof useSwitchboard>);
+      vi.mocked(useSwitchboard).mockReturnValue(true);
 
       const { container } = renderWithProviders(<UsageWarningBanner appId="test-app" />);
 

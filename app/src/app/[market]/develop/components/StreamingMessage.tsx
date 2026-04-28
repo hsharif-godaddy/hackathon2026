@@ -207,7 +207,7 @@ function renderMessageContent({ message, isActiveStream, isLastAssistantMessage,
 
 export default function StreamingMessage({ message, isActiveStream = false, isLastAssistantMessage = false, startTime, showThinking = false }: StreamingMessageProps) {
   const streamingState = useStreamingState()
-  const { data: showSupportIndicator } = useSwitchboard('airo-builder-support-chat-ui')
+  const showSupportIndicator = useSwitchboard('airo-builder-support-chat-ui')
   const isSupport = showSupportIndicator === true && message.origin === 'support'
 
   // Don't render messages that shouldn't be displayed

@@ -58,7 +58,7 @@ function renderToolCall(toolCall: ToolCall, index?: number, isActiveStream?: boo
  * @returns React element containing all tool calls, or null if empty
  */
 function MessageToolCallsRenderer({ toolCalls, isActiveStream = false, isLastAssistantMessage = false }: MessageToolCallsRendererProps) {
-  const { data: areChatPlansEnabled } = useSwitchboard('airo-builder-chat-plans')
+  const areChatPlansEnabled = useSwitchboard('airo-builder-chat-plans')
 
   return (
     <div className="space-y-1">

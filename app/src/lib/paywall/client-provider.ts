@@ -8,13 +8,14 @@
  * React Query for automatic caching and deduplication.
  */
 
+import { getSwitchboardFlag } from '@/hooks/useSwitchboard';
 import type { SiteInfo } from '@/lib/control-plane/types';
 import { appFetch } from '@/lib/gasket-config';
 import { filterPublishedApps } from '@/lib/publish-limit';
 import { logger } from '@/lib/request-context';
 import { getRootDomain } from '@/utils/getRootDomain';
 import type { AccountSubscription, PaywallDataProvider, PublishedAppsData, SwitchboardFlagsResult } from './providers';
-import { PAYWALL_CONFIG, type ProjectEdge } from './shared';
+import { type ProjectEdge } from './shared';
 
 /**
  * Client-side implementation of paywall data provider
@@ -39,109 +40,26 @@ export class ClientPaywallProvider implements PaywallDataProvider {
   }
 
   /**
-   * Check switchboard feature flags
+   * Read paywall switchboard flags from the SSR-serialized gasket-data tree.
    *
-   * Calls the switchboard API directly with browser credentials.
-   * Uses fetch with credentials: 'include' to send auth cookies.
-   *
-   * @param rootDomain - The root domain to construct switchboard URLs
-   * @returns Promise with both flag states
-   * @throws Error if flag fetch fails or JSON parsing fails
+   * Fails closed: throws if `window.gasketData` isn't yet populated (flags not
+   * hydrated) so the caller reports "service unavailable" rather than granting
+   * free access.
    */
-  async checkSwitchboardFlags(rootDomain: string): Promise<SwitchboardFlagsResult> {
-    const { SWITCHBOARD_FLAGS, SWITCHBOARD_APP, BFF_HOST_PREFIX } = PAYWALL_CONFIG;
+  async checkSwitchboardFlags(_rootDomain: string): Promise<SwitchboardFlagsResult> {
+    const paywall = getSwitchboardFlag('appbuilder-airoplus-paywall');
+    const markets = getSwitchboardFlag('appbuilder-airoplus-markets');
+    const bypassPublishLimit = getSwitchboardFlag('app-builder-bypass-publish-limit') ?? false;
 
-    const paywallFlagUrl = `https://${BFF_HOST_PREFIX}.${rootDomain}/api/config/feature/${SWITCHBOARD_FLAGS.PAYWALL}?app=${SWITCHBOARD_APP}`;
-    const marketsFlagUrl = `https://${BFF_HOST_PREFIX}.${rootDomain}/api/config/feature/${SWITCHBOARD_FLAGS.MARKETS}?app=${SWITCHBOARD_APP}`;
-    const bypassFlagUrl = `https://${BFF_HOST_PREFIX}.${rootDomain}/api/config/feature/app-builder-bypass-publish-limit?app=${SWITCHBOARD_APP}`;
-
-    const [paywallResponse, marketsResponse, bypassResponse] = await Promise.all([
-      appFetch(paywallFlagUrl),
-      appFetch(marketsFlagUrl),
-      appFetch(bypassFlagUrl, {}).catch(() => null),
-    ]);
-
-    // 401 is handled by Gasket Auth detecting expired session
-    // Throw a typed error so callers can distinguish auth failures from service failures.
-    if (paywallResponse.status === 401 || marketsResponse.status === 401) {
-      logger.warn('paywall.client-provider.flag-fetch.auth-required', {
-        paywallStatus: paywallResponse.status,
-        marketsStatus: marketsResponse.status,
+    if (paywall === undefined || markets === undefined) {
+      logger.error('paywall.client-provider.flag-fetch.missing', {
+        paywallLoaded: paywall !== undefined,
+        marketsLoaded: markets !== undefined,
       });
-      throw new Error('Authentication required');
+      throw new Error('Switchboard flags not loaded in gasket-data');
     }
 
-    // Fail closed: Throw error if flag fetch fails for non-auth reasons
-    // This ensures we show "service unavailable" rather than "you need to pay"
-    // The error will be caught by core.ts and return proper "unable to verify" message
-    if (!paywallResponse.ok) {
-      logger.error('paywall.client-provider.flag-fetch.failure', {
-        flag: SWITCHBOARD_FLAGS.PAYWALL,
-        status: paywallResponse.status,
-        url: paywallFlagUrl,
-      });
-      throw new Error(
-        `Switchboard flag fetch failed: ${SWITCHBOARD_FLAGS.PAYWALL} (status: ${paywallResponse.status})`
-      );
-    }
-
-    if (!marketsResponse.ok) {
-      logger.error('paywall.client-provider.flag-fetch.failure', {
-        flag: SWITCHBOARD_FLAGS.MARKETS,
-        status: marketsResponse.status,
-        url: marketsFlagUrl,
-      });
-      throw new Error(
-        `Switchboard flag fetch failed: ${SWITCHBOARD_FLAGS.MARKETS} (status: ${marketsResponse.status})`
-      );
-    }
-
-    // Parse flag responses with error handling
-    let paywallFlag: boolean;
-    let marketsFlag: boolean;
-
-    try {
-      const paywallData = await paywallResponse.json();
-      paywallFlag = paywallData.setting ?? false;
-    } catch (error) {
-      logger.error('paywall.client-provider.flag-parse.failure', {
-        flag: SWITCHBOARD_FLAGS.PAYWALL,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      throw new Error(
-        `Failed to parse switchboard flag: ${SWITCHBOARD_FLAGS.PAYWALL} - ${error instanceof Error ? error.message : String(error)}`
-      );
-    }
-
-    try {
-      const marketsData = await marketsResponse.json();
-      marketsFlag = marketsData.setting ?? false;
-    } catch (error) {
-      logger.error('paywall.client-provider.flag-parse.failure', {
-        flag: SWITCHBOARD_FLAGS.MARKETS,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      throw new Error(
-        `Failed to parse switchboard flag: ${SWITCHBOARD_FLAGS.MARKETS} - ${error instanceof Error ? error.message : String(error)}`
-      );
-    }
-
-    let bypassFlagResult = false; // fail-closed: assume bypass disabled
-
-    if (bypassResponse?.ok) {
-      try {
-        const bypassData = await bypassResponse.json();
-        bypassFlagResult = bypassData.setting ?? false;
-      } catch {
-        // Parse error - leave as undefined (default to not bypassing)
-      }
-    }
-
-    return {
-      paywall: paywallFlag,
-      markets: marketsFlag,
-      bypassPublishLimit: bypassFlagResult,
-    };
+    return { paywall, markets, bypassPublishLimit };
   }
 
   /**

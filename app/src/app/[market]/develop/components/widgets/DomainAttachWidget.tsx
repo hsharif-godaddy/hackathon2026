@@ -75,9 +75,9 @@ export default function DomainAttachWidget({
   const appId = propAppId || paramAppId;
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   // Feature flag check
-  const { data: isDomainAttachEnabled, isLoading: isLoadingFlag } = useSwitchboard('appbuilder-domain-attach');
-  const { data: isDomainPurchaseEnabled } = useSwitchboard('appbuilder-domain-purchase');
-  const { data: isDomainTransferEnabled } = useSwitchboard('appbuilder-domain-transfer');
+  const isDomainAttachEnabled = useSwitchboard('appbuilder-domain-attach');
+  const isDomainPurchaseEnabled = useSwitchboard('appbuilder-domain-purchase');
+  const isDomainTransferEnabled = useSwitchboard('appbuilder-domain-transfer');
 
   // Custom domain input state
   const [customDomain, setCustomDomain] = useState<string | null>(null);
@@ -581,8 +581,8 @@ export default function DomainAttachWidget({
     modifyDomainsMutation.isPending;
   const isDomainDataReady = isDomainsFetched && isAppDetailsFetched;
 
-  // Don't render if feature flag is disabled or still loading
-  if (isLoadingFlag || !isDomainAttachEnabled) {
+  // Don't render if feature flag is disabled
+  if (!isDomainAttachEnabled) {
     return null;
   }
 

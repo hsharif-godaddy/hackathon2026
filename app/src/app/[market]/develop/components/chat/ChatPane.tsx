@@ -196,8 +196,8 @@ export default function ChatPane({
 
   const { data: subscription } = useSubscription()
   useConversionEvent(subscription)
-  const { data: areChatPlansEnabled } = useSwitchboard('airo-builder-chat-plans')
-  const { data: isThemeSelectionChatEnabled } = useSwitchboard('airo-builder-theme-selection-chat')
+  const areChatPlansEnabled = useSwitchboard('airo-builder-chat-plans')
+  const isThemeSelectionChatEnabled = useSwitchboard('airo-builder-theme-selection-chat')
 
   // Unified grants fetch - works for both BMS and legacy paths
   const { data: grants, isFetching: isGrantsFetching } = useCreditGrants({

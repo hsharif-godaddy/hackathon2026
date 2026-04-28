@@ -32,7 +32,7 @@ export default function AnalyticsPanel() {
   const publishedUrl = usePublishedUrl()
 
   // Feature flag — gate analytics until paid-feature handling is in place
-  const { data: isAnalyticsEnabled, isLoading: isAnalyticsFlagLoading } = useSwitchboard('appbuilder-analytics')
+  const isAnalyticsEnabled = useSwitchboard('appbuilder-analytics')
 
   const { handlePublish, isPublishDisabled, publishState } = usePublishForDomain(appId, site)
 
@@ -48,7 +48,7 @@ export default function AnalyticsPanel() {
     })
   }
 
-  if (isAnalyticsFlagLoading || !isAnalyticsEnabled) {
+  if (!isAnalyticsEnabled) {
     return null
   }
 

@@ -54,8 +54,7 @@ export function usePublishLimitCheck(
 ): UsePublishLimitCheckResult {
   const { currentAppId, enabled = true } = options;
 
-  // Feature flags - only fetch when enabled
-  const { data: isBypassEnabled, isLoading: isBypassLoading } = useSwitchboard('app-builder-bypass-publish-limit', { enabled });
+  const isBypassEnabled = useSwitchboard('app-builder-bypass-publish-limit');
 
   // Subscription data - only fetch when enabled
   const {
@@ -74,7 +73,7 @@ export function usePublishLimitCheck(
     refetch: refetchPublishedApps,
   } = usePublishedApps({ enabled });
 
-  const isLoading = enabled && (isBypassLoading || isSubscriptionLoading || isPublishedAppsLoading);
+  const isLoading = enabled && (isSubscriptionLoading || isPublishedAppsLoading);
   const isError = enabled && (isSubscriptionError || isPublishedAppsError);
 
   const result = useMemo((): PublishLimitResult => {

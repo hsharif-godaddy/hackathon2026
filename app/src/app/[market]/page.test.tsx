@@ -47,6 +47,7 @@ vi.mock('@/lib/features', () => ({
     developmentMode: vi.fn().mockReturnValue(false),
     galleryPage: vi.fn().mockReturnValue(false),
     devSupervisorTcp: vi.fn().mockReturnValue(false),
+    localFeatures: vi.fn().mockReturnValue(false),
   },
   MAX_PROMPT_LENGTH: 40000,
   auth: { enabled: false },

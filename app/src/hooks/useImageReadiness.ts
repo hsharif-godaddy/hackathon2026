@@ -72,7 +72,7 @@ export function useImageReadiness(
   isCreateFlow = false,
   archiveRestore?: UseAppArchiveRestoreReturn
 ): UseImageReadinessReturn {
-  const { data: isFeatureEnabled, isLoading: isFeatureLoading } = useSwitchboard('app-builder-app-on-demand-reload');
+  const isFeatureEnabled = useSwitchboard('app-builder-app-on-demand-reload');
   const archiveBlocksReady =
     archiveRestore &&
     !archiveRestore.archiveRestoreFailed &&
@@ -322,7 +322,7 @@ export function useImageReadiness(
     return IMAGES_READY;
   }
 
-  if (!isFeatureEnabled || isFeatureLoading) {
+  if (!isFeatureEnabled) {
     return IMAGES_READY;
   }
 

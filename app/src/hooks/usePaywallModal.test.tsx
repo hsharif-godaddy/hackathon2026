@@ -29,7 +29,7 @@ vi.mock('@/stores/useSiteStore', () => ({
   }),
 }));
 vi.mock('./useSwitchboard', () => ({
-  useSwitchboard: vi.fn(() => ({ data: true })),
+  useSwitchboard: vi.fn(() => (true)),
 }));
 vi.mock('./usePaywallEligibility', () => ({
   usePaywallEligibility: vi.fn(() => ({

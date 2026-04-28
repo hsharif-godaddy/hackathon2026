@@ -172,10 +172,18 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
         };
       }
 
-      // Check BMS feature flag to determine if new subscription should use Budget Service
-      const isBmsEnabled = params.headers
-        ? await checkSwitchboardFlag('app-builder-budget-service', params.jwt, params.headers)
-        : false;
+      // Check BMS feature flag to determine if new subscription should use Budget Service.
+      // Soft-fail so a switchboard outage can't block signup; legacy path is always safe.
+      let isBmsEnabled = false;
+      if (params.headers) {
+        try {
+          isBmsEnabled = await checkSwitchboardFlag('app-builder-budget-service', { headers: params.headers });
+        } catch (error) {
+          logger.warn('v2-control-plane.create-site.bms-flag.lookup-failed', {
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
 
       const response = await client.signup({
         datacenter: process.env.MGMT_AIRO_DATACENTER || getDatacenterFromMarketId(params.marketId),

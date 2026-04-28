@@ -70,7 +70,7 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
   const t = useTranslations();
   const currentAppId = useAppIdFromParams()
   const { isAuthenticated, isLoading: authLoading } = useAuth();
-  const { data: isDomainTransferEnabled } = useSwitchboard('appbuilder-domain-transfer');
+  const isDomainTransferEnabled = useSwitchboard('appbuilder-domain-transfer');
   const [customDomain, setCustomDomain] = useState(null);
   const [customDomainError, setCustomDomainError] = useState<string | null>(null);
   const [debouncedDomain, setDebouncedDomain] = useState('');

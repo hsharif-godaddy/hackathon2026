@@ -39,7 +39,8 @@ vi.mock('@/utils/site', () => ({
 }));
 
 vi.mock('@/hooks/useSwitchboard', () => ({
-  fetchFeatureFlag: vi.fn(() => Promise.resolve(false)),
+  getSwitchboardFlag: vi.fn(() => false),
+  useSwitchboard: vi.fn(() => false),
 }));
 
 const mockSetDeploymentInProgressId = vi.hoisted(() => vi.fn());

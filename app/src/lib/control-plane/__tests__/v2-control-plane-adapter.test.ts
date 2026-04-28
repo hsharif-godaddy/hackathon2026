@@ -507,8 +507,7 @@ describe('V2ControlPlaneAdapter', () => {
         // Verify checkSwitchboardFlag was called with correct flag name
         expect(mockCheckSwitchboardFlag).toHaveBeenCalledWith(
           'app-builder-budget-service',
-          MOCK_JWT,
-          mockHeaders
+          { headers: mockHeaders }
         );
 
         // Verify signup was called with bmsActive: true
@@ -540,6 +539,35 @@ describe('V2ControlPlaneAdapter', () => {
         const signupCall = mockFetch.mock.calls[0];
         const requestBody = JSON.parse(signupCall[1].body);
         expect(requestBody.bmsActive).toBe(false);
+      });
+
+      it('should soft-fail to bmsActive: false and warn when the switchboard lookup throws', async () => {
+        const { logger } = await import('@/lib/request-context');
+        mockCheckSwitchboardFlag.mockRejectedValueOnce(new Error('switchboard outage'));
+
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            statusJobId: MOCK_JOB_ID,
+            subscriptionId: 'new-sub-xyz789'
+          })
+        });
+
+        const mockHeaders = new Headers({ 'x-test': 'value' });
+        await adapter.createSite({
+          accountId: MOCK_ACCOUNT_ID,
+          prompt: MOCK_PROMPT,
+          jwt: MOCK_JWT,
+          headers: mockHeaders
+        });
+
+        const signupCall = mockFetch.mock.calls[0];
+        const requestBody = JSON.parse(signupCall[1].body);
+        expect(requestBody.bmsActive).toBe(false);
+        expect(logger.warn).toHaveBeenCalledWith(
+          'v2-control-plane.create-site.bms-flag.lookup-failed',
+          expect.objectContaining({ error: 'switchboard outage' }),
+        );
       });
 
       it('should pass bmsActive: false when headers not provided', async () => {

@@ -140,18 +140,18 @@ vi.mock('@/hooks/useSubscription', () => ({
 vi.mock('@/hooks/useSwitchboard', () => ({
   useSwitchboard: vi.fn((feature: string) => {
     if (feature === 'appbuilder-publish-button') {
-      return { data: true, isLoading: false };
+      return true;
     }
     if (feature === 'appbuilder-airoplus-paywall') {
-      return { data: true, isLoading: false };
+      return true;
     }
     if (feature === 'appbuilder-post-publish-feature-selection') {
-      return { data: true, isLoading: false };
+      return true;
     }
     if (feature === 'appbuilder-settings-secrets') {
-      return { data: false, isLoading: false };
+      return false;
     }
-    return { data: false, isLoading: false };
+    return false;
   }),
 }));
 

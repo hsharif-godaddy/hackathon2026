@@ -64,7 +64,7 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
   } = useAuthContext();
 
   const { signIn } = useSsoSignIn();
-  const { data: isManagePlanEnabled } = useSwitchboard('appbuilder-manage-plan', { enabled: isAuthenticated });
+  const isManagePlanEnabled = useSwitchboard('appbuilder-manage-plan');
   const { data: activeSubscription } = useSubscription({ enabled: isAuthenticated && !!isManagePlanEnabled });
 
   const handleSignInClick = useCallback(() => {

@@ -30,7 +30,7 @@ function SitesPageContent() {
   const [adminActionLoading, setAdminActionLoading] = useState<string | null>(null)
   const [isAcceptTransferOpen, setIsAcceptTransferOpen] = useState(false)
   const [appsPage, setAppsPage] = useState(1)
-  const { data: isTransferEnabled } = useSwitchboard('appbuilder-transfer-ownership')
+  const isTransferEnabled = useSwitchboard('appbuilder-transfer-ownership')
   const sites = useSitesStore((state) => state.allSites)
   const isLoading = useSitesStore((state) => state.isLoadingAll)
   const error = useSitesStore((state) => state.error)

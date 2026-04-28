@@ -24,7 +24,7 @@ const mockDevelopStore = {
 const mockSiteStore = {
   getSite: vi.fn(),
 };
-const mockUseSwitchboard = vi.fn(() => ({ data: true, isLoading: false }));
+const mockUseSwitchboard = vi.fn(() => (true));
 
 vi.mock('next/navigation', () => ({
   useRouter: () => mockRouter,
@@ -104,7 +104,7 @@ describe('PublishStatusAlert', () => {
     mockDevelopStore.publishStates = {};
     mockDevelopStore.currentAppId = 'app-123';
     mockSiteStore.getSite.mockReturnValue(null);
-    mockUseSwitchboard.mockReturnValue({ data: true, isLoading: false });
+    mockUseSwitchboard.mockReturnValue(true);
     mockStreamingStore.isLoading = false;
     mockStreamingStore.isActivelyStreaming = false;
   });
@@ -486,7 +486,7 @@ describe('PublishStatusAlert', () => {
 
   it('should NOT show Go Live modal if feature flag is disabled', () => {
     // Override mock for this test to return disabled
-    mockUseSwitchboard.mockReturnValueOnce({ data: false, isLoading: false });
+    mockUseSwitchboard.mockReturnValueOnce(false);
 
     mockDevelopStore.publishStates = {
       'app-123': { showSuccessAlert: true, hasGoneLive: false },

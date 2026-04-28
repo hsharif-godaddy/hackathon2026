@@ -25,7 +25,7 @@ interface StreamingIntegratedResponseProps {
 
 export default function StreamingIntegratedResponse({ message, isActiveStream = false, isLastAssistantMessage = false, startTime, streamingState, showThinking = false }: StreamingIntegratedResponseProps) {
   const t = useTranslations();
-  const { data: areChatPlansEnabled } = useSwitchboard('airo-builder-chat-plans');
+  const areChatPlansEnabled = useSwitchboard('airo-builder-chat-plans');
   const hasSegments = hasValidSegments(message)
   const isComplete = isStreamingMessage(message) ? message.isComplete : true
 

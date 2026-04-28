@@ -98,7 +98,7 @@ vi.mock('@ux/menu', () => ({
 }));
 
 vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: vi.fn(() => ({ data: true, isLoading: false, error: null })),
+  useSwitchboard: vi.fn(() => (true)),
 }));
 
 vi.mock('@/hooks/useAuth', () => ({
@@ -404,7 +404,7 @@ describe('Sites Page', () => {
 
   describe('hides transfer UI when flag is disabled', () => {
     it('should not show transfer card when flag is off', () => {
-      vi.mocked(useSwitchboard).mockReturnValue({ data: false, isLoading: false, error: null } as ReturnType<typeof useSwitchboard>);
+      vi.mocked(useSwitchboard).mockReturnValue(false);
 
       renderWithProviders(<Sites />);
 
@@ -414,7 +414,7 @@ describe('Sites Page', () => {
 
   describe('hides transfer UI for TLA accounts', () => {
     beforeEach(() => {
-      vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false, error: null } as ReturnType<typeof useSwitchboard>);
+      vi.mocked(useSwitchboard).mockReturnValue(true);
     });
 
     afterEach(async () => {

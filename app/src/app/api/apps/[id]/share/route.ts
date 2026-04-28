@@ -43,11 +43,7 @@ export const GET = withCustomerAuth(async (
     }
 
     // Check feature flag
-    const isFeatureEnabled = await checkSwitchboardFlag(
-      'appbuilder-share-links',
-      authContext.jwt,
-      request.headers
-    );
+    const isFeatureEnabled = await checkSwitchboardFlag('appbuilder-share-links', request);
 
     if (!isFeatureEnabled) {
       logger.warn('share.api.feature_disabled', {
@@ -159,11 +155,7 @@ export const POST = withCustomerAuth(async (
     }
 
     // Check feature flag
-    const isFeatureEnabled = await checkSwitchboardFlag(
-      'appbuilder-share-links',
-      authContext.jwt,
-      request.headers
-    );
+    const isFeatureEnabled = await checkSwitchboardFlag('appbuilder-share-links', request);
 
     if (!isFeatureEnabled) {
       logger.warn('share.api.feature_disabled', {

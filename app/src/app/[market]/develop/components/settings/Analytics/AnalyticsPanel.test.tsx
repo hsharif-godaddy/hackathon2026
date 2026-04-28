@@ -137,7 +137,7 @@ vi.mock('@/hooks/useClickhouseAnalytics', () => ({
 
 describe('AnalyticsPanel', () => {
   beforeEach(() => {
-    mockUseSwitchboard.mockReturnValue({ data: true, isLoading: false });
+    mockUseSwitchboard.mockReturnValue(true);
     mockGetSite.mockReturnValue({ id: 'test-app-123' });
     mockUsePublishedUrl.mockReturnValue('https://example.com');
     mockHasBeenPublished.mockReturnValue(true);
@@ -148,7 +148,7 @@ describe('AnalyticsPanel', () => {
   });
 
   it('renders nothing while the analytics feature flag is loading', () => {
-    mockUseSwitchboard.mockReturnValue({ data: undefined, isLoading: true });
+    mockUseSwitchboard.mockReturnValue(undefined);
 
     const { container } = renderWithProviders(<AnalyticsPanel />);
 
@@ -156,7 +156,7 @@ describe('AnalyticsPanel', () => {
   });
 
   it('renders nothing when the analytics feature flag is disabled', () => {
-    mockUseSwitchboard.mockReturnValue({ data: false, isLoading: false });
+    mockUseSwitchboard.mockReturnValue(false);
 
     const { container } = renderWithProviders(<AnalyticsPanel />);
 

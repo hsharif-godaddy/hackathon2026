@@ -67,7 +67,7 @@ export default function StreamingMessageList({
   const prevIsStreamingRef = useRef(false)
   const hasUserInteractedRef = useRef(false)
   const t = useTranslations();
-  const { data: areChatPlansEnabled } = useSwitchboard('airo-builder-chat-plans')
+  const areChatPlansEnabled = useSwitchboard('airo-builder-chat-plans')
 
   // Store hooks for loading state
   const isStreaming = useIsActivelyStreaming()

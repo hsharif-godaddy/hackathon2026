@@ -13,7 +13,7 @@ import { renderWithProviders } from '@/tests/test-utils';
 import { SubscriptionPlan } from '@/types/credits';
 
 vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: vi.fn(() => ({ data: false, isLoading: false })),
+  useSwitchboard: vi.fn(() => (false)),
 }));
 
 vi.mock('@/hooks/useSubscription', () => ({
@@ -141,7 +141,7 @@ describe('UpgradeContainer', function upgradeContainerTests() {
   describe('DirectToPaid flow', function directToPaidTests() {
     it('should render DirectToPaidContainer when user has no subscription', async function renderD2PNoSubscription() {
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
-      vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
+      vi.mocked(useSwitchboard).mockReturnValue(true);
       vi.mocked(useSubscription).mockReturnValue({
         data: undefined,
         subscriptions: [],
@@ -162,7 +162,7 @@ describe('UpgradeContainer', function upgradeContainerTests() {
 
     it('should render DirectToPaidContainer when user has subscription but no builderEntitlementId', async function renderD2PNoEntitlement() {
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
-      vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
+      vi.mocked(useSwitchboard).mockReturnValue(true);
       vi.mocked(useSubscription).mockReturnValue({
         data: { id: 'sub-123', builderEntitlementId: undefined } as any,
         subscriptions: [],
@@ -182,7 +182,7 @@ describe('UpgradeContainer', function upgradeContainerTests() {
 
     it('should render HigherPlansUpgradeContainer when user has subscription with builderEntitlementId', async function renderUpgradeWithEntitlement() {
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
-      vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
+      vi.mocked(useSwitchboard).mockReturnValue(true);
       vi.mocked(useSubscription).mockReturnValue({
         data: { id: 'sub-123', builderEntitlementId: 'ent-123' } as any,
         subscriptions: [],
@@ -202,7 +202,7 @@ describe('UpgradeContainer', function upgradeContainerTests() {
 
     it('should render loading modal while subscription is loading', async function loadingWhileSubscriptionLoading() {
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
-      vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
+      vi.mocked(useSwitchboard).mockReturnValue(true);
       vi.mocked(useSubscription).mockReturnValue({
         data: undefined,
         subscriptions: [],

@@ -106,7 +106,7 @@ describe('UserMenu', function userMenuTests() {
     vi.clearAllMocks();
     mockPush.mockClear();
     mockUseAuthContext.mockReturnValue(mockAuthContext({ isAuthenticated: true }));
-    mockUseSwitchboard.mockReturnValue({ data: false, isLoading: false });
+    mockUseSwitchboard.mockReturnValue(false);
     mockUseSubscription.mockReturnValue({ data: undefined, isLoading: false });
   });
 
@@ -203,7 +203,7 @@ describe('UserMenu', function userMenuTests() {
 
   describe('Manage Plan menu item', function managePlanTests() {
     it('should not show Manage Plan when feature flag is disabled', async function hideWhenFlagDisabled() {
-      mockUseSwitchboard.mockReturnValue({ data: false, isLoading: false });
+      mockUseSwitchboard.mockReturnValue(false);
       mockUseSubscription.mockReturnValue({
         data: { id: 'sub-1', builderEntitlementId: 'entitlement-123' },
         isLoading: false,
@@ -221,7 +221,7 @@ describe('UserMenu', function userMenuTests() {
     });
 
     it('should not show Manage Plan when subscription is undefined', async function hideWhenNoSubscription() {
-      mockUseSwitchboard.mockReturnValue({ data: true, isLoading: false });
+      mockUseSwitchboard.mockReturnValue(true);
       mockUseSubscription.mockReturnValue({
         data: undefined,
         isLoading: false,
@@ -239,7 +239,7 @@ describe('UserMenu', function userMenuTests() {
     });
 
     it('should not show Manage Plan when builderEntitlementId is undefined', async function hideWhenNoEntitlementId() {
-      mockUseSwitchboard.mockReturnValue({ data: true, isLoading: false });
+      mockUseSwitchboard.mockReturnValue(true);
       mockUseSubscription.mockReturnValue({
         data: { id: 'sub-1' }, // no builderEntitlementId
         isLoading: false,
@@ -257,7 +257,7 @@ describe('UserMenu', function userMenuTests() {
     });
 
     it('should show Manage Plan when all conditions are met', async function showWhenAllConditionsMet() {
-      mockUseSwitchboard.mockReturnValue({ data: true, isLoading: false });
+      mockUseSwitchboard.mockReturnValue(true);
       mockUseSubscription.mockReturnValue({
         data: { id: 'sub-1', builderEntitlementId: 'entitlement-123' },
         isLoading: false,
@@ -273,7 +273,7 @@ describe('UserMenu', function userMenuTests() {
     });
 
     it('should navigate to /manage-plan when clicked', async function navigateOnClick() {
-      mockUseSwitchboard.mockReturnValue({ data: true, isLoading: false });
+      mockUseSwitchboard.mockReturnValue(true);
       mockUseSubscription.mockReturnValue({
         data: { id: 'sub-1', builderEntitlementId: 'entitlement-123' },
         isLoading: false,
@@ -501,7 +501,7 @@ describe('UserMenu', function userMenuTests() {
     });
 
     it('should prefetch /manage-plan when manage plan is available', function prefetchManagePlan() {
-      mockUseSwitchboard.mockReturnValue({ data: true, isLoading: false });
+      mockUseSwitchboard.mockReturnValue(true);
       mockUseSubscription.mockReturnValue({
         data: { id: 'sub-1', builderEntitlementId: 'entitlement-123' },
         isLoading: false,
@@ -513,7 +513,7 @@ describe('UserMenu', function userMenuTests() {
     });
 
     it('should not prefetch /manage-plan when feature flag is off', function noPrefetchManagePlanFlagOff() {
-      mockUseSwitchboard.mockReturnValue({ data: false, isLoading: false });
+      mockUseSwitchboard.mockReturnValue(false);
       mockUseSubscription.mockReturnValue({
         data: { id: 'sub-1', builderEntitlementId: 'entitlement-123' },
         isLoading: false,
@@ -526,7 +526,7 @@ describe('UserMenu', function userMenuTests() {
 
     it('should not prefetch /manage-plan when unauthenticated even if showManagePlan would be true', function noPrefetchManagePlanUnauthed() {
       mockUseAuthContext.mockReturnValue(mockAuthContext({ isAuthenticated: false }));
-      mockUseSwitchboard.mockReturnValue({ data: true, isLoading: false });
+      mockUseSwitchboard.mockReturnValue(true);
       mockUseSubscription.mockReturnValue({
         data: { id: 'sub-1', builderEntitlementId: 'entitlement-123' },
         isLoading: false,

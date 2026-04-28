@@ -82,10 +82,10 @@ export default function AppCard({ site, isTLA = false }: { site: SiteInfo; isTLA
   const fetchAllSites = useSitesStore((state) => state.fetchAllSites)
   const refreshSites = useSitesStore((state) => state.refreshSites)
   const { mutate: renameApp, isPending: isRenamePending } = useAppRename()
-  const { data: isUnpublishEnabled } = useSwitchboard('appbuilder-unpublish')
-  const { data: isTransferEnabled } = useSwitchboard('appbuilder-transfer-ownership')
+  const isUnpublishEnabled = useSwitchboard('appbuilder-unpublish')
+  const isTransferEnabled = useSwitchboard('appbuilder-transfer-ownership')
   const { data: subscription } = useSubscription()
-  const { data: suspendedComplianceBannerEnabled } = useSwitchboard('appbuilder-suspended-compliance-banner')
+  const suspendedComplianceBannerEnabled = useSwitchboard('appbuilder-suspended-compliance-banner')
   const unpublishMutation = useUnpublishApp()
 
   const fetchTransferStatus = useCallback(async (signal?: AbortSignal) => {

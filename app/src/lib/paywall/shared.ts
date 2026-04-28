@@ -38,27 +38,9 @@ export function getFormattedUnpublishDate(renewsAt?: string, locale: string = 'e
 }
 
 /**
- * Paywall feature flag and configuration constants
+ * Criteria for matching Airo Plus projects
  */
 export const PAYWALL_CONFIG = {
-  /**
-   * Switchboard feature flags for paywall control
-   */
-  SWITCHBOARD_FLAGS: {
-    PAYWALL: 'appbuilder-airoplus-paywall',
-    MARKETS: 'appbuilder-airoplus-markets',
-  },
-  /**
-   * Application identifier for switchboard
-   */
-  SWITCHBOARD_APP: 'airo-app-builder',
-  /**
-   * BFF host prefix for switchboard API calls
-   */
-  BFF_HOST_PREFIX: 'bff.pcx',
-  /**
-   * Criteria for matching Airo Plus projects
-   */
   PROJECT_MATCH_CRITERIA: {
     GROUP: 'aigeneratedmedia',
     STATUS: 'ACTIVE',

@@ -38,7 +38,7 @@ export default function PublishLimitModal({
 }: PublishLimitModalProps) {
   const t = useTranslations();
   const router = useRouter();
-  const { data: isUnpublishEnabled } = useSwitchboard('appbuilder-unpublish');
+  const isUnpublishEnabled = useSwitchboard('appbuilder-unpublish');
   const planName = plan ? t(getPlanDisplayLabelKey(plan)) : '';
 
   useEffect(() => {

@@ -50,10 +50,7 @@ export default function ModelSelector() {
   // matching the server-side bypass in /api/auth/agent-token and the
   // impersonation patterns used in Feedback.tsx and ChatPane.tsx.
   const isImpersonating = isEmployeeAuthType((authState as any)?.authType)
-  const { data: flagEnabled, isLoading: isFlagLoading, error: flagError } = useSwitchboard(
-    'appbuilder-model-selector',
-    { enabled: !isImpersonating }
-  )
+  const flagEnabled = useSwitchboard('appbuilder-model-selector')
   const isEnabled = isImpersonating || flagEnabled
 
   const selectedModel = useDevelopPageStore(s => s.selectedModel)
@@ -61,8 +58,7 @@ export default function ModelSelector() {
 
   const { data: modelsData, isLoading: isModelsLoading, error } = useAvailableModels(appId, !!isEnabled)
 
-  if (!isImpersonating && isFlagLoading) return null
-  if (!isEnabled && !flagError) return null
+  if (!isEnabled) return null
 
   const models = modelsData?.models ?? []
 
@@ -72,11 +68,7 @@ export default function ModelSelector() {
       hideStatus
       description={t('builder_settings_model_override_desc', undefined, 'Override the AI model for this project. "Default" uses the system-configured model.')}
     >
-      {flagError ? (
-        <Alert emphasis="critical" data-testid="model-selector-flag-error">
-          {t('builder_settings_model_override_flag_error', undefined, 'Unable to check model selector availability')}
-        </Alert>
-      ) : isModelsLoading ? (
+      {isModelsLoading ? (
         <Spinner size="sm" />
       ) : error ? (
         <Alert emphasis="critical" data-testid="model-selector-error">

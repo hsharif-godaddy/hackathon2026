@@ -82,7 +82,6 @@ vi.mock('@/hooks/useRestoreCommitMutation', () => ({
 vi.mock('@/hooks/useGitHistory', () => ({
   useGitHistoryQuery: () => ({
     data: mockGitHistoryData,
-    isLoading: false,
   }),
 }));
 
@@ -106,10 +105,7 @@ vi.mock('@/contexts/WebSocketContext', () => ({
 }));
 
 vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: () => ({
-    data: false,
-    isLoading: false,
-  }),
+  useSwitchboard: () => (false),
 }));
 
 vi.mock('@/hooks/useDomainSearch', () => ({

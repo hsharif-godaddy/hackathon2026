@@ -29,7 +29,7 @@ vi.mock('@/lib/request-context', () => ({
 let mockServerReady = true;
 const mockStartPollingForServer = vi.fn();
 
-const mockUseSwitchboard = vi.fn().mockReturnValue({ data: true, isLoading: false });
+const mockUseSwitchboard = vi.fn().mockReturnValue(true);
 vi.mock('@/hooks/useSwitchboard', () => ({
   useSwitchboard: (...args: any[]) => mockUseSwitchboard(...args),
 }));
@@ -183,7 +183,7 @@ describe('useImageReadiness', function useImageReadinessTests() {
     });
     mockServerReady = true;
     mockStartPollingForServer.mockClear();
-    mockUseSwitchboard.mockReturnValue({ data: true, isLoading: false });
+    mockUseSwitchboard.mockReturnValue(true);
   });
 
   afterEach(function cleanup() {
@@ -554,7 +554,7 @@ describe('useImageReadiness', function useImageReadinessTests() {
 
   describe('#feature flag', function featureFlagTests() {
     it('should short-circuit when feature flag is disabled', async function flagDisabled() {
-      mockUseSwitchboard.mockReturnValue({ data: false, isLoading: false });
+      mockUseSwitchboard.mockReturnValue(false);
 
       const { result } = renderHook(
         () => useImageReadiness(NOT_HIBERNATED, 'test-app-123'),
@@ -568,7 +568,7 @@ describe('useImageReadiness', function useImageReadinessTests() {
     });
 
     it('should short-circuit while feature flag is loading', async function flagLoading() {
-      mockUseSwitchboard.mockReturnValue({ data: undefined, isLoading: true });
+      mockUseSwitchboard.mockReturnValue(undefined);
 
       const { result } = renderHook(
         () => useImageReadiness(NOT_HIBERNATED, 'test-app-123'),
@@ -581,7 +581,7 @@ describe('useImageReadiness', function useImageReadinessTests() {
     });
 
     it('should proceed with image check when feature flag is enabled', async function flagEnabled() {
-      mockUseSwitchboard.mockReturnValue({ data: true, isLoading: false });
+      mockUseSwitchboard.mockReturnValue(true);
       (appFetch as any).mockResolvedValueOnce(mockImageStatusResponse('current'));
 
       const { result } = renderHook(

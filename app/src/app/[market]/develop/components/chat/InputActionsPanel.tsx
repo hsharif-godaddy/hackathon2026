@@ -1334,7 +1334,7 @@ function InputActionsPanelThemeSelection({ activeColorSchemeSuggest = null }: In
 // ── Sub-components ────────────────────────────────────────────────────────────
 
 export default function InputActionsPanel({ activeColorSchemeSuggest = null }: InputActionsPanelProps) {
-  const { data: isThemeSelectionChatEnabled } = useSwitchboard('airo-builder-theme-selection-chat')
+  const isThemeSelectionChatEnabled = useSwitchboard('airo-builder-theme-selection-chat')
   if (isThemeSelectionChatEnabled) {
     return <InputActionsPanelThemeSelection activeColorSchemeSuggest={activeColorSchemeSuggest} />
   }

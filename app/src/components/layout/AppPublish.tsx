@@ -139,24 +139,10 @@ export default function AppPublish({ location = 'develop' }: { location?: string
     openFeedbackModal(FEEDBACK_ID, origin);
   }, [clickContext, location, openFeedbackModal]);
 
-  // Switchboard flags
-  // Coerce to boolean to prevent React Query errors when undefined
-  const {
-    data: isPublishButtonEnabled,
-    isError: isPublishSwitchboardError,
-  } = useSwitchboard('appbuilder-publish-button');
-  const isPublishButtonEnabledFlag =
-    isPublishButtonEnabled === true || isPublishSwitchboardError;
-  const publishBlockedBySwitchboard =
-    !isPublishSwitchboardError && !isPublishButtonEnabled;
-  // Secondary flags only needed once the publish button is confirmed enabled on the develop page.
-  // AppPublish is always mounted in the header, so without this guard they fire on every page load.
-  const publishFlagsEnabled = isPublishButtonEnabledFlag && isDevelopPage;
-  const { data: isSecretsEnabled } = useSwitchboard('appbuilder-settings-secrets', { enabled: publishFlagsEnabled });
-  const { data: isPostPublishFeatureSelectionEnabled } = useSwitchboard(
-    'appbuilder-post-publish-feature-selection',
-    { enabled: publishFlagsEnabled }
-  );
+  const isPublishButtonEnabled = useSwitchboard('appbuilder-publish-button') === true;
+  const publishFlagsEnabled = isPublishButtonEnabled && isDevelopPage;
+  const isSecretsEnabled = useSwitchboard('appbuilder-settings-secrets');
+  const isPostPublishFeatureSelectionEnabled = useSwitchboard('appbuilder-post-publish-feature-selection');
 
   const isChatToolbar = location === 'develop.chat_toolbar';
 
@@ -207,7 +193,7 @@ export default function AppPublish({ location = 'develop' }: { location?: string
   const streamingState = useStreamingState();
   const isConversationInProgress = isConversationLoading || streamingState !== 'idle';
 
-  const queryEnabled = isPublishButtonEnabledFlag && isDevelopPage && !!currentAppId && !!site?.agent_url;
+  const queryEnabled = isPublishButtonEnabled && isDevelopPage && !!currentAppId && !!site?.agent_url;
 
   const {
     data: deployments = [],
@@ -563,7 +549,7 @@ export default function AppPublish({ location = 'develop' }: { location?: string
     isLoadingGitHistory ||
     isPaywallLoading ||
     isPublishLimitLoading ||
-    publishBlockedBySwitchboard ||
+    !isPublishButtonEnabled ||
     !currentAppId ||
     !site?.agent_url ||
     isPublishComplianceBlocked;

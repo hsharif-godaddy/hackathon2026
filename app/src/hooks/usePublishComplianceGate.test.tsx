@@ -33,10 +33,7 @@ describe('usePublishComplianceGate', function usePublishComplianceGateTests() {
       error: null,
       refetch: vi.fn(),
     });
-    vi.mocked(useSwitchboard).mockReturnValue({
-      data: false,
-      isLoading: false,
-    } as ReturnType<typeof useSwitchboard>);
+    vi.mocked(useSwitchboard).mockReturnValue(false);
   });
 
   it('should not block when site is running, flag off, and no subscription', function notBlockedRunning() {
@@ -50,10 +47,7 @@ describe('usePublishComplianceGate', function usePublishComplianceGateTests() {
   });
 
   it('should block when site is suspended regardless of flag', function blockedSiteSuspended() {
-    vi.mocked(useSwitchboard).mockReturnValue({
-      data: false,
-      isLoading: false,
-    } as ReturnType<typeof useSwitchboard>);
+    vi.mocked(useSwitchboard).mockReturnValue(false);
 
     const { result } = renderHookWithProviders(() =>
       usePublishComplianceGate({ status: SiteStatus.Suspended })
@@ -65,10 +59,7 @@ describe('usePublishComplianceGate', function usePublishComplianceGateTests() {
   });
 
   it('should block subscription when flag is true and subscription is non-compliant', function blockedSubscription() {
-    vi.mocked(useSwitchboard).mockReturnValue({
-      data: true,
-      isLoading: false,
-    } as ReturnType<typeof useSwitchboard>);
+    vi.mocked(useSwitchboard).mockReturnValue(true);
     vi.mocked(useSubscription).mockReturnValue({
       data: {
         status: SubscriptionStatus.Suspended,
@@ -91,10 +82,7 @@ describe('usePublishComplianceGate', function usePublishComplianceGateTests() {
   });
 
   it('should not block subscription path when flag is false', function flagOffAllowsPublish() {
-    vi.mocked(useSwitchboard).mockReturnValue({
-      data: false,
-      isLoading: false,
-    } as ReturnType<typeof useSwitchboard>);
+    vi.mocked(useSwitchboard).mockReturnValue(false);
     vi.mocked(useSubscription).mockReturnValue({
       data: {
         status: SubscriptionStatus.Suspended,
@@ -117,10 +105,7 @@ describe('usePublishComplianceGate', function usePublishComplianceGateTests() {
   });
 
   it('should prefer site_suspended when site suspended even if subscription is non-compliant', function siteWins() {
-    vi.mocked(useSwitchboard).mockReturnValue({
-      data: true,
-      isLoading: false,
-    } as ReturnType<typeof useSwitchboard>);
+    vi.mocked(useSwitchboard).mockReturnValue(true);
     vi.mocked(useSubscription).mockReturnValue({
       data: {
         status: SubscriptionStatus.Suspended,
@@ -147,16 +132,11 @@ describe('usePublishComplianceGate', function usePublishComplianceGateTests() {
     );
 
     expect(useSubscription).toHaveBeenCalledWith({ enabled: false });
-    expect(useSwitchboard).toHaveBeenCalledWith('appbuilder-suspended-compliance-banner', {
-      enabled: false,
-    });
+    expect(useSwitchboard).toHaveBeenCalledWith('appbuilder-suspended-compliance-banner');
   });
 
   it('should treat null site as not site-suspended for subscription-only block', function nullSite() {
-    vi.mocked(useSwitchboard).mockReturnValue({
-      data: true,
-      isLoading: false,
-    } as ReturnType<typeof useSwitchboard>);
+    vi.mocked(useSwitchboard).mockReturnValue(true);
     vi.mocked(useSubscription).mockReturnValue({
       data: {
         status: SubscriptionStatus.Suspended,

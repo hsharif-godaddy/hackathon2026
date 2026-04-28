@@ -19,7 +19,7 @@ vi.mock('@/hooks/usePaywallEligibility', () => ({
 }));
 
 vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: vi.fn(() => ({ data: true, isLoading: false })),
+  useSwitchboard: vi.fn(() => (true)),
 }));
 
 vi.mock('@/hooks/useDomainDnsOwnership', () => ({
@@ -66,41 +66,11 @@ describe('DomainPanel', function domainPanelTests() {
   });
 
   describe('loading states', function loadingTests() {
-    it('should show skeleton when domain attach feature is loading', async function domainAttachLoading() {
-      const { useSwitchboard } = await import('@/hooks/useSwitchboard');
-
-      vi.mocked(useSwitchboard).mockImplementation((feature: string) => {
-        if (feature === 'appbuilder-domain-attach') {
-          return { data: undefined, isLoading: true } as ReturnType<typeof useSwitchboard>;
-        }
-        return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
-      });
-
-      renderWithProviders(<DomainPanel />);
-
-      expect(screen.getByTestId('panel-skeleton')).toBeInTheDocument();
-    });
-
-    it('should show skeleton when project domain feature is loading', async function projectDomainLoading() {
-      const { useSwitchboard } = await import('@/hooks/useSwitchboard');
-
-      vi.mocked(useSwitchboard).mockImplementation((feature: string) => {
-        if (feature === 'appbuilder-project-domain') {
-          return { data: undefined, isLoading: true } as ReturnType<typeof useSwitchboard>;
-        }
-        return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
-      });
-
-      renderWithProviders(<DomainPanel />);
-
-      expect(screen.getByTestId('panel-skeleton')).toBeInTheDocument();
-    });
-
     it('should show skeleton when site is loading', async function siteLoading() {
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
       const { useSiteStore } = await import('@/stores/useSiteStore');
 
-      vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
+      vi.mocked(useSwitchboard).mockReturnValue(true);
       vi.mocked(useSiteStore).mockImplementation((selector: any) => {
         const state = {
           getSite: vi.fn(() => null),
@@ -118,7 +88,7 @@ describe('DomainPanel', function domainPanelTests() {
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
       const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
 
-      vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
+      vi.mocked(useSwitchboard).mockReturnValue(true);
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: false, isLoading: true });
 
       renderWithProviders(<DomainPanel />);
@@ -133,7 +103,7 @@ describe('DomainPanel', function domainPanelTests() {
       const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
       const { useSiteStore } = await import('@/stores/useSiteStore');
 
-      vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
+      vi.mocked(useSwitchboard).mockReturnValue(true);
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false });
       vi.mocked(useSiteStore).mockImplementation((selector: any) => {
         const mockSite = createMockSite({ variants: [] }); // No publish variant = not published
@@ -156,7 +126,7 @@ describe('DomainPanel', function domainPanelTests() {
       const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
       const { useSiteStore } = await import('@/stores/useSiteStore');
 
-      vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
+      vi.mocked(useSwitchboard).mockReturnValue(true);
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false });
       vi.mocked(useSiteStore).mockImplementation((selector: any) => {
         const mockSite = createMockSite({ variants: [] });
@@ -180,7 +150,7 @@ describe('DomainPanel', function domainPanelTests() {
       const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
       const { useSiteStore } = await import('@/stores/useSiteStore');
 
-      vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
+      vi.mocked(useSwitchboard).mockReturnValue(true);
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false });
       vi.mocked(useSiteStore).mockImplementation((selector: any) => {
         const mockSite = createMockSite({ variants: [] });
@@ -205,7 +175,7 @@ describe('DomainPanel', function domainPanelTests() {
       const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
       const { useSiteStore } = await import('@/stores/useSiteStore');
 
-      vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
+      vi.mocked(useSwitchboard).mockReturnValue(true);
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: false, isLoading: false });
       vi.mocked(useSiteStore).mockImplementation((selector: any) => {
         const mockSite = createMockSite({ variants: [] }); // Not published
@@ -229,7 +199,7 @@ describe('DomainPanel', function domainPanelTests() {
       const { useSiteStore } = await import('@/stores/useSiteStore');
       const { usePublishForDomain } = await import('./usePublishForDomain');
 
-      vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
+      vi.mocked(useSwitchboard).mockReturnValue(true);
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: false, isLoading: false });
       vi.mocked(useSiteStore).mockImplementation((selector: any) => {
         const mockSite = createMockSite({ variants: [] });
@@ -257,7 +227,7 @@ describe('DomainPanel', function domainPanelTests() {
       const { useSiteStore } = await import('@/stores/useSiteStore');
       const { usePublishForDomain } = await import('./usePublishForDomain');
 
-      vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
+      vi.mocked(useSwitchboard).mockReturnValue(true);
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: false, isLoading: false });
       vi.mocked(useSiteStore).mockImplementation((selector: any) => {
         const mockSite = createMockSite({ variants: [] });
@@ -288,7 +258,7 @@ describe('DomainPanel', function domainPanelTests() {
       const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
       const { useSiteStore } = await import('@/stores/useSiteStore');
 
-      vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
+      vi.mocked(useSwitchboard).mockReturnValue(true);
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: false, isLoading: false });
       vi.mocked(useSiteStore).mockImplementation((selector: any) => {
         const mockSite = createMockSite({
@@ -313,7 +283,7 @@ describe('DomainPanel', function domainPanelTests() {
       const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
       const { useSiteStore } = await import('@/stores/useSiteStore');
 
-      vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
+      vi.mocked(useSwitchboard).mockReturnValue(true);
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false });
       vi.mocked(useSiteStore).mockImplementation((selector: any) => {
         const mockSite = createMockSite({
@@ -351,9 +321,9 @@ describe('DomainPanel', function domainPanelTests() {
 
       vi.mocked(useSwitchboard).mockImplementation((feature: string) => {
         if (feature === 'appbuilder-project-domain') {
-          return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
+          return true;
         }
-        return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
+        return false;
       });
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: false, isLoading: false });
       vi.mocked(useSiteStore).mockImplementation((selector: any) => {
@@ -384,7 +354,7 @@ describe('DomainPanel', function domainPanelTests() {
       const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
       const { useSiteStore } = await import('@/stores/useSiteStore');
 
-      vi.mocked(useSwitchboard).mockReturnValue({ data: false, isLoading: false } as ReturnType<typeof useSwitchboard>);
+      vi.mocked(useSwitchboard).mockReturnValue(false);
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: false, isLoading: false });
       vi.mocked(useSiteStore).mockImplementation((selector: any) => {
         const mockSite = createMockSite({
@@ -408,7 +378,7 @@ describe('DomainPanel', function domainPanelTests() {
       const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
       const { useSiteStore } = await import('@/stores/useSiteStore');
 
-      vi.mocked(useSwitchboard).mockReturnValue({ data: false, isLoading: false } as ReturnType<typeof useSwitchboard>);
+      vi.mocked(useSwitchboard).mockReturnValue(false);
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false });
       vi.mocked(useSiteStore).mockImplementation((selector: any) => {
         const mockSite = createMockSite({ variants: [] });
@@ -435,7 +405,7 @@ describe('DomainPanel', function domainPanelTests() {
       const { useAppIdFromParams } = await import('@/app/[market]/develop/components/utils');
 
       vi.mocked(useAppIdFromParams).mockReturnValue(null);
-      vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
+      vi.mocked(useSwitchboard).mockReturnValue(true);
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: false, isLoading: false });
       vi.mocked(useSiteStore).mockImplementation((selector: any) => {
         const state = {

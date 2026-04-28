@@ -7,7 +7,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 
 import { ChatTab, SettingsSection } from '@/app/[market]/develop/components/types';
-import { SwitchboardAuthError } from '@/hooks/useSwitchboard';
 import { renderWithProviders } from '@/tests/test-utils';
 import { logClickEvent } from '@/utils/instrumentation';
 import SettingsMenu from './SettingsMenu';
@@ -36,33 +35,19 @@ vi.mock('@/hooks/useChatTabs', () => ({
   useChatTabs: () => mockChatTabs,
 }));
 
-const mockSwitchboardResults: Record<string, { data: any; error: any }> = {};
+const mockSwitchboardResults: Record<string, boolean | undefined> = {};
 
-vi.mock('@/hooks/useSwitchboard', () => {
-  class SwitchboardAuthError extends Error {
-    constructor(featureName: string) {
-      super(`Authentication required to fetch feature flag: ${featureName}`);
-      this.name = 'SwitchboardAuthError';
-    }
-  }
-  return {
-    SwitchboardAuthError,
-    useSwitchboard: (feature: string) => {
-      if (mockSwitchboardResults[feature]) return mockSwitchboardResults[feature];
-      if (feature === 'appbuilder-settings-project') return { data: true, error: null };
-      if (feature === 'appbuilder-settings-domain') return { data: true, error: null };
-      if (feature === 'appbuilder-settings-backups') return { data: true, error: null };
-      if (feature === 'appbuilder-settings-security') return { data: true, error: null };
-      if (feature === 'appbuilder-settings-secrets') return { data: true, error: null };
-      if (feature === 'appbuilder-settings-visualscan') return { data: false, error: null };
-      return { data: false, error: null };
-    },
-  };
-});
-
-const mockSignIn = vi.fn();
-vi.mock('@/hooks/useSsoSignIn', () => ({
-  useSsoSignIn: () => ({ signIn: mockSignIn }),
+vi.mock('@/hooks/useSwitchboard', () => ({
+  useSwitchboard: (feature: string) => {
+    if (mockSwitchboardResults[feature]) return mockSwitchboardResults[feature];
+    if (feature === 'appbuilder-settings-project') return true;
+    if (feature === 'appbuilder-settings-domain') return true;
+    if (feature === 'appbuilder-settings-backups') return true;
+    if (feature === 'appbuilder-settings-security') return true;
+    if (feature === 'appbuilder-settings-secrets') return true;
+    if (feature === 'appbuilder-settings-visualscan') return false;
+    return false;
+  },
 }));
 
 vi.mock('@/utils/instrumentation', () => ({
@@ -254,29 +239,6 @@ describe('SettingsMenu', () => {
     });
   });
 
-  it('should trigger reauth when clicking needsAuth item', async () => {
-    mockSwitchboardResults['appbuilder-settings-project'] = {
-      data: undefined,
-      error: new SwitchboardAuthError('appbuilder-settings-project'),
-    };
-
-    const { user, container } = renderWithProviders(<SettingsMenu />);
-
-    const trigger = container.querySelector('[data-testid="chat-toolbar-settings-button"]')!;
-    await user.click(trigger);
-
-    await waitFor(() => {
-      expect(screen.getByText('builder_settings_nav_project')).toBeInTheDocument();
-    });
-
-    const projectButton = screen.getByText('builder_settings_nav_project');
-    await user.click(projectButton);
-
-    await waitFor(() => {
-      expect(mockSignIn).toHaveBeenCalled();
-    });
-  });
-
   it('should close popover when trigger button clicked a second time', async () => {
     const { user, container } = renderWithProviders(<SettingsMenu />);
 
@@ -327,26 +289,4 @@ describe('SettingsMenu', () => {
     });
   });
 
-  it('should close popover after clicking needsAuth item', async () => {
-    mockSwitchboardResults['appbuilder-settings-domain'] = {
-      data: undefined,
-      error: new SwitchboardAuthError('appbuilder-settings-domain'),
-    };
-
-    const { user, container } = renderWithProviders(<SettingsMenu />);
-
-    const trigger = container.querySelector('[data-testid="chat-toolbar-settings-button"]')!;
-    await user.click(trigger);
-
-    await waitFor(() => {
-      expect(screen.getByText('builder_settings_nav_domain')).toBeInTheDocument();
-    });
-
-    const domainButton = screen.getByText('builder_settings_nav_domain');
-    await user.click(domainButton);
-
-    await waitFor(() => {
-      expect(screen.queryByText('builder_settings_nav_domain')).not.toBeInTheDocument();
-    });
-  });
 });

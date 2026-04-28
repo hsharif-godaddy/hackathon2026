@@ -205,11 +205,7 @@ export default function PublishStatusAlert() {
     setActiveSettingsSection(SettingsSection.DOMAIN);
   }, [currentAppId, dismissPublishSuccess, setActiveChatTab, setActiveSettingsSection]);
 
-  // Pre-fetch while publishing so the flag is in cache before the success alert appears.
-  // Without this, gating on showSuccessAlert alone causes a race: the flag fetch starts at
-  // the same moment the alert shows, so isGoLiveEnabled is undefined on the first effect run
-  // and the modal never fires if the alert is dismissed before the request completes.
-  const { data: isGoLiveEnabled } = useSwitchboard('appbuilder-go-live', { enabled: showSuccessAlert || isPublishing });
+  const isGoLiveEnabled = useSwitchboard('appbuilder-go-live');
 
   // Automatically show Go Live modal on successful publish if user hasn't gone live yet
   // and hasn't previously dismissed the modal in this session

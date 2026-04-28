@@ -29,7 +29,7 @@ vi.mock('@/lib/agent-fetch', () => ({
 }));
 
 vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: vi.fn(() => ({ data: false, isLoading: false, error: null })),
+  useSwitchboard: vi.fn(() => (false)),
 }));
 
 vi.mock('@/components/providers/AuthProvider', () => ({
@@ -50,20 +50,7 @@ describe('ModelSelector', () => {
   describe('non-impersonation session', () => {
     it('should render nothing when switchboard flag is false', async function disabledFlag() {
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
-      vi.mocked(useSwitchboard).mockReturnValue({
-        data: false, isLoading: false, error: null,
-      } as ReturnType<typeof useSwitchboard>);
-
-      const { container } = renderWithProviders(<ModelSelector />);
-
-      expect(container).toBeEmptyDOMElement();
-    });
-
-    it('should render nothing while switchboard flag is loading', async function loadingFlag() {
-      const { useSwitchboard } = await import('@/hooks/useSwitchboard');
-      vi.mocked(useSwitchboard).mockReturnValue({
-        data: undefined, isLoading: true, error: null,
-      } as ReturnType<typeof useSwitchboard>);
+      vi.mocked(useSwitchboard).mockReturnValue(false);
 
       const { container } = renderWithProviders(<ModelSelector />);
 
@@ -72,9 +59,7 @@ describe('ModelSelector', () => {
 
     it('should render the dropdown when switchboard flag is true', async function enabledFlag() {
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
-      vi.mocked(useSwitchboard).mockReturnValue({
-        data: true, isLoading: false, error: null,
-      } as ReturnType<typeof useSwitchboard>);
+      vi.mocked(useSwitchboard).mockReturnValue(true);
 
       renderWithProviders(<ModelSelector />);
 
@@ -91,9 +76,7 @@ describe('ModelSelector', () => {
       vi.mocked(useAuthContext).mockReturnValue({
         authState: { authType: 'e2s' },
       } as ReturnType<typeof useAuthContext>);
-      vi.mocked(useSwitchboard).mockReturnValue({
-        data: false, isLoading: false, error: null,
-      } as ReturnType<typeof useSwitchboard>);
+      vi.mocked(useSwitchboard).mockReturnValue(false);
 
       renderWithProviders(<ModelSelector />);
 
@@ -108,45 +91,12 @@ describe('ModelSelector', () => {
       vi.mocked(useAuthContext).mockReturnValue({
         authState: { authType: 'e2s2s' },
       } as ReturnType<typeof useAuthContext>);
-      vi.mocked(useSwitchboard).mockReturnValue({
-        data: false, isLoading: false, error: null,
-      } as ReturnType<typeof useSwitchboard>);
+      vi.mocked(useSwitchboard).mockReturnValue(false);
 
       renderWithProviders(<ModelSelector />);
 
       await waitFor(() => {
         expect(screen.getByTestId('model-selector')).toBeInTheDocument();
-      });
-    });
-
-    it('should not wait on switchboard loading state for impersonation sessions', async function bypassLoading() {
-      const { useAuthContext } = await import('@/components/providers/AuthProvider');
-      const { useSwitchboard } = await import('@/hooks/useSwitchboard');
-      vi.mocked(useAuthContext).mockReturnValue({
-        authState: { authType: 'e2s' },
-      } as ReturnType<typeof useAuthContext>);
-      vi.mocked(useSwitchboard).mockReturnValue({
-        data: undefined, isLoading: true, error: null,
-      } as ReturnType<typeof useSwitchboard>);
-
-      renderWithProviders(<ModelSelector />);
-
-      await waitFor(() => {
-        expect(screen.getByTestId('model-selector')).toBeInTheDocument();
-      });
-    });
-
-    it('should skip the switchboard network call for impersonation sessions', async function bypassQuery() {
-      const { useAuthContext } = await import('@/components/providers/AuthProvider');
-      const { useSwitchboard } = await import('@/hooks/useSwitchboard');
-      vi.mocked(useAuthContext).mockReturnValue({
-        authState: { authType: 'e2s' },
-      } as ReturnType<typeof useAuthContext>);
-
-      renderWithProviders(<ModelSelector />);
-
-      await waitFor(() => {
-        expect(useSwitchboard).toHaveBeenCalledWith('appbuilder-model-selector', { enabled: false });
       });
     });
 

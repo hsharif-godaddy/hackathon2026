@@ -103,7 +103,7 @@ export default function PreviewPane({
   onPublishSnapshot,
 }: PreviewPaneProps) {
   const t = useTranslations();
-  const { data: isDomainBarEnabled } = useSwitchboard('appbuilder-domain-bar');
+  const isDomainBarEnabled = useSwitchboard('appbuilder-domain-bar');
 
   const getServerState = useServerPollingStore((state) => state.getServerState)
   const isPollingServer = useServerPollingStore((state) => state.isPollingServer)

@@ -242,9 +242,7 @@ export default function VersionHistory() {
   const restoreMutation = useRestoreCommitMutation();
   const { isDisabled: isHistoryDisabled, isPublishing } = useIsHistoryDisabled(appId || '', restoreMutation.isPending);
 
-  // Only fetch when the history tab is actually open — VersionHistory is always mounted
-  // (display:none-based tab switching), so without this guard the flag fires on every page load.
-  const { data: isPublishButtonEnabled } = useSwitchboard('appbuilder-publish-button', { enabled: isHistoryTabActive })
+  const isPublishButtonEnabled = useSwitchboard('appbuilder-publish-button')
   const isPublishButtonEnabledFlag = isPublishButtonEnabled === true
   const isAppPublished = hasBeenPublished(site);
 

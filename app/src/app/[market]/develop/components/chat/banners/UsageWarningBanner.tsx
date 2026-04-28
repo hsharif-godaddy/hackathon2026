@@ -17,7 +17,7 @@ interface UsageWarningBannerProps {
 export default function UsageWarningBanner({ appId }: UsageWarningBannerProps) {
   const t = useTranslations()
   const [isDismissed, setIsDismissed] = useState(false)
-  const { data: purchaseEnabled } = useSwitchboard('appbuilder-usage-purchase')
+  const purchaseEnabled = useSwitchboard('appbuilder-usage-purchase')
   const { isWarningBannerActive } = useUsage({ appId, enabled: !!appId })
 
   const hasLoggedImpressionRef = useRef(false)

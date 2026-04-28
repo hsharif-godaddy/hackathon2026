@@ -13,7 +13,7 @@ import DomainPurchaseWidget from './DomainPurchaseWidget';
 const { mockCheckoutProps, mockUseSwitchboard, mockUseDomainSearch } =
   vi.hoisted(() => ({
     mockCheckoutProps: { current: null as any },
-    mockUseSwitchboard: vi.fn((): any => ({ data: true, isLoading: false })),
+    mockUseSwitchboard: vi.fn((): any => (true)),
     mockUseDomainSearch: vi.fn(
       (): any => ({ data: null, isLoading: false, error: null })
     ),
@@ -157,7 +157,7 @@ describe('DomainPurchaseWidget', function () {
   beforeEach(function () {
     vi.clearAllMocks();
     mockUseSwitchboard.mockImplementation(
-      (): any => ({ data: true, isLoading: false })
+      (): any => (true)
     );
     mockUseDomainSearch.mockImplementation(
       (): any => ({ data: null, isLoading: false, error: null })
@@ -166,7 +166,7 @@ describe('DomainPurchaseWidget', function () {
   });
 
   it('returns null when feature flag is disabled', function () {
-    mockUseSwitchboard.mockReturnValue({ data: false, isLoading: false });
+    mockUseSwitchboard.mockReturnValue(false);
 
     const { container } = renderWithProviders(
       <DomainPurchaseWidget brandName="testapp" />

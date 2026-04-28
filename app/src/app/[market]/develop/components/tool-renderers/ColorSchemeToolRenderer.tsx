@@ -13,7 +13,7 @@ import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 
 export default function ColorSchemeToolRenderer(props: DefaultToolRendererProps) {
-  const { data: isThemeSelectionChatEnabled } = useSwitchboard('airo-builder-theme-selection-chat')
+  const isThemeSelectionChatEnabled = useSwitchboard('airo-builder-theme-selection-chat')
   if (!isThemeSelectionChatEnabled) {
     return <ColorSchemeToolRendererLegacy {...props} />
   }

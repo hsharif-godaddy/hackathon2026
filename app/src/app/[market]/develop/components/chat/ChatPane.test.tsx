@@ -211,9 +211,10 @@ vi.mock('@/lib/request-context', () => ({
 
 // Mock switchboard — default to budget-service OFF (grants path)
 const mockSwitchboardValues: Record<string, any> = {};
-vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: (flag: string) => mockSwitchboardValues[flag] ?? { data: false, isLoading: false, error: null },
-}));
+vi.mock('@/hooks/useSwitchboard', () => {
+  const read = (flag: string) => mockSwitchboardValues[flag] ?? false;
+  return { useSwitchboard: read, getSwitchboardFlag: read };
+});
 
 // Mock auth context — default to non-impersonation session
 const mockAuthContextState: { authState: any } = { authState: null };

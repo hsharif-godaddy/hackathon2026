@@ -42,7 +42,7 @@ vi.mock('@/hooks/usePaywallEligibility', () => ({
 }));
 
 vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: vi.fn(() => ({ data: true, isLoading: false })),
+  useSwitchboard: vi.fn(() => (true)),
 }));
 
 vi.mock('@/hooks/useSubscription', () => ({
@@ -86,7 +86,7 @@ describe('UpgradeBanner', function upgradeBannerTests() {
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
 
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
-      vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
+      vi.mocked(useSwitchboard).mockReturnValue(true);
 
       const { container } = renderWithProviders(<UpgradeBanner />);
 
@@ -101,7 +101,7 @@ describe('UpgradeBanner', function upgradeBannerTests() {
       const { useSubscription } = await import('@/hooks/useSubscription');
 
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: false, isLoading: false, isError: false, error: null });
-      vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
+      vi.mocked(useSwitchboard).mockReturnValue(true);
       // Mock subscription with Ultimate plan - should not show upgrade for Ultimate users
       vi.mocked(useSubscription).mockReturnValue({
         data: {
@@ -131,7 +131,7 @@ describe('UpgradeBanner', function upgradeBannerTests() {
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
 
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
-      vi.mocked(useSwitchboard).mockReturnValue({ data: false, isLoading: false } as ReturnType<typeof useSwitchboard>);
+      vi.mocked(useSwitchboard).mockReturnValue(false);
 
       const { container } = renderWithProviders(<UpgradeBanner />);
 
@@ -143,7 +143,7 @@ describe('UpgradeBanner', function upgradeBannerTests() {
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
 
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
-      vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
+      vi.mocked(useSwitchboard).mockReturnValue(true);
 
       // Mark as dismissed today (using same format as component: local date in YYYY-MM-DD)
       const today = new Date().toLocaleDateString('en-CA');
@@ -159,7 +159,7 @@ describe('UpgradeBanner', function upgradeBannerTests() {
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
 
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
-      vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
+      vi.mocked(useSwitchboard).mockReturnValue(true);
 
       renderWithProviders(<UpgradeBanner />);
 
@@ -176,7 +176,7 @@ describe('UpgradeBanner', function upgradeBannerTests() {
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
 
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
-      vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
+      vi.mocked(useSwitchboard).mockReturnValue(true);
 
       const { user, container } = renderWithProviders(<UpgradeBanner />);
 
@@ -197,7 +197,7 @@ describe('UpgradeBanner', function upgradeBannerTests() {
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
 
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
-      vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
+      vi.mocked(useSwitchboard).mockReturnValue(true);
 
       const { user } = renderWithMessages(<UpgradeBanner />);
 
@@ -217,7 +217,7 @@ describe('UpgradeBanner', function upgradeBannerTests() {
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
 
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
-      vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
+      vi.mocked(useSwitchboard).mockReturnValue(true);
 
       const { container } = renderWithProviders(<UpgradeBanner />);
 
@@ -233,7 +233,7 @@ describe('UpgradeBanner', function upgradeBannerTests() {
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
 
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
-      vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
+      vi.mocked(useSwitchboard).mockReturnValue(true);
 
       const { user, container } = renderWithProviders(<UpgradeBanner />);
 
@@ -252,7 +252,7 @@ describe('UpgradeBanner', function upgradeBannerTests() {
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
 
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
-      vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
+      vi.mocked(useSwitchboard).mockReturnValue(true);
 
       const { user } = renderWithMessages(<UpgradeBanner />);
 

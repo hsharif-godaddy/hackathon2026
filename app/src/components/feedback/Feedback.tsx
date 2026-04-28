@@ -16,18 +16,7 @@ import { isLocalDev } from '@/utils/is-local-dev';
 import { FeedbackMultiStep } from './FeedbackMultiStep';
 
 export function Feedback(props: FeedbackProps) {
-  const t = useTranslations();
-  const { data: isMultiStepEnabled, isLoading } = useSwitchboard('airo-builder-feedback-multistep');
-
-  if (isLoading) {
-    return (
-      <Modal className="max-w-2xl" title={t('builder_feedback_title')} id="feedback-modal" onClose={props.onClose}>
-        <div className="flex justify-center py-8">
-          <Spinner />
-        </div>
-      </Modal>
-    );
-  }
+  const isMultiStepEnabled = useSwitchboard('airo-builder-feedback-multistep');
 
   if (isMultiStepEnabled) {
     return <FeedbackMultiStep {...props} />;

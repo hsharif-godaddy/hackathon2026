@@ -14,7 +14,7 @@ import DomainAttach from './DomainAttach';
 // -- Hook mocks --
 
 vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: vi.fn(() => ({ data: true, isLoading: false })),
+  useSwitchboard: vi.fn(() => (true)),
 }));
 
 vi.mock('@/hooks/useAuth', () => ({
