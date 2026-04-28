@@ -12,7 +12,7 @@ This document focuses on **tables**, **relationships**, **constraints**, **trigg
 - A **budget** owns **budget items** (credit pools with terms: totals, USD-per-credit ratio, reset cadence, expiry, etc.).
 - A **budget session** is an LLM-style spend window on one budget. **Session items** record GoCode USD lines and derived credits while the session is open.
 - Closing a session uses a **session report** (one per session): report lines carry USD costs; the service allocates credits to budget items and **persists finalized credit movement** in the **credit ledger** and **report allocations**.
-- Renewable budget items use **hybrid reset handling**: a periodic PostgreSQL job (`pg_cron`) processes due rows in the background, while budget write paths lazily apply due resets inside the same transaction before capacity or consumption decisions.
+- Renewable budget items use **hybrid reset handling**: the Go background worker periodically runs equivalent reset logic in Go via `Store.ProcessDueResetsWithOutbox`, while budget write paths call the SQL function `public.process_due_budget_item_resets` in the same transaction before capacity or consumption decisions.
 - **Webhooks** are product-scoped URLs for events (e.g. report created).
 
 Live OLTP tables have **no soft-delete column**; deletes **archive** into `*_history` tables first where applicable.
@@ -144,7 +144,7 @@ flowchart TB
 
 **Hybrid reset handling:** due resets are applied in two places:
 
-- **Periodic path:** A Go background worker (`internal/worker`) runs on a configurable interval (default 1 minute) and sweeps due rows in batches, delivering `budget-item.reset` webhooks for items that had credits reset.
+- **Periodic path:** A Go background worker (`internal/worker`) runs on a configurable interval (default 1 minute) and calls `Store.ProcessDueResetsWithOutbox` to sweep due rows in batches, delivering `budget-item.reset` webhooks for items that had credits reset.
 - **Lazy path:** budget write paths (`CreateBudgetSession`, `AppendSessionItems`, `CreateSessionReport`) call the SQL function `process_due_budget_item_resets` in-transaction for the target budget before checking capacity or consuming credits.
 
 For a due item with `credits_used > 0`, the processor inserts a `periodic_reset` ledger row with `credits_delta = -credits_used`, which brings the cached usage back to zero through the trigger. For a due item already at zero usage, the processor advances `resets_at` without inserting a ledger row.
@@ -185,7 +185,7 @@ For a due item with `credits_used > 0`, the processor inserts a `periodic_reset`
 - **`next_reset_from_interval(base_at, reset_interval)`** — computes the next boundary from compact reset intervals using calendar-aware month/year math.
 - **`advance_reset_to_future(reset_at, reset_interval, now_at)`** — repeatedly advances stale boundaries until the returned value is in the future.
 - **`process_due_budget_item_resets(target_budget_id, batch_size)`** — selects due rows (`resets_at <= now()`), locks them with `FOR UPDATE SKIP LOCKED`, inserts `periodic_reset` ledger rows when `credits_used > 0`, advances `resets_at`, and returns the processed row count.
-- **Scheduler:** The Go background worker (`internal/worker`) calls the equivalent logic via `Store.ProcessDueResetsWithResults()` on a configurable interval. The SQL function remains available for lazy in-transaction catch-up.
+- **Scheduler:** The Go background worker (`internal/worker`) calls `Store.ProcessDueResetsWithOutbox()` on a configurable interval (same semantics as the SQL function, plus outbox). The SQL function remains what write transactions invoke for lazy in-transaction catch-up.
 
 ---
 
@@ -232,7 +232,7 @@ The server applies pending `.up.sql` files on startup (after a successful DB pin
 
 Each `.up.sql` file is **one golang-migrate version**; the PostgreSQL driver applies the file as a single migration step (multiple DDL statements in that file are fine as one script). Do **not** enable golang-migrate’s `x-multi-statement` mode for files that contain PL/pgSQL (`$$` bodies): its `;` splitter breaks functions.
 
-Add new files such as `000002_description.up.sql` for schema changes; deploy a new image. Reset processing is introduced by `000004_periodic_resets.up.sql`. The pg_cron extension and scheduled job are created by the migration when pg_cron is available; for local development, the custom Docker image installs pg_cron and [`docker-entrypoint-initdb.d/001_pg_cron.sql`](../docker-entrypoint-initdb.d/001_pg_cron.sql) enables it during container initialization.
+Add new files such as `000002_description.up.sql` for schema changes; deploy a new image. Reset processing is introduced by `000004_periodic_resets.up.sql` (SQL function plus optional `pg_cron` scheduling when the extension exists). Migration `000009_remove_pg_cron` removes the scheduled job; local and deployed environments use the Go worker for periodic resets. Local Docker uses stock `postgres:15` (see [`docker-compose.yml`](../docker-compose.yml)).
 
 ### Baseline (legacy databases)
 

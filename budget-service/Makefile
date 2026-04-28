@@ -57,8 +57,8 @@ dev-budget-ui:
 	fi
 
 up:
-	$(_COMPOSE) up -d --build postgres
-	@echo "Postgres on localhost:5432 (user budget, db budget_test, pg_cron enabled). DATABASE_URL:"
+	$(_COMPOSE) up -d postgres
+	@echo "Postgres on localhost:5432 (user budget, db budget_test). DATABASE_URL:"
 	@echo "postgres://budget:budget@localhost:5432/budget_test?sslmode=disable"
 	@echo "Schema: start ./cmd/server (or run tests) with that URL so migrations apply."
 
