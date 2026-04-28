@@ -117,20 +117,17 @@ describe('loki-client', () => {
       expect(parseInt(result.end)).toBeGreaterThan(parseInt(result.start));
     });
 
-    it('should use fixed limit regardless of pagination params', async () => {
+    it('should honor caller-specified size', async () => {
       const result = await buildLokiQuery(
         { size: 50, from: 100 },
         mockConfig
       );
 
-      expect(result.limit).toBe(5000); // Always fetch all logs up to cap
+      expect(result.limit).toBe(50);
     });
 
-    it('should cap limit at 5000', async () => {
-      const result = await buildLokiQuery(
-        { size: 3000, from: 3000 },
-        mockConfig
-      );
+    it('should default to 5000 when size is omitted', async () => {
+      const result = await buildLokiQuery({ from: 0 }, mockConfig);
 
       expect(result.limit).toBe(5000);
     });

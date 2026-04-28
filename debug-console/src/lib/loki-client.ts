@@ -205,7 +205,7 @@ export async function buildLokiQuery(
 
   // Handle pagination - Loki doesn't have native offset
   // Fetch all logs for the time range (up to 5000 cap) so we can count them accurately
-  const limit = 5000; // Fetch all logs up to cap for accurate total count
+  const limit = params.size ?? 5000; // Fetch all logs up to cap for accurate total count
 
   return {
     query: logQL,
@@ -258,7 +258,19 @@ export async function queryLoki(
     throw new Error(`Loki query failed (${response.status}): ${errorText}`);
   }
 
-  const data: LokiQueryResponse = await response.json();
+  // Guard against non-JSON 200s (e.g. an upstream Grafana proxy returning an
+  // HTML error page). Without this, response.json() throws a bare SyntaxError
+  // that's hard to debug at the caller. Mirrors iterLokiEventLines in
+  // analytics/scheduler.ts.
+  let data: LokiQueryResponse;
+  try {
+    data = await response.json() as LokiQueryResponse;
+  } catch (err) {
+    throw new Error(
+      `Loki query returned a non-JSON 200 response: ${err instanceof Error ? err.message : 'parse error'}`,
+      { cause: err }
+    );
+  }
 
   if (data.status === 'error') {
     throw new Error(`Loki returned error: ${data.error || 'Unknown error'}`);
@@ -346,8 +358,11 @@ export function transformLokiResponse(
 
         logs.push(logEntry);
       } catch (error) {
-        console.error('[loki-client] Failed to parse log entry:', error);
-        // Skip malformed entries
+        console.error(
+          '[loki-client] Failed to parse log entry:',
+          { sourceId, timestampNs, logLineSnippet: logLine.slice(0, 100) },
+          error
+        );
       }
     }
   }
