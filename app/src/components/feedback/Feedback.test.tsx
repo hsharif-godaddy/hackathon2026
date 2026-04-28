@@ -10,6 +10,9 @@ import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { useAuthContext } from '@/components/providers/AuthProvider';
 import { renderWithProviders } from '@/tests/test-utils';
 
+const mockLogImpressionEvent = vi.fn((_eid: string) => vi.fn());
+const mockLogClickEvent = vi.fn((_eid: string) => vi.fn());
+
 vi.mock('@ux/modal', () => ({
   default: ({ title, children }: { title: string; children: React.ReactNode }) => (
     <div role="dialog" aria-label={title}>
@@ -61,6 +64,18 @@ vi.mock('framer-motion', () => ({
     button: ({ children, ...props }: any) => <button {...props}>{children}</button>,
     div: ({ children, ...props }: any) => <div {...props}>{children}</div>,
   },
+}));
+
+vi.mock('@/utils/instrumentation', () => ({
+  logImpressionEvent: (eid: string) => {
+    mockLogImpressionEvent(eid);
+    return vi.fn();
+  },
+  logClickEvent: (eid: string) => {
+    mockLogClickEvent(eid);
+    return vi.fn();
+  },
+  generateClickEID: (eid: string) => eid,
 }));
 
 vi.mock('@/hooks/useTranslations', () => ({
@@ -181,13 +196,12 @@ function mockAuth(authType: string | undefined, shopperId = '12345678') {
     authState: authType ? ({ authType } as any) : null,
     isAuthenticated: true,
     isLoading: false,
-    needsReauth: false,
     config: null,
     gasketConfig: null,
     configLoading: false,
     configError: null,
     getUserEmail: vi.fn(),
-    getUserInfo: vi.fn(() => ({ customerId: 'cust-123', shopperId })),
+    getUserInfo: vi.fn(() => ({ customerId: 'cust-123', shopperId, accountName: '', email: '' })),
     handleSignIn: vi.fn(),
     handleSignOut: vi.fn(),
     authType: 'jwt',
@@ -215,6 +229,7 @@ describe('Feedback', function feedbackTests() {
       });
 
       expect(screen.getByRole('dialog', { name: 'builder_feedback_modal_title' })).toBeInTheDocument();
+      expect(mockLogImpressionEvent).toHaveBeenCalledWith('feedback.category.view');
     });
 
     it('should render all three category cards', async function renderCategories() {
@@ -252,6 +267,8 @@ describe('Feedback', function feedbackTests() {
       await waitFor(() => {
         expect(screen.getByText('builder_feedback_support_description')).toBeInTheDocument();
       });
+      expect(mockLogClickEvent).toHaveBeenCalledWith('feedback.category.support');
+      expect(mockLogImpressionEvent).toHaveBeenCalledWith('feedback.support.view');
     });
 
     it('should navigate to issue step when issue card is clicked', async function navigateIssue() {
@@ -267,6 +284,8 @@ describe('Feedback', function feedbackTests() {
       await waitFor(() => {
         expect(screen.getByText('builder_feedback_issue_topics_label')).toBeInTheDocument();
       });
+      expect(mockLogClickEvent).toHaveBeenCalledWith('feedback.category.issue');
+      expect(mockLogImpressionEvent).toHaveBeenCalledWith('feedback.issue.view');
     });
 
     it('should navigate to feedback step when feedback card is clicked', async function navigateFeedback() {
@@ -282,6 +301,8 @@ describe('Feedback', function feedbackTests() {
       await waitFor(() => {
         expect(screen.getByText('builder_feedback_share_comment_label')).toBeInTheDocument();
       });
+      expect(mockLogClickEvent).toHaveBeenCalledWith('feedback.category.share');
+      expect(mockLogImpressionEvent).toHaveBeenCalledWith('feedback.share.view');
     });
   });
 
@@ -453,6 +474,7 @@ describe('Feedback', function feedbackTests() {
         expect(saveToCompanionHub).toHaveBeenCalled();
         expect(sendFeedbackToSlack).toHaveBeenCalled();
         expect(storeToS3).not.toHaveBeenCalled();
+        expect(mockLogImpressionEvent).toHaveBeenCalledWith('feedback.support.submitSuccess');
       });
     });
   });
@@ -510,6 +532,7 @@ describe('Feedback', function feedbackTests() {
         expect(saveToCompanionHub).toHaveBeenCalled();
         expect(sendFeedbackToSlack).toHaveBeenCalled();
         expect(storeToS3).not.toHaveBeenCalled();
+        expect(mockLogImpressionEvent).toHaveBeenCalledWith('feedback.issue.submitSuccess');
       });
     });
   });
@@ -565,6 +588,7 @@ describe('Feedback', function feedbackTests() {
           rating: 5,
           consent_flag: expect.any(Boolean),
         }));
+        expect(mockLogImpressionEvent).toHaveBeenCalledWith('feedback.share.submitSuccess');
       });
     });
 

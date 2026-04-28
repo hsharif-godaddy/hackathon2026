@@ -3,6 +3,7 @@ import Button from '@ux/button';
 import text from '@ux/text';
 
 import { useTranslations } from '@/hooks/useTranslations';
+import { generateClickEID } from '@/utils/instrumentation';
 
 interface NpsRatingProps {
   label: string;
@@ -28,6 +29,7 @@ export function NpsRating({ label, value, onChange, error }: NpsRatingProps) {
             text={String(n)}
             onClick={() => onChange(n)}
             className="flex-1"
+            data-eid={generateClickEID(`feedback.shareRating.${n}`)}
           />
         ))}
       </div>

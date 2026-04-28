@@ -46,6 +46,7 @@ const mockUseSwitchboard = vi.fn();
 const mockUseSubscription = vi.fn();
 const mockUseAuthContext = vi.fn();
 const mockLogClickEvent = vi.fn(() => vi.fn());
+const mockLogImpressionEvent = vi.fn((_eid: string) => vi.fn());
 
 vi.mock('next/navigation', () => ({
   usePathname: () => '/develop',
@@ -55,6 +56,10 @@ vi.mock('next/navigation', () => ({
 vi.mock('@/utils/instrumentation', () => ({
   logClickEvent: (...args: unknown[]) => {
     mockLogClickEvent(...args);
+    return vi.fn();
+  },
+  logImpressionEvent: (eid: string) => {
+    mockLogImpressionEvent(eid);
     return vi.fn();
   },
 }));
@@ -409,6 +414,7 @@ describe('UserMenu', function userMenuTests() {
       await waitFor(function checkModalOpen() {
         expect(screen.getByTestId('feedback-modal')).toBeInTheDocument();
       });
+      expect(mockLogImpressionEvent).toHaveBeenCalledWith('feedback.modal.userOpened');
     });
 
     it('should close popover when Give Feedback is clicked', async function closePopover() {

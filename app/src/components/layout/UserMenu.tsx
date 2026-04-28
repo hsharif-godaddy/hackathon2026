@@ -31,7 +31,7 @@ import {
 import { Separator } from '@/lib/shadcn/separator';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { getRootDomain } from '@/utils/getRootDomain';
-import { logClickEvent } from '@/utils/instrumentation';
+import { logClickEvent, logImpressionEvent } from '@/utils/instrumentation';
 
 const GODADDY_URL = 'https://www.godaddy.com';
 const getMyProductsUrl = () => `https://account.${getRootDomain() || 'godaddy.com'}/products`;
@@ -106,6 +106,7 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
 
   const handleGiveFeedback = () => {
     setOpen(false);
+    logImpressionEvent('feedback.modal.userOpened')();
     setFeedbackOpen(true);
   };
 

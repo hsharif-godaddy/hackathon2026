@@ -1,9 +1,11 @@
+import { useEffect } from 'react';
 import { FormattedMessage } from 'react-intl';
 import Box from '@ux/box';
 import text from '@ux/text';
 
 import OptionButton from '@/app/[market]/develop/components/tool-renderers/OptionButton';
 import { useTranslations } from '@/hooks/useTranslations';
+import { logClickEvent, logImpressionEvent } from '@/utils/instrumentation';
 import type { FeedbackCategory } from '../types';
 
 interface CategorySelectStepProps {
@@ -12,6 +14,10 @@ interface CategorySelectStepProps {
 
 export function CategorySelectStep({ onSelectCategory }: CategorySelectStepProps) {
   const t = useTranslations();
+
+  useEffect(() => {
+    logImpressionEvent('feedback.category.view')();
+  }, []);
 
   return (
     <Box gap="lg">
@@ -37,17 +43,17 @@ export function CategorySelectStep({ onSelectCategory }: CategorySelectStepProps
         <OptionButton
           text={t('builder_feedback_category_support')}
           isSelectable
-          onClick={() => onSelectCategory('support')}
+          onClick={() => { logClickEvent('feedback.category.support')(); onSelectCategory('support'); }}
         />
         <OptionButton
           text={t('builder_feedback_category_issue')}
           isSelectable
-          onClick={() => onSelectCategory('issue')}
+          onClick={() => { logClickEvent('feedback.category.issue')(); onSelectCategory('issue'); }}
         />
         <OptionButton
           text={t('builder_feedback_category_share')}
           isSelectable
-          onClick={() => onSelectCategory('feedback')}
+          onClick={() => { logClickEvent('feedback.category.share')(); onSelectCategory('feedback'); }}
         />
       </div>
     </Box>

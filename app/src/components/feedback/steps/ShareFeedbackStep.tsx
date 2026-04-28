@@ -7,6 +7,7 @@ import text from '@ux/text';
 import TextInput from '@ux/text-input';
 
 import { useTranslations } from '@/hooks/useTranslations';
+import { generateClickEID, logImpressionEvent } from '@/utils/instrumentation';
 import { NpsRating } from './NpsRating';
 import { TopicChips } from './TopicChips';
 import type { ShareFeedbackFormData } from '../types';
@@ -31,6 +32,10 @@ export function ShareFeedbackStep({ onBack, onSubmit, onDone, hideRating }: Shar
   const [submitError, setSubmitError] = useState(false);
 
   useEffect(() => {
+    logImpressionEvent('feedback.share.view')();
+  }, []);
+
+  useEffect(() => {
     if (!submitted) return;
     const id = setTimeout(onDone, 3000);
     return () => clearTimeout(id);
@@ -47,9 +52,12 @@ export function ShareFeedbackStep({ onBack, onSubmit, onDone, hideRating }: Shar
       const success = await onSubmit({ rating, topics: Array.from(topics), comment, customerConsent });
       if (success) {
         setSubmitted(true);
+        logImpressionEvent('feedback.share.submitSuccess')();
       } else {
         setSubmitError(true);
       }
+    } catch {
+      setSubmitError(true);
     } finally {
       setIsSubmitting(false);
     }
@@ -112,6 +120,7 @@ export function ShareFeedbackStep({ onBack, onSubmit, onDone, hideRating }: Shar
           text={t('builder_feedback_back')}
           onClick={onBack}
           disabled={isSubmitting}
+          data-eid={generateClickEID('feedback.share.back')}
         />
         <Button
           design="primary"
@@ -119,6 +128,7 @@ export function ShareFeedbackStep({ onBack, onSubmit, onDone, hideRating }: Shar
           onClick={handleSubmit}
           disabled={isSubmitting || submitted}
           icon={isSubmitting ? <Spinner size="sm" /> : undefined}
+          data-eid={generateClickEID('feedback.share.submit')}
         />
       </Box>
     </div>

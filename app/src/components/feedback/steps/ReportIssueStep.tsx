@@ -7,6 +7,7 @@ import text from '@ux/text';
 import TextInput from '@ux/text-input';
 
 import { useTranslations } from '@/hooks/useTranslations';
+import { generateClickEID, logImpressionEvent } from '@/utils/instrumentation';
 import { TopicChips } from './TopicChips';
 import type { IssueFormData } from '../types';
 import { ISSUE_TOPICS } from '../utils';
@@ -29,6 +30,10 @@ export function ReportIssueStep({ onBack, onSubmit, onDone }: ReportIssueStepPro
   const [submitError, setSubmitError] = useState(false);
 
   useEffect(() => {
+    logImpressionEvent('feedback.issue.view')();
+  }, []);
+
+  useEffect(() => {
     if (!submitted) return;
     const id = setTimeout(onDone, 3000);
     return () => clearTimeout(id);
@@ -46,9 +51,12 @@ export function ReportIssueStep({ onBack, onSubmit, onDone }: ReportIssueStepPro
       const success = await onSubmit({ topics: Array.from(topics), description, followUp });
       if (success) {
         setSubmitted(true);
+        logImpressionEvent('feedback.issue.submitSuccess')();
       } else {
         setSubmitError(true);
       }
+    } catch {
+      setSubmitError(true);
     } finally {
       setIsSubmitting(false);
     }
@@ -115,6 +123,7 @@ export function ReportIssueStep({ onBack, onSubmit, onDone }: ReportIssueStepPro
           text={t('builder_feedback_back')}
           onClick={onBack}
           disabled={isSubmitting}
+          data-eid={generateClickEID('feedback.issue.back')}
         />
         <Button
           design="primary"
@@ -122,6 +131,7 @@ export function ReportIssueStep({ onBack, onSubmit, onDone }: ReportIssueStepPro
           onClick={handleSubmit}
           disabled={isSubmitting || submitted}
           icon={isSubmitting ? <Spinner size="sm" /> : undefined}
+          data-eid={generateClickEID('feedback.issue.submit')}
         />
       </Box>
     </div>

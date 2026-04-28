@@ -8,6 +8,7 @@ import text from '@ux/text';
 import TextInput from '@ux/text-input';
 
 import { useTranslations } from '@/hooks/useTranslations';
+import { generateClickEID, logImpressionEvent } from '@/utils/instrumentation';
 import { TopicChips } from './TopicChips';
 import type { SupportFormData } from '../types';
 import { SUPPORT_TOPICS } from '../utils';
@@ -30,6 +31,10 @@ export function GetSupportStep({ onBack, onSubmit, onDone }: GetSupportStepProps
   const [submitError, setSubmitError] = useState(false);
 
   useEffect(() => {
+    logImpressionEvent('feedback.support.view')();
+  }, []);
+
+  useEffect(() => {
     if (!submitted) return;
     const id = setTimeout(onDone, 3000);
     return () => clearTimeout(id);
@@ -47,9 +52,12 @@ export function GetSupportStep({ onBack, onSubmit, onDone }: GetSupportStepProps
       const success = await onSubmit({ topics: Array.from(topics), description, followUp });
       if (success) {
         setSubmitted(true);
+        logImpressionEvent('feedback.support.submitSuccess')();
       } else {
         setSubmitError(true);
       }
+    } catch {
+      setSubmitError(true);
     } finally {
       setIsSubmitting(false);
     }
@@ -138,6 +146,7 @@ export function GetSupportStep({ onBack, onSubmit, onDone }: GetSupportStepProps
           text={t('builder_feedback_back')}
           onClick={onBack}
           disabled={isSubmitting}
+          data-eid={generateClickEID('feedback.support.back')}
         />
         <Button
           design="primary"
@@ -145,6 +154,7 @@ export function GetSupportStep({ onBack, onSubmit, onDone }: GetSupportStepProps
           onClick={handleSubmit}
           disabled={isSubmitting || submitted}
           icon={isSubmitting ? <Spinner size="sm" /> : undefined}
+          data-eid={generateClickEID('feedback.support.submit')}
         />
       </Box>
     </div>
