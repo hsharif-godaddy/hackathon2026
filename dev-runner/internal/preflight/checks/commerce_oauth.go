@@ -10,7 +10,8 @@ import (
 )
 
 // CommerceOAuthCheck verifies that GoDaddy Commerce OAuth credentials are
-// configured in agents/.env when the commerce agent is enabled.
+// configured in agents/.env. The check is skipped only when the user has
+// explicitly set ENABLE_COMMERCE_AGENT=false to opt out.
 type CommerceOAuthCheck struct{}
 
 func (c *CommerceOAuthCheck) Name() string     { return "Commerce OAuth" }
@@ -29,12 +30,13 @@ func (c *CommerceOAuthCheck) Run(_ context.Context, projectRoot string) prefligh
 		}
 	}
 
-	if strings.TrimSpace(env["ENABLE_COMMERCE_AGENT"]) != "true" {
+	// Explicit opt-out: user has set ENABLE_COMMERCE_AGENT=false (case-insensitive).
+	if strings.EqualFold(strings.TrimSpace(env["ENABLE_COMMERCE_AGENT"]), "false") {
 		return preflight.CheckResult{
 			Status:   preflight.StatusSkip,
 			Name:     c.Name(),
 			Category: c.Category(),
-			Message:  "ENABLE_COMMERCE_AGENT not enabled; Commerce OAuth not required",
+			Message:  "ENABLE_COMMERCE_AGENT=false; Commerce OAuth not required",
 		}
 	}
 
@@ -57,8 +59,7 @@ func (c *CommerceOAuthCheck) Run(_ context.Context, projectRoot string) prefligh
 			Name:         c.Name(),
 			Category:     c.Category(),
 			FixAvailable: true,
-			Message:      fmt.Sprintf("ENABLE_COMMERCE_AGENT=true but missing %s in agents/.env", strings.Join(missing, ", ")),
-			InstallHint:  "./setup.sh",
+			Message:      fmt.Sprintf("Commerce OAuth credentials missing (%s); set ENABLE_COMMERCE_AGENT=false in agents/.env to skip", strings.Join(missing, ", ")),
 		}
 	}
 

@@ -28,20 +28,24 @@ type CommerceOAuthFixer struct{}
 func (f *CommerceOAuthFixer) Fix(ctx context.Context, projectRoot string) error {
 	agentsEnvPath := filepath.Join(projectRoot, "agents", ".env")
 
-	// Set the hardcoded client ID
-	if err := upsertEnvVar(agentsEnvPath, "GODADDY_OAUTH_CLIENT_ID", commerceClientID); err != nil {
-		return fmt.Errorf("writing GODADDY_OAUTH_CLIENT_ID: %w", err)
-	}
+	type kv struct{ key, val string }
+	writes := []kv{{"GODADDY_OAUTH_CLIENT_ID", commerceClientID}}
 
-	// Fetch secrets from AWS
 	for _, s := range commerceSecrets {
 		value, err := fetchAWSSecret(ctx, projectRoot, s.secretPath, commerceProfile, commerceRegion)
 		if err != nil {
 			return fmt.Errorf("fetching %s: %w", s.envVar, err)
 		}
-		escaped := strings.ReplaceAll(strings.TrimSpace(value), "\n", "\\n")
-		if err := upsertEnvVar(agentsEnvPath, s.envVar, escaped); err != nil {
-			return fmt.Errorf("writing %s: %w", s.envVar, err)
+		writes = append(writes, kv{s.envVar, strings.ReplaceAll(strings.TrimSpace(value), "\n", "\\n")})
+	}
+
+	// Write ENABLE_COMMERCE_AGENT last so a partial failure on any fetch
+	// leaves the env without the flag, keeping the check in Warn+FixAvailable.
+	writes = append(writes, kv{"ENABLE_COMMERCE_AGENT", "true"})
+
+	for _, w := range writes {
+		if err := upsertEnvVar(agentsEnvPath, w.key, w.val); err != nil {
+			return fmt.Errorf("writing %s: %w", w.key, err)
 		}
 	}
 
