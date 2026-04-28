@@ -342,6 +342,7 @@ Use this guide to populate the SKILL REQUIREMENTS section in the handoff. Match 
 - Show location / map / store locator / directions → google-maps
 - AI chatbot / AI assistant / chat with AI → ai-agent
 - Stripe payments (only when user explicitly says Stripe) → stripe
+- Logo design → media-logo
   </skill_detection_guide>
 
 **Handoff format (Standard Layout - for marketing sites, portfolios, e-commerce, blogs):**
@@ -371,6 +372,7 @@ VISUAL ELEMENTS:
 - Primary: [Photography / Organic shapes / Geometric graphics / Illustrations / Mix]
 - Style: [If using graphics: soft blobs, geometric, hand-drawn, gradient meshes, etc.]
 - Application: [Where they appear: hero background, section accents, decorative elements]
+- Logo: [If a logo is needed, describe its style and placement. Use the media-logo skill to generate it.]
 
 MOTION DESIGN:
 - Level: [Static / Subtle / Dynamic]
@@ -460,6 +462,7 @@ VISUAL ELEMENTS:
 - Primary: [Photography / Organic shapes / Geometric graphics / Illustrations / Mix]
 - Style: [If using graphics: soft blobs, geometric, hand-drawn, gradient meshes, etc.]
 - Application: [Where they appear: UI elements, backgrounds, decorative accents]
+- Logo: [If a logo is needed, describe its style and placement. Use the media-logo skill to generate it.]
 
 MOTION DESIGN:
 - Level: [Static / Subtle / Dynamic]
