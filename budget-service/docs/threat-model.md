@@ -37,9 +37,9 @@ budget-service exposes a REST API for budgets, credit pools (budget items), LLM-
 ## Authentication vs authorization
 
 - **Authentication:** `/api/v1/*` requests must carry a valid **AWS IAM, Cert, or Cert2S**-class service JWT unless `LOCAL_AUTH_DISABLE=true` (local only). OpenAPI/Swagger and `/health` are unauthenticated by design.
-- **IAM role allowlist:** When **`AUTH_ALLOWED_ROLES`** is set (JSON array of ARN patterns, supports trailing `*` wildcard), the middleware extracts the caller's IAM ARN via `gd-auth-lib.GetAwsIamArn()` and rejects tokens whose ARN does not match any entry (**403 Forbidden**). When unset, all authenticated IAM tokens are accepted (backward-compatible).
-- **Cert CommonName allowlist:** When **`AUTH_ALLOWED_CERTS`** is set (JSON array of CommonName patterns, supports trailing `*` wildcard), the middleware extracts the caller's CommonName via `gd-auth-lib.GetCommonName()` and rejects tokens whose CN does not match any entry (**403 Forbidden**). When unset, all authenticated cert tokens are accepted (backward-compatible).
-- **Authorization:** Handlers do **not** map JWT claims to budget or session rows. Any caller with a **valid token** (and an allowed role/cert, if `AUTH_ALLOWED_ROLES` or `AUTH_ALLOWED_CERTS` is configured) who knows a resource id (`budgetId`, `sessionId`, etc.) can invoke the corresponding API. **Access control is expected from:** the IAM role and cert allowlists, network policies, which services receive credentials, and caller-side enforcement—not from row-level checks inside this service.
+- **IAM role allowlist:** **`AUTH_ALLOWED_ROLES`** (JSON array of ARN patterns, trailing `*` wildcard) must be non-empty when JWT auth is enabled; otherwise **`config.Load`** fails at startup. The middleware extracts the caller's IAM ARN via `gd-auth-lib.GetAwsIamArn()` and rejects tokens whose ARN does not match any entry (**403 Forbidden**). With **`LOCAL_AUTH_DISABLE=true`**, allowlists are omitted for local open API.
+- **Cert CommonName allowlist:** **`AUTH_ALLOWED_CERTS`** (JSON array of CommonName patterns, trailing `*` wildcard) must be non-empty when JWT auth is enabled; otherwise startup fails. The middleware extracts the caller's CommonName via `gd-auth-lib.GetCommonName()` and rejects tokens whose CN does not match any entry (**403 Forbidden**).
+- **Authorization:** Handlers do **not** map JWT claims to budget or session rows. Any caller with a **valid token** and an allowed role/cert (per allowlists when JWT auth is enabled) who knows a resource id (`budgetId`, `sessionId`, etc.) can invoke the corresponding API. **Access control is expected from:** the IAM role and cert allowlists, network policies, which services receive credentials, and caller-side enforcement—not from row-level checks inside this service.
 
 Document this assumption explicitly for assessors evaluating IDOR-style risk.
 
@@ -47,7 +47,7 @@ Document this assumption explicitly for assessors evaluating IDOR-style risk.
 
 | Category | Threat | Controls (examples) | Residual risk |
 | -------- | ------ | ------------------- | ------------- |
-| **Spoofing** | Caller pretends to be a legitimate service | JWT validation via `gd-auth-lib`; reject missing/invalid tokens; optional allowlists (`AUTH_ALLOWED_ROLES`, `AUTH_ALLOWED_CERTS`) restrict which ARNs/CommonNames are accepted | Stolen token from an allowed identity can call API until revoked |
+| **Spoofing** | Caller pretends to be a legitimate service | JWT validation via `gd-auth-lib`; reject missing/invalid tokens; `AUTH_ALLOWED_ROLES` and `AUTH_ALLOWED_CERTS` (required when JWT auth is on) restrict which ARNs/CommonNames are accepted | Stolen token from an allowed identity can call API until revoked |
 | **Tampering** | Alter DB rows or API payloads | TLS in transit; DB credentials; SQL via parameterized queries in `store` | Compromised DB role or app process |
 | **Repudiation** | Deny having performed an action | Structured logs (`http.request.complete`); ledger append-only audit | Logs can be disabled or tampered if log pipeline compromised |
 | **Information disclosure** | Leak budgets, sessions, webhook URLs, tokens | TLS; sanitize logging; webhook payload rules in docs | Optional request-body logging increases exposure if misused |

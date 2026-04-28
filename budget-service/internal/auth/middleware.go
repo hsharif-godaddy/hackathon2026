@@ -28,8 +28,8 @@ type Middleware struct {
 
 // NewMiddleware creates auth middleware using the singleton GDAuth client.
 // authType: "jwt" to enforce validation, "none" to bypass (local dev only).
-// allowedRoles: IAM ARN patterns; empty slice means allow all.
-// allowedCerts: cert CommonName patterns; empty slice means allow all.
+// allowedRoles: IAM ARN patterns; empty slice skips role filtering (config.Load requires non-empty when JWT auth is on).
+// allowedCerts: cert CommonName patterns; empty slice skips CN filtering (config.Load requires non-empty when JWT auth is on).
 // Requires InitClient() to have been called first when authType is "jwt".
 func NewMiddleware(authType string, allowedRoles []string, allowedCerts []string) *Middleware {
 	m := &Middleware{

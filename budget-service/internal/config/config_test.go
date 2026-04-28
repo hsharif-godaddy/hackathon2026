@@ -18,6 +18,12 @@ func restoreAutoMigrateEnv(t *testing.T, prev string, had bool) {
 	})
 }
 
+// unsetMigrateDatabaseURLForTest avoids leaking MIGRATE_DATABASE_URL from the shell into JWT-auth Load() tests (would fail with DATABASE_URL empty).
+func unsetMigrateDatabaseURLForTest(t *testing.T) {
+	t.Helper()
+	t.Setenv("MIGRATE_DATABASE_URL", "")
+}
+
 func TestLoadAutoMigrateDefaultTrueWhenDATABASEURLSetAndAutoMigrateUnset(t *testing.T) {
 	prev, had := os.LookupEnv("AUTO_MIGRATE")
 	restoreAutoMigrateEnv(t, prev, had)
@@ -235,6 +241,7 @@ func TestLoadAllowlistKatanaStyleOuterQuotesMultiARN(t *testing.T) {
 }
 
 func TestLoadRequiresTLSWhenAuthEnabled(t *testing.T) {
+	unsetMigrateDatabaseURLForTest(t)
 	t.Setenv("LOCAL_AUTH_DISABLE", "false")
 	t.Setenv("SSO_HOST", "sso.godaddy.com")
 	t.Setenv("DATABASE_URL", "")
@@ -246,6 +253,117 @@ func TestLoadRequiresTLSWhenAuthEnabled(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "SERVER_CERT_PATH") {
 		t.Fatalf("error %q should mention SERVER_CERT_PATH", err.Error())
+	}
+}
+
+func TestLoadRequiresAllowlistsWhenAuthEnabled(t *testing.T) {
+	unsetMigrateDatabaseURLForTest(t)
+	t.Setenv("LOCAL_AUTH_DISABLE", "false")
+	t.Setenv("SSO_HOST", "sso.godaddy.com")
+	t.Setenv("DATABASE_URL", "")
+	t.Setenv("SERVER_CERT_PATH", "/tmp/cert.pem")
+	t.Setenv("SERVER_KEY_PATH", "/tmp/key.pem")
+	t.Setenv("AUTH_ALLOWED_ROLES", "")
+	t.Setenv("AUTH_ALLOWED_CERTS", "")
+	_, err := Load()
+	if err == nil {
+		t.Fatal("expected error when auth enabled and allowlists empty")
+	}
+	if !strings.Contains(err.Error(), "AUTH_ALLOWED_ROLES") {
+		t.Fatalf("error %q should mention AUTH_ALLOWED_ROLES", err.Error())
+	}
+}
+
+func TestLoadRequiresAuthAllowedCertsWhenAuthEnabled(t *testing.T) {
+	unsetMigrateDatabaseURLForTest(t)
+	t.Setenv("LOCAL_AUTH_DISABLE", "false")
+	t.Setenv("SSO_HOST", "sso.godaddy.com")
+	t.Setenv("DATABASE_URL", "")
+	t.Setenv("SERVER_CERT_PATH", "/tmp/cert.pem")
+	t.Setenv("SERVER_KEY_PATH", "/tmp/key.pem")
+	t.Setenv("AUTH_ALLOWED_ROLES", `["arn:aws:iam::123:role/x"]`)
+	t.Setenv("AUTH_ALLOWED_CERTS", "")
+	_, err := Load()
+	if err == nil {
+		t.Fatal("expected error when AUTH_ALLOWED_CERTS empty")
+	}
+	if !strings.Contains(err.Error(), "AUTH_ALLOWED_CERTS") {
+		t.Fatalf("error %q should mention AUTH_ALLOWED_CERTS", err.Error())
+	}
+}
+
+func TestLoadRejectsEmptyJSONAllowlistWhenAuthEnabled(t *testing.T) {
+	unsetMigrateDatabaseURLForTest(t)
+	t.Setenv("LOCAL_AUTH_DISABLE", "false")
+	t.Setenv("SSO_HOST", "sso.godaddy.com")
+	t.Setenv("DATABASE_URL", "")
+	t.Setenv("SERVER_CERT_PATH", "/tmp/cert.pem")
+	t.Setenv("SERVER_KEY_PATH", "/tmp/key.pem")
+	t.Setenv("AUTH_ALLOWED_ROLES", "[]")
+	t.Setenv("AUTH_ALLOWED_CERTS", `["*.example.com"]`)
+	_, err := Load()
+	if err == nil {
+		t.Fatal("expected error when AUTH_ALLOWED_ROLES is empty JSON array")
+	}
+	if !strings.Contains(err.Error(), "AUTH_ALLOWED_ROLES") {
+		t.Fatalf("error %q should mention AUTH_ALLOWED_ROLES", err.Error())
+	}
+}
+
+func TestLoadRejectsEmptyJSONAuthAllowedCertsWhenAuthEnabled(t *testing.T) {
+	unsetMigrateDatabaseURLForTest(t)
+	t.Setenv("LOCAL_AUTH_DISABLE", "false")
+	t.Setenv("SSO_HOST", "sso.godaddy.com")
+	t.Setenv("DATABASE_URL", "")
+	t.Setenv("SERVER_CERT_PATH", "/tmp/cert.pem")
+	t.Setenv("SERVER_KEY_PATH", "/tmp/key.pem")
+	t.Setenv("AUTH_ALLOWED_ROLES", `["arn:aws:iam::123:role/x"]`)
+	t.Setenv("AUTH_ALLOWED_CERTS", "[]")
+	_, err := Load()
+	if err == nil {
+		t.Fatal("expected error when AUTH_ALLOWED_CERTS is empty JSON array")
+	}
+	if !strings.Contains(err.Error(), "AUTH_ALLOWED_CERTS") {
+		t.Fatalf("error %q should mention AUTH_ALLOWED_CERTS", err.Error())
+	}
+}
+
+func TestLoadSucceedsWhenJWTAuthEnabledWithTLSAndAllowlists(t *testing.T) {
+	unsetMigrateDatabaseURLForTest(t)
+	t.Setenv("LOCAL_AUTH_DISABLE", "false")
+	t.Setenv("SSO_HOST", "sso.godaddy.com")
+	t.Setenv("DATABASE_URL", "")
+	t.Setenv("SERVER_CERT_PATH", "/tmp/cert.pem")
+	t.Setenv("SERVER_KEY_PATH", "/tmp/key.pem")
+	t.Setenv("AUTH_ALLOWED_ROLES", `["arn:aws:iam::123:role/x"]`)
+	t.Setenv("AUTH_ALLOWED_CERTS", `["airo-builder.godaddy.com/*"]`)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.LocalAuthDisable {
+		t.Fatal("LocalAuthDisable should be false")
+	}
+	if len(cfg.AuthAllowedRoles) != 1 || len(cfg.AuthAllowedCerts) != 1 {
+		t.Fatalf("allowlists: roles=%#v certs=%#v", cfg.AuthAllowedRoles, cfg.AuthAllowedCerts)
+	}
+}
+
+func TestLoadRejectsBlankAllowlistEntryWhenAuthEnabled(t *testing.T) {
+	unsetMigrateDatabaseURLForTest(t)
+	t.Setenv("LOCAL_AUTH_DISABLE", "false")
+	t.Setenv("SSO_HOST", "sso.godaddy.com")
+	t.Setenv("DATABASE_URL", "")
+	t.Setenv("SERVER_CERT_PATH", "/tmp/cert.pem")
+	t.Setenv("SERVER_KEY_PATH", "/tmp/key.pem")
+	t.Setenv("AUTH_ALLOWED_ROLES", `[""]`)
+	t.Setenv("AUTH_ALLOWED_CERTS", `["cn.example.com"]`)
+	_, err := Load()
+	if err == nil {
+		t.Fatal("expected error for empty string entry in AUTH_ALLOWED_ROLES")
+	}
+	if !strings.Contains(err.Error(), "AUTH_ALLOWED_ROLES") {
+		t.Fatalf("error %q should mention AUTH_ALLOWED_ROLES", err.Error())
 	}
 }
 

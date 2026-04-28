@@ -49,12 +49,14 @@ type Config struct {
 
 	// AuthAllowedRoles is a list of allowed AWS IAM role ARN patterns.
 	// Supports exact match and trailing wildcard (e.g. "arn:aws:iam::123:role/airo-*").
-	// Empty = allow all authenticated tokens (backward-compatible default).
+	// When JWT auth is enabled (!LocalAuthDisable), must be non-empty or Load fails.
+	// When LOCAL_AUTH_DISABLE=true, unset/empty is allowed (local open API).
 	AuthAllowedRoles []string
 
 	// AuthAllowedCerts is a list of allowed cert CommonName patterns.
-	// Supports exact match (e.g. "*.airo-builder.godaddy.com").
-	// Empty = allow all authenticated cert tokens (backward-compatible default).
+	// Supports exact match and trailing wildcard (e.g. "airo-builder.godaddy.com/*").
+	// When JWT auth is enabled (!LocalAuthDisable), must be non-empty or Load fails.
+	// When LOCAL_AUTH_DISABLE=true, unset/empty is allowed (local open API).
 	AuthAllowedCerts []string
 }
 
@@ -104,6 +106,20 @@ func Load() (Config, error) {
 	if !cfg.LocalAuthDisable && cfg.TLSCertPath == "" {
 		return Config{}, fmt.Errorf("SERVER_CERT_PATH and SERVER_KEY_PATH are required unless LOCAL_AUTH_DISABLE is true")
 	}
+	if !cfg.LocalAuthDisable {
+		if len(cfg.AuthAllowedRoles) == 0 {
+			return Config{}, fmt.Errorf("AUTH_ALLOWED_ROLES is required (non-empty JSON array) unless LOCAL_AUTH_DISABLE is true")
+		}
+		if len(cfg.AuthAllowedCerts) == 0 {
+			return Config{}, fmt.Errorf("AUTH_ALLOWED_CERTS is required (non-empty JSON array) unless LOCAL_AUTH_DISABLE is true")
+		}
+		if err := validateAllowlistNoBlankEntries("AUTH_ALLOWED_ROLES", cfg.AuthAllowedRoles); err != nil {
+			return Config{}, err
+		}
+		if err := validateAllowlistNoBlankEntries("AUTH_ALLOWED_CERTS", cfg.AuthAllowedCerts); err != nil {
+			return Config{}, err
+		}
+	}
 	// Validate worker settings are positive (defaults in getEnvInt/getEnvDuration ensure this normally)
 	if cfg.WorkerInterval <= 0 {
 		return Config{}, fmt.Errorf("WORKER_INTERVAL must be positive")
@@ -121,6 +137,15 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("OUTBOX_RETENTION_DAYS must be positive")
 	}
 	return cfg, nil
+}
+
+func validateAllowlistNoBlankEntries(key string, entries []string) error {
+	for _, e := range entries {
+		if strings.TrimSpace(e) == "" {
+			return fmt.Errorf("%s must not contain empty or whitespace-only entries", key)
+		}
+	}
+	return nil
 }
 
 func getEnv(key, fallback string) string {
