@@ -16,7 +16,7 @@ import { getErrorMessage } from '@/lib/errors'
 import { isFeatureEnabled } from '@/lib/features'
 import { setItcOverride } from '@/lib/itc'
 import { landingItc } from '@/lib/paywall/shared'
-import { buildDevelopUrl, fetchQuickCreate, type QuickCreateResponse, setQuickCreateSessionFlags } from '@/lib/quick-create'
+import { buildDevelopUrl, extractApiError, fetchQuickCreate, type QuickCreateResponse, setQuickCreateSessionFlags } from '@/lib/quick-create'
 import { logger } from '@/lib/request-context'
 import { useAuthUIStore } from '@/stores/useAuthUIStore'
 import { logAiroHQEvent, logImpressionEvent } from '@/utils/instrumentation'
@@ -147,7 +147,7 @@ function LandingPageContent({ data }: LandingPageProps) {
           return;
         }
         const errorData = await createSiteResponse.json().catch(() => ({}))
-        throw new Error(errorData.message || errorData.error || 'Failed to create site')
+        throw extractApiError(errorData)
       }
 
       const siteData: QuickCreateResponse = await createSiteResponse.json()
@@ -168,7 +168,9 @@ function LandingPageContent({ data }: LandingPageProps) {
 
       let errorMessage = 'Something went wrong. Please try again.'
       if (err instanceof Error) {
-        if (err.message.includes('Failed to create site')) {
+        if ((err as any).errorCode === 'APP_LIMIT_EXCEEDED') {
+          errorMessage = t('builder_homepage_error_app_limit', undefined, 'You have reached the maximum number of apps allowed. Please delete some unused apps to create new ones.')
+        } else if (err.message.includes('Failed to create site')) {
           errorMessage = t('builder_homepage_error_create')
         } else if (err.message.includes('Failed to validate account')) {
           errorMessage = t('builder_homepage_error_validate')

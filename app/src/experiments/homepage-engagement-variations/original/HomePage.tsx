@@ -413,7 +413,10 @@ export function OriginalHomePage({ serverFeatures }: HomeContentProps) {
       let errorType = 'generic'
 
       if (error instanceof Error) {
-        if (error.message.includes('Failed to create site')) {
+        if ((error as any).errorCode === 'APP_LIMIT_EXCEEDED') {
+          errorType = 'app_limit_exceeded'
+          errorMessage = t('builder_homepage_error_app_limit', undefined, 'You have reached the maximum number of apps allowed. Please delete some unused apps to create new ones.')
+        } else if (error.message.includes('Failed to create site')) {
           errorType = 'create_failed'
           errorMessage = t('builder_homepage_error_create')
         } else if (error.message.includes('Failed to validate account')) {

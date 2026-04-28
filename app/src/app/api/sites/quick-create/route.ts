@@ -144,12 +144,20 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       );
     }
 
+    if (error instanceof Error && error.message.includes('APP_LIMIT_EXCEEDED')) {
+      logger.warn('sites.quick-create.app-limit-exceeded', { accountId: authContext.user.accountId });
+      return NextResponse.json(
+        { error: 'Failed to create site record', errorCode: 'APP_LIMIT_EXCEEDED' },
+        { status: 422 }
+      );
+    }
+
     logger.error('sites.quick-create.error', { message: 'Quick site creation failed', errorMessage: error instanceof Error ? error.message : 'Unknown error' });
 
     return NextResponse.json(
       {
         error: 'Failed to create site record',
-        details: error instanceof Error ? error.message : 'Unknown error'
+        details: error instanceof Error ? error.message : 'Unknown error',
       },
       { status: 500 }
     );

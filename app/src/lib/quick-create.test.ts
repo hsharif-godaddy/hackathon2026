@@ -115,6 +115,16 @@ describe('extractApiError', () => {
     const error = extractApiError({ message: 'fail' })
     expect((error as any).details).toBeUndefined()
   })
+
+  it('attaches errorCode when present', () => {
+    const error = extractApiError({ message: 'fail', errorCode: 'APP_LIMIT_EXCEEDED' })
+    expect((error as any).errorCode).toBe('APP_LIMIT_EXCEEDED')
+  })
+
+  it('does not attach errorCode when absent', () => {
+    const error = extractApiError({ message: 'fail' })
+    expect((error as any).errorCode).toBeUndefined()
+  })
 })
 
 describe('setQuickCreateSessionFlags', () => {

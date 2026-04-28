@@ -31,12 +31,16 @@ interface ApiErrorData {
   message?: string
   error?: string
   details?: string
+  errorCode?: string
 }
 
 export function extractApiError(errorData: ApiErrorData): Error {
   const error = new Error(errorData.message || errorData.error || 'Failed to create site')
   if (errorData.details) {
     Object.assign(error, { details: errorData.details })
+  }
+  if (errorData.errorCode) {
+    Object.assign(error, { errorCode: errorData.errorCode })
   }
   return error
 }

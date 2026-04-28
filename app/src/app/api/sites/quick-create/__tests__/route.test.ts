@@ -142,6 +142,19 @@ describe('/api/sites/quick-create downstream error propagation', () => {
     expect(body).not.toHaveProperty('authReason');
   });
 
+  it('returns 422 with errorCode APP_LIMIT_EXCEEDED for quota violation', async () => {
+    const rawMessage = 'API request failed: 400 Bad Request - {"error":"APP_LIMIT_EXCEEDED","message":"Maximum 100 apps allowed per system for this product"}';
+    mockCreateSite.mockResolvedValue({ success: false, error: rawMessage });
+
+    const { POST } = await import('../route');
+    const response = await POST(makeRequest({ initialPrompt: 'test' }));
+
+    expect(response.status).toBe(422);
+    const body = await response.json();
+    expect(body.errorCode).toBe('APP_LIMIT_EXCEEDED');
+    expect(body.error).toBe('Failed to create site record');
+  });
+
   it('returns 500 for non-AiroHttpError with status:401 field (no spurious SSO trigger)', async () => {
     const fakeError = Object.assign(new Error('boom'), { status: 401 });
     mockCreateSite.mockRejectedValue(fakeError);
