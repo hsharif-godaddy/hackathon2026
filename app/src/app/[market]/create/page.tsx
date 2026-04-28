@@ -5,6 +5,7 @@ import { Suspense, useEffect, useRef } from 'react'
 import Box from '@ux/box'
 import Spinner from '@ux/spinner'
 
+import { validateTemplate } from '@/app/[market]/components/types'
 import { useSsoSignIn } from '@/hooks/useSsoSignIn'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { logger } from '@/lib/request-context'
@@ -21,6 +22,8 @@ function CreatePageContent() {
   const hasInitialized = useRef(false)
 
   const initialPrompt = searchParams.get('initialPrompt')
+  const rawTemplate = searchParams.get('template')
+  const template = validateTemplate(rawTemplate) !== 'default' ? rawTemplate : null
 
   // Handle SSO modal dismiss - redirect to homepage with prompt
   useEffect(() => {
@@ -70,6 +73,7 @@ function CreatePageContent() {
       {
         prompt: trimmedPrompt,
         source: 'create-page',
+        templateId: template || undefined,
         onAuthRequired: (prompt) => {
           // API returned 401 - user not authenticated or token expired
           logger.info('create_page.auth_required', {
@@ -82,7 +86,9 @@ function CreatePageContent() {
           // Set redirect URL so SSO returns to this page after auth. Modal
           // path uses this via the store; redirect path consumes it from the
           // `redirectUrl` arg to signIn below.
-          const redirectUrl = `/create?initialPrompt=${encodeURIComponent(trimmedPrompt)}`
+          const params = new URLSearchParams({ initialPrompt: trimmedPrompt })
+          if (template) params.set('template', template)
+          const redirectUrl = `/create?${params.toString()}`
           setRedirectUrl(redirectUrl)
 
           // Route through useSsoSignIn so the env gate decides modal vs
@@ -101,7 +107,7 @@ function CreatePageContent() {
       },
       router
     )
-  }, [initialPrompt, router, signIn, setRedirectUrl])
+  }, [initialPrompt, template, router, signIn, setRedirectUrl])
 
   // All states show the same UI: centered spinner
   return (

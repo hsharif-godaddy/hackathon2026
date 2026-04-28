@@ -100,7 +100,10 @@ describe('CreatePage', () => {
   })
 
   it('calls createSiteAndRedirect with correct params', async () => {
-    mockSearchParams.get.mockReturnValue('test prompt')
+    mockSearchParams.get.mockImplementation((key: string) => {
+      if (key === 'initialPrompt') return 'test prompt'
+      return null
+    })
 
     render(<CreatePage />)
 
@@ -109,6 +112,7 @@ describe('CreatePage', () => {
         expect.objectContaining({
           prompt: 'test prompt',
           source: 'create-page',
+          templateId: undefined,
         }),
         mockRouter
       )
@@ -116,7 +120,10 @@ describe('CreatePage', () => {
   })
 
   it('triggers SSO when API returns 401', async () => {
-    mockSearchParams.get.mockReturnValue('test prompt')
+    mockSearchParams.get.mockImplementation((key: string) => {
+      if (key === 'initialPrompt') return 'test prompt'
+      return null
+    })
     let onAuthRequiredCallback: any
 
     ;(createSiteAndRedirect as any).mockImplementation((options: any) => {
@@ -132,8 +139,99 @@ describe('CreatePage', () => {
     // Trigger the onAuthRequired callback
     onAuthRequiredCallback('test prompt')
 
-    expect(mockSetRedirectUrl).toHaveBeenCalledWith('/create?initialPrompt=test%20prompt')
-    expect(mockSignIn).toHaveBeenCalledWith({ redirectUrl: '/create?initialPrompt=test%20prompt' })
+    expect(mockSetRedirectUrl).toHaveBeenCalledWith('/create?initialPrompt=test+prompt')
+    expect(mockSignIn).toHaveBeenCalledWith({ redirectUrl: '/create?initialPrompt=test+prompt' })
+  })
+
+  it('passes templateId to createSiteAndRedirect when template param is present', async () => {
+    mockSearchParams.get.mockImplementation((key: string) => {
+      if (key === 'initialPrompt') return 'test prompt'
+      if (key === 'template') return 'logo-designer'
+      return null
+    })
+
+    render(<CreatePage />)
+
+    await waitFor(() => {
+      expect(createSiteAndRedirect).toHaveBeenCalledWith(
+        expect.objectContaining({
+          prompt: 'test prompt',
+          source: 'create-page',
+          templateId: 'logo-designer',
+        }),
+        mockRouter
+      )
+    })
+  })
+
+  it('treats template=default as no template', async () => {
+    mockSearchParams.get.mockImplementation((key: string) => {
+      if (key === 'initialPrompt') return 'test prompt'
+      if (key === 'template') return 'default'
+      return null
+    })
+
+    render(<CreatePage />)
+
+    await waitFor(() => {
+      expect(createSiteAndRedirect).toHaveBeenCalledWith(
+        expect.objectContaining({
+          prompt: 'test prompt',
+          source: 'create-page',
+          templateId: undefined,
+        }),
+        mockRouter
+      )
+    })
+  })
+
+  it('ignores invalid template param', async () => {
+    mockSearchParams.get.mockImplementation((key: string) => {
+      if (key === 'initialPrompt') return 'test prompt'
+      if (key === 'template') return 'not-a-real-template'
+      return null
+    })
+
+    render(<CreatePage />)
+
+    await waitFor(() => {
+      expect(createSiteAndRedirect).toHaveBeenCalledWith(
+        expect.objectContaining({
+          prompt: 'test prompt',
+          source: 'create-page',
+          templateId: undefined,
+        }),
+        mockRouter
+      )
+    })
+  })
+
+  it('preserves template param in redirect URL on auth required', async () => {
+    mockSearchParams.get.mockImplementation((key: string) => {
+      if (key === 'initialPrompt') return 'test prompt'
+      if (key === 'template') return 'logo-designer'
+      return null
+    })
+    let onAuthRequiredCallback: any
+
+    ;(createSiteAndRedirect as any).mockImplementation((options: any) => {
+      onAuthRequiredCallback = options.onAuthRequired
+    })
+
+    render(<CreatePage />)
+
+    await waitFor(() => {
+      expect(createSiteAndRedirect).toHaveBeenCalled()
+    })
+
+    onAuthRequiredCallback('test prompt')
+
+    expect(mockSetRedirectUrl).toHaveBeenCalledWith(
+      '/create?initialPrompt=test+prompt&template=logo-designer'
+    )
+    expect(mockSignIn).toHaveBeenCalledWith({
+      redirectUrl: '/create?initialPrompt=test+prompt&template=logo-designer',
+    })
   })
 
   it('redirects to homepage on SSO dismiss', async () => {
