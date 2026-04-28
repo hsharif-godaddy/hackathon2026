@@ -9,7 +9,26 @@ import { getEnvConfig } from './tests/helpers/constants';
 // process.env lazily at call time, so values from .env are picked up below.
 dotenv.config({ path: path.resolve(__dirname, 'tests/.env') });
 
-const { config: envConfig } = getEnvConfig();
+const { env: envName, config: envConfig } = getEnvConfig();
+
+/**
+ * CI runners resolve `sso.test-godaddy.com` to an internal VIP, so Chrome's
+ * Local Network Access check blocks the cross-origin heartbeat POST from
+ * `airo-builder.test-godaddy.com` (classified public) to SSO (classified
+ * local). Heartbeats silently fail, the VAT ages out, and mid-run 401s
+ * redirect the page to SSO. Real users hit this from public DNS where both
+ * hosts are public→public, so LNA doesn't trip. Scope the flag to `test` and
+ * `pre-test` (same DNS zone, same internal-VIP routing on CI) — never disable
+ * it against prod.
+ */
+const LNA_DISABLED_ENVS: readonly string[] = ['test', 'pre-test'];
+const launchOptions = LNA_DISABLED_ENVS.includes(envName)
+  ? {
+      args: [
+        '--disable-features=LocalNetworkAccessChecks,PrivateNetworkAccessSendPreflights,PrivateNetworkAccessForIframes',
+      ],
+    }
+  : undefined;
 
 /**
  * Playwright E2E Test Configuration
@@ -95,12 +114,12 @@ export default defineConfig({
     {
       name: 'e2e',
       testDir: './tests/e2e',
-      use: { ...devices['Desktop Chrome'] },
+      use: { ...devices['Desktop Chrome'], ...(launchOptions && { launchOptions }) },
     },
     {
       name: 'regression',
       testDir: './tests/regression',
-      use: { ...devices['Desktop Chrome'] },
+      use: { ...devices['Desktop Chrome'], ...(launchOptions && { launchOptions }) },
     },
   ],
 
