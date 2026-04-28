@@ -7,6 +7,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/airo-ai-builder/dev-runner/internal/clean"
 	"github.com/airo-ai-builder/dev-runner/internal/config"
 	"github.com/airo-ai-builder/dev-runner/internal/tui"
 )
@@ -19,6 +20,23 @@ func main() {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
+	}
+
+	if len(os.Args) > 1 && os.Args[1] == "clean" {
+		skipConfirm := false
+		for _, arg := range os.Args[2:] {
+			if arg == "--yes" || arg == "-y" {
+				skipConfirm = true
+			} else {
+				fmt.Fprintf(os.Stderr, "Error: unknown flag %q\nUsage: dev-runner clean [--yes|-y]\n", arg)
+				os.Exit(1)
+			}
+		}
+		if err := clean.Run(projectRoot, skipConfirm); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		return
 	}
 
 	configPath := filepath.Join(projectRoot, configFileName)

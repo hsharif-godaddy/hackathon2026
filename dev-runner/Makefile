@@ -10,7 +10,7 @@ GO := go
 # Artifactory token. Applied inline to module-fetching recipes only.
 BOOTSTRAP_ENV := GOPROXY=https://proxy.golang.org,direct GOSUMDB=sum.golang.org
 
-.PHONY: build test lint fmt fmt-fix vet check clean run tidy
+.PHONY: build test lint fmt fmt-fix vet check clean clean-env run tidy
 
 build:
 	@mkdir -p $(BUILD_DIR)
@@ -42,6 +42,9 @@ check: fmt vet lint test
 
 clean:
 	rm -rf $(BUILD_DIR)
+
+clean-env:
+	$(BOOTSTRAP_ENV) $(GO) run ./cmd/dev-runner/ clean $(ARGS)
 
 tidy:
 	$(BOOTSTRAP_ENV) $(GO) mod tidy
