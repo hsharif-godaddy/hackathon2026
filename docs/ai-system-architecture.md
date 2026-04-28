@@ -2,6 +2,10 @@
 
 How Airo Builder interacts with LLMs in production. Covers the full pipeline from user message through agent execution to streaming response, including provider routing, prompt caching, context management, and observability.
 
+> For operational pain points, real-traffic metrics, and open problems we're looking for external input on, see [ai-operational-metrics.md](ai-operational-metrics.md).
+
+LLM traffic is multi-provider via the GoCode/LiteLLM gateway, which internally load-balances ~50/50 per-customer between AWS Bedrock and Azure OpenAI passthrough for Sonnet 4.6. The agent service itself targets a single GoCode endpoint (Bedrock-specific code was removed from the provider layer on 2026-03-30); the architecture described below is provider-neutral and deliberately does not rely on backend-specific features.
+
 ## Table of Contents
 
 1. [System Overview](#system-overview)
@@ -626,6 +630,7 @@ Budget-exceeded errors emit a `budget_exceeded` event to the client with remaini
 
 ## Related Documentation
 
+- [ai-operational-metrics.md](ai-operational-metrics.md) - Production metrics, pain points, and open questions for advisors
 - [prompt-caching-architecture.md](prompt-caching-architecture.md) - Detailed cache breakpoint mechanics, block counting, summary pinning edge cases
 - [model-override.md](model-override.md) - Ops runbook for emergency model switching via Switchboard
 - [client-websocket-architecture.md](client-websocket-architecture.md) - Full XState machine spec, handler registry, recovery flows
