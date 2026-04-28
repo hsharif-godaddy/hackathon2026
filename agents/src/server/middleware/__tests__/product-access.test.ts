@@ -105,6 +105,10 @@ describe('product-access middleware', () => {
       { method: 'POST', path: '/apps/abc123/restart' },
       // Customer logs
       { method: 'GET', path: '/apps/abc123/customer-logs' },
+      // Files API
+      { method: 'GET', path: '/apps/abc123/files' },
+      { method: 'GET', path: '/apps/abc123/files/read' },
+      { method: 'POST', path: '/apps/abc123/files/write' },
     ];
 
     it.each(allowedRoutes)(
@@ -131,7 +135,8 @@ describe('product-access middleware', () => {
       { method: 'GET', path: '/agent/conversations' },
       { method: 'POST', path: '/agent/develop/chat' },
       { method: 'POST', path: '/media/upload' },
-      { method: 'GET', path: '/apps/abc123/files/read' },
+      { method: 'POST', path: '/apps/abc123/files/edit' },
+      { method: 'POST', path: '/apps/abc123/files/search' },
     ];
 
     it.each(deniedRoutes)(
@@ -253,14 +258,25 @@ describe('isRouteAllowedForPaaS', () => {
     expect(isRouteAllowedForPaaS('GET', '/apps/test-app/customer-logs')).toBe(true);
   });
 
+  it('should allow files API routes', () => {
+    expect(isRouteAllowedForPaaS('GET', '/apps/test-app/files')).toBe(true);
+    expect(isRouteAllowedForPaaS('GET', '/apps/test-app/files/read')).toBe(true);
+    expect(isRouteAllowedForPaaS('POST', '/apps/test-app/files/write')).toBe(true);
+  });
+
   it('should deny with wrong method', () => {
     expect(isRouteAllowedForPaaS('GET', '/apps/test-app/zip/upload')).toBe(false);
     expect(isRouteAllowedForPaaS('POST', '/apps/test-app/git/remote/status')).toBe(false);
+    expect(isRouteAllowedForPaaS('POST', '/apps/test-app/files')).toBe(false);
+    expect(isRouteAllowedForPaaS('POST', '/apps/test-app/files/read')).toBe(false);
+    expect(isRouteAllowedForPaaS('GET', '/apps/test-app/files/write')).toBe(false);
   });
 
   it('should deny non-allowlisted routes', () => {
     expect(isRouteAllowedForPaaS('GET', '/agents')).toBe(false);
     expect(isRouteAllowedForPaaS('GET', '/debug/memory')).toBe(false);
     expect(isRouteAllowedForPaaS('POST', '/agent/develop/chat')).toBe(false);
+    expect(isRouteAllowedForPaaS('POST', '/apps/test-app/files/edit')).toBe(false);
+    expect(isRouteAllowedForPaaS('POST', '/apps/test-app/files/search')).toBe(false);
   });
 });
