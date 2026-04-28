@@ -94,7 +94,19 @@ import { GitUtils } from '../utils/git.js'
 import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js'
 import { ClientActionService } from '../services/ClientActionService.js'
 import { hasUnbuiltRebuildPages } from '../tools/ai-lib-tools/suggested-response.js'
-import { getAssessmentAgent, type AssessmentOutcome, AssessmentTaskType } from '../agents/assessment-agent/index.js'
+import { type AssessmentOutcome, AssessmentTaskType } from '../agents/assessment-agent/index.js'
+import { withTimeout } from '../utils/promise-utils.js'
+import {
+  executeAssessment,
+  assertNever,
+  ASSESSMENT_MODE,
+  PARALLEL_ASSESSMENT_TIMEOUT_MS,
+  AWAIT_ASSESSMENT_REASON,
+  deriveUsedFreeGrants,
+  cleanupAssessmentStateOnError,
+  shouldAwaitParallelAssessment,
+  type ParallelAssessmentState,
+} from './assessment-executor.js'
 
 /**
  * Shared AppRepository instance to avoid repeated initialization
@@ -297,9 +309,22 @@ const PRUNE_THRESHOLD_SIZE = 1000
 // Populated in onMessageStart, consumed and cleaned up in onMessageComplete/onError/onDisconnection
 const initialPromptMetadata = new Map<string, { isInitialPrompt: boolean; customerId?: string; agentName?: string; startTime: number }>();
 
-// Track assessment outcomes per socket for surfacing in completion
-// Populated in onMessageStart, consumed in onMessageComplete, cleaned up in onDisconnection
-const assessmentOutcomes = new Map<string, AssessmentOutcome>()
+// Unified parallel assessment state per socket
+// In budget service mode (budgetServiceEnabled=true), stores both the promise and its resolved outcome.
+// The outcome is eagerly cached via .then() when the promise resolves, ensuring it's available
+// before onBudgetReport fires (which can happen before beforeMessageComplete in some flows).
+// Lifecycle: created in onMessageStart, outcome populated on promise resolution,
+// cleaned up in onMessageComplete (promise) and onBudgetReport (full state).
+// TTL pruning: if onBudgetReport never fires (error before budget session, disconnect mid-message),
+// entries are pruned after MAX_ASSESSMENT_STATE_AGE_MS when map exceeds threshold.
+const parallelAssessmentStates = new Map<string, ParallelAssessmentState>()
+const MAX_ASSESSMENT_STATE_AGE_MS = 60 * 60 * 1000 // 1 hour (assessment should complete in seconds)
+
+// Track assessment outcomes per socket for blocking mode (grants)
+// In blocking mode (budgetServiceEnabled=false), the outcome is stored directly after awaiting.
+// Lifecycle: populated in onMessageStart, consumed in beforeMessageComplete/onMessageComplete,
+// cleaned up in onMessageComplete
+const blockingAssessmentOutcomes = new Map<string, AssessmentOutcome>()
 
 // Track pending budget overrides from assessment to apply in context provider
 // Populated in onMessageStart, consumed in contextProvider, cleaned up in onDisconnection
@@ -726,6 +751,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
               // Use authType to distinguish employee sessions (e2s, e2s2s, etc.) from delegate (s2s)
               const isEmployeeSession = isEmployeeAuthType(agentContext?.authType)
               const useTestBudget = agentContext?.useTestBudget === true
+              const budgetServiceEnabled = agentContext?.budgetServiceEnabled === true
               logger.info('context.auth.check', {
                 appId,
                 socketId: socketId || 'missing',
@@ -736,6 +762,9 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
                 authType: agentContext?.authType,
                 isEmployeeSession,
                 useTestBudget,
+                budgetServiceEnabled,
+                subscriptionId: agentContext?.subscriptionId,
+                bmsBudgetId: agentContext?.bmsBudgetId,
                 agentContext
               })
 
@@ -791,6 +820,22 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
                 if (agentContext.bmsBudgetId) {
                   agentsAppContext.metadata.bmsBudgetId = agentContext.bmsBudgetId
                 }
+
+                logger.info('context.budget_service_mode.enabled', {
+                  appId,
+                  socketId: socketId || 'missing',
+                  hasSubscriptionId: !!agentContext.subscriptionId,
+                  hasBmsBudgetId: !!agentContext.bmsBudgetId,
+                })
+              } else if (agentContext?.budgetServiceEnabled) {
+                // Log when budget service flag is on but blocked by employee/test session
+                logger.info('context.budget_service_mode.skipped', {
+                  appId,
+                  socketId: socketId || 'missing',
+                  isEmployeeSession,
+                  useTestBudget,
+                  reason: isEmployeeSession ? 'employee_session' : 'test_budget',
+                })
               }
 
               // NOTE: SSO JWT is NOT passed through context for security reasons.
@@ -1596,6 +1641,23 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           }
         }
 
+        // Prune stale parallelAssessmentStates (leaked when onBudgetReport never fires)
+        if (parallelAssessmentStates.size > PRUNE_THRESHOLD_SIZE) {
+          const now = Date.now()
+          for (const [id, state] of parallelAssessmentStates) {
+            if (now - state.createdAt > MAX_ASSESSMENT_STATE_AGE_MS) {
+              parallelAssessmentStates.delete(id)
+              // Warn-level so operators can correlate with budget.report.assessment_outcome_missing
+              // hadOutcome distinguishes true leaks (false) from potential billing attribution loss (true)
+              logger.warn('assessment.parallel_mode.stale_entry_pruned', {
+                socketId: id,
+                hadOutcome: !!state.outcome,
+                ageMs: now - state.createdAt,
+              })
+            }
+          }
+        }
+
         // Start APM transaction for WebSocket connection lifecycle
         const transaction = apm.startTransaction('WebSocket Connection', 'websocket')
         if (transaction) {
@@ -1796,27 +1858,38 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           });
         }
 
-        // Assessment Agent: Classify prompt to determine if task-specific budget override should apply
-        // BLOCKING: Must complete before main agent execution to override grants
+        // Assessment Agent: Classify prompt to determine intent
+        // Behavior depends on budget service mode:
+        // - Flag OFF (grants mode): BLOCKING - must complete to set GoCode userId for budget routing
+        // - Flag ON (budget service mode): PARALLEL - non-blocking, used for post-execution attribution
+        //
         // Get Switchboard flags from JWT context (takes precedence over env var)
         // - enableAssessmentAgent: Run classification and log results (for monitoring)
-        // - enableAssessmentOverride: Actually apply budget override (requires enableAssessmentAgent)
+        // - enableAssessmentOverride: Actually apply budget override (requires enableAssessmentAgent, grants mode only)
         const socket = getSocket(socketId)
-        const enableAssessmentAgent = socket?.handshake?.auth?.agentContext?.enableAssessmentAgent
-        const enableAssessmentOverride = socket?.handshake?.auth?.agentContext?.enableAssessmentOverride
+        const agentContext = socket?.handshake?.auth?.agentContext
+        const enableAssessmentAgent = agentContext?.enableAssessmentAgent
+        const enableAssessmentOverride = agentContext?.enableAssessmentOverride
+        // Read budgetServiceEnabled from JWT agentContext, not context metadata
+        // Context metadata isn't populated until contextProvider runs (after onMessageStart)
+        // Also check for employee/test sessions which skip budget service mode
+        const isEmployeeSession = isEmployeeAuthType(agentContext?.authType)
+        const useTestBudget = agentContext?.useTestBudget === true
+        const budgetServiceEnabled = agentContext?.budgetServiceEnabled === true && !isEmployeeSession && !useTestBudget
 
         logger.info('assessment.feature_flag', {
           appId: siteId,
           socketId,
           enableAssessmentAgent,
           enableAssessmentOverride,
-          hasAgentContext: !!socket?.handshake?.auth?.agentContext,
+          budgetServiceEnabled,
+          budgetServiceFlagFromJwt: agentContext?.budgetServiceEnabled === true,
+          isEmployeeSession,
+          useTestBudget,
         })
 
         // Only run assessment classification if feature flag is enabled
         if (enableAssessmentAgent) {
-          const assessmentAgent = getAssessmentAgent()
-
           // Get previous user message for multi-turn context
           // Helps classify follow-ups (e.g., "it doesn't work" after "fix my button")
           // Try cache first, fall back to DB on miss (reconnect scenario)
@@ -1843,55 +1916,100 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
 
           const previousAssessmentTaskType = lastAssessmentTaskTypeCache.get(socketId)
 
-          const assessmentOutcome = await assessmentAgent.classify(message, {
-            appId: siteId,
-            customerId,
-            socketId,
-            enabledOverride: enableAssessmentAgent,
-            previousUserMessage,
-            previousAssessmentTaskType,
-            isInitialPrompt,
-          })
-
-          // Store for later use in onMessageComplete
-          assessmentOutcomes.set(socketId, assessmentOutcome)
-
-          // Cache current message and task type for next request's multi-turn context
-          lastUserMessageCache.set(socketId, message)
-          if (assessmentOutcome.result?.taskType) {
-            lastAssessmentTaskTypeCache.set(socketId, assessmentOutcome.result.taskType)
+          // Execute assessment (parallel or blocking based on budgetServiceEnabled)
+          // Try/catch is narrowed to executeAssessment only - programmer errors in the switch
+          // (assertNever, Map operations) should propagate, not be absorbed as assessment noise.
+          let assessmentResult: Awaited<ReturnType<typeof executeAssessment>> | undefined
+          try {
+            assessmentResult = await executeAssessment({
+              socketId,
+              message,
+              appId: siteId,
+              customerId,
+              budgetServiceEnabled,
+              enableAssessmentOverride: enableAssessmentOverride ?? false,
+              isInitialPrompt,
+              previousUserMessage,
+              previousAssessmentTaskType,
+            })
+          } catch (err) {
+            // Assessment failed - log with context and clean up tracking state
+            // In blocking mode (grants), this means usedFreeGrants will default to false (customer pays)
+            logger.error('assessment.execute.failure', {
+              socketId,
+              appId: siteId,
+              customerId,
+              budgetServiceEnabled,
+              isInitialPrompt,
+              error: err instanceof Error ? err.message : String(err),
+              stack: err instanceof Error ? err.stack : undefined,
+            })
           }
 
-          // Queue budget override for application in contextProvider
-          // Only apply if both:
-          // 1. Assessment determined override should apply (overrideApplied)
-          // 2. Override feature flag is enabled (enableAssessmentOverride)
-          if (assessmentOutcome.overrideApplied && assessmentOutcome.appliedBudget && enableAssessmentOverride) {
-            pendingBudgetOverrides.set(socketId, assessmentOutcome.appliedBudget)
+          // Store results based on execution mode (switch ensures exhaustiveness)
+          // This block is outside try/catch so assertNever and Map errors propagate as programmer errors
+          if (assessmentResult) {
+            switch (assessmentResult.mode) {
+              case ASSESSMENT_MODE.PARALLEL: {
+                // Parallel mode: create unified state with promise and eager outcome caching
+                const state: ParallelAssessmentState = {
+                  promise: assessmentResult.assessmentPromise,
+                  outcome: undefined,
+                  createdAt: Date.now(),
+                }
+                parallelAssessmentStates.set(socketId, state)
+                lastUserMessageCache.set(socketId, assessmentResult.messageToCache)
 
-            logger.info('grants.assessment.override.pending', {
-              appId: siteId,
-              customerId,
-              socketId,
-              taskType: assessmentOutcome.result?.taskType,
-              confidence: assessmentOutcome.result?.confidence,
-              appliedBudget: assessmentOutcome.appliedBudget,
-              durationMs: assessmentOutcome.durationMs,
-              reason: assessmentOutcome.reason,
-            })
-          } else if (assessmentOutcome.overrideApplied && assessmentOutcome.appliedBudget && !enableAssessmentOverride) {
-            // Log that override would have been applied but is disabled (dry run mode)
-            logger.info('grants.assessment.override.dry_run', {
-              appId: siteId,
-              customerId,
-              socketId,
-              taskType: assessmentOutcome.result?.taskType,
-              confidence: assessmentOutcome.result?.confidence,
-              wouldApplyBudget: assessmentOutcome.appliedBudget,
-              durationMs: assessmentOutcome.durationMs,
-              reason: assessmentOutcome.reason,
-              enableAssessmentOverride,
-            })
+                // Eagerly populate outcome when promise resolves (non-blocking)
+                // This ensures state.outcome is available before onBudgetReport fires,
+                // which can happen before beforeMessageComplete in some ai-transport flows
+                assessmentResult.assessmentPromise.then((outcome) => {
+                  state.outcome = outcome
+                  // Guard cache write: only update if this state is still current and socket connected.
+                  // If message N times out and N+1 starts, N+1 overwrites parallelAssessmentStates -
+                  // without this check, N's late .then() would write stale taskType to the cache.
+                  const isCurrentState = parallelAssessmentStates.get(socketId) === state
+                  const socketStillConnected = getSocket(socketId) != null
+                  if (isCurrentState && socketStillConnected && outcome.result?.taskType) {
+                    lastAssessmentTaskTypeCache.set(socketId, outcome.result.taskType)
+                  }
+                  logger.debug('assessment.parallel_mode.eager_cache', {
+                    socketId,
+                    appId: siteId,
+                    taskType: outcome.result?.taskType,
+                    confidence: outcome.result?.confidence,
+                    cacheUpdated: isCurrentState && socketStillConnected && !!outcome.result?.taskType,
+                  })
+                }).catch((err) => {
+                  // Log at error for production visibility - systematic assessment failures
+                  // (network down, quota exhausted, provider 500) need monitoring signals.
+                  // Primary error handling is in beforeMessageComplete/onMessageComplete
+                  // try/catch blocks via withTimeout.
+                  logger.error('assessment.parallel_mode.eager_cache_rejection', {
+                    socketId,
+                    appId: siteId,
+                    error: err instanceof Error ? err.message : String(err),
+                    stack: err instanceof Error ? err.stack : undefined,
+                  })
+                })
+                break
+              }
+              case ASSESSMENT_MODE.BLOCKING: {
+                // Blocking mode: store completed outcome directly
+                blockingAssessmentOutcomes.set(socketId, assessmentResult.assessmentOutcome)
+                lastUserMessageCache.set(socketId, assessmentResult.messageToCache)
+                // Cache task type for session context gating (derive from assessmentOutcome)
+                if (assessmentResult.assessmentOutcome.result?.taskType) {
+                  lastAssessmentTaskTypeCache.set(socketId, assessmentResult.assessmentOutcome.result.taskType)
+                }
+                if (assessmentResult.pendingBudgetOverride) {
+                  pendingBudgetOverrides.set(socketId, assessmentResult.pendingBudgetOverride)
+                }
+                break
+              }
+              default:
+                assertNever(assessmentResult)
+            }
           }
         }
 
@@ -1964,19 +2082,85 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
       beforeMessageComplete: async (socketId: string, context: Record<string, unknown>) => {
         const typedContext = context as AgentsAppContext
         const siteId = typedContext?.metadata?.appId
+        const budgetServiceEnabled = typedContext?.metadata?.budgetServiceEnabled === true
 
-        // Get assessment outcome for free grants flag (legacy mode only)
-        // When BMS is enabled, the budget report determines usedFreeGrants instead
-        const socket = getSocket(socketId)
-        const agentContext = socket?.handshake?.auth?.agentContext
-        const budgetServiceEnabled = agentContext?.budgetServiceEnabled ?? false
-        let usedFreeGrants = false
+        // Get assessment outcome for free grants flag
+        // Check both parallel state (budget service mode) and blocking outcomes (grants mode)
+        // Note: In rare socket migration scenarios, this lookup may fail. The fallback is safe
+        // (usedFreeGrants=false, customer pays). onBudgetReport receives originalSocketId from
+        // ai-transport and handles the critical billing path correctly.
+        let assessmentOutcome: AssessmentOutcome | undefined
+        const parallelState = parallelAssessmentStates.get(socketId)
 
-        if (!budgetServiceEnabled) {
-          const assessmentOutcome = assessmentOutcomes.get(socketId)
-          const enableAssessmentOverride = agentContext?.enableAssessmentOverride ?? false
-          usedFreeGrants = (assessmentOutcome?.overrideApplied && enableAssessmentOverride) ?? false
+        if (budgetServiceEnabled && parallelState) {
+          // Parallel mode: check eager cache first, then await if needed
+          if (parallelState.outcome) {
+            assessmentOutcome = parallelState.outcome
+          } else if (!parallelState.timedOut) {
+            // Only await if not already timed out (prevents double-await in onMessageComplete)
+            try {
+              const assessmentResult = await withTimeout(
+                parallelState.promise,
+                PARALLEL_ASSESSMENT_TIMEOUT_MS,
+                () => {
+                  // Mark as timed out so onMessageComplete skips the second await
+                  parallelState.timedOut = true
+                  logger.warn('websocket.before_complete.assessment_timeout', {
+                    socketId,
+                    appId: siteId,
+                    timeoutMs: PARALLEL_ASSESSMENT_TIMEOUT_MS,
+                    cacheStale: 'lastAssessmentTaskTypeCache not updated, next turn will use stale task type',
+                  })
+                },
+                (err) => {
+                  // Log at error for consistency with eager cache rejection handler -
+                  // same failure class (LLM network/quota/provider error) should have same severity
+                  logger.error('websocket.before_complete.assessment_late_rejection', {
+                    socketId,
+                    appId: siteId,
+                    error: err instanceof Error ? err.message : String(err),
+                    detail: 'Assessment promise rejected after timeout, rejection suppressed',
+                  })
+                }
+              )
+              if (assessmentResult) {
+                assessmentOutcome = assessmentResult
+                parallelState.outcome = assessmentResult
+                if (assessmentResult.result?.taskType) {
+                  lastAssessmentTaskTypeCache.set(socketId, assessmentResult.result.taskType)
+                }
+                logger.info('websocket.before_complete.assessment_awaited', {
+                  socketId,
+                  appId: siteId,
+                  taskType: assessmentResult.result?.taskType,
+                  confidence: assessmentResult.result?.confidence,
+                  overrideApplied: assessmentResult.overrideApplied,
+                })
+              }
+            } catch (err) {
+              // Mark as timedOut to prevent onMessageComplete from re-awaiting the same
+              // already-rejected promise, which would cause triple error logging:
+              // 1. eager .catch() in onMessageStart logs assessment.parallel_mode.eager_cache_rejection
+              // 2. this catch logs websocket.before_complete.assessment_await_failed
+              // 3. onMessageComplete would see timedOut=false and re-await, logging assessment.parallel_mode.error
+              parallelState.timedOut = true
+              logger.error('websocket.before_complete.assessment_await_failed', {
+                socketId,
+                appId: siteId,
+                error: err instanceof Error ? err.message : String(err),
+                stack: err instanceof Error ? err.stack : undefined,
+                billingFallback: 'usedFreeGrants will be false (customer pays)',
+              })
+            }
+          }
+        } else {
+          // Blocking mode: outcome was stored directly in onMessageStart
+          assessmentOutcome = blockingAssessmentOutcomes.get(socketId)
         }
+
+        const socket = getSocket(socketId)
+        const enableAssessmentOverride = socket?.handshake?.auth?.agentContext?.enableAssessmentOverride ?? false
+        const usedFreeGrants = deriveUsedFreeGrants(budgetServiceEnabled, assessmentOutcome, enableAssessmentOverride)
 
         if (!siteId) {
           logger.debug('websocket.before_complete.no_app_id', { socketId })
@@ -2027,6 +2211,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         const agentId = result.agentId || 'unknown';
         const typedContext = context as AgentsAppContext;
         const appId = typedContext?.metadata?.appId;
+        const budgetServiceEnabled = typedContext?.metadata?.budgetServiceEnabled === true
 
         logger.info('websocket.message.completed', {
           socketId,
@@ -2051,28 +2236,112 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           initialPromptMetadata.delete(socketId);
         }
 
-        // Log free grants usage (legacy mode only - when BMS is enabled, budget report is authoritative)
-        const socket = getSocket(socketId)
-        const agentContext = socket?.handshake?.auth?.agentContext
-        const budgetServiceEnabled = agentContext?.budgetServiceEnabled ?? false
-        const enableAssessmentOverride = agentContext?.enableAssessmentOverride ?? false
+        // Collect assessment outcome based on mode
+        // - Grants mode (flag OFF): outcome stored directly in onMessageStart
+        // - Budget service mode (flag ON): outcome in parallelAssessmentStates (eager cached or await here)
+        // Note: In rare socket migration scenarios, this lookup may fail. The fallback is safe.
+        // onBudgetReport receives originalSocketId from ai-transport and handles billing correctly.
+        let assessmentOutcome: AssessmentOutcome | undefined
 
-        if (!budgetServiceEnabled) {
-          const assessmentOutcome = assessmentOutcomes.get(socketId)
-          if (assessmentOutcome?.overrideApplied && enableAssessmentOverride && appId) {
-            logger.info('grants.assessment.free_task_completed', {
-              appId,
-              customerId: promptMeta?.customerId,
-              taskType: assessmentOutcome?.result?.taskType,
-              appliedBudget: assessmentOutcome?.appliedBudget,
-              durationMs: assessmentOutcome?.durationMs,
-            })
+        if (budgetServiceEnabled) {
+          // Budget service mode: check unified state for outcome
+          const parallelState = parallelAssessmentStates.get(socketId)
+          if (parallelState) {
+            // Check eager cache first, then await if needed (skip if already timed out in beforeMessageComplete)
+            const { shouldAwait, reason } = shouldAwaitParallelAssessment(parallelState)
+            if (reason === AWAIT_ASSESSMENT_REASON.HAS_OUTCOME) {
+              assessmentOutcome = parallelState.outcome
+            } else if (shouldAwait) {
+              // Only await if not already timed out (prevents double-await from beforeMessageComplete)
+              try {
+                let timedOut = false
+                const assessmentResult = await withTimeout(
+                  parallelState.promise,
+                  PARALLEL_ASSESSMENT_TIMEOUT_MS,
+                  () => {
+                    timedOut = true
+                    parallelState.timedOut = true
+                  },
+                  (err) => {
+                    // Log at error for consistency with eager cache rejection handler -
+                    // same failure class (LLM network/quota/provider error) should have same severity
+                    logger.error('assessment.parallel_mode.late_rejection', {
+                      appId,
+                      socketId,
+                      error: err instanceof Error ? err.message : String(err),
+                      detail: 'Assessment promise rejected after timeout, rejection suppressed',
+                    })
+                  }
+                )
+
+                if (assessmentResult) {
+                  parallelState.outcome = assessmentResult
+                  assessmentOutcome = assessmentResult
+                  if (assessmentResult.result?.taskType) {
+                    lastAssessmentTaskTypeCache.set(socketId, assessmentResult.result.taskType)
+                  }
+                  logger.info('assessment.parallel_mode.resolved', {
+                    appId,
+                    socketId,
+                    taskType: assessmentResult.result?.taskType,
+                    confidence: assessmentResult.result?.confidence,
+                    durationMs: assessmentResult.durationMs,
+                  })
+                } else if (timedOut) {
+                  logger.warn('assessment.parallel_mode.timeout', {
+                    appId,
+                    socketId,
+                    timeoutMs: PARALLEL_ASSESSMENT_TIMEOUT_MS,
+                    detail: 'Assessment did not complete in time, cost attribution will proceed without intent',
+                    cacheStale: 'lastAssessmentTaskTypeCache not updated, next turn will use stale task type',
+                  })
+                } else {
+                  // Invariant violation: withTimeout only returns null via the timeout path,
+                  // which always sets timedOut=true before resolving. If we reach here,
+                  // there's a bug in withTimeout's internal state machine.
+                  logger.error('assessment.parallel_mode.unexpected_null', {
+                    appId,
+                    socketId,
+                    detail: 'Invariant violation: withTimeout returned null but timedOut callback was not invoked',
+                  })
+                }
+              } catch (err) {
+                logger.error('assessment.parallel_mode.error', {
+                  appId,
+                  socketId,
+                  error: err instanceof Error ? err.message : String(err),
+                  stack: err instanceof Error ? err.stack : undefined,
+                  billingFallback: 'onBudgetReport will proceed without intent classification',
+                })
+              }
+            }
           }
-          // Clean up assessmentOutcomes here only when budget service is disabled
-          // When enabled, onBudgetReport handles cleanup after reading the value
-          assessmentOutcomes.delete(socketId)
+          // Note: parallelAssessmentStates cleanup is deferred to onBudgetReport
+        } else {
+          // Blocking mode: outcome was stored directly in onMessageStart
+          assessmentOutcome = blockingAssessmentOutcomes.get(socketId)
         }
+
+        const socket = getSocket(socketId)
+        const enableAssessmentOverride = socket?.handshake?.auth?.agentContext?.enableAssessmentOverride ?? false
+
+        // Log free grants usage (grants mode only - budget service mode doesn't use budget override)
+        if (!budgetServiceEnabled && assessmentOutcome?.overrideApplied && enableAssessmentOverride && appId) {
+          logger.info('grants.assessment.free_task_completed', {
+            appId,
+            customerId: promptMeta?.customerId,
+            taskType: assessmentOutcome?.result?.taskType,
+            appliedBudget: assessmentOutcome?.appliedBudget,
+            durationMs: assessmentOutcome?.durationMs,
+          })
+        }
+
         // Clean up per-message socket state
+        // - Blocking mode: clean up blockingAssessmentOutcomes immediately
+        // - Parallel mode: defer parallelAssessmentStates cleanup to onBudgetReport
+        if (!budgetServiceEnabled) {
+          blockingAssessmentOutcomes.delete(socketId)
+        }
         pendingBudgetOverrides.delete(socketId)
         typecheckRetryCountBySocket.delete(socketId)
         runtimeErrorRetryCountBySocket.delete(socketId)
@@ -2125,11 +2394,27 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         if (!session) throw new Error('getSession failed without throwing')
 
         // Get assessment outcome for intent-based attribution
-        // Use originalSocketId because assessmentOutcomes is set in onMessageStart with the original socket ID,
-        // but this callback receives the effective socket ID after potential migration
-        // Note: Delete is deferred until after createReport succeeds to allow retry attempts
-        // to access the assessment outcome if createReport fails transiently
-        const assessmentOutcome = assessmentOutcomes.get(originalSocketId)
+        // In parallel mode, state.outcome is eagerly populated via .then() in onMessageStart
+        // when the classification promise resolves (before onBudgetReport fires).
+        // Use originalSocketId since that's the socketId used when storing the state.
+        // Note: Cleanup is deferred until after createReport succeeds to allow retry attempts
+        const parallelState = parallelAssessmentStates.get(originalSocketId)
+        const assessmentOutcome = parallelState?.outcome
+
+        // Log when assessment outcome is missing - helps diagnose attribution degradation
+        // Causes: (a) timed out in beforeMessageComplete/onMessageComplete, (b) promise rejected,
+        // (c) state never created (socket migration). Diagnostic fields help distinguish these.
+        if (!assessmentOutcome) {
+          logger.warn('budget.report.assessment_outcome_missing', {
+            budgetId,
+            sessionId,
+            originalSocketId,
+            socketId,
+            timedOut: parallelState?.timedOut ?? false,
+            stateExists: !!parallelState,
+            message: 'Attribution will proceed without intent data',
+          })
+        }
 
         // Process cost attribution using rule-based detection
         // Wrapped in try-catch so attribution errors don't prevent createReport from executing
@@ -2183,6 +2468,8 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
               sessionWasFree,
               message: 'Report already exists - telling client to refresh',
             })
+            // Clean up parallel state on 409 - the original request already processed it
+            parallelAssessmentStates.delete(originalSocketId)
             return { refreshRequired: true, sessionWasFree }
           }
 
@@ -2197,9 +2484,9 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           throw err
         }
 
-        // createReport succeeded - safe to clean up assessment outcome now
+        // createReport succeeded - safe to clean up parallel state now
         // This must happen after createReport to allow retry attempts to access the outcome
-        assessmentOutcomes.delete(originalSocketId)
+        parallelAssessmentStates.delete(originalSocketId)
 
         // Log report creation with attribution summary
         if (attributionResult) {
@@ -2258,12 +2545,20 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         initialPromptMetadata.delete(socketId);
 
         // Clean up assessment tracking
-        // Note: assessmentOutcomes is NOT deleted here because:
-        // - When budgetServiceEnabled=true, onBudgetReport handles cleanup using originalSocketId
-        // - When budgetServiceEnabled=false, onMessageComplete handles cleanup using socketId
+        // Note: parallelAssessmentStates is NOT deleted here because:
+        // - onBudgetReport handles cleanup using originalSocketId after createReport succeeds
         // Deleting here would race with onBudgetReport and cause attribution to fail silently.
         // Small memory leak risk for sockets that disconnect mid-message before budget report,
         // but this is acceptable vs incorrect billing.
+        // Only populated in grants mode; no-op in BMS mode. Prevents leak on mid-message disconnect.
+        blockingAssessmentOutcomes.delete(socketId)
+        const parallelState = parallelAssessmentStates.get(socketId)
+        if (parallelState && !parallelState.outcome) {
+          logger.info('assessment.parallel_mode.abandoned_on_disconnect', {
+            socketId,
+            detail: 'Parallel assessment not yet resolved at disconnect time',
+          })
+        }
         pendingBudgetOverrides.delete(socketId)
         lastUserMessageCache.delete(socketId)
         lastAssessmentTaskTypeCache.delete(socketId)
@@ -2400,11 +2695,23 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           initialPromptMetadata.delete(socketId);
         }
 
-        // Clean up retry tracking (assessment cleanup happens in onCompletion after
-        // finally-block budget report can use it for intent-based attribution)
+        // Clean up retry tracking
+        // Assessment state cleanup: In BMS mode, preserved for onBudgetReport.
+        // In grants/blocking mode, clean up since no budget report follows.
         pendingBudgetOverrides.delete(socketId)
         typecheckRetryCountBySocket.delete(socketId)
         runtimeErrorRetryCountBySocket.delete(socketId)
+        const budgetServiceEnabled = typedContext?.metadata?.budgetServiceEnabled === true
+        const { preserved } = cleanupAssessmentStateOnError(
+          budgetServiceEnabled,
+          parallelAssessmentStates,
+          blockingAssessmentOutcomes,
+          socketId
+        )
+        // BMS mode: parallelAssessmentStates preserved for onBudgetReport cleanup.
+        // If onBudgetReport never fires (error before budget session created), entry may leak.
+        // Leaked entries are pruned via TTL in onConnection when map exceeds threshold.
+        void preserved
 
         // Git hook: Squash merge to main on error (if we have appId)
         if (appId) {
