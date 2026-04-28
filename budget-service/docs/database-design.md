@@ -95,7 +95,7 @@ flowchart TB
 
 - **PK:** `id` (bigint, sequence).
 - **FKs:** `session_id` → `budget_sessions` **CASCADE**; `budget_item_id` → `budget_items` **ON DELETE SET NULL**.
-- **Purpose:** Append-only USD lines (`cost_usd`) and computed `credits_charged` while session is unreconciled. **CHECK:** `cost_usd ≥ 0`.
+- **Purpose:** Append-only USD lines (`cost_usd`) and computed `credits_charged` while session is unreconciled. **CHECK:** `cost_usd ≥ 0`; `char_length(call_request_id) BETWEEN 1 AND 256`.
 
 ### `budget_session_reports`
 
@@ -217,12 +217,12 @@ These are implemented in the service layer, not as DB constraints:
 - `budget_items(resets_at, id) WHERE resets_at IS NOT NULL AND reset_interval IS NOT NULL` — due-reset sweeps.
 - `budget_sessions(budget_id)` — sessions per budget.
 - `budget_session_items(session_id)` — lines per session.
-- `budget_session_reports(session_id)` — report by session.
+- `budget_session_reports(session_id)` — served by the UNIQUE constraint on `session_id`.
 - `budget_session_report_items(report_id)` — lines per report.
 - `budget_session_report_item_allocations(budget_item_id)` — per-report line splits.
 - `budget_item_credit_ledger(budget_item_id)` — ledger by item.
 - `budget_items_history(budget_item_id)` — prior-row snapshots before item UPDATE.
-- `webhooks(product_key)`, `webhooks(product_key, event_type)` — webhook lookup.
+- `webhooks(product_key, event_type)` — webhook lookup; the composite also serves `product_key`-only queries.
 
 ---
 
