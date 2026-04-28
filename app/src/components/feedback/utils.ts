@@ -50,6 +50,16 @@ export const getBaseUrl = () => {
 };
 
 /**
+ * Extract appId from the current URL path (/[market]/develop/[id]/...) as a fallback
+ * when the app context store hasn't populated currentAppId yet (e.g. partial page load).
+ */
+export const getAppIdFromUrl = (): string | null => {
+  const segments = window.location.pathname.split('/').filter(Boolean);
+  const developIndex = segments.indexOf('develop');
+  return developIndex !== -1 && segments[developIndex + 1] ? segments[developIndex + 1] : null;
+};
+
+/**
  * Get the current FullStory session URL
  * @param now - If true, returns URL pointing to current moment in session
  * @returns Promise that resolves to FullStory session URL or null if not available

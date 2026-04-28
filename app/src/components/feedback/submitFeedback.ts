@@ -2,7 +2,7 @@ import { logger } from '@/lib/request-context';
 import { formatSlackBlockMessage, type SlackBlockMessage } from '@/lib/slack-webhook';
 import { getEffectiveCreditsSpent } from '@/utils/credits';
 import { isLocalDev } from '@/utils/is-local-dev';
-import type { DiagnosticContext } from './types';
+import type { DiagnosticContext, FeedbackStorePayload } from './types';
 import { getBaseUrl, getFullStorySessionUrl } from './utils';
 
 interface SiteInfo {
@@ -97,6 +97,31 @@ export async function sendFeedbackToSlack(
       console.log('📧 [DEV MODE] Feedback Slack payload:', JSON.stringify(formattedPayload, null, 2));
     }
   }
+}
+
+export function storeToS3(payload: FeedbackStorePayload): void {
+  fetch('/api/feedback/s3-store', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+    keepalive: true,
+  })
+    .then(async response => {
+      if (!response.ok) {
+        const body = await response.text().catch(() => '');
+        logger.warn('feedback.store.s3.server_error', {
+          status: response.status,
+          statusText: response.statusText,
+          body,
+        });
+      }
+    })
+    .catch(err => {
+      logger.warn('feedback.store.s3.network_error', {
+        error: err instanceof Error ? err.message : String(err),
+        context: 'navigation_or_network',
+      });
+    });
 }
 
 export async function saveToCompanionHub(

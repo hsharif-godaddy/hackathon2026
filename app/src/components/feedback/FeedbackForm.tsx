@@ -18,8 +18,9 @@ import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { useSitesStore } from '@/stores/useSitesStore';
 import { getEffectiveCreditsSpent } from '@/utils/credits';
 import { isLocalDev } from '@/utils/is-local-dev';
+import { storeToS3 } from './submitFeedback';
 import type { FeedbackFormProps } from "./types";
-import { getBaseUrl, getFullStorySessionUrl } from "./utils";
+import { getAppIdFromUrl, getBaseUrl, getFullStorySessionUrl } from "./utils";
 
 export function FeedbackForm({
   config,
@@ -265,6 +266,7 @@ export function FeedbackForm({
     const rating = data['rate-overal-experience'];
     const parsed = rating ? parseInt(String(rating).trim(), 10) : NaN;
     const ratingNumber = isNaN(parsed) ? undefined : parsed;
+
     JourneyTracker.current()?.trackMilestone('feedback_submitted', {
       feedbackId: config.pk,
       rating: ratingNumber,
@@ -318,6 +320,14 @@ export function FeedbackForm({
           customerId,
         });
       }
+
+      // Fire after all awaited ops succeed — prevents duplicate S3 records on retry
+      storeToS3({
+        app_id: currentAppId ?? getAppIdFromUrl(),
+        feedback_text: data['improvemets-free-text'] ?? null,
+        consent_flag: data['customer-consent'] ?? null,
+        rating: ratingNumber ?? null,
+      });
 
       // Success! Close the modal
       if (onSubmitSuccess) {

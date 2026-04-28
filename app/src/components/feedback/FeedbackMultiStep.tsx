@@ -12,7 +12,7 @@ import { CategorySelectStep } from './steps/CategorySelectStep';
 import { GetSupportStep } from './steps/GetSupportStep';
 import { ReportIssueStep } from './steps/ReportIssueStep';
 import { ShareFeedbackStep } from './steps/ShareFeedbackStep';
-import { fetchDiagnosticContext, saveToCompanionHub, sendFeedbackToSlack } from './submitFeedback';
+import { fetchDiagnosticContext, saveToCompanionHub, sendFeedbackToSlack, storeToS3 } from './submitFeedback';
 import type {
   FeedbackCategory,
   FeedbackProps,
@@ -21,7 +21,7 @@ import type {
   ShareFeedbackFormData,
   SupportFormData,
 } from './types';
-import { BUG_REPORT_FEEDBACK_ID, SUPPORT_FEEDBACK_ID } from './utils';
+import { BUG_REPORT_FEEDBACK_ID, getAppIdFromUrl, SUPPORT_FEEDBACK_ID } from './utils';
 
 // Map rating number to companion hub API format (preserves backward compat)
 const RATING_TO_API_VALUE: Record<number, string> = {
@@ -169,6 +169,14 @@ export function FeedbackMultiStep(props: FeedbackProps) {
       }
 
       await sendFeedbackToSlack(blockMessage, currentAppId);
+
+      // Fire after all awaited ops succeed — prevents duplicate S3 records on retry
+      storeToS3({
+        app_id: currentAppId ?? getAppIdFromUrl(),
+        feedback_text: data.comment ?? null,
+        consent_flag: data.customerConsent,
+        rating: data.rating ?? null,
+      });
 
       logger.info('feedback.share.submit.success', { feedbackId, appId: currentAppId });
       return true;

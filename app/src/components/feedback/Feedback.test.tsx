@@ -106,6 +106,7 @@ vi.mock('./utils', () => ({
     pk: 'airo#app-builder',
     fields: [],
   })),
+  getAppIdFromUrl: vi.fn(() => null),
   getBaseUrl: vi.fn(() => 'https://example.com/'),
   getFullStorySessionUrl: vi.fn(() => Promise.resolve(null)),
   FEEDBACK_ID: 'airo#app-builder',
@@ -156,6 +157,7 @@ vi.mock('./submitFeedback', () => ({
   })),
   sendFeedbackToSlack: vi.fn(() => Promise.resolve()),
   saveToCompanionHub: vi.fn(() => Promise.resolve()),
+  storeToS3: vi.fn(),
 }));
 
 vi.mock('./slackBuilders', () => ({
@@ -167,7 +169,7 @@ vi.mock('./slackBuilders', () => ({
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { Feedback } from './Feedback';
 import { buildBugReportBlocks, buildFeedbackBlocks, buildSupportRequestBlocks } from './slackBuilders';
-import { fetchDiagnosticContext, saveToCompanionHub, sendFeedbackToSlack } from './submitFeedback';
+import { fetchDiagnosticContext, saveToCompanionHub, sendFeedbackToSlack, storeToS3 } from './submitFeedback';
 
 const defaultProps = {
   feedbackId: 'airo#app-builder',
@@ -450,6 +452,7 @@ describe('Feedback', function feedbackTests() {
         );
         expect(saveToCompanionHub).toHaveBeenCalled();
         expect(sendFeedbackToSlack).toHaveBeenCalled();
+        expect(storeToS3).not.toHaveBeenCalled();
       });
     });
   });
@@ -506,6 +509,7 @@ describe('Feedback', function feedbackTests() {
         );
         expect(saveToCompanionHub).toHaveBeenCalled();
         expect(sendFeedbackToSlack).toHaveBeenCalled();
+        expect(storeToS3).not.toHaveBeenCalled();
       });
     });
   });
@@ -556,6 +560,11 @@ describe('Feedback', function feedbackTests() {
         );
         expect(saveToCompanionHub).toHaveBeenCalled();
         expect(sendFeedbackToSlack).toHaveBeenCalled();
+        expect(storeToS3).toHaveBeenCalledWith(expect.objectContaining({
+          app_id: null,
+          rating: 5,
+          consent_flag: expect.any(Boolean),
+        }));
       });
     });
 
@@ -578,6 +587,10 @@ describe('Feedback', function feedbackTests() {
           expect.objectContaining({ isInternalUser: false }),
         );
         expect(sendFeedbackToSlack).toHaveBeenCalled();
+        expect(storeToS3).toHaveBeenCalledWith(expect.objectContaining({
+          rating: null,
+          consent_flag: expect.any(Boolean),
+        }));
       });
     });
   });
@@ -672,5 +685,25 @@ describe('Feedback', function feedbackTests() {
       });
     });
 
+    it('should call storeToS3 on legacy form submit', async function legacyStoreToS3() {
+      vi.mocked(useSwitchboard).mockReturnValue(false);
+      vi.mocked(sendFeedbackToSlack).mockResolvedValue(undefined);
+      mockAuth('basic');
+      renderWithProviders(<Feedback {...defaultProps} />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('dialog')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByText('builder_common_submit'));
+
+      await waitFor(() => {
+        expect(storeToS3).toHaveBeenCalledWith(expect.objectContaining({
+          app_id: null,
+          consent_flag: null,
+          rating: null,
+        }));
+      });
+    });
   });
 });

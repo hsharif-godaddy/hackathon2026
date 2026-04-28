@@ -64,6 +64,13 @@ export interface ShareFeedbackFormData {
   customerConsent: boolean;
 }
 
+export interface FeedbackStorePayload {
+  app_id: string | null;
+  feedback_text: string | null;
+  consent_flag: boolean | null;
+  rating: number | null;
+}
+
 export interface DiagnosticContext {
   currentAppId: string | null;
   previewUrl: string | undefined;
