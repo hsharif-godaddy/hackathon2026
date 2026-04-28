@@ -3959,7 +3959,7 @@ Please try again with corrected formatting.`
       // Capture execution steps for cost attribution (returned to caller for accumulation)
       executionSteps = finalResult.steps ?? []
       if (executionSteps.length > 0) {
-        this.logger.debug('steps.captured', {
+        this.logger.info('steps.captured', {
           socketId: socket.id,
           stepCount: executionSteps.length,
           conversationId: conversationAfterStream?.conversationId,
