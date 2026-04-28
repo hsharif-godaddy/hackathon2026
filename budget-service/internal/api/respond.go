@@ -18,3 +18,9 @@ func writeJSON(w http.ResponseWriter, status int, body any) {
 func writeError(w http.ResponseWriter, status int, code, message string) {
 	writeJSON(w, status, map[string]string{"error": message, "code": code})
 }
+
+// writeInternalError logs err and returns a generic JSON error body (no stack or wrapped text).
+func writeInternalError(w http.ResponseWriter, op string, err error) {
+	slog.Error(op, "error", err)
+	writeError(w, http.StatusInternalServerError, "INTERNAL", "internal error")
+}

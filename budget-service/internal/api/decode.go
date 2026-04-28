@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 )
@@ -40,7 +41,8 @@ func writeDecodeError(w http.ResponseWriter, err error) {
 		return
 	}
 	if strings.HasPrefix(err.Error(), "json: unknown field ") {
-		writeError(w, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+		slog.Warn("api.decode_json", "error", err)
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid JSON body")
 		return
 	}
 	writeError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid JSON body")

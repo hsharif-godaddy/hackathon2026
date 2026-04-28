@@ -26,4 +26,8 @@ var (
 	ErrDuplicateCallRequestID = errors.New("duplicate callRequestId")
 	// ErrReportAggregateNoFilter is returned when neither product key nor label is set for report cost aggregation.
 	ErrReportAggregateNoFilter = errors.New("report aggregate requires product key and/or label")
+	// ErrResetIntervalInvalidFormat is returned when resetInterval does not match the allowed pattern.
+	ErrResetIntervalInvalidFormat = errors.New("reset interval invalid format")
+	// ErrResetIntervalOutOfRange is returned when the numeric portion is invalid or overflows supported range.
+	ErrResetIntervalOutOfRange = errors.New("reset interval numeric out of range")
 )

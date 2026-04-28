@@ -73,17 +73,17 @@ paths:
   /health:
     get:
       tags: [health]
-      summary: Liveness / DB probe
+      summary: Liveness — aggregate status only (DB ping and token generator checked internally; not exposed)
       security: []
       responses:
         "200":
-          description: OK (JSON body when not HEAD)
+          description: OK (`status` is `ok`)
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthResponse"
         "503":
-          description: Database ping failed but process is up
+          description: Not ready (`status` is `degraded` or `unhealthy`)
           content:
             application/json:
               schema:
@@ -96,7 +96,7 @@ paths:
         "200":
           description: OK
         "503":
-          description: Degraded
+          description: Service degraded or unhealthy
 
   /api/v1/auth-check:
     get:
@@ -791,13 +791,16 @@ components:
 
     HealthResponse:
       type: object
+      required: [status]
       properties:
         status:
           type: string
+          enum: [ok, degraded, unhealthy]
+          description: |
+            **ok** — checks passed. **degraded** — database ping failed when `DATABASE_URL` is configured.
+            **unhealthy** — outbound SSO token generator is unhealthy when configured.
+            Token failure wins over DB degradation when both apply.
           example: ok
-        database:
-          type: object
-          additionalProperties: true
 
     Product:
       type: object

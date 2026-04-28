@@ -1,6 +1,7 @@
 package api
 
 import (
+	"log/slog"
 	"net/http"
 
 	"github.com/gdcorp-partners/airo-app-builder/budget-service/internal/store"
@@ -24,44 +25,33 @@ type Server struct {
 }
 
 func (s *Server) getHealth(w http.ResponseWriter, r *http.Request) {
-	out := map[string]any{"status": "ok"}
-	status := http.StatusOK
+	httpStatus := http.StatusOK
+	outStatus := "ok"
 
-	// Database health
 	if s.Store != nil {
 		if err := s.Store.Ping(r.Context()); err != nil {
-			out["status"] = "degraded"
-			out["database"] = map[string]any{"ok": false, "error": err.Error()}
-			status = http.StatusServiceUnavailable
-		} else {
-			out["database"] = map[string]any{"ok": true}
+			slog.Warn("health.database.ping", "error", err)
+			outStatus = "degraded"
+			httpStatus = http.StatusServiceUnavailable
 		}
-	} else {
-		out["database"] = map[string]any{"ok": false, "configured": false}
 	}
 
-	// Token generator health (required for webhooks when auth is enabled)
-	if s.TokenGenerator != nil {
-		if s.TokenGenerator.Healthy() {
-			out["tokenGenerator"] = map[string]any{"ok": true}
+	if s.TokenGenerator != nil && !s.TokenGenerator.Healthy() {
+		if err := s.TokenGenerator.LastError(); err != nil {
+			slog.Warn("health.token_generator", "error", err)
 		} else {
-			out["status"] = "unhealthy"
-			status = http.StatusServiceUnavailable
-			errDetail := map[string]any{"ok": false}
-			if err := s.TokenGenerator.LastError(); err != nil {
-				errDetail["error"] = err.Error()
-			}
-			out["tokenGenerator"] = errDetail
+			slog.Warn("health.token_generator", "reason", "unhealthy_no_last_error")
 		}
-	} else {
-		// TokenGenerator is nil only in local dev with auth disabled
-		out["tokenGenerator"] = map[string]any{"ok": true, "configured": false}
+		outStatus = "unhealthy"
+		httpStatus = http.StatusServiceUnavailable
 	}
+
+	out := map[string]any{"status": outStatus}
 
 	if r.Method == http.MethodHead {
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(status)
+		w.WriteHeader(httpStatus)
 		return
 	}
-	writeJSON(w, status, out)
+	writeJSON(w, httpStatus, out)
 }

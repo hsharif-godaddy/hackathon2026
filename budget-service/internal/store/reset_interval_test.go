@@ -1,6 +1,7 @@
 package store
 
 import (
+	"errors"
 	"testing"
 	"time"
 )
@@ -50,6 +51,19 @@ func TestNormalizeResetInterval(t *testing.T) {
 					t.Fatalf("expected error for %q", raw)
 				}
 			})
+		}
+	})
+
+	t.Run("sentinel errors", func(t *testing.T) {
+		badFmt := "nope"
+		_, err := NormalizeResetInterval(&badFmt)
+		if !errors.Is(err, ErrResetIntervalInvalidFormat) {
+			t.Fatalf("format: got %v", err)
+		}
+		huge := "999999999999999999999999d"
+		_, err = NormalizeResetInterval(&huge)
+		if !errors.Is(err, ErrResetIntervalOutOfRange) {
+			t.Fatalf("huge digits: want ErrResetIntervalOutOfRange, got %v", err)
 		}
 	})
 }

@@ -358,8 +358,7 @@ func writeWebhookStoreError(w http.ResponseWriter, op string, err error) {
 		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "productKey is not registered")
 		return
 	}
-	slog.Error(op, "error", err)
-	writeError(w, http.StatusInternalServerError, "INTERNAL", "internal error")
+	writeInternalError(w, op, err)
 }
 
 func (s *Server) getWebhook(w http.ResponseWriter, r *http.Request) {
@@ -376,8 +375,7 @@ func (s *Server) getWebhook(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "NOT_FOUND", "resource not found")
 			return
 		}
-		slog.Error("webhook.get", "error", err)
-		writeError(w, http.StatusInternalServerError, "INTERNAL", "internal error")
+		writeInternalError(w, "webhook.get", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, webhookToResponse(row))
@@ -396,8 +394,7 @@ func (s *Server) deleteWebhook(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "NOT_FOUND", "resource not found")
 			return
 		}
-		slog.Error("webhook.delete", "error", err)
-		writeError(w, http.StatusInternalServerError, "INTERNAL", "internal error")
+		writeInternalError(w, "webhook.delete", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

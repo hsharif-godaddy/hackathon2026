@@ -51,8 +51,12 @@ func TestPostProductRejectsUnknownField(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
 	}
-	if !strings.Contains(rec.Body.String(), `unknown field`) {
-		t.Fatalf("expected unknown field error, got %s", rec.Body.String())
+	var env map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+		t.Fatal(err)
+	}
+	if env["code"] != "BAD_REQUEST" || env["error"] != "invalid JSON body" {
+		t.Fatalf("expected generic invalid JSON body, got %s", rec.Body.String())
 	}
 }
 

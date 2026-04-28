@@ -39,7 +39,11 @@ func TestDecodeJSONBodyUnknownField(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status %d", rec.Code)
 	}
-	if !strings.Contains(rec.Body.String(), "unknown field") {
+	var env map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+		t.Fatal(err)
+	}
+	if env["code"] != "BAD_REQUEST" || env["error"] != "invalid JSON body" {
 		t.Fatalf("body %s", rec.Body.String())
 	}
 }
@@ -137,12 +141,15 @@ func TestWriteDecodeErrorMaxBytes(t *testing.T) {
 func TestWriteDecodeErrorUnknownFieldString(t *testing.T) {
 	t.Parallel()
 	rec := httptest.NewRecorder()
-	// Matches encoding/json unknown-field errors; writeDecodeError surfaces the message as-is.
 	writeDecodeError(rec, errors.New("json: unknown field \"nope\""))
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status %d", rec.Code)
 	}
-	if !strings.Contains(rec.Body.String(), "unknown field") {
+	var env map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+		t.Fatal(err)
+	}
+	if env["code"] != "BAD_REQUEST" || env["error"] != "invalid JSON body" {
 		t.Fatalf("body %s", rec.Body.String())
 	}
 }

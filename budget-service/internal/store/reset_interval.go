@@ -24,7 +24,7 @@ func NormalizeResetInterval(raw *string) (*string, error) {
 		return nil, nil
 	}
 	if !resetIntervalRegexp.MatchString(s) {
-		return nil, fmt.Errorf("resetInterval must match %s or null", resetIntervalPattern)
+		return nil, fmt.Errorf("%w", ErrResetIntervalInvalidFormat)
 	}
 	// Validate range parse to reject extremely large values that overflow strconv.
 	unitStart := strings.IndexAny(s, "dwmy")
@@ -32,7 +32,7 @@ func NormalizeResetInterval(raw *string) (*string, error) {
 		unitStart = len(s) - 2
 	}
 	if _, err := strconv.ParseInt(s[:unitStart], 10, 64); err != nil {
-		return nil, fmt.Errorf("resetInterval numeric value is out of range")
+		return nil, fmt.Errorf("%w", ErrResetIntervalOutOfRange)
 	}
 	return &s, nil
 }
@@ -43,7 +43,7 @@ func parseResetInterval(raw string) (int64, string, error) {
 		return 0, "", err
 	}
 	if norm == nil {
-		return 0, "", fmt.Errorf("resetInterval must match %s or null", resetIntervalPattern)
+		return 0, "", fmt.Errorf("%w", ErrResetIntervalInvalidFormat)
 	}
 	valuePart := (*norm)[:len(*norm)-1]
 	unit := (*norm)[len(*norm)-1:]
@@ -53,7 +53,7 @@ func parseResetInterval(raw string) (int64, string, error) {
 	}
 	value, err := strconv.ParseInt(valuePart, 10, 64)
 	if err != nil {
-		return 0, "", fmt.Errorf("resetInterval numeric value is out of range")
+		return 0, "", fmt.Errorf("%w", ErrResetIntervalOutOfRange)
 	}
 	return value, unit, nil
 }
@@ -65,7 +65,7 @@ func NextResetAt(start time.Time, interval string) (time.Time, error) {
 		return time.Time{}, err
 	}
 	if value > math.MaxInt {
-		return time.Time{}, fmt.Errorf("resetInterval numeric value is out of range")
+		return time.Time{}, fmt.Errorf("%w", ErrResetIntervalOutOfRange)
 	}
 	count := int(value)
 	switch unit {
@@ -73,7 +73,7 @@ func NextResetAt(start time.Time, interval string) (time.Time, error) {
 		return start.AddDate(0, 0, count), nil
 	case "w":
 		if value > math.MaxInt/7 {
-			return time.Time{}, fmt.Errorf("resetInterval numeric value is out of range")
+			return time.Time{}, fmt.Errorf("%w", ErrResetIntervalOutOfRange)
 		}
 		return start.AddDate(0, 0, count*7), nil
 	case "mo":
@@ -81,6 +81,6 @@ func NextResetAt(start time.Time, interval string) (time.Time, error) {
 	case "y":
 		return start.AddDate(count, 0, 0), nil
 	default:
-		return time.Time{}, fmt.Errorf("resetInterval must match %s or null", resetIntervalPattern)
+		return time.Time{}, fmt.Errorf("%w", ErrResetIntervalInvalidFormat)
 	}
 }

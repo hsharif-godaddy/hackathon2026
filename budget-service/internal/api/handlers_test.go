@@ -51,13 +51,8 @@ func TestGetHealthNoDatabaseNoTokenGenerator(t *testing.T) {
 	if body["status"] != "ok" {
 		t.Fatalf("status field %v", body["status"])
 	}
-	db, _ := body["database"].(map[string]any)
-	if db["ok"] != false || db["configured"] != false {
-		t.Fatalf("database %v", db)
-	}
-	tg, _ := body["tokenGenerator"].(map[string]any)
-	if tg["ok"] != true || tg["configured"] != false {
-		t.Fatalf("tokenGenerator %v", tg)
+	if len(body) != 1 {
+		t.Fatalf("expected only status in body, got %v", body)
 	}
 }
 
@@ -76,12 +71,11 @@ func TestGetHealthHealthyTokenGenerator(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatal(err)
 	}
-	tg, _ := body["tokenGenerator"].(map[string]any)
-	if tg["ok"] != true {
-		t.Fatalf("tokenGenerator %v", tg)
+	if body["status"] != "ok" {
+		t.Fatalf("status %v", body["status"])
 	}
-	if _, hasConfigured := tg["configured"]; hasConfigured {
-		t.Fatalf("expected no configured flag when generator present, got %v", tg)
+	if len(body) != 1 {
+		t.Fatalf("expected only status, got %v", body)
 	}
 }
 
@@ -104,12 +98,8 @@ func TestGetHealthUnhealthyTokenGeneratorWithLastError(t *testing.T) {
 	if body["status"] != "unhealthy" {
 		t.Fatalf("status %v", body["status"])
 	}
-	tg, _ := body["tokenGenerator"].(map[string]any)
-	if tg["ok"] != false {
-		t.Fatalf("tokenGenerator %v", tg)
-	}
-	if tg["error"] != errFail.Error() {
-		t.Fatalf("error %v", tg["error"])
+	if len(body) != 1 {
+		t.Fatalf("expected only status, got %v", body)
 	}
 }
 
@@ -128,12 +118,11 @@ func TestGetHealthUnhealthyTokenGeneratorNoLastError(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatal(err)
 	}
-	tg, _ := body["tokenGenerator"].(map[string]any)
-	if tg["ok"] != false {
-		t.Fatalf("tokenGenerator %v", tg)
+	if body["status"] != "unhealthy" {
+		t.Fatalf("status %v", body["status"])
 	}
-	if _, has := tg["error"]; has {
-		t.Fatalf("expected no error key, got %v", tg)
+	if len(body) != 1 {
+		t.Fatalf("expected only status, got %v", body)
 	}
 }
 
@@ -208,9 +197,8 @@ func TestGetHealthDatabasePingFailure(t *testing.T) {
 	if body["status"] != "degraded" {
 		t.Fatalf("status %v", body["status"])
 	}
-	dbOut, _ := body["database"].(map[string]any)
-	if dbOut["ok"] != false {
-		t.Fatalf("database %v", dbOut)
+	if len(body) != 1 {
+		t.Fatalf("expected only status, got %v", body)
 	}
 }
 
@@ -242,13 +230,8 @@ func TestGetHealthDatabasePingFailureAndUnhealthyTokenGenerator(t *testing.T) {
 	if body["status"] != "unhealthy" {
 		t.Fatalf("want token branch to win; got status %v", body["status"])
 	}
-	dbOut, _ := body["database"].(map[string]any)
-	if dbOut["ok"] != false {
-		t.Fatalf("database %v", dbOut)
-	}
-	tg, _ := body["tokenGenerator"].(map[string]any)
-	if tg["ok"] != false {
-		t.Fatalf("tokenGenerator %v", tg)
+	if len(body) != 1 {
+		t.Fatalf("expected only status, got %v", body)
 	}
 }
 
@@ -265,8 +248,10 @@ func TestGetHealthDatabasePingOK(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatal(err)
 	}
-	dbOut, _ := body["database"].(map[string]any)
-	if dbOut["ok"] != true {
-		t.Fatalf("database %v", dbOut)
+	if body["status"] != "ok" {
+		t.Fatalf("status %v", body["status"])
+	}
+	if len(body) != 1 {
+		t.Fatalf("expected only status, got %v", body)
 	}
 }

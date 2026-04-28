@@ -488,6 +488,28 @@ func TestPostBudgetRejectsInvalidResetInterval(t *testing.T) {
 	}
 }
 
+func TestPostBudgetRejectsResetIntervalNumericOutOfRange(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	body := `{"productKey":"x","items":[{"creditsTotal":"1.000000","costToCreditRatio":"1","resetInterval":"999999999999999999999999d"}]}`
+	req := httptest.NewRequest(http.MethodPost, "/budgets", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.postBudget(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	var env struct {
+		Error string `json:"error"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+		t.Fatal(err)
+	}
+	if env.Error != "resetInterval value is out of range" {
+		t.Fatalf("error %q", env.Error)
+	}
+}
+
 func TestPostBudgetAcceptsCompactResetInterval(t *testing.T) {
 	t.Parallel()
 	s := &Server{}
@@ -1309,8 +1331,8 @@ func TestPatchSessionPartialCreditsReportRejectsExcessBudgetCost(t *testing.T) {
 	if errBody.Code != "INSUFFICIENT_CREDITS" {
 		t.Fatalf("code %q want INSUFFICIENT_CREDITS", errBody.Code)
 	}
-	if !strings.Contains(errBody.Error, "overages") {
-		t.Fatalf("error should mention overages: %q", errBody.Error)
+	if errBody.Error != "insufficient credits" {
+		t.Fatalf("error %q want generic insufficient credits message", errBody.Error)
 	}
 
 	repOK := `{"reportItems":[{"budgetCost":"5","productCost":"5","label":"overages"}]}`
@@ -2308,8 +2330,12 @@ func TestPatchBudgetItemRejectsUnknownField(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
 	}
-	if !strings.Contains(rec.Body.String(), `unknown field`) {
-		t.Fatalf("expected unknown field error, got %s", rec.Body.String())
+	var env map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+		t.Fatal(err)
+	}
+	if env["code"] != "BAD_REQUEST" || env["error"] != "invalid JSON body" {
+		t.Fatalf("expected generic invalid JSON body, got %s", rec.Body.String())
 	}
 }
 
@@ -2328,8 +2354,12 @@ func TestPatchBudgetRejectsUnknownFieldInItem(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
 	}
-	if !strings.Contains(rec.Body.String(), `unknown field`) {
-		t.Fatalf("expected unknown field error, got %s", rec.Body.String())
+	var env map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+		t.Fatal(err)
+	}
+	if env["code"] != "BAD_REQUEST" || env["error"] != "invalid JSON body" {
+		t.Fatalf("expected generic invalid JSON body, got %s", rec.Body.String())
 	}
 }
 

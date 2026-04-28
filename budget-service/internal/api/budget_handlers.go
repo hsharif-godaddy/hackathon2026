@@ -152,8 +152,8 @@ func writeBudgetStoreError(w http.ResponseWriter, op string, err error) {
 		return
 	}
 	if errors.Is(err, store.ErrInsufficientCredits) {
-		writeError(w, http.StatusBadRequest, "INSUFFICIENT_CREDITS",
-			"budgetCost exceeds remaining allocatable credits; reduce budgetCost to what fits, put the remainder in productCost, and use label \"overages\" for that line")
+		slog.Warn("budget.insufficient_credits", "op", op, "error", err)
+		writeError(w, http.StatusBadRequest, "INSUFFICIENT_CREDITS", "insufficient credits")
 		return
 	}
 	if errors.Is(err, store.ErrDuplicateCallRequestID) {
@@ -165,11 +165,11 @@ func writeBudgetStoreError(w http.ResponseWriter, op string, err error) {
 		return
 	}
 	if errors.Is(err, credits.ErrInvalid) || errors.Is(err, credits.ErrOutOfRange) {
-		writeError(w, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+		slog.Warn(op, "error", err)
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid amount")
 		return
 	}
-	slog.Error(op, "error", err)
-	writeError(w, http.StatusInternalServerError, "INTERNAL", "internal error")
+	writeInternalError(w, op, err)
 }
 
 // parseCostToCreditRatio parses JSON costToCreditRatio: USD per credit, same as DB cost_credit_ratio.
@@ -274,7 +274,12 @@ type budgetItemBody struct {
 func (b budgetItemBody) toItemInput(validateCreate bool) (store.ItemInput, string) {
 	ri, err := store.NormalizeResetInterval(b.ResetInterval)
 	if err != nil {
-		return store.ItemInput{}, err.Error()
+		slog.Warn("budget.normalize_reset_interval", "error", err)
+		msg := "resetInterval format is invalid"
+		if errors.Is(err, store.ErrResetIntervalOutOfRange) {
+			msg = "resetInterval value is out of range"
+		}
+		return store.ItemInput{}, msg
 	}
 	if hasNonEmptyStringValue(b.ResetsAt) && ri == nil {
 		return store.ItemInput{}, "resetsAt requires resetInterval"
@@ -919,7 +924,7 @@ func (s *Server) postBudgetSession(w http.ResponseWriter, r *http.Request) {
 	}
 	out, err := budgetSessionToResponse(sessionID, d)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "INTERNAL", "session response")
+		writeInternalError(w, "budget.post_budget_session_response", err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, out)
@@ -1031,7 +1036,7 @@ func (s *Server) getBudgetSession(w http.ResponseWriter, r *http.Request) {
 
 	out, err := budgetSessionToResponse(sessionID, d)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "INTERNAL", "session response")
+		writeInternalError(w, "budget.get_budget_session_response", err)
 		return
 	}
 	// ?debug=1: expose consumption order and replay math (no weighted "effective" ratio).
@@ -1234,8 +1239,7 @@ func (s *Server) getReports(w http.ResponseWriter, r *http.Request) {
 		SortDesc:   sortDesc,
 	})
 	if err != nil {
-		slog.Error("reports.list", "error", err)
-		writeError(w, http.StatusInternalServerError, "INTERNAL", "internal error")
+		writeInternalError(w, "reports.list", err)
 		return
 	}
 	rep := make([]map[string]any, 0, len(rows))
@@ -1345,12 +1349,12 @@ func (s *Server) getReportsAggregate(w http.ResponseWriter, r *http.Request) {
 	}
 	bc, err := sessionCostJSONNumber(res.BudgetCostTotal)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "INTERNAL", "aggregate response")
+		writeInternalError(w, "reports.aggregate.budget_cost_total", err)
 		return
 	}
 	pc, err := sessionCostJSONNumber(res.ProductCostTotal)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "INTERNAL", "aggregate response")
+		writeInternalError(w, "reports.aggregate.product_cost_total", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -1382,7 +1386,7 @@ func (s *Server) getBudgetSessionReport(w http.ResponseWriter, r *http.Request) 
 
 	out, err := sessionReportToResponse(d)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "INTERNAL", "report response")
+		writeInternalError(w, "budget.get_session_report_response", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, out)

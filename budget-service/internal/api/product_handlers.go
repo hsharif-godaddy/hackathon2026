@@ -2,7 +2,6 @@ package api
 
 import (
 	"errors"
-	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -38,8 +37,7 @@ func writeProductStoreError(w http.ResponseWriter, op string, err error) {
 		writeError(w, http.StatusConflict, "CONFLICT", "active budgets reference this product")
 		return
 	}
-	slog.Error(op, "error", err)
-	writeError(w, http.StatusInternalServerError, "INTERNAL", "internal error")
+	writeInternalError(w, op, err)
 }
 
 func (s *Server) getProducts(w http.ResponseWriter, r *http.Request) {
