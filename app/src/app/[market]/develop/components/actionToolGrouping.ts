@@ -30,6 +30,7 @@ const ACTION_GROUP_TOOL_NAMES = new Set([
   'terminalCommand',
   'textEditor',
   'todoList',
+  'validateCode',
   'viewLogs',
   'websiteScraper',
   'skill',

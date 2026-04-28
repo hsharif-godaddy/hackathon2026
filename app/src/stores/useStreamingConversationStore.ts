@@ -9,6 +9,7 @@ import { create } from 'zustand'
 
 import type { AiEditContext } from '@/app/[market]/develop/components/types'
 import { logger } from '@/lib/request-context'
+import { createValidationToolCall, parseValidationStatus, type ValidationStatus } from '@/stores/validationToolCall'
 import type { AgentConversationMessagePayload, AgentSegmentPayload, AgentToolCallPayload } from '@/types/agent-conversation'
 import type { StructuredError } from '@/types/errors'
 
@@ -101,6 +102,10 @@ export interface StreamingMessage {
     }
     agentId?: string
     step?: number
+    source?: string
+    displayAs?: string
+    validationStatus?: ValidationStatus
+    [key: string]: unknown
   }
 }
 
@@ -135,6 +140,10 @@ export interface ChatMessage {
     }
     agentId?: string
     totalSteps?: number
+    source?: string
+    displayAs?: string
+    validationStatus?: ValidationStatus
+    [key: string]: unknown
   }
 }
 
@@ -358,6 +367,98 @@ const normalizeToolCalls = (toolCalls: AgentToolCallPayload[] | undefined): Tool
     .filter((toolCall): toolCall is ToolCall => Boolean(toolCall))
 }
 
+function isValidationPayload(msg: AgentConversationMessagePayload): boolean {
+  return msg.metadata?.source === 'post_stream_validator' && msg.metadata?.displayAs === 'validation'
+}
+
+function extractToolCallsFromSegments(segments: StreamSegment[]): ToolCall[] {
+  return segments
+    .map((segment) => segment.toolCall)
+    .filter((toolCall): toolCall is ToolCall => Boolean(toolCall))
+}
+
+function appendValidationToAssistant(message: ChatMessage, msg: AgentConversationMessagePayload, timestamp: Date): ChatMessage {
+  const toolCall = createValidationToolCall({
+    id: msg.id ?? `validation_${generateId()}`,
+    status: parseValidationStatus(msg.metadata?.validationStatus),
+    diagnostics: msg.content ?? ''
+  })
+  const textSegments: StreamSegment[] = message.segments?.length
+    ? message.segments
+    : message.content
+      ? [{
+        id: `${message.id}_content`,
+        type: 'text',
+        content: message.content,
+        timestamp: message.timestamp
+      }]
+      : []
+  const existingToolCalls = message.toolCalls?.length
+    ? message.toolCalls
+    : extractToolCallsFromSegments(textSegments)
+
+  return {
+    ...message,
+    segments: [
+      ...textSegments,
+      {
+        id: `${toolCall.id}_segment`,
+        type: 'tool_call',
+        content: msg.content ?? '',
+        timestamp,
+        toolCall
+      }
+    ],
+    toolCalls: [...existingToolCalls, toolCall]
+  }
+}
+
+function getRenderableSegments(message: ChatMessage): StreamSegment[] {
+  if (message.segments?.length) return message.segments
+  if (!message.content) return []
+
+  return [{
+    id: `${message.id}_content`,
+    type: 'text',
+    content: message.content,
+    timestamp: message.timestamp
+  }]
+}
+
+function mergeAssistantMessages(previous: ChatMessage, next: ChatMessage): ChatMessage {
+  const previousSegments = getRenderableSegments(previous)
+  const nextSegments = getRenderableSegments(next)
+  const previousToolCalls = previous.toolCalls?.length
+    ? previous.toolCalls
+    : extractToolCallsFromSegments(previousSegments)
+  const nextToolCalls = next.toolCalls?.length
+    ? next.toolCalls
+    : extractToolCallsFromSegments(nextSegments)
+
+  return {
+    ...previous,
+    content: [previous.content, next.content].filter(Boolean).join('\n\n'),
+    segments: [...previousSegments, ...nextSegments],
+    toolCalls: [...previousToolCalls, ...nextToolCalls],
+    maxStepsReached: previous.maxStepsReached || next.maxStepsReached,
+    outputTokenLimitReached: previous.outputTokenLimitReached || next.outputTokenLimitReached,
+    connectionLost: previous.connectionLost || next.connectionLost,
+    userStopped: previous.userStopped || next.userStopped,
+    upstreamError: previous.upstreamError || next.upstreamError,
+    budgetExceeded: previous.budgetExceeded || next.budgetExceeded,
+    usedFreeGrants: previous.usedFreeGrants || next.usedFreeGrants,
+    error: previous.error ?? next.error,
+    errorType: previous.errorType ?? next.errorType,
+    errorCode: previous.errorCode ?? next.errorCode,
+    retryAttempts: previous.retryAttempts ?? next.retryAttempts,
+    retryReason: previous.retryReason ?? next.retryReason,
+    metadata: {
+      ...previous.metadata,
+      ...next.metadata
+    }
+  }
+}
+
 /**
  * Normalize backend conversation payloads into the shape the chat UI expects.
  */
@@ -366,15 +467,26 @@ export const normalizeConversationMessages = (
 ): ChatMessage[] => {
   if (!Array.isArray(rawMessages)) return []
 
-  return rawMessages.map((msg) => {
+  let mergeNextAssistantIntoPrevious = false
+
+  return rawMessages.reduce<ChatMessage[]>((messages, msg) => {
     const role = msg.sender === 'user' || msg.role === 'user' ? 'user' : 'assistant'
     const createdAtValue = msg.createdAt ?? msg.timestamp ?? Date.now()
     const createdAtDate = parseDateValue(createdAtValue)
 
+    if (isValidationPayload(msg)) {
+      const lastMessage = messages[messages.length - 1]
+      if (lastMessage?.role === 'assistant') {
+        messages[messages.length - 1] = appendValidationToAssistant(lastMessage, msg, createdAtDate)
+        mergeNextAssistantIntoPrevious = true
+        return messages
+      }
+    }
+
     const normalizedSegments = normalizeSegments(msg.segments, createdAtDate)
     const normalizedToolCalls = normalizeToolCalls(msg.toolCalls ?? msg.tool_calls)
 
-    return {
+    const normalizedMessage: ChatMessage = {
       id: msg.id ?? generateId(),
       role,
       content: msg.content ?? '',
@@ -401,7 +513,20 @@ export const normalizeConversationMessages = (
       retryReason: msg.retryReason,
       origin: msg.origin
     }
-  })
+
+    if (mergeNextAssistantIntoPrevious && normalizedMessage.role === 'assistant') {
+      const lastMessage = messages[messages.length - 1]
+      if (lastMessage?.role === 'assistant') {
+        messages[messages.length - 1] = mergeAssistantMessages(lastMessage, normalizedMessage)
+        mergeNextAssistantIntoPrevious = false
+        return messages
+      }
+    }
+
+    mergeNextAssistantIntoPrevious = false
+    messages.push(normalizedMessage)
+    return messages
+  }, [])
 }
 
 // Create the store

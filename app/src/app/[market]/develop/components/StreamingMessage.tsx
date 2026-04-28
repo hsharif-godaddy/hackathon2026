@@ -2,6 +2,7 @@
 
 import clsx from 'clsx'
 import { Check, ClipboardCopy, Expand, Headset } from 'lucide-react'
+import type { ComponentType } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import Button from '@ux/button'
 import Modal from '@ux/modal'
@@ -13,7 +14,10 @@ import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
 import type { ChatMessage, StreamingMessage as StreamingMessageType } from '@/stores/useStreamingConversationStore'
 import { useStreamingState } from '@/stores/useStreamingConversationStore'
+import { parseValidationStatus, toToolStatus } from '@/stores/validationToolCall'
 import StreamingIntegratedResponse from './StreamingIntegratedResponse'
+import { getToolRenderer } from './tool-renderers'
+import type { DefaultToolRendererProps } from './tool-renderers/DefaultToolRenderer'
 
 interface StreamingMessageProps {
   message: ChatMessage | StreamingMessageType
@@ -44,9 +48,17 @@ function shouldRenderMessage(message: ChatMessage | StreamingMessageType): boole
   return hasContent
 }
 
+function isValidationMessage(message: ChatMessage | StreamingMessageType): boolean {
+  return message.metadata?.source === 'post_stream_validator' && message.metadata?.displayAs === 'validation'
+}
+
 // Helper function to get message styling classes (matching Message.tsx)
 function getMessageClasses(message: ChatMessage | StreamingMessageType, isSupport: boolean): string {
   const baseClasses = 'rounded-lg'
+
+  if (isValidationMessage(message)) {
+    return clsx(baseClasses, 'max-w-full p-0')
+  }
 
   switch (message.role) {
     case 'user':
@@ -190,6 +202,27 @@ interface RenderMessageContentOptions {
 }
 
 function renderMessageContent({ message, isActiveStream, isLastAssistantMessage, startTime, streamingState, showThinking }: RenderMessageContentOptions) {
+  if (isValidationMessage(message)) {
+    const validationStatus = parseValidationStatus(message.metadata?.validationStatus)
+    const ValidateCodeToolRenderer = getToolRenderer('validateCode') as ComponentType<DefaultToolRendererProps>
+
+    return (
+      <ValidateCodeToolRenderer
+        toolName="validateCode"
+        toolStatus={toToolStatus(validationStatus)}
+        {...(validationStatus === 'error'
+          ? { error: message.content }
+          : {
+            result: {
+              status: validationStatus,
+              diagnostics: message.content
+            }
+          })}
+        size="regular"
+      />
+    )
+  }
+
   if (message.role === 'assistant') {
     return <StreamingIntegratedResponse message={message} isActiveStream={isActiveStream} isLastAssistantMessage={isLastAssistantMessage} startTime={startTime} streamingState={streamingState} showThinking={showThinking} />
   }
@@ -209,6 +242,7 @@ export default function StreamingMessage({ message, isActiveStream = false, isLa
   const streamingState = useStreamingState()
   const showSupportIndicator = useSwitchboard('airo-builder-support-chat-ui')
   const isSupport = showSupportIndicator === true && message.origin === 'support'
+  const isValidation = isValidationMessage(message)
 
   // Don't render messages that shouldn't be displayed
   if (!shouldRenderMessage(message)) {
@@ -217,17 +251,17 @@ export default function StreamingMessage({ message, isActiveStream = false, isLa
 
   return (
     <div className={clsx('flex w-full', {
-      'justify-end': message.role === 'user',
-      'justify-start': message.role !== 'user'
+      'justify-end': message.role === 'user' && !isValidation,
+      'justify-start': message.role !== 'user' || isValidation
     })}>
       <div className={clsx({
-        'order-2 flex flex-col items-end': message.role === 'user',
-        'order-1 w-full': message.role !== 'user'
+        'order-2 flex flex-col items-end': message.role === 'user' && !isValidation,
+        'order-1 w-full': message.role !== 'user' || isValidation
       })}>
         <div className={getMessageClasses(message, isSupport)}>
           {renderMessageContent({ message, isActiveStream, isLastAssistantMessage, startTime, streamingState, showThinking })}
         </div>
-        {isSupport && message.role === 'user' && <SupportBadge />}
+        {isSupport && message.role === 'user' && !isValidation && <SupportBadge />}
       </div>
     </div>
   )

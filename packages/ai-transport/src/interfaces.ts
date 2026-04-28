@@ -229,7 +229,7 @@ export interface ConversationPersistence {
     conversationId: string, 
     message: string, 
     context: ConversationContext
-  ): Promise<void>
+  ): Promise<string | undefined>
 
   /**
    * Start an agent response turn (creates placeholder message)
@@ -329,6 +329,7 @@ export type StreamingEventType =
   | 'step_complete'
   | 'complete'
   | 'error'
+  | 'validation_message'
   | 'recovery_status'
   | 'conversation_info'
   | 'agents_available'

@@ -6,6 +6,7 @@ import { act } from '@testing-library/react';
 
 import {
   type ChatMessage,
+  normalizeConversationMessages,
   useStreamingConversationStore,
 } from './useStreamingConversationStore';
 
@@ -27,6 +28,293 @@ describe('useStreamingConversationStore', function packageTests() {
       store.cleanup();
     });
     vi.clearAllMocks();
+  });
+
+  describe('#normalizeConversationMessages', function normalizeConversationMessagesTests() {
+    it('should fold persisted validation messages into the previous assistant message', function foldValidation() {
+      const messages = normalizeConversationMessages([
+        {
+          id: 'assistant-1',
+          sender: 'assistant',
+          content: 'I edited the file.',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          segments: [{
+            id: 'segment-1',
+            type: 'tool_call',
+            content: '',
+            toolCall: {
+              id: 'tool-1',
+              name: 'fileEdit',
+              input: {},
+              status: 'completed'
+            }
+          }]
+        },
+        {
+          id: 'validation-1',
+          sender: 'user',
+          content: 'Fix this runtime error',
+          createdAt: '2026-01-01T00:00:01.000Z',
+          metadata: {
+            source: 'post_stream_validator',
+            displayAs: 'validation',
+            validationStatus: 'failed'
+          }
+        }
+      ])
+
+      expect(messages).toHaveLength(1)
+      expect(messages[0].segments).toHaveLength(2)
+      expect(messages[0].segments?.[1]?.toolCall).toMatchObject({
+        id: 'validation-1',
+        name: 'validateCode',
+        status: 'completed',
+        result: {
+          status: 'failed',
+          diagnostics: 'Fix this runtime error'
+        }
+      })
+      expect(messages[0].toolCalls?.map((toolCall) => toolCall.name)).toEqual(['fileEdit', 'validateCode'])
+    });
+
+    it('should merge the retry assistant turn after a validation message into the same display message', function mergeRetry() {
+      const messages = normalizeConversationMessages([
+        {
+          id: 'assistant-1',
+          sender: 'assistant',
+          content: 'First edit',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          segments: [{
+            id: 'segment-1',
+            type: 'tool_call',
+            content: '',
+            toolCall: {
+              id: 'tool-1',
+              name: 'fileEdit',
+              input: {},
+              status: 'completed'
+            }
+          }]
+        },
+        {
+          id: 'validation-1',
+          sender: 'user',
+          content: 'Fix this runtime error',
+          createdAt: '2026-01-01T00:00:01.000Z',
+          metadata: {
+            source: 'post_stream_validator',
+            displayAs: 'validation',
+            validationStatus: 'failed'
+          }
+        },
+        {
+          id: 'assistant-2',
+          sender: 'assistant',
+          content: 'Second edit',
+          createdAt: '2026-01-01T00:00:02.000Z',
+          segments: [{
+            id: 'segment-2',
+            type: 'tool_call',
+            content: '',
+            toolCall: {
+              id: 'tool-2',
+              name: 'fileEdit',
+              input: {},
+              status: 'completed'
+            }
+          }]
+        },
+        {
+          id: 'validation-2',
+          sender: 'user',
+          content: 'Validation passed',
+          createdAt: '2026-01-01T00:00:03.000Z',
+          metadata: {
+            source: 'post_stream_validator',
+            displayAs: 'validation',
+            validationStatus: 'completed'
+          }
+        }
+      ])
+
+      expect(messages).toHaveLength(1)
+      expect(messages[0].segments?.map((segment) => segment.toolCall?.name)).toEqual([
+        'fileEdit',
+        'validateCode',
+        'fileEdit',
+        'validateCode'
+      ])
+      expect(messages[0].toolCalls?.map((toolCall) => toolCall.name)).toEqual([
+        'fileEdit',
+        'validateCode',
+        'fileEdit',
+        'validateCode'
+      ])
+    });
+
+    it('should fold consecutive validation messages before merging the retry assistant turn', function mergeConsecutiveValidation() {
+      const messages = normalizeConversationMessages([
+        {
+          id: 'assistant-1',
+          sender: 'assistant',
+          content: 'First edit',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          segments: [{
+            id: 'segment-1',
+            type: 'tool_call',
+            content: '',
+            toolCall: {
+              id: 'tool-1',
+              name: 'fileEdit',
+              input: {},
+              status: 'completed'
+            }
+          }]
+        },
+        {
+          id: 'validation-1',
+          sender: 'user',
+          content: 'Fix this TypeScript error',
+          createdAt: '2026-01-01T00:00:01.000Z',
+          metadata: {
+            source: 'post_stream_validator',
+            displayAs: 'validation',
+            validationStatus: 'failed'
+          }
+        },
+        {
+          id: 'validation-2',
+          sender: 'user',
+          content: 'Fix this runtime error',
+          createdAt: '2026-01-01T00:00:02.000Z',
+          metadata: {
+            source: 'post_stream_validator',
+            displayAs: 'validation',
+            validationStatus: 'failed'
+          }
+        },
+        {
+          id: 'assistant-2',
+          sender: 'assistant',
+          content: 'Second edit',
+          createdAt: '2026-01-01T00:00:03.000Z',
+          segments: [{
+            id: 'segment-2',
+            type: 'tool_call',
+            content: '',
+            toolCall: {
+              id: 'tool-2',
+              name: 'fileEdit',
+              input: {},
+              status: 'completed'
+            }
+          }]
+        }
+      ])
+
+      expect(messages).toHaveLength(1)
+      expect(messages[0].segments?.map((segment) => segment.toolCall?.id)).toEqual([
+        'tool-1',
+        'validation-1',
+        'validation-2',
+        'tool-2'
+      ])
+      expect(messages[0].toolCalls?.map((toolCall) => toolCall.id)).toEqual([
+        'tool-1',
+        'validation-1',
+        'validation-2',
+        'tool-2'
+      ])
+    });
+
+    it('should keep orphan validation messages renderable as validation user messages', function orphanValidation() {
+      const messages = normalizeConversationMessages([
+        {
+          id: 'validation-1',
+          sender: 'user',
+          content: 'Fix this runtime error',
+          createdAt: '2026-01-01T00:00:01.000Z',
+          metadata: {
+            source: 'post_stream_validator',
+            displayAs: 'validation',
+            validationStatus: 'failed'
+          }
+        }
+      ])
+
+      expect(messages).toHaveLength(1)
+      expect(messages[0]).toMatchObject({
+        id: 'validation-1',
+        role: 'user',
+        content: 'Fix this runtime error',
+        metadata: {
+          source: 'post_stream_validator',
+          displayAs: 'validation',
+          validationStatus: 'failed'
+        }
+      })
+    });
+
+    it('should not merge retry assistant turns across an intervening user message', function preserveUserBoundary() {
+      const messages = normalizeConversationMessages([
+        {
+          id: 'assistant-1',
+          sender: 'assistant',
+          content: 'First edit',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          segments: [{
+            id: 'segment-1',
+            type: 'tool_call',
+            content: '',
+            toolCall: {
+              id: 'tool-1',
+              name: 'fileEdit',
+              input: {},
+              status: 'completed'
+            }
+          }]
+        },
+        {
+          id: 'validation-1',
+          sender: 'user',
+          content: 'Fix this runtime error',
+          createdAt: '2026-01-01T00:00:01.000Z',
+          metadata: {
+            source: 'post_stream_validator',
+            displayAs: 'validation',
+            validationStatus: 'failed'
+          }
+        },
+        {
+          id: 'user-1',
+          sender: 'user',
+          content: 'Actually change direction',
+          createdAt: '2026-01-01T00:00:02.000Z'
+        },
+        {
+          id: 'assistant-2',
+          sender: 'assistant',
+          content: 'Separate edit',
+          createdAt: '2026-01-01T00:00:03.000Z',
+          segments: [{
+            id: 'segment-2',
+            type: 'tool_call',
+            content: '',
+            toolCall: {
+              id: 'tool-2',
+              name: 'fileEdit',
+              input: {},
+              status: 'completed'
+            }
+          }]
+        }
+      ])
+
+      expect(messages).toHaveLength(3)
+      expect(messages[0].toolCalls?.map((toolCall) => toolCall.name)).toEqual(['fileEdit', 'validateCode'])
+      expect(messages[1]).toMatchObject({ id: 'user-1', role: 'user' })
+      expect(messages[2]).toMatchObject({ id: 'assistant-2', role: 'assistant' })
+    });
   });
 
   describe('app switching', function appSwitching() {

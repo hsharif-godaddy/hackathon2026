@@ -38,6 +38,7 @@ import {
   ToolInputDeltaHandler,
   ToolResultHandler,
   ToolStartHandler,
+  ValidationMessageHandler,
   VideoHandler,
 } from '@/hooks/websocket/handlers'
 import {
@@ -420,6 +421,7 @@ export class TransportSupervisor extends EventEmitter {
     registry.register(new CompleteHandler())
     registry.register(new ErrorHandler())
     registry.register(new ClientActionHandler())
+    registry.register(new ValidationMessageHandler())
     registry.register(new VideoHandler())
 
     const messageContext: MessageContext = {

@@ -80,6 +80,7 @@ export function getToolIcon(toolName: string | undefined): React.ReactNode {
 
     case 'appPlan':
     case 'app_plan':
+    case 'validateCode':
       return <FileCode className={ICON_CLASS} aria-hidden="true" />
 
     case 'viewLogs':

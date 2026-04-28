@@ -39,6 +39,7 @@ import SuggestedResponseToolRenderer from './SuggestedResponseToolRenderer'
 import TerminalCommandToolRenderer from './TerminalCommandToolRenderer'
 import TextEditorToolRenderer from './TextEditorToolRenderer'
 import TodoListToolRenderer from './TodoListToolRenderer'
+import ValidateCodeToolRenderer from './ValidateCodeToolRenderer'
 import VideoGeneratorToolRenderer from './VideoGeneratorToolRenderer'
 import WebsiteRebuildToolRenderer from './WebsiteRebuildToolRenderer'
 
@@ -83,6 +84,7 @@ export const toolRendererRegistry = {
   media: MediaSlotToolRenderer,
   mediaSearch: MediaSearchToolRenderer,
   todoList: TodoListToolRenderer,
+  validateCode: ValidateCodeToolRenderer,
   suggestedResponse: SuggestedResponseToolRenderer,
   oauthConnect: OAuthToolRenderer,
   qrCode: QRCodeToolRenderer,

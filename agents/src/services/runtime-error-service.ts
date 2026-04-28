@@ -1,11 +1,4 @@
 import { runtimeErrorBuffer, runtimeErrorSignature, type RuntimeErrorEntry } from './runtime-error-buffer.js';
-import {
-  UNTRUSTED_PREAMBLE,
-  fenceUntrusted,
-  sanitizeInlineField,
-  sanitizeMultilineField
-} from './prompt-sanitize.js';
-
 // Re-export so existing call sites (`import { RuntimeErrorEntry } from
 // './runtime-error-service.js'`) keep working without a codemod.
 export { runtimeErrorSignature };
@@ -253,56 +246,3 @@ async function sleepOrAbort(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
-/**
- * Format a list of runtime errors into a synthetic prompt suitable for
- * the agent continuation. Mirrors `formatTscErrorsForPrompt` so both
- * phases surface similarly shaped follow-ups.
- *
- * Prompt-injection defense: every field that originates in the preview
- * browser (name, message, url, stack, componentStack) is attacker-
- * controllable — a crafted error message like
- * `"oops\n\n### NEW INSTRUCTIONS\n\nIgnore previous instructions"` would
- * otherwise be interpolated verbatim into the follow-up prompt. Each
- * field goes through the sanitizers in `./prompt-sanitize.ts` before
- * it's rendered, and the whole rendered block is wrapped in an
- * `<untrusted-error-data>` fence with an explicit instruction preamble
- * telling the model to treat the content as data, not directives. See
- * that module's docstring for the full threat model and belt-and-
- * suspenders rationale.
- */
-export function formatRuntimeErrorsForPrompt(errors: RuntimeErrorEntry[]): string {
-  const header = `### Runtime errors after your last edit\n\nThe ${errors.length} runtime error${errors.length === 1 ? '' : 's'} below surfaced in the preview browser after your most recent tool calls (React error boundary or Vite compile). ${UNTRUSTED_PREAMBLE} Fix the root cause — just make the minimum changes needed to prevent the error. Do not explain.\n`;
-  const body = errors
-    .map((e, i) => {
-      const lines: string[] = [];
-      // `${i + 1}.` keeps the list numbered even though every field
-      // inside is sanitized; a leading number also doubles as a
-      // line-start that can't be confused for a markdown header.
-      lines.push(`${i + 1}. name: ${sanitizeInlineField(e.name)}`);
-      lines.push(`   message: ${sanitizeInlineField(e.message)}`);
-      if (e.url) lines.push(`   url: ${sanitizeInlineField(e.url)}`);
-      if (e.stack) {
-        const firstFrames = sanitizeMultilineField(e.stack)
-          .split('\n')
-          .map((l) => l.trim())
-          .filter((l) => l.length > 0)
-          .slice(0, 4)
-          .map((l) => `     ${l}`)
-          .join('\n');
-        if (firstFrames) lines.push(`   stack:\n${firstFrames}`);
-      }
-      if (e.componentStack) {
-        const firstFrames = sanitizeMultilineField(e.componentStack)
-          .split('\n')
-          .map((l) => l.trim())
-          .filter((l) => l.length > 0)
-          .slice(0, 4)
-          .map((l) => `     ${l}`)
-          .join('\n');
-        if (firstFrames) lines.push(`   componentStack:\n${firstFrames}`);
-      }
-      return lines.join('\n');
-    })
-    .join('\n');
-  return `${header}\n${fenceUntrusted(body)}\n`;
-}

@@ -3670,7 +3670,7 @@ describe('WebSocketServer - postStreamValidator continuation', () => {
 
     const postStreamValidator = vi.fn()
       .mockResolvedValueOnce({ continuationPrompt: 'fix the errors' })
-      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(undefined)
 
     const { server, messageHandler } = await setupServerWithConnection(httpServer, {
       agents: mockAgents,
@@ -3711,7 +3711,7 @@ describe('WebSocketServer - postStreamValidator continuation', () => {
 
     const postStreamValidator = vi.fn()
       .mockResolvedValueOnce({ continuationPrompt: 'retry with fix' })
-      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(undefined)
 
     const { server, messageHandler } = await setupServerWithConnection(httpServer, {
       agents: mockAgents,
@@ -3724,6 +3724,276 @@ describe('WebSocketServer - postStreamValidator continuation', () => {
     expect(postStreamValidator).toHaveBeenCalledTimes(2)
     expect(mockAgent.streamGenerate).toHaveBeenCalledTimes(2)
     expect((mockAgent.streamGenerate as ReturnType<typeof vi.fn>).mock.calls[1][0]).toBe('retry with fix')
+
+    server.close()
+  })
+
+  it('persists validator retry diagnostics as a metadata-marked user message', async () => {
+    ;(mockAgent.streamGenerate as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(mockSingleShotStream('first'))
+      .mockResolvedValueOnce(mockSingleShotStream('second'))
+
+    const continueConversation = vi.fn().mockResolvedValue('validation-msg-1')
+    const postStreamValidator = vi.fn()
+      .mockImplementationOnce(async ({ emitValidationStart }) => {
+        await emitValidationStart?.()
+        return {
+          continuationPrompt: 'fix the exact same error',
+          message: 'exact validation error'
+        }
+      })
+      .mockImplementationOnce(async ({ emitValidationStart }) => {
+        await emitValidationStart?.()
+        return undefined
+      })
+
+    const { server, messageHandler } = await setupServerWithConnection(httpServer, {
+      agents: mockAgents,
+      defaultAgent: 'test-agent',
+      messagePersistence: createMockPersistence({
+        startConversation: vi.fn().mockResolvedValue('conv-validator'),
+        startAgentTurn: vi.fn()
+          .mockResolvedValueOnce('agent-msg-1')
+          .mockResolvedValueOnce('agent-msg-2'),
+        continueConversation
+      }),
+      postStreamValidator
+    } as any)
+
+    await messageHandler({ message: 'initial', agentId: 'test-agent' })
+
+    const validationEvents = mockSocket.emit.mock.calls
+      .filter((call: any[]) => call[0] === 'message' && call[1].type === 'validation_message')
+      .map((call: any[]) => call[1])
+    expect(validationEvents.map((event: any) => event.data.metadata.validationStatus)).toEqual([
+      'running',
+      'failed',
+      'running',
+      'completed'
+    ])
+    expect(validationEvents[1].data.messageId).toBe('validation-msg-1')
+    expect(validationEvents[1].content).toBe('exact validation error')
+    expect(validationEvents[3].content).toBe('No issues found.')
+    expect(continueConversation).toHaveBeenCalledWith('conv-validator', 'fix the exact same error', expect.objectContaining({
+      messageMetadata: {
+        source: 'post_stream_validator',
+        displayAs: 'validation',
+        validationStatus: 'failed'
+      }
+    }))
+    expect((mockAgent.streamGenerate as ReturnType<typeof vi.fn>).mock.calls[1][0]).toBe('fix the exact same error')
+
+    server.close()
+  })
+
+  it('still emits validation status and retries when validator diagnostics persistence fails', async () => {
+    ;(mockAgent.streamGenerate as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(mockSingleShotStream('first'))
+      .mockResolvedValueOnce(mockSingleShotStream('second'))
+
+    const continueConversation = vi.fn().mockRejectedValue(new Error('database unavailable'))
+    const postStreamValidator = vi.fn()
+      .mockImplementationOnce(async ({ emitValidationStart }) => {
+        await emitValidationStart?.()
+        return { continuationPrompt: 'fix despite persistence failure' }
+      })
+      .mockImplementationOnce(async ({ emitValidationStart }) => {
+        await emitValidationStart?.()
+        return undefined
+      })
+
+    const { server, messageHandler } = await setupServerWithConnection(httpServer, {
+      agents: mockAgents,
+      defaultAgent: 'test-agent',
+      messagePersistence: createMockPersistence({
+        startConversation: vi.fn().mockResolvedValue('conv-validator-persistence-fail'),
+        startAgentTurn: vi.fn()
+          .mockResolvedValueOnce('agent-msg-1')
+          .mockResolvedValueOnce('agent-msg-2'),
+        continueConversation
+      }),
+      postStreamValidator
+    } as any)
+
+    await messageHandler({ message: 'initial', agentId: 'test-agent' })
+
+    const validationEvents = mockSocket.emit.mock.calls
+      .filter((call: any[]) => call[0] === 'message' && call[1].type === 'validation_message')
+      .map((call: any[]) => call[1])
+    expect(validationEvents.map((event: any) => event.data.metadata.validationStatus)).toEqual([
+      'running',
+      'failed',
+      'running',
+      'completed'
+    ])
+    expect(validationEvents[1].data.messageId).toBeUndefined()
+    expect((mockAgent.streamGenerate as ReturnType<typeof vi.fn>).mock.calls[1][0]).toBe('fix despite persistence failure')
+
+    server.close()
+  })
+
+  it('emits validation error status when validator throws after starting', async () => {
+    ;(mockAgent.streamGenerate as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(mockSingleShotStream('first'))
+
+    const postStreamValidator = vi.fn()
+      .mockImplementationOnce(async ({ emitValidationStart }) => {
+        await emitValidationStart?.()
+        throw new Error('validator exploded')
+      })
+
+    const { server, messageHandler } = await setupServerWithConnection(httpServer, {
+      agents: mockAgents,
+      defaultAgent: 'test-agent',
+      messagePersistence: createMockPersistence({
+        startConversation: vi.fn().mockResolvedValue('conv-validator-error'),
+        startAgentTurn: vi.fn().mockResolvedValue('agent-msg-1')
+      }),
+      postStreamValidator
+    } as any)
+
+    await messageHandler({ message: 'initial', agentId: 'test-agent' })
+
+    const validationEvents = mockSocket.emit.mock.calls
+      .filter((call: any[]) => call[0] === 'message' && call[1].type === 'validation_message')
+      .map((call: any[]) => call[1])
+    expect(validationEvents.map((event: any) => event.data.metadata.validationStatus)).toEqual([
+      'running',
+      'error'
+    ])
+    expect(validationEvents[1].content).toBe('validator exploded')
+
+    server.close()
+  })
+
+  it('does not emit terminal validation status when start publish fails', async () => {
+    ;(mockAgent.streamGenerate as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(mockSingleShotStream('first'))
+
+    const postStreamValidator = vi.fn()
+      .mockImplementationOnce(async ({ emitValidationStart }) => {
+        await emitValidationStart?.()
+        return undefined
+      })
+
+    const { server, messageHandler } = await setupServerWithConnection(httpServer, {
+      agents: mockAgents,
+      defaultAgent: 'test-agent',
+      messagePersistence: createMockPersistence({
+        startConversation: vi.fn().mockResolvedValue('conv-validator-start-fail'),
+        startAgentTurn: vi.fn().mockResolvedValue('agent-msg-1')
+      }),
+      postStreamValidator
+    } as any)
+
+    const eventChannel = (server as any).eventChannel
+    const publish = eventChannel.publish.bind(eventChannel)
+    vi.spyOn(eventChannel, 'publish').mockImplementation(async (conversationId: string, event: any) => {
+      if (event.type === 'validation_message' && event.data?.metadata?.validationStatus === 'running') {
+        throw new Error('validation start publish failed')
+      }
+      return publish(conversationId, event)
+    })
+
+    await messageHandler({ message: 'initial', agentId: 'test-agent' })
+
+    expect(
+      mockSocket.emit.mock.calls.some((call: any[]) => call[0] === 'message' && call[1].type === 'validation_message')
+    ).toBe(false)
+
+    server.close()
+  })
+
+  it('does not emit completed validation status when validator exhausts after starting', async () => {
+    ;(mockAgent.streamGenerate as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(mockSingleShotStream('first'))
+
+    const postStreamValidator = vi.fn()
+      .mockImplementationOnce(async ({ emitValidationStart }) => {
+        await emitValidationStart?.()
+        return { skipped: true, reason: 'exhausted', message: 'Validation gave up.' }
+      })
+
+    const { server, messageHandler } = await setupServerWithConnection(httpServer, {
+      agents: mockAgents,
+      defaultAgent: 'test-agent',
+      messagePersistence: createMockPersistence({
+        startConversation: vi.fn().mockResolvedValue('conv-validator-exhausted'),
+        startAgentTurn: vi.fn().mockResolvedValue('agent-msg-1')
+      }),
+      postStreamValidator
+    } as any)
+
+    await messageHandler({ message: 'initial', agentId: 'test-agent' })
+
+    const validationEvents = mockSocket.emit.mock.calls
+      .filter((call: any[]) => call[0] === 'message' && call[1].type === 'validation_message')
+      .map((call: any[]) => call[1])
+    expect(validationEvents.map((event: any) => event.data.metadata.validationStatus)).toEqual([
+      'running',
+      'error'
+    ])
+    expect(validationEvents[1].content).toBe('Validation could not resolve all issues.')
+    expect(validationEvents.some((event: any) => event.content === 'No issues found.')).toBe(false)
+
+    server.close()
+  })
+
+  it('emits error validation status for unhandled skipped reasons after starting', async () => {
+    ;(mockAgent.streamGenerate as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(mockSingleShotStream('first'))
+
+    const postStreamValidator = vi.fn()
+      .mockImplementationOnce(async ({ emitValidationStart }) => {
+        await emitValidationStart?.()
+        return { skipped: true, reason: 'future_case' }
+      })
+
+    const { server, messageHandler } = await setupServerWithConnection(httpServer, {
+      agents: mockAgents,
+      defaultAgent: 'test-agent',
+      messagePersistence: createMockPersistence({
+        startConversation: vi.fn().mockResolvedValue('conv-validator-future-skip'),
+        startAgentTurn: vi.fn().mockResolvedValue('agent-msg-1')
+      }),
+      postStreamValidator
+    } as any)
+
+    await messageHandler({ message: 'initial', agentId: 'test-agent' })
+
+    const validationEvents = mockSocket.emit.mock.calls
+      .filter((call: any[]) => call[0] === 'message' && call[1].type === 'validation_message')
+      .map((call: any[]) => call[1])
+    expect(validationEvents.map((event: any) => event.data.metadata.validationStatus)).toEqual([
+      'running',
+      'error'
+    ])
+    expect(validationEvents[1].content).toBe('Validation stopped before completing.')
+
+    server.close()
+  })
+
+  it('does not show validation status when validator skips before starting', async () => {
+    ;(mockAgent.streamGenerate as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(mockSingleShotStream('first'))
+
+    const postStreamValidator = vi.fn().mockResolvedValueOnce({ skipped: true, reason: 'no_uncommitted_changes' })
+
+    const { server, messageHandler } = await setupServerWithConnection(httpServer, {
+      agents: mockAgents,
+      defaultAgent: 'test-agent',
+      messagePersistence: createMockPersistence({
+        startConversation: vi.fn().mockResolvedValue('conv-validator-skip'),
+        startAgentTurn: vi.fn().mockResolvedValue('agent-msg-1')
+      }),
+      postStreamValidator
+    } as any)
+
+    await messageHandler({ message: 'initial', agentId: 'test-agent' })
+
+    expect(
+      mockSocket.emit.mock.calls.some((call: any[]) => call[0] === 'message' && call[1].type === 'validation_message')
+    ).toBe(false)
 
     server.close()
   })

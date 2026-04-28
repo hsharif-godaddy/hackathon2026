@@ -250,7 +250,8 @@ export interface WebSocketConfig {
     toolCalls: Array<{ toolName: string; args?: unknown }>
     abortSignal: AbortSignal
     emitChunk: (text: string) => Promise<void>
-  }) => Promise<{ continuationPrompt: string } | null | undefined | void>
+    emitValidationStart?: () => Promise<void>
+  }) => Promise<{ continuationPrompt: string; message?: string } | { skipped: true; reason: string; message?: string } | undefined>
   onMessageComplete?: (socketId: string, result: {
     agentName: string
     duration: string
@@ -2533,6 +2534,8 @@ export class WebSocketServer {
               ...(tc.input !== undefined && { args: tc.input })
             }))
             : []
+          const validationId = `post_stream_validation_${iterationCount}_${Date.now()}`
+          let validationStarted = false
           try {
             const resolvedAgentName = agentName || this.config.defaultAgent || 'unknown'
             const validatorResult = await this.config.postStreamValidator({
@@ -2550,6 +2553,24 @@ export class WebSocketServer {
                   { agentId: resolvedAgentName },
                   resolvedAgentName
                 )
+              },
+              emitValidationStart: async () => {
+                const sequence = await this.publishToEventChannel(
+                  socketId,
+                  'validation_message',
+                  'Validating code...',
+                  {
+                    validationId,
+                    metadata: {
+                      source: 'post_stream_validator',
+                      displayAs: 'validation',
+                      validationStatus: 'running'
+                    },
+                    agentId: resolvedAgentName
+                  },
+                  resolvedAgentName
+                )
+                validationStarted = sequence !== undefined
               }
             })
 
@@ -2560,17 +2581,150 @@ export class WebSocketServer {
               !abortSignal.aborted
             ) {
               const continuationPrompt = (validatorResult as { continuationPrompt: string }).continuationPrompt
+              const validationMessage = typeof (validatorResult as { message?: unknown }).message === 'string'
+                ? (validatorResult as { message: string }).message
+                : continuationPrompt
+              const conversation = this.getConversation(socketId)
+              let validationMessageId: string | undefined = undefined
+              if (conversation && this.config.messagePersistence.continueConversation) {
+                try {
+                  validationMessageId = await this.config.messagePersistence.continueConversation(
+                    conversation.conversationId,
+                    continuationPrompt,
+                    {
+                      ...conversation.context,
+                      messageMetadata: {
+                        source: 'post_stream_validator',
+                        displayAs: 'validation',
+                        validationStatus: 'failed'
+                      }
+                    }
+                  )
+                } catch (persistenceError) {
+                  this.logger.error('post_stream_validator.persistence_failure', {
+                    socketId,
+                    conversationId: conversation.conversationId,
+                    agentName: resolvedAgentName,
+                    error: persistenceError instanceof Error ? persistenceError.message : String(persistenceError)
+                  })
+                }
+              }
+              if (validationStarted) {
+                await this.publishToEventChannel(
+                  socketId,
+                  'validation_message',
+                  validationMessage,
+                  {
+                    validationId,
+                    ...(validationMessageId !== undefined && { messageId: validationMessageId }),
+                    role: 'user',
+                    metadata: {
+                      source: 'post_stream_validator',
+                      displayAs: 'validation',
+                      validationStatus: 'failed'
+                    },
+                    agentId: resolvedAgentName
+                  },
+                  resolvedAgentName
+                )
+              }
               continuationMetadata.__autoContinue = true
               continuationMetadata.__continuationPrompt = continuationPrompt
               continuationContext.metadata = continuationMetadata
+            } else if (!abortSignal.aborted && validationStarted) {
+              const skippedResult = validatorResult &&
+                typeof validatorResult === 'object' &&
+                (validatorResult as { skipped?: unknown }).skipped === true
+                  ? validatorResult as { skipped: true; reason: string; message?: string }
+                  : undefined
+              if (skippedResult?.reason === 'exhausted') {
+                await this.publishToEventChannel(
+                  socketId,
+                  'validation_message',
+                  'Validation could not resolve all issues.',
+                  {
+                    validationId,
+                    metadata: {
+                      source: 'post_stream_validator',
+                      displayAs: 'validation',
+                      validationStatus: 'error'
+                    },
+                    agentId: resolvedAgentName
+                  },
+                  resolvedAgentName
+                )
+              } else if (!skippedResult) {
+                await this.publishToEventChannel(
+                  socketId,
+                  'validation_message',
+                  'No issues found.',
+                  {
+                    validationId,
+                    metadata: {
+                      source: 'post_stream_validator',
+                      displayAs: 'validation',
+                      validationStatus: 'completed'
+                    },
+                    agentId: resolvedAgentName
+                  },
+                  resolvedAgentName
+                )
+              } else {
+                this.logger.warn('post_stream_validator.unhandled_skipped_result', {
+                  socketId,
+                  agentName: resolvedAgentName,
+                  reason: skippedResult.reason
+                })
+                await this.publishToEventChannel(
+                  socketId,
+                  'validation_message',
+                  'Validation stopped before completing.',
+                  {
+                    validationId,
+                    metadata: {
+                      source: 'post_stream_validator',
+                      displayAs: 'validation',
+                      validationStatus: 'error'
+                    },
+                    agentId: resolvedAgentName
+                  },
+                  resolvedAgentName
+                )
+              }
             }
           } catch (validatorError) {
             // Validator is additive; failures must never block message completion.
-            this.logger.warn('post_stream_validator.failure', {
+            this.logger.error('post_stream_validator.failure', {
               socketId,
               agentName,
               error: validatorError instanceof Error ? validatorError.message : String(validatorError)
             })
+            if (!abortSignal.aborted && validationStarted) {
+              const resolvedAgentName = agentName || this.config.defaultAgent || 'unknown'
+              try {
+                await this.publishToEventChannel(
+                  socketId,
+                  'validation_message',
+                  validatorError instanceof Error ? validatorError.message : String(validatorError),
+                  {
+                    validationId,
+                    metadata: {
+                      source: 'post_stream_validator',
+                      displayAs: 'validation',
+                      validationStatus: 'error'
+                    },
+                    agentId: resolvedAgentName
+                  },
+                  resolvedAgentName
+                )
+              } catch (publishError) {
+                this.logger.warn('post_stream_validator.error_publish_failure', {
+                  socketId,
+                  agentName: resolvedAgentName,
+                  error: publishError instanceof Error ? publishError.message : String(publishError)
+                })
+              }
+            }
           }
         }
 

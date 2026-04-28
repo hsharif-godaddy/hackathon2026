@@ -16,10 +16,10 @@
  *   always going to happen. Running them concurrently gives the runtime
  *   poll a "free" tsc_duration head start.
  *
- * If both phases report errors, their prompts are concatenated into one
- * continuation so the agent fixes everything in a single retry. Each phase
- * independently increments its own retry counter — per-turn budgets are
- * preserved.
+ * If either phase reports errors, the validator sends the diagnostics as
+ * a continuation so the agent fixes everything in a single retry. Each
+ * phase independently increments its own retry counter — per-turn budgets
+ * are preserved.
  *
  * Wire-up: consumed by `ai-lib-websocket-server.ts` in the
  * `postStreamValidator` slot of ai-transport's options. Unit tests live in
@@ -30,12 +30,10 @@ import type { ILogger } from '../logging/types.js';
 import type { RestartResult } from '../services/DevSupervisorClient.js';
 import {
   TypecheckService,
-  formatTscErrorsForPrompt,
   type TypecheckResult
 } from '../services/typecheck-service.js';
 import {
   RuntimeErrorService,
-  formatRuntimeErrorsForPrompt,
   type RuntimeErrorResult
 } from '../services/runtime-error-service.js';
 
@@ -48,18 +46,73 @@ export interface PostStreamValidatorArgs {
   toolCalls: Array<{ toolName: string; args?: unknown }>;
   abortSignal: AbortSignal;
   emitChunk: (text: string) => Promise<void>;
+  emitValidationStart?: () => Promise<void>;
 }
 
 export type PostStreamValidatorResult =
-  | { continuationPrompt: string }
-  | null
-  | undefined
-  | void;
+  | { continuationPrompt: string; message?: string }
+  | { skipped: true; reason: string; message?: string }
+  | undefined;
 
 type PhaseOutcome =
-  | { kind: 'continue'; prompt: string }
+  | { kind: 'continue'; message: string }
   | { kind: 'exhausted'; message: string }
   | { kind: 'clean' };
+
+const MAX_ERRORS_IN_VALIDATION_MESSAGE = 50;
+const MAX_RUNTIME_STACK_FRAMES_IN_VALIDATION_MESSAGE = 4;
+
+function formatTscErrorsForValidation(errors: TypecheckResult['errors']): string {
+  const total = errors.length;
+  const shown = errors.slice(0, MAX_ERRORS_IN_VALIDATION_MESSAGE);
+  const hidden = total - shown.length;
+  const header = `### Type errors after your last edit\n\nThe ${total} TypeScript error${total === 1 ? '' : 's'} below were found by \`tsc --noEmit\` run against the live preview workspace after your most recent tool calls. Fix each one — just make the minimum changes needed to make \`tsc\` pass. Do not explain.\n`;
+  const body = shown
+    .map((error) => `- ${error.file}:${error.line}:${error.column} ${error.code}: ${error.message}`)
+    .join('\n');
+  const footer = hidden > 0
+    ? `\n\n(${hidden} additional error${hidden === 1 ? '' : 's'} not shown. Fix the ${shown.length} above first; the next type-check will surface any that remain.)\n`
+    : '\n';
+
+  return `${header}\n${body}${footer}`;
+}
+
+function formatRuntimeErrorsForValidation(errors: RuntimeErrorResult['errors']): string {
+  const total = errors.length;
+  const formatFrames = (frames: string) => frames
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .slice(0, MAX_RUNTIME_STACK_FRAMES_IN_VALIDATION_MESSAGE)
+    .map((line) => `     ${line}`)
+    .join('\n');
+
+  const body = errors
+    .slice(0, MAX_ERRORS_IN_VALIDATION_MESSAGE)
+    .map((error, index) => {
+      const lines = [
+        `${index + 1}. name: ${error.name}`,
+        `   message: ${error.message}`
+      ];
+      if (error.url) lines.push(`   url: ${error.url}`);
+      if (error.stack) {
+        const stack = formatFrames(error.stack);
+        if (stack) lines.push(`   stack:\n${stack}`);
+      }
+      if (error.componentStack) {
+        const componentStack = formatFrames(error.componentStack);
+        if (componentStack) lines.push(`   componentStack:\n${componentStack}`);
+      }
+      return lines.join('\n');
+    })
+    .join('\n\n');
+  const hidden = total - Math.min(total, MAX_ERRORS_IN_VALIDATION_MESSAGE);
+  const footer = hidden > 0
+    ? `\n\n(${hidden} additional error${hidden === 1 ? '' : 's'} not shown.)`
+    : '\n';
+
+  return `### Runtime errors after your last edit\n\nThe ${total} runtime error${total === 1 ? '' : 's'} below surfaced in the preview browser after your most recent tool calls (React error boundary or Vite compile). Fix the root cause — just make the minimum changes needed to prevent the error. Do not explain.\n\n${body}${footer}`;
+}
 
 export interface TypecheckPhaseDeps {
   typecheckService: Pick<TypecheckService, 'runTypecheck'>;
@@ -213,7 +266,10 @@ export async function runTypecheckPhase(
     errorCount: result.errors.length
   });
 
-  return { kind: 'continue', prompt: formatTscErrorsForPrompt(result.errors) };
+  return {
+    kind: 'continue',
+    message: formatTscErrorsForValidation(result.errors)
+  };
 }
 
 interface RestartAndRepollMeta {
@@ -598,7 +654,10 @@ export async function runRuntimeErrorPhase(
     errorCount: result.errors.length
   });
 
-  return { kind: 'continue', prompt: formatRuntimeErrorsForPrompt(result.errors) };
+  return {
+    kind: 'continue',
+    message: formatRuntimeErrorsForValidation(result.errors)
+  };
 }
 
 /**
@@ -606,10 +665,10 @@ export async function runRuntimeErrorPhase(
  * phases in parallel and composes their outcomes:
  *
  *   - Both clean            → no continuation, no chunk.
- *   - Either `continue`     → send ONE combined continuation prompt covering
- *                              every phase that had errors. Each contributing
- *                              phase has already incremented its own retry
- *                              counter.
+ *   - Either `continue`     → send ONE combined diagnostics prompt
+ *                              covering every phase that had errors. Each
+ *                              contributing phase has already incremented
+ *                              its own retry counter.
  *   - Any `exhausted` with
  *     no other `continue`   → emit that phase's "gave up" chunk.
  *   - `exhausted` alongside
@@ -641,6 +700,10 @@ export function createPostStreamValidator(deps: CompositePostStreamValidatorDeps
 
     if (!appId) {
       return;
+    }
+
+    if (agentName.toLowerCase() === 'initial') {
+      return { skipped: true, reason: 'initial_agent' };
     }
 
     // Note: the transport layer (`experimental-websocket-server.ts`) is
@@ -686,8 +749,10 @@ export function createPostStreamValidator(deps: CompositePostStreamValidatorDeps
         agentName,
         reason: 'no_uncommitted_changes'
       });
-      return;
+      return { skipped: true, reason: 'no_uncommitted_changes' };
     }
+
+    await args.emitValidationStart?.();
 
     // Parallel: both phases read from independent sources (tsc shells
     // out via dev-supervisor; runtime drains the in-process
@@ -701,13 +766,15 @@ export function createPostStreamValidator(deps: CompositePostStreamValidatorDeps
       runRuntimeErrorPhase(args, runtimeErrors, { appId, conversationId })
     ]);
 
-    const continuationPrompts: string[] = [];
-    if (tscOutcome.kind === 'continue') continuationPrompts.push(tscOutcome.prompt);
-    if (rtOutcome.kind === 'continue') continuationPrompts.push(rtOutcome.prompt);
+    const continuationMessages: string[] = [];
+    if (tscOutcome.kind === 'continue') continuationMessages.push(tscOutcome.message);
+    if (rtOutcome.kind === 'continue') continuationMessages.push(rtOutcome.message);
 
-    if (continuationPrompts.length > 0) {
+    if (continuationMessages.length > 0) {
+      const message = continuationMessages.join('\n\n---\n\n');
       return {
-        continuationPrompt: continuationPrompts.join('\n\n---\n\n')
+        continuationPrompt: message,
+        message
       };
     }
 
@@ -720,14 +787,16 @@ export function createPostStreamValidator(deps: CompositePostStreamValidatorDeps
     if (rtOutcome.kind === 'exhausted') exhaustedMessages.push(rtOutcome.message);
 
     if (exhaustedMessages.length > 0) {
+      const exhaustedMessage = exhaustedMessages.join('');
       try {
-        await emitChunk(exhaustedMessages.join(''));
+        await emitChunk(exhaustedMessage);
       } catch (emitErr) {
         logger.warn('agent.post_stream_validator.exceeded.emit_failure', {
           socketId,
           error: emitErr instanceof Error ? emitErr.message : String(emitErr)
         });
       }
+      return { skipped: true, reason: 'exhausted', message: exhaustedMessage };
     }
 
     return;

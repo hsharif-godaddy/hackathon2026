@@ -226,7 +226,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
     conversationId: string,
     message: string,
     context: ConversationContext
-  ): Promise<void> {
+  ): Promise<string> {
     const contextLogger = context.appId
       ? log.withContext({
         appId: context.appId,
@@ -246,9 +246,14 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
       : undefined
 
     const origin = this.getOriginFromContext(context)
+    const messageMetadata =
+      context.messageMetadata && typeof context.messageMetadata === 'object'
+        ? context.messageMetadata
+        : undefined
 
-    await this.conversationRepo.addMessage(conversationId, 'user', message, {
+    const savedMessage = await this.conversationRepo.addMessage(conversationId, 'user', message, {
       metadata: {
+        ...messageMetadata,
         socketId: context.socketId,
         agentName: context.agentName,
         appId: context.appId,
@@ -272,6 +277,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
     }
 
     contextLogger.info('conversation.user_message.saved', {})
+    return savedMessage.id
   }
 
   async startAgentTurn(

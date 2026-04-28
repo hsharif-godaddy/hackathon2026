@@ -63,6 +63,8 @@ export function getToolDisplayName(toolName: string): string {
     case 'icons_validator':
     case 'iconsValidator':
       return 'Icons Validator'
+    case 'validateCode':
+      return 'Validate Code'
     case 'todo_list':
     case 'todoList':
       return 'Todo List'

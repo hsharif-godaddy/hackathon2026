@@ -20,7 +20,7 @@ function makeArgs(overrides: Partial<Parameters<ReturnType<typeof createPostStre
     agentName: AGENT_NAME,
     toolCalls: [{ toolName: 'fileEdit' }] as Array<{ toolName: string }>,
     abortSignal: abortController.signal,
-    emitChunk: vi.fn(async () => {}),
+    emitChunk: vi.fn(async (_text: string) => {}),
     ...overrides
   };
 }
@@ -217,16 +217,40 @@ describe('createPostStreamValidator', () => {
     expect(mocks.pollRuntimeErrors).toHaveBeenCalledTimes(1);
   });
 
+  it('skips validation for the initial agent before checking git state', async () => {
+    const { deps, mocks } = makeDeps({
+      hasUncommittedChanges: async () => {
+        throw new Error('git status should not run');
+      }
+    });
+    const validator = createPostStreamValidator(deps);
+    const emitValidationStart = vi.fn(async () => {});
+    const result = await validator(makeArgs({
+      agentName: 'initial',
+      emitValidationStart
+    }));
+    expect(result).toEqual({ skipped: true, reason: 'initial_agent' });
+    expect(mocks.hasUncommittedChanges).not.toHaveBeenCalled();
+    expect(mocks.runTypecheck).not.toHaveBeenCalled();
+    expect(mocks.pollRuntimeErrors).not.toHaveBeenCalled();
+    expect(emitValidationStart).not.toHaveBeenCalled();
+  });
+
   it('skips both phases when the working tree has no uncommitted changes', async () => {
     const { deps, mocks } = makeDeps({ hasUncommittedChanges: false });
     const validator = createPostStreamValidator(deps);
+    const emitValidationStart = vi.fn(async () => {});
     const result = await validator(
-      makeArgs({ toolCalls: [{ toolName: 'searchFiles' }, { toolName: 'readFile' }] })
+      makeArgs({
+        emitValidationStart,
+        toolCalls: [{ toolName: 'searchFiles' }, { toolName: 'readFile' }]
+      })
     );
-    expect(result).toBeUndefined();
+    expect(result).toEqual({ skipped: true, reason: 'no_uncommitted_changes' });
     expect(mocks.hasUncommittedChanges).toHaveBeenCalledWith(APP_ID);
     expect(mocks.runTypecheck).not.toHaveBeenCalled();
     expect(mocks.pollRuntimeErrors).not.toHaveBeenCalled();
+    expect(emitValidationStart).not.toHaveBeenCalled();
     expect(mocks.logger.info).toHaveBeenCalledWith(
       'agent.typecheck.skipped',
       expect.objectContaining({ reason: 'no_uncommitted_changes' })
@@ -235,6 +259,17 @@ describe('createPostStreamValidator', () => {
       'agent.runtime_errors.skipped',
       expect.objectContaining({ reason: 'no_uncommitted_changes' })
     );
+  });
+
+  it('emits validation start when the working tree has uncommitted changes', async () => {
+    const { deps, mocks } = makeDeps({ hasUncommittedChanges: true });
+    const validator = createPostStreamValidator(deps);
+    const emitValidationStart = vi.fn(async () => {});
+    const result = await validator(makeArgs({ emitValidationStart }));
+    expect(result).toBeUndefined();
+    expect(emitValidationStart).toHaveBeenCalledTimes(1);
+    expect(mocks.runTypecheck).toHaveBeenCalledTimes(1);
+    expect(mocks.pollRuntimeErrors).toHaveBeenCalledTimes(1);
   });
 
   it('falls through to running both phases when the change-check itself throws', async () => {
@@ -271,7 +306,11 @@ describe('createPostStreamValidator', () => {
     });
     const validator = createPostStreamValidator(deps);
     const result = await validator(makeArgs());
-    expect(result).toMatchObject({ continuationPrompt: expect.stringContaining('TS1') });
+    expect(result).toMatchObject({
+      continuationPrompt: expect.stringContaining('TS1'),
+      message: expect.stringContaining('TS1')
+    });
+    expect((result as { continuationPrompt: string }).continuationPrompt).toContain('TS1');
     // Both phases run even when tsc fails — runtime poll is independent.
     expect(mocks.runTypecheck).toHaveBeenCalledTimes(1);
     expect(mocks.pollRuntimeErrors).toHaveBeenCalledTimes(1);
@@ -289,9 +328,13 @@ describe('createPostStreamValidator', () => {
       tscMaxRetries: 2
     });
     const validator = createPostStreamValidator(deps);
-    const emitChunk = vi.fn(async () => {});
+    const emitChunk = vi.fn(async (_text: string) => {});
     const result = await validator(makeArgs({ emitChunk }));
-    expect(result).toBeUndefined();
+    expect(result).toMatchObject({
+      skipped: true,
+      reason: 'exhausted',
+      message: expect.stringContaining('TypeScript errors')
+    });
     expect(emitChunk).toHaveBeenCalledTimes(1);
     expect(emitChunk.mock.calls[0]![0]).toContain('TypeScript errors');
     // Runtime phase still ran in parallel; it just returned clean.
@@ -312,9 +355,11 @@ describe('createPostStreamValidator', () => {
     const validator = createPostStreamValidator(deps);
     const result = await validator(makeArgs());
     expect(result).toMatchObject({
-      continuationPrompt: expect.stringContaining('TS1')
+      continuationPrompt: expect.stringContaining('TS1'),
+      message: expect.stringContaining('TS1')
     });
     expect((result as { continuationPrompt: string }).continuationPrompt).toContain('TypeError');
+    expect((result as { message: string }).message).toContain('TypeError');
     // Each phase bumped its own counter independently.
     expect(mocks.tscCounters.get(SOCKET_ID)).toBe(1);
     expect(mocks.rtCounters.get(SOCKET_ID)).toBe(1);
@@ -336,13 +381,14 @@ describe('createPostStreamValidator', () => {
       rtRetryCount: 2,
       rtMaxRetries: 2
     });
-    const emitChunk = vi.fn(async () => {});
+    const emitChunk = vi.fn(async (_text: string) => {});
     const validator = createPostStreamValidator(deps);
     const result = await validator(makeArgs({ emitChunk }));
-    expect(result).toMatchObject({ continuationPrompt: expect.stringContaining('TS1') });
-    // No runtime prompt in the combined output (budget exhausted, phase
-    // returned 'exhausted', not 'continue'), and no gave-up chunk yet.
-    expect((result as { continuationPrompt: string }).continuationPrompt).not.toContain('oops');
+    expect(result).toMatchObject({
+      continuationPrompt: expect.stringContaining('TS1'),
+      message: expect.stringContaining('TS1')
+    });
+    // Runtime returned 'exhausted', not 'continue', so no gave-up chunk yet.
     expect(emitChunk).not.toHaveBeenCalled();
     expect(mocks.tscCounters.get(SOCKET_ID)).toBe(1);
   });
@@ -362,10 +408,14 @@ describe('createPostStreamValidator', () => {
       rtRetryCount: 2,
       rtMaxRetries: 2
     });
-    const emitChunk = vi.fn(async () => {});
+    const emitChunk = vi.fn(async (_text: string) => {});
     const validator = createPostStreamValidator(deps);
     const result = await validator(makeArgs({ emitChunk }));
-    expect(result).toBeUndefined();
+    expect(result).toMatchObject({
+      skipped: true,
+      reason: 'exhausted',
+      message: expect.stringContaining('TypeScript errors')
+    });
     expect(emitChunk).toHaveBeenCalledTimes(1);
     const emitted = emitChunk.mock.calls[0]![0] as string;
     expect(emitted).toContain('TypeScript errors');
@@ -391,9 +441,49 @@ describe('createPostStreamValidator', () => {
     });
     const validator = createPostStreamValidator(deps);
     const result = await validator(makeArgs());
-    expect(result).toMatchObject({ continuationPrompt: expect.stringContaining('TypeError') });
+    expect(result).toMatchObject({
+      continuationPrompt: expect.stringContaining('TypeError'),
+      message: expect.stringContaining('TypeError')
+    });
     expect(mocks.rtCounters.get(SOCKET_ID)).toBe(1);
     expect(mocks.tscCounters.has(SOCKET_ID)).toBe(false);
+  });
+
+  it('limits runtime stack details in validation diagnostics', async () => {
+    const { deps } = makeDeps({
+      runtimeResult: {
+        ok: false,
+        errors: [{
+          name: 'TypeError',
+          message: 'x is undefined',
+          stack: [
+            'TypeError: x is undefined',
+            'at first (src/App.tsx:1:1)',
+            'at second (src/App.tsx:2:1)',
+            'at third (src/App.tsx:3:1)',
+            'at fourth (src/App.tsx:4:1)',
+            'at fifth (src/App.tsx:5:1)'
+          ].join('\n'),
+          componentStack: [
+            'at App',
+            'at Layout',
+            'at Provider',
+            'at Root',
+            'at Extra'
+          ].join('\n'),
+          timestamp: 1
+        }]
+      }
+    });
+    const validator = createPostStreamValidator(deps);
+    const result = await validator(makeArgs());
+
+    expect(result).toMatchObject({
+      continuationPrompt: expect.stringContaining('at third'),
+      message: expect.stringContaining('at third')
+    });
+    expect((result as { message: string }).message).not.toContain('at fourth (src/App.tsx:4:1)');
+    expect((result as { message: string }).message).not.toContain('at Extra');
   });
 
   it('emits gave-up message when runtime budget is exhausted', async () => {
@@ -406,9 +496,13 @@ describe('createPostStreamValidator', () => {
       rtMaxRetries: 2
     });
     const validator = createPostStreamValidator(deps);
-    const emitChunk = vi.fn(async () => {});
+    const emitChunk = vi.fn(async (_text: string) => {});
     const result = await validator(makeArgs({ emitChunk }));
-    expect(result).toBeUndefined();
+    expect(result).toMatchObject({
+      skipped: true,
+      reason: 'exhausted',
+      message: expect.stringContaining('runtime errors')
+    });
     expect(emitChunk).toHaveBeenCalledTimes(1);
     expect(emitChunk.mock.calls[0]![0]).toContain('runtime errors');
     expect(mocks.logger.warn).toHaveBeenCalledWith(
@@ -554,7 +648,8 @@ describe('createPostStreamValidator', () => {
       const validator = createPostStreamValidator(deps);
       const result = await validator(makeArgs());
       expect(result).toMatchObject({
-        continuationPrompt: expect.stringContaining('obj is undefined')
+        continuationPrompt: expect.stringContaining('obj is undefined'),
+        message: expect.stringContaining('obj is undefined')
       });
       expect(mocks.restartPreview).not.toHaveBeenCalled();
       expect(mocks.pollRuntimeErrors).toHaveBeenCalledTimes(1);
@@ -605,13 +700,11 @@ describe('createPostStreamValidator', () => {
       const validator = createPostStreamValidator(deps);
       const result = await validator(makeArgs());
       expect(result).toMatchObject({
-        continuationPrompt: expect.stringContaining('foo is not defined')
+        continuationPrompt: expect.stringContaining('foo is not defined'),
+        message: expect.stringContaining('foo is not defined')
       });
-      // Original errors must NOT leak through — the re-poll is the
-      // source of truth once a restart succeeded.
-      expect((result as { continuationPrompt: string }).continuationPrompt).not.toContain(
-        'obj is undefined'
-      );
+      expect((result as { continuationPrompt: string }).continuationPrompt).not.toContain('obj is undefined');
+      expect((result as { message: string }).message).not.toContain('obj is undefined');
       expect(mocks.rtCounters.get(SOCKET_ID)).toBe(2);
       expect(mocks.logger.warn).toHaveBeenCalledWith(
         'agent.runtime_errors.restart.persisted',
@@ -628,7 +721,8 @@ describe('createPostStreamValidator', () => {
       const validator = createPostStreamValidator(deps);
       const result = await validator(makeArgs());
       expect(result).toMatchObject({
-        continuationPrompt: expect.stringContaining('obj is undefined')
+        continuationPrompt: expect.stringContaining('obj is undefined'),
+        message: expect.stringContaining('obj is undefined')
       });
       // Re-poll must not happen if the restart didn't actually succeed.
       expect(mocks.waitForCycleAdvance).not.toHaveBeenCalled();
@@ -653,7 +747,8 @@ describe('createPostStreamValidator', () => {
       const validator = createPostStreamValidator(deps);
       const result = await validator(makeArgs());
       expect(result).toMatchObject({
-        continuationPrompt: expect.stringContaining('obj is undefined')
+        continuationPrompt: expect.stringContaining('obj is undefined'),
+        message: expect.stringContaining('obj is undefined')
       });
       expect(mocks.logger.warn).toHaveBeenCalledWith(
         'agent.runtime_errors.restart.failed',
@@ -680,7 +775,8 @@ describe('createPostStreamValidator', () => {
       const validator = createPostStreamValidator(deps);
       const result = await validator(makeArgs());
       expect(result).toMatchObject({
-        continuationPrompt: expect.stringContaining('obj is undefined')
+        continuationPrompt: expect.stringContaining('obj is undefined'),
+        message: expect.stringContaining('obj is undefined')
       });
       expect(mocks.pollRuntimeErrors).toHaveBeenCalledTimes(2);
       expect(mocks.logger.warn).toHaveBeenCalledWith(
@@ -700,7 +796,8 @@ describe('createPostStreamValidator', () => {
       const validator = createPostStreamValidator(deps);
       const result = await validator(makeArgs());
       expect(result).toMatchObject({
-        continuationPrompt: expect.stringContaining('obj is undefined')
+        continuationPrompt: expect.stringContaining('obj is undefined'),
+        message: expect.stringContaining('obj is undefined')
       });
       // Re-poll must be skipped — we don't trust a drain under the
       // old cycle after a restart whose beacon never arrived.
@@ -737,7 +834,8 @@ describe('createPostStreamValidator', () => {
       const validator = createPostStreamValidator(deps);
       const result = await validator(makeArgs());
       expect(result).toMatchObject({
-        continuationPrompt: expect.stringContaining('obj is undefined')
+        continuationPrompt: expect.stringContaining('obj is undefined'),
+        message: expect.stringContaining('obj is undefined')
       });
       expect(mocks.waitForCycleAdvance).not.toHaveBeenCalled();
       expect(mocks.pollRuntimeErrors).toHaveBeenCalledTimes(1);
@@ -765,7 +863,11 @@ describe('createPostStreamValidator', () => {
       const emitChunk = vi.fn(async (_text: string) => {});
       const validator = createPostStreamValidator(deps);
       const result = await validator(makeArgs({ emitChunk }));
-      expect(result).toBeUndefined();
+      expect(result).toMatchObject({
+        skipped: true,
+        reason: 'exhausted',
+        message: expect.stringContaining('runtime errors')
+      });
       expect(emitChunk).toHaveBeenCalledTimes(1);
       expect(emitChunk.mock.calls[0]![0]).toContain('runtime errors');
       expect(mocks.logger.warn).toHaveBeenCalledWith(

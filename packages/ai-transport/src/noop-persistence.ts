@@ -49,8 +49,8 @@ export class NoOpPersistence implements ConversationPersistenceWithCleanup {
     _conversationId: string,
     _message: string,
     _context: ConversationContext
-  ): Promise<void> {
-    // No-op
+  ): Promise<undefined> {
+    return undefined
   }
 
   async startAgentTurn(
