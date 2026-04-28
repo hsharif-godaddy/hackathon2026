@@ -1,393 +1,82 @@
 # Getting Started - Airo Builder
 
-Complete setup guide to run the AI builder locally.
-
 ## Prerequisites
 
-- Access to AWS Account: `GD-AWS-USA-GD-AiroBuilde-Dev-Private`
-- Node.js 22+ (via fnm, mise, asdf, or nvm)
-- Go (for local control plane and dev-runner)
-- Docker (for MySQL container)
-- AI Provider API Key (GoCode recommended)
-- For running the test and prod environment locally: `Dev-Airo-Builders` AD group access
+- Access to AWS account `GD-AWS-USA-GD-AiroBuilde-Dev-Private` (request in #airo-ai-builder-dev)
+- [direnv](https://direnv.net/docs/installation.html) — installs the shell hook that activates the project's `.envrc`
+- A Node version manager on your `PATH`: [mise](https://mise.jdx.dev), [fnm](https://github.com/Schniz/fnm#installation), [asdf](https://asdf-vm.com/guide/getting-started.html), or [nvm](https://github.com/nvm-sh/nvm#installing-and-updating). `.envrc` picks the first one it finds and installs Node 22 from `.nvmrc`; corepack then pins pnpm.
+- [Go](https://go.dev/doc/install) (dev-runner and local control plane)
+- `make` on your `PATH` — `pnpm run dev` shells out to `make run`
+- [AWS CLI v2](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) — required for `aws sso login`
+- Docker (MySQL and publish/preview containers)
+- `Dev-Airo-Builders` AD group — only needed to run test/prod locally
 
-## Request Access
+> Dev Runner requires macOS, Linux, or WSL — native Windows is not supported.
 
-You first need to request access to the `GD-AWS-USA-GD-AiroBuilde-Dev-Private` AWS Account, as the app has to retrieve secrets in order to run. Please request access in #airo-ai-builder-dev. After verifying access via Okta, you can then proceed with the setup.
-
-## 🛠️ Setup & Run (Recommended)
-
-The fastest way to get started is a single command:
+## Run
 
 ```bash
+cd airo-app-builder
+direnv allow                # one-time; activates Node + corepack + pnpm wrapper via .envrc
+pnpm install
+aws sso login --profile airobuild-dev-private-sso    # first run or after session expiry
 pnpm run dev
 ```
 
-This launches the **Dev Runner** TUI, which runs preflight checks on startup and offers to auto-fix any issues inline:
+Without `direnv allow`, `pnpm` and `node` won't be on your `PATH` for this repo and the rest of the commands will fail. The `.envrc` is the single source of truth for the dev shell — it installs the pinned Node, enables corepack, and wraps `pnpm` to enforce workspace-root installs.
 
-1. **Tools** — Verifies Node.js, pnpm, Go, make, Docker, AWS CLI v2, Artifactory auth
-2. **Environment** — Checks /etc/hosts, AWS SSO session, .env files, JWT keys, Gasket dev certs, S2S certs, Commerce OAuth, Getty proxy, KnowB, Design RAG
-3. **Services** — Ensures required ports are free and MySQL is running
+`pnpm run dev` launches the **Dev Runner** TUI. On first run its preflight checks detect missing config and offer inline fixes; subsequent runs pass in ~2s and auto-launch services.
 
-If anything fails or warns, you'll see a dashboard with a fix selector — choose what to fix and the TUI handles it (generates .env files, runs `aws sso login`, creates certs, starts containers, etc.). On subsequent runs, all checks pass in ~2 seconds and auto-advance to launching services.
+Preflight covers:
 
-See [dev-runner/README.md](dev-runner/README.md) for keybindings and details.
+- Tools: Node, pnpm, Go, make, Docker, AWS CLI v2, direnv, Artifactory auth
+- Environment: `/etc/hosts`, AWS SSO session, all `.env` files, JWT keys, Gasket dev certs, S2S certs, Commerce OAuth, Getty proxy, KnowB, Design RAG
+- Services: free ports, MySQL container
 
-### Reconfiguring Environment Files
+Defaults to **S2S auth** for GoCode — uses your AWS SSO credentials, no personal API key required. `GOCODE_USE_S2S_AUTH` is set at `.env`-generation time, not at runtime. If your dev SSO role isn't registered with GoCode ([registration guide](https://godaddy-corp.atlassian.net/wiki/spaces/BI/pages/3903691501)), requests fail at runtime — delete `agents/.env` and rerun `pnpm run dev` to re-run the env form and select `api-key`.
 
-If you need to change your AI provider, authentication settings, or regenerate environment files:
+To regenerate an env file, delete it and rerun `pnpm run dev`. To switch GoCode auth mode, delete `agents/.env`.
 
-**Via Dev Runner:** Delete the `.env` file you want to regenerate and run `pnpm run dev` -- the preflight checks will detect it's missing and offer to recreate it.
+See [dev-runner/README.md](dev-runner/README.md) for TUI keybindings.
 
-Environment files generated:
+## Environments
 
-- `app/.env` - Base configuration
-- `app/.env.local.dev` - Dev environment (dev-godaddy.com SSO)
-- `app/.env.local.test` - Test environment (test-godaddy.com SSO)
-- `app/.env.local.prod` - Prod environment (godaddy.com SSO)
+| Command               | Env        | Domain                              | Control plane                   | Notes                                        |
+| --------------------- | ---------- | ----------------------------------- | ------------------------------- | -------------------------------------------- |
+| `pnpm run dev`        | local.dev  | `local.gasket.dev-godaddy.com:8443` | local (port 4100)               | No AD group required. Grants are stubbed.    |
+| `pnpm run local:test` | local.test | `airo-builder.test-godaddy.com`     | real (mgmt.nstk.net)            | Needs `Dev-Airo-Builders`. Real grants/subs. |
+| `pnpm run local:prod` | local.prod | `airo-builder.godaddy.com`          | real (mgmt.woosaas.godaddy.com) | Needs `Dev-Airo-Builders`. Real grants/subs. |
+| `pnpm run dev:legacy` | local.dev  | same as `dev`                       | local                           | Agents + app only, no TUI.                   |
 
-### GoCode authentication
+**Use `local:test` for any grant/subscription/billing work** — `dev` uses hardcoded stub data (999999-credit mock grant from [`stubs.go`](local-control-plane/internal/api/stubs.go)) that doesn't reflect real subscription state.
 
-The dev-runner env form asks for `GoCode Auth`. Two modes:
+Env files `app/.env.local.{dev,test,prod}` are generated by preflight and selected via `GASKET_ENV` in [`scripts/load-env.js`](scripts/load-env.js). Generated apps work across all environments — no regeneration needed when switching.
 
-- **`s2s` (default, recommended)** - authenticates to GoCode using your AWS SSO credentials and an IAM JWT (same mechanism deployed services use). No personal key needed. All GoCode/Anthropic calls route through `https://api.gocode.caas.dev-gdcorp.tools` (dev GoCode - separate spend bucket from prod). Prerequisite: `aws sso login --profile airobuild-dev-private-sso` before starting `pnpm run dev`. Requires the dev SSO PowerUser role for account `694282668781` to be registered with GoCode (see the [GoCode JWT Authentication Guide](https://godaddy-corp.atlassian.net/wiki/spaces/BI/pages/3903691501) onboarding flow). If `s2s` fails with `"SSO user is not registered"`, fall back to `api-key` until the registration is approved.
-- **`api-key`** - uses a personal GoCode API key from `https://caas.open-webui.godaddy.com/workspace/apiKeys`. Falls back to the prod GoCode proxy at `caas-gocode-prod...onkatana.net`.
+## Services
 
-Switch modes any time by re-running the env fixer (delete `agents/.env` or set `GOCODE_USE_S2S_AUTH=true/false` manually and restart; the preflight will offer to regenerate).
+| Service             | Port | Notes                          |
+| ------------------- | ---- | ------------------------------ |
+| Agents              | 4000 | Express API, SQLite, WebSocket |
+| App (BFF + UI)      | 8443 | Next.js via Gasket HTTPS       |
+| Local Control Plane | 4100 | Go, SQLite, Docker compose     |
+| MySQL               | 3306 | Per-app databases              |
 
-## 📋 Manual Setup (Alternative)
+Logs: `agents/dev.log`, `app/dev.log`, `local-control-plane/dev.log` (truncated per restart, ANSI-stripped).
 
-If you prefer manual configuration:
-
-### 1. Install Dependencies
-
-```bash
-corepack enable  # Enforces pnpm version from packageManager field
-pnpm install     # Installs dependencies for all packages at once
-```
-
-### 2. Configure Environment
-
-Create `agents/.env`:
-
-```bash
-# AI Provider (choose one)
-OPENAI_API_KEY=your_api_key_here
-OPENAI_BASE_URL=https://api.openai.com/v1
-
-# Getty Images (optional)
-GETTY_API_URL=https://airobuilde-proxy-dev-private-ecs.airobuilde-dev-private.prod.onkatana.net/img/search
-GETTY_TOKEN=your_token_here
-IMAGE_SEARCH_DRIVER=getty
-
-# App Configuration
-APP_TEMPLATE_DIR=app-templates/v8
-SHOW_USAGE_COST=true
-
-# MySQL Configuration (for app databases)
-MYSQL_ROOT_HOST=localhost
-MYSQL_ROOT_PORT=3306
-MYSQL_ROOT_USER=root
-MYSQL_ROOT_PASS=
-```
-
-Create `app/.env`:
-
-```bash
-NODE_ENV=development
-PORT=3000
-HTTPS_PORT=8443
-
-# Authentication (JWT with SSO - recommended)
-AUTH_TYPE=jwt
-SSO_LOGIN_URL=https://sso.dev-godaddy.com/login
-SSO_LOGOUT_URL=https://sso.dev-godaddy.com/logout
-LOGIN_REDIRECT_URL=https://local.gasket.dev-godaddy.com:8443/
-LOGOUT_REDIRECT_URL=https://local.gasket.dev-godaddy.com:8443/
-
-# Legacy Authentication (use AUTH_TYPE instead)
-NEXT_PUBLIC_USE_MOCK_LOGIN=false
-```
-
-### 3. Hosts File (Required)
-
-Add this line to `/etc/hosts`:
-
-```
-127.0.0.1  local.gasket.dev-godaddy.com
-```
-
-On macOS/Linux: `sudo nano /etc/hosts`
-On Windows: `notepad C:\Windows\System32\drivers\etc\hosts` (as Admin)
-
-### 4. Start Services
-
-```bash
-pnpm run dev
-```
-
-This is the same command from the recommended setup above — preflight checks will handle MySQL, AWS SSO, and everything else automatically.
-
-**Alternative: Start services individually in separate terminals:**
-
-```bash
-# Terminal 1 - Agents Backend (port 4000)
-cd agents && pnpm run dev
-
-# Terminal 2 - App / BFF (HTTPS port 8443)
-cd app && pnpm run dev
-
-# Terminal 3 - Local Control Plane (port 4100)
-pnpm run dev:control-plane
-```
-
-## What's Running
-
-| Service                 | Port | Description                                      |
-| ----------------------- | ---- | ------------------------------------------------ |
-| **Agents**              | 4000 | Express API, AI agents, SQLite, WebSocket        |
-| **App**                 | 8443 | Next.js builder UI + BFF (Gasket HTTPS proxy)    |
-| **Local Control Plane** | 4100 | Local mgmt-airo API (Go, SQLite, Docker Compose) |
-| **MySQL**               | 3306 | Per-app databases (Docker container)             |
-
-## Dev Logs
-
-All services automatically log to files during local development:
-
-| Service             | Log file                      |
-| ------------------- | ----------------------------- |
-| Agents              | `agents/dev.log`              |
-| App                 | `app/dev.log`                 |
-| Local Control Plane | `local-control-plane/dev.log` |
-
-Logs are truncated on each restart. ANSI codes are stripped for readability. Use these logs to troubleshoot issues or share with the team.
-
-## Environment Configuration
-
-### Running Test or Prod Environments Locally
-
-**Available run commands:**
-
-```bash
-pnpm run dev              # Dev environment (local.dev) — TUI with all services
-pnpm run dev:legacy       # Dev environment (local.dev) — agents + app only (no TUI)
-pnpm run local:test       # Test environment (local.test) — uses real control plane
-pnpm run local:prod       # Prod environment (local.prod) — uses real control plane
-```
-
-#### Environment Configuration
-
-**✨ Environment files are auto-generated by Dev Runner preflight!**
-
-Environment-specific configuration files are created automatically:
-
-- `app/.env.local.dev` - Dev environment (dev-godaddy.com SSO)
-- `app/.env.local.test` - Test environment (test-godaddy.com SSO)
-- `app/.env.local.prod` - Prod environment (godaddy.com SSO)
-
-These files are automatically loaded based on the `GASKET_ENV` via the `scripts/load-env.js` wrapper:
-
-- `pnpm run dev` → loads `.env.local.dev`
-- `pnpm run local:test` → loads `.env.local.test`
-- `pnpm run local:prod` → loads `.env.local.prod`
-
-**Manual configuration (if needed):**
-
-If you need to manually create these files:
-
-**`app/.env.local.dev` (dev-godaddy.com):**
-
-```bash
-SSO_LOGIN_URL=https://sso.dev-godaddy.com/login
-SSO_LOGOUT_URL=https://sso.dev-godaddy.com/logout
-LOGIN_REDIRECT_URL=https://local.gasket.dev-godaddy.com:8443/
-AWS_REGION=us-west-2
-```
-
-**`app/.env.local.test` (test-godaddy.com):**
-
-```bash
-SSO_LOGIN_URL=https://sso.test-godaddy.com/login
-SSO_LOGOUT_URL=https://sso.test-godaddy.com/logout
-LOGIN_REDIRECT_URL=https://airo-builder.test-godaddy.com:8443/
-AWS_REGION=us-west-2
-
-# Management API Base URL (real control plane)
-MGMT_AIRO_BASE_URL=https://mgmt.nstk.net
-```
-
-**`app/.env.local.prod` (godaddy.com):**
-
-```bash
-SSO_LOGIN_URL=https://sso.godaddy.com/login
-SSO_LOGOUT_URL=https://sso.godaddy.com/logout
-LOGIN_REDIRECT_URL=https://airo-builder.godaddy.com:8443/
-AWS_REGION=us-west-2
-
-# Management API Base URL (real control plane)
-MGMT_AIRO_BASE_URL=https://mgmt.woosaas.godaddy.com
-```
-
-#### Access Requirements
-
-**Dev Environment (`pnpm run dev`):**
-
-- Uses `local.gasket.dev-godaddy.com` domain
-- Designed for ease of access - **no special AD group required**
-- Allows all users to get up and running quickly without additional permissions
-
-**Test & Prod Environments (`pnpm run local:test`, `pnpm run local:prod`):**
-
-- Use `airo-builder.test-godaddy.com` and `airo-builder.godaddy.com` domains
-- **Requires membership in the `Dev-Airo-Builders` AD group**
-
-#### Important Notes
-
-**Grants and subscriptions require `local:test`:**
-
-The local control plane (`pnpm run dev`) returns hardcoded stub data for grants (from [`stubs.go`](local-control-plane/internal/api/stubs.go)) and subscriptions (from [`subscriptions.go`](local-control-plane/internal/api/subscriptions.go)). The grant stub returns a single mock grant (`local-grant-001`) with 999999 credits, which is enough to unblock LLM calls but does not reflect real subscription state, expiration, or multi-grant behavior.
-
-The grant system is always-on (the `app-builder-grants` feature flag OFF branches were removed in PR #2342). This means the frontend always fetches grants via [`app/src/hooks/useCreditGrants.ts`](app/src/hooks/useCreditGrants.ts), sends them to the agent via [`app/src/hooks/websocket/useGrantContext.ts`](app/src/hooks/websocket/useGrantContext.ts), and uses them for budget enforcement in [`app/src/hooks/useUsage.ts`](app/src/hooks/useUsage.ts). With stub data, the usage gauge, budget exceeded banner, and paywall flows may not behave correctly.
-
-**Use `pnpm run local:test` for any work involving grants, subscriptions, or billing.** This connects to the real control plane (mgmt-airo) which returns actual grant and subscription data for your test account.
-
-**Control Plane Architecture:**
-
-- **Dev** (`pnpm run dev`): Uses the local control plane at `http://localhost:4100` with local agents at `http://localhost:4000`. Grant data from [`stubs.go`](local-control-plane/internal/api/stubs.go), subscription data from [`subscriptions.go`](local-control-plane/internal/api/subscriptions.go). The BFF routes to local-control-plane via [`V2ControlPlaneAdapter`](app/src/lib/control-plane/v2-control-plane-adapter.ts) using `MGMT_AIRO_BASE_URL=http://localhost:4100`.
-- **Test/Prod** (`pnpm run local:test`, `pnpm run local:prod`): Uses the real control plane (mgmt-airo) with remote agents. Grants and subscriptions are real.
-
-**Cross-Environment Apps:**
-
-- Generated apps work across **all environments** - apps are configured with CORS that accepts requests from all environment domains.
-- You only need to update `.env.local` to change which SSO system you authenticate with.
-- **No need to regenerate apps when switching environments** - the same app works in dev, test, and prod!
-
-**Generated App Certificates (Dev):**
-
-Generated apps run on `https://local.gasket.dev-godaddy.com:5XXX` using the GoDaddy-signed Gasket dev cert (`*.gasket.dev-godaddy.com`). This certificate is trusted natively by browsers - no manual CA trust steps needed.
-
-**General:**
-
-- The `.env.local` file overrides `.env` and is gitignored, making it perfect for environment-specific local configuration.
-
-## Access
-
-**AI Builder (Main App):**
-
-- **Dev**: https://local.gasket.dev-godaddy.com:8443 (with `GASKET_ENV=local.dev`)
-- **Test**: https://airo-builder.test-godaddy.com:443 (with `GASKET_ENV=local.test`)
-- **Prod**: https://airo-builder.godaddy.com:443 (with `GASKET_ENV=local.prod`)
-
-**Agents API:**
-
-- **Local Agents** (dev): http://localhost:4000
-- **Health Check**: http://localhost:4000/health
-- **Note**: Test/prod use remote agents via the real control plane
-
-**Local Control Plane:**
-
-- **API**: http://localhost:4100
-
-## Next Steps
-
-1. Visit https://local.gasket.dev-godaddy.com:8443 to start building
-2. Explore the agent chat interface
-3. Try generating a simple app
-
-## 🔧 Setup Utilities
-
-### Dev Runner Preflight
-
-`pnpm run dev` handles all setup tasks automatically. If a check fails, select it in the fix selector and the TUI will resolve it. This covers: .env generation, AWS SSO login, JWT keys, TLS certs, S2S certs, Getty proxy tokens, MySQL, hosts file, and more.
-
-### Getty Images Setup
-
-If Getty Images isn't working, run `pnpm run dev` and select the Getty fix when it appears in preflight.
+Agents API: http://localhost:4000 — health at `/health`.
 
 ## Troubleshooting
 
-### First steps
+Most issues are caught and fixed by preflight on the next `pnpm run dev`. Exceptions:
 
-Before reporting issues, always try a clean install and rebuild:
-
-```bash
-pnpm install --force && pnpm build --force
-```
-
-This resolves most dependency and build cache issues.
-
-### direnv blocked
-
-**Issue**: `direnv: error .envrc is blocked`
-**Solution**: `direnv allow`
-
-### AWS SSO expired
-
-**Issue**: Switchboard authentication errors or "Unable to obtain token from SSO"
-**Solution**: Run `pnpm run dev` — preflight checks will detect the expired session and offer to run `aws sso login` for you. Or manually: `aws sso login --profile airobuild-dev-private-sso`
-
-### Configuration Issues
-
-Run `pnpm run dev` — preflight checks will detect and offer to fix most configuration problems automatically.
-
-### "Starting Development Server" gets stuck or fails
-
-**Issue**: The development server fails to start for new apps
-**Cause**: App template dependencies are not installed
-**Solution**: Install all dependencies using workspace:
-
-```bash
-pnpm install
-```
-
-### Template directory errors
-
-**Issue**: "Template directory not found" warnings
-**Cause**: The `APP_TEMPLATE_DIR` environment variable points to wrong location
-**Solution**: Use the setup utility or ensure your `agents/.env` has:
-
-```bash
-APP_TEMPLATE_DIR=app-templates/v8
-```
-
-### Getty Images not working
-
-**Issue**: Getty Images search returns errors or no results
-**Cause**: Missing or expired AWS credentials, incorrect token
-**Solution**: Run `pnpm run dev` — preflight will detect the issue and offer to fix it.
-
-### Generated App Certificate Error (NET::ERR_CERT_AUTHORITY_INVALID)
-
-**Issue**: Generated app preview shows certificate error or blank iframe
-
-**Check**: Ensure you're accessing the app via `https://local.gasket.dev-godaddy.com:5XXX` (not `https://localhost:5XXX`). The Gasket dev cert is a GoDaddy-signed wildcard for `*.gasket.dev-godaddy.com` and won't match `localhost`.
-
-Also verify `/etc/hosts` maps `local.gasket.dev-godaddy.com` to `127.0.0.1`:
-
-```bash
-grep local.gasket.dev-godaddy.com /etc/hosts
-# Should show: 127.0.0.1  local.gasket.dev-godaddy.com
-```
-
-### Database connection errors
-
-**Issue**: MySQL connection failures
-**Cause**: MySQL container not running or wrong credentials
-**Solution**: Run `pnpm run dev` — preflight will start the MySQL container automatically. Or manually: `docker compose up app-mysql -d`
-
-### Port conflicts
-
-**Issue**: Development servers fail to start due to port conflicts
-**Solution**: The system automatically assigns ports starting from 5001. Kill any conflicting processes:
-
-```bash
-lsof -ti:5001 | xargs kill -9
-```
+- **`direnv: error .envrc is blocked`** → `direnv allow` (required for Node/pnpm to be on `PATH`)
+- **`command not found: pnpm` or `node`** → `direnv` isn't installed or the shell hook isn't loaded. Reinstall per [direnv docs](https://direnv.net/docs/hook.html), restart your shell, then `direnv allow`.
+- **Generated app shows `NET::ERR_CERT_AUTHORITY_INVALID`** → access it via `https://local.gasket.dev-godaddy.com:5XXX`, not `localhost`. The Gasket dev cert is a GoDaddy-signed wildcard for `*.gasket.dev-godaddy.com`.
+- **Port conflict on generated app port (5001+)** → `lsof -ti:5001 | xargs kill -9`
+- **Stale build cache** → `pnpm install --force && pnpm build --force`
 
 ---
 
-Need help?
-
-- 🚀 Run `pnpm run dev` — preflight checks detect and fix most issues
-- 📖 Check the full [README.md](./README.md)
-- 📚 Browse [documentation](./docs/)
+- Full docs: [README.md](./README.md), [docs/](./docs/)
+- Logging: [LOGGING-GUIDE.md](./LOGGING-GUIDE.md)
+- Testing: [app/TESTING.md](./app/TESTING.md)
