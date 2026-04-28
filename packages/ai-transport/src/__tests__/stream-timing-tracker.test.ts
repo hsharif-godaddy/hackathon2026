@@ -70,17 +70,22 @@ describe('StreamTimingTracker', () => {
     })
 
     it(
-      'emits stream.chunk.slow_gap when gap > 90s and ' +
+      'emits stream.chunk.slow_gap when gap ' +
+      'exceeds threshold and ' +
       'SOCKET_DIAGNOSTICS=true',
       () => {
         process.env.SOCKET_DIAGNOSTICS = 'true'
         let now = 1000
-        dateNowSpy = vi.spyOn(Date, 'now').mockImplementation(() => now)
+        dateNowSpy = vi.spyOn(Date, 'now')
+          .mockImplementation(() => now)
         const deps = makeDeps()
         const tracker = new StreamTimingTracker(deps)
+        const overThreshold =
+          SLOW_CHUNK_GAP_THRESHOLD_MS + 1_000
 
-        now = 1100; tracker.recordChunk()       // first chunk
-        now = 1100 + 91_000; tracker.recordChunk() // 91s gap
+        now = 1100; tracker.recordChunk()
+        now = 1100 + overThreshold
+        tracker.recordChunk()
 
         expect(deps.socket.emit).toHaveBeenCalledWith(
           'stream.chunk.slow_gap',
@@ -88,41 +93,54 @@ describe('StreamTimingTracker', () => {
             socketId: 'sock-1',
             agentName: 'test-agent',
             modelName: 'claude-sonnet-4-6',
-            gapMs: 91_000,
+            gapMs: overThreshold,
           })
         )
       }
     )
 
     it(
-      'does NOT emit slow_gap when SOCKET_DIAGNOSTICS is unset',
+      'does NOT emit slow_gap when ' +
+      'SOCKET_DIAGNOSTICS is unset',
       () => {
         let now = 1000
-        dateNowSpy = vi.spyOn(Date, 'now').mockImplementation(() => now)
+        dateNowSpy = vi.spyOn(Date, 'now')
+          .mockImplementation(() => now)
         const deps = makeDeps()
         const tracker = new StreamTimingTracker(deps)
+        const overThreshold =
+          SLOW_CHUNK_GAP_THRESHOLD_MS + 1_000
 
         now = 1100; tracker.recordChunk()
-        now = 1100 + 91_000; tracker.recordChunk()
+        now = 1100 + overThreshold
+        tracker.recordChunk()
 
-        expect(deps.socket.emit).not.toHaveBeenCalled()
+        expect(deps.socket.emit)
+          .not.toHaveBeenCalled()
       }
     )
 
     it(
-      'logs slow_gap via logger.warn regardless of env var',
+      'logs slow_gap via logger.warn regardless ' +
+      'of env var',
       () => {
         let now = 1000
-        dateNowSpy = vi.spyOn(Date, 'now').mockImplementation(() => now)
+        dateNowSpy = vi.spyOn(Date, 'now')
+          .mockImplementation(() => now)
         const deps = makeDeps()
         const tracker = new StreamTimingTracker(deps)
+        const overThreshold =
+          SLOW_CHUNK_GAP_THRESHOLD_MS + 1_000
 
         now = 1100; tracker.recordChunk()
-        now = 1100 + 91_000; tracker.recordChunk()
+        now = 1100 + overThreshold
+        tracker.recordChunk()
 
         expect(deps.logger.warn).toHaveBeenCalledWith(
           'stream.chunk.slow_gap',
-          expect.objectContaining({ gapMs: 91_000 })
+          expect.objectContaining({
+            gapMs: overThreshold,
+          })
         )
       }
     )
@@ -376,7 +394,8 @@ describe('StreamTimingTracker', () => {
     )
 
     it(
-      'logs stream.tool.slow_execution when tool >= 90s',
+      'logs stream.tool.slow_execution when ' +
+      'tool >= threshold',
       () => {
         let now = 1000
         dateNowSpy = vi.spyOn(Date, 'now')
@@ -386,7 +405,8 @@ describe('StreamTimingTracker', () => {
 
         now = 1100; tracker.recordChunk()
         tracker.pauseGapTracking('terminalCommand')
-        now = 1100 + 90_000 // exactly 90s
+        // exactly at threshold
+        now = 1100 + SLOW_CHUNK_GAP_THRESHOLD_MS
         tracker.resumeGapTracking()
 
         expect(deps.logger.warn).toHaveBeenCalledWith(
@@ -396,14 +416,16 @@ describe('StreamTimingTracker', () => {
             agentName: 'test-agent',
             modelName: 'claude-sonnet-4-6',
             toolName: 'terminalCommand',
-            toolDurationMs: 90_000,
+            toolDurationMs:
+              SLOW_CHUNK_GAP_THRESHOLD_MS,
           })
         )
       }
     )
 
     it(
-      'does not log slow_execution when tool < 90s',
+      'does not log slow_execution when ' +
+      'tool < threshold',
       () => {
         let now = 1000
         dateNowSpy = vi.spyOn(Date, 'now')
@@ -413,13 +435,15 @@ describe('StreamTimingTracker', () => {
 
         now = 1100; tracker.recordChunk()
         tracker.pauseGapTracking('readFile')
-        now = 1100 + 89_999 // just under 90s
+        // just under threshold
+        now = 1100 + SLOW_CHUNK_GAP_THRESHOLD_MS - 1
         tracker.resumeGapTracking()
 
-        expect(deps.logger.warn).not.toHaveBeenCalledWith(
-          'stream.tool.slow_execution',
-          expect.anything()
-        )
+        expect(deps.logger.warn)
+          .not.toHaveBeenCalledWith(
+            'stream.tool.slow_execution',
+            expect.anything()
+          )
       }
     )
   })

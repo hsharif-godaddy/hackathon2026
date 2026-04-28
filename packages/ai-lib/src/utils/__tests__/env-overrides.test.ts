@@ -46,7 +46,12 @@ describe('parseChunkTimeoutMs', () => {
     expect(parseChunkTimeoutMs()).toBeUndefined()
   })
 
-  it('returns undefined for a negative number', () => {
+  it('returns -1 for the disable sentinel', () => {
+    process.env.AI_CHUNK_TIMEOUT_MS = '-1'
+    expect(parseChunkTimeoutMs()).toBe(-1)
+  })
+
+  it('returns undefined for a negative number other than -1', () => {
     process.env.AI_CHUNK_TIMEOUT_MS = '-1000'
     expect(parseChunkTimeoutMs()).toBeUndefined()
   })

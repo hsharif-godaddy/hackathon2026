@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { Server as HTTPServer } from 'http'
 import { WebSocketServer } from '../experimental-websocket-server.js'
 import { createNoOpPersistence } from '../noop-persistence.js'
+import { ChunkTimeoutGuard } from '../chunk-timeout-guard.js'
 import type { AgentWrapper } from '@airo/ai-lib'
 
 // Mock Socket.IO
@@ -3726,5 +3727,81 @@ describe('WebSocketServer - postStreamValidator continuation', () => {
 
     server.close()
   })
+})
+
+describe('createChunkTimeoutGuard (private factory)', () => {
+  function makeServer(
+    chunkTimeoutMs?: number
+  ): WebSocketServer {
+    const httpServer = { close: vi.fn() } as any
+    return new WebSocketServer(httpServer, {
+      agents: mockAgents,
+      defaultAgent: 'test-agent',
+      messagePersistence: createNoOpPersistence(),
+      chunkTimeoutMs,
+    })
+  }
+
+  function callFactory(
+    server: WebSocketServer,
+    abortController: AbortController | null | undefined
+  ): ChunkTimeoutGuard | null {
+    return (server as any).createChunkTimeoutGuard(
+      abortController, 'sock-1', 'test-agent', 'gpt-4'
+    )
+  }
+
+  afterEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('returns null when chunkTimeoutMs is undefined', () => {
+    const server = makeServer(undefined)
+    const result = callFactory(server, new AbortController())
+    expect(result).toBeNull()
+    server.close()
+  })
+
+  it('returns null when chunkTimeoutMs is -1', () => {
+    const server = makeServer(-1)
+    const result = callFactory(server, new AbortController())
+    expect(result).toBeNull()
+    server.close()
+  })
+
+  it('returns null when chunkTimeoutMs is 0', () => {
+    const server = makeServer(0)
+    const result = callFactory(server, new AbortController())
+    expect(result).toBeNull()
+    server.close()
+  })
+
+  it('returns null when abortController is null', () => {
+    const server = makeServer(5_000)
+    const result = callFactory(server, null)
+    expect(result).toBeNull()
+    server.close()
+  })
+
+  it('returns null when abortController is undefined', () => {
+    const server = makeServer(5_000)
+    const result = callFactory(server, undefined)
+    expect(result).toBeNull()
+    server.close()
+  })
+
+  it(
+    'returns ChunkTimeoutGuard when chunkTimeoutMs is ' +
+    'positive and abortController is valid',
+    () => {
+      const server = makeServer(5_000)
+      const result = callFactory(
+        server, new AbortController()
+      )
+      expect(result).toBeInstanceOf(ChunkTimeoutGuard)
+      result?.dispose()
+      server.close()
+    }
+  )
 })
 

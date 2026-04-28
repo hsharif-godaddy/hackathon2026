@@ -387,9 +387,10 @@ export interface WebSocketConfig {
   ) => Promise<void>
 
   /**
-   * Transport-layer chunk timeout in ms (default: 180_000).
-   * Aborts the per-socket AbortController when no chunk arrives
-   * within this window. Pauses during tool execution.
+   * Transport-layer chunk timeout in ms (default: -1, disabled).
+   * Set to a positive ms value to enable. Aborts the per-socket
+   * AbortController when no chunk arrives within this window.
+   * Pauses during tool execution.
    */
   chunkTimeoutMs?: number
 }
@@ -1561,18 +1562,9 @@ export class WebSocketServer {
       logger: this.logger,
       ...(abortController && { abortController }),
     })
-    const guard = abortController
-      ? new ChunkTimeoutGuard(
-          {
-            abortController,
-            logger: this.logger,
-            socketId,
-            agentName,
-            modelName,
-          },
-          this.config.chunkTimeoutMs
-        )
-      : null
+    const guard = this.createChunkTimeoutGuard(
+      abortController, socketId, agentName, modelName
+    )
     let timingData: StreamTimingData = {
       timeToFirstTextChunkMs: null,
       maxChunkGapMs: 0,
@@ -1950,18 +1942,9 @@ export class WebSocketServer {
       logger: this.logger,
       ...(abortController && { abortController }),
     })
-    const guard = abortController
-      ? new ChunkTimeoutGuard(
-          {
-            abortController,
-            logger: this.logger,
-            socketId,
-            agentName,
-            modelName,
-          },
-          this.config.chunkTimeoutMs
-        )
-      : null
+    const guard = this.createChunkTimeoutGuard(
+      abortController, socketId, agentName, modelName
+    )
 
     try {
       guard?.arm()
@@ -3150,6 +3133,35 @@ export class WebSocketServer {
   }
 
   /**
+   * Create a ChunkTimeoutGuard if configured with a
+   * positive timeout, otherwise return null.
+   */
+  private createChunkTimeoutGuard(
+    abortController: AbortController | null | undefined,
+    socketId: string,
+    agentName: string,
+    modelName: string
+  ): ChunkTimeoutGuard | null {
+    if (
+      !abortController
+      || this.config.chunkTimeoutMs == null
+      || this.config.chunkTimeoutMs <= 0
+    ) {
+      return null
+    }
+    return new ChunkTimeoutGuard(
+      {
+        abortController,
+        logger: this.logger,
+        socketId,
+        agentName,
+        modelName,
+      },
+      this.config.chunkTimeoutMs
+    )
+  }
+
+  /**
    * Check if handoff occurred and get details
    */
   private getHandoffDetails(
@@ -3938,7 +3950,8 @@ Please try again with corrected formatting.`
         chunksRead: streamTiming.chunksRead,
         streamDurationMs: streamTiming.streamDurationMs,
       }
-      this.logger.debug('stream.timing.summary', timingSummary)
+      // info (not debug) for production observability
+      this.logger.info('stream.timing.summary', timingSummary)
       if (process.env.SOCKET_DIAGNOSTICS === 'true') {
         socket.emit('stream.timing.summary', timingSummary)
       }
@@ -3946,7 +3959,7 @@ Please try again with corrected formatting.`
       // Capture execution steps for cost attribution (returned to caller for accumulation)
       executionSteps = finalResult.steps ?? []
       if (executionSteps.length > 0) {
-        this.logger.info('steps.captured', {
+        this.logger.debug('steps.captured', {
           socketId: socket.id,
           stepCount: executionSteps.length,
           conversationId: conversationAfterStream?.conversationId,

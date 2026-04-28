@@ -1,6 +1,8 @@
-export const DEFAULT_CHUNK_TIMEOUT_MS = 180_000
+// Disabled by default (-1). Set AI_CHUNK_TIMEOUT_MS to a
+// positive ms value to enable.
+export const DEFAULT_CHUNK_TIMEOUT_MS = -1
 export const CHUNK_GAP_WARNING_THRESHOLDS_MS = [
-  120_000, 150_000,
+  90_000, 180_000, 300_000, 540_000,
 ]
 
 interface ChunkTimeoutLogger {
@@ -23,7 +25,7 @@ export class ChunkTimeoutGuard {
 
   constructor(
     deps: ChunkTimeoutDeps,
-    timeoutMs = DEFAULT_CHUNK_TIMEOUT_MS
+    timeoutMs: number
   ) {
     this.deps = deps
     this.timeoutMs = timeoutMs
