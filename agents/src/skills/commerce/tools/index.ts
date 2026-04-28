@@ -810,6 +810,26 @@ function generateSkusFromAttributes(args: {
 // setup_store
 // ============================================================================
 
+/**
+ * Detects the GoDaddy Commerce "customer is not registered with Commerce yet"
+ * response. The stores-summary endpoint returns:
+ *   { code: "GODADDY_SSO_NO_MATCH", httpStatus: 401, message: "Unknown GoDaddy user." }
+ * when the authenticated customer has never had a Commerce store. That surfaces
+ * as a thrown Error from safeJsonParse whose message contains the 401 status
+ * and a truncated body snippet (see safeJsonParse in lib/godaddy-commerce.ts,
+ * which slices bodies to 200 chars). This is a pre-onboarding state, not an
+ * auth failure, so setup_store treats it as "no existing store" and proceeds
+ * to create one.
+ *
+ * Both `GODADDY_SSO_NO_MATCH` (error code) and `Unknown GoDaddy user` (message)
+ * are matched: they co-occur in the current response body, and the message
+ * string is kept as a fallback in case Commerce ever changes the code while
+ * preserving the human-readable message.
+ */
+function isUnknownCommerceCustomerError(message: string): boolean {
+  return message.includes('GODADDY_SSO_NO_MATCH') || message.includes('Unknown GoDaddy user');
+}
+
 export const setupStoreTool: SkillToolDefinition = {
   name: 'setup_store',
   description:
@@ -857,7 +877,25 @@ export const setupStoreTool: SkillToolDefinition = {
 
     const executionPromise = (async () => {
       const authResult = await withCommerceAuth(appId, async (accessToken, customerId) => {
-        const summary = (await godaddy.getStoreSummary({ customerId }, accessToken)) as CommerceStoreSummaryResponse;
+        // Fetch the customer's Commerce store summary.
+        //
+        // The stores-summary endpoint returns 401 GODADDY_SSO_NO_MATCH /
+        // "Unknown GoDaddy user." when the authenticated customer has never
+        // been registered with Commerce (i.e. has no store yet). That's an
+        // expected pre-onboarding state — not an auth failure — so we treat
+        // it the same as an empty summary and fall through to onboarding.
+        let summary: CommerceStoreSummaryResponse;
+        try {
+          summary = (await godaddy.getStoreSummary({ customerId }, accessToken)) as CommerceStoreSummaryResponse;
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          if (isUnknownCommerceCustomerError(message)) {
+            logger.info('commerce.skill.setup_store.no_existing_store', { appId, error: message });
+            summary = { businesses: [] };
+          } else {
+            throw err;
+          }
+        }
         const existingStores = getCommerceStoresFromSummary(summary);
         const discoveredStore = existingStores[0];
         const explicitStoreId = getExplicitStoreId(input);

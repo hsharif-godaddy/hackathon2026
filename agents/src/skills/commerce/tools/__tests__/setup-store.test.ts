@@ -781,6 +781,97 @@ describe('commerce__setup_store', () => {
     expect(result.needsAuth).toBe(true);
   });
 
+  it('should treat GODADDY_SSO_NO_MATCH from getStoreSummary as no existing store and proceed to onboard', async () => {
+    mockWithCommerceAuth.mockImplementation(async (_appId: string, fn: (token: string, customerId: string) => Promise<unknown>) => {
+      const result = await fn('token-abc', 'customer-1');
+      return { success: true, data: result };
+    });
+    // Mirrors the real safeJsonParse error shape for a customer who has never
+    // had a Commerce store: HTTP 401 + a GODADDY_SSO_NO_MATCH body. Note that
+    // safeJsonParse truncates bodies to 200 chars and appends an ellipsis; the
+    // body below is short enough to pass through un-truncated, but the
+    // detector must tolerate either form.
+    mockGetStoreSummary.mockRejectedValue(
+      new Error(
+        'Commerce API error (getStoreSummary): 401 Unauthorized - {"code":"GODADDY_SSO_NO_MATCH","httpStatus":401,"message":"Unknown GoDaddy user.","developerMessage":"Unknown GoDaddy user.","requestId":"05400ce1-0035-4d90-a7a6-732c0fefc91f"}',
+      ),
+    );
+    mockOnboardApplication.mockResolvedValue({
+      metadata: { storeId: 'store-new', channelId: 'ch-new' },
+    });
+    mockEnableCatalogV2.mockResolvedValue(undefined);
+    mockEnableGoDaddyPaymentsApplication.mockResolvedValue(undefined);
+    mockCreateLocation.mockResolvedValue({
+      success: true,
+      data: { createLocation: { id: 'loc-default' } },
+    });
+
+    const result = await setupStoreTool.execute(
+      { firstName: 'John', lastName: 'Doe', email: 'john@test.com' },
+      context,
+    );
+
+    expect(mockOnboardApplication).toHaveBeenCalled();
+    expect(result.data.storeId).toBe('store-new');
+    expect(result.data.created).toBe(true);
+  });
+
+  it('should return needsOwnerIdentity when getStoreSummary says unknown user and creation fields are missing', async () => {
+    mockWithCommerceAuth.mockImplementation(async (_appId: string, fn: (token: string, customerId: string) => Promise<unknown>) => {
+      const result = await fn('token-abc', 'customer-1');
+      return { success: true, data: result };
+    });
+    mockGetStoreSummary.mockRejectedValue(
+      new Error('Commerce API error (getStoreSummary): 401 Unauthorized - {"code":"GODADDY_SSO_NO_MATCH","message":"Unknown GoDaddy user."}'),
+    );
+
+    const result = await setupStoreTool.execute({}, context);
+
+    expect(result.data.needsOwnerIdentity).toBe(true);
+    expect(result.data.missingFields).toEqual(['firstName', 'lastName', 'email']);
+    expect(mockOnboardApplication).not.toHaveBeenCalled();
+  });
+
+  it('should return noExistingStoreFound when storePreference is "existing" and getStoreSummary says unknown user', async () => {
+    mockWithCommerceAuth.mockImplementation(async (_appId: string, fn: (token: string, customerId: string) => Promise<unknown>) => {
+      const result = await fn('token-abc', 'customer-1');
+      return { success: true, data: result };
+    });
+    mockGetStoreSummary.mockRejectedValue(
+      new Error('Commerce API error (getStoreSummary): 401 Unauthorized - {"code":"GODADDY_SSO_NO_MATCH","message":"Unknown GoDaddy user."}'),
+    );
+
+    const result = await setupStoreTool.execute(
+      { storePreference: 'existing' },
+      context,
+    );
+
+    expect(result.data.noExistingStoreFound).toBe(true);
+    expect(mockOnboardApplication).not.toHaveBeenCalled();
+  });
+
+  it('should surface unrelated getStoreSummary errors rather than onboarding over them', async () => {
+    mockWithCommerceAuth.mockImplementation(async (_appId: string, fn: (token: string, customerId: string) => Promise<unknown>) => {
+      try {
+        const result = await fn('token-abc', 'customer-1');
+        return { success: true, data: result };
+      } catch (err) {
+        return { success: false, error: err instanceof Error ? err.message : String(err) };
+      }
+    });
+    mockGetStoreSummary.mockRejectedValue(
+      new Error('Commerce API error (getStoreSummary): 500 Internal Server Error - boom'),
+    );
+
+    const result = await setupStoreTool.execute(
+      { firstName: 'John', lastName: 'Doe', email: 'john@test.com' },
+      context,
+    );
+
+    expect(result.error).toContain('500');
+    expect(mockOnboardApplication).not.toHaveBeenCalled();
+  });
+
   it('should fail if appId is missing from context', async () => {
     const result = await setupStoreTool.execute(
       { firstName: 'John', lastName: 'Doe', email: 'john@test.com' },
