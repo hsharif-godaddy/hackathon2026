@@ -70,6 +70,66 @@ describe("features", () => {
     });
   });
 
+  describe("determineAuthType - fallback behavior", () => {
+    it("falls back to JWT for NODE_ENV=production", async () => {
+      process.env.NODE_ENV = "production";
+      delete process.env.AUTH_TYPE;
+      const { getFeatures, AuthType } = await import("../features.js");
+      expect(getFeatures().authType).toBe(AuthType.JWT);
+    });
+
+    it("falls back to MOCK for NODE_ENV=development", async () => {
+      process.env.NODE_ENV = "development";
+      delete process.env.AUTH_TYPE;
+      const { getFeatures, AuthType } = await import("../features.js");
+      expect(getFeatures().authType).toBe(AuthType.MOCK);
+    });
+
+    it("falls back to MOCK for NODE_ENV=test", async () => {
+      process.env.NODE_ENV = "test";
+      delete process.env.AUTH_TYPE;
+      const { getFeatures, AuthType } = await import("../features.js");
+      expect(getFeatures().authType).toBe(AuthType.MOCK);
+    });
+
+    it("falls back to JWT for unknown NODE_ENV (security default)", async () => {
+      process.env.NODE_ENV = "staging-weird";
+      delete process.env.AUTH_TYPE;
+      const { getFeatures, AuthType } = await import("../features.js");
+      expect(getFeatures().authType).toBe(AuthType.JWT);
+    });
+
+    it("logs features.auth_type.unrecognized at error level for invalid AUTH_TYPE", async () => {
+      process.env.NODE_ENV = "development";
+      process.env.AUTH_TYPE = "none";
+
+      const { Logger } = await import("../../logging/index.js");
+      const errorSpy = vi.spyOn(Logger.prototype, "error").mockImplementation(() => {});
+
+      const { getFeatures, AuthType } = await import("../features.js");
+      expect(getFeatures().authType).toBe(AuthType.MOCK);
+      expect(errorSpy).toHaveBeenCalledWith(
+        "features.auth_type.unrecognized",
+        expect.objectContaining({ value: "none", nodeEnv: "development" }),
+      );
+
+      errorSpy.mockRestore();
+    });
+
+    it("AUTH_TYPE=none in production falls back to JWT and passes validation", async () => {
+      process.env.NODE_ENV = "production";
+      process.env.AUTH_TYPE = "none";
+      process.env.SITE_ID = "prod-site-12345";
+
+      const { Logger } = await import("../../logging/index.js");
+      vi.spyOn(Logger.prototype, "error").mockImplementation(() => {});
+
+      const { getFeatures, validateConfiguration, AuthType } = await import("../features.js");
+      expect(getFeatures().authType).toBe(AuthType.JWT);
+      expect(() => validateConfiguration()).not.toThrow();
+    });
+  });
+
   describe("validateConfiguration - Security Checks", () => {
     describe("Production Authentication Validation", () => {
       it("should pass when production uses JWT authentication", async () => {
@@ -92,30 +152,10 @@ describe("features", () => {
         );
       });
 
-      it("should throw when production uses NONE authentication", async () => {
-        process.env.NODE_ENV = "production";
-        process.env.AUTH_TYPE = "none";
-        process.env.SITE_ID = "prod-site-12345";
-
-        const { validateConfiguration } = await import("../features.js");
-        expect(() => validateConfiguration()).toThrow(
-          /SECURITY: Production must use JWT authentication/
-        );
-      });
-
       it("should allow MOCK authentication in development", async () => {
         process.env.NODE_ENV = "development";
         process.env.AUTH_TYPE = "mock";
         process.env.SITE_ID = "mock-site-id";
-
-        const { validateConfiguration } = await import("../features.js");
-        expect(() => validateConfiguration()).not.toThrow();
-      });
-
-      it("should allow NONE authentication in development", async () => {
-        process.env.NODE_ENV = "development";
-        process.env.AUTH_TYPE = "none";
-        process.env.SITE_ID = "local-dev-site";
 
         const { validateConfiguration } = await import("../features.js");
         expect(() => validateConfiguration()).not.toThrow();

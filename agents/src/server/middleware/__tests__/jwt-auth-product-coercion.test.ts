@@ -19,7 +19,7 @@ vi.mock('../../../services/features.js', () => ({
     getType: () => 'jwt',
     getSiteId: () => 'test-site',
   },
-  AuthType: { JWT: 'jwt', MOCK: 'mock', NONE: 'none' },
+  AuthType: { JWT: 'jwt', MOCK: 'mock' },
 }));
 
 vi.mock('../../../logging/index.js', () => ({

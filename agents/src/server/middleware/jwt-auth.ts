@@ -85,7 +85,6 @@ export class JWTAuthMiddleware {
 
   constructor() {
     // Only validate JWT config if we're using JWT authentication
-    // For AUTH_TYPE=none or AUTH_TYPE=mock, JWKS config is not needed
     const authType = auth.getType();
     if (authType === AuthType.JWT) {
       const configValidation = validateJWTAgentConfig();
@@ -140,24 +139,6 @@ export class JWTAuthMiddleware {
     try {
       // Handle different authentication types via feature system
       const authType = auth.getType();
-
-      if (authType === AuthType.NONE) {
-        const now = Math.floor(Date.now() / 1000);
-        (req as AuthenticatedRequest).agentContext = {
-          siteId: auth.getSiteId(AuthType.NONE),
-          canDownload: true,
-          canPublish: true,
-          canPurchaseDomain: true,
-          isE2S: false,
-          product: 'AiroAppBuilder',
-          modelSelectorEnabled: true,
-          agentProfileSelectorEnabled: true,
-          exp: now + 3600,
-          iat: now
-        };
-        next();
-        return;
-      }
 
       if (authType === AuthType.MOCK) {
         const now = Math.floor(Date.now() / 1000);

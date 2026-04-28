@@ -16,8 +16,6 @@ export enum AuthType {
   JWT = 'jwt',
   /** Mock authentication for development/testing */
   MOCK = 'mock',
-  /** No authentication (local development only) */
-  NONE = 'none'
 }
 
 interface FeatureConfig {
@@ -157,15 +155,22 @@ function determineAuthType(): AuthType {
     return explicitAuthType
   }
 
+  // AUTH_TYPE was set but not a recognized value - error so misconfigurations
+  // surface in on-call tooling (warn may not trip the same alert tier).
+  if (process.env.AUTH_TYPE) {
+    logger.error('features.auth_type.unrecognized', {
+      value: process.env.AUTH_TYPE,
+      nodeEnv,
+      supported: Object.values(AuthType),
+      message: 'AUTH_TYPE is set but not a recognized value; falling back to NODE_ENV default',
+    })
+  }
+
   // Default behavior based on NODE_ENV
   switch (nodeEnv) {
     case 'production':
       return AuthType.JWT
     case 'development':
-      // In development, check legacy environment variable for compatibility
-      if (process.env.BYPASS_AUTH_FOR_LOCAL === 'true') {
-        return AuthType.NONE
-      }
       return AuthType.MOCK
     case 'test':
       return AuthType.MOCK
@@ -281,16 +286,9 @@ export const getAgentConfig = {
  * Authentication helper functions for agents service
  */
 export const auth = {
-  /** Get current authentication type */
   getType: () => getFeatures().authType,
-  /** Check if authentication is disabled (no auth required) */
-  isDisabled: () => getFeatures().authType === AuthType.NONE,
-  /** Check if using mock authentication */
   isMock: () => getFeatures().authType === AuthType.MOCK,
-  /** Check if using full JWT authentication */
   isJWT: () => getFeatures().authType === AuthType.JWT,
-  /** Check if authentication is required (not NONE) */
-  isRequired: () => getFeatures().authType !== AuthType.NONE,
 
   /** Get JWKS URL (undefined if not set or empty) */
   getJWKSUrl: () => {
@@ -308,8 +306,6 @@ export const auth = {
     const currentAuthType = authType || features.authType;
 
     switch (currentAuthType) {
-      case AuthType.NONE:
-        return features.siteId || 'local-dev-site';
       case AuthType.MOCK:
         return features.siteId || 'mock-site-id';
       case AuthType.JWT:

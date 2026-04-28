@@ -3019,28 +3019,6 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
 
         const authType = auth.getType();
 
-        if (authType === AuthType.NONE) {
-          const siteId = auth.getSiteId(AuthType.NONE);
-          const now = Math.floor(Date.now() / 1000);
-          socket.handshake.auth = {
-            ...socket.handshake.auth,
-            siteId,
-            agentContext: {
-              siteId,
-              canDownload: true,
-              canPublish: true,
-              canPurchaseDomain: true,
-              isE2S: false,
-              product: 'AiroAppBuilder' as ProductType,
-              modelSelectorEnabled: true,
-              exp: now + 3600,
-              iat: now
-            }
-          };
-          next();
-          return;
-        }
-
         if (authType === AuthType.MOCK) {
           const siteId = auth.getSiteId(AuthType.MOCK);
           const now = Math.floor(Date.now() / 1000);
@@ -3055,6 +3033,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
               isE2S: false,
               product: 'AiroAppBuilder' as ProductType,
               modelSelectorEnabled: true,
+              agentProfileSelectorEnabled: true,
               exp: now + 3600,
               iat: now
             }

@@ -22,7 +22,7 @@ vi.mock('../../../lib/jwks-config.js', () => ({
 
 vi.mock('../../../services/features.js', () => ({
   auth: authMock,
-  AuthType: { JWT: 'jwt', MOCK: 'mock', NONE: 'none' },
+  AuthType: { JWT: 'jwt', MOCK: 'mock' },
   getFeatures: vi.fn(() => ({})),
 }));
 
@@ -49,27 +49,6 @@ describe('JWTAuthMiddleware local dev auth', function localDevSuite() {
     mockReq = { headers: {}, path: '/test', method: 'GET' };
     mockRes = { status: vi.fn().mockReturnThis(), json: vi.fn() };
     mockNext = vi.fn();
-  });
-
-  describe('AuthType.NONE', function noneSuite() {
-    beforeEach(function setAuthNone() {
-      authMock.getType.mockReturnValue('none');
-      middleware = new JWTAuthMiddleware();
-    });
-
-    it('sets modelSelectorEnabled to true', async function setsModelSelector() {
-      await middleware.authenticate(mockReq as Request, mockRes as Response, mockNext);
-
-      expect((mockReq as AuthenticatedRequest).agentContext?.modelSelectorEnabled).toBe(true);
-      expect(mockNext).toHaveBeenCalled();
-    });
-
-    it('does not set modelOverride (relies on frontend selection)', async function noModelOverride() {
-      await middleware.authenticate(mockReq as Request, mockRes as Response, mockNext);
-
-      expect((mockReq as AuthenticatedRequest).agentContext?.modelOverride).toBeUndefined();
-      expect(mockNext).toHaveBeenCalled();
-    });
   });
 
   describe('AuthType.MOCK', function mockSuite() {
