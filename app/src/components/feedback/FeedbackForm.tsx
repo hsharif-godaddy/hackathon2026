@@ -32,7 +32,7 @@ export function FeedbackForm({
 }: FeedbackFormProps) {
   const t = useTranslations();
   const { control, handleSubmit, formState } = useForm();
-  const { getUserInfo, authState } = useAuthContext();
+  const { getUserInfo, tokenAuthType } = useAuthContext();
   const currentAppId = useDevelopPageStore((state) => state.currentAppId);
   const getSite = useSitesStore((state) => state.getSite);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -43,7 +43,7 @@ export function FeedbackForm({
   const isInternalUser = shopperId?.length === 3;
 
   // Impersonation detection (e2s/e2s2s)
-  const isImpersonating = isEmployeeAuthType(authState?.authType);
+  const isImpersonating = isEmployeeAuthType(tokenAuthType);
 
   async function sendToSlack(data) {
     try {

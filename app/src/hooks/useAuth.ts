@@ -192,10 +192,15 @@ export function useAuth(options: UseAuthOptions = {}) {
 
   const { isAuthenticated, isLoading } = getAuthenticationState();
 
+  // Token auth type from JWT claims (e2s, basic, s2s, etc.) - distinct from authType which is the auth mode (jwt, mock)
+  // Note: Gasket's AuthState type doesn't expose authType but gd-auth populates it at runtime
+  const tokenAuthType: string | undefined = shouldUseJWT ? (authState as { authType?: string })?.authType : undefined;
+
   return {
     isAuthenticated,
     isLoading,
     authState: shouldUseJWT ? authState : null,
+    tokenAuthType,
 
     config,
     gasketConfig: config,

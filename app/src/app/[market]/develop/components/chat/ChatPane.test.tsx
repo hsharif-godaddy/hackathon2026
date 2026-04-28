@@ -89,13 +89,6 @@ vi.mock('@/app/[market]/develop/components/PersistentTodoList', () => ({
   default: () => <div data-testid="todo-list">Todo List</div>,
 }));
 
-vi.mock('@/app/[market]/develop/components/chat/BudgetExceededBanner', () => ({
-  default: ({ onClose }: { onClose?: () => void }) => (
-    <div data-testid="budget-exceeded-banner">
-      {onClose && <button onClick={onClose}>Close</button>}
-    </div>
-  ),
-}));
 
 // Mock stores
 const mockStreamingStore = {
@@ -217,7 +210,7 @@ vi.mock('@/hooks/useSwitchboard', () => {
 });
 
 // Mock auth context — default to non-impersonation session
-const mockAuthContextState: { authState: any } = { authState: null };
+const mockAuthContextState: { tokenAuthType: string | undefined } = { tokenAuthType: undefined };
 vi.mock('@/components/providers/AuthProvider', () => ({
   useAuthContext: () => mockAuthContextState,
 }));
@@ -261,7 +254,7 @@ describe('ChatPane', () => {
     mockActiveGrant.result = undefined;
 
     // Reset auth context mock to non-impersonation session
-    mockAuthContextState.authState = null;
+    mockAuthContextState.tokenAuthType = undefined;
 
     // Reset switchboard mocks
     Object.keys(mockSwitchboardValues).forEach((k) => delete mockSwitchboardValues[k]);
@@ -786,12 +779,12 @@ describe('ChatPane', () => {
       const { user } = renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
 
       await waitFor(function assertBannerVisible() {
-        expect(screen.getByTestId('budget-exceeded-banner')).toBeInTheDocument();
+        expect(screen.getByText('builder_usage_limit_title')).toBeInTheDocument();
       });
 
       await user.click(screen.getByRole('button', { name: 'Close' }));
 
-      expect(screen.queryByTestId('budget-exceeded-banner')).not.toBeInTheDocument();
+      expect(screen.queryByText('builder_usage_limit_title')).not.toBeInTheDocument();
     });
   });
 
@@ -847,9 +840,8 @@ describe('ChatPane', () => {
 
   describe('CRM skip / impersonation session', function impersonationTests() {
     it('should keep chat enabled for e2s session even when budget is exceeded', function e2sBudgetBypass() {
-      mockAuthContextState.authState = { authType: 'e2s' };
+      mockAuthContextState.tokenAuthType = 'e2s';
       mockStreamingStore.messages = [{ budgetExceeded: true }];
-
 
       renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
 
@@ -858,9 +850,8 @@ describe('ChatPane', () => {
     });
 
     it('should keep chat enabled for e2s2s session even when budget is exceeded', function e2s2sBudgetBypass() {
-      mockAuthContextState.authState = { authType: 'e2s2s' };
+      mockAuthContextState.tokenAuthType = 'e2s2s';
       mockStreamingStore.messages = [{ budgetExceeded: true }];
-
 
       renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
 
@@ -869,7 +860,7 @@ describe('ChatPane', () => {
     });
 
     it('should keep chat enabled for e2s session even with exhausted grants', function e2sExhaustedGrants() {
-      mockAuthContextState.authState = { authType: 'e2s' };
+      mockAuthContextState.tokenAuthType = 'e2s';
       mockStreamingStore.messages = [];
 
       mockSubscriptionData.data = { id: 'sub-123' };
@@ -880,12 +871,13 @@ describe('ChatPane', () => {
 
       const chatInput = screen.getByTestId('chat-input');
       expect(chatInput).toHaveAttribute('data-budget-exceeded', 'false');
+      // Proactive banner should also be hidden for employee sessions
+      expect(screen.queryByText('builder_usage_limit_title')).not.toBeInTheDocument();
     });
 
     it('should still disable chat for basic auth sessions when budget is exceeded', function basicBudgetExceeded() {
-      mockAuthContextState.authState = { authType: 'basic' };
+      mockAuthContextState.tokenAuthType = 'basic';
       mockStreamingStore.messages = [{ budgetExceeded: true }];
-
 
       renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
 

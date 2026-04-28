@@ -204,11 +204,10 @@ export default function ChatPane({
     subscriptionId: subscription?.id,
   })
 
-  const { authState } = useAuthContext()
+  const { tokenAuthType } = useAuthContext()
   // CRM skip sessions use e2s tokens. isEmployeeAuthType covers e2s/e2s2s — same check
   // used for feedback impersonation detection in Feedback.tsx.
-
-  const isImpersonating = isEmployeeAuthType((authState as any)?.authType)
+  const isImpersonating = isEmployeeAuthType(tokenAuthType)
 
   // Credit availability check using unified grants
   const hasAvailableCredits = grants !== undefined && getActiveGrant(grants) !== undefined

@@ -46,6 +46,12 @@ vi.mock('@/hooks/useTranslations', () => ({
   useTranslations: () => (key: string) => key,
 }));
 
+// Mock auth context — default to non-impersonation session
+const mockAuthContextState: { tokenAuthType: string | undefined } = { tokenAuthType: undefined };
+vi.mock('@/components/providers/AuthProvider', () => ({
+  useAuthContext: () => mockAuthContextState,
+}));
+
 vi.mock('react-intl', async () => {
   const actual = await vi.importActual<typeof import('react-intl')>('react-intl');
   return {
@@ -75,6 +81,8 @@ describe('StreamingIntegratedResponse', function streamingIntegratedResponseTest
     vi.clearAllMocks();
     mockLogImpressionEvent.mockClear();
     mockSite = null;
+    // Reset auth context mock to non-impersonation session
+    mockAuthContextState.tokenAuthType = undefined;
   });
 
   describe('budget exceeded impression', function budgetExceededImpression() {
@@ -194,6 +202,66 @@ describe('StreamingIntegratedResponse', function streamingIntegratedResponseTest
       );
 
       expect(mockLogImpressionEvent).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('CRM skip / impersonation session', function impersonationTests() {
+    it('hides budget exceeded banner and suppresses impression for e2s session', function e2sBudgetBannerHidden() {
+      mockAuthContextState.tokenAuthType = 'e2s';
+      mockSite = createMockSite({ id: 'test-app-123' });
+
+      renderWithProviders(
+        <StreamingIntegratedResponse
+          message={budgetExceededMessage()}
+          streamingState="idle"
+        />
+      );
+
+      expect(screen.queryByText('builder_usage_limit_title')).not.toBeInTheDocument();
+      expect(mockLogImpressionEvent).not.toHaveBeenCalled();
+    });
+
+    it('hides budget exceeded banner and suppresses impression for e2s2s session', function e2s2sBudgetBannerHidden() {
+      mockAuthContextState.tokenAuthType = 'e2s2s';
+      mockSite = createMockSite({ id: 'test-app-123' });
+
+      renderWithProviders(
+        <StreamingIntegratedResponse
+          message={budgetExceededMessage()}
+          streamingState="idle"
+        />
+      );
+
+      expect(screen.queryByText('builder_usage_limit_title')).not.toBeInTheDocument();
+      expect(mockLogImpressionEvent).not.toHaveBeenCalled();
+    });
+
+    it('shows budget exceeded banner for basic auth session', function basicAuthBannerShown() {
+      mockAuthContextState.tokenAuthType = 'basic';
+      mockSite = createMockSite({ id: 'test-app-123' });
+
+      renderWithProviders(
+        <StreamingIntegratedResponse
+          message={budgetExceededMessage()}
+          streamingState="idle"
+        />
+      );
+
+      expect(screen.getByText('builder_usage_limit_title')).toBeInTheDocument();
+    });
+
+    it('shows budget exceeded banner when tokenAuthType is undefined', function undefinedTokenAuthTypeBannerShown() {
+      mockAuthContextState.tokenAuthType = undefined;
+      mockSite = createMockSite({ id: 'test-app-123' });
+
+      renderWithProviders(
+        <StreamingIntegratedResponse
+          message={budgetExceededMessage()}
+          streamingState="idle"
+        />
+      );
+
+      expect(screen.getByText('builder_usage_limit_title')).toBeInTheDocument();
     });
   });
 

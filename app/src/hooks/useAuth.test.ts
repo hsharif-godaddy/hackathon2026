@@ -193,4 +193,90 @@ describe('useAuth', () => {
     });
   });
 
+  describe('tokenAuthType', () => {
+    it('should return tokenAuthType from authState when JWT mode is enabled', async () => {
+      // Configure JWT mode
+      mockGasketConfig = {
+        ...defaultTestConfig,
+        auth: {
+          ...defaultTestConfig.auth,
+          isJWT: true,
+          isMock: false,
+        },
+      };
+
+      const gasketConfigModule = await import('@/lib/gasket-config');
+      vi.mocked(gasketConfigModule.isAuthJWTSync).mockReturnValue(true);
+      vi.mocked(gasketConfigModule.isAuthMockSync).mockReturnValue(false);
+
+      // Mock authState with e2s auth type (employee impersonation)
+      const gasketAuth = await import('@godaddy/gasket-auth');
+      vi.mocked(gasketAuth.useAuthState).mockReturnValue({
+        status: 'loaded',
+        valid: true,
+        details: { email: 'employee@godaddy.com', cid: 'customer-456' },
+        authType: 'e2s',
+      } as any);
+
+      const { result } = renderHook(() => useAuth());
+
+      await waitFor(() => {
+        expect(result.current.tokenAuthType).toBe('e2s');
+      });
+    });
+
+    it('should return undefined tokenAuthType when mock auth mode is enabled', async () => {
+      // Configure mock mode (default)
+      mockGasketConfig = {
+        ...defaultTestConfig,
+        auth: {
+          ...defaultTestConfig.auth,
+          isJWT: false,
+          isMock: true,
+        },
+      };
+
+      const gasketConfigModule = await import('@/lib/gasket-config');
+      vi.mocked(gasketConfigModule.isAuthJWTSync).mockReturnValue(false);
+      vi.mocked(gasketConfigModule.isAuthMockSync).mockReturnValue(true);
+
+      const { result } = renderHook(() => useAuth());
+
+      await waitFor(() => {
+        expect(result.current.tokenAuthType).toBeUndefined();
+      });
+    });
+
+    it('should return undefined tokenAuthType when authState has no authType property', async () => {
+      // Configure JWT mode
+      mockGasketConfig = {
+        ...defaultTestConfig,
+        auth: {
+          ...defaultTestConfig.auth,
+          isJWT: true,
+          isMock: false,
+        },
+      };
+
+      const gasketConfigModule = await import('@/lib/gasket-config');
+      vi.mocked(gasketConfigModule.isAuthJWTSync).mockReturnValue(true);
+      vi.mocked(gasketConfigModule.isAuthMockSync).mockReturnValue(false);
+
+      // Mock authState without authType (simulates upstream change)
+      const gasketAuth = await import('@godaddy/gasket-auth');
+      vi.mocked(gasketAuth.useAuthState).mockReturnValue({
+        status: 'loaded',
+        valid: true,
+        details: { email: 'user@example.com', cid: 'customer-789' },
+        // No authType property
+      } as any);
+
+      const { result } = renderHook(() => useAuth());
+
+      await waitFor(() => {
+        expect(result.current.tokenAuthType).toBeUndefined();
+      });
+    });
+  });
+
 });
