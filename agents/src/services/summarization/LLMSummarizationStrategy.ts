@@ -470,7 +470,7 @@ Merge new info. Remove completed items from Pending.`;
 
       // Extract meaningful details based on tool type
       switch (name) {
-        case 'file_edit':
+        case 'str_replace_based_edit_tool':
         case 'fileEdit': {
           const operations = args.operations as Array<{ path?: string; mode?: string }> | undefined;
           if (operations && Array.isArray(operations)) {
@@ -481,7 +481,7 @@ Merge new info. Remove completed items from Pending.`;
             details.push(`Files: ${fileOps.join(', ')}`);
           } else {
             const path = args.path || args.target_file;
-            const mode = args.mode || 'edit';
+            const mode = (args.command as string) || (args.mode as string) || 'edit';
             if (path) {
               const fileName = basename(String(path));
               details.push(`${mode}: ${fileName}`);
@@ -489,7 +489,6 @@ Merge new info. Remove completed items from Pending.`;
           }
           break;
         }
-        case 'read_file':
         case 'readFile': {
           const path = args.target_file || args.file_path || args.path;
           if (path) {
@@ -498,8 +497,7 @@ Merge new info. Remove completed items from Pending.`;
           }
           break;
         }
-        case 'terminal':
-        case 'run_terminal_cmd': {
+        case 'terminalCommand': {
           const cmd = args.command || args.cmd;
           if (cmd) {
             const cmdStr = String(cmd).length > this.maxCommandLength
@@ -509,7 +507,6 @@ Merge new info. Remove completed items from Pending.`;
           }
           break;
         }
-        case 'list_dir':
         case 'directoryListing': {
           const path = args.target_directory || args.path;
           if (path) {
@@ -517,8 +514,7 @@ Merge new info. Remove completed items from Pending.`;
           }
           break;
         }
-        case 'grep':
-        case 'grep_tool': {
+        case 'grepSearch': {
           const pattern = args.pattern || args.search;
           if (pattern) {
             details.push(`Search: "${pattern}"`);

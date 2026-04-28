@@ -11,9 +11,9 @@ describe('OperationLogPruner', function operationLogPrunerTests() {
   describe('prune', function pruneTests() {
     it('should not prune when below limit', function belowLimit() {
       const entries: OperationLogEntry[] = [
-        { tool: 'file_edit', files: ['file1.ts'], mode: 'edit', description: 'edit: file1.ts' },
-        { tool: 'terminal', description: 'npm install' },
-        { tool: 'read_file', files: ['file2.ts'], description: 'Read file2.ts' },
+        { tool: 'str_replace_based_edit_tool', files: ['file1.ts'], mode: 'edit', description: 'edit: file1.ts' },
+        { tool: 'terminalCommand', description: 'npm install' },
+        { tool: 'readFile', files: ['file2.ts'], description: 'Read file2.ts' },
       ];
 
       const result = OperationLogPruner.prune(entries, 500);
@@ -28,7 +28,7 @@ describe('OperationLogPruner', function operationLogPrunerTests() {
 
       for (let i = 0; i < 400; i++) {
         entries.push({
-          tool: 'file_edit',
+          tool: 'str_replace_based_edit_tool',
           files: [`file${i}.ts`],
           mode: 'edit',
           description: `edit: file${i}.ts`,
@@ -37,7 +37,7 @@ describe('OperationLogPruner', function operationLogPrunerTests() {
 
       for (let i = 0; i < 200; i++) {
         entries.push({
-          tool: 'terminal',
+          tool: 'terminalCommand',
           description: `command ${i}`,
         });
       }
@@ -53,7 +53,7 @@ describe('OperationLogPruner', function operationLogPrunerTests() {
 
       for (let i = 0; i < 800; i++) {
         entries.push({
-          tool: i % 2 === 0 ? 'file_edit' : 'read_file',
+          tool: i % 2 === 0 ? 'str_replace_based_edit_tool' : 'readFile',
           files: [`file${i}.ts`],
           mode: 'edit',
           description: `edit: file${i}.ts`,
@@ -62,7 +62,7 @@ describe('OperationLogPruner', function operationLogPrunerTests() {
 
       for (let i = 0; i < 200; i++) {
         entries.push({
-          tool: 'terminal',
+          tool: 'terminalCommand',
           description: `command ${i}`,
         });
       }
@@ -72,8 +72,8 @@ describe('OperationLogPruner', function operationLogPrunerTests() {
       expect(result).toHaveLength(500);
 
       // Count file operations vs other operations
-      const fileOps = result.filter(e => e.tool === 'file_edit' || e.tool === 'read_file');
-      const otherOps = result.filter(e => e.tool !== 'file_edit' && e.tool !== 'read_file');
+      const fileOps = result.filter(e => e.tool === 'str_replace_based_edit_tool' || e.tool === 'readFile');
+      const otherOps = result.filter(e => e.tool !== 'str_replace_based_edit_tool' && e.tool !== 'readFile');
 
       // Should be approximately 75% file ops, 25% other ops
       expect(fileOps.length).toBe(375); // 500 * 0.75
@@ -86,7 +86,7 @@ describe('OperationLogPruner', function operationLogPrunerTests() {
 
       for (let i = 0; i < 500; i++) {
         entries.push({
-          tool: 'file_edit',
+          tool: 'str_replace_based_edit_tool',
           files: [`file${i}.ts`],
           mode: 'edit',
           description: `edit: file${i}.ts`,
@@ -95,7 +95,7 @@ describe('OperationLogPruner', function operationLogPrunerTests() {
 
       for (let i = 0; i < 100; i++) {
         entries.push({
-          tool: 'terminal',
+          tool: 'terminalCommand',
           description: `command ${i}`,
         });
       }
@@ -109,11 +109,11 @@ describe('OperationLogPruner', function operationLogPrunerTests() {
       expect(result).toHaveLength(500);
 
       // Should keep most recent file operations (last 400 of 500)
-      const fileOps = result.filter(e => e.tool === 'file_edit' || e.tool === 'read_file');
+      const fileOps = result.filter(e => e.tool === 'str_replace_based_edit_tool' || e.tool === 'readFile');
       expect(fileOps).toHaveLength(400);
 
       // Should keep all terminal operations (only 100 available)
-      const terminalOps = result.filter(e => e.tool === 'terminal');
+      const terminalOps = result.filter(e => e.tool === 'terminalCommand');
       expect(terminalOps).toHaveLength(100);
     });
 
@@ -122,7 +122,7 @@ describe('OperationLogPruner', function operationLogPrunerTests() {
 
       for (let i = 0; i < 600; i++) {
         entries.push({
-          tool: 'file_edit',
+          tool: 'str_replace_based_edit_tool',
           files: [`file${i}.ts`],
           mode: 'edit',
           description: `edit: file${i}.ts`,
@@ -137,7 +137,7 @@ describe('OperationLogPruner', function operationLogPrunerTests() {
       expect(result).toHaveLength(500);
 
       // All should be file operations
-      const fileOps = result.filter(e => e.tool === 'file_edit' || e.tool === 'read_file');
+      const fileOps = result.filter(e => e.tool === 'str_replace_based_edit_tool' || e.tool === 'readFile');
       expect(fileOps).toHaveLength(500);
     });
 
@@ -146,7 +146,7 @@ describe('OperationLogPruner', function operationLogPrunerTests() {
 
       for (let i = 0; i < 600; i++) {
         entries.push({
-          tool: 'terminal',
+          tool: 'terminalCommand',
           description: `command ${i}`,
         });
       }
@@ -159,7 +159,7 @@ describe('OperationLogPruner', function operationLogPrunerTests() {
       expect(result).toHaveLength(500);
 
       // All should be other operations
-      const otherOps = result.filter(e => e.tool !== 'file_edit' && e.tool !== 'read_file');
+      const otherOps = result.filter(e => e.tool !== 'str_replace_based_edit_tool' && e.tool !== 'readFile');
       expect(otherOps).toHaveLength(500);
     });
 
@@ -169,7 +169,7 @@ describe('OperationLogPruner', function operationLogPrunerTests() {
       const entries: OperationLogEntry[] = [];
       for (let i = 0; i < 600; i++) {
         entries.push({
-          tool: 'file_edit',
+          tool: 'str_replace_based_edit_tool',
           files: [`file${i}.ts`],
           mode: 'edit',
           description: `edit: file${i}.ts`,
@@ -200,7 +200,7 @@ describe('OperationLogPruner', function operationLogPrunerTests() {
 
       for (let i = 0; i < 600; i++) {
         entries.push({
-          tool: 'file_edit',
+          tool: 'str_replace_based_edit_tool',
           files: [`file${i}.ts`],
           mode: 'edit',
           description: `edit: file${i}.ts`,
@@ -217,7 +217,7 @@ describe('OperationLogPruner', function operationLogPrunerTests() {
   describe('needsPruning', function needsPruningTests() {
     it('should return false when below limit', function belowLimit() {
       const entries: OperationLogEntry[] = [
-        { tool: 'file_edit', files: ['file1.ts'], mode: 'edit', description: 'edit: file1.ts' },
+        { tool: 'str_replace_based_edit_tool', files: ['file1.ts'], mode: 'edit', description: 'edit: file1.ts' },
       ];
 
       expect(OperationLogPruner.needsPruning(entries, 500)).toBe(false);
@@ -228,7 +228,7 @@ describe('OperationLogPruner', function operationLogPrunerTests() {
 
       for (let i = 0; i < 501; i++) {
         entries.push({
-          tool: 'file_edit',
+          tool: 'str_replace_based_edit_tool',
           files: [`file${i}.ts`],
           mode: 'edit',
           description: `edit: file${i}.ts`,
@@ -243,7 +243,7 @@ describe('OperationLogPruner', function operationLogPrunerTests() {
 
       for (let i = 0; i < 500; i++) {
         entries.push({
-          tool: 'file_edit',
+          tool: 'str_replace_based_edit_tool',
           files: [`file${i}.ts`],
           mode: 'edit',
           description: `edit: file${i}.ts`,
@@ -258,7 +258,7 @@ describe('OperationLogPruner', function operationLogPrunerTests() {
 
       for (let i = 0; i < 501; i++) {
         entries.push({
-          tool: 'file_edit',
+          tool: 'str_replace_based_edit_tool',
           files: [`file${i}.ts`],
           mode: 'edit',
           description: `edit: file${i}.ts`,

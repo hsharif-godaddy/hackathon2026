@@ -44,7 +44,7 @@ export interface OperationLogEntry {
  * ## Testing
  *
  * TODO: Add comprehensive unit tests covering:
- * - Each tool type extraction (file_edit, read_file, terminal, grep, git)
+ * - Each tool type extraction (str_replace_based_edit_tool, readFile, terminalCommand, git)
  * - Edge cases (missing args, malformed JSON, undefined paths)
  * - Format function grouping and deduplication behavior
  * - File name extraction from various path formats
@@ -95,28 +95,20 @@ export class OperationLogExtractor {
     }
 
     switch (name) {
-      case 'file_edit':
+      case 'str_replace_based_edit_tool':
       case 'fileEdit':
+        if (args.command === 'view') {
+          return this.extractReadFileOperation(args);
+        }
         return this.extractFileEditOperation(args);
 
-      case 'read_file':
       case 'readFile':
         return this.extractReadFileOperation(args);
 
-      case 'terminal':
-      case 'run_terminal_cmd':
+      case 'terminalCommand':
         return this.extractTerminalOperation(args);
 
-      case 'list_dir':
-      case 'directoryListing':
-        return this.extractListDirOperation(args);
-
-      case 'grep':
-      case 'grep_tool':
-        return this.extractGrepOperation(args);
-
       case 'git':
-      case 'git_tool':
         return this.extractGitOperation(args);
 
       default:
@@ -149,21 +141,21 @@ export class OperationLogExtractor {
       }
 
       return {
-        tool: 'file_edit',
+        tool: 'str_replace_based_edit_tool',
         files: allFiles,
         mode: Object.keys(filesByMode).join(', '),
         description: parts.join('; '),
       };
     }
 
-    // Single file operation
+    // Single file operation (args.command covers str_replace_based_edit_tool)
     const path = args.path || args.target_file;
-    const mode = (args.mode as string) || 'edit';
+    const mode = (args.mode as string) || (args.command as string) || 'edit';
     const fileName = this.getFileName(path);
 
     if (fileName) {
       return {
-        tool: 'file_edit',
+        tool: 'str_replace_based_edit_tool',
         files: [fileName],
         mode,
         description: `${mode}: ${fileName}`,
@@ -179,7 +171,7 @@ export class OperationLogExtractor {
 
     if (fileName) {
       return {
-        tool: 'read_file',
+        tool: 'readFile',
         files: [fileName],
         description: `Read ${fileName}`,
       };
@@ -199,28 +191,8 @@ export class OperationLogExtractor {
     const firstWord = cmdStr.trim().split(/\s+/)[0] || '';
 
     return {
-      tool: 'terminal',
+      tool: 'terminalCommand',
       description: `${firstWord}: ${truncated}`,
-    };
-  }
-
-  private static extractListDirOperation(args: Record<string, unknown>): OperationLogEntry | null {
-    const path = args.target_directory || args.path;
-    if (!path) return null;
-
-    return {
-      tool: 'list_dir',
-      description: `Listed ${path}`,
-    };
-  }
-
-  private static extractGrepOperation(args: Record<string, unknown>): OperationLogEntry | null {
-    const pattern = args.pattern || args.search;
-    if (!pattern) return null;
-
-    return {
-      tool: 'grep',
-      description: `Searched for "${pattern}"`,
     };
   }
 
@@ -263,17 +235,16 @@ export class OperationLogExtractor {
     const sections: string[] = [];
 
     // File operations first (most important)
-    if (byTool.file_edit) {
-      const fileOps = byTool.file_edit;
+    if (byTool.str_replace_based_edit_tool) {
       const allFiles = new Set<string>();
-      for (const op of fileOps) {
+      for (const op of byTool.str_replace_based_edit_tool) {
         if (op.files) op.files.forEach(f => allFiles.add(f));
       }
       sections.push(`Files modified: ${Array.from(allFiles).join(', ')}`);
     }
 
-    if (byTool.read_file) {
-      const files = byTool.read_file
+    if (byTool.readFile) {
+      const files = byTool.readFile
         .filter(op => op.files)
         .flatMap(op => op.files!)
         .filter((f, i, arr) => arr.indexOf(f) === i); // unique
@@ -282,14 +253,9 @@ export class OperationLogExtractor {
       }
     }
 
-    if (byTool.terminal) {
-      const cmds = byTool.terminal.map(op => op.description);
+    if (byTool.terminalCommand) {
+      const cmds = byTool.terminalCommand.map(op => op.description);
       sections.push(`Commands run: ${cmds.join('; ')}`);
-    }
-
-    if (byTool.grep) {
-      const searches = byTool.grep.map(op => op.description);
-      sections.push(`Searches: ${searches.join('; ')}`);
     }
 
     if (byTool.git) {
@@ -405,7 +371,7 @@ export class OperationLogExtractor {
         const files = filesStr.split(',').map(f => f.trim()).filter(f => f);
         for (const file of files) {
           entries.push({
-            tool: 'file_edit',
+            tool: 'str_replace_based_edit_tool',
             files: [file],
             mode: 'edit',
             description: `edit: ${file}`,
@@ -418,7 +384,7 @@ export class OperationLogExtractor {
         const files = filesStr.split(',').map(f => f.trim()).filter(f => f);
         for (const file of files) {
           entries.push({
-            tool: 'read_file',
+            tool: 'readFile',
             files: [file],
             description: `Read ${file}`,
           });
@@ -430,19 +396,8 @@ export class OperationLogExtractor {
         const cmds = cmdsStr.split(';').map(c => c.trim()).filter(c => c);
         for (const cmd of cmds) {
           entries.push({
-            tool: 'terminal',
+            tool: 'terminalCommand',
             description: cmd,
-          });
-        }
-      }
-      // Parse "Searches: Searched for \"pattern\""
-      else if (line.startsWith('Searches:')) {
-        const searchesStr = line.substring('Searches:'.length).trim();
-        const searches = searchesStr.split(';').map(s => s.trim()).filter(s => s);
-        for (const search of searches) {
-          entries.push({
-            tool: 'grep',
-            description: search,
           });
         }
       }

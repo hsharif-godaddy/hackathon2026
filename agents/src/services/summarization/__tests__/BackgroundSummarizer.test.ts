@@ -307,7 +307,7 @@ describe('BackgroundSummarizer', () => {
           version: 1,
           entries: [
             {
-              tool: 'file_edit',
+              tool: 'str_replace_based_edit_tool',
               files: ['previous.js'],
               mode: 'edit',
               description: 'edit: previous.js',
@@ -450,7 +450,7 @@ describe('BackgroundSummarizer', () => {
           version: 1,
           entries: [
             {
-              tool: 'file_edit',
+              tool: 'str_replace_based_edit_tool',
               files: ['previous.js'],
               mode: 'edit',
               description: 'edit: previous.js',
@@ -476,8 +476,8 @@ describe('BackgroundSummarizer', () => {
             timestamp: new Date(),
             tool_call: {
               id: 'call1',
-              tool_name: 'file_edit',
-              tool_args: { path: 'test.js', content: 'new code' },
+              tool_name: 'str_replace_based_edit_tool',
+              tool_args: { command: 'str_replace', path: 'test.js' },
               tool_result: { success: true }
             }
           }]
@@ -520,7 +520,7 @@ describe('BackgroundSummarizer', () => {
           version: 1,
           entries: [
             {
-              tool: 'file_edit',
+              tool: 'str_replace_based_edit_tool',
               files: ['previous.js'],
               mode: 'edit',
               description: 'edit: previous.js',
@@ -579,7 +579,7 @@ describe('BackgroundSummarizer', () => {
           version: 1,
           entries: [
             {
-              tool: 'file_edit',
+              tool: 'str_replace_based_edit_tool',
               files: ['previous.js'],
               mode: 'edit',
               description: 'edit: previous.js',

@@ -37,7 +37,7 @@ export class OperationLogPruner {
     const otherOperations: OperationLogEntry[] = [];
 
     for (const entry of entries) {
-      if (entry.tool === 'file_edit' || entry.tool === 'read_file') {
+      if (entry.tool === 'str_replace_based_edit_tool' || entry.tool === 'readFile') {
         fileOperations.push(entry);
       } else {
         otherOperations.push(entry);

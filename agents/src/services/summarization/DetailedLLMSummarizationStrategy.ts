@@ -704,7 +704,7 @@ Outstanding tasks if mentioned
 
       // Extract meaningful details based on tool type
       switch (name) {
-        case 'file_edit':
+        case 'str_replace_based_edit_tool':
         case 'fileEdit': {
           const operations = args.operations as Array<{ path?: string; mode?: string }> | undefined;
           if (operations && Array.isArray(operations)) {
@@ -715,7 +715,7 @@ Outstanding tasks if mentioned
             details.push(`File operations: ${fileOps.join(', ')}`);
           } else {
             const path = args.path || args.target_file;
-            const mode = args.mode || 'edit';
+            const mode = (args.command as string) || (args.mode as string) || 'edit';
             if (path) {
               const fileName = basename(String(path));
               details.push(`${mode} file: ${fileName}`);
@@ -723,7 +723,6 @@ Outstanding tasks if mentioned
           }
           break;
         }
-        case 'read_file':
         case 'readFile': {
           const path = args.target_file || args.file_path || args.path;
           if (path) {
@@ -732,17 +731,14 @@ Outstanding tasks if mentioned
           }
           break;
         }
-        case 'terminal':
-        case 'run_terminal_cmd': {
+        case 'terminalCommand': {
           const cmd = args.command || args.cmd;
           if (cmd) {
-            // Truncate long commands
             const cmdStr = String(cmd).length > 100 ? String(cmd).substring(0, 100) + '...' : String(cmd);
             details.push(`Terminal: ${cmdStr}`);
           }
           break;
         }
-        case 'list_dir':
         case 'directoryListing': {
           const path = args.target_directory || args.path;
           if (path) {
@@ -750,8 +746,7 @@ Outstanding tasks if mentioned
           }
           break;
         }
-        case 'grep':
-        case 'grep_tool': {
+        case 'grepSearch': {
           const pattern = args.pattern || args.search;
           if (pattern) {
             details.push(`Searched for: "${pattern}"`);
