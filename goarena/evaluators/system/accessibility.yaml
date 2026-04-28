@@ -1,0 +1,50 @@
+# System Evaluator: Accessibility
+# Uses axe-core for WCAG compliance checking
+#
+# This is a SYSTEM evaluator - the evaluation logic is built into Synthia.
+# No LLM is used - it runs axe-core accessibility checks directly.
+
+evaluatorId: "airo-system-accessibility"
+name: "Airo Accessibility Evaluator"
+description: |
+  Evaluates accessibility compliance using axe-core, the industry-standard
+  accessibility testing library. Checks for WCAG 2.0/2.1/2.2 compliance.
+
+# Evaluator type - "system" means library-based evaluation (no LLM)
+type: system
+systemCategory: accessibility
+
+# Score configuration
+scoreType: NUMERIC
+scoreName: "accessibility_score"
+scoreConfig:
+  min: 0
+  max: 100
+
+# Project ID (set when uploading to Synthia)
+projectId: "8606"
+
+# What it checks:
+# - Image alt text
+# - Form label associations
+# - Heading hierarchy (h1 -> h2 -> h3...)
+# - Color contrast ratios
+# - Keyboard navigation support
+# - ARIA attributes usage
+# - Language declaration
+# - Link accessible names
+
+# Scoring:
+# - Starts at 100
+# - Deducts points based on violation severity:
+#   - Critical: -25 points per violation (capped at 5 instances)
+#   - Serious: -15 points per violation (capped at 5 instances)
+#   - Moderate: -5 points per violation (capped at 5 instances)
+#   - Minor: -1 point per violation (capped at 5 instances)
+
+# Example usage in scenario.evaluators:
+# evaluators:
+#   - evaluatorId: system-accessibility
+#     criteria:
+#       wcagLevel: AA     # A, AA, or AAA
+#       minScore: 80      # Optional minimum score

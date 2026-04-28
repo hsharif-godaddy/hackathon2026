@@ -1,0 +1,51 @@
+# System Evaluator: Functional
+# Uses Playwright + DOM inspection for functional testing
+#
+# This is a SYSTEM evaluator - the evaluation logic is built into Synthia.
+# No LLM is used - it runs Playwright checks directly.
+
+evaluatorId: "airo-system-functional"
+name: "Airo Functional Evaluator"
+description: |
+  Evaluates basic functionality of the generated website using Playwright
+  and DOM inspection. Checks that essential elements work correctly.
+
+# Evaluator type - "system" means library-based evaluation (no LLM)
+type: system
+systemCategory: functional
+
+# Score configuration
+scoreType: NUMERIC
+scoreName: "functional_score"
+scoreConfig:
+  min: 0
+  max: 100
+
+# Project ID (set when uploading to Synthia)
+projectId: "8606"
+
+# What it checks:
+# - Links work (no 404s, no broken hrefs)
+# - Images load correctly (no broken images)
+# - No JavaScript console errors
+# - Forms are submittable
+# - Navigation elements function
+# - Interactive elements respond to clicks
+# - Page loads without critical errors
+
+# Scoring:
+# - Starts at 100
+# - Deducts points for issues:
+#   - Broken links: -20 points per broken link (capped)
+#   - Broken images: -15 points per broken image (capped)
+#   - JS errors: -10 points per error type
+#   - Form issues: -10 points per issue
+
+# Example usage in scenario.evaluators:
+# evaluators:
+#   - evaluatorId: system-functional
+#     criteria:
+#       checkLinks: true
+#       checkImages: true
+#       checkConsoleErrors: true
+#       minScore: 75

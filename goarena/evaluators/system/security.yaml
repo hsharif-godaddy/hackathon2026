@@ -1,0 +1,57 @@
+# System Evaluator: Security
+# Uses HTTP header inspection for security checks
+#
+# This is a SYSTEM evaluator - the evaluation logic is built into Synthia.
+# No LLM is used - it inspects HTTP headers directly.
+
+evaluatorId: "airo-system-security"
+name: "Airo Security Evaluator"
+description: |
+  Evaluates basic security configuration by inspecting HTTP response headers
+  and page content. Checks for security best practices.
+
+# Evaluator type - "system" means library-based evaluation (no LLM)
+type: system
+systemCategory: security
+
+# Score configuration
+scoreType: NUMERIC
+scoreName: "security_score"
+scoreConfig:
+  min: 0
+  max: 100
+
+# Project ID (set when uploading to Synthia)
+projectId: "8606"
+
+# What it checks:
+# - HTTPS usage (secure connection)
+# - Security headers:
+#   - Content-Security-Policy (CSP)
+#   - X-Content-Type-Options
+#   - X-Frame-Options
+#   - X-XSS-Protection
+#   - Strict-Transport-Security (HSTS)
+#   - Referrer-Policy
+#   - Permissions-Policy
+# - Mixed content (HTTP resources on HTTPS page)
+# - Secure cookies (HttpOnly, Secure flags)
+# - External script sources
+
+# Scoring:
+# - HTTPS: 25 points (critical)
+# - Content-Security-Policy: 15 points
+# - X-Content-Type-Options: 10 points
+# - X-Frame-Options: 10 points
+# - Strict-Transport-Security: 10 points
+# - X-XSS-Protection: 5 points
+# - Referrer-Policy: 5 points
+# - No mixed content: 10 points
+# - Secure cookies: 10 points
+
+# Example usage in scenario.evaluators:
+# evaluators:
+#   - evaluatorId: system-security
+#     criteria:
+#       requireHttps: true
+#       checkHeaders: true

@@ -1,0 +1,39 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["dimensions", "minScore", "maxScore"],
+  "properties": {
+    "dimensions": {
+      "type": "array",
+      "description": "Visual quality dimensions to evaluate",
+      "items": {
+        "type": "object",
+        "required": ["name", "description", "weight"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Name of the dimension"
+          },
+          "description": {
+            "type": "string",
+            "description": "Description of what to evaluate"
+          },
+          "weight": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Weight for this dimension"
+          }
+        }
+      }
+    },
+    "minScore": {
+      "type": "number",
+      "description": "Minimum score value"
+    },
+    "maxScore": {
+      "type": "number",
+      "description": "Maximum score value"
+    }
+  }
+}

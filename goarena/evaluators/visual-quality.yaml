@@ -1,0 +1,156 @@
+# Visual Quality Evaluator
+# LLM-based evaluator for assessing visual design of generated websites
+# Uses screenshots with vision API - evaluates what the user SEES
+
+evaluatorId: "airo-visual-quality"
+name: "Airo Visual Quality Evaluator"
+description: "Evaluates visual design, layout, and professional appearance of generated websites using screenshots"
+
+# Evaluator type - "llm" means LLM-as-Judge evaluation
+type: llm
+
+# Score configuration
+scoreType: NUMERIC
+scoreName: "visual_quality_score"
+scoreConfig:
+  min: 0
+  max: 100
+
+# LLM configuration - must use a vision-capable model
+llmConfig:
+  model: "gpt-4o"  # Vision-capable model
+  temperature: 0
+  maxTokens: 2000
+
+# Project ID (set when uploading to Synthia)
+projectId: "8606"
+
+# Handlebars template for LLM prompt
+# This evaluator uses SCREENSHOTS (vision API) - the screenshots array is passed
+# to the LLM automatically when the evaluator name contains "visual" or "usability"
+# Available browser context variables:
+#   - screenshots: Array of base64 images (passed to vision API automatically)
+#   - previewUrl: URL of the generated website
+#   - scenario.business: Business context
+#   - scenario.goal: Goal information
+#   - conversation.originalPrompt: First user message (original request)
+#   - conversation.userMessages: All user messages (requirements)
+template: |
+  You are evaluating the visual quality of a generated website based on the screenshots provided.
+
+  ## What the User Requested
+  {{#if conversation.originalPrompt}}
+  **Original Request:**
+  {{conversation.originalPrompt}}
+
+  {{#if conversation.userMessages.length}}
+  {{#unless (eq conversation.userMessages.length 1)}}
+  **Additional Requirements:**
+  {{#each conversation.userMessages}}
+  {{#unless @first}}
+  - {{this}}
+  {{/unless}}
+  {{/each}}
+  {{/unless}}
+  {{/if}}
+  {{/if}}
+
+  ## Business Context
+  {{#if scenario.business}}
+  Business Name: {{scenario.business.businessName}}
+  Industry: {{scenario.business.industry}}
+  {{/if}}
+
+  ## Website URL
+  {{previewUrl}}
+
+  ## Evaluation Criteria
+  {{#each criteria.dimensions}}
+  ### {{name}}
+  {{description}}
+  Weight: {{weight}}
+
+  {{/each}}
+
+  ## Your Task
+  Analyze the provided screenshots and evaluate the website's visual quality.
+
+  Pay special attention to:
+  - Presence of placeholder text (Lorem ipsum, "Your text here", "[Insert...]", etc.)
+  - Placeholder images or broken image icons
+  - Layout issues (overlapping elements, misalignment, awkward spacing)
+  - Color scheme coherence and contrast
+  - Typography consistency and readability
+  - Overall professional appearance
+  - Mobile/responsive considerations (if visible)
+
+  For each criterion, provide:
+  1. A score from {{criteria.minScore}} to {{criteria.maxScore}}
+  2. Specific observations from the screenshots
+  3. Suggestions for improvement (if the score is below 80% of the maximum score for that criterion)
+
+  Respond with JSON in this format:
+  {
+    "dimensions": [
+      {
+        "name": "criterion name",
+        "score": number,
+        "observations": "your observations from screenshots",
+        "suggestions": "improvement suggestions or null"
+      }
+    ],
+    "placeholdersFound": ["list of placeholder issues found"],
+    "layoutIssues": ["list of layout problems observed"],
+    "overallScore": number,
+    "summary": "brief summary of visual quality",
+    "confidence": number between 0 and 1
+  }
+
+# Criteria schema for validation (optional)
+criteriaSchema:
+  type: object
+  properties:
+    dimensions:
+      type: array
+      items:
+        type: object
+        properties:
+          name:
+            type: string
+          description:
+            type: string
+          weight:
+            type: number
+        required:
+          - name
+          - description
+          - weight
+    minScore:
+      type: number
+    maxScore:
+      type: number
+  required:
+    - dimensions
+    - minScore
+    - maxScore
+
+# Example usage in scenario.evaluators:
+# evaluators:
+#   - evaluatorId: visual-quality
+#     weight: 15
+#     criteria:
+#       dimensions:
+#         - name: professionalAppearance
+#           description: "Website looks professional and trustworthy"
+#           weight: 0.3
+#         - name: noPlaceholders
+#           description: "No Lorem ipsum or placeholder content visible"
+#           weight: 0.25
+#         - name: layoutQuality
+#           description: "Layout is well-organized with proper alignment"
+#           weight: 0.25
+#         - name: brandConsistency
+#           description: "Colors, fonts, and styling are consistent"
+#           weight: 0.2
+#       minScore: 1
+#       maxScore: 10

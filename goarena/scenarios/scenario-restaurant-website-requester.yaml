@@ -1,0 +1,173 @@
+# Scenario: Restaurant Website - Website Requester
+# Tests AI agent's ability to generate a restaurant website
+
+key: "airo-restaurant-website-requester"
+name: "Restaurant Website Generation"
+syntheticUserName: "Airo Website Requester"
+agentName: "TEST_EB_AiroAppBuilder"  # Agent provides URL and auth
+
+business:
+  industry: "Food & Hospitality"
+  businessName: "Joe's Pizza"
+  businessDescription: |
+    Joe's Pizza is a family-owned Italian pizzeria that has been serving
+    the local community for 25 years. Known for authentic New York-style
+    pizza and homemade pasta dishes.
+  targetAudience: "Local families and pizza lovers"
+
+goal:
+  name: "Generate Restaurant Website"
+  goals:
+    - "Request a professional restaurant website"
+    - "Include menu with prices"
+    - "Add contact information and location"
+    - "Include online ordering or reservation capability"
+    - "Ensure mobile-friendly design"
+
+customerSummary: |
+  A small business owner wanting to create a professional website for their
+  pizza restaurant. They want customers to see the menu, find the location,
+  and be able to place orders or make reservations.
+
+trials: 1
+maxTurns: 2
+
+llmConfig:
+  model: gpt-4.1
+  temperature: 0.75
+  maxTokens: 32000
+
+# Browser-based configuration (URL and auth come from Agent)
+# Note: elementHints support multi-page flows (home page -> develop page redirect)
+browserConfig:
+  elementHints:
+    chatInputHint: "Home page: textarea[data-testid='homepage-prompt-input']. Develop page (after redirect): textarea[data-testid='chat-input-textarea'] or #chat-input-textarea"
+    sendButtonHint: "Home page: button[aria-label='Start building'] or button[data-eid='appbuilder.homepage.prompt.submit.click']. Develop page: button[data-testid='chat-send-button'] or button[aria-label='Send message'] or #chat-send-button"
+    messageAreaHint: "Develop page: div[data-testid='chat-transcript'] - contains conversation history and agent responses"
+    previewFrameHint: "Only on develop page: iframe[data-testid='preview-iframe'] or #preview-iframe. Not present on home page."
+  viewport:
+    width: 1280
+    height: 800
+  responseTimeout: 300000
+  outputCapture:
+    pageScreenshots: true
+    previewScreenshots: true
+    screenshotPositions:
+      - top
+      - middle
+      - bottom
+    previewUrl: true
+  qualityEval:
+    enabled: true
+    siteType: restaurant
+    wcagLevel: AA
+    thresholds:
+      minOverallScore: 70
+      minAccessibility: 75
+
+# Evaluators with weights - weights must sum to 100%
+# For browser-based scenarios, each simulation gets:
+#   - Individual score per evaluator
+#   - Overall weighted score
+evaluators:
+  # System evaluators (library-based, no LLM cost)
+  - evaluatorName: "Airo Functional Evaluator"
+    weight: 25  # 25%
+    criteria:
+      checkLinks: true
+      checkImages: true
+      checkConsoleErrors: true
+
+  - evaluatorName: "Airo Accessibility Evaluator"
+    weight: 10  # 10%
+    criteria:
+      wcagLevel: AA
+
+  - evaluatorName: "Airo SEO Evaluator"
+    weight: 5   # 5%
+    criteria:
+      checkOpenGraph: true
+      checkTwitterCards: true
+
+  - evaluatorName: "Airo Performance Evaluator"
+    weight: 10  # 10%
+    criteria:
+      timeout: 30000
+
+  - evaluatorName: "Airo Security Evaluator"
+    weight: 3   # 3%
+    criteria:
+      requireHttps: true
+      checkHeaders: true
+
+  # LLM evaluators (user-defined, uses LLM-as-Judge)
+  - evaluatorName: "Airo Content Quality Evaluator"
+    weight: 20  # 20%
+    criteria:
+      minScore: 1
+      maxScore: 100
+      dimensions:
+        - name: relevance
+          description: "Content is relevant to a restaurant website and mentions pizza/Italian food"
+          weight: 0.3
+        - name: completeness
+          description: "All essential restaurant information is present (menu, hours, location)"
+          weight: 0.3
+        - name: authenticity
+          description: "Content feels authentic, not placeholder or AI-generated filler"
+          weight: 0.2
+        - name: clarity
+          description: "Information is clear and easy to understand"
+          weight: 0.2
+
+  - evaluatorName: "Airo Visual Quality Evaluator"
+    weight: 15  # 15%
+    criteria:
+      minScore: 1
+      maxScore: 100
+      dimensions:
+        - name: professionalAppearance
+          description: "Website looks professional and trustworthy for a restaurant"
+          weight: 0.3
+        - name: noPlaceholders
+          description: "No Lorem ipsum, placeholder images, or 'Your text here'"
+          weight: 0.3
+        - name: layoutQuality
+          description: "Layout is well-organized and visually appealing"
+          weight: 0.2
+        - name: brandConsistency
+          description: "Colors, fonts, and style are consistent throughout"
+          weight: 0.2
+
+  - evaluatorName: "Airo Usability Evaluator"
+    weight: 10  # 10%
+    criteria:
+      heuristics:
+        - number: 1
+          name: "Visibility of system status"
+          description: "User knows where they are and what's happening"
+        - number: 4
+          name: "Consistency and standards"
+          description: "Follows conventions, consistent UI elements"
+        - number: 8
+          name: "Aesthetic and minimalist design"
+          description: "No unnecessary information, clean design"
+
+  - evaluatorName: "Airo Business Fit Evaluator"
+    weight: 2   # 2%
+    criteria:
+      siteType: restaurant
+      requiredElements:
+        - "Restaurant name prominently displayed"
+        - "Menu with food items and prices"
+        - "Contact information (phone, email)"
+        - "Location/address"
+        - "Hours of operation"
+      optionalElements:
+        - "Online ordering capability"
+        - "Reservation system"
+        - "Photo gallery of food/interior"
+        - "Customer reviews/testimonials"
+        - "About us/history section"
+
+# Total weights: 25 + 10 + 5 + 10 + 3 + 20 + 15 + 10 + 2 = 100%

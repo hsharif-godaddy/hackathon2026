@@ -1,0 +1,160 @@
+# GitHub Actions Workflow: Run Browser-Based Scenarios
+# Runs browser-based website testing scenarios using Synthia
+
+name: Run Browser Testing Scenarios
+
+on:
+  workflow_dispatch:
+    inputs:
+      agent-name:
+        description: 'Agent to test'
+        required: true
+        default: 'TEST_EB_AiroAppBuilder'
+        type: choice
+        options:
+          - TEST_EB_AiroAppBuilder
+      config-file:
+        description: 'Suite configuration file'
+        required: true
+        default: 'goarena/simulation_eval_suite.yaml'
+        type: choice
+        options:
+          - goarena/simulation_eval_suite.yaml
+      synthia-env:
+        description: 'Synthia environment'
+        required: false
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - test
+      wait-for-completion:
+        description: 'Wait for results'
+        required: false
+        default: true
+        type: boolean
+      timeout-minutes:
+        description: 'Timeout (minutes)'
+        required: false
+        default: 30
+        type: number
+
+permissions:
+  contents: read
+  # Required: Synthia actions use OIDC to authenticate with the Synthia service.
+  # The load-* and run-scenarios actions exchange the GitHub OIDC token for
+  # Synthia API credentials.
+  id-token: write
+
+# Limit concurrent runs to prevent exhausting self-hosted runner capacity
+concurrency:
+  group: simulation-evaluation-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  run-browser-scenarios:
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+    timeout-minutes: ${{ fromJson(inputs.timeout-minutes) || 35 }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Load Synthetic Users
+        id: load-users
+        uses: gdcorp-dna/synthia/actions/load-synthetic-users@744eb2cfae1402458dead8eaa0f4abe21dfd4f56  # release-1.0.0
+        with:
+          config-path: goarena/synthetic-users
+          synthia-env: ${{ inputs.synthia-env }}
+
+      - name: Load Evaluators
+        id: load-evaluators
+        uses: gdcorp-dna/synthia/actions/load-evaluators@744eb2cfae1402458dead8eaa0f4abe21dfd4f56  # release-1.0.0
+        with:
+          config-path: goarena/evaluators
+          synthia-env: ${{ inputs.synthia-env }}
+
+      - name: Load Scenarios
+        id: load-scenarios
+        uses: gdcorp-dna/synthia/actions/load-scenarios@744eb2cfae1402458dead8eaa0f4abe21dfd4f56  # release-1.0.0
+        with:
+          config-path: goarena/scenarios
+          agent-name: ${{ inputs.agent-name }}
+          synthia-env: ${{ inputs.synthia-env }}
+
+      - name: Run Browser Scenarios
+        id: synthia
+        uses: gdcorp-dna/synthia/actions/run-scenarios@744eb2cfae1402458dead8eaa0f4abe21dfd4f56  # release-1.0.0
+        with:
+          config-path: ${{ inputs.config-file }}
+          agent-name: ${{ inputs.agent-name }}
+          synthia-env: ${{ inputs.synthia-env }}
+          wait-for-completion: ${{ inputs.wait-for-completion }}
+          timeout-minutes: ${{ inputs.timeout-minutes }}
+          fail-on-threshold: true
+          score-threshold: '0.7'
+
+      - name: Show outputs
+        if: always()
+        env:
+          SYNTHIA_CONCLUSION: ${{ steps.synthia.conclusion }}
+          RUN_ID: ${{ steps.synthia.outputs.run-id }}
+          SIMULATION_IDS: ${{ steps.synthia.outputs.simulation-ids }}
+          STATUS: ${{ steps.synthia.outputs.status }}
+          TOTAL_SIMULATIONS: ${{ steps.synthia.outputs.total-simulations }}
+          COMPLETED_SIMULATIONS: ${{ steps.synthia.outputs.completed-simulations }}
+          FAILED_SIMULATIONS: ${{ steps.synthia.outputs.failed-simulations }}
+        run: |
+          if [ "$SYNTHIA_CONCLUSION" != "success" ]; then
+            echo "::warning::Synthia step did not complete successfully (conclusion: $SYNTHIA_CONCLUSION)"
+          fi
+          echo "Run ID: $RUN_ID"
+          echo "Simulation IDs: $SIMULATION_IDS"
+          echo "Status: $STATUS"
+          echo "Total Simulations: $TOTAL_SIMULATIONS"
+          echo "Completed: $COMPLETED_SIMULATIONS"
+          echo "Failed: $FAILED_SIMULATIONS"
+
+
+      - name: Write Summary to Job Summary
+        if: always()
+        env:
+          SYNTHIA_CONCLUSION: ${{ steps.synthia.conclusion }}
+          SUMMARY_MARKDOWN: ${{ steps.synthia.outputs.summary-markdown }}
+        run: |
+          if [ "$SYNTHIA_CONCLUSION" != "success" ]; then
+            echo "## ⚠️ Synthia Run Warning" >> "$GITHUB_STEP_SUMMARY"
+            echo "Synthia step did not complete successfully (conclusion: $SYNTHIA_CONCLUSION)" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -n "$SUMMARY_MARKDOWN" ]; then
+            printf '%s\n' "$SUMMARY_MARKDOWN" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No summary available (Synthia may have failed or timed out)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Print Results JSON
+        if: always()
+        env:
+          RESULTS_JSON: ${{ steps.synthia.outputs.results-json }}
+        run: |
+          # Install jq if not present (should be pre-installed in runner image)
+          if ! command -v jq &> /dev/null; then
+            echo "Installing jq..."
+            sudo apt-get update && sudo apt-get install -y jq || sudo yum install -y jq || brew install jq || { echo "::error::Could not install jq"; exit 1; }
+          fi
+          echo "### Results JSON" >> "$GITHUB_STEP_SUMMARY"
+          echo '```json' >> "$GITHUB_STEP_SUMMARY"
+          if [ -z "$RESULTS_JSON" ]; then
+            echo "No results returned (empty output)" >> "$GITHUB_STEP_SUMMARY"
+          elif echo "$RESULTS_JSON" | jq empty 2>&1; then
+            # Valid JSON - pretty print it
+            echo "$RESULTS_JSON" | jq . >> "$GITHUB_STEP_SUMMARY"
+          else
+            # Invalid JSON - show raw output with warning
+            echo "Warning: Invalid JSON returned from Synthia" >> "$GITHUB_STEP_SUMMARY"
+            echo "$RESULTS_JSON" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo '```' >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,166 @@
+# Usability Evaluator
+# LLM-based evaluator using Nielsen's 10 Usability Heuristics
+# Uses screenshots with vision API to evaluate UI/UX
+
+evaluatorId: "airo-usability"
+name: "Airo Usability Evaluator"
+description: "Evaluates website usability based on Nielsen's 10 Usability Heuristics using screenshots"
+
+# Evaluator type - "llm" means LLM-as-Judge evaluation
+type: llm
+
+# Score configuration
+scoreType: NUMERIC
+scoreName: "usability_score"
+scoreConfig:
+  min: 0
+  max: 100
+
+# LLM configuration - must use a vision-capable model
+llmConfig:
+  model: "gpt-4o"  # Vision-capable model
+  temperature: 0
+  maxTokens: 3000
+
+# Project ID (set when uploading to Synthia)
+projectId: "8606"
+
+# Handlebars template for LLM prompt
+# This evaluator uses SCREENSHOTS (vision API) - the screenshots array is passed
+# to the LLM automatically when the evaluator name contains "visual" or "usability"
+# Available browser context variables:
+#   - screenshots: Array of base64 images (passed to vision API automatically)
+#   - previewUrl: URL of the generated website
+#   - scenario.business: Business context
+#   - scenario.goal: Goal information
+#   - conversation.originalPrompt: First user message (original request)
+#   - conversation.userMessages: All user messages (requirements)
+template: |
+  You are evaluating the usability of a generated website using Nielsen's 10 Usability Heuristics.
+
+  ## What the User Requested
+  {{#if conversation.originalPrompt}}
+  **Original Request:**
+  {{conversation.originalPrompt}}
+
+  {{#if conversation.userMessages.length}}
+  {{#unless (eq conversation.userMessages.length 1)}}
+  **Additional Requirements:**
+  {{#each conversation.userMessages}}
+  {{#unless @first}}
+  - {{this}}
+  {{/unless}}
+  {{/each}}
+  {{/unless}}
+  {{/if}}
+  {{/if}}
+
+  ## Business Context
+  {{#if scenario.business}}
+  Business Name: {{scenario.business.businessName}}
+  Industry: {{scenario.business.industry}}
+  Target Audience: {{scenario.business.targetAudience}}
+  {{/if}}
+
+  ## Website URL
+  {{previewUrl}}
+
+  ## Nielsen's 10 Usability Heuristics
+  {{#each criteria.heuristics}}
+  ### {{number}}. {{name}}
+  {{description}}
+
+  {{/each}}
+
+  ## Your Task
+  Analyze the provided screenshots and evaluate each heuristic.
+
+  For each heuristic, identify:
+  - Whether the heuristic is violated
+  - Severity of any violations:
+    - 0 = No usability problem
+    - 1 = Cosmetic problem only (fix if time permits)
+    - 2 = Minor usability problem (low priority)
+    - 3 = Major usability problem (high priority to fix)
+    - 4 = Usability catastrophe (must fix before release)
+  - Specific examples from the screenshots
+
+  Scoring: 100 - (total_severity / max_severity) * 100
+  Where max_severity = 4 × number of heuristics evaluated ({{criteria.heuristics.length}})
+  So for {{criteria.heuristics.length}} heuristics: max_severity = {{criteria.heuristics.length}} × 4 = worst score of 0
+
+  Respond with JSON in this format:
+  {
+    "heuristicsEvaluated": {{criteria.heuristics.length}},
+    "heuristics": [
+      {
+        "number": 1,
+        "name": "heuristic name",
+        "violated": boolean,
+        "severity": 0-4,
+        "observations": "specific observations from screenshots",
+        "examples": ["list of specific violations found"]
+      }
+    ],
+    "totalSeverity": number (sum of all severity scores),
+    "maxSeverity": number ({{criteria.heuristics.length}} × 4),
+    "overallScore": number (100 - (total_severity / ({{criteria.heuristics.length}} * 4)) * 100),
+    "criticalViolations": ["list of severity 3-4 violations"],
+    "summary": "brief usability summary",
+    "confidence": number between 0 and 1
+  }
+
+# Criteria schema for validation (optional)
+criteriaSchema:
+  type: object
+  properties:
+    heuristics:
+      type: array
+      items:
+        type: object
+        properties:
+          number:
+            type: integer
+          name:
+            type: string
+          description:
+            type: string
+  required:
+    - heuristics
+
+# Example usage in scenario.evaluators:
+# evaluators:
+#   - evaluatorId: usability
+#     weight: 10
+#     criteria:
+#       heuristics:
+#         - number: 1
+#           name: "Visibility of system status"
+#           description: "The design should always keep users informed about what is going on"
+#         - number: 2
+#           name: "Match between system and real world"
+#           description: "The design should speak the users' language, use familiar concepts"
+#         - number: 3
+#           name: "User control and freedom"
+#           description: "Users need a clearly marked exit, undo and redo"
+#         - number: 4
+#           name: "Consistency and standards"
+#           description: "Users should not wonder whether different words/actions mean the same"
+#         - number: 5
+#           name: "Error prevention"
+#           description: "Good design prevents problems from occurring in the first place"
+#         - number: 6
+#           name: "Recognition rather than recall"
+#           description: "Minimize user memory load by making elements visible"
+#         - number: 7
+#           name: "Flexibility and efficiency of use"
+#           description: "Shortcuts for experienced users, cater to both novice and expert"
+#         - number: 8
+#           name: "Aesthetic and minimalist design"
+#           description: "Interfaces should not contain irrelevant or rarely needed information"
+#         - number: 9
+#           name: "Help users recognize and recover from errors"
+#           description: "Error messages should be expressed in plain language with solutions"
+#         - number: 10
+#           name: "Help and documentation"
+#           description: "Help should be easy to search, focused on the user's task"

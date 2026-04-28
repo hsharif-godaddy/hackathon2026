@@ -1,0 +1,180 @@
+# Scenario: Portfolio Website - Demanding Client
+# Tests AI agent's ability to handle specific design requirements
+
+key: "airo-portfolio-demanding-client"
+name: "Portfolio Website with Specific Requirements"
+syntheticUserName: "Airo Demanding Client"
+agentName: "TEST_EB_AiroAppBuilder"  # Agent provides URL and auth
+
+business:
+  industry: "Creative Services"
+  businessName: "Victoria Sterling Photography"
+  businessDescription: |
+    A high-end photography studio specializing in portrait, event, and
+    commercial photography. Known for elegant, minimalist style and
+    attention to detail.
+  targetAudience: "High-end clients seeking professional photography services"
+
+goal:
+  name: "Generate Portfolio Website"
+  goals:
+    - "Create a minimalist portfolio website"
+    - "Use elegant typography (serif fonts)"
+    - "Implement masonry grid gallery layout"
+    - "Include contact form and social links"
+    - "Ensure brand consistency throughout"
+
+customerSummary: |
+  A professional photographer with high standards who wants a portfolio
+  website that reflects their elegant, minimalist brand. They have specific
+  requirements for typography, layout, and overall design aesthetic.
+
+trials: 1
+maxTurns: 2
+
+llmConfig:
+  model: gpt-4.1
+  temperature: 0.75
+  maxTokens: 32000
+
+# Browser-based configuration (URL and auth come from Agent)
+# Note: elementHints support multi-page flows (home page -> develop page redirect)
+browserConfig:
+  elementHints:
+    chatInputHint: "Home page: textarea[data-testid='homepage-prompt-input']. Develop page (after redirect): textarea[data-testid='chat-input-textarea'] or #chat-input-textarea"
+    sendButtonHint: "Home page: button[aria-label='Start building'] or button[data-eid='appbuilder.homepage.prompt.submit.click']. Develop page: button[data-testid='chat-send-button'] or button[aria-label='Send message'] or #chat-send-button"
+    messageAreaHint: "Develop page: div[data-testid='chat-transcript'] - contains conversation history and agent responses"
+    previewFrameHint: "Only on develop page: iframe[data-testid='preview-iframe'] or #preview-iframe. Not present on home page."
+  viewport:
+    width: 1440
+    height: 900
+  responseTimeout: 300000
+  outputCapture:
+    pageScreenshots: true
+    previewScreenshots: true
+    screenshotPositions:
+      - top
+      - middle
+      - bottom
+    previewUrl: true
+    htmlContent: true
+  qualityEval:
+    enabled: true
+    siteType: portfolio
+    wcagLevel: AA
+    thresholds:
+      minOverallScore: 75
+      minAccessibility: 80
+
+# Evaluators with weights - weights must sum to 100%
+# For browser-based scenarios, each simulation gets:
+#   - Individual score per evaluator
+#   - Overall weighted score
+evaluators:
+  # System evaluators (library-based, no LLM cost)
+  - evaluatorName: "Airo Functional Evaluator"
+    weight: 25  # 25%
+    criteria:
+      checkLinks: true
+      checkImages: true
+      checkConsoleErrors: true
+
+  - evaluatorName: "Airo Accessibility Evaluator"
+    weight: 10  # 10%
+    criteria:
+      wcagLevel: AA
+
+  - evaluatorName: "Airo SEO Evaluator"
+    weight: 5   # 5%
+    criteria:
+      checkOpenGraph: true
+      checkTwitterCards: true
+
+  - evaluatorName: "Airo Performance Evaluator"
+    weight: 10  # 10%
+    criteria:
+      timeout: 30000
+
+  - evaluatorName: "Airo Security Evaluator"
+    weight: 3   # 3%
+    criteria:
+      requireHttps: true
+      checkHeaders: true
+
+  # LLM evaluators (user-defined, uses LLM-as-Judge)
+  - evaluatorName: "Airo Content Quality Evaluator"
+    weight: 20  # 20%
+    criteria:
+      minScore: 1
+      maxScore: 100
+      dimensions:
+        - name: relevance
+          description: "Content is appropriate for a photography portfolio"
+          weight: 0.3
+        - name: professionalTone
+          description: "Writing reflects high-end, professional positioning"
+          weight: 0.2
+        - name: completeness
+          description: "Essential portfolio elements present (bio, services, contact)"
+          weight: 0.3
+        - name: authenticity
+          description: "No placeholder content, feels genuine"
+          weight: 0.2
+
+  - evaluatorName: "Airo Visual Quality Evaluator"
+    weight: 15  # 15%
+    criteria:
+      minScore: 1
+      maxScore: 100
+      dimensions:
+        - name: minimalistDesign
+          description: "Design is clean and minimalist with plenty of white space"
+          weight: 0.3
+        - name: typographyElegance
+          description: "Typography is elegant, preferably using serif fonts"
+          weight: 0.3
+        - name: galleryLayout
+          description: "Photo gallery uses effective layout (masonry or similar)"
+          weight: 0.2
+        - name: brandConsistency
+          description: "Consistent visual style throughout all pages"
+          weight: 0.2
+
+  - evaluatorName: "Airo Usability Evaluator"
+    weight: 10  # 10%
+    criteria:
+      heuristics:
+        - number: 1
+          name: "Visibility of system status"
+          description: "User knows where they are and what's happening"
+        - number: 2
+          name: "Match between system and real world"
+          description: "Uses familiar concepts and language"
+        - number: 3
+          name: "User control and freedom"
+          description: "Easy navigation, clear back/home options"
+        - number: 4
+          name: "Consistency and standards"
+          description: "Follows conventions, consistent UI elements"
+        - number: 8
+          name: "Aesthetic and minimalist design"
+          description: "No unnecessary information, clean design"
+
+  - evaluatorName: "Airo Business Fit Evaluator"
+    weight: 2   # 2%
+    criteria:
+      siteType: portfolio
+      requiredElements:
+        - "Photographer name/brand prominently displayed"
+        - "Photo gallery showcasing work"
+        - "About/bio section"
+        - "Services offered"
+        - "Contact information or form"
+      optionalElements:
+        - "Client testimonials"
+        - "Pricing information"
+        - "Blog or news section"
+        - "Social media integration"
+        - "Newsletter signup"
+
+# Total weights: 25 + 10 + 5 + 10 + 3 + 20 + 15 + 10 + 2 = 100%

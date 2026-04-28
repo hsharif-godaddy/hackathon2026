@@ -1,0 +1,57 @@
+# System Evaluator: SEO
+# Uses DOM inspection for search engine optimization checks
+#
+# This is a SYSTEM evaluator - the evaluation logic is built into Synthia.
+# No LLM is used - it inspects DOM elements directly.
+
+evaluatorId: "airo-system-seo"
+name: "Airo SEO Evaluator"
+description: |
+  Evaluates search engine optimization (SEO) factors using DOM inspection.
+  Checks for proper meta tags, heading structure, and semantic HTML.
+
+# Evaluator type - "system" means library-based evaluation (no LLM)
+type: system
+systemCategory: seo
+
+# Score configuration
+scoreType: NUMERIC
+scoreName: "seo_score"
+scoreConfig:
+  min: 0
+  max: 100
+
+# Project ID (set when uploading to Synthia)
+projectId: "8606"
+
+# What it checks:
+# - Title tag (presence, length 50-60 chars)
+# - Meta description (presence, length 150-160 chars)
+# - Heading structure (h1 present, proper hierarchy)
+# - Image alt attributes
+# - Canonical URL
+# - Open Graph tags (og:title, og:description, og:image)
+# - Twitter Card tags
+# - robots.txt / meta robots
+# - Semantic HTML usage (header, main, footer, nav, article)
+# - Mobile viewport meta tag
+
+# Scoring:
+# - Title tag: 15 points
+# - Meta description: 15 points
+# - H1 present: 10 points
+# - Proper heading hierarchy: 10 points
+# - Images with alt text: 10 points
+# - Canonical URL: 5 points
+# - Open Graph tags: 10 points
+# - Twitter cards: 5 points
+# - Viewport meta: 10 points
+# - Semantic HTML: 10 points
+
+# Example usage in scenario.evaluators:
+# evaluators:
+#   - evaluatorId: system-seo
+#     criteria:
+#       checkOpenGraph: true
+#       checkTwitterCards: true
+#       minScore: 70
