@@ -380,7 +380,10 @@ export default function DomainAttachWidget({
       if (
         isDomainTransferEnabled &&
         error instanceof DomainMutationError &&
-        error.details.nestedCode === 'DOMAIN_IN_USE_BY_OWN_APP' &&
+        (
+          error.details.nestedCode === 'DOMAIN_IN_USE_BY_OWN_APP' ||
+          error.details.nestedCode === 'DOMAIN_ALREADY_IN_USE'
+        ) &&
         error.details.conflictDetails
       ) {
         setConflictData(error.details.conflictDetails);

@@ -5,7 +5,10 @@ import {
   type ModifyDomainsPayload,
   useModifyDomains
 } from '@/hooks/useModifyDomains';
-import { AIRO_SUBSCRIPTION_OWNER_TYPE } from '@/lib/mgmt-airo/types';
+import {
+  AIRO_SUBSCRIPTION_OWNER_TYPE,
+  MWP_V2_APP_OWNER_TYPE
+} from '@/lib/mgmt-airo/types';
 
 interface LoggerLike {
   warn: (event: string, data: Record<string, unknown>) => void;
@@ -57,8 +60,19 @@ export function useDomainTransfer({
 
   const handleTransferDomain = useCallback(async () => {
     if (!appId || !conflictData) return;
-    if (conflictData.existingOwnerType !== AIRO_SUBSCRIPTION_OWNER_TYPE) {
+    if (
+      conflictData.existingOwnerType !== AIRO_SUBSCRIPTION_OWNER_TYPE &&
+      conflictData.existingOwnerType !== MWP_V2_APP_OWNER_TYPE
+    ) {
       logger.warn('domain-conflict.unsupported-owner-type', { ownerType: conflictData.existingOwnerType });
+      setTransferError(new Error(unsupportedOwnerTypeErrorMessage));
+      return;
+    }
+    if (conflictData.existingOwnerType === AIRO_SUBSCRIPTION_OWNER_TYPE && !conflictData.existingSystemId) {
+      logger.warn('domain-conflict.transfer.missing-system-id', {
+        appId,
+        ownerType: conflictData.existingOwnerType,
+      });
       setTransferError(new Error(unsupportedOwnerTypeErrorMessage));
       return;
     }
@@ -71,11 +85,19 @@ export function useDomainTransfer({
         domainsToCreate: [{ fqdn: conflictData.domain, primary: false }],
         createCdn: true,
         isWildcardDomain: true,
-        transferFrom: {
-          appId: conflictData.existingAppId,
-          systemId: conflictData.existingSystemId,
-          subscriptionId: conflictData.existingOwnerId,
-        },
+        ...(conflictData.existingOwnerType === MWP_V2_APP_OWNER_TYPE
+          ? {
+            transferFromMWP: {
+              v2AppId: conflictData.existingAppId,
+            },
+          }
+          : {
+            transferFrom: {
+              appId: conflictData.existingAppId,
+              systemId: conflictData.existingSystemId ?? '',
+              subscriptionId: conflictData.existingOwnerId,
+            },
+          }),
       };
 
       await mutateAsync({

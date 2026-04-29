@@ -7,6 +7,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 
 import { appFetch } from '@/lib/gasket-config';
+import { logger } from '@/lib/request-context';
 import { DomainMutationError, useModifyDomains } from './useModifyDomains';
 
 const setDomainJobInProgress = vi.fn();
@@ -18,6 +19,7 @@ vi.mock('@/lib/gasket-config', () => ({
 vi.mock('@/lib/request-context', () => ({
   logger: {
     info: vi.fn(),
+    warn: vi.fn(),
     error: vi.fn(),
   },
 }));
@@ -379,6 +381,36 @@ describe('useModifyDomains', () => {
     });
   });
 
+  it('should extract MWP conflictDetails from nested details.error.code shape', async function extractsNestedMwpConflictDetails() {
+    const error = await mutateAndGetError({
+      responseBody: {
+        details: {
+          error: {
+            code: 'DOMAIN_ALREADY_IN_USE',
+            message: 'Domain is already in use',
+            details: {
+              value: 'example.com',
+              mwpTransfer: {
+                transferable: true,
+                v2AppId: '1129971',
+                siteName: 'My WP Site',
+              },
+            },
+          },
+        },
+      },
+    });
+
+    expect(error.details.nestedCode).toBe('DOMAIN_ALREADY_IN_USE');
+    expect(error.details.conflictDetails).toEqual({
+      existingAppId: '1129971',
+      existingOwnerType: 'mwpV2AppId',
+      existingOwnerId: '1129971',
+      existingAppName: 'My WP Site',
+      domain: 'example.com',
+    });
+  });
+
   it('should extract nestedCode and conflictDetails from flat details shape', async function extractsFlatConflictDetails() {
     const error = await mutateAndGetError({
       responseBody: {
@@ -406,6 +438,159 @@ describe('useModifyDomains', () => {
       existingAppName: 'My Existing App',
       domain: 'taken.example.com',
     });
+  });
+
+  it('should extract MWP conflictDetails from flat airo-go response shape', async function extractsFlatAiroGoMwpConflictDetails() {
+    const error = await mutateAndGetError({
+      responseBody: {
+        code: 'DOMAIN_ALREADY_IN_USE',
+        details: {
+          value: 'example.com',
+          mwpTransfer: {
+            transferable: true,
+            v2AppId: '123',
+            siteName: 'My Site',
+          },
+        },
+      },
+    });
+
+    expect(error.details.nestedCode).toBe('DOMAIN_ALREADY_IN_USE');
+    expect(error.details.conflictDetails).toEqual({
+      existingAppId: '123',
+      existingOwnerType: 'mwpV2AppId',
+      existingOwnerId: '123',
+      existingAppName: 'My Site',
+      domain: 'example.com',
+    });
+  });
+
+  it('should extract Airo conflictDetails from flat airo-go response shape', async function extractsFlatAiroGoAiroConflictDetails() {
+    const error = await mutateAndGetError({
+      responseBody: {
+        code: 'DOMAIN_IN_USE_BY_OWN_APP',
+        details: {
+          existingAppId: 'app1',
+          existingSystemId: 'sys1',
+          existingOwnerType: 'airoSubscriptionId',
+          existingOwnerId: 'sub1',
+          existingAppName: 'Test App',
+          domain: 'test.com',
+        },
+      },
+    });
+
+    expect(error.details.nestedCode).toBe('DOMAIN_IN_USE_BY_OWN_APP');
+    expect(error.details.conflictDetails).toEqual({
+      existingAppId: 'app1',
+      existingSystemId: 'sys1',
+      existingOwnerType: 'airoSubscriptionId',
+      existingOwnerId: 'sub1',
+      existingAppName: 'Test App',
+      domain: 'test.com',
+    });
+  });
+
+  it('should extract MWP conflictDetails from flat DOMAIN_ALREADY_IN_USE shape when transferable', async function extractsMwpConflictDetails() {
+    const error = await mutateAndGetError({
+      responseBody: {
+        code: 'DOMAIN_MODIFY_FAILED',
+        details: {
+          code: 'DOMAIN_ALREADY_IN_USE',
+          message: 'Domain is already configured for MWP',
+          details: {
+            value: 'example.com',
+            mwpTransfer: {
+              transferable: true,
+              siteName: 'A WordPress Site',
+              v2AppId: '1129971',
+              product: 'Managed Hosting for WordPress',
+            },
+          },
+        },
+      },
+    });
+
+    expect(error.details.nestedCode).toBe('DOMAIN_ALREADY_IN_USE');
+    expect(error.details.conflictDetails).toEqual({
+      existingAppId: '1129971',
+      existingOwnerType: 'mwpV2AppId',
+      existingOwnerId: '1129971',
+      existingAppName: 'A WordPress Site',
+      domain: 'example.com',
+    });
+  });
+
+  it('should not set conflictDetails for non-transferable MWP domain conflict', async function skipsMwpConflictDetailsWhenNotTransferable() {
+    const error = await mutateAndGetError({
+      responseBody: {
+        code: 'DOMAIN_MODIFY_FAILED',
+        details: {
+          code: 'DOMAIN_ALREADY_IN_USE',
+          message: 'Domain is already configured for MWP',
+          details: {
+            value: 'example.com',
+            mwpTransfer: {
+              transferable: false,
+              siteName: 'A WordPress Site',
+              v2AppId: '1129971',
+            },
+          },
+        },
+      },
+    });
+
+    expect(error.details.nestedCode).toBe('DOMAIN_ALREADY_IN_USE');
+    expect(error.details.conflictDetails).toBeUndefined();
+    expect(vi.mocked(logger.warn)).not.toHaveBeenCalled();
+  });
+
+  it('should not set conflictDetails for DOMAIN_ALREADY_IN_USE without mwpTransfer', async function skipsMwpConflictDetailsWhenMissingPayload() {
+    const error = await mutateAndGetError({
+      responseBody: {
+        code: 'DOMAIN_MODIFY_FAILED',
+        details: {
+          code: 'DOMAIN_ALREADY_IN_USE',
+          message: 'Domain is already in use by another product',
+          details: {
+            value: 'example.com',
+          },
+        },
+      },
+    });
+
+    expect(error.details.nestedCode).toBe('DOMAIN_ALREADY_IN_USE');
+    expect(error.details.conflictDetails).toBeUndefined();
+    expect(vi.mocked(logger.warn)).not.toHaveBeenCalled();
+  });
+
+  it('should log parse failure when transferable MWP conflict is malformed', async function logsTransferableMwpParseFailure() {
+    const error = await mutateAndGetError({
+      responseBody: {
+        code: 'DOMAIN_MODIFY_FAILED',
+        details: {
+          code: 'DOMAIN_ALREADY_IN_USE',
+          message: 'Domain is already configured for MWP',
+          details: {
+            value: 'example.com',
+            mwpTransfer: {
+              transferable: true,
+              siteName: 'A WordPress Site',
+            },
+          },
+        },
+      },
+    });
+
+    expect(error.details.nestedCode).toBe('DOMAIN_ALREADY_IN_USE');
+    expect(error.details.conflictDetails).toBeUndefined();
+    expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
+      'domain-operations.modify.mwp-conflict-parse-failed',
+      expect.objectContaining({
+        appId: 'app-123',
+        effectiveNestedCode: 'DOMAIN_ALREADY_IN_USE',
+      })
+    );
   });
 
   it('should keep conflictDetails undefined when required fields are missing', async function missingConflictFields() {

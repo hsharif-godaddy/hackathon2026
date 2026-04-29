@@ -11,6 +11,12 @@ import { DomainStatus } from '@/lib/mgmt-airo/types';
 import { renderWithProviders } from '@/tests/test-utils';
 import DomainAttachWidget from './DomainAttachWidget';
 
+vi.mock('@ux/modal', () => ({
+  default: function Modal({ children }: { children: any }) {
+    return <div>{children}</div>;
+  },
+}));
+
 // -- Hook mocks --
 
 vi.mock('@/hooks/useSwitchboard', () => ({
@@ -63,14 +69,21 @@ vi.mock('@/hooks/useDomainDnsOwnership', () => ({
   })),
 }));
 
+const { mockModifyDomainsMutation } = vi.hoisted(function hoisted() {
+  return {
+    mockModifyDomainsMutation: {
+      mutateAsync: vi.fn(),
+      mutate: vi.fn(),
+      reset: vi.fn(),
+      isPending: false,
+      error: null,
+      isError: false,
+    },
+  };
+});
+
 vi.mock('@/hooks/useModifyDomains', () => ({
-  useModifyDomains: vi.fn(() => ({
-    mutateAsync: vi.fn(),
-    mutate: vi.fn(),
-    isPending: false,
-    error: null,
-    isError: false,
-  })),
+  useModifyDomains: vi.fn(() => mockModifyDomainsMutation),
   DomainMutationError: class extends Error {},
 }));
 
@@ -144,6 +157,11 @@ const pendingCustomerDomain: AppDomain = {
 describe('DomainAttachWidget', function domainAttachWidgetTests() {
   beforeEach(function setup() {
     vi.clearAllMocks();
+    mockModifyDomainsMutation.error = null;
+    mockModifyDomainsMutation.isError = false;
+    mockModifyDomainsMutation.mutateAsync = vi.fn();
+    mockModifyDomainsMutation.mutate = vi.fn();
+    mockModifyDomainsMutation.reset = vi.fn();
   });
 
   describe('pendingDomain with requiresManualDnsSetup', function manualDnsTests() {
@@ -524,5 +542,130 @@ describe('DomainAttachWidget', function domainAttachWidgetTests() {
       expect(screen.queryByText('builder_domain_attach_external_title')).not.toBeInTheDocument();
       expect(document.getElementById('external-domain-input')).toBeNull();
     });
+  });
+
+  it('opens conflict modal for transferable DOMAIN_ALREADY_IN_USE errors', async function opensConflictModalForTransferableMwp() {
+    const { DomainMutationError } = await import('@/hooks/useModifyDomains');
+    const { useAppDetails } = await import('@/hooks/useAppDetails');
+    const { useDomainValidationQuery } = await import('@/hooks/useDomainValidationQuery');
+    const { useDomainsQuery } = await import('@/hooks/useDomainsQuery');
+    const { useSwitchboard } = await import('@/hooks/useSwitchboard');
+    const conflictError = new DomainMutationError('Domain already in use');
+    (conflictError as any).details = {
+      code: 'DOMAIN_MODIFY_FAILED',
+      message: 'Domain already in use',
+      nestedCode: 'DOMAIN_ALREADY_IN_USE',
+      conflictDetails: {
+        existingAppId: '1129971',
+        existingSystemId: '',
+        existingOwnerType: 'mwpV2AppId',
+        existingOwnerId: '1129971',
+        existingAppName: 'A WordPress Site',
+        domain: 'example.com',
+      },
+    };
+
+    vi.mocked(useAppDetails).mockReturnValue({
+      data: {
+        id: 'test-app-123',
+        name: 'Test App',
+        status: 'running',
+        domains: [],
+      },
+      isFetched: true,
+    } as any);
+    vi.mocked(useDomainsQuery).mockReturnValue({
+      data: [],
+      isLoading: false,
+      error: null,
+      isFetched: true,
+    } as any);
+    vi.mocked(useSwitchboard).mockImplementation(() => true);
+    vi.mocked(useDomainValidationQuery).mockReturnValue({
+      data: { available: true, errors: [] },
+      isLoading: false,
+      isError: false,
+    } as any);
+    mockModifyDomainsMutation.mutateAsync = vi.fn().mockRejectedValue(conflictError);
+
+    renderWithProviders(<DomainAttachWidget appId="test-app-123" />);
+
+    const input = document.getElementById('external-domain-input');
+    expect(input).toBeTruthy();
+    fireEvent.change(input!, { target: { value: 'example.com' } });
+
+    await waitFor(function waitForAddButton() {
+      expect(screen.getByRole('button', { name: 'builder_custom_domain_button_add' })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'builder_custom_domain_button_add' }));
+    fireEvent.click(screen.getByRole('button', { name: 'builder_custom_domain_modal_button_continue' }));
+
+    await waitFor(function waitForConflictModal() {
+      expect(screen.getByText('Move Domain')).toBeInTheDocument();
+    });
+  });
+
+  it('falls through to generic error display for non-transferable DOMAIN_ALREADY_IN_USE', async function fallsThroughForNonTransferableMwp() {
+    const { DomainMutationError } = await import('@/hooks/useModifyDomains');
+    const { useAppDetails } = await import('@/hooks/useAppDetails');
+    const { useDomainValidationQuery } = await import('@/hooks/useDomainValidationQuery');
+    const { useDomainsQuery } = await import('@/hooks/useDomainsQuery');
+    const { useSwitchboard } = await import('@/hooks/useSwitchboard');
+    const { shipAnalyticsLog } = await import('@/lib/logging');
+    const fallbackError = new DomainMutationError('Domain is already configured elsewhere');
+    (fallbackError as any).details = {
+      code: 'DOMAIN_ALREADY_IN_USE',
+      message: 'Domain is already configured elsewhere',
+      nestedCode: 'DOMAIN_ALREADY_IN_USE',
+    };
+
+    vi.mocked(useAppDetails).mockReturnValue({
+      data: {
+        id: 'test-app-123',
+        name: 'Test App',
+        status: 'running',
+        domains: [],
+      },
+      isFetched: true,
+    } as any);
+    vi.mocked(useDomainsQuery).mockReturnValue({
+      data: [],
+      isLoading: false,
+      error: null,
+      isFetched: true,
+    } as any);
+    vi.mocked(useSwitchboard).mockImplementation(() => true);
+    vi.mocked(useDomainValidationQuery).mockReturnValue({
+      data: { available: true, errors: [] },
+      isLoading: false,
+      isError: false,
+    } as any);
+    mockModifyDomainsMutation.mutateAsync = vi.fn(async function rejectWithFallback() {
+      mockModifyDomainsMutation.error = fallbackError;
+      throw fallbackError;
+    });
+
+    renderWithProviders(<DomainAttachWidget appId="test-app-123" />);
+
+    const input = document.getElementById('external-domain-input');
+    expect(input).toBeTruthy();
+    fireEvent.change(input!, { target: { value: 'example.com' } });
+
+    await waitFor(function waitForAddButton() {
+      expect(screen.getByRole('button', { name: 'builder_custom_domain_button_add' })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'builder_custom_domain_button_add' }));
+    fireEvent.click(screen.getByRole('button', { name: 'builder_custom_domain_modal_button_continue' }));
+
+    await waitFor(function waitForGenericFailurePath() {
+      expect(vi.mocked(shipAnalyticsLog)).toHaveBeenCalledWith(
+        'domain.attach.widget.connect.failed',
+        expect.objectContaining({
+          appId: 'test-app-123',
+          domainName: 'example.com',
+        })
+      );
+    });
+    expect(screen.queryByText('Move Domain')).not.toBeInTheDocument();
   });
 });

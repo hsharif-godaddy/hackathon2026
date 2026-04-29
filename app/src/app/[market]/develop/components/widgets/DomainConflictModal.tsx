@@ -38,7 +38,7 @@ export function DomainConflictModal({
       onClose={onClose}
       centered
     >
-      <Box className='text-center max-w-2xl mx-auto' gap='md' inlineAlignChildren='center'>
+      <Box className='max-w-2xl mx-auto w-full text-left' gap='md'>
         <text.p>
           {t(
             'builder_domain_conflict_body',
@@ -51,7 +51,14 @@ export function DomainConflictModal({
             {error instanceof Error ? error.message : String(error)}
           </div>
         )}
-        <Box orientation="horizontal" gap="md" className="justify-center">
+        <Box orientation="horizontal" gap="md" className="w-full justify-end">
+          <Button
+            design="secondary"
+            text={t('builder_common_cancel')}
+            onClick={onClose}
+            disabled={isTransferring}
+            size="sm"
+          />
           <Button
             design="primary"
             text={isTransferring
@@ -59,13 +66,6 @@ export function DomainConflictModal({
               : t('builder_domain_conflict_cta', {}, 'Move Domain')}
             onClick={onConfirm}
             disabled={isTransferring || !!error}
-            size="sm"
-          />
-          <Button
-            design="secondary"
-            text={t('builder_common_cancel')}
-            onClick={onClose}
-            disabled={isTransferring}
             size="sm"
           />
         </Box>

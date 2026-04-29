@@ -14,6 +14,7 @@ export enum DomainApiErrorCode {
   DOMAIN_OPERATION_REQUIRED = 'DOMAIN_OPERATION_REQUIRED',
   INVALID_DOMAIN_FORMAT = 'INVALID_DOMAIN_FORMAT',
   INVALID_TRANSFER_FROM = 'INVALID_TRANSFER_FROM',
+  DOMAIN_ALREADY_IN_USE = 'DOMAIN_ALREADY_IN_USE',
   DOMAIN_MODIFY_FAILED = 'DOMAIN_MODIFY_FAILED',
 }
 
@@ -25,6 +26,7 @@ const DOMAIN_API_ERROR_KEYS: Record<string, string> = {
   [DomainApiErrorCode.DOMAIN_OPERATION_REQUIRED]: 'builder_domain_api_error_operation_required',
   [DomainApiErrorCode.INVALID_DOMAIN_FORMAT]: 'builder_domain_api_error_invalid_format',
   [DomainApiErrorCode.INVALID_TRANSFER_FROM]: 'builder_domain_error_invalid_transfer',
+  [DomainApiErrorCode.DOMAIN_ALREADY_IN_USE]: 'builder_domain_api_error_already_in_use',
   [DomainApiErrorCode.DOMAIN_MODIFY_FAILED]: 'builder_domain_api_error_modify_failed',
 };
 

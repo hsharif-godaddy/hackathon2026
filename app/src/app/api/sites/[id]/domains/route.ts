@@ -73,7 +73,20 @@ export const POST = withCustomerAuth(async (
 
     // Parse request body
     const body = await request.json();
-    const { domainsToCreate = [], domainsToDelete = [], createCdn = false, transferFrom } = body;
+    const {
+      domainsToCreate = [],
+      domainsToDelete = [],
+      createCdn = false,
+      transferFrom,
+      transferFromMWP,
+    } = body;
+    if (transferFrom !== undefined && transferFromMWP !== undefined) {
+      logger.warn('sites.domains.modify.mutual-exclusion', { siteId });
+      return NextResponse.json(
+        { code: DomainApiErrorCode.INVALID_TRANSFER_FROM, error: 'Cannot specify both transferFrom and transferFromMWP' },
+        { status: 400 }
+      );
+    }
     if (transferFrom !== undefined) {
       if (
         typeof transferFrom !== 'object' || transferFrom === null ||
@@ -86,6 +99,20 @@ export const POST = withCustomerAuth(async (
       ) {
         logger.warn('sites.domains.modify.invalid-transfer-from', { siteId });
         return NextResponse.json({ code: DomainApiErrorCode.INVALID_TRANSFER_FROM, error: 'Invalid transferFrom payload' }, { status: 400 });
+      }
+    }
+    if (transferFromMWP !== undefined) {
+      if (
+        typeof transferFromMWP !== 'object' ||
+        transferFromMWP === null ||
+        typeof transferFromMWP.v2AppId !== 'string' ||
+        transferFromMWP.v2AppId.trim().length === 0
+      ) {
+        logger.warn('sites.domains.modify.invalid-transfer-from-mwp', { siteId });
+        return NextResponse.json(
+          { code: DomainApiErrorCode.INVALID_TRANSFER_FROM, error: 'Invalid transferFromMWP payload' },
+          { status: 400 }
+        );
       }
     }
 
@@ -125,6 +152,8 @@ export const POST = withCustomerAuth(async (
       domainsToDeleteCount: domainsToDelete.length,
       createCdn,
       isWildcardDomain: true,
+      hasTransferFrom: !!transferFrom,
+      hasTransferFromMWP: !!transferFromMWP,
     });
 
     // Create mgmt-airo client and trigger domain modification
@@ -140,6 +169,7 @@ export const POST = withCustomerAuth(async (
         createCdn,
         isWildcardDomain: true,
         transferFrom,
+        transferFromMWP,
       },
     );
 

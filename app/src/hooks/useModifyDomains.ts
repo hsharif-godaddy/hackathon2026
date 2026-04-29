@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { appFetch } from '@/lib/gasket-config';
+import { MWP_V2_APP_OWNER_TYPE } from '@/lib/mgmt-airo/types';
 import { logger } from '@/lib/request-context';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 
@@ -32,6 +33,9 @@ export interface ModifyDomainsPayload {
     systemId: string;
     subscriptionId: string;
   };
+  transferFromMWP?: {
+    v2AppId: string;
+  };
 }
 
 /**
@@ -50,7 +54,7 @@ export interface DomainMutationDetails {
   nestedCode?: string;
   conflictDetails?: {
     existingAppId: string;
-    existingSystemId: string;
+    existingSystemId?: string;
     existingOwnerType: string;
     existingOwnerId: string;
     existingAppName?: string;
@@ -120,13 +124,16 @@ export function useModifyDomains() {
                 : details)
             : null;
         const nestedCode = typeof nestedError?.code === 'string' ? nestedError.code : undefined;
+        const effectiveNestedCode =
+          nestedCode ?? (typeof errorData?.code === 'string' ? errorData.code : undefined);
+        const conflictSource = nestedError?.details ?? details ?? null;
         const rawConflictDetails =
-          nestedCode === 'DOMAIN_IN_USE_BY_OWN_APP' &&
-          typeof nestedError?.details === 'object' &&
-          nestedError.details !== null
-            ? nestedError.details
+          effectiveNestedCode === 'DOMAIN_IN_USE_BY_OWN_APP' &&
+          typeof conflictSource === 'object' &&
+          conflictSource !== null
+            ? conflictSource
             : null;
-        const conflictDetails =
+        const airoConflictDetails =
           rawConflictDetails &&
           typeof rawConflictDetails.existingAppId === 'string' &&
           typeof rawConflictDetails.existingSystemId === 'string' &&
@@ -143,6 +150,47 @@ export function useModifyDomains() {
               domain: rawConflictDetails.domain,
             }
             : undefined;
+        const mwpRaw =
+          effectiveNestedCode === 'DOMAIN_ALREADY_IN_USE' &&
+          typeof conflictSource === 'object' &&
+          conflictSource !== null
+            ? conflictSource
+            : null;
+        const mwpConflictDetails =
+          mwpRaw &&
+          typeof mwpRaw.value === 'string' &&
+          mwpRaw.value.length > 0 &&
+          typeof mwpRaw.mwpTransfer === 'object' &&
+          mwpRaw.mwpTransfer !== null &&
+          mwpRaw.mwpTransfer.transferable === true &&
+          typeof mwpRaw.mwpTransfer.v2AppId === 'string' &&
+          mwpRaw.mwpTransfer.v2AppId.trim().length > 0
+            ? {
+              existingAppId: mwpRaw.mwpTransfer.v2AppId,
+              existingOwnerType: MWP_V2_APP_OWNER_TYPE,
+              existingOwnerId: mwpRaw.mwpTransfer.v2AppId,
+              existingAppName:
+                typeof mwpRaw.mwpTransfer.siteName === 'string'
+                  ? mwpRaw.mwpTransfer.siteName
+                  : undefined,
+              domain: mwpRaw.value,
+            }
+            : undefined;
+        if (
+          effectiveNestedCode === 'DOMAIN_ALREADY_IN_USE' &&
+          !mwpConflictDetails &&
+          typeof conflictSource?.mwpTransfer === 'object' &&
+          conflictSource.mwpTransfer !== null &&
+          conflictSource.mwpTransfer.transferable === true
+        ) {
+          logger.warn('domain-operations.modify.mwp-conflict-parse-failed', {
+            appId: siteId,
+            effectiveNestedCode,
+            hasNestedError: !!nestedError,
+            errorBody: JSON.stringify(errorData),
+          });
+        }
+        const conflictDetails = airoConflictDetails ?? mwpConflictDetails;
         const errorMessage =
           (typeof details === 'object' ? (details?.message ?? details?.error?.message) : details) ||
           errorData.error ||
@@ -165,7 +213,7 @@ export function useModifyDomains() {
         throw new DomainMutationError({
           code: errorData.code,
           message: errorMessage,
-          ...(nestedCode && { nestedCode }),
+          ...(effectiveNestedCode && { nestedCode: effectiveNestedCode }),
           ...(conflictDetails && { conflictDetails }),
           ...(Object.keys(domainSpecificError).length > 0 && { domainSpecificError }),
         });

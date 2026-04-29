@@ -387,6 +387,7 @@ export interface DomainToDelete {
 }
 
 export const AIRO_SUBSCRIPTION_OWNER_TYPE = 'airoSubscriptionId';
+export const MWP_V2_APP_OWNER_TYPE = 'mwpV2AppId';
 
 /**
  * Modify domains request payload
@@ -400,6 +401,9 @@ export interface AiroModifyDomainsPayload {
     appId: string;
     systemId: string;
     subscriptionId: string;
+  };
+  transferFromMWP?: {
+    v2AppId: string;
   };
 }
 
