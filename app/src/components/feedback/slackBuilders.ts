@@ -76,6 +76,9 @@ export function buildSupportRequestBlocks(
   if (origin) {
     rightFields.push({ label: 'Origin', value: origin });
   }
+  if (ctx.experimentsLine) {
+    rightFields.push({ label: 'Experiments', value: ctx.experimentsLine });
+  }
 
   const singleColumnSections: SlackSingleSection[] = [];
   if (data.description.trim()) {
@@ -115,6 +118,9 @@ export function buildBugReportBlocks(
 
   if (origin) {
     rightFields.push({ label: 'Origin', value: origin });
+  }
+  if (ctx.experimentsLine) {
+    rightFields.push({ label: 'Experiments', value: ctx.experimentsLine });
   }
 
   const singleColumnSections: SlackSingleSection[] = [];
@@ -169,6 +175,10 @@ export function buildFeedbackBlocks(
 
   if (data.topics.length > 0) {
     rightFields.push({ label: 'Topics', value: data.topics.join(', ') });
+  }
+
+  if (ctx.experimentsLine) {
+    rightFields.push({ label: 'Experiments', value: ctx.experimentsLine });
   }
 
   const singleColumnSections: SlackSingleSection[] = [];

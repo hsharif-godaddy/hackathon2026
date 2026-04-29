@@ -82,4 +82,5 @@ export interface DiagnosticContext {
   isInternalUser: boolean;
   isImpersonating: boolean;
   shopperId: string | undefined;
+  experimentsLine?: string;
 }

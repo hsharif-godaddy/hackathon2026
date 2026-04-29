@@ -1,17 +1,21 @@
-import { useState } from "react";
-import { Controller, useForm } from "react-hook-form";
+import { useState } from 'react';
+import { Controller, useForm } from 'react-hook-form';
 import { isEmployeeAuthType } from '@airo/shared/auth';
-import Box from "@ux/box";
-import Button from "@ux/button";
-import Checkbox from "@ux/checkbox";
-import Radio from "@ux/radio";
-import Spinner from "@ux/spinner";
-import text from "@ux/text";
-import TextInput from "@ux/text-input";
+import Box from '@ux/box';
+import Button from '@ux/button';
+import Checkbox from '@ux/checkbox';
+import Radio from '@ux/radio';
+import Spinner from '@ux/spinner';
+import text from '@ux/text';
+import TextInput from '@ux/text-input';
 
-import { useAuthContext } from "@/components/providers/AuthProvider";
-import { useTranslations } from "@/hooks/useTranslations";
+import { useExperimentsLine } from '@/components/feedback/experimentsLine';
+import type { FeedbackFormProps } from '@/components/feedback/types';
+import { getAppIdFromUrl, getBaseUrl, getFullStorySessionUrl } from '@/components/feedback/utils';
+import { useAuthContext } from '@/components/providers/AuthProvider';
+import { useTranslations } from '@/hooks/useTranslations';
 import { JourneyTracker } from '@/lib/journeyTracker';
+import { shipAnalyticsLog } from '@/lib/logging';
 import { logger } from '@/lib/request-context';
 import { formatSlackBlockMessage, type SlackBlockMessage, type SlackLink } from '@/lib/slack-webhook';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
@@ -19,8 +23,6 @@ import { useSitesStore } from '@/stores/useSitesStore';
 import { getEffectiveCreditsSpent } from '@/utils/credits';
 import { isLocalDev } from '@/utils/is-local-dev';
 import { storeToS3 } from './submitFeedback';
-import type { FeedbackFormProps } from "./types";
-import { getAppIdFromUrl, getBaseUrl, getFullStorySessionUrl } from "./utils";
 
 export function FeedbackForm({
   config,
@@ -36,6 +38,7 @@ export function FeedbackForm({
   const currentAppId = useDevelopPageStore((state) => state.currentAppId);
   const getSite = useSitesStore((state) => state.getSite);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const experimentsLine = useExperimentsLine();
 
   // TLA detection for internal users
   const userInfo = getUserInfo();
@@ -176,6 +179,15 @@ export function FeedbackForm({
         });
       }
 
+      // Matches slackBuilders.ts — omit Experiments row when no cohorts are
+      // assigned (empty string) to avoid emitting a blank field to Slack.
+      if (experimentsLine) {
+        rightFields.push({
+          label: 'Experiments',
+          value: experimentsLine,
+        });
+      }
+
       // Build single-column sections
       const singleColumnSections: Array<{ label?: string; value: string }> = [];
 
@@ -231,17 +243,26 @@ export function FeedbackForm({
         }),
       });
 
-      // In dev mode, log the blockMessage returned from backend
-      if (isLocalDev() && response.ok) {
-        const result = await response.json();
-        if (result.blockMessage) {
-          const formattedPayload = formatSlackBlockMessage(result.blockMessage);
-          console.log('📧 [DEV MODE] Feedback Slack payload:', JSON.stringify(formattedPayload, null, 2));
-          logger.info('feedback.slack.dev_mode_logged', {
-            feedbackId: config.pk,
-            appId: currentAppId,
-          });
+      // Matches submitFeedback.ts#sendFeedbackToSlack — errors must propagate so
+      // onSubmit's outer catch flips outcome to 'failed'. Without this guard,
+      // shipAnalyticsLog records every Slack delivery failure as outcome:'success'.
+      if (!response.ok) {
+        throw new Error(`Slack webhook failed: ${response.status}`);
+      }
+
+      if (isLocalDev()) {
+        try {
+          const result = await response.json();
+          if (result.blockMessage) {
+            console.log('📧 [DEV MODE] Feedback Slack payload:', JSON.stringify(formatSlackBlockMessage(result.blockMessage), null, 2));
+          }
+        } catch {
+          // JSON parse failure is non-fatal in dev — Slack delivery already succeeded.
         }
+        logger.info('feedback.slack.dev_mode_logged', {
+          feedbackId: config.pk,
+          appId: currentAppId,
+        });
       }
 
       logger.info('feedback.slack.sent', {
@@ -257,6 +278,7 @@ export function FeedbackForm({
         appId: currentAppId,
         error: err instanceof Error ? err.message : String(err),
       });
+      throw err;
     }
   }
 
@@ -273,13 +295,13 @@ export function FeedbackForm({
       appId: currentAppId,
     });
 
+    let outcome: 'success' | 'failed' = 'failed';
+    let slackDelivered = true;
     try {
       if (isLocalDev()) {
         // Development: just send to Slack
         await sendToSlack(data);
-        logger.info('feedback.submit.success', {
-          feedbackId: config.pk,
-        });
+        logger.info('feedback.submit.success', { feedbackId: config.pk });
       } else {
         // Production: submit to API then send to Slack
         const customerId = getUserInfo()?.customerId ?? '';
@@ -310,17 +332,23 @@ export function FeedbackForm({
           throw new Error(`Failed to save feedback: ${response.status}`);
         }
 
-        await response.json();
+        // Durable Loki record for Grafana runbooks — shipAnalyticsLog ships via
+        // best-effort ClientLogBuffer and drops events under degraded conditions.
+        logger.info('feedback.submit.success', { feedbackId: config.pk, customerId });
 
-        // Send to Slack after successful database save
-        await sendToSlack(data);
-
-        logger.info('feedback.submit.success', {
-          feedbackId: config.pk,
-          customerId,
-        });
+        // Slack delivery is a notification side-effect. The DB save (source of truth)
+        // already succeeded, so a Slack failure must not re-open the modal: a retry
+        // would create a duplicate DB entry. Matches saveToCompanionHub pattern in
+        // FeedbackMultiStep.tsx. sendToSlack logs the detailed warn internally.
+        try {
+          await sendToSlack(data);
+        } catch (err) {
+          slackDelivered = false;
+          // Intentionally non-fatal — see comment above.
+        }
       }
 
+      outcome = 'success';
       // Fire after all awaited ops succeed — prevents duplicate S3 records on retry
       storeToS3({
         app_id: currentAppId ?? getAppIdFromUrl(),
@@ -331,11 +359,11 @@ export function FeedbackForm({
 
       // Success! Close the modal
       if (onSubmitSuccess) {
-        const mockResponse = {
+        const successResult = {
           success: true,
           message: 'Feedback submitted successfully'
         };
-        onSubmitSuccess(mockResponse);
+        onSubmitSuccess(successResult);
       } else {
         onClose();
       }
@@ -352,6 +380,13 @@ export function FeedbackForm({
       // Don't close the modal on error - let the user retry
     } finally {
       setIsSubmitting(false);
+      shipAnalyticsLog('feedback.submit', {
+        appId: currentAppId ?? '',
+        feedbackId: config.pk,
+        origin: origin ?? '',
+        outcome,
+        slackDelivered,
+      });
     }
   }
 

@@ -16,6 +16,7 @@ export async function fetchDiagnosticContext(
   isInternalUser: boolean,
   isImpersonating: boolean,
   shopperId: string | undefined,
+  experimentsLine?: string,
 ): Promise<DiagnosticContext> {
   const site = currentAppId ? getSite(currentAppId) : null;
   const fullStoryUrl = await getFullStorySessionUrl(true);
@@ -70,6 +71,7 @@ export async function fetchDiagnosticContext(
     isInternalUser,
     isImpersonating,
     shopperId,
+    experimentsLine,
   };
 }
 
@@ -91,10 +93,13 @@ export async function sendFeedbackToSlack(
   }
 
   if (isLocalDev()) {
-    const result = await response.json();
-    if (result.blockMessage) {
-      const formattedPayload = formatSlackBlockMessage(result.blockMessage);
-      console.log('📧 [DEV MODE] Feedback Slack payload:', JSON.stringify(formattedPayload, null, 2));
+    try {
+      const result = await response.json();
+      if (result.blockMessage) {
+        console.log('📧 [DEV MODE] Feedback Slack payload:', JSON.stringify(formatSlackBlockMessage(result.blockMessage), null, 2));
+      }
+    } catch {
+      // JSON parse failure is non-fatal in dev — Slack delivery already succeeded.
     }
   }
 }
@@ -154,6 +159,5 @@ export async function saveToCompanionHub(
   if (!response.ok) {
     throw new Error(`Failed to save feedback: ${response.status}`);
   }
-
-  await response.json();
+  // Response body intentionally not consumed.
 }

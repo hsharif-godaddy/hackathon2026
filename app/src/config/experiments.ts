@@ -5,6 +5,8 @@ export const EXPERIMENT_IDS = {
   homepageEngagement: 'airo-app-builder-homepage-engagement-2',
   /** UPP / pricing: which paid tier is highlighted as recommended (Professional vs Ultimate) */
   recommendedPlan: 'aab_recommended_plan_uppdcx',
+  /** Chat Gauge: whether to show the chat gauge on the develop page */
+  chatGauge: 'airo-app-builder-chat-gauge',
 } as const
 
 /** Hivemind cohort id for hero copy, value props, examples intro, and section order (matches `hero_content_improvement/` + `data-homepage-variation`). */

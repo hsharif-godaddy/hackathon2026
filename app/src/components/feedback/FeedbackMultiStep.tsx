@@ -2,11 +2,14 @@ import { useCallback, useState } from 'react';
 import { isEmployeeAuthType } from '@airo/shared/auth';
 import Modal from '@ux/modal';
 
+import { useExperimentsLine } from '@/components/feedback/experimentsLine';
 import { useAuthContext } from '@/components/providers/AuthProvider';
 import { useTranslations } from '@/hooks/useTranslations';
+import { shipAnalyticsLog } from '@/lib/logging';
 import { logger } from '@/lib/request-context';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { useSitesStore } from '@/stores/useSitesStore';
+import { logClickEvent } from '@/utils/instrumentation';
 import { buildBugReportBlocks, buildFeedbackBlocks, buildSupportRequestBlocks } from './slackBuilders';
 import { CategorySelectStep } from './steps/CategorySelectStep';
 import { GetSupportStep } from './steps/GetSupportStep';
@@ -34,6 +37,20 @@ const RATING_TO_API_VALUE: Record<number, string> = {
   1: '1 - Very Negative',
 };
 
+enum RatingBucket {
+  Displeased = 'displeased',
+  Neutral = 'neutral',
+  Satisfied = 'satisfied',
+  None = 'none',
+}
+
+function bucketRating(rating: number | null | undefined): RatingBucket {
+  if (rating == null) return RatingBucket.None;
+  if (rating <= 3) return RatingBucket.Displeased;
+  if (rating === 4) return RatingBucket.Neutral;
+  return RatingBucket.Satisfied;
+}
+
 export function FeedbackMultiStep(props: FeedbackProps) {
   const { feedbackId, onClose, onSubmitSuccess, origin, initialStep } = props;
   const t = useTranslations();
@@ -44,6 +61,8 @@ export function FeedbackMultiStep(props: FeedbackProps) {
   const shopperId = userInfo?.shopperId as string | undefined;
   // GoDaddy TLA (three-letter acronym) accounts have 3-char shopperIds — these are internal employees
   const isInternalUser = shopperId?.length === 3;
+
+  const experimentsLine = useExperimentsLine();
 
   // CRM skip / impersonation sessions can only file bug reports — start directly on the issue step
   // initialStep lets callers (e.g. FeedbackBanner) skip the category screen
@@ -74,8 +93,9 @@ export function FeedbackMultiStep(props: FeedbackProps) {
   }, [onSubmitSuccess, onClose]);
 
   const handleSupportSubmit = useCallback(async (data: SupportFormData) => {
+    let outcome: 'success' | 'failed' = 'failed';
     try {
-      const ctx = await fetchDiagnosticContext(currentAppId, getSite, isInternalUser, isImpersonating, shopperId);
+      const ctx = await fetchDiagnosticContext(currentAppId, getSite, isInternalUser, isImpersonating, shopperId, experimentsLine);
       const blockMessage = buildSupportRequestBlocks(data, origin, ctx);
 
       // Save to companion hub under support PK
@@ -96,7 +116,9 @@ export function FeedbackMultiStep(props: FeedbackProps) {
       }
 
       await sendFeedbackToSlack(blockMessage, currentAppId);
-
+      outcome = 'success';
+      // Durable Loki record for Grafana runbooks — shipAnalyticsLog is a best-effort
+      // client-side queue (ClientLogBuffer) that drops events under degraded conditions.
       logger.info('feedback.support.submit.success', { appId: currentAppId });
       return true;
     } catch (err) {
@@ -104,12 +126,23 @@ export function FeedbackMultiStep(props: FeedbackProps) {
         error: err instanceof Error ? err.message : String(err),
       });
       return false;
+    } finally {
+      // Telemetry fires regardless of Slack/companion hub outcome so user-intent events
+      // are not under-counted when downstream services are degraded. The `outcome` field
+      // distinguishes full success from partial/failed submissions.
+      logClickEvent('feedback.support.submit', { appId: currentAppId ?? '', origin: origin ?? '' })();
+      shipAnalyticsLog('feedback.support.submit', {
+        appId: currentAppId ?? '',
+        origin: origin ?? '',
+        outcome,
+      });
     }
-  }, [currentAppId, getSite, isInternalUser, isImpersonating, origin, userInfo]);
+  }, [currentAppId, experimentsLine, getSite, isInternalUser, isImpersonating, origin, userInfo]);
 
   const handleIssueSubmit = useCallback(async (data: IssueFormData) => {
+    let outcome: 'success' | 'failed' = 'failed';
     try {
-      const ctx = await fetchDiagnosticContext(currentAppId, getSite, isInternalUser, isImpersonating, shopperId);
+      const ctx = await fetchDiagnosticContext(currentAppId, getSite, isInternalUser, isImpersonating, shopperId, experimentsLine);
       const blockMessage = buildBugReportBlocks(data, origin, ctx);
 
       // Save to companion hub under bug report PK
@@ -130,7 +163,7 @@ export function FeedbackMultiStep(props: FeedbackProps) {
       }
 
       await sendFeedbackToSlack(blockMessage, currentAppId);
-
+      outcome = 'success';
       logger.info('feedback.issue.submit.success', { appId: currentAppId });
       return true;
     } catch (err) {
@@ -138,12 +171,20 @@ export function FeedbackMultiStep(props: FeedbackProps) {
         error: err instanceof Error ? err.message : String(err),
       });
       return false;
+    } finally {
+      logClickEvent('feedback.issue.submit', { appId: currentAppId ?? '', origin: origin ?? '' })();
+      shipAnalyticsLog('feedback.issue.submit', {
+        appId: currentAppId ?? '',
+        origin: origin ?? '',
+        outcome,
+      });
     }
-  }, [currentAppId, getSite, isInternalUser, isImpersonating, origin, userInfo]);
+  }, [currentAppId, experimentsLine, getSite, isInternalUser, isImpersonating, origin, userInfo]);
 
   const handleFeedbackSubmit = useCallback(async (data: ShareFeedbackFormData) => {
+    let outcome: 'success' | 'failed' = 'failed';
     try {
-      const ctx = await fetchDiagnosticContext(currentAppId, getSite, isInternalUser, isImpersonating, shopperId);
+      const ctx = await fetchDiagnosticContext(currentAppId, getSite, isInternalUser, isImpersonating, shopperId, experimentsLine);
       const blockMessage = buildFeedbackBlocks(data, origin, ctx);
 
       // Save to companion hub API (production only, backward compat with existing PK)
@@ -170,6 +211,8 @@ export function FeedbackMultiStep(props: FeedbackProps) {
       }
 
       await sendFeedbackToSlack(blockMessage, currentAppId);
+      outcome = 'success';
+      logger.info('feedback.share.submit.success', { feedbackId, appId: currentAppId });
 
       // Fire after all awaited ops succeed — prevents duplicate S3 records on retry
       storeToS3({
@@ -178,8 +221,6 @@ export function FeedbackMultiStep(props: FeedbackProps) {
         consent_flag: data.customerConsent,
         rating: data.rating ?? null,
       });
-
-      logger.info('feedback.share.submit.success', { feedbackId, appId: currentAppId });
       return true;
     } catch (err) {
       logger.error('feedback.share.submit.failed', {
@@ -187,8 +228,29 @@ export function FeedbackMultiStep(props: FeedbackProps) {
         error: err instanceof Error ? err.message : String(err),
       });
       return false;
+    } finally {
+      // ratingBucket ships as a customProperty on the pre-existing registered EID
+      // (feedback.share.submit). Interpolating it into the EID string creates
+      // catalog-unregistered variants that silently drop Hivemind attribution.
+      const ratingBucket = bucketRating(data.rating);
+      logClickEvent('feedback.share.submit', {
+        appId: currentAppId ?? '',
+        origin: origin ?? '',
+        ratingBucket,
+      })();
+      shipAnalyticsLog('feedback.share.submit', {
+        appId: currentAppId ?? '',
+        feedbackId,
+        origin: origin ?? '',
+        outcome,
+        // Omit rating entirely when absent — encoding null as 0 corrupts any
+        // AVG(rating) or COUNT WHERE rating > 0 aggregation in ESSP, because
+        // internal/impersonating users never see the rating widget.
+        ...(data.rating != null ? { rating: data.rating } : {}),
+        ratingBucket,
+      });
     }
-  }, [currentAppId, getSite, isInternalUser, isImpersonating, origin, feedbackId, userInfo]);
+  }, [currentAppId, experimentsLine, getSite, isInternalUser, isImpersonating, origin, feedbackId, userInfo]);
 
   const modalTitle = step === 'category'
     ? t('builder_feedback_modal_title')

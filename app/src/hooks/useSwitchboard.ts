@@ -38,7 +38,8 @@ const LOCAL_FEATURE_OVERRIDES: Record<string, boolean> = {
   'airo-builder-feedback-multistep': true,
   'appbuilder-post-publish-feature-selection': true,
   'airo-builder-theme-selection-chat': true,
-  'appbuilder-brandbook': true,
+  'appbuilder-brandbook': true, // opt-in: brand book view in develop page header
+  'appbuilder-chat-gauge': true, // opt-in: chat gauge on develop page
 };
 
 /**

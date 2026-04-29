@@ -5,6 +5,7 @@ import { useMachine } from '@xstate/react';
 import type { AppDetailsResponse } from '@/hooks/useAppDetails';
 import { LifecycleReason, type SiteVariant } from '@/lib/control-plane/types';
 import { appFetch } from '@/lib/gasket-config';
+import { logger } from '@/lib/request-context';
 import { useServerPollingStore } from '@/stores/useServerPollingStore';
 import { archiveRestoreMachine } from './archiveRestoreMachine';
 
@@ -215,10 +216,14 @@ export function useAppArchiveRestore(
       // Initial fetch error: be graceful (treat as not-archived) rather than failing the page.
       // Errors during restore wait are surfaced as failures.
       if (state.matches('checkingStatus')) {
+        const err = archiveStatusQuery.error;
+        const message = err instanceof Error ? err.message : err ? String(err) : 'archive-status error';
+        logger.warn('archive.status.initialCheckFailed', { appId, error: message });
         send({ type: 'STATUS_NOT_ARCHIVED' });
       } else if (state.matches({ restoring: 'waitingForStatus' })) {
         const err = archiveStatusQuery.error;
         const message = err instanceof Error ? err.message : err ? String(err) : 'archive-status error';
+        logger.warn('archive.status.restoreWaitCheckFailed', { appId, error: message });
         send({ type: 'STATUS_ERROR', error: message });
       }
     }

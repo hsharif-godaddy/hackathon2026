@@ -49,6 +49,30 @@ The BFF is Next.js App Router API routes at `src/app/api/`. It does NOT just pro
 | `GET /api/apps/[id]/deployments` | Deployment history     | mgmt-airo API                       |
 | `GET /api/config`                | Feature flags + config | Returns flags                       |
 
+### Slack feedback (Block Kit)
+
+- **Format:** `src/lib/slack-webhook.ts` (`formatSlackBlockMessage` → `text` + `blocks` for incoming webhooks). Builders: `src/components/feedback/slackBuilders.ts`.
+- **BFF route:** `POST /api/slack-webhook/feedback` — server-only env `SLACK_FEEDBACK_WEBHOOK_URL` (Katana: app secrets for airo build / website; same pattern as CI `SLACK_WEBHOOK_PROD` / `SLACK_WEBHOOK_NONPROD`).
+
+**Local dev workflow (without `SLACK_FEEDBACK_WEBHOOK_URL` set):**
+
+1. Submit any feedback form locally.
+2. The route detects no webhook URL and echoes the `blockMessage` back to the client.
+3. `sendFeedbackToSlack` in `submitFeedback.ts` (and the inline send block in `FeedbackForm.tsx`) calls `response.json()` and prints the full formatted JSON to the **browser console** via `console.log`.
+4. Copy the JSON from the console.
+5. Open [Slack Block Kit Builder](https://app.slack.com/block-kit-builder) and paste into the **Code** tab.
+6. **If the preview errors:** the top-level `"text"` field is a common culprit — it is valid for real webhook POSTs but Block Kit Builder's Code tab does not accept it. Delete the `"text": "..."` line, preview your blocks, then add it back before posting to a real webhook.
+
+**Live Slack delivery (optional, for end-to-end validation):**
+
+Set `SLACK_FEEDBACK_WEBHOOK_URL` in your `app/.env.local`:
+
+```
+SLACK_FEEDBACK_WEBHOOK_URL=https://hooks.slack.com/services/...
+```
+
+Retrieve the value from Katana secrets (app secrets for the `airo build / website` app). Avoid leaving this set during normal development — it posts to a shared channel and can confuse other team members. Remove it when you're done testing.
+
 ### Tiered Auth Levels
 
 gd-auth supports three authentication levels. Default is level 1; sensitive operations use level 3.

@@ -17,6 +17,8 @@ import UsageGauge from '@/app/[market]/develop/components/chat/usage-gauge/Usage
 import { useChatHistoryNavigation } from '@/app/[market]/develop/components/chat/useChatHistoryNavigation'
 import type { AiEditContext } from '@/app/[market]/develop/components/types'
 import type { ActiveColorSchemeSuggest } from '@/app/[market]/develop/components/utils/findLatestColorSchemeSuggest'
+import { EXPERIMENT_IDS } from '@/config/experiments'
+import { useHivemind } from '@/hooks/useHivemind'
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
@@ -124,10 +126,14 @@ export default function ChatInput({
   const t = useTranslations();
   const clickContext = useMemo(() => (appId ? { appId } : undefined), [appId]);
   const { locale } = useIntl();
-  const isChatGaugeEnabled = useSwitchboard('appbuilder-chat-gauge');
+  const isChatGaugeEnabledBySwitchboard = useSwitchboard('appbuilder-chat-gauge');
   const areChatPlansEnabled = useSwitchboard('airo-builder-chat-plans');
   const attachmentSlotsUsed = selectedAssets.length + stagedFiles.length
   const canAddAsset = attachmentSlotsUsed < maxAssets;
+
+  const { cohort: chatGaugeCohort } = useHivemind(EXPERIMENT_IDS.chatGauge);
+  const isChatGaugeEnabled =
+    Boolean(isChatGaugeEnabledBySwitchboard) && chatGaugeCohort !== 'treatment';
 
   const textBeforeListeningRef = useRef('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)

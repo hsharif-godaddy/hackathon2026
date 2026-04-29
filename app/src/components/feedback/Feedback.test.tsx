@@ -7,11 +7,9 @@ import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 
-import { useAuthContext } from '@/components/providers/AuthProvider';
-import { renderWithProviders } from '@/tests/test-utils';
-
 const mockLogImpressionEvent = vi.fn((_eid: string) => vi.fn());
-const mockLogClickEvent = vi.fn((_eid: string) => vi.fn());
+const mockLogClickEvent = vi.fn((_eid: string, _customProperties?: Record<string, unknown>) => vi.fn());
+const mockShipAnalyticsLog = vi.fn();
 
 vi.mock('@ux/modal', () => ({
   default: ({ title, children }: { title: string; children: React.ReactNode }) => (
@@ -71,15 +69,32 @@ vi.mock('@/utils/instrumentation', () => ({
     mockLogImpressionEvent(eid);
     return vi.fn();
   },
-  logClickEvent: (eid: string) => {
-    mockLogClickEvent(eid);
+  logClickEvent: (eid: string, customProperties?: Record<string, unknown>) => {
+    mockLogClickEvent(eid, customProperties);
     return vi.fn();
   },
   generateClickEID: (eid: string) => eid,
 }));
 
+vi.mock('@/lib/logging', () => ({
+  shipAnalyticsLog: (event: string, data: Record<string, unknown>) => mockShipAnalyticsLog(event, data),
+}));
+
 vi.mock('@/hooks/useTranslations', () => ({
   useTranslations: () => (key: string) => key,
+}));
+
+const mockUseGasketData = vi.hoisted(() =>
+  vi.fn(() => ({
+    switchboard: {
+      'aab_recommended_plan_uppdcx': { cohortId: 'control' },
+      'airo-app-builder-chat-gauge': { cohortId: 'control' },
+    },
+  })),
+);
+
+vi.mock('@/hooks/useGasketData', () => ({
+  useGasketData: () => mockUseGasketData(),
 }));
 
 vi.mock('@/hooks/useSwitchboard', () => ({
@@ -181,7 +196,13 @@ vi.mock('./slackBuilders', () => ({
   buildFeedbackBlocks: vi.fn(() => ({ title: 'test' })),
 }));
 
+import { buildExperimentsLineFromSwitchboard } from '@/components/feedback/experimentsLine';
+import { useAuthContext } from '@/components/providers/AuthProvider';
+import { EXPERIMENT_IDS } from '@/config/experiments';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
+import { logger } from '@/lib/request-context';
+import { renderWithProviders } from '@/tests/test-utils';
+import { isLocalDev } from '@/utils/is-local-dev';
 import { Feedback } from './Feedback';
 import { buildBugReportBlocks, buildFeedbackBlocks, buildSupportRequestBlocks } from './slackBuilders';
 import { fetchDiagnosticContext, saveToCompanionHub, sendFeedbackToSlack, storeToS3 } from './submitFeedback';
@@ -190,6 +211,11 @@ const defaultProps = {
   feedbackId: 'airo#app-builder',
   onClose: vi.fn(),
 };
+
+const EXPECTED_EXPERIMENTS_LINE_DEFAULT = buildExperimentsLineFromSwitchboard({
+  [EXPERIMENT_IDS.recommendedPlan]: { cohortId: 'control' },
+  [EXPERIMENT_IDS.chatGauge]: { cohortId: 'control' },
+});
 
 function mockAuth(authType: string | undefined, shopperId = '12345678') {
   vi.mocked(useAuthContext).mockReturnValue({
@@ -207,12 +233,22 @@ function mockAuth(authType: string | undefined, shopperId = '12345678') {
     authType: 'jwt',
     isMockAuth: false,
     mockAuth: null,
+    tokenAuthType: undefined
   });
 }
 
 describe('Feedback', function feedbackTests() {
   beforeEach(function reset() {
     vi.clearAllMocks();
+    // vi.clearAllMocks() clears call history but NOT mock implementations — explicitly
+    // reset isLocalDev so a production-path test does not leak into following tests.
+    vi.mocked(isLocalDev).mockReturnValue(true);
+    mockUseGasketData.mockReturnValue({
+      switchboard: {
+        [EXPERIMENT_IDS.recommendedPlan]: { cohortId: 'control' },
+        [EXPERIMENT_IDS.chatGauge]: { cohortId: 'control' },
+      },
+    });
     global.fetch = vi.fn(() => Promise.resolve({
       ok: true,
       json: async () => ({ success: true }),
@@ -267,7 +303,7 @@ describe('Feedback', function feedbackTests() {
       await waitFor(() => {
         expect(screen.getByText('builder_feedback_support_description')).toBeInTheDocument();
       });
-      expect(mockLogClickEvent).toHaveBeenCalledWith('feedback.category.support');
+      expect(mockLogClickEvent).toHaveBeenCalledWith('feedback.category.support', undefined);
       expect(mockLogImpressionEvent).toHaveBeenCalledWith('feedback.support.view');
     });
 
@@ -284,7 +320,7 @@ describe('Feedback', function feedbackTests() {
       await waitFor(() => {
         expect(screen.getByText('builder_feedback_issue_topics_label')).toBeInTheDocument();
       });
-      expect(mockLogClickEvent).toHaveBeenCalledWith('feedback.category.issue');
+      expect(mockLogClickEvent).toHaveBeenCalledWith('feedback.category.issue', undefined);
       expect(mockLogImpressionEvent).toHaveBeenCalledWith('feedback.issue.view');
     });
 
@@ -301,7 +337,7 @@ describe('Feedback', function feedbackTests() {
       await waitFor(() => {
         expect(screen.getByText('builder_feedback_share_comment_label')).toBeInTheDocument();
       });
-      expect(mockLogClickEvent).toHaveBeenCalledWith('feedback.category.share');
+      expect(mockLogClickEvent).toHaveBeenCalledWith('feedback.category.share', undefined);
       expect(mockLogImpressionEvent).toHaveBeenCalledWith('feedback.share.view');
     });
   });
@@ -407,6 +443,7 @@ describe('Feedback', function feedbackTests() {
 
       await waitFor(() => {
         expect(fetchDiagnosticContext).toHaveBeenCalled();
+        expect(vi.mocked(fetchDiagnosticContext).mock.calls[0][5]).toBe(EXPECTED_EXPERIMENTS_LINE_DEFAULT);
         expect(sendFeedbackToSlack).toHaveBeenCalled();
       });
     });
@@ -466,6 +503,7 @@ describe('Feedback', function feedbackTests() {
 
       await waitFor(() => {
         expect(fetchDiagnosticContext).toHaveBeenCalled();
+        expect(vi.mocked(fetchDiagnosticContext).mock.calls[0][5]).toBe(EXPECTED_EXPERIMENTS_LINE_DEFAULT);
         expect(buildSupportRequestBlocks).toHaveBeenCalledWith(
           expect.objectContaining({ topics: ['Domain or DNS'], description: 'My domain is not resolving' }),
           undefined,
@@ -520,6 +558,7 @@ describe('Feedback', function feedbackTests() {
 
       await waitFor(() => {
         expect(fetchDiagnosticContext).toHaveBeenCalled();
+        expect(vi.mocked(fetchDiagnosticContext).mock.calls[0][5]).toBe(EXPECTED_EXPERIMENTS_LINE_DEFAULT);
         expect(buildBugReportBlocks).toHaveBeenCalledWith(
           expect.objectContaining({
             topics: ['AI assistant'],
@@ -576,6 +615,7 @@ describe('Feedback', function feedbackTests() {
 
       await waitFor(() => {
         expect(fetchDiagnosticContext).toHaveBeenCalled();
+        expect(vi.mocked(fetchDiagnosticContext).mock.calls[0][5]).toBe(EXPECTED_EXPERIMENTS_LINE_DEFAULT);
         expect(buildFeedbackBlocks).toHaveBeenCalledWith(
           expect.objectContaining({ rating: 5, topics: ['AI assistant'] }),
           undefined,
@@ -590,6 +630,84 @@ describe('Feedback', function feedbackTests() {
         }));
         expect(mockLogImpressionEvent).toHaveBeenCalledWith('feedback.share.submitSuccess');
       });
+
+      // Rating 5 → satisfied bucket, passed as customProperty on the registered EID
+      expect(mockLogClickEvent).toHaveBeenCalledWith(
+        'feedback.share.submit',
+        expect.objectContaining({ ratingBucket: 'satisfied' }),
+      );
+      expect(mockShipAnalyticsLog).toHaveBeenCalledWith(
+        'feedback.share.submit',
+        expect.objectContaining({ outcome: 'success', rating: 5, ratingBucket: 'satisfied' }),
+      );
+    });
+
+    it('should bucket rating 3 as displeased', async function feedbackBucketDispleased() {
+      mockAuth('basic');
+      renderWithProviders(<Feedback {...defaultProps} />);
+      await navigateToFeedback();
+
+      fireEvent.click(screen.getByText('3'));
+      fireEvent.click(screen.getByText('builder_feedback_share_submit'));
+
+      await waitFor(() => {
+        expect(sendFeedbackToSlack).toHaveBeenCalled();
+      });
+
+      expect(mockLogClickEvent).toHaveBeenCalledWith(
+        'feedback.share.submit',
+        expect.objectContaining({ ratingBucket: 'displeased' }),
+      );
+      expect(mockShipAnalyticsLog).toHaveBeenCalledWith(
+        'feedback.share.submit',
+        expect.objectContaining({ rating: 3, ratingBucket: 'displeased' }),
+      );
+    });
+
+    it('should bucket rating 4 as neutral', async function feedbackBucketNeutral() {
+      mockAuth('basic');
+      renderWithProviders(<Feedback {...defaultProps} />);
+      await navigateToFeedback();
+
+      fireEvent.click(screen.getByText('4'));
+      fireEvent.click(screen.getByText('builder_feedback_share_submit'));
+
+      await waitFor(() => {
+        expect(sendFeedbackToSlack).toHaveBeenCalled();
+      });
+
+      expect(mockLogClickEvent).toHaveBeenCalledWith(
+        'feedback.share.submit',
+        expect.objectContaining({ ratingBucket: 'neutral' }),
+      );
+      expect(mockShipAnalyticsLog).toHaveBeenCalledWith(
+        'feedback.share.submit',
+        expect.objectContaining({ rating: 4, ratingBucket: 'neutral' }),
+      );
+    });
+
+    it('should bucket missing rating as none and omit rating field from analytics', async function feedbackBucketNone() {
+      // 3-char shopperId → internal user → hideRating=true → rating stays null
+      mockAuth('basic', 'abc');
+      renderWithProviders(<Feedback {...defaultProps} />);
+      await navigateToFeedback();
+
+      fireEvent.click(screen.getByText('builder_feedback_share_submit'));
+
+      await waitFor(() => {
+        expect(sendFeedbackToSlack).toHaveBeenCalled();
+      });
+
+      expect(mockLogClickEvent).toHaveBeenCalledWith(
+        'feedback.share.submit',
+        expect.objectContaining({ ratingBucket: 'none' }),
+      );
+      const [, analyticsData] = mockShipAnalyticsLog.mock.calls.find(
+        ([event]) => event === 'feedback.share.submit',
+      )!;
+      // Critical: absent rating must NOT be encoded as 0 (corrupts ESSP AVG/COUNT queries)
+      expect(analyticsData).not.toHaveProperty('rating');
+      expect(analyticsData).toMatchObject({ ratingBucket: 'none' });
     });
 
     it('should allow submitting feedback without rating when hideRating is true (internal user)', async function feedbackNoRatingInternal() {
@@ -615,6 +733,20 @@ describe('Feedback', function feedbackTests() {
           rating: null,
           consent_flag: expect.any(Boolean),
         }));
+      });
+    });
+
+    it('should pass experimentsLine to fetchDiagnosticContext on submit', async function experimentsLinePassedThroughOnSubmit() {
+      mockAuth('basic');
+      renderWithProviders(<Feedback {...defaultProps} />);
+      await navigateToFeedback();
+
+      fireEvent.click(screen.getByText('5'));
+      fireEvent.click(screen.getByText('builder_feedback_share_submit'));
+
+      await waitFor(() => {
+        expect(fetchDiagnosticContext).toHaveBeenCalled();
+        expect(vi.mocked(fetchDiagnosticContext).mock.calls[0][5]).toBe(EXPECTED_EXPERIMENTS_LINE_DEFAULT);
       });
     });
   });
@@ -650,6 +782,17 @@ describe('Feedback', function feedbackTests() {
       });
 
       expect(defaultProps.onClose).not.toHaveBeenCalled();
+
+      // Telemetry in the finally block must still fire on failure — guards against
+      // future refactors that accidentally convert the finally block into a try block.
+      expect(mockLogClickEvent).toHaveBeenCalledWith(
+        'feedback.support.submit',
+        expect.any(Object),
+      );
+      expect(mockShipAnalyticsLog).toHaveBeenCalledWith(
+        'feedback.support.submit',
+        expect.objectContaining({ outcome: 'failed' }),
+      );
     });
 
     it('should not show success state when issue submission fails', async function issueFailure() {
@@ -679,6 +822,49 @@ describe('Feedback', function feedbackTests() {
         expect(screen.getByText('builder_feedback_submit_error')).toBeInTheDocument();
         expect(screen.getByText('builder_feedback_issue_submit')).toBeInTheDocument();
       });
+
+      expect(mockLogClickEvent).toHaveBeenCalledWith(
+        'feedback.issue.submit',
+        expect.any(Object),
+      );
+      expect(mockShipAnalyticsLog).toHaveBeenCalledWith(
+        'feedback.issue.submit',
+        expect.objectContaining({ outcome: 'failed' }),
+      );
+    });
+
+    it('should still fire telemetry when share feedback submission fails', async function shareFailureTelemetry() {
+      vi.mocked(sendFeedbackToSlack).mockRejectedValueOnce(new Error('Slack webhook failed: 500'));
+      mockAuth('basic');
+      renderWithProviders(<Feedback {...defaultProps} />);
+
+      await waitFor(() => {
+        expect(screen.getByText('builder_feedback_category_share')).toBeInTheDocument();
+      });
+      fireEvent.click(screen.getByText('builder_feedback_category_share'));
+      await waitFor(() => {
+        expect(screen.getByText('builder_feedback_share_submit')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByText('3'));
+      fireEvent.click(screen.getByText('builder_feedback_share_submit'));
+
+      await waitFor(() => {
+        expect(screen.getByText('builder_feedback_submit_error')).toBeInTheDocument();
+      });
+
+      expect(mockLogClickEvent).toHaveBeenCalledWith(
+        'feedback.share.submit',
+        expect.objectContaining({ ratingBucket: 'displeased' }),
+      );
+      expect(mockShipAnalyticsLog).toHaveBeenCalledWith(
+        'feedback.share.submit',
+        expect.objectContaining({ outcome: 'failed', rating: 3, ratingBucket: 'displeased' }),
+      );
+      // storeToS3 lives inside the try block after sendFeedbackToSlack — a failure
+      // must NOT reach it. Guards against a future refactor hoisting storeToS3 into
+      // the finally block, which would silently create duplicate S3 records on retry.
+      expect(storeToS3).not.toHaveBeenCalled();
     });
   });
 
@@ -728,6 +914,149 @@ describe('Feedback', function feedbackTests() {
           rating: null,
         }));
       });
+    });
+
+    it('should omit Experiments field from Slack payload when no cohorts are assigned', async function noExperimentsWhenEmpty() {
+      vi.mocked(useSwitchboard).mockReturnValue(false);
+       
+      mockUseGasketData.mockReturnValue({ switchboard: {} } as any);
+      mockAuth('basic');
+      renderWithProviders(<Feedback {...defaultProps} />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('dialog')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByText('builder_common_submit'));
+
+      await waitFor(() => {
+        expect(global.fetch).toHaveBeenCalledWith(
+          '/api/slack-webhook/feedback',
+          expect.objectContaining({ method: 'POST' }),
+        );
+      });
+
+      const slackCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.find(
+        ([url]: [string]) => url === '/api/slack-webhook/feedback',
+      );
+      const body = JSON.parse(slackCall[1].body);
+      const rightFields: Array<{ label?: string }> = body.blockMessage?.twoColumnSection?.rightFields ?? [];
+      expect(rightFields.find(f => f.label === 'Experiments')).toBeUndefined();
+    });
+
+    it('should report outcome:failed and skip storeToS3 when legacy Slack webhook errors in local dev', async function legacySlackFailure() {
+      vi.mocked(useSwitchboard).mockReturnValue(false);
+      // Local-dev path keeps Slack fatal: devs need to see delivery failures loudly,
+      // and there is no preceding DB save, so retry carries no duplicate-entry risk.
+      vi.mocked(isLocalDev).mockReturnValue(true);
+      // Fail ONLY the Slack webhook; other fetches (subscriptions, credits) resolve normally
+      global.fetch = vi.fn((url: RequestInfo | URL) => {
+        if (typeof url === 'string' && url === '/api/slack-webhook/feedback') {
+          return Promise.resolve({ ok: false, status: 500 } as Response);
+        }
+        return Promise.resolve({ ok: true, json: async () => ({ success: true }) } as Response);
+      });
+      mockAuth('basic');
+      renderWithProviders(<Feedback {...defaultProps} />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('dialog')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByText('builder_common_submit'));
+
+      // Without the !response.ok throw, outcome would always be 'success' and
+      // storeToS3 would always fire — both would corrupt ESSP + produce duplicate S3 records.
+      await waitFor(() => {
+        expect(mockShipAnalyticsLog).toHaveBeenCalledWith(
+          'feedback.submit',
+          expect.objectContaining({ outcome: 'failed' }),
+        );
+      });
+      expect(storeToS3).not.toHaveBeenCalled();
+    });
+
+    it('should treat Slack failure as non-fatal in production path (DB save is source of truth)', async function prodSlackFailureNonFatal() {
+      vi.mocked(useSwitchboard).mockReturnValue(false);
+      // Production path: DB save precedes Slack. If Slack failure re-opened the
+      // modal, a retry would duplicate the DB entry. The outcome reported to ESSP
+      // must stay 'success' from the user's POV because persistence succeeded.
+      vi.mocked(isLocalDev).mockReturnValue(false);
+      global.fetch = vi.fn((url: RequestInfo | URL) => {
+        const urlStr = typeof url === 'string' ? url : url.toString();
+        // FeedbackLegacy fetches the config on mount (non-local-dev path)
+        if (urlStr.includes('feedback-configs/')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({ pk: 'airo#app-builder', fields: [] }),
+          } as Response);
+        }
+        // Slack webhook fails; DB save (feedbacks/) succeeds via default branch
+        if (urlStr === '/api/slack-webhook/feedback') {
+          return Promise.resolve({ ok: false, status: 500 } as Response);
+        }
+        return Promise.resolve({ ok: true, json: async () => ({ success: true }) } as Response);
+      });
+      mockAuth('basic');
+      renderWithProviders(<Feedback {...defaultProps} />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('dialog')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByText('builder_common_submit'));
+
+      await waitFor(() => {
+        expect(mockShipAnalyticsLog).toHaveBeenCalledWith(
+          'feedback.submit',
+          expect.objectContaining({ outcome: 'success', slackDelivered: false }),
+        );
+      });
+      // storeToS3 still fires (DB save succeeded; Slack is a notification side-effect)
+      expect(storeToS3).toHaveBeenCalled();
+      // Loki audit trail for Grafana runbooks survives even when shipAnalyticsLog drops
+      expect(vi.mocked(logger.info)).toHaveBeenCalledWith(
+        'feedback.submit.success',
+        expect.objectContaining({ feedbackId: 'airo#app-builder' }),
+      );
+      // Modal closes (onClose called) since submission succeeded from user's POV
+      expect(defaultProps.onClose).toHaveBeenCalled();
+    });
+
+    it('should report outcome:failed when production DB save fails', async function prodDbSaveFailure() {
+      vi.mocked(useSwitchboard).mockReturnValue(false);
+      vi.mocked(isLocalDev).mockReturnValue(false);
+      global.fetch = vi.fn((url: RequestInfo | URL) => {
+        const urlStr = typeof url === 'string' ? url : url.toString();
+        if (urlStr.includes('feedback-configs/')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({ pk: 'airo#app-builder', fields: [] }),
+          } as Response);
+        }
+        // DB save fails — this is the one path where retry is correct (nothing persisted yet).
+        if (urlStr.includes('/feedbacks/')) {
+          return Promise.resolve({ ok: false, status: 500 } as Response);
+        }
+        return Promise.resolve({ ok: true, json: async () => ({ success: true }) } as Response);
+      });
+      mockAuth('basic');
+      renderWithProviders(<Feedback {...defaultProps} />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('dialog')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByText('builder_common_submit'));
+
+      await waitFor(() => {
+        expect(mockShipAnalyticsLog).toHaveBeenCalledWith(
+          'feedback.submit',
+          expect.objectContaining({ outcome: 'failed' }),
+        );
+      });
+      expect(storeToS3).not.toHaveBeenCalled();
+      expect(defaultProps.onClose).not.toHaveBeenCalled();
     });
   });
 

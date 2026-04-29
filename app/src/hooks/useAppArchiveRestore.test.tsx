@@ -11,6 +11,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 
 import { LifecycleReason, LifecycleState, SiteStatus } from '@/lib/control-plane/types';
 import { appFetch } from '@/lib/gasket-config';
+import { logger } from '@/lib/request-context';
 import { useAppArchiveRestore } from './useAppArchiveRestore';
 import type { AppDetailsResponse } from './useAppDetails';
 
@@ -246,6 +247,11 @@ describe('useAppArchiveRestore', function useAppArchiveRestoreTests() {
         expect(result.current.isArchivedForRestore).toBe(false);
         expect(result.current.archiveRestoreFailed).toBe(false);
       });
+
+      expect(logger.warn).toHaveBeenCalledWith(
+        'archive.status.initialCheckFailed',
+        expect.objectContaining({ appId: 'test-app-123' })
+      );
     });
 
     it('should call archive-status with correct endpoint', async function correctEndpoint() {
