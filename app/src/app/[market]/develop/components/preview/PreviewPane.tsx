@@ -12,6 +12,7 @@ import { getDevicePreset } from '@/app/[market]/develop/components/preview/devic
 import PreviewCode from '@/app/[market]/develop/components/preview/PreviewCode'
 import PreviewError from '@/app/[market]/develop/components/preview/PreviewError'
 import PreviewLoadingState from '@/app/[market]/develop/components/preview/PreviewLoadingState'
+import PreviewSkeleton from '@/app/[market]/develop/components/preview/PreviewSkeleton'
 import Tips from '@/app/[market]/develop/components/tips/Tips'
 import { PreviewViewMode, ViewMode } from '@/app/[market]/develop/components/types'
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
@@ -597,11 +598,7 @@ export default function PreviewPane({
 
   if (archiveGatePending) {
     return (
-      <PreviewLoadingState
-        message={t('builder_preview_resuming_message')}
-        isMobile={isMobile}
-        testId="develop-preview-archive-gate"
-      />
+      <PreviewSkeleton testId="develop-preview-archive-gate" />
     )
   }
 

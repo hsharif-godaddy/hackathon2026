@@ -1336,6 +1336,7 @@ function DevelopPageContent() {
             {/* Content (Preview, Settings, Code) */}
             <motion.div
               className="absolute top-0 end-0 bottom-0 flex flex-col"
+              initial={false}
               animate={{
                 insetInlineStart: isChatPaneCollapsed ? 8 : chatPaneWidth + 16
               }}

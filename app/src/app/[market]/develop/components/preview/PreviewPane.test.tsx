@@ -302,13 +302,13 @@ describe('PreviewPane', () => {
     expect(screen.queryByTestId('brand-book')).not.toBeInTheDocument();
   });
 
-  it('renders the archive gate loading state when archiveGatePending is true', () => {
+  it('renders the archive gate skeleton when archiveGatePending is true', () => {
     renderWithProviders(
       <PreviewPane onPreviewRefresh={vi.fn()} archiveGatePending={true} />
     );
 
     expect(screen.getByTestId('develop-preview-archive-gate')).toBeInTheDocument();
-    expect(screen.getByTestId('tips')).toBeInTheDocument();
+    expect(screen.queryByTestId('tips')).not.toBeInTheDocument();
     expect(screen.queryByTestId('preview-iframe')).not.toBeInTheDocument();
   });
 
