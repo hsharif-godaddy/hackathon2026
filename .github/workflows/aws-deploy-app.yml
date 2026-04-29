@@ -41,6 +41,7 @@ permissions:
 jobs:
   continuous-integration:
     name: "[APP - ${{ inputs.DEPLOY_TO_ENV }}] branch: ${{ github.ref_name }}"
+    if: ${{ (inputs.DEPLOY_TO_ENV == 'test' && github.ref_name == 'main') || inputs.DEPLOY_TO_ENV != 'test' }}
     runs-on:
       labels:
         - airo-cicd-runners
