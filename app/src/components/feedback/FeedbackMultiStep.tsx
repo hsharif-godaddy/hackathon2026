@@ -35,7 +35,7 @@ const RATING_TO_API_VALUE: Record<number, string> = {
 };
 
 export function FeedbackMultiStep(props: FeedbackProps) {
-  const { feedbackId, onClose, onSubmitSuccess, origin } = props;
+  const { feedbackId, onClose, onSubmitSuccess, origin, initialStep } = props;
   const t = useTranslations();
 
   const { authState, getUserInfo } = useAuthContext();
@@ -46,7 +46,8 @@ export function FeedbackMultiStep(props: FeedbackProps) {
   const isInternalUser = shopperId?.length === 3;
 
   // CRM skip / impersonation sessions can only file bug reports — start directly on the issue step
-  const [step, setStep] = useState<FeedbackStep>(isImpersonating ? 'issue' : 'category');
+  // initialStep lets callers (e.g. FeedbackBanner) skip the category screen
+  const [step, setStep] = useState<FeedbackStep>(isImpersonating ? 'issue' : (initialStep ?? 'category'));
 
   const currentAppId = useDevelopPageStore((state) => state.currentAppId);
   const getSite = useSitesStore((state) => state.getSite);
@@ -56,13 +57,13 @@ export function FeedbackMultiStep(props: FeedbackProps) {
   }, []);
 
   const handleBack = useCallback(() => {
-    if (isImpersonating) {
-      // CRM skip users start on issue step — back closes the modal
+    if (isImpersonating || initialStep) {
+      // CRM skip users and callers that bypassed category selection — back closes the modal
       onClose();
     } else {
       setStep('category');
     }
-  }, [isImpersonating, onClose]);
+  }, [isImpersonating, initialStep, onClose]);
 
   const handleSuccess = useCallback(() => {
     if (onSubmitSuccess) {

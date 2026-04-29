@@ -786,4 +786,77 @@ describe('useDevelopPageStore', function useDevelopPageStoreTests() {
       expect(useDevelopPageStore.getState().selectedModel).toBeNull();
     });
   });
+
+  describe('#openFeedbackModal', function openFeedbackModalTests() {
+    beforeEach(function clearFeedbackState() {
+      localStorage.clear();
+      act(function reset() {
+        useDevelopPageStore.setState({
+          openFeedbackId: null,
+          feedbackOrigin: null,
+          feedbackInitialStep: null,
+        });
+      });
+    });
+
+    it('should set feedback state including initialStep', function setsFeedbackState() {
+      act(function open() {
+        useDevelopPageStore.getState().openFeedbackModal('airo#app-builder', 'Session feedback', 'feedback');
+      });
+
+      const state = useDevelopPageStore.getState();
+      expect(state.openFeedbackId).toBe('airo#app-builder');
+      expect(state.feedbackOrigin).toBe('Session feedback');
+      expect(state.feedbackInitialStep).toBe('feedback');
+    });
+
+    it('should default feedbackInitialStep to null when not provided', function defaultsToNull() {
+      act(function open() {
+        useDevelopPageStore.getState().openFeedbackModal('airo#app-builder', 'Settings');
+      });
+
+      expect(useDevelopPageStore.getState().feedbackInitialStep).toBeNull();
+    });
+
+    it('should not open if localStorage guard is set', function guardsAgainstReopen() {
+      localStorage.setItem('airo-feedback-shown:airo#app-builder', 'true');
+
+      act(function open() {
+        useDevelopPageStore.getState().openFeedbackModal('airo#app-builder', 'First publish', 'feedback');
+      });
+
+      expect(useDevelopPageStore.getState().openFeedbackId).toBeNull();
+    });
+  });
+
+  describe('#closeFeedbackModal', function closeFeedbackModalTests() {
+    it('should clear all feedback state including initialStep', function clearsFeedbackState() {
+      act(function open() {
+        useDevelopPageStore.getState().openFeedbackModal('airo#app-builder', 'Session feedback', 'feedback');
+      });
+
+      act(function close() {
+        useDevelopPageStore.getState().closeFeedbackModal();
+      });
+
+      const state = useDevelopPageStore.getState();
+      expect(state.openFeedbackId).toBeNull();
+      expect(state.feedbackOrigin).toBeNull();
+      expect(state.feedbackInitialStep).toBeNull();
+    });
+  });
+
+  describe('resetForNewApp clears feedback state', function resetFeedbackTests() {
+    it('should clear feedbackInitialStep on app switch', function clearsFeedbackOnReset() {
+      act(function open() {
+        useDevelopPageStore.getState().openFeedbackModal('airo#app-builder', 'Session feedback', 'feedback');
+      });
+
+      act(function reset() {
+        useDevelopPageStore.getState().resetForNewApp('new-app-id');
+      });
+
+      expect(useDevelopPageStore.getState().feedbackInitialStep).toBeNull();
+    });
+  });
 });

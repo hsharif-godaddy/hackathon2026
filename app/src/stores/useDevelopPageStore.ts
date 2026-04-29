@@ -4,6 +4,7 @@ import { immer } from 'zustand/middleware/immer'
 
 import { DEFAULT_MOBILE_DEVICE, DEFAULT_TABLET_DEVICE } from '@/app/[market]/develop/components/preview/devicePresets'
 import { ChatTab, IframeMessageType, MobileMode, PreviewViewMode, SettingsSection, ViewMode } from '@/app/[market]/develop/components/types'
+import type { FeedbackCategory } from '@/components/feedback/types'
 import { getSwitchboardFlag } from '@/hooks/useSwitchboard'
 import type { SiteInfo } from '@/lib/control-plane/types'
 import { logger } from '@/lib/request-context'
@@ -197,6 +198,7 @@ interface DevelopPageStore {
   // Feedback modal UI
   openFeedbackId: string | null
   feedbackOrigin: string | null
+  feedbackInitialStep: FeedbackCategory | null
 
   // Feedback banner UI
   showFeedbackBanner: boolean
@@ -279,7 +281,7 @@ interface DevelopPageStore {
   markChatTabsInitialized: (pathname: string) => void
 
   // Feedback modal actions
-  openFeedbackModal: (feedbackId: string, origin?: string) => void
+  openFeedbackModal: (feedbackId: string, origin?: string, initialStep?: FeedbackCategory) => void
   closeFeedbackModal: () => void
 
   // Feedback banner actions
@@ -397,6 +399,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     // Feedback modal state
     openFeedbackId: null,
     feedbackOrigin: null,
+    feedbackInitialStep: null,
 
     // Feedback banner state
     showFeedbackBanner: false,
@@ -528,12 +531,22 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     markChatTabsInitialized: (pathname) => set((state) => { state.chatTabsInitializedForPathname = pathname }),
 
     // Feedback modal actions
-    openFeedbackModal: (feedbackId: string, origin?: string) => {
+    openFeedbackModal: (feedbackId: string, origin?: string, initialStep?: FeedbackCategory) => {
       // Check if feedback modal has been shown before using feedback ID
       const localStorageKey = `airo-feedback-shown:${feedbackId}`
-      const hasShownFeedback = typeof window !== 'undefined'
-        ? localStorage.getItem(localStorageKey) === 'true'
-        : false
+      let hasShownFeedback = false
+      if (typeof window !== 'undefined') {
+        try {
+          hasShownFeedback = localStorage.getItem(localStorageKey) === 'true'
+        } catch (err) {
+          // Storage unavailable (private browsing, sandboxed iframe, corrupted storage).
+          // Treat as "not shown" so the modal still appears.
+          logger.warn('feedback.modal.storage.read_failed', {
+            feedbackId,
+            error: err instanceof Error ? err.message : String(err),
+          })
+        }
+      }
 
       if (hasShownFeedback) {
         return
@@ -541,14 +554,22 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
 
       logImpressionEvent('feedback.modal.opened')();
 
-      // Mark as shown in localStorage with feedback ID
+      // Mark as shown — non-fatal if storage is unavailable
       if (typeof window !== 'undefined') {
-        localStorage.setItem(localStorageKey, 'true')
+        try {
+          localStorage.setItem(localStorageKey, 'true')
+        } catch (err) {
+          logger.warn('feedback.modal.storage.write_failed', {
+            feedbackId,
+            error: err instanceof Error ? err.message : String(err),
+          })
+        }
       }
 
       set((state) => {
         state.openFeedbackId = feedbackId
-        state.feedbackOrigin = origin || null
+        state.feedbackOrigin = origin ?? null
+        state.feedbackInitialStep = initialStep ?? null
       })
     },
     closeFeedbackModal: () => {
@@ -561,6 +582,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
       set((state) => {
         state.openFeedbackId = null
         state.feedbackOrigin = null
+        state.feedbackInitialStep = null
       })
     },
 
@@ -755,6 +777,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         state.hasUnsavedChanges = false
         state.selectedModel = null
         state.selectedProfile = null
+        state.feedbackInitialStep = null
       })
     },
 

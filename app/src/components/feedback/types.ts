@@ -39,6 +39,8 @@ export interface FeedbackProps extends FeedbackBaseProps {
   /** If not provided Growl is used and onClose is invoked. */
   onInitError?: (err: any) => void;
   origin?: string;
+  /** Skip category selection and open directly to this step. */
+  initialStep?: FeedbackCategory;
 }
 
 // Multi-step feedback dialog types

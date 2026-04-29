@@ -730,4 +730,76 @@ describe('Feedback', function feedbackTests() {
       });
     });
   });
+
+  describe('initialStep prop (automatic triggers)', function initialStepTests() {
+    it('should skip category selection and show feedback form directly', async function skipToFeedback() {
+      vi.mocked(useSwitchboard).mockReturnValue(true);
+      mockAuth('basic');
+      renderWithProviders(<Feedback {...defaultProps} initialStep="feedback" />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('dialog')).toBeInTheDocument();
+      });
+
+      // Should show feedback form directly (NPS step)
+      expect(screen.getByText('builder_feedback_share_comment_label')).toBeInTheDocument();
+      // Should NOT show category selection
+      expect(screen.queryByText('builder_feedback_category_support')).toBeNull();
+    });
+
+    it('should close modal when Back is clicked (not return to category)', async function backClosesModal() {
+      vi.mocked(useSwitchboard).mockReturnValue(true);
+      mockAuth('basic');
+      renderWithProviders(<Feedback {...defaultProps} initialStep="feedback" />);
+
+      await waitFor(() => {
+        expect(screen.getByText('builder_feedback_share_comment_label')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByText('builder_feedback_back'));
+
+      expect(defaultProps.onClose).toHaveBeenCalled();
+    });
+
+    it('should open support form directly when initialStep="support"', async function skipToSupport() {
+      vi.mocked(useSwitchboard).mockReturnValue(true);
+      mockAuth('basic');
+      renderWithProviders(<Feedback {...defaultProps} initialStep="support" />);
+
+      await waitFor(() => {
+        expect(screen.getByText('builder_feedback_support_description')).toBeInTheDocument();
+      });
+
+      // Should NOT show category selection
+      expect(screen.queryByText('builder_feedback_category_support')).toBeNull();
+    });
+
+    it('should close modal on back when initialStep="support"', async function backClosesFromSupport() {
+      vi.mocked(useSwitchboard).mockReturnValue(true);
+      mockAuth('basic');
+      renderWithProviders(<Feedback {...defaultProps} initialStep="support" />);
+
+      await waitFor(() => {
+        expect(screen.getByText('builder_feedback_support_description')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByText('builder_feedback_back'));
+
+      expect(defaultProps.onClose).toHaveBeenCalled();
+    });
+
+    it('should still prioritize impersonation over initialStep', async function impersonationOverride() {
+      vi.mocked(useSwitchboard).mockReturnValue(true);
+      mockAuth('e2s');
+      renderWithProviders(<Feedback {...defaultProps} initialStep="feedback" />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('dialog')).toBeInTheDocument();
+      });
+
+      // Impersonation wins: shows issue step, not feedback
+      expect(screen.getByText('builder_feedback_issue_topics_label')).toBeInTheDocument();
+      expect(screen.queryByText('builder_feedback_share_comment_label')).toBeNull();
+    });
+  });
 });

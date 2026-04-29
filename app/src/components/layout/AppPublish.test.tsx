@@ -57,7 +57,6 @@ const mockDevelopStore = {
   setDeploymentsRefetch: vi.fn(),
   setFirstPublishDeployPending: vi.fn(),
   openFeedbackModal: vi.fn(),
-  setShowFeedbackBanner: vi.fn(),
 };
 
 let mockDeploymentsData: Array<{ id: string; status: string }> = [];
@@ -381,7 +380,7 @@ describe('AppPublish', () => {
     expect(mockDevelopStore.openFeedbackModal).toHaveBeenCalledWith('airo#app-builder', 'Publish Popover');
   });
 
-  it('should trigger feedback banner on successful publish when feedback not given', async function postPublishFeedbackBanner() {
+  it('should open feedback modal directly to NPS on successful publish when feedback not given', async function postPublishFeedbackModal() {
     mockDeploymentsData = [{ id: 'dep-1', status: 'IN_PROGRESS' }];
     mockDevelopStore.publishStates['app-123'] = { isPublishing: true };
 
@@ -392,11 +391,14 @@ describe('AppPublish', () => {
     rerender(<AppPublish />);
 
     await waitFor(() => {
-      expect(mockDevelopStore.setShowFeedbackBanner).toHaveBeenCalledWith(true);
+      expect(mockDevelopStore.openFeedbackModal).toHaveBeenCalledWith('airo#app-builder', 'First publish', 'feedback');
     });
   });
 
-  it('should not trigger feedback banner on successful publish when feedback already given', async function noPostPublishBannerWhenFeedbackGiven() {
+  // Re-show protection is delegated to openFeedbackModal's localStorage guard in the store
+  // (tested in useDevelopPageStore.test.ts #openFeedbackModal). AppPublish always calls
+  // openFeedbackModal and lets the store decide whether to open the modal.
+  it('should always call openFeedbackModal on publish and delegate re-show guard to store', async function delegatesGuardToStore() {
     localStorage.setItem('airo-feedback-shown:airo#app-builder', 'true');
     mockDeploymentsData = [{ id: 'dep-1', status: 'IN_PROGRESS' }];
     mockDevelopStore.publishStates['app-123'] = { isPublishing: true };
@@ -408,7 +410,23 @@ describe('AppPublish', () => {
     rerender(<AppPublish />);
 
     await waitFor(() => {
-      expect(mockDevelopStore.setShowFeedbackBanner).not.toHaveBeenCalled();
+      // AppPublish always calls openFeedbackModal; the store no-ops it when already shown
+      expect(mockDevelopStore.openFeedbackModal).toHaveBeenCalledWith('airo#app-builder', 'First publish', 'feedback');
+    });
+  });
+
+  it('should not open feedback modal on successful publish when first publish congrats is shown', async function noFeedbackWhenFirstPublishCongrats() {
+    mockDeploymentsData = [{ id: 'dep-1', status: 'IN_PROGRESS' }];
+    mockDevelopStore.publishStates['app-123'] = { isPublishing: true, showFirstPublishCongrats: true };
+
+    const { rerender } = renderWithProviders(<AppPublish />);
+
+    mockDeploymentsData = [{ id: 'dep-1', status: DeploymentStatus.DEPLOYED }];
+    mockDevelopStore.publishStates['app-123'] = { isPublishing: false, showFirstPublishCongrats: true };
+    rerender(<AppPublish />);
+
+    await waitFor(() => {
+      expect(mockDevelopStore.openFeedbackModal).not.toHaveBeenCalledWith('airo#app-builder', 'First publish', 'feedback');
     });
   });
 

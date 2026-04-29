@@ -260,6 +260,7 @@ function DevelopPageContent() {
   const loadingPhase = useDevelopPageStore((state) => state.loadingPhase)
   const openFeedbackId = useDevelopPageStore((state) => state.openFeedbackId)
   const feedbackOrigin = useDevelopPageStore((state) => state.feedbackOrigin)
+  const feedbackInitialStep = useDevelopPageStore((state) => state.feedbackInitialStep)
   const showIntroTour = useDevelopPageStore((state) => state.showIntroTour)
 
   const setChatPaneWidth = useDevelopPageStore((state) => state.setChatPaneWidth)
@@ -1546,6 +1547,7 @@ function DevelopPageContent() {
             onClose={closeFeedbackModal}
             onSubmitSuccess={closeFeedbackModal}
             origin={feedbackOrigin || undefined}
+            initialStep={feedbackInitialStep ?? undefined}
           />
         )}
 

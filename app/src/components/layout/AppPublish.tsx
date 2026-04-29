@@ -127,7 +127,6 @@ export default function AppPublish({ location = 'develop' }: { location?: string
   const clearPublishStatus = useDevelopPageStore((state) => state.clearPublishStatus);
   const setDeploymentsRefetch = useDevelopPageStore((state) => state.setDeploymentsRefetch);
   const openFeedbackModal = useDevelopPageStore((state) => state.openFeedbackModal);
-  const setShowFeedbackBanner = useDevelopPageStore((state) => state.setShowFeedbackBanner);
 
   const handlePublishFeedbackClick = useCallback((origin: string) => {
     logClickEvent(`${location}.header.publish_feedback`, clickContext)();
@@ -400,17 +399,6 @@ export default function AppPublish({ location = 'develop' }: { location?: string
     if (outcome === 'success') {
       if (!wasPublishing) return;
 
-      // Trigger chat feedback banner on successful publish if user hasn't seen feedback prompt
-      let hasSeenFeedbackPrompt = false;
-      try {
-        hasSeenFeedbackPrompt = localStorage.getItem(`airo-feedback-shown:${FEEDBACK_ID}`) === 'true';
-      } catch {
-        // storage unavailable — skip banner trigger
-      }
-      if (!hasSeenFeedbackPrompt) {
-        setShowFeedbackBanner(true);
-      }
-
       if (
         currentAppId &&
         useDevelopPageStore.getState().getPublishState(currentAppId).showFirstPublishCongrats
@@ -419,6 +407,11 @@ export default function AppPublish({ location = 'develop' }: { location?: string
         setPublishResult(null);
         return;
       }
+
+      // Open feedback modal directly to NPS step after publish.
+      // Placed after showFirstPublishCongrats guard to prevent simultaneous modals.
+      // openFeedbackModal internally guards against re-showing via localStorage.
+      openFeedbackModal(FEEDBACK_ID, 'First publish', 'feedback');
 
       if (openRef.current) {
         setPublishResult(outcome);
@@ -490,7 +483,7 @@ export default function AppPublish({ location = 'develop' }: { location?: string
       ),
       emphasis: 'critical',
     });
-  }, [currentAppId, isPublishingOrDeploying, mostRecentDeployment?.status, publishError, buildErrorDetails, fqdn, t, handleDeploy, handleFixBuildError, handlePublishFeedbackClick, location, setShowFeedbackBanner]);
+  }, [currentAppId, isPublishingOrDeploying, mostRecentDeployment?.status, publishError, buildErrorDetails, fqdn, t, handleDeploy, handleFixBuildError, handlePublishFeedbackClick, location, openFeedbackModal]);
 
   /**
    * Navigate to version history tab
