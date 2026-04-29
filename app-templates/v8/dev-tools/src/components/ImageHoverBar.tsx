@@ -1,6 +1,6 @@
 import React, { useCallback } from "react";
 import { safePostMessage } from "../utils/postMessage";
-import { generatePreciseSelector, extractDevContext } from "../utils/element-helpers";
+import { generatePreciseSelector, extractDevContext, getElementClassName } from "../utils/element-helpers";
 import { showSelectionOverlay } from "../utils/selection-overlay";
 import type { HoveredImage } from "../hooks/useImageHoverDetection";
 import { Image, Sparkles } from "lucide-react";
@@ -58,7 +58,7 @@ export default function ImageHoverBar({
       data: {
         elementInfo: {
           tagName: element.tagName.toLowerCase(),
-          className: element.className,
+          className: getElementClassName(element),
           id: element.id,
           textContent: "",
           computedStyles: {},

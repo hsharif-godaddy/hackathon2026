@@ -934,6 +934,37 @@ function DevelopPageContent() {
           })()
           break
         }
+        case 'error-platform-report': {
+          // Sent by AiroErrorBoundary when an error originated inside
+          // dev-tools platform code (top stack frame in /dev-tools/src|dist/).
+          // The overlay is suppressed iframe-side for these because the
+          // agent can't edit platform files. We log for Loki visibility
+          // but do NOT forward to the runtime-error buffer — otherwise
+          // the post-stream validator would hand the agent an error it
+          // cannot fix, wasting turns.
+          const raw = event.data.errorData as Partial<RuntimeErrorData> | undefined
+          if (!raw || typeof raw.message !== 'string' || typeof raw.name !== 'string') {
+            // Don't log the raw payload — it comes from the iframe and
+            // can carry large stack strings or PII-bearing error
+            // messages. Log a safe summary so regressions in the
+            // sender are still diagnosable.
+            logger.warn('develop-page.error-platform-report.malformed', {
+              appId,
+              receivedType: typeof raw,
+              receivedKeys: raw && typeof raw === 'object' ? Object.keys(raw as object).join(',') : undefined
+            })
+            break
+          }
+          logger.warn('develop-page.error-platform-report', {
+            appId,
+            errorName: raw.name,
+            errorMessage: raw.message,
+            hasStack: !!raw.stack,
+            hasComponentStack: !!raw.componentStack,
+            cycleId: raw.cycleId
+          })
+          break
+        }
         case 'runtime-errors-cycle': {
           // Auto-sent by the iframe's dev-tools client on every Vite HMR
           // boundary and on module init. Announces that the preview has

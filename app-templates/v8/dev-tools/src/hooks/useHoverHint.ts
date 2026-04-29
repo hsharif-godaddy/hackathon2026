@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { safePostMessage, isOriginAllowed } from "../utils/postMessage";
-import { generatePreciseSelector, extractDevContext } from "../utils/element-helpers";
+import { generatePreciseSelector, extractDevContext, getElementClassName } from "../utils/element-helpers";
 import { showSelectionOverlay, clearSelectionOverlay, updateSelectionOverlay } from "../utils/selection-overlay";
 import { isClickable, isTextEditable, isContentElement, isDevToolsElement, detectImage } from "../utils/element-detection";
 import { t } from "../utils/translations";
@@ -125,7 +125,7 @@ export function useHoverHint(
           data: {
             elementInfo: {
               tagName: el.tagName.toLowerCase(),
-              className: el.className,
+              className: getElementClassName(el),
               id: el.id,
               textContent: (el.textContent || "").substring(0, 500),
               computedStyles: {},

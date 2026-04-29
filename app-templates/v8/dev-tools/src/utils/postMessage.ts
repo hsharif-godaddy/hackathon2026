@@ -19,8 +19,6 @@ export function getTargetOrigin(): string {
   return '*'
 }
 
-const MAX_ERROR_MESSAGE_LENGTH = 20000
-
 /**
  * Validates if the message event origin is allowed
  *
@@ -52,15 +50,46 @@ export function isOriginAllowed(event: MessageEvent): boolean {
 }
 
 /**
- * Safe wrapper for postMessage that uses proper origin targeting
+ * Safe wrapper for postMessage that uses proper origin targeting.
+ *
+ * Swallows DataCloneError so dev-tools telemetry with non-cloneable payloads
+ * (SVGAnimatedString, DOM nodes, functions, circular refs, etc.) never
+ * escalates into a user-facing "Something went wrong" overlay via
+ * window.onerror. Retries once with a JSON-sanitized copy as best-effort
+ * delivery, otherwise drops the message and logs a console warning. Any other
+ * error is rethrown so genuine issues still surface.
  */
 export function safePostMessage(targetWindow: Window, message: any) {
   const origin = getTargetOrigin()
-
+  // Callers are responsible for bounding their payload sizes (see
+  // AiroErrorBoundary.buildErrorData). This wrapper does not mutate
+  // user content; the previous `errorMessage` top-level truncation
+  // guard was dead code — no caller used that shape.
   const safeMessage = { ...message }
-  if (safeMessage.errorMessage && typeof safeMessage.errorMessage === 'string') {
-    safeMessage.errorMessage = safeMessage.errorMessage.substring(0, MAX_ERROR_MESSAGE_LENGTH)
-  }
 
-  targetWindow.postMessage(safeMessage, origin)
+  try {
+    targetWindow.postMessage(safeMessage, origin)
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'DataCloneError') {
+      try {
+        targetWindow.postMessage(JSON.parse(JSON.stringify(safeMessage)), origin)
+        // Retry succeeded but the JSON round-trip silently drops
+        // `undefined`, functions, Symbol keys, Maps, Sets, Dates (become
+        // strings), and other non-JSON values. Log so lossy delivery is
+        // diagnosable for the platform team.
+        console.warn('[dev-tools] postMessage payload was JSON-sanitized (DataCloneError)', safeMessage?.type)
+      } catch (retryErr) {
+        // Distinguish failure modes so a cross-origin misconfiguration
+        // (SecurityError — e.g. wrong VITE_PARENT_ORIGIN) doesn't hide
+        // under a "non-cloneable payload" label.
+        if (retryErr instanceof DOMException && retryErr.name === 'SecurityError') {
+          console.warn('[dev-tools] postMessage blocked by SecurityError on retry (check VITE_PARENT_ORIGIN)', safeMessage?.type, retryErr)
+        } else {
+          console.warn('[dev-tools] dropped postMessage with non-cloneable payload', safeMessage?.type, retryErr)
+        }
+      }
+      return
+    }
+    throw err
+  }
 }
