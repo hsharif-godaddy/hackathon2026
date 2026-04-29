@@ -27,7 +27,9 @@ test.describe('Brand Book Tab', () => {
   });
 
   test('Brand Book tab switch and content render', async ({ page }, testInfo) => {
-    testInfo.setTimeout(300_000);
+    // AI_RESPONSE_TIMEOUT_MS (300s) is just the wait budget for initial
+    // generation; add headroom for login, navigation and the brand-book steps.
+    testInfo.setTimeout(AI_RESPONSE_TIMEOUT_MS + 60_000);
 
     // ========================================
     // STEP 1: Create an app

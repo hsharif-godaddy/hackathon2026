@@ -263,11 +263,16 @@ test.describe('E2E - Critical Path', () => {
     await test.step('Step 7: Color scheme preview', async () => {
       await dismissOverlays(page);
 
+      // Phrase the prompt to match the color-scheme tool's documented SUGGEST
+      // examples (see agents/src/tools/ai-lib-tools/color-scheme.ts) so the AI
+      // reliably picks SUGGEST mode (which renders the palette grid widget)
+      // rather than SET mode (which applies a palette directly, no widget).
+      const colorSchemePrompt = 'Show me 4 color scheme options for this app';
       await waitForChatInput(page);
-      await chatInput.fill('Suggest some color schemes for this app');
+      await chatInput.fill(colorSchemePrompt);
       await page.getByTestId('chat-send-button').click({ force: true });
 
-      await expect(transcript.getByText('Suggest some color schemes for this app', { exact: true })).toBeVisible({
+      await expect(transcript.getByText(colorSchemePrompt, { exact: true })).toBeVisible({
         timeout: DEFAULT_TIMEOUT,
       });
       console.log('  Color scheme request sent');
@@ -277,27 +282,33 @@ test.describe('E2E - Critical Path', () => {
 
       await ensureAuthenticated(page);
 
-      const paletteGrid = page.getByTestId('color-palette-grid');
+      // Legacy UI renders a new `color-palette-grid` inside every AI chat message
+      // that returns palettes, so earlier steps can leave stale grids in the
+      // transcript. Scope to the most-recent widget and its sibling controls.
+      const paletteGrid = page.getByTestId('color-palette-grid').last();
       await expect(paletteGrid).toBeVisible({ timeout: DEFAULT_TIMEOUT });
       console.log('  Color palette grid visible');
 
-      const paletteOptions = page.getByTestId('color-palette-option');
+      const paletteOptions = paletteGrid.getByTestId('color-palette-option');
       await expect(paletteOptions.first()).toBeVisible();
       const optionCount = await paletteOptions.count();
       expect(optionCount).toBeGreaterThanOrEqual(2);
       console.log(`  ${optionCount} palette options`);
 
+      const saveButton = page.getByTestId('color-palette-save').last();
+      const revertButton = page.getByTestId('color-palette-revert').last();
+
       await paletteOptions.first().click();
-      await expect(page.getByTestId('color-palette-save')).toBeVisible();
-      await expect(page.getByTestId('color-palette-revert')).toBeVisible();
+      await expect(saveButton).toBeVisible();
+      await expect(revertButton).toBeVisible();
       console.log('  Save/Revert buttons visible');
 
-      await page.getByTestId('color-palette-revert').click();
+      await revertButton.click();
       console.log('  Revert clicked');
 
       await paletteOptions.first().click();
       await waitForChatInput(page);
-      await page.getByTestId('color-palette-save').click();
+      await saveButton.click();
       await expect(page.getByTestId('chat-send-button')).toBeVisible({ timeout: AI_RESPONSE_TIMEOUT_MS });
       console.log('  Color scheme saved');
 
