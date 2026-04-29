@@ -242,14 +242,35 @@ const BATCH_SIZE = 5000;
 
 export async function flushPendingDocs() {
   if (pendingDocs.length === 0) return 0;
-  const count = pendingDocs.length;
+  // Snapshot + clear up-front so a bulkIndex throw doesn't leave a dirty
+  // module-level buffer that re-fires the same (failing) docs on the next
+  // scheduler run. Writes are idempotent via content-addressed _ids, so a
+  // re-pull next run is safe; an unbounded pendingDocs is not.
+  const batch = pendingDocs;
+  pendingDocs = [];
+  const count = batch.length;
 
-  for (let i = 0; i < pendingDocs.length; i += BATCH_SIZE) {
-    const batch = pendingDocs.slice(i, i + BATCH_SIZE);
-    await bulkIndex(batch);
+  for (let i = 0; i < batch.length; i += BATCH_SIZE) {
+    try {
+      await bulkIndex(batch.slice(i, i + BATCH_SIZE));
+    } catch (err) {
+      // Re-queue the UN-ATTEMPTED sub-batches (i+BATCH_SIZE onward). The
+      // failing sub-batch itself is intentionally dropped from the in-memory
+      // buffer: the next scheduler run's getMinMaxTimestamp returns the max
+      // from successfully-indexed sub-batches 1..N-1, the run re-pulls from
+      // Loki starting there, and content-addressed _ids regenerate the
+      // failing batch's docs so they get retried automatically.
+      //
+      // Re-queueing the failing sub-batch (round-2 behavior) caused
+      // unbounded growth on permanent failures (mapping conflict, auth
+      // fail): every subsequent run would re-prepend the same stuck batch
+      // ahead of new docs, never draining. Permanent failures still need
+      // manual triage, but they no longer pin the buffer at position 0.
+      pendingDocs = batch.slice(i + BATCH_SIZE).concat(pendingDocs);
+      throw err;
+    }
   }
 
-  pendingDocs = [];
   return count;
 }
 
@@ -1538,7 +1559,7 @@ export async function getDiagnostics() {
   return {
     indices: results,
     writeEndpoint: process.env.AIRO_BUILDER_ES_ENDPOINT ? 'configured' : 'missing',
-    sourceEndpoint: process.env.PIONEER_ES_ENDPOINT ? 'configured' : 'missing'
+    lokiEndpoint: process.env.LOKI_ENDPOINT ? 'configured' : 'missing'
   };
 }
 

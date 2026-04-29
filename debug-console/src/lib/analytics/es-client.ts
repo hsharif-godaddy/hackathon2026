@@ -2,19 +2,7 @@ import { Client } from '@elastic/elasticsearch';
 
 import { logger } from '@/lib/logger';
 
-const SOURCE_ES_URL = process.env.PIONEER_ES_ENDPOINT || 'http://localhost:9200';
-const envName = process.env.ENVIRONMENT_NAME || 'dev';
-const SOURCE_INDEX = envName === 'prod' ? 'airo-agents-prod' : 'airo-agents-dev';
-
 const WRITE_ES_URL = process.env.AIRO_BUILDER_ES_ENDPOINT || 'http://localhost:9200';
-
-// Source client for reading raw logs from C1 prod
-export const sourceClient = new Client({
-  node: SOURCE_ES_URL,
-  auth: {
-    apiKey: process.env.PIONEER_ES_API_KEY || ''
-  }
-});
 
 // Write client for local ES storage (analytics data)
 export const writeClient = new Client({
@@ -23,8 +11,6 @@ export const writeClient = new Client({
     apiKey: process.env.AIRO_BUILDER_ES_API_KEY || ''
   }
 });
-
-export const SOURCE_INDEX_NAME = SOURCE_INDEX;
 
 // Index prefix for all analytics indices
 const INDEX_PREFIX = process.env.ES_INDEX_PREFIX || 'airo_analytics_';
@@ -219,13 +205,26 @@ export async function bulkIndex(docs: BulkDoc[]) {
 
   if (result.errors) {
     const errorItems = result.items.filter(item => item.index?.error);
+    const samples = errorItems.slice(0, 3).map(item => ({
+      index: item.index?._index,
+      error: item.index?.error,
+    }));
     logger.error('es.bulk.errors', {
       errorCount: errorItems.length,
-      samples: errorItems.slice(0, 3).map(item => ({
-        index: item.index?._index,
-        error: item.index?.error,
-      })),
+      samples,
     });
+    // Throw so flushPendingDocs's catch block actually fires on partial
+    // failures (mapping conflicts, auth-rejected docs). Without this throw,
+    // partial failures clear `pendingDocs` without re-queueing un-attempted
+    // sub-batches; the docs near the watermark boundary are then dropped
+    // with no retry path.
+    const firstReason =
+      typeof samples[0]?.error === 'object' && samples[0]?.error !== null
+        ? (samples[0].error as { reason?: string }).reason || JSON.stringify(samples[0].error)
+        : String(samples[0]?.error ?? 'unknown');
+    throw new Error(
+      `Bulk index reported ${errorItems.length} error(s). First: ${firstReason}`,
+    );
   }
 
   return result;

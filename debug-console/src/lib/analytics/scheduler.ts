@@ -1,4 +1,9 @@
-import { sourceClient, SOURCE_INDEX_NAME, INDICES, writeClient } from './es-client';
+import { createHash } from 'node:crypto';
+
+import { logger } from '@/lib/logger';
+import type { LokiStream } from '@/lib/loki-client';
+
+import { INDICES, writeClient } from './es-client';
 import {
   init,
   insertRun,
@@ -11,6 +16,16 @@ import {
   insertClientError,
   flushPendingDocs
 } from './es-db';
+
+function requireLokiEndpoint(consumerLabel: string): string {
+  const endpoint = process.env.LOKI_ENDPOINT;
+  if (!endpoint) {
+    throw new Error(
+      `LOKI_ENDPOINT is required for ${consumerLabel} but is not set`,
+    );
+  }
+  return endpoint;
+}
 
 // Pioneer events to fetch
 const PIONEER_EVENTS = [
@@ -425,90 +440,383 @@ function processKatanaLog(log: KatanaLogEntry): boolean {
   return true;
 }
 
-// Streaming fetch with incremental processing - avoids loading all into memory
-async function fetchAndProcessPioneerEvents(
-  startTime: Date,
-  endTime: Date,
-  event: string,
-  pendingCount: { value: number }
-): Promise<number> {
-  let scrollId: string | undefined;
-  let processedCount = 0;
-
-  const query = {
-    size: SCROLL_BATCH_SIZE,
-    _source: true,
-    query: {
-      bool: {
-        must: [{ match: { 'event.keyword': event } }],
-        filter: [{ range: { '@timestamp': { gte: startTime.toISOString(), lte: endTime.toISOString() } } }]
-      }
-    },
-    sort: [{ '@timestamp': 'asc' }]
-  };
-
-  try {
-  let response = await sourceClient.search({
-    index: SOURCE_INDEX_NAME,
-    scroll: '2m',
-    body: query
-  });
-
-  scrollId = response._scroll_id;
-
-    // Process first batch
-  for (const hit of response.hits.hits) {
-      const log = { _id: hit._id!, ...hit._source as Omit<LogEntry, '_id'> };
-      if (processPioneerLog(log)) {
-        processedCount++;
-        pendingCount.value++;
-  }
-    }
-
-    // Flush if threshold reached
-    if (pendingCount.value >= FLUSH_THRESHOLD) {
-      await flushPendingDocs();
-      pendingCount.value = 0;
-    }
-
-    // Continue scrolling
-  while (response.hits.hits.length > 0 && scrollId) {
-    response = await sourceClient.scroll({
-      scroll_id: scrollId,
-      scroll: '2m'
-    });
-    scrollId = response._scroll_id;
-
-    for (const hit of response.hits.hits) {
-        const log = { _id: hit._id!, ...hit._source as Omit<LogEntry, '_id'> };
-        if (processPioneerLog(log)) {
-          processedCount++;
-          pendingCount.value++;
-        }
-      }
-
-      if (pendingCount.value >= FLUSH_THRESHOLD) {
-        await flushPendingDocs();
-        pendingCount.value = 0;
-      }
-    }
-  } finally {
-    if (scrollId) {
-      await sourceClient.clearScroll({ scroll_id: scrollId }).catch(() => {});
-    }
-  }
-
-  return processedCount;
+// Loki endpoint / auth - mirror the log-sources.ts Loki config so the scheduler
+// reads from the same backend as the Logs tab. Missing config is a hard error
+// (same policy we enforce for airo-agents in log-sources). Callers invoke
+// requireLokiEndpoint('the analytics scheduler') directly.
+const LOKI_MAX_LIMIT = 5000;
+// Escape characters that would otherwise alter how the literal is interpreted
+// either by the RE2 engine (regex metacharacters) or by LogQL's surrounding
+// quoted-string parser. Events contain dots (`agent.run.finish`) — we escape so
+// `.` doesn't match arbitrary characters; `"` is escaped because callers embed
+// the result in a `|~ "..."` LogQL filter where an unescaped quote would
+// terminate the string and produce a malformed query. RE2 treats `\"` as a
+// literal `"`, and LogQL's Go-style string parser turns `\"` into `"` before
+// passing the regex to RE2, so escaping is safe at both layers.
+export function escapeRegex(literal: string): string {
+  return literal.replace(/[.^$*+?()[\]{}|\\"]/g, '\\$&');
 }
 
-// Streaming fetch for Katana logs
-async function fetchAndProcessKatanaErrors(
+// Short content-addressed suffix for synthesizing stable `_id` values from
+// Loki log lines. SHA-256 truncated to 16 hex chars (64 bits) - enough
+// collision resistance within a single-nanosecond bucket. The hash is
+// persisted as part of the analytics doc `_id` so every backfill or
+// scheduled run with the same Loki line produces the same id and we
+// upsert instead of duplicating. Changing the hash algorithm here would
+// re-id every existing doc, so the algo is locked in for the lifetime of
+// the index.
+export function hashLine(line: string): string {
+  return createHash('sha256').update(line).digest('hex').slice(0, 16);
+}
+
+interface LokiQueryRangeResponse {
+  status?: string;
+  error?: string;
+  errorType?: string;
+  data: { result: LokiStream[] };
+}
+
+/**
+ * Default Loki stream selector for the agents service. Callers that need to
+ * tail a different job (e.g. preview/publish containers if those ever feed
+ * Pioneer-style events) can pass their own selector to `iterLokiEventLines`.
+ */
+export function defaultAgentsStreamSelector(): string {
+  const envLabel = (process.env.ENVIRONMENT_NAME || 'dev') === 'prod' ? 'prod' : 'dev';
+  return `{job="airo-agents", env="${envLabel}"}`;
+}
+
+/**
+ * Stream Loki entries for a time range + line-filter regex, yielding one page
+ * at a time so callers can process-and-flush incrementally and keep live
+ * memory bounded by `LOKI_MAX_LIMIT` (~5000 entries) rather than the full
+ * window's volume.
+ *
+ * Pagination uses a forward time-cursor. Loki caps responses at ~5000
+ * entries; when the limit is hit we re-query starting at the last seen
+ * timestamp and dedupe any entries already yielded at that nanosecond on the
+ * previous page (otherwise `lastNs + 1` would silently drop tied-timestamp
+ * entries split across page boundaries).
+ *
+ * Yields `[timestampNs, logLine]` pairs sorted ascending by timestamp within
+ * each page.
+ */
+export async function* iterLokiEventLines(
+  startTime: Date,
+  endTime: Date,
+  eventsRegex: string,
+  streamSelector: string = defaultAgentsStreamSelector()
+): AsyncGenerator<Array<[string, string]>> {
+  // Trim trailing slash so a `LOKI_ENDPOINT=https://loki.example/` config
+  // doesn't produce `//loki/api/...` (matches loki-client's normalization).
+  const lokiEndpoint = requireLokiEndpoint('the analytics scheduler').replace(/\/+$/, '');
+  const lokiApiKey = process.env.LOKI_API_KEY || '';
+
+  const query = `${streamSelector} |~ "${eventsRegex}"`;
+
+  // Loki expects nanosecond timestamps (stringified). Convert ISO to ns.
+  let cursorNs = BigInt(startTime.getTime()) * 1_000_000n;
+  const endNs = BigInt(endTime.getTime()) * 1_000_000n;
+
+  // Lines already emitted at the cursor's nanosecond on the previous page,
+  // used to dedupe when we re-query at the same ns to catch tied-timestamp
+  // entries that spilled past the 5000-entry page boundary.
+  let previousCursorLines: Set<string> = new Set();
+
+  while (cursorNs < endNs) {
+    const params = new URLSearchParams({
+      query,
+      start: cursorNs.toString(),
+      end: endNs.toString(),
+      limit: String(LOKI_MAX_LIMIT),
+      direction: 'forward'
+    });
+
+    const url = `${lokiEndpoint}/loki/api/v1/query_range?${params}`;
+    // 60s timeout matches loki-client.ts so a stalled Loki/Grafana response
+    // can't block the scheduler's interval indefinitely. Wrap in try/catch
+    // so network errors and AbortSignal timeouts surface as descriptive
+    // scheduler errors instead of bare TypeError/AbortError out of fetch.
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        headers: lokiApiKey ? { Authorization: `Bearer ${lokiApiKey}` } : undefined,
+        signal: AbortSignal.timeout(60_000)
+      });
+    } catch (err) {
+      const isTimeout = err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError');
+      const wrapped = new Error(
+        isTimeout
+          ? `Loki query_range timed out after 60s (cursor=${cursorNs.toString()})`
+          : `Loki query_range network error: ${err instanceof Error ? err.message : String(err)}`,
+        { cause: err instanceof Error ? err : undefined },
+      );
+      throw wrapped;
+    }
+
+    if (!res.ok) {
+      // Distinct sentinel for read failures so an empty body from a network
+      // interruption mid-response is distinguishable from Loki returning
+      // HTTP 5xx with a literally empty body.
+      const body = await res.text().catch(() => '<body read failed>');
+      throw new Error(`Loki query_range failed: HTTP ${res.status} - ${body.slice(0, 300)}`);
+    }
+
+    // Guard against non-JSON 200s (e.g. an upstream proxy returning an HTML
+    // error page) and unexpected response shapes — both used to throw bare
+    // SyntaxError/TypeError out of the generator and kill the entire chunk.
+    let json: LokiQueryRangeResponse;
+    try {
+      json = (await res.json()) as LokiQueryRangeResponse;
+    } catch (err) {
+      throw new Error(
+        `Loki query_range returned a non-JSON 200 response: ${err instanceof Error ? err.message : 'parse error'}`,
+        { cause: err instanceof Error ? err : undefined },
+      );
+    }
+    // Loki returns HTTP 200 with `{"status":"error",...}` on server-side
+    // query timeouts, malformed LogQL, and label-selector mismatches. Without
+    // this check the empty `data.result` would be treated as an empty window,
+    // the cursor would advance past the chunk, and the data would be
+    // permanently lost on the next forward-incremental run.
+    if (json?.status === 'error') {
+      throw new Error(
+        `Loki query_range returned status=error: ${json.errorType || 'unknown'} - ${json.error || 'no message'}`,
+      );
+    }
+    const streams = json?.data?.result;
+    if (!Array.isArray(streams)) {
+      throw new Error(
+        `Loki query_range returned an unexpected response shape (missing data.result array)`
+      );
+    }
+
+    // Flatten all streams into a single entries array. Each stream may carry
+    // a different label set (different pods/allocations) but we don't care
+    // here because we re-parse the JSON log line to extract fields.
+    const pageEntries: Array<[string, string]> = [];
+    for (const stream of streams) {
+      for (const entry of stream.values) {
+        pageEntries.push(entry);
+      }
+    }
+
+    if (pageEntries.length === 0) break;
+
+    // Sort ascending by timestamp; return 0 on ties so the comparator is a
+    // total order (otherwise sort stability isn't guaranteed for same-ns
+    // entries and dedup reasoning below gets harder).
+    pageEntries.sort((a, b) => {
+      const aNs = BigInt(a[0]);
+      const bNs = BigInt(b[0]);
+      if (aNs < bNs) return -1;
+      if (aNs > bNs) return 1;
+      return 0;
+    });
+
+    // Filter out entries we already emitted in the previous page's trailing
+    // nanosecond (see dedup explanation above).
+    const emittedEntries: Array<[string, string]> = [];
+    for (const entry of pageEntries) {
+      if (BigInt(entry[0]) === cursorNs && previousCursorLines.has(entry[1])) {
+        continue;
+      }
+      emittedEntries.push(entry);
+    }
+
+    if (emittedEntries.length > 0) {
+      yield emittedEntries;
+    }
+
+    // Short page means we've drained the window.
+    if (pageEntries.length < LOKI_MAX_LIMIT) break;
+
+    // Advance the cursor to the last entry's timestamp (NOT +1) so we can
+    // pick up any additional entries sharing that nanosecond that were
+    // trimmed by the 5000-entry page cap. Record the lines we already
+    // emitted at that ns so the next page can dedupe them.
+    const lastNs = BigInt(pageEntries[pageEntries.length - 1][0]);
+    if (lastNs < cursorNs) break; // defensive: should never regress
+    // Cursor can't advance — Loki returned a full page entirely at one
+    // nanosecond (more entries at this ns than fit in a single page) or
+    // returned the same window again. Bail to avoid an infinite loop. In
+    // forward-incremental mode the next scheduler run starts from the max
+    // timestamp already in ES (>= lastNs) so any entries trimmed at this ns
+    // are PERMANENTLY DROPPED — log at error level so operators see the data
+    // loss instead of debugging mystery gaps later.
+    if (lastNs === cursorNs) {
+      const lastNsIso = new Date(Number(lastNs / 1_000_000n)).toISOString();
+      logger.error('scheduler.loki.stuckNanosecond', {
+        stuckNs: lastNs.toString(),
+        stuckNsIso: lastNsIso,
+        emittedAtStuckNs: pageEntries.length,
+        message: 'Loki paginator bailed at a single-nanosecond hot spot; further entries at this ns are LOST',
+      });
+      break;
+    }
+    const nextCursorLines = new Set<string>();
+    for (const entry of pageEntries) {
+      if (BigInt(entry[0]) === lastNs) {
+        nextCursorLines.add(entry[1]);
+      }
+    }
+    cursorNs = lastNs;
+    previousCursorLines = nextCursorLines;
+  }
+}
+
+// Loki-backed streaming fetch for Pioneer events. Replaces the previous
+// ES scroll implementation that required PIONEER_ES_ENDPOINT. Scans the
+// `airo-agents` Loki stream for all configured events in a single regex pass
+// per time chunk so we don't re-read the stream N times for N events.
+export async function fetchAndProcessPioneerEvents(
+  startTime: Date,
+  endTime: Date,
+  events: string[],
+  pendingCount: { value: number }
+): Promise<Record<string, number>> {
+  const perEventCounts: Record<string, number> = {};
+  if (events.length === 0) return perEventCounts;
+
+  // Assumes the agents logger emits compact JSON (`"event":"x"`) with no
+  // whitespace around `:`. If that invariant ever changes the line-filter
+  // regex below will silently drop all events for a chunk, so keep the
+  // assumption explicit.
+  const eventsRegex = `\\"event\\":\\"(${events.map(escapeRegex).join('|')})\\"`;
+
+  // Track JSON.parse failures so a logger-format regression (multi-line output,
+  // pretty-printing enabled, etc.) is observable in scheduler logs instead of
+  // silently reporting zero events for the chunk.
+  let jsonParseFailures = 0;
+  const sampleMalformedLines: string[] = [];
+  // Count lines that matched the events regex AND parsed as JSON but were
+  // dropped downstream (missing app_id, zero tokens, etc. in processPioneerLog).
+  // If everything that matched gets dropped, the format probably regressed
+  // and we want to surface that rather than report 0 events.
+  let parsedMatchedLines = 0;
+  let processedLines = 0;
+
+  for await (const page of iterLokiEventLines(startTime, endTime, eventsRegex)) {
+    for (const [timestampNs, logLine] of page) {
+      // Parse the JSON log line. Non-JSON lines are skipped (shouldn't happen
+      // for agents logs but be defensive).
+      let parsed: Record<string, unknown>;
+      try {
+        parsed = JSON.parse(logLine);
+      } catch {
+        jsonParseFailures++;
+        if (sampleMalformedLines.length < 3) {
+          sampleMalformedLines.push(logLine.slice(0, 200));
+        }
+        continue;
+      }
+
+      const event = typeof parsed.event === 'string' ? parsed.event : undefined;
+      if (!event || !events.includes(event)) continue;
+      parsedMatchedLines++;
+
+      const timestampMs = Number(BigInt(timestampNs) / 1_000_000n);
+      const timestamp = new Date(timestampMs).toISOString();
+
+      // Content-addressed `_id` keeps writes idempotent across scheduler runs:
+      // replaying the same window (overlapping fetch+backfill, retry after a
+      // flush failure, etc.) re-indexes the same document instead of creating
+      // duplicates.
+      const log: LogEntry = {
+        _id: `loki-${timestampNs}-${hashLine(logLine)}`,
+        timestamp,
+        '@timestamp': timestamp,
+        event,
+        app_id: (parsed.app_id as string) || (parsed.appId as string) || '',
+        agentId: parsed.agentId as string | undefined,
+        data: (parsed.data as Record<string, unknown>) || {},
+        error: parsed.error as LogEntry['error']
+      };
+
+      if (processPioneerLog(log)) {
+        processedLines++;
+        perEventCounts[event] = (perEventCounts[event] || 0) + 1;
+        pendingCount.value++;
+
+        if (pendingCount.value >= FLUSH_THRESHOLD) {
+          // try/finally: pendingCount must reset even if flush throws,
+          // otherwise the shared counter stays at threshold and we'd re-fire
+          // the doomed flush on every subsequent line. flushPendingDocs
+          // itself drains its buffer up-front (see es-db.ts), so this is
+          // pure counter hygiene. The catch block surfaces the chunk window
+          // and pending count before re-throwing so the top-level
+          // "Fetch failed" doesn't bury which chunk lost docs.
+          const flushCount = pendingCount.value;
+          try {
+            await flushPendingDocs();
+          } catch (err) {
+            logger.error(
+              'scheduler.events.midLoopFlushFailed',
+              {
+                pendingDocs: flushCount,
+                windowStart: startTime.toISOString(),
+                windowEnd: endTime.toISOString(),
+                event,
+              },
+              { error: err instanceof Error ? err : new Error(String(err)) },
+            );
+            throw err;
+          } finally {
+            pendingCount.value = 0;
+          }
+        }
+      }
+    }
+  }
+
+  if (jsonParseFailures > 0) {
+    // 100% parse-failure means a complete logger-format regression for this
+    // window (every event silently dropped) - escalate to error so paging /
+    // alerting picks it up. Anything less is a noisy partial drop and stays
+    // a warn. parsedMatchedLines==0 here means no entry survived parsing.
+    const emit = parsedMatchedLines === 0 ? logger.error : logger.warn;
+    emit('scheduler.loki.jsonParseFailures', {
+      jsonParseFailures,
+      parsedMatchedLines,
+      windowStart: startTime.toISOString(),
+      windowEnd: endTime.toISOString(),
+      sampleMalformedLines,
+    });
+  }
+
+  // Matched + parsed entries that were entirely rejected by processPioneerLog
+  // usually mean a logger schema change (e.g. `app_id` renamed, tokens missing).
+  // Without this warning the scheduler reports 0 events - indistinguishable
+  // from a legitimately quiet window.
+  if (parsedMatchedLines > 0 && processedLines === 0) {
+    logger.warn('scheduler.events.allDropped', {
+      parsedMatchedLines,
+      processedLines,
+      windowStart: startTime.toISOString(),
+      windowEnd: endTime.toISOString(),
+      message: 'All matched event lines dropped by processPioneerLog (likely missing app_id or zero tokens). Check the agents logger schema.',
+    });
+  }
+
+  return perEventCounts;
+}
+
+// Streaming fetch for Katana logs. Exported so tests can pre-seed
+// `pendingCount` to exercise the mid-loop flush failure paths (the public
+// runBackfill API constructs pendingCount internally and would require
+// ~1000 hits to reach FLUSH_THRESHOLD).
+export async function fetchAndProcessKatanaErrors(
   startTime: Date,
   endTime: Date,
   pendingCount: { value: number }
 ): Promise<number> {
   let scrollId: string | undefined;
   let processedCount = 0;
+  // Set by the inner mid-loop flush catch blocks so the outer catch
+  // doesn't double-log: `scheduler.katana.fetchFailed` is the label for
+  // genuine scroll/auth errors, and operators triaging it shouldn't be
+  // pointed at scroll/connectivity when the real fault is the bulk write.
+  let errorAlreadyLogged = false;
 
   const query = {
     size: SCROLL_BATCH_SIZE,
@@ -540,12 +848,34 @@ async function fetchAndProcessKatanaErrors(
       if (processKatanaLog(log)) {
         processedCount++;
         pendingCount.value++;
+      }
     }
-  }
 
     if (pendingCount.value >= FLUSH_THRESHOLD) {
-      await flushPendingDocs();
-      pendingCount.value = 0;
+      // Same try/catch contract as the Pioneer mid-loop flush: a flush
+      // failure here would otherwise propagate to the outer catch which
+      // logs `processedCount` (Katana docs read), not the failing flush
+      // batch size. Surface the chunk window + flush batch context so an
+      // operator can distinguish flush failures from scroll/auth failures.
+      const flushCount = pendingCount.value;
+      try {
+        await flushPendingDocs();
+      } catch (err) {
+        logger.error(
+          'scheduler.katana.midLoopFlushFailed',
+          {
+            pendingDocs: flushCount,
+            windowStart: startTime.toISOString(),
+            windowEnd: endTime.toISOString(),
+            scrollPhase: 'initial',
+          },
+          { error: err instanceof Error ? err : new Error(String(err)) },
+        );
+        errorAlreadyLogged = true;
+        throw err;
+      } finally {
+        pendingCount.value = 0;
+      }
     }
 
     while (response.hits.hits.length > 0 && scrollId) {
@@ -564,15 +894,62 @@ async function fetchAndProcessKatanaErrors(
       }
 
       if (pendingCount.value >= FLUSH_THRESHOLD) {
-        await flushPendingDocs();
-        pendingCount.value = 0;
+        const flushCount = pendingCount.value;
+        try {
+          await flushPendingDocs();
+        } catch (err) {
+          logger.error(
+            'scheduler.katana.midLoopFlushFailed',
+            {
+              pendingDocs: flushCount,
+              windowStart: startTime.toISOString(),
+              windowEnd: endTime.toISOString(),
+              scrollPhase: 'continuation',
+            },
+            { error: err instanceof Error ? err : new Error(String(err)) },
+          );
+          errorAlreadyLogged = true;
+          throw err;
+        } finally {
+          pendingCount.value = 0;
+        }
       }
     }
   } catch (error) {
-    console.error('[Scheduler] Katana fetch error:', error);
+    // Used to swallow the error (console.error only), which masked auth /
+    // connectivity drops AND silently dropped any pendingDocs that flushed
+    // after this throw. Surface it so runFetch's catch records the failure
+    // and so a flush-side throw doesn't pretend to have processed katana.
+    // Skip if a mid-loop flush already logged a more specific event
+    // (`scheduler.katana.midLoopFlushFailed`) - double-logging the same
+    // error under both labels would point operators at scroll/auth issues
+    // when the real fault is the bulk write.
+    if (!errorAlreadyLogged) {
+      logger.error(
+        'scheduler.katana.fetchFailed',
+        {
+          windowStart: startTime.toISOString(),
+          windowEnd: endTime.toISOString(),
+          processedCount,
+        },
+        { error: error instanceof Error ? error : new Error(String(error)) },
+      );
+    }
+    throw error;
   } finally {
-  if (scrollId) {
-      await writeClient.clearScroll({ scroll_id: scrollId }).catch(() => {});
+    if (scrollId) {
+      // Empty `.catch(() => {})` violated the project's no-silent-error rule
+      // and masked auth/connectivity drops that would also affect the next
+      // run. Un-cleared scroll contexts also stay alive until ES TTL expiry.
+      await writeClient.clearScroll({ scroll_id: scrollId }).catch((err: unknown) => {
+        logger.warn(
+          'scheduler.es.clearScrollFailed',
+          {
+            message: 'ES clearScroll failed; context will expire via TTL',
+          },
+          { error: err instanceof Error ? err : new Error(String(err)) },
+        );
+      });
     }
   }
 
@@ -607,11 +984,25 @@ async function getMinMaxTimestamp(): Promise<{ pioneer: Date | null; katana: Dat
           pioneerMinMax = backfillStart;
         }
       }
-    } catch {
+    } catch (err) {
+      // Distinct from the empty-index branch above (which is the normal
+      // first-run case): an ES auth/network failure here silently triggers
+      // a full DEFAULT_PIONEER_BACKFILL_DAYS-day backfill on every scheduler
+      // run, potentially re-indexing weeks of data. logger.error so it
+      // surfaces in alerting instead of getting buried as a warn.
+      logger.error(
+        'scheduler.es.pioneerMaxTimestampFailed',
+        {
+          index,
+          source: 'pioneer',
+          fallbackDays: DEFAULT_PIONEER_BACKFILL_DAYS,
+        },
+        { error: err instanceof Error ? err : new Error(String(err)) },
+      );
       const backfillStart = new Date(Date.now() - DEFAULT_PIONEER_BACKFILL_DAYS * 24 * 60 * 60 * 1000);
       if (!pioneerMinMax || backfillStart < pioneerMinMax) {
         pioneerMinMax = backfillStart;
-}
+      }
     }
   }
 
@@ -625,7 +1016,16 @@ async function getMinMaxTimestamp(): Promise<{ pioneer: Date | null; katana: Dat
     });
     const maxTs = (result.aggregations?.max_ts as { value_as_string?: string })?.value_as_string;
     katanaMaxTs = maxTs ? new Date(maxTs) : new Date(Date.now() - DEFAULT_KATANA_BACKFILL_DAYS * 24 * 60 * 60 * 1000);
-  } catch {
+  } catch (err) {
+    logger.error(
+      'scheduler.es.katanaMaxTimestampFailed',
+      {
+        index: INDICES.CLIENT_ERRORS,
+        source: 'katana',
+        fallbackDays: DEFAULT_KATANA_BACKFILL_DAYS,
+      },
+      { error: err instanceof Error ? err : new Error(String(err)) },
+    );
     katanaMaxTs = new Date(Date.now() - DEFAULT_KATANA_BACKFILL_DAYS * 24 * 60 * 60 * 1000);
   }
 
@@ -654,17 +1054,15 @@ export async function runFetch(): Promise<FetchResult> {
   const ONE_DAY_MS = 24 * 60 * 60 * 1000;
   const pendingCount = { value: 0 };
 
-  // Process in daily chunks
+  // Process in daily chunks. A single Loki scan per chunk covers all events
+  // via a regex OR — much cheaper than N separate stream scans.
   let chunkStart = new Date(pioneerStart);
   while (chunkStart < endTime) {
     const chunkEnd = new Date(Math.min(chunkStart.getTime() + ONE_DAY_MS, endTime.getTime()));
 
-    // Process each pioneer event type sequentially (memory efficient)
-    for (const event of PIONEER_EVENTS) {
-      const count = await fetchAndProcessPioneerEvents(chunkStart, chunkEnd, event, pendingCount);
-      if (count > 0) {
-        pioneerCounts[event] = (pioneerCounts[event] || 0) + count;
-      }
+    const chunkCounts = await fetchAndProcessPioneerEvents(chunkStart, chunkEnd, PIONEER_EVENTS, pendingCount);
+    for (const [event, count] of Object.entries(chunkCounts)) {
+      pioneerCounts[event] = (pioneerCounts[event] || 0) + count;
     }
 
     chunkStart = chunkEnd;
@@ -679,9 +1077,27 @@ export async function runFetch(): Promise<FetchResult> {
     chunkStart = chunkEnd;
   }
 
-  // Final flush
-  if (pendingCount.value > 0) {
+  // Final flush is unconditional. `flushPendingDocs` is a cheap no-op when
+  // empty (returns 0 immediately), and gating on `pendingCount` is unsafe:
+  // a mid-loop flush throw re-queues un-attempted sub-batches into
+  // `pendingDocs` and resets `pendingCount` to 0, so a `pendingCount > 0`
+  // gate would leak the un-attempted batch until the next ingest tick.
+  const finalCount = pendingCount.value;
+  try {
     await flushPendingDocs();
+  } catch (err) {
+    logger.error(
+      'scheduler.runFetch.finalFlushFailed',
+      {
+        pendingDocs: finalCount,
+        windowStart: startTime.toISOString(),
+        windowEnd: endTime.toISOString(),
+      },
+      { error: err instanceof Error ? err : new Error(String(err)) },
+    );
+    throw err;
+  } finally {
+    pendingCount.value = 0;
   }
 
   return { startTime, endTime, pioneerCounts, katanaCount };
@@ -714,7 +1130,12 @@ export async function runBackfill(days: number, indexFilter: BackfillIndexFilter
   const endTime = new Date();
   const startTime = new Date(endTime.getTime() - days * 24 * 60 * 60 * 1000);
 
-  console.log(`[Scheduler] Running backfill for ${days} days (index: ${indexFilter}): ${startTime.toISOString()} to ${endTime.toISOString()}`);
+  logger.info('scheduler.runBackfill.started', {
+    days,
+    indexFilter,
+    windowStart: startTime.toISOString(),
+    windowEnd: endTime.toISOString(),
+  });
 
   const pioneerCounts: Record<string, number> = {};
   const ONE_DAY_MS = 24 * 60 * 60 * 1000;
@@ -734,11 +1155,9 @@ export async function runBackfill(days: number, indexFilter: BackfillIndexFilter
     while (chunkStart < endTime) {
       const chunkEnd = new Date(Math.min(chunkStart.getTime() + ONE_DAY_MS, endTime.getTime()));
 
-      for (const event of eventsToProcess) {
-        const count = await fetchAndProcessPioneerEvents(chunkStart, chunkEnd, event, pendingCount);
-        if (count > 0) {
-          pioneerCounts[event] = (pioneerCounts[event] || 0) + count;
-        }
+      const chunkCounts = await fetchAndProcessPioneerEvents(chunkStart, chunkEnd, eventsToProcess, pendingCount);
+      for (const [event, count] of Object.entries(chunkCounts)) {
+        pioneerCounts[event] = (pioneerCounts[event] || 0) + count;
       }
 
       chunkStart = chunkEnd;
@@ -756,13 +1175,32 @@ export async function runBackfill(days: number, indexFilter: BackfillIndexFilter
     }
   }
 
-  // Final flush
-  if (pendingCount.value > 0) {
+  // Final flush is unconditional - see runFetch for the invariant.
+  const finalCount = pendingCount.value;
+  try {
     await flushPendingDocs();
+  } catch (err) {
+    logger.error(
+      'scheduler.runBackfill.finalFlushFailed',
+      {
+        pendingDocs: finalCount,
+        windowStart: startTime.toISOString(),
+        windowEnd: endTime.toISOString(),
+        indexFilter,
+      },
+      { error: err instanceof Error ? err : new Error(String(err)) },
+    );
+    throw err;
+  } finally {
+    pendingCount.value = 0;
   }
 
   const totalPioneer = Object.values(pioneerCounts).reduce((a, b) => a + b, 0);
-  console.log(`[Scheduler] Backfill complete: ${totalPioneer} pioneer events, ${katanaCount} client errors`);
+  logger.info('scheduler.runBackfill.completed', {
+    indexFilter,
+    pioneerEvents: totalPioneer,
+    katanaCount,
+  });
 
   return { startTime, endTime, pioneerCounts, katanaCount };
 }
@@ -773,12 +1211,12 @@ let lastRun: FetchResult | null = null;
 
 export function startScheduler(intervalMinutes = 15) {
   if (schedulerInterval) {
-    console.log('[Scheduler] Already running');
+    logger.info('scheduler.start.alreadyRunning', { intervalMinutes });
     return;
   }
 
   const intervalMs = intervalMinutes * 60 * 1000;
-  console.log(`[Scheduler] Starting with ${intervalMinutes} minute interval`);
+  logger.info('scheduler.start.scheduled', { intervalMinutes });
 
   runScheduledFetch();
   schedulerInterval = setInterval(runScheduledFetch, intervalMs);
@@ -786,21 +1224,32 @@ export function startScheduler(intervalMinutes = 15) {
 
 async function runScheduledFetch() {
   if (isRunning) {
-    console.log('[Scheduler] Previous run still in progress, skipping');
+    logger.info('scheduler.run.skippedInProgress');
     return;
   }
 
   isRunning = true;
   const startedAt = new Date();
-  console.log(`[Scheduler] Starting fetch at ${startedAt.toISOString()}`);
+  logger.info('scheduler.run.started', { startedAt: startedAt.toISOString() });
 
   try {
     lastRun = await runFetch();
     const duration = Date.now() - startedAt.getTime();
     const totalPioneer = Object.values(lastRun.pioneerCounts).reduce((a, b) => a + b, 0);
-    console.log(`[Scheduler] Completed in ${(duration / 1000).toFixed(1)}s: ${totalPioneer} pioneer events, ${lastRun.katanaCount} client errors`);
+    logger.info('scheduler.run.completed', {
+      durationMs: duration,
+      pioneerEvents: totalPioneer,
+      katanaCount: lastRun.katanaCount,
+    });
   } catch (error) {
-    console.error('[Scheduler] Fetch failed:', error);
+    logger.error(
+      'scheduler.run.failed',
+      {
+        startedAt: startedAt.toISOString(),
+        durationMs: Date.now() - startedAt.getTime(),
+      },
+      { error: error instanceof Error ? error : new Error(String(error)) },
+    );
   } finally {
     isRunning = false;
   }
@@ -810,7 +1259,7 @@ export function stopScheduler() {
   if (schedulerInterval) {
     clearInterval(schedulerInterval);
     schedulerInterval = null;
-    console.log('[Scheduler] Stopped');
+    logger.info('scheduler.stop.completed');
   }
 }
 

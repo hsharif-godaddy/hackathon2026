@@ -50,9 +50,9 @@ if (options.token && options.repoUrl) {
 | **packages/ai-lib/**       | `@airo/ai-lib`       | —    | AI SDK wrapper, consumed by agents                                              |
 | **packages/ai-transport/** | `@airo/ai-transport` | —    | Transport-agnostic shared code for WS + SSE servers (loop, processor, events)   |
 
-Additional: `app-templates/` (v8 template), `packages/design-extractor/` (PDF RAG), `e2e/` (E2E tests)
+Additional: `app-templates/` (v8 template), `packages/design-extractor/` (PDF RAG), `e2e/` (E2E tests), `debug-console/` (internal dev-team dashboard — review pragmatically, see [debug-console/CLAUDE.md](debug-console/CLAUDE.md))
 
-See service-specific CLAUDE.md files: [agents/](agents/CLAUDE.md), [app/](app/CLAUDE.md), [dev-supervisor/](dev-supervisor/CLAUDE.md), [local-control-plane/](local-control-plane/CLAUDE.md), [go-agent/](go-agent/CLAUDE.md), [packages/ai-transport/](packages/ai-transport/CLAUDE.md)
+See service-specific CLAUDE.md files: [agents/](agents/CLAUDE.md), [app/](app/CLAUDE.md), [dev-supervisor/](dev-supervisor/CLAUDE.md), [local-control-plane/](local-control-plane/CLAUDE.md), [go-agent/](go-agent/CLAUDE.md), [packages/ai-transport/](packages/ai-transport/CLAUDE.md), [debug-console/](debug-console/CLAUDE.md)
 
 ## Publish Flow Architecture
 
