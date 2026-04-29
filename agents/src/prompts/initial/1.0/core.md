@@ -264,8 +264,8 @@ Use `operation: 'create_list'` with items containing `title` and `description`. 
     { "title": "Homepage", "description": "Landing with hero, features, testimonials, and CTA" },
     { "title": "Pricing page", "description": "Pricing tiers with feature comparison" },
     { "title": "Features page", "description": "Detailed feature breakdown with screenshots" },
-    { "title": "User dashboard", "description": "Authenticated user area with settings (use authentication skill)" },
-    { "title": "Sign up / Login", "description": "User authentication flow (use authentication skill)" }
+    { "title": "User dashboard", "description": "Authenticated user area with settings" },
+    { "title": "Sign up / Login", "description": "User authentication flow" }
   ]
 }
 ```
@@ -279,10 +279,10 @@ Use `operation: 'create_list'` with items containing `title` and `description`. 
   "listName": "StoreName",
   "items": [
     { "title": "Homepage", "description": "Landing with featured products and categories" },
-    { "title": "Product catalog", "description": "Browsable product listings with filters (use commerce-storefront skill; load commerce skill first for catalog data)" },
-    { "title": "Shopping cart", "description": "Cart management and order summary (use commerce-storefront skill)" },
-    { "title": "Checkout flow", "description": "Payment and shipping information (use commerce-storefront skill)" },
-    { "title": "User account", "description": "Order history and saved preferences (use authentication skill)" }
+    { "title": "Product catalog", "description": "Browsable product listings with filters" },
+    { "title": "Shopping cart", "description": "Cart management and order summary" },
+    { "title": "Checkout flow", "description": "Payment and shipping information" },
+    { "title": "User account", "description": "Order history and saved preferences" }
   ]
 }
 ```
@@ -298,7 +298,7 @@ Use `operation: 'create_list'` with items containing `title` and `description`. 
     { "title": "Homepage", "description": "Portfolio landing with project grid and intro" },
     { "title": "Project case studies", "description": "Individual project pages with process and outcomes" },
     { "title": "About page", "description": "Personal story, skills, and background" },
-    { "title": "Contact form", "description": "Inquiry form and social links (use email skill)" }
+    { "title": "Contact form", "description": "Inquiry form and social links" }
   ]
 }
 ```
@@ -326,24 +326,6 @@ Use the `handoff` tool after creating the todo list. This transfers execution to
 11. **Initial Scope** - Explicitly state building homepage DESIGN ONLY for review
 12. **Suggested Responses** - What questions to ask after showing the design
 13. **Domain Purchase Intent** (if detected) - Flag that user wants to purchase a domain
-14. **Skill Requirements** (if detected) - Skills the develop agent must load for features in the todo list
-
-<skill_detection_guide>
-Use this guide to populate the SKILL REQUIREMENTS section in the handoff. Match user intent to skills:
-
-- Online store / e-commerce / sell products / product catalog / shopping cart / checkout → commerce + commerce-storefront (load commerce FIRST, then commerce-storefront for UI)
-- Accept payments / buy-now / charge customers → commerce + commerce-one-time-payment
-- Login / signup / members-only / restrict access / user accounts → authentication
-- Booking / appointments / scheduling / time slots / reserve → online-appointments
-- Blog system / news feed with posts / article publishing → blog (not for a static "news" or "articles" section on the homepage)
-- Multi-language / bilingual / translate / localization → i18n
-- Database / user-generated data / CRUD / dynamic records / order history → database (not for static content or client-side-only state)
-- Email notifications / transactional email / "email me when" → email (not for a simple contact form with no backend)
-- Show location / map / store locator / directions → google-maps
-- AI chatbot / AI assistant / chat with AI → ai-agent
-- Stripe payments (only when user explicitly says Stripe) → stripe
-- Logo design → media-logo
-  </skill_detection_guide>
 
 **Handoff format (Standard Layout - for marketing sites, portfolios, e-commerce, blogs):**
 
@@ -427,11 +409,7 @@ After showing the homepage design, use suggestedResponse tool to ask:
 Make it clear we're seeking design feedback, not asking to build everything at once.
 
 DOMAIN PURCHASE INTENT: [yes/no - include only if user mentioned wanting to buy a domain]
-If yes, offer domain purchase using the project name as brandName after first preview.
-
-SKILL REQUIREMENTS: [include ONLY skills matching detected features — omit this entire section if no skills apply]
-Skills to load: [comma-separated skill names, e.g. commerce, commerce-storefront, authentication]
-Reason: [one sentence explaining why these skills were detected]"
+If yes, offer domain purchase using the project name as brandName after first preview."
 }
 ```
 
@@ -509,11 +487,7 @@ After showing the app design, use suggestedResponse tool to ask:
 Make it clear we're seeking design feedback, not asking to build everything at once.
 
 DOMAIN PURCHASE INTENT: [yes/no - include only if user mentioned wanting to buy a domain]
-If yes, offer domain purchase using the project name as brandName after first preview.
-
-SKILL REQUIREMENTS: [include ONLY skills matching detected features — omit this entire section if no skills apply]
-Skills to load: [comma-separated skill names, e.g. commerce, commerce-storefront, authentication]
-Reason: [one sentence explaining why these skills were detected]"
+If yes, offer domain purchase using the project name as brandName after first preview."
 }
 ```
 
