@@ -16,15 +16,15 @@ budget-service exposes a REST API for budgets, credit pools (budget items), LLM-
 
 ## Assets
 
-| Asset | Notes |
-| ----- | ----- |
-| Budget, item, session, report, and ledger rows | Business and usage data; UUID-keyed. |
-| Session `metadata` (JSON) | Caller-supplied; may contain operational or customer-adjacent strings. |
-| Money and credit fields | `NUMERIC`/JSON string amounts; business-sensitive. |
-| Webhook URLs | Stored per product; disclosure enables targeted callback traffic. |
-| JWTs in transit | Bearer tokens; compromise enables API access within token scope. |
-| `DATABASE_URL` and similar secrets | Environment/config; full DB access if leaked. |
-| Application logs | Structured JSON; paths/user-agents sanitized; optional `requestBody` logging when enabled. |
+| Asset                                          | Notes                                                                                      |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Budget, item, session, report, and ledger rows | Business and usage data; UUID-keyed.                                                       |
+| Session `metadata` (JSON)                      | Caller-supplied; may contain operational or customer-adjacent strings.                     |
+| Money and credit fields                        | `NUMERIC`/JSON string amounts; business-sensitive.                                         |
+| Webhook URLs                                   | Stored per product; disclosure enables targeted callback traffic.                          |
+| JWTs in transit                                | Bearer tokens; compromise enables API access within token scope.                           |
+| `DATABASE_URL` and similar secrets             | Environment/config; full DB access if leaked.                                              |
+| Application logs                               | Structured JSON; paths/user-agents sanitized; optional `requestBody` logging when enabled. |
 
 ## Trust boundaries
 
@@ -45,14 +45,14 @@ Document this assumption explicitly for assessors evaluating IDOR-style risk.
 
 ## STRIDE summary
 
-| Category | Threat | Controls (examples) | Residual risk |
-| -------- | ------ | ------------------- | ------------- |
-| **Spoofing** | Caller pretends to be a legitimate service | JWT validation via `gd-auth-lib`; reject missing/invalid tokens; `AUTH_ALLOWED_ROLES` and `AUTH_ALLOWED_CERTS` (required when JWT auth is on) restrict which ARNs/CommonNames are accepted | Stolen token from an allowed identity can call API until revoked |
-| **Tampering** | Alter DB rows or API payloads | TLS in transit; DB credentials; SQL via parameterized queries in `store` | Compromised DB role or app process |
-| **Repudiation** | Deny having performed an action | Structured logs (`http.request.complete`); ledger append-only audit | Logs can be disabled or tampered if log pipeline compromised |
-| **Information disclosure** | Leak budgets, sessions, webhook URLs, tokens | TLS; sanitize logging; webhook payload rules in docs | Optional request-body logging increases exposure if misused |
-| **Denial of service** | Exhaust DB, workers, or HTTP threads | HTTP read/write/idle timeouts; worker batch limits; DB pool limits | Large payloads or high concurrency from authorized clients |
-| **Elevation of privilege** | Access another tenant’s budget | **No in-app tenant ACL** — valid JWT + knowledge of id suffices | Mitigate with network segmentation and tight token issuance |
+| Category                   | Threat                                       | Controls (examples)                                                                                                                                                                                                                                                 | Residual risk                                                    |
+| -------------------------- | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| **Spoofing**               | Caller pretends to be a legitimate service   | JWT validation via `gd-auth-lib`; reject missing/invalid tokens; `AUTH_ALLOWED_ROLES` and `AUTH_ALLOWED_CERTS` (required when JWT auth is on) restrict which ARNs/CommonNames are accepted                                                                          | Stolen token from an allowed identity can call API until revoked |
+| **Tampering**              | Alter DB rows or API payloads                | TLS in transit; DB credentials; SQL via parameterized queries in `store`                                                                                                                                                                                            | Compromised DB role or app process                               |
+| **Repudiation**            | Deny having performed an action              | Structured logs (`http.request.complete`); ledger append-only audit                                                                                                                                                                                                 | Logs can be disabled or tampered if log pipeline compromised     |
+| **Information disclosure** | Leak budgets, sessions, webhook URLs, tokens | TLS; sanitize logging; API handlers use `writeInternalError` (`{"code":"INTERNAL","error":"internal error"}`); JWT middleware uses `writeAuthError` with stable `code` + short `error` (no stack or wrapped driver text in the body); webhook payload rules in docs | Optional request-body logging increases exposure if misused      |
+| **Denial of service**      | Exhaust DB, workers, or HTTP threads         | HTTP read/write/idle timeouts; worker batch limits; DB pool limits                                                                                                                                                                                                  | Large payloads or high concurrency from authorized clients       |
+| **Elevation of privilege** | Access another tenant’s budget               | **No in-app tenant ACL** — valid JWT + knowledge of id suffices                                                                                                                                                                                                     | Mitigate with network segmentation and tight token issuance      |
 
 ## Assumptions
 

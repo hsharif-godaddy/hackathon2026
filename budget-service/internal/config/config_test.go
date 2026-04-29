@@ -367,6 +367,42 @@ func TestLoadRejectsBlankAllowlistEntryWhenAuthEnabled(t *testing.T) {
 	}
 }
 
+func TestLoadRejectsAllowlistEntryWithPadding(t *testing.T) {
+	unsetMigrateDatabaseURLForTest(t)
+	t.Setenv("LOCAL_AUTH_DISABLE", "false")
+	t.Setenv("SSO_HOST", "sso.godaddy.com")
+	t.Setenv("DATABASE_URL", "")
+	t.Setenv("SERVER_CERT_PATH", "/tmp/cert.pem")
+	t.Setenv("SERVER_KEY_PATH", "/tmp/key.pem")
+	t.Setenv("AUTH_ALLOWED_ROLES", `[" arn:aws:iam::123:role/airo-*"]`)
+	t.Setenv("AUTH_ALLOWED_CERTS", `["cn.example.com"]`)
+	_, err := Load()
+	if err == nil {
+		t.Fatal("expected error for leading whitespace in allowlist entry")
+	}
+	if !strings.Contains(err.Error(), "AUTH_ALLOWED_ROLES") || !strings.Contains(err.Error(), "whitespace") {
+		t.Fatalf("error %q should mention AUTH_ALLOWED_ROLES and whitespace", err.Error())
+	}
+}
+
+func TestLoadRejectsLeadingWildcardAllowlistPattern(t *testing.T) {
+	unsetMigrateDatabaseURLForTest(t)
+	t.Setenv("LOCAL_AUTH_DISABLE", "false")
+	t.Setenv("SSO_HOST", "sso.godaddy.com")
+	t.Setenv("DATABASE_URL", "")
+	t.Setenv("SERVER_CERT_PATH", "/tmp/cert.pem")
+	t.Setenv("SERVER_KEY_PATH", "/tmp/key.pem")
+	t.Setenv("AUTH_ALLOWED_ROLES", `["arn:aws:iam::123:role/airo-*"]`)
+	t.Setenv("AUTH_ALLOWED_CERTS", `["*.airo-builder.godaddy.com"]`)
+	_, err := Load()
+	if err == nil {
+		t.Fatal("expected error for leading-* cert pattern (not supported by matchesAllowlist)")
+	}
+	if !strings.Contains(err.Error(), "AUTH_ALLOWED_CERTS") || !strings.Contains(err.Error(), "*") {
+		t.Fatalf("error %q should mention AUTH_ALLOWED_CERTS and unsupported leading *", err.Error())
+	}
+}
+
 func TestLoadAllowsHTTPWhenAuthDisabled(t *testing.T) {
 	t.Setenv("LOCAL_AUTH_DISABLE", "true")
 	t.Setenv("SSO_HOST", "")

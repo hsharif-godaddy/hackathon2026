@@ -18,9 +18,18 @@ const (
 	ClaimsKey contextKey = "auth_claims"
 )
 
+// gdAuthValidator is the subset of gd-auth-lib GDAuth used by the middleware.
+// *gdauth.GDAuth satisfies it; tests may inject a stub via Middleware.validator.
+type gdAuthValidator interface {
+	ParseToken(token string, opts *gdauth.AuthOptions) (*gdauth.TokenClaims, error)
+	GetAwsIamArn(claims *gdauth.TokenClaims) (string, error)
+	GetCommonName(claims *gdauth.TokenClaims) (string, error)
+}
+
 // Middleware provides HTTP middleware for GoDaddy SSO JWT authentication.
 type Middleware struct {
 	client       *Client
+	validator    gdAuthValidator // non-nil in tests only; production uses client.GDAuth
 	authType     string
 	allowedRoles []string
 	allowedCerts []string
@@ -28,8 +37,9 @@ type Middleware struct {
 
 // NewMiddleware creates auth middleware using the singleton GDAuth client.
 // authType: "jwt" to enforce validation, "none" to bypass (local dev only).
-// allowedRoles: IAM ARN patterns; empty slice skips role filtering (config.Load requires non-empty when JWT auth is on).
-// allowedCerts: cert CommonName patterns; empty slice skips CN filtering (config.Load requires non-empty when JWT auth is on).
+// allowedRoles: IAM ARN patterns; must be non-empty when authType=="jwt" (config.Load enforces this; the
+// middleware also fails closed at request time with HTTP 403 if empty in JWT mode).
+// allowedCerts: cert CommonName patterns; same non-empty contract as allowedRoles when authType=="jwt".
 // Requires InitClient() to have been called first when authType is "jwt".
 func NewMiddleware(authType string, allowedRoles []string, allowedCerts []string) *Middleware {
 	m := &Middleware{
@@ -52,6 +62,18 @@ func NewMiddleware(authType string, allowedRoles []string, allowedCerts []string
 
 	slog.Debug("auth.init", "authType", authType, "ssoHost", m.client.SSOHost, "allowedRoles", len(m.allowedRoles), "allowedCerts", len(m.allowedCerts))
 	return m
+}
+
+func (m *Middleware) gdAuth() gdAuthValidator {
+	if m.validator != nil {
+		return m.validator
+	}
+	// Do not return m.client.GDAuth when nil: a typed nil *gdauth.GDAuth in an interface
+	// is not == nil and would panic on ParseToken.
+	if m.client != nil && m.client.GDAuth != nil {
+		return m.client.GDAuth
+	}
+	return nil
 }
 
 // extractToken extracts the JWT token from the request.
@@ -83,17 +105,25 @@ func (m *Middleware) AuthenticateAWSIAMService(next http.Handler) http.Handler {
 		return next
 	}
 
-	// Reject all requests if client initialization failed
-	if m.client == nil || m.client.GDAuth == nil {
+	// Reject if no client (SSO host) or no token validator (real GDAuth or test stub).
+	if m.client == nil {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			http.Error(w, `{"error":"auth misconfigured"}`, http.StatusUnauthorized)
+			slog.Error("auth.validate.client_nil", "method", r.Method, "path", r.URL.Path)
+			writeAuthError(w, http.StatusUnauthorized, "AUTH_MISCONFIGURED", "auth misconfigured")
+		})
+	}
+	g := m.gdAuth()
+	if g == nil {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			slog.Error("auth.validate.gdauth_nil", "method", r.Method, "path", r.URL.Path)
+			writeAuthError(w, http.StatusUnauthorized, "AUTH_MISCONFIGURED", "auth misconfigured")
 		})
 	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token := extractToken(r)
 		if token == "" {
-			http.Error(w, `{"error":"missing authorization token"}`, http.StatusUnauthorized)
+			writeAuthError(w, http.StatusUnauthorized, "MISSING_AUTHORIZATION", "missing authorization token")
 			return
 		}
 
@@ -112,10 +142,10 @@ func (m *Middleware) AuthenticateAWSIAMService(next http.Handler) http.Handler {
 			},
 		}
 
-		claims, err := m.client.GDAuth.ParseToken(token, authOptions)
+		claims, err := g.ParseToken(token, authOptions)
 		if err != nil {
-			slog.Debug("auth.validate.failed", "error", err)
-			http.Error(w, `{"error":"invalid token"}`, http.StatusUnauthorized)
+			slog.Warn("auth.validate.failed", "error", err)
+			writeAuthError(w, http.StatusUnauthorized, "INVALID_TOKEN", "invalid token")
 			return
 		}
 
@@ -123,35 +153,48 @@ func (m *Middleware) AuthenticateAWSIAMService(next http.Handler) http.Handler {
 		// Cert2S tokens have typ=cert but auth=cert2s, which is already covered by Auths config
 		tokenType := claims.GetType()
 		if tokenType != string(gdauth.AuthTypeAWSIAM) && tokenType != string(gdauth.AuthTypeCERT) {
-			slog.Debug("auth.validate.wrong_type", "tokenType", tokenType, "expected", "awsiam or cert")
-			http.Error(w, `{"error":"unauthorized token type"}`, http.StatusUnauthorized)
+			slog.Warn("auth.validate.wrong_type", "tokenType", tokenType, "expected", "awsiam or cert")
+			writeAuthError(w, http.StatusUnauthorized, "UNAUTHORIZED_TOKEN_TYPE", "unauthorized token type")
 			return
 		}
 
-		if tokenType == string(gdauth.AuthTypeAWSIAM) && len(m.allowedRoles) > 0 {
-			arn, err := m.client.GDAuth.GetAwsIamArn(claims)
+		// Fail closed when authType is "jwt": config.Load already requires non-empty
+		// allowlists, but defending here avoids any future regression where the slice
+		// is empty in JWT mode (security review follow-up).
+		if tokenType == string(gdauth.AuthTypeAWSIAM) {
+			if len(m.allowedRoles) == 0 {
+				slog.Error("auth.validate.role_allowlist_empty", "method", r.Method, "path", r.URL.Path)
+				writeAuthError(w, http.StatusForbidden, "IAM_ALLOWLIST_NOT_CONFIGURED", "forbidden: IAM role allowlist not configured")
+				return
+			}
+			arn, err := g.GetAwsIamArn(claims)
 			if err != nil {
 				slog.Warn("auth.validate.arn_extraction_failed", "error", err, "method", r.Method, "path", r.URL.Path)
-				http.Error(w, `{"error":"forbidden: unable to extract IAM role"}`, http.StatusForbidden)
+				writeAuthError(w, http.StatusForbidden, "IAM_ROLE_EXTRACT_FAILED", "forbidden: unable to extract IAM role")
 				return
 			}
 			if !matchesAllowlist(arn, m.allowedRoles) {
 				slog.Warn("auth.validate.role_denied", "arn", arn, "method", r.Method, "path", r.URL.Path)
-				http.Error(w, `{"error":"forbidden: IAM role not in allowlist"}`, http.StatusForbidden)
+				writeAuthError(w, http.StatusForbidden, "IAM_ROLE_DENIED", "forbidden: IAM role not in allowlist")
 				return
 			}
 		}
 
-		if tokenType == string(gdauth.AuthTypeCERT) && len(m.allowedCerts) > 0 {
-			cn, err := m.client.GDAuth.GetCommonName(claims)
+		if tokenType == string(gdauth.AuthTypeCERT) {
+			if len(m.allowedCerts) == 0 {
+				slog.Error("auth.validate.cert_allowlist_empty", "method", r.Method, "path", r.URL.Path)
+				writeAuthError(w, http.StatusForbidden, "CERT_ALLOWLIST_NOT_CONFIGURED", "forbidden: cert allowlist not configured")
+				return
+			}
+			cn, err := g.GetCommonName(claims)
 			if err != nil {
 				slog.Warn("auth.validate.cn_extraction_failed", "error", err, "method", r.Method, "path", r.URL.Path)
-				http.Error(w, `{"error":"forbidden: unable to extract cert CommonName"}`, http.StatusForbidden)
+				writeAuthError(w, http.StatusForbidden, "CERT_CN_EXTRACT_FAILED", "forbidden: unable to extract cert CommonName")
 				return
 			}
 			if !matchesAllowlist(cn, m.allowedCerts) {
 				slog.Warn("auth.validate.cert_denied", "commonName", cn, "method", r.Method, "path", r.URL.Path)
-				http.Error(w, `{"error":"forbidden: cert CommonName not in allowlist"}`, http.StatusForbidden)
+				writeAuthError(w, http.StatusForbidden, "CERT_CN_DENIED", "forbidden: cert CommonName not in allowlist")
 				return
 			}
 		}
@@ -162,6 +205,8 @@ func (m *Middleware) AuthenticateAWSIAMService(next http.Handler) http.Handler {
 	})
 }
 
+// matchesAllowlist matches value against patterns: exact string equality, or prefix match when the
+// pattern ends with '*'. Leading '*' (e.g. "*.example.com") is not supported — use a trailing '*'.
 func matchesAllowlist(value string, patterns []string) bool {
 	for _, p := range patterns {
 		if strings.HasSuffix(p, "*") {

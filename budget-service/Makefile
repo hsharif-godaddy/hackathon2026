@@ -1,6 +1,6 @@
 # budget-service — see README.md, docs/budget-service-spec.md, docs/local-e2e.md
 
-.PHONY: build dev test clean up down logs data e2e-up e2e-down e2e-local dev-budget-ui verify-iam-auth \
+.PHONY: build dev test clean up down logs e2e-up e2e-down e2e-local dev-budget-ui verify-iam-auth \
        load-test load-test-contention load-test-throughput load-test-lifecycle load-test-monitor \
        bench-baseline bench-candidate bench-diff
 
@@ -67,11 +67,6 @@ down:
 
 logs:
 	$(_COMPOSE) logs -f postgres
-
-# Load (or reload) local test rows via seed/seed_test_data.sql. Requires `make up` and schema applied.
-data:
-	@$(_COMPOSE) exec -T postgres \
-		psql -U budget -d budget_test -v ON_ERROR_STOP=1 -f - < $(_BUDGET_SVC_DIR)seed/seed_test_data.sql
 
 # ── Load tests (k6) ─────────────────────────────────────────────────
 # Prerequisites: brew install k6; make up && make dev

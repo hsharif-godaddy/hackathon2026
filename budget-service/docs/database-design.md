@@ -15,7 +15,7 @@ This document focuses on **tables**, **relationships**, **constraints**, **trigg
 - Renewable budget items use **hybrid reset handling**: the Go background worker periodically runs equivalent reset logic in Go via `Store.ProcessDueResetsWithOutbox`, while budget write paths call the SQL function `public.process_due_budget_item_resets` in the same transaction before capacity or consumption decisions.
 - **Webhooks** are product-scoped URLs for events (e.g. report created).
 
-Live OLTP tables have **no soft-delete column**; deletes **archive** into `*_history` tables first where applicable.
+Live OLTP tables either use a **`deleted_at`** soft-delete column (`budgets`, `budget_items`, `products`, `webhooks`) or are append-only (e.g. `budget_item_credit_ledger`); `*_history` tables capture pre-update copies for select PATCH paths.
 
 ---
 

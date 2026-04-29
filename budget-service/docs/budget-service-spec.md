@@ -1,6 +1,6 @@
 # Budget service (budget-service)
 
-Spec for API shape, flow, and numbers. Code lives under `budget-service/`; older reference: `budget-service/`.
+Spec for API shape, flow, and numbers. Code lives under `budget-service/`.
 
 **OpenAPI 3:** [`internal/openapi/openapi.yaml`](../internal/openapi/openapi.yaml) (source of truth for machine-readable paths and schemas). Served without authentication at **`GET /openapi.yaml`** and interactive docs at **`GET /swagger/`** (redirect from `/swagger`). **`/api/v1/*` still requires JWT** when calling the API from Swagger “Try it out” or any client.
 
@@ -62,10 +62,6 @@ For each resource with read/write APIs, successful `POST`/`PATCH` responses are 
 Auth: `packages/go-auth` `AuthenticateAWSIAMService` by default (`Bearer` or `sso-jwt`). `LOCAL_AUTH_DISABLE=true` skips auth (local only).
 
 Request decoding: write endpoints use strict JSON decoding (unknown fields are rejected with **400**) and enforce request-size limits (oversized payloads return **413** `PAYLOAD_TOO_LARGE`).
-
-## Seed (`make data`)
-
-Three single-item budgets, product `seed-local`, fixed UUIDs — see comments in `seed/seed_test_data.sql`.
 
 ## Local E2E (script + UI)
 

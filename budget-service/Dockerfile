@@ -74,9 +74,7 @@ RUN mkdir -p /app/certs && \
 COPY --from=builder /app/server /app/server
 COPY --from=builder /app/lib/libffi_bridge.so /usr/lib/libffi_bridge.so
 
-# Writable audit log dir (matches config default) and /app for AUDIT_LOG_PATH=./audit.log
-RUN mkdir -p /var/log/budget-service && \
-    chown -R 1000:1000 /var/log/budget-service /app
+RUN chown -R 1000:1000 /app
 
 # Run as non-root user (GCI base image already has user with UID 1000)
 USER 1000
@@ -87,7 +85,6 @@ EXPOSE 8080
 # Environment variables for server TLS
 ENV SERVER_CERT_PATH=/app/certs/server.crt
 ENV SERVER_KEY_PATH=/app/certs/server.key
-ENV AUDIT_LOG_PATH=/var/log/budget-service/audit.log
 
 # Health check - start-period aligned with Katana healthcheckGracePeriod (60s)
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \

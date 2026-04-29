@@ -119,6 +119,12 @@ func Load() (Config, error) {
 		if err := validateAllowlistNoBlankEntries("AUTH_ALLOWED_CERTS", cfg.AuthAllowedCerts); err != nil {
 			return Config{}, err
 		}
+		if err := validateAllowlistPatternSyntax("AUTH_ALLOWED_ROLES", cfg.AuthAllowedRoles); err != nil {
+			return Config{}, err
+		}
+		if err := validateAllowlistPatternSyntax("AUTH_ALLOWED_CERTS", cfg.AuthAllowedCerts); err != nil {
+			return Config{}, err
+		}
 	}
 	// Validate worker settings are positive (defaults in getEnvInt/getEnvDuration ensure this normally)
 	if cfg.WorkerInterval <= 0 {
@@ -143,6 +149,20 @@ func validateAllowlistNoBlankEntries(key string, entries []string) error {
 	for _, e := range entries {
 		if strings.TrimSpace(e) == "" {
 			return fmt.Errorf("%s must not contain empty or whitespace-only entries", key)
+		}
+		if e != strings.TrimSpace(e) {
+			return fmt.Errorf("%s: entry %q must not have leading or trailing whitespace", key, e)
+		}
+	}
+	return nil
+}
+
+// validateAllowlistPatternSyntax rejects patterns that start with '*' after trim.
+// Only trailing-wildcard prefix match is implemented (see auth.matchesAllowlist); leading '*' would never match.
+func validateAllowlistPatternSyntax(key string, entries []string) error {
+	for _, e := range entries {
+		if strings.HasPrefix(strings.TrimSpace(e), "*") {
+			return fmt.Errorf("%s: pattern %q must not start with '*'; use exact match or a trailing '*' wildcard only", key, e)
 		}
 	}
 	return nil

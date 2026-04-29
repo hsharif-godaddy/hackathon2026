@@ -2,7 +2,7 @@
 # postgres://budget:budget@localhost:5432/budget_test?sslmode=disable
 #
 # Schema: run the server (or tests) with DATABASE_URL set — golang-migrate applies embedded SQL on startup.
-# Seed: `make data` (see seed/). Existing volumes keep data; to re-init, `make down -v` then `make up`.
+# Existing volumes keep data; to re-init, `make down -v` then `make up`.
 services:
   postgres:
     image: postgres:15

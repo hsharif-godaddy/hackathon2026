@@ -99,13 +99,16 @@ The UI calls **`/api/v1/…`** and **`/health`** on the dev UI origin; those req
 
 ## Makefile targets
 
-| Target               | Action                                                                                                              |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `make up`            | Postgres only (unchanged)                                                                                           |
-| `make e2e-up`        | `docker compose --profile e2e up -d` (sink + ensures postgres up)                                                   |
-| `make e2e-down`      | Stop e2e profile services (postgres unchanged)                                                                      |
-| `make e2e-local`     | Run `scripts/e2e-local.sh` with standard env defaults                                                               |
-| `make dev-budget-ui` | `go run ./cmd/dev-budget-ui` (env: `BUDGET_SERVICE_URL`, `DEV_BUDGET_UI_ADDR` — see [above](#dev-ui-dev-budget-ui)) |
+E2E-relevant targets only; full target list in [`Makefile`](../Makefile).
+
+| Target                  | Action                                                                                                              |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `make up`               | Postgres only (unchanged)                                                                                           |
+| `make e2e-up`           | `docker compose --profile e2e up -d` (sink + ensures postgres up)                                                   |
+| `make e2e-down`         | Stop e2e profile services (postgres unchanged)                                                                      |
+| `make e2e-local`        | Run `scripts/e2e-local.sh` with standard env defaults                                                               |
+| `make verify-iam-auth`  | Run `scripts/verify-iam-auth.sh` (mint IAM JWT + `GET /api/v1/auth-check`)                                          |
+| `make dev-budget-ui`    | `go run ./cmd/dev-budget-ui` (env: `BUDGET_SERVICE_URL`, `DEV_BUDGET_UI_ADDR` — see [above](#dev-ui-dev-budget-ui)) |
 
 `make test` does **not** run the shell E2E script (keeps CI fast). Go tests with `TEST_DATABASE_URL` remain the hermetic option.
 

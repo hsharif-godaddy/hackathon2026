@@ -171,13 +171,11 @@ Renewable budget items use **hybrid reset handling**: the Go background worker (
 
 **Existing volumes:** if tables exist but `schema_migrations` was never populated, baseline once (see **Migration** in [docs/database-design.md](docs/database-design.md)) or reset the volume (`make down -v` then `make up`).
 
-**Seed:** `make data` runs `seed/seed_test_data.sql` inside the container (requires schema applied and `make up`).
-
-**Integration:** set `TEST_DATABASE_URL` (tests run `migrate.Up` automatically), optional `make data`. Example: `TestGoCodeSpendMathOverHTTP` in `internal/api/budget_handlers_test.go`.
+**Integration:** set `TEST_DATABASE_URL` (tests run `migrate.Up` automatically). Example: `TestGoCodeSpendMathOverHTTP` in `internal/api/budget_handlers_test.go`.
 
 ## Makefile
 
-Targets: `up`, `down`, `logs` (Postgres), `data` (seed), `dev` (Air), `build`, `test`, `clean`, `e2e-up`, `e2e-down`, `e2e-local`, `dev-budget-ui`. See [`Makefile`](Makefile) and [docs/local-e2e.md](docs/local-e2e.md).
+Targets: `up`, `down`, `logs` (Postgres), `dev` (Air), `build`, `test`, `clean`, `e2e-up`, `e2e-down`, `e2e-local`, `dev-budget-ui`, `verify-iam-auth`, `load-test`, `load-test-contention`, `load-test-throughput`, `load-test-lifecycle`, `load-test-monitor`, `bench-baseline`, `bench-candidate`, `bench-diff`. See [`Makefile`](Makefile) and [docs/local-e2e.md](docs/local-e2e.md).
 
 ## DevOps
 
