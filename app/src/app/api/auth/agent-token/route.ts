@@ -317,6 +317,18 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       costAttributionDryRun = resolveBooleanFlag(costAttributionDryRunResult, 'agent-token.cost-attribution-dry-run-flag-check-failed', body.siteId, user.customerId);
     }
 
+    // PaaS has its own billing model outside of the Airo Plus paywall, so the
+    // AAB paywall must not gate publishes for PaaS apps. canDownload and other
+    // paywall-derived flags stay as computed.
+    if (body.owningProduct === AIRO_OWNER_PRODUCTS.PAAS_NODEJS && !canPublish) {
+      logger.info('agent-token.paas-publish-bypass', {
+        siteId: body.siteId,
+        customerId: user.customerId,
+        owningProduct: body.owningProduct,
+      });
+      canPublish = true;
+    }
+
     // Fetch bmsBudgetId from subscription when budget service is enabled
     // If fetch fails, bmsBudgetId stays undefined (cost assigned to GoDaddy)
     let bmsBudgetId: string | undefined;

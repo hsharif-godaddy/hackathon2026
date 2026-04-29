@@ -57,7 +57,7 @@ vi.mock('@/lib/control-plane', function mockControlPlaneModule() {
 vi.mock('@/lib/mgmt-airo', function mockMgmtAiroModule() {
   return {
     AiroMgmtClient: vi.fn().mockImplementation(() => mockMgmtClient),
-    AIRO_OWNER_PRODUCTS: { AIRO_APP_BUILDER: 'AiroAppBuilder' }
+    AIRO_OWNER_PRODUCTS: { AIRO_APP_BUILDER: 'AiroAppBuilder', PAAS_NODEJS: 'PaaSNodeJS' }
   };
 });
 
@@ -852,6 +852,63 @@ describe('agent-token', function packageTests() {
         expect(response.status).toBe(200);
         expect(mockJWTService.getToken).toHaveBeenCalledWith(
           expect.objectContaining({ costAttributionDryRun: true })
+        );
+      });
+    });
+
+    describe('PaaS canPublish bypass', function paasBypassTests() {
+      beforeEach(function paasBypassSetup() {
+        mockAuthenticateCustomer.mockResolvedValue({
+          isAuthenticated: true,
+          user: MOCK_USER,
+          jwt: 'user-jwt-token'
+        });
+      });
+
+      it('should force canPublish=true for PaaSNodeJS when paywall denies access', async function paasBypass() {
+        const request = createMockRequest({ siteId: MOCK_SITE_ID, owningProduct: 'PaaSNodeJS' });
+        const response = await POST(request);
+
+        expect(response.status).toBe(200);
+        expect(mockJWTService.getToken).toHaveBeenCalledWith(
+          expect.objectContaining({ canPublish: true, product: 'PaaSNodeJS' })
+        );
+      });
+
+      it('should not elevate canDownload for PaaSNodeJS when paywall denies access', async function paasNoDownloadBypass() {
+        const request = createMockRequest({ siteId: MOCK_SITE_ID, owningProduct: 'PaaSNodeJS' });
+        const response = await POST(request);
+
+        expect(response.status).toBe(200);
+        expect(mockJWTService.getToken).toHaveBeenCalledWith(
+          expect.objectContaining({ canDownload: false, canPublish: true })
+        );
+      });
+
+      it('should leave canPublish=false for AiroAppBuilder when paywall denies access', async function aabNotBypassed() {
+        const request = createMockRequest({ siteId: MOCK_SITE_ID, owningProduct: 'AiroAppBuilder' });
+        const response = await POST(request);
+
+        expect(response.status).toBe(200);
+        expect(mockJWTService.getToken).toHaveBeenCalledWith(
+          expect.objectContaining({ canPublish: false, product: 'AiroAppBuilder' })
+        );
+      });
+
+      it('should force canPublish=true for PaaSNodeJS on the site-validation cache-hit path', async function paasBypassCacheHit() {
+        const firstRequest = createMockRequest({ siteId: MOCK_SITE_ID, owningProduct: 'PaaSNodeJS' });
+        const firstResponse = await POST(firstRequest);
+        expect(firstResponse.status).toBe(200);
+        expect(mockControlPlaneAdapter.appExists).toHaveBeenCalledTimes(1);
+
+        const secondRequest = createMockRequest({ siteId: MOCK_SITE_ID, owningProduct: 'PaaSNodeJS' });
+        const secondResponse = await POST(secondRequest);
+
+        expect(secondResponse.status).toBe(200);
+        // appExists is only called from validateSiteAccess on cache miss — unchanged count proves cache hit
+        expect(mockControlPlaneAdapter.appExists).toHaveBeenCalledTimes(1);
+        expect(mockJWTService.getToken).toHaveBeenLastCalledWith(
+          expect.objectContaining({ canPublish: true, product: 'PaaSNodeJS' })
         );
       });
     });
