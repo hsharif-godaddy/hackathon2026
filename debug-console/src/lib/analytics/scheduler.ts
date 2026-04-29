@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 
 import { logger } from '@/lib/logger';
+import { requireLokiEndpoint } from '@/lib/log-sources';
 import type { LokiStream } from '@/lib/loki-client';
 
 import { INDICES, writeClient } from './es-client';
@@ -16,16 +17,6 @@ import {
   insertClientError,
   flushPendingDocs
 } from './es-db';
-
-function requireLokiEndpoint(consumerLabel: string): string {
-  const endpoint = process.env.LOKI_ENDPOINT;
-  if (!endpoint) {
-    throw new Error(
-      `LOKI_ENDPOINT is required for ${consumerLabel} but is not set`,
-    );
-  }
-  return endpoint;
-}
 
 // Pioneer events to fetch
 const PIONEER_EVENTS = [

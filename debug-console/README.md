@@ -66,21 +66,18 @@ PORT=3443 pnpm dev   # https://dev-console.airo-builder.godaddy.com:3443/
 
 ## Configuration
 
-### Loki Log Backend
+### Log Backends
 
-The debug console supports Loki as an alternative log backend. Configure via environment variables:
+Loki is the backend for the `airo-agents`, `airo-preview`, and `airo-publish` log sources and the analytics scheduler. Elasticsearch is still used for `airo-app` (Katana) and `control_plane` logs.
 
 ```bash
-# Loki endpoint (via Grafana proxy)
+# Loki endpoint (via Grafana proxy) — REQUIRED
 LOKI_ENDPOINT=https://grafana.monitoring.gd3p.tools/api/datasources/proxy/uid/ff18mpwxpc7wgd
 
 # Grafana API key (create at: https://grafana.monitoring.gd3p.tools/org/serviceaccounts)
 LOKI_API_KEY=glsa_...
-
-# Comma-separated list of sources to query via Loki (leave empty for Elasticsearch)
-LOKI_ENABLED_SOURCES=airo-agents,airo-preview,airo-publish
 ```
 
-**Create a Grafana service account token:** https://grafana.monitoring.gd3p.tools/org/serviceaccounts
+If `LOKI_ENDPOINT` is missing, the Logs tab and analytics scheduler fail fast rather than silently returning empty results. Configure Loki before deploying.
 
-When `LOKI_ENABLED_SOURCES` is empty, all sources use Elasticsearch (default behavior).
+**Create a Grafana service account token:** https://grafana.monitoring.gd3p.tools/org/serviceaccounts

@@ -60,8 +60,8 @@ describe('log level filtering logic (route.ts)', () => {
 
     it('should map to lowercase for airo-agents', () => {
       process.env.ENVIRONMENT_NAME = 'dev';
-      process.env.PIONEER_ES_ENDPOINT = 'https://test.endpoint';
-      process.env.PIONEER_ES_API_KEY = 'test-key';
+      process.env.LOKI_ENDPOINT = 'https://loki.test';
+      process.env.LOKI_API_KEY = 'loki-key';
 
       const config = getLogSourceConfig('airo-agents');
       const level = 'info';
@@ -133,8 +133,8 @@ describe('log level filtering logic (route.ts)', () => {
 
     it('should map multiple levels to lowercase for airo-agents', () => {
       process.env.ENVIRONMENT_NAME = 'dev';
-      process.env.PIONEER_ES_ENDPOINT = 'https://test.endpoint';
-      process.env.PIONEER_ES_API_KEY = 'test-key';
+      process.env.LOKI_ENDPOINT = 'https://loki.test';
+      process.env.LOKI_API_KEY = 'loki-key';
 
       const config = getLogSourceConfig('airo-agents');
       const levels = 'info,warn,error';
@@ -194,8 +194,8 @@ describe('log level filtering logic (route.ts)', () => {
 
     it('should handle airo-agents with text field (not keyword)', () => {
       process.env.ENVIRONMENT_NAME = 'dev';
-      process.env.PIONEER_ES_ENDPOINT = 'https://test.endpoint';
-      process.env.PIONEER_ES_API_KEY = 'test-key';
+      process.env.LOKI_ENDPOINT = 'https://loki.test';
+      process.env.LOKI_API_KEY = 'loki-key';
 
       const config = getLogSourceConfig('airo-agents');
 
@@ -274,8 +274,8 @@ describe('log level filtering logic (route.ts)', () => {
 
     it('should have appropriate log level mapping for each source', () => {
       process.env.ENVIRONMENT_NAME = 'dev';
-      process.env.PIONEER_ES_ENDPOINT = 'https://test.endpoint';
-      process.env.PIONEER_ES_API_KEY = 'test-key';
+      process.env.LOKI_ENDPOINT = 'https://loki.test';
+      process.env.LOKI_API_KEY = 'loki-key';
       process.env.AIRO_BUILDER_ES_ENDPOINT = 'https://airo.endpoint';
       process.env.AIRO_BUILDER_ES_API_KEY = 'airo-key';
       process.env.CONTROL_PLANE_ES_ENDPOINT = 'https://cp.endpoint';

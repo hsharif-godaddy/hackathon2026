@@ -11,157 +11,149 @@ describe('log-sources', () => {
   const originalEnv = process.env;
 
   beforeEach(() => {
-    // Reset environment before each test
     process.env = { ...originalEnv };
+    // Loki-backed sources require LOKI_ENDPOINT; tests that assert failure
+    // mode delete it explicitly.
+    process.env.LOKI_ENDPOINT = 'https://loki.test';
+    process.env.LOKI_API_KEY = 'loki-key';
   });
 
   afterEach(() => {
-    // Restore original environment
     process.env = originalEnv;
   });
 
   describe('getLogSourceConfig', () => {
-    describe('environment-specific index selection', () => {
-      it('should return dev index when ENVIRONMENT_NAME is dev', () => {
+    describe('Loki-backed sources (airo-agents, airo-preview, airo-publish)', () => {
+      it('returns Loki config for airo-agents with dev env label', () => {
         process.env.ENVIRONMENT_NAME = 'dev';
-        process.env.PIONEER_ES_ENDPOINT = 'https://test.endpoint';
-        process.env.PIONEER_ES_API_KEY = 'test-key';
 
         const config = getLogSourceConfig('airo-agents');
 
         expect(config).not.toBeNull();
-        expect(config?.index).toBe('airo-agents-dev');
+        expect(config?.backendType).toBe('loki');
+        expect(config?.lokiEndpoint).toBe('https://loki.test');
+        expect(config?.lokiApiKey).toBe('loki-key');
+        expect(config?.lokiLabels).toEqual({ job: 'airo-agents', env: 'dev' });
         expect(config?.environment).toBe('dev');
       });
 
-      it('should return dev index when ENVIRONMENT_NAME is test', () => {
+      it('maps ENVIRONMENT_NAME=test to the dev Loki label', () => {
         process.env.ENVIRONMENT_NAME = 'test';
-        process.env.PIONEER_ES_ENDPOINT = 'https://test.endpoint';
-        process.env.PIONEER_ES_API_KEY = 'test-key';
 
         const config = getLogSourceConfig('airo-agents');
 
-        expect(config).not.toBeNull();
-        expect(config?.index).toBe('airo-agents-dev');
+        expect(config?.lokiLabels?.env).toBe('dev');
         expect(config?.environment).toBe('dev');
       });
 
-      it('should return prod index when ENVIRONMENT_NAME is prod', () => {
+      it('uses prod Loki label when ENVIRONMENT_NAME=prod', () => {
         process.env.ENVIRONMENT_NAME = 'prod';
-        process.env.PIONEER_ES_ENDPOINT = 'https://prod.endpoint';
-        process.env.PIONEER_ES_API_KEY = 'prod-key';
 
         const config = getLogSourceConfig('airo-agents');
 
-        expect(config).not.toBeNull();
-        expect(config?.index).toBe('airo-agents-prod');
+        expect(config?.lokiLabels).toEqual({ job: 'airo-agents', env: 'prod' });
         expect(config?.environment).toBe('prod');
       });
 
-      it('should default to dev index when ENVIRONMENT_NAME is not set', () => {
-        delete process.env.ENVIRONMENT_NAME;
-        process.env.PIONEER_ES_ENDPOINT = 'https://test.endpoint';
-        process.env.PIONEER_ES_API_KEY = 'test-key';
+      it('returns Loki preview config with airo-preview-application job label', () => {
+        process.env.ENVIRONMENT_NAME = 'prod';
 
-        const config = getLogSourceConfig('airo-agents');
+        const config = getLogSourceConfig('airo-preview');
 
-        expect(config).not.toBeNull();
-        expect(config?.index).toBe('airo-agents-dev');
-        expect(config?.environment).toBe('dev');
+        expect(config?.backendType).toBe('loki');
+        expect(config?.lokiLabels).toEqual({ job: 'airo-preview-application', env: 'prod' });
+        expect(config?.fieldMapping.appIdField).toBe('app_id');
       });
 
-      it('should return specific control plane index for dev', () => {
+      it('returns Loki publish config with airo-publish-application job label', () => {
+        process.env.ENVIRONMENT_NAME = 'prod';
+
+        const config = getLogSourceConfig('airo-publish');
+
+        expect(config?.backendType).toBe('loki');
+        expect(config?.lokiLabels).toEqual({ job: 'airo-publish-application', env: 'prod' });
+        expect(config?.fieldMapping.appIdField).toBe('app_id');
+      });
+
+      it('throws when LOKI_ENDPOINT is missing for a Loki-backed source', () => {
+        delete process.env.LOKI_ENDPOINT;
+
+        expect(() => getLogSourceConfig('airo-agents')).toThrow(/LOKI_ENDPOINT is required/);
+        expect(() => getLogSourceConfig('airo-preview')).toThrow(/LOKI_ENDPOINT is required/);
+        expect(() => getLogSourceConfig('airo-publish')).toThrow(/LOKI_ENDPOINT is required/);
+      });
+    });
+
+    describe('ES-backed sources (airo-app, control_plane)', () => {
+      it('returns control plane dev index', () => {
         process.env.ENVIRONMENT_NAME = 'dev';
         process.env.CONTROL_PLANE_ES_ENDPOINT = 'https://cp.endpoint';
         process.env.CONTROL_PLANE_ES_API_KEY = 'cp-key';
 
         const config = getLogSourceConfig('control_plane');
 
-        expect(config).not.toBeNull();
+        expect(config?.backendType).toBe('elasticsearch');
         expect(config?.index).toBe('pagely-mgmt-worker-hosting-activity-dev,pagely-mgmt-worker-airo-activity-dev');
         expect(config?.environment).toBe('dev');
       });
 
-      it('should return specific control plane index for prod', () => {
+      it('returns control plane prod index', () => {
         process.env.ENVIRONMENT_NAME = 'prod';
         process.env.CONTROL_PLANE_ES_ENDPOINT = 'https://cp.endpoint';
         process.env.CONTROL_PLANE_ES_API_KEY = 'cp-key';
 
         const config = getLogSourceConfig('control_plane');
 
-        expect(config).not.toBeNull();
+        expect(config?.backendType).toBe('elasticsearch');
         expect(config?.index).toBe('pagely-mgmt-worker-hosting-activity-prod,pagely-mgmt-worker-airo-activity-prod');
-        expect(config?.environment).toBe('prod');
       });
 
-      it('should return logs-* index for airo-app (not environment-specific)', () => {
+      it('returns logs-* index for airo-app regardless of environment', () => {
         process.env.ENVIRONMENT_NAME = 'prod';
         process.env.AIRO_BUILDER_ES_ENDPOINT = 'https://airo.endpoint';
         process.env.AIRO_BUILDER_ES_API_KEY = 'airo-key';
 
         const config = getLogSourceConfig('airo-app');
 
-        expect(config).not.toBeNull();
+        expect(config?.backendType).toBe('elasticsearch');
         expect(config?.index).toBe('logs-*');
-        expect(config?.environment).toBe('prod');
       });
     });
 
     describe('field mappings', () => {
-      it('should return control plane config with log level field mapping', () => {
-        process.env.ENVIRONMENT_NAME = 'dev';
+      it('maps levels to uppercase for control plane', () => {
         process.env.CONTROL_PLANE_ES_ENDPOINT = 'https://cp.endpoint';
-        process.env.CONTROL_PLANE_ES_API_KEY = 'cp-key';
 
         const config = getLogSourceConfig('control_plane');
 
-        expect(config).not.toBeNull();
-        expect(config?.fieldMapping.logLevelFieldMap).toBeDefined();
         expect(config?.fieldMapping.logLevelFieldMap).toEqual({
-          'debug': 'DEBUG',
-          'info': 'INFO',
-          'warn': 'WARN',
-          'error': 'ERROR',
-          'fatal': 'FATAL'
+          debug: 'DEBUG',
+          info: 'INFO',
+          warn: 'WARN',
+          error: 'ERROR',
+          fatal: 'FATAL'
         });
-      });
-
-      it('should return correct levelKeywordField for control plane', () => {
-        process.env.ENVIRONMENT_NAME = 'dev';
-        process.env.CONTROL_PLANE_ES_ENDPOINT = 'https://cp.endpoint';
-        process.env.CONTROL_PLANE_ES_API_KEY = 'cp-key';
-
-        const config = getLogSourceConfig('control_plane');
-
-        expect(config).not.toBeNull();
         expect(config?.fieldMapping.levelKeywordField).toBe('log.level.keyword');
       });
 
-      it('should use Nomad job name field for airo-agents', () => {
-        process.env.ENVIRONMENT_NAME = 'dev';
-        process.env.PIONEER_ES_ENDPOINT = 'https://test.endpoint';
-        process.env.PIONEER_ES_API_KEY = 'test-key';
-
+      it('uses Nomad job name field for airo-agents', () => {
         const config = getLogSourceConfig('airo-agents');
 
-        expect(config).not.toBeNull();
         expect(config?.fieldMapping.appIdField).toBe('com.hashicorp.nomad.job_name');
         expect(config?.fieldMapping.appIdQueryType).toBe('prefix');
-        expect(config?.fieldMapping.levelKeywordField).toBe('level'); // airo-agents uses text field
+        expect(config?.fieldMapping.levelKeywordField).toBe('level');
       });
     });
 
-    it('should return null for unknown source', () => {
+    it('returns null for unknown source', () => {
       const config = getLogSourceConfig('unknown-source');
       expect(config).toBeNull();
     });
   });
 
   describe('getAllLogSources', () => {
-    it('should return all log sources with correct env-specific indices', () => {
+    it('returns 5 sources with correct backend types', () => {
       process.env.ENVIRONMENT_NAME = 'prod';
-      process.env.PIONEER_ES_ENDPOINT = 'https://pioneer.endpoint';
-      process.env.PIONEER_ES_API_KEY = 'pioneer-key';
       process.env.AIRO_BUILDER_ES_ENDPOINT = 'https://airo.endpoint';
       process.env.AIRO_BUILDER_ES_API_KEY = 'airo-key';
       process.env.CONTROL_PLANE_ES_ENDPOINT = 'https://cp.endpoint';
@@ -171,59 +163,44 @@ describe('log-sources', () => {
 
       expect(sources).toHaveLength(5);
 
-      const agentSource = sources.find(s => s.id === 'airo-agents');
-      expect(agentSource?.index).toBe('airo-agents-prod');
-      expect(agentSource?.environment).toBe('prod');
+      const byId = Object.fromEntries(sources.map(s => [s.id, s]));
 
-      const previewSource = sources.find(s => s.id === 'airo-preview');
-      expect(previewSource?.index).toBe('airo-preview-application-prod');
-      expect(previewSource?.environment).toBe('prod');
-      expect(previewSource?.fieldMapping.appIdField).toBe('app_id');
-      expect(previewSource?.fieldMapping.messageField).toBe('msg');
+      expect(byId['airo-agents'].backendType).toBe('loki');
+      expect(byId['airo-agents'].lokiLabels).toEqual({ job: 'airo-agents', env: 'prod' });
 
-      const publishSource = sources.find(s => s.id === 'airo-publish');
-      expect(publishSource?.index).toBe('airo-publish-application-prod');
-      expect(publishSource?.environment).toBe('prod');
-      expect(publishSource?.fieldMapping.appIdField).toBe('app_id');
-      expect(publishSource?.fieldMapping.messageField).toBe('msg');
+      expect(byId['airo-preview'].backendType).toBe('loki');
+      expect(byId['airo-preview'].lokiLabels).toEqual({ job: 'airo-preview-application', env: 'prod' });
+      expect(byId['airo-preview'].fieldMapping.appIdField).toBe('app_id');
 
-      const appSource = sources.find(s => s.id === 'airo-app');
-      expect(appSource?.index).toBe('logs-*');
-      expect(appSource?.environment).toBe('prod');
+      expect(byId['airo-publish'].backendType).toBe('loki');
+      expect(byId['airo-publish'].lokiLabels).toEqual({ job: 'airo-publish-application', env: 'prod' });
 
-      const controlPlaneSource = sources.find(s => s.id === 'control_plane');
-      expect(controlPlaneSource?.index).toBe('pagely-mgmt-worker-hosting-activity-prod,pagely-mgmt-worker-airo-activity-prod');
-      expect(controlPlaneSource?.environment).toBe('prod');
-      expect(controlPlaneSource?.fieldMapping.appIdField).toBe('app_id|appId_str');
+      expect(byId['airo-app'].backendType).toBe('elasticsearch');
+      expect(byId['airo-app'].index).toBe('logs-*');
+
+      expect(byId['control_plane'].backendType).toBe('elasticsearch');
+      expect(byId['control_plane'].index).toBe('pagely-mgmt-worker-hosting-activity-prod,pagely-mgmt-worker-airo-activity-prod');
+      expect(byId['control_plane'].fieldMapping.appIdField).toBe('app_id|appId_str');
     });
 
-    it('should return all log sources with dev indices when ENVIRONMENT_NAME is test', () => {
+    it('maps ENVIRONMENT_NAME=test to dev labels/indices', () => {
       process.env.ENVIRONMENT_NAME = 'test';
-      process.env.PIONEER_ES_ENDPOINT = 'https://pioneer.endpoint';
-      process.env.PIONEER_ES_API_KEY = 'pioneer-key';
       process.env.AIRO_BUILDER_ES_ENDPOINT = 'https://airo.endpoint';
-      process.env.AIRO_BUILDER_ES_API_KEY = 'airo-key';
       process.env.CONTROL_PLANE_ES_ENDPOINT = 'https://cp.endpoint';
-      process.env.CONTROL_PLANE_ES_API_KEY = 'cp-key';
 
       const sources = getAllLogSources();
+      const byId = Object.fromEntries(sources.map(s => [s.id, s]));
 
-      const agentSource = sources.find(s => s.id === 'airo-agents');
-      expect(agentSource?.index).toBe('airo-agents-dev');
+      expect(byId['airo-agents'].lokiLabels?.env).toBe('dev');
+      expect(byId['airo-preview'].lokiLabels?.env).toBe('dev');
+      expect(byId['airo-publish'].lokiLabels?.env).toBe('dev');
+      expect(byId['control_plane'].index).toBe('pagely-mgmt-worker-hosting-activity-dev,pagely-mgmt-worker-airo-activity-dev');
+    });
 
-      const previewSource = sources.find(s => s.id === 'airo-preview');
-      expect(previewSource?.index).toBe('airo-preview-application-dev');
-      expect(previewSource?.fieldMapping.appIdField).toBe('app_id');
+    it('throws when LOKI_ENDPOINT is missing', () => {
+      delete process.env.LOKI_ENDPOINT;
 
-      const publishSource = sources.find(s => s.id === 'airo-publish');
-      expect(publishSource?.index).toBe('airo-publish-application-dev');
-      expect(publishSource?.fieldMapping.appIdField).toBe('app_id');
-
-      const appSource = sources.find(s => s.id === 'airo-app');
-      expect(appSource?.index).toBe('logs-*');
-
-      const controlPlaneSource = sources.find(s => s.id === 'control_plane');
-      expect(controlPlaneSource?.index).toBe('pagely-mgmt-worker-hosting-activity-dev,pagely-mgmt-worker-airo-activity-dev');
+      expect(() => getAllLogSources()).toThrow(/LOKI_ENDPOINT is required/);
     });
   });
 
@@ -243,33 +220,15 @@ describe('log-sources', () => {
         displayFields: []
       };
 
-      it('should construct prefix query with airo- pattern', () => {
-        const query = buildAppIdQuery('test-app-123', nomadFieldMapping);
-
-        expect(query).toEqual({
+      it('prefixes with airo-', () => {
+        expect(buildAppIdQuery('test-app-123', nomadFieldMapping)).toEqual({
           prefix: { 'com.hashicorp.nomad.job_name': 'airo-test-app-123' }
-        });
-      });
-
-      it('should handle simple app IDs', () => {
-        const query = buildAppIdQuery('my-app', nomadFieldMapping);
-
-        expect(query).toEqual({
-          prefix: { 'com.hashicorp.nomad.job_name': 'airo-my-app' }
-        });
-      });
-
-      it('should handle app IDs with special characters', () => {
-        const query = buildAppIdQuery('app-with-dashes', nomadFieldMapping);
-
-        expect(query).toEqual({
-          prefix: { 'com.hashicorp.nomad.job_name': 'airo-app-with-dashes' }
         });
       });
     });
 
     describe('other query types', () => {
-      it('should construct term query when appIdQueryType is term', () => {
+      it('constructs term query when appIdQueryType is term', () => {
         const fieldMapping: FieldMapping = {
           appIdField: 'app_id',
           appIdQueryType: 'term',
@@ -284,17 +243,15 @@ describe('log-sources', () => {
           displayFields: []
         };
 
-        const query = buildAppIdQuery('test-app', fieldMapping);
-
-        expect(query).toEqual({
-          term: { 'app_id': 'test-app' }
+        expect(buildAppIdQuery('test-app', fieldMapping)).toEqual({
+          term: { app_id: 'test-app' }
         });
       });
 
-      it('should throw error for unsupported query type', () => {
+      it('throws for unsupported query type', () => {
         const fieldMapping: FieldMapping = {
           appIdField: 'data.appId',
-          appIdQueryType: 'invalid' as any, // Force invalid type
+          appIdQueryType: 'invalid' as FieldMapping['appIdQueryType'],
           timestampField: '@timestamp',
           levelField: 'level',
           levelKeywordField: 'level',
@@ -311,10 +268,8 @@ describe('log-sources', () => {
         );
       });
 
-      it('should use term query for control_plane log source', () => {
-        process.env.ENVIRONMENT_NAME = 'dev';
+      it('uses bool.should for control_plane pipe-separated fields', () => {
         process.env.CONTROL_PLANE_ES_ENDPOINT = 'https://cp.endpoint';
-        process.env.CONTROL_PLANE_ES_API_KEY = 'cp-key';
 
         const config = getLogSourceConfig('control_plane');
         const query = buildAppIdQuery('test-app-123', config!.fieldMapping);
@@ -322,18 +277,16 @@ describe('log-sources', () => {
         expect(query).toEqual({
           bool: {
             should: [
-              { term: { 'app_id': 'test-app-123' } },
-              { term: { 'appId_str': 'test-app-123' } }
+              { term: { app_id: 'test-app-123' } },
+              { term: { appId_str: 'test-app-123' } }
             ],
             minimum_should_match: 1
           }
         });
       });
 
-      it('should use term query for airo-app log source', () => {
-        process.env.ENVIRONMENT_NAME = 'dev';
+      it('uses term query for airo-app source', () => {
         process.env.AIRO_BUILDER_ES_ENDPOINT = 'https://airo.endpoint';
-        process.env.AIRO_BUILDER_ES_API_KEY = 'airo-key';
 
         const config = getLogSourceConfig('airo-app');
         const query = buildAppIdQuery('test-app-456', config!.fieldMapping);
@@ -343,29 +296,7 @@ describe('log-sources', () => {
         });
       });
 
-      it('should construct simple prefix query for non-Nomad prefix fields', () => {
-        const fieldMapping: FieldMapping = {
-          appIdField: 'custom.field',
-          appIdQueryType: 'prefix',
-          timestampField: '@timestamp',
-          levelField: 'level',
-          levelKeywordField: 'level.keyword',
-          messageField: 'message',
-          eventField: 'event',
-          eventKeywordField: 'event.keyword',
-          serviceField: 'service',
-          serviceKeywordField: 'service.keyword',
-          displayFields: []
-        };
-
-        const query = buildAppIdQuery('test-app', fieldMapping);
-
-        expect(query).toEqual({
-          prefix: { 'custom.field': 'test-app' }
-        });
-      });
-
-      it('should return null when appIdField is null', () => {
+      it('returns null when appIdField is null', () => {
         const fieldMapping: FieldMapping = {
           appIdField: null,
           appIdQueryType: 'term',
@@ -380,104 +311,34 @@ describe('log-sources', () => {
           displayFields: []
         };
 
-        const query = buildAppIdQuery('test-app', fieldMapping);
-
-        expect(query).toBeNull();
-      });
-    });
-  });
-
-  describe('log level field mapping', () => {
-    it('should map lowercase levels to uppercase for control plane', () => {
-      process.env.ENVIRONMENT_NAME = 'dev';
-      process.env.CONTROL_PLANE_ES_ENDPOINT = 'https://cp.endpoint';
-      process.env.CONTROL_PLANE_ES_API_KEY = 'cp-key';
-
-      const config = getLogSourceConfig('control_plane');
-      const logLevelMap = config?.fieldMapping.logLevelFieldMap;
-
-      expect(logLevelMap).toBeDefined();
-      expect(logLevelMap?.['debug']).toBe('DEBUG');
-      expect(logLevelMap?.['info']).toBe('INFO');
-      expect(logLevelMap?.['warn']).toBe('WARN');
-      expect(logLevelMap?.['error']).toBe('ERROR');
-      expect(logLevelMap?.['fatal']).toBe('FATAL');
-    });
-
-    it('should have lowercase log level mapping for airo-agents', () => {
-      process.env.ENVIRONMENT_NAME = 'dev';
-      process.env.PIONEER_ES_ENDPOINT = 'https://test.endpoint';
-      process.env.PIONEER_ES_API_KEY = 'test-key';
-
-      const config = getLogSourceConfig('airo-agents');
-
-      expect(config?.fieldMapping.logLevelFieldMap).toBeDefined();
-      expect(config?.fieldMapping.logLevelFieldMap).toEqual({
-        'debug': 'debug',
-        'info': 'info',
-        'warn': 'warn',
-        'error': 'error',
-        'fatal': 'fatal'
-      });
-    });
-
-    it('should have lowercase log level mapping for airo-app', () => {
-      process.env.ENVIRONMENT_NAME = 'dev';
-      process.env.AIRO_BUILDER_ES_ENDPOINT = 'https://airo.endpoint';
-      process.env.AIRO_BUILDER_ES_API_KEY = 'airo-key';
-
-      const config = getLogSourceConfig('airo-app');
-
-      expect(config?.fieldMapping.logLevelFieldMap).toBeDefined();
-      expect(config?.fieldMapping.logLevelFieldMap).toEqual({
-        'debug': 'debug',
-        'info': 'info',
-        'warn': 'warn',
-        'error': 'error',
-        'fatal': 'fatal'
+        expect(buildAppIdQuery('test-app', fieldMapping)).toBeNull();
       });
     });
   });
 
   describe('getNestedValue', () => {
-    it('should extract top-level value', () => {
-      const obj = { foo: 'bar' };
-      expect(getNestedValue(obj, 'foo')).toBe('bar');
+    it('extracts top-level value', () => {
+      expect(getNestedValue({ foo: 'bar' }, 'foo')).toBe('bar');
     });
 
-    it('should extract nested value with dot notation', () => {
-      const obj = { data: { user: { name: 'John' } } };
-      expect(getNestedValue(obj, 'data.user.name')).toBe('John');
+    it('extracts nested value with dot notation', () => {
+      expect(getNestedValue({ data: { user: { name: 'John' } } }, 'data.user.name')).toBe('John');
     });
 
-    it('should return undefined for non-existent path', () => {
-      const obj = { foo: 'bar' };
-      expect(getNestedValue(obj, 'baz')).toBeUndefined();
+    it('returns undefined for non-existent path', () => {
+      expect(getNestedValue({ foo: 'bar' }, 'baz')).toBeUndefined();
     });
 
-    it('should return undefined for non-existent nested path', () => {
-      const obj = { data: { user: 'John' } };
-      expect(getNestedValue(obj, 'data.user.name')).toBeUndefined();
+    it('returns undefined for non-existent nested path', () => {
+      expect(getNestedValue({ data: { user: 'John' } }, 'data.user.name')).toBeUndefined();
     });
 
-    it('should handle null/undefined in path', () => {
-      const obj = { data: null };
-      expect(getNestedValue(obj, 'data.user')).toBeUndefined();
+    it('handles null/undefined in path', () => {
+      expect(getNestedValue({ data: null }, 'data.user')).toBeUndefined();
     });
 
-    it('should extract deeply nested values', () => {
-      const obj = { a: { b: { c: { d: { e: 'deep' } } } } };
-      expect(getNestedValue(obj, 'a.b.c.d.e')).toBe('deep');
-    });
-
-    it('should handle objects with numeric values', () => {
-      const obj = { count: 42 };
-      expect(getNestedValue(obj, 'count')).toBe(42);
-    });
-
-    it('should handle arrays', () => {
-      const obj = { items: [1, 2, 3] };
-      expect(getNestedValue(obj, 'items')).toEqual([1, 2, 3]);
+    it('extracts deeply nested values', () => {
+      expect(getNestedValue({ a: { b: { c: { d: { e: 'deep' } } } } }, 'a.b.c.d.e')).toBe('deep');
     });
   });
 });

@@ -168,9 +168,59 @@ async function fetchLogsForApp(
 
   for (const sourceId of sourceIds) {
     const sourceConfig = sources.find((s) => s.id === sourceId);
-    if (!sourceConfig || !sourceConfig.apiKey) continue;
+    if (!sourceConfig) continue;
 
     const { fieldMapping } = sourceConfig;
+
+    // Loki-backed sources skip the ES `_search` REST call and fan out via the
+    // shared loki-client helpers. Without this branch the App Context tab
+    // silently shows no agent/preview/publish logs because Loki sources don't
+    // populate `apiKey` (they use `lokiApiKey`).
+    if (sourceConfig.backendType === 'loki') {
+      try {
+        const lokiParams = await buildLokiQuery({
+          appId,
+          startTime: startTime.toISOString(),
+          endTime: endTime.toISOString(),
+          size: 1000,
+          from: 0,
+        }, {
+          lokiEndpoint: sourceConfig.lokiEndpoint,
+          lokiApiKey: sourceConfig.lokiApiKey,
+          lokiLabels: sourceConfig.lokiLabels,
+          environment: sourceConfig.environment,
+        });
+
+        const lokiResponse = await queryLoki({
+          lokiEndpoint: sourceConfig.lokiEndpoint,
+          lokiApiKey: sourceConfig.lokiApiKey,
+          lokiLabels: sourceConfig.lokiLabels,
+          environment: sourceConfig.environment,
+        }, lokiParams);
+
+        const logs = transformLokiResponse(lokiResponse, fieldMapping, sourceId);
+
+        for (const log of logs) {
+          allLogs.push({
+            _id: log.id,
+            _source: {
+              '@timestamp': log.timestamp,
+              level: log.level,
+              message: log.message,
+              event: log.event,
+              ...log.raw,
+            },
+            _sourceId: sourceId,
+            _fieldMapping: fieldMapping,
+          });
+        }
+      } catch (error) {
+        logger.error('app-context.logs.loki.failed', { sourceId, appId }, { error: error as Error });
+      }
+      continue;
+    }
+
+    if (!sourceConfig.apiKey) continue;
 
     // Build query conditions
     const mustClauses: Record<string, unknown>[] = [
@@ -224,7 +274,7 @@ async function fetchLogsForApp(
         allLogs.push(...logsWithSource);
       }
     } catch (error) {
-      console.error('Error fetching logs from source:', sourceId, error);
+      logger.error('app-context.logs.es.failed', { sourceId, appId }, { error: error as Error });
     }
   }
 
@@ -581,9 +631,58 @@ async function fetchLifetimeStats(
 
   for (const sourceId of sourceIds) {
     const sourceConfig = sources.find((s) => s.id === sourceId);
-    if (!sourceConfig || !sourceConfig.apiKey) continue;
+    if (!sourceConfig) continue;
 
     const { fieldMapping } = sourceConfig;
+
+    // Loki sources don't have ES `max` aggregations — pull the most recent
+    // entry (`size: 1`, default backward direction in buildLokiQuery) and read
+    // its timestamp. Without this branch the lifetime stats on the App Context
+    // tab silently report no activity for any app after the Loki migration.
+    //
+    // The explicit 30-day startTime mirrors typical Loki retention. Without it
+    // buildLokiQuery defaults to a 24h window (loki-client.ts) and the
+    // "Last Activity" field would be blank for any app inactive for > 24h —
+    // a regression vs the ES branch's match_all (no time bound).
+    if (sourceConfig.backendType === 'loki') {
+      try {
+        const LIFETIME_LOOKBACK_MS = 30 * 24 * 60 * 60 * 1000;
+        const now = Date.now();
+        const lokiParams = await buildLokiQuery({
+          appId,
+          startTime: new Date(now - LIFETIME_LOOKBACK_MS).toISOString(),
+          endTime: new Date(now).toISOString(),
+          size: 1,
+          from: 0,
+        }, {
+          lokiEndpoint: sourceConfig.lokiEndpoint,
+          lokiApiKey: sourceConfig.lokiApiKey,
+          lokiLabels: sourceConfig.lokiLabels,
+          environment: sourceConfig.environment,
+        });
+
+        const lokiResponse = await queryLoki({
+          lokiEndpoint: sourceConfig.lokiEndpoint,
+          lokiApiKey: sourceConfig.lokiApiKey,
+          lokiLabels: sourceConfig.lokiLabels,
+          environment: sourceConfig.environment,
+        }, lokiParams);
+
+        const logs = transformLokiResponse(lokiResponse, fieldMapping, sourceId);
+        const sourceLastActivity = logs[0]?.timestamp;
+
+        if (sourceLastActivity) {
+          if (!lastActivity || new Date(sourceLastActivity) > new Date(lastActivity)) {
+            lastActivity = sourceLastActivity;
+          }
+        }
+      } catch (error) {
+        logger.error('app-context.lifetimeStats.loki.failed', { sourceId, appId }, { error: error as Error });
+      }
+      continue;
+    }
+
+    if (!sourceConfig.apiKey) continue;
 
     const mustClauses: Record<string, unknown>[] = [];
     const appIdQuery = buildAppIdQuery(appId, fieldMapping);
@@ -631,7 +730,7 @@ async function fetchLifetimeStats(
         }
       }
     } catch (error) {
-      console.error('Error fetching lifetime stats from source:', sourceId, error);
+      logger.error('app-context.lifetimeStats.es.failed', { sourceId, appId }, { error: error as Error });
     }
   }
 
@@ -696,6 +795,9 @@ async function fetchSubscriptionInfo(
     const mustBase = appIdQuery ? [appIdQuery] : [];
 
     // Strategy 1: event=summarization.detailed_llm.app_lookup
+    // (Strategies 1-3 require an ES-backed airo-agents source. After the
+    // Loki migration airo-agents is Loki-only by default; see the warn-and-
+    // skip log below for visibility into why these strategies don't run.)
     try {
       const hit = await queryESFirst(
         pioneerSource.endpoint, pioneerSource.index, pioneerSource.apiKey,
@@ -737,6 +839,16 @@ async function fetchSubscriptionInfo(
     } catch (error) {
       console.error('[app-context] subscription.strategy3.error', { appId, error: error instanceof Error ? error.message : String(error) });
     }
+  } else if (pioneerSource && pioneerSource.backendType !== 'elasticsearch') {
+    // After the Loki migration airo-agents is Loki-only — the Pioneer-ES
+    // strategies above silently skip. Emit a warn so a future debugger
+    // investigating missing subscription IDs sees why three of the four
+    // strategies aren't executing.
+    logger.warn('app-context.subscription.lokiSourceSkipped', {
+      sourceId: pioneerSource.id,
+      backendType: pioneerSource.backendType,
+      appId,
+    });
   }
 
   // Strategy 4: Check airo-app (builder client) logs for subscriptionId

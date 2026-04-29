@@ -52,11 +52,7 @@ export interface LogSourceConfig {
   fieldMapping: FieldMapping;
 }
 
-interface LogSourceRegistry {
-  [sourceId: string]: LogSourceConfig;
-}
-
-// Field mapping for Airo Agents (has app_id directly)
+// Field mapping for Airo Agents.
 // Nomad job names follow patterns: 'app-{appId}-preview/publish' (legacy) or 'airo-{appId}' (unified)
 const airoAgentsFieldMapping: FieldMapping = {
   appIdField: 'com.hashicorp.nomad.job_name',
@@ -164,225 +160,183 @@ const controlPlaneFieldMapping: FieldMapping = {
   }
 };
 
-function getESConfigForSource(sourceId: string): LogSourceConfig | null {
-  const env = process.env;
-  const envName = env.ENVIRONMENT_NAME || 'dev';
-  const isTestEnv = envName !== 'prod';
+// Sources that are served exclusively by Loki. LOKI_ENDPOINT is a hard
+// requirement (missing config is treated as a fatal error at query time so
+// operators notice a misconfigured deploy immediately instead of silently
+// returning empty log panes). LOKI_API_KEY is optional — unauthenticated
+// Loki backends and Grafana proxies with embedded auth both work without it.
+const LOKI_SOURCES: Record<string, { name: string; description: string; labels: (env: 'dev' | 'prod') => Record<string, string>; fieldMapping: FieldMapping }> = {
+  'airo-agents': {
+    name: 'Agent App',
+    description: 'Logs from the Airo Agents service',
+    labels: (env) => ({ job: 'airo-agents', env }),
+    fieldMapping: airoAgentsFieldMapping
+  },
+  'airo-preview': {
+    name: 'Preview App',
+    description: 'Logs from the preview application containers',
+    labels: (env) => ({ job: 'airo-preview-application', env }),
+    fieldMapping: airoContainerFieldMapping
+  },
+  'airo-publish': {
+    name: 'Publish App',
+    description: 'Logs from the published application containers',
+    labels: (env) => ({ job: 'airo-publish-application', env }),
+    fieldMapping: airoContainerFieldMapping
+  }
+};
 
-  const sources: LogSourceRegistry = {
-    'airo-agents': {
-      id: 'airo-agents',
-      name: 'Agent App',
-      description: 'Logs from the Airo Agents service',
-      backendType: 'elasticsearch',
-      endpoint: env.PIONEER_ES_ENDPOINT || '',
-      apiKey: env.PIONEER_ES_API_KEY || '',
-      index: isTestEnv ? 'airo-agents-dev' : 'airo-agents-prod',
-      environment: isTestEnv ? 'dev' : 'prod',
-      fieldMapping: airoAgentsFieldMapping
-    },
-    'airo-app': {
-      id: 'airo-app',
-      name: 'UI Client App',
-      description: 'Logs from the Airo App Builder application',
-      backendType: 'elasticsearch',
-      endpoint: env.AIRO_BUILDER_ES_ENDPOINT || '',
-      apiKey: env.AIRO_BUILDER_ES_API_KEY || '',
-      index: 'logs-*',
-      environment: isTestEnv ? 'dev' : 'prod',
-      fieldMapping: airoAppFieldMapping
-    },
-    'airo-preview': {
-      id: 'airo-preview',
-      name: 'Preview App',
-      description: 'Logs from the preview application containers',
-      backendType: 'elasticsearch',
-      endpoint: env.PIONEER_ES_ENDPOINT || '',
-      apiKey: env.PIONEER_ES_API_KEY || '',
-      index: isTestEnv ? 'airo-preview-application-dev' : 'airo-preview-application-prod',
-      environment: isTestEnv ? 'dev' : 'prod',
-      fieldMapping: airoContainerFieldMapping
-    },
-    'airo-publish': {
-      id: 'airo-publish',
-      name: 'Publish App',
-      description: 'Logs from the published application containers',
-      backendType: 'elasticsearch',
-      endpoint: env.PIONEER_ES_ENDPOINT || '',
-      apiKey: env.PIONEER_ES_API_KEY || '',
-      index: isTestEnv ? 'airo-publish-application-dev' : 'airo-publish-application-prod',
-      environment: isTestEnv ? 'dev' : 'prod',
-      fieldMapping: airoContainerFieldMapping
-    },
-    'control_plane': {
-      id: 'control_plane',
-      name: 'Control Plane',
-      description: 'Logs from the hosting service',
-      backendType: 'elasticsearch',
-      endpoint: env.CONTROL_PLANE_ES_ENDPOINT || '',
-      apiKey: env.CONTROL_PLANE_ES_API_KEY || '',
-      index: isTestEnv ? 'pagely-mgmt-worker-hosting-activity-dev,pagely-mgmt-worker-airo-activity-dev' : 'pagely-mgmt-worker-hosting-activity-prod,pagely-mgmt-worker-airo-activity-prod',
-      environment: isTestEnv ? 'dev' : 'prod',
-      fieldMapping: controlPlaneFieldMapping
-    }
-  };
+// Sources that remain on Elasticsearch. Each uses its own dedicated ES cluster
+// (Katana for `airo-app`, hosting for `control_plane`) so they stay on ES until
+// those upstreams publish to Loki as well.
+const ES_SOURCES: Record<string, {
+  name: string;
+  description: string;
+  endpointEnv: string;
+  apiKeyEnv: string;
+  index: (env: 'dev' | 'prod') => string;
+  fieldMapping: FieldMapping;
+}> = {
+  'airo-app': {
+    name: 'UI Client App',
+    description: 'Logs from the Airo App Builder application',
+    endpointEnv: 'AIRO_BUILDER_ES_ENDPOINT',
+    apiKeyEnv: 'AIRO_BUILDER_ES_API_KEY',
+    index: () => 'logs-*',
+    fieldMapping: airoAppFieldMapping
+  },
+  'control_plane': {
+    name: 'Control Plane',
+    description: 'Logs from the hosting service',
+    endpointEnv: 'CONTROL_PLANE_ES_ENDPOINT',
+    apiKeyEnv: 'CONTROL_PLANE_ES_API_KEY',
+    index: (env) =>
+      env === 'prod'
+        ? 'pagely-mgmt-worker-hosting-activity-prod,pagely-mgmt-worker-airo-activity-prod'
+        : 'pagely-mgmt-worker-hosting-activity-dev,pagely-mgmt-worker-airo-activity-dev',
+    fieldMapping: controlPlaneFieldMapping
+  }
+};
 
-  return sources[sourceId] || null;
+function resolvedEnv(): 'dev' | 'prod' {
+  return (process.env.ENVIRONMENT_NAME || 'dev') === 'prod' ? 'prod' : 'dev';
 }
 
 /**
- * Build Loki labels for a specific source based on actual Loki structure
- * Returns null for unknown sources to prevent scanning all Loki streams
+ * Read LOKI_ENDPOINT, throwing a consistent error when it's missing. Shared
+ * between log-sources (Logs tab) and the analytics scheduler so operators
+ * see the same message regardless of which surface fails first.
+ *
+ * @param context short description of the caller for the error message
+ *   (e.g. `log source 'airo-agents'` or `the analytics scheduler`).
  */
-function buildLokiLabelsForSource(sourceId: string, envName: string): Record<string, string> | null {
-  const env = envName === 'prod' ? 'prod' : 'dev';  // Map test/dev → dev
-
-  const labels: Record<string, Record<string, string>> = {
-    'airo-agents': {
-      job: 'airo-agents',
-      env: env
-    },
-    'airo-preview': {
-      job: 'airo-preview-application',
-      env: env
-    },
-    'airo-publish': {
-      job: 'airo-publish-application',
-      env: env
-    }
-  };
-
-  return labels[sourceId] || null;
+export function requireLokiEndpoint(context: string): string {
+  const endpoint = process.env.LOKI_ENDPOINT;
+  if (!endpoint) {
+    throw new Error(
+      `LOKI_ENDPOINT is required for ${context}. ` +
+      `Set LOKI_ENDPOINT (and LOKI_API_KEY for authenticated backends) in the environment.`
+    );
+  }
+  return endpoint;
 }
 
 /**
- * Get Loki config for a specific source
+ * Build a Loki-backed LogSourceConfig. Throws if LOKI_ENDPOINT is not set so
+ * operators can't silently ship a deploy where airo-agents/preview/publish
+ * have no log backend.
  */
-function getLokiConfigForSource(sourceId: string): LogSourceConfig | null {
-  const env = process.env;
-  const envName = env.ENVIRONMENT_NAME || 'dev';
-
-  const lokiEndpoint = env.LOKI_ENDPOINT || '';
-  const lokiApiKey = env.LOKI_API_KEY || '';
-
-  if (!lokiEndpoint) {
-    console.warn('[log-sources] LOKI_ENDPOINT not configured for source:', sourceId);
-    return null;
+function buildLokiConfig(sourceId: string): LogSourceConfig {
+  const entry = LOKI_SOURCES[sourceId];
+  if (!entry) {
+    throw new Error(`Unknown Loki log source: ${sourceId}`);
   }
 
-  // Get base metadata for this source
-  const baseConfig = getESConfigForSource(sourceId);
-  if (!baseConfig) {
-    return null;
-  }
+  const lokiEndpoint = requireLokiEndpoint(`log source '${sourceId}'`);
 
-  // Get Loki labels for this source
-  const lokiLabels = buildLokiLabelsForSource(sourceId, envName);
-  if (!lokiLabels) {
-    console.warn('[log-sources] Unknown Loki source ID:', sourceId, '- not mapped in buildLokiLabelsForSource');
-    return null;
-  }
-
+  const env = resolvedEnv();
   return {
-    id: baseConfig.id,
-    name: baseConfig.name,
-    description: baseConfig.description,
+    id: sourceId,
+    name: entry.name,
+    description: entry.description,
     backendType: 'loki',
     lokiEndpoint,
-    lokiApiKey,
-    lokiLabels,
-    environment: envName === 'prod' ? 'prod' : 'dev',
-    fieldMapping: baseConfig.fieldMapping
+    lokiApiKey: process.env.LOKI_API_KEY || '',
+    lokiLabels: entry.labels(env),
+    environment: env,
+    fieldMapping: entry.fieldMapping
+  };
+}
+
+// Track which missing-endpoint warnings we've already emitted so a hot path
+// (e.g. log poll loop) doesn't spam the same message every request.
+const warnedMissingEsEndpoint = new Set<string>();
+
+function buildESConfig(sourceId: string): LogSourceConfig | null {
+  // `Object.hasOwn` (not bracket-then-truthy) so prototype keys like
+  // `toString`/`__proto__` arriving via a `?source=...` query param don't
+  // resolve to inherited methods and trigger a 500 (`entry.index is not a
+  // function`). This is the active guard — do not weaken without replacing.
+  if (!Object.hasOwn(ES_SOURCES, sourceId)) return null;
+  const entry = ES_SOURCES[sourceId];
+
+  const endpoint = process.env[entry.endpointEnv] || '';
+  const apiKey = process.env[entry.apiKeyEnv] || '';
+  // Surface a missing endpoint loudly. ES sources are legacy and fall back
+  // gracefully (callers downstream of streamConfiguredLogSources record the
+  // resulting fetch failure), but a blank endpoint reaching the network layer
+  // produces an opaque ERR_INVALID_URL — warn here so operators get the
+  // actionable env var name instead of debugging a generic URL parse error.
+  if (!endpoint && !warnedMissingEsEndpoint.has(sourceId)) {
+    warnedMissingEsEndpoint.add(sourceId);
+    console.warn(
+      `[log-sources] ES source '${sourceId}' is configured but ${entry.endpointEnv} is not set. ` +
+      `Queries against this source will fail with a network/URL error until the env var is provided.`
+    );
+  }
+
+  const env = resolvedEnv();
+  return {
+    id: sourceId,
+    name: entry.name,
+    description: entry.description,
+    backendType: 'elasticsearch',
+    endpoint,
+    apiKey,
+    index: entry.index(env),
+    environment: env,
+    fieldMapping: entry.fieldMapping
   };
 }
 
 // Default log sources used by app-context summary + error-details aggregation
-// when the caller does not pass an explicit `sources` query param. Keep in
-// sync with the source IDs registered in `getESConfigForSource`.
+// when the caller does not pass an explicit `sources` query param. Derived
+// from the source tables so new entries are picked up automatically.
 export const DEFAULT_SUMMARY_SOURCE_IDS: readonly string[] = [
-  'airo-agents',
-  'airo-app',
-  'airo-preview',
-  'airo-publish',
-  'control_plane',
+  ...Object.keys(LOKI_SOURCES),
+  ...Object.keys(ES_SOURCES),
 ];
 
 export function getLogSourceConfig(sourceId: string): LogSourceConfig | null {
-  // Check if this source should use Loki
-  const lokiEnabledSources = (process.env.LOKI_ENABLED_SOURCES || '')
-    .split(',')
-    .map(s => s.trim())
-    .filter(Boolean);
-
-  if (lokiEnabledSources.includes(sourceId)) {
-    return getLokiConfigForSource(sourceId);
+  // `Object.hasOwn` (not `in`) so prototype keys like `toString`/`__proto__`
+  // from a `?source=...` query param don't reach buildLokiConfig and produce
+  // a confusing "Unknown Loki log source" throw — return null cleanly instead.
+  if (Object.hasOwn(LOKI_SOURCES, sourceId)) {
+    return buildLokiConfig(sourceId);
   }
-
-  return getESConfigForSource(sourceId);
+  return buildESConfig(sourceId);
 }
 
 export function getAllLogSources(): LogSourceConfig[] {
-  const env = process.env;
-  const envName = env.ENVIRONMENT_NAME || 'dev';
-  const isTestEnv = envName !== 'prod';
-
-  return [
-    {
-      id: 'airo-agents',
-      name: 'Agent App',
-      description: 'Logs from the Airo Agents service',
-      backendType: 'elasticsearch',
-      endpoint: env.PIONEER_ES_ENDPOINT || '',
-      apiKey: env.PIONEER_ES_API_KEY || '',
-      index: isTestEnv ? 'airo-agents-dev' : 'airo-agents-prod',
-      environment: isTestEnv ? 'dev' : 'prod',
-      fieldMapping: airoAgentsFieldMapping
-    },
-    {
-      id: 'airo-preview',
-      name: 'Preview App',
-      description: 'Logs from the preview application containers',
-      backendType: 'elasticsearch',
-      endpoint: env.PIONEER_ES_ENDPOINT || '',
-      apiKey: env.PIONEER_ES_API_KEY || '',
-      index: isTestEnv ? 'airo-preview-application-dev' : 'airo-preview-application-prod',
-      environment: isTestEnv ? 'dev' : 'prod',
-      fieldMapping: airoContainerFieldMapping
-    },
-    {
-      id: 'airo-publish',
-      name: 'Publish App',
-      description: 'Logs from the published application containers',
-      backendType: 'elasticsearch',
-      endpoint: env.PIONEER_ES_ENDPOINT || '',
-      apiKey: env.PIONEER_ES_API_KEY || '',
-      index: isTestEnv ? 'airo-publish-application-dev' : 'airo-publish-application-prod',
-      environment: isTestEnv ? 'dev' : 'prod',
-      fieldMapping: airoContainerFieldMapping
-    },
-    {
-      id: 'airo-app',
-      name: 'UI Client App',
-      description: 'Logs from the Airo App Builder application',
-      backendType: 'elasticsearch',
-      endpoint: env.AIRO_BUILDER_ES_ENDPOINT || '',
-      apiKey: env.AIRO_BUILDER_ES_API_KEY || '',
-      index: 'logs-*',
-      environment: isTestEnv ? 'dev' : 'prod',
-      fieldMapping: airoAppFieldMapping
-    },
-    {
-      id: 'control_plane',
-      name: 'Control Plane',
-      description: 'Logs from the hosting service',
-      backendType: 'elasticsearch',
-      endpoint: env.CONTROL_PLANE_ES_ENDPOINT || '',
-      apiKey: env.CONTROL_PLANE_ES_API_KEY || '',
-      index: isTestEnv ? 'pagely-mgmt-worker-hosting-activity-dev,pagely-mgmt-worker-airo-activity-dev' : 'pagely-mgmt-worker-hosting-activity-prod,pagely-mgmt-worker-airo-activity-prod',
-      environment: isTestEnv ? 'dev' : 'prod',
-      fieldMapping: controlPlaneFieldMapping
-    }
-  ];
+  const sources: LogSourceConfig[] = [];
+  for (const sourceId of Object.keys(LOKI_SOURCES)) {
+    sources.push(buildLokiConfig(sourceId));
+  }
+  for (const sourceId of Object.keys(ES_SOURCES)) {
+    const config = buildESConfig(sourceId);
+    if (config) sources.push(config);
+  }
+  return sources;
 }
 
 // Helper function to get value from nested path

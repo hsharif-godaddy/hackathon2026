@@ -259,7 +259,7 @@ export async function queryLoki(
   }
 
   // Guard against non-JSON 200s (e.g. an upstream Grafana proxy returning an
-  // HTML error page). Without this, response.json() throws a bare SyntaxError
+  // HTML error page) — without this, response.json() throws a bare SyntaxError
   // that's hard to debug at the caller. Mirrors iterLokiEventLines in
   // analytics/scheduler.ts.
   let data: LokiQueryResponse;
@@ -267,8 +267,7 @@ export async function queryLoki(
     data = await response.json() as LokiQueryResponse;
   } catch (err) {
     throw new Error(
-      `Loki query returned a non-JSON 200 response: ${err instanceof Error ? err.message : 'parse error'}`,
-      { cause: err }
+      `Loki query returned a non-JSON 200 response: ${err instanceof Error ? err.message : 'parse error'}`
     );
   }
 
@@ -358,11 +357,8 @@ export function transformLokiResponse(
 
         logs.push(logEntry);
       } catch (error) {
-        console.error(
-          '[loki-client] Failed to parse log entry:',
-          { sourceId, timestampNs, logLineSnippet: logLine.slice(0, 100) },
-          error
-        );
+        console.error('[loki-client] Failed to parse log entry:', error);
+        // Skip malformed entries
       }
     }
   }

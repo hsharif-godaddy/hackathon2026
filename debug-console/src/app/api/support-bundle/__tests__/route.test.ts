@@ -294,11 +294,8 @@ describe('streamConfiguredLogSources', () => {
 
   beforeEach(() => {
     process.env = { ...originalEnv };
-    process.env.LOKI_ENABLED_SOURCES = 'airo-agents';
     process.env.LOKI_ENDPOINT = 'https://loki.test';
     process.env.LOKI_API_KEY = 'loki-key';
-    process.env.PIONEER_ES_ENDPOINT = 'https://pioneer.test';
-    process.env.PIONEER_ES_API_KEY = 'pioneer-key';
     process.env.AIRO_BUILDER_ES_ENDPOINT = 'https://airo.test';
     process.env.AIRO_BUILDER_ES_API_KEY = 'airo-key';
     process.env.CONTROL_PLANE_ES_ENDPOINT = 'https://cp.test';
@@ -349,9 +346,12 @@ describe('streamConfiguredLogSources', () => {
       hits: { hits: [{ _id: 'loki-entry' }] },
     });
     expect(sourceMeta['airo-agents']).toMatchObject({ name: 'Agent App' });
-    // Assert on sourceMeta keys instead of fetch call count so adding/removing
-    // a default source doesn't spuriously break this test.
-    const esKeys = Object.keys(sourceMeta).filter((k) => k !== 'airo-agents');
+    // airo-agents/preview/publish are Loki-only (no fetch); airo-app +
+    // control_plane are ES (one fetch each). Assert on sourceMeta key set
+    // rather than a hardcoded count so adding/removing a default source
+    // doesn't spuriously break this test.
+    const lokiKeys = ['airo-agents', 'airo-preview', 'airo-publish'];
+    const esKeys = Object.keys(sourceMeta).filter((k) => !lokiKeys.includes(k));
     expect(fetchSpy).toHaveBeenCalledTimes(esKeys.length);
     expect(sourceMeta['airo-preview']).toMatchObject({ name: 'Preview App' });
     expect(sourceMeta['airo-publish']).toMatchObject({ name: 'Publish App' });
@@ -379,11 +379,15 @@ describe('streamConfiguredLogSources', () => {
     const lokiEntry = appended.find((a) => a.name === 'logs/airo-agents.json');
     expect(lokiEntry).toBeDefined();
     expect(lokiEntry?.body).toBe('{"hits":{"hits":[]}}');
-    expect(sourceMeta['airo-agents']).toMatchObject({ error: 'Unknown log source' });
-    const esKeys = Object.keys(sourceMeta).filter((k) => k !== 'airo-agents');
+    // requireLokiEndpoint throws with a fail-fast message when LOKI_ENDPOINT
+    // is missing — matches what production operators will see in the bundle
+    // metadata when they ship a deploy without Loki configured.
+    expect(sourceMeta['airo-agents']).toMatchObject({
+      error: expect.stringContaining('LOKI_ENDPOINT is required'),
+    });
+    const lokiKeys = ['airo-agents', 'airo-preview', 'airo-publish'];
+    const esKeys = Object.keys(sourceMeta).filter((k) => !lokiKeys.includes(k));
     expect(fetchSpy).toHaveBeenCalledTimes(esKeys.length);
-    expect(sourceMeta['airo-preview']).toMatchObject({ name: 'Preview App' });
-    expect(sourceMeta['airo-publish']).toMatchObject({ name: 'Publish App' });
     expect(sourceMeta['airo-app']).toMatchObject({ name: 'UI Client App' });
     expect(sourceMeta['control_plane']).toMatchObject({ name: 'Control Plane' });
   });
@@ -406,8 +410,12 @@ describe('streamConfiguredLogSources', () => {
       '2026-04-22T01:00:00Z',
     );
 
-    expect(sourceMeta['airo-agents']).toMatchObject({ error: 'Unknown log source' });
-    expect(sourceMeta['airo-preview']).toMatchObject({ error: 'append failed' });
+    expect(sourceMeta['airo-agents']).toMatchObject({
+      error: expect.stringContaining('LOKI_ENDPOINT is required'),
+    });
+    expect(sourceMeta['airo-preview']).toMatchObject({
+      error: expect.stringContaining('LOKI_ENDPOINT is required'),
+    });
     expect(mockedLoggerError).toHaveBeenCalledWith(
       'supportBundle.archive.appendFailed',
       { name: expect.any(String) },
