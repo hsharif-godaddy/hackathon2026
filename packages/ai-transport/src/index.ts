@@ -95,6 +95,13 @@ export { coalesceEvents } from './coalesce-events.js'
 export { StreamPartProcessor } from './stream-part-processor.js'
 export type { PartProcessorCallbacks, PartProcessorState, ToolCallRecord } from './stream-part-processor.js'
 
+// Skill output redaction (shared by WS + SSE transports before emitting tool-result)
+export { redactSkillOutput } from './redact-skill-output.js'
+
+// Agent Execution Loop
+export { executeAgentLoop, AgentNotFoundError, MAX_HANDOFFS } from './agent-execution-loop.js'
+export type { AgentExecutionLoopCallbacks, AgentExecutionLoopResult, AgentExecutionTermination } from './agent-execution-loop.js'
+
 // Client Action Registry
 export { ClientActionRegistry } from './client-action-registry.js'
 export type { ClientActionHandler, ClientActionRequest, ClientActionResult } from './client-action-registry.js'

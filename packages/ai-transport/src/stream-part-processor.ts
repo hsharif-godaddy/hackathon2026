@@ -1,10 +1,37 @@
+/** Callbacks driving `StreamPartProcessor.processPart`.
+ *
+ * **Error contract:** `onError` MAY throw — `processPart` relies on that to
+ * propagate stream-level errors (e.g. budget-exceeded) out to the transport's
+ * outer catch. All other callbacks MUST NOT throw. `processPart` has no
+ * try/catch around tool-lifecycle callbacks; a throw there aborts
+ * `processPart` mid-iteration with the processor's internal state partially
+ * updated. Implementations that do additional work inside those callbacks
+ * (I/O, event publishing, APM hooks) must guard internally. */
 export interface PartProcessorCallbacks {
   onTextDelta(content: string, accumulated: string): void
   onToolStart(toolCallId: string, toolName: string, step: number): void
-  onToolInputDelta(toolCallId: string, delta: string, accumulated: string): void
+  onToolInputDelta(toolCallId: string, delta: string, accumulated: string, toolName: string | undefined): void
   onToolCall(toolCallId: string, toolName: string, parsedInput: unknown): void
-  onToolResult(toolCallId: string, result: unknown): void
-  onToolError(toolCallId: string, error: Error): void
+  /** `sdkInput` is `part.input` from the AI SDK when present — the SDK's
+   * authoritative final parsed input (post-schema coercion/defaults). The
+   * accumulated buffer version is available via `processor.getToolCall()`.
+   * Consumers should prefer `sdkInput` when defined. Typed as `unknown`
+   * because the SDK's shape depends on the tool's Zod schema — a
+   * `z.object(...)` tool yields an object, a `z.string()` tool yields a
+   * string, a `z.array(...)` tool yields an array. `null` is kept distinct
+   * from `undefined`: `null` is a schema-allowed nullable argument (the
+   * SDK validated and accepted it); `undefined` means the SDK did not
+   * supply input on this part and the consumer should fall back to
+   * `processor.getToolCall().input`. Collapsing them would lose that
+   * signal.
+   *
+   * `toolName` is forwarded from `part.toolName` when the SDK provides it.
+   * It is undefined for orphan result/error parts that arrive without a
+   * prior `tool-input-start` AND without a `toolName` field. Consumers
+   * should prefer this over `processor.getToolCall(id)?.name`, which is
+   * unavailable for orphan parts, before falling back to `'unknown'`. */
+  onToolResult(toolCallId: string, result: unknown, sdkInput: unknown, toolName: string | undefined): void
+  onToolError(toolCallId: string, error: Error, sdkInput: unknown, toolName: string | undefined): void
   onStepStart(step: number): void
   onError(error: Error): void
 }
@@ -23,6 +50,16 @@ export interface PartProcessorState {
   toolCalls: Map<string, ToolCallRecord>
   accumulatedToolInputs: Map<string, string>
   currentStep: number
+}
+
+function extractToolError(raw: unknown): Error {
+  if (raw instanceof Error) return raw
+  if (typeof raw === 'string') return new Error(raw || 'Tool execution error')
+  if (raw && typeof raw === 'object') {
+    const message = (raw as { message?: unknown }).message
+    if (typeof message === 'string' && message.length > 0) return new Error(message)
+  }
+  return new Error('Tool execution error')
 }
 
 export class StreamPartProcessor {
@@ -73,12 +110,15 @@ export class StreamPartProcessor {
         const current = this.state.accumulatedToolInputs.get(id) ?? ''
         const accumulated = current + delta
         this.state.accumulatedToolInputs.set(id, accumulated)
-        this.callbacks.onToolInputDelta(id, delta, accumulated)
+        // Prefer part.toolName (SDK-provided) and fall back to the registered
+        // record so out-of-order streams still emit a name when possible.
+        const toolName = (part.toolName as string | undefined) ?? this.state.toolCalls.get(id)?.name
+        this.callbacks.onToolInputDelta(id, delta, accumulated, toolName)
         break
       }
 
       case 'tool-call': {
-        const id = (part.toolCallId ?? part.id) as string
+        const id = (part.id ?? part.toolCallId) as string
         const toolName = part.toolName as string
         const rawInput = this.state.accumulatedToolInputs.get(id) ?? ''
         let parsedInput: unknown
@@ -98,30 +138,37 @@ export class StreamPartProcessor {
       }
 
       case 'tool-result': {
-        const id = (part.toolCallId ?? part.id) as string
+        const id = (part.id ?? part.toolCallId) as string
         const toolCall = this.state.toolCalls.get(id)
         if (toolCall) {
           toolCall.output = part.output
           toolCall.status = 'completed'
+          if (part.input !== undefined) toolCall.input = part.input
         }
-        this.callbacks.onToolResult(id, part.output)
+        const toolName = (part.toolName as string | undefined) ?? toolCall?.name
+        this.callbacks.onToolResult(id, part.output, part.input, toolName)
         break
       }
 
       case 'tool-error': {
-        const id = (part.toolId ?? part.toolCallId ?? part.id) as string
-        const error = part.error instanceof Error ? part.error : new Error(String(part.error))
+        const id = (part.id ?? part.toolCallId ?? part.toolId) as string
+        const error = extractToolError(part.error)
         const toolCall = this.state.toolCalls.get(id)
         if (toolCall) {
           toolCall.status = 'error'
           toolCall.error = error.message
+          if (part.input !== undefined) toolCall.input = part.input
         }
-        this.callbacks.onToolError(id, error)
+        const toolName = (part.toolName as string | undefined) ?? toolCall?.name
+        this.callbacks.onToolError(id, error, part.input, toolName)
         break
       }
 
       case 'error': {
-        const error = part.error instanceof Error ? part.error : new Error(String(part.error))
+        // Use extractToolError (same helper as tool-error) so structured
+        // payloads like { message: 'budget exceeded', statusCode: 429 } keep
+        // their `.message` instead of stringifying to '[object Object]'.
+        const error = extractToolError(part.error)
         this.callbacks.onError(error)
         break
       }
@@ -139,7 +186,16 @@ export class StreamPartProcessor {
     return this.state.currentStep
   }
 
-  getState(): PartProcessorState {
+  /** Snapshot of internal state. Maps and record shells are cloned, but
+   * `ToolCallRecord.input` and `ToolCallRecord.output` are shallow-copied
+   * by reference — mutating a nested object on a snapshot would corrupt
+   * the processor's live state. The return type enforces shallow read-
+   * only-ness at the type level; deep-clone the fields you intend to
+   * mutate. */
+  getState(): Readonly<Omit<PartProcessorState, 'toolCalls' | 'accumulatedToolInputs'>> & {
+    readonly toolCalls: ReadonlyMap<string, Readonly<ToolCallRecord>>
+    readonly accumulatedToolInputs: ReadonlyMap<string, string>
+  } {
     const toolCalls = new Map<string, ToolCallRecord>()
     for (const [k, v] of this.state.toolCalls) {
       toolCalls.set(k, { ...v })

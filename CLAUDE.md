@@ -39,19 +39,20 @@ if (options.token && options.repoUrl) {
 
 ## Services
 
-| Service                  | Package        | Port | Notes                                                                           |
-| ------------------------ | -------------- | ---- | ------------------------------------------------------------------------------- |
-| **agents/**              | `@airo/agents` | 4000 | Express API, AI agents, SQLite, WebSocket                                       |
-| **app/**                 | `website`      | 3000 | Next.js BFF + builder UI                                                        |
-| **dev-supervisor/**      | Go binary      | —    | PID1, process lifecycle, HTTP proxy, JWT auth                                   |
-| **local-control-plane/** | Go binary      | 4100 | Local mgmt-airo API, SQLite + Docker                                            |
-| **proxy/**               | `airo-proxy`   | —    | Getty Images API proxy                                                          |
-| **packages/shared/**     | `@airo/shared` | —    | Shared types and pure utilities (grants, context-attachment, social, websocket) |
-| **packages/ai-lib/**     | `@airo/ai-lib` | —    | AI SDK wrapper, consumed by agents                                              |
+| Service                    | Package              | Port | Notes                                                                           |
+| -------------------------- | -------------------- | ---- | ------------------------------------------------------------------------------- |
+| **agents/**                | `@airo/agents`       | 4000 | Express API, AI agents, SQLite, WebSocket                                       |
+| **app/**                   | `website`            | 3000 | Next.js BFF + builder UI                                                        |
+| **dev-supervisor/**        | Go binary            | —    | PID1, process lifecycle, HTTP proxy, JWT auth                                   |
+| **local-control-plane/**   | Go binary            | 4100 | Local mgmt-airo API, SQLite + Docker                                            |
+| **proxy/**                 | `airo-proxy`         | —    | Getty Images API proxy                                                          |
+| **packages/shared/**       | `@airo/shared`       | —    | Shared types and pure utilities (grants, context-attachment, social, websocket) |
+| **packages/ai-lib/**       | `@airo/ai-lib`       | —    | AI SDK wrapper, consumed by agents                                              |
+| **packages/ai-transport/** | `@airo/ai-transport` | —    | Transport-agnostic shared code for WS + SSE servers (loop, processor, events)   |
 
 Additional: `app-templates/` (v8 template), `packages/design-extractor/` (PDF RAG), `e2e/` (E2E tests)
 
-See service-specific CLAUDE.md files: [agents/](agents/CLAUDE.md), [app/](app/CLAUDE.md), [dev-supervisor/](dev-supervisor/CLAUDE.md), [local-control-plane/](local-control-plane/CLAUDE.md), [go-agent/](go-agent/CLAUDE.md)
+See service-specific CLAUDE.md files: [agents/](agents/CLAUDE.md), [app/](app/CLAUDE.md), [dev-supervisor/](dev-supervisor/CLAUDE.md), [local-control-plane/](local-control-plane/CLAUDE.md), [go-agent/](go-agent/CLAUDE.md), [packages/ai-transport/](packages/ai-transport/CLAUDE.md)
 
 ## Publish Flow Architecture
 

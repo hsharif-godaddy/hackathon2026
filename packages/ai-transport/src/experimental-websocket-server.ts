@@ -9,6 +9,8 @@ import { buildTokenUsage, calculateCostEstimate, formatCostEstimate, getCacheHit
 import type { ExecutionStep } from '@airo/ai-lib/budget'
 import { classifyError, BudgetExceededError, isBudgetExceededAPIError, createLogger } from '@airo/ai-common'
 import { isBudgetServiceError, mapBudgetErrorToResponse } from '@airo/shared/budget'
+import { StreamPartProcessor } from './stream-part-processor.js'
+import { redactSkillOutput } from './redact-skill-output.js'
 import type { AgentsCollection } from '@airo/ai-lib'
 import type { HandoffStateManager } from '@airo/ai-lib'
 import {
@@ -28,6 +30,7 @@ import { WebSocketSubscriber } from './subscribers/websocket-subscriber.js'
 import { PersistenceSubscriber } from './subscribers/persistence-subscriber.js'
 import { ConnectionStateManager, type ConnectionStateData } from './connection-state-manager.js'
 import { ConnectionRecoveryManager } from './connection-recovery-manager.js'
+import { executeAgentLoop, AgentNotFoundError } from './agent-execution-loop.js'
 import { context as otelContext, trace } from '@opentelemetry/api'
 import { createError, createHandoff } from '@godaddy/agent-observability-events'
 import {
@@ -77,23 +80,6 @@ type MetadataRecord = Record<string, unknown> & {
   appId?: string
   conversationId?: string
   subscriptionId?: string
-}
-
-/**
- * Redact sensitive fields from skill tool output before sending to clients.
- * Replaces `instructions` and `dependentInstructions` with '[redacted]' when present.
- * Returns the output unchanged for non-skill tools or non-object outputs.
- */
-export function redactSkillOutput(toolName: string, output: unknown): unknown {
-  if (toolName !== 'skill' || !output || typeof output !== 'object' || Array.isArray(output)) {
-    return output
-  }
-  const out = output as Record<string, unknown>
-  return {
-    ...out,
-    ...('instructions' in out && { instructions: '[redacted]' }),
-    ...('dependentInstructions' in out && { dependentInstructions: '[redacted]' })
-  }
 }
 
 /** Defense-in-depth cap for one user turn over chat WebSocket (message + context attachment strings). */
@@ -220,18 +206,19 @@ export interface WebSocketConfig {
     [key: string]: unknown
   } | void>
   /**
-   * Called AFTER the primary agent stream completes (and after any tool-triggered
-   * auto-continuation has been detected) but BEFORE `beforeMessageComplete` /
-   * `completeConversation`. Lets the caller run server-side validation on what the
-   * agent just produced (e.g. a type check against the preview workspace) and
-   * request an additional in-loop continuation turn using a synthetic user prompt.
+   * Optional post-stream validator run after a completed stream iteration (and
+   * BEFORE auto-continuation / handoff checks) but BEFORE
+   * `beforeMessageComplete` / `completeConversation`. Lets the caller run
+   * server-side validation on what the agent just produced (e.g. a type check
+   * against the preview workspace) and request an additional in-loop
+   * continuation turn using a synthetic user prompt.
    *
    * The hook is invoked once per completed `streamAgentResponse` iteration. If it
    * returns `{ continuationPrompt }`, the same while loop that handles
    * auto-continuation and handoffs will re-run the current agent with that prompt
    * as the next "user" message. This happens before the git squash-merge in
    * `beforeMessageComplete`, so any files written by the continuation land in the
-   * same squashed commit. The caller is responsible for its own retry cap — the
+   * same squashed commit. The caller is responsible for its own retry cap - the
    * server will only bail on the overall `maxHandoffs` loop guard.
    *
    * `toolCalls` contains the tool calls that ran during the just-completed stream
@@ -1575,9 +1562,166 @@ export class WebSocketServer {
 
     try {
       reader = baseStream.getReader()
-      const accumulatedToolInput = new Map<string, string>() // Track tool input deltas
 
       guard?.arm()
+
+      const pendingPublishes: Promise<unknown>[] = []
+      const processor = new StreamPartProcessor({
+        onTextDelta: (content) => {
+          tracker.recordTextChunk()
+          const textData = {
+            step: currentStep,
+            source: 'ai_response',
+            agentId: agentName,
+            messageId: agentMessageId
+          }
+          pendingPublishes.push(this.publishToEventChannel(socketId, 'chunk', content, textData, agentName))
+        },
+
+        onToolStart: (toolCallId, toolName) => {
+          const toolStartData = {
+            step: currentStep,
+            tool: {
+              id: toolCallId,
+              name: toolName,
+              input: {}
+            },
+            agentId: agentName,
+            messageId: agentMessageId
+          }
+          this.startToolSpan(socket.id, toolCallId, toolName).catch(err =>
+            this.logger.warn('tool.span.start_failed', { toolId: toolCallId, error: err instanceof Error ? err.message : String(err) })
+          )
+          pendingPublishes.push(this.publishToEventChannel(socketId, 'tool_start', `Using ${toolName}...`, toolStartData, agentName))
+        },
+
+        onToolInputDelta: (toolCallId, delta, _accumulated, toolName) => {
+          const toolInputDeltaData = {
+            toolId: toolCallId,
+            toolName,
+            delta,
+            agentId: agentName,
+            messageId: agentMessageId
+          }
+          pendingPublishes.push(this.publishToEventChannel(socketId, 'tool_input_delta', '', toolInputDeltaData, agentName))
+        },
+
+        onToolCall: (toolCallId, toolName, parsedInput) => {
+          guard?.pause()
+          tracker.pauseGapTracking(toolName)
+          if (typeof parsedInput === 'string') {
+            this.logger.error('tool.input.parse_failure', {
+              toolCallId,
+              toolName,
+              // Preserve the pre-refactor field name so existing Grafana /
+              // Loki queries keyed on `fullInput` keep matching. Truncated
+              // to 200 chars to cap log-shipper payloads.
+              fullInput: parsedInput.slice(0, 200),
+            })
+          }
+          const toolCallData = {
+            step: currentStep,
+            tool: {
+              id: toolCallId,
+              name: toolName,
+              input: typeof parsedInput === 'string' ? {} : parsedInput
+            },
+            agentId: agentName
+          }
+          pendingPublishes.push(this.publishToEventChannel(socketId, 'tool_call', `${toolName} input ready`, toolCallData, agentName))
+
+          const spanKey = `${socket.id}:${toolCallId}`
+          const span = this.activeToolSpans.get(spanKey)
+          if (span && typeof parsedInput === 'object' && parsedInput && Object.keys(parsedInput as Record<string, unknown>).length > 0) {
+            span.addLabels({
+              tool_input_keys: Object.keys(parsedInput as Record<string, unknown>).join(',')
+            })
+          }
+        },
+
+        onToolResult: (toolCallId, result, sdkInput, sdkToolName) => {
+          guard?.reset()
+          tracker.resumeGapTracking()
+          const toolRecord = processor.getToolCall(toolCallId)
+          const toolName = sdkToolName ?? toolRecord?.name ?? 'unknown'
+          const toolOutput = redactSkillOutput(toolName, result)
+          // Prefer the AI SDK's `part.input` (post schema coercion / default
+          // injection) when present; fall back to the tool-input-delta buffer,
+          // normalizing a raw-string buffer (tool-call JSON parse failure) to {}.
+          const input = sdkInput !== undefined
+            ? sdkInput
+            : (typeof toolRecord?.input === 'string' ? {} : toolRecord?.input)
+
+          const toolResultData = {
+            step: currentStep,
+            tool: {
+              id: toolCallId,
+              name: toolName,
+              input,
+              output: toolOutput
+            },
+            agentId: agentName
+          }
+          this.endToolSpan(socket.id, toolCallId, toolName, true, result).catch(err =>
+            this.logger.warn('tool.span.end_failed', { toolId: toolCallId, error: err instanceof Error ? err.message : String(err) })
+          )
+          pendingPublishes.push(this.publishToEventChannel(socketId, 'tool_result', `${toolName} completed`, toolResultData, agentName))
+        },
+
+        onToolError: (toolCallId, error, sdkInput, sdkToolName) => {
+          guard?.reset()
+          tracker.resumeGapTracking()
+          const toolRecord = processor.getToolCall(toolCallId)
+          const toolName = sdkToolName ?? toolRecord?.name ?? 'unknown'
+          const input = sdkInput !== undefined
+            ? sdkInput
+            : (typeof toolRecord?.input === 'string' ? {} : toolRecord?.input)
+          const errorMessage = error.message
+
+          const toolErrorData = {
+            step: currentStep,
+            tool: {
+              id: toolCallId,
+              name: toolName,
+              input,
+              output: {},
+              error: errorMessage,
+              is_error: true
+            },
+            agentId: agentName
+          }
+          this.endToolSpan(socket.id, toolCallId, toolName, false, undefined, errorMessage).catch(err =>
+            this.logger.warn('tool.span.end_failed', { toolId: toolCallId, error: err instanceof Error ? err.message : String(err) })
+          )
+          pendingPublishes.push(this.publishToEventChannel(socketId, 'tool_result', `${toolName} failed: ${errorMessage}`, toolErrorData, agentName))
+        },
+
+        // WS manages steps externally via the tool-calling loop (line ~3080).
+        // The processor's internal step counter is only used by SSE.
+        onStepStart: () => {},
+
+        onError: (error) => {
+          // Check if it's AI SDK's native APICallError with budget pattern
+          if (isBudgetExceededAPIError(error)) {
+            this.logger.error('budget.exceeded', {
+              message: error.message,
+              statusCode: error.statusCode
+            })
+            throw new BudgetExceededError(
+              'Your AI usage budget has been reached.',
+              error.statusCode ?? 400,
+              error.responseBody
+            )
+          }
+
+          // Log and re-throw other errors unchanged
+          this.logger.error('stream.error.part', {
+            message: error instanceof Error ? error.message : String(error),
+            statusCode: APICallError.isInstance(error) ? error.statusCode : undefined
+          })
+          throw error instanceof Error ? error : new Error(String(error))
+        }
+      })
 
       while (true) { // Intentional infinite loop until stream is done
         // Check if the stream was cancelled
@@ -1620,202 +1764,17 @@ export class WebSocketServer {
         guard?.reset()
 
         if (value?.part) {
-          const part = value.part
-
-          switch (part.type) {
-            case 'error': {
-              // AI SDK surfaced an error part - check if it's a budget error
-              const error = part.error
-
-              // Check if it's AI SDK's native APICallError with budget pattern
-              if (isBudgetExceededAPIError(error)) {
-                this.logger.error('budget.exceeded', {
-                  message: error.message,
-                  statusCode: error.statusCode
-                })
-
-                // Convert to BudgetExceededError for UI
-                throw new BudgetExceededError(
-                  'Your AI usage budget has been reached.',
-                  error.statusCode ?? 400,
-                  error.responseBody
-                )
-              }
-
-              // Log and re-throw other errors unchanged
-              this.logger.error('stream.error.part', {
-                message: error instanceof Error ? error.message : String(error),
-                statusCode: APICallError.isInstance(error) ? error.statusCode : undefined
-              })
-
-              throw error instanceof Error ? error : new Error(String(error))
-            }
-
-            case 'text-delta': {
-              tracker.recordTextChunk()
-              // Handle text chunks
-              const textData = {
-                step: currentStep,
-                source: 'ai_response',
-                agentId: agentName,
-                messageId: agentMessageId  // NEW: Include message ID for pending message tracking
-              }
-
-              // Publish to event channel - WebSocketSubscriber delivers to client,
-              // PersistenceSubscriber handles database persistence
-              await this.publishToEventChannel(socketId, 'chunk', part.text, textData, agentName)
-              break
-            }
-
-            case 'tool-input-start': {
-              // Tool call is starting
-              accumulatedToolInput.set(part.id, '')
-
-              const toolStartData = {
-                step: currentStep,
-                tool: {
-                  id: part.id,
-                  name: part.toolName,
-                  input: {} // Will be populated as deltas arrive
-                },
-                agentId: agentName,
-                messageId: agentMessageId  // NEW: Include message ID for pending message tracking
-              }
-
-              // Start APM span and observability tracking for tool execution
-              // Fire-and-forget to avoid blocking the main execution flow
-              this.startToolSpan(socket.id, part.id, part.toolName).catch(err =>
-                this.logger.warn('tool.span.start_failed', { toolId: part.id, error: err instanceof Error ? err.message : String(err) })
-              )
-
-              // Publish to event channel - subscribers handle delivery and persistence
-              await this.publishToEventChannel(socketId, 'tool_start', `Using ${part.toolName}...`, toolStartData, agentName)
-              break
-            }
-
-            case 'tool-input-delta': {
-              // Accumulate tool input - emit delta for future status updates
-              const currentInput = accumulatedToolInput.get(part.id) || ''
-              accumulatedToolInput.set(part.id, currentInput + part.delta)
-
-              const toolInputDeltaData = {
-                toolId: part.id,
-                toolName: part.toolName,
-                delta: part.delta,
-                agentId: agentName,
-                messageId: agentMessageId  // NEW: Include message ID for pending message tracking
-              }
-
-              // Publish to event channel - subscribers handle delivery
-              await this.publishToEventChannel(socketId, 'tool_input_delta', '', toolInputDeltaData, agentName)
-              break
-            }
-
-            case 'tool-call': {
-              guard?.pause()
-              tracker.pauseGapTracking(part.toolName)
-              // Tool call is complete with full input - emit with accumulated input
-              const toolId = part.id || part.toolCallId
-              const fullInput = accumulatedToolInput.get(toolId) || '{}'
-              let parsedInput: Record<string, unknown> = {}
-
-              try {
-                parsedInput = JSON.parse(fullInput)
-              } catch (error) {
-                this.logger.error('tool.input.parse_failure', { fullInput })
-              }
-
-              const toolCallData = {
-                step: currentStep,
-                tool: {
-                  id: toolId,
-                  name: part.toolName,
-                  input: parsedInput
-                },
-                agentId: agentName
-              }
-
-              // Publish to event channel - subscribers handle delivery and persistence
-              await this.publishToEventChannel(socketId, 'tool_call', `${part.toolName} input ready`, toolCallData, agentName)
-
-              // Update APM span with input data now that we have it
-              const spanKey = `${socket.id}:${toolId}`
-              const span = this.activeToolSpans.get(spanKey)
-              if (span && parsedInput && Object.keys(parsedInput).length > 0) {
-                span.addLabels({
-                  tool_input_keys: Object.keys(parsedInput).join(',')
-                })
-              }
-              break
-            }
-
-            case 'tool-result': {
-              guard?.reset()
-              tracker.resumeGapTracking()
-              // Tool execution completed with result
-              const toolId = part.id || part.toolCallId
-
-              // Redact skill instructions from client-facing output
-              // The LLM still receives full instructions via the AI SDK's internal tool result handling
-              const toolOutput = redactSkillOutput(part.toolName, part.output)
-
-              const toolResultData = {
-                step: currentStep,
-                tool: {
-                  id: toolId,
-                  name: part.toolName,
-                  input: part.input,
-                  output: toolOutput
-                },
-                agentId: agentName
-              }
-
-              // End APM span and observability tracking for successful tool execution
-              // Fire-and-forget to avoid blocking the main execution flow
-              this.endToolSpan(socket.id, toolId, part.toolName, true, part.output).catch(err =>
-                this.logger.warn('tool.span.end_failed', { toolId, error: err instanceof Error ? err.message : String(err) })
-              )
-
-              // Publish to event channel - subscribers handle delivery and persistence
-              await this.publishToEventChannel(socketId, 'tool_result', `${part.toolName} completed`, toolResultData, agentName)
-              break
-            }
-
-            case 'tool-error': {
-              guard?.reset()
-              tracker.resumeGapTracking()
-              // Tool execution failed with error - communicate this clearly to frontend and LLM
-              const toolId = part.id || part.toolCallId || part.toolId
-
-              const errorMessage = part.error?.message || (typeof part.error === 'string' ? part.error : String(part.error)) || 'Tool execution error'
-
-              const toolErrorData = {
-                step: currentStep,
-                tool: {
-                  id: toolId,
-                  name: part.toolName,
-                  input: part.input || {},
-                  output: {},
-                  error: errorMessage,
-                  is_error: true
-                },
-                agentId: agentName
-              }
-
-              // End APM span and observability tracking for failed tool execution
-              // Fire-and-forget to avoid blocking the main execution flow
-              this.endToolSpan(socket.id, toolId, part.toolName, false, undefined, errorMessage).catch(err =>
-                this.logger.warn('tool.span.end_failed', { toolId, error: err instanceof Error ? err.message : String(err) })
-              )
-
-              // Publish to event channel - subscribers handle delivery and persistence
-              await this.publishToEventChannel(socketId, 'tool_result', `${part.toolName} failed: ${errorMessage}`, toolErrorData, agentName)
-              break
-            }
-
-            default:
-              // Unhandled tool event
-              break
+          // Drain publishes even if processPart throws (e.g. onError fires
+          // for a budget error) so the socket doesn't miss the preceding
+          // tool_call/chunk/tool_result events queued during this part.
+          // publishToEventChannel absorbs all errors internally (see its
+          // top-level catch), so Promise.all here cannot reject and will
+          // never mask the processPart exception we want to propagate.
+          try {
+            processor.processPart(value.part)
+          } finally {
+            await Promise.all(pendingPublishes)
+            pendingPublishes.length = 0
           }
         }
       }
@@ -2429,115 +2388,66 @@ export class WebSocketServer {
         }
       }
 
-      // 7. Execute agent(s) - loop handles handoffs
-      let currentMessage = data.message
-      let iterationCount = 0
-      const maxHandoffs = 10 // Prevent infinite loops
-
-      // Accumulate execution steps across all agent iterations for cost attribution
-      // Each agent's steps are collected and combined, not overwritten
+      // Accumulate execution steps across all agent iterations for cost attribution.
+      // Each agent's steps are collected and combined, not overwritten.
       const allExecutionSteps: ExecutionStep[] = []
 
-      while (iterationCount < maxHandoffs) {
-        iterationCount++
+      // 7. Execute agent(s) - loop handles handoffs and auto-continuation
+      // `currentLoopAgentName` tracks the agent actively executing inside the
+      // loop so `getAutoContinuation` can include the active agent name in its
+      // log lines without waiting for the outer `agentName` to be rewritten
+      // after the loop returns. `postStreamValidate`/`onHandoff` get their
+      // agent names directly from callback parameters.
+      let currentLoopAgentName = agentName
+      let currentLoopIteration = 0
+      const loopResult = await executeAgentLoop<AgentWrapper>(agentName, data.message, {
+        getAgent: (name) => this.config.agents.get(name) as AgentWrapper | undefined,
+        streamAgentTurn: async (agent, name, message, iteration) => {
+          currentLoopAgentName = name
+          currentLoopIteration = iteration
+          if (iteration > 0) {
+            processedContext = await this.processContext(data, socketId)
+            const handoffConv = this.getConversation(socketId)
+            restoreBudgetMetadata(handoffConv?.context, processedContext)
 
-        // Get current agent, applying model override if configured
-        const agent = this.config.agents.get(agentName)
-        if (!agent) {
-          throw new Error(`Agent '${agentName}' not found`)
-        }
-
-        // Refresh context before each iteration (important for handoffs)
-        // This ensures todo list context and other dynamic state is current
-        if (iterationCount > 1) {
-          processedContext = await this.processContext(data, socketId)
-
-          // Restore budget metadata after handoff
-          // processedContext is fully replaced by processContext(); restore from conversation.context
-          const handoffConv = this.getConversation(socketId)
-          restoreBudgetMetadata(handoffConv?.context, processedContext)
-
-          // Reload conversation history for the new agent
-          // This is critical - the new agent needs the full conversation history
-          const { conversationHistory: _conversationHistory, ...dataWithoutHistory } = data
-          const iterationData: ChatMessage = {
-            ...dataWithoutHistory,
-            message: currentMessage
+            const { conversationHistory: _conversationHistory, ...dataWithoutHistory } = data
+            // Reassign the enclosing `data` so the next iteration's message
+            // payload (fed to other callbacks via closure) reflects history
+            // already having been loaded on the server side.
+            data = { ...dataWithoutHistory, message } as ChatMessage
+            await this.loadConversationHistory(socketId, data, processedContext)
           }
 
-          await this.loadConversationHistory(socketId, iterationData, processedContext)
+          const iterationData: ChatMessage = { ...data, message }
+          const streamResult = await this.streamAgentResponse(socket, agent, iterationData, processedContext, name, startTime, false)
 
-          // Use the iteration data with fresh history
-          data = iterationData
-        }
+          if (streamResult.steps.length > 0) {
+            allExecutionSteps.push(...streamResult.steps)
+            // Update Map for finally-block fallback (in case error/abort happens later)
+            this.pendingExecutionSteps.set(socketId, allExecutionSteps)
+          }
+        },
+        postStreamValidate: async (name) => {
+          // `postStreamConv?.context` can be undefined when the conversation was
+          // cleaned up between stream end and here (disconnect / abort race).
+          // Fall back to processedContext so the validator and the subsequent
+          // auto-continuation check read/write the SAME object.
+          const postStreamConv = this.getConversation(socketId)
+          const continuationContext = (postStreamConv?.context ?? processedContext) as Record<string, unknown>
+          const continuationMetadata = (continuationContext.metadata as Record<string, unknown> | undefined) ?? {}
+          const toolSetAutoContinue = continuationMetadata.__autoContinue === true
+          if (!this.config.postStreamValidator || toolSetAutoContinue) return
 
-        // Create message data for this iteration
-        const iterationData: ChatMessage = {
-          ...data,
-          message: currentMessage
-        }
-
-        // Stream agent response (tools execute here, including handoff)
-        // Never emit completion during the loop - we'll handle it after
-        const streamResult = await this.streamAgentResponse(socket, agent, iterationData, processedContext, agentName, startTime, false)
-
-        // Accumulate steps from this agent iteration
-        if (streamResult.steps.length > 0) {
-          allExecutionSteps.push(...streamResult.steps)
-          // Update Map for finally-block fallback (in case error/abort happens later)
-          this.pendingExecutionSteps.set(socketId, allExecutionSteps)
-        }
-
-        // If stream was aborted (e.g., disconnect timeout), skip further processing.
-        // Break out of the handoff loop — completeConversation below handles both
-        // abort and normal paths (persistence, complete event, hooks).
-        // Uses locally captured signal — immune to cleanupConversation removing state.
-        if (abortSignal.aborted) {
-          this.logger.info('stream.aborted.skip_completion', { socketId, agentName })
-          break
-        }
-
-        // Check for auto-continuation FIRST (takes precedence - allows skill tools to load before handoff)
-        // Get updated context from conversation state (includes flags set by afterToolExecution hook)
-        const conversationAfterStream = this.getConversation(socketId)
-        const updatedContext = conversationAfterStream?.context
-
-        // `updatedContext` can be undefined when the conversation was cleaned
-        // up between stream end and here (disconnect / abort race). The
-        // validator still needs a context object to flag, and the
-        // auto-continuation branch below needs to read back from the SAME
-        // object the validator wrote to — otherwise the flag lives on
-        // `processedContext` while the subsequent check reads from
-        // `updatedContext?.…`, short-circuits to undefined, and silently
-        // drops the continuation.
-        const continuationContext = (updatedContext ?? processedContext) as Record<string, unknown>
-
-        // Run optional post-stream validator (e.g. post-hook tsc check). Fires
-        // once per completed stream iteration, BEFORE the auto-continuation
-        // check below, so the validator can opt into the same continuation
-        // mechanism by returning a synthetic prompt. If it returns one, we set
-        // the __autoContinue/__continuationPrompt flags on the conversation
-        // context and let the existing block below handle re-entering the loop.
-        //
-        // If a tool (via `afterToolExecution` or similar) has ALREADY set
-        // `__autoContinue = true`, we defer: running the validator now would
-        // either overwrite the tool's continuation prompt or spend latency on
-        // a check whose results would be invalidated by the tool's continuation
-        // anyway. The validator will naturally fire on the next iteration once
-        // the tool's continuation has run.
-        const continuationMetadata = (continuationContext.metadata as Record<string, unknown> | undefined) ?? {}
-        const toolSetAutoContinue = continuationMetadata.__autoContinue === true
-        if (this.config.postStreamValidator && !toolSetAutoContinue) {
-          const validatorToolCalls = conversationAfterStream?.pendingToolCalls
-            ? Array.from(conversationAfterStream.pendingToolCalls.values()).map((tc: any) => ({
+          const validatorToolCalls = postStreamConv?.pendingToolCalls
+            ? Array.from(postStreamConv.pendingToolCalls.values()).map((tc: any) => ({
               toolName: tc.name,
               ...(tc.input !== undefined && { args: tc.input })
             }))
             : []
-          const validationId = `post_stream_validation_${iterationCount}_${Date.now()}`
+          const validationId = `post_stream_validation_${currentLoopIteration}_${Date.now()}`
           let validationStarted = false
           try {
-            const resolvedAgentName = agentName || this.config.defaultAgent || 'unknown'
+            const resolvedAgentName = name || this.config.defaultAgent || 'unknown'
             const validatorResult = await this.config.postStreamValidator({
               socketId,
               context: continuationContext,
@@ -2693,19 +2603,34 @@ export class WebSocketServer {
               }
             }
           } catch (validatorError) {
-            // Validator is additive; failures must never block message completion.
+            // Validator is additive; failures must never block message
+            // completion. Record every throw — an abort-concurrent throw gets
+            // an info-level event (expected) while a genuine validator bug
+            // gets an error (investigate). Losing either to an unconditional
+            // early-return would mean silent data loss on races.
+            const errMsg = validatorError instanceof Error ? validatorError.message : String(validatorError)
+            const errStack = validatorError instanceof Error ? validatorError.stack : undefined
+            if (abortSignal.aborted) {
+              this.logger.info('post_stream_validator.aborted', { socketId, agentName: name, error: errMsg })
+              return
+            }
             this.logger.error('post_stream_validator.failure', {
               socketId,
-              agentName,
-              error: validatorError instanceof Error ? validatorError.message : String(validatorError)
+              agentName: name,
+              error: errMsg,
+              stack: errStack,
             })
-            if (!abortSignal.aborted && validationStarted) {
-              const resolvedAgentName = agentName || this.config.defaultAgent || 'unknown'
+            if (validationStarted) {
+              // Use the callback `name` param, not the outer `agentName`
+              // closure which is only updated after executeAgentLoop returns.
+              // Post-handoff, the outer `agentName` would be 'a' while this
+              // iteration is actually running under 'b'.
+              const resolvedAgentName = name || this.config.defaultAgent || 'unknown'
               try {
                 await this.publishToEventChannel(
                   socketId,
                   'validation_message',
-                  validatorError instanceof Error ? validatorError.message : String(validatorError),
+                  errMsg,
                   {
                     validationId,
                     metadata: {
@@ -2726,90 +2651,105 @@ export class WebSocketServer {
               }
             }
           }
-        }
+        },
+        getAutoContinuation: () => {
+          const conv = this.getConversation(socketId)
+          const continuationContext = (conv?.context ?? processedContext) as Record<string, unknown> | undefined
+          const meta = continuationContext?.metadata as Record<string, unknown> | undefined
+          if (continuationContext && meta?.__autoContinue === true) {
+            const rawPrompt = meta.__continuationPrompt as string | undefined
+            if (!rawPrompt) {
+              this.logger.warn('auto_continuation.missing_prompt', { socketId, agentName: currentLoopAgentName })
+            }
+            const prompt = rawPrompt || 'Continue processing'
+            delete meta.__autoContinue
+            delete meta.__continuationPrompt
+            // Flag deletion happens BEFORE `attachConversationId` runs. If
+            // `attachConversationId` ever threw, the deletions would have
+            // already taken effect and the continuation prompt would be lost
+            // — but `attachConversationId` only writes to context metadata
+            // (no I/O, no fallible state-manager calls), so this ordering is
+            // deliberate: keep the mutation site together and rely on the
+            // no-throw contract of the helper.
+            processedContext = continuationContext
+            this.attachConversationId(processedContext, socketId)
+            const conversationId = this.getConversation(socketId)?.conversationId
+            this.logger.info('auto_continuation.detected', {
+              socketId,
+              agentName: currentLoopAgentName,
+              conversationId,
+              continuationPromptPreview: prompt.slice(0, 120),
+            })
+            return { prompt }
+          }
+          return null
+        },
+        getHandoffDetails: (currentAgent) => this.getHandoffDetails(socketId, currentAgent),
+        onHandoff: async (oldAgent, newAgent) => {
+          this.logger.info('handoff.detect', { socketId, fromAgent: oldAgent, toAgent: newAgent })
+          const currentAppId = extractAppIdFromMessageContext(data.context)
+          if (
+            currentAppId &&
+            this.config.stateManager &&
+            'setSessionMetadata' in this.config.stateManager &&
+            typeof this.config.stateManager.setSessionMetadata === 'function'
+          ) {
+            this.config.stateManager.setSessionMetadata(socketId, { appId: currentAppId })
+          }
 
-        if (continuationMetadata.__autoContinue === true) {
-          const continuationPrompt = (continuationMetadata.__continuationPrompt as string) || 'Continue processing'
+          try {
+            emitHandoff({
+              conversationId: conversationIdForCleanup,
+              agentId: this.getAgentId(oldAgent),
+              eventData: createHandoff({
+                fromAgentId: this.getAgentId(oldAgent),
+                fromAgentName: oldAgent,
+                toAgentId: this.getAgentId(newAgent),
+                toAgentName: newAgent,
+                reason: 'Agent handoff',
+                routingMethod: 'llm'
+              })
+            })
+          } catch (telemetryError) {
+            // Telemetry must never abort a handoff; log and continue.
+            this.logger.warn('handoff.telemetry_emit_failed', {
+              socketId,
+              fromAgent: oldAgent,
+              toAgent: newAgent,
+              error: telemetryError instanceof Error ? telemetryError.message : String(telemetryError)
+            })
+          }
 
-          // Clear the flags so they're not reused in subsequent iterations
-          delete continuationMetadata.__autoContinue
-          delete continuationMetadata.__continuationPrompt
-
-          this.logger.info('auto_continuation.detected', {
-            socketId,
-            agentName,
-            conversationId: conversationAfterStream?.conversationId,
-            continuationPromptPreview: continuationPrompt.substring(0, 100)
-          })
-
-          // Update message for next iteration (agent stays the same)
-          currentMessage = continuationPrompt
-
-          // Update processedContext with the context we just flagged so the
-          // next iteration's downstream reads see the same object. When
-          // `updatedContext` was present we pick up whatever the state
-          // manager has; when it was undefined we keep processedContext,
-          // which is what we mutated in place.
-          processedContext = continuationContext as typeof processedContext
-
-          // Re-inject conversationId since updatedContext comes from state manager snapshot
-          this.attachConversationId(processedContext, socketId)
-
-          // Continue the loop without checking for handoff
-          continue
-        }
-
-        // Check if handoff occurred
-        const handoffDetails = this.getHandoffDetails(socketId, agentName)
-        if (!handoffDetails) {
-          // No handoff and no auto-continuation - we're done, exit loop
-          break
-        }
-
-        // Handoff occurred - update session metadata with appId
-        const currentAppId = extractAppIdFromMessageContext(data.context)
-        if (
-          currentAppId &&
-          this.config.stateManager &&
-          'setSessionMetadata' in this.config.stateManager &&
-          typeof this.config.stateManager.setSessionMetadata === 'function'
-        ) {
-          this.config.stateManager.setSessionMetadata(socketId, { appId: currentAppId })
-        }
-
-        // Prepare for next iteration
-        this.logger.info('handoff.detect', { fromAgent: agentName, toAgent: handoffDetails.newAgentName })
-
-        emitHandoff({
-          conversationId: conversationIdForCleanup,
-          agentId: this.getAgentId(agentName),
-          eventData: createHandoff({
-            fromAgentId: this.getAgentId(agentName),
-            fromAgentName: agentName,
-            toAgentId: this.getAgentId(handoffDetails.newAgentName),
-            toAgentName: handoffDetails.newAgentName,
-            reason: 'Agent handoff',
-            routingMethod: 'llm'
-          })
+          const conversation = this.getConversation(socketId)
+          if (conversation && this.config.onAgentChanged) {
+            // Intentionally NOT wrapped: this hook persists the agent switch
+            // (DB update in the agents service). If this were swallowed by a
+            // try/catch, the next iteration would run under the new agent
+            // without a persisted record — tools attributing to the previous
+            // agent and conversation history in an inconsistent state.
+            // Surfacing the rejection propagates to the outer catch and
+            // aborts the turn so the client retry starts with clean state
+            // instead of a corrupt one. Contrast `emitHandoff` above
+            // (observability-only, non-fatal).
+            await this.config.onAgentChanged(
+              conversation.conversationId,
+              oldAgent,
+              newAgent,
+              currentAppId
+            )
+          }
+        },
+        isAborted: () => abortSignal.aborted,
+      })
+      agentName = loopResult.finalAgentName
+      if (loopResult.termination === 'aborted') {
+        this.logger.info('stream.aborted.skip_completion', { socketId, agentName })
+      } else if (loopResult.termination === 'max_handoffs') {
+        this.logger.warn('agent.loop.max_handoffs_reached', {
+          socketId,
+          agentName,
+          iterations: loopResult.iterations,
         })
-
-        // Notify about agent change (for updating conversation.agent_id)
-        const conversation = this.getConversation(socketId)
-        if (conversation && this.config.onAgentChanged) {
-          await this.config.onAgentChanged(
-            conversation.conversationId,
-            agentName,
-            handoffDetails.newAgentName,
-            currentAppId
-          )
-        }
-
-        agentName = handoffDetails.newAgentName
-        currentMessage = handoffDetails.handoffPrompt
-      }
-
-      if (iterationCount >= maxHandoffs) {
-        this.logger.warn('handoff.limit', { maxHandoffs })
       }
 
       // 8. Budget reconciliation BEFORE completion so credits are updated
@@ -2884,8 +2824,16 @@ export class WebSocketServer {
       let retryAttempts: number | undefined;
       let retryReason: string | undefined;
 
+      // AgentNotFoundError — hide the internal agent name from the wire;
+      // the real name is already in error.agentName for server-side logging.
+      if (error instanceof AgentNotFoundError) {
+        this.logger.warn('agent.not_found', { socketId, requestedAgent: error.agentName });
+        errorMessage = 'Agent unavailable';
+        errorType = 'AGENT_NOT_FOUND';
+        statusCode = 500;
+      }
       // Check if it's an AppNotFoundError (duck-typed from agents service)
-      if (error instanceof Error && 'errorType' in error && (error as any).errorType === 'APP_NOT_FOUND') {
+      else if (error instanceof Error && 'errorType' in error && (error as any).errorType === 'APP_NOT_FOUND') {
         errorMessage = error.message;
         errorType = 'APP_NOT_FOUND';
         statusCode = 404;

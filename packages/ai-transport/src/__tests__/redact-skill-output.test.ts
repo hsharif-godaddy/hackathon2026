@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { redactSkillOutput } from '../experimental-websocket-server.js'
+import { redactSkillOutput } from '../redact-skill-output.js'
 
 describe('redactSkillOutput', () => {
   it('should redact instructions from skill tool output', () => {
