@@ -20,6 +20,17 @@ export enum BudgetOverride {
   SummarizationTask = 'airo-builder:summarization-task',
 }
 
+/** All BudgetOverride values for O(1) lookup */
+const BUDGET_OVERRIDE_VALUES = new Set<string>(Object.values(BudgetOverride))
+
+/**
+ * Check if a subscriptionId is a budget override that bypasses grants.
+ * These sessions use dedicated budgets instead of customer grants.
+ */
+export function isBudgetOverride(subscriptionId: string | null | undefined): subscriptionId is BudgetOverride {
+  return !!subscriptionId && BUDGET_OVERRIDE_VALUES.has(subscriptionId)
+}
+
 /**
  * APM agent type (loose typing to avoid strict dependency)
  */

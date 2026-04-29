@@ -1,8 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 
 import { buildLitellmMetadataFromContext, isGrantsExhausted, LlmCallSource, GrantErrorCode } from '../build-metadata.js'
-import { BudgetOverride } from '../grant-session-manager.js'
-import { grantSessionManager } from '../grant-session-manager.js'
+import { BudgetOverride, isBudgetOverride, grantSessionManager } from '../grant-session-manager.js'
 import { GrantType, type CreditGrant } from '@airo/shared/grants'
 
 describe('build-metadata', function tests() {
@@ -191,6 +190,121 @@ describe('build-metadata', function tests() {
       const context = { socketId: 'test-session', metadata: { appId: 'app-1' } }
       expect(isGrantsExhausted(context)).toBe(true)
     })
+
+    it('should return false for e2s sessions even with exhausted customer grants', function e2sBypass() {
+      // Customer grants are exhausted
+      const exhaustedGrant = createGrant({ creditsSpent: 1500, creditsMax: 1500 })
+      grantSessionManager.setGrants('e2s-session', [exhaustedGrant])
+
+      // But subscriptionId is CareAgent (e2s session)
+      const context = {
+        socketId: 'e2s-session',
+        metadata: {
+          appId: 'app-1',
+          subscriptionId: BudgetOverride.CareAgent,
+        },
+      }
+      expect(isGrantsExhausted(context)).toBe(false)
+    })
+
+    it('should return false for test accounts even with exhausted grants', function testAccountsBypass() {
+      const exhaustedGrant = createGrant({ creditsSpent: 1500, creditsMax: 1500 })
+      grantSessionManager.setGrants('test-session', [exhaustedGrant])
+
+      const context = {
+        socketId: 'test-session',
+        metadata: {
+          appId: 'app-1',
+          subscriptionId: BudgetOverride.TestAccounts,
+        },
+      }
+      expect(isGrantsExhausted(context)).toBe(false)
+    })
+
+    it('should return false for AssessAgent override with exhausted grants', function assessAgentBypass() {
+      const exhaustedGrant = createGrant({ creditsSpent: 1500, creditsMax: 1500 })
+      grantSessionManager.setGrants('assess-session', [exhaustedGrant])
+
+      const context = {
+        socketId: 'assess-session',
+        metadata: { appId: 'app-1', subscriptionId: BudgetOverride.AssessAgent },
+      }
+      expect(isGrantsExhausted(context)).toBe(false)
+    })
+
+    it('should return false for PublishTask override with exhausted grants', function publishTaskBypass() {
+      const exhaustedGrant = createGrant({ creditsSpent: 1500, creditsMax: 1500 })
+      grantSessionManager.setGrants('publish-session', [exhaustedGrant])
+
+      const context = {
+        socketId: 'publish-session',
+        metadata: { appId: 'app-1', subscriptionId: BudgetOverride.PublishTask },
+      }
+      expect(isGrantsExhausted(context)).toBe(false)
+    })
+
+    it('should return false for DomainTask override with exhausted grants', function domainTaskBypass() {
+      const exhaustedGrant = createGrant({ creditsSpent: 1500, creditsMax: 1500 })
+      grantSessionManager.setGrants('domain-session', [exhaustedGrant])
+
+      const context = {
+        socketId: 'domain-session',
+        metadata: { appId: 'app-1', subscriptionId: BudgetOverride.DomainTask },
+      }
+      expect(isGrantsExhausted(context)).toBe(false)
+    })
+
+    it('should return false for FixTask override with exhausted grants', function fixTaskBypass() {
+      const exhaustedGrant = createGrant({ creditsSpent: 1500, creditsMax: 1500 })
+      grantSessionManager.setGrants('fix-session', [exhaustedGrant])
+
+      const context = {
+        socketId: 'fix-session',
+        metadata: { appId: 'app-1', subscriptionId: BudgetOverride.FixTask },
+      }
+      expect(isGrantsExhausted(context)).toBe(false)
+    })
+
+    it('should return false for SummarizationTask override with exhausted grants', function summarizationTaskBypass() {
+      const exhaustedGrant = createGrant({ creditsSpent: 1500, creditsMax: 1500 })
+      grantSessionManager.setGrants('summarization-session', [exhaustedGrant])
+
+      const context = {
+        socketId: 'summarization-session',
+        metadata: { appId: 'app-1', subscriptionId: BudgetOverride.SummarizationTask },
+      }
+      expect(isGrantsExhausted(context)).toBe(false)
+    })
+
+    it('should return false for CareAgent override even with usable (non-exhausted) grant', function unconditionalBypass() {
+      // Usable grant with credits remaining — proves bypass is unconditional
+      const usableGrant = createGrant({ creditsSpent: 500, creditsMax: 1500 })
+      grantSessionManager.setGrants('e2s-usable-session', [usableGrant])
+
+      const context = {
+        socketId: 'e2s-usable-session',
+        metadata: { appId: 'app-1', subscriptionId: BudgetOverride.CareAgent },
+      }
+      expect(isGrantsExhausted(context)).toBe(false)
+    })
+  })
+
+  describe('isBudgetOverride', function budgetOverrideTests() {
+    it('should return true for all BudgetOverride values', function allValues() {
+      // Use Object.values to auto-update when enum changes
+      const allOverrides = Object.values(BudgetOverride)
+      expect(allOverrides.length).toBeGreaterThan(0)
+      for (const override of allOverrides) {
+        expect(isBudgetOverride(override)).toBe(true)
+      }
+    })
+
+    it('should return false for non-override values', function nonOverrides() {
+      expect(isBudgetOverride(undefined)).toBe(false)
+      expect(isBudgetOverride('')).toBe(false)
+      expect(isBudgetOverride('sub-123')).toBe(false)
+      expect(isBudgetOverride('airo-build:sid:sub-123')).toBe(false)
+    })
   })
 
   describe('LlmCallSource', function sourceTests() {
@@ -256,6 +370,98 @@ describe('build-metadata', function tests() {
       expect(result).toBeDefined()
       expect(result?.user).toBe(BudgetOverride.TestAccounts)
       expect(result?.tags).toContain('appId:app-1')
+    })
+  })
+
+  describe('Task-specific budget overrides with active session', function taskOverrideTests() {
+    it('should bypass grants for AssessAgent override with active session', function assessAgent() {
+      grantSessionManager.setGrants('assess-meta-session', [createGrant()])
+
+      const context = {
+        socketId: 'assess-meta-session',
+        metadata: {
+          appId: 'app-1',
+          customerId: 'customer-123',
+          subscriptionId: BudgetOverride.AssessAgent,
+        },
+      }
+
+      const result = buildLitellmMetadataFromContext(context, { source: LlmCallSource.UserChat })
+
+      expect(result).toBeDefined()
+      expect(result?.user).toBe(BudgetOverride.AssessAgent)
+    })
+
+    it('should bypass grants for PublishTask override with active session', function publishTask() {
+      grantSessionManager.setGrants('publish-meta-session', [createGrant()])
+
+      const context = {
+        socketId: 'publish-meta-session',
+        metadata: {
+          appId: 'app-1',
+          customerId: 'customer-123',
+          subscriptionId: BudgetOverride.PublishTask,
+        },
+      }
+
+      const result = buildLitellmMetadataFromContext(context, { source: LlmCallSource.UserChat })
+
+      expect(result).toBeDefined()
+      expect(result?.user).toBe(BudgetOverride.PublishTask)
+    })
+
+    it('should bypass grants for DomainTask override with active session', function domainTask() {
+      grantSessionManager.setGrants('domain-meta-session', [createGrant()])
+
+      const context = {
+        socketId: 'domain-meta-session',
+        metadata: {
+          appId: 'app-1',
+          customerId: 'customer-123',
+          subscriptionId: BudgetOverride.DomainTask,
+        },
+      }
+
+      const result = buildLitellmMetadataFromContext(context, { source: LlmCallSource.UserChat })
+
+      expect(result).toBeDefined()
+      expect(result?.user).toBe(BudgetOverride.DomainTask)
+    })
+
+    it('should bypass grants for FixTask override with active session', function fixTask() {
+      grantSessionManager.setGrants('fix-meta-session', [createGrant()])
+
+      const context = {
+        socketId: 'fix-meta-session',
+        metadata: {
+          appId: 'app-1',
+          customerId: 'customer-123',
+          subscriptionId: BudgetOverride.FixTask,
+        },
+      }
+
+      const result = buildLitellmMetadataFromContext(context, { source: LlmCallSource.UserChat })
+
+      expect(result).toBeDefined()
+      expect(result?.user).toBe(BudgetOverride.FixTask)
+    })
+
+    it('should bypass grants for SummarizationTask override with active session', function summarizationTask() {
+      grantSessionManager.setGrants('summarization-meta-session', [createGrant()])
+
+      const context = {
+        socketId: 'summarization-meta-session',
+        metadata: {
+          appId: 'app-1',
+          customerId: 'customer-123',
+          subscriptionId: BudgetOverride.SummarizationTask,
+        },
+      }
+
+      const result = buildLitellmMetadataFromContext(context, { source: LlmCallSource.UserChat })
+
+      expect(result).toBeDefined()
+      expect(result?.user).toBe(BudgetOverride.SummarizationTask)
     })
   })
 

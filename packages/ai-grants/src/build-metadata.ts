@@ -1,4 +1,4 @@
-import { grantSessionManager, BudgetOverride } from './grant-session-manager.js'
+import { grantSessionManager, isBudgetOverride } from './grant-session-manager.js'
 import { createLogger, type LitellmMetadata } from '@airo/ai-common'
 
 const logger = createLogger('ai-grants')
@@ -137,33 +137,14 @@ export function buildLitellmMetadataFromContext(
   const traceFields: Pick<LitellmMetadata, 'traceId'> =
     metadata.traceId ? { traceId: metadata.traceId } : {}
 
-  // E2S (care) sessions bypass grants entirely
-  // This is set explicitly by the session that triggered the LLM call
-  if (subscriptionId === BudgetOverride.CareAgent) {
-    return { user: BudgetOverride.CareAgent, tags, ...traceFields }
-  }
-
-  // Test accounts (switchboard flag) bypass grants entirely
-  // This is set explicitly by the session that triggered the LLM call
-  if (subscriptionId === BudgetOverride.TestAccounts) {
-    return { user: BudgetOverride.TestAccounts, tags, ...traceFields }
-  }
-
-  // Task-specific budget overrides (Assessment Agent and background tasks)
-  // These bypass grants and use dedicated budgets
-  const taskBudgetOverrides = [
-    BudgetOverride.AssessAgent,
-    BudgetOverride.PublishTask,
-    BudgetOverride.DomainTask,
-    BudgetOverride.FixTask,
-    BudgetOverride.SummarizationTask,
-  ]
-  if (subscriptionId && taskBudgetOverrides.includes(subscriptionId as BudgetOverride)) {
+  // Budget override sessions bypass grants and use dedicated budgets
+  // (e2s care agents, test accounts, task-specific budgets)
+  if (isBudgetOverride(subscriptionId)) {
+    // Log at info for production visibility — override sessions are infrequent/bounded
     logger.info('grants.build_metadata.task_budget_override', {
       appId,
       socketId,
       subscriptionId,
-      budgetOverride: subscriptionId,
       tags,
       source: options?.source ?? LlmCallSource.UserChat,
     })
@@ -330,11 +311,21 @@ export function isGrantsExhausted(
   const socketId = typedContext?.socketId
   if (!socketId) return false
 
+  const metadata = typedContext?.metadata as ExecutionContextMetadata | undefined
+
+  // Budget override sessions bypass grants (e2s, test accounts, task budgets)
+  if (isBudgetOverride(metadata?.subscriptionId)) {
+    logger.debug('grants.is_grants_exhausted.override_bypass', {
+      socketId,
+      subscriptionId: metadata?.subscriptionId,
+    })
+    return false
+  }
+
   // No grants in session - not exhausted (will use customerId as fallback)
   if (!grantSessionManager.hasGrants(socketId)) return false
 
   // Has grants + no usable grant = exhausted
-  const metadata = typedContext?.metadata as ExecutionContextMetadata | undefined
   const customerId = metadata?.customerId
   return grantSessionManager.getCurrentUserId(socketId, customerId) === undefined
 }

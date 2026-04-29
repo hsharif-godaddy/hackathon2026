@@ -6,7 +6,7 @@
 import type { BudgetServiceClient } from '@airo/ai-lib/budget'
 import { computeRemaining, BudgetServiceUnavailableError } from '@airo/ai-lib/budget'
 import { BudgetExceededError } from '@airo/ai-common'
-import { BudgetOverride } from '@airo/ai-grants'
+import { isBudgetOverride } from '@airo/ai-grants'
 
 export interface BudgetPreCheckDeps {
   getClient: () => BudgetServiceClient | null
@@ -34,8 +34,12 @@ export async function performBudgetPreCheck(
     throw new BudgetServiceUnavailableError('Budget Service is enabled but subscriptionId is missing from context metadata')
   }
 
-  // Skip budget check for internal override sessions (care agents, test accounts)
-  if (subscriptionId === BudgetOverride.CareAgent || subscriptionId === BudgetOverride.TestAccounts) {
+  // Skip budget check for internal override sessions (care agents, test accounts, task budgets)
+  if (isBudgetOverride(subscriptionId)) {
+    deps.logger.info('budget.pre_check.override_bypass', {
+      appId: metadata.appId,
+      subscriptionId,
+    })
     return null
   }
 

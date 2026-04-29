@@ -117,20 +117,74 @@ describe('performBudgetPreCheck', () => {
     })
   })
 
-  it('returns null when subscriptionId is BudgetOverride.CareAgent', async () => {
+  it('returns null when subscriptionId is BudgetOverride.CareAgent and skips getClient', async () => {
+    const getClient = vi.fn()
     const result = await performBudgetPreCheck(
       { budgetServiceEnabled: true, subscriptionId: BudgetOverride.CareAgent },
-      makeDeps(),
+      makeDeps({ getClient }),
     )
     expect(result).toBeNull()
+    expect(getClient).not.toHaveBeenCalled()
   })
 
-  it('returns null when subscriptionId is BudgetOverride.TestAccounts', async () => {
+  it('returns null when subscriptionId is BudgetOverride.TestAccounts and skips getClient', async () => {
+    const getClient = vi.fn()
     const result = await performBudgetPreCheck(
       { budgetServiceEnabled: true, subscriptionId: BudgetOverride.TestAccounts },
-      makeDeps(),
+      makeDeps({ getClient }),
     )
     expect(result).toBeNull()
+    expect(getClient).not.toHaveBeenCalled()
+  })
+
+  it('returns null when subscriptionId is BudgetOverride.AssessAgent and skips getClient', async () => {
+    const getClient = vi.fn()
+    const result = await performBudgetPreCheck(
+      { budgetServiceEnabled: true, subscriptionId: BudgetOverride.AssessAgent },
+      makeDeps({ getClient }),
+    )
+    expect(result).toBeNull()
+    expect(getClient).not.toHaveBeenCalled()
+  })
+
+  it('returns null when subscriptionId is BudgetOverride.PublishTask and skips getClient', async () => {
+    const getClient = vi.fn()
+    const result = await performBudgetPreCheck(
+      { budgetServiceEnabled: true, subscriptionId: BudgetOverride.PublishTask },
+      makeDeps({ getClient }),
+    )
+    expect(result).toBeNull()
+    expect(getClient).not.toHaveBeenCalled()
+  })
+
+  it('returns null when subscriptionId is BudgetOverride.DomainTask and skips getClient', async () => {
+    const getClient = vi.fn()
+    const result = await performBudgetPreCheck(
+      { budgetServiceEnabled: true, subscriptionId: BudgetOverride.DomainTask },
+      makeDeps({ getClient }),
+    )
+    expect(result).toBeNull()
+    expect(getClient).not.toHaveBeenCalled()
+  })
+
+  it('returns null when subscriptionId is BudgetOverride.FixTask and skips getClient', async () => {
+    const getClient = vi.fn()
+    const result = await performBudgetPreCheck(
+      { budgetServiceEnabled: true, subscriptionId: BudgetOverride.FixTask },
+      makeDeps({ getClient }),
+    )
+    expect(result).toBeNull()
+    expect(getClient).not.toHaveBeenCalled()
+  })
+
+  it('returns null when subscriptionId is BudgetOverride.SummarizationTask and skips getClient', async () => {
+    const getClient = vi.fn()
+    const result = await performBudgetPreCheck(
+      { budgetServiceEnabled: true, subscriptionId: BudgetOverride.SummarizationTask },
+      makeDeps({ getClient }),
+    )
+    expect(result).toBeNull()
+    expect(getClient).not.toHaveBeenCalled()
   })
 
   it('throws BudgetServiceUnavailableError when subscriptionId missing', async () => {

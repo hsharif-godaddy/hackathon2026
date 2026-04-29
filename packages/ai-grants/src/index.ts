@@ -6,7 +6,7 @@ export { GrantType, GrantFinalState } from '@airo/shared/grants'
 export { GrantManager, GrantUnusableReason } from '@airo/shared/grants'
 
 // Session Manager (ai-grants specific — heavy deps on logger, AsyncLocalStorage)
-export { GrantSessionManager, grantSessionManager, BudgetOverride } from './grant-session-manager.js'
+export { GrantSessionManager, grantSessionManager, BudgetOverride, isBudgetOverride } from './grant-session-manager.js'
 export type { GrantRefreshCallback } from './grant-session-manager.js'
 
 // Metadata Builder (ai-grants specific — depends on session manager, logger, LitellmMetadata)
