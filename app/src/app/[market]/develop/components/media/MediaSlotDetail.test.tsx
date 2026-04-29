@@ -124,7 +124,7 @@ describe('MediaSlotDetail', () => {
     
     expect(screen.getByText('Hero Image')).toBeInTheDocument();
     expect(screen.getByText('test query')).toBeInTheDocument();
-    expect(screen.getByText('builder_mediaslot_upload')).toBeInTheDocument();
+    expect(screen.getByText('builder_mediaslot_uploads')).toBeInTheDocument();
     expect(screen.getByText('builder_mediaslot_use_image')).toBeInTheDocument();
   });
 

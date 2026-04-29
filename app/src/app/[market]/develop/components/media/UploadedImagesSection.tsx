@@ -1,12 +1,17 @@
 "use client";
 
-import { ChevronDown, ChevronRight, Loader2 } from "lucide-react";
+import clsx from 'clsx';
 import { useCallback, useEffect, useRef, useState } from "react";
 import CheckboxFilledIcon from '@ux/icon/checkbox-filled';
+import PlusIcon from '@ux/icon/plus';
+import Spinner from '@ux/spinner';
 
 import { dynamicApiConfigService } from "@/config/dynamic-api";
+import { useTranslations } from "@/hooks/useTranslations";
 import { regenerateToken } from "@/lib/jwt-regeneration";
 import { logger } from "@/lib/request-context";
+import { compressImageFile } from "@/utils/image-compression";
+import { logImpressionEvent } from "@/utils/instrumentation";
 
 interface UploadedFile {
   id: string;
@@ -15,6 +20,8 @@ interface UploadedFile {
   mimeType: string | null;
   size: number;
   signedUrl?: string;
+  /** Full signed URL for browser access (base agent URL + signedUrl path) */
+  fullSignedUrl?: string;
 }
 
 /** Slot upload that may need to be shown as a fallback when the chat copy expires */
@@ -27,11 +34,15 @@ export interface SlotUploadItem {
   sourceFilename?: string;
 }
 
+const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
+const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
+
 interface UploadedImagesSectionProps {
   appId: string;
+  slotName?: string;
   onSelectImage: (file: UploadedFile) => void;
+  onUploadSuccess?: () => void;
   isDisabled?: boolean;
-  layout?: 'horizontal' | 'grid';
   selectedFilename?: string | null;
   /** Increment to trigger a refetch (e.g., after a device upload) */
   refreshKey?: number;
@@ -43,26 +54,25 @@ interface UploadedImagesSectionProps {
   onSelectSlotUpload?: (url: string) => void;
 }
 
-// Extend UploadedFile with computed full signed URL for rendering
-interface UploadedFileWithFullUrl extends UploadedFile {
-  fullSignedUrl?: string;
-}
-
 export function UploadedImagesSection({
   appId,
+  slotName,
   onSelectImage,
+  onUploadSuccess,
   isDisabled,
-  layout = 'horizontal',
   selectedFilename,
   refreshKey,
   slotUploads,
   selectedSlotUploadUrl,
   onSelectSlotUpload,
 }: UploadedImagesSectionProps) {
-  const [uploads, setUploads] = useState<UploadedFileWithFullUrl[]>([]);
+  const t = useTranslations()
+  const [uploads, setUploads] = useState<UploadedFile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Track whether we've already attempted a refetch after image errors
   // to avoid infinite refetch loops when files are genuinely missing.
@@ -134,11 +144,78 @@ export function UploadedImagesSection({
     fetchUploads();
   }, [fetchUploads, appId]);
 
+  const handleFileSelect = useCallback(
+    async (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0]
+      if (!file) return
+
+      event.target.value = ''
+
+      if (!ALLOWED_TYPES.includes(file.type)) {
+        setUploadError(t('builder_mediaslot_error_type'))
+        return
+      }
+
+      if (file.size > MAX_FILE_SIZE) {
+        setUploadError(t('builder_mediaslot_error_size'))
+        return
+      }
+
+      setUploadError(null)
+      setIsUploading(true)
+
+      try {
+        const [compressed, tokenResult, apiConfig] = await Promise.all([
+          compressImageFile(file),
+          regenerateToken({ siteId: appId, force: true }),
+          dynamicApiConfigService.getConfigForSite(appId),
+        ])
+
+        if (!apiConfig.agentUrl) {
+          throw new Error('Agent URL not available')
+        }
+
+        const baseAgentUrl = apiConfig.agentUrl.replace(`/apps/${appId}`, '')
+
+        const formData = new FormData()
+        formData.append('image', compressed)
+
+        const response = await fetch(
+          `${baseAgentUrl}/media/${appId}/slots/${slotName}/upload`,
+          {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${tokenResult.token}` },
+            body: formData,
+          }
+        )
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({ error: t('builder_mediaslot_error_failed') }))
+          throw new Error(errorData.error || `${t('builder_mediaslot_error_failed')}: ${response.status}`)
+        }
+
+        logger.info('uploaded_images_section.upload_success', { appId, slotName })
+        logImpressionEvent('uploads.mediaslot.success')()
+        onUploadSuccess?.()
+      } catch (err) {
+        logger.error('uploaded_images_section.upload_failed', {
+          appId,
+          slotName,
+          error: err instanceof Error ? err.message : String(err),
+        })
+        logImpressionEvent('uploads.mediaslot.failed')()
+        setUploadError(err instanceof Error ? err.message : t('builder_mediaslot_error_failed'))
+      } finally {
+        setIsUploading(false)
+      }
+    },
+    [appId, slotName, onUploadSuccess, t]
+  )
 
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-4">
-        <Loader2 className="w-5 h-5 animate-spin text-intents-ux-textSubtle-textColor" />
+        <Spinner />
       </div>
     );
   }
@@ -158,16 +235,30 @@ export function UploadedImagesSection({
     (su) => su.sourceFilename && !chatFilenames.has(su.sourceFilename)
   );
 
-  const hasAnyUploads = uploads.length > 0 || dedupedSlotUploads.length > 0;
-
-  if (!hasAnyUploads) {
-    return null; // Don't show section if no uploads
-  }
-
-  // Grid layout - used in tabbed view (matches ImageGrid 3-col styling + selection)
-  if (layout === 'grid') {
-    return (
+  return (
+    <div>
+      {uploadError && (
+        <p className="text-sm text-intents-ux-error-textColor mb-2">{uploadError}</p>
+      )}
       <div className="grid grid-cols-3 gap-2">
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={isDisabled || isUploading}
+          className={clsx(
+            'relative aspect-square rounded-md overflow-hidden border border-dashed border-intents-ux-boxHighContrast-borderColor flex items-center justify-center hover:cursor-pointer',
+            (isDisabled || isUploading) ? 'opacity-50 cursor-not-allowed' : 'hover:opacity-80'
+          )}
+        >
+          {isUploading ? (
+            <Spinner />
+          ) : (
+            <span className="flex flex-col items-center gap-1">
+              <PlusIcon className="size-2.5 text-intents-ux-textSubtle-textColor" />
+              <span className="text-xs text-intents-ux-textSubtle-textColor">{t('builder_mediaslot_upload')}</span>
+            </span>
+          )}
+        </button>
         {uploads.map((file) => {
           const isSelected = selectedFilename === file.filename;
           return (
@@ -175,11 +266,13 @@ export function UploadedImagesSection({
               key={file.id}
               type="button"
               onClick={() => onSelectImage(file)}
-              disabled={isDisabled}
+              disabled={isDisabled || isUploading}
               aria-pressed={isSelected}
-              className={`relative aspect-square rounded-md overflow-hidden transition-opacity ${
-                isSelected ? '' : 'hover:opacity-80'
-              } ${isDisabled ? "opacity-50 cursor-not-allowed" : ""}`}
+              className={clsx(
+                'relative aspect-square rounded-md overflow-hidden transition-opacity hover:cursor-pointer',
+                !isSelected && !(isDisabled || isUploading) && 'hover:opacity-80',
+                (isDisabled || isUploading) && 'opacity-50 cursor-not-allowed'
+              )}
             >
               {file.fullSignedUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -219,11 +312,13 @@ export function UploadedImagesSection({
               key={su.url}
               type="button"
               onClick={() => onSelectSlotUpload?.(su.url)}
-              disabled={isDisabled}
+              disabled={isDisabled || isUploading}
               aria-pressed={isSelected}
-              className={`relative aspect-square rounded-md overflow-hidden transition-opacity ${
-                isSelected ? '' : 'hover:opacity-80'
-              } ${isDisabled ? "opacity-50 cursor-not-allowed" : ""}`}
+              className={clsx(
+                'relative aspect-square rounded-md overflow-hidden transition-opacity',
+                !isSelected && !(isDisabled || isUploading) && 'hover:opacity-80',
+                (isDisabled || isUploading) && 'opacity-50 cursor-not-allowed'
+              )}
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
@@ -251,55 +346,14 @@ export function UploadedImagesSection({
           );
         })}
       </div>
-    );
-  }
-
-  // Horizontal layout - used in mobile view with collapsible header
-  return (
-    <div className="mt-4 pt-4 border-t border-intents-ux-boxLowContrast-backgroundColor">
-      <button
-        type="button"
-        onClick={() => setIsExpanded(!isExpanded)}
-        aria-expanded={isExpanded}
-        aria-controls="uploads-list"
-        className="flex items-center gap-1 text-sm font-medium text-intents-ux-textSubtle-textColor hover:text-intents-ux-text-textColor transition-colors w-full"
-      >
-        {isExpanded ? (
-          <ChevronDown className="w-4 h-4" />
-        ) : (
-          <ChevronRight className="w-4 h-4" />
-        )}
-        Your Uploads ({uploads.length})
-      </button>
-      {isExpanded && (
-        <div id="uploads-list" className="flex gap-2 overflow-x-auto pb-1 mt-2">
-          {uploads.map((file) => (
-            <button
-              key={file.id}
-              type="button"
-              onClick={() => onSelectImage(file)}
-              disabled={isDisabled}
-              className={`flex-shrink-0 w-16 h-16 flex items-center justify-center rounded-md bg-intents-ux-boxLowContrast-backgroundColor hover:opacity-80 transition-opacity ${
-                isDisabled ? "opacity-50 cursor-not-allowed" : ""
-              }`}
-            >
-              {file.fullSignedUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={file.fullSignedUrl}
-                  alt={file.originalName}
-                  onError={handleImageError}
-                  className="max-w-full max-h-full object-contain rounded-md"
-                />
-              ) : (
-                <span className="text-xs text-intents-ux-textSubtle-textColor truncate px-1">
-                  {file.originalName}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
-      )}
+      <input
+        type="file"
+        ref={fileInputRef}
+        accept="image/jpeg,image/png,image/webp,image/gif"
+        onChange={handleFileSelect}
+        style={{ display: 'none' }}
+        aria-hidden="true"
+      />
     </div>
   );
 }

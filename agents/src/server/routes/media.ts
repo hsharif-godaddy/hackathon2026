@@ -593,17 +593,43 @@ router.post(
       // Re-encoding through sharp would cause double lossy compression for
       // JPEGs with no additional benefit.
 
-      // Generate filename: {sanitized-slot}-{hash}.{ext}
-      const sanitizedSlot = slotName
-        .replace(/\//g, '-')
-        .replace(/[^a-zA-Z0-9-]/g, '');
-      const hash = crypto
-        .createHash('sha256')
-        .update(file.buffer)
-        .digest('hex')
-        .slice(0, 8);
-      const ext = ALLOWED_IMAGE_TYPES[file.mimetype];
-      const filename = `${sanitizedSlot}-${hash}.${ext}`;
+      // If overwriteFilename is provided (editing a local upload), reuse the
+      // existing filename so the file is overwritten in place instead of
+      // accumulating new files on each editor save.
+      const overwriteFilename = typeof req.body?.overwriteFilename === 'string'
+        ? req.body.overwriteFilename
+        : undefined;
+      const isOverwrite = overwriteFilename !== undefined
+        && !overwriteFilename.includes('/')
+        && !overwriteFilename.includes('..')
+        && !overwriteFilename.includes('\0');
+
+      // chatFilenameOverwrite: editor was opened from a chat upload that has no persistent
+      // URL yet. Overwrite the original chat file instead of creating a new copy.
+      const chatFilenameOverwrite = !isOverwrite && typeof req.body?.chatFilenameOverwrite === 'string'
+        ? req.body.chatFilenameOverwrite
+        : undefined;
+      const hasChatOverwrite = chatFilenameOverwrite !== undefined
+        && !chatFilenameOverwrite.includes('/')
+        && !chatFilenameOverwrite.includes('..')
+        && !chatFilenameOverwrite.includes('\0');
+
+      let filename: string;
+      if (isOverwrite) {
+        filename = overwriteFilename!;
+      } else {
+        // Generate filename: {sanitized-slot}-{hash}.{ext}
+        const sanitizedSlot = slotName
+          .replace(/\//g, '-')
+          .replace(/[^a-zA-Z0-9-]/g, '');
+        const hash = crypto
+          .createHash('sha256')
+          .update(file.buffer)
+          .digest('hex')
+          .slice(0, 8);
+        const ext = ALLOWED_IMAGE_TYPES[file.mimetype];
+        filename = `${sanitizedSlot}-${hash}.${ext}`;
+      }
 
       // Ensure persistent media directory exists
       const persistentDir = getPersistentPublicDir(app.path);
@@ -643,19 +669,147 @@ router.post(
       // Build the URL (using airo-assets proxy pattern)
       const uploadedUrl = `/airo-assets/uploads/${filename}`;
 
+      if (isOverwrite) {
+        // Overwriting a local upload in place — URL is unchanged so no manifest
+        // update is needed. Also overwrite the corresponding chat upload file so
+        // the thumbnail in UploadedImagesSection shows the updated image.
+        const chatFilename = slotResult.slot?.uploadSources?.[uploadedUrl];
+        if (chatFilename) {
+          try {
+            const chatFilePath = await fileUploadService.findUploadedFilePath(appId, chatFilename);
+            if (chatFilePath) {
+              const chatTempPath = `${chatFilePath}.tmp.${Date.now()}`;
+              await fs.writeFile(chatTempPath, file.buffer);
+              await fs.rename(chatTempPath, chatFilePath);
+              logger.debug('route.media.upload.overwrite_chat_copy_updated', {
+                appId,
+                slotName,
+                chatFilename,
+              });
+            }
+          } catch (chatErr) {
+            // Non-fatal — thumbnail may show stale until next list refresh
+            logger.warn('route.media.upload.overwrite_chat_copy_failed', {
+              appId,
+              slotName,
+              chatFilename,
+              error: chatErr instanceof Error ? chatErr.message : String(chatErr),
+            });
+          }
+        }
+
+        // Find all other slots that either share the same persistent URL or were
+        // derived from the same original chat upload (different file per slot).
+        // For sibling-copy slots, overwrite their files on disk too so the
+        // preview proxy serves fresh content when their slots are reloaded.
+        const affectedSlots: string[] = [];
+        const manifestResult = await mediaManifestService.getManifest(appId);
+        if (!manifestResult.success) {
+          logger.warn('route.media.upload.overwrite_manifest_read_failed', {
+            appId,
+            slotName,
+            error: manifestResult.error,
+          });
+        }
+        if (manifestResult.success && manifestResult.manifest) {
+          for (const [name, s] of Object.entries(manifestResult.manifest)) {
+            if (name === slotName) continue;
+
+            // Case A: both slots point at the same persistent file
+            const sharesUrl = s.currentUrl === uploadedUrl || s.alternatives.includes(uploadedUrl);
+
+            // Case B: different persistent file but produced from the same chat upload
+            const sharesChatSource = !!(chatFilename &&
+              s.uploadSources &&
+              Object.values(s.uploadSources).includes(chatFilename));
+
+            if (!sharesUrl && !sharesChatSource) continue;
+
+            // Always notify the client so it can invalidate the preview-server
+            // cache for this slot — even if the disk write below fails.
+            affectedSlots.push(name);
+
+            if (!sharesUrl && sharesChatSource) {
+              // Case B: different persistent file, same original chat upload.
+              // Overwrite each sibling file derived from the same chat upload.
+              const siblingUrls = Object.entries(s.uploadSources!)
+                .filter(([, src]) => src === chatFilename)
+                .map(([url]) => url);
+
+              for (const siblingUrl of siblingUrls) {
+                const siblingFilename = siblingUrl.replace('/airo-assets/uploads/', '');
+                if (siblingFilename.includes('/') || siblingFilename.includes('..') || siblingFilename.includes('\0')) continue;
+                const siblingFilePath = path.join(mediaDir, siblingFilename); // nosemgrep: path-join-resolve-traversal
+                const resolvedSibling = path.resolve(siblingFilePath); // nosemgrep: path-join-resolve-traversal
+                if (!resolvedSibling.startsWith(resolvedMediaDir + path.sep)) continue;
+                try {
+                  const siblingTempPath = `${siblingFilePath}.tmp.${Date.now()}`;
+                  await fs.writeFile(siblingTempPath, file.buffer);
+                  await fs.rename(siblingTempPath, siblingFilePath);
+                  logger.debug('route.media.upload.cross_slot_overwrite', {
+                    appId, slotName, affectedSlot: name, siblingUrl,
+                  });
+                } catch (crossErr) {
+                  logger.warn('route.media.upload.cross_slot_overwrite_failed', {
+                    appId, slotName, affectedSlot: name, siblingUrl,
+                    error: crossErr instanceof Error ? crossErr.message : String(crossErr),
+                  });
+                }
+              }
+            }
+          }
+        }
+
+        logger.info('route.media.upload.overwrite_success', {
+          appId,
+          slotName,
+          uploadedUrl,
+          size: file.size,
+          affectedSlots,
+        });
+
+        return res.json({
+          success: true,
+          uploadedUrl,
+          affectedSlots,
+        });
+      }
+
       // Also save to chat uploads so the image appears in "Your Uploads" section.
       // Non-fatal — the persistent media write already succeeded.
       let chatUploadFilename: string | undefined;
-      try {
-        const chatResult = await fileUploadService.processUpload(appId, [file]);
-        if (chatResult.files?.length > 0) {
-          chatUploadFilename = chatResult.files[0]?.filename;
+      if (hasChatOverwrite) {
+        // Editor was opened from a chat upload — overwrite it in place instead of
+        // creating a new copy, so the thumbnail stays current and no duplicate appears.
+        try {
+          const chatFilePath = await fileUploadService.findUploadedFilePath(appId, chatFilenameOverwrite!);
+          if (chatFilePath) {
+            const chatTempPath = `${chatFilePath}.tmp.${Date.now()}`;
+            await fs.writeFile(chatTempPath, file.buffer);
+            await fs.rename(chatTempPath, chatFilePath);
+            chatUploadFilename = chatFilenameOverwrite;
+            logger.debug('route.media.upload.chat_overwrite_updated', { appId, slotName, chatFilenameOverwrite });
+          }
+        } catch (chatErr) {
+          logger.warn('route.media.upload.chat_overwrite_failed', {
+            appId,
+            slotName,
+            chatFilenameOverwrite,
+            error: chatErr instanceof Error ? chatErr.message : String(chatErr),
+          });
         }
-      } catch (chatErr) {
-        logger.debug('route.media.upload.chat_copy_skipped', {
-          appId,
-          error: chatErr instanceof Error ? chatErr.message : String(chatErr),
-        });
+      } else {
+        try {
+          const chatResult = await fileUploadService.processUpload(appId, [file]);
+          if (chatResult.files?.length > 0) {
+            chatUploadFilename = chatResult.files[0]?.filename;
+          }
+        } catch (chatErr) {
+          logger.debug('route.media.upload.chat_copy_skipped', {
+            appId,
+            error: chatErr instanceof Error ? chatErr.message : String(chatErr),
+          });
+        }
       }
 
       // Update manifest: new URL becomes current, old current goes to alternatives.

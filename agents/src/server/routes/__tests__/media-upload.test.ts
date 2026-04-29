@@ -31,6 +31,12 @@ vi.mock('../../../database/repositories/AppRepository.js', () => ({
   })),
 }))
 
+vi.mock('../../../services/FileUploadService.js', () => ({
+  fileUploadService: {
+    findUploadedFilePath: vi.fn().mockResolvedValue(null),
+    processUpload: vi.fn().mockResolvedValue({ files: [] }),
+  },
+}))
 
 vi.mock('fs/promises', () => ({
   default: {
@@ -249,4 +255,287 @@ describe('POST /media/:appId/slots/:slotName/upload', () => {
     )
   })
 
+})
+
+// Helper to build a minimal valid JPEG buffer
+async function makeJpeg() {
+  return sharp({
+    create: { width: 10, height: 10, channels: 3, background: { r: 100, g: 100, b: 100 } },
+  })
+    .jpeg()
+    .toBuffer()
+}
+
+// Minimal slot fixture
+function makeSlot(currentUrl: string, uploadSources?: Record<string, string>) {
+  return {
+    mediaType: 'image' as const,
+    currentUrl,
+    searchQuery: '',
+    alternatives: [],
+    userModified: true,
+    createdAt: new Date().toISOString(),
+    lastUpdated: new Date().toISOString(),
+    ...(uploadSources ? { uploadSources } : {}),
+  }
+}
+
+describe('POST /media/:appId/slots/:slotName/upload — overwriteFilename', () => {
+  let app: express.Application
+
+  beforeAll(async () => {
+    const { default: mediaRouter } = await import('../media.js')
+    app = express()
+    app.use('/media', mediaRouter)
+  })
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('overwrites file in place and skips manifest update', async () => {
+    const { mediaManifestService } = await import('../../../services/MediaManifestService.js')
+    const overwriteFilename = 'hero-abc12345.jpg'
+    const uploadedUrl = `/airo-assets/uploads/${overwriteFilename}`
+
+    vi.mocked(mediaManifestService.getSlot).mockResolvedValue({
+      success: true,
+      slot: makeSlot(uploadedUrl),
+    })
+    vi.mocked(mediaManifestService.getManifest).mockResolvedValue({
+      success: true,
+      manifest: { hero: makeSlot(uploadedUrl) },
+    })
+
+    const response = await request(app)
+      .post('/media/test-app/slots/hero/upload')
+      .field('overwriteFilename', overwriteFilename)
+      .attach('image', await makeJpeg(), { filename: 'edit.jpg', contentType: 'image/jpeg' })
+
+    expect(response.status).toBe(200)
+    expect(response.body.success).toBe(true)
+    expect(response.body.uploadedUrl).toBe(uploadedUrl)
+    expect(response.body.affectedSlots).toEqual([])
+    // Manifest must NOT be updated for an in-place overwrite
+    expect(mediaManifestService.updateSlotWithUpload).not.toHaveBeenCalled()
+  })
+
+  it('also updates the chat copy when uploadSources maps the overwritten URL', async () => {
+    const { mediaManifestService } = await import('../../../services/MediaManifestService.js')
+    const { fileUploadService } = await import('../../../services/FileUploadService.js')
+    const fs = await import('fs/promises')
+
+    const overwriteFilename = 'hero-abc12345.jpg'
+    const uploadedUrl = `/airo-assets/uploads/${overwriteFilename}`
+    const chatFilename = 'original-chat-upload.jpg'
+    const chatFilePath = '/tmp/test-app/uploads/u1/original-chat-upload.jpg'
+
+    vi.mocked(mediaManifestService.getSlot).mockResolvedValue({
+      success: true,
+      slot: makeSlot(uploadedUrl, { [uploadedUrl]: chatFilename }),
+    })
+    vi.mocked(mediaManifestService.getManifest).mockResolvedValue({
+      success: true,
+      manifest: { hero: makeSlot(uploadedUrl, { [uploadedUrl]: chatFilename }) },
+    })
+    vi.mocked(fileUploadService.findUploadedFilePath).mockResolvedValue(chatFilePath)
+
+    await request(app)
+      .post('/media/test-app/slots/hero/upload')
+      .field('overwriteFilename', overwriteFilename)
+      .attach('image', await makeJpeg(), { filename: 'edit.jpg', contentType: 'image/jpeg' })
+
+    // Should have written to the chat file path
+    expect(fileUploadService.findUploadedFilePath).toHaveBeenCalledWith('test-app', chatFilename)
+    expect(fs.default.writeFile).toHaveBeenCalledWith(
+      expect.stringContaining(chatFilePath),
+      expect.any(Buffer)
+    )
+  })
+
+  it('returns affectedSlots for slots sharing the same persistent URL (Case A)', async () => {
+    const { mediaManifestService } = await import('../../../services/MediaManifestService.js')
+
+    const overwriteFilename = 'espresso-abc12345.jpg'
+    const uploadedUrl = `/airo-assets/uploads/${overwriteFilename}`
+
+    vi.mocked(mediaManifestService.getSlot).mockResolvedValue({
+      success: true,
+      slot: makeSlot(uploadedUrl),
+    })
+    vi.mocked(mediaManifestService.getManifest).mockResolvedValue({
+      success: true,
+      manifest: {
+        'menu/espresso': makeSlot(uploadedUrl),
+        'menu/latte': makeSlot(uploadedUrl), // same URL — Case A
+      },
+    })
+
+    const response = await request(app)
+      .post('/media/test-app/slots/menu/espresso/upload')
+      .field('overwriteFilename', overwriteFilename)
+      .attach('image', await makeJpeg(), { filename: 'edit.jpg', contentType: 'image/jpeg' })
+
+    expect(response.status).toBe(200)
+    expect(response.body.affectedSlots).toEqual(['menu/latte'])
+  })
+
+  it('overwrites sibling files and returns affectedSlots for same-source slots (Case B)', async () => {
+    const { mediaManifestService } = await import('../../../services/MediaManifestService.js')
+    const { fileUploadService } = await import('../../../services/FileUploadService.js')
+    const fs = await import('fs/promises')
+
+    const espressoFilename = 'menu-espresso-abc12345.jpg'
+    const latteFilename = 'menu-latte-def67890.jpg'
+    const espressoUrl = `/airo-assets/uploads/${espressoFilename}`
+    const latteUrl = `/airo-assets/uploads/${latteFilename}`
+    const sharedChatSource = 'original-chat-upload.jpg'
+
+    vi.mocked(mediaManifestService.getSlot).mockResolvedValue({
+      success: true,
+      slot: makeSlot(espressoUrl, { [espressoUrl]: sharedChatSource }),
+    })
+    vi.mocked(mediaManifestService.getManifest).mockResolvedValue({
+      success: true,
+      manifest: {
+        'menu/espresso': makeSlot(espressoUrl, { [espressoUrl]: sharedChatSource }),
+        // Different URL, but same original chat source — Case B
+        'menu/latte': makeSlot(latteUrl, { [latteUrl]: sharedChatSource }),
+      },
+    })
+    vi.mocked(fileUploadService.findUploadedFilePath).mockResolvedValue(null) // no chat file
+
+    const response = await request(app)
+      .post('/media/test-app/slots/menu/espresso/upload')
+      .field('overwriteFilename', espressoFilename)
+      .attach('image', await makeJpeg(), { filename: 'edit.jpg', contentType: 'image/jpeg' })
+
+    expect(response.status).toBe(200)
+    expect(response.body.affectedSlots).toEqual(['menu/latte'])
+
+    // Should have written the sibling file (menu-latte-def67890.jpg) too
+    const writeFileCalls = vi.mocked(fs.default.writeFile).mock.calls.map(([p]) => p as string)
+    expect(writeFileCalls.some((p) => p.includes(latteFilename))).toBe(true)
+  })
+
+  it('rejects overwriteFilename containing a path separator', async () => {
+    const { mediaManifestService } = await import('../../../services/MediaManifestService.js')
+
+    // When overwriteFilename is invalid, the request falls through to the normal
+    // new-upload path, which requires getSlot to succeed and updateSlotWithUpload to run.
+    vi.mocked(mediaManifestService.getSlot).mockResolvedValue({
+      success: true,
+      slot: makeSlot('https://example.com/old.jpg'),
+    })
+    vi.mocked(mediaManifestService.updateSlotWithUpload).mockResolvedValue({
+      success: true,
+      slot: makeSlot('/airo-assets/uploads/hero-new.jpg'),
+    })
+
+    const response = await request(app)
+      .post('/media/test-app/slots/hero/upload')
+      .field('overwriteFilename', '../escape/hero.jpg') // path traversal attempt
+      .attach('image', await makeJpeg(), { filename: 'edit.jpg', contentType: 'image/jpeg' })
+
+    // Falls through to normal upload (not overwrite) — manifest IS updated
+    expect(response.status).toBe(200)
+    expect(mediaManifestService.updateSlotWithUpload).toHaveBeenCalled()
+  })
+})
+
+describe('POST /media/:appId/slots/:slotName/upload — chatFilenameOverwrite', () => {
+  let app: express.Application
+
+  beforeAll(async () => {
+    const { default: mediaRouter } = await import('../media.js')
+    app = express()
+    app.use('/media', mediaRouter)
+  })
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('overwrites original chat file in place instead of creating a new copy', async () => {
+    const { mediaManifestService } = await import('../../../services/MediaManifestService.js')
+    const { fileUploadService } = await import('../../../services/FileUploadService.js')
+    const fs = await import('fs/promises')
+
+    const chatFilename = 'original-chat-upload.jpg'
+    const chatFilePath = '/tmp/test-app/uploads/u1/original-chat-upload.jpg'
+
+    vi.mocked(mediaManifestService.getSlot).mockResolvedValue({
+      success: true,
+      slot: makeSlot('https://media.gettyimages.com/old.jpg'),
+    })
+    vi.mocked(mediaManifestService.updateSlotWithUpload).mockResolvedValue({
+      success: true,
+      slot: makeSlot('/airo-assets/uploads/hero-new.jpg'),
+    })
+    vi.mocked(fileUploadService.findUploadedFilePath).mockResolvedValue(chatFilePath)
+
+    const response = await request(app)
+      .post('/media/test-app/slots/hero/upload')
+      .field('chatFilenameOverwrite', chatFilename)
+      .attach('image', await makeJpeg(), { filename: 'edit.jpg', contentType: 'image/jpeg' })
+
+    expect(response.status).toBe(200)
+    expect(response.body.success).toBe(true)
+    expect(response.body.chatUploadFilename).toBe(chatFilename)
+
+    // Should overwrite the existing file, not call processUpload
+    expect(fileUploadService.findUploadedFilePath).toHaveBeenCalledWith('test-app', chatFilename)
+    expect(fs.default.writeFile).toHaveBeenCalledWith(
+      expect.stringContaining(chatFilePath),
+      expect.any(Buffer)
+    )
+    expect(fileUploadService.processUpload).not.toHaveBeenCalled()
+  })
+
+  it('falls back to creating a new chat copy when the chat file is not found on disk', async () => {
+    const { mediaManifestService } = await import('../../../services/MediaManifestService.js')
+    const { fileUploadService } = await import('../../../services/FileUploadService.js')
+
+    vi.mocked(mediaManifestService.getSlot).mockResolvedValue({
+      success: true,
+      slot: makeSlot('https://media.gettyimages.com/old.jpg'),
+    })
+    vi.mocked(mediaManifestService.updateSlotWithUpload).mockResolvedValue({
+      success: true,
+      slot: makeSlot('/airo-assets/uploads/hero-new.jpg'),
+    })
+    vi.mocked(fileUploadService.findUploadedFilePath).mockResolvedValue(null) // not found
+
+    const response = await request(app)
+      .post('/media/test-app/slots/hero/upload')
+      .field('chatFilenameOverwrite', 'original-chat-upload.jpg')
+      .attach('image', await makeJpeg(), { filename: 'edit.jpg', contentType: 'image/jpeg' })
+
+    expect(response.status).toBe(200)
+    // chatFilenameOverwrite not applied, chatUploadFilename not set from it
+    expect(response.body.chatUploadFilename).toBeUndefined()
+  })
+
+  it('rejects chatFilenameOverwrite containing a path separator', async () => {
+    const { mediaManifestService } = await import('../../../services/MediaManifestService.js')
+    const { fileUploadService } = await import('../../../services/FileUploadService.js')
+
+    vi.mocked(mediaManifestService.getSlot).mockResolvedValue({
+      success: true,
+      slot: makeSlot('https://media.gettyimages.com/old.jpg'),
+    })
+    vi.mocked(mediaManifestService.updateSlotWithUpload).mockResolvedValue({
+      success: true,
+      slot: makeSlot('/airo-assets/uploads/hero-new.jpg'),
+    })
+
+    const response = await request(app)
+      .post('/media/test-app/slots/hero/upload')
+      .field('chatFilenameOverwrite', '../escape/file.jpg')
+      .attach('image', await makeJpeg(), { filename: 'edit.jpg', contentType: 'image/jpeg' })
+
+    expect(response.status).toBe(200)
+    // Invalid chatFilenameOverwrite ignored — falls through to normal processUpload
+    expect(fileUploadService.findUploadedFilePath).not.toHaveBeenCalled()
+  })
 })

@@ -1,12 +1,12 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { FormattedMessage } from 'react-intl'
 import Button from '@ux/button'
 import CheckboxFilledIcon from '@ux/icon/checkbox-filled'
 import ChevronDownIcon from '@ux/icon/chevron-down'
 import ChevronUpIcon from '@ux/icon/chevron-up'
-import CloudUploadIcon from '@ux/icon/cloud-upload'
+import CropIcon from '@ux/icon/crop'
 import RefreshIcon from '@ux/icon/refresh'
 import Skeleton from '@ux/skeleton'
 import Tag from '@ux/tag'
@@ -20,7 +20,6 @@ import { useTranslations } from '@/hooks/useTranslations'
 import { regenerateToken } from '@/lib/jwt-regeneration'
 import { logger } from '@/lib/request-context'
 import { useServerPollingStore } from '@/stores/useServerPollingStore'
-import { compressImageFile } from '@/utils/image-compression'
 import { generateClickEID, logImpressionEvent } from '@/utils/instrumentation'
 import { postMessageToIframe } from '@/utils/postMessage'
 import { GettyImagesLogo } from './icons/GettyImagesLogo'
@@ -44,20 +43,22 @@ export function getSlotImageUrl(
   if (!imageUrl || !slotName || !previewBaseUrl) {
     return imageUrl || ''
   }
+  // Absolute URLs (e.g. signed agent URLs for chat uploads) are used as-is
+  if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+    return imageUrl
+  }
   if (imageUrl.startsWith('/airo-assets/uploads/')) {
     return `${previewBaseUrl}${imageUrl}`
   }
   return `${previewBaseUrl}/airo-assets/images/${slotName}?src=${encodeURIComponent(imageUrl)}`
 }
 
-const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
-const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
-
 interface MediaSlotDetailProps {
   appId: string
   slotName: string
   enabled?: boolean
   onDone?: () => void
+  onEdit?: (effectiveUrl: string) => void
 }
 
 export function MediaSlotDetail({
@@ -65,6 +66,7 @@ export function MediaSlotDetail({
   slotName,
   enabled = true,
   onDone,
+  onEdit,
 }: MediaSlotDetailProps) {
   const t = useTranslations()
 
@@ -77,14 +79,13 @@ export function MediaSlotDetail({
   const { refetch: refetchManifest } = useMediaManifest({ appId, enabled })
 
   const [selectedUrl, setSelectedUrl] = useState<string | null>(null)
-  const [selectedUploadFile, setSelectedUploadFile] = useState<{ filename: string; signedUrl?: string } | null>(null)
+  const [selectedUploadFile, setSelectedUploadFile] = useState<{ filename: string; signedUrl?: string; fullSignedUrl?: string } | null>(null)
   const [isSwapping, setIsSwapping] = useState(false)
-  const [isUploading, setIsUploading] = useState(false)
+  const [isApplyingUpload, setIsApplyingUpload] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [alternativesOpen, setAlternativesOpen] = useState(true)
   const [uploadsOpen, setUploadsOpen] = useState(true)
   const [uploadsRefreshKey, setUploadsRefreshKey] = useState(0)
-  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(function resetStateOnSlotChange() {
     setSelectedUrl(null)
@@ -100,7 +101,7 @@ export function MediaSlotDetail({
     setSelectedUploadFile(null)
   }, [])
 
-  const handleSelectUploadImage = useCallback((file: { filename: string; signedUrl?: string }) => {
+  const handleSelectUploadImage = useCallback((file: { filename: string; signedUrl?: string; fullSignedUrl?: string }) => {
     setSelectedUploadFile(file)
     setSelectedUrl(null)
   }, [])
@@ -175,86 +176,18 @@ export function MediaSlotDetail({
     }
   }, [appId, slotName, slot, selectedUrl, reloadPreviewSlot, refetch, refetchManifest, t])
 
-  const handleFileSelect = useCallback(
-    async (event: React.ChangeEvent<HTMLInputElement>) => {
-      const file = event.target.files?.[0]
-      if (!file) return
-
-      event.target.value = ''
-
-      if (!ALLOWED_TYPES.includes(file.type)) {
-        setUploadError(t('builder_mediaslot_error_type'))
-        return
-      }
-
-      if (file.size > MAX_FILE_SIZE) {
-        setUploadError(t('builder_mediaslot_error_size'))
-        return
-      }
-
-      setUploadError(null)
-      setIsUploading(true)
-
-      try {
-        const [compressed, tokenResult, apiConfig] = await Promise.all([
-          compressImageFile(file),
-          regenerateToken({ siteId: appId, force: true }),
-          dynamicApiConfigService.getConfigForSite(appId),
-        ])
-
-        if (!apiConfig.agentUrl) {
-          throw new Error('Agent URL not available')
-        }
-
-        const baseAgentUrl = apiConfig.agentUrl.replace(`/apps/${appId}`, '')
-
-        const formData = new FormData()
-        formData.append('image', compressed)
-
-        const response = await fetch(
-          `${baseAgentUrl}/media/${appId}/slots/${slotName}/upload`,
-          {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${tokenResult.token}` },
-            body: formData,
-          }
-        )
-
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({ error: t('builder_mediaslot_error_failed') }))
-          throw new Error(errorData.error || `${t('builder_mediaslot_error_failed')}: ${response.status}`)
-        }
-
-        const result = await response.json()
-
-        logger.info('media_slot_detail.upload_success', { appId, slotName })
-        logImpressionEvent('uploads.mediaslot.success')()
-        reloadPreviewSlot(slotName)
-        setUploadsRefreshKey((k) => k + 1)
-        await refetch()
-        await refetchManifest()
-        // Clear selection after data is fresh — effectiveSelectedFilename
-        // derives from uploadSources so the checkmark lands correctly
-        setSelectedUrl(null)
-        setSelectedUploadFile(null)
-      } catch (err) {
-        logger.error('media_slot_detail.upload_failed', {
-          appId,
-          slotName,
-          error: err instanceof Error ? err.message : String(err),
-        })
-        logImpressionEvent('uploads.mediaslot.failed')()
-        setUploadError(err instanceof Error ? err.message : t('builder_mediaslot_error_failed'))
-      } finally {
-        setIsUploading(false)
-      }
-    },
-    [appId, slotName, reloadPreviewSlot, refetch, refetchManifest, t]
-  )
+  const handleUploadSuccess = useCallback(() => {
+    reloadPreviewSlot(slotName)
+    setUploadsRefreshKey((k) => k + 1)
+    void refetch()
+    void refetchManifest()
+    setSelectedUrl(null)
+    setSelectedUploadFile(null)
+  }, [slotName, reloadPreviewSlot, refetch, refetchManifest])
 
   const handleSelectFromUploads = useCallback(
-    async (file: { filename: string; signedUrl?: string }) => {
-      setIsUploading(true)
+    async (file: { filename: string; signedUrl?: string; fullSignedUrl?: string }) => {
+      setIsApplyingUpload(true)
       setUploadError(null)
 
       try {
@@ -303,7 +236,7 @@ export function MediaSlotDetail({
         logImpressionEvent('uploads.mediaslot.failed')()
         setUploadError(err instanceof Error ? err.message : t('builder_mediaslot_error_fail_use'))
       } finally {
-        setIsUploading(false)
+        setIsApplyingUpload(false)
       }
     },
     [appId, slotName, reloadPreviewSlot, refetch, refetchManifest, t]
@@ -386,24 +319,33 @@ export function MediaSlotDetail({
             )}
 
             <div className="flex gap-2">
-              <Button
-                onClick={() => fileInputRef.current?.click()}
-                design="secondary"
-                icon={<CloudUploadIcon className="w-4 h-4" />}
-                disabled={isUploading}
-                className="flex-1"
-                text={isUploading ? t('builder_mediaslot_uploading') : t('builder_mediaslot_upload')}
-                size="sm"
-                data-eid={generateClickEID("develop.media_slot_detail.upload")}
-              />
+              {onEdit && (
+                <Button
+                  onClick={() => {
+                    if (selectedUploadFile) {
+                      const uploadPersistentUrl = slotUploads.find((su) => su.sourceFilename === selectedUploadFile.filename)?.url
+                      onEdit(uploadPersistentUrl ?? selectedUploadFile.fullSignedUrl ?? slot?.currentUrl ?? '')
+                    } else {
+                      onEdit(effectiveSelectedUrl ?? slot?.currentUrl ?? '')
+                    }
+                  }}
+                  design="secondary"
+                  size="sm"
+                  icon={<CropIcon className="w-4 h-4" />}
+                  text={t('builder_mediaslot_modify')}
+                  disabled={!slot?.currentUrl || isApplyingUpload || isSwapping}
+                  data-eid={generateClickEID("develop.media_slot_detail.modify")}
+                  className="flex-1"
+                />
+              )}
               <Button
                 onClick={selectedUploadFile ? () => handleSelectFromUploads(selectedUploadFile) : handleSwapImage}
                 design="primary"
-                icon={<RefreshIcon className={`w-4 h-4 ${(isSwapping || isUploading) ? 'animate-spin' : ''}`} />}
-                disabled={!hasSelection || isSwapping || isUploading}
+                icon={<RefreshIcon className={`w-4 h-4 ${(isSwapping || isApplyingUpload) ? 'animate-spin' : ''}`} />}
+                disabled={!hasSelection || isSwapping || isApplyingUpload}
                 className="flex-1"
                 size="sm"
-                text={(isSwapping || isUploading) ? t('builder_mediaslot_swapping') : t('builder_mediaslot_use_image')}
+                text={(isSwapping || isApplyingUpload) ? t('builder_mediaslot_swapping') : t('builder_mediaslot_use_image')}
                 data-eid={generateClickEID("develop.media_slot_detail.use")}
               />
             </div>
@@ -462,9 +404,10 @@ export function MediaSlotDetail({
               {uploadsOpen && (
                 <UploadedImagesSection
                   appId={appId}
+                  slotName={slotName}
+                  onUploadSuccess={handleUploadSuccess}
                   onSelectImage={handleSelectUploadImage}
-                  isDisabled={isUploading}
-                  layout="grid"
+                  isDisabled={isApplyingUpload}
                   selectedFilename={effectiveSelectedFilename}
                   refreshKey={uploadsRefreshKey}
                   slotUploads={slotUploads}
@@ -483,14 +426,6 @@ export function MediaSlotDetail({
         )}
       </div>
 
-      <input
-        type="file"
-        ref={fileInputRef}
-        accept="image/jpeg,image/png,image/webp,image/gif"
-        onChange={handleFileSelect}
-        style={{ display: 'none' }}
-        aria-hidden="true"
-      />
     </div>
   )
 }
@@ -516,7 +451,7 @@ function ImageGrid({ images, selectedUrl, slotName, previewBaseUrl, onSelect }: 
             key={url}
             onClick={() => onSelect(url)}
             aria-pressed={isSelected}
-            className={`relative aspect-square rounded-md overflow-hidden ${
+            className={`relative aspect-square rounded-md overflow-hidden hover:cursor-pointer ${
               isSelected ? '' : 'hover:opacity-80'
             }`}
             data-eid="develop.media_slot_detail.image_option.click"

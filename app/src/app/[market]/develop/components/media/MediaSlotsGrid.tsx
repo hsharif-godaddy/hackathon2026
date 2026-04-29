@@ -15,6 +15,8 @@ interface MediaSlotsGridProps {
   isLoading: boolean
   error: string | null
   onSelectSlot: (slotName: string) => void
+  /** Increment to bust browser cache for upload thumbnails (e.g. after an overwrite edit) */
+  thumbnailBustKey?: number
 }
 
 export function MediaSlotsGrid({
@@ -24,6 +26,7 @@ export function MediaSlotsGrid({
   isLoading,
   error,
   onSelectSlot,
+  thumbnailBustKey,
 }: MediaSlotsGridProps) {
   const t = useTranslations()
   const previewBaseUrl = useServerPollingStore((state) => state.getServerState(appId))?.url || null
@@ -56,7 +59,7 @@ export function MediaSlotsGrid({
   }
 
   return (
-    <div className="grid grid-cols-2 gap-3 px-3 md:px-0 pt-3 md:pt-0 pb-16 md:pb-2">
+    <div className="grid grid-cols-2 gap-3 px-2 md:px-0 md:pt-0 pb-2">
       {slotNames.map(function renderSlot(name) {
         const slot = manifest[name]
         if (!slot) return null
@@ -64,7 +67,7 @@ export function MediaSlotsGrid({
         const thumbnailUrl = slot.thumbnailUrl || slot.currentUrl
         const proxiedUrl = previewBaseUrl && thumbnailUrl
           ? thumbnailUrl.startsWith('/airo-assets/uploads/')
-            ? `${previewBaseUrl}${thumbnailUrl}`
+            ? `${previewBaseUrl}${thumbnailUrl}${thumbnailBustKey ? `?_t=${thumbnailBustKey}` : ''}`
             : `${previewBaseUrl}/airo-assets/images/${name}?src=${encodeURIComponent(thumbnailUrl)}`
           : thumbnailUrl
 
@@ -73,7 +76,7 @@ export function MediaSlotsGrid({
             type="button"
             key={name}
             onClick={() => onSelectSlot(name)}
-            className="flex flex-col gap-1 text-start group hover:cursor-pointer"
+            className="flex flex-col gap-0.5 text-start group hover:cursor-pointer"
             data-eid={generateClickEID("develop.media_panel.slot")}
           >
             <div className="relative aspect-square w-full overflow-hidden rounded-md bg-intents-ux-box-backgroundColor border border-intents-ux-box-borderColor group-hover:border-intents-ux-ring-borderColor transition-colors">

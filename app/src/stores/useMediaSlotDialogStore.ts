@@ -22,24 +22,35 @@ interface MediaSlotDialogState {
    */
   mediaReturnMobileMode: MobileMode | null;
 
+  /**
+   * Slot name for which the image editor should open directly.
+   * Set when navigating to a slot with openEditor=true.
+   * Cleared independently by MediaPanel to avoid race conditions.
+   */
+  openEditorForSlot: string | null;
+
   /** Navigate the media panel to a specific slot (does not open the sheet dialog) */
-  navigateToSlot: (slotName: string) => void;
+  navigateToSlot: (slotName: string, options?: { openEditor?: boolean }) => void;
   /** Clear the panel navigation slot (consumed by MediaPanel) */
   clearPanelSlot: () => void;
   clearMediaReturnState: () => void;
+  /** Clear the editor slot (consumed by MediaPanel) */
+  clearEditorSlot: () => void;
 }
 
 export const useMediaSlotDialogStore = create<MediaSlotDialogState>((set) => ({
   panelSlotName: null,
   mediaReturnTab: null,
   mediaReturnMobileMode: null,
+  openEditorForSlot: null,
 
-  navigateToSlot: (slotName: string) => {
+  navigateToSlot: (slotName: string, options?: { openEditor?: boolean }) => {
     if (slotName === '__GRID__') {
       set({
         panelSlotName: slotName,
         mediaReturnTab: null,
         mediaReturnMobileMode: null,
+        openEditorForSlot: null,
       });
       return;
     }
@@ -48,6 +59,7 @@ export const useMediaSlotDialogStore = create<MediaSlotDialogState>((set) => ({
       panelSlotName: slotName,
       mediaReturnTab: develop.activeChatTab,
       mediaReturnMobileMode: develop.mobileMode,
+      openEditorForSlot: options?.openEditor ? slotName : null,
     });
   },
 
@@ -57,5 +69,9 @@ export const useMediaSlotDialogStore = create<MediaSlotDialogState>((set) => ({
 
   clearMediaReturnState: () => {
     set({ mediaReturnTab: null, mediaReturnMobileMode: null });
+  },
+
+  clearEditorSlot: () => {
+    set({ openEditorForSlot: null });
   },
 }));

@@ -103,3 +103,12 @@ export interface AutoImportMediaSlotMessage {
   imageAlt?: string;
   imageType: "img" | "background";
 }
+
+/**
+ * Message to open the image editor for a specific media slot
+ * Sent from dev-tools to parent when "Modify" is clicked on a media slot image
+ */
+export interface OpenImageEditorMessage {
+  type: "OPEN_IMAGE_EDITOR";
+  slotName: string; // e.g., "pages/home/hero"
+}

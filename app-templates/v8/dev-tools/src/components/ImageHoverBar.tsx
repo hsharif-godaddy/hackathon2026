@@ -3,7 +3,7 @@ import { safePostMessage } from "../utils/postMessage";
 import { generatePreciseSelector, extractDevContext, getElementClassName } from "../utils/element-helpers";
 import { showSelectionOverlay } from "../utils/selection-overlay";
 import type { HoveredImage } from "../hooks/useImageHoverDetection";
-import { Image, Sparkles } from "lucide-react";
+import { Image, Sparkles, Pencil } from "lucide-react";
 import { t } from "../utils/translations";
 
 interface ImageHoverBarProps {
@@ -82,6 +82,15 @@ export default function ImageHoverBar({
     });
   }, [element, imageUrl]);
 
+  const handleModify = useCallback(() => {
+    if (isMediaSlot && slotPath) {
+      safePostMessage(window.parent, {
+        type: "OPEN_IMAGE_EDITOR",
+        slotName: slotPath,
+      });
+    }
+  }, [isMediaSlot, slotPath]);
+
   return (
     <div
       data-airo-dev-tools
@@ -134,6 +143,38 @@ export default function ImageHoverBar({
         <Image style={{ width: "15px", height: "15px" }} />
         {t("devtools_image_replace", "Replace")}
       </button>
+
+      {isMediaSlot && slotPath && (
+        <button
+          type="button"
+          onClick={handleModify}
+          title={t("devtools_image_modify_title", "Modify image")}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "5px",
+            padding: "6px 10px",
+            background: "rgba(255, 255, 255, 0.9)",
+            border: "none",
+            borderRadius: "6px",
+            cursor: "pointer",
+            boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+            fontSize: "12px",
+            fontWeight: 600,
+            color: "var(--color-text-secondary)",
+            letterSpacing: "-0.01em",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = "rgba(245, 245, 245, 0.95)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = "rgba(255, 255, 255, 0.9)";
+          }}
+        >
+          <Pencil style={{ width: "15px", height: "15px" }} />
+          {t("devtools_image_modify", "Modify")}
+        </button>
+      )}
 
       <button
         type="button"

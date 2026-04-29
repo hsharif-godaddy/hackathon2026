@@ -154,6 +154,7 @@
     "react": "catalog:",
     "react-dom": "catalog:",
     "react-dynamic-remote-component": "^0.0.5",
+    "react-filerobot-image-editor": "catalog:",
     "react-hook-form": "^7.65.0",
     "react-intl": "^7.1.14",
     "react-markdown": "^10.1.0",

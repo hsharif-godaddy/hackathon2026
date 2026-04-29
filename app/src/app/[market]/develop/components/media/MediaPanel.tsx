@@ -1,16 +1,21 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import ChevronLeftIcon from '@ux/icon/chevron-left'
 
+import { ImageEditorPanel } from '@/app/[market]/develop/components/media/ImageEditorPanel'
 import { MediaSlotDetail } from '@/app/[market]/develop/components/media/MediaSlotDetail'
 import { MediaSlotsGrid } from '@/app/[market]/develop/components/media/MediaSlotsGrid'
+import { ChatTab } from '@/app/[market]/develop/components/types'
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import { useChatTabs } from '@/hooks/useChatTabs'
 import { useMediaManifest } from '@/hooks/useMediaManifest'
 import { useTranslations } from '@/hooks/useTranslations'
-import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
+import { DEFAULT_CHAT_PANE_WIDTH, useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useMediaSlotDialogStore } from '@/stores/useMediaSlotDialogStore'
+
+// Wide enough to comfortably show the image editor canvas + toolbars
+const EDITOR_CHAT_PANE_WIDTH = 616
 
 type SlotDetailEntry = 'grid' | 'external' | null
 
@@ -19,12 +24,20 @@ export default function MediaPanel() {
   const appId = useAppIdFromParams()
   const [activeSlotName, setActiveSlotName] = useState<string | null>(null)
   const [slotDetailEntry, setSlotDetailEntry] = useState<SlotDetailEntry>(null)
+  const [isEditorOpen, setIsEditorOpen] = useState(false)
+  const [editorImageUrl, setEditorImageUrl] = useState<string | null>(null)
+  const [thumbnailBustKey, setThumbnailBustKey] = useState(0)
+  const priorPaneWidthRef = useRef<number>(DEFAULT_CHAT_PANE_WIDTH)
 
   const panelSlotName = useMediaSlotDialogStore((state) => state.panelSlotName)
   const clearPanelSlot = useMediaSlotDialogStore((state) => state.clearPanelSlot)
   const mediaReturnTab = useMediaSlotDialogStore((state) => state.mediaReturnTab)
   const mediaReturnMobileMode = useMediaSlotDialogStore((state) => state.mediaReturnMobileMode)
   const clearMediaReturnState = useMediaSlotDialogStore((state) => state.clearMediaReturnState)
+  const openEditorForSlot = useMediaSlotDialogStore((state) => state.openEditorForSlot)
+  const clearEditorSlot = useMediaSlotDialogStore((state) => state.clearEditorSlot)
+
+  const activeChatTab = useDevelopPageStore((state) => state.activeChatTab)
 
   const { setActiveChatTab } = useChatTabs()
 
@@ -32,19 +45,37 @@ export default function MediaPanel() {
     appId: appId || null
   })
 
-  // Respond to external navigation requests (e.g., from preview "Swap Image")
+  // Respond to external navigation requests (e.g., from preview "Swap Image" or "Modify").
+  // Also atomically handles editor auto-open: if openEditorForSlot matches the incoming
+  // slot, open the editor in the same render cycle to avoid a two-effect race condition.
   useEffect(function handleExternalNavigation() {
-    if (panelSlotName) {
-      if (panelSlotName === '__GRID__') {
-        setActiveSlotName(null)
-        setSlotDetailEntry(null)
-      } else {
-        setActiveSlotName(panelSlotName)
-        setSlotDetailEntry('external')
+    if (!panelSlotName) return
+    if (panelSlotName === '__GRID__') {
+      setActiveSlotName(null)
+      setSlotDetailEntry(null)
+    } else {
+      setActiveSlotName(panelSlotName)
+      setSlotDetailEntry('external')
+      if (openEditorForSlot === panelSlotName) {
+        if (!isEditorOpen) {
+          priorPaneWidthRef.current = useDevelopPageStore.getState().chatPaneWidth
+          useDevelopPageStore.getState().setChatPaneWidth(EDITOR_CHAT_PANE_WIDTH)
+        }
+        setIsEditorOpen(true)
+        clearEditorSlot()
       }
-      clearPanelSlot()
     }
-  }, [panelSlotName, clearPanelSlot])
+    clearPanelSlot()
+  }, [panelSlotName, openEditorForSlot, isEditorOpen, clearPanelSlot, clearEditorSlot])
+
+  // Restore pane width when user navigates away from the Media tab while editor is open
+  useEffect(function restorePaneWidthOnTabChange() {
+    if (isEditorOpen && activeChatTab !== ChatTab.MEDIAS) {
+      useDevelopPageStore.getState().setChatPaneWidth(priorPaneWidthRef.current)
+      setIsEditorOpen(false)
+      setEditorImageUrl(null)
+    }
+  }, [activeChatTab, isEditorOpen])
 
   const handleSelectSlot = useCallback((slotName: string) => {
     clearMediaReturnState()
@@ -64,6 +95,7 @@ export default function MediaPanel() {
     }
     setActiveSlotName(null)
     setSlotDetailEntry(null)
+    setThumbnailBustKey((k) => k + 1)
     void refetch()
   }, [
     slotDetailEntry,
@@ -74,11 +106,50 @@ export default function MediaPanel() {
     refetch,
   ])
 
+  const handleOpenEditor = useCallback((imageUrl: string) => {
+    if (!isEditorOpen) {
+      priorPaneWidthRef.current = useDevelopPageStore.getState().chatPaneWidth
+      useDevelopPageStore.getState().setChatPaneWidth(EDITOR_CHAT_PANE_WIDTH)
+    }
+    setEditorImageUrl(imageUrl)
+    setIsEditorOpen(true)
+  }, [isEditorOpen])
+
+  const handleEditorBack = useCallback(() => {
+    useDevelopPageStore.getState().setChatPaneWidth(priorPaneWidthRef.current)
+    setIsEditorOpen(false)
+    setEditorImageUrl(null)
+  }, [])
+
   if (!appId) return null
+
+  if (activeSlotName && isEditorOpen) {
+    return (
+      <div className="flex flex-col h-full min-h-0 px-2 md:px-0 md:pt-0 pb-2 gap-2">
+        <button
+          type="button"
+          onClick={handleEditorBack}
+          className="shrink-0 flex items-center gap-1 text-sm text-intents-ux-textSubtle-textColor hover:text-intents-ux-text-textColor transition-colors hover:cursor-pointer"
+        >
+          <ChevronLeftIcon className="size-2 rtl:scale-x-[-1]" />
+          <span>{t('builder_common_back')}</span>
+        </button>
+        <div className="flex-1 min-h-0 flex flex-col">
+          <ImageEditorPanel
+            appId={appId}
+            slotName={activeSlotName}
+            sourceUrl={editorImageUrl}
+            onDone={handleEditorBack}
+            onCancel={handleEditorBack}
+          />
+        </div>
+      </div>
+    )
+  }
 
   if (activeSlotName) {
     return (
-      <div className="flex flex-col h-full min-h-0 px-3 md:px-0 pt-3 md:pt-0 pb-2 gap-2">
+      <div className="flex flex-col h-full min-h-0 px-2 md:px-0 md:pt-0 pb-2 gap-2">
         <button
           type="button"
           onClick={handleBack}
@@ -92,6 +163,7 @@ export default function MediaPanel() {
             appId={appId}
             slotName={activeSlotName}
             onDone={handleBack}
+            onEdit={handleOpenEditor}
           />
         </div>
       </div>
@@ -108,6 +180,7 @@ export default function MediaPanel() {
           isLoading={isLoading}
           error={error}
           onSelectSlot={handleSelectSlot}
+          thumbnailBustKey={thumbnailBustKey}
         />
       </div>
     </div>

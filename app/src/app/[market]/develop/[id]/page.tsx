@@ -1106,6 +1106,17 @@ function DevelopPageContent() {
             }
           }
           break
+        case 'OPEN_IMAGE_EDITOR':
+          // Navigate the Media tab panel to the requested slot and open image editor
+          if (event.data.slotName && appId) {
+            useMediaSlotDialogStore.getState().navigateToSlot(event.data.slotName, { openEditor: true })
+            const develop = useDevelopPageStore.getState()
+            develop.setActiveChatTab(ChatTab.MEDIAS)
+            if (develop.isMobile) {
+              develop.handleMobileModeChange(MobileMode.TOOLS)
+            }
+          }
+          break
         case 'IFRAME_READY':
           sendEditModeMessage(isEditModeEnabled)
           break

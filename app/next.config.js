@@ -51,6 +51,14 @@ export default gasket.actions.getNextConfig({
       /Critical dependency: the request of a dependency is an expression/,
     ];
 
+    // konva's package.json "main" points to index-node.js (Node build) which requires
+    // the native 'canvas' package. Force the browser build for all webpack compilations
+    // so the server bundle never encounters the canvas dependency.
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      'konva$': 'konva/lib/index.js',
+    };
+
     if (isServer) {
       config.externals = config.externals || [];
       config.externals.push({

@@ -40,13 +40,25 @@ vi.mock('@/hooks/useMediaManifest', () => ({
   }),
 }));
 
-vi.mock('@/stores/useDevelopPageStore', () => ({
-  useDevelopPageStore: {
-    getState: () => ({
-      handleMobileModeChange: mockHandleMobileModeChange,
-    }),
-  },
-}));
+vi.mock('@/stores/useDevelopPageStore', () => {
+  const mockGetState = vi.fn(() => ({
+    activeChatTab: ChatTab.MEDIAS,
+    chatPaneWidth: 400,
+    setChatPaneWidth: vi.fn(),
+    handleMobileModeChange: mockHandleMobileModeChange,
+  }));
+  const mockUseDevelopPageStore = vi.fn((selector: (s: Record<string, unknown>) => unknown) =>
+    selector({
+      activeChatTab: ChatTab.MEDIAS,
+      chatPaneWidth: 400,
+    })
+  ) as unknown as { getState: typeof mockGetState };
+  (mockUseDevelopPageStore as unknown as { getState: typeof mockGetState }).getState = mockGetState;
+  return {
+    DEFAULT_CHAT_PANE_WIDTH: 400,
+    useDevelopPageStore: mockUseDevelopPageStore,
+  };
+});
 
 const mockMediaSlotDialogStore = {
   panelSlotName: null as string | null,
@@ -54,6 +66,8 @@ const mockMediaSlotDialogStore = {
   mediaReturnTab: null as ChatTab | null,
   mediaReturnMobileMode: null as MobileMode | null,
   clearMediaReturnState: vi.fn(),
+  openEditorForSlot: null as string | null,
+  clearEditorSlot: vi.fn(),
 };
 
 vi.mock('@/stores/useMediaSlotDialogStore', () => ({
@@ -61,10 +75,11 @@ vi.mock('@/stores/useMediaSlotDialogStore', () => ({
 }));
 
 vi.mock('@/app/[market]/develop/components/media/MediaSlotDetail', () => ({
-  MediaSlotDetail: ({ slotName, onDone }: { slotName: string; onDone: () => void }) => (
+  MediaSlotDetail: ({ slotName, onDone, onEdit }: { slotName: string; onDone: () => void; onEdit?: (url: string) => void }) => (
     <div data-testid="media-slot-detail">
       Detail for {slotName}
       <button onClick={onDone}>Done</button>
+      {onEdit && <button onClick={() => onEdit('http://example.com/img.jpg')}>Edit</button>}
     </div>
   ),
   formatSlotName: (name: string) => name,
@@ -84,6 +99,7 @@ describe('MediaPanel', () => {
     mockMediaSlotDialogStore.panelSlotName = null;
     mockMediaSlotDialogStore.mediaReturnTab = null;
     mockMediaSlotDialogStore.mediaReturnMobileMode = null;
+    mockMediaSlotDialogStore.openEditorForSlot = null;
   });
 
   it('renders grid by default', () => {
