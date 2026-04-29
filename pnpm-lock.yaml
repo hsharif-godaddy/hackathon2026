@@ -535,14 +535,14 @@ importers:
         specifier: workspace:*
         version: link:../packages/shared
       '@aws-sdk/client-s3':
-        specifier: ^3.1033.0
-        version: 3.1033.0
+        specifier: ^3.1034.0
+        version: 3.1034.0
       '@aws-sdk/client-secrets-manager':
-        specifier: 3.1033.0
-        version: 3.1033.0
+        specifier: 3.1034.0
+        version: 3.1034.0
       '@aws-sdk/client-sts':
-        specifier: 3.1033.0
-        version: 3.1033.0
+        specifier: 3.1034.0
+        version: 3.1034.0
       '@aws-sdk/credential-provider-node':
         specifier: ^3.972.32
         version: 3.972.36
@@ -1056,8 +1056,8 @@ importers:
   cdk:
     dependencies:
       '@aws-sdk/client-secrets-manager':
-        specifier: ^3.1033.0
-        version: 3.1033.0
+        specifier: ^3.1034.0
+        version: 3.1034.0
       '@gd-datalake/local-admins':
         specifier: 1.1.1
         version: 1.1.1(aws-cdk-lib@2.245.0(constructs@10.6.0))(constructs@10.6.0)
@@ -1130,8 +1130,8 @@ importers:
   debug-console:
     dependencies:
       '@aws-sdk/client-s3':
-        specifier: ^3.1033.0
-        version: 3.1033.0
+        specifier: ^3.1034.0
+        version: 3.1034.0
       '@elastic/elasticsearch':
         specifier: 'catalog:'
         version: 8.19.1
@@ -1321,11 +1321,11 @@ importers:
         specifier: workspace:*
         version: link:../eslint-config-airo
       '@aws-sdk/client-sts':
-        specifier: 3.1033.0
-        version: 3.1033.0
+        specifier: 3.1034.0
+        version: 3.1034.0
       '@aws-sdk/credential-providers':
-        specifier: 3.1033.0
-        version: 3.1033.0
+        specifier: 3.1034.0
+        version: 3.1034.0
       '@types/express':
         specifier: 'catalog:'
         version: 4.17.23
@@ -1844,20 +1844,20 @@ packages:
     resolution: {integrity: sha512-t5/gfQQ4gxDz/Mk2TXmdoZtXSG62/nnF0+0ddemnx9uTWvZRs93FZcRJ4mqXfv7qH1iE7Ax2hmEOTRYfU5kn3w==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/client-cognito-identity@3.1033.0':
-    resolution: {integrity: sha512-Hv5EfavKUukxwfhdGkH5fBCo3djIbrx7LXt84sARkiRiYPVX/UZHX3GslB3R0z1OPns42ZLNP7D1WGE3dZy3nw==}
+  '@aws-sdk/client-cognito-identity@3.1034.0':
+    resolution: {integrity: sha512-GA2Xo1fNp4qnqTUI/IRGj/QmkQDXZyer3m/nu8WO7PgT3I+8/yWw2Vzw81HjAhOiF//YjNmpn10uHVg3ViSCRA==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/client-s3@3.1033.0':
-    resolution: {integrity: sha512-c8iDFppzyhQUTTPsUWDy43mSKzQsTIi+RkY9u9fHPDiu1bUJWO/2xhuFx9j6l0+29HKqlQx8yJGe8lRF3xSw3w==}
+  '@aws-sdk/client-s3@3.1034.0':
+    resolution: {integrity: sha512-r91IZKPKuRlpCBsEmz9qnWrYxuHD0jsQv1p9UGNasFpcuPo1OnfwIB2ClXtqdXKYUvubXCwn7KBObTVnnvYvAA==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/client-secrets-manager@3.1033.0':
-    resolution: {integrity: sha512-zKkXhli8DbhDAB3myPFHbT2iiDA3QTmmll217gCqzcq5ZqWt4qUVCpmiFl7AZQxOhNuoQKWvRvpD+yatGXJs8A==}
+  '@aws-sdk/client-secrets-manager@3.1034.0':
+    resolution: {integrity: sha512-t0OVwmzNzkDswx+vFa1r3JWX0FFpzi1vkGXRtLujzeLKarTB92GjAVNqDzrjShAsf3xLLwtWWh7R9cmr6zidZQ==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/client-sts@3.1033.0':
-    resolution: {integrity: sha512-adkXryXCIgrfktuN0ZYkfsVFy9eo4OvlULL7euWPYipRKl/31MH/t6nq/uU99Kuz5PZSmfRqmiA4f9CMfaZZ2g==}
+  '@aws-sdk/client-sts@3.1034.0':
+    resolution: {integrity: sha512-MPcTsQD6HYpRHv09M1I+FpGRajjUtw8xhzZxlYfDWLkan0WH544kE8OjaPTpFVjftI5fZ6RrXAttfkkGmZRRZg==}
     engines: {node: '>=20.0.0'}
 
   '@aws-sdk/core@3.974.6':
@@ -1936,8 +1936,8 @@ packages:
     resolution: {integrity: sha512-7Om61RrVCy4ox3OBaqfsyJ47DPuEjE4f9HBqqt0YWdIWYF2ElXlfBjI2/wvSnF4mOJNQiSScOwzG1emsHTuvQw==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/credential-providers@3.1033.0':
-    resolution: {integrity: sha512-yxwiYB3z8ilVLmtLEwrEL/MIISYDLRyhAJmXoziNIxqKLoCnZed4A2AhlCcPMvFfA8B56oNJ64nGoepMaEagzw==}
+  '@aws-sdk/credential-providers@3.1034.0':
+    resolution: {integrity: sha512-xTmpZN3i4cZEgjJNQhA8CYmxKtW95ZAhh9wINe2b6ffQzbaXBLkuvfz/fhWEezl4P8uv2qWO8J+DEDms6wqL9g==}
     engines: {node: '>=20.0.0'}
 
   '@aws-sdk/middleware-bucket-endpoint@3.972.10':
@@ -13872,7 +13872,7 @@ snapshots:
     transitivePeerDependencies:
       - aws-crt
 
-  '@aws-sdk/client-cognito-identity@3.1033.0':
+  '@aws-sdk/client-cognito-identity@3.1034.0':
     dependencies:
       '@aws-crypto/sha256-browser': 5.2.0
       '@aws-crypto/sha256-js': 5.2.0
@@ -13916,7 +13916,7 @@ snapshots:
     transitivePeerDependencies:
       - aws-crt
 
-  '@aws-sdk/client-s3@3.1033.0':
+  '@aws-sdk/client-s3@3.1034.0':
     dependencies:
       '@aws-crypto/sha1-browser': 5.2.0
       '@aws-crypto/sha256-browser': 5.2.0
@@ -13976,7 +13976,7 @@ snapshots:
     transitivePeerDependencies:
       - aws-crt
 
-  '@aws-sdk/client-secrets-manager@3.1033.0':
+  '@aws-sdk/client-secrets-manager@3.1034.0':
     dependencies:
       '@aws-crypto/sha256-browser': 5.2.0
       '@aws-crypto/sha256-js': 5.2.0
@@ -14020,7 +14020,7 @@ snapshots:
     transitivePeerDependencies:
       - aws-crt
 
-  '@aws-sdk/client-sts@3.1033.0':
+  '@aws-sdk/client-sts@3.1034.0':
     dependencies:
       '@aws-crypto/sha256-browser': 5.2.0
       '@aws-crypto/sha256-js': 5.2.0
@@ -14317,9 +14317,9 @@ snapshots:
     transitivePeerDependencies:
       - aws-crt
 
-  '@aws-sdk/credential-providers@3.1033.0':
+  '@aws-sdk/credential-providers@3.1034.0':
     dependencies:
-      '@aws-sdk/client-cognito-identity': 3.1033.0
+      '@aws-sdk/client-cognito-identity': 3.1034.0
       '@aws-sdk/core': 3.974.6
       '@aws-sdk/credential-provider-cognito-identity': 3.972.29
       '@aws-sdk/credential-provider-env': 3.972.32
@@ -19918,7 +19918,7 @@ snapshots:
 
   '@ux/deploy-assets@3.4.0':
     dependencies:
-      '@aws-sdk/client-s3': 3.1033.0
+      '@aws-sdk/client-s3': 3.1034.0
       glob-extra: 5.0.2
       is-glob: 4.0.3
       mime: 3.0.0

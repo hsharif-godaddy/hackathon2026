@@ -33,9 +33,9 @@
   "dependencies": {
     "@airo-ux/loader": "^2.1.1",
     "@airo/shared": "workspace:*",
-    "@aws-sdk/client-s3": "^3.1033.0",
-    "@aws-sdk/client-secrets-manager": "3.1033.0",
-    "@aws-sdk/client-sts": "3.1033.0",
+    "@aws-sdk/client-s3": "^3.1034.0",
+    "@aws-sdk/client-secrets-manager": "3.1034.0",
+    "@aws-sdk/client-sts": "3.1034.0",
     "@aws-sdk/credential-provider-node": "^3.972.32",
     "@babel/runtime": "^7.28.4",
     "@formatjs/intl": "^3.1.8",
