@@ -20,6 +20,7 @@ import type { ActiveColorSchemeSuggest } from '@/app/[market]/develop/components
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
+import { logger } from '@/lib/request-context'
 import { logClickEvent } from '@/utils/instrumentation'
 import { handleModifierEnterNewline } from '@/utils/textareaShortcuts'
 
@@ -76,7 +77,7 @@ interface ChatInputProps {
   stagedFiles?: StagedChatFile[]
   onStageFiles?: (files: File[]) => void
   onRemoveStagedFile?: (id: string) => void
-  onScreenshotCaptured?: (dataUrl: string) => void
+  onScreenshotCaptured?: (dataUrl: string) => void | Promise<void>
   onFileReferencesSelected?: (filePaths: string[]) => void
   onUploadError?: (errorMessage?: string) => void
   /** Staged file ids currently uploading — shows overlay spinner on each matching thumbnail */
@@ -250,7 +251,18 @@ export default function ChatInput({
         if (!ctx) return
 
         ctx.drawImage(img, 0, 0, targetWidth, targetHeight)
-        onScreenshotCaptured(canvas.toDataURL('image/jpeg', 0.75))
+        // onScreenshotCaptured returns void | Promise<void>. The caller
+        // (ChatPane.handleScreenshotCaptured) does work after the upload's
+        // try/finally, so a future throw there would surface here as an
+        // unhandled rejection if we discarded the returned promise.
+        const capture = onScreenshotCaptured(canvas.toDataURL('image/jpeg', 0.75))
+        if (capture instanceof Promise) {
+          capture.catch((err: unknown) =>
+            logger.error('chat-input.screenshot-captured.unexpected', {
+              error: err instanceof Error ? err.message : String(err)
+            })
+          )
+        }
       } finally {
         URL.revokeObjectURL(objectUrl)
       }

@@ -38,6 +38,7 @@ import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTodoListLoader } from '@/hooks/useTodoListLoader'
 import { useTranslations } from '@/hooks/useTranslations'
 import { useVisitedTabs } from '@/hooks/useVisitedTabs'
+import { getFileUploadAgent } from '@/lib/file-agent'
 import { appFetch } from '@/lib/gasket-config'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { logger } from '@/lib/request-context'
@@ -62,7 +63,7 @@ import {
   useStreamingConversationStore,
 } from '@/stores/useStreamingConversationStore'
 import { getActiveGrant } from '@/utils/credits'
-import { MAX_TOTAL_ASSETS, validateForStaging } from '@/utils/file-upload-validation'
+import { MAX_TOTAL_ASSETS, UPLOAD_TIMEOUT_MS, UPLOAD_TIMEOUT_SECONDS, validateForStaging } from '@/utils/file-upload-validation'
 import { logAiroHQEvent } from '@/utils/instrumentation'
 import { postMessageToIframe } from '@/utils/postMessage'
 
@@ -930,39 +931,156 @@ export default function ChatPane({
     }
   }, [appId, sendMessage, handleClearAiEditContext, t, selectedAssets, showTransientAttachmentBanner])
 
-  // Handle screenshot capture from chat input
-  const handleScreenshotCaptured = useCallback((dataUrl: string) => {
+  // Refs mirror local state so handleScreenshotCaptured can read fresh values
+  // after its network awaits, without re-creating the callback on every change
+  // to selectedAssets / stagedFiles. The async cap calculation depends on this.
+  const selectedAssetsRef = useRef(selectedAssets)
+  const stagedFilesRef = useRef(stagedFiles)
+  useEffect(() => { selectedAssetsRef.current = selectedAssets }, [selectedAssets])
+  useEffect(() => { stagedFilesRef.current = stagedFiles }, [stagedFiles])
+
+  // Handle screenshot/paste capture from chat input.
+  // Uploads to the server so the WebSocket message carries a short URL reference
+  // instead of the raw base64 data URL (which would exceed the 100k char limit).
+  //
+  // Bypasses handleAssetSelect intentionally: handleAssetSelect treats the
+  // currentAiEditContext.isImageReplacement branch as an "auto-send" trigger
+  // (AST swap or "Replace this image…" chat message). A user pasting/capturing
+  // a screenshot has not opted into auto-send — they have only attached an asset.
+  const handleScreenshotCaptured = useCallback(async (dataUrl: string) => {
+    if (!appId) return
+    // Guard agentUrl up-front to avoid wasting a multipart upload that would
+    // orphan the file on the server with no UI reference. Site may not be
+    // hydrated yet when the user pastes/captures very early in page load.
+    if (!agentUrl) {
+      logger.warn('chat-pane.screenshot.no-agent-url', { appId })
+      showTransientAttachmentBanner(t('builder_chatfiles_error_upload_failed'))
+      return
+    }
     logger.debug('chat-pane.screenshot-captured', { appId })
 
-    // Generate timestamp for unique filename
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5)
+    // crypto.randomUUID — collision-safe across rapid captures (paste-twice or
+    // paste + camera shortcut within the same millisecond). Date.now alone collides.
+    const placeholderId = `screenshot-${crypto.randomUUID()}`
+    setUploadingStagedFileIds(prev => [...prev, placeholderId])
 
-    // Create asset item from screenshot data URL
-    const screenshotAsset: AssetManagerItem = {
-      mediaType: MediaType.IMAGE,
-      sourceType: 'screenshot',
-      imageUrl: dataUrl,
-      filename: `screenshot-${timestamp}.jpg`,
-      contentType: 'image/jpeg',
-      size: dataUrl.length, // Approximate size
-      thumbnailUrl: dataUrl,
-      dimensions: { width: 1024, height: 0 } // Width is 1024 from resize
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS)
+
+    let assetItems: AssetManagerItem[] | null = null
+
+    try {
+      const blob = await fetch(dataUrl, { signal: controller.signal }).then(r => r.blob())
+      // Today canvas.toDataURL emits image/jpeg, but trust the blob so a future
+      // PNG/WebP capture path produces a File whose MIME matches its bytes.
+      const mimeType = blob.type || 'image/jpeg'
+      const ext = mimeType === 'image/png' ? 'png' : mimeType === 'image/webp' ? 'webp' : 'jpg'
+      const filename = `screenshot-${timestamp}.${ext}`
+      const file = new File([blob], filename, { type: mimeType })
+
+      // getFileUploadAgent uses appFetch internally with no abort signal, so race it
+      // against the controller to honour UPLOAD_TIMEOUT_MS during the token fetch too.
+      const { token, uploadUrl } = await Promise.race([
+        getFileUploadAgent(appId),
+        new Promise<never>((_, reject) => {
+          if (controller.signal.aborted) {
+            reject(new DOMException('The operation was aborted.', 'AbortError'))
+            return
+          }
+          controller.signal.addEventListener('abort', () =>
+            reject(new DOMException('The operation was aborted.', 'AbortError')),
+            { once: true }
+          )
+        }),
+      ])
+
+      const formData = new FormData()
+      formData.append('appId', appId)
+      formData.append('files', file)
+
+      const response = await fetch(uploadUrl, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+        signal: controller.signal
+      })
+
+      if (!response.ok) {
+        let errorMessage = `Upload failed (${response.status})`
+        try {
+          const body = await response.json()
+          if (body.error) {
+            errorMessage = typeof body.error === 'string' ? body.error : body.error.message || errorMessage
+          }
+        } catch {
+          // Server returned a non-JSON error body (e.g. HTML gateway page).
+          // The upload has definitively failed — log at warn so gateway/proxy
+          // misbehaviour surfaces in Grafana/Loki at the default log level.
+          // The raw SyntaxError is suppressed; the default errorMessage above is shown.
+          logger.warn('chat-pane.screenshot-upload-failed.non-json-error-body', {
+            appId,
+            status: response.status
+          })
+        }
+        throw new Error(errorMessage)
+      }
+
+      let result: { uploadId?: string; files?: unknown }
+      try {
+        result = await response.json()
+      } catch {
+        // 200 OK with a non-JSON body (e.g. an HTML page from a misbehaving proxy).
+        // The raw SyntaxError message would leak to the banner, so use the localized fallback.
+        logger.error('chat-pane.screenshot-upload-failed.non-json-success-body', { appId })
+        throw new Error(t('builder_chatfiles_error_upload_failed'))
+      }
+      logger.info('chat-pane.screenshot-uploaded', { appId, uploadId: result.uploadId })
+
+      if (!Array.isArray(result.files) || result.files.length === 0) {
+        throw new Error(t('builder_chatfiles_error_upload_failed'))
+      }
+
+      assetItems = mapUploadedFilesToAssetItems(result.files, agentUrl)
+    } catch (error) {
+      const isTimeout = error instanceof DOMException && error.name === 'AbortError'
+      const message = isTimeout
+        ? t('builder_chatfiles_error_timeout_duration', { seconds: UPLOAD_TIMEOUT_SECONDS })
+        : error instanceof Error ? error.message : t('builder_chatfiles_error_upload_failed')
+      logger.error('chat-pane.screenshot-upload-failed', { appId, error: message })
+      // Not handleUploadError — that clears the entire uploadingStagedFileIds array,
+      // which would wipe spinners for unrelated in-flight uploads. The finally block
+      // surgically removes only this screenshot's placeholder id.
+      showTransientAttachmentBanner(message)
+    } finally {
+      clearTimeout(timeout)
+      setUploadingStagedFileIds(prev => prev.filter(id => id !== placeholderId))
     }
 
-    // Respect combined cap with staged files (same slots as menu / drop / paste)
-    setSelectedAssets(prev => {
-      const roomForSelected = maxAssets - stagedFiles.length
-      if (roomForSelected <= 0) {
-        return prev
-      }
-      if (prev.length >= roomForSelected) {
-        return [...prev.slice(0, roomForSelected - 1), screenshotAsset]
-      }
-      return [...prev, screenshotAsset]
-    })
+    // Asset attachment runs outside the try block so a programming error in
+    // setSelectedAssets is not mis-logged as chat-pane.screenshot-upload-failed.
+    if (!assetItems) return
 
-    logger.info('chat-pane.screenshot-added', { appId, assetsCount: selectedAssets.length + 1 })
-  }, [appId, maxAssets, selectedAssets.length, stagedFiles.length])
+    // Read current state via refs (the network awaits above can outlive the
+    // useCallback closure). Cap accounts for stagedFiles since they will be
+    // appended to selectedAssets at Send time. With refs supplying fresh values,
+    // the setSelectedAssets updater stays a true pure prev → next mapping.
+    const currentSelected = selectedAssetsRef.current
+    const currentStaged = stagedFilesRef.current
+    const room = MAX_TOTAL_ASSETS - currentSelected.length - currentStaged.length
+    const prevUrls = new Set(currentSelected.map(a => a.imageUrl))
+    const dedup = assetItems.filter(item => !prevUrls.has(item.imageUrl))
+    const itemsToAdd = dedup.slice(0, Math.max(0, room))
+
+    if (dedup.length > room) {
+      showTransientAttachmentBanner(
+        t('builder_chatfiles_error_max_attachments', { count: MAX_TOTAL_ASSETS })
+      )
+    }
+    if (itemsToAdd.length > 0) {
+      setSelectedAssets((prev) => [...prev, ...itemsToAdd])
+    }
+  }, [appId, t, agentUrl, showTransientAttachmentBanner])
 
   // Listen for error fix requests from PreviewPaneSimple
   useEffect(() => {

@@ -8,8 +8,21 @@ import { act, screen, waitFor } from '@testing-library/react';
 import Growl from '@ux/growl';
 
 import { ChatTab } from '@/app/[market]/develop/components/types';
+import { getFileUploadAgent } from '@/lib/file-agent';
 import { renderWithProviders } from '@/tests/test-utils';
+import { MAX_TOTAL_ASSETS } from '@/utils/file-upload-validation';
 import ChatPane from './ChatPane';
+
+vi.mock('@/lib/file-agent', () => ({
+  getFileUploadAgent: vi.fn(),
+}));
+
+const mockSiteData: { agentUrl: string | undefined } = { agentUrl: 'http://localhost:4000' };
+vi.mock('@/stores/useSiteStore', () => ({
+  useSiteStore: (selector: any) => selector({
+    getSite: () => ({ agent_url: mockSiteData.agentUrl }),
+  }),
+}));
 
 vi.mock('@ux/growl', () => ({
   default: {
@@ -19,7 +32,7 @@ vi.mock('@ux/growl', () => ({
 
 // Mock child components
 vi.mock('@/app/[market]/develop/components/chat/ChatInput', () => ({
-  default: ({ onSendMessage, inputValue, onInputChange, isBudgetExceeded, isDisabled, isAwaitingStream, isStreaming, onLargePasteDetected, referencedFiles }: any) => (
+  default: ({ onSendMessage, inputValue, onInputChange, isBudgetExceeded, isDisabled, isAwaitingStream, isStreaming, onLargePasteDetected, onScreenshotCaptured, selectedAssets, referencedFiles }: any) => (
     <div
       data-testid="chat-input"
       data-budget-exceeded={isBudgetExceeded}
@@ -41,6 +54,12 @@ vi.mock('@/app/[market]/develop/components/chat/ChatInput', () => ({
           <button data-testid="simulate-whitespace-paste" onClick={() => onLargePasteDetected('   \n  ')}>Whitespace paste</button>
         </>
       )}
+      {onScreenshotCaptured && (
+        <button data-testid="simulate-screenshot" onClick={() => onScreenshotCaptured('data:image/jpeg;base64,/9j/fakedata')}>Screenshot</button>
+      )}
+      {selectedAssets?.map((a: any, i: number) => (
+        <span key={i} data-testid="selected-asset" data-url={a.imageUrl}>{a.filename}</span>
+      ))}
       {referencedFiles?.map((f: any) => (
         <span key={f.path} data-testid="referenced-file">{f.path}</span>
       ))}
@@ -165,6 +184,7 @@ vi.mock('@/stores/useStreamingConversationStore', () => ({
   useBudgetExceeded: () => mockStreamingStore.activeStream?.budgetExceeded === true || mockStreamingStore.messages[mockStreamingStore.messages.length - 1]?.budgetExceeded === true,
   useSetInputValue: () => mockStreamingStore.setInputValue,
   useSetAiEditContext: () => mockStreamingStore.setAiEditContext,
+  useStreamingConversationStore: { getState: () => ({ aiEditContext: mockStreamingStore.aiEditContext }) },
   useSetBuildErrorContext: () => mockStreamingStore.setBuildErrorContext,
   useSetCurrentAppId: () => mockStreamingStore.setCurrentAppId,
   useHistoryLoadingComplete: () => mockStreamingStore.historyLoadingComplete,
@@ -264,6 +284,9 @@ describe('ChatPane', () => {
 
     // Reset switchboard mocks
     Object.keys(mockSwitchboardValues).forEach((k) => delete mockSwitchboardValues[k]);
+
+    // Reset site store agent URL to the default
+    mockSiteData.agentUrl = 'http://localhost:4000';
 
     // Mock fetch for ventureId
     global.fetch = vi.fn(() =>
@@ -809,6 +832,7 @@ describe('ChatPane', () => {
   });
 
   describe('large paste detection', () => {
+
     it('should convert large paste to referenced file attachment', async function convertPaste() {
       const { user } = renderWithProviders(
         <ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />
@@ -906,4 +930,280 @@ describe('ChatPane', () => {
     });
   });
 
+  describe('screenshot capture', function screenshotTests() {
+    const FAKE_DATA_URL = 'data:image/jpeg;base64,/9j/fakedata';
+    const UPLOAD_URL = 'http://localhost:4000/files/upload';
+
+    function makeFetch({ uploadOk = true, uploadError = '', emptyFiles = false, fileCount = 1 } = {}) {
+      return vi.fn((url: string) => {
+        if (url.endsWith('/api/venture')) {
+          return Promise.resolve({ ok: true, json: () => Promise.resolve({ ventureId: 'v-123' }) } as Response);
+        }
+        if (url.startsWith('data:')) {
+          return Promise.resolve({ ok: true, blob: () => Promise.resolve(new Blob(['jpeg'], { type: 'image/jpeg' })) } as Response);
+        }
+        if (uploadOk) {
+          // Each file gets a unique signedUrl so the dedup-by-imageUrl filter does not
+          // strip them, allowing tests to exercise the cap path with one upload call.
+          const files = emptyFiles
+            ? []
+            : Array.from({ length: fileCount }, (_, i) => ({
+                id: `f${i}`,
+                originalName: `screenshot-${i}.jpg`,
+                filename: `screenshot-${i}.jpg`,
+                size: 1024,
+                mimeType: 'image/jpeg',
+                uploadedAt: '2026-01-01',
+                signedUrl: `/files/signed/abc-${i}.jpg`,
+              }));
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({
+              uploadId: 'upload-123',
+              files,
+              failedFiles: [],
+            }),
+          } as Response);
+        }
+        return Promise.resolve({
+          ok: false,
+          status: 500,
+          json: () => Promise.resolve({ error: uploadError || 'Upload failed' }),
+        } as Response);
+      });
+    }
+
+    beforeEach(() => {
+      vi.mocked(getFileUploadAgent).mockResolvedValue({ token: 'test-token', uploadUrl: UPLOAD_URL });
+    });
+
+    it('should POST a multipart upload carrying a real image/jpeg File (not a data: URL)', async function uploadAsMultipart() {
+      // Pins both the request shape (POST + FormData) and the payload contract
+      // (real File of image/jpeg, never a serialized data: URL string).
+      global.fetch = makeFetch();
+
+      const { user } = renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
+      await user.click(screen.getByTestId('simulate-screenshot'));
+
+      await waitFor(function assertUpload() {
+        const calls = vi.mocked(global.fetch).mock.calls;
+        const uploadCall = calls.find(([url]) => String(url) === UPLOAD_URL);
+        expect(uploadCall).toBeDefined();
+        expect(uploadCall![1]?.method).toBe('POST');
+        const body = uploadCall![1]?.body as FormData;
+        expect(body).toBeInstanceOf(FormData);
+        const uploaded = body.get('files');
+        expect(uploaded).toBeInstanceOf(File);
+        expect((uploaded as File).type).toBe('image/jpeg');
+      });
+    });
+
+    it('should send a server URL (not a data: URL) in the sendMessage payload', async function noBase64InPayload() {
+      global.fetch = makeFetch();
+      mockStreamingStore.inputValue = 'fix this';
+      const sendMessage = vi.fn();
+
+      const { user } = renderWithProviders(
+        <ChatPane sendMessage={sendMessage} stopGeneration={mockStopGeneration} />
+      );
+
+      await user.click(screen.getByTestId('simulate-screenshot'));
+      await waitFor(function assertAssetAttached() {
+        expect(screen.getAllByTestId('selected-asset')).toHaveLength(1);
+      });
+
+      await user.click(screen.getByRole('button', { name: 'Send' }));
+
+      await waitFor(function assertPayload() {
+        expect(sendMessage).toHaveBeenCalled();
+      });
+      const payload = sendMessage.mock.calls[0][0];
+      expect(payload.selectedAssets).toBeDefined();
+      expect(payload.selectedAssets).toHaveLength(1);
+      expect(payload.selectedAssets[0].imageUrl).not.toMatch(/^data:/);
+      expect(payload.selectedAssets[0].imageUrl).toBe('http://localhost:4000/files/signed/abc-0.jpg');
+    });
+
+    it('should show an error banner when the upload fails', async function uploadFail() {
+      global.fetch = makeFetch({ uploadOk: false, uploadError: 'Server error' });
+
+      const { user } = renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
+      await user.click(screen.getByTestId('simulate-screenshot'));
+
+      await waitFor(function assertError() {
+        expect(screen.getByText('Server error')).toBeInTheDocument();
+      });
+      // No partial state must leak into the UI when the upload throws
+      expect(screen.queryAllByTestId('selected-asset')).toHaveLength(0);
+    });
+
+    it('should show an error and skip the asset when the server returns an empty files array', async function emptyFiles() {
+      global.fetch = makeFetch({ emptyFiles: true });
+
+      const { user } = renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
+      await user.click(screen.getByTestId('simulate-screenshot'));
+
+      await waitFor(function assertError() {
+        expect(screen.getByText('builder_chatfiles_error_upload_failed')).toBeInTheDocument();
+      });
+      expect(screen.queryAllByTestId('selected-asset')).toHaveLength(0);
+    });
+
+    it('should fall back to the default error message when the server returns a non-JSON error body', async function nonJsonErrorBody() {
+      // Simulates a misbehaving gateway returning HTML for a 500 instead of JSON.
+      // The inner json() reject must NOT surface as a SyntaxError to the user;
+      // the default `Upload failed (500)` message should be shown.
+      global.fetch = vi.fn((url: string) => {
+        if (url.endsWith('/api/venture')) {
+          return Promise.resolve({ ok: true, json: () => Promise.resolve({ ventureId: 'v-123' }) } as Response);
+        }
+        if (url.startsWith('data:')) {
+          return Promise.resolve({ ok: true, blob: () => Promise.resolve(new Blob(['jpeg'], { type: 'image/jpeg' })) } as Response);
+        }
+        return Promise.resolve({
+          ok: false,
+          status: 500,
+          json: () => Promise.reject(new SyntaxError('Unexpected token < in JSON at position 0')),
+        } as Response);
+      });
+
+      const { user } = renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
+      await user.click(screen.getByTestId('simulate-screenshot'));
+
+      await waitFor(function assertError() {
+        expect(screen.getByText('Upload failed (500)')).toBeInTheDocument();
+      });
+      expect(screen.queryByText(/Unexpected token/i)).not.toBeInTheDocument();
+      expect(screen.queryAllByTestId('selected-asset')).toHaveLength(0);
+    });
+
+    it('should show the localized error when the server returns a non-JSON success body', async function nonJsonSuccessBody() {
+      // Simulates a 200 OK with HTML/garbage body. The raw SyntaxError must be
+      // suppressed in favor of the localized upload-failed key.
+      global.fetch = vi.fn((url: string) => {
+        if (url.endsWith('/api/venture')) {
+          return Promise.resolve({ ok: true, json: () => Promise.resolve({ ventureId: 'v-123' }) } as Response);
+        }
+        if (url.startsWith('data:')) {
+          return Promise.resolve({ ok: true, blob: () => Promise.resolve(new Blob(['jpeg'], { type: 'image/jpeg' })) } as Response);
+        }
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.reject(new SyntaxError('Unexpected token < in JSON at position 0')),
+        } as Response);
+      });
+
+      const { user } = renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
+      await user.click(screen.getByTestId('simulate-screenshot'));
+
+      await waitFor(function assertError() {
+        expect(screen.getByText('builder_chatfiles_error_upload_failed')).toBeInTheDocument();
+      });
+      expect(screen.queryByText(/Unexpected token/i)).not.toBeInTheDocument();
+      expect(screen.queryAllByTestId('selected-asset')).toHaveLength(0);
+    });
+
+    it('should attach the uploaded file as a selected asset with a server URL', async function attachAsset() {
+      global.fetch = makeFetch();
+
+      const { user } = renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
+      await user.click(screen.getByTestId('simulate-screenshot'));
+
+      await waitFor(function assertAsset() {
+        const assets = screen.getAllByTestId('selected-asset');
+        expect(assets).toHaveLength(1);
+        // imageUrl must be the server-side signed URL, never a data: URL
+        expect(assets[0].dataset.url).toBe('http://localhost:4000/files/signed/abc-0.jpg');
+        expect(assets[0].dataset.url).not.toMatch(/^data:/);
+      });
+    });
+
+    it('should show the timeout error message when the upload is aborted', async function uploadTimeout() {
+      global.fetch = vi.fn((url: string) => {
+        if (url.endsWith('/api/venture')) {
+          return Promise.resolve({ ok: true, json: () => Promise.resolve({ ventureId: 'v-123' }) } as Response);
+        }
+        // Simulate abort for both the blob fetch and the upload fetch
+        return Promise.reject(new DOMException('The operation was aborted.', 'AbortError'));
+      });
+
+      const { user } = renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
+      await user.click(screen.getByTestId('simulate-screenshot'));
+
+      await waitFor(function assertTimeoutMessage() {
+        // IntlProvider renders missing keys as the key itself
+        expect(screen.getByText('builder_chatfiles_error_timeout_duration')).toBeInTheDocument();
+      });
+    });
+
+    it('should bail out before uploading when agentUrl is missing', async function noAgentUrl() {
+      // Early guard prevents an orphaned multipart upload — site is not yet hydrated
+      // so we cannot resolve the resulting signed URL into an asset reference anyway.
+      mockSiteData.agentUrl = undefined;
+      global.fetch = makeFetch();
+
+      const { user } = renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
+      await user.click(screen.getByTestId('simulate-screenshot'));
+
+      await waitFor(function assertError() {
+        expect(screen.getByText('builder_chatfiles_error_upload_failed')).toBeInTheDocument();
+      });
+      expect(screen.queryAllByTestId('selected-asset')).toHaveLength(0);
+      // No multipart upload should have been attempted
+      const uploadCall = vi.mocked(global.fetch).mock.calls.find(([url]) => String(url) === UPLOAD_URL);
+      expect(uploadCall).toBeUndefined();
+    });
+
+    it('should cap based on the CURRENT selectedAssets, not the closure snapshot', async function capUsesCurrentState() {
+      // Two sequential captures with distinct file sets:
+      //   batch 1 fills MAX_TOTAL_ASSETS - 2 slots,
+      //   batch 2 returns 5 fresh files but only 2 must fit.
+      // If the cap were computed from the useCallback closure (snapshot at memoization
+      // time), the second batch would see selectedAssets.length === 0 and add all 5,
+      // exceeding the cap. The ref-based read exercises the post-await fresh state.
+      let callIdx = 0
+      global.fetch = vi.fn((url: string) => {
+        if (url.endsWith('/api/venture')) {
+          return Promise.resolve({ ok: true, json: () => Promise.resolve({ ventureId: 'v-123' }) } as Response)
+        }
+        if (url.startsWith('data:')) {
+          return Promise.resolve({ ok: true, blob: () => Promise.resolve(new Blob(['jpeg'], { type: 'image/jpeg' })) } as Response)
+        }
+        const batch = callIdx++
+        const count = batch === 0 ? MAX_TOTAL_ASSETS - 2 : 5
+        const prefix = batch === 0 ? 'first' : 'second'
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            uploadId: `upload-${batch}`,
+            files: Array.from({ length: count }, (_, i) => ({
+              id: `${prefix}-${i}`,
+              originalName: `s-${prefix}-${i}.jpg`,
+              filename: `s-${prefix}-${i}.jpg`,
+              size: 1024,
+              mimeType: 'image/jpeg',
+              uploadedAt: '2026-01-01',
+              signedUrl: `/files/signed/${prefix}-${i}.jpg`,
+            })),
+            failedFiles: [],
+          }),
+        } as Response)
+      })
+
+      const { user } = renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />)
+
+      await user.click(screen.getByTestId('simulate-screenshot'))
+      await waitFor(function assertFirstBatch() {
+        expect(screen.getAllByTestId('selected-asset')).toHaveLength(MAX_TOTAL_ASSETS - 2)
+      })
+
+      await user.click(screen.getByTestId('simulate-screenshot'))
+      await waitFor(function assertCapped() {
+        expect(screen.getAllByTestId('selected-asset')).toHaveLength(MAX_TOTAL_ASSETS)
+      })
+      expect(screen.getByText('builder_chatfiles_error_max_attachments')).toBeInTheDocument()
+    })
+  });
+
 });
+

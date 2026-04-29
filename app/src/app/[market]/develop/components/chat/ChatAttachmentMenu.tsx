@@ -21,7 +21,7 @@ interface ChatAttachmentMenuProps {
   appId: string;
   /** Stage files locally; upload runs when the user sends the message */
   onStageFiles: (files: File[]) => void;
-  onScreenshotCaptured?: (dataUrl: string) => void;
+  onScreenshotCaptured?: (dataUrl: string) => void | Promise<void>;
   onFileReferencesSelected?: (filePaths: string[]) => void;
   onUploadError?: (errorMessage?: string) => void;
   disabled?: boolean;
@@ -177,9 +177,19 @@ export default function ChatAttachmentMenu({
         resizedSize: { width: targetWidth, height: targetHeight }
       });
 
-      // Pass screenshot data URL to parent
+      // Pass screenshot data URL to parent. The handler may upload asynchronously
+      // (ChatPane.handleScreenshotCaptured) and has post-finally code that could
+      // throw — handle that here so it never becomes an unhandled rejection.
       if (onScreenshotCaptured) {
-        onScreenshotCaptured(dataUrl);
+        const capture = onScreenshotCaptured(dataUrl);
+        if (capture instanceof Promise) {
+          capture.catch((err: unknown) =>
+            logger.error('chat-attachment-menu.screenshot-captured.unexpected', {
+              appId,
+              error: err instanceof Error ? err.message : String(err)
+            })
+          );
+        }
       }
     } catch (error) {
       // Check if user cancelled
