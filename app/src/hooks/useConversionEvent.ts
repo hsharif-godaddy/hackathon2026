@@ -1,85 +1,109 @@
-import { useEffect, useRef } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useEffect } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
+import { HttpError } from '@/lib/errors';
 import { appFetch } from '@/lib/gasket-config';
 import type { AiroSubscription } from '@/lib/mgmt-airo/types';
 import { ATTRIBUTE_KEYS } from '@/lib/mgmt-airo/types';
 import { logger } from '@/lib/request-context';
-import { fireConversionEvent } from '@/utils/conversion-event';
+import { fireConversionEvent } from '@/utils/instrumentation';
 
-const STORAGE_KEY_PREFIX = 'airo:conversion:acknowledged:';
+// Persists across remounts/navigation within the same tab. Resets on full page reload.
+// Growth is bounded by unique trial subscriptions per session (typically <10).
+const acknowledgedIds = new Set<string>();
 
 interface FreePlanAttributeValue {
+  [key: string]: unknown;
   orderId: string;
   conversionEventDate: string | null;
+}
+
+function isFreePlanAttributeValue(v: Record<string, unknown>): v is FreePlanAttributeValue {
+  return typeof v.orderId === 'string' && v.orderId.length > 0;
 }
 
 function getFreePlanAttribute(subscription: AiroSubscription): FreePlanAttributeValue | null {
   const attr = subscription.attributes?.find(a => a.key === ATTRIBUTE_KEYS.FREE_PLAN);
   if (!attr?.value) return null;
-  const value = attr.value as FreePlanAttributeValue;
-  if (!value.orderId) return null;
-  return value;
+  if (!isFreePlanAttributeValue(attr.value)) return null;
+  return attr.value;
 }
 
-function getStorageKey(subscriptionId: string): string {
-  return `${STORAGE_KEY_PREFIX}${subscriptionId}`;
-}
+async function fetchSubscriptionWithAttributes(subscriptionId: string): Promise<AiroSubscription> {
+  const response = await appFetch(`/api/subscriptions/${subscriptionId}?include=attributes`, {
+    credentials: 'include',
+  });
 
-function isAcknowledgedInSession(subscriptionId: string): boolean {
-  try {
-    return sessionStorage.getItem(getStorageKey(subscriptionId)) === 'true';
-  } catch {
-    return false;
+  if (!response.ok) {
+    throw new HttpError(`Failed to fetch subscription: ${response.status}`, response.status);
   }
-}
 
-function markAcknowledgedInSession(subscriptionId: string): void {
-  try {
-    sessionStorage.setItem(getStorageKey(subscriptionId), 'true');
-  } catch {
-    // sessionStorage unavailable (private browsing, storage full)
+  const json = await response.json();
+  if (!json.success || !json.data) {
+    throw new Error(json.error || 'Failed to get subscription data');
   }
+  return json.data;
 }
 
 export function useConversionEvent(subscription: AiroSubscription | undefined): void {
-  const firedRef = useRef(false);
   const queryClient = useQueryClient();
 
-  const freePlan = subscription ? getFreePlanAttribute(subscription) : null;
+  const subscriptionId = subscription?.isTrial ? subscription.id : undefined;
+
+  const { data: subscriptionWithAttrs, error: attrsError } = useQuery({
+    queryKey: ['subscriptions', subscriptionId, 'attributes'],
+    queryFn: () => fetchSubscriptionWithAttributes(subscriptionId!),
+    enabled: !!subscriptionId,
+    staleTime: 5 * 60 * 1000,
+    retry(failureCount, error) {
+      if (error instanceof HttpError && error.status >= 400 && error.status < 500) {
+        return false;
+      }
+      return failureCount < 3;
+    },
+    retryDelay(attemptIndex) {
+      return Math.min(1000 * 2 ** attemptIndex, 30000);
+    },
+  });
+
+  const freePlan = subscriptionWithAttrs ? getFreePlanAttribute(subscriptionWithAttrs) : null;
   const orderId = freePlan?.orderId;
   const isAcknowledged = freePlan?.conversionEventDate != null;
 
   useEffect(() => {
-    if (!subscription || !orderId) return;
+    if (attrsError) {
+      logger.warn('conversion.attributes.error', {
+        subscriptionId,
+        error: attrsError instanceof Error ? attrsError.message : 'Unknown error',
+      });
+    }
+  }, [attrsError, subscriptionId]);
+
+  useEffect(() => {
+    if (!subscriptionId || !orderId) return;
     if (isAcknowledged) return;
-    if (firedRef.current) return;
-    if (isAcknowledgedInSession(subscription.id)) return;
+    if (acknowledgedIds.has(subscriptionId)) return;
 
-    firedRef.current = true;
-    markAcknowledgedInSession(subscription.id);
-
+    acknowledgedIds.add(subscriptionId);
     fireConversionEvent({ orderId });
 
-    appFetch('/api/subscriptions/acknowledge', {
+    appFetch(`/api/subscriptions/${subscriptionId}/acknowledge`, {
       method: 'POST',
       credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ subscriptionId: subscription.id }),
     }).then((response) => {
       if (response.ok) {
         queryClient.invalidateQueries({ queryKey: ['subscriptions'] });
       } else {
-        logger.warn('conversion.acknowledge.failed', {
-          subscriptionId: subscription.id,
+        logger.warn('conversion.acknowledge.http-error', {
+          subscriptionId,
           status: response.status,
         });
       }
     }).catch((error) => {
       logger.warn('conversion.acknowledge.error', {
-        subscriptionId: subscription.id,
+        subscriptionId,
         error: error instanceof Error ? error.message : 'Unknown error',
       });
     });
-  }, [subscription?.id, orderId, isAcknowledged, queryClient]);
+  }, [subscriptionId, orderId, isAcknowledged, queryClient]);
 }

@@ -42,8 +42,8 @@ export const GET = withCustomerAuth(async (
       customerId: authContext.user.customerId
     });
 
-    // Fetch the subscription by ID
-    const subscription = await client.getSubscription(subscriptionId);
+    const includeAttributes = request.nextUrl.searchParams.get('include') === 'attributes';
+    const subscription = await client.getSubscription(subscriptionId, { includeAttributes });
 
     // Verify subscription belongs to the authenticated customer
     if (subscription.customerId !== authContext.user.customerId) {

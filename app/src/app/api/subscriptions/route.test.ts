@@ -94,6 +94,17 @@ describe('GET /api/subscriptions', function describeRoute() {
       expect(data.data.subscriptions[0].plan).toBe(SubscriptionPlan.Starter);
     });
 
+    it('should not pass includeAttributes to getSubscriptions', async function noAttributes() {
+      const request = new NextRequest('http://localhost/api/subscriptions');
+      const authContext = createAuthContext('jwt-token');
+
+      mockClient.getSubscriptions.mockResolvedValue([]);
+
+      await GET(request, authContext);
+
+      expect(mockClient.getSubscriptions).toHaveBeenCalledWith('airo-app-builder');
+    });
+
     it('should prefer active subscription over suspended', async function prefersActive() {
       const request = new NextRequest('http://localhost/api/subscriptions');
       const authContext = createAuthContext('jwt-token');

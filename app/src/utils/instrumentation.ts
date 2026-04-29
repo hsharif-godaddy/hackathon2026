@@ -3,6 +3,7 @@ import { logger } from '@/lib/request-context';
 declare global {
   interface Window {
     _expDataLayer: any[];
+    _signalsDataLayer?: unknown[];
   }
 }
 
@@ -372,5 +373,40 @@ export const logAiroHQEvent = ({
       category,
       custom_properties: mergedProperties
     });
+  }
+};
+
+interface ConversionEventParams {
+  orderId?: string;
+}
+
+// GoDaddy Signals pipeline (_signalsDataLayer) -- separate from _expDataLayer
+export const fireConversionEvent = ({ orderId }: ConversionEventParams = {}): void => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    if (!window._signalsDataLayer) {
+      window._signalsDataLayer = [];
+    }
+
+    const eventData: Record<string, unknown> = {
+      schema: 'add_generic_conversion',
+      data: {
+        eventCreationTimestamp: new Date().toISOString(),
+        conversion: {
+          area: 'airo-builder',
+          revenue: 'freetrial',
+          product: 'airo-builder-freemium',
+          action: 'signup',
+        },
+        ...(orderId ? { virtualOrderId: orderId } : {}),
+      },
+    };
+
+    window._signalsDataLayer.push(eventData);
+  } catch (e) {
+    logger.error('conversion.event.failure', { error: e instanceof Error ? e.message : String(e) });
   }
 };

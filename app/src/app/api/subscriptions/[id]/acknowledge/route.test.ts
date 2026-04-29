@@ -22,7 +22,7 @@ vi.mock('@/lib/request-context', () => ({
   },
 }));
 
-describe('POST /api/subscriptions/acknowledge', () => {
+describe('POST /api/subscriptions/[id]/acknowledge', () => {
   let mockClient: any;
   let POST: any;
 
@@ -46,10 +46,11 @@ describe('POST /api/subscriptions/acknowledge', () => {
     user: { customerId: 'cust-123' },
   };
 
-  const makeRequest = (body: Record<string, unknown>) =>
-    new NextRequest('http://localhost/api/subscriptions/acknowledge', {
+  const makeParams = (id: string) => ({ params: Promise.resolve({ id }) });
+
+  const makeRequest = () =>
+    new NextRequest('http://localhost/api/subscriptions/sub-1/acknowledge', {
       method: 'POST',
-      body: JSON.stringify(body),
     });
 
   const makeSubscription = (overrides = {}) => ({
@@ -67,7 +68,7 @@ describe('POST /api/subscriptions/acknowledge', () => {
       value: { orderId: 'order-123', conversionEventDate: '2026-04-23T12:00:00Z' },
     });
 
-    const response = await POST(makeRequest({ subscriptionId: 'sub-1' }), authContext);
+    const response = await POST(makeRequest(), authContext, makeParams('sub-1'));
     const data = await response.json();
 
     expect(response.status).toBe(200);
@@ -76,16 +77,10 @@ describe('POST /api/subscriptions/acknowledge', () => {
     expect(mockClient.acknowledgeConversion).toHaveBeenCalledWith(sub);
   });
 
-  it('returns 400 when subscriptionId missing', async () => {
-    const response = await POST(makeRequest({}), authContext);
-
-    expect(response.status).toBe(400);
-  });
-
   it('returns 403 when subscription belongs to different customer', async () => {
     mockClient.getSubscription.mockResolvedValue(makeSubscription({ customerId: 'other-customer' }));
 
-    const response = await POST(makeRequest({ subscriptionId: 'sub-1' }), authContext);
+    const response = await POST(makeRequest(), authContext, makeParams('sub-1'));
 
     expect(response.status).toBe(403);
     expect(mockClient.acknowledgeConversion).not.toHaveBeenCalled();
@@ -95,7 +90,7 @@ describe('POST /api/subscriptions/acknowledge', () => {
     mockClient.getSubscription.mockResolvedValue(makeSubscription());
     mockClient.acknowledgeConversion.mockRejectedValue(new Error('mgmt-airo error'));
 
-    const response = await POST(makeRequest({ subscriptionId: 'sub-1' }), authContext);
+    const response = await POST(makeRequest(), authContext, makeParams('sub-1'));
 
     expect(response.status).toBe(500);
   });
@@ -105,7 +100,7 @@ describe('POST /api/subscriptions/acknowledge', () => {
     mockClient.getSubscription.mockResolvedValue(makeSubscription());
     mockClient.acknowledgeConversion.mockRejectedValue(new AiroHttpError(404, 'Not Found', 'attribute not found'));
 
-    const response = await POST(makeRequest({ subscriptionId: 'sub-1' }), authContext);
+    const response = await POST(makeRequest(), authContext, makeParams('sub-1'));
 
     expect(response.status).toBe(404);
   });
@@ -114,7 +109,7 @@ describe('POST /api/subscriptions/acknowledge', () => {
     const { AiroHttpError } = await import('@/lib/mgmt-airo');
     mockClient.getSubscription.mockRejectedValue(new AiroHttpError(404, 'Not Found', 'subscription not found'));
 
-    const response = await POST(makeRequest({ subscriptionId: 'sub-1' }), authContext);
+    const response = await POST(makeRequest(), authContext, makeParams('sub-1'));
 
     expect(response.status).toBe(404);
     expect(mockClient.acknowledgeConversion).not.toHaveBeenCalled();
@@ -123,32 +118,48 @@ describe('POST /api/subscriptions/acknowledge', () => {
   it('returns 500 when getSubscription throws generic error', async () => {
     mockClient.getSubscription.mockRejectedValue(new Error('network failure'));
 
-    const response = await POST(makeRequest({ subscriptionId: 'sub-1' }), authContext);
+    const response = await POST(makeRequest(), authContext, makeParams('sub-1'));
 
     expect(response.status).toBe(500);
     expect(mockClient.acknowledgeConversion).not.toHaveBeenCalled();
   });
 
-  it('returns 400 for invalid JSON body', async () => {
-    const request = new NextRequest('http://localhost/api/subscriptions/acknowledge', {
-      method: 'POST',
-      body: 'not json',
-    });
+  it('returns 500 and logs non-Error thrown value', async () => {
+    mockClient.getSubscription.mockResolvedValue(makeSubscription());
+    mockClient.acknowledgeConversion.mockRejectedValue('string error');
 
-    const response = await POST(request, authContext);
-    const data = await response.json();
+    const response = await POST(makeRequest(), authContext, makeParams('sub-1'));
+    const { logger } = await import('@/lib/request-context');
 
-    expect(response.status).toBe(400);
-    expect(data.error).toBe('Invalid JSON request body');
+    expect(response.status).toBe(500);
+    expect(logger.error).toHaveBeenCalledWith('subscription.acknowledge.error', expect.objectContaining({
+      error: 'Unknown error',
+    }));
   });
 
-  it('returns 401 when no JWT', async () => {
-    const response = await POST(
-      makeRequest({ subscriptionId: 'sub-1' }),
-      { jwt: undefined, user: { customerId: 'cust-123' } }
-    );
+  it('uses fallback base URL when MGMT_AIRO_BASE_URL is not set', async () => {
+    const original = process.env.MGMT_AIRO_BASE_URL;
+    delete process.env.MGMT_AIRO_BASE_URL;
+    try {
+      const sub = makeSubscription();
+      mockClient.getSubscription.mockResolvedValue(sub);
+      mockClient.acknowledgeConversion.mockResolvedValue({ id: 'attr-1' });
 
-    expect(response.status).toBe(401);
+      const response = await POST(makeRequest(), authContext, makeParams('sub-1'));
+
+      expect(response.status).toBe(200);
+    } finally {
+      if (original !== undefined) {
+        process.env.MGMT_AIRO_BASE_URL = original;
+      }
+    }
+  });
+
+  it('returns 400 when subscriptionId is empty', async () => {
+    const response = await POST(makeRequest(), authContext, makeParams(''));
+
+    expect(response.status).toBe(400);
+    expect(mockClient.getSubscription).not.toHaveBeenCalled();
   });
 
   it('uses level 3 auth', async () => {

@@ -108,6 +108,57 @@ describe('GET /api/subscriptions/[id]', function describeRoute() {
     });
   });
 
+  describe('Include attributes', function includeAttrs() {
+    it('should pass includeAttributes when ?include=attributes is set', async function withAttributes() {
+      const request = new NextRequest('http://localhost/api/subscriptions/sub-123?include=attributes');
+      const authContext = createAuthContext('jwt-token');
+      const params = Promise.resolve({ id: 'sub-123' });
+
+      mockClient.getSubscription.mockResolvedValue({
+        id: 'sub-123', productId: 'aab-v1', status: 'active', isTrial: true,
+        customerId: 'test-customer-123', createdAt: '2024-01-01', updatedAt: '2024-01-01',
+        attributes: [{ id: 'attr-1', key: 'free-plan', value: {} }],
+      });
+
+      const response = await GET(request, authContext, { params });
+
+      expect(response.status).toBe(200);
+      expect(mockClient.getSubscription).toHaveBeenCalledWith('sub-123', { includeAttributes: true });
+    });
+
+    it('should not pass includeAttributes for non-attributes include value', async function otherInclude() {
+      const request = new NextRequest('http://localhost/api/subscriptions/sub-123?include=metadata');
+      const authContext = createAuthContext('jwt-token');
+      const params = Promise.resolve({ id: 'sub-123' });
+
+      mockClient.getSubscription.mockResolvedValue({
+        id: 'sub-123', productId: 'aab-v1', status: 'active', isTrial: false,
+        customerId: 'test-customer-123', createdAt: '2024-01-01', updatedAt: '2024-01-01',
+      });
+
+      const response = await GET(request, authContext, { params });
+
+      expect(response.status).toBe(200);
+      expect(mockClient.getSubscription).toHaveBeenCalledWith('sub-123', { includeAttributes: false });
+    });
+
+    it('should not pass includeAttributes by default', async function withoutAttributes() {
+      const request = createRequest();
+      const authContext = createAuthContext('jwt-token');
+      const params = Promise.resolve({ id: 'sub-123' });
+
+      mockClient.getSubscription.mockResolvedValue({
+        id: 'sub-123', productId: 'aab-v1', status: 'active', isTrial: false,
+        customerId: 'test-customer-123', createdAt: '2024-01-01', updatedAt: '2024-01-01',
+      });
+
+      const response = await GET(request, authContext, { params });
+
+      expect(response.status).toBe(200);
+      expect(mockClient.getSubscription).toHaveBeenCalledWith('sub-123', { includeAttributes: false });
+    });
+  });
+
   describe('Success cases', function success() {
     it('should return subscription with derived plan field', async function withPlan() {
       const request = createRequest();
