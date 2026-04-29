@@ -71,8 +71,9 @@ const AnalyticsPanel = dynamic(() => import('@/app/[market]/develop/components/s
 const MediaPanel = dynamic(() => import('@/app/[market]/develop/components/media/MediaPanel'), { loading: () => <PanelSkeleton panelType={ChatTab.MEDIAS} /> })
 const VersionHistory = dynamic(() => import('@/app/[market]/develop/components/VersionHistory'), { loading: () => <PanelSkeleton panelType={ChatTab.HISTORY} className="p-2 sm:p-0" /> })
 
-// SettingsView is AOT-preloaded by page.tsx
-const SettingsView = dynamic(() => import('@/app/[market]/develop/components/settings/SettingsView'))
+// SettingsView is AOT-preloaded by page.tsx; loading fallback is still needed
+// so React.lazy gets a local Suspense boundary if the preload hasn't finished.
+const SettingsView = dynamic(() => import('@/app/[market]/develop/components/settings/SettingsView'), { loading: () => <SettingsLoadingState fullPage /> })
 
 // Lazy-loaded but preloaded on idle after mount
 // We do them AOT to avoid skeleton/loader flashes - purely UX and non-blocking.

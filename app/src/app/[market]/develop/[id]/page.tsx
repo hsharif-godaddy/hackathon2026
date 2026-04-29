@@ -94,7 +94,8 @@ const importSettingsView = () => import('@/app/[market]/develop/components/setti
 const Feedback = dynamic(importFeedback)
 const FirstPublishCongratsModal = dynamic(importFirstPublishCongratsModal)
 const PublishLimitModal = dynamic(importPublishLimitModal)
-const SettingsView = dynamic(importSettingsView)
+// Loading fallback is still needed so React.lazy gets a local Suspense boundary if the preload hasn't finished.
+const SettingsView = dynamic(importSettingsView, { loading: () => <SettingsLoadingState fullPage /> })
 
 const aotImports = [importFeedback, importFirstPublishCongratsModal, importPublishLimitModal, importSettingsView]
 
