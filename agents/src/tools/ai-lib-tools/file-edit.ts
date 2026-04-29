@@ -1,13 +1,14 @@
 import { createTool, type Tool } from '@airo/ai-lib'
 import { z } from 'zod'
 import { FileEditTool, FileBatchEditOptions } from '../file-edit.js'
+import { LocalFileSystemOperations } from '../../filesystem/index.js'
 import { AppRepository } from '../../database/repositories/AppRepository.js'
 
 // Constants for error message formatting
 const ERROR_TEXT_TRUNCATION_LENGTH = 100
 
 // Initialize tool instances
-const fileEditTool = new FileEditTool()
+const fileEditTool = new FileEditTool(new LocalFileSystemOperations())
 const appRepo = new AppRepository()
 
 const fileOperationSchema = z.object({

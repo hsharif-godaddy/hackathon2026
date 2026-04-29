@@ -1,5 +1,6 @@
-import { readFile, writeFile } from 'fs/promises';
 import { resolve } from 'path';
+import type { FileSystemOperations } from '../filesystem/index.js';
+import { LocalFileSystemOperations } from '../filesystem/index.js';
 import { parse } from '@babel/parser';
 import _traverse from '@babel/traverse';
 import _generate from '@babel/generator';
@@ -31,6 +32,8 @@ export abstract class ASTEditorBase {
   protected traverse = traverse;
   protected generate = generate;
   protected t = t;
+
+  constructor(protected readonly fs: FileSystemOperations = new LocalFileSystemOperations()) {}
 
   /**
    * Create a GitTool instance for the specified app
@@ -105,14 +108,14 @@ export abstract class ASTEditorBase {
    * Read source file
    */
   protected async readSourceFile(filePath: string): Promise<string> {
-    return await readFile(filePath, 'utf-8');
+    return await this.fs.readFile(filePath, 'utf-8');
   }
 
   /**
    * Write source file
    */
   protected async writeSourceFile(filePath: string, content: string): Promise<void> {
-    await writeFile(filePath, content, 'utf-8');
+    await this.fs.writeFile(filePath, content, 'utf-8');
   }
 
   /**

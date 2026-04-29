@@ -1,10 +1,11 @@
 import { createTool, type Tool } from '@airo/ai-lib'
 import { z } from 'zod'
 import { DirectoryListingTool, DirectoryListingOptions } from '../directory-listing.js'
+import { LocalFileSystemOperations } from '../../filesystem/index.js'
 import { AppRepository } from '../../database/repositories/AppRepository.js'
 
 // Initialize tool instances
-const directoryTool = new DirectoryListingTool()
+const directoryTool = new DirectoryListingTool(new LocalFileSystemOperations())
 const appRepo = new AppRepository()
 
 /**

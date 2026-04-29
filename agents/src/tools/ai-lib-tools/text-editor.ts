@@ -14,6 +14,8 @@ import { anthropic } from '@ai-sdk/anthropic';
 import type { Tool } from '@airo/ai-lib';
 import type { AgentContext } from '@airo/ai-lib';
 import { AppRepository } from '../../database/repositories/AppRepository.js';
+import type { FileSystemOperations } from '../../filesystem/index.js';
+import { LocalFileSystemOperations } from '../../filesystem/index.js';
 import { isFileBlocked } from '../read-file.js';
 import {
   isFileImmutable,
@@ -29,6 +31,7 @@ import {
 } from '../text-editor-handlers.js';
 
 const appRepo = new AppRepository();
+const fs: FileSystemOperations = new LocalFileSystemOperations();
 
 /**
  * Text Editor Tool — Native Anthropic text_editor_20250728
@@ -67,7 +70,7 @@ export const textEditorAITool: Tool = anthropic.tools.textEditor_20250728({
 
     // 2. Immutability checks on modifications (includes create since it can overwrite)
     if (['str_replace', 'create', 'insert'].includes(command)) {
-      const immutable = await isFileImmutable(fullPath);
+      const immutable = await isFileImmutable(fullPath, fs);
       if (immutable) {
         throw new Error('File is immutable (contains "TREAT AS IMMUTABLE") — cannot edit.');
       }
@@ -86,7 +89,7 @@ export const textEditorAITool: Tool = anthropic.tools.textEditor_20250728({
     let resolvedFileText = file_text;
     let binaryCopied = false;
     if (command === 'create' && file_text !== undefined) {
-      const resolvedFile = await resolveSourceFile(appId, path, file_text, fullPath);
+      const resolvedFile = await resolveSourceFile(appId, path, file_text, fullPath, fs);
       if (resolvedFile) {
         if (resolvedFile.binaryCopied) {
           binaryCopied = true;
@@ -102,14 +105,14 @@ export const textEditorAITool: Tool = anthropic.tools.textEditor_20250728({
       case 'view': {
         const range: [number, number] | undefined =
           view_range && view_range.length >= 2 ? [view_range[0]!, view_range[1]!] : undefined;
-        return handleView(fullPath, range);
+        return handleView(fullPath, range, fs);
       }
 
       case 'str_replace':
         if (!old_str || new_str === undefined) {
           throw new Error('str_replace requires old_str and new_str');
         }
-        return handleStrReplace(fullPath, old_str, new_str);
+        return handleStrReplace(fullPath, old_str, new_str, fs);
 
       case 'create':
         if (binaryCopied) {
@@ -118,13 +121,13 @@ export const textEditorAITool: Tool = anthropic.tools.textEditor_20250728({
         if (resolvedFileText == null) {
           throw new Error('create requires file_text');
         }
-        return handleCreate(fullPath, resolvedFileText);
+        return handleCreate(fullPath, resolvedFileText, fs);
 
       case 'insert':
         if (insert_line === undefined || !insert_text) {
           throw new Error('insert requires insert_line and insert_text');
         }
-        return handleInsert(fullPath, insert_line, insert_text);
+        return handleInsert(fullPath, insert_line, insert_text, fs);
 
       default:
         throw new Error(`Unknown command: ${command}`);

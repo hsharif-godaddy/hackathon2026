@@ -1,6 +1,7 @@
-import { readFile } from 'node:fs/promises';
 import { join, resolve, basename, extname, relative } from 'node:path';
-import { existsSync } from 'node:fs';
+
+import type { FileSystemOperations } from '../filesystem/index.js';
+import { LocalFileSystemOperations } from '../filesystem/index.js';
 
 import { BINARY_FILE_REGEX, DOCUMENT_FILE_EXTENSIONS, IMAGE_FILE_EXTENSIONS, OTHER_BINARY_EXTENSIONS, TEXT_FILE_REGEX, isBinaryFile } from '../utils/file-types.js';
 import { translateDockerPath, deriveAssetsDir, validateNoEscapingSymlinks } from '../utils/path-helper.js';
@@ -125,6 +126,8 @@ export function isFileBlocked(filePath: string): { blocked: boolean; reason?: st
  * Tool for reading file contents with optional line range support
  */
 export class ReadFileTool {
+  constructor(private readonly fs: FileSystemOperations = new LocalFileSystemOperations()) {}
+
   /**
    * Validate that a file path is within the app directory and check for escaping symlinks.
    * Allows symlinks to the known assets directory for bind mount compatibility.
@@ -212,7 +215,7 @@ export class ReadFileTool {
       }
 
       // Check if file exists
-      if (!existsSync(fullPath)) {
+      if (!(await this.fs.exists(fullPath))) {
         return {
           success: false,
           path: options.path,
@@ -224,7 +227,7 @@ export class ReadFileTool {
 
       // Fallback: sniff first 8KB for null bytes — only for files with unknown extensions.
       // Skips known binary (already blocked above) and known text extensions to avoid redundant I/O.
-      if (!BINARY_FILE_REGEX.test(normalizedPath) && !TEXT_FILE_REGEX.test(normalizedPath) && !(OTHER_BINARY_EXTENSIONS as readonly string[]).includes(extname(normalizedPath).slice(1).toLowerCase()) && await isBinaryFile(fullPath)) {
+      if (!BINARY_FILE_REGEX.test(normalizedPath) && !TEXT_FILE_REGEX.test(normalizedPath) && !(OTHER_BINARY_EXTENSIONS as readonly string[]).includes(extname(normalizedPath).slice(1).toLowerCase()) && await isBinaryFile(fullPath, this.fs)) {
         return {
           success: false,
           path: options.path,
@@ -235,12 +238,12 @@ export class ReadFileTool {
       }
 
       // Read the file
-      const fileContent = await readFile(fullPath, 'utf-8');
+      const fileContent = await this.fs.readFile(fullPath, 'utf-8');
       const lines = fileContent.split('\n');
       const totalLines = lines.length;
 
       // Get file stats for size
-      const stats = await import('fs/promises').then(fs => fs.stat(fullPath));
+      const stats = await this.fs.stat(fullPath);
       const fileSize = stats.size;
 
       // Validate line range parameters (if provided)

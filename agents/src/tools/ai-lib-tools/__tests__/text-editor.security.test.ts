@@ -118,6 +118,7 @@ describe('textEditorAITool — blocked path wiring', function textEditorSecurity
     expect(handleCreate).toHaveBeenCalledWith(
       join(appPath, 'public/assets/hero.webp'),
       'minimal placeholder',
+      expect.anything(),
     );
   });
 
@@ -139,6 +140,7 @@ describe('textEditorAITool — blocked path wiring', function textEditorSecurity
       join(appPath, 'src/app.tsx'),
       'foo',
       'bar',
+      expect.anything(),
     );
   });
 });

@@ -489,5 +489,52 @@ describe('text-editor-handlers', () => {
       const content = readFileSync(filePath, 'utf-8')
       expect(content).toBe('line1\nline2\nline3\nline4')
     })
+
+    it('should insert correctly in a >1MB file (streaming path)', async () => {
+      const filePath = join(testDir, 'large.txt')
+      // Build a >1MB file: ~30000 lines of 40 chars -> ~1.2MB
+      const padding = 'x'.repeat(39)
+      const lineCount = 30_000
+      const lines: string[] = []
+      for (let i = 0; i < lineCount; i++) lines.push(padding)
+      writeFileSync(filePath, lines.join('\n'))
+
+      await handleInsert(filePath, 1, 'INSERTED_MARKER')
+
+      const resultLines = readFileSync(filePath, 'utf-8').split('\n')
+      expect(resultLines[0]).toBe(padding)
+      expect(resultLines[1]).toBe('INSERTED_MARKER')
+      expect(resultLines[2]).toBe(padding)
+      // No tmp file left behind
+      expect(existsSync(`${filePath}.tmp`)).toBe(false)
+    })
+
+    it('preserves trailing-newline state on the streaming path (no trailing newline)', async () => {
+      const filePath = join(testDir, 'large-no-newline.txt')
+      const padding = 'x'.repeat(39)
+      const lines: string[] = []
+      for (let i = 0; i < 30_000; i++) lines.push(padding)
+      writeFileSync(filePath, lines.join('\n')) // no trailing \n
+
+      await handleInsert(filePath, 1, 'INSERTED_MARKER')
+
+      const content = readFileSync(filePath, 'utf-8')
+      expect(content.endsWith('\n')).toBe(false)
+      expect(content).toContain('\nINSERTED_MARKER\n')
+    })
+
+    it('preserves trailing-newline state on the streaming path (with trailing newline)', async () => {
+      const filePath = join(testDir, 'large-with-newline.txt')
+      const padding = 'x'.repeat(39)
+      const lines: string[] = []
+      for (let i = 0; i < 30_000; i++) lines.push(padding)
+      writeFileSync(filePath, lines.join('\n') + '\n') // trailing \n
+
+      await handleInsert(filePath, 1, 'INSERTED_MARKER')
+
+      const content = readFileSync(filePath, 'utf-8')
+      expect(content.endsWith('\n')).toBe(true)
+      expect(content).toContain('\nINSERTED_MARKER\n')
+    })
   })
 })

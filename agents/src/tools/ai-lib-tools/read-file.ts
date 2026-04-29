@@ -1,9 +1,10 @@
 import { createTool, type Tool } from '@airo/ai-lib'
 import { z } from 'zod'
 import { ReadFileTool, ReadFileOptions } from '../read-file.js'
+import { LocalFileSystemOperations } from '../../filesystem/index.js'
 import { AppRepository } from '../../database/repositories/AppRepository.js'
 
-const readFileTool = new ReadFileTool()
+const readFileTool = new ReadFileTool(new LocalFileSystemOperations())
 const appRepo = new AppRepository()
 
 export const readFileAITool: Tool = createTool(

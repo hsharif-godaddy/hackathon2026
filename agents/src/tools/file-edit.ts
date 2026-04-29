@@ -1,7 +1,7 @@
-import { readFile, writeFile, mkdir, unlink } from 'fs/promises';
 import { dirname, resolve, relative, basename } from 'path';
 import { diffLines, createPatch } from 'diff';
-import { existsSync, realpathSync, lstatSync } from 'fs';
+import type { FileSystemOperations } from '../filesystem/index.js';
+import { LocalFileSystemOperations, defaultLocalFs } from '../filesystem/index.js';
 import { AppRepository } from '../database/index.js';
 import { GitTool } from './git-tool.js';
 import { translateDockerPath, deriveAssetsDir, validateNoEscapingSymlinks } from '../utils/path-helper.js';
@@ -121,7 +121,7 @@ export class FileEditTool {
   private readonly MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB limit
   private appRepo: AppRepository;
 
-  constructor() {
+  constructor(private readonly fs: FileSystemOperations = new LocalFileSystemOperations()) {
     this.appRepo = new AppRepository();
   }
 
@@ -314,7 +314,7 @@ export class FileEditTool {
 
         // Check immutability (skip for create mode)
         if (mode !== 'create') {
-          const immutable = await isFileImmutable(filePath);
+          const immutable = await isFileImmutable(filePath, this.fs);
           if (immutable) {
             const errorResult: FileEditResult = {
               success: false,
@@ -677,15 +677,6 @@ export class FileEditTool {
   }
 
   /**
-   * Check if a file is marked as immutable
-   * Files with "TREAT AS IMMUTABLE" in the first line cannot be edited
-   * Only reads the first 500 bytes for efficiency
-   */
-  private async isFileImmutable(filePath: string): Promise<boolean> {
-    return isFileImmutable(filePath);
-  }
-
-  /**
    * Resolve file path safely within the app directory
    */
   private resolveFilePath(appPath: string, relativePath: string): string {
@@ -712,7 +703,7 @@ export class FileEditTool {
 
       const match = await fileUploadService.findMatchingUpload(appId, filename);
 
-      if (existsSync(fullTargetPath)) {
+      if (await this.fs.exists(fullTargetPath)) {
         if (!match) {
           logger.debug('file-edit.auto-resolve.target-exists', {
             appId,
@@ -736,9 +727,9 @@ export class FileEditTool {
 
       const { file: matchingFile, sourcePath } = match;
 
-      await mkdir(dirname(fullTargetPath), { recursive: true });
-      const sourceContent = await readFile(sourcePath);
-      await writeFile(fullTargetPath, sourceContent);
+      await this.fs.mkdir(dirname(fullTargetPath), { recursive: true });
+      const sourceContent = await this.fs.readFile(sourcePath);
+      await this.fs.writeFile(fullTargetPath, sourceContent);
 
       logger.info('file-edit.auto-resolved', {
         appId,
@@ -764,7 +755,7 @@ export class FileEditTool {
    * Auto-detect the appropriate edit mode
    */
   private async detectMode(filePath: string, options: FileEditOptions): Promise<'create' | 'edit' | 'rewrite' | 'delete'> {
-    const exists = existsSync(filePath);
+    const exists = await this.fs.exists(filePath);
 
     if (!exists) {
       return 'create';
@@ -804,7 +795,7 @@ export class FileEditTool {
 
         if (isBinaryFile) {
           // For binary files, don't try to read as text
-          const stats = await import('fs').then(fs => fs.promises.stat(filePath))
+          const stats = await this.fs.stat(filePath)
           return {
             success: true,
             path: options.path,
@@ -819,7 +810,7 @@ export class FileEditTool {
         }
 
         // For text files, read and create diff
-        const resolvedContent = await readFile(filePath, 'utf-8');
+        const resolvedContent = await this.fs.readFile(filePath, 'utf-8');
         const diff = createPatch(
           options.path,
           '',
@@ -864,7 +855,7 @@ export class FileEditTool {
       };
     }
 
-    if (existsSync(filePath)) {
+    if (await this.fs.exists(filePath)) {
       return {
         success: false,
         path: options.path,
@@ -875,7 +866,7 @@ export class FileEditTool {
 
     // Create parent directories if needed
     if (options.createDirs !== false) {
-      await mkdir(dirname(filePath), { recursive: true });
+      await this.fs.mkdir(dirname(filePath), { recursive: true });
     }
 
     const diff = createPatch(
@@ -887,7 +878,7 @@ export class FileEditTool {
     );
 
     if (!options.dryRun) {
-      await writeFile(filePath, options.content, 'utf-8');
+      await this.fs.writeFile(filePath, options.content, 'utf-8');
     }
 
     const result: FileEditResult = {
@@ -916,12 +907,12 @@ export class FileEditTool {
    */
   private async handleRewrite(filePath: string, options: FileEditOptions, appPath: string, context?: { appId?: string; conversationId?: string }): Promise<FileEditResult> {
     // Try auto-resolution from uploads if appId is available and file doesn't exist
-    if (context?.appId && !existsSync(filePath) && !options.dryRun) {
+    if (context?.appId && !(await this.fs.exists(filePath)) && !options.dryRun) {
       const resolved = await this.resolveSourceFile(context.appId, options.path, appPath);
 
       if (resolved) {
         // File was auto-resolved from uploads
-        const resolvedContent = await readFile(filePath, 'utf-8');
+        const resolvedContent = await this.fs.readFile(filePath, 'utf-8');
         const diff = createPatch(
           options.path,
           '',
@@ -977,9 +968,9 @@ export class FileEditTool {
     let originalContent = '';
 
     // Read original content if file exists
-    if (existsSync(filePath)) {
+    if (await this.fs.exists(filePath)) {
       try {
-        originalContent = await readFile(filePath, 'utf-8');
+        originalContent = await this.fs.readFile(filePath, 'utf-8');
       } catch (error) {
         return {
           success: false,
@@ -1001,9 +992,9 @@ export class FileEditTool {
     if (!options.dryRun) {
       // Create parent directories if needed
       if (options.createDirs !== false) {
-        await mkdir(dirname(filePath), { recursive: true });
+        await this.fs.mkdir(dirname(filePath), { recursive: true });
       }
-      await writeFile(filePath, options.content, 'utf-8');
+      await this.fs.writeFile(filePath, options.content, 'utf-8');
     }
 
     const changes = this.calculateChanges(originalContent, options.content);
@@ -1038,7 +1029,7 @@ export class FileEditTool {
       };
     }
 
-    if (!existsSync(filePath)) {
+    if (!(await this.fs.exists(filePath))) {
       return {
         success: false,
         path: options.path,
@@ -1049,7 +1040,7 @@ export class FileEditTool {
 
     let content: string;
     try {
-      content = await readFile(filePath, 'utf-8');
+      content = await this.fs.readFile(filePath, 'utf-8');
     } catch (error) {
       return {
         success: false,
@@ -1134,7 +1125,7 @@ export class FileEditTool {
     );
 
     if (!options.dryRun) {
-      await writeFile(filePath, content, 'utf-8');
+      await this.fs.writeFile(filePath, content, 'utf-8');
     }
 
     const changes = this.calculateChanges(originalContent, content);
@@ -1165,7 +1156,7 @@ export class FileEditTool {
    * Handle delete mode - remove a file
    */
   private async handleDelete(filePath: string, options: FileEditOptions, appPath: string, context?: { appId?: string; conversationId?: string }): Promise<FileEditResult> {
-    if (!existsSync(filePath)) {
+    if (!(await this.fs.exists(filePath))) {
       return {
         success: false,
         path: options.path,
@@ -1184,7 +1175,7 @@ export class FileEditTool {
     }
 
     try {
-      await unlink(filePath);
+      await this.fs.unlink(filePath);
     } catch (error) {
       return {
         success: false,
@@ -1467,28 +1458,23 @@ export class FileEditTool {
  * Files with "TREAT AS IMMUTABLE" in the first line cannot be edited
  * Only reads the first 500 bytes for efficiency
  */
-export async function isFileImmutable(filePath: string): Promise<boolean> {
-  try {
-    if (!existsSync(filePath)) {
-      return false; // Non-existent files are not immutable
-    }
-
-    // Only read first 500 bytes to check for marker (efficient for large files)
-    const buffer = Buffer.alloc(500);
-    const fs = await import('fs');
-    const fd = await fs.promises.open(filePath, 'r');
-    try {
-      const { bytesRead } = await fd.read(buffer, 0, 500, 0);
-      const firstBytes = buffer.toString('utf-8', 0, bytesRead);
-      const firstLine = firstBytes.split('\n')[0] || '';
-
-      return firstLine.includes('TREAT AS IMMUTABLE');
-    } finally {
-      await fd.close();
-    }
-  } catch (error) {
-    // If we can't read the file, assume it's not immutable
+export async function isFileImmutable(filePath: string, fsOps: FileSystemOperations = defaultLocalFs): Promise<boolean> {
+  // No outer catch — EACCES/EPERM must surface so the caller sees a permission
+  // error instead of silently treating a protected file as mutable (which would
+  // bypass the "TREAT AS IMMUTABLE" guard). fsOps.exists() only returns false
+  // for ENOENT; other errors propagate.
+  if (!(await fsOps.exists(filePath))) {
     return false;
+  }
+
+  const buffer = Buffer.alloc(500);
+  const fd = await fsOps.open(filePath, 'r');
+  try {
+    const { bytesRead } = await fd.read(buffer, 0, 500, 0);
+    const firstLine = buffer.toString('utf-8', 0, bytesRead).split('\n')[0] ?? '';
+    return firstLine.includes('TREAT AS IMMUTABLE');
+  } finally {
+    await fd.close();
   }
 }
 
@@ -1558,7 +1544,8 @@ export async function resolveSourceFile(
   appId: string,
   targetPath: string,
   content: string,
-  fullTargetPath?: string
+  fullTargetPath?: string,
+  fsOps: FileSystemOperations = defaultLocalFs
 ): Promise<{ content: string; binaryCopied?: boolean } | null> {
   try {
     const filename = basename(targetPath);
@@ -1578,8 +1565,8 @@ export async function resolveSourceFile(
     const isBinary = BINARY_FILE_REGEX.test(filename) && !filename.toLowerCase().endsWith('.svg');
 
     if (isBinary && fullTargetPath) {
-      await mkdir(dirname(fullTargetPath), { recursive: true });
-      await writeFile(fullTargetPath, await readFile(sourcePath));
+      await fsOps.mkdir(dirname(fullTargetPath), { recursive: true });
+      await fsOps.writeFile(fullTargetPath, await fsOps.readFile(sourcePath));
 
       logger.info('file-edit.auto-resolved', {
         appId,
@@ -1601,7 +1588,7 @@ export async function resolveSourceFile(
       size: matchingFile.size
     });
 
-    return { content: await readFile(sourcePath, 'utf-8') };
+    return { content: await fsOps.readFile(sourcePath, 'utf-8') };
   } catch (error) {
     logger.error('file-edit.auto-resolve.error', {
       appId,

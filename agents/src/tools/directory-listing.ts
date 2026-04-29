@@ -1,6 +1,6 @@
-import { readdir, stat } from 'fs/promises';
 import { join, relative } from 'path';
-import { existsSync } from 'fs';
+import type { FileSystemOperations } from '../filesystem/index.js';
+import { LocalFileSystemOperations } from '../filesystem/index.js';
 import { logger } from '../logging/index.js';
 import { toolDirectoryListingEvents } from '../logging/events/index.js';
 
@@ -74,6 +74,8 @@ interface TreeNode {
  */
 export class DirectoryListingTool {
   private readonly MAX_ENTRIES = 1000; // Prevent overwhelming responses
+
+  constructor(private readonly fs: FileSystemOperations = new LocalFileSystemOperations()) {}
 
   /**
    * Default patterns to ignore during directory traversal
@@ -155,7 +157,7 @@ export class DirectoryListingTool {
     // Construct the target path, ensuring it's within the app directory
     let targetPath: string;
     try {
-      targetPath = this.resolveSafePath(appPath, relativePath);
+      targetPath = await this.resolveSafePath(appPath, relativePath);
     } catch (error) {
       toolDirectoryListingEvents.failure(logger, error as Error, {
         toolName: 'DirectoryListingTool',
@@ -276,7 +278,7 @@ export class DirectoryListingTool {
 
 
     try {
-      const entries = await readdir(currentPath);
+      const entries = await this.fs.readdir(currentPath);
 
       for (const entry of entries) {
         if (result.entries.length >= this.MAX_ENTRIES) {
@@ -298,7 +300,7 @@ export class DirectoryListingTool {
         }
 
         try {
-          const stats = await stat(fullPath);
+          const stats = await this.fs.stat(fullPath);
           const isDirectory = stats.isDirectory();
 
           // Apply directory-only filter
@@ -398,7 +400,7 @@ export class DirectoryListingTool {
    * Resolve a path safely within the app directory
    * Prevents directory traversal attacks
    */
-  private resolveSafePath(appPath: string, relativePath: string): string {
+  private async resolveSafePath(appPath: string, relativePath: string): Promise<string> {
     const resolved = join(appPath, relativePath);
     const normalized = join(resolved); // Normalize the path
 
@@ -415,7 +417,7 @@ export class DirectoryListingTool {
     }
 
     // Check if path exists
-    if (!existsSync(normalized)) {
+    if (!(await this.fs.exists(normalized))) {
       const error = new Error(`Path does not exist: ${relativePath || '.'}`);
       logger.warn('Directory listing path not found', {
         appPath,

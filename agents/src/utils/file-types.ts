@@ -5,7 +5,8 @@
  * Used for security validation and content handling across the agents service.
  */
 
-import { open } from 'node:fs/promises'
+import type { FileSystemOperations } from '../filesystem/index.js'
+import { defaultLocalFs } from '../filesystem/index.js'
 
 /**
  * Source code file extensions that should not contain temporary upload URLs
@@ -124,15 +125,18 @@ const SNIFF_SIZE = 8192
  * This is the same heuristic Git uses — text files virtually never
  * contain 0x00, while binary files almost always do.
  */
-export async function isBinaryFile(filePath: string): Promise<boolean> {
+export async function isBinaryFile(filePath: string, fs: FileSystemOperations = defaultLocalFs): Promise<boolean> {
   let fh
   try {
-    fh = await open(filePath, 'r')
+    fh = await fs.open(filePath, 'r')
     const buf = Buffer.alloc(SNIFF_SIZE)
-    const { bytesRead } = await fh.read(buf, 0, SNIFF_SIZE)
+    const { bytesRead } = await fh.read(buf, 0, SNIFF_SIZE, 0)
     return buf.subarray(0, bytesRead).includes(0x00)
-  } catch {
-    return false
+  } catch (err) {
+    // Missing file isn't binary — let the subsequent read produce the real error.
+    // Permission/IO errors should propagate so callers see the real cause.
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return false
+    throw err
   } finally {
     await fh?.close()
   }
