@@ -9,6 +9,7 @@
     "build": "tsc",
     "test": "node --import tsx/esm --test 'src/**/*.test.ts'",
     "test:e2e": "tsx src/index.ts",
+    "test:repro": "tsx src/run-repro-scenarios.ts",
     "test:e2e:all": "tsx src/index.ts --all",
     "test:e2e:quality": "tsx src/index.ts --quality-only",
     "test:unit": "node --import tsx/esm --test 'src/**/*.test.ts'",

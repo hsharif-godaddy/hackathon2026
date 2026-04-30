@@ -121,6 +121,16 @@ export interface IndexableResult {
   buildToolErrorCount?: number;
   buildToolFailedNames?: string[];
   buildToolErrors?: string[];
+
+  // Friction detection metrics
+  frictionScore?: number;
+  frictionMaxSeverity?: string;
+  frictionPatternCount?: number;
+  frictionPatternTypes?: string[];
+  frictionTotalWastedCostUSD?: number;
+  frictionRetryTransient?: number;
+  frictionRetryAgent?: number;
+  frictionRetryUserInduced?: number;
 }
 
 /**
@@ -202,6 +212,14 @@ async function ensureIndex(client: Client, index: string): Promise<void> {
             buildToolNames: { type: 'keyword' },
             buildToolFailedNames: { type: 'keyword' },
             buildToolErrors: { type: 'text' },
+            frictionScore: { type: 'integer' },
+            frictionMaxSeverity: { type: 'keyword' },
+            frictionPatternCount: { type: 'integer' },
+            frictionPatternTypes: { type: 'keyword' },
+            frictionTotalWastedCostUSD: { type: 'float' },
+            frictionRetryTransient: { type: 'integer' },
+            frictionRetryAgent: { type: 'integer' },
+            frictionRetryUserInduced: { type: 'integer' },
           },
         },
       });
@@ -234,6 +252,14 @@ async function ensureIndex(client: Client, index: string): Promise<void> {
           buildToolNames: { type: 'keyword' },
           buildToolFailedNames: { type: 'keyword' },
           buildToolErrors: { type: 'text' },
+          frictionScore: { type: 'integer' },
+          frictionMaxSeverity: { type: 'keyword' },
+          frictionPatternCount: { type: 'integer' },
+          frictionPatternTypes: { type: 'keyword' },
+          frictionTotalWastedCostUSD: { type: 'float' },
+          frictionRetryTransient: { type: 'integer' },
+          frictionRetryAgent: { type: 'integer' },
+          frictionRetryUserInduced: { type: 'integer' },
         },
       },
     },
@@ -344,6 +370,16 @@ function toIndexableResult(result: EvalResult): IndexableResult {
     buildToolErrorCount: result.buildMetrics?.toolErrorCount,
     buildToolFailedNames: result.buildMetrics?.toolFailedNames,
     buildToolErrors: result.buildMetrics?.toolErrors,
+
+    // Friction detection metrics
+    frictionScore: result.friction?.score,
+    frictionMaxSeverity: result.friction?.maxSeverity,
+    frictionPatternCount: result.friction?.patternCount,
+    frictionPatternTypes: result.friction?.patterns.map(p => p.type),
+    frictionTotalWastedCostUSD: result.friction?.totalWastedCostUSD,
+    frictionRetryTransient: result.friction?.retryTransient,
+    frictionRetryAgent: result.friction?.retryAgent,
+    frictionRetryUserInduced: result.friction?.retryUserInduced,
 
     // Quality evaluation metrics
     qualityScore: result.quality?.overall.score,

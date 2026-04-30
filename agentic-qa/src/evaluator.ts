@@ -85,6 +85,18 @@ export function formatReportSummary(report: Report): string {
       }
     }
 
+    if (result.friction && result.friction.patternCount > 0) {
+      const f = result.friction;
+      lines.push(`  Friction: score=${f.score}/100 (${f.maxSeverity}) | ${f.patternCount} patterns | $${f.totalWastedCostUSD} wasted`);
+      lines.push(`  Retries: transient=${f.retryTransient} agent=${f.retryAgent} userInduced=${f.retryUserInduced}`);
+      for (const p of f.patterns.slice(0, 5)) {
+        lines.push(`    [${p.severity.toUpperCase()}] ${p.type}: ${p.description}`);
+      }
+      if (f.patterns.length > 5) {
+        lines.push(`    ... and ${f.patterns.length - 5} more patterns`);
+      }
+    }
+
     if (result.message) {
       lines.push(`  Message: ${result.message.substring(0, 100)}${result.message.length > 100 ? '...' : ''}`);
     }
@@ -202,11 +214,21 @@ function generateHTMLReport(report: Report): string {
           ? '<span class="quality-badge quality-status-skipped">SKIPPED</span>'
           : '';
 
+    // Generate friction section if patterns detected
+    const frictionSection = result.friction && result.friction.patternCount > 0
+      ? generateFrictionSection(result.friction)
+      : '';
+
+    const frictionBadge = result.friction && result.friction.patternCount > 0
+      ? `<span class="quality-badge ${result.friction.score >= 50 ? 'grade-D' : result.friction.score >= 25 ? 'grade-C' : 'grade-B'}">F:${result.friction.score}</span>`
+      : '';
+
     return `
       <div class="scenario ${statusClass}">
         <div class="scenario-header">
           <span class="status ${statusClass}">${statusText}</span>
           <span class="name">${escapeHtml(result.scenario)}</span>
+          ${frictionBadge}
           ${qualityBadge}
         </div>
         <div class="scenario-details">
@@ -220,6 +242,7 @@ function generateHTMLReport(report: Report): string {
           ${result.previewUrl ? `<p class="preview-url"><strong>Preview URL:</strong> <a href="${escapeHtml(result.previewUrl)}" target="_blank">${escapeHtml(result.previewUrl)}</a></p>` : ''}
           ${result.message ? `<p class="message">${escapeHtml(result.message)}</p>` : ''}
           ${result.error ? `<p class="error">Error: ${escapeHtml(result.error)}</p>` : ''}
+          ${frictionSection}
           ${qualitySection}
           ${result.actions.length > 0 ? `
             <details>
@@ -503,6 +526,61 @@ function generateHTMLReport(report: Report): string {
 </body>
 </html>
   `.trim();
+}
+
+/**
+ * Generate friction detection HTML section for the report.
+ */
+function generateFrictionSection(friction: import('./scenarios/types.js').FrictionReport): string {
+  const severityColor = (s: string): string => {
+    switch (s) {
+      case 'critical': return '#dc3545';
+      case 'high': return '#fd7e14';
+      case 'medium': return '#ffc107';
+      case 'low': return '#6c757d';
+      default: return '#6c757d';
+    }
+  };
+
+  const patternRows = friction.patterns.slice(0, 10).map(p => `
+    <tr>
+      <td><span style="color: ${severityColor(p.severity)}; font-weight: bold;">${escapeHtml(p.severity.toUpperCase())}</span></td>
+      <td><code>${escapeHtml(p.type)}</code></td>
+      <td>${escapeHtml(p.description)}</td>
+      <td>${p.count}</td>
+      <td>$${p.wastedCostUSD.toFixed(4)}</td>
+      <td>${escapeHtml(p.toolNames.join(', '))}</td>
+    </tr>
+  `).join('');
+
+  return `
+    <details open class="friction-section">
+      <summary>Friction Detection (Score: ${friction.score}/100, ${friction.maxSeverity})</summary>
+      <div style="margin: 10px 0; padding: 12px; background: #fff8e1; border: 1px solid #ffe082; border-radius: 6px;">
+        <div style="display: flex; gap: 20px; margin-bottom: 10px; font-size: 0.9em;">
+          <span><strong>Patterns:</strong> ${friction.patternCount}</span>
+          <span><strong>Wasted Cost:</strong> $${friction.totalWastedCostUSD}</span>
+          <span><strong>Retries:</strong> transient=${friction.retryTransient} / agent=${friction.retryAgent} / user=${friction.retryUserInduced}</span>
+        </div>
+        <table style="width: 100%; border-collapse: collapse; font-size: 0.85em;">
+          <thead>
+            <tr style="border-bottom: 2px solid #e0e0e0;">
+              <th style="text-align: left; padding: 4px 8px;">Severity</th>
+              <th style="text-align: left; padding: 4px 8px;">Type</th>
+              <th style="text-align: left; padding: 4px 8px;">Description</th>
+              <th style="text-align: left; padding: 4px 8px;">Count</th>
+              <th style="text-align: left; padding: 4px 8px;">Cost</th>
+              <th style="text-align: left; padding: 4px 8px;">Tools</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${patternRows}
+          </tbody>
+        </table>
+        ${friction.patterns.length > 10 ? `<p style="font-size: 0.85em; color: #666;">... and ${friction.patterns.length - 10} more patterns</p>` : ''}
+      </div>
+    </details>
+  `;
 }
 
 function escapeHtml(text: string): string {

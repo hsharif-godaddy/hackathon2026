@@ -5,10 +5,11 @@ import { join } from 'node:path';
 import { evaluate as evaluateQuality } from './quality/index.js';
 import type { PlaywrightPage } from './quality/playwright-types.js';
 import type { QualityEvaluation } from './quality/types.js';
-import type { AgentAction, EvalResult, PreviewScreenshot, Scenario, ScreenshotInfo } from './scenarios/types.js';
+import type { AgentAction, EvalResult, FrictionReport, PreviewScreenshot, Scenario, ScreenshotInfo } from './scenarios/types.js';
 import { fetchAppUsage } from './utils/app-usage.js';
 import { deleteAllSitesViaAPI, deleteOldestSitesIfOverLimit } from './utils/auth.js';
-import { runDeterministicSetup } from './utils/deterministic-actions.js';
+import { runDeterministicSetup, sendDeterministicChatMessage } from './utils/deterministic-actions.js';
+import { detectFriction } from './utils/friction-detector.js';
 import { extractAppId, fetchBuildMetrics, loadCredentials } from './utils/langfuse.js';
 
 export interface RunnerOptions {
@@ -20,6 +21,131 @@ export interface RunnerOptions {
   qualityEnabled?: boolean;
   anthropicApiKey?: string;
   anthropicModel?: string;
+}
+
+function buildFailureHaystack(
+  buildResult: Awaited<ReturnType<typeof fetchBuildMetrics>> | null
+): string {
+  const parts: string[] = [];
+  if (buildResult) {
+    parts.push(...buildResult.metrics.toolFailedNames);
+    parts.push(...buildResult.metrics.toolErrors);
+    for (const observation of buildResult.orderedObservations) {
+      if (observation.level === 'ERROR') {
+        if (observation.name) {
+          parts.push(observation.name);
+        }
+        if (observation.statusMessage) {
+          parts.push(observation.statusMessage);
+        }
+      }
+    }
+  }
+
+  return parts.join('\n').toLowerCase();
+}
+
+function matchExpectedFailures(
+  expectedFailures: string[] | undefined,
+  matchMode: 'any' | 'all',
+  haystack: string
+): { matched: string[]; missing: string[]; satisfied: boolean } {
+  const expected = (expectedFailures ?? []).map(signature => signature.trim()).filter(Boolean);
+  if (expected.length === 0) {
+    return { matched: [], missing: [], satisfied: true };
+  }
+
+  const matched = expected.filter(signature => haystack.includes(signature.toLowerCase()));
+  const missing = expected.filter(signature => !haystack.includes(signature.toLowerCase()));
+  const satisfied = matchMode === 'all' ? missing.length === 0 : matched.length > 0;
+
+  return { matched, missing, satisfied };
+}
+
+function normalize(value: string | undefined): string {
+  return (value ?? '').trim().toLowerCase();
+}
+
+function matchExpectedErrorObservations(
+  expected: Array<{ name: string; statusMessage?: string }> | undefined,
+  matchMode: 'any' | 'all',
+  observations: Array<{ name?: string; statusMessage?: string }>
+): {
+  matched: Array<{ name: string; statusMessage?: string }>;
+  missing: Array<{ name: string; statusMessage?: string }>;
+  satisfied: boolean;
+} {
+  const targets = (expected ?? [])
+    .map(function trim(item) {
+      return {
+        name: item.name.trim(),
+        statusMessage: item.statusMessage?.trim(),
+      };
+    })
+    .filter(function keep(item) {
+      return item.name.length > 0;
+    });
+
+  if (targets.length === 0) {
+    return { matched: [], missing: [], satisfied: true };
+  }
+
+  const matched = targets.filter(function hasMatch(target) {
+    const targetName = normalize(target.name);
+    const targetStatus = normalize(target.statusMessage);
+    return observations.some(function compare(obs) {
+      const nameMatch = normalize(obs.name).includes(targetName);
+      if (!nameMatch) {
+        return false;
+      }
+      if (!targetStatus) {
+        return true;
+      }
+      return normalize(obs.statusMessage).includes(targetStatus);
+    });
+  });
+
+  const missing = targets.filter(function isMissing(target) {
+    return !matched.includes(target);
+  });
+
+  const satisfied = matchMode === 'all' ? missing.length === 0 : matched.length > 0;
+  return { matched, missing, satisfied };
+}
+
+function matchRequiredTools(
+  requiredTools: Array<{ name: string }> | undefined,
+  matchMode: 'any' | 'all',
+  spanNames: string[]
+): {
+  matched: string[];
+  missing: string[];
+  satisfied: boolean;
+} {
+  const required = (requiredTools ?? [])
+    .map(function trim(item) {
+      return item.name.trim();
+    })
+    .filter(Boolean);
+
+  if (required.length === 0) {
+    return { matched: [], missing: [], satisfied: true };
+  }
+
+  const normalized = spanNames.map(function lower(name) {
+    return normalize(name);
+  });
+  const matched = required.filter(function hasMatch(requiredName) {
+    const needle = normalize(requiredName);
+    return normalized.some(function includes(spanName) {
+      return spanName.includes(needle);
+    });
+  });
+  const missing = required.filter(function isMissing(requiredName) {
+    return !matched.includes(requiredName);
+  });
+  const satisfied = matchMode === 'all' ? missing.length === 0 : matched.length > 0;
+  return { matched, missing, satisfied };
 }
 
 export async function runScenario(
@@ -136,24 +262,47 @@ export async function runScenario(
       ].join('\n'),
     });
 
-    console.log('Starting agent execution...');
+    let result: {
+      success: boolean;
+      message?: string;
+      actions?: unknown[];
+    };
 
-    // Pass credentials as part of the instruction if provided
-    let instruction = scenario.goal;
-    if (scenario.credentials) {
-      instruction += `\n\nCredentials for sign-in if needed:
+    if (scenario.directChatMessage) {
+      console.log('Sending deterministic chat message...');
+      const chat = await sendDeterministicChatMessage(page, scenario.directChatMessage);
+      if (chat.success) {
+        result = {
+          success: true,
+          message: 'Deterministic chat message sent',
+          actions: [],
+        };
+      } else {
+        console.warn('Deterministic chat send failed, falling back to agent execution: %s', chat.error);
+        result = await agent.execute({
+          instruction: `Send this exact chat message and wait for completion:\n\n${scenario.directChatMessage}`,
+          maxSteps: scenario.maxSteps,
+        });
+      }
+    } else {
+      console.log('Starting agent execution...');
+
+      let instruction = scenario.goal;
+      if (scenario.credentials && !handleLogin) {
+        instruction += `\n\nCredentials for sign-in if needed:
 - Username: ${scenario.credentials.username}
-- Password: ${scenario.credentials.password}`;
+- Password: [REDACTED]`;
+      }
+
+      console.log('\n========== AGENT INSTRUCTION ==========');
+      console.log(instruction);
+      console.log('========================================\n');
+
+      result = await agent.execute({
+        instruction,
+        maxSteps: scenario.maxSteps,
+      });
     }
-
-    console.log('\n========== AGENT INSTRUCTION ==========');
-    console.log(instruction);
-    console.log('========================================\n');
-
-    const result = await agent.execute({
-      instruction,
-      maxSteps: scenario.maxSteps,
-    });
 
     // Log the full result for debugging
     console.log('\n========== AGENT RESULT ==========');
@@ -169,6 +318,7 @@ export async function runScenario(
     let creditsUsed: number | undefined;
     let chatMessagesCompleted = 0;
     let errorMessage: string | undefined;
+    const chatMessageTimestamps: number[] = [];
 
     // Credit mode: send chat messages one-by-one, checking credits between each
     const isCreditMode = Boolean(scenario.creditLimit && scenario.chatMessages?.length);
@@ -215,6 +365,9 @@ export async function runScenario(
             'Do NOT open the preview in a new tab or navigate away from the develop page.',
             'Stay on the develop page at all times.',
           ].join('\n');
+
+          // Record when the chat message is sent (for friction detection)
+          chatMessageTimestamps.push(Date.now());
 
           try {
             const chatResult = await agent.execute({
@@ -368,9 +521,155 @@ export async function runScenario(
       console.warn(`Could not extract appId from preview URL: ${previewUrl} — Langfuse metrics will be skipped`);
     }
     const langfuseCreds = loadCredentials();
-    const buildMetrics = (langfuseAppId && langfuseCreds)
+    const buildResult = (langfuseAppId && langfuseCreds)
       ? await fetchBuildMetrics(langfuseCreds, langfuseAppId, startTime, endTime)
       : null;
+
+    // Run friction detection on ordered observations
+    let friction: FrictionReport | undefined;
+    if (buildResult) {
+      friction = detectFriction(buildResult.orderedObservations, {
+        chatMessageTimestamps: chatMessageTimestamps.length > 0 ? chatMessageTimestamps : undefined,
+      });
+
+      if (friction.patternCount > 0) {
+        console.log('\n========== FRICTION DETECTION ==========');
+        console.log(`Patterns found: ${friction.patternCount}`);
+        console.log(`Friction score: ${friction.score}/100 (${friction.maxSeverity})`);
+        console.log(`Wasted cost:    $${friction.totalWastedCostUSD}`);
+        console.log(`Retries:        transient=${friction.retryTransient} agent=${friction.retryAgent} userInduced=${friction.retryUserInduced}`);
+        for (const p of friction.patterns) {
+          console.log(`  [${p.severity.toUpperCase()}] ${p.type}: ${p.description}`);
+        }
+        console.log('=========================================\n');
+      }
+    }
+
+    const allSpanNames = buildResult
+      ? buildResult.orderedObservations
+        .filter(function onlySpans(obs) {
+          return obs.type === 'SPAN' && Boolean(obs.name);
+        })
+        .map(function name(obs) {
+          return obs.name as string;
+        })
+      : [];
+    const requiredTools = matchRequiredTools(
+      scenario.requiredTools,
+      scenario.requiredToolMatchMode ?? 'all',
+      allSpanNames
+    );
+
+    if ((scenario.requiredTools?.length ?? 0) > 0) {
+      console.log('\n=========== REQUIRED TOOL MATCH ===========');
+      console.log(`Mode: ${scenario.requiredToolMatchMode ?? 'all'}`);
+      console.log(`Expected: ${scenario.requiredTools?.length ?? 0}`);
+      console.log(`Matched: ${requiredTools.matched.length}`);
+      if (requiredTools.matched.length > 0) {
+        console.log(`Matched tools: ${requiredTools.matched.join(' | ')}`);
+      }
+      if (requiredTools.missing.length > 0) {
+        console.log(`Missing tools: ${requiredTools.missing.join(' | ')}`);
+      }
+      console.log('===========================================\n');
+
+      if (!buildResult) {
+        overallSuccess = false;
+        errorMessage = 'Required tools cannot be validated because Langfuse observations were not available.';
+        overallMessage = errorMessage;
+      } else if (!requiredTools.satisfied) {
+        overallSuccess = false;
+        errorMessage = `Required tools not observed (${scenario.requiredToolMatchMode ?? 'all'}): ` +
+          `${requiredTools.missing.join(' | ')}`;
+        overallMessage = errorMessage;
+      }
+    }
+
+    const errorObservations = buildResult
+      ? buildResult.orderedObservations.filter(function onlyErrorSpans(obs) {
+        return obs.level === 'ERROR' && obs.type === 'SPAN';
+      })
+      : [];
+    const expectedObservations = matchExpectedErrorObservations(
+      scenario.expectedErrorObservations,
+      scenario.observationMatchMode ?? 'all',
+      errorObservations
+    );
+
+    if ((scenario.expectedErrorObservations?.length ?? 0) > 0) {
+      console.log('\n====== EXPECTED ERROR OBSERVATION MATCH ======');
+      console.log(`Mode: ${scenario.observationMatchMode ?? 'all'}`);
+      console.log(`Expected: ${scenario.expectedErrorObservations?.length ?? 0}`);
+      console.log(`Matched: ${expectedObservations.matched.length}`);
+      if (expectedObservations.matched.length > 0) {
+        console.log(
+          `Matched observations: ${
+            expectedObservations.matched
+              .map(function format(obs) {
+                return obs.statusMessage ? `${obs.name} -> ${obs.statusMessage}` : obs.name;
+              })
+              .join(' | ')
+          }`
+        );
+      }
+      if (expectedObservations.missing.length > 0) {
+        console.log(
+          `Missing observations: ${
+            expectedObservations.missing
+              .map(function format(obs) {
+                return obs.statusMessage ? `${obs.name} -> ${obs.statusMessage}` : obs.name;
+              })
+              .join(' | ')
+          }`
+        );
+      }
+      console.log('==============================================\n');
+
+      if (!buildResult) {
+        overallSuccess = false;
+        errorMessage = 'Expected error observations require Langfuse metrics, but no Langfuse observations were found.';
+        overallMessage = errorMessage;
+      } else if (!expectedObservations.satisfied) {
+        overallSuccess = false;
+        errorMessage = `Expected error observations not observed (${scenario.observationMatchMode ?? 'all'}): ` +
+          `${expectedObservations.missing.map(function format(obs) {
+            return obs.statusMessage ? `${obs.name} -> ${obs.statusMessage}` : obs.name;
+          }).join(' | ')}`;
+        overallMessage = errorMessage;
+      }
+    }
+
+    const failureHaystack = buildFailureHaystack(buildResult);
+    const expectedFailures = matchExpectedFailures(
+      scenario.expectedFailures,
+      scenario.failureMatchMode ?? 'any',
+      failureHaystack
+    );
+
+    if ((scenario.expectedFailures?.length ?? 0) > 0) {
+      console.log('\n========== EXPECTED FAILURE MATCH ==========');
+      console.log(`Mode: ${scenario.failureMatchMode ?? 'any'}`);
+      console.log(`Expected: ${scenario.expectedFailures?.length ?? 0}`);
+      console.log(`Matched: ${expectedFailures.matched.length}`);
+      if (expectedFailures.matched.length > 0) {
+        console.log(`Matched signatures: ${expectedFailures.matched.join(' | ')}`);
+      }
+      if (expectedFailures.missing.length > 0) {
+        console.log(`Missing signatures: ${expectedFailures.missing.join(' | ')}`);
+      }
+      console.log('============================================\n');
+
+      if (!buildResult) {
+        overallSuccess = false;
+        errorMessage = 'Expected failure signatures require Langfuse metrics, but no Langfuse observations were found.';
+        overallMessage = errorMessage;
+      } else if (!expectedFailures.satisfied) {
+        overallSuccess = false;
+        errorMessage = `Expected failure signatures not observed (${scenario.failureMatchMode ?? 'any'}): ` +
+          `${expectedFailures.missing.join(' | ')}`;
+        overallMessage = errorMessage;
+      }
+    }
 
     // Run cleanup if specified
     if (scenario.cleanup?.deleteAllSitesViaAPI) {
@@ -410,7 +709,9 @@ export async function runScenario(
       creditsUsed,
       chatMessagesCompleted: isCreditMode ? chatMessagesCompleted : undefined,
       creditLimit: scenario.creditLimit,
-      buildMetrics: buildMetrics ?? undefined,
+      buildMetrics: buildResult?.metrics ?? undefined,
+      friction,
+      chatMessageTimestamps: chatMessageTimestamps.length > 0 ? chatMessageTimestamps : undefined,
     };
   } catch (error) {
     const duration = Date.now() - startTime;
@@ -498,7 +799,11 @@ async function captureScreenshot(
 ): Promise<ScreenshotInfo> {
   await mkdir(dir, { recursive: true });
   const timestamp = Date.now();
-  const filename = `${name}-${timestamp}.png`;
+  const safeName = name
+    .replace(/[<>:"/\\|?*\x00-\x1F]/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const filename = `${safeName}-${timestamp}.png`;
   const filepath = join(dir, filename);
 
   if (options.fullPage) {

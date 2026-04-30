@@ -37,6 +37,9 @@ interface LangfuseObservation {
   totalCost?: number;
   startTime?: string;
   endTime?: string;
+  input?: unknown;
+  output?: unknown;
+  parentObservationId?: string;
 }
 
 interface ObservationsResponse {
@@ -59,6 +62,8 @@ export interface BuildMetrics {
 }
 
 const INGESTION_POLL_INTERVALS = [3_000, 5_000, 10_000, 15_000];
+const REQUEST_TIMEOUT_MS = 45_000;
+const REQUEST_RETRY_DELAYS_MS = [1_500, 3_000, 6_000];
 
 /**
  * Pure aggregation of Langfuse observations into BuildMetrics.
@@ -114,25 +119,110 @@ export function aggregate(observations: LangfuseObservation[]): BuildMetrics {
   };
 }
 
+/**
+ * A single observation enriched with a sequential index for friction detection.
+ * Preserves the original LangfuseObservation fields plus an ordering index.
+ */
+export interface OrderedObservation {
+  /** 0-based sequential index after sorting by startTime */
+  index: number;
+  id: string;
+  traceId: string;
+  type: string;
+  name?: string;
+  model?: string;
+  level?: string;
+  statusMessage?: string;
+  usage?: ObservationUsage;
+  totalCost?: number;
+  startTime?: string;
+  endTime?: string;
+  input?: unknown;
+  output?: unknown;
+  parentObservationId?: string;
+}
+
+/**
+ * Sort raw Langfuse observations by startTime and assign sequential indices.
+ * Observations without startTime are pushed to the end.
+ * Exported for direct unit testing.
+ */
+export function orderObservations(observations: LangfuseObservation[]): OrderedObservation[] {
+  const sorted = [...observations].sort((a, b) => {
+    const ta = a.startTime ? new Date(a.startTime).getTime() : Infinity;
+    const tb = b.startTime ? new Date(b.startTime).getTime() : Infinity;
+    return ta - tb;
+  });
+
+  return sorted.map((obs, index) => ({
+    index,
+    id: obs.id,
+    traceId: obs.traceId,
+    type: obs.type,
+    name: obs.name,
+    model: obs.model,
+    level: obs.level,
+    statusMessage: obs.statusMessage,
+    usage: obs.usage,
+    totalCost: obs.totalCost,
+    startTime: obs.startTime,
+    endTime: obs.endTime,
+    input: obs.input,
+    output: obs.output,
+    parentObservationId: obs.parentObservationId,
+  }));
+}
+
+/**
+ * Combined result from fetchBuildMetrics: aggregate metrics + ordered observations
+ * for friction detection.
+ */
+export interface BuildMetricsResult {
+  metrics: BuildMetrics;
+  orderedObservations: OrderedObservation[];
+}
+
 function authHeader(creds: LangfuseCredentials): string {
   return `Basic ${Buffer.from(`${creds.publicKey}:${creds.secretKey}`).toString('base64')}`;
 }
 
 async function request<T>(creds: LangfuseCredentials, path: string): Promise<T> {
-  const response = await fetch(`${creds.baseUrl}${path}`, {
-    headers: {
-      'Authorization': authHeader(creds),
-      'Content-Type': 'application/json',
-    },
-    signal: AbortSignal.timeout(30_000),
-  });
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt <= REQUEST_RETRY_DELAYS_MS.length; attempt++) {
+    try {
+      const response = await fetch(`${creds.baseUrl}${path}`, {
+        headers: {
+          'Authorization': authHeader(creds),
+          'Content-Type': 'application/json',
+        },
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      });
 
-  if (!response.ok) {
-    const body = await response.text().catch(() => '(body unavailable)');
-    throw new Error(`Langfuse API error: ${response.status} ${response.statusText} - ${body}`);
+      if (!response.ok) {
+        const body = await response.text().catch(() => '(body unavailable)');
+        const message = `Langfuse API error: ${response.status} ${response.statusText} - ${body}`;
+        const retryable = response.status >= 500 || response.status === 429;
+        if (!retryable || attempt === REQUEST_RETRY_DELAYS_MS.length) {
+          throw new Error(message);
+        }
+        lastError = new Error(message);
+      } else {
+        return response.json() as Promise<T>;
+      }
+    } catch (error) {
+      if (attempt === REQUEST_RETRY_DELAYS_MS.length) {
+        throw error;
+      }
+      lastError = error instanceof Error ? error : new Error(String(error));
+    }
+
+    const delay = REQUEST_RETRY_DELAYS_MS[attempt];
+    await new Promise(function sleep(resolve) {
+      setTimeout(resolve, delay);
+    });
   }
 
-  return response.json() as Promise<T>;
+  throw lastError ?? new Error('Langfuse request failed unexpectedly');
 }
 
 // TODO: Traces are scoped only by userId (appId) + time window. If another service
@@ -205,20 +295,21 @@ export async function fetchBuildMetrics(
   appId: string,
   startTime: number,
   endTime: number
-): Promise<BuildMetrics | null> {
+): Promise<BuildMetricsResult | null> {
   try {
+    const windowEnd = endTime + (10 * 60 * 1000);
     console.log('\n========== LANGFUSE BUILD METRICS ==========');
     console.log(`Base URL:    ${creds.baseUrl}`);
     console.log(`Project ID:  ${creds.projectId ?? 'not set'}`);
     console.log(`App ID:      ${appId}`);
-    console.log(`Time window: ${new Date(startTime).toISOString()} → ${new Date(endTime).toISOString()}`);
+    console.log(`Time window: ${new Date(startTime).toISOString()} → ${new Date(windowEnd).toISOString()} (+10m ingestion buffer)`);
     const maxWait = INGESTION_POLL_INTERVALS.reduce((a, b) => a + b, 0);
     console.log(`Polling for Langfuse traces (max ${(maxWait / 1000).toFixed(0)}s)...`);
 
     const traceQuery = {
       userId: appId,
       fromTimestamp: new Date(startTime).toISOString(),
-      toTimestamp: new Date(endTime).toISOString(),
+      toTimestamp: new Date(windowEnd).toISOString(),
     };
 
     let traces = await listTraces(creds, traceQuery);
@@ -253,7 +344,9 @@ export async function fetchBuildMetrics(
       traces.map(trace => listObservations(creds, trace.id))
     );
 
-    const metrics = aggregate(allObservations.flat());
+    const flatObservations = allObservations.flat();
+    const metrics = aggregate(flatObservations);
+    const orderedObs = orderObservations(flatObservations);
 
     console.log(`Turns (generations): ${metrics.turns}`);
     console.log(`Input tokens:  ${metrics.inputTokens.toLocaleString()}`);
@@ -268,9 +361,10 @@ export async function fetchBuildMetrics(
     if (metrics.toolErrors.length > 0) {
       console.log(`Error msgs:    ${metrics.toolErrors.join(' | ')}`);
     }
+    console.log(`Ordered observations: ${orderedObs.length}`);
     console.log('==============================================\n');
 
-    return metrics;
+    return { metrics, orderedObservations: orderedObs };
   } catch (error) {
     console.warn('Failed to fetch Langfuse build metrics: %s', error);
     return null;

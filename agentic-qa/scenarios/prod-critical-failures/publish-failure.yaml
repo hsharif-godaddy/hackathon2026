@@ -1,0 +1,78 @@
+# Langfuse signature targets:
+#   publishing__publish :: Client action service unavailable — cannot publish
+#   publishing__publish :: Publish failed: Subscription upgrade required
+#   publishing__publish :: Tool publishing__publish execution timeout
+name: Publish failure pressure
+description: |
+  Hard repro that pushes publish flow directly after generation to trigger recurring
+  publish-path errors observed in Langfuse.
+
+startUrl: https://airo-builder.godaddy.com
+timeout: 600000
+maxSteps: 30
+stepsPerMessage: 16
+headed: true
+
+qualityEval:
+  enabled: false
+
+credentials:
+  username: ${TEST_USERNAME}
+  password: ${TEST_PASSWORD}
+
+sitePrompt:
+  prompt: |
+    Create a tiny marketing site called "Publish Probe" with one hero and one CTA.
+
+systemPrompt: |
+  ${common.developPageBase}
+
+  ${common.errorHandlingInstructions}
+
+  ${common.chatInstructions}
+
+  ${common.waitInstructions}
+
+  Once preview is visible, send exactly this chat message:
+
+  "Immediately publish this site now. If publish fails, retry once and report the exact error text."
+
+directChatMessage: |
+  Use publishing__publish now.
+  Immediately publish this site. If publish fails, retry once and return the exact publishing__publish error message.
+
+goal: |
+  Reproduce publish-path failures seen in Langfuse traces.
+
+  Mark FAILURE if:
+  - Publish fails with unavailable/upgrade-required/timeout/conversation-ended style errors, OR
+  - Publish cannot complete after one retry.
+
+  This scenario is intentionally expected to fail in constrained or unavailable publish paths.
+
+expectedFailures:
+  - "Client action service unavailable"
+  - "Publish failed"
+  - "Tool publishing__publish execution timeout"
+  - "Subscription upgrade required"
+  - "Publish failed: Authentication required"
+  - "Publish failed: Load failed"
+  - "Publish failed: Failed to fetch"
+  - "Unable to verify subscription status"
+failureMatchMode: any
+expectedErrorObservations:
+  - name: "publishing__publish"
+    statusMessage: "Client action service unavailable"
+  - name: "publishing__publish"
+    statusMessage: "Tool publishing__publish execution timeout"
+  - name: "publishing__publish"
+    statusMessage: "Subscription upgrade required"
+  - name: "publishing__publish"
+    statusMessage: "Unable to verify subscription status"
+observationMatchMode: any
+requiredTools:
+  - name: "publishing__publish"
+requiredToolMatchMode: all
+
+cleanup:
+  deleteAllSitesViaAPI: false

@@ -143,9 +143,23 @@ async function loginToSSO(
     console.log('  [Deterministic] Navigating to SSO login page...');
     await page.goto('https://sso.godaddy.com/login');
 
+    // If SSO immediately redirects away from /login (already authenticated), continue.
+    if (!page.url().includes('sso.godaddy.com/login')) {
+      console.log(`  [Deterministic] SSO already authenticated, redirected to: ${page.url().substring(0, 60)}...`);
+      return { success: true };
+    }
+
     // Wait for the login form to load
     console.log('  [Deterministic] Waiting for login form...');
-    await page.waitForSelector('input[type="text"]', { timeout: 30000, state: 'visible' });
+    try {
+      await page.waitForSelector('input[type="text"]', { timeout: 30000, state: 'visible' });
+    } catch {
+      if (!page.url().includes('sso.godaddy.com/login')) {
+        console.log(`  [Deterministic] SSO login inputs skipped, redirected to: ${page.url().substring(0, 60)}...`);
+        return { success: true };
+      }
+      throw new Error('waitForSelector: Timeout 30000ms exceeded waiting for "input[type=\"text\"]" to be visible');
+    }
 
     await page.waitForTimeout(1000);
 
@@ -277,6 +291,21 @@ export interface DeterministicSetupOptions {
   handleLogin?: boolean;
 }
 
+const CHAT_SELECTORS = {
+  inputCandidates: [
+    '[data-testid="chat-input-textarea"]',
+    'textarea[placeholder*="Ask Airo"]',
+    'textarea[aria-label*="Ask Airo"]',
+    'textarea[data-testid="chat-input"]',
+    'main textarea',
+  ],
+  sendButtonCandidates: [
+    '[data-testid="chat-send-button"]',
+    'button[aria-label*="Send message"]',
+    'button[title*="Send message"]',
+  ],
+};
+
 /**
  * Deterministic action to login, enter a prompt, and click Start building.
  * Flow:
@@ -404,6 +433,125 @@ export async function runDeterministicSetup(
         throw new Error('Timed out waiting for develop page (5 minutes)');
       }
       console.log('  [Deterministic] Successfully reached develop page!');
+    }
+
+    return { success: true };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+export async function sendDeterministicChatMessage(
+  page: Page,
+  message: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    // Wait until the initial build has likely completed enough for follow-up tool calls.
+    const buildReadyStart = Date.now();
+    while (Date.now() - buildReadyStart < 180000) {
+      const ready = await page.evaluate(() => {
+        const preview = document.querySelector(
+          '[data-testid="preview-iframe"], iframe[title*="preview"], iframe[title*="Preview"]'
+        );
+        const stopButton = document.querySelector('[data-testid="chat-stop-button"]');
+        return Boolean(preview) && !stopButton;
+      });
+      if (ready) {
+        break;
+      }
+      await page.waitForTimeout(2000);
+    }
+
+    await page.waitForSelector('[data-testid="chat-input-textarea"]', { timeout: 120000, state: 'visible' });
+    const readyStart = Date.now();
+    while (Date.now() - readyStart < 120000) {
+      const ready = await page.evaluate(() => {
+        const input = document.querySelector('[data-testid="chat-input-textarea"]') as HTMLTextAreaElement | null;
+        if (!input) {
+          return false;
+        }
+        const style = window.getComputedStyle(input);
+        const visible = style.display !== 'none' && style.visibility !== 'hidden';
+        return visible && !input.disabled;
+      });
+      if (ready) {
+        break;
+      }
+      await page.waitForTimeout(1000);
+    }
+
+    const inputSelector = await page.evaluate((candidates) => {
+      for (const selector of candidates) {
+        const el = document.querySelector(selector) as HTMLTextAreaElement | null;
+        if (!el) continue;
+        const style = window.getComputedStyle(el);
+        if (style.display !== 'none' && style.visibility !== 'hidden' && !el.disabled) {
+          return selector;
+        }
+      }
+      return null;
+    }, CHAT_SELECTORS.inputCandidates);
+
+    if (!inputSelector) {
+      return { success: false, error: 'Could not find chat input textarea on develop page' };
+    }
+
+    const filled = await fillInput(page, inputSelector, message);
+    if (!filled) {
+      return { success: false, error: 'Failed to fill chat input' };
+    }
+
+    const sentByEnter = await page.evaluate((selector) => {
+      const input = document.querySelector(selector) as HTMLTextAreaElement | null;
+      if (!input) {
+        return false;
+      }
+      input.focus();
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true }));
+      input.dispatchEvent(new KeyboardEvent('keypress', { key: 'Enter', code: 'Enter', bubbles: true }));
+      input.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter', bubbles: true }));
+      return true;
+    }, inputSelector);
+
+    const clickedBySelector = await page.evaluate((candidates) => {
+      for (const selector of candidates) {
+        const button = document.querySelector(selector) as HTMLButtonElement | null;
+        if (!button || button.disabled) continue;
+        button.click();
+        return true;
+      }
+      return false;
+    }, CHAT_SELECTORS.sendButtonCandidates);
+
+    if (!clickedBySelector && !sentByEnter) {
+      const clickedByText = await clickButtonByText(page, 'Send message');
+      if (!clickedByText) {
+        return { success: false, error: 'Could not click "Send message" button' };
+      }
+    }
+
+    // Allow generation to start.
+    await page.waitForTimeout(2000);
+
+    // Wait for up to 3 minutes for generation to settle.
+    const start = Date.now();
+    while (Date.now() - start < 180000) {
+      const stillGenerating = await page.evaluate(() => {
+        const stopButton = document.querySelector('[data-testid="chat-stop-button"]');
+        const sendButton = document.querySelector('[data-testid="chat-send-button"]');
+        const spinner = document.querySelector('[data-testid*="loading"], [class*="loading"], [class*="spinner"]');
+        if (sendButton && !stopButton) {
+          return false;
+        }
+        return Boolean(stopButton || spinner);
+      });
+      if (!stillGenerating) {
+        break;
+      }
+      await page.waitForTimeout(2000);
     }
 
     return { success: true };
