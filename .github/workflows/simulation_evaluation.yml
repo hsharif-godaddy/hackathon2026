@@ -9,10 +9,10 @@ on:
       agent-name:
         description: 'Agent to test'
         required: true
-        default: 'TEST_EB_AiroAppBuilder'
+        default: 'TEST_EB_AiroAppBuilder_regression'
         type: choice
         options:
-          - TEST_EB_AiroAppBuilder
+          - TEST_EB_AiroAppBuilder_regression
       config-file:
         description: 'Suite configuration file'
         required: true
@@ -23,10 +23,9 @@ on:
       synthia-env:
         description: 'Synthia environment'
         required: false
-        default: 'dev'
+        default: 'test'
         type: choice
         options:
-          - dev
           - test
       wait-for-completion:
         description: 'Wait for results'
@@ -34,10 +33,59 @@ on:
         default: true
         type: boolean
       timeout-minutes:
-        description: 'Timeout (minutes)'
+        description: 'Synthia step timeout (minutes)'
         required: false
         default: 30
         type: number
+      fail-on-threshold:
+        description: 'Fail if score is below threshold'
+        required: false
+        default: true
+        type: boolean
+      score-threshold:
+        description: 'Minimum score to pass (0.0-1.0)'
+        required: false
+        default: '0.7'
+        type: string
+
+  # Allow calling from other workflows (e.g., promote-artifact.yml)
+  workflow_call:
+    inputs:
+      agent-name:
+        description: 'Agent to test'
+        required: false
+        type: string
+        default: 'TEST_EB_AiroAppBuilder_regression'
+      config-file:
+        description: 'Suite configuration file'
+        required: false
+        type: string
+        default: 'goarena/simulation_eval_suite.yaml'
+      synthia-env:
+        description: 'Synthia environment'
+        required: false
+        type: string
+        default: 'test'
+      wait-for-completion:
+        description: 'Wait for results'
+        required: false
+        type: boolean
+        default: true
+      timeout-minutes:
+        description: 'Synthia step timeout (minutes)'
+        required: false
+        type: string
+        default: '30'
+      fail-on-threshold:
+        description: 'Fail if score is below threshold'
+        required: false
+        type: boolean
+        default: true
+      score-threshold:
+        description: 'Minimum score to pass (0.0-1.0)'
+        required: false
+        type: string
+        default: '0.7'
 
 permissions:
   contents: read
@@ -47,8 +95,10 @@ permissions:
   id-token: write
 
 # Limit concurrent runs to prevent exhausting self-hosted runner capacity
+# Include github.workflow to separate manual runs from workflow_call invocations
+# (prevents manual runs from blocking prod promotion gates)
 concurrency:
-  group: simulation-evaluation-${{ github.ref }}
+  group: simulation-evaluation-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -57,28 +107,58 @@ jobs:
       labels:
         - airo-cicd-runners
         - self-hosted
-    timeout-minutes: ${{ fromJson(inputs.timeout-minutes) || 35 }}
+    # Fixed job timeout - generous buffer for any step timeout value
+    timeout-minutes: 45
     steps:
+      - name: Validate inputs
+        env:
+          AGENT_NAME: ${{ inputs.agent-name }}
+          CONFIG_FILE: ${{ inputs.config-file }}
+          SYNTHIA_ENV: ${{ inputs.synthia-env }}
+        run: |
+          # Validate inputs against allowed values (mirrors workflow_dispatch choices)
+          ALLOWED_AGENTS="TEST_EB_AiroAppBuilder_regression"
+          ALLOWED_CONFIGS="goarena/simulation_eval_suite.yaml"
+          ALLOWED_ENVS="test"
+
+          error=0
+          if [[ ! " $ALLOWED_AGENTS " =~ " $AGENT_NAME " ]]; then
+            echo "::error::Invalid agent-name '$AGENT_NAME'. Allowed: $ALLOWED_AGENTS"
+            error=1
+          fi
+          if [[ ! " $ALLOWED_CONFIGS " =~ " $CONFIG_FILE " ]]; then
+            echo "::error::Invalid config-file '$CONFIG_FILE'. Allowed: $ALLOWED_CONFIGS"
+            error=1
+          fi
+          if [[ ! " $ALLOWED_ENVS " =~ " $SYNTHIA_ENV " ]]; then
+            echo "::error::Invalid synthia-env '$SYNTHIA_ENV'. Allowed: $ALLOWED_ENVS"
+            error=1
+          fi
+          if [ $error -eq 1 ]; then
+            exit 1
+          fi
+          echo "✅ All inputs validated"
+
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Load Synthetic Users
         id: load-users
-        uses: gdcorp-dna/synthia/actions/load-synthetic-users@744eb2cfae1402458dead8eaa0f4abe21dfd4f56  # release-1.0.0
+        uses: gdcorp-dna/synthia/actions/load-synthetic-users@3c5919648f9a5571a921deed1724c05f40887f74  # release-1.0.1
         with:
           config-path: goarena/synthetic-users
           synthia-env: ${{ inputs.synthia-env }}
 
       - name: Load Evaluators
         id: load-evaluators
-        uses: gdcorp-dna/synthia/actions/load-evaluators@744eb2cfae1402458dead8eaa0f4abe21dfd4f56  # release-1.0.0
+        uses: gdcorp-dna/synthia/actions/load-evaluators@3c5919648f9a5571a921deed1724c05f40887f74  # release-1.0.1
         with:
           config-path: goarena/evaluators
           synthia-env: ${{ inputs.synthia-env }}
 
       - name: Load Scenarios
         id: load-scenarios
-        uses: gdcorp-dna/synthia/actions/load-scenarios@744eb2cfae1402458dead8eaa0f4abe21dfd4f56  # release-1.0.0
+        uses: gdcorp-dna/synthia/actions/load-scenarios@3c5919648f9a5571a921deed1724c05f40887f74  # release-1.0.1
         with:
           config-path: goarena/scenarios
           agent-name: ${{ inputs.agent-name }}
@@ -86,17 +166,17 @@ jobs:
 
       - name: Run Browser Scenarios
         id: synthia
-        uses: gdcorp-dna/synthia/actions/run-scenarios@744eb2cfae1402458dead8eaa0f4abe21dfd4f56  # release-1.0.0
+        uses: gdcorp-dna/synthia/actions/run-scenarios@3c5919648f9a5571a921deed1724c05f40887f74  # release-1.0.1
         with:
           config-path: ${{ inputs.config-file }}
           agent-name: ${{ inputs.agent-name }}
           synthia-env: ${{ inputs.synthia-env }}
           wait-for-completion: ${{ inputs.wait-for-completion }}
           timeout-minutes: ${{ inputs.timeout-minutes }}
-          fail-on-threshold: true
-          score-threshold: '0.7'
+          fail-on-threshold: ${{ inputs.fail-on-threshold }}
+          score-threshold: ${{ inputs.score-threshold }}
 
-      - name: Show outputs
+      - name: Show outputs and write summary
         if: always()
         env:
           SYNTHIA_CONCLUSION: ${{ steps.synthia.conclusion }}
@@ -106,10 +186,10 @@ jobs:
           TOTAL_SIMULATIONS: ${{ steps.synthia.outputs.total-simulations }}
           COMPLETED_SIMULATIONS: ${{ steps.synthia.outputs.completed-simulations }}
           FAILED_SIMULATIONS: ${{ steps.synthia.outputs.failed-simulations }}
+          SUMMARY_MARKDOWN: ${{ steps.synthia.outputs.summary-markdown }}
+          RESULTS_JSON: ${{ steps.synthia.outputs.results-json }}
         run: |
-          if [ "$SYNTHIA_CONCLUSION" != "success" ]; then
-            echo "::warning::Synthia step did not complete successfully (conclusion: $SYNTHIA_CONCLUSION)"
-          fi
+          # Log outputs to console
           echo "Run ID: $RUN_ID"
           echo "Simulation IDs: $SIMULATION_IDS"
           echo "Status: $STATUS"
@@ -117,44 +197,45 @@ jobs:
           echo "Completed: $COMPLETED_SIMULATIONS"
           echo "Failed: $FAILED_SIMULATIONS"
 
-
-      - name: Write Summary to Job Summary
-        if: always()
-        env:
-          SYNTHIA_CONCLUSION: ${{ steps.synthia.conclusion }}
-          SUMMARY_MARKDOWN: ${{ steps.synthia.outputs.summary-markdown }}
-        run: |
+          # Write job summary
           if [ "$SYNTHIA_CONCLUSION" != "success" ]; then
-            echo "## ⚠️ Synthia Run Warning" >> "$GITHUB_STEP_SUMMARY"
+            echo "## ❌ Synthia Run Failed" >> "$GITHUB_STEP_SUMMARY"
             echo "Synthia step did not complete successfully (conclusion: $SYNTHIA_CONCLUSION)" >> "$GITHUB_STEP_SUMMARY"
             echo "" >> "$GITHUB_STEP_SUMMARY"
           fi
+
           if [ -n "$SUMMARY_MARKDOWN" ]; then
             printf '%s\n' "$SUMMARY_MARKDOWN" >> "$GITHUB_STEP_SUMMARY"
           else
             echo "No summary available (Synthia may have failed or timed out)" >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      - name: Print Results JSON
-        if: always()
-        env:
-          RESULTS_JSON: ${{ steps.synthia.outputs.results-json }}
-        run: |
-          # Install jq if not present (should be pre-installed in runner image)
-          if ! command -v jq &> /dev/null; then
-            echo "Installing jq..."
-            sudo apt-get update && sudo apt-get install -y jq || sudo yum install -y jq || brew install jq || { echo "::error::Could not install jq"; exit 1; }
-          fi
+          # Print results JSON
           echo "### Results JSON" >> "$GITHUB_STEP_SUMMARY"
           echo '```json' >> "$GITHUB_STEP_SUMMARY"
           if [ -z "$RESULTS_JSON" ]; then
             echo "No results returned (empty output)" >> "$GITHUB_STEP_SUMMARY"
-          elif echo "$RESULTS_JSON" | jq empty 2>&1; then
+          elif jq_err=$(echo "$RESULTS_JSON" | jq empty 2>&1); then
             # Valid JSON - pretty print it
             echo "$RESULTS_JSON" | jq . >> "$GITHUB_STEP_SUMMARY"
           else
-            # Invalid JSON - show raw output with warning
-            echo "Warning: Invalid JSON returned from Synthia" >> "$GITHUB_STEP_SUMMARY"
+            # Invalid JSON - show raw output and fail
+            echo "::error::Invalid JSON returned from Synthia: $jq_err"
+            echo "Error: Invalid JSON returned from Synthia" >> "$GITHUB_STEP_SUMMARY"
             echo "$RESULTS_JSON" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
           fi
           echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Assert Synthia succeeded
+        if: always()
+        env:
+          SYNTHIA_CONCLUSION: ${{ steps.synthia.conclusion }}
+        run: |
+          # Independent assertion that Synthia completed successfully
+          # This catches edge cases where the action exits 0 but conclusion != success
+          if [ "$SYNTHIA_CONCLUSION" != "success" ]; then
+            echo "::error::Synthia step did not complete successfully (conclusion: $SYNTHIA_CONCLUSION)"
+            exit 1
+          fi

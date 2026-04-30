@@ -4,7 +4,6 @@
 key: "airo-restaurant-website-requester"
 name: "Restaurant Website Generation"
 syntheticUserName: "Airo Website Requester"
-agentName: "TEST_EB_AiroAppBuilder"  # Agent provides URL and auth
 
 business:
   industry: "Food & Hospitality"

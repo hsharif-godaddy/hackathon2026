@@ -4,7 +4,6 @@
 key: "airo-portfolio-demanding-client"
 name: "Portfolio Website with Specific Requirements"
 syntheticUserName: "Airo Demanding Client"
-agentName: "TEST_EB_AiroAppBuilder"  # Agent provides URL and auth
 
 business:
   industry: "Creative Services"
