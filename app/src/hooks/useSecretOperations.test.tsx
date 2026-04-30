@@ -68,6 +68,37 @@ describe('useSecretOperations', () => {
     expect(result.current.data?.operations.added).toBe(1);
   });
 
+  it('should request authLevel 3 so stale-HBI users get the re-auth modal', async () => {
+    vi.mocked(appFetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        success: true,
+        message: 'Operations completed',
+        operations: { added: 1, updated: 0, deleted: 0 },
+      }),
+    } as Response);
+
+    const { result } = renderHook(() => useSecretOperations(), {
+      wrapper: createWrapper(),
+    });
+
+    result.current.mutate({
+      appId: 'app-123',
+      variant: 'preview',
+      operations: { additions: [{ name: 'NEW_KEY', value: 'value' }] },
+    });
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+
+    expect(appFetch).toHaveBeenCalledWith(
+      '/api/secrets/app-123/variants/preview',
+      expect.objectContaining({ method: 'POST' }),
+      { authLevel: 3 }
+    );
+  });
+
   it('should handle operation error', async () => {
     vi.mocked(appFetch).mockResolvedValue({
       ok: false,

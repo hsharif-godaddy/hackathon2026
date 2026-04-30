@@ -231,6 +231,18 @@ export class AuthDismissedError extends Error {
   }
 }
 
+// Thrown by hooks when a gated endpoint returns 401 (authReason:2) — i.e. the
+// preflight modal timed out, the user re-auth failed, or an intermediate
+// token became stale. Typed so retry predicates and onError handlers can
+// distinguish it from generic server errors and avoid reopening the SSO
+// modal in a retry loop.
+export class AuthSessionExpiredError extends Error {
+  constructor() {
+    super('Authentication session expired');
+    this.name = 'AuthSessionExpiredError';
+  }
+}
+
 const AUTH_PREFLIGHT_TIMEOUT_MS = 5 * 60 * 1000;
 let pendingSsoPromise: Promise<'success' | 'dismiss'> | null = null;
 

@@ -6,8 +6,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 
-vi.mock('@/lib/gasket-config', () => ({ appFetch: vi.fn() }));
-vi.mock('@/lib/request-context', () => ({ logger: { info: vi.fn(), error: vi.fn() } }));
+vi.mock('@/lib/gasket-config', () => ({
+  appFetch: vi.fn(),
+  AuthDismissedError: class AuthDismissedError extends Error {
+    constructor() { super('Authentication dismissed'); this.name = 'AuthDismissedError'; }
+  },
+  AuthSessionExpiredError: class AuthSessionExpiredError extends Error {
+    constructor() { super('Authentication session expired'); this.name = 'AuthSessionExpiredError'; }
+  },
+}));
+vi.mock('@/lib/request-context', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 
 const { useSecrets } = await import('./useSecrets');
 const { appFetch } = await import('@/lib/gasket-config');
@@ -88,7 +96,11 @@ describe('useSecrets', () => {
     renderHook(() => useSecrets({ appId: 'app-123', variant: 'preview' }), { wrapper: createWrapper() });
 
     await waitFor(() => {
-      expect(appFetch).toHaveBeenCalledWith('/api/secrets/app-123/variants/preview');
+      expect(appFetch).toHaveBeenCalledWith(
+        '/api/secrets/app-123/variants/preview',
+        undefined,
+        { authLevel: 3 }
+      );
     });
   });
 
@@ -106,8 +118,54 @@ describe('useSecrets', () => {
     renderHook(() => useSecrets({ appId: 'app-123', variant: 'publish' }), { wrapper: createWrapper() });
 
     await waitFor(() => {
-      expect(appFetch).toHaveBeenCalledWith('/api/secrets/app-123/variants/publish');
+      expect(appFetch).toHaveBeenCalledWith(
+        '/api/secrets/app-123/variants/publish',
+        undefined,
+        { authLevel: 3 }
+      );
     });
+  });
+
+  // Wrapper with retries ENABLED so the retry predicate's `return false` is
+  // load-bearing (createWrapper's default `retry: false` would mask a broken
+  // predicate — the client-level default would block retries either way).
+  const createRetryWrapper = () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: 2 } } });
+    return ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+  };
+
+  it('should not retry when the user dismisses the SSO re-auth modal', async () => {
+    const { AuthDismissedError } = await import('@/lib/gasket-config');
+    vi.mocked(appFetch).mockRejectedValue(new AuthDismissedError());
+
+    const { result } = renderHook(
+      () => useSecrets({ appId: 'app-123', variant: 'preview' }),
+      { wrapper: createRetryWrapper() }
+    );
+
+    await waitFor(() => { expect(result.current.isError).toBe(true); }, { timeout: 3000 });
+
+    expect(appFetch).toHaveBeenCalledTimes(1);
+    expect(result.current.error).toBeInstanceOf(AuthDismissedError);
+  });
+
+  it('should not retry on 401 (preflight timeout / re-auth failure)', async () => {
+    const { AuthSessionExpiredError } = await import('@/lib/gasket-config');
+    vi.mocked(appFetch).mockResolvedValue({
+      ok: false,
+      status: 401,
+      json: async () => ({ error: 'Unauthorized', authReason: 2 }),
+    } as Response);
+
+    const { result } = renderHook(
+      () => useSecrets({ appId: 'app-123', variant: 'preview' }),
+      { wrapper: createRetryWrapper() }
+    );
+
+    await waitFor(() => { expect(result.current.isError).toBe(true); }, { timeout: 3000 });
+
+    expect(appFetch).toHaveBeenCalledTimes(1);
+    expect(result.current.error).toBeInstanceOf(AuthSessionExpiredError);
   });
 
   it('should include system-managed secrets', async () => {

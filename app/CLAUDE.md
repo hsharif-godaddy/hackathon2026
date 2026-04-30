@@ -100,11 +100,16 @@ export const POST = withCustomerAuth(
 - **Financial/billing:** `subscriptions/renew` POST, `ecomm-subscription/auto-renew` POST, `entitlements/[subscriptionId]/update` PUT
 - **Ownership/transfer:** `apps/[id]/transfer` POST+DELETE, `apps/[id]/transfer/cancel` POST, `transfer` POST (accept)
 - **Deployment/publishing:** `sites/[id]/deploy` POST, `apps/[id]/deployments` POST, `apps/[id]/unpublish` POST
-- **Secrets:** `secrets/[appId]/sync` POST, `secrets/[appId]/variants/[variant]` POST
+- **Secrets:** `secrets/[appId]/sync` POST, `secrets/[appId]/variants/[variant]` GET + POST
 - **Deletion:** `sites/[id]` DELETE, `sites` DELETE (bulk)
+- **Archive restore:** `sites/[id]/archive-restore` POST
 - **DNS/domains:** `sites/[id]/domains` POST
 - **Data export:** `apps/[id]/download` POST
 - **Database writes:** `database/[appId]/tables/[tableName]/rows` POST, PUT, DELETE
+
+**Intentionally level 1 (not level 3):**
+
+- `sites/quick-create` POST — site creation. mhp-airo's `determineRiskLevel` returns `LOW_RISK` for every URL (packages/airo/src/middleware/auth.ts), so nothing downstream enforces HBI. Keeping this at level 1 avoids a re-auth loop from homepage/landing-page create buttons, which fire before any `authPreflight` runs.
 
 **Config:** `use12HourExpiration` in `gasket-config.ts` (client-side, consumed by `@godaddy/gasket-auth`) maps to `useNewExpiration` in `gd-auth-service.ts` (server-side, consumed by `gd-auth` 1.5.0+). The two libraries use different property names for the same feature.
 

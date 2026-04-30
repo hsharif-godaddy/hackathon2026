@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 
-import { appFetch } from '@/lib/gasket-config';
+import { appFetch, AuthDismissedError, AuthSessionExpiredError } from '@/lib/gasket-config';
 import { logger } from '@/lib/request-context';
 
 /**
@@ -58,7 +58,7 @@ export function useSecrets({ appId, variant, enabled = true }: UseSecretsOptions
   return useQuery({
     queryKey: ['secrets', appId, variant],
     queryFn: async () => {
-      const response = await appFetch(`/api/secrets/${appId}/variants/${variant}`);
+      const response = await appFetch(`/api/secrets/${appId}/variants/${variant}`, undefined, { authLevel: 3 });
 
       // Handle 404 as empty state (no secrets configured yet)
       if (response.status === 404) {
@@ -66,11 +66,24 @@ export function useSecrets({ appId, variant, enabled = true }: UseSecretsOptions
       }
 
       if (!response.ok) {
-        const errorData = await response.json();
+        const errorData = await response.json().catch(() => ({}));
+
+        // Preflight timeout / re-auth failure returns 401 with authReason:2 and
+        // no `error` field. Throw the typed class so the retry predicate can
+        // block it — otherwise React Query retries, which re-runs authPreflight
+        // and reopens the SSO modal.
+        if (response.status === 401) {
+          logger.warn('secrets.fetch.auth-expired', {
+            appId,
+            authReason: errorData.authReason,
+          });
+          throw new AuthSessionExpiredError();
+        }
+
         // Handle nested error structures from API
         const errorMessage = errorData.error?.message || errorData.error || errorData.message || 'Failed to fetch secrets';
 
-        logger.error('Secrets fetch error:', {
+        logger.error('secrets.fetch.error', {
           status: response.status,
           errorData,
           errorMessage,
@@ -100,6 +113,12 @@ export function useSecrets({ appId, variant, enabled = true }: UseSecretsOptions
     },
     enabled: enabled && !!appId,
     staleTime: 30000, // Consider data fresh for 30 seconds
-    retry: 1, // Retry once on failure
+    retry: (failureCount, error) => {
+      // Don't retry on any auth-related failure — retrying would re-run
+      // authPreflight and reopen the SSO modal (or no-op and 401 again).
+      if (error instanceof AuthDismissedError) return false;
+      if (error instanceof AuthSessionExpiredError) return false;
+      return failureCount < 1;
+    },
   });
 }

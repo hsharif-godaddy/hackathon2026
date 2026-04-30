@@ -42,6 +42,7 @@ export type ArchiveRestoreMachineEvent =
   | { type: 'TRIGGER_RESTORE' }
   | { type: 'RESTORE_SUCCEEDED'; jobId: string }
   | { type: 'RESTORE_FAILED'; error: string }
+  | { type: 'RESTORE_CANCELLED' }
   | { type: 'RESET' }
 
 export const archiveRestoreMachine = setup({
@@ -79,6 +80,12 @@ export const archiveRestoreMachine = setup({
 
     clearError: assign({
       error: null,
+    }),
+
+    // Disable auto-restore so RESTORE_CANCELLED doesn't immediately loop back
+    // into restoring via the `shouldAutoRestore` always-transition on needsRestore.
+    disableAutoRestore: assign({
+      autoRestore: false,
     }),
 
     resetContext: assign({
@@ -183,6 +190,13 @@ export const archiveRestoreMachine = setup({
             RESTORE_FAILED: {
               target: '#archiveRestore.failed',
               actions: ['setError', 'logError'],
+            },
+            // Sent when the user dismisses the SSO re-auth modal or the
+            // preflight returns 401. Return to needsRestore so the UI renders
+            // the restore button again — retry without a page reload.
+            RESTORE_CANCELLED: {
+              target: '#archiveRestore.needsRestore',
+              actions: ['clearError', 'disableAutoRestore', 'logTransition'],
             },
           },
         },

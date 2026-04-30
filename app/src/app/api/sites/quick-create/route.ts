@@ -15,9 +15,6 @@ import { detectLocale } from '@/lib/translations/server-intl';
 import { getByteLength, MAX_PROMPT_BYTES } from '@/lib/waf-validation';
 
 // POST /api/sites/quick-create - Fast site creation
-// Level 3 auth: mgmt-airo's POST /apps requires HBI (recent heartbeat).
-// Matching the level here lets the client's authPreflight trigger SSO before
-// the downstream call fires, instead of surfacing a generic 500.
 export const POST = withCustomerAuth(async (request: NextRequest, authContext: CustomerAuthContext) => {
   try {
     const body = await request.json();
@@ -162,4 +159,4 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       { status: 500 }
     );
   }
-}, { level: 3 });
+});

@@ -52,10 +52,7 @@ export async function createSiteAndRedirect(
       hasProductId: !!productId,
     })
 
-    // Level 3: mgmt-airo requires HBI for site creation. Preflight ensures
-    // SSO opens for re-auth before the request fires (else the downstream 401
-    // gets wrapped as a 500 and we never trigger re-auth).
-    const createSiteResponse = await fetchQuickCreate(normalizedPrompt, { authLevel: 3 }, { productId })
+    const createSiteResponse = await fetchQuickCreate(normalizedPrompt, undefined, { productId })
 
     if (createSiteResponse.status === 401) {
       logger.info('site-creation.auth-required', { source })

@@ -1,10 +1,10 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMachine } from '@xstate/react';
 
 import type { AppDetailsResponse } from '@/hooks/useAppDetails';
 import { LifecycleReason, type SiteVariant } from '@/lib/control-plane/types';
-import { appFetch } from '@/lib/gasket-config';
+import { appFetch, AuthDismissedError, AuthSessionExpiredError } from '@/lib/gasket-config';
 import { logger } from '@/lib/request-context';
 import { useServerPollingStore } from '@/stores/useServerPollingStore';
 import { archiveRestoreMachine } from './archiveRestoreMachine';
@@ -51,10 +51,15 @@ async function postArchiveRestore(appId: string): Promise<{ statusJobId: string 
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({}),
-  });
+  }, { authLevel: 3 });
 
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
+    // Preflight timeout / re-auth failure: { authReason: 2 } with no `error`
+    // field. Throw typed so onError can skip the failed-state dispatch.
+    if (response.status === 401) {
+      throw new AuthSessionExpiredError();
+    }
     throw new Error(data.error || `Archive restore failed: ${response.status}`);
   }
   return response.json();
@@ -120,6 +125,13 @@ export function useAppArchiveRestore(
 
   const isActive = enabled && !!appId;
 
+  // Set to true when the user dismisses the SSO re-auth modal (or preflight
+  // 401s) during a restore attempt. Blocks the hibernation-late-gate useEffect
+  // below from immediately re-firing TRIGGER_RESTORE while the machine is back
+  // in needsRestore — otherwise we'd reopen the SSO modal in a loop. Cleared
+  // by the user's explicit restoreFromArchive() and by RESET.
+  const suppressAutoRestoreRef = useRef(false);
+
   // -------------------------------------------------------------------------
   // Mutation
   // -------------------------------------------------------------------------
@@ -137,6 +149,16 @@ export function useAppArchiveRestore(
       send({ type: 'RESTORE_SUCCEEDED', jobId: data.statusJobId });
     },
     onError: (error) => {
+      // Auth-related failures (user dismissed re-auth, modal timeout, 401) are
+      // not restore failures. Send RESTORE_CANCELLED to return the machine to
+      // needsRestore so the restore button is rendered again, and set the ref
+      // so the hibernation-late-gate useEffect does not immediately re-fire
+      // TRIGGER_RESTORE (which would reopen the SSO modal).
+      if (error instanceof AuthDismissedError || error instanceof AuthSessionExpiredError) {
+        suppressAutoRestoreRef.current = true;
+        send({ type: 'RESTORE_CANCELLED' });
+        return;
+      }
       send({
         type: 'RESTORE_FAILED',
         error: error instanceof Error ? error.message : String(error),
@@ -193,6 +215,7 @@ export function useAppArchiveRestore(
     if (!autoRestore) return;
     if (!isHibernationArchive) return;
     if (!state.matches('needsRestore')) return;
+    if (suppressAutoRestoreRef.current) return;
     send({ type: 'TRIGGER_RESTORE' });
   }, [isActive, autoRestore, isHibernationArchive, state, send]);
 
@@ -274,6 +297,7 @@ export function useAppArchiveRestore(
     archiveRestoreComplete: state.matches('complete'),
     restoreFromArchive: () => {
       restoreMutation.reset();
+      suppressAutoRestoreRef.current = false;
       if (appId) {
         queryClient.resetQueries({ queryKey: ['archive-status', appId] });
       }

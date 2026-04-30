@@ -17,6 +17,12 @@ import type { AppDetailsResponse } from './useAppDetails';
 
 vi.mock('@/lib/gasket-config', () => ({
   appFetch: vi.fn(),
+  AuthDismissedError: class AuthDismissedError extends Error {
+    constructor() { super('Authentication dismissed'); this.name = 'AuthDismissedError'; }
+  },
+  AuthSessionExpiredError: class AuthSessionExpiredError extends Error {
+    constructor() { super('Authentication session expired'); this.name = 'AuthSessionExpiredError'; }
+  },
 }));
 
 vi.mock('@/lib/request-context', () => ({
@@ -282,7 +288,7 @@ describe('useAppArchiveRestore', function useAppArchiveRestoreTests() {
       );
 
       await waitFor(() => {
-        expect(fetchSpy).toHaveBeenCalledWith('/api/sites/test-app-123/archive-restore', expect.any(Object));
+        expect(fetchSpy).toHaveBeenCalledWith('/api/sites/test-app-123/archive-restore', expect.any(Object), { authLevel: 3 });
       });
 
       await new Promise(resolve => setTimeout(resolve, 5500));
@@ -308,7 +314,8 @@ describe('useAppArchiveRestore', function useAppArchiveRestoreTests() {
       await waitFor(() => {
         expect(appFetch).toHaveBeenCalledWith(
           '/api/sites/test-app-123/archive-restore',
-          expect.objectContaining({ method: 'POST' })
+          expect.objectContaining({ method: 'POST' }),
+          { authLevel: 3 }
         );
       });
     });
@@ -361,7 +368,8 @@ describe('useAppArchiveRestore', function useAppArchiveRestoreTests() {
       await waitFor(() => {
         expect(appFetch).toHaveBeenCalledWith(
           '/api/sites/test-app-123/archive-restore',
-          expect.objectContaining({ method: 'POST' })
+          expect.objectContaining({ method: 'POST' }),
+          { authLevel: 3 }
         );
       });
     });
@@ -409,7 +417,8 @@ describe('useAppArchiveRestore', function useAppArchiveRestoreTests() {
       await waitFor(() => {
         expect(appFetch).toHaveBeenCalledWith(
           '/api/sites/test-app-123/archive-restore',
-          expect.any(Object)
+          expect.any(Object),
+          { authLevel: 3 }
         );
       });
 
@@ -459,7 +468,8 @@ describe('useAppArchiveRestore', function useAppArchiveRestoreTests() {
           expect.objectContaining({
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-          })
+          }),
+          { authLevel: 3 }
         );
       });
     });
@@ -477,6 +487,49 @@ describe('useAppArchiveRestore', function useAppArchiveRestoreTests() {
       await waitFor(() => {
         expect(result.current.archiveRestoreFailed).toBe(true);
         expect(result.current.error).toBe('Restore failed');
+      });
+    });
+
+    it('should not mark restore failed when user dismisses SSO re-auth', async function dismissedAuthNotFailure() {
+      const { AuthDismissedError } = await import('@/lib/gasket-config');
+      (appFetch as any)
+        .mockResolvedValueOnce(mockArchiveStatusResponse(true))
+        .mockRejectedValueOnce(new AuthDismissedError());
+
+      const { result } = renderHook(
+        () => useAppArchiveRestore(createHibernatedAppDetails(), 'test-app-123', true, true),
+        { wrapper: createWrapper() }
+      );
+
+      await waitFor(() => {
+        expect(result.current.archiveRestoreFailed).toBe(false);
+        expect(result.current.error).toBeNull();
+        // Machine returned to needsRestore — the UI renders the restore
+        // button again so the user can retry without a page reload.
+        expect(result.current.isArchivedForRestore).toBe(true);
+        expect(result.current.isRestoringFromArchive).toBe(false);
+      });
+    });
+
+    it('should not mark restore failed on 401 preflight timeout', async function expiredAuthNotFailure() {
+      (appFetch as any)
+        .mockResolvedValueOnce(mockArchiveStatusResponse(true))
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 401,
+          json: () => Promise.resolve({ authReason: 2 }),
+        });
+
+      const { result } = renderHook(
+        () => useAppArchiveRestore(createHibernatedAppDetails(), 'test-app-123', true, true),
+        { wrapper: createWrapper() }
+      );
+
+      await waitFor(() => {
+        expect(result.current.archiveRestoreFailed).toBe(false);
+        expect(result.current.error).toBeNull();
+        expect(result.current.isArchivedForRestore).toBe(true);
+        expect(result.current.isRestoringFromArchive).toBe(false);
       });
     });
 
@@ -517,7 +570,8 @@ describe('useAppArchiveRestore', function useAppArchiveRestoreTests() {
       await waitFor(() => {
         expect(appFetch).toHaveBeenCalledWith(
           '/api/sites/test-app-123/archive-restore',
-          expect.any(Object)
+          expect.any(Object),
+          { authLevel: 3 }
         );
       });
 
@@ -680,7 +734,8 @@ describe('useAppArchiveRestore', function useAppArchiveRestoreTests() {
       await waitFor(() => {
         expect(appFetch).toHaveBeenCalledWith(
           '/api/sites/test-app-123/archive-restore',
-          expect.objectContaining({ method: 'POST' })
+          expect.objectContaining({ method: 'POST' }),
+          { authLevel: 3 }
         );
       });
     });
