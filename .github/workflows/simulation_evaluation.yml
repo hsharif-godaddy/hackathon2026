@@ -115,6 +115,7 @@ jobs:
           AGENT_NAME: ${{ inputs.agent-name }}
           CONFIG_FILE: ${{ inputs.config-file }}
           SYNTHIA_ENV: ${{ inputs.synthia-env }}
+          FAIL_ON_THRESHOLD: ${{ inputs.fail-on-threshold }}
         run: |
           # Validate inputs against allowed values (mirrors workflow_dispatch choices)
           ALLOWED_AGENTS="TEST_EB_AiroAppBuilder_regression"
@@ -132,6 +133,11 @@ jobs:
           fi
           if [[ ! " $ALLOWED_ENVS " =~ " $SYNTHIA_ENV " ]]; then
             echo "::error::Invalid synthia-env '$SYNTHIA_ENV'. Allowed: $ALLOWED_ENVS"
+            error=1
+          fi
+          # Validate fail-on-threshold is a real boolean (GitHub coerces invalid strings to false)
+          if [[ "$FAIL_ON_THRESHOLD" != "true" && "$FAIL_ON_THRESHOLD" != "false" ]]; then
+            echo "::error::Invalid fail-on-threshold '$FAIL_ON_THRESHOLD'. Must be 'true' or 'false'."
             error=1
           fi
           if [ $error -eq 1 ]; then

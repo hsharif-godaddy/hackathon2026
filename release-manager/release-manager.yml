@@ -97,12 +97,10 @@ pipeline:
             - "Verify that you can add a credit pack"
             - "Verify any new features in the release notes are working"
 
-    prod:
-      requires: test
-      stages:
-        # --- Simulation evaluation gate (blocks prod if score < 70%) ---
-        - id: simulation-gate
-          name: Simulation Evaluation Gate
+        # --- Simulation evaluation gate — fails test stage (blocking prod) if score < 0.7 ---
+        - id: simulation-eval-test
+          name: Simulation Evaluation
+          group: validate
           repo: gdcorp-partners/airo-app-builder
           workflow: simulation_evaluation.yml
           ref: "{{branch}}"
@@ -110,6 +108,9 @@ pipeline:
             fail-on-threshold: "true"
             score-threshold: "0.7"
 
+    prod:
+      requires: test
+      stages:
         # --- Promote images first (fast, upsert-reload-preprov depends on this) ---
         - id: promote-images
           name: Promote Images to Prod
