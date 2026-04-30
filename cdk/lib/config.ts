@@ -104,6 +104,7 @@ const devConfig: Config = {
     'arn:aws:iam::694282668781:role/airobuilde-custom-KatanaEnvironment9411GlobalEcsTaskRole438D3922'
   ],
   katanaEcsTaskRoleArn: [
+    'arn:aws:iam::694282668781:role/airobuilde-custom-KatanaEnvironment1046GlobalEcsTaskRoleCA367FA5', // pretest
     'arn:aws:iam::694282668781:role/airobuilde-custom-KatanaEnvironment5688GlobalEcsTaskRole6C689234',
     'arn:aws:iam::694282668781:role/airobuilde-custom-KatanaEnvironment5808GlobalEcsTaskRoleF525C3A7',
     'arn:aws:iam::694282668781:role/airobuilde-custom-KatanaEnvironment9599GlobalEcsTaskRole78E503A1', // budget-service dev-private
