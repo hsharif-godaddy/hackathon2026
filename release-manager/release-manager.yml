@@ -100,6 +100,16 @@ pipeline:
     prod:
       requires: test
       stages:
+        # --- Simulation evaluation gate (blocks prod if score < 70%) ---
+        - id: simulation-gate
+          name: Simulation Evaluation Gate
+          repo: gdcorp-partners/airo-app-builder
+          workflow: simulation_evaluation.yml
+          ref: "{{branch}}"
+          inputs:
+            fail-on-threshold: "true"
+            score-threshold: "0.7"
+
         # --- Promote images first (fast, upsert-reload-preprov depends on this) ---
         - id: promote-images
           name: Promote Images to Prod

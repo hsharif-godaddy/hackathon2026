@@ -35,11 +35,6 @@ on:
         required: false
         type: boolean
         default: false
-      run_simulation:
-        description: "Run simulation evaluation gate before promotion (prod + app only)"
-        required: false
-        type: boolean
-        default: true
 
 run-name: "[${{ inputs.component }}] Promoting ${{ inputs.artifact_id }} to ${{ inputs.environment }} | actor: ${{ github.actor }}"
 
@@ -48,21 +43,8 @@ permissions:
   contents: read # Required for checkout
 
 jobs:
-  # Simulation evaluation gate - runs before promotion to prod for app component
-  simulation-gate:
-    name: Simulation Evaluation Gate
-    if: ${{ inputs.environment == 'prod' && inputs.component == 'app' && inputs.run_simulation }}
-    uses: ./.github/workflows/simulation_evaluation.yml
-    # Note: permissions are inherited from the called workflow's top-level block
-    with:
-      # agent-name, synthia-env, wait-for-completion, fail-on-threshold, score-threshold use callee defaults
-      timeout-minutes: '30'
-
   promote:
     name: "[${{ inputs.component }}] Promoting ${{ inputs.artifact_id }} to ${{ inputs.environment }}"
-    needs: [simulation-gate]
-    # Run if simulation-gate succeeded OR was skipped (non-prod, non-app, or run_simulation=false)
-    if: ${{ always() && (needs.simulation-gate.result == 'success' || needs.simulation-gate.result == 'skipped') }}
     runs-on:
       labels:
         - airo-cicd-runners
@@ -207,20 +189,19 @@ jobs:
   slack-notify:
     name: Send Slack Notification
     if: always()
-    needs: [simulation-gate, promote]
+    needs: [promote]
     uses: ./.github/workflows/slack-notify.yml
     permissions:
       id-token: write
       contents: read
     with:
-      result: ${{ (needs.simulation-gate.result == 'failure' || needs.simulation-gate.result == 'cancelled') && needs.simulation-gate.result || needs.promote.result }}
+      result: ${{ needs.promote.result }}
       environment: ${{ inputs.environment }}
       title: "Promotion"
       message: |
         *Component:* ${{ inputs.component }}
         *Environment:* ${{ inputs.environment }}
         *Artifact ID:* ${{ inputs.artifact_id }}
-        ${{ (inputs.environment == 'prod' && inputs.component == 'app' && inputs.run_simulation) && format('*Simulation Gate:* {0}', needs.simulation-gate.result) || '' }}
         *Actor:* ${{ github.actor }}
       footer: "airo-app-builder"
 
