@@ -392,7 +392,7 @@ describe('Feedback', function feedbackTests() {
   });
 
   describe('CRM skip / impersonation session (e2s auth)', function e2sTests() {
-    it('should skip to bug report step directly', async function skipToIssue() {
+    it('should show the impersonation message instead of any feedback form', async function showMessage() {
       mockAuth('e2s');
       renderWithProviders(<Feedback {...defaultProps} />);
 
@@ -400,13 +400,59 @@ describe('Feedback', function feedbackTests() {
         expect(screen.getByRole('dialog')).toBeInTheDocument();
       });
 
-      // Should show issue form directly, not category selection
-      expect(screen.getByText('builder_feedback_issue_topics_label')).toBeInTheDocument();
-      expect(screen.queryByText('builder_feedback_category_support')).toBeNull();
+      expect(screen.getByText('builder_feedback_impersonation_message')).toBeInTheDocument();
     });
 
-    it('should not show support or feedback categories', async function noOtherCategories() {
+    it('should not render any feedback form controls', async function noFormControls() {
       mockAuth('e2s');
+      renderWithProviders(<Feedback {...defaultProps} />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('dialog')).toBeInTheDocument();
+      });
+
+      // Category selection, issue/support/share forms — none should render.
+      expect(screen.queryByText('builder_feedback_category_support')).toBeNull();
+      expect(screen.queryByText('builder_feedback_category_share')).toBeNull();
+      expect(screen.queryByText('builder_feedback_category_issue')).toBeNull();
+      expect(screen.queryByText('builder_feedback_issue_topics_label')).toBeNull();
+      expect(screen.queryByText('builder_feedback_support_description')).toBeNull();
+      expect(screen.queryByText('builder_feedback_share_comment_label')).toBeNull();
+    });
+
+    it('should not submit anything downstream', async function noSubmit() {
+      mockAuth('e2s');
+      renderWithProviders(<Feedback {...defaultProps} />);
+
+      await waitFor(() => {
+        expect(screen.getByText('builder_feedback_impersonation_message')).toBeInTheDocument();
+      });
+
+      expect(fetchDiagnosticContext).not.toHaveBeenCalled();
+      expect(sendFeedbackToSlack).not.toHaveBeenCalled();
+      expect(saveToCompanionHub).not.toHaveBeenCalled();
+      expect(storeToS3).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('e2s2s impersonation session', function e2s2sTests() {
+    it('should show the impersonation message instead of any feedback form', async function showMessage() {
+      mockAuth('e2s2s');
+      renderWithProviders(<Feedback {...defaultProps} />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('dialog')).toBeInTheDocument();
+      });
+
+      expect(screen.getByText('builder_feedback_impersonation_message')).toBeInTheDocument();
+      expect(screen.queryByText('builder_feedback_issue_topics_label')).toBeNull();
+    });
+
+    // The e2s and e2s2s describes must be symmetric: both strings pass through
+    // isEmployeeAuthType, and a regression that corrupts only the e2s2s
+    // comparison would go undetected if only one arm asserted "no form" + "no submit".
+    it('should not render any feedback form controls', async function noFormControls() {
+      mockAuth('e2s2s');
       renderWithProviders(<Feedback {...defaultProps} />);
 
       await waitFor(() => {
@@ -415,55 +461,24 @@ describe('Feedback', function feedbackTests() {
 
       expect(screen.queryByText('builder_feedback_category_support')).toBeNull();
       expect(screen.queryByText('builder_feedback_category_share')).toBeNull();
+      expect(screen.queryByText('builder_feedback_category_issue')).toBeNull();
+      expect(screen.queryByText('builder_feedback_issue_topics_label')).toBeNull();
+      expect(screen.queryByText('builder_feedback_support_description')).toBeNull();
+      expect(screen.queryByText('builder_feedback_share_comment_label')).toBeNull();
     });
 
-    it('should close modal when Back is clicked (no category step)', async function backClosesModal() {
-      mockAuth('e2s');
-      renderWithProviders(<Feedback {...defaultProps} />);
-
-      await waitFor(() => {
-        expect(screen.getByText('builder_feedback_issue_topics_label')).toBeInTheDocument();
-      });
-
-      fireEvent.click(screen.getByText('builder_feedback_back'));
-
-      expect(defaultProps.onClose).toHaveBeenCalled();
-    });
-
-    it('should allow submitting a bug report', async function submitBugReport() {
-      mockAuth('e2s');
-      renderWithProviders(<Feedback {...defaultProps} />);
-
-      await waitFor(() => {
-        expect(screen.getByText('builder_feedback_issue_submit')).toBeInTheDocument();
-      });
-
-      fireEvent.click(screen.getByText('builder_feedback_issue_topic_editor'));
-      fireEvent.change(
-        screen.getByPlaceholderText('builder_feedback_issue_description_placeholder'),
-        { target: { value: 'Preview is broken' } },
-      );
-
-      fireEvent.click(screen.getByText('builder_feedback_issue_submit'));
-
-      await waitFor(() => {
-        expect(fetchDiagnosticContext).toHaveBeenCalled();
-        expect(vi.mocked(fetchDiagnosticContext).mock.calls[0][5]).toBe(EXPECTED_EXPERIMENTS_LINE_DEFAULT);
-        expect(sendFeedbackToSlack).toHaveBeenCalled();
-      });
-    });
-  });
-
-  describe('e2s2s impersonation session', function e2s2sTests() {
-    it('should skip to bug report step directly', async function skipToIssue() {
+    it('should not submit anything downstream', async function noSubmit() {
       mockAuth('e2s2s');
       renderWithProviders(<Feedback {...defaultProps} />);
 
       await waitFor(() => {
-        expect(screen.getByRole('dialog')).toBeInTheDocument();
+        expect(screen.getByText('builder_feedback_impersonation_message')).toBeInTheDocument();
       });
 
-      expect(screen.getByText('builder_feedback_issue_topics_label')).toBeInTheDocument();
+      expect(fetchDiagnosticContext).not.toHaveBeenCalled();
+      expect(sendFeedbackToSlack).not.toHaveBeenCalled();
+      expect(saveToCompanionHub).not.toHaveBeenCalled();
+      expect(storeToS3).not.toHaveBeenCalled();
     });
   });
 
@@ -1217,7 +1232,7 @@ describe('Feedback', function feedbackTests() {
       expect(defaultProps.onClose).toHaveBeenCalled();
     });
 
-    it('should still prioritize impersonation over initialStep', async function impersonationOverride() {
+    it('should still block submission for impersonation even when initialStep is set', async function impersonationOverride() {
       vi.mocked(useSwitchboard).mockReturnValue(true);
       mockAuth('e2s');
       renderWithProviders(<Feedback {...defaultProps} initialStep="feedback" />);
@@ -1226,9 +1241,10 @@ describe('Feedback', function feedbackTests() {
         expect(screen.getByRole('dialog')).toBeInTheDocument();
       });
 
-      // Impersonation wins: shows issue step, not feedback
-      expect(screen.getByText('builder_feedback_issue_topics_label')).toBeInTheDocument();
+      // Impersonation wins: read-only message, no form of any kind
+      expect(screen.getByText('builder_feedback_impersonation_message')).toBeInTheDocument();
       expect(screen.queryByText('builder_feedback_share_comment_label')).toBeNull();
+      expect(screen.queryByText('builder_feedback_issue_topics_label')).toBeNull();
     });
   });
 });

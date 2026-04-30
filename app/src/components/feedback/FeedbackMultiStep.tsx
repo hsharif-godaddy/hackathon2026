@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import { isEmployeeAuthType } from '@airo/shared/auth';
 import Modal from '@ux/modal';
+import text from '@ux/text';
 
 import { useExperimentsLine } from '@/components/feedback/experimentsLine';
 import { useAuthContext } from '@/components/providers/AuthProvider';
@@ -64,9 +65,8 @@ export function FeedbackMultiStep(props: FeedbackProps) {
 
   const experimentsLine = useExperimentsLine();
 
-  // CRM skip / impersonation sessions can only file bug reports — start directly on the issue step
   // initialStep lets callers (e.g. FeedbackBanner) skip the category screen
-  const [step, setStep] = useState<FeedbackStep>(isImpersonating ? 'issue' : (initialStep ?? 'category'));
+  const [step, setStep] = useState<FeedbackStep>(initialStep ?? 'category');
 
   const currentAppId = useDevelopPageStore((state) => state.currentAppId);
   const getSite = useSitesStore((state) => state.getSite);
@@ -76,13 +76,13 @@ export function FeedbackMultiStep(props: FeedbackProps) {
   }, []);
 
   const handleBack = useCallback(() => {
-    if (isImpersonating || initialStep) {
-      // CRM skip users and callers that bypassed category selection — back closes the modal
+    if (initialStep) {
+      // callers that bypassed category selection — back closes the modal
       onClose();
     } else {
       setStep('category');
     }
-  }, [isImpersonating, initialStep, onClose]);
+  }, [initialStep, onClose]);
 
   const handleSuccess = useCallback(() => {
     if (onSubmitSuccess) {
@@ -257,6 +257,23 @@ export function FeedbackMultiStep(props: FeedbackProps) {
     }
   }, [currentAppId, experimentsLine, getSite, isInternalUser, isImpersonating, origin, feedbackId, userInfo]);
 
+  // CRM skip / impersonation sessions cannot submit any feedback.
+  // Mirror the legacy Feedback.tsx contract: show a read-only message and no form.
+  if (isImpersonating) {
+    return (
+      <Modal
+        className="w-full max-w-2xl"
+        title={t('builder_feedback_modal_title')}
+        id="feedback-modal"
+        onClose={onClose}
+      >
+        <text.p size={-1} emphasis="passive">
+          {t('builder_feedback_impersonation_message')}
+        </text.p>
+      </Modal>
+    );
+  }
+
   const modalTitle = step === 'category'
     ? t('builder_feedback_modal_title')
     : step === 'support'
@@ -290,7 +307,7 @@ export function FeedbackMultiStep(props: FeedbackProps) {
             onBack={handleBack}
             onSubmit={handleFeedbackSubmit}
             onDone={handleSuccess}
-            hideRating={isInternalUser || isImpersonating}
+            hideRating={isInternalUser}
           />
         )}
       </div>
