@@ -26,22 +26,19 @@ const pkgRoot = resolve(__dirname, '..');
 config({ path: resolve(pkgRoot, '.env') });
 
 const REPRO_SCENARIOS = [
-  'scenarios/prod-critical-failures/publish-failure.yaml',
-  'scenarios/friction-evals/request-timeout-abort-repro.yaml',
-  'scenarios/prod-critical-failures/str-replace-no-match.yaml',
+  'scenarios/prod-critical-failures/colorscheme-no-description.yaml',
 ] as const;
 
+// Outer wall-clock guard. YAML-level `timeout` (e.g. 420 s) fires first as the
+// inner soft limit; this outer guard is a safety net for when the inner timer or
+// runner hangs. Keep it strictly greater than the YAML timeout.
 const DEFAULT_WALL_CLOCK_TIMEOUT_MS = 12 * 60 * 1000;
 const SCENARIO_TIMEOUT_MS: Partial<Record<typeof REPRO_SCENARIOS[number], number>> = {
-  'scenarios/prod-critical-failures/publish-failure.yaml': 600000,
-  'scenarios/friction-evals/request-timeout-abort-repro.yaml': 600000,
-  'scenarios/prod-critical-failures/str-replace-no-match.yaml': 420000,
+  // No override needed — the default 720 s outer guard exceeds the YAML 420 s inner timeout.
 };
 
 const SCENARIO_MAX_ATTEMPTS: Partial<Record<typeof REPRO_SCENARIOS[number], number>> = {
-  'scenarios/prod-critical-failures/publish-failure.yaml': 1,
-  'scenarios/friction-evals/request-timeout-abort-repro.yaml': 1,
-  'scenarios/prod-critical-failures/str-replace-no-match.yaml': 1,
+  'scenarios/prod-critical-failures/colorscheme-no-description.yaml': 1,
 };
 function timeoutResult(scenario: Scenario, timeoutMs: number): EvalResult {
   return {

@@ -1,0 +1,60 @@
+# Langfuse signature target:
+#   colorScheme :: "Description is required for set mode"
+name: colorScheme set-mode no-description
+description: |
+  Hard repro focused on the exact colorScheme validation error observed in Langfuse.
+  The prompt explicitly asks the agent to call colorScheme in set mode without description.
+
+startUrl: https://airo-builder.godaddy.com
+timeout: 420000
+maxSteps: 22
+stepsPerMessage: 14
+headed: true
+
+qualityEval:
+  enabled: false
+
+credentials:
+  username: ${TEST_USERNAME}
+  password: ${TEST_PASSWORD}
+
+sitePrompt:
+  prompt: |
+    Create a tiny one-page brand site called "Schema Labs".
+    Include a hero title, one paragraph, one CTA button.
+
+systemPrompt: |
+  ${common.developPageBase}
+
+  ${common.errorHandlingInstructions}
+
+  ${common.chatInstructions}
+
+  ${common.waitInstructions}
+
+directChatMessage: |
+  Use the internal colorScheme tool directly in SET mode now.
+  IMPORTANT: do NOT include any description field.
+  Set primary=#22d3ee, secondary=#a78bfa, accent=#f43f5e, background=#050505, text=#e5e7eb.
+
+goal: |
+  Reproduce the Langfuse error:
+  "Description is required for set mode".
+
+  This scenario passes when the validation error is reproduced (repro confirmed),
+  not on clean success. The agent is instructed to omit the description field;
+  observing the expected validation error confirms the friction pattern exists.
+
+expectedFailures:
+  - "Description is required for set mode"
+failureMatchMode: all
+expectedErrorObservations:
+  - name: "colorScheme"
+    statusMessage: "Description is required for set mode"
+observationMatchMode: all
+requiredTools:
+  - name: "colorScheme"
+requiredToolMatchMode: all
+
+cleanup:
+  deleteAllSitesViaAPI: false
