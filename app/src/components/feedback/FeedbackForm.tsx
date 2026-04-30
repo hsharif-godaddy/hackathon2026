@@ -20,6 +20,7 @@ import { logger } from '@/lib/request-context';
 import { formatSlackBlockMessage, type SlackBlockMessage, type SlackLink } from '@/lib/slack-webhook';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { useSitesStore } from '@/stores/useSitesStore';
+import { SubscriptionPlan, SubscriptionStatus } from '@/types/credits';
 import { getEffectiveCreditsSpent } from '@/utils/credits';
 import { isLocalDev } from '@/utils/is-local-dev';
 import { storeToS3 } from './submitFeedback';
@@ -48,7 +49,20 @@ export function FeedbackForm({
   // Impersonation detection (e2s/e2s2s)
   const isImpersonating = isEmployeeAuthType(tokenAuthType);
 
-  async function sendToSlack(data) {
+  async function sendToSlack(data): Promise<{
+    planType: SubscriptionPlan | null;
+    subscriptionId: string | null;
+    subscriptionStatus: SubscriptionStatus | null;
+    totalCredits: number | null;
+    availableCredits: number | null;
+    slackFailed: boolean;
+  }> {
+    let planType: SubscriptionPlan | null = null;
+    let subscriptionId: string | null = null;
+    let subscriptionStatus: SubscriptionStatus | null = null;
+    let totalCredits: number | null = null;
+    let availableCredits: number | null = null;
+
     try {
       // Get site info for URLs
       const site = currentAppId ? getSite(currentAppId) : null;
@@ -57,8 +71,15 @@ export function FeedbackForm({
       // Filter out test URLs (they don't work)
       const isValidPublishedUrl = publishedUrl && !publishedUrl.includes('test-');
 
-      // Get FullStory session URL
-      const fullStoryUrl = await getFullStorySessionUrl(true);
+      let fullStoryUrl: string | null = null;
+      try {
+        fullStoryUrl = await getFullStorySessionUrl(true);
+      } catch (err) {
+        logger.warn('feedback.slack.fullstory_fetch_failed', {
+          error: err instanceof Error ? err.message : String(err),
+          appId: currentAppId,
+        });
+      }
 
       // Fetch subscription and credit grant info
       let subscriptionInfo = '';
@@ -66,21 +87,32 @@ export function FeedbackForm({
         const subscriptionResponse = await fetch('/api/subscriptions', {
           credentials: 'include',
         });
-        if (subscriptionResponse.ok) {
+        if (!subscriptionResponse.ok) {
+          logger.warn('feedback.slack.subscription_fetch_failed', {
+            status: subscriptionResponse.status,
+            appId: currentAppId,
+          });
+        } else {
           const subscriptionData = await subscriptionResponse.json();
           const activeSubscription = subscriptionData.data?.active;
 
           if (activeSubscription) {
             const plan = activeSubscription.plan || 'Unknown';
-            // Capitalize first letter of plan name
             const planName = plan.charAt(0).toUpperCase() + plan.slice(1);
+            planType = (activeSubscription.plan as SubscriptionPlan) || null;
+            subscriptionId = activeSubscription.id || null;
+            subscriptionStatus = (activeSubscription.status as SubscriptionStatus) || null;
 
-            // Get credit grants
             if (activeSubscription.id) {
-              const creditsResponse = await fetch(`/api/credits/grants?subscriptionId=${activeSubscription.id}&syncSpend=false`, {
+              const creditsResponse = await fetch(`/api/credits/grants?subscriptionId=${encodeURIComponent(activeSubscription.id)}&syncSpend=false`, {
                 credentials: 'include',
               });
-              if (creditsResponse.ok) {
+              if (!creditsResponse.ok) {
+                logger.warn('feedback.slack.credits_fetch_failed', {
+                  status: creditsResponse.status,
+                  appId: currentAppId,
+                });
+              } else {
                 const creditsData = await creditsResponse.json();
                 if (creditsData.success && Array.isArray(creditsData.data)) {
                   const totalCreditsMax = creditsData.data.reduce((sum, grant) => sum + (grant.creditsMax || 0), 0);
@@ -89,6 +121,8 @@ export function FeedbackForm({
                     0
                   );
                   subscriptionInfo = `${planName} - ${totalCreditsSpent}/${totalCreditsMax}`;
+                  totalCredits = totalCreditsMax;
+                  availableCredits = totalCreditsMax - totalCreditsSpent;
                 }
               }
             }
@@ -97,6 +131,7 @@ export function FeedbackForm({
       } catch (err) {
         logger.warn('feedback.slack.subscription_fetch_failed', {
           error: err instanceof Error ? err.message : String(err),
+          appId: currentAppId,
         });
       }
 
@@ -278,8 +313,11 @@ export function FeedbackForm({
         appId: currentAppId,
         error: err instanceof Error ? err.message : String(err),
       });
-      throw err;
+      // Return snapshot even on Slack failure — subscription fetch already succeeded
+      return { planType, subscriptionId, subscriptionStatus, totalCredits, availableCredits, slackFailed: true };
     }
+
+    return { planType, subscriptionId, subscriptionStatus, totalCredits, availableCredits, slackFailed: false };
   }
 
   async function onSubmit(data: any) {
@@ -297,10 +335,20 @@ export function FeedbackForm({
 
     let outcome: 'success' | 'failed' = 'failed';
     let slackDelivered = true;
+    let subscriptionSnapshot: Awaited<ReturnType<typeof sendToSlack>> = {
+      planType: null,
+      subscriptionId: null,
+      subscriptionStatus: null,
+      totalCredits: null,
+      availableCredits: null,
+      slackFailed: false,
+    };
     try {
       if (isLocalDev()) {
-        // Development: just send to Slack
-        await sendToSlack(data);
+        // Development: Slack failure is fatal — no DB save precedes it, so retrying
+        // carries no duplicate-entry risk and devs need to see delivery failures loudly.
+        subscriptionSnapshot = await sendToSlack(data);
+        if (subscriptionSnapshot.slackFailed) throw new Error('Slack delivery failed');
         logger.info('feedback.submit.success', { feedbackId: config.pk });
       } else {
         // Production: submit to API then send to Slack
@@ -340,12 +388,8 @@ export function FeedbackForm({
         // already succeeded, so a Slack failure must not re-open the modal: a retry
         // would create a duplicate DB entry. Matches saveToCompanionHub pattern in
         // FeedbackMultiStep.tsx. sendToSlack logs the detailed warn internally.
-        try {
-          await sendToSlack(data);
-        } catch (err) {
-          slackDelivered = false;
-          // Intentionally non-fatal — see comment above.
-        }
+        subscriptionSnapshot = await sendToSlack(data);
+        if (subscriptionSnapshot.slackFailed) slackDelivered = false;
       }
 
       outcome = 'success';
@@ -355,6 +399,11 @@ export function FeedbackForm({
         feedback_text: data['improvemets-free-text'] ?? null,
         consent_flag: data['customer-consent'] ?? null,
         rating: ratingNumber ?? null,
+        plan_type_name: subscriptionSnapshot.planType,
+        subscription_id: subscriptionSnapshot.subscriptionId,
+        subscription_status: subscriptionSnapshot.subscriptionStatus,
+        total_credit_cnt: subscriptionSnapshot.totalCredits,
+        available_credit_cnt: subscriptionSnapshot.availableCredits,
       });
 
       // Success! Close the modal

@@ -182,6 +182,11 @@ vi.mock('./submitFeedback', () => ({
     publishedUrl: undefined,
     fullStoryUrl: null,
     subscriptionInfo: '',
+    planType: null,
+    subscriptionId: null,
+    subscriptionStatus: null,
+    totalCredits: null,
+    availableCredits: null,
     isInternalUser: false,
     isImpersonating: false,
   })),
@@ -627,6 +632,11 @@ describe('Feedback', function feedbackTests() {
           app_id: null,
           rating: 5,
           consent_flag: expect.any(Boolean),
+          plan_type_name: null,
+          subscription_id: null,
+          subscription_status: null,
+          total_credit_cnt: null,
+          available_credit_cnt: null,
         }));
         expect(mockLogImpressionEvent).toHaveBeenCalledWith('feedback.share.submitSuccess');
       });
@@ -732,6 +742,45 @@ describe('Feedback', function feedbackTests() {
         expect(storeToS3).toHaveBeenCalledWith(expect.objectContaining({
           rating: null,
           consent_flag: expect.any(Boolean),
+          plan_type_name: null,
+          subscription_id: null,
+          subscription_status: null,
+          total_credit_cnt: null,
+          available_credit_cnt: null,
+        }));
+      });
+    });
+
+    it('should pass non-null subscription fields from ctx to storeToS3', async function subscriptionFieldsPassThrough() {
+      vi.mocked(fetchDiagnosticContext).mockResolvedValueOnce({
+        currentAppId: 'app-abc',
+        previewUrl: undefined,
+        publishedUrl: undefined,
+        fullStoryUrl: null,
+        subscriptionInfo: 'Ultimate - 200/500',
+        planType: 'ultimate' as any,
+        subscriptionId: 'sub-xyz-123',
+        subscriptionStatus: 'active' as any,
+        totalCredits: 500,
+        availableCredits: 300,
+        isInternalUser: false,
+        isImpersonating: false,
+        shopperId: undefined,
+      });
+      mockAuth('basic');
+      renderWithProviders(<Feedback {...defaultProps} />);
+      await navigateToFeedback();
+
+      fireEvent.click(screen.getByText('5'));
+      fireEvent.click(screen.getByText('builder_feedback_share_submit'));
+
+      await waitFor(() => {
+        expect(storeToS3).toHaveBeenCalledWith(expect.objectContaining({
+          plan_type_name: 'ultimate',
+          subscription_id: 'sub-xyz-123',
+          subscription_status: 'active',
+          total_credit_cnt: 500,
+          available_credit_cnt: 300,
         }));
       });
     });
@@ -912,6 +961,57 @@ describe('Feedback', function feedbackTests() {
           app_id: null,
           consent_flag: null,
           rating: null,
+        }));
+      });
+    });
+
+    it('should pass non-null subscription fields from sendToSlack to storeToS3 on legacy submit', async function legacySubscriptionFieldsPassThrough() {
+      vi.mocked(useSwitchboard).mockReturnValue(false);
+      vi.mocked(sendFeedbackToSlack).mockResolvedValue(undefined);
+      mockAuth('basic');
+
+      global.fetch = vi.fn((url: RequestInfo | URL) => {
+        if (String(url).includes('/api/subscriptions')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              data: {
+                active: {
+                  id: 'sub-legacy-456',
+                  plan: 'professional',
+                  status: 'active',
+                },
+              },
+            }),
+          } as Response);
+        }
+        if (String(url).includes('/api/credits/grants')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              success: true,
+              data: [{ creditsMax: 800, creditsSpent: 200 }],
+            }),
+          } as Response);
+        }
+        return Promise.resolve({ ok: true, json: async () => ({ success: true }) } as Response);
+      });
+
+      renderWithProviders(<Feedback {...defaultProps} />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('dialog')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByText('builder_common_submit'));
+
+      await waitFor(() => {
+        expect(storeToS3).toHaveBeenCalledWith(expect.objectContaining({
+          plan_type_name: 'professional',
+          subscription_id: 'sub-legacy-456',
+          subscription_status: 'active',
+          total_credit_cnt: 800,
+          available_credit_cnt: 600,
         }));
       });
     });

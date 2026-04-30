@@ -13,6 +13,8 @@
  *   dev/local    → airo_builder_feedback_cln_laketest
  */
 
+import { randomUUID } from 'node:crypto';
+
 import { NextRequest, NextResponse } from 'next/server';
 import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 
@@ -50,6 +52,22 @@ if (!FEEDBACK_BUCKET) {
 
 // Only alphanumeric, hyphen, underscore — prevents path traversal via app_id containing /
 const APP_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
+
+interface FeedbackS3Record {
+  feedback_id: string;
+  customer_id: string | null;
+  app_id: string | null;
+  feedback_utc_ts: string;
+  feedback_text: string | null;
+  consent_flag: boolean | null;
+  rating: number | null;
+  plan_type_name: string | null;
+  subscription_id: string | null;
+  subscription_status: string | null;
+  total_credit_cnt: number | null;
+  available_credit_cnt: number | null;
+  cln_create_utc_ts: string;
+}
 
 function buildS3Key(appId: string | null, now: Date): string {
   const year = now.getUTCFullYear();
@@ -100,6 +118,17 @@ export const POST = withCustomerAuth(async (
   const feedbackText = typeof body.feedback_text === 'string' ? body.feedback_text : null;
   const consentFlag = typeof body.consent_flag === 'boolean' ? body.consent_flag : null;
   const rating = typeof body.rating === 'number' && Number.isInteger(body.rating) ? body.rating : null;
+  const planTypeName = typeof body.plan_type_name === 'string' ? body.plan_type_name : null;
+  const subscriptionId = typeof body.subscription_id === 'string' ? body.subscription_id : null;
+  const subscriptionStatus = typeof body.subscription_status === 'string' ? body.subscription_status : null;
+  const totalCreditCnt = typeof body.total_credit_cnt === 'number' && Number.isFinite(body.total_credit_cnt) ? body.total_credit_cnt : null;
+  const availableCreditCnt = typeof body.available_credit_cnt === 'number' && Number.isFinite(body.available_credit_cnt) ? body.available_credit_cnt : null;
+  if (typeof body.total_credit_cnt === 'number' && totalCreditCnt === null) {
+    logger.warn('feedback.store.s3.invalid_credits', { field: 'total_credit_cnt', value: body.total_credit_cnt });
+  }
+  if (typeof body.available_credit_cnt === 'number' && availableCreditCnt === null) {
+    logger.warn('feedback.store.s3.invalid_credits', { field: 'available_credit_cnt', value: body.available_credit_cnt });
+  }
 
   // Reject app_id values that would corrupt the Hive partition key (e.g. containing /)
   if (appId !== null && !APP_ID_PATTERN.test(appId)) {
@@ -111,13 +140,19 @@ export const POST = withCustomerAuth(async (
   const s3Key = buildS3Key(appId, now);
   const tsStr = formatUtcTs(now);
 
-  const record = {
+  const record: FeedbackS3Record = {
+    feedback_id: randomUUID(),
     customer_id: authContext.user.customerId ?? null,
     app_id: appId,
     feedback_utc_ts: tsStr,
     feedback_text: feedbackText,
     consent_flag: consentFlag,
     rating,
+    plan_type_name: planTypeName,
+    subscription_id: subscriptionId,
+    subscription_status: subscriptionStatus,
+    total_credit_cnt: totalCreditCnt,
+    available_credit_cnt: availableCreditCnt,
     cln_create_utc_ts: tsStr,
   };
 

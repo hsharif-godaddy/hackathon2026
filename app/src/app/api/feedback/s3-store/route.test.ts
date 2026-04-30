@@ -45,6 +45,14 @@ function createRequest(body: Record<string, unknown>): NextRequest {
   });
 }
 
+function createRawRequest(rawBody: string): NextRequest {
+  return new NextRequest(new URL('http://localhost:3000/api/feedback/s3-store'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: rawBody,
+  });
+}
+
 describe('/api/feedback/s3-store', function s3StoreTests() {
   beforeEach(function setup() {
     vi.clearAllMocks();
@@ -138,6 +146,11 @@ describe('/api/feedback/s3-store', function s3StoreTests() {
         feedback_text: 'great product',
         consent_flag: true,
         rating: 6,
+        plan_type_name: 'ultimate',
+        subscription_id: 'sub-xyz',
+        subscription_status: 'active',
+        total_credit_cnt: 500,
+        available_credit_cnt: 320,
       }));
       const data = await response.json();
 
@@ -151,11 +164,17 @@ describe('/api/feedback/s3-store', function s3StoreTests() {
       expect(putArgs.Key).toMatch(/^airo_builder_feedback_cln_laketest\/year=\d{4}\/month=\d{2}\/day=\d{2}\/hour=\d{2}\/appId=app-abc\/\d+\.json$/);
 
       const record = JSON.parse(putArgs.Body);
+      expect(record.feedback_id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
       expect(record.customer_id).toBe('customer-uuid-123');
       expect(record.app_id).toBe('app-abc');
       expect(record.feedback_text).toBe('great product');
       expect(record.consent_flag).toBe(true);
       expect(record.rating).toBe(6);
+      expect(record.plan_type_name).toBe('ultimate');
+      expect(record.subscription_id).toBe('sub-xyz');
+      expect(record.subscription_status).toBe('active');
+      expect(record.total_credit_cnt).toBe(500);
+      expect(record.available_credit_cnt).toBe(320);
       expect(record.feedback_utc_ts).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}$/);
       expect(record.cln_create_utc_ts).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}$/);
     });
@@ -191,6 +210,11 @@ describe('/api/feedback/s3-store', function s3StoreTests() {
       expect(record.feedback_text).toBeNull();
       expect(record.consent_flag).toBeNull();
       expect(record.rating).toBeNull();
+      expect(record.plan_type_name).toBeNull();
+      expect(record.subscription_id).toBeNull();
+      expect(record.subscription_status).toBeNull();
+      expect(record.total_credit_cnt).toBeNull();
+      expect(record.available_credit_cnt).toBeNull();
     });
 
     it('should coerce wrong-type consent_flag to null', async function coerceConsentFlag() {
@@ -221,6 +245,74 @@ describe('/api/feedback/s3-store', function s3StoreTests() {
 
       const record = JSON.parse(mockS3Send.mock.calls[0][0].Body);
       expect(record.rating).toBeNull();
+    });
+
+    it('should pass through float total_credit_cnt and available_credit_cnt', async function floatCreditsPassThrough() {
+      mockS3Send.mockResolvedValueOnce({});
+      const { POST } = await import('./route');
+
+      await POST(createRequest({ app_id: 'app-123', feedback_text: 'test', consent_flag: null, rating: null, total_credit_cnt: 500.5, available_credit_cnt: 320.9 }));
+
+      const record = JSON.parse(mockS3Send.mock.calls[0][0].Body);
+      expect(record.total_credit_cnt).toBe(500.5);
+      expect(record.available_credit_cnt).toBe(320.9);
+    });
+
+    it('should coerce numeric non-finite credits to null and log warn', async function coerceNumericNonFiniteCredits() {
+      mockS3Send.mockResolvedValueOnce({});
+      const { POST } = await import('./route');
+
+      // JSON.stringify converts Infinity/NaN to null, so inject via raw body string
+      // to simulate a non-standard client sending numeric non-finite values
+      await POST(createRawRequest('{"app_id":"app-123","feedback_text":"test","consent_flag":null,"rating":null,"total_credit_cnt":1e309,"available_credit_cnt":1e309}'));
+
+      const record = JSON.parse(mockS3Send.mock.calls[0][0].Body);
+      expect(record.total_credit_cnt).toBeNull();
+      expect(record.available_credit_cnt).toBeNull();
+      expect(mockLogger.warn).toHaveBeenCalledWith('feedback.store.s3.invalid_credits', expect.objectContaining({ field: 'total_credit_cnt' }));
+      expect(mockLogger.warn).toHaveBeenCalledWith('feedback.store.s3.invalid_credits', expect.objectContaining({ field: 'available_credit_cnt' }));
+    });
+
+    it('should coerce non-number credits to null without warn', async function coerceNonNumberCredits() {
+      mockS3Send.mockResolvedValueOnce({});
+      const { POST } = await import('./route');
+
+      await POST(createRequest({ app_id: 'app-123', feedback_text: 'test', consent_flag: null, rating: null, total_credit_cnt: 'bad' as unknown as number, available_credit_cnt: true as unknown as number }));
+
+      const record = JSON.parse(mockS3Send.mock.calls[0][0].Body);
+      expect(record.total_credit_cnt).toBeNull();
+      expect(record.available_credit_cnt).toBeNull();
+      // Non-number types are silently coerced — warn only fires for numeric non-finite values
+      expect(mockLogger.warn).not.toHaveBeenCalledWith('feedback.store.s3.invalid_credits', expect.anything());
+    });
+
+    it('should not warn when credit fields are null (no subscription)', async function noWarnForNullCredits() {
+      mockS3Send.mockResolvedValueOnce({});
+      const { POST } = await import('./route');
+
+      await POST(createRequest({ app_id: 'app-123', feedback_text: 'test', consent_flag: null, rating: null, total_credit_cnt: null, available_credit_cnt: null }));
+
+      expect(mockLogger.warn).not.toHaveBeenCalledWith('feedback.store.s3.invalid_credits', expect.anything());
+    });
+
+    it('should coerce non-string plan_type_name, subscription_id and subscription_status to null', async function coerceNonStringSubscriptionFields() {
+      mockS3Send.mockResolvedValueOnce({});
+      const { POST } = await import('./route');
+
+      await POST(createRequest({
+        app_id: 'app-123',
+        feedback_text: 'test',
+        consent_flag: null,
+        rating: null,
+        plan_type_name: 123 as unknown as string,
+        subscription_id: true as unknown as string,
+        subscription_status: 42 as unknown as string,
+      }));
+
+      const record = JSON.parse(mockS3Send.mock.calls[0][0].Body);
+      expect(record.plan_type_name).toBeNull();
+      expect(record.subscription_id).toBeNull();
+      expect(record.subscription_status).toBeNull();
     });
 
     it('should coerce numeric app_id to null and use appId=unknown in key', async function coerceNumericAppId() {

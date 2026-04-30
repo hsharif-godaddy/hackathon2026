@@ -220,6 +220,11 @@ export function FeedbackMultiStep(props: FeedbackProps) {
         feedback_text: data.comment ?? null,
         consent_flag: data.customerConsent,
         rating: data.rating ?? null,
+        plan_type_name: ctx.planType,
+        subscription_id: ctx.subscriptionId,
+        subscription_status: ctx.subscriptionStatus,
+        total_credit_cnt: ctx.totalCredits,
+        available_credit_cnt: ctx.availableCredits,
       });
       return true;
     } catch (err) {

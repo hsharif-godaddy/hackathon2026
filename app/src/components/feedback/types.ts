@@ -1,3 +1,5 @@
+import { SubscriptionPlan, SubscriptionStatus } from '@/types/credits';
+
 export interface FeedbackConfig {
   pk: string;
   title: string;
@@ -71,6 +73,11 @@ export interface FeedbackStorePayload {
   feedback_text: string | null;
   consent_flag: boolean | null;
   rating: number | null;
+  plan_type_name: SubscriptionPlan | null;
+  subscription_id: string | null;
+  subscription_status: SubscriptionStatus | null;
+  total_credit_cnt: number | null;
+  available_credit_cnt: number | null;
 }
 
 export interface DiagnosticContext {
@@ -79,6 +86,11 @@ export interface DiagnosticContext {
   publishedUrl: string | undefined;
   fullStoryUrl: string | null;
   subscriptionInfo: string;
+  planType: SubscriptionPlan | null;
+  subscriptionId: string | null;
+  subscriptionStatus: SubscriptionStatus | null;
+  totalCredits: number | null;
+  availableCredits: number | null;
   isInternalUser: boolean;
   isImpersonating: boolean;
   shopperId: string | undefined;

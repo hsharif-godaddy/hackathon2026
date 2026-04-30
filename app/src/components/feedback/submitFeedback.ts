@@ -1,5 +1,6 @@
 import { logger } from '@/lib/request-context';
 import { formatSlackBlockMessage, type SlackBlockMessage } from '@/lib/slack-webhook';
+import { SubscriptionPlan, SubscriptionStatus } from '@/types/credits';
 import { getEffectiveCreditsSpent } from '@/utils/credits';
 import { isLocalDev } from '@/utils/is-local-dev';
 import type { DiagnosticContext, FeedbackStorePayload } from './types';
@@ -22,24 +23,43 @@ export async function fetchDiagnosticContext(
   const fullStoryUrl = await getFullStorySessionUrl(true);
 
   let subscriptionInfo = '';
+  let planType: SubscriptionPlan | null = null;
+  let subscriptionId: string | null = null;
+  let subscriptionStatus: SubscriptionStatus | null = null;
+  let totalCredits: number | null = null;
+  let availableCredits: number | null = null;
+
   try {
     const subscriptionResponse = await fetch('/api/subscriptions', {
       credentials: 'include',
     });
-    if (subscriptionResponse.ok) {
+    if (!subscriptionResponse.ok) {
+      logger.warn('feedback.diagnostic.subscription_fetch_failed', {
+        status: subscriptionResponse.status,
+        appId: currentAppId,
+      });
+    } else {
       const subscriptionData = await subscriptionResponse.json();
       const activeSubscription = subscriptionData.data?.active;
 
       if (activeSubscription) {
         const plan = activeSubscription.plan || 'Unknown';
         const planName = plan.charAt(0).toUpperCase() + plan.slice(1);
+        planType = (activeSubscription.plan as SubscriptionPlan) || null;
+        subscriptionId = activeSubscription.id || null;
+        subscriptionStatus = (activeSubscription.status as SubscriptionStatus) || null;
 
         if (activeSubscription.id) {
           const creditsResponse = await fetch(
             `/api/credits/grants?subscriptionId=${encodeURIComponent(activeSubscription.id)}&syncSpend=false`,
             { credentials: 'include' },
           );
-          if (creditsResponse.ok) {
+          if (!creditsResponse.ok) {
+            logger.warn('feedback.diagnostic.credits_fetch_failed', {
+              status: creditsResponse.status,
+              appId: currentAppId,
+            });
+          } else {
             const creditsData = await creditsResponse.json();
             if (creditsData.success && Array.isArray(creditsData.data)) {
               const totalCreditsMax = creditsData.data.reduce(
@@ -51,6 +71,8 @@ export async function fetchDiagnosticContext(
                 0,
               );
               subscriptionInfo = `${planName} - ${totalCreditsSpent}/${totalCreditsMax}`;
+              totalCredits = totalCreditsMax;
+              availableCredits = totalCreditsMax - totalCreditsSpent;
             }
           }
         }
@@ -59,6 +81,7 @@ export async function fetchDiagnosticContext(
   } catch (err) {
     logger.warn('feedback.diagnostic.subscription_fetch_failed', {
       error: err instanceof Error ? err.message : String(err),
+      appId: currentAppId,
     });
   }
 
@@ -68,6 +91,11 @@ export async function fetchDiagnosticContext(
     publishedUrl: site?.published_url,
     fullStoryUrl,
     subscriptionInfo,
+    planType,
+    subscriptionId,
+    subscriptionStatus,
+    totalCredits,
+    availableCredits,
     isInternalUser,
     isImpersonating,
     shopperId,
