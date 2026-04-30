@@ -9,14 +9,13 @@
 import { logger } from '../logging/index.js'
 import type { AssessmentOutcome } from '../agents/assessment-agent/index.js'
 import {
-  shouldBypassAnalysis,
-  createFullOverrideResult,
   generateReportItems,
   analyzeExecution,
   attributeSessionItems,
   logExecutionCompleted,
   logCausalChainDetected,
   ReportLabel,
+  Payer,
   type AssessmentIntent,
   type ExecutionData,
   type ExecutionStep,
@@ -47,11 +46,12 @@ export interface BudgetReportResult {
 /**
  * Analyze execution and determine cost attribution.
  *
- * Rule-based attribution logic:
- * 1. Full override intent (publish/domain) -> 100% GoDaddy
- * 2. Has failures -> per-call attribution based on patterns/chains
- * 3. No value delivered -> 100% GoDaddy
- * 4. Default (no failures or no execution data) -> 100% Customer
+ * Rule-based attribution logic (per-call when any condition met):
+ * 1. Cost override tools (publish/domain) -> those calls to GoDaddy
+ * 2. Infrastructure tools (suggestedResponse/todoList) -> always GoDaddy
+ * 3. Has failures -> per-call attribution based on patterns/chains
+ * 4. No value delivered -> 100% GoDaddy
+ * 5. Default (no failures, no overrides, no infrastructure) -> 100% Customer
  */
 export function processBudgetReport(context: BudgetReportContext): BudgetReportResult {
   const { budgetId, sessionId, totalCost, sessionItems, steps, assessmentOutcome, wasUserAborted } = context
@@ -66,6 +66,7 @@ export function processBudgetReport(context: BudgetReportContext): BudgetReportR
 
   // Analyze execution steps if available
   let executionData: ExecutionData | undefined
+
   if (steps && steps.length > 0) {
     executionData = analyzeExecution(steps)
 
@@ -100,6 +101,8 @@ export function processBudgetReport(context: BudgetReportContext): BudgetReportR
       patternTypes: executionData.patterns.map(p => p.type),
       causalChainsDetected: executionData.causalChains.length,
       noValueDelivered: executionData.noValueDelivered,
+      costOverrideActionsDetected: executionData.costOverride.actions.size,
+      costOverrideActions: Array.from(executionData.costOverride.actions.values()),
     })
   }
 
@@ -109,26 +112,8 @@ export function processBudgetReport(context: BudgetReportContext): BudgetReportR
   let attributionResult: AttributionResult | undefined
 
   const assessmentIntent = assessmentOutcome?.result?.taskType as AssessmentIntent | undefined
-  // Only apply full override if the assessment agent actually applied the override.
-  // Low-confidence classifications set overrideApplied=false, so we shouldn't bypass analysis.
-  const overrideWasApplied = assessmentOutcome?.overrideApplied ?? false
 
-  if (shouldBypassAnalysis(assessmentIntent) && overrideWasApplied) {
-    // Full override: publish/domain intent -> 100% GoDaddy
-    const result = createFullOverrideResult(totalCost, assessmentIntent!)
-    reportItems = generateReportItems(result)
-    sessionWasFree = true // GoDaddy covers 100%
-
-    logger.info('budget.attribution.full_override', {
-      budgetId,
-      sessionId,
-      intent: assessmentIntent,
-      totalCost,
-      productCost: result.godaddyCost,
-      label: result.primaryLabel,
-      sessionWasFree,
-    })
-  } else {
+  {
     // Per-call attribution using rule-based detection
     const attributionContext: AttributionContext = {
       budgetId,
@@ -137,13 +122,17 @@ export function processBudgetReport(context: BudgetReportContext): BudgetReportR
       appId: undefined,
     }
 
-    // Per-call attribution only when there are real failures to analyze
-    // Skip if user aborted AND noValueDelivered - user's choice to abort, not an agent failure
+    // Per-call attribution when there are failures, cost overrides, or infrastructure overhead to analyze
+    // Skip if user aborted AND noValueDelivered AND no cost override - user's choice to abort, not an agent failure
+    // But if there's a cost override (publish/domain) or infrastructure tools, always do per-call attribution
+    const hasCostOverride = (executionData?.costOverride.actionCallIds.size ?? 0) > 0
+    const hasInfrastructure = (executionData?.infrastructureCallIds.size ?? 0) > 0
+    const needsPerCallAttribution = executionData?.hadFailures || hasCostOverride || hasInfrastructure
     if (
       executionData &&
-      executionData.hadFailures &&
+      needsPerCallAttribution &&
       sessionItems.length > 0 &&
-      !(executionData.noValueDelivered && wasUserAborted)
+      !(executionData.noValueDelivered && wasUserAborted && !hasCostOverride && !hasInfrastructure)
     ) {
       // Per-call attribution: analyze failures and attribute costs
       const result = attributeSessionItems(sessionItems, executionData, attributionContext)
@@ -169,8 +158,8 @@ export function processBudgetReport(context: BudgetReportContext): BudgetReportR
 
       // Note: Per-decision logging happens in attributeSessionItems() at budget.attribution.decided
 
-      const godaddyAttributions = result.attributions.filter(a => a.payer === 'godaddy')
-      const customerAttributions = result.attributions.filter(a => a.payer === 'customer')
+      const godaddyAttributions = result.attributions.filter(a => a.payer === Payer.GoDaddy)
+      const customerAttributions = result.attributions.filter(a => a.payer === Payer.Customer)
 
       logger.info('budget.attribution.per_call', {
         budgetId,
@@ -179,7 +168,7 @@ export function processBudgetReport(context: BudgetReportContext): BudgetReportR
         totalCost,
         customerCost: result.customerCost,
         godaddyCost: result.godaddyCost,
-        primaryLabel: result.primaryLabel,
+        labels: result.labels,
         totalAttributions: result.attributions.length,
         godaddyAttributions: godaddyAttributions.length,
         customerAttributions: customerAttributions.length,

@@ -23,6 +23,9 @@ export enum ReportLabel {
   // No-value-delivered
   NoOutput = 'airo-builder:no-output',
 
+  // Infrastructure overhead (always GoDaddy)
+  InfrastructureOverhead = 'airo-builder:infrastructure-overhead',
+
   // Severity-based patterns
   RepeatedReads = 'airo-builder:repeated-reads',
   RepeatedEdits = 'airo-builder:repeated-edits',
@@ -130,6 +133,25 @@ export function isFileTool(name: string): boolean {
 /** Check if tool name is a workflow tool (repeated calls expected) */
 export function isWorkflowTool(name: string): boolean {
   return WORKFLOW_TOOLS.has(name.toLowerCase())
+}
+
+/**
+ * Infrastructure tools - agent overhead, not customer-requested work.
+ * These are always attributed to GoDaddy regardless of success/failure.
+ *
+ * Note: handoff is NOT included because it transitions to a different agent
+ * and represents actual execution flow, not just overhead.
+ */
+export const INFRASTRUCTURE_TOOLS = new Set([
+  'suggestedresponse',
+  'suggested_response',
+  'todolist',
+  'todo_list',
+])
+
+/** Check if tool name is an infrastructure tool (always GoDaddy cost) */
+export function isInfrastructureTool(name: string): boolean {
+  return matchesToolSet(name, INFRASTRUCTURE_TOOLS)
 }
 
 // SDK STEP TYPES (minimal interface for cost attribution)
@@ -242,23 +264,30 @@ export const AssessmentIntentValue = {
 
 export type AssessmentIntent = (typeof AssessmentIntentValue)[keyof typeof AssessmentIntentValue]
 
-/**
- * Intents that trigger 100% cost attribution to GoDaddy.
- * No per-call analysis needed - entire session goes to GoDaddy budget.
- */
-export const FULL_OVERRIDE_INTENTS: readonly AssessmentIntent[] = [
-  AssessmentIntentValue.Publish,
-  AssessmentIntentValue.Domain,
-] as const
-
-/**
- * Check if an intent should trigger full override (100% GoDaddy attribution).
- */
-export function isFullOverrideIntent(intent: AssessmentIntent | undefined): boolean {
-  return intent !== undefined && (FULL_OVERRIDE_INTENTS as readonly string[]).includes(intent)
-}
-
 // EXECUTION DATA (stored between onFinish and onBudgetReport)
+
+// COST OVERRIDE TYPES
+
+/**
+ * Actions that trigger product cost override (GoDaddy pays).
+ * Separate from AssessmentIntent to avoid mixing intent classification with billing.
+ */
+export const CostOverrideAction = {
+  Publish: 'publish',
+  Domain: 'domain',
+} as const
+
+export type CostOverrideActionType = (typeof CostOverrideAction)[keyof typeof CostOverrideAction]
+
+/** Cost override data for product-funded actions (publish, domain) */
+export interface CostOverrideData {
+  /** Correlation IDs for the cost override action calls themselves */
+  actionCallIds: Set<string>
+  /** Correlation IDs for all flow-related calls: prep steps, skill loads, and follow-ups */
+  followUpCallIds: Set<string>
+  /** Map of callId to action type (includes action calls, prep, and follow-ups) */
+  actions: Map<string, CostOverrideActionType>
+}
 
 export interface ExecutionData {
   /** Set of correlation IDs for calls with direct tool errors */
@@ -273,21 +302,46 @@ export interface ExecutionData {
   hadFailures: boolean
   /** Total number of steps */
   totalSteps: number
+  /** Product-funded actions where GoDaddy absorbs cost (publish, domain) */
+  costOverride: CostOverrideData
   /** Assessment intent (publish, domain, fix, general) */
   intent?: AssessmentIntent
   /** Agent produced no output, no successful tool calls, and wasn't user-aborted */
   noValueDelivered?: boolean
+  /** Correlation IDs for infrastructure tool calls (always GoDaddy cost) */
+  infrastructureCallIds: Set<string>
 }
 
 // ATTRIBUTION TYPES
 
-export type AttributionPayer = 'customer' | 'godaddy'
+export const Payer = {
+  Customer: 'customer',
+  GoDaddy: 'godaddy',
+} as const
+
+export type AttributionPayer = (typeof Payer)[keyof typeof Payer]
+
+export const AttributionReason = {
+  Success: 'success',
+  ToolError: 'tool_error',
+  PatternDetected: 'pattern_detected',
+  CausalChain: 'causal_chain',
+  CausalChainTrigger: 'causal_chain_trigger',
+  CausalChainError: 'causal_chain_error',
+  CausalChainFix: 'causal_chain_fix',
+  CostOverrideAction: 'cost_override_action',
+  CostOverrideFollowup: 'cost_override_followup',
+  NoValueDelivered: 'no_value_delivered',
+  InfrastructureOverhead: 'infrastructure_overhead',
+} as const
+
+export type AttributionReasonType = (typeof AttributionReason)[keyof typeof AttributionReason]
 
 export interface ItemAttribution {
   callRequestId: string
   cost: number
   payer: AttributionPayer
-  reason: string
+  reason: AttributionReasonType
   /** Specific label for this attribution (for GoDaddy-attributed items) */
   label: ReportLabel
   patternType?: string
@@ -301,7 +355,8 @@ export interface AttributionResult {
   /** Costs aggregated by label for multi-label reports */
   costsByLabel: Map<ReportLabel, number>
   attributions: ItemAttribution[]
-  primaryLabel: ReportLabel
+  /** Labels describing the session (guaranteed non-empty, defaults to General) */
+  labels: [ReportLabel, ...ReportLabel[]]
 }
 
 // CONTEXT TYPES

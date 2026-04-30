@@ -71,13 +71,29 @@ describe('processBudgetReport', () => {
     vi.clearAllMocks()
   })
 
-  describe('full override intent (publish/domain)', () => {
-    it('attributes 100% to GoDaddy for publish intent when override was applied', () => {
+  describe('cost override (publish/domain tool calls)', () => {
+    it('attributes publish tool call and text follow-up to GoDaddy', () => {
+      // Create steps with publish tool call and text follow-up
+      const steps: ExecutionStep[] = [
+        {
+          content: [{ type: 'tool-result', toolName: 'publishing__publish', output: { success: true } }],
+          response: { headers: { 'x-correlation-id': 'call-0' } },
+        } as unknown as ExecutionStep,
+        {
+          content: [{ type: 'text', text: 'Your app has been published!' }],
+          response: { headers: { 'x-correlation-id': 'call-1' } },
+        } as unknown as ExecutionStep,
+      ]
+
       const context: BudgetReportContext = {
         budgetId: 'b-1',
         sessionId: 'sess-1',
         totalCost: 10.0,
-        sessionItems: createSessionItems(2, 5.0),
+        sessionItems: [
+          { callRequestId: 'call-0', cost: 5.0 },
+          { callRequestId: 'call-1', cost: 5.0 },
+        ],
+        steps,
         assessmentOutcome: {
           result: { taskType: 'publish' },
           overrideApplied: true,
@@ -95,12 +111,20 @@ describe('processBudgetReport', () => {
       })
     })
 
-    it('attributes 100% to GoDaddy for domain intent when override was applied', () => {
+    it('attributes domain tool call to GoDaddy', () => {
+      const steps: ExecutionStep[] = [
+        {
+          content: [{ type: 'tool-result', toolName: 'custom_domain__domainPurchase', output: { success: true } }],
+          response: { headers: { 'x-correlation-id': 'call-0' } },
+        } as unknown as ExecutionStep,
+      ]
+
       const context: BudgetReportContext = {
         budgetId: 'b-1',
         sessionId: 'sess-1',
         totalCost: 5.0,
-        sessionItems: createSessionItems(1, 5.0),
+        sessionItems: [{ callRequestId: 'call-0', cost: 5.0 }],
+        steps,
         assessmentOutcome: {
           result: { taskType: 'domain' },
           overrideApplied: true,
@@ -482,24 +506,27 @@ describe('processBudgetReport', () => {
       expect(fixAttr?.payer).toBe('godaddy')
       expect(fixAttr?.reason).toBe('causal_chain_fix')
 
+      // Verification confirms the fix worked and delivers value to the customer,
+      // so the customer pays for that step (not GoDaddy)
       const verifyAttr = attributions.find(a => a.callRequestId === verifyCallId)
-      expect(verifyAttr?.payer).toBe('godaddy')
-      expect(verifyAttr?.reason).toBe('causal_chain_verification')
+      expect(verifyAttr?.payer).toBe('customer')
+      expect(verifyAttr?.reason).toBe('success')
 
       // Verify cost accounting invariant: budgetCost + productCost === sessionItem.cost
       for (const sessionItem of sessionItems) {
         const attr = attributions.find(a => a.callRequestId === sessionItem.callRequestId)
         expect(attr).toBeDefined()
-        // All chain members go to GoDaddy (productCost), customer pays nothing (budgetCost=0)
         expect(attr!.cost).toBe(sessionItem.cost)
       }
 
-      // Total GoDaddy cost should equal total session cost (entire chain attributed)
+      // Total GoDaddy cost excludes verification (which goes to customer)
+      // GoDaddy pays for: trigger (1.0) + error (2.0) + fix (3.0) = 6.0
+      // Customer pays for: verify (1.0)
       const totalProductCost = result.reportItems.reduce(
         (sum, item) => sum + parseFloat(item.productCost),
         0
       )
-      expect(totalProductCost).toBe(7.0)
+      expect(totalProductCost).toBe(6.0)
     })
   })
 
@@ -682,6 +709,156 @@ describe('processBudgetReport', () => {
         productCost: '5',
         label: ReportLabel.NoOutput,
       })
+    })
+  })
+
+  describe('infrastructure overhead', () => {
+    it('attributes infrastructure tools to GoDaddy even without failures or cost override', () => {
+      // A session composed only of suggestedResponse/todoList steps (no failures, no cost-override)
+      // should route to per-call attribution and attribute those calls to GoDaddy
+      const infraCallId1 = 'corr-infra-001'
+      const infraCallId2 = 'corr-infra-002'
+
+      const infrastructureOnlySteps: ExecutionStep[] = [
+        {
+          stepType: 'tool-call',
+          response: { headers: { 'x-correlation-id': infraCallId1 } },
+          content: [
+            {
+              type: 'tool-result' as const,
+              toolName: 'suggestedResponse',
+              result: JSON.stringify({ suggestions: ['Option A', 'Option B'] }),
+            },
+          ],
+        },
+        {
+          stepType: 'tool-call',
+          response: { headers: { 'x-correlation-id': infraCallId2 } },
+          content: [
+            {
+              type: 'tool-result' as const,
+              toolName: 'todoList',
+              result: JSON.stringify({ items: ['Task 1', 'Task 2'] }),
+            },
+            {
+              type: 'text' as const,
+              text: 'Here are some options for your app...',
+            },
+          ],
+        },
+      ] as unknown as ExecutionStep[]
+
+      const sessionItems = [
+        { callRequestId: infraCallId1, cost: 2.0 },
+        { callRequestId: infraCallId2, cost: 3.0 },
+      ]
+
+      const context: BudgetReportContext = {
+        budgetId: 'b-1',
+        sessionId: 'sess-1',
+        totalCost: 5.0,
+        sessionItems,
+        steps: infrastructureOnlySteps,
+      }
+
+      const result = processBudgetReport(context)
+
+      // Verify per-call attribution was used (hasInfrastructure triggered it)
+      expect(result.attributionResult).toBeDefined()
+      const attributions = result.attributionResult!.attributions
+      expect(attributions).toHaveLength(2)
+
+      // Verify both infrastructure calls are attributed to GoDaddy
+      const infra1Attr = attributions.find(a => a.callRequestId === infraCallId1)
+      expect(infra1Attr?.payer).toBe('godaddy')
+      expect(infra1Attr?.reason).toBe('infrastructure_overhead')
+      expect(infra1Attr?.label).toBe(ReportLabel.InfrastructureOverhead)
+
+      const infra2Attr = attributions.find(a => a.callRequestId === infraCallId2)
+      expect(infra2Attr?.payer).toBe('godaddy')
+      expect(infra2Attr?.reason).toBe('infrastructure_overhead')
+      expect(infra2Attr?.label).toBe(ReportLabel.InfrastructureOverhead)
+
+      // Verify all cost goes to GoDaddy
+      expect(result.attributionResult!.godaddyCost).toBe(5.0)
+      expect(result.attributionResult!.customerCost).toBe(0)
+      expect(result.sessionWasFree).toBe(true)
+
+      // Verify report items have infrastructure overhead label
+      expect(result.reportItems).toContainEqual({
+        budgetCost: '0',
+        productCost: '5',
+        label: ReportLabel.InfrastructureOverhead,
+      })
+    })
+
+    it('correctly splits infrastructure and customer work in mixed session', () => {
+      // Session with both infrastructure tools and regular customer work
+      const infraCallId = 'corr-infra-001'
+      const customerCallId = 'corr-customer-001'
+
+      const mixedSteps: ExecutionStep[] = [
+        {
+          stepType: 'tool-call',
+          response: { headers: { 'x-correlation-id': infraCallId } },
+          content: [
+            {
+              type: 'tool-result' as const,
+              toolName: 'suggested_response',
+              result: JSON.stringify({ suggestions: ['Yes', 'No'] }),
+            },
+          ],
+        },
+        {
+          stepType: 'tool-call',
+          response: { headers: { 'x-correlation-id': customerCallId } },
+          content: [
+            {
+              type: 'tool-result' as const,
+              toolName: 'read',
+              result: 'File contents here',
+            },
+            {
+              type: 'text' as const,
+              text: 'I read the file for you',
+            },
+          ],
+        },
+      ] as unknown as ExecutionStep[]
+
+      const sessionItems = [
+        { callRequestId: infraCallId, cost: 1.5 },
+        { callRequestId: customerCallId, cost: 3.5 },
+      ]
+
+      const context: BudgetReportContext = {
+        budgetId: 'b-1',
+        sessionId: 'sess-1',
+        totalCost: 5.0,
+        sessionItems,
+        steps: mixedSteps,
+      }
+
+      const result = processBudgetReport(context)
+
+      // Verify per-call attribution was used
+      expect(result.attributionResult).toBeDefined()
+      const attributions = result.attributionResult!.attributions
+
+      // Infrastructure call -> GoDaddy
+      const infraAttr = attributions.find(a => a.callRequestId === infraCallId)
+      expect(infraAttr?.payer).toBe('godaddy')
+      expect(infraAttr?.reason).toBe('infrastructure_overhead')
+
+      // Customer work -> Customer
+      const customerAttr = attributions.find(a => a.callRequestId === customerCallId)
+      expect(customerAttr?.payer).toBe('customer')
+      expect(customerAttr?.reason).toBe('success')
+
+      // Verify cost split
+      expect(result.attributionResult!.godaddyCost).toBe(1.5)
+      expect(result.attributionResult!.customerCost).toBe(3.5)
+      expect(result.sessionWasFree).toBe(false)
     })
   })
 

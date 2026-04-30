@@ -14,7 +14,10 @@ import {
   ReportLabel,
   PatternType,
   StepContentType,
-  isFullOverrideIntent,
+  CostOverrideAction,
+  Payer,
+  AttributionReason,
+  type AttributionReasonType,
   type ExecutionStep,
   type ExecutionData,
   type AttributionResult,
@@ -22,15 +25,28 @@ import {
   type ItemAttribution,
   type PatternResult,
   type CausalChain,
-  type AssessmentIntent,
+  type CostOverrideData,
 } from './types.js'
 import { extractFailedCallIds, extractFailedTargets } from './failure-extraction.js'
 import { detectHighConfidencePatterns } from './pattern-detection.js'
 import { detectCausalChains, getCausalChainCallIds } from './causal-chain-detection.js'
+import { analyzeCostOverrideActions } from './cost-override-detection.js'
+import { extractInfrastructureCallIds } from './infrastructure-detection.js'
 import type { ReportItemRequest } from '../report-types.js'
 import type { SessionItem } from '@airo/shared/budget'
 
 const logger = createLogger('cost-attribution')
+
+/**
+ * All causal chain attribution reasons for filtering/counting.
+ * Using explicit array instead of string matching for maintainability.
+ */
+const CAUSAL_CHAIN_REASONS: AttributionReasonType[] = [
+  AttributionReason.CausalChain,
+  AttributionReason.CausalChainTrigger,
+  AttributionReason.CausalChainError,
+  AttributionReason.CausalChainFix,
+]
 
 
 /**
@@ -45,6 +61,8 @@ export function analyzeExecution(steps: ExecutionStep[]): ExecutionData {
   const patterns = detectHighConfidencePatterns(steps)
   const causalChains = detectCausalChains(steps)
   const failedTargets = extractFailedTargets(steps)
+  const costOverride = analyzeCostOverrideActions(steps)
+  const infrastructureCallIds = extractInfrastructureCallIds(steps)
 
   const hadFailures =
     failedCallIds.size > 0 || patterns.length > 0 || causalChains.length > 0
@@ -74,98 +92,56 @@ export function analyzeExecution(steps: ExecutionStep[]): ExecutionData {
     hadFailures,
     totalSteps: steps.length,
     noValueDelivered,
-  }
-}
-
-// FULL OVERRIDE BYPASS
-
-/**
- * Check if intent should bypass execution analysis entirely.
- * For publish/domain intents, all costs go to GoDaddy without per-call analysis.
- *
- * @param intent - Assessment intent from the assessment agent
- * @returns true if execution analysis should be skipped
- */
-export function shouldBypassAnalysis(intent: AssessmentIntent | undefined): boolean {
-  return isFullOverrideIntent(intent)
-}
-
-/**
- * Get the report label for a full override intent.
- */
-function getFullOverrideLabel(intent: AssessmentIntent): ReportLabel {
-  switch (intent) {
-    case 'publish':
-      return ReportLabel.PublishTask
-    case 'domain':
-      return ReportLabel.DomainTask
-    default:
-      return ReportLabel.General
-  }
-}
-
-/**
- * Create a full override result where all costs go to GoDaddy.
- * Used when intent is publish/domain - no per-call analysis needed.
- *
- * @param totalCost - Total cost of all session items
- * @param intent - The full override intent (publish or domain)
- * @returns AttributionResult with 100% GoDaddy attribution
- */
-export function createFullOverrideResult(
-  totalCost: number,
-  intent: AssessmentIntent
-): AttributionResult {
-  const label = getFullOverrideLabel(intent)
-
-  return {
-    customerCost: 0,
-    godaddyCost: totalCost,
-    costsByLabel: new Map([[label, totalCost]]),
-    attributions: [], // No per-call attributions for full override
-    primaryLabel: label,
-  }
-}
-
-/**
- * Create minimal execution data for full override cases.
- * Skips pattern detection, causal chain detection, etc.
- */
-export function createFullOverrideExecutionData(intent: AssessmentIntent): ExecutionData {
-  return {
-    failedCallIds: new Set(),
-    patterns: [],
-    causalChains: [],
-    failedTargets: [],
-    hadFailures: false,
-    totalSteps: 0,
-    intent,
-    noValueDelivered: false,
+    costOverride,
+    infrastructureCallIds,
   }
 }
 
 // COST ATTRIBUTION
 
 /**
- * Determine the primary label based on detected patterns.
- * Uses highest-severity pattern as the dominant category.
+ * Determine labels describing the session.
+ * Returns an array with cost override labels first (if any), then failure labels.
+ * E.g., ['publish-task', 'tool-failure'] for a publish session with errors.
  */
-function determinePrimaryLabel(
+function determineLabels(
   patterns: PatternResult[],
   causalChains: CausalChain[],
-  hasDirectFailures: boolean
-): ReportLabel {
-  // Find highest-severity pattern
+  hasDirectFailures: boolean,
+  costOverride: CostOverrideData
+): [ReportLabel, ...ReportLabel[]] {
+  const labels: ReportLabel[] = []
+
+  // Cost override labels (publish/domain tasks)
+  if (costOverride.actions.size > 0) {
+    const actions = Array.from(costOverride.actions.values())
+    if (actions.includes(CostOverrideAction.Publish)) {
+      labels.push(ReportLabel.PublishTask)
+    }
+    if (actions.includes(CostOverrideAction.Domain)) {
+      labels.push(ReportLabel.DomainTask)
+    }
+  }
+
+  // Failure/pattern labels - add all that apply
   if (patterns.length > 0) {
     const sorted = [...patterns].sort((a, b) => b.severity - a.severity)
     const top = sorted[0]
-    if (top) return patternTypeToLabel(top.type)
+    if (top) labels.push(patternTypeToLabel(top.type))
+  }
+  if (causalChains.length > 0) {
+    labels.push(ReportLabel.CausalChain)
+  }
+  if (hasDirectFailures) {
+    labels.push(ReportLabel.ToolFailure)
   }
 
-  if (causalChains.length > 0) return ReportLabel.CausalChain
-  if (hasDirectFailures) return ReportLabel.ToolFailure
+  // Default to General if no labels
+  if (labels.length === 0) {
+    labels.push(ReportLabel.General)
+  }
 
-  return ReportLabel.General
+  return labels as [ReportLabel, ...ReportLabel[]]
 }
 
 /**
@@ -198,16 +174,51 @@ function determineAttribution(
   cost: number,
   godaddyCallIds: Set<string>,
   patterns: PatternResult[],
-  causalChains: CausalChain[]
+  causalChains: CausalChain[],
+  costOverride: CostOverrideData,
+  infrastructureCallIds: Set<string>
 ): ItemAttribution {
   // Check if this call is in the GoDaddy set
   if (!godaddyCallIds.has(callRequestId)) {
     return {
       callRequestId,
       cost,
-      payer: 'customer',
-      reason: 'success',
+      payer: Payer.Customer,
+      reason: AttributionReason.Success,
       label: ReportLabel.General,
+    }
+  }
+
+  // Check cost override (publish/domain tools)
+  if (costOverride.actionCallIds.has(callRequestId)) {
+    const action = costOverride.actions.get(callRequestId)
+    const label = action === CostOverrideAction.Publish ? ReportLabel.PublishTask : ReportLabel.DomainTask
+    return {
+      callRequestId,
+      cost,
+      payer: Payer.GoDaddy,
+      reason: AttributionReason.CostOverrideAction,
+      label,
+    }
+  }
+  if (costOverride.followUpCallIds.has(callRequestId)) {
+    // Follow-up gets its corresponding action's label (from actions map)
+    const followUpAction = costOverride.actions.get(callRequestId)
+    if (!followUpAction) {
+      // Defensive: followUpCallIds and actions map should be in sync, but log if not
+      logger.warn('cost_attribution.followup.missing_action', {
+        callRequestId,
+        reason: 'callId in followUpCallIds but not in actions map',
+      })
+    }
+    // Default to PublishTask if action not found (shouldn't happen, but safe fallback)
+    const label = followUpAction === CostOverrideAction.Domain ? ReportLabel.DomainTask : ReportLabel.PublishTask
+    return {
+      callRequestId,
+      cost,
+      payer: Payer.GoDaddy,
+      reason: AttributionReason.CostOverrideFollowup,
+      label,
     }
   }
 
@@ -217,8 +228,8 @@ function determineAttribution(
       return {
         callRequestId,
         cost,
-        payer: 'godaddy',
-        reason: 'pattern_detected',
+        payer: Payer.GoDaddy,
+        reason: AttributionReason.PatternDetected,
         label: patternTypeToLabel(pattern.type),
         patternType: pattern.type,
         patternDetails: pattern.details,
@@ -227,23 +238,24 @@ function determineAttribution(
   }
 
   // Check causal chains
+  // Note: verificationCallId is intentionally NOT checked here.
+  // Verification confirms the fix worked and delivers value to the customer,
+  // so the customer pays for that step. See getCausalChainCallIds().
   for (const chain of causalChains) {
     if (
       chain.triggerCallId === callRequestId ||
       chain.errorCallId === callRequestId ||
-      chain.fixCallIds.includes(callRequestId) ||
-      chain.verificationCallId === callRequestId
+      chain.fixCallIds.includes(callRequestId)
     ) {
-      let reason = 'causal_chain'
-      if (chain.triggerCallId === callRequestId) reason = 'causal_chain_trigger'
-      if (chain.errorCallId === callRequestId) reason = 'causal_chain_error'
-      if (chain.fixCallIds.includes(callRequestId)) reason = 'causal_chain_fix'
-      if (chain.verificationCallId === callRequestId) reason = 'causal_chain_verification'
+      let reason: AttributionReasonType = AttributionReason.CausalChain
+      if (chain.triggerCallId === callRequestId) reason = AttributionReason.CausalChainTrigger
+      if (chain.errorCallId === callRequestId) reason = AttributionReason.CausalChainError
+      if (chain.fixCallIds.includes(callRequestId)) reason = AttributionReason.CausalChainFix
 
       return {
         callRequestId,
         cost,
-        payer: 'godaddy',
+        payer: Payer.GoDaddy,
         reason,
         label: ReportLabel.CausalChain,
         causalChainTarget: chain.triggerTarget,
@@ -251,12 +263,23 @@ function determineAttribution(
     }
   }
 
+  // Check infrastructure tools (suggestedResponse, todoList)
+  if (infrastructureCallIds.has(callRequestId)) {
+    return {
+      callRequestId,
+      cost,
+      payer: Payer.GoDaddy,
+      reason: AttributionReason.InfrastructureOverhead,
+      label: ReportLabel.InfrastructureOverhead,
+    }
+  }
+
   // Default: direct tool error
   return {
     callRequestId,
     cost,
-    payer: 'godaddy',
-    reason: 'tool_error',
+    payer: Payer.GoDaddy,
+    reason: AttributionReason.ToolError,
     label: ReportLabel.ToolFailure,
   }
 }
@@ -264,11 +287,14 @@ function determineAttribution(
 /**
  * Attribute session items and log each decision.
  *
- * Priority order (checked by caller before calling this function):
- * 1. Full override intent      → 100% GoDaddy (use createFullOverrideResult)
- * 2. Has failures             → per-call attribution (this function)
- * 3. No value delivered        → 100% GoDaddy (NoOutput)
- * 4. No failures               → 100% Customer
+ * Per-call attribution with cost override support:
+ * - Cost override calls (publish/domain) → GoDaddy
+ * - Follow-up calls after cost override → GoDaddy
+ * - Failure-related calls → GoDaddy
+ * - Other calls → Customer
+ *
+ * Special cases:
+ * - No value delivered → 100% GoDaddy (NoOutput)
  *
  * @param sessionItems - BMS session items with costs
  * @param executionData - Analyzed execution data from onFinish
@@ -280,13 +306,13 @@ export function attributeSessionItems(
   executionData: ExecutionData,
   context: AttributionContext
 ): AttributionResult {
-  const { failedCallIds, patterns, causalChains, noValueDelivered } = executionData
+  const { failedCallIds, patterns, causalChains, noValueDelivered, costOverride, infrastructureCallIds } = executionData
+  const totalCost = sessionItems.reduce((sum, item) => sum + item.cost, 0)
 
   // Handle noValueDelivered override: 100% GoDaddy
   // Agent ran but didn't successfully execute any tools - no work was done
   // Note: caller should check wasUserAborted before calling this function
   if (noValueDelivered) {
-    const totalCost = sessionItems.reduce((sum, item) => sum + item.cost, 0)
     logger.info('budget.attribution.no_value_delivered', {
       budgetId: context.budgetId,
       sessionId: context.sessionId,
@@ -302,32 +328,45 @@ export function attributeSessionItems(
       attributions: sessionItems.map(item => ({
         callRequestId: item.callRequestId,
         cost: item.cost,
-        payer: 'godaddy' as const,
-        reason: 'no_value_delivered',
+        payer: Payer.GoDaddy,
+        reason: AttributionReason.NoValueDelivered,
         label: ReportLabel.NoOutput,
       })),
-      primaryLabel: ReportLabel.NoOutput,
+      labels: [ReportLabel.NoOutput],
     }
   }
 
   // Build set of all GoDaddy-attributed callIds (per-call attribution)
   const godaddyCallIds = new Set<string>()
 
-  // 1. Direct tool errors
+  // 1. Cost override calls (publish/domain tools + follow-ups)
+  for (const callId of costOverride.actionCallIds) {
+    godaddyCallIds.add(callId)
+  }
+  for (const callId of costOverride.followUpCallIds) {
+    godaddyCallIds.add(callId)
+  }
+
+  // 2. Direct tool errors
   for (const callId of failedCallIds) {
     godaddyCallIds.add(callId)
   }
 
-  // 2. Pattern-detected calls
+  // 3. Pattern-detected calls
   for (const pattern of patterns) {
     for (const callId of pattern.callIds) {
       godaddyCallIds.add(callId)
     }
   }
 
-  // 3. Causal chain calls
+  // 4. Causal chain calls
   const causalCallIds = getCausalChainCallIds(causalChains)
   for (const callId of causalCallIds) {
+    godaddyCallIds.add(callId)
+  }
+
+  // 5. Infrastructure tools (suggestedResponse, todoList) - agent overhead
+  for (const callId of infrastructureCallIds) {
     godaddyCallIds.add(callId)
   }
 
@@ -337,9 +376,11 @@ export function attributeSessionItems(
     sessionId: context.sessionId,
     totalGodaddyCallIds: godaddyCallIds.size,
     godaddyCallIds: Array.from(godaddyCallIds),
+    fromCostOverride: costOverride ? costOverride.actionCallIds.size + costOverride.followUpCallIds.size : 0,
     fromDirectFailures: failedCallIds.size,
     fromPatterns: patterns.reduce((sum, p) => sum + p.callIds.length, 0),
     fromCausalChains: causalCallIds.size,
+    fromInfrastructure: infrastructureCallIds.size,
   })
 
   // Attribute each session item and log
@@ -347,19 +388,24 @@ export function attributeSessionItems(
   const costsByLabel = new Map<ReportLabel, number>()
   let godaddyCost = 0
 
-  // Compute totalCost once for deriving customerCost (avoids floating-point drift)
-  const totalCost = sessionItems.reduce((sum, item) => sum + item.cost, 0)
-
   for (const item of sessionItems) {
     const attribution = determineAttribution(
       item.callRequestId,
       item.cost,
       godaddyCallIds,
       patterns,
-      causalChains
+      causalChains,
+      costOverride,
+      infrastructureCallIds
     )
 
-    // Log every attribution decision
+    // Log every attribution decision with cost override details
+    const isCostOverrideAction = attribution.reason === AttributionReason.CostOverrideAction
+    const isCostOverrideFollowup = attribution.reason === AttributionReason.CostOverrideFollowup
+    const costOverrideAction = (isCostOverrideAction || isCostOverrideFollowup)
+      ? costOverride.actions.get(item.callRequestId)
+      : undefined
+
     logger.info('budget.attribution.decided', {
       budgetId: context.budgetId,
       sessionId: context.sessionId,
@@ -373,9 +419,13 @@ export function attributeSessionItems(
       patternType: attribution.patternType,
       patternDetails: attribution.patternDetails,
       causalChainTarget: attribution.causalChainTarget,
+      // Cost override specific fields
+      isCostOverride: isCostOverrideAction || isCostOverrideFollowup,
+      costOverrideAction,
+      costOverrideType: isCostOverrideAction ? AttributionReason.CostOverrideAction : isCostOverrideFollowup ? AttributionReason.CostOverrideFollowup : undefined,
     })
 
-    if (attribution.payer === 'godaddy') {
+    if (attribution.payer === Payer.GoDaddy) {
       godaddyCost += item.cost
       // Aggregate costs by label for multi-label reports
       const currentLabelCost = costsByLabel.get(attribution.label) ?? 0
@@ -388,18 +438,47 @@ export function attributeSessionItems(
   // Derive customerCost from totalCost to ensure invariant: customerCost + godaddyCost === totalCost
   const customerCost = totalCost - godaddyCost
 
-  const primaryLabel = determinePrimaryLabel(
+  const labels = determineLabels(
     patterns,
     causalChains,
-    failedCallIds.size > 0
+    failedCallIds.size > 0,
+    costOverride
   )
+
+  // Log cost override summary if any cost overrides were applied
+  const costOverrideAttributions = attributions.filter(
+    a => a.reason === AttributionReason.CostOverrideAction || a.reason === AttributionReason.CostOverrideFollowup
+  )
+  if (costOverrideAttributions.length > 0) {
+    const costOverrideCost = costOverrideAttributions.reduce((sum, a) => sum + a.cost, 0)
+    const actionAttributions = costOverrideAttributions.filter(a => a.reason === AttributionReason.CostOverrideAction)
+    const followupAttributions = costOverrideAttributions.filter(a => a.reason === AttributionReason.CostOverrideFollowup)
+
+    logger.info('budget.attribution.cost_override_summary', {
+      budgetId: context.budgetId,
+      sessionId: context.sessionId,
+      conversationId: context.conversationId,
+      appId: context.appId,
+      totalCostOverrideCost: costOverrideCost,
+      totalCostOverrideCallIds: costOverrideAttributions.length,
+      actionCallIds: actionAttributions.map(a => a.callRequestId),
+      actionCost: actionAttributions.reduce((sum, a) => sum + a.cost, 0),
+      followupCallIds: followupAttributions.map(a => a.callRequestId),
+      followupCost: followupAttributions.reduce((sum, a) => sum + a.cost, 0),
+      costOverrideActions: Array.from(costOverride.actions.entries()).map(([callId, action]) => ({
+        callId,
+        action,
+      })),
+      costOverridePercentage: totalCost > 0 ? ((costOverrideCost / totalCost) * 100).toFixed(1) : '0',
+    })
+  }
 
   return {
     customerCost,
     godaddyCost,
     costsByLabel,
     attributions,
-    primaryLabel,
+    labels,
   }
 }
 
@@ -479,6 +558,14 @@ export function logExecutionCompleted(
     })),
     failedTargets: executionData.failedTargets,
     hadFailures: executionData.hadFailures,
+    // Cost override detection (product-funded actions)
+    costOverrideActionsDetected: executionData.costOverride.actions.size,
+    costOverrideActions: Array.from(executionData.costOverride.actions.entries()).map(([callId, action]) => ({
+      callId,
+      action,
+    })),
+    costOverrideActionCallIds: Array.from(executionData.costOverride.actionCallIds),
+    costOverrideFollowUpCallIds: Array.from(executionData.costOverride.followUpCallIds),
   })
 }
 
@@ -527,12 +614,15 @@ export function logReportCreated(
     godaddyCost: result.godaddyCost,
     totalCost,
     godaddyPercentage,
-    primaryLabel: result.primaryLabel,
+    labels: result.labels,
     attributionSummary: {
-      toolErrors: result.attributions.filter(a => a.reason === 'tool_error').length,
-      patternDetected: result.attributions.filter(a => a.reason === 'pattern_detected').length,
-      causalChain: result.attributions.filter(a => a.reason.startsWith('causal_chain')).length,
-      success: result.attributions.filter(a => a.reason === 'success').length,
+      toolErrors: result.attributions.filter(a => a.reason === AttributionReason.ToolError).length,
+      patternDetected: result.attributions.filter(a => a.reason === AttributionReason.PatternDetected).length,
+      causalChain: result.attributions.filter(a => CAUSAL_CHAIN_REASONS.includes(a.reason)).length,
+      costOverrideAction: result.attributions.filter(a => a.reason === AttributionReason.CostOverrideAction).length,
+      costOverrideFollowup: result.attributions.filter(a => a.reason === AttributionReason.CostOverrideFollowup).length,
+      infrastructureOverhead: result.attributions.filter(a => a.reason === AttributionReason.InfrastructureOverhead).length,
+      success: result.attributions.filter(a => a.reason === AttributionReason.Success).length,
     },
     totalCalls: result.attributions.length,
   })
@@ -550,3 +640,11 @@ export {
   logRetryDetectionEvaluated,
   logRetryOverride,
 } from './retry-detection.js'
+export {
+  getCostOverrideAction,
+  getCostOverrideSignal,
+  analyzeCostOverrideActions,
+  COST_OVERRIDE_TOOLS,
+  type CostOverrideResult,
+} from './cost-override-detection.js'
+export { extractInfrastructureCallIds } from './infrastructure-detection.js'

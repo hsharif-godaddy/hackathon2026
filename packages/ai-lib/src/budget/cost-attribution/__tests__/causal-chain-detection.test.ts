@@ -266,7 +266,7 @@ describe('getCausalChainCallIds', () => {
     expect(result.has('fix-2')).toBe(true)
   })
 
-  it('includes verification call ID when present', () => {
+  it('excludes verification call ID (customer pays for value delivered)', () => {
     const chains: CausalChain[] = [{
       triggerCallId: 'trigger-1',
       triggerTarget: 'src/a.ts',
@@ -276,7 +276,12 @@ describe('getCausalChainCallIds', () => {
       verificationCallId: 'verify-1',
     }]
     const result = getCausalChainCallIds(chains)
-    expect(result.has('verify-1')).toBe(true)
+    // Verification confirms the fix worked - customer should pay for that value
+    expect(result.has('verify-1')).toBe(false)
+    // But trigger, error, and fix are still included
+    expect(result.has('trigger-1')).toBe(true)
+    expect(result.has('error-1')).toBe(true)
+    expect(result.has('fix-1')).toBe(true)
   })
 
   it('deduplicates across multiple chains', () => {
@@ -300,7 +305,7 @@ describe('getCausalChainCallIds', () => {
     expect(result.size).toBe(3) // shared-id, error-1, trigger-2
   })
 
-  it('collects all IDs from multiple chains', () => {
+  it('collects all IDs from multiple chains (excluding verification)', () => {
     const chains: CausalChain[] = [
       {
         triggerCallId: 't1',
@@ -319,11 +324,12 @@ describe('getCausalChainCallIds', () => {
       },
     ]
     const result = getCausalChainCallIds(chains)
-    expect(result.size).toBe(8)
+    // 7 IDs: t1, e1, f1, t2, e2, f2, f3 (v1 excluded - verification is customer-paid)
+    expect(result.size).toBe(7)
     expect(result.has('t1')).toBe(true)
     expect(result.has('e1')).toBe(true)
     expect(result.has('f1')).toBe(true)
-    expect(result.has('v1')).toBe(true)
+    expect(result.has('v1')).toBe(false) // verification excluded
     expect(result.has('t2')).toBe(true)
     expect(result.has('e2')).toBe(true)
     expect(result.has('f2')).toBe(true)

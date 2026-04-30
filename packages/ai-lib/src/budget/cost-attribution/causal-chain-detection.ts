@@ -308,8 +308,12 @@ export function detectCausalChains(steps: ExecutionStep[]): CausalChain[] {
 }
 
 /**
- * Get all call IDs from causal chains for attribution.
- * Includes trigger, error, fix, and verification calls.
+ * Get all call IDs from causal chains for GoDaddy attribution.
+ * Includes trigger, error, and fix calls.
+ *
+ * Note: verificationCallId is intentionally EXCLUDED.
+ * Verification confirms the fix worked and delivers value to the customer,
+ * so the customer should pay for that step; they should not pay for the error chain.
  */
 export function getCausalChainCallIds(chains: CausalChain[]): Set<string> {
   const callIds = new Set<string>()
@@ -320,9 +324,8 @@ export function getCausalChainCallIds(chains: CausalChain[]): Set<string> {
     for (const fixId of chain.fixCallIds) {
       callIds.add(fixId)
     }
-    if (chain.verificationCallId) {
-      callIds.add(chain.verificationCallId)
-    }
+    // Note: verificationCallId intentionally excluded
+    // Verification = value delivered = customer pays
   }
 
   return callIds
