@@ -147,7 +147,7 @@ function DevelopPageContent() {
   // Hibernation handling - auto-resume when app is hibernated
   const appDetails = useAppDetails(appId);
   // Cold-archive restore runs before hibernation resume (suppressForColdArchive) so we never POST /resume while archive-status is unknown or restore is in flight.
-  const archiveRestore = useAppArchiveRestore(appDetails.data, appId, !isJobId, true);
+  const archiveRestore = useAppArchiveRestore(appId, !isJobId, true);
   const suppressHibernationForArchive =
     archiveRestore.archiveGatePending ||
     archiveRestore.isArchivedForRestore ||

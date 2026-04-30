@@ -1,9 +1,7 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMachine } from '@xstate/react';
 
-import type { AppDetailsResponse } from '@/hooks/useAppDetails';
-import { LifecycleReason, type SiteVariant } from '@/lib/control-plane/types';
 import { appFetch, AuthDismissedError, AuthSessionExpiredError } from '@/lib/gasket-config';
 import { logger } from '@/lib/request-context';
 import { useServerPollingStore } from '@/stores/useServerPollingStore';
@@ -79,26 +77,23 @@ const NOT_ARCHIVED: UseAppArchiveRestoreReturn = {
  * Cold-archive restore: separate from hibernation resume.
  *
  * Scope: drive archive-status from "archived" -> "restored" via POST /archive-restore and polling.
- * Non-scope: mgmt-airo leaves variantsWithLifecycle on its previous state (typically paused/hibernation)
- * after archive restore. The develop page chains useAppHibernation after this hook completes to
- * resume the variant back to RUNNING.
+ *
+ * Trigger model: the /archive-status endpoint is the authoritative signal. When
+ * `isArchived && canRestore` is true, the app is cold-archived and restore is an
+ * allowed action for this user; mgmt-airo enforces any compliance/admin gating
+ * on its side by returning `canRestore: false`. There is no client-side reason
+ * gate — once archiving has finished, `lifecycle.reason` should not be treated
+ * as preserving the original archive cause.
  *
  * Precedence: develop page suppresses hibernation while archive flow is active
- * (see suppressHibernationForArchive).
+ * (see suppressHibernationForArchive) so we never race /resume against /archive-restore.
  *
- * Auto-restore gate: when `autoRestore` is true, we only auto-trigger the restore if the preview
- * variant's lifecycle.reason is "hibernation". The /archive-status endpoint itself does not carry
- * an archive cause, so we read it from appDetails.variantsWithLifecycle. Non-hibernation archives
- * (compliance, admin, etc.) require an explicit user action via `restoreFromArchive()`.
- *
- * State is managed by an XState machine (archiveRestoreMachine) instead of tangled
- * useState/useRef booleans. The hook's job is:
+ * State is managed by an XState machine (archiveRestoreMachine). The hook's job is:
  * 1. Sync react-query results into machine events (STATUS_*, RESTORE_*)
  * 2. Fire the mutation when the machine enters `restoring.triggering`
  * 3. Run completion side effects (query invalidation) when entering `complete`
  */
 export function useAppArchiveRestore(
-  appDetails: AppDetailsResponse | null | undefined,
   appId: string | null | undefined,
   enabled: boolean,
   autoRestore = false
@@ -106,31 +101,14 @@ export function useAppArchiveRestore(
   const startPollingForServer = useServerPollingStore((state) => state.startPollingForServer);
   const queryClient = useQueryClient();
 
-  // Derive the preview variant lifecycle reason. /archive-status does not include an archive
-  // cause, so we read it from appDetails. Auto-restore is gated on this so that apps archived
-  // for other reasons (compliance, admin, etc.) do not silently restore.
-  const previewLifecycleReason = (() => {
-    const variants = appDetails?.variantsWithLifecycle as SiteVariant[] | undefined;
-    return variants?.find(v => v.variant === 'preview')?.lifecycle?.reason ?? null;
-  })();
-  const isHibernationArchive = previewLifecycleReason === LifecycleReason.HIBERNATION;
-  const effectiveAutoRestore = autoRestore && isHibernationArchive;
-
   const [state, send] = useMachine(archiveRestoreMachine, {
     input: {
       appId: appId ?? null,
-      autoRestore: effectiveAutoRestore,
+      autoRestore,
     },
   });
 
   const isActive = enabled && !!appId;
-
-  // Set to true when the user dismisses the SSO re-auth modal (or preflight
-  // 401s) during a restore attempt. Blocks the hibernation-late-gate useEffect
-  // below from immediately re-firing TRIGGER_RESTORE while the machine is back
-  // in needsRestore — otherwise we'd reopen the SSO modal in a loop. Cleared
-  // by the user's explicit restoreFromArchive() and by RESET.
-  const suppressAutoRestoreRef = useRef(false);
 
   // -------------------------------------------------------------------------
   // Mutation
@@ -150,12 +128,11 @@ export function useAppArchiveRestore(
     },
     onError: (error) => {
       // Auth-related failures (user dismissed re-auth, modal timeout, 401) are
-      // not restore failures. Send RESTORE_CANCELLED to return the machine to
-      // needsRestore so the restore button is rendered again, and set the ref
-      // so the hibernation-late-gate useEffect does not immediately re-fire
-      // TRIGGER_RESTORE (which would reopen the SSO modal).
+      // not restore failures. RESTORE_CANCELLED returns the machine to
+      // needsRestore with autoRestore cleared via the machine's disableAutoRestore
+      // action, so the `needsRestore.always` transition does not immediately
+      // re-fire and reopen the SSO modal in a loop.
       if (error instanceof AuthDismissedError || error instanceof AuthSessionExpiredError) {
-        suppressAutoRestoreRef.current = true;
         send({ type: 'RESTORE_CANCELLED' });
         return;
       }
@@ -199,25 +176,13 @@ export function useAppArchiveRestore(
       return;
     }
     if (state.matches('idle')) {
-      send({ type: 'START', appId: appId!, autoRestore: effectiveAutoRestore });
+      send({ type: 'START', appId: appId!, autoRestore });
       return;
     }
     if (state.context.appId && state.context.appId !== appId) {
       send({ type: 'RESET' });
     }
-  }, [isActive, appId, effectiveAutoRestore, state, send]);
-
-  // appDetails arrives async, so the lifecycle reason may not be known when START fires.
-  // If we entered `needsRestore` with autoRestore=false because the reason wasn't known yet
-  // (or hadn't yet flipped to hibernation), trigger the restore now that the gate passes.
-  useEffect(() => {
-    if (!isActive) return;
-    if (!autoRestore) return;
-    if (!isHibernationArchive) return;
-    if (!state.matches('needsRestore')) return;
-    if (suppressAutoRestoreRef.current) return;
-    send({ type: 'TRIGGER_RESTORE' });
-  }, [isActive, autoRestore, isHibernationArchive, state, send]);
+  }, [isActive, appId, autoRestore, state, send]);
 
   // Translate query data/errors into machine events
   useEffect(() => {
@@ -231,6 +196,18 @@ export function useAppArchiveRestore(
         send({ type: needsRestore ? 'STATUS_NEEDS_RESTORE' : 'STATUS_NOT_ARCHIVED' });
       } else if (state.matches({ restoring: 'waitingForStatus' }) && !needsRestore) {
         send({ type: 'STATUS_RESTORED' });
+      } else if (state.matches('needsRestore') && !needsRestore) {
+        // canRestore retracted (compliance hold / admin action) while the user is
+        // on the restore screen. Log for observability, then exit via STATUS_NOT_ARCHIVED
+        // so the machine transitions to notArchived rather than leaving the user stuck
+        // indefinitely with a non-functional Restore button.
+        logger.warn('archive.status.unexpectedNotArchived', {
+          appId,
+          machineState: JSON.stringify(state.value),
+          isArchived: data?.isArchived,
+          canRestore: data?.canRestore,
+        });
+        send({ type: 'STATUS_NOT_ARCHIVED' });
       }
       return;
     }
@@ -238,16 +215,17 @@ export function useAppArchiveRestore(
     if (archiveStatusQuery.isError) {
       // Initial fetch error: be graceful (treat as not-archived) rather than failing the page.
       // Errors during restore wait are surfaced as failures.
+      const err = archiveStatusQuery.error;
+      const message = err instanceof Error ? err.message : err ? String(err) : 'archive-status error';
       if (state.matches('checkingStatus')) {
-        const err = archiveStatusQuery.error;
-        const message = err instanceof Error ? err.message : err ? String(err) : 'archive-status error';
         logger.warn('archive.status.initialCheckFailed', { appId, error: message });
         send({ type: 'STATUS_NOT_ARCHIVED' });
       } else if (state.matches({ restoring: 'waitingForStatus' })) {
-        const err = archiveStatusQuery.error;
-        const message = err instanceof Error ? err.message : err ? String(err) : 'archive-status error';
-        logger.warn('archive.status.restoreWaitCheckFailed', { appId, error: message });
         send({ type: 'STATUS_ERROR', error: message });
+      } else {
+        // Poll error in needsRestore (or any other non-actionable state): no machine transition,
+        // but log so the failure is observable in production.
+        logger.warn('archive.status.unexpectedError', { appId, machineState: JSON.stringify(state.value), error: message });
       }
     }
   }, [
@@ -297,7 +275,6 @@ export function useAppArchiveRestore(
     archiveRestoreComplete: state.matches('complete'),
     restoreFromArchive: () => {
       restoreMutation.reset();
-      suppressAutoRestoreRef.current = false;
       if (appId) {
         queryClient.resetQueries({ queryKey: ['archive-status', appId] });
       }

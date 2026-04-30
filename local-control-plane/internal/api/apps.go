@@ -46,36 +46,27 @@ var previewReadyHTTPClient = &http.Client{
 }
 
 func appToResponse(app *store.App) map[string]any {
-	appStatus := app.Status
+	// Archived apps are signaled solely by lifecycleState == "archived".
+	// The app-level status stays at its actual value, and variant status
+	// mirrors app.Status as well. Clients should key off lifecycle state,
+	// not app/variant status or reason, to detect archival.
 	lifecycleState := store.LifecycleStateRunning
-	lifecycleReason := ""
-
-	if archiveStubIsArchived(app.ID) {
-		// The stub reports hibernation as the archive cause so the develop UI's
-		// hibernation-gated auto-restore path can be exercised in local dev. The real
-		// hosting backend distinguishes cold_archive (compliance/admin) from hibernation;
-		// mirroring that here would require a second env var with no functional benefit
-		// in local since neither path actually moves data.
-		appStatus = "paused"
-		lifecycleState = store.LifecycleStatePaused
-		lifecycleReason = store.LifecycleReasonHibernation
-	} else if app.Status == "paused" {
+	switch {
+	case archiveStubIsArchived(app.ID):
+		lifecycleState = store.LifecycleStateArchived
+	case app.Status == "paused":
 		lifecycleState = store.LifecycleStatePaused
 	}
 
 	variantsWithLifecycle := make([]map[string]any, 0, len(app.Variants))
 	for _, v := range app.Variants {
-		lifecycle := map[string]any{
-			"lifecycleState": lifecycleState,
-			"stateChangedAt": app.UpdatedAt,
-		}
-		if lifecycleReason != "" {
-			lifecycle["reason"] = lifecycleReason
-		}
 		variantsWithLifecycle = append(variantsWithLifecycle, map[string]any{
-			"variant":   v,
-			"status":    appStatus,
-			"lifecycle": lifecycle,
+			"variant": v,
+			"status":  app.Status,
+			"lifecycle": map[string]any{
+				"lifecycleState": lifecycleState,
+				"stateChangedAt": app.UpdatedAt,
+			},
 		})
 	}
 
@@ -83,7 +74,7 @@ func appToResponse(app *store.App) map[string]any {
 		"id":                    app.ID,
 		"subscriptionId":        app.SubscriptionID,
 		"systemId":              app.SystemID,
-		"status":                appStatus,
+		"status":                app.Status,
 		"variables":             app.Variables,
 		"variants":              app.Variants,
 		"variantsWithLifecycle": variantsWithLifecycle,

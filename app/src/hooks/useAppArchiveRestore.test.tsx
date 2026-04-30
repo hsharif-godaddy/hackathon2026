@@ -9,19 +9,23 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react';
 
-import { LifecycleReason, LifecycleState, SiteStatus } from '@/lib/control-plane/types';
-import { appFetch } from '@/lib/gasket-config';
+import { appFetch, AuthDismissedError, AuthSessionExpiredError } from '@/lib/gasket-config';
 import { logger } from '@/lib/request-context';
 import { useAppArchiveRestore } from './useAppArchiveRestore';
-import type { AppDetailsResponse } from './useAppDetails';
 
 vi.mock('@/lib/gasket-config', () => ({
   appFetch: vi.fn(),
   AuthDismissedError: class AuthDismissedError extends Error {
-    constructor() { super('Authentication dismissed'); this.name = 'AuthDismissedError'; }
+    constructor() {
+      super('Authentication dismissed');
+      this.name = 'AuthDismissedError';
+    }
   },
   AuthSessionExpiredError: class AuthSessionExpiredError extends Error {
-    constructor() { super('Authentication session expired'); this.name = 'AuthSessionExpiredError'; }
+    constructor() {
+      super('Authentication session expired');
+      this.name = 'AuthSessionExpiredError';
+    }
   },
 }));
 
@@ -48,51 +52,6 @@ vi.mock('@/stores/useServerPollingStore', () => ({
     return selector(state);
   },
 }));
-
-function createRunningAppDetails(): AppDetailsResponse {
-  return {
-    id: 'test-app-123',
-    name: 'Test App',
-    status: 'running',
-    account_id: 'acc-123',
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    variants: ['preview'],
-    variantsWithLifecycle: [{
-      variant: 'preview',
-      status: 'active',
-      lifecycle: {
-        lifecycleState: LifecycleState.RUNNING,
-        stateChangedAt: new Date().toISOString(),
-      },
-    }],
-  };
-}
-
-/**
- * Mirrors the appDetails shape for an app paused due to hibernation, which is the
- * only condition under which the hook may auto-trigger a cold-archive restore.
- */
-function createHibernatedAppDetails(): AppDetailsResponse {
-  return {
-    id: 'test-app-123',
-    name: 'Test App',
-    status: SiteStatus.Paused,
-    account_id: 'acc-123',
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    variants: ['preview'],
-    variantsWithLifecycle: [{
-      variant: 'preview',
-      status: 'active',
-      lifecycle: {
-        lifecycleState: LifecycleState.PAUSED,
-        stateChangedAt: new Date().toISOString(),
-        reason: LifecycleReason.HIBERNATION,
-      },
-    }],
-  };
-}
 
 function mockArchiveStatusResponse(isArchived: boolean, canRestore = true) {
   return {
@@ -145,7 +104,7 @@ describe('useAppArchiveRestore', function useAppArchiveRestoreTests() {
   describe('#disabled', function disabledTests() {
     it('should return NOT_ARCHIVED immediately when disabled', function disabledShortCircuit() {
       const { result } = renderHook(
-        () => useAppArchiveRestore(null, 'test-app-123', false),
+        () => useAppArchiveRestore('test-app-123', false),
         { wrapper: createWrapper() }
       );
 
@@ -159,7 +118,7 @@ describe('useAppArchiveRestore', function useAppArchiveRestoreTests() {
 
     it('should not fetch archive-status when disabled', async function noFetchWhenDisabled() {
       renderHook(
-        () => useAppArchiveRestore(null, 'test-app-123', false),
+        () => useAppArchiveRestore('test-app-123', false),
         { wrapper: createWrapper() }
       );
 
@@ -173,7 +132,7 @@ describe('useAppArchiveRestore', function useAppArchiveRestoreTests() {
       (appFetch as any).mockReturnValue(new Promise(() => {}));
 
       const { result } = renderHook(
-        () => useAppArchiveRestore(null, 'test-app-123', true),
+        () => useAppArchiveRestore('test-app-123', true),
         { wrapper: createWrapper() }
       );
 
@@ -184,7 +143,7 @@ describe('useAppArchiveRestore', function useAppArchiveRestoreTests() {
       (appFetch as any).mockResolvedValueOnce(mockArchiveStatusResponse(false));
 
       const { result } = renderHook(
-        () => useAppArchiveRestore(null, 'test-app-123', true),
+        () => useAppArchiveRestore('test-app-123', true),
         { wrapper: createWrapper() }
       );
 
@@ -199,7 +158,7 @@ describe('useAppArchiveRestore', function useAppArchiveRestoreTests() {
       (appFetch as any).mockResolvedValueOnce(mockArchiveStatusResponse(true, true));
 
       const { result } = renderHook(
-        () => useAppArchiveRestore(null, 'test-app-123', true, false),
+        () => useAppArchiveRestore('test-app-123', true, false),
         { wrapper: createWrapper() }
       );
 
@@ -213,7 +172,7 @@ describe('useAppArchiveRestore', function useAppArchiveRestoreTests() {
       (appFetch as any).mockResolvedValueOnce(mockArchiveStatusResponse(false));
 
       const { result } = renderHook(
-        () => useAppArchiveRestore(null, 'test-app-123', true),
+        () => useAppArchiveRestore('test-app-123', true),
         { wrapper: createWrapper() }
       );
 
@@ -230,7 +189,7 @@ describe('useAppArchiveRestore', function useAppArchiveRestoreTests() {
       (appFetch as any).mockResolvedValueOnce(mockArchiveStatusResponse(true, false));
 
       const { result } = renderHook(
-        () => useAppArchiveRestore(null, 'test-app-123', true),
+        () => useAppArchiveRestore('test-app-123', true),
         { wrapper: createWrapper() }
       );
 
@@ -244,7 +203,7 @@ describe('useAppArchiveRestore', function useAppArchiveRestoreTests() {
       (appFetch as any).mockResolvedValueOnce({ ok: false, status: 500, json: () => Promise.resolve({}) });
 
       const { result } = renderHook(
-        () => useAppArchiveRestore(null, 'test-app-123', true),
+        () => useAppArchiveRestore('test-app-123', true),
         { wrapper: createWrapper() }
       );
 
@@ -260,11 +219,72 @@ describe('useAppArchiveRestore', function useAppArchiveRestoreTests() {
       );
     });
 
+    it('should log warning when archive-status poll fails while in needsRestore state', async function pollErrorInNeedsRestore() {
+      (appFetch as any)
+        .mockResolvedValueOnce(mockArchiveStatusResponse(true, true))
+        .mockResolvedValue(mockErrorResponse(500, 'Server error'));
+
+      const { result } = renderHook(
+        () => useAppArchiveRestore('test-app-123', true, false),
+        { wrapper: createWrapper() }
+      );
+
+      await waitFor(() => {
+        expect(result.current.isArchivedForRestore).toBe(true);
+      });
+
+      await waitFor(() => {
+        expect(logger.warn).toHaveBeenCalledWith(
+          'archive.status.unexpectedError',
+          expect.objectContaining({ appId: 'test-app-123' })
+        );
+      }, { timeout: 10000 });
+
+      // Machine must stay in needsRestore — poll errors are not actionable
+      expect(result.current.isArchivedForRestore).toBe(true);
+      expect(result.current.archiveRestoreFailed).toBe(false);
+    }, { timeout: 10000 });
+
+    it('should log warning and exit needsRestore when backend retracts canRestore', async function pollRetractionInNeedsRestore() {
+      // First poll lands the user in needsRestore. Subsequent polls return
+      // canRestore=false (compliance hold / admin action) — hook logs and exits
+      // the restore screen via STATUS_NOT_ARCHIVED rather than leaving user stuck.
+      (appFetch as any)
+        .mockResolvedValueOnce(mockArchiveStatusResponse(true, true))
+        .mockResolvedValue(mockArchiveStatusResponse(true, false));
+
+      const { result } = renderHook(
+        () => useAppArchiveRestore('test-app-123', true, false),
+        { wrapper: createWrapper() }
+      );
+
+      await waitFor(() => {
+        expect(result.current.isArchivedForRestore).toBe(true);
+      });
+
+      await waitFor(() => {
+        expect(logger.warn).toHaveBeenCalledWith(
+          'archive.status.unexpectedNotArchived',
+          expect.objectContaining({
+            appId: 'test-app-123',
+            isArchived: true,
+            canRestore: false,
+          })
+        );
+      }, { timeout: 10000 });
+
+      // Machine exits needsRestore — user should not stay stuck on restore screen.
+      await waitFor(() => {
+        expect(result.current.isArchivedForRestore).toBe(false);
+      });
+      expect(result.current.archiveRestoreFailed).toBe(false);
+    }, { timeout: 10000 });
+
     it('should call archive-status with correct endpoint', async function correctEndpoint() {
       (appFetch as any).mockResolvedValueOnce(mockArchiveStatusResponse(false));
 
       renderHook(
-        () => useAppArchiveRestore(null, 'test-app-123', true),
+        () => useAppArchiveRestore('test-app-123', true),
         { wrapper: createWrapper() }
       );
 
@@ -283,31 +303,36 @@ describe('useAppArchiveRestore', function useAppArchiveRestoreTests() {
         .mockReturnValue(new Promise(() => {}));
 
       renderHook(
-        () => useAppArchiveRestore(createHibernatedAppDetails(), 'test-app-123', true, true),
+        () => useAppArchiveRestore('test-app-123', true, true),
         { wrapper: createWrapper() }
       );
 
       await waitFor(() => {
-        expect(fetchSpy).toHaveBeenCalledWith('/api/sites/test-app-123/archive-restore', expect.any(Object), { authLevel: 3 });
+        expect(fetchSpy).toHaveBeenCalledWith(
+          '/api/sites/test-app-123/archive-restore',
+          expect.any(Object),
+          { authLevel: 3 }
+        );
       });
 
-      await new Promise(resolve => setTimeout(resolve, 5500));
-
-      const archiveStatusCalls = fetchSpy.mock.calls.filter(
-        call => call[0] === '/api/sites/test-app-123/archive-status'
-      );
-      expect(archiveStatusCalls.length).toBeGreaterThanOrEqual(2);
+      // Poll fires while in waitingForStatus (next interval after the POST succeeds)
+      await waitFor(() => {
+        const archiveStatusCalls = fetchSpy.mock.calls.filter(
+          call => call[0] === '/api/sites/test-app-123/archive-status'
+        );
+        expect(archiveStatusCalls.length).toBeGreaterThanOrEqual(2);
+      }, { timeout: 10000 });
     }, { timeout: 10000 });
   });
 
   describe('#auto-restore', function autoRestoreTests() {
-    it('should auto-trigger restore when archived for hibernation and autoRestore is true', async function autoRestoreTrigger() {
+    it('should auto-trigger restore when archive-status reports canRestore and autoRestore is true', async function autoRestoreTrigger() {
       (appFetch as any)
         .mockResolvedValueOnce(mockArchiveStatusResponse(true))
         .mockResolvedValueOnce(mockRestoreResponse());
 
       renderHook(
-        () => useAppArchiveRestore(createHibernatedAppDetails(), 'test-app-123', true, true),
+        () => useAppArchiveRestore('test-app-123', true, true),
         { wrapper: createWrapper() }
       );
 
@@ -320,65 +345,32 @@ describe('useAppArchiveRestore', function useAppArchiveRestoreTests() {
       });
     });
 
-    it('should NOT auto-trigger when archived for a non-hibernation reason', async function noAutoRestoreWhenNotHibernation() {
-      (appFetch as any).mockResolvedValueOnce(mockArchiveStatusResponse(true));
+    it('should not auto-trigger when canRestore is false', async function noAutoRestoreWhenCannotRestore() {
+      (appFetch as any).mockResolvedValueOnce(mockArchiveStatusResponse(true, false));
 
       const { result } = renderHook(
-        () => useAppArchiveRestore(createRunningAppDetails(), 'test-app-123', true, true),
+        () => useAppArchiveRestore('test-app-123', true, true),
         { wrapper: createWrapper() }
-      );
-
-      await waitFor(() => {
-        expect(result.current.isArchivedForRestore).toBe(true);
-      });
-
-      await new Promise(resolve => setTimeout(resolve, 100));
-
-      const restoreCalls = (appFetch as any).mock.calls.filter(
-        (c: any[]) => c[0] === '/api/sites/test-app-123/archive-restore'
-      );
-      expect(restoreCalls).toHaveLength(0);
-    });
-
-    it('should auto-trigger after appDetails resolves later with hibernation reason', async function autoRestoreAfterAppDetails() {
-      (appFetch as any)
-        .mockResolvedValueOnce(mockArchiveStatusResponse(true))
-        .mockResolvedValueOnce(mockRestoreResponse());
-
-      const { rerender } = renderHook(
-        ({ details }: { details: AppDetailsResponse | null }) =>
-          useAppArchiveRestore(details, 'test-app-123', true, true),
-        {
-          wrapper: createWrapper(),
-          initialProps: { details: null as AppDetailsResponse | null },
-        }
       );
 
       await waitFor(() => {
         expect(appFetch).toHaveBeenCalledWith('/api/sites/test-app-123/archive-status');
       });
 
-      const initialRestoreCalls = (appFetch as any).mock.calls.filter(
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      expect(result.current.isArchivedForRestore).toBe(false);
+      const restoreCalls = (appFetch as any).mock.calls.filter(
         (c: any[]) => c[0] === '/api/sites/test-app-123/archive-restore'
       );
-      expect(initialRestoreCalls).toHaveLength(0);
-
-      rerender({ details: createHibernatedAppDetails() });
-
-      await waitFor(() => {
-        expect(appFetch).toHaveBeenCalledWith(
-          '/api/sites/test-app-123/archive-restore',
-          expect.objectContaining({ method: 'POST' }),
-          { authLevel: 3 }
-        );
-      });
+      expect(restoreCalls).toHaveLength(0);
     });
 
     it('should not auto-trigger when autoRestore is false', async function noAutoRestoreWhenDisabled() {
       (appFetch as any).mockResolvedValueOnce(mockArchiveStatusResponse(true));
 
       renderHook(
-        () => useAppArchiveRestore(createHibernatedAppDetails(), 'test-app-123', true, false),
+        () => useAppArchiveRestore('test-app-123', true, false),
         { wrapper: createWrapper() }
       );
 
@@ -394,7 +386,7 @@ describe('useAppArchiveRestore', function useAppArchiveRestoreTests() {
       (appFetch as any).mockResolvedValueOnce(mockArchiveStatusResponse(false));
 
       renderHook(
-        () => useAppArchiveRestore(createHibernatedAppDetails(), 'test-app-123', true, true),
+        () => useAppArchiveRestore('test-app-123', true, true),
         { wrapper: createWrapper() }
       );
 
@@ -410,7 +402,7 @@ describe('useAppArchiveRestore', function useAppArchiveRestoreTests() {
         .mockResolvedValue(mockRestoreResponse());
 
       const { rerender } = renderHook(
-        () => useAppArchiveRestore(createHibernatedAppDetails(), 'test-app-123', true, true),
+        () => useAppArchiveRestore('test-app-123', true, true),
         { wrapper: createWrapper() }
       );
 
@@ -443,7 +435,7 @@ describe('useAppArchiveRestore', function useAppArchiveRestoreTests() {
         .mockReturnValue(new Promise(() => {}));
 
       const { result } = renderHook(
-        () => useAppArchiveRestore(createHibernatedAppDetails(), 'test-app-123', true, true),
+        () => useAppArchiveRestore('test-app-123', true, true),
         { wrapper: createWrapper() }
       );
 
@@ -458,7 +450,7 @@ describe('useAppArchiveRestore', function useAppArchiveRestoreTests() {
         .mockResolvedValueOnce(mockRestoreResponse());
 
       renderHook(
-        () => useAppArchiveRestore(createHibernatedAppDetails(), 'test-app-123', true, true),
+        () => useAppArchiveRestore('test-app-123', true, true),
         { wrapper: createWrapper() }
       );
 
@@ -480,7 +472,7 @@ describe('useAppArchiveRestore', function useAppArchiveRestoreTests() {
         .mockResolvedValueOnce(mockErrorResponse(500, 'Restore failed'));
 
       const { result } = renderHook(
-        () => useAppArchiveRestore(createHibernatedAppDetails(), 'test-app-123', true, true),
+        () => useAppArchiveRestore('test-app-123', true, true),
         { wrapper: createWrapper() }
       );
 
@@ -488,16 +480,125 @@ describe('useAppArchiveRestore', function useAppArchiveRestoreTests() {
         expect(result.current.archiveRestoreFailed).toBe(true);
         expect(result.current.error).toBe('Restore failed');
       });
+
+      expect(logger.error).toHaveBeenCalledWith(
+        'app-archive-restore.error',
+        expect.objectContaining({ event: 'RESTORE_FAILED', appId: 'test-app-123' })
+      );
     });
 
-    it('should not mark restore failed when user dismisses SSO re-auth', async function dismissedAuthNotFailure() {
-      const { AuthDismissedError } = await import('@/lib/gasket-config');
+    it('should not set archiveRestoreFailed when restore POST is dismissed via SSO', async function dismissedAuthRestore() {
+      // Simulates user dismissing the re-auth modal — machine must stay in
+      // needsRestore so the user can try again, not enter the failed state.
       (appFetch as any)
         .mockResolvedValueOnce(mockArchiveStatusResponse(true))
         .mockRejectedValueOnce(new AuthDismissedError());
 
       const { result } = renderHook(
-        () => useAppArchiveRestore(createHibernatedAppDetails(), 'test-app-123', true, true),
+        () => useAppArchiveRestore('test-app-123', true, true),
+        { wrapper: createWrapper() }
+      );
+
+      // Wait for the auto-triggered POST to have fired
+      await waitFor(() => {
+        expect(appFetch).toHaveBeenCalledWith(
+          '/api/sites/test-app-123/archive-restore',
+          expect.any(Object),
+          { authLevel: 3 }
+        );
+      });
+
+      // After RESTORE_CANCELLED, machine returns to needsRestore — not failed
+      await waitFor(() => {
+        expect(result.current.isArchivedForRestore).toBe(true);
+        expect(result.current.archiveRestoreFailed).toBe(false);
+      });
+      expect(logger.error).not.toHaveBeenCalledWith('app-archive-restore.error', expect.anything());
+      // disableAutoRestore must have fired — exactly one POST, no infinite loop
+      const restoreCalls = (appFetch as any).mock.calls.filter(
+        (c: any[]) => c[0] === '/api/sites/test-app-123/archive-restore'
+      );
+      expect(restoreCalls).toHaveLength(1);
+    });
+
+    it('should return to needsRestore when manual restore POST is dismissed via SSO', async function manualRestoreAuthDismissed() {
+      // autoRestore=false: user explicitly calls restoreFromArchive() and then
+      // dismisses the re-auth modal. Machine must return to needsRestore with
+      // autoRestore still false so it does not auto-re-trigger.
+      //
+      // Route by endpoint rather than call order: restoreFromArchive() calls
+      // queryClient.resetQueries which triggers an archive-status refetch
+      // concurrently with the archive-restore POST — the call order is not
+      // guaranteed, so positional mocks would race.
+      (appFetch as any).mockImplementation((url: string) => {
+        if (url.includes('/archive-restore')) {
+          return Promise.reject(new AuthDismissedError());
+        }
+        return Promise.resolve(mockArchiveStatusResponse(true));
+      });
+
+      const { result } = renderHook(
+        () => useAppArchiveRestore('test-app-123', true, false),
+        { wrapper: createWrapper() }
+      );
+
+      await waitFor(() => {
+        expect(result.current.isArchivedForRestore).toBe(true);
+      });
+
+      act(() => result.current.restoreFromArchive());
+
+      await waitFor(() => {
+        expect(appFetch).toHaveBeenCalledWith(
+          '/api/sites/test-app-123/archive-restore',
+          expect.any(Object),
+          { authLevel: 3 }
+        );
+      });
+
+      await waitFor(() => {
+        expect(result.current.isArchivedForRestore).toBe(true);
+        expect(result.current.archiveRestoreFailed).toBe(false);
+      });
+      expect(logger.error).not.toHaveBeenCalledWith('app-archive-restore.error', expect.anything());
+      const restoreCalls = (appFetch as any).mock.calls.filter(
+        (c: any[]) => c[0] === '/api/sites/test-app-123/archive-restore'
+      );
+      expect(restoreCalls).toHaveLength(1);
+    });
+
+    it('should set archiveRestoreFailed when archive-status poll fails during restore wait', async function restoreWaitCheckFailed() {
+      (appFetch as any)
+        .mockResolvedValueOnce(mockArchiveStatusResponse(true))
+        .mockResolvedValueOnce(mockRestoreResponse())
+        .mockResolvedValueOnce(mockErrorResponse(500, 'poll error'));
+
+      const { result } = renderHook(
+        () => useAppArchiveRestore('test-app-123', true, true),
+        { wrapper: createWrapper() }
+      );
+
+      await waitFor(
+        () => {
+          expect(result.current.archiveRestoreFailed).toBe(true);
+          expect(result.current.error).toBe('poll error');
+        },
+        { timeout: 10000 }
+      );
+
+      expect(logger.error).toHaveBeenCalledWith(
+        'app-archive-restore.error',
+        expect.objectContaining({ event: 'STATUS_ERROR', appId: 'test-app-123' })
+      );
+    });
+
+    it('should not mark restore failed when user dismisses SSO re-auth', async function dismissedAuthNotFailure() {
+      (appFetch as any)
+        .mockResolvedValueOnce(mockArchiveStatusResponse(true))
+        .mockRejectedValueOnce(new AuthDismissedError());
+
+      const { result } = renderHook(
+        () => useAppArchiveRestore('test-app-123', true, true),
         { wrapper: createWrapper() }
       );
 
@@ -521,7 +622,7 @@ describe('useAppArchiveRestore', function useAppArchiveRestoreTests() {
         });
 
       const { result } = renderHook(
-        () => useAppArchiveRestore(createHibernatedAppDetails(), 'test-app-123', true, true),
+        () => useAppArchiveRestore('test-app-123', true, true),
         { wrapper: createWrapper() }
       );
 
@@ -540,7 +641,7 @@ describe('useAppArchiveRestore', function useAppArchiveRestoreTests() {
         .mockReturnValue(new Promise(() => {}));
 
       renderHook(
-        () => useAppArchiveRestore(createHibernatedAppDetails(), 'test-app-123', true, true),
+        () => useAppArchiveRestore('test-app-123', true, true),
         { wrapper: createWrapper() }
       );
 
@@ -563,7 +664,7 @@ describe('useAppArchiveRestore', function useAppArchiveRestoreTests() {
       });
 
       renderHook(
-        () => useAppArchiveRestore(createHibernatedAppDetails(), 'test-app-123', true, true),
+        () => useAppArchiveRestore('test-app-123', true, true),
         { wrapper: createWrapper() }
       );
 
@@ -590,7 +691,7 @@ describe('useAppArchiveRestore', function useAppArchiveRestoreTests() {
         .mockResolvedValueOnce(mockArchiveStatusResponse(false, false));
 
       const { result } = renderHook(
-        () => useAppArchiveRestore(createHibernatedAppDetails(), 'test-app-123', true, true),
+        () => useAppArchiveRestore('test-app-123', true, true),
         { wrapper: createWrapper() }
       );
 
@@ -613,7 +714,7 @@ describe('useAppArchiveRestore', function useAppArchiveRestoreTests() {
         .mockResolvedValueOnce(mockArchiveStatusResponse(false, false));
 
       renderHook(
-        () => useAppArchiveRestore(createHibernatedAppDetails(), 'test-app-123', true, true),
+        () => useAppArchiveRestore('test-app-123', true, true),
         { wrapper: createWrapper() }
       );
 
@@ -635,7 +736,7 @@ describe('useAppArchiveRestore', function useAppArchiveRestoreTests() {
         .mockResolvedValueOnce(mockArchiveStatusResponse(false, false));
 
       renderHook(
-        () => useAppArchiveRestore(createHibernatedAppDetails(), 'test-app-123', true, true),
+        () => useAppArchiveRestore('test-app-123', true, true),
         { wrapper: createWrapper() }
       );
 
@@ -657,7 +758,7 @@ describe('useAppArchiveRestore', function useAppArchiveRestoreTests() {
       const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
 
       const { rerender } = renderHook(
-        () => useAppArchiveRestore(createHibernatedAppDetails(), 'test-app-123', true, true),
+        () => useAppArchiveRestore('test-app-123', true, true),
         { wrapper: createWrapper() }
       );
 
@@ -699,7 +800,7 @@ describe('useAppArchiveRestore', function useAppArchiveRestoreTests() {
       });
 
       const { result } = renderHook(
-        () => useAppArchiveRestore(createHibernatedAppDetails(), 'test-app-123', true, true),
+        () => useAppArchiveRestore('test-app-123', true, true),
         { wrapper: createWrapper() }
       );
 
@@ -719,7 +820,7 @@ describe('useAppArchiveRestore', function useAppArchiveRestoreTests() {
         .mockResolvedValueOnce(mockRestoreResponse());
 
       const { result } = renderHook(
-        () => useAppArchiveRestore(null, 'test-app-123', true, false),
+        () => useAppArchiveRestore('test-app-123', true, false),
         { wrapper: createWrapper() }
       );
 
@@ -752,7 +853,7 @@ describe('useAppArchiveRestore', function useAppArchiveRestoreTests() {
       });
 
       const { result } = renderHook(
-        () => useAppArchiveRestore(createHibernatedAppDetails(), 'test-app-123', true, true),
+        () => useAppArchiveRestore('test-app-123', true, true),
         { wrapper: createWrapper() }
       );
 
@@ -784,7 +885,7 @@ describe('useAppArchiveRestore', function useAppArchiveRestoreTests() {
   describe('#edge cases', function edgeCaseTests() {
     it('should not fetch when appId is null', async function nullAppId() {
       renderHook(
-        () => useAppArchiveRestore(null, null, true),
+        () => useAppArchiveRestore(null, true),
         { wrapper: createWrapper() }
       );
 
@@ -796,7 +897,7 @@ describe('useAppArchiveRestore', function useAppArchiveRestoreTests() {
       (appFetch as any).mockResolvedValueOnce(mockArchiveStatusResponse(false));
 
       const { result } = renderHook(
-        () => useAppArchiveRestore(createRunningAppDetails(), 'test-app-123', true, true),
+        () => useAppArchiveRestore('test-app-123', true, true),
         { wrapper: createWrapper() }
       );
 

@@ -112,6 +112,12 @@ export const archiveRestoreMachine = setup({
       }
     },
 
+    logAutoRestore: ({ context }) => {
+      logger.info('app-archive-restore.auto-triggered', {
+        appId: context.appId,
+      })
+    },
+
     logTimeout: ({ context }) => {
       logger.warn('app-archive-restore.archive-wait.timeout', {
         appId: context.appId,
@@ -169,11 +175,19 @@ export const archiveRestoreMachine = setup({
       always: {
         guard: 'shouldAutoRestore',
         target: 'restoring',
+        actions: ['logAutoRestore', 'logTransition'],
       },
       on: {
         TRIGGER_RESTORE: {
           target: 'restoring',
           actions: ['clearError', 'logTransition'],
+        },
+        // canRestore retracted by backend (compliance hold / admin action) while
+        // the user is on the restore screen. Exit rather than leaving them stuck
+        // indefinitely with a non-functional Restore button.
+        STATUS_NOT_ARCHIVED: {
+          target: 'notArchived',
+          actions: ['logTransition'],
         },
       },
     },
@@ -201,6 +215,10 @@ export const archiveRestoreMachine = setup({
           },
         },
         waitingForStatus: {
+          // RESTORE_CANCELLED is not handled here: this state is only entered after
+          // RESTORE_SUCCEEDED, meaning the POST already completed. Auth errors are
+          // only thrown by appFetch during the POST (postArchiveRestore), not by
+          // the archive-status poll, so RESTORE_CANCELLED cannot fire in this sub-state.
           after: {
             RESTORE_WAIT_TIMEOUT: {
               target: '#archiveRestore.failed',

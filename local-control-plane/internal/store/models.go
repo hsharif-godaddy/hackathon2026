@@ -75,6 +75,7 @@ const (
 const (
 	LifecycleStateRunning      = "running"
 	LifecycleStatePaused       = "paused"
+	LifecycleStateArchived     = "archived"
 	LifecycleStateReloading    = "reloading"
 	LifecycleStateProvisioning = "provisioning"
 	LifecycleStateDeleting     = "deleting"

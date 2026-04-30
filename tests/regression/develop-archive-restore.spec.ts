@@ -7,7 +7,7 @@
  * Covers: preview restoring/failed states, disabled chat input during archive UX,
  * restore POST failure + retry from PreviewPane (develop-preview-archive-restore-failed).
  */
-import { expect, test, type Page, type Route } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
 import { deleteAllSitesViaAPI } from '../helpers/api';
 import { handleSsoLogin } from '../helpers/auth';
@@ -27,75 +27,9 @@ function developAppIdFromPageUrl(url: string): string {
   return url.match(/\/develop\/([^/?#]+)/)?.[1] ?? '';
 }
 
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-/** GET /api/sites/:id (optional query) — not /archive-status or /archive-restore. */
-function appSiteDetailsGetUrlPattern(appId: string): RegExp {
-  return new RegExp(`/api/sites/${escapeRegExp(appId)}(?:$|[?#])`);
-}
-
 const ARCHIVE_JOB_ID = 'regression-archive-job';
 
-/**
- * Mocks installed by an install* helper. Returned from each helper and passed
- * back to unrouteArchiveMocks so cleanup can remove the exact handlers without
- * relying on module-level state (which would race across parallel tests once
- * playwright.config.ts moves off `workers: 1`).
- */
-interface ArchiveMocks {
-  siteDetailsAppId: string;
-  siteDetailsHandler: (route: Route) => Promise<void>;
-}
-
-/**
- * useAppArchiveRestore auto-restore runs only when app details include preview
- * lifecycle.reason === 'hibernation' (see useAppArchiveRestore).
- */
-async function installAppDetailsHibernationPreviewLifecycle(page: Page, appId: string): Promise<ArchiveMocks> {
-  const urlPattern = appSiteDetailsGetUrlPattern(appId);
-
-  const siteDetailsHandler = async function siteDetailsHandler(route: Route): Promise<void> {
-    if (route.request().method() !== 'GET') {
-      await route.continue();
-      return;
-    }
-    const response = await route.fetch({
-      ignoreHTTPSErrors: true,
-    } as Parameters<Route['fetch']>[0]);
-    let body: Record<string, unknown>;
-    try {
-      body = (await response.json()) as Record<string, unknown>;
-    } catch {
-      await route.continue();
-      return;
-    }
-    const existing = Array.isArray(body.variantsWithLifecycle) ? body.variantsWithLifecycle : [];
-    const filtered = (existing as { variant?: string }[]).filter((v) => v.variant !== 'preview');
-    const previewVariant = {
-      variant: 'preview',
-      status: typeof body.status === 'string' ? body.status : 'paused',
-      lifecycle: {
-        lifecycleState: 'paused',
-        reason: 'hibernation',
-      },
-    };
-    await route.fulfill({
-      status: response.status(),
-      headers: response.headers(),
-      body: JSON.stringify({
-        ...body,
-        variantsWithLifecycle: [...filtered, previewVariant],
-      }),
-    });
-  };
-
-  await page.route(urlPattern, siteDetailsHandler);
-  return { siteDetailsAppId: appId, siteDetailsHandler };
-}
-
-async function unrouteArchiveMocks(page: Page, mocks: ArchiveMocks | null): Promise<void> {
+async function unrouteArchiveMocks(page: Page): Promise<void> {
   // Bare empty-catch hides failures (e.g. unroute throwing because a route was
   // never installed) and lets a stale handler persist into the next test,
   // doubling up interceptors. Log so re-enabled parallel runs surface the issue.
@@ -105,18 +39,9 @@ async function unrouteArchiveMocks(page: Page, mocks: ArchiveMocks | null): Prom
   await page.unroute(ARCHIVE_RESTORE_GLOB).catch((err) => {
     console.warn('unrouteArchiveMocks: archive-restore unroute failed:', err);
   });
-  if (mocks) {
-    await page
-      .unroute(appSiteDetailsGetUrlPattern(mocks.siteDetailsAppId), mocks.siteDetailsHandler)
-      .catch((err) => {
-        console.warn('unrouteArchiveMocks: site-details unroute failed:', err);
-      });
-  }
 }
 
-async function installArchiveRestoreHappyPathMocks(page: Page, appId: string): Promise<ArchiveMocks> {
-  const mocks = await installAppDetailsHibernationPreviewLifecycle(page, appId);
-
+async function installArchiveRestoreHappyPathMocks(page: Page, appId: string): Promise<void> {
   await page.route(ARCHIVE_STATUS_GLOB, async (route) => {
     const url = route.request().url();
     if (!url.includes(`/api/sites/${appId}/archive-status`)) {
@@ -146,14 +71,10 @@ async function installArchiveRestoreHappyPathMocks(page: Page, appId: string): P
       body: JSON.stringify({ statusJobId: ARCHIVE_JOB_ID }),
     });
   });
-
-  return mocks;
 }
 
-async function installArchiveRestoreFailThenRetryMocks(page: Page, appId: string): Promise<ArchiveMocks> {
+async function installArchiveRestoreFailThenRetryMocks(page: Page, appId: string): Promise<void> {
   let restorePostCount = 0;
-
-  const mocks = await installAppDetailsHibernationPreviewLifecycle(page, appId);
 
   await page.route(ARCHIVE_STATUS_GLOB, async (route) => {
     const url = route.request().url();
@@ -193,8 +114,6 @@ async function installArchiveRestoreFailThenRetryMocks(page: Page, appId: string
       body: JSON.stringify({ statusJobId: ARCHIVE_JOB_ID }),
     });
   });
-
-  return mocks;
 }
 
 /**
@@ -216,15 +135,7 @@ async function installArchiveRestoreFailThenRetryMocks(page: Page, appId: string
  * regression in CI to confirm.
  */
 test.describe.skip('Cold archive restore', () => {
-  /**
-   * Per-test mock state. Scoped to a closure (rather than module-level)
-   * because each test owns its own ArchiveMocks instance — sharing across
-   * tests breaks the moment workers > 1.
-   */
-  let installedMocks: ArchiveMocks | null = null;
-
   test.beforeEach(async ({}, testInfo) => {
-    installedMocks = null;
     logTestStart(testInfo);
   });
 
@@ -248,7 +159,7 @@ test.describe.skip('Cold archive restore', () => {
     const appId = developAppIdFromPageUrl(page.url());
     expect(appId.length).toBeGreaterThan(0);
 
-    installedMocks = await installArchiveRestoreHappyPathMocks(page, appId);
+    await installArchiveRestoreHappyPathMocks(page, appId);
     await page.reload({ waitUntil: 'domcontentloaded' });
 
     await expect(page.getByTestId('develop-preview-archive-restoring')).toBeVisible({
@@ -279,7 +190,7 @@ test.describe.skip('Cold archive restore', () => {
     const appId = developAppIdFromPageUrl(page.url());
     expect(appId.length).toBeGreaterThan(0);
 
-    installedMocks = await installArchiveRestoreFailThenRetryMocks(page, appId);
+    await installArchiveRestoreFailThenRetryMocks(page, appId);
     await page.reload({ waitUntil: 'domcontentloaded' });
 
     const failedPanel = page.getByTestId('develop-preview-archive-restore-failed');
@@ -296,8 +207,7 @@ test.describe.skip('Cold archive restore', () => {
   });
 
   test.afterEach(async ({ page }, testInfo) => {
-    await unrouteArchiveMocks(page, installedMocks);
-    installedMocks = null;
+    await unrouteArchiveMocks(page);
     await logTestResult(page, testInfo);
 
     console.log('Cleanup...');
