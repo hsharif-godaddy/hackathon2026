@@ -87,9 +87,14 @@ test.describe('Edit Interactions', () => {
     const themePanel = page.getByTestId('theme-preview-input-panel');
     const legacyGrid = page.getByTestId('color-palette-grid').last();
     const themeVariant = await Promise.race([
-      themePanel.waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT }).then(() => 'modern' as const),
-      legacyGrid.waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT }).then(() => 'legacy' as const),
+      themePanel.waitFor({ state: 'visible', timeout: AI_RESPONSE_TIMEOUT_MS }).then(() => 'modern' as const),
+      legacyGrid.waitFor({ state: 'visible', timeout: AI_RESPONSE_TIMEOUT_MS }).then(() => 'legacy' as const),
     ]).catch(() => 'none' as const);
+    if (themeVariant === 'none') {
+      throw new Error(
+        'Neither theme-preview-input-panel nor color-palette-grid became visible after the color scheme request.',
+      );
+    }
     const usingModernUi = themeVariant === 'modern';
 
     if (usingModernUi) {

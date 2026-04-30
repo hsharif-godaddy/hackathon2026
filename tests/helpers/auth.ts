@@ -34,22 +34,23 @@ export type SsoDetectionResult = 'iframe' | 'redirect' | 'authenticated' | 'time
  *
  * @param page - Playwright page
  * @param includeAuthenticatedCheck - If true, also checks for develop page URL (already authenticated)
+ * @param timeout - Optional timeout override (defaults to SSO_TIMEOUT from constants)
  * @returns Detection result: 'iframe', 'redirect', 'authenticated', 'timeout', or null
  */
-export async function detectSsoType(page: Page, includeAuthenticatedCheck = false): Promise<SsoDetectionResult> {
+export async function detectSsoType(page: Page, includeAuthenticatedCheck = false, timeout: number = SSO_TIMEOUT): Promise<SsoDetectionResult> {
   const signInIframe = page.locator('iframe[title="Container for sign in"]');
 
   // Each branch needs its own .catch() so losing racers don't produce
   // unhandled rejections after the race settles.
   const promises: Promise<SsoDetectionResult>[] = [
-    signInIframe.waitFor({ state: 'visible', timeout: SSO_TIMEOUT }).then(() => 'iframe' as const).catch(() => null),
-    page.waitForURL('**/login**', { timeout: SSO_TIMEOUT }).then(() => 'redirect' as const).catch(() => null),
-    page.waitForURL('**/sso**', { timeout: SSO_TIMEOUT }).then(() => 'redirect' as const).catch(() => null),
+    signInIframe.waitFor({ state: 'visible', timeout }).then(() => 'iframe' as const).catch(() => null),
+    page.waitForURL('**/login**', { timeout }).then(() => 'redirect' as const).catch(() => null),
+    page.waitForURL('**/sso**', { timeout }).then(() => 'redirect' as const).catch(() => null),
   ];
 
   if (includeAuthenticatedCheck) {
     promises.push(
-      page.waitForURL('**/develop/**', { timeout: SSO_TIMEOUT }).then(() => 'authenticated' as const).catch(() => null)
+      page.waitForURL('**/develop/**', { timeout }).then(() => 'authenticated' as const).catch(() => null)
     );
   }
 
@@ -85,13 +86,15 @@ function isBackOnApp(url: URL): boolean {
 /**
  * Handle SSO authentication - supports both iframe modal (prod) and redirect (test/dev)
  * This performs a full login flow through the UI
+ * @param page - Playwright page
+ * @param timeout - Optional timeout override (defaults to SSO_TIMEOUT from constants)
  */
-export async function handleSsoLogin(page: Page): Promise<void> {
+export async function handleSsoLogin(page: Page, timeout: number = SSO_TIMEOUT): Promise<void> {
   const { username, password } = getCredentials();
 
   console.log('Waiting for sign-in (iframe modal or redirect)...');
 
-  const signInType = await detectSsoType(page);
+  const signInType = await detectSsoType(page, false, timeout);
 
   if (signInType === 'iframe') {
     console.log('Sign-in iframe modal detected (production mode)');
@@ -101,17 +104,17 @@ export async function handleSsoLogin(page: Page): Promise<void> {
     await fillCredentials(frame, username, password);
 
     // Wait for SSO iframe to close (confirms auth was processed)
-    await iframeLocator.waitFor({ state: 'hidden', timeout: SSO_TIMEOUT });
+    await iframeLocator.waitFor({ state: 'hidden', timeout });
 
     // Wait for the post-SSO page reload triggered by the parent page. Use a
     // predicate instead of the glob `**/` - that glob compiles to `^(.*/)$`
     // which only matches URLs ending with `/`, so a redirect back to
     // `/develop/<id>` (no trailing slash) would silently time out here.
-    await page.waitForURL(isBackOnApp, { timeout: SSO_TIMEOUT });
+    await page.waitForURL(isBackOnApp, { timeout });
   } else if (signInType === 'redirect') {
     console.log('Redirected to sign-in page (test environment)');
     await fillCredentials(page, username, password);
-    await page.waitForURL(isBackOnApp, { timeout: SSO_TIMEOUT });
+    await page.waitForURL(isBackOnApp, { timeout });
   } else {
     throw new Error('Sign-in failed: Timed out waiting for either iframe modal or login redirect');
   }

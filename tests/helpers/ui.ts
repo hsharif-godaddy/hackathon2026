@@ -196,26 +196,27 @@ export async function waitForAppsPage(page: Page): Promise<void> {
  */
 export async function waitForDevelopPage(page: Page): Promise<void> {
   await waitForChatInput(page);
-
-  await page.getByTestId('preview-iframe').waitFor({ state: 'visible', timeout: PREVIEW_TIMEOUT });
-  await expect(page.getByTestId('preview-iframe')).toHaveAttribute('src', /.+/);
 }
+
+export type WaitForChatInputOptions = {
+  /** When false, only waits for the textarea (skip develop shell + preview iframe gates). Use mid-flow on develop after the page was already ready. */
+  requirePreview?: boolean;
+};
 
 /**
  * Wait for chat input to be ready for interaction
  */
-export async function waitForChatInput(page: Page): Promise<void> {
-  // Wait for loading spinner to disappear
-  await expect(async () => {
-    const hasSpinner = await page.locator('[class*="ux-spinner"], [class*="Spinner"]').count() > 0;
-    expect(hasSpinner).toBe(false);
-  }).toPass({ timeout: PREVIEW_TIMEOUT });
+export async function waitForChatInput(page: Page, options?: WaitForChatInputOptions): Promise<void> {
+  const requirePreview = options?.requirePreview !== false;
 
-  // Wait for preview iframe to be loaded
-  await page.getByTestId('preview-iframe').waitFor({ state: 'visible', timeout: PREVIEW_TIMEOUT });
-  await expect(page.getByTestId('preview-iframe')).toHaveAttribute('src', /.+/);
+  if (requirePreview) {
+    await expect(page.getByTestId('develop-skeleton')).not.toBeVisible({ timeout: PREVIEW_TIMEOUT });
+    await expect(page.getByTestId('develop-chat-pane-loader')).not.toBeVisible({ timeout: PREVIEW_TIMEOUT });
 
-  // Wait for chat input to be ready
+    await page.getByTestId('preview-iframe').waitFor({ state: 'visible', timeout: PREVIEW_TIMEOUT });
+    await expect(page.getByTestId('preview-iframe')).toHaveAttribute('src', /.+/);
+  }
+
   const chatInput = page.getByTestId('chat-input-textarea');
   await chatInput.waitFor({ state: 'visible', timeout: CHAT_INPUT_TIMEOUT });
 
@@ -346,16 +347,19 @@ export async function setupIsolatedApp(page: Page, specPrefix: string, appDescri
 }
 
 /**
- * After deploy completes, first publish shows the congrats modal (`#first-publish-congrats-modal`);
- * republish (or legacy paths) may show the success growl (`#app-publish-success`) instead.
+ * After deploy completes, success may appear as any of:
+ * - `#first-publish-congrats-modal` (first publish; popover closes, no in-popover alert — AppPublish.tsx)
+ * - `publish-success-alert` (republish with publish popover still open)
+ * - `#app-publish-success` growl (republish when popover was closed)
  */
 export async function expectPublishSuccessVisible(
   page: Page,
   timeout = DEPLOYMENT_TIMEOUT_MS,
 ): Promise<void> {
   const congratsModal = page.locator('#first-publish-congrats-modal');
+  const popoverSuccess = page.getByTestId('publish-success-alert');
   const successGrowl = page.locator('#app-publish-success');
-  await expect(congratsModal.or(successGrowl)).toBeVisible({ timeout });
+  await expect(congratsModal.or(popoverSuccess).or(successGrowl)).toBeVisible({ timeout });
 }
 
 /**
