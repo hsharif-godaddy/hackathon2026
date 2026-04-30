@@ -77,6 +77,12 @@ func (m Model) View() tea.View {
 			content = m.overlayModal(base, m.renderDevSettings())
 		case m.settingsForm != nil:
 			content = m.overlayModal(base, m.renderSettings())
+		case m.e2ePickerError != "":
+			content = m.overlayModal(base, m.renderE2EPickerError())
+		case m.e2ePickerStep == E2EPickerStepLoading:
+			content = m.overlayModal(base, m.renderE2EPickerLoading())
+		case m.e2ePickerForm != nil:
+			content = m.overlayModal(base, m.renderE2EPicker())
 		default:
 			content = base
 		}
@@ -129,6 +135,23 @@ func (m Model) renderTabBar() string {
 		tabs = append(tabs, dot+nameStr)
 	}
 
+	// E2E tab — last position. Use the runner's State for the indicator dot
+	// rather than process.State (one-shot lifecycle, not a supervised service).
+	{
+		active := m.activeTab == m.e2eTabIndex()
+		bg := lipgloss.Color("236")
+		nameFg := lipgloss.Color("250")
+		if active {
+			bg = lipgloss.Color("62")
+			nameFg = lipgloss.Color("15")
+		}
+		dotColor := e2eStateColor(m.e2eRunner.GetState())
+		dot := lipgloss.NewStyle().Foreground(dotColor).Background(bg).Render(" ●")
+		nameStr := lipgloss.NewStyle().Foreground(nameFg).Background(bg).
+			Bold(active).Render(" E2E ")
+		tabs = append(tabs, dot+nameStr)
+	}
+
 	row := lipgloss.JoinHorizontal(lipgloss.Top, tabs...)
 	pad := m.width - lipgloss.Width(row)
 	if pad > 0 {
@@ -141,14 +164,13 @@ func (m Model) renderContent() string {
 	if m.activeTab == 0 {
 		return m.renderCombinedView()
 	}
+	if m.activeTab == m.e2eTabIndex() {
+		return m.renderE2EContent()
+	}
 	return m.renderSingleView()
 }
 
 func (m Model) renderCombinedView() string {
-	if len(m.panes) == 0 {
-		return ""
-	}
-
 	var rendered []string
 	for i := range m.panes {
 		header := paneHeaderStyle.Width(m.width).
@@ -156,6 +178,15 @@ func (m Model) renderCombinedView() string {
 		rendered = append(rendered, header+"\n"+m.panes[i].Viewport.View())
 	}
 
+	// Include E2E in the combined view only if it has output, so an unused E2E
+	// pane doesn't take a quarter of the screen on the All tab.
+	if len(m.e2eRunner.GetLines()) > 0 {
+		rendered = append(rendered, m.renderE2EHeader()+"\n"+m.e2ePane.Viewport.View())
+	}
+
+	if len(rendered) == 0 {
+		return ""
+	}
 	return lipgloss.JoinVertical(lipgloss.Left, rendered...)
 }
 

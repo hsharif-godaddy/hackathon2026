@@ -33,11 +33,13 @@ func (m *Model) shutdownCmd() tea.Cmd {
 	}
 	hookDone := m.hookDone
 	mgr := m.manager
+	e2eRunner := m.e2eRunner
 	return func() tea.Msg {
 		// Wait for hook goroutine to finish (it will be killed by context cancel)
 		if hookDone != nil {
 			<-hookDone
 		}
+		e2eRunner.Stop()
 		mgr.StopAll()
 		return tea.QuitMsg{}
 	}
@@ -120,7 +122,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case spinner.TickMsg:
-		if m.phase == PhasePreflightChecking || m.phase == PhasePreflightFixing || m.phase == PhasePreflightVerifying {
+		if m.phase == PhasePreflightChecking || m.phase == PhasePreflightFixing || m.phase == PhasePreflightVerifying ||
+			m.e2ePickerStep == E2EPickerStepLoading {
 			var cmd tea.Cmd
 			m.spinner, cmd = m.spinner.Update(msg)
 			cmds = append(cmds, cmd)
@@ -274,6 +277,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case devSettingsErrorClearMsg:
 		m.devSettingsError = ""
+
+	case e2eListLoadedMsg:
+		if cmd := m.transitionToTestList(msg); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
 
 	case clickHintMsg:
 		m.clickHint = false
@@ -448,6 +456,21 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		return m.updateDevSettings(msg)
 	}
 
+	if m.e2ePickerError != "" {
+		// Any key dismisses the error overlay.
+		m.e2ePickerError = ""
+		return nil
+	}
+
+	if m.e2ePickerStep != E2EPickerInactive {
+		// Esc on any picker step (including loading) cancels the flow.
+		if msg.String() == "esc" {
+			m.closeE2EPicker()
+			return nil
+		}
+		return m.updateE2EPicker(msg)
+	}
+
 	switch {
 	case key.Matches(msg, m.keys.Quit):
 		return m.openQuitConfirm()
@@ -562,11 +585,15 @@ func (m *Model) handleSearchKey(msg tea.KeyPressMsg) tea.Cmd {
 	m.searchInput, cmd = m.searchInput.Update(msg)
 
 	query := m.searchInput.Value()
-	if m.activeTab == 0 {
+	switch {
+	case m.activeTab == 0:
 		for i := range m.panes {
 			m.panes[i].SetSearch(query)
 		}
-	} else {
+		m.e2ePane.SetSearch(query)
+	case m.activeTab == m.e2eTabIndex():
+		m.e2ePane.SetSearch(query)
+	default:
 		idx := m.activeTab - 1
 		if idx >= 0 && idx < len(m.panes) {
 			m.panes[idx].SetSearch(query)
@@ -617,6 +644,12 @@ func (m *Model) executeSettingsAction(idx int) tea.Cmd {
 			p.ClearErrors()
 		}
 
+	case ActionRunE2E:
+		return m.openE2EPicker()
+
+	case ActionStopE2E:
+		return m.stopE2ERun()
+
 	case ActionExit:
 		m.quitting = true
 		return m.shutdownCmd()
@@ -638,23 +671,44 @@ func (m *Model) resizePanes() {
 		contentHeight = 1
 	}
 
-	if m.activeTab == 0 {
-		n := max(len(m.panes), 1)
-		// Each pane: header(1) + viewport; last pane gets remainder rows
-		perPane := contentHeight / n
+	switch {
+	case m.activeTab == 0:
+		// "All" view splits across process panes plus the E2E pane when it
+		// has output. Header rows (1 per pane) come out of the viewport
+		// allotment, matching the pre-E2E layout.
+		includeE2E := len(m.e2eRunner.GetLines()) > 0
+		nPanes := len(m.panes)
+		total := nPanes
+		if includeE2E {
+			total++
+		}
+		if total < 1 {
+			total = 1
+		}
+		perPane := contentHeight / total
 		viewportHeight := perPane - 1
 		if viewportHeight < 1 {
 			viewportHeight = 1
 		}
-		remainder := contentHeight - (perPane * n)
+		remainder := contentHeight - (perPane * total)
 		for i := range m.panes {
 			vpH := viewportHeight
-			if i == n-1 {
+			if !includeE2E && i == nPanes-1 {
 				vpH += remainder
 			}
 			m.panes[i].SetSize(m.width, vpH)
 		}
-	} else {
+		if includeE2E {
+			m.e2ePane.SetSize(m.width, viewportHeight+remainder)
+		}
+	case m.activeTab == m.e2eTabIndex():
+		// E2E single view: minus the header line that renderE2EContent prints.
+		viewportHeight := contentHeight - 1
+		if viewportHeight < 1 {
+			viewportHeight = 1
+		}
+		m.e2ePane.SetSize(m.width, viewportHeight)
+	default:
 		viewportHeight := contentHeight
 		idx := m.activeTab - 1
 		if idx >= 0 && idx < len(m.panes) {
@@ -664,11 +718,17 @@ func (m *Model) resizePanes() {
 }
 
 func (m *Model) refreshPanes() {
-	if m.activeTab == 0 {
+	switch {
+	case m.activeTab == 0:
 		for i, p := range m.manager.Processes {
 			m.panes[i].UpdateContent(p.GetLines(), false)
 		}
-	} else {
+		if len(m.e2eRunner.GetLines()) > 0 {
+			m.e2ePane.UpdateContent(m.e2eRunner.GetLines(), false)
+		}
+	case m.activeTab == m.e2eTabIndex():
+		m.e2ePane.UpdateContent(m.e2eRunner.GetLines(), false)
+	default:
 		idx := m.activeTab - 1
 		if idx >= 0 && idx < len(m.panes) {
 			m.panes[idx].UpdateContent(m.manager.Processes[idx].GetLines(), false)
@@ -759,6 +819,9 @@ func (m *Model) refreshHookViewport() {
 func (m *Model) activePanePtr() *Pane {
 	if m.activeTab == 0 {
 		return nil
+	}
+	if m.activeTab == m.e2eTabIndex() {
+		return &m.e2ePane
 	}
 	idx := m.activeTab - 1
 	if idx >= 0 && idx < len(m.panes) {

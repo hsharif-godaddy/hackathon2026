@@ -71,7 +71,7 @@ func (m *Model) resizeForms() {
 	for _, f := range []*huh.Form{m.envForm, m.fixSelectorForm} {
 		m.applyInlineForm(f)
 	}
-	for _, f := range []*huh.Form{m.devSettingsForm, m.quitConfirmForm, m.settingsForm} {
+	for _, f := range []*huh.Form{m.devSettingsForm, m.quitConfirmForm, m.settingsForm, m.e2ePickerForm} {
 		m.applyModalForm(f)
 	}
 }
@@ -91,7 +91,8 @@ func stepForm(f *huh.Form, msg tea.Msg) (*huh.Form, tea.Cmd) {
 // background interaction (viewport scroll, mouse click hint, etc.) so the
 // user cannot interact with the underlying UI while a modal is visible.
 func (m Model) anyModalOpen() bool {
-	return m.settingsForm != nil || m.devSettingsForm != nil || m.quitConfirmForm != nil
+	return m.settingsForm != nil || m.devSettingsForm != nil || m.quitConfirmForm != nil ||
+		m.e2ePickerActive()
 }
 
 // forwardToActiveForm routes any tea.Msg to the currently-open form's
@@ -114,6 +115,8 @@ func (m *Model) forwardToActiveForm(msg tea.Msg) tea.Cmd {
 		return m.updateEnvForm(msg)
 	case m.fixSelectorForm != nil:
 		return m.updateFixSelector(msg)
+	case m.e2ePickerForm != nil:
+		return m.updateE2EPicker(msg)
 	}
 	return nil
 }

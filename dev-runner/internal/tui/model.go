@@ -17,6 +17,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/airo-ai-builder/dev-runner/internal/config"
+	"github.com/airo-ai-builder/dev-runner/internal/e2e"
 	"github.com/airo-ai-builder/dev-runner/internal/hooks"
 	"github.com/airo-ai-builder/dev-runner/internal/preflight"
 	"github.com/airo-ai-builder/dev-runner/internal/preflight/checks"
@@ -172,6 +173,21 @@ type Model struct {
 	// Dev settings tab state
 	devSettingsPreset   string // current preset name
 	controlPlaneBaseURL string
+
+	// E2E tab state
+	e2eRunner          *e2e.Runner
+	e2ePane            Pane
+	e2ePickerForm      *huh.Form
+	e2ePickerStep      E2EPickerStep
+	e2ePickerProject   *string
+	e2ePickerEnv       *string
+	e2ePickerTests     *[]string
+	e2ePickerAvailable []string
+	e2ePickerError     string
+	// e2ePickerLoadCancel cancels the in-flight `playwright test --list` so
+	// pressing Esc on the loading screen actually terminates the subprocess
+	// rather than just dismissing the UI.
+	e2ePickerLoadCancel context.CancelFunc
 }
 
 // NewModel creates the initial model.
@@ -199,6 +215,12 @@ func NewModel(cfg *config.Config, projectRoot string) Model {
 
 	prog := progress.New(progress.WithDefaultBlend(), progress.WithoutPercentage())
 
+	// Constructed eagerly here and never reset for the rest of the process
+	// lifetime, matching how manager is treated. Call sites can rely on
+	// m.e2eRunner being non-nil — defensive nil guards are unnecessary.
+	e2ePane := NewPane("E2E", 80, 24)
+	e2eRunner := &e2e.Runner{ProjectRoot: projectRoot}
+
 	return Model{
 		config:              cfg,
 		projectRoot:         projectRoot,
@@ -220,11 +242,13 @@ func NewModel(cfg *config.Config, projectRoot string) Model {
 		searchInput:         ti,
 		settingsItems:       items,
 		phase:               PhasePreflightChecking,
-		preflightRunner:     buildPreflightRunner(),
+		preflightRunner:     buildPreflightRunner(projectRoot),
 		preflightViewport:   newSoftWrapViewport(80, 24),
 		preflightAutoFollow: true,
 		devSettingsPreset:   "free-trial",
 		controlPlaneBaseURL: controlPlaneBaseURL(cfg),
+		e2eRunner:           e2eRunner,
+		e2ePane:             e2ePane,
 	}
 }
 
@@ -243,7 +267,7 @@ func (m Model) Init() tea.Cmd {
 }
 
 // buildPreflightRunner creates a Runner with all standard checks grouped by category.
-func buildPreflightRunner() *preflight.Runner {
+func buildPreflightRunner(projectRoot string) *preflight.Runner {
 	requiredPorts := map[int]string{
 		3000: "App",
 		4000: "Agents",
@@ -294,6 +318,7 @@ func buildPreflightRunner() *preflight.Runner {
 					{Check: &checks.DesignRAGCheck{}, Fixer: &fixers.DesignRAGFixer{TokenCache: ssoTokenCache}},
 					{Check: &checks.LocalFeaturesCheck{}, Fixer: &fixers.LocalFeaturesFixer{}, OptIn: true},
 					{Check: &checks.ImageSearchEnvCheck{}, Fixer: &fixers.ImageSearchEnvFixer{}, OptIn: true},
+					{Check: &checks.E2ECheck{}, Fixer: &fixers.E2EFixer{ProjectRoot: projectRoot}},
 				},
 			},
 			{
@@ -433,7 +458,7 @@ func (m Model) processCount() int {
 }
 
 func (m Model) tabCount() int {
-	return 1 + m.processCount() // All + processes
+	return 1 + m.processCount() + 1 // All + processes + E2E
 }
 
 // controlPlaneBaseURL extracts the base URL from the control plane health check config, or defaults to localhost:4100.
