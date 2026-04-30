@@ -3,6 +3,7 @@ import { type ReactElement } from 'react';
 import Footer from '@/layouts/parts/Footer';
 import Header from '@/layouts/parts/Header';
 import Website from '@/layouts/Website';
+import { ScrollRestoration } from 'react-router-dom';
 
 /**
  * Root layout component that wraps all pages with consistent header and footer
@@ -30,6 +31,7 @@ interface RootLayoutProps {
 export default function RootLayout({ children }: RootLayoutProps) {
   return (
     <Website>
+      <ScrollRestoration />
       <Header />
       {children}
       <Footer />

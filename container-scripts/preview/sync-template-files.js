@@ -89,7 +89,8 @@ const SYNC_MANIFEST = [
       '278eb10635f8543359cfa77a47fb4122', // 153b8e50 - Add dynamic context
       '398cc701e5338594788187c0ac488712', // 0bd48df3b - FIX: Use ENV mode
       '89379a72aadeed8ac76dee704aabfd91', // main - WITH CookieBanner (pre-PR)
-      '72c4eef20dcee8a90cd547b1a042ad70'  // This PR - CookieBanner removed
+      '72c4eef20dcee8a90cd547b1a042ad70', // Before ScrollToTop - CookieBanner removed
+      '30cd7c8e19835b65cd9f05de1924bcd3'  // AIROBUILD-1478 - with custom ScrollToTop (superseded by ScrollRestoration)
     ],
     force: false,
     syncGroup: 'cookieBanner'
