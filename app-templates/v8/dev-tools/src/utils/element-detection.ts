@@ -10,6 +10,10 @@ export function isClickable(element: HTMLElement): boolean {
 
 /** Check if an element is suitable for inline text editing */
 export function isTextEditable(element: HTMLElement): boolean {
+  // Elements attributed to the content layer are always editable via the
+  // content-edit path, regardless of dynamic-expression heuristics.
+  if (resolveContentKey(element) !== null) return true;
+
   if (element.hasAttribute("data-dev-dynamic") || element.querySelector("[data-dev-dynamic]")) return false;
 
   const tagName = element.tagName.toLowerCase();
@@ -28,6 +32,46 @@ export function isTextEditable(element: HTMLElement): boolean {
     });
 
   return textTags.includes(tagName) && hasText && hasOnlyText;
+}
+
+/**
+ * Resolve a concrete content key from an element's data-dev-content-key
+ * attributes. Handles both direct keys and template keys combined with the
+ * enclosing ContentListContext's data-dev-content-list + per-item index.
+ *
+ * Returns null when the element is not content-keyed.
+ */
+export function resolveContentKey(element: HTMLElement): { key: string; kind: "copy" | "richText" } | null {
+  const direct = element.getAttribute("data-dev-content-key");
+  const kindAttr = element.getAttribute("data-dev-content-kind");
+  const kind: "copy" | "richText" = kindAttr === "richText" ? "richText" : "copy";
+  if (direct) {
+    return { key: direct, kind };
+  }
+
+  const template = element.getAttribute("data-dev-content-key-template");
+  if (!template) return null;
+
+  // Walk up to find the nearest data-dev-content-list ancestor and the per-item
+  // index. Template looks like "products[].name"; we substitute the index at []
+  // to produce "products[3].name".
+  // v1 limitation: single-level lists only. Nested lists would need prefix
+  // matching (verify ancestor's list path matches the template prefix before []).
+  let cursor: HTMLElement | null = element;
+  let index: string | null = null;
+  while (cursor) {
+    const idx = cursor.getAttribute("data-dev-content-list-index");
+    if (idx !== null && index === null) index = idx;
+    if (cursor.hasAttribute("data-dev-content-list")) break;
+    cursor = cursor.parentElement;
+  }
+  if (!cursor || index === null) {
+    if (index !== null && !cursor) console.warn("[dev-tools] orphaned data-dev-content-list-index without data-dev-content-list ancestor");
+    return null;
+  }
+
+  const resolved = template.replace("[]", `[${index}]`);
+  return { key: resolved, kind };
 }
 
 /** Check if an element has child elements with styles/classes that would be

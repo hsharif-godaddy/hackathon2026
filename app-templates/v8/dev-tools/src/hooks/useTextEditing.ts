@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { safePostMessage, isOriginAllowed } from "../utils/postMessage";
 import { generatePreciseSelector, extractDevContext } from "../utils/element-helpers";
-import { isClickable, isTextEditable, hasStyledChildren, isSingleLineElement, isDevToolsElement, generateSelector } from "../utils/element-detection";
+import { isClickable, isTextEditable, hasStyledChildren, isSingleLineElement, isDevToolsElement, generateSelector, resolveContentKey } from "../utils/element-detection";
 import { t } from "../utils/translations";
 
 const DEBOUNCE_SAVE_MS = 8000;
@@ -92,10 +92,6 @@ export function useTextEditing(isEditModeActive: boolean) {
       const newText = element.textContent?.trim() || "";
       if (newText === originalText) return;
 
-      const devContext = extractDevContext(element);
-      const selector = generateSelector(element);
-      const preciseSelector = generatePreciseSelector(element);
-
       // Store element + original content so we can revert on failure
       pendingSaveRef.current = {
         element,
@@ -104,6 +100,26 @@ export function useTextEditing(isEditModeActive: boolean) {
       };
 
       setState((prev) => ({ ...prev, saveStatus: "saving" }));
+
+      // Prefer the content-layer path when the element is attributed to a
+      // CMS field. Falls back to the JSX-literal AST-edit path otherwise.
+      const contentTarget = resolveContentKey(element);
+      if (contentTarget) {
+        safePostMessage(window.parent, {
+          type: "CONTENT_UPDATED",
+          data: {
+            contentKey: contentTarget.key,
+            kind: contentTarget.kind,
+            oldText: originalText,
+            newText,
+          },
+        });
+        return;
+      }
+
+      const devContext = extractDevContext(element);
+      const selector = generateSelector(element);
+      const preciseSelector = generatePreciseSelector(element);
 
       safePostMessage(window.parent, {
         type: "TEXT_UPDATED",
@@ -163,6 +179,7 @@ export function useTextEditing(isEditModeActive: boolean) {
         editingElement: null,
         originalContent: null,
         originalText: null,
+        ...(save ? {} : { saveStatus: "idle" as const }),
       }));
     },
     [saveCurrentEdit],
@@ -312,7 +329,7 @@ export function useTextEditing(isEditModeActive: boolean) {
       const pending = pendingSaveRef.current;
       if (!pending) return;
 
-      if (event.data.type === "TEXT_EDIT_SUCCEEDED") {
+      if (event.data.type === "TEXT_EDIT_SUCCEEDED" || event.data.type === "CONTENT_EDIT_SUCCEEDED") {
         showIndicator(pending.element, "success");
         setState((prev) => ({ ...prev, saveStatus: "saved" }));
         pendingSaveRef.current = null;
@@ -321,7 +338,7 @@ export function useTextEditing(isEditModeActive: boolean) {
             prev.saveStatus === "saved" ? { ...prev, saveStatus: "idle" } : prev,
           );
         }, INDICATOR_MS);
-      } else if (event.data.type === "TEXT_EDIT_FAILED") {
+      } else if (event.data.type === "TEXT_EDIT_FAILED" || event.data.type === "CONTENT_EDIT_FAILED") {
         // Revert the DOM to what it was before this edit, preserving child HTML structure
         // nosemgrep: javascript.browser.security.insecure-document-method.insecure-document-method, godaddy.js.jquery.security.frameworks.dom-text-interpreted-as-html
         // Safe: originalContent is captured from this element's own innerHTML at save time (not user input)
