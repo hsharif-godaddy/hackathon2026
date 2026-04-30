@@ -1,10 +1,12 @@
 # Step 6: Hand Off to Develop Agent
 
 <instructions>
-Use the `handoff` tool after creating the todo list. This transfers execution to the develop agent who will implement your design.
+Use the `handoff` tool after creating the todo list. This transfers execution to the develop agent who will implement your design. You MUST set the `planTitle` argument to a short label like "[Project Name] Homepage Design".
 </instructions>
 
 **Handoff prompt must include:**
+
+**Always include `planTitle`** in the JSON arguments (e.g., `"Bakery Homepage Design"`). This is the tool argument, not part of the prompt text.
 
 1. **Project Details** - The 3 key project details and their values
 2. **Design Direction** - Overall aesthetic, color direction, typography mood
@@ -25,6 +27,7 @@ Use the `handoff` tool after creating the todo list. This transfers execution to
 ```json
 {
   "targetAgent": "develop",
+  "planTitle": "[App/Site Name] Homepage Design",
   "prompt": "Build homepage design preview with this direction:
 
 PROJECT DETAILS:
@@ -47,6 +50,7 @@ VISUAL ELEMENTS:
 - Primary: [Photography / Organic shapes / Geometric graphics / Illustrations / Mix]
 - Style: [If using graphics: soft blobs, geometric, hand-drawn, gradient meshes, etc.]
 - Application: [Where they appear: hero background, section accents, decorative elements]
+- Logo: [If a logo is needed, describe its style and placement. Use the media-logo skill to generate it.]
 
 MOTION DESIGN:
 - Level: [Static / Subtle / Dynamic]
@@ -110,6 +114,7 @@ If yes, offer domain purchase using the project name as brandName after first pr
 ```json
 {
   "targetAgent": "develop",
+  "planTitle": "[App/Site Name] App Design",
   "prompt": "Build app design preview with this direction:
 
 PROJECT DETAILS:
@@ -132,6 +137,7 @@ VISUAL ELEMENTS:
 - Primary: [Photography / Organic shapes / Geometric graphics / Illustrations / Mix]
 - Style: [If using graphics: soft blobs, geometric, hand-drawn, gradient meshes, etc.]
 - Application: [Where they appear: UI elements, backgrounds, decorative accents]
+- Logo: [If a logo is needed, describe its style and placement. Use the media-logo skill to generate it.]
 
 MOTION DESIGN:
 - Level: [Static / Subtle / Dynamic]
@@ -175,7 +181,10 @@ After showing the app design, use suggestedResponse tool to ask:
 - Question: \"What do you think of the design?\"
 - Suggestions: [\"Looks great, let's add [next feature from todo list]\", \"Change the color scheme\", \"Change the fonts\", \"I'd like to adjust [specific element]\"]
 
-Make it clear we're seeking design feedback, not asking to build everything at once."
+Make it clear we're seeking design feedback, not asking to build everything at once.
+
+DOMAIN PURCHASE INTENT: [yes/no - include only if user mentioned wanting to buy a domain]
+If yes, offer domain purchase using the project name as brandName after first preview."
 }
 ```
 

@@ -78,6 +78,7 @@ Design analysis and direction are generated as part of composing the handoff —
 ```json
 {
   "targetAgent": "develop",
+  "planTitle": "Morning Grounds Homepage Design",
   "prompt": "Build homepage design preview with this direction:
 
 PROJECT DETAILS:
@@ -139,10 +140,11 @@ SUGGESTED RESPONSES:
 
 ## Key Patterns
 
-| Pattern                      | Rule                                                            |
-| ---------------------------- | --------------------------------------------------------------- |
-| **Skip asking when clear**   | Name AND style both provided → straight to setup                |
-| **Always ask style**         | If user didn't describe a feel/mood, ask with vivid suggestions |
-| **Setup = business context** | setProjectName + todoList need no design thinking               |
-| **Design in handoff**        | All design analysis happens when composing the handoff prompt   |
-| **Parallel tools**           | setProjectName + todoList always in one turn, no text           |
+| Pattern                      | Rule                                                                                  |
+| ---------------------------- | ------------------------------------------------------------------------------------- |
+| **Skip asking when clear**   | Name AND style both provided → straight to setup                                      |
+| **Always ask style**         | If user didn't describe a feel/mood, ask with vivid suggestions                       |
+| **Setup = business context** | setProjectName + todoList need no design thinking                                     |
+| **Design in handoff**        | All design analysis happens when composing the handoff prompt                         |
+| **Parallel tools**           | setProjectName + todoList always in one turn, no text                                 |
+| **Always set planTitle**     | Use `handoff` with `planTitle` — e.g. "[Name] Homepage Design" or "[Name] App Design" |
