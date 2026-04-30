@@ -26,16 +26,16 @@ const pkgRoot = resolve(__dirname, '..');
 config({ path: resolve(pkgRoot, '.env') });
 
 const REPRO_SCENARIOS = [
-  'scenarios/prod-critical-failures/publish-failure.yaml',
+  'scenarios/friction-evals/request-timeout-abort-repro.yaml',
 ] as const;
 
 const DEFAULT_WALL_CLOCK_TIMEOUT_MS = 12 * 60 * 1000;
 const SCENARIO_TIMEOUT_MS: Partial<Record<typeof REPRO_SCENARIOS[number], number>> = {
-  'scenarios/prod-critical-failures/publish-failure.yaml': 720000,
+  'scenarios/friction-evals/request-timeout-abort-repro.yaml': 600000,
 };
 
 const SCENARIO_MAX_ATTEMPTS: Partial<Record<typeof REPRO_SCENARIOS[number], number>> = {
-  'scenarios/prod-critical-failures/publish-failure.yaml': 1,
+  'scenarios/friction-evals/request-timeout-abort-repro.yaml': 1,
 };
 function timeoutResult(scenario: Scenario, timeoutMs: number): EvalResult {
   return {
@@ -58,24 +58,31 @@ async function runWithTimeout(
 ): Promise<EvalResult> {
   const timeoutMs = SCENARIO_TIMEOUT_MS[relPath] ?? DEFAULT_WALL_CLOCK_TIMEOUT_MS;
   const started = Date.now();
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
   const timer = new Promise<EvalResult>(function onTimer(resolveTimer) {
-    setTimeout(function timedOut() {
+    timeoutHandle = setTimeout(function timedOut() {
       resolveTimer(timeoutResult(scenario, timeoutMs));
     }, timeoutMs);
   });
 
-  const result = await Promise.race([runScenario(scenario, options), timer]);
-  const appId = result.previewUrl ? extractAppId(result.previewUrl) : null;
-  const toolFailures = result.buildMetrics?.toolErrorCount ?? -1;
-  const elapsedSec = ((Date.now() - started) / 1000).toFixed(1);
-  const failureCount = toolFailures >= 0 ? String(toolFailures) : 'n/a';
+  try {
+    const result = await Promise.race([runScenario(scenario, options), timer]);
+    const appId = result.previewUrl ? extractAppId(result.previewUrl) : null;
+    const toolFailures = result.buildMetrics?.toolErrorCount ?? -1;
+    const elapsedSec = ((Date.now() - started) / 1000).toFixed(1);
+    const failureCount = toolFailures >= 0 ? String(toolFailures) : 'n/a';
 
-  console.log(
-    `Run result: ${scenario.name} | success=${result.success} | appId=${appId ?? 'n/a'} | ` +
-      `failures=${failureCount} | elapsed=${elapsedSec}s`
-  );
+    console.log(
+      `Run result: ${scenario.name} | success=${result.success} | appId=${appId ?? 'n/a'} | ` +
+        `failures=${failureCount} | elapsed=${elapsedSec}s`
+    );
 
-  return result;
+    return result;
+  } finally {
+    if (timeoutHandle !== undefined) {
+      clearTimeout(timeoutHandle);
+    }
+  }
 }
 
 function retryable(result: EvalResult): boolean {
