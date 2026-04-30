@@ -291,11 +291,13 @@ export async function runScenario(
       if (scenario.credentials && !handleLogin) {
         instruction += `\n\nCredentials for sign-in if needed:
 - Username: ${scenario.credentials.username}
-- Password: [REDACTED]`;
+- Password: ${scenario.credentials.password}`;
       }
 
       console.log('\n========== AGENT INSTRUCTION ==========');
-      console.log(instruction);
+      console.log(scenario.credentials && !handleLogin
+        ? instruction.replace(scenario.credentials.password, '[REDACTED]')
+        : instruction);
       console.log('========================================\n');
 
       result = await agent.execute({

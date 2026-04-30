@@ -26,16 +26,22 @@ const pkgRoot = resolve(__dirname, '..');
 config({ path: resolve(pkgRoot, '.env') });
 
 const REPRO_SCENARIOS = [
+  'scenarios/prod-critical-failures/publish-failure.yaml',
   'scenarios/friction-evals/request-timeout-abort-repro.yaml',
+  'scenarios/prod-critical-failures/str-replace-no-match.yaml',
 ] as const;
 
 const DEFAULT_WALL_CLOCK_TIMEOUT_MS = 12 * 60 * 1000;
 const SCENARIO_TIMEOUT_MS: Partial<Record<typeof REPRO_SCENARIOS[number], number>> = {
+  'scenarios/prod-critical-failures/publish-failure.yaml': 600000,
   'scenarios/friction-evals/request-timeout-abort-repro.yaml': 600000,
+  'scenarios/prod-critical-failures/str-replace-no-match.yaml': 420000,
 };
 
 const SCENARIO_MAX_ATTEMPTS: Partial<Record<typeof REPRO_SCENARIOS[number], number>> = {
+  'scenarios/prod-critical-failures/publish-failure.yaml': 1,
   'scenarios/friction-evals/request-timeout-abort-repro.yaml': 1,
+  'scenarios/prod-critical-failures/str-replace-no-match.yaml': 1,
 };
 function timeoutResult(scenario: Scenario, timeoutMs: number): EvalResult {
   return {
@@ -65,24 +71,25 @@ async function runWithTimeout(
     }, timeoutMs);
   });
 
+  let result: EvalResult;
   try {
-    const result = await Promise.race([runScenario(scenario, options), timer]);
-    const appId = result.previewUrl ? extractAppId(result.previewUrl) : null;
-    const toolFailures = result.buildMetrics?.toolErrorCount ?? -1;
-    const elapsedSec = ((Date.now() - started) / 1000).toFixed(1);
-    const failureCount = toolFailures >= 0 ? String(toolFailures) : 'n/a';
-
-    console.log(
-      `Run result: ${scenario.name} | success=${result.success} | appId=${appId ?? 'n/a'} | ` +
-        `failures=${failureCount} | elapsed=${elapsedSec}s`
-    );
-
-    return result;
+    result = await Promise.race([runScenario(scenario, options), timer]);
   } finally {
     if (timeoutHandle !== undefined) {
       clearTimeout(timeoutHandle);
     }
   }
+  const appId = result.previewUrl ? extractAppId(result.previewUrl) : null;
+  const toolFailures = result.buildMetrics?.toolErrorCount ?? -1;
+  const elapsedSec = ((Date.now() - started) / 1000).toFixed(1);
+  const failureCount = toolFailures >= 0 ? String(toolFailures) : 'n/a';
+
+  console.log(
+    `Run result: ${scenario.name} | success=${result.success} | appId=${appId ?? 'n/a'} | ` +
+      `failures=${failureCount} | elapsed=${elapsedSec}s`
+  );
+
+  return result;
 }
 
 function retryable(result: EvalResult): boolean {
@@ -90,14 +97,17 @@ function retryable(result: EvalResult): boolean {
     return false;
   }
   const error = result.error.toLowerCase();
+  // Hard timeouts should not burn retry slots — fail fast
+  if (error.includes('timed out after')) {
+    return false;
+  }
   if (error.includes('login timed out') || error.includes('deterministic setup failed')) {
     return false;
   }
   return (
     error.includes('required tools not observed') ||
     error.includes('expected error observations not observed') ||
-    error.includes('expected failure signatures not observed') ||
-    error.includes('timed out after')
+    error.includes('expected failure signatures not observed')
   );
 }
 
@@ -160,7 +170,25 @@ async function main(): Promise<void> {
     const path = resolve(pkgRoot, rel);
     console.log(`\n>>> [${i + 1}/${REPRO_SCENARIOS.length}] Loading ${rel}\n`);
 
-    const scenario = await loadScenario(path);
+    let scenario: Scenario;
+    try {
+      scenario = await loadScenario(path);
+    } catch (loadError) {
+      const errorMsg = loadError instanceof Error ? loadError.message : String(loadError);
+      console.error(`Failed to load scenario ${rel}: ${errorMsg}`);
+      results.push({
+        scenario: rel,
+        success: false,
+        message: `Scenario load failed: ${errorMsg}`,
+        steps: 0,
+        duration: 0,
+        actions: [],
+        usage: { inputTokens: 0, outputTokens: 0, reasoningTokens: 0 },
+        screenshots: [],
+        error: errorMsg,
+      } satisfies EvalResult);
+      continue;
+    }
     results.push(await runWithRetries(scenario, rel, runnerOptions));
   }
 

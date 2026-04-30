@@ -465,18 +465,19 @@ export async function sendDeterministicChatMessage(
       await page.waitForTimeout(2000);
     }
 
-    await page.waitForSelector('[data-testid="chat-input-textarea"]', { timeout: 120000, state: 'visible' });
+    // Wait for any chat input candidate to become visible and enabled
     const readyStart = Date.now();
     while (Date.now() - readyStart < 120000) {
-      const ready = await page.evaluate(() => {
-        const input = document.querySelector('[data-testid="chat-input-textarea"]') as HTMLTextAreaElement | null;
-        if (!input) {
-          return false;
+      const ready = await page.evaluate((candidates) => {
+        for (const selector of candidates) {
+          const input = document.querySelector(selector) as HTMLTextAreaElement | null;
+          if (!input) continue;
+          const style = window.getComputedStyle(input);
+          const visible = style.display !== 'none' && style.visibility !== 'hidden';
+          if (visible && !input.disabled) return true;
         }
-        const style = window.getComputedStyle(input);
-        const visible = style.display !== 'none' && style.visibility !== 'hidden';
-        return visible && !input.disabled;
-      });
+        return false;
+      }, CHAT_SELECTORS.inputCandidates);
       if (ready) {
         break;
       }
@@ -504,18 +505,7 @@ export async function sendDeterministicChatMessage(
       return { success: false, error: 'Failed to fill chat input' };
     }
 
-    const sentByEnter = await page.evaluate((selector) => {
-      const input = document.querySelector(selector) as HTMLTextAreaElement | null;
-      if (!input) {
-        return false;
-      }
-      input.focus();
-      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true }));
-      input.dispatchEvent(new KeyboardEvent('keypress', { key: 'Enter', code: 'Enter', bubbles: true }));
-      input.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter', bubbles: true }));
-      return true;
-    }, inputSelector);
-
+    // Try clicking a send button first (most reliable submission method)
     const clickedBySelector = await page.evaluate((candidates) => {
       for (const selector of candidates) {
         const button = document.querySelector(selector) as HTMLButtonElement | null;
@@ -526,10 +516,37 @@ export async function sendDeterministicChatMessage(
       return false;
     }, CHAT_SELECTORS.sendButtonCandidates);
 
-    if (!clickedBySelector && !sentByEnter) {
-      const clickedByText = await clickButtonByText(page, 'Send message');
-      if (!clickedByText) {
-        return { success: false, error: 'Could not click "Send message" button' };
+    if (!clickedBySelector) {
+      // Fallback: try Enter key dispatch
+      const inputValue = await page.evaluate((selector) => {
+        const input = document.querySelector(selector) as HTMLTextAreaElement | null;
+        return input?.value ?? '';
+      }, inputSelector);
+
+      await page.evaluate((selector) => {
+        const input = document.querySelector(selector) as HTMLTextAreaElement | null;
+        if (!input) return;
+        input.focus();
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true }));
+        input.dispatchEvent(new KeyboardEvent('keypress', { key: 'Enter', code: 'Enter', bubbles: true }));
+        input.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter', bubbles: true }));
+      }, inputSelector);
+
+      // Verify Enter actually submitted (input should be cleared)
+      await page.waitForTimeout(500);
+      const afterValue = await page.evaluate((selector) => {
+        const input = document.querySelector(selector) as HTMLTextAreaElement | null;
+        return input?.value ?? '';
+      }, inputSelector);
+
+      const sentByEnter = afterValue.length < inputValue.length;
+
+      if (!sentByEnter) {
+        // Final fallback: click by text
+        const clickedByText = await clickButtonByText(page, 'Send message');
+        if (!clickedByText) {
+          return { success: false, error: 'Could not click "Send message" button' };
+        }
       }
     }
 

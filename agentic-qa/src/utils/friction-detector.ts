@@ -26,7 +26,7 @@ import type { OrderedObservation } from './langfuse.js';
 
 // ── Tool name constants (matching Langfuse SPAN names from the agentic builder) ──
 
-const EDIT_TOOLS = new Set(['str_replace_editor', 'str_replace', 'editFile', 'edit_file']);
+const EDIT_TOOLS = new Set(['str_replace_editor', 'str_replace', 'str_replace_based_edit_tool', 'editFile', 'edit_file']);
 const READ_TOOLS = new Set(['readFile', 'read_file', 'viewFile', 'view_file']);
 const SEARCH_TOOLS = new Set([
   'grep', 'grep_search', 'search', 'searchFiles', 'search_files',
@@ -369,53 +369,77 @@ function detectRedundantExploration(observations: OrderedObservation[]): Frictio
   return patterns;
 }
 
+function normalizeErrorMessagePrefix(message: string | undefined): string {
+  return (message ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .slice(0, 80);
+}
+
+function getErrorSignature(obs: OrderedObservation): string {
+  const statusMessage = 'statusMessage' in obs && typeof obs.statusMessage === 'string'
+    ? obs.statusMessage
+    : undefined;
+  return `${obs.name ?? 'unknown'}::${normalizeErrorMessagePrefix(statusMessage)}`;
+}
+
+function pushErrorLoopPattern(
+  patterns: FrictionPattern[],
+  observations: OrderedObservation[],
+  streakStart: number,
+  streakCount: number,
+): void {
+  if (streakStart === -1 || streakCount < 3) return;
+  const window = observations.slice(streakStart, streakStart + streakCount);
+  patterns.push({
+    type: 'ERROR_LOOP',
+    severity: severityFromCount(streakCount, [3, 5, 8]),
+    count: streakCount,
+    startIndex: streakStart,
+    endIndex: streakStart + streakCount - 1,
+    wastedCostUSD: window.reduce((sum, o) => sum + estimateObsCost(o), 0),
+    description: `${streakCount} consecutive same-error-type tool failures`,
+    toolNames: [...new Set(window.map(o => o.name).filter(Boolean) as string[])],
+  });
+}
+
 /**
- * ERROR_LOOP: 3+ consecutive error-level observations (any tool type).
+ * ERROR_LOOP: 3+ consecutive tool failures with the same normalized error signature.
  */
 function detectErrorLoops(observations: OrderedObservation[]): FrictionPattern[] {
   const patterns: FrictionPattern[] = [];
   let streakStart = -1;
   let streakCount = 0;
+  let streakSignature: string | null = null;
 
   for (let i = 0; i < observations.length; i++) {
     const obs = observations[i];
     if (isToolSpan(obs) && isError(obs)) {
-      if (streakStart === -1) streakStart = i;
-      streakCount++;
+      const signature = getErrorSignature(obs);
+      if (streakStart === -1) {
+        streakStart = i;
+        streakCount = 1;
+        streakSignature = signature;
+      } else if (signature === streakSignature) {
+        streakCount++;
+      } else {
+        pushErrorLoopPattern(patterns, observations, streakStart, streakCount);
+        streakStart = i;
+        streakCount = 1;
+        streakSignature = signature;
+      }
     } else if (isToolSpan(obs)) {
       // Only non-error tool spans break the error streak (generations don't)
-      if (streakCount >= 3) {
-        const window = observations.slice(streakStart, streakStart + streakCount);
-        patterns.push({
-          type: 'ERROR_LOOP',
-          severity: severityFromCount(streakCount, [3, 5, 8]),
-          count: streakCount,
-          startIndex: streakStart,
-          endIndex: streakStart + streakCount - 1,
-          wastedCostUSD: window.reduce((sum, o) => sum + estimateObsCost(o), 0),
-          description: `${streakCount} consecutive tool errors`,
-          toolNames: [...new Set(window.map(o => o.name).filter(Boolean) as string[])],
-        });
-      }
+      pushErrorLoopPattern(patterns, observations, streakStart, streakCount);
       streakStart = -1;
       streakCount = 0;
+      streakSignature = null;
     }
   }
 
   // Trailing
-  if (streakCount >= 3) {
-    const window = observations.slice(streakStart, streakStart + streakCount);
-    patterns.push({
-      type: 'ERROR_LOOP',
-      severity: severityFromCount(streakCount, [3, 5, 8]),
-      count: streakCount,
-      startIndex: streakStart,
-      endIndex: streakStart + streakCount - 1,
-      wastedCostUSD: window.reduce((sum, o) => sum + estimateObsCost(o), 0),
-      description: `${streakCount} consecutive tool errors`,
-      toolNames: [...new Set(window.map(o => o.name).filter(Boolean) as string[])],
-    });
-  }
+  pushErrorLoopPattern(patterns, observations, streakStart, streakCount);
 
   return patterns;
 }

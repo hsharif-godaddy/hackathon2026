@@ -186,6 +186,13 @@ function authHeader(creds: LangfuseCredentials): string {
   return `Basic ${Buffer.from(`${creds.publicKey}:${creds.secretKey}`).toString('base64')}`;
 }
 
+class NonRetryableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'NonRetryableError';
+  }
+}
+
 async function request<T>(creds: LangfuseCredentials, path: string): Promise<T> {
   let lastError: Error | null = null;
   for (let attempt = 0; attempt <= REQUEST_RETRY_DELAYS_MS.length; attempt++) {
@@ -202,7 +209,10 @@ async function request<T>(creds: LangfuseCredentials, path: string): Promise<T> 
         const body = await response.text().catch(() => '(body unavailable)');
         const message = `Langfuse API error: ${response.status} ${response.statusText} - ${body}`;
         const retryable = response.status >= 500 || response.status === 429;
-        if (!retryable || attempt === REQUEST_RETRY_DELAYS_MS.length) {
+        if (!retryable) {
+          throw new NonRetryableError(message);
+        }
+        if (attempt === REQUEST_RETRY_DELAYS_MS.length) {
           throw new Error(message);
         }
         lastError = new Error(message);
@@ -210,6 +220,9 @@ async function request<T>(creds: LangfuseCredentials, path: string): Promise<T> 
         return response.json() as Promise<T>;
       }
     } catch (error) {
+      if (error instanceof NonRetryableError) {
+        throw error;
+      }
       if (attempt === REQUEST_RETRY_DELAYS_MS.length) {
         throw error;
       }

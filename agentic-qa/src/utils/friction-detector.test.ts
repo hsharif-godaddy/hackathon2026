@@ -271,11 +271,11 @@ describe('friction-detector', function frictionDetectorTests() {
   });
 
   describe('#detectErrorLoops', function errorLoopTests() {
-    it('should detect 3 consecutive tool errors', function threeErrors() {
+    it('should detect 3 consecutive tool errors with same signature', function threeErrors() {
       const observations = [
         errorSpan(0, 'readFile', 'not found'),
-        errorSpan(1, 'str_replace_editor', 'no match'),
-        errorSpan(2, 'terminalCommand', 'timeout'),
+        errorSpan(1, 'readFile', 'not found'),
+        errorSpan(2, 'readFile', 'not found'),
       ];
       const patterns = _detectors.detectErrorLoops(observations);
       assume(patterns).length(1);
@@ -294,11 +294,11 @@ describe('friction-detector', function frictionDetectorTests() {
 
     it('should allow generations between errors without breaking streak', function gensInBetween() {
       const observations = [
-        errorSpan(0, 'readFile'),
+        errorSpan(0, 'readFile', 'not found'),
         genObs(1),
-        errorSpan(2, 'str_replace_editor'),
+        errorSpan(2, 'readFile', 'not found'),
         genObs(3),
-        errorSpan(4, 'terminalCommand'),
+        errorSpan(4, 'readFile', 'not found'),
       ];
       const patterns = _detectors.detectErrorLoops(observations);
       assume(patterns).length(1);
