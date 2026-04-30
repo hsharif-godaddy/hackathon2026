@@ -1,8 +1,16 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { Server as HTTPServer } from 'http'
+import type { LanguageModelUsage } from 'ai'
 import { WebSocketServer } from '../experimental-websocket-server.js'
 import { createNoOpPersistence } from '../noop-persistence.js'
 import type { AgentWrapper } from '@airo/ai-lib'
+import { TOKEN_USAGE_SUMMARY_EVENT } from '@airo/ai-lib'
+
+type DeepPartial<T> = {
+  [P in keyof T]?: T[P] extends object
+    ? DeepPartial<T[P]>
+    : T[P]
+}
 
 // --- Module-level mocks (same pattern as existing test file) ---
 
@@ -133,8 +141,14 @@ function textDelta(text: string) {
 
 function createStreamResult(
   reader: ReturnType<typeof createMockReader>,
-  textChunks: string[] = ['hello']
+  textChunks: string[] = ['hello'],
+  usageOverride?: DeepPartial<LanguageModelUsage>
 ) {
+  const usage = usageOverride ?? {
+    inputTokens: 10,
+    outputTokens: 5,
+    totalTokens: 15,
+  }
   return {
     baseStream: {
       getReader: vi.fn().mockReturnValue(reader),
@@ -143,7 +157,7 @@ function createStreamResult(
       for (const chunk of textChunks) yield chunk
     })(),
     getFinalResult: vi.fn().mockResolvedValue({
-      usage: { inputTokens: 10, outputTokens: 5 },
+      usage,
       toolCalls: [],
       finishReason: 'stop',
     }),
@@ -165,6 +179,7 @@ describe('Evals Socket Diagnostics', () => {
   })
 
   afterEach(() => {
+    delete (mockAgent as any).getConfig
     if (savedEvalsOverSocket === undefined) {
       delete process.env.SOCKET_DIAGNOSTICS
     } else {
@@ -174,16 +189,21 @@ describe('Evals Socket Diagnostics', () => {
     server?.close()
   })
 
+  function setupSuccessfulStream(
+    usageOverride?: DeepPartial<LanguageModelUsage>
+  ) {
+    const reader = createMockReader(
+      textDelta('hello'),
+      'done'
+    )
+    const streamResult = createStreamResult(
+      reader, ['hello'], usageOverride
+    )
+    mockAgent.streamGenerate =
+      vi.fn().mockResolvedValueOnce(streamResult)
+  }
+
   describe('stream.timing.summary', () => {
-    function setupSuccessfulStream() {
-      const reader = createMockReader(
-        textDelta('hello'),
-        'done'
-      )
-      const streamResult = createStreamResult(reader)
-      mockAgent.streamGenerate =
-        vi.fn().mockResolvedValueOnce(streamResult)
-    }
 
     it(
       'emits via socket when SOCKET_DIAGNOSTICS=true',
@@ -246,6 +266,425 @@ describe('Evals Socket Diagnostics', () => {
               c[0] === 'stream.timing.summary'
           )
         expect(summaryEmit).toBeUndefined()
+      }
+    )
+
+    it(
+      'swallows emit errors without propagating',
+      async () => {
+        process.env.SOCKET_DIAGNOSTICS = 'true'
+        setupSuccessfulStream()
+
+        mockSocket.emit.mockImplementation(
+          (event: string) => {
+            if (event === 'stream.timing.summary') {
+              throw new Error('socket closed')
+            }
+          }
+        )
+
+        const { server: s, messageHandler } =
+          await setupServerWithConnection(httpServer, {
+            agents: mockAgents,
+            defaultAgent: 'test-agent',
+          })
+        server = s
+
+        await expect(
+          messageHandler({
+            message: 'test',
+            agentId: 'test-agent',
+          })
+        ).resolves.not.toThrow()
+      }
+    )
+  })
+
+  describe('token.usage.summary', () => {
+    it(
+      'emits via socket when SOCKET_DIAGNOSTICS=true',
+      async () => {
+        process.env.SOCKET_DIAGNOSTICS = 'true'
+        setupSuccessfulStream()
+
+        const { server: s, messageHandler } =
+          await setupServerWithConnection(httpServer, {
+            agents: mockAgents,
+            defaultAgent: 'test-agent',
+          })
+        server = s
+
+        await messageHandler({
+          message: 'test',
+          agentId: 'test-agent',
+        })
+
+        const emitCalls = mockSocket.emit.mock.calls
+        const usageEmit = emitCalls.find(
+          (c: any[]) =>
+            c[0] === TOKEN_USAGE_SUMMARY_EVENT
+        )
+        expect(usageEmit).toBeDefined()
+        expect(usageEmit![1]).toEqual(
+          expect.objectContaining({
+            inputTokens: 10,
+            outputTokens: 5,
+            totalTokens: 15,
+            modelName: expect.any(String),
+            totalCost: expect.any(Number),
+            inputCost: expect.any(Number),
+            outputCost: expect.any(Number),
+            savings: expect.any(Number),
+            currency: expect.any(String),
+          })
+        )
+        expect(usageEmit![1]).not.toHaveProperty(
+          'cachedInputTokensRead'
+        )
+        expect(usageEmit![1]).not.toHaveProperty(
+          'cachedInputTokensWrite'
+        )
+        expect(usageEmit![1]).not.toHaveProperty(
+          'cachedInputCost'
+        )
+      }
+    )
+
+    it(
+      'includes cache fields when present',
+      async () => {
+        process.env.SOCKET_DIAGNOSTICS = 'true'
+        ;(mockAgent as any).getConfig =
+          () => ({ modelName: 'claude-sonnet-4-6' })
+        setupSuccessfulStream({
+          inputTokens: 100,
+          outputTokens: 50,
+          totalTokens: 150,
+          inputTokenDetails: {
+            cacheReadTokens: 40,
+          },
+        })
+
+        const { server: s, messageHandler } =
+          await setupServerWithConnection(httpServer, {
+            agents: mockAgents,
+            defaultAgent: 'test-agent',
+          })
+        server = s
+
+        await messageHandler({
+          message: 'test',
+          agentId: 'test-agent',
+        })
+
+        const usageEmit =
+          mockSocket.emit.mock.calls.find(
+            (c: any[]) =>
+              c[0] === TOKEN_USAGE_SUMMARY_EVENT
+          )
+        expect(usageEmit).toBeDefined()
+        expect(usageEmit![1]).toEqual(
+          expect.objectContaining({
+            inputTokens: 100,
+            outputTokens: 50,
+            totalTokens: 150,
+            cachedInputTokensRead: 40,
+            cachedInputCost: expect.any(Number),
+            modelName: 'claude-sonnet-4-6',
+          })
+        )
+        expect(usageEmit![1].cachedInputCost)
+          .toBeGreaterThan(0)
+        expect(usageEmit![1]).not.toHaveProperty(
+          'cachedInputTokensWrite'
+        )
+      }
+    )
+
+    it(
+      'includes cachedInputTokensWrite when present',
+      async () => {
+        process.env.SOCKET_DIAGNOSTICS = 'true'
+        ;(mockAgent as any).getConfig =
+          () => ({ modelName: 'claude-sonnet-4-6' })
+        setupSuccessfulStream({
+          inputTokens: 100,
+          outputTokens: 50,
+          totalTokens: 150,
+          inputTokenDetails: {
+            cacheWriteTokens: 20,
+          },
+        })
+
+        const { server: s, messageHandler } =
+          await setupServerWithConnection(httpServer, {
+            agents: mockAgents,
+            defaultAgent: 'test-agent',
+          })
+        server = s
+
+        await messageHandler({
+          message: 'test',
+          agentId: 'test-agent',
+        })
+
+        const usageEmit =
+          mockSocket.emit.mock.calls.find(
+            (c: any[]) =>
+              c[0] === TOKEN_USAGE_SUMMARY_EVENT
+          )
+        expect(usageEmit).toBeDefined()
+        expect(usageEmit![1]).toEqual(
+          expect.objectContaining({
+            cachedInputTokensWrite: 20,
+            cachedInputCost: expect.any(Number),
+          })
+        )
+        expect(usageEmit![1].cachedInputCost)
+          .toBeGreaterThan(0)
+        expect(usageEmit![1]).not.toHaveProperty(
+          'cachedInputTokensRead'
+        )
+      }
+    )
+
+    it(
+      'includes both cache read and write fields',
+      async () => {
+        process.env.SOCKET_DIAGNOSTICS = 'true'
+        ;(mockAgent as any).getConfig =
+          () => ({ modelName: 'claude-sonnet-4-6' })
+        setupSuccessfulStream({
+          inputTokens: 200,
+          outputTokens: 80,
+          totalTokens: 280,
+          inputTokenDetails: {
+            cacheReadTokens: 60,
+            cacheWriteTokens: 30,
+          },
+        })
+
+        const { server: s, messageHandler } =
+          await setupServerWithConnection(httpServer, {
+            agents: mockAgents,
+            defaultAgent: 'test-agent',
+          })
+        server = s
+
+        await messageHandler({
+          message: 'test',
+          agentId: 'test-agent',
+        })
+
+        const usageEmit =
+          mockSocket.emit.mock.calls.find(
+            (c: any[]) =>
+              c[0] === TOKEN_USAGE_SUMMARY_EVENT
+          )
+        expect(usageEmit).toBeDefined()
+        expect(usageEmit![1]).toEqual(
+          expect.objectContaining({
+            inputTokens: 200,
+            outputTokens: 80,
+            totalTokens: 280,
+            cachedInputTokensRead: 60,
+            cachedInputTokensWrite: 30,
+            cachedInputCost: expect.any(Number),
+            modelName: 'claude-sonnet-4-6',
+          })
+        )
+        expect(usageEmit![1].cachedInputCost)
+          .toBeGreaterThan(0)
+      }
+    )
+
+    it(
+      'does NOT emit when env var is unset',
+      async () => {
+        delete process.env.SOCKET_DIAGNOSTICS
+        setupSuccessfulStream()
+
+        const { server: s, messageHandler } =
+          await setupServerWithConnection(httpServer, {
+            agents: mockAgents,
+            defaultAgent: 'test-agent',
+          })
+        server = s
+
+        await messageHandler({
+          message: 'test',
+          agentId: 'test-agent',
+        })
+
+        const usageEmit =
+          mockSocket.emit.mock.calls.find(
+            (c: any[]) =>
+              c[0] === TOKEN_USAGE_SUMMARY_EVENT
+          )
+        expect(usageEmit).toBeUndefined()
+      }
+    )
+
+    it(
+      'swallows emit errors without propagating',
+      async () => {
+        process.env.SOCKET_DIAGNOSTICS = 'true'
+        setupSuccessfulStream()
+
+        mockSocket.emit.mockImplementation(
+          (event: string) => {
+            if (event === TOKEN_USAGE_SUMMARY_EVENT) {
+              throw new Error('socket closed')
+            }
+          }
+        )
+
+        const { server: s, messageHandler } =
+          await setupServerWithConnection(httpServer, {
+            agents: mockAgents,
+            defaultAgent: 'test-agent',
+          })
+        server = s
+
+        await expect(
+          messageHandler({
+            message: 'test',
+            agentId: 'test-agent',
+          })
+        ).resolves.not.toThrow()
+      }
+    )
+
+    it(
+      'does NOT emit when usage is undefined',
+      async () => {
+        process.env.SOCKET_DIAGNOSTICS = 'true'
+
+        const reader = createMockReader(
+          textDelta('hello'),
+          'done'
+        )
+        const streamResult = createStreamResult(reader, ['hello'])
+        streamResult.getFinalResult = vi.fn().mockResolvedValue({
+          usage: undefined,
+          totalUsage: undefined,
+          toolCalls: [],
+          finishReason: 'stop',
+        })
+        mockAgent.streamGenerate =
+          vi.fn().mockResolvedValueOnce(streamResult)
+
+        const { server: s, messageHandler } =
+          await setupServerWithConnection(httpServer, {
+            agents: mockAgents,
+            defaultAgent: 'test-agent',
+          })
+        server = s
+
+        await messageHandler({
+          message: 'test',
+          agentId: 'test-agent',
+        })
+
+        const usageEmit =
+          mockSocket.emit.mock.calls.find(
+            (c: any[]) =>
+              c[0] === TOKEN_USAGE_SUMMARY_EVENT
+          )
+        expect(usageEmit).toBeUndefined()
+      }
+    )
+
+    it(
+      'prefers totalUsage over usage for multi-step tracking',
+      async () => {
+        process.env.SOCKET_DIAGNOSTICS = 'true'
+        ;(mockAgent as any).getConfig =
+          () => ({ modelName: 'claude-sonnet-4-6' })
+
+        const reader = createMockReader(
+          textDelta('hello'),
+          'done'
+        )
+        const streamResult = createStreamResult(reader, ['hello'])
+        streamResult.getFinalResult = vi.fn().mockResolvedValue({
+          usage: {
+            inputTokens: 10,
+            outputTokens: 5,
+            totalTokens: 15,
+          },
+          totalUsage: {
+            inputTokens: 300,
+            outputTokens: 120,
+            totalTokens: 420,
+          },
+          toolCalls: [],
+          finishReason: 'stop',
+        })
+        mockAgent.streamGenerate =
+          vi.fn().mockResolvedValueOnce(streamResult)
+
+        const { server: s, messageHandler } =
+          await setupServerWithConnection(httpServer, {
+            agents: mockAgents,
+            defaultAgent: 'test-agent',
+          })
+        server = s
+
+        await messageHandler({
+          message: 'test',
+          agentId: 'test-agent',
+        })
+
+        const usageEmit =
+          mockSocket.emit.mock.calls.find(
+            (c: any[]) =>
+              c[0] === TOKEN_USAGE_SUMMARY_EVENT
+          )
+        expect(usageEmit).toBeDefined()
+        expect(usageEmit![1]).toEqual(
+          expect.objectContaining({
+            inputTokens: 300,
+            outputTokens: 120,
+            totalTokens: 420,
+            modelName: 'claude-sonnet-4-6',
+          })
+        )
+      }
+    )
+
+    it(
+      'emits with agent name fallback when getConfig() throws',
+      async () => {
+        process.env.SOCKET_DIAGNOSTICS = 'true'
+        ;(mockAgent as any).getConfig = () => {
+          throw new Error('config unavailable')
+        }
+        setupSuccessfulStream()
+
+        const { server: s, messageHandler } =
+          await setupServerWithConnection(httpServer, {
+            agents: mockAgents,
+            defaultAgent: 'test-agent',
+          })
+        server = s
+
+        await messageHandler({
+          message: 'test',
+          agentId: 'test-agent',
+        })
+
+        const usageEmit =
+          mockSocket.emit.mock.calls.find(
+            (c: any[]) =>
+              c[0] === TOKEN_USAGE_SUMMARY_EVENT
+          )
+        expect(usageEmit).toBeDefined()
+        expect(usageEmit![1]).toEqual(
+          expect.objectContaining({
+            modelName: 'test-agent',
+          })
+        )
       }
     )
   })

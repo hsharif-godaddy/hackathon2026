@@ -5,7 +5,15 @@ import type { Socket, ServerOptions } from 'socket.io'
 import { Server as HTTPServer } from 'http'
 import type { AgentFactory, AgentWrapper, PipelineContextMessage } from '@airo/ai-lib'
 import { createAgentFactory } from '@airo/ai-lib'
-import { buildTokenUsage, calculateCostEstimate, formatCostEstimate, getCacheHitRate, dataUrlsToProcessedFiles } from '@airo/ai-lib'
+import {
+  buildTokenUsage,
+  calculateCostEstimate,
+  formatCostEstimate,
+  getCacheHitRate,
+  dataUrlsToProcessedFiles,
+  TOKEN_USAGE_SUMMARY_EVENT,
+  type TokenUsageSummaryEvent,
+} from '@airo/ai-lib'
 import type { ExecutionStep } from '@airo/ai-lib/budget'
 import { classifyError, BudgetExceededError, isBudgetExceededAPIError, createLogger } from '@airo/ai-common'
 import { isBudgetServiceError, mapBudgetErrorToResponse } from '@airo/shared/budget'
@@ -873,6 +881,34 @@ export class WebSocketServer {
       await this.config.onConnection?.(socketId, meta)
     } catch (error) {
       this.logger.error('socket.connect.handler_error', error)
+    }
+  }
+
+  // Emit a diagnostic event over socket, gated by
+  // SOCKET_DIAGNOSTICS. Swallows emit failures and logs
+  // them with full session context for correlation.
+  private emitDiagnostic<T>(
+    socket: Socket,
+    event: string,
+    payload: T,
+    context: {
+      socketId: string
+      appId: string
+      agentName: string
+      modelName: string
+    }
+  ): void {
+    if (process.env.SOCKET_DIAGNOSTICS !== 'true') return
+    try {
+      socket.emit(event, payload)
+    } catch (err) {
+      this.logger.warn('socket.diagnostic.emit.failed', {
+        ...context,
+        event,
+        error: err instanceof Error
+          ? err.message
+          : String(err),
+      })
     }
   }
 
@@ -4027,9 +4063,12 @@ Please try again with corrected formatting.`
       }
       // info (not debug) for production observability
       this.logger.info('stream.timing.summary', timingSummary)
-      if (process.env.SOCKET_DIAGNOSTICS === 'true') {
-        socket.emit('stream.timing.summary', timingSummary)
-      }
+      this.emitDiagnostic(
+        socket,
+        'stream.timing.summary',
+        timingSummary,
+        { socketId: socket.id, appId, agentName, modelName }
+      )
 
       // Capture execution steps for cost attribution (returned to caller for accumulation)
       executionSteps = finalResult.steps ?? []
@@ -4047,14 +4086,19 @@ Please try again with corrected formatting.`
       const usage = usageToTrack ? buildTokenUsage(usageToTrack) : undefined
       let costEstimateTotalCost: number | undefined
       if (usage) {
-        // Get model information from agent config
         // Get model name from agent configuration
         let modelName = 'unknown'
         try {
           const agentConfig = agent.getConfig()
           modelName = agentConfig.modelName || agentName || 'unknown'
         } catch (error) {
-          this.logger.warn('model.name.failure', { error: error instanceof Error ? error.message : String(error) })
+          this.logger.warn('model.name.failure', {
+            socketId: socket.id,
+            agentName,
+            error: error instanceof Error
+              ? error.message
+              : String(error),
+          })
           modelName = agentName || 'unknown'
         }
 
@@ -4090,6 +4134,33 @@ Please try again with corrected formatting.`
         costEstimateTotalCost = costEstimate.totalCost
         const costLines = formatCostEstimate(costEstimate, usage)
         this.logger.info('token.cost', { details: costLines.join('; ') })
+
+        const payload: TokenUsageSummaryEvent = {
+          inputTokens: usage.inputTokens,
+          outputTokens: usage.outputTokens,
+          totalTokens: usage.totalTokens,
+          ...(usage.cachedInputTokensRead !== undefined
+            && { cachedInputTokensRead:
+              usage.cachedInputTokensRead }),
+          ...(usage.cachedInputTokensWrite !== undefined
+            && { cachedInputTokensWrite:
+              usage.cachedInputTokensWrite }),
+          modelName,
+          totalCost: costEstimate.totalCost,
+          inputCost: costEstimate.inputCost,
+          outputCost: costEstimate.outputCost,
+          ...(costEstimate.cachedInputCost !== undefined
+            && { cachedInputCost:
+              costEstimate.cachedInputCost }),
+          savings: costEstimate.savings,
+          currency: costEstimate.currency,
+        }
+        this.emitDiagnostic(
+          socket,
+          TOKEN_USAGE_SUMMARY_EVENT,
+          payload,
+          { socketId: socket.id, appId, agentName, modelName }
+        )
 
         // Call onTokenUsage callback with accurate multi-step usage
         if (this.config.onTokenUsage) {
