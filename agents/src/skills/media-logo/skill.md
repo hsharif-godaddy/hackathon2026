@@ -18,7 +18,7 @@ Generated logos auto-save to the media slot system. Use the returned `slotUrl` i
 // Favicon/app icon — square slot (default)
 <img src="/airo-assets/images/logo/primary" alt="Sunrise Cafe logo" />
 
-// Dark background — append ?variant=solid to any slot
+// If background is required — append ?variant=solid to any slot (only use if the logo is the same color as the background, otherwise it may look worse)
 <img src="/airo-assets/images/logo/horizontal?variant=solid" alt="Sunrise Cafe logo" />
 ```
 
@@ -30,7 +30,7 @@ The user can swap logos anytime via the LogoGridWidget — the slot URL stays th
 
 After generation, decide based on context:
 
-1. **Place immediately** when the conversation implies it — e.g., "build a site with a logo" or you're following a handoff that includes building pages. Use `?variant=solid` for dark backgrounds.
+1. **Place immediately** when the conversation implies it — e.g., "build a site with a logo" or you're following a handoff that includes building pages.
 2. **Present and wait** when the user only asked to generate a logo. Show the results and let them browse. Place when asked later.
 
 ## Context Gathering
@@ -44,24 +44,26 @@ Correct - use the edit tool with the source logo reference:
 
 ```typescript
 // Edit the current saved logo — sessionId and logoId auto-resolved from slot
-media-logo__edit_logo({
-  prompt: 'Make the logo blue and remove the tagline',
-});
+media -
+  logo__edit_logo({
+    prompt: 'Make the logo blue and remove the tagline',
+  });
 
 // Edit a specific logo from a known session
-media-logo__edit_logo({
-  sourceSessionId: 'abc-123-session',
-  sourceLogoId: 'logo-1',
-  prompt: 'Make the logo blue and remove the tagline',
-  layout: 'horizontal',
-  count: 2,
-});
+media -
+  logo__edit_logo({
+    sourceSessionId: 'abc-123-session',
+    sourceLogoId: 'logo-1',
+    prompt: 'Make the logo blue and remove the tagline',
+    layout: 'horizontal',
+    count: 2,
+  });
 ```
 
 Wrong — editing the existing logo using the generic image editor or bypassing the slot system:
 
 ```typescript
-media-image__edit_image({ prompt: 'Move text to the right...', imageUrl: '...' }); // Loses transparency, can't reposition
+media - image__edit_image({ prompt: 'Move text to the right...', imageUrl: '...' }); // Loses transparency, can't reposition
 terminalCommand({ command: 'curl ... -o public/assets/logo.png' }); // Bypasses delivery infrastructure
 ```
 
@@ -74,21 +76,22 @@ Correct - generate a new logo with the new style, using the same inputs as the o
 
 ```typescript
 // Generate logos in all orientations for a full brand kit
-media-logo__generate_logo({
-  brandName: 'Sunrise Cafe',
-  brandDescription: 'A cozy neighborhood coffee shop serving artisan coffee and fresh pastries',
-  style: '3D',
-  styleDescription: 'warm and welcoming',
-  brandColors: 'warm earth tones with orange accents',
-  symbol: 'coffee cup with sunrise',
-  layout: 'all',
-});
+media -
+  logo__generate_logo({
+    brandName: 'Sunrise Cafe',
+    brandDescription: 'A cozy neighborhood coffee shop serving artisan coffee and fresh pastries',
+    style: '3D',
+    styleDescription: 'warm and welcoming',
+    brandColors: 'warm earth tones with orange accents',
+    symbol: 'coffee cup with sunrise',
+    layout: 'all',
+  });
 ```
 
 Wrong — asking for edits to the existing logo without referencing it, which may lead to a new unrelated design:
 
 ```typescript
-media-logo__edit_logo({ prompt: 'Make the logo 3D and warm' }); // May not understand to keep existing design elements
+media - logo__edit_logo({ prompt: 'Make the logo 3D and warm' }); // May not understand to keep existing design elements
 ```
 
 </example>

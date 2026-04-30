@@ -100,7 +100,7 @@ export function getLogoSlotName(logo: LogoData): string {
 
 /** Agent-facing placement directive for `logo_slot_placement` context (version in-repo, not user-visible). */
 const LOGO_SLOT_PLACEMENT_INSTRUCTIONS =
-  'The user saved their logo. Update the codebase so that logo appears everywhere it should: use urls.default on light backgrounds (img src, framework Image components, CSS when appropriate) and urls.solidOnDark on dark backgrounds. Add or update header, navigation, footer, favicon, and other branding; replace hardcoded logo image URLs with the provided slotPath wherever this logo orientation should appear.';
+  'The user saved their logo. Update the codebase so that logo appears everywhere it should: use urls.default (img src, framework Image components, CSS when appropriate), use urls.solid (only when showing off logo independently or when the logo is the same color as the background). Add or update header, navigation, footer, favicon, and other branding; replace hardcoded logo image URLs with the provided slotPath wherever this logo orientation should appear.';
 
 function buildLogoPlacementContext(slotNames: string[]): CustomContext {
   const primarySlot = slotNames[0] ?? DEFAULT_LOGO_SLOT_NAME
@@ -118,7 +118,7 @@ function buildLogoPlacementContext(slotNames: string[]): CustomContext {
       }),
       urls: {
         default: slotBase,
-        solidOnDark: `${slotBase}?variant=solid`,
+        solid: `${slotBase}?variant=solid`,
       },
       instructions: LOGO_SLOT_PLACEMENT_INSTRUCTIONS,
     },
