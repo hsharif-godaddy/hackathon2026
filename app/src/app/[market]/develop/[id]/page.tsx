@@ -30,6 +30,7 @@ import { ProtectedRoute } from '@/components/auth'
 import ErrorBoundary from '@/components/ErrorBoundary'
 import { FEEDBACK_ID } from '@/components/feedback/utils'
 import { buildDynamicApiUrl, dynamicApiConfigService } from '@/config/dynamic-api'
+import { EXPERIMENT_IDS } from '@/config/experiments'
 import { WebSocketProvider } from '@/contexts/WebSocketContext'
 import { useAotPreload } from '@/hooks/useAotPreload'
 import { useAppArchiveRestore } from '@/hooks/useAppArchiveRestore'
@@ -37,6 +38,7 @@ import { useAppDetails } from '@/hooks/useAppDetails'
 import { useAppHibernation } from '@/hooks/useAppHibernation'
 import { useChatTabs } from '@/hooks/useChatTabs'
 import { useGitHistoryQuery } from '@/hooks/useGitHistory'
+import { useHivemind } from '@/hooks/useHivemind'
 import { useImageReadiness } from '@/hooks/useImageReadiness'
 import { useStreamingWebSocket } from '@/hooks/useStreamingWebSocket'
 import { prefetchSubscription } from '@/hooks/useSubscription'
@@ -130,13 +132,17 @@ function DevelopPageContent() {
   // Unified initialization hook - handles all sequencing and UI state
   const init = useInitialization({ appId, isJobId })
 
+  // Check for venture home logo to airo builder experiment
+  const { cohort: ventureHomeLogoCohort } = useHivemind(EXPERIMENT_IDS.ventureHomeLogo);
+  const isVentureHomeLogo = ventureHomeLogoCohort === 'on';
+
   // Default to Brand Book tab for logo-designer template
-  const isBrandBookEnabled = useSwitchboard('appbuilder-brandbook')
+  const isBrandBookEnabled = useSwitchboard('appbuilder-brandbook');
   useEffect(() => {
-    if (init.ui.templateId === 'logo-designer' && isBrandBookEnabled) {
+    if (init.ui.templateId === 'logo-designer' && (isBrandBookEnabled || isVentureHomeLogo)) {
       useDevelopPageStore.getState().setViewMode(ViewMode.BRAND)
     }
-  }, [init.ui.templateId, isBrandBookEnabled])
+  }, [init.ui.templateId, isBrandBookEnabled, isVentureHomeLogo])
 
   // Hibernation handling - auto-resume when app is hibernated
   const appDetails = useAppDetails(appId);

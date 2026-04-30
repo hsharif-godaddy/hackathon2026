@@ -354,7 +354,15 @@ export default makeGasket({
       primaryRegion: 'us-west-2',
       secondaryRegion: 'us-east-1'
     },
-    enableGasketData: true
+    enableGasketData: true,
+    dataRetrieval: {
+      hivemind: {
+        settings: [
+          // Canonical ID: EXPERIMENT_IDS.ventureHomeLogo in app/src/config/experiments.ts
+          'vh_dashboard_logo_to_airo_builder_redirect'
+        ]
+      }
+    }
   },
   helmet: {
     // Disable X-Frame-Options — superseded by CSP frame-ancestors which supports multiple origins

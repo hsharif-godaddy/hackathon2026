@@ -7,6 +7,8 @@ export const EXPERIMENT_IDS = {
   recommendedPlan: 'aab_recommended_plan_uppdcx',
   /** Chat Gauge: whether to show the chat gauge on the develop page */
   chatGauge: 'airo-app-builder-chat-gauge',
+  /** Venture Home logo redirect: enable Brand Book for users entering via Venture Home */
+  ventureHomeLogo: 'vh_dashboard_logo_to_airo_builder_redirect',
 } as const
 
 /** Hivemind cohort id for hero copy, value props, examples intro, and section order (matches `hero_content_improvement/` + `data-homepage-variation`). */
