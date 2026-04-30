@@ -69,7 +69,7 @@
       "pnpm --filter website lint --fix"
     ],
     "*.{md,yml,yaml}": [
-      "bash -c 'if [[ \"$0\" != *\"pnpm-lock.yaml\" ]]; then prettier --write \"$0\"; fi'"
+      "bash -c 'if [[ \"$0\" != *\"pnpm-lock.yaml\" ]] && [[ \"$0\" != *\"agents/src/skills/\"* ]] && [[ \"$0\" != *\"agents/src/prompts/\"* ]]; then prettier --write \"$0\"; fi'"
     ],
     "*.json": [
       "bash -c 'if [[ \"$0\" != *\"pnpm-lock.json\" ]]; then prettier --write \"$0\"; fi'"

@@ -44,14 +44,12 @@ Correct - use the edit tool with the source logo reference:
 
 ```typescript
 // Edit the current saved logo — sessionId and logoId auto-resolved from slot
-media -
-  logo__edit_logo({
+media-logo__edit_logo({
     prompt: 'Make the logo blue and remove the tagline',
   });
 
 // Edit a specific logo from a known session
-media -
-  logo__edit_logo({
+media-logo__edit_logo({
     sourceSessionId: 'abc-123-session',
     sourceLogoId: 'logo-1',
     prompt: 'Make the logo blue and remove the tagline',
@@ -63,7 +61,7 @@ media -
 Wrong — editing the existing logo using the generic image editor or bypassing the slot system:
 
 ```typescript
-media - image__edit_image({ prompt: 'Move text to the right...', imageUrl: '...' }); // Loses transparency, can't reposition
+media-image__edit_image({ prompt: 'Move text to the right...', imageUrl: '...' }); // Loses transparency, can't reposition
 terminalCommand({ command: 'curl ... -o public/assets/logo.png' }); // Bypasses delivery infrastructure
 ```
 
@@ -76,8 +74,7 @@ Correct - generate a new logo with the new style, using the same inputs as the o
 
 ```typescript
 // Generate logos in all orientations for a full brand kit
-media -
-  logo__generate_logo({
+media-logo__generate_logo({
     brandName: 'Sunrise Cafe',
     brandDescription: 'A cozy neighborhood coffee shop serving artisan coffee and fresh pastries',
     style: '3D',
@@ -91,7 +88,7 @@ media -
 Wrong — asking for edits to the existing logo without referencing it, which may lead to a new unrelated design:
 
 ```typescript
-media - logo__edit_logo({ prompt: 'Make the logo 3D and warm' }); // May not understand to keep existing design elements
+media-logo__edit_logo({ prompt: 'Make the logo 3D and warm' }); // May not understand to keep existing design elements
 ```
 
 </example>
