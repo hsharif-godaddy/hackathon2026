@@ -1,0 +1,70 @@
+# User Correction & Repeated Ask Detection: validates correction detection across multi-message sessions
+# Covers: USER_CORRECTION, CLARIFICATION_LOOP, user_induced_retry classification
+name: User Correction Friction
+description: |
+  Tests the friction detector's ability to identify user corrections and repeated asks.
+  The scenario creates a site, then sends sequential chat messages where later messages
+  deliberately correct or override what the agent built from the first message.
+
+  This triggers USER_CORRECTION patterns when:
+    - The agent completes work on message N
+    - The user sends message N+1 that contradicts or corrects message N
+    - The agent re-does work that was already done
+
+  The corrections are intentional and realistic:
+    1. First message: "Add a contact form with fields: Name, Email, Phone, Message"
+    2. Second message (correction): "Actually, remove the Phone field and add a Subject dropdown instead"
+    3. Third message (redo): "Change the form's submit button text from 'Submit' to 'Send Message' and make it blue"
+
+  These simulate real user behavior where initial instructions are incomplete or change.
+
+startUrl: https://airo-builder.godaddy.com
+timeout: 900000   # 15 minutes
+maxSteps: 80
+stepsPerMessage: 20
+headed: false
+
+qualityEval:
+  enabled: false
+
+credentials:
+  username: ${TEST_USERNAME}
+  password: ${TEST_PASSWORD}
+
+sitePrompt:
+  prompt: |
+    Create a simple business landing page for "Bright Solutions Consulting".
+    Include a hero section with heading and CTA button, a 3-column services section,
+    and a footer with contact info. Color scheme: white background, dark navy text (#1a1a3e),
+    green accent (#2ecc71).
+
+systemPrompt: |
+  ${common.developPageBase}
+
+  ${common.errorHandlingInstructions}
+
+  ${common.chatInstructions}
+
+  ${common.waitInstructions}
+
+  After the initial site is built, you will send a series of chat messages.
+  Each message modifies the site. Some messages may contradict earlier ones —
+  this is intentional and simulates real user correction behavior.
+
+  IMPORTANT: After sending each chat message, wait for the agent to finish
+  processing (loading indicator disappears) before proceeding to the next message.
+
+goal: |
+  Detect user-correction friction patterns across a multi-message chat session.
+
+  The sequential chat messages intentionally contradict earlier instructions to
+  trigger USER_CORRECTION detection in the friction detector. Report success if
+  all three messages are processed and the form state reflects the final correction.
+
+chatMessages:
+  - "Add a contact form section below the services section. The form should have these fields: Name (text input), Email (email input), Phone (tel input), and Message (textarea). Add a green Submit button."
+  - "Actually, I changed my mind about the form. Remove the Phone field and replace it with a Subject dropdown that has these options: General Inquiry, Partnership, Consulting, Support. Keep everything else the same."
+  - "Change the form's submit button text from 'Submit' to 'Send Message' and make it match the primary navy color (#1a1a3e) instead of green."
+
+cleanup:
+  deleteAllSitesViaAPI: false

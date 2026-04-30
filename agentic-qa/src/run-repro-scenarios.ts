@@ -26,6 +26,7 @@ const pkgRoot = resolve(__dirname, '..');
 config({ path: resolve(pkgRoot, '.env') });
 
 const REPRO_SCENARIOS = [
+  'scenarios/prod-critical-failures/terminal-dangerous-pattern.yaml',
   'scenarios/prod-critical-failures/colorscheme-no-description.yaml',
 ] as const;
 
@@ -34,10 +35,11 @@ const REPRO_SCENARIOS = [
 // runner hangs. Keep it strictly greater than the YAML timeout.
 const DEFAULT_WALL_CLOCK_TIMEOUT_MS = 12 * 60 * 1000;
 const SCENARIO_TIMEOUT_MS: Partial<Record<typeof REPRO_SCENARIOS[number], number>> = {
-  // No override needed — the default 720 s outer guard exceeds the YAML 420 s inner timeout.
+  // No overrides needed — the default 720 s outer guard exceeds each YAML's inner timeout.
 };
 
 const SCENARIO_MAX_ATTEMPTS: Partial<Record<typeof REPRO_SCENARIOS[number], number>> = {
+  'scenarios/prod-critical-failures/terminal-dangerous-pattern.yaml': 1,
   'scenarios/prod-critical-failures/colorscheme-no-description.yaml': 1,
 };
 function timeoutResult(scenario: Scenario, timeoutMs: number): EvalResult {
