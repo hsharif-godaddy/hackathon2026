@@ -67,6 +67,9 @@ func validateWebhookTargetURL(raw string, localAuthDisable bool) string {
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
 		return "url must be an absolute URL"
 	}
+	if parsed.User != nil {
+		return "url must not contain credentials"
+	}
 
 	host := strings.ToLower(parsed.Hostname())
 
@@ -148,12 +151,24 @@ func (s *Server) webhookHTTPClient() *http.Client {
 	return &http.Client{Timeout: 15 * time.Second}
 }
 
+// webhookURLForLog returns scheme://host for structured logs (no path, query, fragment, or userinfo).
+func webhookURLForLog(raw string) string {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return ""
+	}
+	return u.Scheme + "://" + u.Host
+}
+
 // deliverWebhook sends a webhook request with token authentication.
 // When TokenGenerator is nil (local dev with auth disabled), sends without Authorization header.
 func (s *Server) deliverWebhook(ctx context.Context, wh store.WebhookRow, payload []byte) error {
 	parsedURL, err := url.Parse(wh.URL)
 	if err != nil {
 		return fmt.Errorf("invalid webhook URL: %w", err)
+	}
+	if parsedURL.User != nil {
+		return fmt.Errorf("webhook URL must not contain credentials")
 	}
 
 	host := strings.ToLower(parsedURL.Hostname())
@@ -247,11 +262,15 @@ func (s *Server) DeliverEventWebhooks(ctx context.Context, eventType, productKey
 	failCount := 0
 	for i := range hooks {
 		if err := s.deliverWebhook(ctx, hooks[i], body); err != nil {
+			logURL := webhookURLForLog(hooks[i].URL)
+			if logURL == "" {
+				logURL = "(unparseable)"
+			}
 			slog.Warn("webhook.delivery_failed",
 				"error", err,
 				"webhookId", hooks[i].ID,
 				"eventType", eventType,
-				"url", hooks[i].URL)
+				"url", logURL)
 			if firstErr == nil {
 				firstErr = err
 			}
@@ -282,7 +301,11 @@ func webhookToResponse(row *store.WebhookRow) map[string]any {
 }
 
 func (s *Server) getWebhooks(w http.ResponseWriter, r *http.Request) {
-	pk := strings.TrimSpace(r.URL.Query().Get("productKey"))
+	q := r.URL.Query()
+	if !rejectUnknownQueryKeys(w, q, allowedGetWebhooksQueryKeys) {
+		return
+	}
+	pk := strings.TrimSpace(q.Get("productKey"))
 	if pk != "" {
 		if msg := validateIdentifier(pk); msg != "" {
 			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "productKey "+msg)

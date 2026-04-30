@@ -16,15 +16,15 @@ budget-service exposes a REST API for budgets, credit pools (budget items), LLM-
 
 ## Assets
 
-| Asset                                          | Notes                                                                                      |
-| ---------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| Budget, item, session, report, and ledger rows | Business and usage data; UUID-keyed.                                                       |
-| Session `metadata` (JSON)                      | Caller-supplied; may contain operational or customer-adjacent strings.                     |
-| Money and credit fields                        | `NUMERIC`/JSON string amounts; business-sensitive.                                         |
-| Webhook URLs                                   | Stored per product; disclosure enables targeted callback traffic.                          |
-| JWTs in transit                                | Bearer tokens; compromise enables API access within token scope.                           |
-| `DATABASE_URL` and similar secrets             | Environment/config; full DB access if leaked.                                              |
-| Application logs                               | Structured JSON; paths/user-agents sanitized; optional `requestBody` logging when enabled. |
+| Asset                                          | Notes                                                                                                              |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Budget, item, session, report, and ledger rows | Business and usage data; UUID-keyed.                                                                               |
+| Session `metadata` (JSON)                      | Caller-supplied; valid JSON only, **256 KiB** max raw bytes; may contain operational or customer-adjacent strings. |
+| Money and credit fields                        | `NUMERIC`/JSON string amounts; business-sensitive.                                                                 |
+| Webhook URLs                                   | Stored per product; disclosure enables targeted callback traffic.                                                  |
+| JWTs in transit                                | Bearer tokens; compromise enables API access within token scope.                                                   |
+| `DATABASE_URL` and similar secrets             | Environment/config; full DB access if leaked.                                                                      |
+| Application logs                               | Structured JSON; paths/user-agents sanitized; optional `requestBody` logging when enabled.                         |
 
 ## Trust boundaries
 
@@ -42,6 +42,10 @@ budget-service exposes a REST API for budgets, credit pools (budget items), LLM-
 - **Authorization:** Handlers do **not** map JWT claims to budget or session rows. Any caller with a **valid token** and an allowed role/cert (per allowlists when JWT auth is enabled) who knows a resource id (`budgetId`, `sessionId`, etc.) can invoke the corresponding API. **Access control is expected from:** the IAM role and cert allowlists, network policies, which services receive credentials, and caller-side enforcement—not from row-level checks inside this service.
 
 Document this assumption explicitly for assessors evaluating IDOR-style risk.
+
+## Request input validation
+
+For security review / ticket responses: **layered body limits** — JSON request bodies are first capped at **1 MiB** (`decodeJSONBody` / `http.MaxBytesReader` in `internal/api/decode.go`), then decoded with **unknown fields rejected**. Path parameters use **UUID parsing** or **identifier regex** (`requireUUIDParam`, `validateIdentifier` / `validateLabel` in `internal/api/validate.go`); identifier and label strings are also bounded to **`maxFieldLen` (256 bytes)** by the same helpers (regex alone does not imply length). Query strings on **`GET /api/v1/reports`**, **`GET /api/v1/reports/aggregate`**, and **`GET /api/v1/webhooks`** only accept **documented parameter names**; any other key returns **400** (`rejectUnknownQueryKeys` in `internal/api/query.go`). Amounts and ratios go through **`internal/credits`**; dates RFC3339; webhook **`eventType`** is allowlisted and **`url`** is scheme/host validated with **no userinfo** (credentials) allowed (`internal/api/webhook_handlers.go`). **`POST /api/v1/sessions`** `metadata`: the overall body still obeys the **1 MiB** cap; for a non-`null` metadata value the handler requires **valid JSON** (`json.Valid`) then enforces **`maxSessionMetadataBytes` (256 KiB)** on the raw metadata bytes (`maxSessionMetadataBytes` in `internal/api/budget_handlers.go`). A JSON **`null`** metadata value is treated as omitted (no stored metadata, no separate size check). SQL uses **parameterized** queries in `internal/store` (dynamic `WHERE` clauses use `$n` placeholders only). The API is **JSON-only** (no HTML rendering in this service).
 
 ## STRIDE summary
 

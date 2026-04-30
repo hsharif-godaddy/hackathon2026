@@ -463,6 +463,21 @@ func TestPostBudgetSessionRejectsMissingBudgetId(t *testing.T) {
 	}
 }
 
+func TestPostBudgetSessionRejectsEmptyBody(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/sessions", strings.NewReader(""))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.postBudgetSession(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "invalid JSON body") {
+		t.Fatalf("expected invalid JSON body, got %s", rec.Body.String())
+	}
+}
+
 func TestPostBudgetSessionRejectsInvalidBudgetId(t *testing.T) {
 	t.Parallel()
 	s := &Server{}
@@ -472,6 +487,124 @@ func TestPostBudgetSessionRejectsInvalidBudgetId(t *testing.T) {
 	s.postBudgetSession(rec, req)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestPostBudgetSessionRejectsOversizedMetadata(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	bid := uuid.NewString()
+	metaPrefix := `{"p":"`
+	metaSuffix := `"}`
+	innerLen := maxSessionMetadataBytes + 1 - len(metaPrefix) - len(metaSuffix)
+	metaJSON := metaPrefix + strings.Repeat("a", innerLen) + metaSuffix
+	if len(metaJSON) != maxSessionMetadataBytes+1 {
+		t.Fatalf("oversized metadata len %d want %d", len(metaJSON), maxSessionMetadataBytes+1)
+	}
+	body := `{"budgetId":"` + bid + `","metadata":` + metaJSON + `}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/sessions", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.postBudgetSession(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "metadata exceeds maximum size") {
+		t.Fatalf("expected metadata size error, got %s", rec.Body.String())
+	}
+}
+
+func TestPostBudgetSessionAcceptsMetadataAtMaxSize(t *testing.T) {
+	ctx := context.Background()
+	st := testStore(t)
+	key := "meta-max-" + uuid.NewString()
+	if _, err := st.CreateProduct(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	budgetID := uuid.NewString()
+	if err := st.CreateBudget(ctx, budgetID, key, []store.ItemInput{
+		{CreditsTotal: "10.000000", CostCreditRatio: "1.000000"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	s := &Server{Store: st}
+	metaPrefix := `{"p":"`
+	metaSuffix := `"}`
+	n := maxSessionMetadataBytes - len(metaPrefix) - len(metaSuffix)
+	metaFrag := metaPrefix + strings.Repeat("a", n) + metaSuffix
+	if len(metaFrag) != maxSessionMetadataBytes {
+		t.Fatalf("at-limit metadata len %d want %d", len(metaFrag), maxSessionMetadataBytes)
+	}
+	body := `{"budgetId":"` + budgetID + `","metadata":` + metaFrag + `}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/sessions", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.postBudgetSession(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status %d body %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestGetReportsRejectsUnknownQueryParameter(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	req := httptest.NewRequest(http.MethodGet, "/reports?productKey=x&extra=1", nil)
+	rec := httptest.NewRecorder()
+	s.getReports(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "unknown query parameters") {
+		t.Fatalf("expected unknown query parameters, got %s", rec.Body.String())
+	}
+}
+
+func TestGetReportsAllowsAllDocumentedQueryKeys(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	bid := uuid.NewString()
+	sid := uuid.NewString()
+	path := "/reports?productKey=x&budgetId=" + bid + "&sessionId=" + sid + "&sort=createdAt&order=desc&limit=1&offset=0"
+	req := httptest.NewRequest(http.MethodGet, path, nil)
+	rec := httptest.NewRecorder()
+	s.getReports(rec, req)
+	if rec.Code == http.StatusBadRequest && strings.Contains(rec.Body.String(), "unknown query parameters") {
+		t.Fatalf("allowlist rejected valid keys: %s", rec.Body.String())
+	}
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("want 503 without store (allowlist passed), got %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestGetReportsAggregateRejectsUnknownQueryParameter(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	req := httptest.NewRequest(http.MethodGet, "/reports/aggregate?productKey=x&label=y&nope=1", nil)
+	rec := httptest.NewRecorder()
+	s.getReportsAggregate(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "unknown query parameters") {
+		t.Fatalf("expected unknown query parameters, got %s", rec.Body.String())
+	}
+}
+
+func TestGetReportsAggregateAllowsAllDocumentedQueryKeys(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	bid := uuid.NewString()
+	sid := uuid.NewString()
+	path := "/reports/aggregate?productKey=x&label=usg&budgetId=" + bid + "&sessionId=" + sid +
+		"&from=2000-01-01T00:00:00Z&to=2100-01-01T00:00:00Z"
+	req := httptest.NewRequest(http.MethodGet, path, nil)
+	rec := httptest.NewRecorder()
+	s.getReportsAggregate(rec, req)
+	if rec.Code == http.StatusBadRequest && strings.Contains(rec.Body.String(), "unknown query parameters") {
+		t.Fatalf("allowlist rejected valid keys: %s", rec.Body.String())
+	}
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("want 503 without store (allowlist passed), got %d %s", rec.Code, rec.Body.String())
 	}
 }
 

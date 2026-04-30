@@ -21,6 +21,9 @@ import (
 
 const maxSessionCallRequestIDsInLog = 100
 
+// maxSessionMetadataBytes caps raw JSON bytes accepted for budget_sessions.metadata (jsonb).
+const maxSessionMetadataBytes = 256 << 10
+
 // flexAmount unmarshals JSON string or number into a normalized decimal string.
 type flexAmount string
 
@@ -890,7 +893,7 @@ func (s *Server) postBudgetSession(w http.ResponseWriter, r *http.Request) {
 		BudgetID string          `json:"budgetId"`
 		Metadata json.RawMessage `json:"metadata"`
 	}
-	if !decodeJSONBody(w, r, &postSess, true) {
+	if !decodeJSONBody(w, r, &postSess, false) {
 		return
 	}
 	budgetID := strings.TrimSpace(postSess.BudgetID)
@@ -901,6 +904,10 @@ func (s *Server) postBudgetSession(w http.ResponseWriter, r *http.Request) {
 	if len(postSess.Metadata) > 0 && !bytes.Equal(postSess.Metadata, []byte("null")) {
 		if !json.Valid(postSess.Metadata) {
 			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "metadata must be valid JSON")
+			return
+		}
+		if len(postSess.Metadata) > maxSessionMetadataBytes {
+			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "metadata exceeds maximum size")
 			return
 		}
 		metaBytes = postSess.Metadata
@@ -918,7 +925,7 @@ func (s *Server) postBudgetSession(w http.ResponseWriter, r *http.Request) {
 
 	d, err := s.Store.GetBudgetSession(r.Context(), sessionID)
 	if err != nil {
-		slog.Error("budget.post_budget_session_get", "error", err)
+		slog.Error("budget.post_budget_session_get", "error", err, "budgetId", budgetID, "sessionId", sessionID)
 		writeJSON(w, http.StatusCreated, map[string]string{"budgetId": budgetID, "sessionId": sessionID})
 		return
 	}
@@ -1006,8 +1013,7 @@ func (s *Server) patchBudgetSession(w http.ResponseWriter, r *http.Request) {
 	}
 	out, err := budgetSessionToResponse(sessionID, d)
 	if err != nil {
-		slog.Error("budget.patch_budget_session_response", "error", err)
-		writeJSON(w, http.StatusOK, map[string]string{"budgetId": d.BudgetID, "sessionId": sessionID})
+		writeInternalError(w, "budget.patch_budget_session_response", err)
 		return
 	}
 	if sessionDebugQuery(r) {
@@ -1165,6 +1171,9 @@ func (s *Server) postBudgetSessionReport(w http.ResponseWriter, r *http.Request)
 
 func (s *Server) getReports(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
+	if !rejectUnknownQueryKeys(w, q, allowedGetReportsQueryKeys) {
+		return
+	}
 	pk := strings.TrimSpace(q.Get("productKey"))
 	if pk != "" {
 		if msg := validateIdentifier(pk); msg != "" {
@@ -1273,6 +1282,9 @@ func parseRFC3339Time(s string) (time.Time, error) {
 
 func (s *Server) getReportsAggregate(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
+	if !rejectUnknownQueryKeys(w, q, allowedGetReportsAggregateQueryKeys) {
+		return
+	}
 	pk := strings.TrimSpace(q.Get("productKey"))
 	if pk != "" {
 		if msg := validateIdentifier(pk); msg != "" {

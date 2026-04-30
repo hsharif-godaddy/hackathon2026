@@ -86,6 +86,34 @@ func TestGetWebhooksRejectsInvalidProductKeyCharacters(t *testing.T) {
 	}
 }
 
+func TestGetWebhooksRejectsUnknownQueryParameter(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	req := httptest.NewRequest(http.MethodGet, "/webhooks?productKey=x&foo=1", nil)
+	rec := httptest.NewRecorder()
+	s.getWebhooks(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "unknown query parameters") {
+		t.Fatalf("expected unknown query parameters, got %s", rec.Body.String())
+	}
+}
+
+func TestGetWebhooksAllowsDocumentedProductKeyQuery(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	req := httptest.NewRequest(http.MethodGet, "/webhooks?productKey=x", nil)
+	rec := httptest.NewRecorder()
+	s.getWebhooks(rec, req)
+	if rec.Code == http.StatusBadRequest && strings.Contains(rec.Body.String(), "unknown query parameters") {
+		t.Fatalf("allowlist rejected valid keys: %s", rec.Body.String())
+	}
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("want 503 without store (allowlist passed), got %d %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestPostWebhookRejectsInvalidProductKeyCharacters(t *testing.T) {
 	t.Parallel()
 	s := &Server{}
@@ -314,11 +342,13 @@ func TestValidateWebhookTargetURL_DomainValidation(t *testing.T) {
 		{"prod allows gdcorp.tools", "https://webhook.gdcorp.tools/hook", false, ""},
 		{"prod allows nstk.net", "https://nstk.net/hook", false, ""},
 		{"prod allows nstk.net subdomain", "https://api.nstk.net/hook", false, ""},
+		{"prod rejects url with userinfo", "https://user:pass@api.godaddy.com/hook", false, "url must not contain credentials"},
 
 		// Local dev mode (localAuth=true) - no domain restrictions
 		{"local allows any https domain", "https://example.com/hook", true, ""},
 		{"local allows loopback http", "http://localhost:8080/hook", true, ""},
 		{"local rejects non-loopback http", "http://example.com/hook", true, "http is only allowed for loopback addresses (127.0.0.1, localhost, ::1)"},
+		{"local rejects url with userinfo", "https://user:pass@example.com/hook", true, "url must not contain credentials"},
 	}
 
 	for _, tc := range tests {
@@ -468,6 +498,33 @@ func TestDeliverWebhook_HTTPSRequiredWithTokenGenerator(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "must use HTTPS") {
 		t.Errorf("error = %q, want 'must use HTTPS'", err)
+	}
+}
+
+func TestDeliverWebhook_RejectsUserinfoInURL(t *testing.T) {
+	t.Parallel()
+	s := &Server{
+		TokenGenerator: &stubTokenGenerator{token: "test-token", healthy: true},
+	}
+	wh := store.WebhookRow{
+		ID:  uuid.NewString(),
+		URL: "https://user:secret@api.godaddy.com/hook",
+	}
+	err := s.deliverWebhook(context.Background(), wh, []byte(`{}`))
+	if err == nil {
+		t.Fatal("expected error for URL with userinfo")
+	}
+	if !strings.Contains(err.Error(), "must not contain credentials") {
+		t.Fatalf("error = %q, want credentials rejection", err)
+	}
+}
+
+func TestWebhookURLForLog_OmitsUserinfoAndPath(t *testing.T) {
+	t.Parallel()
+	got := webhookURLForLog("https://user:pass@api.godaddy.com:8443/hook?x=1#frag")
+	want := "https://api.godaddy.com:8443"
+	if got != want {
+		t.Fatalf("webhookURLForLog = %q, want %q", got, want)
 	}
 }
 
