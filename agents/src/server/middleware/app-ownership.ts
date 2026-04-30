@@ -146,6 +146,54 @@ export function validateAppOwnership(req: Request, res: Response, next: NextFunc
 }
 
 /**
+ * Create middleware to validate app ownership from a named route param
+ *
+ * @param paramName - Name of the route parameter containing appId (default: 'id')
+ * @returns Express middleware function
+ *
+ * @example
+ * router.get('/events/:appId', validateAppOwnershipFromParam('appId'), async (req, res) => {
+ *   // Handler only executes if req.params.appId matches authenticated siteId
+ * });
+ */
+export function validateAppOwnershipFromParam(paramName: string = 'id') {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    try {
+      const authReq = req as AuthenticatedRequest;
+
+      if (!authReq.agentContext || !authReq.agentContext.siteId) {
+        logger.warn('route.middleware.ownership.no-context', {
+          path: req.path,
+          method: req.method,
+          source: `params.${paramName}`,
+        }, { tags: ['security', 'authentication'] });
+        res.status(401).json({
+          error: 'Authentication required',
+          requiresAuth: true,
+        });
+        return;
+      }
+
+      const authenticatedSiteId = authReq.agentContext.siteId;
+      const requestedAppId = req.params[paramName];
+
+      validateOwnership(authenticatedSiteId, requestedAppId, `params.${paramName}`, req, res, next);
+    } catch (error) {
+      logger.error('route.middleware.ownership.error', {
+        error: error instanceof Error ? error.message : String(error),
+        path: req.path,
+        method: req.method,
+        source: `params.${paramName}`,
+      }, { tags: ['security', 'error'] });
+      res.status(500).json({
+        success: false,
+        error: 'Internal server error',
+      });
+    }
+  };
+}
+
+/**
  * Create middleware to validate app ownership from request body
  *
  * @param fieldName - Name of the field in request body containing appId (default: 'appId')

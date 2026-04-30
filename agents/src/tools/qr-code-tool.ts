@@ -3,7 +3,7 @@ import path from 'node:path';
 import QRCode from 'qrcode';
 import { nanoid } from 'nanoid';
 import { AppRepository } from '../database/repositories/AppRepository.js';
-import type { ClientActionService } from '../services/ClientActionService.js';
+import type { IClientActionService } from '../services/ClientActionService.js';
 import { logger } from '../logging/index.js';
 import { getPersistentPublicDir } from '../utils/persistent-assets.js';
 
@@ -11,7 +11,7 @@ export interface QRCodeOptions {
   targetPage?: string;
   size?: number; // Default 1000px for high quality
   appId: string;
-  clientActionService?: ClientActionService; // Optional: for fetching published URL from client
+  clientActionService?: IClientActionService; // Optional: for fetching published URL from client
 }
 
 export interface QRCodeResult {

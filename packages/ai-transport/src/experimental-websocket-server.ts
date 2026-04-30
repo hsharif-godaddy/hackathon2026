@@ -5,7 +5,7 @@ import type { Socket, ServerOptions } from 'socket.io'
 import { Server as HTTPServer } from 'http'
 import type { AgentFactory, AgentWrapper, PipelineContextMessage } from '@airo/ai-lib'
 import { createAgentFactory } from '@airo/ai-lib'
-import { buildTokenUsage, calculateCostEstimate, formatCostEstimate, getCacheHitRate } from '@airo/ai-lib'
+import { buildTokenUsage, calculateCostEstimate, formatCostEstimate, getCacheHitRate, dataUrlsToProcessedFiles } from '@airo/ai-lib'
 import type { ExecutionStep } from '@airo/ai-lib/budget'
 import { classifyError, BudgetExceededError, isBudgetExceededAPIError, createLogger } from '@airo/ai-common'
 import { isBudgetServiceError, mapBudgetErrorToResponse } from '@airo/shared/budget'
@@ -206,20 +206,24 @@ export interface WebSocketConfig {
     [key: string]: unknown
   } | void>
   /**
-   * Optional post-stream validator run after a completed stream iteration (and
-   * BEFORE auto-continuation / handoff checks) but BEFORE
-   * `beforeMessageComplete` / `completeConversation`. Lets the caller run
-   * server-side validation on what the agent just produced (e.g. a type check
-   * against the preview workspace) and request an additional in-loop
-   * continuation turn using a synthetic user prompt.
+   * Optional post-stream validator. Runs after each completed stream iteration,
+   * before auto-continuation/handoff checks, and before `beforeMessageComplete` /
+   * `completeConversation`. Lets the caller run server-side validation on what
+   * the agent just produced (e.g. a type check against the preview workspace)
+   * and request an additional in-loop continuation turn using a synthetic user
+   * prompt.
+   *
+   * Skipped when a tool has already set `__autoContinue` on context metadata
+   * (tool-driven continuation wins). Failures must be non-fatal: the loop
+   * continues to completion even if the validator throws.
    *
    * The hook is invoked once per completed `streamAgentResponse` iteration. If it
-   * returns `{ continuationPrompt }`, the same while loop that handles
-   * auto-continuation and handoffs will re-run the current agent with that prompt
-   * as the next "user" message. This happens before the git squash-merge in
-   * `beforeMessageComplete`, so any files written by the continuation land in the
-   * same squashed commit. The caller is responsible for its own retry cap - the
-   * server will only bail on the overall `maxHandoffs` loop guard.
+   * returns `{ continuationPrompt }`, the execution loop re-runs the current
+   * agent with that prompt as the next "user" message. This happens before the
+   * git squash-merge in `beforeMessageComplete`, so any files written by the
+   * continuation land in the same squashed commit. The caller is responsible
+   * for its own retry cap — the loop will only bail on the overall
+   * `MAX_HANDOFFS` guard.
    *
    * `toolCalls` contains the tool calls that ran during the just-completed stream
    * (same shape as the data fed to `onLlmEnd`). `abortSignal` is the socket's
@@ -3594,45 +3598,10 @@ export class WebSocketServer {
       }
     }
 
-    // Start streaming using streamGenerate with clean message assembly
-    // Extract screenshots from context metadata if present
+    // Convert screenshot data URLs from context metadata into ProcessedFile objects for vision
     let processedFiles: any[] | undefined
     if (context?.metadata && Array.isArray((context.metadata as any)._screenshots)) {
-      const screenshots = (context.metadata as any)._screenshots as string[]
-      processedFiles = []
-      for (let i = 0; i < screenshots.length; i++) {
-        try {
-          // Convert data URL to ProcessedFile
-          const dataUrl = screenshots[i]
-          if (!dataUrl) {continue}
-
-          const matches = dataUrl.match(/^data:([^;]+);base64,(.+)$/)
-          if (matches?.[1] && matches[2]) {
-            const mimeType: string = matches[1]
-            const base64Content: string = matches[2]
-            const size = Math.ceil((base64Content.length * 3) / 4)
-            const fileExtension = mimeType.split('/')[1] || 'png'
-
-            processedFiles.push({
-              input: {
-                source: dataUrl,
-                mimeType,
-                filename: `screenshot-${i + 1}.${fileExtension}`
-              },
-              base64Content,
-              metadata: {
-                size,
-                mimeType,
-                filename: `screenshot-${i + 1}.${fileExtension}`,
-                extractedAt: new Date(),
-                processingTime: 0
-              }
-            })
-          }
-        } catch (error) {
-          this.logger.error('screenshot.process.failure', error)
-        }
-      }
+      processedFiles = dataUrlsToProcessedFiles((context.metadata as any)._screenshots)
       if (processedFiles.length > 0) {
         this.logger.info('vision.attach', { count: processedFiles.length })
       }
@@ -3670,7 +3639,11 @@ export class WebSocketServer {
     if (this.config.onLlmStart) {
       try {
         // Build params object, only including defined values
-        const params: Parameters<NonNullable<typeof this.config.onLlmStart>>[0] = {
+        const params: {
+          socketId: string; model: string; provider: string
+          conversationId?: string; appId?: string; context?: Record<string, unknown>
+          input?: Array<{ role: string; content: string }>; tools?: string[]; toolChoice?: 'auto' | 'required' | 'none'
+        } = {
           socketId: socket.id,
           model: modelName,
           provider: providerName

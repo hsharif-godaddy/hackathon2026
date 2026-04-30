@@ -30,12 +30,14 @@
     "@opentelemetry/api": "catalog:",
     "@signals/otel-sdk": "^0.2.0",
     "ai": "catalog:",
+    "negotiator": "^1.0.0",
     "socket.io": "catalog:",
     "ws": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
     "@airo/eslint-config": "workspace:*",
+    "@types/negotiator": "^0.6.3",
     "@types/node": "catalog:",
     "@types/ws": "catalog:",
     "eslint": "catalog:",

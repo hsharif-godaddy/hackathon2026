@@ -36,6 +36,9 @@ import {
   RuntimeErrorService,
   type RuntimeErrorResult
 } from '../services/runtime-error-service.js';
+import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js';
+import { GitUtils } from '../utils/git.js';
+import { AppRepository } from '../database/repositories/AppRepository.js';
 
 type PhaseLogger = Pick<ILogger, 'info' | 'warn'>;
 
@@ -801,4 +804,89 @@ export function createPostStreamValidator(deps: CompositePostStreamValidatorDeps
 
     return;
   };
+}
+
+/**
+ * Standard retry/wait budgets. Callers can override via buildSharedPostStreamValidator
+ * params, but defaults match production.
+ */
+export const POST_STREAM_VALIDATOR_DEFAULTS = {
+  maxTypecheckRetries: 2,
+  maxRuntimeErrorRetries: 2,
+  runtimeErrorPollMaxWaitMs: 10_000,
+  runtimeErrorQuietWindowMs: 1500,
+} as const;
+
+/**
+ * Build a post-stream validator with the production wiring: shared TypecheckService
+ * and RuntimeErrorService instances, retry counter Maps, git-status skip gate.
+ *
+ * Returns `{ validator, resetRetries }`. Callers MUST call `resetRetries(sessionKey)`
+ * at the start of each user turn so leftover counts from prior turns don't shrink the
+ * current turn's retry budget. Sessions keys are caller-defined (socketId for WS,
+ * `sse:${conversationId}` for SSE) and must not collide across transports.
+ */
+export function buildSharedPostStreamValidator(logger: PhaseLogger): {
+  validator: ReturnType<typeof createPostStreamValidator>
+  resetRetries: (sessionKey: string) => void
+} {
+  const typecheckService = new TypecheckService()
+  const runtimeErrorService = new RuntimeErrorService()
+  const typecheckRetries = new Map<string, number>()
+  const runtimeErrorRetries = new Map<string, number>()
+  const appRepo = new AppRepository()
+
+  const hasUncommittedChanges = async (appId: string): Promise<boolean> => {
+    const app = appRepo.findById(appId)
+    if (!app) throw new Error(`App not found: ${appId}`)
+    const devSupervisor = DevSupervisorClientFactory.createForApp(appId)
+    if (!devSupervisor) throw new Error(`DevSupervisor not available for app: ${appId}`)
+    return new GitUtils(devSupervisor).hasUncommittedChanges(app.path)
+  }
+
+  const validator = createPostStreamValidator({
+    typecheck: {
+      typecheckService,
+      retryCounters: typecheckRetries,
+      maxRetries: POST_STREAM_VALIDATOR_DEFAULTS.maxTypecheckRetries,
+      logger,
+    },
+    runtimeErrors: {
+      runtimeErrorService,
+      retryCounters: runtimeErrorRetries,
+      maxRetries: POST_STREAM_VALIDATOR_DEFAULTS.maxRuntimeErrorRetries,
+      maxWaitMs: POST_STREAM_VALIDATOR_DEFAULTS.runtimeErrorPollMaxWaitMs,
+      quietWindowMs: POST_STREAM_VALIDATOR_DEFAULTS.runtimeErrorQuietWindowMs,
+      // 2nd-run restart recovery: when the runtime phase has already surfaced
+      // errors once for this session and errors are still present on the next
+      // run, HMR may not have propagated the agent's fix (e.g. a top-level
+      // module throw crashed the page before `error-client.ts` wired its HMR
+      // listeners, so the buffer's cycleId never advances). Restart the
+      // preview process via dev-supervisor; the phase then waits for a fresh
+      // cycleId beacon and re-polls once before deciding. If the supervisor
+      // isn't reachable we return a benign failure and the phase falls
+      // through to its existing continuation logic.
+      restartPreview: async (appId, signal) => {
+        const ds = DevSupervisorClientFactory.createForApp(appId)
+        if (!ds) {
+          return { success: false, error: 'DevSupervisor not available' }
+        }
+        if (signal.aborted) {
+          return { success: false, error: 'aborted' }
+        }
+        return ds.restartProcess({ graceful: true })
+      },
+      logger,
+    },
+    hasUncommittedChanges,
+    logger,
+  })
+
+  return {
+    validator,
+    resetRetries: (sessionKey) => {
+      typecheckRetries.delete(sessionKey)
+      runtimeErrorRetries.delete(sessionKey)
+    },
+  }
 }

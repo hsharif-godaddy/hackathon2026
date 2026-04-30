@@ -5,14 +5,14 @@
 
 import type { ChatMessage } from '@airo/ai-transport'
 import type { AgentsAppContext as BaseAgentsAppContext } from '@airo/shared/websocket'
-import type { ClientActionService } from '../services/ClientActionService.js'
+import type { IClientActionService } from '../services/ClientActionService.js'
 
 /**
  * Agents-specific extension of AgentsAppContext with server-only fields
  */
 export interface AgentsAppContext extends BaseAgentsAppContext {
   metadata?: BaseAgentsAppContext['metadata'] & {
-    clientActionService?: ClientActionService
+    clientActionService?: IClientActionService
     budgetServiceEnabled?: boolean
     subscriptionId?: string
   }

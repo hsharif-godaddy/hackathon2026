@@ -6,7 +6,7 @@
  */
 
 import { logger } from '../logging/index.js'
-import type { ClientActionService } from '../services/ClientActionService.js'
+import type { IClientActionService } from '../services/ClientActionService.js'
 
 export interface PublishOptions {
   appId: string
@@ -30,7 +30,7 @@ export interface PublishResult {
  */
 export async function executePublish(
   options: PublishOptions,
-  clientActionService: ClientActionService
+  clientActionService: IClientActionService
 ): Promise<PublishResult> {
   const { appId } = options
 

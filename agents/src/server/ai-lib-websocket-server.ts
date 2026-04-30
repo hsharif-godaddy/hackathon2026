@@ -36,7 +36,6 @@ import { auth, AuthType, BYPASS_SITE_IDS } from '../services/features.js'
 import { getTemplateIds } from '../agents/template-registry.js'
 import { isEmployeeAuthType, type AuthType as TokenAuthType, type ProductType } from '@airo/shared/auth'
 import apm from 'elastic-apm-node'
-import { observe, updateActiveObservation } from '@langfuse/tracing'
 import type { Socket, Server as SocketIOServer } from 'socket.io'
 
 
@@ -68,13 +67,13 @@ import { logger, log } from '../logging/index.js'
 import { jwtAuthMiddleware, buildAgentContext, type AgentContext } from './middleware/jwt-auth.js'
 import { getAgentConfig } from '../services/features.js'
 import { runWithModelOverride } from '@airo/ai-lib'
-import { resolveProfile, runWithProfile, profileValue } from '../profiles/index.js'
+import { resolveProfile, runWithProfile } from '../profiles/index.js'
+import { createAgentRouter } from './agent-router.js'
 import { getModelOverride } from '../utils/model-selection.js'
 import {
   guardAllowedOverrideModel,
   resolveOverride,
 } from './model-override.js'
-import { todoListIdFromContextAttachments } from '../utils/todo-list-id-from-context-attachments.js'
 import {
   calculateCacheMetrics,
   calculateContextWindowUtilization
@@ -82,19 +81,23 @@ import {
 import type { AgentsAppContext } from '../types/websocket-context.js'
 import { AppRepository } from '../database/repositories/AppRepository.js'
 import { initializeContextRegistry } from '../services/initializeContextRegistry.js'
-import { KnowBDriver } from '../tools/ai-lib-tools/drivers/knowb-driver.js'
 import {
-  getKnowledgeServiceDriver,
-} from '../tools/ai-lib-tools/drivers/knowledge-service-driver.js'
+  buildDynamicDataMessage,
+  buildTodoContextMessage,
+  buildRagContextMessage,
+  collectImagesFromFormattedContexts,
+  checkAndTriggerSummarization,
+} from './context-builders.js'
 import { GitHookService } from '../services/git-hook-service.js'
-import { TypecheckService } from '../services/typecheck-service.js'
-import { RuntimeErrorService } from '../services/runtime-error-service.js'
-import { createPostStreamValidator } from './post-stream-validator.js'
-import { GitUtils } from '../utils/git.js'
-import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js'
-import { ClientActionService } from '../services/ClientActionService.js'
+import { buildSharedPostStreamValidator } from './post-stream-validator.js'
+import {
+  runStartGitHook, runStartAssessment, runMessageEndHooks,
+  LifecycleSessionStore,
+  type MessageLifecycleDeps,
+} from './message-lifecycle.js'
+import { ClientActionService, type IClientActionService } from '../services/ClientActionService.js'
 import { hasUnbuiltRebuildPages } from '../tools/ai-lib-tools/suggested-response.js'
-import { type AssessmentOutcome, AssessmentTaskType } from '../agents/assessment-agent/index.js'
+import { getAssessmentAgent, type AssessmentOutcome, AssessmentTaskType } from '../agents/assessment-agent/index.js'
 import { withTimeout } from '../utils/promise-utils.js'
 import {
   executeAssessment,
@@ -107,6 +110,8 @@ import {
   shouldAwaitParallelAssessment,
   type ParallelAssessmentState,
 } from './assessment-executor.js'
+import { ConversationEventChannel } from '@airo/ai-transport'
+import { getSSERegistry } from './sse/registry-singleton.js'
 
 /**
  * Shared AppRepository instance to avoid repeated initialization
@@ -114,77 +119,32 @@ import {
 const appRepo = new AppRepository()
 
 /**
- * RAG documentation search: uses knowledge-service when KNOWLEDGE_SERVICE_URL or
- * KNOWLEDGE_PROXY_URL is set, otherwise falls back to KnowB. Both drivers share
- * the same result interface.
+ * Shared ConversationEventChannel for SSE transport.
+ * Initialized once during setupAILibWebSocketServer and shared with
+ * MessageExecutionService so SSE subscribers receive agent events.
  */
-async function searchDocumentation(params: {
-  query: string
-  kbNodeIds: string[]
-  maxResults: number
-  scoreThreshold: number
-  appId?: string | undefined
-  sessionId?: string | undefined
-}) {
-  const knowledgeDriver = getKnowledgeServiceDriver()
-  const usingKnowledgeService = !!knowledgeDriver
+let sseEventChannelInstance: ConversationEventChannel | null = null
+let sseEventChannelCleanupInterval: NodeJS.Timeout | null = null
 
-  updateActiveObservation({
-    metadata: {
-      retrievalType: 'semantic_search',
-      retrievalBackend: usingKnowledgeService ? 'knowledge-service' : 'knowb',
-      appId: params.appId,
-      sessionId: params.sessionId,
-      maxResults: params.maxResults,
-      scoreThreshold: params.scoreThreshold
-    }
-  })
+/**
+ * Shared agentFactory reference for SSE execution.
+ * Set during setupAILibWebSocketServer once agents are initialized.
+ */
+let sseAgentFactoryInstance: Awaited<ReturnType<typeof import('../agents/ai-lib-agents/index.js').createWebSocketAgentFactory>> | null = null
 
-  const driver = knowledgeDriver ?? new KnowBDriver()
-
-  const result = await driver.search({
-    query: params.query,
-    kbNodeIds: params.kbNodeIds,
-    maxResults: params.maxResults,
-    scoreThreshold: params.scoreThreshold,
-  })
-
-  if (!result.success || !result.results || result.results.length === 0) {
-    updateActiveObservation({
-      metadata: {
-        documentsRetrieved: 0,
-        noResults: true
-      }
-    })
-    return null
-  }
-
-  const docsContent = driver.formatResultsAsMarkdown(result.results)
-
-  updateActiveObservation({
-    metadata: {
-      documentsRetrieved: result.results.length,
-      avgScore: result.results.reduce((sum, r) => sum + (r.score || 0), 0) / result.results.length,
-      allScoresAboveThreshold: result.results.every(r => (r.score || 0) >= params.scoreThreshold),
-      documentIds: result.results.map(r => r.kbNodeId).filter(Boolean)
-    }
-  })
-
-  return {
-    content: docsContent,
-    results: result.results,
-    count: result.results.length
-  }
+/**
+ * Get the SSE event channel (available after setupAILibWebSocketServer resolves).
+ */
+export function getSSEEventChannel(): ConversationEventChannel | null {
+  return sseEventChannelInstance
 }
 
 /**
- * Traced RAG search with automatic Langfuse tracing.
- * Uses knowledge-service when configured, falls back to KnowB.
+ * Get the SSE agent factory (available after setupAILibWebSocketServer resolves).
  */
-const tracedSearchDocumentation = observe(searchDocumentation, {
-  name: 'Documentation Retrieval',
-  asType: 'span'
-})
+export function getSSEAgentFactory(): typeof sseAgentFactoryInstance {
+  return sseAgentFactoryInstance
+}
 
 /**
  * Shared GitHookService instance for tracking feature branches across connections
@@ -192,100 +152,27 @@ const tracedSearchDocumentation = observe(searchDocumentation, {
 const gitHookService = new GitHookService()
 
 /**
- * Shared TypecheckService instance for post-hook TypeScript validation.
- * Stateless, so a single instance is fine for the whole process.
+ * Shared lifecycle deps used by both onMessageStart and beforeMessageComplete,
+ * and re-exported to the SSE path via `getMessageLifecycleDeps()`.
  */
-const typecheckService = new TypecheckService()
+const lifecycleSessionStore = new LifecycleSessionStore()
+const lifecycleDeps: MessageLifecycleDeps = {
+  gitHookService,
+  getAssessmentAgent,
+  sessionStore: lifecycleSessionStore,
+  logger,
+}
 
-/**
- * Shared RuntimeErrorService instance for post-hook runtime-error validation.
- * Stateless — see TypecheckService note above.
- */
-const runtimeErrorService = new RuntimeErrorService()
-
-/**
- * Maximum number of automatic tsc-fix continuations the post-stream validator
- * will trigger for a single user turn. We cap this aggressively because:
- *  - Each retry is an additional LLM call (cost + latency).
- *  - After two focused attempts, if tsc still fails it usually indicates a
- *    structural problem the agent can't fix without user input.
- *  - It keeps us well inside the ai-transport `maxHandoffs = 10` loop guard
- *    when combined with normal handoffs.
- */
-const MAX_TYPECHECK_RETRIES = 2
-
-/**
- * Maximum number of automatic runtime-error-fix continuations per turn.
- * Matches the tsc budget; the two are tracked independently so a user turn
- * can burn both without either starving the other.
- */
-const MAX_RUNTIME_ERROR_RETRIES = 2
-
-/**
- * Runtime-error poll budget. The poll uses a quiet-window strategy — once
- * at least one error has arrived it returns as soon as no new errors have
- * shown up for `QUIET_WINDOW_MS`, capped at `MAX_WAIT_MS`. See
- * `RuntimeErrorService.pollRuntimeErrors`.
- *
- * 10s max / 1.5s quiet matches the observed end-to-end propagation for
- * runtime errors: agent file-edit → filesystem write → Vite watcher picks
- * up → HMR update broadcast → browser re-imports / React re-renders /
- * useEffect fires → error throws → iframe postMessage → builder parent →
- * agentFetch POST /apps/:id/runtime-errors → RuntimeErrorBuffer. 10-15s is
- * typical on cold dependency graphs; 4s reliably missed these.
- *
- * Clean (error-free) turns INTENTIONALLY wait the full `MAX_WAIT_MS`.
- * There is no early-exit for "buffer stayed empty" on purpose — the
- * preview boot and first-paint window is exactly the interval where a
- * newly-introduced crash would show up, and cutting the wait short would
- * defeat the post-hook's whole reason to exist. The budget is bounded
- * by browser-side propagation time, not by agents-container round-trips.
- *
- * The runtime phase runs in parallel with the tsc phase (see
- * `post-stream-validator.ts`), so most of this wait happens concurrently
- * with tsc execution on turns where tsc also runs (tsc typically 2-10s).
- * On turns where tsc completes faster than the poll budget, the tail of
- * the poll is the visible post-stream latency floor — and that is the
- * cost of reliably catching runtime errors that only surface after the
- * preview has actually finished rendering. If you need to change this,
- * also update `ERROR_CAUGHT_GRACE_MS` in
- * `app-templates/v8/dev-tools/src/AiroErrorBoundary.tsx` so the preview's
- * manual-fix dialog stays suppressed for the full server poll window.
- */
-const RUNTIME_ERROR_POLL_MAX_WAIT_MS = 10_000
-const RUNTIME_ERROR_QUIET_WINDOW_MS = 1500
-
-/**
- * Same `git status --porcelain` check `gitHookService.handleConnectionEnd`
- * uses — keeps the validator's skip-gate in lockstep with the squash-merge.
- */
-async function appHasUncommittedChanges(appId: string): Promise<boolean> {
-  const app = appRepo.findById(appId)
-  if (!app) {
-    throw new Error(`App not found: ${appId}`)
-  }
-  const devSupervisor = DevSupervisorClientFactory.createForApp(appId)
-  if (!devSupervisor) {
-    throw new Error(`DevSupervisor not available for app: ${appId}`)
-  }
-  const gitUtils = new GitUtils(devSupervisor)
-  return gitUtils.hasUncommittedChanges(app.path)
+export function getMessageLifecycleDeps(): MessageLifecycleDeps {
+  return lifecycleDeps
 }
 
 /**
- * Per-socket retry counter for the post-stream typecheck validator. Reset to
- * zero at the start of each user turn (see `onMessageStart`). We key on
- * socketId rather than conversationId because the ai-transport hook only has
- * socketId available, and the counter is legitimately per-turn.
+ * Post-stream validator (tsc + runtime-error checks with bounded retries).
+ * Shared with the SSE path via the same factory in app.ts.
  */
-const typecheckRetryCountBySocket = new Map<string, number>()
-
-/**
- * Per-socket retry counter for the post-stream runtime-error validator.
- * Independent from `typecheckRetryCountBySocket` — each phase has its own
- * budget of 2 per turn.
- */
-const runtimeErrorRetryCountBySocket = new Map<string, number>()
+const { validator: wsPostStreamValidator, resetRetries: wsResetPostStreamRetries } =
+  buildSharedPostStreamValidator(logger)
 
 /**
  * Map to track active WebSocket transactions for APM
@@ -376,7 +263,7 @@ function getSocket(socketId: string | undefined): Socket | null {
  * Client Action Service registry
  * Maps socketId -> ClientActionService for client-side tool execution
  */
-const clientActionServices = new Map<string, ClientActionService>()
+const clientActionServices = new Map<string, IClientActionService>()
 
 /**
  * Memory tracking data for request-scoped memory monitoring
@@ -506,7 +393,7 @@ function finalizeMessage(
 function getOrCreateClientActionService(
   socketId: string,
   conversationId: string
-): ClientActionService | null {
+): IClientActionService | null {
   // Get existing service
   let service = clientActionServices.get(socketId)
   if (service) {
@@ -546,7 +433,7 @@ function getOrCreateClientActionService(
  * Get existing ClientActionService for a socket
  * Used by tools to access the service without it being in context
  */
-export function getClientActionService(socketId: string): ClientActionService | null {
+export function getClientActionService(socketId: string): IClientActionService | null {
   return clientActionServices.get(socketId) || null
 }
 
@@ -565,51 +452,21 @@ function cleanupClientActionService(socketId: string): void {
 }
 
 /**
+ * Register an external (non-WebSocket) action service keyed by an arbitrary ID.
+ * Used by SSE transport to make client-action dispatching work without a Socket.IO socket.
+ */
+export function registerExternalActionService(key: string, service: IClientActionService): void {
+  clientActionServices.set(key, service)
+}
+
+export function unregisterExternalActionService(key: string): void {
+  cleanupClientActionService(key)
+}
+
+/**
  * Build dynamic data message for system prompt enrichment
  * Note: Must be a user message to avoid Anthropic's restriction on multiple system messages
  */
-function buildDynamicDataMessage(context: AgentsAppContext): {
-  role: 'user' | 'system'
-  content: string
-  insertionOrder: 'before_history' | 'after_history'
-} {
-  const sections: string[] = []
-
-  // Always include current date
-  const currentDate = new Date().toLocaleDateString('en-US', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric'
-  })
-  sections.push(`Today's date is ${currentDate}`)
-
-  // Include user's timezone from browser
-  const userTimezone = context.metadata?.userTimezone
-  if (userTimezone) {
-    sections.push(`User's timezone: ${userTimezone}`)
-  }
-
-  // Include project title if available (not falling back to initial prompt)
-  const appId = context.metadata?.appId
-  if (appId) {
-    const app = appRepo.findById(appId)
-    if (app?.name) {
-      sections.push(`Project title: ${app.name}`)
-    }
-    if (app?.previewUrl) {
-      sections.push(
-        `Preview URL (draft builder only; not for custom-domain DNS): ${app.previewUrl}`
-      )
-    }
-  }
-
-  return {
-    role: 'user',
-    content: `## Dynamic Context\n\n${sections.join('\n')}`,
-    insertionOrder: 'after_history'
-  }
-}
 
 /**
  * Create and setup the AI-Lib WebSocket server
@@ -687,6 +544,25 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
     const { initializeBackgroundSummarization } = await import('../services/summarization/index.js')
 
     backgroundSummarizer = await initializeBackgroundSummarization()
+
+    // Initialize SSE transport infrastructure
+    sseEventChannelInstance = new ConversationEventChannel()
+    sseAgentFactoryInstance = agentFactory
+
+    // Periodically purge idle per-conversation event buffers (matches the WS
+    // server's 60s cleanup cadence in packages/ai-transport).
+    sseEventChannelCleanupInterval = setInterval(() => {
+      const removed = sseEventChannelInstance?.cleanup() ?? 0
+      if (removed > 0) {
+        logger.debug('sse.event_channel.cleanup', { removedConversations: removed })
+      }
+    }, 60_000)
+    sseEventChannelCleanupInterval.unref?.()
+
+    const wsAgentRouter = createAgentRouter({
+      hasMessagesForApp: (appId) => conversationRepository.hasMessagesForAppSync(appId),
+      getTemplateIds,
+    })
 
     // Create token-based conversation history provider using singleton repository
     const conversationContextManager = new ConversationContextManager(conversationRepository, 10) // Max 10 messages
@@ -896,124 +772,36 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           const contextResult = await contextManager.buildContextMessages('', enhancedContext, agentPreferences)
 
           // Collect screenshots and asset images from formatted contexts for vision processing
-          const screenshots: string[] = []
-          const assetImages: string[] = []
-
-          if (contextResult.formattedContexts) {
-            for (const formatted of contextResult.formattedContexts) {
-              // Collect screenshots
-              if (formatted.screenshot) {
-                screenshots.push(formatted.screenshot)
-                logger.debug('websocket.context.provider.screenshot_collected', {
-                  type: formatted.type,
-                  screenshotSize: formatted.screenshot.length
-                })
-              }
-
-              // Collect asset images
-              if (formatted.assetImages && Array.isArray(formatted.assetImages)) {
-                assetImages.push(...formatted.assetImages)
-                logger.debug('websocket.context.provider.asset_images_collected', {
-                  type: formatted.type,
-                  count: formatted.assetImages.length
-                })
-              }
-            }
-          }
-
-          // Store all images in context metadata for later use in streamGenerate
-          const allImages = [...screenshots, ...assetImages]
+          const allImages = collectImagesFromFormattedContexts(contextResult.formattedContexts as any)
           if (allImages.length > 0) {
             if (!agentsAppContext.metadata) {
               agentsAppContext.metadata = {}
             }
             agentsAppContext.metadata._screenshots = allImages
-            logger.info('websocket.context.provider.images_attached', {
-              screenshots: screenshots.length,
-              assetImages: assetImages.length,
-              total: allImages.length
-            })
+            logger.info('websocket.context.provider.images_attached', { total: allImages.length })
           }
 
           // Build dynamic data section
-          const dynamicDataMessage = buildDynamicDataMessage(agentsAppContext)
+          const dynamicDataMessage = buildDynamicDataMessage(agentsAppContext.metadata ?? {})
 
           // Build todo list context if a list is selected
-          let todoContextMessage: ContextMessage | null = null
           const sessionId = agentsAppContext.metadata?.sessionId as string
-          if (sessionId) {
-            const fromAttachment = todoListIdFromContextAttachments(agentsAppContext.contextAttachments)
-            const sessionSelectedId = stateManager.getSelectedTodoList(sessionId)
-            let selectedTodoListId = sessionSelectedId
-            if (fromAttachment) {
-              selectedTodoListId = fromAttachment
-              stateManager.setSelectedTodoList(sessionId, fromAttachment)
-              if (sessionSelectedId && sessionSelectedId !== fromAttachment) {
-                logger.info('todo.list.selection.override_from_message', {
-                  sessionId,
-                  previousListId: sessionSelectedId,
-                  listIdFromAttachment: fromAttachment,
-                  message: 'todo_list_context on user message takes precedence over session selection'
-                })
-              }
-            }
-            if (selectedTodoListId && agentsAppContext.metadata?.appId) {
-              const { getTodoContextManager } = await import('../services/TodoContextManager.js')
-              const todoContextManager = getTodoContextManager()
-              const executionContext = {
-                metadata: agentsAppContext.metadata
-              }
-              const todoContext = await todoContextManager.generateTodoContext(
-                executionContext as any,
-                selectedTodoListId
-              )
-              if (todoContext) {
-                todoContextMessage = {
-                  role: 'user',
-                  content: todoContext,
-                  insertionOrder: 'after_history'
-                }
-              }
-            }
-          }
+          const todoContextMessage = sessionId ? await buildTodoContextMessage({
+            sessionId,
+            appId: agentsAppContext.metadata?.appId as string,
+            metadata: agentsAppContext.metadata ?? {},
+            contextAttachments: agentsAppContext.contextAttachments,
+            stateManager,
+          }) : null
 
           // Search KnowB with user's message for relevant documentation
           // CACHING: KnowB results are query-dependent (change every request), so they MUST be
-          // inserted 'after_history' to preserve caching of stable prefix content (system prompt,
-          // template, memory summary, app context). Inserting query-dependent content in
-          // 'before_history' would invalidate the cache on every request.
-          let ragContextMessage: ContextMessage | null = null
-          const userMessage = agentsAppContext.metadata?._userMessage as string | undefined
-
-          if (userMessage && typeof userMessage === 'string' && userMessage.trim().length > 0) {
-            try {
-              const retrievalResult = await tracedSearchDocumentation({
-                query: userMessage,
-                kbNodeIds: ['/airo_info'],
-                maxResults: 5,
-                scoreThreshold: 0.50,
-                appId: agentsAppContext.metadata?.appId,
-                sessionId: agentsAppContext.metadata?.sessionId
-              })
-
-              if (retrievalResult && retrievalResult.results && retrievalResult.results.length > 0) {
-                ragContextMessage = {
-                  // Use 'user' role for injected context - more natural conversation flow
-                  // and avoids breaking user/assistant alternation pattern
-                  role: 'user',
-                  content: `[Relevant Documentation from Knowledge Base]\n\n${retrievalResult.content}\n\n---\n*Use this documentation to inform your response, but respond naturally without explicitly referencing it unless directly relevant.*`,
-                  // CRITICAL: Must be 'after_history' to preserve caching of stable prefix
-                  insertionOrder: 'after_history'
-                }
-              }
-            } catch (error) {
-              logger.warn('websocket.context.rag.error', {
-                error: error instanceof Error ? error.message : String(error),
-                query: userMessage.substring(0, 100)
-              })
-              // Continue without RAG context if search fails
-            }
-          }
+          // inserted 'after_history' to preserve caching of stable prefix content.
+          const ragContextMessage = await buildRagContextMessage({
+            userMessage: agentsAppContext.metadata?._userMessage as string,
+            appId: agentsAppContext.metadata?.appId as string,
+            sessionId,
+          })
 
           logger.info('websocket.context.provider.success', {
             message: 'Built context messages',
@@ -1344,96 +1132,16 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           return 'develop'
         }
 
-        // Check if session already has an active agent (set by previous routing or handoff)
-        // This check happens BEFORE conversation history check so that the initial agent
-        // can receive follow-up messages (like attribute answers) until it hands off
-        const currentAgent = stateManager.getCurrentAgent?.(socketId)
-        const sessionAppId = stateManager.getSessionMetadata?.(socketId)?.appId
-
-        // If session has an agent AND it's for the same app, use it
-        if (currentAgent && sessionAppId === appId) {
-          logger.debug('websocket.agent_router.session_agent', {
-            socketId,
-            appId,
-            currentAgent,
-            message: 'Using agent from session state'
-          })
-          return currentAgent
-        }
-
-        // If session exists but app changed, clear it
-        if (currentAgent && sessionAppId && sessionAppId !== appId) {
-          logger.info('websocket.agent_router.app_changed', {
-            socketId,
-            oldAppId: sessionAppId,
-            newAppId: appId,
-            oldAgent: currentAgent,
-            message: 'App changed, clearing session state'
-          })
-          stateManager.clearSession?.(socketId)
-        }
-
-        // Check conversation history to determine if this is a new app
-        const conversations = conversationRepository.getByAppIdSync(appId)
-        const isNewApp = conversations.length === 0
-
-        if (isNewApp) {
-          const rawTemplateId = metadata?.templateId
-          const templateId = typeof rawTemplateId === 'string' && getTemplateIds().includes(rawTemplateId)
-            ? rawTemplateId
-            : undefined
-          let agentId = templateId ? `initial-${templateId}` : 'initial'
-
-          if (agentId === 'initial') {
-            const socket = getSocket(socketId)
-            const agentContext = socket?.handshake?.auth?.agentContext
-            const profile = resolveProfile({
-              agentProfileSelectorEnabled: !!agentContext?.agentProfileSelectorEnabled,
-              perProjectProfile: metadata?.agentProfile as string | undefined,
-              jwtAgentProfile: agentContext?.agentProfile as string | undefined,
-            })
-            if (profile) {
-              const promptVersion = runWithProfile(profile, () => profileValue('initial.promptVersion', '' as string))
-              if (promptVersion === '2.0') {
-                agentId = 'initial-v2'
-              }
-            }
-          }
-
-          logger.info('websocket.agent_router.initial_selected', {
-            socketId,
-            appId,
-            templateId: templateId || null,
-            agentId,
-            message: 'New app detected, routing to initial agent and setting session state'
-          })
-
-          // Set the initial agent in session state so subsequent messages continue with it
-          // This ensures the initial agent receives follow-up messages (like attribute answers)
-          // until it explicitly hands off to develop agent
-          stateManager.switchAgent(socketId, agentId).catch(error => {
-            logger.error('websocket.agent_router.session_state_error', {
-              socketId,
-              appId,
-              templateId: templateId || null,
-              error: error instanceof Error ? error.message : String(error),
-              message: 'Failed to set initial agent in session state'
-            })
-          })
-
-          // Also set the appId and templateId in session metadata for tracking/observability
-          stateManager.setSessionMetadata?.(socketId, { appId, templateId })
-
-          return agentId
-        }
-
-        logger.debug('websocket.agent_router.develop_selected', {
-          socketId,
+        const socket = getSocket(socketId)
+        const agentContext = socket?.handshake?.auth?.agentContext
+        return wsAgentRouter({
           appId,
-          conversationCount: conversations.length,
-          message: 'Existing app, using develop agent'
+          agentId: data.agentId || data.agentName,
+          templateId: metadata?.templateId,
+          agentProfile: metadata?.agentProfile,
+          agentContext,
+          session: { sessionId: socketId, stateManager },
         })
-        return 'develop'
       },
 
       // Transport-layer chunk timeout (env override: AI_CHUNK_TIMEOUT_MS)
@@ -1531,32 +1239,13 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           })
 
           if (backgroundSummarizer) {
-            const maxPromptTokens = backgroundSummarizer.getMaxPromptTokens()
-
-            if (usage.inputTokens > maxPromptTokens) {
-              // Extract budget override from metadata if present (E2S or test-accounts session)
-              const subscriptionId = metadata.subscriptionId
-              // Check if subscriptionId is a budget override value
-              const budgetOverride = (subscriptionId === BudgetOverride.CareAgent || subscriptionId === BudgetOverride.TestAccounts)
-                ? subscriptionId as BudgetOverride
-                : undefined
-
-              logger.info('summarization.background.trigger.token_usage_exceeded', {
-                appId: metadata.appId,
-                conversationId: metadata.conversationId,
-                agentName: metadata.agentName,
-                modelName: metadata.modelName,
-                inputTokens: usage.inputTokens,
-                cachedInputTokens: cacheMetrics.cachedTokens,
-                freshInputTokens: cacheMetrics.freshTokens,
-                totalTokens: usage.totalTokens,
-                maxPromptTokens,
-                contextWindowUtilization: contextUtilization,
-                cacheHitRate: cacheMetrics.cacheHitRate,
-                budgetOverride,
-              })
-              void backgroundSummarizer.checkAndSummarize(metadata.appId, usage.inputTokens, budgetOverride)
-            }
+            checkAndTriggerSummarization({
+              inputTokens: usage.inputTokens,
+              appId: metadata.appId!,
+              conversationId: metadata.conversationId as string | undefined,
+              subscriptionId: metadata.subscriptionId as string | undefined,
+              summarizer: backgroundSummarizer,
+            })
           }
         } catch (error) {
           logger.error('websocket.token_usage.tracking_failed', {
@@ -1679,8 +1368,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         // Reset the post-hook retry counters for this turn. Any leftover
         // count from a prior message on the same socket would incorrectly
         // shrink either retry budget here.
-        typecheckRetryCountBySocket.delete(socketId);
-        runtimeErrorRetryCountBySocket.delete(socketId);
+        wsResetPostStreamRetries(socketId);
 
         // Track memory at request start for leak detection
         // Store in dedicated Map to avoid polluting context.metadata
@@ -1786,29 +1474,15 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           })
         }
 
-        // Git hook: check setup status, ensure correct branch, create feature branch
-        // Coordinates with nomad_setup.sh via dev-supervisor setup status API
-        try {
-          // Extract conversationId if available for better tracking
-          const conversationId = typedContext?.conversation?.conversationId;
-
-          await gitHookService.handleMessageStart(
-            siteId,
-            conversationId,
-            socketId,
-            message // Pass user prompt for commit message generation
-          );
-
-          contextLogger.debug('websocket.git_hook.message_start.success', {
-            message: 'Git hook message start completed (recovery check and branch management)',
-            conversationId
-          });
-        } catch (error) {
-          contextLogger.warn('websocket.git_hook.message_start.error', {
-            message: 'Git hook message start failed (non-blocking)',
-            error: error instanceof Error ? error.message : String(error)
-          });
-        }
+        // Git hook: check setup status, ensure correct branch, create feature branch.
+        // Coordinates with nomad_setup.sh via dev-supervisor setup status API.
+        // Shared with SSE via `runStartGitHook`; failures are logged inside and never throw.
+        await runStartGitHook(lifecycleDeps, {
+          appId: siteId,
+          conversationId: typedContext?.conversation?.conversationId,
+          sessionKey: socketId,
+          message,
+        })
 
         // Authentication already done at handshake - just log the message start
 
@@ -1888,27 +1562,24 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           useTestBudget,
         })
 
-        // Only run assessment classification if feature flag is enabled
         if (enableAssessmentAgent) {
           // Get previous user message for multi-turn context
           // Helps classify follow-ups (e.g., "it doesn't work" after "fix my button")
           // Try cache first, fall back to DB on miss (reconnect scenario)
           let previousUserMessage = lastUserMessageCache.get(socketId)
 
+
           if (previousUserMessage) {
             logger.debug('assessment.previous_message.from_cache', {
-              appId: siteId,
-              socketId,
+              appId: siteId, socketId,
               previousMessagePreview: previousUserMessage.substring(0, 50),
             })
           } else if (conversationId && conversationId !== 'default') {
             const conversationRepo = new ConversationRepository()
             previousUserMessage = (await conversationRepo.getLastUserMessage(conversationId)) ?? undefined
-
             if (previousUserMessage) {
               logger.debug('assessment.previous_message.from_db', {
-                appId: siteId,
-                conversationId,
+                appId: siteId, conversationId,
                 previousMessagePreview: previousUserMessage.substring(0, 50),
               })
             }
@@ -2037,48 +1708,10 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
        * unreachable, exec crash, etc. — falls through silently so the user's
        * message still finalizes normally and git-squash still runs.
        */
-      postStreamValidator: createPostStreamValidator({
-        typecheck: {
-          typecheckService,
-          retryCounters: typecheckRetryCountBySocket,
-          maxRetries: MAX_TYPECHECK_RETRIES,
-          logger,
-        },
-        runtimeErrors: {
-          runtimeErrorService,
-          retryCounters: runtimeErrorRetryCountBySocket,
-          maxRetries: MAX_RUNTIME_ERROR_RETRIES,
-          maxWaitMs: RUNTIME_ERROR_POLL_MAX_WAIT_MS,
-          quietWindowMs: RUNTIME_ERROR_QUIET_WINDOW_MS,
-          // 2nd-run restart recovery: when the runtime phase has
-          // already surfaced errors once for this socket and errors
-          // are still present on the next run, the most likely cause
-          // is that HMR didn't propagate the agent's fix (e.g. a
-          // top-level module throw crashed the page before
-          // `error-client.ts` wired its HMR listeners, so the
-          // buffer's cycleId never advances). Restart the preview
-          // process via dev-supervisor; the phase then waits for a
-          // fresh cycleId beacon and re-polls once before deciding.
-          // If the supervisor isn't reachable we return a benign
-          // failure and the phase falls through to its existing
-          // continuation logic.
-          restartPreview: async (appId, signal) => {
-            const ds = DevSupervisorClientFactory.createForApp(appId)
-            if (!ds) {
-              return { success: false, error: 'DevSupervisor not available' }
-            }
-            if (signal.aborted) {
-              return { success: false, error: 'aborted' }
-            }
-            return ds.restartProcess({ graceful: true })
-          },
-          logger,
-        },
-        hasUncommittedChanges: appHasUncommittedChanges,
-        logger,
-      }),
+      postStreamValidator: wsPostStreamValidator,
 
-      // Pre-completion callback for git operations and free grants flag
+      // Pre-completion callback: runs the shared end-of-message lifecycle
+      // (git squash-merge + usedFreeGrants accounting). Shared with SSE.
       beforeMessageComplete: async (socketId: string, context: Record<string, unknown>) => {
         const typedContext = context as AgentsAppContext
         const siteId = typedContext?.metadata?.appId
@@ -2164,45 +1797,20 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
 
         if (!siteId) {
           logger.debug('websocket.before_complete.no_app_id', { socketId })
-          return { commitHash: null, usedFreeGrants }
+          return {
+            commitHash: null,
+            usedFreeGrants: !!(assessmentOutcome?.overrideApplied && enableAssessmentOverride),
+          }
         }
 
-        try {
-          const conversationId = typedContext?.conversation?.conversationId
-
-          logger.debug('websocket.before_complete.begin', {
-            socketId,
-            appId: siteId,
-            conversationId,
-            usedFreeGrants,
-          })
-
-          // Execute git squash merge and get commit hash
-          const commitHash = await gitHookService.handleConnectionEnd(
-            siteId,
-            'complete',
-            conversationId,
-            socketId
-          )
-
-          logger.info('websocket.before_complete.success', {
-            socketId,
-            appId: siteId,
-            conversationId,
-            commitHash: commitHash ? commitHash.substring(0, 7) : 'none',
-            usedFreeGrants,
-          })
-
-          return { commitHash, usedFreeGrants }
-
-        } catch (error) {
-          logger.error('websocket.before_complete.error', {
-            socketId,
-            appId: siteId,
-            error: error instanceof Error ? error.message : String(error)
-          })
-          return { commitHash: null, usedFreeGrants }
-        }
+        return runMessageEndHooks(lifecycleDeps, {
+          appId: siteId,
+          conversationId: typedContext?.conversation?.conversationId,
+          sessionKey: socketId,
+          reason: 'complete',
+          assessmentOutcome,
+          enableAssessmentOverride,
+        })
       },
 
       onMessageComplete: async (socketId: string, result: any, context?: Record<string, unknown>) => {
@@ -2343,8 +1951,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           blockingAssessmentOutcomes.delete(socketId)
         }
         pendingBudgetOverrides.delete(socketId)
-        typecheckRetryCountBySocket.delete(socketId)
-        runtimeErrorRetryCountBySocket.delete(socketId)
+        wsResetPostStreamRetries(socketId)
 
         if (appId) {
           const contextLogger = log.forApp(appId);
@@ -2560,10 +2167,8 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           })
         }
         pendingBudgetOverrides.delete(socketId)
-        lastUserMessageCache.delete(socketId)
-        lastAssessmentTaskTypeCache.delete(socketId)
-        typecheckRetryCountBySocket.delete(socketId)
-        runtimeErrorRetryCountBySocket.delete(socketId)
+        lifecycleSessionStore.clearSession(socketId)
+        wsResetPostStreamRetries(socketId)
 
         // Cleanup ClientActionService
         cleanupClientActionService(socketId)
@@ -2580,30 +2185,14 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           const branchInfo = gitHookService.getAppBranch(appId);
           const conversationId = branchInfo?.conversationId;
 
-          // Track the git operation so shutdown can await it
-          const gitOp = gitHookService.handleConnectionEnd(
+          // Track the git operation so shutdown can await it (shared end-hook).
+          const gitOp = runMessageEndHooks(lifecycleDeps, {
             appId,
-            'disconnection',
             conversationId,
-            socketId
-          ).then(() => {
-            logger.debug('websocket.git_hook.connection_end.success', {
-              message: 'Git hook connection end completed on disconnection',
-              appId,
-              conversationId,
-              socketId,
-              reason: 'disconnection'
-            });
-          }).catch((error: unknown) => {
-            logger.warn('websocket.git_hook.connection_end.error', {
-              message: 'Git hook connection end failed (non-blocking)',
-              appId,
-              socketId,
-              reason: 'disconnection',
-              error: error instanceof Error ? error.message : String(error)
-            });
-          });
-
+            sessionKey: socketId,
+            reason: 'disconnection',
+            enableAssessmentOverride: false,
+          })
           gitHookService.trackOperation(gitOp);
           await gitOp;
         } else {
@@ -2699,8 +2288,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         // Assessment state cleanup: In BMS mode, preserved for onBudgetReport.
         // In grants/blocking mode, clean up since no budget report follows.
         pendingBudgetOverrides.delete(socketId)
-        typecheckRetryCountBySocket.delete(socketId)
-        runtimeErrorRetryCountBySocket.delete(socketId)
+        wsResetPostStreamRetries(socketId)
         const budgetServiceEnabled = typedContext?.metadata?.budgetServiceEnabled === true
         const { preserved } = cleanupAssessmentStateOnError(
           budgetServiceEnabled,
@@ -2713,34 +2301,15 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         // Leaked entries are pruned via TTL in onConnection when map exceeds threshold.
         void preserved
 
-        // Git hook: Squash merge to main on error (if we have appId)
+        // Git hook: Squash merge to main on error (shared with SSE).
         if (appId) {
-          try {
-            const conversationId = typedContext?.conversation?.conversationId;
-
-            await gitHookService.handleConnectionEnd(
-              appId,
-              'error',
-              conversationId,
-              socketId
-            );
-
-            logger.debug('websocket.git_hook.connection_end.success', {
-              message: 'Git hook connection end completed on error',
-              appId,
-              conversationId,
-              socketId,
-              reason: 'error'
-            });
-          } catch (gitError) {
-            logger.warn('websocket.git_hook.connection_end.error', {
-              message: 'Git hook connection end failed (non-blocking)',
-              appId,
-              socketId,
-              reason: 'error',
-              error: gitError instanceof Error ? gitError.message : String(gitError)
-            });
-          }
+          await runMessageEndHooks(lifecycleDeps, {
+            appId,
+            conversationId: typedContext?.conversation?.conversationId,
+            sessionKey: socketId,
+            reason: 'error',
+            enableAssessmentOverride: false,
+          })
         }
 
         // Unified cleanup: memory tracking + APM message transaction
@@ -2878,13 +2447,29 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           subscriptionId,
         })
         socket.emit('request_grant_refresh')
-      } else {
-        // No connected sockets for this subscription - the pending refresh will timeout
-        logger.warn('websocket.grant_context.refresh_no_sockets', {
-          socketId: sessionId,
-          subscriptionId,
-          message: 'No connected sockets for subscription - refresh will timeout',
-        })
+      } else if (sessionId.startsWith('sse:')) {
+        // SSE sessions are keyed as sse:${conversationId} but subscribers listen on conversationId
+        const conversationId = sessionId.slice(4)
+        const eventChannel = getSSEEventChannel()
+        if (eventChannel) {
+          eventChannel.publish(conversationId, {
+            conversationId,
+            type: 'request_grant_refresh',
+            content: '',
+            data: {},
+            agentName: 'system',
+          })
+          logger.info('sse.grant_context.refresh_emitted', {
+            conversationId,
+            subscriptionId,
+          })
+        } else {
+          logger.warn('websocket.grant_context.refresh_no_sockets', {
+            socketId: sessionId,
+            subscriptionId,
+            message: 'No connected sockets for subscription - refresh will timeout',
+          })
+        }
       }
     })
 

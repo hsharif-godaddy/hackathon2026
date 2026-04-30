@@ -3,7 +3,7 @@
  * Converts processed files into content blocks for AI models with vision capabilities
  */
 
-import type { ProcessedFile } from '../core/types.js'
+import type { ProcessedFile, SupportedFileType } from '../core/types.js'
 
 export type ImageMediaType = 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'
 
@@ -184,4 +184,42 @@ export function buildHybridContent(
     role: 'user',
     content: buildMultiModalContent(enhancedPrompt, visionFiles)
   }
+}
+
+const SUPPORTED_VISION_MIME_TYPES = new Set<SupportedFileType>([
+  'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml',
+])
+
+function isSupportedVisionMimeType(mimeType: string): mimeType is SupportedFileType {
+  return SUPPORTED_VISION_MIME_TYPES.has(mimeType as SupportedFileType)
+}
+
+// Converts base64 data-URL strings into ProcessedFile objects for vision messages.
+export function dataUrlsToProcessedFiles(dataUrls: string[]): ProcessedFile[] {
+  const files: ProcessedFile[] = []
+  for (let i = 0; i < dataUrls.length; i++) {
+    const dataUrl = dataUrls[i]
+    if (!dataUrl) continue
+
+    const matches = dataUrl.match(/^data:([^;]+);base64,(.+)$/)
+    if (!matches?.[1] || !matches[2]) continue
+
+    const mimeType = matches[1]
+    const base64Content = matches[2]
+    if (!isSupportedVisionMimeType(mimeType)) continue
+    const fileExtension = mimeType.split('/')[1] || 'png'
+
+    files.push({
+      input: { source: dataUrl, mimeType, filename: `screenshot-${i + 1}.${fileExtension}` },
+      base64Content,
+      metadata: {
+        size: Math.ceil((base64Content.length * 3) / 4),
+        mimeType,
+        filename: `screenshot-${i + 1}.${fileExtension}`,
+        extractedAt: new Date(),
+        processingTime: 0,
+      },
+    })
+  }
+  return files
 }

@@ -26,11 +26,15 @@ export {
 export type { LoggingEnvironmentConfig } from './config.js';
 
 // Schemas and validation
-export { 
-  validateLogEvent, 
-  errorToLogError, 
-  sanitizeLogEvent 
+export {
+  validateLogEvent,
+  errorToLogError,
+  sanitizeLogEvent
 } from './schemas/index.js';
+
+// Flat catch-block helper (error + stack); prefer over errorToLogError for
+// inline log payloads in catch blocks to keep SSE subsystem logs uniform.
+export { errorFields } from './error-fields.js';
 export type {
   AppEvent,
   AgentEvent,

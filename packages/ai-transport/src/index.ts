@@ -86,7 +86,10 @@ export type {
 } from './connection-state-manager.js'
 
 // SSE Formatting
-export { formatSSEEvent } from './sse-format.js'
+export { formatSSEEvent, safeFormatSSEEvent } from './sse-format.js'
+export type { SSEFormatLogger } from './sse-format.js'
+export { createSSEWriter } from './sse-writer.js'
+export type { SSEWriter, SSEWriterOptions, SSEEncoding } from './sse-writer.js'
 
 // Event Coalescing (recovery replay)
 export { coalesceEvents } from './coalesce-events.js'

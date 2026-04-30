@@ -491,13 +491,27 @@ export class ConversationRepository {
   /**
    * Get the count of messages in a conversation (efficient for checking if conversation is empty)
    */
-  async getMessageCount(conversationId: string): Promise<number> {
+  hasMessagesForAppSync(appId: string): boolean {
+    const stmt = this.db.prepare(`
+      SELECT 1 FROM conversation_messages m
+      JOIN conversations c ON c.id = m.conversation_id
+      WHERE c.app_id = ?
+      LIMIT 1
+    `);
+    return stmt.get(appId) !== undefined;
+  }
+
+  getMessageCountSync(conversationId: string): number {
     const stmt = this.db.prepare(`
       SELECT COUNT(*) as count FROM conversation_messages
       WHERE conversation_id = ?
     `);
     const row = stmt.get(conversationId) as { count: number };
     return row.count;
+  }
+
+  async getMessageCount(conversationId: string): Promise<number> {
+    return this.getMessageCountSync(conversationId);
   }
 
   /**

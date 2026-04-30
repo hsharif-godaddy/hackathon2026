@@ -61,7 +61,7 @@ const corsOptions: CorsOptions = {
     }
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'User-Agent', 'Accept'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'User-Agent', 'Accept', 'X-Connection-Id', 'Last-Event-ID'],
   credentials: true,
   maxAge: 86400,
   preflightContinue: false,

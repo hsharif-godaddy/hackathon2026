@@ -1408,6 +1408,9 @@ importers:
       ai:
         specifier: 'catalog:'
         version: 6.0.158(zod@4.3.6)
+      negotiator:
+        specifier: ^1.0.0
+        version: 1.0.0
       socket.io:
         specifier: 'catalog:'
         version: 4.8.3(bufferutil@4.1.0)
@@ -1421,6 +1424,9 @@ importers:
       '@airo/eslint-config':
         specifier: workspace:*
         version: link:../eslint-config-airo
+      '@types/negotiator':
+        specifier: ^0.6.3
+        version: 0.6.4
       '@types/node':
         specifier: 'catalog:'
         version: 22.18.12
@@ -6286,6 +6292,9 @@ packages:
 
   '@types/mysql@2.15.27':
     resolution: {integrity: sha512-YfWiV16IY0OeBfBCk8+hXKmdTKrKlwKN1MNKAPBu5JYxLwBEZl7QzeEpGnlZb3VMGJrrGmB84gXiH+ofs/TezA==}
+
+  '@types/negotiator@0.6.4':
+    resolution: {integrity: sha512-elf6BsTq+AkyNsb2h5cGNst2Mc7dPliVoAPm1fXglC/BM3f2pFA40BaSSv3E5lyHteEawVKLP+8TwiY1DMNb3A==}
 
   '@types/nlcst@2.0.3':
     resolution: {integrity: sha512-vSYNSDe6Ix3q+6Z7ri9lyWqgGhJTmzRjZRqyq15N0Z/1/UnVsno9G/N40NBijoYx2seFDIl0+B2mgAb9mezUCA==}
@@ -19567,6 +19576,8 @@ snapshots:
   '@types/mysql@2.15.27':
     dependencies:
       '@types/node': 24.10.4
+
+  '@types/negotiator@0.6.4': {}
 
   '@types/nlcst@2.0.3':
     dependencies:

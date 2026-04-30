@@ -70,6 +70,7 @@ export interface VideoAppContext {
  */
 export class VideoGenerationTool {
   private io: { emit: (event: string, data: unknown) => void } | null = null;
+  private sseRegistry: { sendEvent: (appId: string, type: string, data: Record<string, unknown>) => void } | null = null;
   private readonly appId: string;
   private readonly appPath: string;
   private readonly previewUrl?: string;
@@ -90,6 +91,10 @@ export class VideoGenerationTool {
 
   setSocketIO(io: { emit: (event: string, data: unknown) => void }): void {
     this.io = io;
+  }
+
+  setSSERegistry(registry: { sendEvent: (appId: string, type: string, data: Record<string, unknown>) => void }): void {
+    this.sseRegistry = registry;
   }
 
   /**
@@ -540,25 +545,24 @@ export class VideoGenerationTool {
    * client's existing handler pipeline (socket.on('message') → registry → VideoHandler).
    */
   private emitVideoEvent(appId: string, data: Record<string, unknown>): void {
-    if (!this.io) {
-      logger.warn('video-generation.websocket.no-io', {
-        appId,
-        status: data.status,
-        jobId: data.jobId,
-        reason: 'Socket.IO instance not set — client will not receive this event'
-      });
-      return;
-    }
-
     const payload = { type: 'video', content: '', data: { ...data, appId } };
 
-    logger.info('video-generation.websocket.emit', {
-      appId,
-      status: data.status,
-      jobId: data.jobId
-    });
+    if (this.io) {
+      logger.info('video-generation.websocket.emit', { appId, status: data.status, jobId: data.jobId });
+      this.io.emit('message', payload);
+    }
 
-    this.io.emit('message', payload);
+    if (this.sseRegistry) {
+      logger.info('video-generation.sse.emit', { appId, status: data.status, jobId: data.jobId });
+      this.sseRegistry.sendEvent(appId, 'video', { ...data, appId });
+    }
+
+    if (!this.io && !this.sseRegistry) {
+      logger.warn('video-generation.emit.no-transport', {
+        appId, status: data.status, jobId: data.jobId,
+        reason: 'Neither Socket.IO nor SSE registry set - client will not receive this event'
+      });
+    }
   }
 
   /**

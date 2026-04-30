@@ -1,5 +1,6 @@
 import { defineConfig } from 'vitest/config';
 import os from 'node:os';
+import path from 'node:path';
 
 // Dynamically determine optimal fork count based on available CPU cores
 // Node environment is less memory-intensive than jsdom, so we can use more forks
@@ -8,6 +9,12 @@ const availableCores = os.cpus().length;
 const optimalForks = Math.max(1, Math.min(6, availableCores - 1));
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      // Point to source to avoid loading the broken dist/experimental-websocket-server.js
+      '@airo/ai-transport': path.resolve(__dirname, '../packages/ai-transport/src/index.ts'),
+    },
+  },
   test: {
     environment: 'node',
     globals: true,

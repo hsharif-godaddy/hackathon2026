@@ -185,7 +185,19 @@ import { createServer } from 'http';
 import { corsMiddleware, timingAllowOriginMiddleware, errorHandler, notFoundHandler, requestLogger, jwtAuthMiddleware, validateProductAccess } from './middleware/index.js';
 import { agentsRouter, appsRouter, chatRouter, healthRouter, diagnosticsRouter, gitRouter, debugRouter, filesRouter, filesPublicRouter, publishRouter, downloadRouter, dbRouter, dbImportRouter, todoListRouter, securityScanRouter, securityMisconfigScanRouter, vulnerabilityScanRouter, secretsScanRouter, oauthRouter, videoRouter, conversationsRouter, qaAnalyzeRouter, gitRemoteRouter, goLiveRouter, socialRouter, customerLogsRouter, zipImportRouter, shareRouter, mediaRouter, modelsRouter, profilesRouter, transferValidateRouter, runtimeErrorsRouter, brandDataRouter } from './routes/index.js';
 // Phase 3: Replace legacy WebSocket with AI-Lib WebSocket server
-import { setupAILibWebSocketServer, getWebSocketServerInfo, getGitHookService } from './ai-lib-websocket-server.js';
+import { setupAILibWebSocketServer, getWebSocketServerInfo, getGitHookService, getSSEEventChannel, getSSEAgentFactory, getMessageLifecycleDeps } from './ai-lib-websocket-server.js';
+import { EventStreamRegistry } from './sse/EventStreamRegistry.js';
+import { initSSERegistry } from './sse/registry-singleton.js';
+import { createSSERoutes } from './sse/routes.js';
+import { MessageExecutionService } from './sse/MessageExecutionService.js';
+import { buildSharedPostStreamValidator } from './post-stream-validator.js';
+import { AgentsMessagePersistence } from './conversation-persistence.js';
+import { AILibContextManager } from '../agents/ai-lib-agents/context-manager.js';
+import { getBackgroundSummarizer } from '../services/summarization/index.js';
+import { conversationRepository } from '../database/repositories/index.js';
+import { ConversationContextManager } from '../services/ConversationContextManager.js';
+import { getTemplateIds } from '../agents/template-registry.js';
+import { createAgentRouter } from './agent-router.js';
 import { getDatabase } from '../database/index.js';
 import { AppRepository } from '../database/repositories/AppRepository.js';
 import { destroyLlmDispatcher } from '@airo/ai-lib';
@@ -197,7 +209,86 @@ const port = process.env.PORT || 4000;
 const server = createServer(app);
 let wsServer: Awaited<ReturnType<typeof setupAILibWebSocketServer>>['wsServer'] | null = null;
 let isShuttingDown = false;
+const sseRegistry = new EventStreamRegistry();
+initSSERegistry(sseRegistry);
 let memoryLogInterval: NodeJS.Timeout | null = null;
+
+// Shared history loader for SSE (same config as WS path in ai-lib-websocket-server.ts)
+const sseConversationContextManager = new ConversationContextManager(conversationRepository, 10)
+
+// Lazy SSE execution service — created on first request after init completes
+let sseExecutionService: MessageExecutionService | null = null
+
+const { validator: ssePostStreamValidator, resetRetries: sseResetPostStreamRetries } =
+  buildSharedPostStreamValidator(logger)
+
+const resolveAgent = createAgentRouter({
+  hasMessagesForApp: (appId) => conversationRepository.hasMessagesForAppSync(appId),
+  getTemplateIds,
+})
+
+function getOrCreateSSEExecutionService(): MessageExecutionService | null {
+  if (sseExecutionService) return sseExecutionService
+  const eventChannel = getSSEEventChannel()
+  const agentFactory = getSSEAgentFactory()
+  if (!eventChannel || !agentFactory) return null
+
+  const contextMgr = new AILibContextManager()
+
+  sseExecutionService = new MessageExecutionService({
+    getAgent: (agentId?: string) => agentFactory.agents.get((agentId ?? 'develop') as any),
+    contextManager: {
+      loadContextMessages: async (context: Record<string, unknown>) => {
+        const contextAttachments: any[] = []
+        if (Array.isArray(context.selectedAssets) && context.selectedAssets.length > 0) {
+          contextAttachments.push({
+            type: 'selected_assets',
+            data: context.selectedAssets,
+            persistence: 'ephemeral',
+            renderStrategy: 'before_prompt',
+          })
+        }
+        const agentContext = {
+          metadata: context.metadata ?? {},
+          visualContext: context.visualContext,
+          aiEditContext: context.aiEditContext,
+          contextAttachments: contextAttachments.length > 0 ? contextAttachments : undefined,
+        }
+        const enhancedContext = contextMgr.convertToEnhancedContext(agentContext as any)
+        const result = await contextMgr.buildContextMessages('', enhancedContext, undefined)
+        return { contextMessages: result.contextMessages, formattedContexts: result.formattedContexts }
+      }
+    },
+    loadConversationHistory: async (conversationId, appId, agentName) => {
+      const historyLoader = sseConversationContextManager.getHistoryLoader()
+      const llmMessages = await historyLoader.loadMessagesWithTokenLimitByConversationId(
+        conversationId, 40000, 'sonnet', true, appId
+      )
+      return historyLoader.formatMessagesForAISDK(llmMessages, appId, agentName)
+    },
+    conversationPersistence: new AgentsMessagePersistence(),
+    eventChannel,
+    sseRegistry,
+    stateManager: {
+      getCurrentAgent: (id: string) => agentFactory.stateManager.getCurrentAgent?.(id),
+      getLastHandoffPrompt: (id: string) => agentFactory.stateManager.getLastHandoffPrompt?.(id),
+      clearLastHandoffPrompt: (id: string) => agentFactory.stateManager.clearLastHandoffPrompt?.(id),
+      setSessionMetadata: (id: string, meta: Record<string, unknown>) => agentFactory.stateManager.setSessionMetadata?.(id, meta),
+      getSelectedTodoList: (id: string) => agentFactory.stateManager.getSelectedTodoList(id),
+      setSelectedTodoList: (id: string, listId: string) => agentFactory.stateManager.setSelectedTodoList(id, listId),
+    },
+    onAgentChanged: async (convId: string, _oldAgent: string, newAgent: string) => {
+      await conversationRepository.updateAgentId(convId, newAgent)
+    },
+    get backgroundSummarizer() {
+      return getBackgroundSummarizer()
+    },
+    postStreamValidator: ssePostStreamValidator,
+    resetPostStreamRetries: sseResetPostStreamRetries,
+    lifecycle: getMessageLifecycleDeps(),
+  })
+  return sseExecutionService
+}
 
 // APM middleware should be added BEFORE other middleware
 if (isApmEnabled) {
@@ -210,7 +301,12 @@ if (isApmEnabled) {
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' }
 }));
-app.use(compression());
+app.use(compression({
+  filter: (req, res) => {
+    if (req.headers.accept?.includes('text/event-stream')) return false;
+    return compression.filter(req, res);
+  },
+}));
 
 // Timing-Allow-Origin — must come before CORS so the header is set on preflight responses too
 app.use(timingAllowOriginMiddleware);
@@ -334,6 +430,19 @@ protectedRouter.use('/', transferValidateRouter);
 protectedRouter.use('/', modelsRouter);
 protectedRouter.use('/', profilesRouter);
 protectedRouter.use('/', brandDataRouter);
+protectedRouter.use('/api/conversations', createSSERoutes({
+  registry: sseRegistry,
+  authenticate: (_req, _res, next) => next(), // Auth handled by protectedRouter middleware
+  getEventChannel: () => getSSEEventChannel(),
+  get executionService() { return getOrCreateSSEExecutionService() ?? undefined },
+  resolveAgent,
+  getStateManager: () => {
+    const factory = getSSEAgentFactory()
+    if (!factory) return null
+    return factory.stateManager as import('./agent-router.js').AgentStateManager
+  },
+  conversationRepository,
+}));
 
 app.use(protectedRouter);
 

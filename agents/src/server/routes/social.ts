@@ -7,6 +7,7 @@ import {
 import { SocialPlatform, PostState, getAllPlatforms, getAllPostStates } from '../../types/social.js';
 import { Logger, log } from '../../logging/index.js';
 import { validateAppOwnership } from '../middleware/app-ownership.js';
+import { asyncHandler } from '../middleware/async-handler.js';
 
 const router: IRouter = Router();
 const appRepo = new AppRepository();
@@ -17,12 +18,6 @@ const logger = Logger.create({ component: 'social-routes' });
 // ============================================================================
 // Middleware & Helpers
 // ============================================================================
-
-type AsyncHandler = (req: Request, res: Response, next: NextFunction) => Promise<unknown>;
-
-const asyncHandler = (fn: AsyncHandler) => (req: Request, res: Response, next: NextFunction) => {
-  Promise.resolve(fn(req, res, next)).catch(next);
-};
 
 const withApp = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
   const { id } = req.params;

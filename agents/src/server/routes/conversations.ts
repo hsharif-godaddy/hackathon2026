@@ -158,6 +158,72 @@ router.get('/api/conversations/:id/messages', validateConversationOwnership(), a
 });
 
 /**
+ * GET /api/conversations/:id/messages/paginated
+ * Get paginated messages for a conversation (cursor-based)
+ * Query params: limit (default 20, max 100), before (cursor - message ID)
+ * SECURITY: Conversation ownership validation prevents cross-tenant message access
+ */
+router.get('/api/conversations/:id/messages/paginated', validateConversationOwnership(), async (req: Request, res: Response) => {
+  try {
+    const authReq = req as ConversationRequest;
+    const conversationId = authReq.conversation!.id;
+    const appId = authReq.conversation!.appId;
+
+    const limit = Math.min(Math.max(parseInt(req.query.limit as string, 10) || 20, 1), 100);
+    const before = req.query.before as string | undefined;
+
+    logger.debug('conversations.messages.paginated.begin', { conversationId, appId, limit, before });
+
+    const conversationRepo = new ConversationRepository();
+    const result = await conversationRepo.getMessagesPaginated(conversationId, appId, { limit, before });
+
+    const messages = result.messages.map(msg => {
+      let sender: 'user' | 'assistant';
+      if (msg.sender === 'agent') {
+        sender = 'assistant';
+      } else if (msg.sender === 'user') {
+        sender = 'user';
+      } else {
+        logger.warn('conversations.messages.paginated.unexpected_sender', {
+          conversationId, messageId: msg.id, sender: msg.sender,
+        });
+        sender = 'assistant';
+      }
+
+      return {
+        id: msg.id,
+        conversationId: msg.conversationId,
+        sender,
+        content: msg.content,
+        createdAt: msg.createdAt.toISOString(),
+        ...(msg.messageType != null && { messageType: msg.messageType }),
+        ...(msg.toolCalls != null && { toolCalls: msg.toolCalls }),
+        ...(msg.segments != null && { segments: msg.segments }),
+        ...(msg.metadata != null && { metadata: msg.metadata }),
+        ...(msg.contextAttachments != null && { contextAttachments: msg.contextAttachments }),
+        ...(msg.origin != null && { origin: msg.origin }),
+      };
+    });
+
+    logger.debug('conversations.messages.paginated.success', {
+      conversationId, appId, count: messages.length, hasMore: result.hasMore,
+    });
+
+    return res.json({
+      messages,
+      hasMore: result.hasMore,
+      nextCursor: result.nextCursor,
+      total: result.total,
+    });
+  } catch (error) {
+    logger.error('conversations.messages.paginated.error', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return res.status(500).json({ error: 'Failed to fetch messages' });
+  }
+});
+
+/**
  * PATCH /api/conversations/:id/tools/:toolId
  * Update a tool's result in conversation history
  *
