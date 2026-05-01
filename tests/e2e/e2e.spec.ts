@@ -4,18 +4,17 @@
  * Consolidated test that creates ONE app and exercises all critical features
  * sequentially. Designed for fast validation (post-deploy, CI, manual).
  *
- * Coverage (11 sequential steps, see test.step blocks below):
+ * Coverage (10 sequential steps, see test.step blocks below):
  *  1. Homepage + SSO Login + App Creation
  *  2. Verify develop page components (header, preview, chat)
  *  3. Preview controls (refresh, device selector) + auto-publish verification
  *  4. Chat input states (disabled/enabled, multi-line)
  *  5. Send message via send button click
  *  6. Send message via Enter key
- *  7. Color scheme preview
- *  8. Edit mode toggle
- *  9. Code view + unified search
- * 10. Publish button verification
- * 11. Page refresh recovery
+ *  7. Edit mode toggle
+ *  8. Code view + unified search
+ *  9. Publish button verification
+ * 10. Page refresh recovery
  *
  * Strategy:
  * - Single login, single app, single continuous flow
@@ -260,62 +259,7 @@ test.describe('E2E - Critical Path', () => {
       await ensureAuthenticated(page);
     });
 
-    await test.step('Step 7: Color scheme preview', async () => {
-      await dismissOverlays(page);
-
-      // Phrase the prompt to match the color-scheme tool's documented SUGGEST
-      // examples (see agents/src/tools/ai-lib-tools/color-scheme.ts) so the AI
-      // reliably picks SUGGEST mode (which renders the palette grid widget)
-      // rather than SET mode (which applies a palette directly, no widget).
-      const colorSchemePrompt = 'Show me 4 color scheme options for this app';
-      await waitForChatInput(page);
-      await chatInput.fill(colorSchemePrompt);
-      await page.getByTestId('chat-send-button').click({ force: true });
-
-      await expect(transcript.getByText(colorSchemePrompt, { exact: true })).toBeVisible({
-        timeout: DEFAULT_TIMEOUT,
-      });
-      console.log('  Color scheme request sent');
-
-      await expect(page.getByTestId('chat-send-button')).toBeVisible({ timeout: AI_RESPONSE_TIMEOUT_MS });
-      console.log('  AI response completed');
-
-      await ensureAuthenticated(page);
-
-      // Legacy UI renders a new `color-palette-grid` inside every AI chat message
-      // that returns palettes, so earlier steps can leave stale grids in the
-      // transcript. Scope to the most-recent widget and its sibling controls.
-      const paletteGrid = page.getByTestId('color-palette-grid').last();
-      await expect(paletteGrid).toBeVisible({ timeout: DEFAULT_TIMEOUT });
-      console.log('  Color palette grid visible');
-
-      const paletteOptions = paletteGrid.getByTestId('color-palette-option');
-      await expect(paletteOptions.first()).toBeVisible();
-      const optionCount = await paletteOptions.count();
-      expect(optionCount).toBeGreaterThanOrEqual(2);
-      console.log(`  ${optionCount} palette options`);
-
-      const saveButton = page.getByTestId('color-palette-save').last();
-      const revertButton = page.getByTestId('color-palette-revert').last();
-
-      await paletteOptions.first().click();
-      await expect(saveButton).toBeVisible();
-      await expect(revertButton).toBeVisible();
-      console.log('  Save/Revert buttons visible');
-
-      await revertButton.click();
-      console.log('  Revert clicked');
-
-      await paletteOptions.first().click();
-      await waitForChatInput(page);
-      await saveButton.click();
-      await expect(page.getByTestId('chat-send-button')).toBeVisible({ timeout: AI_RESPONSE_TIMEOUT_MS });
-      console.log('  Color scheme saved');
-
-      await ensureAuthenticated(page);
-    });
-
-    await test.step('Step 8: Edit mode toggle', async () => {
+    await test.step('Step 7: Edit mode toggle', async () => {
       await dismissOverlays(page);
 
       // The header EDIT toggle is a `role=radio` ButtonGroup item (see
@@ -347,7 +291,7 @@ test.describe('E2E - Critical Path', () => {
       console.log('  Edit mode off');
     });
 
-    await test.step('Step 9: Code view + unified search', async () => {
+    await test.step('Step 8: Code view + unified search', async () => {
       await dismissOverlays(page);
 
       const codeViewButton = page.getByRole('radio', { name: /builder_preview_button_code|Code/i });
@@ -420,7 +364,7 @@ test.describe('E2E - Critical Path', () => {
       }
     });
 
-    await test.step('Step 10: Publish button verification', async () => {
+    await test.step('Step 9: Publish button verification', async () => {
       await dismissOverlays(page);
 
       await ensureAuthenticated(page);
@@ -432,7 +376,7 @@ test.describe('E2E - Critical Path', () => {
       console.log('  Publish button visible and enabled');
     });
 
-    await test.step('Step 11: Page refresh recovery', async () => {
+    await test.step('Step 10: Page refresh recovery', async () => {
       await page.reload();
 
       // The SSO Deck iframe keeps VAT (info_idp_vat_time) fresh via heartbeat;

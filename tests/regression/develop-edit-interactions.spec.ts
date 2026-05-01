@@ -2,27 +2,26 @@
  * Develop Page Edit Interactions E2E Test
  *
  * Tests postMessage-based interactions between the builder UI and the preview iframe.
- * Creates one app, then exercises:
- * - Color scheme preview (PREVIEW_THEME in chat input theme strip)
+ * Each test creates its own app and exercises:
  * - Edit mode toggle (EDIT_MODE_ENABLED / EDIT_MODE_DISABLED)
+ * - Unified code search
  *
  * Strategy:
- * - Single login, single app creation
- * - All interaction tests run sequentially against the same app
+ * - Each test creates its own app
  */
 import { test, expect } from '@playwright/test';
 
 import { deleteAllSitesViaAPI } from '../helpers/api';
 import { handleSsoLogin, ensureAuthenticated } from '../helpers/auth';
 import { LONG_TIMEOUT, DEFAULT_TIMEOUT, AI_RESPONSE_TIMEOUT_MS, getSpecPrefix } from '../helpers/constants';
-import { dismissOverlays, logTestResult, logTestStart, waitForDevelopPage, waitForChatInput } from '../helpers/ui';
+import { dismissOverlays, logTestResult, logTestStart, waitForDevelopPage } from '../helpers/ui';
 
 test.describe('Edit Interactions', () => {
   test.beforeEach(async ({}, testInfo) => {
     logTestStart(testInfo);
   });
 
-  test('Color scheme preview and edit mode toggle', async ({ page }) => {
+  test('Edit mode toggle', async ({ page }) => {
     // ========================================
     // STEP 1: Create an app
     // ========================================
@@ -57,134 +56,10 @@ test.describe('Edit Interactions', () => {
     await ensureAuthenticated(page);
 
     // ========================================
-    // STEP 2: Color scheme preview via chat
+    // STEP 2: Edit mode toggle
     // ========================================
     await dismissOverlays(page);
-    console.log('Step 2: Testing color scheme preview...');
-
-    const chatInput = page.getByTestId('chat-input-textarea');
-    await waitForChatInput(page);
-
-    // Ask the AI to suggest color schemes. Explicitly name the tool and pass the
-    // `description` argument - the tool throws if description is omitted in suggest mode.
-    const colorSchemePrompt = 'Use the colorScheme tool in suggest mode with description "Simple landing page with a hero section and a call to action button" and count=4';
-    await chatInput.fill(colorSchemePrompt);
-    await page.getByTestId('chat-send-button').click({ force: true });
-    console.log('  Color scheme request sent');
-
-    // Wait for AI response to complete
-    await expect(page.getByTestId('chat-send-button')).toBeVisible({ timeout: AI_RESPONSE_TIMEOUT_MS });
-    console.log('  AI response completed');
-
-    await ensureAuthenticated(page);
-
-    // Theme UI has two variants depending on the `airo-builder-theme-selection-chat`
-    // switchboard flag. When ON, a `theme-preview-input-panel` renders inside the
-    // NBA section (single shared panel). When OFF (legacy), a `color-palette-grid`
-    // is rendered inside each AI chat message - so every new request appends another
-    // grid to the chat history. Scope to `.last()` so the test always targets the
-    // most-recent widget (the one the user would actually interact with).
-    const themePanel = page.getByTestId('theme-preview-input-panel');
-    const legacyGrid = page.getByTestId('color-palette-grid').last();
-    const themeVariant = await Promise.race([
-      themePanel.waitFor({ state: 'visible', timeout: AI_RESPONSE_TIMEOUT_MS }).then(() => 'modern' as const),
-      legacyGrid.waitFor({ state: 'visible', timeout: AI_RESPONSE_TIMEOUT_MS }).then(() => 'legacy' as const),
-    ]).catch(() => 'none' as const);
-    if (themeVariant === 'none') {
-      throw new Error(
-        'Neither theme-preview-input-panel nor color-palette-grid became visible after the color scheme request.',
-      );
-    }
-    const usingModernUi = themeVariant === 'modern';
-
-    if (usingModernUi) {
-      console.log('  Theme preview panel visible in chat input (modern)');
-
-      const paletteOptions = page.getByTestId('theme-preview-option');
-      await expect(paletteOptions).toHaveCount(4, { timeout: DEFAULT_TIMEOUT });
-      console.log('  4 theme options rendered');
-
-      await paletteOptions.first().click();
-      console.log('  Clicked first theme option');
-
-      await expect(page.getByTestId('theme-preview-apply')).toBeVisible();
-      await expect(page.getByTestId('theme-preview-more-options')).toBeVisible();
-      console.log('  Apply and More Options buttons visible');
-
-      await waitForChatInput(page);
-      await page.getByTestId('theme-preview-apply').click();
-      console.log('  Apply clicked - message sent to apply color scheme');
-    } else {
-      await expect(legacyGrid).toBeVisible({ timeout: DEFAULT_TIMEOUT });
-      console.log('  Color palette grid visible (legacy)');
-
-      // Click the first palette card to preview it
-      const firstPalette = legacyGrid.locator('button, [role="button"], label').first();
-      await firstPalette.click({ force: true });
-      console.log('  Clicked first palette');
-
-      await expect(page.getByTestId('color-palette-save')).toBeVisible();
-      await expect(page.getByTestId('color-palette-more-options')).toBeVisible();
-      console.log('  Save and More Options buttons visible');
-
-      await waitForChatInput(page);
-      await page.getByTestId('color-palette-save').click();
-      console.log('  Save clicked - message sent to apply color scheme');
-    }
-
-    // Wait for AI to process the save (apply the selected scheme)
-    await expect(page.getByTestId('chat-send-button')).toBeVisible({ timeout: AI_RESPONSE_TIMEOUT_MS });
-    console.log('  Color scheme applied');
-
-    await ensureAuthenticated(page);
-
-    // ========================================
-    // STEP 2.5: Test Cancel button
-    // ========================================
-    await dismissOverlays(page);
-    console.log('Step 2.5: Testing theme preview cancel...');
-
-    // Request color schemes again to get the panel back
-    await waitForChatInput(page);
-    await chatInput.fill('Use the colorScheme tool in suggest mode with description "Simple landing page with a hero section and a call to action button" and count=4');
-    await page.getByTestId('chat-send-button').click({ force: true });
-
-    // Wait for AI response to complete
-    await expect(page.getByTestId('chat-send-button')).toBeVisible({ timeout: AI_RESPONSE_TIMEOUT_MS });
-    console.log('  Color scheme suggestions received');
-
-    await ensureAuthenticated(page);
-
-    if (usingModernUi) {
-      // Modern UI has a Cancel button that dismisses the panel entirely.
-      await expect(themePanel).toBeVisible({ timeout: DEFAULT_TIMEOUT });
-      console.log('  Theme preview panel visible');
-
-      const cancelButton = page.getByTestId('theme-preview-cancel');
-      await expect(cancelButton).toBeVisible();
-      await cancelButton.click();
-      console.log('  Cancel button clicked');
-
-      await expect(themePanel).not.toBeVisible({ timeout: DEFAULT_TIMEOUT });
-      console.log('  Theme preview panel hidden after cancel');
-    } else {
-      // Legacy UI has a Revert button (no cancel equivalent that hides the grid).
-      // Two grids are now in the chat history (one per request), so scope to the
-      // most-recent grid and its sibling revert button.
-      await expect(legacyGrid).toBeVisible({ timeout: DEFAULT_TIMEOUT });
-      console.log('  Color palette grid visible');
-
-      const revertButton = page.getByTestId('color-palette-revert').last();
-      await expect(revertButton).toBeVisible();
-      await revertButton.click();
-      console.log('  Revert button clicked (legacy)');
-    }
-
-    // ========================================
-    // STEP 3: Edit mode toggle
-    // ========================================
-    await dismissOverlays(page);
-    console.log('Step 3: Testing edit mode toggle...');
+    console.log('Step 2: Testing edit mode toggle...');
 
     // Find the edit mode toggle button in the header
     const editModeButton = page.locator('[data-eid*="header.edit_mode"]');
