@@ -164,11 +164,46 @@ export class MessageExecutionService {
 
   stop(conversationId: string): void {
     const controller = this.abortControllers.get(conversationId)
-    if (controller) {
-      controller.abort()
-      logger.info('sse.execution.stopped', { conversationId })
-    } else {
+    if (!controller) {
       logger.warn('sse.execution.stop_no_active_stream', { conversationId })
+      return
+    }
+
+    controller.abort()
+    logger.info('sse.execution.stopped', { conversationId })
+
+    // The execute() loop observes the abort and publishes its own terminal
+    // `complete` when it returns — but that can take seconds (mid-chunk
+    // reader.read(), a getFinalResult() await, a provider that doesn't
+    // honor abortSignal). Emit a user_stopped complete now so the client
+    // UI resets immediately. execute()'s later publish is a no-op on the
+    // client side (finalizeStream early-returns when activeStream is null)
+    // and produces at most a duplicate event on any other subscriber.
+    const active = this.activeStreams.get(conversationId)
+    if (active) {
+      // Vacate the slot BEFORE publishing the terminal. Late events from
+      // the still-running old execute() (mid-chunk reader.read(), tool
+      // result, getFinalResult()) are gated on `activeStreams.get(...) ===
+      // streamState`, so clearing the slot causes them to drop rather than
+      // leak into a next turn's stream if the user prompts immediately.
+      //
+      // The old execute()'s finally block skips unsubscribe on the same
+      // ownership check, so unsubscribe its subscribers here — after the
+      // terminal publish so the stop reaches the client — unless a newer
+      // execute() has already re-subscribed the same IDs (it re-pulls from
+      // sseRegistry and rebinds the subscriber set).
+      this.activeStreams.delete(conversationId)
+      void this.publishTerminal(active.appId, conversationId, {
+        conversationId, type: 'complete', content: '',
+        data: { finishReason: 'user_stopped' },
+        agentName: 'system',
+      }).finally(() => {
+        const nextOwner = this.activeStreams.get(conversationId)
+        for (const subId of active.subscriberIds) {
+          if (nextOwner?.subscriberIds.has(subId)) continue
+          this.deps.eventChannel.unsubscribe(conversationId, subId)
+        }
+      })
     }
   }
 
@@ -194,9 +229,10 @@ export class MessageExecutionService {
       abortSignal: AbortSignal
       streamingEvents: PersistenceStreamingEvent[]
       executionContext: Record<string, unknown>
+      streamState: ActiveStream
     },
   ): Promise<{ accumulatedContent: string; currentStep: number; finalResult: any; finishReason: string }> {
-    const { conversationId, appId, siteId, sseSocketId, abortSignal, streamingEvents, executionContext } = opts
+    const { conversationId, appId, siteId, sseSocketId, abortSignal, streamingEvents, executionContext, streamState } = opts
 
     const pendingPublishes: Promise<unknown>[] = []
     // Guard each publish with .catch so a blocking-subscriber rejection
@@ -205,7 +241,13 @@ export class MessageExecutionService {
     // turn into a spurious error+complete. publishTerminal handles the
     // terminal events with an equivalent guard; this covers chunk /
     // tool_* / budget / validator events.
-    const publish = (event: Parameters<typeof this.deps.eventChannel.publish>[1]) =>
+    //
+    // Ownership check: if a newer execute() has taken over the activeStreams
+    // slot, our straggler events would leak into the next turn's subscribers
+    // and corrupt its stream (including finalize events wiping the new
+    // activeStream on the client). Drop the event silently in that case.
+    const publish = (event: Parameters<typeof this.deps.eventChannel.publish>[1]) => {
+      if (this.activeStreams.get(conversationId) !== streamState) return
       pendingPublishes.push(
         this.deps.eventChannel.publish(conversationId, event).catch(err => {
           logger.warn('sse.execution.stream_publish_failed', {
@@ -213,6 +255,7 @@ export class MessageExecutionService {
           })
         })
       )
+    }
 
     const processor = new StreamPartProcessor({
       onTextDelta: (text) => {
@@ -444,10 +487,10 @@ export class MessageExecutionService {
         type: 'complete', content: '', data: { finishReason: 'error' },
         conversationId, agentName: 'system',
       })
-      for (const subId of streamState.subscriberIds) {
-        this.deps.eventChannel.unsubscribe(conversationId, subId)
-      }
       if (this.activeStreams.get(conversationId) === streamState) {
+        for (const subId of streamState.subscriberIds) {
+          this.deps.eventChannel.unsubscribe(conversationId, subId)
+        }
         this.activeStreams.delete(conversationId)
       }
       return
@@ -520,7 +563,7 @@ export class MessageExecutionService {
           lastTurnResult = await this.streamAgentTurn(agent, agentName, message, {
             conversationId, appId, siteId, sseSocketId,
             abortSignal: abortController.signal,
-            streamingEvents, executionContext,
+            streamingEvents, executionContext, streamState,
           })
         },
         getAutoContinuation: () => {
@@ -671,20 +714,33 @@ export class MessageExecutionService {
         }
       }
 
-      // Log + swallow so a subscriber rejection doesn't flip the success path
-      // into the outer catch (which would re-publish error + complete).
-      await this.publishTerminal(appId, conversationId, {
-        conversationId, type: 'step_complete',
-        content: lastTurnResult?.accumulatedContent ?? '',
-        data: { step: lastTurnResult?.currentStep ?? 1, isFinal: true, agentId: finalAgentName },
-        agentName: finalAgentName,
-      })
+      // If a later execute() has already replaced our slot (user stopped
+      // then sent a new message before our loop observed its abort), our
+      // terminal events would land in the NEW turn's subscriber set —
+      // finalizing the new active stream on the client and wiping it.
+      // Skip publish in that case; the owner of the slot will publish its
+      // own terminal events.
+      const supersededSuccess = this.activeStreams.get(conversationId) !== streamState
+      if (supersededSuccess) {
+        logger.info('sse.execution.superseded.skip_success_terminal', {
+          appId, conversationId, finishReason,
+        })
+      } else {
+        // Log + swallow so a subscriber rejection doesn't flip the success path
+        // into the outer catch (which would re-publish error + complete).
+        await this.publishTerminal(appId, conversationId, {
+          conversationId, type: 'step_complete',
+          content: lastTurnResult?.accumulatedContent ?? '',
+          data: { step: lastTurnResult?.currentStep ?? 1, isFinal: true, agentId: finalAgentName },
+          agentName: finalAgentName,
+        })
 
-      await this.publishTerminal(appId, conversationId, {
-        conversationId, type: 'complete', content: '',
-        data: { agentId: finalAgentName, finishReason, totalSteps: lastTurnResult?.currentStep ?? 1, commitHash, usedFreeGrants },
-        agentName: finalAgentName,
-      })
+        await this.publishTerminal(appId, conversationId, {
+          conversationId, type: 'complete', content: '',
+          data: { agentId: finalAgentName, finishReason, totalSteps: lastTurnResult?.currentStep ?? 1, commitHash, usedFreeGrants },
+          agentName: finalAgentName,
+        })
+      }
 
       logger.info('sse.execution.complete', { appId, conversationId, agentId: finalAgentName, finishReason, iterations: loopResult.iterations })
     } catch (error) {
@@ -711,7 +767,14 @@ export class MessageExecutionService {
         logger.error('sse.execution.error_persistence_failed', { appId, conversationId, ...errorFields(persistErr) })
       })
 
-      if (abortController.signal.aborted) {
+      // Same superseded-slot guard as the success path: our terminal
+      // events would otherwise land in a newer turn's subscriber set.
+      const supersededError = this.activeStreams.get(conversationId) !== streamState
+      if (supersededError) {
+        logger.info('sse.execution.superseded.skip_error_terminal', {
+          appId, conversationId, aborted: abortController.signal.aborted,
+        })
+      } else if (abortController.signal.aborted) {
         logger.info('sse.execution.aborted', { appId, conversationId })
         await this.publishTerminal(appId, conversationId, {
           type: 'complete', content: '', data: { finishReason: 'aborted' },
@@ -744,10 +807,17 @@ export class MessageExecutionService {
       if (this.abortControllers.get(conversationId) === abortController) {
         this.abortControllers.delete(conversationId)
       }
-      for (const subId of streamState.subscriberIds) {
-        this.deps.eventChannel.unsubscribe(conversationId, subId)
-      }
+      // Only tear down eventChannel subscriptions if we still own the active
+      // stream slot. If a racing execute() took over (user sent a new
+      // message after stop, before this turn's loop could observe its
+      // abort), it has re-subscribed the SAME SSE subscriber ID for its
+      // own stream — unsubscribing here would leave that new turn publishing
+      // into an empty channel, so the client would see no events and the
+      // UI would hang on "Thinking…".
       if (this.activeStreams.get(conversationId) === streamState) {
+        for (const subId of streamState.subscriberIds) {
+          this.deps.eventChannel.unsubscribe(conversationId, subId)
+        }
         this.activeStreams.delete(conversationId)
       }
     }

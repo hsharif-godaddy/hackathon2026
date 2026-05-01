@@ -34,10 +34,22 @@ vi.mock('@/stores/useSitesStore', () => ({
   },
 }))
 
-const mockLogImpressionEvent = vi.fn(() => vi.fn())
-vi.mock('@/utils/instrumentation', () => ({
-  logImpressionEvent: (...args: unknown[]) => mockLogImpressionEvent(...args),
-}))
+const mockTrackCompletion = vi.fn()
+const mockIncrementSessionPromptCount = vi.fn()
+const mockMaybeShowFeedbackBanner = vi.fn()
+const mockMaybeFireEvalSnapshot = vi.fn()
+const mockScheduleUsageRefresh = vi.fn()
+vi.mock('@/hooks/shared/completionSideEffects', async (importOriginal) => {
+  const actual = await importOriginal() as Record<string, unknown>
+  return {
+    ...actual,
+    trackCompletion: (...args: unknown[]) => mockTrackCompletion(...args),
+    incrementSessionPromptCount: (...args: unknown[]) => mockIncrementSessionPromptCount(...args),
+    maybeShowFeedbackBanner: (...args: unknown[]) => mockMaybeShowFeedbackBanner(...args),
+    maybeFireEvalSnapshot: (...args: unknown[]) => mockMaybeFireEvalSnapshot(...args),
+    scheduleUsageRefresh: (...args: unknown[]) => mockScheduleUsageRefresh(...args),
+  }
+})
 
 import { useSitesStore } from '@/stores/useSitesStore'
 import { useSiteStore } from '@/stores/useSiteStore'
@@ -111,12 +123,8 @@ describe('CompleteHandler', () => {
       usage: { totalTokens: 100 },
       totalSteps: 3,
     })
-    expect(context.helpers.sendToolImpression).toHaveBeenCalledWith('complete')
-    // Machine handles UI state transitions via STREAM_COMPLETE event (Tier 1)
-    // Adapter syncs: setWebSocketState, setStreamingState, setIsLoading
+    expect(mockTrackCompletion).toHaveBeenCalledWith(true)
     expect(context.helpers.handleCommitComplete).toHaveBeenCalledWith('abcdef1')
-    // Logs usage impression when usage data is present
-    expect(mockLogImpressionEvent).toHaveBeenCalledWith('credits.usage.consumed')
   })
 
   it('does not log usage impression when usage data is absent', async () => {
@@ -131,12 +139,10 @@ describe('CompleteHandler', () => {
       createMockMessageContext()
     )
 
-    expect(mockLogImpressionEvent).not.toHaveBeenCalledWith('credits.usage.consumed')
+    expect(mockTrackCompletion).toHaveBeenCalledWith(false)
   })
 
-  it('dispatches eval-snapshot-trigger on first completion with commitHash', async () => {
-    const dispatchSpy = vi.spyOn(window, 'dispatchEvent')
-    sessionStorage.removeItem('airo_eval_snapshot_app_build_count_app-123')
+  it('calls maybeFireEvalSnapshot with commitHash', async () => {
     mockStore.getState.mockReturnValue({
       connectionRetry: { isRetrying: false },
       clearConnectionRetry: vi.fn(),
@@ -144,70 +150,29 @@ describe('CompleteHandler', () => {
     })
 
     await handler.handle(
-      {
-        type: 'complete',
-        content: '',
-        data: { commitHash: 'abc1111' },
-      },
+      { type: 'complete', content: '', data: { commitHash: 'abc1111' } },
       createMockMessageContext()
     )
 
-    expect(dispatchSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'eval-snapshot-trigger' })
-    )
-    expect(sessionStorage.getItem('airo_eval_snapshot_app_build_count_app-123')).toBe('1')
-    dispatchSpy.mockRestore()
+    expect(mockMaybeFireEvalSnapshot).toHaveBeenCalledWith('abc1111', 'app-123')
   })
 
-  it('does not dispatch eval-snapshot-trigger when commitHash is absent', async () => {
-    const dispatchSpy = vi.spyOn(window, 'dispatchEvent')
-    sessionStorage.removeItem('airo_eval_snapshot_app_build_count_app-123')
-    mockStore.getState.mockReturnValue({
-      connectionRetry: { isRetrying: false },
-      clearConnectionRetry: vi.fn(),
-      messages: [{ role: 'assistant' as const, toolCalls: [{ id: '1', name: 'edit_file' }] }],
-    })
-
-    await handler.handle(
-      { type: 'complete', content: '', data: { agentId: 'develop' } },
-      createMockMessageContext()
-    )
-
-    expect(dispatchSpy).not.toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'eval-snapshot-trigger' })
-    )
-    expect(sessionStorage.getItem('airo_eval_snapshot_app_build_count_app-123')).toBe(null)
-    dispatchSpy.mockRestore()
-  })
-
-  it('increments session prompt count only for published sites', async () => {
-    // Mock a published site
-    mockSitesStore.getState.mockReturnValue({
-      getSite: vi.fn().mockReturnValue({
-        id: 'app-123',
-        published_url: 'https://published.example.com',
-      }),
-      updateSite: vi.fn(),
-    })
-
+  it('calls incrementSessionPromptCount on completion', async () => {
     mockStore.getState.mockReturnValue({
       connectionRetry: { isRetrying: false },
       clearConnectionRetry: vi.fn(),
       messages: [],
     })
 
-    sessionStorage.removeItem('airo_session_prompt_count')
-
     await handler.handle(
       { type: 'complete', content: '', data: { agentId: 'develop' } },
       createMockMessageContext()
     )
 
-    expect(sessionStorage.getItem('airo_session_prompt_count')).toBe('1')
+    expect(mockIncrementSessionPromptCount).toHaveBeenCalledWith('app-123')
   })
 
-  it('does not increment session prompt count for unpublished sites', async () => {
-    // Mock an unpublished site (no published_url)
+  it('calls incrementSessionPromptCount for unpublished sites (filtering is internal)', async () => {
     mockSitesStore.getState.mockReturnValue({
       getSite: vi.fn().mockReturnValue({
         id: 'app-123',
@@ -229,30 +194,7 @@ describe('CompleteHandler', () => {
       createMockMessageContext()
     )
 
-    expect(sessionStorage.getItem('airo_session_prompt_count')).toBe(null)
-  })
-
-  it('does not increment session prompt count when site is not found', async () => {
-    // Mock getSite returning null (site not found)
-    mockSitesStore.getState.mockReturnValue({
-      getSite: vi.fn().mockReturnValue(null),
-      updateSite: vi.fn(),
-    })
-
-    mockStore.getState.mockReturnValue({
-      connectionRetry: { isRetrying: false },
-      clearConnectionRetry: vi.fn(),
-      messages: [],
-    })
-
-    sessionStorage.removeItem('airo_session_prompt_count')
-
-    await handler.handle(
-      { type: 'complete', content: '', data: { agentId: 'develop' } },
-      createMockMessageContext()
-    )
-
-    expect(sessionStorage.getItem('airo_session_prompt_count')).toBe(null)
+    expect(mockIncrementSessionPromptCount).toHaveBeenCalledWith('app-123')
   })
 
   it('invalidates media manifest when stream had media tool calls', async () => {
@@ -380,35 +322,18 @@ describe('CompleteHandler', () => {
     expect(mockInvalidateQueries).not.toHaveBeenCalled()
   })
 
-  it('invalidates credit-grants at 5s and 30s after completion', async () => {
-    vi.useFakeTimers()
-    try {
-      mockStore.getState.mockReturnValue({
-        connectionRetry: { isRetrying: false },
-        clearConnectionRetry: vi.fn(),
-        messages: [],
-      })
+  it('schedules usage refresh after completion', async () => {
+    mockStore.getState.mockReturnValue({
+      connectionRetry: { isRetrying: false },
+      clearConnectionRetry: vi.fn(),
+      messages: [],
+    })
 
-      await handler.handle(
-        { type: 'complete', content: '', data: { agentId: 'develop' } },
-        createMockMessageContext()
-      )
+    await handler.handle(
+      { type: 'complete', content: '', data: { agentId: 'develop' } },
+      createMockMessageContext()
+    )
 
-      mockInvalidateQueries.mockClear()
-
-      vi.advanceTimersByTime(5_000)
-      expect(mockInvalidateQueries).toHaveBeenCalledTimes(1)
-      expect(mockInvalidateQueries).toHaveBeenLastCalledWith({
-        queryKey: ['credit-grants'],
-      })
-
-      vi.advanceTimersByTime(25_000)
-      expect(mockInvalidateQueries).toHaveBeenCalledTimes(2)
-      expect(mockInvalidateQueries).toHaveBeenLastCalledWith({
-        queryKey: ['credit-grants'],
-      })
-    } finally {
-      vi.useRealTimers()
-    }
+    expect(mockScheduleUsageRefresh).toHaveBeenCalledTimes(1)
   })
 })

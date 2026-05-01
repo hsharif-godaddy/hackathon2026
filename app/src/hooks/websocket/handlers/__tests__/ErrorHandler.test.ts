@@ -13,6 +13,11 @@ vi.mock('@/utils/instrumentation', () => ({
   logImpressionEvent: (...args: unknown[]) => mockLogImpressionEvent(...args),
 }))
 
+const mockTrackError = vi.fn()
+vi.mock('@/hooks/shared/completionSideEffects', () => ({
+  trackError: (...args: unknown[]) => mockTrackError(...args),
+}))
+
 describe('ErrorHandler', () => {
   const handler = new ErrorHandler()
 
@@ -57,13 +62,9 @@ describe('ErrorHandler', () => {
       agentId: 'develop',
       totalSteps: 2,
     })
-    expect(context.helpers.sendToolImpression).toHaveBeenCalledWith('error')
-    // Machine handles UI state transitions via STREAM_ERROR event (Tier 1)
-    // Adapter syncs: setWebSocketState, setStreamingState, setIsLoading
+    expect(mockTrackError).toHaveBeenCalledWith('BUDGET_EXCEEDED')
     expect(context.helpers.clearRetryState).toHaveBeenCalled()
-    // Note: We no longer clear the stored socket ID on errors to enable recovery on page reload
     expect(context.refs.pendingRecoveryAck.current).toBeNull()
-    // Logs budget exceeded impression
     expect(mockLogImpressionEvent).toHaveBeenCalledWith('credits.budget.exceeded')
   })
 

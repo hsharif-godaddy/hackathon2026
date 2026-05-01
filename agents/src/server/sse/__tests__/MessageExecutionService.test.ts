@@ -1140,14 +1140,17 @@ describe('MessageExecutionService', () => {
       )
       expect(disconnectCall).toBeDefined()
 
-      // Also assert the terminal complete event carries finishReason: 'aborted'.
-      // Without this a regression that dropped the publish (or set the wrong
-      // finishReason) would slip through the disconnect-reason assertion.
+      // Also assert the terminal complete event carries finishReason:
+      // 'user_stopped'. stop() vacates the activeStreams slot and publishes
+      // the user_stopped complete immediately; execute()'s later aborted
+      // publish is skipped by the superseded-slot guard. A regression that
+      // dropped the publish (or set the wrong finishReason) would slip past
+      // the disconnect-reason assertion alone.
       expect(deps.eventChannel.publish).toHaveBeenCalledWith(
         'conv_1',
         expect.objectContaining({
           type: 'complete',
-          data: expect.objectContaining({ finishReason: 'aborted' }),
+          data: expect.objectContaining({ finishReason: 'user_stopped' }),
         })
       )
     })

@@ -93,6 +93,16 @@ export async function getAgentToken(siteId: string): Promise<string> {
 }
 
 /**
+ * Clear the cached agent token for a site. Use when another transport layer
+ * (e.g. the SSE EventSource) has observed a 401 and the next getAgentToken()
+ * call needs to fetch a fresh token rather than hand back the stale one.
+ */
+export function clearAgentTokenCache(siteId: string): void {
+  tokenCache.delete(siteId);
+  pendingTokenRequests.delete(siteId);
+}
+
+/**
  * Authenticated fetch for agent API calls.
  * Uses Bearer token auth with retry-on-401 logic.
  */

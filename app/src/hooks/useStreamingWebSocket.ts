@@ -9,7 +9,7 @@ import { useCallback, useEffect, useRef } from 'react'
 
 import type { AssetManagerItem } from '@/app/[market]/develop/components/chat/AssetTypes'
 import type { VisualContext } from '@/app/[market]/develop/components/visualContextCapture'
-import { captureVisualContext } from '@/app/[market]/develop/components/visualContextCapture'
+import { resolveMessageDefaults } from '@/hooks/resolveMessageDefaults'
 import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
 import {
@@ -54,6 +54,7 @@ import {
   useWebSocketState,
 } from '@/stores/useStreamingConversationStore'
 import {
+  useBudgetUpdate,
   useGrantContext,
   useWebSocketHelpers,
 } from './websocket'
@@ -135,7 +136,7 @@ export interface UseStreamingWebSocketReturn {
   }
 }
 
-export function useStreamingWebSocket() {
+export function useStreamingWebSocket({ enabled = true }: { enabled?: boolean } = {}) {
   const controllerRef = useRef<StreamingWebSocketController | null>(null)
   const connectionManagerRef = useRef<ConnectionManager | null>(null)
   const messageBuilderRef = useRef<ChatMessageBuilder | null>(null)
@@ -175,7 +176,7 @@ export function useStreamingWebSocket() {
     getConversationIdFromCookie,
   }
 
-  if (!controllerRef.current && currentAppId) {
+  if (enabled && !controllerRef.current && currentAppId) {
     const registryController = getController()
     const registryAppId = getControllerAppId()
     if (registryController && registryAppId === currentAppId) {
@@ -258,7 +259,7 @@ export function useStreamingWebSocket() {
   }
 
   useEffect(() => {
-    if (!currentAppId) return
+    if (!enabled || !currentAppId) return
 
     const controller = controllerRef.current
     if (!controller) return
@@ -281,9 +282,11 @@ export function useStreamingWebSocket() {
     return () => {
       controller.disconnect();
     };
-  }, [currentAppId])
+  }, [currentAppId, enabled])
 
   useEffect(() => {
+    if (!enabled) return
+
     registerStreamingWebSocketHookPresence()
     cancelDeferredRegistryDestroy()
 
@@ -291,13 +294,20 @@ export function useStreamingWebSocket() {
       unregisterStreamingWebSocketHookPresence()
       scheduleDeferredRegistryDestroy()
     }
-  }, [])
+  }, [enabled])
 
   // Synchronize grant context with agent via controller interface
   useGrantContext({
     controller: controllerRef.current,
     subscriptionId,
     isConnected: webSocketState.connected,
+    enabled,
+  })
+
+  useBudgetUpdate({
+    controller: controllerRef.current,
+    subscriptionId,
+    enabled,
   })
 
 
@@ -345,45 +355,24 @@ export function useStreamingWebSocket() {
 
       useStreamingConversationStore.getState().setIsLoading(true)
 
-      // Capture visual context from iframe (with error handling)
-      // Only capture if not explicitly provided
-      let visualContext: VisualContext | null = options.visualContext ?? null
-      if (options.visualContext === undefined) {
-        try {
-          visualContext = await captureVisualContext()
-        } catch (error) {
-          // Convert to structured error but don't fail - visual context is optional
-          const wsError = toWebSocketError(
-            error,
-            WebSocketErrorCode.VISUAL_CONTEXT_CAPTURE_FAILED,
-            { appId: activeAppId }
-          )
-          logger.warn('websocket.visual_context.capture_failed', wsError.toLogObject())
-        }
-      }
+      const defaults = await resolveMessageDefaults({
+          modelOverride: options.modelOverride,
+          agentProfile: options.agentProfile,
+          visualContext: options.visualContext,
+      })
 
       try {
-        // Resolve per-project overrides: explicit param > store selection > undefined
-        let resolvedModelOverride = options.modelOverride
-        let resolvedProfile = options.agentProfile
-        if (resolvedModelOverride === undefined || resolvedProfile === undefined) {
-          const { useDevelopPageStore } = await import('@/stores/useDevelopPageStore')
-          const state = useDevelopPageStore.getState()
-          if (resolvedModelOverride === undefined) resolvedModelOverride = state.selectedModel ?? undefined
-          if (resolvedProfile === undefined) resolvedProfile = state.selectedProfile ?? undefined
-        }
-
         await controller.sendMessage({
           content: options.content,
-          visualContext,
+          visualContext: defaults.visualContext,
           aiEditContext: options.aiEditContext ?? undefined,
           selectedAssets: options.selectedAssets,
           todoListContext: options.todoListContext,
           isActionRequest: options.isActionRequest,
           customContext: options.customContext,
           templateId: options.templateId,
-          modelOverride: resolvedModelOverride,
-          agentProfile: resolvedProfile,
+          modelOverride: defaults.modelOverride,
+          agentProfile: defaults.agentProfile,
         })
       } catch (error) {
         // Convert to structured error with context
@@ -393,7 +382,7 @@ export function useStreamingWebSocket() {
           {
             appId: activeAppId,
             messageLength: options.content.length,
-            hasVisualContext: Boolean(visualContext),
+            hasVisualContext: Boolean(defaults.visualContext),
             hasAiEditContext: Boolean(options.aiEditContext),
             hasAssets: Boolean(options.selectedAssets?.length),
           }

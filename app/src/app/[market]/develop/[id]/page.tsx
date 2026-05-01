@@ -37,10 +37,10 @@ import { useAppArchiveRestore } from '@/hooks/useAppArchiveRestore'
 import { useAppDetails } from '@/hooks/useAppDetails'
 import { useAppHibernation } from '@/hooks/useAppHibernation'
 import { useChatTabs } from '@/hooks/useChatTabs'
+import { useChatTransport } from '@/hooks/useChatTransport'
 import { useGitHistoryQuery } from '@/hooks/useGitHistory'
 import { useHivemind } from '@/hooks/useHivemind'
 import { useImageReadiness } from '@/hooks/useImageReadiness'
-import { useStreamingWebSocket } from '@/hooks/useStreamingWebSocket'
 import { prefetchSubscription } from '@/hooks/useSubscription'
 import { useIsRenewalPolling } from '@/hooks/useSubscriptionRenewal'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
@@ -201,7 +201,7 @@ function DevelopPageContent() {
   const setInputValue = useSetInputValue()
   const setAiEditContext = useSetAiEditContext()
   const autoSendInitialMessage = useAutoSendInitialMessage()
-  const ws = useStreamingWebSocket()
+  const ws = useChatTransport()
   const isLoading = useIsLoading()
   const isStreaming = useIsActivelyStreaming()
   const isAwaitingStream = deriveIsAwaitingStream(

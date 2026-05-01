@@ -22,6 +22,7 @@ vi.mock('@/hooks/websocket/useWebSocketHelpers', () => ({
   getConversationIdFromCookie: vi.fn(),
   clearConversationIdCookie: vi.fn(),
   setConversationIdCookie: vi.fn(),
+  sendToolImpressionEvent: vi.fn(),
 }))
 
 describe('StreamingWebSocketController', () => {

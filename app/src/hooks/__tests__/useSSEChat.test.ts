@@ -1,0 +1,886 @@
+/**
+ * @vitest-environment jsdom
+ */
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { act, renderHook } from '@testing-library/react'
+
+// ---------------------------------------------------------------------------
+// Store mocks
+// ---------------------------------------------------------------------------
+
+const mockAppendTextSegment = vi.fn()
+const mockAddToolStartSegment = vi.fn()
+const mockAddToolCallSegment = vi.fn()
+const mockAddToolResultSegment = vi.fn()
+const mockFinalizeStream = vi.fn()
+const mockMarkUpstreamError = vi.fn()
+const mockSetIsLoading = vi.fn()
+const mockStartNewStream = vi.fn()
+const mockSetConversationId = vi.fn()
+const mockUpdateToolDelta = vi.fn()
+const mockSetWebSocketState = vi.fn()
+const mockLoadAndPersistHistory = vi.fn()
+const mockSetHistoryLoadRequested = vi.fn()
+const mockSetHistoryLoadingComplete = vi.fn()
+const mockSetHistoryPagination = vi.fn()
+const mockSetHistoryLoadingMore = vi.fn()
+
+let currentAppId: string | null = 'test-app-123'
+let storeState: Record<string, unknown> = {}
+
+function getStoreState() {
+  return {
+    currentAppId,
+    messages: [],
+    activeStream: null,
+    historyLoadingComplete: false,
+    historyLoadRequested: false,
+    appendTextSegment: mockAppendTextSegment,
+    addToolStartSegment: mockAddToolStartSegment,
+    addToolCallSegment: mockAddToolCallSegment,
+    addToolResultSegment: mockAddToolResultSegment,
+    finalizeStream: mockFinalizeStream,
+    markUpstreamError: mockMarkUpstreamError,
+    setIsLoading: mockSetIsLoading,
+    startNewStream: mockStartNewStream,
+    setConversationId: mockSetConversationId,
+    updateToolDelta: mockUpdateToolDelta,
+    setWebSocketState: mockSetWebSocketState,
+    loadAndPersistHistory: mockLoadAndPersistHistory,
+    setHistoryLoadRequested: mockSetHistoryLoadRequested,
+    setHistoryLoadingComplete: mockSetHistoryLoadingComplete,
+    setHistoryPagination: mockSetHistoryPagination,
+    setHistoryLoadingMore: mockSetHistoryLoadingMore,
+    ...storeState,
+  }
+}
+
+let mockIsActivelyStreaming = false
+
+vi.mock('@/stores/useStreamingConversationStore', () => ({
+  useCurrentAppId: () => currentAppId,
+  useIsActivelyStreaming: () => mockIsActivelyStreaming,
+  useStreamingConversationStore: {
+    getState: () => getStoreState(),
+  },
+}))
+
+// ---------------------------------------------------------------------------
+// Cookie mock
+// ---------------------------------------------------------------------------
+
+let mockConversationIdFromCookie: string | null = null
+
+vi.mock('@/hooks/websocket/useWebSocketHelpers', () => ({
+  getConversationIdFromCookie: () => mockConversationIdFromCookie,
+  setConversationIdCookie: vi.fn(),
+  sendToolImpressionEvent: vi.fn(),
+}))
+
+// ---------------------------------------------------------------------------
+// React Query mock
+// ---------------------------------------------------------------------------
+
+const mockInvalidateQueries = vi.fn()
+const mockSetQueryData = vi.fn()
+const mockGetQueryData = vi.fn().mockReturnValue(undefined)
+
+vi.mock('@tanstack/react-query', () => ({
+  useQueryClient: () => ({
+    invalidateQueries: mockInvalidateQueries,
+    setQueryData: mockSetQueryData,
+    getQueryData: mockGetQueryData,
+  }),
+  useQuery: () => ({
+    data: undefined,
+    refetch: vi.fn().mockResolvedValue({ data: undefined }),
+    isLoading: false,
+    isFetching: false,
+    isError: false,
+    error: null,
+  }),
+}))
+
+// ---------------------------------------------------------------------------
+// Switchboard / Sites / Grants mocks
+// ---------------------------------------------------------------------------
+
+vi.mock('@/hooks/useSwitchboard', () => ({
+  useSwitchboard: () => false,
+}))
+
+const mockRefetchGrants = vi.fn().mockResolvedValue({ data: [] })
+
+vi.mock('@/hooks/useCreditGrants', () => ({
+  useCreditGrants: () => ({
+    data: [],
+    refetch: mockRefetchGrants,
+    isLoading: false,
+    isFetching: false,
+    isError: false,
+    error: null,
+  }),
+}))
+
+const mockUpdateSite = vi.fn()
+const mockGetSite = vi.fn()
+
+vi.mock('@/stores/useSitesStore', () => {
+  const hook = Object.assign(() => 'sub-123', {
+    getState: () => ({ updateSite: mockUpdateSite, getSite: mockGetSite }),
+  })
+  return { useSitesStore: hook }
+})
+
+vi.mock('@/types/budget', () => ({
+  BUDGET_STATUS_QUERY_KEY: 'budget-status',
+}))
+
+// ---------------------------------------------------------------------------
+// SSETransport mock
+// ---------------------------------------------------------------------------
+
+type MockCallbacks = {
+  onEvent: (e: { type: string; content?: string; data: Record<string, unknown> }) => void
+  onStateChange: (s: string) => void
+  onError: (err: Error) => void
+}
+
+// Per-instance storage so each test gets a fresh transport mock
+interface MockTransport {
+  callbacks: MockCallbacks | null
+  state: string
+  on: ReturnType<typeof vi.fn>
+  connect: ReturnType<typeof vi.fn>
+  disconnect: ReturnType<typeof vi.fn>
+  destroy: ReturnType<typeof vi.fn>
+  sendMessage: ReturnType<typeof vi.fn>
+  stopGeneration: ReturnType<typeof vi.fn>
+  loadHistory: ReturnType<typeof vi.fn>
+  postClientActionResult: ReturnType<typeof vi.fn>
+  emitGrantContext: ReturnType<typeof vi.fn>
+  onGrantRefreshRequested: ReturnType<typeof vi.fn>
+  onBudgetUpdate: ReturnType<typeof vi.fn>
+  setTokenRefresher: ReturnType<typeof vi.fn>
+  updateToken: ReturnType<typeof vi.fn>
+}
+
+let lastTransport: MockTransport
+
+vi.mock('@/services/transport/SSETransport', () => {
+  return {
+    SSETransport: vi.fn().mockImplementation(() => {
+      const instance: MockTransport = {
+        callbacks: null,
+        state: 'disconnected' as string,
+        on: vi.fn((cbs: MockCallbacks) => {
+          instance.callbacks = cbs
+        }),
+        connect: vi.fn(),
+        disconnect: vi.fn(),
+        destroy: vi.fn(),
+        sendMessage: vi.fn().mockResolvedValue(undefined),
+        stopGeneration: vi.fn().mockResolvedValue(undefined),
+        loadHistory: vi.fn(),
+        postClientActionResult: vi.fn().mockResolvedValue(undefined),
+        emitGrantContext: vi.fn().mockReturnValue(true),
+        onGrantRefreshRequested: vi.fn().mockReturnValue(() => {}),
+        onBudgetUpdate: vi.fn().mockReturnValue(() => {}),
+        setTokenRefresher: vi.fn(),
+        updateToken: vi.fn(),
+      }
+      lastTransport = instance
+      return instance
+    }),
+  }
+})
+
+vi.mock('@/config/dynamic-api', () => ({
+  dynamicApiConfigService: {
+    getConfigForSite: vi.fn().mockResolvedValue({ baseUrl: 'https://agent.example.com' }),
+  },
+}))
+
+vi.mock('@/lib/agent-fetch', () => ({
+  getAgentToken: vi.fn().mockResolvedValue('test-token'),
+  clearAgentTokenCache: vi.fn(),
+  agentFetch: vi.fn((url: string, init: any) => {
+    const { siteId: _siteId, ...rest } = init ?? {}
+    return fetch(url, rest)
+  }),
+}))
+
+vi.mock('@/lib/request-context', () => ({
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+}))
+
+const mockSetLaunchVideoResult = vi.fn()
+
+vi.mock('@/stores/useDevelopPageStore', () => ({
+  useDevelopPageStore: {
+    getState: vi.fn().mockReturnValue({ selectedModel: undefined, setLaunchVideoResult: mockSetLaunchVideoResult }),
+  },
+}))
+
+const mockPublishAction = vi.fn().mockResolvedValue({ success: true })
+const mockGetSiteDataAction = vi.fn().mockResolvedValue({ html: '<div/>' })
+
+vi.mock('@/hooks/websocket/actions', () => ({
+  clientActionExecutors: {
+    publishAction: (...args: unknown[]) => mockPublishAction(...args),
+    getSiteDataAction: (...args: unknown[]) => mockGetSiteDataAction(...args),
+  },
+}))
+
+const mockBufferTextChunk = vi.fn()
+const mockBufferStoreUpdate = vi.fn()
+const mockFlushStoreUpdateBufferImmediate = vi.fn()
+
+vi.mock('@/services/websocket/storeUpdateBuffer', () => ({
+  bufferTextChunk: (...args: unknown[]) => mockBufferTextChunk(...args),
+  bufferStoreUpdate: vi.fn((fn: () => void) => {
+    mockBufferStoreUpdate(fn)
+    fn()
+  }),
+  flushStoreUpdateBufferImmediate: (...args: unknown[]) => mockFlushStoreUpdateBufferImmediate(...args),
+}))
+
+const mockScheduleToolDeltaFlush = vi.fn()
+
+vi.mock('@/services/websocket/toolDeltaBuffer', () => ({
+  scheduleToolDeltaFlush: (...args: unknown[]) => mockScheduleToolDeltaFlush(...args),
+}))
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+async function flushPromises() {
+  await new Promise(resolve => setTimeout(resolve, 0))
+}
+
+async function setupHook(appId = 'test-app-123') {
+  currentAppId = appId
+  const { useSSEChat } = await import('@/hooks/useSSEChat')
+  const hook = renderHook(() => useSSEChat())
+
+  await act(async () => {
+    await flushPromises()
+  })
+
+  return hook
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+describe('useSSEChat', () => {
+  beforeEach(() => {
+    currentAppId = 'test-app-123'
+    storeState = {}
+    mockConversationIdFromCookie = null
+    // Mock fetch for conversation creation POST
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ conversationId: 'conv-created-123' }),
+    }) as any
+    mockIsActivelyStreaming = false
+    mockInvalidateQueries.mockClear()
+    mockSetQueryData.mockClear()
+    mockGetQueryData.mockClear().mockReturnValue(undefined)
+    mockRefetchGrants.mockClear().mockResolvedValue({ data: [] })
+    mockBufferTextChunk.mockClear()
+    mockBufferStoreUpdate.mockClear()
+    mockFlushStoreUpdateBufferImmediate.mockClear()
+    mockAppendTextSegment.mockClear()
+    mockAddToolStartSegment.mockClear()
+    mockAddToolCallSegment.mockClear()
+    mockAddToolResultSegment.mockClear()
+    mockFinalizeStream.mockClear()
+    mockMarkUpstreamError.mockClear()
+    mockSetIsLoading.mockClear()
+    mockLoadAndPersistHistory.mockClear()
+    mockSetHistoryLoadRequested.mockClear()
+    mockSetHistoryLoadingComplete.mockClear()
+    mockSetHistoryPagination.mockClear()
+    mockSetHistoryLoadingMore.mockClear()
+    mockSetWebSocketState.mockClear()
+    mockSetConversationId.mockClear()
+    mockSetLaunchVideoResult.mockClear()
+    mockPublishAction.mockClear()
+    mockGetSiteDataAction.mockClear()
+  })
+
+  afterEach(() => {
+    // No vi.restoreAllMocks() - it would clear vi.fn() implementations in vi.mock factories
+  })
+
+  it('connects transport on mount with appId and token', async () => {
+    await setupHook()
+
+    expect(lastTransport.connect).toHaveBeenCalledWith('test-app-123', 'test-token', 'conv-created-123')
+  })
+
+  it('disconnects transport on unmount', async () => {
+    const hook = await setupHook()
+
+    hook.unmount()
+
+    expect(lastTransport.disconnect).toHaveBeenCalled()
+  })
+
+  it('chunk event calls bufferTextChunk', async () => {
+    await setupHook()
+
+    act(() => {
+      lastTransport.callbacks?.onEvent({ type: 'chunk', content: 'hello', data: {} })
+    })
+
+    expect(mockBufferTextChunk).toHaveBeenCalledWith('hello')
+  })
+
+  it('complete event calls flushStoreUpdateBufferImmediate then finalizeStream', async () => {
+    await setupHook()
+
+    act(() => {
+      lastTransport.callbacks?.onEvent({ type: 'complete', data: {} })
+    })
+
+    expect(mockFlushStoreUpdateBufferImmediate).toHaveBeenCalled()
+    expect(mockFinalizeStream).toHaveBeenCalled()
+  })
+
+  it('error event calls store.markUpstreamError', async () => {
+    await setupHook()
+
+    act(() => {
+      lastTransport.callbacks?.onEvent({ type: 'error', content: 'something went wrong', data: {} })
+    })
+
+    expect(mockMarkUpstreamError).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'something went wrong', type: 'UPSTREAM_ERROR' })
+    )
+  })
+
+  it('stream_error event calls store.markUpstreamError', async () => {
+    await setupHook()
+
+    act(() => {
+      lastTransport.callbacks?.onEvent({ type: 'stream_error', content: 'upstream failed', data: {} })
+    })
+
+    expect(mockMarkUpstreamError).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'upstream failed' })
+    )
+  })
+
+  it('tool_start event calls bufferStoreUpdate with addToolStartSegment', async () => {
+    await setupHook()
+    const tool = { id: 't1', name: 'read_file', input: {}, status: 'running' as const }
+
+    act(() => {
+      lastTransport.callbacks?.onEvent({ type: 'tool_start', data: { tool } })
+    })
+
+    expect(mockBufferStoreUpdate).toHaveBeenCalled()
+    expect(mockAddToolStartSegment).toHaveBeenCalledWith({
+      id: 't1', name: 'read_file', input: {}, status: 'running', startTime: expect.any(Number),
+    })
+  })
+
+  it('tool_call event calls bufferStoreUpdate with addToolCallSegment', async () => {
+    await setupHook()
+    const tool = { id: 't2', name: 'write_file', input: { path: '/foo' }, status: 'completed' as const }
+
+    act(() => {
+      lastTransport.callbacks?.onEvent({ type: 'tool_call', data: { tool } })
+    })
+
+    expect(mockBufferStoreUpdate).toHaveBeenCalled()
+    // mapToolCall always sets status: 'running' regardless of the incoming tool.status
+    expect(mockAddToolCallSegment).toHaveBeenCalledWith({
+      id: 't2', name: 'write_file', input: { path: '/foo' }, status: 'running',
+    })
+  })
+
+  it('tool_result event calls bufferStoreUpdate with addToolResultSegment', async () => {
+    await setupHook()
+    const tool = { id: 't3', name: 'read_file', input: { path: '/bar' }, result: 'content', startTime: 123, status: 'completed' as const }
+
+    act(() => {
+      lastTransport.callbacks?.onEvent({ type: 'tool_result', data: { tool } })
+    })
+
+    expect(mockBufferStoreUpdate).toHaveBeenCalled()
+    expect(mockAddToolResultSegment).toHaveBeenCalledWith({
+      id: 't3', name: 'read_file', input: { path: '/bar' }, result: 'content',
+      error: undefined, status: 'completed', startTime: 123, endTime: expect.any(Number),
+    })
+  })
+
+  it('tool_input_delta event calls updateToolDelta and scheduleToolDeltaFlush', async () => {
+    await setupHook()
+
+    act(() => {
+      lastTransport.callbacks?.onEvent({
+        type: 'tool_input_delta',
+        data: { toolId: 't1', toolName: 'write_file', delta: '{"path":' },
+      })
+    })
+
+    expect(mockBufferStoreUpdate).toHaveBeenCalled()
+    expect(mockUpdateToolDelta).toHaveBeenCalledWith('t1', 'write_file', '{"path":')
+    expect(mockScheduleToolDeltaFlush).toHaveBeenCalled()
+  })
+
+  it('error event flushes buffer and finalizes stream', async () => {
+    await setupHook()
+
+    act(() => {
+      lastTransport.callbacks?.onEvent({
+        type: 'error',
+        content: 'something broke',
+        data: {},
+      })
+    })
+
+    expect(mockFlushStoreUpdateBufferImmediate).toHaveBeenCalled()
+    expect(mockMarkUpstreamError).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'something broke', type: 'UPSTREAM_ERROR' })
+    )
+    expect(mockFinalizeStream).toHaveBeenCalled()
+  })
+
+  it('sendMessage calls startNewStream before sending', async () => {
+    const hook = await setupHook()
+
+    await act(async () => {
+      await hook.result.current.actions.send({ content: 'hello' })
+    })
+
+    expect(mockStartNewStream).toHaveBeenCalledWith('hello', undefined, undefined)
+    expect(mockSetIsLoading).toHaveBeenCalledWith(true)
+  })
+
+  it('sendMessage calls transport.sendMessage with correct params', async () => {
+    const hook = await setupHook()
+
+    await act(async () => {
+      await hook.result.current.actions.send({ content: 'build a login page' })
+    })
+
+    expect(lastTransport.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ content: 'build a login page', sessionId: 'test-app-123' })
+    )
+  })
+
+  it('sendMessage does nothing with empty content', async () => {
+    const hook = await setupHook()
+
+    await act(async () => {
+      await hook.result.current.actions.send({ content: '   ' })
+    })
+
+    expect(lastTransport.sendMessage).not.toHaveBeenCalled()
+  })
+
+  it('stop calls transport.stopGeneration', async () => {
+    const hook = await setupHook()
+
+    act(() => {
+      hook.result.current.actions.stop()
+    })
+
+    expect(lastTransport.stopGeneration).toHaveBeenCalled()
+  })
+
+  it('connection.isConnected is false initially', async () => {
+    const hook = await setupHook()
+
+    expect(hook.result.current.connection.isConnected).toBe(false)
+  })
+
+  it('connection.isConnected is true after connected state', async () => {
+    const hook = await setupHook()
+
+    act(() => {
+      lastTransport.callbacks?.onStateChange('connected')
+    })
+
+    expect(hook.result.current.connection.isConnected).toBe(true)
+    expect(hook.result.current.connection.status).toBe('idle')
+  })
+
+  it('stream.isStreaming is true when state is streaming', async () => {
+    const hook = await setupHook()
+
+    act(() => {
+      lastTransport.callbacks?.onStateChange('streaming')
+    })
+
+    expect(hook.result.current.stream.isStreaming).toBe(true)
+    expect(hook.result.current.connection.status).toBe('streaming')
+  })
+
+  it('connection.status is error when state is error', async () => {
+    const hook = await setupHook()
+
+    act(() => {
+      lastTransport.callbacks?.onStateChange('error')
+    })
+
+    expect(hook.result.current.connection.status).toBe('error')
+  })
+
+  it('syncs transport state to streaming conversation store', async () => {
+    mockSetWebSocketState.mockClear()
+    await setupHook()
+
+    act(() => {
+      lastTransport.callbacks?.onStateChange('connected')
+    })
+
+    expect(mockSetWebSocketState).toHaveBeenCalledWith({ connected: true, status: 'idle' })
+
+    mockSetWebSocketState.mockClear()
+
+    act(() => {
+      lastTransport.callbacks?.onStateChange('streaming')
+    })
+
+    expect(mockSetWebSocketState).toHaveBeenCalledWith({ connected: true, status: 'streaming' })
+  })
+
+  // ---------------------------------------------------------------------------
+  // History loading
+  // ---------------------------------------------------------------------------
+
+  describe('history loading', () => {
+    it('triggers loadHistory on connect when conversationId cookie exists', async () => {
+      mockConversationIdFromCookie = 'conv-abc-123'
+      await setupHook()
+
+      act(() => {
+        lastTransport.callbacks?.onStateChange('connected')
+      })
+
+      expect(mockSetHistoryLoadRequested).toHaveBeenCalledWith(true)
+      expect(lastTransport.loadHistory).toHaveBeenCalledWith()
+    })
+
+    it('marks history complete immediately when no conversationId cookie', async () => {
+      mockConversationIdFromCookie = null
+      await setupHook()
+
+      act(() => {
+        lastTransport.callbacks?.onStateChange('connected')
+      })
+
+      expect(mockSetHistoryLoadingComplete).toHaveBeenCalledWith(true)
+      expect(lastTransport.loadHistory).not.toHaveBeenCalled()
+    })
+
+    it('skips history load if already requested', async () => {
+      mockConversationIdFromCookie = 'conv-abc-123'
+      storeState = { historyLoadRequested: true }
+      await setupHook()
+
+      act(() => {
+        lastTransport.callbacks?.onStateChange('connected')
+      })
+
+      expect(lastTransport.loadHistory).not.toHaveBeenCalled()
+    })
+
+    it('history_loaded event sets pagination and marks complete', async () => {
+      await setupHook()
+
+      act(() => {
+        lastTransport.callbacks?.onEvent({
+          type: 'history_loaded',
+          data: { hasMore: true, nextCursor: 'cursor-1', messageCount: 5 },
+        })
+      })
+
+      expect(mockSetHistoryPagination).toHaveBeenCalledWith({ hasMore: true, nextCursor: 'cursor-1' })
+      expect(mockSetHistoryLoadingComplete).toHaveBeenCalledWith(true)
+    })
+
+    it('history_loaded with error resets historyLoadRequested and unblocks UI', async () => {
+      await setupHook()
+
+      act(() => {
+        lastTransport.callbacks?.onEvent({
+          type: 'history_loaded',
+          data: { error: true, hasMore: false, nextCursor: null, messageCount: 0 },
+        })
+      })
+
+      expect(mockSetHistoryLoadRequested).toHaveBeenCalledWith(false)
+      // Unblock the chat UI on persistent failure instead of waiting on
+      // StreamingMessageList's 30s+ retry loop.
+      expect(mockSetHistoryLoadingComplete).toHaveBeenCalledWith(true)
+    })
+
+    it('history_complete event updates pagination and clears loading', async () => {
+      await setupHook()
+
+      act(() => {
+        lastTransport.callbacks?.onEvent({
+          type: 'history_complete',
+          data: { hasMore: false, nextCursor: null, messageCount: 3 },
+        })
+      })
+
+      expect(mockSetHistoryPagination).toHaveBeenCalledWith({ hasMore: false, nextCursor: null })
+      expect(mockSetHistoryLoadingMore).toHaveBeenCalledWith(false)
+    })
+
+    it('loadMore calls transport.loadHistory with cursor', async () => {
+      mockConversationIdFromCookie = 'conv-abc-123'
+      const hook = await setupHook()
+
+      const result = hook.result.current.actions.loadHistory({ cursor: 'page-2', limit: 20 })
+
+      expect(result).toBe(true)
+      expect(mockSetHistoryLoadingMore).toHaveBeenCalledWith(true)
+      expect(lastTransport.loadHistory).toHaveBeenCalledWith({
+        cursor: 'page-2',
+        limit: 20,
+      })
+    })
+
+    it('loadMore without cursor does initial load', async () => {
+      mockConversationIdFromCookie = 'conv-abc-123'
+      const hook = await setupHook()
+
+      const result = hook.result.current.actions.loadHistory()
+
+      expect(result).toBe(true)
+      expect(lastTransport.loadHistory).toHaveBeenCalledWith({
+        cursor: undefined,
+        limit: undefined,
+      })
+    })
+
+    it('loadMore returns false when no conversationId', async () => {
+      mockConversationIdFromCookie = null
+      const hook = await setupHook()
+
+      const result = hook.result.current.actions.loadHistory({ cursor: 'abc' })
+
+      expect(result).toBe(false)
+      expect(lastTransport.loadHistory).not.toHaveBeenCalled()
+    })
+
+    it('history_message events are batched and flushed via history_loaded', async () => {
+      await setupHook()
+
+      act(() => {
+        lastTransport.callbacks?.onEvent({
+          type: 'history_message',
+          data: { data: { id: 'msg-1', sender: 'user', content: 'hello' } },
+        })
+        lastTransport.callbacks?.onEvent({
+          type: 'history_message',
+          data: { data: { id: 'msg-2', sender: 'assistant', content: 'hi' } },
+        })
+        lastTransport.callbacks?.onEvent({
+          type: 'history_loaded',
+          data: { hasMore: false, nextCursor: null, messageCount: 2 },
+        })
+      })
+
+      expect(mockLoadAndPersistHistory).toHaveBeenCalledWith(
+        expect.objectContaining({
+          rawMessages: expect.arrayContaining([
+            expect.objectContaining({ id: 'msg-1' }),
+            expect.objectContaining({ id: 'msg-2' }),
+          ]),
+          mode: 'replace',
+          detectInProgress: true,
+        })
+      )
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Client actions
+  // ---------------------------------------------------------------------------
+
+  describe('client actions', () => {
+    it('executes known action and posts success result', async () => {
+      await setupHook()
+
+      await act(async () => {
+        lastTransport.callbacks?.onEvent({
+          type: 'client_action',
+          data: { action: 'publishAction', params: { version: '1.0' }, requestId: 'req-1' },
+        })
+        await flushPromises()
+      })
+
+      expect(mockPublishAction).toHaveBeenCalledWith({ version: '1.0' }, expect.objectContaining({ currentAppId: 'test-app-123' }))
+      expect(lastTransport.postClientActionResult).toHaveBeenCalledWith(
+        expect.objectContaining({ requestId: 'req-1', success: true })
+      )
+    })
+
+    it('posts error result for unknown action', async () => {
+      await setupHook()
+
+      await act(async () => {
+        lastTransport.callbacks?.onEvent({
+          type: 'client_action',
+          data: { action: 'nonExistentAction', params: {}, requestId: 'req-2' },
+        })
+        await flushPromises()
+      })
+
+      expect(lastTransport.postClientActionResult).toHaveBeenCalledWith(
+        expect.objectContaining({ requestId: 'req-2', success: false, error: 'Unknown action: nonExistentAction' })
+      )
+    })
+
+    it('posts error result when executor throws', async () => {
+      mockGetSiteDataAction.mockRejectedValueOnce(new Error('fetch failed'))
+      await setupHook()
+
+      await act(async () => {
+        lastTransport.callbacks?.onEvent({
+          type: 'client_action',
+          data: { action: 'getSiteDataAction', params: {}, requestId: 'req-3' },
+        })
+        await flushPromises()
+      })
+
+      expect(lastTransport.postClientActionResult).toHaveBeenCalledWith(
+        expect.objectContaining({ requestId: 'req-3', success: false, error: 'fetch failed' })
+      )
+    })
+
+    it('ignores client_action without requestId', async () => {
+      await setupHook()
+
+      await act(async () => {
+        lastTransport.callbacks?.onEvent({
+          type: 'client_action',
+          data: { action: 'publishAction', params: {} },
+        })
+        await flushPromises()
+      })
+
+      expect(mockPublishAction).not.toHaveBeenCalled()
+      expect(lastTransport.postClientActionResult).not.toHaveBeenCalled()
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Video events
+  // ---------------------------------------------------------------------------
+
+  describe('video events', () => {
+    it('sets success video result on completed status', async () => {
+      await setupHook()
+
+      await act(async () => {
+        lastTransport.callbacks?.onEvent({
+          type: 'video',
+          data: { appId: 'test-app-123', status: 'completed', videoUrl: 'https://example.com/video.mp4' },
+        })
+        await flushPromises()
+      })
+
+      expect(mockSetLaunchVideoResult).toHaveBeenCalledWith(
+        'test-app-123',
+        { type: 'success', url: 'https://example.com/video.mp4' }
+      )
+    })
+
+    it('sets error video result on failed status', async () => {
+      await setupHook()
+
+      await act(async () => {
+        lastTransport.callbacks?.onEvent({
+          type: 'video',
+          data: { appId: 'test-app-123', status: 'failed', error: 'Render timeout' },
+        })
+        await flushPromises()
+      })
+
+      expect(mockSetLaunchVideoResult).toHaveBeenCalledWith(
+        'test-app-123',
+        { type: 'error', message: 'Render timeout' }
+      )
+    })
+
+    it('uses store currentAppId when video event has no appId', async () => {
+      await setupHook()
+
+      await act(async () => {
+        lastTransport.callbacks?.onEvent({
+          type: 'video',
+          data: { status: 'completed', videoUrl: 'https://example.com/v.mp4' },
+        })
+        await flushPromises()
+      })
+
+      expect(mockSetLaunchVideoResult).toHaveBeenCalledWith(
+        'test-app-123',
+        expect.objectContaining({ type: 'success' })
+      )
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Connection recovery
+  // ---------------------------------------------------------------------------
+
+  describe('connection recovery', () => {
+    it('recovery_status with buffered events sets streaming state', async () => {
+      await setupHook()
+
+      act(() => {
+        lastTransport.callbacks?.onEvent({
+          type: 'recovery_status',
+          data: { hasBufferedEvents: true, bufferedCount: 5, streamCompleted: false },
+        })
+      })
+
+      expect(mockSetWebSocketState).toHaveBeenCalledWith({ connected: true, status: 'streaming' })
+    })
+
+    it('recovery_status without buffered events does not set streaming', async () => {
+      mockSetWebSocketState.mockClear()
+      await setupHook()
+
+      act(() => {
+        lastTransport.callbacks?.onEvent({
+          type: 'recovery_status',
+          data: { hasBufferedEvents: false, bufferedCount: 0, streamCompleted: false },
+        })
+      })
+
+      // Should NOT have been called with streaming status from the recovery event
+      const streamingCalls = mockSetWebSocketState.mock.calls.filter(
+        (c: unknown[]) => (c[0] as Record<string, unknown>)?.status === 'streaming'
+      )
+      expect(streamingCalls).toHaveLength(0)
+    })
+
+    it('replay_complete event does not throw', async () => {
+      await setupHook()
+
+      act(() => {
+        lastTransport.callbacks?.onEvent({
+          type: 'replay_complete',
+          data: { replayedCount: 3 },
+        })
+      })
+
+      // No-op on client side beyond logging - just verifying no crash
+    })
+  })
+})
