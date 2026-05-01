@@ -465,12 +465,14 @@ export default function StreamingMessageList({
       // here would wipe the flag before the error message can render. The flag resets on remount.
       return
     }
-    if (!isConnected) return
-
+    // Retry based on the transport API result rather than connection state:
+    // WebSocket returns false while disconnected, SSE can still fetch history
+    // over HTTP even if the EventSource stream is down.
     const timeout = setTimeout(() => {
       if (historyRetryCount < MAX_HISTORY_RETRIES) {
-        loadHistory()
-        setHistoryRetryCount(c => c + 1)
+        if (loadHistory()) {
+          setHistoryRetryCount(c => c + 1)
+        }
       } else {
         setHistoryLoadFailed(true)
         useStreamingConversationStore.getState().setHistoryLoadingComplete(true)
@@ -478,6 +480,8 @@ export default function StreamingMessageList({
     }, 15_000)
 
     return () => clearTimeout(timeout)
+    // isConnected stays in deps so this effect re-runs (and reschedules the
+    // 15s timeout) when the transport reconnects after loadHistory() returned false.
   }, [historyLoadingComplete, historyRetryCount, isConnected, loadHistory])
 
   // Tracks a failed pagination load so the inline error banner can be shown.

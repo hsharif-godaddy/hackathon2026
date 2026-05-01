@@ -73,6 +73,7 @@ const mockDevelopPageStore = {
 
 // Mock the appIdFromParams to simulate URL param matching
 let mockAppIdFromParams = 'test-app-123';
+let mockWebSocketConnected = true;
 
 vi.mock('./utils', () => ({
   useAppIdFromParams: () => mockAppIdFromParams,
@@ -89,7 +90,7 @@ vi.mock('@/stores/useStreamingConversationStore', () => {
     useHistoryLoadingComplete: () => mockStreamingStore.historyLoadingComplete,
     useIsLoading: () => mockStreamingStore.isLoading,
     useLoadMoreConversations: () => mockStreamingStore.loadMoreConversations,
-    useWebSocketState: () => ({ connected: true, status: 'connected' }),
+    useWebSocketState: () => ({ connected: mockWebSocketConnected, status: mockWebSocketConnected ? 'connected' : 'disconnected' }),
   };
 });
 
@@ -112,6 +113,7 @@ describe('StreamingMessageList', function packageTests() {
     mockStreamingStore.historyNextCursor = null;
     mockStreamingStore.currentAppId = 'test-app-123';
     mockAppIdFromParams = 'test-app-123';
+    mockWebSocketConnected = true;
     mockDevelopPageStore.loadingPhase = 'ready';
     // Re-wire mutating setters after clearAllMocks resets them to no-ops.
     mockStreamingStore.setHistoryLoadingMore.mockImplementation((v: boolean) => { mockStreamingStore.historyLoadingMore = v });
@@ -759,6 +761,31 @@ describe('StreamingMessageList', function packageTests() {
       expect(screen.getByText('builder_messages_load_failed_title')).toBeInTheDocument();
       expect(screen.getByText('builder_messages_load_failed_subtitle')).toBeInTheDocument();
       expect(screen.queryByText('builder_messages_empty_title')).not.toBeInTheDocument();
+    });
+
+    it('should not burn retries when the transport cannot send history load', async function transportUnavailable() {
+      mockWebSocketConnected = false;
+      mockLoadHistory.mockReturnValue(false);
+
+      const { container, rerender } = renderWithProviders(<StreamingMessageList allMessages={[]} />);
+
+      expect(container.querySelector('.ux-skeleton')).toBeInTheDocument();
+
+      await act(async () => { vi.advanceTimersByTime(45_003) });
+
+      expect(mockLoadHistory).toHaveBeenCalledTimes(1);
+      expect(mockStreamingStore.setHistoryLoadingComplete).not.toHaveBeenCalledWith(true);
+      expect(screen.queryByText('builder_messages_load_failed_title')).not.toBeInTheDocument();
+      expect(container.querySelector('.ux-skeleton')).toBeInTheDocument();
+
+      mockWebSocketConnected = true;
+      mockLoadHistory.mockReturnValue(true);
+      rerender(<StreamingMessageList allMessages={[]} />);
+
+      await act(async () => { vi.advanceTimersByTime(15_001) });
+
+      expect(mockLoadHistory).toHaveBeenCalledTimes(2);
+      expect(mockStreamingStore.setHistoryLoadingComplete).not.toHaveBeenCalledWith(true);
     });
   });
 

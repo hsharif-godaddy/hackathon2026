@@ -302,8 +302,12 @@ describe('useSSEChat', () => {
     mockMarkUpstreamError.mockClear()
     mockSetIsLoading.mockClear()
     mockLoadAndPersistHistory.mockClear()
-    mockSetHistoryLoadRequested.mockClear()
-    mockSetHistoryLoadingComplete.mockClear()
+    mockSetHistoryLoadRequested.mockClear().mockImplementation((requested: boolean) => {
+      storeState.historyLoadRequested = requested
+    })
+    mockSetHistoryLoadingComplete.mockClear().mockImplementation((complete: boolean) => {
+      storeState.historyLoadingComplete = complete
+    })
     mockSetHistoryPagination.mockClear()
     mockSetHistoryLoadingMore.mockClear()
     mockSetWebSocketState.mockClear()
@@ -558,28 +562,47 @@ describe('useSSEChat', () => {
   // ---------------------------------------------------------------------------
 
   describe('history loading', () => {
-    it('triggers loadHistory on connect when conversationId cookie exists', async () => {
+    it('eagerly loads initial history once conversationId cookie exists', async () => {
       mockConversationIdFromCookie = 'conv-abc-123'
       await setupHook()
-
-      act(() => {
-        lastTransport.callbacks?.onStateChange('connected')
-      })
 
       expect(mockSetHistoryLoadRequested).toHaveBeenCalledWith(true)
       expect(lastTransport.loadHistory).toHaveBeenCalledWith()
     })
 
-    it('marks history complete immediately when no conversationId cookie', async () => {
-      mockConversationIdFromCookie = null
+    it('does not duplicate eager initial history load when connected fallback fires', async () => {
+      mockConversationIdFromCookie = 'conv-abc-123'
       await setupHook()
+
+      expect(lastTransport.loadHistory).toHaveBeenCalledTimes(1)
+
+      act(() => {
+        lastTransport.callbacks?.onStateChange('connected')
+      })
+
+      expect(lastTransport.loadHistory).toHaveBeenCalledTimes(1)
+    })
+
+    it('marks history complete when connected fallback finds no conversation cookie', async () => {
+      mockConversationIdFromCookie = 'conv-abc-123'
+      await setupHook()
+
+      mockConversationIdFromCookie = null
+      mockSetHistoryLoadingComplete.mockClear()
 
       act(() => {
         lastTransport.callbacks?.onStateChange('connected')
       })
 
       expect(mockSetHistoryLoadingComplete).toHaveBeenCalledWith(true)
-      expect(lastTransport.loadHistory).not.toHaveBeenCalled()
+    })
+
+    it('loads initial history after creating a conversation when no cookie exists', async () => {
+      mockConversationIdFromCookie = null
+      await setupHook()
+
+      expect(mockSetHistoryLoadRequested).toHaveBeenCalledWith(true)
+      expect(lastTransport.loadHistory).toHaveBeenCalledWith()
     })
 
     it('skips history load if already requested', async () => {
@@ -608,8 +631,9 @@ describe('useSSEChat', () => {
       expect(mockSetHistoryLoadingComplete).toHaveBeenCalledWith(true)
     })
 
-    it('history_loaded with error resets historyLoadRequested and unblocks UI', async () => {
+    it('history_loaded with error resets historyLoadRequested and remains retryable', async () => {
       await setupHook()
+      mockSetHistoryLoadingComplete.mockClear()
 
       act(() => {
         lastTransport.callbacks?.onEvent({
@@ -619,9 +643,9 @@ describe('useSSEChat', () => {
       })
 
       expect(mockSetHistoryLoadRequested).toHaveBeenCalledWith(false)
-      // Unblock the chat UI on persistent failure instead of waiting on
-      // StreamingMessageList's 30s+ retry loop.
-      expect(mockSetHistoryLoadingComplete).toHaveBeenCalledWith(true)
+      // Keep the transcript in loading/retry state. StreamingMessageList owns
+      // the retry cap and explicit history-load failure UI.
+      expect(mockSetHistoryLoadingComplete).not.toHaveBeenCalled()
     })
 
     it('history_complete event updates pagination and clears loading', async () => {
@@ -652,22 +676,67 @@ describe('useSSEChat', () => {
       })
     })
 
-    it('loadMore without cursor does initial load', async () => {
+    it('loadMore without cursor retries initial load and sets dedupe guard', async () => {
       mockConversationIdFromCookie = 'conv-abc-123'
       const hook = await setupHook()
+      lastTransport.loadHistory.mockClear()
+
+      act(() => {
+        lastTransport.callbacks?.onEvent({
+          type: 'history_loaded',
+          data: { error: true, hasMore: false, nextCursor: null, messageCount: 0 },
+        })
+      })
 
       const result = hook.result.current.actions.loadHistory()
 
       expect(result).toBe(true)
+      expect(mockSetHistoryLoadRequested).toHaveBeenCalledWith(true)
       expect(lastTransport.loadHistory).toHaveBeenCalledWith({
         cursor: undefined,
         limit: undefined,
       })
     })
 
+    it('loadMore without cursor returns false while initial history load is in flight', async () => {
+      mockConversationIdFromCookie = 'conv-abc-123'
+      const hook = await setupHook()
+      lastTransport.loadHistory.mockClear()
+
+      const result = hook.result.current.actions.loadHistory()
+
+      expect(result).toBe(false)
+      expect(lastTransport.loadHistory).not.toHaveBeenCalled()
+    })
+
+    it('does not duplicate retry initial history load when connected fallback fires', async () => {
+      mockConversationIdFromCookie = 'conv-abc-123'
+      const hook = await setupHook()
+
+      act(() => {
+        lastTransport.callbacks?.onEvent({
+          type: 'history_loaded',
+          data: { error: true, hasMore: false, nextCursor: null, messageCount: 0 },
+        })
+      })
+
+      lastTransport.loadHistory.mockClear()
+
+      const result = hook.result.current.actions.loadHistory()
+      expect(result).toBe(true)
+      expect(lastTransport.loadHistory).toHaveBeenCalledTimes(1)
+
+      act(() => {
+        lastTransport.callbacks?.onStateChange('connected')
+      })
+
+      expect(lastTransport.loadHistory).toHaveBeenCalledTimes(1)
+    })
+
     it('loadMore returns false when no conversationId', async () => {
       mockConversationIdFromCookie = null
       const hook = await setupHook()
+      lastTransport.loadHistory.mockClear()
 
       const result = hook.result.current.actions.loadHistory({ cursor: 'abc' })
 

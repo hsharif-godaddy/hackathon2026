@@ -172,6 +172,27 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
     }
   }, [])
 
+  const requestInitialHistoryLoad = useCallback((conversationId: string | null): boolean => {
+    const store = useStreamingConversationStore.getState()
+
+    if (!conversationId) {
+      if (!store.historyLoadingComplete) {
+        store.setHistoryLoadingComplete(true)
+      }
+      return false
+    }
+
+    if (store.historyLoadingComplete || store.historyLoadRequested) return false
+
+    const transport = transportRef.current
+    if (!transport) return false
+
+    store.setHistoryLoadRequested(true)
+    logger.info('sse.history.load', { appId: currentAppId, conversationId })
+    transport.loadHistory()
+    return true
+  }, [currentAppId])
+
   // Connect/reconnect when appId changes
   useEffect(() => {
     if (!enabled || !currentAppId) return
@@ -412,14 +433,10 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                   logger.warn('sse.history.loaded.error', {
                     appId: store.currentAppId, error: (event.data as any).error,
                   })
-                  // Unblock the UI on persistent failure. The
-                  // StreamingMessageList safety timeout retries twice over
-                  // 30s before doing this itself — setting it now avoids
-                  // the user staring at a blank skeleton through both
-                  // retries when the failure is already known to have
-                  // happened. (Intentional divergence from
-                  // HistoryLoadedHandler, which relies on the retry.)
-                  store.setHistoryLoadingComplete(true)
+                  // Leave historyLoadingComplete false so
+                  // StreamingMessageList can retry and, if the retry cap is
+                  // exhausted, render the explicit history-load failure state
+                  // instead of treating the conversation as empty.
                   return
                 }
 
@@ -567,22 +584,10 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                 setConnectionError(undefined)
 
                 if (state === 'connected' && currentAppId) {
-                  // Trigger initial history load
-                  const store = useStreamingConversationStore.getState()
-                  const conversationId = getConversationIdFromCookie(currentAppId)
-
-                  if (!conversationId) {
-                    if (!store.historyLoadingComplete) {
-                      store.setHistoryLoadingComplete(true)
-                    }
-                    return
-                  }
-
-                  if (store.historyLoadingComplete || store.historyLoadRequested) return
-
-                  store.setHistoryLoadRequested(true)
-                  logger.info('sse.history.load', { appId: currentAppId, conversationId })
-                  transportRef.current?.loadHistory()
+                  // Fallback for reconnects or future paths that did not
+                  // trigger the HTTP history load immediately after connect().
+                  // The store guards below dedupe against the eager load.
+                  void requestInitialHistoryLoad(getConversationIdFromCookie(currentAppId))
                 }
               }
             },
@@ -625,6 +630,11 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
         if (cancelled) return
 
         transportRef.current.connect(currentAppId!, token, conversationId)
+        // SSE history is fetched over HTTP, not through /stream. Start it as
+        // soon as the conversation is known so a broken EventSource endpoint
+        // does not leave the chat transcript empty or stuck behind stream
+        // initialization.
+        void requestInitialHistoryLoad(conversationId)
       } catch (err) {
         if (!cancelled) {
           logger.error('sse.connect.failed', {
@@ -642,7 +652,7 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
       cancelled = true
       transportRef.current?.disconnect()
     }
-  }, [enabled, currentAppId, flushHistoryBatch])
+  }, [enabled, currentAppId, flushHistoryBatch, requestInitialHistoryLoad])
 
   // Cleanup on unmount
   useEffect(() => {
@@ -759,7 +769,8 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
 
   const loadMore = useCallback((params?: { cursor?: string; limit?: number }): boolean => {
     const t = transportRef.current
-    const appId = useStreamingConversationStore.getState().currentAppId
+    const store = useStreamingConversationStore.getState()
+    const appId = store.currentAppId
     if (!t || !appId) return false
 
     // Pre-check that a conversation is actually known before paginating;
@@ -767,7 +778,10 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
     if (!getConversationIdFromCookie(appId)) return false
 
     if (params?.cursor) {
-      useStreamingConversationStore.getState().setHistoryLoadingMore(true)
+      store.setHistoryLoadingMore(true)
+    } else {
+      if (store.historyLoadingComplete || store.historyLoadRequested) return false
+      store.setHistoryLoadRequested(true)
     }
 
     t.loadHistory({
