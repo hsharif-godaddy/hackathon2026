@@ -185,6 +185,8 @@ export function MediaSlotDetail({
     setSelectedUploadFile(null)
   }, [slotName, reloadPreviewSlot, refetch, refetchManifest])
 
+  const effectiveSelectedUrl = selectedUrl ?? slot?.currentUrl ?? null
+
   const handleSelectFromUploads = useCallback(
     async (file: { filename: string; signedUrl?: string; fullSignedUrl?: string }) => {
       setIsApplyingUpload(true)
@@ -264,7 +266,6 @@ export function MediaSlotDetail({
     ? slot.uploadSources?.[slot.currentUrl]
     : undefined
 
-  const effectiveSelectedUrl = selectedUrl ?? slot?.currentUrl ?? null
   const effectiveSelectedFilename = selectedUploadFile?.filename ?? currentUploadFilename ?? null
   const isCurrentImage = !selectedUploadFile && effectiveSelectedUrl === slot?.currentUrl
   const hasSelection = selectedUploadFile || !isCurrentImage
@@ -383,6 +384,7 @@ export function MediaSlotDetail({
                     slotName={slotName}
                     previewBaseUrl={previewBaseUrl}
                     onSelect={handleSelectGettyImage}
+                    isLogo={slot.mediaType === 'logo'}
                   />
                 )}
               </div>
@@ -436,9 +438,10 @@ interface ImageGridProps {
   slotName: string
   previewBaseUrl: string | null
   onSelect: (url: string) => void
+  isLogo?: boolean
 }
 
-function ImageGrid({ images, selectedUrl, slotName, previewBaseUrl, onSelect }: ImageGridProps) {
+function ImageGrid({ images, selectedUrl, slotName, previewBaseUrl, onSelect, isLogo }: ImageGridProps) {
   if (images.length === 0) return null
 
   return (
@@ -460,7 +463,7 @@ function ImageGrid({ images, selectedUrl, slotName, previewBaseUrl, onSelect }: 
             <img
               src={getSlotImageUrl(slotName, url, previewBaseUrl)}
               alt=""
-              className="w-full h-full object-cover"
+              className={`w-full h-full ${isLogo ? 'object-contain' : 'object-cover'}`}
               onError={(e) => { e.currentTarget.style.display = 'none' }}
             />
             {isSelected && (

@@ -84,7 +84,7 @@ export function MediaSlotsGrid({
               <img
                 src={proxiedUrl}
                 alt={formatSlotName(name)}
-                className="w-full h-full object-cover"
+                className={`w-full h-full ${slot.mediaType === 'logo' ? 'object-contain' : 'object-cover'}`}
                 loading="lazy"
                 onError={(e) => { e.currentTarget.style.display = 'none' }}
               />

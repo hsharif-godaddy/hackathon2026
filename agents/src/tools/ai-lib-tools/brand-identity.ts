@@ -27,6 +27,7 @@ const MEMORY_KEY = 'brand.identity'
  * in `{ contexts: [...] }` to match BrandDataToneMatrix for the client.
  */
 export interface BrandIdentity {
+  brandName?: string
   personality?: BrandDataPersonality
   voice?: BrandDataVoice
   tagline?: string
@@ -97,9 +98,12 @@ const toneMatrixSchema = z.array(z.object({
  * Deep merge brand identity objects. New values overwrite old ones at the leaf level,
  * but unset fields in the update don't remove existing data.
  */
-function mergeBrandIdentity(existing: BrandIdentity, update: BrandIdentity): BrandIdentity {
+export function mergeBrandIdentity(existing: BrandIdentity, update: BrandIdentity): BrandIdentity {
   const merged: BrandIdentity = { ...existing }
 
+  if (update.brandName !== undefined) {
+    merged.brandName = update.brandName
+  }
   if (update.personality !== undefined) {
     merged.personality = update.personality
   }
@@ -138,9 +142,10 @@ function mergeBrandIdentity(existing: BrandIdentity, update: BrandIdentity): Bra
  * Uses merge semantics so agents can set one field at a time without losing others.
  */
 export const brandIdentityAITool: Tool = createTool(
-  'Save or retrieve brand book data (personality, voice, audience, iconography, layout, tagline, photography, mission, toneMatrix). Use this tool when the user asks about their "brand book" or "brand guidelines". Use mode "set" to save/update data (merges with existing), "get" to retrieve current data. Do NOT create pages or files for brand book requests — use this tool instead.',
+  'Save or retrieve brand book data (brandName, personality, voice, audience, iconography, layout, tagline, photography, mission, toneMatrix). Use this tool when the user asks about their "brand book" or "brand guidelines". Use mode "set" to save/update data (merges with existing), "get" to retrieve current data. Do NOT create pages or files for brand book requests — use this tool instead.',
   z.object({
     mode: z.enum(['set', 'get']).describe('Operation mode: "set" to save/update identity data, "get" to retrieve current data'),
+    brandName: z.string().min(1).optional().describe('Brand or business name'),
     personality: personalitySchema.describe('Brand personality: description and traits'),
     voice: voiceSchema.describe('Brand voice: tone attributes (weAre/weAreNot) and sample copy'),
     tagline: z.string().optional().describe('Brand tagline or slogan'),
@@ -161,6 +166,10 @@ export const brandIdentityAITool: Tool = createTool(
     try {
       if (input.mode === 'get') {
         const result = await memoryRepo.get(appId, MEMORY_KEY)
+        if (!result.success) {
+          logger.warn('brandIdentity.get.readFailed', { appId, error: result.error ?? 'Unknown error' })
+          return '**Error:** Failed to read brand identity data. Please try again.'
+        }
         if (!result.exists || !result.value) {
           return '**Brand Identity:** No brand identity data saved yet.'
         }
@@ -170,6 +179,7 @@ export const brandIdentityAITool: Tool = createTool(
 
       // mode === 'set'
       const update: BrandIdentity = {}
+      if (input.brandName !== undefined) update.brandName = input.brandName
       if (input.personality !== undefined) update.personality = input.personality
       if (input.voice !== undefined) update.voice = input.voice
       if (input.tagline !== undefined) update.tagline = input.tagline
@@ -182,10 +192,18 @@ export const brandIdentityAITool: Tool = createTool(
 
       // Read existing, merge, save
       const existing = await memoryRepo.get(appId, MEMORY_KEY)
+      if (!existing.success) {
+        logger.warn('brandIdentity.set.readFailed', { appId, error: existing.error ?? 'Unknown error' })
+        return '**Error:** Failed to read existing brand identity. Cannot safely merge — please try again.'
+      }
       const current = (existing.exists && existing.value ? existing.value : {}) as BrandIdentity
       const merged = mergeBrandIdentity(current, update)
 
-      await memoryRepo.set(appId, MEMORY_KEY, merged)
+      const writeResult = await memoryRepo.set(appId, MEMORY_KEY, merged)
+      if (!writeResult.success) {
+        logger.warn('brandIdentity.set.writeFailed', { appId, error: writeResult.error ?? 'Unknown error' })
+        return '**Error:** Failed to save brand identity data. Please try again.'
+      }
 
       const updatedFields = Object.keys(update).filter(k => update[k as keyof BrandIdentity] !== undefined)
 

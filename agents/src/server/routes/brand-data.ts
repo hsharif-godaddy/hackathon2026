@@ -8,7 +8,6 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { AppRepository } from '../../database/index.js';
 import { MemoryRepository } from '../../database/repositories/MemoryRepository.js';
 import { log } from '../../logging/index.js';
 import { validateAppOwnership } from '../middleware/app-ownership.js';
@@ -25,6 +24,7 @@ import {
 } from '../../utils/brand-data-parsers.js';
 // Inline type for brand identity data stored in memory (avoids dependency on brand-identity tool)
 interface BrandIdentityData {
+  brandName?: string;
   personality?: BrandData['personality'];
   voice?: BrandData['voice'];
   tagline?: string;
@@ -44,7 +44,6 @@ interface BrandIdentityData {
 }
 
 const router: Router = Router();
-const appRepo = new AppRepository();
 const memoryRepo = new MemoryRepository();
 
 /**
@@ -56,9 +55,6 @@ router.get('/apps/:id/brand-data', validateAppOwnership, async (req: Request, re
   const contextLogger = log.forApp(appId!);
 
   try {
-    // validateAppOwnership already confirms the app exists; we only need the name for brandName
-    const app = appRepo.findById(appId!);
-
     // Fetch all brand data keys in parallel
     const [
       paletteResult, typographyResult, identityResult,
@@ -81,6 +77,11 @@ router.get('/apps/:id/brand-data', validateAppOwnership, async (req: Request, re
       { key: 'brand.colors.palette', result: paletteResult },
       { key: 'brand.typography', result: typographyResult },
       { key: 'brand.identity', result: identityResult },
+      { key: 'design.brand-personality', result: personalityResult },
+      { key: 'design.voice-messaging', result: voiceResult },
+      { key: 'design.iconography', result: iconographyResult },
+      { key: 'design.layout', result: layoutResult },
+      { key: 'design.audience', result: audienceResult },
     ];
     for (const { key, result } of allResults) {
       if (!result.success) {
@@ -92,7 +93,7 @@ router.get('/apps/:id/brand-data', validateAppOwnership, async (req: Request, re
 
     const brandData: BrandData = {
       version: 2,
-      brandName: (app?.name && app.name !== app.initialPrompt) ? app.name : undefined,
+      brandName: identity?.brandName ?? 'Your Brand',
       palette: paletteResult.exists ? paletteResult.value as BrandDataPalette : undefined,
       typography: typographyResult.exists ? typographyResult.value as BrandDataTypography : undefined,
       // Prefer structured identity data, fall back to parsed markdown

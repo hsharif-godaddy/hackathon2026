@@ -46,6 +46,7 @@ vi.mock('@/utils/postMessage', () => ({
   postMessageToIframe: vi.fn(),
 }));
 
+
 const mockUploadedImagesSection = vi.fn();
 vi.mock('@/app/[market]/develop/components/media/UploadedImagesSection', () => ({
   UploadedImagesSection: (props: { onSelectImage: (file: { filename: string }) => void; appId: string; isDisabled?: boolean; layout?: string; selectedFilename?: string | null }) => {
@@ -230,6 +231,7 @@ describe('MediaSlotDetail', () => {
       expect(mockLogImpressionEvent).toHaveBeenCalledWith('uploads.mediaslot.failed');
     });
   });
+
 });
 
 describe('formatSlotName', () => {

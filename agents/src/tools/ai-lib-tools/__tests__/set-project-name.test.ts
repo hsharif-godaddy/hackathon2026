@@ -46,12 +46,28 @@ vi.mock('../../../database/repositories/AppRepository.js', () => ({
   }))
 }))
 
+// Mock MemoryRepository
+const mockMemoryGet = vi.fn()
+const mockMemorySet = vi.fn()
+vi.mock('../../../database/repositories/MemoryRepository.js', () => ({
+  MemoryRepository: vi.fn(() => ({
+    get: mockMemoryGet,
+    set: mockMemorySet
+  }))
+}))
+
 // Import after mocks are set up
+import { MemoryRepository } from '../../../database/repositories/MemoryRepository.js'
 import { setProjectNameAITool } from '../set-project-name.js'
+
+const MockMemoryRepository = vi.mocked(MemoryRepository)
 
 describe('set-project-name', function setProjectNameTests() {
   beforeEach(function setup() {
     vi.clearAllMocks()
+    // Default: memory get returns empty, set succeeds
+    mockMemoryGet.mockResolvedValue({ success: true, exists: false, value: null })
+    mockMemorySet.mockResolvedValue({ success: true })
   })
 
   describe('index.html title update', function titleUpdateTests() {
@@ -190,6 +206,127 @@ describe('set-project-name', function setProjectNameTests() {
         },
         { appId }
       )
+    })
+  })
+
+  describe('brand.identity memory write', function memoryWriteTests() {
+    it('should store brandName in brand.identity memory', async function writeBrandName() {
+      const appId = 'test-app-mem-1'
+      const newName = 'My Brand'
+
+      mockFindById.mockReturnValue({ id: appId, name: 'Old', path: undefined })
+      mockUpdate.mockReturnValue({ id: appId, name: newName })
+      mockMemoryGet.mockResolvedValue({ success: true, exists: false, value: null })
+      mockMemorySet.mockResolvedValue({ success: true })
+
+      const result = await setProjectNameAITool.execute(
+        { name: newName },
+        createExecutionOptions(appId)
+      )
+
+      expect(result).toContain('Project Name Set')
+      expect(mockMemorySet).toHaveBeenCalledWith(appId, 'brand.identity', { brandName: newName })
+    })
+
+    it('should merge brandName into existing brand.identity data', async function mergeBrandName() {
+      const appId = 'test-app-mem-2'
+      const newName = 'Updated Brand'
+
+      mockFindById.mockReturnValue({ id: appId, name: 'Old', path: undefined })
+      mockUpdate.mockReturnValue({ id: appId, name: newName })
+      mockMemoryGet.mockResolvedValue({
+        success: true,
+        exists: true,
+        value: { tagline: 'Existing tagline', brandName: 'Old Brand' },
+      })
+      mockMemorySet.mockResolvedValue({ success: true })
+
+      await setProjectNameAITool.execute(
+        { name: newName },
+        createExecutionOptions(appId)
+      )
+
+      expect(mockMemorySet).toHaveBeenCalledWith(appId, 'brand.identity', {
+        tagline: 'Existing tagline',
+        brandName: newName,
+      })
+    })
+
+    it('should log warning when memory write fails', async function memoryWriteFail() {
+      const appId = 'test-app-mem-3'
+      const newName = 'My Brand'
+
+      mockFindById.mockReturnValue({ id: appId, name: 'Old', path: undefined })
+      mockUpdate.mockReturnValue({ id: appId, name: newName })
+      mockMemoryGet.mockResolvedValue({ success: true, exists: false, value: null })
+      mockMemorySet.mockResolvedValue({ success: false, error: 'DB write error' })
+
+      const result = await setProjectNameAITool.execute(
+        { name: newName },
+        createExecutionOptions(appId)
+      )
+
+      // Tool should still succeed but signal the sync failure to the LLM
+      expect(result).toContain('Project Name Set')
+      expect(result).toContain('Brand identity memory sync failed')
+    })
+
+    it('should skip memory write when memory read fails to avoid destroying existing data', async function memoryReadFail() {
+      const appId = 'test-app-mem-5'
+      const newName = 'My Brand'
+
+      mockFindById.mockReturnValue({ id: appId, name: 'Old', path: undefined })
+      mockUpdate.mockReturnValue({ id: appId, name: newName })
+      mockMemoryGet.mockResolvedValue({ success: false, exists: false, value: null, error: 'DB read error' })
+
+      const result = await setProjectNameAITool.execute(
+        { name: newName },
+        createExecutionOptions(appId)
+      )
+
+      // Tool should still succeed but signal the sync failure to the LLM
+      expect(result).toContain('Project Name Set')
+      expect(result).toContain('Brand identity memory sync failed')
+      // Should NOT write — writing without a known-good base would destroy existing fields
+      expect(mockMemorySet).not.toHaveBeenCalled()
+    })
+
+    it('should handle non-object existing brand.identity gracefully', async function nonObjectIdentity() {
+      const appId = 'test-app-mem-4'
+      const newName = 'My Brand'
+
+      mockFindById.mockReturnValue({ id: appId, name: 'Old', path: undefined })
+      mockUpdate.mockReturnValue({ id: appId, name: newName })
+      // Existing value is a string (not an object) — should not spread
+      mockMemoryGet.mockResolvedValue({ success: true, exists: true, value: 'some-string' })
+      mockMemorySet.mockResolvedValue({ success: true })
+
+      await setProjectNameAITool.execute(
+        { name: newName },
+        createExecutionOptions(appId)
+      )
+
+      // Should create a fresh object rather than spreading a string
+      expect(mockMemorySet).toHaveBeenCalledWith(appId, 'brand.identity', { brandName: newName })
+    })
+
+    it('should return partial success when MemoryRepository constructor throws', async function constructorThrow() {
+      const appId = 'test-app-mem-6'
+      const newName = 'My Brand'
+
+      mockFindById.mockReturnValue({ id: appId, name: 'Old', path: undefined })
+      mockUpdate.mockReturnValue({ id: appId, name: newName })
+      MockMemoryRepository.mockImplementationOnce(() => { throw new Error('DB locked') })
+
+      const result = await setProjectNameAITool.execute(
+        { name: newName },
+        createExecutionOptions(appId)
+      )
+
+      // Primary operation (appRepo.update) succeeded — should not report full failure
+      expect(result).toContain('Project Name Set')
+      expect(result).toContain('Brand identity memory sync failed')
+      expect(result).not.toContain('Error Setting Project Name')
     })
   })
 

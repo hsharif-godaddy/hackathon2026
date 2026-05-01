@@ -1,6 +1,7 @@
 import { createTool, type Tool } from '@airo/ai-lib'
 import { z } from 'zod'
 import { AppRepository } from '../../database/repositories/AppRepository.js'
+import { MemoryRepository } from '../../database/repositories/MemoryRepository.js'
 import { FileEditTool } from '../file-edit.js'
 import { Logger } from '../../logging/index.js'
 
@@ -49,7 +50,44 @@ export const setProjectNameAITool: Tool = createTool(
         throw new Error('Failed to update app name')
       }
 
-      logger.info('set-project-name.success', {
+      // Also store in brand.identity memory so the brand-data route picks it up.
+      // Wrapped in its own try/catch so a memory infrastructure failure (e.g.
+      // MemoryRepository constructor throw from a locked DB) cannot mask the
+      // already-committed appRepo.update().
+      let memorySyncFailed = false
+      try {
+        const memoryRepo = new MemoryRepository()
+        const existing = await memoryRepo.get(appId, 'brand.identity')
+        if (!existing.success) {
+          // Skip write when read fails — writing { brandName } over an unknown
+          // base would destroy any existing personality/voice/tagline fields.
+          memorySyncFailed = true
+          logger.warn('setProjectName.memoryRead.failed', {
+            appId,
+            error: existing.error ?? 'Unknown error',
+          })
+        } else {
+          const current = (existing.exists && typeof existing.value === 'object' && existing.value !== null)
+            ? existing.value as Record<string, unknown>
+            : {}
+          const memResult = await memoryRepo.set(appId, 'brand.identity', { ...current, brandName: input.name })
+          if (!memResult.success) {
+            memorySyncFailed = true
+            logger.warn('setProjectName.memoryWrite.failed', {
+              appId,
+              error: memResult.error ?? 'Unknown error',
+            })
+          }
+        }
+      } catch (memErr) {
+        memorySyncFailed = true
+        logger.warn('setProjectName.memorySync.error', {
+          appId,
+          error: memErr instanceof Error ? memErr.message : String(memErr),
+        })
+      }
+
+      logger.info('setProjectName.success', {
         appId,
         oldName: existingApp.name,
         newName: input.name
@@ -73,30 +111,35 @@ export const setProjectNameAITool: Tool = createTool(
           }, { appId })
 
           if (result.success) {
-            logger.info('set-project-name.title-updated', { appId, title: input.name })
+            logger.info('setProjectName.titleUpdated', { appId, title: input.name })
           } else if (result.error?.includes('not found in file')) {
             // Title was already customized - the default title string wasn't found
-            logger.info('set-project-name.title-skipped', { appId, reason: 'already-customized' })
+            logger.info('setProjectName.titleSkipped', { appId, reason: 'already-customized' })
           } else {
-            logger.warn('set-project-name.title-update-failed', {
+            logger.warn('setProjectName.titleUpdateFailed', {
               appId,
-              error: result.error || 'Unknown error'
+              error: result.error || 'Unknown error',
             })
           }
         } catch (err) {
-          logger.warn('set-project-name.title-update-failed', {
+          logger.warn('setProjectName.titleUpdateFailed', {
             appId,
-            error: err instanceof Error ? err.message : String(err)
+            error: err instanceof Error ? err.message : String(err),
           })
         }
       }
 
-      return `**Project Name Set**\n\nProject name updated to: **${input.name}**`
+      const base = `**Project Name Set**\n\nProject name updated to: **${input.name}**`
+      if (memorySyncFailed) {
+        return `${base}\n\n> Note: Brand identity memory sync failed — the name was saved but may not appear in the Brand Book immediately.`
+      }
+      return base
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
       
-      logger.error('set-project-name.error', {
-        error: errorMessage
+      logger.error('setProjectName.failed', {
+        appId: context?.metadata?.appId,
+        error: errorMessage,
       })
 
       return `**Error Setting Project Name**\n\n${errorMessage}`

@@ -120,7 +120,7 @@ describe('Brand Data Route', () => {
       expect(response.status).toBe(200);
       expect(response.body).toEqual({
         version: 2,
-        brandName: 'My App',
+        brandName: 'Your Brand',
         palette,
         typography,
         personality: identity.personality,
@@ -157,7 +157,7 @@ describe('Brand Data Route', () => {
 
       expect(response.status).toBe(200);
       expect(response.body.version).toBe(2);
-      expect(response.body.brandName).toBe('Legacy App');
+      expect(response.body.brandName).toBe('Your Brand');
       expect(response.body.palette).toEqual(palette);
       // Falls back to parsed markdown
       expect(response.body.personality).toEqual({ description: 'parsed personality', traits: [] });
@@ -172,7 +172,7 @@ describe('Brand Data Route', () => {
       expect(response.body.toneMatrix).toBeUndefined();
     });
 
-    it('should return 200 with no brandName when app is not found (ownership enforced by middleware)', async () => {
+    it('should return Your Brand default when app is not found (ownership enforced by middleware)', async () => {
       mockFindById.mockReturnValue(null);
       mockMemoryGet.mockResolvedValue(noResult);
 
@@ -180,7 +180,7 @@ describe('Brand Data Route', () => {
 
       expect(response.status).toBe(200);
       expect(response.body.version).toBe(2);
-      expect(response.body.brandName).toBeUndefined();
+      expect(response.body.brandName).toBe('Your Brand');
     });
 
     it('should return 500 when an internal error occurs', async () => {
@@ -212,7 +212,7 @@ describe('Brand Data Route', () => {
       expect(response.status).toBe(200);
       expect(response.body).toEqual({
         version: 2,
-        brandName: 'Partial App',
+        brandName: 'Your Brand',
         palette,
       });
       // All other fields should be absent (undefined is omitted in JSON)
@@ -254,16 +254,36 @@ describe('Brand Data Route', () => {
       expect(resUndef.body.toneMatrix).toBeUndefined();
     });
 
-    it('should omit brandName when app has no name', async () => {
-      mockFindById.mockReturnValue({ id: testAppId, name: '' });
+    it('should prefer brandName from brand.identity over app.name', async () => {
+      mockFindById.mockReturnValue({ id: testAppId, name: 'DB App Name' });
 
-      mockMemoryGet.mockResolvedValue(noResult);
+      const identity = { brandName: 'Memory Brand Name' };
+
+      mockMemoryGet.mockImplementation((_appId: string, key: string) => {
+        if (key === 'brand.identity') return Promise.resolve(memoryResult(identity));
+        return Promise.resolve(noResult);
+      });
 
       const response = await request(app).get(`/apps/${testAppId}/brand-data`);
 
       expect(response.status).toBe(200);
-      expect(response.body.version).toBe(2);
-      expect(response.body.brandName).toBeUndefined();
+      expect(response.body.brandName).toBe('Memory Brand Name');
+    });
+
+    it('should default to Your Brand when brand.identity has no brandName', async () => {
+      mockFindById.mockReturnValue({ id: testAppId, name: 'Ignored App Name' });
+
+      const identity = { personality: { description: 'Bold' } };
+
+      mockMemoryGet.mockImplementation((_appId: string, key: string) => {
+        if (key === 'brand.identity') return Promise.resolve(memoryResult(identity));
+        return Promise.resolve(noResult);
+      });
+
+      const response = await request(app).get(`/apps/${testAppId}/brand-data`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.brandName).toBe('Your Brand');
     });
   });
 });
