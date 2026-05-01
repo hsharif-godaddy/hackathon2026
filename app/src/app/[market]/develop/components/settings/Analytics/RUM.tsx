@@ -31,7 +31,8 @@ import type {
   ActivityHitRow,
   TopPageRow,
 } from '@/lib/insights/clickhouse-types'
-import { isProfessionalOrAbove, PLAN_PRIORITY } from '@/lib/paywall/shared'
+import { isProfessionalOrAbove, PAYWALL_ITC, PLAN_PRIORITY } from '@/lib/paywall/shared'
+import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { SubscriptionPlan } from '@/types/credits'
 import { getPlanFromSubscription } from '@/utils/credits'
 
@@ -154,6 +155,8 @@ export default function RUM() {
   const currentPlan = subscription ? getPlanFromSubscription(subscription) : SubscriptionPlan.None
   const isStarter = isStarterOrAbove(currentPlan)        // Starter, Professional, Ultimate
   const isPro = isProfessionalOrAbove(currentPlan)        // Professional, Ultimate
+  const openUpgradeModal = useDevelopPageStore((state) => state.openUpgradeModal)
+  const handleMetricUpgrade = () => openUpgradeModal('analytics.metric_card', PAYWALL_ITC.UPGRADE)
 
   // Reset Pro-gated selections when plan downgrades (e.g. subscription lapses)
   useEffect(() => {
@@ -441,12 +444,12 @@ export default function RUM() {
         date: hit.date,
         pagePath: hit.pagePath,
         pageName: hit.pageName || pageNameMap.get(hit.pagePath) || nameFromPath(hit.pagePath),
-        device: hit.device || topDevice || '—',
+        device: hit.device || topDevice || '--',
         referrer: cleanReferrer(hit.referrer || referrerByPage.get(hit.pagePath) || ''),
         views: hit.views,
         uniqueVisitors: hit.uniqueVisitors,
-        country: hit.country || topCountry || '—',
-        browser: hit.browser || topBrowser || '—',
+        country: hit.country || topCountry || '--',
+        browser: hit.browser || topBrowser || '--',
       }))
   }, [activityHitsData, pageViewsByPathData, uniqueVisitorsByPageData, referrerLandingDetailData, topPagesData, sessionsByDeviceData, countryTrafficData, browserTrendsOverTimeData, dailyHostPageViews, t])
 
@@ -589,62 +592,79 @@ export default function RUM() {
           title={<text.span as="title" size={-2}>{t('builder_analytics_overview')}</text.span>}
         >
           <CollapsibleContent>
-            <div className="grid grid-cols-2 @sm:grid-cols-3 @lg:grid-cols-5 gap-2">
+            <div className="grid grid-cols-2 @lg:grid-cols-4 gap-2">
               <MetricCard
                 label={t('builder_analytics_pageviews')}
                 value={metrics.pageviews}
                 description={t('builder_analytics_total_page_loads')}
+                caption={metrics.pageviews === 0 ? t('builder_analytics_no_data') : undefined}
               />
               <MetricCard
                 label={t('builder_analytics_visitors')}
                 value={metrics.visitors}
                 description={t('builder_analytics_unique_visitors')}
+                caption={metrics.visitors === 0 ? t('builder_analytics_no_data') : undefined}
               />
               <MetricCard
                 label={t('builder_analytics_views_per_visit')}
                 value={metrics.viewsPerVisit > 0 ? metrics.viewsPerVisit.toFixed(2) : '0.00'}
                 description={t('builder_analytics_pages_per_visitor')}
+                caption={metrics.viewsPerVisit === 0 ? t('builder_analytics_no_data') : undefined}
               />
               <MetricCard
                 label={t('builder_analytics_total_sessions')}
                 value={kpiExtras.totalSessions}
                 description={t('builder_analytics_all_sessions')}
+                caption={kpiExtras.totalSessions === 0 ? t('builder_analytics_no_data') : undefined}
               />
               <MetricCard
                 label={t('builder_analytics_engagement_rate')}
                 value={kpiExtras.totalSessions > 0 ? `${Math.round(((kpiExtras.totalSessions - kpiExtras.bounceSessions) / kpiExtras.totalSessions) * 100)}%` : '0%'}
                 description={t('builder_analytics_engaged_sessions', { engaged: kpiExtras.totalSessions - kpiExtras.bounceSessions, total: kpiExtras.totalSessions })}
+                caption={kpiExtras.totalSessions === 0 ? t('builder_analytics_no_data') : undefined}
               />
-            </div>
 
-            {/* Engagement Deep Dive (Professional+) */}
-            {isPro && <div className="grid grid-cols-2 @sm:grid-cols-3 @lg:grid-cols-5 gap-2">
               <MetricCard
                 label={t('builder_analytics_total_clicks')}
                 value={metrics.totalClicks}
                 description={t('builder_analytics_all_clicks_tracked')}
+                {...(isPro
+                  ? { caption: metrics.totalClicks === 0 ? t('builder_analytics_no_data') : undefined }
+                  : { needsUpgrade: true as const, onUpgrade: handleMetricUpgrade })}
               />
               <MetricCard
                 label={t('builder_analytics_bounce_rate')}
                 value={kpiExtras.bounceRate || '0%'}
                 description={intl.formatMessage({ id: 'builder_analytics_bounce_sessions_count', defaultMessage: '{bounceSessions, plural, one {# single-page session} other {# single-page sessions}}' }, { bounceSessions: kpiExtras.bounceSessions })}
+                {...(isPro
+                  ? { caption: kpiExtras.totalSessions === 0 ? t('builder_analytics_no_data') : undefined }
+                  : { needsUpgrade: true as const, onUpgrade: handleMetricUpgrade })}
               />
               <MetricCard
                 label={t('builder_analytics_peak_hour')}
-                value={kpiExtras.peakHour || '—'}
+                value={kpiExtras.peakHour || '--'}
                 description={intl.formatMessage({ id: 'builder_analytics_peak_hour_description', defaultMessage: '{visitors, plural, one {# visitor} other {# visitors}}, {clicks, plural, one {# click} other {# clicks}}' }, { visitors: kpiExtras.peakHourVisitors, clicks: kpiExtras.peakHourClicks })}
+                {...(isPro
+                  ? { caption: (kpiExtras.totalSessions === 0 || !kpiExtras.peakHour) ? t('builder_analytics_no_data') : undefined }
+                  : { needsUpgrade: true as const, onUpgrade: handleMetricUpgrade })}
               />
               <MetricCard
                 label={t('builder_analytics_avg_pages_per_session')}
                 value={kpiExtras.avgPagesPerSession > 0 ? kpiExtras.avgPagesPerSession.toFixed(2) : '0.00'}
                 description={t('builder_analytics_pages_viewed_per_session')}
+                {...(isPro
+                  ? { caption: kpiExtras.totalSessions === 0 ? t('builder_analytics_no_data') : undefined }
+                  : { needsUpgrade: true as const, onUpgrade: handleMetricUpgrade })}
               />
               <MetricCard
                 label={t('builder_analytics_avg_duration')}
                 value={kpiExtras.avgSessionDuration || '0s'}
                 description={t('builder_analytics_avg_session_length')}
+                {...(isPro
+                  ? { caption: kpiExtras.totalSessions === 0 ? t('builder_analytics_no_data') : undefined }
+                  : { needsUpgrade: true as const, onUpgrade: handleMetricUpgrade })}
               />
-            </div>}
+            </div>
           </CollapsibleContent>
         </Collapsible>
 

@@ -1,61 +1,86 @@
-import { clsx } from 'clsx'
-import Box from '@ux/box'
+import Box, { box } from '@ux/box'
+import DiamondIcon from '@ux/icon/diamond'
 import text from '@ux/text'
+import TextLockup from '@ux/text-lockup'
 
 import { ContentTooltip } from '@/components/ui/ContentTooltip'
+import { useTranslations } from '@/hooks/useTranslations'
 
-/**
- * Metric card component for displaying analytics metrics
- *
- * Displays a single metric with its label and value in a card format.
- * Used throughout the analytics dashboard for key performance indicators.
- * Supports selection state, click interaction, and hover tooltips.
- *
- * @param label - The label text for the metric
- * @param value - The value to display (can be number or string)
- * @param description - Optional description text shown in tooltip on hover
- * @param onClick - Callback function when the card is clicked
- */
-export function MetricCard({
-  label,
-  value,
-  description,
-  onClick
-}: {
+/** Analytics metric card with optional upgrade-locked variant. */
+type MetricCardContent = {
   label: string
   value: number | string
+  caption?: string
   description?: string
-  onClick?: () => void
-}) {
-  const card = (
-    <div
-      className={clsx("group relative flex flex-col justify-between rounded-lg border p-2 pt-2.5 bg-intents-ux-box-backgroundColor shadow-sm overflow-hidden transition-all duration-200 ease-out hover:shadow-md hover:border-light-purple-solid hover:-translate-y-px min-h-[76px]", {
-        "cursor-pointer": onClick,
-      })}
-      onClick={onClick}
-    >
-      <div className="absolute top-0 left-0 right-0 h-[3px]" style={{ background: 'linear-gradient(90deg, var(--color-ai), var(--color-ai-muted))' }} />
-      <text.p as="paragraph" className="!mb-0 !text-xs !text-muted-foreground !uppercase !tracking-wider">{label}</text.p>
-      <text.span className="!mt-auto !text-lg @md:!text-[24px] !font-extrabold !leading-none !tracking-tight !text-ai !truncate">{value}</text.span>
-    </div>
+}
+
+export type MetricCardProps =
+  | (Omit<MetricCardContent, 'caption'> & { needsUpgrade: true; onUpgrade: () => void })
+  | (MetricCardContent & { needsUpgrade?: false })
+
+export function MetricCard(props: MetricCardProps) {
+  const needsUpgrade = props.needsUpgrade === true
+  const onUpgrade = needsUpgrade ? props.onUpgrade : undefined
+  const { label, value, description } = props
+  const caption = props.needsUpgrade === true ? undefined : props.caption
+  const t = useTranslations()
+  const textEmphasis = needsUpgrade ? 'passive' : undefined
+  const sharedCardProps = {
+    stretch: true,
+    elevation: 'card',
+    blockPadding: 'md',
+    inlinePadding: 'md',
+  } as const
+
+  const inner = (
+    <>
+      <text.div as="caption" size={0} className="grow" emphasis={textEmphasis}>
+        {label}
+      </text.div>
+      <text.div size={3} emphasis={textEmphasis}>
+        <strong>{needsUpgrade ? '--' : value}</strong>
+      </text.div>
+      {caption && (
+        <text.div as="caption" size={-2} emphasis="passive">{caption}</text.div>
+      )}
+      {needsUpgrade && (
+        <DiamondIcon className="size-2.5 self-end text-intents-ux-feedbackHighContrastPremium-feedbackColor" />
+      )}
+    </>
   )
 
-  if (!description) {
+  const card = needsUpgrade ? (
+    <box.button
+      {...sharedCardProps}
+      aria-label={`${label} – ${t('builder_common_tooltip_upgrade')}`}
+      type="button"
+      onClick={onUpgrade}
+      className="size-full overflow-hidden text-start cursor-pointer hover:shadow-md"
+    >
+      {inner}
+    </box.button>
+  ) : (
+    <Box
+      {...sharedCardProps}
+      className="size-full overflow-hidden"
+    >
+      {inner}
+    </Box>
+  )
+
+  if (!description && !needsUpgrade) {
     return card
   }
 
   return (
     <ContentTooltip
       content={
-        <Box gap="sm">
-          <text.p as="paragraph" className="!mb-0 !font-semibold">{value} {label.toLowerCase()}</text.p>
-          <text.p as="paragraph" className="!mb-0">{description}</text.p>
-        </Box>
+        <TextLockup size="xs">
+          {needsUpgrade ? t('builder_common_tooltip_upgrade') : description}
+        </TextLockup>
       }
-      contentClassName="p-1"
     >
       {card}
     </ContentTooltip>
   )
 }
-
