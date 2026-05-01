@@ -6,14 +6,27 @@ import type { BuildMetrics } from '../utils/langfuse.js';
 // ── Friction detection types ──────────────────────────────────────────────────
 
 export type FrictionPatternType =
-  | 'EDIT_LOOP'           // 2+ consecutive str_replace errors on same file
+  | 'EDIT_LOOP'           // 2+ consecutive edit-tool errors (any edit tool)
   | 'GREP_SPIRAL'         // 4+ consecutive grep/search without an edit
   | 'READ_SPIRAL'         // Same file read 4+ times in 6 turns without edit
   | 'NO_PROGRESS_LOOP'    // tools/turn ratio < 0.5 for 4+ turns
   | 'REDUNDANT_EXPLORATION' // reads continue 3+ turns after successful edit
-  | 'ERROR_LOOP'          // Repeated same-error-type failures (3+)
-  | 'USER_CORRECTION'     // User sent a correction after agent completed
-  | 'CLARIFICATION_LOOP'; // Agent asks clarifying questions repeatedly
+  | 'ERROR_LOOP'          // 3+ consecutive failures with same error signature
+  | 'USER_CORRECTION'     // User sent follow-up message after agent had tool activity in the prior window (correction or follow-up)
+  | 'CLARIFICATION_LOOP'; // Agent asks clarifying questions repeatedly (reserved)
+
+// Zod-compatible array of all valid FrictionPatternType values.
+// Used to validate expectedFrictionPatterns at schema parse time.
+export const FRICTION_PATTERN_TYPES = [
+  'EDIT_LOOP',
+  'GREP_SPIRAL',
+  'READ_SPIRAL',
+  'NO_PROGRESS_LOOP',
+  'REDUNDANT_EXPLORATION',
+  'ERROR_LOOP',
+  'USER_CORRECTION',
+  'CLARIFICATION_LOOP',
+] as const satisfies readonly FrictionPatternType[];
 
 export type FrictionSeverity = 'low' | 'medium' | 'high' | 'critical';
 
@@ -131,6 +144,10 @@ export const ScenarioSchema = z.object({
   creditLimit: z.number().positive().optional(),
   // Iterative chat messages to send one-by-one (used with creditLimit)
   chatMessages: z.array(z.string()).optional(),
+  // Minimum number of chat messages that must be delivered for the scenario to pass.
+  // Useful for friction detection scenarios that require multi-message context (e.g. USER_CORRECTION).
+  // Must be >= 1 when set (0 is not allowed; omit the field instead).
+  minChatMessages: z.number().int().min(1).optional(),
   // Max agent steps per individual chat message (default: 20)
   stepsPerMessage: z.number().default(20),
   // Optional deterministic single chat message sent via Playwright selectors
@@ -147,9 +164,17 @@ export const ScenarioSchema = z.object({
   expectedFailures: z.array(z.string()).optional(),
   // Match mode for expectedFailures
   failureMatchMode: z.enum(['any', 'all']).default('any'),
+  // Friction pattern types that must be detected for the scenario to pass.
+  // Uses enum validation — typos in pattern names are rejected at schema parse time.
+  expectedFrictionPatterns: z.array(z.enum(FRICTION_PATTERN_TYPES)).optional(),
+  // Match mode for expectedFrictionPatterns
+  frictionPatternMatchMode: z.enum(['any', 'all']).default('any'),
 }).refine(
   (data) => !data.creditLimit || (data.chatMessages && data.chatMessages.length > 0),
   { message: 'creditLimit requires a non-empty chatMessages array' }
+).refine(
+  (data) => !data.minChatMessages || data.creditLimit,
+  { message: 'minChatMessages requires creditLimit (it is only enforced in credit mode)' }
 );
 
 export type Scenario = z.infer<typeof ScenarioSchema>;
@@ -191,6 +216,9 @@ export interface EvalResult {
   screenshots: ScreenshotInfo[];
   previewUrl?: string;
   error?: string;
+  // Structured retry hint: true if this failure type is retryable (assertion not met but may
+  // succeed on re-run). Decouples retry logic from error-message string matching.
+  retryable?: boolean;
   // Quality evaluation results (if enabled)
   quality?: QualityEvaluation;
   qualityStatus?: 'success' | 'failed' | 'skipped';

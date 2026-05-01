@@ -1,31 +1,44 @@
-# User Correction & Repeated Ask Detection: validates correction detection across multi-message sessions
-# Covers: USER_CORRECTION, CLARIFICATION_LOOP, user_induced_retry classification
+# Agent Correction Quality: validates agent handles sequential same-section edits without regression
+# Covers: USER_CORRECTION friction detection + agent quality under correction pressure
+# Target failure: stale str_replace old_str after agent's own prior edit (30-50% failure rate)
 name: User Correction Friction
 description: |
-  Tests the friction detector's ability to identify user corrections and repeated asks.
-  The scenario creates a site, then sends sequential chat messages where later messages
-  deliberately correct or override what the agent built from the first message.
+  Tests the agent's ability to correctly apply sequential corrections to the SAME
+  section of code — the #1 agent failure mode from Langfuse production traces.
 
-  This triggers USER_CORRECTION patterns when:
-    - The agent completes work on message N
-    - The user sends message N+1 that contradicts or corrects message N
-    - The agent re-does work that was already done
+  The agent edits section A → user asks to modify section A again → agent uses
+  stale old_str (from before its own edit) → "No match found" → enters recovery loop.
 
-  The corrections are intentional and realistic:
-    1. First message: "Add a contact form with fields: Name, Email, Phone, Message"
-    2. Second message (correction): "Actually, remove the Phone field and add a Subject dropdown instead"
-    3. Third message (redo): "Change the form's submit button text from 'Submit' to 'Send Message' and make it blue"
+  The chat messages form a "same-section double-edit trap":
+    1. Create a pricing section with 3 tier cards
+    2. Modify the Pro tier IN the same section (forces re-read of own output)
+    3. Reorder cards IN the same section (regression trap — must use post-edit-2 state)
 
-  These simulate real user behavior where initial instructions are incomplete or change.
+  Assertions (hard-gating — scenario fails if any miss):
+    - requiredTools: agent must have used str_replace_based_edit_tool (real edits, not just ack)
+    - expectedFrictionPatterns: USER_CORRECTION must be detected (user corrects agent's work)
+
+  Metrics (non-gating — reported but do not fail the scenario):
+    - qualityEval: evaluates final preview output (functional/visual score tracked in report)
+
+  When this fails, the developer signal is:
+    - requiredTools miss → agent gave up and stopped editing
+    - friction not detected → friction detector regression
+    - quality check fails → agent used stale context / regressed earlier edit
 
 startUrl: https://airo-builder.godaddy.com
-timeout: 900000   # 15 minutes
+timeout: 900000
 maxSteps: 80
 stepsPerMessage: 20
 headed: false
 
 qualityEval:
-  enabled: false
+  enabled: true
+  siteType: service-business
+  skipCategories:
+    - performance
+    - seo
+    - accessibility
 
 credentials:
   username: ${TEST_USERNAME}
@@ -38,33 +51,46 @@ sitePrompt:
     and a footer with contact info. Color scheme: white background, dark navy text (#1a1a3e),
     green accent (#2ecc71).
 
-systemPrompt: |
-  ${common.developPageBase}
-
-  ${common.errorHandlingInstructions}
-
-  ${common.chatInstructions}
-
-  ${common.waitInstructions}
-
-  After the initial site is built, you will send a series of chat messages.
-  Each message modifies the site. Some messages may contradict earlier ones —
-  this is intentional and simulates real user correction behavior.
-
-  IMPORTANT: After sending each chat message, wait for the agent to finish
-  processing (loading indicator disappears) before proceeding to the next message.
-
 goal: |
-  Detect user-correction friction patterns across a multi-message chat session.
+  Validate the agent correctly applies sequential same-section corrections without regression.
 
-  The sequential chat messages intentionally contradict earlier instructions to
-  trigger USER_CORRECTION detection in the friction detector. Report success if
-  all three messages are processed and the form state reflects the final correction.
+  Success criteria (all must hold in final preview):
+  1. Pricing section exists with 3 cards
+  2. Middle card is "Enterprise" ($199/mo, unlimited) — moved from position 3
+  3. First card is "Basic" ($29/mo, 5 users) — unchanged
+  4. Last card is "Business" (renamed from Pro, $99/mo, 6 features, "Most Popular" CTA)
+  5. "Compare All Plans" link visible below the cards
+
+  Failure diagnosis (for developers):
+  - If str_replace "No match found" errors appear: agent used stale file context
+  - If earlier edits are lost (e.g., Pro still shows instead of Business): regression bug
+  - If duplicate sections appear: agent added instead of replacing
+
+# creditLimit enables credit-mode in runner.ts, which gates chatMessages delivery.
+# Budget of 45 credits ensures all 3 messages are processed even if message 1
+# (building pricing from scratch) consumes 10-15 credits. Each correction is lighter (~3-5).
+creditLimit: 45
+
+# USER_CORRECTION detection requires at least 2 messages (detector needs timestamps
+# of consecutive messages to identify correction patterns). Require 2 as minimum.
+minChatMessages: 2
+
+# Assert agent actually performed str_replace edits (not just text generation)
+requiredTools:
+  - name: str_replace_based_edit_tool
+requiredToolMatchMode: all
+
+# Assert that the friction detector identifies USER_CORRECTION — the user sending
+# follow-up messages after agent completed work always fires this pattern regardless
+# of whether the agent succeeded or failed at applying the correction.
+expectedFrictionPatterns:
+  - "USER_CORRECTION"
+frictionPatternMatchMode: any
 
 chatMessages:
-  - "Add a contact form section below the services section. The form should have these fields: Name (text input), Email (email input), Phone (tel input), and Message (textarea). Add a green Submit button."
-  - "Actually, I changed my mind about the form. Remove the Phone field and replace it with a Subject dropdown that has these options: General Inquiry, Partnership, Consulting, Support. Keep everything else the same."
-  - "Change the form's submit button text from 'Submit' to 'Send Message' and make it match the primary navy color (#1a1a3e) instead of green."
+  - "Add a pricing section below the services section. Create 3 pricing tier cards side by side: Basic ($29/mo, 5 users, 4 features: Email support, 1 project, Basic analytics, Community access), Pro ($79/mo, 25 users, 4 features: Priority support, 10 projects, Advanced analytics, API access), and Enterprise ($199/mo, unlimited users, 4 features: Dedicated support, Unlimited projects, Custom analytics, Custom integrations). Each card needs a title, price, feature list, and green CTA button saying 'Get Started'."
+  - "In the pricing section you just created, change the Pro tier: rename it to 'Business', update the price to $99/mo, and expand its feature list to 6 items (keep the original 4 and add: Team collaboration, White-label reports). Change its CTA button text to 'Most Popular' and add a highlighted border in the accent color around that card only."
+  - "Now in the same pricing section, move the Enterprise card to the MIDDLE position (so the order is Basic, Enterprise, Business from left to right), and add a 'Compare All Plans' text link centered below all three cards."
 
 cleanup:
   deleteAllSitesViaAPI: false

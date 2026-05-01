@@ -4,7 +4,8 @@ run-name: "Agentic QA - ${{ inputs.environment || 'prod' }} (${{ github.event_na
 
 on:
   schedule:
-    - cron: "0 */6 * * *" # create-site smoke test + friction evals every 6h
+    - cron: "0 */6 * * *" # create-site smoke test + friction evals every 6h (3 scenarios)
+    - cron: "0 3 * * *" # repro scenarios daily at 03:00 UTC (6 scenarios)
     - cron: "0 1 * * *" # credit-small daily at 01:00 UTC
     - cron: "0 9 * * *" # credit-medium daily at 09:00 UTC
     - cron: "0 17 * * *" # credit-large daily at 17:00 UTC
@@ -58,6 +59,14 @@ on:
           - friction-evals-all
           - scenarios/friction-evals/friction-pattern-detection.yaml
           - scenarios/friction-evals/error-loop-retry-waste.yaml
+          # Repro Scenarios (6 prod-critical/friction repros)
+          - repro-scenarios-all
+          - scenarios/friction-evals/user-correction-friction.yaml
+          - scenarios/friction-evals/request-timeout-abort-repro.yaml
+          - scenarios/prod-critical-failures/terminal-dangerous-pattern.yaml
+          - scenarios/prod-critical-failures/colorscheme-no-description.yaml
+          - scenarios/prod-critical-failures/publish-failure.yaml
+          - scenarios/prod-critical-failures/str-replace-no-match.yaml
           # Feature Tests (called from release-manager.yml's validate stage)
           - scenarios/feature-tests/skill-database.yaml
           - scenarios/feature-tests/skills-comprehensive.yaml
@@ -142,11 +151,13 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
         run: |
           # Define all available scenarios (single-line JSON to avoid output format issues)
-          ALL_SCENARIOS='["scenarios/create-site.yaml","scenarios/golden-dataset/app-types/landing-page.yaml","scenarios/golden-dataset/app-types/ecommerce-store.yaml","scenarios/golden-dataset/app-types/portfolio-site.yaml","scenarios/golden-dataset/app-types/restaurant-site.yaml","scenarios/golden-dataset/app-types/blog-site.yaml","scenarios/golden-dataset/app-types/fitness-studio.yaml","scenarios/golden-dataset/app-types/medical-practice.yaml","scenarios/golden-dataset/app-types/law-firm.yaml","scenarios/golden-dataset/app-types/event-planner.yaml","scenarios/golden-dataset/app-types/nonprofit-charity.yaml","scenarios/friction-evals/friction-pattern-detection.yaml","scenarios/friction-evals/error-loop-retry-waste.yaml"]'
+          ALL_SCENARIOS='["scenarios/create-site.yaml","scenarios/golden-dataset/app-types/landing-page.yaml","scenarios/golden-dataset/app-types/ecommerce-store.yaml","scenarios/golden-dataset/app-types/portfolio-site.yaml","scenarios/golden-dataset/app-types/restaurant-site.yaml","scenarios/golden-dataset/app-types/blog-site.yaml","scenarios/golden-dataset/app-types/fitness-studio.yaml","scenarios/golden-dataset/app-types/medical-practice.yaml","scenarios/golden-dataset/app-types/law-firm.yaml","scenarios/golden-dataset/app-types/event-planner.yaml","scenarios/golden-dataset/app-types/nonprofit-charity.yaml","scenarios/friction-evals/friction-pattern-detection.yaml","scenarios/friction-evals/error-loop-retry-waste.yaml","scenarios/friction-evals/user-correction-friction.yaml","scenarios/friction-evals/request-timeout-abort-repro.yaml","scenarios/prod-critical-failures/terminal-dangerous-pattern.yaml","scenarios/prod-critical-failures/colorscheme-no-description.yaml","scenarios/prod-critical-failures/publish-failure.yaml","scenarios/prod-critical-failures/str-replace-no-match.yaml"]'
 
           GOLDEN_DATASET_SCENARIOS='["scenarios/golden-dataset/app-types/landing-page.yaml","scenarios/golden-dataset/app-types/ecommerce-store.yaml","scenarios/golden-dataset/app-types/portfolio-site.yaml","scenarios/golden-dataset/app-types/restaurant-site.yaml","scenarios/golden-dataset/app-types/blog-site.yaml","scenarios/golden-dataset/app-types/fitness-studio.yaml","scenarios/golden-dataset/app-types/medical-practice.yaml","scenarios/golden-dataset/app-types/law-firm.yaml","scenarios/golden-dataset/app-types/event-planner.yaml","scenarios/golden-dataset/app-types/nonprofit-charity.yaml"]'
 
           FRICTION_EVAL_SCENARIOS='["scenarios/friction-evals/friction-pattern-detection.yaml","scenarios/friction-evals/error-loop-retry-waste.yaml"]'
+
+          REPRO_SCENARIOS='["scenarios/friction-evals/user-correction-friction.yaml","scenarios/friction-evals/request-timeout-abort-repro.yaml","scenarios/prod-critical-failures/terminal-dangerous-pattern.yaml","scenarios/prod-critical-failures/colorscheme-no-description.yaml","scenarios/prod-critical-failures/publish-failure.yaml","scenarios/prod-critical-failures/str-replace-no-match.yaml"]'
 
           # Credit scenario groups (pick one randomly per scheduled run)
           CREDIT_SMALL=("scenarios/credit-constraint-runs/trainer-landing-small.yaml")
@@ -172,6 +183,10 @@ jobs:
                 echo "ℹ️ Scheduled credit-large: $PICK"
                 SCENARIOS="[\"$PICK\"]"
                 ;;
+              "0 3 * * *")
+                echo "ℹ️ Scheduled daily repro scenarios"
+                SCENARIOS='["scenarios/friction-evals/user-correction-friction.yaml","scenarios/friction-evals/request-timeout-abort-repro.yaml","scenarios/prod-critical-failures/terminal-dangerous-pattern.yaml","scenarios/prod-critical-failures/colorscheme-no-description.yaml","scenarios/prod-critical-failures/publish-failure.yaml","scenarios/prod-critical-failures/str-replace-no-match.yaml"]'
+                ;;
               *)
                 echo "ℹ️ Scheduled run: create-site smoke test + friction evals"
                 SCENARIOS='["scenarios/create-site.yaml","scenarios/friction-evals/friction-pattern-detection.yaml","scenarios/friction-evals/error-loop-retry-waste.yaml"]'
@@ -189,6 +204,9 @@ jobs:
           elif [ "$INPUT_SCENARIO" = "friction-evals-all" ]; then
             echo "ℹ️ Running friction-eval scenarios in PARALLEL"
             SCENARIOS="$FRICTION_EVAL_SCENARIOS"
+          elif [ "$INPUT_SCENARIO" = "repro-scenarios-all" ]; then
+            echo "ℹ️ Running repro scenarios in PARALLEL"
+            SCENARIOS="$REPRO_SCENARIOS"
           else
             echo "ℹ️ Running single scenario: $INPUT_SCENARIO"
             SCENARIOS="[\"$INPUT_SCENARIO\"]"
@@ -208,7 +226,7 @@ jobs:
         - self-hosted
     strategy:
       fail-fast: false # Don't cancel other scenarios if one fails
-      max-parallel: 13 # Run all scenarios in parallel (matches ALL_SCENARIOS count)
+      max-parallel: 19 # Run all scenarios in parallel (matches ALL_SCENARIOS count)
       matrix: ${{ fromJson(needs.setup.outputs.matrix) }}
 
     steps:

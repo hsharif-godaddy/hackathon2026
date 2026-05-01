@@ -90,5 +90,18 @@ goal: |
 
   Report SUCCESS only when items 1–3 are clearly satisfied in the live preview.
 
+# Hard assertions: if Langfuse observations show any of these abort/timeout patterns,
+# the scenario is confirmed as reproducing the target defect class.
+expectedErrorObservations:
+  - name: "terminalCommand"
+    statusMessage: "This operation was aborted"
+  - name: "terminalCommand"
+    statusMessage: "request_timeout"
+  - name: "terminalCommand"
+    statusMessage: "Tool terminalCommand execution timeout"
+  - name: "str_replace_based_edit_tool"
+    statusMessage: "This operation was aborted"
+observationMatchMode: any
+
 cleanup:
   deleteAllSitesViaAPI: false

@@ -45,7 +45,7 @@ function buildFailureHaystack(
   return parts.join('\n').toLowerCase();
 }
 
-function matchExpectedFailures(
+export function matchExpectedFailures(
   expectedFailures: string[] | undefined,
   matchMode: 'any' | 'all',
   haystack: string
@@ -66,7 +66,7 @@ function normalize(value: string | undefined): string {
   return (value ?? '').trim().toLowerCase();
 }
 
-function matchExpectedErrorObservations(
+export function matchExpectedErrorObservations(
   expected: Array<{ name: string; statusMessage?: string }> | undefined,
   matchMode: 'any' | 'all',
   observations: Array<{ name?: string; statusMessage?: string }>
@@ -113,7 +113,7 @@ function matchExpectedErrorObservations(
   return { matched, missing, satisfied };
 }
 
-function matchRequiredTools(
+export function matchRequiredTools(
   requiredTools: Array<{ name: string }> | undefined,
   matchMode: 'any' | 'all',
   spanNames: string[]
@@ -146,6 +146,38 @@ function matchRequiredTools(
   });
   const satisfied = matchMode === 'all' ? missing.length === 0 : matched.length > 0;
   return { matched, missing, satisfied };
+}
+
+/**
+ * Pure-logic evaluation of expected friction patterns against detected friction.
+ * Called by runScenario() and exported for unit testing.
+ */
+export function evaluateFrictionPatterns(
+  expectedPatterns: string[],
+  matchMode: 'any' | 'all',
+  friction: FrictionReport | null | undefined
+): { success: boolean; retryable: boolean; error?: string } {
+  if (!friction) {
+    return {
+      success: false,
+      retryable: true,
+      error: 'Expected friction patterns require Langfuse metrics, but friction detection did not run.',
+    };
+  }
+
+  const detectedTypes = friction.patterns.map(p => p.type);
+  const matched = expectedPatterns.filter(ep => detectedTypes.includes(ep as FrictionReport['patterns'][number]['type']));
+  const missing = expectedPatterns.filter(ep => !detectedTypes.includes(ep as FrictionReport['patterns'][number]['type']));
+  const satisfied = matchMode === 'all' ? missing.length === 0 : matched.length > 0;
+
+  if (!satisfied) {
+    return {
+      success: false,
+      retryable: true,
+      error: `Expected friction patterns not detected (${matchMode}): ${missing.join(' | ')}`,
+    };
+  }
+  return { success: true, retryable: false };
 }
 
 export async function runScenario(
@@ -320,6 +352,7 @@ export async function runScenario(
     let creditsUsed: number | undefined;
     let chatMessagesCompleted = 0;
     let errorMessage: string | undefined;
+    let retryableFailure = false;
     const chatMessageTimestamps: number[] = [];
 
     // Credit mode: send chat messages one-by-one, checking credits between each
@@ -420,15 +453,22 @@ export async function runScenario(
         creditsUsed = currentCreditsSpent - startCredits;
 
         // Credit mode succeeds only if earlier steps succeeded AND
-        // at least one chat message was completed
-        overallSuccess = overallSuccess && chatMessagesCompleted > 0;
+        // minimum chat messages threshold is met (defaults to 1)
+        const minMessages = scenario.minChatMessages ?? 1;
+        overallSuccess = overallSuccess && chatMessagesCompleted >= minMessages;
+        if (chatMessagesCompleted < minMessages) {
+          errorMessage = `Only ${chatMessagesCompleted}/${minMessages} required chat messages completed`;
+          overallMessage = errorMessage;
+        }
 
         console.log('\n========== CREDIT MODE COMPLETE ==========');
         console.log(`Messages completed: ${chatMessagesCompleted}/${scenario.chatMessages!.length}`);
         console.log(`Start credits:      ${startCredits}`);
         console.log(`Final credits:      ${currentCreditsSpent}`);
         console.log(`Credits consumed:   ${creditsUsed} / ${scenario.creditLimit} limit`);
-        overallMessage = `Credit mode: ${chatMessagesCompleted}/${scenario.chatMessages!.length} messages, ${creditsUsed} credits used (start ${startCredits} -> ${currentCreditsSpent})`;
+        if (chatMessagesCompleted >= minMessages) {
+          overallMessage = `Credit mode: ${chatMessagesCompleted}/${scenario.chatMessages!.length} messages, ${creditsUsed} credits used (start ${startCredits} -> ${currentCreditsSpent})`;
+        }
         console.log('==========================================\n');
       }
     }
@@ -577,10 +617,12 @@ export async function runScenario(
 
       if (!buildResult) {
         overallSuccess = false;
+        retryableFailure = true;
         errorMessage = 'Required tools cannot be validated because Langfuse observations were not available.';
         overallMessage = errorMessage;
       } else if (!requiredTools.satisfied) {
         overallSuccess = false;
+        retryableFailure = true;
         errorMessage = `Required tools not observed (${scenario.requiredToolMatchMode ?? 'all'}): ` +
           `${requiredTools.missing.join(' | ')}`;
         overallMessage = errorMessage;
@@ -629,10 +671,12 @@ export async function runScenario(
 
       if (!buildResult) {
         overallSuccess = false;
+        retryableFailure = true;
         errorMessage = 'Expected error observations require Langfuse metrics, but no Langfuse observations were found.';
         overallMessage = errorMessage;
       } else if (!expectedObservations.satisfied) {
         overallSuccess = false;
+        retryableFailure = true;
         errorMessage = `Expected error observations not observed (${scenario.observationMatchMode ?? 'all'}): ` +
           `${expectedObservations.missing.map(function format(obs) {
             return obs.statusMessage ? `${obs.name} -> ${obs.statusMessage}` : obs.name;
@@ -663,10 +707,12 @@ export async function runScenario(
 
       if (!buildResult) {
         overallSuccess = false;
+        retryableFailure = true;
         errorMessage = 'Expected failure signatures require Langfuse metrics, but no Langfuse observations were found.';
         overallMessage = errorMessage;
       } else if (!expectedFailures.satisfied) {
         overallSuccess = false;
+        retryableFailure = true;
         errorMessage = `Expected failure signatures not observed (${scenario.failureMatchMode ?? 'any'}): ` +
           `${expectedFailures.missing.join(' | ')}`;
         overallMessage = errorMessage;
@@ -676,6 +722,40 @@ export async function runScenario(
     // Run cleanup if specified
     if (scenario.cleanup?.deleteAllSitesViaAPI) {
       await deleteAllSitesViaAPI(stagehand);
+    }
+
+    // Assert expected friction patterns if configured
+    if ((scenario.expectedFrictionPatterns?.length ?? 0) > 0) {
+      const expectedPatterns = scenario.expectedFrictionPatterns!;
+      const matchMode = scenario.frictionPatternMatchMode ?? 'any';
+
+      console.log('\n======= EXPECTED FRICTION PATTERN MATCH =======');
+      console.log(`Langfuse available: ${friction != null}`);
+      console.log(`Mode: ${matchMode}`);
+      console.log(`Expected: ${expectedPatterns.join(' | ')}`);
+
+      const frictionResult = evaluateFrictionPatterns(expectedPatterns, matchMode, friction);
+
+      if (!friction) {
+        console.log('Detected: (friction detection did not run — Langfuse unavailable)');
+      } else {
+        const detectedTypes = friction.patterns.map(p => p.type);
+        console.log(`Detected: ${detectedTypes.length > 0 ? detectedTypes.join(' | ') : '(none)'}`);
+        const matched = expectedPatterns.filter(ep => detectedTypes.includes(ep as typeof detectedTypes[number]));
+        const missing = expectedPatterns.filter(ep => !detectedTypes.includes(ep as typeof detectedTypes[number]));
+        console.log(`Matched: ${matched.length > 0 ? matched.join(' | ') : '(none)'}`);
+        if (missing.length > 0) {
+          console.log(`Missing: ${missing.join(' | ')}`);
+        }
+      }
+      console.log('===============================================\n');
+
+      if (!frictionResult.success) {
+        overallSuccess = false;
+        retryableFailure = frictionResult.retryable;
+        errorMessage = frictionResult.error;
+        overallMessage = errorMessage ?? '';
+      }
     }
 
     // Get metrics
@@ -705,6 +785,7 @@ export async function runScenario(
       screenshots,
       previewUrl,
       error: errorMessage,
+      retryable: retryableFailure,
       quality,
       qualityStatus,
       qualityError: qualityErrorMsg,
@@ -727,14 +808,14 @@ export async function runScenario(
       if (scenario.cleanup?.deleteAllSitesViaAPI) {
         await deleteAllSitesViaAPI(stagehand);
       }
-    } catch {
-      // Ignore cleanup errors
+    } catch (cleanupErr) {
+      console.warn('Cleanup error: %s', cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr));
     }
 
     try {
       await stagehand.close();
-    } catch {
-      // Ignore close errors
+    } catch (closeErr) {
+      console.warn('Browser close error: %s', closeErr instanceof Error ? closeErr.message : String(closeErr));
     }
 
     return {
@@ -751,6 +832,7 @@ export async function runScenario(
       },
       screenshots,
       error: error instanceof Error ? error.message : String(error),
+      retryable: false,
     };
   }
 }
