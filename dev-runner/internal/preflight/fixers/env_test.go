@@ -41,6 +41,37 @@ func TestEnvFixer_FirstTimeCreate_S2S(t *testing.T) {
 	assertAbsent(t, env, "ANTHROPIC_API_KEY")
 }
 
+func TestEnvFixer_GeneratesEnvironmentSpecificSSOHosts(t *testing.T) {
+	root := t.TempDir()
+
+	appFixer := &EnvFixer{Target: "app", Values: s2sValues()}
+	if err := appFixer.Fix(context.Background(), root); err != nil {
+		t.Fatalf("app Fix() failed: %v", err)
+	}
+
+	agentsFixer := &EnvFixer{Target: "agents", Values: s2sValues()}
+	if err := agentsFixer.Fix(context.Background(), root); err != nil {
+		t.Fatalf("agents Fix() failed: %v", err)
+	}
+
+	cases := []struct {
+		relPath string
+		want    string
+	}{
+		{"app/.env.local.dev", "sso.dev-godaddy.com"},
+		{"app/.env.local.test", "sso.test-godaddy.com"},
+		{"app/.env.local.prod", "sso.godaddy.com"},
+		{"agents/.env.local.dev", "sso.dev-godaddy.com"},
+		{"agents/.env.local.test", "sso.test-godaddy.com"},
+		{"agents/.env.local.prod", "sso.godaddy.com"},
+	}
+
+	for _, tc := range cases {
+		env := readEnvMap(t, filepath.Join(root, tc.relPath))
+		assertEq(t, env, "SSO_HOST", tc.want)
+	}
+}
+
 func TestEnvFixer_FirstTimeCreate_APIKey(t *testing.T) {
 	root := t.TempDir()
 	f := &EnvFixer{Target: "agents", Values: apiKeyValues()}
@@ -155,4 +186,3 @@ func assertAbsent(t *testing.T, env map[string]string, key string) {
 		t.Errorf("env[%q] = %q; expected absent/empty", key, got)
 	}
 }
-

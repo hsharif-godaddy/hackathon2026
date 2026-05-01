@@ -346,9 +346,10 @@ func generateAppEnvSpecific(projectRoot string) error {
 NEXT_PUBLIC_APP_URL=%s
 SSO_LOGIN_URL=https://%s/login
 SSO_LOGOUT_URL=https://%s/logout
+SSO_HOST=%s
 LOGIN_REDIRECT_URL=%s/
 MGMT_AIRO_BASE_URL=%s
-`, cfg.appURL, cfg.ssoHost, cfg.ssoHost, cfg.appURL, cfg.mgmtURL)
+`, cfg.appURL, cfg.ssoHost, cfg.ssoHost, cfg.ssoHost, cfg.appURL, cfg.mgmtURL)
 
 		if err := writeFileAtomic(filepath.Join(projectRoot, relPath), content); err != nil {
 			return err
