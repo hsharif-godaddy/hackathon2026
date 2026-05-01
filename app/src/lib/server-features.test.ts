@@ -1,81 +1,66 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('server-only', () => ({}));
 
+const checkSwitchboardFlag = vi.fn();
+vi.mock('@/lib/switchboard/server', () => ({
+  checkSwitchboardFlag: (...args: unknown[]) => checkSwitchboardFlag(...args),
+}));
+
 import { getServerFeatureFlags, type ServerFeatureFlags } from './server-features';
 
+const req = { headers: new Headers() };
+
 describe('server-features', () => {
-  afterEach(() => {
-    vi.unstubAllEnvs();
+  beforeEach(() => {
+    vi.clearAllMocks();
+    checkSwitchboardFlag.mockResolvedValue(false);
   });
 
   describe('getServerFeatureFlags', () => {
-    it('should return all expected feature flag keys', () => {
-      const flags = getServerFeatureFlags();
+    it('should return all expected feature flag keys', async () => {
+      const flags = await getServerFeatureFlags(req);
 
       // Verify the shape of the returned object
       expect(flags).toHaveProperty('showPricingSection');
     });
 
-    it('should return correct types for all flags', () => {
-      const flags = getServerFeatureFlags();
+    it('should return correct types for all flags', async () => {
+      const flags = await getServerFeatureFlags(req);
 
       expect(typeof flags.showPricingSection).toBe('boolean');
     });
 
     describe('showPricingSection', () => {
-      it('should return true when SHOW_PRICING_SECTION is "true"', () => {
-        vi.stubEnv('SHOW_PRICING_SECTION', 'true');
+      it('should return true when Switchboard flag is true', async () => {
+        checkSwitchboardFlag.mockResolvedValue(true);
 
-        const flags = getServerFeatureFlags();
+        const flags = await getServerFeatureFlags(req);
 
         expect(flags.showPricingSection).toBe(true);
+        expect(checkSwitchboardFlag).toHaveBeenCalledWith('appbuilder-pricing-section', req);
       });
 
-      it('should return false when SHOW_PRICING_SECTION is "false"', () => {
-        vi.stubEnv('SHOW_PRICING_SECTION', 'false');
+      it('should return false when Switchboard flag is false', async () => {
+        checkSwitchboardFlag.mockResolvedValue(false);
 
-        const flags = getServerFeatureFlags();
+        const flags = await getServerFeatureFlags(req);
 
         expect(flags.showPricingSection).toBe(false);
       });
 
-      it('should return false when SHOW_PRICING_SECTION is undefined', () => {
-        vi.stubEnv('SHOW_PRICING_SECTION', undefined);
+      it('should fail closed when Switchboard lookup fails', async () => {
+        checkSwitchboardFlag.mockRejectedValue(new Error('boom'));
 
-        const flags = getServerFeatureFlags();
-
-        expect(flags.showPricingSection).toBe(false);
-      });
-
-      it('should return false when SHOW_PRICING_SECTION is empty string', () => {
-        vi.stubEnv('SHOW_PRICING_SECTION', '');
-
-        const flags = getServerFeatureFlags();
-
-        expect(flags.showPricingSection).toBe(false);
-      });
-
-      it('should return false when SHOW_PRICING_SECTION is "TRUE" (case sensitive)', () => {
-        vi.stubEnv('SHOW_PRICING_SECTION', 'TRUE');
-
-        const flags = getServerFeatureFlags();
-
-        expect(flags.showPricingSection).toBe(false);
-      });
-
-      it('should return false when SHOW_PRICING_SECTION is "1"', () => {
-        vi.stubEnv('SHOW_PRICING_SECTION', '1');
-
-        const flags = getServerFeatureFlags();
+        const flags = await getServerFeatureFlags(req);
 
         expect(flags.showPricingSection).toBe(false);
       });
     });
 
     describe('type safety', () => {
-      it('should satisfy ServerFeatureFlags interface', () => {
-        const flags = getServerFeatureFlags();
+      it('should satisfy ServerFeatureFlags interface', async () => {
+        const flags = await getServerFeatureFlags(req);
 
         // TypeScript compile-time check - this assignment should work
         const typedFlags: ServerFeatureFlags = flags;

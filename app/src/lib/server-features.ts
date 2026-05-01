@@ -1,28 +1,34 @@
 import 'server-only'
 
+import { checkSwitchboardFlag, type SwitchboardRequest } from '@/lib/switchboard/server';
+
 /**
- * Server-side feature flags read from environment variables at runtime.
- *
- * Use this for feature flags that:
- * - Need to be configurable per deployment without rebuilding
- * - Must work for unauthenticated users (unlike Switchboard)
- * - Are used in server components or passed to client components
- *
- * For authenticated user features, use Switchboard
+ * Server-side feature flags resolved from Switchboard and passed to client
+ * components that cannot read `window.gasketData` during server render.
  */
 
 export interface ServerFeatureFlags {
   showPricingSection: boolean
-  // Add more server-side feature flags here
 }
 
 /**
  * Get all server-side feature flags.
  * Call this in server components and pass to client components as props.
+ *
+ * Returns false on Switchboard error rather than throwing. Do not use this
+ * helper for security or paywall gates; use `checkSwitchboardFlag` directly
+ * for those so callers can fail closed with their own handling.
  */
-export function getServerFeatureFlags(): ServerFeatureFlags {
+export async function getServerFeatureFlags(req: SwitchboardRequest): Promise<ServerFeatureFlags> {
+  let showPricingSection = false;
+
+  try {
+    showPricingSection = await checkSwitchboardFlag('appbuilder-pricing-section', req);
+  } catch {
+    // `checkSwitchboardFlag` logs lookup failures before re-throwing.
+  }
+
   return {
-    showPricingSection: process.env.SHOW_PRICING_SECTION === 'true',
-    // Add more flags here as needed
+    showPricingSection,
   }
 }

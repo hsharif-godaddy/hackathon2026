@@ -286,7 +286,7 @@ When any request returns 401, the client refreshes the JWT via `updateToken()`. 
 
 ## Feature Flag
 
-SSE transport is gated behind the `app-builder-sse-transport` switchboard flag. In local dev (`NEXT_PUBLIC_ENABLE_LOCAL_FEATURES=true`), SSE is always enabled.
+Planned gate: SSE transport should be gated behind the `app-builder-sse-transport` Switchboard flag when the app-side transport switch is wired. Local dev reads Switchboard values from the development environment; this flag is not currently consumed by `app/src`.
 
 ## Shared Abstractions (ai-transport)
 

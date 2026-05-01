@@ -150,15 +150,15 @@ type Model struct {
 	healthGeneration []int // per-process generation counter to discard stale health check results
 
 	// Preflight state
-	phase               Phase
-	preflightRunner     *preflight.Runner
-	preflightResults    []preflight.CheckResult
-	preflightFixQueue   []preflight.CheckWithFixer
-	preflightFixIndex   int
-	preflightFixStatus  string // "Fixing: <name>..."
-	preflightViewport       viewport.Model
-	preflightAutoFollow     bool
-	preflightExpandPassing  bool // 'v' on the dashboard expands passing checks
+	phase                  Phase
+	preflightRunner        *preflight.Runner
+	preflightResults       []preflight.CheckResult
+	preflightFixQueue      []preflight.CheckWithFixer
+	preflightFixIndex      int
+	preflightFixStatus     string // "Fixing: <name>..."
+	preflightViewport      viewport.Model
+	preflightAutoFollow    bool
+	preflightExpandPassing bool // 'v' on the dashboard expands passing checks
 
 	// Inline fix selector state (huh-based)
 	fixSelectorItems []preflight.CheckWithFixer
@@ -316,7 +316,6 @@ func buildPreflightRunner(projectRoot string) *preflight.Runner {
 					{Check: &checks.GettyCheck{}, Fixer: &fixers.GettyFixer{}},
 					{Check: &checks.KnowBCheck{}, Fixer: &fixers.KnowBFixer{TokenCache: ssoTokenCache}},
 					{Check: &checks.DesignRAGCheck{}, Fixer: &fixers.DesignRAGFixer{TokenCache: ssoTokenCache}},
-					{Check: &checks.LocalFeaturesCheck{}, Fixer: &fixers.LocalFeaturesFixer{}, OptIn: true},
 					{Check: &checks.ImageSearchEnvCheck{}, Fixer: &fixers.ImageSearchEnvFixer{}, OptIn: true},
 					{Check: &checks.E2ECheck{}, Fixer: &fixers.E2EFixer{ProjectRoot: projectRoot}},
 				},

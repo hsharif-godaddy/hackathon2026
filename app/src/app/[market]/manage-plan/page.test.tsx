@@ -36,12 +36,9 @@ vi.mock('@/components/layout/Header', () => ({
 
 vi.mock('@/lib/features', () => ({
   isFeatureEnabled: {
-    codeEditor: vi.fn().mockReturnValue(false),
     mockLogin: vi.fn().mockReturnValue(true),
     developmentMode: vi.fn().mockReturnValue(true),
-    galleryPage: vi.fn().mockReturnValue(false),
     devSupervisorTcp: vi.fn().mockReturnValue(false),
-    localFeatures: vi.fn().mockReturnValue(false),
   },
   MAX_PROMPT_LENGTH: 40000,
   auth: {

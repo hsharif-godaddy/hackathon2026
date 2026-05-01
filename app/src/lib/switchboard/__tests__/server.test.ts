@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/lib/request-context', () => ({
   logger: {
@@ -25,10 +25,6 @@ const req = { headers: new Headers() };
 describe('switchboard server', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-  });
-
-  afterEach(() => {
-    vi.unstubAllEnvs();
   });
 
   describe('checkSwitchboardValue', () => {
@@ -65,16 +61,6 @@ describe('switchboard server', () => {
       );
     });
 
-    it('uses SERVER_LOCAL_VALUE_OVERRIDES when local features enabled', async function usesLocalValueOverrides() {
-      vi.stubEnv('NEXT_PUBLIC_ENABLE_LOCAL_FEATURES', 'true');
-
-      await expect(checkSwitchboardValue('appbuilder-model-override', req)).resolves.toBe('default');
-      expect(getSwitchboardConfig).not.toHaveBeenCalled();
-      expect(logger.info).toHaveBeenCalledWith('switchboard.server.local-override', {
-        featureName: 'appbuilder-model-override',
-        value: 'default',
-      });
-    });
   });
 
   describe('checkSwitchboardFlag', () => {
@@ -109,15 +95,5 @@ describe('switchboard server', () => {
       );
     });
 
-    it('uses SERVER_LOCAL_FEATURE_OVERRIDES when local features enabled', async function usesLocalFeatureOverrides() {
-      vi.stubEnv('NEXT_PUBLIC_ENABLE_LOCAL_FEATURES', 'true');
-
-      await expect(checkSwitchboardFlag('appbuilder-model-selector', req)).resolves.toBe(true);
-      expect(getSwitchboardConfig).not.toHaveBeenCalled();
-      expect(logger.info).toHaveBeenCalledWith('switchboard.server.local-override', {
-        featureName: 'appbuilder-model-selector',
-        value: true,
-      });
-    });
   });
 });

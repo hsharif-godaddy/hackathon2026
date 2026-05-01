@@ -6,14 +6,14 @@ This document explains how **Switchboard** integrates with this repo, how to wor
 
 Switchboard provides **runtime boolean (and some string) feature settings** per environment. The app reads them via `@godaddy/gasket-plugin-switchboard`, which runs a singleton `@switchboard/client` that authenticates to Switchboard over **IAM** (not per-user SSO) and polls settings into an in-process cache. `gasket.ts` configures `apps: ['@hivemind', 'airo-app-builder']` so Hivemind experiment cohorts and Switchboard feature flags land in the same per-request tree.
 
-| Surface                       | API                                                                                                                   | Code                                                                                                                                                                     |
-| ----------------------------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Browser**                   | No network call. Flags are SSR-baked into `window.gasketData.switchboard` by the plugin and read synchronously.       | `useSwitchboard('flag-name')` / `getSwitchboardFlag('flag-name')` in [`app/src/hooks/useSwitchboard.ts`][useSwitchboard] (return `boolean \| undefined` synchronously). |
-| **Server (BFF / API routes)** | `await gasket.actions.getSwitchboardConfig(req)` behind helpers. No per-request HTTP fetch to Switchboard.            | `checkSwitchboardFlag(name, req)` / `checkSwitchboardValue(name, req)` in [`app/src/lib/switchboard/server.ts`][switchboard-server].                                     |
+| Surface                       | API                                                                                                             | Code                                                                                                                                                                    |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Browser**                   | No network call. Flags are SSR-baked into `window.gasketData.switchboard` by the plugin and read synchronously. | `useSwitchboard('flag-name')` / `getSwitchboardFlag('flag-name')` in [`app/src/hooks/useSwitchboard.ts`][useSwitchboard] (return `boolean \| undefined` synchronously). |
+| **Server (BFF / API routes)** | `await gasket.actions.getSwitchboardConfig(req)` behind helpers. No per-request HTTP fetch to Switchboard.      | `checkSwitchboardFlag(name, req)` / `checkSwitchboardValue(name, req)` in [`app/src/lib/switchboard/server.ts`][switchboard-server].                                    |
 
 `req` is anything with a `headers` field (`NextRequest`, `Request`, or a plain `{ headers }` wrapper); the plugin extracts the criteria (shopperId / customerId / visitor) from those headers for Hivemind targeting.
 
-**Error contract (server):** `checkSwitchboardFlag` / `checkSwitchboardValue` return `false` / `null` when the key is absent from the tree or has the wrong type, but **re-throw** on any system failure - the underlying gasket call throwing (IAM error, plugin startup race, transient) *or* returning no tree at all (null / undefined). Both indicate the plugin couldn't supply flag state and must not be read as "all flags are off". Paywall and other security gates depend on the re-throw to fail closed. UI/API callers that want a soft default should wrap in `try/catch`.
+**Error contract (server):** `checkSwitchboardFlag` / `checkSwitchboardValue` return `false` / `null` when the key is absent from the tree or has the wrong type, but **re-throw** on any system failure - the underlying gasket call throwing (IAM error, plugin startup race, transient) _or_ returning no tree at all (null / undefined). Both indicate the plugin couldn't supply flag state and must not be read as "all flags are off". Paywall and other security gates depend on the re-throw to fail closed. UI/API callers that want a soft default should wrap in `try/catch`.
 
 **Staleness:** Flag flips propagate within the client's `cacheRefreshMs` (default ~2 min). Nothing in this codebase requires lower latency; if yours does, read the plugin docs before designing around that assumption.
 
@@ -37,49 +37,34 @@ Local dev inherits the dev grant through `AWS_PROFILE=airobuild-dev-private-sso`
 
 ## Local development
 
-### Enable local overrides
+`local.dev` reads from the Switchboard development environment. Local feature flags should be configured in Switchboard rather than overridden in code, so local behavior stays aligned with deployed environments.
 
-When **`NEXT_PUBLIC_ENABLE_LOCAL_FEATURES=true`**, flag lookups for names in the local override maps return the configured value before consulting the plugin. The variable is not restricted to local dev — it also works in the test environment (or any environment where `app/.env` is present with the value set), useful for testing flag-gated features without a live Switchboard flag.
+Use the dev Switchboard app to enable, disable, or create flags for local development:
 
-- **Preflight opt-in:** `pnpm run dev` runs a `LocalFeaturesCheck` (see [`dev-runner/internal/preflight/checks/local_features.go`][local-features-go] and [`fixers/local_features.go`][local-features-fixer-go]). If `app/.env` doesn't exist yet the check is skipped until after the env setup step. If the variable is absent the check reports a warning with a fix available - the fix only runs if you choose to apply it at the preflight prompt. It is **not** applied automatically on every `pnpm run dev` run.
-- **Manual:** add or set `NEXT_PUBLIC_ENABLE_LOCAL_FEATURES=true` in `app/.env` yourself. [`app/env.example`][env-example] documents the variable (default `false` in the example file).
+**[https://switchboard.int.dev-gdcorp.tools/airo-app-builder](https://switchboard.int.dev-gdcorp.tools/airo-app-builder)**
 
-The gate is implemented via `isFeatureEnabled.localFeatures()` in [`app/src/lib/features.ts`][features] on the client and `process.env.NEXT_PUBLIC_ENABLE_LOCAL_FEATURES === 'true'` on the server.
+For an existing boolean flag, open the flag in the dev app and set the desired development value or targeting rule. For a new local-dev flag, create it there first, then add the code call site in this repo.
 
-### Client vs server override lists
-
-The **client** and **server** allowlists are **not the same**:
-
-- Client: `LOCAL_FEATURE_OVERRIDES` in [`app/src/hooks/useSwitchboard.ts`][useSwitchboard].
-- Server: `SERVER_LOCAL_FEATURE_OVERRIDES` and `SERVER_LOCAL_VALUE_OVERRIDES` in [`app/src/lib/switchboard/server.ts`][switchboard-server].
-
-If a flag is read in both places (UI plus JWT/API logic), you usually need an entry in **both** maps for consistent local behavior.
-
-### Flags not in the local maps
-
-If `NEXT_PUBLIC_ENABLE_LOCAL_FEATURES=true` but the flag name is **not** in the override map, the helpers fall through to the real plugin tree. This works as long as the current AWS credentials have the dev grant above; otherwise the lookup resolves to the default (`false` / `null`) - there is no automatic fallback.
+Local dev inherits the dev grant through `AWS_PROFILE=airobuild-dev-private-sso` (account `694282668781`, PowerUser permission set). Without those credentials, flag lookups resolve to the default (`false` / `null`) - there is no automatic fallback.
 
 ### Verifying a flag at runtime
 
 - **Client:** open DevTools console and inspect `window.gasketData.switchboard` - it contains the full merged tree (`@hivemind` + `airo-app-builder`) resolved for the current user. Individual flag reads go through `useSwitchboard()` synchronously; there is no network call to filter for in the Network tab.
-- **Server:** flag values are embedded in log lines via `switchboard.server.local-override` (when the override path fires) and in the agent-token route's flag block. On real lookup errors (gasket / IAM failure) look for `switchboard.server.lookup-error`.
+- **Server:** flag values are embedded in the agent-token route's flag block. On real lookup errors (gasket / IAM failure) look for `switchboard.server.lookup-error`.
 
 ### Related docs
 
 - [Model override runbook](model-override.md) - includes the **Switchboard app URL** used for ops-style string flags (`appbuilder-model-override`).
 - [SSE transport](sse-transport-protocol.md) - example of a flag name and local-dev behavior.
-- [`app/src/hooks/useSwitchboard.ts`][useSwitchboard] - client hook, `LOCAL_FEATURE_OVERRIDES`.
-- [`app/src/lib/switchboard/server.ts`][switchboard-server] - server helpers, `SERVER_LOCAL_FEATURE_OVERRIDES`, `SERVER_LOCAL_VALUE_OVERRIDES`.
-- [`app/src/lib/features.ts`][features] - `isFeatureEnabled.localFeatures()` gate.
-- [`dev-runner/internal/preflight/checks/local_features.go`][local-features-go] / [`fixers/local_features.go`][local-features-fixer-go] - opt-in preflight check and fixer for `NEXT_PUBLIC_ENABLE_LOCAL_FEATURES`.
-- [`app/env.example`][env-example] - environment variable reference.
+- [`app/src/hooks/useSwitchboard.ts`][useSwitchboard] - client hook.
+- [`app/src/lib/switchboard/server.ts`][switchboard-server] - server helpers.
 
 ## Adding a flag in **this codebase**
 
-After a flag **exists** in Switchboard (or you only need local behavior first), typical steps are:
+After a flag **exists** in Switchboard, typical steps are:
 
 1. **Call site:** Use `useSwitchboard('your-flag-kebab-case')` in React, `getSwitchboardFlag('your-flag-kebab-case')` in non-hook call sites (stores, async callbacks), or `checkSwitchboardFlag('your-flag-kebab-case', req)` / `checkSwitchboardValue(...)` on the server. No SSR prefetching is needed - the plugin populates `gasketData.switchboard` during the render pass, and the client reads are synchronous.
-2. **Local dev:** If the feature should be on (or off) without hitting Switchboard, add the name to `LOCAL_FEATURE_OVERRIDES` and, if used on the server, to `SERVER_LOCAL_FEATURE_OVERRIDES` or `SERVER_LOCAL_VALUE_OVERRIDES`.
+2. **Local dev:** Create or update the flag in the Switchboard development environment.
 3. **JWT / agents:** If the BFF must embed the value in the agent token, update the agent-token route (`app/src/app/api/auth/agent-token/route.ts`) and any JWT typing/caching keyed on claims (grep similar flags such as model or agent profile for the pattern).
 4. **Tests:** Add or adjust unit tests. Mock `useSwitchboard` / `getSwitchboardFlag` at the hook boundary with `vi.mock('@/hooks/useSwitchboard', () => ({ useSwitchboard: vi.fn(() => true), getSwitchboardFlag: vi.fn(() => true) }))`. For server-side code, mock `checkSwitchboardFlag` from `@/lib/switchboard/server` directly.
 
@@ -89,7 +74,8 @@ After a flag **exists** in Switchboard (or you only need local behavior first), 
 
 Create and manage flags for the Airo App Builder application at:
 
-**[https://switchboard.int.gdcorp.tools/airo-app-builder](https://switchboard.int.gdcorp.tools/airo-app-builder)**
+- **Dev:** [https://switchboard.int.dev-gdcorp.tools/airo-app-builder](https://switchboard.int.dev-gdcorp.tools/airo-app-builder)
+- **Prod:** [https://switchboard.int.gdcorp.tools/airo-app-builder](https://switchboard.int.gdcorp.tools/airo-app-builder)
 
 ### Flag types
 
@@ -128,7 +114,3 @@ Once the flag exists in Switchboard, use the **[Adding a flag in this codebase](
 
 [useSwitchboard]: ../app/src/hooks/useSwitchboard.ts
 [switchboard-server]: ../app/src/lib/switchboard/server.ts
-[features]: ../app/src/lib/features.ts
-[local-features-go]: ../dev-runner/internal/preflight/checks/local_features.go
-[local-features-fixer-go]: ../dev-runner/internal/preflight/fixers/local_features.go
-[env-example]: ../app/env.example

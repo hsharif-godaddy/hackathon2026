@@ -118,10 +118,8 @@ export function mockInstrumentation() {
  */
 export function mockFeatures(overrides: { [key: string]: boolean } = {}) {
   const defaults = {
-    codeEditor: false,
     mockLogin: true,
     developmentMode: false,
-    galleryPage: false,
     devSupervisorTcp: false,
   };
 
@@ -129,10 +127,8 @@ export function mockFeatures(overrides: { [key: string]: boolean } = {}) {
 
   return {
     isFeatureEnabled: {
-      codeEditor: () => config.codeEditor,
       mockLogin: () => config.mockLogin,
       developmentMode: () => config.developmentMode,
-      galleryPage: () => config.galleryPage,
       devSupervisorTcp: () => config.devSupervisorTcp,
     },
     MAX_PROMPT_LENGTH: 40000,

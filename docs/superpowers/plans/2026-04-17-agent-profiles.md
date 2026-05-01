@@ -1212,25 +1212,16 @@ agentProfileSelectorEnabled,
 agentProfile,
 ```
 
-- [ ] **Step 6: Add local dev overrides**
+- [ ] **Step 6: Configure dev Switchboard flags**
 
-In `app/src/lib/switchboard/server.ts`, add to `SERVER_LOCAL_FEATURE_OVERRIDES` (after `'appbuilder-model-selector': true` on line 29):
+Create or update the dev Switchboard flags at:
 
-```typescript
-'appbuilder-agent-profile-selector': true,
-```
+https://switchboard.int.dev-gdcorp.tools/airo-app-builder
 
-Add to `SERVER_LOCAL_VALUE_OVERRIDES` (after `'appbuilder-model-override': 'default'` on line 37):
+- `appbuilder-agent-profile-selector`: set to `true` for local testing.
+- `appbuilder-agent-profile`: set to `experimental` for local testing.
 
-```typescript
-'appbuilder-agent-profile': 'experimental',
-```
-
-In `app/src/hooks/useSwitchboard.ts`, add to `LOCAL_FEATURE_OVERRIDES` (after `'appbuilder-model-selector': true` on line 41):
-
-```typescript
-'appbuilder-agent-profile-selector': true,
-```
+Do not add code-level local overrides. Local dev reads the Switchboard development environment directly.
 
 - [ ] **Step 7: Run typecheck to verify**
 

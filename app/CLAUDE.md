@@ -121,7 +121,7 @@ export const POST = withCustomerAuth(
 
 Two-layer system:
 
-**Layer 1 — Environment variables** (`src/lib/features.ts`): Static flags loaded at startup. `NEXT_PUBLIC_SHOW_CODE_EDITOR`, `NEXT_PUBLIC_ENABLE_LOCAL_FEATURES`, etc.
+**Layer 1 — Environment/config variables** (`src/lib/features.ts`): Startup configuration such as `AUTH_TYPE` and dev-supervisor transport settings. Do not add feature rollout flags here; use Switchboard.
 
 **Layer 2 — GoDaddy Switchboard** (`src/lib/switchboard/`): Dynamic runtime flags loaded via `@godaddy/gasket-plugin-switchboard`. The plugin runs a singleton `@switchboard/client` that polls settings into an in-process cache (~2 min refresh) using IAM auth. `gasket.ts` configures `apps: ['@hivemind', 'airo-app-builder']` so both experiment cohorts and feature flags land in the same per-request tree.
 
@@ -142,9 +142,7 @@ The Switchboard **prod** environment is granted:
 - `arn:aws:iam::694282668781:role/airobuilde-custom-*`
 - `arn:aws:iam::269423819739:role/airobuilde-custom-*`
 
-Local dev inherits the dev grant when `AWS_PROFILE=airobuild-dev-private-sso` is set (account `694282668781`, PowerUser). Without those credentials (or without `NEXT_PUBLIC_ENABLE_LOCAL_FEATURES=true`), flag lookups resolve to the defaults (`false` / `null`) - there is no automatic fallback.
-
-**Local dev override:** When `NEXT_PUBLIC_ENABLE_LOCAL_FEATURES=true`, a subset of switchboard flags are forced to `true` before the client is consulted. The client and server allowlists differ — check `LOCAL_FEATURE_OVERRIDES` in `src/hooks/useSwitchboard.ts` (client) and `SERVER_LOCAL_FEATURE_OVERRIDES` in `src/lib/switchboard/server.ts` (server).
+Local dev inherits the dev grant when `AWS_PROFILE=airobuild-dev-private-sso` is set (account `694282668781`, PowerUser). Without those credentials, flag lookups resolve to the defaults (`false` / `null`) - there is no automatic fallback.
 
 **Finding active flags:** Grep for `useSwitchboard(` and `checkSwitchboardFlag(` to find current flags.
 

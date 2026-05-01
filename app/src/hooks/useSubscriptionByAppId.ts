@@ -1,6 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
 
-import { isFeatureEnabled } from '@/lib/features';
 import { logger } from '@/lib/request-context';
 
 interface SubscriptionData {
@@ -16,80 +15,87 @@ interface UseSubscriptionByAppIdResult {
   refetch: () => void;
 }
 
-export const useSubscriptionByAppId = (appId: string | undefined): UseSubscriptionByAppIdResult => {
-  return useQuery({
-    queryKey: ['subscription', appId],
-    queryFn: async (): Promise<SubscriptionData> => {
-      if (!appId) {
-        throw new Error('appId is required');
-      }
+export class SubscriptionQueryError extends Error {
+  constructor(message: string, readonly statusCode?: number) {
+    super(message);
+    this.name = 'SubscriptionQueryError';
+  }
+}
 
-      // Skip subscription API call in local development
-      if (isFeatureEnabled.localFeatures()) {
-        logger.info('subscription.query.local_override', { appId });
-        return {
-          app: { id: appId },
-          subscription: { 
-            id: 'local-subscription',
-            owningProduct: 'AiroAppBuilder'
-          },
-          system: { 
-            systemId: 'local-system',
-            subscriptionId: 'local-subscription'
-          }
-        };
-      }
+export function shouldRetrySubscriptionQuery(failureCount: number, error: Error): boolean {
+  if (
+    error instanceof SubscriptionQueryError &&
+    error.statusCode &&
+    error.statusCode >= 400 &&
+    error.statusCode < 500
+  ) {
+    return false;
+  }
+  return failureCount < 3;
+}
 
-      logger.info('subscription.query.start', { appId });
+export async function fetchSubscriptionByAppId(appId: string | undefined): Promise<SubscriptionData> {
+  if (!appId) {
+    throw new Error('appId is required');
+  }
 
-      const url = `/api/apps/${appId}/subscription`;
+  logger.info('subscription.query.start', { appId });
 
-      const response = await fetch(url, {
-        credentials: 'include',
-      });
+  const url = `/api/apps/${appId}/subscription`;
 
+  const response = await fetch(url, {
+    credentials: 'include',
+  });
+
+  if (!response.ok) {
+    let errorMessage = `Failed to fetch subscription data: ${response.status}`;
+
+    try {
       const data = await response.json();
+      errorMessage = data.error || errorMessage;
+    } catch {
+      // Non-JSON error responses still need to preserve the HTTP status.
+    }
 
-      if (!response.ok) {
-        const errorMessage = data.error || `Failed to fetch subscription data: ${response.status}`;
-        logger.error('subscription.query.error', {
-          appId,
-          statusCode: response.status,
-          error: errorMessage
-        });
-        throw new Error(errorMessage);
-      }
+    logger.error('subscription.query.error', {
+      appId,
+      statusCode: response.status,
+      error: errorMessage
+    });
+    throw new SubscriptionQueryError(errorMessage, response.status);
+  }
 
-      if (data.success && data.data) {
-        logger.info('subscription.query.success', {
-          appId,
-          subscriptionId: data.data.subscription?.id,
-          systemId: data.data.system?.systemId
-        });
-        return {
-          app: data.data.app,
-          subscription: data.data.subscription,
-          system: data.data.system
-        };
-      } else {
-        const errorMessage = data.error || 'Failed to get subscription data';
-        logger.error('subscription.query.failed', {
-          appId,
-          error: errorMessage
-        });
-        throw new Error(errorMessage);
-      }
-    },
+  const data = await response.json();
+
+  if (data.success && data.data) {
+    logger.info('subscription.query.success', {
+      appId,
+      subscriptionId: data.data.subscription?.id,
+      systemId: data.data.system?.systemId
+    });
+    return {
+      app: data.data.app,
+      subscription: data.data.subscription,
+      system: data.data.system
+    };
+  } else {
+    const errorMessage = data.error || 'Failed to get subscription data';
+    logger.error('subscription.query.failed', {
+      appId,
+      error: errorMessage
+    });
+    throw new Error(errorMessage);
+  }
+}
+
+export const useSubscriptionByAppId = (appId: string | undefined): UseSubscriptionByAppIdResult => {
+  return useQuery<SubscriptionData, Error>({
+    queryKey: ['subscription', appId],
+    queryFn: () => fetchSubscriptionByAppId(appId),
     enabled: !!appId,
     staleTime: 5 * 60 * 1000, // 5 minutes
     gcTime: 10 * 60 * 1000,   // 10 minutes
-    retry: (failureCount, error) => {
-      // Don't retry on 4xx errors (client errors)
-      if (error instanceof Error && error.message.includes('4')) {
-        return false;
-      }
-      return failureCount < 3;
-    },
+    retry: shouldRetrySubscriptionQuery,
     retryDelay: attemptIndex => Math.min(1000 * 2 ** attemptIndex, 30000),
   });
 };

@@ -165,12 +165,13 @@ agentProfile: raw.agentProfile as string | undefined,
 agentProfileSelectorEnabled: (raw.agentProfileSelectorEnabled as boolean) ?? false,
 ```
 
-### Local Dev Overrides
+### Local Dev Switchboard Setup
 
-In `app/src/lib/switchboard/server.ts`:
+Configure local testing in the Switchboard dev app:
 
-- `SERVER_LOCAL_FEATURE_OVERRIDES`: `'appbuilder-agent-profile-selector': true`
-- `SERVER_LOCAL_VALUE_OVERRIDES`: `'appbuilder-agent-profile': 'experimental'`
+- https://switchboard.int.dev-gdcorp.tools/airo-app-builder
+- `appbuilder-agent-profile-selector`: `true`
+- `appbuilder-agent-profile`: `experimental`
 
 Using `'experimental'` (not `'default'`) so local dev actually activates a profile for testing.
 
@@ -355,7 +356,7 @@ When a WebSocket connection refreshes its token (socket reconnect), the BFF re-f
 - `app/src/lib/jwt-config.ts` — add `agentProfile`, `agentProfileSelectorEnabled` claims
 - `app/src/lib/jwt-service.ts` — embed new claims in token
 - `app/src/app/api/auth/agent-token/route.ts` — fetch new switchboard flags
-- `app/src/lib/switchboard/server.ts` — local dev overrides
+- Switchboard dev app — create/update local testing flags (`https://switchboard.int.dev-gdcorp.tools/airo-app-builder`)
 - `agents/src/server/middleware/jwt-auth.ts` — add to `AgentContext` and `buildAgentContext()`
 - `agents/src/server/ai-lib-websocket-server.ts` — wrap execution in profile context
 - `agents/src/server/routes/index.ts` — register profiles route

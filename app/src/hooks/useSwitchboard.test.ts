@@ -3,12 +3,6 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('@/lib/features', () => ({
-  isFeatureEnabled: {
-    localFeatures: vi.fn(() => false),
-  },
-}));
-
 describe('useSwitchboard', () => {
   beforeEach(() => {
     vi.resetModules();
@@ -57,25 +51,6 @@ describe('useSwitchboard', () => {
     const { useSwitchboard } = await import('./useSwitchboard');
     expect(() => useSwitchboard('any-flag')).not.toThrow();
     expect(useSwitchboard('any-flag')).toBeUndefined();
-  });
-
-  it('returns local override when localFeatures is enabled and flag is in override list', async () => {
-    const { isFeatureEnabled } = await import('@/lib/features');
-    vi.mocked(isFeatureEnabled.localFeatures).mockReturnValue(true);
-    const { useSwitchboard } = await import('./useSwitchboard');
-    // 'appbuilder-publish-button' is in LOCAL_FEATURE_OVERRIDES with value true
-    expect(useSwitchboard('appbuilder-publish-button')).toBe(true);
-    // 'app-builder-budget-service' is in LOCAL_FEATURE_OVERRIDES with value false (opt-in)
-    expect(useSwitchboard('app-builder-budget-service')).toBe(false);
-  });
-
-  it('falls through to gasketData when localFeatures enabled but flag not in override list', async () => {
-    const { isFeatureEnabled } = await import('@/lib/features');
-    vi.mocked(isFeatureEnabled.localFeatures).mockReturnValue(true);
-    const { useSwitchboard } = await import('./useSwitchboard');
-    expect(useSwitchboard('flag-true')).toBe(true);
-    expect(useSwitchboard('flag-false')).toBe(false);
-    expect(useSwitchboard('missing-flag')).toBeUndefined();
   });
 
   it('getSwitchboardFlag is an alias for useSwitchboard', async () => {

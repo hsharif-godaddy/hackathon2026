@@ -1,6 +1,6 @@
 /**
- * Centralized feature configuration system
- * This module handles all environment variable parsing and feature flags
+ * Centralized environment configuration.
+ * Feature rollout flags should come from Switchboard, not environment variables.
  */
 import { SUPPORTED_AUTH_TYPES } from '@airo/shared/auth';
 
@@ -27,15 +27,11 @@ export enum AuthType {
 }
 
 interface FeatureConfig {
-  showCodeEditor: boolean
   authType: AuthType
   useMockLogin: boolean
   developmentMode: boolean
-  showGalleryPage: boolean
   devSupervisorUseTcp: boolean
   devSupervisorTcpPort: string
-  enableLocalFeatures: boolean
-  // Add more features here as needed
 }
 
 /**
@@ -71,15 +67,11 @@ function parseEnvironmentFeatures(): FeatureConfig {
   const authType = determineAuthType()
 
   return {
-    showCodeEditor: process.env.NEXT_PUBLIC_SHOW_CODE_EDITOR === 'true',
     authType: authType,
     useMockLogin: authType === AuthType.MOCK,
     developmentMode: process.env.NODE_ENV === 'development',
-    showGalleryPage: process.env.NEXT_PUBLIC_SHOW_GALLERY_PAGE === 'true',
     devSupervisorUseTcp: process.env.DEV_SUPERVISOR_USE_TCP === 'true',
     devSupervisorTcpPort: process.env.DEV_SUPERVISOR_TCP_PORT || '8877',
-    enableLocalFeatures: process.env.NEXT_PUBLIC_ENABLE_LOCAL_FEATURES === 'true',
-    // Add more feature parsing here
   }
 }
 
@@ -93,13 +85,9 @@ export const features = parseEnvironmentFeatures()
  * Feature flag checker functions for better type safety and readability
  */
 export const isFeatureEnabled = {
-  codeEditor: () => features.showCodeEditor,
   mockLogin: () => features.useMockLogin,
   developmentMode: () => features.developmentMode,
-  galleryPage: () => features.showGalleryPage,
   devSupervisorTcp: () => features.devSupervisorUseTcp,
-  localFeatures: () => features.enableLocalFeatures,
-  // Add more feature checkers here
 } as const
 
 /**

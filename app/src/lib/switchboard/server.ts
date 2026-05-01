@@ -26,39 +26,6 @@ import gasket from '../../../gasket';
 /** Accepts NextRequest, Request, or a plain `{ headers }` wrapper. */
 export type SwitchboardRequest = { headers: Headers | Record<string, string> };
 
-/** Local dev boolean overrides (NEXT_PUBLIC_ENABLE_LOCAL_FEATURES=true). */
-const SERVER_LOCAL_FEATURE_OVERRIDES: Record<string, boolean> = {
-  'appbuilder-publish-button': true,
-  'appbuilder-manage-plan': true,
-  'appbuilder-settings-team': true,
-  'appbuilder-domain-purchase': true,
-  'appbuilder-domain-attach': true,
-  'appbuilder-share-links': true,
-  'appbuilder-transfer-ownership': true,
-  'appbuilder-github-integration': true,
-  'app-builder-budget-service': false, // opt-in: requires running Budget Service
-  'appbuilder-assessment-agent': true,
-  'appbuilder-assessment-override': true,
-  'appbuilder-model-selector': true,
-  'appbuilder-agent-profile-selector': true,
-  'appbuilder-post-publish-feature-selection': true,
-  'appbuilder-cost-attribution-dry-run': false,
-};
-
-/** Local dev string overrides (NEXT_PUBLIC_ENABLE_LOCAL_FEATURES=true). */
-const SERVER_LOCAL_VALUE_OVERRIDES: Record<string, string> = {
-  'appbuilder-model-override': 'default',
-  'appbuilder-agent-profile': 'experimental',
-};
-
-function localOverride<T>(featureName: string, overrides: Record<string, T>): T | undefined {
-  if (process.env.NEXT_PUBLIC_ENABLE_LOCAL_FEATURES !== 'true') return undefined;
-  if (!(featureName in overrides)) return undefined;
-  const value = overrides[featureName];
-  logger.info('switchboard.server.local-override', { featureName, value });
-  return value;
-}
-
 /**
  * Read a flag from the gasket-plugin tree. Throws on lookup errors so callers
  * can fail closed; returns `undefined` when the tree resolves but the key is
@@ -89,9 +56,6 @@ export async function checkSwitchboardValue(
   featureName: string,
   req: SwitchboardRequest,
 ): Promise<string | null> {
-  const override = localOverride(featureName, SERVER_LOCAL_VALUE_OVERRIDES);
-  if (override !== undefined) return override;
-
   const value = await lookup(featureName, req);
   return typeof value === 'string' ? value : null;
 }
@@ -105,9 +69,6 @@ export async function checkSwitchboardFlag(
   featureName: string,
   req: SwitchboardRequest,
 ): Promise<boolean> {
-  const override = localOverride(featureName, SERVER_LOCAL_FEATURE_OVERRIDES);
-  if (override !== undefined) return override;
-
   const value = await lookup(featureName, req);
   return typeof value === 'boolean' ? value : false;
 }
