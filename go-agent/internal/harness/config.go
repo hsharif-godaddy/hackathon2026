@@ -44,8 +44,9 @@ type ResponderConfig struct {
 
 // JudgeConfig holds settings for the LLM judge.
 type JudgeConfig struct {
-	Model    string      `yaml:"model"`
-	Criteria []Criterion `yaml:"criteria"`
+	Model        string      `yaml:"model"`
+	Criteria     []Criterion `yaml:"criteria"`
+	CriteriaFile string      `yaml:"criteria_file"`
 }
 
 // Criterion is a single evaluation dimension used by the judge.
@@ -76,6 +77,15 @@ func LoadConfig(path string) (*Config, error) {
 			return nil, fmt.Errorf("loading test_cases_file: %w", err)
 		}
 		cfg.TestCases = append(cfg.TestCases, cases...)
+	}
+
+	// Load judge criteria from external file if specified.
+	if cfg.Judge.CriteriaFile != "" {
+		criteria, err := loadCriteriaFile(cfg.configDir, cfg.Judge.CriteriaFile)
+		if err != nil {
+			return nil, fmt.Errorf("loading criteria_file: %w", err)
+		}
+		cfg.Judge.Criteria = append(cfg.Judge.Criteria, criteria...)
 	}
 
 	applyDefaults(&cfg)
@@ -152,6 +162,26 @@ func loadTestCasesFile(configDir, relPath string) ([]TestCase, error) {
 	}
 
 	return cases, nil
+}
+
+// loadCriteriaFile reads a YAML file containing a list of judge criteria.
+func loadCriteriaFile(configDir, relPath string) ([]Criterion, error) {
+	path := relPath
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(configDir, path)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("reading %s: %w", path, err)
+	}
+
+	var criteria []Criterion
+	if err := yaml.Unmarshal(data, &criteria); err != nil {
+		return nil, fmt.Errorf("parsing %s: %w", path, err)
+	}
+
+	return criteria, nil
 }
 
 // ResolvePromptPath resolves a prompt file path relative to the config directory.

@@ -226,7 +226,12 @@ func runCompare(baseDir, candDir string, outlierThreshold int) {
 		{Number: 1, Align: text.AlignLeft},
 	}
 	for i := range criteria {
-		colConfigs = append(colConfigs, table.ColumnConfig{Number: i + 2, Align: text.AlignCenter})
+		colConfigs = append(colConfigs, table.ColumnConfig{
+			Number:      i + 2,
+			Align:       text.AlignCenter,
+			AlignHeader: text.AlignCenter,
+			WidthMax:    7,
+		})
 	}
 	colConfigs = append(colConfigs,
 		table.ColumnConfig{Number: len(criteria) + 2, Align: text.AlignRight},
@@ -304,13 +309,13 @@ func runCompare(baseDir, candDir string, outlierThreshold int) {
 		t.AppendRow(row)
 	}
 
-	// Footer with averages.
+	// Footer with averages (multi-line per cell for readability).
 	footer := table.Row{"Avg"}
 	for _, crit := range criteria {
 		bAvg := safeAvg(baseSum[crit], baseCnt[crit])
 		cAvg := safeAvg(candSum[crit], candCnt[crit])
 		delta := cAvg - bAvg
-		footer = append(footer, fmt.Sprintf("%.2f→%.2f (%+.2f)", bAvg, cAvg, delta))
+		footer = append(footer, fmt.Sprintf("%.1f\n%.1f\n%+.1f", bAvg, cAvg, delta))
 	}
 	if matchedCount > 0 {
 		n := float64(matchedCount)
@@ -808,6 +813,7 @@ func shortCriterion(name string) string {
 		"visual_impact":        "impact",
 		"actionability":        "action",
 		"feature_list_quality": "features",
+		"question_quality":     "q_qual",
 	}
 	if short, ok := abbrevs[name]; ok {
 		return short

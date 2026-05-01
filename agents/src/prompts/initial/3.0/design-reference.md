@@ -34,6 +34,26 @@ AI defaults to either stock photos everywhere OR abstract shapes everywhere. Nei
 | **Portfolio sites**                      | The work itself is the visual            |
 | **Local businesses**                     | Showing the actual place builds trust    |
 
+### When to Use Video Backgrounds
+
+Video heroes create atmosphere and energy that static images can't match. Consider them for businesses where motion tells the story:
+
+| Category                         | Why It Works                                        |
+| -------------------------------- | --------------------------------------------------- |
+| **Restaurants/food**             | Sizzling, plating, pouring — motion creates craving |
+| **Events/venues**                | Crowd energy, lighting, ambiance come alive          |
+| **Fitness/sports**               | Movement IS the product                              |
+| **Travel/hospitality**           | Immersive destination atmosphere                     |
+| **Real estate/architecture**     | Walk-through feel, spatial depth                     |
+| **Nightlife/entertainment**      | Energy and vibe need motion                          |
+| **Fashion/lifestyle**            | Runway, fabric movement, editorial feel              |
+
+**Implementation notes:**
+- Use short loops (5-15s), muted by default
+- Overlay with semi-transparent color for text readability
+- Provide a static fallback image for slow connections
+- Keep file size reasonable — atmosphere, not cinema
+
 ### When to Use Illustrations
 
 | Category                          | Why It Works                        |

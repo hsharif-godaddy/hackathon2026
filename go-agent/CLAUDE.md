@@ -47,6 +47,7 @@ go run ./cmd/harness-review results/harness/v2.0/
 ```
 
 The `-compare` mode produces:
+
 1. **Delta table** — per-test-case score changes across all criteria with `·` (unchanged), `+1`/`-1`, `▲`/`▼` outlier markers
 2. **Summary stats** — unchanged/improved/regressed counts, cost and latency averages
 3. **Outlier drill-down** — judge reasoning from both runs for scores that moved more than the `-outlier` threshold
@@ -63,28 +64,28 @@ model: claude-sonnet-4-6
 temperature: 0.5
 max_output_tokens: 8000
 max_steps: 10
-effort: ""                          # optional: "low", "medium"
+effort: "" # optional: "low", "medium"
 
-prompt_files:                        # concatenated in order to form system prompt
+prompt_files: # concatenated in order to form system prompt
   - ../../../agents/src/prompts/initial/3.0/identity.md
   - ../../../agents/src/prompts/initial/3.0/questioning.md
   # ... more files
   - ../../../agents/src/prompts/shared/communication.md
   - ../../../agents/src/prompts/shared/security.md
 
-prompt_overrides:                    # swap individual files without editing the list
+prompt_overrides: # swap individual files without editing the list
   ../../../agents/src/prompts/initial/3.0/questioning.md: prompts/questioning-visual.md
 
 responder:
-  model: claude-sonnet-4-6          # simulates user answers to askQuestion
+  model: claude-sonnet-4-6 # simulates user answers to askQuestion
 
 judge:
   model: claude-sonnet-4-6
-  criteria:
-    - name: project_name_quality
-      description: "Is the project name specific, relevant, and 1-3 words?"
-      scale: "1-5"
-    # ... more criteria
+  criteria_file: criteria/standard.yaml # load criteria from shared file (like test_cases_file)
+  # criteria:                            # or define inline (merged with criteria_file if both set)
+  #   - name: custom_criterion
+  #     description: "..."
+  #     scale: "1-5"
 
 runs_per_case: 1
 test_cases_file: scenarios/standard.yaml
@@ -114,15 +115,15 @@ Defined in `configs/harness/scenarios/standard.yaml`. Each test case has:
 
 Seven scoring dimensions (1-5 scale):
 
-| Criterion | What It Measures |
-|---|---|
-| `project_name_quality` | Specific, relevant, 1-3 words |
-| `handoff_completeness` | All required sections present in handoff |
-| `design_specificity` | Distinctive direction vs. vague "modern and clean" |
-| `anti_cliche` | Explicitly avoids AI design patterns (icon grids, purple gradients) |
-| `design_fit_and_vibe` | Unified emotional personality matching the business |
-| `visual_impact` | "Wow factor" on first load |
-| `actionability` | Developer can build from handoff alone without guessing |
+| Criterion              | What It Measures                                                    |
+| ---------------------- | ------------------------------------------------------------------- |
+| `project_name_quality` | Specific, relevant, 1-3 words                                       |
+| `handoff_completeness` | All required sections present in handoff                            |
+| `design_specificity`   | Distinctive direction vs. vague "modern and clean"                  |
+| `anti_cliche`          | Explicitly avoids AI design patterns (icon grids, purple gradients) |
+| `design_fit_and_vibe`  | Unified emotional personality matching the business                 |
+| `visual_impact`        | "Wow factor" on first load                                          |
+| `actionability`        | Developer can build from handoff alone without guessing             |
 
 ### Results Structure
 
@@ -137,23 +138,23 @@ Results are saved to `results/harness/{config_name}/{test_case_id}/{run_number}.
 
 ### Existing Configs
 
-| Config | Description |
-|---|---|
-| `baseline.yaml` | Production v1.0 prompts (core + attributes + guidelines + examples) |
-| `v1.0.yaml` | Same as baseline, explicit version label |
-| `v2.0.yaml` | Simplified askQuestion, no attributes.md |
-| `v3.0.yaml` | Modular prompts — 8 independent swappable files |
-| `simple-ask.yaml` | Core override with simplified ask logic |
-| `no-attributes.yaml` | Baseline minus attributes.md |
-| `partial-info.yaml` | Partial information variant |
+| Config               | Description                                                         |
+| -------------------- | ------------------------------------------------------------------- |
+| `baseline.yaml`      | Production v1.0 prompts (core + attributes + guidelines + examples) |
+| `v1.0.yaml`          | Same as baseline, explicit version label                            |
+| `v2.0.yaml`          | Simplified askQuestion, no attributes.md                            |
+| `v3.0.yaml`          | Modular prompts — 8 independent swappable files                     |
+| `simple-ask.yaml`    | Core override with simplified ask logic                             |
+| `no-attributes.yaml` | Baseline minus attributes.md                                        |
+| `partial-info.yaml`  | Partial information variant                                         |
 
 ### Prompt Versions (agents/src/prompts/initial/)
 
-| Version | Structure | Notes |
-|---|---|---|
-| 1.0 | `core.md` + `attributes.md` + `guidelines.md` + `examples.md` | Original, production default |
-| 2.0 | `core.md` + `guidelines.md` + `examples.md` | Simplified ask, no attributes. 10% cheaper, 4s faster |
-| 3.0 | 8 modular files: `identity.md`, `questioning.md`, `project-name.md`, `design-direction.md`, `design-reference.md`, `feature-list.md`, `handoff-template.md`, `examples.md` | Each file independently swappable for A/B testing |
+| Version | Structure                                                                                                                                                                  | Notes                                                 |
+| ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| 1.0     | `core.md` + `attributes.md` + `guidelines.md` + `examples.md`                                                                                                              | Original, production default                          |
+| 2.0     | `core.md` + `guidelines.md` + `examples.md`                                                                                                                                | Simplified ask, no attributes. 10% cheaper, 4s faster |
+| 3.0     | 8 modular files: `identity.md`, `questioning.md`, `project-name.md`, `design-direction.md`, `design-reference.md`, `feature-list.md`, `handoff-template.md`, `examples.md` | Each file independently swappable for A/B testing     |
 
 ### Code Structure
 

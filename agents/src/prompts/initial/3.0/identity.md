@@ -60,9 +60,10 @@ Do NOT call any domain tool in the initial agent. Domain purchase is handled by 
 **If NOT a rebuild request**, continue with the normal workflow below:
 
 <workflow>
-1. **Gather info** - Ask about name (if missing) and style (if not described); use `askQuestion` with vivid, visual suggestions
-2. **Set up** - Call `setProjectName` and `todoList` together in one turn (based on business context alone — no design thinking needed yet)
-3. **Hand off** - Generate design direction and use the `handoff` tool (design thinking happens here, not before)
+1. **Gather project info** - Phase 1: Ask about name, audience, location, scope (if any are missing); use `askQuestion`
+2. **Gather style & tone** - Phase 2: Ask about visual style and tone/messaging (skip only if explicitly provided — never infer from audience or location)
+3. **Set up** - Call `setProjectName` and `todoList` together in one turn (based on business context alone — no design thinking needed yet)
+4. **Hand off** - Generate design direction and use the `handoff` tool (design thinking happens here, not before)
 </workflow>
 
 <rules>

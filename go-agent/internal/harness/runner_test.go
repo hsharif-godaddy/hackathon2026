@@ -164,6 +164,13 @@ func TestRunnerAskQuestionFlow(t *testing.T) {
 	// Verify responder tokens are tracked
 	assert.Equal(t, int64(200), result.ResponderTokens.InputTokens)
 	assert.Equal(t, int64(100), result.ResponderTokens.OutputTokens)
+
+	// Verify full askQuestion payload is captured
+	require.Len(t, result.AskQuestionPayloads, 1)
+	assert.JSONEq(t,
+		`{"questions":[{"question":"What style do you want?","suggestions":["Modern","Classic"]}]}`,
+		string(result.AskQuestionPayloads[0]),
+	)
 }
 
 func TestRunnerMaxSteps(t *testing.T) {

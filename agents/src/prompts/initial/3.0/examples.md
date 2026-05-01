@@ -4,45 +4,79 @@
 This shows the complete workflow. Adapt to the user's specific request — don't copy verbatim.
 </context>
 
-## Example: Local Business (Needs to Ask)
+## Example: Local Business (Needs Both Phases)
 
 **User:** "Website for my coffee shop"
 
-### Step 1: Check If We Need to Ask
+### Phase 1: Project Details
 
 **Name provided?** No — must ask.
-**Style provided?** No — must ask.
-**Purpose clear?** Partially — coffee shop, but unclear if they need ordering.
-**Action:** Ask using askQuestion tool:
+**Audience clear?** No — could be commuters, students, tourists.
+**Location?** Not specified — coffee shop implies physical location.
+**Scope?** Vague — unclear if they need ordering, menu, etc.
+**Action:** Ask Phase 1 questions:
 
 ```json
 {
   "questions": [
     {
       "question": "What's your coffee shop called?",
-      "suggestions": [{ "text": "I don't have a name yet" }],
+      "suggestions": [{ "text": "Morning Grounds" }, { "text": "Ember & Bloom" }, { "text": "I don't have a name yet" }],
       "allowOther": true
     },
     {
-      "question": "What style fits your coffee shop?",
-      "suggestions": [
-        { "text": "Rustic farmhouse with a modern twist" },
-        { "text": "Sun-bleached Mediterranean cafe" }
-      ],
+      "question": "Who are your main customers?",
+      "suggestions": [{ "text": "Morning commuters and remote workers" }, { "text": "College students and young professionals" }, { "text": "Neighborhood locals and families" }],
+      "allowOther": true
+    },
+    {
+      "question": "Where's your coffee shop located?",
+      "suggestions": [{ "text": "Downtown / city center" }, { "text": "College town" }, { "text": "Suburban neighborhood" }],
       "allowOther": true
     },
     {
       "question": "What's the main goal for your site?",
-      "suggestions": [{ "text": "Show menu and hours" }, { "text": "Take online orders" }],
+      "suggestions": [{ "text": "Show menu and hours" }, { "text": "Take online orders" }, { "text": "Build a loyal community" }],
       "allowOther": true
     }
   ]
 }
 ```
 
-### After User Responds
+**User:** "It's called Morning Grounds, mostly morning commuters in downtown Portland, and we want online ordering"
 
-**User:** "It's called 'Morning Grounds,' we want online ordering, and I love the Mediterranean cafe idea"
+### Phase 2: Visual Style & Tone
+
+**Style explicitly provided?** No — must ask.
+**Tone explicitly provided?** No — must ask.
+**Action:** Ask Phase 2 questions:
+
+```json
+{
+  "questions": [
+    {
+      "question": "What visual style fits Morning Grounds?",
+      "suggestions": [
+        { "text": "Rustic farmhouse with a modern twist — weathered wood, hand-drawn accents" },
+        { "text": "Sun-bleached Mediterranean cafe — warm stone, olive tones, airy feel" },
+        { "text": "Industrial-chic with exposed brick and Edison bulbs — urban, edgy" }
+      ],
+      "allowOther": true
+    },
+    {
+      "question": "What tone should your site's messaging have?",
+      "suggestions": [
+        { "text": "Warm and neighborly — like your favorite barista greeting you by name" },
+        { "text": "Artisan and craft-focused — emphasizing single-origin, small-batch quality" },
+        { "text": "Quick and energetic — for the on-the-go crowd, efficiency matters" }
+      ],
+      "allowOther": true
+    }
+  ]
+}
+```
+
+**User:** "Love the Mediterranean cafe vibe, and warm and neighborly for sure"
 
 ### Step 2: Set Project Name + Todo List (parallel tool calls, one turn, no text)
 
@@ -82,9 +116,10 @@ Design analysis and direction are generated as part of composing the handoff —
   "prompt": "Build homepage design preview with this direction:
 
 PROJECT DETAILS:
-- Business: Morning Grounds (coffee shop, Portland)
+- Business: Morning Grounds (coffee shop, downtown Portland)
 - Goal: Online ordering + showcase atmosphere
-- Audience: Local coffee lovers, regulars, tourists
+- Audience: Morning commuters, downtown Portland
+- Tone: Warm and neighborly
 
 DESIGN DIRECTION: Warm and inviting with generous whitespace. Should feel like stepping into a cozy coffee shop — local and artisanal, not corporate chain.
 
@@ -138,13 +173,43 @@ SUGGESTED RESPONSES:
 }
 ```
 
+## Example: Detailed Input (Skip Phase 1, Phase 2 Only)
+
+**User:** "Build a project management SaaS called TaskFlow for engineering teams — it should have kanban boards, sprint planning, and GitHub integration"
+
+### Phase 1: Skip
+
+Name, audience, and scope are all clear. No Phase 1 needed.
+
+### Phase 2: Visual Style & Tone
+
+**Style explicitly provided?** No — must ask.
+**Tone explicitly provided?** No — must ask.
+
+```json
+{
+  "questions": [
+    { "question": "What visual style fits TaskFlow?", "suggestions": [{"text": "Calm, focused workspace — like Notion"}, {"text": "Bold and energetic — neon accents on dark"}, {"text": "Warm and approachable — friendly startup vibes"}], "allowOther": true },
+    { "question": "What tone should TaskFlow's messaging have?", "suggestions": [{"text": "Direct and efficient — no fluff, just clarity"}, {"text": "Encouraging and supportive — celebrate progress"}, {"text": "Technical and precise — speak the developer's language"}], "allowOther": true }
+  ]
+}
+```
+
+## Example: Everything Provided (Skip Both Phases)
+
+**User:** "Build a landing page for my yoga studio called Lotus Flow. Target audience is stressed professionals. I want a zen, minimalist aesthetic with lots of white space and soft earth tones. The tone should be calm and reassuring."
+
+Both phases skipped — name, audience, style, AND tone are all explicitly provided. Go straight to setProjectName + todoList.
+
 ## Key Patterns
 
-| Pattern                      | Rule                                                                                  |
-| ---------------------------- | ------------------------------------------------------------------------------------- |
-| **Skip asking when clear**   | Name AND style both provided → straight to setup                                      |
-| **Always ask style**         | If user didn't describe a feel/mood, ask with vivid suggestions                       |
-| **Setup = business context** | setProjectName + todoList need no design thinking                                     |
-| **Design in handoff**        | All design analysis happens when composing the handoff prompt                         |
-| **Parallel tools**           | setProjectName + todoList always in one turn, no text                                 |
-| **Always set planTitle**     | Use `handoff` with `planTitle` — e.g. "[Name] Homepage Design" or "[Name] App Design" |
+| Pattern                          | Rule                                                                                  |
+| -------------------------------- | ------------------------------------------------------------------------------------- |
+| **Phase 1 = project facts**      | Name, audience, location, scope — skip if all known                                   |
+| **Phase 2 = style + tone**       | Visual style and messaging tone — skip only if user explicitly described both          |
+| **Never infer style/tone**       | Audience or location does NOT imply a style — always ask unless explicitly stated       |
+| **Skip both when clear**         | Name, audience, style, AND tone all provided → straight to setup                      |
+| **Setup = business context**     | setProjectName + todoList need no design thinking                                     |
+| **Design in handoff**            | All design analysis happens when composing the handoff prompt                         |
+| **Parallel tools**               | setProjectName + todoList always in one turn, no text                                 |
+| **Always set planTitle**         | Use `handoff` with `planTitle` — e.g. "[Name] Homepage Design" or "[Name] App Design" |

@@ -276,36 +276,45 @@ func runSingleCase(
 	var judgeTokens harness.TokenUsage
 	if runResult.HandoffPrompt != "" {
 		todoListStr := string(runResult.TodoList)
-		judgeScores, judgeTokens = runJudge(ctx, judge, tc, runResult, todoListStr)
+		var questionsPayload string
+		if len(runResult.AskQuestionPayloads) > 0 {
+			var parts []string
+			for i, p := range runResult.AskQuestionPayloads {
+				parts = append(parts, fmt.Sprintf("### askQuestion call %d\n%s", i+1, string(p)))
+			}
+			questionsPayload = strings.Join(parts, "\n\n")
+		}
+		judgeScores, judgeTokens = runJudge(ctx, judge, tc, runResult, todoListStr, questionsPayload)
 	}
 	judgeCost := harness.CalculateCost(cfg.Judge.Model, judgeTokens)
 
 	result := &harness.FullResult{
-		ConfigName:       cfg.Name,
-		TestCaseID:       tc.ID,
-		RunNumber:        run,
-		Timestamp:        time.Now(),
-		Model:            cfg.Model,
-		Temperature:      cfg.Temperature,
-		Effort:           cfg.Effort,
-		Turns:            runResult.Turns,
-		LatencyMs:        runResult.LatencyMs,
-		AgentTokens:      runResult.AgentTokens,
-		AgentCostUSD:     agentCost.Total(),
-		ResponderTokens:  runResult.ResponderTokens,
-		ResponderCostUSD: responderCost.Total(),
-		JudgeTokens:      judgeTokens,
-		JudgeCostUSD:     judgeCost.Total(),
-		ProjectName:      runResult.ProjectName,
-		AskedQuestions:   runResult.AskedQuestions,
-		QuestionsAsked:   runResult.QuestionsAsked,
-		TodoList:         runResult.TodoList,
-		HandoffPrompt:    runResult.HandoffPrompt,
-		HandoffTarget:    runResult.HandoffTarget,
-		JudgeScores:      judgeScores,
-		Complete:         runResult.Complete,
-		FailReason:       runResult.FailReason,
-		TurnTimings:      runResult.TurnTimings,
+		ConfigName:          cfg.Name,
+		TestCaseID:          tc.ID,
+		RunNumber:           run,
+		Timestamp:           time.Now(),
+		Model:               cfg.Model,
+		Temperature:         cfg.Temperature,
+		Effort:              cfg.Effort,
+		Turns:               runResult.Turns,
+		LatencyMs:           runResult.LatencyMs,
+		AgentTokens:         runResult.AgentTokens,
+		AgentCostUSD:        agentCost.Total(),
+		ResponderTokens:     runResult.ResponderTokens,
+		ResponderCostUSD:    responderCost.Total(),
+		JudgeTokens:         judgeTokens,
+		JudgeCostUSD:        judgeCost.Total(),
+		ProjectName:         runResult.ProjectName,
+		AskedQuestions:      runResult.AskedQuestions,
+		QuestionsAsked:      runResult.QuestionsAsked,
+		AskQuestionPayloads: runResult.AskQuestionPayloads,
+		TodoList:            runResult.TodoList,
+		HandoffPrompt:       runResult.HandoffPrompt,
+		HandoffTarget:       runResult.HandoffTarget,
+		JudgeScores:         judgeScores,
+		Complete:            runResult.Complete,
+		FailReason:          runResult.FailReason,
+		TurnTimings:         runResult.TurnTimings,
 	}
 
 	if err := harness.SaveResult(resultsDir, result); err != nil {
@@ -431,13 +440,15 @@ func runJudge(
 	tc harness.TestCase,
 	runResult *harness.RunResult,
 	todoListStr string,
+	questionsPayload string,
 ) (map[string]harness.JudgeScore, harness.TokenUsage) {
 	scores, tokens, err := judge.Evaluate(ctx, harness.JudgeInput{
-		UserMessage:   tc.UserMessage,
-		Persona:       tc.Persona,
-		ProjectName:   runResult.ProjectName,
-		TodoList:      todoListStr,
-		HandoffPrompt: runResult.HandoffPrompt,
+		UserMessage:      tc.UserMessage,
+		Persona:          tc.Persona,
+		ProjectName:      runResult.ProjectName,
+		TodoList:         todoListStr,
+		QuestionsPayload: questionsPayload,
+		HandoffPrompt:    runResult.HandoffPrompt,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "  [%s] warning: judge failed: %v\n", tc.ID, err)

@@ -157,6 +157,85 @@ judge:
 	assert.Equal(t, filepath.Join(dir, "overrides/custom-guidelines.md"), resolvedOverride)
 }
 
+func TestLoadConfigCriteriaFile(t *testing.T) {
+	dir := t.TempDir()
+
+	// Write criteria file.
+	criteriaDir := filepath.Join(dir, "criteria")
+	require.NoError(t, os.MkdirAll(criteriaDir, 0750))
+	criteriaYAML := `
+- name: quality
+  description: Is it good?
+  scale: "1-5"
+- name: speed
+  description: Is it fast?
+  scale: "1-5"
+`
+	require.NoError(t, os.WriteFile(filepath.Join(criteriaDir, "standard.yaml"), []byte(criteriaYAML), 0644))
+
+	// Write config that references criteria_file.
+	configYAML := `
+name: criteria-file-test
+model: claude-haiku-4-5-20251001
+prompt_files: [prompts/system.md]
+test_cases:
+  - id: tc-1
+    user_message: "Test"
+judge:
+  model: claude-sonnet-4-6-20250514
+  criteria_file: criteria/standard.yaml
+`
+	configPath := filepath.Join(dir, "config.yaml")
+	require.NoError(t, os.WriteFile(configPath, []byte(configYAML), 0644))
+
+	cfg, err := harness.LoadConfig(configPath)
+	require.NoError(t, err)
+
+	require.Len(t, cfg.Judge.Criteria, 2)
+	assert.Equal(t, "quality", cfg.Judge.Criteria[0].Name)
+	assert.Equal(t, "speed", cfg.Judge.Criteria[1].Name)
+}
+
+func TestLoadConfigCriteriaFilePlusInline(t *testing.T) {
+	dir := t.TempDir()
+
+	// Write criteria file.
+	criteriaDir := filepath.Join(dir, "criteria")
+	require.NoError(t, os.MkdirAll(criteriaDir, 0750))
+	criteriaYAML := `
+- name: quality
+  description: Is it good?
+  scale: "1-5"
+`
+	require.NoError(t, os.WriteFile(filepath.Join(criteriaDir, "base.yaml"), []byte(criteriaYAML), 0644))
+
+	// Config with both inline criteria and criteria_file — they should merge.
+	configYAML := `
+name: merge-test
+model: claude-haiku-4-5-20251001
+prompt_files: [prompts/system.md]
+test_cases:
+  - id: tc-1
+    user_message: "Test"
+judge:
+  model: claude-sonnet-4-6-20250514
+  criteria:
+    - name: inline_criterion
+      description: Inline only
+      scale: "1-5"
+  criteria_file: criteria/base.yaml
+`
+	configPath := filepath.Join(dir, "config.yaml")
+	require.NoError(t, os.WriteFile(configPath, []byte(configYAML), 0644))
+
+	cfg, err := harness.LoadConfig(configPath)
+	require.NoError(t, err)
+
+	require.Len(t, cfg.Judge.Criteria, 2)
+	assert.Equal(t, "inline_criterion", cfg.Judge.Criteria[0].Name)
+	assert.Equal(t, "quality", cfg.Judge.Criteria[1].Name)
+}
+
 func TestLoadConfigValidation(t *testing.T) {
 	tests := []struct {
 		name    string

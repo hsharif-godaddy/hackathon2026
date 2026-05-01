@@ -18,11 +18,12 @@ type JudgeConfigRuntime struct {
 
 // JudgeInput is the data sent to the judge for evaluation.
 type JudgeInput struct {
-	UserMessage   string
-	Persona       string
-	ProjectName   string
-	TodoList      string
-	HandoffPrompt string
+	UserMessage      string
+	Persona          string
+	ProjectName      string
+	TodoList         string
+	QuestionsPayload string
+	HandoffPrompt    string
 }
 
 // JudgeScore is a single criterion score with reasoning.
@@ -151,6 +152,10 @@ func (j *Judge) buildPrompt(input JudgeInput) string {
 	if input.TodoList != "" {
 		sb.WriteString("\n\n## Feature List (todoList)\n")
 		sb.WriteString(input.TodoList)
+	}
+	if input.QuestionsPayload != "" {
+		sb.WriteString("\n\n## Questions Asked (askQuestion payloads)\n")
+		sb.WriteString(input.QuestionsPayload)
 	}
 	sb.WriteString("\n\n## Agent Handoff Prompt\n")
 	sb.WriteString(input.HandoffPrompt)

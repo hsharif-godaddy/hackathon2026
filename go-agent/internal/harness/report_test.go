@@ -34,7 +34,10 @@ func TestSaveResult(t *testing.T) {
 		ProjectName:   "My Test Site",
 		HandoffPrompt: "Build a modern website",
 		HandoffTarget: "website-agent",
-		Complete:      true,
+		AskQuestionPayloads: []json.RawMessage{
+			json.RawMessage(`{"questions":[{"question":"What style?","suggestions":["Modern","Classic"]}]}`),
+		},
+		Complete: true,
 		JudgeScores: map[string]JudgeScore{
 			"clarity": {Score: 4, Reasoning: "Clear and concise"},
 		},
@@ -65,6 +68,11 @@ func TestSaveResult(t *testing.T) {
 	assert.Equal(t, result.ProjectName, loaded.ProjectName)
 	assert.Equal(t, result.Complete, loaded.Complete)
 	assert.Equal(t, 4, loaded.JudgeScores["clarity"].Score)
+	require.Len(t, loaded.AskQuestionPayloads, 1)
+	assert.JSONEq(t,
+		`{"questions":[{"question":"What style?","suggestions":["Modern","Classic"]}]}`,
+		string(loaded.AskQuestionPayloads[0]),
+	)
 
 	// Verify indented JSON (2-space indent)
 	assert.Contains(t, string(data), "\n  ")

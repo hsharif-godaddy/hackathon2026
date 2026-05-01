@@ -16,31 +16,32 @@ import (
 
 // FullResult is the complete output of a single harness run, saved as JSON.
 type FullResult struct {
-	ConfigName       string                `json:"config_name"`
-	TestCaseID       string                `json:"test_case_id"`
-	RunNumber        int                   `json:"run_number"`
-	Timestamp        time.Time             `json:"timestamp"`
-	Model            string                `json:"model"`
-	Temperature      float64               `json:"temperature"`
-	Effort           string                `json:"effort"`
-	Turns            int                   `json:"turns"`
-	LatencyMs        int64                 `json:"latency_ms"`
-	AgentTokens      TokenUsage            `json:"agent_tokens"`
-	AgentCostUSD     float64               `json:"agent_cost_usd"`
-	ResponderTokens  TokenUsage            `json:"responder_tokens"`
-	ResponderCostUSD float64               `json:"responder_cost_usd"`
-	JudgeTokens      TokenUsage            `json:"judge_tokens"`
-	JudgeCostUSD     float64               `json:"judge_cost_usd"`
-	ProjectName      string                `json:"project_name"`
-	AskedQuestions   bool                  `json:"asked_questions"`
-	QuestionsAsked   []string              `json:"questions_asked,omitempty"`
-	TodoList         json.RawMessage       `json:"todo_list,omitempty"`
-	HandoffPrompt    string                `json:"handoff_prompt"`
-	HandoffTarget    string                `json:"handoff_target"`
-	JudgeScores      map[string]JudgeScore `json:"judge_scores,omitempty"`
-	Complete         bool                  `json:"complete"`
-	FailReason       string                `json:"fail_reason,omitempty"`
-	TurnTimings      []TurnTiming          `json:"turn_timings,omitempty"`
+	ConfigName          string                `json:"config_name"`
+	TestCaseID          string                `json:"test_case_id"`
+	RunNumber           int                   `json:"run_number"`
+	Timestamp           time.Time             `json:"timestamp"`
+	Model               string                `json:"model"`
+	Temperature         float64               `json:"temperature"`
+	Effort              string                `json:"effort"`
+	Turns               int                   `json:"turns"`
+	LatencyMs           int64                 `json:"latency_ms"`
+	AgentTokens         TokenUsage            `json:"agent_tokens"`
+	AgentCostUSD        float64               `json:"agent_cost_usd"`
+	ResponderTokens     TokenUsage            `json:"responder_tokens"`
+	ResponderCostUSD    float64               `json:"responder_cost_usd"`
+	JudgeTokens         TokenUsage            `json:"judge_tokens"`
+	JudgeCostUSD        float64               `json:"judge_cost_usd"`
+	ProjectName         string                `json:"project_name"`
+	AskedQuestions      bool                  `json:"asked_questions"`
+	QuestionsAsked      []string              `json:"questions_asked,omitempty"`
+	AskQuestionPayloads []json.RawMessage     `json:"ask_question_payloads,omitempty"`
+	TodoList            json.RawMessage       `json:"todo_list,omitempty"`
+	HandoffPrompt       string                `json:"handoff_prompt"`
+	HandoffTarget       string                `json:"handoff_target"`
+	JudgeScores         map[string]JudgeScore `json:"judge_scores,omitempty"`
+	Complete            bool                  `json:"complete"`
+	FailReason          string                `json:"fail_reason,omitempty"`
+	TurnTimings         []TurnTiming          `json:"turn_timings,omitempty"`
 }
 
 // SaveResult writes a FullResult as JSON to baseDir/{ConfigName}/{TestCaseID}/{RunNumber}.json.

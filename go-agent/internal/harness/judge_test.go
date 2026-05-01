@@ -94,6 +94,44 @@ func TestJudgeParseScoresWithMarkdownFences(t *testing.T) {
 	assert.Equal(t, "Excellent output", quality.Reasoning)
 }
 
+func TestJudgeBuildPromptIncludesQuestionsPayload(t *testing.T) {
+	judge := NewJudge(JudgeConfigRuntime{
+		Model: "claude-sonnet-4-6-20250514",
+		Criteria: []Criterion{
+			{Name: "quality", Description: "Overall quality", Scale: "1-5"},
+		},
+	})
+
+	input := JudgeInput{
+		UserMessage:      "Build me a website",
+		ProjectName:      "My Website",
+		QuestionsPayload: `### askQuestion call 1\n{"questions":[{"question":"What style?"}]}`,
+		HandoffPrompt:    "Build a modern website",
+	}
+
+	prompt := judge.buildPrompt(input)
+	assert.Contains(t, prompt, "## Questions Asked (askQuestion payloads)")
+	assert.Contains(t, prompt, "askQuestion call 1")
+}
+
+func TestJudgeBuildPromptOmitsEmptyQuestionsPayload(t *testing.T) {
+	judge := NewJudge(JudgeConfigRuntime{
+		Model: "claude-sonnet-4-6-20250514",
+		Criteria: []Criterion{
+			{Name: "quality", Description: "Overall quality", Scale: "1-5"},
+		},
+	})
+
+	input := JudgeInput{
+		UserMessage:   "Build me a website",
+		ProjectName:   "My Website",
+		HandoffPrompt: "Build a modern website",
+	}
+
+	prompt := judge.buildPrompt(input)
+	assert.NotContains(t, prompt, "## Questions Asked")
+}
+
 func TestJudgeHandlesInvalidJSON(t *testing.T) {
 	mockAPI := func(_ context.Context, _ sdk.MessageNewParams) (*sdk.Message, error) {
 		return &sdk.Message{

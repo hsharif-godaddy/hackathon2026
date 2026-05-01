@@ -50,19 +50,20 @@ type TurnTiming struct {
 
 // RunResult captures the outcome of a multi-turn conversation run.
 type RunResult struct {
-	ProjectName     string
-	HandoffTarget   string
-	HandoffPrompt   string
-	TodoList        json.RawMessage
-	AskedQuestions  bool
-	QuestionsAsked  []string
-	Complete        bool
-	FailReason      string // non-empty if the run did not complete successfully
-	Turns           int
-	LatencyMs       int64
-	TurnTimings     []TurnTiming
-	AgentTokens     TokenUsage
-	ResponderTokens TokenUsage
+	ProjectName         string
+	HandoffTarget       string
+	HandoffPrompt       string
+	TodoList            json.RawMessage
+	AskedQuestions      bool
+	QuestionsAsked      []string
+	AskQuestionPayloads []json.RawMessage
+	Complete            bool
+	FailReason          string // non-empty if the run did not complete successfully
+	Turns               int
+	LatencyMs           int64
+	TurnTimings         []TurnTiming
+	AgentTokens         TokenUsage
+	ResponderTokens     TokenUsage
 }
 
 // Runner orchestrates a multi-turn conversation loop with tool simulation.
@@ -294,7 +295,7 @@ func simulateTool(tc toolCall, result *RunResult) string {
 
 	case toolAskQuestion:
 		result.AskedQuestions = true
-		// Capture a summary of questions asked.
+		result.AskQuestionPayloads = append(result.AskQuestionPayloads, tc.input)
 		if questions, ok := args["questions"].([]any); ok {
 			for _, q := range questions {
 				if qMap, ok := q.(map[string]any); ok {
