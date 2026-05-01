@@ -22,6 +22,7 @@ import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import { appFetch } from '@/lib/gasket-config';
 import { shipAnalyticsLog } from '@/lib/logging';
+import { PAYWALL_ITC } from '@/lib/paywall/shared';
 import { logger } from '@/lib/request-context';
 import { useSiteStore } from '@/stores/useSiteStore';
 import type { Domain, DomainPurchaseWidgetProps, Product } from '@/types/domain-purchase';
@@ -591,6 +592,7 @@ function DomainRow({
             apiKey={apiKeyName}
             eid="airo.domain.purchase."
             plid="1"
+            trackingCode={PAYWALL_ITC.DOMAIN_PURCHASE}
             basketId={rowBasketId || undefined}
             domain={domain._raw}
             buttonText={priceLabel || '--'}
