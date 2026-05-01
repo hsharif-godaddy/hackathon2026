@@ -182,7 +182,7 @@ describe('deployments POST', function packageTests() {
 
       mockControlPlaneAdapter.getSite.mockResolvedValue(MOCK_V2_SITE);
 
-      const request = createMockRequest(MOCK_SITE_ID, { gitHash: MOCK_GIT_HASH });
+      const request = createMockRequest(MOCK_SITE_ID, { dnsUpdateConsent: false, gitHash: MOCK_GIT_HASH });
       const response = await POST(request, { params: Promise.resolve({ id: MOCK_SITE_ID }) });
       const data = await response.json();
 
@@ -199,10 +199,55 @@ describe('deployments POST', function packageTests() {
         MOCK_SUBSCRIPTION_ID,
         MOCK_SYSTEM_ID,
         MOCK_SITE_ID,
-        MOCK_GIT_HASH
+        MOCK_GIT_HASH,
+        false
       );
       expect(mockLogger.info).toHaveBeenCalledWith('deployments.api.create.start', expect.any(Object));
       expect(mockLogger.info).toHaveBeenCalledWith('deployments.api.create.success', expect.any(Object));
+    });
+
+    it('should pass undefined dnsUpdateConsent when omitted from request body', async function createsDeploymentWithoutConsentField() {
+      mockAuthenticateCustomer.mockResolvedValue({
+        isAuthenticated: true,
+        user: MOCK_USER,
+        jwt: 'user-jwt-token'
+      });
+
+      mockControlPlaneAdapter.getSite.mockResolvedValue(MOCK_V2_SITE);
+
+      const request = createMockRequest(MOCK_SITE_ID, { gitHash: MOCK_GIT_HASH });
+      const response = await POST(request, { params: Promise.resolve({ id: MOCK_SITE_ID }) });
+
+      expect(response.status).toBe(200);
+      expect(mockAiroMgmtClient.publishApp).toHaveBeenCalledWith(
+        MOCK_SUBSCRIPTION_ID,
+        MOCK_SYSTEM_ID,
+        MOCK_SITE_ID,
+        MOCK_GIT_HASH,
+        undefined
+      );
+    });
+
+    it('should pass dnsUpdateConsent true when requested', async function createsDeploymentWithDnsConsentTrue() {
+      mockAuthenticateCustomer.mockResolvedValue({
+        isAuthenticated: true,
+        user: MOCK_USER,
+        jwt: 'user-jwt-token'
+      });
+
+      mockControlPlaneAdapter.getSite.mockResolvedValue(MOCK_V2_SITE);
+
+      const request = createMockRequest(MOCK_SITE_ID, { dnsUpdateConsent: true, gitHash: MOCK_GIT_HASH });
+      const response = await POST(request, { params: Promise.resolve({ id: MOCK_SITE_ID }) });
+
+      expect(response.status).toBe(200);
+      expect(mockAiroMgmtClient.publishApp).toHaveBeenCalledWith(
+        MOCK_SUBSCRIPTION_ID,
+        MOCK_SYSTEM_ID,
+        MOCK_SITE_ID,
+        MOCK_GIT_HASH,
+        true
+      );
     });
 
     it('should return 400 when request body is invalid JSON', async function invalidJson() {
@@ -240,6 +285,21 @@ describe('deployments POST', function packageTests() {
 
       expect(response.status).toBe(400);
       expect(data.error).toBe('gitHash is required');
+    });
+
+    it('should return 400 when dnsUpdateConsent is not boolean', async function invalidDnsUpdateConsentType() {
+      mockAuthenticateCustomer.mockResolvedValue({
+        isAuthenticated: true,
+        user: MOCK_USER,
+        jwt: 'user-jwt-token'
+      });
+
+      const request = createMockRequest(MOCK_SITE_ID, { dnsUpdateConsent: 'false', gitHash: MOCK_GIT_HASH });
+      const response = await POST(request, { params: Promise.resolve({ id: MOCK_SITE_ID }) });
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.error).toBe('Invalid dnsUpdateConsent: expected boolean');
     });
 
     it('should return 400 when siteId is missing', async function missingSiteId() {

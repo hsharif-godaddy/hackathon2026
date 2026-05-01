@@ -1231,6 +1231,94 @@ describe('AiroMgmtClient', () => {
     });
   });
 
+  describe('#publishApp', () => {
+    it('should include dnsUpdateConsent when provided', async () => {
+      const mockResponse = {
+        appId: 'app-789',
+        deploymentId: 'deployment-123',
+        gitHash: 'abc123def456',
+        message: 'Publish started',
+        status: 'PENDING',
+        statusJobId: 'job-123',
+        subscriptionId: 'sub-123',
+        systemId: 'sys-456',
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockResponse,
+      });
+
+      await client.publishApp('sub-123', 'sys-456', 'app-789', 'abc123def456', false);
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://mgmt.test.com/api/airo/v1/subscriptions/sub-123/systems/sys-456/apps/app-789/publish',
+        expect.objectContaining({
+          body: JSON.stringify({ gitHash: 'abc123def456', dnsUpdateConsent: false }),
+          method: 'PUT',
+        }),
+      );
+    });
+
+    it('should omit dnsUpdateConsent when undefined', async () => {
+      const mockResponse = {
+        appId: 'app-789',
+        deploymentId: 'deployment-123',
+        gitHash: 'abc123def456',
+        message: 'Publish started',
+        status: 'PENDING',
+        statusJobId: 'job-123',
+        subscriptionId: 'sub-123',
+        systemId: 'sys-456',
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockResponse,
+      });
+
+      await client.publishApp('sub-123', 'sys-456', 'app-789', 'abc123def456', undefined);
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://mgmt.test.com/api/airo/v1/subscriptions/sub-123/systems/sys-456/apps/app-789/publish',
+        expect.objectContaining({
+          body: JSON.stringify({ gitHash: 'abc123def456' }),
+          method: 'PUT',
+        }),
+      );
+    });
+  });
+
+  describe('#checkDnsConflict', () => {
+    it('should call dns conflict endpoint with encoded fqdn', async () => {
+      const mockResponse = {
+        currentIps: ['160.153.0.1'],
+        failedOpen: false,
+        hasProductDNSConflict: false,
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockResponse,
+      });
+
+      const result = await client.checkDnsConflict(
+        'sub-123',
+        'sys-456',
+        'app-789',
+        'www.example.com'
+      );
+
+      expect(result).toEqual(mockResponse);
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://mgmt.test.com/api/airo/v1/subscriptions/sub-123/systems/sys-456/apps/app-789/dns-check-conflict?fqdn=www.example.com',
+        expect.objectContaining({
+          method: 'GET',
+        }),
+      );
+    });
+  });
+
   describe('acknowledgeConversion', () => {
     const FREE_PLAN_ATTR: AiroAttribute = {
       id: 'attr-1',

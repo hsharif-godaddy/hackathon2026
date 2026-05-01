@@ -352,6 +352,15 @@ export interface AiroPublishAppResponse {
 }
 
 /**
+ * DNS conflict check response for publish flow.
+ */
+export interface AiroDnsConflictCheckResponse {
+  hasProductDNSConflict: boolean;
+  currentIps: string[] | null;
+  failedOpen: boolean;
+}
+
+/**
  * Unpublish app response - marks publish variant as inactive
  *
  * POST /airo/v1/subscriptions/:subscriptionId/systems/:systemId/apps/:appId/unpublish

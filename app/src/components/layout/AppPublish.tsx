@@ -26,6 +26,7 @@ import { FEEDBACK_ID } from '@/components/feedback/utils';
 import { InfoTooltip } from '@/components/ui/InfoTooltip';
 import { useChatTabs } from '@/hooks/useChatTabs';
 import { useDeploymentsQuery } from '@/hooks/useDeploymentsQuery';
+import { useDnsConflictGate } from '@/hooks/useDnsConflictGate';
 import { useGitHistoryQuery } from '@/hooks/useGitHistory';
 import { useIsHistoryDisabled } from '@/hooks/useIsHistoryDisabled';
 import { usePaywallModal } from '@/hooks/usePaywallModal';
@@ -186,6 +187,7 @@ export default function AppPublish({ location = 'develop' }: { location?: string
   const { isBlocked: isPublishComplianceBlocked, blockReason: publishComplianceBlockReason } =
     usePublishComplianceGate(site, { enabled: publishFlagsEnabled });
   const fqdn = resolveSiteFqdn(site) || '';
+  const { modal: dnsConflictModal, runGate } = useDnsConflictGate({ appId: currentAppId, site });
 
   // Check if a conversation is in progress (AI is actively processing)
   const isConversationLoading = useIsLoading();
@@ -318,11 +320,22 @@ export default function AppPublish({ location = 'develop' }: { location?: string
       recommendation_id: currentAppId,
     })();
 
-    clearPublishStatus(currentAppId);
-    setIsPublishing(currentAppId, true);
-
     try {
-      await publishMutation.mutateAsync({ appId: currentAppId });
+      const gateResult = await runGate();
+      if (!gateResult.proceed) {
+        return;
+      }
+      if (gateResult.consent !== undefined) {
+        setOpen(false);
+      }
+
+      clearPublishStatus(currentAppId);
+      setIsPublishing(currentAppId, true);
+
+      await publishMutation.mutateAsync({
+        appId: currentAppId,
+        dnsUpdateConsent: gateResult.consent,
+      });
       JourneyTracker.current()?.trackMilestone('site_published', { appId: currentAppId })
 
       // Note: usePublishApp hook polls until deployment appears and triggers refetch
@@ -336,7 +349,7 @@ export default function AppPublish({ location = 'develop' }: { location?: string
       setPublishError(currentAppId, true);
       setIsPublishing(currentAppId, false);
     }
-  }, [clickContext, currentAppId, site, location, isFirstTimePublishing, isPublishComplianceBlocked, publishComplianceBlockReason, setPublishError, setIsPublishing, clearPublishStatus, publishMutation]);
+  }, [clickContext, currentAppId, site, location, isFirstTimePublishing, isPublishComplianceBlocked, publishComplianceBlockReason, setPublishError, setIsPublishing, clearPublishStatus, publishMutation, runGate]);
 
   const handleFixBuildError = useCallback(() => {
     if (!currentAppId || !buildErrorDetails) return;
@@ -618,6 +631,7 @@ export default function AppPublish({ location = 'develop' }: { location?: string
   return (
     <>
       <PaywallModal />
+      {dnsConflictModal}
       <Popover open={open} onOpenChange={handlePublish}>
         <PopoverTrigger asChild>
           <Button

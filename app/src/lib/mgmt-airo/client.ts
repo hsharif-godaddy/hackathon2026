@@ -21,6 +21,7 @@ import {
   type AiroDeleteAppResponse,
   type AiroDeployAppResponse,
   type AiroDeploymentsResponse,
+  type AiroDnsConflictCheckResponse,
   type AiroDomainCheckResponse,
   type AiroDomainDnsOwnershipResponse,
   type AiroDomainErrorResponse,
@@ -677,13 +678,38 @@ export class AiroMgmtClient {
     subscriptionId: string,
     systemId: string,
     appId: string,
-    gitHash: string
+    gitHash: string,
+    dnsUpdateConsent?: boolean
   ): Promise<AiroPublishAppResponse> {
+    const payload = {
+      gitHash,
+      ...(dnsUpdateConsent === undefined ? {} : { dnsUpdateConsent }),
+    };
+
     return this.request<AiroPublishAppResponse>(
       'PUT',
       `/api/airo/v1/subscriptions/${subscriptionId}/systems/${systemId}/apps/${appId}/publish`,
-      { gitHash },
+      payload,
       { logEvent: 'mgmt-airo.publish-app' }
+    );
+  }
+
+  /**
+   * Check if an app's domain currently conflicts with Airo Builder DNS targets.
+   *
+   * GET /api/airo/v1/subscriptions/:subscriptionId/systems/:systemId/apps/:appId/dns-check-conflict?fqdn=<domain>
+   */
+  async checkDnsConflict(
+    subscriptionId: string,
+    systemId: string,
+    appId: string,
+    fqdn: string
+  ): Promise<AiroDnsConflictCheckResponse> {
+    return this.request<AiroDnsConflictCheckResponse>(
+      'GET',
+      `/api/airo/v1/subscriptions/${subscriptionId}/systems/${systemId}/apps/${appId}/dns-check-conflict?fqdn=${encodeURIComponent(fqdn)}`,
+      undefined,
+      { logEvent: 'mgmt-airo.dns-check-conflict' }
     );
   }
 

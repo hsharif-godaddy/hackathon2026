@@ -46,6 +46,7 @@ interface PublishResponse {
  */
 interface PublishParams {
   appId: string;
+  dnsUpdateConsent?: boolean;
 }
 
 /**
@@ -196,7 +197,7 @@ export function usePublishApp() {
   const isSecretsSyncEnabled = useSwitchboard('appbuilder-settings-secrets');
 
   return useMutation<PublishResult, Error, PublishParams>({
-    mutationFn: async ({ appId }) => {
+    mutationFn: async ({ appId, dnsUpdateConsent }) => {
       const preflightFailure = await authPreflight(3);
       if (preflightFailure) throw new Error('Authentication required');
       await queryClient.invalidateQueries({ queryKey: ['app-details', appId] });
@@ -336,6 +337,7 @@ export function usePublishApp() {
             },
             body: JSON.stringify({
               gitHash: result.commitHash,
+              ...(dnsUpdateConsent === undefined ? {} : { dnsUpdateConsent }),
             }),
           });
 

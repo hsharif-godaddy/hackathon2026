@@ -143,10 +143,36 @@ export const POST = withCustomerAuth(async (
 ): Promise<NextResponse> => {
   // Parse params and body at the top so they're accessible in error handler
   const { id: siteId } = await params;
-  let body: { gitHash?: string } = {};
+  let body: { dnsUpdateConsent?: boolean; gitHash?: string } = {};
 
   try {
-    body = await request.json();
+    const parsedBody: unknown = await request.json();
+    if (parsedBody === null || typeof parsedBody !== 'object' || Array.isArray(parsedBody)) {
+      return NextResponse.json(
+        { error: 'Invalid request body' },
+        { status: 400 }
+      );
+    }
+
+    const requestBody = parsedBody as { dnsUpdateConsent?: unknown; gitHash?: unknown };
+    if ('dnsUpdateConsent' in requestBody && requestBody.dnsUpdateConsent !== undefined && typeof requestBody.dnsUpdateConsent !== 'boolean') {
+      return NextResponse.json(
+        { error: 'Invalid dnsUpdateConsent: expected boolean' },
+        { status: 400 }
+      );
+    }
+
+    if ('gitHash' in requestBody && requestBody.gitHash !== undefined && typeof requestBody.gitHash !== 'string') {
+      return NextResponse.json(
+        { error: 'Invalid gitHash: expected string' },
+        { status: 400 }
+      );
+    }
+
+    body = {
+      ...(typeof requestBody.gitHash === 'string' ? { gitHash: requestBody.gitHash } : {}),
+      ...(typeof requestBody.dnsUpdateConsent === 'boolean' ? { dnsUpdateConsent: requestBody.dnsUpdateConsent } : {}),
+    };
   } catch (parseError) {
     logger.error('deployments.api.create.parse-error', {
       siteId,
@@ -227,7 +253,8 @@ export const POST = withCustomerAuth(async (
       site.subscription_id,
       site.system_id,
       siteId,
-      body.gitHash
+      body.gitHash,
+      body.dnsUpdateConsent
     );
 
     logger.info('deployments.api.create.success', {

@@ -172,6 +172,140 @@ test.describe('Publish Flow', () => {
     console.log('🎉 Post-publish Pre-Launch SEO smoke passed!');
   });
 
+  test('Publish popover — DNS conflict modal without-dns and confirm paths', async ({ page }, testInfo) => {
+    testInfo.setTimeout(600_000);
+
+    await page.addInitScript(() => {
+      localStorage.setItem('airo-intro-tour-shown', 'true');
+    });
+
+    console.log('📱 Step 1: Creating app for DNS conflict modal flow...');
+    await page.goto('/');
+    const promptInput = page.getByTestId('homepage-prompt-input');
+    await promptInput.waitFor({ state: 'visible', timeout: LONG_TIMEOUT });
+    await promptInput.fill(
+      `${getSpecPrefix('publish-dns-conflict')} Single page hello world app - do not ask follow up questions and publish this app`,
+    );
+    await page.locator('[data-eid*="homepage.prompt.submit"]').click();
+
+    await handleSsoLogin(page);
+    await page.waitForURL(/\/develop\//, { timeout: LONG_TIMEOUT });
+    await waitForDevelopPage(page);
+    await waitForChatInput(page);
+    await ensureAuthenticated(page);
+
+    const appId = page.url().match(/\/develop\/([a-zA-Z0-9]+)/)?.[1] || '';
+    expect(appId).toBeTruthy();
+
+    const mockedDomain = 'example.com';
+    let deploymentsPostCount = 0;
+    let lastDnsConsent: boolean | undefined;
+
+    console.log('🔧 Step 2: Mock site/domain/dns-check for conflict flow...');
+    await page.route(`**/api/sites/${appId}`, async (route, request) => {
+      if (request.method() !== 'GET') return route.continue();
+      const upstream = await route.fetch();
+      const body = await upstream.json() as Record<string, unknown>;
+      await route.fulfill({
+        response: upstream,
+        body: JSON.stringify({
+          ...body,
+          domains: [
+            {
+              fqdn: mockedDomain,
+              isPrimary: true,
+              domainType: null,
+              status: 'active',
+            },
+          ],
+        }),
+      });
+    });
+
+    await page.route('**/api/domains', async (route, request) => {
+      if (request.method() !== 'GET') return route.continue();
+      const upstream = await route.fetch();
+      const body = await upstream.json() as { domains?: Array<{ domain?: string }> };
+      const existingDomains = Array.isArray(body.domains) ? body.domains : [];
+      await route.fulfill({
+        response: upstream,
+        body: JSON.stringify({
+          ...body,
+          domains: [
+            ...existingDomains.filter((domain) => domain?.domain !== mockedDomain),
+            {
+              domain: mockedDomain,
+              hasInternalNameservers: true,
+              nameservers: ['ns31.domaincontrol.com', 'ns32.domaincontrol.com'],
+            },
+          ],
+        }),
+      });
+    });
+
+    await page.route(`**/api/apps/${appId}/dns-check-conflict**`, async (route, request) => {
+      if (request.method() !== 'GET') return route.continue();
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          hasProductDNSConflict: true,
+          currentIps: ['93.184.216.34'],
+          failedOpen: false,
+        }),
+      });
+    });
+
+    await page.route(`**/api/apps/${appId}/deployments`, async (route, request) => {
+      if (request.method() !== 'POST') return route.continue();
+      deploymentsPostCount += 1;
+      const payload = request.postDataJSON() as { dnsUpdateConsent?: boolean } | null;
+      lastDnsConsent = payload?.dnsUpdateConsent;
+      return route.continue();
+    });
+
+    await page.reload();
+    await waitForDevelopPage(page);
+    await waitForChatInput(page);
+    await ensureAuthenticated(page);
+
+    const publishTrigger = page.getByTestId('airo-header').getByRole('button', { name: /publish/i });
+    await expect(publishTrigger).not.toBeDisabled({ timeout: DEPLOYMENT_TIMEOUT_MS });
+
+    console.log('🧪 Step 3: Publish with DNS checkbox unchecked should send dnsUpdateConsent=false...');
+    await publishTrigger.click();
+    await expect(page.getByText(/builder_publish_popover_title|Publish Your App/i)).toBeVisible({
+      timeout: DEFAULT_TIMEOUT,
+    });
+    await page.getByRole('button', { name: /^publish$/i }).first().click();
+
+    const dnsConflictTitle = page.getByText('Publish domain with DNS update?');
+    const dnsConflictModal = page.getByRole('dialog', { name: 'Publish domain with DNS update?' });
+    await expect(dnsConflictTitle).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+    await dnsConflictModal.getByRole('button', { name: 'Publish' }).click();
+
+    await expect.poll(() => deploymentsPostCount, { timeout: DEFAULT_TIMEOUT }).toBeGreaterThan(0);
+    expect(lastDnsConsent).toBe(false);
+
+    console.log('🧪 Step 4: Publish with DNS checkbox checked should send dnsUpdateConsent=true...');
+    deploymentsPostCount = 0;
+    lastDnsConsent = undefined;
+    await expect(publishTrigger).not.toBeDisabled({ timeout: DEPLOYMENT_TIMEOUT_MS });
+    await publishTrigger.click();
+    await expect(page.getByText(/builder_publish_popover_title|Publish Your App/i)).toBeVisible({
+      timeout: DEFAULT_TIMEOUT,
+    });
+    await page.getByRole('button', { name: /^publish$/i }).first().click();
+    await expect(dnsConflictTitle).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+    await dnsConflictModal.getByRole('checkbox', { name: 'Update DNS records' }).click();
+    await dnsConflictModal.getByRole('button', { name: 'Publish' }).click();
+
+    await expect.poll(() => deploymentsPostCount, { timeout: DEFAULT_TIMEOUT }).toBeGreaterThan(0);
+    expect(lastDnsConsent).toBe(true);
+
+    console.log('🎉 DNS conflict modal smoke passed!');
+  });
+
   test.afterEach(async ({ page }, testInfo) => {
     await logTestResult(page, testInfo);
 

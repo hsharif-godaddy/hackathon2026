@@ -73,6 +73,9 @@ const mockStreaming = {
 const mockRefetchGitHistory = vi.fn();
 const mockRefetchDeployments = vi.fn();
 const mockLogClickEvent = vi.fn(() => vi.fn());
+const mockRunGate = vi.fn();
+const mockMutateAsync = vi.fn().mockResolvedValue(undefined);
+let mockDnsConflictModal: ReactNode = null;
 
 vi.mock('next/navigation', () => ({
   useRouter: () => mockRouterInstance,
@@ -124,7 +127,14 @@ vi.mock('@/hooks/usePaywallModal', () => ({
 
 vi.mock('@/hooks/usePublishApp', () => ({
   usePublishApp: () => ({
-    mutateAsync: vi.fn().mockResolvedValue(undefined),
+    mutateAsync: mockMutateAsync,
+  }),
+}));
+
+vi.mock('@/hooks/useDnsConflictGate', () => ({
+  useDnsConflictGate: () => ({
+    modal: mockDnsConflictModal,
+    runGate: mockRunGate,
   }),
 }));
 
@@ -213,6 +223,11 @@ describe('AppPublish', () => {
     mockDeploymentsData = [];
     mockStreaming.isLoading = false;
     mockStreaming.streamingState = 'idle';
+    mockRunGate.mockReset();
+    mockRunGate.mockResolvedValue({ proceed: true });
+    mockMutateAsync.mockReset();
+    mockMutateAsync.mockResolvedValue(undefined);
+    mockDnsConflictModal = null;
     mockSiteStore.getSite.mockReturnValue(
       createMockSite({
         id: 'app-123',
@@ -1067,5 +1082,126 @@ describe('AppPublish', () => {
     rerender(<AppPublish />);
 
     expect(await screen.findByTestId('publish-failed-action')).toBeInTheDocument();
+  });
+
+  it('should not set publish error when DNS gate blocks publish', async function gateBlockedDoesNotSetError() {
+    mockRunGate.mockResolvedValueOnce({ proceed: false });
+
+    const { user } = renderWithProviders(<AppPublish />);
+
+    const trigger = await screen.findByRole('button', { name: 'builder_publish_button' });
+    await user.click(trigger);
+
+    await waitFor(() => {
+      expect(screen.getByText('builder_publish_popover_title')).toBeInTheDocument();
+    });
+
+    const publishButtons = screen.getAllByRole('button', { name: 'builder_publish_button' });
+    const innerPublishButton = publishButtons.find((btn) => btn.id !== 'tour-publish-button');
+    expect(innerPublishButton).toBeDefined();
+    await user.click(innerPublishButton!);
+
+    await waitFor(() => {
+      expect(mockRunGate).toHaveBeenCalledTimes(1);
+    });
+    expect(mockDevelopStore.setPublishError).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('publish-failed-action')).not.toBeInTheDocument();
+  });
+
+  it('should not set publish error when DNS gate is dismissed', async function gateDismissedDoesNotSetError() {
+    mockRunGate.mockResolvedValueOnce({ proceed: false, reason: 'dismissed' });
+
+    const { user } = renderWithProviders(<AppPublish />);
+
+    const trigger = await screen.findByRole('button', { name: 'builder_publish_button' });
+    await user.click(trigger);
+
+    await waitFor(() => {
+      expect(screen.getByText('builder_publish_popover_title')).toBeInTheDocument();
+    });
+
+    const publishButtons = screen.getAllByRole('button', { name: 'builder_publish_button' });
+    const innerPublishButton = publishButtons.find((btn) => btn.id !== 'tour-publish-button');
+    expect(innerPublishButton).toBeDefined();
+    await user.click(innerPublishButton!);
+
+    await waitFor(() => {
+      expect(mockRunGate).toHaveBeenCalledTimes(1);
+    });
+    expect(mockDevelopStore.setPublishError).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('publish-failed-action')).not.toBeInTheDocument();
+  });
+
+  it('should forward dnsUpdateConsent=true from gate result to publish mutation', async function consentTrueForwarded() {
+    mockRunGate.mockResolvedValueOnce({ proceed: true, consent: true });
+
+    const { user } = renderWithProviders(<AppPublish />);
+
+    const trigger = await screen.findByRole('button', { name: 'builder_publish_button' });
+    await user.click(trigger);
+
+    await waitFor(() => {
+      expect(screen.getByText('builder_publish_popover_title')).toBeInTheDocument();
+    });
+
+    const publishButtons = screen.getAllByRole('button', { name: 'builder_publish_button' });
+    const innerPublishButton = publishButtons.find((btn) => btn.id !== 'tour-publish-button');
+    expect(innerPublishButton).toBeDefined();
+    await user.click(innerPublishButton!);
+
+    await waitFor(() => {
+      expect(mockMutateAsync).toHaveBeenCalledWith({
+        appId: 'app-123',
+        dnsUpdateConsent: true,
+      });
+    });
+  });
+
+  it('should forward dnsUpdateConsent=false from gate result to publish mutation', async function consentFalseForwarded() {
+    mockRunGate.mockResolvedValueOnce({ proceed: true, consent: false });
+
+    const { user } = renderWithProviders(<AppPublish />);
+
+    const trigger = await screen.findByRole('button', { name: 'builder_publish_button' });
+    await user.click(trigger);
+
+    await waitFor(() => {
+      expect(screen.getByText('builder_publish_popover_title')).toBeInTheDocument();
+    });
+
+    const publishButtons = screen.getAllByRole('button', { name: 'builder_publish_button' });
+    const innerPublishButton = publishButtons.find((btn) => btn.id !== 'tour-publish-button');
+    expect(innerPublishButton).toBeDefined();
+    await user.click(innerPublishButton!);
+
+    await waitFor(() => {
+      expect(mockMutateAsync).toHaveBeenCalledWith({
+        appId: 'app-123',
+        dnsUpdateConsent: false,
+      });
+    });
+  });
+
+  it('should set publish error when DNS gate throws unexpectedly', async function gateThrowSetsPublishError() {
+    mockRunGate.mockRejectedValueOnce(new Error('gate failed'));
+
+    const { user } = renderWithProviders(<AppPublish />);
+
+    const trigger = await screen.findByRole('button', { name: 'builder_publish_button' });
+    await user.click(trigger);
+
+    await waitFor(() => {
+      expect(screen.getByText('builder_publish_popover_title')).toBeInTheDocument();
+    });
+
+    const publishButtons = screen.getAllByRole('button', { name: 'builder_publish_button' });
+    const innerPublishButton = publishButtons.find((btn) => btn.id !== 'tour-publish-button');
+    expect(innerPublishButton).toBeDefined();
+    await user.click(innerPublishButton!);
+
+    await waitFor(() => {
+      expect(mockDevelopStore.setPublishError).toHaveBeenCalledWith('app-123', true);
+    });
+    expect(mockMutateAsync).not.toHaveBeenCalled();
   });
 });
