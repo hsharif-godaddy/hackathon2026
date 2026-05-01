@@ -566,6 +566,9 @@ function FullPlanSection({
   onItemClick,
   onOpenModal,
   onCollapse,
+  showUpdatedBadge = false,
+  isExpanded = true,
+  variant = 'inline',
   t,
 }: {
   list: TodoList
@@ -577,14 +580,82 @@ function FullPlanSection({
   onItemClick: (item: TodoItem) => void
   onOpenModal: () => void
   onCollapse: () => void
+  /** Show the blue "updated" badge next to "View plan" text when collapsed */
+  showUpdatedBadge?: boolean
+  /** Whether the plan body is currently expanded (controls badge visibility and body rendering) */
+  isExpanded?: boolean
+  /** Rendering variant - 'inline' renders body directly with legacy styling, 'collapsible' uses compact styling with AnimatePresence for collapse animation */
+  variant?: 'inline' | 'collapsible'
   t: (key: string, values?: Record<string, unknown>, fallback?: string) => string
 }) {
+  const titleClasses = variant === 'collapsible'
+    ? 'text-sm font-medium text-muted-foreground truncate'
+    : 'text-sm font-semibold text-foreground truncate'
+
+  const wrapperClasses = variant === 'collapsible'
+    ? 'mb-0.5'
+    : 'flex flex-col gap-0.5 pt-0.5 pb-1'
+
+  const titleRowClasses = variant === 'collapsible'
+    ? 'flex min-h-[22px] items-center justify-between px-1 py-0.5'
+    : 'flex items-center justify-between py-0.5'
+
+  const chevronElement = variant === 'collapsible' ? (
+    <CollapseChevron expanded={isExpanded} />
+  ) : (
+    <svg
+      className="w-2 h-2"
+      style={{ transform: 'rotate(180deg)' }}
+      fill="none"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
+      <path d="M19 9l-7 7-7-7" />
+    </svg>
+  )
+
+  const bodyContent = (
+    <div className="max-h-48 overflow-y-auto flex flex-col gap-0.5">
+      {[...completedItems, ...uncompletedItems].length > 0 ? (
+        <>
+          {/* Completed items — read-only */}
+          {completedItems.map((item) => (
+            <div
+              key={item.id}
+              className="flex items-center gap-1.5 px-1.5 py-0.5 rounded-lg"
+            >
+              <CircularCheckbox checked />
+              <span className="text-sm line-through text-muted-foreground truncate">{item.title}</span>
+            </div>
+          ))}
+          {/* Uncompleted items — actionable, with plan icon */}
+          {uncompletedItems.map((item, index) => (
+            <PlanOptionButton
+              key={item.id}
+              item={item}
+              disabled={isProcessing}
+              onClick={() => onItemClick(item)}
+              animationDelay={index * 0.05}
+            />
+          ))}
+        </>
+      ) : (
+        <div className="text-xs text-muted-foreground text-center py-1">
+          {t('builder_common_todo_no_items')}
+        </div>
+      )}
+    </div>
+  )
+
   return (
-    <div className="flex flex-col gap-0.5 pt-0.5 pb-1">
+    <div className={wrapperClasses}>
       {/* Plan title row: name + [i] on left, "View plan" collapse on right */}
-      <div className="flex items-center justify-between py-0.5">
+      <div className={titleRowClasses}>
         <div className="flex items-center gap-1 min-w-0">
-          <span className="text-sm font-semibold text-foreground truncate">{list.name}</span>
+          <span className={titleClasses}>{list.name}</span>
           <button
             type="button"
             aria-label={t('builder_todo_details')}
@@ -602,55 +673,44 @@ function FullPlanSection({
         </div>
         <button
           type="button"
-          className="flex items-center gap-0.5 text-sm text-muted-foreground hover:text-foreground transition-colors flex-shrink-0 ml-2"
+          className={variant === 'collapsible'
+            ? "flex shrink-0 items-center gap-0.5 text-sm text-muted-foreground transition-colors hover:text-foreground ml-2"
+            : "flex items-center gap-0.5 text-sm text-muted-foreground hover:text-foreground transition-colors flex-shrink-0 ml-2"
+          }
           onClick={onCollapse}
+          aria-expanded={isExpanded}
         >
-          <span>{t('builder_todo_view_plan', { completed: completedCount, total: totalItems })}</span>
-          <svg
-            className="w-2 h-2"
-            style={{ transform: 'rotate(180deg)' }}
-            fill="none"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth="2"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path d="M19 9l-7 7-7-7" />
-          </svg>
+          <span>
+            {t('builder_todo_view_plan', { completed: completedCount, total: totalItems })}
+            {showUpdatedBadge && !isExpanded && (
+              <span className="ml-1 text-intents-info-color font-medium">
+                {t('builder_todo_updated')}
+              </span>
+            )}
+          </span>
+          {chevronElement}
         </button>
       </div>
 
-      <div className="max-h-48 overflow-y-auto flex flex-col gap-0.5">
-        {[...completedItems, ...uncompletedItems].length > 0 ? (
-          <>
-            {/* Completed items — read-only */}
-            {completedItems.map((item) => (
-              <div
-                key={item.id}
-                className="flex items-center gap-1.5 px-1.5 py-0.5 rounded-lg"
-              >
-                <CircularCheckbox checked />
-                <span className="text-sm line-through text-muted-foreground truncate">{item.title}</span>
-              </div>
-            ))}
-            {/* Uncompleted items — actionable, with plan icon */}
-            {uncompletedItems.map((item, index) => (
-              <PlanOptionButton
-                key={item.id}
-                item={item}
-                disabled={isProcessing}
-                onClick={() => onItemClick(item)}
-                animationDelay={index * 0.05}
-              />
-            ))}
-          </>
-        ) : (
-          <div className="text-xs text-muted-foreground text-center py-1">
-            {t('builder_common_todo_no_items')}
-          </div>
-        )}
-      </div>
+      {/* Body: inline variant renders directly, collapsible variant uses AnimatePresence for collapse animation */}
+      {variant === 'collapsible' ? (
+        <AnimatePresence initial={false}>
+          {isExpanded && (
+            <motion.div
+              key="todo-list-body"
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+              className="overflow-hidden"
+            >
+              {bodyContent}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      ) : (
+        bodyContent
+      )}
     </div>
   )
 }
@@ -1173,7 +1233,7 @@ function InputActionsPanelThemeSelection({ activeColorSchemeSuggest = null }: In
       ? nbaData.question
       : t('builder_todo_continue_building')
 
-  const continueBuildingTodoBody = (
+  const continueBuildingBody = (
     <div className="flex flex-col gap-0.5">
       {planPreviewItems.map((item, index) => (
         <PlanOptionButton
@@ -1184,90 +1244,6 @@ function InputActionsPanelThemeSelection({ activeColorSchemeSuggest = null }: In
           animationDelay={index * 0.1}
         />
       ))}
-
-      {hasPlan && (
-        <div className="mt-0.5">
-          <div className="flex min-h-[22px] items-center justify-between px-1 py-0.5">
-            <div className="flex items-center gap-1 min-w-0">
-              <span className="text-xs font-medium text-muted-foreground truncate">{currentList.name}</span>
-              <button
-                type="button"
-                aria-label={t('builder_todo_details')}
-                className="flex-shrink-0 text-muted-foreground hover:text-foreground transition-colors"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  setIsModalOpen(true)
-                }}
-              >
-                <svg className="w-2 h-2" fill="none" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" stroke="currentColor">
-                  <circle cx="12" cy="12" r="10" />
-                  <path d="M12 16v-4M12 8h.01" />
-                </svg>
-              </button>
-            </div>
-            <button
-              type="button"
-              className="flex shrink-0 items-center gap-0.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
-              onClick={() => {
-                setFullPlanExpanded(v => !v)
-                autoExpandedRef.current = false
-              }}
-              aria-expanded={fullPlanExpanded}
-            >
-              <span>
-                {t('builder_todo_view_plan', { completed: completedCount, total: totalItems })}
-                {viewState === 'update' && (
-                  <span className="ml-1 text-intents-info-color font-medium">
-                    {t('builder_todo_updated')}
-                  </span>
-                )}
-              </span>
-              <CollapseChevron expanded={fullPlanExpanded} />
-            </button>
-          </div>
-          <AnimatePresence initial={false}>
-            {fullPlanExpanded && (
-              <motion.div
-                key="full-plan-nested"
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: 'auto', opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
-                className="overflow-hidden"
-              >
-                <div className="max-h-48 overflow-y-auto flex flex-col gap-0.5 pl-2">
-                  {[...completedItems, ...uncompletedItems].length > 0 ? (
-                    <>
-                      {completedItems.map((item) => (
-                        <div
-                          key={item.id}
-                          className="flex items-center gap-1.5 px-1.5 py-0.5 rounded-lg"
-                        >
-                          <CircularCheckbox checked />
-                          <span className="text-sm line-through text-muted-foreground truncate">{item.title}</span>
-                        </div>
-                      ))}
-                      {uncompletedItems.map((item, index) => (
-                        <PlanOptionButton
-                          key={item.id}
-                          item={item}
-                          disabled={isProcessing}
-                          onClick={() => handlePlanItemClick(item)}
-                          animationDelay={index * 0.05}
-                        />
-                      ))}
-                    </>
-                  ) : (
-                    <div className="text-xs text-muted-foreground text-center py-1">
-                      {t('builder_common_todo_no_items')}
-                    </div>
-                  )}
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-      )}
 
       {nbaSuggestions.map((suggestion, index) => (
         <OptionButton
@@ -1283,44 +1259,76 @@ function InputActionsPanelThemeSelection({ activeColorSchemeSuggest = null }: In
   )
 
   // ── Mode B: Agent idle, has data ─────────────────────────────────────────
-  return (
+
+  // Determine content based on color selection state
+  const content = showColor && activeColorSchemeSuggest ? (
+    // When color selection is active, show the theme panel
+    <ThemePreviewInputPanel
+      key={activeColorSchemeSuggest.toolCallId}
+      toolCallId={activeColorSchemeSuggest.toolCallId}
+      palettes={palettesWithCurrent}
+      onCancel={handleColorCancel}
+      selectedIndex={selectedThemeIndex}
+      onSelectedIndexChange={setSelectedThemeIndex}
+      disabled={!isPreviewMode}
+    >
+      {({ body, footer }) => (
+        <CollapsibleChatInputSection
+          title={continueBuildingTitle}
+          expanded={continueBuildingExpanded}
+          onExpandedChange={setContinueBuildingExpanded}
+          footer={footer}
+        >
+          {body}
+        </CollapsibleChatInputSection>
+      )}
+    </ThemePreviewInputPanel>
+  ) : (
+    // Otherwise, show the NBA + todo list combo
     <>
-      {(hasCombinedItems || hasPlan || showColor) && (
+      {hasCombinedItems && (
         <>
-          {showColor && activeColorSchemeSuggest ? (
-            <ThemePreviewInputPanel
-              key={activeColorSchemeSuggest.toolCallId}
-              toolCallId={activeColorSchemeSuggest.toolCallId}
-              palettes={palettesWithCurrent}
-              onCancel={handleColorCancel}
-              selectedIndex={selectedThemeIndex}
-              onSelectedIndexChange={setSelectedThemeIndex}
-              disabled={!isPreviewMode}
-            >
-              {({ body, footer }) => (
-                <CollapsibleChatInputSection
-                  title={continueBuildingTitle}
-                  expanded={continueBuildingExpanded}
-                  onExpandedChange={setContinueBuildingExpanded}
-                  footer={footer}
-                >
-                  {body}
-                </CollapsibleChatInputSection>
-              )}
-            </ThemePreviewInputPanel>
-          ) : (
-            <CollapsibleChatInputSection
-              title={continueBuildingTitle}
-              expanded={continueBuildingExpanded}
-              onExpandedChange={setContinueBuildingExpanded}
-            >
-              {continueBuildingTodoBody}
-            </CollapsibleChatInputSection>
-          )}
+          <CollapsibleChatInputSection
+            title={continueBuildingTitle}
+            expanded={continueBuildingExpanded}
+            onExpandedChange={setContinueBuildingExpanded}
+          >
+            {continueBuildingBody}
+          </CollapsibleChatInputSection>
           <div className="-mx-1.5 mb-1 border-b border-border" />
         </>
       )}
 
+      {hasPlan && currentList && (
+        <>
+          <FullPlanSection
+            list={currentList}
+            completedItems={completedItems}
+            uncompletedItems={uncompletedItems}
+            completedCount={completedCount}
+            totalItems={totalItems}
+            isProcessing={isProcessing}
+            onItemClick={handlePlanItemClick}
+            onOpenModal={() => setIsModalOpen(true)}
+            onCollapse={() => {
+              setFullPlanExpanded(v => !v)
+              autoExpandedRef.current = false
+            }}
+            showUpdatedBadge={viewState === 'update'}
+            isExpanded={fullPlanExpanded}
+            variant="collapsible"
+            t={t}
+          />
+          <div className="-mx-1.5 mb-1 border-b border-border" />
+        </>
+      )}
+    </>
+  )
+
+  // Modal is rendered once regardless of branch (needed for info button functionality)
+  return (
+    <>
+      {content}
       <TodoListModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
