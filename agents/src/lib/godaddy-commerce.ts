@@ -357,42 +357,121 @@ export class GoDaddyCommerce {
 
     const hostname = new URL(baseUrl).hostname;
     const domain = hostname.replace(/^api\./, '');
-    let queryParams = '';
-
-    if (domain.includes('dev-') || domain.includes('test-')) {
-      queryParams = '?mock=true';
-    }
+    const isDevOrTest = domain.includes('dev-') || domain.includes('test-');
+    const queryParams = isDevOrTest ? '?mock=true' : '';
     const url = `https://signup.payments.${domain}/api/v1/commerce/onboarding-applications${queryParams}`;
     const requestId = uuid();
-    const requestBody = {
-      individuals: [
-        {
-          customerId: args.customerId,
-          email: args.email,
-          firstName: args.firstName,
-          lastName: args.lastName,
-          type: 'APPLICANT',
-        },
-      ],
-      company: {
-        address: {
-          countryCode: 'US',
-        },
-        ...(args.storeName && { legalName: args.storeName }),
-      },
-      metadata: {
-        source: 'GoDaddy - Airo Builder Agent',
-        appId: args.appId,
-      },
-      intent: 'CREATE_BUSINESS',
-      ...(args.includePaymentsProduct !== false && {
-        products: [
-          {
-            name: 'PAYMENTS',
+
+    const randomInt = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1)) + min;
+    const randomStreetAddress = () => `${randomInt(100, 9999)} ${['Main St', 'Oak Ave', 'Elm Dr', 'Park Blvd', 'Cedar Ln', 'Maple Way', 'River Rd'][randomInt(0, 6)]}`;
+    const randomIp = () => `${randomInt(1, 254)}.${randomInt(0, 254)}.${randomInt(0, 254)}.${randomInt(1, 254)}`;
+    const randomDomain = () => `${['shop', 'store', 'market', 'goods', 'commerce'][randomInt(0, 4)]}${randomInt(100, 9999)}.com`;
+
+    const storeName = args.storeName ?? 'Default store name';
+
+    const requestBody = isDevOrTest
+      ? {
+          individuals: [
+            {
+              address: {
+                addressLine1: randomStreetAddress(),
+                addressLine2: '',
+                addressLine3: '',
+                adminArea1: 'Mason',
+                adminArea2: 'OH',
+                adminArea3: '',
+                adminArea4: '',
+                postalCode: '45040',
+                countryCode: 'US',
+              },
+              customerId: args.customerId,
+              email: 'mock_0001@email.com',
+              phone: { countryCode: '1', nationalNumber: '5133433434' },
+              firstName: args.firstName,
+              ip: randomIp(),
+              lastName: args.lastName,
+              leadId: uuid(),
+              type: 'APPLICANT',
+              userId: uuid(),
+              visitorId: uuid(),
+              communicationLanguage: 'en-US',
+              governmentIdentification: { type: 'INDIVIDUAL', sourceType: 'SSN4', value: '0001' },
+            },
+          ],
+          company: {
+            address: {
+              addressLine1: randomStreetAddress(),
+              addressLine2: '',
+              addressLine3: '',
+              adminArea1: 'Mason',
+              adminArea2: 'OH',
+              adminArea3: '',
+              adminArea4: '',
+              postalCode: '45040',
+              countryCode: 'US',
+            },
+            category: '3dservices',
+            dba: storeName,
+            legalName: storeName,
+            mcc: '5999',
+            currency: 'USD',
+            phone: { countryCode: '1', nationalNumber: '5133433434' },
+            website: randomDomain(),
+            governmentIdentification: { type: 'BUSINESS', sourceType: 'FEIN', value: '332211444' },
+            mccDetails: { label: 'Telecommunications', type: 'REGULAR' },
           },
-        ],
-      }),
-    };
+          store: {
+            name: storeName,
+            ventureId: uuid(),
+            address: {
+              addressLine1: randomStreetAddress(),
+              addressLine2: '',
+              addressLine3: '',
+              adminArea1: 'Mason',
+              adminArea2: 'OH',
+              adminArea3: '',
+              adminArea4: '',
+              postalCode: '01950',
+              countryCode: 'US',
+            },
+          },
+          metadata: {
+            context: 'airo builder commerce setup',
+            medium: randomInt(1, 999),
+            source: 'AIR',
+            referralUrlId: 'test-direct',
+            applicationLevel: 'FULL',
+          },
+          variables: { 'test-variable': 'some value' },
+          intent: 'CREATE_BUSINESS',
+          products: [{ name: 'PAYMENTS', features: [] }],
+          commerceAccountFeatures: [],
+        }
+      : {
+          individuals: [
+            {
+              customerId: args.customerId,
+              email: args.email,
+              firstName: args.firstName,
+              lastName: args.lastName,
+              type: 'APPLICANT',
+            },
+          ],
+          company: {
+            address: {
+              countryCode: 'US',
+            },
+            ...(args.storeName && { legalName: args.storeName }),
+          },
+          metadata: {
+            source: 'GoDaddy - Airo Builder Agent',
+            appId: args.appId,
+          },
+          intent: 'CREATE_BUSINESS',
+          ...(args.includePaymentsProduct !== false && {
+            products: [{ name: 'PAYMENTS' }],
+          }),
+        };
 
     const result = await fetchWithRetry(url, {
       method: 'POST',

@@ -158,6 +158,26 @@ func TestGeneratePublishEnvironmentNoPorts(t *testing.T) {
 	}
 }
 
+func TestGeneratePublishEnvironmentGoDaddyAPIBaseURL(t *testing.T) {
+	app := &store.App{ID: "test123"}
+
+	t.Run("set when env var present", func(t *testing.T) {
+		t.Setenv("GODADDY_API_BASE_URL", "https://api.dev-godaddy.com")
+		env := generatePublishEnvironment(app)
+		if env["GODADDY_API_BASE_URL"] != "https://api.dev-godaddy.com" {
+			t.Errorf("expected https://api.dev-godaddy.com, got %q", env["GODADDY_API_BASE_URL"])
+		}
+	})
+
+	t.Run("absent when env var not set", func(t *testing.T) {
+		t.Setenv("GODADDY_API_BASE_URL", "")
+		env := generatePublishEnvironment(app)
+		if _, ok := env["GODADDY_API_BASE_URL"]; ok {
+			t.Error("expected GODADDY_API_BASE_URL to be absent when env var is empty")
+		}
+	})
+}
+
 func TestGenerateComposeFile(t *testing.T) {
 	app := &store.App{
 		ID:                    "testapp",

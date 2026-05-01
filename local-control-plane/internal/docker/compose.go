@@ -274,6 +274,10 @@ func generatePublishEnvironment(app *store.App) map[string]string {
 		"SHARED_STORAGE_DIR": "/shared-storage",
 	}
 
+	if v := projectenv.Resolve("GODADDY_API_BASE_URL"); v != "" {
+		env["GODADDY_API_BASE_URL"] = v
+	}
+
 	if app.PublishSupervisorPort > 0 {
 		env["DEV_SUPERVISOR_USE_TCP"] = "true"
 		env["DEV_SUPERVISOR_TCP_PORT"] = "8878"
