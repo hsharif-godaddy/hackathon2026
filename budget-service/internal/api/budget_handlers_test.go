@@ -3837,3 +3837,125 @@ func TestReportsAggregateBudgetIdFilter(t *testing.T) {
 		t.Fatalf("budgetCostTotal: %v", m1["budgetCostTotal"])
 	}
 }
+
+// --- Validation Hardening Tests ---
+
+func TestFlexAmountRejectsOversizedValue(t *testing.T) {
+	t.Parallel()
+	longVal := `"` + strings.Repeat("9", maxDecimalLen+1) + `"`
+	var f flexAmount
+	if err := f.UnmarshalJSON([]byte(longVal)); err == nil {
+		t.Fatal("expected error for oversized flexAmount string")
+	}
+
+	longNum := strings.Repeat("9", maxDecimalLen+1)
+	if err := f.UnmarshalJSON([]byte(longNum)); err == nil {
+		t.Fatal("expected error for oversized flexAmount number")
+	}
+}
+
+func TestFlexAmountAcceptsValidValues(t *testing.T) {
+	t.Parallel()
+	for _, input := range []string{`"100.000000"`, `100.5`, `"0"`, `null`, ``} {
+		var f flexAmount
+		if err := f.UnmarshalJSON([]byte(input)); err != nil {
+			t.Errorf("flexAmount(%s) unexpected error: %v", input, err)
+		}
+	}
+}
+
+func TestFlexAmountAcceptsExactMaxLen(t *testing.T) {
+	t.Parallel()
+	// String: exactly maxDecimalLen raw bytes (including quotes).
+	strVal := `"` + strings.Repeat("9", maxDecimalLen-2) + `"`
+	var f flexAmount
+	if err := f.UnmarshalJSON([]byte(strVal)); err != nil {
+		t.Fatalf("flexAmount string at exact maxDecimalLen: unexpected error: %v", err)
+	}
+	// Number: exactly maxDecimalLen raw bytes.
+	numVal := strings.Repeat("9", maxDecimalLen)
+	if err := f.UnmarshalJSON([]byte(numVal)); err != nil {
+		t.Fatalf("flexAmount number at exact maxDecimalLen: unexpected error: %v", err)
+	}
+}
+
+func TestPostBudgetSessionRejectsDeeplyNestedMetadata(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	nested := strings.Repeat(`{"a":`, maxMetadataDepth+1) + `1` + strings.Repeat(`}`, maxMetadataDepth+1)
+	body := `{"budgetId":"` + uuid.NewString() + `","metadata":` + nested + `}`
+	req := httptest.NewRequest(http.MethodPost, "/sessions", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.postBudgetSession(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "metadata exceeds maximum nesting depth") {
+		t.Fatalf("expected depth error, got %s", rec.Body.String())
+	}
+}
+
+func TestPostBudgetSessionAcceptsValidMetadata(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	body := `{"budgetId":"` + uuid.NewString() + `","metadata":{"key":"value"}}`
+	req := httptest.NewRequest(http.MethodPost, "/sessions", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.postBudgetSession(rec, req)
+	// Will fail at requireStore, not at validation — that means validation passed.
+	if rec.Code == http.StatusBadRequest {
+		t.Fatalf("unexpected 400, body %s", rec.Body.String())
+	}
+}
+
+func TestPostBudgetSessionAcceptsMetadataAtExactMaxDepth(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	nested := strings.Repeat(`{"a":`, maxMetadataDepth) + `1` + strings.Repeat(`}`, maxMetadataDepth)
+	body := `{"budgetId":"` + uuid.NewString() + `","metadata":` + nested + `}`
+	req := httptest.NewRequest(http.MethodPost, "/sessions", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.postBudgetSession(rec, req)
+	if rec.Code == http.StatusBadRequest {
+		t.Fatalf("metadata at exactly maxMetadataDepth should pass validation, got 400: %s", rec.Body.String())
+	}
+}
+
+func TestValidateBudgetItemDatesRejectsOversizedDate(t *testing.T) {
+	t.Parallel()
+	long := strings.Repeat("2", maxDateStringLen+1)
+	msg := validateBudgetItemDates(&long, nil, nil)
+	if msg == "" {
+		t.Fatal("expected error for oversized date")
+	}
+	if !strings.Contains(msg, "RFC3339") {
+		t.Fatalf("unexpected message: %s", msg)
+	}
+}
+
+func TestParseRFC3339TimeRejectsOversizedInput(t *testing.T) {
+	t.Parallel()
+	long := strings.Repeat("2", maxDateStringLen+1)
+	if _, err := parseRFC3339Time(long); err == nil {
+		t.Fatal("expected error for oversized date string")
+	}
+}
+
+func TestToItemInputRejectsOversizedResetInterval(t *testing.T) {
+	t.Parallel()
+	long := strings.Repeat("x", maxFieldLen+1)
+	b := budgetItemBody{
+		CreditsTotal:  "100.000000",
+		ResetInterval: &long,
+	}
+	_, msg := b.toItemInput(true)
+	if msg == "" {
+		t.Fatal("expected error for oversized resetInterval")
+	}
+	if !strings.Contains(msg, "exceeds maximum length") {
+		t.Fatalf("unexpected message: %s", msg)
+	}
+}

@@ -362,3 +362,112 @@ func TestRequestBodyForLog(t *testing.T) {
 		})
 	}
 }
+
+func TestRequireJSONContentTypeRejectsPOSTWithoutJSON(t *testing.T) {
+	t.Parallel()
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	mw := RequireJSONContentType(inner)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{}`))
+	req.Header.Set("Content-Type", "text/plain")
+	mw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnsupportedMediaType {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "UNSUPPORTED_MEDIA_TYPE") {
+		t.Fatalf("expected UNSUPPORTED_MEDIA_TYPE code, got %s", rec.Body.String())
+	}
+}
+
+func TestRequireJSONContentTypeRejectsPATCHWithoutJSON(t *testing.T) {
+	t.Parallel()
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	mw := RequireJSONContentType(inner)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPatch, "/", strings.NewReader(`{}`))
+	mw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnsupportedMediaType {
+		t.Fatalf("status %d", rec.Code)
+	}
+}
+
+func TestRequireJSONContentTypeAllowsJSONWithCharset(t *testing.T) {
+	t.Parallel()
+	called := false
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	})
+	mw := RequireJSONContentType(inner)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{}`))
+	req.Header.Set("Content-Type", "application/json; charset=utf-8")
+	mw.ServeHTTP(rec, req)
+	if !called {
+		t.Fatal("handler not called")
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d", rec.Code)
+	}
+}
+
+func TestRequireJSONContentTypePassesThroughGET(t *testing.T) {
+	t.Parallel()
+	called := false
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	})
+	mw := RequireJSONContentType(inner)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	mw.ServeHTTP(rec, req)
+	if !called {
+		t.Fatal("handler not called for GET")
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d", rec.Code)
+	}
+}
+
+func TestRequireJSONContentTypePassesThroughDELETE(t *testing.T) {
+	t.Parallel()
+	called := false
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	})
+	mw := RequireJSONContentType(inner)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodDelete, "/", nil)
+	mw.ServeHTTP(rec, req)
+	if !called {
+		t.Fatal("handler not called for DELETE")
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d", rec.Code)
+	}
+}
+
+func TestRequireJSONContentTypePassesThroughPUT(t *testing.T) {
+	t.Parallel()
+	called := false
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	})
+	mw := RequireJSONContentType(inner)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPut, "/", strings.NewReader(`{}`))
+	mw.ServeHTTP(rec, req)
+	if !called {
+		t.Fatal("handler not called for PUT")
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d", rec.Code)
+	}
+}

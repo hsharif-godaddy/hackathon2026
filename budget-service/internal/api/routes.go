@@ -23,6 +23,7 @@ func NewRouter(s *Server, authMW *auth.Middleware) http.Handler {
 
 	v1 := r.PathPrefix("/api/v1").Subrouter()
 	v1.Use(authMW.AuthenticateAWSIAMService)
+	v1.Use(RequireJSONContentType)
 
 	v1.HandleFunc("/auth-check", func(w http.ResponseWriter, r *http.Request) {
 		claims := auth.GetClaims(r)

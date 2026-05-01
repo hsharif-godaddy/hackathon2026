@@ -21,9 +21,6 @@ import (
 
 const maxSessionCallRequestIDsInLog = 100
 
-// maxSessionMetadataBytes caps raw JSON bytes accepted for budget_sessions.metadata (jsonb).
-const maxSessionMetadataBytes = 256 << 10
-
 // flexAmount unmarshals JSON string or number into a normalized decimal string.
 type flexAmount string
 
@@ -32,6 +29,9 @@ func (f *flexAmount) UnmarshalJSON(data []byte) error {
 	if len(data) == 0 || string(data) == "null" {
 		*f = ""
 		return nil
+	}
+	if len(data) > maxDecimalLen {
+		return fmt.Errorf("decimal value exceeds maximum length")
 	}
 	if data[0] == '"' {
 		var s string
@@ -196,7 +196,11 @@ func validateBudgetItemDates(expiresAt, startsAt, resetsAt *string) string {
 		if label.p == nil || strings.TrimSpace(*label.p) == "" {
 			continue
 		}
-		if _, err := time.Parse(time.RFC3339, strings.TrimSpace(*label.p)); err != nil {
+		v := strings.TrimSpace(*label.p)
+		if len(v) > maxDateStringLen {
+			return label.name + " must be RFC3339 or null"
+		}
+		if _, err := time.Parse(time.RFC3339, v); err != nil {
 			return label.name + " must be RFC3339 or null"
 		}
 	}
@@ -275,6 +279,9 @@ type budgetItemBody struct {
 }
 
 func (b budgetItemBody) toItemInput(validateCreate bool) (store.ItemInput, string) {
+	if b.ResetInterval != nil && len(*b.ResetInterval) > maxFieldLen {
+		return store.ItemInput{}, "resetInterval exceeds maximum length"
+	}
 	ri, err := store.NormalizeResetInterval(b.ResetInterval)
 	if err != nil {
 		slog.Warn("budget.normalize_reset_interval", "error", err)
@@ -902,12 +909,17 @@ func (s *Server) postBudgetSession(w http.ResponseWriter, r *http.Request) {
 	}
 	var metaBytes []byte
 	if len(postSess.Metadata) > 0 && !bytes.Equal(postSess.Metadata, []byte("null")) {
+		if len(postSess.Metadata) > maxSessionMetadataBytes {
+			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "metadata exceeds maximum size")
+			return
+		}
 		if !json.Valid(postSess.Metadata) {
 			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "metadata must be valid JSON")
 			return
 		}
-		if len(postSess.Metadata) > maxSessionMetadataBytes {
-			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "metadata exceeds maximum size")
+		depth, err := jsonDepth(postSess.Metadata)
+		if err != nil || depth > maxMetadataDepth {
+			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "metadata exceeds maximum nesting depth")
 			return
 		}
 		metaBytes = postSess.Metadata
@@ -1269,6 +1281,9 @@ func parseRFC3339Time(s string) (time.Time, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
 		return time.Time{}, fmt.Errorf("empty time")
+	}
+	if len(s) > maxDateStringLen {
+		return time.Time{}, fmt.Errorf("date string too long")
 	}
 	if t, err := time.Parse(time.RFC3339Nano, s); err == nil {
 		return t.UTC(), nil

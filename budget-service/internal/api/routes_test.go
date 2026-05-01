@@ -56,3 +56,20 @@ func TestRouterOpenAPIPublic(t *testing.T) {
 		t.Fatalf("expected OpenAPI yaml prefix")
 	}
 }
+
+func TestRouterRejectsPOSTWithoutJSONContentType(t *testing.T) {
+	t.Parallel()
+	h := NewRouter(&Server{}, auth.NewMiddleware("none", nil, nil))
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/products", strings.NewReader(`{"productKey":"test"}`))
+	req.Header.Set("Content-Type", "text/plain")
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnsupportedMediaType {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "UNSUPPORTED_MEDIA_TYPE") {
+		t.Fatalf("expected UNSUPPORTED_MEDIA_TYPE, got %s", rec.Body.String())
+	}
+}

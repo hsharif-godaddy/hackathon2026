@@ -110,3 +110,50 @@ func TestValidateLabelRejectsOversized(t *testing.T) {
 		t.Errorf("validateLabel(len=%d) = %q, want 'exceeds maximum length'", len(s), msg)
 	}
 }
+
+func TestJsonDepth(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		input string
+		want  int
+	}{
+		{`"hello"`, 0},
+		{`{}`, 1},
+		{`{"a":1}`, 1},
+		{`{"a":{"b":1}}`, 2},
+		{`{"a":{"b":{"c":1}}}`, 3},
+		{`[[[1]]]`, 3},
+		{`{"a":[{"b":[1]}]}`, 4},
+		{`{"a":{"b":{"c":{"d":{"e":{"f":1}}}}}}`, 6},
+		{`{"a":"}}}}"}`, 1},
+		{`{"a":"{{{{"}`, 1},
+		{`{"a":"[]]]"}`, 1},
+		{`{"template":"{{user}}","data":{"k":"v"}}`, 2},
+		{`{"key":"{\"nested\":\"{{{{\"}"}`, 1},
+	}
+	for _, tt := range tests {
+		got, err := jsonDepth([]byte(tt.input))
+		if err != nil {
+			t.Errorf("jsonDepth(%s) unexpected error: %v", tt.input, err)
+			continue
+		}
+		if got != tt.want {
+			t.Errorf("jsonDepth(%s) = %d, want %d", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestJsonDepthReturnsErrorForMalformedJSON(t *testing.T) {
+	t.Parallel()
+	malformed := []string{
+		`{invalid`,
+		`{"a":}`,
+		`{{{`,
+	}
+	for _, input := range malformed {
+		_, err := jsonDepth([]byte(input))
+		if err == nil {
+			t.Errorf("jsonDepth(%s) expected error, got nil", input)
+		}
+	}
+}

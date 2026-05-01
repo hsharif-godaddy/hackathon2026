@@ -39,6 +39,21 @@ func (rw *responseWriter) Flush() {
 	}
 }
 
+// RequireJSONContentType rejects POST/PATCH requests that do not declare application/json.
+func RequireJSONContentType(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost || r.Method == http.MethodPatch {
+			ct := r.Header.Get("Content-Type")
+			mt := strings.TrimSpace(strings.SplitN(ct, ";", 2)[0])
+			if !strings.EqualFold(mt, "application/json") {
+				writeError(w, http.StatusUnsupportedMediaType, "UNSUPPORTED_MEDIA_TYPE", "Content-Type must be application/json")
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // LoggingMiddleware wraps the entire handler (including mux NotFound/MethodNotAllowed) so
 // every response emits an access log line.
 func LoggingMiddleware(next http.Handler, logRequestBodies bool) http.Handler {
