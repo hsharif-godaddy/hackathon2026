@@ -9,7 +9,7 @@ import { createMockMessageContext } from './testUtils'
 import { CompleteHandler } from '../CompleteHandler'
 import type { WebSocketMessage } from '../types'
 
-const mockInvalidateQueries = vi.fn()
+const mockInvalidateQueries = vi.fn().mockResolvedValue(undefined)
 vi.mock('@/components/providers/QueryClientProvider', () => ({
   getQueryClient: vi.fn(() => ({
     invalidateQueries: mockInvalidateQueries,
@@ -293,12 +293,12 @@ describe('CompleteHandler', () => {
     })
   })
 
-  it('invalidates media manifest for media-logo__ prefixed tool calls', async () => {
+  it('invalidates media manifest for media__ prefixed tool calls', async () => {
     mockStore.getState.mockReturnValue({
       connectionRetry: { isRetrying: false },
       clearConnectionRetry: vi.fn(),
       messages: [
-        { role: 'assistant', toolCalls: [{ id: '1', name: 'media-logo__generate_logo' }] },
+        { role: 'assistant', toolCalls: [{ id: '1', name: 'media__upload' }] },
       ],
     })
 
@@ -378,5 +378,37 @@ describe('CompleteHandler', () => {
     )
 
     expect(mockInvalidateQueries).not.toHaveBeenCalled()
+  })
+
+  it('invalidates credit-grants at 5s and 30s after completion', async () => {
+    vi.useFakeTimers()
+    try {
+      mockStore.getState.mockReturnValue({
+        connectionRetry: { isRetrying: false },
+        clearConnectionRetry: vi.fn(),
+        messages: [],
+      })
+
+      await handler.handle(
+        { type: 'complete', content: '', data: { agentId: 'develop' } },
+        createMockMessageContext()
+      )
+
+      mockInvalidateQueries.mockClear()
+
+      vi.advanceTimersByTime(5_000)
+      expect(mockInvalidateQueries).toHaveBeenCalledTimes(1)
+      expect(mockInvalidateQueries).toHaveBeenLastCalledWith({
+        queryKey: ['credit-grants'],
+      })
+
+      vi.advanceTimersByTime(25_000)
+      expect(mockInvalidateQueries).toHaveBeenCalledTimes(2)
+      expect(mockInvalidateQueries).toHaveBeenLastCalledWith({
+        queryKey: ['credit-grants'],
+      })
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

@@ -13,6 +13,7 @@ import {
   getMonthlyPlanGrant,
   getPlanDisplayLabelKey,
   getPlanFromSubscription,
+  getTotalCreditsFromGrants,
 } from '@/utils/credits';
 
 function createMockGrant(overrides: Partial<CreditGrant> = {}): CreditGrant {
@@ -691,6 +692,118 @@ describe('credits', function creditsTests() {
       const result = getPlanDisplayLabelKey(SubscriptionPlan.None);
 
       expect(result).toBe('');
+    });
+  });
+
+  describe('#getTotalCreditsFromGrants', function getTotalCreditsFromGrantsTests() {
+    it('should sum credits across all grants including fully exhausted ones', function includesExhausted() {
+      // Reproduces the bug: user has an exhausted plan grant plus a partially-used
+      // credit pack. The popover shows 687/800, so the gauge must also see 687/800.
+      const planGrant = createMockGrant({
+        id: 'plan-1',
+        type: GrantType.PlanMonthly,
+        creditsSpent: 500,
+        creditsMax: 500,
+      });
+      const creditPack = createMockGrant({
+        id: 'pack-1',
+        type: GrantType.CreditPack,
+        creditsSpent: 187,
+        creditsMax: 300,
+      });
+
+      const result = getTotalCreditsFromGrants([planGrant, creditPack]);
+
+      expect(result.totalCreditsSpent).toBe(687);
+      expect(result.totalCreditsMax).toBe(800);
+    });
+
+    it('should cap spent per-grant via getEffectiveCreditsSpent', function capsPerGrantSpent() {
+      const overspentGrant = createMockGrant({
+        id: 'overspent-1',
+        creditsSpent: 6000,
+        creditsMax: 5000,
+      });
+      const normalGrant = createMockGrant({
+        id: 'normal-1',
+        creditsSpent: 100,
+        creditsMax: 1000,
+      });
+
+      const result = getTotalCreditsFromGrants([overspentGrant, normalGrant]);
+
+      // Overspent grant contributes 5000 (capped), not 6000
+      expect(result.totalCreditsSpent).toBe(5100);
+      expect(result.totalCreditsMax).toBe(6000);
+    });
+
+    it('should return zeros for empty grants array', function emptyArray() {
+      const result = getTotalCreditsFromGrants([]);
+
+      expect(result.totalCreditsSpent).toBe(0);
+      expect(result.totalCreditsMax).toBe(0);
+    });
+
+    it('should return zeros for undefined grants', function undefinedGrants() {
+      const result = getTotalCreditsFromGrants(undefined);
+
+      expect(result.totalCreditsSpent).toBe(0);
+      expect(result.totalCreditsMax).toBe(0);
+    });
+
+    it('should return zeros for null grants', function nullGrants() {
+      const result = getTotalCreditsFromGrants(null);
+
+      expect(result.totalCreditsSpent).toBe(0);
+      expect(result.totalCreditsMax).toBe(0);
+    });
+
+    it('should include expired and consumed grants (matches popover display)', function includesFinalState() {
+      const now = new Date();
+      const expiredGrant = createMockGrant({
+        id: 'expired-1',
+        finalState: GrantFinalState.Expired,
+        useBefore: new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString(),
+        creditsSpent: 100,
+        creditsMax: 500,
+      });
+      const consumedGrant = createMockGrant({
+        id: 'consumed-1',
+        finalState: GrantFinalState.Consumed,
+        isAvailable: false,
+        creditsSpent: 250,
+        creditsMax: 250,
+      });
+      const activeGrant = createMockGrant({
+        id: 'active-1',
+        finalState: null,
+        isAvailable: true,
+        creditsSpent: 50,
+        creditsMax: 500,
+      });
+
+      const result = getTotalCreditsFromGrants([expiredGrant, consumedGrant, activeGrant]);
+
+      expect(result.totalCreditsSpent).toBe(400);
+      expect(result.totalCreditsMax).toBe(1250);
+    });
+
+    it('should tolerate grants with null creditsMax', function nullMax() {
+      const brokenGrant = createMockGrant({
+        id: 'broken-1',
+        creditsSpent: null,
+        creditsMax: null,
+      });
+      const goodGrant = createMockGrant({
+        id: 'good-1',
+        creditsSpent: 100,
+        creditsMax: 500,
+      });
+
+      const result = getTotalCreditsFromGrants([brokenGrant, goodGrant]);
+
+      expect(result.totalCreditsSpent).toBe(100);
+      expect(result.totalCreditsMax).toBe(500);
     });
   });
 

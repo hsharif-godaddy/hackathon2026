@@ -171,7 +171,19 @@ export class CompleteHandler implements MessageHandler {
       lastMsg.toolCalls?.some((tc) => isMediaRelatedTool(tc.name))
 
     if (hadMediaTools && appId) {
-      getQueryClient()?.invalidateQueries({ queryKey: ['mediaManifest', appId] })
+      const mediaClient = getQueryClient()
+      if (!mediaClient) {
+        logger.warn('complete-handler.media-manifest.no-query-client', { appId })
+      } else {
+        void mediaClient.invalidateQueries({ queryKey: ['mediaManifest', appId] }).catch(
+          function mediaManifestInvalidateFailed(error: unknown) {
+            logger.warn('complete-handler.media-manifest.invalidate-failed', {
+              appId,
+              error: error instanceof Error ? error.message : String(error)
+            })
+          }
+        )
+      }
     }
 
     // Determine eval snapshot eligibility after finalizeStream so the current turn's
@@ -237,11 +249,26 @@ export class CompleteHandler implements MessageHandler {
         })
     }
 
-    // Trigger usage refresh after message completes with delays
-    // mgmt-airo spend data may take time to propagate after chat completion
+    // Refresh credit grants after message completes with staggered delays.
+    // mgmt-airo spend data may take time to propagate after chat completion,
+    // so we invalidate twice to catch late-arriving updates. Invalidating the
+    // query directly (instead of dispatching a window event for the hook to
+    // listen to) avoids registering one listener per useCreditGrants caller.
     for (const delay of [5_000, 30_000]) {
-      setTimeout(function dispatchRefresh() {
-        window.dispatchEvent(new CustomEvent('usage-refresh'))
+      setTimeout(function refreshCreditGrants() {
+        const client = getQueryClient()
+        if (!client) {
+          logger.warn('complete-handler.credit-grants.no-query-client', { delay })
+          return
+        }
+        void client.invalidateQueries({ queryKey: ['credit-grants'] }).catch(
+          function creditGrantsInvalidateFailed(error: unknown) {
+            logger.warn('complete-handler.credit-grants.invalidate-failed', {
+              delay,
+              error: error instanceof Error ? error.message : String(error)
+            })
+          }
+        )
       }, delay)
     }
 

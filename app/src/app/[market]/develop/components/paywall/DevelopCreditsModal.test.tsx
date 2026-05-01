@@ -31,8 +31,11 @@ vi.mock('@/hooks/useSubscriptionWithPolling', () => ({
 vi.mock('@/hooks/useCreditGrants', () => ({
   useCreditGrants: vi.fn(() => ({
     data: [{ id: 'grant-1' }, { id: 'grant-2' }],
+    isFetching: false,
     isLoading: false,
     isError: false,
+    error: null,
+    refetch: vi.fn(),
   })),
 }));
 

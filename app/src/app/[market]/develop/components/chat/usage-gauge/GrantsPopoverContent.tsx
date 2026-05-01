@@ -11,7 +11,7 @@ import { useSubscriptionWithPolling } from '@/hooks/useSubscriptionWithPolling'
 import { useTranslations } from '@/hooks/useTranslations'
 import { canUpgradePlan, isPaidPlanForGrants } from '@/lib/paywall/shared'
 import type { CreditGrant } from '@/types/credits'
-import { getCreditPackGrants, getEffectiveCreditsSpent, getMonthlyPlanGrant, getPlanFromSubscription } from '@/utils/credits'
+import { getCreditPackGrants, getEffectiveCreditsSpent, getMonthlyPlanGrant, getPlanFromSubscription, getTotalCreditsFromGrants } from '@/utils/credits'
 import { getRootDomain } from '@/utils/getRootDomain'
 import { generateClickEID } from '@/utils/instrumentation'
 
@@ -37,17 +37,17 @@ export function GrantsPopoverContent({
   const planGrant = grants ? getMonthlyPlanGrant(grants) : undefined
   const creditPacks = grants ? getCreditPackGrants(grants) : []
 
-  // Calculate totals from grants
-  const totalCreditsSpent = grants?.reduce((sum, g) => sum + getEffectiveCreditsSpent(g.creditsSpent, g.creditsMax), 0) ?? 0
-  const totalCreditsMax = grants?.reduce((sum, g) => sum + g.creditsMax, 0) ?? 0
+  const { totalCreditsSpent, totalCreditsMax } = getTotalCreditsFromGrants(grants)
 
   // Monthly plan credits
   const monthlyCreditsSpent = getEffectiveCreditsSpent(planGrant?.creditsSpent, planGrant?.creditsMax)
   const monthlyCreditsMax = planGrant?.creditsMax ?? 0
 
-  // Credit pack totals
-  const creditPackTotal = creditPacks.reduce((sum, g) => sum + g.creditsMax, 0)
-  const creditPackSpent = creditPacks.reduce((sum, g) => sum + getEffectiveCreditsSpent(g.creditsSpent, g.creditsMax), 0)
+  // Credit pack breakdown. Routing through getTotalCreditsFromGrants keeps
+  // the null-creditsMax guard consistent with the overall totals above —
+  // a raw reduce would render "NaN / NaN" if any pack had creditsMax === null.
+  const { totalCreditsSpent: creditPackSpent, totalCreditsMax: creditPackTotal } =
+    getTotalCreditsFromGrants(creditPacks)
 
   // Reset date formatting
   const resetDate = planGrant?.useBefore

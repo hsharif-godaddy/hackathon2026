@@ -94,6 +94,32 @@ export function getActiveGrants(grants: CreditGrant[]): CreditGrant[] {
 }
 
 /**
+ * Compute the total credits spent / max across all grants for user-facing display.
+ *
+ * This is the single source of truth for any UI that wants to show a user the
+ * same "X / Y credits" totals — the gauge, the popover, feedback form, etc.
+ * Using the same reducer everywhere guarantees the circular gauge percentage
+ * stays in sync with the numbers the popover actually shows the user.
+ *
+ * Spent is capped per-grant via getEffectiveCreditsSpent so reported usage
+ * never exceeds the grant max (billing can briefly report spent > max).
+ */
+export function getTotalCreditsFromGrants(
+  grants: CreditGrant[] | undefined | null
+): { totalCreditsSpent: number; totalCreditsMax: number } {
+  const list = grants ?? []
+  const totalCreditsSpent = list.reduce(
+    (sum, g) => sum + getEffectiveCreditsSpent(g.creditsSpent, g.creditsMax),
+    0
+  )
+  // `creditsMax ?? 0` is a display safety net — the actual warning about
+  // malformed grants is emitted once per fetch in useCreditGrants' queryFn
+  // so we don't log on every render of the gauge and popover.
+  const totalCreditsMax = list.reduce((sum, g) => sum + (g.creditsMax ?? 0), 0)
+  return { totalCreditsSpent, totalCreditsMax }
+}
+
+/**
  * Get the currently active grant (the one being used)
  * Returns the available grant with the soonest expiration date (useBefore)
  * Excludes expired, consumed, or unavailable grants

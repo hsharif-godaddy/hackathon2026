@@ -12,7 +12,7 @@ import { PAYWALL_ITC } from '@/lib/paywall/shared'
 import { Popover, PopoverContent, PopoverTrigger } from '@/lib/shadcn/popover'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { SubscriptionPlan } from '@/types/credits'
-import { getActiveGrants, getEffectiveCreditsSpent, getPlanFromSubscription } from '@/utils/credits'
+import { getPlanFromSubscription, getTotalCreditsFromGrants } from '@/utils/credits'
 import { generateClickEID, logImpressionEvent } from '@/utils/instrumentation'
 import { GrantsPopoverContent } from '.'
 
@@ -53,12 +53,13 @@ export default memo(function UsageGauge({ appId }: UsageGaugeProps) {
 
   const currentPlan = subscription ? getPlanFromSubscription(subscription) : SubscriptionPlan.None
 
-  // Compute percentage from grants (BFF handles source selection)
-  // Semantically: 0% = credits available but not used; 100% = no usable credits left
-  const activeGrants = grants ? getActiveGrants(grants) : []
-  const totalCreditsSpent = activeGrants.reduce((sum, g) => sum + getEffectiveCreditsSpent(g.creditsSpent, g.creditsMax), 0)
-  const totalCreditsMax = activeGrants.reduce((sum, g) => sum + g.creditsMax, 0)
-  // When no active grants remain, show 100% (exhausted) instead of 0% (available)
+  // Use the same totals the popover displays so the gauge percentage always
+  // matches the "X / Y" the user reads in the popover. Summing over all grants
+  // (not just active ones) is required; excluding exhausted grants here causes
+  // the gauge and popover to disagree, e.g. 687/800 rendering as ~62% instead
+  // of ~86% when the monthly plan grant is already fully consumed.
+  // Semantically: 0% = credits available but not used; 100% = no usable credits left.
+  const { totalCreditsSpent, totalCreditsMax } = getTotalCreditsFromGrants(grants)
   const percentage = totalCreditsMax > 0 ? (totalCreditsSpent / totalCreditsMax) * 100 : 100
 
   const showLoading = isSubscriptionLoading || isGrantsLoading
@@ -114,6 +115,7 @@ export default memo(function UsageGauge({ appId }: UsageGaugeProps) {
           )}
           onMouseDown={(e) => e.preventDefault()}
           data-eid={generateClickEID('usage_gauge.trigger.open')}
+          data-percentage={Math.round(percentage)}
           aria-label={t('builder_usage_gauge_aria_label', { percentage: String(Math.round(percentage)) })}
         >
           <div>

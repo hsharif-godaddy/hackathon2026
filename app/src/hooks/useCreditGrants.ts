@@ -28,6 +28,10 @@ export function useCreditGrants({
   subscriptionId,
   syncSpend = true,
 }: UseCreditGrantsOptions): UseCreditGrantsResult {
+  // Post-turn refresh is handled by CompleteHandler, which invalidates the
+  // ['credit-grants'] query directly at 5s and 30s to let mgmt-airo propagate
+  // spend. Keeping the invalidation at the dispatcher avoids registering one
+  // window listener per mounted caller of this hook.
   return useQuery({
     queryKey: ['credit-grants', subscriptionId, syncSpend],
     queryFn: async (): Promise<CreditGrant[]> => {
@@ -49,9 +53,8 @@ export function useCreditGrants({
         credentials: 'include',
       });
 
-      const data = await response.json();
-
       if (!response.ok) {
+        const data = await response.json().catch(() => ({})) as { error?: string };
         const errorMessage = data.error || `Failed to fetch credit grants: ${response.status}`;
         logger.error('credit-grants.query.error', {
           subscriptionId,
@@ -61,12 +64,28 @@ export function useCreditGrants({
         throw new HttpError(errorMessage, response.status);
       }
 
+      const data = await response.json();
+
       if (data.success && Array.isArray(data.data)) {
+        const grants: CreditGrant[] = data.data;
         logger.info('credit-grants.query.success', {
           subscriptionId,
-          grantCount: data.data.length
+          grantCount: grants.length
         });
-        return data.data;
+        // `creditsMax` should always be set by mgmt-airo. A null value is a
+        // malformed API response. Log once per fetch (not once per render of
+        // every consumer) so regressions surface in Grafana without flooding.
+        const invalidGrantIds = grants
+          .filter((g) => g.creditsMax == null)
+          .map((g) => g.id);
+        if (invalidGrantIds.length > 0) {
+          logger.warn('credit-grants.query.invalidGrant', {
+            subscriptionId,
+            grantIds: invalidGrantIds,
+            invalidCount: invalidGrantIds.length,
+          });
+        }
+        return grants;
       }
 
       throw new Error(data.error || 'Failed to get credit grants');

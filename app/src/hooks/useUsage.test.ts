@@ -153,14 +153,13 @@ describe('useUsage', () => {
 
       const { result } = renderHookWithProviders(() => useUsage({ appId: 'app-123' }))
 
-      // When all grants are exhausted (creditsSpent >= creditsMax), getActiveGrants filters them out
-      // resulting in totalCreditsMax === 0, which returns 100% to indicate "no usable credits"
+      // 100/100 = 100%
       expect(result.current.percentage).toBe(100)
       expect(result.current.warningLevel).toBe(WarningLevel.EXCEEDED)
       expect(result.current.isWarningBannerActive).toBe(false)
     })
 
-    it('returns 100% when no active grants (exhausted state)', () => {
+    it('returns 100% when grants array is empty (no usable credits)', () => {
       vi.mocked(useCreditGrants).mockReturnValue({
         data: [],
         isLoading: false,
@@ -168,8 +167,8 @@ describe('useUsage', () => {
 
       const { result } = renderHookWithProviders(() => useUsage({ appId: 'app-123' }))
 
-      // When there are no active grants (either empty array or all filtered as exhausted),
-      // totalCreditsMax === 0, which returns 100% to indicate "no usable credits"
+      // No grants at all → totalCreditsMax === 0, which returns 100% to indicate
+      // "no usable credits" (matches gauge fallback behavior).
       expect(result.current.percentage).toBe(100)
       expect(result.current.warningLevel).toBe(WarningLevel.EXCEEDED)
     })
@@ -264,8 +263,11 @@ describe('useUsage', () => {
     })
   })
 
+  // Usage percentage must include exhausted/expired grants so banner thresholds
+  // agree with the gauge and popover. See getTotalCreditsFromGrants and the
+  // regression comment in UsageGauge.tsx for the underlying rationale.
   describe('multiple credit packs with consumed/expired grants', () => {
-    it('excludes consumed grants from percentage calculation', () => {
+    it('includes consumed grants in percentage calculation', () => {
       vi.mocked(useCreditGrants).mockReturnValue({
         data: [
           createMockGrant({
@@ -290,12 +292,13 @@ describe('useUsage', () => {
 
       const { result } = renderHookWithProviders(() => useUsage({ appId: 'app-123' }))
 
-      expect(result.current.percentage).toBe(20)
-      expect(result.current.warningLevel).toBe(WarningLevel.NONE)
+      // (100 + 20) / (100 + 100) = 60%
+      expect(result.current.percentage).toBe(60)
+      expect(result.current.warningLevel).toBe(WarningLevel.CAUTION)
       expect(result.current.isWarningBannerActive).toBe(false)
     })
 
-    it('excludes expired grants from percentage calculation', () => {
+    it('includes expired grants in percentage calculation', () => {
       vi.mocked(useCreditGrants).mockReturnValue({
         data: [
           createMockGrant({
@@ -319,11 +322,12 @@ describe('useUsage', () => {
 
       const { result } = renderHookWithProviders(() => useUsage({ appId: 'app-123' }))
 
-      expect(result.current.percentage).toBe(20)
-      expect(result.current.warningLevel).toBe(WarningLevel.NONE)
+      // (100 + 20) / (100 + 100) = 60%
+      expect(result.current.percentage).toBe(60)
+      expect(result.current.warningLevel).toBe(WarningLevel.CAUTION)
     })
 
-    it('excludes unavailable grants from percentage calculation', () => {
+    it('includes unavailable grants in percentage calculation', () => {
       vi.mocked(useCreditGrants).mockReturnValue({
         data: [
           createMockGrant({
@@ -346,11 +350,12 @@ describe('useUsage', () => {
 
       const { result } = renderHookWithProviders(() => useUsage({ appId: 'app-123' }))
 
-      expect(result.current.percentage).toBe(30)
+      // (50 + 30) / (100 + 100) = 40%
+      expect(result.current.percentage).toBe(40)
       expect(result.current.warningLevel).toBe(WarningLevel.NONE)
     })
 
-    it('excludes expired-by-date grants from percentage calculation', () => {
+    it('includes expired-by-date grants in percentage calculation', () => {
       vi.mocked(useCreditGrants).mockReturnValue({
         data: [
           createMockGrant({
@@ -374,12 +379,13 @@ describe('useUsage', () => {
 
       const { result } = renderHookWithProviders(() => useUsage({ appId: 'app-123' }))
 
-      expect(result.current.percentage).toBe(40)
-      expect(result.current.warningLevel).toBe(WarningLevel.NONE)
+      // (80 + 40) / (100 + 100) = 60%
+      expect(result.current.percentage).toBe(60)
+      expect(result.current.warningLevel).toBe(WarningLevel.CAUTION)
       expect(result.current.isWarningBannerActive).toBe(false)
     })
 
-    it('no warning when multiple packs but only active has low usage', () => {
+    it('aggregates all packs into percentage even when only one is active', () => {
       vi.mocked(useCreditGrants).mockReturnValue({
         data: [
           createMockGrant({
@@ -409,12 +415,13 @@ describe('useUsage', () => {
 
       const { result } = renderHookWithProviders(() => useUsage({ appId: 'app-123' }))
 
-      expect(result.current.percentage).toBe(10)
-      expect(result.current.warningLevel).toBe(WarningLevel.NONE)
+      // (100 + 100 + 10) / (100 + 100 + 100) = 210/300 = 70%
+      expect(result.current.percentage).toBe(70)
+      expect(result.current.warningLevel).toBe(WarningLevel.CAUTION)
       expect(result.current.isWarningBannerActive).toBe(false)
     })
 
-    it('shows warning when active pack usage is high', () => {
+    it('fires toast banner when combined usage across grants crosses 90%', () => {
       vi.mocked(useCreditGrants).mockReturnValue({
         data: [
           createMockGrant({
@@ -437,7 +444,8 @@ describe('useUsage', () => {
 
       const { result } = renderHookWithProviders(() => useUsage({ appId: 'app-123' }))
 
-      expect(result.current.percentage).toBe(95)
+      // (100 + 95) / (100 + 100) = 97.5%
+      expect(result.current.percentage).toBe(97.5)
       expect(result.current.warningLevel).toBe(WarningLevel.WARNING)
       expect(result.current.isWarningBannerActive).toBe(true)
     })

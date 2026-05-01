@@ -5,7 +5,7 @@ import { useMemo } from 'react'
 import { useCreditGrants } from '@/hooks/useCreditGrants'
 import { useSubscription } from '@/hooks/useSubscription'
 import { WarningLevel } from '@/types/usage'
-import { getActiveGrants, getEffectiveCreditsSpent } from '@/utils/credits'
+import { getTotalCreditsFromGrants } from '@/utils/credits'
 
 /** Warning level thresholds (percentage) */
 const CAUTION_THRESHOLD = 50
@@ -64,14 +64,12 @@ export function useUsage({
     enabled && !isSubscriptionLoading && !resolvedSubscriptionId
 
   const result = useMemo(() => {
-    const activeGrants = getActiveGrants(grants ?? [])
-    const totalCreditsSpent = activeGrants.reduce(
-      (sum, g) => sum + getEffectiveCreditsSpent(g.creditsSpent, g.creditsMax),
-      0
-    )
-    const totalCreditsMax = activeGrants.reduce((sum, g) => sum + g.creditsMax, 0)
-    // When no active grants remain, show 100% (exhausted) instead of 0% (available).
+    // Must match UsageGauge/popover totals so banner thresholds agree with what
+    // the user sees. Filtering to active-only grants here caused the banner to
+    // fire at the wrong thresholds once a monthly plan grant was exhausted.
+    // When totalCreditsMax is 0 (no grants at all), show 100% (exhausted).
     // Semantically: 0% = credits available but not used; 100% = no usable credits left.
+    const { totalCreditsSpent, totalCreditsMax } = getTotalCreditsFromGrants(grants)
     const percentage = totalCreditsMax > 0 ? (totalCreditsSpent / totalCreditsMax) * 100 : 100
 
     return { percentage, ...computeWarningLevel(percentage) }

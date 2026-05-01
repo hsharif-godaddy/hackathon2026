@@ -63,7 +63,11 @@ vi.mock('@/hooks/useCreditGrants', () => ({
         updatedAt: '2026-01-15T00:00:00Z',
       },
     ],
+    isFetching: false,
     isLoading: false,
+    isError: false,
+    error: null,
+    refetch: vi.fn(),
   })),
 }));
 
@@ -154,6 +158,7 @@ describe('UsageGauge', function usageGaugeTests() {
             updatedAt: '2026-01-15T00:00:00Z',
           },
         ],
+        isFetching: false,
         isLoading: false,
         isError: false,
         error: null,
@@ -431,6 +436,7 @@ describe('UsageGauge', function usageGaugeTests() {
       const { useCreditGrants } = await import('@/hooks/useCreditGrants');
       vi.mocked(useCreditGrants).mockReturnValue({
         data: undefined,
+        isFetching: true,
         isLoading: true,
         isError: false,
         error: null,
@@ -440,6 +446,60 @@ describe('UsageGauge', function usageGaugeTests() {
       const { container } = renderWithProviders(<UsageGauge appId="test-app" />);
 
       expect(container.querySelector('.animate-pulse')).toBeInTheDocument();
+    });
+
+    it('gauge percentage matches popover totals when plan grant is exhausted', async function gaugeMatchesPopover() {
+      // Regression test: the gauge used to filter out exhausted grants, so a
+      // user with an exhausted plan grant (500/500) plus a partial credit pack
+      // (187/300) would see "687/800" in the popover but ~62% on the gauge.
+      // Both must now reflect the same 687/800 == ~85.875%.
+      const { useCreditGrants } = await import('@/hooks/useCreditGrants');
+      vi.mocked(useCreditGrants).mockReturnValue({
+        data: [
+          {
+            id: 'plan-1',
+            subscriptionId: 'sub-123',
+            type: GrantType.PlanMonthly,
+            llmBudgetUserId: 'budget-user-1',
+            llmBudgetId: 'budget-1',
+            creditsSpent: 500,
+            creditsMax: 500,
+            isAvailable: true,
+            useBefore: '2026-02-15T23:59:59Z',
+            createdAt: '2026-01-15T00:00:00Z',
+            updatedAt: '2026-01-15T00:00:00Z',
+          },
+          {
+            id: 'pack-1',
+            subscriptionId: 'sub-123',
+            type: GrantType.CreditPack,
+            llmBudgetUserId: 'budget-user-1',
+            llmBudgetId: 'budget-2',
+            creditsSpent: 187,
+            creditsMax: 300,
+            isAvailable: true,
+            useBefore: '2026-03-15T23:59:59Z',
+            createdAt: '2026-01-20T00:00:00Z',
+            updatedAt: '2026-01-20T00:00:00Z',
+          },
+        ],
+        isFetching: false,
+        isLoading: false,
+        isError: false,
+        error: null,
+        refetch: vi.fn(),
+      });
+
+      const { container } = renderWithProviders(<UsageGauge appId="test-app" />);
+
+      await waitFor(function waitForButton() {
+        expect(container.querySelector('button[data-percentage]')).toBeInTheDocument();
+      });
+
+      // 687/800 = 85.875% → Math.round → 86. The old buggy active-only
+      // behavior (pack-only: 187/300 = 62.33%) would produce 62.
+      const trigger = container.querySelector('button[data-percentage]');
+      expect(trigger).toHaveAttribute('data-percentage', '86');
     });
 
     it('should display addon credits section when credit packs exist', async function displayAddonCredits() {
@@ -473,6 +533,7 @@ describe('UsageGauge', function usageGaugeTests() {
             updatedAt: '2026-01-20T00:00:00Z',
           },
         ],
+        isFetching: false,
         isLoading: false,
         isError: false,
         error: null,
