@@ -20,6 +20,7 @@ const originalLocation = window.location;
 let latestOnAuth: ((data?: unknown) => void) | null = null;
 let latestPageToLoadParams: Record<string, unknown> | null = null;
 let latestPageToLoad: string | null = null;
+let latestConsumingPath: string | null = null;
 
 function overrideWindowLocation(urlString: string) {
   const url = new URL(urlString);
@@ -50,6 +51,7 @@ vi.mock('next/dynamic', () => ({
     latestOnAuth = props.onAuth;
     latestPageToLoadParams = props.pageToLoadParams;
     latestPageToLoad = props.pageToLoad;
+    latestConsumingPath = props.consumingPath;
     return <div data-testid="sso-deck" />;
   },
 }));
@@ -150,9 +152,11 @@ describe('SsoLogin redirect handling', function ssoLoginRedirectTests() {
 
   beforeEach(function resetMocks() {
     vi.clearAllMocks();
+    overrideWindowLocation('https://airo-builder.test/');
     latestOnAuth = null;
     latestPageToLoadParams = null;
     latestPageToLoad = null;
+    latestConsumingPath = null;
     mockAuthUIState.redirectUrl = null;
     mockAuthUIState.ssoAuthReason = null;
   });
@@ -205,10 +209,11 @@ describe('SsoLogin redirect handling', function ssoLoginRedirectTests() {
     expect(latestPageToLoadParams).toEqual({
       redirect_url: 'https://airo-builder.test/develop/abc123?foo=bar'
     });
+    expect(latestConsumingPath).toBe('/develop/abc123?foo=bar');
   });
 
-  it('falls back to currentOrigin when redirectUrl validation fails', async function fallsBackOnValidationFailure() {
-    mockAuthUIState.redirectUrl = '/login';  // Auth path - should be rejected
+  it('passes relative consumingPath when redirectUrl is an absolute same-origin URL', async function passesRelativePathForAbsoluteUrl() {
+    mockAuthUIState.redirectUrl = 'https://airo-builder.test/develop/abc123?foo=bar#preview';
 
     renderWithProviders(<SsoLogin />);
 
@@ -217,14 +222,32 @@ describe('SsoLogin redirect handling', function ssoLoginRedirectTests() {
     });
 
     expect(latestPageToLoadParams).toEqual({
-      redirect_url: 'https://airo-builder.test'
+      redirect_url: 'https://airo-builder.test/develop/abc123?foo=bar#preview'
     });
-    expect(mockLogger.warn).toHaveBeenCalledWith('sso-login.pageToLoadParams.invalid-redirect', expect.any(Object));
+    expect(latestConsumingPath).toBe('/develop/abc123?foo=bar#preview');
+  });
+
+  it('falls back to current page when redirectUrl validation fails', async function fallsBackOnValidationFailure() {
+    mockAuthUIState.redirectUrl = '/login';  // Auth path - should be rejected
+    overrideWindowLocation('https://airo-builder.test/develop/current?tab=settings');
+
+    renderWithProviders(<SsoLogin />);
+
+    await waitFor(() => {
+      expect(latestPageToLoadParams).toBeTruthy();
+    });
+
+    expect(latestPageToLoadParams).toEqual({
+      redirect_url: 'https://airo-builder.test/develop/current?tab=settings'
+    });
+    expect(latestConsumingPath).toBe('/develop/current?tab=settings');
+    expect(mockLogger.warn).toHaveBeenCalledWith('sso-login.return-target.invalid-redirect', expect.any(Object));
   });
 
   it('handles malformed redirectUrl gracefully', async function handlesMalformedUrl() {
     // Use a protocol-relative URL that will fail origin check
     mockAuthUIState.redirectUrl = '//evil.com/phish';
+    overrideWindowLocation('https://airo-builder.test/develop/current');
 
     renderWithProviders(<SsoLogin />);
 
@@ -233,9 +256,27 @@ describe('SsoLogin redirect handling', function ssoLoginRedirectTests() {
     });
 
     expect(latestPageToLoadParams).toEqual({
-      redirect_url: 'https://airo-builder.test'
+      redirect_url: 'https://airo-builder.test/develop/current'
     });
-    expect(mockLogger.warn).toHaveBeenCalledWith('sso-login.pageToLoadParams.invalid-redirect', expect.any(Object));
+    expect(latestConsumingPath).toBe('/develop/current');
+    expect(mockLogger.warn).toHaveBeenCalledWith('sso-login.return-target.invalid-redirect', expect.any(Object));
+  });
+
+  it('falls back to current page when store redirectUrl is absolute cross-origin', async function fallsBackForAbsoluteCrossOriginStoreRedirect() {
+    mockAuthUIState.redirectUrl = 'https://evil.com/phish';
+    overrideWindowLocation('https://airo-builder.test/develop/current?tab=settings');
+
+    renderWithProviders(<SsoLogin />);
+
+    await waitFor(() => {
+      expect(latestPageToLoadParams).toBeTruthy();
+    });
+
+    expect(latestPageToLoadParams).toEqual({
+      redirect_url: 'https://airo-builder.test/develop/current?tab=settings'
+    });
+    expect(latestConsumingPath).toBe('/develop/current?tab=settings');
+    expect(mockLogger.warn).toHaveBeenCalledWith('sso-login.return-target.invalid-redirect', expect.any(Object));
   });
 
   it('prefers store redirectUrl over SSO redirect_url pointing to root', async function storeOverSso() {
@@ -246,6 +287,19 @@ describe('SsoLogin redirect handling', function ssoLoginRedirectTests() {
     await triggerAuth({ data: { redirect_url: 'https://airo-builder.test/' } });
 
     expect(assignSpy).toHaveBeenCalledWith('/develop/abc123');
+    expect(mockAuthUIState.closeSsoLogin).not.toHaveBeenCalled();
+    expect(mockAuthUIState.setRedirectUrl).toHaveBeenCalledWith(null);
+    assignSpy.mockRestore();
+  });
+
+  it('redirects to absolute same-origin store redirectUrl after auth', async function redirectsToAbsoluteSameOriginStoreRedirect() {
+    mockAuthUIState.redirectUrl = 'https://airo-builder.test/develop/abc123';
+    const assignSpy = vi.spyOn(window.location, 'assign').mockImplementation(() => {});
+
+    renderWithProviders(<SsoLogin />);
+    await triggerAuth({ data: { redirect_url: 'https://airo-builder.test/' } });
+
+    expect(assignSpy).toHaveBeenCalledWith('https://airo-builder.test/develop/abc123');
     expect(mockAuthUIState.closeSsoLogin).not.toHaveBeenCalled();
     expect(mockAuthUIState.setRedirectUrl).toHaveBeenCalledWith(null);
     assignSpy.mockRestore();
@@ -277,8 +331,9 @@ describe('SsoLogin redirect handling', function ssoLoginRedirectTests() {
     reloadSpy.mockRestore();
   });
 
-  it('passes only currentOrigin when redirectUrl is null', async function passesOriginOnly() {
+  it('passes current page when redirectUrl is null', async function passesCurrentPageWhenNoRedirectUrl() {
     mockAuthUIState.redirectUrl = null;
+    overrideWindowLocation('https://airo-builder.test/develop/current?tab=settings#preview');
 
     renderWithProviders(<SsoLogin />);
 
@@ -287,8 +342,9 @@ describe('SsoLogin redirect handling', function ssoLoginRedirectTests() {
     });
 
     expect(latestPageToLoadParams).toEqual({
-      redirect_url: 'https://airo-builder.test'
+      redirect_url: 'https://airo-builder.test/develop/current?tab=settings#preview'
     });
+    expect(latestConsumingPath).toBe('/develop/current?tab=settings#preview');
   });
 });
 
@@ -306,9 +362,11 @@ describe('SsoLogin authReason routing', function ssoLoginAuthReasonTests() {
 
   beforeEach(function resetMocks() {
     vi.clearAllMocks();
+    overrideWindowLocation('https://airo-builder.test/');
     latestOnAuth = null;
     latestPageToLoadParams = null;
     latestPageToLoad = null;
+    latestConsumingPath = null;
     mockAuthUIState.redirectUrl = null;
     mockAuthUIState.ssoAuthReason = null;
   });
@@ -322,8 +380,9 @@ describe('SsoLogin authReason routing', function ssoLoginAuthReasonTests() {
 
     expect(latestPageToLoad).toBe('/login');
     expect(latestPageToLoadParams).toEqual({
-      redirect_url: 'https://airo-builder.test'
+      redirect_url: 'https://airo-builder.test/'
     });
+    expect(latestConsumingPath).toBe('/');
   });
 
   it('routes to /hbi when authReason is HBI', async function routesToHbi() {
@@ -337,9 +396,10 @@ describe('SsoLogin authReason routing', function ssoLoginAuthReasonTests() {
 
     expect(latestPageToLoad).toBe('/hbi');
     expect(latestPageToLoadParams).toEqual({
-      redirect_url: 'https://airo-builder.test',
+      redirect_url: 'https://airo-builder.test/',
       auth_reason: '2'
     });
+    expect(latestConsumingPath).toBe('/');
   });
 
   it('routes to /login when authReason is LOGIN', async function routesToLoginForCode1() {
@@ -353,9 +413,10 @@ describe('SsoLogin authReason routing', function ssoLoginAuthReasonTests() {
 
     expect(latestPageToLoad).toBe('/login');
     expect(latestPageToLoadParams).toEqual({
-      redirect_url: 'https://airo-builder.test',
+      redirect_url: 'https://airo-builder.test/',
       auth_reason: '1'
     });
+    expect(latestConsumingPath).toBe('/');
   });
 
   it('routes to /login when authReason is VAT', async function routesToLoginForCode3() {
@@ -369,8 +430,9 @@ describe('SsoLogin authReason routing', function ssoLoginAuthReasonTests() {
 
     expect(latestPageToLoad).toBe('/login');
     expect(latestPageToLoadParams).toEqual({
-      redirect_url: 'https://airo-builder.test',
+      redirect_url: 'https://airo-builder.test/',
       auth_reason: '3'
     });
+    expect(latestConsumingPath).toBe('/');
   });
 });

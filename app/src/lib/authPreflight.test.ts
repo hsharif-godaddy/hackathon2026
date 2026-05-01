@@ -81,6 +81,7 @@ describe('authPreflight', () => {
   it('returns null after successful re-auth (retry fetch succeeds)', async () => {
     const { authPreflight } = await import('@/lib/gasket-config');
     const { useAuthUIStore } = await import('@/stores/useAuthUIStore');
+    window.history.pushState({}, '', '/develop/abc123?tab=settings#preview');
 
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(response401())
@@ -91,11 +92,31 @@ describe('authPreflight', () => {
 
     await vi.advanceTimersByTimeAsync(0);
     expect(useAuthUIStore.getState().isSsoLoginOpen).toBe(true);
+    expect(useAuthUIStore.getState().redirectUrl).toBe(window.location.href);
 
     useAuthUIStore.getState().closeSsoLogin('success');
 
     await expect(preflightPromise).resolves.toBeNull();
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('preserves an explicit redirectUrl when opening re-auth', async () => {
+    const { authPreflight } = await import('@/lib/gasket-config');
+    const { useAuthUIStore } = await import('@/stores/useAuthUIStore');
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response401()));
+    useAuthUIStore.getState().setRedirectUrl('/create?initialPrompt=hello&template=logo-designer');
+
+    const preflightPromise = authPreflight(3);
+
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(useAuthUIStore.getState().isSsoLoginOpen).toBe(true);
+    expect(useAuthUIStore.getState().redirectUrl).toBe('/create?initialPrompt=hello&template=logo-designer');
+
+    useAuthUIStore.getState().closeSsoLogin('dismiss');
+
+    await expect(preflightPromise).rejects.toThrow();
   });
 
   it('returns the retry response when re-auth completes but retry still fails', async () => {
@@ -159,6 +180,7 @@ describe('authPreflight', () => {
     const { useAuthUIStore } = await import('@/stores/useAuthUIStore');
 
     const openSpy = vi.spyOn(useAuthUIStore.getState(), 'openSsoLogin');
+    const setRedirectUrlSpy = vi.spyOn(useAuthUIStore.getState(), 'setRedirectUrl');
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response401()));
 
     const p1 = authPreflight(3);
@@ -167,6 +189,7 @@ describe('authPreflight', () => {
     await vi.advanceTimersByTimeAsync(0);
 
     expect(openSpy).toHaveBeenCalledTimes(1);
+    expect(setRedirectUrlSpy).toHaveBeenCalledTimes(1);
 
     useAuthUIStore.getState().closeSsoLogin('dismiss');
 

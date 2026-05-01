@@ -67,7 +67,6 @@ const SsoDeckDynamic = dynamic<SsoDeckComponentProps>(
 export default function SsoLogin() {
   const [error, setError] = useState<string | null>(null);
   const [ssoHost, setSsoHost] = useState<string | null>(null);
-  const [currentOrigin, setCurrentOrigin] = useState<string>('');
   const { isSmBreakpoint } = useBreakpoints();
 
   const { isSsoLoginOpen, isSsoLoading, closeSsoLogin, setSsoLoaded, redirectUrl, setRedirectUrl, ssoAuthReason } = useAuthUIStore();
@@ -92,10 +91,9 @@ export default function SsoLogin() {
     return (port && port !== '80' && port !== '443' && port !== '3000') ? port : '';
   });
 
-  // Determine SSO host and current origin on client-side only
+  // Determine SSO host on client-side only
   useEffect(function determineSsoHost() {
     setSsoHost(getRootDomain() || 'godaddy.com');
-    setCurrentOrigin(window.location.origin);
   }, []);
 
   const handleLoad = useCallback(function onSsoLoad() {
@@ -196,6 +194,42 @@ export default function SsoLogin() {
       return false;
     }
   }, []);
+
+  const getCurrentRelativePath = useCallback((): string => {
+    if (typeof window === 'undefined') {
+      return '/';
+    }
+
+    return `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  }, []);
+
+  const getSsoReturnTarget = useCallback((): { fullUrl: string; path: string } => {
+    if (typeof window === 'undefined') {
+      return { fullUrl: '', path: '/' };
+    }
+
+    const fallbackPath = getCurrentRelativePath();
+    const fallbackUrl = `${window.location.origin}${fallbackPath}`;
+
+    if (!redirectUrl) {
+      return { fullUrl: fallbackUrl, path: fallbackPath };
+    }
+
+    if (!isValidRedirectUrl(redirectUrl)) {
+      logger.warn('sso-login.return-target.invalid-redirect', {
+        message: 'redirectUrl failed validation, falling back to current page',
+        redirectUrl
+      });
+      return { fullUrl: fallbackUrl, path: fallbackPath };
+    }
+
+    const targetUrl = new URL(redirectUrl, window.location.origin);
+
+    return {
+      fullUrl: targetUrl.href,
+      path: `${targetUrl.pathname}${targetUrl.search}${targetUrl.hash}`
+    };
+  }, [getCurrentRelativePath, isValidRedirectUrl, redirectUrl]);
 
   /**
    * Apply redirect from store first, then fallback to query param
@@ -301,6 +335,8 @@ export default function SsoLogin() {
     pageToLoad
   });
 
+  const ssoReturnTarget = getSsoReturnTarget();
+
   // Min dimensions sized to fit SsoDeck iframe content and prevent layout shift when loading
   return (
     <Modal
@@ -329,43 +365,13 @@ export default function SsoLogin() {
               ssoApp='sso'
               ssoPort=''
               consumingApp='airo-builder'
-              consumingPath='/'
+              consumingPath={ssoReturnTarget.path}
               {...(consumingPort && { consumingPort })}
               pageToLoad={pageToLoad}
-              pageToLoadParams={(() => {
-                if (!currentOrigin) return {};
-
-                // Build full redirect URL including path from store (captured before SSO opened)
-                // This ensures SSO redirects back to the specific page (e.g., /develop/abc123)
-                // instead of just the homepage
-                let fullUrl = currentOrigin;
-
-                if (redirectUrl) {
-                  try {
-                    // Validate redirect URL before building full URL (security check)
-                    if (!isValidRedirectUrl(redirectUrl)) {
-                      logger.warn('sso-login.pageToLoadParams.invalid-redirect', {
-                        message: 'redirectUrl failed validation, falling back to currentOrigin',
-                        redirectUrl
-                      });
-                    } else {
-                      // Convert relative paths to absolute URLs using current origin as base
-                      fullUrl = new URL(redirectUrl, currentOrigin).href;
-                    }
-                  } catch (error) {
-                    logger.warn('sso-login.pageToLoadParams.url-construction-error', {
-                      message: 'Failed to construct URL from redirectUrl, falling back to currentOrigin',
-                      redirectUrl,
-                      error: error instanceof Error ? error.message : String(error)
-                    });
-                  }
-                }
-
-                return {
-                  redirect_url: fullUrl,
-                  ...(authReason != null ? { auth_reason: String(authReason) } : {})
-                };
-              })()}
+              pageToLoadParams={{
+                ...(ssoReturnTarget.fullUrl ? { redirect_url: ssoReturnTarget.fullUrl } : {}),
+                ...(authReason != null ? { auth_reason: String(authReason) } : {})
+              }}
               onAuth={handleAuth}
               onLoad={handleLoad}
               autoResize

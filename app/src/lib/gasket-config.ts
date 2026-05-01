@@ -321,6 +321,9 @@ export async function authPreflight(level: 1 | 2 | 3): Promise<Response | null> 
   if (!pendingSsoPromise) {
     const store = useAuthUIStore.getState();
     store.setSsoAuthReason(authReason);
+    if (!store.redirectUrl) {
+      store.setRedirectUrl(window.location.href);
+    }
     store.openSsoLogin();
     pendingSsoPromise = waitForSsoOutcome().finally(() => { pendingSsoPromise = null; });
   }
