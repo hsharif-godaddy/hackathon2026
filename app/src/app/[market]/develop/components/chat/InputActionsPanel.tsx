@@ -3,6 +3,7 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { useQueryClient } from '@tanstack/react-query'
 
 import { useSendUserMessage } from '@/app/[market]/develop/components/chat/ChatContext'
 import CollapsibleChatInputSection, { CollapseChevron } from '@/app/[market]/develop/components/chat/CollapsibleChatInputSection'
@@ -99,8 +100,8 @@ function InputActionsPanelLegacy() {
 
   const hasCombinedItems = nbaSuggestions.length > 0 || planPreviewItems.length > 0
 
-  // Track which list ID we last auto-revealed, so a new list triggers again
-  const revealedListIdRef = useRef<string | null>(null)
+  // Track which list ID we last auto-revealed, so a new list triggers again.
+  const revealedListIdRef = useRef<string | null>(currentList?.id ?? null)
   // Track whether the current expansion was triggered by us (auto) so we know
   // whether to auto-collapse. If the user opened it manually, leave it alone.
   const autoExpandedRef = useRef(false)
@@ -137,10 +138,16 @@ function InputActionsPanelLegacy() {
 
   // Auto-expand plan when first created (new list ID) or when an item is
   // checked off (viewState === 'update'). Auto-collapse after 5s.
+  // First null→id transition (async load on mount) sets baseline without expanding.
   const currentListId = currentList?.id ?? null
 
   useEffect(() => {
     if (!hasPlan) return
+
+    if (revealedListIdRef.current === null) {
+      revealedListIdRef.current = currentListId
+      return
+    }
 
     const isNewList = currentListId !== revealedListIdRef.current
     const isItemUpdate = viewState === 'update'
@@ -858,6 +865,7 @@ function TodoListModal({
 
 function InputActionsPanelThemeSelection({ activeColorSchemeSuggest = null }: InputActionsPanelProps) {
   const t = useTranslations()
+  const queryClient = useQueryClient()
   const sendUserMessage = useSendUserMessage()
   const nbaData = useLatestNBAs()
   const currentList = useCurrentList()
@@ -868,7 +876,16 @@ function InputActionsPanelThemeSelection({ activeColorSchemeSuggest = null }: In
   const messages = useMessages()
   const viewMode = useDevelopPageStore((state) => state.viewMode)
   const appId = useAppIdFromParams()
-  const { data: rebuildPagesData, isError: isRebuildError } = useRebuildPages(appId)
+  const mayBeRebuildApp = useMemo(() =>
+    messages.some(msg =>
+      msg.role === 'assistant' &&
+      msg.toolCalls?.some(tc =>
+        tc.name === 'rebuildPageSelector' || tc.name === 'websiteScraper'
+      )
+    ),
+    [messages]
+  )
+  const { data: rebuildPagesData, isError: isRebuildError } = useRebuildPages(appId, mayBeRebuildApp)
   if (isRebuildError) logger.warn('input-actions-panel.rebuild-pages-error', { appId })
   const hasRebuildPages = rebuildPagesData?.availablePages?.some(p => !p.isBuilt) ?? false
 
@@ -892,7 +909,8 @@ function InputActionsPanelThemeSelection({ activeColorSchemeSuggest = null }: In
   const [dismissedColorSuggestId, setDismissedColorSuggestId] = useState<string | null>(null)
   const [selectedThemeIndex, setSelectedThemeIndex] = useState<number>(0)
   const [askQuestionCompleted, setAskQuestionCompleted] = useState(false)
-  useEffect(() => { setAskQuestionCompleted(false) }, [nbaData?.toolResult])
+  const [currentAskQuestionText, setCurrentAskQuestionText] = useState<string | null>(null)
+  useEffect(() => { setAskQuestionCompleted(false); setCurrentAskQuestionText(null) }, [nbaData?.toolResult])
   const hasPlan = !!currentList && items.length > 0
   const totalItems = items.length
   const completedCount = completedItems.length
@@ -974,8 +992,8 @@ function InputActionsPanelThemeSelection({ activeColorSchemeSuggest = null }: In
     }
   }, [viewMode, palettesWithCurrent, isPreviewMode])
 
-  // Track which list ID we last auto-revealed, so a new list triggers again
-  const revealedListIdRef = useRef<string | null>(null)
+  // Track which list ID we last auto-revealed, so a new list triggers again.
+  const revealedListIdRef = useRef<string | null>(currentList?.id ?? null)
   // Track whether the current expansion was triggered by us (auto) so we know
   // whether to auto-collapse. If the user opened it manually, leave it alone.
   const autoExpandedRef = useRef(false)
@@ -1019,7 +1037,7 @@ function InputActionsPanelThemeSelection({ activeColorSchemeSuggest = null }: In
 
   // Auto-expand plan when first created (new list ID) or when an item is
   // checked off (viewState === 'update'). Auto-collapse after 5s.
-  // New list reveals are allowed even during processing.
+  // First null→id transition (async load on mount) sets baseline without expanding.
   const currentListId = currentList?.id ?? null
 
   useEffect(() => {
@@ -1032,6 +1050,11 @@ function InputActionsPanelThemeSelection({ activeColorSchemeSuggest = null }: In
         setFullPlanExpanded(false)
         autoExpandedRef.current = false
       }
+      return
+    }
+
+    if (revealedListIdRef.current === null) {
+      revealedListIdRef.current = currentListId
       return
     }
 
@@ -1103,6 +1126,7 @@ function InputActionsPanelThemeSelection({ activeColorSchemeSuggest = null }: In
   function handleSuggestionClick(suggestion: { text: string; value?: string } | string) {
     if (isProcessing || !sendUserMessage) return
     const text = typeof suggestion === 'string' ? suggestion : (suggestion.value || suggestion.text)
+    queryClient.removeQueries({ queryKey: ['next-actions', appId] })
     sendUserMessage(text, { isActionRequest: true })
   }
 
@@ -1230,15 +1254,18 @@ function InputActionsPanelThemeSelection({ activeColorSchemeSuggest = null }: In
       ? nbaData.question
       : t('builder_todo_continue_building')
 
+  const isAskQuestionActive = nbaData?.source === 'askQuestion' && !!nbaData.toolResult && !askQuestionCompleted
+
   const continueBuildingTodoBody = (
     <div className="flex flex-col gap-0.5">
-      {nbaData?.source === 'askQuestion' && nbaData.toolResult && !askQuestionCompleted ? (
+      {isAskQuestionActive ? (
         <AskQuestionToolRenderer
           toolName="askQuestion"
           toolStatus="completed"
           result={nbaData.toolResult as Record<string, unknown>}
           isLastAssistantMessage={true}
           onComplete={() => setAskQuestionCompleted(true)}
+          onQuestionChange={setCurrentAskQuestionText}
           hideQuestion={true}
         />
       ) : nbaSuggestions.length > 0 ? (
@@ -1275,7 +1302,7 @@ function InputActionsPanelThemeSelection({ activeColorSchemeSuggest = null }: In
         />
       )}
 
-      {planPreviewItems.map((item, index) => (
+      {!isAskQuestionActive && planPreviewItems.map((item, index) => (
         <PlanOptionButton
           key={item.id}
           item={item}
@@ -1285,7 +1312,7 @@ function InputActionsPanelThemeSelection({ activeColorSchemeSuggest = null }: In
         />
       ))}
 
-      {hasPlan && (
+      {!isAskQuestionActive && hasPlan && (
         <div className="mt-0.5">
           <div className="flex min-h-[22px] items-center justify-between px-1 py-0.5">
             <div className="flex items-center gap-1 min-w-0">
@@ -1398,9 +1425,9 @@ function InputActionsPanelThemeSelection({ activeColorSchemeSuggest = null }: In
                 </CollapsibleChatInputSection>
               )}
             </ThemePreviewInputPanel>
-          ) : nbaData?.source === 'askQuestion' && nbaData.toolResult && !askQuestionCompleted ? (
+          ) : isAskQuestionActive ? (
             <CollapsibleChatInputSection
-              title={nbaData.question}
+              title={<span className="text-foreground">{currentAskQuestionText || nbaData.question}</span>}
               expanded={continueBuildingExpanded}
               onExpandedChange={setContinueBuildingExpanded}
             >

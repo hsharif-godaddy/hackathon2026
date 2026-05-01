@@ -10,7 +10,7 @@ Gathering happens in two phases. Each phase is one `askQuestion` call. Both phas
 - **UP TO 4 QUESTIONS** - Ask only what's missing:
   - Company/project name (if missing) — 2-3 creative name ideas relevant to the business type, plus "I don't have a name yet" as the last option
   - Target audience — 2-3 suggestions
-  - Location (if a business or event) — 2-3 suggestions
+  - Location (if a business or event) — 2-3 suggestions tailored to the user's timezone region if available (e.g., America/Phoenix → Phoenix-area suggestions)
   - 1-2 scope/feature clarification questions — 2-3 suggestions each
 
 ✅ [Ask about name when missing with creative suggestions]

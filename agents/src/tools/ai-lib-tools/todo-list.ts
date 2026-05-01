@@ -41,8 +41,8 @@ export const todoListAITool: Tool = createTool(
     })).optional().describe('Array of updates - for update_items operation. Can update single item or multiple.')
   }),
   async (input, context) => {
-    // Get appId and sessionId from context if not provided
-    const appId = input.appId || (context?.metadata?.appId as string)
+    // Always prefer context appId (from authenticated session) over LLM-provided appId
+    const appId = (context?.metadata?.appId as string) || input.appId
     const sessionId = (context?.metadata?.sessionId as string) || (context?.sessionId as string) || ((context as any)?.socketId as string)
     
     // Pass appId and sessionId to the tool execution

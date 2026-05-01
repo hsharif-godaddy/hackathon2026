@@ -46,8 +46,9 @@ export default function AskQuestionToolRenderer({
   error,
   isLastAssistantMessage,
   onComplete,
+  onQuestionChange,
   hideQuestion,
-}: DefaultToolRendererProps & { onComplete?: () => void; hideQuestion?: boolean }) {
+}: DefaultToolRendererProps & { onComplete?: () => void; onQuestionChange?: (question: string) => void; hideQuestion?: boolean }) {
   const t = useTranslations()
   const sendUserMessage = useSendUserMessage()
   const isStreaming = useIsActivelyStreaming()
@@ -67,6 +68,13 @@ export default function AskQuestionToolRenderer({
   }, [result])
 
   const parsedQuestions = ((result as any)?.output ?? result as any)?.widgetData?.questions as unknown[] | undefined
+
+  useEffect(() => {
+    if (!onQuestionChange || toolStatus !== 'completed' || !result || isLastAssistantMessage === false) return
+    const qs = ((result as ToolResult)?.output ?? (result as ToolResult))?.widgetData?.questions
+    const q = qs?.[currentQuestionIndex]
+    if (q?.question) onQuestionChange(q.question)
+  }, [currentQuestionIndex, onQuestionChange, result, toolStatus, isLastAssistantMessage])
   const totalQuestionsForHooks = parsedQuestions?.length ?? 0
   const isSubmittedForHooks = totalQuestionsForHooks > 0 && currentQuestionIndex >= totalQuestionsForHooks
 

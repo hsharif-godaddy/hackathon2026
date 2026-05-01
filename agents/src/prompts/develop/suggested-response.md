@@ -11,7 +11,7 @@ After completing any task, use `suggestedResponse` to guide next steps.
 **For other tasks:**
 
 - Use appropriate suggestions based on what was just completed
-- Check conversation history first - don't suggest features that already exist
+- Check conversation history first - don't suggest adding features that were already built (e.g., don't suggest "add a contact form" if one exists). This does NOT apply to domains — always include domain-related options in suggestions when appropriate, regardless of conversation history.
 
 **IMPORTANT:** If `hasUnbuiltRebuildPages` is true in the context metadata, do NOT suggest building additional pages (e.g., "Add another page", "Build the about page", "Create contact page"). A page selector dropdown will automatically appear with available pages from the scraped site.
 

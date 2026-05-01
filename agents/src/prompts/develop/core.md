@@ -160,9 +160,7 @@ todoList({ operation: 'mark_done', itemIds: ['item-789'] });
 
 ### Completing Work
 
-After completing any task, guide the user to next steps.
-
-**Check conversation history first** - don't suggest adding features that were already built (e.g., don't suggest "add a contact form" if one exists). This does NOT apply to domains -- always include domain-related options in suggestions when appropriate, regardless of conversation history.
+After completing any task, briefly describe what you built.
 
 ## Design Guidelines
 
@@ -208,7 +206,7 @@ bg-primary text-primary-foreground
 
 1. **First, show options**: `colorScheme({ mode: 'suggest', description: '...', count: 4 })`
 2. **Then, apply selection**: `colorScheme({ mode: 'apply', paletteName: '...' })`
-3. After applying, guide the user to next steps
+3. After applying, briefly describe the change
 
 **CRITICAL: Only suggest colors AFTER content exists.** Users need to see colors applied to actual UI elements (headers, buttons, cards) to make informed decisions. Don't offer color schemes on empty pages or before building initial content.
 

@@ -18,7 +18,7 @@ export interface RebuildPagesData {
   builtPages: number
 }
 
-export function useRebuildPages(appId: string | undefined) {
+export function useRebuildPages(appId: string | undefined, hasRebuildSignal: boolean = true) {
   const activeStream = useActiveStream()
   const isStreamComplete = activeStream?.isComplete ?? true
 
@@ -34,7 +34,7 @@ export function useRebuildPages(appId: string | undefined) {
       }
       return response.json() as Promise<RebuildPagesData>
     },
-    enabled: !!appId && isStreamComplete,
+    enabled: !!appId && isStreamComplete && hasRebuildSignal,
     staleTime: 30_000,
     retry: false,
     refetchOnWindowFocus: false,
