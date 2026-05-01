@@ -47,12 +47,21 @@ export function createProductAndBudget(suffix, creditsTotal = '999999999.000000'
   return { productKey, budgetId: body.budgetId };
 }
 
-// Run one full session lifecycle: open → N spend lines → report.
-// Returns { ok: bool, sessionId, timings: { open, spend[], report } }.
-export function runSessionLifecycle(budgetId, spendLines = 3, costPerLine = '0.050000') {
-  const result = { ok: false, sessionId: null, timings: { open: 0, spend: [], report: 0 } };
+function reportLineCount(raw) {
+  if (raw === undefined) return 24;
+  const k = Math.floor(Number(raw));
+  if (!Number.isFinite(k) || k < 1) return 1;
+  return Math.min(200, k);
+}
 
-  // 1. Open session
+// Run one full session lifecycle: open → N spend lines → multi-line report → GET report.
+// reportItemLines: how many report rows (allocations) to create; exercises GetSessionReport batching.
+// Override per run: k6 --env REPORT_ITEM_LINES=48 ...
+// Returns { ok, sessionId, timings: { open, spend[], report, reportGet } }.
+export function runSessionLifecycle(budgetId, spendLines = 3, costPerLine = '0.050000', reportItemLines) {
+  const result = { ok: false, sessionId: null, timings: { open: 0, spend: [], report: 0, reportGet: 0 } };
+  const n = reportLineCount(__ENV.REPORT_ITEM_LINES !== undefined ? __ENV.REPORT_ITEM_LINES : reportItemLines);
+
   const openRes = http.post(
     `${BASE}/api/v1/sessions`,
     JSON.stringify({ budgetId, metadata: { source: 'k6-load-test' } }),
@@ -67,7 +76,6 @@ export function runSessionLifecycle(budgetId, spendLines = 3, costPerLine = '0.0
   const session = JSON.parse(openRes.body);
   result.sessionId = session.sessionId;
 
-  // 2. Append spend lines
   let totalCost = 0;
   for (let i = 0; i < spendLines; i++) {
     const spendRes = http.patch(
@@ -87,16 +95,18 @@ export function runSessionLifecycle(budgetId, spendLines = 3, costPerLine = '0.0
     totalCost += parseFloat(costPerLine);
   }
 
-  // 3. Close with report — budgetCost covers what credits can absorb
-  const budgetCost = (totalCost * 0.8).toFixed(6); // 80% to budget
-  const productCost = (totalCost * 0.2).toFixed(6); // 20% overage
+  const tb = totalCost * 0.8;
+  const tp = totalCost * 0.2;
+  const perB = (tb / n).toFixed(6);
+  const perP = (tp / n).toFixed(6);
+  const reportItems = [];
+  for (let i = 0; i < n; i++) {
+    reportItems.push({ budgetCost: perB, productCost: perP, label: `k6-r${i}` });
+  }
+
   const reportRes = http.post(
     `${BASE}/api/v1/sessions/${session.sessionId}/reports`,
-    JSON.stringify({
-      reportItems: [
-        { budgetCost, productCost, label: 'k6-load-test' },
-      ],
-    }),
+    JSON.stringify({ reportItems }),
     {
       headers: headers(),
       tags: { endpoint: 'session_report' },
@@ -105,8 +115,30 @@ export function runSessionLifecycle(budgetId, spendLines = 3, costPerLine = '0.0
   );
   result.timings.report = reportRes.timings.duration;
 
-  // 201 = created, 400 INSUFFICIENT_CREDITS = expected at high load
-  result.ok = reportRes.status === 201 || reportRes.status === 400;
+  if (reportRes.status === 400) {
+    result.ok = true;
+    return result;
+  }
+  if (reportRes.status !== 201) {
+    return result;
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(reportRes.body);
+  } catch {
+    return result;
+  }
+  const reportId = parsed && parsed.reportId;
+  if (!reportId) {
+    return result;
+  }
+
+  const getRes = http.get(
+    `${BASE}/api/v1/sessions/${session.sessionId}/reports/${reportId}`,
+    { headers: headers(), tags: { endpoint: 'session_report_get' } },
+  );
+  result.timings.reportGet = getRes.timings.duration;
+  result.ok = getRes.status === 200;
   return result;
 }
-

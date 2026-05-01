@@ -14,6 +14,7 @@ const sessionFail = new Counter('sessions_failed');
 const openLatency = new Trend('session_open_duration', true);
 const spendLatency = new Trend('session_spend_duration', true);
 const reportLatency = new Trend('session_report_duration', true);
+const reportGetLatency = new Trend('session_report_get_duration', true);
 
 export const options = {
   scenarios: {
@@ -68,6 +69,7 @@ export default function (data) {
   if (result.timings.open > 0) openLatency.add(result.timings.open);
   result.timings.spend.filter((d) => d > 0).forEach((d) => spendLatency.add(d));
   if (result.timings.report > 0) reportLatency.add(result.timings.report);
+  if (result.timings.reportGet > 0) reportGetLatency.add(result.timings.reportGet);
 
   if (result.ok) {
     sessionOk.add(1);

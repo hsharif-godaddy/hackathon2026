@@ -38,6 +38,15 @@ api() {
 echo "e2e-local: health ${BASE}/health"
 api GET /health >/dev/null
 
+echo "e2e-local: reset webhook sink (clear stale __e2e/last)"
+set +e
+reset_http=$(curl -sS -o /dev/null -w "%{http_code}" -X POST "${SINK}/__e2e/reset")
+reset_ec=$?
+set -e
+if [[ "$reset_ec" != 0 ]] || [[ "$reset_http" != "204" ]]; then
+  echo "e2e-local: warning: POST ${SINK}/__e2e/reset failed (exit=${reset_ec} http=${reset_http}); stale sink body can confuse the poll — rebuild webhook-sink if 404" >&2
+fi
+
 PRODUCT_KEY="e2e-$(date +%s)-$$"
 echo "e2e-local: POST /api/v1/products ${PRODUCT_KEY}"
 api POST /api/v1/products "{\"productKey\":\"${PRODUCT_KEY}\"}" >/dev/null
@@ -66,8 +75,28 @@ REP_JSON=$(api POST "/api/v1/sessions/${SESSION_ID}/reports" \
 REPORT_ID=$(echo "$REP_JSON" | jq -r .reportId)
 echo "e2e-local: reportId=${REPORT_ID}"
 
-# Async webhook delivery
-sleep 2
+# Async webhook delivery: poll until this run's reportId appears (non-empty body alone
+# is not enough — a prior e2e run can leave stale data in the sink).
+# Default wait 90s: server WORKER_INTERVAL is often 1m, so the next outbox drain can be
+# almost a full interval after POST /reports (see docs/local-e2e.md).
+echo "e2e-local: wait for webhook sink (poll __e2e/last until reportId matches)"
+WEBHOOK_WAIT_SEC="${E2E_WEBHOOK_WAIT_SEC:-90}"
+BODY=""
+deadline=$((SECONDS + WEBHOOK_WAIT_SEC))
+while [[ $SECONDS -lt $deadline ]]; do
+  if ! LAST=$(curl -sS "${SINK}/__e2e/last"); then
+    sleep 0.5
+    continue
+  fi
+  BODY=$(echo "$LAST" | jq -r .body)
+  if [[ -n "$BODY" ]]; then
+    RID=$(echo "$BODY" | jq -r '.data.reportId // empty')
+    if [[ "$RID" == "$REPORT_ID" ]]; then
+      break
+    fi
+  fi
+  sleep 0.5
+done
 
 echo "e2e-local: GET report (verify API)"
 GOT=$(api GET "/api/v1/sessions/${SESSION_ID}/reports/${REPORT_ID}")
@@ -88,10 +117,17 @@ echo "$LIST" | jq .
 [[ "$(echo "$LIST" | jq '.reports[0] | has("reportItems")')" == "false" ]]
 
 echo "e2e-local: fetch webhook sink last POST"
-LAST=$(curl -sS "${SINK}/__e2e/last")
+if ! LAST=$(curl -sS "${SINK}/__e2e/last"); then
+  echo "e2e-local: curl ${SINK}/__e2e/last failed" >&2
+  exit 1
+fi
 echo "$LAST" | jq .
 BODY=$(echo "$LAST" | jq -r .body)
-[[ -n "$BODY" ]]
+if [[ -z "$BODY" ]] || [[ "$(echo "$BODY" | jq -r '.data.reportId // empty')" != "$REPORT_ID" ]]; then
+  echo "e2e-local: webhook for reportId=${REPORT_ID} not seen after ${WEBHOOK_WAIT_SEC}s." >&2
+  echo "e2e-local: check WORKER_ENABLED=true, WORKER_INTERVAL (default 1m — allow wait or set e.g. WORKER_INTERVAL=5s on the server), sink reachable at ${WEBHOOK_TARGET}, and rebuild webhook-sink for POST ${SINK}/__e2e/reset" >&2
+  exit 1
+fi
 [[ "$(echo "$BODY" | jq -r .eventType)" == "report.created" ]]
 [[ "$(echo "$BODY" | jq -r .productKey)" == "${PRODUCT_KEY}" ]]
 [[ "$(echo "$BODY" | jq -r .data.reportId)" == "${REPORT_ID}" ]]

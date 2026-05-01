@@ -70,7 +70,9 @@ jq -s --arg scenario "$SCENARIO" '
       sessions_completed:       (pick(["metrics","sessions_completed","count"]) | median),
       sessions_failed:          (pick(["metrics","sessions_failed","count"])    | median),
       session_spend_p95:        (pick(["metrics","session_spend_duration","p(95)"]) | median),
-      session_spend_p99:        (pick(["metrics","session_spend_duration","p(99)"]) | median)
+      session_spend_p99:        (pick(["metrics","session_spend_duration","p(99)"]) | median),
+      session_report_get_p95:   (pick(["metrics","session_report_get_duration","p(95)"]) | median),
+      session_report_get_p99:   (pick(["metrics","session_report_get_duration","p(99)"]) | median)
     }
   }
 ' "${tmpdir}"/run-*.json

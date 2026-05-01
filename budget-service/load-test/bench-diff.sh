@@ -65,7 +65,9 @@ if ! jq -n \
       ["sessions completed",            $base.metrics.sessions_completed,     $cand.metrics.sessions_completed,     false],
       ["sessions failed",               $base.metrics.sessions_failed,        $cand.metrics.sessions_failed,        true],
       ["session_spend p95 (ms)",        $base.metrics.session_spend_p95,      $cand.metrics.session_spend_p95,      true],
-      ["session_spend p99 (ms)",        $base.metrics.session_spend_p99,      $cand.metrics.session_spend_p99,      true]
+      ["session_spend p99 (ms)",        $base.metrics.session_spend_p99,      $cand.metrics.session_spend_p99,      true],
+      ["session_report_get p95 (ms)",   $base.metrics.session_report_get_p95, $cand.metrics.session_report_get_p95, true],
+      ["session_report_get p99 (ms)",   $base.metrics.session_report_get_p99, $cand.metrics.session_report_get_p99, true]
     ] | map({
       metric: .[0],
       baseline: .[1],

@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"strconv"
@@ -325,13 +326,17 @@ func applyDueResetsForBudgetTx(ctx context.Context, tx *sql.Tx, budgetID string)
 // this replaces row-level FOR UPDATE on budget_items, whose lock count grew with
 // item count and whose window drove the prior two-phase optimistic scheme.
 //
-// Keyspace: hashtext() returns int4, so unrelated budgets can collide and serialize
-// spuriously. At low-thousands of concurrently-locked budgets the birthday probability
-// is ~1e-4 and growing quadratically; collisions are throughput hiccups, not correctness
-// bugs. If tenant count grows, switch to the two-key pg_advisory_xact_lock(key1, key2)
-// variant for 64-bit effective keyspace.
+// Two int4 keys from the budget UUID (first 8 bytes) give ~64 bits of keyspace for
+// pg_advisory_xact_lock, avoiding int32 hashtext collisions between unrelated budgets.
 func lockBudgetTx(ctx context.Context, tx *sql.Tx, budgetID string) error {
-	_, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtext($1::text))`, budgetID)
+	u, err := uuid.Parse(budgetID)
+	if err != nil {
+		return err
+	}
+	b := u[:]
+	k1 := int32(binary.BigEndian.Uint32(b[0:4]))
+	k2 := int32(binary.BigEndian.Uint32(b[4:8]))
+	_, err = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock($1::integer, $2::integer)`, k1, k2)
 	return err
 }
 
@@ -1167,28 +1172,39 @@ func (s *Store) CreateSessionReport(ctx context.Context, sessionID string, items
 			return "", "", err
 		}
 
-		// Track allocations for webhook payload
 		allocations := make([]ReportItemAllocationPayload, 0, len(chunks))
-
-		for j := range chunks {
-			takeStr := credits.Format(chunks[j].credits)
-			if _, err = tx.ExecContext(ctx, `
+		if len(chunks) > 0 {
+			allocPlaceholders := make([]string, 0, len(chunks))
+			allocArgs := make([]any, 0, 3*len(chunks))
+			ledPlaceholders := make([]string, 0, len(chunks))
+			ledArgs := make([]any, 0, 4*len(chunks))
+			a := 1
+			b := 1
+			for j := range chunks {
+				takeStr := credits.Format(chunks[j].credits)
+				allocations = append(allocations, ReportItemAllocationPayload{
+					BudgetItemID: chunks[j].budgetItemID,
+					CreditsUsed:  takeStr,
+				})
+				allocPlaceholders = append(allocPlaceholders, fmt.Sprintf("($%d,$%d,$%d)", a, a+1, a+2))
+				allocArgs = append(allocArgs, itemID, chunks[j].budgetItemID, takeStr)
+				a += 3
+				ledPlaceholders = append(ledPlaceholders, fmt.Sprintf("($%d,$%d,'session_spend',$%d,$%d)", b, b+1, b+2, b+3))
+				ledArgs = append(ledArgs, uuid.NewString(), chunks[j].budgetItemID, takeStr, itemID)
+				b += 4
+			}
+			_, err = tx.ExecContext(ctx, `
 				INSERT INTO budget_session_report_item_allocations (report_item_id, budget_item_id, credits_used)
-				VALUES ($1, $2, $3)
-			`, itemID, chunks[j].budgetItemID, takeStr); err != nil {
+				VALUES `+strings.Join(allocPlaceholders, ","), allocArgs...)
+			if err != nil {
 				return "", "", err
 			}
-			if _, err = tx.ExecContext(ctx, `
+			_, err = tx.ExecContext(ctx, `
 				INSERT INTO budget_item_credit_ledger (id, budget_item_id, entry_kind, credits_delta, report_item_id)
-				VALUES ($1, $2, 'session_spend', $3, $4)
-			`, uuid.NewString(), chunks[j].budgetItemID, takeStr, itemID); err != nil {
+				VALUES `+strings.Join(ledPlaceholders, ","), ledArgs...)
+			if err != nil {
 				return "", "", err
 			}
-
-			allocations = append(allocations, ReportItemAllocationPayload{
-				BudgetItemID: chunks[j].budgetItemID,
-				CreditsUsed:  takeStr,
-			})
 		}
 
 		reportItemsPayload = append(reportItemsPayload, ReportItemPayload{
@@ -1354,30 +1370,38 @@ func (s *Store) GetSessionReport(ctx context.Context, sessionID, reportID string
 		return nil, err
 	}
 
-	for i := range pending {
-		arows, err := s.db.QueryContext(ctx, `
-			SELECT budget_item_id, credits_used
+	if len(pending) > 0 {
+		itemIDs := make([]string, len(pending))
+		indexByReportItem := make(map[string]int, len(pending))
+		for i := range pending {
+			itemIDs[i] = pending[i].ReportItemID
+			indexByReportItem[pending[i].ReportItemID] = i
+		}
+		allocRows, err := s.db.QueryContext(ctx, `
+			SELECT report_item_id, budget_item_id, credits_used
 			FROM budget_session_report_item_allocations
-			WHERE report_item_id = $1
-			ORDER BY budget_item_id
-		`, pending[i].ReportItemID)
+			WHERE report_item_id = ANY($1::uuid[])
+			ORDER BY report_item_id, budget_item_id
+		`, pq.Array(itemIDs))
 		if err != nil {
 			return nil, err
 		}
-		for arows.Next() {
+		for allocRows.Next() {
+			var rid string
 			var a ReportAllocationOut
 			var cu decimal.Decimal
-			if err := arows.Scan(&a.BudgetItemID, &cu); err != nil {
-				_ = arows.Close()
+			if err := allocRows.Scan(&rid, &a.BudgetItemID, &cu); err != nil {
+				_ = allocRows.Close()
 				return nil, err
 			}
 			a.CreditsUsed = credits.Format(cu)
-			pending[i].BudgetItems = append(pending[i].BudgetItems, a)
+			idx := indexByReportItem[rid]
+			pending[idx].BudgetItems = append(pending[idx].BudgetItems, a)
 		}
-		if err := arows.Close(); err != nil {
+		if err := allocRows.Close(); err != nil {
 			return nil, err
 		}
-		if err := arows.Err(); err != nil {
+		if err := allocRows.Err(); err != nil {
 			return nil, err
 		}
 	}

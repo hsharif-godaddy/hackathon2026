@@ -7,7 +7,7 @@ Tools in this module for **local and CI-style integration only**. They are not u
 | Piece                  | Purpose                                                                                                                                     |
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | Postgres               | `make up` — same as everyday dev                                                                                                            |
-| `webhook-sink`         | Docker service (compose **profile `e2e`**) — receives POST webhooks; `GET /__e2e/last` returns the last body as JSON                        |
+| `webhook-sink`         | Docker service (compose **profile `e2e`**) — receives POST webhooks; `GET /__e2e/last` returns the last body as JSON; `POST /__e2e/reset` clears it (used by `e2e-local.sh`) |
 | `scripts/e2e-local.sh` | Scripted flow: product → budget → session → PATCH spend → register webhook → report → assert API + sink                                     |
 | `scripts/e2e-pr.sh`    | PR/CI curl suite (no report/webhook delivery); run in GitHub Actions [budget-service-ci.yml](../../.github/workflows/budget-service-ci.yml) |
 | `cmd/dev-budget-ui`    | Browser UI + reverse proxy; see [Dev UI (`dev-budget-ui`)](#dev-ui-dev-budget-ui)                                                           |
@@ -16,11 +16,12 @@ Tools in this module for **local and CI-style integration only**. They are not u
 
 1. **Database:** `make up` (wait for healthy Postgres).
 2. **Webhook sink:** `make e2e-up` (starts `webhook-sink` with profile `e2e`).
-3. **Budget API:** in another shell, with `DATABASE_URL` set and **`LOCAL_AUTH_DISABLE=true`**:
+3. **Budget API:** in another shell, with `DATABASE_URL` set and **`LOCAL_AUTH_DISABLE=true`**. For **`make e2e-local`** (webhook delivery), use a short worker interval so the outbox drains before the script times out, e.g. `WORKER_INTERVAL=5s` (default is `1m`, while the script polls up to **90s** by default via `E2E_WEBHOOK_WAIT_SEC`):
 
    ```bash
    export DATABASE_URL='postgres://budget:budget@localhost:5432/budget_test?sslmode=disable'
    export LOCAL_AUTH_DISABLE=true
+   export WORKER_INTERVAL=5s
    go run ./cmd/server
    ```
 
@@ -115,6 +116,6 @@ E2E-relevant targets only; full target list in [`Makefile`](../Makefile).
 ## Troubleshooting
 
 - **Missing tables / schema drift:** Start the budget service with `DATABASE_URL` (golang-migrate applies embedded SQL), or run integration tests / `migrate` CLI against `migrations/`. Or reset the volume with `make down -v` then `make up` and re-seed if needed.
-- **Webhook assertion fails:** Increase the sleep in `scripts/e2e-local.sh` if the host is slow; delivery runs in a background goroutine after `POST .../reports`.
+- **Webhook assertion fails:** Default `WORKER_INTERVAL` is **1m** — the worker may not drain the outbox until the next tick. Use **`WORKER_INTERVAL=5s`** on the budget server for local e2e, or raise **`E2E_WEBHOOK_WAIT_SEC`** (default **90**). Ensure **`WORKER_ENABLED=true`**. Rebuild `webhook-sink` (`make e2e-up --build`) so `POST /__e2e/reset` exists.
 - **`ERR_TOO_MANY_REDIRECTS` on :9980:** Usually `BUDGET_SERVICE_URL` points at the dev UI (same port as `DEV_BUDGET_UI_ADDR`). The dev UI now exits at startup if it detects that; fix env so the budget service runs on another port (e.g. 8080) and `BUDGET_SERVICE_URL=http://127.0.0.1:8080`.
 - **HTML `403 Forbidden` (nginx) against a remote API while `curl $BUDGET_SERVICE_URL/health` returns JSON:** Older dev UI proxies forwarded the browser `Host` (`127.0.0.1:9980`). Current `dev-budget-ui` sets outbound `Host` from `BUDGET_SERVICE_URL`. Rebuild/re-run the latest `cmd/dev-budget-ui`; otherwise check edge allowlists and VPN.

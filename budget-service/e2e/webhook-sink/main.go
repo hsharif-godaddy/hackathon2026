@@ -28,11 +28,16 @@ func main() {
 }
 
 func router(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path == "/__e2e/last" {
+	switch r.URL.Path {
+	case "/__e2e/last":
 		lastHandler(w, r)
 		return
+	case "/__e2e/reset":
+		resetHandler(w, r)
+		return
+	default:
+		webhookHandler(w, r)
 	}
-	webhookHandler(w, r)
 }
 
 func lastHandler(w http.ResponseWriter, r *http.Request) {
@@ -45,6 +50,17 @@ func lastHandler(w http.ResponseWriter, r *http.Request) {
 	mu.Unlock()
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]string{"body": string(b)})
+}
+
+func resetHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	mu.Lock()
+	lastBody = nil
+	mu.Unlock()
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func webhookHandler(w http.ResponseWriter, r *http.Request) {

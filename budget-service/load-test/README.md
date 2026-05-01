@@ -36,9 +36,9 @@ UPDATEs the same `budget_items` rows, so contention isn't eliminated — just re
 
 - Creates 1 product + 1 budget with a large credit pool
 - Ramps VUs from 2 → 5 → 10 → 20 → 25 against that single budget
-- Each VU: open session → 3 spend lines → close with report
+- Each VU: open session → 3 spend lines → **multi-line** report (default 24 `reportItems`, split of the same total cost) → **GET** that report by id
 
-**What to watch:** p95/p99 latency on PATCH (spend), 409 conflict/retry rate, Postgres lock waits.
+**What to watch:** `session_spend_duration` and `session_report_get_duration` in the k6 summary (PATCH vs GET detail), 409 conflict/retry rate, Postgres lock waits. `http_req_duration` blends all endpoints; use the custom Trends to isolate POST report vs GET report.
 
 ### 2. Multi-Budget Throughput (`throughput.js`)
 
@@ -48,7 +48,7 @@ saturation and overall query throughput.
 
 - `setup()` pre-creates one product + budget per max VU
 - Starts at 5 VUs and ramps through 25 → 50 → 100 → 200 VUs
-- Each VU: open session → 3 spend lines → report, on its own budget
+- Each VU: open session → 3 spend lines → multi-line report → GET report, on its own budget
 
 **What to watch:** Connection pool exhaustion (503s), p99 latency, Postgres `pg_stat_activity`.
 
@@ -59,16 +59,17 @@ Uses a fixed arrival rate rather than ramping VUs.
 
 - Pre-creates a pool of budgets
 - Sends 30 iterations/sec for 3 minutes
-- Full lifecycle per iteration
+- Full lifecycle per iteration (including GET report after a successful POST)
 
 **What to watch:** Sustained p99 latency, error rate stability, ledger table growth.
 
 ## Environment Variables
 
-| Variable     | Default                 | Description                                    |
-| ------------ | ----------------------- | ---------------------------------------------- |
-| `BASE_URL`   | `http://localhost:8080` | Budget service URL                             |
-| `AUTH_TOKEN` | _(empty)_               | Bearer token (skip if LOCAL_AUTH_DISABLE=true) |
+| Variable            | Default                 | Description                                                               |
+| ------------------- | ----------------------- | ------------------------------------------------------------------------- |
+| `BASE_URL`          | `http://localhost:8080` | Budget service URL                                                        |
+| `AUTH_TOKEN`        | _(empty)_               | Bearer token (skip if LOCAL_AUTH_DISABLE=true)                            |
+| `REPORT_ITEM_LINES` | _(unset)_               | Override number of `reportItems` per close (1–200; default 24 when unset) |
 
 Example with auth:
 
@@ -112,9 +113,15 @@ http_req_failed .......: 2.1%  ✗ 84  ✓ 3916
 
 **Healthy targets:**
 
-- p95 < 500ms, p99 < 2s
+- p95 < 500ms, p99 < 2s (aggregate `http_req_duration`)
 - Error rate < 5%
 - No 500s (409 CONFLICT from optimistic retries and ALREADY_RECONCILED are expected at high concurrency)
+
+**Will this PR show up in load tests?** Only where the scenario hits the changed path:
+
+- **`session_report_get_duration`** — In CI, k6 scripts come from the **PR checkout** while `bench-run.sh` hits the **Docker image** (baseline = `origin/main` binary, candidate = PR). So both runs already include GET + multi-line close; **`bench-diff` compares main vs PR server** for the same traffic shape. Expect the clearest delta on `session_report_get p95/p99` when `REPORT_ITEM_LINES` is high (e.g. 80).
+- **`session_report_duration` (POST)** — batched inserts may shave a little latency; often noise vs DB jitter on a laptop runner.
+- **Worker / parallel webhooks / outbox batching** — not exercised when `WORKER_ENABLED=false` (recommended for API-focused runs).
 
 **Red flags:**
 

@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -20,7 +21,10 @@ import (
 	"github.com/gdcorp-partners/airo-app-builder/budget-service/internal/store"
 )
 
-const webhookURLMaxLen = 2048
+const (
+	webhookURLMaxLen             = 2048
+	maxParallelWebhookDeliveries = 8
+)
 
 // Supported webhook event types.
 var webhookEventTypes = map[string]bool{
@@ -258,10 +262,25 @@ func (s *Server) DeliverEventWebhooks(ctx context.Context, eventType, productKey
 		return fmt.Errorf("marshal payload: %w", err)
 	}
 
+	errs := make([]error, len(hooks))
+	sem := make(chan struct{}, maxParallelWebhookDeliveries)
+	var wg sync.WaitGroup
+	for i := range hooks {
+		sem <- struct{}{}
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			errs[idx] = s.deliverWebhook(ctx, hooks[idx], body)
+		}(i)
+	}
+	wg.Wait()
+
 	var firstErr error
 	failCount := 0
 	for i := range hooks {
-		if err := s.deliverWebhook(ctx, hooks[i], body); err != nil {
+		if errs[i] != nil {
+			err := errs[i]
 			logURL := webhookURLForLog(hooks[i].URL)
 			if logURL == "" {
 				logURL = "(unparseable)"

@@ -38,3 +38,7 @@ flowchart TB
 - [Threat model](threat-model.md)
 - [Endpoint data flow](endpoint-data-flow.md)
 - [Database schema summary](database-schema.md)
+
+## Future work (performance)
+
+- **Session append scaling:** `AppendSessionItems` replays all prior session lines on each invocation to rebuild consumption state (see `internal/store/budget.go`). Removing that replay without changing credit semantics requires a dedicated design (e.g. persisted snapshot or SQL-side allocation), property tests, and comparison against the current implementation before ship.

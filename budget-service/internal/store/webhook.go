@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 )
 
 const listWebhooksRowLimit = 10000
@@ -233,6 +234,55 @@ func (s *Store) DrainWebhookOutbox(ctx context.Context, batchSize int) ([]Outbox
 	return events, nil
 }
 
+// OutboxDeliveryFailure pairs an outbox row id with a delivery or parse error message.
+type OutboxDeliveryFailure struct {
+	EventID string
+	ErrMsg  string
+}
+
+// MarkOutboxEventsCompleted marks multiple events delivered in one round-trip.
+func (s *Store) MarkOutboxEventsCompleted(ctx context.Context, eventIDs []string) error {
+	if len(eventIDs) == 0 {
+		return nil
+	}
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE webhook_outbox
+		SET status = 'completed', processed_at = now()
+		WHERE id = ANY($1::uuid[])
+	`, pq.Array(eventIDs))
+	return err
+}
+
+// MarkOutboxEventsFailed updates each matching outbox row using the paired err_msg as
+// last_error. When attempt_count < maxAttempts: status pending, next_attempt_at =
+// now() + (2^attempt_count) minutes. When attempt_count >= maxAttempts: status failed,
+// processed_at = now(), next_attempt_at unchanged.
+func (s *Store) MarkOutboxEventsFailed(ctx context.Context, failures []OutboxDeliveryFailure, maxAttempts int) error {
+	if len(failures) == 0 {
+		return nil
+	}
+	ids := make([]string, len(failures))
+	msgs := make([]string, len(failures))
+	for i := range failures {
+		ids[i] = failures[i].EventID
+		msgs[i] = failures[i].ErrMsg
+	}
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE webhook_outbox o
+		SET
+			status = CASE WHEN o.attempt_count >= $1 THEN 'failed' ELSE 'pending' END,
+			last_error = v.err_msg,
+			next_attempt_at = CASE
+				WHEN o.attempt_count >= $1 THEN o.next_attempt_at
+				ELSE now() + (power(2, o.attempt_count) * interval '1 minute')
+			END,
+			processed_at = CASE WHEN o.attempt_count >= $1 THEN now() ELSE o.processed_at END
+		FROM unnest($2::uuid[], $3::text[]) AS v(id, err_msg)
+		WHERE o.id = v.id
+	`, maxAttempts, pq.Array(ids), pq.Array(msgs))
+	return err
+}
+
 // MarkOutboxEventCompleted marks an event as successfully delivered.
 func (s *Store) MarkOutboxEventCompleted(ctx context.Context, eventID string) error {
 	_, err := s.db.ExecContext(ctx, `
@@ -244,7 +294,7 @@ func (s *Store) MarkOutboxEventCompleted(ctx context.Context, eventID string) er
 }
 
 // MarkOutboxEventFailed marks an event as failed with exponential backoff or final failure.
-// Backoff: 2^(attempt-1) minutes (2m, 4m, 8m, 16m, 32m, ...)
+// Backoff when attempt_count < maxAttempts: now() + (2^attempt_count) minutes (2m, 4m, 8m, …).
 func (s *Store) MarkOutboxEventFailed(ctx context.Context, eventID string, errMsg string, maxAttempts int) error {
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE webhook_outbox

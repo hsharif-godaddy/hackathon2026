@@ -177,6 +177,64 @@ func TestDrainOutboxMarksCompletedOnSuccess(t *testing.T) {
 	}
 }
 
+type seqErrWebhookDeliverer struct {
+	mu  sync.Mutex
+	n   int
+	err error
+}
+
+func (s *seqErrWebhookDeliverer) DeliverEventWebhooks(ctx context.Context, eventType, productKey string, data any) error {
+	s.mu.Lock()
+	s.n++
+	n := s.n
+	s.mu.Unlock()
+	if n == 2 {
+		return s.err
+	}
+	return nil
+}
+
+func TestDrainOutboxBatchMarksCompletedAndFailedSeparately(t *testing.T) {
+	t.Parallel()
+
+	payload := map[string]any{"budgetItemId": "item-1"}
+	payloadJSON, _ := json.Marshal(payload)
+
+	events := []store.OutboxEvent{
+		{
+			ID:             "evt-ok",
+			EventType:      "budget-item.reset",
+			ProductKey:     "product-a",
+			Payload:        payloadJSON,
+			AttemptCount:   1,
+			IdempotencyKey: "budget-item.reset:ok:2026-04-15T00:00:00Z",
+		},
+		{
+			ID:             "evt-bad",
+			EventType:      "budget-item.reset",
+			ProductKey:     "product-a",
+			Payload:        payloadJSON,
+			AttemptCount:   1,
+			IdempotencyKey: "budget-item.reset:bad:2026-04-15T00:00:00Z",
+		},
+	}
+
+	webhooks := &seqErrWebhookDeliverer{err: errors.New("second delivery")}
+	mockStore := &mockOutboxStore{drainEvents: events}
+	w := New(mockStore, webhooks, time.Minute, 500, 100, 7, 7)
+	w.drainOutbox(context.Background())
+
+	mockStore.mu.Lock()
+	defer mockStore.mu.Unlock()
+
+	if len(mockStore.completedEvents) != 1 || mockStore.completedEvents[0] != "evt-ok" {
+		t.Fatalf("completedEvents = %v want [evt-ok]", mockStore.completedEvents)
+	}
+	if len(mockStore.failedEvents) != 1 || mockStore.failedEvents[0].ID != "evt-bad" {
+		t.Fatalf("failedEvents = %v want one evt-bad", mockStore.failedEvents)
+	}
+}
+
 func TestProcessResetsWithOutbox(t *testing.T) {
 	t.Parallel()
 
@@ -361,10 +419,26 @@ func (m *mockOutboxStore) MarkOutboxEventCompleted(ctx context.Context, eventID 
 	return nil
 }
 
+func (m *mockOutboxStore) MarkOutboxEventsCompleted(ctx context.Context, eventIDs []string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.completedEvents = append(m.completedEvents, eventIDs...)
+	return nil
+}
+
 func (m *mockOutboxStore) MarkOutboxEventFailed(ctx context.Context, eventID string, errMsg string, maxAttempts int) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.failedEvents = append(m.failedEvents, failedEvent{ID: eventID, Err: errMsg})
+	return nil
+}
+
+func (m *mockOutboxStore) MarkOutboxEventsFailed(ctx context.Context, failures []store.OutboxDeliveryFailure, maxAttempts int) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i := range failures {
+		m.failedEvents = append(m.failedEvents, failedEvent{ID: failures[i].EventID, Err: failures[i].ErrMsg})
+	}
 	return nil
 }
 

@@ -23,6 +23,8 @@ type StoreOperations interface {
 	DrainWebhookOutbox(ctx context.Context, batchSize int) ([]store.OutboxEvent, error)
 	MarkOutboxEventCompleted(ctx context.Context, eventID string) error
 	MarkOutboxEventFailed(ctx context.Context, eventID string, errMsg string, maxAttempts int) error
+	MarkOutboxEventsCompleted(ctx context.Context, eventIDs []string) error
+	MarkOutboxEventsFailed(ctx context.Context, failures []store.OutboxDeliveryFailure, maxAttempts int) error
 	CleanupCompletedOutboxEvents(ctx context.Context, retentionDays int) (int64, error)
 }
 
@@ -115,16 +117,13 @@ func (w *Worker) drainOutbox(ctx context.Context) {
 
 	slog.Info("worker.outbox.draining", "count", len(events))
 
-	delivered := 0
-	failed := 0
+	var completedIDs []string
+	var failures []store.OutboxDeliveryFailure
 	for _, event := range events {
 		var payload map[string]any
 		if err := json.Unmarshal(event.Payload, &payload); err != nil {
 			slog.Error("worker.outbox.unmarshal.failed", "eventId", event.ID, "error", err)
-			if markErr := w.store.MarkOutboxEventFailed(ctx, event.ID, err.Error(), w.outboxMaxAttempts); markErr != nil {
-				slog.Error("worker.outbox.mark.failed", "eventId", event.ID, "error", markErr)
-			}
-			failed++
+			failures = append(failures, store.OutboxDeliveryFailure{EventID: event.ID, ErrMsg: err.Error()})
 			continue
 		}
 
@@ -132,20 +131,34 @@ func (w *Worker) drainOutbox(ctx context.Context) {
 		if err != nil {
 			slog.Warn("worker.outbox.delivery.failed", "eventId", event.ID, "eventType", event.EventType,
 				"attempt", event.AttemptCount, "error", err)
-			if markErr := w.store.MarkOutboxEventFailed(ctx, event.ID, err.Error(), w.outboxMaxAttempts); markErr != nil {
-				slog.Error("worker.outbox.mark.failed", "eventId", event.ID, "error", markErr)
-			}
-			failed++
+			failures = append(failures, store.OutboxDeliveryFailure{EventID: event.ID, ErrMsg: err.Error()})
 			continue
 		}
 
-		if markErr := w.store.MarkOutboxEventCompleted(ctx, event.ID); markErr != nil {
-			slog.Error("worker.outbox.mark.completed.failed", "eventId", event.ID, "error", markErr)
-		}
-		delivered++
+		completedIDs = append(completedIDs, event.ID)
 	}
 
-	slog.Info("worker.outbox.drained", "delivered", delivered, "failed", failed)
+	if len(completedIDs) > 0 {
+		if markErr := w.store.MarkOutboxEventsCompleted(ctx, completedIDs); markErr != nil {
+			logArgs := []any{"count", len(completedIDs), "eventIds", outboxEventIDsForLog(completedIDs), "error", markErr}
+			if len(completedIDs) > outboxIDsLogCap {
+				logArgs = append(logArgs, "eventIdsTotal", len(completedIDs))
+			}
+			slog.Error("worker.outbox.mark.completed.failed", logArgs...)
+		}
+	}
+	if len(failures) > 0 {
+		if markErr := w.store.MarkOutboxEventsFailed(ctx, failures, w.outboxMaxAttempts); markErr != nil {
+			ids := outboxFailureIDsForLog(failures)
+			logArgs := []any{"count", len(failures), "eventIds", ids, "error", markErr}
+			if len(failures) > outboxIDsLogCap {
+				logArgs = append(logArgs, "eventIdsTotal", len(failures))
+			}
+			slog.Error("worker.outbox.mark.failed", logArgs...)
+		}
+	}
+
+	slog.Info("worker.outbox.drained", "delivered", len(completedIDs), "failed", len(failures))
 }
 
 func (w *Worker) maybeCleanupOutbox(ctx context.Context) {
@@ -163,4 +176,24 @@ func (w *Worker) maybeCleanupOutbox(ctx context.Context) {
 	if deleted > 0 {
 		slog.Info("worker.outbox.cleanup.completed", "deleted", deleted)
 	}
+}
+
+const outboxIDsLogCap = 50
+
+func outboxEventIDsForLog(ids []string) []string {
+	if len(ids) <= outboxIDsLogCap {
+		return ids
+	}
+	return ids[:outboxIDsLogCap]
+}
+
+func outboxFailureIDsForLog(failures []store.OutboxDeliveryFailure) []string {
+	out := make([]string, len(failures))
+	for i := range failures {
+		out[i] = failures[i].EventID
+	}
+	if len(out) <= outboxIDsLogCap {
+		return out
+	}
+	return out[:outboxIDsLogCap]
 }
