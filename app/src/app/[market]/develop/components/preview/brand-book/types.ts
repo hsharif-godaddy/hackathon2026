@@ -7,11 +7,8 @@ export interface BrandStyle {
   primaryFg: string | undefined;
 }
 
-export type SuggestPromptFn = (prompt: string) => void;
-
 export interface SectionThemeProps {
   palette?: BrandDataPalette;
-  inverted?: boolean;
 }
 
 export interface BrandBookViewProps {

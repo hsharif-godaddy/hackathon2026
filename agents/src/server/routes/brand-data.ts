@@ -92,7 +92,7 @@ router.get('/apps/:id/brand-data', validateAppOwnership, async (req: Request, re
 
     const brandData: BrandData = {
       version: 2,
-      brandName: app?.name || undefined,
+      brandName: (app?.name && app.name !== app.initialPrompt) ? app.name : undefined,
       palette: paletteResult.exists ? paletteResult.value as BrandDataPalette : undefined,
       typography: typographyResult.exists ? typographyResult.value as BrandDataTypography : undefined,
       // Prefer structured identity data, fall back to parsed markdown

@@ -69,7 +69,7 @@ test.describe('Brand Book Tab', () => {
     console.log('Step 2: Switching to Brand Book tab...');
 
     // Brand Book tab is a radio button in the header ButtonGroup
-    const brandBookTab = page.getByRole('radio', { name: /brand\s*book/i });
+    const brandBookTab = page.getByRole('radio', { name: /logo.*brand/i });
 
     // If the flag is not enabled, the tab won't exist — skip gracefully
     const tabVisible = await brandBookTab.isVisible().catch(() => false);

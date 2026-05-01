@@ -1,29 +1,11 @@
 'use client';
 
-import { useCallback, useEffect, useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import Intents, { toCssCustomProperty } from '@ux/intents';
 
 import type { BrandDataPalette, BrandDataTypography } from '@/hooks/useBrandData';
-import { useSetInputValue } from '@/stores/useStreamingConversationStore';
 import { extractVarName,fontFamily, getContrastColor } from './helpers';
 import type { BrandStyle } from './types';
-
-export function useSuggestPrompt() {
-  const setInputValue = useSetInputValue();
-  return useCallback(
-    (prompt: string) => {
-      setInputValue(prompt);
-      requestAnimationFrame(() => {
-        (
-          document.getElementById(
-            'chat-input-textarea',
-          ) as HTMLTextAreaElement | null
-        )?.focus();
-      });
-    },
-    [setInputValue],
-  );
-}
 
 /** Loads Google Fonts for the brand's heading and body families. */
 export function useGoogleFonts(typo: BrandDataTypography | undefined) {

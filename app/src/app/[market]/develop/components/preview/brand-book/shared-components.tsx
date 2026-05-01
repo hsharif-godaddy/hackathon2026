@@ -1,12 +1,11 @@
 'use client';
 
 import Box from '@ux/box';
-import Button from '@ux/button';
 import text from '@ux/text';
 
 import type { BrandDataPalette } from '@/hooks/useBrandData';
 import styles from './brand-book.module.css';
-import type { BrandStyle, SuggestPromptFn } from './types';
+import type { BrandStyle } from './types';
 
 export function Quote({ brand, text: textContent, size = 'md' }: { brand: BrandStyle | undefined; text: string; size?: 'sm' | 'md' | 'lg' }) {
   const fontSize = size === 'lg' ? '1.5rem' : size === 'sm' ? undefined : '1.1rem';
@@ -17,55 +16,28 @@ export function Quote({ brand, text: textContent, size = 'md' }: { brand: BrandS
 
 export function SectionWrapper({
   children,
-  inverted,
   palette,
 }: {
   children: React.ReactNode;
-  inverted?: boolean;
   palette?: BrandDataPalette;
 }) {
   const sectionStyle: React.CSSProperties | undefined =
     palette?.background && palette?.foreground
-      ? inverted
-        ? { backgroundColor: palette.foreground, color: palette.background }
-        : { backgroundColor: palette.background, color: palette.foreground }
+      ? { backgroundColor: palette.background, color: palette.foreground }
       : undefined;
 
   return (
-    <Box
-      className={styles.section}
-      style={sectionStyle}
-    >
-      <Box className={styles.sectionInner}>
-        {children}
+    <>
+      <hr className={styles.sectionDivider} />
+      <Box
+        className={styles.section}
+        style={sectionStyle}
+      >
+        <Box className={styles.sectionInner}>
+          {children}
+        </Box>
       </Box>
-    </Box>
-  );
-}
-
-export function SectionPlaceholder({
-  description,
-  prompt,
-  onSuggestPrompt,
-}: {
-  description: string;
-  prompt: string;
-  onSuggestPrompt: SuggestPromptFn;
-}) {
-  return (
-    <Box
-      orientation="vertical"
-      gap="md"
-      blockPadding="lg"
-      inlinePadding="lg"
-      inlineAlignChildren="center"
-      className={styles.softCard}
-    >
-      <text.p as="caption" style={{ opacity: 0.6 }}>{description}</text.p>
-      <Button design="secondary" onClick={() => onSuggestPrompt(prompt)}>
-        Generate this section
-      </Button>
-    </Box>
+    </>
   );
 }
 
@@ -95,7 +67,7 @@ export function SectionHeader({
       </text.h4>
       <text.h2
         as="heading"
-        size={1}
+        size={0}
         className={styles.sectionHeader}
         text={title}
       />

@@ -163,18 +163,22 @@ const DEFAULT_LOGO_SLOT_PATH = 'logo/primary';
 const LAYOUT_URL_GETTERS: Record<LogoLayout, {
   transparent: (l: ProcessedLogo) => string | undefined;
   solid: (l: ProcessedLogo) => string | undefined;
+  reversed: (l: ProcessedLogo) => string | undefined;
 }> = {
   square: {
     transparent: (l) => l.transparentUrl,
     solid: (l) => l.solidUrl,
+    reversed: (l) => l.reversedUrl,
   },
   horizontal: {
     transparent: (l) => l.horizontalTransparentUrl,
     solid: (l) => l.horizontalSolidUrl,
+    reversed: (l) => l.horizontalReversedUrl,
   },
   vertical: {
     transparent: (l) => l.verticalTransparentUrl,
     solid: (l) => l.verticalSolidUrl,
+    reversed: (l) => l.verticalReversedUrl,
   },
 };
 
@@ -253,11 +257,14 @@ async function saveLogosToSlots(
     if (transparentUrls.length === 0) continue;
 
     const solidUrlMap: Record<string, string> = {};
+    const reversedUrlMap: Record<string, string> = {};
     const logoSourceMap: Record<string, { sessionId: string; logoId: string }> = {};
     for (const logo of logos) {
       const tUrl = getters.transparent(logo);
       const sUrl = getters.solid(logo);
+      const rUrl = getters.reversed(logo);
       if (tUrl && sUrl) solidUrlMap[tUrl] = sUrl;
+      if (tUrl && rUrl) reversedUrlMap[tUrl] = rUrl;
       if (tUrl) logoSourceMap[tUrl] = { sessionId, logoId: logo.id };
     }
 
@@ -266,6 +273,7 @@ async function saveLogosToSlots(
     const existingSlot = existingResult.success ? existingResult.slot : undefined;
     let mergedAlternatives = transparentUrls.slice(1);
     let mergedSolidUrlMap = { ...solidUrlMap };
+    let mergedReversedUrlMap = { ...reversedUrlMap };
     let mergedLogoSourceMap = { ...logoSourceMap };
 
     if (existingSlot) {
@@ -274,6 +282,7 @@ async function saveLogosToSlots(
       const oldUrls = existingUrls.filter(url => !newUrlSet.has(url));
       mergedAlternatives = [...mergedAlternatives, ...oldUrls];
       mergedSolidUrlMap = { ...(existingSlot.solidUrlMap || {}), ...solidUrlMap };
+      mergedReversedUrlMap = { ...(existingSlot.reversedUrlMap || {}), ...reversedUrlMap };
       mergedLogoSourceMap = { ...(existingSlot.logoSourceMap || {}), ...logoSourceMap };
     }
 
@@ -285,6 +294,7 @@ async function saveLogosToSlots(
       searchQuery: existingSlot?.searchQuery || searchQuery,
       alternatives: mergedAlternatives,
       solidUrlMap: mergedSolidUrlMap,
+      reversedUrlMap: mergedReversedUrlMap,
       logoSourceMap: mergedLogoSourceMap,
       userModified: false,
       createdAt: existingSlot?.createdAt || now,

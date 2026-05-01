@@ -137,7 +137,7 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
                   <ButtonGroup.Item
                     value={ViewMode.BRAND}
                     icon={<ColorPaletteIcon className="size-2.5" />}
-                    label="Brand Book"
+                    label="Logo & Brand"
                   />
                 )}
                 <ButtonGroup.Item

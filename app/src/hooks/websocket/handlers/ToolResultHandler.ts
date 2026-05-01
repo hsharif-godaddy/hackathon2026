@@ -187,6 +187,23 @@ export class ToolResultHandler implements MessageHandler {
           detail: { appId: context.currentAppId }
         }))
       }
+
+      // Dispatch logo-generated event when logo generation completes
+      const isLogoTool = (tool.name === 'media-logo__generate_logo' || tool.name === 'media-logo__edit_logo') && !hasError
+      if (isLogoTool) {
+        try {
+          const result = toolCall.result
+          const resultObj = typeof result === 'string' ? JSON.parse(result) : result
+          const logos = resultObj?.structuredContent?.logos || resultObj?.logos
+          if (logos?.[0]) {
+            window.dispatchEvent(new CustomEvent('logo-generated', { detail: logos[0] }))
+          } else {
+            logger.warn('websocket.logoTool.noLogosInResult', { appId: context.currentAppId, toolName: tool.name })
+          }
+        } catch (error) {
+          logger.warn('websocket.logoTool.resultParseFailed', { appId: context.currentAppId, toolName: tool.name, error: error instanceof Error ? error.message : String(error) })
+        }
+      }
     }
   }
 }
