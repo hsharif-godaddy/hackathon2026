@@ -43,9 +43,9 @@ on:
         default: true
         type: boolean
       score-threshold:
-        description: "Minimum score to pass (0.0-1.0)"
+        description: "Minimum overall score to pass (0-100)"
         required: false
-        default: "0.7"
+        default: "70"
         type: string
 
   # Allow calling from other workflows (e.g., promote-artifact.yml)
@@ -82,10 +82,10 @@ on:
         type: boolean
         default: true
       score-threshold:
-        description: "Minimum score to pass (0.0-1.0)"
+        description: "Minimum overall score to pass (0-100)"
         required: false
         type: string
-        default: "0.7"
+        default: "70"
 
 permissions:
   contents: read
@@ -150,21 +150,21 @@ jobs:
 
       - name: Load Synthetic Users
         id: load-users
-        uses: gdcorp-dna/synthia/actions/load-synthetic-users@3c5919648f9a5571a921deed1724c05f40887f74 # release-1.0.1
+        uses: gdcorp-dna/synthia/actions/load-synthetic-users@84b518097ac3f42f1e3b604b7c2c4344e2f70452 # release-1.0.2
         with:
           config-path: goarena/synthetic-users
           synthia-env: ${{ inputs.synthia-env }}
 
       - name: Load Evaluators
         id: load-evaluators
-        uses: gdcorp-dna/synthia/actions/load-evaluators@3c5919648f9a5571a921deed1724c05f40887f74 # release-1.0.1
+        uses: gdcorp-dna/synthia/actions/load-evaluators@84b518097ac3f42f1e3b604b7c2c4344e2f70452 # release-1.0.2
         with:
           config-path: goarena/evaluators
           synthia-env: ${{ inputs.synthia-env }}
 
       - name: Load Scenarios
         id: load-scenarios
-        uses: gdcorp-dna/synthia/actions/load-scenarios@3c5919648f9a5571a921deed1724c05f40887f74 # release-1.0.1
+        uses: gdcorp-dna/synthia/actions/load-scenarios@84b518097ac3f42f1e3b604b7c2c4344e2f70452 # release-1.0.2
         with:
           config-path: goarena/scenarios
           agent-name: ${{ inputs.agent-name }}
@@ -172,7 +172,7 @@ jobs:
 
       - name: Run Browser Scenarios
         id: synthia
-        uses: gdcorp-dna/synthia/actions/run-scenarios@3c5919648f9a5571a921deed1724c05f40887f74 # release-1.0.1
+        uses: gdcorp-dna/synthia/actions/run-scenarios@84b518097ac3f42f1e3b604b7c2c4344e2f70452 # release-1.0.2
         with:
           config-path: ${{ inputs.config-file }}
           agent-name: ${{ inputs.agent-name }}

@@ -97,7 +97,7 @@ pipeline:
             - "Verify that you can add a credit pack"
             - "Verify any new features in the release notes are working"
 
-        # --- Simulation evaluation gate — fails test stage (blocking prod) if score < 0.7 ---
+        # --- Simulation evaluation gate — fails test stage (blocking prod) if score < 70 (0-100 scale) ---
         - id: simulation-eval-test
           name: Simulation Evaluation
           group: validate
@@ -106,7 +106,7 @@ pipeline:
           ref: "{{branch}}"
           inputs:
             fail-on-threshold: "true"
-            score-threshold: "0.7"
+            score-threshold: "70"
 
     prod:
       requires: test

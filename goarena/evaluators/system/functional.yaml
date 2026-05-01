@@ -28,18 +28,19 @@ projectId: "8606"
 # - Links work (no 404s, no broken hrefs)
 # - Images load correctly (no broken images)
 # - No JavaScript console errors
-# - Forms are submittable
-# - Navigation elements function
-# - Interactive elements respond to clicks
+# - Network resources load successfully
+# - Visible error text in the DOM
 # - Page loads without critical errors
 
-# Scoring:
+# Scoring (mirrors FunctionalEvaluator.calculateScore):
 # - Starts at 100
-# - Deducts points for issues:
-#   - Broken links: -20 points per broken link (capped)
-#   - Broken images: -15 points per broken image (capped)
-#   - JS errors: -10 points per error type
-#   - Form issues: -10 points per issue
+# - Deducts points for issues (per-category caps shown):
+#   - JS errors: -20 per error (cap -60)
+#   - Broken links: -10 per link (cap -30)
+#   - Broken images: -5 per image (cap -20)
+#   - Failed resources: -5 per resource (cap -20)
+#   - Visible error text: -10 per occurrence (no cap)
+# - Clamped to [0, 100]
 
 # Example usage in scenario.evaluators:
 # evaluators:
