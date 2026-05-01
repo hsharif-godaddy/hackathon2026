@@ -49,6 +49,7 @@ export default function BackupsPanel() {
       moduleName={moduleName}
       version={version}
       componentProps={componentProps}
+      authLevel={3}
     />
   );
 }
