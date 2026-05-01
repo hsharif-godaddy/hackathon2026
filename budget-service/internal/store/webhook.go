@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
@@ -23,6 +22,7 @@ type WebhookRow struct {
 	URL        string
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
+	DeletedAt  *time.Time
 }
 
 func (s *Store) CreateWebhook(ctx context.Context, webhookID, eventType, productKey, targetURL string) error {
@@ -76,43 +76,50 @@ func (s *Store) DeleteWebhook(ctx context.Context, webhookID string) error {
 	return nil
 }
 
-func (s *Store) GetWebhook(ctx context.Context, webhookID string) (*WebhookRow, error) {
+func (s *Store) GetWebhook(ctx context.Context, webhookID string, includeDeleted bool) (*WebhookRow, error) {
 	if _, err := uuid.Parse(webhookID); err != nil {
 		return nil, err
 	}
 	var r WebhookRow
+	var del sql.NullTime
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id, event_type, product_key, url, created_at, updated_at
-		FROM webhooks WHERE id = $1 AND deleted_at IS NULL
-	`, webhookID).Scan(&r.ID, &r.EventType, &r.ProductKey, &r.URL, &r.CreatedAt, &r.UpdatedAt)
+		SELECT id, event_type, product_key, url, created_at, updated_at, deleted_at
+		FROM webhooks
+		WHERE id = $1 AND ($2 OR deleted_at IS NULL)
+	`, webhookID, includeDeleted).Scan(&r.ID, &r.EventType, &r.ProductKey, &r.URL, &r.CreatedAt, &r.UpdatedAt, &del)
 	if err != nil {
 		return nil, mapNotFound(err)
+	}
+	if del.Valid {
+		t := del.Time
+		r.DeletedAt = &t
 	}
 	return &r, nil
 }
 
-// ListWebhooks returns active webhooks, optionally filtered by productKey (trimmed; empty means all).
+// ListWebhooks returns webhooks, optionally filtered by productKey (trimmed; empty means all).
+// When includeDeleted is false, only rows with deleted_at IS NULL are returned.
 // Rows are capped at listWebhooksRowLimit (simple guard until pagination exists).
-func (s *Store) ListWebhooks(ctx context.Context, productKey string) ([]WebhookRow, error) {
+func (s *Store) ListWebhooks(ctx context.Context, productKey string, includeDeleted bool) ([]WebhookRow, error) {
 	pk := strings.TrimSpace(productKey)
 	var rows *sql.Rows
 	var err error
 	if pk == "" {
-		rows, err = s.db.QueryContext(ctx, fmt.Sprintf(`
-			SELECT id, event_type, product_key, url, created_at, updated_at
+		rows, err = s.db.QueryContext(ctx, `
+			SELECT id, event_type, product_key, url, created_at, updated_at, deleted_at
 			FROM webhooks
-			WHERE deleted_at IS NULL
+			WHERE ($1 OR deleted_at IS NULL)
 			ORDER BY created_at, id
-			LIMIT %d
-		`, listWebhooksRowLimit))
+			LIMIT $2
+		`, includeDeleted, listWebhooksRowLimit)
 	} else {
-		rows, err = s.db.QueryContext(ctx, fmt.Sprintf(`
-			SELECT id, event_type, product_key, url, created_at, updated_at
+		rows, err = s.db.QueryContext(ctx, `
+			SELECT id, event_type, product_key, url, created_at, updated_at, deleted_at
 			FROM webhooks
-			WHERE deleted_at IS NULL AND product_key = $1
+			WHERE ($1 OR deleted_at IS NULL) AND product_key = $2
 			ORDER BY created_at, id
-			LIMIT %d
-		`, listWebhooksRowLimit), pk)
+			LIMIT $3
+		`, includeDeleted, pk, listWebhooksRowLimit)
 	}
 	if err != nil {
 		return nil, err
@@ -122,8 +129,13 @@ func (s *Store) ListWebhooks(ctx context.Context, productKey string) ([]WebhookR
 	var out []WebhookRow
 	for rows.Next() {
 		var r WebhookRow
-		if err := rows.Scan(&r.ID, &r.EventType, &r.ProductKey, &r.URL, &r.CreatedAt, &r.UpdatedAt); err != nil {
+		var del sql.NullTime
+		if err := rows.Scan(&r.ID, &r.EventType, &r.ProductKey, &r.URL, &r.CreatedAt, &r.UpdatedAt, &del); err != nil {
 			return nil, err
+		}
+		if del.Valid {
+			t := del.Time
+			r.DeletedAt = &t
 		}
 		out = append(out, r)
 	}
@@ -131,6 +143,7 @@ func (s *Store) ListWebhooks(ctx context.Context, productKey string) ([]WebhookR
 }
 
 // ListWebhooksForEvent returns active webhooks for productKey subscribed to the given event type.
+// WebhookRow.DeletedAt is always nil: the query requires deleted_at IS NULL (delivery targets active rows only).
 func (s *Store) ListWebhooksForEvent(ctx context.Context, productKey, eventType string) ([]WebhookRow, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, event_type, product_key, url, created_at, updated_at

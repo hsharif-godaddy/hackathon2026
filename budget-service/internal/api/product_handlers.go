@@ -16,12 +16,16 @@ type postProductBody struct {
 	ProductKey string `json:"productKey"`
 }
 
-func productToResponse(r store.ProductRow) map[string]string {
-	return map[string]string{
+func productToResponse(r store.ProductRow) map[string]any {
+	out := map[string]any{
 		"productKey": r.ProductKey,
 		"createdAt":  r.CreatedAt.UTC().Format(time.RFC3339Nano),
 		"updatedAt":  r.UpdatedAt.UTC().Format(time.RFC3339Nano),
 	}
+	if r.DeletedAt != nil {
+		out["deletedAt"] = r.DeletedAt.UTC().Format(time.RFC3339Nano)
+	}
+	return out
 }
 
 func writeProductStoreError(w http.ResponseWriter, op string, err error) {
@@ -41,15 +45,19 @@ func writeProductStoreError(w http.ResponseWriter, op string, err error) {
 }
 
 func (s *Server) getProducts(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	if !rejectUnknownQueryKeys(w, q, allowedGetProductsQueryKeys) {
+		return
+	}
 	if !s.requireStore(w) {
 		return
 	}
-	rows, err := s.Store.ListProducts(r.Context())
+	rows, err := s.Store.ListProducts(r.Context(), queryIncludeDeleted(q))
 	if err != nil {
 		writeProductStoreError(w, "product.list", err)
 		return
 	}
-	out := make([]map[string]string, 0, len(rows))
+	out := make([]map[string]any, 0, len(rows))
 	for i := range rows {
 		out = append(out, productToResponse(rows[i]))
 	}

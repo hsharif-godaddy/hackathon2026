@@ -229,7 +229,7 @@ func (s *Server) hydrateMissingBudgetItemUpdateFields(ctx context.Context, budge
 		return nil
 	}
 
-	existing, err := s.Store.GetBudgetItem(ctx, budgetID, budgetItemID)
+	existing, err := s.Store.GetBudgetItem(ctx, budgetID, budgetItemID, false)
 	if err != nil {
 		return err
 	}
@@ -513,7 +513,7 @@ func (s *Server) postBudget(w http.ResponseWriter, r *http.Request) {
 		writeBudgetStoreError(w, "budget.post_budget", err)
 		return
 	}
-	d, err := s.Store.GetBudget(r.Context(), budgetID)
+	d, err := s.Store.GetBudget(r.Context(), budgetID, false)
 	if err != nil {
 		slog.Error("budget.post_budget_get", "error", err)
 		writeJSON(w, http.StatusCreated, map[string]string{"budgetId": budgetID})
@@ -528,11 +528,15 @@ func (s *Server) getBudget(w http.ResponseWriter, r *http.Request) {
 	if !requireUUIDParam(w, budgetID, "budgetId") {
 		return
 	}
+	q := r.URL.Query()
+	if !rejectUnknownQueryKeys(w, q, allowedGetBudgetQueryKeys) {
+		return
+	}
 	if !s.requireStore(w) {
 		return
 	}
 
-	d, err := s.Store.GetBudget(r.Context(), budgetID)
+	d, err := s.Store.GetBudget(r.Context(), budgetID, queryIncludeDeleted(q))
 	if err != nil {
 		writeBudgetStoreError(w, "budget.get_budget", err)
 		return
@@ -714,7 +718,7 @@ func (s *Server) patchBudget(w http.ResponseWriter, r *http.Request) {
 		writeBudgetStoreError(w, "budget.patch_budget", err)
 		return
 	}
-	d, err := s.Store.GetBudget(r.Context(), budgetID)
+	d, err := s.Store.GetBudget(r.Context(), budgetID, false)
 	if err != nil {
 		slog.Error("budget.patch_budget_get", "error", err)
 		writeJSON(w, http.StatusOK, map[string]string{"budgetId": budgetID})
@@ -767,7 +771,7 @@ func (s *Server) postBudgetItem(w http.ResponseWriter, r *http.Request) {
 		writeBudgetStoreError(w, "budget.post_budget_item", err)
 		return
 	}
-	created, err := s.Store.GetBudgetItem(r.Context(), budgetID, budgetItemID)
+	created, err := s.Store.GetBudgetItem(r.Context(), budgetID, budgetItemID, false)
 	if err != nil {
 		slog.Error("budget.post_budget_item_get", "error", err)
 		writeJSON(w, http.StatusCreated, map[string]string{"budgetId": budgetID, "budgetItemId": budgetItemID})
@@ -785,10 +789,14 @@ func (s *Server) getBudgetItem(w http.ResponseWriter, r *http.Request) {
 	if !requireUUIDParam(w, budgetID, "budgetId") || !requireUUIDParam(w, budgetItemID, "budgetItemId") {
 		return
 	}
+	q := r.URL.Query()
+	if !rejectUnknownQueryKeys(w, q, allowedGetBudgetItemQueryKeys) {
+		return
+	}
 	if !s.requireStore(w) {
 		return
 	}
-	row, err := s.Store.GetBudgetItem(r.Context(), budgetID, budgetItemID)
+	row, err := s.Store.GetBudgetItem(r.Context(), budgetID, budgetItemID, queryIncludeDeleted(q))
 	if err != nil {
 		writeBudgetStoreError(w, "budget.get_budget_item", err)
 		return
@@ -867,7 +875,7 @@ func (s *Server) patchBudgetItem(w http.ResponseWriter, r *http.Request) {
 		writeBudgetStoreError(w, "budget.patch_budget_item", err)
 		return
 	}
-	updated, err := s.Store.GetBudgetItem(r.Context(), budgetID, budgetItemID)
+	updated, err := s.Store.GetBudgetItem(r.Context(), budgetID, budgetItemID, false)
 	if err != nil {
 		slog.Error("budget.patch_budget_item_get", "error", err)
 		writeJSON(w, http.StatusOK, map[string]string{"budgetId": budgetID, "budgetItemId": budgetItemID})

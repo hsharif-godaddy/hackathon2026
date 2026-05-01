@@ -32,7 +32,7 @@ func TestGetSessionReportAllocationsSingleQueryParity(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	budget, err := st.GetBudget(ctx, budgetID)
+	budget, err := st.GetBudget(ctx, budgetID, false)
 	if err != nil {
 		t.Fatal(err)
 	}

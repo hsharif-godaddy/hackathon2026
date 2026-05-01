@@ -128,6 +128,71 @@ func TestPostProductAndGetProducts(t *testing.T) {
 	}
 }
 
+func TestGetProductsRejectsUnknownQueryKey(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	rec := httptest.NewRecorder()
+	s.getProducts(rec, httptest.NewRequest(http.MethodGet, "/api/v1/products?includedeleted=true", nil))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d want 400 body %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestGetProductsIncludeDeletedListsSoftDeletedWithDeletedAt(t *testing.T) {
+	ctx := context.Background()
+	st := testStore(t)
+	s := &Server{Store: st}
+	key := "test-prod-del-" + uuid.NewString()
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/products", strings.NewReader(`{"productKey":"`+key+`"}`))
+	req.Header.Set("Content-Type", "application/json")
+	s.postProduct(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("post status %d, body %s", rec.Code, rec.Body.String())
+	}
+	if err := st.SoftDeleteProduct(ctx, key); err != nil {
+		t.Fatalf("SoftDeleteProduct: %v", err)
+	}
+
+	recA := httptest.NewRecorder()
+	s.getProducts(recA, httptest.NewRequest(http.MethodGet, "/api/v1/products", nil))
+	if recA.Code != http.StatusOK {
+		t.Fatalf("list active: %d", recA.Code)
+	}
+	var active []map[string]any
+	if err := json.Unmarshal(recA.Body.Bytes(), &active); err != nil {
+		t.Fatal(err)
+	}
+	for i := range active {
+		if active[i]["productKey"] == key {
+			t.Fatalf("soft-deleted product should not appear without includeDeleted")
+		}
+	}
+
+	recB := httptest.NewRecorder()
+	s.getProducts(recB, httptest.NewRequest(http.MethodGet, "/api/v1/products?includeDeleted=true", nil))
+	if recB.Code != http.StatusOK {
+		t.Fatalf("list includeDeleted: %d %s", recB.Code, recB.Body.String())
+	}
+	var all []map[string]any
+	if err := json.Unmarshal(recB.Body.Bytes(), &all); err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for i := range all {
+		if all[i]["productKey"] == key {
+			if all[i]["deletedAt"] == nil {
+				t.Fatalf("expected deletedAt for soft-deleted row: %v", all[i])
+			}
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("soft-deleted product missing from includeDeleted list: %s", recB.Body.String())
+	}
+}
+
 func TestPostProductDuplicateConflict(t *testing.T) {
 	st := testStore(t)
 	s := &Server{Store: st}

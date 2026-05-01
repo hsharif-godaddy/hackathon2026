@@ -26,8 +26,31 @@ var allowedGetReportsAggregateQueryKeys = map[string]struct{}{
 	"to":         {},
 }
 
+var allowedGetWebhookQueryKeys = map[string]struct{}{
+	"includeDeleted": {},
+}
+
 var allowedGetWebhooksQueryKeys = map[string]struct{}{
-	"productKey": {},
+	"includeDeleted": {},
+	"productKey":     {},
+}
+
+var allowedGetBudgetItemQueryKeys = map[string]struct{}{
+	"includeDeleted": {},
+}
+
+var allowedGetBudgetQueryKeys = map[string]struct{}{
+	"includeDeleted": {},
+}
+
+var allowedGetProductsQueryKeys = map[string]struct{}{
+	"includeDeleted": {},
+}
+
+// queryIncludeDeleted is true when includeDeleted is "1" or "true" (case-insensitive).
+func queryIncludeDeleted(q url.Values) bool {
+	v := strings.TrimSpace(q.Get("includeDeleted"))
+	return v == "1" || strings.EqualFold(v, "true")
 }
 
 func rejectUnknownQueryKeys(w http.ResponseWriter, q url.Values, allowed map[string]struct{}) bool {

@@ -559,6 +559,72 @@ func TestGetReportsRejectsUnknownQueryParameter(t *testing.T) {
 	}
 }
 
+func TestGetBudgetRejectsUnknownQueryParameter(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	bid := "00000000-0000-4000-8000-000000000001"
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/budgets/"+bid+"?includedeleted=true", nil)
+	req = mux.SetURLVars(req, map[string]string{"budgetId": bid})
+	rec := httptest.NewRecorder()
+	s.getBudget(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d want 400 body %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "unknown query parameters") {
+		t.Fatalf("expected unknown query parameters, got %s", rec.Body.String())
+	}
+}
+
+func TestGetBudgetAllowsIncludeDeletedQuery(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	bid := "00000000-0000-4000-8000-000000000001"
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/budgets/"+bid+"?includeDeleted=true", nil)
+	req = mux.SetURLVars(req, map[string]string{"budgetId": bid})
+	rec := httptest.NewRecorder()
+	s.getBudget(rec, req)
+	if rec.Code == http.StatusBadRequest && strings.Contains(rec.Body.String(), "unknown query parameters") {
+		t.Fatalf("allowlist rejected includeDeleted: %s", rec.Body.String())
+	}
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("want 503 without store, got %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestGetBudgetItemRejectsUnknownQueryParameter(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	bid := "00000000-0000-4000-8000-000000000001"
+	iid := "00000000-0000-4000-8000-000000000002"
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/budgets/"+bid+"/budget-items/"+iid+"?typo=1", nil)
+	req = mux.SetURLVars(req, map[string]string{"budgetId": bid, "budgetItemId": iid})
+	rec := httptest.NewRecorder()
+	s.getBudgetItem(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d want 400 body %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "unknown query parameters") {
+		t.Fatalf("expected unknown query parameters, got %s", rec.Body.String())
+	}
+}
+
+func TestGetBudgetItemAllowsIncludeDeletedQuery(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	bid := "00000000-0000-4000-8000-000000000001"
+	iid := "00000000-0000-4000-8000-000000000002"
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/budgets/"+bid+"/budget-items/"+iid+"?includeDeleted=true", nil)
+	req = mux.SetURLVars(req, map[string]string{"budgetId": bid, "budgetItemId": iid})
+	rec := httptest.NewRecorder()
+	s.getBudgetItem(rec, req)
+	if rec.Code == http.StatusBadRequest && strings.Contains(rec.Body.String(), "unknown query parameters") {
+		t.Fatalf("allowlist rejected includeDeleted: %s", rec.Body.String())
+	}
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("want 503 without store, got %d %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestGetReportsAllowsAllDocumentedQueryKeys(t *testing.T) {
 	t.Parallel()
 	s := &Server{}
@@ -728,7 +794,7 @@ func TestCreateBudgetItemWithCompactResetInterval(t *testing.T) {
 	}
 
 	// Fetch the budget and verify the reset interval was stored
-	budget, err := st.GetBudget(ctx, budgetID)
+	budget, err := st.GetBudget(ctx, budgetID, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1607,7 +1673,7 @@ func TestBudgetItemLabelCreatePatchOmitPreservesClear(t *testing.T) {
 	if patchNullOut["label"] != nil {
 		t.Fatalf("patch null label: got %v want nil", patchNullOut["label"])
 	}
-	row, err := st.GetBudgetItem(ctx, budgetID, itemID)
+	row, err := st.GetBudgetItem(ctx, budgetID, itemID, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1690,7 +1756,7 @@ func TestPatchBudgetItemKeepsExistingCostToCreditRatioWhenOmitted(t *testing.T) 
 	if got := body["costToCreditRatio"].(string); got != "0.066666" {
 		t.Fatalf("costToCreditRatio %q want %q", got, "0.066666")
 	}
-	row, err := st.GetBudgetItem(ctx, budgetID, itemID)
+	row, err := st.GetBudgetItem(ctx, budgetID, itemID, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1758,7 +1824,7 @@ func TestPatchBudgetExistingItemKeepsExistingCostToCreditRatioWhenOmitted(t *tes
 	if resp.Items[0].CostToCreditRatio != "0.066666" {
 		t.Fatalf("costToCreditRatio %q want %q", resp.Items[0].CostToCreditRatio, "0.066666")
 	}
-	row, err := st.GetBudgetItem(ctx, budgetID, itemID)
+	row, err := st.GetBudgetItem(ctx, budgetID, itemID, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1811,7 +1877,7 @@ func TestPatchBudgetItemKeepsExistingDateFieldsWhenOmitted(t *testing.T) {
 		t.Fatalf("patch item: %d %s", rec.Code, rec.Body.String())
 	}
 
-	row, err := st.GetBudgetItem(ctx, budgetID, itemID)
+	row, err := st.GetBudgetItem(ctx, budgetID, itemID, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1874,7 +1940,7 @@ func TestPatchBudgetExistingItemKeepsExistingDateFieldsWhenOmitted(t *testing.T)
 		t.Fatalf("patch budget: %d %s", rec.Code, rec.Body.String())
 	}
 
-	row, err := st.GetBudgetItem(ctx, budgetID, itemID)
+	row, err := st.GetBudgetItem(ctx, budgetID, itemID, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1932,7 +1998,7 @@ func TestPatchBudgetItemExplicitNullClearsField(t *testing.T) {
 		t.Fatalf("patch item: %d %s", rec.Code, rec.Body.String())
 	}
 
-	row, err := st.GetBudgetItem(ctx, budgetID, itemID)
+	row, err := st.GetBudgetItem(ctx, budgetID, itemID, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1985,7 +2051,7 @@ func TestPatchBudgetExistingItemExplicitNullClearsField(t *testing.T) {
 		t.Fatalf("patch budget: %d %s", rec.Code, rec.Body.String())
 	}
 
-	row, err := st.GetBudgetItem(ctx, budgetID, itemID)
+	row, err := st.GetBudgetItem(ctx, budgetID, itemID, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2537,7 +2603,7 @@ func TestPatchBudgetItemClearResetIntervalAlsoClearsResetsAt(t *testing.T) {
 		t.Fatalf("patch item: %d %s", rec.Code, rec.Body.String())
 	}
 
-	row, err := st.GetBudgetItem(ctx, budgetID, itemID)
+	row, err := st.GetBudgetItem(ctx, budgetID, itemID, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2591,7 +2657,7 @@ func TestPatchBudgetExistingItemClearResetIntervalAlsoClearsResetsAt(t *testing.
 		t.Fatalf("patch budget: %d %s", rec.Code, rec.Body.String())
 	}
 
-	row, err := st.GetBudgetItem(ctx, budgetID, itemID)
+	row, err := st.GetBudgetItem(ctx, budgetID, itemID, false)
 	if err != nil {
 		t.Fatal(err)
 	}

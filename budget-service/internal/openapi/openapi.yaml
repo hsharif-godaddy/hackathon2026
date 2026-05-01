@@ -118,6 +118,8 @@ paths:
     get:
       tags: [v1]
       summary: List products
+      parameters:
+        - $ref: "#/components/parameters/includeDeletedQuery"
       responses:
         "200":
           description: Product rows
@@ -170,9 +172,10 @@ paths:
     get:
       tags: [v1]
       summary: List webhooks
-      description: Returns active webhook subscriptions. Omit `productKey` to list all; set `productKey` to restrict to one product.
+      description: Returns webhook subscriptions (active only unless `includeDeleted` is `true` or `1`). Omit `productKey` to list all; set `productKey` to restrict to one product.
       parameters:
         - $ref: "#/components/parameters/productKeyQuery"
+        - $ref: "#/components/parameters/includeDeletedQuery"
       responses:
         "200":
           description: OK
@@ -229,9 +232,10 @@ paths:
       summary: Get webhook
       parameters:
         - $ref: "#/components/parameters/webhookIdPath"
+        - $ref: "#/components/parameters/includeDeletedQuery"
       responses:
         "200":
-          description: OK
+          description: OK (includes soft-deleted webhooks when `includeDeleted` is `true` or `1`)
           content:
             application/json:
               schema:
@@ -331,9 +335,9 @@ paths:
       tags: [v1]
       summary: Aggregate report line costs by product and/or label
       description: |
-        Sums `budgetCost` and `productCost` from `reportItems` lines whose parent report’s `created_at` is in `[from, to)` (half-open; `to` is exclusive). **At least one** of `productKey` or `label` must be set. When both are set, both filters apply. When only `productKey` is set, all labels for that product in the window are included. When only `label` is set, that label is summed across all products. Only budgets with `deleted_at` IS NULL are included. String filters use exact match after trim.
+        Sums `budgetCost` and `productCost` from `reportItems` lines whose parent report’s `created_at` is in `[from, to)` (half-open; `to` is exclusive). **At least one** of `productKey` or `label` must be set. When both are set, both filters apply. When only `productKey` is set, all labels for that product in the window are included. When only `label` is set, that label is summed across all products. String filters use exact match after trim.
 
-        When `from` and `to` are both omitted, the window is one calendar month ending at the server’s current time in UTC: `to = now()`, `from = to` minus one month (via `AddDate(0,-1,0)`). When both are provided, they must be RFC3339 or RFC3339Nano; you must not send only one of them.
+        When `from` and `to` are both omitted, the window is one calendar month ending at the server’s current time in UTC: `to = now()`, `from = to` minus one month (via `AddDate(0,-1,0)`). When both are provided, they must be RFC3339 or RFC3339Nano; you must not send only one of them. Report lines whose budget row has `deleted_at` set are **included** in sums (the previous implementation excluded them via `budgets.deleted_at IS NULL` on the join).
       parameters:
         - name: productKey
           in: query
@@ -416,6 +420,7 @@ paths:
       summary: Get budget
       parameters:
         - $ref: "#/components/parameters/budgetIdPath"
+        - $ref: "#/components/parameters/includeDeletedQuery"
       responses:
         "200":
           description: OK
@@ -500,6 +505,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/budgetIdPath"
         - $ref: "#/components/parameters/budgetItemIdPath"
+        - $ref: "#/components/parameters/includeDeletedQuery"
       responses:
         "200":
           description: OK
@@ -769,6 +775,16 @@ components:
       schema:
         type: string
         maxLength: 256
+    includeDeletedQuery:
+      name: includeDeleted
+      in: query
+      required: false
+      description: |
+        When `true` or `1`: **`GET /budgets/{budgetId}`** — include soft-deleted rows in the nested **`items`** array only (budget header and `deletedAt` on the budget are unchanged). **`GET .../budget-items/{id}`** and **`GET /webhooks/{webhookId}`** — return **200** with body (including **`deletedAt`**) instead of **404** for a soft-deleted resource. **`GET /products`** and **`GET /webhooks`** — include soft-deleted list entries with **`deletedAt`** set.
+
+        Undocumented query keys → **400** on **`GET /products`**, **`GET /budgets/{budgetId}`**, **`GET .../budget-items/{budgetItemId}`**, **`GET /webhooks`**, and **`GET /webhooks/{webhookId}`**. Allowed keys: list **`GET /webhooks`** — **`productKey`**, **`includeDeleted`**; all other listed **`GET`s** — **`includeDeleted`** only (plus path parameters).
+      schema:
+        type: string
 
   responses:
     Error:
@@ -811,6 +827,9 @@ components:
           type: string
         updatedAt:
           type: string
+        deletedAt:
+          type: string
+          description: Present when the product is soft-deleted and was returned via `includeDeleted`
 
     Webhook:
       type: object
@@ -827,6 +846,9 @@ components:
           type: string
         updatedAt:
           type: string
+        deletedAt:
+          type: string
+          description: Present when the webhook is soft-deleted and was returned via `includeDeleted`
 
     BudgetItemInput:
       type: object

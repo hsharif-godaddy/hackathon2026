@@ -12,16 +12,17 @@ type ProductRow struct {
 	ProductKey string
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
+	DeletedAt  *time.Time
 }
 
-// ListProducts returns active registered products ordered by product_key.
-func (s *Store) ListProducts(ctx context.Context) ([]ProductRow, error) {
+// ListProducts returns registered products ordered by product_key.
+// When includeDeleted is false, only rows with deleted_at IS NULL are returned.
+func (s *Store) ListProducts(ctx context.Context, includeDeleted bool) ([]ProductRow, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT product_key, created_at, updated_at
+		SELECT product_key, created_at, updated_at, deleted_at
 		FROM products
-		WHERE deleted_at IS NULL
-		ORDER BY product_key
-	`)
+		WHERE ($1 OR deleted_at IS NULL)
+		ORDER BY product_key`, includeDeleted)
 	if err != nil {
 		return nil, err
 	}
@@ -30,8 +31,13 @@ func (s *Store) ListProducts(ctx context.Context) ([]ProductRow, error) {
 	out := make([]ProductRow, 0)
 	for rows.Next() {
 		var r ProductRow
-		if err := rows.Scan(&r.ProductKey, &r.CreatedAt, &r.UpdatedAt); err != nil {
+		var del sql.NullTime
+		if err := rows.Scan(&r.ProductKey, &r.CreatedAt, &r.UpdatedAt, &del); err != nil {
 			return nil, err
+		}
+		if del.Valid {
+			t := del.Time
+			r.DeletedAt = &t
 		}
 		out = append(out, r)
 	}

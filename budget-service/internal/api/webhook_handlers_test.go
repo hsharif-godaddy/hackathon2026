@@ -114,6 +114,52 @@ func TestGetWebhooksAllowsDocumentedProductKeyQuery(t *testing.T) {
 	}
 }
 
+func TestGetWebhooksAllowsIncludeDeletedQuery(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	req := httptest.NewRequest(http.MethodGet, "/webhooks?includeDeleted=true", nil)
+	rec := httptest.NewRecorder()
+	s.getWebhooks(rec, req)
+	if rec.Code == http.StatusBadRequest && strings.Contains(rec.Body.String(), "unknown query parameters") {
+		t.Fatalf("allowlist rejected includeDeleted: %s", rec.Body.String())
+	}
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("want 503 without store (allowlist passed), got %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestGetWebhookRejectsUnknownQueryParameter(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	wid := "00000000-0000-4000-8000-000000000001"
+	req := httptest.NewRequest(http.MethodGet, "/webhooks/"+wid+"?foo=1", nil)
+	req = mux.SetURLVars(req, map[string]string{"webhookId": wid})
+	rec := httptest.NewRecorder()
+	s.getWebhook(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d want 400 body %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "unknown query parameters") {
+		t.Fatalf("expected unknown query parameters, got %s", rec.Body.String())
+	}
+}
+
+func TestGetWebhookAllowsIncludeDeletedQuery(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	wid := "00000000-0000-4000-8000-000000000001"
+	req := httptest.NewRequest(http.MethodGet, "/webhooks/"+wid+"?includeDeleted=true", nil)
+	req = mux.SetURLVars(req, map[string]string{"webhookId": wid})
+	rec := httptest.NewRecorder()
+	s.getWebhook(rec, req)
+	if rec.Code == http.StatusBadRequest && strings.Contains(rec.Body.String(), "unknown query parameters") {
+		t.Fatalf("allowlist rejected includeDeleted: %s", rec.Body.String())
+	}
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("want 503 without store (allowlist passed), got %d %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestPostWebhookRejectsInvalidProductKeyCharacters(t *testing.T) {
 	t.Parallel()
 	s := &Server{}

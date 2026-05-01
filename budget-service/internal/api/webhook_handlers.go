@@ -309,7 +309,7 @@ type postWebhookBody struct {
 }
 
 func webhookToResponse(row *store.WebhookRow) map[string]any {
-	return map[string]any{
+	out := map[string]any{
 		"webhookId":  row.ID,
 		"eventType":  row.EventType,
 		"productKey": row.ProductKey,
@@ -317,6 +317,10 @@ func webhookToResponse(row *store.WebhookRow) map[string]any {
 		"createdAt":  row.CreatedAt.UTC().Format(time.RFC3339Nano),
 		"updatedAt":  row.UpdatedAt.UTC().Format(time.RFC3339Nano),
 	}
+	if row.DeletedAt != nil {
+		out["deletedAt"] = row.DeletedAt.UTC().Format(time.RFC3339Nano)
+	}
+	return out
 }
 
 func (s *Server) getWebhooks(w http.ResponseWriter, r *http.Request) {
@@ -334,7 +338,7 @@ func (s *Server) getWebhooks(w http.ResponseWriter, r *http.Request) {
 	if !s.requireStore(w) {
 		return
 	}
-	rows, err := s.Store.ListWebhooks(r.Context(), pk)
+	rows, err := s.Store.ListWebhooks(r.Context(), pk, queryIncludeDeleted(q))
 	if err != nil {
 		slog.Error("webhooks.list.request", "error", err, "productKey", pk)
 		writeError(w, http.StatusInternalServerError, "INTERNAL", "internal error")
@@ -385,7 +389,7 @@ func (s *Server) postWebhook(w http.ResponseWriter, r *http.Request) {
 		writeWebhookStoreError(w, "webhook.create", err)
 		return
 	}
-	row, err := s.Store.GetWebhook(r.Context(), webhookID)
+	row, err := s.Store.GetWebhook(r.Context(), webhookID, false)
 	if err != nil {
 		slog.Error("webhook.create_get", "error", err)
 		writeJSON(w, http.StatusCreated, map[string]string{"webhookId": webhookID})
@@ -408,10 +412,14 @@ func (s *Server) getWebhook(w http.ResponseWriter, r *http.Request) {
 	if !requireUUIDParam(w, id, "webhookId") {
 		return
 	}
+	q := r.URL.Query()
+	if !rejectUnknownQueryKeys(w, q, allowedGetWebhookQueryKeys) {
+		return
+	}
 	if !s.requireStore(w) {
 		return
 	}
-	row, err := s.Store.GetWebhook(r.Context(), id)
+	row, err := s.Store.GetWebhook(r.Context(), id, queryIncludeDeleted(q))
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "NOT_FOUND", "resource not found")

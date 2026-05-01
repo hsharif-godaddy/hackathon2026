@@ -448,7 +448,7 @@ func insertBudgetItemsHistory(ctx context.Context, tx *sql.Tx, itemID, budgetID 
 	return nil
 }
 
-func (s *Store) GetBudget(ctx context.Context, budgetID string) (*BudgetDetail, error) {
+func (s *Store) GetBudget(ctx context.Context, budgetID string, includeDeletedItems bool) (*BudgetDetail, error) {
 	if _, err := uuid.Parse(budgetID); err != nil {
 		return nil, err
 	}
@@ -499,9 +499,9 @@ func (s *Store) GetBudget(ctx context.Context, budgetID string) (*BudgetDetail, 
 			bi.cost_credit_ratio,
 			bi.expires_at, bi.starts_at, bi.resets_at, bi.reset_interval, bi.label, bi.deleted_at, bi.created_at, bi.updated_at
 		FROM budget_items bi
-		WHERE bi.budget_id = $1
+		WHERE bi.budget_id = $1 AND ($2 OR bi.deleted_at IS NULL)
 		ORDER BY bi.created_at, bi.id
-	`, budgetID)
+	`, budgetID, includeDeletedItems)
 	if err != nil {
 		return nil, err
 	}
@@ -551,7 +551,7 @@ func (s *Store) GetBudget(ctx context.Context, budgetID string) (*BudgetDetail, 
 	return &d, rows.Err()
 }
 
-func (s *Store) GetBudgetItem(ctx context.Context, budgetID, itemID string) (*BudgetItemRow, error) {
+func (s *Store) GetBudgetItem(ctx context.Context, budgetID, itemID string, includeDeleted bool) (*BudgetItemRow, error) {
 	if _, err := uuid.Parse(budgetID); err != nil {
 		return nil, err
 	}
@@ -571,8 +571,8 @@ func (s *Store) GetBudgetItem(ctx context.Context, budgetID, itemID string) (*Bu
 			bi.cost_credit_ratio,
 			bi.expires_at, bi.starts_at, bi.resets_at, bi.reset_interval, bi.label, bi.deleted_at, bi.created_at, bi.updated_at
 		FROM budget_items bi
-		WHERE bi.id = $1 AND bi.budget_id = $2
-	`, itemID, budgetID).Scan(
+		WHERE bi.id = $1 AND bi.budget_id = $2 AND ($3 OR bi.deleted_at IS NULL)
+	`, itemID, budgetID, includeDeleted).Scan(
 		&r.ID, &ctot, &cusd, &csr,
 		&exp, &st, &rs, &reset, &lbl, &delItem, &r.CreatedAt, &r.UpdatedAt,
 	)
@@ -1497,7 +1497,7 @@ SELECT COALESCE(SUM(ri.budget_cost), 0), COALESCE(SUM(ri.product_cost), 0), COUN
 FROM budget_session_report_items ri
 INNER JOIN budget_session_reports br ON br.id = ri.report_id
 INNER JOIN budget_sessions bs ON bs.id = br.session_id
-INNER JOIN budgets b ON b.id = bs.budget_id AND b.deleted_at IS NULL
+INNER JOIN budgets b ON b.id = bs.budget_id
 WHERE br.created_at >= $1 AND br.created_at < $2`
 	argN := 2
 	if pk != "" {

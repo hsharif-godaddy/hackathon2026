@@ -116,7 +116,7 @@ func TestCreateBudgetSessionAppliesDueResetAndIsIdempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	budget, err := st.GetBudget(ctx, budgetID)
+	budget, err := st.GetBudget(ctx, budgetID, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -194,7 +194,7 @@ func TestProcessDueBudgetItemResetsAdvancesScheduleWithoutLedgerWhenUnused(t *te
 		t.Fatal(err)
 	}
 
-	budget, err := st.GetBudget(ctx, budgetID)
+	budget, err := st.GetBudget(ctx, budgetID, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -244,7 +244,7 @@ func TestProcessDueResetsWithOutboxCreatesLedgerAndOutboxForUsedCredits(t *testi
 		t.Fatal(err)
 	}
 
-	budget, err := st.GetBudget(ctx, budgetID)
+	budget, err := st.GetBudget(ctx, budgetID, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -320,7 +320,7 @@ func TestProcessDueResetsWithOutboxNoLedgerOrOutboxWhenUnused(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	budget, err := st.GetBudget(ctx, budgetID)
+	budget, err := st.GetBudget(ctx, budgetID, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -418,7 +418,7 @@ func TestProcessDueExpirationsWithOutboxMarksNotified(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	budget, err := st.GetBudget(ctx, budgetID)
+	budget, err := st.GetBudget(ctx, budgetID, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -482,7 +482,7 @@ func TestProcessDueExpirationsWithOutboxIdempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	budget, err := st.GetBudget(ctx, budgetID)
+	budget, err := st.GetBudget(ctx, budgetID, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -537,7 +537,7 @@ func TestProcessDueExpirationsWithOutboxExcludesDeleted(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	budget, err := st.GetBudget(ctx, budgetID)
+	budget, err := st.GetBudget(ctx, budgetID, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -755,7 +755,7 @@ func TestCreateSessionReportTriggersExhaustedWebhook(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	budget, err := st.GetBudget(ctx, budgetID)
+	budget, err := st.GetBudget(ctx, budgetID, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -808,7 +808,7 @@ func TestCreateSessionReportNoExhaustedWebhookWhenNotFullyConsumed(t *testing.T)
 		t.Fatal(err)
 	}
 
-	budget, err := st.GetBudget(ctx, budgetID)
+	budget, err := st.GetBudget(ctx, budgetID, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -856,7 +856,7 @@ func TestCreateSessionReportNoExhaustedWebhookWhenAlreadyExhausted(t *testing.T)
 		t.Fatal(err)
 	}
 
-	budget, err := st.GetBudget(ctx, budgetID)
+	budget, err := st.GetBudget(ctx, budgetID, false)
 	if err != nil {
 		t.Fatal(err)
 	}
