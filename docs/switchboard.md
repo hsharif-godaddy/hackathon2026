@@ -1,6 +1,6 @@
 # Switchboard feature flags (Airo App Builder)
 
-This document explains how **Switchboard** integrates with this repo, how to work with flags **locally**, and what to change in **code** when you introduce a new flag. It does **not** replace internal GoDaddy documentation for the Switchboard admin product itself (see [Switchboard admin and new flags](#switchboard-admin-and-new-flags)).
+This document explains how **Switchboard** integrates with this repo, how to work with flags **locally**, and what to change in **code** when you introduce a new flag. It does **not** replace internal GoDaddy documentation for the Switchboard admin product itself (see [Switchboard admin and new flags](#switchboard-admin-and-new-flags) and the [GoDaddy internal Switchboard guide on Confluence](https://godaddy-corp.atlassian.net/wiki/spaces/CONVERSATIONS/pages/3462570192/Add+a+Feature+Flag+Experiment+in+Switchboard)).
 
 ## What Switchboard does here
 
@@ -44,6 +44,8 @@ Use the dev Switchboard app to enable, disable, or create flags for local develo
 **[https://switchboard.int.dev-gdcorp.tools/airo-app-builder](https://switchboard.int.dev-gdcorp.tools/airo-app-builder)**
 
 For an existing boolean flag, open the flag in the dev app and set the desired development value or targeting rule. For a new local-dev flag, create it there first, then add the code call site in this repo.
+
+**To enable a flag only for yourself** (without affecting other developers or automated tests hitting the dev environment): use the **Overrides** section in the Switchboard UI to add your shopper ID with the desired value. For flags using a split type, you can also add your shopper ID directly into the targeting rule. The identifier is your GoDaddy **shopper ID** (not customer ID) — find it in your SSO JWT claims or via the GoDaddy CRM.
 
 Local dev inherits the dev grant through `AWS_PROFILE=airobuild-dev-private-sso` (account `694282668781`, PowerUser permission set). Without those credentials, flag lookups resolve to the default (`false` / `null`) - there is no automatic fallback.
 

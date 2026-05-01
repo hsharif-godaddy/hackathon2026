@@ -146,6 +146,18 @@ Local dev inherits the dev grant when `AWS_PROFILE=airobuild-dev-private-sso` is
 
 **Finding active flags:** Grep for `useSwitchboard(` and `checkSwitchboardFlag(` to find current flags.
 
+**Flag naming convention:** `appbuilder-{feature}` in kebab-case (e.g. `appbuilder-share-links`, `appbuilder-model-selector`).
+
+**Setting up a flag for local development:**
+
+1. Make sure `AWS_PROFILE=airobuild-dev-private-sso` is set — without it, all flags resolve to `false`/`null`.
+2. Go to [https://switchboard.int.dev-gdcorp.tools/airo-app-builder](https://switchboard.int.dev-gdcorp.tools/airo-app-builder) and create the flag (type `boolean` for feature gates, default `false`).
+3. Add yourself as an override: in the **Overrides** section, enter your shopper ID and set the value to `true`. This targets only you without affecting other users.
+4. Flag changes propagate within ~2 minutes (the in-process cache refresh interval).
+5. Create the flag in test and prod Switchboard environments when you're ready to roll out: [test](https://switchboard.int.test-gdcorp.tools/airo-app-builder), [prod](https://switchboard.int.gdcorp.tools/airo-app-builder).
+
+To find your shopper ID: check the GoDaddy CRM or look for `shopperId` in your SSO JWT claims.
+
 **Layer 3 — Hivemind experiments** (A/B testing): Hivemind is GoDaddy's experimentation platform, separate from Switchboard but uses Switchboard under the hood for traffic splitting. Switchboard = simple feature flags (deploy/release decoupling). Hivemind = A/B experiments with metrics and analysis. Hivemind experiments are fetched via `gasket-plugin-switchboard` and serialized to the client through Gasket's data layer. Access client-side via `useGasketData()` → `switchboard` property or `useHivemind()` hook.
 
 ## Design System
