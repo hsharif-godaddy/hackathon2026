@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/airo-ai-builder/release-manager/internal/config"
 	"github.com/airo-ai-builder/release-manager/internal/pipeline"
 )
@@ -233,6 +235,368 @@ func TestHandleRollbackGroupDoneDuplicateIsNoop(t *testing.T) {
 	}
 }
 
+func TestFailurePromptTitleIdentifiesStage(t *testing.T) {
+	m := newProdFailureModel(t)
+
+	title := m.failurePromptTitle()
+
+	for _, want := range []string{"PROD failed: Promote App", "promote failed"} {
+		if !strings.Contains(title, want) {
+			t.Fatalf("expected %q in title, got %q", want, title)
+		}
+	}
+}
+
+func TestRetryWithDeferredFailureWaitsForRetryResult(t *testing.T) {
+	m := newProdFailureModel(t)
+	m.fv.choice = "retry"
+
+	result, _ := m.handleFormDone()
+	m = result.(Model)
+
+	if m.phase != phaseRunning {
+		t.Fatalf("phase = %v, want phaseRunning", m.phase)
+	}
+	if m.form != nil {
+		t.Fatal("form should be nil while retry is running")
+	}
+	if len(m.deferredFailures) != 1 || m.deferredFailures[0] != 1 {
+		t.Fatalf("deferredFailures = %v, want [1]", m.deferredFailures)
+	}
+
+	m.pipeline.CompleteChecklist(0)
+	result, _ = m.handleStageComplete(stageCompleteMsg{idx: 0})
+	m = result.(Model)
+
+	if m.phase != phaseFailurePrompt {
+		t.Fatalf("phase = %v, want phaseFailurePrompt", m.phase)
+	}
+	if m.failedStageIdx != 1 {
+		t.Fatalf("failedStageIdx = %d, want 1", m.failedStageIdx)
+	}
+	if m.form == nil {
+		t.Fatal("expected deferred failure form after retry succeeded")
+	}
+	if len(m.deferredFailures) != 0 {
+		t.Fatalf("deferredFailures = %v, want empty", m.deferredFailures)
+	}
+}
+
+func TestContinueAfterRetrySuccessCompletesProd(t *testing.T) {
+	m := newProdFailureModel(t)
+	m.fv.choice = "retry"
+
+	result, _ := m.handleFormDone()
+	m = result.(Model)
+	m.pipeline.CompleteChecklist(0)
+	result, _ = m.handleStageComplete(stageCompleteMsg{idx: 0})
+	m = result.(Model)
+
+	m.fv.choice = "retry"
+	result, _ = m.handleFormDone()
+	m = result.(Model)
+	m.pipeline.FailChecklist(1, "still failing")
+	result, _ = m.handleStageComplete(stageCompleteMsg{idx: 1, err: context.Canceled})
+	m = result.(Model)
+
+	m.fv.choice = "continue"
+	result, _ = m.handleFormDone()
+	m = result.(Model)
+
+	cmd := m.checkGroupCompletion()
+	if cmd == nil {
+		t.Fatal("expected group completion command after continuing final failed prod stage")
+	}
+	rawMsg := cmd()
+	msg, ok := rawMsg.(groupCompleteMsg)
+	if !ok {
+		t.Fatalf("expected groupCompleteMsg, got %T", rawMsg)
+	}
+
+	result, _ = m.handleGroupComplete(msg)
+	m = result.(Model)
+
+	if m.phase != phaseComplete {
+		t.Fatalf("phase = %v, want phaseComplete", m.phase)
+	}
+	if m.form == nil {
+		t.Fatal("expected completion form")
+	}
+}
+
+func TestStartExitCleanupShowsProgressInsteadOfQuitHint(t *testing.T) {
+	m := newTestModel(func(m *Model) {
+		m.config.Release = config.ReleaseConfig{Repo: "org/app", Enabled: true}
+		m.config.Lock = config.LockConfig{SSMParameter: "/deploy-lock"}
+		m.lockHeld = true
+	})
+	m.pipeline.BuildStages("test")
+
+	result, cmd := m.startExitCleanup(true, true)
+	m = result
+
+	if cmd == nil {
+		t.Fatal("expected cleanup command")
+	}
+	if m.phase != phaseCleanup {
+		t.Fatalf("phase = %v, want phaseCleanup", m.phase)
+	}
+	for _, want := range []string{"creating GitHub release", "releasing deploy lock"} {
+		if !strings.Contains(m.statusMessage, want) {
+			t.Fatalf("expected %q in status message, got %q", want, m.statusMessage)
+		}
+	}
+
+	view := m.View().Content
+	if strings.Contains(view, "ctrl+c to quit") {
+		t.Fatalf("cleanup view should not show quit hint:\n%s", view)
+	}
+	if !strings.Contains(view, "please wait") {
+		t.Fatalf("cleanup view should ask users to wait:\n%s", view)
+	}
+}
+
+func TestStartExitCleanupNoWorkReturnsQuitWithoutCleanupPhase(t *testing.T) {
+	m := newTestModel()
+	before := m.phase
+
+	result, cmd := m.startExitCleanup(false, false)
+
+	if cmd == nil {
+		t.Fatal("expected quit command when no cleanup work is needed")
+	}
+	if result.phase != before {
+		t.Fatalf("phase = %v, want unchanged %v", result.phase, before)
+	}
+}
+
+func TestCleanupPhaseIgnoresQuitKeys(t *testing.T) {
+	m := newTestModel(func(m *Model) {
+		m.phase = phaseCleanup
+		m.statusMessage = "Finalizing: releasing deploy lock..."
+	})
+
+	result, cmd := m.Update(tea.KeyPressMsg(tea.Key{Code: 'c', Mod: tea.ModCtrl}))
+	m = result.(Model)
+
+	if cmd != nil {
+		t.Fatalf("ctrl+c during cleanup should be ignored, got cmd %v", cmd)
+	}
+	if m.phase != phaseCleanup {
+		t.Fatalf("phase = %v, want phaseCleanup", m.phase)
+	}
+
+	result, cmd = m.Update(tea.KeyPressMsg(tea.Key{Text: "q", Code: 'q'}))
+	m = result.(Model)
+
+	if cmd != nil {
+		t.Fatalf("q during cleanup should be ignored, got cmd %v", cmd)
+	}
+	if m.phase != phaseCleanup {
+		t.Fatalf("phase = %v, want phaseCleanup", m.phase)
+	}
+
+	m.phase = phaseCleanupDone
+	result, cmd = m.Update(tea.KeyPressMsg(tea.Key{Code: 'c', Mod: tea.ModCtrl}))
+	m = result.(Model)
+
+	if cmd != nil {
+		t.Fatalf("ctrl+c during cleanup done should be ignored, got cmd %v", cmd)
+	}
+	if m.phase != phaseCleanupDone {
+		t.Fatalf("phase = %v, want phaseCleanupDone", m.phase)
+	}
+}
+
+func TestExitCleanupDoneShowsCompleteBeforeQuit(t *testing.T) {
+	m := newTestModel(func(m *Model) {
+		m.phase = phaseCleanup
+		m.statusMessage = "Finalizing: releasing deploy lock..."
+	})
+
+	result, cmd := m.Update(exitCleanupDoneMsg{})
+	m = result.(Model)
+
+	if cmd == nil {
+		t.Fatal("expected delayed quit command")
+	}
+	if m.phase != phaseCleanupDone {
+		t.Fatalf("phase = %v, want phaseCleanupDone", m.phase)
+	}
+
+	view := m.View().Content
+	if !strings.Contains(view, "Final cleanup complete.") {
+		t.Fatalf("expected complete message:\n%s", view)
+	}
+	if strings.Contains(view, "please wait") {
+		t.Fatalf("done view should not ask users to wait:\n%s", view)
+	}
+	if !strings.Contains(view, "done; exiting") {
+		t.Fatalf("done view should say exiting:\n%s", view)
+	}
+}
+
+func TestExitCleanupDoneWarnsWhenCleanupIncomplete(t *testing.T) {
+	m := newTestModel(func(m *Model) {
+		m.phase = phaseCleanup
+		m.statusMessage = "Finalizing: releasing deploy lock..."
+	})
+
+	result, cmd := m.Update(exitCleanupDoneMsg{warning: "Final cleanup may not have completed; check logs."})
+	m = result.(Model)
+
+	if cmd == nil {
+		t.Fatal("expected delayed quit command")
+	}
+	if m.phase != phaseCleanupDone {
+		t.Fatalf("phase = %v, want phaseCleanupDone", m.phase)
+	}
+
+	view := m.View().Content
+	for _, want := range []string{"⚠", "Final cleanup may not have completed", "done; exiting"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("expected %q in warning view:\n%s", want, view)
+		}
+	}
+	if strings.Contains(view, "Final cleanup complete.") {
+		t.Fatalf("warning view should not claim cleanup completed:\n%s", view)
+	}
+}
+
+func TestDeferFailureDeduplicatesQueuedFailures(t *testing.T) {
+	m := newProdFailureModel(t)
+	m.deferredFailures = nil
+
+	m.deferFailure(m.failedStageIdx)
+	if len(m.deferredFailures) != 0 {
+		t.Fatalf("deferredFailures = %v, want empty when deferring current failure", m.deferredFailures)
+	}
+
+	m.deferFailure(1)
+	m.deferFailure(1)
+	if len(m.deferredFailures) != 1 || m.deferredFailures[0] != 1 {
+		t.Fatalf("deferredFailures = %v, want [1]", m.deferredFailures)
+	}
+
+	m.deferFailure(2)
+	if len(m.deferredFailures) != 2 || m.deferredFailures[0] != 1 || m.deferredFailures[1] != 2 {
+		t.Fatalf("deferredFailures = %v, want [1 2]", m.deferredFailures)
+	}
+}
+
+func TestDeferFailureKeepsIndexZeroOutsideFailurePrompt(t *testing.T) {
+	m := newProdFailureModel(t)
+	m.phase = phaseChecklist
+	m.deferredFailures = nil
+
+	m.deferFailure(0)
+
+	if len(m.deferredFailures) != 1 || m.deferredFailures[0] != 0 {
+		t.Fatalf("deferredFailures = %v, want [0]", m.deferredFailures)
+	}
+}
+
+func TestBuildNextFailureFormSkipsStaleDeferredFailures(t *testing.T) {
+	m := newProdFailureModel(t)
+	m.pipeline.CompleteChecklist(1)
+	m.deferredFailures = []int{1, 0}
+
+	cmd := m.buildNextFailureForm()
+
+	if cmd == nil {
+		t.Fatal("expected failure form for next failed stage")
+	}
+	if m.failedStageIdx != 0 {
+		t.Fatalf("failedStageIdx = %d, want 0", m.failedStageIdx)
+	}
+	if len(m.deferredFailures) != 0 {
+		t.Fatalf("deferredFailures = %v, want empty", m.deferredFailures)
+	}
+}
+
+func TestBuildNextFailureFormKeepsInFlightDeferredFailure(t *testing.T) {
+	m := newProdFailureModel(t)
+	m.pipeline.RetryStage(1)
+	m.deferredFailures = []int{1, 0}
+
+	cmd := m.buildNextFailureForm()
+
+	if cmd != nil {
+		t.Fatalf("expected no form while deferred failure is in flight, got %v", cmd)
+	}
+	if len(m.deferredFailures) != 2 || m.deferredFailures[0] != 1 || m.deferredFailures[1] != 0 {
+		t.Fatalf("deferredFailures = %v, want [1 0]", m.deferredFailures)
+	}
+}
+
+func TestBuildNextFailureFormPromptsAfterInFlightFailureResolves(t *testing.T) {
+	m := newProdFailureModel(t)
+	m.pipeline.RetryStage(1)
+	m.deferredFailures = []int{1, 0}
+
+	cmd := m.buildNextFailureForm()
+	if cmd != nil {
+		t.Fatalf("expected no form while first deferred failure is in flight, got %v", cmd)
+	}
+
+	m.pipeline.CompleteChecklist(1)
+	cmd = m.buildNextFailureForm()
+
+	if cmd == nil {
+		t.Fatal("expected failure form after in-flight deferred failure resolves")
+	}
+	if m.failedStageIdx != 0 {
+		t.Fatalf("failedStageIdx = %d, want 0", m.failedStageIdx)
+	}
+	if len(m.deferredFailures) != 0 {
+		t.Fatalf("deferredFailures = %v, want empty", m.deferredFailures)
+	}
+}
+
+func TestBuildNextFailureFormUsesFailedBeforeInFlight(t *testing.T) {
+	m := newProdFailureModel(t)
+	m.pipeline.RetryStage(1)
+	m.deferredFailures = []int{0, 1}
+
+	cmd := m.buildNextFailureForm()
+
+	if cmd == nil {
+		t.Fatal("expected failure form for failed stage before in-flight stage")
+	}
+	if m.failedStageIdx != 0 {
+		t.Fatalf("failedStageIdx = %d, want 0", m.failedStageIdx)
+	}
+	if len(m.deferredFailures) != 1 || m.deferredFailures[0] != 1 {
+		t.Fatalf("deferredFailures = %v, want [1]", m.deferredFailures)
+	}
+}
+
+func TestFailurePromptUsesFallbackNameForInvalidStageIndex(t *testing.T) {
+	m := newTestModel(func(m *Model) {
+		m.phase = phaseFailurePrompt
+		m.failedStageIdx = -1
+		m.fv.choice = "abort"
+	})
+
+	result, _ := m.handleFormDone()
+	m = result.(Model)
+
+	if m.phase != phaseAborted {
+		t.Fatalf("phase = %v, want phaseAborted", m.phase)
+	}
+}
+
+func TestFailedStageReturnsFalseWithoutPipeline(t *testing.T) {
+	stage, ok := (Model{failedStageIdx: 0}).failedStage()
+
+	if ok {
+		t.Fatalf("ok = true, want false with stage %v", stage)
+	}
+	if stage != nil {
+		t.Fatalf("stage = %v, want nil", stage)
+	}
+}
+
 func TestPreflightStringRequiredFailureShowsHint(t *testing.T) {
 	m := Model{
 		preflight: []preflightCheck{
@@ -407,12 +771,13 @@ func newTestModel(opts ...func(*Model)) Model {
 	}
 	p := pipeline.New(cfg, nil, true, "main", nil)
 	m := Model{
-		config:   cfg,
-		pipeline: p,
-		branch:   "main",
-		operator: "testuser",
-		envOrder: []string{"test"},
-		fv:       &formValues{},
+		config:         cfg,
+		pipeline:       p,
+		branch:         "main",
+		operator:       "testuser",
+		envOrder:       []string{"test"},
+		fv:             &formValues{},
+		failedStageIdx: -1,
 	}
 	for _, fn := range opts {
 		fn(&m)
@@ -623,6 +988,46 @@ func TestSlackMessageStageIndentation(t *testing.T) {
 
 	if !strings.Contains(msg, nbsp) {
 		t.Errorf("stage lines should be indented with nbsp, got:\n%s", msg)
+	}
+}
+
+func newProdFailureModel(t *testing.T) Model {
+	t.Helper()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	cfg := &config.Config{
+		Pipeline: config.PipelineConfig{
+			Environments: map[string]*config.EnvironmentConfig{
+				"test": {Stages: []config.Stage{{ID: "deploy-test", Name: "Deploy App to Test"}}},
+				"prod": {Stages: []config.Stage{
+					{ID: "promote-app", Name: "Promote App", Group: "deploy-prod"},
+					{ID: "upsert-reload-preprov", Name: "Upsert + Reload Pre-Prov", Group: "deploy-prod"},
+				}},
+			},
+		},
+	}
+	p := pipeline.New(cfg, nil, true, "main", nil)
+	if err := p.BuildStages("prod"); err != nil {
+		t.Fatalf("BuildStages() error: %v", err)
+	}
+	p.FailChecklist(0, "promote failed")
+	p.FailChecklist(1, "preprov failed")
+
+	return Model{
+		config:           cfg,
+		pipeline:         p,
+		ctx:              ctx,
+		cancel:           cancel,
+		phase:            phaseFailurePrompt,
+		currentEnvIdx:    1,
+		envOrder:         []string{"test", "prod"},
+		envGroups:        [][]int{{0, 1}},
+		currentGroupIdx:  0,
+		fv:               &formValues{},
+		failedStageIdx:   0,
+		deferredFailures: []int{1},
 	}
 }
 

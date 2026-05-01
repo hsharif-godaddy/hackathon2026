@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	tea "charm.land/bubbletea/v2"
 	"charm.land/bubbles/v2/spinner"
+	tea "charm.land/bubbletea/v2"
 	"charm.land/huh/v2"
 	"charm.land/lipgloss/v2"
 
@@ -34,6 +34,8 @@ const (
 	phaseChecklist
 	phaseFailurePrompt
 	phaseComplete
+	phaseCleanup
+	phaseCleanupDone
 	phaseRollbackConfirm
 	phaseRollbackRunning
 	phaseAborted
@@ -92,13 +94,13 @@ type Model struct {
 	releaseNotes    []pipeline.ReleaseNote
 	releaseNotesURL string
 
-	checklistStageIdx    int
-	failedStageIdx       int
-	deferredFailures     []int
-	rollbackIdxs         []int
-	rollbackGroups       [][]int
-	rollbackGroupIdx     int
-	rollbackReturnPhase  phase
+	checklistStageIdx   int
+	failedStageIdx      int
+	deferredFailures    []int
+	rollbackIdxs        []int
+	rollbackGroups      [][]int
+	rollbackGroupIdx    int
+	rollbackReturnPhase phase
 
 	width  int
 	height int
@@ -109,6 +111,7 @@ type Model struct {
 
 	operator        string
 	statusMessage   string
+	cleanupWarning  string
 	startTime       time.Time
 	lastSlackUpdate time.Time
 	err             error
@@ -153,28 +156,29 @@ func NewModel(cfg *config.Config, runner gh.Runner, dryRun bool, branch string, 
 	p.Overrides = overrides
 
 	return Model{
-		config:      cfg,
-		runner:      runner,
-		pipeline:    p,
-		dryRun:      dryRun,
-		autoApprove: autoApprove,
-		noSlack:     noSlack,
-		noRelease:   noRelease,
-		forceLock:   forceLock,
-		branch:      branch,
-		ctx:         ctx,
-		cancel:      cancel,
-		phase:       phasePreflight,
-		preflight:   preflight,
-		envOrder:    cfg.EnvironmentOrder(),
-		fv:          &formValues{},
-		operator:    operator,
-		startTime:   time.Time{},
-		hasDarkBG:   true,
-		theme:       theme,
-		spinner:     s,
-		width:       80,
-		height:      24,
+		config:         cfg,
+		runner:         runner,
+		pipeline:       p,
+		dryRun:         dryRun,
+		autoApprove:    autoApprove,
+		noSlack:        noSlack,
+		noRelease:      noRelease,
+		forceLock:      forceLock,
+		branch:         branch,
+		ctx:            ctx,
+		cancel:         cancel,
+		phase:          phasePreflight,
+		preflight:      preflight,
+		envOrder:       cfg.EnvironmentOrder(),
+		fv:             &formValues{},
+		failedStageIdx: -1,
+		operator:       operator,
+		startTime:      time.Time{},
+		hasDarkBG:      true,
+		theme:          theme,
+		spinner:        s,
+		width:          80,
+		height:         24,
 	}
 }
 
@@ -262,7 +266,11 @@ type lockAcquireMsg struct {
 	err error
 }
 
-type exitCleanupDoneMsg struct{}
+type exitCleanupDoneMsg struct {
+	warning string
+}
+
+type cleanupQuitMsg struct{}
 
 type tickMsg struct{}
 

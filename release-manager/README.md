@@ -88,6 +88,7 @@ pipeline:
 | `repo`              | GitHub `owner/repo`                                                                                       |
 | `workflow`          | GitHub Actions workflow filename                                                                          |
 | `ref`               | Git ref to trigger the workflow on; use `{{branch}}` — GitHub rejects commit SHAs for `workflow_dispatch` |
+| `active_run_check`  | Set to `false` to exclude this workflow from the preflight active-run blocker                             |
 | `active_run_filter` | Only block on active runs whose `displayTitle` contains this string                                       |
 | `inputs`            | Workflow inputs; supports `{{env.stage.output}}`, `{{commit}}`, and `{{branch}}`                          |
 | `outputs`           | Parsed from run logs via regex (`from: run-log`, `pattern`, `job_match`)                                  |
@@ -142,7 +143,7 @@ Two layers prevent multiple operators from deploying simultaneously:
 
 ### Layer 1: Active workflow check
 
-During preflight, all deployment-related workflows (excluding E2E tests) are queried for `in_progress` or `queued` runs. Shared workflows like `docker-promote.yml` use the `active_run_filter` field to only match runs with a specific `displayTitle` (e.g. `"airo-builder"`).
+During preflight, deployment workflows are queried for `in_progress` or `queued` runs. Stages can opt out with `active_run_check: false`, and shared workflows like `docker-promote.yml` use the `active_run_filter` field to only match runs with a specific `displayTitle` (e.g. `"airo-builder"`).
 
 ### Layer 2: SSM Parameter Store lock
 
@@ -176,6 +177,7 @@ Dry-run mode (`--dry-run`) exercises the full pipeline without triggering any wo
 - The SSM deploy lock is acquired and released (real lock, for testing)
 - Rollback snapshot and release notes are fetched from real GitHub data
 - Stage execution replays the last successful run for each workflow, including real log parsing
+- Health check stages are skipped because live environments may not be running the dry-run commit
 - Job-level progress is simulated by fetching actual job counts from past runs
 - Simulated failures can be injected with `--fail-stage <stage-id>`
 - Slack notifications fire with a `[DRY RUN]` prefix

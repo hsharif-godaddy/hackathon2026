@@ -73,8 +73,8 @@ func TestResolveInputs(t *testing.T) {
 		"image_tag":   "{{test.build-images.agent_image_tag}}",
 	}
 	values := map[string]string{
-		"test.deploy-app.artifact_id":        "12345",
-		"test.build-images.agent_image_tag":   "pi-abc123-ext-def456",
+		"test.deploy-app.artifact_id":       "12345",
+		"test.build-images.agent_image_tag": "pi-abc123-ext-def456",
 	}
 
 	got := ResolveInputs(inputs, values)
@@ -587,7 +587,10 @@ func TestDeployWorkflows(t *testing.T) {
 					Stages: []Stage{
 						{ID: "deploy", Name: "Deploy", Repo: "org/app", Workflow: "deploy.yml"},
 						{ID: "build", Name: "Build", Repo: "org/infra", Workflow: "build.yml"},
-						{ID: "e2e", Name: "E2E", Repo: "org/app", Workflow: "playwright-e2e.yml"},
+						{ID: "e2e", Name: "E2E", Repo: "org/app", Workflow: "playwright-e2e.yml", ActiveRunCheck: ptr(false)},
+						{ID: "qa", Name: "Agentic QA", Repo: "org/app", Workflow: "agentic-qa.yml", ActiveRunCheck: ptr(false)},
+						{ID: "explicit", Name: "Explicit Check", Repo: "org/app", Workflow: "explicit.yml", ActiveRunCheck: ptr(true)},
+						{ID: "playwright-deploy", Name: "Playwright Deploy", Repo: "org/app", Workflow: "playwright-deploy.yml"},
 						{ID: "check", Name: "Checklist", Type: "checklist", Items: []string{"ok"}},
 					},
 				},
@@ -622,15 +625,28 @@ func TestDeployWorkflows(t *testing.T) {
 	if _, ok := got["org/infra/promote.yml"]; !ok {
 		t.Error("expected org/infra/promote.yml")
 	}
+	if _, ok := got["org/app/playwright-deploy.yml"]; !ok {
+		t.Error("expected org/app/playwright-deploy.yml")
+	}
+	if _, ok := got["org/app/explicit.yml"]; !ok {
+		t.Error("expected org/app/explicit.yml")
+	}
 	if got["org/infra/promote.yml"] != "airo" {
 		t.Errorf("promote.yml filter = %q, want %q", got["org/infra/promote.yml"], "airo")
 	}
 	if _, ok := got["org/app/playwright-e2e.yml"]; ok {
-		t.Error("e2e workflow should be excluded")
+		t.Error("e2e workflow should be excluded by active_run_check")
 	}
-	if len(workflows) != 3 {
-		t.Errorf("got %d workflows, want 3: %v", len(workflows), workflows)
+	if _, ok := got["org/app/agentic-qa.yml"]; ok {
+		t.Error("agentic QA workflow should be excluded by active_run_check")
 	}
+	if len(workflows) != 5 {
+		t.Errorf("got %d workflows, want 5: %v", len(workflows), workflows)
+	}
+}
+
+func ptr(value bool) *bool {
+	return &value
 }
 
 func TestDeployWorkflowsActualConfig(t *testing.T) {
@@ -645,8 +661,8 @@ func TestDeployWorkflowsActualConfig(t *testing.T) {
 	}
 
 	for _, w := range workflows {
-		if w.Workflow == "playwright-e2e.yml" {
-			t.Errorf("e2e workflow %s should be excluded", w.Workflow)
+		if w.Workflow == "playwright-e2e.yml" || w.Workflow == "agentic-qa.yml" || w.Workflow == "simulation_evaluation.yml" {
+			t.Errorf("%s should be excluded by active_run_check", w.Workflow)
 		}
 	}
 

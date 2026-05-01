@@ -62,6 +62,7 @@ pipeline:
           group: validate
           repo: gdcorp-partners/airo-app-builder
           workflow: playwright-e2e.yml
+          active_run_check: false
           ref: "{{branch}}"
           inputs:
             environment: test
@@ -72,6 +73,7 @@ pipeline:
           group: validate
           repo: gdcorp-partners/airo-app-builder
           workflow: agentic-qa.yml
+          active_run_check: false
           ref: "{{branch}}"
           inputs:
             environment: test
@@ -103,6 +105,7 @@ pipeline:
           group: validate
           repo: gdcorp-partners/airo-app-builder
           workflow: simulation_evaluation.yml
+          active_run_check: false
           ref: "{{branch}}"
           inputs:
             fail-on-threshold: "true"
@@ -166,6 +169,7 @@ pipeline:
           group: validate-prod
           repo: gdcorp-partners/airo-app-builder
           workflow: playwright-e2e.yml
+          active_run_check: false
           ref: "{{branch}}"
           inputs:
             environment: prod
@@ -176,6 +180,7 @@ pipeline:
           group: validate-prod
           repo: gdcorp-partners/airo-app-builder
           workflow: agentic-qa.yml
+          active_run_check: false
           ref: "{{branch}}"
           inputs:
             environment: prod

@@ -180,3 +180,31 @@ func TestRunHealthCheck_ContextCancellationDuringDelay(t *testing.T) {
 		t.Fatalf("expected context.Canceled, got: %v", err)
 	}
 }
+
+func TestRunStageDryRunSkipsHealthCheck(t *testing.T) {
+	requests := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer srv.Close()
+
+	p := newHealthCheckPipeline(srv.URL, "abc1234")
+	p.DryRun = true
+
+	err := p.RunStage(context.Background(), 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	stages := p.Stages()
+	if stages[0].State != StateSkipped {
+		t.Fatalf("State = %v, want skipped", stages[0].State)
+	}
+	if stages[0].EndTime.IsZero() {
+		t.Fatal("EndTime should be set for skipped health check")
+	}
+	if requests != 0 {
+		t.Fatalf("health endpoint was called %d times, want 0", requests)
+	}
+}

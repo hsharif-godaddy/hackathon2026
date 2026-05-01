@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	tea "charm.land/bubbletea/v2"
 	"charm.land/bubbles/v2/spinner"
+	tea "charm.land/bubbletea/v2"
 	"charm.land/huh/v2"
 	"charm.land/lipgloss/v2"
 
@@ -17,6 +17,8 @@ import (
 	"github.com/airo-ai-builder/release-manager/internal/pipeline"
 	"github.com/airo-ai-builder/release-manager/internal/slack"
 )
+
+const cleanupTimeout = 2 * time.Minute
 
 func printAbove(text string) tea.Cmd {
 	trimmed := strings.TrimRight(text, "\n")
@@ -42,6 +44,36 @@ func (m Model) slackUpdateCmd(finished bool) tea.Cmd {
 	}
 }
 
+func (m Model) startExitCleanup(sendSlack bool, createRelease bool) (Model, tea.Cmd) {
+	cmd := m.exitCleanupCmd(sendSlack, createRelease)
+	message := m.cleanupStatus(sendSlack, createRelease)
+	if message == "" {
+		return m, cmd
+	}
+
+	m.form = nil
+	m.phase = phaseCleanup
+	m.statusMessage = message
+	return m, tea.Batch(m.spinner.Tick, cmd)
+}
+
+func (m Model) cleanupStatus(sendSlack bool, createRelease bool) string {
+	var actions []string
+	if createRelease && !m.noRelease && m.config != nil && m.config.Release.Enabled && m.config.Release.Repo != "" {
+		actions = append(actions, "creating GitHub release")
+	}
+	if sendSlack && m.slack != nil && m.pipeline != nil && len(m.pipeline.Stages()) > 0 {
+		actions = append(actions, "updating Slack")
+	}
+	if m.lockHeld && m.config != nil && m.config.Lock.SSMParameter != "" {
+		actions = append(actions, "releasing deploy lock")
+	}
+	if len(actions) == 0 {
+		return ""
+	}
+	return "Finalizing: " + strings.Join(actions, ", ") + "..."
+}
+
 // exitCleanupCmd runs final Slack update, optional GitHub release creation,
 // and lock release in a background goroutine, then sends exitCleanupDoneMsg
 // to trigger tea.Quit. This avoids blocking the Bubble Tea event loop
@@ -65,7 +97,8 @@ func (m Model) exitCleanupCmd(sendSlack bool, createRelease bool) tea.Cmd {
 	}
 
 	return func() tea.Msg {
-		ctx := context.Background()
+		ctx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
+		defer cancel()
 
 		if wantRelease && slackText == "" {
 			logger.Log("release.skip: no message content available for release body")
@@ -81,8 +114,10 @@ func (m Model) exitCleanupCmd(sendSlack bool, createRelease bool) tea.Cmd {
 				}
 				releaseText = slackEmojiToUnicode(releaseText)
 				releaseText = strings.ReplaceAll(releaseText, blankLine, "")
-				if permalink := n.Permalink(); permalink != "" {
-					releaseText += fmt.Sprintf("\n\n---\n[Slack thread](%s)", permalink)
+				if n != nil {
+					if permalink := n.Permalink(); permalink != "" {
+						releaseText += fmt.Sprintf("\n\n---\n[Slack thread](%s)", permalink)
+					}
 				}
 				releaseURL, err := p.CreateRelease(ctx, tag, tag, releaseText)
 				if err != nil {
@@ -99,6 +134,10 @@ func (m Model) exitCleanupCmd(sendSlack bool, createRelease bool) tea.Cmd {
 		if lockHeld && lockCfg.SSMParameter != "" {
 			lock.Release(ctx, lockCfg.SSMParameter, lockCfg.AWSProfile)
 		}
+		if err := ctx.Err(); err != nil {
+			logger.Log("cleanup.warning: final cleanup may not have completed: %s", err)
+			return exitCleanupDoneMsg{warning: "Final cleanup may not have completed; check logs."}
+		}
 		return exitCleanupDoneMsg{}
 	}
 }
@@ -112,7 +151,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case spinner.TickMsg:
-		if m.phase == phaseComplete || m.phase == phaseAborted {
+		if m.phase == phaseComplete || m.phase == phaseCleanupDone || m.phase == phaseAborted {
 			return m, nil
 		}
 		var cmd tea.Cmd
@@ -126,6 +165,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyPressMsg:
 		if msg.String() == "ctrl+c" || msg.String() == "q" {
+			if m.phase == phaseCleanup || m.phase == phaseCleanupDone {
+				logger.Log("cleanup: ignored %s while final cleanup is in progress", msg.String())
+				return m, nil
+			}
 			if m.form != nil && msg.String() == "q" {
 				break
 			}
@@ -133,7 +176,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.phase = phaseAborted
 			m.statusMessage = "Aborted by user"
 			logger.Log("USER: aborted via %s", msg.String())
-			return m, m.exitCleanupCmd(true, false)
+			return m.startExitCleanup(true, false)
 		}
 
 	case slackCredentialsMsg:
@@ -149,6 +192,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleLockAcquire(msg)
 
 	case exitCleanupDoneMsg:
+		m.phase = phaseCleanupDone
+		m.cleanupWarning = msg.warning
+		if msg.warning != "" {
+			m.statusMessage = msg.warning
+		} else {
+			m.statusMessage = "Final cleanup complete."
+		}
+		return m, tea.Tick(500*time.Millisecond, func(_ time.Time) tea.Msg {
+			return cleanupQuitMsg{}
+		})
+
+	case cleanupQuitMsg:
 		return m, tea.Quit
 
 	case snapshotResultMsg:
@@ -218,7 +273,7 @@ func (m Model) handleFormDone() (tea.Model, tea.Cmd) {
 			m.statusMessage = "Aborted: rollback values not confirmed"
 			m.form = nil
 			logger.Log("snapshot: user declined rollback values — aborting")
-			return m, m.exitCleanupCmd(false, false)
+			return m.startExitCleanup(false, false)
 		}
 		m.form = nil
 		logger.Log("snapshot: user confirmed rollback values")
@@ -231,7 +286,7 @@ func (m Model) handleFormDone() (tea.Model, tea.Cmd) {
 			m.statusMessage = "Aborted: deployment declined"
 			m.form = nil
 			logger.Log("release-notes: user declined deployment — aborting")
-			return m, m.exitCleanupCmd(false, false)
+			return m.startExitCleanup(false, false)
 		}
 		m.form = nil
 		m.phase = phaseRunning
@@ -247,7 +302,7 @@ func (m Model) handleFormDone() (tea.Model, tea.Cmd) {
 			m.statusMessage = "Aborted: production deploy declined"
 			m.form = nil
 			logger.Log("gate: user declined deploy to %s — aborting", m.envOrder[m.currentEnvIdx+1])
-			return m, m.exitCleanupCmd(true, false)
+			return m.startExitCleanup(true, false)
 		}
 		m.form = nil
 		m.currentEnvIdx++
@@ -264,10 +319,7 @@ func (m Model) handleFormDone() (tea.Model, tea.Cmd) {
 			logger.Log("checklist: %s — all %d items checked, passed", sr.Stage.Name, len(sr.Stage.Items))
 			m.pipeline.CompleteChecklist(m.checklistStageIdx)
 			printCmd := printAbove(m.stageString(m.pipeline.Stages()[m.checklistStageIdx]))
-			if len(m.deferredFailures) > 0 {
-				m.failedStageIdx = m.deferredFailures[0]
-				m.deferredFailures = m.deferredFailures[1:]
-				failCmd := m.buildFailureForm()
+			if failCmd := m.buildNextFailureForm(); failCmd != nil {
 				return m, tea.Batch(printCmd, m.slackUpdateCmd(false), failCmd)
 			}
 			m.phase = phaseRunning
@@ -283,27 +335,17 @@ func (m Model) handleFormDone() (tea.Model, tea.Cmd) {
 
 	case phaseFailurePrompt:
 		m.form = nil
-		failedName := m.pipeline.Stages()[m.failedStageIdx].Stage.Name
-		logger.Log("failure-prompt: user chose %q for stage %q", m.fv.choice, failedName)
+		logger.Log("failure-prompt: user chose %q for stage %q", m.fv.choice, m.failedStageName())
 		switch m.fv.choice {
 		case "retry":
 			retryIdx := m.failedStageIdx
 			m.pipeline.RetryStage(retryIdx)
-			if len(m.deferredFailures) > 0 {
-				m.failedStageIdx = m.deferredFailures[0]
-				m.deferredFailures = m.deferredFailures[1:]
-				failCmd := m.buildFailureForm()
-				return m, tea.Batch(tickCmd(), m.runStageCmd(retryIdx), failCmd)
-			}
 			m.phase = phaseRunning
 			return m, tea.Batch(tickCmd(), m.runStageCmd(retryIdx))
 		case "continue":
 			m.pipeline.SkipStage(m.failedStageIdx)
 			sr := m.pipeline.Stages()[m.failedStageIdx]
-			if len(m.deferredFailures) > 0 {
-				m.failedStageIdx = m.deferredFailures[0]
-				m.deferredFailures = m.deferredFailures[1:]
-				failCmd := m.buildFailureForm()
+			if failCmd := m.buildNextFailureForm(); failCmd != nil {
 				return m, tea.Batch(printAbove(m.stageString(sr)), failCmd)
 			}
 			m.phase = phaseRunning
@@ -316,7 +358,7 @@ func (m Model) handleFormDone() (tea.Model, tea.Cmd) {
 		case "abort":
 			m.phase = phaseAborted
 			m.statusMessage = "Aborted by user"
-			return m, m.exitCleanupCmd(true, false)
+			return m.startExitCleanup(true, false)
 		}
 
 	case phaseComplete:
@@ -328,9 +370,10 @@ func (m Model) handleFormDone() (tea.Model, tea.Cmd) {
 			cmd := m.buildRollbackConfirmForm()
 			return m, cmd
 		}
+		m, cleanupCmd := m.startExitCleanup(true, true)
 		return m, tea.Batch(
 			printAbove(m.theme.SuccessMessageStyle.Render(fmt.Sprintf("Release complete! (%s)", m.elapsed()))),
-			m.exitCleanupCmd(true, true),
+			cleanupCmd,
 		)
 
 	case phaseRollbackConfirm:
@@ -485,9 +528,10 @@ func (m Model) handleSnapshotResult(msg snapshotResultMsg) (tea.Model, tea.Cmd) 
 		m.phase = phaseAborted
 		m.statusMessage = fmt.Sprintf("Failed to fetch rollback snapshot: %s", msg.err)
 		logger.Log("snapshot: FAILED — %s", msg.err)
+		m, cleanupCmd := m.startExitCleanup(false, false)
 		return m, tea.Batch(
 			printAbove(m.theme.FailedMessageStyle.Render(m.statusMessage)),
-			m.exitCleanupCmd(false, false),
+			cleanupCmd,
 		)
 	}
 
@@ -547,7 +591,7 @@ func (m Model) handleStageComplete(msg stageCompleteMsg) (tea.Model, tea.Cmd) {
 
 	if msg.err != nil {
 		if m.form != nil {
-			m.deferredFailures = append(m.deferredFailures, msg.idx)
+			m.deferFailure(msg.idx)
 			return m, tea.Batch(printAbove(m.stageString(sr)), m.slackUpdateCmd(false))
 		}
 		m.failedStageIdx = msg.idx
@@ -555,7 +599,14 @@ func (m Model) handleStageComplete(msg stageCompleteMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(printAbove(m.stageString(sr)), m.slackUpdateCmd(false), failCmd)
 	}
 
-	return m, tea.Batch(printAbove(m.stageString(sr)), m.slackUpdateCmd(false), m.checkGroupCompletion())
+	printCmd := printAbove(m.stageString(sr))
+	if m.form != nil {
+		return m, tea.Batch(printCmd, m.slackUpdateCmd(false))
+	}
+	if failCmd := m.buildNextFailureForm(); failCmd != nil {
+		return m, tea.Batch(printCmd, m.slackUpdateCmd(false), failCmd)
+	}
+	return m, tea.Batch(printCmd, m.slackUpdateCmd(false), m.checkGroupCompletion())
 }
 
 func (m Model) handleGroupComplete(msg groupCompleteMsg) (tea.Model, tea.Cmd) {
@@ -583,9 +634,10 @@ func (m Model) advanceEnvironment() (tea.Model, tea.Cmd) {
 		m.phase = phaseComplete
 		logger.Log("pipeline: all environments complete")
 		if m.autoApprove {
+			m, cleanupCmd := m.startExitCleanup(true, true)
 			return m, tea.Batch(
 				printAbove(m.theme.SuccessMessageStyle.Render(fmt.Sprintf("Release complete! (%s)", m.elapsed()))),
-				m.exitCleanupCmd(true, true),
+				cleanupCmd,
 			)
 		}
 		cmd := m.buildCompleteForm()
@@ -629,9 +681,9 @@ func (m *Model) buildChecklistForm(idx int, sr *pipeline.StageRun) tea.Cmd {
 	m.form = huh.NewForm(
 		huh.NewGroup(
 			huh.NewMultiSelect[int]().
-				Title(sr.Stage.Name+" — check all items, then submit (unchecked = fail)").
+				Title(sr.Stage.Name + " — check all items, then submit (unchecked = fail)").
 				Options(options...).
-				Height(len(sr.Stage.Items)+1).
+				Height(len(sr.Stage.Items) + 1).
 				Value(&m.fv.checked),
 		),
 	).WithWidth(m.width)
@@ -641,10 +693,11 @@ func (m *Model) buildChecklistForm(idx int, sr *pipeline.StageRun) tea.Cmd {
 func (m *Model) buildFailureForm() tea.Cmd {
 	m.phase = phaseFailurePrompt
 	m.fv.choice = ""
+	failedStageName := m.failedStageName()
 
 	options := []huh.Option[string]{
-		huh.NewOption("Retry — re-trigger with same inputs", "retry"),
-		huh.NewOption("Continue — skip and proceed", "continue"),
+		huh.NewOption(fmt.Sprintf("Retry — re-trigger %s with same inputs", failedStageName), "retry"),
+		huh.NewOption(fmt.Sprintf("Continue — skip %s and proceed", failedStageName), "continue"),
 	}
 	if m.currentEnvIdx > 0 {
 		options = append(options, huh.NewOption("Rollback — revert to previous production state", "rollback"))
@@ -654,12 +707,79 @@ func (m *Model) buildFailureForm() tea.Cmd {
 	m.form = huh.NewForm(
 		huh.NewGroup(
 			huh.NewSelect[string]().
-				Title("What would you like to do?").
+				Title(m.failurePromptTitle()).
 				Options(options...).
 				Value(&m.fv.choice),
 		),
 	)
 	return m.form.Init()
+}
+
+func (m Model) failedStageName() string {
+	if sr, ok := m.failedStage(); ok {
+		return sr.Stage.Name
+	}
+	return "stage"
+}
+
+func (m Model) failurePromptTitle() string {
+	sr, ok := m.failedStage()
+	if !ok {
+		return "Stage failed. What would you like to do?"
+	}
+
+	title := fmt.Sprintf("%s failed: %s", strings.ToUpper(sr.Env), sr.Stage.Name)
+	if sr.Error != "" {
+		return fmt.Sprintf("%s\n%s", title, sr.Error)
+	}
+	return title
+}
+
+func (m Model) failedStage() (*pipeline.StageRun, bool) {
+	if m.pipeline == nil {
+		return nil, false
+	}
+	stages := m.pipeline.Stages()
+	if m.failedStageIdx < 0 || m.failedStageIdx >= len(stages) {
+		return nil, false
+	}
+	return stages[m.failedStageIdx], true
+}
+
+func (m *Model) deferFailure(idx int) {
+	if m.phase == phaseFailurePrompt && idx == m.failedStageIdx {
+		logger.Log("defer-failure.skipped: already prompting for idx=%d", idx)
+		return
+	}
+	for _, existing := range m.deferredFailures {
+		if existing == idx {
+			return
+		}
+	}
+	m.deferredFailures = append(m.deferredFailures, idx)
+}
+
+func (m *Model) buildNextFailureForm() tea.Cmd {
+	stages := m.pipeline.Stages()
+	for len(m.deferredFailures) > 0 {
+		idx := m.deferredFailures[0]
+		m.deferredFailures = m.deferredFailures[1:]
+		if idx < 0 || idx >= len(stages) {
+			logger.Log("deferred-failure.discarded: idx=%d state=invalid", idx)
+			continue
+		}
+		switch stages[idx].State {
+		case pipeline.StateFailed:
+			m.failedStageIdx = idx
+			return m.buildFailureForm()
+		case pipeline.StatePending, pipeline.StateRunning, pipeline.StateParsingOutputs:
+			m.deferredFailures = append([]int{idx}, m.deferredFailures...)
+			return nil
+		default:
+			logger.Log("deferred-failure.discarded: idx=%d state=%s", idx, stages[idx].State)
+		}
+	}
+	return nil
 }
 
 func (m *Model) buildCompleteForm() tea.Cmd {
@@ -952,17 +1072,19 @@ func (m Model) handleRollbackDone(msg rollbackDoneMsg) (tea.Model, tea.Cmd) {
 		m.phase = phaseAborted
 		m.statusMessage = "Rollback had failures — check output above"
 		logger.Log("rollback: FAILED — rollback had errors")
+		m, cleanupCmd := m.startExitCleanup(true, false)
 		return m, tea.Batch(
 			printAbove(m.theme.FailedMessageStyle.Render(m.statusMessage)),
-			m.exitCleanupCmd(true, false),
+			cleanupCmd,
 		)
 	}
 	m.phase = phaseComplete
 	m.statusMessage = "Rollback complete!"
 	logger.Log("rollback: completed successfully")
+	m, cleanupCmd := m.startExitCleanup(true, false)
 	return m, tea.Batch(
 		printAbove(m.theme.SuccessMessageStyle.Render(fmt.Sprintf("Rollback complete! (%s)", m.elapsed()))),
-		m.exitCleanupCmd(true, false),
+		cleanupCmd,
 	)
 }
 

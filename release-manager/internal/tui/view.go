@@ -77,11 +77,27 @@ func (m Model) View() tea.View {
 			sb.WriteString("\n" + m.form.View())
 		}
 
+	case phaseCleanup:
+		sb.WriteString("  " + m.theme.SuccessMessageStyle.Render(m.spinner.View()+" "+m.statusMessage) + "\n")
+
+	case phaseCleanupDone:
+		if m.cleanupWarning != "" {
+			sb.WriteString("  " + m.theme.PreflightWarnStyle.Render("⚠ "+m.statusMessage) + "\n")
+		} else {
+			sb.WriteString("  " + m.theme.SuccessMessageStyle.Render("✓ "+m.statusMessage) + "\n")
+		}
+
 	case phaseAborted:
 		sb.WriteString(m.theme.FailedMessageStyle.Render(m.statusMessage) + "\n")
 	}
 
-	sb.WriteString(m.theme.HelpStyle.Render("ctrl+c to quit") + "\n")
+	if m.phase == phaseCleanup {
+		sb.WriteString(m.theme.HelpStyle.Render("please wait; final cleanup is in progress") + "\n")
+	} else if m.phase == phaseCleanupDone {
+		sb.WriteString(m.theme.HelpStyle.Render("done; exiting") + "\n")
+	} else {
+		sb.WriteString(m.theme.HelpStyle.Render("ctrl+c to quit") + "\n")
+	}
 	return tea.NewView(sb.String())
 }
 

@@ -319,6 +319,10 @@ func (p *Pipeline) RunStage(ctx context.Context, idx int) error {
 	}
 
 	if sr.Stage.Type == "health-check" {
+		if p.DryRun {
+			p.SkipStage(idx)
+			return nil
+		}
 		return p.runHealthCheck(ctx, idx)
 	}
 
@@ -579,7 +583,7 @@ func (p *Pipeline) runMatrix(ctx context.Context, idx int, baseInputs map[string
 				merged[k] = config.ResolveTemplate(v, p.Values())
 			}
 
-		if p.DryRun {
+			if p.DryRun {
 				dryCmd := gh.FormatCommand(sr.Stage.Repo, sr.Stage.Workflow, ref, merged)
 				logger.Log("matrix.start: [%s] %s sub-run %d (dry-run)", sr.Env, sr.Stage.Name, matrixIdx)
 
@@ -757,8 +761,12 @@ func (p *Pipeline) succeedStage(idx int) {
 func (p *Pipeline) SkipStage(idx int) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.stages[idx].State = StateSkipped
-	logger.Log("stage.skip: [%s] %s", p.stages[idx].Env, p.stages[idx].Stage.Name)
+	sr := p.stages[idx]
+	sr.State = StateSkipped
+	if sr.EndTime.IsZero() {
+		sr.EndTime = time.Now()
+	}
+	logger.Log("stage.skip: [%s] %s", sr.Env, sr.Stage.Name)
 }
 
 // RetryStage resets a failed stage to pending so it can be re-run.

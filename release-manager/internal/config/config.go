@@ -58,6 +58,7 @@ type Stage struct {
 	Repo            string            `yaml:"repo"`
 	Workflow        string            `yaml:"workflow"`
 	Ref             string            `yaml:"ref"`
+	ActiveRunCheck  *bool             `yaml:"active_run_check"`
 	ActiveRunFilter string            `yaml:"active_run_filter"`
 	Inputs          map[string]string `yaml:"inputs"`
 	Outputs         map[string]Output `yaml:"outputs"`
@@ -83,8 +84,8 @@ type MatrixEntry struct {
 type DryRunConfig struct{}
 
 type RollbackConfig struct {
-	Sources  RollbackSources `yaml:"sources"`
-	Steps    []Stage         `yaml:"steps"`
+	Sources RollbackSources `yaml:"sources"`
+	Steps   []Stage         `yaml:"steps"`
 }
 
 type RollbackSources struct {
@@ -264,7 +265,8 @@ func (c *Config) Repos() []string {
 }
 
 // DeployWorkflows returns deduplicated {repo, workflow, activeRunFilter} entries
-// from all environments and rollback steps, excluding checklists and e2e workflows.
+// from all environments and rollback steps, excluding only those that
+// explicitly disable active-run checks.
 func (c *Config) DeployWorkflows() []DeployWorkflow {
 	type key struct{ repo, workflow string }
 	seen := make(map[key]bool)
@@ -274,7 +276,7 @@ func (c *Config) DeployWorkflows() []DeployWorkflow {
 		if s.Type == "checklist" || s.Type == "health-check" || s.Workflow == "" || s.Repo == "" {
 			return
 		}
-		if strings.Contains(s.Workflow, "e2e") || strings.Contains(s.Workflow, "playwright") {
+		if s.ActiveRunCheck != nil && !*s.ActiveRunCheck {
 			return
 		}
 		k := key{s.Repo, s.Workflow}
