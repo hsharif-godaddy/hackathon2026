@@ -868,34 +868,34 @@ describe('instrumentation utilities', () => {
       window._signalsDataLayer = [];
     });
 
-    it('pushes correct schema shape with all required fields', () => {
+    it('pushes correct SCC interface shape with all required fields', () => {
       fireConversionEvent();
 
       expect(window._signalsDataLayer).toHaveLength(1);
       const event = window._signalsDataLayer![0] as any;
       expect(event.schema).toBe('add_generic_conversion');
-      expect(event.data.conversion).toEqual({
-        area: 'airo-builder',
-        revenue: 'freetrial',
-        product: 'airo-builder-freemium',
-        action: 'signup',
-      });
-      expect(event.data.eventCreationTimestamp).toBeDefined();
-      expect(event.data.virtualOrderId).toBeUndefined();
+      expect(event.version).toBe('v1');
+      expect(event.data.area).toBe('airo-builder');
+      expect(event.data.product).toBe('airo-builder-freemium');
+      expect(event.data.revenue).toBe('freetrial');
+      expect(event.data.action).toBe('signup');
+      expect(event.data.properties).toEqual({});
+      expect(event.data).not.toHaveProperty('conversion');
+      expect(event.data).not.toHaveProperty('eventCreationTimestamp');
     });
 
-    it('includes virtualOrderId when orderId provided', () => {
+    it('includes virtual_order_id in properties when orderId provided', () => {
       fireConversionEvent({ orderId: 'order-123' });
 
       const event = window._signalsDataLayer![0] as any;
-      expect(event.data.virtualOrderId).toBe('order-123');
+      expect(event.data.properties).toEqual({ virtual_order_id: 'order-123' });
     });
 
-    it('omits virtualOrderId when orderId not provided', () => {
-      fireConversionEvent({});
+    it('treats empty string orderId as falsy', () => {
+      fireConversionEvent({ orderId: '' });
 
       const event = window._signalsDataLayer![0] as any;
-      expect(event.data).not.toHaveProperty('virtualOrderId');
+      expect(event.data.properties).toEqual({});
     });
 
     it('initializes _signalsDataLayer if it does not exist', () => {
@@ -923,7 +923,7 @@ describe('instrumentation utilities', () => {
       window._signalsDataLayer = badArray as any;
 
       expect(() => fireConversionEvent()).not.toThrow();
-      expect(logger.error).toHaveBeenCalledWith('conversion.event.failure', expect.any(Object));
+      expect(logger.error).toHaveBeenCalledWith('instrumentation.fireConversionEvent.failure', { error: 'push failure', orderId: undefined });
     });
 
     it('logs non-Error thrown value as string', () => {
@@ -933,7 +933,7 @@ describe('instrumentation utilities', () => {
       window._signalsDataLayer = badArray as any;
 
       expect(() => fireConversionEvent()).not.toThrow();
-      expect(logger.error).toHaveBeenCalledWith('conversion.event.failure', { error: 'string error' });
+      expect(logger.error).toHaveBeenCalledWith('instrumentation.fireConversionEvent.failure', { error: 'string error', orderId: undefined });
     });
   });
 });

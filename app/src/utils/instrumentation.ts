@@ -376,6 +376,18 @@ export const logAiroHQEvent = ({
   }
 };
 
+interface SignalsConversionEvent {
+  schema: 'add_generic_conversion';
+  version: 'v1';
+  data: {
+    area: string;
+    product: string;
+    revenue: string;
+    action: string;
+    properties: Record<string, string>;
+  };
+}
+
 interface ConversionEventParams {
   orderId?: string;
 }
@@ -391,22 +403,20 @@ export const fireConversionEvent = ({ orderId }: ConversionEventParams = {}): vo
       window._signalsDataLayer = [];
     }
 
-    const eventData: Record<string, unknown> = {
+    const eventData: SignalsConversionEvent = {
       schema: 'add_generic_conversion',
+      version: 'v1',
       data: {
-        eventCreationTimestamp: new Date().toISOString(),
-        conversion: {
-          area: 'airo-builder',
-          revenue: 'freetrial',
-          product: 'airo-builder-freemium',
-          action: 'signup',
-        },
-        ...(orderId ? { virtualOrderId: orderId } : {}),
+        area: 'airo-builder',
+        product: 'airo-builder-freemium',
+        revenue: 'freetrial',
+        action: 'signup',
+        properties: orderId ? { virtual_order_id: orderId } : {},
       },
     };
 
     window._signalsDataLayer.push(eventData);
   } catch (e) {
-    logger.error('conversion.event.failure', { error: e instanceof Error ? e.message : String(e) });
+    logger.error('instrumentation.fireConversionEvent.failure', { error: e instanceof Error ? e.message : String(e), orderId });
   }
 };
