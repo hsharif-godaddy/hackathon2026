@@ -1,15 +1,10 @@
 import { createTool } from '@airo/ai-lib'
-import { readFile } from 'node:fs/promises'
-import path from 'node:path'
 import { z } from 'zod'
 
-import { AppRepository } from '../../database/repositories/AppRepository.js'
 import { TodoListRepository } from '../../database/repositories/TodoListRepository.js'
 import { Logger } from '../../logging/index.js'
-import type { RebuildWorkflowState, SitemapData } from '../../types/rebuild.js'
 
 const logger = Logger.create({ component: 'suggested-response-tool' })
-const appRepo = new AppRepository()
 const todoListRepo = new TodoListRepository()
 
 /**
@@ -29,144 +24,15 @@ const suggestedResponseInputSchema = z.object({
 })
 
 /**
- * Load workflow state from disk
- */
-async function loadWorkflowState(appPath: string): Promise<RebuildWorkflowState | null> {
-  try {
-    const statePath = path.join(appPath, '.source-site', 'workflow-state.json')
-    const content = await readFile(statePath, 'utf-8')
-    return JSON.parse(content)
-  } catch {
-    return null
-  }
-}
-
-/**
- * Load sitemap from disk
- */
-async function loadSitemap(appPath: string): Promise<SitemapData | null> {
-  try {
-    const sitemapPath = path.join(appPath, '.source-site', 'sitemap.json')
-    const content = await readFile(sitemapPath, 'utf-8')
-    return JSON.parse(content)
-  } catch {
-    return null
-  }
-}
-
-/**
- * Check if there are unbuilt rebuild pages available
- */
-export async function hasUnbuiltRebuildPages(appId: string): Promise<boolean> {
-  try {
-    const app = await appRepo.findById(appId)
-    if (!app) {
-      return false
-    }
-
-    const workflowState = await loadWorkflowState(app.path)
-    if (!workflowState) {
-      return false
-    }
-
-    const sitemap = await loadSitemap(app.path)
-    if (!sitemap) {
-      return false
-    }
-
-    // Check if there are any scraped pages that haven't been built yet
-    const unbuiltCount = sitemap.pages
-      .filter(p => p.scraped && !workflowState.pagesBuilt.includes(p.slug))
-      .length
-
-    return unbuiltCount > 0
-  } catch {
-    return false
-  }
-}
-
-/**
- * Check for rebuild pages and return widget data if available
- */
-async function getRebuildPageSelectorWidget(
-  appId: string
-): Promise<{ widget: any; unbuiltPages: any[] } | null> {
-  try {
-    const app = await appRepo.findById(appId)
-    if (!app) {
-      return null
-    }
-
-    const workflowState = await loadWorkflowState(app.path)
-    if (!workflowState) {
-      return null
-    }
-
-    const sitemap = await loadSitemap(app.path)
-    if (!sitemap) {
-      return null
-    }
-
-    // Get available pages (scraped but not built)
-    const availablePages = sitemap.pages
-      .filter(p => p.scraped)
-      .map(p => ({
-        slug: p.slug,
-        title: p.slug === 'homepage' ? 'Homepage' : p.slug.charAt(0).toUpperCase() + p.slug.slice(1).replace(/-/g, ' '),
-        url: p.url,
-        isBuilt: workflowState.pagesBuilt.includes(p.slug)
-      }))
-
-    const unbuiltPages = availablePages.filter(p => !p.isBuilt)
-
-    if (unbuiltPages.length === 0) {
-      logger.debug('suggested-response.no-rebuild-pages', { appId })
-      return null
-    }
-
-    logger.info('suggested-response.adding-rebuild-widget', {
-      appId,
-      unbuiltCount: unbuiltPages.length,
-      totalPages: sitemap.pages.length
-    })
-
-    const widget = {
-      widgetType: 'rebuild-page-selector',
-      widgetData: {
-        appId,
-        sourceUrl: workflowState.sourceUrl,
-        availablePages,
-        totalPages: availablePages.length,
-        builtPages: workflowState.pagesBuilt.length
-      }
-    }
-
-    return { widget, unbuiltPages }
-  } catch (error) {
-    logger.warn('suggested-response.rebuild-check-failed', {
-      appId,
-      error: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined
-    })
-    return null
-  }
-}
-
-/**
  * Suggested Response Tool for AI-Lib
- * 
+ *
  * Ends a conversation with a question and suggested responses.
  * Displays interactive buttons that users can click to quickly respond.
- * 
- * Automatically includes rebuild page options if available.
  */
 export const suggestedResponseAITool = createTool(
   `End your response with a question and suggested answers.
 Use this when you want to give the user quick options to respond with.
 The suggestions will be displayed as clickable buttons below your question.
-
-This tool automatically checks for available rebuild pages and includes them
-as suggestions without requiring explicit prompting.
 
 Guidelines for good suggestions:
 - Only call this tool when you have genuinely useful next steps to offer.
@@ -193,33 +59,9 @@ Example use cases:
     
     logger.info('suggested-response.called', {
       appId,
-      hasContext: !!context,
-      hasMetadata: !!context?.metadata,
-      metadataKeys: context?.metadata ? Object.keys(context.metadata) : []
+      suggestionCount: suggestions.length
     })
-    
-    // Check for rebuild pages and include widget if available
-    let rebuildWidget = null
-    if (appId) {
-      logger.info('suggested-response.checking-rebuild-data', { appId })
-      const rebuildData = await getRebuildPageSelectorWidget(appId)
-      if (rebuildData) {
-        rebuildWidget = rebuildData.widget
-        
-        logger.info('suggested-response.rebuild-widget-included', {
-          appId,
-          unbuiltCount: rebuildData.unbuiltPages.length
-        })
-      } else {
-        logger.info('suggested-response.no-rebuild-data', { appId })
-      }
-    } else {
-      logger.warn('suggested-response.no-appid', {
-        hasContext: !!context,
-        contextKeys: context ? Object.keys(context) : []
-      })
-    }
-    
+
     // Check for pending todo items that should be marked done.
     // The LLM sees this reminder in the tool result and calls mark_done itself.
     let todoReminder = ''
@@ -254,15 +96,11 @@ Example use cases:
 
     // Build message in one place
     let message = `Suggested response rendered with ${suggestions.length} option${suggestions.length === 1 ? '' : 's'}`
-    if (rebuildWidget) {
-      message += ' (with rebuild page selector)'
-    }
     if (todoReminder) {
       message += todoReminder
     }
 
-    // Return structured data that will be handled by the frontend
-    const result: any = {
+    return {
       success: true,
       widgetType: 'suggested-response',
       widgetData: {
@@ -272,11 +110,5 @@ Example use cases:
       },
       message
     }
-
-    if (rebuildWidget) {
-      result.rebuildWidget = rebuildWidget
-    }
-
-    return result
   }
 )

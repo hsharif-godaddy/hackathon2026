@@ -82,7 +82,7 @@ fontTheme({ mode: 'apply', fontName: 'Crimson Text', weights: ['400', '600'] });
 ## After Applying
 
 ✅ Stay silent - UI shows success  
-✅ Use `suggestedResponse` for next steps  
+✅ Guide the user to next steps  
 ❌ Don't repeat font name or say "applied"
 
 ## Quick Reference

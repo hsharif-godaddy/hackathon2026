@@ -112,7 +112,7 @@ describe('useLatestNBAs', () => {
       expect(result.current).toEqual({
         question: 'What would you like to do next?',
         suggestions: [{ text: 'Option A' }, { text: 'Option B' }],
-        rebuildWidget: undefined,
+        source: 'suggestedResponse',
       })
     })
 
@@ -170,7 +170,7 @@ describe('useLatestNBAs', () => {
       expect(result.current).toEqual({
         question: 'What would you like to do next?',
         suggestions: [{ text: 'Option A' }, { text: 'Option B' }],
-        rebuildWidget: undefined,
+        source: 'suggestedResponse',
       })
     })
 
@@ -338,8 +338,7 @@ describe('useLatestNBAs', () => {
       expect(result.current?.question).toBe('Direct Q?')
     })
 
-    it('includes rebuildWidget when present', () => {
-      const rebuildWidget = { widgetData: { availablePages: ['Home', 'About'] } }
+    it('ignores rebuildWidget in result (no longer part of NBA data)', () => {
       const tc: ToolCall = {
         ...makeSuggestedResponseToolCall(),
         result: {
@@ -348,14 +347,135 @@ describe('useLatestNBAs', () => {
               question: 'Rebuild?',
               suggestions: [{ text: 'Yes' }],
             },
-            rebuildWidget,
+            rebuildWidget: { widgetData: { availablePages: ['Home', 'About'] } },
           },
         },
       }
       mockMessages = [makeAssistantMessage([tc])]
 
       const { result } = renderHook(() => useLatestNBAs())
-      expect(result.current?.rebuildWidget).toEqual(rebuildWidget)
+      expect(result.current?.question).toBe('Rebuild?')
+      expect((result.current as any)?.rebuildWidget).toBeUndefined()
+    })
+  })
+
+  // ── askQuestion extraction ────────────────────────────────────────────────
+
+  describe('askQuestion tool call extraction', () => {
+    function makeAskQuestionToolCall(
+      overrides: Partial<ToolCall> & { widgetData?: object } = {}
+    ): ToolCall {
+      const { widgetData, ...rest } = overrides
+      return {
+        id: 'tc-aq-1',
+        name: 'askQuestion',
+        status: 'completed',
+        input: {},
+        result: {
+          output: {
+            widgetData: widgetData ?? {
+              questions: [{
+                question: 'What should the contact section include?',
+                suggestions: [{ text: 'Contact form' }, { text: 'Business info' }],
+                allowOther: true,
+              }],
+              currentQuestionIndex: 0,
+              answers: [],
+            },
+          },
+        },
+        ...rest,
+      }
+    }
+
+    it('returns NBA data from an askQuestion tool call', () => {
+      const tc = makeAskQuestionToolCall()
+      mockMessages = [makeAssistantMessage([tc])]
+
+      const { result } = renderHook(() => useLatestNBAs())
+      expect(result.current).toMatchObject({
+        question: 'What should the contact section include?',
+        suggestions: [{ text: 'Contact form' }, { text: 'Business info' }],
+        allowOther: true,
+        source: 'askQuestion',
+      })
+      expect(result.current?.toolResult).toEqual(tc.result)
+    })
+
+    it('returns the question at currentQuestionIndex when > 0', () => {
+      const tc = makeAskQuestionToolCall({
+        widgetData: {
+          questions: [
+            { question: 'First?', suggestions: [{ text: 'A' }], allowOther: true },
+            { question: 'Second?', suggestions: [{ text: 'B' }, { text: 'C' }], allowOther: false },
+          ],
+          currentQuestionIndex: 1,
+          answers: ['A'],
+        },
+      })
+      mockMessages = [makeAssistantMessage([tc])]
+
+      const { result } = renderHook(() => useLatestNBAs())
+      expect(result.current?.question).toBe('Second?')
+      expect(result.current?.suggestions).toEqual([{ text: 'B' }, { text: 'C' }])
+      expect(result.current?.allowOther).toBe(false)
+    })
+
+    it('prefers askQuestion over suggestedResponse when it comes last', () => {
+      const sr = makeSuggestedResponseToolCall({
+        id: 'tc-sr',
+        widgetData: { question: 'What next?', suggestions: [{ text: 'Option A' }] },
+      })
+      const aq = makeAskQuestionToolCall({ id: 'tc-aq' })
+      mockMessages = [makeAssistantMessage([sr, aq])]
+
+      const { result } = renderHook(() => useLatestNBAs())
+      expect(result.current?.source).toBe('askQuestion')
+    })
+
+    it('returns null when askQuestion has no questions', () => {
+      const tc = makeAskQuestionToolCall({
+        widgetData: { questions: [], currentQuestionIndex: 0, answers: [] },
+      })
+      mockMessages = [makeAssistantMessage([tc])]
+
+      const { result } = renderHook(() => useLatestNBAs())
+      expect(result.current).toBeNull()
+    })
+
+    it('defaults allowOther to true when not specified', () => {
+      const tc = makeAskQuestionToolCall({
+        widgetData: {
+          questions: [{
+            question: 'Pick one',
+            suggestions: [{ text: 'A' }],
+          }],
+          currentQuestionIndex: 0,
+          answers: [],
+        },
+      })
+      mockMessages = [makeAssistantMessage([tc])]
+
+      const { result } = renderHook(() => useLatestNBAs())
+      expect(result.current?.allowOther).toBe(true)
+    })
+
+    it('respects allowOther: false', () => {
+      const tc = makeAskQuestionToolCall({
+        widgetData: {
+          questions: [{
+            question: 'Pick one',
+            suggestions: [{ text: 'A' }],
+            allowOther: false,
+          }],
+          currentQuestionIndex: 0,
+          answers: [],
+        },
+      })
+      mockMessages = [makeAssistantMessage([tc])]
+
+      const { result } = renderHook(() => useLatestNBAs())
+      expect(result.current?.allowOther).toBe(false)
     })
   })
 })

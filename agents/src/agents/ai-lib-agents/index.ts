@@ -24,6 +24,8 @@ import {
 import { getTemplateIds } from '../template-registry.js'
 import type { EnhancedAgentContext } from './types.js'
 import { skillToolManager } from '../../tools/skill-tool-manager.js'
+import { logger } from '../../logging/index.js'
+import { getProfileRegistry, runWithProfile, profileValue } from '../../profiles/index.js'
 import { AgentContextPipeline } from './agent-context-pipeline.js'
 
 /**
@@ -62,11 +64,34 @@ export async function createUnifiedAgentFactory(options?: {
   })
 
   const developConfig = await createDevelopAgent()
+
+  // Pre-build develop variants for profiles that have develop.* properties.
+  // profileFlag() reads from AsyncLocalStorage, so we wrap each build in runWithProfile
+  // so the flags resolve correctly at construction time.
+  const profileDevelopConfigs: Record<string, AgentConfig> = {}
+  for (const [name, profile] of getProfileRegistry()) {
+    const hasDevelopFlags = Object.keys(profile.properties).some(k => k.startsWith('develop.'))
+    if (!hasDevelopFlags) continue
+
+    try {
+      const config = await runWithProfile(profile, () => createDevelopAgent())
+      config.id = `develop-${name}`
+      config.name = `AI Developer (${name})`
+      profileDevelopConfigs[config.id] = config
+    } catch (error) {
+      logger.error('agent_factory.profile_develop_variant_failed', { profileName: name, error })
+    }
+  }
+
   const marketingConfig = await createMarketingAgent()
   const initialConfig = await createInitialAgent(stateManager)
   const initialV2Config = await createInitialAgent(stateManager, undefined, '2.0')
   initialV2Config.id = 'initial-v2'
   initialV2Config.name = 'Initial (v2.0)'
+
+  const initialV3Config = await createInitialAgent(stateManager, undefined, '3.0')
+  initialV3Config.id = 'initial-v3'
+  initialV3Config.name = 'Initial (v3.0)'
 
   // Pre-create template-specific initial agent variants
   const templateInitialConfigs: Record<string, AgentConfig> = {}
@@ -96,7 +121,13 @@ export async function createUnifiedAgentFactory(options?: {
   }
   // Stop execution after handoff, suggestedResponse, or secrets request tool is called
   // requestSecrets: Agent stops so secrets can be saved (auto or manual) before continuing
-  developConfig.stopAfterTools = ['handoff', 'suggestedResponse', 'requestSecrets']
+  // Merge with any profile-gated stopAfterTools (e.g., askQuestion) set in develop-agent.ts
+  developConfig.stopAfterTools = [...(developConfig.stopAfterTools ?? []), 'handoff', 'suggestedResponse', 'requestSecrets']
+
+  for (const config of Object.values(profileDevelopConfigs)) {
+    config.tools = { ...(config.tools || {}), handoff: developHandoffTool }
+    config.stopAfterTools = [...(config.stopAfterTools ?? []), 'handoff', 'suggestedResponse', 'requestSecrets']
+  }
 
   const marketingHandoffTool = createHandoffTool({
     sourceAgentId: 'marketing',
@@ -111,12 +142,42 @@ export async function createUnifiedAgentFactory(options?: {
   // Stop execution after handoff tool is called
   marketingConfig.stopAfterTools = ['handoff']
 
+  // For initial agent variants tied to profiles with develop flags, update the handoff
+  // to target the develop variant instead of the default 'develop' agent.
+  // This ensures the handoff continuation runs on the profile-specific develop agent.
+  // NOTE: This mutates the shared initialV2Config/initialV3Config. If two profiles share
+  // the same promptVersion AND both have develop.* flags, the last one wins. To support
+  // that case, clone the initial config per profile before mutating.
+  for (const [name, profile] of getProfileRegistry()) {
+    const hasDevelopFlags = Object.keys(profile.properties).some(k => k.startsWith('develop.'))
+    if (!hasDevelopFlags) continue
+
+    const promptVersion = runWithProfile(profile, () => profileValue('initial.promptVersion', '' as string))
+    const initialVariantConfig =
+      promptVersion === '2.0' ? initialV2Config :
+      promptVersion === '3.0' ? initialV3Config :
+      null
+    if (!initialVariantConfig) continue
+
+    const developVariantId = `develop-${name}`
+    const variantHandoffTool = createHandoffTool({
+      sourceAgentId: initialVariantConfig.id!,
+      validTargets: [developVariantId],
+      stateManager
+    })
+    initialVariantConfig.tools = { ...(initialVariantConfig.tools || {}), handoff: variantHandoffTool }
+  }
+
   // Create shared pipeline for context assembly
   const contextPipeline = new AgentContextPipeline()
   developConfig.contextPipeline = contextPipeline
+  for (const config of Object.values(profileDevelopConfigs)) {
+    config.contextPipeline = contextPipeline
+  }
   marketingConfig.contextPipeline = contextPipeline
   initialConfig.contextPipeline = contextPipeline
   initialV2Config.contextPipeline = contextPipeline
+  initialV3Config.contextPipeline = contextPipeline
 
   for (const config of Object.values(templateInitialConfigs)) {
     config.contextPipeline = contextPipeline
@@ -126,7 +187,9 @@ export async function createUnifiedAgentFactory(options?: {
   const agentDefinitions: Record<string, AgentConfig> = {
     initial: initialConfig,
     'initial-v2': initialV2Config,
+    'initial-v3': initialV3Config,
     develop: developConfig,
+    ...profileDevelopConfigs,
     marketing: marketingConfig,
     ...templateInitialConfigs,
   }

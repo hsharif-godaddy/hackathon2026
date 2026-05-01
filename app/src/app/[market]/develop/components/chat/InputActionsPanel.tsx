@@ -9,11 +9,17 @@ import CollapsibleChatInputSection, { CollapseChevron } from '@/app/[market]/dev
 import ThemePreviewInputPanel from '@/app/[market]/develop/components/chat/ThemePreviewInputPanel'
 import { useLatestNBAs } from '@/app/[market]/develop/components/chat/useLatestNBAs'
 import ThinkingIndicator from '@/app/[market]/develop/components/ThinkingIndicator'
+import AskQuestionToolRenderer from '@/app/[market]/develop/components/tool-renderers/AskQuestionToolRenderer'
 import OptionButton from '@/app/[market]/develop/components/tool-renderers/OptionButton'
+import OptionInput from '@/app/[market]/develop/components/tool-renderers/OptionInput'
+import RebuildPageSelectorToolRenderer from '@/app/[market]/develop/components/tool-renderers/RebuildPageSelectorToolRenderer'
 import { ViewMode } from '@/app/[market]/develop/components/types'
+import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import { findLatestAppliedColorScheme } from '@/app/[market]/develop/components/utils/findLatestAppliedColorScheme'
 import type { ActiveColorSchemeSuggest } from '@/app/[market]/develop/components/utils/findLatestColorSchemeSuggest'
 import { previewThemeInIframe } from '@/app/[market]/develop/components/utils/previewThemeInIframe'
+import { useNextActions } from '@/app/[market]/develop/hooks/useNextActions'
+import { useRebuildPages } from '@/app/[market]/develop/hooks/useRebuildPages'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
@@ -55,6 +61,8 @@ function InputActionsPanelLegacy() {
 
   const [fullPlanExpanded, setFullPlanExpanded] = useState(false)
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [otherValue, setOtherValue] = useState('')
+  const [isOtherFocused, setIsOtherFocused] = useState(false)
 
   const items = currentList?.items ?? []
   const uncompletedItems = items.filter(item => !item.completed)
@@ -200,10 +208,29 @@ function InputActionsPanelLegacy() {
     switchToIncompleteList()
   }, [allCompleted, currentListId])
 
-  function handleSuggestionClick(text: string) {
+  function handleSuggestionClick(suggestion: { text: string; value?: string }) {
     if (isProcessing || !sendUserMessage) return
-    sendUserMessage(text, { isActionRequest: true })
+    const messageText = suggestion.value || suggestion.text
+    sendUserMessage(messageText, { isActionRequest: true })
+    setOtherValue('')
+    setIsOtherFocused(false)
   }
+
+  function handleOtherSubmit() {
+    if (isProcessing || !sendUserMessage || !otherValue.trim()) return
+    sendUserMessage(otherValue.trim(), { isActionRequest: true })
+    setOtherValue('')
+    setIsOtherFocused(false)
+  }
+
+  function handleOtherKeyDown(event: React.KeyboardEvent) {
+    if (event.key === 'Enter' && !event.shiftKey && !event.altKey && !event.metaKey && !event.ctrlKey) {
+      event.preventDefault()
+      handleOtherSubmit()
+    }
+  }
+
+  const showOtherInput = nbaData?.source === 'askQuestion' && nbaData?.allowOther
 
   function handlePlanItemClick(item: TodoItem) {
     if (isProcessing || !sendUserMessage) return
@@ -347,11 +374,26 @@ function InputActionsPanelLegacy() {
                 key={`nba-${index}`}
                 text={suggestion.text}
                 disabled={isProcessing}
-                onClick={() => handleSuggestionClick(suggestion.text)}
+                onClick={() => handleSuggestionClick(suggestion)}
                 animationDelay={index * 0.1}
                 isSelectable={true}
               />
             ))}
+
+            {showOtherInput && (
+              <OptionInput
+                value={otherValue}
+                isSelected={isOtherFocused}
+                disabled={isProcessing}
+                placeholder={t('builder_tools_askquestion_other_placeholder')}
+                ariaLabel={t('builder_tools_askquestion_other_aria_label')}
+                submitLabel={t('builder_common_submit')}
+                onChange={(value) => { setOtherValue(value); setIsOtherFocused(true) }}
+                onFocus={() => setIsOtherFocused(true)}
+                onSubmit={handleOtherSubmit}
+                onKeyDown={handleOtherKeyDown}
+              />
+            )}
 
             {hasPlan && !fullPlanExpanded && (
               <div className="flex items-center justify-end px-1 py-0.5">
@@ -566,9 +608,6 @@ function FullPlanSection({
   onItemClick,
   onOpenModal,
   onCollapse,
-  showUpdatedBadge = false,
-  isExpanded = true,
-  variant = 'inline',
   t,
 }: {
   list: TodoList
@@ -580,82 +619,14 @@ function FullPlanSection({
   onItemClick: (item: TodoItem) => void
   onOpenModal: () => void
   onCollapse: () => void
-  /** Show the blue "updated" badge next to "View plan" text when collapsed */
-  showUpdatedBadge?: boolean
-  /** Whether the plan body is currently expanded (controls badge visibility and body rendering) */
-  isExpanded?: boolean
-  /** Rendering variant - 'inline' renders body directly with legacy styling, 'collapsible' uses compact styling with AnimatePresence for collapse animation */
-  variant?: 'inline' | 'collapsible'
   t: (key: string, values?: Record<string, unknown>, fallback?: string) => string
 }) {
-  const titleClasses = variant === 'collapsible'
-    ? 'text-sm font-medium text-muted-foreground truncate'
-    : 'text-sm font-semibold text-foreground truncate'
-
-  const wrapperClasses = variant === 'collapsible'
-    ? 'mb-0.5'
-    : 'flex flex-col gap-0.5 pt-0.5 pb-1'
-
-  const titleRowClasses = variant === 'collapsible'
-    ? 'flex min-h-[22px] items-center justify-between px-1 py-0.5'
-    : 'flex items-center justify-between py-0.5'
-
-  const chevronElement = variant === 'collapsible' ? (
-    <CollapseChevron expanded={isExpanded} />
-  ) : (
-    <svg
-      className="w-2 h-2"
-      style={{ transform: 'rotate(180deg)' }}
-      fill="none"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth="2"
-      viewBox="0 0 24 24"
-      stroke="currentColor"
-    >
-      <path d="M19 9l-7 7-7-7" />
-    </svg>
-  )
-
-  const bodyContent = (
-    <div className="max-h-48 overflow-y-auto flex flex-col gap-0.5">
-      {[...completedItems, ...uncompletedItems].length > 0 ? (
-        <>
-          {/* Completed items — read-only */}
-          {completedItems.map((item) => (
-            <div
-              key={item.id}
-              className="flex items-center gap-1.5 px-1.5 py-0.5 rounded-lg"
-            >
-              <CircularCheckbox checked />
-              <span className="text-sm line-through text-muted-foreground truncate">{item.title}</span>
-            </div>
-          ))}
-          {/* Uncompleted items — actionable, with plan icon */}
-          {uncompletedItems.map((item, index) => (
-            <PlanOptionButton
-              key={item.id}
-              item={item}
-              disabled={isProcessing}
-              onClick={() => onItemClick(item)}
-              animationDelay={index * 0.05}
-            />
-          ))}
-        </>
-      ) : (
-        <div className="text-xs text-muted-foreground text-center py-1">
-          {t('builder_common_todo_no_items')}
-        </div>
-      )}
-    </div>
-  )
-
   return (
-    <div className={wrapperClasses}>
+    <div className="flex flex-col gap-0.5 pt-0.5 pb-1">
       {/* Plan title row: name + [i] on left, "View plan" collapse on right */}
-      <div className={titleRowClasses}>
+      <div className="flex items-center justify-between py-0.5">
         <div className="flex items-center gap-1 min-w-0">
-          <span className={titleClasses}>{list.name}</span>
+          <span className="text-sm font-semibold text-foreground truncate">{list.name}</span>
           <button
             type="button"
             aria-label={t('builder_todo_details')}
@@ -673,44 +644,55 @@ function FullPlanSection({
         </div>
         <button
           type="button"
-          className={variant === 'collapsible'
-            ? "flex shrink-0 items-center gap-0.5 text-sm text-muted-foreground transition-colors hover:text-foreground ml-2"
-            : "flex items-center gap-0.5 text-sm text-muted-foreground hover:text-foreground transition-colors flex-shrink-0 ml-2"
-          }
+          className="flex items-center gap-0.5 text-sm text-muted-foreground hover:text-foreground transition-colors flex-shrink-0 ml-2"
           onClick={onCollapse}
-          aria-expanded={isExpanded}
         >
-          <span>
-            {t('builder_todo_view_plan', { completed: completedCount, total: totalItems })}
-            {showUpdatedBadge && !isExpanded && (
-              <span className="ml-1 text-intents-info-color font-medium">
-                {t('builder_todo_updated')}
-              </span>
-            )}
-          </span>
-          {chevronElement}
+          <span>{t('builder_todo_view_plan', { completed: completedCount, total: totalItems })}</span>
+          <svg
+            className="w-2 h-2"
+            style={{ transform: 'rotate(180deg)' }}
+            fill="none"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="2"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path d="M19 9l-7 7-7-7" />
+          </svg>
         </button>
       </div>
 
-      {/* Body: inline variant renders directly, collapsible variant uses AnimatePresence for collapse animation */}
-      {variant === 'collapsible' ? (
-        <AnimatePresence initial={false}>
-          {isExpanded && (
-            <motion.div
-              key="todo-list-body"
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
-              className="overflow-hidden"
-            >
-              {bodyContent}
-            </motion.div>
-          )}
-        </AnimatePresence>
-      ) : (
-        bodyContent
-      )}
+      <div className="max-h-48 overflow-y-auto flex flex-col gap-0.5">
+        {[...completedItems, ...uncompletedItems].length > 0 ? (
+          <>
+            {/* Completed items — read-only */}
+            {completedItems.map((item) => (
+              <div
+                key={item.id}
+                className="flex items-center gap-1.5 px-1.5 py-0.5 rounded-lg"
+              >
+                <CircularCheckbox checked />
+                <span className="text-sm line-through text-muted-foreground truncate">{item.title}</span>
+              </div>
+            ))}
+            {/* Uncompleted items — actionable, with plan icon */}
+            {uncompletedItems.map((item, index) => (
+              <PlanOptionButton
+                key={item.id}
+                item={item}
+                disabled={isProcessing}
+                onClick={() => onItemClick(item)}
+                animationDelay={index * 0.05}
+              />
+            ))}
+          </>
+        ) : (
+          <div className="text-xs text-muted-foreground text-center py-1">
+            {t('builder_common_todo_no_items')}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -885,6 +867,21 @@ function InputActionsPanelThemeSelection({ activeColorSchemeSuggest = null }: In
   const isProcessing = isStreaming || isLoading
   const messages = useMessages()
   const viewMode = useDevelopPageStore((state) => state.viewMode)
+  const appId = useAppIdFromParams()
+  const { data: rebuildPagesData, isError: isRebuildError } = useRebuildPages(appId)
+  if (isRebuildError) logger.warn('input-actions-panel.rebuild-pages-error', { appId })
+  const hasRebuildPages = rebuildPagesData?.availablePages?.some(p => !p.isBuilt) ?? false
+
+  const items = currentList?.items ?? []
+  const uncompletedItems = items.filter(item => !item.completed)
+  const completedItems = items.filter(item => item.completed)
+  const hasPendingPlanItems = uncompletedItems.length > 0
+
+  const hasNoBAs = !nbaData || nbaData.suggestions.length === 0
+  const hasConversationHistory = messages.length > 0
+  const { data: nextActionsData, isError: isNextActionsError } = useNextActions(appId, hasNoBAs && !isProcessing && hasConversationHistory && !hasPendingPlanItems)
+  if (isNextActionsError) logger.warn('input-actions-panel.next-actions-error', { appId })
+  const nextActionSuggestions = nextActionsData?.suggestions ?? []
 
   // Get the currently applied theme to prepend to suggestions
   const currentAppliedTheme = useMemo(() => findLatestAppliedColorScheme(messages), [messages])
@@ -894,10 +891,8 @@ function InputActionsPanelThemeSelection({ activeColorSchemeSuggest = null }: In
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [dismissedColorSuggestId, setDismissedColorSuggestId] = useState<string | null>(null)
   const [selectedThemeIndex, setSelectedThemeIndex] = useState<number>(0)
-
-  const items = currentList?.items ?? []
-  const uncompletedItems = items.filter(item => !item.completed)
-  const completedItems = items.filter(item => item.completed)
+  const [askQuestionCompleted, setAskQuestionCompleted] = useState(false)
+  useEffect(() => { setAskQuestionCompleted(false) }, [nbaData?.toolResult])
   const hasPlan = !!currentList && items.length > 0
   const totalItems = items.length
   const completedCount = completedItems.length
@@ -928,7 +923,8 @@ function InputActionsPanelThemeSelection({ activeColorSchemeSuggest = null }: In
   const remainingSlots = MAX_COMBINED_ITEMS - nbaSuggestions.length
   const planPreviewItems = uncompletedItems.slice(0, remainingSlots)
 
-  const hasCombinedItems = nbaSuggestions.length > 0 || planPreviewItems.length > 0
+  const hasNextActions = nextActionSuggestions.length > 0
+  const hasCombinedItems = nbaSuggestions.length > 0 || planPreviewItems.length > 0 || hasNextActions
   const showColor = Boolean(activeColorSchemeSuggest) && dismissedColorSuggestId !== activeColorSchemeSuggest?.toolCallId
   const isPreviewMode = viewMode === ViewMode.PREVIEW || viewMode === ViewMode.EDIT
 
@@ -945,10 +941,10 @@ function InputActionsPanelThemeSelection({ activeColorSchemeSuggest = null }: In
 
   // Auto-open "Continue Building" when content is available
   useEffect(() => {
-    if (hasCombinedItems || hasPlan || showColor) {
+    if (hasCombinedItems || hasPlan || showColor || hasRebuildPages) {
       setContinueBuildingExpanded(true)
     }
-  }, [showColor, hasCombinedItems, hasPlan])
+  }, [showColor, hasCombinedItems, hasPlan, hasRebuildPages])
 
   // Reset dismissed state and theme selection when color suggest changes
   useEffect(() => {
@@ -1104,8 +1100,9 @@ function InputActionsPanelThemeSelection({ activeColorSchemeSuggest = null }: In
     switchToIncompleteList()
   }, [allCompleted, currentListId])
 
-  function handleSuggestionClick(text: string) {
+  function handleSuggestionClick(suggestion: { text: string; value?: string } | string) {
     if (isProcessing || !sendUserMessage) return
+    const text = typeof suggestion === 'string' ? suggestion : (suggestion.value || suggestion.text)
     sendUserMessage(text, { isActionRequest: true })
   }
 
@@ -1223,7 +1220,7 @@ function InputActionsPanelThemeSelection({ activeColorSchemeSuggest = null }: In
   }
 
   // ── Mode A: Agent idle, nothing to show ──────────────────────────────────
-  if (!hasCombinedItems && !hasPlan && !showColor) {
+  if (!hasCombinedItems && !hasPlan && !showColor && !hasRebuildPages) {
     return null
   }
 
@@ -1233,102 +1230,195 @@ function InputActionsPanelThemeSelection({ activeColorSchemeSuggest = null }: In
       ? nbaData.question
       : t('builder_todo_continue_building')
 
-  const continueBuildingBody = (
+  const continueBuildingTodoBody = (
     <div className="flex flex-col gap-0.5">
+      {nbaData?.source === 'askQuestion' && nbaData.toolResult && !askQuestionCompleted ? (
+        <AskQuestionToolRenderer
+          toolName="askQuestion"
+          toolStatus="completed"
+          result={nbaData.toolResult as Record<string, unknown>}
+          isLastAssistantMessage={true}
+          onComplete={() => setAskQuestionCompleted(true)}
+          hideQuestion={true}
+        />
+      ) : nbaSuggestions.length > 0 ? (
+        nbaSuggestions.map((suggestion, index) => (
+          <OptionButton
+            key={`nba-${index}`}
+            text={suggestion.text}
+            disabled={isProcessing}
+            onClick={() => handleSuggestionClick(suggestion)}
+            animationDelay={index * 0.1}
+            isSelectable={true}
+          />
+        ))
+      ) : !hasPendingPlanItems ? (
+        nextActionSuggestions.map((suggestion, index) => (
+          <OptionButton
+            key={`next-${index}`}
+            text={suggestion.text}
+            disabled={isProcessing}
+            onClick={() => handleSuggestionClick(suggestion.text)}
+            animationDelay={index * 0.1}
+            isSelectable={true}
+          />
+        ))
+      ) : null}
+
+      {hasRebuildPages && rebuildPagesData && nbaData?.source !== 'askQuestion' && (
+        <RebuildPageSelectorToolRenderer
+          toolName="rebuildPageSelector"
+          toolStatus="completed"
+          result={{ widget: { widgetType: 'rebuild-page-selector', widgetData: { appId: appId!, ...rebuildPagesData } } }}
+          isLastAssistantMessage={true}
+          size="small"
+        />
+      )}
+
       {planPreviewItems.map((item, index) => (
         <PlanOptionButton
           key={item.id}
           item={item}
           disabled={isProcessing}
           onClick={() => handlePlanItemClick(item)}
-          animationDelay={index * 0.1}
+          animationDelay={(nbaSuggestions.length + index) * 0.1}
         />
       ))}
 
-      {nbaSuggestions.map((suggestion, index) => (
-        <OptionButton
-          key={`nba-${index}`}
-          text={suggestion.text}
-          disabled={isProcessing}
-          onClick={() => handleSuggestionClick(suggestion.text)}
-          animationDelay={(planPreviewItems.length + index) * 0.1}
-          isSelectable={true}
-        />
-      ))}
+      {hasPlan && (
+        <div className="mt-0.5">
+          <div className="flex min-h-[22px] items-center justify-between px-1 py-0.5">
+            <div className="flex items-center gap-1 min-w-0">
+              <span className="text-xs font-medium text-muted-foreground truncate">{currentList.name}</span>
+              <button
+                type="button"
+                aria-label={t('builder_todo_details')}
+                className="flex-shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setIsModalOpen(true)
+                }}
+              >
+                <svg className="w-2 h-2" fill="none" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" stroke="currentColor">
+                  <circle cx="12" cy="12" r="10" />
+                  <path d="M12 16v-4M12 8h.01" />
+                </svg>
+              </button>
+            </div>
+            <button
+              type="button"
+              className="flex shrink-0 items-center gap-0.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+              onClick={() => {
+                setFullPlanExpanded(v => !v)
+                autoExpandedRef.current = false
+              }}
+              aria-expanded={fullPlanExpanded}
+            >
+              <span>
+                {t('builder_todo_view_plan', { completed: completedCount, total: totalItems })}
+                {viewState === 'update' && (
+                  <span className="ml-1 text-intents-info-color font-medium">
+                    {t('builder_todo_updated')}
+                  </span>
+                )}
+              </span>
+              <CollapseChevron expanded={fullPlanExpanded} />
+            </button>
+          </div>
+          <AnimatePresence initial={false}>
+            {fullPlanExpanded && (
+              <motion.div
+                key="full-plan-nested"
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+                className="overflow-hidden"
+              >
+                <div className="max-h-48 overflow-y-auto flex flex-col gap-0.5 pl-2">
+                  {[...completedItems, ...uncompletedItems].length > 0 ? (
+                    <>
+                      {completedItems.map((item) => (
+                        <div
+                          key={item.id}
+                          className="flex items-center gap-1.5 px-1.5 py-0.5 rounded-lg"
+                        >
+                          <CircularCheckbox checked />
+                          <span className="text-sm line-through text-muted-foreground truncate">{item.title}</span>
+                        </div>
+                      ))}
+                      {uncompletedItems.map((item, index) => (
+                        <PlanOptionButton
+                          key={item.id}
+                          item={item}
+                          disabled={isProcessing}
+                          onClick={() => handlePlanItemClick(item)}
+                          animationDelay={index * 0.05}
+                        />
+                      ))}
+                    </>
+                  ) : (
+                    <div className="text-xs text-muted-foreground text-center py-1">
+                      {t('builder_common_todo_no_items')}
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      )}
+
     </div>
   )
 
   // ── Mode B: Agent idle, has data ─────────────────────────────────────────
-
-  // Determine content based on color selection state
-  const content = showColor && activeColorSchemeSuggest ? (
-    // When color selection is active, show the theme panel
-    <ThemePreviewInputPanel
-      key={activeColorSchemeSuggest.toolCallId}
-      toolCallId={activeColorSchemeSuggest.toolCallId}
-      palettes={palettesWithCurrent}
-      onCancel={handleColorCancel}
-      selectedIndex={selectedThemeIndex}
-      onSelectedIndexChange={setSelectedThemeIndex}
-      disabled={!isPreviewMode}
-    >
-      {({ body, footer }) => (
-        <CollapsibleChatInputSection
-          title={continueBuildingTitle}
-          expanded={continueBuildingExpanded}
-          onExpandedChange={setContinueBuildingExpanded}
-          footer={footer}
-        >
-          {body}
-        </CollapsibleChatInputSection>
-      )}
-    </ThemePreviewInputPanel>
-  ) : (
-    // Otherwise, show the NBA + todo list combo
-    <>
-      {hasCombinedItems && (
-        <>
-          <CollapsibleChatInputSection
-            title={continueBuildingTitle}
-            expanded={continueBuildingExpanded}
-            onExpandedChange={setContinueBuildingExpanded}
-          >
-            {continueBuildingBody}
-          </CollapsibleChatInputSection>
-          <div className="-mx-1.5 mb-1 border-b border-border" />
-        </>
-      )}
-
-      {hasPlan && currentList && (
-        <>
-          <FullPlanSection
-            list={currentList}
-            completedItems={completedItems}
-            uncompletedItems={uncompletedItems}
-            completedCount={completedCount}
-            totalItems={totalItems}
-            isProcessing={isProcessing}
-            onItemClick={handlePlanItemClick}
-            onOpenModal={() => setIsModalOpen(true)}
-            onCollapse={() => {
-              setFullPlanExpanded(v => !v)
-              autoExpandedRef.current = false
-            }}
-            showUpdatedBadge={viewState === 'update'}
-            isExpanded={fullPlanExpanded}
-            variant="collapsible"
-            t={t}
-          />
-          <div className="-mx-1.5 mb-1 border-b border-border" />
-        </>
-      )}
-    </>
-  )
-
-  // Modal is rendered once regardless of branch (needed for info button functionality)
   return (
     <>
-      {content}
+      {(hasCombinedItems || hasPlan || showColor || hasRebuildPages) && (
+        <>
+          {showColor && activeColorSchemeSuggest ? (
+            <ThemePreviewInputPanel
+              key={activeColorSchemeSuggest.toolCallId}
+              toolCallId={activeColorSchemeSuggest.toolCallId}
+              palettes={palettesWithCurrent}
+              onCancel={handleColorCancel}
+              selectedIndex={selectedThemeIndex}
+              onSelectedIndexChange={setSelectedThemeIndex}
+              disabled={!isPreviewMode}
+            >
+              {({ body, footer }) => (
+                <CollapsibleChatInputSection
+                  title={continueBuildingTitle}
+                  expanded={continueBuildingExpanded}
+                  onExpandedChange={setContinueBuildingExpanded}
+                  footer={footer}
+                >
+                  {body}
+                </CollapsibleChatInputSection>
+              )}
+            </ThemePreviewInputPanel>
+          ) : nbaData?.source === 'askQuestion' && nbaData.toolResult && !askQuestionCompleted ? (
+            <CollapsibleChatInputSection
+              title={nbaData.question}
+              expanded={continueBuildingExpanded}
+              onExpandedChange={setContinueBuildingExpanded}
+            >
+              {continueBuildingTodoBody}
+            </CollapsibleChatInputSection>
+          ) : (
+            <CollapsibleChatInputSection
+              title={continueBuildingTitle}
+              expanded={continueBuildingExpanded}
+              onExpandedChange={setContinueBuildingExpanded}
+            >
+              {continueBuildingTodoBody}
+            </CollapsibleChatInputSection>
+          )}
+          <div className="-mx-1.5 mb-1 border-b border-border" />
+        </>
+      )}
+
       <TodoListModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}

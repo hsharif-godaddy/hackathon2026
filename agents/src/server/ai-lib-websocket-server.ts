@@ -96,7 +96,7 @@ import {
   type MessageLifecycleDeps,
 } from './message-lifecycle.js'
 import { ClientActionService, type IClientActionService } from '../services/ClientActionService.js'
-import { hasUnbuiltRebuildPages } from '../tools/ai-lib-tools/suggested-response.js'
+import { hasUnbuiltRebuildPages } from '../tools/ai-lib-tools/rebuild-page-selector.js'
 import { getAssessmentAgent, type AssessmentOutcome, AssessmentTaskType } from '../agents/assessment-agent/index.js'
 import { withTimeout } from '../utils/promise-utils.js'
 import {

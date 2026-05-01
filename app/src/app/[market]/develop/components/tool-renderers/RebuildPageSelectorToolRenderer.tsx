@@ -8,18 +8,12 @@ import Button from '@ux/button'
 import text from '@ux/text'
 
 import { useSendUserMessage } from '@/app/[market]/develop/components/chat/ChatContext'
-import type { ToolStatus } from '@/app/[market]/develop/components/types'
+import type { DefaultToolRendererProps } from '@/app/[market]/develop/components/tool-renderers/DefaultToolRenderer'
+import type { PageInfo } from '@/app/[market]/develop/hooks/useRebuildPages'
 import { useTranslations } from '@/hooks/useTranslations'
 import { useIsActivelyStreaming, useIsLoading } from '@/stores/useStreamingConversationStore'
 import ToolHeader from './ToolHeader'
 import ToolModal from './ToolModal'
-
-interface PageInfo {
-  slug: string
-  title: string
-  url: string
-  isBuilt: boolean
-}
 
 interface WidgetData {
   appId: string
@@ -38,13 +32,9 @@ export default function RebuildPageSelectorToolRenderer({
   toolName: _toolName,
   toolStatus,
   result,
+  isLastAssistantMessage,
   size = 'regular'
-}: {
-  toolName: string
-  toolStatus: ToolStatus
-  result: any
-  size: 'regular' | 'small'
-}) {
+}: DefaultToolRendererProps) {
   const t = useTranslations()
   const sendUserMessage = useSendUserMessage()
   const isStreaming = useIsActivelyStreaming()
@@ -53,14 +43,21 @@ export default function RebuildPageSelectorToolRenderer({
   const [selectedPage, setSelectedPage] = useState<string>('')
   const [isPromptModalOpen, setIsPromptModalOpen] = useState(false)
 
-  // Extract data from result
+  // Only render on the last assistant message
+  if (!isLastAssistantMessage) {
+    return null
+  }
+
+  // Extract data from result — handle both standalone tool call ({output: {widget, ...}})
+  // and direct result ({widget, ...}) structures
   const resultObj = result as any
-  const widget = resultObj?.widget as { widgetType: string; widgetData: WidgetData } | undefined
+  const output = resultObj?.output || resultObj
+  const widget = output?.widget as { widgetType: string; widgetData: WidgetData } | undefined
   const widgetData = widget?.widgetData
-  const allPagesBuilt = resultObj?.allPagesBuilt === true
-  const pagePrompt = resultObj?.pagePrompt as string | undefined
-  const builtPageSlug = resultObj?.pageSlug as string | undefined
-  const errorMessage = resultObj?.error as string | undefined
+  const allPagesBuilt = output?.allPagesBuilt === true
+  const pagePrompt = output?.pagePrompt as string | undefined
+  const builtPageSlug = output?.pageSlug as string | undefined
+  const errorMessage = output?.error as string | undefined
 
   // If this was a build mode call that returned a prompt, show minimal UI with prompt link
   if (pagePrompt && builtPageSlug) {

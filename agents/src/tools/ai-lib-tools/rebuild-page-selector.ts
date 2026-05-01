@@ -30,15 +30,21 @@ interface RebuildPageSelectorWidget {
   }
 }
 
+export function slugToTitle(slug: string): string {
+  return slug === 'homepage' ? 'Homepage' : slug.charAt(0).toUpperCase() + slug.slice(1).replace(/-/g, ' ')
+}
+
 /**
  * Load workflow state from disk
  */
-async function loadWorkflowState(appPath: string): Promise<RebuildWorkflowState | null> {
+export async function loadWorkflowState(appPath: string): Promise<RebuildWorkflowState | null> {
   try {
     const statePath = path.join(appPath, '.source-site', 'workflow-state.json')
     const content = await readFile(statePath, 'utf-8')
     return JSON.parse(content)
-  } catch {
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
+    logger.warn('rebuild-page-selector.workflow-state-read-error', { appPath, error })
     return null
   }
 }
@@ -46,13 +52,38 @@ async function loadWorkflowState(appPath: string): Promise<RebuildWorkflowState 
 /**
  * Load sitemap from disk
  */
-async function loadSitemap(appPath: string): Promise<SitemapData | null> {
+export async function loadSitemap(appPath: string): Promise<SitemapData | null> {
   try {
     const sitemapPath = path.join(appPath, '.source-site', 'sitemap.json')
     const content = await readFile(sitemapPath, 'utf-8')
     return JSON.parse(content)
-  } catch {
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
+    logger.warn('rebuild-page-selector.sitemap-read-error', { appPath, error })
     return null
+  }
+}
+
+/**
+ * Check if there are unbuilt rebuild pages available
+ */
+export async function hasUnbuiltRebuildPages(appId: string): Promise<boolean> {
+  try {
+    const app = appRepo.findById(appId)
+    if (!app) return false
+
+    const workflowState = await loadWorkflowState(app.path)
+    if (!workflowState) return false
+
+    const sitemap = await loadSitemap(app.path)
+    if (!sitemap) return false
+
+    return sitemap.pages
+      .filter(p => p.scraped && !workflowState.pagesBuilt.includes(p.slug))
+      .length > 0
+  } catch (error) {
+    logger.warn('rebuild-page-selector.has-unbuilt-check-failed', { appId, error })
+    return false
   }
 }
 
@@ -137,7 +168,7 @@ Tool returns: { success: true, pagePrompt: "Build an about page..." }`,
         .filter(p => p.scraped)
         .map(p => ({
           slug: p.slug,
-          title: p.slug === 'homepage' ? 'Homepage' : p.slug.charAt(0).toUpperCase() + p.slug.slice(1).replace(/-/g, ' '),
+          title: slugToTitle(p.slug),
           url: p.url,
           isBuilt: workflowState.pagesBuilt.includes(p.slug)
         }))

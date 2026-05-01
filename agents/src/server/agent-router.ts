@@ -40,6 +40,23 @@ export function createAgentRouter(deps: AgentRouterDeps) {
       const sessionAppId = stateManager.getSessionMetadata?.(sessionId)?.appId as string | undefined
 
       if (currentAgent && sessionAppId === appId) {
+        // If session says 'develop' but a profile has develop flags, reroute to the variant.
+        // This handles the handoff case: initial agent hands off to 'develop', but the
+        // profile-specific variant should be used instead.
+        if (currentAgent === 'develop') {
+          const profile = resolveProfile({
+            agentProfileSelectorEnabled: !!agentContext?.agentProfileSelectorEnabled,
+            perProjectProfile: agentProfile,
+            jwtAgentProfile: agentContext?.agentProfile,
+          })
+          if (profile) {
+            const hasDevelopFlags = Object.keys(profile.properties).some(k => k.startsWith('develop.'))
+            if (hasDevelopFlags) {
+              logger.debug('agent_router.session_develop_variant', { sessionId, appId, profileName: profile.name })
+              return `develop-${profile.name}`
+            }
+          }
+        }
         logger.debug('agent_router.session_agent', { sessionId, appId, currentAgent })
         return currentAgent
       }
@@ -65,20 +82,37 @@ export function createAgentRouter(deps: AgentRouterDeps) {
           const promptVersion = runWithProfile(profile, () => profileValue('initial.promptVersion', '' as string))
           if (promptVersion === '2.0') {
             resolvedAgentId = 'initial-v2'
+          } else if (promptVersion === '3.0') {
+            resolvedAgentId = 'initial-v3'
           }
         }
       }
 
       if (session) {
         const { sessionId, stateManager } = session
-        stateManager.switchAgent(sessionId, resolvedAgentId).catch(error => {
+        stateManager.switchAgent(sessionId, resolvedAgentId).then(() => {
+          stateManager.setSessionMetadata?.(sessionId, { appId, templateId })
+        }).catch(error => {
           logger.error('agent_router.session_state_error', { sessionId, appId, error: error instanceof Error ? error.message : String(error) })
         })
-        stateManager.setSessionMetadata?.(sessionId, { appId, templateId })
       }
 
       logger.info('agent_router.initial_selected', { appId, agentId: resolvedAgentId, templateId: validTemplate || null })
       return resolvedAgentId
+    }
+
+    // Check if profile routes to a develop variant (develop-{profileName})
+    const profile = resolveProfile({
+      agentProfileSelectorEnabled: !!agentContext?.agentProfileSelectorEnabled,
+      perProjectProfile: agentProfile,
+      jwtAgentProfile: agentContext?.agentProfile,
+    })
+    if (profile) {
+      const hasDevelopFlags = Object.keys(profile.properties).some(k => k.startsWith('develop.'))
+      if (hasDevelopFlags) {
+        logger.debug('agent_router.develop_variant', { appId, profileName: profile.name })
+        return `develop-${profile.name}`
+      }
     }
 
     return 'develop'

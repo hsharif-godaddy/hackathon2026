@@ -11,10 +11,12 @@ export { profileValue, profileFlag, hasActiveProfile, activeProfileName } from '
 // When adding a new profile, import it here and add it to the rawProfiles array.
 import experimentalProfile from './experimental.json' with { type: 'json' }
 import newInitialAgentProfile from './new-initial-agent.json' with { type: 'json' }
+import promptOptimizationProfile from './prompt-optimization.json' with { type: 'json' }
 
 const rawProfiles: unknown[] = [
   experimentalProfile,
   newInitialAgentProfile,
+  promptOptimizationProfile,
 ]
 
 let registry: Map<string, ProfileData> | null = null

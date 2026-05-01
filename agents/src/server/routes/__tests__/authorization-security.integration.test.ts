@@ -16,6 +16,8 @@ import { publishRouter } from '../publish.js';
 import { gitRouter } from '../git.js';
 import { conversationsRouter } from '../conversations.js';
 import { chatRouter } from '../chat.js';
+import rebuildRouter from '../rebuild.js';
+import nextActionsRouter from '../next-actions.js';
 import { jwtAuthMiddleware } from '../../middleware/jwt-auth.js';
 
 describe('Cross-Tenant Authorization Security - Integration Tests', () => {
@@ -74,6 +76,8 @@ describe('Cross-Tenant Authorization Security - Integration Tests', () => {
     app.use('/agent', gitRouter);
     app.use(conversationsRouter);
     app.use('/agent', chatRouter);
+    app.use('/apps', rebuildRouter);
+    app.use('/apps', nextActionsRouter);
   });
 
   afterAll(() => {
@@ -341,6 +345,44 @@ describe('Cross-Tenant Authorization Security - Integration Tests', () => {
 
       // Route may not match, but should not cause server error
       expect(response.status).toBeGreaterThanOrEqual(400);
+    });
+  });
+
+  describe('Rebuild Router - /apps/:id/rebuild/*', () => {
+    it('should reject cross-tenant access to rebuild pages', async () => {
+      const response = await request(app)
+        .get(`/apps/${siteB_id}/rebuild/pages`)
+        .set('Authorization', `Bearer ${siteA_token}`);
+
+      expect(response.status).toBe(403);
+      expect(response.body).toHaveProperty('error', 'Access denied');
+    });
+
+    it('should allow same-tenant access to rebuild pages', async () => {
+      const response = await request(app)
+        .get(`/apps/${siteA_id}/rebuild/pages`)
+        .set('Authorization', `Bearer ${siteA_token}`);
+
+      expect(response.status).not.toBe(403);
+    });
+  });
+
+  describe('Next Actions Router - /apps/:id/next-actions', () => {
+    it('should reject cross-tenant access to next-actions', async () => {
+      const response = await request(app)
+        .post(`/apps/${siteB_id}/next-actions`)
+        .set('Authorization', `Bearer ${siteA_token}`);
+
+      expect(response.status).toBe(403);
+      expect(response.body).toHaveProperty('error', 'Access denied');
+    });
+
+    it('should allow same-tenant access to next-actions', async () => {
+      const response = await request(app)
+        .post(`/apps/${siteA_id}/next-actions`)
+        .set('Authorization', `Bearer ${siteA_token}`);
+
+      expect(response.status).not.toBe(403);
     });
   });
 });

@@ -5,20 +5,35 @@ import { useActiveStream, useMessages } from '@/stores/useStreamingConversationS
 
 interface Suggestion {
   text: string
+  value?: string
   metadata?: Record<string, unknown>
 }
 
 export interface LatestNBAData {
   question: string
   suggestions: Suggestion[]
-  rebuildWidget?: unknown
+  allowOther?: boolean
+  source?: 'suggestedResponse' | 'askQuestion'
+  toolResult?: Record<string, unknown> | string
 }
 
 function extractNBAFromToolCall(toolCall: ToolCall): LatestNBAData | null {
-  if (toolCall.name !== 'suggestedResponse' || toolCall.status !== 'completed' || !toolCall.result) {
+  if (toolCall.status !== 'completed' || !toolCall.result) {
     return null
   }
 
+  if (toolCall.name === 'suggestedResponse') {
+    return extractSuggestedResponse(toolCall)
+  }
+
+  if (toolCall.name === 'askQuestion') {
+    return extractAskQuestion(toolCall)
+  }
+
+  return null
+}
+
+function extractSuggestedResponse(toolCall: ToolCall): LatestNBAData | null {
   const resultObj = toolCall.result as any
   const output = resultObj?.output || resultObj
   const widgetData = output?.widgetData
@@ -27,7 +42,6 @@ function extractNBAFromToolCall(toolCall: ToolCall): LatestNBAData | null {
     return null
   }
 
-  // Filter out malformed items — each suggestion must have a string text field
   const validSuggestions = widgetData.suggestions.filter(
     (s: unknown): s is Suggestion => !!s && typeof (s as Suggestion).text === 'string'
   )
@@ -39,7 +53,40 @@ function extractNBAFromToolCall(toolCall: ToolCall): LatestNBAData | null {
   return {
     question: widgetData.question,
     suggestions: validSuggestions,
-    rebuildWidget: output?.rebuildWidget,
+    source: 'suggestedResponse',
+  }
+}
+
+function extractAskQuestion(toolCall: ToolCall): LatestNBAData | null {
+  const resultObj = toolCall.result as any
+  const output = resultObj?.output || resultObj
+  const widgetData = output?.widgetData
+
+  if (!widgetData?.questions || !Array.isArray(widgetData.questions) || widgetData.questions.length === 0) {
+    return null
+  }
+
+  // For the chat area, render the first (or current) question
+  const currentIndex = widgetData.currentQuestionIndex ?? 0
+  const currentQuestion = widgetData.questions[currentIndex]
+  if (!currentQuestion?.question || !Array.isArray(currentQuestion.suggestions)) {
+    return null
+  }
+
+  const validSuggestions = currentQuestion.suggestions.filter(
+    (s: unknown): s is Suggestion => !!s && typeof (s as Suggestion).text === 'string'
+  )
+
+  if (validSuggestions.length === 0) {
+    return null
+  }
+
+  return {
+    question: currentQuestion.question,
+    suggestions: validSuggestions,
+    allowOther: currentQuestion.allowOther !== false,
+    source: 'askQuestion',
+    toolResult: toolCall.result,
   }
 }
 

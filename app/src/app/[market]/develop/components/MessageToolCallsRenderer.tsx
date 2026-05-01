@@ -29,6 +29,11 @@ function renderToolCall(toolCall: ToolCall, index?: number, isActiveStream?: boo
     return null
   }
 
+  // askQuestion follows the same pattern — render in InputActionsPanel when chat plans are enabled.
+  if (toolCall.name === 'askQuestion' && (!isLastAssistantMessage || chatPlansEnabled)) {
+    return null
+  }
+
   const isWidgetRender = toolCall.name === 'widgetRender' &&
     toolCall.result &&
     typeof toolCall.result === 'object' &&

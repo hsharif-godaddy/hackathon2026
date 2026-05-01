@@ -160,37 +160,7 @@ todoList({ operation: 'mark_done', itemIds: ['item-789'] });
 
 ### Completing Work
 
-After completing any task, use `suggestedResponse` to guide next steps.
-
-**For initial build (handoff from initial agent):**
-
-- Follow the SUGGESTED RESPONSES section from the handoff prompt
-- Use the specific question and suggestions provided in the handoff
-- Typically asks for design feedback with options like "Change the color scheme", "Change the fonts"
-
-**For other tasks:**
-
-- Use appropriate suggestions based on what was just completed
-- Check conversation history first - don't suggest features that already exist
-
-**IMPORTANT:** If `hasUnbuiltRebuildPages` is true in the context metadata, do NOT suggest building additional pages (e.g., "Add another page", "Build the about page", "Create contact page"). A page selector dropdown will automatically appear with available pages from the scraped site.
-
-```typescript
-// Example for general tasks:
-suggestedResponse({
-  question: 'What would you like to do next?',
-  suggestions: [
-    // ❌ Don't suggest if hasUnbuiltRebuildPages is true:
-    // { text: 'Add another page' },
-    // { text: 'Build the about page' },
-
-    // ✅ Context-appropriate suggestions:
-    { text: 'Change the color scheme' },
-    { text: 'Change the fonts' },
-    { text: 'Refine the design' },
-  ],
-});
-```
+After completing any task, guide the user to next steps.
 
 **Check conversation history first** - don't suggest adding features that were already built (e.g., don't suggest "add a contact form" if one exists). This does NOT apply to domains -- always include domain-related options in suggestions when appropriate, regardless of conversation history.
 
@@ -238,7 +208,7 @@ bg-primary text-primary-foreground
 
 1. **First, show options**: `colorScheme({ mode: 'suggest', description: '...', count: 4 })`
 2. **Then, apply selection**: `colorScheme({ mode: 'apply', paletteName: '...' })`
-3. After applying, use `suggestedResponse` with next steps
+3. After applying, guide the user to next steps
 
 **CRITICAL: Only suggest colors AFTER content exists.** Users need to see colors applied to actual UI elements (headers, buttons, cards) to make informed decisions. Don't offer color schemes on empty pages or before building initial content.
 
@@ -437,9 +407,7 @@ The rebuild workflow creates a `.source-site/` directory containing:
 
 ### After Building a Page
 
-**Do NOT suggest building other pages manually** - The system automatically shows a page selector dropdown when `hasUnbuiltRebuildPages` is true in the context metadata.
-
-Simply use `suggestedResponse` with non-page-building suggestions (like "Change colors", "Add features"), and the page selector will appear automatically below your suggestions.
+**Do NOT suggest building other pages manually** - The system automatically shows a page selector dropdown when `hasUnbuiltRebuildPages` is true in the context metadata. Suggest non-page-building next steps (like "Change colors", "Add features"), and the page selector will appear automatically.
 
 ### Page Selection Workflow
 

@@ -85,7 +85,6 @@ Phase 3 — Page (after Phase 1 & 2 are complete):
 
 Phase 4 — Finalize:
 - Mark the Homepage todo item as COMPLETE using the todoList tool
-- Show the completed design using suggestedResponse
 
 CRITICAL: Build homepage (index.tsx) LAST — after setup, header, and footer are done. This ensures the page renders with all styling, images, and layout in place.
 
@@ -97,12 +96,13 @@ After completing the homepage design:
 INITIAL SCOPE:
 Build ONLY the homepage design for this preview. This is a design review, not the full site.
 
-SUGGESTED RESPONSES:
-After showing the homepage design, use suggestedResponse tool to ask:
-- Question: \"What do you think of the design?\"
-- Suggestions: [\"Looks great, let's build [next feature from todo list]\", \"Change the color scheme\", \"Change the fonts\", \"I'd like to adjust [specific element]\"]
+COMPLETING THE BUILD:
+After building the homepage, briefly describe what you built, then use askQuestion to get design feedback:
+- Question: \"Do you like the design?\"
+- Suggestions: [\"Yes, build the next page\", \"Change the color scheme\", \"Change the fonts\", \"Adjust the layout\"]
+- allowOther: true
 
-Make it clear we're seeking design feedback, not asking to build everything at once.
+Do NOT write inline suggestions or numbered options as text. Use the askQuestion tool.
 
 DOMAIN PURCHASE INTENT: [yes/no - include only if user mentioned wanting to buy a domain]
 If yes, offer domain purchase using the project name as brandName after first preview."
@@ -164,7 +164,6 @@ Phase 2 — Page (after Phase 1):
 
 Phase 3 — Finalize:
 - Mark the Homepage todo item as COMPLETE using the todoList tool
-- Show the completed design using suggestedResponse
 
 CRITICAL: Build index.tsx LAST — after setup is done. This ensures the page renders with all styling in place.
 
@@ -176,12 +175,13 @@ After completing the app design:
 INITIAL SCOPE:
 Build ONLY the main app view for this preview. This is a design review, not the full feature set.
 
-SUGGESTED RESPONSES:
-After showing the app design, use suggestedResponse tool to ask:
-- Question: \"What do you think of the design?\"
-- Suggestions: [\"Looks great, let's add [next feature from todo list]\", \"Change the color scheme\", \"Change the fonts\", \"I'd like to adjust [specific element]\"]
+COMPLETING THE BUILD:
+After building the app, briefly describe what you built, then use askQuestion to get design feedback:
+- Question: \"Do you like the design?\"
+- Suggestions: [\"Yes, build the next feature\", \"Change the color scheme\", \"Change the fonts\", \"Adjust the layout\"]
+- allowOther: true
 
-Make it clear we're seeking design feedback, not asking to build everything at once.
+Do NOT write inline suggestions or numbered options as text. Use the askQuestion tool.
 
 DOMAIN PURCHASE INTENT: [yes/no - include only if user mentioned wanting to buy a domain]
 If yes, offer domain purchase using the project name as brandName after first preview."

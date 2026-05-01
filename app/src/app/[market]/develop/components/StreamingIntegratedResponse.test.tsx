@@ -360,15 +360,12 @@ describe('StreamingIntegratedResponse', function streamingIntegratedResponseTest
                 content: '',
                 timestamp: new Date(),
                 toolCall: {
-                  id: 'ask',
-                  name: 'askQuestion',
-                  input: {},
+                  id: 'color',
+                  name: 'colorScheme',
+                  input: { mode: 'suggest' },
                   status: 'completed',
                   result: {
-                    question: 'Need more detail?',
-                    options: [
-                      { label: 'Yes', value: 'yes' }
-                    ]
+                    palettes: [{ name: 'Ocean', colors: ['#0066cc'] }]
                   }
                 }
               },

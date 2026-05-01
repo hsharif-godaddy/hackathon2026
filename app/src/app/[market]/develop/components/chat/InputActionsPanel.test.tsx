@@ -24,7 +24,12 @@ vi.mock('./ChatContext', () => ({
 vi.mock('@/stores/useStreamingConversationStore', () => ({
   useIsActivelyStreaming: vi.fn(),
   useIsLoading: vi.fn(),
-  useMessages: vi.fn()
+  useMessages: vi.fn(),
+  useActiveStream: vi.fn(() => null)
+}))
+
+vi.mock('@/app/[market]/develop/hooks/useRebuildPages', () => ({
+  useRebuildPages: vi.fn(() => ({ data: null, isLoading: false }))
 }))
 
 vi.mock('@/stores/useTodoListStore', () => ({
@@ -57,6 +62,10 @@ vi.mock('@/stores/useDevelopPageStore', () => ({
 
 vi.mock('@/app/[market]/develop/components/utils/previewThemeInIframe', () => ({
   previewThemeInIframe: vi.fn()
+}))
+
+vi.mock('@/app/[market]/develop/components/utils', () => ({
+  useAppIdFromParams: vi.fn(() => 'test-app-id')
 }))
 
 describe('InputActionsPanel', () => {

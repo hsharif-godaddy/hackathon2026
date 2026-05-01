@@ -180,13 +180,14 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
       })
     }
 
-    // Filter suggestedResponse tool blocks before grouping so they don't act as
-    // boundaries that split consecutive action tools into separate groups.
+    // Filter suggestedResponse and askQuestion tool blocks before grouping so they
+    // don't act as boundaries that split consecutive action tools into separate groups.
     // When chat plans are enabled, NBAs are shown in InputActionsPanel — always filter.
-    // Otherwise, show suggestedResponse only on the last assistant message.
+    // Otherwise, show these only on the last assistant message.
+    const chatAreaTools = new Set(['suggestedResponse', 'askQuestion'])
     const filteredBlocks = (isLastAssistantMessage && !areChatPlansEnabled)
       ? blocks
-      : blocks.filter((block) => !(block.type === 'tool' && block.toolCall?.name === 'suggestedResponse'))
+      : blocks.filter((block) => !(block.type === 'tool' && chatAreaTools.has(block.toolCall?.name ?? '')))
 
     // Order matters here: media tools must be collapsed into tool-group blocks first,
     // then compact action rows are grouped. Reversing this would let raw media tool

@@ -10,6 +10,7 @@ import Users3Icon from '@ux/icon/users3';
 import Spinner from '@ux/spinner'
 
 import ModelSelector from '@/app/[market]/develop/components/settings/ModelSelector'
+import ProfileSelector from '@/app/[market]/develop/components/settings/ProfileSelector'
 import SettingsSection from '@/app/[market]/develop/components/settings/SettingsSection'
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import { useDownloadApp } from '@/hooks/useDownloadApp'
@@ -184,6 +185,7 @@ export default function ProjectPanel() {
           />
         )}
         <ModelSelector />
+        <ProfileSelector />
       </Box>
     </>
   )

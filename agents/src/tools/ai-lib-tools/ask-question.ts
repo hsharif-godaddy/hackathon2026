@@ -69,11 +69,11 @@ Use this instead of asking questions directly in your response text.`,
       hasContext: !!context
     })
 
-    // Return structured data for frontend renderer
     return {
       success: true,
       widgetType: 'ask-question',
       widgetData: {
+        type: 'ask-question',
         questions,
         currentQuestionIndex: 0,
         answers: []

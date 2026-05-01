@@ -19,6 +19,7 @@ import { skillToolManager } from '../tools/skill-tool-manager.js'
 import { allAILibTools } from '../tools/ai-lib-tools/index.js'
 import { getPersistentAssetPaths } from '../utils/persistent-assets.js'
 import { skills } from '../services/features.js'
+import { profileFlag } from '../profiles/profile-accessor.js'
 import { readFile } from 'fs/promises'
 
 /**
@@ -145,6 +146,16 @@ async function buildDevelopSystemPrompt(_appPath?: string): Promise<string> {
     .template(filesystemTemplate) // Use template instead of file for dynamic path interpolation
     .file(paths.getAgentFile('develop', 'font-theme.md')) // Font theme tool documentation
     //.file(paths.getAgentFile('develop', 'design.md'))
+
+  if (profileFlag('develop.promptOptimization')) {
+    promptBuilder.file(paths.getAgentFile('develop', 'prompt-optimization.md'))
+  }
+
+  if (profileFlag('develop.suggestedResponse', true)) {
+    promptBuilder.file(paths.getAgentFile('develop', 'suggested-response.md'))
+  }
+
+  promptBuilder
     .file(paths.getAgentFile('develop', 'handoff.md'))
     .file(paths.getAgentFile('develop', 'backend.md'))
     .file(paths.getAgentFile('develop', 'secrets.md')) // Secrets management for API keys and credentials
@@ -252,7 +263,8 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
       rebuildPageSelector: allAILibTools.rebuildPageSelector,
 
       // User interaction
-      suggestedResponse: allAILibTools.suggestedResponse,
+      ...(profileFlag('develop.promptOptimization') ? { askQuestion: allAILibTools.askQuestion } : {}),
+      ...(profileFlag('develop.suggestedResponse', true) ? { suggestedResponse: allAILibTools.suggestedResponse } : {}),
 
       // Secrets management (for API keys, credentials)
       requestSecrets: allAILibTools.requestSecrets,
@@ -283,6 +295,7 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
     timeout: { stepMs: 600_000 },
 
     // Custom stop conditions
+    ...(profileFlag('develop.promptOptimization') ? { stopAfterTools: ['askQuestion'] } : {}),
     stopWhen: [shouldStopAfterSuggestMode],
 
     // Enable prompt caching for cost savings and performance

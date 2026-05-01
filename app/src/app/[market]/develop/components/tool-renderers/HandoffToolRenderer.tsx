@@ -149,10 +149,11 @@ export default function HandoffToolRenderer({
     }
   }
 
-  // Build display name based on mode and status
+  // Build display name based on mode and status.
+  // Default to "Planning" while running — partial JSON may not have planTitle yet.
+  // Only show "Now talking with" when completed with no planTitle.
   let displayName: string
   if (planTitle) {
-    // Plan mode
     if (toolStatus === 'running') {
       const wordCount = lastWordCountRef.current
       displayName = wordCount
@@ -161,11 +162,12 @@ export default function HandoffToolRenderer({
     } else {
       displayName = t('builder_tools_handoff_plan', { planTitle })
     }
-  } else if (toolStatus === 'running' && !targetAgent) {
-    // Still waiting for streaming data — show just the spinner
-    displayName = ''
+  } else if (toolStatus === 'running') {
+    const wordCount = lastWordCountRef.current
+    displayName = wordCount
+      ? `${t('builder_tools_handoff_planning')} ${wordCount} words`
+      : t('builder_tools_handoff_planning')
   } else {
-    // Routing mode (have targetAgent from stream or final input)
     const agentDisplay = targetAgent ?? t('builder_tools_handoff_display_unknown')
     displayName = t('builder_tools_handoff_talking_with', { targetAgent: agentDisplay })
   }
