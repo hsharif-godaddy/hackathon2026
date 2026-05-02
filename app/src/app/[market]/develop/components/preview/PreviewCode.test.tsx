@@ -6,6 +6,7 @@ import '@testing-library/jest-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 
+import { ViewMode } from '@/app/[market]/develop/components/types';
 import { renderWithProviders } from '@/tests/test-utils';
 import PreviewCode from './PreviewCode';
 
@@ -56,6 +57,7 @@ vi.mock('@/stores/useDevelopPageStore', () => ({
       setIsFileTreeCollapsed: vi.fn(),
       setHasUnsavedChanges: vi.fn(),
       loadingPhase: 'ready', // Default to ready so file loading triggers
+      viewMode: ViewMode.PREVIEW, // Default to PREVIEW
     })
   ),
 }));
@@ -338,6 +340,7 @@ describe('PreviewCode', () => {
         setIsFileTreeCollapsed: vi.fn(),
         setHasUnsavedChanges: vi.fn(),
         loadingPhase: 'ready',
+        viewMode: ViewMode.PREVIEW,
       })
     );
 
@@ -351,6 +354,223 @@ describe('PreviewCode', () => {
     // Search input in header should be visible
     await waitFor(() => {
       expect(screen.getByTestId('search-input-header')).toBeInTheDocument();
+    });
+  });
+
+  describe('auto-expand search on Code tab switch', () => {
+    it('should expand search when switching from non-CODE to CODE view', async () => {
+      const { useDevelopPageStore } = await import('@/stores/useDevelopPageStore');
+
+      // Start in PREVIEW mode
+      let currentViewMode = ViewMode.PREVIEW;
+      vi.mocked(useDevelopPageStore).mockImplementation((selector: any) =>
+        selector({
+          isMobile: false,
+          isFileTreeCollapsed: false,
+          setIsFileTreeCollapsed: vi.fn(),
+          setHasUnsavedChanges: vi.fn(),
+          loadingPhase: 'ready',
+          viewMode: currentViewMode,
+        })
+      );
+
+      mockFileTreeState.files['test-app-123'] = [];
+
+      const { rerender } = renderWithProviders(<PreviewCode appId="test-app-123" />);
+
+      // Search should NOT be open initially
+      expect(screen.queryByTestId('search-panel')).not.toBeInTheDocument();
+
+      // Switch to CODE view
+      currentViewMode = ViewMode.CODE;
+      vi.mocked(useDevelopPageStore).mockImplementation((selector: any) =>
+        selector({
+          isMobile: false,
+          isFileTreeCollapsed: false,
+          setIsFileTreeCollapsed: vi.fn(),
+          setHasUnsavedChanges: vi.fn(),
+          loadingPhase: 'ready',
+          viewMode: currentViewMode,
+        })
+      );
+
+      rerender(<PreviewCode appId="test-app-123" />);
+
+      // Search should now be expanded
+      await waitFor(() => {
+        expect(screen.getByTestId('search-panel')).toBeInTheDocument();
+      });
+    });
+
+    it('should NOT expand search when loadingPhase is not ready', async () => {
+      const { useDevelopPageStore } = await import('@/stores/useDevelopPageStore');
+
+      // Start in PREVIEW mode with loading phase
+      let currentViewMode = ViewMode.PREVIEW;
+      vi.mocked(useDevelopPageStore).mockImplementation((selector: any) =>
+        selector({
+          isMobile: false,
+          isFileTreeCollapsed: false,
+          setIsFileTreeCollapsed: vi.fn(),
+          setHasUnsavedChanges: vi.fn(),
+          loadingPhase: 'loading-app',
+          viewMode: currentViewMode,
+        })
+      );
+
+      mockFileTreeState.files['test-app-123'] = [];
+
+      const { rerender } = renderWithProviders(<PreviewCode appId="test-app-123" />);
+
+      // Switch to CODE view while still loading
+      currentViewMode = ViewMode.CODE;
+      vi.mocked(useDevelopPageStore).mockImplementation((selector: any) =>
+        selector({
+          isMobile: false,
+          isFileTreeCollapsed: false,
+          setIsFileTreeCollapsed: vi.fn(),
+          setHasUnsavedChanges: vi.fn(),
+          loadingPhase: 'loading-app', // Still not ready
+          viewMode: currentViewMode,
+        })
+      );
+
+      rerender(<PreviewCode appId="test-app-123" />);
+
+      // Search should NOT be expanded because loadingPhase is not ready
+      expect(screen.queryByTestId('search-panel')).not.toBeInTheDocument();
+    });
+
+    it('should expand search after loadingPhase becomes ready if switched to CODE during loading', async () => {
+      const { useDevelopPageStore } = await import('@/stores/useDevelopPageStore');
+
+      // Start in PREVIEW mode with loading phase
+      let currentViewMode = ViewMode.PREVIEW;
+      let currentLoadingPhase = 'loading-app';
+      vi.mocked(useDevelopPageStore).mockImplementation((selector: any) =>
+        selector({
+          isMobile: false,
+          isFileTreeCollapsed: false,
+          setIsFileTreeCollapsed: vi.fn(),
+          setHasUnsavedChanges: vi.fn(),
+          loadingPhase: currentLoadingPhase,
+          viewMode: currentViewMode,
+        })
+      );
+
+      mockFileTreeState.files['test-app-123'] = [];
+
+      const { rerender } = renderWithProviders(<PreviewCode appId="test-app-123" />);
+
+      // Switch to CODE view while still loading
+      currentViewMode = ViewMode.CODE;
+      vi.mocked(useDevelopPageStore).mockImplementation((selector: any) =>
+        selector({
+          isMobile: false,
+          isFileTreeCollapsed: false,
+          setIsFileTreeCollapsed: vi.fn(),
+          setHasUnsavedChanges: vi.fn(),
+          loadingPhase: currentLoadingPhase, // Still not ready
+          viewMode: currentViewMode,
+        })
+      );
+
+      rerender(<PreviewCode appId="test-app-123" />);
+
+      // Search should NOT be expanded yet
+      expect(screen.queryByTestId('search-panel')).not.toBeInTheDocument();
+
+      // Now loading completes
+      currentLoadingPhase = 'ready';
+      vi.mocked(useDevelopPageStore).mockImplementation((selector: any) =>
+        selector({
+          isMobile: false,
+          isFileTreeCollapsed: false,
+          setIsFileTreeCollapsed: vi.fn(),
+          setHasUnsavedChanges: vi.fn(),
+          loadingPhase: currentLoadingPhase,
+          viewMode: currentViewMode,
+        })
+      );
+
+      rerender(<PreviewCode appId="test-app-123" />);
+
+      // Search should now be expanded since we switched to CODE and it's now ready
+      await waitFor(() => {
+        expect(screen.getByTestId('search-panel')).toBeInTheDocument();
+      });
+    });
+
+    it('should NOT auto-expand search when page loads directly in CODE view', async () => {
+      const { useDevelopPageStore } = await import('@/stores/useDevelopPageStore');
+
+      // Start directly in CODE view (simulating direct navigation to Code tab)
+      vi.mocked(useDevelopPageStore).mockImplementation((selector: any) =>
+        selector({
+          isMobile: false,
+          isFileTreeCollapsed: false,
+          setIsFileTreeCollapsed: vi.fn(),
+          setHasUnsavedChanges: vi.fn(),
+          loadingPhase: 'ready',
+          viewMode: ViewMode.CODE,
+        })
+      );
+
+      mockFileTreeState.files['test-app-123'] = [];
+
+      renderWithProviders(<PreviewCode appId="test-app-123" />);
+
+      // Search should NOT auto-expand on initial mount in CODE view
+      // (prevViewModeRef is seeded with initial viewMode, so no "switch" detected)
+      expect(screen.queryByTestId('search-panel')).not.toBeInTheDocument();
+    });
+
+    it('should focus search input when switching to CODE with search already open', async () => {
+      const { useDevelopPageStore } = await import('@/stores/useDevelopPageStore');
+
+      // Start in PREVIEW mode
+      let currentViewMode = ViewMode.PREVIEW;
+      vi.mocked(useDevelopPageStore).mockImplementation((selector: any) =>
+        selector({
+          isMobile: false,
+          isFileTreeCollapsed: false,
+          setIsFileTreeCollapsed: vi.fn(),
+          setHasUnsavedChanges: vi.fn(),
+          loadingPhase: 'ready',
+          viewMode: currentViewMode,
+        })
+      );
+
+      mockFileTreeState.files['test-app-123'] = [];
+
+      const { user, rerender } = renderWithProviders(<PreviewCode appId="test-app-123" />);
+
+      // Manually open search first
+      await user.click(screen.getByTestId('search-button'));
+      await waitFor(() => {
+        expect(screen.getByTestId('search-panel')).toBeInTheDocument();
+      });
+
+      // Switch to CODE view
+      currentViewMode = ViewMode.CODE;
+      vi.mocked(useDevelopPageStore).mockImplementation((selector: any) =>
+        selector({
+          isMobile: false,
+          isFileTreeCollapsed: false,
+          setIsFileTreeCollapsed: vi.fn(),
+          setHasUnsavedChanges: vi.fn(),
+          loadingPhase: 'ready',
+          viewMode: currentViewMode,
+        })
+      );
+
+      rerender(<PreviewCode appId="test-app-123" />);
+
+      // Search panel should still be visible (not duplicated)
+      await waitFor(() => {
+        const searchPanels = screen.getAllByTestId('search-panel');
+        expect(searchPanels).toHaveLength(1);
+      });
     });
   });
 

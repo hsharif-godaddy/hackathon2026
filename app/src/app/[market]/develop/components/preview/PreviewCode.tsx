@@ -16,6 +16,7 @@ import Text from '@ux/text'
 
 import FileTree, { FileItem, FileStatus } from '@/app/[market]/develop/components/FileTree'
 import { markdownComponents } from '@/app/[market]/develop/components/preview/markdownComponents'
+import { ViewMode } from '@/app/[market]/develop/components/types'
 import UnifiedSearch, { SearchState } from '@/app/[market]/develop/components/UnifiedSearch'
 import { useBreakpoints } from '@/hooks/useBreakpoints'
 import { useTranslations } from '@/hooks/useTranslations'
@@ -126,6 +127,9 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
   // This prevents redundant ensure-running calls since the initialization state machine
   // already handles app readiness verification
   const loadingPhase = useDevelopPageStore((state) => state.loadingPhase)
+  const viewMode = useDevelopPageStore((state) => state.viewMode)
+  // Track previous viewMode to detect tab switches (seeded with initial value)
+  const prevViewModeRef = useRef<ViewMode | null>(viewMode)
 
   // Use realAppId if available (during temp→real ID transition), otherwise use appId from params
   // This prevents ensure-running calls with stale temp IDs after navigation
@@ -718,6 +722,30 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [handleSaveFile])
+
+  // Auto-expand search when switching to Code tab
+  useEffect(() => {
+    const wasCode = prevViewModeRef.current === ViewMode.CODE
+    const isCode = viewMode === ViewMode.CODE
+
+    // Only act when switching TO Code view (not when already in Code view)
+    // Only update the ref when we actually process the switch (loadingPhase ready)
+    // This preserves the intent if user switches to Code during loading
+    if (!wasCode && isCode && loadingPhase === 'ready') {
+      prevViewModeRef.current = viewMode
+      const isSearchOpen = openFiles.some(f => f.path === SEARCH_PATH)
+      if (isSearchOpen) {
+        // Search already open - just focus the input
+        searchInputRef.current?.focus()
+      } else {
+        // Search not open - expand it (same as clicking search button)
+        expandSearch()
+      }
+    } else if (loadingPhase === 'ready') {
+      // Update ref for non-CODE transitions once ready
+      prevViewModeRef.current = viewMode
+    }
+  }, [viewMode, loadingPhase, openFiles, expandSearch])
 
   // Sync: collapse header when search tab is closed externally
   const isSearchTabOpen = useMemo(() => openFiles.some(f => f.path === SEARCH_PATH), [openFiles])
