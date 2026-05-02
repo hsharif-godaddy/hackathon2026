@@ -19,5 +19,12 @@ export async function middleware(request: Request) {
   const { market } = visitor;
 
   const targetPathname = [market, pathname.slice(1)].filter(Boolean).join('/');
-  return NextResponse.rewrite(new URL(`/${targetPathname}${search}`, request.url));
+  const response = NextResponse.rewrite(new URL(`/${targetPathname}${search}`, request.url));
+
+  // Host-gated so the godaddy.com SLP stays indexable; header can't be overridden by route generateMetadata.
+  if (requestUrl.hostname === 'airo-builder.godaddy.com') {
+    response.headers.set('X-Robots-Tag', 'noindex, nofollow');
+  }
+
+  return response;
 }

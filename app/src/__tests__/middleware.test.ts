@@ -16,15 +16,19 @@ vi.mock('next/server', async () => {
     ...actual,
     NextResponse: {
       ...actual.NextResponse,
-      rewrite: vi.fn((url: URL) => ({ type: 'rewrite', url: url.pathname })),
+      rewrite: vi.fn((url: URL) => ({
+        type: 'rewrite',
+        url: url.pathname,
+        headers: new Headers(),
+      })),
     },
   };
 });
 
 import { config, middleware } from '../middleware';
 
-function makeRequest(pathname: string): Request {
-  return new Request(new URL(pathname, 'https://airo-builder.test-godaddy.com'));
+function makeRequest(pathname: string, host = 'airo-builder.test-godaddy.com'): Request {
+  return new Request(new URL(pathname, `https://${host}`));
 }
 
 describe('middleware', () => {
@@ -118,6 +122,37 @@ describe('middleware', () => {
       mockGetVisitor.mockResolvedValue({ market: '' });
       const result = await middleware(makeRequest('/develop'));
       expect(result.url).toBe('/develop');
+    });
+  });
+
+  describe('subdomain noindex', () => {
+    beforeEach(() => {
+      mockGetVisitor.mockResolvedValue({ market: 'en-US' });
+    });
+
+    it('should set X-Robots-Tag noindex on the airo-builder.godaddy.com subdomain', async () => {
+      const result = await middleware(makeRequest('/develop', 'airo-builder.godaddy.com'));
+      expect(result.headers.get('X-Robots-Tag')).toBe('noindex, nofollow');
+    });
+
+    it('should not set X-Robots-Tag on the test-godaddy.com host', async () => {
+      const result = await middleware(makeRequest('/develop', 'airo-builder.test-godaddy.com'));
+      expect(result.headers.get('X-Robots-Tag')).toBeNull();
+    });
+
+    it('should not set X-Robots-Tag on the dev-godaddy.com host', async () => {
+      const result = await middleware(makeRequest('/develop', 'airo-builder.dev-godaddy.com'));
+      expect(result.headers.get('X-Robots-Tag')).toBeNull();
+    });
+
+    it('should not set X-Robots-Tag on the godaddy.com apex host (FOS SLP)', async () => {
+      const result = await middleware(makeRequest('/explore/games', 'godaddy.com'));
+      expect(result.headers.get('X-Robots-Tag')).toBeNull();
+    });
+
+    it('should not set X-Robots-Tag on a different godaddy.com subdomain', async () => {
+      const result = await middleware(makeRequest('/develop', 'something-else.godaddy.com'));
+      expect(result.headers.get('X-Robots-Tag')).toBeNull();
     });
   });
 });
