@@ -114,10 +114,12 @@ export default function AppPublish({ location = 'develop' }: { location?: string
   const openRef = useRef(false);
   const prevAppIdRef = useRef<string | null>(null);
   const prevPublishingRef = useRef(false);
+  const lastHandledPublishPopoverRequestRef = useRef<{ appId: string | null; nonce: number }>({ appId: null, nonce: 0 });
   const pathname = usePathname();
   const isDevelopPage = pathname?.includes('/develop');
   const { setActiveChatTab, setActiveSettingsSection } = useChatTabs();
   const currentAppId = useDevelopPageStore((state) => state.currentAppId);
+  const isMobile = useDevelopPageStore((state) => state.isMobile);
   const clickContext = useMemo(
     () => (currentAppId ? { appId: currentAppId } : undefined),
     [currentAppId],
@@ -180,6 +182,9 @@ export default function AppPublish({ location = 'develop' }: { location?: string
         ? Boolean(state.publishStates[currentAppId].showFirstPublishCongrats)
         : false
   );
+  const publishPopoverRequestNonce = useDevelopPageStore(
+    (state) => state.publishStates?.[currentAppId]?.publishPopoverRequestNonce ?? 0,
+  );
 
   const publishMutation = usePublishApp();
 
@@ -234,6 +239,14 @@ export default function AppPublish({ location = 'develop' }: { location?: string
 
   openRef.current = open;
 
+  const openPopover = useCallback(() => {
+    if (openRef.current) {
+      logger.info('app-publish.popover.open-skipped.already-open', { appId: currentAppId, location });
+      return;
+    }
+    setOpen(true);
+  }, [currentAppId, location]);
+
   useEffect(() => {
     if (!queryEnabled || !currentAppId) return;
 
@@ -262,17 +275,42 @@ export default function AppPublish({ location = 'develop' }: { location?: string
   useEffect(() => {
     if (!currentAppId) {
       prevAppIdRef.current = null;
+      lastHandledPublishPopoverRequestRef.current = { appId: null, nonce: 0 };
       return;
     }
     if (prevAppIdRef.current === currentAppId) return;
     const hadPreviousApp = prevAppIdRef.current !== null;
     prevAppIdRef.current = currentAppId;
+    lastHandledPublishPopoverRequestRef.current = { appId: currentAppId, nonce: publishPopoverRequestNonce };
     if (hadPreviousApp) {
       setPublishResult(null);
       setOpen(false);
       setIsFixingBuildError(false);
     }
-  }, [currentAppId]);
+  }, [currentAppId, publishPopoverRequestNonce]);
+
+  useEffect(() => {
+    // This effect intentionally depends on `publishPopoverRequestNonce` so each
+    // store increment is consumed exactly once by the active AppPublish instance.
+    // The app-switch effect above must run first (same-commit effect order) to
+    // seed `lastHandledPublishPopoverRequestRef` before this effect evaluates.
+    if (!currentAppId || publishPopoverRequestNonce <= 0) return;
+    if ((isMobile && !isChatToolbar) || (!isMobile && isChatToolbar)) return;
+    const lastHandled = lastHandledPublishPopoverRequestRef.current;
+    if (lastHandled.appId !== currentAppId) {
+      logger.info('app-publish.popover.nonce-skipped.app-mismatch', {
+        appId: currentAppId,
+        lastHandledAppId: lastHandled.appId,
+        location,
+        nonce: publishPopoverRequestNonce,
+      });
+      lastHandledPublishPopoverRequestRef.current = { appId: currentAppId, nonce: publishPopoverRequestNonce };
+      return;
+    }
+    if (publishPopoverRequestNonce <= lastHandled.nonce) return;
+    lastHandledPublishPopoverRequestRef.current = { appId: currentAppId, nonce: publishPopoverRequestNonce };
+    openPopover();
+  }, [currentAppId, isChatToolbar, isMobile, openPopover, publishPopoverRequestNonce]);
 
   useEffect(() => {
     if (!currentAppId || !showFirstPublishCongrats) return;
@@ -610,7 +648,7 @@ export default function AppPublish({ location = 'develop' }: { location?: string
 
     // Check paywall and either show modal or open popover
     await checkAndShowPaywall(async () => {
-      setOpen(true);
+      openPopover();
     });
   }
 

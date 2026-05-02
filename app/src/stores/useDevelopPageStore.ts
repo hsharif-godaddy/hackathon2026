@@ -150,6 +150,7 @@ const createDefaultPublishState = () => {
     publishLimitData: null as PublishLimitData | null,
     showFirstPublishCongrats: false,
     firstPublishDeployPending: false,
+    publishPopoverRequestNonce: 0,
     hasGoneLive: goLiveStatus.hasGoneLive,
     wentLiveAt: goLiveStatus.wentLiveAt,
     showGoLiveModal: false,
@@ -234,6 +235,7 @@ interface DevelopPageStore {
     publishLimitData: PublishLimitData | null
     showFirstPublishCongrats: boolean
     firstPublishDeployPending: boolean
+    publishPopoverRequestNonce: number
     // Go Live modal state
     hasGoneLive: boolean
     wentLiveAt: string | null
@@ -316,6 +318,7 @@ interface DevelopPageStore {
   setShowPublishLimitModal: (appId: string, show: boolean, data?: PublishLimitData) => void
   setShowFirstPublishCongrats: (appId: string, show: boolean) => void
   setFirstPublishDeployPending: (appId: string, pending: boolean) => void
+  requestPublishPopoverOpen: (appId: string) => void
   getPublishState: (appId: string) => {
     isPublishing: boolean
     publishError: boolean
@@ -328,6 +331,7 @@ interface DevelopPageStore {
     publishLimitData: PublishLimitData | null
     showFirstPublishCongrats: boolean
     firstPublishDeployPending: boolean
+    publishPopoverRequestNonce: number
     hasGoneLive: boolean
     wentLiveAt: string | null
     showGoLiveModal: boolean
@@ -763,6 +767,12 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         state.publishStates[appId] = createDefaultPublishState();
       }
       state.publishStates[appId].firstPublishDeployPending = pending;
+    }),
+    requestPublishPopoverOpen: (appId: string) => set((state) => {
+      if (!state.publishStates[appId]) {
+        state.publishStates[appId] = createDefaultPublishState();
+      }
+      state.publishStates[appId].publishPopoverRequestNonce += 1;
     }),
 
     // Page loading orchestration

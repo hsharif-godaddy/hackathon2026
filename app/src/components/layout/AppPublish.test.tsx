@@ -23,6 +23,7 @@ import AppPublish from '@/components/layout/AppPublish';
 import { shipAnalyticsLog } from '@/lib/logging';
 import { DeploymentStatus } from '@/lib/mgmt-airo/types';
 import { openPostPublishFeatureSelectionInChat } from '@/lib/post-publish-feature-selection';
+import { logger } from '@/lib/request-context';
 import { createMockSite, mockRouter } from '@/tests/mocks';
 import { renderWithProviders } from '@/tests/test-utils';
 
@@ -34,12 +35,14 @@ type MockPublishSlice = {
   publishError?: boolean;
   showFirstPublishCongrats?: boolean;
   firstPublishDeployPending?: boolean;
+  publishPopoverRequestNonce?: number;
   buildErrorDetails?: { error: string; details: string; exitCode?: number } | null;
   showPostPublishFeatureSelection?: boolean;
 };
 
 const mockDevelopStore = {
   currentAppId: 'app-123',
+  isMobile: false,
   publishStates: {} as Record<string, MockPublishSlice>,
   getPublishState(appId: string) {
     const slice = mockDevelopStore.publishStates[appId];
@@ -176,6 +179,7 @@ vi.mock('@/lib/request-context', () => ({
   logger: {
     info: vi.fn(),
     error: vi.fn(),
+    warn: vi.fn(),
   },
 }));
 
@@ -219,6 +223,7 @@ describe('AppPublish', () => {
     localStorage.removeItem('airo-feedback-shown:airo#app-builder');
     mockPathname = '/develop/app-123';
     mockDevelopStore.currentAppId = 'app-123';
+    mockDevelopStore.isMobile = false;
     mockDevelopStore.publishStates = {};
     mockDeploymentsData = [];
     mockStreaming.isLoading = false;
@@ -276,6 +281,156 @@ describe('AppPublish', () => {
 
     expect(mockLogClickEvent).toHaveBeenCalledWith('develop.header.app_first_publish', { appId: 'app-123' });
 
+    await waitFor(() => {
+      expect(screen.getByText('builder_publish_popover_title')).toBeInTheDocument();
+    });
+  });
+
+  it('should open popover when publish popover request nonce increments', async function openPopoverFromStoreRequest() {
+    const { rerender } = renderWithProviders(<AppPublish />);
+
+    expect(screen.queryByText('builder_publish_popover_title')).not.toBeInTheDocument();
+
+    mockDevelopStore.publishStates['app-123'] = { publishPopoverRequestNonce: 1 };
+    rerender(<AppPublish />);
+
+    await waitFor(() => {
+      expect(screen.getByText('builder_publish_popover_title')).toBeInTheDocument();
+    });
+
+    expect(mockLogClickEvent).not.toHaveBeenCalledWith(
+      'develop.header.app_first_publish',
+      { appId: 'app-123' },
+    );
+  });
+
+  it('should skip nonce opens for chat toolbar instance on desktop', async function desktopSkipsToolbarNonce() {
+    const { rerender } = renderWithProviders(<AppPublish location="develop.chat_toolbar" />);
+
+    mockDevelopStore.isMobile = false;
+    mockDevelopStore.publishStates['app-123'] = { publishPopoverRequestNonce: 1 };
+    rerender(<AppPublish location="develop.chat_toolbar" />);
+
+    await waitFor(() => {
+      expect(screen.queryByText('builder_publish_popover_title')).not.toBeInTheDocument();
+    });
+  });
+
+  it('should consume nonce opens for chat toolbar instance on mobile', async function mobileUsesToolbarNonce() {
+    const { rerender } = renderWithProviders(<AppPublish location="develop.chat_toolbar" />);
+
+    mockDevelopStore.isMobile = true;
+    mockDevelopStore.publishStates['app-123'] = { publishPopoverRequestNonce: 1 };
+    rerender(<AppPublish location="develop.chat_toolbar" />);
+
+    await waitFor(() => {
+      expect(screen.getByText('builder_publish_popover_title')).toBeInTheDocument();
+    });
+  });
+
+  it('should skip nonce opens for header instance on mobile', async function mobileSkipsHeaderNonce() {
+    const { rerender } = renderWithProviders(<AppPublish location="develop" />);
+
+    mockDevelopStore.isMobile = true;
+    mockDevelopStore.publishStates['app-123'] = { publishPopoverRequestNonce: 1 };
+    rerender(<AppPublish location="develop" />);
+
+    await waitFor(() => {
+      expect(screen.queryByText('builder_publish_popover_title')).not.toBeInTheDocument();
+    });
+  });
+
+  it('should reopen on successive nonce increments after close', async function reopenOnNonceRetrigger() {
+    const { rerender, user } = renderWithProviders(<AppPublish />);
+
+    mockDevelopStore.publishStates['app-123'] = { publishPopoverRequestNonce: 1 };
+    rerender(<AppPublish />);
+    await waitFor(() => {
+      expect(screen.getByText('builder_publish_popover_title')).toBeInTheDocument();
+    });
+
+    const trigger = document.getElementById('tour-publish-button');
+    expect(trigger).toBeTruthy();
+    await user.click(trigger!);
+    await waitFor(() => {
+      expect(screen.queryByText('builder_publish_popover_title')).not.toBeInTheDocument();
+    });
+
+    mockDevelopStore.publishStates['app-123'] = { publishPopoverRequestNonce: 2 };
+    rerender(<AppPublish />);
+    await waitFor(() => {
+      expect(screen.getByText('builder_publish_popover_title')).toBeInTheDocument();
+    });
+  });
+
+  it('should not open popover when switching to another app with existing nonce', async function appSwitchDoesNotOpenForHistoricalNonce() {
+    const { rerender } = renderWithProviders(<AppPublish />);
+
+    expect(screen.queryByText('builder_publish_popover_title')).not.toBeInTheDocument();
+
+    mockDevelopStore.publishStates['app-456'] = { publishPopoverRequestNonce: 3 };
+    mockDevelopStore.currentAppId = 'app-456';
+    mockSiteStore.getSite.mockReturnValueOnce(
+      createMockSite({
+        id: 'app-456',
+        agent_url: 'https://app-456.agent.test',
+      }),
+    );
+    rerender(<AppPublish />);
+
+    await waitFor(() => {
+      expect(screen.queryByText('builder_publish_popover_title')).not.toBeInTheDocument();
+    });
+  });
+
+  it('should open popover after app switch when nonce increments past historical value', async function appSwitchNonceIncrementOpens() {
+    const { rerender } = renderWithProviders(<AppPublish />);
+
+    mockDevelopStore.publishStates['app-456'] = { publishPopoverRequestNonce: 3 };
+    mockDevelopStore.currentAppId = 'app-456';
+    mockSiteStore.getSite.mockReturnValueOnce(
+      createMockSite({
+        id: 'app-456',
+        agent_url: 'https://app-456.agent.test',
+      }),
+    );
+    rerender(<AppPublish />);
+    await waitFor(() => {
+      expect(screen.queryByText('builder_publish_popover_title')).not.toBeInTheDocument();
+    });
+
+    mockDevelopStore.publishStates['app-456'] = { publishPopoverRequestNonce: 4 };
+    rerender(<AppPublish />);
+    await waitFor(() => {
+      expect(screen.getByText('builder_publish_popover_title')).toBeInTheDocument();
+    });
+  });
+
+  it('should log already-open skip and still reopen on later nonce increment', async function alreadyOpenSkipThenReopen() {
+    const { rerender, user } = renderWithProviders(<AppPublish />);
+
+    mockDevelopStore.publishStates['app-123'] = { publishPopoverRequestNonce: 1 };
+    rerender(<AppPublish />);
+    await waitFor(() => {
+      expect(screen.getByText('builder_publish_popover_title')).toBeInTheDocument();
+    });
+
+    mockDevelopStore.publishStates['app-123'] = { publishPopoverRequestNonce: 2 };
+    rerender(<AppPublish />);
+    expect(vi.mocked(logger.info)).toHaveBeenCalledWith('app-publish.popover.open-skipped.already-open', {
+      appId: 'app-123',
+      location: 'develop',
+    });
+
+    const trigger = document.getElementById('tour-publish-button');
+    expect(trigger).toBeTruthy();
+    await user.click(trigger!);
+    await waitFor(() => {
+      expect(screen.queryByText('builder_publish_popover_title')).not.toBeInTheDocument();
+    });
+
+    mockDevelopStore.publishStates['app-123'] = { publishPopoverRequestNonce: 3 };
+    rerender(<AppPublish />);
     await waitFor(() => {
       expect(screen.getByText('builder_publish_popover_title')).toBeInTheDocument();
     });

@@ -1,11 +1,12 @@
 'use client'
 
-import { CheckCircle, Rocket } from 'lucide-react'
-import { useState } from 'react'
+import { Rocket } from 'lucide-react'
+import { useEffect, useRef } from 'react'
 
 import ToolHeader from '@/app/[market]/develop/components/tool-renderers/ToolHeader'
-import ToolModal from '@/app/[market]/develop/components/tool-renderers/ToolModal'
 import { useTranslations } from '@/hooks/useTranslations'
+import { logger } from '@/lib/request-context'
+import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import type { DefaultToolRendererProps } from './DefaultToolRenderer'
 
 /**
@@ -55,13 +56,17 @@ export function extractCommitHash(result: string | Record<string, unknown> | und
  */
 export default function PublishClientToolRenderer({
   toolStatus,
-  duration,
+  toolId,
+  isLastAssistantMessage,
   input,
   result,
   error,
 }: DefaultToolRendererProps) {
   const t = useTranslations()
-  const [isModalOpen, setIsModalOpen] = useState(false)
+  const currentAppId = useDevelopPageStore((state) => state.currentAppId)
+  const requestPublishPopoverOpen = useDevelopPageStore((state) => state.requestPublishPopoverOpen)
+  const hasRequestedOpenRef = useRef(false)
+  const lastLoggedErrorRef = useRef<string | null>(null)
 
   // Parse input with proper typing
   const inputData = input as PublishClientInput
@@ -69,12 +74,28 @@ export default function PublishClientToolRenderer({
   // Extract commit hash from result string or input
   const commitHash = extractCommitHash(result, inputData)
 
-  // Format duration
-  const formatDuration = (ms?: number) => {
-    if (!ms) return ''
-    if (ms < 1000) return `${ms}ms`
-    return `${(ms / 1000).toFixed(1)}s`
-  }
+  useEffect(() => {
+    hasRequestedOpenRef.current = false
+  }, [toolId])
+
+  useEffect(() => {
+    if (
+      !currentAppId ||
+      !isLastAssistantMessage ||
+      toolStatus !== 'running' ||
+      hasRequestedOpenRef.current
+    ) {
+      return
+    }
+    requestPublishPopoverOpen(currentAppId)
+    hasRequestedOpenRef.current = true
+  }, [currentAppId, isLastAssistantMessage, requestPublishPopoverOpen, toolStatus])
+
+  useEffect(() => {
+    if (!currentAppId || !error || error === lastLoggedErrorRef.current) return
+    logger.error('publish-client-tool-renderer.tool-error', { appId: currentAppId, error, toolStatus })
+    lastLoggedErrorRef.current = error
+  }, [currentAppId, error, toolStatus])
 
   // Determine display text based on status
   const getDisplayText = () => {
@@ -94,82 +115,14 @@ export default function PublishClientToolRenderer({
       : t('builder_tools_publish_success', void 0, 'Published successfully')
   }
 
-  const hasDetails = Boolean(result || error || commitHash)
-
   return (
     <div>
       <ToolHeader
         icon={<Rocket className="w-2 h-2" />}
         displayName={getDisplayText()}
         toolStatus={toolStatus}
-        hasDetails={hasDetails}
-        onOpenModal={() => setIsModalOpen(true)}
+        hasDetails={false}
       />
-
-      <ToolModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        title={t('builder_tools_publish_title', void 0, 'Publish Details')}
-      >
-        <div className="flex-1 overflow-y-auto space-y-3">
-          {/* Status Summary */}
-          {toolStatus === 'completed' && !error && (
-            <div className="bg-intents-ux-feedbackSuccess-backgroundColor border border-intents-ux-feedbackSuccess-borderColor p-2 rounded">
-              <div className="flex items-center gap-2 text-sm font-medium text-intents-ux-feedbackSuccess-textColor">
-                <CheckCircle className="w-4 h-4" aria-hidden="true" />
-                <span>{t('builder_tools_publish_success_message', void 0, 'Successfully published')}</span>
-              </div>
-            </div>
-          )}
-
-          {toolStatus === 'running' && (
-            <div className="bg-muted border border-border p-2 rounded">
-              <div className="text-sm font-medium">
-                {t('builder_tools_publish_in_progress', void 0, 'Publishing in progress...')}
-              </div>
-            </div>
-          )}
-
-          {/* Commit Information */}
-          {commitHash && (
-            <div className="space-y-1">
-              <div className="text-xs font-bold uppercase text-muted-foreground">
-                {t('builder_tools_publish_commit', void 0, 'Commit')}
-              </div>
-              <div className="flex items-center gap-2">
-                <code className="text-sm font-mono bg-muted px-2 py-1 rounded border border-border">
-                  {commitHash.substring(0, 7)}
-                </code>
-                <span className="text-xs text-muted-foreground font-mono">
-                  {commitHash}
-                </span>
-              </div>
-            </div>
-          )}
-
-          {/* Duration */}
-          {duration && (
-            <div className="flex items-center justify-between text-xs text-muted-foreground pt-2 border-t border-border">
-              <span>{t('builder_tools_default_duration', void 0, 'Duration')}</span>
-              <span className="font-mono">{formatDuration(duration)}</span>
-            </div>
-          )}
-
-          {/* Error */}
-          {error && (
-            <div className="space-y-1">
-              <div className="text-xs font-bold uppercase text-destructive">
-                {t('builder_status_error', void 0, 'Error')}
-              </div>
-              <div className="bg-destructive/10 border border-destructive/30 p-2 rounded">
-                <pre className="text-xs whitespace-pre-wrap font-mono text-destructive-foreground">
-                  {error}
-                </pre>
-              </div>
-            </div>
-          )}
-        </div>
-      </ToolModal>
     </div>
   )
 }

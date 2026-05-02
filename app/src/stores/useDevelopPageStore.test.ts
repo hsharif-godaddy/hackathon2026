@@ -859,4 +859,46 @@ describe('useDevelopPageStore', function useDevelopPageStoreTests() {
       expect(useDevelopPageStore.getState().feedbackInitialStep).toBeNull();
     });
   });
+
+  describe('#requestPublishPopoverOpen', function requestPublishPopoverOpenTests() {
+    it('increments publishPopoverRequestNonce for an existing slice', function incrementExistingSlice() {
+      act(function setup() {
+        useDevelopPageStore.setState({
+          publishStates: {
+            'app-123': {
+              ...useDevelopPageStore.getState().getPublishState('app-123'),
+              isPublishing: true,
+              publishPopoverRequestNonce: 0,
+            },
+          },
+        });
+      });
+
+      act(function firstRequest() {
+        useDevelopPageStore.getState().requestPublishPopoverOpen('app-123');
+      });
+      expect(useDevelopPageStore.getState().publishStates['app-123']?.publishPopoverRequestNonce).toBe(1);
+
+      act(function secondRequest() {
+        useDevelopPageStore.getState().requestPublishPopoverOpen('app-123');
+      });
+      const publishState = useDevelopPageStore.getState().publishStates['app-123'];
+      expect(publishState?.publishPopoverRequestNonce).toBe(2);
+      expect(publishState?.isPublishing).toBe(true);
+    });
+
+    it('creates slice and sets publishPopoverRequestNonce to 1 when missing', function createSliceAndIncrement() {
+      act(function setup() {
+        useDevelopPageStore.setState({ publishStates: {} });
+      });
+
+      act(function request() {
+        useDevelopPageStore.getState().requestPublishPopoverOpen('app-999');
+      });
+
+      const publishState = useDevelopPageStore.getState().publishStates['app-999'];
+      expect(publishState).toBeDefined();
+      expect(publishState?.publishPopoverRequestNonce).toBe(1);
+    });
+  });
 });
