@@ -27,8 +27,19 @@ vi.mock('next/server', async () => {
 
 import { config, middleware } from '../middleware';
 
-function makeRequest(pathname: string, host = 'airo-builder.test-godaddy.com'): Request {
-  return new Request(new URL(pathname, `https://${host}`));
+interface MakeRequestOptions {
+  host?: string;
+  dsaHost?: string;
+}
+
+function makeRequest(pathname: string, hostOrOptions: string | MakeRequestOptions = 'airo-builder.test-godaddy.com'): Request {
+  const opts = typeof hostOrOptions === 'string' ? { host: hostOrOptions } : hostOrOptions;
+  const host = opts.host ?? 'airo-builder.test-godaddy.com';
+  const headers: Record<string, string> = { host };
+  if (opts.dsaHost !== undefined) {
+    headers['x-dsa-host'] = opts.dsaHost;
+  }
+  return new Request(new URL(pathname, `https://${host}`), { headers });
 }
 
 describe('middleware', () => {
@@ -130,18 +141,39 @@ describe('middleware', () => {
       mockGetVisitor.mockResolvedValue({ market: 'en-US' });
     });
 
-    it('should set X-Robots-Tag noindex on the airo-builder.godaddy.com subdomain', async () => {
+    it('should set X-Robots-Tag noindex when host header matches the prod subdomain', async () => {
       const result = await middleware(makeRequest('/develop', 'airo-builder.godaddy.com'));
       expect(result.headers.get('X-Robots-Tag')).toBe('noindex, nofollow');
     });
 
-    it('should not set X-Robots-Tag on the test-godaddy.com host', async () => {
+    it('should set X-Robots-Tag noindex on the test-godaddy.com host (pre-test verification)', async () => {
       const result = await middleware(makeRequest('/develop', 'airo-builder.test-godaddy.com'));
-      expect(result.headers.get('X-Robots-Tag')).toBeNull();
+      expect(result.headers.get('X-Robots-Tag')).toBe('noindex, nofollow');
     });
 
-    it('should not set X-Robots-Tag on the dev-godaddy.com host', async () => {
+    it('should set X-Robots-Tag noindex on the dev-godaddy.com host', async () => {
       const result = await middleware(makeRequest('/develop', 'airo-builder.dev-godaddy.com'));
+      expect(result.headers.get('X-Robots-Tag')).toBe('noindex, nofollow');
+    });
+
+    it('should set X-Robots-Tag noindex on the pre-test host', async () => {
+      const result = await middleware(makeRequest('/develop', 'pre-test-airo-builder.test-godaddy.com'));
+      expect(result.headers.get('X-Robots-Tag')).toBe('noindex, nofollow');
+    });
+
+    it('should set X-Robots-Tag noindex when only x-dsa-host matches (real Akamai chain)', async () => {
+      const result = await middleware(makeRequest('/develop', {
+        host: 'airo-builder-internal.katana.int',
+        dsaHost: 'airo-builder.godaddy.com',
+      }));
+      expect(result.headers.get('X-Robots-Tag')).toBe('noindex, nofollow');
+    });
+
+    it('should prefer x-dsa-host over host when both are present', async () => {
+      const result = await middleware(makeRequest('/develop', {
+        host: 'airo-builder.godaddy.com',
+        dsaHost: 'godaddy.com',
+      }));
       expect(result.headers.get('X-Robots-Tag')).toBeNull();
     });
 
@@ -152,6 +184,11 @@ describe('middleware', () => {
 
     it('should not set X-Robots-Tag on a different godaddy.com subdomain', async () => {
       const result = await middleware(makeRequest('/develop', 'something-else.godaddy.com'));
+      expect(result.headers.get('X-Robots-Tag')).toBeNull();
+    });
+
+    it('should not set X-Robots-Tag on the test-godaddy.com apex host', async () => {
+      const result = await middleware(makeRequest('/develop', 'test-godaddy.com'));
       expect(result.headers.get('X-Robots-Tag')).toBeNull();
     });
   });
