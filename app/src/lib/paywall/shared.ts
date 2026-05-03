@@ -199,8 +199,10 @@ export const PAYWALL_ITC = {
   UPGRADE: 'upp_airo_ai_builder_upgrade',
   /** ITC for buy credits buttons (capital 'B' in Builder is intentional per product team) */
   CREDITS: 'upp_airo_ai_Builder_credit',
-  /** ITC for domain purchase from builder */
+  /** ITC for domain purchase from internal airo ai builder */
   DOMAIN_PURCHASE: 'airo_ai_builder_domain_purchase',
+  /** ITC for domain purchase for external domain attach purchase flow */
+  ATTACH_DOMAIN: 'airo_ai_builder_attach_domain',
 } as const;
 
 export type PaywallItcValue = (typeof PAYWALL_ITC)[keyof typeof PAYWALL_ITC];

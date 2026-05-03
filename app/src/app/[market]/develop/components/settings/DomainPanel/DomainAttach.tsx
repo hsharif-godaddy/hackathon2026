@@ -29,6 +29,7 @@ import { useTranslations } from '@/hooks/useTranslations';
 import { DomainStatus as ControlPlaneDomainStatus } from '@/lib/control-plane/types';
 import { shipAnalyticsLog } from '@/lib/logging';
 import { DomainMode, DomainStatus } from '@/lib/mgmt-airo/types';
+import { PAYWALL_ITC } from '@/lib/paywall/shared';
 import { logger } from '@/lib/request-context';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { useSiteStore } from "@/stores/useSiteStore";
@@ -606,7 +607,7 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
               design="primary"
               size="sm"
               data-eid={generateClickEID(`settings.domains.buy_new_domain`)}
-              href={`https://www.${getRootDomain()}/domains`}
+              href={`https://www.${getRootDomain()}/domains?itc=${encodeURIComponent(PAYWALL_ITC.ATTACH_DOMAIN)}`}
               external
             />
           )}

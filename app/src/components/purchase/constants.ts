@@ -5,6 +5,8 @@
  * Update these values based on environment and UPP integration requirements.
  */
 
+import { PAYWALL_ITC } from '@/lib/paywall/shared';
+
 /**
  * Build UPP domain search URL
  * @param rootDomain - Root domain (e.g., godaddy.com, godaddy-dev.com)
@@ -13,7 +15,7 @@
  */
 export function buildUPPDomainSearchUrl(rootDomain: string, domain: string): string {
   const baseUrl = process.env.NEXT_PUBLIC_UPP_BASE_URL || `https://www.${rootDomain}`;
-  return `${baseUrl}/domainsearch/find?domainToCheck=${encodeURIComponent(domain)}&checkAvailability=true`;
+  return `${baseUrl}/domainsearch/find?domainToCheck=${encodeURIComponent(domain)}&checkAvailability=true&itc=${encodeURIComponent(PAYWALL_ITC.ATTACH_DOMAIN)}`;
 }
 
 /**
