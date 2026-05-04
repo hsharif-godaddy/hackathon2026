@@ -1,4 +1,4 @@
-import { createCheckoutSession } from '../commerce-client';
+import { createCheckoutSession, type CheckoutCustomer } from '../commerce-client';
 
 /**
  * Replace with real store ID from Commerce onboarding/handoff context.
@@ -21,6 +21,7 @@ export async function startOneTimeCommerceCheckout(params: {
   skuId: string;
   quantity?: number;
   storeId?: string;
+  customer?: CheckoutCustomer;
 }) {
   const previewUrl = getPreviewUrl();
   const quantity = params.quantity ?? 1;
@@ -33,10 +34,24 @@ export async function startOneTimeCommerceCheckout(params: {
     };
   }
 
+  // The @godaddy/react <Checkout /> component reads shipping.email for the
+  // contact email field. Mirror billing.email → shipping.email so callers
+  // don't need to know this detail.
+  const customer = params.customer
+    ? {
+        ...params.customer,
+        shipping: {
+          ...params.customer.shipping,
+          email: params.customer.shipping?.email ?? params.customer.billing?.email,
+        },
+      }
+    : undefined;
+
   return createCheckoutSession({
     storeId,
     lineItems: [{ skuId: params.skuId, quantity }],
     returnUrl: `${previewUrl}/checkout/cancel`,
     successUrl: `${previewUrl}/checkout/success`,
+    ...(customer && { customer }),
   });
 }

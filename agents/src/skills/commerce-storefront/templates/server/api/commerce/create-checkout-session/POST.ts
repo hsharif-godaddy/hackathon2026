@@ -147,6 +147,19 @@ interface LineItem {
 	quantity: number;
 }
 
+interface CheckoutCustomerContact {
+	firstName?: string;
+	lastName?: string;
+	email?: string;
+	phone?: string;
+	companyName?: string;
+}
+
+interface CheckoutCustomer {
+	shipping?: CheckoutCustomerContact;
+	billing?: CheckoutCustomerContact;
+}
+
 interface CreateCheckoutSessionRequest {
 	storeId: string;
 	returnUrl: string;
@@ -154,6 +167,7 @@ interface CreateCheckoutSessionRequest {
 	lineItems?: LineItem[];
 	draftOrderId?: string;
 	storeName?: string;
+	customer?: CheckoutCustomer;
 	enableShipping?: boolean;
 	enableLocalPickup?: boolean;
 	enableBillingAddressCollection?: boolean;
@@ -292,6 +306,7 @@ async function createCheckoutSession(
 		storeId: params.storeId,
 		storeName: params.storeName ?? null,
 		customerId: null,
+		...(params.customer && { customer: params.customer }),
 		returnUrl: params.returnUrl,
 		successUrl: params.successUrl,
 		enableShipping: params.enableShipping ?? false,
@@ -372,6 +387,7 @@ export default async function handler(req: Request, res: Response) {
 			lineItems,
 			draftOrderId,
 			storeName,
+			customer,
 			enableShipping,
 			enableLocalPickup,
 			enableBillingAddressCollection,
@@ -412,6 +428,7 @@ export default async function handler(req: Request, res: Response) {
 			returnUrl: finalReturnUrl,
 			successUrl: finalSuccessUrl,
 			storeName,
+			customer,
 			enableShipping,
 			enableLocalPickup,
 			enableBillingAddressCollection,

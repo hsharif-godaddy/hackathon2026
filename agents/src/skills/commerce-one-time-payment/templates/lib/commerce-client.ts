@@ -45,6 +45,19 @@ export interface LineItem {
 	quantity: number;
 }
 
+export interface CheckoutCustomerContact {
+	firstName?: string;
+	lastName?: string;
+	email?: string;
+	phone?: string;
+	companyName?: string;
+}
+
+export interface CheckoutCustomer {
+	shipping?: CheckoutCustomerContact;
+	billing?: CheckoutCustomerContact;
+}
+
 /**
  * Base parameters shared by all checkout session types
  */
@@ -57,6 +70,8 @@ interface BaseCheckoutSessionParams {
 	successUrl: string;
 	/** Optional store name to display in checkout */
 	storeName?: string;
+	/** Pre-fill customer contact info in checkout */
+	customer?: CheckoutCustomer;
 	/** Enable shipping options */
 	enableShipping?: boolean;
 	/** Enable local pickup option */

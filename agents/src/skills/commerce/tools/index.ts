@@ -120,6 +120,16 @@ const REQUIRED_OWNER_IDENTITY_FIELDS = ['firstName', 'lastName', 'email'] as con
 
 const setupStoreInFlight = new Map<string, Promise<unknown>>();
 
+// Provisioning lock: prevents re-calling onboardApplication while a store is still provisioning.
+// Keyed by appId. TTL of 5 minutes covers the worst-case provisioning delay.
+const provisioningLock = new Map<string, { timestamp: number; storeName?: string }>();
+const PROVISIONING_LOCK_TTL_MS = 5 * 60 * 1000;
+
+/** For testing only: resets provisioning lock state between test cases. */
+export function _resetProvisioningLockForTesting(): void {
+  provisioningLock.clear();
+}
+
 function getAppIdFromContext(context?: CommerceToolContext): string | undefined {
   return context?.metadata?.appId;
 }
@@ -897,7 +907,9 @@ export const setupStoreTool: SkillToolDefinition = {
           }
         }
         const existingStores = getCommerceStoresFromSummary(summary);
-        const discoveredStore = existingStores[0];
+        const discoveredStore =
+          findCommerceStoreByName(existingStores, normalizeNonEmptyString(input.storeName)) ||
+          existingStores[0];
         const explicitStoreId = getExplicitStoreId(input);
 
         if (explicitStoreId) {
@@ -932,6 +944,7 @@ export const setupStoreTool: SkillToolDefinition = {
             });
           }
 
+          provisioningLock.delete(appId);
           logger.info('commerce.skill.setup_store.existing', {
             appId,
             storeId: discoveredStore.storeId,
@@ -976,6 +989,22 @@ export const setupStoreTool: SkillToolDefinition = {
           };
         }
 
+        // Guard: if a previous onboarding attempt is still provisioning, block before
+        // calling onboardApplication again — calling it a second time while the first
+        // is still in progress is what causes duplicate stores to be created.
+        // The summary check above already ran; if the store had finished provisioning
+        // it would have been found as discoveredStore and we'd never reach this point.
+        const existingLock = provisioningLock.get(appId);
+        if (existingLock && Date.now() - existingLock.timestamp < PROVISIONING_LOCK_TTL_MS) {
+          logger.warn('commerce.skill.setup_store.provisioning_lock.blocked', { appId });
+          return {
+            storeProvisioningInProgress: true,
+            message:
+              'A Commerce store is still being provisioned — do NOT call this tool again. Stop here and tell the user: "Your store is being set up by GoDaddy. This usually takes 1–2 minutes. Please check Commerce Home directly once it\'s ready."',
+            storeName: existingLock.storeName,
+          };
+        }
+
         const paymentsManualSetupRequired = requiresManualPaymentsSetup({
           firstName: ownerIdentity.firstName,
           lastName: ownerIdentity.lastName,
@@ -1014,15 +1043,20 @@ export const setupStoreTool: SkillToolDefinition = {
               (newlyDiscoveredStores.length === 1 ? newlyDiscoveredStores[0] : undefined);
 
             if (!recoveredStore) {
+              provisioningLock.set(appId, {
+                timestamp: Date.now(),
+                storeName: normalizeNonEmptyString(input.storeName),
+              });
+              logger.warn('commerce.skill.setup_store.provisioning_lock.set', { appId });
               return {
                 storeProvisioningInProgress: true,
-                retryAfterSeconds: 5,
                 message:
-                  'A Commerce store setup request is already in progress. Wait a moment and retry commerce__setup_store instead of starting a new onboarding request.',
+                  'A Commerce store is still being provisioned — do NOT call this tool again. Stop here and tell the user: "Your store is being set up by GoDaddy. This usually takes 1–2 minutes. Please check Commerce Home directly once it\'s ready."',
                 storeName: normalizeNonEmptyString(input.storeName),
               };
             }
 
+            provisioningLock.delete(appId);
             logger.info('commerce.skill.setup_store.onboarding.duplicate_conflict.recovered', {
               appId,
               storeId: recoveredStore.storeId,
@@ -1143,6 +1177,7 @@ export const setupStoreTool: SkillToolDefinition = {
           errors.push('default_location_failed');
         }
 
+        provisioningLock.delete(appId);
         logger.info('commerce.skill.setup_store.created', { appId, storeId });
 
         return {
@@ -1227,7 +1262,7 @@ export const fetchCatalogTool: SkillToolDefinition = {
         const summaryStores = getCommerceStoresFromSummary(summary);
         const resolvedSummaryStore =
           findCommerceStoreByName(summaryStores, providedNameLikeStoreId ? providedStoreId : undefined) ||
-          summaryStores[0];
+          (summaryStores.length === 1 ? summaryStores[0] : undefined);
 
         if (resolvedSummaryStore) {
           logger.info('commerce.skill.fetch_catalog.store_id.resolved_from_summary', {

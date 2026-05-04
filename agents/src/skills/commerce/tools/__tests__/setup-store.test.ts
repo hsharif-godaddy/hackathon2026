@@ -56,13 +56,14 @@ vi.mock('../auth.js', () => ({
   withCommerceAuth: mockWithCommerceAuth,
 }));
 
-const { setupStoreTool } = await import('../index.js');
+const { setupStoreTool, _resetProvisioningLockForTesting } = await import('../index.js');
 
 describe('commerce__setup_store', () => {
   const context = { metadata: { appId: 'app-123' } };
 
   beforeEach(() => {
     vi.clearAllMocks();
+    _resetProvisioningLockForTesting();
   });
 
   it('should have correct tool definition shape', () => {
@@ -499,7 +500,8 @@ describe('commerce__setup_store', () => {
     );
 
     expect(result.data.storeProvisioningInProgress).toBe(true);
-    expect(result.data.retryAfterSeconds).toBe(5);
+    expect(result.data.retryAfterSeconds).toBeUndefined();
+    expect(result.data.message).toContain('do NOT call this tool again');
     expect(result.data.storeName).toBe('Acme Goods');
     expect(mockGetStoreSummary).toHaveBeenCalledTimes(2);
     expect(mockEnableGoDaddyPaymentsApplication).not.toHaveBeenCalled();
@@ -533,7 +535,8 @@ describe('commerce__setup_store', () => {
     );
 
     expect(result.data.storeProvisioningInProgress).toBe(true);
-    expect(result.data.retryAfterSeconds).toBe(5);
+    expect(result.data.retryAfterSeconds).toBeUndefined();
+    expect(result.data.message).toContain('do NOT call this tool again');
     expect(result.data.storeName).toBe('Acme Goods 2');
     expect(mockGetStoreSummary).toHaveBeenCalledTimes(2);
     expect(mockEnableCatalogV2).not.toHaveBeenCalled();

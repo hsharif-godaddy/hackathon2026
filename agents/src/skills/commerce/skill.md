@@ -71,6 +71,7 @@ Follow this order for management work:
 1. Call `oauthConnect`.
 2. If the user already shared a Commerce Home URL or Store ID, call `commerce__setup_store` with `storeUrl` or `storeId` so the existing store is linked directly.
 3. Otherwise call `commerce__setup_store` once to discover store state.
+   If the user has explicitly asked to create a new store (e.g. "create a new store", "I want a new store"), pass `storePreference: "new"` on this first call — do not make a discovery call first.
    If the tool returns `storeChoiceRequired: true`, stop and ask whether to use the existing store or create a new one. Use `suggestedResponse`. Do not retry `commerce__setup_store` again in the same turn.
    If the tool returns `needsOwnerIdentity: true`, ask the user for first name, last name, and email, then retry `commerce__setup_store` with `storePreference: "new"`.
    If the tool returns `noExistingStoreFound: true`, ask for first name, last name, and email, then retry `commerce__setup_store` with `storePreference: "new"`.
