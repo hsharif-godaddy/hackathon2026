@@ -13,6 +13,14 @@ interface AuthState {
     isLoading: boolean;
     sessionStale: boolean;
     user?: AuthUser;
+    /**
+     * Membership check result. `undefined` while loading or if the
+     * caller is unauthenticated. `true` once the membership endpoint
+     * confirms the user is in at least one allowed AD group.
+     */
+    allowed?: boolean;
+    matchedGroups?: string[];
+    allowedGroups?: string[];
 }
 
 // Refresh cadence and cache TTL are intentionally coupled: the module cache
@@ -55,6 +63,51 @@ function stopRefreshTimer() {
     }
 }
 
+interface MembershipResult {
+    allowed?: boolean;
+    matchedGroups?: string[];
+    allowedGroups?: string[];
+    user?: AuthUser;
+    /**
+     * True when the membership endpoint returned 401 — the SSO token is
+     * stale and needs a fresher JWT. Caller should surface re-auth
+     * (sessionStale=true, allowed=undefined) rather than the access-denied
+     * UI, which is reserved for "authenticated but not in any allowed
+     * group".
+     */
+    sessionStale?: boolean;
+}
+
+async function fetchMembership(): Promise<MembershipResult> {
+    try {
+        const res = await fetch('/api/auth/membership');
+        if (res.status === 401) {
+            // SSO rejected the token (typically code -92, "needs fresher
+            // JWT"). Leave `allowed` undefined so ProtectedRoute does not
+            // render Access Denied; show the re-auth banner instead.
+            return { sessionStale: true };
+        }
+        if (!res.ok) {
+            return { allowed: false };
+        }
+        const data = await res.json();
+        return {
+            allowed: Boolean(data.allowed),
+            matchedGroups: Array.isArray(data.matchedGroups) ? data.matchedGroups : [],
+            allowedGroups: Array.isArray(data.allowedGroups) ? data.allowedGroups : [],
+            user: data.user ? {
+                shopperId: data.user.shopperId,
+                cid: data.user.cid,
+                email: data.user.email,
+            } : undefined,
+        };
+    } catch {
+        // Treat network errors as denial. The user can refresh the page; the
+        // alternative (granting access on transient failures) is unsafe.
+        return { allowed: false };
+    }
+}
+
 async function validateSession(): Promise<AuthState> {
     if (isCacheFresh()) return currentState;
     if (inflightValidate) return inflightValidate;
@@ -74,17 +127,34 @@ async function validateSession(): Promise<AuthState> {
                     email: data.payload.email
                 }
                 : undefined;
-            // sessionStale is owned by refreshSession (SSO heartbeat); preserve
-            // it here. /api/auth/validate runs gd-auth at level 0 and does not
-            // contact SSO, so a locally-valid token can still be rejected by SSO.
+
+            if (!data.valid) {
+                setState({
+                    isAuthenticated: false,
+                    isLoading: false,
+                    sessionStale: false,
+                    user
+                });
+                stopRefreshTimer();
+                return currentState;
+            }
+
+            const membership = await fetchMembership();
+            // sessionStale is owned by refreshSession (SSO heartbeat) but
+            // /api/auth/membership also contacts SSO and may discover the
+            // token is too old. Honor either signal: a 401 from membership
+            // forces sessionStale=true so the user re-auths instead of
+            // seeing the Access Denied screen.
             setState({
-                isAuthenticated: Boolean(data.valid),
+                isAuthenticated: true,
                 isLoading: false,
-                sessionStale: data.valid ? currentState.sessionStale : false,
-                user
+                sessionStale: currentState.sessionStale || Boolean(membership.sessionStale),
+                user: membership.user ?? user,
+                allowed: membership.allowed,
+                matchedGroups: membership.matchedGroups,
+                allowedGroups: membership.allowedGroups,
             });
-            if (data.valid) startRefreshTimer();
-            else stopRefreshTimer();
+            startRefreshTimer();
             return currentState;
         })
         .catch(() => {

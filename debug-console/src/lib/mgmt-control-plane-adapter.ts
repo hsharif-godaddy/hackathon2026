@@ -35,6 +35,15 @@ import type {
     MgmtCustomerApp,
 } from '@/lib/mgmt-types';
 
+export class AgentUrlNotFoundError extends Error {
+    readonly appId: string;
+    constructor(appId: string) {
+        super(`No agent_url found for app ${appId}`);
+        this.name = 'AgentUrlNotFoundError';
+        this.appId = appId;
+    }
+}
+
 interface CustomerTreeApp {
     id: string;
     status: string;
@@ -72,6 +81,15 @@ export class MgmtControlPlaneAdapter {
         let path = `/api/airo/v1/apps/${encodeURIComponent(appId)}`;
         path += includeResources ? '?includeResources=true' : '';
         return this.request(path);
+    }
+
+    async getAgentUrl(appId: string): Promise<string> {
+        const details = await this.getAppDetails(appId, { includeResources: false });
+        const url = details.urls?.agent;
+        if (!url) {
+            throw new AgentUrlNotFoundError(appId);
+        }
+        return url;
     }
 
     getImageStatus(appId: string, opts?: { subscriptionId?: string; systemId?: string; tryCount?: number }): Promise<MgmtImageStatus> {

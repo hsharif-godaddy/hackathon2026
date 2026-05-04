@@ -15,7 +15,7 @@ vi.mock('@/lib/date-utils', () => ({
     computeUseBefore: vi.fn(() => '2026-05-04T16:00:00Z'),
 }));
 
-import type { AuthResult } from '../api-auth';
+import type { AuthUser } from '../api-auth';
 import {
     claimCreditPackSlot,
     CREDITS_MAX,
@@ -26,13 +26,11 @@ import {
 } from '../credit-pack-utils';
 
 describe('credit-pack-utils', () => {
-    const mockAuth: AuthResult = {
-        user: {
-            shopperId: 'shop-123',
-            cid: 'cust-456',
-            email: 'admin@example.com',
-        },
-    } as AuthResult;
+    const mockUser: AuthUser = {
+        shopperId: 'shop-123',
+        cid: 'cust-456',
+        email: 'admin@example.com',
+    };
 
     describe('constants', () => {
         it('should have CREDITS_MAX set to 250', () => {
@@ -57,50 +55,50 @@ describe('credit-pack-utils', () => {
         });
 
         it('should return a doc with the correct appId and subscriptionId', () => {
-            const doc = getCreditPackDoc('app-1', 'sub-1', mockAuth, 'test note');
+            const doc = getCreditPackDoc('app-1', 'sub-1', mockUser, 'test note');
 
             expect(doc.app_id).toBe('app-1');
             expect(doc.subscription_id).toBe('sub-1');
         });
 
         it('should set status to INIT', () => {
-            const doc = getCreditPackDoc('app-1', 'sub-1', mockAuth, 'test note');
+            const doc = getCreditPackDoc('app-1', 'sub-1', mockUser, 'test note');
 
             expect(doc.status).toBe(CREDIT_PACK_STATUS.INIT);
         });
 
         it('should set credits_max from the constant', () => {
-            const doc = getCreditPackDoc('app-1', 'sub-1', mockAuth, 'test note');
+            const doc = getCreditPackDoc('app-1', 'sub-1', mockUser, 'test note');
 
             expect(doc.credits_max).toBe(CREDITS_MAX);
         });
 
         it('should generate a UUID for es_id', () => {
-            const doc = getCreditPackDoc('app-1', 'sub-1', mockAuth, 'test note');
+            const doc = getCreditPackDoc('app-1', 'sub-1', mockUser, 'test note');
 
             expect(doc.es_id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
         });
 
         it('should set timestamp to now', () => {
-            const doc = getCreditPackDoc('app-1', 'sub-1', mockAuth, 'test note');
+            const doc = getCreditPackDoc('app-1', 'sub-1', mockUser, 'test note');
 
             expect(doc.timestamp).toBe('2026-04-04T15:21:31.000Z');
         });
 
         it('should set use_before from computeUseBefore', () => {
-            const doc = getCreditPackDoc('app-1', 'sub-1', mockAuth, 'test note');
+            const doc = getCreditPackDoc('app-1', 'sub-1', mockUser, 'test note');
 
             expect(doc.use_before).toBe('2026-05-04T16:00:00Z');
         });
 
         it('should set next_credit_allowed_after to 24 hours from now', () => {
-            const doc = getCreditPackDoc('app-1', 'sub-1', mockAuth, 'test note');
+            const doc = getCreditPackDoc('app-1', 'sub-1', mockUser, 'test note');
 
             expect(doc.next_credit_allowed_after).toBe('2026-04-05T15:21:31.000Z');
         });
 
         it('should set added_by fields from auth', () => {
-            const doc = getCreditPackDoc('app-1', 'sub-1', mockAuth, 'test note');
+            const doc = getCreditPackDoc('app-1', 'sub-1', mockUser, 'test note');
 
             expect(doc.added_by_shopper_id).toBe('shop-123');
             expect(doc.added_by_cid).toBe('cust-456');
@@ -108,7 +106,7 @@ describe('credit-pack-utils', () => {
         });
 
         it('should handle missing user fields gracefully', () => {
-            const doc = getCreditPackDoc('app-1', 'sub-1', { user: undefined } as unknown as AuthResult, 'test note');
+            const doc = getCreditPackDoc('app-1', 'sub-1', undefined, 'test note');
 
             expect(doc.added_by_shopper_id).toBeUndefined();
             expect(doc.added_by_cid).toBeUndefined();
@@ -116,14 +114,14 @@ describe('credit-pack-utils', () => {
         });
 
         it('should generate unique es_id on each call', () => {
-            const doc1 = getCreditPackDoc('app-1', 'sub-1', mockAuth, 'test note');
-            const doc2 = getCreditPackDoc('app-1', 'sub-1', mockAuth, 'test note');
+            const doc1 = getCreditPackDoc('app-1', 'sub-1', mockUser, 'test note');
+            const doc2 = getCreditPackDoc('app-1', 'sub-1', mockUser, 'test note');
 
             expect(doc1.es_id).not.toBe(doc2.es_id);
         });
 
         it('should include notes in the document', () => {
-            const doc = getCreditPackDoc('app-1', 'sub-1', mockAuth, 'Customer reported downtime');
+            const doc = getCreditPackDoc('app-1', 'sub-1', mockUser, 'Customer reported downtime');
 
             expect(doc.notes).toBe('Customer reported downtime');
         });
@@ -131,7 +129,7 @@ describe('credit-pack-utils', () => {
         // getCreditPackDoc accepts any string; notes validation (required, word
         // limit) is enforced at the route level, not in this utility.
         it('should store empty string when notes is empty', () => {
-            const doc = getCreditPackDoc('app-1', 'sub-1', mockAuth, '');
+            const doc = getCreditPackDoc('app-1', 'sub-1', mockUser, '');
 
             expect(doc.notes).toBe('');
         });

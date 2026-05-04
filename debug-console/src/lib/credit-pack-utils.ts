@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 
 import { bulkIndex, INDICES, initIndices, writeClient } from '@/lib/analytics/es-client';
-import type { AuthResult } from '@/lib/api-auth';
+import type { AuthUser } from '@/lib/api-auth';
 import { computeUseBefore } from '@/lib/date-utils';
 import { logger } from '@/lib/logger';
 
@@ -31,7 +31,7 @@ export const CREDIT_PACK_STATUS = {
     FAILED: 'failed',
 } as const;
 
-export function getCreditPackDoc(appId: string, subscriptionId: string, auth: AuthResult, notes: string): CreditPackDoc {
+export function getCreditPackDoc(appId: string, subscriptionId: string, user: AuthUser | undefined, notes: string): CreditPackDoc {
     const now = new Date();
     const use_before = computeUseBefore();
     const next_credit_allowed_after = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
@@ -45,9 +45,9 @@ export function getCreditPackDoc(appId: string, subscriptionId: string, auth: Au
         credits_max: CREDITS_MAX,
         use_before,
         next_credit_allowed_after,
-        added_by_shopper_id: auth.user?.shopperId,
-        added_by_cid: auth.user?.cid,
-        added_by_email: auth.user?.email,
+        added_by_shopper_id: user?.shopperId,
+        added_by_cid: user?.cid,
+        added_by_email: user?.email,
         notes,
     };
 }

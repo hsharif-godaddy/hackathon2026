@@ -306,27 +306,9 @@ function stripPreviousMessageContext(content: string): string {
   return cleaned.trim();
 }
 
-function downloadConversationJson(
-  appId: string | undefined,
-  rawPages: Map<number, SessionsResponse>,
-): void {
-  const pages = Array.from(rawPages.entries())
-    .sort(([a], [b]) => a - b)
-    .map(([page, response]) => ({ page, response }));
-  const blob = new Blob([JSON.stringify(pages, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  const safeId = (appId || 'conversation').replace(/[^a-zA-Z0-9_-]/g, '_');
-  a.href = url;
-  a.download = `langfuse-conversation-${safeId}-${Date.now()}.json`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-}
-
 function formatNumber(n: number): string {
-  if (n >= 1000) return (n / 1000).toFixed(1) + 'k';
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'k';
   return n.toString();
 }
 
@@ -2012,9 +1994,6 @@ export default function LangfusePanel({ globalAppId, refreshKey = 0, onRefresh }
   const loadAllAbortRef = useRef<AbortController | null>(null);
   const prefetchedRef = useRef(new Map<number, SessionsResponse>());
   const prefetchingRef = useRef(new Set<number>());
-  // Captures the raw `/api/langfuse/sessions/{appId}?page=N` response per page,
-  // so the JSON download dumps untransformed server payloads keyed by page.
-  const rawPagesRef = useRef(new Map<number, SessionsResponse>());
 
   const prefetch = useCallback(async function prefetchPage(pageToFetch: number, knownTotalPages?: number) {
     if (!globalAppId) return;
@@ -2060,7 +2039,6 @@ export default function LangfusePanel({ globalAppId, refreshKey = 0, onRefresh }
         setTotalPages(totalPagesValue);
         setSessions(prev => mergeSessions(prev, data.sessions));
         setCurrentPage(nextPage);
-        rawPagesRef.current.set(nextPage, data);
 
         if (nextPage >= totalPagesValue) {
           setHasMore(false);
@@ -2120,8 +2098,6 @@ export default function LangfusePanel({ globalAppId, refreshKey = 0, onRefresh }
       setHasMore(pageToFetch < totalPagesValue);
 
       setSessions(prev => isLoadMore ? mergeSessions(prev, data.sessions) : data.sessions);
-      if (!isLoadMore) rawPagesRef.current.clear();
-      rawPagesRef.current.set(pageToFetch, data);
       prefetch(pageToFetch + 1, totalPagesValue);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch sessions');
@@ -2136,14 +2112,12 @@ export default function LangfusePanel({ globalAppId, refreshKey = 0, onRefresh }
     if (globalAppId) {
       prefetchedRef.current.clear();
       prefetchingRef.current.clear();
-      rawPagesRef.current.clear();
       fetchPage(1);
     } else {
       setSessions([]);
       setEsErrors(null);
       prefetchedRef.current.clear();
       prefetchingRef.current.clear();
-      rawPagesRef.current.clear();
     }
   }, [globalAppId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -2157,7 +2131,6 @@ export default function LangfusePanel({ globalAppId, refreshKey = 0, onRefresh }
       setHasMore(true);
       prefetchedRef.current.clear();
       prefetchingRef.current.clear();
-      rawPagesRef.current.clear();
       fetchPage(1, { forceRefresh: true });
     }
   }, [refreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -2192,7 +2165,7 @@ export default function LangfusePanel({ globalAppId, refreshKey = 0, onRefresh }
       backgroundColor: 'white',
       padding: '1rem',
       borderRadius: '8px',
-      border: '2px solid #8b5cf6',
+      border: '1px solid #e5e7eb',
       display: 'flex',
       flexDirection: 'column',
       position: 'relative'
@@ -2229,7 +2202,7 @@ export default function LangfusePanel({ globalAppId, refreshKey = 0, onRefresh }
               fontSize: '0.75rem',
               fontWeight: 500
             }}>
-              {globalAppId.substring(0, 12)}...
+              {globalAppId}
             </span>
           )}
           {/* Loading Status */}
@@ -2330,6 +2303,11 @@ export default function LangfusePanel({ globalAppId, refreshKey = 0, onRefresh }
             <span>👤 {userMessages}</span>
             <span>🤖 {assistantMessages}</span>
             <span>🔧 {totalTools}</span>
+            {esErrors && esErrors.uniqueErrors > 0 && (
+              <span style={{ color: '#dc2626', fontWeight: 600 }} title="Errors">
+                ⚠️ {esErrors.totalErrors + esErrors.totalClientErrors}
+              </span>
+            )}
             <span style={{ color: '#64748b' }}>|</span>
             <span style={{ color: '#64748b' }}>{lfTotals.traceCount} traces</span>
             <span style={{ color: '#334155', fontWeight: 600 }}>
@@ -2352,30 +2330,9 @@ export default function LangfusePanel({ globalAppId, refreshKey = 0, onRefresh }
             </span>
             <span style={{ color: '#334155', fontWeight: 600 }}>📤 {formatNumber(lfTotals.outputTokens)}</span>
             {lfTotals.cost > 0 && <span style={{ color: '#059669', fontWeight: 600 }}>💰 ${lfTotals.cost.toFixed(2)}</span>}
-            {esErrors && esErrors.uniqueErrors > 0 && (
-              <span style={{ color: '#dc2626', fontWeight: 600 }}>⚠️ {esErrors.totalErrors + esErrors.totalClientErrors} errors</span>
-            )}
             <a href={langfuseUserUrl(globalAppId)} target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.7rem', color: '#3b82f6', textDecoration: 'none', marginLeft: 'auto' }}>
               Langfuse ↗
             </a>
-            {sessions.length > 0 && (
-              <button
-                onClick={() => downloadConversationJson(globalAppId, rawPagesRef.current)}
-                style={{
-                  fontSize: '0.7rem',
-                  color: '#3b82f6',
-                  background: 'none',
-                  border: 'none',
-                  padding: 0,
-                  cursor: 'pointer',
-                  textDecoration: 'underline',
-                  marginLeft: '0.5rem',
-                }}
-                title="Download loaded conversation data as JSON"
-              >
-                Download JSON ⬇
-              </button>
-            )}
           </div>
 
           {/* Conversation View */}

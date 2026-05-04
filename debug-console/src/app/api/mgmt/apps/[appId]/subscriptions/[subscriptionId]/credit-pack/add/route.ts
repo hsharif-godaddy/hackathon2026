@@ -77,7 +77,7 @@ export const POST = withAuth<{ appId: string; subscriptionId: string }>(async fu
         }, { status: 400 });
     }
 
-    const doc = getCreditPackDoc(appId, subscriptionId, auth, notes);
+    const doc = getCreditPackDoc(appId, subscriptionId, auth.user, notes);
 
     logger.info('credit-pack.add.init', { appId, subscriptionId, esId: doc.es_id, status: doc.status, shopperId: auth.user?.shopperId });
     let slotResult: 'claimed' | 'conflict';

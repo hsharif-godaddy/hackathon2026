@@ -152,7 +152,7 @@ describe('credit-pack add route', () => {
         );
 
         expect(vi.mocked(getCreditPackDoc)).toHaveBeenCalledWith(
-            'app1', 'sub1', mockAuth,
+            'app1', 'sub1', mockAuth.authenticated ? mockAuth.user : undefined,
             expect.not.stringContaining('<script>'),
         );
     });

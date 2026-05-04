@@ -2,6 +2,7 @@
 
 import React, { useEffect } from 'react';
 
+import AccessDenied from '@/components/AccessDenied';
 import SessionStaleBanner from '@/components/SessionStaleBanner';
 import { useAuth } from '@/hooks/useAuth';
 import { buildSsoLoginUrl } from '@/lib/sso-host';
@@ -22,7 +23,7 @@ export default function ProtectedRoute({
 }: {
     children: React.ReactNode;
 }) {
-    const { isAuthenticated, isLoading, sessionStale } = useAuth();
+    const { isAuthenticated, isLoading, sessionStale, allowed, allowedGroups, user } = useAuth();
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
@@ -33,6 +34,22 @@ export default function ProtectedRoute({
 
     if (isLoading || !isAuthenticated) {
         return <LoadingComponent />;
+    }
+
+    // Membership unresolved AND session is stale: SSO rejected the token as
+    // too old. Show the re-auth banner over a blank page rather than the
+    // access-denied UI (we don't yet know whether the user has access).
+    if (allowed === undefined && sessionStale) {
+        return <SessionStaleBanner />;
+    }
+
+    // Authenticated but membership not yet resolved.
+    if (allowed === undefined) {
+        return <LoadingComponent />;
+    }
+
+    if (!allowed) {
+        return <AccessDenied email={user?.email} allowedGroups={allowedGroups ?? []} />;
     }
 
     return (

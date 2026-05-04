@@ -5,6 +5,7 @@ import React, { useCallback, useEffect, useState } from "react";
 
 import AppDetailsPanel from "@/components/AppDetailsPanel";
 import CarePanel from "@/components/CarePanel";
+import ConversationsPanel, { type ConversationsSource } from "@/components/ConversationsPanel";
 import type {
   MgmtAppDetails,
   MgmtCustomerApp,
@@ -13,7 +14,6 @@ import type {
 import type { LlmSpendData } from "@/lib/spend-types";
 import { formatTimestamp } from "@/lib/date-utils";
 import { CUSTOMER_ID_RE, SHOPPER_ID_RE } from "@/lib/mgmt-helpers";
-import LangfusePanel from "@/components/LangfusePanel";
 import LogsPanel, { type LogSource } from "@/components/LogsPanel";
 import UserMenu from "@/components/UserMenu";
 const TIME_RANGES = [
@@ -51,7 +51,7 @@ interface AppContext {
 type TabId =
   | "details"
   | "summary"
-  | "conversation"
+  | "conversations"
   | "care"
   | "logs";
 
@@ -97,13 +97,27 @@ export default function Dashboard() {
 
   const [shopperId, setShopperId] = useState<string | null>(null);
 
+  const [conversationsSource, setConversationsSource] = useState<ConversationsSource>("langfuse");
+
   const [refreshKeys, setRefreshKeys] = useState({
     details: 0,
     summary: 0,
-    conversation: 0,
+    conversations: 0,
     care: 0,
     logs: 0,
   });
+
+  // Tabs are mounted lazily on first visit, then kept alive via display:none.
+  // Avoids the cold-start fan-out that fired Logs ES queries, Conversations
+  // (Langfuse + Agent), and Care all in parallel before the user clicked.
+  const [visitedTabs, setVisitedTabs] = useState<Set<TabId>>(
+    () => new Set<TabId>([activeTab]),
+  );
+  useEffect(() => {
+    setVisitedTabs((prev) =>
+      prev.has(activeTab) ? prev : new Set(prev).add(activeTab),
+    );
+  }, [activeTab]);
 
   // Support bundle download state
   const [bundleWindow, setBundleWindow] = useState("60");
@@ -154,8 +168,9 @@ export default function Dashboard() {
   useEffect(() => {
     const urlAppId = searchParams?.get("appId");
     const urlCustomerId = searchParams?.get("customerId");
-    const urlTab = searchParams?.get("tab") as TabId | null;
+    const urlTab = searchParams?.get("tab");
     const urlTimeRange = searchParams?.get("timeRange");
+    const urlSource = searchParams?.get("source");
     if (urlCustomerId) {
       setAppId(urlCustomerId);
       setSubmittedCustomerId(urlCustomerId);
@@ -166,11 +181,24 @@ export default function Dashboard() {
       setAppId(urlAppId);
       setSubmittedAppId(urlAppId);
     }
-    if (
+    // Migrate legacy tab IDs to the merged Conversations tab.
+    if (urlTab === "conversation") {
+      setActiveTab("conversations");
+      setConversationsSource("langfuse");
+    } else if (urlTab === "aiAgent") {
+      setActiveTab("conversations");
+      setConversationsSource("agent");
+    } else if (
       urlTab &&
-      ["details", "summary", "conversation", "care", "logs"].includes(urlTab)
+      ["details", "summary", "conversations", "care", "logs"].includes(urlTab)
     ) {
-      setActiveTab(urlTab);
+      setActiveTab(urlTab as TabId);
+      if (
+        urlTab === "conversations" &&
+        (urlSource === "langfuse" || urlSource === "eb" || urlSource === "agent")
+      ) {
+        setConversationsSource(urlSource);
+      }
     }
     if (urlTimeRange && VALID_TIME_RANGE_VALUES.includes(urlTimeRange)) {
       setTimeRange(urlTimeRange);
@@ -324,6 +352,7 @@ export default function Dashboard() {
       customerId?: string | null;
       tab?: TabId;
       timeRange?: string;
+      source?: ConversationsSource;
     }) => {
       const params = new URLSearchParams();
       const effectiveCustomerId =
@@ -332,6 +361,7 @@ export default function Dashboard() {
         opts?.appId !== undefined ? opts.appId : submittedAppId;
       const effectiveTab = opts?.tab ?? activeTab;
       const effectiveTimeRange = opts?.timeRange ?? timeRange;
+      const effectiveSource = opts?.source ?? conversationsSource;
 
       if (effectiveCustomerId) {
         params.set("customerId", effectiveCustomerId);
@@ -345,11 +375,24 @@ export default function Dashboard() {
       if (effectiveTimeRange && effectiveTimeRange !== "24h") {
         params.set("timeRange", effectiveTimeRange);
       }
+      if (
+        effectiveTab === "conversations" &&
+        (effectiveSource === "agent" || effectiveSource === "eb")
+      ) {
+        params.set("source", effectiveSource);
+      }
 
       const query = params.toString();
       router.push(query ? `/?${query}` : "/", { scroll: false });
     },
-    [router, submittedAppId, submittedCustomerId, activeTab, timeRange],
+    [
+      router,
+      submittedAppId,
+      submittedCustomerId,
+      activeTab,
+      timeRange,
+      conversationsSource,
+    ],
   );
 
   const isUUID = (value: string) => CUSTOMER_ID_RE.test(value);
@@ -475,6 +518,13 @@ export default function Dashboard() {
     }
   };
 
+  const handleConversationsSourceChange = (source: ConversationsSource) => {
+    setConversationsSource(source);
+    if (submittedAppId) {
+      updateUrl({ tab: "conversations", source });
+    }
+  };
+
   const handleExpandError = async (errorMessage: string) => {
     if (expandedError === errorMessage) {
       setExpandedError(null);
@@ -504,7 +554,7 @@ export default function Dashboard() {
   const tabs: { id: TabId; label: string; icon: string }[] = [
     { id: "details", label: "Details", icon: "🗂️" },
     { id: "summary", label: "Summary", icon: "📊" },
-    { id: "conversation", label: "Conversation", icon: "💬" },
+    { id: "conversations", label: "Conversations", icon: "💬" },
     { id: "logs", label: "Logs", icon: "📋" },
     { id: "care", label: "Care Contacts", icon: "🎧" },
   ];
@@ -1067,7 +1117,8 @@ export default function Dashboard() {
                 </div>
               )}
 
-              {/* Details Tab */}
+              {/* Details Tab — lazy-mounted on first visit */}
+              {visitedTabs.has("details") && (
               <div
                 style={{
                   display: activeTab === "details" ? "flex" : "none",
@@ -1237,8 +1288,10 @@ export default function Dashboard() {
                   llmSpendError={llmSpendError}
                 />
               </div>
+              )}
 
-              {/* Summary Tab */}
+              {/* Summary Tab — lazy-mounted on first visit */}
+              {visitedTabs.has("summary") && (
               <div
                 style={{
                   display: activeTab === "summary" ? "flex" : "none",
@@ -1696,39 +1749,48 @@ export default function Dashboard() {
                   </>
                 )}
               </div>
+              )}
 
-              {/* Conversation Tab - always rendered for eager loading */}
-              <div
-                style={{
-                  display: activeTab === "conversation" ? "block" : "none",
-                }}
-              >
-                <LangfusePanel
-                  globalAppId={submittedAppId}
-                  refreshKey={refreshKeys.conversation}
-                  onRefresh={() => handleRefreshTab("conversation")}
-                />
-              </div>
+              {/* Conversations Tab (Langfuse + Agent) — lazy-mounted on first visit */}
+              {visitedTabs.has("conversations") && (
+                <div
+                  style={{
+                    display: activeTab === "conversations" ? "block" : "none",
+                  }}
+                >
+                  <ConversationsPanel
+                    globalAppId={submittedAppId}
+                    refreshKey={refreshKeys.conversations}
+                    onRefresh={() => handleRefreshTab("conversations")}
+                    source={conversationsSource}
+                    onSourceChange={handleConversationsSourceChange}
+                  />
+                </div>
+              )}
 
-              {/* Care Tab */}
-              <div style={{ display: activeTab === "care" ? "block" : "none" }}>
-                <CarePanel
-                  shopperId={shopperId}
-                  refreshKey={refreshKeys.care}
-                  onRefresh={() => handleRefreshTab("care")}
-                />
-              </div>
+              {/* Care Tab — lazy-mounted on first visit */}
+              {visitedTabs.has("care") && (
+                <div style={{ display: activeTab === "care" ? "block" : "none" }}>
+                  <CarePanel
+                    shopperId={shopperId}
+                    refreshKey={refreshKeys.care}
+                    onRefresh={() => handleRefreshTab("care")}
+                  />
+                </div>
+              )}
 
-              {/* Logs Tab */}
-              <div style={{ display: activeTab === "logs" ? "block" : "none" }}>
-                <LogsPanel
-                  sources={sources}
-                  globalAppId={submittedAppId}
-                  timeRange={timeRange}
-                  refreshKey={refreshKeys.logs}
-                  onRefresh={() => handleRefreshTab("logs")}
-                />
-              </div>
+              {/* Logs Tab — lazy-mounted on first visit */}
+              {visitedTabs.has("logs") && (
+                <div style={{ display: activeTab === "logs" ? "block" : "none" }}>
+                  <LogsPanel
+                    sources={sources}
+                    globalAppId={submittedAppId}
+                    timeRange={timeRange}
+                    refreshKey={refreshKeys.logs}
+                    onRefresh={() => handleRefreshTab("logs")}
+                  />
+                </div>
+              )}
 
             </div>
           </div>
