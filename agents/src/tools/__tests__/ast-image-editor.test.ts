@@ -326,3 +326,340 @@ describe('ASTImageEditor - slot indirection', () => {
     });
   });
 });
+
+const COMPONENT_WITH_LITERAL_INDEX_SRC = `import React from 'react';
+
+export default function Gallery() {
+  const urls = ['/airo-assets/uploads/original.png', '/airo-assets/uploads/other.png'];
+  return (
+    <section>
+      <img className="thumb" src={urls[0]} alt="" />
+    </section>
+  );
+}
+`;
+
+const COMPONENT_WITH_CAROUSEL_MAP_SRC = `import React from 'react';
+
+export default function Carousel() {
+  const carouselUrls = [
+    '/assets/cube-1655118_640.webp',
+    '/assets/download (5).jpeg',
+    '/assets/download (6).jpeg',
+    '/assets/download (7).jpeg',
+    '/assets/download (8).jpeg'
+  ];
+  return (
+    <div className="overflow-hidden">
+      {carouselUrls.map((url, i) => (
+        <div key={i}>
+          <img src={carouselUrls[i]} alt="" className="w-full" />
+        </div>
+      ))}
+    </div>
+  );
+}
+`;
+
+const COMPONENT_WITH_PROP_SRC = `import React from 'react';
+
+export default function Hero({ heroUrl }: { heroUrl: string }) {
+  return (
+    <section>
+      <img className="hero" src={heroUrl} alt="" />
+    </section>
+  );
+}
+`;
+
+describe('ASTImageEditor - dynamic src expressions', () => {
+  let editor: ASTImageEditor;
+  let testDir: string;
+  let appPath: string;
+  let sourcePath: string;
+
+  beforeEach(async () => {
+    editor = new ASTImageEditor();
+    testDir = await mkdtemp(join(tmpdir(), 'ast-image-editor-dynamic-'));
+    appPath = join(testDir, 'app');
+    sourcePath = join(appPath, 'src', 'pages', 'index.tsx');
+    await mkdir(join(appPath, 'src', 'pages'), { recursive: true });
+  });
+
+  afterEach(async () => {
+    await rm(testDir, { recursive: true, force: true });
+  });
+
+  it('mutates array element when src is a literal-index member expression (arr[0])', async () => {
+    await writeFile(sourcePath, COMPONENT_WITH_LITERAL_INDEX_SRC);
+
+    const result = await editor.replaceImage(appPath, {
+      elementInfo: {
+        tagName: 'img',
+        className: 'thumb',
+        id: '',
+        selector: 'img.thumb',
+        devContext: {
+          fileName: 'src/pages/index.tsx',
+          componentName: 'Gallery',
+          lineNumber: 7,
+        },
+      },
+      imageInfo: {
+        type: 'img',
+        currentUrl: '/airo-assets/uploads/original.png',
+      },
+      newImageUrl: '/airo-assets/uploads/replaced.png',
+    }, 'test-app');
+
+    expect(result.success).toBe(true);
+
+    const updatedCode = await readFile(sourcePath, 'utf-8');
+    // JSX expression preserved so the array indirection stays intact
+    expect(updatedCode).toContain('src={urls[0]}');
+    // Array element updated (Babel may emit either quote style)
+    expect(updatedCode).toContain('/airo-assets/uploads/replaced.png');
+    expect(updatedCode).not.toContain('/airo-assets/uploads/original.png');
+    // Sibling element untouched
+    expect(updatedCode).toContain('/airo-assets/uploads/other.png');
+  });
+
+  it('mutates the matching array element for a .map carousel (arr[i]) without breaking other slides', async () => {
+    await writeFile(sourcePath, COMPONENT_WITH_CAROUSEL_MAP_SRC);
+
+    const result = await editor.replaceImage(appPath, {
+      elementInfo: {
+        tagName: 'img',
+        className: 'w-full',
+        id: '',
+        selector: 'img.w-full',
+        devContext: {
+          fileName: 'src/pages/index.tsx',
+          componentName: 'Carousel',
+          lineNumber: 15,
+        },
+      },
+      imageInfo: {
+        type: 'img',
+        currentUrl: '/assets/download (6).jpeg',
+      },
+      newImageUrl: '/assets/replaced.jpeg',
+    }, 'test-app');
+
+    expect(result.success).toBe(true);
+
+    const updatedCode = await readFile(sourcePath, 'utf-8');
+    // JSX still references the array
+    expect(updatedCode).toContain('src={carouselUrls[i]}');
+    // Only the matching element was replaced; siblings preserved
+    expect(updatedCode).toContain('/assets/replaced.jpeg');
+    expect(updatedCode).not.toContain('/assets/download (6).jpeg');
+    expect(updatedCode).toContain('/assets/cube-1655118_640.webp');
+    expect(updatedCode).toContain('/assets/download (5).jpeg');
+    expect(updatedCode).toContain('/assets/download (7).jpeg');
+    expect(updatedCode).toContain('/assets/download (8).jpeg');
+  });
+
+  it('refuses to mutate arr[0] when expectedOldUrl does not match the element value', async () => {
+    await writeFile(sourcePath, COMPONENT_WITH_LITERAL_INDEX_SRC);
+
+    // Browser reports a URL that doesn't match urls[0]'s value. With only line-proximity
+    // targeting, blindly trusting the literal index would overwrite the wrong slot.
+    const result = await editor.replaceImage(appPath, {
+      elementInfo: {
+        tagName: 'img',
+        className: 'thumb',
+        id: '',
+        selector: 'img.thumb',
+        devContext: {
+          fileName: 'src/pages/index.tsx',
+          componentName: 'Gallery',
+          lineNumber: 7,
+        },
+      },
+      imageInfo: {
+        type: 'img',
+        currentUrl: '/airo-assets/uploads/something-else.png',
+      },
+      newImageUrl: '/airo-assets/uploads/replaced.png',
+    }, 'test-app');
+
+    expect(result.success).toBe(false);
+
+    const updatedCode = await readFile(sourcePath, 'utf-8');
+    // Source must be unchanged — neither array element touched
+    expect(updatedCode).toContain('/airo-assets/uploads/original.png');
+    expect(updatedCode).toContain('/airo-assets/uploads/other.png');
+    expect(updatedCode).not.toContain('/airo-assets/uploads/replaced.png');
+  });
+
+  it('respects lexical scope: same-named arrays in two components do not cross-mutate', async () => {
+    const sharedNameComponent = `import React from 'react';
+
+export function GalleryA() {
+  const urls = ['/airo-assets/uploads/a-original.png'];
+  return <img className="a-thumb" src={urls[0]} alt="" />;
+}
+
+export function GalleryB() {
+  const urls = ['/airo-assets/uploads/b-original.png'];
+  return <img className="b-thumb" src={urls[0]} alt="" />;
+}
+`;
+    await writeFile(sourcePath, sharedNameComponent);
+
+    // Replace the image in GalleryB. The 'urls' identifier is declared in both
+    // components; without scope-aware resolution we'd find GalleryA's array first.
+    const result = await editor.replaceImage(appPath, {
+      elementInfo: {
+        tagName: 'img',
+        className: 'b-thumb',
+        id: '',
+        selector: 'img.b-thumb',
+        devContext: {
+          fileName: 'src/pages/index.tsx',
+          componentName: 'GalleryB',
+          lineNumber: 10,
+        },
+      },
+      imageInfo: {
+        type: 'img',
+        currentUrl: '/airo-assets/uploads/b-original.png',
+      },
+      newImageUrl: '/airo-assets/uploads/b-replaced.png',
+    }, 'test-app');
+
+    expect(result.success).toBe(true);
+
+    const updatedCode = await readFile(sourcePath, 'utf-8');
+    // GalleryB's array updated
+    expect(updatedCode).toContain('/airo-assets/uploads/b-replaced.png');
+    expect(updatedCode).not.toContain('/airo-assets/uploads/b-original.png');
+    // GalleryA's array left alone
+    expect(updatedCode).toContain('/airo-assets/uploads/a-original.png');
+  });
+
+  it('refuses to corrupt opaque dynamic src (e.g. prop) and returns failure for LLM fallback', async () => {
+    await writeFile(sourcePath, COMPONENT_WITH_PROP_SRC);
+
+    const result = await editor.replaceImage(appPath, {
+      elementInfo: {
+        tagName: 'img',
+        className: 'hero',
+        id: '',
+        selector: 'img.hero',
+        devContext: {
+          fileName: 'src/pages/index.tsx',
+          componentName: 'Hero',
+          lineNumber: 6,
+        },
+      },
+      imageInfo: {
+        type: 'img',
+        currentUrl: '/airo-assets/uploads/original.png',
+      },
+      newImageUrl: '/airo-assets/uploads/replaced.png',
+    }, 'test-app');
+
+    expect(result.success).toBe(false);
+    // The error must signal "located but refused" so the LLM switches strategy
+    // (edit the prop/array declaration) instead of retrying with new selectors.
+    expect(result.error).toMatch(/dynamic expression/i);
+    expect(result.error).not.toMatch(/Could not find/i);
+
+    const updatedCode = await readFile(sourcePath, 'utf-8');
+    // Source must be unchanged
+    expect(updatedCode).toContain('src={heroUrl}');
+    expect(updatedCode).not.toContain('replaced.png');
+  });
+
+  it('refuses arr[N] when N is out of bounds and leaves source unchanged', async () => {
+    const componentWithOOBIndex = `import React from 'react';
+
+export default function Gallery() {
+  const urls = ['/airo-assets/uploads/first.png', '/airo-assets/uploads/second.png'];
+  return (
+    <section>
+      <img className="thumb" src={urls[3]} alt="" />
+    </section>
+  );
+}
+`;
+    await writeFile(sourcePath, componentWithOOBIndex);
+
+    const result = await editor.replaceImage(appPath, {
+      elementInfo: {
+        tagName: 'img',
+        className: 'thumb',
+        id: '',
+        selector: 'img.thumb',
+        devContext: {
+          fileName: 'src/pages/index.tsx',
+          componentName: 'Gallery',
+          lineNumber: 7,
+        },
+      },
+      imageInfo: {
+        type: 'img',
+        currentUrl: '/airo-assets/uploads/first.png',
+      },
+      newImageUrl: '/airo-assets/uploads/replaced.png',
+    }, 'test-app');
+
+    expect(result.success).toBe(false);
+    // OOB falls through to dynamic-src-refused so the LLM switches strategy
+    expect(result.error).toMatch(/dynamic expression/i);
+
+    const updatedCode = await readFile(sourcePath, 'utf-8');
+    // Both array elements untouched; JSX expression untouched
+    expect(updatedCode).toContain('/airo-assets/uploads/first.png');
+    expect(updatedCode).toContain('/airo-assets/uploads/second.png');
+    expect(updatedCode).toContain('src={urls[3]}');
+    expect(updatedCode).not.toContain('/airo-assets/uploads/replaced.png');
+  });
+
+  it('refuses arr[N] when the element is not a string literal (e.g. variable reference)', async () => {
+    const componentWithComputedElement = `import React from 'react';
+
+const FALLBACK = '/airo-assets/uploads/fallback.png';
+
+export default function Gallery() {
+  const urls = [FALLBACK, '/airo-assets/uploads/second.png'];
+  return (
+    <section>
+      <img className="thumb" src={urls[0]} alt="" />
+    </section>
+  );
+}
+`;
+    await writeFile(sourcePath, componentWithComputedElement);
+
+    const result = await editor.replaceImage(appPath, {
+      elementInfo: {
+        tagName: 'img',
+        className: 'thumb',
+        id: '',
+        selector: 'img.thumb',
+        devContext: {
+          fileName: 'src/pages/index.tsx',
+          componentName: 'Gallery',
+          lineNumber: 9,
+        },
+      },
+      imageInfo: {
+        type: 'img',
+        currentUrl: '/airo-assets/uploads/fallback.png',
+      },
+      newImageUrl: '/airo-assets/uploads/replaced.png',
+    }, 'test-app');
+
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/dynamic expression/i);
+
+    const updatedCode = await readFile(sourcePath, 'utf-8');
+    // Neither the FALLBACK constant nor the array was touched
+    expect(updatedCode).toContain("const FALLBACK = '/airo-assets/uploads/fallback.png'");
+    expect(updatedCode).toContain('[FALLBACK,');
+    expect(updatedCode).not.toContain('/airo-assets/uploads/replaced.png');
+  });
+});

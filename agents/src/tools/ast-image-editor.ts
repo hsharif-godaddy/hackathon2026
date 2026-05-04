@@ -310,6 +310,156 @@ export class ASTImageEditor extends ASTEditorBase {
   }
 
   /**
+   * Extract the inner expression from a src JSX attribute, if it's an expression container.
+   */
+  private getSrcExpression(srcAttr: t.JSXAttribute | null): t.Expression | null {
+    if (!srcAttr || !this.t.isJSXExpressionContainer(srcAttr.value)) {
+      return null;
+    }
+    const expr = srcAttr.value.expression;
+    return this.t.isExpression(expr) ? expr : null;
+  }
+
+  /**
+   * Resolve the array literal bound to an identifier visible from the given path's
+   * scope. Uses Babel's scope API so we honor lexical scoping (component-local
+   * arrays don't leak across components, inner declarations shadow outer ones).
+   * Returns the ArrayExpression node so callers can mutate its elements in place.
+   */
+  private resolveArrayBinding(imgPath: any, name: string): t.ArrayExpression | null {
+    const binding = imgPath?.scope?.getBinding(name);
+    if (!binding) return null;
+    const declNode = binding.path?.node;
+    if (!declNode || !this.t.isVariableDeclarator(declNode)) return null;
+    if (!declNode.init || !this.t.isArrayExpression(declNode.init)) return null;
+    return declNode.init;
+  }
+
+  /**
+   * If src is a member expression on an array variable (arr[i] or arr[0]) whose
+   * source array literal is reachable from the img's lexical scope, mutate the
+   * matching element so all rendered instances stay in sync.
+   *
+   * Both index paths require URL match against expectedOldUrl: with only
+   * line-proximity targeting in isTargetElement, blindly trusting the index
+   * could overwrite the wrong slot when multiple imgs cluster on adjacent lines.
+   *
+   * Returns the previous URL on success, or null with a debug log when the
+   * pattern isn't applicable (signals the caller to fall back).
+   */
+  private tryReplaceInSourceArray(
+    imgPath: any,
+    srcAttr: t.JSXAttribute | null,
+    expectedOldUrl: string | null,
+    newUrl: string
+  ): { oldUrl: string } | null {
+    const expr = this.getSrcExpression(srcAttr);
+    if (!expr || !this.t.isMemberExpression(expr)) {
+      logger.debug('ast.image-editor.array.src-not-member-expression');
+      return null;
+    }
+
+    const obj = expr.object;
+    if (!this.t.isIdentifier(obj)) {
+      logger.debug('ast.image-editor.array.object-not-identifier');
+      return null;
+    }
+
+    const array = this.resolveArrayBinding(imgPath, obj.name);
+    if (!array) {
+      logger.debug('ast.image-editor.array.binding-not-found', { name: obj.name });
+      return null;
+    }
+
+    if (!expectedOldUrl) {
+      logger.debug('ast.image-editor.array.no-expected-url');
+      return null;
+    }
+
+    // arr[<numeric literal>] — direct index, but still require URL match.
+    if (
+      expr.computed &&
+      this.t.isNumericLiteral(expr.property) &&
+      Number.isInteger(expr.property.value)
+    ) {
+      const idx = expr.property.value;
+      const element = array.elements[idx];
+      if (!element || !this.t.isStringLiteral(element)) {
+        logger.debug('ast.image-editor.array.index-not-string-literal', {
+          name: obj.name,
+          index: idx,
+          arrayLength: array.elements.length
+        });
+        return null;
+      }
+      if (!this.urlsMatch(element.value, expectedOldUrl)) {
+        logger.debug('ast.image-editor.array.index-url-mismatch', {
+          name: obj.name,
+          index: idx,
+          elementUrl: element.value,
+          expectedOldUrl
+        });
+        return null;
+      }
+      const oldUrl = element.value;
+      element.value = newUrl;
+      return { oldUrl };
+    }
+
+    // arr[<dynamic>] — locate by URL match against the expected URL
+    let stringLiteralCount = 0;
+    let nonStringElementCount = 0;
+    for (const element of array.elements) {
+      if (element && this.t.isStringLiteral(element)) {
+        stringLiteralCount++;
+        if (this.urlsMatch(element.value, expectedOldUrl)) {
+          const oldUrl = element.value;
+          element.value = newUrl;
+          return { oldUrl };
+        }
+      } else {
+        nonStringElementCount++;
+      }
+    }
+    logger.debug('ast.image-editor.array.no-element-matches-url', {
+      name: obj.name,
+      arrayLength: array.elements.length,
+      stringLiteralCount,
+      nonStringElementCount,
+      expectedOldUrl
+    });
+    return null;
+  }
+
+  /**
+   * Replace an img's src, preferring array-element mutation for arr[i] / arr[0]
+   * patterns so other rendered instances of the same expression stay correct.
+   * Falls back to literal-src replacement; otherwise returns a discriminated
+   * null so the caller can tell URL-mismatch from dynamic-src refusal.
+   */
+  private replaceImgSrc(
+    imgPath: any,
+    expectedOldUrl: string | null,
+    newUrl: string
+  ): { oldUrl: string | null } | { reason: 'url-mismatch' | 'dynamic-src-refused' } {
+    const img = imgPath.node as t.JSXElement;
+    const { value: currentSrc, attr: srcAttr } = this.getSrcAttribute(img);
+
+    if (currentSrc !== null) {
+      if (!this.urlsMatch(currentSrc, expectedOldUrl)) return { reason: 'url-mismatch' };
+      if (!this.updateSrcAttribute(img, newUrl)) return { reason: 'url-mismatch' };
+      return { oldUrl: currentSrc };
+    }
+
+    // Non-literal src: try to mutate the source array literal so shared expressions stay valid.
+    const arrayResult = this.tryReplaceInSourceArray(imgPath, srcAttr, expectedOldUrl, newUrl);
+    if (arrayResult) return arrayResult;
+
+    // No safe edit — refuse rather than corrupt a shared dynamic expression.
+    return { reason: 'dynamic-src-refused' };
+  }
+
+  /**
    * Process AST to make image replacement changes
    */
   protected processAST(ast: t.File, request: ImageReplaceRequest): {
@@ -329,6 +479,7 @@ export class ASTImageEditor extends ASTEditorBase {
     });
 
     let elementFound = false;
+    let dynamicSrcRefused = false;
     let oldUrl: string | null = imageInfo.currentUrl;
 
     this.traverse(ast, {
@@ -349,24 +500,28 @@ export class ASTImageEditor extends ASTEditorBase {
 
         switch (imageInfo.type) {
           case 'img': {
-            // Direct img element - replace src attribute
-            const { value: currentSrc } = this.getSrcAttribute(element);
-
-            // Verify URL matches to handle multiple images on same line
-            if (!this.urlsMatch(currentSrc, expectedOldUrl)) {
-              logger.debug('ast.image-editor.url-mismatch', {
-                currentSrc,
-                expectedOldUrl,
-                line: element.loc?.start.line
-              });
+            const replaceResult = this.replaceImgSrc(path, expectedOldUrl, newImageUrl);
+            if ('reason' in replaceResult) {
+              if (replaceResult.reason === 'dynamic-src-refused') {
+                dynamicSrcRefused = true;
+                logger.debug('ast.image-editor.dynamic-src-refused', {
+                  expectedOldUrl,
+                  line: element.loc?.start.line
+                });
+              } else {
+                const { value: currentSrc } = this.getSrcAttribute(element);
+                logger.debug('ast.image-editor.url-mismatch', {
+                  currentSrc,
+                  expectedOldUrl,
+                  line: element.loc?.start.line
+                });
+              }
               return; // Skip this element, look for next match
             }
 
-            oldUrl = currentSrc;
-            if (this.updateSrcAttribute(element, newImageUrl)) {
-              elementFound = true;
-              logger.debug('ast.image-editor.url-matched', { currentSrc, expectedOldUrl });
-            }
+            oldUrl = replaceResult.oldUrl;
+            elementFound = true;
+            logger.debug('ast.image-editor.url-matched', { oldUrl, expectedOldUrl });
             break;
           }
 
@@ -439,12 +594,20 @@ export class ASTImageEditor extends ASTEditorBase {
       logger.warn('ast.image-editor.element-not-found', {
         fileName: elementInfo.devContext.fileName,
         lineNumber: elementInfo.devContext.lineNumber,
-        imageType: imageInfo.type
+        imageType: imageInfo.type,
+        dynamicSrcRefused
       });
+
+      // Distinguish "located but refused due to dynamic src" from "not found".
+      // The LLM should switch strategy (edit the array/prop declaration) instead
+      // of retrying with adjusted selectors.
+      const error = dynamicSrcRefused
+        ? `Image src at line ${elementInfo.devContext.lineNumber} uses a dynamic expression that cannot be safely rewritten. Edit the source array or prop declaration directly.`
+        : `Could not find target ${imageInfo.type} element at line ${elementInfo.devContext.lineNumber}`;
 
       return {
         success: false,
-        error: `Could not find target ${imageInfo.type} element at line ${elementInfo.devContext.lineNumber}`
+        error
       };
     }
 
