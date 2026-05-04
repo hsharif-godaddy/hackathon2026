@@ -22,7 +22,7 @@ Airo AI Builder now fully supports Arabic (ar-AE) with right-to-left layout and 
 
 If your audience reads right-to-left, your site now renders correctly out of the box. No manual layout adjustments needed.
 
-![Arabic RTL Support](/images/product-update-april-2026-arabic.png)
+![Arabic RTL Support](/blog/images/product-update-april-2026-arabic.png)
 
 ---
 
@@ -36,7 +36,7 @@ You can now add AI-powered features to your apps using Vercel's AI SDK. Store yo
 
 Image search got a full relevance overhaul. It now uses hybrid search (combining vector and keyword approaches) powered by Haiku 4.5 for relevance scoring. Results are noticeably more relevant to what you're actually looking for.
 
-![Smarter Image Search](/images/product-update-april-2026-image-search.png)
+![Smarter Image Search](/blog/images/product-update-april-2026-image-search.png)
 
 ---
 
@@ -44,7 +44,7 @@ Image search got a full relevance overhaul. It now uses hybrid search (combining
 
 When the AI agent performs many sequential operations (file edits, installs, builds), those actions are now visually grouped and collapsible in the chat UI. You see a clean summary instead of a wall of individual messages.
 
-![Cleaner Conversations](/images/product-update-april-2026-cleaner-conversations.png)
+![Cleaner Conversations](/blog/images/product-update-april-2026-cleaner-conversations.png)
 
 ---
 
@@ -52,7 +52,7 @@ When the AI agent performs many sequential operations (file edits, installs, bui
 
 The Settings view moved to the left pane, putting project configuration alongside the file tree and chat for faster access. Secrets editing got a UX overhaul with explicit row-level Save/Cancel actions replacing the old toggle.
 
-![Settings Panel Redesign](/images/product-update-april-2026-settings.png)
+![Settings Panel Redesign](/blog/images/product-update-april-2026-settings.png)
 
 ---
 
@@ -60,7 +60,7 @@ The Settings view moved to the left pane, putting project configuration alongsid
 
 The plan to-do list UI and next best actions moved closer to where you interact with the chat input, combining "what's done" with "what to do next." The to-do list is now interactive, and the agent automatically switches between completed and incomplete lists as it works through tasks.
 
-![Interactive Project Planner](/images/product-update-april-2026-project-planner.png)
+![Interactive Project Planner](/blog/images/product-update-april-2026-project-planner.png)
 
 ---
 
@@ -89,7 +89,7 @@ A new multi-step feedback dialog separates bug reports from care support request
 
 When a support agent makes changes to your app through CRM, those messages are now clearly differentiated in your chat. You can see what was updated and learn from the prompts used.
 
-![Get Support](/images/product-update-april-2026-support.png)
+![Get Support](/blog/images/product-update-april-2026-support.png)
 
 ---
 
@@ -97,7 +97,7 @@ When a support agent makes changes to your app through CRM, those messages are n
 
 Certain actions no longer cost credits. Publishing, domain setup, error fixes, and other system operations are now completed for free. Your credits are reserved for the creative work that matters.
 
-![Credits Stay in Your Pocket](/images/product-update-april-2026-free-credits.png)
+![Credits Stay in Your Pocket](/blog/images/product-update-april-2026-free-credits.png)
 
 ---
 

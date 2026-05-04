@@ -24,7 +24,7 @@ This guide covers what the analytics dashboard tracks, what each section tells y
 
 Once your app is published, the analytics dashboard starts collecting data automatically. Here's the full overview:
 
-![Analytics Overview - Pageviews, Visitors, Sessions, and Engagement Rate](/images/analytics-overview.png)
+![Analytics Overview - Pageviews, Visitors, Sessions, and Engagement Rate](/blog/images/analytics-overview.png)
 
 ### Overview
 
@@ -61,7 +61,7 @@ If you're a local business, this tells you whether you're reaching the right are
 
 ## Devices and Traffic Sources
 
-![Devices, Referrers, and Activity Log](/images/analytics-devices-activity.png)
+![Devices, Referrers, and Activity Log](/blog/images/analytics-devices-activity.png)
 
 ### Sessions by Device
 
@@ -89,7 +89,7 @@ This is useful for understanding individual visitor behavior and verifying that 
 
 ## Engagement and Content
 
-![Engagement Trends and Top Pages](/images/analytics-engagement-content.png)
+![Engagement Trends and Top Pages](/blog/images/analytics-engagement-content.png)
 
 ### Click Trends and Total Sessions
 
