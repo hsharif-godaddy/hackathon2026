@@ -68,6 +68,10 @@ vi.mock('@/app/[market]/develop/components/utils', () => ({
   useAppIdFromParams: vi.fn(() => 'test-app-id')
 }))
 
+vi.mock('@/app/[market]/develop/hooks/useNextActions', () => ({
+  useNextActions: vi.fn(() => ({ data: null, isLoading: false, isError: false }))
+}))
+
 describe('InputActionsPanel', () => {
   const mockPalette: ColorSchemePaletteOption['palette'] = {
     primary: '#3b82f6',
@@ -456,6 +460,181 @@ describe('InputActionsPanel', () => {
       const radios = screen.getAllByRole('radio') as HTMLInputElement[]
       expect(radios[0].checked).toBe(true)
       expect(radios[0]).toBeDisabled()
+    })
+  })
+
+  describe('keyboard shortcuts for plan items', () => {
+    const mockTodoList = {
+      id: 'list-1',
+      appId: 'test-app-id',
+      name: 'Build Website',
+      items: [
+        { id: 'item-1', listId: 'list-1', title: 'Create homepage', completed: false },
+        { id: 'item-2', listId: 'list-1', title: 'Add contact page', completed: false },
+        { id: 'item-3', listId: 'list-1', title: 'Build about section', completed: false },
+        { id: 'item-4', listId: 'list-1', title: 'Add footer', completed: false },
+        { id: 'item-5', listId: 'list-1', title: 'Add navigation', completed: false },
+      ]
+    }
+
+    beforeEach(() => {
+      vi.mocked(TodoListStore.useCurrentList).mockReturnValue(mockTodoList)
+      vi.mocked(TodoListStore.useViewState).mockReturnValue(null)
+      vi.mocked(StreamingStore.useMessages).mockReturnValue([{ id: 'msg-1', role: 'user', content: 'test', timestamp: new Date() }])
+    })
+
+    it('should trigger plan item selection when pressing number key 1', async () => {
+      const mockSendMessage = vi.fn()
+      vi.mocked(ChatContext.useSendUserMessage).mockReturnValue(mockSendMessage)
+
+      renderWithProviders(<InputActionsPanel />)
+
+      // Simulate pressing '1' key
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: '1' }))
+
+      expect(mockSendMessage).toHaveBeenCalledWith(
+        'Create homepage',
+        expect.objectContaining({
+          isActionRequest: true,
+          customContext: expect.objectContaining({
+            type: 'plan_item',
+            data: expect.objectContaining({
+              itemId: 'item-1',
+              title: 'Create homepage'
+            })
+          })
+        })
+      )
+    })
+
+    it('should trigger plan item selection when pressing number key 2', async () => {
+      const mockSendMessage = vi.fn()
+      vi.mocked(ChatContext.useSendUserMessage).mockReturnValue(mockSendMessage)
+
+      renderWithProviders(<InputActionsPanel />)
+
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: '2' }))
+
+      expect(mockSendMessage).toHaveBeenCalledWith(
+        'Add contact page',
+        expect.objectContaining({
+          isActionRequest: true,
+          customContext: expect.objectContaining({
+            type: 'plan_item',
+            data: expect.objectContaining({
+              itemId: 'item-2',
+              title: 'Add contact page'
+            })
+          })
+        })
+      )
+    })
+
+    it('should trigger plan item selection when pressing number key 3', async () => {
+      const mockSendMessage = vi.fn()
+      vi.mocked(ChatContext.useSendUserMessage).mockReturnValue(mockSendMessage)
+
+      renderWithProviders(<InputActionsPanel />)
+
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: '3' }))
+
+      expect(mockSendMessage).toHaveBeenCalledWith(
+        'Build about section',
+        expect.objectContaining({
+          isActionRequest: true,
+          customContext: expect.objectContaining({
+            type: 'plan_item',
+            data: expect.objectContaining({
+              itemId: 'item-3',
+              title: 'Build about section'
+            })
+          })
+        })
+      )
+    })
+
+    it('should trigger plan item selection when pressing number key 4', async () => {
+      const mockSendMessage = vi.fn()
+      vi.mocked(ChatContext.useSendUserMessage).mockReturnValue(mockSendMessage)
+
+      renderWithProviders(<InputActionsPanel />)
+
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: '4' }))
+
+      expect(mockSendMessage).toHaveBeenCalledWith(
+        'Add footer',
+        expect.objectContaining({
+          isActionRequest: true,
+          customContext: expect.objectContaining({
+            type: 'plan_item',
+            data: expect.objectContaining({
+              itemId: 'item-4',
+              title: 'Add footer'
+            })
+          })
+        })
+      )
+    })
+
+    it('should not trigger selection for key 5 (exceeds max shortcuts)', async () => {
+      const mockSendMessage = vi.fn()
+      vi.mocked(ChatContext.useSendUserMessage).mockReturnValue(mockSendMessage)
+
+      renderWithProviders(<InputActionsPanel />)
+
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: '5' }))
+
+      expect(mockSendMessage).not.toHaveBeenCalled()
+    })
+
+    it('should not trigger selection when agent is processing', async () => {
+      const mockSendMessage = vi.fn()
+      vi.mocked(ChatContext.useSendUserMessage).mockReturnValue(mockSendMessage)
+      vi.mocked(StreamingStore.useIsActivelyStreaming).mockReturnValue(true)
+
+      renderWithProviders(<InputActionsPanel />)
+
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: '1' }))
+
+      expect(mockSendMessage).not.toHaveBeenCalled()
+    })
+
+    it('should not trigger selection when focused on an input element', async () => {
+      const mockSendMessage = vi.fn()
+      vi.mocked(ChatContext.useSendUserMessage).mockReturnValue(mockSendMessage)
+
+      renderWithProviders(
+        <div>
+          <input data-testid="test-input" />
+          <InputActionsPanel />
+        </div>
+      )
+
+      const input = screen.getByTestId('test-input')
+      input.focus()
+
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: '1', bubbles: true }))
+
+      expect(mockSendMessage).not.toHaveBeenCalled()
+    })
+
+    it('should not trigger selection when focused on a textarea element', async () => {
+      const mockSendMessage = vi.fn()
+      vi.mocked(ChatContext.useSendUserMessage).mockReturnValue(mockSendMessage)
+
+      renderWithProviders(
+        <div>
+          <textarea data-testid="test-textarea" />
+          <InputActionsPanel />
+        </div>
+      )
+
+      const textarea = screen.getByTestId('test-textarea')
+      textarea.focus()
+
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: '1', bubbles: true }))
+
+      expect(mockSendMessage).not.toHaveBeenCalled()
     })
   })
 })

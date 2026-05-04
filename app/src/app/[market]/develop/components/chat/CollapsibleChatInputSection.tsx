@@ -9,6 +9,8 @@ export type CollapsibleChatInputSectionProps = {
   children: ReactNode
   /** Shown below the animated body when expanded; omit for body-only sections (e.g. todo list). */
   footer?: ReactNode
+  /** Content shown between title and chevron in the header row (e.g., progress count button) */
+  headerRight?: ReactNode
   /** Controlled expanded state */
   expanded?: boolean
   /** Uncontrolled initial value */
@@ -31,6 +33,7 @@ export default function CollapsibleChatInputSection({
   title,
   children,
   footer,
+  headerRight,
   expanded: expandedProp,
   defaultExpanded = true,
   onExpandedChange,
@@ -55,15 +58,18 @@ export default function CollapsibleChatInputSection({
     <div className="mb-0.5" data-testid={dataTestId}>
       <div className="flex min-h-[22px] items-center justify-between px-1 py-0.5">
         <span id={sectionLabelId} className="min-w-0 flex-1 text-sm font-medium text-muted-foreground">{title}</span>
-        <button
-          type="button"
-          className="flex shrink-0 items-center gap-0.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
-          onClick={() => setExpanded(!expanded)}
-          aria-labelledby={sectionLabelId}
-          aria-expanded={expanded}
-        >
-          <CollapseChevron expanded={expanded} />
-        </button>
+        <div className="flex shrink-0 items-center gap-1">
+          {headerRight}
+          <button
+            type="button"
+            className="flex items-center text-sm text-muted-foreground transition-colors hover:text-foreground cursor-pointer"
+            onClick={() => setExpanded(!expanded)}
+            aria-labelledby={sectionLabelId}
+            aria-expanded={expanded}
+          >
+            <CollapseChevron expanded={expanded} />
+          </button>
+        </div>
       </div>
       <AnimatePresence initial={false}>
         {expanded && (
