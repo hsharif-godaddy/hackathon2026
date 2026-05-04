@@ -1,5 +1,7 @@
 import { resolveProfile, runWithProfile, profileValue } from '../profiles/index.js'
-import { logger } from '../logging/index.js'
+import { errorFields, logger } from '../logging/index.js'
+import { profileDefinesCustomModularPromptFiles } from '../agents/modular-prompt-files.js'
+import { getRegisteredInitialV3ModularAgentIds } from '../agents/registered-initial-modular-agent-ids.js'
 
 interface AgentRouterDeps {
   hasMessagesForApp: (appId: string) => boolean
@@ -79,11 +81,26 @@ export function createAgentRouter(deps: AgentRouterDeps) {
           jwtAgentProfile: agentContext?.agentProfile,
         })
         if (profile) {
-          const promptVersion = runWithProfile(profile, () => profileValue('initial.promptVersion', '' as string))
-          if (promptVersion === '2.0') {
-            resolvedAgentId = 'initial-v2'
-          } else if (promptVersion === '3.0') {
-            resolvedAgentId = 'initial-v3'
+          if (profileDefinesCustomModularPromptFiles(profile)) {
+            const variantId = `initial-v3-${profile.name}`
+            if (getRegisteredInitialV3ModularAgentIds().has(variantId)) {
+              resolvedAgentId = variantId
+            } else {
+              logger.warn('agent_router.initial_modular_variant_unregistered', {
+                appId,
+                profileName: profile.name,
+                variantId,
+                fallbackAgentId: 'initial-v3',
+              })
+              resolvedAgentId = 'initial-v3'
+            }
+          } else {
+            const promptVersion = runWithProfile(profile, () => profileValue('initial.promptVersion', '' as string))
+            if (promptVersion === '2.0') {
+              resolvedAgentId = 'initial-v2'
+            } else if (promptVersion === '3.0') {
+              resolvedAgentId = 'initial-v3'
+            }
           }
         }
       }
@@ -93,7 +110,12 @@ export function createAgentRouter(deps: AgentRouterDeps) {
         stateManager.switchAgent(sessionId, resolvedAgentId).then(() => {
           stateManager.setSessionMetadata?.(sessionId, { appId, templateId })
         }).catch(error => {
-          logger.error('agent_router.session_state_error', { sessionId, appId, error: error instanceof Error ? error.message : String(error) })
+          logger.error('agent_router.session_state_error', {
+            sessionId,
+            appId,
+            resolvedAgentId,
+            ...errorFields(error),
+          })
         })
       }
 

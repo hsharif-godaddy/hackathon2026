@@ -1,5 +1,7 @@
 import { createInitialAgent } from '../initial-agent.js';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { runWithProfile } from '../../profiles/profile-context.js';
+import type { ProfileData } from '../../profiles/types.js';
 
 const mockRegisterSkill = vi.fn().mockReturnValue({ success: true });
 const mockUnloadSkill = vi.fn();
@@ -353,5 +355,51 @@ describe('initial-agent', function initialAgentTests() {
       expect(lastModuleIdx).toBeLessThan(commIdx);
       expect(commIdx).toBeLessThan(secIdx);
     });
+
+    it('should load only profile-listed v3 modules when initial.modularPromptFiles is set', async function profileModularList() {
+      const profile: ProfileData = {
+        name: 'unit-test-modular',
+        description: '',
+        properties: {
+          'initial.modularPromptFiles': 'identity.md, questioning.md, examples.md',
+        },
+      };
+
+      await runWithProfile(profile, async () => {
+        await createInitialAgent(undefined, undefined, '3.0');
+      });
+
+      const fileNames = fileCalls.map(p => p.split('/').pop());
+      expect(fileNames).toEqual([
+        'identity.md',
+        'questioning.md',
+        'examples.md',
+        'communication.md',
+        'security.md',
+      ]);
+    });
+
+    it('should trim whitespace in initial.modularPromptFiles CSV', async function profileModularCsvTrim() {
+      const profile: ProfileData = {
+        name: 'unit-test-modular-ws',
+        description: '',
+        properties: {
+          'initial.modularPromptFiles': ' identity.md , questioning.md ',
+        },
+      };
+
+      await runWithProfile(profile, async () => {
+        await createInitialAgent(undefined, undefined, '3.0');
+      });
+
+      const fileNames = fileCalls.map(p => p.split('/').pop());
+      expect(fileNames).toEqual([
+        'identity.md',
+        'questioning.md',
+        'communication.md',
+        'security.md',
+      ]);
+    });
+
   });
 });

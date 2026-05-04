@@ -24,9 +24,12 @@ import {
 import { getTemplateIds } from '../template-registry.js'
 import type { EnhancedAgentContext } from './types.js'
 import { skillToolManager } from '../../tools/skill-tool-manager.js'
-import { logger } from '../../logging/index.js'
+import { errorFields, logger } from '../../logging/index.js'
 import { getProfileRegistry, runWithProfile, profileValue } from '../../profiles/index.js'
 import { AgentContextPipeline } from './agent-context-pipeline.js'
+import { setRegisteredInitialV3ModularAgentIds } from '../registered-initial-modular-agent-ids.js'
+import { profileDefinesCustomModularPromptFiles } from '../modular-prompt-files.js'
+import { resolveInitialVariantForProfileHandoff } from './initial-variant-resolution.js'
 
 /**
  * Agent metadata for discovery and management
@@ -79,7 +82,10 @@ export async function createUnifiedAgentFactory(options?: {
       config.name = `AI Developer (${name})`
       profileDevelopConfigs[config.id] = config
     } catch (error) {
-      logger.error('agent_factory.profile_develop_variant_failed', { profileName: name, error })
+      logger.error('agent_factory.profile_develop_variant_failed', {
+        profileName: name,
+        ...errorFields(error),
+      })
     }
   }
 
@@ -92,6 +98,26 @@ export async function createUnifiedAgentFactory(options?: {
   const initialV3Config = await createInitialAgent(stateManager, undefined, '3.0')
   initialV3Config.id = 'initial-v3'
   initialV3Config.name = 'Initial (v3.0)'
+
+  // Profile-specific modular prompt lists (endgame / Hivemind experiments)
+  const profileInitialV3ModularConfigs: Record<string, AgentConfig> = {}
+  for (const [name, profile] of getProfileRegistry()) {
+    if (!profileDefinesCustomModularPromptFiles(profile)) continue
+    try {
+      const config = await runWithProfile(profile, () =>
+        createInitialAgent(stateManager, undefined, '3.0'))
+      config.id = `initial-v3-${name}`
+      config.name = `Initial (v3.0 · ${name})`
+      profileInitialV3ModularConfigs[config.id] = config
+    } catch (error) {
+      const variantId = `initial-v3-${name}`
+      logger.error('agent_factory.profile_initial_modular_variant_failed', {
+        profileName: name,
+        variantId,
+        ...errorFields(error),
+      })
+    }
+  }
 
   // Pre-create template-specific initial agent variants
   const templateInitialConfigs: Record<string, AgentConfig> = {}
@@ -153,15 +179,32 @@ export async function createUnifiedAgentFactory(options?: {
     if (!hasDevelopFlags) continue
 
     const promptVersion = runWithProfile(profile, () => profileValue('initial.promptVersion', '' as string))
-    const initialVariantConfig =
-      promptVersion === '2.0' ? initialV2Config :
-      promptVersion === '3.0' ? initialV3Config :
-      null
+    const modularVariantId = `initial-v3-${name}`
+    const modularVariantBuilt = profileInitialV3ModularConfigs[modularVariantId]
+    if (promptVersion === '2.0' && modularVariantBuilt) {
+      logger.warn('agent_factory.profile_initial_modular_and_prompt_v2', {
+        profileName: name,
+        variantId: modularVariantId,
+        message:
+          'Handoff wiring uses initial v2 while the router may select the modular v3 variant; avoid both on one profile.',
+      })
+    }
+    const initialVariantConfig = resolveInitialVariantForProfileHandoff({
+      promptVersion,
+      profileName: name,
+      profileInitialV3ModularConfigs,
+      initialV2Config,
+      initialV3Config,
+    })
     if (!initialVariantConfig) continue
+    if (!initialVariantConfig.id) {
+      logger.error('agent_factory.initial_variant_missing_id', { profileName: name })
+      continue
+    }
 
     const developVariantId = `develop-${name}`
     const variantHandoffTool = createHandoffTool({
-      sourceAgentId: initialVariantConfig.id!,
+      sourceAgentId: initialVariantConfig.id,
       validTargets: [developVariantId],
       stateManager
     })
@@ -179,6 +222,10 @@ export async function createUnifiedAgentFactory(options?: {
   initialV2Config.contextPipeline = contextPipeline
   initialV3Config.contextPipeline = contextPipeline
 
+  for (const config of Object.values(profileInitialV3ModularConfigs)) {
+    config.contextPipeline = contextPipeline
+  }
+
   for (const config of Object.values(templateInitialConfigs)) {
     config.contextPipeline = contextPipeline
   }
@@ -188,6 +235,7 @@ export async function createUnifiedAgentFactory(options?: {
     initial: initialConfig,
     'initial-v2': initialV2Config,
     'initial-v3': initialV3Config,
+    ...profileInitialV3ModularConfigs,
     develop: developConfig,
     ...profileDevelopConfigs,
     marketing: marketingConfig,
@@ -196,6 +244,9 @@ export async function createUnifiedAgentFactory(options?: {
 
   // Now define agents with handoff tools already included
   const agents = factory.defineAgents(agentDefinitions)
+
+  // After agents exist in the factory — avoids routing to variant ids before defineAgents completes
+  setRegisteredInitialV3ModularAgentIds(new Set(Object.keys(profileInitialV3ModularConfigs)))
 
   return { factory, agents, stateManager }
 }

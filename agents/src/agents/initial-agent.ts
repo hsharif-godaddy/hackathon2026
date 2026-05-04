@@ -14,6 +14,18 @@ import { logger } from '../logging/index.js'
 import { getTemplate } from './template-registry.js'
 import { skillToolManager } from '../tools/skill-tool-manager.js'
 import { SkillLoaderTool } from '../tools/skill-loader-tool.js'
+import { profileValue } from '../profiles/index.js'
+import {
+  MODULAR_PROMPT_FILES_KEY,
+  parseModularPromptFilesCsv,
+} from './modular-prompt-files.js'
+
+export {
+  DEFAULT_MODULAR_PROMPT_FILES,
+  parseModularPromptFilesCsv,
+  profileDefinesCustomModularPromptFiles,
+  parseModularPromptFilesFromProfileProperty,
+} from './modular-prompt-files.js'
 
 /**
  * Initial Agent - Creates single-page preview plans for new apps
@@ -30,21 +42,18 @@ import { SkillLoaderTool } from '../tools/skill-loader-tool.js'
  *
  * When a templateId is provided, prompt files are loaded from
  * agents/src/prompts/initial/templates/<templateId>/ instead.
+ *
+ * Endgame / profile experiments: set profile property `initial.modularPromptFiles` to a
+ * comma-separated list of module filenames (under initial/<version>/) to override the
+ * default modular load order for that profile. Requires prompt version 3.0 (or a dedicated
+ * factory-built `initial-v3-<profileName>` agent).
  */
 
 const DEFAULT_PROMPT_VERSION = '1.0'
 
-// Modular prompt files (3.0+). Each is independently swappable.
-const MODULE_FILES = [
-  'identity.md',
-  'questioning.md',
-  'project-name.md',
-  'design-direction.md',
-  'design-reference.md',
-  'feature-list.md',
-  'handoff-template.md',
-  'examples.md',
-]
+function modularPromptFilesFromActiveProfile(): string[] {
+  return parseModularPromptFilesCsv(profileValue(MODULAR_PROMPT_FILES_KEY, '' as string))
+}
 
 // Legacy optional files (1.0, 2.0)
 const LEGACY_OPTIONAL_FILES = ['attributes.md', 'guidelines.md', 'examples.md']
@@ -82,7 +91,7 @@ async function buildInitialSystemPrompt(templateId?: string, promptVersion?: str
   const isModular = existsSync(paths.getAgentFile(versionDir, 'identity.md'))
 
   if (isModular) {
-    for (const file of MODULE_FILES) {
+    for (const file of modularPromptFilesFromActiveProfile()) {
       const filePath = paths.getAgentFile(versionDir, file)
       if (!existsSync(filePath)) {
         throw new Error(`Missing required module: ${file} in ${versionDir}`)
