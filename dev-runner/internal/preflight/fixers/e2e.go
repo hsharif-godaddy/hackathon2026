@@ -47,7 +47,7 @@ func (f *E2EFixer) FormFields() []preflight.FormField {
 		}
 		readErr = err
 	}
-	usernameDesc := "Shared E2E test SSO account (do not use your personal credentials)"
+	usernameDesc := "Your own GoDaddy SSO account. It must exist in the target env (PLAYWRIGHT_ENV, default: test) and have enough Airo AI Builder credits to run the scenarios."
 	if readErr != nil {
 		usernameDesc = fmt.Sprintf("Could not read existing tests/.env (%v). Re-enter credentials below.", readErr)
 	}
