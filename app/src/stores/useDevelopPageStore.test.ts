@@ -262,7 +262,6 @@ describe('useDevelopPageStore', function useDevelopPageStoreTests() {
     const nonWideSections = [
       SettingsSection.PROJECT,
       SettingsSection.SECURITY,
-      SettingsSection.SHARE,
       SettingsSection.TEAM,
     ];
 

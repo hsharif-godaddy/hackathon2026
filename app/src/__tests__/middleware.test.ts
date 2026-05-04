@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { encodeSharePayload } from '@airo/shared';
 
 const mockGetVisitor = vi.fn();
 
@@ -20,6 +21,11 @@ vi.mock('next/server', async () => {
         type: 'rewrite',
         url: url.pathname,
         headers: new Headers(),
+      })),
+      redirect: vi.fn((url: string | URL, status?: number) => ({
+        type: 'redirect',
+        url: typeof url === 'string' ? url : url.toString(),
+        status,
       })),
     },
   };
@@ -133,6 +139,118 @@ describe('middleware', () => {
       mockGetVisitor.mockResolvedValue({ market: '' });
       const result = await middleware(makeRequest('/develop'));
       expect(result.url).toBe('/develop');
+    });
+  });
+
+  describe('share fast-path /share/{encoded}', () => {
+    it('returns 307 redirect to the preview URL for a valid encoded payload', async () => {
+      const encoded = encodeSharePayload({
+        siteId: 'k8bnu24pcq',
+        cellPrefix: 'c4',
+        token: 'yPBorcyKvnYJ',
+      });
+      const result = await middleware(makeRequest(`/share/${encoded}`)) as any;
+
+      expect(result.type).toBe('redirect');
+      expect(result.status).toBe(307);
+      // Default makeRequest host is airo-builder.test-godaddy.com, which
+      // airoAppDomainForHost maps to test-airoapp.ai for the preview domain.
+      expect(result.url).toBe(
+        'https://k8bnu24pcq.preview.c4.test-airoapp.ai/?airoShareToken=yPBorcyKvnYJ',
+      );
+      // Skips Gasket visitor lookup entirely
+      expect(mockGetVisitor).not.toHaveBeenCalled();
+    });
+
+    it('falls through to the Gasket rewrite when payload is malformed', async () => {
+      // Regression guard: any refactor that adds a NextResponse.next() short-
+      // circuit on the share path would break the page.tsx notFound() fallback
+      // for invalid payloads. Asserting the rewrite happens documents the
+      // contract.
+      mockGetVisitor.mockResolvedValue({ market: 'en-US' });
+      const result = await middleware(makeRequest('/share/not-valid-base64!')) as any;
+
+      expect(result.type).toBe('rewrite');
+      expect(result.url).toBe('/en-US/share/not-valid-base64!');
+      expect(mockGetVisitor).toHaveBeenCalled();
+    });
+
+    it('falls through when payload decodes but fails field validation (dot in siteId)', async () => {
+      // Hand-crafted base64url of "evil.com:c4:yPBorcyKvnYJ" — passes base64
+      // decode but fails the siteId regex. Must NOT redirect to a constructed
+      // hostname; must fall through to the rewrite path.
+      const malicious = btoa('evil.com:c4:yPBorcyKvnYJ').replace(/\+/g, '-')
+        .replace(/\//g, '_').replace(/=+$/, '');
+      mockGetVisitor.mockResolvedValue({ market: 'en-US' });
+
+      const result = await middleware(makeRequest(`/share/${malicious}`)) as any;
+
+      expect(result.type).toBe('rewrite');
+      expect(result.url).toContain('/en-US/share/');
+      // Critically: must NOT have constructed a redirect to evil.com
+      expect(result.url).not.toContain('evil.com');
+    });
+
+    it('does not match paths that start with /share but lack the trailing slash', async () => {
+      // Boundary check: /share-something should be a normal page, not the
+      // share fast-path. Confirms the SHARE_PREFIX = '/share/' check.
+      mockGetVisitor.mockResolvedValue({ market: 'en-US' });
+      const result = await middleware(makeRequest('/sharestuff')) as any;
+
+      expect(result.type).toBe('rewrite');
+      expect(result.url).toBe('/en-US/sharestuff');
+    });
+
+    it('uses x-dsa-host for the preview domain behind Akamai', async () => {
+      // Regression guard for a real production bug: Akamai rewrites the
+      // Host header to an internal Katana origin (e.g.
+      // airo-builder-internal.katana.int) before the request reaches us,
+      // and the original public host (airo.ai / airo-builder.godaddy.com)
+      // survives in x-dsa-host. Reading requestUrl.host instead of
+      // getPublicHost(request) would miss the known-host map entirely
+      // and fall back to test-airoapp.ai — every prod share link would
+      // 307 to the wrong domain. Mirrors the noindex test for the same
+      // header-precedence rule.
+      const encoded = encodeSharePayload({
+        siteId: 'k8bnu24pcq',
+        cellPrefix: 'c4',
+        token: 'yPBorcyKvnYJ',
+      });
+      const result = await middleware(makeRequest(`/share/${encoded}`, {
+        host: 'airo-builder-internal.katana.int',
+        dsaHost: 'airo-builder.godaddy.com',
+      })) as any;
+
+      expect(result.type).toBe('redirect');
+      expect(result.status).toBe(307);
+      // airo-builder.godaddy.com is a prod host → airoapp.ai preview domain.
+      expect(result.url).toBe(
+        'https://k8bnu24pcq.preview.c4.airoapp.ai/?airoShareToken=yPBorcyKvnYJ',
+      );
+      // Critically: must NOT have fallen through to the test-airoapp.ai
+      // default that the bug produced.
+      expect(result.url).not.toContain('test-airoapp.ai');
+    });
+
+    it('routes to airoapp.ai (prod) when the public host is airo.ai', async () => {
+      // Direct prod path (no Akamai rewrite). Belt-and-suspenders coverage:
+      // the previous test asserts the x-dsa-host precedence; this one
+      // asserts the prod→airoapp.ai mapping itself, so a future change
+      // to airoAppDomainForHost can't silently break prod without a
+      // failing test.
+      const encoded = encodeSharePayload({
+        siteId: 'k8bnu24pcq',
+        cellPrefix: 'c4',
+        token: 'yPBorcyKvnYJ',
+      });
+      const result = await middleware(
+        makeRequest(`/share/${encoded}`, 'airo.ai'),
+      ) as any;
+
+      expect(result.type).toBe('redirect');
+      expect(result.url).toBe(
+        'https://k8bnu24pcq.preview.c4.airoapp.ai/?airoShareToken=yPBorcyKvnYJ',
+      );
     });
   });
 

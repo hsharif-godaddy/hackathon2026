@@ -1,4 +1,11 @@
 import { Router, Request, Response, IRouter } from 'express';
+import {
+  encodeSharePayload,
+  isEncodableCellPrefix,
+  isEncodableSiteId,
+  isEncodableToken,
+  tokenSuffix,
+} from '@airo/shared';
 import type { AuthenticatedRequest } from '../middleware/jwt-auth.js';
 import { jwtAuthMiddleware } from '../middleware/jwt-auth.js';
 import { validateAppOwnership } from '../middleware/app-ownership.js';
@@ -10,6 +17,50 @@ import { getErrorMessage } from '../../utils/error.js';
 
 const router: IRouter = Router();
 const logger = Logger.create({ component: 'share-routes' });
+
+// Default BFF host. Production canonical (`airo.ai`). Test environments are
+// detected explicitly via the preview URL's TLD in resolveBffDomain below;
+// everything else falls back here.
+const FALLBACK_BFF_DOMAIN = 'airo.ai';
+
+/**
+ * Resolve the BFF host that should serve `/share/{encoded}` redirects for
+ * this agents allocation. Resolution order:
+ *
+ *   1. AIRO_BFF_DOMAIN env var (deployment override).
+ *   2. Detect test envs explicitly via the preview URL TLD: previews on
+ *      `*.test-airoapp.ai` produce `airo-builder.test-godaddy.com` (the
+ *      currently-deployed test BFF). Nomad templates write the correct
+ *      preview URL into the agents DB per env, so this is reliable.
+ *   3. Otherwise default to FALLBACK_BFF_DOMAIN (`airo.ai`, prod canonical).
+ *
+ * Prod-by-default means a misconfigured non-prod env emits prod URLs that
+ * 404 against the real prod BFF — visible failure beats silent misrouting
+ * to a different env.
+ */
+function resolveBffDomain(previewBaseUrl: string | null): string {
+  if (process.env.AIRO_BFF_DOMAIN) return process.env.AIRO_BFF_DOMAIN;
+
+  if (previewBaseUrl) {
+    try {
+      const host = new URL(previewBaseUrl).hostname;
+      // Test env: preview lives at *.test-airoapp.ai (covers both deployed
+      // test and local dev which share that preview TLD). The BFF for these
+      // envs is currently deployed at airo-builder.test-godaddy.com.
+      if (host.endsWith('.test-airoapp.ai')) {
+        return 'airo-builder.test-godaddy.com';
+      }
+    } catch (error) {
+      logger.warn('share.resolveBffDomain.invalidPreviewUrl', {
+        previewBaseUrlPrefix: previewBaseUrl.slice(0, 64),
+        fallback: FALLBACK_BFF_DOMAIN,
+        error: getErrorMessage(error),
+      });
+    }
+  }
+
+  return FALLBACK_BFF_DOMAIN;
+}
 
 /**
  * Resolve the preview base URL for an app from the database.
@@ -23,6 +74,76 @@ function getPreviewBaseUrl(appId: string): string | null {
   return previewUrl.startsWith('http://') || previewUrl.startsWith('https://')
     ? previewUrl
     : `https://${previewUrl}`;
+}
+
+/**
+ * Extract the cell prefix from a preview URL of shape
+ * `https://{siteId}.preview.{cellPrefix}.{baseDomain}`. Returns null if the
+ * URL does not match the expected pattern.
+ */
+function extractCellPrefix(previewUrl: string): string | null {
+  const match = previewUrl.match(/\.preview\.(c\d+)\./);
+  return match?.[1] ?? null;
+}
+
+/**
+ * Build the BFF share URL `https://{bffDomain}/share/{base64url(siteId:cellPrefix:token)}`
+ * when bff domain, cell prefix, and an encodable siteId can all be resolved.
+ * Falls back to the legacy direct-preview URL on any mismatch so share-create
+ * never fails. Each fallback path emits a debug/warn log so operators can
+ * diagnose why the BFF URL isn't being used.
+ */
+function buildShareUrl(appId: string, baseUrl: string, token: string): string {
+  const legacy = `${baseUrl}?airoShareToken=${token}`;
+
+  const cellPrefix = extractCellPrefix(baseUrl);
+  if (!cellPrefix) {
+    // baseUrl is the diagnostic key here — if production preview-URL format
+    // changes, every share link silently reverts to legacy and this warn
+    // is the only signal. baseUrl is already public (returned in share
+    // responses). At warn so it surfaces at the default LOG_LEVEL=info.
+    logger.warn('share.buildShareUrl.noCellPrefix', { appId, baseUrl });
+    return legacy;
+  }
+
+  // appId may be a UUID (36 chars) which is too long for SITE_ID_REGEX.
+  // Pre-check before encode so failures surface here, not as broken
+  // recipient redirects later.
+  if (!isEncodableSiteId(appId)) {
+    logger.warn('share.buildShareUrl.siteIdNotEncodable', { appId });
+    return legacy;
+  }
+
+  // Defense-in-depth: extractCellPrefix already ensures `c\d+` shape, but
+  // pre-check explicitly so the contract surfaces if either changes.
+  if (!isEncodableCellPrefix(cellPrefix)) {
+    logger.warn('share.buildShareUrl.cellPrefixNotEncodable', { appId, cellPrefix });
+    return legacy;
+  }
+
+  // Token-generator changes that produce out-of-charset chars would otherwise
+  // only surface inside the encode try/catch with no token-specific log.
+  // Pre-checking matches the siteId/cellPrefix pattern above.
+  if (!isEncodableToken(token)) {
+    logger.warn('share.buildShareUrl.tokenNotEncodable', { appId, cellPrefix });
+    return legacy;
+  }
+
+  try {
+    const bffDomain = resolveBffDomain(baseUrl);
+    const encoded = encodeSharePayload({ siteId: appId, cellPrefix, token });
+    return `https://${bffDomain}/share/${encoded}`;
+  } catch (error) {
+    // Defense-in-depth: if encode throws despite the pre-check (e.g. token
+    // charset mismatch), still return a usable URL rather than failing the
+    // already-persisted share-create call.
+    logger.warn('share.buildShareUrl.encodeFailure', {
+      appId,
+      cellPrefix,
+      error: getErrorMessage(error),
+    });
+    return legacy;
+  }
 }
 
 // ==================================================================================
@@ -94,16 +215,32 @@ router.post('/apps/:id/share', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'App has no preview URL configured' });
     }
 
+    // Enforce one-active-link-at-a-time as a server-side invariant. The UI
+    // gates this too (SharePanel + ShareMenu), but two open tabs, a direct
+    // curl, or a double-click before the React isPending flag flips would
+    // otherwise create duplicate active tokens.
+    const existingTokens = shareTokenRepository.findByAppId(appId);
+    const existingActive = existingTokens.find((t) => t.expiresAt > Date.now());
+    if (existingActive) {
+      logger.info('share.create.alreadyActive', {
+        appId,
+        existingExpiresAt: existingActive.expiresAt,
+      });
+      return res.status(409).json({
+        error: 'An active share link already exists for this app',
+      });
+    }
+
     const shareToken = shareTokenRepository.create({
       appId,
       expiresIn,
     });
 
-    const shareUrl = `${baseUrl}?airoShareToken=${shareToken.token}`;
+    const shareUrl = buildShareUrl(appId, baseUrl, shareToken.token);
 
     logger.info('share.create.success', {
       appId,
-      shareToken: shareToken.token,
+      shareTokenSuffix: tokenSuffix(shareToken.token),
       expiresAt: shareToken.expiresAt,
     });
 
@@ -140,11 +277,17 @@ router.get('/apps/:id/share', async (req: Request, res: Response) => {
     const tokens = shareTokenRepository.findByAppId(appId);
 
     const baseUrl = getPreviewBaseUrl(appId);
+    if (!baseUrl && tokens.length > 0) {
+      // POST treats this as a 400 hard error; GET stays soft (omits shareUrl
+      // and lets the BFF fall back to <origin>?airoShareToken=...) but logs
+      // so operators see when the listing path silently degrades.
+      logger.warn('share.list.missingPreviewUrl', { appId });
+    }
 
     const tokensList = tokens.map((token) => ({
       token: token.token,
       appId: token.appId,
-      shareUrl: baseUrl ? `${baseUrl}?airoShareToken=${token.token}` : undefined,
+      shareUrl: baseUrl ? buildShareUrl(appId, baseUrl, token.token) : undefined,
       createdAt: token.createdAt.toISOString(),
       expiresAt: new Date(token.expiresAt).getTime(), // Unix timestamp in ms
       firstUsedAt: token.firstUsedAt ? token.firstUsedAt.toISOString() : null,
@@ -182,7 +325,7 @@ router.get('/api/share/validate/:token', async (req: Request, res: Response) => 
   try {
     // Validate token format
     if (!isValidShareTokenFormat(token)) {
-      logger.debug('share.validate.invalidFormat', { shareToken: token });
+      logger.debug('share.validate.invalidFormat', { shareTokenSuffix: tokenSuffix(token) });
       return res.json({
         valid: false,
         reason: 'invalid_format',
@@ -193,7 +336,7 @@ router.get('/api/share/validate/:token', async (req: Request, res: Response) => 
     const shareToken = shareTokenRepository.findByToken(token);
 
     if (!shareToken) {
-      logger.debug('share.validate.notFound', { shareToken: token });
+      logger.debug('share.validate.notFound', { shareTokenSuffix: tokenSuffix(token) });
       return res.json({
         valid: false,
         reason: 'not_found',
@@ -203,7 +346,7 @@ router.get('/api/share/validate/:token', async (req: Request, res: Response) => 
     // Check expiration
     if (shareToken.expiresAt < Date.now()) {
       logger.debug('share.validate.expired', {
-        shareToken: token,
+        shareTokenSuffix: tokenSuffix(token),
         expiresAt: shareToken.expiresAt,
       });
       return res.json({
@@ -216,7 +359,7 @@ router.get('/api/share/validate/:token', async (req: Request, res: Response) => 
     shareTokenRepository.markFirstUsed(token);
 
     logger.info('share.validate.success', {
-      shareToken: token,
+      shareTokenSuffix: tokenSuffix(token),
       appId: shareToken.appId,
     });
 
@@ -227,7 +370,7 @@ router.get('/api/share/validate/:token', async (req: Request, res: Response) => 
     });
   } catch (error) {
     logger.error('share.validate.error', {
-      token,
+      shareTokenSuffix: tokenSuffix(token),
       error: getErrorMessage(error),
     });
     return res.status(500).json({

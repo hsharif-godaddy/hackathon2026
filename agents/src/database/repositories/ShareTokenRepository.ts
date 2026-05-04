@@ -1,3 +1,5 @@
+import { tokenSuffix } from '@airo/shared';
+
 import { getDatabase } from '../connection.js';
 import type { ShareToken } from '../schema.js';
 import { generateShareToken } from '../../utils/share-token-generator.js';
@@ -49,7 +51,7 @@ export class ShareTokenRepository {
 
       logger.info('share.token.create.success', {
         appId: params.appId,
-        token,
+        tokenSuffix: tokenSuffix(token),
       });
 
       return {
@@ -78,21 +80,29 @@ export class ShareTokenRepository {
   findByAppId(appId: string): ShareToken[] {
     logger.debug('share.token.find_by_app.begin', { appId });
 
-    const stmt = this.db.prepare(`
-      SELECT token, app_id, expires_at, created_at, first_used_at
-      FROM share_tokens
-      WHERE app_id = ?
-      ORDER BY created_at DESC
-    `);
+    try {
+      const stmt = this.db.prepare(`
+        SELECT token, app_id, expires_at, created_at, first_used_at
+        FROM share_tokens
+        WHERE app_id = ?
+        ORDER BY created_at DESC
+      `);
 
-    const rows = stmt.all(appId) as ShareTokenRow[];
+      const rows = stmt.all(appId) as ShareTokenRow[];
 
-    logger.debug('share.token.find_by_app.success', {
-      appId,
-      count: rows.length,
-    });
+      logger.debug('share.token.find_by_app.success', {
+        appId,
+        count: rows.length,
+      });
 
-    return rows.map((row) => this.mapRowToToken(row));
+      return rows.map((row) => this.mapRowToToken(row));
+    } catch (error) {
+      logger.error('share.token.find_by_app.error', {
+        appId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
   }
 
   /**
@@ -103,19 +113,27 @@ export class ShareTokenRepository {
    * @returns ShareToken if found, null otherwise
    */
   findByToken(token: string): ShareToken | null {
-    const stmt = this.db.prepare(`
-      SELECT token, app_id, expires_at, created_at, first_used_at
-      FROM share_tokens
-      WHERE token = ?
-    `);
+    try {
+      const stmt = this.db.prepare(`
+        SELECT token, app_id, expires_at, created_at, first_used_at
+        FROM share_tokens
+        WHERE token = ?
+      `);
 
-    const row = stmt.get(token) as ShareTokenRow | undefined;
+      const row = stmt.get(token) as ShareTokenRow | undefined;
 
-    if (!row) {
-      return null;
+      if (!row) {
+        return null;
+      }
+
+      return this.mapRowToToken(row);
+    } catch (error) {
+      logger.error('share.token.find_by_token.error', {
+        tokenSuffix: tokenSuffix(token),
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
     }
-
-    return this.mapRowToToken(row);
   }
 
   /**
@@ -127,7 +145,7 @@ export class ShareTokenRepository {
   markFirstUsed(token: string): void {
     const now = Date.now();
 
-    logger.debug('share.token.mark_first_used.begin', { token });
+    logger.debug('share.token.mark_first_used.begin', { tokenSuffix: tokenSuffix(token) });
 
     try {
       const stmt = this.db.prepare(`
@@ -140,13 +158,13 @@ export class ShareTokenRepository {
 
       if (result.changes > 0) {
         logger.info('share.token.mark_first_used.success', {
-          token,
+          tokenSuffix: tokenSuffix(token),
           firstUsedAt: now,
         });
       }
     } catch (error) {
       logger.error('share.token.mark_first_used.error', {
-        token,
+        tokenSuffix: tokenSuffix(token),
         error: error instanceof Error ? error.message : String(error),
       });
       // Don't throw - marking first use is not critical
@@ -159,7 +177,7 @@ export class ShareTokenRepository {
    * @param token Token value to delete
    */
   delete(token: string): void {
-    logger.info('share.token.delete.begin', { token });
+    logger.info('share.token.delete.begin', { tokenSuffix: tokenSuffix(token) });
 
     try {
       const stmt = this.db.prepare(`
@@ -169,13 +187,13 @@ export class ShareTokenRepository {
       const result = stmt.run(token);
 
       if (result.changes === 0) {
-        logger.warn('share.token.delete.not_found', { token });
+        logger.warn('share.token.delete.not_found', { tokenSuffix: tokenSuffix(token) });
       } else {
-        logger.info('share.token.delete.success', { token });
+        logger.info('share.token.delete.success', { tokenSuffix: tokenSuffix(token) });
       }
     } catch (error) {
       logger.error('share.token.delete.error', {
-        token,
+        tokenSuffix: tokenSuffix(token),
         error: error instanceof Error ? error.message : String(error),
       });
       throw error;

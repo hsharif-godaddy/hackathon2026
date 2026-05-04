@@ -42,6 +42,10 @@
     "./brand-data": {
       "types": "./dist/brand-data/index.d.ts",
       "import": "./dist/brand-data/index.js"
+    },
+    "./share-url": {
+      "types": "./dist/share-url/index.d.ts",
+      "import": "./dist/share-url/index.js"
     }
   },
   "typesVersions": {
@@ -69,6 +73,9 @@
       ],
       "brand-data": [
         "dist/brand-data/index.d.ts"
+      ],
+      "share-url": [
+        "dist/share-url/index.d.ts"
       ]
     }
   },

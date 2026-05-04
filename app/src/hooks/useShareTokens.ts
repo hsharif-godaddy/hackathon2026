@@ -1,3 +1,4 @@
+import { tokenSuffix } from '@airo/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { appFetch } from '@/lib/gasket-config';
@@ -85,16 +86,52 @@ export function useShareTokens(
       const response = await appFetch(`/api/apps/${appId}/share`);
 
       if (!response.ok) {
-        const errorData = await response.json();
+        // BFF errors are normally JSON, but a non-JSON body (proxy 502 HTML,
+        // gateway timeout) would make response.json() throw and mask the
+        // real HTTP failure. Fall back to the status code in that case.
+        let errorMessage = `Failed to fetch share tokens: ${response.status}`;
+        try {
+          const errorData = await response.json();
+          if (errorData?.error) errorMessage = errorData.error;
+        } catch {
+          // non-JSON body — keep the status-only error message
+        }
         logger.error('share-tokens.fetch.failure', {
           appId,
           status: response.status,
-          error: errorData.error,
+          error: errorMessage,
         });
-        throw new Error(errorData.error || `Failed to fetch share tokens: ${response.status}`);
+        throw new Error(errorMessage);
       }
 
-      const result: ListShareTokensResponse = await response.json();
+      // Even on response.ok, the body might not be JSON — Gasket proxy
+      // misconfig or Next.js runtime error returning 200 with HTML.
+      // Without this guard the SyntaxError bypasses share-tokens.fetch
+      // .failure logs and React Query surfaces it untagged.
+      let result: ListShareTokensResponse;
+      try {
+        result = await response.json();
+      } catch (parseErr) {
+        logger.error('share-tokens.fetch.parseError', {
+          appId,
+          status: response.status,
+          error: parseErr instanceof Error ? parseErr.message : 'Unknown parse error',
+        });
+        throw new Error(`Unexpected response from BFF: ${response.status}`);
+      }
+
+      // BFF response type allows `tokens` to be undefined (`tokens?: unknown[]`
+      // in route.ts) — if agents drifts to a `{}` body or a proxy returns a
+      // 200 with no tokens field, `result.tokens.length` would throw a
+      // TypeError that bypasses our parseError log and React Query would
+      // surface an untagged runtime error. Treat it as a schema mismatch.
+      if (!Array.isArray(result.tokens)) {
+        logger.error('share-tokens.fetch.schemaError', {
+          appId,
+          status: response.status,
+        });
+        throw new Error(`Unexpected response from BFF: missing tokens array`);
+      }
 
       logger.info('share-tokens.fetch.success', {
         appId,
@@ -155,20 +192,41 @@ export function useCreateShareToken() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
+        // Same error-body-might-not-be-JSON guard as the fetch path.
+        let errorMessage = `Failed to create share token: ${response.status}`;
+        try {
+          const errorData = await response.json();
+          if (errorData?.error) errorMessage = errorData.error;
+        } catch {
+          // non-JSON body — keep the status-only error message
+        }
         logger.error('share-tokens.create.failure', {
           appId,
           status: response.status,
-          error: errorData.error,
+          error: errorMessage,
         });
-        throw new Error(errorData.error || `Failed to create share token: ${response.status}`);
+        throw new Error(errorMessage);
       }
 
-      const result: CreateShareTokenResponse = await response.json();
+      // Same success-path JSON guard as the fetch query.
+      let result: CreateShareTokenResponse;
+      try {
+        result = await response.json();
+      } catch (parseErr) {
+        logger.error('share-tokens.create.parseError', {
+          appId,
+          status: response.status,
+          error: parseErr instanceof Error ? parseErr.message : 'Unknown parse error',
+        });
+        throw new Error(`Unexpected response from BFF: ${response.status}`);
+      }
 
       logger.info('share-tokens.create.success', {
         appId,
-        token: result.token,
+        // Don't log the raw token — 7-day bearer credential. Last 4 chars
+        // are enough for log correlation (8 unknown base64url chars =
+        // 2^48 possibilities, infeasible to brute-force).
+        shareTokenSuffix: tokenSuffix(result.token),
         expiresAt: result.expiresAt,
       });
 

@@ -9,7 +9,6 @@ import LinkIcon from '@ux/icon/link';
 import LockedIcon from '@ux/icon/locked';
 import RevertIcon from '@ux/icon/revert';
 import SettingsIcon from '@ux/icon/settings';
-import ShareIcon from '@ux/icon/share';
 import SocialIcon from '@ux/icon/social';
 
 import { SettingsSection } from '@/app/[market]/develop/components/types';
@@ -41,7 +40,6 @@ export function useSettingsNavItems(): SettingsNavItem[] {
   const domain = useSwitchboard('appbuilder-settings-domain');
   const backups = useSwitchboard('appbuilder-settings-backups');
   const security = useSwitchboard('appbuilder-settings-security');
-  const shareLinks = useSwitchboard('appbuilder-share-links');
   const visualScan = useSwitchboard('appbuilder-settings-visualscan');
   const secrets = useSwitchboard('appbuilder-settings-secrets');
   const social = useSwitchboard('appbuilder-settings-social');
@@ -77,12 +75,6 @@ export function useSettingsNavItems(): SettingsNavItem[] {
       icon: <LockedIcon />,
       disabled: security !== true,
     },
-    ...(shareLinks ? [{
-      id: SettingsSection.SHARE,
-      label: t('builder_settings_nav_share'),
-      icon: <ShareIcon />,
-      disabled: false,
-    }] : []),
     {
       id: SettingsSection.DATABASE,
       label: t('builder_settings_nav_database'),

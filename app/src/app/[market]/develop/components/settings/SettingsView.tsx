@@ -22,7 +22,6 @@ const MarketingPanel = dynamic(() => import('@/app/[market]/develop/components/s
 
 // Uses default skeleton as its matching the structure
 const SecurityPanel = dynamic(() => import('@/app/[market]/develop/components/settings/SecurityPanel'), { loading: () => <PanelSkeleton /> })
-const SharePanel = dynamic(() => import('@/app/[market]/develop/components/settings/SharePanel'), { loading: () => <PanelSkeleton /> })
 const SocialPanel = dynamic(() => import('@/app/[market]/develop/components/settings/social/SocialPanel'), { loading: () => <PanelSkeleton /> })
 const VisualScanPanel = dynamic(() => import('@/app/[market]/develop/components/settings/VisualScanPanel'), { loading: () => <PanelSkeleton /> })
 
@@ -34,7 +33,6 @@ export default function SettingsView() {
   const isDomainEnabled = useSwitchboard('appbuilder-settings-domain');
   const isBackupsEnabled = useSwitchboard('appbuilder-settings-backups');
   const isSecurityEnabled = useSwitchboard('appbuilder-settings-security');
-  const isShareLinksEnabled = useSwitchboard('appbuilder-share-links');
   const isVisualScanEnabled = useSwitchboard('appbuilder-settings-visualscan');
   const isSecretsEnabled = useSwitchboard('appbuilder-settings-secrets');
   const isSocialEnabled = useSwitchboard('appbuilder-settings-social');
@@ -56,9 +54,6 @@ export default function SettingsView() {
       case SettingsSection.SECURITY:
         if (isSecurityEnabled === undefined) return sectionSkeleton;
         return isSecurityEnabled ? <SecurityPanel /> : null;
-      case SettingsSection.SHARE:
-        if (isShareLinksEnabled === undefined) return sectionSkeleton;
-        return isShareLinksEnabled ? <SharePanel /> : null;
       case SettingsSection.DATABASE:
         // No switchboard guard — DATABASE is always enabled (no feature flag)
         return <DatabasePanel appId={appId} />;

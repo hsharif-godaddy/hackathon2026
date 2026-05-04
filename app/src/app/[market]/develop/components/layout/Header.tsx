@@ -19,6 +19,7 @@ import Tag from '@ux/tag';
 import { ButtonGroup } from '@/app/[market]/develop/components/ButtonGroup';
 import IconButton from '@/app/[market]/develop/components/IconButton';
 import DomainMenu from '@/app/[market]/develop/components/layout/DomainMenu';
+import ShareMenu from '@/app/[market]/develop/components/layout/ShareMenu';
 import DeviceSelector from '@/app/[market]/develop/components/preview/DeviceSelector'
 import { ChatTab, MobileMode, SettingsSection, ViewMode } from '@/app/[market]/develop/components/types'
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
@@ -186,9 +187,10 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
                 onClick={handleDomainSettings}
               />
 
-              {/* Always show Upgrade/Publish/UserMenu */}
+              {/* Always show Upgrade/Share/Publish/UserMenu */}
               <ButtonGroup>
                 <HeaderUpgradeButton location="develop" />
+                <ShareMenu location="develop" />
                 <AppPublish location="develop" />
               </ButtonGroup>
 

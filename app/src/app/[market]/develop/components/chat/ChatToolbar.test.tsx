@@ -92,6 +92,14 @@ vi.mock('@/components/providers/AuthProvider', () => ({
   }),
 }));
 
+// Stub ShareMenu so we can assert placement without rendering its full
+// popover + hooks. Same pattern Header.test.tsx uses.
+vi.mock('@/app/[market]/develop/components/layout/ShareMenu', () => ({
+  default: ({ location }: { location?: string }) => (
+    <div data-testid="share-menu" data-location={location}>ShareMenu</div>
+  ),
+}));
+
 describe('ChatToolbar', () => {
   const defaultProps = {};
 
@@ -149,6 +157,42 @@ describe('ChatToolbar', () => {
     renderWithProviders(<ChatToolbar {...defaultProps} />);
 
     expect(screen.getByLabelText('builder_chat_toolbar_button_view')).toBeInTheDocument();
+  });
+
+  describe('ShareMenu placement', () => {
+    it('renders ShareMenu in mobile TOOLS mode (next to AppPublish)', () => {
+      mockDevelopStore.isMobile = true;
+      mockDevelopStore.mobileMode = MobileMode.TOOLS;
+
+      renderWithProviders(<ChatToolbar {...defaultProps} />);
+
+      const share = screen.getByTestId('share-menu');
+      expect(share).toBeInTheDocument();
+      expect(share).toHaveAttribute('data-location', 'develop.chat_toolbar');
+    });
+
+    it('renders ShareMenu in mobile PREVIEW mode (next to DomainMenu + AppPublish)', () => {
+      mockDevelopStore.isMobile = true;
+      mockDevelopStore.mobileMode = MobileMode.PREVIEW;
+
+      renderWithProviders(<ChatToolbar {...defaultProps} />);
+
+      const share = screen.getByTestId('share-menu');
+      expect(share).toBeInTheDocument();
+      expect(share).toHaveAttribute('data-location', 'develop.chat_toolbar');
+    });
+
+    it('does NOT render ShareMenu on desktop (Header.tsx owns it there)', () => {
+      mockDevelopStore.isMobile = false;
+
+      renderWithProviders(<ChatToolbar {...defaultProps} />);
+
+      // The desktop tools-mode block has the chat tabs + SettingsMenu but no
+      // Share/Publish — those live in the desktop Header. A regression that
+      // adds ShareMenu to the desktop branch of ChatToolbar would surface
+      // as a duplicate testid here (use queryAllByTestId to be explicit).
+      expect(screen.queryAllByTestId('share-menu')).toHaveLength(0);
+    });
   });
 
   it('should not render preview button on desktop', () => {

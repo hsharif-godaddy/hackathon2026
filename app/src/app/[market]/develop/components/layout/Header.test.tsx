@@ -66,6 +66,10 @@ vi.mock('@/components/layout/AppPublish', () => ({
   default: () => <div data-testid="app-publish">AppPublish</div>,
 }));
 
+vi.mock('@/app/[market]/develop/components/layout/ShareMenu', () => ({
+  default: () => <div data-testid="share-menu">ShareMenu</div>,
+}));
+
 vi.mock('@/contexts/WebSocketContext', () => ({
   useWebSocketContext: () => ({ sendMessage: vi.fn() }),
 }));

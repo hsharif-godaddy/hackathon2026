@@ -104,7 +104,7 @@ export enum SettingsSection {
   DOMAIN = 'domain',
   BACKUPS = 'backups',
   SECURITY = 'security',
-  SHARE = 'share',
+  // SHARE removed: replaced by the top-toolbar Share button (ShareMenu)
   TEAM = 'team',
   DATABASE = 'database',
   SECRETS = 'secrets',

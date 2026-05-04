@@ -33,6 +33,20 @@ export type { SiteDomainForAttachCheck } from './domain/index.js'
 // JSON
 export { safeStringify } from './json/index.js'
 
+// Share URL (base64url codec for /share/{encoded} BFF redirect)
+export {
+  CELL_PREFIX_REGEX,
+  SITE_ID_REGEX,
+  TOKEN_REGEX,
+  decodeSharePayload,
+  encodeSharePayload,
+  isEncodableCellPrefix,
+  isEncodableSiteId,
+  isEncodableToken,
+  tokenSuffix,
+} from './share-url/index.js'
+export type { SharePayload } from './share-url/index.js'
+
 // Brand Data
 export type {
   BrandData,
