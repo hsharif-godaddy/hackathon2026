@@ -145,7 +145,7 @@ export function buildSkillsPromptSection(skills: SkillListItem[]): string {
 
 **IMPORTANT: Before implementing any feature, check this list for a matching skill.** Skills provide battle-tested templates, patterns, and specialized tools. If a skill matches the user's request, load it immediately with \`skill({ action: "load", skill: "name" })\` and follow its instructions.
 
-**Quick intent map:** online store/e-commerce/sell → commerce | booking/scheduling → online-appointments | blog/articles/news → blog | payments/buy-now → commerce-one-time-payment | login/accounts → authentication | multi-language → i18n | SEO/search rankings → seo
+**Quick intent map:** online store/e-commerce/sell products/shop/set up store/catalog data → commerce (load first for ANY store intent) | build product catalog UI/storefront UI/cart UI/checkout UI → commerce-storefront (load commerce first) | accept payments/buy-now/one-time payment/charge customers → commerce-one-time-payment (load commerce first) | login/signup/user accounts/members-only/restrict access/admin → authentication | booking/appointments/scheduling/reservation/time slots → online-appointments | set up blog/blog system/news section → blog | write blog post/create articles/generate blog content → blog-writing | multi-language/bilingual/translate/localization → i18n | map/store locator/directions → google-maps | send email/email notification/transactional email/contact-form-with-backend → email | save data/database/CRUD/persist records → database | AI chatbot/AI assistant/AI agent → ai-agent | Stripe (only when user explicitly says Stripe) → stripe | SEO/search rankings/meta tags → seo
 
 ${skillsList}`;
 }

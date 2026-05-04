@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { fileURLToPath } from 'node:url';
 
 import { SkillLoaderTool, buildSkillsPromptSection } from '../skill-loader-tool.js';
 
@@ -410,6 +412,170 @@ whenToUse:
       ]);
 
       expect(section).toContain('Quick intent map');
+    });
+
+    it('should route each skill name from a representative intent phrase', function intentMapSkillCoverage() {
+      const section = buildSkillsPromptSection([
+        { name: 'test', description: 'Test skill' },
+      ]);
+
+      // Each skill this intent map routes to MUST appear by a unique
+      // arrow-suffix that is NOT a prefix of another skill. Without this
+      // constraint, "→ commerce" would match "→ commerce-storefront" and
+      // "→ commerce-one-time-payment", silently passing if the standalone
+      // commerce route was deleted. Pair each skill with a trailing
+      // disambiguator (space, closing parenthesis, pipe, or newline) so
+      // each assertion is unique. commerce-storefront and
+      // commerce-one-time-payment use the closing ")" after
+      // "(load commerce first)" to also guard the full ordering phrase.
+      const routedSkillFragments = [
+        '→ commerce (load first',
+        '→ commerce-storefront (load commerce first)',
+        '→ commerce-one-time-payment (load commerce first)',
+        '→ authentication ',
+        '→ online-appointments ',
+        '→ blog ',
+        '→ blog-writing ',
+        '→ i18n ',
+        '→ google-maps ',
+        '→ email ',
+        '→ database ',
+        '→ ai-agent ',
+        '→ stripe |',
+        // seo is the terminal entry in the intent map; '\n' is the
+        // end-of-line anchor. Update this assertion if a route is
+        // added after seo (the fragment would silently stop matching).
+        '→ seo\n',
+      ];
+      for (const fragment of routedSkillFragments) {
+        expect(section).toContain(fragment);
+      }
+    });
+
+    it('should include representative trigger phrases for every routed skill in the intent map', function intentPhrasesPresent() {
+      const section = buildSkillsPromptSection([
+        { name: 'test', description: 'Test skill' },
+      ]);
+
+      // These phrases are literal routing anchors; removing any allows
+      // sub-feature todos to match nothing and the agent builds a static
+      // mockup instead of loading the skill. Covers representative
+      // leading / mid-chain / terminal phrases per routed skill so
+      // silent truncation of a route's trigger clause is caught. The
+      // commerce route in particular spans multiple synonyms
+      // ("online store/e-commerce/sell products/shop/set up store/
+      // catalog data") — leading + terminal anchors guard against
+      // accidental truncation after the first slash-separated phrase.
+      const phrases = [
+        // commerce — leading, mid, terminal
+        'online store',
+        'sell products',
+        'catalog data',
+        // commerce-storefront
+        'product catalog UI',
+        // commerce-one-time-payment
+        'buy-now',
+        // authentication
+        'members-only',
+        // online-appointments
+        'appointments',
+        // blog
+        'set up blog',
+        // blog-writing
+        'write blog post',
+        // i18n
+        'multi-language',
+        // google-maps — leading + terminal
+        'store locator',
+        'directions',
+        // email
+        'transactional email',
+        // database
+        'CRUD',
+        // ai-agent
+        'AI chatbot',
+        // seo
+        'search rankings',
+        'meta tags',
+      ];
+      for (const phrase of phrases) {
+        expect(section).toContain(phrase);
+      }
+
+      // Stripe's route is conditional — it must only fire when the user
+      // explicitly says "Stripe", not on generic payment requests.
+      // Dropping this qualifier would let the stripe skill match any
+      // payment intent, overlapping with commerce-one-time-payment.
+      expect(section).toContain('only when user explicitly says Stripe');
+    });
+
+    it('should expose the develop-prompt guardrail paragraph in the source', function guardrailPresentInCoreMd() {
+      // The guardrail paragraph in develop/core.md is the behavioral core
+      // that prevents strict-follower LLMs from loading skills during the
+      // initial design-preview phase. It lives in a markdown file with no
+      // runtime reference to keep it in sync. A silent deletion or
+      // truncation would go undetected until an LLM builds a full multi-
+      // skill site (commerce + auth + database etc.) during what should
+      // be a visual-only preview. This fixture guarantees the paragraph's
+      // defining phrase, both concrete trigger variants, and every backend
+      // skill named in the exclusion clause survive edits.
+      const coreMdPath = path.resolve(
+        path.dirname(fileURLToPath(import.meta.url)),
+        '..',
+        '..',
+        'prompts',
+        'develop',
+        'core.md'
+      );
+      const coreMd = readFileSync(coreMdPath, 'utf-8');
+
+      expect(coreMd).toContain('**Initial design preview is visual-only:**');
+      expect(coreMd).toContain('INITIAL SCOPE:');
+      expect(coreMd).toContain('Build ONLY the homepage design for this preview');
+      expect(coreMd).toContain('Build ONLY the main app view for this preview');
+
+      // Visual/asset skills are the explicit exceptions to the "no skills"
+      // rule. This assertion anchors the permissive clause and verifies
+      // those three skills are in the allow-list, not the exclusion list.
+      expect(coreMd).toContain(
+        'Visual/asset skills (media-logo, media-image, media-video) remain usable'
+      );
+
+      // Cross-reference paragraph at the "Initial Build from Handoff"
+      // section (~300 lines later) reinforces the guardrail at the
+      // moment the agent is mid-build and most likely to attempt a
+      // skill load. Silent deletion of the reinforcement would leave
+      // the main guardrail correct but the build-workflow unguarded.
+      expect(coreMd).toContain('**Skill loading during this workflow:**');
+
+      // The exclusion clause enumerates every backend-integration skill
+      // that MUST NOT load during the initial design-preview phase.
+      // Silent truncation of any entry below would let that skill slip
+      // through during homepage construction.
+      //
+      // Each fragment includes its terminator (comma for mid-list, period
+      // for the final entry) so prefix-ambiguous names remain distinct:
+      // "commerce," doesn't match "commerce-storefront," and "blog,"
+      // doesn't match "blog-writing,". Match the actual ordering and
+      // terminator in the core.md sentence.
+      const excludedBackendSkillFragments = [
+        'commerce,',
+        'commerce-storefront,',
+        'commerce-one-time-payment,',
+        'authentication,',
+        'database,',
+        'email,',
+        'online-appointments,',
+        'blog,',
+        'blog-writing,',
+        'i18n,',
+        'google-maps,',
+        'ai-agent,',
+        'stripe.',
+      ];
+      for (const fragment of excludedBackendSkillFragments) {
+        expect(coreMd).toContain(fragment);
+      }
     });
   });
 });
