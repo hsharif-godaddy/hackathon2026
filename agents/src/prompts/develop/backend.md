@@ -2,7 +2,7 @@
 
 ## API Routes
 
-### File Structure
+### File Structure (Convention)
 
 ```
 src/server/api/
@@ -15,6 +15,8 @@ src/server/api/
 │       └── DELETE.ts       → DELETE /api/users/:userId
 ```
 
+This layout is convention only. Nothing auto-discovers these files - routes must be registered explicitly (see below).
+
 ### Handler Pattern
 
 ```typescript
@@ -22,7 +24,6 @@ import type { Request, Response } from 'express';
 
 export default async function handler(req: Request, res: Response) {
   try {
-    // Handler logic here
     const items = [{ id: 1, name: 'Example' }];
     res.json(items);
   } catch (error) {
@@ -30,6 +31,33 @@ export default async function handler(req: Request, res: Response) {
   }
 }
 ```
+
+### Adding a New Route (Two Steps Required)
+
+Every new route requires BOTH a handler file AND a registration line in `src/server/entry.ts`. Forgetting either step means the route will not work.
+
+**Step 1 - Create the handler file:**
+
+```typescript
+// src/server/api/contact/POST.ts
+import type { Request, Response } from 'express';
+
+export default async function handler(req: Request, res: Response) {
+  const { name, email, message } = req.body;
+  // Handle submission
+  res.status(201).json({ ok: true });
+}
+```
+
+**Step 2 - Register the handler in `src/server/entry.ts`:**
+
+```typescript
+// src/server/entry.ts (add these two lines)
+import contactPost from './api/contact/POST';
+app.post('/api/contact', contactPost);
+```
+
+Route methods map directly: `GET.ts` → `app.get(...)`, `POST.ts` → `app.post(...)`, `PUT.ts` → `app.put(...)`, `DELETE.ts` → `app.delete(...)`, `PATCH.ts` → `app.patch(...)`.
 
 ### Status Codes
 
@@ -41,7 +69,7 @@ export default async function handler(req: Request, res: Response) {
 
 ## Server Restarts
 
-**Rarely needed** - Vite HMR automatically reloads code changes, and `vite-plugin-api-routes` automatically detects new API endpoint files and restarts the dev server.
+**Rarely needed** - In development, Vite reloads server modules on file change via `ssrLoadModule`, so edits to handler files and to `src/server/entry.ts` take effect without a full restart. In production the app runs as a pre-built bundle and a restart is required to pick up code changes.
 
 **ONLY restart when:**
 
@@ -51,12 +79,12 @@ export default async function handler(req: Request, res: Response) {
 
 **DO NOT restart for:**
 
-- Code changes (Vite HMR handles this)
-- Creating new API endpoint files (the Vite plugin auto-detects and restarts)
+- Code changes to handlers or `entry.ts`
 - Frontend dependency installations
 - Typical development work
 
 ## Key Rules
 
 - Use `.js` extensions - Backend imports require explicit extensions
-- No native addons - Production runs Alpine (musl). Use pure-JS packages only
+- No native addons - Production runs Alpine (musl). Use pure-JS packages only (bcryptjs not bcrypt, jimp not sharp/canvas)
+- Never skip the registration step in `src/server/entry.ts` - there is no filesystem-based auto-discovery

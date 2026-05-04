@@ -6,6 +6,7 @@ import { logger } from '../logging/index.js';
 import { skills, getFeatures } from '../services/features.js';
 import { TerminalTool } from './terminal.js';
 import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js';
+import { regenerateEntryApiRegistrations } from '../utils/entry-api-sync.js';
 
 /**
  * Options for loading a skill
@@ -454,6 +455,47 @@ export class SkillLoaderTool {
           }
         }
       }
+
+      // If the skill installed any API route files under src/server/api/**,
+      // regenerate the import + registration blocks in src/server/entry.ts.
+      // Under the v8 SSR template, API routes must be explicitly registered
+      // in entry.ts (filesystem routing was removed). Without this, skill
+      // installs that ship API routes would silently 404 until the preview
+      // container's template sync migration runs on its next restart.
+      // Match both nested handlers (src/server/api/foo/GET.ts) AND root-level
+      // handlers (src/server/api/GET.ts). The `.+/` form required a subdir
+      // segment, which would silently skip a root GET.ts and leave the route
+      // 404ing until the next preview restart.
+      const installedApiRoute = installedFiles.some((p) =>
+        /\/src\/server\/api\/(?:.+\/)?(GET|POST|PUT|PATCH|DELETE)\.(ts|js)$/.test(p),
+      );
+      if (installedApiRoute) {
+        try {
+          const result = await regenerateEntryApiRegistrations(appPath);
+          if (result.reason === 'markers-missing') {
+            // Distinct warn event: the skill shipped API routes but entry.ts has
+            // no regeneration markers, so those routes will 404. Same log shape
+            // as a successful no-op would hide this from operators.
+            this.logger.warn('skill.install.entry_markers_missing', {
+              skill,
+              routeCount: result.routeCount,
+            });
+          } else {
+            this.logger.info('skill.install.entry_regenerated', {
+              skill,
+              reason: result.reason,
+              changed: result.changed,
+              routeCount: result.routeCount,
+            });
+          }
+        } catch (error) {
+          this.logger.warn('skill.install.entry_regenerate_failed', {
+            skill,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+
       const failedDeps = dependencyResults.filter(r => !r.success).length;
 
       this.logger.info('skill.install.success', {

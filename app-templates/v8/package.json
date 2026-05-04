@@ -7,7 +7,7 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && vite build --ssr src/server/entry.ts",
     "preview": "vite preview",
     "test": "vitest",
     "test:ui": "vitest --ui",
@@ -71,7 +71,6 @@
     "sonner": "^2.0.7",
     "tailwind-merge": "^2.6.1",
     "vaul": "^1.1.2",
-    "vite-plugin-api-routes": "1.2.6",
     "zod": "^3.25.76",
     "zustand": "^5.0.2"
   },
@@ -93,7 +92,6 @@
     "@vitest/ui": "^3.2.4",
     "autoprefixer": "^10.4.27",
     "baseline-browser-mapping": "^2.10.0",
-    "esbuild": "^0.25.12",
     "eslint": "^9.16.0",
     "eslint-plugin-react": "^7.37.2",
     "eslint-plugin-react-hooks": "^5.0.0",

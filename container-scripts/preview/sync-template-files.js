@@ -13,15 +13,18 @@
  * - If force flag is set, always replace the file
  * - Run migrations for targeted transforms on specific files
  *
- * Sync groups (e.g. cookieBanner for App.tsx + RootLayout.tsx) are applied atomically:
- * we only sync a group if every file in the group would be synced. That avoids partial
- * updates (e.g. updating App.tsx but not RootLayout.tsx) which could result in duplicate
- * cookie banners.
+ * Sync groups (e.g. ssrMigration for entry.ts + entry-server.tsx + main.tsx +
+ * vite.config.ts) are applied atomically: we only sync a group if every file in the
+ * group would be synced. That avoids partial updates (e.g. a new entry-server.tsx
+ * paired with a stale vite.config.ts that doesn't know how to build it).
  */
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync, readdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative, basename, extname, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const METHOD_FILES = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']);
 
 /**
  * Manifest of files to sync from base template to customer apps.
@@ -33,7 +36,7 @@ import { dirname, join } from 'node:path';
  * - force: If true, always replace (use sparingly, for files that should never be modified)
  * - syncGroup: Optional. Entries with the same syncGroup are synced atomically: we only
  *   sync a group if every file in the group would be synced. Prevents partial updates
- *   (e.g. App.tsx + RootLayout.tsx for cookie banner: both or neither to avoid duplicate banners).
+ *   (e.g. the ssrMigration group: entry.ts + entry-server.tsx + main.tsx + vite.config.ts sync all-or-nothing).
  *
  * To add a new hash:
  * 1. Find the commit with the old version: git log --oneline -- <file>
@@ -42,28 +45,58 @@ import { dirname, join } from 'node:path';
  */
 const SYNC_MANIFEST = [
   {
-    file: 'src/server/configure.js',
-    description: 'Server configuration with SPA fallback middleware for client-side routing',
+    file: 'src/server/entry.ts',
+    description: 'Express server entry (replaces configure.js + vite-plugin-api-routes)',
     known_hashes: [
-      '42ba9f4178f0125d150e0453b18aace0', // 0d42af30 - fix: various improvements to local development
-      '2accfb4db2acca217a56610abbeff409', // 8c779b55 - feat: changes to support app publish
-      '4e602bf93117af87df4621edc156282c', // Before import.meta.url fix - uses express.static("client")
-      'f31a3e2c5c87fb16212a911612d7a3fd', // Before database extraction to skill - on origin/main
-      '5fbbdcc5d9cf08913df35a0c72885356', // Before cache-control headers
-      'd04ac7a6e682dd3cefdd5310f6caaa96', // Before opaque-path fix (#2307)
-      'bb23c13456e2fdf15ac7b1d363605097'  // Opaque-path fix, before /* @vite-ignore */ comment
+      '97f7b2dca47358d1cdf6838aa346a13c', // before async render + redirect forwarding (data-router SSR)
+      '102ddeac9f0c0017adf7405e1dbf3c92', // before non-redirect loader Response (error-response branch)
+      '3d66a88d88b8ec09bf5098b474c7a56c', // before empty status-200 Response fallback handling
+      'f0d49c600a0fc04550f9afe25f5f2f67'  // before sanitized API error responses
     ],
+    force: false,
+    syncGroup: 'ssrMigration'
+  },
+  {
+    file: 'src/entry-server.tsx',
+    description: 'SSR render entry point used by entry.ts in prod',
+    known_hashes: [
+      'e087bd8703e07221ae2902e246e8f862' // renderToString(<App url />) via BrowserRouter/StaticRouter split; before data-router refactor
+    ],
+    force: false,
+    syncGroup: 'ssrMigration'
+  },
+  {
+    file: 'src/lib/seo-routes.ts',
+    description: 'Agent-editable registry of public routes for sitemap.xml',
+    known_hashes: [],
     force: false
   },
   {
-    file: 'src/App.tsx',
-    description: 'App entry with CookieBanner and RootLayout wrapper',
+    file: 'src/main.tsx',
+    description: 'Client entry; hydrateRoot when SSR markup present, createRoot otherwise',
     known_hashes: [
-      '307d295de691b65ea9217a74ca9d02d6', // 0bd48df3b - before CookieBanner
-      '966395da41e36083d6bd9e08811ef3ea'  // intermediate - inline CookieBannerErrorBoundary (before extraction to own file)
+      '13101631d2bee2ae872743b93f8cb7a3', // createRoot only, before hydrateRoot branch
+      'dc37acfb8a11bc79e0159310eaede77d'  // before data-router refactor (pre-2026-05-01)
     ],
     force: false,
-    syncGroup: 'cookieBanner'
+    syncGroup: 'ssrMigration'
+  },
+  // App.tsx lives in the ssrMigration group so it lands atomically with
+  // entry-server.tsx / main.tsx / entry.ts. entry-server.tsx no longer imports
+  // App (stale App is not a crashloop anymore), but a mismatched App.tsx
+  // (legacy BrowserRouter vs new data-router) would hydrate markup that does
+  // not match the static render.
+  {
+    file: 'src/App.tsx',
+    description: 'Client App - data-router RouterProvider with layout wrapper',
+    known_hashes: [
+      '307d295de691b65ea9217a74ca9d02d6', // 0bd48df3b - before CookieBanner
+      '966395da41e36083d6bd9e08811ef3ea', // intermediate - inline CookieBannerErrorBoundary (before extraction)
+      '9be50c9e3b4a1eeb6d385adc80f6dfa7', // pre-SSR createBrowserRouter version
+      '1b5f3b0e5efcbde4ffeacb6069d8c539'  // BrowserRouter/StaticRouter split; before data-router refactor (pre-2026-05-01)
+    ],
+    force: false,
+    syncGroup: 'ssrMigration'
   },
   {
     file: 'src/components/CookieBanner.tsx',
@@ -90,7 +123,7 @@ const SYNC_MANIFEST = [
       '398cc701e5338594788187c0ac488712', // 0bd48df3b - FIX: Use ENV mode
       '89379a72aadeed8ac76dee704aabfd91', // main - WITH CookieBanner (pre-PR)
       '72c4eef20dcee8a90cd547b1a042ad70', // Before ScrollToTop - CookieBanner removed
-      '30cd7c8e19835b65cd9f05de1924bcd3'  // AIROBUILD-1478 - with custom ScrollToTop (superseded by ScrollRestoration)
+      '0d65cc5e501da40c7dc28ed173027125'  // #3311 (AIROBUILD-1478) - <ScrollRestoration />; template comment refreshed in SSR branch
     ],
     force: false,
     syncGroup: 'cookieBanner'
@@ -105,11 +138,17 @@ const SYNC_MANIFEST = [
   },
   {
     file: 'index.html',
+    // Intentionally NOT in syncGroup: 'ssrMigration'. Agents edit index.html
+    // frequently (e.g. <title>, favicon, analytics), so a customer-modified
+    // index.html would otherwise block the whole SSR group from syncing.
+    // The inject-ssr-markers migration handles modified-by-customer index.html
+    // separately; unmodified hashes here keep the template-sync path working.
     description: 'Main HTML file that loads the React app and analytics script',
     known_hashes: [
       '2b36ce7723f0a17d0a735b65079f3e7c', // 072cb636 - Before analytics was added
       '5a13fd960f9e484c4b92e2fc927518b3', // f482954c - Current version with refactored analytics
-      '03d2c6061dba1a2d61870ba1c9e3e406'  // Before import retry for transient Vite dep optimization errors
+      '03d2c6061dba1a2d61870ba1c9e3e406', // Before import retry for transient Vite dep optimization errors
+      '0b3e1d30a5b646e0fabfa7e657a582c9'  // before <!--app-head--> / <!--app-html--> SSR markers
     ],
     force: false
   },
@@ -117,7 +156,8 @@ const SYNC_MANIFEST = [
     file: 'tailwind.config.js',
     description: 'Tailwind configuration',
     known_hashes: [
-      'dc4000c310080b563197be98cf2069d8'  // Before dev-tools/src content path was added
+      'dc4000c310080b563197be98cf2069d8', // Before dev-tools/src content path was added
+      'f1a752489462cb9e7f63b4def57d22bb'  // ESM export with CommonJS require("tailwindcss-animate")
     ],
     force: false
   },
@@ -138,9 +178,11 @@ const SYNC_MANIFEST = [
       'c756114664418042ae7d4c2622ec6a24', // efb47df1 - mediaVersionsPlugin, before tscWatchPlugin
       'f7c0080a7b7a32e8fc84002ae4b478d5', // ed8aa444 (#2284) - tscWatchPlugin added, before extractHostname .host -> .hostname fix
       '3e9501608607628f08fd458d8831ecb8', // tscWatchPlugin, before extractHostname .host -> .hostname fix
-      '0cd4b63e3ebfaa63088ac218924a9e6f'  // before tscWatchPlugin removal (post-hook tsc migration)
+      '0cd4b63e3ebfaa63088ac218924a9e6f', // before tscWatchPlugin removal (post-hook tsc migration)
+      '641596ecb45dc0cfdcb2d49159b33cf6'  // before vite-plugin-api-routes removal and SSR build split
     ],
-    force: false
+    force: false,
+    syncGroup: 'ssrMigration'
   },
   {
     file: 'src/components/ui/sonner.tsx',
@@ -152,74 +194,169 @@ const SYNC_MANIFEST = [
   }
 ];
 
+function scanApiDir(apiDir) {
+  const results = [];
+  function walk(dir) {
+    let entries;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch (err) {
+      // A subdir deleted between the parent readdirSync and this call races
+      // to ENOENT. Mirrors the async guards in entry-api-sync.ts walk().
+      // Other errors (EACCES/EIO on a subtree) must propagate — silently
+      // omitting routes would make the regenerated entry.ts 404 them.
+      if (err && err.code === 'ENOENT') return;
+      throw err;
+    }
+    for (const entry of entries) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(full);
+        continue;
+      }
+      const ext = extname(entry.name);
+      if (ext !== '.ts' && ext !== '.js') continue;
+      const methodName = basename(entry.name, ext);
+      if (!METHOD_FILES.has(methodName)) continue;
+
+      const relDir = relative(apiDir, dirname(full));
+      const routePath = relDir === ''
+        ? '/'
+        : '/' + relDir.split(sep).map((seg) => seg.replace(/^\[(.+)\]$/, ':$1')).join('/');
+
+      const importPath = './api/' + (relDir === '' ? methodName : relDir.split(sep).join('/') + '/' + methodName);
+
+      results.push({
+        method: methodName.toLowerCase(),
+        path: routePath,
+        importPath,
+        methodName,
+        relDir,
+      });
+    }
+  }
+  walk(apiDir);
+  return sortRoutes(results);
+}
+
+function sortRoutes(routes) {
+  return routes.sort((a, b) => {
+    const aParts = a.path.split('/').filter(Boolean);
+    const bParts = b.path.split('/').filter(Boolean);
+    const len = Math.min(aParts.length, bParts.length);
+    for (let i = 0; i < len; i++) {
+      const aIsParam = aParts[i].startsWith(':');
+      const bIsParam = bParts[i].startsWith(':');
+      if (aIsParam !== bIsParam) return aIsParam ? 1 : -1;
+      const cmp = aParts[i].localeCompare(bParts[i]);
+      if (cmp !== 0) return cmp;
+    }
+    if (aParts.length !== bParts.length) return aParts.length - bParts.length;
+    return a.method.localeCompare(b.method);
+  });
+}
+
+function identifierFor(entry, index) {
+  const parts = entry.relDir === '' ? [] : entry.relDir.split(sep);
+  parts.push(entry.methodName.toLowerCase());
+  const base = parts
+    .map((s) => s.replace(/^\[(.+)\]$/, '$1').replace(/[^a-zA-Z0-9]/g, '_'))
+    .join('_');
+  // Underscore-prefix when the base starts with a digit — JS identifiers
+  // cannot start with a digit, so an API dir like src/server/api/2026/GET.ts
+  // would otherwise emit `import 2026_get_0` and break the bundle parse.
+  const safeBase = /^[0-9]/.test(base) ? `_${base}` : base;
+  return `${safeBase || 'route'}_${index}`;
+}
+
+function generateEntryApiBlocks(entries) {
+  if (entries.length === 0) {
+    return { imports: '', registrations: '' };
+  }
+  const imports = entries
+    .map((e, i) => `import ${identifierFor(e, i)} from ${JSON.stringify(e.importPath)};`)
+    .join('\n');
+  const registrations = entries
+    .map((e, i) => `app.${e.method}(${JSON.stringify('/api' + (e.path === '/' ? '' : e.path))}, ${identifierFor(e, i)});`)
+    .join('\n');
+  return { imports, registrations };
+}
+
+/**
+ * Returns true iff the customer app is fully migrated to SSR. Read-only,
+ * never throws. Used to gate HTML migrations (marker injection, stale
+ * <title> strip) which depend on SSR actually being wired end-to-end, not
+ * just the presence of one sentinel file.
+ */
+export function isSsrInstalled(customerDir) {
+  const entryPath = join(customerDir, 'src/server/entry.ts');
+  const entryServerPath = join(customerDir, 'src/entry-server.tsx');
+  const pkgPath = join(customerDir, 'package.json');
+  const configurePath = join(customerDir, 'src/server/configure.js');
+
+  if (!existsSync(entryServerPath)) return false;
+  if (!existsSync(entryPath)) return false;
+  if (existsSync(configurePath)) return false;
+
+  try {
+    const entry = readFileSync(entryPath, 'utf8');
+    if (!/\/\/ <api-imports>[\s\S]*?\/\/ <\/api-imports>/.test(entry)) return false;
+    if (!/\/\/ <api-registrations>[\s\S]*?\/\/ <\/api-registrations>/.test(entry)) return false;
+
+    const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
+    if (!pkg.scripts?.build?.includes('--ssr')) return false;
+    if (pkg.dependencies?.['vite-plugin-api-routes']) return false;
+    if (pkg.devDependencies?.['vite-plugin-api-routes']) return false;
+  } catch (err) {
+    // ENOENT on pkgPath is a legitimate "not installed" state — entry.ts
+    // exists but package.json doesn't. Silent false for that case.
+    // Everything else (EACCES/EIO, JSON parse failure, EISDIR) is
+    // unexpected; emit a structured event so Loki surfaces the root
+    // cause instead of downstream HTML migrations silently skipping
+    // with no indication why.
+    if (!err || err.code !== 'ENOENT') {
+      // console.error (not warn) — EACCES / EIO / corrupt package.json has
+      // no self-healing path and blocks downstream HTML migrations. Alert
+      // rules filtering on level=error would miss a warn.
+      console.error(JSON.stringify({
+        event: 'isSsrInstalled.read-error',
+        code: err && err.code ? err.code : undefined,
+        error: err instanceof Error ? err.message : String(err),
+      }));
+    }
+    return false;
+  }
+
+  return true;
+}
+
 /**
  * Migrations run targeted transforms on specific files rather than hash-based
  * whole-file replacement. Each migration has an `id` (for logging) and a `run`
  * function that receives the customer app directory and the set of files that
  * were synced (so migrations can gate on prerequisite syncs).
+ *
+ * Return contract (see plan §6):
+ * - 'applied' (or undefined) — body completed its primary work plan (writes,
+ *   no-ops on already-converged state, or safe partial writes on customized
+ *   paths where the core deliverable still landed).
+ * - 'skipped' — migration's primary deliverable could not run (precondition
+ *   not met, or a prerequisite file missing). Minor idempotent writes may
+ *   still have landed, but the core work was omitted — operators reading
+ *   migration.<id>.skipped in Loki know this migration did not achieve its
+ *   SSR-install goal this run.
+ * - throw — filesystem errors, JSON parse errors mid-rewrite, unexpected
+ *   state. Propagates out of runMigrations, aborts sync-template-files.js
+ *   with a non-zero exit, nomad_setup.sh's set -e skips the commit, and
+ *   the next restart's git reset --hard discards the partial working tree.
  */
-const MIGRATIONS = [
-  {
-    id: 'remove-bundle-js-build-step',
-    description: 'Remove redundant bundle.js from build pipeline',
-    run(customerDir, syncedFiles) {
-      // Only safe to remove the old bundle step if both:
-      // 1. vite.config.ts was synced (contains the replacement serverBundlePlugin)
-      // 2. src/server/configure.js was synced (uses import.meta.url for __dirname)
-      // The old bundle.js patched express.static("client") → __dirname-based path at
-      // build time. The new configure.js resolves paths via import.meta.url instead
-      // (works natively in the ESM bundle). Without both, removing bundle.js would
-      // break static file serving in production.
-      const required = ['vite.config.ts', 'src/server/configure.js'];
-      const missing = required.filter(f => !syncedFiles.has(f));
-      if (missing.length > 0) {
-        console.log(`  ⏭️  Skipping: ${missing.join(', ')} not synced (customer modified), removing bundle.js would break the build`);
-        return;
-      }
-      // 1. Patch package.json build script first (can fail on JSON parse),
-      //    before deleting bundle.js — avoids leaving a broken build script
-      //    referencing a deleted file.
-      const pkgPath = join(customerDir, 'package.json');
-      if (existsSync(pkgPath)) {
-        const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
-        let changed = false;
-
-        if (pkg.scripts?.build) {
-          const updated = pkg.scripts.build.replace(/\s*&&\s*node\s+bundle\.js\s*/g, '').trim();
-          if (updated !== pkg.scripts.build) {
-            pkg.scripts.build = updated;
-            changed = true;
-          }
-        }
-        if (pkg.scripts?.bundle) {
-          delete pkg.scripts.bundle;
-          changed = true;
-        }
-        if (pkg.scripts?.['build:vite'] && pkg.scripts?.build === pkg.scripts['build:vite']) {
-          delete pkg.scripts['build:vite'];
-          changed = true;
-        }
-
-        if (changed) {
-          writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n', 'utf8');
-          console.log('  Patched package.json build scripts');
-        }
-      }
-
-      // 2. Delete bundle.js after package.json is safely updated
-      const bundlePath = join(customerDir, 'bundle.js');
-      if (existsSync(bundlePath)) {
-        unlinkSync(bundlePath);
-        console.log('  Deleted bundle.js');
-      }
-    }
-  },
+export const MIGRATIONS = [
   {
     id: 'remove-public-assets-gitignore',
     description: 'Remove public/assets from .gitignore so uploaded assets are tracked in git',
     run(customerDir, _syncedFiles) {
       const gitignorePath = join(customerDir, '.gitignore');
-      if (!existsSync(gitignorePath)) return;
+      if (!existsSync(gitignorePath)) return 'skipped';
 
       const content = readFileSync(gitignorePath, 'utf8');
       // Remove the "# Public Assets" comment and "public/assets" entry independently
@@ -233,6 +370,283 @@ const MIGRATIONS = [
         writeFileSync(gitignorePath, updated, 'utf8');
         console.log('  Removed public/assets from .gitignore');
       }
+
+      return 'applied';
+    }
+  },
+  {
+    id: 'migrate-to-ssr-entry',
+    description: 'Generate src/server/entry.ts API registrations, drop vite-plugin-api-routes/esbuild, delete configure.js',
+    run(customerDir, _syncedFiles) {
+      const entryPath = join(customerDir, 'src/server/entry.ts');
+      const apiDir = join(customerDir, 'src/server/api');
+      const entryServerPath = join(customerDir, 'src/entry-server.tsx');
+
+      // SSR foundation must exist on disk before we touch any of the other
+      // files. entry-server.tsx is the render entry that entry.ts imports at
+      // runtime - without it the SSR branch will always throw.
+      if (!existsSync(entryServerPath)) {
+        console.log('  ⏭️  src/entry-server.tsx not present (SSR foundation not in place)');
+        return 'skipped';
+      }
+      if (!existsSync(entryPath) || !existsSync(apiDir)) {
+        console.log('  ⏭️  src/server/entry.ts or src/server/api not present');
+        return 'skipped';
+      }
+
+      // 1. entry.ts API registrations. Idempotent: marked-block shape is
+      // detected and rewritten in place; bare template shape is upgraded;
+      // anything else (customer-modified) is left alone.
+      let entryHasMarkers = false;
+      const entries = scanApiDir(apiDir);
+      const content = readFileSync(entryPath, 'utf8');
+      const markedImportRe = /\/\/ <api-imports>[\s\S]*?\/\/ <\/api-imports>/;
+      const markedRegRe = /\/\/ <api-registrations>[\s\S]*?\/\/ <\/api-registrations>/;
+      const bareImportRe = /import healthGet from "\.\/api\/health\/GET";/;
+      const bareRegRe = /app\.get\("\/api\/health", healthGet\);/;
+      const alreadyMarked = markedImportRe.test(content) && markedRegRe.test(content);
+      const bareTemplate = bareImportRe.test(content) && bareRegRe.test(content);
+
+      if (alreadyMarked) {
+        // Always rewrite: resyncs marked blocks to the current api dir, which
+        // also zeros them out when the dir is empty. Prevents stale imports to
+        // deleted handlers from surviving — isSsrInstalled() can then trust
+        // marker presence without verifying import resolvability.
+        const { imports, registrations } = generateEntryApiBlocks(entries);
+        const importBlock = `// <api-imports>\n${imports}\n// </api-imports>`;
+        const regBlock = `// <api-registrations>\n${registrations}\n// </api-registrations>`;
+        const updated = content.replace(markedImportRe, importBlock).replace(markedRegRe, regBlock);
+        if (updated !== content) {
+          writeFileSync(entryPath, updated, 'utf8');
+          console.log(`  Regenerated ${entries.length} API registration(s) in src/server/entry.ts`);
+        }
+        entryHasMarkers = true;
+      } else if (bareTemplate) {
+        if (entries.length === 0) {
+          // Rewriting bare → marked with no routes would drop the health
+          // import and leave entry.ts unrunnable.
+          console.log('  No API handlers found in src/server/api; leaving bare entry.ts untouched');
+          return 'skipped';
+        }
+        const { imports, registrations } = generateEntryApiBlocks(entries);
+        const importBlock = `// <api-imports>\n${imports}\n// </api-imports>`;
+        const regBlock = `// <api-registrations>\n${registrations}\n// </api-registrations>`;
+        const updated = content.replace(bareImportRe, importBlock).replace(bareRegRe, regBlock);
+        if (updated !== content) {
+          writeFileSync(entryPath, updated, 'utf8');
+          console.log(`  Generated ${entries.length} API registration(s) in src/server/entry.ts`);
+        }
+        entryHasMarkers = true;
+      } else {
+        console.log('  entry.ts does not match expected template markers; leaving as-is');
+        return 'skipped';
+      }
+
+      // 2. package.json cleanup + SSR build script. Runs whenever entry.ts
+      // is in marked state, so a partial-crash where step 1 landed but step 2
+      // didn't will self-heal on the next restart. Each inspection is
+      // idempotent (checking for presence before removal / rewrite).
+      let buildHasSsr = false;
+      if (entryHasMarkers) {
+        const pkgPath = join(customerDir, 'package.json');
+        if (existsSync(pkgPath)) {
+          const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
+          let changed = false;
+
+          if (pkg.dependencies && 'vite-plugin-api-routes' in pkg.dependencies) {
+            delete pkg.dependencies['vite-plugin-api-routes'];
+            changed = true;
+            console.log('  Removed dependencies.vite-plugin-api-routes');
+          }
+          if (pkg.devDependencies && 'vite-plugin-api-routes' in pkg.devDependencies) {
+            delete pkg.devDependencies['vite-plugin-api-routes'];
+            changed = true;
+            console.log('  Removed devDependencies.vite-plugin-api-routes');
+          }
+          if (pkg.devDependencies && 'esbuild' in pkg.devDependencies) {
+            delete pkg.devDependencies.esbuild;
+            changed = true;
+            console.log('  Removed devDependencies.esbuild');
+          }
+          if (pkg.scripts && 'bundle' in pkg.scripts) {
+            // Only strip the legacy `node bundle.js` / `node dist/bundle.js`
+            // step. A customer / agent may have repurposed the `bundle` key
+            // for unrelated tooling (e.g. "webpack --config webpack.prod.js"
+            // or "node src/bundle/index.js"); deleting that would silently
+            // destroy their build. Anchor to the exact legacy forms — a
+            // `\bnode\b.*\bbundle\b` pattern false-positive-matches paths
+            // like `src/bundle/index.js` because `/` is a word boundary.
+            if (/^node\s+(?:\.\/)?(?:dist\/)?bundle(?:\.js)?$/.test(pkg.scripts.bundle.trim())) {
+              delete pkg.scripts.bundle;
+              changed = true;
+              console.log('  Removed scripts.bundle (legacy node bundle.js step)');
+            } else {
+              console.log(`  ⚠️  scripts.bundle is customised (${pkg.scripts.bundle}); leaving as-is`);
+            }
+          }
+          if (
+            pkg.scripts &&
+            'build:vite' in pkg.scripts &&
+            pkg.scripts['build:vite'] === pkg.scripts.build
+          ) {
+            delete pkg.scripts['build:vite'];
+            changed = true;
+            console.log('  Removed redundant scripts["build:vite"]');
+          }
+
+          const build = pkg.scripts?.build;
+          if (build) {
+            if (!build.includes('--ssr')) {
+              // Normalize legacy pipelines like `vite build && node bundle.js`
+              // or `vite build && node dist/bundle.js`. Only replace when the
+              // result is exactly `vite build` - anything else is customized
+              // and must be left alone so we don't clobber customer logic.
+              const normalized = build
+                .replace(/&&\s*node\s+bundle(?:\.js)?\s*/g, '')
+                .replace(/&&\s*node\s+dist\/bundle(?:\.js)?\s*/g, '')
+                .trim()
+                .replace(/\s*&&\s*$/, '');
+              if (normalized === 'vite build') {
+                // Land --ssr unconditionally: a legacy App.tsx (e.g.
+                // module-top-level createBrowserRouter) will crashloop the
+                // publish container on SSR bundle import, but the develop
+                // agent can diagnose and rewrite App.tsx on demand. Gating
+                // --ssr on App.tsx shape here would leave variants we
+                // don't auto-rewrite (stripe-skilled apps with
+                // CartProvider etc.) on CSR indefinitely with no forcing
+                // function. Preferring loud, fixable failure over silent
+                // stagnation.
+                pkg.scripts.build = 'vite build && vite build --ssr src/server/entry.ts';
+                changed = true;
+                console.log('  Updated scripts.build to include SSR build');
+              } else {
+                // Customized pipeline: dep cleanup above still ran (safe
+                // regardless of build pipeline). Build script + configure.js
+                // are preserved. isSsrInstalled() will return false and
+                // downstream HTML migrations will correctly skip.
+                console.log(`  ⚠️  scripts.build is customized (${build}); leaving as-is`);
+              }
+            }
+          }
+
+          if (changed) {
+            writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n', 'utf8');
+          }
+          if (pkg.scripts?.build?.includes('--ssr')) {
+            buildHasSsr = true;
+          }
+        } else {
+          // Step 1 (entry.ts rewrite) landed, but the migration's primary
+          // deliverable — dep cleanup, SSR build-script, configure.js /
+          // bundle.js unlink — can't run without package.json. Return
+          // 'skipped' so the emitted event reflects that the core work
+          // didn't complete, rather than 'applied' which reads as success.
+          console.log('  ⚠️  package.json not found; skipping dep-cleanup and build-script steps');
+          return 'skipped';
+        }
+      }
+
+      // 3. Delete obsolete legacy build artefacts. Only safe once the build
+      // script actually produces an SSR bundle - deleting them while
+      // scripts.build is still a legacy pipeline that references them would
+      // leave the app with a broken build, not just unused files.
+      //   - configure.js: replaced by entry.ts (uses import.meta.url for paths)
+      //   - bundle.js: legacy post-build esbuild step, superseded by vite
+      //     build --ssr. Build-script normalisation above already strips
+      //     `&& node bundle.js` from scripts.build.
+      if (entryHasMarkers && buildHasSsr) {
+        const configurePath = join(customerDir, 'src/server/configure.js');
+        if (existsSync(configurePath)) {
+          unlinkSync(configurePath);
+          console.log('  Deleted src/server/configure.js');
+        }
+        const bundlePath = join(customerDir, 'bundle.js');
+        if (existsSync(bundlePath)) {
+          unlinkSync(bundlePath);
+          console.log('  Deleted bundle.js');
+        }
+      }
+
+      return 'applied';
+    }
+  },
+  {
+    id: 'inject-ssr-markers',
+    description: 'Inject <!--app-head--> and <!--app-html--> into customer-modified index.html',
+    run(customerDir, syncedFiles) {
+      if (syncedFiles.has('index.html')) return 'skipped';
+      const htmlPath = join(customerDir, 'index.html');
+      if (!existsSync(htmlPath)) return 'skipped';
+
+      // Don't inject markers when SSR isn't fully installed — otherwise an
+      // app whose ssrMigration sync group was blocked (e.g. customer-modified
+      // vite.config.ts) or whose migrate-to-ssr-entry took the customized-
+      // build branch ends up with dead marker comments that no server ever
+      // replaces, and later agent edits of index.html get confused by them.
+      if (!isSsrInstalled(customerDir)) {
+        console.log('  ⏭️  SSR not installed; skipping marker injection');
+        return 'skipped';
+      }
+
+      const original = readFileSync(htmlPath, 'utf8');
+      const hasHead = original.includes('<!--app-head-->');
+      const hasHtml = original.includes('<!--app-html-->');
+      if (hasHead && hasHtml) {
+        return 'applied';
+      }
+
+      const appDivRe = /<div id="app"([^>]*)><\/div>/;
+      if (!hasHtml && !appDivRe.test(original)) {
+        console.log('  ⚠️  Could not locate empty <div id="app"></div>; skipping both markers (ambiguous)');
+        return 'skipped';
+      }
+
+      let updated = original;
+      if (!hasHead) {
+        const headCloseIdx = updated.indexOf('</head>');
+        if (headCloseIdx < 0) {
+          console.log('  ⚠️  No </head> found; skipping injection (ambiguous)');
+          return 'skipped';
+        }
+        updated = updated.slice(0, headCloseIdx) + '<!--app-head-->' + updated.slice(headCloseIdx);
+      }
+      if (!hasHtml) {
+        updated = updated.replace(appDivRe, '<div id="app"$1><!--app-html--></div>');
+      }
+
+      if (updated !== original) {
+        writeFileSync(htmlPath, updated, 'utf8');
+        console.log('  Injected SSR markers into index.html');
+      }
+
+      return 'applied';
+    }
+  },
+  {
+    id: 'strip-stale-index-title',
+    description: 'Strip bare <title> from customer index.html once SSR + Helmet own head metadata',
+    run(customerDir, _syncedFiles) {
+      const htmlPath = join(customerDir, 'index.html');
+      if (!existsSync(htmlPath)) return 'skipped';
+
+      // Gate on SSR being fully installed. Without SSR wired end-to-end,
+      // Helmet isn't driving the head and stripping the static <title>
+      // would leave the page titleless.
+      if (!isSsrInstalled(customerDir)) return 'skipped';
+
+      const original = readFileSync(htmlPath, 'utf8');
+      if (!original.includes('<!--app-head-->')) return 'skipped';
+
+      const titleRe = /[ \t]*<title(?:\s[^>]*)?>[\s\S]*?<\/title>\r?\n?/i;
+      if (!titleRe.test(original)) return 'skipped';
+
+      const updated = original.replace(titleRe, '');
+      if (updated !== original) {
+        writeFileSync(htmlPath, updated, 'utf8');
+        console.log('  Stripped stale <title> from index.html (Helmet owns <head>)');
+      }
+
+      return 'applied';
     }
   }
 ];
@@ -298,17 +712,36 @@ function computeWouldSync(baseDir, customerDir) {
   return { wouldSync, baseContents };
 }
 
-function runMigrations(customerDir, syncedFiles) {
+export function runMigrations(customerDir, syncedFiles) {
   console.log('');
   console.log('=== Running Migrations ===');
 
   for (const migration of MIGRATIONS) {
     console.log(`Migration: ${migration.id} — ${migration.description}`);
+    const start = Date.now();
+    let status;
     try {
-      migration.run(customerDir, syncedFiles);
+      status = migration.run(customerDir, syncedFiles) === 'skipped' ? 'skipped' : 'applied';
     } catch (error) {
-      console.error(`  ⚠️  Migration failed: ${error.message}`);
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      // Failure event goes to stderr so Loki / Docker log drivers that split
+      // streams at transport level route it to the error stream alongside the
+      // raw stack emitted by the outer catch. stdout would drop it onto the
+      // success channel where dashboards keyed on migrationId/durationMs
+      // wouldn't surface it.
+      console.error(JSON.stringify({
+        event: `migration.${migration.id}.failed`,
+        migrationId: migration.id,
+        durationMs: Date.now() - start,
+        error: errorMsg,
+      }));
+      throw error;
     }
+    console.log(JSON.stringify({
+      event: `migration.${migration.id}.${status}`,
+      migrationId: migration.id,
+      durationMs: Date.now() - start,
+    }));
   }
 }
 
@@ -396,22 +829,29 @@ function sync(baseDir, customerDir) {
   console.log(`Skipped: ${skipped}`);
 }
 
-// Main
-const args = process.argv.slice(2);
+// Main - only run when executed directly (not when imported by tests)
+const isEntrypoint = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
 
-if (args.length !== 2) {
-  console.error('Usage: node sync-template-files.js <base-app-dir> <customer-app-dir>');
-  console.error('');
-  console.error('Example:');
-  console.error('  node sync-template-files.js /base-app /customer-app');
-  process.exit(1);
-}
+if (isEntrypoint) {
+  const args = process.argv.slice(2);
 
-const [baseDir, customerDir] = args;
+  if (args.length !== 2) {
+    console.error('Usage: node sync-template-files.js <base-app-dir> <customer-app-dir>');
+    console.error('');
+    console.error('Example:');
+    console.error('  node sync-template-files.js /base-app /customer-app');
+    process.exit(1);
+  }
 
-try {
-  sync(baseDir, customerDir);
-} catch (error) {
-  console.error('❌ Error:', error.message);
-  process.exit(1);
+  const [baseDir, customerDir] = args;
+
+  try {
+    sync(baseDir, customerDir);
+  } catch (error) {
+    // Pass the Error object so Node formats the full stack, not just the
+    // message - the migration.<id>.failed event already captures the
+    // message; the stack is what points ops at the failing line.
+    console.error('Error in sync-template-files:', error);
+    process.exit(1);
+  }
 }

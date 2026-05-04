@@ -1,7 +1,13 @@
 ---
 name: seo
-description: Intelligent SEO analysis and optimization for websites
-whenToUse: User wants to improve search engine visibility or SEO. Phrases like "optimize SEO", "improve search rankings", "help with SEO", "check my SEO", "meta tags", "get found on Google", "search visibility", "sitemap", "SEO audit".
+description: SEO analysis, optimization, and v8 implementation patterns (react-helmet, JSON-LD, sitemap)
+whenToUse: >-
+  User wants SEO work - analysis, optimization, OR implementation.
+  Phrases: "optimize SEO", "improve search rankings", "help with SEO", "check my SEO",
+  "meta tags", "structured data", "JSON-LD", "schema.org", "react-helmet", "Helmet",
+  "og:title", "canonical", "get found on Google", "search visibility", "sitemap", "SEO audit".
+  ALSO load this skill when adding a new page/route to a v8 app (the agent is expected
+  to set head tags and register the route in seo-routes.ts).
 ---
 
 # SEO Analysis & Optimization Skill
@@ -318,7 +324,8 @@ await readFile({ path: 'src/app/page.tsx' });
 - If pages export a `metadata` object → Follow that pattern (likely Next.js app router)
 - If pages use `<Head>` from `next/head` → Follow that pattern (likely Next.js pages router)
 - If pages export a `meta` function → Follow that pattern (likely Remix)
-- If pages use `<Helmet>` from react-helmet-async → Follow that pattern
+- If pages use `<Helmet>` from `@dr.pogodin/react-helmet` → v8 SSR template, see the "Implementing SEO in the v8 Template" section below
+- If pages use `<Helmet>` from `react-helmet-async` or legacy `react-helmet` → Follow that pattern
 - If NO pattern exists → Choose the idiomatic approach for the framework
 
 ### Decision Criteria:
@@ -354,16 +361,19 @@ await readFile({ path: 'src/app/page.tsx' });
 
 If the app has NO existing metadata implementation, you'll need to set one up:
 
-1. **Check if a metadata library is already installed:**
+1. **If it's a v8 template app** (check for `@dr.pogodin/react-helmet` in package.json, `src/entry-server.tsx`, or `src/server/entry.ts`):
+   follow the "Implementing SEO in the v8 Template" section below. This is the path for all new Airo apps.
 
-Look for: `react-helmet-async`, `react-helmet`, or framework-specific packages in package.json.
+2. **Otherwise, check if a metadata library is already installed:**
 
-2. **If a library exists but isn't used:**
+Look for: `@dr.pogodin/react-helmet`, `react-helmet-async`, `react-helmet`, or framework-specific packages in package.json.
+
+3. **If a library exists but isn't used:**
    - Use that library (it was installed for a reason)
    - Search for setup/provider code that might exist
    - Follow the library's patterns
 
-3. **If no library exists:**
+4. **If no library exists:**
    - Check package.json for the framework
    - Search online documentation for that framework's recommended SEO approach
    - Install dependencies only if the framework doesn't have built-in SEO support
@@ -373,7 +383,7 @@ Look for: `react-helmet-async`, `react-helmet`, or framework-specific packages i
 
 ```javascript
 // If you see "next": "^14.0.0" in package.json → Next.js likely has built-in metadata
-// If you see "react": "^18.0.0" and "vite": "^5.0.0" → Might need react-helmet-async
+// If you see "@dr.pogodin/react-helmet" in dependencies → v8 SSR template, use the pattern in the v8 section below
 // If you see "react-helmet-async" in dependencies → Use that (already installed)
 
 // Search for any setup that might exist
@@ -438,3 +448,127 @@ Keep responses focused and actionable:
 ## Remember
 
 SEO is not just about keywords and meta tags - it's about understanding the business, the audience, and creating content that genuinely serves users while being discoverable by search engines. Every optimization should make the site better for real people, not just search bots.
+
+---
+
+# Implementing SEO in the v8 Template
+
+The v8 template renders every page on the server. Crawlers receive fully-rendered HTML with head already populated. Every page must set its own head tags and structured data through `@dr.pogodin/react-helmet`.
+
+## 1. Head management with react-helmet
+
+Every page MUST set, via `<Helmet>`:
+
+- `<title>` - unique, <= 60 chars
+- `<meta name="description">` - unique, <= 160 chars
+- `<link rel="canonical">` - absolute URL for the current route
+- Open Graph: `og:title`, `og:description`, `og:image`, `og:url`, `og:type`
+- `<meta name="twitter:card" content="summary_large_image">`
+
+Titles and descriptions MUST be specific to the page. Never copy the home page title onto other pages.
+
+```tsx
+import { Helmet } from '@dr.pogodin/react-helmet';
+
+export default function AboutPage() {
+  return (
+    <>
+      <Helmet>
+        <title>About - Acme Consulting</title>
+        <meta name="description" content="Meet the team behind Acme Consulting..." />
+        <link rel="canonical" href="https://acme.example/about" />
+        <meta property="og:title" content="About - Acme Consulting" />
+        <meta property="og:description" content="Meet the team behind Acme Consulting..." />
+        <meta property="og:image" content="https://acme.example/og-about.jpg" />
+        <meta property="og:url" content="https://acme.example/about" />
+        <meta property="og:type" content="website" />
+        <meta name="twitter:card" content="summary_large_image" />
+      </Helmet>
+      <section>{/* page content */}</section>
+    </>
+  );
+}
+```
+
+## 2. JSON-LD structured data
+
+Inject JSON-LD inside `<Helmet>`. Always wrap the object with `JSON.stringify` - never handwrite the JSON string.
+
+```tsx
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Organization',
+  name: 'Acme Consulting',
+  url: 'https://acme.example',
+  logo: 'https://acme.example/logo.png',
+};
+
+<Helmet>
+  <script type="application/ld+json">{JSON.stringify(jsonLd)}</script>
+</Helmet>
+```
+
+### Schema types
+
+| @type            | Use on                                                   |
+| ---------------- | -------------------------------------------------------- |
+| `Person`         | Personal portfolio or author pages                       |
+| `Organization`   | Company home page                                        |
+| `WebSite`        | Site root (add `potentialAction` if the site has search) |
+| `Article`        | News or editorial article                                |
+| `BlogPosting`    | Blog post (prefer over `Article` for blogs)              |
+| `Product`        | E-commerce product page                                  |
+| `FAQPage`        | Pages with Q&A content                                   |
+| `LocalBusiness`  | Physical location-based business                         |
+| `BreadcrumbList` | Deep pages - add alongside the page-specific schema      |
+
+Pick the appropriate `@type` and fill required properties per schema.org. Keep the JSON-LD block minimal and accurate - don't invent data the business doesn't have.
+
+## 3. Image hygiene
+
+- Every `<img>` MUST have explicit `width` and `height` (prevents CLS)
+- Every `<img>` MUST have descriptive `alt` (not the filename)
+- LCP image: `fetchpriority="high"`, default `loading="eager"`
+- Below-the-fold: `loading="lazy"`
+- Prefer WebP when available
+- `alt=""` only for purely decorative images
+
+## 4. Semantic HTML
+
+- Exactly ONE `<h1>` per page, aligned with `<Helmet>` `<title>`
+- Use `<header>`, `<nav>`, `<main>`, `<section>`, `<article>`, `<aside>`, `<footer>`
+- Heading levels nest correctly - don't skip `<h1>` to `<h4>`
+
+## 5. Sitemap and robots.txt
+
+The template serves `/sitemap.xml` and `/robots.txt` automatically from `src/server/entry.ts`.
+
+- `src/lib/seo-routes.ts` is the agent-editable registry. Add an entry for every new publicly-crawlable page.
+- `sitemap.xml` is generated at request time from this registry.
+- `robots.txt` is auto-generated and references `/sitemap.xml`. Do NOT create a `robots.txt` file.
+- Base URL comes from the request, or from `PUBLIC_URL` / `SITE_URL` env vars.
+- Do NOT list dev-only or auth-required routes.
+- Do NOT add raw parameterized routes like `/products/:id`. Enumerate real values or skip.
+
+Example: after creating `src/pages/about.tsx` at route `/about`:
+
+```ts
+{ path: "/about", changefreq: "monthly", priority: 0.8 }
+```
+
+## 6. v8 implementation checklist
+
+The advisory post-publish validator (`SeoValidator`) fetches the published URL and
+checks a subset of these items. Items it checks are marked (validator). Other items
+require manual verification — the validator will not complain if they are missing.
+
+- [ ] Unique `<title>` via `<Helmet>` per page (validator)
+- [ ] Unique `<meta name="description">` per page (validator)
+- [ ] `<link rel="canonical">` per page (validator)
+- [ ] `og:title` (validator), `og:description` (validator), `og:image` (validator), `og:url`, `og:type` set
+- [ ] `twitter:card` = `summary_large_image`
+- [ ] At least one valid JSON-LD block with an appropriate `@type` (validator)
+- [ ] Exactly one `<h1>` matching page intent (validator)
+- [ ] All `<img>` have `width`, `height`, descriptive `alt`
+- [ ] LCP image has `fetchpriority="high"`; below-fold images have `loading="lazy"`
+- [ ] New public pages added to `src/lib/seo-routes.ts`

@@ -324,6 +324,81 @@ dependencies:
     });
   });
 
+  describe('#installTemplates', function installTemplatesTests() {
+    let tool: SkillLoaderTool;
+    let tempDir: string;
+    let skillsDir: string;
+    let appDir: string;
+
+    beforeEach(async () => {
+      tool = new SkillLoaderTool();
+      tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'skill-install-test-'));
+      skillsDir = path.join(tempDir, 'skills');
+      appDir = path.join(tempDir, 'app');
+      await fs.mkdir(skillsDir, { recursive: true });
+      await fs.mkdir(path.join(appDir, 'src/server/api/health'), { recursive: true });
+      (tool as any).skillsDir = skillsDir;
+
+      await fs.writeFile(
+        path.join(appDir, 'src/server/entry.ts'),
+        `import express from "express";
+import healthGet from "./api/health/GET";
+
+const app = express();
+app.get("/api/health", healthGet);
+export default app;
+`,
+        'utf8',
+      );
+      await fs.writeFile(
+        path.join(appDir, 'src/server/api/health/GET.ts'),
+        'export default function healthGet() {}\n',
+        'utf8',
+      );
+    });
+
+    afterEach(async () => {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    });
+
+    async function createSkillWithTemplate(skillName: string, templatePath: string, content: string): Promise<void> {
+      const skillDir = path.join(skillsDir, skillName);
+      await fs.mkdir(path.join(skillDir, 'templates', path.dirname(templatePath)), { recursive: true });
+      await fs.writeFile(
+        path.join(skillDir, 'skill.md'),
+        `---
+name: ${skillName}
+description: Test skill
+---
+# Test Skill
+`,
+        'utf8',
+      );
+      await fs.writeFile(path.join(skillDir, 'templates', templatePath), content, 'utf8');
+    }
+
+    it('regenerates entry.ts when a skill installs a root-level API route', async function rootApiRoute() {
+      await createSkillWithTemplate(
+        'root-api',
+        'server/api/GET.ts',
+        'export default function rootGet() {}\n',
+      );
+
+      const result = await tool.installTemplates({
+        skill: 'root-api',
+        appPath: appDir,
+        appId: 'test-app',
+      });
+
+      expect(result.success).toBe(true);
+      const entry = await fs.readFile(path.join(appDir, 'src/server/entry.ts'), 'utf8');
+      expect(entry).toContain('import get_0 from "./api/GET";');
+      expect(entry).toContain('import health_get_1 from "./api/health/GET";');
+      expect(entry).toContain('app.get("/api", get_0);');
+      expect(entry).toContain('app.get("/api/health", health_get_1);');
+    });
+  });
+
   describe('#listSkills whenToUse', function listSkillsTests() {
     let tool: SkillLoaderTool;
     let tempDir: string;

@@ -186,7 +186,10 @@ if [ -f "$CUSTOMER_APP_DIR/.git/config" ]; then
         git add package-lock.json && git commit -m "Update package-lock.json $(date +%s)" || true
     fi
 
-    # Sync upstream dev-tools and airo-secrets from base app template
+    # Sync upstream dev-tools, source-mapper, and airo-secrets from base app template.
+    # These are agent-invisible internal tooling; always overwrite so template
+    # fixes (e.g. #3115's unused JSXAttribute import) propagate without per-file
+    # hash gating.
     log_step "Syncing dev-tools, source-mapper, and airo-secrets with rsync..."
     rsync -a --delete "$BASE_APP_DIR/dev-tools/" "$CUSTOMER_APP_DIR/dev-tools/"
     rsync -a --delete "$BASE_APP_DIR/source-mapper/" "$CUSTOMER_APP_DIR/source-mapper/"

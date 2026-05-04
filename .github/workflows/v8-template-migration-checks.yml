@@ -1,0 +1,109 @@
+name: V8 Template Migration Checks
+
+on:
+  pull_request:
+    branches: [main, develop]
+    types: [opened, synchronize, reopened]
+    paths:
+      - "app-templates/v8/**"
+      - "container-scripts/preview/sync-package-additions.js"
+      - "container-scripts/preview/sync-template-files.js"
+      - "container-scripts/preview/package.json"
+      - "container-scripts/preview/nomad_setup.sh"
+      - "agents/src/utils/__tests__/sync-migrations.integration.test.ts"
+      - "scripts/smoke-v8-template-migration.mjs"
+      - ".github/workflows/v8-template-migration-checks.yml"
+  push:
+    branches: [main]
+    paths:
+      - "app-templates/v8/**"
+      - "container-scripts/preview/sync-package-additions.js"
+      - "container-scripts/preview/sync-template-files.js"
+      - "container-scripts/preview/package.json"
+      - "container-scripts/preview/nomad_setup.sh"
+      - "agents/src/utils/__tests__/sync-migrations.integration.test.ts"
+      - "scripts/smoke-v8-template-migration.mjs"
+      - ".github/workflows/v8-template-migration-checks.yml"
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  v8-template-migration-checks:
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup Artifactory and Node.js
+        id: setup
+        uses: jfrog/setup-jfrog-cli@1641575d87647fb969c0545f0b6a76873e328b7c
+        env:
+          JF_URL: ${{ vars.JF_URL }}
+        with:
+          oidc-provider-name: github
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v6.3.0
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: app-templates/v8/package-lock.json
+
+      - name: Enable Corepack and configure pnpm
+        env:
+          OIDC_TOKEN: ${{ steps.setup.outputs.oidc-token }}
+        run: |
+          echo "::add-mask::$OIDC_TOKEN"
+
+          npm install -g corepack@latest
+          corepack enable
+
+          EXPECTED_VERSION=$(node -p "
+            const pkg = require('./package.json');
+            const pm = pkg.packageManager || '';
+            const match = pm.match(/^pnpm@(.+?)(\+|$)/);
+            if (!match) {
+              console.error('ERROR: Could not parse packageManager field:', pm);
+              process.exit(1);
+            }
+            match[1];
+          ")
+
+          corepack prepare "pnpm@${EXPECTED_VERSION}" --activate
+          ACTUAL_VERSION=$(pnpm --version)
+
+          if [ "$ACTUAL_VERSION" != "$EXPECTED_VERSION" ]; then
+            echo "ERROR: pnpm version mismatch!"
+            echo "Expected: $EXPECTED_VERSION"
+            echo "Actual: $ACTUAL_VERSION"
+            exit 1
+          fi
+          echo "pnpm version $ACTUAL_VERSION matches expected version"
+
+          echo "registry=https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/" > .npmrc
+          echo "//gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/:_authToken=${OIDC_TOKEN}" >> .npmrc
+          echo "//gdartifactory1.jfrog.io/artifactory/api/npm/npm-gasket-core-local/:_authToken=${OIDC_TOKEN}" >> .npmrc
+
+      - name: Cache pnpm store
+        uses: actions/cache@v5.0.5
+        with:
+          path: ~/.local/share/pnpm/store
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-store-${{ runner.os }}-
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run sync migration integration tests
+        run: pnpm --filter @airo/agents test:integration sync-migrations.integration.test.ts
+
+      - name: Smoke test migrated origin/main v8 template build
+        run: node scripts/smoke-v8-template-migration.mjs

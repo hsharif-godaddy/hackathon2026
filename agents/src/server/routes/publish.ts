@@ -12,6 +12,7 @@ import { validateAppOwnership } from '../middleware/app-ownership.js';
 import { getPublishStrategy, BuildError, PreviewNotRunningError } from './publish/strategies/index.js';
 import type { PublishContext } from './publish/strategies/index.js';
 import { getGitHookService } from '../ai-lib-websocket-server.js';
+import { validatePublishedSeo } from '../../services/SeoValidator.js';
 
 const router: Router = Router();
 const appRepository = new AppRepository();
@@ -289,7 +290,22 @@ router.post('/apps/:id/publish', requirePermission('canPublish'), async (req, re
       }
     }
 
-    return res.json(response);
+    res.json(response);
+
+    // Advisory SEO validation - fire-and-forget, never blocks publish.
+    // Reuse the app record from line 106 — nothing in this route updates
+    // publishedUrl, so a second DB read would return the same value.
+    const publishedUrl = app.publishedUrl ?? null;
+    if (publishedUrl) {
+      validatePublishedSeo(publishedUrl, { logger: contextLogger }).catch((err) => {
+        contextLogger.warn('seo.validation.exception', {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+    } else {
+      contextLogger.info('seo.validation.skipped', { reason: 'no-published-url' });
+    }
+    return;
   } catch (error) {
     const contextLogger = req.params.id ? log.forApp(req.params.id) : log.forAgent('publish-routes');
     log.error(contextLogger, 'route.publish.error', error as Error, {});

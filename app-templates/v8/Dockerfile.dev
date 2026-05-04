@@ -157,6 +157,7 @@ COPY --chown=agent:agent . /app-template
 # These are infrastructure scripts, not part of the customer app template
 # Scripts are already marked executable in git, no chmod needed
 RUN mkdir -p /management-scripts
+COPY --from=container-scripts --chown=agent:agent preview/package.json /management-scripts/package.json
 COPY --from=container-scripts --chown=agent:agent preview/sync-package-additions.js /management-scripts/sync-package-additions.js
 COPY --from=container-scripts --chown=agent:agent preview/sync-template-files.js /management-scripts/sync-template-files.js
 COPY --from=container-scripts --chown=agent:agent preview/nomad_setup.sh /management-scripts/nomad_setup.sh

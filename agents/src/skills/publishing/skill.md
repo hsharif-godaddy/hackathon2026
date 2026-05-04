@@ -12,20 +12,23 @@ whenToUse: >-
 Preview container = dev mode (hot reload). Published site = separate production container (read-only). Changes reach it only via publish.
 
 <publish_flow>
+
 1. `npm run build` in preview (`NODE_ENV=production`)
 2. `dist/` archived as `{commitHash}.tar.gz` → `/dist`, `current` symlink updated
 3. Archive extracted into publish container `/app`
 4. Publish runs `node /app/dist/server.bundle.mjs`
-</publish_flow>
+   </publish_flow>
 
-`build` script = `vite build` → frontend into `dist/`, Express server bundled as `dist/server.bundle.mjs`.
+`build` script = `vite build && vite build --ssr src/server/entry.ts` → client assets into `dist/client/`, Express server bundled as `dist/server.bundle.mjs`.
 
 <build_critical_files>
 Do not modify build pipeline to fix errors — fix app code/dependencies instead.
 
 - `package.json` scripts: `build`
-- `vite.config.ts` — must keep `serverBundlePlugin()`; `esbuild` stays in devDependencies
-- `src/server/configure.js` — Express setup consumed by bundle
+- `vite.config.ts` — must keep the `apiDevPlugin` and `isSsrBuild` branch that produces `dist/server.bundle.mjs`
+- `src/server/entry.ts` — Express server + SSR render path
+- `src/entry-server.tsx` — React SSR entry (do not delete; required for server rendering)
+- `index.html` — the `<!--app-head-->` and `<!--app-html-->` markers are load-bearing for SSR injection
 
 Publish container: `node:22-alpine` (musl) — pure-JS packages only, no native addons.
 </build_critical_files>
@@ -35,7 +38,7 @@ Use preview URL (builder iframe) or published URL only. Never reference `localho
 </user_facing_urls>
 
 <cdn_caching>
-CDN respects `Cache-Control` headers; publish triggers full purge. Vite content-hashes `assets/` files (cache-safe). Do not modify cache-control in `src/server/configure.js`.
+CDN respects `Cache-Control` headers; publish triggers full purge. Vite content-hashes `assets/` files (cache-safe). Cache-control headers are set in `src/server/entry.ts`; do not modify them.
 </cdn_caching>
 
 ## Troubleshooting

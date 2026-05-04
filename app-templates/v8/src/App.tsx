@@ -1,5 +1,10 @@
 import { lazy, Suspense } from 'react';
-import { createBrowserRouter, Outlet, RouterProvider } from 'react-router-dom';
+import {
+  Outlet,
+  RouterProvider,
+  createBrowserRouter,
+  type RouteObject,
+} from 'react-router-dom';
 
 import AiroErrorBoundary from '../dev-tools/src/AiroErrorBoundary';
 import CookieBannerErrorBoundary from '@/components/CookieBannerErrorBoundary';
@@ -20,19 +25,12 @@ const SpinnerFallback = () => (
   </div>
 );
 
-// Create router with layout wrapper
-const router = createBrowserRouter([
+// Wrap the agent-editable flat `routes` array in a layout route so ScrollRestoration
+// + shared chrome live once above every page. Keeping the wrap here (instead of
+// in routes.tsx) preserves the agent's simple flat-route contract.
+const routeTree: RouteObject[] = [
   {
-    path: '/',
-    element: import.meta.env.MODE === 'development' ? (
-      <AiroErrorBoundary>
-        <Suspense fallback={<SpinnerFallback />}>
-          <RootLayout>
-            <Outlet />
-          </RootLayout>
-        </Suspense>
-      </AiroErrorBoundary>
-    ) : (
+    element: (
       <Suspense fallback={<SpinnerFallback />}>
         <RootLayout>
           <Outlet />
@@ -41,12 +39,26 @@ const router = createBrowserRouter([
     ),
     children: routes,
   },
-]);
+];
+
+const router = createBrowserRouter(routeTree);
 
 export default function App() {
+  const tree = <RouterProvider router={router} />;
+  const withDevBoundary =
+    import.meta.env.MODE === 'development' ? (
+      <AiroErrorBoundary>{tree}</AiroErrorBoundary>
+    ) : (
+      tree
+    );
   return (
     <>
-      <RouterProvider router={router} />
+      {withDevBoundary}
+      {/*
+        CookieBanner reads document.cookie and subscribes to browser events.
+        App.tsx is client-only (entry-server.tsx renders the route tree
+        directly without importing App), so no SSR gate is needed here.
+      */}
       <CookieBannerErrorBoundary>
         <Suspense fallback={null}>
           <CookieBanner />

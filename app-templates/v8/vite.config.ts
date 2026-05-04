@@ -1,13 +1,11 @@
-import { defineConfig, type Plugin } from "vite";
+import { defineConfig, type Plugin, type ViteDevServer } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
-import * as esbuild from "esbuild";
 import sourceMapperPlugin from "./source-mapper/src/index";
 import { devToolsPlugin } from "./dev-tools/src/vite-plugin";
 import { fullStoryPlugin } from "./fullstory-plugin";
 import { errorInterceptorPlugin } from "./dev-tools/src/vite-error-interceptor";
 import { mediaVersionsPlugin } from "./dev-tools/src/vite-media-versions-plugin";
-import apiRoutes from "vite-plugin-api-routes";
 
 function extractHostname(value: string): string {
 	try {
@@ -20,30 +18,22 @@ function extractHostname(value: string): string {
 	}
 }
 
-function serverBundlePlugin(): Plugin {
-	let built = false;
+function apiDevPlugin(): Plugin {
 	return {
-		name: "server-bundle",
-		apply: "build",
-		closeBundle: async () => {
-			if (built) return;
-			built = true;
-			console.log("Bundling server code with esbuild...");
-			await esbuild.build({
-				entryPoints: [path.resolve(__dirname, "dist", "app.js")],
-				bundle: true,
-				platform: "node",
-				target: "node22",
-				format: "esm",
-				outfile: path.resolve(__dirname, "dist", "server.bundle.mjs"),
-				packages: "bundle",
-				sourcemap: true,
-				banner: {
-					js: `import { createRequire } from 'module';
-const require = createRequire(import.meta.url);`,
-				},
+		name: "api-dev",
+		apply: "serve",
+		configureServer(server: ViteDevServer) {
+			server.middlewares.use(async (req, res, next) => {
+				if (!req.url?.startsWith("/api")) return next();
+				try {
+					const mod = await server.ssrLoadModule("/src/server/entry.ts");
+					const handler = mod.default;
+					handler(req, res, next);
+				} catch (err) {
+					if (err instanceof Error) server.ssrFixStacktrace(err);
+					next(err);
+				}
 			});
-			console.log("Server bundle created at dist/server.bundle.mjs");
 		},
 	};
 }
@@ -72,8 +62,7 @@ if (corsOrigins.length === 0) {
 	corsOrigins.push("*");
 }
 
-export default defineConfig(({ mode }) => ({
-	// Expose SITE_ID to import.meta.env (same as app id) for client deep links; keep VITE_ as default
+export default defineConfig(({ mode, isSsrBuild }) => ({
 	envPrefix: ["VITE_", "SITE_"],
 
 	plugins: [
@@ -82,12 +71,7 @@ export default defineConfig(({ mode }) => ({
 				plugins: [sourceMapperPlugin],
 			},
 		}),
-		apiRoutes({
-			mode: "isolated",
-			configure: "src/server/configure.js",
-			dirs: [{ dir: "./src/server/api", route: "" }],
-			forceRestart: mode === "development",
-		}),
+		apiDevPlugin(),
 		...(mode === "development"
 			? [
 					devToolsPlugin() as Plugin,
@@ -96,7 +80,6 @@ export default defineConfig(({ mode }) => ({
 					mediaVersionsPlugin() as Plugin,
 				]
 			: []),
-		serverBundlePlugin(),
 	],
 
 	resolve: {
@@ -110,6 +93,10 @@ export default defineConfig(({ mode }) => ({
 
 	optimizeDeps: {
 		include: ["react", "react-dom", "react-router-dom"],
+	},
+
+	ssr: {
+		noExternal: isSsrBuild ? true : undefined,
 	},
 
 	server: {
@@ -127,7 +114,7 @@ export default defineConfig(({ mode }) => ({
 			overlay: false,
 		},
 		watch: {
-			ignored: ["**/dist/**", "**/.api/**"],
+			ignored: ["**/dist/**"],
 		},
 	},
 
@@ -144,42 +131,60 @@ export default defineConfig(({ mode }) => ({
 		},
 	},
 
-	build: {
-		rollupOptions: {
-			output: {
-				manualChunks: {
-					"react-vendor": ["react", "react-dom"],
-					"radix-ui": [
-						"@radix-ui/react-accordion",
-						"@radix-ui/react-alert-dialog",
-						"@radix-ui/react-aspect-ratio",
-						"@radix-ui/react-avatar",
-						"@radix-ui/react-checkbox",
-						"@radix-ui/react-collapsible",
-						"@radix-ui/react-context-menu",
-						"@radix-ui/react-dialog",
-						"@radix-ui/react-dropdown-menu",
-						"@radix-ui/react-hover-card",
-						"@radix-ui/react-label",
-						"@radix-ui/react-menubar",
-						"@radix-ui/react-navigation-menu",
-						"@radix-ui/react-popover",
-						"@radix-ui/react-progress",
-						"@radix-ui/react-scroll-area",
-						"@radix-ui/react-select",
-						"@radix-ui/react-separator",
-						"@radix-ui/react-slider",
-						"@radix-ui/react-slot",
-						"@radix-ui/react-switch",
-						"@radix-ui/react-tabs",
-						"@radix-ui/react-toast",
-						"@radix-ui/react-toggle",
-						"@radix-ui/react-toggle-group",
-						"@radix-ui/react-tooltip",
-					],
-					query: ["@tanstack/react-query"],
+	build: isSsrBuild
+		? {
+				outDir: "dist",
+				emptyOutDir: false,
+				copyPublicDir: false,
+				ssr: "src/server/entry.ts",
+				rollupOptions: {
+					output: {
+						format: "es",
+						entryFileNames: "server.bundle.mjs",
+						chunkFileNames: "bin/[name]-[hash].js",
+						banner: "import { createRequire } from 'module';\nconst require = createRequire(import.meta.url);",
+					},
+				},
+			}
+		: {
+				outDir: "dist/client",
+				emptyOutDir: true,
+				copyPublicDir: true,
+				rollupOptions: {
+					output: {
+						manualChunks: {
+							"react-vendor": ["react", "react-dom"],
+							"radix-ui": [
+								"@radix-ui/react-accordion",
+								"@radix-ui/react-alert-dialog",
+								"@radix-ui/react-aspect-ratio",
+								"@radix-ui/react-avatar",
+								"@radix-ui/react-checkbox",
+								"@radix-ui/react-collapsible",
+								"@radix-ui/react-context-menu",
+								"@radix-ui/react-dialog",
+								"@radix-ui/react-dropdown-menu",
+								"@radix-ui/react-hover-card",
+								"@radix-ui/react-label",
+								"@radix-ui/react-menubar",
+								"@radix-ui/react-navigation-menu",
+								"@radix-ui/react-popover",
+								"@radix-ui/react-progress",
+								"@radix-ui/react-scroll-area",
+								"@radix-ui/react-select",
+								"@radix-ui/react-separator",
+								"@radix-ui/react-slider",
+								"@radix-ui/react-slot",
+								"@radix-ui/react-switch",
+								"@radix-ui/react-tabs",
+								"@radix-ui/react-toast",
+								"@radix-ui/react-toggle",
+								"@radix-ui/react-toggle-group",
+								"@radix-ui/react-tooltip",
+							],
+							query: ["@tanstack/react-query"],
+						},
+					},
 				},
 			},
-		},
-	},
 }));

@@ -158,6 +158,8 @@ async function buildDevelopSystemPrompt(_appPath?: string): Promise<string> {
   promptBuilder
     .file(paths.getAgentFile('develop', 'handoff.md'))
     .file(paths.getAgentFile('develop', 'backend.md'))
+    .file(paths.getAgentFile('develop', 'frontend.md'))
+    .file(paths.getAgentFile('develop', 'seo.md'))
     .file(paths.getAgentFile('develop', 'secrets.md')) // Secrets management for API keys and credentials
 
   promptBuilder.file(paths.getSharedFile('security.md'));

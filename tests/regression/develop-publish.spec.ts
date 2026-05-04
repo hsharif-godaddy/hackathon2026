@@ -91,6 +91,57 @@ test.describe('Publish Flow', () => {
     await expectPublishSuccessVisible(page, PUBLISH_TIMEOUT_MS);
     console.log('  ✓ Publish success (congrats modal or growl visible)');
 
+    // ========================================
+    // STEP 4: Verify SSR HTML
+    // ========================================
+    console.log('🌐 Step 4: Verifying SSR HTML at published URL...');
+
+    let publishedUrl = '';
+    try {
+      const siteResp = await page.request.get(`/api/sites/${appId}`);
+      if (siteResp.ok()) {
+        const site = await siteResp.json();
+        publishedUrl = typeof site?.published_url === 'string' ? site.published_url : '';
+      } else {
+        console.log(`  ⚠ /api/sites/${appId} returned ${siteResp.status()}`);
+      }
+    } catch (err) {
+      console.log(`  ⚠ Failed to fetch site record: ${err instanceof Error ? err.message : String(err)}`);
+    }
+
+    if (!publishedUrl) {
+      console.log('  ⚠ No published_url available on site record - skipping SSR assertion');
+    } else {
+      console.log(`  Published URL: ${publishedUrl}`);
+      let resp;
+      try {
+        resp = await page.request.get(publishedUrl, {
+          headers: {
+            'User-Agent': 'SmokeSsrValidator/1.0',
+            'Accept': 'text/html',
+          },
+        });
+      } catch (err) {
+        console.log(`  ⚠ Published URL not reachable from runner - skipping SSR assertion (${err instanceof Error ? err.message : String(err)})`);
+        resp = null;
+      }
+
+      if (resp) {
+        expect(resp.status()).toBe(200);
+        const html = await resp.text();
+        const bytes = html.length;
+        const hasAppRoot = html.includes('<div id="app"');
+        const ssrTags = ['<header', '<main', '<section', '<footer'].filter((t) => html.includes(t));
+
+        console.log(`  SSR response: ${bytes} bytes, app root: ${hasAppRoot}, server tags: ${ssrTags.join(',') || 'none'}`);
+
+        expect(hasAppRoot).toBe(true);
+        expect(bytes).toBeGreaterThan(500);
+        expect(ssrTags.length).toBeGreaterThan(0);
+        console.log('  ✓ SSR HTML contains server-rendered markup');
+      }
+    }
+
     console.log('🎉 Publish flow test passed!');
   });
 

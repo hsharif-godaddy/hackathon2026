@@ -691,7 +691,11 @@ export function ensureNestedArrayContains(
 }
 
 /**
- * Add packages to optimizeDeps.exclude and ssr.external in a vite config.
+ * Adds packages to optimizeDeps.exclude only. We intentionally do NOT add to
+ * ssr.external because that would override ssr.noExternal:true and cause these
+ * packages to be runtime imports the publish container cannot resolve (no
+ * node_modules at runtime).
+ *
  * Pure function - parses, modifies AST, and generates code.
  *
  * Used by skill onInstall hooks to prevent Node.js-only packages
@@ -743,8 +747,7 @@ export function addNodePackageExclusions(
       if (configObj) {
         foundConfig = true;
         const m1 = ensureNestedArrayContains(configObj, 'optimizeDeps', 'exclude', packages);
-        const m2 = ensureNestedArrayContains(configObj, 'ssr', 'external', packages);
-        modified = modified || m1 || m2;
+        modified = modified || m1;
       }
     },
   };

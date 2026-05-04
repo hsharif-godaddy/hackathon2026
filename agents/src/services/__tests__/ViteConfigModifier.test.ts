@@ -718,7 +718,7 @@ export default defineConfig(({ mode }) => ({
   describe('addNodePackageExclusions', () => {
     const packages = ['drizzle-orm', 'mysql2'] as const;
 
-    it('should add optimizeDeps.exclude and ssr.external when neither exists', () => {
+    it('should add optimizeDeps.exclude only, not ssr.external', () => {
       const input = `
 import { defineConfig } from 'vite';
 export default defineConfig({
@@ -732,8 +732,9 @@ export default defineConfig({
       expect(result.code).toContain('exclude');
       expect(result.code).toContain('"drizzle-orm"');
       expect(result.code).toContain('"mysql2"');
-      expect(result.code).toContain('ssr');
-      expect(result.code).toContain('external');
+      // ssr.external must NOT be added - would override ssr.noExternal:true
+      expect(result.code).not.toContain('ssr');
+      expect(result.code).not.toContain('external');
     });
 
     it('should merge into existing optimizeDeps.exclude', () => {
@@ -753,7 +754,7 @@ export default defineConfig({
       expect(result.code).toContain('"mysql2"');
     });
 
-    it('should merge into existing ssr.external', () => {
+    it('should leave existing ssr.external untouched (not mutate it)', () => {
       const input = `
 import { defineConfig } from 'vite';
 export default defineConfig({
@@ -765,20 +766,23 @@ export default defineConfig({
       const result = addNodePackageExclusions(input, true, packages);
 
       expect(result.modified).toBe(true);
+      // Existing ssr.external preserved as-is
       expect(result.code).toContain('"other-pkg"');
+      // optimizeDeps.exclude gets the new packages
+      expect(result.code).toContain('optimizeDeps');
       expect(result.code).toContain('"drizzle-orm"');
       expect(result.code).toContain('"mysql2"');
+      // Packages must NOT be added to ssr.external
+      expect(result.code).not.toMatch(/external:\s*\[[^\]]*"drizzle-orm"/);
+      expect(result.code).not.toMatch(/external:\s*\[[^\]]*"mysql2"/);
     });
 
-    it('should not modify when packages already present', () => {
+    it('should not modify when packages already present in optimizeDeps.exclude', () => {
       const input = `
 import { defineConfig } from 'vite';
 export default defineConfig({
   optimizeDeps: {
     exclude: ["drizzle-orm", "mysql2"]
-  },
-  ssr: {
-    external: ["drizzle-orm", "mysql2"]
   }
 });
 `;
@@ -818,7 +822,7 @@ export default defineConfig(({ mode }) => ({
       expect(result.error).toContain('Could not find vite config');
     });
 
-    it('should merge into config with existing exclusions in both sections', () => {
+    it('should merge into optimizeDeps.exclude without mutating existing ssr.external', () => {
       const input = `
 import { defineConfig } from 'vite';
 export default defineConfig({
@@ -839,15 +843,18 @@ export default defineConfig({
       expect(result.code).toContain('"better-auth"');
       expect(result.code).toContain('"pg"');
       expect(result.code).toContain('"redis"');
-      // New entries added
+      // New entries added to optimizeDeps.exclude
       expect(result.code).toContain('"drizzle-orm"');
       expect(result.code).toContain('"mysql2"');
       // Other properties untouched
       expect(result.code).toContain('include');
       expect(result.code).toContain('noExternal');
+      // Packages must NOT appear in ssr.external
+      expect(result.code).not.toMatch(/external:\s*\[[^\]]*"drizzle-orm"/);
+      expect(result.code).not.toMatch(/external:\s*\[[^\]]*"mysql2"/);
     });
 
-    it('should not overwrite non-array exclude value', () => {
+    it('should not modify when optimizeDeps.exclude is a non-array value and ssr is absent', () => {
       const input = `
 import { defineConfig } from 'vite';
 export default defineConfig({
@@ -858,10 +865,10 @@ export default defineConfig({
 `;
       const result = addNodePackageExclusions(input, true, packages);
 
-      // ssr.external is added (didn't exist), but optimizeDeps.exclude is left alone
-      expect(result.modified).toBe(true);
+      // optimizeDeps.exclude is a call expression - left alone. ssr.external is no longer added.
+      expect(result.modified).toBe(false);
       expect(result.code).toContain('computeExcludes()');
-      expect(result.code).toContain('ssr');
+      expect(result.code).not.toContain('ssr');
     });
 
     it('should handle block-body arrow function with return', () => {
@@ -877,7 +884,7 @@ export default defineConfig(({ mode }) => {
 
       expect(result.modified).toBe(true);
       expect(result.code).toContain('optimizeDeps');
-      expect(result.code).toContain('ssr');
+      expect(result.code).not.toContain('ssr');
     });
   });
 });

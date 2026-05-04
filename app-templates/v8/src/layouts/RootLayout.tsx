@@ -1,28 +1,15 @@
 import { type ReactElement } from 'react';
+import { ScrollRestoration } from 'react-router-dom';
 
 import Footer from '@/layouts/parts/Footer';
 import Header from '@/layouts/parts/Header';
 import Website from '@/layouts/Website';
-import { ScrollRestoration } from 'react-router-dom';
 
 /**
- * Root layout component that wraps all pages with consistent header and footer
+ * Root layout component that wraps all pages with consistent header and footer.
  *
- * This component provides a centralized layout structure for the entire application,
- * ensuring consistent navigation and footer across all pages. It uses the Website
- * layout component and includes Header and Footer components.
- *
- * To customize the header or footer, directly edit the Header.tsx and Footer.tsx files
- * in the layouts/parts directory.
- *
- * @param children - Child routes to render (typically <Outlet /> from react-router-dom)
- *
- * @example
- * ```tsx
- * <RootLayout>
- *   <Outlet />
- * </RootLayout>
- * ```
+ * To customize the header or footer, directly edit the Header.tsx and Footer.tsx
+ * files in the layouts/parts directory.
  */
 interface RootLayoutProps {
   children: ReactElement;
