@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { isEmployeeAuthType } from '@airo/shared/auth';
 import Modal from '@ux/modal';
 import text from '@ux/text';
@@ -52,9 +52,14 @@ function bucketRating(rating: number | null | undefined): RatingBucket {
   return RatingBucket.Satisfied;
 }
 
+function captureActiveElement() {
+  return typeof document !== 'undefined' ? (document.activeElement as HTMLElement | null) : null;
+}
+
 export function FeedbackMultiStep(props: FeedbackProps) {
   const { feedbackId, onClose, onSubmitSuccess, origin, initialStep } = props;
   const t = useTranslations();
+  const preMountFocusRef = useRef<HTMLElement | null>(captureActiveElement());
 
   const { authState, getUserInfo } = useAuthContext();
   const isImpersonating = isEmployeeAuthType((authState as any)?.authType);
@@ -288,6 +293,7 @@ export function FeedbackMultiStep(props: FeedbackProps) {
       title={modalTitle}
       id="feedback-modal"
       onClose={onClose}
+      focusLock={{ autoFocus: true, returnFocus: () => { preMountFocusRef.current?.focus(); return false; } }}
     >
       <div className="flex flex-col min-h-[20rem] max-h-[70vh] w-full overflow-hidden">
         {step === 'category' && (
