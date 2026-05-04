@@ -16,6 +16,7 @@ import { publishRouter } from '../publish.js';
 import { gitRouter } from '../git.js';
 import { conversationsRouter } from '../conversations.js';
 import { chatRouter } from '../chat.js';
+import diagnoseRouter from '../diagnose.js';
 import rebuildRouter from '../rebuild.js';
 import nextActionsRouter from '../next-actions.js';
 import { jwtAuthMiddleware } from '../../middleware/jwt-auth.js';
@@ -76,6 +77,7 @@ describe('Cross-Tenant Authorization Security - Integration Tests', () => {
     app.use('/agent', gitRouter);
     app.use(conversationsRouter);
     app.use('/agent', chatRouter);
+    app.use('/apps', diagnoseRouter);
     app.use('/apps', rebuildRouter);
     app.use('/apps', nextActionsRouter);
   });
@@ -183,6 +185,28 @@ describe('Cross-Tenant Authorization Security - Integration Tests', () => {
 
       expect(response.status).toBe(403);
       expect(response.body).toHaveProperty('error', 'Access denied');
+    });
+  });
+
+  describe('Diagnose Router - /apps/:id/diagnose', () => {
+    it('should reject cross-tenant diagnose requests', async () => {
+      const response = await request(app)
+        .post(`/apps/${siteB_id}/diagnose`)
+        .set('Authorization', `Bearer ${siteA_token}`)
+        .send({ target: 'publish' });
+
+      expect(response.status).toBe(403);
+      expect(response.body).toHaveProperty('error', 'Access denied');
+    });
+
+    it('should allow same-tenant diagnose requests', async () => {
+      const response = await request(app)
+        .post(`/apps/${siteA_id}/diagnose`)
+        .set('Authorization', `Bearer ${siteA_token}`)
+        .send({ target: 'publish' });
+
+      // Should not return 403 (may return other errors due to unreachable services)
+      expect(response.status).not.toBe(403);
     });
   });
 

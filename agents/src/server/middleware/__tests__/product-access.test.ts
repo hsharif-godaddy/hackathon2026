@@ -254,6 +254,10 @@ describe('isRouteAllowedForPaaS', () => {
     expect(isRouteAllowedForPaaS('POST', '/apps/test-app/restart')).toBe(true);
   });
 
+  it('should allow diagnose route', () => {
+    expect(isRouteAllowedForPaaS('POST', '/apps/test-app/diagnose')).toBe(true);
+  });
+
   it('should allow customer-logs route', () => {
     expect(isRouteAllowedForPaaS('GET', '/apps/test-app/customer-logs')).toBe(true);
   });

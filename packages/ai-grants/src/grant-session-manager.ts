@@ -16,6 +16,7 @@ export enum BudgetOverride {
   PublishTask = 'airo-builder:publish-task',
   DomainTask = 'airo-builder:domain-task',
   FixTask = 'airo-builder:fix-task',
+  DiagnoseTask = 'airo-builder:diagnose-task',
   // Background task budgets
   SummarizationTask = 'airo-builder:summarization-task',
 }

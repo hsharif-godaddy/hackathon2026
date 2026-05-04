@@ -40,6 +40,9 @@ const PAAS_ALLOWED_ROUTES: RoutePattern[] = [
   // App lifecycle
   { method: 'POST', path: '/apps/:id/restart' },
 
+  // Diagnose
+  { method: 'POST', path: '/apps/:id/diagnose' },
+
   // Customer logs
   { method: 'GET', path: '/apps/:appId/customer-logs' },
 
