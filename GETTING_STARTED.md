@@ -2,14 +2,13 @@
 
 ## Prerequisites
 
-- Access to AWS account `GD-AWS-USA-GD-AiroBuilde-Dev-Private` (request in #airo-ai-builder-dev)
+- Access to the JOMAX AD group `DEV-Airo-Builders` or `SRE-Airo-Builders`
 - [direnv](https://direnv.net/docs/installation.html) — installs the shell hook that activates the project's `.envrc`
 - A Node version manager on your `PATH`: [mise](https://mise.jdx.dev), [fnm](https://github.com/Schniz/fnm#installation), [asdf](https://asdf-vm.com/guide/getting-started.html), or [nvm](https://github.com/nvm-sh/nvm#installing-and-updating). `.envrc` picks the first one it finds and installs Node 22 from `.nvmrc`; corepack then pins pnpm.
 - [Go](https://go.dev/doc/install) (dev-runner and local control plane)
 - `make` on your `PATH` — `pnpm run dev` shells out to `make run`
 - [AWS CLI v2](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) — required for `aws sso login`
 - Docker (MySQL and publish/preview containers)
-- `Dev-Airo-Builders` AD group — only needed to run test/prod locally
 
 > Dev Runner requires macOS, Linux, or WSL — native Windows is not supported.
 

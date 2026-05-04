@@ -14,9 +14,13 @@ Instead of just building demos, Airo AI Builder focuses on creating **real, prod
 
 ## 🛠️ Quick Start
 
-You first need to request access to the `GD-AWS-USA-GD-AiroBuilde-Dev-Private` AWS Account, as the app has to retrieve secrets in order to run. Please request access in #airo-ai-builder-dev. After verifying access via Okta, you can then proceed with the setup.
+Use the following link to request access to either the `JOMAX\DEV-Airo-Builders` or `JOMAX\SRE-Airo-Builders` AD Groups. This will give you access to our PCP and AWS accounts.
+
+<https://godaddy.service-now.com/esc?id=sc_cat_item&sys_id=3bcb6decdb0f4dd0f1e6eba813961906>
 
 Additionally, you will want to make sure you request access to the GitHub orgs `JOMAX\gdcorp-partners` and `JOMAX\gdcorp-commerce` so that you can make PRs and run the GitHub Actions.
+
+After verifying access via Okta to the AWS account `GD-AWS-USA-GD-AiroBuilde-Dev-Private`, you can then proceed with the setup.
 
 ```bash
 # Clone the repository

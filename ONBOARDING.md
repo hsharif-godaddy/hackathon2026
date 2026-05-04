@@ -231,7 +231,7 @@ Browser iframe refreshes
 ### Setup
 
 Prerequisites: Node.js 22.16+, pnpm (via Corepack), Go, Docker,
-AWS account access (`GD-AWS-USA-GD-AiroBuilde-Dev-Private`).
+JOMAX AD group `DEV-Airo-Builders` or `SRE-Airo-Builders`.
 
 ```bash
 git clone <repository-url>
