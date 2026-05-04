@@ -166,3 +166,7 @@ Translation keys are validated during pre-commit (blocks on missing keys). Fetch
 - [ ] Backward compatibility verified
 - [ ] **UI changes:** E2E tests in `tests/e2e/` and `tests/regression/` updated if `data-testid` or user flows changed
 - [ ] **dev-supervisor only:** `make check` passes
+
+## Engineering Guidelines
+
+@docs/gd-charter/systems/guidelines.md
