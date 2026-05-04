@@ -4,6 +4,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, renderHook } from '@testing-library/react'
 
+import { logger } from '@/lib/request-context'
+
 // ---------------------------------------------------------------------------
 // Store mocks
 // ---------------------------------------------------------------------------
@@ -20,6 +22,8 @@ const mockSetConversationId = vi.fn()
 const mockUpdateToolDelta = vi.fn()
 const mockSetWebSocketState = vi.fn()
 const mockLoadAndPersistHistory = vi.fn()
+const mockClearActiveStream = vi.fn()
+const mockClearConnectionRetry = vi.fn()
 const mockSetHistoryLoadRequested = vi.fn()
 const mockSetHistoryLoadingComplete = vi.fn()
 const mockSetHistoryPagination = vi.fn()
@@ -33,6 +37,7 @@ function getStoreState() {
     currentAppId,
     messages: [],
     activeStream: null,
+    connectionRetry: { isRetrying: false },
     historyLoadingComplete: false,
     historyLoadRequested: false,
     appendTextSegment: mockAppendTextSegment,
@@ -47,6 +52,8 @@ function getStoreState() {
     updateToolDelta: mockUpdateToolDelta,
     setWebSocketState: mockSetWebSocketState,
     loadAndPersistHistory: mockLoadAndPersistHistory,
+    clearActiveStream: mockClearActiveStream,
+    clearConnectionRetry: mockClearConnectionRetry,
     setHistoryLoadRequested: mockSetHistoryLoadRequested,
     setHistoryLoadingComplete: mockSetHistoryLoadingComplete,
     setHistoryPagination: mockSetHistoryPagination,
@@ -62,6 +69,10 @@ vi.mock('@/stores/useStreamingConversationStore', () => ({
   useIsActivelyStreaming: () => mockIsActivelyStreaming,
   useStreamingConversationStore: {
     getState: () => getStoreState(),
+    setState: (update: Record<string, unknown> | ((state: Record<string, unknown>) => Record<string, unknown>)) => {
+      const patch = typeof update === 'function' ? update(getStoreState()) : update
+      storeState = { ...storeState, ...patch }
+    },
   },
 }))
 
@@ -141,7 +152,7 @@ vi.mock('@/types/budget', () => ({
 // ---------------------------------------------------------------------------
 
 type MockCallbacks = {
-  onEvent: (e: { type: string; content?: string; data: Record<string, unknown> }) => void
+  onEvent: (e: { type: string; content?: string; conversationId?: string; data: Record<string, unknown> }) => void
   onStateChange: (s: string) => void
   onError: (err: Error) => void
 }
@@ -302,6 +313,10 @@ describe('useSSEChat', () => {
     mockMarkUpstreamError.mockClear()
     mockSetIsLoading.mockClear()
     mockLoadAndPersistHistory.mockClear()
+    mockClearActiveStream.mockClear().mockImplementation(() => {
+      storeState.activeStream = null
+    })
+    mockClearConnectionRetry.mockClear()
     mockSetHistoryLoadRequested.mockClear().mockImplementation((requested: boolean) => {
       storeState.historyLoadRequested = requested
     })
@@ -315,6 +330,9 @@ describe('useSSEChat', () => {
     mockSetLaunchVideoResult.mockClear()
     mockPublishAction.mockClear()
     mockGetSiteDataAction.mockClear()
+    vi.mocked(logger.info).mockClear()
+    vi.mocked(logger.warn).mockClear()
+    vi.mocked(logger.error).mockClear()
   })
 
   afterEach(() => {
@@ -343,6 +361,131 @@ describe('useSSEChat', () => {
     })
 
     expect(mockBufferTextChunk).toHaveBeenCalledWith('hello')
+  })
+
+  it('creates an active stream when an SSE chunk arrives without one', async () => {
+    await setupHook()
+
+    act(() => {
+      lastTransport.callbacks?.onEvent({
+        type: 'chunk',
+        content: 'hello',
+        conversationId: 'conv-created-123',
+        data: { conversationId: 'conv-created-123' },
+      })
+    })
+
+    expect(storeState.activeStream).toEqual(expect.objectContaining({
+      id: expect.stringMatching(/^sse_recovered_/),
+      role: 'assistant',
+      content: '',
+      isComplete: false,
+      metadata: expect.objectContaining({
+        source: 'sse_recovery',
+        conversationId: 'conv-created-123',
+      }),
+    }))
+    expect(storeState.streamingState).toBe('streaming')
+    expect(storeState.isLoading).toBe(true)
+  })
+
+  it.each(['tool_start', 'tool_input_delta', 'tool_call'])(
+    'creates an active stream when an SSE %s event arrives without one',
+    async (type) => {
+      await setupHook()
+
+      act(() => {
+        lastTransport.callbacks?.onEvent({
+          type,
+          conversationId: 'conv-created-123',
+          data: {
+            conversationId: 'conv-created-123',
+            tool: { id: 't1', name: 'read_file', input: {}, status: 'running' },
+            toolId: 't1',
+            toolName: 'read_file',
+            delta: '{"path":',
+          },
+        })
+      })
+
+      expect(storeState.activeStream).toEqual(expect.objectContaining({
+        id: expect.stringMatching(/^sse_recovered_/),
+        role: 'assistant',
+        isComplete: false,
+        metadata: expect.objectContaining({
+          source: 'sse_recovery',
+          conversationId: 'conv-created-123',
+        }),
+      }))
+      expect(storeState.streamingState).toBe('streaming')
+      expect(storeState.isLoading).toBe(true)
+    }
+  )
+
+  it('does not replace an existing active stream when an SSE chunk arrives', async () => {
+    await setupHook()
+    const existingStream = {
+      id: 'existing-assistant-stream',
+      role: 'assistant',
+      content: 'partial',
+      segments: [],
+      toolCalls: [],
+      timestamp: new Date(),
+      isComplete: false,
+    }
+    storeState.activeStream = existingStream
+    vi.mocked(logger.info).mockClear()
+
+    act(() => {
+      lastTransport.callbacks?.onEvent({
+        type: 'chunk',
+        content: 'hello',
+        conversationId: 'conv-created-123',
+        data: { conversationId: 'conv-created-123' },
+      })
+    })
+
+    expect(storeState.activeStream).toBe(existingStream)
+    expect(logger.info).not.toHaveBeenCalledWith(
+      'sse.stream.active_stream.created',
+      expect.anything()
+    )
+  })
+
+  it('warns when creating an SSE active stream without a conversation id', async () => {
+    await setupHook()
+
+    act(() => {
+      lastTransport.callbacks?.onEvent({ type: 'chunk', content: 'hello', data: {} })
+    })
+
+    expect(logger.warn).toHaveBeenCalledWith(
+      'sse.stream.active_stream.missing_conversation_id',
+      expect.objectContaining({ appId: 'test-app-123', reason: 'chunk' })
+    )
+  })
+
+  it('creates an active stream before replayed SSE events are applied', async () => {
+    await setupHook()
+
+    act(() => {
+      lastTransport.callbacks?.onEvent({
+        type: 'recovery_status',
+        data: {
+          hasBufferedEvents: true,
+          bufferedCount: 2,
+          conversationId: 'conv-created-123',
+          streamCompleted: false,
+        },
+      })
+    })
+
+    expect(storeState.activeStream).toEqual(expect.objectContaining({
+      id: expect.stringMatching(/^sse_recovered_/),
+      role: 'assistant',
+      isComplete: false,
+    }))
+    expect(storeState.streamingState).toBe('streaming')
   })
 
   it('complete event calls flushStoreUpdateBufferImmediate then finalizeStream', async () => {
@@ -422,6 +565,19 @@ describe('useSSEChat', () => {
       id: 't3', name: 'read_file', input: { path: '/bar' }, result: 'content',
       error: undefined, status: 'completed', startTime: 123, endTime: expect.any(Number),
     })
+  })
+
+  it('tool_result event does not synthesize an active stream', async () => {
+    await setupHook()
+    const tool = { id: 't3', name: 'read_file', input: { path: '/bar' }, result: 'content', startTime: 123, status: 'completed' as const }
+    storeState.activeStream = null
+
+    act(() => {
+      lastTransport.callbacks?.onEvent({ type: 'tool_result', data: { tool } })
+    })
+
+    expect(storeState.activeStream).toBeNull()
+    expect(mockAddToolResultSegment).toHaveBeenCalled()
   })
 
   it('tool_input_delta event calls updateToolDelta and scheduleToolDeltaFlush', async () => {
@@ -921,6 +1077,92 @@ describe('useSSEChat', () => {
       expect(mockSetWebSocketState).toHaveBeenCalledWith({ connected: true, status: 'streaming' })
     })
 
+    it('replay_complete finalizes when buffered recovery completed the stream', async () => {
+      await setupHook()
+
+      act(() => {
+        lastTransport.callbacks?.onEvent({
+          type: 'recovery_status',
+          data: {
+            hasBufferedEvents: true,
+            bufferedCount: 5,
+            streamCompleted: true,
+            conversationId: 'conv-created-123',
+          },
+        })
+      })
+
+      act(() => {
+        lastTransport.callbacks?.onEvent({
+          type: 'replay_complete',
+          data: { replayedCount: 5 },
+        })
+      })
+
+      expect(mockFlushStoreUpdateBufferImmediate).toHaveBeenCalled()
+      expect(mockFinalizeStream).toHaveBeenCalled()
+      expect(mockSetWebSocketState).toHaveBeenCalledWith({ connected: true, status: 'idle' })
+    })
+
+    it('recovery_status for a completed stream reloads history', async () => {
+      await setupHook()
+      storeState.activeStream = {
+        id: 'stream-to-clear',
+        role: 'assistant',
+        content: '',
+        segments: [],
+        toolCalls: [],
+        timestamp: new Date(),
+        isComplete: false,
+      }
+      storeState.connectionRetry = { isRetrying: true }
+      lastTransport.loadHistory.mockClear()
+
+      act(() => {
+        lastTransport.callbacks?.onEvent({
+          type: 'recovery_status',
+          data: { hasBufferedEvents: false, bufferedCount: 0, streamCompleted: true },
+        })
+      })
+
+      expect(mockClearActiveStream).toHaveBeenCalled()
+      expect(mockClearConnectionRetry).toHaveBeenCalled()
+      expect(mockSetHistoryLoadRequested).toHaveBeenCalledWith(false)
+      expect(lastTransport.loadHistory).toHaveBeenCalled()
+    })
+
+    it('uses the latest recovery_status to decide whether replay_complete finalizes', async () => {
+      await setupHook()
+
+      act(() => {
+        lastTransport.callbacks?.onEvent({
+          type: 'recovery_status',
+          data: {
+            hasBufferedEvents: true,
+            bufferedCount: 5,
+            streamCompleted: true,
+            conversationId: 'conv-created-123',
+          },
+        })
+      })
+
+      act(() => {
+        lastTransport.callbacks?.onEvent({
+          type: 'recovery_status',
+          data: { hasBufferedEvents: false, bufferedCount: 0, streamCompleted: false },
+        })
+      })
+
+      act(() => {
+        lastTransport.callbacks?.onEvent({
+          type: 'replay_complete',
+          data: { replayedCount: 5 },
+        })
+      })
+
+      expect(mockFinalizeStream).not.toHaveBeenCalled()
+    })
+
     it('recovery_status without buffered events does not set streaming', async () => {
       mockSetWebSocketState.mockClear()
       await setupHook()
@@ -949,7 +1191,7 @@ describe('useSSEChat', () => {
         })
       })
 
-      // No-op on client side beyond logging - just verifying no crash
+      expect(mockFinalizeStream).not.toHaveBeenCalled()
     })
   })
 })

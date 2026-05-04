@@ -22,6 +22,7 @@ import {
 } from '@/services/websocket/toolDeltaBuffer'
 import { useSitesStore } from '@/stores/useSitesStore'
 import {
+  type StreamingMessage,
   useCurrentAppId,
   useStreamingConversationStore,
 } from '@/stores/useStreamingConversationStore'
@@ -50,6 +51,52 @@ import { useGrantContext } from './websocket/useGrantContext'
 
 type ConnectionStatus = 'idle' | 'connecting' | 'authenticating' | 'streaming' | 'completing' | 'error'
 
+const STREAM_UPDATE_EVENTS = new Set([
+  'chunk',
+  'tool_start',
+  'tool_input_delta',
+  'tool_call',
+])
+
+function ensureSSEActiveStream(reason: string, conversationId?: string): void {
+  const state = useStreamingConversationStore.getState()
+  if (state.activeStream) return
+
+  if (!conversationId) {
+    logger.warn('sse.stream.active_stream.missing_conversation_id', {
+      appId: state.currentAppId,
+      reason,
+    })
+  }
+
+  const streamingMessage: StreamingMessage = {
+    id: `sse_recovered_${Date.now()}`,
+    role: 'assistant',
+    content: '',
+    segments: [],
+    toolCalls: [],
+    timestamp: new Date(),
+    isComplete: false,
+    metadata: {
+      source: 'sse_recovery',
+      ...(conversationId && { conversationId }),
+    },
+  }
+
+  useStreamingConversationStore.setState({
+    activeStream: streamingMessage,
+    streamingState: 'streaming',
+    currentStep: 1,
+    isLoading: true,
+  })
+
+  logger.info('sse.stream.active_stream.created', {
+    appId: state.currentAppId,
+    conversationId,
+    reason,
+  })
+}
+
 function deriveConnectionState(transportState: TransportState): { connected: boolean; status: ConnectionStatus } {
   const connected = transportState === 'connected' || transportState === 'streaming'
   const status: ConnectionStatus = (() => {
@@ -73,6 +120,7 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
   const appIdRef = useRef<string | null>(null)
   const historyBatchRef = useRef<{ messages: unknown[]; isPagination: boolean } | null>(null)
   const historyBatchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const replayCompletesStreamRef = useRef(false)
 
   const currentAppId = useCurrentAppId()
 
@@ -233,6 +281,9 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
             onEvent(event) {
               const store = useStreamingConversationStore.getState()
               const type = event.type
+              if (STREAM_UPDATE_EVENTS.has(type)) {
+                ensureSSEActiveStream(type, event.conversationId)
+              }
 
               if (type === 'server_config') {
                 useStreamingConversationStore.setState({
@@ -519,6 +570,7 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                 }
               } else if (type === 'recovery_status') {
                 const payload = event.data as any
+                replayCompletesStreamRef.current = false
                 if (payload?.streamCompleted && !payload?.hasBufferedEvents) {
                   if (store.activeStream) {
                     store.clearActiveStream()
@@ -532,6 +584,8 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                     transportRef.current.loadHistory()
                   }
                 } else if (payload?.hasBufferedEvents) {
+                  ensureSSEActiveStream('recovery_status', payload?.conversationId)
+                  replayCompletesStreamRef.current = payload?.streamCompleted === true
                   // Route through the transport state pipe (setTransportState
                   // → deriveConnectionState → useEffect → setWebSocketState)
                   // rather than mutating the store directly from the event
@@ -547,6 +601,11 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
               } else if (type === 'replay_complete') {
                 // Flush any buffered store updates from replayed events
                 flushStoreUpdateBufferImmediate()
+                if (replayCompletesStreamRef.current) {
+                  store.finalizeStream()
+                  setTransportState('connected')
+                  replayCompletesStreamRef.current = false
+                }
 
                 logger.info('sse.recovery.replay_complete', {
                   appId: currentAppId,
