@@ -108,6 +108,7 @@ const devConfig: Config = {
     'arn:aws:iam::694282668781:role/airobuilde-custom-KatanaEnvironment5688GlobalEcsTaskRole6C689234',
     'arn:aws:iam::694282668781:role/airobuilde-custom-KatanaEnvironment5808GlobalEcsTaskRoleF525C3A7',
     'arn:aws:iam::694282668781:role/airobuilde-custom-KatanaEnvironment9599GlobalEcsTaskRole78E503A1', // budget-service dev-private
+    'arn:aws:iam::694282668781:role/airobuilde-custom-KatanaEnvironment7794GlobalEcsTaskRole03DD121F', // console-service dev-private
     'arn:aws:iam::694282668781:role/GD-AWS-USA-GD-AiroBuilde-Ops'
   ],
   vpnIps: {
@@ -175,8 +176,9 @@ const testConfig: Config = {
     'arn:aws:iam::418549769352:role/GD-AWS-USA-GD-PioneerC1-Ops'
   ],
   katanaEcsTaskRoleArn: [
-    'arn:aws:iam::694282668781:role/airobuilde-custom-KatanaEnvironment5808GlobalEcsTaskRoleF525C3A7',
+    'arn:aws:iam::694282668781:role/airobuilde-custom-KatanaEnvironment5808GlobalEcsTaskRoleF525C3A7', // airo builder ui test
     'arn:aws:iam::269423819739:role/airobuilde-custom-KatanaEnvironment9636GlobalEcsTaskRoleC9421049', // budget-service test
+    'arn:aws:iam::694282668781:role/airobuilde-custom-KatanaEnvironment7794GlobalEcsTaskRole03DD121F', // console-service dev-private (test is dev-private only for console)
   ],
   vpnIps: {},
   awsIamJwtAccount: ['333184933228'],
@@ -238,8 +240,9 @@ const prodConfig: Config = {
     'arn:aws:iam::644094189644:role/airobuilde-custom-KatanaEnvironment9535GlobalEcsTaskRoleAAF08999'
   ],
   katanaEcsTaskRoleArn: [
-    'arn:aws:iam::644094189644:role/airobuilde-custom-KatanaEnvironment6030GlobalEcsTaskRole99409837',
-    'arn:aws:iam::644094189644:role/airobuilde-custom-KatanaEnvironment9637GlobalEcsTaskRoleCE42F0DB' // budget-service prod
+    'arn:aws:iam::644094189644:role/airobuilde-custom-KatanaEnvironment6030GlobalEcsTaskRole99409837', // airo builder ui prod
+    'arn:aws:iam::644094189644:role/airobuilde-custom-KatanaEnvironment7797GlobalEcsTaskRole2CAC93CD', // console-service prod
+    'arn:aws:iam::644094189644:role/airobuilde-custom-KatanaEnvironment9637GlobalEcsTaskRoleCE42F0DB', // budget-service prod
   ],
   vpnIps: {},
   awsIamJwtAccount: ['377100941779'],
