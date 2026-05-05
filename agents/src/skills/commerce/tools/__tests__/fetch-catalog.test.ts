@@ -44,13 +44,15 @@ vi.mock('../auth.js', () => ({
   withCommerceAuth: mockWithCommerceAuth,
 }));
 
-const { fetchCatalogTool } = await import('../index.js');
+const { fetchCatalogTool, _confirmStoreForTesting, _resetProvisioningLockForTesting } = await import('../index.js');
 
 describe('commerce__fetch_catalog', () => {
   const context = { metadata: { appId: 'app-123' } };
 
   beforeEach(() => {
     vi.clearAllMocks();
+    _resetProvisioningLockForTesting();
+    _confirmStoreForTesting('app-123', 'store-1');
   });
 
   it('should have correct tool definition shape', () => {
@@ -264,6 +266,7 @@ describe('commerce__fetch_catalog', () => {
   });
 
   it('should extract storeId from a Commerce Home store URL', async () => {
+    _confirmStoreForTesting('app-123', 'store-from-url');
     mockWithCommerceAuth.mockImplementation(async (_appId: string, fn: (token: string, customerId: string) => Promise<unknown>) => {
       const result = await fn('token-abc', 'customer-1');
       return { success: true, data: result };
@@ -355,6 +358,7 @@ describe('commerce__fetch_catalog', () => {
 
   it('should treat an uppercase UUID storeId as an explicit store ID', async () => {
     const explicitStoreId = 'A1B2C3D4-E5F6-7890-ABCD-EF1234567890';
+    _confirmStoreForTesting('app-123', explicitStoreId);
 
     mockWithCommerceAuth.mockImplementation(async (_appId: string, fn: (token: string, customerId: string) => Promise<unknown>) => {
       const result = await fn('token-abc', 'customer-1');
@@ -421,5 +425,18 @@ describe('commerce__fetch_catalog', () => {
     );
 
     expect(result.error).toBeTruthy();
+  });
+
+  it('should require setup_store when storeId is provided but store is not confirmed', async () => {
+    // Reset confirmation (simulates ADD_STORE completing — addedToExistingBusiness skips confirmation)
+    _resetProvisioningLockForTesting();
+
+    const result = await fetchCatalogTool.execute(
+      { storeId: 'store-1' },
+      context,
+    );
+
+    expect(result.requiresSetupFirst).toBe(true);
+    expect(mockGetSkuGroups).not.toHaveBeenCalled();
   });
 });

@@ -36,13 +36,15 @@ vi.mock('../../../../database/repositories/index.js', () => ({
   appRepository: { findById: vi.fn() },
 }));
 
-const { manageProductsTool } = await import('../index.js');
+const { manageProductsTool, _confirmStoreForTesting, _resetProvisioningLockForTesting } = await import('../index.js');
 
 describe('commerce__manage_products', () => {
   const context = { metadata: { appId: 'app-123' } };
 
   beforeEach(() => {
     vi.clearAllMocks();
+    _resetProvisioningLockForTesting();
+    _confirmStoreForTesting('app-123', 'store-1');
   });
 
   it('should have correct tool definition shape', () => {
@@ -581,5 +583,18 @@ describe('commerce__manage_products', () => {
     );
 
     expect(result.error).toBeTruthy();
+  });
+
+  it('should require setup_store when storeId is provided but store is not confirmed', async () => {
+    // Reset confirmation (simulates ADD_STORE completing — addedToExistingBusiness skips confirmation)
+    _resetProvisioningLockForTesting();
+
+    const result = await manageProductsTool.execute(
+      { action: 'createProduct', storeId: 'store-1', label: 'Test', type: 'PHYSICAL' },
+      context,
+    );
+
+    expect(result.requiresSetupFirst).toBe(true);
+    expect(mockCreateSkuGroup).not.toHaveBeenCalled();
   });
 });

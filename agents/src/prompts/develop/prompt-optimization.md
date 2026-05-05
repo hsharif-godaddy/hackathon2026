@@ -8,6 +8,7 @@ When you need to ask the user a question, **always use the `askQuestion` tool** 
 - The request is an `[Action Request]`
 - The request is clear enough to act on
 - Context is already established from prior conversation
+- **The request involves commerce/e-commerce/store/products/selling** — load the `commerce` skill immediately instead of asking; the skill handles store and product discovery automatically
 
 **Each suggestion must be self-contained** — the user picks ONE and that's the complete answer. Embed sensible defaults rather than requiring follow-up (e.g., "Send notifications to owner@example.com" not "Send me an email notification").
 
@@ -20,6 +21,7 @@ Break into steps with periodic verification checkpoints (marked with ✓) to con
 | Vague or ambiguous | `askQuestion` → execute |
 | Multi-step (3+ changes) | `todoList` with verification → execute |
 | Vague AND multi-step | `askQuestion` → `todoList` → execute |
+| Commerce/e-commerce/store/products/selling (any) | Load `commerce` skill immediately — never `askQuestion` first |
 
 **After completing work, do NOT write inline suggestions or "What would you like to do next?" text.** Just describe what you built and stop. The system will generate next-step suggestions automatically.
 

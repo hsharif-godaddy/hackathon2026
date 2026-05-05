@@ -301,12 +301,27 @@ async function createCheckoutSession(
 		throw new Error("Missing required Commerce STORE_ID");
 	}
 
+	// <Checkout /> reads contactEmail from order.shipping.email.
+	// draftOrder.billing.email is never exposed in the session query, so
+	// mirror billing.email → shipping.email here before sending to GoDaddy.
+	const normalizedCustomer = params.customer
+		? {
+				...params.customer,
+				shipping: {
+					...params.customer.shipping,
+					email:
+						params.customer.shipping?.email ??
+						params.customer.billing?.email,
+				},
+		  }
+		: undefined;
+
 	const baseInput = {
 		environment: config.environment,
 		storeId: params.storeId,
 		storeName: params.storeName ?? null,
 		customerId: null,
-		...(params.customer && { customer: params.customer }),
+		...(normalizedCustomer && { customer: normalizedCustomer }),
 		returnUrl: params.returnUrl,
 		successUrl: params.successUrl,
 		enableShipping: params.enableShipping ?? false,

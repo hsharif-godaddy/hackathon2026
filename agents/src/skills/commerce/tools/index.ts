@@ -47,6 +47,7 @@ type CommerceStoreSummary = {
   storeName?: string;
   businessId?: string;
   businessName?: string;
+  channelId?: string;
 };
 
 type CommerceStoreSummaryResponse = {
@@ -71,6 +72,8 @@ type SetupStoreInput = CommerceStoreReferenceInput & {
   email?: string;
   storeName?: string;
   storePreference?: CommerceStorePreference;
+  businessId?: string;
+  channelId?: string;
 };
 
 type FetchCatalogInput = CommerceStoreReferenceInput & {
@@ -125,9 +128,31 @@ const setupStoreInFlight = new Map<string, Promise<unknown>>();
 const provisioningLock = new Map<string, { timestamp: number; storeName?: string }>();
 const PROVISIONING_LOCK_TTL_MS = 5 * 60 * 1000;
 
+// Store confirmation: records the last time setup_store successfully resolved a specific storeId
+// for this appId. Catalog tools require a recent matching entry to prevent agents from skipping
+// setup_store and using a storeId cached from a prior conversation turn.
+const storeConfirmations = new Map<string, { timestamp: number; storeId: string }>();
+const STORE_CONFIRMATION_TTL_MS = 30 * 60 * 1000;
+
+function recordStoreConfirmation(appId: string, storeId: string): void {
+  storeConfirmations.set(appId, { timestamp: Date.now(), storeId });
+}
+
+function isStoreConfirmed(appId: string, storeId: string): boolean {
+  const entry = storeConfirmations.get(appId);
+  if (!entry) return false;
+  return Date.now() - entry.timestamp < STORE_CONFIRMATION_TTL_MS && entry.storeId === storeId;
+}
+
 /** For testing only: resets provisioning lock state between test cases. */
 export function _resetProvisioningLockForTesting(): void {
   provisioningLock.clear();
+  storeConfirmations.clear();
+}
+
+/** For testing only: pre-confirms a store so catalog tools don't require setup_store in tests. */
+export function _confirmStoreForTesting(appId: string, storeId: string): void {
+  recordStoreConfirmation(appId, storeId);
 }
 
 function getAppIdFromContext(context?: CommerceToolContext): string | undefined {
@@ -170,6 +195,7 @@ function buildSetupStoreInFlightKey(appId: string, input: SetupStoreInput): stri
       explicitStoreId ? undefined : normalizeNonEmptyString(input.storeId) || normalizeNonEmptyString(input.storeUrl),
     storePreference: input.storePreference,
     storeName: normalizeNonEmptyString(input.storeName),
+    businessId: normalizeNonEmptyString(input.businessId),
     firstName: normalizeNonEmptyString(input.firstName),
     lastName: normalizeNonEmptyString(input.lastName),
     email: normalizeNonEmptyString(input.email)?.toLowerCase(),
@@ -197,8 +223,10 @@ function getErrorMessage(error: unknown): string {
 function isDuplicateOnboardingConflict(error: unknown): boolean {
   const message = getErrorMessage(error).toLowerCase();
 
+  // safeJsonParse formats errors as "Commerce API error (context): 409 StatusText - body"
+  // so check for the 409 status code in that format, plus the specific duplicate-request body text.
   return (
-    message.includes('commerce onboarding api error (409)') ||
+    (message.includes('commerce api error') && / 409 /.test(message)) ||
     message.includes('duplicated request was detected')
   );
 }
@@ -330,12 +358,20 @@ function buildStoreChoiceRequiredResult(args: {
   channelId?: string;
   message?: string;
   requestedPreference?: CommerceStorePreference;
+  existingStores: CommerceStoreSummary[];
 }) {
   logger.info('commerce.skill.setup_store.choice_required', {
     appId: args.appId,
     storeId: args.storeId,
+    storeCount: args.existingStores.length,
     requestedPreference: args.requestedPreference,
   });
+
+  const storeList = args.existingStores.map((s) => s.storeName ?? s.storeId).join(', ');
+  const defaultMessage =
+    args.existingStores.length > 1
+      ? `Found ${args.existingStores.length} existing Commerce stores: ${storeList}. Ask the user which store to use (pass storeName + storePreference: "existing") or whether to create a new additional store (pass a new storeName + storePreference: "new").`
+      : 'An existing Commerce store was found. Ask the user whether to use the existing store or create a new one before continuing.';
 
   return {
     storeChoiceRequired: true,
@@ -344,9 +380,51 @@ function buildStoreChoiceRequiredResult(args: {
     channelId: args.channelId,
     manageUrl: godaddy.getStoreManagementUrl(args.storeId),
     created: false,
-    message:
-      args.message ||
-      'An existing Commerce store was found. Ask the user whether to use the existing store or create a new one before continuing.',
+    existingStores: args.existingStores.map((s) => ({
+      storeId: s.storeId,
+      storeName: s.storeName,
+      ...(s.businessId && { businessId: s.businessId }),
+      ...(s.channelId && { channelId: s.channelId }),
+    })),
+    message: args.message || defaultMessage,
+  };
+}
+
+function groupStoresByBusiness(
+  stores: CommerceStoreSummary[],
+): Array<{ businessId: string; businessName?: string; stores: CommerceStoreSummary[] }> {
+  const groups = new Map<string, { businessId: string; businessName?: string; stores: CommerceStoreSummary[] }>();
+  for (const store of stores) {
+    const bizId = store.businessId;
+    if (!bizId) continue;
+    if (!groups.has(bizId)) {
+      groups.set(bizId, { businessId: bizId, businessName: store.businessName, stores: [] });
+    }
+    const group = groups.get(bizId);
+    if (group) group.stores.push(store);
+  }
+  return Array.from(groups.values());
+}
+
+function buildBusinessChoiceRequiredResult(args: {
+  appId: string;
+  businesses: Array<{ businessId: string; businessName?: string; stores: CommerceStoreSummary[] }>;
+}) {
+  logger.info('commerce.skill.setup_store.business_choice_required', {
+    appId: args.appId,
+    businessCount: args.businesses.length,
+  });
+
+  const businessList = args.businesses.map((b) => b.businessName ?? b.businessId).join(', ');
+
+  return {
+    businessChoiceRequired: true,
+    businesses: args.businesses.map((b) => ({
+      businessId: b.businessId,
+      businessName: b.businessName,
+      stores: b.stores.map((s) => ({ storeId: s.storeId, storeName: s.storeName })),
+    })),
+    message: `Found ${args.businesses.length} GoDaddy businesses: ${businessList}. Ask the user which business to manage, then retry commerce__setup_store with the chosen businessId.`,
   };
 }
 
@@ -427,6 +505,12 @@ async function ensureStoreLocation(args: {
       if (firstLocation) {
         locationId = firstLocation.id;
       }
+    } else {
+      logger.warn('commerce.skill.setup_store.get_locations.failed', {
+        appId: args.appId,
+        storeId: args.storeId,
+        error: locResponse.error,
+      });
     }
 
     if (!locationId) {
@@ -445,6 +529,12 @@ async function ensureStoreLocation(args: {
 
       if (createResponse.success) {
         locationId = createResponse.data.createLocation.id;
+      } else {
+        logger.warn('commerce.skill.setup_store.create_location.failed', {
+          appId: args.appId,
+          storeId: args.storeId,
+          error: createResponse.error,
+        });
       }
     }
   } catch (err) {
@@ -733,6 +823,9 @@ function generateDefaultSku(args: {
     prices: args.defaultSku?.prices,
     weight: args.defaultSku?.weight,
     unitOfWeight: args.defaultSku?.unitOfWeight,
+    ...(args.defaultSku?.disableInventoryTracking !== undefined && {
+      disableInventoryTracking: args.defaultSku.disableInventoryTracking,
+    }),
   };
 }
 
@@ -799,6 +892,9 @@ function generateSkusFromAttributes(args: {
       prices: args.skuTemplate?.prices,
       weight: args.skuTemplate?.weight,
       unitOfWeight: args.skuTemplate?.unitOfWeight,
+      ...(args.skuTemplate?.disableInventoryTracking !== undefined && {
+        disableInventoryTracking: args.skuTemplate.disableInventoryTracking,
+      }),
     };
   });
 
@@ -843,7 +939,15 @@ function isUnknownCommerceCustomerError(message: string): boolean {
 export const setupStoreTool: SkillToolDefinition = {
   name: 'setup_store',
   description:
-    'Set up a GoDaddy Commerce store. Checks for an existing store, creates one if needed, and returns storeId plus management URLs, and channelId when it is available from onboarding. If an existing store is found and no storePreference is provided, the tool returns storeChoiceRequired so the user can choose between the existing store and creating a new one. Commerce accounts can have multiple stores—when storePreference is "new", this tool will create an additional store (it does not assume a one-store-per-account limit). If the user already provided a Commerce Home URL or Store ID, pass storeUrl or storeId to use that existing store directly. Explicit store references must belong to the authenticated customer. Only require firstName, lastName, and email when creating a new store. Never invent firstName, lastName, or email, and never derive them from storeName. If owner identity is unavailable, the tool returns needsOwnerIdentity instead of creating a store. If onboarding names contain non-ASCII characters, automatic payments setup may be skipped and the user will need to finish it in Commerce Home.',
+    'ALWAYS call this tool FIRST at the start of every commerce flow — before calling manage_products, fetch_catalog, or any catalog tool — even if storeId is already present in the conversation context or in the app environment (VITE_GODADDY_STORE_ID is for the frontend only and must never be used to skip this tool). ' +
+    'The account may have multiple stores or businesses; re-running this tool is the only way to detect them and present the user with the correct choice. Never skip this and go directly to a catalog tool with a storeId from context. ' +
+    'Set up a GoDaddy Commerce store. Returns storeId, channelId (when available), and management URLs. ' +
+    'If the account has stores under 2+ businesses and no businessId is scoped, returns businessChoiceRequired with a businesses list so the user can pick a business. ' +
+    'If existing stores are found under one business and no storePreference is given, returns storeChoiceRequired with an existingStores list so the user can choose which store to use or whether to create a new one. ' +
+    'When storePreference is "new" and stores already exist, creates an additional store under the same business (ADD_STORE — no owner identity needed, only storeName is required; returns needsStoreName if omitted). ' +
+    'When storePreference is "new" and no stores exist, creates the first store for the account (CREATE_BUSINESS — requires firstName, lastName, email; returns needsOwnerIdentity if missing). ' +
+    'Pass storeUrl or storeId to link an existing store directly. ' +
+    'Never invent firstName, lastName, or email, and never derive them from storeName.',
   parameters: z.object({
     firstName: z
       .string()
@@ -867,6 +971,8 @@ export const setupStoreTool: SkillToolDefinition = {
     storePreference: z.enum(['existing', 'new']).optional().describe('Use "existing" to reuse a discovered store, "new" to create a new one. If omitted and an existing store is found, the tool returns storeChoiceRequired.'),
     storeId: z.string().trim().min(1).optional().describe('Optional existing Commerce store ID to link directly. Use this when the user already shared their Store ID.'),
     storeUrl: z.string().trim().url().optional().describe('Optional Commerce Home store URL. The tool extracts storeId from the URL and reuses that store directly.'),
+    businessId: z.string().trim().min(1).optional().describe('GoDaddy businessId to scope store operations when the account has multiple businesses. Pass the businessId returned in businessChoiceRequired.businesses[].businessId after the user selects a business.'),
+    channelId: z.string().trim().min(1).optional().describe('Channel ID from a prior storeChoiceRequired existingStores entry. Pass it when retrying with storePreference: "existing" to avoid a redundant channel-lookup API call.'),
   }),
   execute: async (
     input: SetupStoreInput,
@@ -907,11 +1013,9 @@ export const setupStoreTool: SkillToolDefinition = {
           }
         }
         const existingStores = getCommerceStoresFromSummary(summary);
-        const discoveredStore =
-          findCommerceStoreByName(existingStores, normalizeNonEmptyString(input.storeName)) ||
-          existingStores[0];
-        const explicitStoreId = getExplicitStoreId(input);
 
+        // Explicit storeId/storeUrl bypasses all choice flows — resolve it first.
+        const explicitStoreId = getExplicitStoreId(input);
         if (explicitStoreId) {
           const explicitStore = findCommerceStoreById(existingStores, explicitStoreId);
           if (!explicitStore) {
@@ -935,12 +1039,36 @@ export const setupStoreTool: SkillToolDefinition = {
           });
         }
 
+        // Multi-business check: if stores span 2+ businesses and no businessId is scoped, ask which business.
+        const businessGroups = groupStoresByBusiness(existingStores);
+        if (businessGroups.length > 1 && !normalizeNonEmptyString(input.businessId)) {
+          return buildBusinessChoiceRequiredResult({ appId, businesses: businessGroups });
+        }
+
+        // Scope store discovery to the selected business when businessId is provided.
+        const scopedBusinessId = normalizeNonEmptyString(input.businessId);
+        const scopedStores = scopedBusinessId
+          ? existingStores.filter((s) => s.businessId === scopedBusinessId)
+          : existingStores;
+
+        // Guard: businessId provided but no matching stores — invalid or stale businessId.
+        if (scopedBusinessId && scopedStores.length === 0) {
+          return {
+            error: `No stores found for businessId "${scopedBusinessId}". The businessId may be invalid or belong to a different account.`,
+          };
+        }
+
+        const discoveredStore =
+          findCommerceStoreByName(scopedStores, normalizeNonEmptyString(input.storeName)) ||
+          scopedStores[0];
+
         if (discoveredStore && input.storePreference !== 'new') {
-          if (input.storePreference !== 'existing') {
+          if (input.storePreference !== 'existing' && scopedStores.length > 1) {
             return buildStoreChoiceRequiredResult({
               appId,
               storeId: discoveredStore.storeId,
               storeName: discoveredStore.storeName,
+              existingStores: scopedStores,
             });
           }
 
@@ -950,19 +1078,254 @@ export const setupStoreTool: SkillToolDefinition = {
             storeId: discoveredStore.storeId,
           });
 
+          // Recover channelId: prefer explicit input (passed by agent from ADD_STORE response),
+          // then fall back to any channelId stored on the scoped store entry.
+          const resolvedChannelId =
+            normalizeNonEmptyString(input.channelId) ?? discoveredStore.channelId;
+
           return buildExistingStoreSetupResult({
             appId,
             storeId: discoveredStore.storeId,
+            channelId: resolvedChannelId,
             accessToken,
             enablePayments: true,
           });
         }
 
         if (discoveredStore && input.storePreference === 'new') {
-          logger.info('commerce.skill.setup_store.new_store_requested_with_existing', {
+          // ADD_STORE: user explicitly confirmed they want a new store under the existing business.
+          // Does not require owner identity — the business is already onboarded.
+          // Does not check the provisioning lock — that guards CREATE_BUSINESS re-entrancy only.
+          const businessId =
+            normalizeNonEmptyString(input.businessId) ??
+            discoveredStore.businessId ??
+            existingStores.find((s) => s.businessId)?.businessId;
+
+          if (!businessId) {
+            return {
+              error:
+                'Cannot create an additional store: no businessId found on the existing store. Please contact support.',
+            };
+          }
+
+          const newStoreName = normalizeNonEmptyString(input.storeName);
+          if (!newStoreName) {
+            const storeList = scopedStores.map((s) => s.storeName ?? s.storeId).join(', ');
+            return {
+              needsStoreName: true,
+              existingStores: scopedStores.map((s) => ({
+                storeId: s.storeId,
+                storeName: s.storeName,
+                ...(s.businessId && { businessId: s.businessId }),
+                ...(s.channelId && { channelId: s.channelId }),
+              })),
+              message: `Ask the user what to name the new store (${scopedStores.length} store(s) already exist: ${storeList}). Then retry commerce__setup_store with storePreference: "new" and the new storeName.`,
+            };
+          }
+
+          logger.info('commerce.skill.setup_store.add_store', {
             appId,
-            existingStoreId: discoveredStore.storeId,
+            businessId,
+            existingStoreCount: existingStores.length,
+            newStoreName,
           });
+
+          const refreshSummaryForNewStore = async (): Promise<CommerceStoreSummary | undefined> => {
+            const refreshedSummary = (await godaddy.getStoreSummary(
+              { customerId },
+              accessToken,
+            )) as CommerceStoreSummaryResponse;
+            const refreshedStores = getCommerceStoresFromSummary(refreshedSummary);
+            const existingStoreIds = new Set(existingStores.map((s) => s.storeId));
+            const newlyDiscoveredStores = refreshedStores.filter((s) => !existingStoreIds.has(s.storeId));
+            return (
+              findCommerceStoreByName(newlyDiscoveredStores, newStoreName) ||
+              (newlyDiscoveredStores.length === 1 ? newlyDiscoveredStores[0] : undefined)
+            );
+          };
+
+           
+          let addStoreResult: Awaited<ReturnType<typeof godaddy.addStoreToExistingBusiness>>;
+          try {
+            addStoreResult = await godaddy.addStoreToExistingBusiness(
+              { appId, businessId, storeName: newStoreName },
+              accessToken,
+            );
+          } catch (firstError) {
+            if (isDuplicateOnboardingConflict(firstError)) {
+              logger.warn('commerce.skill.setup_store.add_store.duplicate_conflict', {
+                appId,
+                attempt: 1,
+                error: getErrorMessage(firstError),
+              });
+
+              // ADD_STORE is synchronous — store appears immediately if created.
+              // Check summary before retrying to avoid creating a duplicate.
+              const recoveredStore = await refreshSummaryForNewStore();
+              if (recoveredStore) {
+                logger.info('commerce.skill.setup_store.add_store.duplicate_conflict.recovered', {
+                  appId,
+                  storeId: recoveredStore.storeId,
+                  attempt: 1,
+                });
+                const allStoresAfterRecovery: CommerceStoreSummary[] = [...existingStores, recoveredStore];
+                const allStoreNames = allStoresAfterRecovery.map((s) => s.storeName ?? s.storeId).join(', ');
+                return {
+                  created: true,
+                  addedToExistingBusiness: true,
+                  storeChoiceRequired: true,
+                  existingStores: allStoresAfterRecovery.map((s) => ({
+                    storeId: s.storeId,
+                    storeName: s.storeName,
+                    ...(s.businessId && { businessId: s.businessId }),
+                    ...(s.channelId && { channelId: s.channelId }),
+                  })),
+                  message: `Store "${newStoreName}" already existed or was just created. There are now ${allStoresAfterRecovery.length} stores: ${allStoreNames}. Use askQuestion to ask the user which store to manage.`,
+                };
+              }
+
+              // Store not found — first request failed on GoDaddy's side.
+              // Retry exactly once. No lock — ADD_STORE is instant, retry is safe.
+              logger.warn('commerce.skill.setup_store.add_store.retrying', { appId, newStoreName });
+              try {
+                addStoreResult = await godaddy.addStoreToExistingBusiness(
+                  { appId, businessId, storeName: newStoreName },
+                  accessToken,
+                );
+              } catch (retryError) {
+                if (isDuplicateOnboardingConflict(retryError)) {
+                  logger.warn('commerce.skill.setup_store.add_store.duplicate_conflict', {
+                    appId,
+                    attempt: 2,
+                    error: getErrorMessage(retryError),
+                  });
+
+                  const retryRecoveredStore = await refreshSummaryForNewStore();
+                  if (retryRecoveredStore) {
+                    logger.info('commerce.skill.setup_store.add_store.duplicate_conflict.recovered', {
+                      appId,
+                      storeId: retryRecoveredStore.storeId,
+                      attempt: 2,
+                    });
+                    const allStoresAfterRetryRecovery: CommerceStoreSummary[] = [
+                      ...existingStores,
+                      retryRecoveredStore,
+                    ];
+                    const retryStoreNames = allStoresAfterRetryRecovery
+                      .map((s) => s.storeName ?? s.storeId)
+                      .join(', ');
+                    return {
+                      created: true,
+                      addedToExistingBusiness: true,
+                      storeChoiceRequired: true,
+                      existingStores: allStoresAfterRetryRecovery.map((s) => ({
+                        storeId: s.storeId,
+                        storeName: s.storeName,
+                        ...(s.businessId && { businessId: s.businessId }),
+                        ...(s.channelId && { channelId: s.channelId }),
+                      })),
+                      message: `Store "${newStoreName}" already existed or was just created. There are now ${allStoresAfterRetryRecovery.length} stores: ${retryStoreNames}. Use askQuestion to ask the user which store to manage.`,
+                    };
+                  }
+
+                  logger.error('commerce.skill.setup_store.add_store.failed', { appId, newStoreName });
+                  return {
+                    error: `Failed to create store "${newStoreName}" — GoDaddy rejected both attempts. Please try again or create the store manually in Commerce Home.`,
+                  };
+                }
+
+                if (isRetryableOnboardingServiceError(retryError)) {
+                  return buildRetryableOnboardingServiceErrorResult({ storeName: newStoreName, error: retryError });
+                }
+
+                throw retryError;
+              }
+            } else if (isRetryableOnboardingServiceError(firstError)) {
+              logger.warn('commerce.skill.setup_store.add_store.service_unavailable', {
+                appId,
+                error: getErrorMessage(firstError),
+              });
+              return buildRetryableOnboardingServiceErrorResult({ storeName: newStoreName, error: firstError });
+            } else {
+              throw firstError;
+            }
+          }
+
+          const newStoreId = addStoreResult.metadata.storeId;
+          const newChannelId = addStoreResult.metadata.channelId;
+
+          if (!newStoreId) {
+            throw new Error('ADD_STORE succeeded but no storeId was returned');
+          }
+
+          const addStoreEnablementResults = await Promise.allSettled([
+            godaddy.enableCatalogV2({ storeId: newStoreId }, accessToken),
+            godaddy.enableGoDaddyPaymentsApplication({ storeId: newStoreId }, accessToken),
+          ]);
+
+          const addStoreErrors: string[] = [];
+          const [addStoreCatalogResult, addStorePaymentsResult] = addStoreEnablementResults;
+
+          if (addStoreCatalogResult.status === 'rejected') {
+            logger.error('commerce.skill.setup_store.catalog_v2.failed', {
+              appId,
+              storeId: newStoreId,
+              error: getErrorMessage(addStoreCatalogResult.reason),
+            });
+            addStoreErrors.push('catalog_v2_enablement_failed');
+          }
+
+          const paymentsAutoEnabled =
+            addStorePaymentsResult.status === 'fulfilled' &&
+            (addStorePaymentsResult.value as any)?.success !== false;
+
+          if (!paymentsAutoEnabled) {
+            logger.warn('commerce.skill.setup_store.payments.failed', {
+              appId,
+              storeId: newStoreId,
+              reason: addStorePaymentsResult.status === 'rejected'
+                ? getErrorMessage(addStorePaymentsResult.reason)
+                : 'payments_application_not_enabled',
+            });
+          }
+
+          const newLocationId = await ensureStoreLocation({
+            appId,
+            storeId: newStoreId,
+            accessToken,
+          });
+
+          logger.info('commerce.skill.setup_store.added', {
+            appId,
+            storeId: newStoreId,
+            businessId,
+            existingStoreCount: existingStores.length,
+          });
+
+          // Include the newly created store in the list (with its channelId) so the user can pick
+          // which store to manage. Never auto-confirm the new store — even if
+          // the user just created it, they may have multiple stores and should
+          // always choose explicitly.
+          const allStoresAfterAdd: CommerceStoreSummary[] = [
+            ...existingStores,
+            { storeId: newStoreId, storeName: newStoreName, businessId, ...(newChannelId && { channelId: newChannelId }) },
+          ];
+          const allStoreNames = allStoresAfterAdd.map((s) => s.storeName ?? s.storeId).join(', ');
+
+          return {
+            created: true,
+            addedToExistingBusiness: true,
+            paymentsAutoEnabled,
+            storeChoiceRequired: true,
+            existingStores: allStoresAfterAdd.map((s) => ({
+              storeId: s.storeId,
+              storeName: s.storeName,
+              ...(s.businessId && { businessId: s.businessId }),
+              ...(s.channelId && { channelId: s.channelId }),
+            })),
+            ...(addStoreErrors.length > 0 && { errors: addStoreErrors }),
+            message: `New store "${newStoreName}" was created. There are now ${allStoresAfterAdd.length} stores: ${allStoreNames}. Use askQuestion (multiSelect: false, allowOther: false) to ask the user which store they want to manage products in, then call commerce__setup_store with storePreference: "existing" and the chosen storeName.`,
+          };
         }
 
         if (input.storePreference === 'existing') {
@@ -1212,6 +1575,15 @@ export const setupStoreTool: SkillToolDefinition = {
         return { error: authData.error };
       }
 
+      // Record successful store confirmation so catalog tools can verify setup_store was called.
+      // Skip when storeChoiceRequired (user must still choose) or addedToExistingBusiness
+      // (2+ stores now exist — user must pick explicitly before product operations).
+      const addedToExistingBusiness = (authResult as any).data?.addedToExistingBusiness === true;
+      const storeChoiceRequiredInResult = (authResult as any).data?.storeChoiceRequired === true;
+      if (resolvedStoreId && appId && !addedToExistingBusiness && !storeChoiceRequiredInResult) {
+        recordStoreConfirmation(appId, resolvedStoreId);
+      }
+
       return withManageLinks(authResult, resolvedStoreId);
     })();
 
@@ -1234,7 +1606,9 @@ export const setupStoreTool: SkillToolDefinition = {
 export const fetchCatalogTool: SkillToolDefinition = {
   name: 'fetch_catalog',
   description:
-    'Fetch products from a GoDaddy Commerce store catalog. Accepts a canonical storeId or Commerce Home storeUrl, and can fall back to the authenticated account store when a real store ID is not provided. Returns one page of products with pagination metadata. Use the `after` cursor to fetch subsequent pages.',
+    'Fetch products from a GoDaddy Commerce store catalog. ' +
+    'The storeId should come from commerce__setup_store called in the current flow — do not pass a storeId from a prior conversation turn without first re-running commerce__setup_store. ' +
+    'Accepts a canonical storeId or Commerce Home storeUrl, and can fall back to the authenticated account store when a real store ID is not provided. Returns one page of products with pagination metadata. Use the `after` cursor to fetch subsequent pages.',
   parameters: z.object({
     storeId: z.string().trim().optional().describe('Optional Commerce store ID. Prefer the storeId returned by commerce__setup_store.'),
     storeUrl: z.string().trim().url().optional().describe('Optional Commerce Home store URL. The tool extracts storeId from the URL before fetching products.'),
@@ -1247,6 +1621,16 @@ export const fetchCatalogTool: SkillToolDefinition = {
 
     if (!appId) {
       return { error: 'App ID is required. Pass context.metadata.appId.' };
+    }
+
+    const requestedFetchStoreId = getExplicitStoreId(input);
+    if (requestedFetchStoreId && !isStoreConfirmed(appId, requestedFetchStoreId)) {
+      return {
+        requiresSetupFirst: true,
+        message:
+          'commerce__setup_store must be called before fetch_catalog to confirm which store to manage. ' +
+          'Call commerce__setup_store now (without storeId) so the user can select the correct store, then retry fetch_catalog with the confirmed storeId.',
+      };
     }
 
     const authResult = await withCommerceAuth(appId, async (accessToken, customerId) => {
@@ -1533,7 +1917,8 @@ export const installStorefrontTool: SkillToolDefinition = {
 export const manageProductsTool: SkillToolDefinition = {
   name: 'manage_products',
   description:
-    'Create, update, or delete products and SKUs in a GoDaddy Commerce store.',
+    'Create, update, or delete products and SKUs in a GoDaddy Commerce store. ' +
+    'The storeId MUST come from commerce__setup_store called in the current flow — never use a storeId cached from a previous conversation turn or app memory without first re-running commerce__setup_store to confirm which store the user intends to manage.',
   parameters: z.object({
     action: z.enum(['createProduct', 'updateProduct', 'deleteProduct', 'updateSku']).describe('The action to perform'),
     storeId: z.string().describe('The store ID'),
@@ -1546,6 +1931,7 @@ export const manageProductsTool: SkillToolDefinition = {
     skuLabel: z.string().optional().describe('SKU label for updateSku'),
     skuName: z.string().optional().describe('SKU name (auto-slugified) for updateSku'),
     skuCode: z.string().optional().describe('SKU code for updateSku'),
+    skuDisableInventoryTracking: z.boolean().optional().describe('Set to true for SERVICE or APPOINTMENT SKUs only. Disables inventory enforcement so checkout never blocks on stock. Do not use for physical products.'),
     skuGenerationMode: z
       .enum(['manual', 'singleDefault', 'fromAttributes'])
       .optional()
@@ -1560,6 +1946,7 @@ export const manageProductsTool: SkillToolDefinition = {
         prices: z.array(z.any()).optional(),
         weight: z.number().optional(),
         unitOfWeight: z.enum(['KG', 'GR', 'LB', 'OZ']).optional(),
+        disableInventoryTracking: z.boolean().optional().describe('Set to true for SERVICE or APPOINTMENT SKUs only. Do not use for physical products that require stock enforcement.'),
       })
       .optional()
       .describe('Template used when skuGenerationMode is singleDefault'),
@@ -1573,6 +1960,7 @@ export const manageProductsTool: SkillToolDefinition = {
         prices: z.array(z.any()).optional(),
         weight: z.number().optional(),
         unitOfWeight: z.enum(['KG', 'GR', 'LB', 'OZ']).optional(),
+        disableInventoryTracking: z.boolean().optional().describe('Set to true for SERVICE or APPOINTMENT SKUs only. Do not use for physical products that require stock enforcement.'),
       })
       .optional()
       .describe('Template applied to generated SKUs when skuGenerationMode is fromAttributes'),
@@ -1603,6 +1991,16 @@ export const manageProductsTool: SkillToolDefinition = {
 
     if (!appId) {
       return { error: 'App ID is required. Pass context.metadata.appId.' };
+    }
+
+    const requestedStoreId = normalizeNonEmptyString(input.storeId);
+    if (requestedStoreId && !isStoreConfirmed(appId, requestedStoreId)) {
+      return {
+        requiresSetupFirst: true,
+        message:
+          'commerce__setup_store must be called before manage_products to confirm which store to manage. ' +
+          'Call commerce__setup_store now (without storeId) so the user can select the correct store, then retry manage_products with the confirmed storeId.',
+      };
     }
 
     const authResult = await withCommerceAuth(appId, async (accessToken) => {
@@ -1840,6 +2238,7 @@ export const manageProductsTool: SkillToolDefinition = {
           if (input.skuName) sku.name = slugify(input.skuName);
           if (input.skuCode) sku.code = input.skuCode;
           if (input.status) sku.status = input.status;
+          if (input.skuDisableInventoryTracking !== undefined) sku.disableInventoryTracking = input.skuDisableInventoryTracking;
           const response = await godaddy.updateSku(
             { storeId: input.storeId, skuId: input.skuId, product: sku },
             accessToken,

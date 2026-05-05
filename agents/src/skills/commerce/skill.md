@@ -1,7 +1,7 @@
 ---
 name: commerce
 description: Manage GoDaddy Commerce store data and operations via APIs (auth, store setup, catalog, products/SKUs, pricing, inventory, media, and orders). UI rendering belongs to commerce-storefront and commerce-one-time-payment skills.
-whenToUse: Trigger for ANY e-commerce intent — "create online store", "sell online", "sell products", "e-commerce site", "I want a shop" — as well as specific requests like "build product catalog", "set up shop/store", "add products", "add cart/checkout", or "connect GoDaddy Commerce". ALWAYS load this skill first for ANY store/catalog/product/selling operation (even when the user starts with UI or high-level wording), then load commerce-storefront or commerce-one-time-payment for UI pages.
+whenToUse: Load IMMEDIATELY — before using askQuestion or asking the user anything — for ANY e-commerce intent (create online store, sell online, sell products, e-commerce site, I want a shop, build product catalog, set up shop/store, add products, add cart/checkout, connect GoDaddy Commerce). Do NOT ask the user which store or what products before loading this skill — the skill workflow handles store discovery automatically via commerce__setup_store. ALWAYS load this skill first for ANY store/catalog/product/selling operation (even when the user starts with UI or high-level wording), then load commerce-storefront or commerce-one-time-payment for UI pages.
 ---
 
 # Commerce Management Skill
@@ -55,6 +55,7 @@ Activate this skill when the user wants to:
 - handle ambiguous prompts like "build the product catalog" by setting up/fetching Commerce data first (instead of static catalog scaffolding)
 
 Do **not** use this skill alone for rendering storefront pages/components. Hand off to Commerce UI skills for UI implementation.
+Do **not** ask the user which store to use before calling `commerce__setup_store` — call the tool first and let it return `storeChoiceRequired` or `businessChoiceRequired` to determine what to ask.
 </when_to_use>
 
 <authorization>
@@ -66,21 +67,34 @@ Do **not** use this skill alone for rendering storefront pages/components. Hand 
    </authorization>
 
 <workflow>
+**Critical:** Never ask the user "which store?" before calling `commerce__setup_store`. Always call `oauthConnect` + `commerce__setup_store` first — the tool response determines store state and will prompt the user for the right choice automatically.
+
+**ALWAYS re-run `commerce__setup_store` at the start of every commerce flow — even if a `storeId` is already present in the conversation context.** The account may have multiple stores or businesses that were not visible in a prior turn. Never skip `setup_store` and call `fetch_catalog` or `manage_products` directly with a cached storeId. Re-running `setup_store` is cheap and is the ONLY safe way to confirm the user is managing the correct store.
+
+**`VITE_GODADDY_STORE_ID` is for the frontend storefront only.** If you see `VITE_GODADDY_STORE_ID` in the app environment or context, ignore it when making store management decisions — it controls which store the storefront UI renders, not which store the user wants to manage products in. NEVER use it as a reason to skip calling `commerce__setup_store`.
+
 Follow this order for management work:
 
 1. Call `oauthConnect`.
 2. If the user already shared a Commerce Home URL or Store ID, call `commerce__setup_store` with `storeUrl` or `storeId` so the existing store is linked directly.
-3. Otherwise call `commerce__setup_store` once to discover store state.
-   If the user has explicitly asked to create a new store (e.g. "create a new store", "I want a new store"), pass `storePreference: "new"` on this first call — do not make a discovery call first.
-   If the tool returns `storeChoiceRequired: true`, stop and ask whether to use the existing store or create a new one. Use `suggestedResponse`. Do not retry `commerce__setup_store` again in the same turn.
-   If the tool returns `needsOwnerIdentity: true`, ask the user for first name, last name, and email, then retry `commerce__setup_store` with `storePreference: "new"`.
-   If the tool returns `noExistingStoreFound: true`, ask for first name, last name, and email, then retry `commerce__setup_store` with `storePreference: "new"`.
-   If the tool returns `storeProvisioningInProgress: true`, tell the user Commerce store setup is still finishing and do not immediately call `commerce__setup_store` again.
-   If the tool returns `paymentsManualSetupRequired: true`, tell the user the store was created but GoDaddy Payments must be finished manually in Commerce Home.
-4. After the user chooses a path, call `commerce__setup_store` with the explicit preference when needed:
-   - `storePreference: "existing"` to reuse the discovered store
-   - `storePreference: "new"` to create a new store
+3. Otherwise call `commerce__setup_store` once (no preference) to discover store state.
+   **Handling `businessChoiceRequired: true`:**
+   The result includes a `businesses` array listing every GoDaddy business with its stores. Use `askQuestion` with `multiSelect: false`, `allowOther: false`, and one suggestion per business (text = business legalName). Do NOT use `suggestedResponse` for this. Then retry `commerce__setup_store` with `businessId: "<chosen businessId>"`. Do not retry without a `businessId`.
+   **Handling `storeChoiceRequired: true`:**
+   Only fires when the account has **2 or more** stores (1 biz / 2+ stores, or after ADD_STORE). The result includes an `existingStores` array. Use `askQuestion` with `multiSelect: false`, `allowOther: false`, and one suggestion per store (text = store displayName). Always include a "Create a new store" option as the last suggestion. Do NOT use `suggestedResponse` for this. Do not retry `commerce__setup_store` again in the same turn.
+   **1 biz / 1 store:** `setup_store` auto-proceeds and returns `storeId` directly — no choice required, no `askQuestion` needed.
+   **Handling `needsOwnerIdentity: true`:** ask for first name, last name, and email, then retry with `storePreference: "new"`.
+   **Handling `needsStoreName: true`:** ask the user what to name the new store, then retry with `storePreference: "new"` and the new `storeName`.
+   **Handling `noExistingStoreFound: true`:** ask for first name, last name, and email, then retry with `storePreference: "new"`.
+   **Handling `storeProvisioningInProgress: true`:** tell the user Commerce store setup is still finishing and do not call `commerce__setup_store` again.
+   **Handling `paymentsManualSetupRequired: true`:** tell the user the store was created but GoDaddy Payments must be finished manually in Commerce Home.
+4. After the user chooses a path, call `commerce__setup_store` with the explicit preference:
+   - **Use existing store:** `storePreference: "existing"`, `storeName: "<chosen store name>"` (required when multiple stores exist to select the right one). Also pass `businessId` and `channelId` from the chosen `existingStores` entry if they are present — this avoids redundant API lookups.
+   - **Create additional store (2nd, 3rd, …):** `storePreference: "new"`, `storeName: "<new store name>"`. Owner identity (firstName/lastName/email) is NOT needed — the business is already onboarded. The tool handles this via ADD_STORE.
+   - **Create first store (no existing stores):** `storePreference: "new"` plus `firstName`, `lastName`, `email`.
 5. Reuse the resulting `storeId`, `channelId`, and `locationId` for the rest of the flow. Do not call `commerce__setup_store` again in the same flow just to recover `channelId` or re-check an existing store.
+   **Multi-store rule:** Never save `storeId` to persistent app memory. Always rediscover it via `commerce__setup_store` at the start of each new conversation AND whenever the user asks to add/manage products or connect a store mid-conversation — even if a `storeId` is already present in the conversation context. The user may have multiple businesses; re-running `setup_store` is the only way to detect them and present the correct choice. Store selection matrix: 1 biz / 1 store → proceeds directly (no choice prompt); 1 biz / 2+ stores → `storeChoiceRequired`; 2+ businesses → `businessChoiceRequired`; businessId scoped → filters stores to that business.
+   **After ADD_STORE (`addedToExistingBusiness: true`):** The response also includes `storeChoiceRequired: true` with `existingStores` listing ALL stores including the new one. Treat it exactly like a `storeChoiceRequired` response — call `askQuestion` immediately to let the user pick which store to manage. Do NOT auto-proceed to product operations.
 6. Call `commerce__fetch_catalog` to inspect existing products.
 7. If catalog is empty and user wants starter data, create **up to 2** relevant starter products.
 8. Ensure each SKU has:
@@ -111,6 +125,15 @@ Note: `commerce__install_storefront` is for environment wiring used by UI flows;
 
 <product_management>
 Product operations use flat parameters (no nested action envelopes except where shown).
+
+<inventory_tracking>
+When creating or updating SKUs for **service or appointment products** (e.g. bookings, consultations, classes, sessions), always set `disableInventoryTracking: true`:
+- `createProduct` with `singleDefault` mode → set `defaultSku: { disableInventoryTracking: true }`
+- `createProduct` with `fromAttributes` mode → set `skuTemplate: { disableInventoryTracking: true }`
+- `updateSku` on an existing service/appointment SKU → set `skuDisableInventoryTracking: true`
+
+Do **not** set this on physical products (apparel, merchandise, goods) where stock enforcement is required.
+</inventory_tracking>
 
 ### `commerce__manage_products`
 
@@ -186,9 +209,13 @@ After commerce operations, share dashboard links returned by tools:
 Use `suggestedResponse` for confirmation points:
 
 - after `oauthConnect`: "I've connected my GoDaddy account"
-- when `storeChoiceRequired` is returned: "I found your existing Commerce store. Do you want to use it or create a new one?"
 - before `setup_store` when owner identity is missing: "I need your first name, last name, and email address to create your Commerce store."
 - after `setup_store`: "My store is ready, let's manage products"
 - after product/inventory/media updates: "Products look good" / "I'd like to make changes"
 - if UI is requested: "Let's build the storefront UI" or "Let's set up one-time checkout UI"
+
+Use `askQuestion` (not `suggestedResponse`) for choice prompts:
+
+- when `businessChoiceRequired` is returned: one suggestion per business (legalName), `multiSelect: false`, `allowOther: false`
+- when `storeChoiceRequired` is returned: one suggestion per store (displayName) plus "Create a new store", `multiSelect: false`, `allowOther: false`
   </communication>

@@ -1,12 +1,16 @@
 import { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
-import { formatPrice } from '../../../lib/commerce-client';
+import { Link, useLocation, useParams } from 'react-router-dom';
+import { type CheckoutCustomer, formatPrice } from '../../../lib/commerce-client';
 import { getCommerceProductBySkuId } from '../../../lib/commerce/products';
 import { startOneTimeCommerceCheckout } from '../../../lib/commerce/payment-flow';
 
 export default function CommerceCheckoutPage() {
   const { skuId } = useParams<{ skuId: string }>();
+  const location = useLocation();
   const product = skuId ? getCommerceProductBySkuId(skuId) : undefined;
+  // Contact info forwarded from a prior form (e.g. appointment booking).
+  // The upstream page passes this via: navigate('/checkout/:skuId', { state: { customer } })
+  const customer = (location.state as { customer?: CheckoutCustomer } | null)?.customer;
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -27,7 +31,11 @@ export default function CommerceCheckoutPage() {
     setIsSubmitting(true);
     setError(null);
 
-    const result = await startOneTimeCommerceCheckout({ skuId: product.skuId, quantity: 1 });
+    const result = await startOneTimeCommerceCheckout({
+      skuId: product.skuId,
+      quantity: 1,
+      ...(customer && { customer }),
+    });
 
     if (result.success && result.checkoutUrl) {
       window.location.href = result.checkoutUrl;

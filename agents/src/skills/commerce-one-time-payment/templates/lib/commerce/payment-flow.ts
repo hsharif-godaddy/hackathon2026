@@ -34,24 +34,14 @@ export async function startOneTimeCommerceCheckout(params: {
     };
   }
 
-  // The @godaddy/react <Checkout /> component reads shipping.email for the
-  // contact email field. Mirror billing.email → shipping.email so callers
-  // don't need to know this detail.
-  const customer = params.customer
-    ? {
-        ...params.customer,
-        shipping: {
-          ...params.customer.shipping,
-          email: params.customer.shipping?.email ?? params.customer.billing?.email,
-        },
-      }
-    : undefined;
-
+  // The POST route normalizes billing.email → shipping.email before calling
+  // GoDaddy, because <Checkout /> reads contactEmail from order.shipping.email
+  // and billing.email is not exposed in the session query response.
   return createCheckoutSession({
     storeId,
     lineItems: [{ skuId: params.skuId, quantity }],
     returnUrl: `${previewUrl}/checkout/cancel`,
     successUrl: `${previewUrl}/checkout/success`,
-    ...(customer && { customer }),
+    ...(params.customer && { customer: params.customer }),
   });
 }

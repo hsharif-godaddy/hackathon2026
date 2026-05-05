@@ -57,7 +57,11 @@ export const askQuestionAITool: Tool = createTool(
 Questions are displayed one at a time in the UI. Users can select a suggestion or provide their own answer.
 The agent will receive all answers in a formatted response once the user completes all questions.
 
-Use this instead of asking questions directly in your response text.`,
+Use this instead of asking questions directly in your response text.
+
+NEVER use this to ask about commerce intent before loading the commerce skill. For initial commerce/e-commerce/store/product/selling requests, load the commerce skill immediately with skill({ action: "load", skill: "commerce" }) — do not ask the user first.
+
+EXCEPTION: Use this tool to present concrete store or business choices returned by commerce__setup_store (storeChoiceRequired or businessChoiceRequired). Pass each store/business name as a suggestion with multiSelect: false and allowOther: false so the user picks via option buttons.`,
   askQuestionInputSchema,
   async (input, context) => {
     const { questions } = input

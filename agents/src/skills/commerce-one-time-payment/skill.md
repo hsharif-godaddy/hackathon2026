@@ -140,6 +140,12 @@ Update route path types/enums accordingly.
   - call `startOneTimeCommerceCheckout({ skuId, quantity: 1 })`
   - redirect to `result.checkoutUrl` on success
   - show error message on failure
+- **Customer prefill:** `Checkout.tsx` already reads `customer` from React Router `location.state` and forwards it to `startOneTimeCommerceCheckout`. To pre-fill the GoDaddy checkout form, the upstream page (e.g. appointment booking form) must navigate with state:
+  ```ts
+  navigate(`/checkout/${skuId}`, { state: { customer: { billing: { firstName, lastName, email } } } })
+  ```
+  Pass email under either `billing.email` or `shipping.email` — the POST route automatically mirrors `billing.email → shipping.email` because `<Checkout />` reads `order.shipping.email` and `billing.email` is not exposed in the session query response.
+  Do **not** remove the `customer` forwarding from `Checkout.tsx` — it must survive any regeneration.
 - Keep `payment-flow.ts` URL behavior:
   - `returnUrl: ${previewUrl}/checkout/cancel`
   - `successUrl: ${previewUrl}/checkout/success`

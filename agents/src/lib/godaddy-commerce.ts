@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import { v4 as uuid } from 'uuid';
 import type { z } from 'zod';
 import { Logger } from '../logging/index.js';
@@ -488,6 +489,66 @@ export class GoDaddyCommerce {
     const data = await safeJsonParse(result, 'onboardApplication');
 
     return parseResponse(OnboardingResponseSchema, data, 'onboardApplication');
+  }
+
+  public async addStoreToExistingBusiness(
+    args: {
+      appId: string;
+      businessId: string;
+      storeName?: string;
+    },
+    accessToken: string,
+  ) {
+    const baseUrl = this.requireBaseUrl();
+
+    const hostname = new URL(baseUrl).hostname;
+    const domain = hostname.replace(/^api\./, '');
+    const isDevOrTest = domain.includes('dev-') || domain.includes('test-');
+    const queryParams = isDevOrTest ? '?mock=true' : '';
+    const url = `https://signup.payments.${domain}/api/v1/commerce/onboarding-applications${queryParams}`;
+    const requestId = uuid();
+
+    const storeName = args.storeName ?? 'New Store';
+
+    const requestBody = {
+      metadata: {
+        businessId: args.businessId,
+        source: 'GoDaddy - Airo Builder Agent',
+        appId: args.appId,
+      },
+      store: {
+        name: storeName,
+        address: {
+          countryCode: 'US',
+        },
+      },
+      intent: 'ADD_STORE',
+      products: [{ name: 'PAYMENTS' }],
+    };
+
+    // X-Reference-ID must be unique per (app, business, store name) tuple.
+    // A hash of the exact inputs is collision-free and deterministic for retries.
+    // Null-byte separators prevent "ab"+"cd" from colliding with "a"+"bcd".
+    const referenceId = createHash('sha256')
+      .update(`${args.appId}\x00${args.businessId}\x00${storeName}`)
+      .digest('hex')
+      .slice(0, 40);
+
+    const result = await fetchWithRetry(url, {
+      method: 'POST',
+      headers: {
+        ...this.baseHeaders,
+        Authorization: `Bearer ${accessToken}`,
+        'X-Request-ID': requestId,
+        'X-Reference-ID': referenceId,
+        'X-Reference-Name': 'Airo Builder',
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    const data = await safeJsonParse(result, 'addStoreToExistingBusiness');
+
+    return parseResponse(OnboardingResponseSchema, data, 'addStoreToExistingBusiness');
   }
 
   public async enableGoDaddyPaymentsApplication(args: { storeId: string }, accessToken: string) {
