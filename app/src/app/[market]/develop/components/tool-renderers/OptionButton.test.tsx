@@ -67,78 +67,45 @@ describe('OptionButton', () => {
     expect(button).toHaveClass('pointer-events-none')
   })
 
-  it('should not show radio circle when isSelectable is false', () => {
+  it('should not show indicator when isSelectable is false', () => {
     const onClick = vi.fn()
     const { container } = renderWithProviders(
       <OptionButton text="Test Option" onClick={onClick} isSelectable={false} />
     )
 
-    const radioCircle = container.querySelector('.size-2.rounded-full')
-    expect(radioCircle).not.toBeInTheDocument()
+    const indicator = container.querySelector('[aria-hidden="true"]')
+    expect(indicator).not.toBeInTheDocument()
   })
 
-  it('should show radio circle when isSelectable is true', () => {
+  it('should show dot indicator when isSelectable is true and no keyboardShortcut', () => {
     const onClick = vi.fn()
     const { container } = renderWithProviders(
       <OptionButton text="Test Option" onClick={onClick} isSelectable={true} />
     )
 
-    const radioCircle = container.querySelector('.size-2.rounded-full')
-    expect(radioCircle).toBeInTheDocument()
+    const dot = container.querySelector('.size-2.rounded-full')
+    expect(dot).toBeInTheDocument()
   })
 
-  it('should show empty radio circle when isSelectable is true but not selected', () => {
+  it('should show numbered badge when keyboardShortcut is provided', () => {
     const onClick = vi.fn()
     const { container } = renderWithProviders(
-      <OptionButton
-        text="Test Option"
-        onClick={onClick}
-        isSelectable={true}
-        isSelected={false}
-      />
+      <OptionButton text="Test Option" onClick={onClick} isSelectable={true} keyboardShortcut={3} />
     )
 
-    const outerCircle = container.querySelector('.size-2.rounded-full')
-    const innerDot = container.querySelector('.size-1.rounded-full')
-
-    expect(outerCircle).toBeInTheDocument()
-    expect(innerDot).not.toBeInTheDocument()
+    const badge = container.querySelector('.size-2\\.5')
+    expect(badge).toBeInTheDocument()
+    expect(badge).toHaveTextContent('3')
   })
 
-  it('should show filled radio circle when isSelected is true', () => {
+  it('should not show numbered badge in compact mode', () => {
     const onClick = vi.fn()
     const { container } = renderWithProviders(
-      <OptionButton
-        text="Test Option"
-        onClick={onClick}
-        isSelectable={true}
-        isSelected={true}
-      />
+      <OptionButton text="Test Option" onClick={onClick} isSelectable={true} keyboardShortcut={1} compact />
     )
 
-    const outerCircle = container.querySelector('.size-2.rounded-full')
-    const innerDot = container.querySelector('.size-1.rounded-full')
-
-    expect(outerCircle).toBeInTheDocument()
-    expect(innerDot).toBeInTheDocument()
-  })
-
-  it('should not show inner dot when isSelected is true but isSelectable is false', () => {
-    const onClick = vi.fn()
-    const { container } = renderWithProviders(
-      <OptionButton
-        text="Test Option"
-        onClick={onClick}
-        isSelectable={false}
-        isSelected={true}
-      />
-    )
-
-    const radioCircle = container.querySelector('.size-2.rounded-full')
-    const innerDot = container.querySelector('.size-1.rounded-full')
-
-    expect(radioCircle).not.toBeInTheDocument()
-    expect(innerDot).not.toBeInTheDocument()
+    const badge = container.querySelector('.size-2\\.5')
+    expect(badge).not.toBeInTheDocument()
   })
 
   it('should apply base button styles', () => {
@@ -148,9 +115,18 @@ describe('OptionButton', () => {
     const button = screen.getByRole('button')
     expect(button).toHaveClass('flex')
     expect(button).toHaveClass('items-center')
-    expect(button).toHaveClass('gap-1')
-    expect(button).toHaveClass('rounded-lg')
+    expect(button).toHaveClass('gap-1.5')
+    expect(button).toHaveClass('rounded-md')
     expect(button).toHaveClass('bg-intents-ux-box-backgroundColor')
+  })
+
+  it('should apply compact styles when compact is true', () => {
+    const onClick = vi.fn()
+    renderWithProviders(<OptionButton text="Test Option" onClick={onClick} compact />)
+
+    const button = screen.getByRole('button')
+    expect(button).toHaveClass('rounded-full')
+    expect(button).toHaveClass('whitespace-nowrap')
   })
 
   it('should apply hover styles', () => {
@@ -158,7 +134,7 @@ describe('OptionButton', () => {
     renderWithProviders(<OptionButton text="Test Option" onClick={onClick} />)
 
     const button = screen.getByRole('button')
-    expect(button).toHaveClass('hover:border-intents-ux-boxHighContrast-borderColor')
+    expect(button).toHaveClass('hover:bg-muted')
     expect(button).toHaveClass('hover:cursor-pointer')
   })
 
@@ -181,14 +157,14 @@ describe('OptionButton', () => {
     expect(textSpan).toHaveTextContent('Test Option')
   })
 
-  it('should hide radio circle aria indicator', () => {
+  it('should hide indicator from screen readers', () => {
     const onClick = vi.fn()
     const { container } = renderWithProviders(
       <OptionButton text="Test Option" onClick={onClick} isSelectable={true} />
     )
 
-    const radioContainer = container.querySelector('[aria-hidden="true"]')
-    expect(radioContainer).toBeInTheDocument()
+    const indicator = container.querySelector('[aria-hidden="true"]')
+    expect(indicator).toBeInTheDocument()
   })
 
   it('should handle multiple clicks', async () => {
@@ -205,33 +181,6 @@ describe('OptionButton', () => {
     await waitFor(() => {
       expect(onClick).toHaveBeenCalledTimes(3)
     })
-  })
-
-  it('should handle state changes from unselected to selected', () => {
-    const onClick = vi.fn()
-    const { rerender, container } = renderWithProviders(
-      <OptionButton
-        text="Test Option"
-        onClick={onClick}
-        isSelectable={true}
-        isSelected={false}
-      />
-    )
-
-    let innerDot = container.querySelector('.size-1.rounded-full')
-    expect(innerDot).not.toBeInTheDocument()
-
-    rerender(
-      <OptionButton
-        text="Test Option"
-        onClick={onClick}
-        isSelectable={true}
-        isSelected={true}
-      />
-    )
-
-    innerDot = container.querySelector('.size-1.rounded-full')
-    expect(innerDot).toBeInTheDocument()
   })
 
   it('should handle enabling and disabling', () => {

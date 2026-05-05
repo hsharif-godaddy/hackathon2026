@@ -34,7 +34,6 @@ export default function SuggestedResponseToolRenderer({
   }
 
   const resultObj = result as any
-  // The result structure is { input, output } where output contains our data
   const output = resultObj?.output || resultObj
   const widgetData = output?.widgetData as SuggestedResponseData | undefined
 
@@ -67,6 +66,7 @@ export default function SuggestedResponseToolRenderer({
             onClick={() => handleSuggestionClick(suggestion)}
             animationDelay={index * 0.2}
             isSelectable={true}
+            keyboardShortcut={index + 1}
           />
         ))}
       </Box>

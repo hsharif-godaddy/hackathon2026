@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect,useState } from 'react'
+import { useCallback, useEffect,useState } from 'react'
 import Box from '@ux/box'
 
 import { useSendUserMessage } from '@/app/[market]/develop/components/chat/ChatContext'
@@ -8,6 +8,7 @@ import type { DefaultToolRendererProps } from '@/app/[market]/develop/components
 import DefaultToolRenderer from '@/app/[market]/develop/components/tool-renderers/DefaultToolRenderer'
 import OptionButton from '@/app/[market]/develop/components/tool-renderers/OptionButton'
 import OptionInput from '@/app/[market]/develop/components/tool-renderers/OptionInput'
+import { useNumberKeySelection } from '@/app/[market]/develop/components/tool-renderers/useNumberKeySelection'
 import { useTranslations } from '@/hooks/useTranslations'
 import { useIsActivelyStreaming, useIsLoading } from '@/stores/useStreamingConversationStore'
 import { logAiroHQEvent } from '@/utils/instrumentation'
@@ -58,13 +59,11 @@ export default function AskQuestionToolRenderer({
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0)
   const [answers, setAnswers] = useState<string[]>([])
   const [otherValue, setOtherValue] = useState('')
-  const [isOtherFocused, setIsOtherFocused] = useState(false)
 
   useEffect(() => {
     setCurrentQuestionIndex(0)
     setAnswers([])
     setOtherValue('')
-    setIsOtherFocused(false)
   }, [result])
 
   const parsedQuestions = ((result as any)?.output ?? result as any)?.widgetData?.questions as unknown[] | undefined
@@ -92,6 +91,26 @@ export default function AskQuestionToolRenderer({
   useEffect(() => {
     if (isSubmittedForHooks && onComplete) onComplete()
   }, [isSubmittedForHooks, onComplete])
+
+  const currentQuestionForKeyboard = parsedQuestions?.[currentQuestionIndex] as Question | undefined
+  const keyboardItemCount = currentQuestionForKeyboard?.suggestions?.length ?? 0
+  const isKeyboardDisabled = isProcessing || toolStatus !== 'completed' || !result || isLastAssistantMessage === false || isSubmittedForHooks
+
+  useNumberKeySelection({
+    itemCount: keyboardItemCount,
+    disabled: isKeyboardDisabled,
+    onSelect: useCallback((index: number) => {
+      if (!currentQuestionForKeyboard || index >= currentQuestionForKeyboard.suggestions.length) return
+      const suggestion = currentQuestionForKeyboard.suggestions[index]
+      logAiroHQEvent({
+        category: 'click',
+        recommendation_task: 'builder_askquestion_suggestion_click',
+        recommendation_type: 'askquestion_suggestion',
+        recommendation_id: `q${currentQuestionIndex}_s${index}`,
+      })()
+      submitAnswer(suggestion.value || suggestion.text)
+    }, [currentQuestionForKeyboard, currentQuestionIndex]),
+  })
 
   if (toolStatus === 'error') {
     return (
@@ -136,7 +155,6 @@ export default function AskQuestionToolRenderer({
     newAnswers[currentQuestionIndex] = answer
     setAnswers(newAnswers)
     setOtherValue('')
-    setIsOtherFocused(false)
 
     if (isLastQuestion) {
       setCurrentQuestionIndex(totalQuestions)
@@ -206,21 +224,21 @@ export default function AskQuestionToolRenderer({
             onClick={() => handleSuggestionClick(suggestion, index)}
             animationDelay={index * 0.2}
             isSelectable={true}
+            keyboardShortcut={index + 1}
           />
         ))}
 
         {currentQuestion.allowOther !== false && (
           <OptionInput
             value={otherValue}
-            isSelected={isOtherFocused}
             disabled={isProcessing}
             placeholder={t('builder_tools_askquestion_other_placeholder')}
             ariaLabel={t('builder_tools_askquestion_other_aria_label')}
             submitLabel={isLastQuestion ? t('builder_common_submit') : t('builder_common_next')}
-            onChange={(value) => { setOtherValue(value); setIsOtherFocused(true) }}
-            onFocus={() => setIsOtherFocused(true)}
+            onChange={setOtherValue}
             onSubmit={handleOtherSubmit}
             onKeyDown={handleOtherKeyDown}
+            keyboardShortcut={currentQuestion.suggestions.length + 1}
           />
         )}
       </Box>

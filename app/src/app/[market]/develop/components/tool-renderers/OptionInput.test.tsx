@@ -12,13 +12,11 @@ import OptionInput from './OptionInput'
 describe('OptionInput', () => {
   const mockProps = {
     value: '',
-    isSelected: false,
     disabled: false,
     placeholder: 'Enter text',
     ariaLabel: 'Input label',
     submitLabel: 'Submit',
     onChange: vi.fn(),
-    onFocus: vi.fn(),
     onSubmit: vi.fn(),
     onKeyDown: vi.fn()
   }
@@ -155,31 +153,24 @@ describe('OptionInput', () => {
     expect(button).toBeDisabled()
   })
 
-  it('should show empty radio circle when not selected', () => {
-    const { container } = renderWithProviders(
-      <OptionInput {...mockProps} isSelected={false} />
-    )
+  it('should show dot indicator when no keyboardShortcut', () => {
+    const { container } = renderWithProviders(<OptionInput {...mockProps} />)
 
-    const outerCircle = container.querySelector('.size-2.rounded-full')
-    const innerDot = container.querySelector('.size-1.rounded-full')
-
-    expect(outerCircle).toBeInTheDocument()
-    expect(innerDot).not.toBeInTheDocument()
+    const dot = container.querySelector('.size-2.rounded-full')
+    expect(dot).toBeInTheDocument()
   })
 
-  it('should show filled radio circle when selected', () => {
+  it('should show numbered badge when keyboardShortcut is provided', () => {
     const { container } = renderWithProviders(
-      <OptionInput {...mockProps} isSelected={true} />
+      <OptionInput {...mockProps} keyboardShortcut={2} />
     )
 
-    const outerCircle = container.querySelector('.size-2.rounded-full')
-    const innerDot = container.querySelector('.size-1.rounded-full')
-
-    expect(outerCircle).toBeInTheDocument()
-    expect(innerDot).toBeInTheDocument()
+    const badge = container.querySelector('.size-2\\.5')
+    expect(badge).toBeInTheDocument()
+    expect(badge).toHaveTextContent('2')
   })
 
-  it('should hide radio circle from screen readers', () => {
+  it('should hide indicator from screen readers', () => {
     const { container } = renderWithProviders(<OptionInput {...mockProps} />)
 
     const radioContainer = container.querySelector('[aria-hidden="true"]')
@@ -207,9 +198,9 @@ describe('OptionInput', () => {
   it('should apply base container styles', () => {
     const { container } = renderWithProviders(<OptionInput {...mockProps} />)
 
-    const wrapper = container.querySelector('.flex.items-center.gap-1')
+    const wrapper = container.querySelector('.flex.items-center.gap-1\\.5')
     expect(wrapper).toHaveClass('bg-intents-ux-box-backgroundColor')
-    expect(wrapper).toHaveClass('rounded-lg')
+    expect(wrapper).toHaveClass('rounded-md')
   })
 
   it('should apply input styles', () => {
@@ -240,20 +231,6 @@ describe('OptionInput', () => {
 
     button = screen.getByRole('button')
     expect(button).not.toBeDisabled()
-  })
-
-  it('should handle selection state changes', () => {
-    const { rerender, container } = renderWithProviders(
-      <OptionInput {...mockProps} isSelected={false} />
-    )
-
-    let innerDot = container.querySelector('.size-1.rounded-full')
-    expect(innerDot).not.toBeInTheDocument()
-
-    rerender(<OptionInput {...mockProps} isSelected={true} />)
-
-    innerDot = container.querySelector('.size-1.rounded-full')
-    expect(innerDot).toBeInTheDocument()
   })
 
   it('should handle enabling and disabling', () => {

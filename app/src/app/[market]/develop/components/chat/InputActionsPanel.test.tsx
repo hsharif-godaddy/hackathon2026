@@ -188,7 +188,7 @@ describe('InputActionsPanel', () => {
       expect(screen.queryByText('Full menu page')).not.toBeInTheDocument()
     })
 
-    it('keeps plan preview items visible for empty askQuestion-shaped results', () => {
+    it('hides plan preview items when suggestions are active even for empty askQuestion-shaped results', () => {
       vi.mocked(useLatestNBAsModule.useLatestNBAs).mockReturnValue({
         question: 'What do you think of the design?',
         suggestions: [
@@ -208,17 +208,17 @@ describe('InputActionsPanel', () => {
 
       renderWithProviders(<InputActionsPanel />)
 
-      expect(screen.getByText('Full menu page')).toBeInTheDocument()
-      expect(screen.getByText('Location & hours page')).toBeInTheDocument()
+      expect(screen.getByText('Change the color scheme')).toBeInTheDocument()
+      expect(screen.queryByText('Full menu page')).not.toBeInTheDocument()
+      expect(screen.queryByText('Location & hours page')).not.toBeInTheDocument()
     })
 
-    it('shows plan preview items again after askQuestion is completed', async () => {
-      const { user } = renderWithProviders(<InputActionsPanel />)
+    it('hides plan preview items while suggestions are active', async () => {
+      renderWithProviders(<InputActionsPanel />)
 
-      await user.click(screen.getByText('Change the color scheme'))
-
-      expect(screen.getByText('Full menu page')).toBeInTheDocument()
-      expect(screen.getByText('Location & hours page')).toBeInTheDocument()
+      expect(screen.getByText('Change the color scheme')).toBeInTheDocument()
+      expect(screen.queryByText('Full menu page')).not.toBeInTheDocument()
+      expect(screen.queryByText('Location & hours page')).not.toBeInTheDocument()
     })
 
     it('hides plan preview items while askQuestion is active in the legacy variant', () => {

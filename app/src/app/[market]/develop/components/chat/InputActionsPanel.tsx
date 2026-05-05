@@ -14,6 +14,7 @@ import AskQuestionToolRenderer from '@/app/[market]/develop/components/tool-rend
 import OptionButton from '@/app/[market]/develop/components/tool-renderers/OptionButton'
 import OptionInput from '@/app/[market]/develop/components/tool-renderers/OptionInput'
 import RebuildPageSelectorToolRenderer from '@/app/[market]/develop/components/tool-renderers/RebuildPageSelectorToolRenderer'
+import { useNumberKeySelection } from '@/app/[market]/develop/components/tool-renderers/useNumberKeySelection'
 import { ViewMode } from '@/app/[market]/develop/components/types'
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import { findLatestAppliedColorScheme } from '@/app/[market]/develop/components/utils/findLatestAppliedColorScheme'
@@ -85,7 +86,6 @@ function InputActionsPanelLegacy() {
   const [fullPlanExpanded, setFullPlanExpanded] = useState(false)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [otherValue, setOtherValue] = useState('')
-  const [isOtherFocused, setIsOtherFocused] = useState(false)
 
   const items = currentList?.items ?? []
   const uncompletedItems = items.filter(item => !item.completed)
@@ -242,14 +242,12 @@ function InputActionsPanelLegacy() {
     const messageText = suggestion.value || suggestion.text
     sendUserMessage(messageText, { isActionRequest: true })
     setOtherValue('')
-    setIsOtherFocused(false)
   }
 
   function handleOtherSubmit() {
     if (isProcessing || !sendUserMessage || !otherValue.trim()) return
     sendUserMessage(otherValue.trim(), { isActionRequest: true })
     setOtherValue('')
-    setIsOtherFocused(false)
   }
 
   function handleOtherKeyDown(event: React.KeyboardEvent) {
@@ -261,6 +259,17 @@ function InputActionsPanelLegacy() {
 
   const showOtherInput = nbaData?.source === 'askQuestion' && nbaData?.allowOther
   const isAskQuestionActive = isAskQuestionNBA(nbaData) && !!nbaData?.toolResult
+
+  useNumberKeySelection({
+    itemCount: isAskQuestionActive ? 0 : nbaSuggestions.length,
+    disabled: isProcessing,
+    onSelect: useCallback((index: number) => {
+      if (!sendUserMessage || index >= nbaSuggestions.length) return
+      const suggestion = nbaSuggestions[index]
+      sendUserMessage(suggestion.value || suggestion.text, { isActionRequest: true })
+      setOtherValue('')
+    }, [nbaSuggestions, sendUserMessage]),
+  })
 
   function handlePlanItemClick(item: TodoItem) {
     if (isProcessing || !sendUserMessage) return
@@ -407,25 +416,25 @@ function InputActionsPanelLegacy() {
                 onClick={() => handleSuggestionClick(suggestion)}
                 animationDelay={index * 0.1}
                 isSelectable={true}
+                keyboardShortcut={index + 1}
               />
             ))}
 
             {showOtherInput && (
               <OptionInput
                 value={otherValue}
-                isSelected={isOtherFocused}
                 disabled={isProcessing}
                 placeholder={t('builder_tools_askquestion_other_placeholder')}
                 ariaLabel={t('builder_tools_askquestion_other_aria_label')}
                 submitLabel={t('builder_common_submit')}
-                onChange={(value) => { setOtherValue(value); setIsOtherFocused(true) }}
-                onFocus={() => setIsOtherFocused(true)}
+                onChange={setOtherValue}
                 onSubmit={handleOtherSubmit}
                 onKeyDown={handleOtherKeyDown}
+                keyboardShortcut={nbaSuggestions.length + 1}
               />
             )}
 
-            {!isAskQuestionActive && hasPlan && !fullPlanExpanded && (
+            {!isAskQuestionActive && nbaSuggestions.length === 0 && hasPlan && !fullPlanExpanded && (
               <div className="flex items-center justify-end px-1 py-0.5">
                 <button
                   type="button"
@@ -445,14 +454,15 @@ function InputActionsPanelLegacy() {
           </>
         )}
 
-        {/* Collapsed: plan preview items (with list icon); hidden when expanded */}
-        {!isAskQuestionActive && !fullPlanExpanded && planPreviewItems.map((item, index) => (
-          <PlanOptionButton
+        {/* Collapsed: plan preview items; hidden when expanded or when NBAs are active */}
+        {!isAskQuestionActive && nbaSuggestions.length === 0 && !fullPlanExpanded && planPreviewItems.map((item, index) => (
+          <OptionButton
             key={item.id}
-            item={item}
+            text={item.title}
             disabled={isProcessing}
             onClick={() => handlePlanItemClick(item)}
             animationDelay={(nbaSuggestions.length + index) * 0.1}
+            isSelectable={true}
           />
         ))}
 
@@ -571,66 +581,21 @@ function PlanOptionsList({
       }
     >
       {items.map((item, index) => (
-        <PlanOptionButton
+        <OptionButton
           key={item.id}
-          item={item}
+          text={item.title}
           disabled={disabled}
           onClick={() => onItemClick(item)}
           animationDelay={(animationIndexOffset + index) * 0.1}
           keyboardShortcut={index < maxKeyboardShortcuts ? index + 1 : undefined}
           compact={isHorizontal}
+          isSelectable={true}
         />
       ))}
     </div>
   )
 }
 
-function PlanOptionButton({
-  item,
-  disabled,
-  onClick,
-  animationDelay,
-  keyboardShortcut,
-  compact = false,
-}: {
-  item: TodoItem
-  disabled: boolean
-  onClick: () => void
-  animationDelay?: number
-  keyboardShortcut?: number
-  compact?: boolean
-}) {
-  return (
-    <motion.button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      initial={{ opacity: 0, y: 5 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.8, delay: animationDelay ?? 0, ease: [0.4, 0, 0.2, 1] }}
-      className={
-        compact
-          ? `group flex items-center px-2 py-1 rounded-full bg-intents-ux-boxLowContrast-backgroundColor border border-border transition-colors text-left flex-shrink-0 whitespace-nowrap ${disabled ? 'opacity-50 cursor-not-allowed pointer-events-none' : 'hover:bg-intents-ux-actionHovered-backgroundColor hover:cursor-pointer'}`
-          : `group flex items-center gap-1.5 px-2 py-1 m-0 rounded-md bg-intents-ux-box-backgroundColor transition-colors border text-left w-full ${disabled ? 'border-transparent opacity-50 cursor-not-allowed pointer-events-none' : 'border-border hover:bg-muted hover:cursor-pointer'}`
-      }
-    >
-      {!compact && keyboardShortcut !== undefined && (
-        <span
-          className="flex-shrink-0 size-2.5 rounded text-[11px] font-medium flex items-center justify-center bg-muted text-muted-foreground"
-          aria-hidden="true"
-        >
-          {keyboardShortcut}
-        </span>
-      )}
-      {!compact && keyboardShortcut === undefined && (
-        <div className="flex-shrink-0" aria-hidden="true">
-          <div className="size-2 rounded-full border-2 border-border/50 flex items-center justify-center" />
-        </div>
-      )}
-      <span className={compact ? 'text-sm font-normal' : 'text-sm font-medium flex-1 truncate'}>{item.title}</span>
-    </motion.button>
-  )
-}
 
 /**
  * Circular checkbox for completed items
@@ -746,12 +711,13 @@ function FullPlanSection({
             ))}
             {/* Uncompleted items — actionable, with plan icon */}
             {uncompletedItems.map((item, index) => (
-              <PlanOptionButton
+              <OptionButton
                 key={item.id}
-                item={item}
+                text={item.title}
                 disabled={isProcessing}
                 onClick={() => onItemClick(item)}
                 animationDelay={index * 0.05}
+                isSelectable={true}
               />
             ))}
           </>
@@ -1209,7 +1175,7 @@ function InputActionsPanelThemeSelection({ activeColorSchemeSuggest = null }: In
     sendUserMessage(text, { isActionRequest: true })
   }
 
-  // Keyboard shortcuts: press 1-4 to select plan items
+  // Keyboard shortcuts: press 1-4 to select plan items or NBA suggestions
   const MAX_KEYBOARD_SHORTCUTS = 4
   const keyboardEnabledItems = useMemo(
     () => planPreviewItems.slice(0, MAX_KEYBOARD_SHORTCUTS),
@@ -1248,14 +1214,20 @@ function InputActionsPanelThemeSelection({ activeColorSchemeSuggest = null }: In
     [isProcessing, sendUserMessage]
   )
 
+  const nbaSuggestionsRef = useRef(nbaSuggestions)
+  nbaSuggestionsRef.current = nbaSuggestions
+
   useEffect(() => {
-    if (isProcessing || isModalOpen || showColor || isAskQuestionActive || keyboardEnabledItems.length === 0) return
+    if (isProcessing || isModalOpen || showColor || isAskQuestionActive) return
+
+    const hasNBAShortcuts = nbaSuggestions.length > 0
+    const itemCount = hasNBAShortcuts ? Math.min(nbaSuggestions.length, MAX_KEYBOARD_SHORTCUTS) : keyboardEnabledItems.length
+    if (itemCount === 0) return
 
     function handleKeyDown(e: KeyboardEvent) {
       if (e.repeat) return
       if (e.metaKey || e.ctrlKey || e.altKey) return
 
-      // Ignore if focused on input elements - use activeElement for reliable focus detection
       const activeEl = document.activeElement as HTMLElement | null
       if (activeEl) {
         const tagName = activeEl.tagName
@@ -1270,15 +1242,23 @@ function InputActionsPanelThemeSelection({ activeColorSchemeSuggest = null }: In
       }
 
       const keyNum = parseInt(e.key, 10)
-      if (isNaN(keyNum) || keyNum < 1 || keyNum > keyboardEnabledItems.length) return
+      if (isNaN(keyNum) || keyNum < 1 || keyNum > itemCount) return
 
       e.preventDefault()
-      handlePlanItemClickCallback(keyboardEnabledItems[keyNum - 1])
+      if (hasNBAShortcuts) {
+        const suggestion = nbaSuggestionsRef.current[keyNum - 1]
+        if (!suggestion) return
+        const text = suggestion.value || suggestion.text
+        queryClient.removeQueries({ queryKey: ['next-actions', appId] })
+        sendUserMessage(text, { isActionRequest: true })
+      } else {
+        handlePlanItemClickCallback(keyboardEnabledItems[keyNum - 1])
+      }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isProcessing, isModalOpen, showColor, isAskQuestionActive, keyboardEnabledItems, handlePlanItemClickCallback])
+  }, [isProcessing, isModalOpen, showColor, isAskQuestionActive, keyboardEnabledItems, handlePlanItemClickCallback, nbaSuggestions.length, queryClient, appId, sendUserMessage])
 
   function handleColorCancel() {
     if (activeColorSchemeSuggest) {
@@ -1414,6 +1394,7 @@ function InputActionsPanelThemeSelection({ activeColorSchemeSuggest = null }: In
             onClick={() => handleSuggestionClick(suggestion)}
             animationDelay={index * 0.1}
             isSelectable={true}
+            keyboardShortcut={index + 1}
           />
         ))
       ) : !hasPendingPlanItems ? (
@@ -1425,6 +1406,7 @@ function InputActionsPanelThemeSelection({ activeColorSchemeSuggest = null }: In
             onClick={() => handleSuggestionClick(suggestion.text)}
             animationDelay={index * 0.1}
             isSelectable={true}
+            keyboardShortcut={index + 1}
           />
         ))
       ) : null}
@@ -1439,14 +1421,13 @@ function InputActionsPanelThemeSelection({ activeColorSchemeSuggest = null }: In
         />
       )}
 
-      {!isAskQuestionActive && planPreviewItems.length > 0 && (
+      {!isAskQuestionActive && nbaSuggestions.length === 0 && planPreviewItems.length > 0 && (
         <PlanOptionsList
           items={planPreviewItems}
           disabled={isProcessing}
           onItemClick={handlePlanItemClickCallback}
           orientation={isMobile ? 'horizontal' : 'vertical'}
           maxKeyboardShortcuts={MAX_KEYBOARD_SHORTCUTS}
-          animationIndexOffset={nbaSuggestions.length}
         />
       )}
     </div>
