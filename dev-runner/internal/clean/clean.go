@@ -35,6 +35,11 @@ var managedDataFiles = []string{
 	"local-control-plane/local-control-plane.db-wal",
 }
 
+// managedBuildDirs are generated build output directories safe to delete — rebuilt automatically on next run.
+var managedBuildDirs = []string{
+	"app/.next",
+}
+
 type goService struct {
 	dir       string
 	artifacts []string // what make clean actually removes, for display only
@@ -74,6 +79,18 @@ func run(projectRoot string, skipConfirm bool, out, errOut io.Writer, in io.Read
 		}
 	}
 
+	var dirsToRemove []string
+	for _, rel := range managedBuildDirs {
+		_, err := os.Stat(filepath.Join(projectRoot, rel))
+		if err == nil {
+			dirsToRemove = append(dirsToRemove, rel)
+			continue
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			fmt.Fprintf(errOut, "  warning: cannot stat %s: %v (skipping)\n", rel, err)
+		}
+	}
+
 	var servicesToClean []goService
 	for _, svc := range goServices {
 		_, err := os.Stat(filepath.Join(projectRoot, svc.dir, "Makefile"))
@@ -86,7 +103,7 @@ func run(projectRoot string, skipConfirm bool, out, errOut io.Writer, in io.Read
 		}
 	}
 
-	if len(filesToRemove) == 0 && len(servicesToClean) == 0 {
+	if len(filesToRemove) == 0 && len(dirsToRemove) == 0 && len(servicesToClean) == 0 {
 		fmt.Fprintln(out, "Nothing to clean.")
 		return nil
 	}
@@ -95,6 +112,14 @@ func run(projectRoot string, skipConfirm bool, out, errOut io.Writer, in io.Read
 		fmt.Fprintln(out, "Generated files to delete:")
 		for _, f := range filesToRemove {
 			fmt.Fprintf(out, "  %s\n", f)
+		}
+		fmt.Fprintln(out)
+	}
+
+	if len(dirsToRemove) > 0 {
+		fmt.Fprintln(out, "Build output to delete:")
+		for _, d := range dirsToRemove {
+			fmt.Fprintf(out, "  %s/\n", d)
 		}
 		fmt.Fprintln(out)
 	}
@@ -144,6 +169,16 @@ func run(projectRoot string, skipConfirm bool, out, errOut io.Writer, in io.Read
 		}
 	}
 
+	for _, rel := range dirsToRemove {
+		if err := os.RemoveAll(filepath.Join(projectRoot, rel)); err != nil {
+			fmt.Fprintf(errOut, "  error removing %s: %v\n", rel, err)
+			failed++
+			failedNames = append(failedNames, rel)
+		} else {
+			fmt.Fprintf(out, "  removed %s/\n", rel)
+		}
+	}
+
 	for _, svc := range servicesToClean {
 		fmt.Fprintf(out, "  cleaning %s/{%s}\n", svc.dir, strings.Join(svc.artifacts, ", "))
 		cmd := exec.Command("make", "clean")
@@ -164,5 +199,8 @@ func run(projectRoot string, skipConfirm bool, out, errOut io.Writer, in io.Read
 
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "Done. Run 'pnpm run dev' to regenerate.")
+	if len(dirsToRemove) > 0 {
+		fmt.Fprintf(out, "Note: %s deleted — first 'pnpm run dev' start will be slower while Next.js recompiles.\n", strings.Join(dirsToRemove, ", "))
+	}
 	return nil
 }

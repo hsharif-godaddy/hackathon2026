@@ -12,7 +12,9 @@ interface TranslationStrings {
  * - API routes (for client-side requests)
  *
  * Uses Next.js Data Cache with 2-minute revalidation in production.
- * Disabled in development to prevent ghost page reloads.
+ * Uses cache: 'no-store' in development — next: { revalidate: false } looks like
+ * "no caching" but actually means "cache indefinitely" (persisted to disk under
+ * .next/dev/cache/fetch-cache with a ~1-year TTL, surviving restarts).
  *
  * @param locale - Locale string (e.g., 'en-US')
  * @param packages - Array of package names to load
@@ -29,16 +31,17 @@ export async function loadTranslations(
   packages: string[]
 ): Promise<TranslationStrings> {
   const translationApiUrl = 'https://api.i18n.int.gdcorp.tools/api/v2';
-  const revalidate = process.env.NODE_ENV === 'development' ? false : 120;
+  const isDev = process.env.NODE_ENV === 'development';
 
   try {
     const responses = await Promise.all(
       packages.map(async (packageName) => {
         const url = `${translationApiUrl}/package/market/${locale.toLowerCase()}/${encodeURIComponent(packageName)}`;
 
-        const response = await fetch(url, {
-          next: { revalidate },
-        });
+        const response = await fetch(url, isDev
+          ? { cache: 'no-store' }
+          : { next: { revalidate: 120 } }
+        );
 
         if (!response.ok) {
           logger.error('translations.load.failure', {

@@ -115,6 +115,52 @@ func TestRun_CancelOnEOF(t *testing.T) {
 	}
 }
 
+func TestRun_RemovesBuildDirs(t *testing.T) {
+	root := t.TempDir()
+	nextDir := filepath.Join(root, "app", ".next", "dev", "cache", "fetch-cache")
+	if err := os.MkdirAll(nextDir, 0755); err != nil {
+		t.Fatalf("mkdir %s: %v", nextDir, err)
+	}
+	writeFile(t, filepath.Join(nextDir, "somecachefile"), "cached data")
+
+	var out bytes.Buffer
+	if err := run(root, true, &out, &bytes.Buffer{}, strings.NewReader("")); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(root, "app", ".next")); !os.IsNotExist(err) {
+		t.Error("expected app/.next to be removed")
+	}
+	if !strings.Contains(out.String(), "app/.next/") {
+		t.Errorf("expected app/.next/ in output, got: %s", out.String())
+	}
+}
+
+func TestRun_BuildDirRemovalFailure(t *testing.T) {
+	root := t.TempDir()
+	// Create app/.next as a file (not a dir) — os.RemoveAll on a file succeeds,
+	// so instead we make the parent unwritable to force a failure.
+	nextPath := filepath.Join(root, "app", ".next")
+	if err := os.MkdirAll(nextPath, 0755); err != nil {
+		t.Fatalf("mkdir %s: %v", nextPath, err)
+	}
+	// Make app/ unwritable so RemoveAll of app/.next fails.
+	appDir := filepath.Join(root, "app")
+	if err := os.Chmod(appDir, 0555); err != nil {
+		t.Fatalf("chmod %s: %v", appDir, err)
+	}
+	t.Cleanup(func() { os.Chmod(appDir, 0755) })
+
+	var errOut bytes.Buffer
+	err := run(root, true, &bytes.Buffer{}, &errOut, strings.NewReader(""))
+	if err == nil {
+		t.Fatal("expected error when dir removal fails")
+	}
+	if !strings.Contains(err.Error(), "app/.next") {
+		t.Errorf("expected failed dir name in error, got: %v", err)
+	}
+}
+
 func TestRun_MakeCleanSuccess(t *testing.T) {
 	root := t.TempDir()
 	// Create a service directory with a Makefile whose clean target succeeds.
