@@ -611,3 +611,27 @@ export const editLogoTool: SkillToolDefinition = {
     timeout: 120000,
   },
 };
+
+// ============================================================================
+// Offer Logo Actions Tool
+// ============================================================================
+
+/**
+ * Passthrough tool that surfaces "Add to library" / "Set as logo" buttons
+ * in the chat UI via LogoActionsToolRenderer. No server-side logic — the
+ * renderer handles iframe detection and postMessage.
+ */
+export const offerLogoActionsTool: SkillToolDefinition = {
+  name: 'offer_logo_actions',
+  description:
+    'Offer the user "Add to my library" and "Set as my logo" quick-action buttons for a generated logo. Call this after generate_logo or edit_logo with the transparent URL of the primary logo.',
+  parameters: z.object({
+    imageUrl: z.string().describe('The transparent logo image URL to offer actions for'),
+  }),
+  async execute(input) {
+    return {
+      text: '',
+      structuredContent: { imageUrl: input.imageUrl },
+    };
+  },
+};

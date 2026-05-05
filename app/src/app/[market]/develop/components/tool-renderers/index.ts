@@ -21,6 +21,7 @@ import FontThemeToolRenderer from './FontThemeToolRenderer'
 import GrepSearchToolRenderer from './GrepSearchToolRenderer'
 import HandoffToolRenderer from './HandoffToolRenderer'
 import ImageGeneratorToolRenderer from './ImageGeneratorToolRenderer'
+import LogoActionsToolRenderer from './LogoActionsToolRenderer'
 import LogoGeneratorToolRenderer from './LogoGeneratorToolRenderer'
 import MediaSearchToolRenderer from './MediaSearchToolRenderer'
 import MediaSlotToolRenderer from './MediaSlotToolRenderer'
@@ -98,6 +99,7 @@ export const toolRendererRegistry = {
   rebuildPageSelector: RebuildPageSelectorToolRenderer,
   'media-logo__generate_logo': LogoGeneratorToolRenderer,
   'media-logo__edit_logo': LogoGeneratorToolRenderer,
+  'media-logo__offer_logo_actions': LogoActionsToolRenderer,
   'media-image__generate_image': ImageGeneratorToolRenderer,
   'media-image__edit_image': ImageGeneratorToolRenderer,
   'media-video__generate_video': VideoGeneratorToolRenderer,

@@ -7,22 +7,28 @@ import CheckboxFilledIcon from '@ux/icon/checkbox-filled'
 import ChevronDownIcon from '@ux/icon/chevron-down'
 import ChevronUpIcon from '@ux/icon/chevron-up'
 import CropIcon from '@ux/icon/crop'
+import PlusIcon from '@ux/icon/plus'
 import RefreshIcon from '@ux/icon/refresh'
 import Skeleton from '@ux/skeleton'
 import Tag from '@ux/tag'
 
 import type { SlotUploadItem } from '@/app/[market]/develop/components/media/UploadedImagesSection'
 import { UploadedImagesSection } from '@/app/[market]/develop/components/media/UploadedImagesSection'
+import { getParentOrigin } from '@/components/security/allowed-frame-ancestors'
 import { dynamicApiConfigService } from '@/config/dynamic-api'
+import { useIsEmbedded } from '@/hooks/useIsEmbedded'
 import { useMediaManifest } from '@/hooks/useMediaManifest'
 import { useMediaSlot } from '@/hooks/useMediaSlot'
 import { useTranslations } from '@/hooks/useTranslations'
 import { regenerateToken } from '@/lib/jwt-regeneration'
 import { logger } from '@/lib/request-context'
 import { useServerPollingStore } from '@/stores/useServerPollingStore'
+import { fetchAsDataUrl } from '@/utils/image'
 import { generateClickEID, logImpressionEvent } from '@/utils/instrumentation'
 import { postMessageToIframe } from '@/utils/postMessage'
 import { GettyImagesLogo } from './icons/GettyImagesLogo'
+
+type LogoAction = 'add-to-library' | 'set-as-logo'
 
 export function formatSlotName(slot: string): string {
   return slot
@@ -111,6 +117,8 @@ export function MediaSlotDetail({
     setSelectedUrl(url)
     setSelectedUploadFile(null)
   }, [])
+
+  const isEmbedded = useIsEmbedded()
 
   const getServerState = useServerPollingStore((state) => state.getServerState)
   const previewBaseUrl = getServerState(appId)?.url || null
@@ -260,6 +268,22 @@ export function MediaSlotDetail({
         }))
     : []
 
+  const sendToParent = useCallback(async (action: LogoAction) => {
+    const url = effectiveSelectedUrl
+    if (!url) return
+    const parentOrigin = getParentOrigin()
+    if (!parentOrigin) return
+    const imageUrl = getSlotImageUrl(slotName, url, previewBaseUrl)
+    try {
+      const dataUrl = await fetchAsDataUrl(imageUrl)
+      window.parent.postMessage({ action, sender: 'airo-hq', imageUrl: dataUrl }, parentOrigin)
+    } catch (err) {
+      logger.warn('media.sendToParent.fetchFailed', { action, slotName, error: err })
+      const absoluteUrl = new URL(imageUrl, window.location.origin).href
+      window.parent.postMessage({ action, sender: 'airo-hq', imageUrl: absoluteUrl }, parentOrigin)
+    }
+  }, [effectiveSelectedUrl, slotName, previewBaseUrl])
+
   // When slot.currentUrl is an upload and no explicit selection, derive the
   // matching chat upload filename from uploadSources so the checkmark shows.
   const currentUploadFilename = (!selectedUploadFile && !selectedUrl && slot?.currentUrl && isUploadUrl(slot.currentUrl))
@@ -269,6 +293,7 @@ export function MediaSlotDetail({
   const effectiveSelectedFilename = selectedUploadFile?.filename ?? currentUploadFilename ?? null
   const isCurrentImage = !selectedUploadFile && effectiveSelectedUrl === slot?.currentUrl
   const hasSelection = selectedUploadFile || !isCurrentImage
+  const canSetAsLogo = !selectedUploadFile && !!effectiveSelectedUrl && !isUploadUrl(effectiveSelectedUrl)
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
@@ -350,6 +375,30 @@ export function MediaSlotDetail({
                 data-eid={generateClickEID("develop.media_slot_detail.use")}
               />
             </div>
+
+            {isEmbedded && slot.mediaType === 'logo' && (
+              <div className="flex gap-2">
+                <Button
+                  onClick={() => { void sendToParent('add-to-library') }}
+                  design="secondary"
+                  size="sm"
+                  icon={<PlusIcon className="w-4 h-4" />}
+                  text={t('builder_mediaslot_add_to_library')}
+                  disabled={isApplyingUpload || isSwapping}
+                  data-eid={generateClickEID("develop.media_slot_detail.add_to_library")}
+                  className="flex-1"
+                />
+                <Button
+                  onClick={() => { void sendToParent('set-as-logo') }}
+                  design="secondary"
+                  size="sm"
+                  text={t('builder_mediaslot_set_as_logo')}
+                  disabled={!canSetAsLogo || isApplyingUpload || isSwapping}
+                  data-eid={generateClickEID("develop.media_slot_detail.set_as_logo")}
+                  className="flex-1"
+                />
+              </div>
+            )}
 
             {gettyImages.length > 0 && (
               <div>

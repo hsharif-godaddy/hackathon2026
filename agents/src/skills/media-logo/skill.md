@@ -33,6 +33,16 @@ After generation, decide based on context:
 1. **Place immediately** when the conversation implies it — e.g., "build a site with a logo" or you're following a handoff that includes building pages.
 2. **Present and wait** when the user only asked to generate a logo. Show the results and let them browse. Place when asked later.
 
+## Post-Generation Actions
+
+After calling `media-logo__generate_logo` or `media-logo__edit_logo`, always call
+`media-logo__offer_logo_actions` with the transparent URL of the first generated logo.
+This gives the user quick-action buttons in the chat (e.g. "Add to my library", "Set as my logo").
+
+```typescript
+media-logo__offer_logo_actions({ imageUrl: result.logos[0].transparentUrl })
+```
+
 ## Context Gathering
 
 Before calling `media-logo__generate_logo`, check conversation context for brand name (`app.title`), description (`app.description`), and colors (color palette from app plan). Only ask the user for information not already available — the tool auto-enriches missing colors as fallback. Don't assume business details beyond what's in context.

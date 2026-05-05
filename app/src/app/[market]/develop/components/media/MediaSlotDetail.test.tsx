@@ -6,6 +6,8 @@ import '@testing-library/jest-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 
+import { getParentOrigin } from '@/components/security/allowed-frame-ancestors';
+import { useIsEmbedded } from '@/hooks/useIsEmbedded';
 import { useMediaManifest } from '@/hooks/useMediaManifest';
 import { useMediaSlot } from '@/hooks/useMediaSlot';
 import { renderWithProviders } from '@/tests/test-utils';
@@ -44,6 +46,14 @@ vi.mock('@/utils/image-compression', () => ({
 
 vi.mock('@/utils/postMessage', () => ({
   postMessageToIframe: vi.fn(),
+}));
+
+vi.mock('@/hooks/useIsEmbedded', () => ({
+  useIsEmbedded: vi.fn().mockReturnValue(false),
+}));
+
+vi.mock('@/components/security/allowed-frame-ancestors', () => ({
+  getParentOrigin: vi.fn().mockReturnValue('https://dashboard.godaddy.com'),
 }));
 
 
@@ -229,6 +239,131 @@ describe('MediaSlotDetail', () => {
     await waitFor(() => {
       expect(screen.getByText('Upload file not found')).toBeInTheDocument();
       expect(mockLogImpressionEvent).toHaveBeenCalledWith('uploads.mediaslot.failed');
+    });
+  });
+
+  describe('iframe postMessage buttons', () => {
+    const mockLogoSlot = () => {
+      vi.mocked(useMediaSlot).mockReturnValue({
+        slot: {
+          currentUrl: '/img1.jpg',
+          alternatives: ['/img2.jpg'],
+          mediaType: 'logo',
+          searchQuery: 'brand logo',
+        },
+        isLoading: false,
+        error: null,
+        refetch: mockRefetch,
+      } as unknown as ReturnType<typeof useMediaSlot>);
+    };
+
+    it('does not render buttons when not embedded', () => {
+      vi.mocked(useIsEmbedded).mockReturnValue(false);
+      mockLogoSlot();
+
+      renderWithProviders(<MediaSlotDetail appId={mockAppId} slotName={mockSlotName} />);
+
+      expect(screen.queryByText('builder_mediaslot_add_to_library')).not.toBeInTheDocument();
+      expect(screen.queryByText('builder_mediaslot_set_as_logo')).not.toBeInTheDocument();
+    });
+
+    it('does not render buttons for non-logo slots even when embedded', () => {
+      vi.mocked(useIsEmbedded).mockReturnValue(true);
+      // Default mock uses mediaType: 'image'
+
+      renderWithProviders(<MediaSlotDetail appId={mockAppId} slotName={mockSlotName} />);
+
+      expect(screen.queryByText('builder_mediaslot_add_to_library')).not.toBeInTheDocument();
+      expect(screen.queryByText('builder_mediaslot_set_as_logo')).not.toBeInTheDocument();
+    });
+
+    it('renders buttons for logo slots when embedded', () => {
+      vi.mocked(useIsEmbedded).mockReturnValue(true);
+      mockLogoSlot();
+
+      renderWithProviders(<MediaSlotDetail appId={mockAppId} slotName={mockSlotName} />);
+
+      expect(screen.getByText('builder_mediaslot_add_to_library')).toBeInTheDocument();
+      expect(screen.getByText('builder_mediaslot_set_as_logo')).toBeInTheDocument();
+    });
+
+    it('sends add-to-library postMessage with base64 data URL', async () => {
+      vi.mocked(useIsEmbedded).mockReturnValue(true);
+      mockLogoSlot();
+      const postMessageSpy = vi.spyOn(window.parent, 'postMessage');
+      (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        ok: true,
+        blob: async () => new Blob(['img'], { type: 'image/png' }),
+      });
+
+      const { user } = renderWithProviders(<MediaSlotDetail appId={mockAppId} slotName={mockSlotName} />);
+
+      await user.click(screen.getByText('builder_mediaslot_add_to_library'));
+
+      await waitFor(() => {
+        expect(postMessageSpy).toHaveBeenCalledWith(
+          { action: 'add-to-library', sender: 'airo-hq', imageUrl: expect.stringContaining('data:') },
+          'https://dashboard.godaddy.com'
+        );
+      });
+      postMessageSpy.mockRestore();
+    });
+
+    it('sends set-as-logo postMessage with base64 data URL', async () => {
+      vi.mocked(useIsEmbedded).mockReturnValue(true);
+      mockLogoSlot();
+      const postMessageSpy = vi.spyOn(window.parent, 'postMessage');
+      (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        ok: true,
+        blob: async () => new Blob(['img'], { type: 'image/png' }),
+      });
+
+      const { user } = renderWithProviders(<MediaSlotDetail appId={mockAppId} slotName={mockSlotName} />);
+
+      await user.click(screen.getByText('builder_mediaslot_set_as_logo'));
+
+      await waitFor(() => {
+        expect(postMessageSpy).toHaveBeenCalledWith(
+          { action: 'set-as-logo', sender: 'airo-hq', imageUrl: expect.stringContaining('data:') },
+          'https://dashboard.godaddy.com'
+        );
+      });
+      postMessageSpy.mockRestore();
+    });
+
+    it('falls back to raw URL when fetch fails', async () => {
+      vi.mocked(useIsEmbedded).mockReturnValue(true);
+      mockLogoSlot();
+      const postMessageSpy = vi.spyOn(window.parent, 'postMessage');
+      (global.fetch as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('Network error'));
+
+      const { user } = renderWithProviders(<MediaSlotDetail appId={mockAppId} slotName={mockSlotName} />);
+
+      await user.click(screen.getByText('builder_mediaslot_add_to_library'));
+
+      await waitFor(() => {
+        expect(postMessageSpy).toHaveBeenCalledWith(
+          { action: 'add-to-library', sender: 'airo-hq', imageUrl: expect.any(String) },
+          'https://dashboard.godaddy.com'
+        );
+      });
+      const call = postMessageSpy.mock.calls[0][0] as { imageUrl: string };
+      expect(call.imageUrl).not.toContain('data:');
+      postMessageSpy.mockRestore();
+    });
+
+    it('does not send postMessage when parentOrigin is null', async () => {
+      vi.mocked(useIsEmbedded).mockReturnValue(true);
+      mockLogoSlot();
+      vi.mocked(getParentOrigin).mockReturnValue(null);
+      const postMessageSpy = vi.spyOn(window.parent, 'postMessage');
+
+      const { user } = renderWithProviders(<MediaSlotDetail appId={mockAppId} slotName={mockSlotName} />);
+
+      await user.click(screen.getByText('builder_mediaslot_add_to_library'));
+
+      expect(postMessageSpy).not.toHaveBeenCalled();
+      postMessageSpy.mockRestore();
     });
   });
 
