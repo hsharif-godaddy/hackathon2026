@@ -105,12 +105,7 @@ func (c *AgentsEnvCheck) Run(_ context.Context, projectRoot string) preflight.Ch
 
 	required := []string{"NODE_ENV", "AUTH_TYPE"}
 	if s2s {
-		required = append(required,
-			"AWS_PROFILE",
-			"GOCODE_USE_S2S_AUTH",
-			"OPENAI_BASE_URL",
-			"ANTHROPIC_BASE_URL",
-		)
+		required = append(required, "AWS_PROFILE", "GOCODE_USE_S2S_AUTH")
 	} else {
 		required = append(required,
 			"OPENAI_API_KEY",
@@ -125,11 +120,12 @@ func (c *AgentsEnvCheck) Run(_ context.Context, projectRoot string) preflight.Ch
 		return result
 	}
 
+	// In S2S mode, stale api-key-mode values override the S2S endpoint via
+	// s2s-auth.ts's `process.env.OPENAI_BASE_URL || default` fallback. Flag
+	// them as fixable so EnvFixer regenerates agents/.env cleanly.
 	if s2s {
-		// Stale api-key credentials would shadow the S2S placeholder; flag them
-		// as fixable so EnvFixer regenerates agents/.env cleanly.
 		var stale []string
-		for _, key := range []string{"OPENAI_API_KEY", "ANTHROPIC_API_KEY"} {
+		for _, key := range []string{"OPENAI_API_KEY", "OPENAI_BASE_URL", "ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL"} {
 			if strings.TrimSpace(env[key]) != "" {
 				stale = append(stale, key)
 			}
@@ -141,28 +137,6 @@ func (c *AgentsEnvCheck) Run(_ context.Context, projectRoot string) preflight.Ch
 				Category:     c.Category(),
 				FixAvailable: true,
 				Message:      fmt.Sprintf("agents/.env has GOCODE_USE_S2S_AUTH=true but stale api-key vars set: %s", strings.Join(stale, ", ")),
-			}
-		}
-
-		// BASE_URL vars must point at the S2S GoCode endpoint -- the api-key
-		// LiteLLM proxy URL would route the IAM JWT to a backend that rejects it.
-		var mismatched []string
-		for _, key := range []string{"OPENAI_BASE_URL", "ANTHROPIC_BASE_URL"} {
-			if strings.TrimSpace(env[key]) != preflight.S2SGoCodeEndpoint {
-				mismatched = append(mismatched, key)
-			}
-		}
-		if len(mismatched) > 0 {
-			return preflight.CheckResult{
-				Status:       preflight.StatusFail,
-				Name:         c.Name(),
-				Category:     c.Category(),
-				FixAvailable: true,
-				Message: fmt.Sprintf(
-					"agents/.env has GOCODE_USE_S2S_AUTH=true but %s do not equal %s",
-					strings.Join(mismatched, ", "),
-					preflight.S2SGoCodeEndpoint,
-				),
 			}
 		}
 	}

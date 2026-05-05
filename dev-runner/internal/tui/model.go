@@ -269,10 +269,8 @@ func buildPreflightRunner(projectRoot string) *preflight.Runner {
 	ssoTokenCache := sso.NewTokenCache(sso.DefaultLocalDevConfig())
 
 	// App env fixer collects values; agents fixer reuses them via AppEnvFixer pointer.
-	// ProjectRoot enables the agents fixer's existing-file shortcut for
-	// already-S2S setups (avoids re-prompting on upgrade just to add BASE_URLs).
 	appEnvFixer := &fixers.EnvFixer{Target: "app"}
-	agentsEnvFixer := &fixers.EnvFixer{Target: "agents", ProjectRoot: projectRoot, AppEnvFixer: appEnvFixer}
+	agentsEnvFixer := &fixers.EnvFixer{Target: "agents", AppEnvFixer: appEnvFixer}
 
 	return &preflight.Runner{
 		Categories: []preflight.CategoryGroup{
@@ -297,7 +295,6 @@ func buildPreflightRunner(projectRoot string) *preflight.Runner {
 					{Check: &checks.AWSProfileCheck{}},
 					{Check: &checks.AppEnvCheck{}, Fixer: appEnvFixer},
 					{Check: &checks.AgentsEnvCheck{}, Fixer: agentsEnvFixer},
-					{Check: &checks.S2SAuthRecommendCheck{}, Fixer: &fixers.S2SMigrateFixer{}, OptIn: true},
 					{Check: &checks.ShellEnvConflictCheck{}},
 					{Check: &checks.GoProxyCheck{}, Fixer: &fixers.GoProxyFixer{}},
 					{Check: &checks.LCPEnvCheck{}, Fixer: &fixers.LCPEnvFixer{}},

@@ -12,7 +12,6 @@ import (
 
 type EnvFixer struct {
 	Target      string     // "app" or "agents"
-	ProjectRoot string     // when set (Target="agents"), enables the existing-file shortcut that skips the form for already-complete S2S setups
 	Values      *EnvValues // if set by TUI, skip form and use these directly
 	SyncFrom    *EnvValues // set after fix runs (on app fixer)
 	AppEnvFixer *EnvFixer  // agents fixer points to app fixer for syncing
@@ -51,12 +50,11 @@ func (f *EnvFixer) FormFields() []preflight.FormField {
 			Default:     defaults.AWSProfile,
 		},
 		{
-			Key:          "gocodeAuth",
-			Label:        "GoCode Auth",
-			Description:  "s2s = AWS IAM JWT (recommended, requires AWS SSO login); api-key = personal GoCode key (deprecated fallback)",
-			Default:      defaults.GoCodeAuth,
-			Options:      []string{"s2s", "api-key"},
-			OptionLabels: []string{"s2s", "api-key (deprecated)"},
+			Key:         "gocodeAuth",
+			Label:       "GoCode Auth",
+			Description: "s2s = AWS IAM JWT via dev GoCode (default, requires AWS SSO login); api-key = personal GoCode key",
+			Default:     defaults.GoCodeAuth,
+			Options:     []string{"api-key", "s2s"},
 		},
 		{
 			Key:         "apiKey",
@@ -70,7 +68,7 @@ func (f *EnvFixer) FormFields() []preflight.FormField {
 		{
 			Key:         "baseURL",
 			Label:       "GoCode Base URL",
-			Description: "Only used when GoCode Auth = api-key. Ignored in s2s mode (endpoint pinned automatically).",
+			Description: "Only used when GoCode Auth = api-key. Ignored in s2s mode (endpoint derives from NODE_ENV).",
 			Default:     defaults.BaseURL,
 		},
 	}
@@ -102,16 +100,6 @@ func (f *EnvFixer) needsForm() bool {
 	if f.Target == "agents" && f.AppEnvFixer != nil && f.AppEnvFixer.SyncFrom != nil {
 		return false
 	}
-	// Existing-file shortcut: when agents/.env already declares S2S with the
-	// supporting AUTH_TYPE / AWS_PROFILE present, reuse those values and skip
-	// the form. Avoids re-prompting users on upgrade just to add the newly-
-	// required BASE_URL pinning. The lookup is read-only so the registered
-	// fixer's state stays clean across preflight runs.
-	if f.Target == "agents" && f.ProjectRoot != "" {
-		if loadExistingAgentsS2SValues(f.ProjectRoot) != nil {
-			return false
-		}
-	}
 	return true
 }
 
@@ -122,66 +110,21 @@ func (f *EnvFixer) Fix(ctx context.Context, projectRoot string) error {
 		return fmt.Errorf("GoCode API key required when GoCode Auth = api-key")
 	}
 
-	// Single source of truth for which root the existing-file shortcut reads:
-	// when the caller wired f.ProjectRoot at construction time, honor it so
-	// needsForm() and Fix() agree even if a future caller passes a different
-	// projectRoot to Fix(). Falls back to the framework-supplied arg otherwise.
-	effectiveRoot := projectRoot
-	if f.ProjectRoot != "" {
-		effectiveRoot = f.ProjectRoot
-	}
-
 	// Agents can sync from app's collected values
 	if f.Target == "agents" && f.AppEnvFixer != nil && f.AppEnvFixer.SyncFrom != nil {
-		return f.generateAgentsEnv(effectiveRoot, f.AppEnvFixer.SyncFrom)
+		return f.generateAgentsEnv(projectRoot, f.AppEnvFixer.SyncFrom)
 	}
 
 	// Use pre-collected values
 	if f.Values != nil {
 		f.SyncFrom = f.Values
 		if f.Target == "app" {
-			return f.generateAppEnv(effectiveRoot, f.Values)
+			return f.generateAppEnv(projectRoot, f.Values)
 		}
-		return f.generateAgentsEnv(effectiveRoot, f.Values)
-	}
-
-	// Existing-file shortcut mirroring needsForm(): no form was shown because
-	// agents/.env already has a complete S2S configuration. Re-load the values
-	// here (rather than caching from needsForm) so the fixer instance remains
-	// stateless across preflight runs.
-	if f.Target == "agents" {
-		if values := loadExistingAgentsS2SValues(effectiveRoot); values != nil {
-			return f.generateAgentsEnv(effectiveRoot, values)
-		}
+		return f.generateAgentsEnv(projectRoot, f.Values)
 	}
 
 	return fmt.Errorf("env fixer requires Values to be set before Fix() is called")
-}
-
-// loadExistingAgentsS2SValues returns EnvValues derived from agents/.env when
-// the file already declares a complete S2S configuration (GOCODE_USE_S2S_AUTH=true
-// with AUTH_TYPE and AWS_PROFILE set). Returns nil otherwise so callers fall
-// back to the form path. ENOENT and I/O errors both return nil here on purpose:
-// AgentsEnvCheck's loadEnvForCheck already classifies and surfaces those errors,
-// and the form path will hit the same I/O error when it tries to write the file.
-func loadExistingAgentsS2SValues(projectRoot string) *EnvValues {
-	env, err := preflight.ParseEnvFile(filepath.Join(projectRoot, "agents/.env"))
-	if err != nil {
-		return nil
-	}
-	if !strings.EqualFold(strings.TrimSpace(env["GOCODE_USE_S2S_AUTH"]), "true") {
-		return nil
-	}
-	authType := strings.TrimSpace(env["AUTH_TYPE"])
-	awsProfile := strings.TrimSpace(env["AWS_PROFILE"])
-	if authType == "" || awsProfile == "" {
-		return nil
-	}
-	return &EnvValues{
-		AuthType:   authType,
-		AWSProfile: awsProfile,
-		GoCodeAuth: "s2s",
-	}
 }
 
 // DefaultEnvValues returns the default values for the env form, pre-populated
@@ -237,10 +180,6 @@ AUTH_TYPE=%s
 AWS_PROFILE=%s
 GOCODE_USE_S2S_AUTH=true
 
-# Pin S2S GoCode endpoint (s2s-auth.ts honors OPENAI_BASE_URL as an override).
-OPENAI_BASE_URL="%s"
-ANTHROPIC_BASE_URL="%s"
-
 DEFAULT_PROVIDER=anthropic
 
 APP_TEMPLATE_DIR=app-templates/v8
@@ -259,7 +198,7 @@ AGENT_URL=http://localhost:4000
 DOWNLOAD_TEMP_DIR="/tmp/apps/archives"
 
 ENABLE_AI_DEVTOOLS=true
-`, v.AuthType, v.AWSProfile, preflight.S2SGoCodeEndpoint, preflight.S2SGoCodeEndpoint)
+`, v.AuthType, v.AWSProfile)
 		} else {
 			content = fmt.Sprintf(`# Airo Builder - Agents Environment Configuration
 # Generated by dev-runner preflight
@@ -336,10 +275,13 @@ ENABLE_AI_DEVTOOLS=true
 		quoted bool
 	}
 	if v.GoCodeAuth == "s2s" {
-		// Remove stale api-key-mode credentials so they don't shadow the S2S
-		// placeholder. The BASE_URL vars stay (pinned below): leaving the old
-		// LiteLLM proxy URL would route the IAM JWT to a backend that rejects it.
-		for _, key := range []string{"OPENAI_API_KEY", "ANTHROPIC_API_KEY"} {
+		// Remove any stale api-key-mode values. s2s-auth.ts honors OPENAI_BASE_URL
+		// as an override, so leaving the old api-key endpoint sends the IAM JWT to
+		// the LiteLLM proxy (which rejects it).
+		for _, key := range []string{
+			"OPENAI_API_KEY", "OPENAI_BASE_URL",
+			"ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL",
+		} {
 			if err := removeEnvVar(envPath, key); err != nil {
 				return fmt.Errorf("removing %s: %w", key, err)
 			}
@@ -350,8 +292,6 @@ ENABLE_AI_DEVTOOLS=true
 			quoted bool
 		}{
 			{"GOCODE_USE_S2S_AUTH", "true", false},
-			{"OPENAI_BASE_URL", preflight.S2SGoCodeEndpoint, true},
-			{"ANTHROPIC_BASE_URL", preflight.S2SGoCodeEndpoint, true},
 		}
 	} else {
 		modeVars = []struct {
