@@ -39,7 +39,6 @@ import { PersistenceSubscriber } from './subscribers/persistence-subscriber.js'
 import { ConnectionStateManager, type ConnectionStateData } from './connection-state-manager.js'
 import { ConnectionRecoveryManager } from './connection-recovery-manager.js'
 import { executeAgentLoop, AgentNotFoundError } from './agent-execution-loop.js'
-import { context as otelContext, trace } from '@opentelemetry/api'
 import { createError, createHandoff } from '@godaddy/agent-observability-events'
 import {
   createAgentContext,
@@ -47,7 +46,9 @@ import {
   emitError,
   emitHandoff
 } from '@godaddy/agent-otel-sdk'
+import { context as otelContext, trace, type Context } from '@opentelemetry/api'
 import { createTraceContext } from '@signals/otel-sdk'
+import { getSignalsContext, type SignalsContext } from '@signals/sdk'
 import {
   StreamTimingTracker,
   type StreamTimingData,
@@ -2228,27 +2229,74 @@ export class WebSocketServer {
       }
     }
 
-    const traceCtx = createTraceContext({
-      headers: socket.handshake?.headers,
-      ...(appId && {
-        businessContext: {
-          schemaId: BUSINESS_CONTEXT_SCHEMA_ID,
-          data: {
-            appId,
-            ...(screenshotUrl && {
-              defaultScreenshotUrl: screenshotUrl,
-              listPublishedSnapshotsUrl,
-            }),
-          }
-        }
+    const handshakeHeaders = socket.handshake?.headers as
+      | Record<string, string | string[] | undefined>
+      | undefined
+    let baseSignals: SignalsContext = {}
+    try {
+      baseSignals = getSignalsContext(
+        handshakeHeaders ? { headers: handshakeHeaders } : {},
+      )
+    } catch (err) {
+      this.logger.warn('websocket.signals.get_context_failed', {
+        socketId,
+        error: err instanceof Error ? err.message : String(err),
       })
-    })
+    }
+    // Subset of agents/src/server/middleware/jwt-auth.ts AgentContext (handshake.auth.agentContext).
+    // trafficSessionId is copied to SignalsContext.sessionId in the spread below (JWT name ≠ Signals property).
+    const jwtAgentCtx = socket.handshake?.auth?.agentContext as
+      | {
+        customerId?: string
+        visitorId?: string
+        trafficSessionId?: string
+      }
+      | undefined
+    const signalsContext: SignalsContext = {
+      ...baseSignals,
+      ...(typeof jwtAgentCtx?.customerId === 'string' &&
+        jwtAgentCtx.customerId.length > 0 && { customerId: jwtAgentCtx.customerId }),
+      ...(typeof jwtAgentCtx?.visitorId === 'string' &&
+        jwtAgentCtx.visitorId.length > 0 && { visitorId: jwtAgentCtx.visitorId }),
+      ...(typeof jwtAgentCtx?.trafficSessionId === 'string' &&
+        jwtAgentCtx.trafficSessionId.length > 0 && { sessionId: jwtAgentCtx.trafficSessionId }),
+    }
+
+    let traceCtx: Context
+    try {
+      traceCtx = createTraceContext({
+        signalsContext,
+        ...(appId && {
+          businessContext: {
+            schemaId: BUSINESS_CONTEXT_SCHEMA_ID,
+            data: {
+              appId,
+              ...(screenshotUrl && {
+                defaultScreenshotUrl: screenshotUrl,
+                listPublishedSnapshotsUrl,
+              }),
+            }
+          }
+        })
+      })
+    } catch (err) {
+      this.logger.warn('websocket.signals.create_trace_context_failed', {
+        socketId,
+        error: err instanceof Error ? err.message : String(err),
+      })
+      traceCtx = otelContext.active()
+    }
 
     return otelContext.with(traceCtx, () =>
       // Queue this message to prevent concurrent handleChatMessage races
       // StateManager handles the queue chain, cleanup, and error isolation
       this.stateManager.queueMessage(socketId, () => this.handleChatMessageInternal(socket, data))
-    )
+    ).catch((err: unknown) => {
+      this.logger.error('websocket.chat_message.queue_failed', {
+        socketId,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    })
   }
 
   /**

@@ -28,6 +28,9 @@ describe('buildAgentContext', function suite() {
     const ctx = buildAgentContext(fullClaims);
     expect(ctx).toEqual({
       siteId: 'site-123',
+      customerId: undefined,
+      visitorId: undefined,
+      trafficSessionId: undefined,
       canDownload: true,
       canPublish: true,
       canPurchaseDomain: true,
@@ -36,6 +39,7 @@ describe('buildAgentContext', function suite() {
       useTestBudget: false,
       budgetServiceEnabled: true,
       subscriptionId: 'sub-456',
+      bmsBudgetId: undefined,
       enableAssessmentAgent: true,
       enableAssessmentOverride: false,
       product: 'PaaSNodeJS',
@@ -46,6 +50,30 @@ describe('buildAgentContext', function suite() {
       exp: 1700000000,
       iat: 1699999000,
     });
+  });
+
+  it('maps string visitorId and trafficSessionId', function trafficClaims() {
+    const ctx = buildAgentContext({
+      siteId: 's',
+      visitorId: 'v-1',
+      trafficSessionId: 'p-1',
+      exp: 1,
+      iat: 0,
+    });
+    expect(ctx.visitorId).toBe('v-1');
+    expect(ctx.trafficSessionId).toBe('p-1');
+  });
+
+  it('drops non-string visitorId and trafficSessionId', function trafficNonString() {
+    const ctx = buildAgentContext({
+      siteId: 's',
+      visitorId: 99 as unknown as string,
+      trafficSessionId: { x: 1 } as unknown as string,
+      exp: 1,
+      iat: 0,
+    });
+    expect(ctx.visitorId).toBeUndefined();
+    expect(ctx.trafficSessionId).toBeUndefined();
   });
 
   it('applies safe defaults for missing boolean claims', function defaults() {

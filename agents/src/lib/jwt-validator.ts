@@ -37,6 +37,8 @@ export interface JWTClaims {
 
   siteId: string;
   customerId?: string;
+  visitorId?: string;
+  trafficSessionId?: string;
   canDownload?: boolean;
   canPublish?: boolean;
   canPurchaseDomain?: boolean;

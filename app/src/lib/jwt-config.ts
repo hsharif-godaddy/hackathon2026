@@ -20,6 +20,8 @@ export interface JWTClaims {
   // Custom claims
   siteId: string;          // Site ID
   customerId?: string;      // GoDaddy Customer ID
+  visitorId?: string;      // From `visitor` cookie at mint
+  trafficSessionId?: string; // From `pathway` cookie at mint → Signals sessionId
   canDownload: boolean;    // Permission to download app files
   canPublish: boolean;     // Permission to publish app
   canPurchaseDomain: boolean; // Permission to purchase and attach custom domains

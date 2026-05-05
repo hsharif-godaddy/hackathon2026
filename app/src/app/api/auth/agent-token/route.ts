@@ -20,6 +20,8 @@ import { ServerPaywallProvider } from '@/lib/paywall/server-provider';
 import { PaywallDenialReason } from '@/lib/paywall/shared';
 import { logger } from '@/lib/request-context';
 import { checkSwitchboardFlag, checkSwitchboardValue } from '@/lib/switchboard/server';
+import { trafficPathwaySessionId } from '@/utils/traffic-signals';
+import { visitorIdFromVisitorCookieRaw } from '@/utils/visitor-id';
 import { getSiteValidationFromCache, setSiteValidationCache } from './site-validation-cache';
 
 export interface CreateAgentTokenRequest {
@@ -376,9 +378,38 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     const jwtStart = Date.now();
     const jwtService = getJWTService();
     const product = body.owningProduct || AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER;
+    const maxSignalClaimLen = 256;
+    const visitorRaw = request.cookies.get('visitor')?.value;
+    let visitorIdFromCookie = visitorIdFromVisitorCookieRaw(visitorRaw);
+    if (visitorRaw && !visitorIdFromCookie) {
+      logger.warn('agent-token.visitor-id-parse-miss', { siteId: body.siteId });
+    }
+    if (visitorIdFromCookie && visitorIdFromCookie.length > maxSignalClaimLen) {
+      logger.warn('agent-token.visitor-id-truncated', {
+        siteId: body.siteId,
+        length: visitorIdFromCookie.length,
+        max: maxSignalClaimLen,
+      });
+      visitorIdFromCookie = visitorIdFromCookie.slice(0, maxSignalClaimLen);
+    }
+    const pathwayFromJar = request.cookies.get('pathway')?.value;
+    let trafficSessionId = trafficPathwaySessionId(pathwayFromJar);
+    if (pathwayFromJar && !trafficSessionId) {
+      logger.warn('agent-token.traffic-session-id-parse-miss', { siteId: body.siteId });
+    }
+    if (trafficSessionId && trafficSessionId.length > maxSignalClaimLen) {
+      logger.warn('agent-token.traffic-session-id-truncated', {
+        siteId: body.siteId,
+        length: trafficSessionId.length,
+        max: maxSignalClaimLen,
+      });
+      trafficSessionId = trafficSessionId.slice(0, maxSignalClaimLen);
+    }
     const tokenOptions = {
       siteId: body.siteId,
       customerId: user.customerId,
+      ...(visitorIdFromCookie && { visitorId: visitorIdFromCookie }),
+      ...(trafficSessionId && { trafficSessionId }),
       canDownload,
       canPublish,
       canPurchaseDomain,

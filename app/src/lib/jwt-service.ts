@@ -16,6 +16,8 @@ import { logger } from './request-context';
 export interface CreateTokenOptions {
   siteId: string;
   customerId?: string;
+  visitorId?: string;
+  trafficSessionId?: string;
   canDownload: boolean;
   canPublish: boolean;
   canPurchaseDomain?: boolean;
@@ -175,6 +177,8 @@ export class JWTService {
       iat: now,
       siteId: options.siteId,
       customerId: options.customerId,
+      visitorId: options.visitorId,
+      trafficSessionId: options.trafficSessionId,
       canDownload: options.canDownload,
       canPublish: options.canPublish,
       canPurchaseDomain: options.canPurchaseDomain ?? false,
@@ -248,8 +252,8 @@ export class JWTService {
   }
 
   /**
-   * Generate cache key from token options
-   * Includes permissions to avoid stale cache when permissions change
+   * Cache key omits visitorId/trafficSessionId: observability-only, rotate often, and would unbound tokenCache if keyed.
+   * createTokenPayload still sets them from options on each mint. Other fields bound cache size as before.
    */
   private getCacheKey(options: CreateTokenOptions): string {
     const authType = options.authType || 'basic';
