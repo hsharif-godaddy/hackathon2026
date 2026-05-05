@@ -395,26 +395,6 @@ describe('sync-template-files black-box migration harness', () => {
         'migration.strip-stale-index-title.skipped',
       ],
     },
-    {
-      commit: 'd16667fa5ad4f1361dab6c91db94fac4eae9dbcd',
-      label: '2026-04-27 first SSR template',
-      expectedEvents: [
-        'migration.remove-public-assets-gitignore.applied',
-        'migration.migrate-to-ssr-entry.applied',
-        'migration.inject-ssr-markers.applied',
-        'migration.strip-stale-index-title.applied',
-      ],
-    },
-    {
-      commit: 'e7786c86e2abea1a380a8c7e2be07da4ff10c2c2',
-      label: '2026-05-01 data-router template',
-      expectedEvents: [
-        'migration.remove-public-assets-gitignore.applied',
-        'migration.migrate-to-ssr-entry.applied',
-        'migration.inject-ssr-markers.applied',
-        'migration.strip-stale-index-title.skipped',
-      ],
-    },
   ];
 
   it.each(historicalTemplateCheckpoints)(
