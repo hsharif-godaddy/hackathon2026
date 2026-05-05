@@ -49,6 +49,27 @@ type InputActionsPanelProps = {
   activeColorSchemeSuggest?: ActiveColorSchemeSuggest | null
 }
 
+function isAskQuestionToolResult(toolResult: unknown): boolean {
+  if (!toolResult || typeof toolResult !== 'object') return false
+
+  const resultObj = toolResult as { output?: unknown; widgetData?: unknown }
+  const output = resultObj.output && typeof resultObj.output === 'object' ? resultObj.output : resultObj
+  const outputObj = output as { widgetData?: unknown }
+  const widgetData = outputObj.widgetData
+  const questions = (widgetData as { questions?: unknown } | undefined)?.questions
+
+  return !!(
+    widgetData &&
+    typeof widgetData === 'object' &&
+    Array.isArray(questions) &&
+    questions.length > 0
+  )
+}
+
+function isAskQuestionNBA(nbaData: ReturnType<typeof useLatestNBAs>): boolean {
+  return nbaData?.source === 'askQuestion' || isAskQuestionToolResult(nbaData?.toolResult)
+}
+
 
 /** @deprecated Remove when `airo-builder-theme-selection-chat` is permanently on */
 function InputActionsPanelLegacy() {
@@ -239,6 +260,7 @@ function InputActionsPanelLegacy() {
   }
 
   const showOtherInput = nbaData?.source === 'askQuestion' && nbaData?.allowOther
+  const isAskQuestionActive = isAskQuestionNBA(nbaData) && !!nbaData?.toolResult
 
   function handlePlanItemClick(item: TodoItem) {
     if (isProcessing || !sendUserMessage) return
@@ -403,7 +425,7 @@ function InputActionsPanelLegacy() {
               />
             )}
 
-            {hasPlan && !fullPlanExpanded && (
+            {!isAskQuestionActive && hasPlan && !fullPlanExpanded && (
               <div className="flex items-center justify-end px-1 py-0.5">
                 <button
                   type="button"
@@ -424,7 +446,7 @@ function InputActionsPanelLegacy() {
         )}
 
         {/* Collapsed: plan preview items (with list icon); hidden when expanded */}
-        {!fullPlanExpanded && planPreviewItems.map((item, index) => (
+        {!isAskQuestionActive && !fullPlanExpanded && planPreviewItems.map((item, index) => (
           <PlanOptionButton
             key={item.id}
             item={item}
@@ -1194,7 +1216,7 @@ function InputActionsPanelThemeSelection({ activeColorSchemeSuggest = null }: In
     [planPreviewItems]
   )
 
-  const isAskQuestionActive = nbaData?.source === 'askQuestion' && !!nbaData.toolResult && !askQuestionCompleted
+  const isAskQuestionActive = isAskQuestionNBA(nbaData) && !!nbaData?.toolResult && !askQuestionCompleted
 
   const handlePlanItemClickCallback = useCallback(
     (item: TodoItem) => {

@@ -9,6 +9,7 @@ import { screen } from '@testing-library/react'
 import { ViewMode } from '@/app/[market]/develop/components/types'
 import type { ColorSchemePaletteOption } from '@/app/[market]/develop/components/utils/findLatestColorSchemeSuggest'
 import { previewThemeInIframe } from '@/app/[market]/develop/components/utils/previewThemeInIframe'
+import * as Switchboard from '@/hooks/useSwitchboard'
 import * as DevelopPageStore from '@/stores/useDevelopPageStore'
 import * as StreamingStore from '@/stores/useStreamingConversationStore'
 import * as TodoListStore from '@/stores/useTodoListStore'
@@ -50,9 +51,9 @@ vi.mock('./useLatestNBAs', () => ({
 vi.mock('@/hooks/useSwitchboard', () => ({
   useSwitchboard: vi.fn((flag: string) => {
     if (flag === 'airo-builder-theme-selection-chat') {
-      return { data: true, isLoading: false, error: null }
+      return true
     }
-    return { data: false, isLoading: false, error: null }
+    return false
   }),
 }))
 
@@ -100,6 +101,12 @@ describe('InputActionsPanel', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(Switchboard.useSwitchboard).mockImplementation((flag: string) => {
+      if (flag === 'airo-builder-theme-selection-chat') {
+        return true
+      }
+      return false
+    })
     vi.mocked(ChatContext.useSendUserMessage).mockReturnValue(vi.fn())
     vi.mocked(StreamingStore.useIsActivelyStreaming).mockReturnValue(false)
     vi.mocked(StreamingStore.useIsLoading).mockReturnValue(false)
@@ -110,6 +117,122 @@ describe('InputActionsPanel', () => {
     vi.mocked(DevelopPageStore.useDevelopPageStore).mockImplementation((selector: any) =>
       selector({ viewMode: ViewMode.PREVIEW })
     )
+  })
+
+  describe('askQuestion with plan items', () => {
+    const mockTodoList = {
+      id: 'list-1',
+      appId: 'test-app-id',
+      name: 'Build Website',
+      items: [
+        { id: 'item-1', listId: 'list-1', title: 'Full menu page', completed: false },
+        { id: 'item-2', listId: 'list-1', title: 'Location & hours page', completed: false },
+      ]
+    }
+
+    const askQuestionResult = {
+      output: {
+        widgetType: 'ask-question',
+        widgetData: {
+          type: 'ask-question',
+          currentQuestionIndex: 0,
+          answers: [],
+          questions: [{
+            question: 'What do you think of the design?',
+            suggestions: [
+              { text: 'Change the color scheme' },
+              { text: 'Adjust the fonts or layout' },
+            ],
+            allowOther: false,
+          }],
+        },
+      },
+    }
+
+    beforeEach(() => {
+      vi.mocked(TodoListStore.useCurrentList).mockReturnValue(mockTodoList)
+      vi.mocked(TodoListStore.useViewState).mockReturnValue(null)
+      vi.mocked(useLatestNBAsModule.useLatestNBAs).mockReturnValue({
+        question: 'What do you think of the design?',
+        suggestions: [
+          { text: 'Change the color scheme' },
+          { text: 'Adjust the fonts or layout' },
+        ],
+        source: 'askQuestion',
+        toolResult: askQuestionResult,
+      })
+    })
+
+    it('hides plan preview items while askQuestion is active in the input panel variant', () => {
+      renderWithProviders(<InputActionsPanel />)
+
+      expect(screen.getByText('Change the color scheme')).toBeInTheDocument()
+      expect(screen.getByText('Adjust the fonts or layout')).toBeInTheDocument()
+      expect(screen.queryByText('Full menu page')).not.toBeInTheDocument()
+      expect(screen.queryByText('Location & hours page')).not.toBeInTheDocument()
+    })
+
+    it('hides plan preview items for askQuestion-shaped results even if source is missing', () => {
+      vi.mocked(useLatestNBAsModule.useLatestNBAs).mockReturnValue({
+        question: 'What do you think of the design?',
+        suggestions: [
+          { text: 'Change the color scheme' },
+          { text: 'Adjust the fonts or layout' },
+        ],
+        toolResult: askQuestionResult,
+      })
+
+      renderWithProviders(<InputActionsPanel />)
+
+      expect(screen.getByText('Change the color scheme')).toBeInTheDocument()
+      expect(screen.queryByText('Full menu page')).not.toBeInTheDocument()
+    })
+
+    it('keeps plan preview items visible for empty askQuestion-shaped results', () => {
+      vi.mocked(useLatestNBAsModule.useLatestNBAs).mockReturnValue({
+        question: 'What do you think of the design?',
+        suggestions: [
+          { text: 'Change the color scheme' },
+          { text: 'Adjust the fonts or layout' },
+        ],
+        toolResult: {
+          output: {
+            widgetData: {
+              currentQuestionIndex: 0,
+              answers: [],
+              questions: [],
+            },
+          },
+        },
+      })
+
+      renderWithProviders(<InputActionsPanel />)
+
+      expect(screen.getByText('Full menu page')).toBeInTheDocument()
+      expect(screen.getByText('Location & hours page')).toBeInTheDocument()
+    })
+
+    it('shows plan preview items again after askQuestion is completed', async () => {
+      const { user } = renderWithProviders(<InputActionsPanel />)
+
+      await user.click(screen.getByText('Change the color scheme'))
+
+      expect(screen.getByText('Full menu page')).toBeInTheDocument()
+      expect(screen.getByText('Location & hours page')).toBeInTheDocument()
+    })
+
+    it('hides plan preview items while askQuestion is active in the legacy variant', () => {
+      vi.mocked(Switchboard.useSwitchboard).mockImplementation((flag: string) => {
+        if (flag === 'airo-builder-theme-selection-chat') return false
+        return false
+      })
+
+      renderWithProviders(<InputActionsPanel />)
+
+      expect(screen.getByText('Change the color scheme')).toBeInTheDocument()
+      expect(screen.queryByText('Full menu page')).not.toBeInTheDocument()
+      expect(screen.queryByText('Location & hours page')).not.toBeInTheDocument()
+    })
   })
 
   describe('color scheme suggestions with duplicate filtering', () => {
