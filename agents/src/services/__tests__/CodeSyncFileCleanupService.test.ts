@@ -139,6 +139,19 @@ describe('CodeSyncFileCleanupService', () => {
       expect(command).toContain('|| true');
     });
 
+    it('should omit excluded patterns from the generated command', async () => {
+      (mockDevSupervisor.exec as ReturnType<typeof vi.fn>).mockResolvedValue({ success: true });
+
+      await codeSyncFileCleanupService.deleteCleanablePatterns(mockDevSupervisor, '/app', ['.git/']);
+
+      const command = (mockDevSupervisor.exec as ReturnType<typeof vi.fn>).mock.calls[0][0].command as string;
+
+      // .git/ must not appear in the rm command — deleting it would break subsequent pulls
+      expect(command).not.toContain('/app/.git');
+      // Other directory patterns should still be present
+      expect(command).toContain('rm -rf');
+    });
+
     it('should use single quotes in shell command for safety', async () => {
       (mockDevSupervisor.exec as ReturnType<typeof vi.fn>).mockResolvedValue({ success: true });
 

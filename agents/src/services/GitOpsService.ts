@@ -466,8 +466,9 @@ export class GitOpsService {
         return;
       }
 
-      // Clean up junk/security-sensitive files after pull (single command, no scanning)
-      await codeSyncFileCleanupService.deleteCleanablePatterns(devSupervisor, '/app');
+      // Clean up junk/security-sensitive files after pull (single command, no scanning).
+      // Exclude .git/ — it must be preserved for subsequent pulls to work.
+      await codeSyncFileCleanupService.deleteCleanablePatterns(devSupervisor, '/app', ['.git/']);
       logger.info('git-ops.pull.cleanup-files.complete', { appId, jobId });
 
       // Always use Node.js build tool type (Vite detection removed)

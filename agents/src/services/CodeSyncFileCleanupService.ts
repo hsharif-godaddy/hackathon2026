@@ -116,17 +116,20 @@ export class CodeSyncFileCleanupService {
    * Delete all cleanable patterns from the container.
    * Uses configured patterns directly - no scanning needed.
    * Patterns are validated to prevent shell injection.
+   *
+   * @param exclude - Patterns to skip (e.g. ['.git/'] for git pull, where the .git dir must be preserved)
    */
   async deleteCleanablePatterns(
     devSupervisor: DevSupervisorClient,
-    containerPath: string
+    containerPath: string,
+    exclude: string[] = []
   ): Promise<{ success: boolean; error?: string }> {
     const patterns = this.getPatterns();
     const allPatterns = [
       ...patterns.osJunk,
       ...patterns.securitySensitive,
       ...patterns.ideConfig,
-    ];
+    ].filter(p => !exclude.includes(p));
 
     // Validate all patterns are safe for shell use
     const unsafePatterns = allPatterns.filter(p => !this.isSafePattern(p));
