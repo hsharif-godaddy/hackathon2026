@@ -10,14 +10,14 @@ import {
 } from '@airo/ai-lib/budget'
 import { isBudgetServiceError, mapBudgetErrorToResponse, BudgetErrorType } from '@airo/shared/budget'
 import { BudgetOverride } from '@airo/ai-grants'
-import { performBudgetPreCheck, type BudgetPreCheckDeps } from '../budget-pre-check.js'
+import { performBudgetPreCheck, type BudgetPreCheckDeps, type BudgetPreCheckResult } from '../budget-pre-check.js'
 
 // ── Helpers ──
 
 function makeDeps(overrides?: Partial<BudgetPreCheckDeps>): BudgetPreCheckDeps {
   return {
     getClient: () => null,
-    logger: { info: vi.fn() },
+    logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
     ...overrides,
   }
 }
@@ -117,88 +117,42 @@ describe('performBudgetPreCheck', () => {
     })
   })
 
-  it('returns null when subscriptionId is BudgetOverride.CareAgent and skips getClient', async () => {
-    const getClient = vi.fn()
+  // All sessions (override or not) use the customer's budgetId for session tracking.
+  // Override detection happens at report time via subscriptionId -> isBmsOverride().
+  it('uses customer budget for all sessions', async () => {
+    const client = mockClient()
     const result = await performBudgetPreCheck(
-      { budgetServiceEnabled: true, subscriptionId: BudgetOverride.CareAgent },
-      makeDeps({ getClient }),
+      { budgetServiceEnabled: true, subscriptionId: 'sub-1', bmsBudgetId: 'customer-budget', appId: 'app-1' },
+      makeDeps({ getClient: () => client }),
     )
-    expect(result).toBeNull()
-    expect(getClient).not.toHaveBeenCalled()
+    expect(result).not.toBeNull()
+    expect(result?.budgetId).toBe('customer-budget')
+    expect(result?.sessionId).toBe('sess-abc')
+    expect(client.getBudget).toHaveBeenCalledWith('customer-budget')
+    expect(client.createSession).toHaveBeenCalledWith('customer-budget')
   })
 
-  it('returns null when subscriptionId is BudgetOverride.TestAccounts and skips getClient', async () => {
-    const getClient = vi.fn()
+  it('proceeds without subscriptionId (logs warning)', async () => {
+    const client = mockClient()
+    const deps = makeDeps({ getClient: () => client })
     const result = await performBudgetPreCheck(
-      { budgetServiceEnabled: true, subscriptionId: BudgetOverride.TestAccounts },
-      makeDeps({ getClient }),
-    )
-    expect(result).toBeNull()
-    expect(getClient).not.toHaveBeenCalled()
-  })
-
-  it('returns null when subscriptionId is BudgetOverride.AssessAgent and skips getClient', async () => {
-    const getClient = vi.fn()
-    const result = await performBudgetPreCheck(
-      { budgetServiceEnabled: true, subscriptionId: BudgetOverride.AssessAgent },
-      makeDeps({ getClient }),
-    )
-    expect(result).toBeNull()
-    expect(getClient).not.toHaveBeenCalled()
-  })
-
-  it('returns null when subscriptionId is BudgetOverride.PublishTask and skips getClient', async () => {
-    const getClient = vi.fn()
-    const result = await performBudgetPreCheck(
-      { budgetServiceEnabled: true, subscriptionId: BudgetOverride.PublishTask },
-      makeDeps({ getClient }),
-    )
-    expect(result).toBeNull()
-    expect(getClient).not.toHaveBeenCalled()
-  })
-
-  it('returns null when subscriptionId is BudgetOverride.DomainTask and skips getClient', async () => {
-    const getClient = vi.fn()
-    const result = await performBudgetPreCheck(
-      { budgetServiceEnabled: true, subscriptionId: BudgetOverride.DomainTask },
-      makeDeps({ getClient }),
-    )
-    expect(result).toBeNull()
-    expect(getClient).not.toHaveBeenCalled()
-  })
-
-  it('returns null when subscriptionId is BudgetOverride.FixTask and skips getClient', async () => {
-    const getClient = vi.fn()
-    const result = await performBudgetPreCheck(
-      { budgetServiceEnabled: true, subscriptionId: BudgetOverride.FixTask },
-      makeDeps({ getClient }),
-    )
-    expect(result).toBeNull()
-    expect(getClient).not.toHaveBeenCalled()
-  })
-
-  it('returns null when subscriptionId is BudgetOverride.SummarizationTask and skips getClient', async () => {
-    const getClient = vi.fn()
-    const result = await performBudgetPreCheck(
-      { budgetServiceEnabled: true, subscriptionId: BudgetOverride.SummarizationTask },
-      makeDeps({ getClient }),
-    )
-    expect(result).toBeNull()
-    expect(getClient).not.toHaveBeenCalled()
-  })
-
-  it('throws BudgetServiceUnavailableError when subscriptionId missing', async () => {
-    await expect(performBudgetPreCheck(
       { budgetServiceEnabled: true, bmsBudgetId: 'budget-1' },
-      makeDeps(),
-    )).rejects.toThrow(BudgetServiceUnavailableError)
+      deps,
+    )
+    // subscriptionId is optional - session proceeds but logs warning
+    expect(result).not.toBeNull()
+    expect(result?.budgetId).toBe('budget-1')
+    expect(deps.logger.warn).toHaveBeenCalledWith('budget.precheck.subscriptionId_missing', expect.any(Object))
   })
 
-  it('throws BudgetServiceUnavailableError when bmsBudgetId missing', async () => {
-    await expect(performBudgetPreCheck(
+  it('returns null when bmsBudgetId missing (graceful degradation)', async () => {
+    // When bmsBudgetId is missing, degrade gracefully instead of throwing
+    // This prevents hard failures when JWT issuer couldn't resolve the budget ID
+    const result = await performBudgetPreCheck(
       { budgetServiceEnabled: true, subscriptionId: 'sub-1' },
       makeDeps({ getClient: () => mockClient() }),
-    )).rejects.toThrow(BudgetServiceUnavailableError)
+    )
+    expect(result).toBeNull()
   })
 
   it('throws BudgetServiceUnavailableError when client not configured', async () => {
@@ -240,6 +194,9 @@ describe('performBudgetPreCheck', () => {
       makeDeps({ getClient: () => client }),
     )).rejects.toThrow(BudgetServiceTimeoutError)
   })
+
+  // Note: override detection (CareAgent, TestAccounts) happens at report time
+  // via subscriptionId -> isBmsOverride() in processBudgetReport, not in pre-check
 
   it('does not call createSession when budget check fails', async () => {
     const client = mockClient({

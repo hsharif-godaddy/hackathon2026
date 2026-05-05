@@ -10,6 +10,10 @@ export enum ReportLabel {
   // Standard
   General = 'airo-builder:general',
 
+  // Budget override sessions (100% GoDaddy - care agents and test accounts feature flag with BMS enabled)
+  CareAgent = 'airo-builder:care-agent',
+  TestAccounts = 'airo-builder:test-accounts',
+
   // Full override intents
   PublishTask = 'airo-builder:publish-task',
   DomainTask = 'airo-builder:domain-task',
@@ -388,6 +392,7 @@ export interface AttributionResult {
  * - `user_aborted`: user stopped before output → 100% Customer.
  * - `default`: fall-through → 100% Customer.
  * - `attribution_failed`: attribution code threw; degraded to safe fallback (bug indicator).
+ * - `override_session`: care agent or test account session → 100% GoDaddy.
  */
 export type AttributionPath =
   | 'per_call'
@@ -395,6 +400,7 @@ export type AttributionPath =
   | 'user_aborted'
   | 'default'
   | 'attribution_failed'
+  | 'override_session'
 
 // CONTEXT TYPES
 

@@ -16,7 +16,7 @@ import {
   type HistoryProvider,
   type PersistedMessage,
 } from '@airo/ai-transport'
-import { grantSessionManager, type GrantContextPayload, BudgetOverride } from '@airo/ai-grants'
+import { grantSessionManager, type GrantContextPayload, BudgetOverride, resolveBmsSubscriptionId } from '@airo/ai-grants'
 import { getBudgetServiceClient } from '../services/budget-service-instance.js'
 import { performBudgetPreCheck } from './budget-pre-check.js'
 import {
@@ -34,7 +34,7 @@ import {
 } from '@airo/ai-lib/budget'
 import { context as otelContext } from '@opentelemetry/api'
 import { createAgentContext } from '@godaddy/agent-otel-sdk'
-import { attributionFailedFallback, processBudgetReport, type BudgetReportResult } from './budget-report-handler.js'
+import { safeProcessBudgetReport, type BudgetReportResult } from './budget-report-handler.js'
 import { auth, AuthType, BYPASS_SITE_IDS } from '../services/features.js'
 import { getTemplateIds } from '../agents/template-registry.js'
 import { isEmployeeAuthType, type AuthType as TokenAuthType, type ProductType } from '@airo/shared/auth'
@@ -219,6 +219,11 @@ const blockingAssessmentOutcomes = new Map<string, AssessmentOutcome>()
 // Track pending budget overrides from assessment to apply in context provider
 // Populated in onMessageStart, consumed in contextProvider, cleaned up in onDisconnection
 const pendingBudgetOverrides = new Map<string, string>()
+
+// Track effective subscriptionId per socket for onBudgetReport override detection
+// Needed because socket may disconnect before report fires, losing access to agentContext.
+// Set in onMessageStart, consumed in onBudgetReport, cleaned up after createReport/onDisconnection.
+const effectiveSubscriptionIds = new Map<string, string>()
 
 // Cache last user message per socket for assessment multi-turn context
 const lastUserMessageCache = new Map<string, string>()
@@ -654,6 +659,10 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
                 agentContext
               })
 
+              // TODO: Move budget override to its own field (e.g., metadata.budgetOverrideType) instead of
+              // overriding subscriptionId. This conflates the customer's real subscription ID with the
+              // override type, making it harder to track the original subscription for analytics/billing.
+              // The override should be a separate field that processBudgetReport checks for attribution.
               if (isEmployeeSession) {
                 // Employee session (e2s, e2s2s, etc.): use care-agent budget (takes precedence over test budget flag)
                 agentsAppContext.metadata.subscriptionId = BudgetOverride.CareAgent
@@ -696,11 +705,15 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
               agentsAppContext.metadata.customerId = app.customerId
 
               // Budget Service flag: propagate to metadata for pre-execution check.
-              // Skip for employee/test sessions (not subject to budget limits).
-              // Use JWT subscriptionId/bmsBudgetId (not app DB) since the app record can be stale.
-              if (agentContext?.budgetServiceEnabled && !isEmployeeSession && !useTestBudget) {
+              // Employee/test sessions flow through BMS with 100% GoDaddy attribution (isBmsOverride).
+              // Use JWT bmsBudgetId (not app DB) since the app record can be stale.
+              // Note: subscriptionId is already set above to BudgetOverride.CareAgent/TestAccounts
+              // for employee/test sessions - don't overwrite it with JWT subscriptionId.
+              if (agentContext?.budgetServiceEnabled) {
                 agentsAppContext.metadata.budgetServiceEnabled = true
-                if (agentContext.subscriptionId) {
+                // Only use JWT subscriptionId for regular sessions - employee/test sessions
+                // keep their override subscriptionId (set above) for isBmsOverride() detection
+                if (agentContext.subscriptionId && !isEmployeeSession && !useTestBudget) {
                   agentsAppContext.metadata.subscriptionId = agentContext.subscriptionId
                 }
                 if (agentContext.bmsBudgetId) {
@@ -710,17 +723,11 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
                 logger.info('context.budget_service_mode.enabled', {
                   appId,
                   socketId: socketId || 'missing',
-                  hasSubscriptionId: !!agentContext.subscriptionId,
+                  hasSubscriptionId: !!agentsAppContext.metadata.subscriptionId,
                   hasBmsBudgetId: !!agentContext.bmsBudgetId,
-                })
-              } else if (agentContext?.budgetServiceEnabled) {
-                // Log when budget service flag is on but blocked by employee/test session
-                logger.info('context.budget_service_mode.skipped', {
-                  appId,
-                  socketId: socketId || 'missing',
                   isEmployeeSession,
                   useTestBudget,
-                  reason: isEmployeeSession ? 'employee_session' : 'test_budget',
+                  subscriptionId: agentsAppContext.metadata.subscriptionId,
                 })
               }
 
@@ -1341,11 +1348,12 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         }
 
         // Prune stale parallelAssessmentStates (leaked when onBudgetReport never fires)
-        if (parallelAssessmentStates.size > PRUNE_THRESHOLD_SIZE) {
+        if (parallelAssessmentStates.size > PRUNE_THRESHOLD_SIZE || effectiveSubscriptionIds.size > PRUNE_THRESHOLD_SIZE) {
           const now = Date.now()
           for (const [id, state] of parallelAssessmentStates) {
             if (now - state.createdAt > MAX_ASSESSMENT_STATE_AGE_MS) {
               parallelAssessmentStates.delete(id)
+              effectiveSubscriptionIds.delete(id)
               // Warn-level so operators can correlate with budget.report.assessment_outcome_missing
               // hadOutcome distinguishes true leaks (false) from potential billing attribution loss (true)
               logger.warn('assessment.parallel_mode.stale_entry_pruned', {
@@ -1578,10 +1586,19 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         const enableAssessmentOverride = agentContext?.enableAssessmentOverride
         // Read budgetServiceEnabled from JWT agentContext, not context metadata
         // Context metadata isn't populated until contextProvider runs (after onMessageStart)
-        // Also check for employee/test sessions which skip budget service mode
+        // Employee/test sessions flow through BMS with 100% GoDaddy attribution (isBmsOverride)
         const isEmployeeSession = isEmployeeAuthType(agentContext?.authType)
         const useTestBudget = agentContext?.useTestBudget === true
-        const budgetServiceEnabled = agentContext?.budgetServiceEnabled === true && !isEmployeeSession && !useTestBudget
+        const budgetServiceEnabled = agentContext?.budgetServiceEnabled === true
+
+        const effectiveSubscriptionId = resolveBmsSubscriptionId(
+          isEmployeeSession,
+          useTestBudget,
+          agentContext?.subscriptionId as string | undefined,
+        )
+        if (effectiveSubscriptionId) {
+          effectiveSubscriptionIds.set(socketId, effectiveSubscriptionId)
+        }
 
         logger.info('assessment.feature_flag', {
           appId: siteId,
@@ -2003,6 +2020,8 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         const client = getBudgetServiceClient()
         if (!client) {
           budgetReportConversationCache.delete(originalSocketId)
+          parallelAssessmentStates.delete(originalSocketId)
+          effectiveSubscriptionIds.delete(originalSocketId)
           throw new Error('Budget service client unavailable')
         }
 
@@ -2022,6 +2041,8 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
                 error: err instanceof Error ? err.message : String(err),
               })
               budgetReportConversationCache.delete(originalSocketId)
+              parallelAssessmentStates.delete(originalSocketId)
+              effectiveSubscriptionIds.delete(originalSocketId)
               throw err
             }
             // Full jitter backoff: random delay in [0, min(cap, base * 2^attempt)]
@@ -2034,6 +2055,8 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         // TypeScript doesn't know that the loop either assigns session or throws
         if (!session) {
           budgetReportConversationCache.delete(originalSocketId)
+          parallelAssessmentStates.delete(originalSocketId)
+          effectiveSubscriptionIds.delete(originalSocketId)
           throw new Error('getSession failed without throwing')
         }
 
@@ -2060,11 +2083,39 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           })
         }
 
+        // Get effective subscriptionId for override detection (care agent, test accounts)
+        // Prefer stashed value from onMessageStart since socket may have disconnected
+        const stashedSubscriptionId = effectiveSubscriptionIds.get(originalSocketId)
+        let reportSubscriptionId: string | undefined
+
+        if (stashedSubscriptionId) {
+          reportSubscriptionId = stashedSubscriptionId
+        } else {
+          // Fallback to live socket if stashed value missing (shouldn't happen normally)
+          const reportSocket = getSocket(originalSocketId)
+          if (reportSocket) {
+            const reportAgentContext = reportSocket.handshake?.auth?.agentContext
+            reportSubscriptionId = resolveBmsSubscriptionId(
+              isEmployeeAuthType(reportAgentContext?.authType),
+              reportAgentContext?.useTestBudget === true,
+              reportAgentContext?.subscriptionId as string | undefined,
+            )
+          } else {
+            // Socket disconnected and no stashed value - log for audit
+            logger.warn('budget.report.subscription_id_unavailable', {
+              budgetId,
+              sessionId,
+              originalSocketId,
+              socketId,
+              message: 'Socket disconnected and no stashed subscriptionId - override detection unavailable',
+            })
+          }
+        }
+
         // Process cost attribution using rule-based detection
-        // Wrapped in try-catch so attribution errors don't prevent createReport from executing
-        let budgetReport: BudgetReportResult
-        try {
-          budgetReport = processBudgetReport({
+        // safeProcessBudgetReport handles errors gracefully so createReport still executes
+        const { result: budgetReport } = safeProcessBudgetReport(
+          {
             budgetId,
             sessionId,
             totalCost: session.costTotal,
@@ -2072,21 +2123,10 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
             steps,
             assessmentOutcome,
             wasUserAborted,
-          })
-        } catch (err) {
-          // Attribution logic crashed - degrade gracefully so createReport still executes
-          // Customer pays 100% when we can't determine attribution (safe default)
-          // Event name is camelCase to preserve existing dashboards; do not rename.
-          logger.error('budget.report.attributionFailed', {
-            budgetId,
-            sessionId,
-            attributionPath: 'attribution_failed',
-            sessionWasFree: false,
-            error: err instanceof Error ? err.message : String(err),
-            stack: err instanceof Error ? err.stack : undefined,
-          })
-          budgetReport = attributionFailedFallback(session.costTotal)
-        }
+            subscriptionId: reportSubscriptionId,
+          },
+          { budgetId, sessionId },
+        )
         const { reportItems, executionData, sessionWasFree, attributionResult, attributionPath, labels } = budgetReport
 
         // createReport is the critical path (credits deducted). Must not be blocked
@@ -2106,8 +2146,8 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
               sessionWasFree,
               message: 'Report already exists - telling client to refresh',
             })
-            // Clean up parallel state on 409 - the original request already processed it
             parallelAssessmentStates.delete(originalSocketId)
+            effectiveSubscriptionIds.delete(originalSocketId)
             budgetReportConversationCache.delete(originalSocketId)
             return { refreshRequired: true, sessionWasFree }
           }
@@ -2120,13 +2160,11 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
             statusCode: budgetError?.statusCode,
             responseBody: budgetError?.responseBody,
           })
+          parallelAssessmentStates.delete(originalSocketId)
+          effectiveSubscriptionIds.delete(originalSocketId)
           budgetReportConversationCache.delete(originalSocketId)
           throw err
         }
-
-        // createReport succeeded - safe to clean up parallel state now
-        // This must happen after createReport to allow retry attempts to access the outcome
-        parallelAssessmentStates.delete(originalSocketId)
 
         // Log report creation with attribution summary
         if (attributionResult) {
@@ -2207,6 +2245,9 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
             stack: err instanceof Error ? err.stack : undefined,
           })
         } finally {
+          // Clean up all per-message state on the success path
+          parallelAssessmentStates.delete(originalSocketId)
+          effectiveSubscriptionIds.delete(originalSocketId)
           budgetReportConversationCache.delete(originalSocketId)
         }
 
@@ -2263,7 +2304,6 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
 
         // Clear on disconnect; late onBudgetReport can miss conversationId.
         budgetReportConversationCache.delete(socketId)
-
         pendingBudgetOverrides.delete(socketId)
         lifecycleSessionStore.clearSession(socketId)
         wsResetPostStreamRetries(socketId)

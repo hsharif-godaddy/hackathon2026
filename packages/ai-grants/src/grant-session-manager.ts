@@ -5,34 +5,6 @@ import { createLogger } from '@airo/ai-common'
 const logger = createLogger('ai-grants')
 
 /**
- * Special subscription IDs for non-standard billing
- * These bypass grants and use dedicated budgets
- */
-export enum BudgetOverride {
-  CareAgent = 'airo-builder:care-agent',
-  TestAccounts = 'airo-builder:test-accounts',
-  // Task-specific budgets for assessment agent overrides
-  AssessAgent = 'airo-builder:assess-agent',
-  PublishTask = 'airo-builder:publish-task',
-  DomainTask = 'airo-builder:domain-task',
-  FixTask = 'airo-builder:fix-task',
-  DiagnoseTask = 'airo-builder:diagnose-task',
-  // Background task budgets
-  SummarizationTask = 'airo-builder:summarization-task',
-}
-
-/** All BudgetOverride values for O(1) lookup */
-const BUDGET_OVERRIDE_VALUES = new Set<string>(Object.values(BudgetOverride))
-
-/**
- * Check if a subscriptionId is a budget override that bypasses grants.
- * These sessions use dedicated budgets instead of customer grants.
- */
-export function isBudgetOverride(subscriptionId: string | null | undefined): subscriptionId is BudgetOverride {
-  return !!subscriptionId && BUDGET_OVERRIDE_VALUES.has(subscriptionId)
-}
-
-/**
  * APM agent type (loose typing to avoid strict dependency)
  */
 type APMAgent = {

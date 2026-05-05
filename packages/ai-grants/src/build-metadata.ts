@@ -1,4 +1,5 @@
-import { grantSessionManager, isBudgetOverride } from './grant-session-manager.js'
+import { grantSessionManager } from './grant-session-manager.js'
+import { isBudgetOverride } from './budget-override.js'
 import { createLogger, type LitellmMetadata } from '@airo/ai-common'
 
 const logger = createLogger('ai-grants')
@@ -120,7 +121,7 @@ export function buildLitellmMetadataFromContext(
 
   // BMS session fields for GoCode cost reporting (x-gocode-budget-* headers)
   // Only present when budget service is enabled and session was created
-  const hasBudgetFields = !!(metadata.bmsBudgetId && metadata.budgetSessionId)
+  const hasBudgetFields = !!(metadata.budgetServiceEnabled && metadata.bmsBudgetId && metadata.budgetSessionId)
   const budgetFields: Pick<LitellmMetadata, 'budgetId' | 'budgetSessionId'> = hasBudgetFields
     ? { budgetId: metadata.bmsBudgetId!, budgetSessionId: metadata.budgetSessionId! }
     : {}
@@ -139,6 +140,7 @@ export function buildLitellmMetadataFromContext(
 
   // Budget override sessions bypass grants and use dedicated budgets
   // (e2s care agents, test accounts, task-specific budgets)
+  // Include budgetFields so GoCode receives session ID for cost tracking
   if (isBudgetOverride(subscriptionId)) {
     // Log at info for production visibility — override sessions are infrequent/bounded
     logger.info('grants.build_metadata.task_budget_override', {
@@ -146,9 +148,10 @@ export function buildLitellmMetadataFromContext(
       socketId,
       subscriptionId,
       tags,
+      hasBudgetFields,
       source: options?.source ?? LlmCallSource.UserChat,
     })
-    return { user: subscriptionId, tags, ...traceFields }
+    return { user: subscriptionId, tags, ...budgetFields, ...traceFields }
   }
 
   // Budget billing is determined entirely by the explicit subscriptionId in context.

@@ -24,6 +24,7 @@ import {
   type ExecutionData,
   type ExecutionStep,
 } from '@airo/ai-lib/budget'
+import { isBmsOverride, BudgetOverride } from '@airo/ai-grants'
 
 export interface BudgetReportContext {
   budgetId: string
@@ -34,6 +35,8 @@ export interface BudgetReportContext {
   assessmentOutcome?: AssessmentOutcome
   /** True if user clicked Stop - prevents misattributing user-aborted sessions as GoDaddy cost */
   wasUserAborted?: boolean
+  /** Original subscriptionId for override detection (care agent, test accounts) */
+  subscriptionId?: string
 }
 
 export interface BudgetReportResult {
@@ -61,7 +64,50 @@ export interface BudgetReportResult {
  * 5. Default (no failures, no overrides, no infrastructure) -> 100% Customer
  */
 export function processBudgetReport(context: BudgetReportContext): BudgetReportResult {
-  const { budgetId, sessionId, totalCost, sessionItems, steps, assessmentOutcome, wasUserAborted } = context
+  const { budgetId, sessionId, totalCost, sessionItems, steps, assessmentOutcome, wasUserAborted, subscriptionId } = context
+
+  // Override sessions (care agents, test accounts): 100% GoDaddy attribution
+  // Only CareAgent and TestAccounts trigger BMS override attribution - other BudgetOverride
+  // values (AssessAgent, PublishTask, etc.) are for the legacy grants system
+  if (isBmsOverride(subscriptionId)) {
+    // Map BMS override subscriptionId to the corresponding ReportLabel
+    // Exhaustive switch ensures compile error if a new BMS override is added
+    let overrideLabel: ReportLabel
+    switch (subscriptionId) {
+      case BudgetOverride.CareAgent:
+        overrideLabel = ReportLabel.CareAgent
+        break
+      case BudgetOverride.TestAccounts:
+        overrideLabel = ReportLabel.TestAccounts
+        break
+      default: {
+        // TypeScript exhaustiveness check - this should never execute
+        const _exhaustive: never = subscriptionId
+        throw new Error(`Unhandled BMS override: ${_exhaustive}`)
+      }
+    }
+
+    logger.info('budget.report.override_session', {
+      budgetId,
+      sessionId,
+      subscriptionId,
+      totalCost,
+      label: overrideLabel,
+      reason: 'Budget override session - all costs attributed to GoDaddy',
+    })
+
+    return {
+      reportItems: [{
+        budgetCost: '0',
+        productCost: totalCost.toString(),
+        label: overrideLabel,
+      }],
+      executionData: emptyExecutionData(),
+      sessionWasFree: true,
+      attributionPath: 'override_session',
+      labels: [overrideLabel],
+    }
+  }
 
   // Log steps received for debugging
   logger.info('budget.report.steps_received', {
@@ -288,5 +334,41 @@ export function attributionFailedFallback(totalCost: number): BudgetReportResult
     attributionResult: undefined,
     attributionPath: 'attribution_failed',
     labels: [ReportLabel.General],
+  }
+}
+
+export interface SafeProcessBudgetReportResult {
+  result: BudgetReportResult
+  /** True if attribution crashed and we fell back to 100% customer */
+  didFallback: boolean
+}
+
+/**
+ * Wrapper around processBudgetReport that catches attribution errors and
+ * degrades gracefully to 100% customer attribution. Ensures createReport
+ * can still execute even if attribution logic crashes.
+ *
+ * Use this instead of try-catching processBudgetReport directly to ensure
+ * consistent fallback behavior and logging across WebSocket and SSE paths.
+ */
+export function safeProcessBudgetReport(
+  context: BudgetReportContext,
+  logContext: { budgetId: string; sessionId: string },
+): SafeProcessBudgetReportResult {
+  try {
+    return { result: processBudgetReport(context), didFallback: false }
+  } catch (err) {
+    // Attribution logic crashed - degrade gracefully so createReport still executes.
+    // Customer pays 100% when we can't determine attribution (safe default).
+    // Event name is camelCase to preserve existing dashboards; do not rename.
+    logger.error('budget.report.attributionFailed', {
+      budgetId: logContext.budgetId,
+      sessionId: logContext.sessionId,
+      attributionPath: 'attribution_failed',
+      sessionWasFree: false,
+      error: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+    })
+    return { result: attributionFailedFallback(context.totalCost), didFallback: true }
   }
 }

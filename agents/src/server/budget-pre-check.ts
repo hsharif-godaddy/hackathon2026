@@ -6,11 +6,11 @@
 import type { BudgetServiceClient } from '@airo/ai-lib/budget'
 import { computeRemaining, BudgetServiceUnavailableError } from '@airo/ai-lib/budget'
 import { BudgetExceededError } from '@airo/ai-common'
-import { isBudgetOverride } from '@airo/ai-grants'
+import type { LoggerLike } from '@airo/ai-common'
 
 export interface BudgetPreCheckDeps {
   getClient: () => BudgetServiceClient | null
-  logger: { info: (event: string, data: Record<string, unknown>) => void }
+  logger: LoggerLike
 }
 
 export interface BudgetPreCheckResult {
@@ -29,28 +29,40 @@ export async function performBudgetPreCheck(
 ): Promise<BudgetPreCheckResult | null> {
   if (metadata.budgetServiceEnabled !== true) return null
 
-  const subscriptionId = metadata.subscriptionId
-  if (!subscriptionId) {
-    throw new BudgetServiceUnavailableError('Budget Service is enabled but subscriptionId is missing from context metadata')
-  }
-
-  // Skip budget check for internal override sessions (care agents, test accounts, task budgets)
-  if (isBudgetOverride(subscriptionId)) {
-    deps.logger.info('budget.pre_check.override_bypass', {
+  // bmsBudgetId is required for session creation.
+  // If missing, degrade gracefully - skip BMS mode rather than fail-closed.
+  //
+  // Design rationale: This typically indicates a transient JWT issuer lookup failure
+  // (e.g., budget-service unreachable at token issuance time). Fail-closed would cause
+  // user-facing outages for a backend issue. Fail-open risks unbilled usage but
+  // preserves availability.
+  //
+  // Monitoring: The error log below is queryable for alerting. If this fires persistently
+  // for specific apps/sites, it indicates misconfiguration rather than transient failure.
+  const budgetId = metadata.bmsBudgetId
+  if (!budgetId) {
+    deps.logger.error('budget.precheck.skipped', {
       appId: metadata.appId,
-      subscriptionId,
+      reason: 'bmsBudgetId missing from context metadata',
+      budgetServiceEnabled: true,
     })
     return null
+  }
+
+  // subscriptionId is optional - used for override detection at report time
+  // Log warning if missing on BMS-enabled session to help diagnose configuration issues
+  const subscriptionId = metadata.subscriptionId
+  if (!subscriptionId) {
+    deps.logger.warn('budget.precheck.subscriptionId_missing', {
+      appId: metadata.appId,
+      budgetId,
+      reason: 'subscriptionId missing - session will be attributed to customer',
+    })
   }
 
   const budgetClient = deps.getClient()
   if (!budgetClient) {
     throw new BudgetServiceUnavailableError('Budget Service client not configured (missing BUDGET_SERVICE_URL)')
-  }
-
-  const budgetId = metadata.bmsBudgetId
-  if (!budgetId) {
-    throw new BudgetServiceUnavailableError('Budget Service is enabled but bmsBudgetId is missing from context metadata')
   }
 
   // Pre-execution credit check (fail-closed)

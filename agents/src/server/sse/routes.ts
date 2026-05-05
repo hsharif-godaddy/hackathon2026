@@ -2,13 +2,14 @@ import { Router } from 'express'
 import type { Request, Response, NextFunction } from 'express'
 import type { ConversationEventChannel } from '@airo/ai-transport'
 import { createSSEWriter } from '@airo/ai-transport'
-import { grantSessionManager } from '@airo/ai-grants'
+import { grantSessionManager, resolveBmsSubscriptionId } from '@airo/ai-grants'
 import { EventStreamRegistry } from './EventStreamRegistry.js'
 import { MessageExecutionService } from './MessageExecutionService.js'
 import { safeFormatSSEEvent } from './sse-event-formatter.js'
 import { logger, errorFields } from '../../logging/index.js'
 import { validateAppOwnershipFromParam } from '../middleware/app-ownership.js'
 import type { AuthenticatedRequest } from '../middleware/jwt-auth.js'
+import { isEmployeeAuthType } from '@airo/shared/auth'
 import type { ConversationRepository } from '../../database/repositories/ConversationRepository.js'
 import { BYPASS_SITE_IDS } from '../../services/features.js'
 import { getSSEAgentFactory, getClientActionService } from '../ai-lib-websocket-server.js'
@@ -299,7 +300,6 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
       templateId, modelOverride,
       visualContext, aiEditContext, selectedAssets,
       todoListContext, isActionRequest, customContext, buildErrorContext,
-      budgetServiceEnabled, subscriptionId,
     } = req.body
 
     if (typeof content !== 'string' || content.trim().length === 0) {
@@ -317,11 +317,26 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
       return
     }
 
+    const agentContext = (req as AuthenticatedRequest).agentContext
+
+    // Derive effective subscriptionId for override detection at report time
+    // Employee/test sessions get BudgetOverride values for 100% GoDaddy attribution via isBmsOverride()
+    const effectiveSubscriptionId = resolveBmsSubscriptionId(
+      isEmployeeAuthType(agentContext?.authType),
+      agentContext?.useTestBudget === true,
+      agentContext?.subscriptionId,
+    )
+
     let bmsBudgetId: string | undefined
     let budgetSessionId: string | undefined
     try {
       const budgetResult = await performBudgetPreCheck(
-        { budgetServiceEnabled, subscriptionId, appId },
+        {
+          budgetServiceEnabled: agentContext?.budgetServiceEnabled === true,
+          subscriptionId: effectiveSubscriptionId,
+          bmsBudgetId: agentContext?.bmsBudgetId,
+          appId,
+        },
         { getClient: getBudgetServiceClient, logger },
       )
       if (budgetResult) {
@@ -339,7 +354,6 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
 
     const sseSocketId = sseSessionKey(conversationId)
     const stateManager = deps.getStateManager()
-    const agentContext = (req as AuthenticatedRequest).agentContext
     const resolvedAgentId = deps.resolveAgent({
       appId, agentId, agentProfile, templateId, agentContext,
       ...(stateManager && { session: { sessionId: sseSocketId, stateManager } }),
@@ -376,6 +390,7 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
       buildErrorContext,
       bmsBudgetId,
       budgetSessionId,
+      subscriptionId: effectiveSubscriptionId,
       authType: agentContext?.authType,
       lifecycleContext: {
         agentContext: {

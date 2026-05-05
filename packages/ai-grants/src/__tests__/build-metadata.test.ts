@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 
 import { buildLitellmMetadataFromContext, isGrantsExhausted, LlmCallSource, GrantErrorCode } from '../build-metadata.js'
-import { BudgetOverride, isBudgetOverride, grantSessionManager } from '../grant-session-manager.js'
+import { grantSessionManager } from '../grant-session-manager.js'
+import { BudgetOverride, isBudgetOverride } from '../budget-override.js'
 import { GrantType, type CreditGrant } from '@airo/shared/grants'
 
 describe('build-metadata', function tests() {
@@ -661,6 +662,7 @@ describe('build-metadata', function tests() {
         metadata: {
           appId: 'app-1',
           subscriptionId: 'sub-1',
+          budgetServiceEnabled: true,
           bmsBudgetId: 'budget-uuid-1',
           budgetSessionId: 'session-uuid-1',
         },
@@ -732,6 +734,7 @@ describe('build-metadata', function tests() {
         metadata: {
           appId: 'app-1',
           subscriptionId: 'sub-1',
+          budgetServiceEnabled: true,
           bmsBudgetId: 'budget-uuid-1',
           budgetSessionId: 'session-uuid-1',
         },

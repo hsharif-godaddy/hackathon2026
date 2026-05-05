@@ -8,6 +8,7 @@ import { sseSessionKey } from './session-key.js'
 import { logger, errorFields } from '../../logging/index.js'
 import { getBudgetServiceClient } from '../../services/budget-service-instance.js'
 import { toBudgetUpdatePayload } from '@airo/ai-lib/budget'
+import { safeProcessBudgetReport } from '../budget-report-handler.js'
 import { runWithModelOverride } from '@airo/ai-lib'
 import { resolveProfile, runWithProfile } from '../../profiles/index.js'
 import { guardAllowedOverrideModel, resolveOverride } from '../model-override.js'
@@ -102,6 +103,8 @@ interface ExecuteParams {
   buildErrorContext?: unknown
   bmsBudgetId?: string
   budgetSessionId?: string
+  /** Original subscriptionId for override detection (care agent, test accounts) */
+  subscriptionId?: string
   authType?: string
   /** JWT agent context + derived lifecycle hints (isInitialPrompt, multi-turn caches). */
   lifecycleContext?: LifecycleContext
@@ -410,7 +413,7 @@ export class MessageExecutionService {
       templateId, modelOverride,
       visualContext, aiEditContext, selectedAssets,
       todoListContext, isActionRequest, customContext, buildErrorContext,
-      bmsBudgetId, budgetSessionId, authType,
+      bmsBudgetId, budgetSessionId, subscriptionId, authType,
       lifecycleContext,
     } = params
 
@@ -692,9 +695,24 @@ export class MessageExecutionService {
           const budgetClient = getBudgetServiceClient()
           if (budgetClient) {
             const session = await budgetClient.getSession(budgetSessionId)
-            const report = await budgetClient.createReport(budgetSessionId, {
-              reportItems: [{ budgetCost: session.costTotal.toString(), productCost: '0', label: 'airo-builder:general' }],
-            })
+
+            // safeProcessBudgetReport handles errors gracefully so createReport still executes
+            const { result: budgetResult } = safeProcessBudgetReport(
+              {
+                budgetId: bmsBudgetId,
+                sessionId: budgetSessionId,
+                totalCost: session.costTotal,
+                sessionItems: session.sessionItems,
+                steps: [],
+                assessmentOutcome,
+                wasUserAborted: loopAborted,
+                subscriptionId,
+              },
+              { budgetId: bmsBudgetId, sessionId: budgetSessionId },
+            )
+            const { reportItems } = budgetResult
+
+            const report = await budgetClient.createReport(budgetSessionId, { reportItems })
             try {
               const budget = await budgetClient.getBudget(bmsBudgetId)
               await this.publishNonTerminal(appId, conversationId, {
