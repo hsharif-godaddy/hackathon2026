@@ -25,11 +25,11 @@ catalogs:
       specifier: ^8.19.1
       version: 8.19.1
     '@godaddy/agent-observability-events':
-      specifier: ^2.0.0
-      version: 2.0.0
-    '@godaddy/agent-otel-sdk':
       specifier: ^2.1.0
       version: 2.1.0
+    '@godaddy/agent-otel-sdk':
+      specifier: ^2.3.0
+      version: 2.3.0
     '@godaddy/goknowb-client':
       specifier: ^1.0.9
       version: 1.0.9
@@ -328,10 +328,10 @@ importers:
         version: 7.29.0
       '@godaddy/agent-observability-events':
         specifier: 'catalog:'
-        version: 2.0.0
+        version: 2.1.0
       '@godaddy/agent-otel-sdk':
         specifier: 'catalog:'
-        version: 2.1.0(@opentelemetry/api@1.9.0)
+        version: 2.3.0(@opentelemetry/api@1.9.0)
       '@godaddy/goknowb-client':
         specifier: 'catalog:'
         version: 1.0.9
@@ -1303,7 +1303,7 @@ importers:
         version: link:../shared
       '@godaddy/agent-otel-sdk':
         specifier: 'catalog:'
-        version: 2.1.0(@opentelemetry/api@1.9.0)
+        version: 2.3.0(@opentelemetry/api@1.9.0)
       '@langfuse/tracing':
         specifier: 'catalog:'
         version: 4.6.1(@opentelemetry/api@1.9.0)
@@ -1401,10 +1401,10 @@ importers:
         version: link:../shared
       '@godaddy/agent-observability-events':
         specifier: 'catalog:'
-        version: 2.0.0
+        version: 2.1.0
       '@godaddy/agent-otel-sdk':
         specifier: 'catalog:'
-        version: 2.1.0(@opentelemetry/api@1.9.0)
+        version: 2.3.0(@opentelemetry/api@1.9.0)
       '@opentelemetry/api':
         specifier: 'catalog:'
         version: 1.9.0
@@ -3336,11 +3336,11 @@ packages:
       - commander
       - winston
 
-  '@godaddy/agent-observability-events@2.0.0':
-    resolution: {integrity: sha512-RJipWSJcpzMm+veo571dnX5R6JQVsxEZs8fY0AFEtVCTndyBjyiW4ibI7NwawBYF0zTqc0P7X6eBOmm2g9o0xw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@godaddy/agent-observability-events/-/@godaddy/agent-observability-events-2.0.0.tgz}
+  '@godaddy/agent-observability-events@2.1.0':
+    resolution: {integrity: sha512-BhhIUfJpw8XD2r/7uFOP1TyzWWJzAjYoc+5lh0m2CpK/ihiOy0vMByMyAMWROzc1DOYJZ5AGBMDbKHhIWedqCw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@godaddy/agent-observability-events/-/@godaddy/agent-observability-events-2.1.0.tgz}
 
-  '@godaddy/agent-otel-sdk@2.1.0':
-    resolution: {integrity: sha512-YxwCDuICFv4GMfHc6bj56SRc1cDVU4P6a3OJFb5YoLuUT/GF17XRosMzKYYY8TjDGfaZtjS77PWnzkGEq0HoUw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@godaddy/agent-otel-sdk/-/@godaddy/agent-otel-sdk-2.1.0.tgz}
+  '@godaddy/agent-otel-sdk@2.3.0':
+    resolution: {integrity: sha512-bpBCchrb/SDPjO2827CkdHL1qRWvuqn8PSNg0vzw7DtJkfdhF+fmUHG0SFsAnvYbuKzXIXGwao+P8CSurhEo9g==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@godaddy/agent-otel-sdk/-/@godaddy/agent-otel-sdk-2.3.0.tgz}
     peerDependencies:
       '@opentelemetry/api': ^1.0.0
 
@@ -16028,16 +16028,16 @@ snapshots:
       aws-cdk-lib: 2.245.0(constructs@10.6.0)
       constructs: 10.6.0
 
-  '@godaddy/agent-observability-events@2.0.0':
+  '@godaddy/agent-observability-events@2.1.0':
     dependencies:
       '@signals/event-bus-client': 2.0.0
     transitivePeerDependencies:
       - aws-crt
       - debug
 
-  '@godaddy/agent-otel-sdk@2.1.0(@opentelemetry/api@1.9.0)':
+  '@godaddy/agent-otel-sdk@2.3.0(@opentelemetry/api@1.9.0)':
     dependencies:
-      '@godaddy/agent-observability-events': 2.0.0
+      '@godaddy/agent-observability-events': 2.1.0
       '@opentelemetry/api': 1.9.0
       '@signals/event-bus-client': 2.0.0
       '@signals/otel-sdk': 0.2.0(@opentelemetry/api@1.9.0)
@@ -25678,7 +25678,7 @@ snapshots:
 
   path-scurry@2.0.0:
     dependencies:
-      lru-cache: 11.2.7
+      lru-cache: 11.3.5
       minipass: 7.1.2
 
   path-scurry@2.0.2:

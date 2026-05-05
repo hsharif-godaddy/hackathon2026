@@ -7,7 +7,6 @@ import { Server as HTTPServer } from 'node:http'
 import {
   calculateCostEstimate,
   parseChunkTimeoutMs,
-  type AgentWrapper,
 } from '@airo/ai-lib'
 import {
   createWebSocketServer,
@@ -26,12 +25,16 @@ import {
   BudgetServiceConflictError,
   BudgetServiceTimeoutError,
   BudgetServiceUnavailableError,
+  buildAttributionPayload,
+  emitCostAttributionResult,
   logReportCreated,
-  ReportLabel,
-  type ExecutionStep,
+  type AttributionAssessment,
   type AttributionContext,
+  type ExecutionStep,
 } from '@airo/ai-lib/budget'
-import { processBudgetReport } from './budget-report-handler.js'
+import { context as otelContext } from '@opentelemetry/api'
+import { createAgentContext } from '@godaddy/agent-otel-sdk'
+import { attributionFailedFallback, processBudgetReport, type BudgetReportResult } from './budget-report-handler.js'
 import { auth, AuthType, BYPASS_SITE_IDS } from '../services/features.js'
 import { getTemplateIds } from '../agents/template-registry.js'
 import { isEmployeeAuthType, type AuthType as TokenAuthType, type ProductType } from '@airo/shared/auth'
@@ -224,6 +227,13 @@ const lastUserMessageCache = new Map<string, string>()
 // Self-healing: updates on every classification (including general) so the gate
 // only fires at intent-transition boundaries, not for the rest of the session
 const lastAssessmentTaskTypeCache = new Map<string, AssessmentTaskType>()
+
+// Map socketId -> { conversationId, createdAt } for cost-attribution OTel context.
+// Same keying pattern as parallelAssessmentStates: set in onMessageStart with socketId;
+// onBudgetReport reads and clears with originalSocketId. TTL-pruned when the map exceeds
+// threshold to handle cases where onBudgetReport never fires.
+const budgetReportConversationCache = new Map<string, { conversationId: string; createdAt: number }>()
+const MAX_BUDGET_REPORT_CONVERSATION_CACHE_AGE_MS = 60 * 60 * 1000 // 1 hour
 
 /**
  * Socket.IO server instance for emitting events
@@ -1347,6 +1357,20 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           }
         }
 
+        // Prune stale budgetReportConversationCache (leaked when onBudgetReport never fires)
+        if (budgetReportConversationCache.size > PRUNE_THRESHOLD_SIZE) {
+          const now = Date.now()
+          for (const [key, entry] of budgetReportConversationCache) {
+            if (now - entry.createdAt > MAX_BUDGET_REPORT_CONVERSATION_CACHE_AGE_MS) {
+              budgetReportConversationCache.delete(key)
+              logger.warn('budget.session_conversation_id.stale_entry_pruned', {
+                socketId: key,
+                ageMs: now - entry.createdAt,
+              })
+            }
+          }
+        }
+
         // Start APM transaction for WebSocket connection lifecycle
         const transaction = apm.startTransaction('WebSocket Connection', 'websocket')
         if (transaction) {
@@ -1517,6 +1541,14 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           if (typedContext?.metadata) {
             typedContext.metadata.bmsBudgetId = budgetResult.budgetId
             typedContext.metadata.budgetSessionId = budgetResult.sessionId
+          }
+
+          const sessionConversationId = typedContext?.conversation?.conversationId
+          if (sessionConversationId) {
+            budgetReportConversationCache.set(socketId, {
+              conversationId: sessionConversationId,
+              createdAt: Date.now(),
+            })
           }
         }
 
@@ -1970,6 +2002,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
       onBudgetReport: async (budgetId: string, sessionId: string, socketId: string, originalSocketId: string, steps?: ExecutionStep[], wasUserAborted?: boolean) => {
         const client = getBudgetServiceClient()
         if (!client) {
+          budgetReportConversationCache.delete(originalSocketId)
           throw new Error('Budget service client unavailable')
         }
 
@@ -1988,6 +2021,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
                 budgetId, sessionId, attempt, maxRetries: maxGetSessionRetries,
                 error: err instanceof Error ? err.message : String(err),
               })
+              budgetReportConversationCache.delete(originalSocketId)
               throw err
             }
             // Full jitter backoff: random delay in [0, min(cap, base * 2^attempt)]
@@ -1998,7 +2032,10 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           }
         }
         // TypeScript doesn't know that the loop either assigns session or throws
-        if (!session) throw new Error('getSession failed without throwing')
+        if (!session) {
+          budgetReportConversationCache.delete(originalSocketId)
+          throw new Error('getSession failed without throwing')
+        }
 
         // Get assessment outcome for intent-based attribution
         // In parallel mode, state.outcome is eagerly populated via .then() in onMessageStart
@@ -2025,11 +2062,9 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
 
         // Process cost attribution using rule-based detection
         // Wrapped in try-catch so attribution errors don't prevent createReport from executing
-        let reportItems: Array<{ budgetCost: string; productCost: string; label: string }>
-        let sessionWasFree: boolean
-        let attributionResult
+        let budgetReport: BudgetReportResult
         try {
-          const result = processBudgetReport({
+          budgetReport = processBudgetReport({
             budgetId,
             sessionId,
             totalCost: session.costTotal,
@@ -2038,25 +2073,21 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
             assessmentOutcome,
             wasUserAborted,
           })
-          reportItems = result.reportItems
-          sessionWasFree = result.sessionWasFree
-          attributionResult = result.attributionResult
         } catch (err) {
           // Attribution logic crashed - degrade gracefully so createReport still executes
           // Customer pays 100% when we can't determine attribution (safe default)
+          // Event name is camelCase to preserve existing dashboards; do not rename.
           logger.error('budget.report.attributionFailed', {
             budgetId,
             sessionId,
+            attributionPath: 'attribution_failed',
+            sessionWasFree: false,
             error: err instanceof Error ? err.message : String(err),
             stack: err instanceof Error ? err.stack : undefined,
           })
-          reportItems = [{
-            budgetCost: session.costTotal.toString(),
-            productCost: '0',
-            label: ReportLabel.General,
-          }]
-          sessionWasFree = false
+          budgetReport = attributionFailedFallback(session.costTotal)
         }
+        const { reportItems, executionData, sessionWasFree, attributionResult, attributionPath, labels } = budgetReport
 
         // createReport is the critical path (credits deducted). Must not be blocked
         // by getBudget failure. Returns full ReportResponse (BMS parity, PR #2577).
@@ -2077,6 +2108,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
             })
             // Clean up parallel state on 409 - the original request already processed it
             parallelAssessmentStates.delete(originalSocketId)
+            budgetReportConversationCache.delete(originalSocketId)
             return { refreshRequired: true, sessionWasFree }
           }
 
@@ -2088,6 +2120,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
             statusCode: budgetError?.statusCode,
             responseBody: budgetError?.responseBody,
           })
+          budgetReportConversationCache.delete(originalSocketId)
           throw err
         }
 
@@ -2112,8 +2145,69 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
             reportId: report.reportId,
             totalCost: session.costTotal,
             sessionWasFree,
-            attributionPath: 'default',
+            attributionPath,
           })
+        }
+
+        // Credits already deducted; observability must not break the critical path.
+        // Catches payload-build, conversationId lookup, and serializer throws (all code
+        // defects). OTel SDK emit failures are fire-and-forget inside emitCustomEvent.
+        try {
+          // TODO(jvogt): replace with a unified app-wide agentId once instrumentation is consolidated.
+          const agentId = 'airo-app-builder-cost-attribution'
+          const conversationId = budgetReportConversationCache.get(originalSocketId)?.conversationId
+          if (!conversationId) {
+            // Without conversationId the OTel SDK silently drops the event. Logging here
+            // makes the gap queryable when a class of sessions is missing from telemetry.
+            logger.warn('budget.report.attribution_emit_missing_conversation_id', {
+              budgetId,
+              sessionId,
+              reportId: report.reportId,
+              originalSocketId,
+              socketId,
+            })
+          }
+
+          const attribution = buildAttributionPayload({
+            attributionResult,
+            totalCost: session.costTotal,
+            sessionWasFree,
+            fallbackLabels: labels,
+          })
+
+          const assessment: AttributionAssessment | undefined = assessmentOutcome?.result?.taskType
+            ? { intent: assessmentOutcome.result.taskType }
+            : undefined
+
+          otelContext.with(
+            createAgentContext({ conversationId, agentId }),
+            () => {
+              emitCostAttributionResult({
+                budgetId,
+                budgetSessionId: sessionId,
+                reportId: report.reportId,
+                executionData,
+                assessment,
+                totalCost: session.costTotal,
+                sessionWasFree,
+                attributionPath,
+                attribution,
+              })
+            },
+          )
+        } catch (err) {
+          logger.error('budget.report.attribution_emit_failed', {
+            budgetId,
+            sessionId,
+            reportId: report.reportId,
+            attributionPath,
+            totalCost: session.costTotal,
+            sessionWasFree,
+            error: err instanceof Error ? err.message : String(err),
+            stack: err instanceof Error ? err.stack : undefined,
+          })
+        } finally {
+          budgetReportConversationCache.delete(originalSocketId)
         }
 
         // getBudget for per-item breakdown (post-deduction state). Graceful degradation.
@@ -2166,6 +2260,10 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
             detail: 'Parallel assessment not yet resolved at disconnect time',
           })
         }
+
+        // Clear on disconnect; late onBudgetReport can miss conversationId.
+        budgetReportConversationCache.delete(socketId)
+
         pendingBudgetOverrides.delete(socketId)
         lifecycleSessionStore.clearSession(socketId)
         wsResetPostStreamRetries(socketId)

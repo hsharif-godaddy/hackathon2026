@@ -312,6 +312,27 @@ export interface ExecutionData {
   infrastructureCallIds: Set<string>
 }
 
+/**
+ * Empty `ExecutionData` for paths that never ran the analyzer (e.g. attribution crashed).
+ * Returned as a fresh object so callers can mutate the Sets/Map without polluting siblings.
+ */
+export function emptyExecutionData(): ExecutionData {
+  return {
+    failedCallIds: new Set(),
+    patterns: [],
+    causalChains: [],
+    failedTargets: [],
+    hadFailures: false,
+    totalSteps: 0,
+    costOverride: {
+      actionCallIds: new Set(),
+      followUpCallIds: new Set(),
+      actions: new Map(),
+    },
+    infrastructureCallIds: new Set(),
+  }
+}
+
 // ATTRIBUTION TYPES
 
 export const Payer = {
@@ -355,9 +376,25 @@ export interface AttributionResult {
   /** Costs aggregated by label for multi-label reports */
   costsByLabel: Map<ReportLabel, number>
   attributions: ItemAttribution[]
-  /** Labels describing the session (guaranteed non-empty, defaults to General) */
-  labels: [ReportLabel, ...ReportLabel[]]
+  /** Labels describing the session. Producer defaults to [General] when no other labels apply. */
+  labels: ReportLabel[]
 }
+
+/**
+ * Which branch of cost attribution produced the decision.
+ *
+ * - `per_call`: rule-based per-call attribution ran (failures/overrides/infra).
+ * - `no_value`: agent produced nothing useful → 100% GoDaddy.
+ * - `user_aborted`: user stopped before output → 100% Customer.
+ * - `default`: fall-through → 100% Customer.
+ * - `attribution_failed`: attribution code threw; degraded to safe fallback (bug indicator).
+ */
+export type AttributionPath =
+  | 'per_call'
+  | 'no_value'
+  | 'user_aborted'
+  | 'default'
+  | 'attribution_failed'
 
 // CONTEXT TYPES
 

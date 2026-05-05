@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { processBudgetReport, type BudgetReportContext } from '../budget-report-handler.js'
+import {
+  attributionFailedFallback,
+  processBudgetReport,
+  type BudgetReportContext,
+} from '../budget-report-handler.js'
 import type { AssessmentOutcome } from '../../agents/assessment-agent/index.js'
+import { logger } from '../../logging/index.js'
 import { ReportLabel, type ExecutionStep } from '@airo/ai-lib/budget'
 
 // Mock the logger to prevent console output during tests
@@ -895,4 +900,131 @@ describe('processBudgetReport', () => {
       expect(result.reportItems[0]?.label).toBe(ReportLabel.General)
     })
   })
+
+  describe('attributionPath and labels return values', () => {
+    function perCallContext(): BudgetReportContext {
+      return {
+        budgetId: 'b-1',
+        sessionId: 'sess-1',
+        totalCost: 5.0,
+        sessionItems: createSessionItems(1, 5.0),
+        steps: createMockSteps({ withToolError: true, withTextOutput: true, correlationId: 'call-0' }),
+      }
+    }
+
+    function noValueContext(): BudgetReportContext {
+      return {
+        budgetId: 'b-1',
+        sessionId: 'sess-1',
+        totalCost: 3.0,
+        sessionItems: createSessionItems(1, 3.0),
+        steps: [{ stepType: 'tool-call', content: [] }] as unknown as ExecutionStep[],
+        wasUserAborted: false,
+      }
+    }
+
+    function userAbortedContext(): BudgetReportContext {
+      return {
+        budgetId: 'b-1',
+        sessionId: 'sess-1',
+        totalCost: 3.0,
+        sessionItems: createSessionItems(1, 3.0),
+        steps: [{ stepType: 'tool-call', content: [] }] as unknown as ExecutionStep[],
+        wasUserAborted: true,
+      }
+    }
+
+    function defaultContext(): BudgetReportContext {
+      return {
+        budgetId: 'b-1',
+        sessionId: 'sess-1',
+        totalCost: 5.0,
+        sessionItems: createSessionItems(2, 2.5),
+      }
+    }
+
+    it('per_call branch: attributionPath="per_call" with [ToolFailure]', () => {
+      const result = processBudgetReport(perCallContext())
+
+      expect(result.attributionPath).toBe('per_call')
+      expect(result.labels).toEqual([ReportLabel.ToolFailure])
+    })
+
+    it('no_value branch: attributionPath="no_value" with [NoOutput]', () => {
+      const result = processBudgetReport(noValueContext())
+
+      expect(result.attributionPath).toBe('no_value')
+      expect(result.labels).toEqual([ReportLabel.NoOutput])
+    })
+
+    it('user_aborted branch: attributionPath="user_aborted" with [General]', () => {
+      const result = processBudgetReport(userAbortedContext())
+
+      expect(result.attributionPath).toBe('user_aborted')
+      expect(result.labels).toEqual([ReportLabel.General])
+    })
+
+    it('default branch: attributionPath="default" with [General]', () => {
+      const result = processBudgetReport(defaultContext())
+
+      expect(result.attributionPath).toBe('default')
+      expect(result.labels).toEqual([ReportLabel.General])
+    })
+
+    // Pins the misattribution sub-path: failures detected but no BMS session items
+    // to attribute against, so we charge the customer 100% and warn.
+    it('default branch with hadFailures + empty sessionItems: charges customer 100% and warns', () => {
+      vi.mocked(logger.warn).mockClear()
+
+      const result = processBudgetReport({
+        budgetId: 'b-1',
+        sessionId: 'sess-1',
+        totalCost: 4.0,
+        sessionItems: [],
+        steps: createMockSteps({ withToolError: true, withTextOutput: true, correlationId: 'call-0' }),
+      })
+
+      expect(result.attributionPath).toBe('default')
+      expect(result.labels).toEqual([ReportLabel.General])
+      expect(result.sessionWasFree).toBe(false)
+      expect(result.reportItems[0]?.budgetCost).toBe('4')
+      expect(result.reportItems[0]?.productCost).toBe('0')
+
+      expect(logger.warn).toHaveBeenCalledWith(
+        'budget.attribution.failures_without_session_items',
+        expect.objectContaining({
+          budgetId: 'b-1',
+          sessionId: 'sess-1',
+          hadFailures: true,
+          sessionItemCount: 0,
+        }),
+      )
+    })
+  })
 })
+
+describe('attributionFailedFallback', () => {
+  it('charges customer 100% with [General] on the attribution_failed path', () => {
+    const result = attributionFailedFallback(7.25)
+
+    expect(result.attributionPath).toBe('attribution_failed')
+    expect(result.sessionWasFree).toBe(false)
+    expect(result.labels).toEqual([ReportLabel.General])
+    expect(result.attributionResult).toBeUndefined()
+    expect(result.reportItems).toEqual([{
+      budgetCost: '7.25',
+      productCost: '0',
+      label: ReportLabel.General,
+    }])
+  })
+
+  it('returns a fresh executionData on every call', () => {
+    const a = attributionFailedFallback(1)
+    const b = attributionFailedFallback(1)
+
+    expect(a.executionData).toBeDefined()
+    expect(b.executionData).toBeDefined()
+    expect(a.executionData).not.toBe(b.executionData)
+  })
+})
+

@@ -27,8 +27,8 @@ catalog:
   "@babel/traverse": ^7.28.0
   "@babel/types": ^7.28.0
   "@elastic/elasticsearch": ^8.19.1
-  "@godaddy/agent-observability-events": ^2.0.0
-  "@godaddy/agent-otel-sdk": ^2.1.0
+  "@godaddy/agent-observability-events": ^2.1.0
+  "@godaddy/agent-otel-sdk": ^2.3.0
   "@godaddy/goknowb-client": ^1.0.9
 
   # Observability

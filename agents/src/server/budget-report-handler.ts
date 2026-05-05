@@ -9,6 +9,7 @@
 import { logger } from '../logging/index.js'
 import type { AssessmentOutcome } from '../agents/assessment-agent/index.js'
 import {
+  emptyExecutionData,
   generateReportItems,
   analyzeExecution,
   attributeSessionItems,
@@ -17,10 +18,11 @@ import {
   ReportLabel,
   Payer,
   type AssessmentIntent,
+  type AttributionContext,
+  type AttributionPath,
+  type AttributionResult,
   type ExecutionData,
   type ExecutionStep,
-  type AttributionContext,
-  type AttributionResult,
 } from '@airo/ai-lib/budget'
 
 export interface BudgetReportContext {
@@ -36,11 +38,16 @@ export interface BudgetReportContext {
 
 export interface BudgetReportResult {
   reportItems: Array<{ budgetCost: string; productCost: string; label: string }>
-  executionData?: ExecutionData
+  /** Always present. Defaults to emptyExecutionData() when no steps were available. */
+  executionData: ExecutionData
   /** True if GoDaddy covered 100% of the cost (customer paid nothing) */
   sessionWasFree: boolean
   /** Full attribution result for logging (only present for per-call attribution) */
   attributionResult?: AttributionResult
+  /** Which decision branch produced this result */
+  attributionPath: AttributionPath
+  /** Session labels. Producer defaults to [General] when no other labels apply. */
+  labels: ReportLabel[]
 }
 
 /**
@@ -64,8 +71,9 @@ export function processBudgetReport(context: BudgetReportContext): BudgetReportR
     stepCount: steps?.length ?? 0,
   })
 
-  // Analyze execution steps if available
-  let executionData: ExecutionData | undefined
+  // Default to empty so downstream code (and the emitted event) always has a concrete
+  // shape. analyzeExecution overwrites it when steps are available.
+  let executionData: ExecutionData = emptyExecutionData()
 
   if (steps && steps.length > 0) {
     executionData = analyzeExecution(steps)
@@ -110,6 +118,8 @@ export function processBudgetReport(context: BudgetReportContext): BudgetReportR
   let reportItems: Array<{ budgetCost: string; productCost: string; label: string }>
   let sessionWasFree = false
   let attributionResult: AttributionResult | undefined
+  let attributionPath: AttributionPath
+  let labels: ReportLabel[]
 
   const assessmentIntent = assessmentOutcome?.result?.taskType as AssessmentIntent | undefined
 
@@ -125,11 +135,10 @@ export function processBudgetReport(context: BudgetReportContext): BudgetReportR
     // Per-call attribution when there are failures, cost overrides, or infrastructure overhead to analyze
     // Skip if user aborted AND noValueDelivered AND no cost override - user's choice to abort, not an agent failure
     // But if there's a cost override (publish/domain) or infrastructure tools, always do per-call attribution
-    const hasCostOverride = (executionData?.costOverride.actionCallIds.size ?? 0) > 0
-    const hasInfrastructure = (executionData?.infrastructureCallIds.size ?? 0) > 0
-    const needsPerCallAttribution = executionData?.hadFailures || hasCostOverride || hasInfrastructure
+    const hasCostOverride = executionData.costOverride.actionCallIds.size > 0
+    const hasInfrastructure = executionData.infrastructureCallIds.size > 0
+    const needsPerCallAttribution = executionData.hadFailures || hasCostOverride || hasInfrastructure
     if (
-      executionData &&
       needsPerCallAttribution &&
       sessionItems.length > 0 &&
       !(executionData.noValueDelivered && wasUserAborted && !hasCostOverride && !hasInfrastructure)
@@ -139,6 +148,8 @@ export function processBudgetReport(context: BudgetReportContext): BudgetReportR
       reportItems = generateReportItems(result)
       sessionWasFree = result.customerCost === 0 // GoDaddy covers 100% if no customer cost
       attributionResult = result
+      attributionPath = 'per_call'
+      labels = result.labels
 
       // Log correlation ID mapping for debugging cost attribution
       // This shows all inputs: BMS session items (with x-request-id) vs detected failures (with correlation IDs)
@@ -177,52 +188,61 @@ export function processBudgetReport(context: BudgetReportContext): BudgetReportR
         causalChainsDetected: executionData.causalChains.length,
         sessionWasFree,
       })
-    } else if (executionData?.noValueDelivered && !wasUserAborted) {
+    } else if (executionData.noValueDelivered && !wasUserAborted) {
       // No value delivered: agent ran but produced nothing useful -> 100% GoDaddy
       // Skip if user aborted - that's the user's choice, not an agent failure
+      const label = ReportLabel.NoOutput
       reportItems = [{
         budgetCost: '0',
         productCost: totalCost.toString(),
-        label: ReportLabel.NoOutput,
+        label,
       }]
       sessionWasFree = true // GoDaddy covers 100%
+      attributionPath = 'no_value'
+      labels = [label]
 
       logger.info('budget.attribution.no_value', {
         budgetId,
         sessionId,
         totalCost,
-        label: ReportLabel.NoOutput,
+        label,
         reason: 'Agent ran but no output or successful tool calls',
         sessionWasFree,
       })
-    } else if (executionData?.noValueDelivered && wasUserAborted) {
+    } else if (executionData.noValueDelivered && wasUserAborted) {
       // User aborted before any output - charge to customer (their choice)
+      const label = ReportLabel.General
       reportItems = [{
         budgetCost: totalCost.toString(),
         productCost: '0',
-        label: ReportLabel.General,
+        label,
       }]
       sessionWasFree = false // Customer pays
+      attributionPath = 'user_aborted'
+      labels = [label]
 
       logger.info('budget.attribution.user_aborted', {
         budgetId,
         sessionId,
         totalCost,
-        label: ReportLabel.General,
+        label,
         reason: 'User aborted session before output',
         sessionWasFree,
       })
     } else {
       // Default: 100% Customer
+      const label = ReportLabel.General
       reportItems = [{
         budgetCost: totalCost.toString(),
         productCost: '0',
-        label: ReportLabel.General,
+        label,
       }]
       sessionWasFree = false // Customer pays 100%
+      attributionPath = 'default'
+      labels = [label]
 
       // Log warning for unexpected state: failures detected but couldn't attribute
-      if (executionData?.hadFailures && sessionItems.length === 0) {
+      if (executionData.hadFailures && sessionItems.length === 0) {
         logger.warn('budget.attribution.failures_without_session_items', {
           budgetId,
           sessionId,
@@ -238,15 +258,35 @@ export function processBudgetReport(context: BudgetReportContext): BudgetReportR
         budgetId,
         sessionId,
         assessmentIntent,
-        hasExecutionData: !!executionData,
-        hadFailures: executionData?.hadFailures,
+        hasSteps: executionData.totalSteps > 0,
+        // undefined when no steps were available - distinguishes "no data" from "data, no failures".
+        hadFailures: executionData.totalSteps > 0 ? executionData.hadFailures : undefined,
         sessionItemCount: sessionItems.length,
         totalCost,
-        label: ReportLabel.General,
+        label,
         sessionWasFree,
       })
     }
   }
 
-  return { reportItems, executionData, sessionWasFree, attributionResult }
+  return { reportItems, executionData, sessionWasFree, attributionResult, attributionPath, labels }
+}
+
+/**
+ * Result returned when attribution analysis crashes: customer pays 100%,
+ * signalled via `attributionPath: 'attribution_failed'`.
+ */
+export function attributionFailedFallback(totalCost: number): BudgetReportResult {
+  return {
+    reportItems: [{
+      budgetCost: totalCost.toString(),
+      productCost: '0',
+      label: ReportLabel.General,
+    }],
+    executionData: emptyExecutionData(),
+    sessionWasFree: false,
+    attributionResult: undefined,
+    attributionPath: 'attribution_failed',
+    labels: [ReportLabel.General],
+  }
 }

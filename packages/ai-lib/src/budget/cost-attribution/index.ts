@@ -109,7 +109,7 @@ function determineLabels(
   causalChains: CausalChain[],
   hasDirectFailures: boolean,
   costOverride: CostOverrideData
-): [ReportLabel, ...ReportLabel[]] {
+): ReportLabel[] {
   const labels: ReportLabel[] = []
 
   // Cost override labels (publish/domain tasks)
@@ -141,7 +141,7 @@ function determineLabels(
     labels.push(ReportLabel.General)
   }
 
-  return labels as [ReportLabel, ...ReportLabel[]]
+  return labels
 }
 
 /**
@@ -640,6 +640,13 @@ export {
   logRetryDetectionEvaluated,
   logRetryOverride,
 } from './retry-detection.js'
+export { buildAttributionPayload, emitCostAttributionResult } from './emit-cost-attribution-result.js'
+export type {
+  AttributionAssessment,
+  AttributionPayload,
+  AttributionPerCall,
+  CostAttributionEventContext,
+} from './emit-cost-attribution-result.js'
 export {
   getCostOverrideAction,
   getCostOverrideSignal,
