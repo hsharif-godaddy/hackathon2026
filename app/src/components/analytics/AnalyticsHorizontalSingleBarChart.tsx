@@ -9,8 +9,8 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import text from '@ux/text'
 
+import { AnalyticsCard } from '@/components/analytics/AnalyticsCard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { ChartTooltip, formatChartValue } from './ChartTooltip'
 
@@ -56,7 +56,12 @@ export function AnalyticsHorizontalSingleBarChart({
   const t = useTranslations()
 
   if (!data || data.length === 0) {
-    return <text.p emphasis="passive" className="!text-center !py-8">{t('builder_analytics_no_data')}</text.p>
+    return (
+      <AnalyticsCard
+        title={label}
+        description={t('builder_analytics_no_data')}
+      />
+    )
   }
 
   const formatValue = (val: number): string => formatChartValue(val, suffix)
@@ -71,17 +76,7 @@ export function AnalyticsHorizontalSingleBarChart({
   const useMultiColor = !color
 
   return (
-    <div
-      data-slot="chart"
-      className="flex flex-col w-full rounded-lg border bg-intents-ux-box-backgroundColor p-2 shadow-sm transition-all duration-200 ease-out hover:shadow-md hover:border-light-purple-solid hover:-translate-y-px min-h-[220px]"
-    >
-      <div className="flex items-center gap-2 mb-3.5">
-        <span
-          className="inline-block w-[7px] h-[7px] rounded-full flex-shrink-0"
-          style={{ background: color ?? DEFAULT_COLOR, boxShadow: `0 0 6px color-mix(in srgb, ${color ?? DEFAULT_COLOR} 25%, transparent)` }}
-        />
-        <text.span className="!text-[13px] !font-semibold">{label}</text.span>
-      </div>
+    <AnalyticsCard data-slot="chart" title={label} className="min-h-[220px]">
       <ResponsiveContainer width="100%" height={dynamicHeight}>
         <BarChart data={data} layout="vertical" margin={{ top: 8, right: 40, bottom: 8, left: 8 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--muted-border))" horizontal={false} />
@@ -109,6 +104,6 @@ export function AnalyticsHorizontalSingleBarChart({
           </Bar>
         </BarChart>
       </ResponsiveContainer>
-    </div>
+    </AnalyticsCard>
   )
 }

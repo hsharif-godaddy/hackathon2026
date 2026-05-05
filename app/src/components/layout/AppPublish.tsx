@@ -799,7 +799,6 @@ export default function AppPublish({ location = 'develop' }: { location?: string
                         {},
                         'Optimize meta tags, descriptions, and search engine visibility',
                       )}
-                      contentClassName='p-2 max-w-xs break-words text-left'
                     />
                     <span aria-hidden className='invisible select-none whitespace-pre'>
                       {publishGoLiveChatButtonLabel}

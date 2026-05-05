@@ -1,5 +1,6 @@
 import text from '@ux/text'
 
+import { AnalyticsCard } from '@/components/analytics/AnalyticsCard'
 import { ContentTooltip } from '@/components/ui/ContentTooltip'
 import { useTranslations } from '@/hooks/useTranslations'
 
@@ -40,21 +41,20 @@ export function AnalyticsTables({
     getDescription: (row: T) => string
   ) => {
     return (
-      <div className="flex flex-col gap-4 rounded-lg border border-border bg-intents-ux-box-backgroundColor p-2 shadow-sm transition-all duration-200 ease-out hover:shadow-md hover:border-light-purple-solid hover:-translate-y-px">
-        <div className="flex items-center justify-between text-sm font-medium">
-          <div className="flex items-center gap-2">
-            <span className="inline-block w-[7px] h-[7px] rounded-full flex-shrink-0" style={{ background: 'var(--color-ai)', boxShadow: '0 0 6px var(--color-ai-glow)' }} />
-            <text.p className="!capitalize !text-[13px] !font-semibold !mb-0">{title}</text.p>
-          </div>
-          <text.p emphasis="passive" className="!text-xs !uppercase !tracking-wider !mb-0">{valueLabel}</text.p>
-        </div>
+      <AnalyticsCard
+        title={title}
+      >
         {data.length === 0 ? (
-          <text.p emphasis="passive">
+          <text.p as="caption" size={-1} emphasis="passive">
             {t('builder_analytics_no_data')}
           </text.p>
         ) : (
           <div className="space-y-2">
-            {data.map((row, index) => {
+            <div className="flex justify-between uppercase border-y-1 p-2">
+              <text.span as="caption" emphasis="passive" size={-2}>{t('builder_analytics_page_name')}</text.span>
+              <text.span as="caption" emphasis="passive" size={-2}>{valueLabel}</text.span>
+            </div>
+            {data.map((row) => {
               const value = String(row[keyField])
               const description = getDescription(row)
 
@@ -78,7 +78,7 @@ export function AnalyticsTables({
             })}
           </div>
         )}
-      </div>
+      </AnalyticsCard>
     )
   }
 

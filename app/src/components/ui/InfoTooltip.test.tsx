@@ -44,7 +44,7 @@ describe('InfoTooltip', () => {
 
       const svg = container.querySelector('svg');
       expect(svg).toHaveClass('size-2');
-      expect(svg).toHaveClass('text-intents-ux-passive-foregroundColor');
+      expect(svg).toHaveClass('text-intents-ux-feedbackHighContrastPassive-feedbackColor');
     });
 
     it('should apply custom icon className', () => {

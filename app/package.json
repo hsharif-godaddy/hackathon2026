@@ -97,7 +97,7 @@
     "@ux/checkbox": "^2500.11.1",
     "@ux/chip": "^2500.11.1",
     "@ux/coachmark": "^2500.11.1",
-    "@ux/collapsible": "^2500.11.1",
+    "@ux/collapsible": "^2500.11.4",
     "@ux/date-input": "^2500.11.1",
     "@ux/disrupt": "^2500.11.1",
     "@ux/flyout": "^2500.11.1",

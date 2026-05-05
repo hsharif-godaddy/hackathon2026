@@ -17,8 +17,8 @@ interface InfoTooltipProps {
 
 export function InfoTooltip({
   content,
-  iconClassName = 'size-2 text-intents-ux-passive-foregroundColor',
-  contentClassName = 'p-1 max-w-[25ch] break-words',
+  iconClassName,
+  contentClassName,
   embedded = false,
 }: InfoTooltipProps) {
   const t = useTranslations();
@@ -51,11 +51,11 @@ export function InfoTooltip({
             : 'inline-flex items-center'
         }
       >
-        <InfoIcon className={iconClassName} />
+        <InfoIcon className={cn('size-2 text-intents-ux-feedbackHighContrastPassive-feedbackColor', iconClassName)} />
       </button>
       {show && (
         <Tooltip id={tooltipId} anchorRef={anchorRef} portalElem={document.body}>
-          <div className={cn(embedded && 'max-w-xs text-left', contentClassName)}>
+          <div className={cn(embedded && 'max-w-xs', 'p-1 text-start max-w-[25ch] break-words', contentClassName)}>
             {content}
           </div>
         </Tooltip>

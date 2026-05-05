@@ -9,6 +9,7 @@ import {
 } from 'recharts'
 import text from '@ux/text'
 
+import { AnalyticsCard } from '@/components/analytics/AnalyticsCard'
 import { InfoTooltip } from '@/components/ui/InfoTooltip'
 import { useTranslations } from '@/hooks/useTranslations'
 import { ChartTooltip } from './ChartTooltip'
@@ -42,10 +43,13 @@ export function AnalyticsPieChart({ data, label = 'Distribution', tooltip }: Ana
 
   if (!data || data.length === 0) {
     return (
-      <div className="flex flex-col gap-2 rounded-xl border bg-intents-ux-box-backgroundColor p-5">
-        <text.span className="!text-[13px] !font-bold !tracking-tight">{label}</text.span>
-        <text.p emphasis="passive" className="!text-xs !mb-0">{t('builder_analytics_no_data')}</text.p>
-      </div>
+      <AnalyticsCard
+        title={<>
+          {label}
+          {tooltip && (<InfoTooltip content={tooltip}/>)}
+        </>}
+        description={t('builder_analytics_no_data')}
+      />
     )
   }
 
@@ -76,21 +80,13 @@ export function AnalyticsPieChart({ data, label = 'Distribution', tooltip }: Ana
   }
 
   return (
-    <div
+    <AnalyticsCard
       data-slot="chart"
-      className="flex flex-col w-full rounded-lg border bg-intents-ux-box-backgroundColor p-2 shadow-sm transition-all duration-200 ease-out hover:shadow-md hover:border-light-purple-solid hover:-translate-y-px min-h-[250px] hover:-translate-y-0.5"
+      title={<>
+        {label}
+        {tooltip && (<InfoTooltip content={tooltip}/>)}
+      </>}
     >
-      <div className="flex items-center gap-2 mb-2">
-        <span className="inline-block w-[6px] h-[6px] rounded-full flex-shrink-0" style={{ background: 'var(--color-chart-pink)', boxShadow: '0 0 8px color-mix(in srgb, var(--color-chart-pink) 30%, transparent)' }} />
-        <text.span className="!text-[13px] !font-bold !tracking-tight">{label}</text.span>
-        {tooltip && (
-          <InfoTooltip
-            content={tooltip}
-            iconClassName="size-[13px] text-muted-foreground/40 hover:text-muted-foreground transition-colors"
-            contentClassName="p-1 max-w-[240px] text-xs"
-          />
-        )}
-      </div>
       <ResponsiveContainer width="100%" height={200} minHeight={140}>
         <PieChart>
           <Pie
@@ -117,6 +113,6 @@ export function AnalyticsPieChart({ data, label = 'Distribution', tooltip }: Ana
           <Tooltip content={<ChartTooltip valueName={label} titleFrom="name" />} />
         </PieChart>
       </ResponsiveContainer>
-    </div>
+    </AnalyticsCard>
   )
 }

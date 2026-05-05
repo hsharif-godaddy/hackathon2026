@@ -9,8 +9,8 @@ import {
   XAxis,
   YAxis
 } from 'recharts'
-import text from '@ux/text'
 
+import { AnalyticsCard } from '@/components/analytics/AnalyticsCard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { ChartTooltip, formatChartValue } from './ChartTooltip'
 
@@ -57,7 +57,10 @@ export function AnalyticsComposedChart({
 
   if (!data || data.length === 0) {
     return (
-      <text.p emphasis="passive" className="!text-center !py-8">{t('builder_analytics_no_data')}</text.p>
+      <AnalyticsCard
+        title={label}
+        description={t('builder_analytics_no_data')}
+      />
     )
   }
 
@@ -83,14 +86,7 @@ export function AnalyticsComposedChart({
   })
 
   return (
-    <div
-      data-slot="chart"
-      className="flex flex-col w-full rounded-lg border bg-intents-ux-box-backgroundColor p-2 shadow-sm transition-all duration-200 ease-out hover:shadow-md hover:border-light-purple-solid hover:-translate-y-px min-h-[250px]"
-    >
-      <div className="flex items-center gap-2 mb-3.5">
-        <span className="inline-block w-[7px] h-[7px] rounded-full flex-shrink-0" style={{ background: 'var(--color-chart-amber)', boxShadow: '0 0 6px color-mix(in srgb, var(--color-chart-amber) 25%, transparent)' }} />
-        <text.span className="!text-[13px] !font-semibold">{label}</text.span>
-      </div>
+    <AnalyticsCard data-slot="chart" title={label} className="min-h-[250px]">
       <ResponsiveContainer width="100%" height={350} minHeight={250}>
         <ComposedChart
           data={composedData}
@@ -154,6 +150,6 @@ export function AnalyticsComposedChart({
           />
         </ComposedChart>
       </ResponsiveContainer>
-    </div>
+    </AnalyticsCard>
   )
 }

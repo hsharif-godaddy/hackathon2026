@@ -1,5 +1,7 @@
+import type { ReactNode } from 'react'
 import text from '@ux/text'
 
+import { AnalyticsCard } from '@/components/analytics/AnalyticsCard'
 import { InfoTooltip } from '@/components/ui/InfoTooltip'
 import { useTranslations } from '@/hooks/useTranslations'
 
@@ -14,8 +16,8 @@ interface ColumnDef<T> {
 interface AnalyticsDetailTableProps<T> {
   data: T[]
   columns: ColumnDef<T>[]
-  title: string
-  subtitle?: string
+  title: ReactNode
+  description?: ReactNode
   /** Optional tooltip shown on info icon next to title */
   tooltip?: string
   /** Optional max height (px) for scrollable table body */
@@ -32,7 +34,7 @@ export function AnalyticsDetailTable<T>({
   data,
   columns,
   title,
-  subtitle,
+  description,
   tooltip,
   maxHeight,
 }: AnalyticsDetailTableProps<T>) {
@@ -40,30 +42,24 @@ export function AnalyticsDetailTable<T>({
 
   if (!data || data.length === 0) {
     return (
-      <div className="flex flex-col gap-2 rounded-lg border border-border bg-intents-ux-box-backgroundColor p-2">
-        <text.p className="!text-[13px] !font-semibold !mb-0">{title}</text.p>
-        <text.p emphasis="passive" className="!text-xs">{t('builder_analytics_no_data')}</text.p>
-      </div>
+      <AnalyticsCard
+        title={<>
+          {title}
+          {tooltip && (<InfoTooltip content={tooltip}/>)}
+        </>}
+        description={t('builder_analytics_no_data')}
+      />
     )
   }
 
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-border bg-intents-ux-box-backgroundColor p-2 shadow-sm transition-all duration-200 ease-out hover:shadow-md hover:border-light-purple-solid hover:-translate-y-px">
-      <div className="flex items-center gap-2 mb-1">
-        <span className="inline-block w-[7px] h-[7px] rounded-full flex-shrink-0" style={{ background: 'var(--color-ai)', boxShadow: '0 0 6px var(--color-ai-glow)' }} />
-        <text.p className="!text-[13px] !font-semibold !mb-0">{title}</text.p>
-        {tooltip && (
-          <InfoTooltip
-            content={tooltip}
-            iconClassName="size-[13px] text-muted-foreground/40 hover:text-muted-foreground transition-colors"
-            contentClassName="p-1 max-w-[240px] text-xs"
-          />
-        )}
-        {subtitle && (
-          <text.p emphasis="passive" className="!text-[11px] !mt-0.5 !mb-0 !pl-[14px]">{subtitle}</text.p>
-        )}
-      </div>
-
+    <AnalyticsCard
+      title={<>
+        {title}
+        {tooltip && (<InfoTooltip content={tooltip}/>)}
+      </>}
+      description={description}
+    >
       {/* Table */}
       <div
         className="overflow-x-auto"
@@ -130,6 +126,6 @@ export function AnalyticsDetailTable<T>({
           {data.length} {data.length === 1 ? 'row' : 'rows'}
         </text.span>
       </div>
-    </div>
+    </AnalyticsCard>
   )
 }

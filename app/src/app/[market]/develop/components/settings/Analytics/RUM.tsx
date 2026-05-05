@@ -14,6 +14,7 @@ import SettingsSection from '@/app/[market]/develop/components/settings/Settings
 import { ChatTab } from '@/app/[market]/develop/components/types'
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import { usePublishedUrl } from '@/app/[market]/develop/hooks/usePublishedUrl'
+import { AnalyticsCard } from '@/components/analytics/AnalyticsCard'
 import { AnalyticsChart } from '@/components/analytics/AnalyticsChart'
 import { AnalyticsDetailTable } from '@/components/analytics/AnalyticsDetailTable'
 import { AnalyticsMultiAreaChart } from '@/components/analytics/AnalyticsMultiAreaChart'
@@ -22,7 +23,10 @@ import { MetricCard } from '@/components/analytics/MetricCard'
 import type { StatProgressItem } from '@/components/analytics/StatProgressList'
 import { StatProgressList } from '@/components/analytics/StatProgressList'
 import EmptyStateCard from '@/components/layout/EmptyStateCard'
-import { InfoTooltip } from '@/components/ui/InfoTooltip'
+import {
+  SegmentedController,
+  SegmentedControllerItem,
+} from '@/components/ui/SegmentedController'
 import { useClickhouseAnalytics } from '@/hooks/useClickhouseAnalytics'
 import { useInsightsAnalytics } from '@/hooks/useInsightsAnalytics'
 import { useSubscription } from '@/hooks/useSubscription'
@@ -41,36 +45,6 @@ import { getPlanFromSubscription } from '@/utils/credits'
 /** Shared wrapper for content inside a Collapsible — single place to tweak spacing */
 function CollapsibleContent({ children }: { children: React.ReactNode }) {
   return <Box gap="md" className="pt-1 pb-3">{children}</Box>
-}
-
-/** Segmented control button group */
-function SegmentedControl<T extends string>({
-  options,
-  value,
-  onChange,
-}: {
-  options: { value: T; label: string }[]
-  value: T
-  onChange: (v: T) => void
-}) {
-  return (
-    <div className="inline-flex rounded-lg border bg-muted/30 p-0.5 gap-0.5">
-      {options.map((opt) => (
-        <button
-          type="button"
-          key={opt.value}
-          onClick={() => onChange(opt.value)}
-          className={`px-3 py-1.5 rounded-md text-[11px] font-semibold transition-all duration-150 ${
-            value === opt.value
-              ? 'bg-ai text-white shadow-sm'
-              : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-          }`}
-        >
-          {opt.label}
-        </button>
-      ))}
-    </div>
-  )
 }
 
 function PageBadge({ value }: { value: string }) {
@@ -673,25 +647,27 @@ export default function RUM() {
           id="traffic-trends"
           size="sm"
           title={<text.span as="title" size={-2}>{t('builder_analytics_visitors_traffic')}</text.span>}
-          className="[&_*]:min-w-0"
         >
           <CollapsibleContent>
             <text.p>{t('builder_analytics_tooltip_traffic_trends')}</text.p>
-            <div
+            <AnalyticsCard
               data-slot="chart"
-              className="flex flex-col w-full rounded-lg border bg-intents-ux-box-backgroundColor p-2 shadow-sm transition-all duration-200 ease-out hover:shadow-md hover:border-light-purple-solid hover:-translate-y-px overflow-x-auto"
+              className="flex flex-col w-full"
             >
-              <div className="mb-4">
-                <SegmentedControl
-                  options={[
-                    { value: 'total-visitors' as const, label: t('builder_analytics_visitors') },
-                    ...(isPro ? [{ value: 'visitors' as const, label: t('builder_analytics_new_vs_returning') }] : []),
-                    { value: 'sessions' as const, label: t('builder_analytics_total_sessions') },
-                    { value: 'pageviews' as const, label: t('builder_analytics_page_views') },
-                  ]}
+              <div className="w-full min-w-0">
+                <SegmentedController
+                  radiogroupProps={{ 'aria-label': t('builder_analytics_visitors_traffic') }}
                   value={liveDataTab}
-                  onChange={(v) => setLiveDataTab(v as typeof liveDataTab)}
-                />
+                  onSelectionChange={(v) => setLiveDataTab(v)}
+                  className="w-full max-w-full"
+                >
+                  <SegmentedControllerItem value="total-visitors">{t('builder_analytics_visitors')}</SegmentedControllerItem>
+                  {isPro ? (
+                    <SegmentedControllerItem value="visitors">{t('builder_analytics_new_vs_returning')}</SegmentedControllerItem>
+                  ) : null}
+                  <SegmentedControllerItem value="sessions">{t('builder_analytics_total_sessions')}</SegmentedControllerItem>
+                  <SegmentedControllerItem value="pageviews">{t('builder_analytics_page_views')}</SegmentedControllerItem>
+                </SegmentedController>
               </div>
               {liveDataTab === 'total-visitors' ? (
                 <AnalyticsChart data={dailyUniqueVisitors} label={t('builder_analytics_visitors')} embedded />
@@ -714,7 +690,7 @@ export default function RUM() {
                   embedded
                 />
               )}
-            </div>
+            </AnalyticsCard>
           </CollapsibleContent>
         </Collapsible>
 
@@ -736,7 +712,6 @@ export default function RUM() {
               <StatProgressList
                 items={cityProgressItems}
                 title={t('builder_analytics_city_traffic')}
-                subtitle={t('builder_analytics_top_cities_by_visitors')}
                 tooltip={intl.formatMessage({ id: 'builder_analytics_tooltip_city_ranking', defaultMessage: 'Top cities ranked by unique visitor count. City-level data is approximate and derived from IP geolocation.' })}
                 color="var(--color-chart-cyan)"
                 maxItems={8}
@@ -748,7 +723,6 @@ export default function RUM() {
               <AnalyticsDetailTable<GeoProPlanRow>
                 data={geoProPlanTableData}
                 title={t('builder_analytics_top_locations')}
-                subtitle={t('builder_analytics_city_visitor_breakdown')}
                 tooltip={intl.formatMessage({ id: 'builder_analytics_tooltip_city_detail', defaultMessage: 'Detailed city-level visitor data with country attribution. Based on IP geolocation.' })}
                 maxHeight={400}
                 columns={[
@@ -802,7 +776,6 @@ export default function RUM() {
               <StatProgressList
                 items={referrerProgressItems}
                 title={t('builder_analytics_top_referrers')}
-                subtitle={t('builder_analytics_where_visitors_from')}
                 tooltip={intl.formatMessage({ id: 'builder_analytics_tooltip_top_referrers', defaultMessage: 'Top websites, search engines, and sources that send visitors to your site for the selected period.' })}
                 color="var(--color-chart-green)"
                 maxItems={8}
@@ -811,19 +784,20 @@ export default function RUM() {
 
             {/* Trend Graph: Device / Browser (Professional+) */}
             {isPro ? (
-              <div
+              <AnalyticsCard
                 data-slot="chart"
-                className="flex flex-col w-full rounded-lg border bg-intents-ux-box-backgroundColor p-5 shadow-sm transition-all duration-200 ease-out hover:shadow-md hover:border-light-purple-solid hover:-translate-y-px"
+                className="flex flex-col w-full"
               >
-                <div className="mb-4">
-                  <SegmentedControl
-                    options={[
-                      { value: 'device' as const, label: t('builder_analytics_device_types') },
-                      { value: 'browser' as const, label: t('builder_analytics_browser_names') },
-                    ]}
+                <div className="w-full min-w-0">
+                  <SegmentedController
+                    radiogroupProps={{ 'aria-label': t('builder_analytics_devices_sources') }}
                     value={trendTab}
-                    onChange={(v) => setTrendTab(v as typeof trendTab)}
-                  />
+                    onSelectionChange={(v) => setTrendTab(v)}
+                    className="w-full max-w-full"
+                  >
+                    <SegmentedControllerItem value="device">{t('builder_analytics_device_types')}</SegmentedControllerItem>
+                    <SegmentedControllerItem value="browser">{t('builder_analytics_browser_names')}</SegmentedControllerItem>
+                  </SegmentedController>
                 </div>
                 {trendTab === 'device' ? (
                   <AnalyticsMultiAreaChart
@@ -844,7 +818,7 @@ export default function RUM() {
                     embedded
                   />
                 )}
-              </div>
+              </AnalyticsCard>
             ) : null}
 
             {/* Referrers Table (Professional+) */}
@@ -852,7 +826,6 @@ export default function RUM() {
               <AnalyticsDetailTable<ReferrerTableRow>
                 data={referrerTableData}
                 title={t('builder_analytics_referrers')}
-                subtitle={t('builder_analytics_top_traffic_sources')}
                 tooltip={intl.formatMessage({ id: 'builder_analytics_tooltip_referrer_detail', defaultMessage: 'Traffic sources ranked by visits. Shows unique visitor ratio and landing page visits from each referrer.' })}
                 maxHeight={300}
                 columns={[
@@ -907,7 +880,7 @@ export default function RUM() {
             <AnalyticsDetailTable<ActivityHitRow>
               data={enrichedActivityHits}
               title={t('builder_analytics_activity_last_20')}
-              subtitle={isActivityEstimated
+              description={isActivityEstimated
                 ? intl.formatMessage({ id: 'builder_analytics_activity_estimated', defaultMessage: 'Estimated from aggregated page view data' })
                 : t('builder_analytics_activity_subtitle')}
               tooltip={intl.formatMessage({ id: 'builder_analytics_tooltip_recent_activity', defaultMessage: 'Most recent page hits showing path, device, location, browser, and traffic source.' })}
@@ -975,19 +948,20 @@ export default function RUM() {
           <CollapsibleContent>
             <text.p>{t('builder_analytics_tooltip_engagement')}</text.p>
             <div className="[&>*]:min-w-0">
-              <div
+              <AnalyticsCard
                 data-slot="chart"
-                className="flex flex-col w-full rounded-lg border bg-intents-ux-box-backgroundColor p-2 shadow-sm transition-all duration-200 ease-out hover:shadow-md hover:border-light-purple-solid hover:-translate-y-px"
+                className="flex flex-col w-full"
               >
-                <div className="mb-4">
-                  <SegmentedControl
-                    options={[
-                      { value: 'clicks' as const, label: t('builder_analytics_click_trends') },
-                      { value: 'total-sessions' as const, label: t('builder_analytics_total_sessions') },
-                    ]}
+                <div className="w-full min-w-0">
+                  <SegmentedController
+                    radiogroupProps={{ 'aria-label': t('builder_analytics_engagement') }}
                     value={visitorInsightsTab}
-                    onChange={(v) => setVisitorInsightsTab(v as typeof visitorInsightsTab)}
-                  />
+                    onSelectionChange={(v) => setVisitorInsightsTab(v)}
+                    className="w-full max-w-full"
+                  >
+                    <SegmentedControllerItem value="clicks">{t('builder_analytics_click_trends')}</SegmentedControllerItem>
+                    <SegmentedControllerItem value="total-sessions">{t('builder_analytics_total_sessions')}</SegmentedControllerItem>
+                  </SegmentedController>
                 </div>
                 {visitorInsightsTab === 'clicks' ? (
                   <AnalyticsChart data={clickTrendsData} label={t('builder_analytics_clicks')} embedded />
@@ -998,7 +972,7 @@ export default function RUM() {
                     embedded
                   />
                 )}
-              </div>
+              </AnalyticsCard>
             </div>
 
             {/* CTA Table: links + buttons combined (Professional+) */}
@@ -1006,7 +980,6 @@ export default function RUM() {
               <AnalyticsDetailTable<CTATableRow>
                 data={ctaTableData}
                 title={t('builder_analytics_ctas_links_buttons')}
-                subtitle={t('builder_analytics_click_performance')}
                 tooltip={intl.formatMessage({ id: 'builder_analytics_tooltip_click_metrics', defaultMessage: 'Click metrics for links and buttons. Shows total clicks, unique visitors who clicked, and click-per-visitor ratio.' })}
                 maxHeight={300}
                 columns={[
@@ -1065,7 +1038,6 @@ export default function RUM() {
             <AnalyticsDetailTable<TopPageRow>
               data={topPagesData}
               title={t('builder_analytics_top_pages')}
-              subtitle={t('builder_analytics_top_pages_subtitle')}
               tooltip={intl.formatMessage({ id: 'builder_analytics_tooltip_top_pages', defaultMessage: 'Top pages ranked by traffic. Shows visitors, total views, referral visits, and click counts per page.' })}
               columns={[
                 { key: 'pagePath', header: t('builder_analytics_page_path'), render: (v, row) => {

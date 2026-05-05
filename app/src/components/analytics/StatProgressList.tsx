@@ -1,6 +1,7 @@
 import { useIntl } from 'react-intl'
 import text from '@ux/text'
 
+import { AnalyticsCard } from '@/components/analytics/AnalyticsCard'
 import { ContentTooltip } from '@/components/ui/ContentTooltip'
 import { InfoTooltip } from '@/components/ui/InfoTooltip'
 import { useTranslations } from '@/hooks/useTranslations'
@@ -23,8 +24,6 @@ interface StatProgressListProps {
   showPercent?: boolean
   /** Maximum items to display */
   maxItems?: number
-  /** Optional subtitle */
-  subtitle?: string
   /** Optional tooltip shown on info icon next to title */
   tooltip?: string
 }
@@ -42,7 +41,6 @@ export function StatProgressList({
   color = 'var(--color-ai)',
   showPercent = true,
   maxItems = 8,
-  subtitle,
   tooltip,
 }: StatProgressListProps) {
   const t = useTranslations()
@@ -50,10 +48,13 @@ export function StatProgressList({
 
   if (!items || items.length === 0) {
     return (
-      <div className="flex flex-col gap-2 rounded-xl border bg-intents-ux-box-backgroundColor p-5">
-        <text.span className="!text-[13px] !font-bold !tracking-tight">{title}</text.span>
-        <text.p emphasis="passive" className="!text-xs !mb-0">{t('builder_analytics_no_data')}</text.p>
-      </div>
+      <AnalyticsCard
+        title={<>
+          {title}
+          {tooltip && (<InfoTooltip content={tooltip}/>)}
+        </>}
+        description={t('builder_analytics_no_data')}
+      />
     )
   }
 
@@ -62,26 +63,12 @@ export function StatProgressList({
   const totalValue = displayItems.reduce((sum, d) => sum + d.value, 0)
 
   return (
-    <div className="flex flex-col rounded-xl border bg-intents-ux-box-backgroundColor p-5 transition-all duration-200 ease-out hover:shadow-md hover:-translate-y-0.5">
-      {/* Header */}
-      <div className="flex items-center gap-2 mb-1">
-        <span
-          className="inline-block w-[6px] h-[6px] rounded-full shrink-0"
-          style={{ background: color, boxShadow: `0 0 8px color-mix(in srgb, ${color} 30%, transparent)` }}
-        />
-        <text.span className="!text-[13px] !font-bold !tracking-tight">{title}</text.span>
-        {tooltip && (
-          <InfoTooltip
-            content={tooltip}
-            iconClassName="size-[13px] text-muted-foreground/40 hover:text-muted-foreground transition-colors"
-            contentClassName="p-1 max-w-[240px] text-xs"
-          />
-        )}
-      </div>
-      {subtitle && (
-        <text.span className="!text-[11px] !text-muted-foreground !mb-3 !pl-[14px]">{subtitle}</text.span>
-      )}
-
+    <AnalyticsCard
+      title={<>
+        {title}
+        {tooltip && (<InfoTooltip content={tooltip}/>)}
+      </>}
+    >
       {/* Items */}
       <div className="flex flex-col gap-2.5 mt-2">
         {displayItems.map((item, idx) => {
@@ -143,6 +130,6 @@ export function StatProgressList({
           {t('builder_analytics_more_items', { count: items.length - maxItems })}
         </text.span>
       )}
-    </div>
+    </AnalyticsCard>
   )
 }
