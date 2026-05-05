@@ -3,6 +3,7 @@ package process
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -43,7 +44,7 @@ func (s State) String() string {
 
 const (
 	DefaultMaxLines     = 10000
-	ShutdownTimeout     = 5 * time.Second
+	ShutdownTimeout     = 30 * time.Second
 	DefaultBellDebounce = 10 * time.Second
 )
 
@@ -136,15 +137,22 @@ func (p *ManagedProcess) Start() {
 	p.mu.Unlock()
 
 	ctx, cancel := context.WithCancel(context.Background())
+	// Allocate done before launching run() so a Stop() that races with
+	// startup can always observe a non-nil channel and wait on it.
+	done := make(chan struct{})
 	p.mu.Lock()
 	p.cancel = cancel
+	p.done = done
 	p.mu.Unlock()
 
-	go p.run(ctx)
+	go p.run(ctx, done)
 }
 
-// Stop sends SIGTERM to the entire process group, waits for run() to finish,
-// then SIGKILL if it takes too long.
+// Stop sends SIGTERM to the entire process group and waits for it to drain,
+// then SIGKILLs any survivors. Polls the pgroup rather than cmd.Wait() because
+// cmd.Wait returns when the direct child exits (e.g., pnpm), not when
+// grandchildren do — `node --watch` in particular orphans its server child
+// to init while the server is mid graceful-shutdown.
 func (p *ManagedProcess) Stop() {
 	p.mu.RLock()
 	cancel := p.cancel
@@ -164,39 +172,86 @@ func (p *ManagedProcess) Stop() {
 		cancel()
 	}
 
-	// Signal the process group with SIGTERM
+	pgid := 0
 	if cmd != nil && cmd.Process != nil {
-		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
+		pgid = cmd.Process.Pid
+		if err := syscall.Kill(-pgid, syscall.SIGTERM); err != nil && !errors.Is(err, syscall.ESRCH) {
+			p.logSignalError("SIGTERM", pgid, err)
+		}
 	}
 
-	// Wait for run() goroutine to finish (it calls cmd.Wait)
+	if pgid > 0 {
+		// Poll the pgroup for liveness up to ShutdownTimeout, giving the
+		// graceful shutdown handlers (server.close, websocket drain, git
+		// flush, etc.) time to run. Exits early on ESRCH (pgroup empty) or
+		// when run() observes cmd.Wait returning (which closes done).
+		deadline := time.Now().Add(ShutdownTimeout)
+		drained := false
+		for time.Now().Before(deadline) {
+			// Honor an early-exit signal from run() so we don't keep polling
+			// for the full deadline if the kernel happens to reassign pgid
+			// to an unrelated group after our processes have already exited.
+			if done != nil {
+				select {
+				case <-done:
+					drained = true
+				default:
+				}
+			}
+			if drained {
+				break
+			}
+			err := syscall.Kill(-pgid, 0)
+			if errors.Is(err, syscall.ESRCH) {
+				drained = true
+				break
+			}
+			// Other errors (EPERM, EINVAL, etc.) leave the pgroup state
+			// unknown — keep polling and let the deadline escalate to SIGKILL.
+			time.Sleep(100 * time.Millisecond)
+		}
+		// Only SIGKILL if survivors are confirmed alive. Avoids a tiny
+		// PID-reuse race where the kernel could reassign pgid between
+		// drain detection and an unconditional kill.
+		if !drained {
+			if err := syscall.Kill(-pgid, syscall.SIGKILL); err != nil && !errors.Is(err, syscall.ESRCH) {
+				p.logSignalError("SIGKILL", pgid, err)
+			}
+		}
+	}
+
+	// Wait briefly for run() to observe the exit and update state.
 	if done != nil {
 		select {
 		case <-done:
-			return
-		case <-time.After(ShutdownTimeout):
-			// Re-read cmd under lock — it may have been assigned after Stop() started
-			p.mu.RLock()
-			cmd = p.cmd
-			p.mu.RUnlock()
-			if cmd != nil && cmd.Process != nil {
-				_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-			}
-			select {
-			case <-done:
-			case <-time.After(3 * time.Second):
-			}
+		case <-time.After(3 * time.Second):
+			// run() didn't exit in time. Force visible state to Stopped so
+			// the UI reflects reality. If run() eventually exits it will
+			// overwrite the state again, which is benign.
+			p.mu.Lock()
+			p.setState(StateStopped)
+			p.mu.Unlock()
 		}
 		return
 	}
 
-	// No run() goroutine, cancel context and set stopped
-	if cancel != nil {
-		cancel()
-	}
+	// No run() goroutine — process never started.
 	p.mu.Lock()
 	p.setState(StateStopped)
 	p.mu.Unlock()
+}
+
+// logSignalError records a non-ESRCH failure from a kill syscall to the
+// process pane so the user can see when SIGTERM/SIGKILL didn't land
+// (e.g., EPERM under unusual sandboxing).
+func (p *ManagedProcess) logSignalError(name string, pgid int, err error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.addLine(OutputLine{
+		Text:    fmt.Sprintf("Failed to %s pgroup %d: %v", name, pgid, err),
+		IsError: true,
+		Time:    time.Now(),
+	})
 }
 
 // Restart stops then starts the process.
@@ -235,15 +290,16 @@ func (p *ManagedProcess) GetState() State {
 	return p.State
 }
 
-func (p *ManagedProcess) run(ctx context.Context) {
-	done := make(chan struct{})
-	p.mu.Lock()
-	p.done = done
-	p.mu.Unlock()
+func (p *ManagedProcess) run(ctx context.Context, done chan struct{}) {
 	defer func() {
 		close(done)
 		p.mu.Lock()
-		p.done = nil
+		// Only clear if we still own the channel. If a stale run() is
+		// finishing while a newer Start() has already replaced p.done,
+		// don't clobber the newer generation.
+		if p.done == done {
+			p.done = nil
+		}
 		p.mu.Unlock()
 	}()
 
