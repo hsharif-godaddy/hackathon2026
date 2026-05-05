@@ -143,23 +143,35 @@ export class LlmClassifier implements Classifier {
   private async loadSystemPrompt(): Promise<string> {
     if (this.cachedSystemPrompt) return this.cachedSystemPrompt;
 
-    const [systemTemplate, buildReq, runtimeReq, healthReq, depsReq, outputSchema] =
-      await Promise.all([
-        this.readPromptFile(this.resolvePromptPath('diagnose/system.md')),
-        this.readPromptFile(this.resolvePromptPath('diagnose/requirements/build.md')),
-        this.readPromptFile(this.resolvePromptPath('diagnose/requirements/runtime.md')),
-        this.readPromptFile(this.resolvePromptPath('diagnose/requirements/health.md')),
-        this.readPromptFile(this.resolvePromptPath('diagnose/requirements/deps.md')),
-        this.readPromptFile(this.resolvePromptPath('diagnose/output-schema.md')),
-      ]);
+    const [
+      systemTemplate,
+      packageJsonReq,
+      dependencyReq,
+      runtimeReq,
+      packagingReq,
+      frameworkPatterns,
+      symptomMapping,
+      outputSchema,
+    ] = await Promise.all([
+      this.readPromptFile(this.resolvePromptPath('diagnose/system.md')),
+      this.readPromptFile(this.resolvePromptPath('diagnose/requirements/package-json.md')),
+      this.readPromptFile(this.resolvePromptPath('diagnose/requirements/dependencies.md')),
+      this.readPromptFile(this.resolvePromptPath('diagnose/requirements/runtime.md')),
+      this.readPromptFile(this.resolvePromptPath('diagnose/requirements/packaging.md')),
+      this.readPromptFile(this.resolvePromptPath('diagnose/requirements/frameworks.md')),
+      this.readPromptFile(this.resolvePromptPath('diagnose/symptom-mapping.md')),
+      this.readPromptFile(this.resolvePromptPath('diagnose/output-schema.md')),
+    ]);
 
     const composed = await createPromptBuilder()
       .template(systemTemplate)
       .build({
-        BuildRequirements: buildReq,
+        PackageJsonRequirements: packageJsonReq,
+        DependencyRequirements: dependencyReq,
         RuntimeRequirements: runtimeReq,
-        HealthRequirements: healthReq,
-        DependencyRequirements: depsReq,
+        PackagingRequirements: packagingReq,
+        FrameworkPatterns: frameworkPatterns,
+        SymptomMapping: symptomMapping,
         OutputSchema: outputSchema,
       });
 

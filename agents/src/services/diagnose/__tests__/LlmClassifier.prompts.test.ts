@@ -55,13 +55,19 @@ describe('LlmClassifier — real prompt files (integration)', () => {
     expect(client.lastArgs).not.toBeNull();
     const { system, user } = client.lastArgs!;
 
-    // System prompt was composed from requirement fragments.
-    expect(system).toContain('PaaS Requirements');
-    expect(system).toContain('Build');
-    expect(system).toContain('Runtime');
-    expect(system).toContain('Health');
+    // System prompt was composed from the guideline-aligned fragments.
+    expect(system).toContain('Platform Upload Guidelines');
+    expect(system).toContain('package.json');
     expect(system).toContain('Dependencies');
+    expect(system).toContain('Runtime');
+    expect(system).toContain('Packaging');
+    expect(system).toContain('Framework Patterns');
+    expect(system).toContain('Log Symptom');
     expect(system).toContain('Output Contract');
+
+    // Sentinel ids must survive fragment composition so downstream clients can detect them.
+    expect(system).toContain('no-platform-violation-detected');
+    expect(system).toContain('insufficient-log-evidence');
 
     // All placeholders must be resolved — no `{{...}}` markers left anywhere.
     expect(system).not.toMatch(/\{\{[A-Za-z]+\}\}/);

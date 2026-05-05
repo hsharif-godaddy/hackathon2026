@@ -93,16 +93,18 @@ describe('LlmClassifier', () => {
       expect(client.lastArgs!.tags).toContain('source:diagnose');
     });
 
-    it('composes a system prompt containing all requirement fragments', async () => {
+    it('composes a system prompt containing all guideline fragments', async () => {
       const classifier = new LlmClassifier(client);
       await classifier.classify([logLine('anything')], appContext());
 
       const sys = client.lastArgs!.system;
-      expect(sys).toContain('PaaS Requirements');
-      expect(sys).toContain('Build');
-      expect(sys).toContain('Runtime');
-      expect(sys).toContain('Health');
+      expect(sys).toContain('Platform Upload Guidelines');
+      expect(sys).toContain('package.json');
       expect(sys).toContain('Dependencies');
+      expect(sys).toContain('Runtime');
+      expect(sys).toContain('Packaging');
+      expect(sys).toContain('Framework Patterns');
+      expect(sys).toContain('Log Symptom');
       expect(sys).toContain('Output Contract');
       // Placeholders must be resolved — no `{{...}}` markers remain.
       expect(sys).not.toMatch(/\{\{[A-Za-z]+\}\}/);
@@ -198,6 +200,52 @@ describe('LlmClassifier', () => {
 
       await classifier.classify([logLine('y')], appContext({ appId: 'second-app' }));
       expect(client.lastArgs!.user).toContain('second-app');
+    });
+  });
+
+  describe('out-of-scope sentinel passthrough', () => {
+    const sentinelOutput: LlmAnalysisOutput = {
+      status: 'unknown',
+      primaryRecommendation:
+        'No platform guideline violation detected. The deployment error appears to be in the application code and is outside the scope of this diagnostic service.',
+      issues: [
+        {
+          id: 'no-platform-violation-detected',
+          category: 'Out of Scope',
+          severity: 'warning',
+          message:
+            'Log evidence does not match any Node.js Hosting upload guideline. The failure appears to be an application-level error.',
+          recommendation:
+            'Review the cited log lines manually; the fix is in your application code, not a platform requirement.',
+          confidence: 0,
+          relatedLogs: ['ERR_UNSUPPORTED_DIR_IMPORT'],
+        },
+      ],
+    };
+
+    it('preserves id, source, severity, and confidence when the LLM returns the sentinel shape', async () => {
+      const sentinelClient = new FakeLlmClient(async () => sentinelOutput);
+      const classifier = new LlmClassifier(sentinelClient);
+
+      const result = await classifier.classify([logLine('ERR_UNSUPPORTED_DIR_IMPORT')], appContext());
+
+      expect(result.handled).toBe(true);
+      expect(result.issues).toHaveLength(1);
+      expect(result.issues[0]!.id).toBe('no-platform-violation-detected');
+      expect(result.issues[0]!.source).toBe('llm');
+      expect(result.issues[0]!.severity).toBe('warning');
+      expect(result.issues[0]!.confidence).toBe(0);
+      expect(result.issues[0]!.category).toBe('Out of Scope');
+    });
+
+    it('the sentinel shape validates against the Zod schema the classifier supplies', async () => {
+      const classifier = new LlmClassifier(client);
+      // First call: capture the schema the classifier passes to the LLM client.
+      await classifier.classify([logLine('x')], appContext());
+      const schema = client.lastArgs!.schema;
+
+      const parsed = schema.safeParse(sentinelOutput);
+      expect(parsed.success).toBe(true);
     });
   });
 });
