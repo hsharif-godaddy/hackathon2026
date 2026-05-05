@@ -11,9 +11,9 @@ import (
 )
 
 const (
-	defaultAWSProfile   = "airobuild-dev-private-sso"
-	ssoSessionName      = "airo-sso"
-	ssoSessionConfig    = `[sso-session airo-sso]
+	defaultAWSProfile = "airobuild-dev-private-sso"
+	ssoSessionName    = "airo-sso"
+	ssoSessionConfig  = `[sso-session airo-sso]
 sso_start_url = https://d-9267a7c4d5.awsapps.com/start/#
 sso_region = us-west-2
 sso_registration_scopes = sso:account:access`

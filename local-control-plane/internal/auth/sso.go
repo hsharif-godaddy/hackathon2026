@@ -99,14 +99,16 @@ func NewSSOMiddleware(authType, ssoHost string) (*SSOMiddleware, error) {
 	}
 	validator := gdsso.NewValidator(client)
 
-	m.lowRisk, err = gdhttp.NewHandler(validator,
+	m.lowRisk, err = gdhttp.NewHandler(
+		validator,
 		gdhttp.WithRequirements(gdhttp.Active(gdtoken.Low)),
 	)
 	if err != nil {
 		return nil, err
 	}
 
-	m.highRisk, err = gdhttp.NewHandler(validator,
+	m.highRisk, err = gdhttp.NewHandler(
+		validator,
 		gdhttp.WithRequirements(activeHighWith12HrHbi()),
 	)
 	if err != nil {

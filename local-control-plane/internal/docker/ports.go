@@ -65,7 +65,7 @@ func (p *PortAllocator) findAvailable(start int) (int, error) {
 	for port := start; port < start+100; port++ {
 		ln, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 		if err == nil {
-			ln.Close()
+			_ = ln.Close()
 			return port, nil
 		}
 	}

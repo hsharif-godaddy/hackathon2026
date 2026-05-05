@@ -250,7 +250,7 @@ func (s *Server) syncSecretsToConfigFiles(appID, variant string) error {
 		return fmt.Errorf("marshal config: %w", err)
 	}
 
-	if err := os.WriteFile(configPath, data, 0600); err != nil {
+	if err := os.WriteFile(configPath, data, 0o600); err != nil {
 		return fmt.Errorf("write %s: %w", configPath, err)
 	}
 

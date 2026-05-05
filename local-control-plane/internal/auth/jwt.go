@@ -59,7 +59,8 @@ func New() (*JWTService, error) {
 		profile = "airobuild-dev-private-sso"
 	}
 
-	cfg, err := config.LoadDefaultConfig(context.Background(),
+	cfg, err := config.LoadDefaultConfig(
+		context.Background(),
 		config.WithRegion(region),
 		config.WithSharedConfigProfile(profile),
 	)

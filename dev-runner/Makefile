@@ -30,10 +30,15 @@ lint:
 	$(BOOTSTRAP_ENV) golangci-lint run
 
 fmt:
-	gofumpt -l .
+	@if [ -n "$$(gofmt -s -l .)" ]; then \
+		echo "The following files are not properly formatted:"; \
+		gofmt -s -l .; \
+		echo "Run 'make fmt-fix' to fix."; \
+		exit 1; \
+	fi
 
 fmt-fix:
-	gofumpt -w .
+	gofmt -s -w .
 
 vet:
 	$(BOOTSTRAP_ENV) $(GO) vet ./...

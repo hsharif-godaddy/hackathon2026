@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -9,6 +10,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/airo-ai-builder/local-control-plane/internal/api"
 	"github.com/airo-ai-builder/local-control-plane/internal/auth"
@@ -18,6 +20,13 @@ import (
 )
 
 func main() {
+	if err := run(); err != nil {
+		slog.Error("startup failed", "error", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	loadDotenv(".env")
 
 	port := os.Getenv("PORT")
@@ -36,7 +45,7 @@ func main() {
 		logFile = nil
 	}
 	if logFile != nil {
-		defer logFile.Close()
+		defer func() { _ = logFile.Close() }()
 	}
 
 	var logWriter io.Writer = os.Stdout
@@ -50,22 +59,17 @@ func main() {
 
 	db, err := store.Open(dbPath)
 	if err != nil {
-		slog.Error("failed to open database", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("open database: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	if !docker.IsDockerAvailable() {
-		slog.Error("docker.init.failed",
-			"hint", "Docker daemon is not running. Start Docker Desktop and try again.")
-		os.Exit(1)
+		return errors.New("docker daemon is not running; start Docker Desktop and try again")
 	}
 
 	jwtService, err := auth.New()
 	if err != nil {
-		slog.Error("jwt.init.failed", "error", err.Error(),
-			"hint", fmt.Sprintf("Run: aws sso login --profile %s (or set AWS_PROFILE to use a different profile)", awsProfile()))
-		os.Exit(1)
+		return fmt.Errorf("jwt init failed (run: aws sso login --profile %s): %w", awsProfile(), err)
 	}
 
 	docker.NewManager().Reconcile(db)
@@ -74,8 +78,7 @@ func main() {
 	ssoHost := getEnv("SSO_HOST", "sso.dev-godaddy.com")
 	ssoMW, err := auth.NewSSOMiddleware(authType, ssoHost)
 	if err != nil {
-		slog.Error("sso.init.failed", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("sso init failed: %w", err)
 	}
 
 	router := api.NewRouter(db, jwtService, ssoMW)
@@ -87,8 +90,9 @@ func main() {
 	}).Handler(router)
 
 	server := &http.Server{
-		Addr:    ":" + port,
-		Handler: handler,
+		Addr:              ":" + port,
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
 	}
 
 	go func() {
@@ -96,16 +100,16 @@ func main() {
 		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 		<-sigCh
 		slog.Info("shutting down")
-		server.Close()
+		_ = server.Close()
 	}()
 
 	slog.Info("local-control-plane starting", "port", port, "db", dbPath, "auth_type", authType)
 	fmt.Printf("\n  Local Control Plane running at http://localhost:%s\n\n", port)
 
-	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		slog.Error("server error", "error", err)
-		os.Exit(1)
+	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return fmt.Errorf("server error: %w", err)
 	}
+	return nil
 }
 
 func awsProfile() string {
@@ -141,7 +145,7 @@ func loadDotenv(path string) {
 			val = strings.TrimSpace(val[:idx])
 		}
 		if _, exists := os.LookupEnv(key); !exists {
-			os.Setenv(key, val)
+			_ = os.Setenv(key, val)
 		}
 	}
 }

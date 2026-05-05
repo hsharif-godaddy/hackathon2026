@@ -382,12 +382,12 @@ func FormatCommand(repo, workflow, ref string, inputs map[string]string) string 
 	sort.Strings(keys)
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("gh workflow run %s --repo %s", workflow, repo))
+	fmt.Fprintf(&sb, "gh workflow run %s --repo %s", workflow, repo)
 	if ref != "" {
-		sb.WriteString(fmt.Sprintf(" --ref %s", ref))
+		fmt.Fprintf(&sb, " --ref %s", ref)
 	}
 	for _, k := range keys {
-		sb.WriteString(fmt.Sprintf(" -f %s=%s", k, inputs[k]))
+		fmt.Fprintf(&sb, " -f %s=%s", k, inputs[k])
 	}
 	return sb.String()
 }

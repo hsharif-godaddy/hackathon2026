@@ -13,17 +13,17 @@ import (
 
 // mockRunner implements gh.Runner for testing.
 type mockRunner struct {
-	triggerFn        func(ctx context.Context, repo, workflow, ref string, inputs map[string]string) (string, error)
-	statusFn         func(ctx context.Context, repo string, runID int64) (*gh.RunStatus, error)
-	logsFn           func(ctx context.Context, repo string, runID int64) (string, error)
-	listRunsFn       func(ctx context.Context, repo, workflow, status string, limit int) ([]gh.RunListEntry, error)
-	compareFn        func(ctx context.Context, repo, base, head string) (*gh.CompareResult, error)
-	versionFn        func(ctx context.Context) (string, error)
-	authFn           func(ctx context.Context) error
-	repoFn           func(ctx context.Context, repo string) error
-	listReleasesFn    func(ctx context.Context, repo string, limit int) ([]gh.ReleaseEntry, error)
-	createReleaseFn   func(ctx context.Context, repo, tag, target, title, body string) (string, error)
-	resolveCommitFn   func(ctx context.Context, repo, ref string) (string, error)
+	triggerFn       func(ctx context.Context, repo, workflow, ref string, inputs map[string]string) (string, error)
+	statusFn        func(ctx context.Context, repo string, runID int64) (*gh.RunStatus, error)
+	logsFn          func(ctx context.Context, repo string, runID int64) (string, error)
+	listRunsFn      func(ctx context.Context, repo, workflow, status string, limit int) ([]gh.RunListEntry, error)
+	compareFn       func(ctx context.Context, repo, base, head string) (*gh.CompareResult, error)
+	versionFn       func(ctx context.Context) (string, error)
+	authFn          func(ctx context.Context) error
+	repoFn          func(ctx context.Context, repo string) error
+	listReleasesFn  func(ctx context.Context, repo string, limit int) ([]gh.ReleaseEntry, error)
+	createReleaseFn func(ctx context.Context, repo, tag, target, title, body string) (string, error)
+	resolveCommitFn func(ctx context.Context, repo, ref string) (string, error)
 }
 
 func (m *mockRunner) Trigger(ctx context.Context, repo, workflow, ref string, inputs map[string]string) (string, error) {
@@ -861,9 +861,9 @@ func TestRunStageLiveWithOutputs(t *testing.T) {
 							Inputs: map[string]string{"env": "test"},
 							Outputs: map[string]config.Output{
 								"artifact_id": {
-									From:    "run-log",
+									From:     "run-log",
 									JobMatch: "some-job.*Upload",
-									Pattern: `Artifact ID: (\d+)`,
+									Pattern:  `Artifact ID: (\d+)`,
 								},
 							},
 						},

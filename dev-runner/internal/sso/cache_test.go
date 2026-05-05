@@ -15,10 +15,10 @@ func TestTokenCache_CachesResult(t *testing.T) {
 		n := serverCalls.Add(1)
 		if n == 1 {
 			json.NewEncoder(w).Encode(DeviceCodeResponse{
-				DeviceCode:              "CACHE-DEV",
+				DeviceCode:      "CACHE-DEV",
 				VerificationURI: "https://example.com/verify",
-				Interval:                1,
-				ExpiresIn:               30,
+				Interval:        1,
+				ExpiresIn:       30,
 			})
 			return
 		}
@@ -58,10 +58,10 @@ func TestTokenCache_CachesResult(t *testing.T) {
 func TestTokenCache_ContextCancellation(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		json.NewEncoder(w).Encode(DeviceCodeResponse{
-			DeviceCode:              "CANCEL-DEV",
+			DeviceCode:      "CANCEL-DEV",
 			VerificationURI: "https://example.com/verify",
-			Interval:                60,
-			ExpiresIn:               600,
+			Interval:        60,
+			ExpiresIn:       600,
 		})
 	}))
 	defer srv.Close()

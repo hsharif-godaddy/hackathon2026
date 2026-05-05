@@ -60,9 +60,9 @@ type TerminalFixer interface {
 
 // FormField describes a single input field for a FormFixer.
 type FormField struct {
-	Key         string   // unique identifier, used as map key in SetFormValues
+	Key         string // unique identifier, used as map key in SetFormValues
 	Label       string
-	Description string   // shown below label when field is active
+	Description string // shown below label when field is active
 	Placeholder string
 	Default     string
 	Required    bool

@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	catppuccin "github.com/catppuccin/go"
 	"charm.land/lipgloss/v2"
+	catppuccin "github.com/catppuccin/go"
 
 	"github.com/airo-ai-builder/release-manager/internal/pipeline"
 )
@@ -76,7 +76,9 @@ func assertStateColors(t *testing.T, theme Theme, want map[pipeline.StageState]s
 	}
 }
 
-func assertColor(t *testing.T, name string, got interface{ RGBA() (uint32, uint32, uint32, uint32) }, wantHex string) {
+func assertColor(t *testing.T, name string, got interface {
+	RGBA() (uint32, uint32, uint32, uint32)
+}, wantHex string) {
 	t.Helper()
 
 	// Sanity check: catppuccin hex strings must have # prefix and be 7 chars.

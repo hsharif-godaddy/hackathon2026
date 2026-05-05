@@ -71,7 +71,6 @@ func (m Model) renderPreflightDashboard() string {
 	return b.String()
 }
 
-
 func (m Model) renderPreflightFixing() string {
 	var b strings.Builder
 	b.WriteString(preflightFixTitleStyle.Render("Fixing Issues"))
@@ -80,7 +79,7 @@ func (m Model) renderPreflightFixing() string {
 	if total := len(m.preflightFixQueue); total > 0 {
 		pct := float64(m.preflightFixIndex) / float64(total)
 		b.WriteString("  " + m.fixProgress.ViewAs(pct))
-		b.WriteString(fmt.Sprintf("  %d / %d", m.preflightFixIndex, total))
+		fmt.Fprintf(&b, "  %d / %d", m.preflightFixIndex, total)
 		b.WriteString("\n\n")
 	}
 

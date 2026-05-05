@@ -35,7 +35,8 @@ func ProvisionDatabase(appID string) (dbName, username, password string, err err
 		dbName, username, password, dbName, username,
 	)
 
-	cmd := exec.Command("docker", "exec", "-i",
+	cmd := exec.Command(
+		"docker", "exec", "-i",
 		"-e", "MYSQL_PWD="+rootPassword,
 		mysqlContainer,
 		"mysql", "-uroot",
@@ -67,7 +68,8 @@ func DropDatabase(appID string) error {
 		dbName, username,
 	)
 
-	cmd := exec.Command("docker", "exec", "-i",
+	cmd := exec.Command(
+		"docker", "exec", "-i",
 		"-e", "MYSQL_PWD="+rootPassword,
 		mysqlContainer,
 		"mysql", "-uroot",

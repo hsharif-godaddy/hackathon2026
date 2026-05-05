@@ -28,16 +28,6 @@ import (
 
 // --- Bubble Tea messages ---
 
-type processOutputMsg struct {
-	Index int
-	Line  process.OutputLine
-}
-
-type processStateMsg struct {
-	Index int
-	State process.State
-}
-
 type hookOutputMsg struct {
 	Output   hooks.HookOutput
 	outputCh <-chan hooks.HookOutput

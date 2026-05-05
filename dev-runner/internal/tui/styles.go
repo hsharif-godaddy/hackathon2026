@@ -92,7 +92,6 @@ var (
 				Bold(true).
 				Foreground(lipgloss.Color("62")).
 				MarginBottom(1)
-
 )
 
 func helpStyles() help.Styles {

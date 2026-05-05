@@ -986,8 +986,7 @@ func ParseReleaseNotes(commits []gh.CompareCommit) []ReleaseNote {
 		}
 
 		var number int
-		fmt.Sscanf(matches[1], "%d", &number)
-		if number == 0 || seen[number] {
+		if _, err := fmt.Sscanf(matches[1], "%d", &number); err != nil || number == 0 || seen[number] {
 			continue
 		}
 		seen[number] = true

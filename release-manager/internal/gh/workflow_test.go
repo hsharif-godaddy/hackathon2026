@@ -259,17 +259,17 @@ func TestParseRunURL(t *testing.T) {
 
 // mockRunner implements Runner for testing WaitForCompletion and DryRunner.
 type mockRunner struct {
-	triggerFn        func(ctx context.Context, repo, workflow, ref string, inputs map[string]string) (string, error)
-	statusFn         func(ctx context.Context, repo string, runID int64) (*RunStatus, error)
-	logsFn           func(ctx context.Context, repo string, runID int64) (string, error)
-	listRunsFn       func(ctx context.Context, repo, workflow, status string, limit int) ([]RunListEntry, error)
-	versionFn        func(ctx context.Context) (string, error)
-	authStatusFn     func(ctx context.Context) error
-	checkRepoFn      func(ctx context.Context, repo string) error
-	compareFn        func(ctx context.Context, repo, base, head string) (*CompareResult, error)
-	listReleasesFn    func(ctx context.Context, repo string, limit int) ([]ReleaseEntry, error)
-	createReleaseFn   func(ctx context.Context, repo, tag, target, title, body string) (string, error)
-	resolveCommitFn   func(ctx context.Context, repo, ref string) (string, error)
+	triggerFn       func(ctx context.Context, repo, workflow, ref string, inputs map[string]string) (string, error)
+	statusFn        func(ctx context.Context, repo string, runID int64) (*RunStatus, error)
+	logsFn          func(ctx context.Context, repo string, runID int64) (string, error)
+	listRunsFn      func(ctx context.Context, repo, workflow, status string, limit int) ([]RunListEntry, error)
+	versionFn       func(ctx context.Context) (string, error)
+	authStatusFn    func(ctx context.Context) error
+	checkRepoFn     func(ctx context.Context, repo string) error
+	compareFn       func(ctx context.Context, repo, base, head string) (*CompareResult, error)
+	listReleasesFn  func(ctx context.Context, repo string, limit int) ([]ReleaseEntry, error)
+	createReleaseFn func(ctx context.Context, repo, tag, target, title, body string) (string, error)
+	resolveCommitFn func(ctx context.Context, repo, ref string) (string, error)
 }
 
 func (m *mockRunner) Trigger(ctx context.Context, repo, workflow, ref string, inputs map[string]string) (string, error) {

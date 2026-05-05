@@ -1,0 +1,14 @@
+version: "2"
+
+run:
+  go: "1.25"
+
+linters:
+  exclusions:
+    presets:
+      - std-error-handling
+      - common-false-positives
+    rules:
+      - path: '_test\.go'
+        linters:
+          - errcheck

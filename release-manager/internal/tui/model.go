@@ -72,9 +72,8 @@ type Model struct {
 	cancel      context.CancelFunc
 	lockHeld    bool
 
-	phase        phase
-	preflight    []preflightCheck
-	preflightIdx int
+	phase     phase
+	preflight []preflightCheck
 
 	currentEnvIdx int
 	envOrder      []string
@@ -114,7 +113,6 @@ type Model struct {
 	cleanupWarning  string
 	startTime       time.Time
 	lastSlackUpdate time.Time
-	err             error
 }
 
 func NewModel(cfg *config.Config, runner gh.Runner, dryRun bool, branch string, autoApprove bool, noSlack bool, noRelease bool, forceLock bool, failStages []string, overrides pipeline.SnapshotOverrides) Model {

@@ -1,0 +1,143 @@
+name: dev-runner CI
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "dev-runner/**"
+      - ".github/workflows/dev-runner.yml"
+  pull_request:
+    paths:
+      - "dev-runner/**"
+      - ".github/workflows/dev-runner.yml"
+
+jobs:
+  # dev-runner is a bootstrap tool whose deps are intentionally all public
+  # (see dev-runner/CLAUDE.md and dev-runner/Makefile BOOTSTRAP_ENV). Pinning
+  # the public proxy here mirrors that constraint, prevents stale
+  # Artifactory GOPROXY on self-hosted runners from breaking module resolution,
+  # and ensures a private dep accidentally added to go.mod fails CI loudly.
+  lint:
+    name: Lint
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+    env:
+      GOPROXY: https://proxy.golang.org,direct
+      GOSUMDB: sum.golang.org
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.25"
+          cache-dependency-path: dev-runner/go.sum
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.12.1
+          working-directory: dev-runner
+          args: --timeout=5m
+
+      - name: Run go vet
+        working-directory: dev-runner
+        run: go vet ./...
+
+      - name: Run go fmt check
+        working-directory: dev-runner
+        run: |
+          # Capture output so a `gofmt` parse failure (non-zero exit, empty stdout)
+          # can't slip past `wc -l`.
+          UNFORMATTED=$(gofmt -s -l .)
+          if [ -n "$UNFORMATTED" ]; then
+            echo "The following files are not properly formatted:"
+            echo "$UNFORMATTED"
+            exit 1
+          fi
+
+  test:
+    name: Test
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+    env:
+      GOPROXY: https://proxy.golang.org,direct
+      GOSUMDB: sum.golang.org
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.25"
+          cache-dependency-path: dev-runner/go.sum
+
+      - name: Download dependencies
+        working-directory: dev-runner
+        run: go mod download
+
+      - name: Verify dependencies
+        working-directory: dev-runner
+        run: go mod verify
+
+      - name: Run tests
+        working-directory: dev-runner
+        run: go test -v -race -coverprofile=coverage.out ./...
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v6
+        with:
+          files: dev-runner/coverage.out
+          flags: dev-runner
+          name: dev-runner
+
+  build:
+    name: Build (${{ matrix.goos }}/${{ matrix.goarch }})
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+    needs: [lint, test]
+    strategy:
+      matrix:
+        goos: [linux, darwin]
+        goarch: [amd64, arm64]
+    env:
+      GOPROXY: https://proxy.golang.org,direct
+      GOSUMDB: sum.golang.org
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.25"
+          cache-dependency-path: dev-runner/go.sum
+
+      - name: Download dependencies
+        working-directory: dev-runner
+        run: go mod download
+
+      - name: Build binary
+        working-directory: dev-runner
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: |
+          mkdir -p dist
+          go build -ldflags="-w -s" -o "dist/dev-runner-${GOOS}-${GOARCH}" ./cmd/dev-runner
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: dev-runner-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dev-runner/dist/

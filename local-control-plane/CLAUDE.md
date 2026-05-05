@@ -71,8 +71,9 @@ All slog output is automatically written to `local-control-plane/dev.log` alongs
 
 - Go 1.25
 - Docker (for container management)
-- gofumpt (`go install mvdan.cc/gofumpt@latest`) -- required for `make fmt` / `make fmt-fix`
 - golangci-lint (for `make lint`)
+
+`make fmt` / `make fmt-fix` only need `gofmt -s` from the standard Go toolchain.
 
 ## Conventions
 

@@ -209,7 +209,7 @@ func (n *Notifier) call(ctx context.Context, url string, body []byte) (*apiRespo
 	}
 
 	if !apiResp.OK {
-		return nil, fmt.Errorf("Slack API error: %s", apiResp.Error)
+		return nil, fmt.Errorf("slack API error: %s", apiResp.Error)
 	}
 
 	return &apiResp, nil

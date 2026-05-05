@@ -318,4 +318,3 @@ func (m *Model) stopE2ERun() tea.Cmd {
 	go m.e2eRunner.Stop()
 	return nil
 }
-

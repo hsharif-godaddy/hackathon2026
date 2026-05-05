@@ -54,17 +54,17 @@ func Open(path string) (*DB, error) {
 	sqlDB.SetMaxOpenConns(1)
 
 	if _, err := sqlDB.Exec("PRAGMA journal_mode=WAL"); err != nil {
-		sqlDB.Close()
+		_ = sqlDB.Close()
 		return nil, fmt.Errorf("set journal_mode: %w", err)
 	}
 	if _, err := sqlDB.Exec("PRAGMA busy_timeout=5000"); err != nil {
-		sqlDB.Close()
+		_ = sqlDB.Close()
 		return nil, fmt.Errorf("set busy_timeout: %w", err)
 	}
 
 	d := &DB{db: sqlDB}
 	if err := d.migrate(); err != nil {
-		sqlDB.Close()
+		_ = sqlDB.Close()
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
 
@@ -192,8 +192,14 @@ func (d *DB) CreateApp(subscriptionID, systemID string, variables map[string]any
 		variants = []string{"preview"}
 	}
 
-	varsJSON, _ := json.Marshal(variables)
-	variantsJSON, _ := json.Marshal(variants)
+	varsJSON, err := json.Marshal(variables)
+	if err != nil {
+		return nil, fmt.Errorf("marshal app variables: %w", err)
+	}
+	variantsJSON, err := json.Marshal(variants)
+	if err != nil {
+		return nil, fmt.Errorf("marshal app variants: %w", err)
+	}
 
 	_, err = d.db.Exec(
 		`INSERT INTO apps (id, subscription_id, system_id, status, variables, variants, created_at, updated_at)
@@ -251,8 +257,12 @@ func (d *DB) getAppUnlocked(id string) (*App, error) {
 		return nil, fmt.Errorf("query app: %w", err)
 	}
 
-	json.Unmarshal([]byte(varsJSON), &app.Variables)
-	json.Unmarshal([]byte(variantsJSON), &app.Variants)
+	if err := json.Unmarshal([]byte(varsJSON), &app.Variables); err != nil {
+		return nil, fmt.Errorf("unmarshal app variables: %w", err)
+	}
+	if err := json.Unmarshal([]byte(variantsJSON), &app.Variants); err != nil {
+		return nil, fmt.Errorf("unmarshal app variants: %w", err)
+	}
 	app.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
 	app.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
 
@@ -316,8 +326,12 @@ func (d *DB) scanApps(rows *sql.Rows) ([]*App, error) {
 			return nil, fmt.Errorf("scan app: %w", err)
 		}
 
-		json.Unmarshal([]byte(varsJSON), &app.Variables)
-		json.Unmarshal([]byte(variantsJSON), &app.Variants)
+		if err := json.Unmarshal([]byte(varsJSON), &app.Variables); err != nil {
+			return nil, fmt.Errorf("unmarshal app variables: %w", err)
+		}
+		if err := json.Unmarshal([]byte(variantsJSON), &app.Variants); err != nil {
+			return nil, fmt.Errorf("unmarshal app variants: %w", err)
+		}
 		app.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
 		app.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
 
@@ -357,8 +371,14 @@ func (d *DB) UpdateApp(id string, status *string, variables map[string]any, vari
 	}
 
 	app.UpdatedAt = time.Now().UTC()
-	varsJSON, _ := json.Marshal(app.Variables)
-	variantsJSON, _ := json.Marshal(app.Variants)
+	varsJSON, err := json.Marshal(app.Variables)
+	if err != nil {
+		return nil, fmt.Errorf("marshal app variables: %w", err)
+	}
+	variantsJSON, err := json.Marshal(app.Variants)
+	if err != nil {
+		return nil, fmt.Errorf("marshal app variants: %w", err)
+	}
 
 	_, err = d.db.Exec(
 		`UPDATE apps SET status = ?, variables = ?, variants = ?, updated_at = ? WHERE id = ?`,
@@ -393,15 +413,19 @@ func (d *DB) DeleteApp(id string) error {
 		return fmt.Errorf("delete app: %w", err)
 	}
 
-	// Also delete associated jobs and secrets
-	d.db.Exec(`DELETE FROM jobs WHERE app_id = ?`, id)
-	d.db.Exec(`DELETE FROM secrets WHERE app_id = ?`, id)
+	// Also delete associated jobs and secrets (best-effort cleanup; the app row is already gone).
+	if _, err := d.db.Exec(`DELETE FROM jobs WHERE app_id = ?`, id); err != nil {
+		slog.Warn("delete app jobs failed", "app_id", id, "error", err)
+	}
+	if _, err := d.db.Exec(`DELETE FROM secrets WHERE app_id = ?`, id); err != nil {
+		slog.Warn("delete app secrets failed", "app_id", id, "error", err)
+	}
 
 	return nil
 }
 
 // CreateJob inserts a new job record with pending status.
-func (d *DB) CreateJob(appID string, jobType string) (*Job, error) {
+func (d *DB) CreateJob(appID, jobType string) (*Job, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 

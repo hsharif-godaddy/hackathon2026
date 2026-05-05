@@ -80,7 +80,6 @@ func (k SearchKeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{k.ShortHelp()}
 }
 
-
 // PreflightDashboardKeyMap defines keybindings for the preflight results screen.
 type PreflightDashboardKeyMap struct {
 	Fix    key.Binding
@@ -105,5 +104,3 @@ func (k PreflightDashboardKeyMap) ShortHelp() []key.Binding {
 func (k PreflightDashboardKeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{k.ShortHelp()}
 }
-
-

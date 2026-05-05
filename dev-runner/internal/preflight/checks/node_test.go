@@ -6,10 +6,10 @@ import (
 
 func TestParseVersion(t *testing.T) {
 	tests := []struct {
-		input        string
-		wantMajor    int
-		wantMinor    int
-		wantPatch    int
+		input     string
+		wantMajor int
+		wantMinor int
+		wantPatch int
 	}{
 		{"22.22.2", 22, 22, 2},
 		{"22.16.0", 22, 16, 0},

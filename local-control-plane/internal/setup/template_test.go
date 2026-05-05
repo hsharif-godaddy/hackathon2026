@@ -61,9 +61,9 @@ func TestLoadGasketCert(t *testing.T) {
 		data []byte
 		perm os.FileMode
 	}{
-		{"_.gasket.dev-godaddy.com.crt", leafContent, 0644},
-		{"_.gasket.dev-godaddy.com_intermediate_chain.crt", chainContent, 0644},
-		{"_.gasket.dev-godaddy.com.key", keyContent, 0600},
+		{"_.gasket.dev-godaddy.com.crt", leafContent, 0o644},
+		{"_.gasket.dev-godaddy.com_intermediate_chain.crt", chainContent, 0o644},
+		{"_.gasket.dev-godaddy.com.key", keyContent, 0o600},
 	} {
 		if err := os.WriteFile(filepath.Join(certDir, f.name), f.data, f.perm); err != nil {
 			t.Fatalf("WriteFile %s: %v", f.name, err)
@@ -75,7 +75,7 @@ func TestLoadGasketCert(t *testing.T) {
 	// So we need to create that structure
 	projectRoot := t.TempDir()
 	targetDir := filepath.Join(projectRoot, "app", "node_modules", "@godaddy", "gasket-plugin-dev-certs", "certs")
-	if err := os.MkdirAll(targetDir, 0755); err != nil {
+	if err := os.MkdirAll(targetDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll: %v", err)
 	}
 	for _, f := range []struct {
@@ -83,9 +83,9 @@ func TestLoadGasketCert(t *testing.T) {
 		data []byte
 		perm os.FileMode
 	}{
-		{"_.gasket.dev-godaddy.com.crt", leafContent, 0644},
-		{"_.gasket.dev-godaddy.com_intermediate_chain.crt", chainContent, 0644},
-		{"_.gasket.dev-godaddy.com.key", keyContent, 0600},
+		{"_.gasket.dev-godaddy.com.crt", leafContent, 0o644},
+		{"_.gasket.dev-godaddy.com_intermediate_chain.crt", chainContent, 0o644},
+		{"_.gasket.dev-godaddy.com.key", keyContent, 0o600},
 	} {
 		if err := os.WriteFile(filepath.Join(targetDir, f.name), f.data, f.perm); err != nil {
 			t.Fatalf("WriteFile %s: %v", f.name, err)
@@ -124,11 +124,11 @@ func TestGenerateSSLCertsSkipsExisting(t *testing.T) {
 	previewSSL := filepath.Join(base, "preview", ".ssl")
 	allocSSL := filepath.Join(base, "alloc", ".ssl")
 	for _, dir := range []string{previewSSL, allocSSL} {
-		if err := os.MkdirAll(dir, 0755); err != nil {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatalf("MkdirAll %s: %v", dir, err)
 		}
 		for _, name := range []string{"cert.pem", "key.pem"} {
-			if err := os.WriteFile(filepath.Join(dir, name), []byte("existing"), 0644); err != nil {
+			if err := os.WriteFile(filepath.Join(dir, name), []byte("existing"), 0o644); err != nil {
 				t.Fatalf("WriteFile %s/%s: %v", dir, name, err)
 			}
 		}
@@ -151,7 +151,7 @@ func TestGenerateSSLCertsWritesBothDirs(t *testing.T) {
 	// Set up fake Gasket cert files
 	projectRoot := t.TempDir()
 	certDir := filepath.Join(projectRoot, "app", "node_modules", "@godaddy", "gasket-plugin-dev-certs", "certs")
-	if err := os.MkdirAll(certDir, 0755); err != nil {
+	if err := os.MkdirAll(certDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll: %v", err)
 	}
 
@@ -163,9 +163,9 @@ func TestGenerateSSLCertsWritesBothDirs(t *testing.T) {
 		data []byte
 		perm os.FileMode
 	}{
-		{"_.gasket.dev-godaddy.com.crt", leafContent, 0644},
-		{"_.gasket.dev-godaddy.com_intermediate_chain.crt", chainContent, 0644},
-		{"_.gasket.dev-godaddy.com.key", keyContent, 0600},
+		{"_.gasket.dev-godaddy.com.crt", leafContent, 0o644},
+		{"_.gasket.dev-godaddy.com_intermediate_chain.crt", chainContent, 0o644},
+		{"_.gasket.dev-godaddy.com.key", keyContent, 0o600},
 	} {
 		if err := os.WriteFile(filepath.Join(certDir, f.name), f.data, f.perm); err != nil {
 			t.Fatalf("WriteFile %s: %v", f.name, err)

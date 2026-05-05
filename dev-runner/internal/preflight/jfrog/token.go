@@ -37,7 +37,7 @@ var ProbeTimeout = 5 * time.Second
 // Sentinel errors returned by Probe.
 var (
 	ErrMissingToken = errors.New("no Artifactory token available")
-	ErrUnauthorized = errors.New("Artifactory rejected the token (expired or revoked)")
+	ErrUnauthorized = errors.New("artifactory rejected the token (expired or revoked)")
 )
 
 // TokenFromNpmrc extracts the _authToken for gdartifactory1.jfrog.io from

@@ -451,7 +451,7 @@ func (s *Server) copyPreviewConfigToPublish(appID string) error {
 	if err != nil {
 		return fmt.Errorf("read %s: %w", src, err)
 	}
-	if err := os.WriteFile(dst, data, 0600); err != nil {
+	if err := os.WriteFile(dst, data, 0o600); err != nil {
 		return fmt.Errorf("write %s: %w", dst, err)
 	}
 
@@ -510,7 +510,9 @@ func (s *Server) completePublish(app *store.App, jobID string, dep *store.Deploy
 	}
 
 	if !hasPublish {
-		newVariants := append(updatedApp.Variants, "publish")
+		newVariants := make([]string, 0, len(updatedApp.Variants)+1)
+		newVariants = append(newVariants, updatedApp.Variants...)
+		newVariants = append(newVariants, "publish")
 		if _, err := s.DB.UpdateApp(app.ID, nil, nil, newVariants); err != nil {
 			slog.Error("app.update_variants.failed", "app_id", app.ID, "error", err)
 			if dep != nil {
@@ -657,7 +659,7 @@ func waitForHTTPSReady(port int, variant string) error {
 		resp, err := previewReadyHTTPClient.Get(healthURL)
 		if err == nil {
 			_, _ = io.Copy(io.Discard, resp.Body)
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			if resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices {
 				return nil
 			}

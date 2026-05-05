@@ -1,0 +1,22 @@
+version: "2"
+
+run:
+  go: "1.26"
+
+linters:
+  settings:
+    staticcheck:
+      checks:
+        - all
+        # ST1000: missing package comment. Cosmetic.
+        - -ST1000
+        # QF1012: WriteString(fmt.Sprintf(...)) -> Fprintf. Cosmetic, pervasive in TUI views.
+        - -QF1012
+  exclusions:
+    presets:
+      - std-error-handling
+      - common-false-positives
+    rules:
+      - path: '_test\.go'
+        linters:
+          - errcheck

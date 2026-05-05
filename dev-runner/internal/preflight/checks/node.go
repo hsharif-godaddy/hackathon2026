@@ -76,10 +76,10 @@ func (c *NodeCheck) Run(ctx context.Context, projectRoot string) preflight.Check
 	reqMajor := readNvmrcMajor(projectRoot)
 	if reqMajor == 0 {
 		return preflight.CheckResult{
-			Status:  preflight.StatusFail,
-			Name:    c.Name(),
+			Status:   preflight.StatusFail,
+			Name:     c.Name(),
 			Category: c.Category(),
-			Message: ".nvmrc not found or unreadable",
+			Message:  ".nvmrc not found or unreadable",
 		}
 	}
 

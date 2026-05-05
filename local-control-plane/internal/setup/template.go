@@ -77,7 +77,7 @@ func (t *TemplateSetup) Provision(appID string, previewPort, publishPort, superv
 	}
 
 	for _, dir := range dirs {
-		if err := os.MkdirAll(dir, 0755); err != nil {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return fmt.Errorf("create directory %s: %w", dir, err)
 		}
 	}
@@ -90,7 +90,7 @@ func (t *TemplateSetup) Provision(appID string, previewPort, publishPort, superv
 	}
 
 	// Create .is_ready file to signal template is ready for Docker container
-	if err := os.WriteFile(filepath.Join(previewPath, ".is_ready"), []byte{}, 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(previewPath, ".is_ready"), []byte{}, 0o644); err != nil {
 		return fmt.Errorf("write .is_ready: %w", err)
 	}
 
@@ -148,11 +148,11 @@ func (t *TemplateSetup) initGitWithTemplate(appID, previewPath, gitRepoPath stri
 	gitignorePath := filepath.Join(previewPath, ".gitignore")
 	devSupervisorEntries := "\n# Dev supervisor binary\ndev-supervisor\ndev-supervisor/\ndev-supervisor/dev-supervisor\n"
 	if existing, err := os.ReadFile(gitignorePath); err == nil {
-		if err := os.WriteFile(gitignorePath, append(existing, []byte(devSupervisorEntries)...), 0644); err != nil {
+		if err := os.WriteFile(gitignorePath, append(existing, []byte(devSupervisorEntries)...), 0o644); err != nil {
 			return fmt.Errorf("write .gitignore: %w", err)
 		}
 	} else {
-		if err := os.WriteFile(gitignorePath, []byte(devSupervisorEntries), 0644); err != nil {
+		if err := os.WriteFile(gitignorePath, []byte(devSupervisorEntries), 0o644); err != nil {
 			return fmt.Errorf("write .gitignore: %w", err)
 		}
 	}
@@ -175,8 +175,8 @@ func (t *TemplateSetup) initGitWithTemplate(appID, previewPath, gitRepoPath stri
 	gitRepoGit := filepath.Join(gitRepoPath, ".git")
 
 	if _, err := os.Stat(previewGit); err == nil {
-		// Remove any existing .git in git-repo (from earlier failed attempt)
-		os.RemoveAll(gitRepoGit)
+		// Remove any existing .git in git-repo (from earlier failed attempt). Best-effort.
+		_ = os.RemoveAll(gitRepoGit)
 
 		if err := os.Rename(previewGit, gitRepoGit); err != nil {
 			return fmt.Errorf("move .git to git-repo: %w", err)
@@ -263,7 +263,7 @@ func (t *TemplateSetup) writeConfigFiles(basePath, appID string, dbCreds *DBCred
 	}
 
 	for _, p := range paths {
-		if err := os.WriteFile(p, data, 0600); err != nil {
+		if err := os.WriteFile(p, data, 0o600); err != nil {
 			return fmt.Errorf("write %s: %w", p, err)
 		}
 	}
@@ -289,7 +289,7 @@ func (t *TemplateSetup) generateSSLCerts(appID, basePath string) error {
 	allocSSL := filepath.Join(basePath, "alloc", ".ssl")
 
 	for _, dir := range []string{previewSSL, allocSSL} {
-		if err := os.MkdirAll(dir, 0755); err != nil {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return fmt.Errorf("mkdir %s: %w", dir, err)
 		}
 	}
@@ -319,10 +319,10 @@ func (t *TemplateSetup) generateSSLCerts(appID, basePath string) error {
 
 	// Write to both locations (preview mounts /app, publish mounts /alloc/.ssl)
 	for _, dir := range []string{previewSSL, allocSSL} {
-		if err := os.WriteFile(filepath.Join(dir, "cert.pem"), certPEM, 0644); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, "cert.pem"), certPEM, 0o644); err != nil {
 			return fmt.Errorf("write cert to %s: %w", dir, err)
 		}
-		if err := os.WriteFile(filepath.Join(dir, "key.pem"), keyPEM, 0600); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, "key.pem"), keyPEM, 0o600); err != nil {
 			return fmt.Errorf("write key to %s: %w", dir, err)
 		}
 	}

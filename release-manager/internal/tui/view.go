@@ -91,11 +91,12 @@ func (m Model) View() tea.View {
 		sb.WriteString(m.theme.FailedMessageStyle.Render(m.statusMessage) + "\n")
 	}
 
-	if m.phase == phaseCleanup {
+	switch m.phase {
+	case phaseCleanup:
 		sb.WriteString(m.theme.HelpStyle.Render("please wait; final cleanup is in progress") + "\n")
-	} else if m.phase == phaseCleanupDone {
+	case phaseCleanupDone:
 		sb.WriteString(m.theme.HelpStyle.Render("done; exiting") + "\n")
-	} else {
+	default:
 		sb.WriteString(m.theme.HelpStyle.Render("ctrl+c to quit") + "\n")
 	}
 	return tea.NewView(sb.String())
@@ -106,36 +107,36 @@ func (m Model) renderPreflight(sb *strings.Builder) {
 	sb.WriteString(m.theme.SectionStyle.Render("Preflight Checks") + "\n")
 	for _, check := range m.preflight {
 		if !check.Done {
-			sb.WriteString(fmt.Sprintf("  %s %s\n",
+			fmt.Fprintf(sb, "  %s %s\n",
 				m.spinner.View(),
 				check.Name,
-			))
+			)
 		} else if check.Passed {
-			sb.WriteString(fmt.Sprintf("  %s %s\n",
+			fmt.Fprintf(sb, "  %s %s\n",
 				m.theme.PreflightPassStyle.Render("✓"),
 				check.Name,
-			))
+			)
 		} else if !check.Required {
-			sb.WriteString(fmt.Sprintf("  %s %s (disabled)\n",
+			fmt.Fprintf(sb, "  %s %s (disabled)\n",
 				m.theme.PreflightWarnStyle.Render("⚠"),
 				check.Name,
-			))
+			)
 			if check.Error != "" {
-				sb.WriteString(fmt.Sprintf("    %s\n", m.theme.PreflightWarnStyle.Render(check.Error)))
+				fmt.Fprintf(sb, "    %s\n", m.theme.PreflightWarnStyle.Render(check.Error))
 			}
 			if check.Hint != "" {
-				sb.WriteString(fmt.Sprintf("    %s\n", m.theme.MutedStyle.Render(check.Hint)))
+				fmt.Fprintf(sb, "    %s\n", m.theme.MutedStyle.Render(check.Hint))
 			}
 		} else {
-			sb.WriteString(fmt.Sprintf("  %s %s\n",
+			fmt.Fprintf(sb, "  %s %s\n",
 				m.theme.PreflightFailStyle.Render("✗"),
 				check.Name,
-			))
+			)
 			if check.Error != "" {
-				sb.WriteString(fmt.Sprintf("    %s\n", m.theme.PreflightFailStyle.Render(check.Error)))
+				fmt.Fprintf(sb, "    %s\n", m.theme.PreflightFailStyle.Render(check.Error))
 			}
 			if check.Hint != "" {
-				sb.WriteString(fmt.Sprintf("    %s\n", m.theme.MutedStyle.Render(check.Hint)))
+				fmt.Fprintf(sb, "    %s\n", m.theme.MutedStyle.Render(check.Hint))
 			}
 		}
 	}

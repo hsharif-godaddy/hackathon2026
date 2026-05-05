@@ -953,7 +953,7 @@ func (m Model) runStageCmd(idx int) tea.Cmd {
 		sr := stages[idx]
 
 		if sr.Stage.Type == "checklist" {
-			m.pipeline.RunStage(m.ctx, idx)
+			_ = m.pipeline.RunStage(m.ctx, idx)
 			return stageCompleteMsg{idx: idx}
 		}
 

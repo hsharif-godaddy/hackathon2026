@@ -34,10 +34,10 @@ func TestRequestDeviceCode_Success(t *testing.T) {
 			t.Errorf("expected client_id=test-client, got %s", cid)
 		}
 		json.NewEncoder(w).Encode(DeviceCodeResponse{
-			DeviceCode:              "DEVICE123",
+			DeviceCode:      "DEVICE123",
 			VerificationURI: "https://example.com/verify?code=DEVICE123",
-			Interval:                5,
-			ExpiresIn:               600,
+			Interval:        5,
+			ExpiresIn:       600,
 		})
 	}))
 	defer srv.Close()
@@ -226,10 +226,10 @@ func TestAcquireToken_FullFlow(t *testing.T) {
 				t.Error("first request should not have device_code")
 			}
 			json.NewEncoder(w).Encode(DeviceCodeResponse{
-				DeviceCode:              "DEV456",
+				DeviceCode:      "DEV456",
 				VerificationURI: "https://example.com/verify",
-				Interval:                1,
-				ExpiresIn:               30,
+				Interval:        1,
+				ExpiresIn:       30,
 			})
 			return
 		}

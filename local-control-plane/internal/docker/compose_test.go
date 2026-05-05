@@ -233,7 +233,7 @@ func TestGenerateComposeFile(t *testing.T) {
 func TestReadDotenvValue(t *testing.T) {
 	t.Run("reads existing key", func(t *testing.T) {
 		f := filepath.Join(t.TempDir(), ".env")
-		if err := os.WriteFile(f, []byte("FOO=bar\nBAZ=qux\n"), 0644); err != nil {
+		if err := os.WriteFile(f, []byte("FOO=bar\nBAZ=qux\n"), 0o644); err != nil {
 			t.Fatalf("WriteFile: %v", err)
 		}
 		if got := readDotenvValue(f, "FOO"); got != "bar" {
@@ -243,7 +243,7 @@ func TestReadDotenvValue(t *testing.T) {
 
 	t.Run("skips comment lines", func(t *testing.T) {
 		f := filepath.Join(t.TempDir(), ".env")
-		if err := os.WriteFile(f, []byte("# FOO=commented\nFOO=real\n"), 0644); err != nil {
+		if err := os.WriteFile(f, []byte("# FOO=commented\nFOO=real\n"), 0o644); err != nil {
 			t.Fatalf("WriteFile: %v", err)
 		}
 		if got := readDotenvValue(f, "FOO"); got != "real" {
@@ -253,7 +253,7 @@ func TestReadDotenvValue(t *testing.T) {
 
 	t.Run("strips inline comments", func(t *testing.T) {
 		f := filepath.Join(t.TempDir(), ".env")
-		if err := os.WriteFile(f, []byte("FOO=bar # a comment\n"), 0644); err != nil {
+		if err := os.WriteFile(f, []byte("FOO=bar # a comment\n"), 0o644); err != nil {
 			t.Fatalf("WriteFile: %v", err)
 		}
 		if got := readDotenvValue(f, "FOO"); got != "bar" {
@@ -263,7 +263,7 @@ func TestReadDotenvValue(t *testing.T) {
 
 	t.Run("strips double quotes", func(t *testing.T) {
 		f := filepath.Join(t.TempDir(), ".env")
-		if err := os.WriteFile(f, []byte("FOO=\"bar\"\n"), 0644); err != nil {
+		if err := os.WriteFile(f, []byte("FOO=\"bar\"\n"), 0o644); err != nil {
 			t.Fatalf("WriteFile: %v", err)
 		}
 		if got := readDotenvValue(f, "FOO"); got != "bar" {
@@ -273,7 +273,7 @@ func TestReadDotenvValue(t *testing.T) {
 
 	t.Run("strips single quotes", func(t *testing.T) {
 		f := filepath.Join(t.TempDir(), ".env")
-		if err := os.WriteFile(f, []byte("FOO='bar'\n"), 0644); err != nil {
+		if err := os.WriteFile(f, []byte("FOO='bar'\n"), 0o644); err != nil {
 			t.Fatalf("WriteFile: %v", err)
 		}
 		if got := readDotenvValue(f, "FOO"); got != "bar" {
@@ -283,7 +283,7 @@ func TestReadDotenvValue(t *testing.T) {
 
 	t.Run("returns empty for missing key", func(t *testing.T) {
 		f := filepath.Join(t.TempDir(), ".env")
-		if err := os.WriteFile(f, []byte("BAR=baz\n"), 0644); err != nil {
+		if err := os.WriteFile(f, []byte("BAR=baz\n"), 0o644); err != nil {
 			t.Fatalf("WriteFile: %v", err)
 		}
 		if got := readDotenvValue(f, "MISSING"); got != "" {
@@ -311,10 +311,10 @@ func TestResolveAuthType(t *testing.T) {
 		t.Setenv("AUTH_TYPE", "")
 		dir := t.TempDir()
 		appDir := filepath.Join(dir, "app")
-		if err := os.MkdirAll(appDir, 0755); err != nil {
+		if err := os.MkdirAll(appDir, 0o755); err != nil {
 			t.Fatalf("MkdirAll: %v", err)
 		}
-		if err := os.WriteFile(filepath.Join(appDir, ".env"), []byte("AUTH_TYPE=mock\n"), 0644); err != nil {
+		if err := os.WriteFile(filepath.Join(appDir, ".env"), []byte("AUTH_TYPE=mock\n"), 0o644); err != nil {
 			t.Fatalf("WriteFile: %v", err)
 		}
 		t.Setenv("PROJECT_ROOT", dir)

@@ -44,7 +44,7 @@ func (m *Manager) Up(app *store.App) error {
 	composeContent := GenerateComposeFile(app, base)
 
 	composePath := filepath.Join(base, "docker-compose.yml")
-	if err := os.WriteFile(composePath, []byte(composeContent), 0644); err != nil {
+	if err := os.WriteFile(composePath, []byte(composeContent), 0o644); err != nil {
 		return fmt.Errorf("write compose file: %w", err)
 	}
 
@@ -112,8 +112,9 @@ func (m *Manager) forceRemoveContainers(appID string) error {
 	}
 
 	for _, name := range names {
-		exec.Command("docker", "stop", name).Run()
-		exec.Command("docker", "rm", name).Run()
+		// Best-effort cleanup; ignore errors when containers don't exist.
+		_ = exec.Command("docker", "stop", name).Run()
+		_ = exec.Command("docker", "rm", name).Run()
 	}
 
 	return nil
@@ -147,7 +148,8 @@ func (m *Manager) buildImage(imageName, projectRoot string) error {
 
 	uid, gid := hostUserIDs()
 
-	cmd := exec.Command("docker", "buildx", "build",
+	cmd := exec.Command(
+		"docker", "buildx", "build",
 		"-t", imageName,
 		"--load",
 		"--build-arg", fmt.Sprintf("HOST_UID=%d", uid),
@@ -176,7 +178,8 @@ func (m *Manager) buildPublishImage(projectRoot string) error {
 	uid, gid := hostUserIDs()
 	publishDir := filepath.Join(projectRoot, "app-publish")
 
-	cmd := exec.Command("docker", "buildx", "build",
+	cmd := exec.Command(
+		"docker", "buildx", "build",
 		"-t", imageName,
 		"--load",
 		"--build-arg", fmt.Sprintf("HOST_UID=%d", uid),
@@ -262,7 +265,8 @@ func (m *Manager) Reconcile(db *store.DB) ReconcileResult {
 		result.Orphaned++
 	}
 
-	slog.Info("reconcile.complete",
+	slog.Info(
+		"reconcile.complete",
 		"running", result.Running,
 		"cleaned", result.Cleaned,
 		"orphaned", result.Orphaned,

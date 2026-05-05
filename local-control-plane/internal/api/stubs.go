@@ -78,7 +78,7 @@ func (s *Server) UpdateProjectDomain(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		ProjectPrefix *string `json:"projectPrefix"`
 	}
-	readJSON(r, &body)
+	_ = readJSON(r, &body)
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"statusJobId":   fmt.Sprintf("domain-job-%s", vars["appId"]),
@@ -133,7 +133,8 @@ var domainJobStubPhases = []map[string]any{
 }
 
 func domainJobStubCacheKey(vars map[string]string, fqdn string) string {
-	return fmt.Sprintf("%s:%s:%s:%s",
+	return fmt.Sprintf(
+		"%s:%s:%s:%s",
 		vars["subId"], vars["sysId"], vars["appId"],
 		strings.ToLower(strings.TrimSpace(fqdn)),
 	)
@@ -551,7 +552,7 @@ func (s *Server) CreateAttribute(w http.ResponseWriter, r *http.Request) {
 		Key   string         `json:"key"`
 		Value map[string]any `json:"value"`
 	}
-	readJSON(r, &body)
+	_ = readJSON(r, &body)
 
 	now := time.Now().UTC().Format(time.RFC3339)
 	writeJSON(w, http.StatusCreated, map[string]any{
@@ -571,7 +572,7 @@ func (s *Server) UpdateAttribute(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Value map[string]any `json:"value"`
 	}
-	readJSON(r, &body)
+	_ = readJSON(r, &body)
 
 	now := time.Now().UTC().Format(time.RFC3339)
 	writeJSON(w, http.StatusOK, map[string]any{
