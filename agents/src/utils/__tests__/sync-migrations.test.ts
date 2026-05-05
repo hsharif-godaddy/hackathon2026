@@ -697,6 +697,201 @@ export default app;
     });
   });
 
+  describe('normalize-vite-html-entry', () => {
+    const migration = findMigration('normalize-vite-html-entry');
+
+    function writeHtml(content: string) {
+      writeFileSync(join(dir, 'index.html'), content, 'utf8');
+    }
+
+    it('restores the static Vite entry when the known retry wrapper is present', () => {
+      writeHtml(`<html>
+  <head>
+    <!--app-head-->
+  </head>
+  <body>
+    <div id="app"><!--app-html--></div>
+    <script type="module">
+      if (import.meta.env.MODE === 'development') {
+        await import('/dev-tools/src/error-client.ts')
+      }
+      let mainLoaded = false
+      import('/src/main.tsx').then(() => { mainLoaded = true }).catch(err => {
+        // Vite dep optimization can cause transient import failures that resolve
+        // in 1-3s. Retry once before reporting the error to avoid false positives.
+        setTimeout(() => {
+          if (mainLoaded) return
+          import('/src/main.tsx').then(() => { mainLoaded = true }).catch(retryErr => {
+            window.dispatchEvent(new CustomEvent('vite:initial-error', { detail: retryErr }));
+          });
+        }, 2000);
+      })
+    </script>
+  </body>
+</html>`);
+
+      const status = migration.run(dir, new Set());
+      const content = readFileSync(join(dir, 'index.html'), 'utf8');
+
+      expect(status).toBe('applied');
+      expect(content).toContain('<script type="module" src="/src/main.tsx"></script>');
+      expect(content).not.toContain('let mainLoaded = false');
+      expect(content).not.toContain('/src/styles/globals.css');
+    });
+
+    it('injects the globals.css fallback when custom boot code has no known retry wrapper', () => {
+      mkdirSync(join(dir, 'src/styles'), { recursive: true });
+      writeFileSync(join(dir, 'src/styles/globals.css'), '@tailwind utilities;\n', 'utf8');
+      writeHtml(
+        '<html><head><!--app-head--></head><body><div id="app"></div><script type="module">import("/custom-entry.tsx")</script></body></html>',
+      );
+
+      const status = migration.run(dir, new Set());
+      const content = readFileSync(join(dir, 'index.html'), 'utf8');
+
+      expect(status).toBe('applied');
+      expect(content).toContain('<link rel="stylesheet" href="/src/styles/globals.css" />\n    <!--app-head-->');
+      expect(content).toContain('import("/custom-entry.tsx")');
+    });
+
+    it('preserves customer code added around the old retry wrapper and uses the CSS fallback', () => {
+      mkdirSync(join(dir, 'src/styles'), { recursive: true });
+      writeFileSync(join(dir, 'src/styles/globals.css'), '@tailwind utilities;\n', 'utf8');
+      writeHtml(`<html>
+  <head><!--app-head--></head>
+  <body>
+    <script type="module">
+      window.__customBoot = true
+      if (import.meta.env.MODE === 'development') {
+        await import('/dev-tools/src/error-client.ts')
+      }
+      let mainLoaded = false
+      import('/src/main.tsx').then(() => { mainLoaded = true }).catch(err => {
+        // Vite dep optimization can cause transient import failures that resolve
+        // in 1-3s. Retry once before reporting the error to avoid false positives.
+        setTimeout(() => {
+          if (mainLoaded) return
+          import('/src/main.tsx').then(() => { mainLoaded = true }).catch(retryErr => {
+            window.dispatchEvent(new CustomEvent('vite:initial-error', { detail: retryErr }));
+          });
+        }, 2000);
+      })
+    </script>
+  </body>
+</html>`);
+
+      const status = migration.run(dir, new Set());
+      const content = readFileSync(join(dir, 'index.html'), 'utf8');
+
+      expect(status).toBe('applied');
+      expect(content).toContain('window.__customBoot = true');
+      expect(content).toContain('let mainLoaded = false');
+      expect(content).toContain('<link rel="stylesheet" href="/src/styles/globals.css" />');
+      expect(content).not.toContain('<script type="module" src="/src/main.tsx"></script>');
+    });
+
+    it('injects the globals.css fallback before </head> when SSR markers are absent', () => {
+      mkdirSync(join(dir, 'src/styles'), { recursive: true });
+      writeFileSync(join(dir, 'src/styles/globals.css'), '@tailwind utilities;\n', 'utf8');
+      writeHtml(
+        '<html><head><title>Custom</title></head><body><script type="module">import("/custom-entry.tsx")</script></body></html>',
+      );
+
+      const status = migration.run(dir, new Set());
+      const content = readFileSync(join(dir, 'index.html'), 'utf8');
+
+      expect(status).toBe('applied');
+      expect(content).toContain(
+        '<title>Custom</title><link rel="stylesheet" href="/src/styles/globals.css" />\n</head>',
+      );
+    });
+
+    it('does not duplicate an existing globals.css fallback link', () => {
+      mkdirSync(join(dir, 'src/styles'), { recursive: true });
+      writeFileSync(join(dir, 'src/styles/globals.css'), '@tailwind utilities;\n', 'utf8');
+      const html =
+        '<html><head><link rel="stylesheet" href="/src/styles/globals.css" /><!--app-head--></head><body><script type="module">import("/custom-entry.tsx")</script></body></html>';
+      writeHtml(html);
+
+      const status = migration.run(dir, new Set());
+
+      expect(status).toBe('applied');
+      expect(readFileSync(join(dir, 'index.html'), 'utf8')).toBe(html);
+    });
+
+    it('skips the CSS fallback when no module boot script is present', () => {
+      mkdirSync(join(dir, 'src/styles'), { recursive: true });
+      writeFileSync(join(dir, 'src/styles/globals.css'), '@tailwind utilities;\n', 'utf8');
+      const html = '<html><head><!--app-head--></head><body><div id="app"></div></body></html>';
+      writeHtml(html);
+
+      const status = migration.run(dir, new Set());
+
+      expect(status).toBe('skipped');
+      expect(readFileSync(join(dir, 'index.html'), 'utf8')).toBe(html);
+    });
+
+    it('skips the CSS fallback when no head insertion point is present', () => {
+      mkdirSync(join(dir, 'src/styles'), { recursive: true });
+      writeFileSync(join(dir, 'src/styles/globals.css'), '@tailwind utilities;\n', 'utf8');
+      const html = '<html><body><script type="module">import("/custom-entry.tsx")</script></body></html>';
+      writeHtml(html);
+
+      const status = migration.run(dir, new Set());
+
+      expect(status).toBe('skipped');
+      expect(readFileSync(join(dir, 'index.html'), 'utf8')).toBe(html);
+    });
+
+    it('skips when the fallback is needed but globals.css is absent', () => {
+      const html =
+        '<html><head><!--app-head--></head><body><script type="module">import("/custom-entry.tsx")</script></body></html>';
+      writeHtml(html);
+
+      const status = migration.run(dir, new Set());
+
+      expect(status).toBe('skipped');
+      expect(readFileSync(join(dir, 'index.html'), 'utf8')).toBe(html);
+    });
+
+    it('is idempotent after injecting the globals.css fallback', () => {
+      mkdirSync(join(dir, 'src/styles'), { recursive: true });
+      writeFileSync(join(dir, 'src/styles/globals.css'), '@tailwind utilities;\n', 'utf8');
+      writeHtml(
+        '<html><head><!--app-head--></head><body><script type="module">import("/custom-entry.tsx")</script></body></html>',
+      );
+
+      expect(migration.run(dir, new Set())).toBe('applied');
+      const afterFirstRun = readFileSync(join(dir, 'index.html'), 'utf8');
+      expect(migration.run(dir, new Set())).toBe('applied');
+
+      expect(readFileSync(join(dir, 'index.html'), 'utf8')).toBe(afterFirstRun);
+      expect((afterFirstRun.match(/\/src\/styles\/globals\.css/g) ?? []).length).toBe(1);
+    });
+
+    it('is a no-op when the static Vite entry is already present', () => {
+      const html =
+        '<html><head><!--app-head--></head><body><script type="module" src="/src/main.tsx"></script></body></html>';
+      writeHtml(html);
+
+      const status = migration.run(dir, new Set());
+
+      expect(status).toBe('applied');
+      expect(readFileSync(join(dir, 'index.html'), 'utf8')).toBe(html);
+    });
+
+    it('is a no-op when index.html was synced from the template', () => {
+      const html =
+        '<html><head><!--app-head--></head><body><script type="module">import("/custom-entry.tsx")</script></body></html>';
+      writeHtml(html);
+
+      const status = migration.run(dir, new Set(['index.html']));
+
+      expect(status).toBe('skipped');
+      expect(readFileSync(join(dir, 'index.html'), 'utf8')).toBe(html);
+    });
+  });
+
   describe('strip-stale-index-title', () => {
     const migration = findMigration('strip-stale-index-title');
 

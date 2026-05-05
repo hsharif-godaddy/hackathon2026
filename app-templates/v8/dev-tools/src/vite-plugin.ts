@@ -1,6 +1,23 @@
 import type { Plugin } from 'vite'
 import { V7_CONFIG } from '../v7-config'
 
+const STATIC_MAIN_ENTRY_RE =
+  /<script\b(?=[^>]*\btype=["']module["'])(?=[^>]*\bsrc=["']\/src\/main\.tsx["'])[^>]*>\s*<\/script>/i;
+const DEV_RETRY_MAIN_ENTRY = `<script type="module">
+      await import('/dev-tools/src/error-client.ts')
+      let mainLoaded = false
+      import('/src/main.tsx').then(() => { mainLoaded = true }).catch(err => {
+        // Vite dep optimization can cause transient import failures that resolve
+        // in 1-3s. Retry once before reporting the error to avoid false positives.
+        setTimeout(() => {
+          if (mainLoaded) return
+          import('/src/main.tsx').then(() => { mainLoaded = true }).catch(retryErr => {
+            window.dispatchEvent(new CustomEvent('vite:initial-error', { detail: retryErr }));
+          });
+        }, 2000);
+      })
+    </script>`;
+
 /**
  * Vite plugin to inject development tools only in development mode
  * This ensures the dev tools are never included in production builds
@@ -12,6 +29,12 @@ export function devToolsInjectorPlugin(): Plugin {
     name: 'dev-tools-injector',
     apply: 'serve', // Only apply in development mode
     enforce: 'pre', // Run before other plugins
+    transformIndexHtml: {
+      order: 'pre',
+      handler(html) {
+        return html.replace(STATIC_MAIN_ENTRY_RE, DEV_RETRY_MAIN_ENTRY)
+      }
+    },
     transform(code, id) {
       // Use v7-specific entry points
       const isEntryPoint = V7_CONFIG.entryPoints.some(entry => id.includes(entry)) ||

@@ -148,7 +148,8 @@ const SYNC_MANIFEST = [
       '2b36ce7723f0a17d0a735b65079f3e7c', // 072cb636 - Before analytics was added
       '5a13fd960f9e484c4b92e2fc927518b3', // f482954c - Current version with refactored analytics
       '03d2c6061dba1a2d61870ba1c9e3e406', // Before import retry for transient Vite dep optimization errors
-      '0b3e1d30a5b646e0fabfa7e657a582c9'  // before <!--app-head--> / <!--app-html--> SSR markers
+      '0b3e1d30a5b646e0fabfa7e657a582c9', // before <!--app-head--> / <!--app-html--> SSR markers
+      'f2faa351e9111fb14ed707d0d55e7ce7'  // before static main entry restored for CSS hoisting
     ],
     force: false
   },
@@ -328,6 +329,81 @@ export function isSsrInstalled(customerDir) {
   }
 
   return true;
+}
+
+const STATIC_MAIN_ENTRY = '<script type="module" src="/src/main.tsx"></script>';
+const GLOBALS_CSS_LINK = '<link rel="stylesheet" href="/src/styles/globals.css" />';
+const GLOBALS_CSS_LINK_RE =
+  /<link\b(?=[^>]*\brel=["']stylesheet["'])(?=[^>]*\bhref=["']\/src\/styles\/globals\.css["'])[^>]*>/i;
+const MODULE_SCRIPT_RE = /<script\b(?=[^>]*\btype=["']module["'])[^>]*>/i;
+const KNOWN_DEV_RETRY_BODY = `
+if (import.meta.env.MODE === 'development') {
+  await import('/dev-tools/src/error-client.ts')
+}
+let mainLoaded = false
+import('/src/main.tsx').then(() => { mainLoaded = true }).catch(err => {
+  // Vite dep optimization can cause transient import failures that resolve
+  // in 1-3s. Retry once before reporting the error to avoid false positives.
+  setTimeout(() => {
+    if (mainLoaded) return
+    import('/src/main.tsx').then(() => { mainLoaded = true }).catch(retryErr => {
+      window.dispatchEvent(new CustomEvent('vite:initial-error', { detail: retryErr }));
+    });
+  }, 2000);
+})
+`;
+
+function normalizeInlineScriptBody(body) {
+  return body
+    .replace(/\r\n/g, '\n')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join('\n');
+}
+
+function replaceKnownDevRetryEntry(html) {
+  const scriptRe = /([ \t]*)<script\b(?=[^>]*\btype=["']module["'])[^>]*>([\s\S]*?)<\/script>/gi;
+  const knownRetryBody = normalizeInlineScriptBody(KNOWN_DEV_RETRY_BODY);
+  let match;
+  while ((match = scriptRe.exec(html)) !== null) {
+    const [script, indent, body] = match;
+    if (normalizeInlineScriptBody(body) !== knownRetryBody) continue;
+
+    const replacement = `${indent}${STATIC_MAIN_ENTRY}`;
+    return {
+      html: html.slice(0, match.index) + replacement + html.slice(match.index + script.length),
+      replaced: true,
+    };
+  }
+
+  return { html, replaced: false };
+}
+
+function injectGlobalsCssLink(html) {
+  if (GLOBALS_CSS_LINK_RE.test(html)) {
+    return { html, injected: false };
+  }
+
+  const marker = '<!--app-head-->';
+  if (html.includes(marker)) {
+    return {
+      html: html.replace(marker, `${GLOBALS_CSS_LINK}\n    ${marker}`),
+      injected: true,
+    };
+  }
+
+  const headCloseRe = /([ \t]*)<\/head>/i;
+  const match = headCloseRe.exec(html);
+  if (!match) {
+    return { html, injected: false };
+  }
+
+  const indent = match[1] || '';
+  return {
+    html: html.replace(headCloseRe, `${indent}${GLOBALS_CSS_LINK}\n$&`),
+    injected: true,
+  };
 }
 
 /**
@@ -565,6 +641,59 @@ export const MIGRATIONS = [
           unlinkSync(bundlePath);
           console.log('  Deleted bundle.js');
         }
+      }
+
+      return 'applied';
+    }
+  },
+  {
+    id: 'normalize-vite-html-entry',
+    description: 'Restore static Vite main entry; add CSS-link fallback for customized boot scripts',
+    run(customerDir, syncedFiles) {
+      if (syncedFiles.has('index.html')) return 'skipped';
+
+      const htmlPath = join(customerDir, 'index.html');
+      if (!existsSync(htmlPath)) return 'skipped';
+
+      const original = readFileSync(htmlPath, 'utf8');
+      const { html: staticEntryHtml, replaced } = replaceKnownDevRetryEntry(original);
+      let updated = staticEntryHtml;
+
+      if (replaced) {
+        console.log('  Restored static Vite main entry in index.html');
+      } else if (!updated.includes(STATIC_MAIN_ENTRY)) {
+        if (!MODULE_SCRIPT_RE.test(updated)) {
+          console.log('  ⚠️  No module boot script found in index.html; skipping CSS-link fallback');
+          return 'skipped';
+        }
+
+        if (GLOBALS_CSS_LINK_RE.test(updated)) {
+          // The customized boot path already has the stylesheet fallback,
+          // so the migration target is present without another write.
+          return 'applied';
+        }
+
+        const globalsPath = join(customerDir, 'src/styles/globals.css');
+        if (!existsSync(globalsPath)) {
+          console.log('  ⚠️  src/styles/globals.css not found; skipping CSS-link fallback');
+          return 'skipped';
+        }
+
+        const result = injectGlobalsCssLink(updated);
+        updated = result.html;
+        if (result.injected) {
+          console.log('  Injected globals.css stylesheet link into index.html');
+        } else {
+          console.log('  ⚠️  Could not locate <head> for CSS-link fallback');
+          return 'skipped';
+        }
+      }
+
+      // Returning applied for the already-static-entry state is intentional:
+      // the migration's target shape is present, so dashboards can treat this
+      // app as converged without requiring a filesystem write.
+      if (updated !== original) {
+        writeFileSync(htmlPath, updated, 'utf8');
       }
 
       return 'applied';

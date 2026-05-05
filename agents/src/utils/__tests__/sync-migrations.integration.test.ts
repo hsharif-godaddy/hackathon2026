@@ -330,6 +330,7 @@ describe('sync-template-files black-box migration harness', () => {
   const migrationOrder = [
     'remove-public-assets-gitignore',
     'migrate-to-ssr-entry',
+    'normalize-vite-html-entry',
     'inject-ssr-markers',
     'strip-stale-index-title',
   ];
@@ -341,6 +342,7 @@ describe('sync-template-files black-box migration harness', () => {
       expectedEvents: [
         'migration.remove-public-assets-gitignore.applied',
         'migration.migrate-to-ssr-entry.applied',
+        'migration.normalize-vite-html-entry.skipped',
         'migration.inject-ssr-markers.skipped',
         'migration.strip-stale-index-title.skipped',
       ],
@@ -351,6 +353,7 @@ describe('sync-template-files black-box migration harness', () => {
       expectedEvents: [
         'migration.remove-public-assets-gitignore.applied',
         'migration.migrate-to-ssr-entry.applied',
+        'migration.normalize-vite-html-entry.skipped',
         'migration.inject-ssr-markers.skipped',
         'migration.strip-stale-index-title.skipped',
       ],
@@ -361,6 +364,7 @@ describe('sync-template-files black-box migration harness', () => {
       expectedEvents: [
         'migration.remove-public-assets-gitignore.applied',
         'migration.migrate-to-ssr-entry.applied',
+        'migration.normalize-vite-html-entry.skipped',
         'migration.inject-ssr-markers.skipped',
         'migration.strip-stale-index-title.skipped',
       ],
@@ -371,6 +375,7 @@ describe('sync-template-files black-box migration harness', () => {
       expectedEvents: [
         'migration.remove-public-assets-gitignore.applied',
         'migration.migrate-to-ssr-entry.applied',
+        'migration.normalize-vite-html-entry.skipped',
         'migration.inject-ssr-markers.skipped',
         'migration.strip-stale-index-title.skipped',
       ],
@@ -381,6 +386,7 @@ describe('sync-template-files black-box migration harness', () => {
       expectedEvents: [
         'migration.remove-public-assets-gitignore.applied',
         'migration.migrate-to-ssr-entry.applied',
+        'migration.normalize-vite-html-entry.skipped',
         'migration.inject-ssr-markers.skipped',
         'migration.strip-stale-index-title.skipped',
       ],
@@ -391,6 +397,7 @@ describe('sync-template-files black-box migration harness', () => {
       expectedEvents: [
         'migration.remove-public-assets-gitignore.applied',
         'migration.migrate-to-ssr-entry.applied',
+        'migration.normalize-vite-html-entry.skipped',
         'migration.inject-ssr-markers.skipped',
         'migration.strip-stale-index-title.skipped',
       ],
@@ -689,20 +696,28 @@ describe('sync-template-files black-box migration harness', () => {
     expect(parseMigrationEvents(result.stdout).map((event) => event.event)).toContain('migration.migrate-to-ssr-entry.skipped');
   });
 
-  it('skips SSR and HTML migrations when ssrMigration sync group is blocked by customer-edited vite.config.ts', async () => {
+  it('skips SSR marker migrations but adds CSS fallback when ssrMigration sync group is blocked by customer-edited vite.config.ts', async () => {
     const customerDir = tempDir('sync-migrations-blocked-ssr-group-');
     await copyHistoricalTemplate('497ffb01ce569381625f5a12d1ea7850fd4b9421', customerDir);
     writeFile(customerDir, 'vite.config.ts', 'export default { custom: true };\n');
-    writeFile(customerDir, 'index.html', '<html><head><title>Custom</title></head><body><div id="app"></div></body></html>\n');
+    writeFile(
+      customerDir,
+      'index.html',
+      '<html><head><title>Custom</title></head><body><div id="app"></div><script type="module">import("/custom-entry.tsx")</script></body></html>\n',
+    );
 
     const result = await runSync(customerDir);
     expect(result.exitCode).toBe(0);
 
     expect(existsSync(join(customerDir, 'src/entry-server.tsx'))).toBe(false);
-    expect(readFileSync(join(customerDir, 'index.html'), 'utf8')).not.toContain('<!--app-head-->');
+    const html = readFileSync(join(customerDir, 'index.html'), 'utf8');
+    expect(html).toContain('<link rel="stylesheet" href="/src/styles/globals.css" />');
+    expect(html).toContain('import("/custom-entry.tsx")');
+    expect(html).not.toContain('<!--app-head-->');
     expect(parseMigrationEvents(result.stdout).map((event) => event.event)).toEqual(
       expect.arrayContaining([
         'migration.migrate-to-ssr-entry.skipped',
+        'migration.normalize-vite-html-entry.applied',
         'migration.inject-ssr-markers.skipped',
         'migration.strip-stale-index-title.skipped',
       ]),

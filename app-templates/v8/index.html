@@ -8,22 +8,7 @@
   </head>
   <body class="fs-unmask-airo-app-builder">
     <div id="app" class="fs-unmask-airo-app-builder"><!--app-html--></div>
-    <script type="module">
-      if (import.meta.env.MODE === 'development') {
-        await import('/dev-tools/src/error-client.ts')
-      }
-      let mainLoaded = false
-      import('/src/main.tsx').then(() => { mainLoaded = true }).catch(err => {
-        // Vite dep optimization can cause transient import failures that resolve
-        // in 1-3s. Retry once before reporting the error to avoid false positives.
-        setTimeout(() => {
-          if (mainLoaded) return
-          import('/src/main.tsx').then(() => { mainLoaded = true }).catch(retryErr => {
-            window.dispatchEvent(new CustomEvent('vite:initial-error', { detail: retryErr }));
-          });
-        }, 2000);
-      })
-    </script>
+    <script type="module" src="/src/main.tsx"></script>
     <script src="/analytics.js"></script>
   </body>
 </html>
