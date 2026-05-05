@@ -67,7 +67,7 @@ describe('createSSEWriter — compressed encoding (gzip)', () => {
   let originalOff: string | undefined
   beforeEach(() => {
     originalOff = process.env.SSE_COMPRESSION
-    process.env.SSE_COMPRESSION = ''
+    process.env.SSE_COMPRESSION = 'on'
   })
   afterEach(() => {
     if (originalOff === undefined) delete process.env.SSE_COMPRESSION
@@ -164,7 +164,7 @@ describe('createSSEWriter — compressed encoding (br)', () => {
   let originalOff: string | undefined
   beforeEach(() => {
     originalOff = process.env.SSE_COMPRESSION
-    process.env.SSE_COMPRESSION = ''
+    process.env.SSE_COMPRESSION = 'on'
   })
   afterEach(() => {
     if (originalOff === undefined) delete process.env.SSE_COMPRESSION
@@ -216,8 +216,21 @@ describe('createSSEWriter — compressed encoding (br)', () => {
   })
 })
 
-describe('createSSEWriter — SSE_COMPRESSION=off', () => {
-  it('forces identity even when Accept-Encoding advertises br/gzip', () => {
+describe('createSSEWriter — compression defaults', () => {
+  it('defaults to identity even when Accept-Encoding advertises br/gzip', () => {
+    const original = process.env.SSE_COMPRESSION
+    delete process.env.SSE_COMPRESSION
+    try {
+      const res = makeMockRes()
+      const writer = createSSEWriter(makeReq('gzip, br'), res)
+      expect(writer.encoding).toBe('identity')
+    } finally {
+      if (original === undefined) delete process.env.SSE_COMPRESSION
+      else process.env.SSE_COMPRESSION = original
+    }
+  })
+
+  it('forces identity when SSE_COMPRESSION=off', () => {
     const original = process.env.SSE_COMPRESSION
     process.env.SSE_COMPRESSION = 'off'
     try {

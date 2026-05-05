@@ -23,7 +23,7 @@ export interface SSEWriterOptions {
 }
 
 function resolveEncoding(req: Pick<IncomingMessage, 'headers'>): SSEEncoding {
-  if (process.env.SSE_COMPRESSION === 'off') return 'identity'
+  if (process.env.SSE_COMPRESSION !== 'on') return 'identity'
   const chosen = new Negotiator({ headers: req.headers as Record<string, string> })
     .encoding(['br', 'gzip', 'identity'])
   return (chosen as SSEEncoding) ?? 'identity'
