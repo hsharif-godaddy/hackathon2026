@@ -9,6 +9,7 @@ import { createSSEWriter } from '../sse-writer.js'
 function makeMockRes(): any {
   const emitter: any = new EventEmitter()
   emitter.writeHead = vi.fn()
+  emitter.flushHeaders = vi.fn()
   emitter.write = vi.fn().mockReturnValue(true)
   emitter.end = vi.fn()
   emitter.writableEnded = false
@@ -30,6 +31,13 @@ describe('createSSEWriter — identity encoding', () => {
     expect(writer.encoding).toBe('identity')
     writer.write('event: x\n\n')
     expect(res.write).toHaveBeenCalledWith('event: x\n\n')
+  })
+
+  it('flushes headers immediately when supported by the response', () => {
+    const res = makeMockRes()
+    createSSEWriter(makeReq(), res)
+
+    expect(res.flushHeaders).toHaveBeenCalledOnce()
   })
 
   it('swallows synchronous res.write throws and logs sse.writer.write_failed', () => {

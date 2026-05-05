@@ -46,6 +46,7 @@ export function createSSEWriter(
   }
   if (encoding !== 'identity') headers['Content-Encoding'] = encoding
   res.writeHead(200, headers)
+  res.flushHeaders?.()
 
   const isClosed = () => res.writableEnded || res.destroyed
 
