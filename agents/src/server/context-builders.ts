@@ -1,7 +1,6 @@
 import { observe, updateActiveObservation } from '@langfuse/tracing'
 import { AppRepository } from '../database/repositories/AppRepository.js'
-import { KnowBDriver } from '../tools/ai-lib-tools/drivers/knowb-driver.js'
-import { getKnowledgeServiceDriver } from '../tools/ai-lib-tools/drivers/knowledge-service-driver.js'
+import { knowBDriver } from '../tools/ai-lib-tools/drivers/knowb-driver.js'
 import { todoListIdFromContextAttachments } from '../utils/todo-list-id-from-context-attachments.js'
 import { getTodoContextManager } from '../services/TodoContextManager.js'
 import { BudgetOverride } from '@airo/ai-grants'
@@ -118,50 +117,66 @@ export async function buildTodoContextMessage(opts: {
 async function searchDocumentation(params: {
   query: string
   kbNodeIds: string[]
-  maxResults: number
-  scoreThreshold: number
   appId?: string | undefined
   sessionId?: string | undefined
 }) {
-  const knowledgeDriver = getKnowledgeServiceDriver()
-
   updateActiveObservation({
     metadata: {
       retrievalType: 'semantic_search',
-      retrievalBackend: knowledgeDriver ? 'knowledge-service' : 'knowb',
+      retrievalBackend: 'knowb',
+      searchType: 'LEXICAL_AND_SEMANTIC',
+      reranking: 'cohere-v3.5',
+      overFetchCount: 15,
+      dedupStrategy: 'per-kbNodeId',
       appId: params.appId,
       sessionId: params.sessionId,
-      maxResults: params.maxResults,
-      scoreThreshold: params.scoreThreshold
     }
   })
 
-  const driver = knowledgeDriver ?? new KnowBDriver()
-
-  const result = await driver.search({
+  // Let the driver own maxResults + scoreThreshold defaults (3, 0.0).
+  // Hardcoding 0.5 here would silently drop nearly all Cohere rerank hits —
+  // see knowb-driver.ts docblock.
+  const result = await knowBDriver.search({
     query: params.query,
     kbNodeIds: params.kbNodeIds,
-    maxResults: params.maxResults,
-    scoreThreshold: params.scoreThreshold,
   })
 
-  if (!result.success || !result.results || result.results.length === 0) {
+  if (!result.success) {
+    logger.warn('context.rag.knowb_search_failed', {
+      error: result.error,
+      appId: params.appId,
+      sessionId: params.sessionId,
+      query: params.query.substring(0, 100),
+    })
     updateActiveObservation({
-      metadata: {
-        documentsRetrieved: 0,
-        noResults: true
-      }
+      metadata: { documentsRetrieved: 0, searchFailed: true, error: result.error }
     })
     return null
   }
 
-  const docsContent = driver.formatResultsAsMarkdown(result.results)
+  if (!result.results || result.results.length === 0) {
+    updateActiveObservation({
+      metadata: { documentsRetrieved: 0, noResults: true }
+    })
+    return null
+  }
 
+  const docsContent = knowBDriver.formatResultsAsMarkdown(result.results)
+
+  const scores = result.results.map(r => r.score || 0)
+  const topScore = scores[0] ?? 0
+  // Separation gap — how far #1 is ahead of #2. Cohere rerank scores are
+  // probability-calibrated, so raw threshold is unreliable; gap is a
+  // better confidence signal. Relevant queries observed 0.03–0.61 gap,
+  // irrelevant queries cluster <0.02. Undefined when <2 results so
+  // downstream readers don't confuse topScore-vs-0 with a real gap.
+  const gapTop1ToTop2 = scores.length >= 2 ? topScore - scores[1]! : null
   updateActiveObservation({
     metadata: {
       documentsRetrieved: result.results.length,
-      avgScore: result.results.reduce((sum, r) => sum + (r.score || 0), 0) / result.results.length,
-      allScoresAboveThreshold: result.results.every(r => (r.score || 0) >= params.scoreThreshold),
+      avgScore: scores.reduce((sum, s) => sum + s, 0) / scores.length,
+      topScore,
+      gapTop1ToTop2,
       documentIds: result.results.map(r => r.kbNodeId).filter(Boolean)
     }
   })
@@ -192,8 +207,6 @@ export async function buildRagContextMessage(opts: {
     const retrievalResult = await tracedSearchDocumentation({
       query: userMessage,
       kbNodeIds: ['/airo_info'],
-      maxResults: 5,
-      scoreThreshold: 0.50,
       appId,
       sessionId,
     })
@@ -206,8 +219,17 @@ export async function buildRagContextMessage(opts: {
       insertionOrder: 'after_history'
     }
   } catch (error) {
-    logger.warn('context.rag.search_failed', {
+    // Broader event name + errorType — this catch wraps the Langfuse
+    // observe() scaffolding, formatResultsAsMarkdown, AND the driver call,
+    // so a tracing/instrumentation throw is indistinguishable from a
+    // GoKnowb failure without errorType. Driver-layer failures are logged
+    // under context.rag.knowb_search_failed / knowb-driver.search.* and
+    // reach this branch only if something re-throws above them.
+    logger.warn('context.rag.build_failed', {
       error: error instanceof Error ? error.message : String(error),
+      errorType: error instanceof Error ? error.constructor.name : typeof error,
+      appId,
+      sessionId,
       query: userMessage.substring(0, 100)
     })
     return null

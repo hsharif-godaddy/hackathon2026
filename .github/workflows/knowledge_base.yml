@@ -21,6 +21,16 @@ on:
         required: false
         type: string
         default: ""
+      skip_repo_check:
+        description: "Skip safety check that blocks deletion when file still exists in knowledge-base/ (use for cleanup / re-ingest flows)"
+        required: false
+        type: boolean
+        default: false
+      kb_strategy:
+        description: "kbStrategy for uploads (e.g. KNOWB001, KNOWB002, KNOWB003). Empty = inherit parent node default."
+        required: false
+        type: string
+        default: ""
   workflow_call:
     inputs:
       environment:
@@ -34,6 +44,16 @@ on:
         default: ""
       files_to_delete:
         description: "Comma-separated filenames to delete"
+        required: false
+        type: string
+        default: ""
+      skip_repo_check:
+        description: "Skip safety check that blocks deletion when file still exists in knowledge-base/"
+        required: false
+        type: boolean
+        default: false
+      kb_strategy:
+        description: "kbStrategy for uploads. Empty = inherit parent node default."
         required: false
         type: string
         default: ""
@@ -153,10 +173,16 @@ jobs:
         env:
           FILENAMES: ${{ inputs.filenames }}
           ENVIRONMENT: ${{ inputs.environment }}
+          KB_STRATEGY: ${{ inputs.kb_strategy }}
         run: |
           echo "Starting knowledge base upload..."
           echo "Branch: ${{ github.ref_name }}"
           echo "Environment: $ENVIRONMENT"
+          if [ -n "$KB_STRATEGY" ]; then
+            echo "Using kbStrategy: $KB_STRATEGY"
+          else
+            echo "Using kbStrategy: (inherit parent default)"
+          fi
 
           # Set API URL and kbNodeId based on environment
           if [ "$ENVIRONMENT" == "PROD" ]; then
@@ -204,15 +230,33 @@ jobs:
             echo "Uploading: $filename"
             echo "=================================================="
 
+            # Build curl form fields; include kbStrategy only when provided.
+            # ACL: uploader (service cert) gets admin; everyone gets read so
+            # the docs are visible to agents S2S + any authenticated user.
+            # Parent ACL does NOT propagate to children in GoKnowb — must set
+            # explicitly per-doc at upload time.
+            ACL_JSON='{"allowedPrincipals":[{"id":"getty.airo-builder.test.authclient.int.godaddy.com","type":"jomax","scope":"admin"},{"id":"*","type":"*","scope":"read"}]}'
+            if [ "$ENVIRONMENT" == "PROD" ]; then
+              ACL_JSON='{"allowedPrincipals":[{"id":"getty.airo-builder.authclient.int.godaddy.com","type":"jomax","scope":"admin"},{"id":"*","type":"*","scope":"read"}]}'
+            fi
+
+            CURL_FORM_ARGS=(
+              -F "files=@${file}"
+              -F "kbNodeId=${KB_NODE_ID}"
+              -F "resourceType=document"
+              -F "metadata={\"filename\":\"${filename}\"}"
+              -F "acl=${ACL_JSON}"
+            )
+            if [ -n "$KB_STRATEGY" ]; then
+              CURL_FORM_ARGS+=(-F "kbStrategy=${KB_STRATEGY}")
+            fi
+
             response=$(curl -s -w "\n%{http_code}" \
               -X POST \
               "${API_URL}" \
               -H "Authorization: sso-jwt ${SSO_JWT}" \
               -H "Accept: application/json" \
-              -F "files=@${file}" \
-              -F "kbNodeId=${KB_NODE_ID}" \
-              -F "resourceType=document" \
-              -F "metadata={\"filename\":\"${filename}\"}")
+              "${CURL_FORM_ARGS[@]}")
 
             http_code=$(echo "$response" | tail -n 1)
             response_body=$(echo "$response" | head -n -1)
@@ -291,9 +335,12 @@ jobs:
               echo "❌ ERROR: Invalid filename '$fname' — must not contain '/' or '..'"
               exit 1
             fi
-            if [ -f "knowledge-base/$fname" ]; then
-              echo "❌ ERROR: '$fname' still exists in knowledge-base/ — remove it from the repo before deleting from KB"
+            if [ -f "knowledge-base/$fname" ] && [ "${{ inputs.skip_repo_check }}" != "true" ]; then
+              echo "❌ ERROR: '$fname' still exists in knowledge-base/ — remove it from the repo before deleting from KB, or set 'skip_repo_check: true' to bypass"
               exit 1
+            fi
+            if [ -f "knowledge-base/$fname" ] && [ "${{ inputs.skip_repo_check }}" = "true" ]; then
+              echo "⚠️  SAFETY BYPASS: '$fname' still exists in knowledge-base/ but skip_repo_check=true — proceeding with delete | actor=${{ github.actor }} run_id=${{ github.run_id }} env=${{ inputs.environment }} ref=${{ github.ref_name }}"
             fi
             DELETE_PATHS+=("$fname")
           done

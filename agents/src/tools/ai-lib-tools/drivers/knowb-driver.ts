@@ -13,11 +13,12 @@ import {
   GoKnowbClientImpl,
   TokenProvider,
   SearchType,
+  RerankingStrategy,
   type SearchKBRequest,
   type CreateKBNodeRequest,
 } from '@godaddy/goknowb-client';
 
-import { log, Logger } from '../../../logging/index.js';
+import { log, Logger, logger as rootLogger } from '../../../logging/index.js';
 
 /**
  * Options for KnowB search
@@ -46,6 +47,26 @@ export interface KnowBSearchResult {
   results?: KnowBResultItem[];
   totalResults?: number;
   error?: string;
+}
+
+/**
+ * Deduplicate search results by `kbNodeId`, keeping the highest-scoring
+ * occurrence per document. Bedrock returns chunk-level hits; multiple chunks
+ * of the same document can occupy top-K slots, starving other relevant docs.
+ *
+ * Sorts by score desc internally so the result is correct regardless of
+ * input order — callers don't need to pre-sort.
+ */
+export function dedupByKbNodeId(results: KnowBResultItem[]): KnowBResultItem[] {
+  const sorted = [...results].sort((a, b) => b.score - a.score);
+  const seen = new Set<string>();
+  const out: KnowBResultItem[] = [];
+  for (const r of sorted) {
+    if (seen.has(r.kbNodeId)) continue;
+    seen.add(r.kbNodeId);
+    out.push(r);
+  }
+  return out;
 }
 
 /**
@@ -144,6 +165,8 @@ class KnowBTokenProvider implements TokenProvider {
   }
 }
 
+const TEST_FALLBACK_URL = 'https://knowb.api.int.test-godaddy.com';
+
 /**
  * Get KnowB API URL from environment
  * Priority: KNOWB_URL > GODADDY_API_BASE_URL > test environment fallback
@@ -154,8 +177,24 @@ function getApiUrl(): string {
   if (knowbUrl) {
     return knowbUrl;
   }
-  // Fallback to test environment
-  return 'https://knowb.api.int.test-godaddy.com';
+  // Fallback to test environment — warn loudly when this happens outside local
+  // or the unit-test runner, because a misconfigured prod container would
+  // silently hit TEST KB otherwise.
+  const gasket = process.env.GASKET_ENV || '';
+  const nodeEnv = process.env.NODE_ENV || '';
+  const isLocalOrTestRunner = gasket.startsWith('local') || nodeEnv === 'test';
+  if (!isLocalOrTestRunner) {
+    // Use structured logger (not console.warn) so Loki / LOG_LEVEL filters
+    // capture the warning. A silent TEST-KB fallback in prod is exactly the
+    // kind of misconfiguration alerting needs to see.
+    rootLogger.warn('knowb-driver.config.api_url_fallback', {
+      gasketEnv: gasket,
+      nodeEnv,
+      fallbackUrl: TEST_FALLBACK_URL,
+      message: 'KNOWB_URL / GODADDY_API_BASE_URL unset — falling back to TEST KB. Almost certainly wrong for non-local envs.',
+    });
+  }
+  return TEST_FALLBACK_URL;
 }
 
 /**
@@ -167,11 +206,35 @@ export class KnowBDriver {
   private client: GoKnowbClientImpl;
   private tokenProvider: KnowBTokenProvider;
   private initialized: boolean = false;
+  private initFailure: Error | null = null;
 
   // Default configuration
+  // See docs: GoKnowb RAG Configuration Reference (Confluence) + plan 2026-05-04.
   private static readonly DEFAULT_KB_NODE_IDS = ['/airo_info'];
-  private static readonly DEFAULT_MAX_RESULTS = 5;
-  private static readonly DEFAULT_SCORE_THRESHOLD = 0.35;
+  /**
+   * Final top-K returned to callers (post-dedup).
+   *
+   * Set to 2 because the current /airo_info corpus is 3 docs; topK=3 would
+   * inject every doc on every turn (noise for off-topic queries, wasted
+   * prompt tokens). With 2, the agent gets the best match plus a single
+   * complementary hit for ambiguous queries, and irrelevant queries still
+   * get 2 low-score docs the caller can gate on. Revisit as the corpus
+   * grows — aim for ~60% of doc count, capped at 5.
+   */
+  private static readonly DEFAULT_MAX_RESULTS = 2;
+  /**
+   * Over-fetch count: Bedrock/Cohere candidates we request, then dedup + trim
+   * client-side. Kept at 15 independent of final top-K — gives Cohere rerank
+   * a broad input set and leaves headroom for chunk-level duplicates.
+   */
+  private static readonly OVER_FETCH_COUNT = 15;
+  /**
+   * Explicit score threshold of 0.0. Bedrock's default is 0.5 — applied
+   * server-side to Cohere rerank scores it would filter out nearly all
+   * relevant results (empirically measured 0.06–0.57 range). We let Cohere
+   * rerank ordering + top-K do the selection instead.
+   */
+  private static readonly DEFAULT_SCORE_THRESHOLD = 0.0;
 
   constructor() {
     this.logger = Logger.create({ component: 'knowb-driver' });
@@ -187,12 +250,29 @@ export class KnowBDriver {
   }
 
   /**
-   * Ensure the driver is initialized (fetches S2S token if needed)
+   * Ensure the driver is initialized (fetches S2S token if needed).
+   *
+   * On first failure we cache the error and fail fast on subsequent calls so
+   * a single S2S outage doesn't flood Loki with N per-turn identical
+   * `knowb-driver.init.s2s_token_failed` entries. The first attempt still
+   * emits the event for alerting; later calls re-throw the cached error
+   * without re-hitting the token endpoint.
    */
   private async ensureInitialized(): Promise<void> {
-    if (!this.initialized && this.tokenProvider.needsInitialization()) {
+    if (this.initialized) return;
+    if (this.initFailure) {
+      throw this.initFailure;
+    }
+    if (!this.tokenProvider.needsInitialization()) return;
+    try {
       await this.tokenProvider.initialize();
       this.initialized = true;
+    } catch (error) {
+      // S2S endpoint down, credentials expired, etc. Emit a distinct event
+      // once so a filtered Loki query surfaces the root cause directly.
+      this.initFailure = error as Error;
+      log.error(this.logger, 'knowb-driver.init.s2s_token_failed', error as Error);
+      throw error;
     }
   }
 
@@ -222,6 +302,9 @@ export class KnowBDriver {
     });
 
     if (!this.tokenProvider.hasAuth()) {
+      this.logger.warn('knowb-driver.search.no_auth', {
+        query: query.substring(0, 100),
+      });
       return {
         success: false,
         error: 'No authentication configured. Set GOCODE_USE_S2S_AUTH=true for hosted or SSO_JWT for local.',
@@ -231,28 +314,46 @@ export class KnowBDriver {
     try {
       await this.ensureInitialized();
 
+      // Over-fetch Cohere-reranked candidates, then dedup + trim client-side.
+      // Bedrock rerank score replaces raw cosine in `item.score`.
       const request: SearchKBRequest = {
         filter: {
           kbNodeIds,
-          maxNumberOfResult: maxResults,
+          maxNumberOfResult: KnowBDriver.OVER_FETCH_COUNT,
           scoreThreshold,
         },
         query: query.trim(),
-        searchType: SearchType.AUTO,
+        searchType: SearchType.LEXICAL_AND_SEMANTIC,
+        rerankingConfig: {
+          type: RerankingStrategy.COHERE,
+          results: KnowBDriver.OVER_FETCH_COUNT,
+        },
       };
 
       const response = await this.client.search(request);
 
-      const results: KnowBResultItem[] = response.results.map((item) => ({
+      if (!Array.isArray(response.results)) {
+        this.logger.warn('knowb-driver.search.unexpected_response_shape', {
+          query: query.substring(0, 100),
+          resultsType: typeof response.results,
+        });
+      }
+      const rawResults: KnowBResultItem[] = (response.results ?? []).map((item) => ({
         kbNodeId: item.location.kbNodeId,
         text: item.content.text,
-        score: item.score,
+        // Guard against missing score on the external API response. The type
+        // says number but a regression upstream would otherwise propagate
+        // undefined all the way to `.toFixed(4)` and crash the tool.
+        score: item.score ?? 0,
       }));
+
+      const results = dedupByKbNodeId(rawResults).slice(0, maxResults);
 
       this.logger.info('knowb-driver.search.success', {
         query: query.substring(0, 100),
         totalResults: results.length,
-        topScore: results[0]?.score.toFixed(3),
+        // raw number for numeric filtering in Loki/Grafana (not .toFixed string)
+        topScore: results[0]?.score,
       });
 
       return {
@@ -302,6 +403,7 @@ export class KnowBDriver {
 
     try {
       if (!this.tokenProvider.hasAuth()) {
+        this.logger.warn('knowb-driver.upload.no_auth', { resourceId, kbNodeId });
         return {
           success: false,
           error: 'No authentication configured. Set GOCODE_USE_S2S_AUTH=true for hosted or SSO_JWT for local.',
@@ -343,6 +445,7 @@ export class KnowBDriver {
     } catch (error) {
       log.error(this.logger, 'knowb-driver.upload.error', error as Error, {
         resourceId,
+        kbNodeId,
       });
       return {
         success: false,
@@ -364,6 +467,7 @@ export class KnowBDriver {
 
     try {
       if (!this.tokenProvider.hasAuth()) {
+        this.logger.warn('knowb-driver.delete.no_auth', { resourceId, kbNodeId });
         return {
           success: false,
           error: 'No authentication configured. Set GOCODE_USE_S2S_AUTH=true for hosted or SSO_JWT for local.',
@@ -388,6 +492,7 @@ export class KnowBDriver {
     } catch (error) {
       log.error(this.logger, 'knowb-driver.delete.error', error as Error, {
         resourceId,
+        kbNodeId,
       });
       return {
         success: false,
@@ -404,6 +509,7 @@ export class KnowBDriver {
 
     try {
       if (!this.tokenProvider.hasAuth()) {
+        this.logger.warn('knowb-driver.sync.no_auth', { kbNodeId });
         return {
           success: false,
           error: 'No authentication configured.',

@@ -1,16 +1,14 @@
 /**
  * KnowB Search Tool
  *
- * Searches GoDaddy's knowledge base API for deployment and application documentation.
- * Uses KnowledgeServiceDriver when configured (KNOWLEDGE_SERVICE_URL or KNOWLEDGE_PROXY_URL),
- * falling back to KnowBDriver for backward compatibility.
+ * Searches GoDaddy's knowledge base via GoKnowb + Cohere reranking.
+ * Post-processing (dedup + top-K=3) is handled inside KnowBDriver.
  */
 import { Logger, log } from '../logging/index.js';
 import {
   knowBDriver,
   type KnowBSearchOptions as DriverSearchOptions,
 } from './ai-lib-tools/drivers/knowb-driver.js';
-import { getKnowledgeServiceDriver } from './ai-lib-tools/drivers/knowledge-service-driver.js';
 
 const logger = Logger.create({ component: 'knowb-search-tool' });
 
@@ -69,9 +67,7 @@ export class KnowBSearchTool {
       scoreThreshold: options.scoreThreshold,
     });
 
-    // Use KnowledgeServiceDriver when configured, fall back to KnowBDriver
-    const driver = getKnowledgeServiceDriver() ?? knowBDriver;
-    const driverResult = await driver.search({
+    const driverResult = await knowBDriver.search({
       query: options.query,
       kbNodeIds: options.kbNodeIds,
       maxResults: options.maxResults,
@@ -79,8 +75,12 @@ export class KnowBSearchTool {
     });
 
     if (!driverResult.success) {
-      contextLogger.error('knowb-search.search.failed', {
+      // warn (not error) to match the driver + context-builders severity for
+      // the same failure modes (auth not configured, empty query, upstream
+      // error). Reserve error for true pager-worthy conditions.
+      contextLogger.warn('knowb-search.search.failed', {
         error: driverResult.error,
+        query: options.query.substring(0, 100),
       });
       return {
         success: false,

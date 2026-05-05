@@ -33,8 +33,6 @@ export type {
   KnowBSearchResult,
 } from './knowb-driver.js';
 
-export { KnowledgeServiceDriver, getKnowledgeServiceUrl, getKnowledgeServiceDriver } from './knowledge-service-driver.js';
-
 export { WebsiteScraperDriver } from './website-scraper-driver.js';
 export type {
   WebsiteScraperOptions,
