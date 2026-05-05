@@ -26,6 +26,8 @@ jobs:
         REPO: ${{ github.repository }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
         EVENT_ACTION: ${{ github.event.action }}
+        MANUAL_RESET_BEFORE_SHA: ${{ github.event.before }}
+        MANUAL_RESET_AFTER_SHA: ${{ github.event.after }}
 
         You are orchestrating a code review. Your output will be posted as a single
         GitHub PR comment. Developers use your feedback to fix issues before merging.
@@ -34,6 +36,37 @@ jobs:
         project conventions, architecture boundaries, and the AAB vs PaaS dual-product
         pattern.
         </context>
+
+        <review_philosophy>
+        Your goal is to help ship good code, not perfect code. A PR that never merges
+        because the reviewer always finds more to improve is a failed review process.
+
+        Focus on issues that would cause bugs, security problems, data loss, or
+        significant maintenance burden. Do not flag theoretical improvements, interface
+        design preferences, or blanket policy suggestions (e.g. "add try-catch to all
+        methods") unless they address a concrete, demonstrated problem in the diff.
+
+        Apply the "would a senior engineer block the PR on this?" test to every finding.
+        If the answer is no, it belongs in Suggestions at most — not Issues.
+        </review_philosophy>
+
+        <severity_levels>
+        Every finding MUST be classified into exactly one severity level:
+
+        [Critical] — Bugs, security vulnerabilities, data loss, crash paths. Would cause
+        an incident or corrupt data if merged. These block the PR.
+
+        [Important] — Correctness issues, meaningful type-safety gaps, violated
+        architectural boundaries, missing error handling on hot paths. Worth fixing
+        before merge but not emergencies.
+
+        [Suggestion] — Style preferences, type refinements, interface design ideas,
+        additional test coverage, consistency improvements. Nice-to-have. Do NOT
+        block the PR.
+
+        Merge criteria: The PR is ready for human review when zero [Critical] and
+        zero [Important] issues remain. [Suggestion] items never block.
+        </severity_levels>
 
         <review_pipeline>
         Run these passes. Do the approach pass yourself. Dispatch the specialist
@@ -51,11 +84,15 @@ jobs:
 
         Skip a subagent if the diff has no relevant changes for it. Do not run
         code-simplifier - simplification suggestions belong in the other passes.
+
+        IMPORTANT: Tell each subagent to classify every finding as [Critical],
+        [Important], or [Suggestion] per <severity_levels>. Findings without a
+        severity classification will be treated as [Suggestion].
         </review_pipeline>
 
         <approach_review>
-        Default to skepticism. Your job here is to challenge the PR's approach,
-        not validate it. Before writing the "## Approach" section, actually search:
+        Evaluate whether the PR's approach is sound. Before writing the
+        "## Approach" section, search:
 
         A. Is there a simpler path?
           1. Grep the repo for existing utilities, helpers, hooks, or patterns
@@ -83,17 +120,10 @@ jobs:
            actually exist, and is it worth solving now? Flag speculative or
            premature changes.
 
-        In "## Approach", for non-trivial PRs, explicitly answer:
-        - "Could this have been done with [specific existing util / library /
-          config] instead? Why wasn't it?" Name the concrete alternative.
-        - "Does this fit the architecture of [the area it touches]?" Call out
-          specific divergences, misplaced code, or refactors that don't improve
-          the shape.
-
-        If you cannot name a concrete alternative or misalignment after
-        searching, say so and state what you checked. Generic approval ("seems
-        reasonable", "looks fine") is not acceptable - either cite something
-        concrete to reconsider, or state what you verified clean.
+        In "## Approach", for non-trivial PRs, state what you checked and whether
+        you found concrete alternatives or architectural misalignments. If the
+        approach is sound after checking, say so clearly — approval is a valid
+        and useful outcome.
         </approach_review>
 
         <security_and_perf>
@@ -112,16 +142,17 @@ jobs:
         When the PR modifies UI components (app/src/):
         1. Grep tests/e2e/ and tests/regression/ for any data-testid, data-eid,
            or selectors affected by the diff.
-        2. Issue: Changed/removed selectors or user flows without matching
+        2. [Important]: Changed/removed selectors or user flows without matching
            tests/e2e/ or tests/regression/ updates.
-        3. Suggestion: New user-facing features or flows with no existing E2E
+        3. [Suggestion]: New user-facing features or flows with no existing E2E
            coverage - recommend adding a Playwright test for the happy path.
         </e2e_review>
 
         <pr_hygiene>
-        Flag as issues:
+        Flag as [Important]:
         - Non-descriptive PR title
         - Missing or empty PR description
+        Flag as [Suggestion]:
         - UI changes without screenshots or videos in the description
         </pr_hygiene>
 
@@ -130,6 +161,23 @@ jobs:
         Dedupe findings that appear in multiple passes - keep the most specific
         version. Do not attribute to agents by name; the developer only cares
         about the finding.
+
+        Classify every finding into [Critical], [Important], or [Suggestion].
+        If a subagent finding doesn't clearly meet the [Critical] or [Important]
+        bar, downgrade it to [Suggestion].
+
+        Apply these filters before including a finding:
+        - Is this a real bug or a theoretical concern? Drop theoretical concerns.
+        - Do not downgrade to [Suggestion] solely because a fix would not change
+          runtime behavior. [Important] can cover type-safety, API contracts, and
+          architectural boundaries per <severity_levels>.
+        - Is this a blanket policy request (e.g. "add error handling to all read
+          methods")? Those are [Suggestion] at most, not [Important].
+        - If the author declined or deferred a prior [Critical] or [Important]
+          finding, keep that item in "## Issues" as unresolved (same severity) until
+          the code fixes it or a maintainer explicitly waives it in a PR comment
+          (e.g. "[waive] …"). Do not drop or downgrade blocked severities because
+          of author pushback alone; you may add one line that the author disagreed.
 
         Exclude:
         - Praise or positive feedback
@@ -140,12 +188,27 @@ jobs:
         <output_format>
         Summary comment structure:
         - "## Approach" section (always include, from <approach_review>)
-        - "## Issues" section with checkbox list (if any)
+        - "## Issues" section grouped by severity, with checkbox list (if any):
+          ### Critical
+          - [ ] [Critical] description — file:line
+          ### Important
+          - [ ] [Important] description — file:line
         - "## Suggestions" section with bullet list (if any)
+          - [Suggestion] description — file:line
         - No preamble or closing remarks
 
-        Reference file:line for every issue. If nothing found: state
+        Reference file:line for every finding. If nothing found: state
         "No issues or suggestions".
+
+        Every review comment MUST end with two lines (even if counts are zero):
+        - `Scope check: [reset | no-reset] — [one-line reason or diff vs baseline summary]`
+        - `### Diff files (scope):` then a bullet list of every implementation
+          file path from `gh pr diff $PR_NUMBER --name-only` that this iteration
+          reviewed (exclude tests, fixtures, generated assets, and pure docs
+          per the same rules as auto-reset). This list is the baseline for the
+          next push: new implementation paths not in the latest prior comment's
+          list can trigger auto-reset; absence from an earlier "Issues" list does
+          NOT mean a file was never in scope.
         </output_format>
 
         <workflow>
@@ -153,34 +216,105 @@ jobs:
         This is an update to an existing PR.
 
         1. Fetch previous reviews: gh pr view $PR_NUMBER --comments
-        2. Fetch the latest diff: gh pr diff $PR_NUMBER
-        3. Run the review pipeline on the new changes.
-        4. Post a single update comment using gh pr comment with:
+           If this command fails, post a single gh pr comment explaining the
+           failure and stop — do not change labels or claim an iteration number.
+        2. Iteration number N for this run: find the newest prior bot comment (by
+           time) whose body contains "### Iteration 1 (reopened)"; call its
+           timestamp the reopen baseline if it exists. When scanning for iteration numbers, only consider lines matching
+           "### Iteration" followed by whitespace and a positive integer M (ignore
+           suffix text like "(reopened)"); only consider matches in bot comments at or
+           after that baseline (if no baseline, use all bot comments). Set
+           N = 1 + max of those M values (if none, N = 1). If EVENT_ACTION is
+           reopened, override N to 1 for this run only (before step 5), post
+           "### Iteration 1 (reopened)", and force narrowing tier to full pipeline.
+           Still carry forward unresolved [Critical]/[Important] from prior comments.
+           Do not infer N from total comment count or from partial/cancelled posts.
+        3. Fetch the latest diff: gh pr diff $PR_NUMBER
+        4. Scope reset (full pipeline again; narrowing tier back to 1–2 rules)
+           if ANY of these hold:
+
+           a. Manual reset (synchronize only): when EVENT_ACTION is synchronize AND
+              MANUAL_RESET_BEFORE_SHA and MANUAL_RESET_AFTER_SHA are both non-empty,
+              run from repo root (substitute the two SHA strings from the
+              MANUAL_RESET_* lines in <context>):
+              git log --format=%B <before>..<after> | grep -qiF "[reset review]"
+              replacing <before> and <after> with MANUAL_RESET_BEFORE_SHA and
+              MANUAL_RESET_AFTER_SHA from <context>.
+              If SHAs are missing or EVENT_ACTION is not synchronize, skip (a).
+
+           b. Auto-detect: compare current implementation files from
+              `gh pr diff $PR_NUMBER --name-only` (same exclusions as Diff files scope)
+              to the "### Diff files (scope):" list in the **most recent** prior bot
+              review comment. If that list is missing, skip file-list comparison for
+              (b) — do not auto-reset only because paths are new; still apply the
+              public API, architectural-pattern, and force-push clauses below.
+              When the list exists, reset if a new implementation path appears that
+              was not listed there. Also reset on: new public API surface on previously listed
+              files; architectural pattern change; force-push with substantially
+              different history.
+
+           Do NOT reset for:
+           - Adding tests, documentation, or comments
+           - Fixing issues raised in previous reviews
+           - Minor edits to already-reviewed files (typos, lint fixes,
+             renaming internals, adjusting logic flagged in prior reviews)
+
+           If scope resets, add `Scope reset: [one-line reason]` after the
+           iteration header. The displayed header must follow step 2 (### Iteration N
+           or ### Iteration 1 (reopened) when this run is a reopen); reset only
+           restores narrowing tier, not a fake lower N.
+        5. Determine narrowing tier from N (after any scope reset, tier is 1–2
+           for that run; reopened already forced tier 1–2 in step 2):
+           - Tier 1–2 (N 1–2, or this run is scope-reset, or reopened): Full review
+             pipeline. All severity levels for new findings.
+           - Tier 3–4 (N 3–4): Only new [Critical] and [Important]. Skip
+             type-design-analyzer and comment-analyzer. Do not introduce new
+             [Suggestion] items. Still list all unresolved [Critical]/[Important]
+             from prior bot comments until fixed or maintainer-waived.
+           - Tier 5+ (N >= 5): New findings at [Critical] only; run
+             silent-failure-hunter; skip other subagents for new findings. Still list
+             all unresolved [Critical] and [Important] from prior bot comments.
+             When zero [Critical] and zero [Important] remain (including carried
+             forward), add ready-for-human-review per step 9. Never use
+             `gh pr review` / GitHub "approve" API — only label + comment.
+        6. Post a single update comment using gh pr comment with:
+           - "### Iteration N" from step 2 (or "### Iteration 1 (reopened)" when applicable)
+           - Optional `Scope reset: …` from step 4
+           - Required Scope check + Diff files (scope) lines from <output_format>
            - [x] Resolved issues (previously identified, now fixed)
-           - [ ] Unresolved issues (still present)
-           - [ ] New issues (found in this update)
-           - New suggestions (if any)
-        5. Reference file:line for every issue.
-        6. Do NOT create a new review summary - only post a progress update.
-        7. Label management (use gh api - gh issue edit is not in the tool
-           allowlist):
-           - Add label if all issues resolved and no new issues:
+           - [ ] Unresolved issues (still present, with original severity)
+           - [ ] New issues (found in this update, only at severities allowed by tier)
+           - New suggestions (only in tier 1–2)
+        7. Reference file:line for every issue.
+        8. Do NOT create a new review summary - only post a progress update.
+        9. Label management (use gh api - gh issue edit is not in the tool
+           allowlist). Always check the CURRENT labels on the PR first
+           (gh pr view $PR_NUMBER --json labels) — do not infer label
+           state from previous review comments:
+           - Add label if zero [Critical] and zero [Important] remain
+             AND the label is not already present:
              gh api -X POST "repos/$REPO/issues/$PR_NUMBER/labels" -f "labels[]=ready-for-human-review"
-           - Remove label if any issues remain:
+           - Remove label if any [Critical] or [Important] remain
+             AND the label is currently present (if absent, skip DELETE to avoid 404):
              gh api -X DELETE "repos/$REPO/issues/$PR_NUMBER/labels/ready-for-human-review"
         ' || '
         This is a new PR.
 
         1. Fetch PR diff: gh pr diff $PR_NUMBER
-        2. Run the review pipeline.
-        3. Post summary comment using gh pr comment with Approach, Issues, and
-           Suggestions sections.
-        4. Reference file:line for every issue.
-        5. Label management (use gh api - gh issue edit is not in the tool
-           allowlist):
-           - Add label if no issues found:
+        2. Run the full review pipeline.
+        3. Post summary comment using gh pr comment with Approach, Issues
+           (grouped by severity), and Suggestions sections.
+        4. Mark as "### Iteration 1" in the comment header.
+        5. Include required Scope check + "### Diff files (scope):" lines from
+           <output_format>.
+        6. Reference file:line for every finding.
+        7. Label management (use gh api - gh issue edit is not in the tool
+           allowlist). Always check the CURRENT labels first (gh pr view $PR_NUMBER --json labels):
+           - Add label if zero [Critical] and zero [Important] found
+             AND the label is not already present:
              gh api -X POST "repos/$REPO/issues/$PR_NUMBER/labels" -f "labels[]=ready-for-human-review"
-           - Remove label if issues found:
+           - Remove label if any [Critical] or [Important] found
+             AND the label is currently present (if absent, skip DELETE to avoid 404):
              gh api -X DELETE "repos/$REPO/issues/$PR_NUMBER/labels/ready-for-human-review"
         ' }}
         </workflow>
