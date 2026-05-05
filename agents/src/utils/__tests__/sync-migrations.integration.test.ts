@@ -445,6 +445,8 @@ describe('sync-template-files black-box migration harness', () => {
       expect(second.exitCode).toBe(0);
       expectNoStderr(second.stderr);
       expect(treeHash(customerDir)).toBe(beforeSecondRun);
+      expect(second.stdout).not.toContain('sync group blocked');
+      expect(second.stdout).toContain('Already at current version');
     },
   );
 

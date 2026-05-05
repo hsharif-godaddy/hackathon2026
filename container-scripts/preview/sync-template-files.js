@@ -784,9 +784,11 @@ function md5(content) {
   return createHash('md5').update(content).digest('hex');
 }
 
+const ALREADY_CURRENT = 'already_current';
+
 /**
  * Decide for each manifest entry whether we would sync it (without writing).
- * Returns Map<index, boolean>. Also returns { baseContents: Map<index, string> } for use in second pass.
+ * Returns Map<index, boolean | 'already_current'>. Also returns { baseContents: Map<index, string> } for use in second pass.
  */
 function computeWouldSync(baseDir, customerDir) {
   const wouldSync = new Map();
@@ -818,10 +820,17 @@ function computeWouldSync(baseDir, customerDir) {
 
     const customerContent = readFileSync(customerPath, 'utf8');
     const customerHash = md5(customerContent);
-    wouldSync.set(i, known_hashes.includes(customerHash));
+    const baseHash = md5(baseContent);
+    if (customerHash === baseHash) {
+      wouldSync.set(i, ALREADY_CURRENT);
+    } else {
+      wouldSync.set(i, known_hashes.includes(customerHash));
+    }
   }
 
-  // Apply sync groups: only sync a group if every file in the group would be synced
+  // Apply sync groups: only sync a group if every file in the group would be synced.
+  // A group where all files are already at the current version (ALREADY_CURRENT) is also
+  // considered resolved — skip without noise rather than logging as blocked.
   const groupToIndices = new Map();
   for (let i = 0; i < SYNC_MANIFEST.length; i++) {
     const group = SYNC_MANIFEST[i].syncGroup;
@@ -830,10 +839,12 @@ function computeWouldSync(baseDir, customerDir) {
     groupToIndices.get(group).push(i);
   }
   for (const indices of groupToIndices.values()) {
-    const allWouldSync = indices.every((idx) => wouldSync.get(idx));
+    const allWouldSync = indices.every((idx) => wouldSync.get(idx) === true || wouldSync.get(idx) === ALREADY_CURRENT);
     if (!allWouldSync) {
       for (const idx of indices) {
-        wouldSync.set(idx, false);
+        if (wouldSync.get(idx) !== ALREADY_CURRENT) {
+          wouldSync.set(idx, false);
+        }
       }
     }
   }
@@ -903,7 +914,14 @@ function sync(baseDir, customerDir) {
 
     const baseContent = baseContents.get(i);
 
-    if (!wouldSync.get(i)) {
+    const syncState = wouldSync.get(i);
+    if (syncState === ALREADY_CURRENT) {
+      const groupSuffix = syncGroup ? ` (sync group "${syncGroup}")` : '';
+      console.log(`  ✅ Already at current version${groupSuffix}`);
+      skipped++;
+      continue;
+    }
+    if (!syncState) {
       if (existsSync(customerPath)) {
         const customerContent = readFileSync(customerPath, 'utf8');
         const customerHash = md5(customerContent);
