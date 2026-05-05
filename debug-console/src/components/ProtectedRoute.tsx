@@ -23,7 +23,7 @@ export default function ProtectedRoute({
 }: {
     children: React.ReactNode;
 }) {
-    const { isAuthenticated, isLoading, sessionStale, allowed, allowedGroups, user } = useAuth();
+    const { isAuthenticated, isLoading, sessionStale, allowed, user } = useAuth();
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
@@ -49,7 +49,7 @@ export default function ProtectedRoute({
     }
 
     if (!allowed) {
-        return <AccessDenied email={user?.email} allowedGroups={allowedGroups ?? []} />;
+        return <AccessDenied email={user?.email} />;
     }
 
     return (

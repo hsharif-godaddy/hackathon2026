@@ -10,6 +10,7 @@ export const OPS_ADMIN = 'OPS-Airo-Builders-Admin';
 export const DEBUG_CONSOLE_ALLOWED_GROUPS: readonly string[] = [
     'CRM_Skip',
     'Dev-Airo-Builders',
+    'DEV-Airo-Escalations',
     'OPS-Airo-Builders-Admin',
     'C3-ATS',
     'directors-plus',

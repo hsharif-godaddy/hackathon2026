@@ -36,15 +36,12 @@ export class LangfuseMetricsEsspExporterStack extends GDStack {
     super(scope, id, props);
 
     const vpc = ec2.Vpc.fromLookup(this, 'VPC', { vpcId: this.gdTrustedLandingZone.networking.vpcId });
-    const rawSubnets = this.gdTrustedLandingZone.networking.dxAppSubnets?.subnets;
-    if (!rawSubnets?.length) {
-      throw new Error(
-        'dxAppSubnets returned no subnets; cannot deploy Lambda into VPC without at least one subnet'
-      );
-    }
-    const privateSubnets = rawSubnets.map(subnet =>
+    // Mirrors gocaas-spend-lambda-stack.ts. dxAppSubnets can be empty on the
+    // first synth in a runner with no cached CDK context; tolerate that and
+    // let context re-resolution populate it on the next pass.
+    const privateSubnets = this.gdTrustedLandingZone.networking.dxAppSubnets?.subnets?.map(subnet =>
       ec2.Subnet.fromSubnetId(this, `Subnet-${subnet.subnetId}`, subnet.subnetId)
-    );
+    ) || [];
 
     const lambdaSecurityGroup = new ec2.SecurityGroup(this, 'LambdaSecurityGroup', {
       vpc,

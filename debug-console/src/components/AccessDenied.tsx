@@ -4,10 +4,9 @@ import type { CSSProperties } from 'react';
 
 interface AccessDeniedProps {
     email?: string;
-    allowedGroups: string[];
 }
 
-export default function AccessDenied({ email, allowedGroups }: AccessDeniedProps) {
+export default function AccessDenied({ email }: AccessDeniedProps) {
     return (
         <div style={pageStyle}>
             <div style={cardStyle}>
@@ -20,22 +19,9 @@ export default function AccessDenied({ email, allowedGroups }: AccessDeniedProps
                         Signed in as <code style={codeStyle}>{email}</code>
                     </p>
                 )}
-                {allowedGroups.length > 0 && (
-                    <div style={groupsBlockStyle}>
-                        <p style={mutedStyle}>
-                            Membership in any of the following AD groups is required:
-                        </p>
-                        <ul style={listStyle}>
-                            {allowedGroups.map(function renderGroup(group) {
-                                return (
-                                    <li key={group} style={listItemStyle}>
-                                        <code style={codeStyle}>{group}</code>
-                                    </li>
-                                );
-                            })}
-                        </ul>
-                    </div>
-                )}
+                <p style={supportStyle}>
+                    Contact <span style={channelStyle}>#airo-ai-builder-support</span> to request access.
+                </p>
             </div>
         </div>
     );
@@ -79,22 +65,17 @@ const mutedStyle: CSSProperties = {
     fontSize: '0.85rem',
 };
 
-const groupsBlockStyle: CSSProperties = {
-    marginTop: '1.25rem',
-    textAlign: 'left',
+const supportStyle: CSSProperties = {
+    margin: '1.25rem 0 0',
+    color: '#374151',
+    fontSize: '0.9rem',
+    lineHeight: 1.5,
 };
 
-const listStyle: CSSProperties = {
-    margin: '0.5rem 0 0',
-    padding: 0,
-    listStyle: 'none',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0.4rem',
-};
-
-const listItemStyle: CSSProperties = {
-    fontSize: '0.85rem',
+const channelStyle: CSSProperties = {
+    fontFamily: 'ui-monospace, SFMono-Regular, monospace',
+    fontWeight: 600,
+    color: '#1f2937',
 };
 
 const codeStyle: CSSProperties = {
