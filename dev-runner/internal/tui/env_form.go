@@ -82,7 +82,11 @@ func (b *envFormBuilder) fieldFor(f preflight.FormField) huh.Field {
 	if len(f.Options) > 0 {
 		opts := make([]huh.Option[string], len(f.Options))
 		for i, opt := range f.Options {
-			opts[i] = huh.NewOption(opt, opt)
+			label := opt
+			if i < len(f.OptionLabels) && f.OptionLabels[i] != "" {
+				label = f.OptionLabels[i]
+			}
+			opts[i] = huh.NewOption(label, opt)
 		}
 		return huh.NewSelect[string]().
 			Key(f.Key).

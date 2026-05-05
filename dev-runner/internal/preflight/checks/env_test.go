@@ -28,12 +28,83 @@ func TestAgentsEnvCheck_S2SMode_NoAPIKeyRequired(t *testing.T) {
 		"AUTH_TYPE=jwt",
 		"GOCODE_USE_S2S_AUTH=true",
 		"AWS_PROFILE=airobuild-dev-private-sso",
+		`OPENAI_BASE_URL="` + preflight.S2SGoCodeEndpoint + `"`,
+		`ANTHROPIC_BASE_URL="` + preflight.S2SGoCodeEndpoint + `"`,
 	}, "\n"))
 
 	c := &AgentsEnvCheck{}
 	result := c.Run(context.Background(), root)
 	if result.Status != preflight.StatusPass {
 		t.Fatalf("expected Pass, got %v: %s", result.Status, result.Message)
+	}
+}
+
+func TestAgentsEnvCheck_S2SMode_MissingBaseURLs(t *testing.T) {
+	root := t.TempDir()
+	writeAgentsEnv(t, root, strings.Join([]string{
+		"NODE_ENV=development",
+		"AUTH_TYPE=jwt",
+		"GOCODE_USE_S2S_AUTH=true",
+		"AWS_PROFILE=airobuild-dev-private-sso",
+	}, "\n"))
+
+	c := &AgentsEnvCheck{}
+	result := c.Run(context.Background(), root)
+	if result.Status == preflight.StatusPass {
+		t.Fatalf("expected failure when S2S BASE_URL vars missing, got Pass")
+	}
+	if !strings.Contains(result.Message, "OPENAI_BASE_URL") {
+		t.Fatalf("expected message to list missing OPENAI_BASE_URL, got: %s", result.Message)
+	}
+	if !strings.Contains(result.Message, "ANTHROPIC_BASE_URL") {
+		t.Fatalf("expected message to list missing ANTHROPIC_BASE_URL, got: %s", result.Message)
+	}
+}
+
+func TestAgentsEnvCheck_S2SMode_BaseURLMismatch(t *testing.T) {
+	root := t.TempDir()
+	writeAgentsEnv(t, root, strings.Join([]string{
+		"NODE_ENV=development",
+		"AUTH_TYPE=jwt",
+		"GOCODE_USE_S2S_AUTH=true",
+		"AWS_PROFILE=airobuild-dev-private-sso",
+		`OPENAI_BASE_URL="https://caas-gocode-prod.caas-prod.prod.onkatana.net"`,
+		`ANTHROPIC_BASE_URL="` + preflight.S2SGoCodeEndpoint + `"`,
+	}, "\n"))
+
+	c := &AgentsEnvCheck{}
+	result := c.Run(context.Background(), root)
+	if result.Status == preflight.StatusPass {
+		t.Fatalf("expected failure when S2S BASE_URL points at api-key proxy, got Pass")
+	}
+	if !result.FixAvailable {
+		t.Error("expected FixAvailable=true for mismatched s2s BASE_URL")
+	}
+	if !strings.Contains(result.Message, "OPENAI_BASE_URL") {
+		t.Fatalf("expected message to flag mismatched OPENAI_BASE_URL, got: %s", result.Message)
+	}
+	if !strings.Contains(result.Message, preflight.S2SGoCodeEndpoint) {
+		t.Fatalf("expected message to mention expected S2S endpoint, got: %s", result.Message)
+	}
+}
+
+func TestAgentsEnvCheck_APIKeyMode_FullyConfigured_Passes(t *testing.T) {
+	root := t.TempDir()
+	writeAgentsEnv(t, root, strings.Join([]string{
+		"NODE_ENV=development",
+		"AUTH_TYPE=jwt",
+		"AWS_PROFILE=airobuild-dev-private-sso",
+		`OPENAI_API_KEY="sk-test"`,
+		`OPENAI_BASE_URL="https://caas-gocode-prod.caas-prod.prod.onkatana.net"`,
+		`ANTHROPIC_API_KEY="sk-test"`,
+		`ANTHROPIC_BASE_URL="https://caas-gocode-prod.caas-prod.prod.onkatana.net"`,
+	}, "\n"))
+
+	c := &AgentsEnvCheck{}
+	result := c.Run(context.Background(), root)
+	if result.Status != preflight.StatusPass {
+		t.Fatalf("expected Pass for fully-configured api-key env, got %v: %s",
+			result.Status, result.Message)
 	}
 }
 
@@ -62,7 +133,8 @@ func TestAgentsEnvCheck_S2SMode_StaleApiKeyVars(t *testing.T) {
 		"AUTH_TYPE=jwt",
 		"GOCODE_USE_S2S_AUTH=true",
 		"AWS_PROFILE=airobuild-dev-private-sso",
-		`OPENAI_BASE_URL="https://caas-gocode-prod.caas-prod.prod.onkatana.net"`,
+		`OPENAI_BASE_URL="` + preflight.S2SGoCodeEndpoint + `"`,
+		`ANTHROPIC_BASE_URL="` + preflight.S2SGoCodeEndpoint + `"`,
 		`OPENAI_API_KEY="sk-stale"`,
 	}, "\n"))
 
@@ -74,8 +146,8 @@ func TestAgentsEnvCheck_S2SMode_StaleApiKeyVars(t *testing.T) {
 	if !result.FixAvailable {
 		t.Error("expected FixAvailable=true for stale s2s config")
 	}
-	if !strings.Contains(result.Message, "OPENAI_BASE_URL") {
-		t.Fatalf("expected message to list stale OPENAI_BASE_URL, got: %s", result.Message)
+	if !strings.Contains(result.Message, "OPENAI_API_KEY") {
+		t.Fatalf("expected message to list stale OPENAI_API_KEY, got: %s", result.Message)
 	}
 }
 
