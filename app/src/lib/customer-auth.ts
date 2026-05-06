@@ -100,17 +100,26 @@ export async function authenticateCustomer(request: NextRequest, level?: 1 | 2 |
       const mockAccount = getOrCreateAccount(mockShopperId, mockCustomerId);
       logger.info('auth.mock.account.ready', { message: 'Mock account ready for customer auth', accountId: mockAccount.id }, { tags: ['security'] });
 
+      const now = Math.floor(Date.now() / 1000);
+      const mockHeader = Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url');
+      const mockPayload = Buffer.from(JSON.stringify({
+        cid: mockCustomerId,
+        shopperId: mockShopperId,
+        iat: now,
+        exp: now + 3600,
+      })).toString('base64url');
+
       return {
         isAuthenticated: true,
         user: {
           shopperId: mockShopperId,
           customerId: mockCustomerId,
           accountId: mockAccount?.id,
-          exp: Math.floor(Date.now() / 1000) + 3600,
-          iat: Math.floor(Date.now() / 1000),
+          exp: now + 3600,
+          iat: now,
           isE2S: false
         },
-        jwt: 'mock-jwt-token' // Mock JWT for development
+        jwt: `${mockHeader}.${mockPayload}.`
       };
     }
 

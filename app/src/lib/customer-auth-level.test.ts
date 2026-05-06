@@ -1,6 +1,8 @@
 import { NextRequest } from 'next/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { isFeatureEnabled } from '@/lib/features';
+
 const mockAuthenticate = vi.fn();
 const mockExtractToken = vi.fn();
 const mockExtractShopperId = vi.fn();
@@ -376,6 +378,55 @@ describe('withCustomerAuth request context initialization', () => {
 
     const ctx = vi.mocked(RequestContextService.run).mock.calls[0][0];
     expect(ctx.appId).toBe('app-xyz');
+  });
+});
+
+describe('authenticateCustomer mock login', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(isFeatureEnabled.mockLogin).mockReturnValue(true);
+  });
+
+  it('returns isAuthenticated: true with mock user ids', async () => {
+    const { authenticateCustomer } = await import('./customer-auth');
+    const request = new NextRequest('http://localhost/api/test');
+
+    const result = await authenticateCustomer(request);
+
+    expect(result.isAuthenticated).toBe(true);
+    if (!result.isAuthenticated) return;
+    expect(result.user.shopperId).toBe('dev-user-123');
+    expect(result.user.customerId).toBe('dev-user-123');
+  });
+
+  it('returns a spec-compliant alg:none JWT with empty signature segment', async () => {
+    const { authenticateCustomer } = await import('./customer-auth');
+    const request = new NextRequest('http://localhost/api/test');
+
+    const result = await authenticateCustomer(request);
+
+    expect(result.isAuthenticated).toBe(true);
+    if (!result.isAuthenticated) return;
+    expect(result.jwt).toMatch(/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.$/);
+  });
+
+  it('encodes cid, shopperId, iat, and exp in the JWT payload', async () => {
+    const before = Math.floor(Date.now() / 1000);
+    const { authenticateCustomer } = await import('./customer-auth');
+    const request = new NextRequest('http://localhost/api/test');
+
+    const result = await authenticateCustomer(request);
+    const after = Math.floor(Date.now() / 1000);
+
+    expect(result.isAuthenticated).toBe(true);
+    if (!result.isAuthenticated) return;
+    const [, payloadB64] = result.jwt.split('.');
+    const payload = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf-8'));
+    expect(payload.cid).toBe('dev-user-123');
+    expect(payload.shopperId).toBe('dev-user-123');
+    expect(payload.iat).toBeGreaterThanOrEqual(before);
+    expect(payload.iat).toBeLessThanOrEqual(after);
+    expect(payload.exp).toBe(payload.iat + 3600);
   });
 });
 
