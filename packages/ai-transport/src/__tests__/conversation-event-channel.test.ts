@@ -309,12 +309,19 @@ describe('ConversationEventChannel', () => {
       expect(subscriber.events).toHaveLength(1)
     })
 
-    it('cleans up buffer when last subscriber removed', () => {
+    it('retains buffer when last subscriber removed so reconnect can replay', async () => {
       const subscriber1 = new MockSubscriber('sub1')
       const subscriber2 = new MockSubscriber('sub2')
 
       channel.subscribe('conv1', subscriber1)
       channel.subscribe('conv1', subscriber2)
+      await channel.publish('conv1', {
+        conversationId: 'conv1',
+        type: 'complete',
+        content: '',
+        data: { finishReason: 'complete' },
+        agentName: 'test'
+      })
 
       expect(channel.hasConversation('conv1')).toBe(true)
 
@@ -322,7 +329,8 @@ describe('ConversationEventChannel', () => {
       expect(channel.hasConversation('conv1')).toBe(true) // Still has sub2
 
       channel.unsubscribe('conv1', 'sub2')
-      expect(channel.hasConversation('conv1')).toBe(false) // Both removed
+      expect(channel.hasConversation('conv1')).toBe(true)
+      expect(channel.getEventsSince('conv1', -1).map(event => event.type)).toEqual(['complete'])
     })
 
     it('handles unsubscribe for non-existent conversation gracefully', () => {
@@ -455,9 +463,8 @@ describe('ConversationEventChannel', () => {
 
   describe('cleanup', () => {
     it('removes expired conversations with no subscribers', async () => {
-      // Note: In practice, unsubscribe() automatically deletes conversations with no subscribers
-      // So cleanup() is primarily a safety mechanism for orphaned buffers
-      // This test verifies cleanup() behavior if somehow a buffer exists without subscribers
+      // unsubscribe() retains buffers without subscribers so reconnect can
+      // replay missed terminal events; cleanup() removes them after TTL.
 
       const shortTTLChannel = new ConversationEventChannel({
         capacity: 100,
@@ -471,18 +478,33 @@ describe('ConversationEventChannel', () => {
         conversationId: 'conv1',
         type: 'chunk',
         content: 'Test',
-        data: {},
+        data: { messageId: 'msg-cleanup' },
         agentName: 'test'
       })
+      expect(shortTTLChannel.getMetadata('conv1')?.pendingMessageIds).toContain('msg-cleanup')
 
       // Verify conversation exists with subscriber
       expect(shortTTLChannel.hasConversation('conv1')).toBe(true)
 
-      // Unsubscribe - this will auto-delete the conversation
+      // Unsubscribe - this keeps the buffer until cleanup so reconnect can replay
       shortTTLChannel.unsubscribe('conv1', 'sub1')
 
-      // Conversation should already be deleted by unsubscribe
+      // TTL cleanup removes the now-idle retained buffer
+      const removed = shortTTLChannel.cleanup()
+      expect(removed).toBe(1)
       expect(shortTTLChannel.hasConversation('conv1')).toBe(false)
+      expect(shortTTLChannel.getMetadata('conv1')).toBeNull()
+
+      // Reusing the same conversation ID should not expose stale pending IDs.
+      shortTTLChannel.subscribe('conv1', new MockSubscriber('sub2'))
+      await shortTTLChannel.publish('conv1', {
+        conversationId: 'conv1',
+        type: 'chunk',
+        content: 'Next',
+        data: {},
+        agentName: 'test'
+      })
+      expect(shortTTLChannel.getMetadata('conv1')?.pendingMessageIds).toEqual([])
     })
 
     it('preserves active conversations', async () => {
@@ -970,7 +992,7 @@ describe('ConversationEventChannel', () => {
       expect(channel.getActiveConversationCount()).toBe(2)
 
       channel.unsubscribe('conv1', 'sub1')
-      expect(channel.getActiveConversationCount()).toBe(1)
+      expect(channel.getActiveConversationCount()).toBe(2)
     })
   })
 
@@ -985,7 +1007,7 @@ describe('ConversationEventChannel', () => {
 
       channel.unsubscribe('conv1', 'sub1')
 
-      expect(channel.hasConversation('conv1')).toBe(false)
+      expect(channel.hasConversation('conv1')).toBe(true)
     })
   })
 })

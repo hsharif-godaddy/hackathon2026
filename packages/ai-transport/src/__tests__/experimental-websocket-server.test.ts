@@ -1902,9 +1902,10 @@ describe('WebSocketServer - Error Handling', () => {
       // Unsubscribe WebSocket with effective ID (the correct fix)
       eventChannel.unsubscribe(conversationId, `websocket-${effectiveSocketId}`)
 
-      // Verify subscriber was removed (conversation deleted when no subscribers)
+      // Verify subscriber was removed while retaining replay state.
       const state2 = (eventChannel as any).conversations.get(conversationId)
-      expect(state2).toBeUndefined() // Conversation cleaned up when last subscriber removed
+      expect(state2).toBeDefined()
+      expect(state2.subscribers.size).toBe(0)
 
       // Now simulate next message registering a new subscriber
       eventChannel.subscribe(conversationId, new WebSocketSubscriber(mockSocket, isDisconnected))
@@ -2133,9 +2134,10 @@ describe('WebSocketServer - Error Handling', () => {
 
       eventChannel.unsubscribe(conversationId, `websocket-${effectiveForCleanup}`)
 
-      // Verify subscriber was removed
+      // Verify subscriber was removed while retaining the replay buffer.
       const finalState = (eventChannel as any).conversations.get(conversationId)
-      expect(finalState).toBeUndefined()
+      expect(finalState).toBeDefined()
+      expect(finalState.subscribers.size).toBe(0)
 
       testServer.close()
     })
@@ -4074,4 +4076,3 @@ describe('createChunkTimeoutGuard (private factory)', () => {
     }
   )
 })
-

@@ -40,7 +40,8 @@ function createMockDeps() {
       next()
     }),
     getEventChannel: vi.fn().mockReturnValue({
-      getEventsSince: vi.fn().mockReturnValue([])
+      getEventsSince: vi.fn().mockReturnValue([]),
+      getMetadata: vi.fn().mockReturnValue(null),
     }),
     resolveAgent: vi.fn().mockReturnValue('develop'),
     getStateManager: vi.fn().mockReturnValue(null),
@@ -158,6 +159,7 @@ describe('SSE routes', () => {
       ]
       deps.getEventChannel.mockReturnValue({
         getEventsSince: vi.fn().mockReturnValue(mockEvents),
+        getMetadata: vi.fn().mockReturnValue({ pendingMessageIds: ['msg_1'] }),
       })
 
       let capturedData = ''
@@ -179,17 +181,43 @@ describe('SSE routes', () => {
       // (reconnect into a live turn) vs. already finished. No `complete`
       // event in the buffer means streamCompleted: false.
       expect(capturedData).toContain('event: recovery_status')
+      expect(capturedData).toContain('"bufferedCount":2')
+      expect(capturedData).toContain('"bufferedEventCount":2')
       expect(capturedData).toContain('"streamCompleted":false')
       expect(deps.getEventChannel().getEventsSince).toHaveBeenCalledWith('conv_1', 41)
     })
 
-    it('sets recovery_status streamCompleted=true when buffer contains a complete event', async () => {
+    it('sets recovery_status streamCompleted=true when no messages are pending', async () => {
+      const mockEvents = [
+        { id: 'e1', type: 'text_delta', sequence: 42, conversationId: 'conv_1', content: 'done', data: {} },
+      ]
+      deps.getEventChannel.mockReturnValue({
+        getEventsSince: vi.fn().mockReturnValue(mockEvents),
+        getMetadata: vi.fn().mockReturnValue({ pendingMessageIds: [] }),
+      })
+
+      let capturedData = ''
+      await request(app)
+        .get('/api/conversations/app_123/conv_1/stream')
+        .set('Accept', 'text/event-stream')
+        .set('Last-Event-ID', '41')
+        .buffer(false)
+        .parse((res: any, callback: any) => {
+          res.on('data', (chunk: Buffer) => { capturedData += chunk.toString() })
+          setTimeout(() => { res.destroy(); callback(null, capturedData) }, 100)
+        })
+
+      expect(capturedData).toContain('"streamCompleted":true')
+    })
+
+    it('falls back to complete event detection if recovery metadata is unavailable', async () => {
       const mockEvents = [
         { id: 'e1', type: 'text_delta', sequence: 42, conversationId: 'conv_1', content: 'done', data: {} },
         { id: 'e2', type: 'complete', sequence: 43, conversationId: 'conv_1', content: '', data: { finishReason: 'complete' } },
       ]
       deps.getEventChannel.mockReturnValue({
         getEventsSince: vi.fn().mockReturnValue(mockEvents),
+        getMetadata: vi.fn().mockReturnValue(null),
       })
 
       let capturedData = ''
@@ -268,6 +296,7 @@ describe('SSE routes', () => {
         })
 
       expect(capturedData).toContain('event: recovery_status')
+      expect(capturedData).toContain('"bufferedEventCount":0')
       expect(capturedData).toContain('"error":"replay_failed"')
     })
 

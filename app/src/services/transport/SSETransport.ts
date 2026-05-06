@@ -390,6 +390,13 @@ export class SSETransport implements ChatTransport {
   }
 
   private handleTypedEvent(type: string, event: MessageEvent): void {
+    // Native EventSource connection failures also dispatch an "error" event,
+    // but that is not an SSE MessageEvent and has no JSON payload. Let onerror
+    // handle transport faults; this path is only for server-sent events.
+    if (typeof event.data !== 'string') {
+      return
+    }
+
     let data: Record<string, unknown>
     try {
       data = JSON.parse(event.data)

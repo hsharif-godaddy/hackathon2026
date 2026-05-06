@@ -145,11 +145,15 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
       if (eventChannel) {
         try {
           const missedEvents = eventChannel.getEventsSince(conversationId, lastEventId)
-          const streamCompleted = missedEvents.some(e => e.type === 'complete')
+          const metadata = eventChannel.getMetadata(conversationId)
+          const streamCompleted = metadata
+            ? metadata.pendingMessageIds.length === 0
+            : missedEvents.some(e => e.type === 'complete')
 
           writeFormatted('recovery_status', {
             hasBufferedEvents: missedEvents.length > 0,
             bufferedCount: missedEvents.length,
+            bufferedEventCount: missedEvents.length,
             conversationId,
             streamCompleted,
           })
@@ -184,6 +188,7 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
           writeFormatted('recovery_status', {
             hasBufferedEvents: false,
             bufferedCount: 0,
+            bufferedEventCount: 0,
             conversationId,
             streamCompleted: false,
             error: 'replay_failed',

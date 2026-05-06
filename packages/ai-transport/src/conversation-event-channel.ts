@@ -312,7 +312,8 @@ export class ConversationEventChannel {
       // state already cleaned up on abort/handoff), clear all pending for the conversation.
       this.pendingMessages.delete(conversationId)
     } else if (messageId) {
-      // Mark message as pending on streaming events (chunk, tool_*, step_*)
+      // Mark message as pending on streaming events. tool_call/tool_result are
+      // intentionally excluded because this path does not attach messageId to them.
       const streamingTypes = ['chunk', 'tool_start', 'tool_input_delta', 'step_start']
       if (streamingTypes.includes(event.type)) {
         this.addPendingMessage(conversationId, messageId)
@@ -420,8 +421,12 @@ export class ConversationEventChannel {
   }
 
   /**
-   * Unregisters a subscriber from a conversation
-   * Cleans up buffer if this was the last subscriber
+   * Unregisters a subscriber from a conversation.
+   *
+   * The event buffer is intentionally retained until TTL cleanup. A client can
+   * lose the tail of an SSE/WebSocket stream while the server already published
+   * terminal events; retaining the buffer lets reconnect replay those terminal
+   * events instead of reporting an in-progress stream forever.
    *
    * @param conversationId - The conversation to unsubscribe from
    * @param subscriberId - The subscriber ID to remove
@@ -445,11 +450,7 @@ export class ConversationEventChannel {
       }
     }
 
-    // Clean up if no subscribers remain
-    if (state.subscribers.size === 0) {
-      this.conversations.delete(conversationId)
-      this.pendingMessages.delete(conversationId)  // NEW: Clean up pending message tracking
-    }
+    state.lastActivity = new Date()
   }
 
   /**
@@ -545,7 +546,7 @@ export class ConversationEventChannel {
 
       const timeSinceLastActivity = now.getTime() - state.lastActivity.getTime()
 
-      if (timeSinceLastActivity > this.config.ttl) {
+      if (timeSinceLastActivity >= this.config.ttl) {
         conversationsToRemove.push(conversationId)
       }
     }
