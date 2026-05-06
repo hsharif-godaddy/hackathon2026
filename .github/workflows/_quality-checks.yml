@@ -136,7 +136,7 @@ jobs:
 
       - name: Check license compliance
         working-directory: ${{ inputs.working-directory }}
-        run: ../scripts/license-check.sh
+        run: ${{ github.workspace }}/scripts/license-check.sh
         env:
           MATRIX_PACKAGE: ${{ inputs.package-name }}
 

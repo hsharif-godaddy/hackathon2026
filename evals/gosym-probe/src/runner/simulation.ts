@@ -1,0 +1,331 @@
+import type { Scenario, SetupContext } from '../scenarios/types.js';
+import type {
+  AgentClient,
+  AgentEvent,
+} from '../clients/agent-client.js';
+import type { SyntheticUserAgent } from './synthetic-user.js';
+import type { DOMCapture } from '../clients/dom-capture.js';
+import type { Transcript, ToolCall, Turn } from './transcript.js';
+import type { Config } from '../../config/environments/types.js';
+import { TranscriptBuilder } from './transcript.js';
+import { GoalTracker } from './goal-tracker.js';
+import { Agent } from 'undici';
+
+// Scoped TLS bypass for the local preview container's self-signed cert.
+// Using a dedicated Agent keeps the bypass off all other HTTPS requests in
+// this process. Node 22's global fetch forwards the dispatcher to undici.
+// nosemgrep: problem-based-packs.insecure-transport.js-node.bypass-tls-verification.bypass-tls-verification
+const TLS_UNSAFE_AGENT = new Agent({ connect: { rejectUnauthorized: false } });
+
+export class FatalAABError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'FatalAABError';
+  }
+}
+
+export function isFatalError(error: string): boolean {
+  return /\bAAB disconnected\b/.test(error)
+    || /\bunauthorized\b/i.test(error)
+    || /\bS2S token\b/i.test(error);
+}
+
+export interface SimulationOptions {
+  scenario: Scenario;
+  agentClient: AgentClient;
+  syntheticUser: SyntheticUserAgent;
+  domCapture?: DOMCapture;
+  config: Config;
+  maxTurnsOverride?: number;
+}
+
+interface RunState {
+  resolveTurn: ((content: string) => void) | null;
+  rejectTurn: ((error: Error) => void) | null;
+  currentTurnTools: Map<string, ToolCall>;
+  inputDeltas: Map<string, string>;
+  lastStepContent: string;
+  currentAgentId: string | undefined;
+  lastTotalSteps: number | undefined;
+  lastDurationMs: number | undefined;
+}
+
+export class Simulation {
+  constructor(private readonly options: SimulationOptions) {}
+
+  async run(trialIndex: number): Promise<Transcript> {
+    const { scenario, config } = this.options;
+    const builder = new TranscriptBuilder(scenario.name, trialIndex);
+    const tracker = new GoalTracker(scenario.goals);
+    const maxTurns =
+      this.options.maxTurnsOverride
+      ?? scenario.maxTurns
+      ?? config.eval.maxTurns;
+    const history: Turn[] = [];
+
+    const state: RunState = {
+      resolveTurn: null,
+      rejectTurn: null,
+      currentTurnTools: new Map(),
+      inputDeltas: new Map(),
+      lastStepContent: '',
+      currentAgentId: undefined,
+      lastTotalSteps: undefined,
+      lastDurationMs: undefined,
+    };
+
+    this.options.agentClient.onMessage(
+      this.createEventHandler(state, builder, trialIndex),
+    );
+
+    let setupResult: SetupContext | void = undefined;
+    try {
+      setupResult = await this.runSetup(trialIndex);
+      let assistantTurnCount = 0;
+      while (assistantTurnCount < maxTurns) {
+        const activeGoal = tracker.nextGoal();
+        const activeIndex = activeGoal
+          ? scenario.goals.indexOf(activeGoal)
+          : -1;
+
+        const message = await this.options.syntheticUser.nextMessage(
+          history, scenario, tracker,
+        );
+        if (message === null) break;
+
+        if (activeIndex >= 0) {
+          tracker.markRequested(activeIndex);
+        }
+
+        const userTurn: Turn = {
+          role: 'user',
+          content: message,
+          toolCalls: [],
+          timestamp: Date.now(),
+        };
+        builder.addTurn(userTurn);
+        history.push(userTurn);
+
+        let content: string;
+        try {
+          content = await this.sendAndAwaitTurn(
+            state, message, assistantTurnCount,
+          );
+        } catch (err) {
+          if (err instanceof FatalAABError) break;
+          throw err;
+        }
+
+        const assistantTurn: Turn = {
+          role: 'assistant',
+          content,
+          toolCalls: Array.from(
+            state.currentTurnTools.values(),
+          ),
+          timestamp: Date.now(),
+          totalSteps: state.lastTotalSteps,
+          durationMs: state.lastDurationMs,
+        };
+        builder.addTurn(assistantTurn);
+        history.push(assistantTurn);
+
+        assistantTurnCount++;
+      }
+
+      await this.captureSnapshot(trialIndex, setupResult, builder);
+    } finally {
+      try {
+        await scenario.teardown?.(setupResult ?? {});
+      } catch (teardownErr) {
+        const msg = teardownErr instanceof Error
+          ? teardownErr.message
+          : String(teardownErr);
+        builder.addError(
+          `[${scenario.name}] teardown failed (trial ${trialIndex}): ${msg}`,
+        );
+        // nosemgrep: javascript.lang.security.audit.unsafe-formatstring
+        console.error(
+          '[%s] teardown failed (trial %d):',
+          scenario.name, trialIndex, teardownErr,
+        );
+      }
+    }
+
+    return builder.build();
+  }
+
+  private createEventHandler(
+    state: RunState,
+    builder: TranscriptBuilder,
+    trialIndex: number,
+  ): (event: AgentEvent) => void {
+    return (event) => {
+      if (event.type === 'step_start') {
+        state.currentAgentId = event.agentName;
+      } else if (event.type === 'tool_start') {
+        state.currentTurnTools.set(event.tool.id, {
+          id: event.tool.id,
+          name: event.tool.name,
+          input: event.tool.input,
+          startTime: Date.now(),
+          endTime: 0,
+          agentId: state.currentAgentId,
+        });
+      } else if (event.type === 'tool_input_delta') {
+        const prev = state.inputDeltas.get(event.tool.id) ?? '';
+        state.inputDeltas.set(event.tool.id, prev + event.delta);
+      } else if (event.type === 'tool_result') {
+        const accumulated = state.inputDeltas.get(event.tool.id);
+        state.inputDeltas.delete(event.tool.id);
+        const tool = state.currentTurnTools.get(event.tool.id);
+        if (tool) {
+          if (accumulated !== undefined) {
+            try {
+              tool.input = JSON.parse(accumulated) as unknown;
+            } catch {
+              console.warn(
+                `[Trial ${trialIndex}] Malformed tool_input_delta ` +
+                `JSON for tool ${event.tool.id}. ` +
+                `Keeping tool_start input.`,
+              );
+            }
+          }
+          tool.output = event.tool.output;
+          tool.error = event.tool.error;
+          tool.endTime = Date.now();
+        }
+      } else if (event.type === 'error') {
+        if (/429|rate limit/i.test(event.error)) {
+          // Log a sanitized message — do not include event.error
+          // which may contain tokens or other sensitive API
+          // response content.
+          console.warn(
+            `[Trial ${trialIndex}] GoCode rate-limit error. ` +
+            `Lower eval.maxConcurrency to reduce ` +
+            `concurrent requests.`,
+          );
+        }
+        builder.addError(event.error);
+        if (isFatalError(event.error)) {
+          state.rejectTurn?.(
+            new FatalAABError(event.error),
+          );
+        }
+      } else if (event.type === 'step_complete') {
+        state.lastStepContent = event.content;
+      } else if (event.type === 'complete') {
+        let content = event.content || state.lastStepContent;
+        if (!content && event.data?.commitHash) {
+          const hash = event.data.commitHash as string;
+          const agent =
+            (event.data.agentId as string | undefined) ?? 'develop';
+          content =
+            `[Build complete by ${agent} — commit ${hash}]`;
+        }
+        const steps = event.data?.totalSteps as number | undefined;
+        if (Number.isFinite(steps)) {
+          state.lastTotalSteps = steps;
+        }
+        const durStr = event.data?.duration as string | undefined;
+        if (durStr) {
+          const parsed = parseInt(durStr, 10);
+          if (Number.isFinite(parsed)) {
+            state.lastDurationMs = parsed;
+          }
+        }
+        state.resolveTurn?.(content);
+      }
+    };
+  }
+
+  private async runSetup(
+    trialIndex: number,
+  ): Promise<SetupContext | void> {
+    const { scenario, agentClient, domCapture } = this.options;
+    let setupResult: SetupContext | void;
+    try {
+      setupResult = await scenario.setup?.();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new Error(
+        `[${scenario.name}] setup failed on trial ${trialIndex}: ${msg}`,
+      );
+    }
+    agentClient.configure(setupResult ?? {});
+
+    // Pre-warm the preview URL so Vite is already running when the
+    // snapshot fires. Fire-and-forget — errors are intentionally
+    // swallowed since a failed pre-warm is not fatal.
+    if (
+      domCapture &&
+      typeof setupResult?.previewUrl === 'string'
+    ) {
+      const url = setupResult.previewUrl as string;
+      fetch(url, {
+        signal: AbortSignal.timeout(5_000),
+        dispatcher: TLS_UNSAFE_AGENT,
+      } as RequestInit).catch(() => {});
+    }
+
+    return setupResult;
+  }
+
+  private async sendAndAwaitTurn(
+    state: RunState,
+    message: string,
+    turnCount: number,
+  ): Promise<string> {
+    const { agentClient, config } = this.options;
+    state.currentTurnTools.clear();
+    state.inputDeltas.clear();
+    state.lastStepContent = '';
+    state.currentAgentId = undefined;
+    state.lastTotalSteps = undefined;
+    state.lastDurationMs = undefined;
+
+    const turnTimeout = config.eval.turnTimeoutMs;
+    let timer: ReturnType<typeof setTimeout>;
+    const content = await Promise.race([
+      new Promise<string>((resolve, reject) => {
+        state.resolveTurn = resolve;
+        state.rejectTurn = reject;
+        agentClient.send(message);
+      }),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(
+            new Error(
+              `Turn ${turnCount + 1} timed out ` +
+              `after ${turnTimeout}ms`,
+            ),
+          ),
+          turnTimeout,
+        );
+      }),
+    ]).finally(() => clearTimeout(timer!));
+    state.resolveTurn = null;
+    state.rejectTurn = null;
+    return content;
+  }
+
+  private async captureSnapshot(
+    trialIndex: number,
+    setupResult: SetupContext | void,
+    builder: TranscriptBuilder,
+  ): Promise<void> {
+    const { domCapture } = this.options;
+    if (!domCapture) return;
+    try {
+      const snapshot = await domCapture.capture(
+        setupResult ?? {},
+      );
+      builder.addSnapshot(snapshot);
+    } catch (err) {
+      // nosemgrep: javascript.lang.security.audit.unsafe-formatstring
+      console.warn(
+        '[Trial %d] Snapshot skipped:',
+        trialIndex, err,
+      );
+    }
+  }
+}

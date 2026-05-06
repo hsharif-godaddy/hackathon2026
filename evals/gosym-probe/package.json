@@ -1,0 +1,33 @@
+{
+  "name": "gosym-probe",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx --env-file=.env src/cli/main.ts",
+    "eval": "tsx --env-file=.env src/index.ts",
+    "save-baseline": "tsx --env-file=.env src/cli/save-baseline.ts",
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/ config/",
+    "lint:fix": "eslint --fix src/ config/",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "chalk": "^5.6.2",
+    "openai": "catalog:",
+    "playwright": "^1.50.0",
+    "socket.io-client": "catalog:",
+    "undici": "^8.1.0",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@airo/eslint-config": "workspace:*",
+    "@types/node": "catalog:",
+    "eslint": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

@@ -1,0 +1,35 @@
+name: Quality Checks - gosym-probe
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+    paths:
+      - "evals/gosym-probe/**"
+      - "package.json"
+      - "pnpm-workspace.yaml"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/gosym-probe.yml"
+      - ".github/workflows/_quality-checks.yml"
+  push:
+    branches: [main]
+    paths:
+      - "evals/gosym-probe/**"
+      - "package.json"
+      - "pnpm-workspace.yaml"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/gosym-probe.yml"
+      - ".github/workflows/_quality-checks.yml"
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  quality-checks-gosym-probe:
+    uses: ./.github/workflows/_quality-checks.yml
+    with:
+      package-name: gosym-probe
+      pnpm-filter: gosym-probe
+      working-directory: ./evals/gosym-probe
+    secrets: inherit

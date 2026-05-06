@@ -12,6 +12,7 @@ packages:
   - "design-rag"
   - "ts-bridge"
   - "corpus-eval"
+  - "evals/gosym-probe"
   - "!app-templates/**"
 
 catalog:

@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.env
+runs/
+.DS_Store
+.claude/settings.local.json
+.claude/worktrees/
+# baselines/ is intentionally tracked — commit alongside scenario changes

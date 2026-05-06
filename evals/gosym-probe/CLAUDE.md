@@ -1,0 +1,297 @@
+# gosym-probe
+
+Eval harness for the Airo App Builder (AAB) agent. Drives a synthetic
+user (GoCode / foundation LLM) through scripted scenarios against a
+locally running AAB instance, scores results, and compares against
+saved baselines.
+
+---
+
+## Quick Start
+
+**Prerequisites**
+
+- Node.js 20+, pnpm
+- AAB running locally (Socket.IO `:4000`, Next.js UI `:8443`)
+- AWS SSO authenticated: `aws sso login --profile airobuild-dev-private-sso`
+
+**Setup**
+
+```bash
+cp .env.example .env   # fill in OPENAI_BASE_URL and OPENAI_API_KEY
+pnpm install           # run from repo root
+```
+
+**Run**
+
+```bash
+pnpm start             # interactive CLI (recommended)
+pnpm run eval          # headless eval with flags (CI / scripting)
+```
+
+---
+
+## Scripts
+
+| Script          | Command                                        | Description                        |
+| --------------- | ---------------------------------------------- | ---------------------------------- |
+| `start`         | `tsx --env-file=.env src/cli/main.ts`          | Interactive CLI UI                 |
+| `eval`          | `tsx --env-file=.env src/index.ts`             | Headless eval runner               |
+| `save-baseline` | `tsx --env-file=.env src/cli/save-baseline.ts` | Snapshot a run as the new baseline |
+| `test`          | `vitest run`                                   | Run tests once                     |
+| `test:watch`    | `vitest`                                       | Watch mode                         |
+
+### `pnpm run eval` flags
+
+```
+--scenario <name>        Run one scenario by name
+--suite <name>           Filter to scenarios in a named suite
+--env <env>              Override GD_ENV
+--trials <n>             Override per-scenario trial count
+--concurrency <n>        Override max concurrent trials
+--skip-baseline          Skip baseline comparison
+--parallel-suites        Run all scenarios in parallel (1 trial each)
+--graduate <name>        Stability check one scenario before promoting
+--graduate-suite <name>  Stability check all scenarios in a suite
+--stability <level>      Override stability level (low|medium|high)
+```
+
+### `pnpm run save-baseline` usage
+
+```bash
+pnpm run save-baseline <run-id>               # snapshot all scenarios
+pnpm run save-baseline <run-id> --suite <name> # snapshot one suite
+```
+
+---
+
+## Architecture
+
+```
+src/cli/          Interactive CLI (main.ts entrypoint, commands/)
+src/index.ts      Headless CLI entrypoint
+
+src/runner/       SuiteRunner, Simulation, TrialAggregator,
+                  GoalTracker, types
+src/clients/      AABClient (Socket.IO), GocodeClient (OpenAI-compat),
+                  DOMCapture (Playwright)
+src/evaluators/   Evaluator interface + 5 concrete evaluators
+src/scenarios/    Scenario types + registry + concrete scenarios
+                  (prompt-vs-skill/ suite)
+src/baselines/    BaselineStore, RegressionComparator, GraduationRunner
+src/reporters/    Markdown run reporter
+src/store/        EvalStore (run results persistence)
+src/personas/     Persona types (e.g. beginner)
+src/util/         Shared utilities (e.g. timestamp)
+
+config/
+  environments/   Per-env config: local.dev.ts, local.test.ts,
+                  local.prod.ts
+  index.ts        loadConfig() — reads GD_ENV, returns Config
+
+baselines/        Committed baseline snapshots (one JSON per scenario)
+runs/             Run output — gitignored
+```
+
+**Execution flow**
+
+```
+main.ts / index.ts
+  └─ SuiteRunner
+       ├─ Simulation × k trials
+       │    ├─ SyntheticUserAgent  →  GoCode (LLM)
+       │    ├─ AABClient           →  AAB Socket.IO :4000
+       │    └─ DOMCapture          →  AAB Next.js UI :8443
+       ├─ TrialAggregator  →  pass@k / pass^k per evaluator
+       ├─ RegressionComparator  →  current vs baseline
+       └─ MdReporter  →  runs/{runId}/
+```
+
+---
+
+## Coding Conventions
+
+- **TypeScript strict mode** — `strict: true` in `tsconfig.json`. No
+  implicit any, no unsafe assertions.
+- **ESM imports** — use `.js` extensions on all local imports even
+  though source files are `.ts`. The bundler resolves `.ts` at build
+  time; the `.js` extension is required at runtime.
+  ```typescript
+  import { createCompleter } from "./autocomplete.js"; // correct
+  import { createCompleter } from "./autocomplete"; // wrong
+  ```
+- **Test colocation** — unit tests live in `__tests__/` next to their
+  source module (e.g. `src/evaluators/__tests__/jtbd-completion.test.ts`).
+- **TDD** — write tests before implementing. Run `pnpm test` before
+  every commit.
+- **Pure functions for rendering** — all visual output functions in
+  `src/cli/renderer.ts` return strings; callers write to stdout.
+- **No default exports** — named exports only.
+
+---
+
+## Environment Variables
+
+Configured in `.env` (copy from `.env.example`).
+
+| Variable             | Required | Default                     | Description                                       |
+| -------------------- | -------- | --------------------------- | ------------------------------------------------- |
+| `GD_ENV`             | No       | `local.dev`                 | Config environment to load                        |
+| `OPENAI_BASE_URL`    | Yes      | —                           | GoCode endpoint URL                               |
+| `OPENAI_API_KEY`     | Yes      | —                           | GoCode API key                                    |
+| `OPENAI_MODEL`       | No       | —                           | Model for the synthetic user (GoCode)             |
+| `MAX_CONCURRENCY`    | No       | per-env                     | Max concurrent trials; `--concurrency` overrides  |
+| `MAX_TURNS`          | No       | `30`                        | Max turns per simulation; `--max-turns` overrides |
+| `AWS_PROFILE`        | No       | `airobuild-dev-private-sso` | AWS SSO profile                                   |
+| `PROBE_DEBUG_EVENTS` | No       | —                           | Set to `1` to log AAB socket events               |
+
+### AAB-side variables (set in `agents/.env` at repo root, not probe `.env`)
+
+| Variable             | Required | Default | Description                                                                                                                                                                                                         |
+| -------------------- | -------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SOCKET_DIAGNOSTICS` | No       | —       | Set to `true` in AAB to emit `stream.timing.summary`, `stream.chunk.slow_gap`, and `stream.chunk.timeout` as Socket.IO events. Required for `LatencyEvaluator` to capture AAB-side timing (agent init vs LLM TTFC). |
+
+---
+
+## Config Environments
+
+Three environments defined in `config/environments/`:
+
+| `GD_ENV`     | File            | Use                   |
+| ------------ | --------------- | --------------------- |
+| `local.dev`  | `local.dev.ts`  | Default development   |
+| `local.test` | `local.test.ts` | Local test stack      |
+| `local.prod` | `local.prod.ts` | Local prod-like stack |
+
+`loadConfig()` in `config/index.ts` reads `GD_ENV` and returns the
+matching `Config`. Switching environment:
+
+```bash
+GD_ENV=local.test pnpm run eval
+# or edit .env: GD_ENV=local.test
+```
+
+Each config file exports `createConfig(): Config` and sets regression
+thresholds per evaluator:
+
+```typescript
+regression: {
+  thresholds: {
+    'output-quality':    0.15,
+    'prompt-efficiency': 0.20,
+  },
+  defaultThreshold: 0.1,
+}
+```
+
+---
+
+## How to Add a Scenario
+
+1. Create `src/scenarios/<your-scenario-name>.ts`:
+
+```typescript
+import type { Scenario } from "./types.js";
+import type { GocodeClient } from "../clients/gocode-client.js";
+import type { AABCtrlPlaneClient } from "../clients/aab-ctrl-plane-client.js";
+import { beginnerPersona } from "../personas/beginner.js";
+import { JTBDCompletionEvaluator } from "../evaluators/jtbd-completion.js";
+
+export function buildMyScenario(
+  gocode: GocodeClient,
+  ctrlPlane: AABCtrlPlaneClient,
+): Scenario {
+  return {
+    name: "my-scenario",
+    suite: "my-suite", // optional; groups related scenarios
+    category: "capability", // promote to 'regression' after graduating
+    persona: beginnerPersona,
+    goals: [
+      {
+        description: "Agent completed the user task",
+        assertion: "positive",
+      },
+    ],
+    evaluators: [new JTBDCompletionEvaluator(gocode)],
+    trials: 3,
+    // maxTurns?: number  — optional; falls back to config.eval.maxTurns
+    //                       (default 30) when omitted
+  };
+}
+```
+
+2. Register in `src/scenarios/registry.ts`:
+
+```typescript
+import { buildMyScenario } from "./my-scenario.js";
+
+export function createAllScenarios(
+  gocode: GocodeClient,
+  ctrlPlane: AABCtrlPlaneClient,
+): Scenario[] {
+  return [
+    buildLandingPageScenario(gocode, ctrlPlane),
+    buildMyScenario(gocode, ctrlPlane), // add here
+  ];
+}
+```
+
+3. Write tests in `src/scenarios/__tests__/` verifying the scenario
+   shape (goals, evaluator names, trial count).
+
+4. Run `pnpm run eval --scenario my-scenario --trials 1 --skip-baseline`
+   to verify end-to-end.
+
+---
+
+## How to Add an Evaluator
+
+Implement the `Evaluator` interface from `src/evaluators/evaluator.ts`:
+
+```typescript
+import type { EvalResult, Evaluator } from "./evaluator.js";
+import type { DOMSnapshot, Transcript } from "../runner/transcript.js";
+import type { Scenario } from "../scenarios/types.js";
+
+export class MyEvaluator implements Evaluator {
+  readonly name = "my-evaluator";
+  readonly deterministic = true; // false for LLM-based evaluators
+
+  async evaluate(
+    transcript: Transcript,
+    scenario: Scenario,
+    snapshot?: DOMSnapshot,
+  ): Promise<EvalResult> {
+    // scoring logic here
+    return {
+      evaluator: this.name,
+      score: 1.0, // 0.0–1.0
+      verdict: "pass", // 'pass' | 'partial' | 'fail' | 'unknown' | 'observed'
+      reason: "All checks passed",
+    };
+  }
+}
+```
+
+**Key rules:**
+
+- `deterministic: true` — evaluator runs once; score is reused across
+  all trials (e.g. structural checks on DOM or transcript).
+- `deterministic: false` — evaluator runs once per trial (e.g. LLM
+  judge).
+- `score` must be in `[0.0, 1.0]`.
+- Return `verdict: 'unknown'` when inputs are insufficient to judge.
+- Return `verdict: 'observed'` for score-mode evaluators that record a
+  measurement (no pass/fail semantics).
+
+Wire the evaluator into a scenario's `evaluators` array:
+
+```typescript
+evaluators: [
+  new JTBDCompletionEvaluator(gocode),
+  new MyEvaluator(),
+],
+```
+
+Write tests in `src/evaluators/__tests__/` with fixture transcripts
+covering pass, partial, fail, and unknown cases.

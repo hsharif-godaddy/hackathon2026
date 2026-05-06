@@ -53,19 +53,11 @@ KNOWN_EXCEPTIONS=(
   "stackframe"                # Unlicense (public domain, LICENSE file present)
 )
 
-# --- Find workspace root ---
-# CI runs this script from subdirectories (e.g. agents/, app/).
-# pnpm licenses list must run from the workspace root (where pnpm-lock.yaml lives).
-WORKSPACE_ROOT=""
-if [ -f pnpm-lock.yaml ]; then
-  WORKSPACE_ROOT="."
-elif [ -f ../pnpm-lock.yaml ]; then
-  WORKSPACE_ROOT=".."
-fi
-
-# --- Fallback for non-pnpm projects (e.g. v8-template) ---
-if [ -z "$WORKSPACE_ROOT" ]; then
-  echo "🔍 No pnpm lockfile found, using license-checker fallback..."
+# --- Fallback for npm projects (e.g. v8-template) ---
+# If the current directory has a package-lock.json (and no pnpm-lock.yaml),
+# it's an npm project outside the pnpm workspace. Use license-checker directly.
+if [ -f package-lock.json ] && [ ! -f pnpm-lock.yaml ]; then
+  echo "🔍 npm project detected, using license-checker..."
   if ! command -v license-checker &> /dev/null; then
     npm install -g license-checker
   fi
@@ -76,10 +68,27 @@ if [ -z "$WORKSPACE_ROOT" ]; then
   exit $?
 fi
 
+# --- Find workspace root ---
+# Use git to find the repo root (which is the pnpm workspace root in this monorepo).
+WORKSPACE_ROOT=""
+GIT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
+if [ -n "$GIT_ROOT" ] && [ -f "$GIT_ROOT/pnpm-lock.yaml" ]; then
+  WORKSPACE_ROOT="$GIT_ROOT"
+fi
+
+if [ -z "$WORKSPACE_ROOT" ]; then
+  echo "❌ Could not find pnpm workspace root"
+  exit 1
+fi
+
 # --- pnpm path ---
 echo "🔍 Checking licenses..."
 
-LICENSE_JSON=$(pnpm --dir "$WORKSPACE_ROOT" licenses list --json 2>/dev/null)
+LICENSE_JSON=$(pnpm --dir "$WORKSPACE_ROOT" licenses list --json 2>&1) || {
+  echo "❌ pnpm licenses list failed:"
+  echo "$LICENSE_JSON"
+  exit 1
+}
 
 # Build jq arrays
 EXCEPTIONS_JQ=$(printf '%s\n' "${KNOWN_EXCEPTIONS[@]}" | jq -R . | jq -s .)
