@@ -64,6 +64,7 @@ USER node
 
 ENV NODE_ENV=production
 ENV PORT=8443
+ENV NODE_OPTIONS="--max-old-space-size=3072"
 
 EXPOSE 8443
 

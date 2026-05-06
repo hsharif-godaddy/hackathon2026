@@ -12,6 +12,7 @@ export const DEBUG_CONSOLE_ALLOWED_GROUPS: readonly string[] = [
     'Dev-Airo-Builders',
     'DEV-Airo-Escalations',
     'OPS-Airo-Builders-Admin',
+    'SRE-Airo-Builders',
     'C3-ATS',
     'directors-plus',
 ];
