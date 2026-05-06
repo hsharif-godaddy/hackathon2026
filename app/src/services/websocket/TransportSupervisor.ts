@@ -34,6 +34,7 @@ import {
   ServerConfigHandler,
   StepCompleteHandler,
   StepStartHandler,
+  StreamRetryHandler,
   ToolCallHandler,
   ToolInputDeltaHandler,
   ToolResultHandler,
@@ -418,6 +419,7 @@ export class TransportSupervisor extends EventEmitter {
     registry.register(new ToolCallHandler())
     registry.register(new ToolResultHandler())
     registry.register(new StepCompleteHandler())
+    registry.register(new StreamRetryHandler())
     registry.register(new CompleteHandler())
     registry.register(new ErrorHandler())
     registry.register(new ClientActionHandler())

@@ -1,5 +1,6 @@
 import type { ConversationEventChannel, ConversationMessage, PersistenceStreamingEvent, ConversationContext } from '@airo/ai-transport'
 import { StreamPartProcessor, executeAgentLoop } from '@airo/ai-transport'
+import { BudgetExceededError, containsBudgetExceededPattern } from '@airo/ai-common'
 import type { AgentsMessagePersistence } from '../conversation-persistence.js'
 import type { EventStreamRegistry } from './EventStreamRegistry.js'
 import { SSEClientActionService } from './SSEClientActionService.js'
@@ -316,7 +317,17 @@ export class MessageExecutionService {
         })
         streamingEvents.push({ type: 'step_start', data: { step }, timestamp: new Date() })
       },
-      onError: (error) => { throw error },
+      onError: (error) => {
+        const errorMessage = error instanceof Error ? error.message : String(error)
+        if (!BudgetExceededError.isInstance(error) && containsBudgetExceededPattern(errorMessage)) {
+          throw new BudgetExceededError(
+            'Your AI usage budget has been reached.',
+            400,
+            errorMessage
+          )
+        }
+        throw error
+      },
     })
 
     const contextResult = await this.deps.contextManager.loadContextMessages(executionContext)

@@ -101,6 +101,9 @@ export type { PartProcessorCallbacks, PartProcessorState, ToolCallRecord } from 
 // Skill output redaction (shared by WS + SSE transports before emitting tool-result)
 export { redactSkillOutput } from './redact-skill-output.js'
 
+// Non-idempotent tool detection (for mid-stream budget retry decisions)
+export { hasNonIdempotentTools } from './non-idempotent-tools.js'
+
 // Agent Execution Loop
 export { executeAgentLoop, AgentNotFoundError, MAX_HANDOFFS } from './agent-execution-loop.js'
 export type { AgentExecutionLoopCallbacks, AgentExecutionLoopResult, AgentExecutionTermination } from './agent-execution-loop.js'

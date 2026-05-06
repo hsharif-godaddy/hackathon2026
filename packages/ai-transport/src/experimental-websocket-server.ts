@@ -15,7 +15,7 @@ import {
   type TokenUsageSummaryEvent,
 } from '@airo/ai-lib'
 import type { ExecutionStep } from '@airo/ai-lib/budget'
-import { classifyError, BudgetExceededError, isBudgetExceededAPIError, createLogger } from '@airo/ai-common'
+import { classifyError, BudgetExceededError, isBudgetExceededAPIError, containsBudgetExceededPattern, createLogger } from '@airo/ai-common'
 import { isBudgetServiceError, mapBudgetErrorToResponse } from '@airo/shared/budget'
 import { StreamPartProcessor } from './stream-part-processor.js'
 import { redactSkillOutput } from './redact-skill-output.js'
@@ -375,6 +375,21 @@ export interface WebSocketConfig {
     | { refreshRequired: false; payload: Record<string, unknown>; sessionWasFree: boolean; reportId?: string }
     | { refreshRequired: true; sessionWasFree?: boolean }
   >
+
+  /**
+   * Called when a mid-stream budget exceeded error is detected during stream processing.
+   * The callback should attempt grant advancement and return whether to retry or continue.
+   *
+   * @param socketId - The socket ID for the session experiencing the error
+   * @param error - The budget exceeded error
+   * @param executedToolNames - Tool names that have completed execution in this stream
+   * @returns retry: true + newUserId to retry/continue; retry: false to propagate the error
+   */
+  onBudgetExhaustedMidStream?: (
+    socketId: string,
+    error: Error,
+    executedToolNames: string[],
+  ) => Promise<{ retry: boolean; newUserId?: string; hasNonIdempotentTools: boolean }>
 
   /**
    * Wrap the entire message execution pipeline. Called once per chat_message,
@@ -1607,6 +1622,7 @@ export class WebSocketServer {
       guard?.arm()
 
       const pendingPublishes: Promise<unknown>[] = []
+
       const processor = new StreamPartProcessor({
         onTextDelta: (content) => {
           tracker.recordTextChunk()
@@ -1742,7 +1758,8 @@ export class WebSocketServer {
         onStepStart: () => {},
 
         onError: (error) => {
-          // Check if it's AI SDK's native APICallError with budget pattern
+          // Check for budget exceeded: APICallError with budget pattern in responseBody,
+          // or plain Error with budget pattern in message (mid-stream GoCode errors)
           if (isBudgetExceededAPIError(error)) {
             this.logger.error('budget.exceeded', {
               message: error.message,
@@ -1754,10 +1771,21 @@ export class WebSocketServer {
               error.responseBody
             )
           }
+          const errorMessage = error instanceof Error ? error.message : String(error)
+          if (containsBudgetExceededPattern(errorMessage)) {
+            this.logger.error('budget.exceeded.mid_stream', {
+              message: errorMessage,
+            })
+            throw new BudgetExceededError(
+              'Your AI usage budget has been reached.',
+              400,
+              errorMessage
+            )
+          }
 
           // Log and re-throw other errors unchanged
           this.logger.error('stream.error.part', {
-            message: error instanceof Error ? error.message : String(error),
+            message: errorMessage,
             statusCode: APICallError.isInstance(error) ? error.statusCode : undefined
           })
           throw error instanceof Error ? error : new Error(String(error))
@@ -1824,7 +1852,7 @@ export class WebSocketServer {
       // Non-retryable errors (budget exceeded, auth, etc.) should propagate immediately
       const classification = classifyError(error);
       if (!classification.retryable) {
-        // Check if it's a budget error from APICallError
+        // Check for budget exceeded: APICallError with responseBody, or plain Error with pattern in message
         if (isBudgetExceededAPIError(error)) {
           this.logger.error('budget.exceeded.non_retryable', {
             category: classification.category,
@@ -1836,6 +1864,19 @@ export class WebSocketServer {
             'Your AI usage budget has been reached.',
             error.statusCode ?? 400,
             error.responseBody
+          );
+        }
+        const outerErrorMsg = error instanceof Error ? error.message : String(error)
+        if (!BudgetExceededError.isInstance(error) && containsBudgetExceededPattern(outerErrorMsg)) {
+          this.logger.error('budget.exceeded.non_retryable.mid_stream', {
+            category: classification.category,
+            message: outerErrorMsg,
+          });
+
+          throw new BudgetExceededError(
+            'Your AI usage budget has been reached.',
+            400,
+            outerErrorMsg
           );
         }
 
@@ -3640,12 +3681,15 @@ export class WebSocketServer {
     context: Record<string, unknown> | undefined,
     agentName: string,
     startTime: number,
-    shouldComplete: boolean = true
+    shouldComplete: boolean = true,
+    midStreamRetryCount: number = 0,
+    originalUserPrompt?: string
   ): Promise<{ steps: ExecutionStep[] }> {
     let currentStep = 1
 
     // Keep the original user prompt intact - no modification!
-    const originalPrompt = data.message
+    // On retry/continuation, originalUserPrompt carries the true first-call prompt
+    const originalPrompt = originalUserPrompt ?? data.message
 
     // if the last message in messages == originalPrompt, remove it
     if (data.conversationHistory && data.conversationHistory.length > 0) {
@@ -3660,7 +3704,7 @@ export class WebSocketServer {
 
     // Use getConversation to handle socket ID migration during reconnection
     const activeConversation = this.getConversation(socket.id)
-    if (activeConversation && this.config.messagePersistence.startAgentTurn) {
+    if (activeConversation && this.config.messagePersistence.startAgentTurn && midStreamRetryCount === 0) {
       try {
         const messageId = await this.config.messagePersistence.startAgentTurn(
           activeConversation.conversationId,
@@ -4362,13 +4406,12 @@ Please try again with corrected formatting.`
         success: true,
       })
     } catch (postStreamError: unknown) {
-      invocation.end({ error: postStreamError instanceof Error ? postStreamError : String(postStreamError), success: false })
-
       // Check abort signal directly — avoids false positives from analyzeStreamError's
       // broad substring matching (e.g., "Transaction aborted" would misclassify).
       // Uses the signal captured at the top of the try block — immune to
       // cleanupConversation removing the state manager entry during async abort.
       if (abortSignal?.aborted) {
+        invocation.end({ error: postStreamError instanceof Error ? postStreamError : String(postStreamError), success: false })
         this.logger.info('stream.aborted', {
           socketId: socket.id,
           agentName,
@@ -4382,6 +4425,138 @@ Please try again with corrected formatting.`
         // Return any steps captured before abort for cost attribution
         return { steps: executionSteps }
       }
+
+      // Mid-stream budget exceeded during stream processing: attempt grant advancement and retry
+      if (BudgetExceededError.isInstance(postStreamError) && this.config.onBudgetExhaustedMidStream && midStreamRetryCount < 3) {
+        const conv = this.getConversation(socket.id)
+        const executedToolNames = conv?.pendingToolCalls
+          ? Array.from(conv.pendingToolCalls.values())
+              .filter((tc: any) => (tc.status === 'completed' || tc.status === 'running') && typeof tc.name === 'string')
+              .map((tc: any) => tc.name as string)
+          : []
+
+        this.logger.info('budget.mid_stream.attempting_recovery', {
+          socketId: socket.id,
+          agentName,
+          executedToolNames,
+          executedToolCount: executedToolNames.length,
+        })
+
+        const MID_STREAM_CALLBACK_TIMEOUT_MS = 10_000
+        const callbackPromise = this.config.onBudgetExhaustedMidStream(socket.id, postStreamError, executedToolNames)
+        let timeoutHandle: ReturnType<typeof setTimeout>
+        let timedOut = false
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          timeoutHandle = setTimeout(() => { timedOut = true; reject(new Error('onBudgetExhaustedMidStream timed out')) }, MID_STREAM_CALLBACK_TIMEOUT_MS)
+        })
+        let result: { retry: boolean; newUserId?: string; hasNonIdempotentTools: boolean }
+        try {
+          result = await Promise.race([callbackPromise, timeoutPromise])
+          clearTimeout(timeoutHandle!)
+        } catch (callbackErr) {
+          clearTimeout(timeoutHandle!)
+          this.logger.error(timedOut ? 'budget.mid_stream.callback_timeout' : 'budget.mid_stream.callback_error', {
+            socketId: socket.id,
+            agentName,
+            ...(timedOut ? { timeoutMs: MID_STREAM_CALLBACK_TIMEOUT_MS } : { error: callbackErr instanceof Error ? callbackErr.message : String(callbackErr) }),
+          })
+          invocation.end({ error: postStreamError, success: false })
+          throw postStreamError
+        }
+        if (result.retry && result.newUserId) {
+          this.logger.info('budget.mid_stream.recovery_granted', {
+            socketId: socket.id,
+            agentName,
+            newUserId: result.newUserId,
+            hasNonIdempotentTools: result.hasNonIdempotentTools,
+          })
+
+          const metadata = context && typeof (context as any).metadata === 'object' ? (context as any).metadata : null
+          if (!metadata) {
+            this.logger.error('budget.mid_stream.context_missing_metadata', {
+              socketId: socket.id,
+              agentName,
+              hasContext: !!context,
+            })
+            invocation.end({ error: postStreamError, success: false })
+            throw postStreamError
+          }
+          metadata.user = result.newUserId
+
+          if (!result.hasNonIdempotentTools) {
+            // Layer 2: Clean retry (no non-idempotent tools ran)
+            await this.publishToEventChannel(socket.id, 'stream_retry', '', {
+              reason: 'budget_exceeded_grant_advanced',
+              agentName,
+            }, agentName)
+
+            if (conv) {
+              conv.accumulatedContent = ''
+              conv.pendingToolCalls?.clear()
+              conv.streamingEvents = []
+              conv.pendingSegments = []
+            }
+
+            invocation.end({ error: postStreamError, success: false, finishReason: 'budget_retry' })
+
+            try {
+              return await this.streamAgentResponse(socket, agent, data, context, agentName, startTime, shouldComplete, midStreamRetryCount + 1, originalPrompt)
+            } catch (retryError) {
+              this.logger.error('budget.mid_stream.retry_failed', { socketId: socket.id, agentName, midStreamRetryCount, error: retryError instanceof Error ? retryError.message : String(retryError) })
+              throw retryError
+            }
+          } else {
+            // Layer 3: Continuation (non-idempotent tools ran)
+            const partialContent = conv?.accumulatedContent || ''
+            const toolHistory = executedToolNames.length > 0
+              ? `The following tool calls already completed successfully: ${executedToolNames.join(', ')}. Do not re-execute them.`
+              : ''
+            const continuationContext = [
+              `The user's original request: "${originalPrompt}"`,
+              toolHistory,
+              partialContent ? `You were in the middle of responding. Your partial response so far: "${partialContent.slice(-500)}"` : '',
+              'Continue the task from where you left off.',
+            ].filter(Boolean).join('\n\n')
+
+            if (conv) {
+              conv.pendingToolCalls?.clear()
+              conv.streamingEvents = []
+              conv.pendingSegments = []
+            }
+
+            invocation.end({ error: postStreamError, success: false, finishReason: 'budget_continuation' })
+
+            const continuationData: ChatMessage = { ...data, message: continuationContext }
+            try {
+              return await this.streamAgentResponse(socket, agent, continuationData, context, agentName, startTime, shouldComplete, midStreamRetryCount + 1, originalPrompt)
+            } catch (retryError) {
+              this.logger.error('budget.mid_stream.continuation_failed', { socketId: socket.id, agentName, midStreamRetryCount, error: retryError instanceof Error ? retryError.message : String(retryError) })
+              throw retryError
+            }
+          }
+        }
+
+        if (result?.retry && !result.newUserId) {
+          this.logger.error('budget.mid_stream.retry_true_no_userid', {
+            socketId: socket.id,
+            agentName,
+          })
+        }
+
+        this.logger.warn('budget.mid_stream.recovery_failed', {
+          socketId: socket.id,
+          agentName,
+          reason: result?.retry && !result.newUserId ? 'contract_violation_no_userid' : 'grants_exhausted',
+        })
+      } else if (BudgetExceededError.isInstance(postStreamError) && this.config.onBudgetExhaustedMidStream && midStreamRetryCount >= 3) {
+        this.logger.warn('budget.mid_stream.retry_cap_reached', {
+          socketId: socket.id,
+          agentName,
+          midStreamRetryCount,
+        })
+      }
+
+      invocation.end({ error: postStreamError instanceof Error ? postStreamError : String(postStreamError), success: false })
 
       const postErrorInfo = this.analyzeStreamError(postStreamError)
       this.logger.error('stream.post_stream.error', {

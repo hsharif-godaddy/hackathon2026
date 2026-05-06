@@ -339,6 +339,7 @@ export type StreamingEventType =
   | 'server_config'
   | 'client_action'
   | 'budget_update'
+  | 'stream_retry'
   | 'video'
   | 'request_grant_refresh'
 

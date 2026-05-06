@@ -189,6 +189,7 @@ describe('grant-session-manager', function tests() {
       // Second call: should return undefined (not fall back to customerId)
       expect(sessionManager.getCurrentUserId('session-1', 'customer-123')).toBeUndefined()
     })
+
   })
 
   describe('#advanceToNextGrant', function advanceTests() {

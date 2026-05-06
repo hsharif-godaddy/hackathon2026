@@ -37,6 +37,7 @@ export const RECOVERY_CONTROL_MESSAGE_TYPES = [
   'history_message',
   'history_loaded',
   'history_complete',
+  'stream_retry',
 ] as const;
 
 export type RecoveryControlMessageType = typeof RECOVERY_CONTROL_MESSAGE_TYPES[number];
@@ -91,6 +92,7 @@ export interface MessageHandlerActions {
   markMaxStepsReached: () => void
   markUpstreamError: (error: StructuredError) => void
   markBudgetExceeded: () => void
+  clearStreamForRetry: () => void
   finalizeStream: (data?: FinalizeStreamData) => void
   flushToolDeltaBufferImmediate: () => void
   scheduleToolDeltaFlush: () => void

@@ -248,6 +248,7 @@ export interface StreamingConversationState {
   markMaxStepsReached: () => void
   markUpstreamError: (error: StructuredError) => void
   markBudgetExceeded: () => void
+  clearStreamForRetry: () => void
 
   // === APP CONTEXT ACTIONS ===
 
@@ -904,6 +905,28 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
     }
 
     set({ activeStream: updatedStream });
+  },
+
+  clearStreamForRetry: () => {
+    const { activeStream } = get();
+    if (!activeStream) return;
+
+    set({
+      activeStream: {
+        ...activeStream,
+        content: '',
+        segments: [],
+        toolCalls: [],
+        budgetExceeded: false,
+        upstreamError: undefined,
+        error: undefined,
+        errorType: undefined,
+        errorCode: undefined,
+        retryAttempts: undefined,
+        retryReason: undefined,
+        maxStepsReached: false,
+      },
+    });
   },
 
   updateToolInStream: (toolId: string, updates: Partial<ToolCall>) => {

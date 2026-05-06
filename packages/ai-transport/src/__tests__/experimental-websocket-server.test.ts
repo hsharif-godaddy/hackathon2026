@@ -3,6 +3,7 @@ import { Server as HTTPServer } from 'http'
 import { WebSocketServer } from '../experimental-websocket-server.js'
 import { createNoOpPersistence } from '../noop-persistence.js'
 import { ChunkTimeoutGuard } from '../chunk-timeout-guard.js'
+import { BudgetExceededError } from '@airo/ai-common'
 import type { AgentWrapper } from '@airo/ai-lib'
 
 // Mock Socket.IO
@@ -4075,4 +4076,12 @@ describe('createChunkTimeoutGuard (private factory)', () => {
       server.close()
     }
   )
+})
+
+describe('Mid-Stream Budget Exceeded Grant Advancement', () => {
+  it('should correctly identify BudgetExceededError instances across module boundaries', () => {
+    const error = new BudgetExceededError('test', 400, '{}')
+    expect(BudgetExceededError.isInstance(error)).toBe(true)
+    expect(BudgetExceededError.isInstance(new Error('not budget'))).toBe(false)
+  })
 })

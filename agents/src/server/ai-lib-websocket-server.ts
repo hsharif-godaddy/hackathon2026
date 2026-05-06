@@ -10,6 +10,7 @@ import {
 } from '@airo/ai-lib'
 import {
   createWebSocketServer,
+  hasNonIdempotentTools,
   type MessageProvider,
   type ContextProvider,
   type ConversationMessage,
@@ -2014,6 +2015,70 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
 
         // Unified cleanup: memory tracking, APM transaction
         finalizeMessage(socketId, 'complete', { appId, agentId, steps, ...(typeof duration === 'number' && { duration }) });
+      },
+
+      onBudgetExhaustedMidStream: async (socketId: string, _error: Error, executedToolNames: string[]) => {
+        // Mid-stream grant advancement is grants-mode only. BMS sessions use a different
+        // budget enforcement path and don't have grants to advance.
+        const budgetSocket = getSocket(socketId)
+        if (budgetSocket?.handshake?.auth?.agentContext?.budgetServiceEnabled === true) {
+          logger.info('grants.mid_stream.skipped_bms_session', { socketId })
+          return { retry: false, hasNonIdempotentTools: hasNonIdempotentTools(executedToolNames) }
+        }
+
+        const hasNonIdempotent = hasNonIdempotentTools(executedToolNames)
+
+        try {
+          const advanced = grantSessionManager.advanceToNextGrant(socketId)
+          if (advanced) {
+            const newUserId = grantSessionManager.getCurrentUserId(socketId)
+            if (newUserId) {
+              logger.info('grants.mid_stream.advanced', {
+                socketId,
+                newUserId,
+                hasNonIdempotentTools: hasNonIdempotent,
+                executedToolNames,
+              })
+              return { retry: true, newUserId, hasNonIdempotentTools: hasNonIdempotent }
+            }
+            logger.warn('grants.mid_stream.advanced_but_no_userid', {
+              socketId,
+              reason: 'advanceToNextGrant returned true but getCurrentUserId returned null',
+            })
+          }
+
+          // Local advance failed, request refresh from frontend
+          const gotNewGrants = await grantSessionManager.requestGrantRefreshAndWait(socketId, 5000)
+          if (gotNewGrants) {
+            const newUserId = grantSessionManager.getCurrentUserId(socketId)
+            if (newUserId) {
+              logger.info('grants.mid_stream.refresh_advanced', {
+                socketId,
+                newUserId,
+                hasNonIdempotentTools: hasNonIdempotent,
+                executedToolNames,
+              })
+              return { retry: true, newUserId, hasNonIdempotentTools: hasNonIdempotent }
+            }
+            logger.warn('grants.mid_stream.refresh_but_no_userid', {
+              socketId,
+              reason: 'requestGrantRefreshAndWait returned true but getCurrentUserId returned null',
+            })
+          }
+
+          logger.warn('grants.mid_stream.all_exhausted', {
+            socketId,
+            executedToolNames,
+          })
+          return { retry: false, hasNonIdempotentTools: hasNonIdempotent }
+        } catch (err) {
+          logger.error('grants.mid_stream.callback_internal_error', {
+            socketId,
+            error: err instanceof Error ? err.message : String(err),
+            stack: err instanceof Error ? err.stack : undefined,
+          })
+          return { retry: false, hasNonIdempotentTools: hasNonIdempotent }
+        }
       },
 
       onBudgetReport: async (budgetId: string, sessionId: string, socketId: string, originalSocketId: string, steps?: ExecutionStep[], wasUserAborted?: boolean) => {

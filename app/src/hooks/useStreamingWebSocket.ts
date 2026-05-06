@@ -222,6 +222,7 @@ export function useStreamingWebSocket({ enabled = true }: { enabled?: boolean } 
             markMaxStepsReached: state.markMaxStepsReached,
             markUpstreamError: state.markUpstreamError,
             markBudgetExceeded: state.markBudgetExceeded,
+            clearStreamForRetry: state.clearStreamForRetry,
             finalizeStream: state.finalizeStream,
             flushToolDeltaBufferImmediate: () => {
               flushToolDeltaBufferImmediate()
