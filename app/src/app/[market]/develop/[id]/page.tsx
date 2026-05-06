@@ -696,7 +696,8 @@ function DevelopPageContent() {
     imageUrl: string,
     devContext: Record<string, unknown> | undefined,
     imageAlt: string | undefined,
-    imageType: string | undefined
+    imageType: string | undefined,
+    openEditor?: boolean
   ) => {
     if (!appId) return
 
@@ -726,7 +727,7 @@ function DevelopPageContent() {
 
       const result = await response.json()
       if (result.success && result.slotPath) {
-        useMediaSlotDialogStore.getState().navigateToSlot(result.slotPath)
+        useMediaSlotDialogStore.getState().navigateToSlot(result.slotPath, openEditor ? { openEditor: true } : undefined)
         const develop = useDevelopPageStore.getState()
         develop.setActiveChatTab(ChatTab.MEDIAS)
         if (develop.isMobile) {
@@ -1127,9 +1128,9 @@ function DevelopPageContent() {
           sendEditModeMessage(isEditModeEnabled)
           break
         case 'AUTO_IMPORT_MEDIA_SLOT': {
-          const { imageUrl, devContext, imageAlt, imageType } = event.data
+          const { imageUrl, devContext, imageAlt, imageType, openEditor } = event.data
           if (!imageUrl || !appId) break
-          void handleAutoImportMediaSlot(imageUrl, devContext, imageAlt, imageType)
+          void handleAutoImportMediaSlot(imageUrl, devContext, imageAlt, imageType, openEditor)
           break
         }
       }

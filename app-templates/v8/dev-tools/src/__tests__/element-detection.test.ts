@@ -2,7 +2,8 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect } from 'vitest';
-import { isTextEditable, isBodyTextElement, resolveContentKey } from '../utils/element-detection.js';
+import { isTextEditable, isBodyTextElement, resolveContentKey, getMediaSlotPath } from '../utils/element-detection.js';
+
 
 function el(html: string): HTMLElement {
   // nosemgrep: javascript.browser.security.insecure-document-method.insecure-document-method, godaddy.js.jquery.security.frameworks.dom-text-interpreted-as-html
@@ -41,6 +42,32 @@ describe('isTextEditable — data-dev-dynamic guard', () => {
   it('treats content-keyed elements as editable even if they also have dynamic markup around them', () => {
     const element = el('<h1 data-dev-content-key="home.hero.title">Welcome</h1>');
     expect(isTextEditable(element)).toBe(true);
+  });
+});
+
+describe('getMediaSlotPath', () => {
+  it('extracts the slot path from an /airo-assets/images/ URL', () => {
+    expect(getMediaSlotPath('/airo-assets/images/pages/home/hero')).toBe('pages/home/hero');
+  });
+
+  it('strips query string from /airo-assets/images/ URL', () => {
+    expect(getMediaSlotPath('/airo-assets/images/pages/home/hero?v=1')).toBe('pages/home/hero');
+  });
+
+  it('returns null for /assets/ URLs (not a registered media slot path)', () => {
+    expect(getMediaSlotPath('/assets/images/logo.png')).toBeNull();
+  });
+
+  it('returns null for /airo-assets/uploads/ URLs', () => {
+    expect(getMediaSlotPath('/airo-assets/uploads/abc123.jpg')).toBeNull();
+  });
+
+  it('returns null for external Unsplash URLs', () => {
+    expect(getMediaSlotPath('https://images.unsplash.com/photo-123?w=800')).toBeNull();
+  });
+
+  it('returns null for null input', () => {
+    expect(getMediaSlotPath(null)).toBeNull();
   });
 });
 

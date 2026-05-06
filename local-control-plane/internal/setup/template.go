@@ -68,6 +68,12 @@ func (t *TemplateSetup) Provision(appID string, previewPort, publishPort, superv
 		filepath.Join(base, "publish"),
 		gitRepoPath,
 		filepath.Join(assetsPath, "public"),
+		// Pre-create subdirs inside assets/public so Docker Desktop's VirtioFS bind mount
+		// is non-empty at container start — otherwise new files written after startup are
+		// not visible inside the container (/shared-storage/public/assets/*).
+		filepath.Join(assetsPath, "public", "media"),
+		filepath.Join(assetsPath, "public", "images"),
+		filepath.Join(assetsPath, "public", "uploads"),
 		filepath.Join(assetsPath, "private"),
 		filepath.Join(base, "dist"),
 		filepath.Join(base, "alloc", ".ssl"),

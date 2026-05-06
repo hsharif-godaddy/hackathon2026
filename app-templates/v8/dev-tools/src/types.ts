@@ -90,7 +90,8 @@ export interface EditModeDisabledMessage {
 
 /**
  * Message to auto-import an image into airo-media.json as a new slot
- * Sent from dev-tools to parent when "Replace" is clicked on a non-slot image
+ * Sent from dev-tools to parent when "Replace" is clicked on a non-slot image,
+ * or when "Modify" is clicked on a non-slot image (openEditor: true).
  */
 export interface AutoImportMediaSlotMessage {
   type: "AUTO_IMPORT_MEDIA_SLOT";
@@ -102,6 +103,8 @@ export interface AutoImportMediaSlotMessage {
   };
   imageAlt?: string;
   imageType: "img" | "background";
+  /** When true, open the image editor after import instead of just the media slot dialog */
+  openEditor?: boolean;
 }
 
 /**

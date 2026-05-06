@@ -99,8 +99,19 @@ export default function ImageHoverBar({
         type: "OPEN_IMAGE_EDITOR",
         slotName: slotPath,
       });
+    } else {
+      const devContext = extractDevContext(element);
+      const imgEl = element.tagName.toLowerCase() === "img" ? (element as HTMLImageElement) : null;
+      safePostMessage(window.parent, {
+        type: "AUTO_IMPORT_MEDIA_SLOT",
+        imageUrl,
+        devContext,
+        imageType: imgEl ? "img" : "background",
+        imageAlt: imgEl?.alt || "",
+        openEditor: true,
+      });
     }
-  }, [isMediaSlot, slotPath]);
+  }, [element, imageUrl, isMediaSlot, slotPath]);
 
   return (
     <div
@@ -156,37 +167,35 @@ export default function ImageHoverBar({
         {t("devtools_image_replace", "Replace")}
       </button>
 
-      {isMediaSlot && slotPath && (
-        <button
-          type="button"
-          onClick={handleModify}
-          title={t("devtools_image_modify_title", "Modify image")}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "5px",
-            padding: "6px 10px",
-            background: "rgba(255, 255, 255, 0.9)",
-            border: "none",
-            borderRadius: "6px",
-            cursor: "pointer",
-            boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
-            fontSize: "12px",
-            fontWeight: 600,
-            color: "var(--color-text-secondary)",
-            letterSpacing: "-0.01em",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = "rgba(245, 245, 245, 0.95)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = "rgba(255, 255, 255, 0.9)";
-          }}
-        >
-          <Pencil style={{ width: "15px", height: "15px" }} />
-          {t("devtools_image_modify", "Modify")}
-        </button>
-      )}
+      <button
+        type="button"
+        onClick={handleModify}
+        title={t("devtools_image_modify_title", "Modify image")}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "5px",
+          padding: "6px 10px",
+          background: "rgba(255, 255, 255, 0.9)",
+          border: "none",
+          borderRadius: "6px",
+          cursor: "pointer",
+          boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+          fontSize: "12px",
+          fontWeight: 600,
+          color: "var(--color-text-secondary)",
+          letterSpacing: "-0.01em",
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = "rgba(245, 245, 245, 0.95)";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = "rgba(255, 255, 255, 0.9)";
+        }}
+      >
+        <Pencil style={{ width: "15px", height: "15px" }} />
+        {t("devtools_image_modify", "Modify")}
+      </button>
 
       <button
         type="button"

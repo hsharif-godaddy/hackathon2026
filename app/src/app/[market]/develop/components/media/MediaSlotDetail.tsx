@@ -73,6 +73,11 @@ export function MediaSlotDetail({
 }: MediaSlotDetailProps) {
   const t = useTranslations()
 
+  // Stable timestamp captured at mount time. Because MediaSlotDetail unmounts while the
+  // image editor is open and remounts after a save, each post-edit visit gets a new ts,
+  // which cache-busts upload thumbnails that were overwritten in-place.
+  const [cacheBustTs] = useState(() => Date.now())
+
   const { slot, isLoading, error, refetch } = useMediaSlot({
     appId,
     slotName,
@@ -260,7 +265,7 @@ export function MediaSlotDetail({
         .filter(isUploadUrl)
         .map((url) => ({
           url,
-          displayUrl: previewBaseUrl ? `${previewBaseUrl}${url}` : url,
+          displayUrl: previewBaseUrl ? `${previewBaseUrl}${url}?_t=${cacheBustTs}` : url,
           sourceFilename: slot.uploadSources?.[url],
         }))
     : []

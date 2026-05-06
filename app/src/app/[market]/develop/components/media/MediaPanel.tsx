@@ -121,6 +121,12 @@ export default function MediaPanel() {
     setEditorImageUrl(null)
   }, [])
 
+  const handleEditorDone = useCallback(() => {
+    // Bust the thumbnail cache for upload thumbnails that were overwritten in-place.
+    setThumbnailBustKey((k) => k + 1)
+    handleEditorBack()
+  }, [handleEditorBack])
+
   if (!appId) return null
 
   if (activeSlotName && isEditorOpen) {
@@ -139,7 +145,7 @@ export default function MediaPanel() {
             appId={appId}
             slotName={activeSlotName}
             sourceUrl={editorImageUrl}
-            onDone={handleEditorBack}
+            onDone={handleEditorDone}
             onCancel={handleEditorBack}
           />
         </div>

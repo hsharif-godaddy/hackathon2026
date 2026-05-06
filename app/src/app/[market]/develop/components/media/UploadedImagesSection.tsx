@@ -73,6 +73,9 @@ export function UploadedImagesSection({
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Stable timestamp at mount time — busts browser cache for upload thumbnails when the
+  // component remounts after an image editor save (file overwritten in-place, same URL).
+  const [cacheBustTs] = useState(() => Date.now());
 
   // Track whether we've already attempted a refetch after image errors
   // to avoid infinite refetch loops when files are genuinely missing.
@@ -102,14 +105,17 @@ export function UploadedImagesSection({
 
       const data = await response.json();
 
-      // Filter to only image files and compute full signed URLs
+      // Filter to only image files and compute full signed URLs.
+      // Append the mount-time cache-bust param so that thumbnails for files that were
+      // overwritten in-place (same URL, new content) always load fresh.
       const imageFiles = (data.files || [])
         .filter((file: UploadedFile) => file.mimeType?.startsWith("image/"))
-        .map((file: UploadedFile) => ({
-          ...file,
-          // Combine base agent URL with signed URL path for browser access
-          fullSignedUrl: file.signedUrl ? `${baseAgentUrl}${file.signedUrl}` : undefined,
-        }));
+        .map((file: UploadedFile) => {
+          if (!file.signedUrl) return { ...file, fullSignedUrl: undefined }
+          const fullUrl = `${baseAgentUrl}${file.signedUrl}`
+          const sep = fullUrl.includes('?') ? '&' : '?'
+          return { ...file, fullSignedUrl: `${fullUrl}${sep}_t=${cacheBustTs}` }
+        });
 
       setUploads(imageFiles);
       setError(null);

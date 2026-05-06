@@ -170,9 +170,18 @@ export function ImageEditorPanel({ appId, slotName, sourceUrl, onDone, onCancel 
   const { slot, refetch } = useMediaSlot({ appId, slotName })
   const { refetch: refetchManifest } = useMediaManifest({ appId })
 
+  // Capture a stable timestamp at mount time so upload URLs (which may be overwritten
+  // in-place) are always fetched fresh — a new timestamp is assigned each time the
+  // editor opens (remounts), bypassing the browser cache from a previous edit.
+  const [cacheBustTs] = useState(() => Date.now())
+
   const getServerState = useServerPollingStore((state) => state.getServerState)
   const previewBaseUrl = getServerState(appId)?.url || null
-  const imageUrl = getSlotImageUrl(slotName, sourceUrl ?? slot?.currentUrl ?? '', previewBaseUrl)
+  const rawImageUrl = getSlotImageUrl(slotName, sourceUrl ?? slot?.currentUrl ?? '', previewBaseUrl)
+  // Append cache-bust param for upload URLs so an in-place overwrite is always fetched fresh.
+  const imageUrl = rawImageUrl.includes('/airo-assets/uploads/')
+    ? `${rawImageUrl}${rawImageUrl.includes('?') ? '&' : '?'}_t=${cacheBustTs}`
+    : rawImageUrl
 
   // Pre-fetch the image with crossOrigin so the TLS connection to the preview server
   // is established before Filerobot tries to load it. Without this, the first load from

@@ -239,7 +239,7 @@ function isAiroPreviewHostname(hostname: string): boolean {
 function normalizeImageUrl(imageUrl: string): string {
   try {
     const url = new URL(imageUrl);
-    const isLocal = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
+    const isLocal = url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === 'local.gasket.dev-godaddy.com';
     if (isLocal || isAiroPreviewHostname(url.hostname)) {
       return url.pathname;
     }
