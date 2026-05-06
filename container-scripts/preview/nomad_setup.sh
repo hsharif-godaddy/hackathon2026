@@ -96,11 +96,19 @@ if [ -f "$CUSTOMER_APP_DIR/.git/config" ]; then
         log_step "Cleaning stale git lock files..."
         rm -f .git/index.lock .git/refs/heads/*.lock .git/packed-refs.lock
 
+        # Restore working tree from HEAD
+        # reset --hard clears index + working tree, handling more states than checkout .
+        # Not a regression for uncommitted work: git checkout . also discards uncommitted
+        # changes, and handleToolCallComplete commits after every tool call.
+        log_step "Restoring working tree from HEAD..."
+        git reset --hard
+        log_step "Working tree restored"
+
         # Node_modules recovery — only when missing. Honors the customer's package
         # manager via lockfile detection (mirrors detectPackageManager in
-        # agents/src/services/AppRestartService.ts). Uses ci/--frozen-lockfile so the
-        # committed lockfile stays authoritative; any mismatch fails loud (correct
-        # failure mode — surfaces as 503 via dev-supervisor for operator/customer fix).
+        # agents/src/services/AppRestartService.ts). Install invocations match
+        # getInstallCommand(pm, { legacyPeerDeps: true }) (INSTALL_FLAGS in
+        # AppRestartService.ts) — same as zip import / git-pull install paths.
         if [ ! -d "$CUSTOMER_APP_DIR/node_modules" ]; then
             # First-match wins (pnpm > yarn > npm) — matches
             # detectPackageManager in agents/src/services/AppRestartService.ts.
@@ -124,13 +132,13 @@ if [ -f "$CUSTOMER_APP_DIR/.git/config" ]; then
 
             case "$pm" in
                 pnpm)
-                    pnpm install --frozen-lockfile
+                    pnpm install --no-strict-peer-dependencies
                     ;;
                 yarn)
-                    yarn install --frozen-lockfile
+                    yarn install
                     ;;
                 npm)
-                    npm ci --no-fund --no-audit
+                    npm install --include=dev --legacy-peer-deps
                     ;;
             esac
             log_step "Dependencies installed"
