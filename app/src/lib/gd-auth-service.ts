@@ -141,13 +141,13 @@ export class GdAuthService {
       return {
         valid: true,
         payload: {
-          // Spread jwt.payload first, then override with extracted values to prevent field overwrites
-          ...jwt.payload,
           shopperId,
           cid,
           exp: jwt.exp,
           iat: jwt.iat,
-          authType: jwt.auth
+          hbi: jwt.hbi,
+          authType: jwt.auth,
+          per: jwt.per,
         }
       };
     } catch (error: any) {

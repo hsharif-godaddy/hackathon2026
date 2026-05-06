@@ -243,12 +243,20 @@ export class AuthSessionExpiredError extends Error {
   }
 }
 
-const AUTH_PREFLIGHT_TIMEOUT_MS = 5 * 60 * 1000;
+export const AUTH_PREFLIGHT_TIMEOUT_MS = 5 * 60 * 1000;
+export const SSO_TIMEOUT_OVERRIDE_KEY = '__airo_sso_timeout';
 let pendingSsoPromise: Promise<'success' | 'dismiss'> | null = null;
 
 function waitForSsoOutcome(): Promise<'success' | 'dismiss'> {
   return new Promise((resolve, reject) => {
     let unsubscribe = () => {};
+
+    const isDebugEnabled = typeof window !== 'undefined' && localStorage.getItem('__airo_debug') === '1';
+    const raw = isDebugEnabled ? localStorage.getItem(SSO_TIMEOUT_OVERRIDE_KEY) : null;
+    const parsed = raw !== null ? Number(raw) : NaN;
+    const timeoutMs = Number.isFinite(parsed)
+      ? Math.min(Math.max(parsed, 1000), AUTH_PREFLIGHT_TIMEOUT_MS)
+      : AUTH_PREFLIGHT_TIMEOUT_MS;
 
     const timeout = setTimeout(() => {
       unsubscribe();
@@ -257,7 +265,7 @@ function waitForSsoOutcome(): Promise<'success' | 'dismiss'> {
       // no-op, permanently blocking auth-gated flows.
       useAuthUIStore.getState().closeSsoLogin('dismiss');
       reject(new Error('Authentication timed out'));
-    }, AUTH_PREFLIGHT_TIMEOUT_MS);
+    }, timeoutMs);
 
     unsubscribe = useAuthUIStore.subscribe((state, prevState) => {
       if (
@@ -324,8 +332,13 @@ export async function authPreflight(level: 1 | 2 | 3): Promise<Response | null> 
     if (!store.redirectUrl) {
       store.setRedirectUrl(window.location.href);
     }
+    if (store.isSsoLoginOpen) {
+      logger.warn('app-fetch.auth-preflight.modal-already-open', { level, authReason });
+    }
     store.openSsoLogin();
     pendingSsoPromise = waitForSsoOutcome().finally(() => { pendingSsoPromise = null; });
+  } else {
+    logger.info('app-fetch.auth-preflight.joining-pending-sso', { level, authReason });
   }
 
   let outcome: 'success' | 'dismiss';
@@ -340,6 +353,7 @@ export async function authPreflight(level: 1 | 2 | 3): Promise<Response | null> 
   }
 
   if (outcome === 'dismiss') {
+    logger.info('app-fetch.auth-preflight.sso-dismissed', { level });
     throw new AuthDismissedError();
   }
 

@@ -65,6 +65,8 @@ export interface CustomerUser {
   accountId?: string; // May not exist for new customers
   exp?: number;
   iat?: number;
+  hbi?: number;
+  isPersistent?: boolean; // true = persistent session (30-day IAT window), false = non-persistent (12h)
   authType?: AuthType; // Authentication type: basic (normal), e2s (employee impersonation), s2s (shopper delegation)
   isE2S?: boolean; // DEPRECATED: Use authType === 'e2s' instead. Only true for e2s (care), NOT s2s (delegation)
 }
@@ -179,6 +181,8 @@ export async function authenticateCustomer(request: NextRequest, level?: 1 | 2 |
       accountId: account.id,
       exp: result.payload.exp,
       iat: result.payload.iat,
+      hbi: result.payload.hbi,
+      isPersistent: result.payload.per as boolean | undefined,
       authType,
       isE2S: authType === 'e2s' // Only true for e2s (care), NOT s2s (delegation) - s2s uses customer grants
     };
@@ -278,6 +282,11 @@ export function withCustomerAuth<T extends unknown[]>(
           requestContext.customerId = authContext.user.customerId;
           requestContext.shopperId = authContext.user.shopperId;
           if (appIdFromPath) requestContext.appId = appIdFromPath;
+          if (authContext.user.iat !== undefined) requestContext.tokenIat = authContext.user.iat;
+          if (authContext.user.hbi !== undefined) requestContext.tokenHbi = authContext.user.hbi;
+          if (authContext.user.exp !== undefined) requestContext.tokenExp = authContext.user.exp;
+          if (authContext.user.isPersistent !== undefined) requestContext.isPersistent = authContext.user.isPersistent;
+          if (authContext.user.authType) requestContext.authType = authContext.user.authType;
 
           // Set APM labels directly on the transaction object we captured
           // This avoids async context issues that can occur with agent-level APIs

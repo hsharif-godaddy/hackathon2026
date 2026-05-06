@@ -68,10 +68,44 @@ request to `https://sso.test-godaddy.com/login?iframe=true` from a public
 Chrome context that it returns `Access-Control-Allow-Private-Network: true`.
 If it does not, do not remove the gate.
 
+## Debugging SSO locally
+
+A console API is available for reproducing SSO expiry and stuck-modal scenarios
+without waiting for a real session to expire.
+
+**Enable it** (one-time, persists across reloads):
+
+```js
+localStorage.setItem("__airo_debug", "1");
+// then reload — you'll see a help message in the console confirming it's active
+```
+
+**API** (`window.__airo.sso`):
+
+| Command                           | Effect                                                                                                                             |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `__airo.sso.expire()`             | Open SSO modal (level 1 — password re-entry)                                                                                       |
+| `__airo.sso.expire({ level: 3 })` | Open SSO modal with `authReason: HBI` — modal renders `/hbi` (2FA); use `preflight(3)` to exercise the actual auth-check code path |
+| `__airo.sso.expireIn(ms, opts?)`  | Open SSO modal after a delay                                                                                                       |
+| `__airo.sso.succeed()`            | Close modal → success path (⚠ fires analytics events)                                                                             |
+| `__airo.sso.dismiss()`            | Close modal → dismiss path (⚠ fires analytics events; redirects on `/create?initialPrompt=…`)                                     |
+| `__airo.sso.timeout(ms)`          | Override auth preflight wait (1000–300000 ms, persists)                                                                            |
+| `__airo.sso.clearTimeout()`       | Restore default preflight timeout                                                                                                  |
+| `__airo.sso.token()`              | Print decoded token claims (iat, hbi, exp, per, authType) with time deltas                                                         |
+| `__airo.sso.preflight(level?)`    | Run `authPreflight()` directly — tests the pending-SSO locking behaviour                                                           |
+| `__airo.sso.status()`             | Print full token + modal state                                                                                                     |
+
+**Disable**:
+
+```js
+localStorage.removeItem("__airo_debug");
+```
+
 ## Related code
 
 - `app/src/hooks/useSsoSignIn.ts` — the gate
 - `app/src/hooks/useAuth.ts` — `handleSignIn()` full-page redirect
 - `app/src/stores/useAuthUIStore.ts` — `openSsoLogin()` modal state
 - `app/src/components/auth/SsoLogin.tsx` — SSO Deck modal renderer
+- `app/src/lib/sso-debug.ts` — `window.__airo.sso` console API
 - `tests/helpers/auth.ts` — E2E helper that races iframe vs redirect detection

@@ -74,6 +74,11 @@ export interface LogEvent {
   userAgent?: string;
   path?: string;
   method?: string;
+  tokenIat?: number;
+  tokenHbi?: number;
+  tokenExp?: number;
+  isPersistent?: boolean;
+  authType?: string;
 
   // APM correlation fields (Elastic APM format)
   'trace.id'?: string;
@@ -109,6 +114,11 @@ export interface RequestContext {
   userAgent?: string;
   path?: string;
   method?: string;
+  tokenIat?: number;
+  tokenHbi?: number;
+  tokenExp?: number;
+  isPersistent?: boolean;
+  authType?: string;
 }
 
 function sanitizeHeader(value: string | null, maxLength = 300): string | undefined {
@@ -166,6 +176,19 @@ export class RequestContextService {
 export class ContextLogger {
   private static instance: ContextLogger;
   private level: LogLevel = ContextLogger.getDefaultLogLevel();
+  private static clientBaseContext: Record<string, unknown> = {};
+
+  static setClientBaseContext(ctx: Record<string, unknown>): void {
+    ContextLogger.clientBaseContext = { ...ContextLogger.clientBaseContext, ...ctx };
+  }
+
+  static clearClientBaseContext(): void {
+    ContextLogger.clientBaseContext = {};
+  }
+
+  static getClientBaseContext(): Record<string, unknown> {
+    return ContextLogger.clientBaseContext;
+  }
 
   /**
    * Get default log level based on environment
@@ -242,6 +265,10 @@ export class ContextLogger {
       event,
       message: this.formatMessage(event, data),
 
+      // Client-side auth token metadata (iat, hbi, exp, authType) stamped by SsoDebugTools on every
+      // authState change — active in production for structured log correlation, not debug-only.
+      ...(isBrowser() ? ContextLogger.clientBaseContext : {}),
+
       // Include request context if available
       ...(context ? {
         ...(context.customerId ? { customerId: context.customerId } : {}),
@@ -250,6 +277,9 @@ export class ContextLogger {
         ...(context.userAgent ? { userAgent: context.userAgent } : {}),
         ...(context.path ? { path: context.path } : {}),
         ...(context.method ? { method: context.method } : {}),
+        ...(context.tokenIat !== undefined ? { tokenIat: context.tokenIat } : {}),
+        ...(context.tokenHbi !== undefined ? { tokenHbi: context.tokenHbi } : {}),
+        ...(context.authType ? { authType: context.authType } : {}),
       } : {}),
 
       // Include OpenTelemetry trace context for APM log correlation
@@ -389,7 +419,7 @@ export class ContextLogger {
     console.log(`${color}${levelStr}${c.reset} ${event}${displayMsg}`);
 
     if (process.env.LOCAL_LOG_CONTEXT === 'true') {
-      const ctxFields = (['method', 'path', 'customerId', 'shopperId', 'appId', 'userAgent'] as const)
+      const ctxFields = (['method', 'path', 'customerId', 'shopperId', 'appId', 'authType', 'tokenIat', 'tokenHbi', 'userAgent'] as const)
         .filter(k => logOutput[k])
         .map(k => `${c.dim}${k}=${c.reset}${String(logOutput[k]).slice(0, 60)}`);
       if (ctxFields.length > 0) {
@@ -570,5 +600,13 @@ export const logger = {
 
   log(level: LogLevel, event: string, data?: any, options?: LogOptions): void {
     this.instance.log(level, event, data, options);
+  },
+
+  setClientBaseContext(ctx: Record<string, unknown>): void {
+    ContextLogger.setClientBaseContext(ctx);
+  },
+
+  clearClientBaseContext(): void {
+    ContextLogger.clearClientBaseContext();
   }
 };

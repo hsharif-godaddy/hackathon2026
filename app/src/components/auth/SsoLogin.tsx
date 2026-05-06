@@ -378,7 +378,7 @@ export default function SsoLogin() {
             />
           )}
         </div>
-      </>
+</>
     </Modal>
   );
 }

@@ -78,3 +78,20 @@ NEXT_PUBLIC_USE_MOCK_LOGIN=true
 # Optional - already defaults to test-godaddy.com in dev
 NEXT_PUBLIC_SSO_HOST=sso.test-godaddy.com
 ```
+
+## Debugging real SSO (AUTH_TYPE=jwt)
+
+`window.__airo.sso` commands have **no effect** when `AUTH_TYPE=mock` — there is no SSO modal to open. Switch to `AUTH_TYPE=jwt` before using them.
+
+If you need to test real SSO expiry or modal flows without mock auth, use the
+`window.__airo.sso` console API. Enable it once in the browser console:
+
+```js
+localStorage.setItem("__airo_debug", "1");
+// reload — a help message confirms it's active
+```
+
+Then use `__airo.sso.expire()`, `__airo.sso.succeed()`, etc. to drive the modal
+without waiting for a real session to expire. See
+[`docs/sso-login-env-gating.md`](../docs/sso-login-env-gating.md) for the full
+command reference.
