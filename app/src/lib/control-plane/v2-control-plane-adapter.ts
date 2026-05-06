@@ -93,6 +93,12 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
   async createSite(params: CreateSiteParams): Promise<CreateSiteResult> {
     try {
       const client = this.createClient(params.jwt);
+      const explicitDatacenter =
+        typeof params.datacenter === 'string' ? params.datacenter.trim() : '';
+      const resolvedDatacenter =
+        explicitDatacenter.length > 0
+          ? explicitDatacenter
+          : process.env.MGMT_AIRO_DATACENTER || getDatacenterFromMarketId(params.marketId);
       const generatedTitle = this.generateTitle(params.prompt);
       const alwaysNewSubscription = process.env.ALWAYS_NEW_SUBSCRIPTION === 'true';
       const targetSubscriptionId = process.env.AIRO_SUBSCRIPTION_ID;
@@ -156,7 +162,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
             title: generatedTitle,
             airoSubscriptionId: selectedSubscription.id
           },
-          datacenter: process.env.MGMT_AIRO_DATACENTER || getDatacenterFromMarketId(params.marketId)
+          datacenter: resolvedDatacenter
         });
 
         const createdAt = new Date();
@@ -186,7 +192,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
       }
 
       const response = await client.signup({
-        datacenter: process.env.MGMT_AIRO_DATACENTER || getDatacenterFromMarketId(params.marketId),
+        datacenter: resolvedDatacenter,
         isTrial: true,
         productId: params.productId || process.env.MGMT_AIRO_PRODUCT_ID || AIRO_PRODUCT_IDS.AAB_V1,
         initialPrompt: params.prompt,

@@ -176,6 +176,8 @@ export interface CreateSiteParams {
   jwt: string;
   productId?: string; // V2 only: Product ID to create site under (defaults to "aab-v1")
   marketId?: string; // V2 only: Market ID for datacenter selection (e.g., 'en-US', 'de-DE')
+  /** When set, used for mgmt-airo createApp/signup; otherwise env + marketId mapping */
+  datacenter?: string;
   headers?: Headers; // Request headers for feature flag checks
   itc?: string;
 }

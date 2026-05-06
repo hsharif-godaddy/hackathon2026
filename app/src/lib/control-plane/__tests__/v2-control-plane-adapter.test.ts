@@ -197,6 +197,110 @@ describe('V2ControlPlaneAdapter', () => {
       delete process.env.MGMT_AIRO_DATACENTER;
     });
 
+    it('should prefer explicit datacenter param over MGMT_AIRO_DATACENTER in createApp', async () => {
+      process.env.ALWAYS_NEW_SUBSCRIPTION = 'false';
+      process.env.MGMT_AIRO_DATACENTER = 'p3';
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => [{ id: 'existing-sub-123', status: 'active' }]
+      });
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => [{ systemId: 'sys-456', subscriptionId: 'existing-sub-123' }]
+      });
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          statusJobId: MOCK_JOB_ID,
+          appId: MOCK_APP_ID
+        })
+      });
+
+      await adapter.createSite({
+        accountId: MOCK_ACCOUNT_ID,
+        prompt: MOCK_PROMPT,
+        jwt: MOCK_JWT,
+        datacenter: 'sxb1'
+      });
+
+      const createAppCall = mockFetch.mock.calls.find(([url]) => typeof url === 'string' && url.includes('/apps'));
+      const requestBody = JSON.parse(createAppCall![1].body);
+
+      expect(requestBody.datacenter).toBe('sxb1');
+
+      delete process.env.ALWAYS_NEW_SUBSCRIPTION;
+      delete process.env.MGMT_AIRO_DATACENTER;
+    });
+
+    it('should trim explicit datacenter before createApp', async () => {
+      process.env.ALWAYS_NEW_SUBSCRIPTION = 'false';
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => [{ id: 'existing-sub-123', status: 'active' }]
+      });
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => [{ systemId: 'sys-456', subscriptionId: 'existing-sub-123' }]
+      });
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          statusJobId: MOCK_JOB_ID,
+          appId: MOCK_APP_ID
+        })
+      });
+
+      await adapter.createSite({
+        accountId: MOCK_ACCOUNT_ID,
+        prompt: MOCK_PROMPT,
+        jwt: MOCK_JWT,
+        datacenter: '  sxb1  '
+      });
+
+      const createAppCall = mockFetch.mock.calls.find(([url]) => typeof url === 'string' && url.includes('/apps'));
+      const requestBody = JSON.parse(createAppCall![1].body);
+
+      expect(requestBody.datacenter).toBe('sxb1');
+
+      delete process.env.ALWAYS_NEW_SUBSCRIPTION;
+    });
+
+    it('should prefer explicit datacenter param over MGMT_AIRO_DATACENTER in signup', async () => {
+      process.env.ALWAYS_NEW_SUBSCRIPTION = 'true';
+      process.env.MGMT_AIRO_DATACENTER = 'p3';
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          statusJobId: MOCK_JOB_ID,
+          subscriptionId: 'new-sub-xyz789'
+        })
+      });
+
+      await adapter.createSite({
+        accountId: MOCK_ACCOUNT_ID,
+        prompt: MOCK_PROMPT,
+        jwt: MOCK_JWT,
+        datacenter: 'sxb1'
+      });
+
+      const signupCall = mockFetch.mock.calls.find(
+        ([url]) => typeof url === 'string' && url.includes('/signup')
+      );
+      const requestBody = JSON.parse(signupCall![1].body);
+
+      expect(requestBody.datacenter).toBe('sxb1');
+
+      delete process.env.ALWAYS_NEW_SUBSCRIPTION;
+      delete process.env.MGMT_AIRO_DATACENTER;
+    });
+
     it('should force new subscription when ALWAYS_NEW_SUBSCRIPTION is true', async () => {
       // Set environment variable
       process.env.ALWAYS_NEW_SUBSCRIPTION = 'true';

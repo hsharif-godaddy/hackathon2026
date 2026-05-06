@@ -59,7 +59,9 @@ export const GET = withCustomerAuth(async (request: NextRequest, authContext: Cu
 export const POST = withCustomerAuth(async (request: NextRequest, authContext: CustomerAuthContext) => {
   try {
     const body = await request.json();
-    const { prompt, initialPrompt } = body;
+    const { prompt, initialPrompt, datacenter: rawDatacenter } = body;
+    const validDatacenter =
+      typeof rawDatacenter === 'string' && rawDatacenter.trim().length > 0 ? rawDatacenter.trim() : undefined;
     const { user } = authContext;
 
     // Customer must have an account to create sites
@@ -95,6 +97,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       jwt: authContext.jwt,
       marketId,
       headers: request.headers,
+      ...(validDatacenter && { datacenter: validDatacenter }),
     });
 
     if (!result.success) {

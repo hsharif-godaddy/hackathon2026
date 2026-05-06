@@ -114,6 +114,61 @@ describe('/api/sites/quick-create ITC validation', () => {
   });
 });
 
+describe('/api/sites/quick-create datacenter', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockCreateSite.mockResolvedValue({
+      success: true, siteId: 'app-1', name: 'Test', status: 'active',
+      type: 'job', account_id: 'acc-1',
+    });
+  });
+
+  it('passes datacenter to createSite when provided', async () => {
+    const { POST } = await import('../route');
+    await POST(makeRequest({ initialPrompt: 'test', datacenter: 'sxb1' }));
+
+    expect(mockCreateSite).toHaveBeenCalledWith(
+      expect.objectContaining({ datacenter: 'sxb1' })
+    );
+  });
+
+  it('trims datacenter before createSite', async () => {
+    const { POST } = await import('../route');
+    await POST(makeRequest({ initialPrompt: 'test', datacenter: '  p3  ' }));
+
+    expect(mockCreateSite).toHaveBeenCalledWith(
+      expect.objectContaining({ datacenter: 'p3' })
+    );
+  });
+
+  it('omits datacenter when empty or whitespace-only', async () => {
+    const { POST } = await import('../route');
+    await POST(makeRequest({ initialPrompt: 'test', datacenter: '' }));
+    expect(mockCreateSite).toHaveBeenCalledWith(
+      expect.not.objectContaining({ datacenter: expect.anything() })
+    );
+
+    vi.clearAllMocks();
+    mockCreateSite.mockResolvedValue({
+      success: true, siteId: 'app-1', name: 'Test', status: 'active',
+      type: 'job', account_id: 'acc-1',
+    });
+    await POST(makeRequest({ initialPrompt: 'test', datacenter: '   ' }));
+    expect(mockCreateSite).toHaveBeenCalledWith(
+      expect.not.objectContaining({ datacenter: expect.anything() })
+    );
+  });
+
+  it('omits datacenter when not a string', async () => {
+    const { POST } = await import('../route');
+    await POST(makeRequest({ initialPrompt: 'test', datacenter: 123 }));
+
+    expect(mockCreateSite).toHaveBeenCalledWith(
+      expect.not.objectContaining({ datacenter: expect.anything() })
+    );
+  });
+});
+
 describe('/api/sites/quick-create downstream error propagation', () => {
   beforeEach(() => {
     vi.clearAllMocks();

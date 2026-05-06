@@ -226,5 +226,72 @@ describe('/api/sites', function sitesRouteTests() {
       expect(mockAdapter.getSite).toHaveBeenCalledWith('test-site-123', 'test-jwt-token');
     });
   });
+
+  describe('POST /api/sites', function postSitesTests() {
+    it('passes datacenter to createSite when provided', async function passesDatacenter() {
+      const { getControlPlaneAdapter } = await import('@/lib/control-plane');
+      const { POST } = await import('../route');
+
+      const createSite = vi.fn().mockResolvedValue({
+        success: true,
+        siteId: 'job-1',
+        status: 'creating',
+        created_at: new Date('2025-01-01T00:00:00.000Z')
+      });
+
+      (getControlPlaneAdapter as any).mockReturnValue({
+        listSites: vi.fn(),
+        createSite
+      });
+
+      const request = new NextRequest('http://localhost:3000/api/sites', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ initialPrompt: 'Hello', datacenter: 'sxb1' })
+      });
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(201);
+      expect(createSite).toHaveBeenCalledWith(
+        expect.objectContaining({
+          datacenter: 'sxb1',
+          marketId: 'en-US',
+          prompt: 'Hello',
+          jwt: 'test-jwt-token'
+        })
+      );
+    });
+
+    it('omits datacenter when blank and still creates site', async function omitsBlankDatacenter() {
+      const { getControlPlaneAdapter } = await import('@/lib/control-plane');
+      const { POST } = await import('../route');
+
+      const createSite = vi.fn().mockResolvedValue({
+        success: true,
+        siteId: 'job-1',
+        status: 'creating',
+        created_at: new Date('2025-01-01T00:00:00.000Z')
+      });
+
+      (getControlPlaneAdapter as any).mockReturnValue({
+        listSites: vi.fn(),
+        createSite
+      });
+
+      const request = new NextRequest('http://localhost:3000/api/sites', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ initialPrompt: 'Hello', datacenter: '   ' })
+      });
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(201);
+      expect(createSite).toHaveBeenCalledWith(
+        expect.not.objectContaining({ datacenter: expect.anything() })
+      );
+    });
+  });
 });
 
