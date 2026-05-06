@@ -101,6 +101,7 @@ describe('product-access middleware', () => {
       { method: 'GET', path: '/apps/abc123/git/history' },
       // Publish
       { method: 'POST', path: '/apps/abc123/publish' },
+      { method: 'POST', path: '/apps/abc123/publish/restart' },
       // App lifecycle
       { method: 'POST', path: '/apps/abc123/restart' },
       // Customer logs
@@ -248,6 +249,10 @@ describe('isRouteAllowedForPaaS', () => {
 
   it('should allow publish route', () => {
     expect(isRouteAllowedForPaaS('POST', '/apps/test-app/publish')).toBe(true);
+  });
+
+  it('should allow publish restart route', () => {
+    expect(isRouteAllowedForPaaS('POST', '/apps/test-app/publish/restart')).toBe(true);
   });
 
   it('should allow restart route', () => {

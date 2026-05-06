@@ -386,4 +386,69 @@ router.post('/apps/:id/unpublish', requirePermission('canPublish'), async (req, 
   }
 });
 
+/**
+ * POST /apps/:id/publish/restart
+ *
+ * Gracefully restarts the published app's process via the publish supervisor.
+ * Mirrors the preview restart endpoint (POST /apps/:id/restart) but targets
+ * the publish container.
+ */
+router.post('/apps/:id/publish/restart', requirePermission('canPublish'), async (req, res) => {
+  const { id } = req.params;
+
+  if (!id) {
+    return res.status(400).json({ error: 'App ID is required' });
+  }
+
+  const contextLogger = log.forApp(id);
+  contextLogger.info('route.publish.restart.begin', {});
+
+  try {
+    const publishSocketPath = process.env.AIRO_SUPERVISOR_PUBLISH_SOCKET_PATH;
+    let publishSupervisor: DevSupervisorClient | null = null;
+
+    if (publishSocketPath && existsSync(publishSocketPath)) {
+      publishSupervisor = DevSupervisorClientFactory.createForSocketPath(publishSocketPath, id);
+    } else {
+      const app = appRepository.findById(id);
+      if (!app) {
+        contextLogger.error('route.publish.restart.app-not-found', {});
+        return res.status(404).json({ error: 'App not found' });
+      }
+      if (app.publishSupervisorPath) {
+        publishSupervisor = DevSupervisorClientFactory.createForSocketPath(app.publishSupervisorPath, id);
+      }
+    }
+
+    if (!publishSupervisor) {
+      contextLogger.error('route.publish.restart.supervisor-unavailable', {});
+      return res.status(500).json({
+        error: 'Publish supervisor not available',
+        details: 'Unable to restart - publish supervisor connection not established'
+      });
+    }
+
+    const result = await publishSupervisor.restartProcess({ graceful: true });
+
+    if (!result.success) {
+      const failureMessage =
+        result.error ?? 'supervisor returned success=false with no error message';
+      contextLogger.error('route.publish.restart.supervisor-failure', { error: failureMessage });
+      return res.status(500).json({
+        error: 'Failed to restart published server',
+        details: failureMessage
+      });
+    }
+
+    contextLogger.info('route.publish.restart.success', {});
+    return res.json({ success: true, message: `Published server restarted for app ${id}` });
+  } catch (error) {
+    log.error(contextLogger, 'route.publish.restart.failure', error as Error, {});
+    return res.status(500).json({
+      error: 'Failed to restart published server',
+      details: error instanceof Error ? error.message : String(error)
+    });
+  }
+});
+
 export default router;
