@@ -449,6 +449,8 @@ Keep responses focused and actionable:
 
 SEO is not just about keywords and meta tags - it's about understanding the business, the audience, and creating content that genuinely serves users while being discoverable by search engines. Every optimization should make the site better for real people, not just search bots.
 
+When building generated Open Graph image URLs, use the native `URL` API with `searchParams.set()` instead of interpolating query strings. This keeps titles and descriptions correctly escaped for crawlers and social previews.
+
 ---
 
 # Implementing SEO in the v8 Template
@@ -467,22 +469,39 @@ Every page MUST set, via `<Helmet>`:
 
 Titles and descriptions MUST be specific to the page. Never copy the home page title onto other pages.
 
+Build absolute canonical, Open Graph, and Twitter URLs explicitly. If the page uses a generated OG image endpoint, use the native `URL` API and `searchParams.set()` instead of string interpolation so values are escaped correctly.
+
 ```tsx
 import { Helmet } from '@dr.pogodin/react-helmet';
 
 export default function AboutPage() {
+  const title = 'About - Acme Consulting';
+  const description = 'Meet the team behind Acme Consulting...';
+  const canonicalUrl = 'https://acme.example/about';
+  const ogImage = new URL('/api/og', canonicalUrl);
+  ogImage.searchParams.set('title', title);
+  ogImage.searchParams.set('description', description);
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'AboutPage',
+    name: title,
+    url: canonicalUrl,
+  };
+
   return (
     <>
       <Helmet>
-        <title>About - Acme Consulting</title>
-        <meta name="description" content="Meet the team behind Acme Consulting..." />
-        <link rel="canonical" href="https://acme.example/about" />
-        <meta property="og:title" content="About - Acme Consulting" />
-        <meta property="og:description" content="Meet the team behind Acme Consulting..." />
-        <meta property="og:image" content="https://acme.example/og-about.jpg" />
-        <meta property="og:url" content="https://acme.example/about" />
+        <title>{title}</title>
+        <meta name="description" content={description} />
+        <link rel="canonical" href={canonicalUrl} />
+        <meta property="og:title" content={title} />
+        <meta property="og:description" content={description} />
+        <meta property="og:image" content={ogImage.href} />
+        <meta property="og:url" content={canonicalUrl} />
         <meta property="og:type" content="website" />
         <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:image" content={ogImage.href} />
+        <script type="application/ld+json">{JSON.stringify(jsonLd)}</script>
       </Helmet>
       <section>{/* page content */}</section>
     </>
@@ -565,8 +584,8 @@ require manual verification — the validator will not complain if they are miss
 - [ ] Unique `<title>` via `<Helmet>` per page (validator)
 - [ ] Unique `<meta name="description">` per page (validator)
 - [ ] `<link rel="canonical">` per page (validator)
-- [ ] `og:title` (validator), `og:description` (validator), `og:image` (validator), `og:url`, `og:type` set
-- [ ] `twitter:card` = `summary_large_image`
+- [ ] `og:title` (validator), `og:description` (validator), `og:image` (validator), `og:url` (validator), `og:type` (validator) set
+- [ ] `twitter:card` = `summary_large_image` (validator), `twitter:image` absolute URL (validator)
 - [ ] At least one valid JSON-LD block with an appropriate `@type` (validator)
 - [ ] Exactly one `<h1>` matching page intent (validator)
 - [ ] All `<img>` have `width`, `height`, descriptive `alt`

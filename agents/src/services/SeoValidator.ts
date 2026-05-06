@@ -15,6 +15,7 @@ interface ValidatorLogger {
 interface ValidateOptions {
   timeoutMs?: number;
   logger?: ValidatorLogger;
+  expectNoindex?: boolean;
 }
 
 const DEFAULT_TIMEOUT_MS = 10000;
@@ -30,9 +31,14 @@ type AttrName = keyof typeof ATTR_EXTRACTORS;
 
 const META_BY_ATTR = {
   'name:description': /<meta\s+[^>]*\bname=["']description["'][^>]*>/i,
+  'name:robots': /<meta\s+[^>]*\bname=["']robots["'][^>]*>/i,
+  'name:twitter:card': /<meta\s+[^>]*\bname=["']twitter:card["'][^>]*>/i,
+  'name:twitter:image': /<meta\s+[^>]*\bname=["']twitter:image["'][^>]*>/i,
   'property:og:title': /<meta\s+[^>]*\bproperty=["']og:title["'][^>]*>/i,
   'property:og:description': /<meta\s+[^>]*\bproperty=["']og:description["'][^>]*>/i,
   'property:og:image': /<meta\s+[^>]*\bproperty=["']og:image["'][^>]*>/i,
+  'property:og:type': /<meta\s+[^>]*\bproperty=["']og:type["'][^>]*>/i,
+  'property:og:url': /<meta\s+[^>]*\bproperty=["']og:url["'][^>]*>/i,
 } as const;
 type MetaSelector = keyof typeof META_BY_ATTR;
 
@@ -59,6 +65,24 @@ function checkMeta(html: string, selector: MetaSelector, warningName: string): s
   const content = findMetaContent(html, selector);
   if (content === null) return `missing-${warningName}`;
   if (!content.trim()) return `empty-${warningName}`;
+  return null;
+}
+
+function isAbsoluteHttpUrl(value: string): boolean {
+  if (/\s/.test(value)) return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+function checkUrlMeta(html: string, selector: MetaSelector, warningName: string): string | null {
+  const content = findMetaContent(html, selector);
+  if (content === null) return `missing-${warningName}`;
+  if (!content.trim()) return `empty-${warningName}`;
+  if (!isAbsoluteHttpUrl(content.trim())) return `invalid-${warningName}-url`;
   return null;
 }
 
@@ -102,10 +126,20 @@ function checkCanonical(html: string): string | null {
   if (!m) return 'missing-canonical';
   const href = extractAttr(m[0], 'href');
   if (!href || !href.trim()) return 'empty-canonical';
+  if (!isAbsoluteHttpUrl(href.trim())) return 'invalid-canonical-url';
   return null;
 }
 
-function runChecks(html: string): string[] {
+function checkRobotsNoindex(html: string, expectNoindex: boolean): string | null {
+  const robots = findMetaContent(html, 'name:robots');
+  const robotsTokens = robots?.toLowerCase().split(/[\s,]+/).filter(Boolean) ?? [];
+  const hasNoindex = robotsTokens.includes('noindex') || robotsTokens.includes('none');
+  if (expectNoindex && !hasNoindex) return 'missing-noindex';
+  if (!expectNoindex && hasNoindex) return 'unexpected-noindex';
+  return null;
+}
+
+function runChecks(html: string, options?: Pick<ValidateOptions, 'expectNoindex'>): string[] {
   const warnings: string[] = [];
   const add = (w: string | null) => {
     if (w) warnings.push(w);
@@ -117,8 +151,13 @@ function runChecks(html: string): string[] {
   add(checkJsonLd(html));
   add(checkMeta(html, 'property:og:title', 'og-title'));
   add(checkMeta(html, 'property:og:description', 'og-description'));
-  add(checkMeta(html, 'property:og:image', 'og-image'));
+  add(checkUrlMeta(html, 'property:og:image', 'og-image'));
+  add(checkUrlMeta(html, 'property:og:url', 'og-url'));
+  add(checkMeta(html, 'property:og:type', 'og-type'));
+  add(checkMeta(html, 'name:twitter:card', 'twitter-card'));
+  add(checkUrlMeta(html, 'name:twitter:image', 'twitter-image'));
   add(checkCanonical(html));
+  add(checkRobotsNoindex(html, Boolean(options?.expectNoindex)));
 
   return warnings;
 }
@@ -154,7 +193,7 @@ export async function validatePublishedSeo(
     clearTimeout(timer);
   }
 
-  const warnings = runChecks(html);
+  const warnings = runChecks(html, { expectNoindex: options?.expectNoindex });
   for (const check of warnings) {
     logger?.warn('seo.validation.missing', { check, url });
   }

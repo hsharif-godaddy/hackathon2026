@@ -10,4 +10,4 @@ The v8 template is server-rendered. Every public page must set head tags, struct
 - Semantic HTML and heading hierarchy
 - `src/lib/seo-routes.ts` registry (drives `/sitemap.xml`)
 
-Do not hand-roll head management or sitemap generation - the patterns in the skill match how the template's SSR expects to find them.
+Do not hand-roll head management or sitemap generation - the patterns in the skill match how the template's SSR expects to find them. Use the native `URL` API for generated Open Graph image URLs so query values are escaped correctly.

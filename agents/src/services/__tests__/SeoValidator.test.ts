@@ -16,6 +16,10 @@ const FULL_HTML = `<!doctype html>
 <meta property="og:title" content="My Page">
 <meta property="og:description" content="A good description">
 <meta property="og:image" content="https://example.com/img.png">
+<meta property="og:url" content="https://example.com/">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://example.com/img.png">
 <link rel="canonical" href="https://example.com/">
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"Example"}</script>
 </head>
@@ -170,6 +174,110 @@ describe('validatePublishedSeo', () => {
     expect(result.warnings).toContain('missing-canonical');
   });
 
+  it('warns when canonical is not absolute', async () => {
+    const html = FULL_HTML.replace(
+      /<link\s+[^>]*rel="canonical"[^>]*>/i,
+      '<link rel="canonical" href="/relative">',
+    );
+    mockFetchReturning(htmlResponse(html));
+    const result = await validatePublishedSeo('https://e.com/', { logger });
+    expect(result.warnings).toContain('invalid-canonical-url');
+  });
+
+  it('warns when canonical is protocol-relative', async () => {
+    const html = FULL_HTML.replace(
+      /<link\s+[^>]*rel="canonical"[^>]*>/i,
+      '<link rel="canonical" href="//example.com/path">',
+    );
+    mockFetchReturning(htmlResponse(html));
+    const result = await validatePublishedSeo('https://e.com/', { logger });
+    expect(result.warnings).toContain('invalid-canonical-url');
+  });
+
+  it('warns when og:image contains an unescaped space', async () => {
+    const html = FULL_HTML.replace(
+      /<meta\s+[^>]*property="og:image"[^>]*>/i,
+      '<meta property="og:image" content="https://example.com/og?title=Bad Image">',
+    );
+    mockFetchReturning(htmlResponse(html));
+    const result = await validatePublishedSeo('https://e.com/', { logger });
+    expect(result.warnings).toContain('invalid-og-image-url');
+  });
+
+  it('warns when og:url is relative', async () => {
+    const html = FULL_HTML.replace(
+      /<meta\s+[^>]*property="og:url"[^>]*>/i,
+      '<meta property="og:url" content="/relative">',
+    );
+    mockFetchReturning(htmlResponse(html));
+    const result = await validatePublishedSeo('https://e.com/', { logger });
+    expect(result.warnings).toContain('invalid-og-url-url');
+  });
+
+  it('warns when twitter:image is relative', async () => {
+    const html = FULL_HTML.replace(
+      /<meta\s+[^>]*name="twitter:image"[^>]*>/i,
+      '<meta name="twitter:image" content="/relative.png">',
+    );
+    mockFetchReturning(htmlResponse(html));
+    const result = await validatePublishedSeo('https://e.com/', { logger });
+    expect(result.warnings).toContain('invalid-twitter-image-url');
+  });
+
+  it('warns when a public page unexpectedly contains noindex', async () => {
+    const html = FULL_HTML.replace(
+      '</head>',
+      '<meta name="robots" content="noindex, nofollow"></head>',
+    );
+    mockFetchReturning(htmlResponse(html));
+    const result = await validatePublishedSeo('https://e.com/', { logger });
+    expect(result.warnings).toContain('unexpected-noindex');
+  });
+
+  it('warns when noindex is expected but robots meta is missing', async () => {
+    mockFetchReturning(htmlResponse(FULL_HTML));
+    const result = await validatePublishedSeo('https://e.com/history', {
+      logger,
+      expectNoindex: true,
+    });
+    expect(result.warnings).toContain('missing-noindex');
+  });
+
+  it('warns when noindex is expected but robots meta lacks noindex', async () => {
+    const html = FULL_HTML.replace('</head>', '<meta name="robots" content="nofollow"></head>');
+    mockFetchReturning(htmlResponse(html));
+    const result = await validatePublishedSeo('https://e.com/history', {
+      logger,
+      expectNoindex: true,
+    });
+    expect(result.warnings).toContain('missing-noindex');
+  });
+
+  it('can validate that an internal page is noindex', async () => {
+    const html = FULL_HTML.replace(
+      '</head>',
+      '<meta name="robots" content="noindex nofollow"></head>',
+    );
+    mockFetchReturning(htmlResponse(html));
+    const result = await validatePublishedSeo('https://e.com/history', {
+      logger,
+      expectNoindex: true,
+    });
+    expect(result.warnings).not.toContain('missing-noindex');
+    expect(result.warnings).not.toContain('unexpected-noindex');
+  });
+
+  it('treats robots none as noindex', async () => {
+    const html = FULL_HTML.replace('</head>', '<meta name="robots" content="none"></head>');
+    mockFetchReturning(htmlResponse(html));
+    const result = await validatePublishedSeo('https://e.com/history', {
+      logger,
+      expectNoindex: true,
+    });
+    expect(result.warnings).not.toContain('missing-noindex');
+    expect(result.warnings).not.toContain('unexpected-noindex');
+  });
+
   it('returns fetch-failed warning on network error', async () => {
     mockFetchRejecting(new Error('ECONNREFUSED'));
     const result = await validatePublishedSeo('https://e.com/', { logger });
@@ -205,10 +313,14 @@ describe('validatePublishedSeo', () => {
         'missing-og-title',
         'missing-og-description',
         'missing-og-image',
+        'missing-og-url',
+        'missing-og-type',
+        'missing-twitter-card',
+        'missing-twitter-image',
         'missing-canonical',
       ]),
     );
-    expect(result.warnings.length).toBe(8);
+    expect(result.warnings.length).toBe(12);
   });
 
   it.each([
