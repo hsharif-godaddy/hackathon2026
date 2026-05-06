@@ -59,6 +59,16 @@ interface PendingRefresh {
  * share grant advancement state correctly.
  *
  * Thread Safety: Map operations are atomic in Node.js single-threaded model.
+ *
+ * BILLING MODE INTEGRATION:
+ * When Budget Management Service (BMS) is enabled for a session, grant operations
+ * are bypassed at the call site:
+ * - buildLitellmMetadataFromContext() checks metadata.budgetServiceEnabled
+ * - handleBudgetExceededWithGrantFallback() checks metadata.budgetSessionId
+ * - Frontend's useGrantContext hook is disabled when BMS is enabled
+ *
+ * The grant-session-manager itself remains billing-mode agnostic - it simply
+ * stores/retrieves grants without knowing how they're used for billing.
  */
 export class GrantSessionManager {
   /** Maps socketId → subscriptionId for fast lookup */
@@ -351,7 +361,7 @@ export class GrantSessionManager {
    * Get current grant's llmBudgetUserId for LLM requests
    *
    * @param sessionId - WebSocket session ID (socketId)
-   * @param fallbackCustomerId - Customer ID to use if grants disabled/unavailable
+   * @param fallbackCustomerId - Customer ID to use if grants unavailable
    * @returns userId for LiteLLM, or undefined if all grants exhausted (signals error)
    */
   getCurrentUserId(sessionId: string, fallbackCustomerId?: string): string | undefined {
@@ -412,6 +422,7 @@ export class GrantSessionManager {
 
   /**
    * Advance to next grant after budget exceeded error
+   *
    * @returns true if advanced successfully, false if no more usable grants
    */
   advanceToNextGrant(sessionId: string): boolean {
@@ -530,6 +541,7 @@ export class GrantSessionManager {
 
   /**
    * Check if session grant state is stale (by socketId)
+   *
    * @param maxAgeMs - Maximum age in milliseconds (default: 5 minutes)
    */
   isStale(sessionId: string, maxAgeMs: number = 5 * 60 * 1000): boolean {

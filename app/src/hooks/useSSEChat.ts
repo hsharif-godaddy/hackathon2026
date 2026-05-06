@@ -156,11 +156,8 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
 
   const isConnected = transportState === 'connected' || transportState === 'streaming'
 
-  // Grant context + budget updates run unconditionally when the transport is
-  // enabled — the server decides which events are actually emitted based on
-  // `app-builder-budget-service`. Gating client-side would desync the two
-  // transports (WS runs both) and could drop events if the flag flips
-  // mid-session.
+  // Grant context synchronization with agent
+  // Internally checks BMS flag - disabled when BMS handles cost tracking
   useGrantContext({
     controller: transport,
     subscriptionId,

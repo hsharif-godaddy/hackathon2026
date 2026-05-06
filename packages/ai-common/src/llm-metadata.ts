@@ -11,6 +11,8 @@ export interface LitellmMetadata {
     socketId?: string
     customerId?: string
   }
+  /** Whether BMS is enabled for this request - determines if grant fallback is skipped */
+  budgetServiceEnabled?: boolean
   /** BMS budget ID for GoCode cost reporting (HTTP header, not litellm_metadata body) */
   budgetId?: string
   /** BMS session ID for GoCode cost reporting (HTTP header, not litellm_metadata body) */

@@ -66,6 +66,10 @@ export interface BudgetUpdateSuccess {
   readonly customerRemaining: number
   readonly budgets: readonly BudgetSummary[]
   readonly assignment: CostAssignment
+  /** Full budget items for client-side cache update (avoids BFF round-trip) */
+  readonly items: readonly BudgetItem[]
+  /** Budget ID for adapting items to grants */
+  readonly budgetId: string
 }
 
 export interface BudgetUpdateRefreshRequired {

@@ -1,6 +1,8 @@
 import type { BudgetItem, BudgetResponse } from '@airo/shared/budget'
 import { type CreditGrant,GrantFinalState, GrantType } from '@airo/shared/grants'
 
+import { logger } from '@/lib/request-context'
+
 /**
  * Adapt BMS budget data to CreditGrant[] format for backwards compatibility.
  *
@@ -10,7 +12,14 @@ import { type CreditGrant,GrantFinalState, GrantType } from '@airo/shared/grants
 
 function toNumber(value: string): number {
   const n = parseFloat(value)
-  return Number.isFinite(n) ? n : 0
+  if (!Number.isFinite(n)) {
+    logger.error('budget.adapter.invalid_credit_value', {
+      value,
+      message: 'Invalid credit string could not be parsed - defaulting to 0',
+    })
+    return 0
+  }
+  return n
 }
 
 /**
@@ -120,7 +129,17 @@ export function adaptBudgetToGrants(
   budget: BudgetResponse,
   subscriptionId: string
 ): CreditGrant[] {
-  return budget.items.map((item) =>
-    adaptBudgetItemToGrant(item, subscriptionId, budget.budgetId)
-  )
+  return adaptBudgetItemsToGrants(budget.items, budget.budgetId, subscriptionId)
+}
+
+/**
+ * Adapt BMS budget items to CreditGrant[] format.
+ * Used by WebSocket budget_update handler where only items and budgetId are available.
+ */
+export function adaptBudgetItemsToGrants(
+  items: readonly BudgetItem[],
+  budgetId: string,
+  subscriptionId: string
+): CreditGrant[] {
+  return items.map((item) => adaptBudgetItemToGrant(item, subscriptionId, budgetId))
 }

@@ -81,6 +81,8 @@ export function toBudgetUpdatePayload(
       ),
       ...(godaddyDeduction && { godaddy: godaddyDeduction }),
     },
+    items: budgetResponse.items,
+    budgetId: budgetResponse.budgetId,
   }
 }
 

@@ -315,6 +315,7 @@ export function useStreamingWebSocket({ enabled = true }: { enabled?: boolean } 
   }, [enabled])
 
   // Synchronize grant context with agent via controller interface
+  // Internally checks BMS flag - disabled when BMS handles cost tracking
   useGrantContext({
     controller: controllerRef.current,
     subscriptionId,

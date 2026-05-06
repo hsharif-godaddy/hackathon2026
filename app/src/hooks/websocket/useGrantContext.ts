@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef } from 'react'
 import type { QueryObserverResult } from '@tanstack/react-query'
 
 import { useCreditGrants } from '@/hooks/useCreditGrants'
+import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { logger } from '@/lib/request-context'
 import { useIsActivelyStreaming } from '@/stores/useStreamingConversationStore'
 import type { CreditGrant } from '@/types/credits'
@@ -61,6 +62,9 @@ export function useGrantContext({
   isConnected,
   enabled = true,
 }: UseGrantContextOptions): void {
+  // BMS mode: skip all grant operations - BMS handles cost tracking via x-gocode-budget-* headers
+  const budgetServiceEnabled = useSwitchboard('app-builder-budget-service') ?? false
+  const effectiveEnabled = enabled && !budgetServiceEnabled
   const lastSentHashRef = useRef<string | null>(null)
   const isInitialSendRef = useRef(true)
 
@@ -69,7 +73,7 @@ export function useGrantContext({
     refetch: refetchGrants,
     isLoading: isGrantsLoading,
   } = useCreditGrants({
-    subscriptionId: enabled ? subscriptionId : undefined,
+    subscriptionId: effectiveEnabled ? subscriptionId : undefined,
     syncSpend: true,
   })
 
@@ -134,16 +138,16 @@ export function useGrantContext({
   // Send on connection and data changes
   useEffect(
     function syncOnChange() {
-      if (!enabled) return
+      if (!effectiveEnabled) return
       sendGrantContext()
     },
-    [enabled, sendGrantContext]
+    [effectiveEnabled, sendGrantContext]
   )
 
   // Handle reconnection - reset state (will re-send via isConnected change)
   useEffect(
     function resetOnReconnect() {
-      if (!enabled) return
+      if (!effectiveEnabled) return
       if (isConnected) {
         // Connection just established, reset for initial send
         if (isInitialSendRef.current === false && lastSentHashRef.current !== null) {
@@ -154,13 +158,13 @@ export function useGrantContext({
         }
       }
     },
-    [enabled, isConnected]
+    [effectiveEnabled, isConnected]
   )
 
   // Handle agent refresh requests via controller
   useEffect(
     function handleRefreshRequest() {
-      if (!controller || !enabled) return
+      if (!controller || !effectiveEnabled) return
 
       return controller.onGrantRefreshRequested(function onRefresh() {
         logger.info('websocket.grant_context.refresh_requested')
@@ -181,13 +185,13 @@ export function useGrantContext({
           })
       })
     },
-    [controller, enabled, emitAfterRefetch, refetchGrants]
+    [controller, effectiveEnabled, emitAfterRefetch, refetchGrants]
   )
 
   // Re-send on visibility change (user returns to tab)
   useEffect(
     function handleVisibilityChange() {
-      if (!controller || !isConnected || !enabled) return
+      if (!controller || !isConnected || !effectiveEnabled) return
 
       function onVisibilityChange() {
         if (document.visibilityState === 'visible') {
@@ -214,7 +218,7 @@ export function useGrantContext({
       document.addEventListener('visibilitychange', onVisibilityChange)
       return () => document.removeEventListener('visibilitychange', onVisibilityChange)
     },
-    [controller, enabled, emitAfterRefetch, isConnected, refetchGrants]
+    [controller, effectiveEnabled, emitAfterRefetch, isConnected, refetchGrants]
   )
 
   // Refetch grants when stream completes (credits have been consumed)
@@ -228,7 +232,7 @@ export function useGrantContext({
       const prevIsStreaming = prevIsStreamingRef.current
       prevIsStreamingRef.current = isStreaming
 
-      if (!enabled) return
+      if (!effectiveEnabled) return
 
       // Detect transition from streaming to not streaming (completion)
       if (prevIsStreaming === true && isStreaming === false) {
@@ -272,19 +276,19 @@ export function useGrantContext({
         }
       }
     },
-    [emitAfterRefetch, enabled, isStreaming]
+    [emitAfterRefetch, effectiveEnabled, isStreaming]
   )
 
   // Reset on disconnect
   useEffect(
     function resetOnDisconnect() {
-      if (!enabled) return
+      if (!effectiveEnabled) return
       if (!isConnected) {
         lastSentHashRef.current = null
         isInitialSendRef.current = true
       }
     },
-    [enabled, isConnected]
+    [effectiveEnabled, isConnected]
   )
 
   // Retry fetching grants when list is empty (new account provisioning)
@@ -302,7 +306,7 @@ export function useGrantContext({
         }
       }
 
-      if (!enabled) {
+      if (!effectiveEnabled) {
         clearRetryInterval()
         emptyGrantsRetryStartRef.current = null
         return
@@ -383,6 +387,6 @@ export function useGrantContext({
 
       return clearRetryInterval
     },
-    [enabled, subscriptionId, grants, isGrantsLoading]
+    [effectiveEnabled, subscriptionId, grants, isGrantsLoading]
   )
 }

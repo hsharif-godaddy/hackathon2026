@@ -656,6 +656,145 @@ describe('build-metadata', function tests() {
     })
   })
 
+  describe('BMS mode (budgetServiceEnabled=true)', function bmsModeTests() {
+    it('returns metadata with prefixed subscriptionId when BMS enabled', function bmsWithSubscription() {
+      const context = {
+        socketId: 'bms-session',
+        metadata: {
+          appId: 'app-1',
+          subscriptionId: 'sub-bms-123',
+          customerId: 'customer-123',
+          budgetServiceEnabled: true,
+          bmsBudgetId: 'budget-uuid-1',
+          budgetSessionId: 'session-uuid-1',
+        },
+      }
+
+      const result = buildLitellmMetadataFromContext(context, { source: LlmCallSource.UserChat })
+
+      expect(result).toBeDefined()
+      expect(result?.user).toBe('airo-build:sid:sub-bms-123')
+      expect(result?.budgetId).toBe('budget-uuid-1')
+      expect(result?.budgetSessionId).toBe('session-uuid-1')
+    })
+
+    it('does not double-prefix already prefixed subscriptionId in BMS mode', function bmsNoDoublePrefix() {
+      const context = {
+        metadata: {
+          appId: 'app-1',
+          subscriptionId: 'airo-build:sid:already-prefixed',
+          budgetServiceEnabled: true,
+        },
+      }
+
+      const result = buildLitellmMetadataFromContext(context, { source: LlmCallSource.UserChat })
+
+      expect(result?.user).toBe('airo-build:sid:already-prefixed')
+    })
+
+    it('falls back to customerId when no subscriptionId in BMS mode', function bmsFallbackCustomerId() {
+      const context = {
+        metadata: {
+          appId: 'app-1',
+          customerId: 'customer-bms-fallback',
+          budgetServiceEnabled: true,
+        },
+      }
+
+      const result = buildLitellmMetadataFromContext(context, { source: LlmCallSource.UserChat })
+
+      expect(result).toBeDefined()
+      expect(result?.user).toBe('customer-bms-fallback')
+    })
+
+    it('returns null when BMS enabled but no subscriptionId or customerId', function bmsNoIdentifier() {
+      const context = {
+        metadata: {
+          appId: 'app-1',
+          budgetServiceEnabled: true,
+        },
+      }
+
+      const result = buildLitellmMetadataFromContext(context, { source: LlmCallSource.UserChat })
+
+      expect(result).toBe(null)
+    })
+
+    it('skips grant lookup entirely in BMS mode even when grants available', function bmsSkipsGrants() {
+      // Set up grants that would normally be used
+      grantSessionManager.setGrants('bms-skip-session', [createGrant()])
+
+      const context = {
+        socketId: 'bms-skip-session',
+        metadata: {
+          appId: 'app-1',
+          subscriptionId: 'sub-bms',
+          customerId: 'customer-123',
+          budgetServiceEnabled: true,
+        },
+      }
+
+      const result = buildLitellmMetadataFromContext(context, { source: LlmCallSource.UserChat })
+
+      // Should use subscriptionId, not grant's llmBudgetUserId
+      expect(result?.user).toBe('airo-build:sid:sub-bms')
+    })
+
+    it('does not prefix BudgetOverride sessions in BMS mode', function bmsOverrideNotPrefixed() {
+      const context = {
+        socketId: 'bms-care-session',
+        metadata: {
+          appId: 'app-1',
+          subscriptionId: BudgetOverride.CareAgent,
+          customerId: 'customer-123',
+          budgetServiceEnabled: true,
+          bmsBudgetId: 'budget-uuid-1',
+          budgetSessionId: 'session-uuid-1',
+        },
+      }
+
+      const result = buildLitellmMetadataFromContext(context, { source: LlmCallSource.UserChat })
+
+      // Should NOT prefix CareAgent - override sessions use raw value
+      expect(result?.user).toBe(BudgetOverride.CareAgent)
+      // Should still include budget fields for cost tracking
+      expect(result?.budgetId).toBe('budget-uuid-1')
+      expect(result?.budgetSessionId).toBe('session-uuid-1')
+    })
+
+    it('does not prefix TestAccounts override in BMS mode', function bmsTestAccountsNotPrefixed() {
+      const context = {
+        metadata: {
+          appId: 'app-1',
+          subscriptionId: BudgetOverride.TestAccounts,
+          budgetServiceEnabled: true,
+        },
+      }
+
+      const result = buildLitellmMetadataFromContext(context, { source: LlmCallSource.UserChat })
+
+      expect(result?.user).toBe(BudgetOverride.TestAccounts)
+    })
+  })
+
+  describe('isGrantsExhausted BMS mode', function exhaustedBmsTests() {
+    it('returns false when BMS enabled even with exhausted grants', function bmsExhaustedBypass() {
+      const exhaustedGrant = createGrant({ creditsSpent: 1500, creditsMax: 1500 })
+      grantSessionManager.setGrants('bms-exhausted-session', [exhaustedGrant])
+
+      const context = {
+        socketId: 'bms-exhausted-session',
+        metadata: {
+          appId: 'app-1',
+          budgetServiceEnabled: true,
+        },
+      }
+
+      // BMS mode: grants not used, cannot be "exhausted"
+      expect(isGrantsExhausted(context)).toBe(false)
+    })
+  })
+
   describe('BMS budget session fields (GoCode header propagation)', function budgetSessionTests() {
     it('includes budgetId and budgetSessionId when metadata has budget fields', function hasBudgetFields() {
       const context = {
@@ -723,11 +862,10 @@ describe('build-metadata', function tests() {
       expect(result?.budgetSessionId).toBeUndefined()
     })
 
-    it('includes budget fields alongside grant metadata', function budgetWithGrants() {
+    it('includes budget fields alongside BMS user in BMS mode (grants skipped)', function budgetWithGrants() {
       grantSessionManager.setGrants('test-session', [
         createGrant({ llmBudgetUserId: 'airo-builder:grant:g1' }),
       ])
-
 
       const context = {
         socketId: 'test-session',
@@ -742,7 +880,8 @@ describe('build-metadata', function tests() {
 
       const result = buildLitellmMetadataFromContext(context, { source: LlmCallSource.UserChat })
 
-      expect(result?.user).toBe('airo-builder:grant:g1')
+      // BMS mode skips grant lookup; user is subscription-based
+      expect(result?.user).toBe('airo-build:sid:sub-1')
       expect(result?.budgetId).toBe('budget-uuid-1')
       expect(result?.budgetSessionId).toBe('session-uuid-1')
     })

@@ -27,11 +27,16 @@ vi.mock('@/lib/request-context', () => ({
 
 const mockUseCreditGrants = vi.fn()
 vi.mock('@/hooks/useCreditGrants', () => ({
-  useCreditGrants: () => mockUseCreditGrants(),
+  useCreditGrants: (options: unknown) => mockUseCreditGrants(options),
 }))
 
 vi.mock('@/stores/useStreamingConversationStore', () => ({
   useIsActivelyStreaming: () => streamingRef.current,
+}))
+
+const mockUseSwitchboard = vi.fn()
+vi.mock('@/hooks/useSwitchboard', () => ({
+  useSwitchboard: (flag: string) => mockUseSwitchboard(flag),
 }))
 
 import { logger } from '@/lib/request-context'
@@ -57,7 +62,241 @@ describe('useGrantContext', function useGrantContextTests() {
   beforeEach(function setup() {
     vi.clearAllMocks()
     streamingRef.current = false
+    mockUseSwitchboard.mockReturnValue(false) // Default: BMS disabled (legacy grants mode)
     vi.useRealTimers()
+  })
+
+  describe('BMS mode (app-builder-budget-service flag enabled)', function bmsModeTests() {
+    beforeEach(function setupBms() {
+      mockUseSwitchboard.mockReturnValue(true) // BMS enabled
+    })
+
+    it('passes undefined subscriptionId to useCreditGrants when BMS enabled', function bmsDisablesGrantFetch() {
+      mockUseCreditGrants.mockReturnValue({
+        data: undefined,
+        refetch: vi.fn(),
+        isLoading: false,
+      })
+
+      const controller = {
+        emitGrantContext: vi.fn(() => true),
+        onGrantRefreshRequested: vi.fn(() => vi.fn()),
+      }
+
+      renderHookWithProviders(() =>
+        useGrantContext({
+          controller,
+          subscriptionId: 'sub-1',
+          isConnected: true,
+        })
+      )
+
+      // useCreditGrants should be called with undefined subscriptionId (BMS disables grant fetch)
+      expect(mockUseCreditGrants).toHaveBeenCalled()
+      const capturedOptions = mockUseCreditGrants.mock.calls[0]![0] as { subscriptionId?: string }
+      expect(capturedOptions.subscriptionId).toBeUndefined()
+    })
+
+    it('does not emit grant_context events when BMS enabled', async function bmsNoGrantEvents() {
+      const grantFromHook = creditGrant({ id: 'grant-bms' })
+
+      mockUseCreditGrants.mockReturnValue({
+        data: [grantFromHook],
+        refetch: vi.fn(),
+        isLoading: false,
+      })
+
+      const emitGrantContext = vi.fn(() => true)
+      const controller = {
+        emitGrantContext,
+        onGrantRefreshRequested: vi.fn(() => vi.fn()),
+      }
+
+      renderHookWithProviders(() =>
+        useGrantContext({
+          controller,
+          subscriptionId: 'sub-1',
+          isConnected: true,
+        })
+      )
+
+      // Should not emit grant_context in BMS mode
+      expect(emitGrantContext).not.toHaveBeenCalled()
+    })
+
+    it('does not register onGrantRefreshRequested handler when BMS enabled', function bmsNoRefreshHandler() {
+      mockUseCreditGrants.mockReturnValue({
+        data: undefined,
+        refetch: vi.fn(),
+        isLoading: false,
+      })
+
+      const onGrantRefreshRequested = vi.fn(() => vi.fn())
+      const controller = {
+        emitGrantContext: vi.fn(() => true),
+        onGrantRefreshRequested,
+      }
+
+      renderHookWithProviders(() =>
+        useGrantContext({
+          controller,
+          subscriptionId: 'sub-1',
+          isConnected: true,
+        })
+      )
+
+      // onGrantRefreshRequested should not be called when BMS mode is active
+      expect(onGrantRefreshRequested).not.toHaveBeenCalled()
+    })
+
+    it('does not refetch on visibility change when BMS enabled', async function bmsNoVisibilityRefetch() {
+      const mockRefetch = vi.fn().mockResolvedValue({
+        data: [creditGrant({ id: 'vis-bms' })],
+        isError: false,
+        error: null,
+        status: 'success',
+        isSuccess: true,
+      })
+
+      mockUseCreditGrants.mockReturnValue({
+        data: [creditGrant({ id: 'bms-grant' })],
+        refetch: mockRefetch,
+        isLoading: false,
+      })
+
+      const emitGrantContext = vi.fn(() => true)
+      const controller = {
+        emitGrantContext,
+        onGrantRefreshRequested: vi.fn(() => vi.fn()),
+      }
+
+      renderHookWithProviders(() =>
+        useGrantContext({
+          controller,
+          subscriptionId: 'sub-1',
+          isConnected: true,
+        })
+      )
+
+      // Fire visibility change event
+      Object.defineProperty(document, 'visibilityState', {
+        configurable: true,
+        value: 'visible',
+      })
+
+      await act(async () => {
+        document.dispatchEvent(new Event('visibilitychange'))
+      })
+
+      await act(async () => {
+        await Promise.resolve()
+      })
+
+      // BMS mode: refetch should not be called on visibility change
+      expect(mockRefetch).not.toHaveBeenCalled()
+      expect(emitGrantContext).not.toHaveBeenCalled()
+    })
+
+    it('does not refetch or emit on stream complete when BMS enabled', async function bmsNoStreamCompleteRefetch() {
+      const mockRefetch = vi.fn().mockResolvedValue({
+        data: [creditGrant({ id: 'stream-bms' })],
+        isError: false,
+        error: null,
+        status: 'success',
+        isSuccess: true,
+      })
+
+      mockUseCreditGrants.mockReturnValue({
+        data: [creditGrant({ id: 'bms-grant' })],
+        refetch: mockRefetch,
+        isLoading: false,
+      })
+
+      const emitGrantContext = vi.fn(() => true)
+      const controller = {
+        emitGrantContext,
+        onGrantRefreshRequested: vi.fn(() => vi.fn()),
+      }
+
+      // Start with streaming active
+      streamingRef.current = true
+
+      const { rerender } = renderHookWithProviders(() =>
+        useGrantContext({
+          controller,
+          subscriptionId: 'sub-1',
+          isConnected: true,
+        })
+      )
+
+      // Transition from streaming to idle
+      streamingRef.current = false
+      vi.useFakeTimers()
+
+      await act(async () => {
+        rerender()
+      })
+
+      // Advance past the 2s delay
+      await act(async () => {
+        vi.advanceTimersByTime(2_000)
+      })
+
+      await act(async () => {
+        await Promise.resolve()
+      })
+
+      // BMS mode: refetch should not be called on stream complete
+      expect(mockRefetch).not.toHaveBeenCalled()
+      expect(emitGrantContext).not.toHaveBeenCalled()
+
+      vi.useRealTimers()
+    })
+
+    it('does not start empty grants retry loop when BMS enabled', async function bmsNoEmptyGrantsRetry() {
+      const mockRefetch = vi.fn().mockResolvedValue({
+        data: [],
+        isError: false,
+        error: null,
+        status: 'success',
+        isSuccess: true,
+      })
+
+      mockUseCreditGrants.mockReturnValue({
+        data: [], // Empty grants - would trigger retry in legacy mode
+        refetch: mockRefetch,
+        isLoading: false,
+      })
+
+      const controller = {
+        emitGrantContext: vi.fn(() => true),
+        onGrantRefreshRequested: vi.fn(() => vi.fn()),
+      }
+
+      vi.useFakeTimers()
+
+      renderHookWithProviders(() =>
+        useGrantContext({
+          controller,
+          subscriptionId: 'sub-1',
+          isConnected: true,
+        })
+      )
+
+      // Advance past the 5s retry interval
+      await act(async () => {
+        vi.advanceTimersByTime(5_000)
+      })
+
+      await act(async () => {
+        await Promise.resolve()
+      })
+
+      // BMS mode: refetch should not be called for empty grants retry
+      expect(mockRefetch).not.toHaveBeenCalled()
+
+      vi.useRealTimers()
+    })
   })
 
   it('after agent refresh refetch succeeds, emits grant_context with refetched grants', async function agentRefreshSuccess() {

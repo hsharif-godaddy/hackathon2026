@@ -156,6 +156,88 @@ describe('model provider defaults middleware', () => {
   })
 })
 
+describe('BMS mode budget-exceeded handling', () => {
+  let wrapper: typeof fetch
+
+  beforeEach(async () => {
+    fetchSpy.mockClear()
+    const { __test__ } = await import('../unified-provider.js')
+    wrapper = __test__.createS2SFetchWrapper()
+  })
+
+  it('does not retry on budget-exceeded when budgetServiceEnabled is true (BMS mode)', async () => {
+    const { grantSessionManager } = await import('@airo/ai-grants')
+
+    // Set up grants that would normally trigger fallback
+    vi.mocked(grantSessionManager.hasGrants).mockReturnValue(true)
+    vi.mocked(grantSessionManager.getCurrentUserId).mockReturnValue('grant-user-2')
+    vi.mocked(grantSessionManager.advanceToNextGrant).mockReturnValue(true)
+
+    // Return budget-exceeded error
+    fetchSpy.mockResolvedValueOnce(new Response('exceededbudget', { status: 400 }))
+
+    // BMS mode: budgetServiceEnabled is true
+    const metadata: LitellmMetadata = {
+      user: 'grant-user-1',
+      tags: ['appId:app-1'],
+      budgetServiceEnabled: true,
+      budgetSessionId: 'bms-session-uuid',
+      _internal: { socketId: 'sock-1', customerId: 'cust-1' },
+    }
+
+    const body = JSON.stringify({ litellm_metadata: { user: 'grant-user-1' } })
+
+    const response = await llmMetadataContext.run(metadata, () =>
+      wrapper('https://api.example.com/v1/chat', { method: 'POST', body })
+    )
+
+    // Should NOT retry - BMS mode skips grant fallback
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+    expect(response.status).toBe(400)
+
+    // Clean up mocks
+    vi.mocked(grantSessionManager.hasGrants).mockReturnValue(false)
+    vi.mocked(grantSessionManager.getCurrentUserId).mockReturnValue(undefined)
+    vi.mocked(grantSessionManager.advanceToNextGrant).mockReturnValue(false)
+  })
+
+  it('does not retry on budget-exceeded when BMS enabled but session creation failed', async () => {
+    const { grantSessionManager } = await import('@airo/ai-grants')
+
+    // Set up grants that would normally trigger fallback
+    vi.mocked(grantSessionManager.hasGrants).mockReturnValue(true)
+    vi.mocked(grantSessionManager.getCurrentUserId).mockReturnValue('grant-user-2')
+    vi.mocked(grantSessionManager.advanceToNextGrant).mockReturnValue(true)
+
+    // Return budget-exceeded error
+    fetchSpy.mockResolvedValueOnce(new Response('exceededbudget', { status: 400 }))
+
+    // BMS mode but session creation failed: budgetServiceEnabled=true but no budgetSessionId
+    const metadata: LitellmMetadata = {
+      user: 'grant-user-1',
+      tags: ['appId:app-1'],
+      budgetServiceEnabled: true,
+      // budgetSessionId is NOT set - session creation failed
+      _internal: { socketId: 'sock-1', customerId: 'cust-1' },
+    }
+
+    const body = JSON.stringify({ litellm_metadata: { user: 'grant-user-1' } })
+
+    const response = await llmMetadataContext.run(metadata, () =>
+      wrapper('https://api.example.com/v1/chat', { method: 'POST', body })
+    )
+
+    // Should NOT retry - BMS mode skips grant fallback even without session
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+    expect(response.status).toBe(400)
+
+    // Clean up mocks
+    vi.mocked(grantSessionManager.hasGrants).mockReturnValue(false)
+    vi.mocked(grantSessionManager.getCurrentUserId).mockReturnValue(undefined)
+    vi.mocked(grantSessionManager.advanceToNextGrant).mockReturnValue(false)
+  })
+})
+
 describe('grant-fallback retry correlation-id', () => {
   let wrapper: typeof fetch
 

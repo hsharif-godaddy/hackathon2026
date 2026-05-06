@@ -88,14 +88,19 @@ export function setAPM(apmAgent: APMAgent): void {
  * Uses session-managed grants for efficiency (not per-message grants).
  * Single source of truth for all LLM calls in the system.
  *
- * Fallback hierarchy (in order of preference):
- * 1. Grant's llmBudgetUserId (when grants available)
- * 2. subscriptionId (when no grants indexed for subscription)
- * 3. customerId (LAST RESORT - provides infinite budget, avoid if possible)
+ * When budgetServiceEnabled is true (BMS mode):
+ * - Skip grant lookup entirely - BMS handles cost tracking via x-gocode-budget-* headers
+ * - Return metadata with budget fields for GoCode attribution
+ *
+ * When budgetServiceEnabled is false (legacy grants mode):
+ * - Fallback hierarchy (in order of preference):
+ *   1. Grant's llmBudgetUserId (when grants available)
+ *   2. subscriptionId (when no grants indexed for subscription)
+ *   3. customerId (LAST RESORT - provides infinite budget, avoid if possible)
  *
  * @param context - Execution context with socketId and metadata
  * @param options - Optional agent ID and source for tagging
- * @returns LitellmMetadata with user and tags, or null if grants exhausted
+ * @returns LitellmMetadata with user and tags, or null if grants exhausted (legacy mode only)
  */
 export function buildLitellmMetadataFromContext(
   context: ExecutionContext | Record<string, unknown> | undefined,
@@ -137,6 +142,51 @@ export function buildLitellmMetadataFromContext(
   // OTel trace ID for GoCode cross-service log correlation (x-trace-id header)
   const traceFields: Pick<LitellmMetadata, 'traceId'> =
     metadata.traceId ? { traceId: metadata.traceId } : {}
+
+  // Budget override sessions bypass grants and use dedicated budgets
+  // (e2s care agents, test accounts, task-specific budgets)
+  // Check BEFORE BMS mode to avoid incorrect prefixing of override values
+  if (isBudgetOverride(subscriptionId)) {
+    // Log at info for production visibility — override sessions are infrequent/bounded
+    logger.info('grants.build_metadata.task_budget_override', {
+      appId,
+      socketId,
+      subscriptionId,
+      tags,
+      source: options?.source ?? LlmCallSource.UserChat,
+    })
+    return { user: subscriptionId, tags, ...budgetFields, ...traceFields }
+  }
+
+  // BMS MODE: When budget service is enabled, skip grant lookup entirely
+  // BMS handles cost tracking via x-gocode-budget-* headers sent to GoCode
+  // The user field is still needed for GoCode cost attribution but grants are not consulted
+  if (metadata.budgetServiceEnabled) {
+    // Use subscriptionId for user identification (preferred) or customerId as fallback
+    const userId = subscriptionId
+      ? (subscriptionId.startsWith(SUBSCRIPTION_ID_PREFIX) ? subscriptionId : `${SUBSCRIPTION_ID_PREFIX}${subscriptionId}`)
+      : customerId
+
+    if (!userId) {
+      logger.error('grants.build_metadata.bms_no_user_identifier', { appId, socketId })
+      return null
+    }
+
+    apm?.setLabel?.('litellm.user_type', 'bms_subscription')
+    logger.debug('grants.build_metadata.bms_mode', {
+      appId,
+      socketId,
+      subscriptionId,
+      userId,
+      tags,
+      source: options?.source ?? LlmCallSource.UserChat,
+      hasBudgetSession: hasBudgetFields,
+    })
+
+    return { user: userId, tags, budgetServiceEnabled: true, ...budgetFields, ...traceFields }
+  }
+
+  // LEGACY GRANTS MODE: Budget service disabled, use grant-based billing
 
   // Budget override sessions bypass grants and use dedicated budgets
   // (e2s care agents, test accounts, task-specific budgets)
@@ -305,7 +355,7 @@ export function buildLitellmMetadataFromContext(
  * Use this for early error detection before attempting LLM calls
  *
  * @param context - Execution context
- * @returns true if all grants are exhausted
+ * @returns true if all grants are exhausted (legacy grants mode only)
  */
 export function isGrantsExhausted(
   context: ExecutionContext | Record<string, unknown> | undefined
@@ -315,6 +365,12 @@ export function isGrantsExhausted(
   if (!socketId) return false
 
   const metadata = typedContext?.metadata as ExecutionContextMetadata | undefined
+
+  // BMS mode: grants not used, cannot be "exhausted" in the grant sense
+  // BMS handles its own budget enforcement via GoCode
+  if (metadata?.budgetServiceEnabled) {
+    return false
+  }
 
   // Budget override sessions bypass grants (e2s, test accounts, task budgets)
   if (isBudgetOverride(metadata?.subscriptionId)) {

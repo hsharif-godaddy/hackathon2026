@@ -1,1 +1,1 @@
-export { adaptBudgetToGrants } from './adapt-budget-to-grants'
+export { adaptBudgetItemsToGrants,adaptBudgetToGrants } from './adapt-budget-to-grants'

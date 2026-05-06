@@ -157,6 +157,9 @@ describe('budget view types', () => {
       expect(payload.budgets).toHaveLength(1)
       expect(payload.assignment.customer[0]!.budgetItemId).toBe('bi-1')
       expect(payload.assignment.customer[0]!.amount).toBe(3.33)
+      // Verify full items included for client-side cache update
+      expect(payload.items).toEqual(budgetResponse.items)
+      expect(payload.budgetId).toBe('b-1')
     })
 
     it('flattens multi-item report into customer deductions', () => {

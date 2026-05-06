@@ -245,7 +245,12 @@ function injectLitellmMetadata(metadata: LitellmMetadata, body: Record<string, u
  * Handle budget exceeded responses by advancing to the next grant and retrying.
  * This allows seamless continuation of agentic loops when a grant is exhausted mid-execution.
  *
- * Flow:
+ * IMPORTANT: This is DISABLED when BMS (Budget Management Service) is enabled.
+ * In BMS mode, GoCode enforces budgets via x-gocode-budget-* headers and the 400
+ * response should surface to the user as "no credits remaining" - not trigger
+ * grant fallback which would bypass BMS cost tracking.
+ *
+ * Flow (legacy grants mode only):
  * 1. Advance to next locally-cached grant
  * 2. If none available, request refresh from frontend and wait up to 5s
  * 3. Retry the single HTTP request with the new grant's userId
@@ -263,6 +268,16 @@ async function handleBudgetExceededWithGrantFallback(
 
   const bodyText = await response.clone().text()
   if (!containsBudgetExceededPattern(bodyText)) return null
+
+  // BMS MODE: Do not attempt grant fallback when budget service is enabled
+  // BMS handles its own budget enforcement - let the error surface to the user
+  if (metadata.budgetServiceEnabled) {
+    logger.info('grants.fetch.fallback.bms_mode_skip', {
+      socketId: metadata._internal.socketId,
+      budgetServiceEnabled: metadata.budgetServiceEnabled,
+    })
+    return null
+  }
 
   const { socketId, customerId } = metadata._internal
   if (!grantSessionManager.hasGrants(socketId)) return null
