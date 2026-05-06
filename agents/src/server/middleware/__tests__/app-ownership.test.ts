@@ -2,12 +2,20 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Request, Response, NextFunction } from 'express';
 import {
   validateAppOwnership,
+  validateAppOwnershipFromParam,
   validateAppOwnershipFromBody,
   validateAppOwnershipFromQuery,
   validateConversationOwnership
 } from '../app-ownership.js';
 import { AuthenticatedRequest } from '../jwt-auth.js';
 import { BYPASS_SITE_IDS } from '../../../services/index.js';
+
+// Canonical appId fixtures — must match APP_ID_RE (10-char lowercase nanoid).
+const SITE_A = 'abcdefghij';
+const SITE_B = 'klmnopqrst';
+const SITE_C = 'aaaaaaaaaa';
+const SITE_D = 'bbbbbbbbbb';
+const SITE_E = 'cccccccccc';
 
 describe('validateAppOwnership middleware', () => {
   let mockReq: Partial<AuthenticatedRequest>;
@@ -26,7 +34,7 @@ describe('validateAppOwnership middleware', () => {
       path: '/apps/test-app/zip/upload',
       method: 'POST',
       agentContext: {
-        siteId: 'authenticated-site',
+        siteId: SITE_A,
         exp: Math.floor(Date.now() / 1000) + 3600,
         iat: Math.floor(Date.now() / 1000),
       },
@@ -157,9 +165,9 @@ describe('validateAppOwnership middleware', () => {
 
   describe('Site isolation validation', () => {
     it('should return 403 when siteId does not match requested appId', () => {
-      mockReq.params = { id: 'different-app' };
+      mockReq.params = { id: SITE_B };
       mockReq.agentContext = {
-        siteId: 'authenticated-site',
+        siteId: SITE_A,
         exp: Math.floor(Date.now() / 1000) + 3600,
         iat: Math.floor(Date.now() / 1000),
       };
@@ -176,9 +184,9 @@ describe('validateAppOwnership middleware', () => {
     });
 
     it('should call next() when siteId matches requested appId', () => {
-      mockReq.params = { id: 'authenticated-site' };
+      mockReq.params = { id: SITE_A };
       mockReq.agentContext = {
-        siteId: 'authenticated-site',
+        siteId: SITE_A,
         exp: Math.floor(Date.now() / 1000) + 3600,
         iat: Math.floor(Date.now() / 1000),
       };
@@ -190,7 +198,7 @@ describe('validateAppOwnership middleware', () => {
     });
 
     it('should allow access when agent accesses its own site', () => {
-      const siteId = 'my-site-123';
+      const siteId = SITE_A;
       mockReq.params = { id: siteId };
       mockReq.agentContext = {
         siteId,
@@ -205,12 +213,12 @@ describe('validateAppOwnership middleware', () => {
     });
 
     it('should enforce isolation for non-bypass sites', () => {
-      const regularSites = ['production-site', 'user-site-123', 'customer-app'];
+      const regularSites = [SITE_C, SITE_D, SITE_E];
 
       regularSites.forEach((siteId) => {
         vi.clearAllMocks();
 
-        mockReq.params = { id: 'different-app' };
+        mockReq.params = { id: SITE_B };
         mockReq.agentContext = {
           siteId,
           exp: Math.floor(Date.now() / 1000) + 3600,
@@ -235,7 +243,7 @@ describe('validateAppOwnership middleware', () => {
         path: '/apps/test-app/zip/upload',
         method: 'POST',
         agentContext: {
-          siteId: 'authenticated-site',
+          siteId: SITE_A,
           exp: Math.floor(Date.now() / 1000) + 3600,
           iat: Math.floor(Date.now() / 1000),
         },
@@ -254,7 +262,7 @@ describe('validateAppOwnership middleware', () => {
 
   describe('Integration scenarios', () => {
     it('should validate complete happy path', () => {
-      const siteId = 'app-123';
+      const siteId = SITE_A;
       mockReq.params = { id: siteId };
       mockReq.agentContext = {
         siteId,
@@ -269,9 +277,9 @@ describe('validateAppOwnership middleware', () => {
     });
 
     it('should deny access when trying to access different site', () => {
-      mockReq.params = { id: 'other-site-456' };
+      mockReq.params = { id: SITE_B };
       mockReq.agentContext = {
-        siteId: 'my-site-123',
+        siteId: SITE_A,
         exp: Math.floor(Date.now() / 1000) + 3600,
         iat: Math.floor(Date.now() / 1000),
       };
@@ -304,7 +312,7 @@ describe('validateAppOwnershipFromBody middleware', () => {
       path: '/files/upload',
       method: 'POST',
       agentContext: {
-        siteId: 'authenticated-site',
+        siteId: SITE_A,
         exp: Math.floor(Date.now() / 1000) + 3600,
         iat: Math.floor(Date.now() / 1000),
       },
@@ -368,9 +376,9 @@ describe('validateAppOwnershipFromBody middleware', () => {
 
   describe('Ownership validation', () => {
     it('should return 403 when body.appId does not match authenticated siteId', () => {
-      mockReq.body = { appId: 'different-site' };
+      mockReq.body = { appId: SITE_B };
       mockReq.agentContext = {
-        siteId: 'authenticated-site',
+        siteId: SITE_A,
         exp: Math.floor(Date.now() / 1000) + 3600,
         iat: Math.floor(Date.now() / 1000),
       };
@@ -388,9 +396,9 @@ describe('validateAppOwnershipFromBody middleware', () => {
     });
 
     it('should call next() when body.appId matches authenticated siteId', () => {
-      mockReq.body = { appId: 'authenticated-site' };
+      mockReq.body = { appId: SITE_A };
       mockReq.agentContext = {
-        siteId: 'authenticated-site',
+        siteId: SITE_A,
         exp: Math.floor(Date.now() / 1000) + 3600,
         iat: Math.floor(Date.now() / 1000),
       };
@@ -405,9 +413,9 @@ describe('validateAppOwnershipFromBody middleware', () => {
 
   describe('Custom field names', () => {
     it('should validate custom field name from body', () => {
-      mockReq.body = { customField: 'authenticated-site' };
+      mockReq.body = { customField: SITE_A };
       mockReq.agentContext = {
-        siteId: 'authenticated-site',
+        siteId: SITE_A,
         exp: Math.floor(Date.now() / 1000) + 3600,
         iat: Math.floor(Date.now() / 1000),
       };
@@ -436,7 +444,7 @@ describe('validateAppOwnershipFromQuery middleware', () => {
       path: '/api/conversations',
       method: 'GET',
       agentContext: {
-        siteId: 'authenticated-site',
+        siteId: SITE_A,
         exp: Math.floor(Date.now() / 1000) + 3600,
         iat: Math.floor(Date.now() / 1000),
       },
@@ -500,9 +508,9 @@ describe('validateAppOwnershipFromQuery middleware', () => {
 
   describe('Ownership validation', () => {
     it('should return 403 when query.appId does not match authenticated siteId', () => {
-      mockReq.query = { appId: 'different-site' };
+      mockReq.query = { appId: SITE_B };
       mockReq.agentContext = {
-        siteId: 'authenticated-site',
+        siteId: SITE_A,
         exp: Math.floor(Date.now() / 1000) + 3600,
         iat: Math.floor(Date.now() / 1000),
       };
@@ -520,9 +528,9 @@ describe('validateAppOwnershipFromQuery middleware', () => {
     });
 
     it('should call next() when query.appId matches authenticated siteId', () => {
-      mockReq.query = { appId: 'authenticated-site' };
+      mockReq.query = { appId: SITE_A };
       mockReq.agentContext = {
-        siteId: 'authenticated-site',
+        siteId: SITE_A,
         exp: Math.floor(Date.now() / 1000) + 3600,
         iat: Math.floor(Date.now() / 1000),
       };
@@ -537,9 +545,9 @@ describe('validateAppOwnershipFromQuery middleware', () => {
 
   describe('Custom field names', () => {
     it('should validate custom query parameter name', () => {
-      mockReq.query = { customParam: 'authenticated-site' };
+      mockReq.query = { customParam: SITE_A };
       mockReq.agentContext = {
-        siteId: 'authenticated-site',
+        siteId: SITE_A,
         exp: Math.floor(Date.now() / 1000) + 3600,
         iat: Math.floor(Date.now() / 1000),
       };
@@ -568,7 +576,7 @@ describe('validateConversationOwnership middleware', () => {
       path: '/api/conversations/conv-123/messages',
       method: 'GET',
       agentContext: {
-        siteId: 'authenticated-site',
+        siteId: SITE_A,
         exp: Math.floor(Date.now() / 1000) + 3600,
         iat: Math.floor(Date.now() / 1000),
       },
@@ -649,6 +657,362 @@ describe('validateConversationOwnership middleware', () => {
       // This test requires mocking the ConversationRepository which needs
       // a proper vitest mock setup for ESM modules
       expect(true).toBe(true);
+    });
+  });
+});
+
+describe('App ID shape validation', () => {
+  let mockReq: Partial<AuthenticatedRequest>;
+  let mockRes: Partial<Response>;
+  let mockNext: NextFunction;
+  let jsonSpy: any;
+  let statusSpy: any;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    jsonSpy = vi.fn();
+    statusSpy = vi.fn().mockReturnValue({ json: jsonSpy });
+    mockRes = { status: statusSpy, json: jsonSpy };
+    mockNext = vi.fn();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function authCtx(siteId: string) {
+    return {
+      siteId,
+      exp: Math.floor(Date.now() / 1000) + 3600,
+      iat: Math.floor(Date.now() / 1000),
+    };
+  }
+
+  describe('validateAppOwnership (params.id)', () => {
+    it('returns 400 with "Invalid app ID format" when non-bypass siteId and params.id is a static segment like "create"', () => {
+      mockReq = {
+        params: { id: 'create' },
+        path: '/apps/create/diagnose',
+        method: 'POST',
+        agentContext: authCtx(SITE_A),
+      };
+
+      validateAppOwnership(mockReq as Request, mockRes as Response, mockNext);
+
+      expect(statusSpy).toHaveBeenCalledWith(400);
+      expect(jsonSpy).toHaveBeenCalledWith({
+        success: false,
+        error: 'Invalid app ID format',
+      });
+      expect(mockNext).not.toHaveBeenCalled();
+    });
+
+    it('returns 400 when params.id is an uppercase nanoid (shape is lowercase-only)', () => {
+      mockReq = {
+        params: { id: SITE_A.toUpperCase() },
+        path: '/apps/SOMETHING/diagnose',
+        method: 'POST',
+        agentContext: authCtx(SITE_A),
+      };
+
+      validateAppOwnership(mockReq as Request, mockRes as Response, mockNext);
+
+      expect(statusSpy).toHaveBeenCalledWith(400);
+      expect(mockNext).not.toHaveBeenCalled();
+    });
+
+    it('accepts a valid 10-char nanoid when siteId matches', () => {
+      mockReq = {
+        params: { id: SITE_A },
+        path: `/apps/${SITE_A}/diagnose`,
+        method: 'POST',
+        agentContext: authCtx(SITE_A),
+      };
+
+      validateAppOwnership(mockReq as Request, mockRes as Response, mockNext);
+
+      expect(mockNext).toHaveBeenCalled();
+      expect(statusSpy).not.toHaveBeenCalled();
+    });
+
+    it('still 403s on a valid-shape id that does not match siteId (cross-tenant signal preserved)', () => {
+      mockReq = {
+        params: { id: SITE_B },
+        path: `/apps/${SITE_B}/diagnose`,
+        method: 'POST',
+        agentContext: authCtx(SITE_A),
+      };
+
+      validateAppOwnership(mockReq as Request, mockRes as Response, mockNext);
+
+      expect(statusSpy).toHaveBeenCalledWith(403);
+      expect(mockNext).not.toHaveBeenCalled();
+    });
+
+    BYPASS_SITE_IDS.forEach((bypassSite) => {
+      it(`exempts shape check for bypass siteId "${bypassSite}" — passes through with a non-canonical id`, () => {
+        mockReq = {
+          params: { id: 'create' },
+          path: '/apps/create/diagnose',
+          method: 'POST',
+          agentContext: authCtx(bypassSite),
+        };
+
+        validateAppOwnership(mockReq as Request, mockRes as Response, mockNext);
+
+        expect(mockNext).toHaveBeenCalled();
+        expect(statusSpy).not.toHaveBeenCalled();
+      });
+    });
+  });
+
+  describe('validateAppOwnershipFromBody (body.appId)', () => {
+    it('returns 400 when non-bypass siteId and body.appId is malformed', () => {
+      mockReq = {
+        body: { appId: 'create' },
+        path: '/files/upload',
+        method: 'POST',
+        agentContext: authCtx(SITE_A),
+      };
+
+      validateAppOwnershipFromBody('appId')(mockReq as Request, mockRes as Response, mockNext);
+
+      expect(statusSpy).toHaveBeenCalledWith(400);
+      expect(jsonSpy).toHaveBeenCalledWith({
+        success: false,
+        error: 'Invalid app ID format',
+      });
+      expect(mockNext).not.toHaveBeenCalled();
+    });
+
+    it('exempts bypass siteIds from shape check on body.appId', () => {
+      mockReq = {
+        body: { appId: 'arbitrary-dev-id' },
+        path: '/files/upload',
+        method: 'POST',
+        agentContext: authCtx('local-dev-site'),
+      };
+
+      validateAppOwnershipFromBody('appId')(mockReq as Request, mockRes as Response, mockNext);
+
+      expect(mockNext).toHaveBeenCalled();
+      expect(statusSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('validateAppOwnershipFromQuery (query.appId)', () => {
+    it('returns 400 when non-bypass siteId and query.appId is malformed', () => {
+      mockReq = {
+        query: { appId: 'servers' },
+        path: '/api/conversations',
+        method: 'GET',
+        agentContext: authCtx(SITE_A),
+      };
+
+      validateAppOwnershipFromQuery('appId')(mockReq as Request, mockRes as Response, mockNext);
+
+      expect(statusSpy).toHaveBeenCalledWith(400);
+      expect(mockNext).not.toHaveBeenCalled();
+    });
+
+    it('exempts bypass siteIds from shape check on query.appId', () => {
+      mockReq = {
+        query: { appId: 'arbitrary-dev-id' },
+        path: '/api/conversations',
+        method: 'GET',
+        agentContext: authCtx('bypass-site'),
+      };
+
+      validateAppOwnershipFromQuery('appId')(mockReq as Request, mockRes as Response, mockNext);
+
+      expect(mockNext).toHaveBeenCalled();
+      expect(statusSpy).not.toHaveBeenCalled();
+    });
+  });
+});
+
+describe('validateAppOwnershipFromParam middleware', () => {
+  let mockReq: Partial<AuthenticatedRequest>;
+  let mockRes: Partial<Response>;
+  let mockNext: NextFunction;
+  let jsonSpy: any;
+  let statusSpy: any;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    jsonSpy = vi.fn();
+    statusSpy = vi.fn().mockReturnValue({ json: jsonSpy });
+    mockRes = { status: statusSpy, json: jsonSpy };
+    mockNext = vi.fn();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function authCtx(siteId: string) {
+    return {
+      siteId,
+      exp: Math.floor(Date.now() / 1000) + 3600,
+      iat: Math.floor(Date.now() / 1000),
+    };
+  }
+
+  describe('Authentication validation', () => {
+    it('returns 401 when agentContext is missing', () => {
+      mockReq = {
+        params: { appId: SITE_A },
+        path: '/events/abc',
+        method: 'GET',
+      };
+
+      validateAppOwnershipFromParam('appId')(mockReq as Request, mockRes as Response, mockNext);
+
+      expect(statusSpy).toHaveBeenCalledWith(401);
+      expect(jsonSpy).toHaveBeenCalledWith({
+        error: 'Authentication required',
+        requiresAuth: true,
+      });
+      expect(mockNext).not.toHaveBeenCalled();
+    });
+
+    it('returns 401 when siteId is missing from agentContext', () => {
+      mockReq = {
+        params: { appId: SITE_A },
+        path: '/events/abc',
+        method: 'GET',
+        agentContext: {
+          exp: Math.floor(Date.now() / 1000) + 3600,
+          iat: Math.floor(Date.now() / 1000),
+        } as any,
+      };
+
+      validateAppOwnershipFromParam('appId')(mockReq as Request, mockRes as Response, mockNext);
+
+      expect(statusSpy).toHaveBeenCalledWith(401);
+      expect(mockNext).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Param lookup uses the configured paramName', () => {
+    it('reads req.params[paramName] (not req.params.id) when paramName is custom', () => {
+      // Regression guard: if the lookup is ever wrongly coded as `req.params.id`,
+      // this test fails because it would read SITE_A (matching) and pass,
+      // instead of reading SITE_B (mismatching) and 403ing.
+      mockReq = {
+        params: { id: SITE_A, appId: SITE_B },
+        path: '/events/abc',
+        method: 'GET',
+        agentContext: authCtx(SITE_A),
+      };
+
+      validateAppOwnershipFromParam('appId')(mockReq as Request, mockRes as Response, mockNext);
+
+      expect(statusSpy).toHaveBeenCalledWith(403);
+      expect(mockNext).not.toHaveBeenCalled();
+    });
+
+    it('falls back to req.params.id when called with no argument (default paramName)', () => {
+      mockReq = {
+        params: { id: SITE_A },
+        path: '/apps/abc',
+        method: 'GET',
+        agentContext: authCtx(SITE_A),
+      };
+
+      validateAppOwnershipFromParam()(mockReq as Request, mockRes as Response, mockNext);
+
+      expect(mockNext).toHaveBeenCalled();
+      expect(statusSpy).not.toHaveBeenCalled();
+    });
+
+    it('returns 400 when the configured paramName is absent from req.params', () => {
+      mockReq = {
+        params: { id: SITE_A }, // note: 'appId' not present
+        path: '/events/abc',
+        method: 'GET',
+        agentContext: authCtx(SITE_A),
+      };
+
+      validateAppOwnershipFromParam('appId')(mockReq as Request, mockRes as Response, mockNext);
+
+      expect(statusSpy).toHaveBeenCalledWith(400);
+      expect(jsonSpy).toHaveBeenCalledWith({
+        success: false,
+        error: 'App ID is required',
+      });
+      expect(mockNext).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Shape validation', () => {
+    it('returns 400 with "Invalid app ID format" when non-bypass siteId and paramName value is malformed', () => {
+      mockReq = {
+        params: { appId: 'create' },
+        path: '/apps/create/events',
+        method: 'POST',
+        agentContext: authCtx(SITE_A),
+      };
+
+      validateAppOwnershipFromParam('appId')(mockReq as Request, mockRes as Response, mockNext);
+
+      expect(statusSpy).toHaveBeenCalledWith(400);
+      expect(jsonSpy).toHaveBeenCalledWith({
+        success: false,
+        error: 'Invalid app ID format',
+      });
+      expect(mockNext).not.toHaveBeenCalled();
+    });
+
+    it('accepts a valid 10-char nanoid when siteId matches', () => {
+      mockReq = {
+        params: { appId: SITE_A },
+        path: `/events/${SITE_A}`,
+        method: 'GET',
+        agentContext: authCtx(SITE_A),
+      };
+
+      validateAppOwnershipFromParam('appId')(mockReq as Request, mockRes as Response, mockNext);
+
+      expect(mockNext).toHaveBeenCalled();
+      expect(statusSpy).not.toHaveBeenCalled();
+    });
+
+    BYPASS_SITE_IDS.forEach((bypassSite) => {
+      it(`exempts shape check for bypass siteId "${bypassSite}"`, () => {
+        mockReq = {
+          params: { appId: 'create' },
+          path: '/apps/create/events',
+          method: 'POST',
+          agentContext: authCtx(bypassSite),
+        };
+
+        validateAppOwnershipFromParam('appId')(mockReq as Request, mockRes as Response, mockNext);
+
+        expect(mockNext).toHaveBeenCalled();
+        expect(statusSpy).not.toHaveBeenCalled();
+      });
+    });
+  });
+
+  describe('Ownership validation', () => {
+    it('returns 403 when valid-shape paramName value does not match siteId', () => {
+      mockReq = {
+        params: { appId: SITE_B },
+        path: `/events/${SITE_B}`,
+        method: 'GET',
+        agentContext: authCtx(SITE_A),
+      };
+
+      validateAppOwnershipFromParam('appId')(mockReq as Request, mockRes as Response, mockNext);
+
+      expect(statusSpy).toHaveBeenCalledWith(403);
+      expect(jsonSpy).toHaveBeenCalledWith({
+        success: false,
+        error: 'Access denied',
+        message: 'Agent can only access its authenticated site',
+      });
+      expect(mockNext).not.toHaveBeenCalled();
     });
   });
 });

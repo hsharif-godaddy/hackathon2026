@@ -10,7 +10,7 @@ const appRepo = new AppRepository()
 const router: IRouter = Router()
 
 router.use(
-  '/:id([a-z0-9]{10}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})',
+  '/:id([a-z0-9]{10})',
   validateAppOwnership
 )
 

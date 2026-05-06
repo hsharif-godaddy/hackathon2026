@@ -26,7 +26,7 @@ describe('SSE integration', () => {
       Promise.resolve({ conversation: { id: 'conv_new', appId, agentId }, isNew: true })
     ),
     getById: vi.fn().mockImplementation((id: string) =>
-      Promise.resolve({ id, appId: 'app_1', agentId: 'develop' })
+      Promise.resolve({ id, appId: 'abcdefghij', agentId: 'develop' })
     ),
     getMessagesPaginated: vi.fn().mockResolvedValue({
       messages: [],
@@ -44,7 +44,7 @@ describe('SSE integration', () => {
     app.use('/api/conversations', createSSERoutes({
       registry,
       authenticate: (req: any, _res, next) => {
-        req.agentContext = { siteId: req.params.appId ?? 'app_1' }
+        req.agentContext = { siteId: req.params.appId ?? 'abcdefghij' }
         next()
       },
       getEventChannel: () => null,
@@ -71,7 +71,7 @@ describe('SSE integration', () => {
   it('establishes SSE connection and receives retry directive', async () => {
     const controller = new AbortController()
 
-    const response = await fetch(`http://localhost:${port}/api/conversations/app_1/conv_1/stream`, {
+    const response = await fetch(`http://localhost:${port}/api/conversations/abcdefghij/conv_1/stream`, {
       signal: controller.signal,
       headers: { 'Accept': 'text/event-stream' }
     })
@@ -90,7 +90,7 @@ describe('SSE integration', () => {
   it('registers and unregisters connections by conversationId', async () => {
     const controller = new AbortController()
 
-    const response = await fetch(`http://localhost:${port}/api/conversations/app_1/conv_1/stream`, {
+    const response = await fetch(`http://localhost:${port}/api/conversations/abcdefghij/conv_1/stream`, {
       signal: controller.signal,
       headers: { 'Accept': 'text/event-stream' }
     })
@@ -107,7 +107,7 @@ describe('SSE integration', () => {
   })
 
   it('POST /:appId/:conversationId/messages returns 503 when no executionService is wired', async () => {
-    const response = await fetch(`http://localhost:${port}/api/conversations/app_1/conv_1/messages`, {
+    const response = await fetch(`http://localhost:${port}/api/conversations/abcdefghij/conv_1/messages`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ content: 'Hello' })
@@ -119,7 +119,7 @@ describe('SSE integration', () => {
   })
 
   it('POST /:appId/:conversationId/stop returns 202', async () => {
-    const response = await fetch(`http://localhost:${port}/api/conversations/app_1/conv_1/stop`, {
+    const response = await fetch(`http://localhost:${port}/api/conversations/abcdefghij/conv_1/stop`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' }
     })
@@ -128,7 +128,7 @@ describe('SSE integration', () => {
   })
 
   it('POST /:appId creates a new conversation', async () => {
-    const response = await fetch(`http://localhost:${port}/api/conversations/app_1`, {
+    const response = await fetch(`http://localhost:${port}/api/conversations/abcdefghij`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({})

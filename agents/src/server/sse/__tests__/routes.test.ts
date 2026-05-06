@@ -36,7 +36,7 @@ function createMockDeps() {
   return {
     registry: new EventStreamRegistry(),
     authenticate: vi.fn((req: any, _res: any, next: any) => {
-      req.agentContext = { siteId: req.params.appId ?? 'app_123' }
+      req.agentContext = { siteId: req.params.appId ?? 'abcdefghij' }
       next()
     }),
     getEventChannel: vi.fn().mockReturnValue({
@@ -53,7 +53,7 @@ function createMockDeps() {
         Promise.resolve({ conversation: { id: 'conv_new', appId, agentId }, isNew: true })
       ),
       getById: vi.fn().mockImplementation((id: string) =>
-        Promise.resolve({ id, appId: 'app_123', agentId: 'develop' })
+        Promise.resolve({ id, appId: 'abcdefghij', agentId: 'develop' })
       ),
       getMessagesPaginated: vi.fn().mockResolvedValue({
         messages: [],
@@ -84,7 +84,7 @@ describe('SSE routes', () => {
   describe('POST /api/conversations/:appId', () => {
     it('creates a new conversation and returns conversationId', async () => {
       const res = await request(app)
-        .post('/api/conversations/app_123')
+        .post('/api/conversations/abcdefghij')
         .send({ agentId: 'develop' })
 
       expect(res.status).toBe(200)
@@ -94,17 +94,17 @@ describe('SSE routes', () => {
 
     it('calls resolveAgent with provided agentId and templateId', async () => {
       await request(app)
-        .post('/api/conversations/app_123')
+        .post('/api/conversations/abcdefghij')
         .send({ agentId: 'marketing', templateId: 'v8' })
 
-      expect(deps.resolveAgent).toHaveBeenCalledWith(expect.objectContaining({ appId: 'app_123', agentId: 'marketing', templateId: 'v8' }))
+      expect(deps.resolveAgent).toHaveBeenCalledWith(expect.objectContaining({ appId: 'abcdefghij', agentId: 'marketing', templateId: 'v8' }))
     })
   })
 
   describe('GET /api/conversations/:appId/:conversationId/stream', () => {
     it('returns 200 with text/event-stream content type', async () => {
       const res = await request(app)
-        .get('/api/conversations/app_123/conv_1/stream')
+        .get('/api/conversations/abcdefghij/conv_1/stream')
         .set('Accept', 'text/event-stream')
         .buffer(false)
         .parse((res, callback) => {
@@ -125,7 +125,7 @@ describe('SSE routes', () => {
     it('sends retry directive as first message', async () => {
       let capturedData = ''
       await request(app)
-        .get('/api/conversations/app_123/conv_1/stream')
+        .get('/api/conversations/abcdefghij/conv_1/stream')
         .set('Accept', 'text/event-stream')
         .buffer(false)
         .parse((res, callback) => {
@@ -139,7 +139,7 @@ describe('SSE routes', () => {
     it('sends initialize event with serverConfig (no connectionId)', async () => {
       let capturedData = ''
       await request(app)
-        .get('/api/conversations/app_123/conv_1/stream')
+        .get('/api/conversations/abcdefghij/conv_1/stream')
         .set('Accept', 'text/event-stream')
         .buffer(false)
         .parse((res, callback) => {
@@ -164,7 +164,7 @@ describe('SSE routes', () => {
 
       let capturedData = ''
       await request(app)
-        .get('/api/conversations/app_123/conv_1/stream')
+        .get('/api/conversations/abcdefghij/conv_1/stream')
         .set('Accept', 'text/event-stream')
         .set('Last-Event-ID', '41')
         .buffer(false)
@@ -198,7 +198,7 @@ describe('SSE routes', () => {
 
       let capturedData = ''
       await request(app)
-        .get('/api/conversations/app_123/conv_1/stream')
+        .get('/api/conversations/abcdefghij/conv_1/stream')
         .set('Accept', 'text/event-stream')
         .set('Last-Event-ID', '41')
         .buffer(false)
@@ -222,7 +222,7 @@ describe('SSE routes', () => {
 
       let capturedData = ''
       await request(app)
-        .get('/api/conversations/app_123/conv_1/stream')
+        .get('/api/conversations/abcdefghij/conv_1/stream')
         .set('Accept', 'text/event-stream')
         .set('Last-Event-ID', '41')
         .buffer(false)
@@ -236,7 +236,7 @@ describe('SSE routes', () => {
 
     it('registers connection in registry by conversationId', async () => {
       const promise = request(app)
-        .get('/api/conversations/app_123/conv_1/stream')
+        .get('/api/conversations/abcdefghij/conv_1/stream')
         .set('Accept', 'text/event-stream')
         .buffer(false)
         .parse((res, callback) => {
@@ -254,7 +254,7 @@ describe('SSE routes', () => {
       deps.conversationRepository.getById.mockResolvedValueOnce(null)
 
       const res = await request(app)
-        .get('/api/conversations/app_123/nonexistent/stream')
+        .get('/api/conversations/abcdefghij/nonexistent/stream')
         .set('Accept', 'text/event-stream')
 
       expect(res.status).toBe(404)
@@ -265,7 +265,7 @@ describe('SSE routes', () => {
       deps.getEventChannel.mockReturnValue({ getEventsSince: mockGetEventsSince })
 
       await request(app)
-        .get('/api/conversations/app_123/conv_1/stream')
+        .get('/api/conversations/abcdefghij/conv_1/stream')
         .set('Accept', 'text/event-stream')
         .set('Last-Event-ID', '-1')
         .buffer(false)
@@ -286,7 +286,7 @@ describe('SSE routes', () => {
 
       let capturedData = ''
       await request(app)
-        .get('/api/conversations/app_123/conv_1/stream')
+        .get('/api/conversations/abcdefghij/conv_1/stream')
         .set('Accept', 'text/event-stream')
         .set('Last-Event-ID', '5')
         .buffer(false)
@@ -304,7 +304,7 @@ describe('SSE routes', () => {
       deps.conversationRepository.getById.mockResolvedValueOnce({ id: 'conv_1', appId: 'other_app' })
 
       const res = await request(app)
-        .get('/api/conversations/app_123/conv_1/stream')
+        .get('/api/conversations/abcdefghij/conv_1/stream')
         .set('Accept', 'text/event-stream')
 
       expect(res.status).toBe(403)
@@ -323,7 +323,7 @@ describe('SSE routes', () => {
       appWithService.use('/api/conversations', createSSERoutes(depsWithService as any))
 
       const res = await request(appWithService)
-        .post('/api/conversations/app_123/conv_1/messages')
+        .post('/api/conversations/abcdefghij/conv_1/messages')
         .send({ content: 'Hello agent' })
 
       expect(res.status).toBe(202)
@@ -331,7 +331,7 @@ describe('SSE routes', () => {
 
     it('returns 503 when no executionService is provided', async () => {
       const res = await request(app)
-        .post('/api/conversations/app_123/conv_1/messages')
+        .post('/api/conversations/abcdefghij/conv_1/messages')
         .send({ content: 'Hello agent' })
 
       expect(res.status).toBe(503)
@@ -340,7 +340,7 @@ describe('SSE routes', () => {
 
     it('returns 400 when content is missing', async () => {
       const res = await request(app)
-        .post('/api/conversations/app_123/conv_1/messages')
+        .post('/api/conversations/abcdefghij/conv_1/messages')
         .send({})
 
       expect(res.status).toBe(400)
@@ -348,7 +348,7 @@ describe('SSE routes', () => {
 
     it('returns 400 when content is empty string', async () => {
       const res = await request(app)
-        .post('/api/conversations/app_123/conv_1/messages')
+        .post('/api/conversations/abcdefghij/conv_1/messages')
         .send({ content: '' })
 
       expect(res.status).toBe(400)
@@ -356,7 +356,7 @@ describe('SSE routes', () => {
 
     it('returns 400 when content exceeds max length', async () => {
       const res = await request(app)
-        .post('/api/conversations/app_123/conv_1/messages')
+        .post('/api/conversations/abcdefghij/conv_1/messages')
         .send({ content: 'x'.repeat(100_001) })
 
       expect(res.status).toBe(400)
@@ -374,7 +374,7 @@ describe('SSE routes', () => {
       appWithService.use('/api/conversations', createSSERoutes(depsWithService as any))
 
       const res = await request(appWithService)
-        .post('/api/conversations/app_123/conv_1/messages')
+        .post('/api/conversations/abcdefghij/conv_1/messages')
         .send({ content: 'first message' })
 
       expect(res.status).toBe(202)
@@ -399,7 +399,7 @@ describe('SSE routes', () => {
       appWithService.use('/api/conversations', createSSERoutes(depsWithService as any))
 
       const res = await request(appWithService)
-        .post('/api/conversations/app_123/conv_1/messages')
+        .post('/api/conversations/abcdefghij/conv_1/messages')
         .send({ content: 'follow-up' })
 
       expect(res.status).toBe(202)
@@ -428,7 +428,7 @@ describe('SSE routes', () => {
       appWithService.use('/api/conversations', createSSERoutes(depsWithService as any))
 
       const res = await request(appWithService)
-        .post('/api/conversations/app_123/conv_1/messages')
+        .post('/api/conversations/abcdefghij/conv_1/messages')
         .send({ content: 'hi' })
 
       expect(res.status).toBe(202)
@@ -453,7 +453,7 @@ describe('SSE routes', () => {
       appWithService.use('/api/conversations', createSSERoutes(depsWithService as any))
 
       const res = await request(appWithService)
-        .post('/api/conversations/app_123/conv_1/stop')
+        .post('/api/conversations/abcdefghij/conv_1/stop')
 
       expect(res.status).toBe(202)
       expect(mockStop).toHaveBeenCalledWith('conv_1')
@@ -463,7 +463,7 @@ describe('SSE routes', () => {
   describe('POST /api/conversations/:appId/:conversationId/actions', () => {
     it('returns 400 when requestId is missing', async () => {
       const res = await request(app)
-        .post('/api/conversations/app_123/conv_1/actions')
+        .post('/api/conversations/abcdefghij/conv_1/actions')
         .send({ success: true })
 
       expect(res.status).toBe(400)
@@ -472,7 +472,7 @@ describe('SSE routes', () => {
 
     it('returns 404 when no SSEClientActionService is registered', async () => {
       const res = await request(app)
-        .post('/api/conversations/app_123/conv_1/actions')
+        .post('/api/conversations/abcdefghij/conv_1/actions')
         .send({ requestId: 'req_1', success: true })
 
       expect(res.status).toBe(404)
@@ -487,7 +487,7 @@ describe('SSE routes', () => {
       })
 
       const res = await request(app)
-        .post('/api/conversations/app_123/conv_1/actions')
+        .post('/api/conversations/abcdefghij/conv_1/actions')
         .send({ requestId: 'req_1', success: true })
 
       expect(res.status).toBe(404)
@@ -502,7 +502,7 @@ describe('SSE routes', () => {
       })
 
       const res = await request(app)
-        .post('/api/conversations/app_123/conv_1/actions')
+        .post('/api/conversations/abcdefghij/conv_1/actions')
         .send({ requestId: 'req_1', success: true })
 
       expect(res.status).toBe(404)
@@ -519,7 +519,7 @@ describe('SSE routes', () => {
       })
 
       const res = await request(app)
-        .post('/api/conversations/app_123/conv_1/actions')
+        .post('/api/conversations/abcdefghij/conv_1/actions')
         .send({ requestId: 'req_1', success: true, result: { ok: true } })
 
       expect(res.status).toBe(200)
@@ -547,7 +547,7 @@ describe('SSE routes', () => {
       mockBudgetPreCheck.mockRejectedValueOnce(new BudgetExceededError('quota exceeded'))
 
       const res = await request(app)
-        .post('/api/conversations/app_123/conv_1/messages')
+        .post('/api/conversations/abcdefghij/conv_1/messages')
         .send({ content: 'hi' })
 
       expect(res.status).toBe(402)
@@ -571,7 +571,7 @@ describe('SSE routes', () => {
       mockBudgetPreCheck.mockRejectedValueOnce(new Error('budget service unreachable'))
 
       const res = await request(errorApp)
-        .post('/api/conversations/app_123/conv_1/messages')
+        .post('/api/conversations/abcdefghij/conv_1/messages')
         .send({ content: 'hi' })
 
       expect(res.status).toBe(500)
@@ -582,7 +582,7 @@ describe('SSE routes', () => {
   describe('PUT /api/conversations/:appId/:conversationId/grants', () => {
     it('returns 400 when grants is not an array', async () => {
       const res = await request(app)
-        .put('/api/conversations/app_123/conv_1/grants')
+        .put('/api/conversations/abcdefghij/conv_1/grants')
         .send({ grants: 'not-an-array' })
 
       expect(res.status).toBe(400)
@@ -593,7 +593,7 @@ describe('SSE routes', () => {
       const { grantSessionManager } = await import('@airo/ai-grants')
 
       const res = await request(app)
-        .put('/api/conversations/app_123/conv_1/grants')
+        .put('/api/conversations/abcdefghij/conv_1/grants')
         .send({ grants: ['read', 'write'] })
 
       expect(res.status).toBe(200)
@@ -613,7 +613,7 @@ describe('SSE routes', () => {
       })
 
       const res = await request(app)
-        .get('/api/conversations/app_123/conv_1/messages')
+        .get('/api/conversations/abcdefghij/conv_1/messages')
 
       expect(res.status).toBe(200)
       expect(res.body.messages).toHaveLength(1)
@@ -641,7 +641,7 @@ describe('SSE routes', () => {
       appWithService.use('/api/conversations', createSSERoutes(depsWithService as any))
 
       const res = await request(appWithService)
-        .get('/api/conversations/app_123/conv_1/messages')
+        .get('/api/conversations/abcdefghij/conv_1/messages')
 
       expect(res.status).toBe(200)
       expect(res.body.messages[0].metadata).toEqual({ inProgress: false, other: 'x' })
@@ -668,7 +668,7 @@ describe('SSE routes', () => {
       appWithService.use('/api/conversations', createSSERoutes(depsWithService as any))
 
       const res = await request(appWithService)
-        .get('/api/conversations/app_123/conv_1/messages')
+        .get('/api/conversations/abcdefghij/conv_1/messages')
 
       expect(res.body.messages[0].metadata.inProgress).toBe(true)
     })
@@ -687,7 +687,7 @@ describe('SSE routes', () => {
       })
 
       const res = await request(app)
-        .get('/api/conversations/app_123/conv_1/messages?before=m2')
+        .get('/api/conversations/abcdefghij/conv_1/messages?before=m2')
 
       expect(res.body.messages[0].metadata.inProgress).toBe(true)
     })
@@ -711,7 +711,7 @@ describe('SSE routes', () => {
       })
 
       const res = await request(errorApp)
-        .get('/api/conversations/app_123/conv_1/messages')
+        .get('/api/conversations/abcdefghij/conv_1/messages')
 
       expect(res.status).toBe(500)
       expect(res.body.error).toBe('DB connection lost')

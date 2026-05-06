@@ -67,7 +67,7 @@ const { BYPASS_SITE_IDS } = await import('../../services/features.js');
 
 describe('Download Route Authorization', () => {
   let app: Express;
-  const appId = 'test-app-id';
+  const appId = 'abcdefghij';
 
   function createApp(agentContext?: Record<string, unknown>): Express {
     const testApp = express();
@@ -97,7 +97,7 @@ describe('Download Route Authorization', () => {
   describe('App Ownership Validation', () => {
     it('should reject cross-tenant download attempts', async function rejectCrossTenant() {
       app = createApp({
-        siteId: 'site-a',
+        siteId: 'aaaaaaaaaa',
         canDownload: true,
         canPublish: false,
         exp: Math.floor(Date.now() / 1000) + 3600,
@@ -105,7 +105,7 @@ describe('Download Route Authorization', () => {
       });
 
       const response = await request(app)
-        .get(`/apps/site-b/zip`)
+        .get(`/apps/bbbbbbbbbb/zip`)
         .expect(403);
 
       expect(response.body).toHaveProperty('error', 'Access denied');
@@ -144,7 +144,7 @@ describe('Download Route Authorization', () => {
 
     it('should check ownership before permission', async function ownershipFirst() {
       app = createApp({
-        siteId: 'site-a',
+        siteId: 'aaaaaaaaaa',
         canDownload: true,
         canPublish: false,
         exp: Math.floor(Date.now() / 1000) + 3600,
@@ -156,7 +156,7 @@ describe('Download Route Authorization', () => {
       });
 
       const response = await request(app)
-        .get(`/apps/site-b/zip`)
+        .get(`/apps/bbbbbbbbbb/zip`)
         .expect(403);
 
       expect(response.body).toHaveProperty('error', 'Access denied');
@@ -341,7 +341,7 @@ describe('Archive Error Handling', () => {
   let app: Express;
   let mockArchive: EventEmitter & Record<string, any>;
   let mockOutput: EventEmitter & Record<string, any>;
-  const appId = 'test-app';
+  const appId = 'klmnopqrst';
 
   function createPermittedApp(): Express {
     const testApp = express();

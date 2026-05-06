@@ -27,8 +27,10 @@ describe('Cross-Tenant Authorization Security - Integration Tests', () => {
   // Mock JWT tokens for two different tenants
   const siteA_token = 'mock-jwt-token-site-a';
   const siteB_token = 'mock-jwt-token-site-b';
-  const siteA_id = 'site-a-uuid';
-  const siteB_id = 'site-b-uuid';
+  // Canonical appId shapes so validateOwnership's shape check doesn't
+  // 400 these requests before the ownership comparison runs.
+  const siteA_id = '11111111-1111-1111-1111-111111111111';
+  const siteB_id = '22222222-2222-2222-2222-222222222222';
 
   beforeAll(() => {
     // Mock JWT auth middleware to inject test agent contexts

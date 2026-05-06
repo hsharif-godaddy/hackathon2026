@@ -20,10 +20,7 @@ Express API (port 4000) providing AI agent orchestration, app lifecycle, WebSock
 **Regex pattern for apps routes** prevents matching static routes like `/create`:
 
 ```typescript
-router.use(
-  '/:id([a-z0-9]{10}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})',
-  validateAppOwnership
-);
+router.use('/:id([a-z0-9]{10})', validateAppOwnership);
 ```
 
 **BYPASS_SITE_IDS** (`src/services/features.ts`): `bypass-site`, `default-site`, `local-dev-site`, `mock-site-id`, `unknown-site` — skip isolation for local dev/testing. Never in production.

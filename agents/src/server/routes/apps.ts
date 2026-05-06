@@ -150,15 +150,13 @@ router.get('/config', async (req: Request, res: Response) => {
  *
  * Placement: MUST be before any :id routes to protect them.
  *
- * Regex pattern: Strictly matches valid app ID formats only:
- * - nanoID (production): exactly 10 chars, lowercase alphanumeric, e.g., "jm2t5p2rxr"
- * - UUID (local dev): exactly 36 chars, 8-4-4-4-12 format with hyphens, e.g., "025ec5f4-2c3a-4d68-8409-3bf98df915a3"
- *
- * Static routes like /create, /register, /servers do not match this pattern and
- * are handled by their specific route definitions above.
+ * Regex pattern: strictly matches the canonical appId shape — a 10-char lowercase
+ * nanoid (e.g. "jm2t5p2rxr"). Both production and local-control-plane issue this
+ * format. Static routes like /create, /register, /servers do not match this
+ * pattern and are handled by their specific route definitions above.
  */
 router.use(
-  '/:id([a-z0-9]{10}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})',
+  '/:id([a-z0-9]{10})',
   validateAppOwnership
 );
 

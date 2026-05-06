@@ -71,7 +71,7 @@ vi.mock('../../database/repositories/ConversationRepository.js', () => ({
 
 const videoRouter = await import('./video.js').then(m => m.default);
 
-const appId = 'test-app-id';
+const appId = 'abcdefghij';
 const appPath = `/tmp/apps/${appId}`;
 
 function createApp(agentContext?: Record<string, unknown>): Express {

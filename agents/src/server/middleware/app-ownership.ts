@@ -35,6 +35,16 @@ import { ConversationRepository } from '../../database/repositories/Conversation
 const logger = Logger.create({ component: 'app-ownership-middleware' });
 
 /**
+ * Canonical appId shape: 10-char lowercase nanoid. Both production and local
+ * dev (local-control-plane `generateAppID`) emit this format. Enforcing shape
+ * before the siteId equality check prevents static-route typos (e.g. "create",
+ * "servers") from triggering a false "Cross-tenant access attempt" security
+ * log. Bypass siteIds are exempted — local dev commonly uses non-canonical
+ * ids for them.
+ */
+const APP_ID_RE = /^[a-z0-9]{10}$/;
+
+/**
  * Core validation logic shared across all ownership validators
  *
  * @param authenticatedSiteId - siteId from JWT token
@@ -67,25 +77,48 @@ function validateOwnership(
     return false;
   }
 
-  // SECURITY: Validate site isolation - agent can only access its authenticated site
-  // This prevents cross-tenant data access where an attacker with valid credentials
-  // for Site A attempts to access Site B's data by changing the appId parameter
-  if (!BYPASS_SITE_IDS.includes(authenticatedSiteId) && authenticatedSiteId !== requestedAppId) {
-    logger.error('route.middleware.ownership.denied', {
-      message: 'SECURITY VIOLATION: Cross-tenant access attempt',
-      authenticatedSiteId,
-      requestedAppId,
-      path: req.path,
-      method: req.method,
-      source,
-      severity: 'HIGH'
-    }, { tags: ['security', 'authorization-failure', 'cross-tenant-attempt'] });
-    res.status(403).json({
-      success: false,
-      error: 'Access denied',
-      message: 'Agent can only access its authenticated site',
-    });
-    return false;
+  // Non-bypass siteIds are held to the canonical appId shape and site-isolation
+  // checks. Bypass siteIds skip both (local dev / integration tests commonly
+  // use non-canonical ids).
+  if (!BYPASS_SITE_IDS.includes(authenticatedSiteId)) {
+    // Shape guard: reject malformed ids as validation errors, not as security
+    // events. This keeps the HIGH-severity "Cross-tenant access attempt" log
+    // reserved for real well-formed cross-tenant attempts (not typos like
+    // "create" or "servers").
+    if (!APP_ID_RE.test(requestedAppId)) {
+      logger.warn('route.middleware.ownership.invalid-id-shape', {
+        authenticatedSiteId,
+        requestedAppId,
+        path: req.path,
+        source,
+      }, { tags: ['validation'] });
+      res.status(400).json({
+        success: false,
+        error: 'Invalid app ID format',
+      });
+      return false;
+    }
+
+    // SECURITY: Validate site isolation - agent can only access its authenticated site
+    // This prevents cross-tenant data access where an attacker with valid credentials
+    // for Site A attempts to access Site B's data by changing the appId parameter
+    if (authenticatedSiteId !== requestedAppId) {
+      logger.error('route.middleware.ownership.denied', {
+        message: 'SECURITY VIOLATION: Cross-tenant access attempt',
+        authenticatedSiteId,
+        requestedAppId,
+        path: req.path,
+        method: req.method,
+        source,
+        severity: 'HIGH'
+      }, { tags: ['security', 'authorization-failure', 'cross-tenant-attempt'] });
+      res.status(403).json({
+        success: false,
+        error: 'Access denied',
+        message: 'Agent can only access its authenticated site',
+      });
+      return false;
+    }
   }
 
   // Validation passed - log success and continue
