@@ -185,6 +185,46 @@ jobs:
         - Commentary unrelated to actionable feedback
         </synthesis>
 
+        <verification>
+        Before posting any [Critical] or [Important] finding, verify it is real:
+        - Read surrounding context in the file (not just the diff)
+        - Check if the pattern is used elsewhere in the codebase
+        - Confirm the issue is not already handled by code outside the diff
+        Drop any findings that do not hold up under verification.
+        Do NOT launch additional sub-agents for verification — do this yourself
+        as part of synthesis.
+        </verification>
+
+        <inline_comments>
+        Post inline comments on specific diff lines using the GitHub API.
+        For each [Critical] or [Important] finding that survives verification,
+        post an inline comment:
+
+        ```
+        gh api repos/$REPO/pulls/$PR_NUMBER/comments \
+          -f body="**[$SEVERITY] $TITLE**
+
+        $DESCRIPTION
+
+        **Fix:** $RECOMMENDATION" \
+          -f path="path/to/file.ts" \
+          -f line=42 \
+          -f side="RIGHT" \
+          -f commit_id="$(gh pr view $PR_NUMBER --json headRefOid -q .headRefOid)"
+        ```
+
+        Rules:
+        - Use the line number from the HEAD commit (not the diff hunk offset)
+        - `side` is always "RIGHT" (the new/changed side)
+        - Only post inline comments for [Critical] and [Important] findings
+        - [Suggestion] items stay in the summary comment only
+        - The line must be within the diff range (files not in the diff cannot
+          receive inline comments)
+        - If a finding spans multiple lines, comment on the most relevant line
+        - On iteration updates, only post inline comments for NEW findings —
+          do not re-post for carried-forward unresolved issues
+        </inline_comments>
+
         <output_format>
         Summary comment structure:
         - "## Approach" section (always include, from <approach_review>)
@@ -275,9 +315,13 @@ jobs:
              silent-failure-hunter; skip other subagents for new findings. Still list
              all unresolved [Critical] and [Important] from prior bot comments.
              When zero [Critical] and zero [Important] remain (including carried
-             forward), add ready-for-human-review per step 9. Never use
+             forward), add ready-for-human-review per step 11. Never use
              `gh pr review` / GitHub "approve" API — only label + comment.
-        6. Post a single update comment using gh pr comment with:
+        6. Verify each new [Critical] and [Important] finding (see <verification>).
+        7. Post inline comments for new verified [Critical] and [Important] findings
+           only (see <inline_comments>). Do NOT re-post for carried-forward unresolved
+           issues — they already have inline comments from prior iterations.
+        8. Post a single update comment using gh pr comment with:
            - "### Iteration N" from step 2 (or "### Iteration 1 (reopened)" when applicable)
            - Optional `Scope reset: …` from step 4
            - Required Scope check + Diff files (scope) lines from <output_format>
@@ -285,9 +329,9 @@ jobs:
            - [ ] Unresolved issues (still present, with original severity)
            - [ ] New issues (found in this update, only at severities allowed by tier)
            - New suggestions (only in tier 1–2)
-        7. Reference file:line for every issue.
-        8. Do NOT create a new review summary - only post a progress update.
-        9. Label management (use gh api - gh issue edit is not in the tool
+        9. Reference file:line for every issue.
+        10. Do NOT create a new review summary - only post a progress update.
+        11. Label management (use gh api - gh issue edit is not in the tool
            allowlist). Always check the CURRENT labels on the PR first
            (gh pr view $PR_NUMBER --json labels) — do not infer label
            state from previous review comments:
@@ -302,13 +346,15 @@ jobs:
 
         1. Fetch PR diff: gh pr diff $PR_NUMBER
         2. Run the full review pipeline.
-        3. Post summary comment using gh pr comment with Approach, Issues
+        3. Verify each [Critical] and [Important] finding (see <verification>).
+        4. Post inline comments for verified [Critical] and [Important] findings (see <inline_comments>).
+        5. Post summary comment using gh pr comment with Approach, Issues
            (grouped by severity), and Suggestions sections.
-        4. Mark as "### Iteration 1" in the comment header.
-        5. Include required Scope check + "### Diff files (scope):" lines from
+        6. Mark as "### Iteration 1" in the comment header.
+        7. Include required Scope check + "### Diff files (scope):" lines from
            <output_format>.
-        6. Reference file:line for every finding.
-        7. Label management (use gh api - gh issue edit is not in the tool
+        8. Reference file:line for every finding.
+        9. Label management (use gh api - gh issue edit is not in the tool
            allowlist). Always check the CURRENT labels first (gh pr view $PR_NUMBER --json labels):
            - Add label if zero [Critical] and zero [Important] found
              AND the label is not already present:
