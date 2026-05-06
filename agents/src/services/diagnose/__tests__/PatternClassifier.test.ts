@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { PatternClassifier } from '../classifiers/PatternClassifier.js';
-import { ALL_PATTERNS } from '../classifiers/patterns/index.js';
+import { PAAS_ALL_PATTERNS } from '../classifiers/patterns/index.js';
 import type { SanitizedLogEntry } from '../../log-sanitizer.js';
 import type { AppContext } from '../types.js';
 
@@ -20,7 +20,7 @@ function run(c: PatternClassifier, logs: SanitizedLogEntry[]) {
 }
 
 describe('PatternClassifier', () => {
-  const classifier = new PatternClassifier(ALL_PATTERNS);
+  const classifier = new PatternClassifier(PAAS_ALL_PATTERNS);
 
   describe('source identity', () => {
     it('reports source as "pattern"', () => {

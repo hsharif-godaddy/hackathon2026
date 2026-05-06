@@ -53,5 +53,30 @@ describe('tool-llm-helper', () => {
         },
       }))
     })
+
+    it('forwards abortSignal to generateText when provided', async function abortSignalForwarded() {
+      const controller = new AbortController()
+
+      await generateTextWithTracking({
+        model: { modelId: 'claude-sonnet-4-6' } as any,
+        modelName: 'sonnet',
+        prompt: 'Generate something',
+        abortSignal: controller.signal,
+      })
+
+      expect(mockGenerateText).toHaveBeenCalledWith(expect.objectContaining({
+        abortSignal: controller.signal,
+      }))
+    })
+
+    it('omits abortSignal from generateText when not provided', async function abortSignalOmitted() {
+      await generateTextWithTracking({
+        model: { modelId: 'claude-sonnet-4-6' } as any,
+        modelName: 'sonnet',
+        prompt: 'Generate something',
+      })
+
+      expect(mockGenerateText.mock.calls[0][0].abortSignal).toBeUndefined()
+    })
   })
 })

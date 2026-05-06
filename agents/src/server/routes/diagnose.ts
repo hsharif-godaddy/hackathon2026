@@ -13,21 +13,23 @@ import { z } from 'zod';
 
 import { Logger } from '../../logging/index.js';
 import { AppRepository } from '../../database/repositories/AppRepository.js';
-import { CustomerLogsService, MAX_LINES } from '../../services/customer-logs-service.js';
+import { CustomerLogsService } from '../../services/customer-logs-service.js';
 import { LogSanitizer } from '../../services/log-sanitizer.js';
 import {
-  DiagnoseService,
+  PaaSDiagnoseService,
   PatternClassifier,
   LlmClassifier,
   DiagnoseLlmClient,
-  ALL_PATTERNS,
+  PAAS_ALL_PATTERNS,
   buildUnknownAnalysis,
 } from '../../services/diagnose/index.js';
 import type {
+  DiagnoseService,
   DiagnoseErrorCode,
   DiagnoseRequest,
 } from '../../services/diagnose/index.js';
 import { validateAppOwnership } from '../middleware/app-ownership.js';
+import type { AuthenticatedRequest } from '../middleware/jwt-auth.js';
 
 const logger = Logger.create({ component: 'diagnose-routes' });
 
@@ -37,10 +39,10 @@ function getDiagnoseService(): DiagnoseService {
   if (!_diagnoseService) {
     const appRepo = new AppRepository();
     const customerLogsService = new CustomerLogsService(appRepo, new LogSanitizer());
-    const patternClassifier = new PatternClassifier(ALL_PATTERNS);
+    const patternClassifier = new PatternClassifier(PAAS_ALL_PATTERNS);
     const llmClient = new DiagnoseLlmClient();
     const llmClassifier = new LlmClassifier(llmClient);
-    _diagnoseService = new DiagnoseService({
+    _diagnoseService = new PaaSDiagnoseService({
       customerLogsService,
       patternClassifier,
       llmClassifier,
@@ -67,6 +69,19 @@ router.post('/:id/diagnose', async (req: Request, res: Response) => {
   const appId = req.params.id ?? '';
   const startedAt = Date.now();
 
+  // PaaS-only gate. The diagnose API is scoped to Node.js Hosting customers —
+  // reject any other product (including AAB) with 403.
+  const product = (req as AuthenticatedRequest).agentContext?.product;
+  if (product !== 'PaaSNodeJS') {
+    logger.warn('route.diagnose.product_not_allowed', { appId, product });
+    return res.status(403).json({
+      success: false,
+      error: 'Diagnose is only available for PaaS (Node.js Hosting) customers.',
+      errorCode: 'PRODUCT_NOT_ALLOWED',
+      analysis: buildUnknownAnalysis(() => Date.now(), startedAt),
+    });
+  }
+
   const parseResult = DiagnoseRequestBodySchema.safeParse(req.body ?? {});
   if (!parseResult.success) {
     const reason = parseResult.error.issues.map((i) => i.message).join('; ');
@@ -78,7 +93,7 @@ router.post('/:id/diagnose', async (req: Request, res: Response) => {
       success: false,
       error: reason,
       errorCode: 'VALIDATION_ERROR',
-      analysis: buildUnknownAnalysis(Date.now, startedAt),
+      analysis: buildUnknownAnalysis(() => Date.now(), startedAt),
     });
   }
 
@@ -86,16 +101,13 @@ router.post('/:id/diagnose', async (req: Request, res: Response) => {
   const request: DiagnoseRequest = {
     appId,
     target: parsed.target,
-    since: parsed.since,
-    lines: parsed.lines,
-    options: parsed.options,
+    tier: parsed.tier,
   };
 
   logger.info('route.diagnose.request', {
     appId,
     target: request.target,
-    lines: request.lines,
-    forceFullAnalysis: request.options?.forceFullAnalysis === true,
+    tier: request.tier ?? 'pattern',
   });
 
   try {
@@ -128,20 +140,17 @@ router.post('/:id/diagnose', async (req: Request, res: Response) => {
       success: false,
       error: 'Internal server error',
       errorCode: 'UNKNOWN',
-      analysis: buildUnknownAnalysis(Date.now, startedAt),
+      analysis: buildUnknownAnalysis(() => Date.now(), startedAt),
     });
   }
 });
 
 const DiagnoseRequestBodySchema = z.object({
   target: z.enum(['preview', 'publish']),
-  since: z.string().datetime().optional(),
-  lines: z.number().int().min(1).max(MAX_LINES).optional(),
-  options: z
-    .object({
-      forceFullAnalysis: z.boolean().optional(),
-    })
-    .optional(),
+  // 'embedding' is reserved in DiagnoseTier but not implemented, so it is
+  // rejected at the HTTP boundary. The service keeps a runtime guard for
+  // non-HTTP callers (defense-in-depth).
+  tier: z.enum(['pattern', 'llm']).optional(),
 });
 
 function errorCodeToStatus(code: DiagnoseErrorCode): number {
@@ -153,13 +162,23 @@ function errorCodeToStatus(code: DiagnoseErrorCode): number {
       return 503;
     case 'VALIDATION_ERROR':
       return 400;
+    case 'PRODUCT_NOT_ALLOWED':
+      return 403;
+    case 'ANOTHER_DIAGNOSE_IN_FLIGHT':
+      return 409;
     case 'CAP_EXCEEDED':
       return 429;
+    case 'TIER_NOT_IMPLEMENTED':
+      return 501;
     case 'LLM_FAILURE':
     case 'UNKNOWN':
-    default:
       return 500;
   }
+  // Exhaustiveness guard: a new DiagnoseErrorCode added without a case here
+  // fails this assignment at compile time. Runtime fallback is still 500.
+  const _exhaustive: never = code;
+  void _exhaustive;
+  return 500;
 }
 
 export default router;

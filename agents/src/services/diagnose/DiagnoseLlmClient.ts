@@ -30,24 +30,35 @@ export class DiagnoseLlmClient implements LlmClient {
       tags: args.tags,
     };
 
-    const invoke = async (): Promise<T> => {
-      const result = await generateTextWithTracking({
-        model,
-        modelName,
-        system: args.system,
-        prompt: args.user,
-        temperature: 0,
-        maxOutputTokens: args.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS,
-        context: {
-          toolName: args.functionId ?? 'diagnose-service',
-          description: 'Diagnose deployment logs',
-        },
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), args.timeoutMs);
+
+    try {
+      return await llmMetadataContext.run(metadata, async () => {
+        const result = await generateTextWithTracking({
+          model,
+          modelName,
+          system: args.system,
+          prompt: args.user,
+          temperature: 0,
+          maxOutputTokens: args.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS,
+          abortSignal: controller.signal,
+          context: {
+            toolName: args.functionId ?? 'diagnose-service',
+            description: 'Diagnose deployment logs',
+          },
+        });
+
+        return parseAndValidate(result.text, args.schema);
       });
-
-      return parseAndValidate(result.text, args.schema);
-    };
-
-    return llmMetadataContext.run(metadata, () => withTimeout(invoke(), args.timeoutMs));
+    } catch (err) {
+      if (controller.signal.aborted) {
+        throw new Error(`LLM call timed out after ${args.timeoutMs}ms`);
+      }
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
   }
 }
 
@@ -82,18 +93,3 @@ function stripJsonFences(text: string): string {
   return trimmed;
 }
 
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`LLM call timed out after ${timeoutMs}ms`)), timeoutMs);
-    promise.then(
-      (value) => {
-        clearTimeout(timer);
-        resolve(value);
-      },
-      (err) => {
-        clearTimeout(timer);
-        reject(err);
-      }
-    );
-  });
-}

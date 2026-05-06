@@ -20,7 +20,7 @@ export enum BudgetOverride {
   FixTask = 'airo-builder:fix-task',
   // Background task budgets
   SummarizationTask = 'airo-builder:summarization-task',
-  DiagnoseTask = 'airo-builder:diagnose-task',
+  DiagnoseTask = 'airo-builder:paas-diagnose-task',
 }
 
 /** BMS override types - only these trigger 100% GoDaddy attribution in BMS reporting */

@@ -1,6 +1,12 @@
 import type { PatternRule } from './types.js';
 
-export const BUILD_PATTERNS: PatternRule[] = [
+/**
+ * PaaS (Node.js Hosting) build-time failure patterns. Recommendation wording is
+ * tuned to the PaaS environment (e.g. secrets model, build scripts). When AAB
+ * diagnose adds its own ruleset, add a sibling AAB_BUILD_PATTERNS rather than
+ * mutating these.
+ */
+export const PAAS_BUILD_PATTERNS: PatternRule[] = [
   {
     id: 'missing-module',
     category: 'Missing Dependency',

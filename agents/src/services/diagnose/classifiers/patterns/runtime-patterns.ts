@@ -1,6 +1,12 @@
 import type { PatternRule } from './types.js';
 
-export const RUNTIME_PATTERNS: PatternRule[] = [
+/**
+ * PaaS (Node.js Hosting) runtime failure patterns. Recommendation wording refers
+ * to PaaS-specific surfaces (e.g. "configure via PaaS secrets"). When AAB
+ * diagnose adds its own ruleset, add a sibling AAB_RUNTIME_PATTERNS rather than
+ * mutating these.
+ */
+export const PAAS_RUNTIME_PATTERNS: PatternRule[] = [
   {
     id: 'heap-oom',
     category: 'Memory Exhaustion',

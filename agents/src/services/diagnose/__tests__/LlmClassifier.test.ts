@@ -163,6 +163,7 @@ describe('LlmClassifier', () => {
       const result = await classifier.classify([logLine('anything')], appContext());
 
       expect(result.handled).toBe(true);
+      expect(result.degraded).toBe(true);
       expect(result.issues).toHaveLength(1);
       expect(result.issues[0]!.severity).toBe('warning');
       expect(result.issues[0]!.id).toBe('llm-failure');
@@ -183,11 +184,33 @@ describe('LlmClassifier', () => {
       const result = await classifier.classify([logLine('anything')], appContext());
 
       expect(result.handled).toBe(true);
+      expect(result.degraded).toBe(true);
       expect(result.issues).toHaveLength(1);
       expect(result.issues[0]!.id).toBe('llm-prompt-missing');
       expect(result.issues[0]!.source).toBe('llm');
       expect(result.issues[0]!.recommendation).toMatch(/contact support/i);
       expect(client.calls).toBe(0);
+    });
+
+    it('classifies ENOENT from the LLM call as llm-failure, not llm-prompt-missing', async () => {
+      // Regression guard: earlier versions wrapped prompt-load and the LLM call
+      // in the same try, so any ENOENT (even from deep inside the LLM stack)
+      // was misreported as a missing prompt file.
+      const enoentFromLlm = Object.assign(new Error('ENOENT: socket path'), {
+        code: 'ENOENT',
+        path: '/var/run/something.sock',
+      });
+      const failing = new FakeLlmClient(async () => {
+        throw enoentFromLlm;
+      });
+      const classifier = new LlmClassifier(failing);
+      const result = await classifier.classify([logLine('anything')], appContext());
+
+      expect(result.handled).toBe(true);
+      expect(result.degraded).toBe(true);
+      expect(result.issues).toHaveLength(1);
+      expect(result.issues[0]!.id).toBe('llm-failure');
+      expect(result.issues[0]!.recommendation).not.toMatch(/contact support/i);
     });
   });
 

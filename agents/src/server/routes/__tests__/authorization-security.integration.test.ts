@@ -6,7 +6,7 @@
  * authorization bypass vulnerabilities discovered on 2026-01-09.
  */
 
-import { describe, it, expect, beforeEach, beforeAll, afterAll, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll, vi } from 'vitest';
 import request from 'supertest';
 import express, { type Express } from 'express';
 import { appsRouter } from '../apps.js';
@@ -16,7 +16,7 @@ import { publishRouter } from '../publish.js';
 import { gitRouter } from '../git.js';
 import { conversationsRouter } from '../conversations.js';
 import { chatRouter } from '../chat.js';
-import diagnoseRouter from '../diagnose.js';
+import diagnoseRouter, { _setDependencies as _setDiagnoseDependencies, _resetDependencies as _resetDiagnoseDependencies } from '../diagnose.js';
 import rebuildRouter from '../rebuild.js';
 import nextActionsRouter from '../next-actions.js';
 import { jwtAuthMiddleware } from '../../middleware/jwt-auth.js';
@@ -46,12 +46,14 @@ describe('Cross-Tenant Authorization Security - Integration Tests', () => {
       if (token === siteA_token) {
         req.agentContext = {
           siteId: siteA_id,
+          product: 'PaaSNodeJS',
           exp: Math.floor(Date.now() / 1000) + 3600,
           iat: Math.floor(Date.now() / 1000),
         };
       } else if (token === siteB_token) {
         req.agentContext = {
           siteId: siteB_id,
+          product: 'PaaSNodeJS',
           exp: Math.floor(Date.now() / 1000) + 3600,
           iat: Math.floor(Date.now() / 1000),
         };
@@ -191,6 +193,26 @@ describe('Cross-Tenant Authorization Security - Integration Tests', () => {
   });
 
   describe('Diagnose Router - /apps/:id/diagnose', () => {
+    beforeEach(() => {
+      // Inject a stub DiagnoseService so the same-tenant test exercises the auth/product
+      // gate without depending on the DB, dev-supervisor, or the LLM.
+      _setDiagnoseDependencies({
+        diagnose: vi.fn().mockResolvedValue({
+          success: true,
+          analysis: {
+            status: 'healthy',
+            issues: [],
+            summary: { totalIssues: 0, errors: 0, warnings: 0, primaryRecommendation: 'ok' },
+            metadata: { logsAnalyzed: 0, tierUsed: 'pattern', analysisTimeMs: 1 },
+          },
+        }),
+      } as never);
+    });
+
+    afterEach(() => {
+      _resetDiagnoseDependencies();
+    });
+
     it('should reject cross-tenant diagnose requests', async () => {
       const response = await request(app)
         .post(`/apps/${siteB_id}/diagnose`)
@@ -207,8 +229,8 @@ describe('Cross-Tenant Authorization Security - Integration Tests', () => {
         .set('Authorization', `Bearer ${siteA_token}`)
         .send({ target: 'publish' });
 
-      // Should not return 403 (may return other errors due to unreachable services)
-      expect(response.status).not.toBe(403);
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
     });
   });
 

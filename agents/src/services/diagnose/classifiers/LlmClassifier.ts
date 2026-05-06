@@ -76,9 +76,46 @@ export class LlmClassifier implements Classifier {
       };
     }
 
+    // Prompt-load stage. Only an ENOENT originating here indicates a missing
+    // prompt file (platform misconfig). Any other failure — or an ENOENT from
+    // deeper in the LLM call stack — falls through to the generic llm-failure
+    // sentinel below.
+    let systemPrompt: string;
+    let userPrompt: string;
     try {
-      const systemPrompt = await this.loadSystemPrompt();
-      const userPrompt = await this.buildUserPrompt(context, logs);
+      systemPrompt = await this.loadSystemPrompt();
+      userPrompt = await this.buildUserPrompt(context, logs);
+    } catch (error) {
+      const errno = error as NodeJS.ErrnoException;
+      if (errno?.code === 'ENOENT') {
+        logger.error('diagnose.tier.llm.prompt_missing', {
+          appId: context.appId,
+          path: errno.path ?? '(path unavailable)',
+          error: errno.message,
+        });
+        return {
+          handled: true,
+          degraded: true,
+          issues: [
+            {
+              id: 'llm-prompt-missing',
+              category: 'Analyzer Unavailable',
+              severity: 'warning',
+              message: 'Unable to analyze logs — an analyzer prompt file is missing.',
+              recommendation:
+                'This is a platform configuration error — retrying will not help. Contact support.',
+              confidence: 0,
+              source: this.source,
+            },
+          ],
+        };
+      }
+      return this.buildLlmFailureResult(context, error);
+    }
+
+    // LLM call stage. Any error here — including an ENOENT bubbling up from a
+    // downstream dep — is classified as a generic llm-failure.
+    try {
       const output = await this.llm.generateStructured<LlmAnalysisOutput>({
         system: systemPrompt,
         user: userPrompt,
@@ -95,49 +132,33 @@ export class LlmClassifier implements Classifier {
         primaryRecommendation: output.primaryRecommendation,
       };
     } catch (error) {
-      const errno = error as NodeJS.ErrnoException;
-      if (errno?.code === 'ENOENT') {
-        logger.error('diagnose.tier.llm.prompt_missing', {
-          appId: context.appId,
-          path: errno.path,
-          error: errno.message,
-        });
-        return {
-          handled: true,
-          issues: [
-            {
-              id: 'llm-prompt-missing',
-              category: 'Analyzer Unavailable',
-              severity: 'warning',
-              message: 'Unable to analyze logs — an analyzer prompt file is missing.',
-              recommendation:
-                'This is a platform configuration error — retrying will not help. Contact support.',
-              confidence: 0,
-              source: this.source,
-            },
-          ],
-        };
-      }
-      logger.warn('diagnose.tier.llm.failure', {
-        appId: context.appId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return {
-        handled: true,
-        issues: [
-          {
-            id: 'llm-failure',
-            category: 'Analyzer Unavailable',
-            severity: 'warning',
-            message: 'Unable to analyze logs automatically — the LLM tier failed.',
-            recommendation:
-              'Review the raw logs manually or retry the analysis in a few moments.',
-            confidence: 0,
-            source: this.source,
-          },
-        ],
-      };
+      return this.buildLlmFailureResult(context, error);
     }
+  }
+
+  private buildLlmFailureResult(context: AppContext, error: unknown): ClassifierResult {
+    const errno = error as NodeJS.ErrnoException | undefined;
+    logger.warn('diagnose.tier.llm.failure', {
+      appId: context.appId,
+      error: error instanceof Error ? error.message : String(error),
+      errnoCode: errno?.code,
+    });
+    return {
+      handled: true,
+      degraded: true,
+      issues: [
+        {
+          id: 'llm-failure',
+          category: 'Analyzer Unavailable',
+          severity: 'warning',
+          message: 'Unable to analyze logs automatically — the LLM tier failed.',
+          recommendation:
+            'Review the raw logs manually or retry the analysis in a few moments.',
+          confidence: 0,
+          source: this.source,
+        },
+      ],
+    };
   }
 
   private async loadSystemPrompt(): Promise<string> {

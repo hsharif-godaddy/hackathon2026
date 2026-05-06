@@ -44,6 +44,8 @@ export interface GenerateTextWithTrackingOptions {
   maxOutputTokens?: number
   /** Provider-specific options for this tool LLM call */
   providerOptions?: ModelProviderOptions
+  /** AbortSignal to cancel the underlying HTTP request (propagated to AI SDK) */
+  abortSignal?: AbortSignal
   /** Context for tracking and observability */
   context?: ToolLLMContext
   /** Callback for usage tracking (receives usage data) */
@@ -129,6 +131,7 @@ export async function generateTextWithTracking(
     temperature,
     maxOutputTokens,
     providerOptions,
+    abortSignal,
     context,
     onUsage
   } = options
@@ -153,6 +156,7 @@ export async function generateTextWithTracking(
       ...(temperature !== undefined && { temperature }),
       ...(maxOutputTokens !== undefined && { maxOutputTokens }),
       ...(providerOptions && { providerOptions: providerOptions as any }),
+      ...(abortSignal && { abortSignal }),
       experimental_telemetry: {
         isEnabled: true,
         functionId: context?.toolName ? `tool-${context.toolName}` : 'tool-llm'

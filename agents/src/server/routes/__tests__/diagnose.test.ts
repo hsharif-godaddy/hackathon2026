@@ -8,7 +8,11 @@ import type { AuthenticatedRequest } from '../../middleware/jwt-auth.js';
 
 const APP_ID = 'abc1234567';
 
-function buildApp(service: Pick<DiagnoseService, 'diagnose'>, siteId: string = APP_ID): Express {
+function buildApp(
+  service: Pick<DiagnoseService, 'diagnose'>,
+  siteId: string = APP_ID,
+  product: string = 'PaaSNodeJS',
+): Express {
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
@@ -17,6 +21,7 @@ function buildApp(service: Pick<DiagnoseService, 'diagnose'>, siteId: string = A
       customerId: 'cust-1',
       sessionId: 'sess-1',
       authType: 'basic',
+      product,
     } as AuthenticatedRequest['agentContext'];
     next();
   });
@@ -57,9 +62,7 @@ describe('diagnose route', () => {
       expect(service.diagnose).toHaveBeenCalledWith({
         appId: APP_ID,
         target: 'publish',
-        since: undefined,
-        lines: undefined,
-        options: undefined,
+        tier: undefined,
       });
     });
 
@@ -76,31 +79,22 @@ describe('diagnose route', () => {
       expect(service.diagnose).toHaveBeenCalledWith({
         appId: APP_ID,
         target: 'preview',
-        since: undefined,
-        lines: undefined,
-        options: undefined,
+        tier: undefined,
       });
     });
 
-    it('forwards since, lines, and options.forceFullAnalysis', async () => {
+    it('forwards tier when provided', async () => {
       const service = { diagnose: vi.fn().mockResolvedValue({ success: true, analysis: healthyAnalysis() }) };
       const app = buildApp(service);
 
       await request(app)
         .post(`/apps/${APP_ID}/diagnose`)
-        .send({
-          target: 'publish',
-          since: '2026-04-20T00:00:00Z',
-          lines: 150,
-          options: { forceFullAnalysis: true },
-        });
+        .send({ target: 'publish', tier: 'llm' });
 
       expect(service.diagnose).toHaveBeenCalledWith({
         appId: APP_ID,
         target: 'publish',
-        since: '2026-04-20T00:00:00Z',
-        lines: 150,
-        options: { forceFullAnalysis: true },
+        tier: 'llm',
       });
     });
   });
@@ -132,44 +126,57 @@ describe('diagnose route', () => {
       expect(service.diagnose).not.toHaveBeenCalled();
     });
 
-    it('400 when since is not ISO 8601', async () => {
+    it('400 when tier is not a valid enum value', async () => {
       const service = { diagnose: vi.fn() };
       const app = buildApp(service);
 
       const res = await request(app)
         .post(`/apps/${APP_ID}/diagnose`)
-        .send({ target: 'publish', since: 'yesterday' });
+        .send({ target: 'publish', tier: 'made-up' });
 
       expect(res.status).toBe(400);
       expect(res.body.errorCode).toBe('VALIDATION_ERROR');
       expect(service.diagnose).not.toHaveBeenCalled();
     });
 
-    it.each([
-      ['negative', -1],
-      ['zero', 0],
-      ['fractional', 1.5],
-      ['exceeds MAX_LINES', 100000],
-    ] as const)('400 when lines is %s', async (_label, value) => {
+    it('400 when tier is "embedding" (reserved but not exposed via HTTP)', async () => {
       const service = { diagnose: vi.fn() };
       const app = buildApp(service);
 
       const res = await request(app)
         .post(`/apps/${APP_ID}/diagnose`)
-        .send({ target: 'publish', lines: value });
+        .send({ target: 'publish', tier: 'embedding' });
+
       expect(res.status).toBe(400);
       expect(res.body.errorCode).toBe('VALIDATION_ERROR');
       expect(service.diagnose).not.toHaveBeenCalled();
     });
+  });
 
-    it('400 when lines is non-numeric', async () => {
+  describe('product gating', () => {
+    it('403 when product is AiroAppBuilder', async () => {
       const service = { diagnose: vi.fn() };
-      const app = buildApp(service);
+      const app = buildApp(service, APP_ID, 'AiroAppBuilder');
 
       const res = await request(app)
         .post(`/apps/${APP_ID}/diagnose`)
-        .send({ target: 'publish', lines: 'ten' });
-      expect(res.status).toBe(400);
+        .send({ target: 'publish' });
+
+      expect(res.status).toBe(403);
+      expect(res.body.errorCode).toBe('PRODUCT_NOT_ALLOWED');
+      expect(service.diagnose).not.toHaveBeenCalled();
+    });
+
+    it('403 when product is absent', async () => {
+      const service = { diagnose: vi.fn() };
+      const app = buildApp(service, APP_ID, '');
+
+      const res = await request(app)
+        .post(`/apps/${APP_ID}/diagnose`)
+        .send({ target: 'publish' });
+
+      expect(res.status).toBe(403);
+      expect(res.body.errorCode).toBe('PRODUCT_NOT_ALLOWED');
     });
   });
 
@@ -179,6 +186,10 @@ describe('diagnose route', () => {
       ['SUPERVISOR_UNAVAILABLE', 503],
       ['UPSTREAM_UNAVAILABLE', 503],
       ['VALIDATION_ERROR', 400],
+      ['ANOTHER_DIAGNOSE_IN_FLIGHT', 409],
+      ['CAP_EXCEEDED', 429],
+      ['TIER_NOT_IMPLEMENTED', 501],
+      ['LLM_FAILURE', 500],
       ['UNKNOWN', 500],
     ] as const)('maps errorCode=%s to HTTP %i', async (errorCode, expectedStatus) => {
       const service = { diagnose: vi.fn().mockResolvedValue({

@@ -8,7 +8,7 @@ export type IssueSeverity = 'error' | 'warning';
 
 export type ClassifierSource = 'pattern' | 'embedding' | 'llm';
 
-export type AnalysisStatus = 'healthy' | 'failing' | 'degraded' | 'unknown';
+export type AnalysisStatus = 'healthy' | 'failing' | 'degraded' | 'unknown' | 'noerrlog';
 
 export type DiagnoseTier = 'pattern' | 'embedding' | 'llm';
 
@@ -19,6 +19,9 @@ export type DiagnoseErrorCode =
   | 'APP_NOT_FOUND'
   | 'LLM_FAILURE'
   | 'VALIDATION_ERROR'
+  | 'ANOTHER_DIAGNOSE_IN_FLIGHT'
+  | 'PRODUCT_NOT_ALLOWED'
+  | 'TIER_NOT_IMPLEMENTED'
   | 'UNKNOWN';
 
 export interface Issue {
@@ -57,11 +60,8 @@ export interface Analysis {
 export interface DiagnoseRequest {
   appId: string;
   target: DiagnoseTarget;
-  since?: string;
-  lines?: number;
-  options?: {
-    forceFullAnalysis?: boolean;
-  };
+  /** Starting tier. Default 'pattern'. 'embedding' is reserved but not yet implemented. */
+  tier?: DiagnoseTier;
 }
 
 export type DiagnoseResponse =
@@ -78,6 +78,17 @@ export interface ClassifierResult {
   issues: Issue[];
   /** True when this classifier produced a confident answer; false means fall through to next tier. */
   handled: boolean;
+  /**
+   * True when the classifier produced a synthetic fallback (platform misconfig,
+   * upstream failure) instead of a real classification. Issues on a degraded
+   * result should not be treated as real findings; the orchestrator typically
+   * surfaces this as a failure response with errorCode LLM_FAILURE.
+   *
+   * Narrowed to literal `true`: degraded is either true or absent — there is
+   * no `degraded: false` state. The orchestrator's `=== true` check at
+   * PaaSDiagnoseService survives the narrowing and stays defensive.
+   */
+  degraded?: true;
   /** Overall status reported by the classifier. When absent, the service derives from issue severity. */
   status?: AnalysisStatus;
   /** Synthesized headline recommendation. When absent, the service falls back to issues[0].recommendation. */
@@ -117,6 +128,7 @@ export const LlmIssueSchema = z.object({
 });
 
 export const LlmAnalysisSchema = z.object({
+  // 'noerrlog' is set by the service before any classifier runs; the LLM never produces it.
   status: z.enum(['healthy', 'failing', 'degraded', 'unknown']),
   primaryRecommendation: z.string().min(1),
   issues: z.array(LlmIssueSchema).min(1),

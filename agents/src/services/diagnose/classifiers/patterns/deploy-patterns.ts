@@ -1,6 +1,11 @@
 import type { PatternRule } from './types.js';
 
-export const DEPLOY_PATTERNS: PatternRule[] = [
+/**
+ * PaaS (Node.js Hosting) deploy-time failure patterns. Recommendation wording is
+ * tuned to the PaaS environment. When AAB diagnose adds its own ruleset, add a
+ * sibling AAB_DEPLOY_PATTERNS rather than mutating these.
+ */
+export const PAAS_DEPLOY_PATTERNS: PatternRule[] = [
   {
     id: 'port-binding',
     category: 'Port Binding',
