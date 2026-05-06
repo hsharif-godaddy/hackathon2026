@@ -796,6 +796,61 @@ describe('sync-template-files black-box migration harness', () => {
     expect(html).toMatch(/<title>Legacy Title<\/title>/);
   });
 
+  it('creates entry-server.tsx and runs migration when entry.ts has been agent-modified but entry-server.tsx is missing', async () => {
+    // Regression test for the Pattern 2 circular dependency:
+    // migrate-to-ssr-entry rewrites entry.ts with per-app API routes, giving it a unique hash.
+    // Before this fix, entry.ts was in the ssrMigration group, so its unknown hash blocked
+    // the entire group — meaning entry-server.tsx could never be created, and without
+    // entry-server.tsx the migration couldn't run. Circular.
+    //
+    // Pattern 2 apps have: main.tsx / App.tsx / vite.config.ts at old known-hash versions
+    // (they were synced before the SSR group was added), entry-server.tsx absent, and
+    // entry.ts at an agent-modified unknown hash.
+    const customerDir = tempDir('sync-migrations-pattern2-');
+
+    // Start from the pre-SSR-foundation template: main.tsx, App.tsx, vite.config.ts are all
+    // at known hashes (13101631, 9be50c9e, 641596ec respectively) and entry-server.tsx is
+    // absent. Commit 4b725393f is the commit immediately before 42c8f2c16 (SSR foundation).
+    await copyHistoricalTemplate('4b725393f2ed5ab1cceff46097c2d447ddd220dc', customerDir);
+
+    // Overwrite entry.ts with agent-modified content: marked blocks with unique per-app routes.
+    // This hash does not appear in known_hashes and is not the current template version.
+    const agentModifiedEntry =
+      'import express from "express";\n' +
+      '// <api-imports>\n' +
+      'import healthGet from "./api/health/GET";\n' +
+      'import itemsGet from "./api/items/GET";\n' +
+      '// </api-imports>\n\n' +
+      'const app = express();\n' +
+      '// <api-registrations>\n' +
+      'app.get("/api/health", healthGet);\n' +
+      'app.get("/api/items", itemsGet);\n' +
+      '// </api-registrations>\n\n' +
+      'export default app;\n';
+    writeFile(customerDir, 'src/server/entry.ts', agentModifiedEntry);
+    writeFile(customerDir, 'src/server/api/health/GET.ts', 'export default (_req, res) => res.json({ ok: true });\n');
+    writeFile(customerDir, 'src/server/api/items/GET.ts', 'export default (_req, res) => res.json([]);\n');
+
+    // entry-server.tsx does NOT exist — the key Pattern 2 condition.
+
+    const result = await runSync(customerDir);
+    expect(result.exitCode).toBe(0);
+
+    // The fix: entry-server.tsx is created because entry.ts no longer blocks the group.
+    expect(existsSync(join(customerDir, 'src/entry-server.tsx'))).toBe(true);
+
+    // entry.ts was NOT overwritten with the template version (unknown hash → skipped by sync).
+    // The migration may subsequently regenerate its marked blocks, which is correct behaviour.
+    const finalEntry = readFileSync(join(customerDir, 'src/server/entry.ts'), 'utf8');
+    const baseEntry = readFileSync(join(baseTemplateDir, 'src/server/entry.ts'), 'utf8');
+    expect(finalEntry).not.toBe(baseEntry);
+
+    // With entry-server.tsx now present the migration can run.
+    expect(parseMigrationEvents(result.stdout).map((e: MigrationEvent) => e.event)).toContain(
+      'migration.migrate-to-ssr-entry.applied',
+    );
+  });
+
   it('emits migration failures on stderr and stops before later migrations', async () => {
     const customerDir = tempDir('sync-migrations-corrupt-package-');
     seedLegacyCustomerApp(customerDir);

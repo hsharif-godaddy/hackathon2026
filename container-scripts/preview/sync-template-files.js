@@ -13,7 +13,7 @@
  * - If force flag is set, always replace the file
  * - Run migrations for targeted transforms on specific files
  *
- * Sync groups (e.g. ssrMigration for entry.ts + entry-server.tsx + main.tsx +
+ * Sync groups (e.g. ssrMigration for entry-server.tsx + main.tsx + App.tsx +
  * vite.config.ts) are applied atomically: we only sync a group if every file in the
  * group would be synced. That avoids partial updates (e.g. a new entry-server.tsx
  * paired with a stale vite.config.ts that doesn't know how to build it).
@@ -36,7 +36,7 @@ const METHOD_FILES = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']);
  * - force: If true, always replace (use sparingly, for files that should never be modified)
  * - syncGroup: Optional. Entries with the same syncGroup are synced atomically: we only
  *   sync a group if every file in the group would be synced. Prevents partial updates
- *   (e.g. the ssrMigration group: entry.ts + entry-server.tsx + main.tsx + vite.config.ts sync all-or-nothing).
+ *   (e.g. the ssrMigration group: entry-server.tsx + main.tsx + App.tsx + vite.config.ts sync all-or-nothing).
  *
  * To add a new hash:
  * 1. Find the commit with the old version: git log --oneline -- <file>
@@ -44,6 +44,12 @@ const METHOD_FILES = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']);
  * 3. Add it to the known_hashes array
  */
 const SYNC_MANIFEST = [
+  // Intentionally NOT in syncGroup: 'ssrMigration'. Unlike index.html (which agents edit
+  // interactively), entry.ts is rewritten by the migrate-to-ssr-entry migration with
+  // per-app API route imports — producing a unique hash per app. Including it in the group
+  // would permanently block the group for any app that has received that migration,
+  // creating a circular dependency: the group can't create entry-server.tsx, and without
+  // entry-server.tsx the migration can't run to regenerate entry.ts.
   {
     file: 'src/server/entry.ts',
     description: 'Express server entry (replaces configure.js + vite-plugin-api-routes)',
@@ -54,7 +60,6 @@ const SYNC_MANIFEST = [
       'f0d49c600a0fc04550f9afe25f5f2f67'  // before sanitized API error responses
     ],
     force: false,
-    syncGroup: 'ssrMigration'
   },
   {
     file: 'src/entry-server.tsx',
@@ -82,8 +87,8 @@ const SYNC_MANIFEST = [
     syncGroup: 'ssrMigration'
   },
   // App.tsx lives in the ssrMigration group so it lands atomically with
-  // entry-server.tsx / main.tsx / entry.ts. entry-server.tsx no longer imports
-  // App (stale App is not a crashloop anymore), but a mismatched App.tsx
+  // entry-server.tsx / main.tsx. entry-server.tsx no longer imports App
+  // (stale App is not a crashloop anymore), but a mismatched App.tsx
   // (legacy BrowserRouter vs new data-router) would hydrate markup that does
   // not match the static render.
   {
