@@ -75,20 +75,31 @@ func (m *Model) envFormInit() tea.Cmd {
 	return m.envForm.Init()
 }
 
+// buildSelectOptions pairs each option value with its display label, applying
+// OptionLabels overrides when present. A nil or shorter labels slice and
+// empty-string entries both fall back to the option value as the label.
+func buildSelectOptions(options, labels []string) []huh.Option[string] {
+	opts := make([]huh.Option[string], len(options))
+	for i, opt := range options {
+		label := opt
+		if i < len(labels) && labels[i] != "" {
+			label = labels[i]
+		}
+		opts[i] = huh.NewOption(label, opt)
+	}
+	return opts
+}
+
 // fieldFor returns a huh field bound to builder.values[f.Key]. Fields with
 // Options render as a Select; the rest render as an Input.
 func (b *envFormBuilder) fieldFor(f preflight.FormField) huh.Field {
 	val := b.values[f.Key]
 	if len(f.Options) > 0 {
-		opts := make([]huh.Option[string], len(f.Options))
-		for i, opt := range f.Options {
-			opts[i] = huh.NewOption(opt, opt)
-		}
 		return huh.NewSelect[string]().
 			Key(f.Key).
 			Title(f.Label).
 			Description(f.Description).
-			Options(opts...).
+			Options(buildSelectOptions(f.Options, f.OptionLabels)...).
 			Value(val)
 	}
 	input := huh.NewInput().

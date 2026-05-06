@@ -50,11 +50,12 @@ func (f *EnvFixer) FormFields() []preflight.FormField {
 			Default:     defaults.AWSProfile,
 		},
 		{
-			Key:         "gocodeAuth",
-			Label:       "GoCode Auth",
-			Description: "s2s = AWS IAM JWT via dev GoCode (default, requires AWS SSO login); api-key = personal GoCode key",
-			Default:     defaults.GoCodeAuth,
-			Options:     []string{"api-key", "s2s"},
+			Key:          "gocodeAuth",
+			Label:        "GoCode Auth",
+			Description:  "s2s = AWS IAM JWT (recommended, requires AWS SSO login); api-key = personal GoCode key (deprecated fallback)",
+			Default:      defaults.GoCodeAuth,
+			Options:      []string{"s2s", "api-key"},
+			OptionLabels: []string{"s2s", "api-key (deprecated)"},
 		},
 		{
 			Key:         "apiKey",

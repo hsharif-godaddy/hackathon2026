@@ -60,14 +60,15 @@ type TerminalFixer interface {
 
 // FormField describes a single input field for a FormFixer.
 type FormField struct {
-	Key         string // unique identifier, used as map key in SetFormValues
-	Label       string
-	Description string // shown below label when field is active
-	Placeholder string
-	Default     string
-	Required    bool
-	Password    bool     // EchoPassword mode
-	Options     []string // when set, field cycles through options instead of free text
+	Key          string // unique identifier, used as map key in SetFormValues
+	Label        string
+	Description  string // shown below label when field is active
+	Placeholder  string
+	Default      string
+	Required     bool
+	Password     bool     // EchoPassword mode
+	Options      []string // when set, field cycles through options instead of free text
+	OptionLabels []string // optional parallel slice; when OptionLabels[i] is non-empty it is shown to the user while Options[i] is the stored value. Entries past len(OptionLabels) (or empty entries) fall back to Options[i] -- shorter or nil OptionLabels is permitted.
 }
 
 // FormFixer is a Fixer that collects user input via inline TUI form fields.
