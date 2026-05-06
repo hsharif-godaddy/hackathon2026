@@ -64,6 +64,8 @@ export interface CheckoutCustomer {
 interface BaseCheckoutSessionParams {
 	/** Store ID from Commerce API */
 	storeId: string;
+	/** Channel ID from Commerce API — required for order number assignment */
+	channelId?: string;
 	/** URL to return to if checkout is cancelled */
 	returnUrl: string;
 	/** URL to redirect to after successful payment */

@@ -29,6 +29,7 @@ export function StorefrontShell({ children }: PropsWithChildren) {
 
       const result = await createCheckoutSession({
         storeId: config.storeId,
+        channelId: config.channelId,
         draftOrderId: orderId,
         returnUrl: `${previewUrl}/checkout/cancel`,
         successUrl: `${previewUrl}/checkout/success`,

@@ -100,15 +100,16 @@ Important:
 
 ---
 
-## Step 3: Set Store ID
+## Step 3: Set Store ID and Channel ID
 
 Update `src/lib/commerce/payment-flow.ts`:
 
 ```ts
 export const STORE_ID = 'REPLACE_WITH_STORE_ID';
+export const CHANNEL_ID = 'REPLACE_WITH_CHANNEL_ID';
 ```
 
-Use `storeId` from `commerce__setup_store`.
+Use `storeId` and `channelId` from `commerce__setup_store`. `channelId` is required for order number assignment in the GoDaddy Commerce admin.
 
 ---
 

@@ -1,9 +1,10 @@
 import { createCheckoutSession, type CheckoutCustomer } from '../commerce-client';
 
 /**
- * Replace with real store ID from Commerce onboarding/handoff context.
+ * Replace with real IDs from Commerce onboarding/handoff context.
  */
 export const STORE_ID = 'REPLACE_WITH_STORE_ID';
+export const CHANNEL_ID = 'REPLACE_WITH_CHANNEL_ID';
 
 function getPreviewUrl(): string {
   if (import.meta.env.VITE_PREVIEW_URL) {
@@ -21,11 +22,13 @@ export async function startOneTimeCommerceCheckout(params: {
   skuId: string;
   quantity?: number;
   storeId?: string;
+  channelId?: string;
   customer?: CheckoutCustomer;
 }) {
   const previewUrl = getPreviewUrl();
   const quantity = params.quantity ?? 1;
   const storeId = params.storeId ?? STORE_ID;
+  const channelId = params.channelId ?? (CHANNEL_ID !== 'REPLACE_WITH_CHANNEL_ID' ? CHANNEL_ID : undefined);
 
   if (!storeId || storeId === 'REPLACE_WITH_STORE_ID') {
     return {
@@ -39,6 +42,7 @@ export async function startOneTimeCommerceCheckout(params: {
   // and billing.email is not exposed in the session query response.
   return createCheckoutSession({
     storeId,
+    ...(channelId && { channelId }),
     lineItems: [{ skuId: params.skuId, quantity }],
     returnUrl: `${previewUrl}/checkout/cancel`,
     successUrl: `${previewUrl}/checkout/success`,

@@ -162,6 +162,7 @@ interface CheckoutCustomer {
 
 interface CreateCheckoutSessionRequest {
 	storeId: string;
+	channelId?: string;
 	returnUrl: string;
 	successUrl: string;
 	lineItems?: LineItem[];
@@ -319,6 +320,7 @@ async function createCheckoutSession(
 	const baseInput = {
 		environment: config.environment,
 		storeId: params.storeId,
+		...(params.channelId && { channelId: params.channelId }),
 		storeName: params.storeName ?? null,
 		customerId: null,
 		...(normalizedCustomer && { customer: normalizedCustomer }),
@@ -395,6 +397,7 @@ export default async function handler(req: Request, res: Response) {
 	try {
 		const {
 			storeId,
+			channelId,
 			returnUrl,
 			successUrl,
 			lineItems,
@@ -436,6 +439,7 @@ export default async function handler(req: Request, res: Response) {
 		const accessToken = await getAccessToken();
 		const checkoutSession = await createCheckoutSession(accessToken, {
 			storeId,
+			channelId,
 			lineItems,
 			draftOrderId,
 			returnUrl: finalReturnUrl,
