@@ -1,4 +1,4 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useLayoutEffect, useRef } from "react";
 import { safePostMessage } from "../utils/postMessage";
 import { generatePreciseSelector, extractDevContext, getElementClassName } from "../utils/element-helpers";
 import { showSelectionOverlay } from "../utils/selection-overlay";
@@ -19,12 +19,23 @@ export default function ImageHoverBar({
 }: ImageHoverBarProps) {
   const { element, imageUrl, isMediaSlot, slotPath } = hoveredImage;
 
+  const barRef = useRef<HTMLDivElement>(null);
   const rect = element.getBoundingClientRect();
+  const idealRight = window.innerWidth - rect.right + 8;
+
+  useLayoutEffect(() => {
+    if (!barRef.current) return;
+    const barWidth = barRef.current.offsetWidth;
+    const maxRight = window.innerWidth - barWidth - 8;
+    if (idealRight > maxRight) {
+      barRef.current.style.right = `${maxRight}px`;
+    }
+  }, [idealRight]);
 
   const barStyle: React.CSSProperties = {
     position: "fixed",
     bottom: `${window.innerHeight - rect.bottom + 16}px`,
-    right: `${window.innerWidth - rect.right + 8}px`,
+    right: `${idealRight}px`,
   };
 
   const handleReplace = useCallback(() => {
@@ -93,6 +104,7 @@ export default function ImageHoverBar({
 
   return (
     <div
+      ref={barRef}
       data-airo-dev-tools
       className="edit-mode-hover-bar"
       style={{
