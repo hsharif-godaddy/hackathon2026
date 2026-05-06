@@ -94,8 +94,10 @@ test.describe('Brand Book Tab', () => {
     await expect(brandBookView.or(brandBookLoading)).toBeVisible({ timeout: DEFAULT_TIMEOUT });
     console.log('  Brand Book content visible (view or loading state)');
 
-    // Preview iframe should NOT be visible when Brand Book is active
-    await expect(page.getByTestId('preview-iframe')).not.toBeVisible();
+    // Preview iframe is still in the DOM (overlay architecture preserves
+    // PreviewCode state) but visually hidden (opacity 0, pointer-events none)
+    const previewIframe = page.getByTestId('preview-iframe');
+    await expect(previewIframe).not.toBeVisible();
     console.log('  Preview iframe hidden while Brand Book active');
 
     // ========================================
@@ -106,7 +108,7 @@ test.describe('Brand Book Tab', () => {
     const previewTab = page.getByRole('radio', { name: /preview/i });
     await previewTab.click();
 
-    await page.getByTestId('preview-iframe').waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT });
+    await previewIframe.waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT });
     console.log('  Preview iframe restored');
 
     // Brand Book should no longer be visible

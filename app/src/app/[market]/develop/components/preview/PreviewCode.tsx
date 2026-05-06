@@ -128,8 +128,11 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
   // already handles app readiness verification
   const loadingPhase = useDevelopPageStore((state) => state.loadingPhase)
   const viewMode = useDevelopPageStore((state) => state.viewMode)
-  // Track previous viewMode to detect tab switches (seeded with initial value)
-  const prevViewModeRef = useRef<ViewMode | null>(viewMode)
+  // Track previous viewMode to detect tab switches.
+  // Initialized to null so that mounting directly into CODE mode (e.g. after
+  // BRAND→CODE where PreviewPane unmounts/remounts this component) is still
+  // detected as a transition and triggers autofocus.
+  const prevViewModeRef = useRef<ViewMode | null>(null)
 
   // Use realAppId if available (during temp→real ID transition), otherwise use appId from params
   // This prevents ensure-running calls with stale temp IDs after navigation
@@ -735,10 +738,8 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
       prevViewModeRef.current = viewMode
       const isSearchOpen = openFiles.some(f => f.path === SEARCH_PATH)
       if (isSearchOpen) {
-        // Search already open - just focus the input
         searchInputRef.current?.focus()
       } else {
-        // Search not open - expand it (same as clicking search button)
         expandSearch()
       }
     } else if (loadingPhase === 'ready') {
@@ -878,6 +879,9 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
                       ? { ...prev, query: q }
                       : { query: q, fileResults: [], codeResults: [], totalCodeMatches: 0, truncated: false }
                   )
+                  if (activeFile !== SEARCH_PATH && openFiles.some(f => f.path === SEARCH_PATH)) {
+                    setActiveFile(SEARCH_PATH)
+                  }
                 }}
                 onBlur={() => {
                   if (isSearchExpanded && !searchState?.query?.trim()) {

@@ -501,10 +501,9 @@ describe('PreviewCode', () => {
       });
     });
 
-    it('should NOT auto-expand search when page loads directly in CODE view', async () => {
+    it('should auto-expand search when page loads directly in CODE view', async () => {
       const { useDevelopPageStore } = await import('@/stores/useDevelopPageStore');
 
-      // Start directly in CODE view (simulating direct navigation to Code tab)
       vi.mocked(useDevelopPageStore).mockImplementation((selector: any) =>
         selector({
           isMobile: false,
@@ -520,9 +519,51 @@ describe('PreviewCode', () => {
 
       renderWithProviders(<PreviewCode appId="test-app-123" />);
 
-      // Search should NOT auto-expand on initial mount in CODE view
-      // (prevViewModeRef is seeded with initial viewMode, so no "switch" detected)
+      // prevViewModeRef initializes to null, so mounting in CODE is detected
+      // as a null->CODE transition and triggers auto-expand
+      await waitFor(() => {
+        expect(screen.getByTestId('search-panel')).toBeInTheDocument();
+      });
+    });
+
+    it('should expand search when switching from BRAND to CODE', async () => {
+      const { useDevelopPageStore } = await import('@/stores/useDevelopPageStore');
+
+      let currentViewMode = ViewMode.BRAND;
+      vi.mocked(useDevelopPageStore).mockImplementation((selector: any) =>
+        selector({
+          isMobile: false,
+          isFileTreeCollapsed: false,
+          setIsFileTreeCollapsed: vi.fn(),
+          setHasUnsavedChanges: vi.fn(),
+          loadingPhase: 'ready',
+          viewMode: currentViewMode,
+        })
+      );
+
+      mockFileTreeState.files['test-app-123'] = [];
+
+      const { rerender } = renderWithProviders(<PreviewCode appId="test-app-123" />);
+
       expect(screen.queryByTestId('search-panel')).not.toBeInTheDocument();
+
+      currentViewMode = ViewMode.CODE;
+      vi.mocked(useDevelopPageStore).mockImplementation((selector: any) =>
+        selector({
+          isMobile: false,
+          isFileTreeCollapsed: false,
+          setIsFileTreeCollapsed: vi.fn(),
+          setHasUnsavedChanges: vi.fn(),
+          loadingPhase: 'ready',
+          viewMode: currentViewMode,
+        })
+      );
+
+      rerender(<PreviewCode appId="test-app-123" />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('search-panel')).toBeInTheDocument();
+      });
     });
 
     it('should focus search input when switching to CODE with search already open', async () => {
@@ -567,6 +608,45 @@ describe('PreviewCode', () => {
       rerender(<PreviewCode appId="test-app-123" />);
 
       // Search panel should still be visible (not duplicated)
+      await waitFor(() => {
+        const searchPanels = screen.getAllByTestId('search-panel');
+        expect(searchPanels).toHaveLength(1);
+      });
+    });
+
+    it('should preserve search state across CODE -> BRAND -> CODE round trip', async () => {
+      const { useDevelopPageStore } = await import('@/stores/useDevelopPageStore');
+
+      const mockStoreState = {
+        isMobile: false,
+        isFileTreeCollapsed: false,
+        setIsFileTreeCollapsed: vi.fn(),
+        setHasUnsavedChanges: vi.fn(),
+        loadingPhase: 'ready',
+        viewMode: ViewMode.CODE as ViewMode,
+      };
+      vi.mocked(useDevelopPageStore).mockImplementation((selector: any) =>
+        selector(mockStoreState)
+      );
+
+      mockFileTreeState.files['test-app-123'] = [];
+
+      const { rerender } = renderWithProviders(<PreviewCode appId="test-app-123" />);
+
+      // Search auto-expands on CODE mount
+      await waitFor(() => {
+        expect(screen.getByTestId('search-panel')).toBeInTheDocument();
+      });
+
+      // Switch to BRAND (component stays mounted via overlay in PreviewPane)
+      mockStoreState.viewMode = ViewMode.BRAND;
+      rerender(<PreviewCode appId="test-app-123" />);
+
+      // Switch back to CODE
+      mockStoreState.viewMode = ViewMode.CODE;
+      rerender(<PreviewCode appId="test-app-123" />);
+
+      // Search should still be present (state preserved, not re-created)
       await waitFor(() => {
         const searchPanels = screen.getAllByTestId('search-panel');
         expect(searchPanels).toHaveLength(1);

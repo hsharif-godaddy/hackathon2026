@@ -285,13 +285,25 @@ describe('PreviewPane', () => {
     });
   });
 
-  it('should render BrandBookView when viewMode is BRAND', () => {
+  it('should render BrandBookView as overlay when viewMode is BRAND and server is ready', () => {
     mockDevelopPageStore.viewMode = ViewMode.BRAND;
 
     renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
 
     expect(screen.getByTestId('brand-book')).toBeInTheDocument();
+    expect(screen.getByTestId('preview-iframe')).toBeInTheDocument();
+    expect(screen.getByTestId('preview-code')).toBeInTheDocument();
+  });
+
+  it('should render BrandBookView alone when viewMode is BRAND and server is NOT ready', () => {
+    mockDevelopPageStore.viewMode = ViewMode.BRAND;
+    mockServerPollingStore.getServerState = vi.fn(() => ({ isReady: false, url: null }));
+
+    renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
+
+    expect(screen.getByTestId('brand-book')).toBeInTheDocument();
     expect(screen.queryByTestId('preview-iframe')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('preview-code')).not.toBeInTheDocument();
   });
 
   it('should not render BrandBookView when viewMode is PREVIEW', () => {

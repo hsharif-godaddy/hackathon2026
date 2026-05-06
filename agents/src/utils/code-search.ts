@@ -42,8 +42,11 @@ function isFileSearchable(filePath: string): boolean {
 }
 
 /**
- * Main search function using ripgrep via dev-supervisor
- * Falls back to Node.js search if ripgrep unavailable
+ * Main search function using ripgrep via dev-supervisor.
+ * Falls back to Node.js search if ripgrep unavailable.
+ *
+ * Note: `directory` is only used by the Node.js fallback (host path).
+ * The ripgrep path always searches from '.' (container CWD = app root).
  */
 export async function searchCode(
   appId: string,
@@ -55,9 +58,12 @@ export async function searchCode(
 
   if (supervisor) {
     const hasRipgrep = await RipgrepUtil.isAvailable(supervisor)
-    
+
     if (hasRipgrep) {
-      return searchWithRipgrep(supervisor, directory, query, options)
+      // RipgrepUtil runs inside the container via dev-supervisor, whose CWD
+      // is already the app root. Pass '.' so ripgrep searches from there
+      // instead of the absolute host path (which doesn't exist in container).
+      return searchWithRipgrep(supervisor, '.', query, options)
     }
 
     toolCodeSearchEvents.fallback(logger, {

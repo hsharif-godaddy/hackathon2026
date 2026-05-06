@@ -184,7 +184,7 @@ export default function PreviewPane({
 
     if (previous === current) return
 
-    // Brand view uses an early return path (separate render tree), so no animation needed
+    // Brand uses an overlay (server ready) or early return (not ready) -- snap opacities
     if (current === ViewMode.BRAND || previous === ViewMode.BRAND) {
       previewOpacity.set(current !== ViewMode.CODE && current !== ViewMode.BRAND ? 1 : 0)
       codeOpacity.set(current === ViewMode.CODE ? 1 : 0)
@@ -658,9 +658,11 @@ export default function PreviewPane({
     return <PreviewLoadingState message={t('builder_preview_image_reloading_message')} isMobile={isMobile} />
   }
 
-  // Brand Book uses its own API and doesn't depend on the preview server,
-  // so render it immediately without waiting for server readiness
-  if (viewMode === ViewMode.BRAND) {
+  // Brand Book uses its own API and doesn't depend on the preview server.
+  // When the preview server IS ready, Brand renders as an overlay layer in
+  // the success block so that PreviewCode stays mounted and preserves state
+  // (open file tabs, search). This fallback only fires before server readiness.
+  if (viewMode === ViewMode.BRAND && !(previewUrl && serverState?.isReady)) {
     return (
       <div className="h-full flex flex-col pr-1 md:pr-2.5 pl-1">
         <div className="inset-0 relative h-full">
@@ -743,12 +745,21 @@ export default function PreviewPane({
             <div className="flex flex-col h-full w-full bg-intents-ux-boxLowContrast-backgroundColor relative rounded-lg md:rounded-b-none">
               {/* Crossfade Animation Container */}
               <div className="relative w-full h-full overflow-hidden">
+                {/* Brand View - rendered as overlay to preserve code/preview state */}
+                {viewMode === ViewMode.BRAND && (
+                  <div
+                    className="absolute inset-0 w-full h-full z-10 rounded-lg md:rounded-b-none overflow-hidden"
+                  >
+                    <BrandBookView appId={appId} />
+                  </div>
+                )}
+
                 {/* Preview View (DomainBar + iframe) */}
                 <motion.div
                   className="absolute inset-0 w-full h-full flex flex-col"
                   style={{
                     opacity: previewOpacity,
-                    pointerEvents: viewMode === ViewMode.CODE ? 'none' : 'auto'
+                    pointerEvents: viewMode === ViewMode.CODE || viewMode === ViewMode.BRAND ? 'none' : 'auto'
                   }}
                 >
                   {/* Domain Bar - only show in Preview mode when no alert banner is visible */}
@@ -782,9 +793,9 @@ export default function PreviewPane({
                         onLoad={handleIframeLoad}
                         sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-top-navigation-by-user-activation"
                         title={t('builder_preview_preview_for', { appId })}
-                        aria-hidden={viewMode === ViewMode.CODE || showBuildingOverlay ? 'true' : undefined}
-                        tabIndex={viewMode === ViewMode.CODE || showBuildingOverlay ? -1 : undefined}
-                        inert={viewMode === ViewMode.CODE || showBuildingOverlay ? true : undefined}
+                        aria-hidden={viewMode === ViewMode.CODE || viewMode === ViewMode.BRAND || showBuildingOverlay ? 'true' : undefined}
+                        tabIndex={viewMode === ViewMode.CODE || viewMode === ViewMode.BRAND || showBuildingOverlay ? -1 : undefined}
+                        inert={viewMode === ViewMode.CODE || viewMode === ViewMode.BRAND || showBuildingOverlay ? true : undefined}
                       />
                     </div>
                   </div>

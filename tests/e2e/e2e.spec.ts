@@ -342,6 +342,24 @@ test.describe('E2E - Critical Path', () => {
         console.log('  No file results (expected for simple apps)');
       }
 
+      // Switch away to preview and back to code, then search again.
+      // This verifies that typing in the header input re-activates the
+      // search tab when a file result was previously selected.
+      const previewTab = page.getByRole('radio', { name: /preview/i });
+      if (await previewTab.isVisible().catch(() => false)) {
+        await previewTab.click();
+        await page.getByTestId('preview-iframe').waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT });
+
+        await codeViewButton.click({ force: true });
+        await expect(searchInput).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+
+        await searchInput.fill('html');
+        await page.waitForTimeout(500); // debounce
+        await expect(searchPanel).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+        console.log('  Search works after tab round-trip');
+      }
+
+      // Clear search
       if (!(await searchPanel.isVisible().catch(() => false))) {
         await searchButton.click();
         await expect(searchPanel).toBeVisible({ timeout: DEFAULT_TIMEOUT });
@@ -356,7 +374,6 @@ test.describe('E2E - Critical Path', () => {
       await expect(searchInput).toHaveValue('');
       console.log('  Search clear works');
 
-      const previewTab = page.getByRole('radio', { name: /preview/i });
       if (await previewTab.isVisible().catch(() => false)) {
         await previewTab.click();
         await page.getByTestId('preview-iframe').waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT });

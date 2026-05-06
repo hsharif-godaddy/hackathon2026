@@ -135,14 +135,14 @@ test.describe('Edit Interactions', () => {
     await dismissOverlays(page);
     console.log('Step 2: Switching to code view...');
 
-    // Click the code view radio button in the header (ButtonGroup renders as radiogroup)
     const codeViewButton = page.getByRole('radio', { name: /builder_preview_button_code|Code/i });
     await expect(codeViewButton).toBeVisible({ timeout: DEFAULT_TIMEOUT });
     await codeViewButton.click({ force: true });
 
-    // Wait for code view to load (file tree should be visible)
-    // Code view may not be available in all environments (feature-flagged)
-    const codeViewLoaded = await page.getByText('Files')
+    // Code view auto-expands search on entry. Use the search input becoming
+    // visible as the reliable indicator that code view has fully loaded.
+    const searchInput = page.getByTestId('search-input-header');
+    const codeViewLoaded = await searchInput
       .waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT })
       .then(() => true)
       .catch(() => false);
@@ -154,54 +154,41 @@ test.describe('Edit Interactions', () => {
     console.log('  Code view loaded');
 
     // ========================================
-    // STEP 3: Open unified search
+    // STEP 3: Verify search auto-expanded
     // ========================================
-    console.log('Step 3: Opening unified search...');
+    console.log('Step 3: Verifying search auto-expanded...');
 
     const searchButton = page.getByTestId('search-button');
     await expect(searchButton).toBeVisible({ timeout: DEFAULT_TIMEOUT });
-    await searchButton.click();
 
-    // Verify search panel opens
     const searchPanel = page.getByTestId('search-panel');
     await expect(searchPanel).toBeVisible({ timeout: DEFAULT_TIMEOUT });
-    console.log('  Search panel opened');
+    console.log('  Search panel auto-expanded on code view entry');
 
     // ========================================
-    // STEP 4: Search for a file
+    // STEP 4: Search for a file and click result
     // ========================================
     console.log('Step 4: Searching for files...');
 
-    const searchInput = page.getByTestId('search-input-header');
     await expect(searchInput).toBeVisible();
     await searchInput.fill('index');
+    await page.waitForTimeout(500); // debounce
 
-    // Wait for search results
-    await page.waitForTimeout(500); // Allow debounce to fire
-
-    // Check if file results section appears
     const fileResultsSection = page.getByTestId('search-results-files');
     const hasFileResults = await fileResultsSection.isVisible().catch(() => false);
 
     if (hasFileResults) {
       console.log('  File results found');
-
-      // Click on the first file result
       const firstFileResult = fileResultsSection.locator('button').first();
       await expect(firstFileResult).toBeVisible();
       await firstFileResult.click();
-
-      // Verify search panel closed and file is selected
-      // The file should now be open in the editor
       console.log('  Clicked file result');
     } else {
-      // Check for code results as fallback
       const codeResultsSection = page.getByTestId('search-results-code');
       const hasCodeResults = await codeResultsSection.isVisible().catch(() => false);
 
       if (hasCodeResults) {
         console.log('  Code results found');
-
         const firstCodeResult = codeResultsSection.locator('button').first();
         await expect(firstCodeResult).toBeVisible();
         await firstCodeResult.click();
@@ -212,27 +199,45 @@ test.describe('Edit Interactions', () => {
     }
 
     // ========================================
-    // STEP 5: Verify search can be cleared
+    // STEP 5: Switch away and back, verify search still works
     // ========================================
-    console.log('Step 5: Testing search clear...');
+    console.log('Step 5: Testing search after tab round-trip...');
 
-    // Re-open search if it was closed
+    const previewTab = page.getByRole('radio', { name: /preview/i });
+    if (await previewTab.isVisible().catch(() => false)) {
+      await previewTab.click();
+      await page.getByTestId('preview-iframe').waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT });
+      console.log('  Switched to preview');
+
+      await codeViewButton.click({ force: true });
+      await expect(searchInput).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+      console.log('  Switched back to code view');
+
+      // Type a new query -- this should activate the search tab and show results
+      await searchInput.fill('html');
+      await page.waitForTimeout(500); // debounce
+      await expect(searchPanel).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+      console.log('  Search works after tab round-trip');
+    }
+
+    // ========================================
+    // STEP 6: Verify search can be cleared
+    // ========================================
+    console.log('Step 6: Testing search clear...');
+
     if (!(await searchPanel.isVisible().catch(() => false))) {
       await searchButton.click();
       await expect(searchPanel).toBeVisible({ timeout: DEFAULT_TIMEOUT });
     }
 
-    // Type something to make clear button appear
     await searchInput.fill('test');
 
-    // Find and click clear button (scoped to search input's parent container)
     const clearButton = page.getByTestId('search-input-header')
       .locator('xpath=..')
       .locator('button[aria-label="Clear"]');
     await expect(clearButton).toBeVisible({ timeout: DEFAULT_TIMEOUT });
     await clearButton.click();
 
-    // Verify input is cleared
     await expect(searchInput).toHaveValue('');
     console.log('  Clear button works');
 
