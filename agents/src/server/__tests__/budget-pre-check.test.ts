@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { performBudgetPreCheck, type BudgetPreCheckDeps } from '../budget-pre-check.js'
 import { BudgetExceededError } from '@airo/ai-common'
-import { BudgetServiceUnavailableError } from '@airo/ai-lib/budget'
+import { BudgetServiceUnavailableError, BudgetNoCapacityError } from '@airo/ai-lib/budget'
 
 describe('performBudgetPreCheck', () => {
   const mockLogger = {
@@ -12,7 +12,6 @@ describe('performBudgetPreCheck', () => {
   }
 
   const mockBudgetClient = {
-    getBudget: vi.fn(),
     createSession: vi.fn(),
   }
 
@@ -23,10 +22,6 @@ describe('performBudgetPreCheck', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    mockBudgetClient.getBudget.mockResolvedValue({
-      creditsTotal: '100',
-      creditsUsed: '50',
-    })
     mockBudgetClient.createSession.mockResolvedValue({
       sessionId: 'sess-123',
     })
@@ -40,7 +35,6 @@ describe('performBudgetPreCheck', () => {
       )
 
       expect(result).toBeNull()
-      expect(mockBudgetClient.getBudget).not.toHaveBeenCalled()
       expect(mockBudgetClient.createSession).not.toHaveBeenCalled()
     })
 
@@ -67,7 +61,7 @@ describe('performBudgetPreCheck', () => {
         reason: 'bmsBudgetId missing from context metadata',
         budgetServiceEnabled: true,
       })
-      expect(mockBudgetClient.getBudget).not.toHaveBeenCalled()
+      expect(mockBudgetClient.createSession).not.toHaveBeenCalled()
     })
 
     it('does not throw - degrades gracefully for availability', async () => {
@@ -113,12 +107,11 @@ describe('performBudgetPreCheck', () => {
     })
   })
 
-  describe('when budget is exceeded', () => {
-    it('throws BudgetExceededError when remaining credits <= 0', async () => {
-      mockBudgetClient.getBudget.mockResolvedValue({
-        creditsTotal: '100',
-        creditsUsed: '100', // Fully consumed
-      })
+  describe('when budget has no capacity (402 from BMS)', () => {
+    it('throws BudgetExceededError when createSession returns 402', async () => {
+      mockBudgetClient.createSession.mockRejectedValue(
+        new BudgetNoCapacityError('Budget Service no capacity: POST /api/v1/sessions', '{"code":"NO_BUDGET_CAPACITY"}')
+      )
 
       await expect(
         performBudgetPreCheck(
@@ -128,18 +121,19 @@ describe('performBudgetPreCheck', () => {
       ).rejects.toThrow(BudgetExceededError)
     })
 
-    it('throws BudgetExceededError when credits are negative', async () => {
-      mockBudgetClient.getBudget.mockResolvedValue({
-        creditsTotal: '100',
-        creditsUsed: '150', // Over budget
-      })
+    it('includes budgetId in the BudgetExceededError', async () => {
+      mockBudgetClient.createSession.mockRejectedValue(
+        new BudgetNoCapacityError('Budget Service no capacity: POST /api/v1/sessions', '{"code":"NO_BUDGET_CAPACITY"}')
+      )
 
       await expect(
         performBudgetPreCheck(
           { budgetServiceEnabled: true, bmsBudgetId: 'budget-1' },
           deps,
         ),
-      ).rejects.toThrow(BudgetExceededError)
+      ).rejects.toMatchObject({
+        responseBody: expect.stringContaining('budget-1'),
+      })
     })
   })
 
@@ -161,6 +155,20 @@ describe('performBudgetPreCheck', () => {
       })
     })
 
+    it('calls createSession with the budgetId', async () => {
+      await performBudgetPreCheck(
+        {
+          budgetServiceEnabled: true,
+          bmsBudgetId: 'budget-1',
+          subscriptionId: 'sub-1',
+          appId: 'app-1',
+        },
+        deps,
+      )
+
+      expect(mockBudgetClient.createSession).toHaveBeenCalledWith('budget-1')
+    })
+
     it('logs session start with all context', async () => {
       await performBudgetPreCheck(
         {
@@ -177,8 +185,21 @@ describe('performBudgetPreCheck', () => {
         subscriptionId: 'sub-1',
         budgetId: 'budget-1',
         sessionId: 'sess-123',
-        remaining: 50, // 100 - 50
       })
+    })
+  })
+
+  describe('error propagation', () => {
+    it('propagates non-capacity errors from createSession', async () => {
+      const serviceError = new BudgetServiceUnavailableError('Budget Service unreachable')
+      mockBudgetClient.createSession.mockRejectedValue(serviceError)
+
+      await expect(
+        performBudgetPreCheck(
+          { budgetServiceEnabled: true, bmsBudgetId: 'budget-1' },
+          deps,
+        ),
+      ).rejects.toThrow(BudgetServiceUnavailableError)
     })
   })
 })

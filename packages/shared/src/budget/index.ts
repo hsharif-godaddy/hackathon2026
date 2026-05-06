@@ -19,6 +19,7 @@ export {
   BudgetServiceTimeoutError,
   BudgetServiceUnavailableError,
   BudgetNotFoundError,
+  BudgetNoCapacityError,
   BudgetErrorType,
   mapBudgetErrorToResponse,
   isBudgetServiceError,

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   BudgetErrorType,
+  BudgetNoCapacityError,
   BudgetNotFoundError,
   BudgetServiceAuthError,
   BudgetServiceError,
@@ -106,6 +107,18 @@ describe('mapBudgetErrorToResponse', () => {
     })
   })
 
+  it('maps BudgetNoCapacityError to 402 no capacity response', () => {
+    const response = mapBudgetErrorToResponse(
+      new BudgetNoCapacityError('Budget Service no capacity: POST /api/v1/sessions', '{"code":"NO_BUDGET_CAPACITY"}')
+    )
+
+    expect(response).toEqual({
+      message: 'No credits available',
+      errorType: BudgetErrorType.BUDGET_NO_CAPACITY,
+      statusCode: 402,
+    })
+  })
+
   it('defaults statusCode 0 to 500 for defensive fallback', () => {
     // statusCode 0 is only used by Unavailable/Timeout errors (handled in earlier branches)
     // Using || ensures defensive fallback to 500 if branch ordering ever changes
@@ -131,6 +144,7 @@ describe('isBudgetServiceError', () => {
     expect(isBudgetServiceError(new BudgetServiceUnavailableError('unavailable'))).toBe(true)
     expect(isBudgetServiceError(new BudgetServiceAuthError('auth', 401, ''))).toBe(true)
     expect(isBudgetServiceError(new BudgetNotFoundError('not found', ''))).toBe(true)
+    expect(isBudgetServiceError(new BudgetNoCapacityError('no capacity', ''))).toBe(true)
   })
 
   it('returns false for non-BudgetServiceError values', () => {

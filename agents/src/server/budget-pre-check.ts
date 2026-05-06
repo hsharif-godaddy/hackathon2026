@@ -1,10 +1,20 @@
 /**
  * Budget pre-execution check + session creation.
  * Extracted for testability from ai-lib-websocket-server onMessageStart.
+ *
+ * The Budget Service's createSession endpoint validates credits and returns 402
+ * NO_BUDGET_CAPACITY if the customer has insufficient credits. This eliminates
+ * the need for a separate getBudget call before session creation.
+ *
+ * @throws {BudgetExceededError} When createSession returns 402 (no credits available)
+ * @throws {BudgetServiceUnavailableError} When budget client is not configured or BMS is unreachable
+ * @throws {BudgetServiceTimeoutError} When createSession times out
+ * @throws {BudgetServiceAuthError} When S2S auth fails (401/403)
+ * @throws {BudgetServiceError} For other BMS errors (4xx/5xx)
  */
 
 import type { BudgetServiceClient } from '@airo/ai-lib/budget'
-import { computeRemaining, BudgetServiceUnavailableError } from '@airo/ai-lib/budget'
+import { BudgetServiceUnavailableError, BudgetNoCapacityError } from '@airo/ai-lib/budget'
 import { BudgetExceededError } from '@airo/ai-common'
 import type { LoggerLike } from '@airo/ai-common'
 
@@ -19,9 +29,10 @@ export interface BudgetPreCheckResult {
 }
 
 /**
- * Check budget availability and create a BMS session.
+ * Create a BMS session, which validates budget capacity.
  * Returns null when budgetServiceEnabled is false/absent (caller should skip).
- * Throws BudgetExceededError or BudgetServiceUnavailableError on failure (fail-closed).
+ * Throws BudgetExceededError if no credits available (402 from BMS).
+ * Throws BudgetServiceUnavailableError on transient failures (fail-closed).
  */
 export async function performBudgetPreCheck(
   metadata: { budgetServiceEnabled?: boolean; subscriptionId?: string; bmsBudgetId?: string; appId?: string },
@@ -65,23 +76,31 @@ export async function performBudgetPreCheck(
     throw new BudgetServiceUnavailableError('Budget Service client not configured (missing BUDGET_SERVICE_URL)')
   }
 
-  // Pre-execution credit check (fail-closed)
-  // !(remaining > 0) catches NaN from malformed BMS strings (NaN <= 0 is false)
-  const budget = await budgetClient.getBudget(budgetId)
-  const remaining = computeRemaining(budget.creditsTotal, budget.creditsUsed)
-  if (!(remaining > 0)) {
-    throw BudgetExceededError.fromBudgetCheck(budgetId)
+  // Create BMS session - the endpoint validates budget capacity and returns 402
+  // NO_BUDGET_CAPACITY if no credits are available (fail-closed).
+  let session: { sessionId: string }
+  try {
+    session = await budgetClient.createSession(budgetId)
+  } catch (err) {
+    // Convert 402 NO_BUDGET_CAPACITY to BudgetExceededError for consistent client handling.
+    // Log the original error to preserve BMS response details for debugging.
+    if (err instanceof BudgetNoCapacityError) {
+      deps.logger.warn('budget.precheck.no_capacity', {
+        budgetId,
+        appId: metadata.appId,
+        subscriptionId: metadata.subscriptionId,
+        bmsResponse: err.responseBody,
+      })
+      throw BudgetExceededError.fromBudgetCheck(budgetId)
+    }
+    throw err
   }
-
-  // Create BMS session for this prompt
-  const session = await budgetClient.createSession(budgetId)
 
   deps.logger.info('budget.session.started', {
     appId: metadata.appId,
     subscriptionId,
     budgetId,
     sessionId: session.sessionId,
-    remaining,
   })
 
   return {

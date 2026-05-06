@@ -7,6 +7,7 @@ import {
   BudgetServiceUnavailableError,
   BudgetNotFoundError,
   BudgetServiceConflictError,
+  BudgetNoCapacityError,
 } from '../errors.js'
 
 const TEST_CONFIG = {
@@ -215,6 +216,25 @@ describe('BudgetServiceClient', () => {
     it('throws on missing sessionId', async () => {
       const client = clientWith(mockFetchWithText(true, 200, '{"other":"data"}'))
       await expect(client.createSession('b-1')).rejects.toThrow('invalid CreateSessionResponse')
+    })
+
+    it('throws BudgetNoCapacityError on 402 response', async () => {
+      const client = clientWith(mockFetchWithText(false, 402, '{"code":"NO_BUDGET_CAPACITY"}'))
+      await expect(client.createSession('b-1')).rejects.toThrow(BudgetNoCapacityError)
+    })
+
+    it('BudgetNoCapacityError includes response body', async () => {
+      const responseBody = '{"code":"NO_BUDGET_CAPACITY","message":"Insufficient credits"}'
+      const client = clientWith(mockFetchWithText(false, 402, responseBody))
+
+      try {
+        await client.createSession('b-1')
+        expect.unreachable()
+      } catch (err) {
+        expect(err).toBeInstanceOf(BudgetNoCapacityError)
+        expect((err as BudgetNoCapacityError).statusCode).toBe(402)
+        expect((err as BudgetNoCapacityError).responseBody).toContain('NO_BUDGET_CAPACITY')
+      }
     })
   })
 

@@ -6,6 +6,7 @@ export const BudgetErrorType = {
   BUDGET_SERVICE_UNAVAILABLE: 'BUDGET_SERVICE_UNAVAILABLE',
   BUDGET_SERVICE_AUTH_ERROR: 'BUDGET_SERVICE_AUTH_ERROR',
   BUDGET_NOT_FOUND: 'BUDGET_NOT_FOUND',
+  BUDGET_NO_CAPACITY: 'BUDGET_NO_CAPACITY',
   BUDGET_SERVICE_ERROR: 'BUDGET_SERVICE_ERROR',
 } as const
 
@@ -62,6 +63,14 @@ export class BudgetNotFoundError extends BudgetServiceError {
   }
 }
 
+/** Thrown when BMS returns 402 NO_BUDGET_CAPACITY (no credits available to open a session). */
+export class BudgetNoCapacityError extends BudgetServiceError {
+  constructor(message: string, responseBody: string = '') {
+    super(message, 402, responseBody)
+    this.name = 'BudgetNoCapacityError'
+  }
+}
+
 /**
  * Maps a BudgetServiceError to a sanitized client-facing response.
  * Prevents raw BMS API paths and internal details from leaking to clients.
@@ -94,6 +103,17 @@ export function mapBudgetErrorToResponse(error: BudgetServiceError): BudgetError
       message: 'Budget resource not found',
       errorType: BudgetErrorType.BUDGET_NOT_FOUND,
       statusCode: 404,
+    }
+  }
+
+  // BudgetNoCapacityError (402) is normally caught in budget-pre-check.ts and converted
+  // to BudgetExceededError before reaching transport error handlers. This branch exists
+  // as a defensive fallback if the error propagates without conversion.
+  if (error instanceof BudgetNoCapacityError) {
+    return {
+      message: 'No credits available',
+      errorType: BudgetErrorType.BUDGET_NO_CAPACITY,
+      statusCode: 402,
     }
   }
 

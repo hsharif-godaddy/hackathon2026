@@ -6,6 +6,7 @@ export {
   BudgetServiceTimeoutError,
   BudgetServiceUnavailableError,
   BudgetNotFoundError,
+  BudgetNoCapacityError,
   BudgetServiceConflictError,
 } from './errors.js'
 export type {

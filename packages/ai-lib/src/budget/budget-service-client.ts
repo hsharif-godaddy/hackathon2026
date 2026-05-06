@@ -26,6 +26,7 @@ import {
   BudgetServiceTimeoutError,
   BudgetServiceUnavailableError,
   BudgetNotFoundError,
+  BudgetNoCapacityError,
   BudgetServiceConflictError,
 } from './errors.js'
 
@@ -283,6 +284,12 @@ export class BudgetServiceClient {
         throw new BudgetServiceAuthError(
           `Budget Service auth failed: ${response.status} ${method} ${path}`,
           response.status,
+          text
+        )
+      }
+      if (response.status === 402) {
+        throw new BudgetNoCapacityError(
+          `Budget Service no capacity: ${method} ${path}`,
           text
         )
       }

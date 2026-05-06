@@ -6,6 +6,7 @@ import {
   BudgetServiceError,
   BudgetServiceAuthError,
   BudgetNotFoundError,
+  BudgetNoCapacityError,
   toBudgetUpdatePayload,
 } from '@airo/ai-lib/budget'
 import { isBudgetServiceError, mapBudgetErrorToResponse, BudgetErrorType } from '@airo/shared/budget'
@@ -23,10 +24,12 @@ function makeDeps(overrides?: Partial<BudgetPreCheckDeps>): BudgetPreCheckDeps {
 }
 
 function mockClient(overrides?: {
-  getBudget?: ReturnType<typeof vi.fn>
   createSession?: ReturnType<typeof vi.fn>
+  // getBudget is only used in report tests, not pre-check
+  getBudget?: ReturnType<typeof vi.fn>
 }) {
   return {
+    createSession: overrides?.createSession ?? vi.fn().mockResolvedValue({ sessionId: 'sess-abc' }),
     getBudget: overrides?.getBudget ?? vi.fn().mockResolvedValue({
       budgetId: 'sub-1',
       productKey: 'airo-builder',
@@ -35,7 +38,6 @@ function mockClient(overrides?: {
       creditsPending: '0.000000',
       items: [],
     }),
-    createSession: overrides?.createSession ?? vi.fn().mockResolvedValue({ sessionId: 'sess-abc' }),
   } as any
 }
 
@@ -60,7 +62,7 @@ describe('performBudgetPreCheck', () => {
     expect(result).toBeNull()
   })
 
-  it('happy path: remaining > 0, session created', async () => {
+  it('happy path: session created (createSession validates capacity)', async () => {
     const client = mockClient()
     const deps = makeDeps({ getClient: () => client })
 
@@ -70,7 +72,7 @@ describe('performBudgetPreCheck', () => {
     )
 
     expect(result).toEqual({ budgetId: 'budget-1', sessionId: 'sess-abc' })
-    expect(client.getBudget).toHaveBeenCalledWith('budget-1')
+    // createSession is called (it validates capacity internally and returns 402 if none)
     expect(client.createSession).toHaveBeenCalledWith('budget-1')
     expect(deps.logger.info).toHaveBeenCalledWith('budget.session.started', expect.objectContaining({
       subscriptionId: 'sub-1',
@@ -79,12 +81,11 @@ describe('performBudgetPreCheck', () => {
     }))
   })
 
-  it('throws BudgetExceededError when remaining <= 0', async () => {
+  it('throws BudgetExceededError when createSession returns 402 (no capacity)', async () => {
     const client = mockClient({
-      getBudget: vi.fn().mockResolvedValue({
-        creditsTotal: '100.000000',
-        creditsUsed: '100.000000',
-      }),
+      createSession: vi.fn().mockRejectedValue(
+        new BudgetNoCapacityError('Budget Service no capacity: POST /api/v1/sessions', '{"code":"NO_BUDGET_CAPACITY"}')
+      ),
     })
 
     await expect(performBudgetPreCheck(
@@ -100,23 +101,6 @@ describe('performBudgetPreCheck', () => {
     })
   })
 
-  it('throws BudgetExceededError when computeRemaining returns NaN (fail-closed)', async () => {
-    const client = mockClient({
-      getBudget: vi.fn().mockResolvedValue({
-        creditsTotal: '',
-        creditsUsed: '0',
-      }),
-    })
-
-    await expect(performBudgetPreCheck(
-      { budgetServiceEnabled: true, subscriptionId: 'sub-1', bmsBudgetId: 'budget-1' },
-      makeDeps({ getClient: () => client }),
-    )).rejects.toSatisfy((err: any) => {
-      expect(BudgetExceededError.isInstance(err)).toBe(true)
-      return true
-    })
-  })
-
   // All sessions (override or not) use the customer's budgetId for session tracking.
   // Override detection happens at report time via subscriptionId -> isBmsOverride().
   it('uses customer budget for all sessions', async () => {
@@ -128,7 +112,6 @@ describe('performBudgetPreCheck', () => {
     expect(result).not.toBeNull()
     expect(result?.budgetId).toBe('customer-budget')
     expect(result?.sessionId).toBe('sess-abc')
-    expect(client.getBudget).toHaveBeenCalledWith('customer-budget')
     expect(client.createSession).toHaveBeenCalledWith('customer-budget')
   })
 
@@ -162,17 +145,6 @@ describe('performBudgetPreCheck', () => {
     )).rejects.toThrow(BudgetServiceUnavailableError)
   })
 
-  it('propagates BudgetServiceTimeoutError from getBudget', async () => {
-    const client = mockClient({
-      getBudget: vi.fn().mockRejectedValue(new BudgetServiceTimeoutError('getBudget timed out')),
-    })
-
-    await expect(performBudgetPreCheck(
-      { budgetServiceEnabled: true, subscriptionId: 'sub-1', bmsBudgetId: 'budget-1' },
-      makeDeps({ getClient: () => client }),
-    )).rejects.toThrow(BudgetServiceTimeoutError)
-  })
-
   it('propagates BudgetServiceUnavailableError from createSession', async () => {
     const client = mockClient({
       createSession: vi.fn().mockRejectedValue(new BudgetServiceUnavailableError('BMS down')),
@@ -197,22 +169,6 @@ describe('performBudgetPreCheck', () => {
 
   // Note: override detection (CareAgent, TestAccounts) happens at report time
   // via subscriptionId -> isBmsOverride() in processBudgetReport, not in pre-check
-
-  it('does not call createSession when budget check fails', async () => {
-    const client = mockClient({
-      getBudget: vi.fn().mockResolvedValue({
-        creditsTotal: '0',
-        creditsUsed: '0',
-      }),
-    })
-
-    await expect(performBudgetPreCheck(
-      { budgetServiceEnabled: true, subscriptionId: 'sub-1', bmsBudgetId: 'budget-1' },
-      makeDeps({ getClient: () => client }),
-    )).rejects.toThrow()
-
-    expect(client.createSession).not.toHaveBeenCalled()
-  })
 })
 
 // ── Group 2: Error mapping contract tests ──
