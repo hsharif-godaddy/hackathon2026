@@ -95,7 +95,7 @@ export default defineConfig({
      *   3. environments.test.baseUrl (default fallback when nothing is set)
      */
     baseURL: process.env.PLAYWRIGHT_BASE_URL || envConfig.baseUrl,
-    /* Viewport size matching Cypress config */
+    /* Viewport size for desktop testing */
     viewport: { width: 1920, height: 1360 },
     /* Action timeout for clicks, fills, etc. */
     actionTimeout: 30000,

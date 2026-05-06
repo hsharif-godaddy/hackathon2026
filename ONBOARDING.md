@@ -108,8 +108,7 @@ airo-app-builder/
     ai-common/           # Errors, metadata, logging
     ai-skills/           # Skill plugin system
     design-extractor/    # PDF RAG extraction
-  e2e/                   # Playwright E2E tests
-  tests/                 # Smoke tests
+  tests/                 # Playwright E2E tests
   docs/                  # Architecture + feature docs
   scripts/               # CI/CD and utility scripts
 ```

@@ -124,7 +124,6 @@ export async function handleSsoLogin(page: Page, timeout: number = SSO_TIMEOUT):
 
 /**
  * Authenticate via cookie injection (faster than UI login)
- * Uses the @gd-cypress/auth token approach if available
  */
 export async function authenticate(page: Page, context: BrowserContext): Promise<void> {
   const { username, password } = getCredentials();

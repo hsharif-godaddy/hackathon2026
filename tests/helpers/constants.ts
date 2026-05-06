@@ -75,8 +75,7 @@ export const environments: Record<Environment, EnvironmentConfig> = {
 };
 
 export function getEnvConfig(): { env: Environment; config: EnvironmentConfig } {
-  // Support both PLAYWRIGHT_ENV (preferred) and legacy CYPRESS_ENV.
-  const explicit = process.env.PLAYWRIGHT_ENV || process.env.CYPRESS_ENV;
+  const explicit = process.env.PLAYWRIGHT_ENV;
   const env = (explicit ?? 'test') as Environment;
   const config = environments[env];
   if (!config) {
