@@ -263,7 +263,6 @@ describe('MediaSlotDetail', () => {
 
       renderWithProviders(<MediaSlotDetail appId={mockAppId} slotName={mockSlotName} />);
 
-      expect(screen.queryByText('builder_mediaslot_add_to_library')).not.toBeInTheDocument();
       expect(screen.queryByText('builder_mediaslot_set_as_logo')).not.toBeInTheDocument();
     });
 
@@ -273,40 +272,17 @@ describe('MediaSlotDetail', () => {
 
       renderWithProviders(<MediaSlotDetail appId={mockAppId} slotName={mockSlotName} />);
 
-      expect(screen.queryByText('builder_mediaslot_add_to_library')).not.toBeInTheDocument();
       expect(screen.queryByText('builder_mediaslot_set_as_logo')).not.toBeInTheDocument();
     });
 
-    it('renders buttons for logo slots when embedded', () => {
+    it('renders the set-as-logo button for logo slots when embedded', () => {
       vi.mocked(useIsEmbedded).mockReturnValue(true);
       mockLogoSlot();
 
       renderWithProviders(<MediaSlotDetail appId={mockAppId} slotName={mockSlotName} />);
 
-      expect(screen.getByText('builder_mediaslot_add_to_library')).toBeInTheDocument();
       expect(screen.getByText('builder_mediaslot_set_as_logo')).toBeInTheDocument();
-    });
-
-    it('sends add-to-library postMessage with base64 data URL', async () => {
-      vi.mocked(useIsEmbedded).mockReturnValue(true);
-      mockLogoSlot();
-      const postMessageSpy = vi.spyOn(window.parent, 'postMessage');
-      (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
-        ok: true,
-        blob: async () => new Blob(['img'], { type: 'image/png' }),
-      });
-
-      const { user } = renderWithProviders(<MediaSlotDetail appId={mockAppId} slotName={mockSlotName} />);
-
-      await user.click(screen.getByText('builder_mediaslot_add_to_library'));
-
-      await waitFor(() => {
-        expect(postMessageSpy).toHaveBeenCalledWith(
-          { action: 'add-to-library', sender: 'airo-hq', imageUrl: expect.stringContaining('data:') },
-          'https://dashboard.godaddy.com'
-        );
-      });
-      postMessageSpy.mockRestore();
+      expect(screen.queryByText('builder_mediaslot_add_to_library')).not.toBeInTheDocument();
     });
 
     it('sends set-as-logo postMessage with base64 data URL', async () => {
@@ -339,11 +315,11 @@ describe('MediaSlotDetail', () => {
 
       const { user } = renderWithProviders(<MediaSlotDetail appId={mockAppId} slotName={mockSlotName} />);
 
-      await user.click(screen.getByText('builder_mediaslot_add_to_library'));
+      await user.click(screen.getByText('builder_mediaslot_set_as_logo'));
 
       await waitFor(() => {
         expect(postMessageSpy).toHaveBeenCalledWith(
-          { action: 'add-to-library', sender: 'airo-hq', imageUrl: expect.any(String) },
+          { action: 'set-as-logo', sender: 'airo-hq', imageUrl: expect.any(String) },
           'https://dashboard.godaddy.com'
         );
       });
@@ -360,7 +336,7 @@ describe('MediaSlotDetail', () => {
 
       const { user } = renderWithProviders(<MediaSlotDetail appId={mockAppId} slotName={mockSlotName} />);
 
-      await user.click(screen.getByText('builder_mediaslot_add_to_library'));
+      await user.click(screen.getByText('builder_mediaslot_set_as_logo'));
 
       expect(postMessageSpy).not.toHaveBeenCalled();
       postMessageSpy.mockRestore();

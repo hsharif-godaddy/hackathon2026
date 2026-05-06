@@ -10,8 +10,6 @@ import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
 import { fetchAsDataUrl } from '@/utils/image'
 
-type LogoAction = 'add-to-library' | 'set-as-logo'
-
 export default function LogoActionsToolRenderer({
   toolStatus,
   result,
@@ -19,10 +17,7 @@ export default function LogoActionsToolRenderer({
   const isEmbedded = useIsEmbedded()
   const t = useTranslations()
   const [busy, setBusy] = useState(false)
-  const [sent, setSent] = useState<{ url: string | undefined; actions: Set<string> }>({
-    url: undefined,
-    actions: new Set(),
-  })
+  const [sentUrl, setSentUrl] = useState<string | undefined>(undefined)
 
   const toolImageUrl =
     toolStatus === 'completed' && result && typeof result === 'object'
@@ -49,32 +44,25 @@ export default function LogoActionsToolRenderer({
 
   const imageUrl = selectedUrl ?? toolImageUrl
 
-  // "set-as-logo" implies "add-to-library", so treat both as sent
-  const hasSent = (action: LogoAction) => {
-    if (!sent.url || sent.url !== imageUrl) return false
-    if (sent.actions.has(action)) return true
-    return action === 'add-to-library' && sent.actions.has('set-as-logo')
-  }
+  const hasSent = sentUrl !== undefined && sentUrl === imageUrl
 
-  const sendToParent = useCallback(
-    async (action: LogoAction) => {
+  const setAsLogo = useCallback(
+    async () => {
       if (!imageUrl) return
       const parentOrigin = getParentOrigin()
       if (!parentOrigin) return
       setBusy(true)
+      const action = 'set-as-logo'
       try {
         const dataUrl = await fetchAsDataUrl(imageUrl)
         window.parent.postMessage({ action, sender: 'airo-hq', imageUrl: dataUrl }, parentOrigin)
       } catch (err) {
-        logger.warn('logoActions.sendToParent.fetchFailed', { error: err })
+        logger.warn('logoActions.setAsLogo.fetchFailed', { error: err })
         const absoluteUrl = new URL(imageUrl, window.location.origin).href
         window.parent.postMessage({ action, sender: 'airo-hq', imageUrl: absoluteUrl }, parentOrigin)
       } finally {
         setBusy(false)
-        setSent((prev) => ({
-          url: imageUrl,
-          actions: prev.url === imageUrl ? new Set(prev.actions).add(action) : new Set([action]),
-        }))
+        setSentUrl(imageUrl)
       }
     },
     [imageUrl]
@@ -88,20 +76,12 @@ export default function LogoActionsToolRenderer({
     <div className="my-2">
       <div className="flex gap-2">
         <Button
-          design="secondary"
-          size="sm"
-          disabled={busy || hasSent('add-to-library')}
-          onClick={() => { void sendToParent('add-to-library') }}
-        >
-          {hasSent('add-to-library') ? t('builder_mediaslot_added') : t('builder_mediaslot_add_to_library')}
-        </Button>
-        <Button
           design="primary"
           size="sm"
-          disabled={busy || hasSent('set-as-logo')}
-          onClick={() => { void sendToParent('set-as-logo') }}
+          disabled={busy || hasSent}
+          onClick={() => { void setAsLogo() }}
         >
-          {hasSent('set-as-logo') ? t('builder_mediaslot_logo_set') : t('builder_mediaslot_set_as_logo')}
+          {hasSent ? t('builder_mediaslot_logo_set') : t('builder_mediaslot_set_as_logo')}
         </Button>
       </div>
       <p className="mt-1 text-sm text-intents-ux-textSubtle-textColor">

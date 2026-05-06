@@ -7,7 +7,6 @@ import CheckboxFilledIcon from '@ux/icon/checkbox-filled'
 import ChevronDownIcon from '@ux/icon/chevron-down'
 import ChevronUpIcon from '@ux/icon/chevron-up'
 import CropIcon from '@ux/icon/crop'
-import PlusIcon from '@ux/icon/plus'
 import RefreshIcon from '@ux/icon/refresh'
 import Skeleton from '@ux/skeleton'
 import Tag from '@ux/tag'
@@ -27,8 +26,6 @@ import { fetchAsDataUrl } from '@/utils/image'
 import { generateClickEID, logImpressionEvent } from '@/utils/instrumentation'
 import { postMessageToIframe } from '@/utils/postMessage'
 import { GettyImagesLogo } from './icons/GettyImagesLogo'
-
-type LogoAction = 'add-to-library' | 'set-as-logo'
 
 export function formatSlotName(slot: string): string {
   return slot
@@ -268,17 +265,18 @@ export function MediaSlotDetail({
         }))
     : []
 
-  const sendToParent = useCallback(async (action: LogoAction) => {
+  const setAsLogo = useCallback(async () => {
     const url = effectiveSelectedUrl
     if (!url) return
     const parentOrigin = getParentOrigin()
     if (!parentOrigin) return
     const imageUrl = getSlotImageUrl(slotName, url, previewBaseUrl)
+    const action = 'set-as-logo'
     try {
       const dataUrl = await fetchAsDataUrl(imageUrl)
       window.parent.postMessage({ action, sender: 'airo-hq', imageUrl: dataUrl }, parentOrigin)
     } catch (err) {
-      logger.warn('media.sendToParent.fetchFailed', { action, slotName, error: err })
+      logger.warn('media.setAsLogo.fetchFailed', { action, slotName, error: err })
       const absoluteUrl = new URL(imageUrl, window.location.origin).href
       window.parent.postMessage({ action, sender: 'airo-hq', imageUrl: absoluteUrl }, parentOrigin)
     }
@@ -379,17 +377,7 @@ export function MediaSlotDetail({
             {isEmbedded && slot.mediaType === 'logo' && (
               <div className="flex gap-2">
                 <Button
-                  onClick={() => { void sendToParent('add-to-library') }}
-                  design="secondary"
-                  size="sm"
-                  icon={<PlusIcon className="w-4 h-4" />}
-                  text={t('builder_mediaslot_add_to_library')}
-                  disabled={isApplyingUpload || isSwapping}
-                  data-eid={generateClickEID("develop.media_slot_detail.add_to_library")}
-                  className="flex-1"
-                />
-                <Button
-                  onClick={() => { void sendToParent('set-as-logo') }}
+                  onClick={() => { void setAsLogo() }}
                   design="secondary"
                   size="sm"
                   text={t('builder_mediaslot_set_as_logo')}

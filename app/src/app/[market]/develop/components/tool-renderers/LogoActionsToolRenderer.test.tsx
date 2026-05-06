@@ -64,7 +64,7 @@ describe('LogoActionsToolRenderer', () => {
     expect(container.innerHTML).toBe('')
   })
 
-  it('renders two buttons when embedded and completed', () => {
+  it('renders the set-as-logo button when embedded and completed', () => {
     vi.mocked(useIsEmbedded).mockReturnValue(true)
 
     renderWithProviders(
@@ -75,8 +75,8 @@ describe('LogoActionsToolRenderer', () => {
       />
     )
 
-    expect(screen.getByText('builder_mediaslot_add_to_library')).toBeInTheDocument()
     expect(screen.getByText('builder_mediaslot_set_as_logo')).toBeInTheDocument()
+    expect(screen.queryByText('builder_mediaslot_add_to_library')).not.toBeInTheDocument()
   })
 
   it('sends postMessage with base64 data URL on click', async () => {
@@ -91,11 +91,11 @@ describe('LogoActionsToolRenderer', () => {
       />
     )
 
-    await user.click(screen.getByText('builder_mediaslot_add_to_library'))
+    await user.click(screen.getByText('builder_mediaslot_set_as_logo'))
 
     await waitFor(() => {
       expect(postMessageSpy).toHaveBeenCalledWith(
-        { action: 'add-to-library', sender: 'airo-hq', imageUrl: 'data:image/png;base64,abc' },
+        { action: 'set-as-logo', sender: 'airo-hq', imageUrl: 'data:image/png;base64,abc' },
         'https://dashboard.godaddy.com'
       )
     })
@@ -122,32 +122,7 @@ describe('LogoActionsToolRenderer', () => {
     postMessageSpy.mockRestore()
   })
 
-  it('add-to-library only disables itself, not set-as-logo', async () => {
-    vi.mocked(useIsEmbedded).mockReturnValue(true)
-    const postMessageSpy = vi.spyOn(window.parent, 'postMessage')
-
-    const { user } = renderWithProviders(
-      <LogoActionsToolRenderer
-        toolName="media-logo__offer_logo_actions"
-        toolStatus="completed"
-        result={completedResult}
-      />
-    )
-
-    await user.click(screen.getByText('builder_mediaslot_add_to_library'))
-
-    await waitFor(() => {
-      expect(screen.getByText('builder_mediaslot_added')).toBeInTheDocument()
-    })
-
-    // set-as-logo should still be enabled
-    const logoButton = screen.getByText('builder_mediaslot_set_as_logo')
-    expect(logoButton.closest('button')).not.toBeDisabled()
-
-    postMessageSpy.mockRestore()
-  })
-
-  it('set-as-logo disables both buttons (implies add-to-library)', async () => {
+  it('disables the button after set-as-logo is sent', async () => {
     vi.mocked(useIsEmbedded).mockReturnValue(true)
     const postMessageSpy = vi.spyOn(window.parent, 'postMessage')
 
@@ -165,13 +140,12 @@ describe('LogoActionsToolRenderer', () => {
       expect(screen.getByText('builder_mediaslot_logo_set')).toBeInTheDocument()
     })
 
-    // add-to-library should also be disabled since set-as-logo implies it
-    expect(screen.getByText('builder_mediaslot_added').closest('button')).toBeDisabled()
+    expect(screen.getByText('builder_mediaslot_logo_set').closest('button')).toBeDisabled()
 
     postMessageSpy.mockRestore()
   })
 
-  it('resets buttons when imageUrl changes', async () => {
+  it('resets the button when imageUrl changes', async () => {
     vi.mocked(useIsEmbedded).mockReturnValue(true)
     const postMessageSpy = vi.spyOn(window.parent, 'postMessage')
 
@@ -183,10 +157,10 @@ describe('LogoActionsToolRenderer', () => {
       />
     )
 
-    await user.click(screen.getByText('builder_mediaslot_add_to_library'))
+    await user.click(screen.getByText('builder_mediaslot_set_as_logo'))
 
     await waitFor(() => {
-      expect(screen.getByText('builder_mediaslot_added')).toBeInTheDocument()
+      expect(screen.getByText('builder_mediaslot_logo_set')).toBeInTheDocument()
     })
 
     // Re-render with a different imageUrl
@@ -201,8 +175,8 @@ describe('LogoActionsToolRenderer', () => {
     )
 
     // Button should be reset
-    expect(screen.getByText('builder_mediaslot_add_to_library')).toBeInTheDocument()
-    expect(screen.getByText('builder_mediaslot_add_to_library').closest('button')).not.toBeDisabled()
+    expect(screen.getByText('builder_mediaslot_set_as_logo')).toBeInTheDocument()
+    expect(screen.getByText('builder_mediaslot_set_as_logo').closest('button')).not.toBeDisabled()
 
     postMessageSpy.mockRestore()
   })
@@ -220,18 +194,18 @@ describe('LogoActionsToolRenderer', () => {
       />
     )
 
-    await user.click(screen.getByText('builder_mediaslot_add_to_library'))
+    await user.click(screen.getByText('builder_mediaslot_set_as_logo'))
 
     await waitFor(() => {
       expect(postMessageSpy).toHaveBeenCalledWith(
-        { action: 'add-to-library', sender: 'airo-hq', imageUrl: 'https://example.com/logo.png' },
+        { action: 'set-as-logo', sender: 'airo-hq', imageUrl: 'https://example.com/logo.png' },
         'https://dashboard.godaddy.com'
       )
     })
     postMessageSpy.mockRestore()
   })
 
-  it('resets buttons when logo-select event fires with a different logo', async () => {
+  it('resets the button when logo-select event fires with a different logo', async () => {
     vi.mocked(useIsEmbedded).mockReturnValue(true)
     const postMessageSpy = vi.spyOn(window.parent, 'postMessage')
 
@@ -258,11 +232,9 @@ describe('LogoActionsToolRenderer', () => {
       )
     })
 
-    // Buttons should reset
+    // Button should reset
     expect(screen.getByText('builder_mediaslot_set_as_logo')).toBeInTheDocument()
     expect(screen.getByText('builder_mediaslot_set_as_logo').closest('button')).not.toBeDisabled()
-    expect(screen.getByText('builder_mediaslot_add_to_library')).toBeInTheDocument()
-    expect(screen.getByText('builder_mediaslot_add_to_library').closest('button')).not.toBeDisabled()
 
     postMessageSpy.mockRestore()
   })
