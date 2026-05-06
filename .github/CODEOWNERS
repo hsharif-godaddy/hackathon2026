@@ -1,10 +1,8 @@
 # CODEOWNERS
-# Top commit authors per directory. Excludes dependabot[bot].
-# agents/ and app/: ~ top 10. All others: top 3
 # Generated from git log as of 2026-04-30.
 
 # Root files
-/* @deverton-godaddy @jeichorn-godaddy @jlemay-godaddy @hdewan-godaddy @mlefebvre1-godaddy @ugupta-godaddy @arai1-godaddy @matkinson-godaddy @jundai-godaddy @kra-godaddy
+#/* @deverton-godaddy @jeichorn-godaddy @jlemay-godaddy @hdewan-godaddy @mlefebvre1-godaddy @ugupta-godaddy @arai1-godaddy @matkinson-godaddy @jundai-godaddy @kra-godaddy
 
 # Config dirs
 /.claude/ @deverton-godaddy @jlemay-godaddy @dmiller1-godaddy
@@ -16,8 +14,8 @@
 # Services & packages
 /agentic-qa/ @hdewan-godaddy @deverton-godaddy @jpatel2-godaddy
 /agentic-qa-langfuse/ @abertin-godaddy @deverton-godaddy
-/agents/ @jeichorn-godaddy @deverton-godaddy @arai1-godaddy @matkinson-godaddy @hmaheshwari-godaddy @hdewan-godaddy @mlefebvre1-godaddy @jlemay-godaddy @ugupta-godaddy @hgupta2-godaddy
-/app/ @deverton-godaddy @jeichorn-godaddy @jlemay-godaddy @mlefebvre1-godaddy @hdewan-godaddy @arai1-godaddy @matkinson-godaddy @enelmes-godaddy @hgupta2-godaddy @skemp-godaddy @kra-godaddy
+#/agents/ @jeichorn-godaddy @deverton-godaddy @arai1-godaddy @matkinson-godaddy @hmaheshwari-godaddy @hdewan-godaddy @mlefebvre1-godaddy @jlemay-godaddy @ugupta-godaddy @hgupta2-godaddy
+#/app/ @deverton-godaddy @jeichorn-godaddy @jlemay-godaddy @mlefebvre1-godaddy @hdewan-godaddy @arai1-godaddy @matkinson-godaddy @enelmes-godaddy @hgupta2-godaddy @skemp-godaddy @kra-godaddy
 /app-publish/ @deverton-godaddy @jeichorn-godaddy @matkinson-godaddy
 /app-templates/ @jeichorn-godaddy @deverton-godaddy @matkinson-godaddy
 /blog/ @jwatson2-godaddy @nsharkawy-godaddy @dradojkovic-godaddy
