@@ -40,6 +40,8 @@ interface ModelDefinition {
   anthropic?: string
   /** Provider-specific default options for this model */
   providerOptions?: ModelProviderOptions
+  /** Whether temperature must be omitted from provider requests */
+  stripTemperature?: boolean
 }
 
 /**
@@ -85,6 +87,16 @@ const MODELS: Record<string, ModelDefinition> = {
   },
 
   // Claude Models (available on multiple providers)
+  'claude-opus-4-7': {
+    normalizedName: 'claude-opus-4-7',
+    anthropic: 'claude-opus-4-7',
+    stripTemperature: true,
+    providerOptions: {
+      anthropic: {
+        effort: 'low',
+      },
+    },
+  },
   'claude-opus-4-6': {
     normalizedName: 'claude-opus-4-6',
     anthropic: 'claude-opus-4-6',
@@ -350,6 +362,12 @@ export function getDefaultProviderOptions(modelName: string): ModelProviderOptio
   const lower = modelName.toLowerCase().trim()
   const canonicalKey = ALIASES[lower] || lower
   return MODELS[canonicalKey]?.providerOptions
+}
+
+export function shouldStripTemperature(modelName: string): boolean {
+  const lower = modelName.toLowerCase().trim()
+  const canonicalKey = ALIASES[lower] || lower
+  return MODELS[canonicalKey]?.stripTemperature === true
 }
 
 /**

@@ -11,6 +11,10 @@ describe('getModelContextWindow', () => {
       expect(getModelContextWindow('claude-sonnet-4-5')).toBe(200000)
     })
 
+    it('should return 200k for Claude Opus 4.7', () => {
+      expect(getModelContextWindow('claude-opus-4-7')).toBe(200000)
+    })
+
     it('should return 200k for Claude Opus 4.6', () => {
       expect(getModelContextWindow('claude-opus-4-6')).toBe(200000)
     })
@@ -67,6 +71,10 @@ describe('getModelContextWindow', () => {
   describe('partial matching (Bedrock format)', () => {
     it('should match Bedrock-style model IDs containing Claude Sonnet', () => {
       expect(getModelContextWindow('anthropic.claude-sonnet-4-5-v2:0')).toBe(200000)
+    })
+
+    it('should match Bedrock-style model IDs containing Claude Opus 4.7', () => {
+      expect(getModelContextWindow('anthropic.claude-opus-4-7-v1:0')).toBe(200000)
     })
 
     it('should match Bedrock-style model IDs containing Claude Opus', () => {

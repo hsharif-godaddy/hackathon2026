@@ -38,7 +38,8 @@ This document describes the LLM models available for building chatbots, AI agent
 
 | Model                        | Description                                                                                                  |
 | ---------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `claude-opus-4-6`            | Claude Opus 4.6 — most capable Claude model, best for complex multi-step reasoning and agentic tasks         |
+| `claude-opus-4-7`            | Claude Opus 4.7 — most capable Claude model, best for complex multi-step reasoning and agentic tasks         |
+| `claude-opus-4-6`            | Claude Opus 4.6 — highly capable, strong reasoning and agentic performance                                   |
 | `claude-opus-4-5-20251101`   | Claude Opus 4.5 (Nov 2025) — highly capable, strong reasoning and instruction following                      |
 | `claude-sonnet-4-6`          | Claude Sonnet 4.6 — balanced performance and speed, ideal for most production chatbot and agent use cases    |
 | `claude-sonnet-4-5-20250929` | Claude Sonnet 4.5 (Sep 2025) — cost-effective with strong general-purpose capability                         |
@@ -46,7 +47,7 @@ This document describes the LLM models available for building chatbots, AI agent
 
 ### Choosing a Claude Model
 
-- **Agentic / complex workflows** → `claude-opus-4-6` or `claude-opus-4-5-20251101`
+- **Agentic / complex workflows** → `claude-opus-4-7` or `claude-opus-4-6`
 - **General chatbots / assistants** → `claude-sonnet-4-6` or `claude-sonnet-4-5-20250929`
 - **Low-latency / high-volume** → `claude-haiku-4-5-20251001`
 
@@ -76,7 +77,7 @@ This document describes the LLM models available for building chatbots, AI agent
 
 | Use Case                     | Recommended Models                                                 |
 | ---------------------------- | ------------------------------------------------------------------ |
-| Complex agentic workflows    | `claude-opus-4-6`, `gpt-5.2-pro`, `gemini-3.1-pro-preview`         |
+| Complex agentic workflows    | `claude-opus-4-7`, `gpt-5.2-pro`, `gemini-3.1-pro-preview`         |
 | General-purpose chatbots     | `claude-sonnet-4-6`, `gpt-5`, `gemini-2.5-pro`                     |
 | Real-time / low-latency chat | `claude-haiku-4-5-20251001`, `gpt-5-nano`, `gemini-2.5-flash-lite` |
 | Fast, cost-efficient agents  | `gemini-3-flash-preview`, `gpt-5-mini`, `gemini-2.5-flash`         |

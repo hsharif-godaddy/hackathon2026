@@ -14,6 +14,7 @@ import { langfuseTraceUrl, langfuseUserUrl } from '@/lib/langfuse-ui';
 const ANTHROPIC_PRICING: Record<string, { in: number; out: number; cacheRead: number; cacheWrite: number }> = {
   'claude-sonnet-4-6':  { in: 3.00, out: 15.00, cacheRead: 0.30, cacheWrite: 3.75 },
   'claude-sonnet-4-5':  { in: 3.00, out: 15.00, cacheRead: 0.30, cacheWrite: 3.75 },
+  'claude-opus-4-7':    { in: 5.00, out: 25.00, cacheRead: 0.50, cacheWrite: 6.25 },
   'claude-opus-4-6':    { in: 5.00, out: 25.00, cacheRead: 0.50, cacheWrite: 6.25 },
   'claude-haiku-4-5':   { in: 1.00, out: 5.00, cacheRead: 0.10, cacheWrite: 1.25 },
 };

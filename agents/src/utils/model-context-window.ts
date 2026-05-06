@@ -15,6 +15,7 @@
  */
 const MODEL_CONTEXT_WINDOWS = {
   // Claude models (Anthropic)
+  'claude-opus-4-7': 200000,
   'claude-opus-4-6': 200000,
   'claude-sonnet-4-6': 200000,
   'claude-sonnet-4-5': 200000,
@@ -72,6 +73,7 @@ export function getModelContextWindow(modelName: string | undefined): number {
   // Order matters: check more specific patterns first to avoid misclassification
   // e.g., 'gpt-4o' before 'gpt-4' to avoid matching 'gpt-4o-mini' as 8k
   const orderedKeys = [
+    'claude-opus-4-7',
     'claude-opus-4-6',
     'claude-sonnet-4-6',
     'claude-sonnet-4-5',

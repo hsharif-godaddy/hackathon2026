@@ -139,6 +139,7 @@ export type SupportedModel =
   | 'gpt-3.5-turbo'
   // Anthropic Models
   | 'claude-sonnet-4-5'
+  | 'claude-opus-4-7'
   | 'claude-opus-4-6'
   | 'claude-sonnet-4-6'
   | 'claude-haiku-4-5'
@@ -174,6 +175,7 @@ const MODEL_TO_TOKENIZER: Record<string, string> = {
   'gpt-3.5-turbo': 'openai/gpt-4-turbo',
   // Claude models
   'claude-sonnet-4-5': 'anthropic/claude-sonnet-4.5',
+  'claude-opus-4-7': 'anthropic/claude-sonnet-4.5', // ai-tokenizer doesn't include opus 4.7 yet; same tokenizer family
   'claude-opus-4-6': 'anthropic/claude-sonnet-4.5', // ai-tokenizer doesn't include opus 4.6 yet; same tokenizer family
   'claude-sonnet-4-6': 'anthropic/claude-sonnet-4.5', // ai-tokenizer@1.0.6 doesn't include 4.6 yet; same tokenizer as 4.5
   'claude-haiku-4-5': 'anthropic/claude-haiku-4.5',

@@ -13,6 +13,7 @@ import {
   getModelInfo,
   getLegacyModelMappings,
   getDefaultProviderOptions,
+  shouldStripTemperature,
   mergeProviderOptions,
   MODELS,
   ALIASES
@@ -268,6 +269,12 @@ describe('model-normalization', () => {
       })
     })
 
+    it('returns effort low for claude-opus-4-7', () => {
+      expect(getDefaultProviderOptions('claude-opus-4-7')).toEqual({
+        anthropic: { effort: 'low' }
+      })
+    })
+
     it('returns effort low for claude-opus-4-6', () => {
       expect(getDefaultProviderOptions('claude-opus-4-6')).toEqual({
         anthropic: { effort: 'low' }
@@ -280,6 +287,24 @@ describe('model-normalization', () => {
 
     it('returns undefined for unsupported models', () => {
       expect(getDefaultProviderOptions('unknown-model')).toBeUndefined()
+    })
+  })
+
+  describe('shouldStripTemperature', () => {
+    it('returns true for claude-opus-4-7', () => {
+      expect(shouldStripTemperature('claude-opus-4-7')).toBe(true)
+    })
+
+    it('returns false for claude-opus-4-6', () => {
+      expect(shouldStripTemperature('claude-opus-4-6')).toBe(false)
+    })
+
+    it('returns false for claude-sonnet-4-6', () => {
+      expect(shouldStripTemperature('claude-sonnet-4-6')).toBe(false)
+    })
+
+    it('returns false for unsupported models', () => {
+      expect(shouldStripTemperature('unknown-model')).toBe(false)
     })
   })
 

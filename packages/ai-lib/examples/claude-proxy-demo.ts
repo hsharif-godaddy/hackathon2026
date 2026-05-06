@@ -116,7 +116,7 @@ async function demonstrateClaudeProxy() {
 async function demonstrateModelList() {
   console.log('📋 Claude Models Available for Proxy Routing:')
   
-  const claudeModels = ['claude-opus-4-6', 'claude-sonnet-4-6', 'azure/claude-sonnet-4-6', 'claude-sonnet-4-5', 'claude-haiku-4-5']
+  const claudeModels = ['claude-opus-4-7', 'claude-opus-4-6', 'claude-sonnet-4-6', 'azure/claude-sonnet-4-6', 'claude-sonnet-4-5', 'claude-haiku-4-5']
   
   for (const modelName of claudeModels) {
     const info = getModelInfo(modelName)

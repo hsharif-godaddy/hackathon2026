@@ -6,6 +6,7 @@
  * Update this set when new Claude models are added.
  */
 export const ALLOWED_OVERRIDE_MODELS = new Set([
+  'claude-opus-4-7',
   'claude-opus-4-6',
   'claude-sonnet-4-6',
   'azure/claude-sonnet-4-6',

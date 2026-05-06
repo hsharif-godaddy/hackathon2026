@@ -35,7 +35,8 @@ import {
   getAvailableModels as getAvailableModelsFromNormalization,
   isModelSupported as isModelSupportedFromNormalization,
   getFullModelName as getFullModelNameFromNormalization,
-  getDefaultProviderOptions
+  getDefaultProviderOptions,
+  shouldStripTemperature
 } from '../utils/model-normalization.js'
 import { createCostTrackingMiddleware } from './usage-instrumentation-middleware.js'
 import { getS2SProviderConfig, isS2SAuthEnabled, getDefaultAnthropicProxyEndpoint, refreshS2SToken, getS2SToken, type S2SAuthConfig } from '../utils/s2s-auth.js'
@@ -46,6 +47,7 @@ import { grantSessionManager } from '@airo/ai-grants'
  * Maps short names to their OpenAI proxy model identifiers
  */
 const CLAUDE_PROXY_MODELS = {
+  'claude-opus-4-7': 'claude-opus-4-7',
   'claude-opus-4-6': 'claude-opus-4-6',
   'claude-sonnet-4-6': 'claude-sonnet-4-6',
   'azure/claude-sonnet-4-6': 'azure/claude-sonnet-4-6',
@@ -564,9 +566,25 @@ function createAnthropicFetch(options: { useS2S: boolean; s2sAuthConfig?: S2SAut
 function getModelMiddleware(modelName: string): LanguageModelMiddleware[] {
   const providerOptions = getDefaultProviderOptions(modelName)
   return [
+    ...(shouldStripTemperature(modelName) ? [createStripTemperatureMiddleware()] : []),
     ...(providerOptions ? [defaultSettingsMiddleware({ settings: { providerOptions: providerOptions as any } })] : []),
     createCostTrackingMiddleware(),
   ]
+}
+
+function createStripTemperatureMiddleware(): LanguageModelMiddleware {
+  return {
+    specificationVersion: 'v3',
+    transformParams: async ({ params }) => {
+      if (!('temperature' in params)) {
+        return params
+      }
+
+      const transformed = { ...params } as typeof params & { temperature?: unknown }
+      delete transformed.temperature
+      return transformed
+    }
+  }
 }
 
 /**
