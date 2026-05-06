@@ -298,17 +298,17 @@ test.describe('E2E - Critical Path', () => {
       await expect(codeViewButton).toBeVisible({ timeout: DEFAULT_TIMEOUT });
       await codeViewButton.click({ force: true });
 
-      // Default getByText is a case-insensitive substring match, which lets
-      // arbitrary AI transcript text containing the word "files" (e.g.
-      // "Now let me read the layout files...") collide with the code-view
-      // heading and trip strict-mode. Exact mode requires the element's text
-      // content to be exactly "Files", so chat messages no longer match.
-      const filesHeading = page.getByText('Files', { exact: true });
+      // Code view auto-expands the search on entry (PreviewCode.tsx useEffect:
+      // "!wasCode && isCode && loadingPhase === 'ready'" → expandSearch()), so the
+      // "Files" sidebar heading is always hidden (opacity-0 w-0 overflow-hidden)
+      // when code view first loads. Use the search input becoming visible as the
+      // reliable indicator that code view has fully loaded.
+      const searchInput = page.getByTestId('search-input-header');
 
       if (optionalFeaturesAreRequired) {
-        await expect(filesHeading).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+        await expect(searchInput).toBeVisible({ timeout: DEFAULT_TIMEOUT });
       } else {
-        const codeViewLoaded = await filesHeading
+        const codeViewLoaded = await searchInput
           .waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT })
           .then(() => true)
           .catch(() => false);
@@ -321,13 +321,12 @@ test.describe('E2E - Critical Path', () => {
 
       const searchButton = page.getByTestId('search-button');
       await expect(searchButton).toBeVisible({ timeout: DEFAULT_TIMEOUT });
-      await searchButton.click();
+      // Search is already auto-expanded on code view entry; the panel is open.
 
       const searchPanel = page.getByTestId('search-panel');
       await expect(searchPanel).toBeVisible({ timeout: DEFAULT_TIMEOUT });
       console.log('  Search panel opened');
 
-      const searchInput = page.getByTestId('search-input-header');
       await expect(searchInput).toBeVisible();
       await searchInput.fill('index');
       await page.waitForTimeout(500); // debounce
