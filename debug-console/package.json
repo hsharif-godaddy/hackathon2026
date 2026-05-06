@@ -19,6 +19,7 @@
     "archiver": "catalog:",
     "gd-auth": "catalog:",
     "gd-auth-client": "catalog:",
+    "hyparquet": "catalog:",
     "next": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",

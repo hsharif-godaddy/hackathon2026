@@ -343,22 +343,47 @@ export default function LangfuseMetricCards({ fromTimestamp, toTimestamp }: Lang
 
     return (
         <LangfuseMetricErrorBoundary>
-            {displayMetrics.map((metric) => {
-                const config = METRIC_CONFIG[metric.name] || { title: metric.name, color: '#6b7280', colorLight: '#9ca3af' };
-                return (
-                    <MetricCard
-                        key={metric.name}
-                        title={config.title}
-                        data={metric.data}
-                        loading={loading}
-                        error={error}
-                        avgValue={metric.avg}
-                        barColor={config.color}
-                        barColorLight={config.colorLight}
-                        onClick={() => setIsModalOpen(true)}
-                    />
-                );
-            })}
+            <div
+                style={{
+                    backgroundColor: 'rgba(255,255,255,0.98)',
+                    borderRadius: '14px',
+                    boxShadow: '0 4px 24px rgba(15,23,42,0.08)',
+                    border: '1px solid rgba(124,58,237,0.2)',
+                    borderLeft: '4px solid #7c3aed',
+                    padding: '1rem 1.25rem 1.25rem',
+                }}
+            >
+                <div style={{ marginBottom: '0.85rem' }}>
+                    <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#0f172a' }}>Score trends</div>
+                    <p style={{ margin: '0.35rem 0 0 0', fontSize: '0.78rem', color: '#64748b', lineHeight: 1.45 }}>
+                        Daily averages for key Langfuse scores. Click a card for the full metrics explorer.
+                    </p>
+                </div>
+                <div
+                    style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                        gap: '1rem',
+                    }}
+                >
+                    {displayMetrics.map((metric) => {
+                        const config = METRIC_CONFIG[metric.name] || { title: metric.name, color: '#6b7280', colorLight: '#9ca3af' };
+                        return (
+                            <MetricCard
+                                key={metric.name}
+                                title={config.title}
+                                data={metric.data}
+                                loading={loading}
+                                error={error}
+                                avgValue={metric.avg}
+                                barColor={config.color}
+                                barColorLight={config.colorLight}
+                                onClick={() => setIsModalOpen(true)}
+                            />
+                        );
+                    })}
+                </div>
+            </div>
 
             {/* Modal/Popup */}
             {isModalOpen && (

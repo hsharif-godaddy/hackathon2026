@@ -1,9 +1,16 @@
 'use client';
 
-import React, { useCallback, useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
+import C1AnalyticsPanel from '@/components/C1AnalyticsPanel';
+import FeedbackAnalyticsPanel from '@/components/FeedbackAnalyticsPanel';
+import LangfuseInsightsPanel from '@/components/LangfuseInsightsPanel';
 import LangfuseMetricCards from '@/components/LangfuseMetricCards';
 import ProtectedRoute from '@/components/ProtectedRoute';
+
+import type { C1Period } from '@/lib/c1-analytics-server';
+import { getDateRangeError, isDateRangeValid } from '@/lib/analytics/date-range';
 
 interface DailyStat {
   date: string;
@@ -292,11 +299,30 @@ function buildDailyChartData<T>(
   }));
 }
 
-
-
-
-
 type DatePreset = '1d' | '7d' | '14d' | '30d' | 'custom';
+
+function datePresetToC1Period(datePreset: DatePreset, customStart: string, customEnd: string): C1Period {
+  if (datePreset === 'custom') {
+    if (customStart && customEnd && isDateRangeValid(customStart, customEnd)) {
+      const span =
+        Math.floor(
+          (new Date(`${customEnd}T00:00:00.000Z`).getTime() -
+            new Date(`${customStart}T00:00:00.000Z`).getTime()) /
+            (24 * 60 * 60 * 1000),
+        ) + 1;
+      if (span <= 1) return 'day';
+      if (span <= 7) return 'week';
+      if (span <= 14) return '14days';
+      return 'month';
+    }
+    return 'week';
+  }
+  if (datePreset === '1d') return 'day';
+  if (datePreset === '7d') return 'week';
+  if (datePreset === '14d') return '14days';
+  if (datePreset === '30d') return 'month';
+  return 'week';
+}
 
 function getDateRange(preset: DatePreset): { start: Date; end: Date } {
   const now = new Date();
@@ -327,7 +353,23 @@ function formatDateInput(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
-import { isDateRangeValid, getDateRangeError } from '@/lib/analytics/date-range';
+const ANALYTICS_TAB_IDS = ['airo', 'langfuse', 'c1', 'feedback', 'pdna'] as const;
+type AnalyticsTabId = (typeof ANALYTICS_TAB_IDS)[number];
+
+function parseAnalyticsTab(value: string | null | undefined): AnalyticsTabId {
+  if (value && (ANALYTICS_TAB_IDS as readonly string[]).includes(value)) {
+    return value as AnalyticsTabId;
+  }
+  return 'airo';
+}
+
+const ANALYTICS_TABS: ReadonlyArray<{ id: AnalyticsTabId; label: string }> = [
+  { id: 'airo', label: 'Airo Events' },
+  { id: 'langfuse', label: 'Langfuse' },
+  { id: 'c1', label: 'C1 (ClickHouse)' },
+  { id: 'feedback', label: 'Feedback' },
+  { id: 'pdna', label: 'PDNA' },
+];
 
 function AnalyticsContent() {
   const [summary, setSummary] = useState<Summary | null>(null);
@@ -339,10 +381,22 @@ function AnalyticsContent() {
   const [datePreset, setDatePreset] = useState<DatePreset>('1d');
   const [customStart, setCustomStart] = useState<string>('');
   const [customEnd, setCustomEnd] = useState<string>('');
-  const [effectiveDateRange, setEffectiveDateRange] = useState<{ start: string; end: string }>(() => {
-    const range = getDateRange('1d');
+
+  const langfuseWindow = useMemo(() => {
+    if (datePreset === 'custom' && customStart && customEnd) {
+      return {
+        start: new Date(`${customStart}T00:00:00.000Z`).toISOString(),
+        end: new Date(`${customEnd}T23:59:59.999Z`).toISOString(),
+      };
+    }
+    const range = getDateRange(datePreset);
     return { start: range.start.toISOString(), end: range.end.toISOString() };
-  });
+  }, [datePreset, customStart, customEnd]);
+
+  const c1Period = useMemo(
+    () => datePresetToC1Period(datePreset, customStart, customEnd),
+    [datePreset, customStart, customEnd],
+  );
 
   // Hourly drilldown state
   const [hourlyData, setHourlyData] = useState<{ date: string; hourly_stats: Array<{ hour: number; apps: number; runs: number; cost: number; steps: number; avg_steps_per_run: number }> } | null>(null);
@@ -378,10 +432,29 @@ function AnalyticsContent() {
   const [hourlyClientErrorLoading, setHourlyClientErrorLoading] = useState(false);
   const [last24hClientErrors, setLast24hClientErrors] = useState<{ hourly_stats: Array<{ hoursAgo: number; timestamp: string; errors: number; apps: number }> } | null>(null);
 
-  // Section expand state — lazy-loads data on first expand
-  const [airoExpanded, setAiroExpanded] = useState(false);
-  const [langfuseExpanded, setLangfuseExpanded] = useState(false);
-  const [pdnaExpanded, setPdnaExpanded] = useState(false);
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [activeTab, setActiveTab] = useState<AnalyticsTabId>('airo');
+  const [visitedTabs, setVisitedTabs] = useState(() => new Set<AnalyticsTabId>(['airo']));
+
+  useEffect(() => {
+    const tab = parseAnalyticsTab(searchParams?.get('tab') ?? undefined);
+    setActiveTab(tab);
+    setVisitedTabs((prev) => (prev.has(tab) ? prev : new Set(prev).add(tab)));
+  }, [searchParams]);
+
+  const showDateRangeControls =
+    activeTab === 'airo' || activeTab === 'langfuse' || activeTab === 'c1' || activeTab === 'feedback';
+
+  const navigateToTab = useCallback(
+    (tab: AnalyticsTabId) => {
+      setActiveTab(tab);
+      setVisitedTabs((prev) => (prev.has(tab) ? prev : new Set(prev).add(tab)));
+      const path = tab === 'airo' ? '/analytics' : `/analytics?tab=${encodeURIComponent(tab)}`;
+      router.replace(path, { scroll: false });
+    },
+    [router],
+  );
 
   // PDNA provisioning state
   const [pdnaSnapshot, setPdnaSnapshot] = useState<{
@@ -406,15 +479,14 @@ function AnalyticsContent() {
       let end: string;
 
       if (datePreset === 'custom' && customStart && customEnd) {
-        start = new Date(customStart).toISOString();
-        end = new Date(customEnd + 'T23:59:59').toISOString();
+        start = new Date(`${customStart}T00:00:00.000Z`).toISOString();
+        end = new Date(`${customEnd}T23:59:59.999Z`).toISOString();
       } else {
         const range = getDateRange(datePreset);
         start = range.start.toISOString();
         end = range.end.toISOString();
       }
 
-      setEffectiveDateRange({ start, end });
       const params = new URLSearchParams({ start, end });
 
       const [summaryRes, statusRes, errorsRes, sumRes, pubRes, clientErrRes] = await Promise.all([
@@ -489,16 +561,16 @@ function AnalyticsContent() {
     }
   }, [datePreset, customStart, customEnd]);
 
-  // Fetch airo events data when section is expanded
+  // Fetch airo events data when Airo tab is active
   useEffect(() => {
-    if (!airoExpanded) return;
+    if (activeTab !== 'airo') return;
     fetchData();
-  }, [airoExpanded, fetchData]);
+  }, [activeTab, fetchData]);
 
-  // Fetch PDNA latest snapshot when section is expanded (skip if already loaded)
+  // Fetch PDNA latest snapshot when PDNA tab is active (skip if already loaded)
   // PDNA is a complete daily dump — no date range needed, just the latest snapshot
   useEffect(() => {
-    if (!pdnaExpanded || pdnaSnapshot) return;
+    if (activeTab !== 'pdna' || pdnaSnapshot) return;
     setPdnaLoading(true);
     setPdnaError(null);
     fetch('/api/analytics?action=pdna-snapshot')
@@ -515,7 +587,7 @@ function AnalyticsContent() {
         setPdnaError(err instanceof Error ? err.message : 'Failed to fetch PDNA data');
       })
       .finally(() => setPdnaLoading(false));
-  }, [pdnaExpanded, pdnaSnapshot]);
+  }, [activeTab, pdnaSnapshot]);
 
   useEffect(() => {
     let isMounted = true;
@@ -651,49 +723,6 @@ function AnalyticsContent() {
     return `${d.getMonth() + 1}/${d.getDate()}`;
   }
 
-  function SectionHeader({ title, expanded, onToggle, color, loading: sectionLoading }: {
-    title: string; expanded: boolean; onToggle: () => void; color: string; loading?: boolean;
-  }) {
-    return (
-      <div
-        role="button"
-        tabIndex={0}
-        aria-expanded={expanded}
-        onClick={onToggle}
-        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle(); } }}
-        style={{
-          backgroundColor: expanded ? 'rgba(255,255,255,0.97)' : color,
-          padding: '0.75rem 1.25rem',
-          borderRadius: expanded ? '12px 12px 0 0' : '12px',
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '0.75rem',
-          userSelect: 'none',
-          transition: 'all 0.2s',
-          boxShadow: expanded ? '0 2px 10px rgba(0,0,0,0.08)' : `0 2px 10px ${color}40`,
-        }}
-      >
-        <span style={{
-          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-          width: '24px', height: '24px', borderRadius: '5px',
-          backgroundColor: expanded ? color : 'rgba(255,255,255,0.2)',
-          color: '#fff', fontSize: '0.75rem', fontWeight: 700, transition: 'all 0.15s',
-        }}>
-          {expanded ? '▾' : '▸'}
-        </span>
-        <span style={{ fontSize: '0.9rem', fontWeight: 600, color: expanded ? '#0f172a' : '#fff' }}>
-          {title}
-        </span>
-        {sectionLoading && (
-          <span style={{ fontSize: '0.75rem', color: expanded ? color : 'rgba(255,255,255,0.7)', fontWeight: 500 }}>
-            Loading...
-          </span>
-        )}
-      </div>
-    );
-  }
-
   // Preset button style
   const presetBtn = (preset: DatePreset, label: string) => (
     <button
@@ -740,7 +769,7 @@ function AnalyticsContent() {
           </div>
 
           {/* Date Range Selector - only when charts expanded */}
-          {(airoExpanded || langfuseExpanded || pdnaExpanded) && (
+          {showDateRangeControls && (
             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
               {presetBtn('1d', '24h')}
               {presetBtn('7d', '7 days')}
@@ -781,8 +810,49 @@ function AnalyticsContent() {
           </div>
         </header>
 
+        <nav
+          aria-label="Analytics sections"
+          role="tablist"
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: '0.35rem',
+            marginBottom: '1.25rem',
+            backgroundColor: 'rgba(255,255,255,0.97)',
+            padding: '0.5rem',
+            borderRadius: '12px',
+            boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
+          }}
+        >
+          {ANALYTICS_TABS.map(({ id, label }) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              id={`analytics-tab-${id}`}
+              aria-selected={activeTab === id}
+              aria-controls={`analytics-panel-${id}`}
+              tabIndex={activeTab === id ? 0 : -1}
+              onClick={() => navigateToTab(id)}
+              style={{
+                padding: '0.45rem 0.85rem',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontSize: '0.8rem',
+                fontWeight: 600,
+                backgroundColor: activeTab === id ? '#1d4ed8' : 'transparent',
+                color: activeTab === id ? '#fff' : '#475569',
+                transition: 'background-color 0.15s, color 0.15s',
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
+
         {/* Custom Date Range — shown when any section is open */}
-        {(airoExpanded || langfuseExpanded || pdnaExpanded) && datePreset === 'custom' && (
+        {showDateRangeControls && datePreset === 'custom' && (
           <div style={{
             backgroundColor: 'rgba(255,255,255,0.97)',
             padding: '1rem 1.5rem',
@@ -845,18 +915,25 @@ function AnalyticsContent() {
           </div>
         )}
 
-        {/* === Airo Events Section === */}
-        <div style={{ marginBottom: '1rem' }}>
-          <SectionHeader title="Airo Events Stats" expanded={airoExpanded} onToggle={() => setAiroExpanded(prev => !prev)} color="#1d4ed8" loading={airoExpanded && loading} />
-          {airoExpanded && error && (
-            <div style={{ backgroundColor: 'rgba(255,255,255,0.95)', borderRadius: '0 0 12px 12px', padding: '1.5rem', borderLeft: '4px solid #ef4444' }}>
+        {visitedTabs.has('airo') && (
+          <div
+            id="analytics-panel-airo"
+            role="tabpanel"
+            aria-labelledby="analytics-tab-airo"
+            hidden={activeTab !== 'airo'}
+            style={{ marginBottom: '1.25rem' }}
+          >
+            {loading && (
+              <div style={{ color: '#94a3b8', fontSize: '0.85rem', marginBottom: '0.75rem' }}>Loading Airo events…</div>
+            )}
+            {error && (
+            <div style={{ backgroundColor: 'rgba(255,255,255,0.95)', borderRadius: '12px', padding: '1.5rem', borderLeft: '4px solid #ef4444', marginBottom: '0.75rem' }}>
               <p style={{ margin: '0 0 0.5rem 0', color: '#dc2626', fontWeight: 600 }}>Error</p>
               <p style={{ margin: 0, color: '#666' }}>{error}</p>
-              <button onClick={(e) => { e.stopPropagation(); fetchData(); }} style={{ marginTop: '0.75rem', padding: '0.4rem 0.75rem', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem' }}>Retry</button>
+              <button type="button" onClick={() => fetchData()} style={{ marginTop: '0.75rem', padding: '0.4rem 0.75rem', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem' }}>Retry</button>
             </div>
-          )}
-        </div>
-        {airoExpanded && summary && summary.daily_stats.length > 0 && (
+            )}
+            {summary && summary.daily_stats.length > 0 && (
           <div style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
@@ -1210,29 +1287,56 @@ function AnalyticsContent() {
             })()}
 
           </div>
-        )}
-
-        {/* === Langfuse Section === */}
-        <div style={{ marginBottom: '1rem' }}>
-          <SectionHeader title="Langfuse Stats" expanded={langfuseExpanded} onToggle={() => setLangfuseExpanded(prev => !prev)} color="#7c3aed" />
-        </div>
-        {langfuseExpanded && (
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-            gap: '1rem',
-            marginBottom: '1.25rem'
-          }}>
-            <LangfuseMetricCards fromTimestamp={effectiveDateRange.start} toTimestamp={effectiveDateRange.end} />
+            )}
           </div>
         )}
 
-        {/* === PDNA Section === */}
-        <div style={{ marginBottom: '1rem' }}>
-          <SectionHeader title="PDNA Provisioning Stats" expanded={pdnaExpanded} onToggle={() => setPdnaExpanded(prev => !prev)} color="#0d9488" loading={pdnaExpanded && pdnaLoading} />
-        </div>
-        {pdnaExpanded && (
-          pdnaLoading ? (
+        {activeTab === 'langfuse' && (
+          <div
+            id="analytics-panel-langfuse"
+            role="tabpanel"
+            aria-labelledby="analytics-tab-langfuse"
+            style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', marginBottom: '1.25rem' }}
+          >
+            <p style={{ margin: 0, fontSize: '0.75rem', color: '#94a3b8' }}>
+              Uses the date range from the page header (presets or custom).
+            </p>
+            <LangfuseMetricCards fromTimestamp={langfuseWindow.start} toTimestamp={langfuseWindow.end} />
+            <LangfuseInsightsPanel fromTimestamp={langfuseWindow.start} toTimestamp={langfuseWindow.end} />
+          </div>
+        )}
+
+        {activeTab === 'c1' && (
+          <div
+            id="analytics-panel-c1"
+            role="tabpanel"
+            aria-labelledby="analytics-tab-c1"
+            style={{ marginBottom: '1.25rem' }}
+          >
+            <C1AnalyticsPanel period={c1Period} />
+          </div>
+        )}
+
+        {activeTab === 'feedback' && (
+          <div
+            id="analytics-panel-feedback"
+            role="tabpanel"
+            aria-labelledby="analytics-tab-feedback"
+            style={{ marginBottom: '1.25rem' }}
+          >
+            <FeedbackAnalyticsPanel datePreset={datePreset} customStart={customStart} customEnd={customEnd} />
+          </div>
+        )}
+
+        {visitedTabs.has('pdna') && (
+          <div
+            id="analytics-panel-pdna"
+            role="tabpanel"
+            aria-labelledby="analytics-tab-pdna"
+            hidden={activeTab !== 'pdna'}
+            style={{ marginBottom: '1.25rem' }}
+          >
+            {pdnaLoading ? (
             <div style={{ backgroundColor: 'rgba(255,255,255,0.97)', borderRadius: '0 0 12px 12px', padding: '2rem', textAlign: 'center', marginBottom: '1.25rem' }}>
               <span style={{ color: '#64748b', fontSize: '0.85rem' }}>Loading PDNA snapshot...</span>
             </div>
@@ -1338,7 +1442,8 @@ function AnalyticsContent() {
             <div style={{ backgroundColor: 'rgba(255,255,255,0.97)', borderRadius: '0 0 12px 12px', padding: '2rem', textAlign: 'center', marginBottom: '1.25rem' }}>
               <span style={{ color: '#94a3b8', fontSize: '0.85rem' }}>No PDNA data available</span>
             </div>
-          )
+          )}
+          </div>
         )}
 
       </div>
