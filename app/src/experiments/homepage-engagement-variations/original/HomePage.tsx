@@ -525,9 +525,10 @@ export function OriginalHomePage({ serverFeatures }: HomeContentProps) {
               headingText: t('builder_homepage_experiment_logo_header', undefined, 'Design a logo that defines your brand'),
               subheadingText: t('builder_homepage_experiment_logo_subheader', undefined, 'Describe your style and our AI will craft a unique logo in minutes'),
             })}
+            // Always pass so the logo button in HeroExamples can switch templates regardless of template-selector flag
+            onTemplateChange={setSelectedTemplate}
             {...(isTemplateSelectorEnabled && {
               selectedTemplate,
-              onTemplateChange: setSelectedTemplate,
             })}
           />
 

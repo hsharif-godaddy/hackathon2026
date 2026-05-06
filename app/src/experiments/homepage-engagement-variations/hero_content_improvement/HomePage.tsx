@@ -521,9 +521,10 @@ export function HeroContentImprovementHomePage({ serverFeatures }: HomeContentPr
             error={error}
             setError={setHeroError}
             onExampleClick={handleExampleClick}
+            // Always pass so the logo button in HeroExamples can switch templates regardless of template-selector flag
+            onTemplateChange={setSelectedTemplate}
             {...(isTemplateSelectorEnabled && {
               selectedTemplate,
-              onTemplateChange: setSelectedTemplate,
             })}
             {...(isLogoMode && {
               headingText: t('builder_homepage_experiment_logo_header', undefined, 'Design a logo that defines your brand'),

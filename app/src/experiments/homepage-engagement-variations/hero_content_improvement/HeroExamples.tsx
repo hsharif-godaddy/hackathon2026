@@ -3,15 +3,16 @@ import { useEffect, useMemo, useState } from 'react'
 import ArrowRightIcon from '@ux/icon/arrow-right'
 import { text } from '@ux/text'
 
-import { Example, HeroExamplesProps } from '@/app/[market]/components/types'
+import { Example, HeroExamplesProps, LOGO_DESIGNER_TEMPLATE } from '@/app/[market]/components/types'
 import { useAuthContext } from '@/components/providers/AuthProvider'
 import { EXPERIMENT_IDS } from '@/config/experiments'
 import { useAnalytics } from '@/hooks/useAnalytics'
+import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { JourneyTracker } from '@/lib/journeyTracker'
 import { generateClickEID, logClickEvent } from '@/utils/instrumentation'
 
-export default function HeroExamples({ onExampleClick }: HeroExamplesProps) {
+export default function HeroExamples({ onExampleClick, onTemplateChange }: HeroExamplesProps) {
   const t = useTranslations();
   const { isAuthenticated } = useAuthContext()
   const { logAnalytics } = useAnalytics({
@@ -19,6 +20,7 @@ export default function HeroExamples({ onExampleClick }: HeroExamplesProps) {
     baseData: { isAuthenticated },
   })
   const [visibleItems, setVisibleItems] = useState<boolean[]>([])
+  const showLogoButton = Boolean(useSwitchboard('appbuilder-homepage-make-logo-button'))
 
   const examples = useMemo<Example[]>(() => [
     // Website examples
@@ -181,6 +183,26 @@ export default function HeroExamples({ onExampleClick }: HeroExamplesProps) {
         {t('builder_homepage_examples_try_these_intro', undefined, 'Describe your own idea above, or try one of these:')}
       </text.p>
       <div className="flex flex-wrap justify-center gap-1 max-w-4xl mx-auto">
+        {showLogoButton && (
+          <button
+            data-testid="homepage-logo-suggestion-button"
+            data-eid={generateClickEID('homepage.examples.example_make_logo')}
+            onClick={() => {
+              onExampleClick(t('builder_homepage_examples_logo_prompt', undefined, 'Make me a logo for: '));
+              onTemplateChange?.(LOGO_DESIGNER_TEMPLATE);
+              logAnalytics('homepage.template.click', { templateSlug: LOGO_DESIGNER_TEMPLATE })
+              logClickEvent('homepage.examples.example')();
+              logClickEvent('homepage.examples.example_make_logo')();
+              JourneyTracker.current()?.trackMilestone('homepage_example_selected', { slug: 'make_logo' })
+            }}
+            className="group bg-ai-dark-transparent px-2 py-0.5 rounded-lg hover:shadow-md transition-all duration-300 text-sm cursor-pointer transform translate-y-0 opacity-100 scale-100"
+          >
+            <span className="font-medium transition-colors">
+              {t('builder_homepage_examples_logo_title', undefined, 'Make me a logo')}
+            </span>
+            <ArrowRightIcon className="w-1.5 h-1.5 ms-1 inline opacity-50 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all rtl:scale-x-[-1]" />
+          </button>
+        )}
         {displayedExamples.map((example, index) => (
           <button
             key={example.title}

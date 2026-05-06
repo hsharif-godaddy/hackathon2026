@@ -22,6 +22,7 @@ import { useAuthGateTracking } from '@/hooks/useAuthGateTracking'
 import { useHomepageBounceTracking } from '@/hooks/useHomepageBounceTracking'
 import { useSafariClass } from '@/hooks/useSafariClass'
 import { useSsoSignIn } from '@/hooks/useSsoSignIn'
+import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { getErrorMessage } from '@/lib/errors'
 import { isFeatureEnabled } from '@/lib/features'
@@ -45,8 +46,9 @@ export function AbstractAnimationHomePage({ serverFeatures }: HomeContentProps) 
   const router = useRouter()
   const searchParams = useSearchParams()
   const templateParam = searchParams.get('template')
-  const selectedTemplate = validateTemplate(templateParam)
+  const [selectedTemplate, setSelectedTemplate] = useState(validateTemplate(templateParam))
   const isLogoMode = templateParam === LOGO_DESIGNER_TEMPLATE
+  const isTemplateSelectorEnabled = useSwitchboard('appbuilder-template-selector')
   const [isLoading, setIsLoading] = useState(false)
   const [isRedirecting, setIsRedirecting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -417,7 +419,7 @@ export function AbstractAnimationHomePage({ serverFeatures }: HomeContentProps) 
       setIsLoading(false)
       setIsRedirecting(false)
     }
-  }, [authIsLoading, isAuthenticated, isLoading, isRedirecting, logAnalytics, markHomepageEngaged, router, savePromptForRetry, signIn, t])
+  }, [authIsLoading, isAuthenticated, isLoading, isRedirecting, logAnalytics, markHomepageEngaged, router, savePromptForRetry, selectedTemplate, signIn, t])
 
   useEffect(() => {
     if (!isAuthenticated || authIsLoading) return
@@ -487,6 +489,11 @@ export function AbstractAnimationHomePage({ serverFeatures }: HomeContentProps) 
             error={error}
             setError={setHeroError}
             onExampleClick={handleExampleClick}
+            // Always pass so the logo button in HeroExamples can switch templates regardless of template-selector flag
+            onTemplateChange={setSelectedTemplate}
+            {...(isTemplateSelectorEnabled && {
+              selectedTemplate,
+            })}
             {...(isLogoMode && {
               headingText: t('builder_homepage_experiment_logo_header', undefined, 'Design a logo that defines your brand'),
               subheadingText: t('builder_homepage_experiment_logo_subheader', undefined, 'Describe your style and our AI will craft a unique logo in minutes'),

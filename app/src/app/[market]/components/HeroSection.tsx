@@ -17,6 +17,7 @@ import { useAnalytics } from '@/hooks/useAnalytics'
 import { useBreakpoints } from '@/hooks/useBreakpoints'
 import { useRTL } from '@/hooks/useRTL'
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition'
+import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTextareaHoverTracking } from '@/hooks/useTextareaHoverTracking'
 import { useTranslations } from '@/hooks/useTranslations'
 import { JourneyTracker } from '@/lib/journeyTracker'
@@ -41,6 +42,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
   subheadingText,
 }, ref) => {
   const t = useTranslations();
+  const isTemplateSelectorEnabled = useSwitchboard('appbuilder-template-selector')
   const { isAuthenticated } = useAuthContext()
   const { logAnalytics } = useAnalytics({
     experimentId: EXPERIMENT_IDS.homepageEngagement,
@@ -649,7 +651,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
 
           {/* Template Selector */}
           {/* Template selector is used for internal experiments in TLA accounts only; customers won't see it. */}
-          {onTemplateChange && (
+          {isTemplateSelectorEnabled && onTemplateChange && (
             <TemplateSelector selectedTemplate={selectedTemplate} onTemplateChange={onTemplateChange} />
           )}
 
@@ -684,6 +686,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
 
           <ExamplesSection
             onExampleClick={onExampleClick}
+            onTemplateChange={onTemplateChange}
           />
 
           <button

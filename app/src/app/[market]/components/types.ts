@@ -43,6 +43,7 @@ export interface HeroSectionRef {
 
 export interface HeroExamplesProps {
   onExampleClick: (prompt: string) => void
+  onTemplateChange?: (template: string) => void
 }
 
 export interface BuiltWithSectionProps {

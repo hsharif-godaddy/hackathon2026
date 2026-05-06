@@ -27,6 +27,11 @@ vi.mock('@/hooks/useBreakpoints', () => ({
   useBreakpoints: () => ({ isBelowSmBreakpoint: false, isMdBreakpoint: false }),
 }));
 
+const mockUseSwitchboard = vi.hoisted(() => vi.fn(() => false));
+vi.mock('@/hooks/useSwitchboard', () => ({
+  useSwitchboard: mockUseSwitchboard,
+}));
+
 vi.mock('@/app/[market]/components/HeroExamples', () => ({
   default: () => <div data-testid="hero-examples">Examples</div>,
 }));
@@ -334,13 +339,30 @@ describe('HeroSection', () => {
   });
 
   describe('template selector', () => {
-    it('should render template selector as a labelled group when onTemplateChange provided', () => {
+    beforeEach(() => {
+      mockUseSwitchboard.mockReturnValue(true);
+    });
+
+    afterEach(() => {
+      mockUseSwitchboard.mockReturnValue(false);
+    });
+
+    it('should render template selector as a labelled group when flag enabled and onTemplateChange provided', () => {
       renderWithProviders(<HeroSection {...defaultProps} />);
 
       const group = screen.getByRole('group', { name: 'builder_homepage_template_label' });
       expect(group).toBeInTheDocument();
       const chips = screen.getAllByRole('checkbox');
       expect(chips).toHaveLength(3);
+    });
+
+    it('should not render template selector when flag is disabled', () => {
+      mockUseSwitchboard.mockReturnValue(false);
+      renderWithProviders(<HeroSection {...defaultProps} />);
+
+      expect(
+        screen.queryByRole('group', { name: 'builder_homepage_template_label' })
+      ).not.toBeInTheDocument();
     });
 
     it('should not render template selector when onTemplateChange is undefined', () => {
