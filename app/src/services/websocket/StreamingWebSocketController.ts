@@ -15,6 +15,7 @@ import { EventEmitter } from 'events'
 import type { Socket } from 'socket.io-client'
 import type { Actor } from 'xstate'
 import { createActor } from 'xstate'
+import { DEFAULT_MESSAGE_ORIGIN, type MessageOrigin } from '@airo/shared/auth'
 import type { BudgetUpdatePayload } from '@airo/shared/budget'
 import type { AgentsAppChatMessage } from '@airo/shared/websocket'
 
@@ -124,6 +125,9 @@ export class StreamingWebSocketController extends EventEmitter {
   private historyBatchRef: { current: any[] } = { current: [] }
   private historyBatchTimerRef: { current: NodeJS.Timeout | null } = { current: null }
   private historyReceivedForRecoveryRef: { current: boolean } = { current: false }
+
+  // Session-level origin for care agent message styling
+  private sessionOrigin: MessageOrigin = DEFAULT_MESSAGE_ORIGIN
 
   constructor(private deps: StreamingWebSocketControllerDeps) {
     super()
@@ -488,7 +492,7 @@ export class StreamingWebSocketController extends EventEmitter {
       // Create user message in store (Tier 2 - transcript data)
       // Extract referencedFiles from customContext if present
       const referencedFiles = params.customContext?.referencedFiles as Array<{ path: string; content: string }> | undefined
-      this.deps.getActions().startNewStream(content, params.selectedAssets, referencedFiles)
+      this.deps.getActions().startNewStream(content, params.selectedAssets, referencedFiles, this.sessionOrigin)
 
       const store = this.deps.getStoreState()
       const { buildErrorContext } = store
@@ -632,6 +636,14 @@ export class StreamingWebSocketController extends EventEmitter {
     return () => {
       this.off('budget:update', callback)
     }
+  }
+
+  /**
+   * Set the session-level message origin (support vs customer)
+   * Called once at connection time based on auth type
+   */
+  setSessionOrigin(origin: MessageOrigin): void {
+    this.sessionOrigin = origin
   }
 
   /**

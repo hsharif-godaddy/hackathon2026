@@ -729,6 +729,29 @@ describe('useStreamingConversationStore', function packageTests() {
       const assistantMsg = useStreamingConversationStore.getState().messages.find(m => m.role === 'assistant');
       expect(assistantMsg?.connectionLost).toBeUndefined();
     });
+
+    it('should preserve origin from activeStream when finalizing support message', function preserveOrigin() {
+      const store = useStreamingConversationStore.getState();
+
+      act(() => {
+        store.setCurrentAppId('app-1');
+        // Start stream with 'support' origin (care agent session)
+        store.startNewStream('Help me with my account', undefined, undefined, 'support');
+      });
+
+      // Verify activeStream has origin
+      const activeStreamBefore = useStreamingConversationStore.getState().activeStream;
+      expect(activeStreamBefore?.origin).toBe('support');
+
+      // Finalize the stream
+      act(() => {
+        useStreamingConversationStore.getState().finalizeStream();
+      });
+
+      // Verify the completed message in state.messages has origin preserved
+      const assistantMsg = useStreamingConversationStore.getState().messages.find(m => m.role === 'assistant');
+      expect(assistantMsg?.origin).toBe('support');
+    });
   });
 
   describe('#addToolStartSegment', function addToolStartSegmentTests() {

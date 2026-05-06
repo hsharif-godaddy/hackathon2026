@@ -6,6 +6,7 @@
  */
 
 import { create } from 'zustand'
+import type { MessageOrigin } from '@airo/shared/auth'
 
 import type { AiEditContext } from '@/app/[market]/develop/components/types'
 import { logger } from '@/lib/request-context'
@@ -93,7 +94,7 @@ export interface StreamingMessage {
   usedFreeGrants?: boolean         // True if task used free grants (publish/domain/fix task budget)
   selectedAssets?: any[]           // Attached files/assets (only for user messages, kept for type compatibility)
   referencedFiles?: Array<{ path: string; content: string }> // Referenced code files (only for user messages, kept for type compatibility)
-  origin?: 'support' | 'customer'  // Message origin for visibility filtering
+  origin?: MessageOrigin            // Message origin for visibility filtering
   metadata?: {
     usage?: {
       inputTokens: number
@@ -131,7 +132,7 @@ export interface ChatMessage {
   usedFreeGrants?: boolean         // True if task used free grants (publish/domain/fix task budget)
   selectedAssets?: any[]           // Attached files/assets for user messages
   referencedFiles?: Array<{ path: string; content: string }> // Referenced code files for user messages
-  origin?: 'support' | 'customer'  // Message origin for visibility filtering
+  origin?: MessageOrigin            // Message origin for visibility filtering
   metadata?: {
     usage?: {
       inputTokens: number
@@ -230,7 +231,7 @@ export interface StreamingConversationState {
   // === CORE STREAMING ACTIONS ===
 
   // Stream lifecycle
-  startNewStream: (userMessage: string, selectedAssets?: any[], referencedFiles?: Array<{ path: string; content: string }>) => void
+  startNewStream: (userMessage: string, selectedAssets?: any[], referencedFiles?: Array<{ path: string; content: string }>, origin?: MessageOrigin) => void
   appendToStream: (content: string) => void
   addToolToStream: (toolCall: ToolCall) => void
   updateToolInStream: (toolId: string, updates: Partial<ToolCall>) => void
@@ -577,7 +578,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
 
   // === CORE STREAMING ACTIONS ===
 
-  startNewStream: (userMessage: string, selectedAssets?: any[], referencedFiles?: Array<{ path: string; content: string }>) => {
+  startNewStream: (userMessage: string, selectedAssets?: any[], referencedFiles?: Array<{ path: string; content: string }>, origin?: MessageOrigin) => {
     const userMsgId = generateId()
     const assistantMsgId = generateId()
 
@@ -586,6 +587,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
     }
 
     // Add user message to completed messages
+    // Note: origin is NOT set on user messages - only assistant messages need it for care agent styling
     const userChatMessage: ChatMessage = {
       id: userMsgId,
       role: 'user',
@@ -603,7 +605,8 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       segments: [],
       toolCalls: [],
       timestamp: new Date(),
-      isComplete: false
+      isComplete: false,
+      ...(origin && { origin })
     }
 
     set((state) => ({
@@ -1079,6 +1082,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       ...(activeStream.errorCode !== undefined && { errorCode: activeStream.errorCode }),
       ...(activeStream.retryAttempts !== undefined && { retryAttempts: activeStream.retryAttempts }),
       ...(activeStream.retryReason && { retryReason: activeStream.retryReason }),
+      ...(activeStream.origin && { origin: activeStream.origin }),
       metadata: {
         ...activeStream.metadata,
         ...metadata

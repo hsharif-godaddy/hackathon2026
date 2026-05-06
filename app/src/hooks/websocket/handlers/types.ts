@@ -7,6 +7,7 @@
 
 import type { MutableRefObject } from 'react'
 import type { Socket } from 'socket.io-client'
+import type { MessageOrigin } from '@airo/shared/auth'
 
 import type { ServerConfig, WebSocketActor } from '@/services/websocket/stateMachineTypes'
 import type { ToolCall } from '@/stores/useStreamingConversationStore'
@@ -82,7 +83,7 @@ export interface MessageHandlerActions {
   setWebSocketState: (state: WebSocketStateUpdate) => void
   setStreamingState: (state: string) => void
   setIsLoading: (loading: boolean) => void
-  startNewStream: (content: string, selectedAssets?: any[], referencedFiles?: Array<{ path: string; content: string }>) => void
+  startNewStream: (content: string, selectedAssets?: any[], referencedFiles?: Array<{ path: string; content: string }>, origin?: MessageOrigin) => void
   appendTextSegment: (content: string) => void
   addToolStartSegment: (toolCall: ToolCall) => void
   addToolCallSegment: (toolCall: ToolCall) => void

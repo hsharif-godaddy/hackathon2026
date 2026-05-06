@@ -315,8 +315,19 @@ describe('StreamingWebSocketController', () => {
       })
 
       // Tier 2 action - controller directly calls this
-      expect(mockActions.startNewStream).toHaveBeenCalledWith('Test', undefined, undefined)
+      expect(mockActions.startNewStream).toHaveBeenCalledWith('Test', undefined, undefined, 'customer')
       // Note: Lifecycle state (setIsLoading, setStreamingState) handled by StoreSyncAdapter
+    })
+
+    it('should pass support origin to startNewStream when setSessionOrigin was called', async () => {
+      controller.setSessionOrigin('support')
+
+      await controller.sendMessage({
+        content: 'Help me with my account',
+        visualContext: null,
+      })
+
+      expect(mockActions.startNewStream).toHaveBeenCalledWith('Help me with my account', undefined, undefined, 'support')
     })
 
     it('should emit chat_message via socket', async () => {
@@ -384,7 +395,7 @@ describe('StreamingWebSocketController', () => {
         customContext: { referencedFiles },
       })
 
-      expect(mockActions.startNewStream).toHaveBeenCalledWith('', undefined, referencedFiles)
+      expect(mockActions.startNewStream).toHaveBeenCalledWith('', undefined, referencedFiles, 'customer')
       expect(mockMessageBuilder.build).toHaveBeenCalled()
       expect(mockSocket.emit).toHaveBeenCalledWith(
         'chat_message',

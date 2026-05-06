@@ -191,6 +191,14 @@ vi.mock('@tanstack/react-query', () => ({
   })),
 }));
 
+vi.mock('@/components/providers/AuthProvider', () => ({
+  useAuthContext: vi.fn(() => ({
+    tokenAuthType: 'basic',
+    isAuthenticated: true,
+    isLoading: false,
+  }))
+}));
+
 vi.mock('@/stores/useStreamingConversationStore', () => ({
   useWebSocketState: vi.fn(() => ({ connected: false, status: 'idle' })),
   useCurrentAppId: vi.fn(() => null),
@@ -526,6 +534,71 @@ describe('useStreamingWebSocket', () => {
       // The module-level tool delta buffer reads updateToolDelta via getState()
       // at flush time rather than subscribing to the store.
       expect(useStreamingConversationStore.getState).toHaveBeenCalled();
+    });
+  });
+
+  describe('Session origin from auth type', () => {
+    it('should set session origin to support for e2s auth type', async () => {
+      vi.useFakeTimers();
+      const { useAuthContext } = await import('@/components/providers/AuthProvider');
+      const { StreamingWebSocketController } = await import('@/services/websocket/StreamingWebSocketController');
+      const setSessionOriginSpy = vi.spyOn(StreamingWebSocketController.prototype, 'setSessionOrigin');
+
+      // Mock e2s auth type (employee-to-shopper)
+      vi.mocked(useAuthContext).mockReturnValue({
+        tokenAuthType: 'e2s',
+        isAuthenticated: true,
+        isLoading: false,
+      } as any);
+
+      await setupWebSocketWithApp('app-e2s-origin');
+
+      expect(setSessionOriginSpy).toHaveBeenCalledWith('support');
+
+      setSessionOriginSpy.mockRestore();
+      vi.useRealTimers();
+    });
+
+    it('should set session origin to support for e2s2s auth type', async () => {
+      vi.useFakeTimers();
+      const { useAuthContext } = await import('@/components/providers/AuthProvider');
+      const { StreamingWebSocketController } = await import('@/services/websocket/StreamingWebSocketController');
+      const setSessionOriginSpy = vi.spyOn(StreamingWebSocketController.prototype, 'setSessionOrigin');
+
+      // Mock e2s2s auth type (employee-to-shopper-to-shopper)
+      vi.mocked(useAuthContext).mockReturnValue({
+        tokenAuthType: 'e2s2s',
+        isAuthenticated: true,
+        isLoading: false,
+      } as any);
+
+      await setupWebSocketWithApp('app-e2s2s-origin');
+
+      expect(setSessionOriginSpy).toHaveBeenCalledWith('support');
+
+      setSessionOriginSpy.mockRestore();
+      vi.useRealTimers();
+    });
+
+    it('should set session origin to customer for basic auth type', async () => {
+      vi.useFakeTimers();
+      const { useAuthContext } = await import('@/components/providers/AuthProvider');
+      const { StreamingWebSocketController } = await import('@/services/websocket/StreamingWebSocketController');
+      const setSessionOriginSpy = vi.spyOn(StreamingWebSocketController.prototype, 'setSessionOrigin');
+
+      // Mock basic auth type (regular customer)
+      vi.mocked(useAuthContext).mockReturnValue({
+        tokenAuthType: 'basic',
+        isAuthenticated: true,
+        isLoading: false,
+      } as any);
+
+      await setupWebSocketWithApp('app-basic-origin');
+
+      expect(setSessionOriginSpy).toHaveBeenCalledWith('customer');
+
+      setSessionOriginSpy.mockRestore();
+      vi.useRealTimers();
     });
   });
 

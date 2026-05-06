@@ -1,3 +1,5 @@
+import type { MessageOrigin } from '@airo/shared/auth'
+
 /**
  * Agent conversation payload types returned from the backend.
  * Mirrors the DTO shape so UI normalization can be typed safely.
@@ -49,5 +51,5 @@ export interface AgentConversationMessagePayload {
   errorCode?: number
   retryAttempts?: number
   retryReason?: string
-  origin?: 'support' | 'customer'
+  origin?: MessageOrigin
 }

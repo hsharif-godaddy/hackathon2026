@@ -110,6 +110,14 @@ vi.mock('@/stores/useStreamingConversationStore', () => ({
   },
 }))
 
+vi.mock('@/components/providers/AuthProvider', () => ({
+  useAuthContext: vi.fn(() => ({
+    tokenAuthType: 'basic',
+    isAuthenticated: true,
+    isLoading: false,
+  }))
+}))
+
 vi.mock('@/stores/useTodoListStore', () => ({
   useTodoListStore: {
     getState: vi.fn(() => ({

@@ -108,3 +108,17 @@ export const DEFAULT_OWNER_PRODUCT = AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER
 export function isEmployeeAuthType(authType: SupportedAuthType | AuthType | string | undefined): boolean {
   return authType === 'e2s' || authType === 'e2s2s';
 }
+
+/**
+ * Message origin indicating whether the session is from support (care agent) or customer.
+ * Used for visual styling of messages in the chat UI.
+ *
+ * - 'support': e2s/e2s2s sessions (care agent impersonation)
+ * - 'customer': Regular customer sessions
+ */
+export type MessageOrigin = 'support' | 'customer'
+
+/**
+ * Default message origin for new sessions.
+ */
+export const DEFAULT_MESSAGE_ORIGIN: MessageOrigin = 'customer'

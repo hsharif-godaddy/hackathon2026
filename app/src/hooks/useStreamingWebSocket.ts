@@ -6,9 +6,11 @@
  */
 
 import { useCallback, useEffect, useRef } from 'react'
+import { isEmployeeAuthType, type MessageOrigin } from '@airo/shared/auth'
 
 import type { AssetManagerItem } from '@/app/[market]/develop/components/chat/AssetTypes'
 import type { VisualContext } from '@/app/[market]/develop/components/visualContextCapture'
+import { useAuthContext } from '@/components/providers/AuthProvider'
 import { resolveMessageDefaults } from '@/hooks/resolveMessageDefaults'
 import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
@@ -144,6 +146,7 @@ export function useStreamingWebSocket({ enabled = true }: { enabled?: boolean } 
 
   const webSocketState = useWebSocketState()
   const currentAppId = useCurrentAppId()
+  const { tokenAuthType } = useAuthContext()
 
   // Get subscription_id from site store for grant context
   const subscriptionId = useSitesStore((state) => {
@@ -257,6 +260,20 @@ export function useStreamingWebSocket({ enabled = true }: { enabled?: boolean } 
       setController(controllerRef.current, currentAppId)
     }
   }
+
+  // Set session origin based on auth type (e2s/e2s2s = support, others = customer)
+  // This enables care agent message styling during live streaming
+  // Must run whenever controller or tokenAuthType changes because:
+  // - Controller is created synchronously during render (not in effect)
+  // - Effect on first render sees null controller and returns early
+  // - We need to set origin once controller is available
+  const controller = controllerRef.current
+  useEffect(() => {
+    if (!controller) return
+
+    const origin: MessageOrigin = isEmployeeAuthType(tokenAuthType) ? 'support' : 'customer'
+    controller.setSessionOrigin(origin)
+  }, [controller, tokenAuthType])
 
   useEffect(() => {
     if (!enabled || !currentAppId) return
