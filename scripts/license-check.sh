@@ -49,6 +49,7 @@ KNOWN_EXCEPTIONS=(
   "@img/sharp-libvips-linux-x64"
   "@img/sharp-libvips-linuxmusl-arm64"
   "@img/sharp-libvips-linuxmusl-x64"
+  "object-stream"             # MIT (README; missing package.json field; transitive of parquetjs)
   "only"                      # MIT (TJ Holowaychuk, missing metadata)
   "stackframe"                # Unlicense (public domain, LICENSE file present)
 )

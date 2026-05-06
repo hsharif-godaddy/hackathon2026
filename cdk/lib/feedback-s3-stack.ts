@@ -12,7 +12,7 @@ import config from "./config";
  * Creates S3 bucket for storing user feedback submissions (NPS, bug reports,
  * support requests) captured from the Airo Builder UI.
  *
- * Key design: feedbacks/{year}/{month}/{day}/{hour}/{appId}/{timestamp}.json
+ * Key design: {table_prefix}/year=.../month=.../day=.../hour=.../appId=.../{timestamp}.parquet
  * - Partitioned by date/hour for efficient Athena querying
  * - appId segment enables per-customer data lookups and deletion
  * - Timestamp filename ensures uniqueness (one customer cannot submit

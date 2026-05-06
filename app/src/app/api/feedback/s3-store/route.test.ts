@@ -1,8 +1,49 @@
 import '@testing-library/jest-dom';
 
+import { unlink, writeFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import { NextRequest } from 'next/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { S3Client } from '@aws-sdk/client-s3';
+
+const require = createRequire(import.meta.url);
+
+const { mockEncodeFeedbackParquet } = vi.hoisted(() => ({
+  mockEncodeFeedbackParquet: vi.fn(),
+}));
+
+vi.mock('./feedback-to-parquet', async (importOriginal) => {
+  const mod = await importOriginal<typeof import('./feedback-to-parquet')>();
+  return {
+    ...mod,
+    encodeFeedbackParquet: mockEncodeFeedbackParquet as typeof mod.encodeFeedbackParquet,
+  };
+});
+
+async function readParquetRow(body: unknown): Promise<Record<string, unknown>> {
+  const buf = Buffer.isBuffer(body) ? body : Buffer.from(body as ArrayBuffer);
+  const path = join(tmpdir(), `fb-parquet-${Date.now()}-${Math.random().toString(36).slice(2)}.parquet`);
+  await writeFile(path, buf);
+  try {
+    const { ParquetReader } = require('parquetjs') as {
+      ParquetReader: { openFile: (p: string) => Promise<{ getCursor: () => { next: () => Promise<unknown> }; close: () => Promise<void> }> };
+    };
+    const reader = await ParquetReader.openFile(path);
+    try {
+      const cursor = reader.getCursor();
+      const row = await cursor.next();
+      expect(await cursor.next()).toBeNull();
+      return row as Record<string, unknown>;
+    } finally {
+      await reader.close();
+    }
+  } finally {
+    await unlink(path).catch(() => {});
+  }
+}
 
 const mockLogger = {
   info: vi.fn(),
@@ -54,11 +95,13 @@ function createRawRequest(rawBody: string): NextRequest {
 }
 
 describe('/api/feedback/s3-store', function s3StoreTests() {
-  beforeEach(function setup() {
+  beforeEach(async function setup() {
     vi.clearAllMocks();
     vi.resetModules();
     process.env.FEEDBACK_BUCKET = 'airo-builder-feedback-dev';
     process.env.AWS_REGION = 'us-west-2';
+    const actual = await vi.importActual<typeof import('./feedback-to-parquet')>('./feedback-to-parquet');
+    mockEncodeFeedbackParquet.mockImplementation(actual.encodeFeedbackParquet);
   });
 
   afterEach(function cleanup() {
@@ -160,10 +203,10 @@ describe('/api/feedback/s3-store', function s3StoreTests() {
       expect(mockS3Send).toHaveBeenCalledOnce();
       const putArgs = mockS3Send.mock.calls[0][0];
       expect(putArgs.Bucket).toBe('airo-builder-feedback-dev');
-      expect(putArgs.ContentType).toBe('application/json');
-      expect(putArgs.Key).toMatch(/^airo_builder_feedback_cln_laketest\/year=\d{4}\/month=\d{2}\/day=\d{2}\/hour=\d{2}\/appId=app-abc\/\d+\.json$/);
+      expect(putArgs.ContentType).toBe('application/vnd.apache.parquet');
+      expect(putArgs.Key).toMatch(/^airo_builder_feedback_cln_laketest\/year=\d{4}\/month=\d{2}\/day=\d{2}\/hour=\d{2}\/appId=app-abc\/\d+\.parquet$/);
 
-      const record = JSON.parse(putArgs.Body);
+      const record = await readParquetRow(putArgs.Body);
       expect(record.feedback_id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
       expect(record.customer_id).toBe('customer-uuid-123');
       expect(record.app_id).toBe('app-abc');
@@ -175,8 +218,12 @@ describe('/api/feedback/s3-store', function s3StoreTests() {
       expect(record.subscription_status).toBe('active');
       expect(record.total_credit_cnt).toBe(500);
       expect(record.available_credit_cnt).toBe(320);
-      expect(record.feedback_utc_ts).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}$/);
-      expect(record.cln_create_utc_ts).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}$/);
+      expect(record.feedback_utc_ts).toBeInstanceOf(Date);
+      expect(record.cln_create_utc_ts).toBeInstanceOf(Date);
+      expect((record.feedback_utc_ts as Date).toISOString()).toMatch(
+        /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/,
+      );
+      expect((record.cln_create_utc_ts as Date).getTime()).toBe((record.feedback_utc_ts as Date).getTime());
     });
 
     it('should use prod table prefix when prod bucket is set', async function prodPrefix() {
@@ -206,15 +253,16 @@ describe('/api/feedback/s3-store', function s3StoreTests() {
 
       await POST(createRequest({ app_id: 'app-123', feedback_text: null, consent_flag: null, rating: null }));
 
-      const record = JSON.parse(mockS3Send.mock.calls[0][0].Body);
-      expect(record.feedback_text).toBeNull();
-      expect(record.consent_flag).toBeNull();
-      expect(record.rating).toBeNull();
-      expect(record.plan_type_name).toBeNull();
-      expect(record.subscription_id).toBeNull();
-      expect(record.subscription_status).toBeNull();
-      expect(record.total_credit_cnt).toBeNull();
-      expect(record.available_credit_cnt).toBeNull();
+      const record = await readParquetRow(mockS3Send.mock.calls[0][0].Body);
+      // Parquet optional nulls are often omitted on read (undefined), not JSON null.
+      expect(record.feedback_text == null).toBe(true);
+      expect(record.consent_flag == null).toBe(true);
+      expect(record.rating == null).toBe(true);
+      expect(record.plan_type_name == null).toBe(true);
+      expect(record.subscription_id == null).toBe(true);
+      expect(record.subscription_status == null).toBe(true);
+      expect(record.total_credit_cnt == null).toBe(true);
+      expect(record.available_credit_cnt == null).toBe(true);
     });
 
     it('should coerce wrong-type consent_flag to null', async function coerceConsentFlag() {
@@ -223,8 +271,8 @@ describe('/api/feedback/s3-store', function s3StoreTests() {
 
       await POST(createRequest({ app_id: 'app-123', feedback_text: 'test', consent_flag: 'yes', rating: null }));
 
-      const record = JSON.parse(mockS3Send.mock.calls[0][0].Body);
-      expect(record.consent_flag).toBeNull();
+      const record = await readParquetRow(mockS3Send.mock.calls[0][0].Body);
+      expect(record.consent_flag == null).toBe(true);
     });
 
     it('should coerce non-integer rating to null', async function coerceRating() {
@@ -233,8 +281,8 @@ describe('/api/feedback/s3-store', function s3StoreTests() {
 
       await POST(createRequest({ app_id: 'app-123', feedback_text: 'test', consent_flag: null, rating: 5.5 }));
 
-      const record = JSON.parse(mockS3Send.mock.calls[0][0].Body);
-      expect(record.rating).toBeNull();
+      const record = await readParquetRow(mockS3Send.mock.calls[0][0].Body);
+      expect(record.rating == null).toBe(true);
     });
 
     it('should coerce string rating to null', async function coerceStringRating() {
@@ -243,19 +291,38 @@ describe('/api/feedback/s3-store', function s3StoreTests() {
 
       await POST(createRequest({ app_id: 'app-123', feedback_text: 'test', consent_flag: null, rating: '5' as unknown as number }));
 
-      const record = JSON.parse(mockS3Send.mock.calls[0][0].Body);
-      expect(record.rating).toBeNull();
+      const record = await readParquetRow(mockS3Send.mock.calls[0][0].Body);
+      expect(record.rating == null).toBe(true);
     });
 
-    it('should pass through float total_credit_cnt and available_credit_cnt', async function floatCreditsPassThrough() {
+    it('should truncate float credits to int32 in Parquet for lake int columns', async function floatCreditsTruncated() {
       mockS3Send.mockResolvedValueOnce({});
       const { POST } = await import('./route');
 
       await POST(createRequest({ app_id: 'app-123', feedback_text: 'test', consent_flag: null, rating: null, total_credit_cnt: 500.5, available_credit_cnt: 320.9 }));
 
-      const record = JSON.parse(mockS3Send.mock.calls[0][0].Body);
-      expect(record.total_credit_cnt).toBe(500.5);
-      expect(record.available_credit_cnt).toBe(320.9);
+      const record = await readParquetRow(mockS3Send.mock.calls[0][0].Body);
+      expect(record.total_credit_cnt).toBe(500);
+      expect(record.available_credit_cnt).toBe(320);
+    });
+
+    it('should clamp credits and rating to int32 bounds in Parquet', async function clampInt32Fields() {
+      mockS3Send.mockResolvedValueOnce({});
+      const { POST } = await import('./route');
+
+      await POST(createRequest({
+        app_id: 'app-123',
+        feedback_text: 'test',
+        consent_flag: null,
+        rating: 3_000_000_000,
+        total_credit_cnt: 9_000_000_000,
+        available_credit_cnt: -9_000_000_000,
+      }));
+
+      const record = await readParquetRow(mockS3Send.mock.calls[0][0].Body);
+      expect(record.total_credit_cnt).toBe(2_147_483_647);
+      expect(record.available_credit_cnt).toBe(-2_147_483_648);
+      expect(record.rating).toBe(2_147_483_647);
     });
 
     it('should coerce numeric non-finite credits to null and log warn', async function coerceNumericNonFiniteCredits() {
@@ -266,9 +333,9 @@ describe('/api/feedback/s3-store', function s3StoreTests() {
       // to simulate a non-standard client sending numeric non-finite values
       await POST(createRawRequest('{"app_id":"app-123","feedback_text":"test","consent_flag":null,"rating":null,"total_credit_cnt":1e309,"available_credit_cnt":1e309}'));
 
-      const record = JSON.parse(mockS3Send.mock.calls[0][0].Body);
-      expect(record.total_credit_cnt).toBeNull();
-      expect(record.available_credit_cnt).toBeNull();
+      const record = await readParquetRow(mockS3Send.mock.calls[0][0].Body);
+      expect(record.total_credit_cnt == null).toBe(true);
+      expect(record.available_credit_cnt == null).toBe(true);
       expect(mockLogger.warn).toHaveBeenCalledWith('feedback.store.s3.invalid_credits', expect.objectContaining({ field: 'total_credit_cnt' }));
       expect(mockLogger.warn).toHaveBeenCalledWith('feedback.store.s3.invalid_credits', expect.objectContaining({ field: 'available_credit_cnt' }));
     });
@@ -279,9 +346,9 @@ describe('/api/feedback/s3-store', function s3StoreTests() {
 
       await POST(createRequest({ app_id: 'app-123', feedback_text: 'test', consent_flag: null, rating: null, total_credit_cnt: 'bad' as unknown as number, available_credit_cnt: true as unknown as number }));
 
-      const record = JSON.parse(mockS3Send.mock.calls[0][0].Body);
-      expect(record.total_credit_cnt).toBeNull();
-      expect(record.available_credit_cnt).toBeNull();
+      const record = await readParquetRow(mockS3Send.mock.calls[0][0].Body);
+      expect(record.total_credit_cnt == null).toBe(true);
+      expect(record.available_credit_cnt == null).toBe(true);
       // Non-number types are silently coerced — warn only fires for numeric non-finite values
       expect(mockLogger.warn).not.toHaveBeenCalledWith('feedback.store.s3.invalid_credits', expect.anything());
     });
@@ -309,10 +376,10 @@ describe('/api/feedback/s3-store', function s3StoreTests() {
         subscription_status: 42 as unknown as string,
       }));
 
-      const record = JSON.parse(mockS3Send.mock.calls[0][0].Body);
-      expect(record.plan_type_name).toBeNull();
-      expect(record.subscription_id).toBeNull();
-      expect(record.subscription_status).toBeNull();
+      const record = await readParquetRow(mockS3Send.mock.calls[0][0].Body);
+      expect(record.plan_type_name == null).toBe(true);
+      expect(record.subscription_id == null).toBe(true);
+      expect(record.subscription_status == null).toBe(true);
     });
 
     it('should coerce numeric app_id to null and use appId=unknown in key', async function coerceNumericAppId() {
@@ -322,8 +389,8 @@ describe('/api/feedback/s3-store', function s3StoreTests() {
       await POST(createRequest({ app_id: 42 as unknown as string, feedback_text: 'test', consent_flag: null, rating: null }));
 
       const putArgs = mockS3Send.mock.calls[0][0];
-      const record = JSON.parse(putArgs.Body);
-      expect(record.app_id).toBeNull();
+      const record = await readParquetRow(putArgs.Body);
+      expect(record.app_id == null).toBe(true);
       expect(putArgs.Key).toContain('/appId=unknown/');
     });
 
@@ -352,6 +419,28 @@ describe('/api/feedback/s3-store', function s3StoreTests() {
         expect.objectContaining({ appId: 'app/../../etc' }),
       );
       expect(mockS3Send).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('POST - Parquet encode failure', function parquetFailureTests() {
+    it('should return 500 and log when encodeFeedbackParquet rejects', async function parquetEncodeFailed() {
+      mockEncodeFeedbackParquet.mockRejectedValueOnce(new Error('encode boom'));
+      const { POST } = await import('./route');
+
+      const response = await POST(createRequest({ app_id: 'app-123', feedback_text: 'test', consent_flag: true, rating: 5 }));
+      const data = await response.json();
+
+      expect(response.status).toBe(500);
+      expect(data.error).toBe('Parquet encode failed');
+      expect(mockS3Send).not.toHaveBeenCalled();
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        'feedback.store.s3.parquet_encode_failed',
+        expect.objectContaining({
+          appId: 'app-123',
+          error: 'encode boom',
+          feedbackId: expect.stringMatching(/^[0-9a-f-]{36}$/),
+        }),
+      );
     });
   });
 

@@ -6,7 +6,7 @@
  * Support and issue/bug-report modes do not write to S3.
  *
  * S3 key structure:
- *   {table_prefix}/year={yyyy}/month={mm}/day={dd}/hour={hh}/appId={appId}/{timestamp_ms}.json
+ *   {table_prefix}/year={yyyy}/month={mm}/day={dd}/hour={hh}/appId={appId}/{timestamp_ms}.parquet
  *
  * Table prefix:
  *   prod bucket  → airo_builder_feedback_cln
@@ -21,8 +21,11 @@ import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import type { FeedbackStorePayload } from '@/components/feedback/types';
 import { type CustomerAuthContext, withCustomerAuth } from '@/lib/customer-auth';
 import { logger } from '@/lib/request-context';
+import { encodeFeedbackParquet } from './feedback-to-parquet';
+import type { FeedbackS3Record } from './types';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
 let s3Client: S3Client | null = null;
 let s3ClientInitError: string | null = null;
@@ -53,34 +56,21 @@ if (!FEEDBACK_BUCKET) {
 // Only alphanumeric, hyphen, underscore — prevents path traversal via app_id containing /
 const APP_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 
-interface FeedbackS3Record {
-  feedback_id: string;
-  customer_id: string | null;
-  app_id: string | null;
-  feedback_utc_ts: string;
-  feedback_text: string | null;
-  consent_flag: boolean | null;
-  rating: number | null;
-  plan_type_name: string | null;
-  subscription_id: string | null;
-  subscription_status: string | null;
-  total_credit_cnt: number | null;
-  available_credit_cnt: number | null;
-  cln_create_utc_ts: string;
-}
-
 function buildS3Key(appId: string | null, now: Date): string {
   const year = now.getUTCFullYear();
   const month = String(now.getUTCMonth() + 1).padStart(2, '0');
   const day = String(now.getUTCDate()).padStart(2, '0');
   const hour = String(now.getUTCHours()).padStart(2, '0');
-  return `${FEEDBACK_TABLE_PREFIX}/year=${year}/month=${month}/day=${day}/hour=${hour}/appId=${appId || 'unknown'}/${now.getTime()}.json`;
+  return `${FEEDBACK_TABLE_PREFIX}/year=${year}/month=${month}/day=${day}/hour=${hour}/appId=${appId || 'unknown'}/${now.getTime()}.parquet`;
 }
 
 function formatUtcTs(date: Date): string {
   return date.toISOString().replace('T', ' ').replace('Z', '');
 }
 
+// Default auth (no { level: 3 }): same UX contract as POST /api/slack-webhook/feedback —
+// optional fire-and-forget from a long-lived tab; level 3 HBI would prompt re-auth without
+// changing the fact that a valid customer JWT is still required.
 export const POST = withCustomerAuth(async (
   request: NextRequest,
   authContext: CustomerAuthContext,
@@ -156,12 +146,24 @@ export const POST = withCustomerAuth(async (
     cln_create_utc_ts: tsStr,
   };
 
+  let parquetBody: Buffer;
+  try {
+    parquetBody = await encodeFeedbackParquet(record);
+  } catch (err) {
+    logger.error('feedback.store.s3.parquet_encode_failed', {
+      appId,
+      feedbackId: record.feedback_id,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return NextResponse.json({ error: 'Parquet encode failed' }, { status: 500 });
+  }
+
   try {
     await s3Client.send(new PutObjectCommand({
       Bucket: FEEDBACK_BUCKET,
       Key: s3Key,
-      Body: JSON.stringify(record),
-      ContentType: 'application/json',
+      Body: parquetBody,
+      ContentType: 'application/vnd.apache.parquet',
     }));
 
     logger.info('feedback.store.s3.success', {

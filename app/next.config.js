@@ -3,7 +3,7 @@ import 'tsx';
 const gasket = (await import('./gasket.ts')).default;
 
 export default gasket.actions.getNextConfig({
-  serverExternalPackages: ['@azure/functions-core', '@godaddy/gd-auth-lib'],
+  serverExternalPackages: ['@azure/functions-core', '@godaddy/gd-auth-lib', 'parquetjs'],
   outputFileTracingIncludes: {
     '/explore/[name]/[[...lang]]': ['./src/data/landing-pages/**/*.yaml'],
   },
@@ -64,6 +64,7 @@ export default gasket.actions.getNextConfig({
       config.externals.push({
         '@azure/functions-core': 'commonjs @azure/functions-core',
         '@godaddy/gd-auth-lib': 'commonjs @godaddy/gd-auth-lib',
+        parquetjs: 'commonjs parquetjs',
       });
     }
 
