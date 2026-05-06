@@ -10,6 +10,7 @@ vi.mock('@airo/ai-lib', async () => {
   return {
     ...actual,
     getS2SToken: vi.fn().mockResolvedValue('mock-s2s-token'),
+    refreshS2SToken: vi.fn().mockResolvedValue('mock-s2s-token'),
     isS2SAuthEnabled: vi.fn().mockReturnValue(false),
   };
 });
@@ -277,5 +278,314 @@ describe('KnowBDriver.formatResultsAsMarkdown', () => {
     expect(md).toContain('## Document 2: /airo_info/b');
     expect(md).toContain('## Document 3: /airo_info/c');
     expect(md.match(/\n---\n/g)).toHaveLength(2);
+  });
+});
+
+/**
+ * Build a minimal JWT with a given exp (unix seconds) — signature is garbage,
+ * only the `exp` claim matters to our decoder.
+ */
+function makeJwtWithExp(expSeconds: number): string {
+  const header = Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url');
+  const payload = Buffer.from(JSON.stringify({ exp: expSeconds })).toString('base64url');
+  return `${header}.${payload}.sig`;
+}
+
+/**
+ * GoDaddy SSO tokens (typ=jomax|idp|cert) often ship with iat + vat but no
+ * `exp`. ai-lib's s2s-auth.ts treats these as `iat + 30min`; we mirror that.
+ */
+function makeJwtWithIatNoExp(iatSeconds: number, extra: Record<string, unknown> = {}): string {
+  const header = Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url');
+  const payload = Buffer.from(JSON.stringify({ iat: iatSeconds, ...extra })).toString('base64url');
+  return `${header}.${payload}.sig`;
+}
+
+describe('KnowBDriver.search — S2S token refresh', () => {
+  beforeEach(() => {
+    (aiLib.isS2SAuthEnabled as unknown as ReturnType<typeof vi.fn>).mockReturnValue(true);
+    delete process.env.SSO_JWT;
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    (aiLib.isS2SAuthEnabled as unknown as ReturnType<typeof vi.fn>).mockReturnValue(false);
+  });
+
+  it('proactively refetches the S2S token when cached JWT is within 5min of exp', async () => {
+    const getS2S = aiLib.getS2SToken as unknown as ReturnType<typeof vi.fn>;
+    getS2S.mockReset();
+    // First call returns a token that expires in 60s (inside 5min buffer)
+    const nearExpiry = Math.floor(Date.now() / 1000) + 60;
+    // Second call returns a token that expires in 1h
+    const healthy = Math.floor(Date.now() / 1000) + 3600;
+    getS2S
+      .mockResolvedValueOnce(makeJwtWithExp(nearExpiry))
+      .mockResolvedValueOnce(makeJwtWithExp(healthy));
+
+    vi.spyOn(GoKnowbClientImpl.prototype, 'search').mockResolvedValue({ results: [] });
+
+    const driver = new KnowBDriver();
+    await driver.search({ query: 'q1' }); // fetches near-expiry token
+    await driver.search({ query: 'q2' }); // buffer trips -> refetch
+    await driver.search({ query: 'q3' }); // healthy token cached -> no refetch
+
+    expect(getS2S).toHaveBeenCalledTimes(2);
+  });
+
+  it('caches a healthy token and does not refetch across calls', async () => {
+    const getS2S = aiLib.getS2SToken as unknown as ReturnType<typeof vi.fn>;
+    getS2S.mockReset();
+    const healthy = Math.floor(Date.now() / 1000) + 3600;
+    getS2S.mockResolvedValue(makeJwtWithExp(healthy));
+
+    vi.spyOn(GoKnowbClientImpl.prototype, 'search').mockResolvedValue({ results: [] });
+
+    const driver = new KnowBDriver();
+    await driver.search({ query: 'q1' });
+    await driver.search({ query: 'q2' });
+    await driver.search({ query: 'q3' });
+
+    expect(getS2S).toHaveBeenCalledTimes(1);
+  });
+
+  it('on 401 from GoKnowb: invalidates cache, refetches token, retries once — via refreshS2SToken to bypass upstream cache', async () => {
+    const getS2S = aiLib.getS2SToken as unknown as ReturnType<typeof vi.fn>;
+    const refreshS2S = aiLib.refreshS2SToken as unknown as ReturnType<typeof vi.fn>;
+    getS2S.mockReset();
+    refreshS2S.mockReset();
+    const healthy = Math.floor(Date.now() / 1000) + 3600;
+    getS2S.mockResolvedValue(makeJwtWithExp(healthy));
+    refreshS2S.mockResolvedValue(makeJwtWithExp(healthy));
+
+    const clientSearch = vi
+      .spyOn(GoKnowbClientImpl.prototype, 'search')
+      .mockRejectedValueOnce(new Error('Error performing KB search: Request failed with status code 401'))
+      .mockResolvedValueOnce({ results: [] });
+
+    const driver = new KnowBDriver();
+    const result = await driver.search({ query: 'q' });
+
+    expect(result.success).toBe(true);
+    expect(clientSearch).toHaveBeenCalledTimes(2);
+    // First fetch via getS2SToken; reactive retry MUST use refreshS2SToken
+    // so the ai-lib upstream ~60s cache is bypassed — otherwise we'd send
+    // the same rejected JWT and loop.
+    expect(getS2S).toHaveBeenCalledTimes(1);
+    expect(refreshS2S).toHaveBeenCalledTimes(1);
+  });
+
+  it('on 401 retry also failing: returns success:false with the 2nd error', async () => {
+    const getS2S = aiLib.getS2SToken as unknown as ReturnType<typeof vi.fn>;
+    getS2S.mockReset();
+    const healthy = Math.floor(Date.now() / 1000) + 3600;
+    getS2S.mockResolvedValue(makeJwtWithExp(healthy));
+
+    vi.spyOn(GoKnowbClientImpl.prototype, 'search').mockRejectedValue(
+      new Error('Error performing KB search: Request failed with status code 401'),
+    );
+
+    const driver = new KnowBDriver();
+    const result = await driver.search({ query: 'q' });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('401');
+  });
+
+  it('non-401 errors do not trigger a retry', async () => {
+    const getS2S = aiLib.getS2SToken as unknown as ReturnType<typeof vi.fn>;
+    getS2S.mockReset();
+    const healthy = Math.floor(Date.now() / 1000) + 3600;
+    getS2S.mockResolvedValue(makeJwtWithExp(healthy));
+
+    const clientSearch = vi
+      .spyOn(GoKnowbClientImpl.prototype, 'search')
+      .mockRejectedValue(new Error('network timeout'));
+
+    const driver = new KnowBDriver();
+    const result = await driver.search({ query: 'q' });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('network timeout');
+    // Only one attempt, no reactive refresh for non-auth errors.
+    expect(clientSearch).toHaveBeenCalledTimes(1);
+    expect(getS2S).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('KnowBDriver — self-heal after transient S2S outage', () => {
+  beforeEach(() => {
+    (aiLib.isS2SAuthEnabled as unknown as ReturnType<typeof vi.fn>).mockReturnValue(true);
+    delete process.env.SSO_JWT;
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    (aiLib.isS2SAuthEnabled as unknown as ReturnType<typeof vi.fn>).mockReturnValue(false);
+  });
+
+  it('does NOT wedge after a transient proactive-refresh failure when a token is still cached', async () => {
+    const getS2S = aiLib.getS2SToken as unknown as ReturnType<typeof vi.fn>;
+    getS2S.mockReset();
+    const nearExpiry = Math.floor(Date.now() / 1000) + 60;
+    const healthy = Math.floor(Date.now() / 1000) + 3600;
+    // 1st fetch succeeds (near-expiry), 2nd fails (SSO blip), 3rd succeeds.
+    getS2S
+      .mockResolvedValueOnce(makeJwtWithExp(nearExpiry))
+      .mockRejectedValueOnce(new Error('s2s endpoint 502'))
+      .mockResolvedValueOnce(makeJwtWithExp(healthy));
+
+    vi.spyOn(GoKnowbClientImpl.prototype, 'search').mockResolvedValue({ results: [] });
+
+    const driver = new KnowBDriver();
+    const r1 = await driver.search({ query: 'q1' }); // good
+    const r2 = await driver.search({ query: 'q2' }); // proactive refresh fails (still has old token usable)
+    const r3 = await driver.search({ query: 'q3' }); // retries proactive refresh — succeeds
+
+    expect(r1.success).toBe(true);
+    // r2's initialize throws — outer catch returns success:false, but driver
+    // is NOT permanently wedged; r3 must recover.
+    expect(r2.success).toBe(false);
+    expect(r3.success).toBe(true);
+    expect(getS2S).toHaveBeenCalledTimes(3);
+  });
+
+  it('DOES fast-fail subsequent calls when there is no cached token (true initial-fetch failure)', async () => {
+    const getS2S = aiLib.getS2SToken as unknown as ReturnType<typeof vi.fn>;
+    getS2S.mockReset();
+    getS2S.mockRejectedValue(new Error('s2s endpoint 503'));
+
+    const clientSearch = vi.spyOn(GoKnowbClientImpl.prototype, 'search').mockResolvedValue({ results: [] });
+
+    const driver = new KnowBDriver();
+    const r1 = await driver.search({ query: 'q1' });
+    const r2 = await driver.search({ query: 'q2' });
+
+    expect(r1.success).toBe(false);
+    expect(r2.success).toBe(false);
+    // Second call hits the cached-failure fast-path — no retry at S2S or KB.
+    expect(getS2S).toHaveBeenCalledTimes(1);
+    expect(clientSearch).not.toHaveBeenCalled();
+  });
+});
+
+describe('KnowBTokenProvider.needsInitialization — refresh-buffer boundary', () => {
+  // Boundary semantics: refresh fires when `now >= exp - 300`.
+  // Tested via makeJwtWithExp + the driver's observable refetch behavior.
+  beforeEach(() => {
+    (aiLib.isS2SAuthEnabled as unknown as ReturnType<typeof vi.fn>).mockReturnValue(true);
+    delete process.env.SSO_JWT;
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    (aiLib.isS2SAuthEnabled as unknown as ReturnType<typeof vi.fn>).mockReturnValue(false);
+  });
+
+  it('refreshes when cached exp is EXACTLY now + TOKEN_REFRESH_BUFFER_SECONDS (>= boundary)', async () => {
+    const getS2S = aiLib.getS2SToken as unknown as ReturnType<typeof vi.fn>;
+    getS2S.mockReset();
+    const atBoundary = Math.floor(Date.now() / 1000) + 300;
+    const healthy = Math.floor(Date.now() / 1000) + 3600;
+    getS2S
+      .mockResolvedValueOnce(makeJwtWithExp(atBoundary))
+      .mockResolvedValueOnce(makeJwtWithExp(healthy));
+    vi.spyOn(GoKnowbClientImpl.prototype, 'search').mockResolvedValue({ results: [] });
+
+    const driver = new KnowBDriver();
+    await driver.search({ query: 'q1' });
+    await driver.search({ query: 'q2' });
+
+    expect(getS2S).toHaveBeenCalledTimes(2);
+  });
+
+  it('falls back to iat + 30min when JWT has no exp claim (GoDaddy SSO tokens)', async () => {
+    const getS2S = aiLib.getS2SToken as unknown as ReturnType<typeof vi.fn>;
+    getS2S.mockReset();
+    const nowSec = Math.floor(Date.now() / 1000);
+    // Token with iat = now - 1500s → effective expiry = iat + 1800s = now + 300s
+    // That lands exactly on the refresh buffer → needsInitialization() triggers.
+    const tokenAtBoundary = makeJwtWithIatNoExp(nowSec - 1500);
+    // Follow-up token: iat = now → effective expiry = now + 1800s → outside buffer.
+    const healthy = makeJwtWithIatNoExp(nowSec);
+    getS2S.mockResolvedValueOnce(tokenAtBoundary).mockResolvedValueOnce(healthy);
+    vi.spyOn(GoKnowbClientImpl.prototype, 'search').mockResolvedValue({ results: [] });
+
+    const driver = new KnowBDriver();
+    await driver.search({ query: 'q1' }); // fetches at-boundary token
+    await driver.search({ query: 'q2' }); // refresh triggered (no exp → iat+1800 fallback)
+    await driver.search({ query: 'q3' }); // healthy (iat=now → exp=now+1800) → no refresh
+
+    expect(getS2S).toHaveBeenCalledTimes(2);
+  });
+
+  it('does NOT refresh when cached exp is now + TOKEN_REFRESH_BUFFER_SECONDS + 1 (outside buffer)', async () => {
+    const getS2S = aiLib.getS2SToken as unknown as ReturnType<typeof vi.fn>;
+    getS2S.mockReset();
+    const justOutside = Math.floor(Date.now() / 1000) + 301;
+    getS2S.mockResolvedValue(makeJwtWithExp(justOutside));
+    vi.spyOn(GoKnowbClientImpl.prototype, 'search').mockResolvedValue({ results: [] });
+
+    const driver = new KnowBDriver();
+    await driver.search({ query: 'q1' });
+    await driver.search({ query: 'q2' });
+
+    expect(getS2S).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('KnowBDriver — 401 retry applies to write ops', () => {
+  beforeEach(() => {
+    (aiLib.isS2SAuthEnabled as unknown as ReturnType<typeof vi.fn>).mockReturnValue(true);
+    delete process.env.SSO_JWT;
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    (aiLib.isS2SAuthEnabled as unknown as ReturnType<typeof vi.fn>).mockReturnValue(false);
+  });
+
+  it('upload retries once on 401 and succeeds', async () => {
+    const getS2S = aiLib.getS2SToken as unknown as ReturnType<typeof vi.fn>;
+    const refreshS2S = aiLib.refreshS2SToken as unknown as ReturnType<typeof vi.fn>;
+    getS2S.mockReset();
+    refreshS2S.mockReset();
+    const healthy = Math.floor(Date.now() / 1000) + 3600;
+    getS2S.mockResolvedValue(makeJwtWithExp(healthy));
+    refreshS2S.mockResolvedValue(makeJwtWithExp(healthy));
+
+    const createSpy = vi
+      .spyOn(GoKnowbClientImpl.prototype, 'createKbNode')
+      .mockRejectedValueOnce(new Error('Request failed with status code 401'))
+      .mockResolvedValueOnce({ kbNodeIds: ['/airo_info/doc.md'] });
+
+    const driver = new KnowBDriver();
+    const result = await driver.upload({
+      kbNodeId: '/airo_info',
+      resourceId: 'doc',
+      content: 'body',
+    });
+
+    expect(result.success).toBe(true);
+    expect(createSpy).toHaveBeenCalledTimes(2);
+    expect(refreshS2S).toHaveBeenCalledTimes(1);
+  });
+
+  it('delete retries once on 401 and succeeds', async () => {
+    const getS2S = aiLib.getS2SToken as unknown as ReturnType<typeof vi.fn>;
+    const refreshS2S = aiLib.refreshS2SToken as unknown as ReturnType<typeof vi.fn>;
+    getS2S.mockReset();
+    refreshS2S.mockReset();
+    const healthy = Math.floor(Date.now() / 1000) + 3600;
+    getS2S.mockResolvedValue(makeJwtWithExp(healthy));
+    refreshS2S.mockResolvedValue(makeJwtWithExp(healthy));
+
+    const deleteSpy = vi
+      .spyOn(GoKnowbClientImpl.prototype, 'deleteKbNode')
+      .mockRejectedValueOnce(new Error('Request failed with status code 401'))
+      .mockResolvedValueOnce(undefined as unknown as never);
+
+    const driver = new KnowBDriver();
+    const result = await driver.delete({ kbNodeId: '/airo_info', resourceId: 'doc' });
+
+    expect(result.success).toBe(true);
+    expect(deleteSpy).toHaveBeenCalledTimes(2);
+    expect(refreshS2S).toHaveBeenCalledTimes(1);
   });
 });

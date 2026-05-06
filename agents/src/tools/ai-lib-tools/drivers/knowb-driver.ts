@@ -8,7 +8,7 @@
  * - Local mode: SSO_JWT (uses sso-jwt token directly)
  * - API URL: GODADDY_API_BASE_URL (defaults to test environment)
  */
-import { getS2SToken, isS2SAuthEnabled } from '@airo/ai-lib';
+import { getS2SToken, isS2SAuthEnabled, refreshS2SToken } from '@airo/ai-lib';
 import {
   GoKnowbClientImpl,
   TokenProvider,
@@ -114,17 +114,80 @@ export interface KnowBDeleteResult {
 }
 
 /**
- * Token provider that uses S2S or SSO_JWT authentication
+ * Assumed TTL (seconds) for GoDaddy JWTs that omit the standard `exp` claim.
+ * Mirrors the fallback used by @airo/ai-lib's s2s-auth.ts:266:
+ *   expiresAt: payload.exp ? payload.exp * 1000 : (payload.iat + 30 * 60) * 1000
+ * GoDaddy SSO tokens (typ=jomax|idp|cert) often ship with `iat` + `vat` but
+ * no `exp`; ai-lib treats these as 30-min TTL and we match so the two caches
+ * agree on when a refresh is needed.
+ */
+const NO_EXP_TTL_SECONDS = 30 * 60;
+
+/**
+ * Decode the effective expiry (unix seconds) from a JWT without verifying
+ * the signature. Returns null if the token is unparseable OR if neither
+ * `exp` nor `iat` is present.
  *
- * Note: The TokenProvider interface requires synchronous getToken().
- * For S2S mode, we pre-fetch and cache the token. The token is refreshed
- * on each KnowBDriver instantiation.
+ * Precedence: standard `exp` → `iat + NO_EXP_TTL_SECONDS`. We do NOT use
+ * GoDaddy-specific `vat` because ai-lib's cache ignores it too; using
+ * different expiry sources would cause the two layers to disagree.
+ *
+ * Signature verification is the server's job at the other end of the
+ * request. We only care about WHEN to proactively refetch.
+ */
+function decodeJwtExp(jwt: string): number | null {
+  if (typeof jwt !== 'string') return null;
+  const parts = jwt.split('.');
+  if (parts.length !== 3) return null;
+  const payload = parts[1];
+  if (!payload) return null;
+  try {
+    // Base64url -> base64
+    const b64 = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const pad = b64.length % 4 === 0 ? '' : '='.repeat(4 - (b64.length % 4));
+    const json = Buffer.from(b64 + pad, 'base64').toString('utf-8');
+    const claims = JSON.parse(json) as { exp?: number; iat?: number };
+    if (typeof claims.exp === 'number') return claims.exp;
+    if (typeof claims.iat === 'number') return claims.iat + NO_EXP_TTL_SECONDS;
+    return null;
+  } catch (error) {
+    // Unexpected decode/JSON failure — a JWT-format regression here disables
+    // proactive refresh entirely and silently reintroduces the 1h-expiry bug
+    // we're fixing. Log so the fallback is visible in Loki.
+    rootLogger.warn('knowb-driver.token.exp_decode_failed', {
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
+
+/**
+ * Seconds of headroom before JWT `exp` at which we proactively refetch.
+ * 5 minutes gives ample slack for clock skew + request latency.
+ */
+const TOKEN_REFRESH_BUFFER_SECONDS = 300;
+
+/**
+ * Token provider that uses S2S or SSO_JWT authentication.
+ *
+ * Note: the @godaddy/goknowb-client `TokenProvider` interface requires a
+ * synchronous `getToken()`, so we pre-fetch the S2S token and cache it here.
+ * Previously the cache was set-once-forever; with a 1h S2S JWT TTL that meant
+ * every container inevitably started returning 401s from GoKnowb after the
+ * first hour. Now we:
+ *
+ *   1. Decode the JWT's `exp` claim on fetch.
+ *   2. Re-fetch proactively when within TOKEN_REFRESH_BUFFER_SECONDS of exp.
+ *   3. Expose `invalidateToken()` so a 401 response can force the next call
+ *      to re-fetch (reactive safety net for clock skew / early revocation).
  */
 class KnowBTokenProvider implements TokenProvider {
   private readonly ssoJwt: string;
   private readonly useS2S: boolean;
   private readonly ssoHost: string;
   private cachedS2SToken: string | null = null;
+  // unix seconds; null when we couldn't decode exp (treat as non-refreshing).
+  private cachedTokenExpSeconds: number | null = null;
 
   constructor() {
     this.ssoJwt = process.env.SSO_JWT || '';
@@ -133,12 +196,31 @@ class KnowBTokenProvider implements TokenProvider {
   }
 
   /**
-   * Pre-fetch S2S token (call this before using the provider in S2S mode)
+   * Fetch an S2S token and update the cache + decoded-exp.
+   *
+   * @param forceRefresh when true, bypasses the upstream @airo/ai-lib
+   *   token cache (which has its own ~60s buffer on `exp`) by calling
+   *   `refreshS2SToken`. Needed on the reactive-401 path: if the 401 came
+   *   from an in-flight cert rotation / early revocation, the upstream
+   *   cache would otherwise hand us back the same rejected token.
    */
-  async initialize(): Promise<void> {
-    if (this.useS2S && !this.cachedS2SToken) {
-      this.cachedS2SToken = await getS2SToken({ ssoHost: this.ssoHost });
-    }
+  async initialize(forceRefresh = false): Promise<void> {
+    if (!this.useS2S) return;
+    const token = forceRefresh
+      ? await refreshS2SToken({ ssoHost: this.ssoHost })
+      : await getS2SToken({ ssoHost: this.ssoHost });
+    this.cachedS2SToken = token;
+    this.cachedTokenExpSeconds = decodeJwtExp(token);
+  }
+
+  /**
+   * True when we have any S2S token cached locally (fresh or stale).
+   * Used by the driver to distinguish a true initial-fetch failure (no
+   * cached token, fast-fail is safe) from a transient proactive-refresh
+   * failure (we still have a usable-ish token — let subsequent calls retry).
+   */
+  hasCachedToken(): boolean {
+    return this.cachedS2SToken !== null;
   }
 
   getToken(): string {
@@ -160,8 +242,41 @@ class KnowBTokenProvider implements TokenProvider {
     return this.useS2S || !!this.ssoJwt;
   }
 
+  /**
+   * True when `initialize()` must be called before `getToken()` will work.
+   * Also true when the cached S2S token is within the refresh buffer of
+   * its `exp` — this is what fixes the "dead JWT after 1h" bug.
+   */
   needsInitialization(): boolean {
-    return this.useS2S && !this.cachedS2SToken;
+    if (!this.useS2S) return false;
+    if (!this.cachedS2SToken) return true;
+    if (this.cachedTokenExpSeconds === null) {
+      // Un-decodable token: we can't do proactive refresh, so fall back to
+      // the old "cache until explicitly invalidated" behavior. A reactive
+      // 401 in the driver will call invalidateToken().
+      return false;
+    }
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    return nowSeconds >= this.cachedTokenExpSeconds - TOKEN_REFRESH_BUFFER_SECONDS;
+  }
+
+  /**
+   * Drop the cached token so the next `needsInitialization()` returns true
+   * and the next `initialize()` call re-fetches.
+   *
+   * Called by the driver on 401 responses from GoKnowb (reactive refresh).
+   */
+  invalidateToken(): void {
+    this.cachedS2SToken = null;
+    this.cachedTokenExpSeconds = null;
+  }
+
+  /**
+   * For observability / tests — returns the cached JWT's `exp` in unix
+   * seconds, or null if none cached / undecodable.
+   */
+  getCachedTokenExpSeconds(): number | null {
+    return this.cachedTokenExpSeconds;
   }
 }
 
@@ -205,7 +320,6 @@ export class KnowBDriver {
   protected logger: Logger;
   private client: GoKnowbClientImpl;
   private tokenProvider: KnowBTokenProvider;
-  private initialized: boolean = false;
   private initFailure: Error | null = null;
 
   // Default configuration
@@ -250,29 +364,80 @@ export class KnowBDriver {
   }
 
   /**
-   * Ensure the driver is initialized (fetches S2S token if needed).
+   * Ensure the driver is ready to make an authenticated call.
    *
-   * On first failure we cache the error and fail fast on subsequent calls so
-   * a single S2S outage doesn't flood Loki with N per-turn identical
-   * `knowb-driver.init.s2s_token_failed` entries. The first attempt still
-   * emits the event for alerting; later calls re-throw the cached error
-   * without re-hitting the token endpoint.
+   * Runs on every search/upload/delete/sync — `tokenProvider.needsInitialization()`
+   * returns true both on first use and when the cached S2S JWT is within the
+   * refresh buffer of its `exp`, so this is also the proactive-refresh hook.
+   *
+   * On first S2S-fetch failure we cache the error and fail fast on subsequent
+   * calls, so a single SSO outage doesn't flood Loki with N identical
+   * `knowb-driver.init.s2s_token_failed` entries. A successful refresh clears
+   * the cache — we don't want a 30s transient outage to permanently wedge
+   * the process.
    */
-  private async ensureInitialized(): Promise<void> {
-    if (this.initialized) return;
-    if (this.initFailure) {
+  private async ensureInitialized(forceRefresh = false): Promise<void> {
+    // Only fast-fail when we have no cached token at all — a true initial
+    // fetch failure. If we have a cached token but proactive-refresh just
+    // failed, the old token may still be accepted for a few more minutes
+    // and the SSO outage may be transient. Clearing initFailure on any
+    // successful init (or when no refresh is needed) lets the driver
+    // self-heal.
+    if (this.initFailure && !this.tokenProvider.hasCachedToken()) {
       throw this.initFailure;
     }
-    if (!this.tokenProvider.needsInitialization()) return;
+    if (!forceRefresh && !this.tokenProvider.needsInitialization()) {
+      this.initFailure = null;
+      return;
+    }
     try {
-      await this.tokenProvider.initialize();
-      this.initialized = true;
+      await this.tokenProvider.initialize(forceRefresh);
+      this.initFailure = null;
     } catch (error) {
-      // S2S endpoint down, credentials expired, etc. Emit a distinct event
-      // once so a filtered Loki query surfaces the root cause directly.
       this.initFailure = error as Error;
       log.error(this.logger, 'knowb-driver.init.s2s_token_failed', error as Error);
       throw error;
+    }
+  }
+
+  /**
+   * Inspect a thrown error from @godaddy/goknowb-client to decide if it's a
+   * 401 worth retrying with a fresh token. Client error messages look like:
+   *   "Error performing KB search: Request failed with status code 401"
+   * The AxiosError also has `.response?.status`.
+   */
+  private isUnauthorizedError(error: unknown): boolean {
+    if (!error || typeof error !== 'object') return false;
+    const e = error as { response?: { status?: number }; message?: string };
+    if (e.response?.status === 401) return true;
+    return typeof e.message === 'string' && /status code 401\b/.test(e.message);
+  }
+
+  /**
+   * Wrap an SDK call in a one-shot 401 retry.
+   *
+   * On 401: invalidate the local token snapshot, force a fresh upstream
+   * fetch via ensureInitialized(forceRefresh=true) — this bypasses ai-lib's
+   * own ~60s token cache, otherwise we'd retry with the same rejected JWT
+   * — then retry the SDK call exactly once. Only 401 triggers the retry;
+   * non-auth errors flow through unchanged. Used by search/upload/delete/sync
+   * so any KB op self-heals from mid-session cert rotation or revocation.
+   */
+  private async withRetryOn401<T>(
+    operation: string,
+    logContext: Record<string, unknown>,
+    run: () => Promise<T>,
+  ): Promise<T> {
+    await this.ensureInitialized();
+    try {
+      return await run();
+    } catch (error) {
+      if (!this.isUnauthorizedError(error)) throw error;
+      this.logger.warn(`knowb-driver.${operation}.reauth_retry`, logContext);
+      this.tokenProvider.invalidateToken();
+      this.initFailure = null;
+      await this.ensureInitialized(true);
+      return run();
     }
   }
 
@@ -311,26 +476,28 @@ export class KnowBDriver {
       };
     }
 
+    // Over-fetch Cohere-reranked candidates, then dedup + trim client-side.
+    // Bedrock rerank score replaces raw cosine in `item.score`.
+    const request: SearchKBRequest = {
+      filter: {
+        kbNodeIds,
+        maxNumberOfResult: KnowBDriver.OVER_FETCH_COUNT,
+        scoreThreshold,
+      },
+      query: query.trim(),
+      searchType: SearchType.LEXICAL_AND_SEMANTIC,
+      rerankingConfig: {
+        type: RerankingStrategy.COHERE,
+        results: KnowBDriver.OVER_FETCH_COUNT,
+      },
+    };
+
     try {
-      await this.ensureInitialized();
-
-      // Over-fetch Cohere-reranked candidates, then dedup + trim client-side.
-      // Bedrock rerank score replaces raw cosine in `item.score`.
-      const request: SearchKBRequest = {
-        filter: {
-          kbNodeIds,
-          maxNumberOfResult: KnowBDriver.OVER_FETCH_COUNT,
-          scoreThreshold,
-        },
-        query: query.trim(),
-        searchType: SearchType.LEXICAL_AND_SEMANTIC,
-        rerankingConfig: {
-          type: RerankingStrategy.COHERE,
-          results: KnowBDriver.OVER_FETCH_COUNT,
-        },
-      };
-
-      const response = await this.client.search(request);
+      const response = await this.withRetryOn401(
+        'search',
+        { query: query.substring(0, 100) },
+        () => this.client.search(request),
+      );
 
       if (!Array.isArray(response.results)) {
         this.logger.warn('knowb-driver.search.unexpected_response_shape', {
@@ -410,8 +577,6 @@ export class KnowBDriver {
         };
       }
 
-      await this.ensureInitialized();
-
       // Create markdown content, optionally with header
       const markdownContent = header ? `# ${header}: ${resourceId}\n\n${content}` : content;
 
@@ -430,7 +595,11 @@ export class KnowBDriver {
         request.kbStrategy = kbStrategy;
       }
 
-      const response = await this.client.createKbNode(request);
+      const response = await this.withRetryOn401(
+        'upload',
+        { resourceId, kbNodeId },
+        () => this.client.createKbNode(request),
+      );
 
       this.logger.info('knowb-driver.upload.success', {
         resourceId,
@@ -474,12 +643,14 @@ export class KnowBDriver {
         };
       }
 
-      await this.ensureInitialized();
-
       // Construct the full kbNodeId path including the resource filename
       const fullKbNodeId = `${kbNodeId}/${resourceId}.md`;
 
-      await this.client.deleteKbNode({ kbNodeId: fullKbNodeId });
+      await this.withRetryOn401(
+        'delete',
+        { resourceId, kbNodeId },
+        () => this.client.deleteKbNode({ kbNodeId: fullKbNodeId }),
+      );
 
       this.logger.info('knowb-driver.delete.success', {
         resourceId,
@@ -516,8 +687,11 @@ export class KnowBDriver {
         };
       }
 
-      await this.ensureInitialized();
-      await this.client.sync({ kbNodeId });
+      await this.withRetryOn401(
+        'sync',
+        { kbNodeId },
+        () => this.client.sync({ kbNodeId }),
+      );
 
       this.logger.info('knowb-driver.sync.success', { kbNodeId });
       return { success: true };
