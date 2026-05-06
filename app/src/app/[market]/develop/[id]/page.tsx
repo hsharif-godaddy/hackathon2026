@@ -3,7 +3,7 @@
 import { motion } from 'framer-motion'
 import dynamic from 'next/dynamic'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import Growl from '@ux/growl'
 
@@ -26,6 +26,7 @@ import { useEvalSnapshotCapture } from '@/app/[market]/develop/hooks/useEvalSnap
 import { deriveIsAwaitingStream, useInitialization } from '@/app/[market]/develop/hooks/useInitialization'
 import { usePublishSnapshotCapture } from '@/app/[market]/develop/hooks/usePublishSnapshotCapture'
 import { broadcast as broadcastProcessingState, handle as handleProcessingState } from '@/app/[market]/develop/utils/iframeProcessingState'
+import { mutatesFiles } from '@/app/[market]/develop/utils/mutatesFiles'
 import { ProtectedRoute } from '@/components/auth'
 import ErrorBoundary from '@/components/ErrorBoundary'
 import { FEEDBACK_ID } from '@/components/feedback/utils'
@@ -627,6 +628,11 @@ function DevelopPageContent() {
   const isProcessing = isLoading || isStreaming
   const isProcessingRef = useRef(isProcessing)
   isProcessingRef.current = isProcessing
+
+  const isMutatingFiles = useMemo(
+    () => !!activeStream?.toolCalls?.some(mutatesFiles),
+    [activeStream?.toolCalls],
+  )
 
   useEffect(() => {
     broadcastProcessingState(isProcessing)
@@ -1374,6 +1380,8 @@ function DevelopPageContent() {
                 >
                   <PreviewPane
                     onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
+                    isMutatingFiles={isMutatingFiles}
+                    isProcessing={isProcessing}
                     showBuildingOverlay={init.ui.showPreviewLoader}
                     isHibernated={hibernation.isHibernated}
                     isResuming={hibernation.isResuming}
@@ -1454,6 +1462,8 @@ function DevelopPageContent() {
                     >
                       <PreviewPane
                         onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
+                        isMutatingFiles={isMutatingFiles}
+                        isProcessing={isProcessing}
                         showBuildingOverlay={init.ui.showPreviewLoader}
                         isHibernated={hibernation.isHibernated}
                         isResuming={hibernation.isResuming}

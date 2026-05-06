@@ -27,6 +27,7 @@ import { postMessageToIframe } from '@/utils/postMessage'
 
 // Timing constants for iframe lifecycle management
 const REFRESH_DEBOUNCE_MS = 500 // Debounce rapid refresh requests
+const PROCESSING_OVERLAY_FALLBACK_MS = 3000
 const STATE_RESTORE_FALLBACK_MS = 3000 // Fallback timeout if iframe doesn't send ready signal
 /** Eval snapshot: IFRAME_READY means the iframe has registered its message listener; HMR-only builds use fallback */
 const EVAL_SNAPSHOT_IFRAME_FALLBACK_MS = 8000
@@ -69,6 +70,8 @@ export interface PublishSnapshotRequestDetail {
 interface PreviewPaneProps {
   onPreviewRefresh: () => void
   isMobile?: boolean
+  isMutatingFiles?: boolean
+  isProcessing?: boolean
   showBuildingOverlay?: boolean
   isCreationFlow?: boolean
   isHibernated?: boolean
@@ -88,6 +91,8 @@ interface PreviewPaneProps {
 export default function PreviewPane({
   onPreviewRefresh,
   isMobile = false,
+  isMutatingFiles = false,
+  isProcessing = false,
   showBuildingOverlay = false,
   isCreationFlow = false,
   isHibernated = false,
@@ -105,6 +110,9 @@ export default function PreviewPane({
 }: PreviewPaneProps) {
   const t = useTranslations();
   const isDomainBarEnabled = useSwitchboard('appbuilder-domain-bar');
+  /** Switchboard: translucent creation overlay + edit-time processing overlay (fade). Off = main branch UX. */
+  const isPreviewEnhancedOverlaysEnabled =
+    useSwitchboard('appbuilder-preview-enhanced-overlays') === true;
 
   const getServerState = useServerPollingStore((state) => state.getServerState)
   const isPollingServer = useServerPollingStore((state) => state.isPollingServer)
@@ -166,9 +174,28 @@ export default function PreviewPane({
 
   // Track message handler timers for proper cleanup (from PR #1056)
   const refreshTimerRef = useRef<NodeJS.Timeout | null>(null)
+  const processingOverlayFallbackTimerRef = useRef<NodeJS.Timeout | null>(null)
   const scrollRestoreTimerRef = useRef<NodeJS.Timeout | null>(null)
   const pendingEvalFullHeightRef = useRef(false)
   const evalFullHeightFallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const [showProcessingOverlay, setShowProcessingOverlay] = useState(false)
+  const prevIsProcessingRef = useRef(isProcessing)
+  const prevIsMutatingFilesRef = useRef(isMutatingFiles)
+  const processingOverlayHydratedRef = useRef(false)
+  const dismissProcessingOverlayRef = useRef(() => {})
+
+  const dismissProcessingOverlay = useCallback(function dismissProcessingOverlay() {
+    setShowProcessingOverlay(false)
+    if (processingOverlayFallbackTimerRef.current !== null) {
+      clearTimeout(processingOverlayFallbackTimerRef.current)
+      processingOverlayFallbackTimerRef.current = null
+    }
+  }, [])
+
+  useEffect(() => {
+    dismissProcessingOverlayRef.current = dismissProcessingOverlay
+  }, [dismissProcessingOverlay])
 
   // Track previous viewMode to determine animation direction
   const previousViewModeRef = useRef<ViewMode>(viewMode)
@@ -221,12 +248,98 @@ export default function PreviewPane({
     isWaitingForIframeReadyRef.current = isWaitingForIframeReady
   }, [isWaitingForIframeReady])
 
+  useEffect(() => {
+    if (showBuildingOverlay) {
+      dismissProcessingOverlayRef.current()
+    }
+  }, [showBuildingOverlay])
+
+  useEffect(() => {
+    if (!processingOverlayHydratedRef.current) {
+      processingOverlayHydratedRef.current = true
+      prevIsProcessingRef.current = isProcessing
+      prevIsMutatingFilesRef.current = isMutatingFiles
+
+      // Activate immediately if mounting into an active mutation state
+      if (isProcessing && isMutatingFiles && !showBuildingOverlay && isPreviewEnhancedOverlaysEnabled) {
+        setShowProcessingOverlay(true)
+      }
+      return
+    }
+
+    const prevP = prevIsProcessingRef.current
+    const prevM = prevIsMutatingFilesRef.current
+
+    if (!showBuildingOverlay && isPreviewEnhancedOverlaysEnabled) {
+      const processingBecameTrue = !prevP && isProcessing
+      const mutatingBecameTrue = !prevM && isMutatingFiles
+      // 1) processing false → true while mutating already true
+      const activateOnProcessingWhileMutating =
+        processingBecameTrue && isMutatingFiles && prevM
+      // 2) mutating false → true while processing already true
+      const activateOnMutatingWhileProcessing =
+        mutatingBecameTrue && isProcessing && prevP
+      // Same tick: both became true (prevP and prevM were false)
+      const activateOnBothBecameTrue = processingBecameTrue && mutatingBecameTrue
+
+      const shouldActivate =
+        isProcessing &&
+        isMutatingFiles &&
+        (activateOnProcessingWhileMutating ||
+          activateOnMutatingWhileProcessing ||
+          activateOnBothBecameTrue)
+
+      if (shouldActivate) {
+        setShowProcessingOverlay(true)
+      }
+    }
+
+    prevIsProcessingRef.current = isProcessing
+    prevIsMutatingFilesRef.current = isMutatingFiles
+  }, [isProcessing, isMutatingFiles, showBuildingOverlay, isPreviewEnhancedOverlaysEnabled])
+
+  useEffect(() => {
+    if (!isPreviewEnhancedOverlaysEnabled) {
+      return
+    }
+    if (isProcessing) {
+      if (processingOverlayFallbackTimerRef.current !== null) {
+        clearTimeout(processingOverlayFallbackTimerRef.current)
+        processingOverlayFallbackTimerRef.current = null
+      }
+      return
+    }
+    if (!showProcessingOverlay) return
+
+    processingOverlayFallbackTimerRef.current = setTimeout(function processingOverlayFallback() {
+      processingOverlayFallbackTimerRef.current = null
+      setShowProcessingOverlay(false)
+    }, PROCESSING_OVERLAY_FALLBACK_MS)
+
+    return () => {
+      if (processingOverlayFallbackTimerRef.current !== null) {
+        clearTimeout(processingOverlayFallbackTimerRef.current)
+        processingOverlayFallbackTimerRef.current = null
+      }
+    }
+  }, [isProcessing, showProcessingOverlay, isPreviewEnhancedOverlaysEnabled])
+
+  useEffect(() => {
+    if (!isPreviewEnhancedOverlaysEnabled) {
+      dismissProcessingOverlayRef.current()
+    }
+  }, [isPreviewEnhancedOverlaysEnabled])
+
   // Cleanup fallback timer on unmount
   useEffect(() => {
     return () => {
       if (fallbackTimerRef.current) {
         clearTimeout(fallbackTimerRef.current)
         fallbackTimerRef.current = null
+      }
+      if (processingOverlayFallbackTimerRef.current !== null) {
+        clearTimeout(processingOverlayFallbackTimerRef.current)
+        processingOverlayFallbackTimerRef.current = null
       }
     }
   }, [])
@@ -528,7 +641,13 @@ export default function PreviewPane({
         return
       }
 
-      if ((event.data.type === 'file-saved' || event.data.type === 'preview-refresh') && serverState?.isReady) {
+      if (
+        (event.data?.type === 'file-saved' || event.data?.type === 'preview-refresh') &&
+        serverState?.isReady
+      ) {
+        if (event.origin !== window.location.origin || event.source !== window) {
+          return
+        }
         // Store state to restore if provided
         if (event.data.preserveState) {
           setPendingStateRestore(event.data.preserveState)
@@ -549,6 +668,7 @@ export default function PreviewPane({
           if (iframeRef.current) {
             const iframeSrc = iframeRef.current.src
             iframeRef.current.src = iframeSrc
+            dismissProcessingOverlayRef.current()
 
             // If we have state to restore, do it after iframe loads
             if (event.data.preserveState) {
@@ -816,10 +936,31 @@ export default function PreviewPane({
               </div>
 
               {showBuildingOverlay && (
-                <div className="absolute inset-0 bg-intents-ux-boxLowContrast-backgroundColor rounded-lg">
+                <div
+                  className={clsx(
+                    'absolute inset-0 rounded-lg',
+                    isPreviewEnhancedOverlaysEnabled
+                      ? 'bg-intents-ux-boxLowContrastOverlay-backgroundColor backdrop-blur-sm'
+                      : 'bg-intents-ux-boxLowContrast-backgroundColor'
+                  )}
+                >
                   <Tips buildingMessage={t('builder_preview_building_app')} />
                 </div>
               )}
+              <div
+                className={clsx(
+                  'absolute inset-0 flex items-center justify-center rounded-lg transition-opacity duration-300',
+                  isPreviewEnhancedOverlaysEnabled &&
+                    'bg-intents-ux-boxLowContrastOverlay-backgroundColor backdrop-blur-sm',
+                  showProcessingOverlay &&
+                    !showBuildingOverlay &&
+                    isPreviewEnhancedOverlaysEnabled
+                    ? 'opacity-100'
+                    : 'opacity-0 pointer-events-none'
+                )}
+              >
+                <Loader title={t('builder_preview_editing_app', undefined, 'Editing your app…')} />
+              </div>
             </div>
           </div>
         </div>
