@@ -1,10 +1,11 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 /**
  * @vitest-environment jsdom
  */
 import { act } from '@testing-library/react';
 
-import { ChatTab, SettingsSection } from '@/app/[market]/develop/components/types';
+import { ChatTab, MobileMode, SettingsSection, ViewMode } from '@/app/[market]/develop/components/types';
+import * as postMessageModule from '@/utils/postMessage';
 import { useDevelopPageStore } from './useDevelopPageStore';
 
 describe('useDevelopPageStore', function useDevelopPageStoreTests() {
@@ -747,6 +748,206 @@ describe('useDevelopPageStore', function useDevelopPageStoreTests() {
         expect(state.chatPaneWidth).toBe(DEFAULT_CHAT_PANE_WIDTH);
         expect(state.originalChatPaneWidth).toBe(null);
       });
+    });
+  });
+
+  describe('#setIsMobile', function setIsMobileTests() {
+    beforeEach(function resetMobileLayout() {
+      act(function reset() {
+        useDevelopPageStore.setState({
+          isMobile: false,
+          mobileMode: MobileMode.TOOLS,
+          viewMode: ViewMode.PREVIEW,
+          isEditModeEnabled: false,
+        });
+      });
+    });
+
+    it('should coerce edit to preview when crossing to mobile breakpoint', function resizeToMobileFromEdit() {
+      act(function setup() {
+        useDevelopPageStore.setState({
+          isMobile: false,
+          mobileMode: MobileMode.TOOLS,
+          viewMode: ViewMode.EDIT,
+          isEditModeEnabled: true,
+        });
+      });
+
+      act(function resizeToMobile() {
+        useDevelopPageStore.getState().setIsMobile(true);
+      });
+
+      const state = useDevelopPageStore.getState();
+      expect(state.isMobile).toBe(true);
+      expect(state.mobileMode).toBe(MobileMode.PREVIEW);
+      expect(state.viewMode).toBe(ViewMode.PREVIEW);
+      expect(state.isEditModeEnabled).toBe(false);
+    });
+
+    it('should keep code when crossing to mobile breakpoint', function resizeToMobileFromCode() {
+      act(function setup() {
+        useDevelopPageStore.setState({
+          isMobile: false,
+          mobileMode: MobileMode.TOOLS,
+          viewMode: ViewMode.CODE,
+          isEditModeEnabled: false,
+        });
+      });
+
+      act(function resizeToMobile() {
+        useDevelopPageStore.getState().setIsMobile(true);
+      });
+
+      const state = useDevelopPageStore.getState();
+      expect(state.isMobile).toBe(true);
+      expect(state.viewMode).toBe(ViewMode.CODE);
+      expect(state.mobileMode).toBe(MobileMode.TOOLS);
+    });
+
+    it('should keep preview when crossing to mobile breakpoint', function resizeToMobileFromPreview() {
+      act(function setup() {
+        useDevelopPageStore.setState({
+          isMobile: false,
+          mobileMode: MobileMode.TOOLS,
+          viewMode: ViewMode.PREVIEW,
+          isEditModeEnabled: false,
+        });
+      });
+
+      act(function resizeToMobile() {
+        useDevelopPageStore.getState().setIsMobile(true);
+      });
+
+      const state = useDevelopPageStore.getState();
+      expect(state.isMobile).toBe(true);
+      expect(state.viewMode).toBe(ViewMode.PREVIEW);
+      expect(state.mobileMode).toBe(MobileMode.TOOLS);
+    });
+
+    it('should not coerce view when setIsMobile(true) if already mobile', function noCoerceWhenAlreadyMobile() {
+      act(function setup() {
+        useDevelopPageStore.setState({
+          isMobile: true,
+          mobileMode: MobileMode.TOOLS,
+          viewMode: ViewMode.PREVIEW,
+          isEditModeEnabled: false,
+        });
+      });
+
+      act(function noop() {
+        useDevelopPageStore.getState().setIsMobile(true);
+      });
+
+      const state = useDevelopPageStore.getState();
+      expect(state.isMobile).toBe(true);
+      expect(state.viewMode).toBe(ViewMode.PREVIEW);
+      expect(state.mobileMode).toBe(MobileMode.TOOLS);
+    });
+
+    it('should set chat pane width to 400 when leaving mobile for desktop', function resizeToDesktop() {
+      act(function setup() {
+        useDevelopPageStore.setState({
+          isMobile: true,
+          chatPaneWidth: 500,
+        });
+      });
+
+      act(function resizeToDesktopWidth() {
+        useDevelopPageStore.getState().setIsMobile(false);
+      });
+
+      const state = useDevelopPageStore.getState();
+      expect(state.isMobile).toBe(false);
+      expect(state.chatPaneWidth).toBe(400);
+    });
+  });
+
+  describe('#handleMobileModeChange', function handleMobileModeChangeTests() {
+    beforeEach(function resetHandleMobileLayout() {
+      act(function reset() {
+        useDevelopPageStore.setState({
+          viewMode: ViewMode.PREVIEW,
+          mobileMode: MobileMode.TOOLS,
+          isEditModeEnabled: false,
+        });
+      });
+    });
+
+    it('should set view to preview and disable edit mode when entering mobile preview from edit', function syncEditToPreview() {
+      act(function setup() {
+        useDevelopPageStore.setState({
+          viewMode: ViewMode.EDIT,
+          isEditModeEnabled: true,
+          mobileMode: MobileMode.TOOLS,
+        });
+      });
+
+      act(function enterMobilePreview() {
+        useDevelopPageStore.getState().handleMobileModeChange(MobileMode.PREVIEW);
+      });
+
+      const state = useDevelopPageStore.getState();
+      expect(state.mobileMode).toBe(MobileMode.PREVIEW);
+      expect(state.viewMode).toBe(ViewMode.PREVIEW);
+      expect(state.isEditModeEnabled).toBe(false);
+    });
+
+    it('should not change viewMode when entering mobile preview from code', function keepCodeViewMode() {
+      act(function setup() {
+        useDevelopPageStore.setState({
+          viewMode: ViewMode.CODE,
+          isEditModeEnabled: false,
+          mobileMode: MobileMode.TOOLS,
+        });
+      });
+
+      act(function enterMobilePreview() {
+        useDevelopPageStore.getState().handleMobileModeChange(MobileMode.PREVIEW);
+      });
+
+      const state = useDevelopPageStore.getState();
+      expect(state.mobileMode).toBe(MobileMode.PREVIEW);
+      expect(state.viewMode).toBe(ViewMode.CODE);
+      expect(state.isEditModeEnabled).toBe(false);
+    });
+
+    it('should not run view sync when mobile preview from preview', function previewFromPreviewNoPostMessage() {
+      const postMessageSpy = vi.spyOn(postMessageModule, 'postMessageToIframe');
+      try {
+        act(function setup() {
+          useDevelopPageStore.setState({
+            viewMode: ViewMode.PREVIEW,
+            isEditModeEnabled: false,
+            mobileMode: MobileMode.TOOLS,
+          });
+        });
+
+        act(function enterMobilePreview() {
+          useDevelopPageStore.getState().handleMobileModeChange(MobileMode.PREVIEW);
+        });
+
+        expect(postMessageSpy).not.toHaveBeenCalled();
+      } finally {
+        postMessageSpy.mockRestore();
+      }
+    });
+
+    it('should update mobileMode only when switching to tools', function toolsDoesNotChangeViewMode() {
+      act(function setup() {
+        useDevelopPageStore.setState({
+          mobileMode: MobileMode.PREVIEW,
+          viewMode: ViewMode.PREVIEW,
+        });
+      });
+
+      act(function switchToTools() {
+        useDevelopPageStore.getState().handleMobileModeChange(MobileMode.TOOLS);
+      });
+
+      const state = useDevelopPageStore.getState();
+      expect(state.mobileMode).toBe(MobileMode.TOOLS);
+      expect(state.viewMode).toBe(ViewMode.PREVIEW);
+      expect(state.isEditModeEnabled).toBe(false);
     });
   });
 

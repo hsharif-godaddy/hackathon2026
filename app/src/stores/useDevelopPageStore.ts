@@ -459,13 +459,23 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     setHasUnsavedChanges: (hasChanges) => set((state) => { state.hasUnsavedChanges = hasChanges }),
     setSelectedModel: (model) => set((state) => { state.selectedModel = model }),
     setSelectedProfile: (profile) => set((state) => { state.selectedProfile = profile }),
-    setIsMobile: (isMobile) => set((state) => {
-      const wasMobileGoingToDesktop = state.isMobile === true && isMobile === false
-      state.isMobile = isMobile
-      if (wasMobileGoingToDesktop) {
-        state.chatPaneWidth = 400
+    setIsMobile: (isMobile) => {
+      const { isMobile: wasMobile, viewMode } = get()
+
+      set((state) => {
+        const wasMobileGoingToDesktop = state.isMobile === true && isMobile === false
+        state.isMobile = isMobile
+        if (wasMobileGoingToDesktop) {
+          state.chatPaneWidth = 400
+        }
+      })
+
+      // Mobile UI doesn't support ViewMode.EDIT, so we're switching to PREVIEW
+      const enteringMobile = !wasMobile && isMobile
+      if (enteringMobile && viewMode === ViewMode.EDIT) {
+        get().handleMobileModeChange(MobileMode.PREVIEW)
       }
-    }),
+    },
     setIsVersionHistoryOpen: (open) => set((state) => { state.isVersionHistoryOpen = open }),
     setIsPreviewVisible: (visible) => set((state) => { state.isPreviewVisible = visible }),
 
@@ -949,7 +959,13 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     },
 
     handleMobileModeChange: (newMode: MobileMode) => {
+      const { viewMode } = get()
       set((state) => { state.mobileMode = newMode })
+      // Mobile UI doesn't support ViewMode.EDIT (ChatToolbar only shows PREVIEW/CODE)
+      if (newMode === MobileMode.PREVIEW && viewMode === ViewMode.EDIT) {
+        // false: unsaved-changes confirm in handleViewModeChange only runs when leaving ViewMode.CODE
+        get().handleViewModeChange(ViewMode.PREVIEW, false)
+      }
     },
 
     initializeMobileDetection: () => {
