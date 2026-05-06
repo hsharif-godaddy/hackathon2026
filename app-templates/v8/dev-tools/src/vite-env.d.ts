@@ -9,6 +9,7 @@ interface ImportMetaEnv {
   readonly SITE_ID: string | undefined
   readonly VITE_PARENT_ORIGIN: string | undefined
   readonly VITE_SHOW_DEV_TOOLS: string
+  readonly VITE_ENABLE_LEXICAL_EDITOR: string | undefined
 }
 
 interface ImportMeta {

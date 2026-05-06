@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect } from 'vitest';
-import { isTextEditable, resolveContentKey } from '../utils/element-detection.js';
+import { isTextEditable, isBodyTextElement, resolveContentKey } from '../utils/element-detection.js';
 
 function el(html: string): HTMLElement {
   // nosemgrep: javascript.browser.security.insecure-document-method.insecure-document-method, godaddy.js.jquery.security.frameworks.dom-text-interpreted-as-html
@@ -76,5 +76,39 @@ describe('resolveContentKey', () => {
   it('returns null when a template element has no enclosing list context', () => {
     const element = el('<h3 data-dev-content-key-template="products[].name">A</h3>');
     expect(resolveContentKey(element)).toBeNull();
+  });
+});
+
+describe('isBodyTextElement', () => {
+  it('returns true for <p>', () => {
+    expect(isBodyTextElement(el('<p>Hello</p>'))).toBe(true);
+  });
+
+  it('returns true for <li>', () => {
+    const doc = new DOMParser().parseFromString('<ul><li>Item</li></ul>', 'text/html');
+    const li = doc.querySelector('li') as HTMLElement;
+    expect(isBodyTextElement(li)).toBe(true);
+  });
+
+  it('returns false for headings', () => {
+    expect(isBodyTextElement(el('<h1>Title</h1>'))).toBe(false);
+    expect(isBodyTextElement(el('<h2>Subtitle</h2>'))).toBe(false);
+  });
+
+  it('returns false for inline elements', () => {
+    expect(isBodyTextElement(el('<span>Text</span>'))).toBe(false);
+    expect(isBodyTextElement(el('<em>Italic</em>'))).toBe(false);
+  });
+
+  it('returns true for <ul> (allows un-listing)', () => {
+    expect(isBodyTextElement(el('<ul><li>Item</li></ul>'))).toBe(true);
+  });
+
+  it('returns true for <ol> (allows un-listing)', () => {
+    expect(isBodyTextElement(el('<ol><li>Item</li></ol>'))).toBe(true);
+  });
+
+  it('returns false for container elements', () => {
+    expect(isBodyTextElement(el('<div>Content</div>'))).toBe(false);
   });
 });

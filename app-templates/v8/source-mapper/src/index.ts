@@ -277,6 +277,7 @@ export default function jsxSourceMapper(babel: { types: typeof types }): PluginO
             t.jsxExpressionContainer(t.numericLiteral(lineNumber))
           )
         );
+
       }
     }
   };

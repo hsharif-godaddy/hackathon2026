@@ -8,6 +8,12 @@ export function isClickable(element: HTMLElement): boolean {
   return false;
 }
 
+/** Tags where block-level formatting (alignment, lists) makes sense for inline editing. */
+export function isBodyTextElement(element: HTMLElement): boolean {
+  const tag = element.tagName.toLowerCase();
+  return tag === "p" || tag === "li" || tag === "ul" || tag === "ol";
+}
+
 /** Check if an element is suitable for inline text editing */
 export function isTextEditable(element: HTMLElement): boolean {
   // Elements attributed to the content layer are always editable via the
@@ -22,14 +28,17 @@ export function isTextEditable(element: HTMLElement): boolean {
   const textTags = [
     "p", "h1", "h2", "h3", "h4", "h5", "h6",
     "span", "a", "button", "label", "li",
+    "ul", "ol",
   ];
   const hasText = textContent.length > 0;
-  const hasOnlyText =
-    element.children.length === 0 ||
-    Array.from(element.children).every((child) => {
-      const tag = child.tagName.toLowerCase();
-      return tag === "br" || tag === "span" || tag === "strong" || tag === "em" || tag === "b" || tag === "i";
-    });
+  const isListContainer = tagName === "ul" || tagName === "ol";
+  const hasOnlyText = isListContainer
+    ? Array.from(element.children).every((child) => child.tagName.toLowerCase() === "li")
+    : element.children.length === 0 ||
+      Array.from(element.children).every((child) => {
+        const tag = child.tagName.toLowerCase();
+        return tag === "br" || tag === "span" || tag === "strong" || tag === "em" || tag === "b" || tag === "i";
+      });
 
   return textTags.includes(tagName) && hasText && hasOnlyText;
 }
@@ -72,21 +81,6 @@ export function resolveContentKey(element: HTMLElement): { key: string; kind: "c
 
   const resolved = template.replace("[]", `[${index}]`);
   return { key: resolved, kind };
-}
-
-/** Check if an element has child elements with styles/classes that would be
- *  destroyed if we made the parent contentEditable and sent textContent. */
-export function hasStyledChildren(element: HTMLElement): boolean {
-  return Array.from(element.children).some((child) => {
-    const el = child as HTMLElement;
-    return el.getAttribute("style") || (el.className && el.className.length > 0);
-  });
-}
-
-/** Single-line elements where Enter should save instead of newline */
-export function isSingleLineElement(element: HTMLElement): boolean {
-  const tag = element.tagName.toLowerCase();
-  return ["h1", "h2", "h3", "h4", "h5", "h6", "span", "button", "label", "a"].includes(tag);
 }
 
 /** Check if an element is a leaf content element worth targeting for AI edit */
