@@ -1,4 +1,3 @@
-import * as nodePath from 'node:path';
 import type { DevSupervisorClient } from '../services/DevSupervisorClient.js';
 import { logger } from '../logging/index.js';
 import { toolCodeSearchEvents } from '../logging/events/index.js';
@@ -43,10 +42,10 @@ export interface RipgrepOptions {
 /**
  * Utility for executing ripgrep searches via dev-supervisor.
  *
- * The `directory` parameter is a path relative to the container's working
- * directory (e.g. '.' for the project root, 'src/pages' for a subdirectory,
- * or 'src/pages/index.tsx' for a single file). Dev-supervisor's default
- * working directory is the app root inside the container.
+ * The `directory` parameter can be relative to the container's working
+ * directory (e.g. '.' for the project root, 'src/pages' for a subdirectory)
+ * or an absolute path (e.g. '/alloc/customer-app/ID/preview'). Output
+ * paths are always normalized to be relative to the search directory.
  */
 export class RipgrepUtil {
   private static readonly MAX_MATCHES_PER_FILE = 10
@@ -175,17 +174,21 @@ export class RipgrepUtil {
 
   /**
    * Derive a project-relative file path from a ripgrep output path.
-   * Ripgrep prefixes matches with the search directory (e.g. './src/foo.ts'
-   * when searching '.', or 'src/pages/index.tsx' for a single-file target).
-   * We strip the directory prefix and normalize to get clean relative paths.
+   * Ripgrep prefixes matches with the search directory, so we strip that
+   * prefix to get clean paths relative to the app root.
    */
   private static toRelativePath(matchPath: string, directory: string): string {
-    // Ripgrep runs from the container's app root, so all output paths are
-    // relative to the app root regardless of the search target. Strip the
-    // './' prefix ripgrep adds when directory is '.'; otherwise return as-is.
     if (directory === '.') {
       return matchPath.startsWith('./') ? matchPath.slice(2) : matchPath
     }
+
+    // Strip absolute or relative directory prefix from ripgrep output paths.
+    // e.g. directory='/alloc/app/preview/' → strip from '/alloc/app/preview/foo.ts'
+    const prefix = directory.endsWith('/') ? directory : directory + '/'
+    if (matchPath.startsWith(prefix)) {
+      return matchPath.slice(prefix.length)
+    }
+
     return matchPath
   }
 

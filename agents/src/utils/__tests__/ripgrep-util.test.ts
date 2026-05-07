@@ -129,20 +129,49 @@ describe('RipgrepUtil', () => {
       expect(result.matches[0].contextAfter).toEqual([]);
     });
 
-    it('should preserve full path for subdirectory search', () => {
+    it('should strip subdirectory prefix from match paths', () => {
       const stdout = makeMatchLine('src/pages/index.tsx', 5, 'Shop Now', 0, 8);
       const result = RipgrepUtil.parseOutput(stdout, 'src/pages', 'Shop Now', 100);
       expect(result.matches).toHaveLength(1);
-      expect(result.matches[0].path).toBe('src/pages/index.tsx');
+      expect(result.matches[0].path).toBe('index.tsx');
+    });
+
+    it('should strip absolute directory prefix from match paths', () => {
+      const dir = '/alloc/customer-app/abc123/preview';
+      const stdout = makeMatchLine('/alloc/customer-app/abc123/preview/eslint.config.js', 1, 'module.exports', 0, 14);
+      const result = RipgrepUtil.parseOutput(stdout, dir, 'module', 100);
+      expect(result.matches).toHaveLength(1);
+      expect(result.matches[0].path).toBe('eslint.config.js');
+    });
+
+    it('should strip absolute directory prefix with trailing slash', () => {
+      const dir = '/alloc/customer-app/abc123/preview/';
+      const stdout = makeMatchLine('/alloc/customer-app/abc123/preview/src/app.ts', 3, 'import test', 7, 11);
+      const result = RipgrepUtil.parseOutput(stdout, dir, 'test', 100);
+      expect(result.matches).toHaveLength(1);
+      expect(result.matches[0].path).toBe('src/app.ts');
     });
 
     it('should parse matches for single-file search', () => {
       const stdout = makeMatchLine('src/pages/index.tsx', 5, 'Shop Now', 0, 8);
       const result = RipgrepUtil.parseOutput(stdout, 'src/pages/index.tsx', 'Shop Now', 100);
       expect(result.matches).toHaveLength(1);
-      // path.relative('src/pages/index.tsx', 'src/pages/index.tsx') = ''
-      // toRelativePath falls back to the original path
+      // prefix 'src/pages/index.tsx/' doesn't match 'src/pages/index.tsx', so path is kept as-is
       expect(result.matches[0].path).toBe('src/pages/index.tsx');
+    });
+
+    it('should route context lines correctly with absolute directory', () => {
+      const dir = '/alloc/customer-app/abc123/preview';
+      const lines = [
+        makeContextLine('/alloc/customer-app/abc123/preview/app.ts', 9, 'before'),
+        makeMatchLine('/alloc/customer-app/abc123/preview/app.ts', 10, 'the match', 0, 5),
+        makeContextLine('/alloc/customer-app/abc123/preview/app.ts', 11, 'after'),
+      ];
+      const result = RipgrepUtil.parseOutput(lines.join('\n'), dir, 'test', 100);
+      expect(result.matches).toHaveLength(1);
+      expect(result.matches[0].path).toBe('app.ts');
+      expect(result.matches[0].contextBefore).toEqual([{ line: 9, text: 'before' }]);
+      expect(result.matches[0].contextAfter).toEqual([{ line: 11, text: 'after' }]);
     });
 
     it('should collect context lines before a match', () => {
