@@ -99,7 +99,7 @@ describe('SettingsMenu', () => {
 
     await waitFor(() => {
       expect(screen.getByText('builder_settings_nav_project')).toBeInTheDocument();
-      expect(screen.getByText('builder_settings_nav_domain')).toBeInTheDocument();
+      expect(screen.queryByText('builder_settings_nav_domain')).not.toBeInTheDocument();
       expect(screen.getByText('builder_settings_nav_backups')).toBeInTheDocument();
       expect(screen.getByText('builder_settings_nav_security')).toBeInTheDocument();
       expect(screen.getByText('builder_settings_nav_database')).toBeInTheDocument();
@@ -129,14 +129,14 @@ describe('SettingsMenu', () => {
     await user.click(trigger);
 
     await waitFor(() => {
-      expect(screen.getByText('builder_settings_nav_domain')).toBeInTheDocument();
+      expect(screen.getByText('builder_settings_nav_backups')).toBeInTheDocument();
     });
 
-    const domainButton = screen.getByText('builder_settings_nav_domain');
-    await user.click(domainButton);
+    const backupsButton = screen.getByText('builder_settings_nav_backups');
+    await user.click(backupsButton);
 
     await waitFor(() => {
-      expect(setActiveSettingsSection).toHaveBeenCalledWith(SettingsSection.DOMAIN);
+      expect(setActiveSettingsSection).toHaveBeenCalledWith(SettingsSection.BACKUPS);
     });
   });
 
@@ -147,14 +147,14 @@ describe('SettingsMenu', () => {
     await user.click(trigger);
 
     await waitFor(() => {
-      expect(screen.getByText('builder_settings_nav_domain')).toBeInTheDocument();
+      expect(screen.getByText('builder_settings_nav_backups')).toBeInTheDocument();
     });
 
-    const domainButton = screen.getByText('builder_settings_nav_domain');
-    await user.click(domainButton);
+    const backupsButton = screen.getByText('builder_settings_nav_backups');
+    await user.click(backupsButton);
 
     await waitFor(() => {
-      expect(screen.queryByText('builder_settings_nav_domain')).not.toBeInTheDocument();
+      expect(screen.queryByText('builder_settings_nav_backups')).not.toBeInTheDocument();
     });
   });
 
@@ -185,14 +185,14 @@ describe('SettingsMenu', () => {
     await user.click(trigger);
 
     await waitFor(() => {
-      expect(screen.getByText('builder_settings_nav_domain')).toBeInTheDocument();
+      expect(screen.getByText('builder_settings_nav_backups')).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText('builder_settings_nav_domain'));
+    await user.click(screen.getByText('builder_settings_nav_backups'));
 
     await waitFor(() => {
       expect(vi.mocked(logClickEvent)).toHaveBeenCalledWith(
-        'develop.settings_menu.domain',
+        'develop.settings_menu.backups',
         { appId: 'test-app-id' },
       );
     });

@@ -3,6 +3,7 @@
  */
 import '@testing-library/jest-dom';
 
+import type React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 
@@ -32,6 +33,10 @@ vi.mock('@/app/[market]/develop/components/tips/Tips', () => ({
 
 vi.mock('./brand-book', () => ({
   default: ({ appId }: any) => <div data-testid="brand-book">Brand Book: {appId}</div>,
+}));
+
+vi.mock('@/app/[market]/develop/components/settings/DomainPanel', () => ({
+  default: () => <div data-testid="domain-panel">Domain Panel</div>,
 }));
 
 // Mock stores
@@ -104,9 +109,30 @@ vi.mock('@/contexts/WebSocketContext', () => ({
   }),
 }));
 
+const mockSwitchboardResults: Record<string, boolean> = {};
+
 vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: () => (false),
+  useSwitchboard: (feature: string) => mockSwitchboardResults[feature] ?? false,
 }));
+
+vi.mock('next/dynamic', async () => {
+  const ReactModule = await import('react');
+  return {
+    default: (loader: () => Promise<{ default: React.ComponentType }>) => {
+      const LoadableComponent = (props: Record<string, unknown>) => {
+        const [Component, setComponent] = ReactModule.useState<React.ComponentType | null>(null);
+        ReactModule.useEffect(() => {
+          let cancelled = false;
+          loader().then((mod) => { if (!cancelled) setComponent(() => mod.default); });
+          return () => { cancelled = true; };
+        }, []);
+        if (!Component) return null;
+        return <Component {...props} />;
+      };
+      return LoadableComponent;
+    },
+  };
+});
 
 vi.mock('@/hooks/useDomainSearch', () => ({
   useDomainSearch: () => ({
@@ -145,6 +171,9 @@ describe('PreviewPane', () => {
     mockGitHistoryData = { commits: [] };
     mockGitStore.getSelectedCommitHash = vi.fn(() => null);
     mockDevelopPageStore.isVersionHistoryOpen = false;
+    for (const key of Object.keys(mockSwitchboardResults)) {
+      delete mockSwitchboardResults[key];
+    }
   });
 
   it('should render without crashing', () => {
@@ -360,6 +389,52 @@ describe('PreviewPane', () => {
     expect(screen.getByTestId('develop-preview-archive-restore-failed')).toBeInTheDocument();
     fireEvent.click(screen.getByText('builder_common_try_again'));
     expect(onPreviewRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('should render DomainPanel when viewMode is DOMAIN and top-level flag enabled', async () => {
+    mockDevelopPageStore.viewMode = ViewMode.DOMAIN;
+    mockSwitchboardResults['appbuilder-domain-top-level'] = true;
+
+    renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('domain-panel')).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('preview-iframe')).not.toBeInTheDocument();
+  });
+
+  it('should not render DomainPanel when viewMode is DOMAIN but top-level flag disabled', () => {
+    mockDevelopPageStore.viewMode = ViewMode.DOMAIN;
+    mockSwitchboardResults['appbuilder-domain-top-level'] = false;
+
+    renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
+
+    expect(screen.queryByTestId('domain-panel')).not.toBeInTheDocument();
+  });
+
+  it('should not show PreviewError when resumeFailed and viewMode is DOMAIN', async () => {
+    mockDevelopPageStore.viewMode = ViewMode.DOMAIN;
+    mockSwitchboardResults['appbuilder-domain-top-level'] = true;
+
+    renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} resumeFailed={true} />);
+
+    expect(screen.queryByTestId('preview-error')).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByTestId('domain-panel')).toBeInTheDocument();
+    });
+  });
+
+  it('should not show loading state when isHibernated and viewMode is DOMAIN', async () => {
+    mockDevelopPageStore.viewMode = ViewMode.DOMAIN;
+    mockSwitchboardResults['appbuilder-domain-top-level'] = true;
+    mockServerPollingStore.getServerState = vi.fn(() => ({ isReady: false, url: null }));
+
+    renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} isHibernated={true} />);
+
+    expect(screen.queryByText('builder_preview_resuming_message')).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByTestId('domain-panel')).toBeInTheDocument();
+    });
   });
 
 });
@@ -602,7 +677,11 @@ describe('publish-snapshot-request handling', function publishSnapshotHandlingTe
   beforeEach(() => {
     vi.clearAllMocks()
     vi.useFakeTimers()
+    mockDevelopPageStore.viewMode = ViewMode.PREVIEW
     mockServerPollingStore.getServerState = vi.fn(() => ({ isReady: true, url: 'http://localhost:3000' }))
+    for (const key of Object.keys(mockSwitchboardResults)) {
+      delete mockSwitchboardResults[key];
+    }
   })
 
   afterEach(() => {

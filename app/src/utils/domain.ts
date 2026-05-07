@@ -4,7 +4,11 @@
 
 import { DomainStatus, DomainType, type SiteDomain } from '@/lib/control-plane/types';
 
-const AIRO_SUBDOMAINS = ['.airoapp.ai', '.test-airoapp.ai', '.dev-airoapp.ai'];
+// Suffixes used to identify Airo-hosted preview/dev URLs (includes local dev)
+const AIRO_PREVIEW_SUFFIXES = ['.airoapp.ai', '.test-airoapp.ai', '.dev-airoapp.ai', '.dev-godaddy.com'];
+
+// Suffixes blocked from use as a custom/project domain (excludes local dev suffixes)
+const BLOCKED_ATTACH_SUFFIXES = ['.airoapp.ai', '.test-airoapp.ai', '.dev-airoapp.ai'];
 
 /**
  * Whether a URL belongs to an airoapp.ai subdomain (including test/dev variants).
@@ -14,7 +18,7 @@ export function isAiroSubdomain(url: string): boolean {
   if (!url) return false;
   try {
     const { hostname } = new URL(url);
-    return AIRO_SUBDOMAINS.some(suffix => hostname.endsWith(suffix));
+    return AIRO_PREVIEW_SUFFIXES.some(suffix => hostname.endsWith(suffix));
   } catch {
     return false;
   }
@@ -30,7 +34,7 @@ export function isAiroSubdomain(url: string): boolean {
  */
 export function isBlockedAiroDomain(domain: string): boolean {
   const normalized = domain.toLowerCase().replace(/\.+$/, '');
-  return AIRO_SUBDOMAINS.some(suffix => normalized.endsWith(suffix));
+  return BLOCKED_ATTACH_SUFFIXES.some(suffix => normalized.endsWith(suffix));
 }
 
 /**

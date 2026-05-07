@@ -159,6 +159,19 @@ describe('ChatToolbar', () => {
     expect(screen.getByLabelText('builder_chat_toolbar_button_view')).toBeInTheDocument();
   });
 
+  describe('Domain button in mobile preview mode', () => {
+    it('renders View and Code without Domain (Domain moved to Settings menu on mobile)', () => {
+      mockDevelopStore.isMobile = true;
+      mockDevelopStore.mobileMode = MobileMode.PREVIEW;
+
+      renderWithProviders(<ChatToolbar {...defaultProps} />);
+
+      expect(screen.getByLabelText('builder_chat_toolbar_button_view')).toBeInTheDocument();
+      expect(screen.getByLabelText('builder_chat_toolbar_button_code')).toBeInTheDocument();
+      expect(screen.queryByLabelText('builder_domain_title')).not.toBeInTheDocument();
+    });
+  });
+
   describe('ShareMenu placement', () => {
     it('renders ShareMenu in mobile TOOLS mode (next to AppPublish)', () => {
       mockDevelopStore.isMobile = true;

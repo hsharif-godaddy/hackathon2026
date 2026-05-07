@@ -7,7 +7,7 @@ import Alert from '@ux/alert';
 import Button from '@ux/button';
 import text from '@ux/text';
 
-import { ChatTab, SettingsSection } from '@/app/[market]/develop/components/types';
+import { ChatTab, MobileMode, SettingsSection, ViewMode } from '@/app/[market]/develop/components/types';
 import { Feedback } from '@/components/feedback/Feedback';
 import { FEEDBACK_ID } from '@/components/feedback/utils';
 import { useChatTabs } from '@/hooks/useChatTabs';
@@ -49,7 +49,12 @@ export default function PublishStatusAlert() {
   const isProcessing = isLoading || isStreaming;
   const prevIsProcessingRef = useRef(isProcessing);
   const { setActiveChatTab, setActiveSettingsSection } = useChatTabs();
+  const isTopLevelDomainEnabled = useSwitchboard('appbuilder-domain-top-level');
   const currentAppId = useDevelopPageStore((state) => state.currentAppId);
+  const isMobile = useDevelopPageStore((state) => state.isMobile);
+  const hasUnsavedChanges = useDevelopPageStore((state) => state.hasUnsavedChanges);
+  const handleViewModeChange = useDevelopPageStore((state) => state.handleViewModeChange);
+  const handleMobileModeChange = useDevelopPageStore((state) => state.handleMobileModeChange);
   const setIsPublishing = useDevelopPageStore((state) => state.setIsPublishing);
   const setPublishError = useDevelopPageStore((state) => state.setPublishError);
   const dismissPublishSuccess = useDevelopPageStore((state) => state.dismissPublishSuccess);
@@ -201,9 +206,14 @@ export default function PublishStatusAlert() {
     });
 
     dismissPublishSuccess(currentAppId);
-    setActiveChatTab(ChatTab.SETTINGS);
-    setActiveSettingsSection(SettingsSection.DOMAIN);
-  }, [currentAppId, dismissPublishSuccess, setActiveChatTab, setActiveSettingsSection]);
+    if (isTopLevelDomainEnabled) {
+      handleViewModeChange(ViewMode.DOMAIN, hasUnsavedChanges);
+      if (isMobile) handleMobileModeChange(MobileMode.PREVIEW);
+    } else {
+      setActiveSettingsSection(SettingsSection.DOMAIN);
+      setActiveChatTab(ChatTab.SETTINGS);
+    }
+  }, [currentAppId, dismissPublishSuccess, handleMobileModeChange, handleViewModeChange, hasUnsavedChanges, isMobile, isTopLevelDomainEnabled, setActiveChatTab, setActiveSettingsSection]);
 
   const isGoLiveEnabled = useSwitchboard('appbuilder-go-live');
 

@@ -74,7 +74,7 @@ describe('useChatTabs', () => {
   });
 
   it('should remove default settings param from URL on init', async () => {
-    window.history.replaceState(null, '', '/develop/app-123?tab=settings&settings=domain');
+    window.history.replaceState(null, '', '/develop/app-123?tab=settings&settings=project');
     replaceStateSpy.mockClear();
 
     renderHook(() => useChatTabs());
@@ -82,7 +82,7 @@ describe('useChatTabs', () => {
     await waitFor(() => {
       const state = useDevelopPageStore.getState();
       expect(state.activeChatTab).toBe(ChatTab.SETTINGS);
-      expect(state.activeSettingsSection).toBe(SettingsSection.DOMAIN);
+      expect(state.activeSettingsSection).toBe(SettingsSection.PROJECT);
     });
 
     const params = new URLSearchParams(window.location.search);

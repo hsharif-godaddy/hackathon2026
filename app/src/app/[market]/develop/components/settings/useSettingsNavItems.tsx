@@ -5,11 +5,11 @@ import CalendarIcon from '@ux/icon/calendar';
 import ContentIcon from '@ux/icon/content';
 import ClipboardIcon from '@ux/icon/copy';
 import DatabaseIcon from '@ux/icon/database';
-import LinkIcon from '@ux/icon/link';
 import LockedIcon from '@ux/icon/locked';
 import RevertIcon from '@ux/icon/revert';
 import SettingsIcon from '@ux/icon/settings';
 import SocialIcon from '@ux/icon/social';
+import WorldIcon from '@ux/icon/world';
 
 import { SettingsSection } from '@/app/[market]/develop/components/types';
 import { FEEDBACK_ID } from '@/components/feedback/utils';
@@ -35,6 +35,7 @@ export interface SettingsNavItem {
 export function useSettingsNavItems(): SettingsNavItem[] {
   const t = useTranslations();
   const openFeedbackModal = useDevelopPageStore((state) => state.openFeedbackModal);
+  const isMobile = useDevelopPageStore((state) => state.isMobile);
 
   const project = useSwitchboard('appbuilder-settings-project');
   const domain = useSwitchboard('appbuilder-settings-domain');
@@ -57,12 +58,12 @@ export function useSettingsNavItems(): SettingsNavItem[] {
       icon: <SettingsIcon />,
       disabled: project !== true,
     },
-    {
+    ...(isMobile ? [{
       id: SettingsSection.DOMAIN,
-      label: t('builder_settings_nav_domain'),
-      icon: <LinkIcon />,
+      label: t('builder_domain_title'),
+      icon: <WorldIcon />,
       disabled: domain !== true,
-    },
+    }] : []),
     {
       id: SettingsSection.BACKUPS,
       label: t('builder_settings_nav_backups'),

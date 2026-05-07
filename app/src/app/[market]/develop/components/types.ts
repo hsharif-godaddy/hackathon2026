@@ -68,7 +68,8 @@ export enum ViewMode {
   PREVIEW = 'preview',
   EDIT = 'edit',
   CODE = 'code',
-  BRAND = 'brand'
+  BRAND = 'brand',
+  DOMAIN = 'domain'
 }
 
 /** Message types sent to the preview iframe via postMessage */

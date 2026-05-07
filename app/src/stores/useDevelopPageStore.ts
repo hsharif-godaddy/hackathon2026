@@ -400,7 +400,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
 
     // Tab state (initialized from URL in useChatTabs)
     activeChatTab: ChatTab.CHAT,
-    activeSettingsSection: SettingsSection.DOMAIN,
+    activeSettingsSection: SettingsSection.PROJECT,
     chatTabsInitializedForPathname: null,
 
     // Feedback modal state
@@ -945,7 +945,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     handleViewModeChange: (newMode: ViewMode, hasUnsavedChanges: boolean) => {
       const { viewMode } = get()
 
-      if (hasUnsavedChanges && viewMode === ViewMode.CODE && (newMode === ViewMode.PREVIEW || newMode === ViewMode.EDIT)) {
+      if (hasUnsavedChanges && viewMode === ViewMode.CODE && newMode !== ViewMode.CODE) {
         const confirmed = window.confirm(
           'You have unsaved changes in the code editor. Switching to preview will keep your changes, but they won\'t be reflected in the preview until saved. Continue?'
         )

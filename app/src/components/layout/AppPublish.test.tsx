@@ -19,6 +19,7 @@ vi.mock('react-intl', async (importOriginal) => {
   };
 });
 
+import { ChatTab, MobileMode, SettingsSection, ViewMode } from '@/app/[market]/develop/components/types';
 import AppPublish from '@/components/layout/AppPublish';
 import { shipAnalyticsLog } from '@/lib/logging';
 import { DeploymentStatus } from '@/lib/mgmt-airo/types';
@@ -54,6 +55,9 @@ const mockDevelopStore = {
       showPostPublishFeatureSelection: slice?.showPostPublishFeatureSelection ?? false,
     };
   },
+  hasUnsavedChanges: false,
+  handleViewModeChange: vi.fn(),
+  handleMobileModeChange: vi.fn(),
   setIsPublishing: vi.fn(),
   setPublishError: vi.fn(),
   clearPublishStatus: vi.fn(),
@@ -90,10 +94,11 @@ vi.mock('@/hooks/useTranslations', () => ({
 }));
 
 const mockSetActiveChatTab = vi.fn();
+const mockSetActiveSettingsSection = vi.fn();
 vi.mock('@/hooks/useChatTabs', () => ({
   useChatTabs: () => ({
     setActiveChatTab: mockSetActiveChatTab,
-    setActiveSettingsSection: vi.fn(),
+    setActiveSettingsSection: mockSetActiveSettingsSection,
   }),
 }));
 
@@ -149,8 +154,13 @@ vi.mock('@/hooks/useSubscription', () => ({
   useSubscription: () => ({ data: null }),
 }));
 
+const mockSwitchboardOverrides: Record<string, boolean> = {};
+
 vi.mock('@/hooks/useSwitchboard', () => ({
   useSwitchboard: vi.fn((feature: string) => {
+    if (feature in mockSwitchboardOverrides) {
+      return mockSwitchboardOverrides[feature];
+    }
     if (feature === 'appbuilder-publish-button') {
       return true;
     }
@@ -244,6 +254,9 @@ describe('AppPublish', () => {
       unobserve: vi.fn(),
       disconnect: vi.fn(),
     }));
+    for (const key of Object.keys(mockSwitchboardOverrides)) {
+      delete mockSwitchboardOverrides[key];
+    }
   });
 
   it('should render nothing when pathname is not the develop page', function notDevelopPage() {
@@ -1358,5 +1371,79 @@ describe('AppPublish', () => {
       expect(mockDevelopStore.setPublishError).toHaveBeenCalledWith('app-123', true);
     });
     expect(mockMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it('should call handleViewModeChange with DOMAIN on desktop when domain edit is clicked and top-level flag is on', async function domainEditDesktop() {
+    mockSwitchboardOverrides['appbuilder-domain-top-level'] = true;
+    mockSiteStore.getSite.mockReturnValue(createMockSite({
+      id: 'app-123',
+      agent_url: 'https://app-123.agent.test',
+      published_url: 'https://test.airoapp.ai',
+      variants: ['publish'],
+    }));
+
+    const { user } = renderWithProviders(<AppPublish />);
+
+    await user.click(document.getElementById('tour-publish-button')!);
+
+    await waitFor(() => {
+      expect(screen.getByText('builder_domain_title')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole('button', { name: 'builder_common_edit' }));
+
+    expect(mockDevelopStore.handleViewModeChange).toHaveBeenCalledWith(ViewMode.DOMAIN, false);
+    expect(mockDevelopStore.handleMobileModeChange).not.toHaveBeenCalled();
+    expect(mockSetActiveSettingsSection).not.toHaveBeenCalled();
+    expect(mockSetActiveChatTab).not.toHaveBeenCalled();
+  });
+
+  it('should call handleMobileModeChange with PREVIEW on mobile when domain edit is clicked and top-level flag is on', async function domainEditMobile() {
+    mockSwitchboardOverrides['appbuilder-domain-top-level'] = true;
+    mockDevelopStore.isMobile = true;
+    mockSiteStore.getSite.mockReturnValue(createMockSite({
+      id: 'app-123',
+      agent_url: 'https://app-123.agent.test',
+      published_url: 'https://test.airoapp.ai',
+      variants: ['publish'],
+    }));
+
+    const { user } = renderWithProviders(<AppPublish />);
+
+    await user.click(document.getElementById('tour-publish-button')!);
+
+    await waitFor(() => {
+      expect(screen.getByText('builder_domain_title')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole('button', { name: 'builder_common_edit' }));
+
+    expect(mockDevelopStore.handleViewModeChange).toHaveBeenCalledWith(ViewMode.DOMAIN, false);
+    expect(mockDevelopStore.handleMobileModeChange).toHaveBeenCalledWith(MobileMode.PREVIEW);
+  });
+
+  it('should navigate to settings DOMAIN section when domain edit is clicked and top-level flag is off', async function domainEditFlagOff() {
+    mockSwitchboardOverrides['appbuilder-domain-top-level'] = false;
+    mockSiteStore.getSite.mockReturnValue(createMockSite({
+      id: 'app-123',
+      agent_url: 'https://app-123.agent.test',
+      published_url: 'https://test.airoapp.ai',
+      variants: ['publish'],
+    }));
+
+    const { user } = renderWithProviders(<AppPublish />);
+
+    await user.click(document.getElementById('tour-publish-button')!);
+
+    await waitFor(() => {
+      expect(screen.getByText('builder_domain_title')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole('button', { name: 'builder_common_edit' }));
+
+    expect(mockSetActiveSettingsSection).toHaveBeenCalledWith(SettingsSection.DOMAIN);
+    expect(mockSetActiveChatTab).toHaveBeenCalledWith(ChatTab.SETTINGS);
+    expect(mockDevelopStore.handleViewModeChange).not.toHaveBeenCalled();
+    expect(mockDevelopStore.handleMobileModeChange).not.toHaveBeenCalled();
   });
 });

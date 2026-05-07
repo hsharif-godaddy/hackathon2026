@@ -58,13 +58,34 @@ describe('useSettingsNavItems', () => {
     expect(projectItem?.disabled).toBe(false);
   });
 
-  it('should include domain item', () => {
+  it('should not include domain item on desktop', () => {
+    mockDevelopStore.isMobile = false;
+
+    const { result } = renderHookWithProviders(() => useSettingsNavItems());
+
+    const domainItem = result.current.find(item => item.id === SettingsSection.DOMAIN);
+    expect(domainItem).toBeUndefined();
+  });
+
+  it('should include domain item on mobile', () => {
+    mockDevelopStore.isMobile = true;
+
     const { result } = renderHookWithProviders(() => useSettingsNavItems());
 
     const domainItem = result.current.find(item => item.id === SettingsSection.DOMAIN);
     expect(domainItem).toBeDefined();
-    expect(domainItem?.label).toBe('builder_settings_nav_domain');
+    expect(domainItem?.label).toBe('builder_domain_title');
     expect(domainItem?.disabled).toBe(false);
+    expect(domainItem?.onClick).toBeUndefined();
+  });
+
+  it('should be 2nd item (after General) on mobile', () => {
+    mockDevelopStore.isMobile = true;
+
+    const { result } = renderHookWithProviders(() => useSettingsNavItems());
+
+    expect(result.current[0].id).toBe(SettingsSection.PROJECT);
+    expect(result.current[1].id).toBe(SettingsSection.DOMAIN);
   });
 
   it('should include backups item', () => {

@@ -21,7 +21,7 @@ import TextInput from '@ux/text-input';
 import TextLockup from '@ux/text-lockup';
 
 import IconButton from '@/app/[market]/develop/components/IconButton';
-import { ChatTab, SettingsSection } from '@/app/[market]/develop/components/types';
+import { ChatTab, MobileMode, SettingsSection, ViewMode } from '@/app/[market]/develop/components/types';
 import { FEEDBACK_ID } from '@/components/feedback/utils';
 import { InfoTooltip } from '@/components/ui/InfoTooltip';
 import { useChatTabs } from '@/hooks/useChatTabs';
@@ -120,6 +120,9 @@ export default function AppPublish({ location = 'develop' }: { location?: string
   const { setActiveChatTab, setActiveSettingsSection } = useChatTabs();
   const currentAppId = useDevelopPageStore((state) => state.currentAppId);
   const isMobile = useDevelopPageStore((state) => state.isMobile);
+  const hasUnsavedChanges = useDevelopPageStore((state) => state.hasUnsavedChanges);
+  const handleViewModeChange = useDevelopPageStore((state) => state.handleViewModeChange);
+  const handleMobileModeChange = useDevelopPageStore((state) => state.handleMobileModeChange);
   const clickContext = useMemo(
     () => (currentAppId ? { appId: currentAppId } : undefined),
     [currentAppId],
@@ -145,6 +148,7 @@ export default function AppPublish({ location = 'develop' }: { location?: string
   const publishFlagsEnabled = isPublishButtonEnabled && isDevelopPage;
   const isSecretsEnabled = useSwitchboard('appbuilder-settings-secrets');
   const isPostPublishFeatureSelectionEnabled = useSwitchboard('appbuilder-post-publish-feature-selection');
+  const isTopLevelDomainEnabled = useSwitchboard('appbuilder-domain-top-level');
 
   const isChatToolbar = location === 'develop.chat_toolbar';
 
@@ -547,9 +551,14 @@ export default function AppPublish({ location = 'develop' }: { location?: string
   const handleViewDomain = useCallback(() => {
     logClickEvent(`${location}.header.publish_domain_edit`, clickContext)();
     setOpen(false);
-    setActiveSettingsSection(SettingsSection.DOMAIN);
-    setActiveChatTab(ChatTab.SETTINGS);
-  }, [clickContext, location, setOpen, setActiveSettingsSection, setActiveChatTab]);
+    if (isTopLevelDomainEnabled) {
+      handleViewModeChange(ViewMode.DOMAIN, hasUnsavedChanges);
+      if (isMobile) handleMobileModeChange(MobileMode.PREVIEW);
+    } else {
+      setActiveSettingsSection(SettingsSection.DOMAIN);
+      setActiveChatTab(ChatTab.SETTINGS);
+    }
+  }, [clickContext, handleMobileModeChange, handleViewModeChange, hasUnsavedChanges, isMobile, isTopLevelDomainEnabled, location, setActiveChatTab, setActiveSettingsSection, setOpen]);
 
   const handleGoLiveInChat = useCallback(() => {
     if (!currentAppId || isPreLaunchCheckFromPublishDisabled) {

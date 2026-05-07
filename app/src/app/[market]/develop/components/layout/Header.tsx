@@ -2,7 +2,7 @@
 
 import { motion } from 'framer-motion';
 import Link from 'next/link';
-import { useCallback, useMemo } from 'react';
+import { useMemo } from 'react';
 import Box from '@ux/box';
 import Apps2Icon from '@ux/icon/apps2'
 import CodeIcon from '@ux/icon/code'
@@ -21,7 +21,7 @@ import IconButton from '@/app/[market]/develop/components/IconButton';
 import DomainMenu from '@/app/[market]/develop/components/layout/DomainMenu';
 import ShareMenu from '@/app/[market]/develop/components/layout/ShareMenu';
 import DeviceSelector from '@/app/[market]/develop/components/preview/DeviceSelector'
-import { ChatTab, MobileMode, SettingsSection, ViewMode } from '@/app/[market]/develop/components/types'
+import { MobileMode, ViewMode } from '@/app/[market]/develop/components/types'
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import { AiroLogo } from '@/components/layout/AiroLogo';
 import AppPublish from '@/components/layout/AppPublish';
@@ -29,7 +29,6 @@ import GoDaddyLink from '@/components/layout/GoDaddyLink';
 import HeaderUpgradeButton from '@/components/layout/HeaderUpgradeButton';
 import IframeCloseButton from '@/components/layout/IframeCloseButton';
 import UserMenu from '@/components/layout/UserMenu';
-import { useChatTabs } from '@/hooks/useChatTabs';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
@@ -40,6 +39,7 @@ const VIEW_MODE_EID_MAP: Record<string, string> = {
   [ViewMode.EDIT]: 'develop.header.edit_mode',
   [ViewMode.CODE]: 'develop.header.code_editor',
   [ViewMode.BRAND]: 'develop.header.brand_book',
+  [ViewMode.DOMAIN]: 'develop.header.domain_view',
 };
 
 const MOBILE_MODE_EID_MAP: Record<string, string> = {
@@ -54,6 +54,7 @@ interface DevelopHeaderProps {
 export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) {
   const t = useTranslations();
   const isBrandBookEnabled = useSwitchboard('appbuilder-brandbook');
+  const isTopLevelDomainEnabled = useSwitchboard('appbuilder-domain-top-level');
   const location = 'develop';
   const appId = useAppIdFromParams();
   const clickContext = useMemo(() => (appId ? { appId } : undefined), [appId]);
@@ -68,13 +69,6 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
   const handleViewModeChange = useDevelopPageStore((state) => state.handleViewModeChange)
   const handleMobileModeChange = useDevelopPageStore((state) => state.handleMobileModeChange)
   const toggleChatPaneCollapse = useDevelopPageStore((state) => state.toggleChatPaneCollapse)
-  const { setActiveChatTab, setActiveSettingsSection } = useChatTabs();
-
-  const handleDomainSettings = useCallback(() => {
-    setActiveSettingsSection(SettingsSection.DOMAIN);
-    setActiveChatTab(ChatTab.SETTINGS);
-    logClickEvent('develop.header.domain_settings', clickContext)();
-  }, [clickContext, setActiveChatTab, setActiveSettingsSection]);
 
   return (
     <header data-testid="airo-header" className="flex">
@@ -157,6 +151,14 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
                   label={t('builder_preview_button_code')}
                   disabled={isVersionHistoryOpen}
                 />
+                {isTopLevelDomainEnabled && (
+                  <ButtonGroup.Item
+                    value={ViewMode.DOMAIN}
+                    icon={<WorldIcon className="size-2.5" />}
+                    label={t('builder_domain_title')}
+                    disabled={isVersionHistoryOpen}
+                  />
+                )}
               </ButtonGroup>
             </Box>
 
@@ -179,13 +181,6 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
               </span>
 
               <DomainMenu />
-
-              <IconButton
-                icon={<WorldIcon className="size-2.5" />}
-                label={t('builder_project_domain_title')}
-                showLabelWhenActive={false}
-                onClick={handleDomainSettings}
-              />
 
               {/* Always show Upgrade/Share/Publish/UserMenu */}
               <ButtonGroup>

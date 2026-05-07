@@ -2,6 +2,7 @@
 
 import clsx from 'clsx'
 import { animate, motion, useMotionValue } from 'framer-motion'
+import dynamic from 'next/dynamic'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Loader } from '@airo-ux/loader'
 import Button from '@ux/button'
@@ -16,6 +17,7 @@ import PreviewSkeleton from '@/app/[market]/develop/components/preview/PreviewSk
 import Tips from '@/app/[market]/develop/components/tips/Tips'
 import { PreviewViewMode, ViewMode } from '@/app/[market]/develop/components/types'
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
+import ErrorBoundary from '@/components/ErrorBoundary'
 import { buildDynamicApiUrl } from '@/config/dynamic-api'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
@@ -24,6 +26,11 @@ import { logger } from '@/lib/request-context'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useServerPollingStore } from '@/stores/useServerPollingStore'
 import { postMessageToIframe } from '@/utils/postMessage'
+
+const DomainPanel = dynamic(
+  () => import('@/app/[market]/develop/components/settings/DomainPanel'),
+  { ssr: false, loading: () => <PreviewSkeleton testId="domain-panel-skeleton" /> },
+)
 
 // Timing constants for iframe lifecycle management
 const REFRESH_DEBOUNCE_MS = 500 // Debounce rapid refresh requests
@@ -117,6 +124,7 @@ export default function PreviewPane({
 }: PreviewPaneProps) {
   const t = useTranslations();
   const isDomainBarEnabled = useSwitchboard('appbuilder-domain-bar');
+  const isTopLevelDomainEnabled = useSwitchboard('appbuilder-domain-top-level');
   /** Switchboard: translucent creation overlay + edit-time processing overlay (fade). Off = main branch UX. */
   const isPreviewEnhancedOverlaysEnabled =
     useSwitchboard('appbuilder-preview-enhanced-overlays') === true;
@@ -812,7 +820,7 @@ export default function PreviewPane({
   }
 
   // Show error state when resume failed
-  if (resumeFailed && viewMode !== ViewMode.BRAND) {
+  if (resumeFailed && viewMode !== ViewMode.BRAND && viewMode !== ViewMode.DOMAIN) {
     return (
       <PreviewError
         title={t('builder_preview_resume_failed_title')}
@@ -835,11 +843,11 @@ export default function PreviewPane({
   }
 
   // Show restarting message when app is hibernated or resuming
-  if ((isHibernated || isResuming) && viewMode !== ViewMode.BRAND) {
+  if ((isHibernated || isResuming) && viewMode !== ViewMode.BRAND && viewMode !== ViewMode.DOMAIN) {
     return <PreviewLoadingState message={t('builder_preview_resuming_message')} isMobile={isMobile} />
   }
 
-  if (imageReloadFailed && viewMode !== ViewMode.BRAND) {
+  if (imageReloadFailed && viewMode !== ViewMode.BRAND && viewMode !== ViewMode.DOMAIN) {
     return (
       <PreviewError
         title={t('builder_preview_image_reload_failed_title')}
@@ -850,8 +858,22 @@ export default function PreviewPane({
     )
   }
 
-  if (isImageReloading && viewMode !== ViewMode.BRAND) {
+  if (isImageReloading && viewMode !== ViewMode.BRAND && viewMode !== ViewMode.DOMAIN) {
     return <PreviewLoadingState message={t('builder_preview_image_reloading_message')} isMobile={isMobile} />
+  }
+
+  if (viewMode === ViewMode.DOMAIN && isTopLevelDomainEnabled) {
+    return (
+      <div className="h-full flex flex-col pr-1 md:pr-2.5 pl-1">
+        <div className="relative h-full overflow-auto rounded-lg md:rounded-b-none border bg-intents-ux-box-backgroundColor">
+          <div className="mx-auto max-w-[960px] p-6">
+            <ErrorBoundary>
+              <DomainPanel />
+            </ErrorBoundary>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   // Brand Book uses its own API and doesn't depend on the preview server.

@@ -609,6 +609,7 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
               data-eid={generateClickEID(`settings.domains.buy_new_domain`)}
               href={`https://www.${getRootDomain()}/domains?itc=${encodeURIComponent(PAYWALL_ITC.ATTACH_DOMAIN)}`}
               external
+              className="self-start"
             />
           )}
         </Box>

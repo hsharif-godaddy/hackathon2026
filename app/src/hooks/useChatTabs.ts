@@ -8,7 +8,7 @@ const VALID_CHAT_TABS = new Set(Object.values(ChatTab))
 const VALID_SETTINGS_SECTIONS = new Set(Object.values(SettingsSection))
 
 const DEFAULT_CHAT_TAB = ChatTab.CHAT
-const DEFAULT_SETTINGS_SECTION = SettingsSection.DOMAIN
+const DEFAULT_SETTINGS_SECTION = SettingsSection.PROJECT
 
 const buildUrl = (pathname: string, params: URLSearchParams) => {
   const query = params.toString()

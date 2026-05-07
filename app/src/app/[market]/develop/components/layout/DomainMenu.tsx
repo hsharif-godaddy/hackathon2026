@@ -5,9 +5,10 @@ import Button from '@ux/button';
 import WindowNewIcon from '@ux/icon/window-new';
 
 import IconButton from '@/app/[market]/develop/components/IconButton';
-import { ChatTab, MobileMode, SettingsSection } from '@/app/[market]/develop/components/types';
+import { ChatTab, MobileMode, SettingsSection, ViewMode } from '@/app/[market]/develop/components/types';
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils';
 import { useChatTabs } from '@/hooks/useChatTabs';
+import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import { shipAnalyticsLog } from '@/lib/logging';
 import {
@@ -25,11 +26,14 @@ export default function DomainMenu() {
   const appId = useAppIdFromParams();
   const clickContext = useMemo(() => (appId ? { appId } : undefined), [appId]);
   const [open, setOpen] = useState(false);
-  const { setActiveChatTab, setActiveSettingsSection } = useChatTabs();
 
   const site = useDevelopPageStore((state) => state.site);
   const isMobile = useDevelopPageStore((state) => state.isMobile);
+  const hasUnsavedChanges = useDevelopPageStore((state) => state.hasUnsavedChanges);
+  const handleViewModeChange = useDevelopPageStore((state) => state.handleViewModeChange);
   const handleMobileModeChange = useDevelopPageStore((state) => state.handleMobileModeChange);
+  const { setActiveChatTab, setActiveSettingsSection } = useChatTabs();
+  const isTopLevelDomainEnabled = useSwitchboard('appbuilder-domain-top-level');
 
   const previewUrl = site?.preview_url;
   const publishedUrl = site?.published_url;
@@ -52,10 +56,14 @@ export default function DomainMenu() {
   const handleDomainSettings = () => {
     logClickEvent('develop.header.domain_settings', clickContext)();
     setOpen(false);
-    setActiveSettingsSection(SettingsSection.DOMAIN);
-    setActiveChatTab(ChatTab.SETTINGS);
-    if (isMobile) {
-      handleMobileModeChange(MobileMode.TOOLS);
+    if (isTopLevelDomainEnabled) {
+      handleViewModeChange(ViewMode.DOMAIN, hasUnsavedChanges);
+      if (isMobile) {
+        handleMobileModeChange(MobileMode.PREVIEW);
+      }
+    } else {
+      setActiveSettingsSection(SettingsSection.DOMAIN);
+      setActiveChatTab(ChatTab.SETTINGS);
     }
   };
 
@@ -102,7 +110,7 @@ export default function DomainMenu() {
           <Button
             design="option"
             size="sm"
-            text={t('builder_project_domain_title')}
+            text={t('builder_domain_title')}
             className="justify-start"
             onClick={handleDomainSettings}
           />

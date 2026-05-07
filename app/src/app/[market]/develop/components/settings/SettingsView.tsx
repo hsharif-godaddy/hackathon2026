@@ -42,12 +42,12 @@ export default function SettingsView() {
 
   const renderSection = () => {
     switch (activeSettingsSection) {
-      case SettingsSection.PROJECT:
-        if (isProjectEnabled === undefined) return sectionSkeleton;
-        return isProjectEnabled ? <ProjectPanel /> : null;
       case SettingsSection.DOMAIN:
         if (isDomainEnabled === undefined) return sectionSkeleton;
         return isDomainEnabled ? <DomainPanel /> : null;
+      case SettingsSection.PROJECT:
+        if (isProjectEnabled === undefined) return sectionSkeleton;
+        return isProjectEnabled ? <ProjectPanel /> : null;
       case SettingsSection.BACKUPS:
         if (isBackupsEnabled === undefined) return sectionSkeleton;
         return isBackupsEnabled ? <BackupsPanel /> : null;

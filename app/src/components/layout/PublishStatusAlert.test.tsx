@@ -11,11 +11,17 @@ import { renderWithProviders } from '@/tests/test-utils';
 import PublishStatusAlert from './PublishStatusAlert';
 
 const mockRouter = { push: vi.fn(), replace: vi.fn() };
+const mockHandleViewModeChange = vi.fn();
+const mockHandleMobileModeChange = vi.fn();
 const mockDevelopStore = {
   currentAppId: 'app-123',
   publishStates: {},
+  isMobile: false,
+  hasUnsavedChanges: false,
   setIsPublishing: vi.fn(),
   setPublishError: vi.fn(),
+  handleViewModeChange: mockHandleViewModeChange,
+  handleMobileModeChange: mockHandleMobileModeChange,
   dismissPublishSuccess: vi.fn(),
   clearPublishStatus: vi.fn(),
   setShowGoLiveModal: vi.fn(),
@@ -24,7 +30,7 @@ const mockDevelopStore = {
 const mockSiteStore = {
   getSite: vi.fn(),
 };
-const mockUseSwitchboard = vi.fn(() => (true));
+const mockSwitchboardOverrides: Record<string, boolean> = {};
 
 vi.mock('next/navigation', () => ({
   useRouter: () => mockRouter,
@@ -75,16 +81,17 @@ vi.mock('@/lib/request-context', () => ({
   },
 }));
 const mockSetActiveSettingsSection = vi.fn();
+const mockSetActiveChatTab = vi.fn();
 vi.mock('@/hooks/useChatTabs', () => ({
   useChatTabs: () => ({
     activeChatTab: 'chat',
-    setActiveChatTab: vi.fn(),
+    setActiveChatTab: mockSetActiveChatTab,
     activeSettingsSection: 'domain',
     setActiveSettingsSection: mockSetActiveSettingsSection,
   }),
 }));
 vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: () => mockUseSwitchboard(),
+  useSwitchboard: (feature: string) => mockSwitchboardOverrides[feature] ?? true,
 }));
 vi.mock('@/components/feedback/Feedback', () => ({
   Feedback: ({ onClose, onSubmitSuccess }: { onClose: () => void; onSubmitSuccess: () => void }) => (
@@ -103,10 +110,14 @@ describe('PublishStatusAlert', () => {
     vi.clearAllMocks();
     mockDevelopStore.publishStates = {};
     mockDevelopStore.currentAppId = 'app-123';
+    mockDevelopStore.isMobile = false;
+    mockDevelopStore.hasUnsavedChanges = false;
     mockSiteStore.getSite.mockReturnValue(null);
-    mockUseSwitchboard.mockReturnValue(true);
     mockStreamingStore.isLoading = false;
     mockStreamingStore.isActivelyStreaming = false;
+    for (const key of Object.keys(mockSwitchboardOverrides)) {
+      delete mockSwitchboardOverrides[key];
+    }
   });
 
   it('should render nothing when no publish status', () => {
@@ -245,7 +256,30 @@ describe('PublishStatusAlert', () => {
     }
   });
 
-  it('should navigate to settings when view settings button clicked', async () => {
+  it('should navigate to DOMAIN view mode when view settings button clicked and top-level flag is on', async () => {
+    mockSwitchboardOverrides['appbuilder-domain-top-level'] = true;
+    mockDevelopStore.publishStates = {
+      'app-123': { showSuccessAlert: true },
+    };
+    mockSiteStore.getSite.mockReturnValue({
+      id: 'app-123',
+      published_url: 'https://myapp.airoapp.ai',
+    });
+
+    const { user } = renderWithProviders(<PublishStatusAlert />);
+
+    const settingsButton = screen.getByText('builder_publish_success_button_domain');
+    await user.click(settingsButton);
+
+    await waitFor(() => {
+      expect(mockHandleViewModeChange).toHaveBeenCalledWith('domain', false);
+    });
+    expect(mockSetActiveSettingsSection).not.toHaveBeenCalled();
+    expect(mockSetActiveChatTab).not.toHaveBeenCalled();
+  });
+
+  it('should navigate to settings DOMAIN section when view settings button clicked and top-level flag is off', async () => {
+    mockSwitchboardOverrides['appbuilder-domain-top-level'] = false;
     mockDevelopStore.publishStates = {
       'app-123': { showSuccessAlert: true },
     };
@@ -261,7 +295,9 @@ describe('PublishStatusAlert', () => {
 
     await waitFor(() => {
       expect(mockSetActiveSettingsSection).toHaveBeenCalledWith('domain');
+      expect(mockSetActiveChatTab).toHaveBeenCalledWith('settings');
     });
+    expect(mockHandleViewModeChange).not.toHaveBeenCalled();
   });
 
   it('should handle fix build error button click', async () => {
@@ -485,8 +521,7 @@ describe('PublishStatusAlert', () => {
   });
 
   it('should NOT show Go Live modal if feature flag is disabled', () => {
-    // Override mock for this test to return disabled
-    mockUseSwitchboard.mockReturnValueOnce(false);
+    mockSwitchboardOverrides['appbuilder-go-live'] = false;
 
     mockDevelopStore.publishStates = {
       'app-123': { showSuccessAlert: true, hasGoneLive: false },
