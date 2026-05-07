@@ -98,6 +98,38 @@ interface PackageJsonInfo {
   devDependencies?: Record<string, string>;
 }
 
+export type ServeCommandSource = 'user' | 'scripts.start' | 'scripts.dev' | 'default';
+
+/**
+ * Resolve the PaaS start command and attribution. Extracted from `importZipFile`
+ * so the fallback chain is directly testable and the `serveCommandSource`
+ * attribution (surfaced in the `project-import.config.create` Loki event)
+ * can be asserted without re-implementing the formula in tests.
+ *
+ * Priority: user-provided → scripts.start → scripts.dev → default.
+ * Dev-script fallback forces NODE_ENV=development because some Vite/React
+ * apps break when `<pm> run dev` runs under NODE_ENV=production.
+ */
+export function resolveStartCommand(
+  userStart: string | undefined,
+  validation: { hasStartScript?: boolean; hasDevScript?: boolean },
+  pm: string
+): { startCommand: string; serveCommandSource: ServeCommandSource } {
+  if (userStart) {
+    return { startCommand: userStart, serveCommandSource: 'user' };
+  }
+  if (validation.hasStartScript) {
+    return { startCommand: `${pm} start`, serveCommandSource: 'scripts.start' };
+  }
+  if (validation.hasDevScript) {
+    return {
+      startCommand: `NODE_ENV=development ${pm} run dev`,
+      serveCommandSource: 'scripts.dev',
+    };
+  }
+  return { startCommand: DEFAULT_START_COMMAND, serveCommandSource: 'default' };
+}
+
 export class ProjectImportService {
   private logger = Logger.create({ component: 'project-import' });
   private importJobRepo = new ImportJobRepository();
@@ -510,20 +542,26 @@ export class ProjectImportService {
 
       // Phase 10: Create PaaS configuration file for uploaded apps
       const pm = validation.packageManager || 'npm';
-      // When falling back to a dev script, force development mode because some
-      // React/Vite apps break when `npm run dev` runs with NODE_ENV=production.
-      const startCommand = params.commands?.start
-        || (validation.hasStartScript ? `${pm} start` : null)
-        || (validation.hasDevScript ? `NODE_ENV=development ${pm} run dev` : null)
-        || DEFAULT_START_COMMAND;
-      this.logger.info('project-import.config.create', { jobId, appId, packageManager: pm });
+      const { startCommand, serveCommandSource } = resolveStartCommand(
+        params.commands?.start,
+        validation,
+        pm
+      );
+      this.logger.info('project-import.config.create', {
+        jobId,
+        appId,
+        packageManager: pm,
+        serveCommandSource,
+      });
       await appRestartService.createPaasConfig(
         app.path,
         undefined,
         startCommand,
         params.productId,
         params.commands?.dev,
-        pm
+        pm,
+        serveCommandSource,
+        appId
       );
       this.logger.info('project-import.config.created', { jobId, appId });
 

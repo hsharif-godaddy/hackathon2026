@@ -51,7 +51,10 @@ fi
 
 process_archive
 
-[[ -f package.json ]] || error_exit "PaaS: package.json missing"
+if [[ ! -f package.json ]]; then
+    log_event "paas.run.package-json-missing" "error" '{}'
+    error_exit "PaaS: package.json missing"
+fi
 
 # PaaS supports pnpm, yarn, and npm — mirrors preview's nomad_setup.sh priority.
 detect_package_manager "pnpm yarn npm"
@@ -62,14 +65,27 @@ detect_package_manager "pnpm yarn npm"
 # start" when the file is absent (edge case).
 CUSTOM_BUILD_CMD=""
 CUSTOM_SERVE_CMD=""
+AIRO_CONFIG_VALID=false
 if [[ -f "$AIRO_CONFIG_PATH" ]]; then
     if jq -e '.' "$AIRO_CONFIG_PATH" >/dev/null 2>&1; then
         CUSTOM_BUILD_CMD=$(jq -r '.runtime.build.command // empty' "$AIRO_CONFIG_PATH")
         CUSTOM_SERVE_CMD=$(jq -r '.runtime.serve.command // empty' "$AIRO_CONFIG_PATH")
+        AIRO_CONFIG_VALID=true
     else
         log_warn "PaaS: post-extract .airo/config.json is not valid JSON; using package-manager defaults"
     fi
 fi
+
+# jq --arg JSON-escapes each value, so embedded quotes/backslashes in the
+# shell vars are safe; empty strings pass through as "".
+log_event "paas.run.config-loaded" "info" "$(
+    jq -cn \
+        --arg hasAiroConfig "$AIRO_CONFIG_VALID" \
+        --arg serveCommand "$CUSTOM_SERVE_CMD" \
+        --arg buildCommand "$CUSTOM_BUILD_CMD" \
+        --arg packageManager "$PACKAGE_MANAGER" \
+        '{hasAiroConfig: ($hasAiroConfig == "true"), serveCommand: $serveCommand, buildCommand: $buildCommand, packageManager: $packageManager}'
+)"
 
 # Recovery path: preview normally ships node_modules in the archive.
 if [[ -d node_modules ]]; then
@@ -107,13 +123,41 @@ load_database_environment_variables
 # it from scripts.start / dev with minor massaging during import). Fall back to
 # "$PACKAGE_MANAGER start" when config is absent (edge case).
 if [[ -n "$CUSTOM_SERVE_CMD" ]]; then
+    log_event "paas.run.start-command-resolved" "info" "$(
+        jq -cn --arg source "airo-config" --arg command "$CUSTOM_SERVE_CMD" \
+            '{source: $source, command: $command}'
+    )"
     log "PaaS: starting via custom serve command from .airo/config.json: $CUSTOM_SERVE_CMD"
+    log_event "paas.run.starting" "info" "$(
+        jq -cn --arg source "airo-config" --arg command "$CUSTOM_SERVE_CMD" --arg pm "$PACKAGE_MANAGER" \
+            '{source: $source, command: $command, packageManager: $pm}'
+    )"
     exec sh -c "$CUSTOM_SERVE_CMD"
 fi
 
-if ! jq -e '.scripts.start' package.json >/dev/null 2>&1; then
-    error_exit "PaaS: package.json must define scripts.start (or runtime.serve.command in .airo/config.json)"
+# `jq -e '.scripts.start'` succeeds for "" (only null/false are falsy), so read
+# the value and validate it's non-empty after leading/trailing trim — same rule
+# as the TS preflight, so an empty/whitespace scripts.start fails the same way
+# as a missing one instead of exec'ing `<pm> start` and hanging.
+PKG_START_CMD=$(jq -r '.scripts.start // empty' package.json)
+PKG_START_CMD="${PKG_START_CMD#"${PKG_START_CMD%%[![:space:]]*}"}"
+PKG_START_CMD="${PKG_START_CMD%"${PKG_START_CMD##*[![:space:]]}"}"
+if [[ -z "$PKG_START_CMD" ]]; then
+    log_event "paas.run.missing-start-command" "error" "$(
+        jq -cn \
+            --arg hasAiroConfig "$AIRO_CONFIG_VALID" \
+            '{hasAiroConfig: ($hasAiroConfig == "true"), hasStartScript: false, serveCommandFromAiroConfig: ""}'
+    )"
+    error_exit "PaaS: package.json must define a non-empty scripts.start (or runtime.serve.command in .airo/config.json)"
 fi
 
+log_event "paas.run.start-command-resolved" "info" "$(
+    jq -cn --arg source "package.json" --arg command "$PKG_START_CMD" \
+        '{source: $source, command: $command}'
+)"
 log "PaaS: starting via $PACKAGE_MANAGER start"
+log_event "paas.run.starting" "info" "$(
+    jq -cn --arg source "package.json" --arg command "$PACKAGE_MANAGER start" --arg pm "$PACKAGE_MANAGER" \
+        '{source: $source, command: $command, packageManager: $pm}'
+)"
 exec "$PACKAGE_MANAGER" start

@@ -19,6 +19,37 @@ log_warn() {
     echo "[WARN] $(date '+%Y-%m-%d %H:%M:%S') - $1" >&2
 }
 
+# Emit a structured JSON event line on stdout. Picked up by the container log
+# collector alongside the plain `log` / `log_warn` output, but carries an
+# `event` field so Grafana/Loki can filter by event name — the plain-text
+# [INFO]/[ERROR] lines above are not queryable that way.
+#
+# Usage: log_event <event> <level> [data_json]
+#   event      dotted event name, e.g. "paas.run.config-loaded"
+#   level      "info" | "warn" | "error"
+#   data_json  optional RFC-8259 JSON *object* literal (already including
+#              braces) — callers can pass `{}` or omit it entirely.
+# Values inside data_json that come from shell variables must be
+# JSON-escaped by the caller. For common cases (strings that don't contain
+# quotes/backslashes/control chars) this is fine; for anything else use jq
+# at the call site.
+log_event() {
+    local event="$1"
+    local level="${2:-info}"
+    local data="${3:-}"
+    # Callers that pass `$(jq ...)` output can hand us an explicit empty string
+    # when jq fails; `${3:-}` doesn't help there. Normalize to `{}` so we never
+    # emit `"data":` (invalid JSON — Loki drops it to unqueryable text).
+    [[ -z "$data" ]] && data='{}'
+    # Seconds precision only — the publish container is node:*-alpine, whose
+    # BusyBox `date` does not implement GNU's `%N` / `%<width>N` and silently
+    # drops the format char *plus trailing literals*, leaving a dangling `.`
+    # and no `Z`. Loki supplies its own ingest timestamp at nanosecond
+    # resolution, so client-side ms precision isn't load-bearing.
+    printf '{"event":"%s","level":"%s","timestamp":"%s","data":%s}\n' \
+        "$event" "$level" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$data"
+}
+
 # Detect PaaS allocations by matching productId against ^paas-.+.
 # *** KEEP IN SYNC with container-scripts/preview/nomad_setup.sh ***
 # Preview and publish are separate containers; no shared runtime source.

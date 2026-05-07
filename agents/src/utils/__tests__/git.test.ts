@@ -331,7 +331,9 @@ describe('GitUtils', () => {
         commitHash
       });
 
-      // Verify only 2 calls: mkdir and tar (no dist check)
+      // Verify only 2 calls: mkdir and tar (no dist check).
+      // The archive manifest listing is deferred via setImmediate and runs
+      // on a later tick, so it's not observable from this synchronous assertion.
       expect(mockDevSupervisor.exec).toHaveBeenCalledTimes(2);
 
       // Verify no dist check command was called
@@ -514,7 +516,8 @@ describe('GitUtils', () => {
             commitHash
           });
 
-          // Verify exactly 3 calls: bundle check, mkdir, tar (no dist check)
+          // Verify exactly 3 calls: bundle check, mkdir, tar (no dist check).
+          // Archive manifest is deferred via setImmediate — not observable here.
           expect(mockDevSupervisor.exec).toHaveBeenCalledTimes(3);
 
           // Explicitly verify no dist check command was called
@@ -563,6 +566,7 @@ describe('GitUtils', () => {
           await gitUtils.createArchive('/app', commitHash, undefined, { includeSource: true });
 
           // Verify no bundle check or dist check was called
+          // (2 = mkdir + tar; archive manifest deferred via setImmediate)
           expect(mockDevSupervisor.exec).toHaveBeenCalledTimes(2);
           const allCommands = mockDevSupervisor.exec.mock.calls.map(call => call[0].command);
           const hasBundleCheck = allCommands.some(cmd => cmd.includes('server.bundle.mjs'));
@@ -732,6 +736,8 @@ describe('GitUtils', () => {
             commitHash: 'abc1234',
           });
 
+          // 3 calls: mkdir, list-untracked (fails), tar.
+          // Archive manifest is deferred via setImmediate — not observable here.
           expect(mockDevSupervisor.exec).toHaveBeenCalledTimes(3);
           const tarCallArgs = mockDevSupervisor.exec.mock.calls[2][0];
           expect(tarCallArgs.command).not.toContain('--exclude=test.json');
@@ -753,6 +759,7 @@ describe('GitUtils', () => {
           // Should only have 2 calls: mkdir, tar
           // No manifest check or copy because full source includes everything
           // No dist check because includeSource: true skips it
+          // Archive manifest event is deferred via setImmediate — not observable here.
           expect(mockDevSupervisor.exec).toHaveBeenCalledTimes(2);
 
           // Verify no cp command was called

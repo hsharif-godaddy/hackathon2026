@@ -776,6 +776,91 @@ export class GitUtils {
     if (!tarResult.success) {
       throw new Error(`Failed to create archive: ${tarResult.stderr || 'Unknown error'}`);
     }
+
+    // Emit a manifest of key entries so we can answer "did X ship?" without
+    // re-fetching the tar. Deferred via setImmediate so zero work happens on
+    // the caller's synchronous path; wrapped in .catch to guarantee no
+    // unhandled rejection can escape. A manifest failure is never worth
+    // failing the publish over. Use warn (not debug) here because the inner
+    // catch already handles expected exec failures at debug — anything that
+    // escapes to this outer catch is a programming error (e.g. a TypeError
+    // from `this.devSupervisor!` being null) and would otherwise be
+    // invisible at prod LOG_LEVEL=info.
+    setImmediate(() => {
+      this.emitArchiveManifest(archivePath).catch((error) => {
+        logger.warn('git.archive.create.manifest.skip', {
+          archivePath,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+    });
+  }
+
+  /**
+   * Log the presence of critical entries (`.airo/config.json`, `package.json`,
+   * `node_modules/`) plus size + entry count for the archive just created.
+   * Runs `tar -tzf` once in the container. All data comes from a single exec
+   * call so the agent makes one round-trip.
+   */
+  private async emitArchiveManifest(archivePath: string): Promise<void> {
+    // Cap entry listing so a huge node_modules doesn't push tens of thousands
+    // of lines into the shell pipe. hasAiroConfig / hasPackageJson rely on
+    // those entries appearing within the first ENTRY_LIMIT; when the cap is
+    // reached we set entriesTruncated so queries can distinguish "genuinely
+    // absent" from "possibly past the cap".
+    const ENTRY_LIMIT = 20000;
+    try {
+      const manifestCmd =
+        `{ stat -c '%s' "${archivePath}" 2>/dev/null || wc -c < "${archivePath}"; } ; ` +
+        `echo '---entries---' ; ` +
+        `tar -tzf "${archivePath}" 2>/dev/null | head -n ${ENTRY_LIMIT}`;
+      const result = await this.devSupervisor!.exec({
+        command: manifestCmd,
+        working_dir: '/app',
+        timeout: 15,
+        capture_output: true,
+      });
+
+      if (!result.success) {
+        logger.debug('git.archive.create.manifest.skip', {
+          archivePath,
+          stderr: result.stderr,
+        });
+        return;
+      }
+
+      const [sizeLine, entriesBlock = ''] = (result.stdout ?? '').split(
+        '---entries---'
+      );
+      const sizeBytes = parseInt((sizeLine || '').trim(), 10);
+
+      // Entries in tar listings are relative paths like "./.airo/config.json"
+      // or "./package.json". Accept leading "./" or bare forms.
+      const entries = entriesBlock.split('\n').filter((line) => line.length > 0);
+      const has = (suffix: string): boolean =>
+        entries.some((e) => {
+          const normalized = e.startsWith('./') ? e.slice(2) : e;
+          return normalized === suffix || normalized.startsWith(`${suffix}/`);
+        });
+
+      logger.info('git.archive.create.manifest', {
+        archivePath,
+        sizeBytes: Number.isFinite(sizeBytes) ? sizeBytes : undefined,
+        hasAiroConfig: has('.airo/config.json'),
+        hasPackageJson: has('package.json'),
+        hasNodeModules: has('node_modules'),
+        entryCount: entries.length,
+        // Distinguishes "config is genuinely absent" from "listing was
+        // truncated and the config may be past the 20k cap".
+        entriesTruncated: entries.length === ENTRY_LIMIT,
+      });
+    } catch (error) {
+      // Belt-and-suspenders — any throw here is non-fatal.
+      logger.debug('git.archive.create.manifest.skip', {
+        archivePath,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   private async getUntrackedExclusions(): Promise<string[]> {

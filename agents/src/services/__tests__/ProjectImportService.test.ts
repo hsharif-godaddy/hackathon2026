@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi, type Mock } from 'vitest';
-import { ProjectImportService } from '../ProjectImportService.js';
+import { ProjectImportService, resolveStartCommand } from '../ProjectImportService.js';
 import { DevSupervisorClientFactory } from '../../utils/dev-supervisor-client-factory.js';
 import { AppRepository } from '../../database/repositories/AppRepository.js';
 import { ImportJobRepository } from '../../database/repositories/ImportJobRepository.js';
@@ -316,144 +316,63 @@ describe('ProjectImportService', () => {
       });
     });
 
-    describe('Start Command Selection Logic', () => {
-      /**
-       * Test the command selection logic directly
-       * Logic:
-       * params.commands?.start
-       *   || (hasStartScript ? `${pm} start` : null)
-       *   || (hasDevScript ? `NODE_ENV=development ${pm} run dev` : null)
-       *   || DEFAULT_START_COMMAND
-       */
+    describe('resolveStartCommand', () => {
+      // Priority: user-provided → scripts.start → scripts.dev → default.
+      // Each case asserts BOTH the resolved command AND the serveCommandSource
+      // attribution that gets forwarded to `createPaasConfig` and the
+      // `project-import.config.create` Loki event — a regression that always
+      // emitted e.g. `'default'` would be invisible without this assertion.
 
-      it('should use user-provided command when available (highest priority)', () => {
-        const userCommand = 'node custom-server.js';
-        const validation = { hasStartScript: true, hasDevScript: true, packageManager: 'npm' as const };
-        const pm = validation.packageManager || 'npm';
-
-        const startCommand = userCommand
-          || (validation.hasStartScript ? `${pm} start` : null)
-          || (validation.hasDevScript ? `NODE_ENV=development ${pm} run dev` : null)
-          || 'npm start';
-
-        expect(startCommand).toBe('node custom-server.js');
+      it('uses user-provided command with attribution "user" (highest priority, even when scripts exist)', () => {
+        const result = resolveStartCommand(
+          'node custom-server.js',
+          { hasStartScript: true, hasDevScript: true },
+          'npm'
+        );
+        expect(result).toEqual({ startCommand: 'node custom-server.js', serveCommandSource: 'user' });
       });
 
-      it('should use npm start when hasStartScript is true and packageManager is npm', () => {
-        const userCommand = undefined;
-        const validation = { hasStartScript: true, hasDevScript: true, packageManager: 'npm' as const };
-        const pm = validation.packageManager || 'npm';
-
-        const startCommand = userCommand
-          || (validation.hasStartScript ? `${pm} start` : null)
-          || (validation.hasDevScript ? `NODE_ENV=development ${pm} run dev` : null)
-          || 'npm start';
-
-        expect(startCommand).toBe('npm start');
+      it('uses user-provided command with attribution "user" even when no scripts exist', () => {
+        const result = resolveStartCommand(
+          'python app.py',
+          { hasStartScript: false, hasDevScript: false },
+          'npm'
+        );
+        expect(result).toEqual({ startCommand: 'python app.py', serveCommandSource: 'user' });
       });
 
-      it('should use NODE_ENV=development npm run dev when only hasDevScript is true (Vite projects)', () => {
-        const userCommand = undefined;
-        const validation = { hasStartScript: false, hasDevScript: true, packageManager: 'npm' as const };
-        const pm = validation.packageManager || 'npm';
-
-        const startCommand = userCommand
-          || (validation.hasStartScript ? `${pm} start` : null)
-          || (validation.hasDevScript ? `NODE_ENV=development ${pm} run dev` : null)
-          || 'npm start';
-
-        expect(startCommand).toBe('NODE_ENV=development npm run dev');
+      it('prefers scripts.start over scripts.dev when both are present', () => {
+        const result = resolveStartCommand(undefined, { hasStartScript: true, hasDevScript: true }, 'npm');
+        expect(result).toEqual({ startCommand: 'npm start', serveCommandSource: 'scripts.start' });
       });
 
-      it('should fallback to default when no scripts exist', () => {
-        const userCommand = undefined;
-        const validation = { hasStartScript: false, hasDevScript: false, packageManager: 'npm' as const };
-        const pm = validation.packageManager || 'npm';
-
-        const startCommand = userCommand
-          || (validation.hasStartScript ? `${pm} start` : null)
-          || (validation.hasDevScript ? `NODE_ENV=development ${pm} run dev` : null)
-          || 'npm start';
-
-        expect(startCommand).toBe('npm start');
+      it('falls back to scripts.dev with NODE_ENV=development when only dev script exists (Vite)', () => {
+        const result = resolveStartCommand(undefined, { hasStartScript: false, hasDevScript: true }, 'npm');
+        expect(result).toEqual({
+          startCommand: 'NODE_ENV=development npm run dev',
+          serveCommandSource: 'scripts.dev',
+        });
       });
 
-      it('should prefer start over dev when both exist', () => {
-        const userCommand = undefined;
-        const validation = { hasStartScript: true, hasDevScript: true, packageManager: 'npm' as const };
-        const pm = validation.packageManager || 'npm';
-
-        const startCommand = userCommand
-          || (validation.hasStartScript ? `${pm} start` : null)
-          || (validation.hasDevScript ? `NODE_ENV=development ${pm} run dev` : null)
-          || 'npm start';
-
-        expect(startCommand).toBe('npm start');
+      it('falls back to DEFAULT_START_COMMAND with attribution "default" when no scripts exist', () => {
+        const result = resolveStartCommand(undefined, { hasStartScript: false, hasDevScript: false }, 'npm');
+        expect(result.serveCommandSource).toBe('default');
+        // startCommand value comes from AppRestartService.DEFAULT_START_COMMAND — assert a plausible shape
+        expect(typeof result.startCommand).toBe('string');
+        expect(result.startCommand.length).toBeGreaterThan(0);
       });
 
-      it('should use user command even when no scripts exist', () => {
-        const userCommand = 'python app.py';
-        const validation = { hasStartScript: false, hasDevScript: false, packageManager: 'npm' as const };
-        const pm = validation.packageManager || 'npm';
-
-        const startCommand = userCommand
-          || (validation.hasStartScript ? `${pm} start` : null)
-          || (validation.hasDevScript ? `NODE_ENV=development ${pm} run dev` : null)
-          || 'npm start';
-
-        expect(startCommand).toBe('python app.py');
-      });
-
-      it('should use yarn start when packageManager is yarn and hasStartScript is true', () => {
-        const userCommand = undefined;
-        const validation = { hasStartScript: true, hasDevScript: true, packageManager: 'yarn' as const };
-        const pm = validation.packageManager || 'npm';
-
-        const startCommand = userCommand
-          || (validation.hasStartScript ? `${pm} start` : null)
-          || (validation.hasDevScript ? `${pm} run dev` : null)
-          || 'npm start';
-
-        expect(startCommand).toBe('yarn start');
-      });
-
-      it('should use NODE_ENV=development yarn run dev when packageManager is yarn and only hasDevScript is true', () => {
-        const userCommand = undefined;
-        const validation = { hasStartScript: false, hasDevScript: true, packageManager: 'yarn' as const };
-        const pm = validation.packageManager || 'npm';
-
-        const startCommand = userCommand
-          || (validation.hasStartScript ? `${pm} start` : null)
-          || (validation.hasDevScript ? `NODE_ENV=development ${pm} run dev` : null)
-          || 'npm start';
-
-        expect(startCommand).toBe('NODE_ENV=development yarn run dev');
-      });
-
-      it('should use pnpm start when packageManager is pnpm and hasStartScript is true', () => {
-        const userCommand = undefined;
-        const validation = { hasStartScript: true, hasDevScript: true, packageManager: 'pnpm' as const };
-        const pm = validation.packageManager || 'npm';
-
-        const startCommand = userCommand
-          || (validation.hasStartScript ? `${pm} start` : null)
-          || (validation.hasDevScript ? `NODE_ENV=development ${pm} run dev` : null)
-          || 'npm start';
-
-        expect(startCommand).toBe('pnpm start');
-      });
-
-      it('should use NODE_ENV=development pnpm run dev when packageManager is pnpm and only hasDevScript is true', () => {
-        const userCommand = undefined;
-        const validation = { hasStartScript: false, hasDevScript: true, packageManager: 'pnpm' as const };
-        const pm = validation.packageManager || 'npm';
-
-        const startCommand = userCommand
-          || (validation.hasStartScript ? `${pm} start` : null)
-          || (validation.hasDevScript ? `NODE_ENV=development ${pm} run dev` : null)
-          || 'npm start';
-
-        expect(startCommand).toBe('NODE_ENV=development pnpm run dev');
+      it.each([
+        ['npm', 'npm start', 'NODE_ENV=development npm run dev'],
+        ['yarn', 'yarn start', 'NODE_ENV=development yarn run dev'],
+        ['pnpm', 'pnpm start', 'NODE_ENV=development pnpm run dev'],
+      ])('resolves correctly for packageManager=%s', (pm, expectedStart, expectedDev) => {
+        expect(
+          resolveStartCommand(undefined, { hasStartScript: true, hasDevScript: false }, pm)
+        ).toEqual({ startCommand: expectedStart, serveCommandSource: 'scripts.start' });
+        expect(
+          resolveStartCommand(undefined, { hasStartScript: false, hasDevScript: true }, pm)
+        ).toEqual({ startCommand: expectedDev, serveCommandSource: 'scripts.dev' });
       });
     });
 

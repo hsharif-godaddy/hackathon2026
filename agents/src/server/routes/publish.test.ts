@@ -44,16 +44,18 @@ vi.mock('../middleware/app-ownership.js', () => ({
   validateAppOwnershipFromQuery: vi.fn(() => (_req: any, _res: any, next: any) => next())
 }));
 
-// Mock the publish strategies
-vi.mock('./publish/strategies/index.js', () => ({
-  getPublishStrategy: vi.fn(),
-  BuildError: class BuildError extends Error {
-    constructor(message: string) {
-      super(message);
-      this.name = 'BuildError';
-    }
-  }
-}));
+// Mock the publish strategies. Keep `getPublishStrategy` mockable per-test,
+// but pass through the real error classes so `instanceof` checks in the
+// route (publish.ts) match errors thrown via these same class references.
+vi.mock('./publish/strategies/index.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./publish/strategies/index.js')>();
+  return {
+    getPublishStrategy: vi.fn(),
+    BuildError: actual.BuildError,
+    PreviewNotRunningError: actual.PreviewNotRunningError,
+    MissingStartCommandError: actual.MissingStartCommandError,
+  };
+});
 
 vi.mock('../ai-lib-websocket-server.js', () => ({
   getGitHookService: vi.fn(() => ({
@@ -83,7 +85,7 @@ vi.mock('../../logging/index.js', () => ({
 
 // Import after mocks
 const publishRouter = await import('./publish.js').then(m => m.default);
-import { getPublishStrategy } from './publish/strategies/index.js';
+import { getPublishStrategy, MissingStartCommandError } from './publish/strategies/index.js';
 import { getGitHookService } from '../ai-lib-websocket-server.js';
 
 describe('Publish Route Authorization', () => {
@@ -374,6 +376,39 @@ describe('Publish Route Authorization', () => {
         .expect(200);
 
       expect(mockClearBranchTracking).not.toHaveBeenCalled();
+    });
+
+    it('returns 412 with preflight payload when prepareBuild throws MissingStartCommandError', async () => {
+      vi.mocked(getGitHookService).mockReturnValue({
+        hasActiveBranch: vi.fn().mockReturnValue(false),
+        clearBranchTracking: vi.fn(),
+      } as any);
+
+      mockFindById.mockReturnValue({ id: 'test-app-id', path: '/tmp/test-app' });
+      mockCreateForApp.mockReturnValue({ exec: vi.fn() });
+
+      const preflight = {
+        hasAiroConfig: false,
+        serveCommand: null,
+        hasPackageJson: true,
+        hasStartScript: false,
+        startScript: null,
+      };
+
+      vi.mocked(getPublishStrategy).mockReturnValue({
+        key: 'paas',
+        prepareBuild: vi.fn().mockRejectedValue(new MissingStartCommandError(preflight)),
+        deploy: vi.fn(),
+      } as any);
+
+      const testApp = createPublishApp();
+      const response = await request(testApp)
+        .post('/apps/test-app-id/publish')
+        .send({})
+        .expect(412);
+
+      expect(response.body.preflight).toEqual(preflight);
+      expect(response.body.error).toMatch(/start command/i);
     });
   });
 });

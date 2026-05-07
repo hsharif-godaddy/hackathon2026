@@ -7,4 +7,9 @@ export type {
 
 export { getPublishStrategy } from './PublishStrategy.js';
 export { DefaultPublishStrategy } from './DefaultPublishStrategy.js';
-export { PaaSPublishStrategy, BuildError, PreviewNotRunningError } from './PaaSPublishStrategy.js';
+export {
+  PaaSPublishStrategy,
+  BuildError,
+  PreviewNotRunningError,
+  MissingStartCommandError,
+} from './PaaSPublishStrategy.js';

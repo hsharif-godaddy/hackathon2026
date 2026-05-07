@@ -191,6 +191,14 @@ export interface PaasConfig {
   };
 }
 
+/**
+ * Provenance of the `runtime.serve.command` we write into `.airo/config.json`.
+ * Captured at the call site where the fallback chain resolves. Surfaces in
+ * the `app-restart.paas-config.written` event so we can audit, post-hoc,
+ * why a customer ended up with a particular start command.
+ */
+export type ServeCommandSource = 'user' | 'scripts.start' | 'scripts.dev' | 'default';
+
 export class AppRestartService {
   private logger = Logger.create({ component: 'app-restart' });
 
@@ -306,7 +314,9 @@ export class AppRestartService {
         options?.commands?.start,
         undefined, // productId
         options?.commands?.dev,
-        packageManager
+        packageManager,
+        undefined, // serveCommandSource — caller has no fallback chain; default resolves from customStartCommand presence
+        appId
       );
 
       // Step 5: Restart dev server with resolved start command
@@ -550,7 +560,23 @@ export class AppRestartService {
     customStartCommand?: string,
     productId?: string,
     customDevCommand?: string,
-    packageManager: PackageManager = 'npm'
+    packageManager: PackageManager = 'npm',
+    /**
+     * Where the resolved `runtime.serve.command` came from. Callers that
+     * already ran a fallback chain (e.g. ProjectImportService Phase 10)
+     * pass the true source; callers without a chain can pass
+     * `customStartCommand ? 'user' : 'default'`. Defaults to the latter
+     * for backwards compatibility.
+     */
+    serveCommandSource?: ServeCommandSource,
+    /**
+     * App identifier — surfaced on `paas-config.written` / `.write-failed`
+     * so Loki queries can filter by the project-wide `app_id` field.
+     * Optional for backwards compatibility; existing callers without an
+     * appId in scope can omit it (older `app-restart.config.created`
+     * event is unchanged).
+     */
+    appId?: string
   ): Promise<void> {
     const airoDir = join(appPath, '.airo');
     const configPath = join(airoDir, 'config.json');
@@ -559,6 +585,8 @@ export class AppRestartService {
     const finalStartCmd = customStartCommand || DEFAULT_START_COMMAND;
     const finalDevCmd = customDevCommand || finalStartCmd;
     const finalBuildCmd = getBuildCommand(packageManager);
+    const resolvedSource: ServeCommandSource =
+      serveCommandSource ?? (customStartCommand ? 'user' : 'default');
 
     const paasConfig: PaasConfig = {
       runtime: {
@@ -581,10 +609,39 @@ export class AppRestartService {
       paasConfig.cleanAppDirBeforeExtract = true;
     }
 
-    await mkdir(airoDir, { recursive: true });
-    await writeFile(configPath, JSON.stringify(paasConfig, null, 2), 'utf-8');
+    try {
+      await mkdir(airoDir, { recursive: true });
+      await writeFile(configPath, JSON.stringify(paasConfig, null, 2), 'utf-8');
+    } catch (error) {
+      this.logger.error('app-restart.paas-config.write-failed', {
+        appId,
+        appPath,
+        path: configPath,
+        // Preserve stack trace so ENOSPC / EACCES / path-composition bugs are
+        // distinguishable from Loki alone. Matches the `{name,message,stack}`
+        // shape other error events in this codebase use (e.g. route.publish.error).
+        error: error instanceof Error
+          ? { name: error.name, message: error.message, stack: error.stack }
+          : { name: 'UnknownError', message: String(error) },
+      });
+      throw error;
+    }
 
+    // Legacy event kept for dashboards that already filter on it. New
+    // consumers should prefer `app-restart.paas-config.written` which carries
+    // the resolved commands + source.
     this.logger.info('app-restart.config.created', { appPath });
+    this.logger.info('app-restart.paas-config.written', {
+      appId,
+      appPath,
+      path: configPath,
+      serveCommand: finalStartCmd,
+      serveCommandSource: resolvedSource,
+      buildCommand: finalBuildCmd,
+      devCommand: finalDevCmd,
+      productId: productId ?? null,
+      cleanAppDirBeforeExtract: paasConfig.cleanAppDirBeforeExtract ?? false,
+    });
   }
 
   /**

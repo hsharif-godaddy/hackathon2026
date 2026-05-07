@@ -9,7 +9,7 @@ import type { AuthenticatedRequest } from '../middleware/jwt-auth.js';
 import type { DevSupervisorClient, PublishRequest, PublishSuccessResponse, UnpublishResponse } from '../../services/DevSupervisorClient.js';
 import { requirePermission } from '../middleware/require-permission.js';
 import { validateAppOwnership } from '../middleware/app-ownership.js';
-import { getPublishStrategy, BuildError, PreviewNotRunningError } from './publish/strategies/index.js';
+import { getPublishStrategy, BuildError, PreviewNotRunningError, MissingStartCommandError } from './publish/strategies/index.js';
 import type { PublishContext } from './publish/strategies/index.js';
 import { getGitHookService } from '../ai-lib-websocket-server.js';
 import { validatePublishedSeo } from '../../services/SeoValidator.js';
@@ -177,6 +177,12 @@ router.post('/apps/:id/publish', requirePermission('canPublish'), async (req, re
           error: error.message,
           processState: error.processState,
           details: error.details,
+        });
+      }
+      if (error instanceof MissingStartCommandError) {
+        return res.status(error.statusCode).json({
+          error: error.message,
+          preflight: error.preflight,
         });
       }
       throw error;

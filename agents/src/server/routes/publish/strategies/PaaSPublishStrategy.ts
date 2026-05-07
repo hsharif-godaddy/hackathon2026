@@ -25,6 +25,36 @@ const PAAS_PUBLISH_RECOVERY_CONFIG = {
 /** Valid process states from dev-supervisor plus 'unknown' for connection failures */
 type PreviewProcessState = ProcessInfo['state'] | 'unknown';
 
+/** Parse JSON or return null — used for pre-flight file reads that may be missing or malformed. */
+function safeJsonParse(raw: string): unknown {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Walk a nested path on an `unknown` value, returning the string at the end
+ * only if every step is a plain object and the leaf is a non-empty,
+ * non-whitespace string. Lets preflight read values from arbitrary parsed
+ * JSON without leaning on `any`.
+ */
+function extractNonEmptyString(obj: unknown, path: string[]): string | null {
+  let cur: unknown = obj;
+  for (const key of path) {
+    if (typeof cur !== 'object' || cur === null) return null;
+    cur = (cur as Record<string, unknown>)[key];
+  }
+  return typeof cur === 'string' && cur.trim() !== '' ? cur : null;
+}
+
+function isPlainObject(value: unknown): boolean {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 /**
  * Error thrown when preview is not in a healthy/running state
  */
@@ -39,6 +69,35 @@ export class PreviewNotRunningError extends Error {
     super(message);
     this.name = 'PreviewNotRunningError';
   }
+}
+
+/**
+ * Error thrown when pre-flight validation finds neither `.airo/config.json`
+ * with `runtime.serve.command` nor `package.json` with `scripts.start`.
+ * Without one of these, `paas-run.sh` has no start command and will abort —
+ * we raise 412 here so the caller sees a clear error instead of a 2-minute
+ * health-check timeout.
+ */
+export class MissingStartCommandError extends Error {
+  readonly statusCode = 412;
+  constructor(
+    public readonly preflight: PaasPreflightResult
+  ) {
+    super(
+      'PaaS app has no start command: neither .airo/config.json ' +
+      '(runtime.serve.command) nor package.json (scripts.start) defines one. ' +
+      'Re-run the project import, or add a "start" script to package.json.'
+    );
+    this.name = 'MissingStartCommandError';
+  }
+}
+
+interface PaasPreflightResult {
+  hasAiroConfig: boolean;
+  serveCommand: string | null;
+  hasPackageJson: boolean;
+  hasStartScript: boolean;
+  startScript: string | null;
 }
 
 /**
@@ -70,6 +129,11 @@ export class PaaSPublishStrategy implements PublishStrategy {
 
     // Step 0: Ensure preview is running before proceeding
     await this.ensurePreviewRunning(context);
+
+    // Step 0.5: Pre-flight — verify the archive will contain a usable start
+    // command, so we don't ship a tar that paas-run.sh will reject after a
+    // 2-minute health-check timeout.
+    await this.preflightStartCommand(context);
 
     // No git operations - generate hex timestamp identifier
     // Format as hex to pass git.ts validation (requires ^[a-f0-9]{7,40}$)
@@ -109,6 +173,77 @@ export class PaaSPublishStrategy implements PublishStrategy {
       commitHash,
       archivePath: archiveResult.path,
     };
+  }
+
+  /**
+   * Read the /app workspace via dev-supervisor and confirm the publish
+   * container will find a start command. Mirrors paas-run.sh: prefer
+   * `.airo/config.json` → `runtime.serve.command`, else `package.json` →
+   * `scripts.start`. Emits a diagnostic event with both flags. If neither
+   * is present, throws MissingStartCommandError so the route returns 412
+   * instead of hanging for the full health-check timeout.
+   */
+  private async preflightStartCommand(context: PublishContext): Promise<void> {
+    const { logger, devSupervisor, appId } = context;
+
+    // Single shell call, two cat invocations separated by a sentinel.
+    // `|| true` on each cat keeps the overall exit code 0 when a file is
+    // missing — otherwise the last cat's non-zero status makes
+    // `result.success` false, and we can't tell "supervisor unreachable"
+    // from "file absent" (the case we actually want to detect).
+    const SEP = '---airo-preflight-sep---';
+    const result = await devSupervisor.exec({
+      command: `cat /app/.airo/config.json 2>/dev/null || true; printf '\\n${SEP}\\n'; cat /app/package.json 2>/dev/null || true`,
+      timeout: 10,
+      capture_output: true,
+    });
+
+    // If exec itself failed (supervisor unreachable, etc.), we can't
+    // distinguish "config missing" from "couldn't read the container" —
+    // skipping the preflight lets the archive ship and the existing
+    // health-check timeout catches a genuinely broken app. Failing hard
+    // here would surface as a misleading 412 "add a start script" when the
+    // real cause was infrastructure. Same judgement as `emitArchiveManifest`:
+    // don't fail the publish on instrumentation.
+    if (!result.success) {
+      logger.warn(`route.publish.${this.key}.preflight.exec-failed`, {
+        appId,
+        stderr: result.stderr?.slice(0, 500),
+      });
+      return;
+    }
+
+    // exec "success" only tells us the shell ran; the cats may have failed
+    // individually. We detect each file's presence by whether its section
+    // parses as JSON.
+    const [airoRaw = '', packageRaw = ''] = (result.stdout ?? '').split(SEP);
+
+    const airoConfig = safeJsonParse(airoRaw);
+    const packageJson = safeJsonParse(packageRaw);
+
+    const serveCommand = extractNonEmptyString(airoConfig, ['runtime', 'serve', 'command']);
+    const startScript = extractNonEmptyString(packageJson, ['scripts', 'start']);
+
+    const preflight: PaasPreflightResult = {
+      hasAiroConfig: isPlainObject(airoConfig),
+      serveCommand,
+      hasPackageJson: isPlainObject(packageJson),
+      hasStartScript: startScript !== null,
+      startScript,
+    };
+
+    logger.info(`route.publish.${this.key}.preflight.config`, {
+      appId,
+      ...preflight,
+    });
+
+    if (!serveCommand && !startScript) {
+      logger.error(
+        `route.publish.${this.key}.preflight.missing-start-command`,
+        { appId, ...preflight }
+      );
+      throw new MissingStartCommandError(preflight);
+    }
   }
 
   /**

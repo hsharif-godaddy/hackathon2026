@@ -1,6 +1,64 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { PaaSPublishStrategy, BuildError, PreviewNotRunningError } from '../PaaSPublishStrategy.js';
+import {
+  PaaSPublishStrategy,
+  BuildError,
+  PreviewNotRunningError,
+  MissingStartCommandError,
+} from '../PaaSPublishStrategy.js';
 import type { PublishContext } from '../PublishStrategy.js';
+
+/**
+ * Build a preflight-call stdout blob matching the shape PaaSPublishStrategy
+ * expects: `<airo-config-body> ---airo-preflight-sep--- <package-json-body>`.
+ * Any arg can be `null` to simulate that file being absent (empty section).
+ */
+function buildPreflightStdout(
+  airoConfig: object | null,
+  packageJson: object | null
+): string {
+  const airo = airoConfig === null ? '' : JSON.stringify(airoConfig);
+  const pkg = packageJson === null ? '' : JSON.stringify(packageJson);
+  return `${airo}\n---airo-preflight-sep---\n${pkg}`;
+}
+
+/**
+ * Route mocked exec calls to responses based on a command substring match.
+ * Returns the mock so individual tests can override.
+ */
+function installExecRouter(
+  mockDevSupervisor: { exec: ReturnType<typeof vi.fn> },
+  opts: {
+    previewStatus?: string;
+    previewSuccess?: boolean;
+    previewThrows?: Error;
+    airoConfig?: object | null;
+    packageJson?: object | null;
+    preflightSuccess?: boolean;
+  } = {}
+): void {
+  const {
+    previewStatus = '200',
+    previewSuccess = true,
+    previewThrows,
+    airoConfig = { runtime: { serve: { command: 'npm start' } } },
+    packageJson = { scripts: { start: 'node server.js' } },
+    preflightSuccess = true,
+  } = opts;
+
+  mockDevSupervisor.exec.mockImplementation(async (args: { command: string }) => {
+    if (args.command.includes('curl')) {
+      if (previewThrows) throw previewThrows;
+      return { stdout: previewStatus, success: previewSuccess };
+    }
+    if (args.command.includes('airo-preflight-sep')) {
+      return {
+        stdout: buildPreflightStdout(airoConfig, packageJson),
+        success: preflightSuccess,
+      };
+    }
+    throw new Error(`Unexpected exec command: ${args.command}`);
+  });
+}
 
 describe('PaaSPublishStrategy', () => {
   let strategy: PaaSPublishStrategy;
@@ -49,8 +107,7 @@ describe('PaaSPublishStrategy', () => {
 
   describe('prepareBuild', () => {
     beforeEach(() => {
-      // Default: curl returns 200 (healthy preview)
-      mockDevSupervisor.exec.mockResolvedValue({ stdout: '200', success: true });
+      installExecRouter(mockDevSupervisor);
     });
 
     it('should generate hex timestamp identifier', async () => {
@@ -120,7 +177,7 @@ describe('PaaSPublishStrategy', () => {
 
   describe('preview health check', () => {
     it('should proceed when HTTP returns 200', async () => {
-      mockDevSupervisor.exec.mockResolvedValue({ stdout: '200', success: true });
+      installExecRouter(mockDevSupervisor, { previewStatus: '200' });
 
       const result = await strategy.prepareBuild(mockContext);
 
@@ -136,7 +193,7 @@ describe('PaaSPublishStrategy', () => {
     });
 
     it('should proceed when HTTP returns 301 (3xx)', async () => {
-      mockDevSupervisor.exec.mockResolvedValue({ stdout: '301', success: true });
+      installExecRouter(mockDevSupervisor, { previewStatus: '301' });
 
       const result = await strategy.prepareBuild(mockContext);
 
@@ -144,25 +201,25 @@ describe('PaaSPublishStrategy', () => {
     });
 
     it('should throw PreviewNotRunningError when HTTP returns 404', async () => {
-      mockDevSupervisor.exec.mockResolvedValue({ stdout: '404', success: true });
+      installExecRouter(mockDevSupervisor, { previewStatus: '404' });
 
       await expect(strategy.prepareBuild(mockContext)).rejects.toThrow(PreviewNotRunningError);
     });
 
     it('should throw PreviewNotRunningError when HTTP returns 500', async () => {
-      mockDevSupervisor.exec.mockResolvedValue({ stdout: '500', success: true });
+      installExecRouter(mockDevSupervisor, { previewStatus: '500' });
 
       await expect(strategy.prepareBuild(mockContext)).rejects.toThrow(PreviewNotRunningError);
     });
 
     it('should throw PreviewNotRunningError when curl fails (connection refused)', async () => {
-      mockDevSupervisor.exec.mockResolvedValue({ stdout: '000', success: false });
+      installExecRouter(mockDevSupervisor, { previewStatus: '000', previewSuccess: false });
 
       await expect(strategy.prepareBuild(mockContext)).rejects.toThrow(PreviewNotRunningError);
     });
 
     it('should throw PreviewNotRunningError with isSystemError when exec throws', async () => {
-      mockDevSupervisor.exec.mockRejectedValue(new Error('Connection refused'));
+      installExecRouter(mockDevSupervisor, { previewThrows: new Error('Connection refused') });
 
       const error = await strategy.prepareBuild(mockContext).catch((e) => e);
       expect(error).toBeInstanceOf(PreviewNotRunningError);
@@ -172,6 +229,181 @@ describe('PaaSPublishStrategy', () => {
         'route.publish.paas.preview-check.failed',
         expect.objectContaining({ error: 'Connection refused' })
       );
+    });
+  });
+
+  describe('preflight start command', () => {
+    it('passes when .airo/config.json has runtime.serve.command', async () => {
+      installExecRouter(mockDevSupervisor, {
+        airoConfig: { runtime: { serve: { command: 'node dist/server.js' } } },
+        packageJson: { scripts: {} }, // no start script — fine, airo config covers it
+      });
+
+      await expect(strategy.prepareBuild(mockContext)).resolves.toBeDefined();
+
+      expect(mockLogger.info).toHaveBeenCalledWith(
+        'route.publish.paas.preflight.config',
+        expect.objectContaining({
+          appId: 'test-app-id',
+          hasAiroConfig: true,
+          serveCommand: 'node dist/server.js',
+          hasPackageJson: true,
+          hasStartScript: false,
+          startScript: null,
+        })
+      );
+      expect(mockLogger.error).not.toHaveBeenCalledWith(
+        'route.publish.paas.preflight.missing-start-command',
+        expect.anything()
+      );
+    });
+
+    it('passes when package.json has scripts.start and .airo/config.json is missing', async () => {
+      installExecRouter(mockDevSupervisor, {
+        airoConfig: null,
+        packageJson: { scripts: { start: 'node server.js' } },
+      });
+
+      await expect(strategy.prepareBuild(mockContext)).resolves.toBeDefined();
+
+      expect(mockLogger.info).toHaveBeenCalledWith(
+        'route.publish.paas.preflight.config',
+        expect.objectContaining({
+          hasAiroConfig: false,
+          serveCommand: null,
+          hasPackageJson: true,
+          hasStartScript: true,
+          startScript: 'node server.js',
+        })
+      );
+    });
+
+    it('throws MissingStartCommandError and emits event when neither is set', async () => {
+      installExecRouter(mockDevSupervisor, {
+        airoConfig: { runtime: { serve: { command: '' } } }, // empty ≡ missing
+        packageJson: { scripts: { dev: 'vite' } },           // start absent
+      });
+
+      const err = await strategy.prepareBuild(mockContext).catch((e) => e);
+      expect(err).toBeInstanceOf(MissingStartCommandError);
+      expect((err as MissingStartCommandError).statusCode).toBe(412);
+      expect((err as MissingStartCommandError).preflight).toEqual(
+        expect.objectContaining({
+          hasAiroConfig: true,
+          serveCommand: null,
+          hasPackageJson: true,
+          hasStartScript: false,
+        })
+      );
+
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        'route.publish.paas.preflight.missing-start-command',
+        expect.objectContaining({
+          appId: 'test-app-id',
+          hasAiroConfig: true,
+          serveCommand: null,
+          hasStartScript: false,
+        })
+      );
+
+      // Archive should NOT have been created — we fail fast before the tar.
+      expect(mockGitUtils.createArchive).not.toHaveBeenCalled();
+    });
+
+    it('treats malformed JSON the same as missing', async () => {
+      // Stream-level: override installExecRouter directly with bad JSON text.
+      mockDevSupervisor.exec.mockImplementation(async (args: { command: string }) => {
+        if (args.command.includes('curl')) {
+          return { stdout: '200', success: true };
+        }
+        if (args.command.includes('airo-preflight-sep')) {
+          return { stdout: '{not json\n---airo-preflight-sep---\nalso not json', success: true };
+        }
+        throw new Error('unexpected');
+      });
+
+      const err = await strategy.prepareBuild(mockContext).catch((e) => e);
+      expect(err).toBeInstanceOf(MissingStartCommandError);
+      expect((err as MissingStartCommandError).preflight).toEqual(
+        expect.objectContaining({
+          hasAiroConfig: false,
+          hasPackageJson: false,
+          hasStartScript: false,
+          serveCommand: null,
+        })
+      );
+    });
+
+    it('treats whitespace-only commands as missing', async () => {
+      installExecRouter(mockDevSupervisor, {
+        airoConfig: { runtime: { serve: { command: '   ' } } },
+        packageJson: { scripts: { start: '   ' } },
+      });
+
+      await expect(strategy.prepareBuild(mockContext)).rejects.toBeInstanceOf(
+        MissingStartCommandError
+      );
+    });
+
+    it('treats airoConfig with runtime but no serve.command as missing', async () => {
+      // Optional-chaining case: runtime present, serve key absent.
+      installExecRouter(mockDevSupervisor, {
+        airoConfig: { runtime: { build: { command: 'npm run build' } } } as any,
+        packageJson: { scripts: { dev: 'vite' } },
+      });
+
+      await expect(strategy.prepareBuild(mockContext)).rejects.toBeInstanceOf(
+        MissingStartCommandError
+      );
+      expect(mockLogger.info).toHaveBeenCalledWith(
+        'route.publish.paas.preflight.config',
+        expect.objectContaining({ hasAiroConfig: true, serveCommand: null }),
+      );
+    });
+
+    it('passes when airoConfig is valid and package.json is absent entirely', async () => {
+      // Edge case: tar ships .airo/config.json without a package.json
+      // (unusual but technically valid — the serve command is self-sufficient).
+      installExecRouter(mockDevSupervisor, {
+        airoConfig: { runtime: { serve: { command: 'node dist/server.js' } } },
+        packageJson: null,
+      });
+
+      await expect(strategy.prepareBuild(mockContext)).resolves.toBeDefined();
+      expect(mockLogger.info).toHaveBeenCalledWith(
+        'route.publish.paas.preflight.config',
+        expect.objectContaining({
+          hasAiroConfig: true,
+          serveCommand: 'node dist/server.js',
+          hasPackageJson: false,
+          hasStartScript: false,
+        }),
+      );
+    });
+
+    it('skips preflight and allows publish to continue when exec itself fails', async () => {
+      // Supervisor-level failure: shell ran but reported non-zero. We should
+      // NOT surface a misleading 412 "add a start script" — let the archive
+      // ship and fall back to the existing health-check timeout.
+      mockDevSupervisor.exec.mockImplementation(async (args: { command: string }) => {
+        if (args.command.includes('curl')) {
+          return { stdout: '200', success: true };
+        }
+        if (args.command.includes('airo-preflight-sep')) {
+          return { stdout: '', success: false, stderr: 'supervisor: dial tcp: connection refused' };
+        }
+        throw new Error('unexpected');
+      });
+
+      await expect(strategy.prepareBuild(mockContext)).resolves.toBeDefined();
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        'route.publish.paas.preflight.exec-failed',
+        expect.objectContaining({
+          appId: 'test-app-id',
+          stderr: expect.stringContaining('connection refused'),
+        }),
+      );
+      expect(mockGitUtils.createArchive).toHaveBeenCalled();
     });
   });
 
