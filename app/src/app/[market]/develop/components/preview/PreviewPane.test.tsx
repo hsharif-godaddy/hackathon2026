@@ -4,7 +4,7 @@
 import '@testing-library/jest-dom';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 
 import { renderWithProviders } from '@/tests/test-utils';
 import { postMessageToIframe } from '@/utils/postMessage';
@@ -362,6 +362,222 @@ describe('PreviewPane', () => {
     expect(onPreviewRefresh).toHaveBeenCalledTimes(1);
   });
 
+});
+
+describe('PreviewPane — iframe bootstrap-timeout auto-remount', () => {
+  // Pin the auto-recovery behaviour against future regressions. Constants
+  // mirror PreviewPane.tsx: IFRAME_BOOTSTRAP_RETRY_MS=3000, MAX_IFRAME_BOOTSTRAP_RETRIES=3.
+  const IFRAME_BOOTSTRAP_RETRY_MS = 3000;
+  const MAX_IFRAME_BOOTSTRAP_RETRIES = 3;
+
+  // Pull the mocked logger handle so we can assert on warn calls — that's
+  // the observable signal of the timeout firing (no easy way to read
+  // iframeKey state directly).
+  let mockLoggerWarn: ReturnType<typeof vi.fn>;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+    mockDevelopPageStore.viewMode = ViewMode.PREVIEW;
+    mockDevelopPageStore.publishStates = { 'test-app-123': { isPublishing: false } };
+    mockServerPollingStore.getServerState = vi.fn(() => ({
+      isReady: true,
+      url: 'http://localhost:3000',
+    }));
+    mockServerPollingStore.isPollingServer = vi.fn(() => false);
+    const { logger } = await import('@/lib/request-context');
+    mockLoggerWarn = logger.warn as ReturnType<typeof vi.fn>;
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function bootstrapTimeoutWarns() {
+    return mockLoggerWarn.mock.calls.filter(
+      ([event]) => event === 'preview-pane.iframe.bootstrap-timeout',
+    );
+  }
+
+  it('fires the bootstrap-timeout warn after IFRAME_BOOTSTRAP_RETRY_MS when no IFRAME_READY arrives', async () => {
+    renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
+
+    expect(bootstrapTimeoutWarns()).toHaveLength(0);
+
+    // Just under the threshold — still no warn.
+    await vi.advanceTimersByTimeAsync(IFRAME_BOOTSTRAP_RETRY_MS - 1);
+    expect(bootstrapTimeoutWarns()).toHaveLength(0);
+
+    // Cross the threshold — first auto-retry fires.
+    await vi.advanceTimersByTimeAsync(2);
+    expect(bootstrapTimeoutWarns()).toHaveLength(1);
+    expect(bootstrapTimeoutWarns()[0][1]).toMatchObject({
+      appId: 'test-app-123',
+      attempt: 1,
+    });
+  });
+
+  it('stops firing after MAX_IFRAME_BOOTSTRAP_RETRIES', async () => {
+    renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
+
+    // Advance 4 timeout windows. The 4th should NOT trigger another warn —
+    // we cap retries to MAX_IFRAME_BOOTSTRAP_RETRIES (3). Use the async
+    // variant so React state updates from each setIframeKey flush before
+    // the next advance — without it, the re-mount effect doesn't register
+    // the next timer and only one warn fires.
+    for (let i = 0; i < MAX_IFRAME_BOOTSTRAP_RETRIES + 1; i++) {
+      await vi.advanceTimersByTimeAsync(IFRAME_BOOTSTRAP_RETRY_MS + 1);
+    }
+
+    expect(bootstrapTimeoutWarns()).toHaveLength(MAX_IFRAME_BOOTSTRAP_RETRIES);
+    // Each warn carries an incrementing attempt counter.
+    expect(bootstrapTimeoutWarns().map((c) => c[1].attempt)).toEqual([1, 2, 3]);
+  });
+
+  it('does not fire if IFRAME_READY arrives before the timeout', async () => {
+    const { container } = renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
+
+    // Wait briefly to allow effects (timer registration + iframe mount) to
+    // settle. Use async-flush to let React commit before we dispatch.
+    await vi.advanceTimersByTimeAsync(50);
+
+    const iframe = container.querySelector('iframe');
+    expect(iframe).toBeTruthy();
+
+    // Simulate the preview app posting IFRAME_READY shortly after mount.
+    // The component listens via the 'message' event; dispatch one whose
+    // source matches the iframe element so the 'fromPreviewIframe' check
+    // passes inside the handler. Wrap in act() so the resulting setState
+    // flushes (and the bootstrap-retry effect re-runs to cancel the
+    // pending timer) BEFORE we advance time past the timeout.
+    await act(async () => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: { type: 'IFRAME_READY' },
+          source: iframe!.contentWindow,
+        }),
+      );
+    });
+
+    // Advance past the timeout — must NOT fire because we already
+    // bootstrapped (the timer was cleared by the effect cleanup).
+    await vi.advanceTimersByTimeAsync(IFRAME_BOOTSTRAP_RETRY_MS + 1);
+    expect(bootstrapTimeoutWarns()).toHaveLength(0);
+  });
+
+  it('does NOT fire when serverState.isReady is false', async () => {
+    // Negative-path guard: the bootstrap-timeout effect short-circuits
+    // on `!serverState?.isReady`. Without this guard, a still-provisioning
+    // app would spin auto-retries while the preview iframe isn't even
+    // rendered yet.
+    mockServerPollingStore.getServerState = vi.fn(() => ({
+      isReady: false,
+      url: 'http://localhost:3000',
+    }));
+    renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
+
+    // Advance well past the timeout — must NOT fire.
+    await vi.advanceTimersByTimeAsync(IFRAME_BOOTSTRAP_RETRY_MS * 2);
+    expect(bootstrapTimeoutWarns()).toHaveLength(0);
+  });
+
+  it('does NOT fire when previewUrl is null', async () => {
+    // Negative-path guard: same effect short-circuits on !previewUrl.
+    // serverState ready but URL not yet resolved — keep the iframe
+    // gated and the retry timer dormant.
+    mockServerPollingStore.getServerState = vi.fn(() => ({
+      isReady: true,
+      url: null,
+    }));
+    renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
+
+    await vi.advanceTimersByTimeAsync(IFRAME_BOOTSTRAP_RETRY_MS * 2);
+    expect(bootstrapTimeoutWarns()).toHaveLength(0);
+  });
+
+  it('resets the auto-retry budget when handleManualRetry is invoked', async () => {
+    // Comment at PreviewPane.tsx ~174 says bootstrapRetryCount is kept
+    // separate from iframeKey specifically so manual retries (the user
+    // clicking "try again" after an error) get a fresh budget. Pin
+    // that behaviour: exhaust auto-retries → trigger iframe error →
+    // click retry button → assert next timeout fires with attempt: 1.
+    const { container } = renderWithProviders(
+      <PreviewPane onPreviewRefresh={vi.fn()} />,
+    );
+
+    // Exhaust the auto-retry budget.
+    for (let i = 0; i < MAX_IFRAME_BOOTSTRAP_RETRIES + 1; i++) {
+      await vi.advanceTimersByTimeAsync(IFRAME_BOOTSTRAP_RETRY_MS + 1);
+    }
+    expect(bootstrapTimeoutWarns()).toHaveLength(MAX_IFRAME_BOOTSTRAP_RETRIES);
+
+    // Trigger the iframe-error path so the PreviewError UI (with the
+    // retry button) renders. The iframe has `onError={handleIframeError}`
+    // (PreviewPane.tsx ~988) which sets iframeError=true. fireEvent.error
+    // doesn't reliably fire React's onError on iframes in JSDOM (the
+    // native error event semantics differ from production). Reach into
+    // React's stored props instead and invoke the handler directly —
+    // this is the same code path React would invoke on a real error.
+    const iframe = container.querySelector('iframe');
+    expect(iframe).toBeTruthy();
+    const reactPropsKey = Object.keys(iframe!).find((k) => k.startsWith('__reactProps$'));
+    expect(reactPropsKey).toBeTruthy();
+    const onError = (iframe as unknown as Record<string, { onError?: (e: Event) => void }>)[
+      reactPropsKey!
+    ].onError;
+    expect(onError).toBeTruthy();
+    await act(async () => {
+      onError!(new Event('error'));
+      await Promise.resolve();
+    });
+
+    // PreviewError mock renders a button with the i18n key as text.
+    // Use getByText (sync) — findByText polls on real timers and would
+    // hang under vi.useFakeTimers(). State has flushed via the act()
+    // above, so the DOM is current.
+    const retryButton = screen.getByText('builder_preview_error_button');
+    await act(async () => {
+      fireEvent.click(retryButton);
+      await Promise.resolve();
+    });
+
+    // Iframe is back (iframeError reset), counter is 0. Advance one
+    // timeout window — must fire with attempt: 1, proving the reset.
+    await vi.advanceTimersByTimeAsync(IFRAME_BOOTSTRAP_RETRY_MS + 1);
+
+    expect(bootstrapTimeoutWarns()).toHaveLength(MAX_IFRAME_BOOTSTRAP_RETRIES + 1);
+    expect(bootstrapTimeoutWarns().slice(-1)[0][1]).toMatchObject({
+      appId: 'test-app-123',
+      attempt: 1, // reset, NOT 4 — proves manual-retry-counter-reset works
+    });
+  });
+
+  it('resets the auto-retry budget when previewUrl changes', async () => {
+    const { rerender } = renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
+
+    // Exhaust the auto-retry budget on URL #1.
+    for (let i = 0; i < MAX_IFRAME_BOOTSTRAP_RETRIES + 1; i++) {
+      await vi.advanceTimersByTimeAsync(IFRAME_BOOTSTRAP_RETRY_MS + 1);
+    }
+    expect(bootstrapTimeoutWarns()).toHaveLength(MAX_IFRAME_BOOTSTRAP_RETRIES);
+
+    // Server hands out a new allocation URL — counter must reset so the
+    // user gets a fresh budget on the new URL. Without this, exhausted
+    // state from the old URL would skip auto-recovery on the new one.
+    mockServerPollingStore.getServerState = vi.fn(() => ({
+      isReady: true,
+      url: 'http://localhost:4000', // different URL
+    }));
+    rerender(<PreviewPane onPreviewRefresh={vi.fn()} />);
+
+    // First post-URL-change timeout fires the warn — proof the counter reset.
+    await vi.advanceTimersByTimeAsync(IFRAME_BOOTSTRAP_RETRY_MS + 1);
+    expect(bootstrapTimeoutWarns()).toHaveLength(MAX_IFRAME_BOOTSTRAP_RETRIES + 1);
+    expect(bootstrapTimeoutWarns().slice(-1)[0][1]).toMatchObject({
+      appId: 'test-app-123',
+      attempt: 1, // reset, not 4
+    });
+  });
 });
 
 describe('publish-snapshot-request handling', function publishSnapshotHandlingTests() {

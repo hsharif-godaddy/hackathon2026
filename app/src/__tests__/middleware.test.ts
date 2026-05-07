@@ -310,4 +310,69 @@ describe('middleware', () => {
       expect(result.headers.get('X-Robots-Tag')).toBeNull();
     });
   });
+
+  describe('Content-Security-Policy frame-ancestors on /develop/*', () => {
+    // Regression guard for the iframe-recursion mitigation. The CSP
+    // header must fire on the bare `/develop/<id>` form (the URL the
+    // user actually navigates to) — an earlier regex `^\/[^/]+\/develop`
+    // only matched the market-prefixed form and silently no-op'd for
+    // normal user-facing URLs, defeating the layer.
+    //
+    // Expected value: dashboard allowlist (matching gasket.ts:372)
+    // MINUS `'self'`. Both CSPs must agree, so `'self'` framing (the
+    // recursion path) is blocked while the dashboard origins still
+    // work via the Gasket Helmet CSP.
+    const EXPECTED_CSP = [
+      'frame-ancestors',
+      'https://dashboard.godaddy.com',
+      'https://dashboard.godaddy.com:*',
+      'https://dashboard.dev-godaddy.com',
+      'https://dashboard.dev-godaddy.com:*',
+      'https://dashboard.test-godaddy.com',
+      'https://dashboard.test-godaddy.com:*',
+    ].join(' ');
+
+    beforeEach(() => {
+      mockGetVisitor.mockResolvedValue({ market: 'en-US' });
+    });
+
+    it('sets the dashboard frame-ancestors allowlist on bare /develop', async () => {
+      const result = await middleware(makeRequest('/develop'));
+      expect(result.headers.get('Content-Security-Policy')).toBe(EXPECTED_CSP);
+    });
+
+    it('sets the dashboard frame-ancestors allowlist on /develop/<appId>', async () => {
+      const result = await middleware(makeRequest('/develop/abc-123'));
+      expect(result.headers.get('Content-Security-Policy')).toBe(EXPECTED_CSP);
+    });
+
+    it('sets the header on the market-prefixed form too', async () => {
+      // If a request ever arrives already-prefixed (e.g. direct deep
+      // link bypassing the rewrite), still apply the header.
+      const result = await middleware(makeRequest('/en-US/develop/abc-123'));
+      expect(result.headers.get('Content-Security-Policy')).toBe(EXPECTED_CSP);
+    });
+
+    it("does NOT include 'self' (the recursion-blocking invariant)", async () => {
+      // Critical: this is the whole reason we set our own CSP rather
+      // than relying solely on Gasket Helmet. Helmet's CSP allows
+      // `'self'`, which is the recursion path. If this header ever
+      // starts including `'self'`, the layer becomes inert.
+      const result = await middleware(makeRequest('/develop/abc-123'));
+      const csp = result.headers.get('Content-Security-Policy');
+      expect(csp).toBeTruthy();
+      expect(csp).not.toContain("'self'");
+    });
+
+    it('does not set frame-ancestors on non-develop routes', async () => {
+      const result = await middleware(makeRequest('/explore'));
+      expect(result.headers.get('Content-Security-Policy')).toBeNull();
+    });
+
+    it('does not match unrelated paths that contain "develop" mid-segment', async () => {
+      // Defense against a too-loose regex matching e.g. `/developer-tools`.
+      const result = await middleware(makeRequest('/developer-tools'));
+      expect(result.headers.get('Content-Security-Policy')).toBeNull();
+    });
+  });
 });

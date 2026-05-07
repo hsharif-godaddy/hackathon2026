@@ -33,6 +33,21 @@ function getPublicHost(request: Request): string {
   return raw.toLowerCase().split(':')[0];
 }
 
+// Dashboard hosts that are legitimately allowed to embed builder pages.
+// MUST stay in sync with the `frame-ancestors` directive in gasket.ts:372
+// (Gasket Helmet config). Difference: the gasket version also includes
+// `'self'`, which we deliberately omit here for the develop-page CSP —
+// see DEVELOP_FRAME_ANCESTORS_CSP below.
+const DEVELOP_FRAME_ANCESTORS_CSP = [
+  'frame-ancestors',
+  'https://dashboard.godaddy.com',
+  'https://dashboard.godaddy.com:*',
+  'https://dashboard.dev-godaddy.com',
+  'https://dashboard.dev-godaddy.com:*',
+  'https://dashboard.test-godaddy.com',
+  'https://dashboard.test-godaddy.com:*',
+].join(' ');
+
 /** @type {import('next/server').NextMiddleware} */
 export async function middleware(request: Request) {
   const requestUrl = new URL(request.url);
@@ -73,6 +88,31 @@ export async function middleware(request: Request) {
   // Header can't be overridden by route generateMetadata, so this wins over per-page robots metadata.
   if (NOINDEX_HOSTS.has(getPublicHost(request))) {
     response.headers.set('X-Robots-Tag', 'noindex, nofollow');
+  }
+
+  // Prevent the develop page from being framed by ITSELF (defense
+  // against the preview iframe's first-load auth race: when
+  // dev-supervisor 307s to JWT_REDIRECT_URL = builder/develop/<appId>,
+  // the iframe would otherwise render the builder inside itself, mount
+  // its own preview iframe, and recurse).
+  //
+  // Critically: we do NOT use `frame-ancestors 'none'` here. The Gasket
+  // Helmet CSP (gasket.ts:372) already includes `'self'` plus the
+  // GoDaddy dashboard hostnames so legitimate dashboard embedding works.
+  // Setting 'none' here would override that and break the dashboard-
+  // embed scenario (FrameBuster, IframeCloseButton, etc.).
+  // Instead we set a CSP that omits `'self'` while keeping the dashboard
+  // allowlist — both CSPs must agree, so `'self'` framing (the
+  // recursion path) is blocked while the dashboard origins (which both
+  // CSPs allow) still work.
+  //
+  // Pathname match covers both the bare `/develop/<id>` form (the URL
+  // the user actually navigates to — see middleware.test.ts:114 where
+  // input is `/develop/abc-123` rewriting to `/en-US/develop/abc-123`)
+  // AND the market-prefixed form (in case the request ever arrives
+  // already-prefixed).
+  if (/^\/(?:[^/]+\/)?develop(\/|$)/.test(pathname)) {
+    response.headers.set('Content-Security-Policy', DEVELOP_FRAME_ANCESTORS_CSP);
   }
 
   return response;

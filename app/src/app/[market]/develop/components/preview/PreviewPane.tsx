@@ -31,6 +31,13 @@ const PROCESSING_OVERLAY_FALLBACK_MS = 3000
 const STATE_RESTORE_FALLBACK_MS = 3000 // Fallback timeout if iframe doesn't send ready signal
 /** Eval snapshot: IFRAME_READY means the iframe has registered its message listener; HMR-only builds use fallback */
 const EVAL_SNAPSHOT_IFRAME_FALLBACK_MS = 8000
+// Bootstrap-race recovery (Layer 3): if the iframe doesn't post
+// IFRAME_READY within this window after the server is ready, force a
+// re-mount with a fresh `key`. Capped at MAX_IFRAME_BOOTSTRAP_RETRIES
+// to avoid an infinite loop on permanent failures (e.g. third-party
+// cookie blocking with no share-token fallback).
+const IFRAME_BOOTSTRAP_RETRY_MS = 3000
+const MAX_IFRAME_BOOTSTRAP_RETRIES = 3
 
 /**
  * Restore iframe state (URL and scroll position) via postMessage.
@@ -156,6 +163,18 @@ export default function PreviewPane({
   // Iframe state
   const [iframeError, setIframeError] = useState(false)
   const [iframeKey, setIframeKey] = useState(0)
+  // Bootstrap-race recovery: tracks whether the iframe has signalled
+  // IFRAME_READY (which only fires when the preview app's own script
+  // loads — NOT when the iframe was 307'd to the builder or blocked by
+  // frame-ancestors CSP). If the signal doesn't arrive within
+  // IFRAME_BOOTSTRAP_RETRY_MS, bump iframeKey to force a re-mount; by
+  // then the bootstrap retry in useServerPollingStore should have
+  // settled and the new mount picks up the cookie.
+  const [iframeBootstrapped, setIframeBootstrapped] = useState(false)
+  // Separate auto-retry counter so manual retries (handleManualRetry)
+  // don't exhaust the auto-retry budget — the manual retry resets this
+  // and gives the user another 3 auto-attempts.
+  const [bootstrapRetryCount, setBootstrapRetryCount] = useState(0)
   const iframeRef = useRef<HTMLIFrameElement>(null)
 
   // State preservation for iframe navigation and scroll position
@@ -599,6 +618,10 @@ export default function PreviewPane({
       }
 
       if (event.data?.type === 'IFRAME_READY' && fromPreviewIframe) {
+        // Mark bootstrap complete: this signal only arrives if the
+        // preview app's own script ran, which means the iframe didn't
+        // end up on a builder-redirect or CSP-block.
+        setIframeBootstrapped(true)
         if (isWaitingForIframeReady) {
           logger.debug('preview-pane.iframe.ready', { message: 'Iframe ready signal received, restoring state immediately' })
           if (attemptStateRestorationRef.current) {
@@ -700,6 +723,56 @@ export default function PreviewPane({
     }
   }, [serverState?.isReady, isWaitingForIframeReady])
 
+  // Bootstrap-race recovery: if the iframe hasn't signalled IFRAME_READY
+  // within the timeout, the most likely cause is the preview_auth cookie
+  // wasn't set yet when the iframe first hit the preview origin (race
+  // between the bootstrap fetch in useServerPollingStore and the iframe
+  // mount). dev-supervisor 307'd to the builder, the iframe followed,
+  // CSP frame-ancestors blocks the inner frame from rendering — net result
+  // is a blank iframe that never sends IFRAME_READY.
+  //
+  // Re-mount with a fresh key after the timeout. By the second mount,
+  // the bootstrap-fetch retry has settled and the cookie is in the
+  // browser, so the new iframe load picks it up via Cookie header.
+  // Cap retries to avoid an infinite loop if the failure is permanent
+  // (e.g. third-party-cookie blocking with no share-token fallback).
+  useEffect(() => {
+    if (!previewUrl || !serverState?.isReady) return
+    if (iframeBootstrapped) return
+    if (bootstrapRetryCount >= MAX_IFRAME_BOOTSTRAP_RETRIES) return
+
+    const timer = setTimeout(() => {
+      logger.warn('preview-pane.iframe.bootstrap-timeout', {
+        message: 'Iframe did not signal IFRAME_READY within timeout, remounting',
+        appId,
+        attempt: bootstrapRetryCount + 1,
+      })
+      setBootstrapRetryCount((prev) => prev + 1)
+      setIframeKey((prev) => prev + 1)
+    }, IFRAME_BOOTSTRAP_RETRY_MS)
+
+    return () => clearTimeout(timer)
+  }, [previewUrl, serverState?.isReady, iframeBootstrapped, bootstrapRetryCount, appId])
+
+  // Reset bootstrap flag whenever the iframe is re-keyed (forced re-mount)
+  // or the URL changes — otherwise the previous "bootstrapped" state would
+  // leak across attempts and the retry timer wouldn't fire.
+  useEffect(() => {
+    setIframeBootstrapped(false)
+  }, [iframeKey, previewUrl])
+
+  // Reset the auto-retry budget on URL change. Without this, an app that
+  // exhausted its retry budget on a previous allocation URL would skip
+  // auto-recovery on the new URL — e.g. a server restart hands out a
+  // fresh preview_url, but bootstrapRetryCount is still at MAX from the
+  // old URL's failed attempts. The new URL deserves a fresh budget.
+  // Note: this is keyed only on previewUrl, NOT on iframeKey, because
+  // iframeKey changes ARE the auto-retries themselves — resetting the
+  // counter on every iframeKey bump would create an infinite loop.
+  useEffect(() => {
+    setBootstrapRetryCount(0)
+  }, [previewUrl])
+
   const handleManualRetry = () => {
     logger.info('preview-pane.retry', { message: 'Manual retry - restarting server polling', appId })
     // Restart polling to recover from server errors
@@ -709,6 +782,9 @@ export default function PreviewPane({
     startPollingForServer(appId)
     setIframeError(false)
     setIframeKey(prev => prev + 1)
+    // Reset the auto-retry budget so the user gets another full set of
+    // auto-recovery attempts after their explicit refresh.
+    setBootstrapRetryCount(0)
   }
 
   const handleIframeError = () => {

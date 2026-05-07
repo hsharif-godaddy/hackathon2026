@@ -23,6 +23,63 @@ enableMapSet()
  * @param siteId - The site ID to generate token for
  * @returns Site-scoped JWT token or null if unavailable
  */
+// Bootstrap-fetch retry helper. Extracted from `_checkUrlHealth` so the
+// caller can bind the result to `const` rather than mutating two `let`
+// bindings (per the project guidelines on minimizing mutable state).
+//
+// Retries up to MAX_BOOTSTRAP_ATTEMPTS times. Only 5xx and network/
+// timeout errors are retried — 4xx and `redirect: 'manual'` opaque
+// redirects (status 0) are definitive and break out of the loop
+// immediately to avoid wasting backoff time.
+//
+// Exported for unit tests in useServerPollingStore.test.ts.
+export const MAX_BOOTSTRAP_ATTEMPTS = 3
+export const BOOTSTRAP_BACKOFF_BASE_MS = 250
+export const BOOTSTRAP_FETCH_TIMEOUT_MS = 5000
+
+export async function fetchWithRetry(
+  url: string,
+  token: string | null,
+): Promise<{ response: Response | undefined; lastError: unknown; attempts: number }> {
+  let response: Response | undefined
+  let lastError: unknown
+  let attempts = 0
+  for (let attempt = 0; attempt < MAX_BOOTSTRAP_ATTEMPTS; attempt++) {
+    attempts = attempt + 1
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), BOOTSTRAP_FETCH_TIMEOUT_MS)
+    try {
+      response = await fetch(url, {
+        signal: controller.signal,
+        method: 'HEAD',
+        cache: 'no-store',
+        credentials: 'include', // Include cookies (once set by dev-supervisor)
+        redirect: 'manual', // Don't follow redirects to avoid CORS errors on SSO redirects
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+      })
+      if (response.ok) return { response, lastError: undefined, attempts }
+      lastError = new Error(`status ${response.status}`)
+      // Only 5xx is retryable. Everything else (4xx client errors and
+      // status 0 from `redirect: 'manual'` opaque-redirects) is
+      // definitive and won't recover on retry — break to skip the
+      // rest of the backoff. The `< 500` form covers both 4xx and 0.
+      if (response.status < 500) break
+    } catch (err) {
+      lastError = err
+      // Network/timeout errors fall through to the backoff — these
+      // are transient and the next attempt may succeed.
+    } finally {
+      clearTimeout(timeoutId)
+    }
+    if (attempt < MAX_BOOTSTRAP_ATTEMPTS - 1) {
+      await new Promise(r =>
+        setTimeout(r, BOOTSTRAP_BACKOFF_BASE_MS * Math.pow(3, attempt)),
+      )
+    }
+  }
+  return { response, lastError, attempts }
+}
+
 async function getPreviewAppToken(siteId: string): Promise<string | null> {
   if (typeof window === 'undefined') {
     return null // Server-side rendering
@@ -363,9 +420,6 @@ export const useServerPollingStore = create<ServerPollingStore>()(
 
     _checkUrlHealth: async (url: string, appId: string): Promise<{ healthy: boolean; cookieVerified?: boolean }> => {
       try {
-        const controller = new AbortController()
-        const timeoutId = setTimeout(() => controller.abort(), 5000)
-
         // Cross-domain authentication bootstrap:
         // Preview apps run on different domains (localhost or preview.c4.test-airoapp.ai)
         // than builder app (*.dev-godaddy.com), so GoDaddy SSO cookie won't be sent.
@@ -382,22 +436,40 @@ export const useServerPollingStore = create<ServerPollingStore>()(
         const urlHostname = new URL(url).hostname
         logger.debug('server-polling.health-check.url', { appId, url, hostname: urlHostname })
 
-        const response = await fetch(url, {
-          signal: controller.signal,
-          method: 'HEAD',
-          cache: 'no-store',
-          credentials: 'include', // Include cookies (once set by dev-supervisor)
-          redirect: 'manual', // Don't follow redirects to avoid CORS errors on SSO redirects
-          headers: token ? {
-            'Authorization': `Bearer ${token}`
-          } : {}
-        })
-
-        clearTimeout(timeoutId)
+        // Retry the bootstrap fetch up to 3 times. The first attempt
+        // commonly fails when the managed process is still starting up
+        // (Start-on-Request from auto-stopped idle apps) — dev-supervisor
+        // returns 502/503 while it waits for the process to be ready, or
+        // the managed process is still binding its port. Without retry,
+        // a single transient failure marks the server as unhealthy and
+        // the user has to manually refresh.
+        //
+        // Only 5xx and network-level errors (timeouts, connection refused)
+        // get retried — 4xx, 3xx, and `redirect: 'manual'` opaque
+        // redirects are definitive responses that won't recover, so we
+        // break early to avoid wasting backoff time on hopeless cases.
+        //
+        // Worst-case latency: 3 × 5s timeout + ~1s backoff sleeps =
+        // ~16s. Best case (first attempt 200): single round trip.
+        // Sleep schedule between attempts: 250ms then 750ms (formula:
+        // BACKOFF_BASE_MS * 3^attempt, only first two sleeps fire).
+        const { response, lastError, attempts } = await fetchWithRetry(url, token)
 
         // Validate response status
-        // Only 2xx is healthy - redirects indicate auth failure, 4xx/5xx are errors
-        if (!response.ok) {
+        // Only 2xx is healthy - redirects indicate auth failure, 4xx/5xx are errors.
+        // Log at warn (not debug): a failed bootstrap means the user-visible
+        // preview never becomes "ready" without operator visibility at default
+        // LOG_LEVEL. The `attempts` field distinguishes a transient 5xx that
+        // gave up after MAX_BOOTSTRAP_ATTEMPTS from a 4xx/opaque-redirect that
+        // bailed after a single attempt — same warn event, different cause.
+        if (!response?.ok) {
+          logger.warn('server-polling.health-check.failed', {
+            message: 'Bootstrap fetch failed',
+            attempts,
+            appId,
+            url,
+            error: lastError instanceof Error ? lastError.message : String(lastError),
+          })
           return { healthy: false }
         }
 
