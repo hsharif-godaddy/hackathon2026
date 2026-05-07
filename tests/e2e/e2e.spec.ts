@@ -220,7 +220,9 @@ test.describe('E2E - Critical Path', () => {
       await chatInput.pressSequentially('Line 1');
       await chatInput.press('Shift+Enter');
       await chatInput.pressSequentially('Line 2');
-      const multilineValue = await chatInput.inputValue();
+      // chat-input-textarea is a Lexical contenteditable div, not a <textarea>,
+      // so inputValue() doesn't work — read text content instead.
+      const multilineValue = await chatInput.innerText();
       expect(multilineValue).toContain('Line 1');
       expect(multilineValue).toContain('Line 2');
       console.log('  Shift+Enter creates multiline');
