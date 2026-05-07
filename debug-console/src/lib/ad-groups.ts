@@ -15,4 +15,5 @@ export const DEBUG_CONSOLE_ALLOWED_GROUPS: readonly string[] = [
     'SRE-Airo-Builders',
     'C3-ATS',
     'directors-plus',
+    'legal_admin',
 ];

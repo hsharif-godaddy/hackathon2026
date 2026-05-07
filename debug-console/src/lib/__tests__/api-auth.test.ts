@@ -99,6 +99,17 @@ describe('api-auth', () => {
             expect(result.authenticated).toBe(true);
         });
 
+        it('grants access when the user is in the legal_admin AD group', async () => {
+            globalThis.fetch = vi.fn().mockResolvedValue({
+                ok: true,
+                json: async () => ({ data: { groups: ['legal_admin'] } }),
+            }) as unknown as typeof fetch;
+
+            const result = await validateApiAuth(fakeRequest);
+
+            expect(result.authenticated).toBe(true);
+        });
+
         it('denies access with 403 when the user is in no allowed group', async () => {
             globalThis.fetch = vi.fn().mockResolvedValue({
                 ok: true,
