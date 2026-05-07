@@ -75,8 +75,7 @@ export class SitePollingService {
           const agentHealthy = site.agent_url ?
             await this.checkUrlHealth(`${site.agent_url}/health`, 'Agent') : false;
 
-          const frontendHealthy = site.preview_url ?
-            await this.checkUrlHealth(`${site.preview_url}/airo/health`, 'Frontend') : false;
+          const frontendHealthy = await this.probeFrontendHealth(site.preview_url, site.id);
 
           // All services must be healthy to proceed
           const allServicesReady = agentHealthy && frontendHealthy;
@@ -161,6 +160,38 @@ export class SitePollingService {
   /**
    * Check if a URL is healthy by making a direct request from the UI
    */
+  /**
+   * Build the frontend `/airo/health` URL from preview_url and probe it.
+   * Defends against malformed preview_url values (e.g. control-plane
+   * regression returning a hostname without a scheme): if URL() throws,
+   * we log + return false rather than letting the TypeError escape the
+   * caller. The poll loop has its own outer try/catch, but checkSiteStatus
+   * doesn't — without this guard a single bad row would surface as an
+   * unhandled rejection.
+   */
+  private async probeFrontendHealth(
+    previewUrl: string | null | undefined,
+    siteId?: string,
+  ): Promise<boolean> {
+    if (!previewUrl) return false;
+    let healthUrl: string;
+    try {
+      // Absolute path resolves against the origin and drops any pre-
+      // existing query string — important because preview_url may carry
+      // a `?airoShareToken=...` injected by the BFF for 3PC-blocking
+      // browsers, which would corrupt a string-concatenated URL.
+      healthUrl = new URL('/airo/health', previewUrl).toString();
+    } catch (err) {
+      logger.warn('site-polling.health.invalidPreviewUrl', {
+        siteId,
+        previewUrl,
+        error: err instanceof Error ? err.message : 'Unknown URL error',
+      });
+      return false;
+    }
+    return this.checkUrlHealth(healthUrl, 'Frontend');
+  }
+
   private async checkUrlHealth(url: string, serviceName: string): Promise<boolean> {
     try {
       const controller = new AbortController();
@@ -271,8 +302,7 @@ export class SitePollingService {
     const agentHealthy = site.agent_url ?
       await this.checkUrlHealth(`${site.agent_url}/health`, 'Agent') : false;
 
-    const frontendHealthy = site.preview_url ?
-      await this.checkUrlHealth(`${site.preview_url}/airo/health`, 'Frontend') : false;
+    const frontendHealthy = await this.probeFrontendHealth(site.preview_url, site.id);
 
     const allServicesReady = agentHealthy && frontendHealthy;
 

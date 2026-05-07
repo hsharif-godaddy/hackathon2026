@@ -7,6 +7,8 @@ import {
   customerHasAccount,
   withCustomerAuth} from '@/lib/customer-auth';
 import { logger } from '@/lib/request-context';
+import { injectShareTokenIntoPreviewUrl } from '@/lib/share/inject-preview-token';
+import { checkSwitchboardFlag } from '@/lib/switchboard/server';
 
 // Force dynamic rendering to prevent database calls during build
 export const dynamic = 'force-dynamic';
@@ -21,9 +23,42 @@ async function handleGetSite(request: NextRequest, siteId: string, authContext: 
     return NextResponse.json({ error: 'Site not found' }, { status: 404 });
   }
 
+  // Inject airoShareToken into preview_url so Visit Preview works in
+  // 3PC-blocking browsers (Safari, Firefox, incognito). Only when both
+  // preview_url and agent_url are present — pending/provisioning apps
+  // skip injection. published_url is intentionally NOT modified.
+  //
+  // checkSwitchboardFlag can throw on Switchboard outages — treat that as
+  // "flag off" so a transient Switchboard failure can't take down the
+  // entire site fetch. The injection is a best-effort enhancement; falling
+  // back to bare preview_url is acceptable.
+  let previewUrl = site.preview_url;
+  if (site.preview_url && site.agent_url) {
+    let flagEnabled = false;
+    try {
+      flagEnabled = await checkSwitchboardFlag('appbuilder-share-links', request);
+    } catch (err) {
+      logger.warn('share.previewUrl.flag.lookupError', {
+        siteId,
+        error: err instanceof Error ? err.message : 'Unknown switchboard error',
+      });
+    }
+    if (flagEnabled) {
+      previewUrl = await injectShareTokenIntoPreviewUrl(
+        siteId,
+        site.agent_url,
+        site.preview_url,
+      );
+    }
+  }
+
+  // Spread (don't mutate) to match the list-route pattern in
+  // /api/sites/route.ts. Both returned objects are locally composed,
+  // so this is style consistency rather than a correctness fix.
   const siteWithMetadata = {
     ...site,
-    controlPlane: 'v2'
+    preview_url: previewUrl,
+    controlPlane: 'v2',
   };
 
   // Add no-cache headers to prevent caching during polling

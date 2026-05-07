@@ -9,6 +9,8 @@ import {
   customerHasAccount,
   withCustomerAuth} from '@/lib/customer-auth';
 import { logger } from '@/lib/request-context';
+import { injectShareTokenIntoPreviewUrl } from '@/lib/share/inject-preview-token';
+import { checkSwitchboardFlag } from '@/lib/switchboard/server';
 import { detectLocale } from '@/lib/translations/server-intl';
 
 // Force dynamic rendering to prevent database calls during build
@@ -24,17 +26,70 @@ async function handleGetSites(request: NextRequest, jwt: string, origin: string 
 
   const adapter = getControlPlaneAdapter();
 
+  // Hoist the Switchboard flag check above the per-site loop — single
+  // in-memory lookup is fine to call once per site, but agreeing on the
+  // result up front lets us skip the per-site work entirely when off.
+  // See lib/share/inject-preview-token.ts for context on why preview_url
+  // gets the token injected (3PC-blocking browsers).
+  //
+  // checkSwitchboardFlag can throw on Switchboard outages — treat that as
+  // "flag off" so a transient Switchboard failure can't take down the
+  // entire site list fetch. The injection is a best-effort enhancement.
+  let flagEnabled = false;
+  try {
+    flagEnabled = await checkSwitchboardFlag('appbuilder-share-links', request);
+  } catch (err) {
+    logger.warn('share.previewUrl.flag.lookupError', {
+      error: err instanceof Error ? err.message : 'Unknown switchboard error',
+    });
+  }
+
   if (siteId) {
     // Get specific site
     const site = await adapter.getSite(siteId, jwt);
     if (!site) {
       return withCorsHeaders(NextResponse.json({ error: 'Site not found' }, { status: 404 }), origin);
     }
+    // Spread (don't mutate the adapter-returned object) — matches the list
+    // path below and the project's "immutable data flows across
+    // architectural boundaries" guideline. The current V2 adapter returns
+    // fresh objects per call, but consistency keeps that assumption local.
+    if (flagEnabled && site.preview_url && site.agent_url) {
+      const previewUrl = await injectShareTokenIntoPreviewUrl(
+        siteId,
+        site.agent_url,
+        site.preview_url,
+      );
+      return withCorsHeaders(
+        NextResponse.json({ ...site, preview_url: previewUrl }),
+        origin,
+      );
+    }
     return withCorsHeaders(NextResponse.json(site), origin);
   }
 
   // List all sites
   const sites = await adapter.listSites(jwt);
+
+  // Inject in parallel for sites that have both agent_url and preview_url.
+  // Each lookup is a fast SQLite read on agents; mints are rare (1× per
+  // app per ~7 days). Promise.all is safe — the helper catches its own
+  // errors and falls back to the bare URL, so no rejection bubbles up.
+  if (flagEnabled) {
+    const updated = await Promise.all(
+      sites.map(async (site) => {
+        if (!site.preview_url || !site.agent_url) return site;
+        const previewUrl = await injectShareTokenIntoPreviewUrl(
+          site.id,
+          site.agent_url,
+          site.preview_url,
+        );
+        return { ...site, preview_url: previewUrl };
+      }),
+    );
+    return withCorsHeaders(NextResponse.json(updated), origin);
+  }
+
   return withCorsHeaders(NextResponse.json(sites), origin);
 }
 

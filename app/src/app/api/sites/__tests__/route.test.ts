@@ -57,6 +57,22 @@ vi.mock('@/lib/translations/server-intl', () => ({
   detectLocale: vi.fn().mockResolvedValue('en-US')
 }));
 
+// Switchboard flag is consulted in handleGetSites for the
+// airoShareToken-injection path (see lib/share/inject-preview-token.ts).
+// Default to off in this file so the existing auth/error tests aren't
+// perturbed by per-site agentFetch calls. The injection path itself is
+// tested in __tests__/route.injection.test.ts.
+vi.mock('@/lib/switchboard/server', () => ({
+  checkSwitchboardFlag: vi.fn().mockResolvedValue(false),
+}));
+
+// Mock agentFetch — when injection runs (flag-on tests), it calls into
+// the real injectShareTokenIntoPreviewUrl helper which uses agentFetch
+// for the share-token list/mint contract.
+vi.mock('@/lib/agent-fetch', () => ({
+  agentFetch: vi.fn(),
+}));
+
 describe('/api/sites', function sitesRouteTests() {
   beforeEach(function setup() {
     vi.clearAllMocks();
