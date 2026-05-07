@@ -34,6 +34,8 @@ ALLOWED_LICENSES=(
   "(MIT OR CC0-1.0)"
   "(MIT OR WTFPL)"
   "(MPL-2.0 OR Apache-2.0)"
+  "(MIT OR GPL-3.0-or-later)"
+  "(MIT AND Zlib)"
 )
 
 # Internal package prefixes - these use private/custom licenses and are trusted.

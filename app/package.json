@@ -144,6 +144,7 @@
     "gd-auth-client": "catalog:",
     "gray-matter": "catalog:",
     "immer": "^10.1.3",
+    "jszip": "catalog:",
     "jwt-decode": "catalog:",
     "lexical": "^0.42.0",
     "lexical-beautiful-mentions": "^0.1.48",

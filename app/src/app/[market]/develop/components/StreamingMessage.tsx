@@ -1,7 +1,7 @@
 'use client'
 
 import clsx from 'clsx'
-import { Check, ClipboardCopy, Expand, Headset } from 'lucide-react'
+import { Check, ClipboardCopy, Expand, Headset, Paperclip } from 'lucide-react'
 import type { ComponentType } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import Button from '@ux/button'
@@ -133,7 +133,7 @@ function FullMessageModal({ content, isOpen, onClose }: { content: string; isOpe
  */
 const MAX_MESSAGE_HEIGHT = 250 // pixels
 
-function UserMessage({ content, selectedAssets, referencedFiles }: { content: string; selectedAssets?: any[]; referencedFiles?: Array<{ path: string; content: string }> }) {
+function UserMessage({ content, selectedAssets, referencedFiles, uploadedFileName }: { content: string; selectedAssets?: any[]; referencedFiles?: Array<{ path: string; content: string }>; uploadedFileName?: string }) {
   const t = useTranslations()
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isTruncated, setIsTruncated] = useState(false)
@@ -176,6 +176,12 @@ function UserMessage({ content, selectedAssets, referencedFiles }: { content: st
             </div>
           )}
         </div>
+        {uploadedFileName && (
+          <div className="flex items-center gap-1.5 mt-1.5 text-xs text-intents-ux-text-textSecondaryColor">
+            <Paperclip className="size-3 shrink-0" />
+            <span className="truncate">{uploadedFileName}</span>
+          </div>
+        )}
         {selectedAssets && selectedAssets.length > 0 && (
           <AttachmentList assets={selectedAssets} />
         )}
@@ -228,7 +234,7 @@ function renderMessageContent({ message, isActiveStream, isLastAssistantMessage,
   }
 
   if (message.role === 'user') {
-    return <UserMessage content={message.content} selectedAssets={message.selectedAssets} referencedFiles={message.referencedFiles} />
+    return <UserMessage content={message.content} selectedAssets={message.selectedAssets} referencedFiles={message.referencedFiles} uploadedFileName={(message as ChatMessage).uploadedFileName} />
   }
 
   return (

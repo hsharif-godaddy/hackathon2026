@@ -132,6 +132,7 @@ export interface ChatMessage {
   usedFreeGrants?: boolean         // True if task used free grants (publish/domain/fix task budget)
   selectedAssets?: any[]           // Attached files/assets for user messages
   referencedFiles?: Array<{ path: string; content: string }> // Referenced code files for user messages
+  uploadedFileName?: string        // Name of file uploaded via HTTP to the agent
   origin?: MessageOrigin            // Message origin for visibility filtering
   metadata?: {
     usage?: {
@@ -233,7 +234,7 @@ export interface StreamingConversationState {
   // === CORE STREAMING ACTIONS ===
 
   // Stream lifecycle
-  startNewStream: (userMessage: string, selectedAssets?: any[], referencedFiles?: Array<{ path: string; content: string }>, origin?: MessageOrigin) => void
+  startNewStream: (userMessage: string, selectedAssets?: any[], referencedFiles?: Array<{ path: string; content: string }>, origin?: MessageOrigin, uploadedFileName?: string) => void
   appendToStream: (content: string) => void
   addToolToStream: (toolCall: ToolCall) => void
   updateToolInStream: (toolId: string, updates: Partial<ToolCall>) => void
@@ -586,7 +587,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
 
   // === CORE STREAMING ACTIONS ===
 
-  startNewStream: (userMessage: string, selectedAssets?: any[], referencedFiles?: Array<{ path: string; content: string }>, origin?: MessageOrigin) => {
+  startNewStream: (userMessage: string, selectedAssets?: any[], referencedFiles?: Array<{ path: string; content: string }>, origin?: MessageOrigin, uploadedFileName?: string) => {
     const userMsgId = generateId()
     const assistantMsgId = generateId()
 
@@ -602,7 +603,8 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       content: userMessage,
       timestamp: new Date(),
       ...(selectedAssets && selectedAssets.length > 0 && { selectedAssets }),
-      ...(referencedFiles && referencedFiles.length > 0 && { referencedFiles })
+      ...(referencedFiles && referencedFiles.length > 0 && { referencedFiles }),
+      ...(uploadedFileName && { uploadedFileName }),
     }
 
     // Create new streaming message for assistant

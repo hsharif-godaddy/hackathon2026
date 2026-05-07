@@ -261,6 +261,9 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
       // Font theme tool
       fontTheme: allAILibTools.fontTheme,
 
+      // UI kit reference loader
+      loadUiKit: allAILibTools.loadUiKit,
+
       // Rebuild tools
       rebuildPageSelector: allAILibTools.rebuildPageSelector,
 

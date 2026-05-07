@@ -139,6 +139,50 @@ export class AILibContextManager {
             })
         }
 
+        // Detect UI kit on disk and inject design-language anchor
+        const uiKitAppId = context.metadata?.appId as string | undefined
+        const uiKitApp = uiKitAppId ? this.appRepository.findById(uiKitAppId) : null
+        if (uiKitApp?.path && existsSync(path.join(uiKitApp.path, 'docs', 'ui-kit', 'kit-meta.json'))) {
+            conversationContextMessages.push({
+                role: 'user',
+                content: [
+                    'This app has a UI kit design system at `docs/ui-kit/`. The kit is your design language — it defines the visual vocabulary for everything you build.',
+                    '',
+                    'Before building any page or component, call `loadUiKit` to load the kit into context. Use `include` for specific layouts or landing pages.',
+                    '',
+                    'How to work with the kit:',
+                    '- Default to kit components for every UI need — reach for them before inventing anything new.',
+                    '- Use the kit\'s color tokens, spacing scale, typography, border radii, and motion patterns in all code you write.',
+                    '- When you need something the kit doesn\'t explicitly provide, compose existing kit components or extend them in a way that matches the kit\'s style and tokens.',
+                    '- Never contradict the kit — don\'t override its colors, introduce fonts it doesn\'t define, or break its component patterns.',
+                    '',
+                    'The kit is your anchor. Everything you produce should look like it belongs to this design system.',
+                ].join('\n'),
+                insertionOrder: 'after_history'
+            })
+        }
+
+        // Re-inject persisted upload classification if present on disk
+        const classificationAppId = context.metadata?.appId as string | undefined
+        const classificationApp = classificationAppId ? this.appRepository.findById(classificationAppId) : null
+        if (classificationApp?.path) {
+            const classificationPath = path.join(classificationApp.path, 'docs', '.upload-classification.json')
+            if (existsSync(classificationPath)) {
+                try {
+                    const classificationData = readFileSync(classificationPath, 'utf-8')
+                    const parsed = JSON.parse(classificationData)
+                    const fileName = parsed.fileName || 'unknown'
+                    const isImage = /\.(png|jpg|jpeg|gif|svg|webp)$/i.test(fileName)
+                    const filePath = isImage ? `src/assets/${fileName}` : `docs/${fileName}`
+                    conversationContextMessages.push({
+                        role: 'user',
+                        content: `## Upload Classification\n\n\`\`\`json\n${classificationData}\n\`\`\`\n\nFile location: \`${filePath}\``,
+                        insertionOrder: 'after_history'
+                    })
+                } catch { /* skip if unreadable */ }
+            }
+        }
+
         const memorySummary = await this.loadConversationSummary(context)
         if (memorySummary) {
             const memoryContent = this.formatMemorySummary(memorySummary)
@@ -656,6 +700,18 @@ export class AILibContextManager {
                     templateVersion: validatedVersion,
                     content: trimmedDescription
                 })
+            }
+
+            // Append color system descriptions unless an upload provides its own color tokens
+            const hasDesignUpload = context.contextAttachments?.some(
+                (a: ContextAttachment) => a.type === 'ui_kit_upload' || (a.type === 'file_upload' && (a.data as any)?.isDesignMd)
+            )
+            if (!hasDesignUpload) {
+                const colorSystemPath = templateDescPath.replace('.md', '-color-system.md')
+                if (existsSync(colorSystemPath)) {
+                    const colorSystem = readFileSync(colorSystemPath, 'utf-8').trim()
+                    return trimmedDescription + '\n\n' + colorSystem
+                }
             }
 
             return trimmedDescription

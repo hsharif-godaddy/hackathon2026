@@ -22,6 +22,16 @@ export interface BuiltWithItem {
   prompt?: string
 }
 
+export interface UploadedDesignFile {
+  name: string
+  content: string
+  isDesignMd: boolean
+  isZip?: boolean
+  isUiKit?: boolean
+  isImage?: boolean
+  zipRaw?: ArrayBuffer
+}
+
 export interface HeroSectionProps {
   promptText: string
   setPromptText: (text: string) => void
@@ -34,6 +44,8 @@ export interface HeroSectionProps {
   onTemplateChange?: (template: string) => void
   headingText?: string
   subheadingText?: string
+  uploadedFile?: UploadedDesignFile | null
+  onFileChange?: (file: UploadedDesignFile | null) => void
 }
 
 export interface HeroSectionRef {

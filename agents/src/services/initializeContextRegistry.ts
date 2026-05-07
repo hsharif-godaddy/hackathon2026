@@ -1,5 +1,5 @@
 import { contextAttachmentRegistry } from './ContextAttachmentRegistry.js'
-import { DefaultContextRenderer, AiEditContextRenderer, VisualContextRenderer, SelectedAssetsContextRenderer, BuildErrorContextRenderer, RuntimeErrorContextRenderer, TodoListContextRenderer } from './renderers/index.js'
+import { DefaultContextRenderer, AiEditContextRenderer, VisualContextRenderer, SelectedAssetsContextRenderer, BuildErrorContextRenderer, RuntimeErrorContextRenderer, TodoListContextRenderer, ZipUploadContextRenderer, UiKitUploadContextRenderer, FileUploadContextRenderer } from './renderers/index.js'
 import { logger } from '../logging/index.js'
 
 /**
@@ -42,6 +42,24 @@ export function initializeContextRegistry(): void {
   contextAttachmentRegistry.register({
     type: 'todo_list_context',
     renderer: new TodoListContextRenderer(),
+    defaultPersistence: 'save'
+  })
+
+  contextAttachmentRegistry.register({
+    type: 'zip_upload',
+    renderer: new ZipUploadContextRenderer(),
+    defaultPersistence: 'ephemeral'
+  })
+
+  contextAttachmentRegistry.register({
+    type: 'ui_kit_upload',
+    renderer: new UiKitUploadContextRenderer(),
+    defaultPersistence: 'ephemeral'
+  })
+
+  contextAttachmentRegistry.register({
+    type: 'file_upload',
+    renderer: new FileUploadContextRenderer(),
     defaultPersistence: 'save'
   })
 

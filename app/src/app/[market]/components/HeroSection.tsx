@@ -24,6 +24,7 @@ import { JourneyTracker } from '@/lib/journeyTracker'
 import { getByteLength, MAX_PROMPT_BYTES, validateAndClampPrompt } from '@/lib/waf-validation'
 import { generateClickEID } from '@/utils/instrumentation'
 import { handleModifierEnterNewline } from '@/utils/textareaShortcuts'
+import DesignFileUpload, { DesignFileUploadBadge } from './DesignFileUpload'
 import { HeroSectionProps, HeroSectionRef } from './types'
 
 const PROMPT_IDLE_MS = 30_000
@@ -40,6 +41,8 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
   onTemplateChange,
   headingText,
   subheadingText,
+  uploadedFile,
+  onFileChange,
 }, ref) => {
   const t = useTranslations();
   const isTemplateSelectorEnabled = useSwitchboard('appbuilder-template-selector')
@@ -614,6 +617,13 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                 </div>
                 {/* Action Buttons Container */}
                 <Box orientation="horizontal" gap="sm">
+                  {onFileChange && (
+                    <DesignFileUpload
+                      uploadedFile={uploadedFile ?? null}
+                      onFileChange={onFileChange}
+                      disabled={isLoading}
+                    />
+                  )}
                   {isSpeechSupported && (
                     <Button
                       onClick={() => {
@@ -648,6 +658,15 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
               </Box>
             </Box>
           </div>
+
+          {/* Uploaded file badge */}
+          {uploadedFile && onFileChange && (
+            <DesignFileUploadBadge
+              uploadedFile={uploadedFile}
+              onRemove={() => onFileChange(null)}
+              disabled={isLoading}
+            />
+          )}
 
           {/* Template Selector */}
           {/* Template selector is used for internal experiments in TLA accounts only; customers won't see it. */}

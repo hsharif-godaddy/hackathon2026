@@ -1,0 +1,431 @@
+'use client'
+
+import { useRouter, useSearchParams } from 'next/navigation'
+import { useCallback, useEffect, useRef, useState } from 'react'
+
+import { HeroSectionRef, LOGO_DESIGNER_TEMPLATE, type UploadedDesignFile, validateTemplate } from '@/app/[market]/components/types'
+import { useAuthContext } from '@/components/providers/AuthProvider'
+import { EXPERIMENT_IDS } from '@/config/experiments'
+import { useAnalytics } from '@/hooks/useAnalytics'
+import { useAuthGateTracking } from '@/hooks/useAuthGateTracking'
+import { useHomepageBounceTracking } from '@/hooks/useHomepageBounceTracking'
+import { useSafariClass } from '@/hooks/useSafariClass'
+import { useSsoSignIn } from '@/hooks/useSsoSignIn'
+import { useSwitchboard } from '@/hooks/useSwitchboard'
+import { useTranslations } from '@/hooks/useTranslations'
+import { getErrorMessage } from '@/lib/errors'
+import { shipAnalyticsLog } from '@/lib/logging'
+import { buildDevelopUrl, extractApiError, fetchQuickCreate, type QuickCreateResponse, setQuickCreateSessionFlags, storeUploadedFile } from '@/lib/quick-create'
+import { logger } from '@/lib/request-context'
+import { validateAndClampPrompt } from '@/lib/waf-validation'
+import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
+import { logAiroHQEvent, logImpressionEvent } from '@/utils/instrumentation'
+
+type SubmitSource = 'example' | 'text'
+
+export function useHomepageSubmission() {
+  const t = useTranslations()
+  const [promptText, setPromptText] = useState("")
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const templateParam = searchParams.get('template')
+  const [selectedTemplate, setSelectedTemplate] = useState(validateTemplate(templateParam))
+  const isLogoMode = templateParam === LOGO_DESIGNER_TEMPLATE
+  const isTemplateSelectorEnabled = useSwitchboard('appbuilder-template-selector')
+  const [uploadedFile, setUploadedFile] = useState<UploadedDesignFile | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const [isRedirecting, setIsRedirecting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [showMockLogin, setShowMockLogin] = useState(false)
+  const heroSectionRef = useRef<HeroSectionRef>(null)
+  const homepageViewRecordedRef = useRef(false)
+  const scrollMilestonesLoggedRef = useRef<Set<number>>(new Set())
+  const authGateShownAtRef = useRef<number | null>(null)
+  const homepageSubmitAttemptRef = useRef(0)
+  const pendingHomepageErrorRef = useRef<{
+    attemptNumber: number
+    errorType: string
+    occurredAt: number
+  } | null>(null)
+  const promptTextRef = useRef(promptText)
+  const submitSourceRef = useRef<SubmitSource>('text')
+  promptTextRef.current = promptText
+
+  const { isAuthenticated, isLoading: authIsLoading } = useAuthContext()
+  const { cohort, logAnalytics } = useAnalytics({
+    experimentId: EXPERIMENT_IDS.homepageEngagement,
+    baseData: { isAuthenticated },
+  })
+  const { signIn } = useSsoSignIn()
+  const showUpgradeModal = useDevelopPageStore((state) => state.showUpgradeModal)
+  const upgradeModalSource = useDevelopPageStore((state) => state.upgradeModalSource)
+  const upgradeModalItc = useDevelopPageStore((state) => state.upgradeModalItc)
+  const closeUpgradeModal = useDevelopPageStore((state) => state.closeUpgradeModal)
+
+  const setHeroError = useCallback((next: string | null) => {
+    if (next === null && pendingHomepageErrorRef.current) {
+      logAnalytics('homepage.error.abandon', {
+        attemptNumber: pendingHomepageErrorRef.current.attemptNumber,
+        errorType: pendingHomepageErrorRef.current.errorType,
+        msFromError: Math.round(Date.now() - pendingHomepageErrorRef.current.occurredAt),
+      })
+      pendingHomepageErrorRef.current = null
+    }
+    setError(next)
+  }, [logAnalytics])
+
+  const logHomepagePricingView = useCallback(
+    ({ viewDurationMs }: { viewDurationMs: number }) => {
+      const promptState = promptText.trim().length > 0 ? 'has_content' : 'empty'
+      const msFromPageLoad = Math.round(performance.now())
+      logAnalytics(
+        'homepage.pricing.view',
+        {
+          msFromPageLoad,
+          promptState,
+          viewDurationMs,
+        },
+        {
+          kind: 'impression',
+          eid: 'homepage.pricing.view',
+          impressionProps: {
+            promptState,
+            viewDurationMs,
+          },
+        },
+      )
+    },
+    [logAnalytics, promptText],
+  )
+
+  useSafariClass()
+  useAuthGateTracking(logAnalytics, { authGateShownAtRef, promptTextRef })
+  const { markEngaged: markHomepageEngaged } = useHomepageBounceTracking(logAnalytics)
+
+  useEffect(() => {
+    if (authIsLoading || homepageViewRecordedRef.current) {
+      return
+    }
+    homepageViewRecordedRef.current = true
+    logAnalytics('homepage.view')
+    logImpressionEvent('homepage.page.view', { cohort })();
+    logAiroHQEvent({
+      category: 'impression',
+      recommendation_task: 'builder_homepage_viewed',
+      recommendation_type: 'navigation'
+    })();
+  }, [authIsLoading, cohort, logAnalytics])
+
+  useEffect(() => {
+    function updateScrollMilestones() {
+      if (scrollMilestonesLoggedRef.current.size === 4) return
+
+      const scrollable = document.documentElement.scrollHeight - window.innerHeight
+      const promptHasContent = promptTextRef.current.trim().length > 0
+      const msFromPageLoad = Math.round(performance.now())
+
+      if (scrollable <= 0) {
+        if (!scrollMilestonesLoggedRef.current.has(100)) {
+          scrollMilestonesLoggedRef.current.add(25)
+          scrollMilestonesLoggedRef.current.add(50)
+          scrollMilestonesLoggedRef.current.add(75)
+          scrollMilestonesLoggedRef.current.add(100)
+          logAnalytics(
+            'homepage.scroll.milestone',
+            {
+              depth: 100,
+              msFromPageLoad,
+              promptHasContent,
+            },
+            {
+              kind: 'action',
+              eid: 'homepage.depth.complete',
+              action: 'scroll',
+            },
+          )
+        }
+        return
+      }
+
+      const percent = (window.scrollY / scrollable) * 100
+      for (const depth of [25, 50, 75, 100] as const) {
+        if (percent >= depth && !scrollMilestonesLoggedRef.current.has(depth)) {
+          scrollMilestonesLoggedRef.current.add(depth)
+          const options =
+            depth === 25
+              ? {
+                  kind: 'action' as const,
+                  eid: 'homepage.depth.start',
+                  action: 'scroll' as const,
+                }
+              : depth === 100
+                ? {
+                    kind: 'action' as const,
+                    eid: 'homepage.depth.complete',
+                    action: 'scroll' as const,
+                  }
+                : undefined
+
+          logAnalytics('homepage.scroll.milestone', { depth, msFromPageLoad, promptHasContent }, options)
+        }
+      }
+    }
+
+    window.addEventListener('scroll', updateScrollMilestones, { passive: true })
+    updateScrollMilestones()
+    return () => window.removeEventListener('scroll', updateScrollMilestones)
+  }, [logAnalytics])
+
+  useEffect(() => {
+    const siteLocation = searchParams.get('site_location') || document.referrer;
+    if (siteLocation) {
+      shipAnalyticsLog('homepage.redirect.source', { siteLocation });
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    const initialPromptParam = searchParams.get('initialPrompt')
+    if (initialPromptParam && !promptText) {
+      const decoded = decodeURIComponent(initialPromptParam)
+      const validated = validateAndClampPrompt(decoded)
+      setPromptText(validated.text)
+
+      logAnalytics('homepage.prompt.prefill_from_url', {
+        clipped: validated.wasClipped,
+        promptLength: validated.text.length,
+      })
+
+      if (validated.wasClipped) {
+        logger.warn('homepage.url-param.clipped', {
+          originalLength: decoded.length,
+          clippedLength: validated.charLength,
+          byteLength: validated.byteLength
+        })
+      }
+    }
+  }, [logAnalytics, searchParams])
+
+  useEffect(() => {
+    return () => setIsRedirecting(false)
+  }, [])
+
+  const savePromptForRetry = useCallback((prompt: string, context: 'login' | 'session-refresh') => {
+    try {
+      localStorage.setItem('airo-pending-prompt', prompt);
+      logger.info('homepage.prompt.save', { context, promptLength: prompt.length });
+    } catch (error) {
+      logger.warn('homepage.prompt.save.error', { context, error: getErrorMessage(error) });
+    }
+  }, [])
+
+  const handleStartBuilding = useCallback(async (overridePrompt?: string) => {
+    let promptToUse = (typeof overridePrompt === 'string' ? overridePrompt : promptTextRef.current).trim()
+    promptToUse = promptToUse.replace(/https?:\/\/example\.com\s*/gi, '').trim()
+
+    if (!promptToUse || isRedirecting || isLoading) return
+
+    markHomepageEngaged()
+
+    const preClampPromptLength = promptToUse.length
+    const validated = validateAndClampPrompt(promptToUse)
+    promptToUse = validated.text
+
+    if (validated.wasClipped) {
+      logger.warn('homepage.submit.clipped', {
+        originalLength: preClampPromptLength,
+        clippedLength: validated.charLength,
+        byteLength: validated.byteLength
+      })
+    }
+    const submitSource = submitSourceRef.current
+    const firstInputTime = heroSectionRef.current?.getFirstInputTime()
+
+    if (authIsLoading) {
+      logger.debug('page.auth.loading', 'Auth state still loading, waiting before proceeding')
+      return
+    }
+
+    logAnalytics('homepage.prompt.submit_attempt', {
+      submitSource,
+      promptLength: promptToUse.length,
+      msFromPageLoad: Math.round(performance.now()),
+      ...(firstInputTime && { msFromFirstInput: Date.now() - firstInputTime }),
+    })
+
+    homepageSubmitAttemptRef.current += 1
+    const submitAttemptNumber = homepageSubmitAttemptRef.current
+    if (pendingHomepageErrorRef.current) {
+      logAnalytics('homepage.error.retry', {
+        attemptNumber: submitAttemptNumber,
+        errorType: pendingHomepageErrorRef.current.errorType,
+        msFromError: Math.round(Date.now() - pendingHomepageErrorRef.current.occurredAt),
+      })
+      pendingHomepageErrorRef.current = null
+    }
+
+    setError(null)
+    setIsLoading(true)
+    setIsRedirecting(true)
+
+    logAiroHQEvent({
+      category: 'click',
+      recommendation_task: 'builder_homepage_prompt_submit',
+      recommendation_type: 'user_prompt'
+    })();
+
+    try {
+      if (!isAuthenticated) {
+        logger.info('page.auth.sso-login', { action: 'showing-sso-login' });
+        savePromptForRetry(promptToUse, 'login');
+        logAnalytics('homepage.auth_gate.shown', { submitSource }, { kind: 'action', eid: 'homepage.auth.gate', action: 'load' })
+        authGateShownAtRef.current = Date.now()
+        signIn({ onShowMockLogin: () => setShowMockLogin(true) });
+        setIsLoading(false);
+        setIsRedirecting(false);
+        return;
+      }
+
+      const createSiteResponse = await fetchQuickCreate(promptToUse)
+
+      if (!createSiteResponse.ok) {
+        if (createSiteResponse.status === 401) {
+          logger.info('homepage.auth-required', { action: 'triggering-sso-login', phase: 'quick-create' });
+          savePromptForRetry(promptToUse, 'session-refresh');
+          logAnalytics('homepage.auth_gate.shown', { submitSource }, { kind: 'action', eid: 'homepage.auth.gate', action: 'load' })
+          authGateShownAtRef.current = Date.now()
+          signIn({ onShowMockLogin: () => setShowMockLogin(true) });
+          setIsLoading(false);
+          setIsRedirecting(false);
+          return;
+        }
+
+        const errorData = await createSiteResponse.json().catch(() => ({}))
+        throw extractApiError(errorData)
+      }
+
+      const siteData: QuickCreateResponse = await createSiteResponse.json()
+      logger.info('page.site.quick-create.success', { message: 'Site record created instantly', siteId: siteData.id, type: siteData.type })
+
+      setQuickCreateSessionFlags(siteData.id, promptToUse, selectedTemplate, uploadedFile)
+
+      if (uploadedFile?.zipRaw) {
+        await storeUploadedFile(siteData.id, uploadedFile.zipRaw, uploadedFile.name)
+      }
+
+      const redirectUrl = buildDevelopUrl(siteData.id, siteData.type)
+
+      logger.info('page.site.redirect', { message: 'Redirecting to develop page', siteId: siteData.id, idType: siteData.type, redirectUrl })
+      logAnalytics('homepage.redirect.develop', { submitSource }, { kind: 'impression', eid: 'homepage.redirect.develop' })
+
+      pendingHomepageErrorRef.current = null
+      router.push(redirectUrl)
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      logger.error('homepage.start_building.failed', { error: errorMsg, details: error instanceof Error ? (error as any).details : undefined })
+      logAnalytics('homepage.submit.error', { submitSource, errorMessage: errorMsg.substring(0, 200) })
+
+      let errorMessage = t('builder_abstract_animation_error_generic')
+      let errorType = 'generic'
+
+      if (error instanceof Error) {
+        if ((error as any).errorCode === 'APP_LIMIT_EXCEEDED') {
+          errorType = 'app_limit_exceeded'
+          errorMessage = t('builder_homepage_error_app_limit', undefined, 'You have reached the maximum number of apps allowed. Please delete some unused apps to create new ones.')
+        } else if (error.message.includes('Failed to create site')) {
+          errorType = 'create_failed'
+          errorMessage = t('builder_homepage_error_create')
+        } else if (error.message.includes('Failed to validate account')) {
+          errorType = 'validate_failed'
+          errorMessage = t('builder_homepage_error_validate')
+        } else if (error.message.includes('Failed to fetch')) {
+          errorType = 'network'
+          errorMessage = t('builder_homepage_error_network')
+        } else if (error.message.includes('fetch')) {
+          errorType = 'network'
+          errorMessage = t('builder_homepage_error_fetch')
+        } else if (error.message.includes('TypeError')) {
+          errorType = 'connection'
+          errorMessage = t('builder_homepage_error_connection')
+        } else {
+          errorMessage = error.message
+        }
+      }
+
+      pendingHomepageErrorRef.current = {
+        attemptNumber: homepageSubmitAttemptRef.current,
+        errorType,
+        occurredAt: Date.now(),
+      }
+      setError(errorMessage)
+
+      setIsLoading(false)
+      setIsRedirecting(false)
+    }
+  }, [authIsLoading, isAuthenticated, isLoading, isRedirecting, logAnalytics, markHomepageEngaged, router, savePromptForRetry, selectedTemplate, signIn, t, uploadedFile])
+
+  useEffect(() => {
+    if (!isAuthenticated || authIsLoading) return
+
+    const savedPrompt = localStorage.getItem('airo-pending-prompt')
+
+    if (savedPrompt && !promptText) {
+      logger.info('homepage.prompt.restore', { message: 'Restoring saved prompt after login' })
+      const validated = validateAndClampPrompt(savedPrompt)
+      setPromptText(validated.text)
+      localStorage.removeItem('airo-pending-prompt')
+      logAnalytics('homepage.auth_prompt.restored')
+
+      if (validated.wasClipped) {
+        logger.warn('homepage.restore.clipped', {
+          originalLength: savedPrompt.length,
+          clippedLength: validated.charLength,
+          byteLength: validated.byteLength
+        })
+      }
+
+      handleStartBuilding(validated.text)
+    }
+  }, [authIsLoading, handleStartBuilding, isAuthenticated, logAnalytics, promptText])
+
+  const handleExampleClick = (examplePrompt: string) => {
+    submitSourceRef.current = 'example'
+    if (heroSectionRef.current) {
+      heroSectionRef.current.typeText(examplePrompt)
+    } else {
+      const validated = validateAndClampPrompt(examplePrompt)
+      setPromptText(validated.text)
+
+      if (validated.wasClipped) {
+        logger.warn('homepage.example.clipped', {
+          originalLength: examplePrompt.length,
+          clippedLength: validated.charLength,
+          byteLength: validated.byteLength
+        })
+      }
+    }
+  }
+
+  return {
+    promptText,
+    setPromptText,
+    selectedTemplate,
+    setSelectedTemplate,
+    isLogoMode,
+    isTemplateSelectorEnabled,
+    uploadedFile,
+    setUploadedFile,
+    isLoading,
+    error,
+    setHeroError,
+    showMockLogin,
+    setShowMockLogin,
+    heroSectionRef,
+    handleStartBuilding,
+    handleExampleClick,
+    logHomepagePricingView,
+    showUpgradeModal,
+    upgradeModalSource,
+    upgradeModalItc,
+    closeUpgradeModal,
+  }
+}

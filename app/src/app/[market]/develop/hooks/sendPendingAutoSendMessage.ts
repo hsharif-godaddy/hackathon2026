@@ -1,10 +1,13 @@
 import type { SendMessageOptions } from '@/hooks/useStreamingWebSocket'
+import { retrieveAndUploadFile } from '@/lib/quick-create'
 import { logger } from '@/lib/request-context'
 
 export interface SendPendingAutoSendMessageOptions {
   messageToSend: string
   appId: string
+  jobId?: string | null
   templateId: string | null
+  uploadedFile?: { name: string; content: string; isDesignMd: boolean; isZip?: boolean; isUiKit?: boolean; isImage?: boolean } | null
   send: (options: SendMessageOptions) => Promise<void>
   setInputValue: (value: string) => void
   markInitialPromptSent: () => void
@@ -40,19 +43,56 @@ export async function sendPendingAutoSendMessage(
   const {
     messageToSend,
     appId,
+    jobId,
     templateId,
+    uploadedFile,
     send,
     setInputValue,
     markInitialPromptSent,
     onSettled,
   } = opts
 
+  const effectiveTemplateId = uploadedFile?.isUiKit
+    ? 'ui-kit-import'
+    : uploadedFile?.isZip
+      ? 'zip-import'
+      : uploadedFile
+        ? 'file-upload'
+        : (templateId ?? undefined)
+
   let outerError: unknown = null
   try {
+    // Upload file to agent via HTTP (all file types use the same path)
+    let fileUploaded = false
+    if (uploadedFile) {
+      try {
+        fileUploaded = await retrieveAndUploadFile(appId, jobId)
+      } catch (uploadError) {
+        logger.error('develop-page.file-upload.failed', {
+          error: uploadError instanceof Error ? uploadError.message : JSON.stringify(uploadError),
+          appId,
+        })
+      }
+    }
+
+    const contextType = uploadedFile?.isUiKit
+      ? 'ui_kit_upload'
+      : uploadedFile?.isZip
+        ? 'zip_upload'
+        : 'file_upload'
+
     await send({
       content: messageToSend,
       aiEditContext: null,
-      templateId: templateId ?? undefined,
+      templateId: fileUploaded ? effectiveTemplateId : (templateId ?? undefined),
+      ...(fileUploaded && {
+        uploadedFileName: uploadedFile!.name,
+        customContext: {
+          type: contextType,
+          persistence: 'save',
+          data: { uploaded: true, name: uploadedFile!.name, isDesignMd: uploadedFile!.isDesignMd, isZip: uploadedFile!.isZip, isUiKit: uploadedFile!.isUiKit, isImage: uploadedFile!.isImage },
+        },
+      }),
     })
   } catch (error) {
     outerError = error

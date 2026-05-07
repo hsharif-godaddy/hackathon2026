@@ -22,6 +22,26 @@ export const templateRegistry: Record<string, InitialAgentTemplate> = {
     name: 'Logo Designer',
     description: 'Discovers brand identity and creates a logo showcase website',
   },
+  'design-spec': {
+    id: 'design-spec',
+    name: 'Design Spec Builder',
+    description: 'Builds directly from a design.md specification, skipping design questioning',
+  },
+  'zip-import': {
+    id: 'zip-import',
+    name: 'ZIP Import',
+    description: 'Writes uploaded ZIP file contents (styles, pages, components) directly to the app',
+  },
+  'ui-kit-import': {
+    id: 'ui-kit-import',
+    name: 'UI Kit Import',
+    description: 'Imports a UI kit design system and applies CSS tokens, fonts, and design patterns',
+  },
+  'file-upload': {
+    id: 'file-upload',
+    name: 'File Upload',
+    description: 'Adapts the initial agent flow based on uploaded file classification (images, text docs, specs)',
+  },
 }
 
 /**

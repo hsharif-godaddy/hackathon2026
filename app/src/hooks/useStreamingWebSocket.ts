@@ -102,6 +102,9 @@ export interface SendMessageOptions {
 
   /** Per-project agent profile override (from profile selector in settings) */
   agentProfile?: string
+
+  /** Name of file uploaded via HTTP to the agent (displayed below message) */
+  uploadedFileName?: string
 }
 
 /**
@@ -395,6 +398,7 @@ export function useStreamingWebSocket({ enabled = true }: { enabled?: boolean } 
           templateId: options.templateId,
           modelOverride: defaults.modelOverride,
           agentProfile: defaults.agentProfile,
+          uploadedFileName: options.uploadedFileName,
         })
       } catch (error) {
         // Convert to structured error with context

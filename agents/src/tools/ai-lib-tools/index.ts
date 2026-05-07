@@ -11,6 +11,7 @@ export { textEditorAITool } from './text-editor.js';
 export { directoryListingAITool } from './directory-listing.js';
 export { terminalCommandAITool } from './terminal-command.js';
 export { readFileAITool } from './read-file.js';
+export { loadUiKitAITool } from './load-ui-kit.js';
 export { grepSearchAITool } from './grep-search.js';
 export { serverRestartAITool, serverStatusAITool } from './server-management.js';
 export { imageEditorAITool } from '../image-editor-tool.js';
@@ -57,6 +58,7 @@ import { textEditorAITool } from './text-editor.js';
 import { directoryListingAITool } from './directory-listing.js';
 import { terminalCommandAITool } from './terminal-command.js';
 import { readFileAITool } from './read-file.js';
+import { loadUiKitAITool } from './load-ui-kit.js';
 import { grepSearchAITool } from './grep-search.js';
 import { serverRestartAITool, serverStatusAITool } from './server-management.js';
 import { imageEditorAITool } from '../image-editor-tool.js';
@@ -143,6 +145,7 @@ export const allAILibTools: Record<string, Tool> = {
   rebuildPageSelector: rebuildPageSelectorAITool,
   media: mediaSlotAITool,
   brandBook: brandIdentityAITool,
+  loadUiKit: loadUiKitAITool,
 };
 
 /**

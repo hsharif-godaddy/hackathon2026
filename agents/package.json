@@ -106,6 +106,7 @@
     "isomorphic-dompurify": "^2.36.0",
     "jose": "catalog:",
     "jsdom": "^24.0.0",
+    "jszip": "catalog:",
     "jwt-decode": "catalog:",
     "magic-string": "catalog:",
     "minimatch": "^10.0.3",

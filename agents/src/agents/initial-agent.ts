@@ -4,7 +4,7 @@ import {
   createHandoffTool,
   type SessionStateManager,
 } from '@airo/ai-lib'
-import { existsSync } from 'fs'
+import { existsSync, readFileSync } from 'fs'
 import type { PipelineContextMessage } from '@airo/ai-lib'
 import { getAgentModelWithName } from '../utils/model-selection.js'
 import { getModularPromptPaths } from '../utils/prompt-utils.js'
@@ -66,14 +66,36 @@ async function buildInitialSystemPrompt(templateId?: string, promptVersion?: str
   const paths = getModularPromptPaths(import.meta.url)
 
   if (templateId) {
-    // Template mode: load from templates/<templateId>/
     const templateDir = `initial/templates/${templateId}`
-    promptBuilder.file(paths.getAgentFile(templateDir, 'core.md'))
+    const manifestPath = paths.getAgentFile(templateDir, 'manifest.json')
 
-    for (const file of LEGACY_OPTIONAL_FILES) {
-      const filePath = paths.getAgentFile(templateDir, file)
-      if (existsSync(filePath)) {
+    if (existsSync(manifestPath)) {
+      // Manifest mode: ordered file list with source routing
+      const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8')) as {
+        base: string
+        files: Array<{ src: 'base' | 'template'; file: string }>
+      }
+      const baseDir = `initial/${manifest.base}`
+
+      for (const entry of manifest.files) {
+        const filePath = entry.src === 'base'
+          ? paths.getAgentFile(baseDir, entry.file)
+          : paths.getAgentFile(templateDir, entry.file)
+
+        if (!existsSync(filePath)) {
+          throw new Error(`Missing manifest file: ${entry.src}/${entry.file} for template ${templateId}`)
+        }
         promptBuilder.file(filePath)
+      }
+    } else {
+      // Legacy template mode: core.md + optional files
+      promptBuilder.file(paths.getAgentFile(templateDir, 'core.md'))
+
+      for (const file of LEGACY_OPTIONAL_FILES) {
+        const filePath = paths.getAgentFile(templateDir, file)
+        if (existsSync(filePath)) {
+          promptBuilder.file(filePath)
+        }
       }
     }
 
@@ -163,6 +185,32 @@ export async function createInitialAgent(
     tools.skill = allAILibTools.skill
     // No websiteRebuild — logo-designer hands off out-of-scope requests to initial
     delete tools.websiteRebuild
+  }
+
+  // Design-spec template: apply design tokens directly, write files to disk
+  if (templateId === 'design-spec') {
+    tools.colorScheme = allAILibTools.colorScheme
+    tools.fontTheme = allAILibTools.fontTheme
+    tools.fileEdit = allAILibTools.fileEdit
+  }
+
+  // ZIP import template: write uploaded files to disk
+  if (templateId === 'zip-import') {
+    tools.fileEdit = allAILibTools.fileEdit
+  }
+
+  // UI kit import: apply design tokens, write files, load kit reference
+  if (templateId === 'ui-kit-import') {
+    tools.colorScheme = allAILibTools.colorScheme
+    tools.fontTheme = allAILibTools.fontTheme
+    tools.fileEdit = allAILibTools.fileEdit
+    tools.loadUiKit = allAILibTools.loadUiKit
+  }
+
+  // File upload: may need to apply extracted colors/fonts from classification
+  if (templateId === 'file-upload') {
+    tools.colorScheme = allAILibTools.colorScheme
+    tools.fontTheme = allAILibTools.fontTheme
   }
 
   if (handoffTool) {

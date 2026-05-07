@@ -98,6 +98,23 @@ function getStoredTemplateId(initialJobId: string | null, appId: string | null):
   return null
 }
 
+function getStoredUploadedFile(initialJobId: string | null, appId: string | null): { name: string; content: string; isDesignMd: boolean; isZip?: boolean; isUiKit?: boolean } | null {
+  if (typeof window === 'undefined') return null
+  try {
+    if (initialJobId) {
+      const raw = sessionStorage.getItem(`initial-upload-file-${initialJobId}`)
+      if (raw) return JSON.parse(raw)
+    }
+    if (appId) {
+      const raw = sessionStorage.getItem(`initial-upload-file-${appId}`)
+      if (raw) return JSON.parse(raw)
+    }
+  } catch {
+    return null
+  }
+  return null
+}
+
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -167,6 +184,7 @@ export interface InitializationUIState {
   shouldAutoSendPrompt: boolean
   autoSendPromptText: string | null
   templateId: string | null
+  uploadedFile: { name: string; content: string; isDesignMd: boolean; isZip?: boolean; isUiKit?: boolean } | null
 
   // Error handling
   hasError: boolean
@@ -422,6 +440,7 @@ function computeUIState(
     shouldAutoSendPrompt,
     autoSendPromptText: context.initialPromptText,
     templateId: getStoredTemplateId(context.initialJobId, context.appId),
+    uploadedFile: getStoredUploadedFile(context.initialJobId, context.appId),
 
     hasError,
     errorMessage: creationError || 'Initialization failed',
@@ -963,10 +982,12 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
         sessionStorage.removeItem(`in-creation-flow-${initialJobId}`)
         sessionStorage.removeItem(`initial-prompt-text-${initialJobId}`)
         sessionStorage.removeItem(`initial-template-${initialJobId}`)
+        sessionStorage.removeItem(`initial-upload-file-${initialJobId}`)
       }
       if (appId) {
         sessionStorage.removeItem(`initial-prompt-text-${appId}`)
         sessionStorage.removeItem(`initial-template-${appId}`)
+        sessionStorage.removeItem(`initial-upload-file-${appId}`)
       }
     },
 

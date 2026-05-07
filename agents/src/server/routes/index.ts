@@ -25,6 +25,7 @@ export { default as socialRouter } from './social.js';
 export { customerLogsRouter } from './customer-logs.js';
 export { default as diagnoseRouter } from './diagnose.js';
 export { default as zipImportRouter } from './zip-import.js';
+export { default as uiKitRouter } from './ui-kit.js';
 export { default as shareRouter } from './share.js';
 export { default as mediaRouter } from './media.js';
 export { default as modelsRouter } from './models.js';

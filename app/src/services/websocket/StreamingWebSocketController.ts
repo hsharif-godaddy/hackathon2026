@@ -445,6 +445,7 @@ export class StreamingWebSocketController extends EventEmitter {
     templateId?: string
     modelOverride?: string
     agentProfile?: string
+    uploadedFileName?: string
   }): Promise<void> {
     const { content } = params
 
@@ -493,7 +494,7 @@ export class StreamingWebSocketController extends EventEmitter {
       // Create user message in store (Tier 2 - transcript data)
       // Extract referencedFiles from customContext if present
       const referencedFiles = params.customContext?.referencedFiles as Array<{ path: string; content: string }> | undefined
-      this.deps.getActions().startNewStream(content, params.selectedAssets, referencedFiles, this.sessionOrigin)
+      this.deps.getActions().startNewStream(content, params.selectedAssets, referencedFiles, this.sessionOrigin, params.uploadedFileName)
 
       const store = this.deps.getStoreState()
       const { buildErrorContext } = store

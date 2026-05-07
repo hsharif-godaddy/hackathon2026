@@ -1266,7 +1266,9 @@ function DevelopPageContent() {
       void sendPendingAutoSendMessage({
         messageToSend,
         appId,
+        jobId: init.initialJobId,
         templateId: init.ui.templateId ?? null,
+        uploadedFile: init.ui.uploadedFile ?? null,
         send: ws.actions.send,
         setInputValue,
         markInitialPromptSent: init.actions.markInitialPromptSent,
