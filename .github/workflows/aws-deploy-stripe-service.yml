@@ -1,0 +1,128 @@
+name: AWS Deploy Stripe Service
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "stripe-service/**"
+      - ".github/workflows/aws-deploy-stripe-service.yml"
+
+  # Manual deployment with environment choice
+  workflow_dispatch:
+    inputs:
+      DEPLOY_TO_ENV:
+        description: "Environment to deploy the artifact"
+        required: true
+        default: "dev-private"
+        type: choice
+        options:
+          - "dev-private"
+          - "test"
+          - "prod"
+
+run-name: "[STRIPE SERVICE - ${{ github.event_name == 'workflow_dispatch' && inputs.DEPLOY_TO_ENV || 'dev-private' }}] branch: ${{ github.ref_name }} | actor: ${{ github.actor }}"
+
+permissions:
+  id-token: write # required for artifactory token login
+  contents: read
+
+jobs:
+  continuous-integration:
+    name: "[STRIPE SERVICE - ${{ github.event_name == 'workflow_dispatch' && inputs.DEPLOY_TO_ENV || 'dev-private' }}] branch: ${{ github.ref_name }}"
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+
+    # Note: the environment expression is intentionally repeated in run-name and job name above.
+    # GitHub Actions does not allow env context in run-name or jobs.<name>.name, so the
+    # expression cannot be deduplicated. If the default changes, update all three locations.
+    env:
+      DEPLOY_TO_ENV: ${{ github.event_name == 'workflow_dispatch' && inputs.DEPLOY_TO_ENV || 'dev-private' }}
+
+    steps:
+      - name: Checkout Codebase
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+
+      # Retrieve Katana application info with the katana-get-app GitHub Action
+      - id: katana-app
+        name: Get Katana App Info
+        uses: gdcorp-actions/katana-get-app@v1
+        with:
+          path: /stripe-service
+
+      # Sets up authentication with the Golden Container Registry.
+      - name: Golden Container Registry Login
+        run: |
+          aws ecr get-login-password --region us-west-2 | docker login 764525110978.dkr.ecr.us-west-2.amazonaws.com -u AWS --password-stdin
+
+      # Login to team ECR for remote build cache
+      - name: Cache Registry Login
+        run: |
+          set -e
+          unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+          export $(printf "AWS_ACCESS_KEY_ID=%s AWS_SECRET_ACCESS_KEY=%s AWS_SESSION_TOKEN=%s" \
+          $(aws sts assume-role --role-arn arn:aws:iam::694282668781:role/GD-AWS-SSG-Deploy-Role --role-session-name GHASession --query "Credentials.[AccessKeyId,SecretAccessKey,SessionToken]" --output text))
+          aws ecr get-login-password --region us-west-2 | docker login --username AWS --password-stdin 694282668781.dkr.ecr.us-west-2.amazonaws.com
+
+      # Set up Docker Buildx for advanced caching
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+        with:
+          driver: docker-container
+
+      # Build with remote layer caching via ECR registry.
+      # Cache repo (airo-builder/stripe-service:cache) must exist in ECR;
+      # first run may warn on cache-to push if repo hasn't been created yet.
+      - name: Build Container
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+        with:
+          context: .
+          file: stripe-service/Dockerfile
+          platforms: linux/amd64
+          load: true
+          tags: ${{ steps.katana-app.outputs.app }}:${{ github.sha }}
+          cache-from: type=registry,ref=694282668781.dkr.ecr.us-west-2.amazonaws.com/airo-builder/stripe-service:cache
+          cache-to: type=registry,ref=694282668781.dkr.ecr.us-west-2.amazonaws.com/airo-builder/stripe-service:cache,mode=max
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+
+      # Publish the built container image to Katana with the katana-publish-artifact GitHub Action
+      - id: katana-publish
+        name: Publish Katana Artifact
+        uses: gdcorp-actions/katana-publish-artifact@v1
+        with:
+          namespace: ${{ steps.katana-app.outputs.namespace }}
+          app: ${{ steps.katana-app.outputs.app }}
+          image_name: ${{ steps.katana-app.outputs.app }}:${{ github.sha }}
+          artifact_kind: ecs
+          artifact_options_json: |
+            {
+              "protocol": "http",
+              "ports": [4200],
+              "healthcheckPath": "/health",
+              "healthcheckGracePeriod": 30
+            }
+
+      # Promote the published artifact to the selected environment
+      - name: Promote to ${{ env.DEPLOY_TO_ENV }} Environment
+        uses: gdcorp-actions/katana-promote-artifact@v1
+        with:
+          namespace: ${{ steps.katana-app.outputs.namespace }}
+          app: ${{ steps.katana-app.outputs.app }}
+          environment: ${{ env.DEPLOY_TO_ENV }}
+          artifact_id: ${{ steps.katana-publish.outputs.artifact_id }}
+
+      # Publish summary
+      - name: Publish Summary
+        run: |
+          {
+            printf '**Build Summary:**\n\n```\n'
+            echo "Artifact ID: ${{ steps.katana-publish.outputs.artifact_id }}"
+            echo "Deployed to: ${{ env.DEPLOY_TO_ENV }}"
+            echo "Image: ${{ steps.katana-publish.outputs.image_uri }}"
+            echo "Commit: ${{ github.sha }}"
+            echo "Branch: ${{ github.ref_name }}"
+            echo "Actor: ${{ github.actor }}"
+            printf '\n```\n\n'
+          } >> $GITHUB_STEP_SUMMARY

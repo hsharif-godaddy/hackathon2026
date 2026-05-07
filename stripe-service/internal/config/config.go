@@ -1,0 +1,159 @@
+// Package config reads env for cmd/server.
+package config
+
+import (
+	"fmt"
+	"log/slog"
+	"os"
+	"strconv"
+	"strings"
+	"time"
+)
+
+// Environment is the Airo env this process is running in. Surfaced in /health.
+type Environment string
+
+const (
+	EnvLocal Environment = "local"
+	EnvDev   Environment = "dev"
+	EnvTest  Environment = "test"
+	EnvProd  Environment = "prod"
+)
+
+// Config is process env for the HTTP server.
+type Config struct {
+	Addr             string
+	Environment      Environment
+	LogLevel         string
+	LogFormat        string
+	HTTPReadTimeout  time.Duration
+	HTTPWriteTimeout time.Duration
+	HTTPIdleTimeout  time.Duration
+	ShutdownTimeout  time.Duration
+}
+
+// Load reads env, applies defaults, validates. Returns error on any invalid
+// value. Unset env vars fall back to documented defaults; vars that are set but
+// unparseable (bad enum, bad duration, bad port) produce a descriptive error.
+func Load() (Config, error) {
+	cfg := Config{
+		Addr: getEnv("STRIPE_SERVICE_ADDR", ":4200"),
+	}
+
+	var err error
+	if cfg.HTTPReadTimeout, err = getEnvDuration("HTTP_READ_TIMEOUT", 30*time.Second); err != nil {
+		return Config{}, err
+	}
+	if cfg.HTTPWriteTimeout, err = getEnvDuration("HTTP_WRITE_TIMEOUT", 60*time.Second); err != nil {
+		return Config{}, err
+	}
+	if cfg.HTTPIdleTimeout, err = getEnvDuration("HTTP_IDLE_TIMEOUT", 120*time.Second); err != nil {
+		return Config{}, err
+	}
+	if cfg.ShutdownTimeout, err = getEnvDuration("SHUTDOWN_TIMEOUT", 15*time.Second); err != nil {
+		return Config{}, err
+	}
+
+	if cfg.Environment, err = parseEnvironment(getEnv("ENVIRONMENT", "local")); err != nil {
+		return Config{}, err
+	}
+	if cfg.LogLevel, err = parseLogLevel(getEnv("LOG_LEVEL", "info")); err != nil {
+		return Config{}, err
+	}
+	if cfg.LogFormat, err = parseLogFormat(getEnv("LOG_FORMAT", "json")); err != nil {
+		return Config{}, err
+	}
+	if err := validateAddr(cfg.Addr); err != nil {
+		return Config{}, err
+	}
+	return cfg, nil
+}
+
+// Enum parsers trim surrounding whitespace (and lowercase where the value is
+// case-insensitive) and return the normalized form so downstream code can rely
+// on exact-string comparisons.
+
+func parseEnvironment(s string) (Environment, error) {
+	trimmed := strings.TrimSpace(s)
+	switch Environment(trimmed) {
+	case EnvLocal, EnvDev, EnvTest, EnvProd:
+		return Environment(trimmed), nil
+	default:
+		return "", fmt.Errorf("ENVIRONMENT must be one of local|dev|test|prod; got %q", s)
+	}
+}
+
+func parseLogLevel(s string) (string, error) {
+	normalized := strings.ToLower(strings.TrimSpace(s))
+	switch normalized {
+	case "debug", "info", "warn", "warning", "error":
+		return normalized, nil
+	default:
+		return "", fmt.Errorf("LOG_LEVEL must be one of debug|info|warn|error; got %q", s)
+	}
+}
+
+func parseLogFormat(s string) (string, error) {
+	normalized := strings.ToLower(strings.TrimSpace(s))
+	switch normalized {
+	case "json", "text":
+		return normalized, nil
+	default:
+		return "", fmt.Errorf("LOG_FORMAT must be one of json|text; got %q", s)
+	}
+}
+
+// validateAddr checks that the listen address has a numeric port in [1,65535].
+// Accepts ":4200" or "0.0.0.0:4200". Empty host is fine.
+func validateAddr(addr string) error {
+	idx := strings.LastIndex(addr, ":")
+	if idx < 0 {
+		return fmt.Errorf("STRIPE_SERVICE_ADDR must include a port (e.g. :4200); got %q", addr)
+	}
+	portStr := addr[idx+1:]
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		return fmt.Errorf("STRIPE_SERVICE_ADDR port must be numeric; got %q", portStr)
+	}
+	if port < 1 || port > 65535 {
+		return fmt.Errorf("STRIPE_SERVICE_ADDR port must be between 1 and 65535; got %d", port)
+	}
+	return nil
+}
+
+func getEnv(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
+
+// getEnvDuration returns fallback when the env var is unset or empty, parses
+// the value otherwise, and returns a descriptive error if the value is present
+// but cannot be parsed (e.g. "30" instead of "30s") so misconfiguration fails
+// fast rather than silently reverting to the default.
+func getEnvDuration(key string, fallback time.Duration) (time.Duration, error) {
+	v := strings.TrimSpace(os.Getenv(key))
+	if v == "" {
+		return fallback, nil
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil {
+		return 0, fmt.Errorf("%s must be a Go duration (e.g. 30s, 2m); got %q: %w", key, v, err)
+	}
+	return d, nil
+}
+
+// SlogLevel maps the validated LogLevel string to slog.Level.
+func SlogLevel(s string) slog.Level {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "debug":
+		return slog.LevelDebug
+	case "warn", "warning":
+		return slog.LevelWarn
+	case "error":
+		return slog.LevelError
+	default:
+		return slog.LevelInfo
+	}
+}

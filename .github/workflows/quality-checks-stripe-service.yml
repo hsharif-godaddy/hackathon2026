@@ -1,0 +1,75 @@
+name: stripe-service CI
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "stripe-service/**"
+      - ".github/workflows/quality-checks-stripe-service.yml"
+  pull_request:
+    paths:
+      - "stripe-service/**"
+      - ".github/workflows/quality-checks-stripe-service.yml"
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  lint:
+    name: Lint
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.25"
+          cache-dependency-path: stripe-service/go.mod
+
+      - name: Go mod download
+        working-directory: stripe-service
+        run: go mod download
+
+      - name: go vet
+        working-directory: stripe-service
+        run: go vet ./...
+
+      - name: Check gofmt
+        working-directory: stripe-service
+        run: |
+          if [ "$(gofmt -s -l . | wc -l)" -gt 0 ]; then
+            echo "The following files are not properly formatted:" >&2
+            gofmt -s -l .
+            exit 1
+          fi
+
+  test:
+    name: Unit tests
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.25"
+          cache-dependency-path: stripe-service/go.mod
+
+      - name: Go mod download
+        working-directory: stripe-service
+        run: go mod download
+
+      - name: go test
+        working-directory: stripe-service
+        run: go test -race ./...
