@@ -61,7 +61,7 @@ function ColorPaletteWidgetModern({
   );
 
   const shellClass = clsx(
-    'flex w-full flex-row items-center gap-2 rounded-md border-2 border-border px-1.5 py-0.5 relative',
+    'flex w-full flex-row items-center gap-2 rounded-md border-2 border-border px-1.5 py-1 relative',
     !readOnly && 'transition-all duration-200 hover:shadow-md hover:cursor-pointer',
     className,
     {

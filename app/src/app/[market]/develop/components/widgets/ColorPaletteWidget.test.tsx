@@ -272,7 +272,7 @@ describe('ColorPaletteWidget', () => {
       )
       const widget = screen.getByTestId('color-palette-option')
       expect(widget).toHaveClass('px-1.5')
-      expect(widget).toHaveClass('py-0.5')
+      expect(widget).toHaveClass('py-1')
     })
 
     it('should have 2px border', () => {
