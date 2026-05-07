@@ -1,0 +1,228 @@
+name: Refill Test Subscription Credits
+
+# Manually-triggered workflow that walks a hardcoded list of TEST subscription
+# IDs, checks remaining credits on each via mgmt-airo, and grants a credit-pack
+# if the remaining balance drops below the threshold.
+#
+# References:
+#   - https://godaddy-corp.atlassian.net/wiki/spaces/PAR/pages/4258595687/Running+Grants+Locally
+#   - https://godaddy-corp.atlassian.net/wiki/spaces/PAR/pages/4153639275/Paywalls+AI+Credits+-+Y26.Q1
+
+on:
+  workflow_dispatch:
+
+# Prevent parallel runs — double-granting credits is wasteful and confusing.
+concurrency:
+  group: refill-test-credits
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  refill-credits:
+    name: Refill TEST subscription credits
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+    timeout-minutes: 15
+    env:
+      # TEST environment only (see dev-runner/internal/preflight/fixers/env.go)
+      MGMT_AIRO_BASE_URL: https://mgmt.nstk.net
+      # Refill when remaining credits drop below this value.
+      CREDIT_THRESHOLD: "50"
+      # Credits granted per refill (credit-pack type).
+      CREDIT_PACK_SIZE: "250"
+      # Hardcoded list of TEST subscription IDs to monitor.
+      # Add / remove IDs here — one per line, blank lines and leading/trailing
+      # whitespace are ignored. Lines starting with `#` are treated as comments.
+      SUBSCRIPTION_IDS: |
+        jds0ahs9ji
+        o1p0vp669k
+        h249ixlevn
+        pwxibq3p2a
+        bgnvgtrwab
+
+    steps:
+      - name: Fetch Getty mTLS cert and generate SSO JWT
+        env:
+          AWS_REGION: us-west-2
+        run: |
+          set -euo pipefail
+
+          # TEST-environment cert + SSO endpoint (mirrors knowledge_base.yml)
+          AWS_ACCOUNT_ID="694282668781"
+          IAM_ROLE="GD-AWS-USA-GD-AiroBuilde-Dev-Private-Deploy"
+          SSO_ENDPOINT="https://sso.test-godaddy.com/v1/secure/api/token"
+          CERT_SECRET_PATH="getty.airo-builder.test.authclient.int.godaddy.com.crt"
+          KEY_SECRET_PATH="getty.airo-builder.test.authclient.int.godaddy.com.key"
+
+          echo "Assuming role ${IAM_ROLE}..."
+          CREDS=$(aws sts assume-role \
+            --role-arn "arn:aws:iam::${AWS_ACCOUNT_ID}:role/${IAM_ROLE}" \
+            --role-session-name "refill-test-credits-${GITHUB_RUN_ID}" \
+            --query "Credentials.[AccessKeyId,SecretAccessKey,SessionToken]" \
+            --output text)
+          export AWS_ACCESS_KEY_ID=$(echo "$CREDS" | awk '{print $1}')
+          export AWS_SECRET_ACCESS_KEY=$(echo "$CREDS" | awk '{print $2}')
+          export AWS_SESSION_TOKEN=$(echo "$CREDS" | awk '{print $3}')
+
+          echo "Fetching Getty mTLS cert and key from Secrets Manager..."
+          GETTY_CERT=$(aws secretsmanager get-secret-value \
+            --secret-id "${CERT_SECRET_PATH}" \
+            --region "${AWS_REGION}" \
+            --query SecretString --output text)
+          GETTY_KEY=$(aws secretsmanager get-secret-value \
+            --secret-id "${KEY_SECRET_PATH}" \
+            --region "${AWS_REGION}" \
+            --query SecretString --output text)
+
+          CERT_TEMP_DIR=$(mktemp -d)
+          chmod 700 "$CERT_TEMP_DIR"
+          cleanup() { rm -rf "$CERT_TEMP_DIR"; }
+          trap cleanup EXIT
+
+          printf '%s' "$GETTY_CERT" > "$CERT_TEMP_DIR/getty.crt"
+          printf '%s' "$GETTY_KEY"  > "$CERT_TEMP_DIR/getty.key"
+          chmod 600 "$CERT_TEMP_DIR/getty.crt" "$CERT_TEMP_DIR/getty.key"
+
+          echo "Requesting SSO JWT from ${SSO_ENDPOINT}..."
+          SSO_RAW_RESPONSE=$(curl -sS \
+            --cert "$CERT_TEMP_DIR/getty.crt" \
+            --key  "$CERT_TEMP_DIR/getty.key" \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -H "Accept: application/json" \
+            -d '{"realm": "cert"}' \
+            -w '\n%{http_code}' \
+            "${SSO_ENDPOINT}")
+          SSO_HTTP_STATUS=$(printf '%s' "$SSO_RAW_RESPONSE" | tail -n1)
+          SSO_RESPONSE=$(printf '%s' "$SSO_RAW_RESPONSE" | sed '$d')
+
+          SSO_JWT=$(echo "$SSO_RESPONSE" | jq -r '.data // .access_token // .token // empty')
+          if [ -z "$SSO_JWT" ] || [ "$SSO_JWT" = "null" ]; then
+            SSO_ERROR_MESSAGE=$(printf '%s' "$SSO_RESPONSE" | jq -r '(.error_description // .error.message // .error // .message // empty) | tostring' 2>/dev/null || true)
+            if [ -n "$SSO_ERROR_MESSAGE" ] && [ "$SSO_ERROR_MESSAGE" != "null" ]; then
+              echo "::error::Failed to extract SSO JWT from response (HTTP status: $SSO_HTTP_STATUS, message: $SSO_ERROR_MESSAGE)"
+            else
+              echo "::error::Failed to extract SSO JWT from response (HTTP status: $SSO_HTTP_STATUS)"
+            fi
+            exit 1
+          fi
+
+          echo "::add-mask::$SSO_JWT"
+          echo "SSO_JWT=$SSO_JWT" >> "$GITHUB_ENV"
+          echo "SSO JWT generated"
+
+      - name: Check and refill credits for each subscription
+        run: |
+          # Intentionally NOT using `set -e` — the loop below is designed to
+          # tolerate per-subscription failures (transport errors, malformed
+          # responses) by counting them as FAILED and continuing. With `-e`,
+          # a single curl/jq failure mid-loop would abort the whole run and
+          # skip the summary table.
+          set -uo pipefail
+
+          # 1-year expiration, computed once per run.
+          USE_BEFORE_ISO="$(python3 -c "from datetime import datetime, timezone; n = datetime.now(timezone.utc); print(n.replace(year=n.year + 1).strftime('%Y-%m-%dT%H:%M:%SZ'))")" || {
+            echo "::error::Failed to compute useBefore timestamp"
+            exit 1
+          }
+          echo "useBefore for new grants: $USE_BEFORE_ISO"
+
+          TOTAL=0
+          OK=0
+          REFILLED=0
+          FAILED=0
+
+          {
+            echo "## Credit refill summary"
+            echo ""
+            echo "| Subscription | Remaining | Action | Status |"
+            echo "| --- | ---: | --- | --- |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          while IFS= read -r RAW; do
+            SUBSCRIPTION_ID="${RAW#"${RAW%%[![:space:]]*}"}"   # ltrim
+            SUBSCRIPTION_ID="${SUBSCRIPTION_ID%"${SUBSCRIPTION_ID##*[![:space:]]}"}"  # rtrim
+            # Skip blanks and comments.
+            [ -z "$SUBSCRIPTION_ID" ] && continue
+            case "$SUBSCRIPTION_ID" in \#*) continue ;; esac
+
+            TOTAL=$((TOTAL + 1))
+
+            echo ""
+            echo "=================================================="
+            echo "Subscription: $SUBSCRIPTION_ID"
+            echo "=================================================="
+
+            # ---- GET current credit grants ----
+            GET_RESP=$(curl -sS -w "\n%{http_code}" -X GET \
+              "${MGMT_AIRO_BASE_URL}/api/airo/v1/subscriptions/${SUBSCRIPTION_ID}/credits/grants?syncSpend=true" \
+              -H "Authorization: sso-jwt ${SSO_JWT}" \
+              -H "Accept: application/json")
+
+            GET_CODE=$(echo "$GET_RESP" | tail -n1)
+            GET_BODY=$(echo "$GET_RESP" | sed '$d')
+
+            if [ "$GET_CODE" -lt 200 ] || [ "$GET_CODE" -ge 300 ]; then
+              echo "::error::Failed to fetch grants for $SUBSCRIPTION_ID (HTTP $GET_CODE)"
+              echo "Response: $GET_BODY"
+              FAILED=$((FAILED + 1))
+              echo "| \`$SUBSCRIPTION_ID\` | — | — | ❌ GET failed (HTTP $GET_CODE) |" >> "$GITHUB_STEP_SUMMARY"
+              continue
+            fi
+
+            # GET returns a bare JSON array of grants (per Confluence spec).
+            # Remaining = sum over isAvailable grants of (creditsMax - creditsSpent).
+            REMAINING=$(echo "$GET_BODY" | jq -r \
+              '[.[]? | select(.isAvailable == true) | (.creditsMax - .creditsSpent)] | add // 0')
+            echo "Remaining credits: $REMAINING (threshold: $CREDIT_THRESHOLD)"
+
+            if [ "$REMAINING" -ge "$CREDIT_THRESHOLD" ]; then
+              echo "Credits OK — no action needed"
+              OK=$((OK + 1))
+              echo "| \`$SUBSCRIPTION_ID\` | $REMAINING | none | ✅ OK |" >> "$GITHUB_STEP_SUMMARY"
+              continue
+            fi
+
+            # ---- POST new credit-pack grant ----
+            echo "Below threshold — granting ${CREDIT_PACK_SIZE} credits"
+            POST_RESP=$(curl -sS -w "\n%{http_code}" -X POST \
+              "${MGMT_AIRO_BASE_URL}/api/airo/v1/subscriptions/${SUBSCRIPTION_ID}/credits/grants" \
+              -H "Authorization: sso-jwt ${SSO_JWT}" \
+              -H "Content-Type: application/json" \
+              -d "{\"type\":\"credit-pack\",\"creditsMax\":${CREDIT_PACK_SIZE},\"useBefore\":\"${USE_BEFORE_ISO}\"}")
+
+            POST_CODE=$(echo "$POST_RESP" | tail -n1)
+            POST_BODY=$(echo "$POST_RESP" | sed '$d')
+
+            if [ "$POST_CODE" -ge 200 ] && [ "$POST_CODE" -lt 300 ]; then
+              echo "Granted ${CREDIT_PACK_SIZE} credits"
+              REFILLED=$((REFILLED + 1))
+              echo "| \`$SUBSCRIPTION_ID\` | $REMAINING | +$CREDIT_PACK_SIZE | ✅ refilled |" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "::error::Failed to grant credits for $SUBSCRIPTION_ID (HTTP $POST_CODE)"
+              echo "Response: $POST_BODY"
+              FAILED=$((FAILED + 1))
+              echo "| \`$SUBSCRIPTION_ID\` | $REMAINING | +$CREDIT_PACK_SIZE | ❌ POST failed (HTTP $POST_CODE) |" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done <<< "$SUBSCRIPTION_IDS"
+
+          {
+            echo ""
+            echo "**Totals:** processed=$TOTAL, ok=$OK, refilled=$REFILLED, failed=$FAILED"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo ""
+          echo "=================================================="
+          echo "Summary: processed=$TOTAL, ok=$OK, refilled=$REFILLED, failed=$FAILED"
+          echo "=================================================="
+
+          if [ "$TOTAL" -eq 0 ]; then
+            echo "::warning::No subscription IDs configured — add IDs under SUBSCRIPTION_IDS in the workflow env"
+          fi
+          if [ "$FAILED" -gt 0 ]; then
+            exit 1
+          fi
