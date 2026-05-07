@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { devtools } from 'zustand/middleware'
+import { devtools, persist } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 
 import { DEFAULT_MOBILE_DEVICE, DEFAULT_TABLET_DEVICE } from '@/app/[market]/develop/components/preview/devicePresets'
@@ -376,7 +376,7 @@ interface DevelopPageStore {
 
 export const useDevelopPageStore = create<DevelopPageStore>()(
   devtools(
-    immer((set, get) => ({
+    persist(immer((set, get) => ({
     // Initial UI state
     viewMode: ViewMode.EDIT,
     mobileMode: MobileMode.TOOLS,
@@ -1071,7 +1071,10 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         state.publishStates[appId].postPublishFeatureSelectionNonce += 1;
       }
     })
-  })),
+  })), {
+    name: 'airo-builder.develop-page-store.v1',
+    partialize: (state) => ({ domainJobsInProgress: state.domainJobsInProgress }),
+  }),
     { name: 'DevelopPageStore' }
   )
 )

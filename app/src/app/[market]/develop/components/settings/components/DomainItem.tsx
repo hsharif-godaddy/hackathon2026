@@ -105,6 +105,11 @@ export default function DomainItem({
     domainJobForApp && domainJobForApp.fqdn === domainName.trim().toLowerCase()
       ? domainJobForApp
       : null;
+  const shouldPollJob =
+    Boolean(activeJobForDomain)
+    || (isCustomDomain
+      && appDomain != null
+      && (appDomain.status == null || appDomain.status === DomainStatus.PENDING));
   const {
     labelKey: polledLabelKey,
     status: polledStatus,
@@ -113,7 +118,7 @@ export default function DomainItem({
   } = useDomainJobPolling(
     siteId,
     domainName,
-    Boolean(activeJobForDomain),
+    shouldPollJob,
   );
 
   const translatedPolledLabel = polledLabelKey
@@ -125,17 +130,23 @@ export default function DomainItem({
     : null;
 
   const hasActiveJob = Boolean(activeJobForDomain);
-  const polledJobSuccess =
-    !jobPollError &&
-    (polledStatus === 'SUCCESS' || polledOverallStatus === 'SUCCESS');
+  const polledTerminal =
+    polledStatus === 'SUCCESS'
+    || polledStatus === 'FAILED'
+    || polledOverallStatus === 'SUCCESS'
+    || polledOverallStatus === 'FAILED'
+    || polledOverallStatus === 'NOT_FOUND';
   const showDomainStatusTag =
-    isConnected || hasActiveJob || polledJobSuccess;
+    isConnected
+    || hasActiveJob
+    || (shouldPollJob && !!polledLabelKey);
 
   const connectedTagLabel =
+    shouldPollJob &&
     !jobPollError &&
     polledLabelKey &&
     translatedPolledLabel?.trim() &&
-    (hasActiveJob || polledJobSuccess)
+    !polledTerminal
       ? translatedPolledLabel.trim()
       : getConnectedDomainTagLabel(appDomain, Boolean(activeJobForDomain), t);
 
@@ -147,13 +158,21 @@ export default function DomainItem({
   // Clear in-progress job when poll reports terminal job status or when app domain reaches a terminal status.
   useEffect(() => {
     function clearJobWhenTerminal() {
-      if (!activeJobForDomain) return;
-      if (
-        polledStatus === 'SUCCESS' ||
-        polledStatus === 'FAILED' ||
-        polledOverallStatus === 'SUCCESS' ||
-        polledOverallStatus === 'FAILED'
-      ) {
+      if (jobPollError) {
+        logger.error('domain-item.poll.error', {
+          siteId,
+          fqdn: domainName,
+          error: jobPollError.message,
+        });
+        if (activeJobForDomain) {
+          useDevelopPageStore.getState().clearDomainJobInProgress(siteId);
+        }
+        return;
+      }
+      if (!activeJobForDomain) {
+        return;
+      }
+      if (polledTerminal) {
         useDevelopPageStore.getState().clearDomainJobInProgress(siteId);
         return;
       }
@@ -163,7 +182,7 @@ export default function DomainItem({
       useDevelopPageStore.getState().clearDomainJobInProgress(siteId);
     }
     clearJobWhenTerminal();
-  }, [siteId, activeJobForDomain, appDomain?.status, polledStatus, polledOverallStatus]);
+  }, [siteId, activeJobForDomain, appDomain?.status, polledTerminal, jobPollError, domainName]);
 
   useEffect(() => {
     const abortController = new AbortController();

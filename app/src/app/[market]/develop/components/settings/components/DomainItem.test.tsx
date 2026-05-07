@@ -12,9 +12,14 @@ import type { Domain } from '@/hooks/useDomainsQuery';
 import { DomainStatus } from '@/lib/control-plane/types';
 import type { AiroDomainErrorResponse } from '@/lib/mgmt-airo';
 import { CdnStatus } from '@/lib/mgmt-airo/types';
+import { logger } from '@/lib/request-context';
+import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { renderWithProviders } from '@/tests/test-utils';
 
 const SUPPORT_URL = 'https://support.test/contact';
+const { mockUseDomainJobPolling } = vi.hoisted(() => ({
+  mockUseDomainJobPolling: vi.fn(),
+}));
 
 vi.mock('@/hooks/useGasketConfig', () => ({
   useGasketConfig: () => ({
@@ -28,13 +33,7 @@ vi.mock('@/hooks/useGasketConfig', () => ({
 vi.mock('@/hooks/useDomainJobPolling', () => ({
   domainJobQueryKey: (siteId: string, fqdn: string) =>
     ['domain-job', siteId, fqdn.trim().toLowerCase()] as const,
-  useDomainJobPolling: () => ({
-    labelKey: null,
-    status: null,
-    overallStatus: null,
-    isLoading: false,
-    error: null,
-  }),
+  useDomainJobPolling: (...args: unknown[]) => mockUseDomainJobPolling(...args),
 }));
 
 vi.mock('@/utils/instrumentation', () => ({
@@ -94,6 +93,14 @@ describe('DomainItem', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.restoreAllMocks();
+    mockUseDomainJobPolling.mockReturnValue({
+      labelKey: null,
+      status: null,
+      overallStatus: null,
+      isLoading: false,
+      error: null,
+    });
+    useDevelopPageStore.setState({ domainJobsInProgress: {} });
   });
 
   describe('error action rendering', () => {
@@ -203,6 +210,171 @@ describe('DomainItem', () => {
       await waitFor(() => {
         expect(screen.getByText(/builder_domain_error_please_retry/)).toBeInTheDocument();
       });
+    });
+  });
+
+  describe('job polling recovery', () => {
+    const pendingDomain: AppDomain = {
+      fqdn: 'example.com',
+      isPrimary: true,
+      status: DomainStatus.PENDING,
+    };
+
+    it('should enable polling for pending custom domain without in-progress store job', () => {
+      renderWithProviders(
+        <DomainItem {...defaultProps} appDomain={pendingDomain} isCustomDomain />
+      );
+
+      expect(mockUseDomainJobPolling).toHaveBeenCalledWith('site-123', 'example.com', true);
+    });
+
+    it('should enable polling when custom domain status is undefined', () => {
+      renderWithProviders(
+        <DomainItem
+          {...defaultProps}
+          appDomain={{ fqdn: 'example.com', isPrimary: true, status: undefined }}
+          isCustomDomain
+        />
+      );
+
+      expect(mockUseDomainJobPolling).toHaveBeenCalledWith('site-123', 'example.com', true);
+    });
+
+    it('should render polled verifying label while job is running', () => {
+      mockUseDomainJobPolling.mockReturnValue({
+        labelKey: 'builder_domain_job_verifying_domain',
+        status: 'RUNNING',
+        overallStatus: 'RUNNING',
+        isLoading: false,
+        error: null,
+      });
+
+      renderWithProviders(
+        <DomainItem {...defaultProps} appDomain={pendingDomain} isCustomDomain />
+      );
+
+      expect(screen.getByText(function verifyingMatcher(content) {
+        return content === 'Verifying domain...' || content === 'builder_domain_job_verifying_domain';
+      })).toBeInTheDocument();
+    });
+
+    it('should fall back to pending label and clear stale in-progress job on NOT_FOUND', async () => {
+      useDevelopPageStore.setState({
+        domainJobsInProgress: {
+          'site-123': {
+            fqdn: 'example.com',
+            startedAt: Date.now(),
+            jobStatus: 'RUNNING',
+          },
+        },
+      });
+      mockUseDomainJobPolling.mockReturnValue({
+        labelKey: null,
+        status: null,
+        overallStatus: 'NOT_FOUND',
+        isLoading: false,
+        error: null,
+      });
+
+      renderWithProviders(
+        <DomainItem {...defaultProps} appDomain={pendingDomain} isCustomDomain />
+      );
+
+      expect(screen.getByText('builder_domain_status_pending')).toBeInTheDocument();
+      await waitFor(function storeCleared() {
+        expect(useDevelopPageStore.getState().domainJobsInProgress['site-123']).toBeUndefined();
+      });
+    });
+
+    it('should clear stale in-progress job when job polling errors', async () => {
+      useDevelopPageStore.setState({
+        domainJobsInProgress: {
+          'site-123': {
+            fqdn: 'example.com',
+            startedAt: Date.now(),
+            jobStatus: 'RUNNING',
+          },
+        },
+      });
+      mockUseDomainJobPolling.mockReturnValue({
+        labelKey: null,
+        status: null,
+        overallStatus: null,
+        isLoading: false,
+        error: new Error('network failed'),
+      });
+
+      renderWithProviders(
+        <DomainItem {...defaultProps} appDomain={pendingDomain} isCustomDomain />
+      );
+
+      await waitFor(function clearsOnPollError() {
+        expect(useDevelopPageStore.getState().domainJobsInProgress['site-123']).toBeUndefined();
+      });
+      expect(logger.error).toHaveBeenCalledWith('domain-item.poll.error', {
+        siteId: 'site-123',
+        fqdn: 'example.com',
+        error: 'network failed',
+      });
+    });
+
+    it('should log polling errors even without an in-progress store job', async () => {
+      mockUseDomainJobPolling.mockReturnValue({
+        labelKey: null,
+        status: null,
+        overallStatus: null,
+        isLoading: false,
+        error: new Error('site not found'),
+      });
+
+      renderWithProviders(
+        <DomainItem {...defaultProps} appDomain={pendingDomain} isCustomDomain />
+      );
+
+      await waitFor(function logsPollError() {
+        expect(logger.error).toHaveBeenCalledWith('domain-item.poll.error', {
+          siteId: 'site-123',
+          fqdn: 'example.com',
+          error: 'site not found',
+        });
+      });
+      expect(useDevelopPageStore.getState().domainJobsInProgress['site-123']).toBeUndefined();
+    });
+
+    it('should fall back to pending label when polled status is SUCCESS', () => {
+      mockUseDomainJobPolling.mockReturnValue({
+        labelKey: 'builder_domain_job_verifying_domain',
+        status: 'SUCCESS',
+        overallStatus: 'SUCCESS',
+        isLoading: false,
+        error: null,
+      });
+
+      renderWithProviders(
+        <DomainItem {...defaultProps} appDomain={pendingDomain} isCustomDomain />
+      );
+
+      expect(screen.getByText('builder_domain_status_pending')).toBeInTheDocument();
+      expect(screen.queryByText('Verifying domain...')).not.toBeInTheDocument();
+      expect(screen.queryByText('builder_domain_job_verifying_domain')).not.toBeInTheDocument();
+    });
+
+    it('should not render stale polled label when polling is disabled and domain is disconnected', () => {
+      mockUseDomainJobPolling.mockReturnValue({
+        labelKey: 'builder_domain_job_verifying_domain',
+        status: 'RUNNING',
+        overallStatus: 'RUNNING',
+        isLoading: false,
+        error: null,
+      });
+
+      renderWithProviders(
+        <DomainItem {...defaultProps} appDomain={undefined} isCustomDomain />
+      );
+
+      expect(screen.queryByText('Verifying domain...')).not.toBeInTheDocument();
+      expect(screen.queryByText('builder_domain_job_verifying_domain')).not.toBeInTheDocument();
+      expect(screen.queryByText('builder_domain_status_not_connected')).not.toBeInTheDocument();
     });
   });
 });

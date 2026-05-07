@@ -1101,4 +1101,50 @@ describe('useDevelopPageStore', function useDevelopPageStoreTests() {
       expect(publishState?.publishPopoverRequestNonce).toBe(1);
     });
   });
+
+  describe('domain job persistence', function domainJobPersistenceTests() {
+    const storageKey = 'airo-builder.develop-page-store.v1';
+    const persistedStore = useDevelopPageStore as typeof useDevelopPageStore & {
+      persist: {
+        rehydrate: () => Promise<void>;
+      };
+    };
+
+    beforeEach(function resetPersistedStore() {
+      localStorage.removeItem(storageKey);
+      act(function clearDomainJobs() {
+        useDevelopPageStore.setState({ domainJobsInProgress: {} });
+      });
+    });
+
+    it('should persist and rehydrate domainJobsInProgress', async function persistAndRehydrate() {
+      const startedAt = Date.now();
+      act(function setJob() {
+        useDevelopPageStore.getState().setDomainJobInProgress('app-123', {
+          fqdn: 'example.com',
+          startedAt,
+          jobStatus: 'RUNNING',
+        });
+      });
+
+      const savedState = localStorage.getItem(storageKey);
+      expect(savedState).toContain('app-123');
+
+      act(function clearRuntimeState() {
+        useDevelopPageStore.setState({ domainJobsInProgress: {} });
+      });
+      expect(useDevelopPageStore.getState().domainJobsInProgress['app-123']).toBeUndefined();
+      localStorage.setItem(storageKey, savedState as string);
+
+      await act(async function rehydrate() {
+        await persistedStore.persist.rehydrate();
+      });
+
+      expect(useDevelopPageStore.getState().domainJobsInProgress['app-123']).toEqual({
+        fqdn: 'example.com',
+        startedAt,
+        jobStatus: 'RUNNING',
+      });
+    });
+  });
 });

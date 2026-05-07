@@ -12,6 +12,7 @@ const MAX_POLL_DURATION_MS = 5 * 60 * 1000;
 export type DomainJobPollIntervalOptions = {
   maxPollDurationMs?: number;
   onPollTimeout?: (elapsedMs: number) => void;
+  hasError?: boolean;
 };
 
 /**
@@ -26,11 +27,13 @@ export function getDomainJobPollRefetchInterval(
   options?: DomainJobPollIntervalOptions,
 ): number | false {
   if (!enabled) return false;
+  if (options?.hasError) return false;
   const isTerminal =
     data?.status === 'SUCCESS' ||
     data?.status === 'FAILED' ||
     data?.overallStatus === 'SUCCESS' ||
-    data?.overallStatus === 'FAILED';
+    data?.overallStatus === 'FAILED' ||
+    data?.overallStatus === 'NOT_FOUND';
   if (isTerminal) return false;
   if (
     options?.maxPollDurationMs != null &&
@@ -87,6 +90,7 @@ interface JobApiBody {
   };
   steps?: unknown[];
   stepDefinitions?: unknown[];
+  code?: string;
 }
 
 export function parseJobResponse(json: unknown): DomainJobPollPayload {
@@ -110,6 +114,13 @@ async function fetchDomainJob(siteId: string, fqdn: string): Promise<DomainJobPo
   const response = await fetch(path, {
     cache: 'no-store',
   });
+  if (response.status === 404) {
+    const body = await response.json().catch(() => ({})) as JobApiBody;
+    if (body?.code === 'SITE_NOT_FOUND') {
+      throw new Error(`Failed to fetch domain job: site not found for ${siteId}`);
+    }
+    return { labelKey: null, status: null, overallStatus: 'NOT_FOUND' };
+  }
   if (!response.ok) {
     throw new Error(`Failed to fetch domain job: ${response.status} ${response.statusText}`);
   }
@@ -150,6 +161,7 @@ export function useDomainJobPolling(
         startTimeRef.current,
         now,
         {
+          hasError: q.state.status === 'error',
           maxPollDurationMs: MAX_POLL_DURATION_MS,
           onPollTimeout: (elapsed) => {
             logger.warn('domain-job-poll.timeout', {

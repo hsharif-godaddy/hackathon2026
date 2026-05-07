@@ -20,7 +20,7 @@ vi.mock('@/lib/request-context', () => ({
 
 import { createElement, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, renderHook } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 
 import {
   domainJobQueryKey,
@@ -128,6 +128,18 @@ describe('useDomainJobPolling', function useDomainJobPollingSuite() {
       expect(getDomainJobPollRefetchInterval(false, undefined, Date.now(), Date.now())).toBe(false);
     });
 
+    it('should return false when query is in error state', function queryError() {
+      expect(
+        getDomainJobPollRefetchInterval(
+          true,
+          { labelKey: null, status: null, overallStatus: null },
+          Date.now() - 1_000,
+          Date.now(),
+          { hasError: true },
+        ),
+      ).toBe(false);
+    });
+
     it('should return false on terminal step or overall status', function terminal() {
       const now = 1_000_000;
       expect(
@@ -158,6 +170,14 @@ describe('useDomainJobPolling', function useDomainJobPollingSuite() {
         getDomainJobPollRefetchInterval(
           true,
           { labelKey: null, status: null, overallStatus: 'FAILED' },
+          now - 10_000,
+          now,
+        ),
+      ).toBe(false);
+      expect(
+        getDomainJobPollRefetchInterval(
+          true,
+          { labelKey: null, status: null, overallStatus: 'NOT_FOUND' },
           now - 10_000,
           now,
         ),
@@ -319,6 +339,65 @@ describe('useDomainJobPolling', function useDomainJobPollingSuite() {
       });
 
       expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('should treat 404 as terminal without error', async function notFoundTerminal() {
+      const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+        ok: false,
+        status: 404,
+        statusText: 'Not Found',
+        json: async () => ({ code: 'DOMAIN_ERROR_NOT_FOUND' }),
+      } as Response);
+
+      const { result } = renderHook(() => useDomainJobPolling('site-not-found', 'gone.com', true), {
+        wrapper: createWrapper(),
+      });
+
+      await act(async function settle() {
+        await Promise.resolve();
+      });
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      await waitFor(function waitForNotFound() {
+        expect(result.current.overallStatus).toBe('NOT_FOUND');
+        expect(result.current.error).toBe(null);
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('should treat SITE_NOT_FOUND 404 as error', async function siteNotFoundError() {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+        ok: false,
+        status: 404,
+        statusText: 'Not Found',
+        json: async () => ({ code: 'SITE_NOT_FOUND' }),
+      } as Response);
+
+      const { result } = renderHook(() => useDomainJobPolling('missing-site', 'gone.com', true), {
+        wrapper: createWrapper(),
+      });
+
+      await waitFor(function waitForError() {
+        expect(result.current.error).not.toBe(null);
+      });
+      expect(result.current.overallStatus).toBe(null);
+    });
+
+    it('should surface non-404 http errors', async function non404Error() {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+        ok: false,
+        status: 500,
+        statusText: 'Internal Server Error',
+      } as Response);
+
+      const { result } = renderHook(() => useDomainJobPolling('site-error', 'err.com', true), {
+        wrapper: createWrapper(),
+      });
+
+      await waitFor(function waitForError() {
+        expect(result.current.error).not.toBe(null);
+      });
+      expect(result.current.overallStatus).toBe(null);
     });
 
     it('should stop polling after max duration and log timeout', async function maxPollHook() {
