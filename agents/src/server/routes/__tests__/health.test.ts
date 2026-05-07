@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import request from 'supertest';
 import express, { type Express } from 'express';
 
-// Hoist mocks to top level
 const { mockGetLastMessageTimestamp, mockGetStats, mockValidateAll } = vi.hoisted(() => ({
   mockGetLastMessageTimestamp: vi.fn().mockResolvedValue('2024-01-01T00:00:00.000Z'),
   mockGetStats: vi.fn().mockReturnValue({
@@ -15,11 +14,10 @@ const { mockGetLastMessageTimestamp, mockGetStats, mockValidateAll } = vi.hoiste
   }),
 }));
 
-// Mock dependencies
-vi.mock('../../../database/repositories/index.js', () => ({
-  conversationRepository: {
+vi.mock('../../../memory/adapters/index.js', () => ({
+  getConversationTokenStore: vi.fn(() => ({
     getLastMessageTimestamp: mockGetLastMessageTimestamp,
-  },
+  })),
 }));
 
 vi.mock('../../../registry/index.js', () => ({

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ConversationHistoryLoader, type LLMMessage } from '../ConversationHistoryLoader.js';
-import { ConversationRepository } from '../../database/repositories/ConversationRepository.js';
+import type { MessageStore, SummaryStore } from '../../memory/interfaces/index.js';
 import conversationFixture from './fixtures/conversation-messages.json';
 
 // Mock token counter to provide deterministic token counts
@@ -12,33 +12,26 @@ vi.mock('../../utils/token-counter.js', () => ({
   })
 }));
 
-let latestSummary: any = null;
-const summaryStore = new Map<string, any>();
-vi.mock('../../database/repositories/SummaryRepository.js', () => ({
-  SummaryRepository: class {
-    findLatestForApp = vi.fn().mockImplementation(async () => latestSummary);
-    findById = vi.fn().mockImplementation(async (id: string) => {
-      return summaryStore.get(id) ?? null;
-    });
-  }
-}));
-
 describe('ConversationHistoryLoader', () => {
   let loader: ConversationHistoryLoader;
-  let mockRepo: ConversationRepository;
+  let mockMessageStore: MessageStore;
+  let mockSummaryStore: SummaryStore;
+  let latestSummary: any;
+  let summaryByIdStore: Map<string, any>;
 
   beforeEach(() => {
     latestSummary = null;
-    summaryStore.clear();
-    mockRepo = {
-      findByAppAndAgent: vi.fn(),
+    summaryByIdStore = new Map<string, any>();
+    mockMessageStore = {
       getMessagesForHistory: vi.fn(),
-      getByAppId: vi.fn(),
-      getMessagesAfterMessageId: vi.fn().mockResolvedValue([]),
       getMessageById: vi.fn().mockResolvedValue(null),
-    } as any;
+    } as unknown as MessageStore;
+    mockSummaryStore = {
+      findLatestForApp: vi.fn().mockImplementation(async () => latestSummary),
+      findById: vi.fn().mockImplementation(async (id: string) => summaryByIdStore.get(id) ?? null),
+    } as unknown as SummaryStore;
 
-    loader = new ConversationHistoryLoader(mockRepo);
+    loader = new ConversationHistoryLoader(mockMessageStore, undefined, mockSummaryStore);
   });
 
   describe('loadDatabaseMessagesByConversationId', () => {
@@ -64,14 +57,14 @@ describe('ConversationHistoryLoader', () => {
         createdAt: new Date(msg.created_at)
       }));
 
-      vi.mocked(mockRepo.getMessagesForHistory).mockResolvedValue(normalizedMessages);
+      vi.mocked(mockMessageStore.getMessagesForHistory).mockResolvedValue(normalizedMessages);
 
       const result = await loader.loadDatabaseMessagesByConversationId('D5wI4wo3ThTl');
 
       expect(result).toHaveLength(4);
       expect(result[0].sender).toBe('user');
       expect(result[1].sender).toBe('agent');
-      expect(mockRepo.getMessagesForHistory).toHaveBeenCalledWith('D5wI4wo3ThTl');
+      expect(mockMessageStore.getMessagesForHistory).toHaveBeenCalledWith('D5wI4wo3ThTl');
     });
 
     it('should sort messages chronologically (oldest first)', async () => {
@@ -81,7 +74,7 @@ describe('ConversationHistoryLoader', () => {
         { id: '2', conversationId: 'conv1', sender: 'user' as const, content: 'msg2', createdAt: new Date('2025-01-02') },
       ];
 
-      vi.mocked(mockRepo.getMessagesForHistory).mockResolvedValue(messages);
+      vi.mocked(mockMessageStore.getMessagesForHistory).mockResolvedValue(messages);
 
       const result = await loader.loadDatabaseMessagesByConversationId('conv1');
 
@@ -433,7 +426,7 @@ describe('ConversationHistoryLoader', () => {
         }
       ];
 
-      vi.mocked(mockRepo.getMessagesForHistory).mockResolvedValue(messages);
+      vi.mocked(mockMessageStore.getMessagesForHistory).mockResolvedValue(messages);
 
       const result = await loader.loadMessagesWithTokenLimitByConversationId('conv1', 40000, 'claude-sonnet-4-6');
 
@@ -443,9 +436,9 @@ describe('ConversationHistoryLoader', () => {
     });
 
     it('should refresh summary pin when appId is provided', async () => {
-      vi.mocked(mockRepo.getMessagesForHistory).mockResolvedValue([]);
+      vi.mocked(mockMessageStore.getMessagesForHistory).mockResolvedValue([]);
       latestSummary = { id: 'sum-1', summaryText: '# Summary', summaryTokenCount: 100, originalTokenCount: 1000 };
-      summaryStore.set('sum-1', latestSummary);
+      summaryByIdStore.set('sum-1', latestSummary);
 
       await loader.loadMessagesWithTokenLimitByConversationId('conv1', 40000, undefined, true, 'test-app');
 
@@ -453,7 +446,7 @@ describe('ConversationHistoryLoader', () => {
     });
 
     it('should not refresh summary pin when appId is omitted', async () => {
-      vi.mocked(mockRepo.getMessagesForHistory).mockResolvedValue([]);
+      vi.mocked(mockMessageStore.getMessagesForHistory).mockResolvedValue([]);
       latestSummary = { id: 'sum-1', summaryText: '# Summary', summaryTokenCount: 100, originalTokenCount: 1000 };
 
       await loader.loadMessagesWithTokenLimitByConversationId('conv1', 40000);
@@ -935,15 +928,15 @@ describe('ConversationHistoryLoader', () => {
     };
 
     beforeEach(() => {
-      vi.mocked(mockRepo.getMessagesForHistory).mockResolvedValue([
+      vi.mocked(mockMessageStore.getMessagesForHistory).mockResolvedValue([
         { id: 'm2', conversationId: 'conv1', sender: 'agent' as const, content: 'hi', createdAt: new Date('2025-01-02') }
       ]);
     });
 
     it('should pin summary on first load and reuse it on subsequent loads', async () => {
       latestSummary = summary1;
-      summaryStore.set(summary1.id, summary1);
-      summaryStore.set(summary2.id, summary2);
+      summaryByIdStore.set(summary1.id, summary1);
+      summaryByIdStore.set(summary2.id, summary2);
       await loader.loadMessagesWithTokenLimitByConversationId('conv1', 40000, undefined, true, 'test-app');
 
       // Switch the "latest" to v2 - simulates BackgroundSummarizer creating a new summary
@@ -958,7 +951,7 @@ describe('ConversationHistoryLoader', () => {
       expect(loader.getPinnedSummaryId('test-app')).toBeNull();
 
       latestSummary = summary1;
-      summaryStore.set(summary1.id, summary1);
+      summaryByIdStore.set(summary1.id, summary1);
       await loader.loadMessagesWithTokenLimitByConversationId('conv1', 40000, undefined, true, 'test-app');
 
       expect(loader.getPinnedSummaryId('test-app')).toBe('sum-1');
@@ -966,8 +959,8 @@ describe('ConversationHistoryLoader', () => {
 
     it('should refresh pin after MAX_PINNED_TURNS', async () => {
       latestSummary = summary1;
-      summaryStore.set(summary1.id, summary1);
-      summaryStore.set(summary2.id, summary2);
+      summaryByIdStore.set(summary1.id, summary1);
+      summaryByIdStore.set(summary2.id, summary2);
       // Exhaust the epoch
       for (let i = 0; i < ConversationHistoryLoader.MAX_PINNED_TURNS; i++) {
         await loader.loadMessagesWithTokenLimitByConversationId('conv1', 40000, undefined, true, 'test-app');
@@ -982,12 +975,12 @@ describe('ConversationHistoryLoader', () => {
 
     it('should fall back to latest when pinned summary is deleted', async () => {
       latestSummary = summary1;
-      summaryStore.set(summary1.id, summary1);
+      summaryByIdStore.set(summary1.id, summary1);
       await loader.loadMessagesWithTokenLimitByConversationId('conv1', 40000, undefined, true, 'test-app');
 
       // Pin is set to sum-1, but now sum-1 is deleted and sum-2 is latest
-      summaryStore.delete(summary1.id);
-      summaryStore.set(summary2.id, summary2);
+      summaryByIdStore.delete(summary1.id);
+      summaryByIdStore.set(summary2.id, summary2);
       latestSummary = summary2;
       // findById returns null for sum-1 because it was deleted from summaryStore
       await loader.loadMessagesWithTokenLimitByConversationId('conv1', 40000, undefined, true, 'test-app');
@@ -1001,7 +994,7 @@ describe('ConversationHistoryLoader', () => {
     it('should track previousTurnMessageCount and pass as stableRegionEnd', async () => {
       const compressSpy = vi.spyOn(loader.getCompressor(), 'compressMessages');
 
-      vi.mocked(mockRepo.getMessagesForHistory).mockResolvedValue([
+      vi.mocked(mockMessageStore.getMessagesForHistory).mockResolvedValue([
         { id: 'm1', conversationId: 'conv1', sender: 'user' as const, content: 'hello', createdAt: new Date('2025-01-01') },
         { id: 'm2', conversationId: 'conv1', sender: 'agent' as const, content: 'hi there', createdAt: new Date('2025-01-02') }
       ]);
@@ -1023,7 +1016,7 @@ describe('ConversationHistoryLoader', () => {
     it('should not track stable region when appId is omitted', async () => {
       const compressSpy = vi.spyOn(loader.getCompressor(), 'compressMessages');
 
-      vi.mocked(mockRepo.getMessagesForHistory).mockResolvedValue([
+      vi.mocked(mockMessageStore.getMessagesForHistory).mockResolvedValue([
         { id: 'm1', conversationId: 'conv1', sender: 'user' as const, content: 'hello', createdAt: new Date('2025-01-01') },
         { id: 'm2', conversationId: 'conv1', sender: 'agent' as const, content: 'hi there', createdAt: new Date('2025-01-02') }
       ]);

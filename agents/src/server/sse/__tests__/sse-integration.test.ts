@@ -18,23 +18,25 @@ describe('SSE integration', () => {
   let port: number
   let registry: EventStreamRegistry
 
-  const mockConversationRepo = {
-    create: vi.fn().mockImplementation((appId: string, agentId: string) =>
-      Promise.resolve({ id: 'conv_new', appId, agentId })
+  const mockLifecycle = {
+    create: vi.fn().mockImplementation((scope: { appId: string }, agentId: string) =>
+      Promise.resolve({ id: 'conv_new', appId: scope.appId, agentId })
     ),
-    getOrCreateForApp: vi.fn().mockImplementation((appId: string, agentId: string) =>
-      Promise.resolve({ conversation: { id: 'conv_new', appId, agentId }, isNew: true })
+    getOrCreateForApp: vi.fn().mockImplementation((scope: { appId: string }, agentId: string) =>
+      Promise.resolve({ conversation: { id: 'conv_new', appId: scope.appId, agentId }, isNew: true })
     ),
     getById: vi.fn().mockImplementation((id: string) =>
       Promise.resolve({ id, appId: 'abcdefghij', agentId: 'develop' })
     ),
+    getLatestForApp: vi.fn().mockResolvedValue(null),
+  }
+  const mockMessages = {
     getMessagesPaginated: vi.fn().mockResolvedValue({
       messages: [],
       hasMore: false,
       nextCursor: null,
       total: 0,
     }),
-    getLatestForAppSync: vi.fn().mockReturnValue(null),
   }
 
   beforeEach(async () => {
@@ -50,7 +52,8 @@ describe('SSE integration', () => {
       getEventChannel: () => null,
       resolveAgent: () => 'develop',
       getStateManager: () => null,
-      conversationRepository: mockConversationRepo as any,
+      lifecycle: mockLifecycle as any,
+      messages: mockMessages as any,
     }))
 
     server = createServer(app)

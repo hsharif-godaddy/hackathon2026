@@ -1,4 +1,5 @@
-import { ConversationRepository } from '../database/repositories/ConversationRepository.js';
+import { getMessageStore } from '../memory/adapters/index.js';
+import type { MessageStore } from '../memory/interfaces/index.js';
 import { LLMSummarizationStrategy } from './summarization/index.js';
 import { ConversationHistoryLoader } from './ConversationHistoryLoader.js';
 import {
@@ -16,20 +17,22 @@ import { CssSuggestCompressionStrategy } from './compression/strategies/CssSugge
  * Handles loading and formatting conversation history with configurable limits
  */
 export class ConversationContextManager {
-  private conversationRepo: ConversationRepository;
   private readonly maxMessages: number;
   private historyLoader: ConversationHistoryLoader;
 
-  constructor(conversationRepo: ConversationRepository, maxMessages: number = 10) {
-    this.conversationRepo = conversationRepo;
+  constructor(
+    private messageStore: MessageStore = getMessageStore(),
+    maxMessages: number = 10,
+  ) {
     this.maxMessages = maxMessages;
 
-    // Initialize history loader with LLM summarization strategy
+    // Initialize history loader with LLM summarization strategy.
+    // Store dependencies default to the module-level singletons (getMessageStore/getSummaryStore).
     const summarizationStrategy = new LLMSummarizationStrategy();
-    this.historyLoader = new ConversationHistoryLoader(conversationRepo, summarizationStrategy);
+    this.historyLoader = new ConversationHistoryLoader(this.messageStore, summarizationStrategy);
 
     // Note: Background summarization is initialized centrally via initializeBackgroundSummarization()
-    // in the server startup code to ensure it uses the singleton conversationRepository
+    // in the server startup code using the same store singletons.
 
     this.historyLoader.registerCompressionStrategy(new DuplicateFileReadStrategy());
     // Remove all app context entries from history - fresh context is injected before history on every turn
@@ -63,7 +66,7 @@ export class ConversationContextManager {
     recentMessages: number;
     messageTypes: Record<string, number>;
   }> {
-    const allMessages = await this.conversationRepo.getMessages(conversationId);
+    const allMessages = await this.messageStore.getMessages(conversationId);
     const recentMessages = allMessages.slice(-(this.maxMessages * 2));
 
     const messageTypes: Record<string, number> = {};

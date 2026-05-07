@@ -195,7 +195,7 @@ export interface WebSocketConfig {
   getActiveTransaction?: (socketId: string) => APMAgent | undefined
 
   /** Agent routing hook - determines which agent should handle a message */
-  agentRouter?: (socketId: string, data: ChatMessage) => string | undefined
+  agentRouter?: (socketId: string, data: ChatMessage) => string | undefined | Promise<string | undefined>
 
   /** Event handlers */
   onConnection?: (socketId: string, meta?: { recoveryMode?: string; previousSocketId?: string }) => void | Promise<void>
@@ -272,6 +272,7 @@ export interface WebSocketConfig {
     conversationId?: string
     appId?: string
     subscriptionId?: string
+    customerId?: string
     context?: Record<string, unknown>
   }) => void | Promise<void>
 
@@ -2376,7 +2377,7 @@ export class WebSocketServer {
       }
 
       // 1. Determine initial agent (check state manager first for handoffs)
-      agentName = this.getActiveAgent(socketId, data)
+      agentName = await this.getActiveAgent(socketId, data)
       if (!agentName) {
         throw new Error('No agent specified and no default agent configured')
       }
@@ -3157,9 +3158,9 @@ export class WebSocketServer {
   /**
    * Get the active agent for this session
    */
-  private getActiveAgent(socketId: string, data: ChatMessage): string | undefined {
+  private async getActiveAgent(socketId: string, data: ChatMessage): Promise<string | undefined> {
     // Always evaluate router first so brand new apps can start with the Initial agent
-    const routedAgent = this.config.agentRouter ? this.config.agentRouter(socketId, data) : undefined
+    const routedAgent = this.config.agentRouter ? await this.config.agentRouter(socketId, data) : undefined
 
     if (this.config.stateManager?.getCurrentAgent) {
       const currentAgent = this.config.stateManager.getCurrentAgent(socketId)
@@ -3234,7 +3235,7 @@ export class WebSocketServer {
 
     // Get current agent from state manager (for handoffs)
     // This is REQUIRED - every context must have an agentId
-    const currentAgent = this.getActiveAgent(socketId, data)
+    const currentAgent = await this.getActiveAgent(socketId, data)
     if (!currentAgent) {
       throw new Error('No active agent found - agentId is required in context.metadata')
     }
@@ -4260,6 +4261,7 @@ Please try again with corrected formatting.`
             const processedContext = context as ProcessedContext
             const contextAppId = processedContext?.appId || (processedContext?.metadata as MetadataRecord)?.appId
             const contextSubscriptionId = (processedContext?.metadata as MetadataRecord)?.subscriptionId
+            const contextCustomerId = (processedContext?.metadata as MetadataRecord)?.customerId as string | undefined
             await this.config.onTokenUsage(
               {
                 inputTokens: usage.inputTokens || 0,
@@ -4273,7 +4275,8 @@ Please try again with corrected formatting.`
                 modelName,
                 ...(conversationAfterStream?.conversationId && { conversationId: conversationAfterStream.conversationId }),
                 ...(contextAppId && { appId: contextAppId }),
-                ...(contextSubscriptionId ? { subscriptionId: contextSubscriptionId } : {})
+                ...(contextSubscriptionId ? { subscriptionId: contextSubscriptionId } : {}),
+                ...(contextCustomerId ? { customerId: contextCustomerId } : {})
               }
             )
           } catch (error) {

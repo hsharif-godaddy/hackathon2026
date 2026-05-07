@@ -1,13 +1,17 @@
 import { Router, Request, Response } from 'express';
 import type { Router as RouterType } from 'express';
-import { ConversationRepository } from '../../database/repositories/ConversationRepository.js';
 import { Logger } from '../../logging/index.js';
-import { validateAppOwnershipFromQuery, validateConversationOwnership, type ConversationRequest } from '../middleware/app-ownership.js';
+import { getConversationLifecycleStore, getMessageStore } from '../../memory/adapters/index.js';
+import { workspaceScopeFromAppId } from '../../memory/interfaces/scope.js';
 import { exportConversations } from '../../services/conversation-exporter.js';
 import type { ExportDetail } from '../../services/conversation-exporter.js';
+import { validateAppOwnershipFromQuery, validateConversationOwnership, type ConversationRequest } from '../middleware/app-ownership.js';
+import type { AuthenticatedRequest } from '../middleware/jwt-auth.js';
 
 const router: RouterType = Router();
 const logger = Logger.create({ component: 'conversations-routes' });
+const lifecycle = getConversationLifecycleStore();
+const messages = getMessageStore();
 
 /**
  * GET /api/conversations
@@ -24,14 +28,13 @@ router.get('/api/conversations', validateAppOwnershipFromQuery('appId'), async (
 
     logger.debug('conversations.list.begin', { appId });
 
-    const conversationRepo = new ConversationRepository();
-    const conversations = await conversationRepo.getByAppId(appId);
+    const customerId = (req as AuthenticatedRequest).agentContext?.customerId;
+    const conversations = await lifecycle.getByAppId(workspaceScopeFromAppId(appId, customerId));
 
-    // Get message counts and last messages for each conversation
     const enrichedConversations = await Promise.all(
       conversations.map(async (conversation) => {
-        const messages = await conversationRepo.getMessages(conversation.id);
-        const lastUserMessage = messages
+        const msgs = await messages.getMessages(conversation.id);
+        const lastUserMessage = msgs
           .filter(m => m.sender === 'user')
           .pop();
 
@@ -40,7 +43,7 @@ router.get('/api/conversations', validateAppOwnershipFromQuery('appId'), async (
           appId: conversation.appId,
           agentId: conversation.agentId,
           title: conversation.title,
-          messageCount: messages.length,
+          messageCount: msgs.length,
           lastMessage: lastUserMessage?.content?.slice(0, 100),
           createdAt: conversation.createdAt.toISOString(),
           updatedAt: conversation.updatedAt.toISOString()
@@ -81,10 +84,10 @@ router.get('/api/conversations/export', validateAppOwnershipFromQuery('appId'), 
   try {
     logger.debug('conversations.export.begin', { appId, detail });
 
-    const conversationRepo = new ConversationRepository();
-    const conversations = await conversationRepo.getByAppId(appId);
+    const customerId = (req as AuthenticatedRequest).agentContext?.customerId;
+    const conversations = await lifecycle.getByAppId(workspaceScopeFromAppId(appId, customerId));
 
-    const allMessages = await conversationRepo.getMessagesBatch(conversations.map(c => c.id));
+    const allMessages = await messages.getMessagesBatch(conversations.map(c => c.id));
     const messagesByConversation = new Map<string, typeof allMessages>();
     for (const msg of allMessages) {
       const existing = messagesByConversation.get(msg.conversationId) || [];
@@ -123,10 +126,9 @@ router.get('/api/conversations/:id/messages', validateConversationOwnership(), a
 
     logger.debug('conversations.messages.begin', { conversationId, appId });
 
-    const conversationRepo = new ConversationRepository();
-    const messages = await conversationRepo.getMessages(conversationId);
+    const msgs = await messages.getMessages(conversationId);
 
-    const formattedMessages = messages.map(message => ({
+    const formattedMessages = msgs.map(message => ({
       id: message.id,
       conversationId: message.conversationId,
       sender: message.sender,
@@ -174,10 +176,10 @@ router.get('/api/conversations/:id/messages/paginated', validateConversationOwne
 
     logger.debug('conversations.messages.paginated.begin', { conversationId, appId, limit, before });
 
-    const conversationRepo = new ConversationRepository();
-    const result = await conversationRepo.getMessagesPaginated(conversationId, appId, { limit, before });
+    const customerId = (req as AuthenticatedRequest).agentContext?.customerId;
+    const result = await messages.getMessagesPaginated(workspaceScopeFromAppId(appId, customerId), conversationId, { limit, before });
 
-    const messages = result.messages.map(msg => {
+    const paginatedMsgs = result.messages.map(msg => {
       let sender: 'user' | 'assistant';
       if (msg.sender === 'agent') {
         sender = 'assistant';
@@ -206,11 +208,11 @@ router.get('/api/conversations/:id/messages/paginated', validateConversationOwne
     });
 
     logger.debug('conversations.messages.paginated.success', {
-      conversationId, appId, count: messages.length, hasMore: result.hasMore,
+      conversationId, appId, count: paginatedMsgs.length, hasMore: result.hasMore,
     });
 
     return res.json({
-      messages,
+      messages: paginatedMsgs,
       hasMore: result.hasMore,
       nextCursor: result.nextCursor,
       total: result.total,
@@ -258,10 +260,7 @@ router.patch('/api/conversations/:id/tools/:toolId', validateAppOwnershipFromQue
 
     logger.debug('conversations.tool.update.begin', { conversationId, toolId, appId });
 
-    const conversationRepo = new ConversationRepository();
-
-    // Validate conversation exists and belongs to the requesting app
-    const conversation = await conversationRepo.getById(conversationId);
+    const conversation = await lifecycle.getById(conversationId);
     if (!conversation) {
       return res.status(404).json({ error: 'Conversation not found' });
     }
@@ -276,10 +275,8 @@ router.patch('/api/conversations/:id/tools/:toolId', validateAppOwnershipFromQue
       return res.status(403).json({ error: 'Unauthorized access to conversation' });
     }
 
-    // Get all messages and find the one containing this tool
-    // Search in reverse order (most recent first) since recent tools are more likely to be updated
-    const messages = await conversationRepo.getMessages(conversationId);
-    const messageWithTool = [...messages].reverse().find(msg =>
+    const allMsgs = await messages.getMessages(conversationId);
+    const messageWithTool = [...allMsgs].reverse().find(msg =>
       msg.toolCalls?.some((tc: any) => tc.id === toolId)
     );
 
@@ -287,7 +284,7 @@ router.patch('/api/conversations/:id/tools/:toolId', validateAppOwnershipFromQue
       logger.warn('conversations.tool.update.not_found', {
         conversationId,
         toolId,
-        messagesChecked: messages.length
+        messagesChecked: allMsgs.length
       });
       return res.status(404).json({ error: 'Tool not found in conversation history' });
     }
@@ -319,8 +316,7 @@ router.patch('/api/conversations/:id/tools/:toolId', validateAppOwnershipFromQue
       return segment;
     });
 
-    // Persist the updates
-    await conversationRepo.updateMessage(messageWithTool.id, {
+    await messages.updateMessage(messageWithTool.id, {
       toolCalls: updatedToolCalls || [],
       segments: updatedSegments || []
     });
@@ -347,5 +343,4 @@ router.patch('/api/conversations/:id/tools/:toolId', validateAppOwnershipFromQue
   }
 });
 
-export { router as conversationsRouter };
-
+export const conversationsRouter = router;

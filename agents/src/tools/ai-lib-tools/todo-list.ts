@@ -1,6 +1,7 @@
 import { createTool, type Tool } from '@airo/ai-lib'
 import { z } from 'zod'
 import { todoListTool, TodoListToolOptions } from '../todo-list-tool.js'
+import { customerIdFromContext } from '../../memory/interfaces/scope.js'
 
 /**
  * Todo List Tool for AI-Lib
@@ -44,12 +45,13 @@ export const todoListAITool: Tool = createTool(
     // Always prefer context appId (from authenticated session) over LLM-provided appId
     const appId = (context?.metadata?.appId as string) || input.appId
     const sessionId = (context?.metadata?.sessionId as string) || (context?.sessionId as string) || ((context as any)?.socketId as string)
-    
-    // Pass appId and sessionId to the tool execution
+
+    // Pass appId, sessionId, and customerId (for tenant-scoped store access) to the tool execution
     const options = {
       ...input,
       appId,
-      sessionId
+      sessionId,
+      customerId: customerIdFromContext(context)
     } as TodoListToolOptions
     
     const result = await todoListTool.execute(options)

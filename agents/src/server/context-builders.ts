@@ -243,12 +243,13 @@ export function checkAndTriggerSummarization(opts: {
   appId: string
   conversationId?: string
   subscriptionId?: string
+  customerId?: string
   summarizer: {
-    checkAndSummarize(appId: string, triggerTokenCount?: number, budgetOverride?: string): Promise<void>
+    checkAndSummarize(appId: string, triggerTokenCount?: number, budgetOverride?: string, customerId?: string): Promise<void>
     getMaxPromptTokens(): number
   }
 }): void {
-  const { inputTokens, appId, conversationId, subscriptionId, summarizer } = opts
+  const { inputTokens, appId, conversationId, subscriptionId, customerId, summarizer } = opts
   const maxPrompt = summarizer.getMaxPromptTokens()
   if (inputTokens <= maxPrompt) return
 
@@ -256,7 +257,7 @@ export function checkAndTriggerSummarization(opts: {
     ? subscriptionId : undefined
 
   logger.info('summarization.trigger', { appId, conversationId, inputTokens, maxPrompt, budgetOverride })
-  summarizer.checkAndSummarize(appId, inputTokens, budgetOverride).catch(err => {
+  summarizer.checkAndSummarize(appId, inputTokens, budgetOverride, customerId).catch(err => {
     logger.warn('summarization.failed', { appId, conversationId, error: err instanceof Error ? err.message : String(err) })
   })
 }

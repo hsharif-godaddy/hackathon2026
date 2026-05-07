@@ -8,17 +8,13 @@ const { latestSummary, getMessageById, summaryStore, pinnedSummaryId } = vi.hois
   pinnedSummaryId: { value: null as string | null },
 }))
 
-vi.mock('../../../database/repositories/SummaryRepository.js', () => ({
-  SummaryRepository: class {
-    findLatestForApp = vi.fn().mockImplementation(async () => latestSummary.value)
-    findById = vi.fn().mockImplementation(async (id: string) => summaryStore.get(id) ?? null)
-  }
-}))
-
-vi.mock('../../../database/repositories/index.js', () => ({
-  conversationRepository: {
-    getMessageById
-  }
+vi.mock('../../../memory/adapters/index.js', () => ({
+  getMessageStore: () => ({ getMessageById }),
+  getKvMemoryStore: () => ({}),
+  getSummaryStore: () => ({
+    findLatestForApp: vi.fn().mockImplementation(async (_scope: any) => latestSummary.value),
+    findById: vi.fn().mockImplementation(async (id: string) => summaryStore.get(id) ?? null),
+  }),
 }))
 
 vi.mock('../../../services/ContextAttachmentRegistry.js', () => ({

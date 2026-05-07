@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { SkillToolDefinition } from '@airo/ai-skills';
 import { AppRepository } from '../../../database/repositories/AppRepository.js';
 import { logger } from '../../../logging/index.js';
+import { customerIdFromContext } from '../../../memory/interfaces/scope.js';
 import { getClientActionService } from '../../../server/ai-lib-websocket-server.js';
 import { DevSupervisorClientFactory } from '../../../utils/dev-supervisor-client-factory.js';
 import { validateDomainName } from '../../../utils/domain-validation.js';
@@ -136,7 +137,8 @@ export const publishTool: SkillToolDefinition = {
                 const purchasedResult = await memoryTool.readMemory(
                   { key: 'domain.purchased' },
                   app.path,
-                  appId
+                  appId,
+                  customerIdFromContext(context)
                 );
                 if (purchasedResult.success && purchasedResult.exists) {
                   const purchased = purchasedResult.value as { fqdn?: string; connectedToProject?: boolean };
@@ -204,7 +206,8 @@ export const publishTool: SkillToolDefinition = {
                               },
                             },
                             app.path,
-                            appId
+                            appId,
+                            customerIdFromContext(context)
                           );
                         } catch (memoryError) {
                           logger.warn('skill.publishing.publish.memory-update-failed', {

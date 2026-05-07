@@ -1,6 +1,7 @@
 import type { ContextAttachment, ContextAttachmentRenderer, RenderedContext } from '@airo/shared/context-attachment'
 import { logger } from '../../logging/index.js'
-import { TodoListRepository } from '../../database/repositories/TodoListRepository.js'
+import { getTodoListStore } from '../../planning/adapters/index.js'
+import type { TodoListStore } from '../../planning/interfaces/index.js'
 
 /**
  * Todo List Context data structure
@@ -16,6 +17,8 @@ export interface TodoListContextData {
  * that should be worked on by the agent.
  */
 export class TodoListContextRenderer implements ContextAttachmentRenderer<TodoListContextData> {
+  constructor(private todoListStore: TodoListStore = getTodoListStore()) {}
+
   canHandle(type: string): boolean {
     return type === 'todo_list_context'
   }
@@ -48,10 +51,9 @@ export class TodoListContextRenderer implements ContextAttachmentRenderer<TodoLi
       }
 
       // Look up the todo list by ID to get the title
-      const todoListRepo = new TodoListRepository()
       let todoList
       try {
-        todoList = todoListRepo.getListById(data.id)
+        todoList = await this.todoListStore.getListById(data.id)
       } catch (error) {
         logger.error('context.renderer.todo_list.lookup_failed', {
           type: attachment.type,

@@ -33,21 +33,21 @@ describe('agent-router', function agentRouterTests() {
     }
   }
 
-  it('routes to initial-v3-<profile> when modular prompt override is registered', function modularRegistered() {
+  it('routes to initial-v3-<profile> when modular prompt override is registered', async function modularRegistered() {
     resolveProfileSpy.mockReturnValue(profile({
       name: 'exp',
       properties: { 'initial.modularPromptFiles': 'identity.md' },
     }))
     setRegisteredInitialV3ModularAgentIds(new Set(['initial-v3-exp']))
 
-    const id = resolveAgent({
+    const id = await resolveAgent({
       appId: 'app_new',
       agentContext: { agentProfile: 'exp' },
     })
     expect(id).toBe('initial-v3-exp')
   })
 
-  it('falls back to initial-v3 when modular variant failed to register at startup', function modularMissing() {
+  it('falls back to initial-v3 when modular variant failed to register at startup', async function modularMissing() {
     const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => {})
     resolveProfileSpy.mockReturnValue(profile({
       name: 'broken',
@@ -55,7 +55,7 @@ describe('agent-router', function agentRouterTests() {
     }))
     expect(getRegisteredInitialV3ModularAgentIds().has('initial-v3-broken')).toBe(false)
 
-    const id = resolveAgent({
+    const id = await resolveAgent({
       appId: 'app_new',
       agentContext: { agentProfile: 'broken' },
     })
@@ -72,7 +72,7 @@ describe('agent-router', function agentRouterTests() {
     warnSpy.mockRestore()
   })
 
-  it('prefers modular branch over promptVersion 3.0 when both are set', function modularBeatsV3() {
+  it('prefers modular branch over promptVersion 3.0 when both are set', async function modularBeatsV3() {
     resolveProfileSpy.mockReturnValue(profile({
       name: 'both',
       properties: {
@@ -82,33 +82,33 @@ describe('agent-router', function agentRouterTests() {
     }))
     setRegisteredInitialV3ModularAgentIds(new Set(['initial-v3-both']))
 
-    const id = resolveAgent({
+    const id = await resolveAgent({
       appId: 'app_new',
       agentContext: { agentProfile: 'both' },
     })
     expect(id).toBe('initial-v3-both')
   })
 
-  it('routes to initial-v3 when only promptVersion 3.0 is set', function v3Only() {
+  it('routes to initial-v3 when only promptVersion 3.0 is set', async function v3Only() {
     resolveProfileSpy.mockReturnValue(profile({
       name: 'v3only',
       properties: { 'initial.promptVersion': '3.0' },
     }))
 
-    const id = resolveAgent({
+    const id = await resolveAgent({
       appId: 'app_new',
       agentContext: { agentProfile: 'v3only' },
     })
     expect(id).toBe('initial-v3')
   })
 
-  it('routes to initial-v2 when only promptVersion 2.0 is set', function v2Only() {
+  it('routes to initial-v2 when only promptVersion 2.0 is set', async function v2Only() {
     resolveProfileSpy.mockReturnValue(profile({
       name: 'v2prod',
       properties: { 'initial.promptVersion': '2.0' },
     }))
 
-    const id = resolveAgent({
+    const id = await resolveAgent({
       appId: 'app_new',
       agentContext: { agentProfile: 'v2prod' },
     })
@@ -128,13 +128,13 @@ describe('agent-router', function agentRouterTests() {
       return { sessionId: 'sock-1', stateManager }
     }
 
-    it('returns develop-<profile> when session is develop and profile has develop.* flags', function sessionToDevelopVariant() {
+    it('returns develop-<profile> when session is develop and profile has develop.* flags', async function sessionToDevelopVariant() {
       resolveProfileSpy.mockReturnValue(profile({
         name: 'expdev',
         properties: { 'develop.promptOptimization': true },
       }))
 
-      const id = resolveAgent({
+      const id = await resolveAgent({
         appId,
         agentContext: { agentProfile: 'expdev' },
         session: sessionWithAgent('develop'),
@@ -142,10 +142,10 @@ describe('agent-router', function agentRouterTests() {
       expect(id).toBe('develop-expdev')
     })
 
-    it('returns develop when session is develop but resolveProfile returns null', function sessionDevelopNoProfile() {
+    it('returns develop when session is develop but resolveProfile returns null', async function sessionDevelopNoProfile() {
       resolveProfileSpy.mockReturnValue(null)
 
-      const id = resolveAgent({
+      const id = await resolveAgent({
         appId,
         agentContext: { agentProfile: 'expdev' },
         session: sessionWithAgent('develop'),
@@ -153,13 +153,13 @@ describe('agent-router', function agentRouterTests() {
       expect(id).toBe('develop')
     })
 
-    it('returns develop when session is develop but profile has no develop.* keys', function sessionDevelopNoFlags() {
+    it('returns develop when session is develop but profile has no develop.* keys', async function sessionDevelopNoFlags() {
       resolveProfileSpy.mockReturnValue(profile({
         name: 'plain',
         properties: { 'initial.promptVersion': '3.0' },
       }))
 
-      const id = resolveAgent({
+      const id = await resolveAgent({
         appId,
         agentContext: { agentProfile: 'plain' },
         session: sessionWithAgent('develop'),
@@ -168,7 +168,7 @@ describe('agent-router', function agentRouterTests() {
     })
   })
 
-  it('router prefers modular branch when both modularPromptFiles and promptVersion 2.0 are set', function modularBeatsV2InRouter() {
+  it('router prefers modular branch when both modularPromptFiles and promptVersion 2.0 are set', async function modularBeatsV2InRouter() {
     resolveProfileSpy.mockReturnValue(profile({
       name: 'mixed',
       properties: {
@@ -178,7 +178,7 @@ describe('agent-router', function agentRouterTests() {
     }))
     setRegisteredInitialV3ModularAgentIds(new Set(['initial-v3-mixed']))
 
-    const id = resolveAgent({
+    const id = await resolveAgent({
       appId: 'app_new',
       agentContext: { agentProfile: 'mixed' },
     })

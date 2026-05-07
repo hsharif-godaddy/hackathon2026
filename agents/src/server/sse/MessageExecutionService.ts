@@ -42,7 +42,7 @@ interface ExecutionDeps {
   }
   onAgentChanged?: (conversationId: string, oldAgent: string, newAgent: string, appId?: string) => Promise<void>
   backgroundSummarizer?: {
-    checkAndSummarize(appId: string, triggerTokenCount?: number, budgetOverride?: string): Promise<void>
+    checkAndSummarize(appId: string, triggerTokenCount?: number, budgetOverride?: string, customerId?: string): Promise<void>
     getMaxPromptTokens(): number
   } | null
   /** Post-stream validator (tsc + runtime-error checks). Returns a continuation prompt to retry, or null to finish. */
@@ -523,6 +523,7 @@ export class MessageExecutionService {
       metadata: {
         appId, siteId, conversationId, templateId, modelOverride, agentProfile,
         ...(budgetOverrideSubscriptionId && { subscriptionId: budgetOverrideSubscriptionId }),
+        ...(agentCtx?.customerId && { customerId: agentCtx.customerId }),
       },
       visualContext, aiEditContext, selectedAssets,
       todoListContext, isActionRequest, customContext, buildErrorContext,
@@ -670,10 +671,12 @@ export class MessageExecutionService {
 
       const usage = lastTurnResult?.finalResult?.totalUsage ?? lastTurnResult?.finalResult?.usage
       if (usage && this.deps.backgroundSummarizer) {
+        const metadata = (executionContext.metadata as Record<string, unknown> | undefined) ?? {}
         checkAndTriggerSummarization({
           inputTokens: usage.promptTokens ?? usage.inputTokens ?? 0,
           appId, conversationId,
-          subscriptionId: (executionContext.metadata as any)?.subscriptionId,
+          subscriptionId: metadata.subscriptionId as string | undefined,
+          customerId: metadata.customerId as string | undefined,
           summarizer: this.deps.backgroundSummarizer,
         })
       }

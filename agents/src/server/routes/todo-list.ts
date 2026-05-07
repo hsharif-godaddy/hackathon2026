@@ -1,10 +1,13 @@
 import { Router, type IRouter, Request, Response, NextFunction } from 'express'
-import { CreateItemInput, TodoListRepository } from '../../database/repositories/TodoListRepository.js';
 import { logger } from '../../logging/index.js'
+import { getTodoListStore } from '../../planning/adapters/index.js';
+import type { PlanningCreateItemInput } from '../../planning/interfaces/todo-list-store.js';
+import { workspaceScopeFromAppId } from '../../memory/interfaces/scope.js';
 import { validateAppOwnership } from '../middleware/app-ownership.js';
+import type { AuthenticatedRequest } from '../middleware/jwt-auth.js';
 
 const router: IRouter = Router()
-const todoListRepo = new TodoListRepository()
+const store = getTodoListStore();
 
 /**
  * Custom validator that works with :appId parameter name
@@ -38,7 +41,8 @@ router.get('/todo-lists/:appId', validateAppIdParam, async (req, res) => {
   const { appId } = req.params
 
   try {
-    const lists = todoListRepo.getAllLists(appId)
+    const customerId = (req as AuthenticatedRequest).agentContext?.customerId;
+    const lists = await store.getAllLists(workspaceScopeFromAppId(appId!, customerId))
 
     logger.info('todo-lists.get-all.success', {
       appId,
@@ -58,11 +62,11 @@ router.get('/todo-lists/:appId', validateAppIdParam, async (req, res) => {
 /**
  * POST /agent/todo-lists/:appId - Create a todo list for an app
  *
- * Body: { name: string; description?: string; items?: CreateItemInput[] }
+ * Body: { name: string; description?: string; items?: PlanningCreateItemInput[] }
  */
 router.post('/todo-lists/:appId', validateAppIdParam, async (req, res) => {
   const { appId } = req.params
-  const { name, description, items }: { name: string; description?: string; items?: CreateItemInput[] }  = req.body
+  const { name, description, items }: { name: string; description?: string; items?: PlanningCreateItemInput[] }  = req.body
 
   // Basic validation
   if (!name) {
@@ -73,9 +77,10 @@ router.post('/todo-lists/:appId', validateAppIdParam, async (req, res) => {
       return res.status(400).json({ error: 'items.title is required' })
     }
   }
-  
+
   try {
-    const list = await todoListRepo.createList(name, appId, description, items)
+    const customerId = (req as AuthenticatedRequest).agentContext?.customerId;
+    const list = await store.createList(workspaceScopeFromAppId(appId!, customerId), name, description, items)
 
     logger.info('todo-lists.create-new.success', {
       appId,
@@ -101,7 +106,8 @@ router.get('/todo-lists/:appId/current', validateAppIdParam, async (req, res) =>
   const { appId } = req.params
 
   try {
-    const lists = todoListRepo.getAllLists(appId)
+    const customerId = (req as AuthenticatedRequest).agentContext?.customerId;
+    const lists = await store.getAllLists(workspaceScopeFromAppId(appId!, customerId))
 
     if (lists.length === 0) {
       logger.info('todo-lists.get-current.empty', { appId })
@@ -150,7 +156,7 @@ router.post('/todo-lists/:appId/current', validateAppIdParam, async (req, res) =
   }
 
   try {
-    const list = todoListRepo.getListById(listId)
+    const list = await store.getListById(listId)
 
     if (!list) {
       logger.warn('todo-lists.set-current.not-found', { appId, listId })
@@ -166,11 +172,9 @@ router.post('/todo-lists/:appId/current', validateAppIdParam, async (req, res) =
       return res.status(403).json({ error: 'Todo list does not belong to this app' })
     }
 
-    // Update the list timestamp to make it "current"
-    todoListRepo.updateListTimestamp(listId)
+    await store.updateListTimestamp(listId)
 
-    // Fetch the updated list
-    const updatedList = todoListRepo.getListById(listId)
+    const updatedList = await store.getListById(listId)
 
     logger.info('todo-lists.set-current.success', {
       appId,
@@ -189,5 +193,4 @@ router.post('/todo-lists/:appId/current', validateAppIdParam, async (req, res) =
   }
 })
 
-export default router
-
+export default router;

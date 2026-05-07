@@ -1,11 +1,11 @@
 import { createTool } from '@airo/ai-lib'
 import { z } from 'zod'
 
-import { TodoListRepository } from '../../database/repositories/TodoListRepository.js'
+import { getTodoListStore } from '../../planning/adapters/index.js'
 import { Logger } from '../../logging/index.js'
 
 const logger = Logger.create({ component: 'suggested-response-tool' })
-const todoListRepo = new TodoListRepository()
+const todoListStore = getTodoListStore()
 
 /**
  * Suggestion schema
@@ -71,7 +71,7 @@ Example use cases:
       if (sessionId && stateManager?.getSelectedTodoList) {
         const selectedListId = stateManager.getSelectedTodoList(sessionId)
         if (selectedListId) {
-          const list = todoListRepo.getListById(selectedListId)
+          const list = await todoListStore.getListById(selectedListId)
           const pendingItems = list && list.appId === appId
             ? list.items?.filter(item => !item.completed) || []
             : []

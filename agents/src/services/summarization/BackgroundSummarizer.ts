@@ -1,5 +1,10 @@
-import type { ConversationRepository } from '../../database/repositories/ConversationRepository.js';
-import type { SummaryRepository } from '../../database/repositories/SummaryRepository.js';
+import type {
+  ConversationLifecycleStore,
+  ConversationTokenStore,
+  MessageStore,
+  SummaryStore,
+} from '../../memory/interfaces/index.js';
+import { workspaceScopeFromAppId } from '../../memory/interfaces/scope.js';
 import { logger } from '../../logging/index.js';
 import { countTokens } from '../../utils/token-counter.js';
 import { getAgentModelWithName } from '../../utils/model-selection.js';
@@ -22,21 +27,32 @@ interface PendingJob {
   triggerTokenCount?: number;
   /** Budget override from the triggering session (E2S or test-accounts) */
   budgetOverride?: BudgetOverride;
+  /** CustomerId captured from the triggering session for tenant-scoped store access */
+  customerId?: string;
 }
 
-export type BackgroundSummarizerConversationRepo = Omit<
-  Pick<
-    ConversationRepository,
-    'getByAppId' | 'getMessagesBatch' | 'getMessagesAfterMessageId' | 'getMessageById' | 'getEstimatedTokensAfterMessageId' | 'getEstimatedTokensForApp'
-  >,
-  'getMessagesBatch' | 'getMessageById'
-> & {
-  getMessagesBatch(conversationIds: string[]): Promise<DatabaseMessage[]>;
-  getMessageById(messageId: string): Promise<DatabaseMessage | null>;
+/**
+ * Minimal conversation-store surface required by BackgroundSummarizer.
+ *
+ * The summarizer reads conversations and messages across three store concerns:
+ *   - lifecycle: enumerate conversations for an app
+ *   - message: batch/single message lookup
+ *   - token: token estimation and post-cursor message loading
+ *
+ * Combining the needed methods here lets callers (initialize.ts, tests) either
+ * pass a single composed object or satisfy it from the three adapter singletons.
+ */
+export type BackgroundSummarizerConversationStore = {
+  getByAppId: ConversationLifecycleStore['getByAppId'];
+  getMessagesBatch: MessageStore['getMessagesBatch'];
+  getMessageById: MessageStore['getMessageById'];
+  getMessagesAfterMessageId: ConversationTokenStore['getMessagesAfterMessageId'];
+  getEstimatedTokensAfterMessageId: ConversationTokenStore['getEstimatedTokensAfterMessageId'];
+  getEstimatedTokensForApp: ConversationTokenStore['getEstimatedTokensForApp'];
 };
 
-export type BackgroundSummarizerSummaryRepo = Pick<
-  SummaryRepository,
+export type BackgroundSummarizerSummaryStore = Pick<
+  SummaryStore,
   'findLatestForApp' | 'create'
 >;
 import { OperationLogExtractor } from './OperationLogExtractor.js';
@@ -83,21 +99,21 @@ export interface BackgroundSummarizerConfig {
  * and runs asynchronously without blocking message saves.
  */
 export class BackgroundSummarizer {
-  private conversationRepo: BackgroundSummarizerConversationRepo;
-  private summaryRepo: BackgroundSummarizerSummaryRepo;
+  private conversationStore: BackgroundSummarizerConversationStore;
+  private summaryStore: BackgroundSummarizerSummaryStore;
   private strategy: SummarizationStrategy;
   private config: BackgroundSummarizerConfig;
   private pendingJobs: Map<string, PendingJob> = new Map();
   private processingJobs: Set<string> = new Set();
 
   constructor(
-    conversationRepo: BackgroundSummarizerConversationRepo,
-    summaryRepo: BackgroundSummarizerSummaryRepo,
+    conversationStore: BackgroundSummarizerConversationStore,
+    summaryStore: BackgroundSummarizerSummaryStore,
     strategy: SummarizationStrategy,
     config: Partial<BackgroundSummarizerConfig> = {}
   ) {
-    this.conversationRepo = conversationRepo;
-    this.summaryRepo = summaryRepo;
+    this.conversationStore = conversationStore;
+    this.summaryStore = summaryStore;
     this.strategy = strategy;
     this.config = {
       maxPromptTokens: config.maxPromptTokens ?? 10000,
@@ -118,8 +134,9 @@ export class BackgroundSummarizer {
    * @param appId - ID of the app
    * @param triggerTokenCount - Optional token count that triggered the check
    * @param budgetOverride - Optional budget override from triggering session (E2S or test-accounts)
+   * @param customerId - Optional customerId from triggering session for tenant-scoped store access
    */
-  async checkAndSummarize(appId: string, triggerTokenCount?: number, budgetOverride?: BudgetOverride): Promise<void> {
+  async checkAndSummarize(appId: string, triggerTokenCount?: number, budgetOverride?: BudgetOverride, customerId?: string): Promise<void> {
     // Debounce: cancel existing job for this app
     const existingJob = this.pendingJobs.get(appId);
     if (existingJob) {
@@ -130,6 +147,8 @@ export class BackgroundSummarizer {
     // This prevents a race condition where an E2S session triggers summarization,
     // then a regular session triggers within the debounce window and clears the override.
     const effectiveBudgetOverride = budgetOverride ?? existingJob?.budgetOverride;
+    // Same race-prevention rationale applies to customerId.
+    const effectiveCustomerId = customerId ?? existingJob?.customerId;
 
     // Schedule new job with debounce
     // Capture the budget override from the triggering session
@@ -142,13 +161,14 @@ export class BackgroundSummarizer {
         return;
       }
       this.pendingJobs.delete(appId);
-      await this.processSummarization(appId, job.triggerTokenCount, job.budgetOverride);
+      await this.processSummarization(appId, job.triggerTokenCount, job.budgetOverride, job.customerId);
     }, this.config.debounceMs);
 
     this.pendingJobs.set(appId, {
       timeout,
       triggerTokenCount,
       budgetOverride: effectiveBudgetOverride,
+      customerId: effectiveCustomerId,
     });
   }
 
@@ -159,8 +179,9 @@ export class BackgroundSummarizer {
    * @param appId - ID of the app
    * @param triggerTokenCount - Optional token count that triggered the check
    * @param budgetOverride - Optional budget override from triggering session (E2S or test-accounts)
+   * @param customerId - Optional customerId from triggering session for tenant-scoped store access
    */
-  private async processSummarization(appId: string, triggerTokenCount?: number, budgetOverride?: BudgetOverride): Promise<void> {
+  private async processSummarization(appId: string, triggerTokenCount?: number, budgetOverride?: BudgetOverride, customerId?: string): Promise<void> {
     // Prevent duplicate processing
     if (this.processingJobs.has(appId)) {
       logger.debug('summarization.background.skip_duplicate', { appId });
@@ -170,8 +191,10 @@ export class BackgroundSummarizer {
     this.processingJobs.add(appId);
 
     try {
+      const scope = workspaceScopeFromAppId(appId, customerId);
+
       // Load conversations first; if none, exit before any expensive work
-      const conversations = await this.conversationRepo.getByAppId(appId);
+      const conversations = await this.conversationStore.getByAppId(scope);
 
       if (conversations.length === 0) {
         logger.debug('summarization.background.no_conversations', { appId });
@@ -179,7 +202,7 @@ export class BackgroundSummarizer {
       }
 
       // Check for existing summary to determine loading strategy
-      let existingSummary = await this.summaryRepo.findLatestForApp(appId);
+      let existingSummary = await this.summaryStore.findLatestForApp(scope);
 
       // Use the same model tier as summarization ('full' tier, currently Claude Sonnet) for accurate token estimates
       const { modelName } = await getAgentModelWithName('full');
@@ -203,7 +226,7 @@ export class BackgroundSummarizer {
       if (existingSummary && shouldRegenerateFromScratch) {
         // For regenerate mode: estimate TOTAL tokens since full history will be processed
         // (not just new messages - regenerate processes everything from scratch)
-        const estimatedTotalTokens = await this.conversationRepo.getEstimatedTokensForApp(appId);
+        const estimatedTotalTokens = await this.conversationStore.getEstimatedTokensForApp(scope);
         // Use 80% of threshold as cutoff to account for estimation variance
         const estimateThreshold = this.config.maxPromptTokens * 0.8;
 
@@ -218,7 +241,7 @@ export class BackgroundSummarizer {
         }
       } else if (!existingSummary) {
         // For first-time summarization: estimate total tokens from content length
-        const estimatedTotalTokens = await this.conversationRepo.getEstimatedTokensForApp(appId);
+        const estimatedTotalTokens = await this.conversationStore.getEstimatedTokensForApp(scope);
         // Use 80% of threshold as cutoff to account for estimation variance
         const estimateThreshold = this.config.maxPromptTokens * 0.8;
 
@@ -236,8 +259,8 @@ export class BackgroundSummarizer {
       if (!shouldLoadFullHistory && existingSummary) {
         // Incremental mode: First check if new messages could exceed threshold
         // Use content-length-based estimation to avoid loading messages unnecessarily
-        const estimatedNewTokens = await this.conversationRepo.getEstimatedTokensAfterMessageId(
-          appId,
+        const estimatedNewTokens = await this.conversationStore.getEstimatedTokensAfterMessageId(
+          scope,
           existingSummary.messageRangeEnd
         );
 
@@ -250,7 +273,7 @@ export class BackgroundSummarizer {
           });
 
           const conversationIds = conversations.map(c => c.id);
-          const messages = await this.conversationRepo.getMessagesBatch(conversationIds);
+          const messages = await this.conversationStore.getMessagesBatch(conversationIds);
 
           allMessages = messages.map((msg) => ({
             ...msg,
@@ -286,8 +309,8 @@ export class BackgroundSummarizer {
             estimatedNewTokens,
           });
 
-          allMessages = await this.conversationRepo.getMessagesAfterMessageId(
-            appId,
+          allMessages = await this.conversationStore.getMessagesAfterMessageId(
+            scope,
             existingSummary.messageRangeEnd
           );
 
@@ -302,7 +325,7 @@ export class BackgroundSummarizer {
         logger.debug('summarization.background.full_mode', { appId });
 
         const conversationIds = conversations.map(c => c.id);
-        const messages = await this.conversationRepo.getMessagesBatch(conversationIds);
+        const messages = await this.conversationStore.getMessagesBatch(conversationIds);
 
         allMessages = messages.map((msg) => ({
           ...msg,
@@ -449,7 +472,7 @@ export class BackgroundSummarizer {
       // Legacy summaries may not have an operation log; rebuild from full history in that case
       if (existingSummary && !existingSummary.operationLog && !shouldLoadFullHistory) {
         const conversationIds = conversations.map(c => c.id);
-        const fullMessages = await this.conversationRepo.getMessagesBatch(conversationIds);
+        const fullMessages = await this.conversationStore.getMessagesBatch(conversationIds);
         fullMessages.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
         operationLogSourceMessages = this.convertToLLMMessages(fullMessages);
         operationLogFromFullHistory = true;
@@ -554,7 +577,7 @@ export class BackgroundSummarizer {
       }
 
       // Save summary to database
-      await this.summaryRepo.create(summaryResult, appId);
+      await this.summaryStore.create(scope, summaryResult);
 
       const compressionRatio = summaryResult.summaryTokenCount / summaryResult.originalTokenCount;
       const tokensSaved = summaryResult.originalTokenCount - summaryResult.summaryTokenCount;

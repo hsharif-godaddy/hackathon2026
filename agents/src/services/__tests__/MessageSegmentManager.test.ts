@@ -1,21 +1,18 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { MessageSegmentManager } from '../MessageSegmentManager.js';
-import { ConversationRepository } from '../../database/repositories/ConversationRepository.js';
+import type { MessageStore } from '../../memory/interfaces/index.js';
 import type { MessageSegment, ToolCall } from '../../database/schema.js';
-
-// Mock the ConversationRepository
-vi.mock('../../database/repositories/ConversationRepository.js');
 
 describe('MessageSegmentManager', () => {
   let segmentManager: MessageSegmentManager;
-  let mockConversationRepo: vi.Mocked<ConversationRepository>;
+  let mockMessageStore: MessageStore;
 
   beforeEach(() => {
-    mockConversationRepo = {
+    mockMessageStore = {
       updateMessage: vi.fn(),
-    } as any;
-    
-    segmentManager = new MessageSegmentManager(mockConversationRepo);
+    } as unknown as MessageStore;
+
+    segmentManager = new MessageSegmentManager(mockMessageStore);
   });
 
   it('should maintain chronological order of content and tool calls', () => {
@@ -76,7 +73,7 @@ describe('MessageSegmentManager', () => {
 
     await segmentManager.saveToMessage(messageId);
 
-    expect(mockConversationRepo.updateMessage).toHaveBeenCalledWith(messageId, {
+    expect(mockMessageStore.updateMessage).toHaveBeenCalledWith(messageId, {
       content: 'Test content',
       segments: expect.arrayContaining([
         expect.objectContaining({ type: 'content', content: 'Test content' }),

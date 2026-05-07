@@ -1,5 +1,10 @@
-import { conversationRepository } from '../../database/repositories/index.js';
-import { SummaryRepository } from '../../database/repositories/SummaryRepository.js';
+import {
+  getConversationLifecycleStore,
+  getConversationTokenStore,
+  getMessageStore,
+  getSummaryStore,
+} from '../../memory/adapters/index.js';
+import type { BackgroundSummarizerConversationStore } from './BackgroundSummarizer.js';
 import { BackgroundSummarizer } from './BackgroundSummarizer.js';
 import { LLMSummarizationStrategy } from './LLMSummarizationStrategy.js';
 import { DetailedLLMSummarizationStrategy } from './DetailedLLMSummarizationStrategy.js';
@@ -58,8 +63,22 @@ export async function initializeBackgroundSummarization(config?: {
     usingDefaults: Object.keys(summarizerConfig).length === 0,
   });
 
-  const summaryRepo = new SummaryRepository();
-  
+  // Compose a single conversation-store surface from the three adapter singletons.
+  // Each concern (lifecycle / message / token) lives on its own store interface
+  // so that P2 can swap them independently.
+  const lifecycleStore = getConversationLifecycleStore();
+  const messageStore = getMessageStore();
+  const tokenStore = getConversationTokenStore();
+  const conversationStore: BackgroundSummarizerConversationStore = {
+    getByAppId: (scope) => lifecycleStore.getByAppId(scope),
+    getMessagesBatch: (ids) => messageStore.getMessagesBatch(ids),
+    getMessageById: (id) => messageStore.getMessageById(id),
+    getMessagesAfterMessageId: (scope, afterId) => tokenStore.getMessagesAfterMessageId(scope, afterId),
+    getEstimatedTokensAfterMessageId: (scope, afterId) => tokenStore.getEstimatedTokensAfterMessageId(scope, afterId),
+    getEstimatedTokensForApp: (scope) => tokenStore.getEstimatedTokensForApp(scope),
+  };
+  const summaryStore = getSummaryStore();
+
   // Select summarization strategy
   let summarizationStrategy: SummarizationStrategy;
   switch (strategyType) {
@@ -81,8 +100,8 @@ export async function initializeBackgroundSummarization(config?: {
   }
 
   backgroundSummarizer = new BackgroundSummarizer(
-    conversationRepository,
-    summaryRepo,
+    conversationStore,
+    summaryStore,
     summarizationStrategy,
     summarizerConfig
   );

@@ -25,14 +25,15 @@ interface ColorPaletteWidget {
   }
 }
 import { AppRepository } from '../../database/repositories/AppRepository.js'
-import { MemoryRepository } from '../../database/repositories/MemoryRepository.js'
+import { getKvMemoryStore } from '../../memory/adapters/index.js'
+import { customerIdFromContext, workspaceScopeFromAppId } from '../../memory/interfaces/scope.js'
 
 import { appPlanTool } from '../app-plan-tool.js'
 import { getAgentModelWithName } from '../../utils/model-selection.js'
 import { logger } from '../../logging/index.js'
 
 const appRepo = new AppRepository()
-const memoryRepo = new MemoryRepository()
+const memoryStore = getKvMemoryStore()
 
 function formatPaletteForWidget(palette: ReturnType<typeof generatePalette>, name: string) {
   return {
@@ -489,7 +490,7 @@ IMPORTANT:
 
       // Persist to memory table for brand-data API
       try {
-        await memoryRepo.set(appId, 'brand.colors.palette', {
+        await memoryStore.set(workspaceScopeFromAppId(appId, customerIdFromContext(context)), 'brand.colors.palette', {
           name: paletteName,
           ...result.palette
         })
@@ -651,7 +652,7 @@ IMPORTANT:
 
       // Persist to memory table for brand-data API
       try {
-        await memoryRepo.set(appId, 'brand.colors.palette', {
+        await memoryStore.set(workspaceScopeFromAppId(appId, customerIdFromContext(context)), 'brand.colors.palette', {
           name: paletteName,
           ...result.palette
         })

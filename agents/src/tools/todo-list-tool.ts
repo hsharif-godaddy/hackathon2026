@@ -5,11 +5,13 @@
  * Supports multiple lists, marking items as done, updating items, and full CRUD operations.
  */
 
-import { TodoListRepository } from '../database/repositories/TodoListRepository.js'
 import type { TodoItem, TodoList, CreateItemInput } from '../database/repositories/TodoListRepository.js'
+import { getTodoListStore } from '../planning/adapters/index.js'
+import type { TodoListStore } from '../planning/interfaces/index.js'
+import { workspaceScopeFromAppId } from '../memory/interfaces/scope.js'
+import { logger } from '../logging/index.js'
 
 export type { TodoItem, TodoList, CreateItemInput }
-export { TodoListRepository }
 
 export interface TodoListToolOptions {
   operation: 'create_list' | 'get_list' | 'list_all' | 'delete_list' | 'add_items' | 'update_items' | 'delete_items' | 'mark_done' | 'mark_undone' | 'show_list' | 'select_list'
@@ -21,6 +23,8 @@ export interface TodoListToolOptions {
   itemIds?: string[]
   updates?: Array<{ itemId: string; title?: string; description?: string; order?: number }>
   sessionId?: string
+  /** Tenant customerId threaded from auth context for scope resolution */
+  customerId?: string
 }
 
 export interface TodoListToolResult {
@@ -42,12 +46,9 @@ export type TodoListSelectCallback = (sessionId: string, listId: string) => void
  * Todo List Tool
  */
 class TodoListTool {
-  private repository: TodoListRepository
   private onSelectCallback?: TodoListSelectCallback
 
-  constructor() {
-    this.repository = new TodoListRepository()
-  }
+  constructor(private store: TodoListStore = getTodoListStore()) {}
 
   /**
    * Set callback for when a todo list is selected
@@ -63,27 +64,27 @@ class TodoListTool {
     try {
       switch (options.operation) {
         case 'create_list':
-          return this.createList(options)
+          return await this.createList(options)
         case 'get_list':
-          return this.getList(options)
+          return await this.getList(options)
         case 'show_list':
-          return this.showList(options)
+          return await this.showList(options)
         case 'list_all':
-          return this.listAll(options)
+          return await this.listAll(options)
         case 'delete_list':
-          return this.deleteList(options)
+          return await this.deleteList(options)
         case 'add_items':
-          return this.addItems(options)
+          return await this.addItems(options)
         case 'update_items':
-          return this.updateItems(options)
+          return await this.updateItems(options)
         case 'delete_items':
-          return this.deleteItems(options)
+          return await this.deleteItems(options)
         case 'mark_done':
-          return this.markDone(options)
+          return await this.markDone(options)
         case 'mark_undone':
-          return this.markUndone(options)
+          return await this.markUndone(options)
         case 'select_list':
-          return this.selectList(options)
+          return await this.selectList(options)
         default:
           return {
             success: false,
@@ -91,9 +92,16 @@ class TodoListTool {
           }
       }
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      logger.error('todo_list.execute.failure', {
+        operation: options.operation,
+        appId: options.appId,
+        listId: options.listId,
+        error: message,
+      })
       return {
         success: false,
-        error: error instanceof Error ? error.message : String(error)
+        error: message,
       }
     }
   }
@@ -101,7 +109,7 @@ class TodoListTool {
   /**
    * Create a new todo list
    */
-  private createList(options: TodoListToolOptions): TodoListToolResult {
+  private async createList(options: TodoListToolOptions): Promise<TodoListToolResult> {
     if (!options.listName) {
       return {
         success: false,
@@ -109,9 +117,19 @@ class TodoListTool {
       }
     }
 
-    const list = this.repository.createList(
+    // Guard the scope boundary: an empty appId would produce a list that every
+    // app-scoped getAllLists query filters out and may collide with other
+    // empty-string-scoped data.
+    if (!options.appId) {
+      return {
+        success: false,
+        error: 'appId is required'
+      }
+    }
+
+    const list = await this.store.createList(
+      workspaceScopeFromAppId(options.appId, options.customerId),
       options.listName,
-      options.appId,
       options.listDescription,
       options.items
     )
@@ -136,7 +154,7 @@ class TodoListTool {
   /**
    * Get a specific todo list with its items
    */
-  private getList(options: TodoListToolOptions): TodoListToolResult {
+  private async getList(options: TodoListToolOptions): Promise<TodoListToolResult> {
     if (!options.listId) {
       return {
         success: false,
@@ -144,8 +162,8 @@ class TodoListTool {
       }
     }
 
-    const list = this.repository.getListById(options.listId)
-    
+    const list = await this.store.getListById(options.listId)
+
     if (!list) {
       return {
         success: false,
@@ -163,7 +181,7 @@ class TodoListTool {
    * Show a todo list with formatted display (for showing completed work)
    * Similar to get_list but with a message indicating it's being displayed
    */
-  private showList(options: TodoListToolOptions): TodoListToolResult {
+  private async showList(options: TodoListToolOptions): Promise<TodoListToolResult> {
     if (!options.listId) {
       return {
         success: false,
@@ -171,7 +189,7 @@ class TodoListTool {
       }
     }
 
-    const list = this.repository.getListById(options.listId)
+    const list = await this.store.getListById(options.listId)
     
     if (!list) {
       return {
@@ -194,8 +212,16 @@ class TodoListTool {
   /**
    * List all todo lists
    */
-  private listAll(options: TodoListToolOptions): TodoListToolResult {
-    const lists = this.repository.getAllLists(options.appId)
+  private async listAll(options: TodoListToolOptions): Promise<TodoListToolResult> {
+    // Same scope-boundary guard as createList — see the comment there.
+    if (!options.appId) {
+      return {
+        success: false,
+        error: 'appId is required'
+      }
+    }
+
+    const lists = await this.store.getAllLists(workspaceScopeFromAppId(options.appId, options.customerId))
 
     return {
       success: true,
@@ -206,7 +232,7 @@ class TodoListTool {
   /**
    * Delete a todo list
    */
-  private deleteList(options: TodoListToolOptions): TodoListToolResult {
+  private async deleteList(options: TodoListToolOptions): Promise<TodoListToolResult> {
     if (!options.listId) {
       return {
         success: false,
@@ -214,7 +240,7 @@ class TodoListTool {
       }
     }
 
-    const deleted = this.repository.deleteList(options.listId)
+    const deleted = await this.store.deleteList(options.listId)
 
     if (!deleted) {
       return {
@@ -232,7 +258,7 @@ class TodoListTool {
   /**
    * Add items to a todo list (batch operation)
    */
-  private addItems(options: TodoListToolOptions): TodoListToolResult {
+  private async addItems(options: TodoListToolOptions): Promise<TodoListToolResult> {
     if (!options.listId || !options.items || options.items.length === 0) {
       return {
         success: false,
@@ -241,29 +267,51 @@ class TodoListTool {
     }
 
     const addedItems: TodoItem[] = []
-    
+    const failures: string[] = []
+
     for (const itemInput of options.items) {
-      const item = this.repository.addItem(
-        options.listId,
-        itemInput.title,
-        itemInput.description,
-        itemInput.order,
-        itemInput.completed
-      )
-      addedItems.push(item)
+      try {
+        const item = await this.store.addItem(
+          options.listId,
+          itemInput.title,
+          itemInput.description,
+          itemInput.order,
+          itemInput.completed
+        )
+        addedItems.push(item)
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        failures.push(`Failed to add "${itemInput.title}": ${msg}`)
+        logger.warn('todo_list.addItems.item_failed', {
+          listId: options.listId,
+          title: itemInput.title,
+          error: msg,
+        })
+      }
     }
+
+    if (addedItems.length === 0) {
+      return {
+        success: false,
+        error: `All ${failures.length} item(s) failed: ${failures.join('; ')}`,
+      }
+    }
+
+    const message = failures.length > 0
+      ? `Added ${addedItems.length} item${addedItems.length === 1 ? '' : 's'}, ${failures.length} failed: ${failures.join('; ')}`
+      : `Added ${addedItems.length} item${addedItems.length === 1 ? '' : 's'}`
 
     return {
       success: true,
-      message: `Added ${addedItems.length} item${addedItems.length === 1 ? '' : 's'}`,
-      items: addedItems
+      message,
+      items: addedItems,
     }
   }
 
   /**
    * Update items (batch operation)
    */
-  private updateItems(options: TodoListToolOptions): TodoListToolResult {
+  private async updateItems(options: TodoListToolOptions): Promise<TodoListToolResult> {
     if (!options.updates || options.updates.length === 0) {
       return {
         success: false,
@@ -272,6 +320,7 @@ class TodoListTool {
     }
 
     const updatedItems: TodoItem[] = []
+    const failures: string[] = []
 
     for (const update of options.updates) {
       const itemUpdates: { title?: string; description?: string; order?: number } = {}
@@ -289,22 +338,42 @@ class TodoListTool {
       }
 
       if (Object.keys(itemUpdates).length > 0) {
-        const item = this.repository.updateItem(update.itemId, itemUpdates)
-        updatedItems.push(item)
+        try {
+          const item = await this.store.updateItem(update.itemId, itemUpdates)
+          updatedItems.push(item)
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err)
+          failures.push(`Failed to update item ${update.itemId}: ${msg}`)
+          logger.warn('todo_list.updateItems.item_failed', {
+            itemId: update.itemId,
+            error: msg,
+          })
+        }
       }
     }
 
+    if (updatedItems.length === 0 && failures.length > 0) {
+      return {
+        success: false,
+        error: `All ${failures.length} update(s) failed: ${failures.join('; ')}`,
+      }
+    }
+
+    const message = failures.length > 0
+      ? `Updated ${updatedItems.length} item${updatedItems.length === 1 ? '' : 's'}, ${failures.length} failed: ${failures.join('; ')}`
+      : `Updated ${updatedItems.length} item${updatedItems.length === 1 ? '' : 's'}`
+
     return {
       success: true,
-      message: `Updated ${updatedItems.length} item${updatedItems.length === 1 ? '' : 's'}`,
-      items: updatedItems
+      message,
+      items: updatedItems,
     }
   }
 
   /**
    * Delete items (batch operation)
    */
-  private deleteItems(options: TodoListToolOptions): TodoListToolResult {
+  private async deleteItems(options: TodoListToolOptions): Promise<TodoListToolResult> {
     if (!options.itemIds || options.itemIds.length === 0) {
       return {
         success: false,
@@ -313,23 +382,46 @@ class TodoListTool {
     }
 
     let deletedCount = 0
+    const failures: string[] = []
 
     for (const itemId of options.itemIds) {
-      if (this.repository.deleteItem(itemId)) {
-        deletedCount++
+      try {
+        if (await this.store.deleteItem(itemId)) {
+          deletedCount++
+        } else {
+          failures.push(`Item ${itemId} not found`)
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        failures.push(`Failed to delete item ${itemId}: ${msg}`)
+        logger.warn('todo_list.deleteItems.item_failed', {
+          itemId,
+          error: msg,
+        })
       }
     }
 
+    if (deletedCount === 0 && failures.length > 0) {
+      return {
+        success: false,
+        error: `All ${failures.length} deletion(s) failed: ${failures.join('; ')}`,
+      }
+    }
+
+    const message = failures.length > 0
+      ? `Deleted ${deletedCount} item${deletedCount === 1 ? '' : 's'}, ${failures.length} failed: ${failures.join('; ')}`
+      : `Deleted ${deletedCount} item${deletedCount === 1 ? '' : 's'}`
+
     return {
       success: true,
-      message: `Deleted ${deletedCount} item${deletedCount === 1 ? '' : 's'}`
+      message,
     }
   }
 
   /**
    * Mark items as done (batch operation, works for single or multiple)
    */
-  private markDone(options: TodoListToolOptions): TodoListToolResult {
+  private async markDone(options: TodoListToolOptions): Promise<TodoListToolResult> {
     if (!options.itemIds || options.itemIds.length === 0) {
       return {
         success: false,
@@ -337,7 +429,7 @@ class TodoListTool {
       }
     }
 
-    const items = this.repository.markItemsCompleted(options.itemIds, true)
+    const items = await this.store.markItemsCompleted(options.itemIds, true)
 
     return {
       success: true,
@@ -349,7 +441,7 @@ class TodoListTool {
   /**
    * Mark items as not done (batch operation, works for single or multiple)
    */
-  private markUndone(options: TodoListToolOptions): TodoListToolResult {
+  private async markUndone(options: TodoListToolOptions): Promise<TodoListToolResult> {
     if (!options.itemIds || options.itemIds.length === 0) {
       return {
         success: false,
@@ -357,7 +449,7 @@ class TodoListTool {
       }
     }
 
-    const items = this.repository.markItemsCompleted(options.itemIds, false)
+    const items = await this.store.markItemsCompleted(options.itemIds, false)
 
     return {
       success: true,
@@ -369,7 +461,7 @@ class TodoListTool {
   /**
    * Select a todo list for the current session
    */
-  private selectList(options: TodoListToolOptions): TodoListToolResult {
+  private async selectList(options: TodoListToolOptions): Promise<TodoListToolResult> {
     if (!options.listId) {
       return {
         success: false,
@@ -385,7 +477,7 @@ class TodoListTool {
     }
 
     // Verify the list exists
-    const list = this.repository.getListById(options.listId)
+    const list = await this.store.getListById(options.listId)
     if (!list) {
       return {
         success: false,

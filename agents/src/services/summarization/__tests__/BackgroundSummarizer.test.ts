@@ -169,7 +169,7 @@ describe('BackgroundSummarizer', () => {
       await new Promise(resolve => setTimeout(resolve, 10));
 
       // Verify incremental loading was used (optimization #1)
-      expect(conversationRepo.getMessagesAfterMessageId).toHaveBeenCalledWith('app-123', 'msg2');
+      expect(conversationRepo.getMessagesAfterMessageId).toHaveBeenCalledWith({ kind: 'local', appId: 'app-123' }, 'msg2');
       expect(conversationRepo.getMessagesBatch).not.toHaveBeenCalled();
     });
 
@@ -266,7 +266,7 @@ describe('BackgroundSummarizer', () => {
       await new Promise(resolve => setTimeout(resolve, 10));
 
       // Should detect missing reference via estimation and fallback to batch query
-      expect(conversationRepo.getEstimatedTokensAfterMessageId).toHaveBeenCalledWith('app-123', 'msg2-deleted');
+      expect(conversationRepo.getEstimatedTokensAfterMessageId).toHaveBeenCalledWith({ kind: 'local', appId: 'app-123' }, 'msg2-deleted');
       expect(conversationRepo.getMessagesBatch).toHaveBeenCalledWith(['conv1']);
 
       // Should treat as full run (no existingSummary in context)
@@ -421,7 +421,7 @@ describe('BackgroundSummarizer', () => {
       await new Promise(resolve => setTimeout(resolve, 10));
 
       // Should use incremental path, not full history
-      expect(conversationRepo.getMessagesAfterMessageId).toHaveBeenCalledWith('app-123', 'msg2');
+      expect(conversationRepo.getMessagesAfterMessageId).toHaveBeenCalledWith({ kind: 'local', appId: 'app-123' }, 'msg2');
       expect(conversationRepo.getMessagesBatch).not.toHaveBeenCalled();
 
       // Strategy should receive existingSummary (not cleared by regeneration logic)

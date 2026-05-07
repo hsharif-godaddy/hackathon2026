@@ -46,21 +46,19 @@ vi.mock('../../../database/repositories/AppRepository.js', () => ({
   }))
 }))
 
-// Mock MemoryRepository
+// Mock the KV memory store
 const mockMemoryGet = vi.fn()
 const mockMemorySet = vi.fn()
-vi.mock('../../../database/repositories/MemoryRepository.js', () => ({
-  MemoryRepository: vi.fn(() => ({
-    get: mockMemoryGet,
-    set: mockMemorySet
-  }))
+const mockGetKvMemoryStore = vi.fn(() => ({
+  get: mockMemoryGet,
+  set: mockMemorySet,
+}))
+vi.mock('../../../memory/adapters/index.js', () => ({
+  getKvMemoryStore: () => mockGetKvMemoryStore(),
 }))
 
 // Import after mocks are set up
-import { MemoryRepository } from '../../../database/repositories/MemoryRepository.js'
 import { setProjectNameAITool } from '../set-project-name.js'
-
-const MockMemoryRepository = vi.mocked(MemoryRepository)
 
 describe('set-project-name', function setProjectNameTests() {
   beforeEach(function setup() {
@@ -225,7 +223,7 @@ describe('set-project-name', function setProjectNameTests() {
       )
 
       expect(result).toContain('Project Name Set')
-      expect(mockMemorySet).toHaveBeenCalledWith(appId, 'brand.identity', { brandName: newName })
+      expect(mockMemorySet).toHaveBeenCalledWith({ kind: 'local', appId }, 'brand.identity', { brandName: newName })
     })
 
     it('should merge brandName into existing brand.identity data', async function mergeBrandName() {
@@ -246,7 +244,7 @@ describe('set-project-name', function setProjectNameTests() {
         createExecutionOptions(appId)
       )
 
-      expect(mockMemorySet).toHaveBeenCalledWith(appId, 'brand.identity', {
+      expect(mockMemorySet).toHaveBeenCalledWith({ kind: 'local', appId }, 'brand.identity', {
         tagline: 'Existing tagline',
         brandName: newName,
       })
@@ -307,16 +305,17 @@ describe('set-project-name', function setProjectNameTests() {
       )
 
       // Should create a fresh object rather than spreading a string
-      expect(mockMemorySet).toHaveBeenCalledWith(appId, 'brand.identity', { brandName: newName })
+      expect(mockMemorySet).toHaveBeenCalledWith({ kind: 'local', appId }, 'brand.identity', { brandName: newName })
     })
 
-    it('should return partial success when MemoryRepository constructor throws', async function constructorThrow() {
+    it('should return partial success when KV memory store initialization throws', async function constructorThrow() {
       const appId = 'test-app-mem-6'
       const newName = 'My Brand'
 
       mockFindById.mockReturnValue({ id: appId, name: 'Old', path: undefined })
       mockUpdate.mockReturnValue({ id: appId, name: newName })
-      MockMemoryRepository.mockImplementationOnce(() => { throw new Error('DB locked') })
+      // Simulate the store initialization throwing (e.g. locked DB on first access)
+      mockGetKvMemoryStore.mockImplementationOnce(() => { throw new Error('DB locked') })
 
       const result = await setProjectNameAITool.execute(
         { name: newName },

@@ -10,7 +10,8 @@ import { logger, errorFields } from '../../logging/index.js'
 import { validateAppOwnershipFromParam } from '../middleware/app-ownership.js'
 import type { AuthenticatedRequest } from '../middleware/jwt-auth.js'
 import { isEmployeeAuthType } from '@airo/shared/auth'
-import type { ConversationRepository } from '../../database/repositories/ConversationRepository.js'
+import type { ConversationLifecycleStore, MessageStore } from '../../memory/interfaces/index.js'
+import { workspaceScopeFromAppId } from '../../memory/interfaces/scope.js'
 import { BYPASS_SITE_IDS } from '../../services/features.js'
 import { getSSEAgentFactory, getClientActionService } from '../ai-lib-websocket-server.js'
 import { performBudgetPreCheck } from '../budget-pre-check.js'
@@ -33,16 +34,17 @@ interface SSERouteDeps {
   authenticate: (req: Request, res: Response, next: NextFunction) => void
   getEventChannel: () => ConversationEventChannel | null
   executionService?: MessageExecutionService
-  resolveAgent: (params: AgentRouterParams) => string
+  resolveAgent: (params: AgentRouterParams) => string | Promise<string>
   getStateManager: () => AgentStateManager | null
-  conversationRepository: ConversationRepository
+  lifecycle: ConversationLifecycleStore
+  messages: MessageStore
 }
 
-// Takes an injected repository because the canonical middleware in
-// ../middleware/app-ownership.ts constructs its own, which can't be mocked
+// Takes an injected store because the canonical middleware in
+// ../middleware/app-ownership.ts resolves its own, which can't be mocked
 // in tests. Pivots on authenticated siteId (not :appId) to match the
 // canonical middleware's semantics.
-function validateConversationOwnership(conversationRepository: ConversationRepository) {
+function validateConversationOwnership(lifecycle: ConversationLifecycleStore) {
   return asyncHandler(async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     const conversationId = req.params.conversationId
 
@@ -53,7 +55,7 @@ function validateConversationOwnership(conversationRepository: ConversationRepos
 
     const authenticatedSiteId = (req as AuthenticatedRequest).agentContext?.siteId
     if (authenticatedSiteId && !BYPASS_SITE_IDS.includes(authenticatedSiteId)) {
-      const conversation = await conversationRepository.getById(conversationId)
+      const conversation = await lifecycle.getById(conversationId)
       if (!conversation) {
         res.status(404).json({ error: 'Conversation not found' })
         return
@@ -93,7 +95,7 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
     { version: '2.0' },
   )
 
-  const convOwnership = validateConversationOwnership(deps.conversationRepository)
+  const convOwnership = validateConversationOwnership(deps.lifecycle)
 
   // POST /:appId - create or resolve conversation
   router.post('/:appId', deps.authenticate, validateAppOwnershipFromParam('appId'), asyncHandler(async (req: Request, res: Response) => {
@@ -101,8 +103,9 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
     const { agentId, templateId } = req.body
 
     try {
-      const resolvedAgentId = deps.resolveAgent({ appId, agentId, templateId })
-      const { conversation, isNew } = await deps.conversationRepository.getOrCreateForApp(appId, resolvedAgentId)
+      const resolvedAgentId = await deps.resolveAgent({ appId, agentId, templateId })
+      const customerId = (req as AuthenticatedRequest).agentContext?.customerId
+      const { conversation, isNew } = await deps.lifecycle.getOrCreateForApp(workspaceScopeFromAppId(appId, customerId), resolvedAgentId)
 
       res.status(200).json({
         conversationId: conversation.id,
@@ -279,7 +282,8 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
     const before = req.query.before as string | undefined
 
     try {
-      const result = await deps.conversationRepository.getMessagesPaginated(conversationId, appId, { limit, before })
+      const customerId = (req as AuthenticatedRequest).agentContext?.customerId
+      const result = await deps.messages.getMessagesPaginated(workspaceScopeFromAppId(appId, customerId), conversationId, { limit, before })
 
       // If no active stream for this conversation, clear stale inProgress metadata
       // to prevent the client from falsely detecting an active stream.
@@ -394,7 +398,7 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
 
     const sseSocketId = sseSessionKey(conversationId)
     const stateManager = deps.getStateManager()
-    const resolvedAgentId = deps.resolveAgent({
+    const resolvedAgentId = await deps.resolveAgent({
       appId, agentId, agentProfile, templateId, agentContext,
       ...(stateManager && { session: { sessionId: sseSocketId, stateManager } }),
     })
@@ -407,7 +411,7 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
     // so a single-message conversation means this is the first prompt.
     let isInitialPrompt = false
     try {
-      isInitialPrompt = deps.conversationRepository.getMessageCountSync(conversationId) <= 1
+      isInitialPrompt = (await deps.messages.getMessageCount(conversationId)) <= 1
     } catch (err) {
       logger.warn('sse.messages.isInitialPrompt.error', { conversationId, ...errorFields(err) })
     }

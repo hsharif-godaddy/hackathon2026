@@ -5,6 +5,7 @@ import type { SkillToolDefinition } from '@airo/ai-skills'
 
 import { AppRepository } from '../../../database/repositories/AppRepository.js'
 import { Logger } from '../../../logging/index.js'
+import { customerIdFromContext } from '../../../memory/interfaces/scope.js'
 import { getClientActionService } from '../../../server/ai-lib-websocket-server.js'
 import { validateDomainName } from '../../../utils/domain-validation.js'
 import { MemoryTool } from '../../../tools/memory-tool.js'
@@ -142,7 +143,7 @@ async function attach(
     const { published, domains: siteDomains } = await getSiteContextForAttach(clientActionService, appId)
     if (!published) {
         if (domain) {
-            await storePurchasedDomain(appId, domain)
+            await storePurchasedDomain(appId, domain, context)
         }
         logger.info('domain.attach.requires-publish', {
             appId,
@@ -164,7 +165,7 @@ async function attach(
                 message: `${domain} already on this app (active or provisioning). Confirm with user — no attach needed.`
             }
         }
-        await storePurchasedDomain(appId, domain)
+        await storePurchasedDomain(appId, domain, context)
         return autoAttach(clientActionService, appId, domain)
     }
 
@@ -288,7 +289,7 @@ async function getSiteContextForAttach(
  * The publish tool reads this key to auto-attach purchased domains.
  * Failures are logged but never block the attach widget from rendering.
  */
-async function storePurchasedDomain(appId: string, fqdn: string) {
+async function storePurchasedDomain(appId: string, fqdn: string, context?: { metadata?: Record<string, unknown> }) {
     try {
         const app = appRepo.findById(appId)
         if (!app) return
@@ -303,7 +304,8 @@ async function storePurchasedDomain(appId: string, fqdn: string) {
                 },
             },
             app.path,
-            appId
+            appId,
+            customerIdFromContext(context)
         )
         logger.info('domain.attach.memory-stored', { appId, fqdn })
     } catch (error) {

@@ -16,8 +16,8 @@
 
 import {
   BackgroundSummarizer,
-  type BackgroundSummarizerConversationRepo,
-  type BackgroundSummarizerSummaryRepo
+  type BackgroundSummarizerConversationStore,
+  type BackgroundSummarizerSummaryStore
 } from '../BackgroundSummarizer.js';
 import type { SummarizationStrategy } from '../SummarizationStrategy.js';
 import type { DatabaseMessage } from '../../../types/conversation-messages.js';
@@ -141,10 +141,10 @@ async function runBenchmark(
 function createMockRepos(
   allMessages: DatabaseMessage[],
   existingSummary: ConversationSummary | null = null
-): { conversationRepo: BackgroundSummarizerConversationRepo; summaryRepo: BackgroundSummarizerSummaryRepo } {
+): { conversationStore: BackgroundSummarizerConversationStore; summaryStore: BackgroundSummarizerSummaryStore } {
   const now = new Date();
 
-  const conversationRepo: BackgroundSummarizerConversationRepo = {
+  const conversationStore: BackgroundSummarizerConversationStore = {
     getByAppId: async () => [{
       id: 'conv-1',
       appId: 'test-app',
@@ -153,13 +153,13 @@ function createMockRepos(
       createdAt: now,
       updatedAt: now
     }],
-    getMessagesBatch: async () => allMessages,
-    getMessagesAfterMessageId: async (_appId: string, messageId: string) => {
+    getMessagesBatch: async () => allMessages as any,
+    getMessagesAfterMessageId: async (_scope, messageId: string) => {
       const idx = allMessages.findIndex(m => m.id === messageId);
-      return idx >= 0 ? allMessages.slice(idx + 1) : [];
+      return idx >= 0 ? (allMessages.slice(idx + 1) as any) : [];
     },
-    getMessageById: async (messageId: string) => allMessages.find(m => m.id === messageId) || null,
-    getEstimatedTokensAfterMessageId: async (_appId: string, messageId: string) => {
+    getMessageById: async (messageId: string) => (allMessages.find(m => m.id === messageId) || null) as any,
+    getEstimatedTokensAfterMessageId: async (_scope, messageId: string) => {
       const idx = allMessages.findIndex(m => m.id === messageId);
       if (idx < 0) return null;
       // Estimate tokens from content length (chars / 4)
@@ -174,13 +174,13 @@ function createMockRepos(
     }
   };
 
-  const summaryRepo: BackgroundSummarizerSummaryRepo = {
+  const summaryStore: BackgroundSummarizerSummaryStore = {
     findLatestForApp: async () => existingSummary,
-    create: async (summary: SummarizationResult, appId: string, conversationId?: string) => {
+    create: async (scope, summary: SummarizationResult, conversationId?: string) => {
       const createdAt = new Date();
       const result: ConversationSummary = {
         id: 'summary-new',
-        appId,
+        appId: scope.appId,
         summaryText: summary.summaryText,
         messageRangeStart: summary.messageRange.startId,
         messageRangeEnd: summary.messageRange.endId,
@@ -211,7 +211,7 @@ function createMockRepos(
     }
   };
 
-  return { conversationRepo, summaryRepo };
+  return { conversationStore, summaryStore };
 }
 
 function createMockStrategy(): SummarizationStrategy {
@@ -245,12 +245,12 @@ async function main() {
     'Full Mode - Small (500 messages)',
     async () => {
       const messages = createMessages(500);
-      const { conversationRepo, summaryRepo } = createMockRepos(messages, null);
+      const { conversationStore, summaryStore } = createMockRepos(messages, null);
       const strategy = createMockStrategy();
 
       const summarizer = new BackgroundSummarizer(
-        conversationRepo,
-        summaryRepo,
+        conversationStore,
+        summaryStore,
         strategy,
         { maxPromptTokens: 1000, debounceMs: 0, keepRecentTurns: 4 }
       );
@@ -264,12 +264,12 @@ async function main() {
     'Full Mode - Large (5000 messages)',
     async () => {
       const messages = createMessages(5000);
-      const { conversationRepo, summaryRepo } = createMockRepos(messages, null);
+      const { conversationStore, summaryStore } = createMockRepos(messages, null);
       const strategy = createMockStrategy();
 
       const summarizer = new BackgroundSummarizer(
-        conversationRepo,
-        summaryRepo,
+        conversationStore,
+        summaryStore,
         strategy,
         { maxPromptTokens: 1000, debounceMs: 0, keepRecentTurns: 4 }
       );
@@ -299,12 +299,12 @@ async function main() {
         lastFullSummarizationAt: new Date()
       };
 
-      const { conversationRepo, summaryRepo } = createMockRepos(allMessages, existingSummary);
+      const { conversationStore, summaryStore } = createMockRepos(allMessages, existingSummary);
       const strategy = createMockStrategy();
 
       const summarizer = new BackgroundSummarizer(
-        conversationRepo,
-        summaryRepo,
+        conversationStore,
+        summaryStore,
         strategy,
         { maxPromptTokens: 1000, debounceMs: 0, keepRecentTurns: 4 }
       );
@@ -334,12 +334,12 @@ async function main() {
         lastFullSummarizationAt: new Date()
       };
 
-      const { conversationRepo, summaryRepo } = createMockRepos(allMessages, existingSummary);
+      const { conversationStore, summaryStore } = createMockRepos(allMessages, existingSummary);
       const strategy = createMockStrategy();
 
       const summarizer = new BackgroundSummarizer(
-        conversationRepo,
-        summaryRepo,
+        conversationStore,
+        summaryStore,
         strategy,
         { maxPromptTokens: 1000, debounceMs: 0, keepRecentTurns: 4 }
       );

@@ -334,7 +334,8 @@ describe('publishing skill publish-tools', () => {
             value: expect.objectContaining({ fqdn: 'mysite.com', connectedToProject: true }),
           }),
           '/apps/app-1',
-          'app-1'
+          'app-1',
+          undefined
         )
       })
 

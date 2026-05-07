@@ -65,7 +65,11 @@ import {
 } from './connect-then-auth-session.js'
 import { ConversationContextManager } from '../services/ConversationContextManager.js'
 
-import { ConversationRepository } from '../database/repositories/ConversationRepository.js'
+import {
+  getConversationLifecycleStore,
+  getMessageStore,
+} from '../memory/adapters/index.js'
+import { workspaceScopeFromAppId } from '../memory/interfaces/scope.js'
 import { fileUploadService } from '../services/FileUploadService.js'
 import { logger, log } from '../logging/index.js'
 import { jwtAuthMiddleware, buildAgentContext, type AgentContext } from './middleware/jwt-auth.js'
@@ -526,7 +530,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
   }
 
   let backgroundSummarizer: {
-    checkAndSummarize(appId: string, triggerTokenCount?: number, budgetOverride?: BudgetOverride): Promise<void>
+    checkAndSummarize(appId: string, triggerTokenCount?: number, budgetOverride?: BudgetOverride, customerId?: string): Promise<void>
     getMaxPromptTokens(): number
   } | null = null
 
@@ -555,8 +559,9 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
     // Create message persistence implementation
     const messagePersistence = new AgentsMessagePersistence()
 
-    // Use singleton conversation repository and initialize background summarization
-    const { conversationRepository } = await import('../database/repositories/index.js')
+    // Resolve the conversation stores and initialize background summarization
+    const lifecycleStore = getConversationLifecycleStore()
+    const messageStore = getMessageStore()
     const { initializeBackgroundSummarization } = await import('../services/summarization/index.js')
 
     backgroundSummarizer = await initializeBackgroundSummarization()
@@ -576,12 +581,12 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
     sseEventChannelCleanupInterval.unref?.()
 
     const wsAgentRouter = createAgentRouter({
-      hasMessagesForApp: (appId) => conversationRepository.hasMessagesForAppSync(appId),
+      hasMessagesForApp: (appId) => messageStore.hasMessagesForApp(workspaceScopeFromAppId(appId)),
       getTemplateIds,
     })
 
-    // Create token-based conversation history provider using singleton repository
-    const conversationContextManager = new ConversationContextManager(conversationRepository, 10) // Max 10 messages
+    // Create token-based conversation history provider using the message store
+    const conversationContextManager = new ConversationContextManager(messageStore, 10) // Max 10 messages
 
     // Create context provider implementation for app context and templates
     const contextProvider: ContextProvider = {
@@ -939,8 +944,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           // appId (their own, which passes context validation) but a conversationId from
           // another tenant. We must verify the conversation.appId matches the authenticated
           // metadata.appId before loading any messages.
-          const conversationRepo = new ConversationRepository();
-          const conversation = await conversationRepo.getById(conversationId);
+          const conversation = await getConversationLifecycleStore().getById(conversationId);
 
           if (!conversation) {
             contextLogger.warn('websocket.message.provider.conversation_not_found', {
@@ -975,7 +979,8 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
             40000,
             modelName,
             true,
-            appId  // Enables summary pin refresh + stable prefix compression
+            appId,  // Enables summary pin refresh + stable prefix compression
+            metadata.customerId as string | undefined
           );
 
           const formattedMessages = historyLoader.formatMessagesForAISDK(llmMessages, appId, agentName);
@@ -1010,13 +1015,15 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         nextCursor: string | null
         total?: number
       }> {
-        const conversationRepo = new ConversationRepository()
-
         try {
-          const result = await conversationRepo.getMessagesPaginated(conversationId, appId, {
-            limit: options?.limit ?? 20,
-            before: options?.before
-          })
+          const result = await getMessageStore().getMessagesPaginated(
+            workspaceScopeFromAppId(appId),
+            conversationId,
+            {
+              limit: options?.limit ?? 20,
+              before: options?.before
+            }
+          )
 
           // Convert database format to PersistedMessage format
           // IMPORTANT: Database uses 'agent' but client expects 'assistant' - normalize here
@@ -1100,7 +1107,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
 
       // Get latest conversation for an app (used for cookie-less recovery)
       getLatestConversationForApp: async (appId: string) => {
-        const latest = await conversationRepository.getLatestForApp(appId)
+        const latest = await lifecycleStore.getLatestForApp(workspaceScopeFromAppId(appId))
         return latest?.id ?? null
       },
 
@@ -1121,7 +1128,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
       },
 
       // Agent routing hook - select initial agent for new apps
-      agentRouter: (socketId: string, data: any) => {
+      agentRouter: async (socketId: string, data: any) => {
         // Check for manual agent override in message content
         // Format: /agent <agent-name> on first line
         if (data.message && typeof data.message === 'string') {
@@ -1188,6 +1195,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         conversationId?: string
         appId?: string
         subscriptionId?: string
+        customerId?: string
         context?: Record<string, unknown>
       }) => {
         // Only track if we have appId
@@ -1262,6 +1270,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
               appId: metadata.appId!,
               conversationId: metadata.conversationId as string | undefined,
               subscriptionId: metadata.subscriptionId as string | undefined,
+              customerId: metadata.customerId as string | undefined,
               summarizer: backgroundSummarizer,
             })
           }
@@ -1442,11 +1451,11 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         // Check if this is the initial prompt (first message in the app's conversation)
         // This is used for funnel tracking to correlate with client-side logs
         // Note: startConversation() has already persisted the user message, so we check for exactly 1 message
-        const latestConversation = conversationRepository.getLatestForAppSync(siteId)
+        const latestConversation = await lifecycleStore.getLatestForApp(workspaceScopeFromAppId(siteId))
         let isInitialPrompt = false
         if (latestConversation) {
           // Check if this is the first user message (efficient count query)
-          const messageCount = await conversationRepository.getMessageCount(latestConversation.id)
+          const messageCount = await messageStore.getMessageCount(latestConversation.id)
           // startConversation() has already persisted the initial user message, so a count of 1 indicates the initial prompt
           isInitialPrompt = messageCount === 1
         }
@@ -1625,8 +1634,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
               previousMessagePreview: previousUserMessage.substring(0, 50),
             })
           } else if (conversationId && conversationId !== 'default') {
-            const conversationRepo = new ConversationRepository()
-            previousUserMessage = (await conversationRepo.getLastUserMessage(conversationId)) ?? undefined
+            previousUserMessage = (await messageStore.getLastUserMessage(conversationId)) ?? undefined
             if (previousUserMessage) {
               logger.debug('assessment.previous_message.from_db', {
                 appId: siteId, conversationId,
@@ -2434,7 +2442,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         })
 
         try {
-          await conversationRepository.updateAgentId(conversationId, newAgentName)
+          await lifecycleStore.updateAgentId(conversationId, newAgentName)
           logger.debug('websocket.agent.handoff.updated', {
             conversationId,
             newAgent: newAgentName

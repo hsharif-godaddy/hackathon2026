@@ -10,11 +10,12 @@ import type {
   BrandDataVoice,
 } from '@airo/shared/brand-data'
 import { z } from 'zod'
-import { MemoryRepository } from '../../database/repositories/MemoryRepository.js'
+import { getKvMemoryStore } from '../../memory/adapters/index.js'
+import { customerIdFromContext, workspaceScopeFromAppId } from '../../memory/interfaces/scope.js'
 import { Logger } from '../../logging/index.js'
 
 const logger = Logger.create({ component: 'brand-identity-tool' })
-const memoryRepo = new MemoryRepository()
+const memoryStore = getKvMemoryStore()
 
 const MEMORY_KEY = 'brand.identity'
 
@@ -163,9 +164,11 @@ export const brandIdentityAITool: Tool = createTool(
       return '**Error:** No app ID available in context'
     }
 
+    const scope = workspaceScopeFromAppId(appId, customerIdFromContext(context))
+
     try {
       if (input.mode === 'get') {
-        const result = await memoryRepo.get(appId, MEMORY_KEY)
+        const result = await memoryStore.get(scope, MEMORY_KEY)
         if (!result.success) {
           logger.warn('brandIdentity.get.readFailed', { appId, error: result.error ?? 'Unknown error' })
           return '**Error:** Failed to read brand identity data. Please try again.'
@@ -191,7 +194,7 @@ export const brandIdentityAITool: Tool = createTool(
       if (input.toneMatrix !== undefined) update.toneMatrix = input.toneMatrix
 
       // Read existing, merge, save
-      const existing = await memoryRepo.get(appId, MEMORY_KEY)
+      const existing = await memoryStore.get(scope, MEMORY_KEY)
       if (!existing.success) {
         logger.warn('brandIdentity.set.readFailed', { appId, error: existing.error ?? 'Unknown error' })
         return '**Error:** Failed to read existing brand identity. Cannot safely merge — please try again.'
@@ -199,7 +202,7 @@ export const brandIdentityAITool: Tool = createTool(
       const current = (existing.exists && existing.value ? existing.value : {}) as BrandIdentity
       const merged = mergeBrandIdentity(current, update)
 
-      const writeResult = await memoryRepo.set(appId, MEMORY_KEY, merged)
+      const writeResult = await memoryStore.set(scope, MEMORY_KEY, merged)
       if (!writeResult.success) {
         logger.warn('brandIdentity.set.writeFailed', { appId, error: writeResult.error ?? 'Unknown error' })
         return '**Error:** Failed to save brand identity data. Please try again.'

@@ -12,9 +12,14 @@ import type {
 } from '@airo/ai-transport'
 import { calculateCostEstimate } from '@airo/ai-lib'
 import { emitConversationStart } from '@godaddy/agent-otel-sdk'
-import { conversationRepository, appRepository } from '../database/repositories/index.js'
-import type { ConversationRepository } from '../database/repositories/index.js'
+import { appRepository } from '../database/repositories/index.js'
 import type { AppRepository } from '../database/repositories/index.js'
+import {
+  getConversationLifecycleStore,
+  getMessageStore,
+} from '../memory/adapters/index.js'
+import type { ConversationLifecycleStore, MessageStore } from '../memory/interfaces/index.js'
+import { customerIdFromContext, workspaceScopeFromAppId } from '../memory/interfaces/scope.js'
 import { MAX_PROMPT_LENGTH } from '../services/features.js'
 import { GitTool } from '../tools/git-tool.js'
 import { GitUtils } from '../utils/git.js'
@@ -28,7 +33,8 @@ import { nanoid } from 'nanoid'
 import apm from 'elastic-apm-node'
 
 export class AgentsMessagePersistence implements ConversationPersistenceWithCleanup {
-  private conversationRepo: ConversationRepository
+  private lifecycleStore: ConversationLifecycleStore
+  private messageStore: MessageStore
   private appRepository: AppRepository
 
   // Track conversations for cleanup
@@ -45,8 +51,10 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
   private appUserMessages = new Map<string, string>()
 
   constructor() {
-    // Use singleton repositories to ensure hooks work correctly
-    this.conversationRepo = conversationRepository
+    // Use singleton stores (they share a ConversationRepository internally so
+    // messageAddedHook state is unified).
+    this.lifecycleStore = getConversationLifecycleStore()
+    this.messageStore = getMessageStore()
     this.appRepository = appRepository
   }
 
@@ -251,7 +259,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
         ? context.messageMetadata
         : undefined
 
-    const savedMessage = await this.conversationRepo.addMessage(conversationId, 'user', message, {
+    const savedMessage = await this.messageStore.addMessage(conversationId, 'user', message, {
       metadata: {
         ...messageMetadata,
         socketId: context.socketId,
@@ -300,7 +308,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
     const activeConversation = this.activeConversations.get(context.socketId)
     const origin = activeConversation?.origin || this.getOriginFromContext(context)
 
-    const message = await this.conversationRepo.addMessage(conversationId, 'agent', '', {
+    const message = await this.messageStore.addMessage(conversationId, 'agent', '', {
       metadata: {
         socketId: context.socketId,
         agentName: context.agentName,
@@ -315,7 +323,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
       // because completeConversation only finalizes the LAST agent message.
       if (activeConversation.agentMessageId) {
         try {
-          await this.conversationRepo.updateMessageMetadata(activeConversation.agentMessageId, {
+          await this.messageStore.updateMessageMetadata(activeConversation.agentMessageId, {
             inProgress: false
           })
         } catch (error) {
@@ -354,7 +362,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
       : logger
 
     try {
-      await this.conversationRepo.updateMessage(messageId, updates)
+      await this.messageStore.updateMessage(messageId, updates)
 
       contextLogger.info('conversation.agent_turn.updated', {
         messageId,
@@ -404,7 +412,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
 
     if (providedConversationId) {
       // Check if conversation exists
-      const existing = await this.conversationRepo.getById(providedConversationId)
+      const existing = await this.lifecycleStore.getById(providedConversationId)
       if (existing) {
         conversationId = providedConversationId
         contextLogger.info('conversation.existing.found', { conversationId })
@@ -413,8 +421,9 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
         contextLogger.info('conversation.create_with_provided_id', {
           conversationId: providedConversationId
         })
-        const conversation = await this.conversationRepo.create(
-          context.appId,
+        const scope = workspaceScopeFromAppId(context.appId, customerIdFromContext(context as { metadata?: Record<string, unknown> }))
+        const conversation = await this.lifecycleStore.create(
+          scope,
           context.agentName,
           `Chat with ${context.agentName} - ${new Date().toLocaleString()}`,
           providedConversationId
@@ -425,8 +434,9 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
       }
     } else {
       // No conversationId provided - use latest existing conversation or create new
-      const { conversation, isNew } = await this.conversationRepo.getOrCreateForApp(
-        context.appId,
+      const scope = workspaceScopeFromAppId(context.appId, customerIdFromContext(context as { metadata?: Record<string, unknown> }))
+      const { conversation, isNew } = await this.lifecycleStore.getOrCreateForApp(
+        scope,
         context.agentName,
         `Chat with ${context.agentName} - ${new Date().toLocaleString()}`
       )
@@ -450,7 +460,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
 
     const origin = this.getOriginFromContext(context)
 
-    await this.conversationRepo.addMessage(conversationId, 'user', message, {
+    await this.messageStore.addMessage(conversationId, 'user', message, {
       metadata: {
         socketId: context.socketId,
         agentName: context.agentName,
@@ -627,7 +637,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
     const usedFreeGrants = (context as { usedFreeGrants?: boolean }).usedFreeGrants ?? false
 
     if (activeConversation?.agentMessageId) {
-      await this.conversationRepo.updateMessage(activeConversation.agentMessageId, {
+      await this.messageStore.updateMessage(activeConversation.agentMessageId, {
         content: accumulatedContent,
         segments,
         toolCalls,
@@ -644,7 +654,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
       })
     } else {
       const fallbackOrigin = activeConversation?.origin || this.getOriginFromContext(context)
-      await this.conversationRepo.addMessage(conversationId, 'agent', accumulatedContent, {
+      await this.messageStore.addMessage(conversationId, 'agent', accumulatedContent, {
         segments,
         toolCalls,
         metadata: {
@@ -803,7 +813,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
 
       if (activeConversation?.agentMessageId && conversationId) {
         try {
-          await this.conversationRepo.updateMessageMetadata(activeConversation.agentMessageId, {
+          await this.messageStore.updateMessageMetadata(activeConversation.agentMessageId, {
             error: error.message,
             errorTimestamp: new Date().toISOString(),
             inProgress: false,
@@ -850,7 +860,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
     // The disconnect cleanup runs immediately for best UX, the timeout cleanup is a backup.
     if (activeConversation?.agentMessageId) {
       try {
-        const message = await this.conversationRepo.getMessageById(activeConversation.agentMessageId);
+        const message = await this.messageStore.getMessageById(activeConversation.agentMessageId);
         
         if (message?.metadata?.inProgress) {
           logger.info('websocket.disconnection.clearing_inprogress', {
@@ -859,7 +869,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
             socketId
           });
           
-          await this.conversationRepo.updateMessageMetadata(activeConversation.agentMessageId, {
+          await this.messageStore.updateMessageMetadata(activeConversation.agentMessageId, {
             inProgress: false
           });
         }

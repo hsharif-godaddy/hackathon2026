@@ -2,9 +2,11 @@ import { getModel } from '@airo/ai-lib'
 import { generateText } from 'ai'
 
 import { AppRepository } from '../database/repositories/AppRepository.js'
-import { ConversationRepository } from '../database/repositories/ConversationRepository.js'
-import { SummaryRepository } from '../database/repositories/SummaryRepository.js'
-import { TodoListRepository } from '../database/repositories/TodoListRepository.js'
+import { getConversationTokenStore, getSummaryStore } from '../memory/adapters/index.js'
+import type { ConversationTokenStore, SummaryStore } from '../memory/interfaces/index.js'
+import { workspaceScopeFromAppId } from '../memory/interfaces/scope.js'
+import { getTodoListStore } from '../planning/adapters/index.js'
+import type { TodoListStore } from '../planning/interfaces/index.js'
 import { Logger } from '../logging/index.js'
 
 const logger = Logger.create({ component: 'next-actions' })
@@ -38,27 +40,31 @@ Rules:
 
 export class NextActionsService {
   private appRepo = new AppRepository()
-  private conversationRepo = new ConversationRepository()
-  private summaryRepo = new SummaryRepository()
-  private todoListRepo = new TodoListRepository()
 
-  async generateNextActions(appId: string): Promise<NextActionsResult> {
+  constructor(
+    private summaryStore: SummaryStore = getSummaryStore(),
+    private conversationTokenStore: ConversationTokenStore = getConversationTokenStore(),
+    private todoListStore: TodoListStore = getTodoListStore(),
+  ) {}
+
+  async generateNextActions(appId: string, customerId?: string): Promise<NextActionsResult> {
     const app = this.appRepo.findById(appId)
     if (!app) {
       throw new Error(`App not found: ${appId}`)
     }
 
+    const scope = workspaceScopeFromAppId(appId, customerId)
     const contextParts: string[] = []
 
     // 1. Existing conversation summary
-    const summary = await this.summaryRepo.findLatestForApp(appId)
+    const summary = await this.summaryStore.findLatestForApp(scope)
     if (summary?.summaryText) {
       contextParts.push(`=== CONVERSATION SUMMARY ===\n${summary.summaryText}`)
     }
 
     // 2. Recent messages since summary
     if (summary?.messageRangeEnd) {
-      const recentMessages = await this.conversationRepo.getMessagesAfterMessageId(appId, summary.messageRangeEnd)
+      const recentMessages = await this.conversationTokenStore.getMessagesAfterMessageId(scope, summary.messageRangeEnd)
       if (recentMessages.length > 0) {
         const formatted = recentMessages
           .slice(-20)
@@ -84,7 +90,7 @@ export class NextActionsService {
     contextParts.push(`=== APP STATE ===\nPublished: ${isPublished}${isPublished ? ` (${app.publishedUrl})` : ''}`)
 
     // 4. Todo lists
-    const todoLists = this.todoListRepo.getAllLists(appId)
+    const todoLists = await this.todoListStore.getAllLists(scope)
     if (todoLists.length > 0) {
       const todoSummary = todoLists.map(list => {
         const items = list.items ?? []

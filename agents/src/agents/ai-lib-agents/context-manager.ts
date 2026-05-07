@@ -5,8 +5,9 @@
 
 import { ConversationContextManager } from '../../services/ConversationContextManager.js'
 import { AppContextManager } from '../../services/AppContextManager.js'
-import { conversationRepository } from '../../database/repositories/index.js'
-import { SummaryRepository } from '../../database/repositories/SummaryRepository.js'
+import { getKvMemoryStore, getMessageStore, getSummaryStore } from '../../memory/adapters/index.js'
+import type { KvMemoryStore, MessageStore, SummaryStore } from '../../memory/interfaces/index.js'
+import { customerIdFromContext, workspaceScopeFromAppId } from '../../memory/interfaces/scope.js'
 import type { EnhancedAgentContext, ContextMessage, ContextGenerationConfig, AgentContextPreferences } from './types.js'
 import { DEFAULT_CONTEXT_CONFIG } from './types.js'
 import { logger, log } from '../../logging/index.js'
@@ -39,18 +40,21 @@ export class AILibContextManager {
     private conversationContextManager: ConversationContextManager
     private appContextManager: AppContextManager
     private appRepository: AppRepository
-    private summaryRepository: SummaryRepository
     private config: ContextGenerationConfig
 
-    constructor(config: Partial<ContextGenerationConfig> = {}) {
-        // Use singleton conversation repository to ensure hooks work correctly
+    constructor(
+        config: Partial<ContextGenerationConfig> = {},
+        private messageStore: MessageStore = getMessageStore(),
+        kvMemoryStore: KvMemoryStore = getKvMemoryStore(),
+        private summaryStore: SummaryStore = getSummaryStore(),
+    ) {
+        // Use injected message store so history loads share the same adapter singletons.
         this.conversationContextManager = new ConversationContextManager(
-            conversationRepository,
+            this.messageStore,
             config.maxHistoryMessages || DEFAULT_CONTEXT_CONFIG.maxHistoryMessages
         )
-        this.appContextManager = new AppContextManager()
+        this.appContextManager = new AppContextManager(kvMemoryStore)
         this.appRepository = new AppRepository()
-        this.summaryRepository = new SummaryRepository()
         this.config = { ...DEFAULT_CONTEXT_CONFIG, ...config }
     }
 
@@ -232,9 +236,10 @@ export class AILibContextManager {
         // Use pinned summary from ConversationHistoryLoader when available to ensure
         // both summary loading paths use the same version, preventing cache invalidation
         const pinnedId = this.conversationContextManager.getHistoryLoader().getPinnedSummaryId(appId)
-        let latestSummary: Awaited<ReturnType<typeof this.summaryRepository.findLatestForApp>> = null
+        const scope = workspaceScopeFromAppId(appId, customerIdFromContext(context))
+        let latestSummary: Awaited<ReturnType<SummaryStore['findLatestForApp']>> = null
         if (pinnedId) {
-            const pinned = await this.summaryRepository.findById(pinnedId)
+            const pinned = await this.summaryStore.findById(pinnedId)
             // Validate the pinned summary belongs to this app as a safety net
             if (pinned && pinned.appId !== appId) {
                 logger.warn('context.summary.pinned_app_mismatch', {
@@ -246,7 +251,7 @@ export class AILibContextManager {
             latestSummary = pinned?.appId === appId ? pinned : null
         }
         if (!latestSummary) {
-            latestSummary = await this.summaryRepository.findLatestForApp(appId)
+            latestSummary = await this.summaryStore.findLatestForApp(scope)
         }
         if (!latestSummary) {
             return null
@@ -257,7 +262,7 @@ export class AILibContextManager {
         // Future optimization: Move this validation into findLatestForApp or rely on FK constraints
         const rangeEnd = latestSummary.messageRangeEnd
         if (rangeEnd) {
-            const rangeEndExists = await conversationRepository.getMessageById(rangeEnd)
+            const rangeEndExists = await this.messageStore.getMessageById(rangeEnd)
             if (!rangeEndExists) {
                 logger.warn('context.summary.range_end_missing', {
                     appId,

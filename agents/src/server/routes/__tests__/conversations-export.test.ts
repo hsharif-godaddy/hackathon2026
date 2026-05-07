@@ -2,9 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import express from 'express';
 import request from 'supertest';
 
-// Mock the ConversationRepository
-vi.mock('../../../database/repositories/ConversationRepository.js', () => ({
-  ConversationRepository: vi.fn().mockImplementation(() => ({
+vi.mock('../../../memory/adapters/index.js', () => ({
+  getConversationLifecycleStore: vi.fn(() => ({
     getByAppId: vi.fn().mockResolvedValue([
       {
         id: 'conv-1',
@@ -15,6 +14,8 @@ vi.mock('../../../database/repositories/ConversationRepository.js', () => ({
         updatedAt: new Date('2026-03-09T10:05:00Z'),
       },
     ]),
+  })),
+  getMessageStore: vi.fn(() => ({
     getMessagesBatch: vi.fn().mockResolvedValue([
       {
         id: 'msg-1',

@@ -1,7 +1,10 @@
 import { logger } from '../logging/index.js';
 import { toolMemoryEvents } from '../logging/events/index.js';
 import { qdrantService, type VectorSearchResult } from '../services/qdrant-service.js';
-import { MemoryRepository, AppRepository } from '../database/index.js';
+import { AppRepository } from '../database/index.js';
+import { getKvMemoryStore } from '../memory/adapters/index.js';
+import type { KvMemoryStore } from '../memory/interfaces/index.js';
+import { workspaceScopeFromAppId } from '../memory/interfaces/scope.js';
 
 export interface MemorySetOptions {
   /** Dot-delimited hierarchical key (e.g., 'user.preferences.theme' or 'app.config.database.host') */
@@ -67,8 +70,9 @@ export interface MemorySearchResult {
  */
 export class MemoryTool {
   private readonly logger = logger.child({ module: 'MemoryTool' });
-  private readonly memoryRepository = new MemoryRepository();
   private readonly appRepository = new AppRepository();
+
+  constructor(private kvMemoryStore: KvMemoryStore = getKvMemoryStore()) {}
 
   private mapValueType(value: unknown): 'string' | 'number' | 'boolean' | 'object' | 'array' | 'null' {
     if (value === null) return 'null';
@@ -164,7 +168,7 @@ export class MemoryTool {
   /**
    * Set a value in memory with a hierarchical key
    */
-  async setMemory(options: MemorySetOptions, appPath: string, appId?: string): Promise<MemorySetResult> {
+  async setMemory(options: MemorySetOptions, appPath: string, appId?: string, customerId?: string): Promise<MemorySetResult> {
     const startTime = Date.now();
     const { key, value } = options;
 
@@ -198,7 +202,7 @@ export class MemoryTool {
       }
 
       // Store in SQLite database
-      const dbResult = await this.memoryRepository.set(resolvedAppId, key, value);
+      const dbResult = await this.kvMemoryStore.set(workspaceScopeFromAppId(resolvedAppId, customerId), key, value);
       if (!dbResult.success) {
         return {
           success: false,
@@ -271,7 +275,7 @@ export class MemoryTool {
   /**
    * Read a value from memory using a hierarchical key
    */
-  async readMemory(options: MemoryReadOptions, appPath: string, appId?: string): Promise<MemoryReadResult> {
+  async readMemory(options: MemoryReadOptions, appPath: string, appId?: string, customerId?: string): Promise<MemoryReadResult> {
     const startTime = Date.now();
     const { key } = options;
 
@@ -306,7 +310,7 @@ export class MemoryTool {
       }
 
       // Read from SQLite database
-      const dbResult = await this.memoryRepository.get(resolvedAppId, key);
+      const dbResult = await this.kvMemoryStore.get(workspaceScopeFromAppId(resolvedAppId, customerId), key);
       if (!dbResult.success) {
         return {
           success: false,
@@ -359,7 +363,7 @@ export class MemoryTool {
   /**
    * List all keys in memory (optional: with a key prefix filter)
    */
-  async listKeys(appPath: string, prefix?: string, appId?: string): Promise<{ success: boolean; keys: string[]; error?: string }> {
+  async listKeys(appPath: string, prefix?: string, appId?: string, customerId?: string): Promise<{ success: boolean; keys: string[]; error?: string }> {
     const startTime = Date.now();
 
     // Resolve appId if not provided
@@ -381,7 +385,7 @@ export class MemoryTool {
 
     try {
       // List keys from SQLite database
-      const dbResult = await this.memoryRepository.listKeys(resolvedAppId, prefix);
+      const dbResult = await this.kvMemoryStore.listKeys(workspaceScopeFromAppId(resolvedAppId, customerId), prefix);
       if (!dbResult.success) {
         return {
           success: false,
@@ -436,7 +440,7 @@ export class MemoryTool {
   /**
    * Search memory using semantic similarity and text search
    */
-  async searchMemory(options: MemorySearchOptions, appPath: string, appId?: string): Promise<MemorySearchResult> {
+  async searchMemory(options: MemorySearchOptions, appPath: string, appId?: string, customerId?: string): Promise<MemorySearchResult> {
     const startTime = Date.now();
     const { query, limit = 10, score_threshold = 0.7 } = options;
 
@@ -493,7 +497,7 @@ export class MemoryTool {
 
       // If vector search didn't return enough results or failed, supplement with text search
       if (results.length < limit) {
-        const dbResult = await this.memoryRepository.search(resolvedAppId, query, limit - results.length);
+        const dbResult = await this.kvMemoryStore.search(workspaceScopeFromAppId(resolvedAppId, customerId), query, limit - results.length);
         
         if (dbResult.success) {
           // Add database results, avoiding duplicates and ensuring they have a score

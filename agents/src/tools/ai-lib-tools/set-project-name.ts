@@ -1,7 +1,8 @@
 import { createTool, type Tool } from '@airo/ai-lib'
 import { z } from 'zod'
 import { AppRepository } from '../../database/repositories/AppRepository.js'
-import { MemoryRepository } from '../../database/repositories/MemoryRepository.js'
+import { getKvMemoryStore } from '../../memory/adapters/index.js'
+import { customerIdFromContext, workspaceScopeFromAppId } from '../../memory/interfaces/scope.js'
 import { FileEditTool } from '../file-edit.js'
 import { Logger } from '../../logging/index.js'
 
@@ -52,12 +53,13 @@ export const setProjectNameAITool: Tool = createTool(
 
       // Also store in brand.identity memory so the brand-data route picks it up.
       // Wrapped in its own try/catch so a memory infrastructure failure (e.g.
-      // MemoryRepository constructor throw from a locked DB) cannot mask the
+      // store initialization throw from a locked DB) cannot mask the
       // already-committed appRepo.update().
       let memorySyncFailed = false
       try {
-        const memoryRepo = new MemoryRepository()
-        const existing = await memoryRepo.get(appId, 'brand.identity')
+        const memoryStore = getKvMemoryStore()
+        const scope = workspaceScopeFromAppId(appId, customerIdFromContext(context))
+        const existing = await memoryStore.get(scope, 'brand.identity')
         if (!existing.success) {
           // Skip write when read fails — writing { brandName } over an unknown
           // base would destroy any existing personality/voice/tagline fields.
@@ -70,7 +72,7 @@ export const setProjectNameAITool: Tool = createTool(
           const current = (existing.exists && typeof existing.value === 'object' && existing.value !== null)
             ? existing.value as Record<string, unknown>
             : {}
-          const memResult = await memoryRepo.set(appId, 'brand.identity', { ...current, brandName: input.name })
+          const memResult = await memoryStore.set(scope, 'brand.identity', { ...current, brandName: input.name })
           if (!memResult.success) {
             memorySyncFailed = true
             logger.warn('setProjectName.memoryWrite.failed', {

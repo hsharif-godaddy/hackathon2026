@@ -17,15 +17,22 @@ const mockAddMessage = vi.fn().mockResolvedValue({ id: 'new-msg-id' })
 const mockGetMessageById = vi.fn()
 
 vi.mock('../../database/repositories/index.js', () => ({
-  conversationRepository: {
+  appRepository: { findById: vi.fn().mockReturnValue(null) },
+}))
+
+vi.mock('../../memory/adapters/index.js', () => ({
+  getConversationLifecycleStore: () => ({
+    getById: vi.fn(),
+    getOrCreateForApp: vi.fn(),
+    create: vi.fn(),
+    updateAgentId: vi.fn(),
+  }),
+  getMessageStore: () => ({
     addMessage: mockAddMessage,
     updateMessage: mockUpdateMessage,
     updateMessageMetadata: mockUpdateMessageMetadata,
     getMessageById: mockGetMessageById,
-    getById: vi.fn(),
-    getOrCreateForApp: vi.fn(),
-  },
-  appRepository: { findById: vi.fn().mockReturnValue(null) },
+  }),
 }))
 
 const mockLogger = {

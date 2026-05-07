@@ -2,6 +2,7 @@ import { Router, type Request, type Response, type IRouter } from 'express'
 
 import { Logger } from '../../logging/index.js'
 import { validateAppOwnership } from '../middleware/app-ownership.js'
+import type { AuthenticatedRequest } from '../middleware/jwt-auth.js'
 import { NextActionsService } from '../../services/next-actions.js'
 
 const logger = Logger.create({ component: 'next-actions-routes' })
@@ -22,7 +23,8 @@ router.post('/:id/next-actions', async (req: Request, res: Response) => {
   const id = req.params.id as string
 
   try {
-    const result = await nextActionsService.generateNextActions(id)
+    const customerId = (req as AuthenticatedRequest).agentContext?.customerId
+    const result = await nextActionsService.generateNextActions(id, customerId)
     return res.json(result)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)

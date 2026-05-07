@@ -45,27 +45,29 @@ function createMockDeps() {
       getEventsSince: vi.fn().mockReturnValue([]),
       getMetadata: vi.fn().mockReturnValue(null),
     }),
-    resolveAgent: vi.fn().mockReturnValue('develop'),
+    resolveAgent: vi.fn().mockResolvedValue('develop'),
     getStateManager: vi.fn().mockReturnValue(null),
-    conversationRepository: {
-      create: vi.fn().mockImplementation((appId: string, agentId: string) =>
-        Promise.resolve({ id: 'conv_new', appId, agentId })
+    lifecycle: {
+      create: vi.fn().mockImplementation((scope: { appId: string }, agentId: string) =>
+        Promise.resolve({ id: 'conv_new', appId: scope.appId, agentId })
       ),
-      getOrCreateForApp: vi.fn().mockImplementation((appId: string, agentId: string) =>
-        Promise.resolve({ conversation: { id: 'conv_new', appId, agentId }, isNew: true })
+      getOrCreateForApp: vi.fn().mockImplementation((scope: { appId: string }, agentId: string) =>
+        Promise.resolve({ conversation: { id: 'conv_new', appId: scope.appId, agentId }, isNew: true })
       ),
       getById: vi.fn().mockImplementation((id: string) =>
         Promise.resolve({ id, appId: 'abcdefghij', agentId: 'develop' })
       ),
+      getLatestForApp: vi.fn().mockResolvedValue(null),
+      updateAgentId: vi.fn().mockResolvedValue(undefined),
+    },
+    messages: {
       getMessagesPaginated: vi.fn().mockResolvedValue({
         messages: [],
         hasMore: false,
         nextCursor: null,
         total: 0,
       }),
-      getLatestForAppSync: vi.fn().mockReturnValue(null),
-      updateAgentId: vi.fn().mockResolvedValue(undefined),
-      getMessageCountSync: vi.fn().mockReturnValue(1),
+      getMessageCount: vi.fn().mockResolvedValue(1),
     },
   }
 }
@@ -400,7 +402,7 @@ describe('SSE routes', () => {
     })
 
     it('returns 404 when conversation does not exist', async () => {
-      deps.conversationRepository.getById.mockResolvedValueOnce(null)
+      deps.lifecycle.getById.mockResolvedValueOnce(null)
 
       const res = await request(app)
         .get('/api/conversations/abcdefghij/nonexistent/stream')
@@ -469,7 +471,7 @@ describe('SSE routes', () => {
     })
 
     it('returns 403 when conversation belongs to different app', async () => {
-      deps.conversationRepository.getById.mockResolvedValueOnce({ id: 'conv_1', appId: 'other_app' })
+      deps.lifecycle.getById.mockResolvedValueOnce({ id: 'conv_1', appId: 'other_app' })
 
       const res = await request(app)
         .get('/api/conversations/abcdefghij/conv_1/stream')
@@ -532,7 +534,7 @@ describe('SSE routes', () => {
 
     it('forwards isInitialPrompt=true when conversation has only the just-persisted user message', async () => {
       const mockExecute = vi.fn().mockResolvedValue(undefined)
-      deps.conversationRepository.getMessageCountSync.mockReturnValue(1)
+      deps.messages.getMessageCount.mockResolvedValue(1)
       const depsWithService = {
         ...deps,
         executionService: { execute: mockExecute, hasActiveStream: vi.fn().mockReturnValue(false) },
@@ -557,7 +559,7 @@ describe('SSE routes', () => {
 
     it('forwards isInitialPrompt=false for multi-turn conversations (count > 1)', async () => {
       const mockExecute = vi.fn().mockResolvedValue(undefined)
-      deps.conversationRepository.getMessageCountSync.mockReturnValue(2)
+      deps.messages.getMessageCount.mockResolvedValue(2)
       const depsWithService = {
         ...deps,
         executionService: { execute: mockExecute, hasActiveStream: vi.fn().mockReturnValue(false) },
@@ -579,14 +581,12 @@ describe('SSE routes', () => {
       }))
     })
 
-    it('continues with isInitialPrompt=false when getMessageCountSync throws', async () => {
+    it('continues with isInitialPrompt=false when getMessageCount rejects', async () => {
       // Regression guard: the count lookup is advisory. A DB read failure
       // should be logged but must not abort the turn — the execute() still
       // runs with isInitialPrompt: false.
       const mockExecute = vi.fn().mockResolvedValue(undefined)
-      deps.conversationRepository.getMessageCountSync.mockImplementation(() => {
-        throw new Error('DB unavailable')
-      })
+      deps.messages.getMessageCount.mockRejectedValue(new Error('DB unavailable'))
       const depsWithService = {
         ...deps,
         executionService: { execute: mockExecute, hasActiveStream: vi.fn().mockReturnValue(false) },
@@ -771,7 +771,7 @@ describe('SSE routes', () => {
 
   describe('GET /api/conversations/:appId/:conversationId/messages', () => {
     it('returns paginated messages', async () => {
-      deps.conversationRepository.getMessagesPaginated.mockResolvedValueOnce({
+      deps.messages.getMessagesPaginated.mockResolvedValueOnce({
         messages: [
           { id: 'm1', conversationId: 'conv_1', sender: 'user', content: 'hi', createdAt: new Date() },
         ],
@@ -789,7 +789,7 @@ describe('SSE routes', () => {
     })
 
     it('clears stale inProgress when no active stream exists', async () => {
-      deps.conversationRepository.getMessagesPaginated.mockResolvedValueOnce({
+      deps.messages.getMessagesPaginated.mockResolvedValueOnce({
         messages: [
           {
             id: 'm1', conversationId: 'conv_1', sender: 'agent', content: 'partial',
@@ -816,7 +816,7 @@ describe('SSE routes', () => {
     })
 
     it('preserves inProgress when a stream is active', async () => {
-      deps.conversationRepository.getMessagesPaginated.mockResolvedValueOnce({
+      deps.messages.getMessagesPaginated.mockResolvedValueOnce({
         messages: [
           {
             id: 'm1', conversationId: 'conv_1', sender: 'agent', content: 'partial',
@@ -842,7 +842,7 @@ describe('SSE routes', () => {
     })
 
     it('preserves inProgress on paginated requests (before cursor)', async () => {
-      deps.conversationRepository.getMessagesPaginated.mockResolvedValueOnce({
+      deps.messages.getMessagesPaginated.mockResolvedValueOnce({
         messages: [
           {
             id: 'm1', conversationId: 'conv_1', sender: 'agent', content: 'partial',
@@ -872,7 +872,7 @@ describe('SSE routes', () => {
       const errorApp = express()
       errorApp.use(express.json())
       const errorDeps = createMockDeps()
-      errorDeps.conversationRepository.getById.mockRejectedValueOnce(new Error('DB connection lost'))
+      errorDeps.lifecycle.getById.mockRejectedValueOnce(new Error('DB connection lost'))
       errorApp.use('/api/conversations', createSSERoutes(errorDeps as any))
       errorApp.use((err: any, _req: any, res: any, _next: any) => {
         res.status(500).json({ error: err?.message ?? 'Internal error' })

@@ -3,6 +3,7 @@ import { safeStringify } from '@airo/shared'
 import { z } from 'zod'
 import { MemoryTool, MemorySetOptions, MemoryReadOptions, MemorySearchOptions } from '../memory-tool.js'
 import { AppRepository } from '../../database/repositories/AppRepository.js'
+import { customerIdFromContext } from '../../memory/interfaces/scope.js'
 
 // Initialize tool instances
 const memoryTool = new MemoryTool()
@@ -29,8 +30,8 @@ export const memorySetAITool: Tool = createTool(
       throw new Error(`App '${appId}' not found`)
     }
 
-    const result = await memoryTool.setMemory(input as MemorySetOptions, app.path, appId)
-    
+    const result = await memoryTool.setMemory(input as MemorySetOptions, app.path, appId, customerIdFromContext(context))
+
     if (!result.success) {
       throw new Error(result.error || 'Failed to set memory value')
     }
@@ -59,7 +60,7 @@ export const memoryReadAITool: Tool = createTool(
       throw new Error(`App '${appId}' not found`)
     }
 
-    const result = await memoryTool.readMemory(input as MemoryReadOptions, app.path, appId)
+    const result = await memoryTool.readMemory(input as MemoryReadOptions, app.path, appId, customerIdFromContext(context))
     
     if (!result.success) {
       throw new Error(result.error || 'Failed to read memory value')
@@ -104,7 +105,7 @@ export const memorySearchAITool: Tool = createTool(
       throw new Error(`App '${appId}' not found`)
     }
 
-    const result = await memoryTool.searchMemory(input as MemorySearchOptions, app.path, appId)
+    const result = await memoryTool.searchMemory(input as MemorySearchOptions, app.path, appId, customerIdFromContext(context))
     
     if (!result.success) {
       throw new Error(result.error || 'Failed to search memory')
@@ -154,7 +155,7 @@ export const memoryListKeysAITool: Tool = createTool(
       throw new Error(`App '${appId}' not found`)
     }
 
-    const result = await memoryTool.listKeys(app.path, input.prefix, appId)
+    const result = await memoryTool.listKeys(app.path, input.prefix, appId, customerIdFromContext(context))
     
     if (!result.success) {
       throw new Error(result.error || 'Failed to list memory keys')

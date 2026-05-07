@@ -1,5 +1,6 @@
 import type { MessageSegment, ToolCall } from '../database/schema.js';
-import { ConversationRepository } from '../database/repositories/ConversationRepository.js';
+import { getMessageStore } from '../memory/adapters/index.js';
+import type { MessageStore } from '../memory/interfaces/index.js';
 
 /**
  * Manages message segments to maintain proper chronological order of content and tool calls
@@ -7,11 +8,8 @@ import { ConversationRepository } from '../database/repositories/ConversationRep
  */
 export class MessageSegmentManager {
   private segments: MessageSegment[] = [];
-  private conversationRepo: ConversationRepository;
 
-  constructor(conversationRepo: ConversationRepository) {
-    this.conversationRepo = conversationRepo;
-  }
+  constructor(private messageStore: MessageStore = getMessageStore()) {}
 
   /**
    * Add a content segment to the message
@@ -93,7 +91,7 @@ export class MessageSegmentManager {
     const combinedContent = this.getCombinedContent();
     const segments = this.getSegments();
 
-    await this.conversationRepo.updateMessage(messageId, {
+    await this.messageStore.updateMessage(messageId, {
       content: combinedContent,
       segments: segments,
       metadata: { isStreaming: false }

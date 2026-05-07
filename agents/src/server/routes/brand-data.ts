@@ -8,9 +8,11 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { MemoryRepository } from '../../database/repositories/MemoryRepository.js';
 import { log } from '../../logging/index.js';
+import { getKvMemoryStore } from '../../memory/adapters/index.js';
+import { workspaceScopeFromAppId } from '../../memory/interfaces/scope.js';
 import { validateAppOwnership } from '../middleware/app-ownership.js';
+import type { AuthenticatedRequest } from '../middleware/jwt-auth.js';
 import {
   parseBrandPersonality,
   parseBrandVoice,
@@ -22,7 +24,7 @@ import {
   type BrandDataPalette,
   type BrandDataTypography,
 } from '../../utils/brand-data-parsers.js';
-// Inline type for brand identity data stored in memory (avoids dependency on brand-identity tool)
+
 interface BrandIdentityData {
   brandName?: string;
   personality?: BrandData['personality'];
@@ -44,7 +46,7 @@ interface BrandIdentityData {
 }
 
 const router: Router = Router();
-const memoryRepo = new MemoryRepository();
+const memory = getKvMemoryStore();
 
 /**
  * GET /apps/:id/brand-data
@@ -55,21 +57,20 @@ router.get('/apps/:id/brand-data', validateAppOwnership, async (req: Request, re
   const contextLogger = log.forApp(appId!);
 
   try {
-    // Fetch all brand data keys in parallel
+    const customerId = (req as AuthenticatedRequest).agentContext?.customerId;
+    const scope = workspaceScopeFromAppId(appId!, customerId);
     const [
       paletteResult, typographyResult, identityResult,
-      // Legacy markdown keys (fallback)
       personalityResult, voiceResult, iconographyResult, layoutResult, audienceResult,
     ] = await Promise.all([
-      memoryRepo.get(appId!, 'brand.colors.palette'),
-      memoryRepo.get(appId!, 'brand.typography'),
-      memoryRepo.get(appId!, 'brand.identity'),
-      // Legacy fallbacks
-      memoryRepo.get(appId!, 'design.brand-personality'),
-      memoryRepo.get(appId!, 'design.voice-messaging'),
-      memoryRepo.get(appId!, 'design.iconography'),
-      memoryRepo.get(appId!, 'design.layout'),
-      memoryRepo.get(appId!, 'design.audience'),
+      memory.get(scope, 'brand.colors.palette'),
+      memory.get(scope, 'brand.typography'),
+      memory.get(scope, 'brand.identity'),
+      memory.get(scope, 'design.brand-personality'),
+      memory.get(scope, 'design.voice-messaging'),
+      memory.get(scope, 'design.iconography'),
+      memory.get(scope, 'design.layout'),
+      memory.get(scope, 'design.audience'),
     ]);
 
     // Log memory read failures so DB issues surface in monitoring

@@ -194,7 +194,11 @@ import { buildSharedPostStreamValidator } from './post-stream-validator.js';
 import { AgentsMessagePersistence } from './conversation-persistence.js';
 import { AILibContextManager } from '../agents/ai-lib-agents/context-manager.js';
 import { getBackgroundSummarizer } from '../services/summarization/index.js';
-import { conversationRepository } from '../database/repositories/index.js';
+import {
+  getConversationLifecycleStore,
+  getMessageStore,
+} from '../memory/adapters/index.js';
+import { workspaceScopeFromAppId } from '../memory/interfaces/scope.js';
 import { ConversationContextManager } from '../services/ConversationContextManager.js';
 import { getTemplateIds } from '../agents/template-registry.js';
 import { createAgentRouter } from './agent-router.js';
@@ -214,7 +218,7 @@ initSSERegistry(sseRegistry);
 let memoryLogInterval: NodeJS.Timeout | null = null;
 
 // Shared history loader for SSE (same config as WS path in ai-lib-websocket-server.ts)
-const sseConversationContextManager = new ConversationContextManager(conversationRepository, 10)
+const sseConversationContextManager = new ConversationContextManager(getMessageStore(), 10)
 
 // Lazy SSE execution service — created on first request after init completes
 let sseExecutionService: MessageExecutionService | null = null
@@ -223,7 +227,7 @@ const { validator: ssePostStreamValidator, resetRetries: sseResetPostStreamRetri
   buildSharedPostStreamValidator(logger)
 
 const resolveAgent = createAgentRouter({
-  hasMessagesForApp: (appId) => conversationRepository.hasMessagesForAppSync(appId),
+  hasMessagesForApp: (appId) => getMessageStore().hasMessagesForApp(workspaceScopeFromAppId(appId)),
   getTemplateIds,
 })
 
@@ -278,7 +282,7 @@ function getOrCreateSSEExecutionService(): MessageExecutionService | null {
       setSelectedTodoList: (id: string, listId: string) => agentFactory.stateManager.setSelectedTodoList(id, listId),
     },
     onAgentChanged: async (convId: string, _oldAgent: string, newAgent: string) => {
-      await conversationRepository.updateAgentId(convId, newAgent)
+      await getConversationLifecycleStore().updateAgentId(convId, newAgent)
     },
     get backgroundSummarizer() {
       return getBackgroundSummarizer()
@@ -444,7 +448,8 @@ protectedRouter.use('/api/conversations', createSSERoutes({
     if (!factory) return null
     return factory.stateManager as import('./agent-router.js').AgentStateManager
   },
-  conversationRepository,
+  lifecycle: getConversationLifecycleStore(),
+  messages: getMessageStore(),
 }));
 
 app.use(protectedRouter);

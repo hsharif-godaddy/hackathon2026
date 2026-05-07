@@ -1,13 +1,15 @@
-import { Router, IRouter } from 'express';
-import { Request, Response } from 'express';
+import { Router, IRouter, Request, Response } from 'express';
+import v8 from 'node:v8';
 import { logger } from '../../logging/index.js';
-import { gdAuthService } from '../../services/gd-auth-service.js';
-import { ConversationRepository } from '../../database/repositories/ConversationRepository.js';
+import { getConversationLifecycleStore, getMessageStore } from '../../memory/adapters/index.js';
+import { workspaceScopeFromAppId } from '../../memory/interfaces/scope.js';
 import { exportConversations } from '../../services/conversation-exporter.js';
 import type { ExportDetail } from '../../services/conversation-exporter.js';
-import v8 from 'node:v8';
+import { gdAuthService } from '../../services/gd-auth-service.js';
 
 const router: IRouter = Router();
+const lifecycle = getConversationLifecycleStore();
+const messages = getMessageStore();
 
 /**
  * Authentication middleware for diagnostics endpoints
@@ -274,10 +276,9 @@ router.get('/conversations/export', async (req: Request, res: Response): Promise
   });
 
   try {
-    const conversationRepo = new ConversationRepository();
-    const conversations = await conversationRepo.getByAppId(appId);
+    const conversations = await lifecycle.getByAppId(workspaceScopeFromAppId(appId));
 
-    const allMessages = await conversationRepo.getMessagesBatch(conversations.map(c => c.id));
+    const allMessages = await messages.getMessagesBatch(conversations.map(c => c.id));
     const messagesByConversation = new Map<string, typeof allMessages>();
     for (const msg of allMessages) {
       const existing = messagesByConversation.get(msg.conversationId) || [];
@@ -301,4 +302,4 @@ router.get('/conversations/export', async (req: Request, res: Response): Promise
   }
 });
 
-export { router as diagnosticsRouter };
+export const diagnosticsRouter = router;

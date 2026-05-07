@@ -4,7 +4,7 @@ import { profileDefinesCustomModularPromptFiles } from '../agents/modular-prompt
 import { getRegisteredInitialV3ModularAgentIds } from '../agents/registered-initial-modular-agent-ids.js'
 
 interface AgentRouterDeps {
-  hasMessagesForApp: (appId: string) => boolean
+  hasMessagesForApp: (appId: string) => boolean | Promise<boolean>
   getTemplateIds: () => string[]
 }
 
@@ -31,7 +31,7 @@ export interface AgentRouterParams {
 }
 
 export function createAgentRouter(deps: AgentRouterDeps) {
-  return function resolveAgent(params: AgentRouterParams): string {
+  return async function resolveAgent(params: AgentRouterParams): Promise<string> {
     const { appId, agentId, templateId, agentProfile, agentContext, session } = params
 
     if (agentId) return agentId
@@ -69,7 +69,15 @@ export function createAgentRouter(deps: AgentRouterDeps) {
       }
     }
 
-    if (!deps.hasMessagesForApp(appId)) {
+    let hasMessages = true
+    try {
+      hasMessages = await deps.hasMessagesForApp(appId)
+    } catch (err) {
+      // Remote adapter failure should not abort the turn — default to 'develop'
+      logger.warn('agent_router.has_messages_check_failed', { appId, ...errorFields(err) })
+    }
+
+    if (!hasMessages) {
       const validTemplate = typeof templateId === 'string' && deps.getTemplateIds().includes(templateId)
         ? templateId : undefined
       let resolvedAgentId = validTemplate ? `initial-${validTemplate}` : 'initial'

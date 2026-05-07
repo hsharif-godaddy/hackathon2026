@@ -1,19 +1,17 @@
 import type { AgentExecutionContext } from '../base/agent.interface.js';
-import { TodoListRepository } from '../database/repositories/TodoListRepository.js';
+import { getTodoListStore } from '../planning/adapters/index.js';
+import type { PlanningTodoList, TodoListStore } from '../planning/interfaces/index.js';
+import { workspaceScopeFromAppId } from '../memory/interfaces/scope.js';
 import { logger } from '../logging/index.js';
 
 /**
  * Service for managing todo list context information for LLM conversations
- * 
+ *
  * Provides focused todo list context by showing only the currently selected
  * todo list for the session. This helps agents stay focused on the current task.
  */
 export class TodoContextManager {
-  private todoListRepository: TodoListRepository;
-
-  constructor() {
-    this.todoListRepository = new TodoListRepository();
-  }
+  constructor(private todoListStore: TodoListStore = getTodoListStore()) {}
 
   /**
    * Generate todo list context message for the currently selected list
@@ -43,7 +41,7 @@ export class TodoContextManager {
 
     try {
       // Get the selected todo list
-      const todoList = this.todoListRepository.getListById(selectedTodoListId);
+      const todoList = await this.todoListStore.getListById(selectedTodoListId);
 
       if (!todoList) {
         logger.warn('todo.context.list_not_found', {
@@ -92,31 +90,32 @@ export class TodoContextManager {
    * @param todoList - The todo list to format
    * @returns Formatted string representation
    */
-  private formatTodoList(todoList: any): string {
+  private formatTodoList(todoList: PlanningTodoList): string {
     const sections = [];
-    
+
     sections.push(`[Current Todo List]`);
     sections.push('');
     sections.push(`List: ${todoList.name} (ID: ${todoList.id})`);
-    
+
     if (todoList.description) {
       sections.push(`Description: ${todoList.description}`);
     }
 
-    const totalItems = todoList.items?.length || 0;
-    const completedItems = todoList.items?.filter((item: any) => item.completed).length || 0;
+    const items = todoList.items ?? [];
+    const totalItems = items.length;
+    const completedItems = items.filter(item => item.completed).length;
     const progress = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0;
 
     sections.push(`Progress: ${completedItems}/${totalItems} complete (${progress}%)`);
     sections.push('');
 
-    if (todoList.items && todoList.items.length > 0) {
-      const pendingItems = todoList.items.filter((item: any) => !item.completed);
-      const completedItemsList = todoList.items.filter((item: any) => item.completed);
+    if (items.length > 0) {
+      const pendingItems = items.filter(item => !item.completed);
+      const completedItemsList = items.filter(item => item.completed);
 
       if (pendingItems.length > 0) {
         sections.push(`Pending Items (${pendingItems.length}):`);
-        pendingItems.forEach((item: any, index: number) => {
+        pendingItems.forEach((item, index) => {
           sections.push(`  ${index + 1}. ⬜ ${item.title} (ID: ${item.id})`);
           if (item.description) {
             sections.push(`     ${item.description}`);
@@ -127,7 +126,7 @@ export class TodoContextManager {
 
       if (completedItemsList.length > 0) {
         sections.push(`Completed Items (${completedItemsList.length}):`);
-        completedItemsList.forEach((item: any, index: number) => {
+        completedItemsList.forEach((item, index) => {
           sections.push(`  ${index + 1}. ✅ ${item.title}`);
         });
         sections.push('');
@@ -137,7 +136,7 @@ export class TodoContextManager {
       sections.push('');
     }
 
-    if (totalItems > 0 && todoList.items.some((item: any) => !item.completed)) {
+    if (totalItems > 0 && items.some(item => !item.completed)) {
       sections.push('Note: This is your active todo list. Mark items complete immediately after finishing each task using todoList tool with operation: "mark_done" and the item ID(s). Use operation: "show_list" to display your completed work.');
     } else if (totalItems > 0) {
       sections.push('Note: All items complete. Do not create a new list unless the user explicitly requests a new multi-step feature.');
@@ -148,23 +147,23 @@ export class TodoContextManager {
 
   /**
    * Get a summary of all todo lists for an app (for debugging/selection)
-   * 
+   *
    * @param appId - The app ID
    * @returns Array of todo list summaries
    */
-  getAllListsSummary(appId: string): Array<{
+  async getAllListsSummary(appId: string): Promise<Array<{
     id: string;
     name: string;
     description?: string;
     totalItems: number;
     completedItems: number;
     progress: number;
-  }> {
-    const todoLists = this.todoListRepository.getAllLists(appId);
-    
-    return todoLists.map((list: any) => {
+  }>> {
+    const todoLists = await this.todoListStore.getAllLists(workspaceScopeFromAppId(appId));
+
+    return todoLists.map((list: PlanningTodoList) => {
       const totalItems = list.items?.length || 0;
-      const completedItems = list.items?.filter((item: any) => item.completed).length || 0;
+      const completedItems = list.items?.filter(item => item.completed).length || 0;
       const progress = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0;
 
       return {

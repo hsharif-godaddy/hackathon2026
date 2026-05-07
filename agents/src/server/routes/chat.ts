@@ -1,13 +1,15 @@
 import { Router, IRouter, Request, Response, NextFunction } from 'express';
 import { globalTracer } from '../../utils/index.js';
-import { conversationRepository } from '../../database/repositories/index.js';
 import { logger } from '../../logging/index.js';
+import { getConversationLifecycleStore, getMessageStore } from '../../memory/adapters/index.js';
 import { validateAppOwnershipFromBody, validateConversationOwnership } from '../middleware/app-ownership.js';
 import type { AuthenticatedRequest } from '../middleware/jwt-auth.js';
+import { workspaceScopeFromAppId } from '../../memory/interfaces/scope.js';
 import { BYPASS_SITE_IDS } from '../../services/features.js';
 
 const router: IRouter = Router();
-const conversationRepo = conversationRepository;
+const lifecycle = getConversationLifecycleStore();
+const messages = getMessageStore();
 
 // Helper function to extract error message
 const getErrorMessage = (error: unknown): string => {
@@ -52,15 +54,15 @@ const validateAppIdParam = (req: Request, res: Response, next: NextFunction): vo
  */
 router.get('/traces', (req, res) => {
   const { agentId, threadId, type, since } = req.query;
-  
+
   const filters: any = {};
   if (agentId) filters.agentId = agentId as string;
   if (threadId) filters.threadId = threadId as string;
   if (type) filters.type = type as string;
   if (since) filters.since = new Date(since as string);
-  
+
   const events = globalTracer.getEvents(filters);
-  
+
   res.json({
     total: events.length,
     filters,
@@ -84,25 +86,26 @@ router.delete('/traces', (req, res) => {
 router.get('/conversations/:appId', validateAppIdParam, async (req, res) => {
   const appId = req.params.appId!; // Validated by validateAppIdParam middleware
   const { limit, offset } = req.query;
-  
+
   const limitNum = limit ? parseInt(limit as string, 10) : 1; // Default to 1 for initial load
   const offsetNum = offset ? parseInt(offset as string, 10) : 0;
-  
+
   if (isNaN(limitNum) || isNaN(offsetNum) || limitNum < 0 || offsetNum < 0) {
     return res.status(400).json({ error: 'Invalid limit or offset' });
   }
 
   try {
-    
+    const customerId = (req as AuthenticatedRequest).agentContext?.customerId;
+    const scope = workspaceScopeFromAppId(appId, customerId);
     const [conversations, total] = await Promise.all([
-      conversationRepo.getConversationsWithMessageCount(appId, {
+      lifecycle.getConversationsWithMessageCount(scope, {
         limit: limitNum,
         offset: offsetNum
       }),
-      conversationRepo.getConversationCount(appId),
+      lifecycle.getConversationCount(scope),
     ]);
     const hasMore = offsetNum + conversations.length < total;
-    
+
     logger.info('conversations.fetch.success', {
       appId,
       limit: limitNum,
@@ -111,7 +114,7 @@ router.get('/conversations/:appId', validateAppIdParam, async (req, res) => {
       total,
       hasMore
     });
-    
+
     res.json({
       conversations,
       pagination: {
@@ -154,7 +157,7 @@ router.get('/conversations/:appId/messages', validateAppIdParam, async (req, res
     // SECURITY: Validate that all requested conversations belong to the authenticated app
     if (ids.length > 0) {
       // Fetch all conversations in one query (optimized batch query)
-      const conversations = await conversationRepo.findByIds(ids);
+      const conversations = await lifecycle.findByIds(ids);
 
       // Check that all requested IDs were found
       if (conversations.length !== ids.length) {
@@ -190,17 +193,17 @@ router.get('/conversations/:appId/messages', validateAppIdParam, async (req, res
     }
 
     // Get all messages for the specified conversations in a single query
-    const allMessages = await conversationRepo.getMessagesBatch(ids);
-    
+    const allMessages = await messages.getMessagesBatch(ids);
+
     // Sort messages by timestamp (already includes conversationId from the batch query)
     allMessages.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
-    
+
     logger.info('conversations.messages.bulk_fetch.success', {
       appId,
       conversationIds: ids,
       messagesFound: allMessages.length
     });
-    
+
     return res.json({ messages: allMessages });
   } catch (error) {
     logger.error('conversations.messages.bulk_fetch.failure', {
@@ -220,18 +223,18 @@ router.get('/conversations/:appId/:conversationId', validateAppIdParam, validate
   const conversationId = req.params.conversationId!; // Validated by validateConversationOwnership middleware
 
   try {
-    
-    const conversation = await conversationRepo.getById(conversationId);
+
+    const conversation = await lifecycle.getById(conversationId);
     if (!conversation) {
       return res.status(404).json({ error: 'Conversation not found' });
     }
 
-    const messages = await conversationRepo.getMessages(conversationId);
-    
-    
+    const msgs = await messages.getMessages(conversationId);
+
+
     return res.json({
       conversation,
-      messages
+      messages: msgs
     });
   } catch (error) {
     logger.error('conversation.fetch.failure', {
@@ -250,12 +253,13 @@ router.post('/conversations', validateAppOwnershipFromBody('appId'), async (req,
   const { appId, agentId, title } = req.body;
 
   try {
-    
+
     if (!appId || !agentId) {
       return res.status(400).json({ error: 'appId and agentId are required' });
     }
 
-    const conversation = await conversationRepo.create(appId, agentId, title);
+    const customerId = (req as AuthenticatedRequest).agentContext?.customerId;
+    const conversation = await lifecycle.create(workspaceScopeFromAppId(appId, customerId), agentId, title);
     return res.json(conversation);
   } catch (error) {
     logger.error('conversation.create.failure', {
@@ -277,12 +281,12 @@ router.put('/conversations/:conversationId/title', validateConversationOwnership
   const { title } = req.body;
 
   try {
-    
+
     if (!title) {
       return res.status(400).json({ error: 'title is required' });
     }
 
-    await conversationRepo.updateTitle(conversationId, title);
+    await lifecycle.updateTitle(conversationId, title);
     return res.json({ message: 'Title updated successfully' });
   } catch (error) {
     logger.error('conversation.title.update.failure', {
@@ -302,7 +306,7 @@ router.delete('/conversations/:conversationId', validateConversationOwnership('c
   const conversationId = req.params.conversationId!; // Validated by validateConversationOwnership middleware
 
   try {
-    await conversationRepo.delete(conversationId);
+    await lifecycle.delete(conversationId);
     res.json({ message: 'Conversation deleted successfully' });
   } catch (error) {
     logger.error('conversation.delete.failure', {
@@ -313,4 +317,4 @@ router.delete('/conversations/:conversationId', validateConversationOwnership('c
   }
 });
 
-export { router as chatRouter };
+export const chatRouter = router;

@@ -1,8 +1,9 @@
 import type { ModelMessage, ToolModelMessage, UserModelMessage, AssistantModelMessage, SystemModelMessage } from 'ai';
 import type { ToolCall, ConversationSummary } from '../database/schema.js';
 import type { DatabaseMessage } from '../types/conversation-messages.js';
-import { ConversationRepository } from '../database/repositories/ConversationRepository.js';
-import { SummaryRepository } from '../database/repositories/SummaryRepository.js';
+import { getMessageStore, getSummaryStore } from '../memory/adapters/index.js';
+import type { MessageStore, SummaryStore } from '../memory/interfaces/index.js';
+import { workspaceScopeFromAppId } from '../memory/interfaces/scope.js';
 import { logger } from '../logging/index.js';
 import { countTokens } from '../utils/token-counter.js';
 
@@ -118,7 +119,6 @@ export type { DatabaseMessage };
  */
 export class ConversationHistoryLoader {
   private compressor = new MessageCompressor();
-  private summaryRepo: SummaryRepository;
   private summarizationStrategy?: SummarizationStrategy;
 
   // Summary pinning: prevent cache invalidation when BackgroundSummarizer creates new summaries
@@ -131,10 +131,10 @@ export class ConversationHistoryLoader {
   private previousTurnMessageCount = new Map<string, number>();
 
   constructor(
-    private conversationRepo: ConversationRepository,
-    summarizationStrategy?: SummarizationStrategy
+    private messageStore: MessageStore = getMessageStore(),
+    summarizationStrategy?: SummarizationStrategy,
+    private summaryStore: SummaryStore = getSummaryStore(),
   ) {
-    this.summaryRepo = new SummaryRepository();
     this.summarizationStrategy = summarizationStrategy || new LLMSummarizationStrategy();
   }
 
@@ -195,12 +195,12 @@ export class ConversationHistoryLoader {
    * the summary for MAX_PINNED_TURNS turns to prevent cache invalidation when
    * BackgroundSummarizer creates new summaries between turns.
    */
-  async getPinnedOrLatestSummary(appId: string): Promise<ConversationSummary | null> {
+  async getPinnedOrLatestSummary(appId: string, customerId?: string): Promise<ConversationSummary | null> {
     const pin = this.pinnedSummaries.get(appId);
 
     // If we have a pin and haven't exceeded the epoch, try to reuse it
     if (pin && pin.turnCount < ConversationHistoryLoader.MAX_PINNED_TURNS) {
-      const pinned = await this.summaryRepo.findById(pin.summaryId);
+      const pinned = await this.summaryStore.findById(pin.summaryId);
       if (pinned) {
         pin.turnCount++;
         logger.debug('conversation.history.summary_pin.reused', {
@@ -218,7 +218,7 @@ export class ConversationHistoryLoader {
     }
 
     // Fetch latest and pin it
-    const latest = await this.summaryRepo.findLatestForApp(appId);
+    const latest = await this.summaryStore.findLatestForApp(workspaceScopeFromAppId(appId, customerId));
     if (latest) {
       const previousPinId = pin?.summaryId ?? null;
       this.pinnedSummaries.set(appId, { summaryId: latest.id, turnCount: 1 });
@@ -246,7 +246,7 @@ export class ConversationHistoryLoader {
       conversationId,
     });
 
-    const messages = await this.conversationRepo.getMessagesForHistory(conversationId);
+    const messages = await this.messageStore.getMessagesForHistory(conversationId);
     const dbMessages = messages.map((msg) => ({
       ...msg,
       conversationId,
@@ -574,14 +574,15 @@ export class ConversationHistoryLoader {
     maxTokens: number = 40000,
     modelName?: string,
     enableCompression: boolean = true,
-    appId?: string
+    appId?: string,
+    customerId?: string,
   ): Promise<LLMMessage[]> {
     // When appId is available, refresh the summary pin so contextProvider reads a stable version.
     // Note: on agent handoff, ai-transport reloads conversation history within the same user turn,
     // which increments turnCount a second time. This is low impact (at worst loses 1 extra turn
     // of pin life per handoff) and not worth guarding against.
     if (appId) {
-      await this.getPinnedOrLatestSummary(appId);
+      await this.getPinnedOrLatestSummary(appId, customerId);
     }
 
     const dbMessages = await this.loadDatabaseMessagesByConversationId(conversationId);

@@ -4,11 +4,10 @@ import express, { type Express, type Request, type Response, type NextFunction }
 
 // Hoist mocks to top level
 const {
-  mockFindById, mockMemoryGet,
+  mockMemoryGet,
   mockParseBrandPersonality, mockParseBrandVoice, mockExtractTagline,
   mockParseBrandIconography, mockParseBrandLayout, mockParseBrandAudience,
 } = vi.hoisted(() => ({
-  mockFindById: vi.fn(),
   mockMemoryGet: vi.fn(),
   mockParseBrandPersonality: vi.fn(),
   mockParseBrandVoice: vi.fn(),
@@ -18,16 +17,8 @@ const {
   mockParseBrandAudience: vi.fn(),
 }));
 
-// Mock AppRepository
-vi.mock('../../../database/index.js', () => ({
-  AppRepository: vi.fn().mockImplementation(() => ({
-    findById: mockFindById,
-  })),
-}));
-
-// Mock MemoryRepository
-vi.mock('../../../database/repositories/MemoryRepository.js', () => ({
-  MemoryRepository: vi.fn().mockImplementation(() => ({
+vi.mock('../../../memory/adapters/index.js', () => ({
+  getKvMemoryStore: vi.fn(() => ({
     get: mockMemoryGet,
   })),
 }));
@@ -88,8 +79,6 @@ describe('Brand Data Route', () => {
 
   describe('GET /apps/:id/brand-data', () => {
     it('should return full BrandData when all structured data exists in memory', async () => {
-      mockFindById.mockReturnValue({ id: testAppId, name: 'My App' });
-
       const palette = { primary: '#FF0000', secondary: '#00FF00', accent: '#0000FF' };
       const typography = { headingFont: 'Inter', bodyFont: 'Roboto' };
       const identity = {
@@ -105,7 +94,7 @@ describe('Brand Data Route', () => {
       };
 
       // Set up memory.get to return values based on key
-      mockMemoryGet.mockImplementation((_appId: string, key: string) => {
+      mockMemoryGet.mockImplementation((_scope: unknown, key: string) => {
         const map: Record<string, unknown> = {
           'brand.colors.palette': palette,
           'brand.typography': typography,
@@ -136,11 +125,9 @@ describe('Brand Data Route', () => {
     });
 
     it('should fall back to parsed markdown when no structured identity data exists', async () => {
-      mockFindById.mockReturnValue({ id: testAppId, name: 'Legacy App' });
-
       const palette = { primary: '#111', secondary: '#222' };
 
-      mockMemoryGet.mockImplementation((_appId: string, key: string) => {
+      mockMemoryGet.mockImplementation((_scope: unknown, key: string) => {
         const map: Record<string, unknown> = {
           'brand.colors.palette': palette,
           'design.brand-personality': '## Personality\nBold and creative',
@@ -172,8 +159,7 @@ describe('Brand Data Route', () => {
       expect(response.body.toneMatrix).toBeUndefined();
     });
 
-    it('should return Your Brand default when app is not found (ownership enforced by middleware)', async () => {
-      mockFindById.mockReturnValue(null);
+    it('should return Your Brand default when no memory keys exist', async () => {
       mockMemoryGet.mockResolvedValue(noResult);
 
       const response = await request(app).get(`/apps/${testAppId}/brand-data`);
@@ -184,9 +170,7 @@ describe('Brand Data Route', () => {
     });
 
     it('should return 500 when an internal error occurs', async () => {
-      mockFindById.mockImplementation(() => {
-        throw new Error('Database connection failed');
-      });
+      mockMemoryGet.mockRejectedValue(new Error('Database connection failed'));
 
       const response = await request(app).get(`/apps/${testAppId}/brand-data`);
 
@@ -195,12 +179,10 @@ describe('Brand Data Route', () => {
     });
 
     it('should handle partial data when only some memory keys exist', async () => {
-      mockFindById.mockReturnValue({ id: testAppId, name: 'Partial App' });
-
       const palette = { primary: '#ABC', secondary: '#DEF' };
 
       // Only palette exists, nothing else
-      mockMemoryGet.mockImplementation((_appId: string, key: string) => {
+      mockMemoryGet.mockImplementation((_scope: unknown, key: string) => {
         if (key === 'brand.colors.palette') {
           return Promise.resolve(memoryResult(palette));
         }
@@ -229,11 +211,9 @@ describe('Brand Data Route', () => {
     });
 
     it('should wrap non-empty toneMatrix in { contexts } and omit when undefined', async () => {
-      mockFindById.mockReturnValue({ id: testAppId, name: 'Test' });
-
       // Identity with empty toneMatrix array
       const identityEmpty = { toneMatrix: [] };
-      mockMemoryGet.mockImplementation((_appId: string, key: string) => {
+      mockMemoryGet.mockImplementation((_scope: unknown, key: string) => {
         if (key === 'brand.identity') return Promise.resolve({ success: true, exists: true, value: identityEmpty });
         return Promise.resolve(noResult);
       });
@@ -242,9 +222,8 @@ describe('Brand Data Route', () => {
       expect(resEmpty.status).toBe(200);
       expect(resEmpty.body.toneMatrix).toEqual({ contexts: [] });
 
-      // Identity without toneMatrix (undefined)
       const identityNo = { personality: { description: 'Bold' } };
-      mockMemoryGet.mockImplementation((_appId: string, key: string) => {
+      mockMemoryGet.mockImplementation((_scope: unknown, key: string) => {
         if (key === 'brand.identity') return Promise.resolve({ success: true, exists: true, value: identityNo });
         return Promise.resolve(noResult);
       });
@@ -254,12 +233,10 @@ describe('Brand Data Route', () => {
       expect(resUndef.body.toneMatrix).toBeUndefined();
     });
 
-    it('should prefer brandName from brand.identity over app.name', async () => {
-      mockFindById.mockReturnValue({ id: testAppId, name: 'DB App Name' });
-
+    it('should prefer brandName from brand.identity when present', async () => {
       const identity = { brandName: 'Memory Brand Name' };
 
-      mockMemoryGet.mockImplementation((_appId: string, key: string) => {
+      mockMemoryGet.mockImplementation((_scope: unknown, key: string) => {
         if (key === 'brand.identity') return Promise.resolve(memoryResult(identity));
         return Promise.resolve(noResult);
       });
@@ -271,11 +248,9 @@ describe('Brand Data Route', () => {
     });
 
     it('should default to Your Brand when brand.identity has no brandName', async () => {
-      mockFindById.mockReturnValue({ id: testAppId, name: 'Ignored App Name' });
-
       const identity = { personality: { description: 'Bold' } };
 
-      mockMemoryGet.mockImplementation((_appId: string, key: string) => {
+      mockMemoryGet.mockImplementation((_scope: unknown, key: string) => {
         if (key === 'brand.identity') return Promise.resolve(memoryResult(identity));
         return Promise.resolve(noResult);
       });

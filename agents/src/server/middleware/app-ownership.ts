@@ -30,7 +30,7 @@ import { Request, Response, NextFunction } from 'express';
 import { AuthenticatedRequest } from './jwt-auth.js';
 import { Logger } from '../../logging/index.js';
 import { BYPASS_SITE_IDS } from '../../services/features.js';
-import { ConversationRepository } from '../../database/repositories/ConversationRepository.js';
+import { getConversationLifecycleStore } from '../../memory/adapters/index.js';
 
 const logger = Logger.create({ component: 'app-ownership-middleware' });
 
@@ -394,8 +394,7 @@ export function validateConversationOwnership(paramName: string = 'id') {
       }
 
       // Load conversation from database
-      const conversationRepo = new ConversationRepository();
-      const conversation = await conversationRepo.getById(conversationId);
+      const conversation = await getConversationLifecycleStore().getById(conversationId);
 
       // Validate conversation exists
       if (!conversation) {

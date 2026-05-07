@@ -12,10 +12,11 @@ import { SecretsManagementTool } from '../tools/secrets-management-tool.js';
 import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js';
 import { mediaManifestService, type MediaSlot } from './MediaManifestService.js';
 import { AppRepository } from '../database/repositories/AppRepository.js';
-import { MemoryRepository } from '../database/repositories/MemoryRepository.js';
+import { getKvMemoryStore } from '../memory/adapters/index.js';
+import type { KvMemoryStore } from '../memory/interfaces/index.js';
+import { customerIdFromContext, workspaceScopeFromAppId } from '../memory/interfaces/scope.js';
 
 const execFileAsync = promisify(execFile);
-const memoryRepo = new MemoryRepository();
 
 /**
  * Result of app context generation, split into stable and dynamic parts for cache efficiency
@@ -45,7 +46,7 @@ export class AppContextManager {
   private directoryTool: DirectoryListingTool;
   private appRepository: AppRepository;
 
-  constructor() {
+  constructor(private kvMemoryStore: KvMemoryStore = getKvMemoryStore()) {
     this.directoryTool = new DirectoryListingTool();
     this.appRepository = new AppRepository();
   }
@@ -70,9 +71,10 @@ export class AppContextManager {
       // Fetch all context data in parallel (these are independent lookups)
       // Note: Directory listing removed to prevent cache invalidation on file changes.
       // Agents should use the directoryListing tool when they need to explore the file structure.
+      const customerId = customerIdFromContext(context);
       const [packageInfo, designSystemInfo, secretsInfo, mediaSlotsInfo, gitStatusInfo, publishStateInfo] = await Promise.all([
         this.getPackageInfo(context),
-        this.getDesignSystemInfo(appId),
+        this.getDesignSystemInfo(appId, customerId),
         this.getSecretsInfo(appId),
         this.getMediaSlotsInfo(appId),
         this.getGitStatusInfo(appPath),
@@ -261,9 +263,10 @@ export class AppContextManager {
   /**
    * Get design system information (color palette + font theme) for the app
    * @param appId - The app ID
+   * @param customerId - Optional customerId for tenant-scoped lookups
    * @returns Design system info or null
    */
-  private async getDesignSystemInfo(appId: string): Promise<{ colorPalette: ColorPalette | null; fontTheme: FontTheme | null } | null> {
+  private async getDesignSystemInfo(appId: string, customerId?: string): Promise<{ colorPalette: ColorPalette | null; fontTheme: FontTheme | null } | null> {
     try {
       const result = await appPlanTool.execute({
         appId,
@@ -278,9 +281,10 @@ export class AppContextManager {
       }
 
       // Fallback: read from memory table (persisted by brand tools)
+      const scope = workspaceScopeFromAppId(appId, customerId);
       const [paletteResult, typographyResult] = await Promise.all([
-        memoryRepo.get(appId, 'brand.colors.palette'),
-        memoryRepo.get(appId, 'brand.typography'),
+        this.kvMemoryStore.get(scope, 'brand.colors.palette'),
+        this.kvMemoryStore.get(scope, 'brand.typography'),
       ]);
       const colorPalette = paletteResult.exists && paletteResult.value
         ? { name: 'Brand Colors', ...(paletteResult.value as Partial<ColorPalette> & { name?: string }) } as ColorPalette

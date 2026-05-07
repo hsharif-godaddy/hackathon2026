@@ -8,14 +8,15 @@ import { fileURLToPath } from 'node:url'
 import { z } from 'zod'
 
 import { AppRepository } from '../../database/repositories/AppRepository.js'
-import { MemoryRepository } from '../../database/repositories/MemoryRepository.js'
+import { getKvMemoryStore } from '../../memory/adapters/index.js'
+import { customerIdFromContext, workspaceScopeFromAppId } from '../../memory/interfaces/scope.js'
 
 import { appPlanTool } from '../app-plan-tool.js'
 import { getAgentModelWithName } from '../../utils/model-selection.js'
 import { logger } from '../../logging/index.js'
 
 const appRepo = new AppRepository()
-const memoryRepo = new MemoryRepository()
+const memoryStore = getKvMemoryStore()
 
 type FontCategory = 'serif' | 'sans-serif' | 'monospace' | 'cursive' | 'fantasy'
 
@@ -959,7 +960,7 @@ MODE SELECTION GUIDE:
 
         // Persist to memory table for brand-data API (BrandDataTypography shape)
         try {
-          await memoryRepo.set(appId, 'brand.typography', {
+          await memoryStore.set(workspaceScopeFromAppId(appId, customerIdFromContext(context)), 'brand.typography', {
             heading: { family: selectedFont.headerFont.name, weights: selectedFont.headerFont.weights },
             body: { family: selectedFont.bodyFont.name, weights: selectedFont.bodyFont.weights },
           })
@@ -1292,7 +1293,7 @@ MODE SELECTION GUIDE:
 
       // Persist to memory table for brand-data API (BrandDataTypography shape)
       try {
-        await memoryRepo.set(appId, 'brand.typography', {
+        await memoryStore.set(workspaceScopeFromAppId(appId, customerIdFromContext(context)), 'brand.typography', {
           heading: { family: headerFont.name, weights: headerFont.weights },
           body: { family: bodyFont.name, weights: bodyFont.weights },
         })

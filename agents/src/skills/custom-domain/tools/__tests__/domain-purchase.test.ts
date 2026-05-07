@@ -379,7 +379,8 @@ describe('custom-domain', function packageTests() {
                     }),
                 }),
                 '/fake/app/path',
-                'app-123'
+                'app-123',
+                undefined
             )
         })
 
@@ -405,7 +406,8 @@ describe('custom-domain', function packageTests() {
                     value: expect.objectContaining({ fqdn: 'mydomain.com' }),
                 }),
                 '/fake/app/path',
-                'app-123'
+                'app-123',
+                undefined
             )
         })
 

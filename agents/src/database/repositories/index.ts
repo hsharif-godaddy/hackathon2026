@@ -4,9 +4,7 @@
 
 import { ImportJobRepository } from './ImportJobRepository.js';
 import { OAuthTokenRepository } from './OAuthTokenRepository.js';
-import { ConversationRepository } from './ConversationRepository.js';
 
-import { TodoListRepository } from './TodoListRepository.js';
 import { AppRepository } from './AppRepository.js';
 import { SocialAssociationRepository } from './SocialAssociationRepository.js';
 import { SocialPostRepository } from './SocialPostRepository.js';
@@ -14,9 +12,7 @@ import { ShareTokenRepository } from './ShareTokenRepository.js';
 
 // Create singleton instances
 export const appRepository = new AppRepository();
-export const conversationRepository = new ConversationRepository();
 
-export const todoListRepository = new TodoListRepository();
 export const oauthTokenRepository = new OAuthTokenRepository();
 export const importJobRepository = new ImportJobRepository();
 export const socialAssociationRepository = new SocialAssociationRepository();

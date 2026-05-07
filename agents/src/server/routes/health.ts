@@ -1,10 +1,11 @@
-import { conversationRepository } from '../../database/repositories/index.js';
-import { AgentRegistry } from '../../registry/index.js';
 import { Router, IRouter } from 'express';
 import { logger } from '../../logging/index.js';
+import { getConversationTokenStore } from '../../memory/adapters/index.js';
+import { AgentRegistry } from '../../registry/index.js';
 
 const router: IRouter = Router();
 const registry = AgentRegistry.getInstance();
+const tokens = getConversationTokenStore();
 
 /**
  * GET /health - Health check endpoint
@@ -17,7 +18,7 @@ router.get('/', async (req, res) => {
 
   let lastMessage: string | null = null;
   try {
-    lastMessage = await conversationRepository.getLastMessageTimestamp();
+    lastMessage = await tokens.getLastMessageTimestamp();
   } catch (error) {
     status = 'degraded';
     logger.warn('health.lastMessage.failure', {
@@ -63,4 +64,4 @@ router.get('/agents', async (req, res, next) => {
   }
 });
 
-export { router as healthRouter };
+export const healthRouter = router;
