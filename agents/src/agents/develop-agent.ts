@@ -147,11 +147,11 @@ async function buildDevelopSystemPrompt(_appPath?: string): Promise<string> {
     .file(paths.getAgentFile('develop', 'font-theme.md')) // Font theme tool documentation
     //.file(paths.getAgentFile('develop', 'design.md'))
 
-  if (profileFlag('develop.promptOptimization')) {
+  if (profileFlag('develop.promptOptimization', true)) {
     promptBuilder.file(paths.getAgentFile('develop', 'prompt-optimization.md'))
   }
 
-  if (profileFlag('develop.suggestedResponse', true)) {
+  if (profileFlag('develop.suggestedResponse', false)) {
     promptBuilder.file(paths.getAgentFile('develop', 'suggested-response.md'))
   }
 
@@ -268,8 +268,8 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
       rebuildPageSelector: allAILibTools.rebuildPageSelector,
 
       // User interaction
-      ...(profileFlag('develop.promptOptimization') ? { askQuestion: allAILibTools.askQuestion } : {}),
-      ...(profileFlag('develop.suggestedResponse', true) ? { suggestedResponse: allAILibTools.suggestedResponse } : {}),
+      ...(profileFlag('develop.promptOptimization', true) ? { askQuestion: allAILibTools.askQuestion } : {}),
+      ...(profileFlag('develop.suggestedResponse', false) ? { suggestedResponse: allAILibTools.suggestedResponse } : {}),
 
       // Secrets management (for API keys, credentials)
       requestSecrets: allAILibTools.requestSecrets,
@@ -300,7 +300,7 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
     timeout: { stepMs: 600_000 },
 
     // Custom stop conditions
-    ...(profileFlag('develop.promptOptimization') ? { stopAfterTools: ['askQuestion'] } : {}),
+    ...(profileFlag('develop.promptOptimization', true) ? { stopAfterTools: ['askQuestion'] } : {}),
     stopWhen: [shouldStopAfterSuggestMode],
 
     // Enable prompt caching for cost savings and performance

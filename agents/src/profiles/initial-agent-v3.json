@@ -1,0 +1,7 @@
+{
+  "name": "initial-agent-v3",
+  "description": "Uses the v3.0 modular initial agent prompts",
+  "properties": {
+    "initial.promptVersion": "3.0"
+  }
+}

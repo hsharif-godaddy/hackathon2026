@@ -248,15 +248,15 @@ Phase 3 — Pages (after Phase 1 & 2, build sequentially):
 Phase 4 — Finalize:
 - Wire up routing for all pages
 - Mark ALL page items as COMPLETE via todoList tool
-- Show completed site via suggestedResponse
+- Ask for design feedback using askQuestion
 
 CRITICAL: Build all pages AFTER setup, header, and footer are complete. Each page should be a complete, polished implementation — not a placeholder.
 
 TODO LIST MANAGEMENT:
 Mark each page as COMPLETE in the todoList as you finish it.
 
-SUGGESTED RESPONSES:
-After showing the completed site, use suggestedResponse:
+DESIGN FEEDBACK:
+After showing the completed site, use askQuestion:
 - Question: \"What do you think of the site?\"
 - Suggestions: [\"Looks great!\", \"Change the color scheme or fonts\", \"Adjust the [specific page/section]\", \"Add [feature not yet built]\"]
 

@@ -4,7 +4,7 @@ After completing any task, use `suggestedResponse` to guide next steps.
 
 **For initial build (handoff from initial agent):**
 
-- Follow the SUGGESTED RESPONSES section from the handoff prompt
+- Follow the DESIGN FEEDBACK section from the handoff prompt
 - Use the specific question and suggestions provided in the handoff
 - Typically asks for design feedback with options like "Change the color scheme", "Change the fonts"
 

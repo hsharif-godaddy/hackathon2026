@@ -163,11 +163,11 @@ Phase 3 — Page:
 
 Phase 4 — Finalize:
 - Mark Homepage as complete using todoList
-- Show design using suggestedResponse
+- Ask for design feedback using askQuestion
 
 INITIAL SCOPE: Homepage design only.
 
-SUGGESTED RESPONSES:
+DESIGN FEEDBACK:
 - Question: \"What do you think of the design?\"
 - Suggestions: [\"Looks great, let's build the full menu\", \"Change the color scheme\", \"Change the fonts\", \"Adjust the layout\"]"
 }

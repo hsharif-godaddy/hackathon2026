@@ -1,9 +1,0 @@
-{
-  "name": "prompt-optimization",
-  "description": "Prompt optimization POC — askQuestion enabled, suggestedResponse disabled, initial agent v3.0",
-  "properties": {
-    "initial.promptVersion": "3.0",
-    "develop.promptOptimization": true,
-    "develop.suggestedResponse": false
-  }
-}

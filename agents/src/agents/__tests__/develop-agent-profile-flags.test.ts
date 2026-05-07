@@ -53,68 +53,82 @@ describe('develop-agent profile flag gating', () => {
     loadedFiles = []
   })
 
-  describe('default profile (no active profile)', () => {
-    it('does not include askQuestion tool', async () => {
+  describe('default (no active profile)', () => {
+    it('includes askQuestion tool (promptOptimization defaults true)', async () => {
       const config = await createDevelopAgent()
+      expect(config.tools).toHaveProperty('askQuestion')
+    })
+
+    it('does not include suggestedResponse tool (defaults false)', async () => {
+      const config = await createDevelopAgent()
+      expect(config.tools).not.toHaveProperty('suggestedResponse')
+    })
+
+    it('sets stopAfterTools containing askQuestion', async () => {
+      const config = await createDevelopAgent()
+      expect(config.stopAfterTools).toContain('askQuestion')
+    })
+
+    it('loads prompt-optimization.md', async () => {
+      await createDevelopAgent()
+      const hasPromptOpt = loadedFiles.some(f => f.includes('prompt-optimization.md'))
+      expect(hasPromptOpt).toBe(true)
+    })
+
+    it('does not load suggested-response.md', async () => {
+      await createDevelopAgent()
+      const hasSuggestedResponse = loadedFiles.some(f => f.includes('suggested-response.md'))
+      expect(hasSuggestedResponse).toBe(false)
+    })
+  })
+
+  describe('develop.promptOptimization=false (opt out)', () => {
+    const profile: ProfileData = {
+      name: 'test-no-prompt-opt',
+      description: 'test profile disabling prompt optimization',
+      properties: { 'develop.promptOptimization': false }
+    }
+
+    it('does not include askQuestion tool', async () => {
+      const config = await runWithProfile(profile, () => createDevelopAgent())
       expect(config.tools).not.toHaveProperty('askQuestion')
     })
 
-    it('includes suggestedResponse tool (default true)', async () => {
-      const config = await createDevelopAgent()
-      expect(config.tools).toHaveProperty('suggestedResponse')
-    })
-
     it('does not set stopAfterTools', async () => {
-      const config = await createDevelopAgent()
+      const config = await runWithProfile(profile, () => createDevelopAgent())
       expect(config.stopAfterTools).toBeUndefined()
     })
 
     it('does not load prompt-optimization.md', async () => {
-      await createDevelopAgent()
+      await runWithProfile(profile, () => createDevelopAgent())
       const hasPromptOpt = loadedFiles.some(f => f.includes('prompt-optimization.md'))
       expect(hasPromptOpt).toBe(false)
     })
+  })
+
+  describe('develop.suggestedResponse=true (opt in)', () => {
+    const profile: ProfileData = {
+      name: 'test-with-sr',
+      description: 'test profile enabling suggested response',
+      properties: { 'develop.suggestedResponse': true }
+    }
+
+    it('includes suggestedResponse tool', async () => {
+      const config = await runWithProfile(profile, () => createDevelopAgent())
+      expect(config.tools).toHaveProperty('suggestedResponse')
+    })
 
     it('loads suggested-response.md', async () => {
-      await createDevelopAgent()
+      await runWithProfile(profile, () => createDevelopAgent())
       const hasSuggestedResponse = loadedFiles.some(f => f.includes('suggested-response.md'))
       expect(hasSuggestedResponse).toBe(true)
     })
   })
 
-  describe('develop.promptOptimization=true', () => {
-    const profile: ProfileData = {
-      name: 'test-prompt-opt',
-      description: 'test profile enabling prompt optimization',
-      properties: { 'develop.promptOptimization': true }
-    }
-
-    it('includes askQuestion tool', async () => {
-      const config = await runWithProfile(profile, () => createDevelopAgent())
-      expect(config.tools).toHaveProperty('askQuestion')
-    })
-
-    it('sets stopAfterTools containing askQuestion', async () => {
-      const config = await runWithProfile(profile, () => createDevelopAgent())
-      expect(config.stopAfterTools).toContain('askQuestion')
-    })
-
-    it('loads prompt-optimization.md', async () => {
-      await runWithProfile(profile, () => createDevelopAgent())
-      const hasPromptOpt = loadedFiles.some(f => f.includes('prompt-optimization.md'))
-      expect(hasPromptOpt).toBe(true)
-    })
-
-    it('still includes suggestedResponse tool (default true)', async () => {
-      const config = await runWithProfile(profile, () => createDevelopAgent())
-      expect(config.tools).toHaveProperty('suggestedResponse')
-    })
-  })
-
-  describe('develop.suggestedResponse=false', () => {
+  describe('develop.suggestedResponse=false (explicit)', () => {
     const profile: ProfileData = {
       name: 'test-no-sr',
-      description: 'test profile disabling suggested response',
+      description: 'test profile explicitly disabling suggested response',
       properties: { 'develop.suggestedResponse': false }
     }
 
@@ -128,44 +142,39 @@ describe('develop-agent profile flag gating', () => {
       const hasSuggestedResponse = loadedFiles.some(f => f.includes('suggested-response.md'))
       expect(hasSuggestedResponse).toBe(false)
     })
-
-    it('does not include askQuestion tool (not enabled)', async () => {
-      const config = await runWithProfile(profile, () => createDevelopAgent())
-      expect(config.tools).not.toHaveProperty('askQuestion')
-    })
   })
 
-  describe('both flags: promptOptimization=true, suggestedResponse=false', () => {
+  describe('both flags: promptOptimization=false, suggestedResponse=true', () => {
     const profile: ProfileData = {
-      name: 'test-both',
-      description: 'test profile with both flags set',
+      name: 'test-legacy',
+      description: 'test profile reverting to legacy behavior',
       properties: {
-        'develop.promptOptimization': true,
-        'develop.suggestedResponse': false
+        'develop.promptOptimization': false,
+        'develop.suggestedResponse': true
       }
     }
 
-    it('includes askQuestion tool', async () => {
+    it('does not include askQuestion tool', async () => {
       const config = await runWithProfile(profile, () => createDevelopAgent())
-      expect(config.tools).toHaveProperty('askQuestion')
+      expect(config.tools).not.toHaveProperty('askQuestion')
     })
 
-    it('does not include suggestedResponse tool', async () => {
+    it('includes suggestedResponse tool', async () => {
       const config = await runWithProfile(profile, () => createDevelopAgent())
-      expect(config.tools).not.toHaveProperty('suggestedResponse')
+      expect(config.tools).toHaveProperty('suggestedResponse')
     })
 
-    it('sets stopAfterTools containing askQuestion', async () => {
+    it('does not set stopAfterTools', async () => {
       const config = await runWithProfile(profile, () => createDevelopAgent())
-      expect(config.stopAfterTools).toContain('askQuestion')
+      expect(config.stopAfterTools).toBeUndefined()
     })
 
-    it('loads prompt-optimization.md but not suggested-response.md', async () => {
+    it('does not load prompt-optimization.md but loads suggested-response.md', async () => {
       await runWithProfile(profile, () => createDevelopAgent())
       const hasPromptOpt = loadedFiles.some(f => f.includes('prompt-optimization.md'))
       const hasSuggestedResponse = loadedFiles.some(f => f.includes('suggested-response.md'))
-      expect(hasPromptOpt).toBe(true)
-      expect(hasSuggestedResponse).toBe(false)
+      expect(hasPromptOpt).toBe(false)
+      expect(hasSuggestedResponse).toBe(true)
     })
   })
 })

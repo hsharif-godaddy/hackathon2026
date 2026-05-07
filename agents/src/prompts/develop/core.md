@@ -355,7 +355,7 @@ Follow the BUILD ORDER phases in the handoff prompt. Each phase lists tasks that
 - Use `colorScheme` with `mode: 'set'` - do NOT show color suggestions
 - Follow the SECTION-SPECIFIC guidance from the handoff for each section's design
 - Follow the MOTION DESIGN guidance from the handoff for animations
-- Follow the SUGGESTED RESPONSES section from the handoff prompt exactly
+- Follow the DESIGN FEEDBACK section from the handoff prompt exactly
 
 ### Building Pages
 
