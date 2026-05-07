@@ -85,12 +85,6 @@ cases:
     tags: [positive, hard]
     rationale: Symbol in the top left = logo placement, no "logo" keyword
 
-  - id: monogram-initials
-    prompt: "I want something with my initials for the brand — like a monogram"
-    expectedSkill: media-logo
-    tags: [positive, hard]
-    rationale: Monogram for brand is a logo style — no "logo" keyword, just brand + monogram
-
   # --- Negative: should NOT load media-logo ---
 
   - id: generate-image-not-logo

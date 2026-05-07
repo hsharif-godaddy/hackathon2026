@@ -90,12 +90,6 @@ describe('generateLogoTool', () => {
           solidUrl: 'https://cdn/s1.png',
           mockupUrl: 'https://cdn/m1.png',
         },
-        {
-          id: 'logo-2',
-          transparentUrl: 'https://cdn/t2.png',
-          solidUrl: 'https://cdn/s2.png',
-          mockupUrl: 'https://cdn/m2.png',
-        },
       ],
     });
 
@@ -116,7 +110,7 @@ describe('generateLogoTool', () => {
       {
         brandName: 'My Brand',
         brandDescription: 'A cool brand',
-        style: 'glyph',
+        variations: [{ style: 'glyph' }],
       },
       context
     );
@@ -128,6 +122,7 @@ describe('generateLogoTool', () => {
         style: 'glyph',
         customerId: 'cust-abc',
         budgetUserId: 'budget-user-111',
+        count: 1,
       })
     );
   });
@@ -144,22 +139,22 @@ describe('generateLogoTool', () => {
       {
         brandName: 'My Brand',
         brandDescription: 'A cool brand',
-        style: 'glyph',
+        variations: [{ style: 'glyph' }],
       },
       context
     );
 
     expect(result).toEqual({
-      text: expect.stringContaining('Generated 2 logos'),
+      text: expect.stringContaining('Generated 1 of 1 logos'),
       structuredContent: {
         sessionId: 'sess-123',
         logos: expect.arrayContaining([
           expect.objectContaining({ id: 'logo-1' }),
-          expect.objectContaining({ id: 'logo-2' }),
         ]),
         slotUrl: '/airo-assets/images/logo/primary',
         slotPath: 'logo/primary',
         savedSlots: { square: '/airo-assets/images/logo/primary' },
+        slotSaveFailed: false,
       },
     });
   });
@@ -176,7 +171,7 @@ describe('generateLogoTool', () => {
       {
         brandName: 'My Brand',
         brandDescription: 'A cool brand',
-        style: 'glyph',
+        variations: [{ style: 'glyph' }],
       },
       context
     );
@@ -185,14 +180,12 @@ describe('generateLogoTool', () => {
       mediaType: 'logo',
       currentUrl: 'https://cdn/t1.png',
       searchQuery: 'My Brand',
-      alternatives: ['https://cdn/t2.png'],
+      alternatives: [],
       solidUrlMap: {
         'https://cdn/t1.png': 'https://cdn/s1.png',
-        'https://cdn/t2.png': 'https://cdn/s2.png',
       },
       logoSourceMap: {
         'https://cdn/t1.png': { sessionId: 'sess-123', logoId: 'logo-1' },
-        'https://cdn/t2.png': { sessionId: 'sess-123', logoId: 'logo-2' },
       },
       userModified: false,
     }));
@@ -212,7 +205,7 @@ describe('generateLogoTool', () => {
       {
         brandName: 'My Brand',
         brandDescription: 'A cool brand',
-        style: 'glyph',
+        variations: [{ style: 'glyph' }],
       },
       context
     );
@@ -222,12 +215,10 @@ describe('generateLogoTool', () => {
   });
 
   it('should handle logos with no transparent URLs (empty savedSlots)', async () => {
-    // Logos with only mockup URLs — no transparent or solid URLs for any orientation
     mockGenerateLogos.mockResolvedValue({
       sessionId: 'sess-no-urls',
       logos: [
         { id: 'logo-1', mockupUrl: 'https://cdn/m1.png' },
-        { id: 'logo-2', mockupUrl: 'https://cdn/m2.png' },
       ],
     });
 
@@ -243,20 +234,17 @@ describe('generateLogoTool', () => {
       {
         brandName: 'My Brand',
         brandDescription: 'A cool brand',
-        style: 'glyph',
+        variations: [{ style: 'glyph' }],
       },
       context
     );
 
-    // No slots should be saved
     expect(mockSetSlot).not.toHaveBeenCalled();
-    // Result text should indicate no slots saved
     expect(result).toHaveProperty('text');
     expect((result as { text: string }).text).toContain('No slot URLs saved');
-    // Warning should be logged
     expect(logger.warn).toHaveBeenCalledWith('skills.media-logo.tools.generate_logo.no_slots_saved', expect.objectContaining({
       appId: 'app-123',
-      logoCount: 2,
+      logoCount: 1,
       sessionId: 'sess-no-urls',
     }));
   });
@@ -275,7 +263,7 @@ describe('generateLogoTool', () => {
       {
         brandName: 'Test',
         brandDescription: 'Test',
-        style: 'glyph',
+        variations: [{ style: 'glyph' }],
       },
       context
     );
@@ -287,7 +275,7 @@ describe('generateLogoTool', () => {
     expect(mockSetSlot).not.toHaveBeenCalled();
   });
 
-  it('should propagate error when logoService throws', async () => {
+  it('should return error text when all variations fail', async () => {
     mockGenerateLogos.mockRejectedValue(new Error('Logo API error: 500 Internal Server Error'));
 
     const { generateLogoTool } = await import('../index.js');
@@ -297,16 +285,18 @@ describe('generateLogoTool', () => {
       metadata: { appId: 'app-123' },
     };
 
-    await expect(
-      generateLogoTool.execute(
-        {
-          brandName: 'Test',
-          brandDescription: 'Test',
-          style: 'glyph',
-        },
-        context
-      )
-    ).rejects.toThrow('Logo API error: 500 Internal Server Error');
+    const result = await generateLogoTool.execute(
+      {
+        brandName: 'Test',
+        brandDescription: 'Test',
+        variations: [{ style: 'glyph' }],
+      },
+      context
+    );
+
+    expect(result).toEqual({
+      text: 'All logo variations failed to generate. Please try again.',
+    });
   });
 
   it('should return error when grant state missing', async () => {
@@ -325,7 +315,7 @@ describe('generateLogoTool', () => {
       {
         brandName: 'Test',
         brandDescription: 'Test',
-        style: 'glyph',
+        variations: [{ style: 'glyph' }],
       },
       context
     );
@@ -361,19 +351,18 @@ describe('generateLogoTool', () => {
       {
         brandName: 'My Brand',
         brandDescription: 'A cool brand',
-        style: 'glyph',
+        variations: [{ style: 'glyph' }],
       },
       context
     );
 
     expect(mockSetSlot).toHaveBeenCalledWith('app-123', 'logo/primary', expect.objectContaining({
       currentUrl: 'https://cdn/t1.png',
-      alternatives: ['https://cdn/t2.png', 'https://cdn/old-t1.png', 'https://cdn/old-t2.png'],
+      alternatives: ['https://cdn/old-t1.png', 'https://cdn/old-t2.png'],
       solidUrlMap: {
         'https://cdn/old-t1.png': 'https://cdn/old-s1.png',
         'https://cdn/old-t2.png': 'https://cdn/old-s2.png',
         'https://cdn/t1.png': 'https://cdn/s1.png',
-        'https://cdn/t2.png': 'https://cdn/s2.png',
       },
     }));
   });
@@ -390,8 +379,8 @@ describe('generateLogoTool', () => {
       {
         brandName: 'My Brand',
         brandDescription: 'A cool brand',
-        style: 'glyph',
         layout: 'all',
+        variations: [{ style: 'glyph' }],
       },
       context
     );
@@ -427,8 +416,8 @@ describe('generateLogoTool', () => {
       {
         brandName: 'My Brand',
         brandDescription: 'A cool brand',
-        style: 'glyph',
         layout: 'horizontal',
+        variations: [{ style: 'glyph' }],
       },
       context
     );
@@ -442,7 +431,7 @@ describe('generateLogoTool', () => {
   });
 
   describe('brand data enrichment', () => {
-    it('should enrich brandColors from app plan when not provided', async () => {
+    it('should enrich brandColors from app plan when not provided in variation', async () => {
       mockAppPlanExecute.mockResolvedValue({
         success: true,
         data: {
@@ -459,7 +448,7 @@ describe('generateLogoTool', () => {
       const context = { socketId: 'socket-1', metadata: { appId: 'app-123' } };
 
       await generateLogoTool.execute(
-        { brandName: 'Test', brandDescription: 'Test', style: 'glyph' },
+        { brandName: 'Test', brandDescription: 'Test', variations: [{ style: 'glyph' }] },
         context
       );
 
@@ -468,6 +457,66 @@ describe('generateLogoTool', () => {
           brandColors: 'primary: #ff6600, secondary: #333333, accent: #00aaff',
         })
       );
+    });
+  });
+
+  describe('parallel variations', () => {
+    it('should call logoService once per variation and combine results', async () => {
+      mockGenerateLogos
+        .mockResolvedValueOnce({ sessionId: 'sess-1', logos: [{ id: 'logo-1', horizontalTransparentUrl: 'https://cdn/h1.png' }] })
+        .mockResolvedValueOnce({ sessionId: 'sess-2', logos: [{ id: 'logo-2', horizontalTransparentUrl: 'https://cdn/h2.png' }] })
+        .mockResolvedValueOnce({ sessionId: 'sess-3', logos: [{ id: 'logo-3', horizontalTransparentUrl: 'https://cdn/h3.png' }] });
+
+      const { generateLogoTool } = await import('../index.js');
+
+      const context = { socketId: 'socket-1', metadata: { appId: 'app-123' } };
+
+      const result = await generateLogoTool.execute(
+        {
+          brandName: 'Test Brand',
+          brandDescription: 'A test business',
+          layout: 'horizontal',
+          variations: [
+            { style: 'glyph', symbol: 'star' },
+            { style: 'line', styleDescription: 'minimal' },
+            { style: 'full-color' },
+          ],
+        },
+        context
+      );
+
+      expect(mockGenerateLogos).toHaveBeenCalledTimes(3);
+      expect(mockGenerateLogos).toHaveBeenCalledWith(expect.objectContaining({ style: 'glyph', symbol: 'star', count: 1 }));
+      expect(mockGenerateLogos).toHaveBeenCalledWith(expect.objectContaining({ style: 'line', styleDescription: 'minimal', count: 1 }));
+      expect(mockGenerateLogos).toHaveBeenCalledWith(expect.objectContaining({ style: 'full-color', count: 1 }));
+      expect((result as any).structuredContent.logos).toHaveLength(3);
+    });
+
+    it('should return partial results when some variations fail', async () => {
+      mockGenerateLogos
+        .mockResolvedValueOnce({ sessionId: 'sess-1', logos: [{ id: 'logo-1', horizontalTransparentUrl: 'https://cdn/h1.png' }] })
+        .mockRejectedValueOnce(new Error('API timeout'))
+        .mockResolvedValueOnce({ sessionId: 'sess-3', logos: [{ id: 'logo-3', horizontalTransparentUrl: 'https://cdn/h3.png' }] });
+
+      const { generateLogoTool } = await import('../index.js');
+
+      const context = { socketId: 'socket-1', metadata: { appId: 'app-123' } };
+
+      const result = await generateLogoTool.execute(
+        {
+          brandName: 'Test Brand',
+          brandDescription: 'A test business',
+          layout: 'horizontal',
+          variations: [
+            { style: 'glyph' },
+            { style: 'line' },
+            { style: 'full-color' },
+          ],
+        },
+        context
+      );
+
+      expect((result as any).structuredContent.logos).toHaveLength(2);
     });
   });
 });

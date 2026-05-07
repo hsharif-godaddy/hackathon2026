@@ -8,15 +8,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 
 import { renderWithProviders } from '@/tests/test-utils';
-import LogoGridWidget, { getLogoDisplayUrl, getLogoSlotName, getLogoSlotNames, type LogoData } from './LogoGridWidget';
+import { getLogoDisplayUrl, getLogoSlotName, getLogoSlotNames, type LogoData } from './logo-utils';
+import LogoGridWidget from './LogoGridWidget';
 
-const { streamingMocks, mockSendUserMessage } = vi.hoisted(() => ({
+const { streamingMocks } = vi.hoisted(() => ({
   streamingMocks: { isStreaming: false, isLoading: false },
-  mockSendUserMessage: vi.fn(),
-}));
-
-vi.mock('@/app/[market]/develop/components/chat/ChatContext', () => ({
-  useSendUserMessage: vi.fn(() => mockSendUserMessage),
 }));
 
 vi.mock('@/app/[market]/develop/components/utils', () => ({
@@ -58,14 +54,19 @@ function baseLogos(overrides: Partial<LogoData> = {}): LogoData[] {
   return [
     {
       id: '1',
-      transparentUrl: 'https://cdn.example.com/t1.png',
-      solidUrl: 'https://cdn.example.com/s1.png',
+      horizontalTransparentUrl: 'https://cdn.example.com/h1.png',
+      horizontalSolidUrl: 'https://cdn.example.com/hs1.png',
       ...overrides,
     },
     {
       id: '2',
-      transparentUrl: 'https://cdn.example.com/t2.png',
-      solidUrl: 'https://cdn.example.com/s2.png',
+      horizontalTransparentUrl: 'https://cdn.example.com/h2.png',
+      horizontalSolidUrl: 'https://cdn.example.com/hs2.png',
+    },
+    {
+      id: '3',
+      horizontalTransparentUrl: 'https://cdn.example.com/h3.png',
+      horizontalSolidUrl: 'https://cdn.example.com/hs3.png',
     },
   ];
 }
@@ -75,7 +76,6 @@ describe('LogoGridWidget', function logoGridWidget() {
     vi.clearAllMocks();
     streamingMocks.isStreaming = false;
     streamingMocks.isLoading = false;
-    mockSendUserMessage.mockReset();
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({ success: true }),
@@ -164,120 +164,127 @@ describe('LogoGridWidget', function logoGridWidget() {
     });
   });
 
-  describe('Save', function saveTests() {
-    it('disables Save while streaming', function saveDisabledWhenStreaming() {
+  describe('Layout', function layoutTests() {
+    it('renders logos stacked vertically', function stackedLayout() {
+      renderWithProviders(<LogoGridWidget logos={baseLogos()} />);
+      const images = screen.getAllByRole('img');
+      expect(images).toHaveLength(3);
+    });
+
+    it('does not render More Options or Save buttons', function noButtons() {
+      renderWithProviders(<LogoGridWidget logos={baseLogos()} />);
+      expect(screen.queryByText('builder_common_more_options')).not.toBeInTheDocument();
+      expect(screen.queryByText('builder_common_save')).not.toBeInTheDocument();
+    });
+
+    it('does not render helper text', function noHelperText() {
+      renderWithProviders(<LogoGridWidget logos={baseLogos()} />);
+      expect(screen.queryByText(/Click a logo/)).not.toBeInTheDocument();
+    });
+  });
+
+  describe('Click to save', function clickToSaveTests() {
+    it('auto-saves to slot when logo is clicked', async function autoSave() {
+      const { user } = renderWithProviders(<LogoGridWidget logos={baseLogos()} />);
+      const buttons = screen.getAllByRole('button');
+      await user.click(buttons[1]!);
+      await waitFor(() => {
+        expect(global.fetch).toHaveBeenCalled();
+      });
+      const url = vi.mocked(global.fetch).mock.calls[0]?.[0] as string;
+      expect(url).toContain('/media/app-123/slots/logo/horizontal');
+      const init = vi.mocked(global.fetch).mock.calls[0]?.[1] as RequestInit;
+      expect(JSON.parse(String(init.body))).toEqual({ newUrl: 'https://cdn.example.com/h2.png' });
+    });
+
+    it('disables buttons while streaming', function disabledWhenStreaming() {
       streamingMocks.isStreaming = true;
-      streamingMocks.isLoading = false;
       renderWithProviders(<LogoGridWidget logos={baseLogos()} />);
-      expect(screen.getByRole('button', { name: 'builder_common_save' })).toBeDisabled();
+      const buttons = screen.getAllByRole('button');
+      buttons.forEach(btn => expect(btn).toBeDisabled());
     });
 
-    it('disables Save while loading without streaming', function saveDisabledWhenLoadingOnly() {
-      streamingMocks.isStreaming = false;
-      streamingMocks.isLoading = true;
-      renderWithProviders(<LogoGridWidget logos={baseLogos()} />);
-      expect(screen.getByRole('button', { name: 'builder_common_save' })).toBeDisabled();
+    it('shows error when swap fails', async function showsError() {
+      vi.mocked(global.fetch).mockResolvedValueOnce({
+        ok: false,
+        json: async () => ({ error: 'Swap failed' }),
+      } as Response);
+      const { user } = renderWithProviders(<LogoGridWidget logos={baseLogos()} />);
+      const buttons = screen.getAllByRole('button');
+      await user.click(buttons[0]!);
+      await waitFor(() => {
+        expect(screen.getByText('Swap failed')).toBeInTheDocument();
+      });
     });
 
-    it('sets generic error when no savable URL matches display fallbacks', async function noAssetUrl() {
-      const logos: LogoData[] = [{ id: 'empty', mockupUrl: 'https://cdn.example.com/m.png' }];
-      const { user } = renderWithProviders(<LogoGridWidget logos={logos} />);
-      await user.click(screen.getByRole('button', { name: 'builder_common_save' }));
-      expect(await screen.findByText('builder_common_error_generic')).toBeInTheDocument();
+    it('aborts remaining slot swaps after a failure', async function abortsOnFailure() {
+      vi.mocked(global.fetch)
+        .mockResolvedValueOnce({
+          ok: false,
+          json: async () => ({ error: 'Primary failed' }),
+        } as Response);
+      const multiOrientation: LogoData[] = [
+        {
+          id: 'multi',
+          transparentUrl: 'https://cdn.example.com/t.png',
+          horizontalTransparentUrl: 'https://cdn.example.com/ht.png',
+          verticalTransparentUrl: 'https://cdn.example.com/vt.png',
+        },
+        baseLogos()[1]!,
+      ];
+      const { user } = renderWithProviders(<LogoGridWidget logos={multiOrientation} />);
+      const buttons = screen.getAllByRole('button');
+      await user.click(buttons[0]!);
+      await waitFor(() => {
+        expect(screen.getByText('Primary failed')).toBeInTheDocument();
+      });
+      expect(vi.mocked(global.fetch)).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('Auto-select single logo', function autoSelectTests() {
+    it('auto-saves without user interaction when exactly one logo is rendered', async function autoSaveSingle() {
+      const single: LogoData[] = [baseLogos()[0]!];
+      renderWithProviders(<LogoGridWidget logos={single} />);
+      await waitFor(() => {
+        expect(global.fetch).toHaveBeenCalled();
+      });
+      const url = vi.mocked(global.fetch).mock.calls[0]?.[0] as string;
+      expect(url).toContain('/media/app-123/slots/logo/horizontal');
+      const init = vi.mocked(global.fetch).mock.calls[0]?.[1] as RequestInit;
+      expect(JSON.parse(String(init.body))).toEqual({ newUrl: 'https://cdn.example.com/h1.png' });
+    });
+
+    it('does not auto-save when rendered with multiple logos', async function noAutoSaveMulti() {
+      renderWithProviders(<LogoGridWidget logos={baseLogos()} />);
+      await new Promise((resolve) => setTimeout(resolve, 50));
       expect(global.fetch).not.toHaveBeenCalled();
     });
 
-    it('swaps with solidUrl when that is the only display URL', async function solidOnlySwap() {
-      const logos: LogoData[] = [
-        {
-          id: '1',
-          solidUrl: 'https://cdn.example.com/only-solid.png',
-        },
-      ];
-      const { user } = renderWithProviders(<LogoGridWidget logos={logos} />);
-      await user.click(screen.getByRole('button', { name: 'builder_common_save' }));
-      await waitFor(() => {
-        expect(global.fetch).toHaveBeenCalled();
-      });
-      const init = vi.mocked(global.fetch).mock.calls[0]?.[1] as RequestInit | undefined;
-      expect(JSON.parse(String(init?.body))).toEqual({ newUrl: 'https://cdn.example.com/only-solid.png' });
+    it('does not auto-save while streaming is active', async function waitsForStreaming() {
+      streamingMocks.isStreaming = true;
+      const single: LogoData[] = [baseLogos()[0]!];
+      renderWithProviders(<LogoGridWidget logos={single} />);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(global.fetch).not.toHaveBeenCalled();
     });
 
-    it('shows next-step suggestions after save without sending chat until Apply is chosen', async function suggestionsAfterSave() {
-      const { user } = renderWithProviders(<LogoGridWidget logos={baseLogos()} />);
-      await user.click(screen.getByRole('button', { name: 'builder_common_save' }));
+    it('re-fires auto-save when a new single-logo batch arrives', async function refiresOnNewBatch() {
+      const first: LogoData[] = [baseLogos()[0]!];
+      const second: LogoData[] = [{
+        id: 'regenerated',
+        horizontalTransparentUrl: 'https://cdn.example.com/regen.png',
+      }];
+      const { rerender } = renderWithProviders(<LogoGridWidget logos={first} />);
       await waitFor(() => {
-        expect(global.fetch).toHaveBeenCalled();
+        expect(global.fetch).toHaveBeenCalledTimes(1);
       });
-      expect(mockSendUserMessage).not.toHaveBeenCalled();
-      expect(await screen.findByText(/Logo saved\. What would you like to do next\?/)).toBeInTheDocument();
-      await user.click(screen.getByRole('button', { name: /Apply logo across the site/ }));
+      rerender(<LogoGridWidget logos={second} />);
       await waitFor(() => {
-        expect(mockSendUserMessage).toHaveBeenCalledWith(
-          'Apply logo across the site',
-          expect.objectContaining({
-            isActionRequest: true,
-            customContext: expect.objectContaining({
-              type: 'logo_slot_placement',
-              persistence: 'ephemeral',
-              source: 'logo-grid-widget',
-            }),
-          })
-        );
+        expect(global.fetch).toHaveBeenCalledTimes(2);
       });
-    });
-
-    it('dismisses suggestions without sending a chat message', async function dismissSuggestions() {
-      const { user } = renderWithProviders(<LogoGridWidget logos={baseLogos()} />);
-      await user.click(screen.getByRole('button', { name: 'builder_common_save' }));
-      await waitFor(() => {
-        expect(global.fetch).toHaveBeenCalled();
-      });
-      expect(await screen.findByText(/Logo saved\. What would you like to do next\?/)).toBeInTheDocument();
-      await user.click(screen.getByRole('button', { name: /Not now/ }));
-      expect(screen.queryByText(/Logo saved\. What would you like to do next\?/)).not.toBeInTheDocument();
-      expect(mockSendUserMessage).not.toHaveBeenCalled();
-    });
-
-    it('hides post-save suggestions when a follow-up save fails', async function suggestionsClearedOnResaveFail() {
-      const { user } = renderWithProviders(<LogoGridWidget logos={baseLogos()} />);
-      await user.click(screen.getByRole('button', { name: 'builder_common_save' }));
-      expect(await screen.findByText(/Logo saved\. What would you like to do next\?/)).toBeInTheDocument();
-
-      vi.mocked(global.fetch).mockResolvedValueOnce({
-        ok: false,
-        json: async () => ({ error: 'Swap failed on retry' }),
-      } as Response);
-
-      await user.click(screen.getByRole('button', { name: 'builder_common_save' }));
-      expect(screen.queryByText(/Logo saved\. What would you like to do next\?/)).not.toBeInTheDocument();
-      await waitFor(() => {
-        expect(screen.getByText('Swap failed on retry')).toBeInTheDocument();
-      });
-    });
-
-    it('does not send placement message when swap fails', async function noMessageOnSwapFail() {
-      vi.mocked(global.fetch).mockResolvedValueOnce({
-        ok: false,
-        json: async () => ({ error: 'Invalid URL or alternative index' }),
-      } as Response);
-      const { user } = renderWithProviders(<LogoGridWidget logos={baseLogos()} />);
-      await user.click(screen.getByRole('button', { name: 'builder_common_save' }));
-      await waitFor(() => {
-        expect(screen.getByText('Invalid URL or alternative index')).toBeInTheDocument();
-      });
-      expect(mockSendUserMessage).not.toHaveBeenCalled();
-    });
-
-    it('does not send placement message when sendUserMessage is unavailable', async function noChatContext() {
-      const { useSendUserMessage } = await import('@/app/[market]/develop/components/chat/ChatContext');
-      vi.mocked(useSendUserMessage).mockReturnValueOnce(null);
-      const { user } = renderWithProviders(<LogoGridWidget logos={baseLogos()} />);
-      await user.click(screen.getByRole('button', { name: 'builder_common_save' }));
-      await waitFor(() => {
-        expect(global.fetch).toHaveBeenCalled();
-      });
-      expect(mockSendUserMessage).not.toHaveBeenCalled();
+      const secondCallBody = JSON.parse(String((vi.mocked(global.fetch).mock.calls[1]?.[1] as RequestInit).body));
+      expect(secondCallBody).toEqual({ newUrl: 'https://cdn.example.com/regen.png' });
     });
   });
 });

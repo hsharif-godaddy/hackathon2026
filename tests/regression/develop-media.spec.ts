@@ -167,15 +167,17 @@ test.describe('Develop Page - Media Tab', () => {
     console.log('✅ Test complete');
   });
 
-  test.skip('Logo grid — select variant, Save, slot swap and placement follow-up', async () => {
+  test.skip('Logo grid — click-to-save auto-swaps slot and updates Brand Book', async () => {
     // Skip reason: Needs a develop session where media-logo__generate_logo completed in chat (same
     // AI latency / flake constraints as the image flow test above). Enable when smoke env can
     // reliably finish logo generation or when a fixture app exposes the logo grid widget.
     //
-    // Target flow when implemented:
+    // Target flow when implemented (Save button removed — selection auto-saves on click):
     // 1. Open develop for an app whose chat shows the logo tool result grid.
-    // 2. Click a non-default thumbnail if multiple logos exist.
-    // 3. Click Save (builder_common_save); expect slot PUT success and optional preview RELOAD_MEDIA_SLOT.
-    // 4. Confirm chat shows the short placement user line and agent run without queue errors.
+    // 2a. Multi-logo generation: click a non-default thumbnail; expect slot PUT success and
+    //     preview RELOAD_MEDIA_SLOT for each updated orientation.
+    // 2b. Single-logo generation: verify the only logo is auto-selected on mount (no click) and
+    //     the slot PUT fires once streaming clears — Brand Book should update without user input.
+    // 3. Confirm Brand Book view reflects the swapped logo and agent run shows no queue errors.
   });
 });

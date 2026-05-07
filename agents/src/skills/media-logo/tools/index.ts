@@ -28,9 +28,23 @@ const LOGO_STYLES = [
   'colored-line',
   'handmade',
   'mascot',
-  'monogram',
   'name-mark',
 ] as const;
+
+const LogoVariationSchema = z.object({
+  style: z
+    .enum(LOGO_STYLES)
+    .describe(
+      'Logo visual style preset. Options: line (minimalist line art), glyph (iconic symbol), ' +
+        'full-color (vibrant illustrated), dual-tone (two colors), 3d (depth/dimension), ' +
+        'badge (emblem/seal), colored-line (line art with color), ' +
+        'handmade (hand-drawn feel), mascot (character illustration), ' +
+        'name-mark (stylized typography)'
+    ),
+  styleDescription: z.string().max(200).optional().describe('Additional custom style direction for this variation'),
+  symbol: z.string().max(100).optional().describe('Icon or imagery to incorporate (e.g., "coffee cup", "mountain")'),
+  brandColors: z.string().max(100).optional().describe('Color overrides for this variation'),
+});
 
 const GenerateLogoInputSchema = z.object({
   brandName: z.string().min(1).max(100).describe('Primary text for the logo (business/brand name)'),
@@ -42,38 +56,6 @@ const GenerateLogoInputSchema = z.object({
     .min(1)
     .max(500)
     .describe('What the business does - informs visual choices for the logo design'),
-
-  style: z
-    .enum(LOGO_STYLES)
-    .describe(
-      'Logo visual style preset. Options: line (minimalist line art), glyph (iconic symbol), ' +
-        'full-color (vibrant illustrated), dual-tone (two colors), 3d (depth/dimension), ' +
-        'badge (emblem/seal), colored-line (line art with color), ' +
-        'handmade (hand-drawn feel), mascot (character illustration), monogram (initials/lettermark), ' +
-        'name-mark (stylized typography)'
-    ),
-
-  styleDescription: z
-    .string()
-    .max(200)
-    .optional()
-    .describe(
-      'Additional custom style direction beyond the preset (e.g., "make it more playful" or "corporate and serious")'
-    ),
-
-  symbol: z
-    .string()
-    .max(100)
-    .optional()
-    .describe('Icon or imagery to incorporate into the logo (e.g., "coffee cup", "mountain", "abstract waves")'),
-
-  brandColors: z
-    .string()
-    .max(100)
-    .optional()
-    .describe(
-      'Color preferences as a description (e.g., "warm orange and brown", "professional blue"). Leave empty for AI to choose appropriate colors.'
-    ),
 
   brandPersonality: z
     .string()
@@ -87,19 +69,23 @@ const GenerateLogoInputSchema = z.object({
     .optional()
     .describe('Target audience description (e.g., "young professionals", "families with children")'),
 
-  count: z.coerce.number().int().min(1).max(4).default(4).describe('Number of logo variations to generate (1-4, default: 4)'),
-
   layout: z
     .enum(['square', 'horizontal', 'vertical', 'all'])
-    .default('square')
+    .default('horizontal')
     .describe(
       'Which layout orientation to generate. ' +
-        'square (1024x1024, default — app icons, social profiles), ' +
-        'horizontal (1536x1024 — headers, navbars, email signatures), ' +
+        'square (1024x1024 — app icons, social profiles), ' +
+        'horizontal (1536x1024, default — headers, navbars, email signatures), ' +
         'vertical (1024x1536 — sidebars, mobile, signage), ' +
         'or all (generates all three orientations). ' +
         'Each logo in the response includes URLs only for the requested layout(s).'
     ),
+
+  variations: z
+    .array(LogoVariationSchema)
+    .min(1)
+    .max(4)
+    .describe('Style variations to generate. The first variation should be the closest match to what the user wants — the best style for their brand. Subsequent variations provide alternatives for the user to choose from.'),
 });
 
 const EditLogoInputSchema = z.object({
@@ -242,6 +228,7 @@ async function saveLogosToSlots(
   sessionId: string,
   searchQuery: string,
   toolName: keyof typeof SLOT_SAVED_EVENTS,
+  logoSessionIds?: Map<string, string>,
 ): Promise<{ savedSlots: Record<string, string> }> {
   const layouts = getLayoutsFromLogos(logos);
   const savedSlots: Record<string, string> = {};
@@ -263,9 +250,10 @@ async function saveLogosToSlots(
       const tUrl = getters.transparent(logo);
       const sUrl = getters.solid(logo);
       const rUrl = getters.reversed(logo);
+      const logoSessionId = logoSessionIds?.get(logo.id) ?? sessionId;
       if (tUrl && sUrl) solidUrlMap[tUrl] = sUrl;
       if (tUrl && rUrl) reversedUrlMap[tUrl] = rUrl;
-      if (tUrl) logoSourceMap[tUrl] = { sessionId, logoId: logo.id };
+      if (tUrl) logoSourceMap[tUrl] = { sessionId: logoSessionId, logoId: logo.id };
     }
 
     // Merge with existing slot
@@ -345,7 +333,7 @@ export const generateLogoTool: SkillToolDefinition = {
 
     logger.info('skills.media-logo.tools.generate_logo.start', {
       brandName: input.brandName,
-      logoCount: input.count,
+      variationCount: input.variations.length,
       appId,
     });
 
@@ -368,10 +356,10 @@ export const generateLogoTool: SkillToolDefinition = {
       return { error: 'All credit grants have been exhausted. Please purchase additional credits to generate logos.' };
     }
 
-    // 3. Enrich optional brand fields from app plan
-    const enrichedInput = { ...input };
+    // 3. Enrich brand colors from app plan (used as fallback for variations without explicit colors)
+    let enrichedBrandColors: string | undefined;
 
-    if (!enrichedInput.brandColors && appId) {
+    if (appId) {
       try {
         const planResult = await appPlanTool.execute({ appId, operation: 'get' });
         const palette = planResult.data?.colorPalette;
@@ -379,7 +367,7 @@ export const generateLogoTool: SkillToolDefinition = {
           const parts = [`primary: ${palette.primary}`];
           if (palette.secondary) parts.push(`secondary: ${palette.secondary}`);
           if (palette.accent) parts.push(`accent: ${palette.accent}`);
-          enrichedInput.brandColors = parts.join(', ');
+          enrichedBrandColors = parts.join(', ');
         }
       } catch (e) {
         logger.warn('skills.media-logo.tools.generate_logo.enrich_colors_failed', {
@@ -389,26 +377,69 @@ export const generateLogoTool: SkillToolDefinition = {
       }
     }
 
-    // 4. Call logo API
-    const result = await logoService.generateLogos({
-      ...enrichedInput,
-      customerId,
-      budgetUserId,
-    });
+    // 4. Call logo API — one call per variation, in parallel
+    const variationResults = await Promise.allSettled(
+      input.variations.map((variation) =>
+        logoService.generateLogos({
+          brandName: input.brandName,
+          brandDescription: input.brandDescription,
+          brandTagline: input.brandTagline,
+          brandColors: variation.brandColors || enrichedBrandColors,
+          brandPersonality: input.brandPersonality,
+          brandAudience: input.brandAudience,
+          style: variation.style,
+          styleDescription: variation.styleDescription,
+          symbol: variation.symbol,
+          layout: input.layout,
+          count: 1,
+          customerId,
+          budgetUserId,
+        })
+      )
+    );
+
+    // Collect successful results — preserve per-logo sessionId for edit_logo auto-resolution
+    const logos: ProcessedLogo[] = [];
+    const logoSessionIds = new Map<string, string>();
+    let sessionId = '';
+    let variationFailureCount = 0;
+    for (const r of variationResults) {
+      if (r.status === 'fulfilled') {
+        for (const logo of r.value.logos) {
+          logos.push(logo);
+          logoSessionIds.set(logo.id, r.value.sessionId);
+        }
+        if (!sessionId) sessionId = r.value.sessionId;
+      } else {
+        variationFailureCount += 1;
+        logger.warn('skills.media-logo.tools.generate_logo.variation_failed', {
+          error: r.reason instanceof Error ? r.reason.message : String(r.reason),
+        });
+      }
+    }
+
+    if (logos.length === 0) {
+      return { text: 'All logo variations failed to generate. Please try again.' };
+    }
+
+    const result = { sessionId, logos };
 
     logger.info('skills.media-logo.tools.generate_logo.success', {
       brandName: input.brandName,
       sessionId: result.sessionId,
       logoCount: result.logos.length,
+      variationsRequested: input.variations.length,
     });
 
     // 5. Auto-save logos to per-orientation slots
     let savedSlots: Record<string, string> = {};
+    let slotSaveFailed = false;
     if (appId && result.logos.length > 0) {
       try {
-        const saveResult = await saveLogosToSlots(appId, result.logos, result.sessionId, input.brandName, 'generate_logo');
+        const saveResult = await saveLogosToSlots(appId, result.logos, result.sessionId, input.brandName, 'generate_logo', logoSessionIds);
         savedSlots = saveResult.savedSlots;
       } catch (e) {
+        slotSaveFailed = true;
         logger.warn('skills.media-logo.tools.generate_logo.slot_save_failed', {
           appId,
           error: e instanceof Error ? e.message : String(e),
@@ -429,8 +460,15 @@ export const generateLogoTool: SkillToolDefinition = {
     const primarySlotPath = LOGO_SLOT_PATHS[primaryLayout as LogoLayout] ?? DEFAULT_LOGO_SLOT_PATH;
     const primarySlotUrl = savedSlots[primaryLayout] || `/airo-assets/images/${primarySlotPath}`;
 
+    const failureNote = variationFailureCount > 0
+      ? ` ${variationFailureCount} of ${input.variations.length} variations failed to generate — mention this to the user.`
+      : '';
+    const slotSaveNote = slotSaveFailed
+      ? ' Slot save failed — the logo will not appear in the Brand Book until retried. Tell the user and offer to retry.'
+      : '';
+
     return {
-      text: `Generated ${result.logos.length} logos. ${buildSlotSummary(savedSlots)} ` +
+      text: `Generated ${result.logos.length} of ${input.variations.length} logos.${failureNote}${slotSaveNote} ${buildSlotSummary(savedSlots)} ` +
         `Logo 1 is set as the default. ` +
         `If the user's request includes placement (e.g. "add logo to header"), place the appropriate slot URL in source code now. ` +
         `Otherwise, present the logos and let the user decide — they can swap via the widget and ask you to place it later.`,
@@ -440,6 +478,7 @@ export const generateLogoTool: SkillToolDefinition = {
         slotUrl: primarySlotUrl,
         slotPath: primarySlotPath,
         savedSlots,
+        slotSaveFailed,
       },
     };
   },

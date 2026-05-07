@@ -6,7 +6,8 @@ import { useEffect, useRef, useState } from 'react'
 import type { DefaultToolRendererProps } from '@/app/[market]/develop/components/tool-renderers/DefaultToolRenderer'
 import MediaModal from '@/app/[market]/develop/components/tool-renderers/MediaModal'
 import ToolHeader from '@/app/[market]/develop/components/tool-renderers/ToolHeader'
-import LogoGridWidget, { getLogoDisplayUrl, type LogoData } from '@/app/[market]/develop/components/widgets/LogoGridWidget'
+import { getLogoDisplayUrl, type LogoData } from '@/app/[market]/develop/components/widgets/logo-utils'
+import LogoGridWidget from '@/app/[market]/develop/components/widgets/LogoGridWidget'
 import { logger } from '@/lib/request-context'
 
 type LogoResult = LogoData

@@ -44,7 +44,6 @@ Update the `media__generate_logo` tool documentation to reflect the v2 API.
 - `colored-line` - Line art with color
 - `handmade` - Hand-drawn feel
 - `mascot` - Character illustration
-- `monogram` - Initials/lettermark
 - `name-mark` - Stylized typography
 
 **New Output Schema:**

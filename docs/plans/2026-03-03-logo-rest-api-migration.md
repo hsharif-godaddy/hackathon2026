@@ -698,7 +698,7 @@ const GenerateLogoInputSchema = z.object({
   style: z.enum([
     'line', 'glyph', 'full-color', 'dual-tone', '3d',
     'badge', 'flat', 'colored-line', 'handmade',
-    'mascot', 'monogram', 'name-mark',
+    'mascot', 'name-mark',
   ]).describe('Logo visual style preset'),
   styleDescription: z.string().max(200).optional().describe('Additional custom style direction'),
   symbol: z.string().max(100).optional().describe('Icon or imagery to incorporate'),
