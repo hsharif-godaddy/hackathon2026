@@ -123,7 +123,7 @@ class LogoService {
         method: 'POST',
         headers,
         body: JSON.stringify(body),
-        signal: AbortSignal.timeout(120_000),
+        signal: AbortSignal.timeout(240_000), // 4 minute timeout to cover long-running logo generations
       });
 
       if (!response.ok) {
@@ -158,7 +158,7 @@ class LogoService {
       }
 
       if (error instanceof DOMException && error.name === 'TimeoutError') {
-        logger.error(LOG_EVENTS[operation].timeout, { timeoutMs: 120_000, customerId });
+        logger.error(LOG_EVENTS[operation].timeout, { timeoutMs: 240_000, customerId });
         throw error;
       }
 
