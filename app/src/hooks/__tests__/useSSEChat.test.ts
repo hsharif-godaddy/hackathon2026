@@ -6,6 +6,16 @@ import { act, renderHook } from '@testing-library/react'
 
 import { logger } from '@/lib/request-context'
 
+let mockTokenAuthType: string | undefined = 'basic'
+
+vi.mock('@/components/providers/AuthProvider', () => ({
+  useAuthContext: () => ({
+    tokenAuthType: mockTokenAuthType,
+    isAuthenticated: true,
+    isLoading: false,
+  }),
+}))
+
 // ---------------------------------------------------------------------------
 // Store mocks
 // ---------------------------------------------------------------------------
@@ -290,6 +300,7 @@ describe('useSSEChat', () => {
   beforeEach(() => {
     currentAppId = 'test-app-123'
     storeState = {}
+    mockTokenAuthType = 'basic'
     mockConversationIdFromCookie = null
     // Mock fetch for conversation creation POST
     global.fetch = vi.fn().mockResolvedValue({
@@ -620,8 +631,47 @@ describe('useSSEChat', () => {
       await hook.result.current.actions.send({ content: 'hello' })
     })
 
-    expect(mockStartNewStream).toHaveBeenCalledWith('hello', undefined, undefined)
+    expect(mockStartNewStream).toHaveBeenCalledWith('hello', undefined, undefined, 'customer')
     expect(mockSetIsLoading).toHaveBeenCalledWith(true)
+  })
+
+  it.each([
+    ['e2s'],
+    ['e2s2s'],
+  ])('sendMessage sets support origin for %s auth type', async (authType) => {
+    mockTokenAuthType = authType
+    const hook = await setupHook(`app-${authType}-origin`)
+
+    await act(async () => {
+      await hook.result.current.actions.send({ content: 'hello from support' })
+    })
+
+    expect(mockStartNewStream).toHaveBeenCalledWith('hello from support', undefined, undefined, 'support')
+  })
+
+  it('sendMessage defaults to customer origin when auth type has not resolved', async () => {
+    mockTokenAuthType = undefined
+    const hook = await setupHook('app-pending-auth-origin')
+
+    await act(async () => {
+      await hook.result.current.actions.send({ content: 'hello before auth resolves' })
+    })
+
+    expect(mockStartNewStream).toHaveBeenCalledWith('hello before auth resolves', undefined, undefined, 'customer')
+  })
+
+  it('sendMessage uses latest auth type after auth context changes', async () => {
+    mockTokenAuthType = undefined
+    const hook = await setupHook('app-auth-refresh-origin')
+
+    mockTokenAuthType = 'e2s'
+    hook.rerender()
+
+    await act(async () => {
+      await hook.result.current.actions.send({ content: 'hello after auth resolves' })
+    })
+
+    expect(mockStartNewStream).toHaveBeenCalledWith('hello after auth resolves', undefined, undefined, 'support')
   })
 
   it('sendMessage calls transport.sendMessage with correct params', async () => {

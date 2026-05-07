@@ -122,3 +122,10 @@ export type MessageOrigin = 'support' | 'customer'
  * Default message origin for new sessions.
  */
 export const DEFAULT_MESSAGE_ORIGIN: MessageOrigin = 'customer'
+
+/**
+ * Derive message origin from auth type.
+ */
+export function getMessageOriginForAuthType(authType: SupportedAuthType | AuthType | string | undefined): MessageOrigin {
+  return isEmployeeAuthType(authType) ? 'support' : DEFAULT_MESSAGE_ORIGIN
+}

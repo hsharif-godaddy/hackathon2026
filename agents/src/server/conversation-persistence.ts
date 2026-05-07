@@ -23,7 +23,7 @@ import { toolGitEvents } from '../logging/events/index.js'
 import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js'
 import { aiLibAgentMetadata, type AILibAgentMetadata } from '../agents/ai-lib-agents/index.js'
 import { AppNotFoundError } from './errors/app-not-found-error.js'
-import { isEmployeeAuthType } from '@airo/shared/auth'
+import { getMessageOriginForAuthType, type MessageOrigin } from '@airo/shared/auth'
 import { nanoid } from 'nanoid'
 import apm from 'elastic-apm-node'
 
@@ -38,7 +38,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
     agentMessageId?: string
     context: ConversationContext
     message?: string
-    origin: 'support' | 'customer'
+    origin: MessageOrigin
   }>()
 
   // Map of appIds to their most recent user message
@@ -54,9 +54,9 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
    * Derive message origin from conversation context auth type.
    * Support sessions (e2s/e2s2s) get origin='support', all others get 'customer'.
    */
-  private getOriginFromContext(context: ConversationContext): 'support' | 'customer' {
+  private getOriginFromContext(context: ConversationContext): MessageOrigin {
     const authType = context.metadata?.authType
-    return isEmployeeAuthType(authType) ? 'support' : 'customer'
+    return getMessageOriginForAuthType(authType)
   }
 
   /**

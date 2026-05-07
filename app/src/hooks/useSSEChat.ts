@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { getMessageOriginForAuthType } from '@airo/shared/auth'
 
+import { useAuthContext } from '@/components/providers/AuthProvider'
 import { dynamicApiConfigService } from '@/config/dynamic-api'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import {
@@ -123,6 +125,7 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
   const replayCompletesStreamRef = useRef(false)
 
   const currentAppId = useCurrentAppId()
+  const { tokenAuthType } = useAuthContext()
 
   const subscriptionId = useSitesStore((state) => {
     if (!currentAppId) return undefined
@@ -136,6 +139,9 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
 
   const isBudgetServiceEnabledRef = useRef(isBudgetServiceEnabled)
   isBudgetServiceEnabledRef.current = isBudgetServiceEnabled
+
+  const tokenAuthTypeRef = useRef(tokenAuthType)
+  tokenAuthTypeRef.current = tokenAuthType
 
   const [transportState, setTransportState] = useState<TransportState>('disconnected')
   const [connectionError, setConnectionError] = useState<unknown>(undefined)
@@ -746,7 +752,8 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
     const store = useStreamingConversationStore.getState()
     store.setIsLoading(true)
     const referencedFiles = options.customContext?.referencedFiles as Array<{ path: string; content: string }> | undefined
-    store.startNewStream(options.content, options.selectedAssets, referencedFiles)
+    const origin = getMessageOriginForAuthType(tokenAuthTypeRef.current)
+    store.startNewStream(options.content, options.selectedAssets, referencedFiles, origin)
 
     // Cache the options for APP_NOT_FOUND retry. Reset any prior retry state
     // so a new user prompt starts with a clean 30-second window.

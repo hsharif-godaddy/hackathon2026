@@ -6,7 +6,7 @@
  */
 
 import { useCallback, useEffect, useRef } from 'react'
-import { isEmployeeAuthType, type MessageOrigin } from '@airo/shared/auth'
+import { getMessageOriginForAuthType } from '@airo/shared/auth'
 
 import type { AssetManagerItem } from '@/app/[market]/develop/components/chat/AssetTypes'
 import type { VisualContext } from '@/app/[market]/develop/components/visualContextCapture'
@@ -272,8 +272,7 @@ export function useStreamingWebSocket({ enabled = true }: { enabled?: boolean } 
   useEffect(() => {
     if (!controller) return
 
-    const origin: MessageOrigin = isEmployeeAuthType(tokenAuthType) ? 'support' : 'customer'
-    controller.setSessionOrigin(origin)
+    controller.setSessionOrigin(getMessageOriginForAuthType(tokenAuthType))
   }, [controller, tokenAuthType])
 
   useEffect(() => {
