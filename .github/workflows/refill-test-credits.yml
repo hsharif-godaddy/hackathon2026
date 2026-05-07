@@ -43,6 +43,11 @@ jobs:
         h249ixlevn
         pwxibq3p2a
         bgnvgtrwab
+        wkzn2av44v
+        qeyfrz4alz
+        1yjwyqz8ji
+        ugw15usrdg
+        tnowc9hib9
 
     steps:
       - name: Fetch Getty mTLS cert and generate SSO JWT
@@ -174,10 +179,22 @@ jobs:
               continue
             fi
 
-            # GET returns a bare JSON array of grants (per Confluence spec).
+            # Actual response shape observed from mgmt-airo: { "grants": [...] }.
+            # (The Confluence spec shows a bare array — the live API wraps it.)
+            # Handle both defensively: unwrap .grants when present, otherwise
+            # treat the top-level as the array.
             # Remaining = sum over isAvailable grants of (creditsMax - creditsSpent).
-            REMAINING=$(echo "$GET_BODY" | jq -r \
-              '[.[]? | select(.isAvailable == true) | (.creditsMax - .creditsSpent)] | add // 0')
+            REMAINING=$(echo "$GET_BODY" | jq -r '
+              (if type == "array" then . else (.grants // []) end)
+              | [.[]? | select(.isAvailable == true) | (.creditsMax - .creditsSpent)]
+              | add // 0' 2>/dev/null)
+            if ! [[ "$REMAINING" =~ ^-?[0-9]+$ ]]; then
+              echo "::error::Failed to parse grants response for $SUBSCRIPTION_ID"
+              echo "Response body: $GET_BODY"
+              FAILED=$((FAILED + 1))
+              echo "| \`$SUBSCRIPTION_ID\` | — | — | ❌ parse failed |" >> "$GITHUB_STEP_SUMMARY"
+              continue
+            fi
             echo "Remaining credits: $REMAINING (threshold: $CREDIT_THRESHOLD)"
 
             if [ "$REMAINING" -ge "$CREDIT_THRESHOLD" ]; then
