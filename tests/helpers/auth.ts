@@ -1,7 +1,7 @@
 import type { Page, BrowserContext, FrameLocator } from '@playwright/test';
 import { expect } from '@playwright/test';
 
-import { getCredentials, DEFAULT_TIMEOUT, LONG_TIMEOUT, SSO_TIMEOUT, SHORT_TIMEOUT } from './constants';
+import { getCredentials, DEFAULT_TIMEOUT, SSO_TIMEOUT, SHORT_TIMEOUT } from './constants';
 
 /**
  * User menu opener in the main app chrome only (`data-testid="user-menu-trigger"` under `airo-header`).
@@ -12,37 +12,76 @@ export function userMenuTrigger(page: Page) {
 }
 
 /** SSO detection result types */
-export type SsoDetectionResult = 'iframe' | 'redirect' | 'authenticated' | 'timeout' | null;
+export type SsoDetectionResult = 'iframe' | 'modal' | 'redirect' | 'authenticated' | 'timeout' | null;
 
 /**
- * Detect SSO type - races the two sign-in paths the app exposes.
+ * CSS selector matching the SSO sign-in iframe across both the legacy and
+ * post-29-Apr-2026 GoDaddy surfaces:
+ *
+ *   - `iframe[title="Container for sign in"]` — legacy named iframe
+ *   - `[role="dialog"] iframe` — new generic `<dialog>` (or `role=dialog`)
+ *     wrapper around an unnamed cross-origin iframe. The wrapper does not
+ *     carry the airo `.sso-login-modal` class and the iframe has no `title`
+ *     attribute, so we have to match by structural relationship instead.
+ *
+ * Used by both `detectSsoType` and `handleSsoLogin` so the same string works
+ * with `page.locator(...)` (for visibility waits) and `page.frameLocator(...)`
+ * (for credential fill).
+ */
+const SSO_IFRAME_SELECTOR = 'iframe[title="Container for sign in"], [role="dialog"] iframe';
+
+/**
+ * Locator for the direct-DOM sign-in modal that GoDaddy's redesigned
+ * universal sign-in dialog uses (rolled out ~29 Apr 2026). The form is
+ * rendered inline in the parent page (no cross-origin iframe) inside the
+ * `.sso-login-modal` wrapper applied by `app/src/components/auth/SsoLogin.tsx`.
+ *
+ * The `.filter({ has: ... })` guard requires the username/email input to be
+ * present so we don't race against an empty wrapper that's mounted but not
+ * yet hydrated, AND so the modal racer naturally loses when the form is
+ * inside a cross-origin iframe (in which case DOM queries from the parent
+ * cannot see the input and the iframe branch should win the race instead).
+ *
+ * Match by `autocomplete` attribute rather than label text — labels are
+ * Material-style floating spans without proper aria association on the new
+ * dialog, so role-by-name does not find them.
+ */
+function signInModalLocator(page: Page) {
+  return page.locator('.sso-login-modal').filter({
+    has: page.locator('input[autocomplete="username"], input[autocomplete="email"], input[autocomplete="username webauthn"]'),
+  });
+}
+
+/**
+ * Detect SSO type - races the sign-in paths the app exposes.
  *
  * The app uses ONE of these paths depending on environment (see
  * `useSsoSignIn.ts` and `docs/sso-login-env-gating.md`):
  *
- *   - 'iframe' branch: SSO Deck modal, used in prod (airo-builder.godaddy.com)
- *     and in local dev (NODE_ENV=development). Deployed test/dev would also
- *     use this if Chrome's Private Network Access check did not block
- *     `sso.<test|dev>-godaddy.com` as a private-IP subresource.
+ *   - 'modal' branch: post-29-Apr-2026 universal sign-in dialog, rendered
+ *     directly in the parent page DOM (no iframe). Current prod behaviour.
+ *   - 'iframe' branch: legacy SSO Deck cross-origin iframe modal. Kept as a
+ *     fallback in case any deploy still ships the older SsoDeck markup.
  *   - 'redirect' branch: full-page redirect to /login, used in deployed test
- *     and dev envs.
+ *     and dev envs where Private Network Access blocks the iframe.
  *
- * Both branches are kept here because a single Playwright run may hit different
- * envs via `--base-url`. If the env gate is ever removed (prod-only behaviour
- * everywhere), the redirect branch can be dropped - but first read the doc
- * above so you understand why it exists.
+ * All branches are kept here because a single Playwright run may hit different
+ * envs via `--base-url`, and the modal/iframe choice is controlled by GoDaddy
+ * (not us) so we should detect both.
  *
  * @param page - Playwright page
  * @param includeAuthenticatedCheck - If true, also checks for develop page URL (already authenticated)
  * @param timeout - Optional timeout override (defaults to SSO_TIMEOUT from constants)
- * @returns Detection result: 'iframe', 'redirect', 'authenticated', 'timeout', or null
+ * @returns Detection result: 'modal', 'iframe', 'redirect', 'authenticated', 'timeout', or null
  */
 export async function detectSsoType(page: Page, includeAuthenticatedCheck = false, timeout: number = SSO_TIMEOUT): Promise<SsoDetectionResult> {
-  const signInIframe = page.locator('iframe[title="Container for sign in"]');
+  const signInModal = signInModalLocator(page);
+  const signInIframe = page.locator(SSO_IFRAME_SELECTOR).first();
 
   // Each branch needs its own .catch() so losing racers don't produce
   // unhandled rejections after the race settles.
   const promises: Promise<SsoDetectionResult>[] = [
+    signInModal.waitFor({ state: 'visible', timeout }).then(() => 'modal' as const).catch(() => null),
     signInIframe.waitFor({ state: 'visible', timeout }).then(() => 'iframe' as const).catch(() => null),
     page.waitForURL('**/login**', { timeout }).then(() => 'redirect' as const).catch(() => null),
     page.waitForURL('**/sso**', { timeout }).then(() => 'redirect' as const).catch(() => null),
@@ -58,12 +97,63 @@ export async function detectSsoType(page: Page, includeAuthenticatedCheck = fals
 }
 
 /**
- * Fill in sign-in credentials (handles both page and frame contexts)
+ * Type predicate: result represents a sign-in UI (any of the modal/iframe/
+ * redirect surfaces) that should be handled by `handleSsoLogin`. Single
+ * source of truth so adding a new surface to `SsoDetectionResult` only
+ * requires updating this predicate, and call sites can't drift.
+ */
+export function isSignInUIResult(
+  result: SsoDetectionResult,
+): result is 'iframe' | 'modal' | 'redirect' {
+  return result === 'iframe' || result === 'modal' || result === 'redirect';
+}
+
+/**
+ * Fill in sign-in credentials (handles both page and frame contexts).
+ *
+ * The new GoDaddy universal sign-in dialog uses Material-style floating
+ * labels (the "Username or Customer #" text is rendered as a span, not as a
+ * `<label htmlFor>`), so `getByRole('textbox', { name: /username/i })` no
+ * longer finds the username input by its accessible name. Use the HTML5
+ * `autocomplete` attributes instead — they are stable, browser-standard hooks
+ * (password managers rely on them) and are present on both old and new SSO
+ * dialogs. We fall back to the role-by-name strategy for very old surfaces.
  */
 async function fillCredentials(context: Page | FrameLocator, username: string, password: string): Promise<void> {
-  await context.getByRole('textbox', { name: /username|customer/i }).fill(username);
-  await context.getByRole('textbox', { name: /password/i }).fill(password);
-  await context.getByRole('button', { name: 'Sign In', exact: true }).click();
+  const usernameByAutocomplete = context.locator(
+    'input[autocomplete="username"], input[autocomplete="email"], input[autocomplete="username webauthn"]',
+  ).first();
+  const usernameByRole = context.getByRole('textbox', { name: /username|customer|email/i }).first();
+
+  // Wait for the autocomplete-based input to attach before falling back —
+  // a synchronous .count() race could see 0 while the form is still mounting
+  // and incorrectly fall back to the role-by-name path (which is broken on
+  // the redesigned dialog). DEFAULT_TIMEOUT (10s) is plenty for the form to
+  // attach in any environment we test against.
+  let usernameInput = usernameByAutocomplete;
+  try {
+    await usernameByAutocomplete.waitFor({ state: 'attached', timeout: DEFAULT_TIMEOUT });
+  } catch {
+    usernameInput = usernameByRole;
+  }
+  await usernameInput.fill(username);
+
+  // `input[type="password"]` is the most stable hook for the password field —
+  // there is exactly one of these on a sign-in form regardless of label copy.
+  await context.locator('input[type="password"]').first().fill(password);
+
+  // Sign-in button: try exact text first (matches both old and new dialogs);
+  // wait for it to attach before falling back to a permissive name match,
+  // for the same reason as the username-input race above. `.first()` on both
+  // branches avoids a strict-mode violation if the page chrome also exposes
+  // a "Sign In" button (e.g. user-menu trigger).
+  let signInButton = context.getByRole('button', { name: 'Sign In', exact: true }).first();
+  try {
+    await signInButton.waitFor({ state: 'attached', timeout: DEFAULT_TIMEOUT });
+  } catch {
+    signInButton = context.getByRole('button', { name: /^sign\s*in$/i }).first();
+  }
+  await signInButton.click();
 }
 
 /**
@@ -92,15 +182,22 @@ function isBackOnApp(url: URL): boolean {
 export async function handleSsoLogin(page: Page, timeout: number = SSO_TIMEOUT): Promise<void> {
   const { username, password } = getCredentials();
 
-  console.log('Waiting for sign-in (iframe modal or redirect)...');
+  console.log('Waiting for sign-in (DOM modal, iframe modal, or redirect)...');
 
   const signInType = await detectSsoType(page, false, timeout);
 
-  if (signInType === 'iframe') {
-    console.log('Sign-in iframe modal detected (production mode)');
-    const ssoIframeSelector = 'iframe[title="Container for sign in"]';
-    const iframeLocator = page.locator(ssoIframeSelector);
-    const frame = getIframeFrame(page, ssoIframeSelector);
+  if (signInType === 'modal') {
+    // Post-29-Apr-2026 GoDaddy universal sign-in: form rendered directly in
+    // the parent page DOM. Same role-based locators work, just against the
+    // page instead of a frame.
+    console.log('Sign-in DOM modal detected (post-29-Apr-2026 prod UI)');
+    await fillCredentials(page, username, password);
+    await signInModalLocator(page).waitFor({ state: 'hidden', timeout });
+    await page.waitForURL(isBackOnApp, { timeout });
+  } else if (signInType === 'iframe') {
+    console.log('Sign-in iframe modal detected (SsoDeck legacy or new dialog wrapper)');
+    const iframeLocator = page.locator(SSO_IFRAME_SELECTOR).first();
+    const frame = getIframeFrame(page, SSO_IFRAME_SELECTOR);
     await fillCredentials(frame, username, password);
 
     // Wait for SSO iframe to close (confirms auth was processed)
@@ -116,7 +213,7 @@ export async function handleSsoLogin(page: Page, timeout: number = SSO_TIMEOUT):
     await fillCredentials(page, username, password);
     await page.waitForURL(isBackOnApp, { timeout });
   } else {
-    throw new Error('Sign-in failed: Timed out waiting for either iframe modal or login redirect');
+    throw new Error('Sign-in failed: Timed out waiting for DOM modal, iframe modal, or login redirect');
   }
 
   console.log('Sign-in credentials submitted');
@@ -290,14 +387,14 @@ export async function handleReauthIfPresent(page: Page): Promise<boolean> {
     return true;
   }
 
-  const ssoIframe = page.locator('iframe[title="Container for sign in"]');
-  const ssoModal = page.locator('.sso-login-modal');
+  const ssoIframe = page.locator(SSO_IFRAME_SELECTOR).first();
+  const ssoModal = signInModalLocator(page);
   const ssoRedirectUrl = /sso\.(test-|dev-)?godaddy\.com\/login/i;
 
-  // Check for SSO iframe, SsoLogin modal (redirect-based SSO in deployed
-  // test/dev envs), or a full-page SSO redirect that is still in flight at
-  // the time we were called. Each branch needs its own .catch() so the
-  // losing racer doesn't produce an unhandled rejection.
+  // Check for SSO iframe, the post-29-Apr-2026 in-page modal, or a
+  // full-page SSO redirect that is still in flight at the time we were
+  // called. Each branch needs its own .catch() so the losing racer doesn't
+  // produce an unhandled rejection.
   //
   // The full-page redirect racer is load-bearing: gasket-auth fires the
   // top-window navigation ~1s after reload when VAT is briefly stale, so
@@ -318,7 +415,7 @@ export async function handleReauthIfPresent(page: Page): Promise<boolean> {
   } else if (detected === 'sso-redirect') {
     console.log('  Full-page SSO redirect caught in-flight, re-authenticating...');
   } else {
-    console.log('  SsoLogin modal detected (redirect-based SSO), completing login...');
+    console.log('  SSO DOM modal detected (auto-opened on invalid auth), completing login...');
   }
 
   try {
@@ -327,9 +424,13 @@ export async function handleReauthIfPresent(page: Page): Promise<boolean> {
     throw new Error(`Re-authentication failed: ${err instanceof Error ? err.message : err}`);
   }
 
-  // Wait for auth UI to disappear
-  await ssoIframe.waitFor({ state: 'hidden', timeout: SSO_TIMEOUT }).catch(() => {});
-  await ssoModal.waitFor({ state: 'hidden', timeout: SHORT_TIMEOUT }).catch(() => {});
+  // Wait for auth UI to disappear. These are best-effort teardown waits — if
+  // they time out the page state is still recoverable, but log so the failure
+  // shows up in Playwright output instead of being silently swallowed.
+  await ssoIframe.waitFor({ state: 'hidden', timeout: SSO_TIMEOUT })
+    .catch((err) => console.warn(`  Re-auth iframe did not hide cleanly: ${err instanceof Error ? err.message : err}`));
+  await ssoModal.waitFor({ state: 'hidden', timeout: SHORT_TIMEOUT })
+    .catch((err) => console.warn(`  Re-auth modal did not hide cleanly: ${err instanceof Error ? err.message : err}`));
 
   console.log('  Re-authenticated successfully');
   return true;

@@ -1,7 +1,7 @@
 import type { Page, TestInfo } from '@playwright/test';
 import { expect } from '@playwright/test';
 
-import { detectSsoType, handleSsoLogin, userMenuTrigger } from './auth';
+import { detectSsoType, handleSsoLogin, isSignInUIResult, userMenuTrigger } from './auth';
 import {
   CHAT_INPUT_TIMEOUT,
   DEFAULT_TIMEOUT,
@@ -120,7 +120,7 @@ async function handleSsoLoginIfNeeded(page: Page): Promise<void> {
     return;
   }
 
-  if (result === 'iframe' || result === 'redirect') {
+  if (isSignInUIResult(result)) {
     console.log(`SSO login required (${result})`);
     await handleSsoLogin(page);
     return;
@@ -153,11 +153,22 @@ export async function dismissBanners(page: Page): Promise<void> {
  * we press Escape unconditionally to clear them.
  */
 export async function dismissOverlays(page: Page): Promise<void> {
-  const cookieAccept = page.locator('#pw_accept');
-  if (await cookieAccept.isVisible({ timeout: SHORT_TIMEOUT }).catch(() => false)) {
-    await cookieAccept.click({ force: true });
-    await expect(cookieAccept).not.toBeVisible({ timeout: SHORT_TIMEOUT }).catch(() => {});
-    console.log('  ✓ Dismissed cookie consent banner');
+  const candidates = [
+    // Legacy GoDaddy privacy banner
+    page.locator('#pw_accept'),
+    // Post-29-Apr-2026 GoDaddy universal cookie banner: surfaced as
+    // `alert "privacyAlert"` with a named "Accept" button. Scope the role
+    // lookup to the alert so we don't click an unrelated "Accept" elsewhere.
+    page.getByRole('alert', { name: /privacyAlert/i }).getByRole('button', { name: /^accept$/i }),
+  ];
+
+  for (const btn of candidates) {
+    if (await btn.isVisible({ timeout: SHORT_TIMEOUT }).catch(() => false)) {
+      await btn.click({ force: true });
+      await expect(btn).not.toBeVisible({ timeout: SHORT_TIMEOUT }).catch(() => {});
+      console.log('  ✓ Dismissed cookie consent banner');
+      break;
+    }
   }
 
   for (let i = 0; i < 3; i++) {

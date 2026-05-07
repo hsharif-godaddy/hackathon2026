@@ -9,7 +9,7 @@
  */
 import { test, expect } from '@playwright/test';
 
-import { clearAuthState, handleSsoLogin, openUserMenu, userMenuTrigger, verifyAuthenticated } from '../helpers/auth';
+import { clearAuthState, detectSsoType, handleSsoLogin, openUserMenu, userMenuTrigger, verifyAuthenticated } from '../helpers/auth';
 import { LONG_TIMEOUT, DEFAULT_TIMEOUT } from '../helpers/constants';
 import { logTestResult, logTestStart } from '../helpers/ui';
 
@@ -124,34 +124,29 @@ test.describe('Authentication', () => {
     // SSO path.
     await page.goto('/apps');
 
-    // Detect SSO trigger. Two env-dependent outcomes:
-    //   'sso-iframe' - prod / local dev: SsoDeck iframe opens in-place
-    //   'redirect'   - deployed test/dev: browser navigates to login URL
-    const ssoIframe = page.locator('iframe[title="Container for sign in"]');
+    // Detect SSO trigger. Three env-dependent outcomes:
+    //   'modal'    - prod (post-29-Apr-2026): GoDaddy universal sign-in
+    //                rendered directly in parent page DOM
+    //   'iframe'   - legacy SsoDeck cross-origin iframe (kept as fallback)
+    //   'redirect' - deployed test/dev: browser navigates to login URL
+    // Match both the legacy named iframe and the post-29-Apr-2026 generic
+    // `<dialog>`-wrapped unnamed iframe in a single locator.
+    const ssoIframe = page.locator('iframe[title="Container for sign in"], [role="dialog"] iframe').first();
+    const ssoModal = page.locator('.sso-login-modal');
 
-    const authUiState = await Promise.race([
-      ssoIframe
-        .waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT })
-        .then(() => 'sso-iframe' as const)
-        .catch(() => null),
-      page
-        .waitForURL('**/login**', { timeout: DEFAULT_TIMEOUT })
-        .then(() => 'redirect' as const)
-        .catch(() => null),
-      page
-        .waitForURL('**/sso**', { timeout: DEFAULT_TIMEOUT })
-        .then(() => 'redirect' as const)
-        .catch(() => null),
-    ]);
+    const authUiState = await detectSsoType(page, false, DEFAULT_TIMEOUT);
 
-    expect(authUiState, 'Expected SSO iframe or redirect to login URL').not.toBeNull();
+    // detectSsoType called with includeAuthenticatedCheck=false returns null
+    // (never 'timeout') when no SSO surface appears within the timeout, so
+    // a single not-null assertion covers both no-match and miss cases.
+    expect(authUiState, 'Expected SSO iframe/modal or redirect to login URL').not.toBeNull();
     console.log(`  [6a] Auth UI detected: ${authUiState}`);
 
     // Clean up the mock before returning. The 401 was only mocked client-side,
     // so the real session is still valid and the server will authenticate us.
     await page.unroute('**/api/auth/validate*');
 
-    if (authUiState === 'sso-iframe') {
+    if (authUiState === 'iframe' || authUiState === 'modal') {
       // Dismiss SSO - should close the modal with no fallback (AuthBoundary gone).
       const closeButton = page.getByRole('button', { name: /close/i });
       if (await closeButton.isVisible({ timeout: 2000 }).catch(() => false)) {
@@ -159,7 +154,8 @@ test.describe('Authentication', () => {
       } else {
         await page.mouse.click(10, 10);
       }
-      await expect(ssoIframe).not.toBeVisible({ timeout: DEFAULT_TIMEOUT });
+      const ssoSurface = authUiState === 'iframe' ? ssoIframe : ssoModal;
+      await expect(ssoSurface).not.toBeVisible({ timeout: DEFAULT_TIMEOUT });
       console.log('  [6b] SSO Deck dismissed (no fallback modal in new flow)');
     } else {
       // Redirect mode: browser is on the SSO login page. Navigate back to the
@@ -248,22 +244,18 @@ test.describe('Authentication', () => {
       .getByRole('button', { name: /sign\s*in|builder_common_signin/i })
       .click();
 
-    // SSO can appear as iframe modal (prod) or redirect (test/dev)
-    const ssoIframe = page.locator('iframe[src*="sso"]');
-    const ssoModal = page.locator('[class*="sign-in"], [class*="signin"], [data-testid*="sign-in"]').first();
-
-    const ssoAppeared = await Promise.race([
-      ssoIframe.waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT }).then(() => 'iframe'),
-      ssoModal.waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT }).then(() => 'modal'),
-      page.waitForURL(/sso/, { timeout: DEFAULT_TIMEOUT }).then(() => 'redirect'),
-    ]).catch(() => 'none');
+    // SSO can appear as the post-29-Apr-2026 in-page modal (prod), the legacy
+    // SsoDeck cross-origin iframe, the new <dialog>-wrapped unnamed iframe,
+    // or a full-page redirect (deployed test/dev). Use the shared detector
+    // so this stays in sync with handleSsoLogin and Steps 5/6 below.
+    const ssoAppeared = await detectSsoType(page, false, DEFAULT_TIMEOUT);
 
     if (ssoAppeared === 'iframe' || ssoAppeared === 'modal') {
       console.log('  ✓ SSO modal/iframe appears');
     } else if (ssoAppeared === 'redirect') {
       console.log('  ✓ Redirected to SSO page');
     } else {
-      throw new Error('SSO did not appear (no iframe, modal, or redirect)');
+      throw new Error(`SSO did not appear (got: ${ssoAppeared})`);
     }
 
     // Go back to homepage for next test
@@ -277,30 +269,18 @@ test.describe('Authentication', () => {
     await page.getByTestId('homepage-prompt-input').fill('A simple page that displays hello world');
     await page.locator('[data-eid*="homepage.prompt.submit"]').click();
 
-    // SSO can appear as iframe modal (prod/local dev), SsoLogin modal wrapper,
-    // or a full-page redirect (deployed test/dev where PNA blocks the iframe).
-    // Use the same stable selectors as handleSsoLogin / Step 6 and match the
-    // outer-catch race pattern used in Step 4 (so a fast rejection in one arm
-    // doesn't settle the race to null).
-    const submitSsoIframe = page.locator('iframe[title="Container for sign in"]');
-    const submitSsoModal = page.locator('.sso-login-modal');
-    const ssoOnSubmit = await Promise.race([
-      submitSsoIframe.waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT }).then(() => 'iframe' as const),
-      submitSsoModal.waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT }).then(() => 'modal' as const),
-      page.waitForURL(
-        (url) =>
-          (url.hostname.startsWith('sso.') && url.hostname.endsWith('godaddy.com')) ||
-          /\/login|\/sso/.test(url.pathname),
-        { timeout: DEFAULT_TIMEOUT, waitUntil: 'commit' }
-      ).then(() => 'redirect' as const),
-    ]).catch(() => 'none' as const);
+    // SSO can appear as the post-29-Apr-2026 in-page modal (prod), the legacy
+    // cross-origin SsoDeck iframe, or a full-page redirect (deployed test/dev
+    // where PNA blocks the iframe). Use the shared detector so this stays in
+    // sync with handleSsoLogin and the e2e suite.
+    const ssoOnSubmit = await detectSsoType(page, false, DEFAULT_TIMEOUT);
 
     if (ssoOnSubmit === 'iframe' || ssoOnSubmit === 'modal') {
       console.log('  ✓ SSO modal appears on submit');
     } else if (ssoOnSubmit === 'redirect') {
       console.log('  ✓ Redirected to SSO on submit');
     } else {
-      throw new Error('SSO did not appear on submit');
+      throw new Error(`SSO did not appear on submit (got: ${ssoOnSubmit})`);
     }
 
     // ========================================
@@ -310,13 +290,14 @@ test.describe('Authentication', () => {
     await page.goto('/apps');
     await page.waitForTimeout(3000); // Wait for redirect or page load
 
-    // Protected route should redirect to SSO, auto-open SSO iframe, or show auth message
+    // Protected route should redirect to SSO, auto-open SSO iframe/modal, or show auth message
     const appsUrl = page.url();
-    const ssoIframeVisible = await page.locator('iframe[title="Container for sign in"]')
-      .isVisible().catch(() => false);
+    const ssoSurfaceVisible =
+      (await page.locator('iframe[title="Container for sign in"], [role="dialog"] iframe').first().isVisible().catch(() => false)) ||
+      (await page.locator('.sso-login-modal').isVisible().catch(() => false));
     if (appsUrl.includes('sso') || appsUrl.includes('login')) {
       console.log('  ✓ Redirected to SSO');
-    } else if (ssoIframeVisible) {
+    } else if (ssoSurfaceVisible) {
       console.log('  ✓ SSO Deck auto-opened on 401');
     } else {
       const bodyText = await page.locator('body').textContent() || '';
@@ -336,8 +317,9 @@ test.describe('Authentication', () => {
     await page.waitForTimeout(3000);
 
     const developUrl = page.url();
-    const ssoOnDevelop = await page.locator('iframe[title="Container for sign in"]')
-      .isVisible().catch(() => false);
+    const ssoOnDevelop =
+      (await page.locator('iframe[title="Container for sign in"], [role="dialog"] iframe').first().isVisible().catch(() => false)) ||
+      (await page.locator('.sso-login-modal').isVisible().catch(() => false));
     if (developUrl.includes('sso') || developUrl.includes('login')) {
       console.log('  ✓ Develop page redirects to SSO');
     } else if (ssoOnDevelop) {

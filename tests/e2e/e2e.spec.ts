@@ -28,7 +28,7 @@
 import { test, expect } from '@playwright/test';
 
 import { deleteAllSitesViaAPI } from '../helpers/api';
-import { detectSsoType, handleSsoLogin, ensureAuthenticated } from '../helpers/auth';
+import { detectSsoType, handleSsoLogin, isSignInUIResult, ensureAuthenticated } from '../helpers/auth';
 import {
   AI_RESPONSE_TIMEOUT_MS,
   CHAT_INPUT_TIMEOUT,
@@ -112,7 +112,7 @@ test.describe('E2E - Critical Path', () => {
       const ssoResult = await detectSsoType(page, true);
       if (ssoResult === 'authenticated') {
         console.log('  Already authenticated, proceeding to develop page');
-      } else if (ssoResult === 'iframe' || ssoResult === 'redirect') {
+      } else if (isSignInUIResult(ssoResult)) {
         console.log(`  SSO detected (${ssoResult}), logging in...`);
         await handleSsoLogin(page);
       } else {
