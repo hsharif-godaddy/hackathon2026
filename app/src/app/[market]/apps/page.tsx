@@ -13,7 +13,6 @@ import AcceptTransferDialog from '@/app/[market]/apps/components/AcceptTransferD
 import { APPS_GRID_PAGE_SIZE } from '@/app/[market]/apps/constants'
 import { ProtectedRoute } from '@/components/auth'
 import { DevelopmentAdminSection } from '@/components/development'
-import AppInactivityAlert from '@/components/layout/AppInactivityAlert'
 import Header from '@/components/layout/Header'
 import { useAuth } from '@/hooks/useAuth'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
@@ -58,7 +57,7 @@ function SitesPageContent() {
   const isTLA = useMemo(() => {
     const sid = authState?.details?.shopperId;
     return typeof sid === 'string' && sid.length === 3;
-  }, [authState]);     
+  }, [authState]);
 
 
   useEffect(() => {
@@ -135,7 +134,6 @@ function SitesPageContent() {
       />
 
       <main className="max-w-7xl mx-auto px-2 sm:px-3 lg:px-4 pt-4 pb-8">
-        <AppInactivityAlert />
         <div className="mb-4 flex items-center justify-between" data-testid="apps-page-title">
           <Box orientation="horizontal" gap="md">
             {t('builder_apps_title')}
@@ -163,7 +161,7 @@ function SitesPageContent() {
 
         <div className="grid gap-2 md:gap-3 md:grid-cols-2 xl:grid-cols-3">
           <AppCardEmptyState />
-          
+
           {!isTLA && (
             <TransferAppCard
               isTransferEnabled={isTransferEnabled}
