@@ -33,6 +33,33 @@ func writeAgentsEnv(t *testing.T, projectRoot, content string) {
 	}
 }
 
+// helper to seed a single .env.local.<envName> file with arbitrary content.
+func writeLocalEnvFile(t *testing.T, projectRoot, service, envName, content string) {
+	t.Helper()
+	dir := filepath.Join(projectRoot, service)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir %s/: %v", service, err)
+	}
+	path := filepath.Join(dir, ".env.local."+envName)
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("write %s: %v", path, err)
+	}
+}
+
+// helper to seed the per-environment .env.local.{dev,test,prod} files under
+// root/service/ with the correct per-env SSO_HOST — the shape the local-env
+// checks require to reach Pass.
+func writeLocalEnvFiles(t *testing.T, projectRoot, service string) {
+	t.Helper()
+	for envName, ssoHost := range map[string]string{
+		"dev":  "sso.dev-godaddy.com",
+		"test": "sso.test-godaddy.com",
+		"prod": "sso.godaddy.com",
+	} {
+		writeLocalEnvFile(t, projectRoot, service, envName, "SSO_HOST="+ssoHost+"\n")
+	}
+}
+
 func TestS2SCertsCheck_AuthTypeMock(t *testing.T) {
 	root := t.TempDir()
 	writeAppEnv(t, root, "AUTH_TYPE=mock\n")

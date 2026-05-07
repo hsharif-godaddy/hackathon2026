@@ -143,3 +143,108 @@ func (c *AgentsEnvCheck) Run(_ context.Context, projectRoot string) preflight.Ch
 
 	return result
 }
+
+// localEnvExpectation is the expected SSO_HOST value for a per-environment file.
+type localEnvExpectation struct {
+	relPath string
+	ssoHost string
+}
+
+// canonical SSO_HOST values per-environment file. Kept here (not shared with
+// the fixer) so the check can fail a hand-edited mismatch without needing a
+// package-level dependency on fixers.
+var (
+	appLocalEnvExpectations = []localEnvExpectation{
+		{"app/.env.local.dev", "sso.dev-godaddy.com"},
+		{"app/.env.local.test", "sso.test-godaddy.com"},
+		{"app/.env.local.prod", "sso.godaddy.com"},
+	}
+	agentsLocalEnvExpectations = []localEnvExpectation{
+		{"agents/.env.local.dev", "sso.dev-godaddy.com"},
+		{"agents/.env.local.test", "sso.test-godaddy.com"},
+		{"agents/.env.local.prod", "sso.godaddy.com"},
+	}
+)
+
+// validateLocalEnvSSOHost accumulates issues across every file in expectations
+// and returns a single failing CheckResult if any file is missing, lacks
+// SSO_HOST, or has the wrong SSO_HOST for its environment. Returns nil when
+// all files pass. Accumulating (rather than fail-fast) surfaces the complete
+// state in one preflight pass since the paired fixer repairs all files in a
+// single shot anyway.
+//
+// FixAvailable is the AND of each load failure's FixAvailable: if any file
+// failed for a reason the fixer can't resolve (e.g. permission denied on the
+// directory), we refuse to advertise a fix button that would just re-hit the
+// same error.
+func validateLocalEnvSSOHost(projectRoot, name, category string, expectations []localEnvExpectation) *preflight.CheckResult {
+	var issues []string
+	allFixable := true
+	for _, exp := range expectations {
+		fail, env := loadEnvForCheck(projectRoot, exp.relPath, name, category)
+		if fail != nil {
+			issues = append(issues, fail.Message)
+			if !fail.FixAvailable {
+				allFixable = false
+			}
+			continue
+		}
+		got := strings.TrimSpace(env["SSO_HOST"])
+		switch {
+		case got == "":
+			issues = append(issues, fmt.Sprintf("%s missing required vars: SSO_HOST", exp.relPath))
+		case got != exp.ssoHost:
+			issues = append(issues, fmt.Sprintf("%s has SSO_HOST=%s; expected %s", exp.relPath, got, exp.ssoHost))
+		}
+	}
+	if len(issues) == 0 {
+		return nil
+	}
+	return &preflight.CheckResult{
+		Status:       preflight.StatusFail,
+		Name:         name,
+		Category:     category,
+		Message:      strings.Join(issues, "; "),
+		FixAvailable: allFixable,
+	}
+}
+
+// AppLocalEnvCheck verifies that app/.env.local.{dev,test,prod} each contain
+// the correct SSO_HOST for their environment. Separate from AppEnvCheck so
+// that drift here doesn't trigger the full app/agents setup form — the paired
+// fixer regenerates only the managed keys in the per-environment files.
+type AppLocalEnvCheck struct{}
+
+func (c *AppLocalEnvCheck) Name() string     { return "App .env.local.*" }
+func (c *AppLocalEnvCheck) Category() string { return preflight.CategoryEnvironment }
+
+func (c *AppLocalEnvCheck) Run(_ context.Context, projectRoot string) preflight.CheckResult {
+	if fail := validateLocalEnvSSOHost(projectRoot, c.Name(), c.Category(), appLocalEnvExpectations); fail != nil {
+		return *fail
+	}
+	return preflight.CheckResult{
+		Status:   preflight.StatusPass,
+		Name:     c.Name(),
+		Category: c.Category(),
+		Message:  "app/.env.local.{dev,test,prod} have correct SSO_HOST",
+	}
+}
+
+// AgentsLocalEnvCheck verifies that agents/.env.local.{dev,test,prod} each
+// contain the correct SSO_HOST for their environment.
+type AgentsLocalEnvCheck struct{}
+
+func (c *AgentsLocalEnvCheck) Name() string     { return "Agents .env.local.*" }
+func (c *AgentsLocalEnvCheck) Category() string { return preflight.CategoryEnvironment }
+
+func (c *AgentsLocalEnvCheck) Run(_ context.Context, projectRoot string) preflight.CheckResult {
+	if fail := validateLocalEnvSSOHost(projectRoot, c.Name(), c.Category(), agentsLocalEnvExpectations); fail != nil {
+		return *fail
+	}
+	return preflight.CheckResult{
+		Status:   preflight.StatusPass,
+		Name:     c.Name(),
+		Category: c.Category(),
+		Message:  "agents/.env.local.{dev,test,prod} have correct SSO_HOST",
+	}
+}

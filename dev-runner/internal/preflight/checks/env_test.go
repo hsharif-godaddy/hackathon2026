@@ -37,6 +37,133 @@ func TestAgentsEnvCheck_S2SMode_NoAPIKeyRequired(t *testing.T) {
 	}
 }
 
+func TestAppLocalEnvCheck_MissingFiles(t *testing.T) {
+	root := t.TempDir()
+
+	c := &AppLocalEnvCheck{}
+	result := c.Run(context.Background(), root)
+	if result.Status == preflight.StatusPass {
+		t.Fatalf("expected failure when app/.env.local.* files are missing, got Pass")
+	}
+	if !result.FixAvailable {
+		t.Error("expected FixAvailable=true when local env files are missing")
+	}
+}
+
+func TestAppLocalEnvCheck_MissingSSOHost(t *testing.T) {
+	root := t.TempDir()
+	// Seed files without SSO_HOST
+	for _, envName := range []string{"dev", "test", "prod"} {
+		writeLocalEnvFile(t, root, "app", envName, "NEXT_PUBLIC_APP_URL=https://example.com\n")
+	}
+
+	c := &AppLocalEnvCheck{}
+	result := c.Run(context.Background(), root)
+	if result.Status == preflight.StatusPass {
+		t.Fatalf("expected failure when SSO_HOST missing, got Pass")
+	}
+	if !result.FixAvailable {
+		t.Error("expected FixAvailable=true when SSO_HOST missing")
+	}
+	if !strings.Contains(result.Message, "SSO_HOST") {
+		t.Fatalf("expected message to mention SSO_HOST, got: %s", result.Message)
+	}
+}
+
+// Regression test: a hand-edit that points .env.local.dev at the TEST SSO
+// host should be flagged and fixed, not silently accepted. Reported by the
+// user after manually setting SSO_HOST=sso.test-godaddy.com in .env.local.dev.
+//
+// Also guards the accumulate-all behavior: we seed TWO wrong files (dev and
+// test) and assert both appear in the message so a fail-fast regression
+// would break the test.
+func TestAppLocalEnvCheck_WrongSSOHostForEnv(t *testing.T) {
+	root := t.TempDir()
+	writeLocalEnvFile(t, root, "app", "dev", "SSO_HOST=sso.test-godaddy.com\n") // wrong: dev should be sso.dev-godaddy.com
+	writeLocalEnvFile(t, root, "app", "test", "SSO_HOST=sso.godaddy.com\n")     // wrong: test should be sso.test-godaddy.com
+	writeLocalEnvFile(t, root, "app", "prod", "SSO_HOST=sso.godaddy.com\n")     // correct
+
+	c := &AppLocalEnvCheck{}
+	result := c.Run(context.Background(), root)
+	if result.Status == preflight.StatusPass {
+		t.Fatalf("expected failure when .env.local.{dev,test} have wrong SSO_HOST, got Pass")
+	}
+	if !result.FixAvailable {
+		t.Error("expected FixAvailable=true when SSO_HOST is wrong")
+	}
+	if !strings.Contains(result.Message, "app/.env.local.dev") {
+		t.Errorf("expected message to mention app/.env.local.dev, got: %s", result.Message)
+	}
+	if !strings.Contains(result.Message, "app/.env.local.test") {
+		t.Errorf("expected message to mention app/.env.local.test (fail-fast regression?), got: %s", result.Message)
+	}
+	if !strings.Contains(result.Message, "sso.dev-godaddy.com") {
+		t.Errorf("expected message to mention expected value sso.dev-godaddy.com, got: %s", result.Message)
+	}
+}
+
+func TestAppLocalEnvCheck_Pass(t *testing.T) {
+	root := t.TempDir()
+	writeLocalEnvFiles(t, root, "app")
+
+	c := &AppLocalEnvCheck{}
+	result := c.Run(context.Background(), root)
+	if result.Status != preflight.StatusPass {
+		t.Fatalf("expected Pass, got %v: %s", result.Status, result.Message)
+	}
+}
+
+// Also guards the accumulate-all behavior for the agents side — see the
+// app-side test for the rationale.
+func TestAgentsLocalEnvCheck_WrongSSOHostForEnv(t *testing.T) {
+	root := t.TempDir()
+	writeLocalEnvFile(t, root, "agents", "dev", "SSO_HOST=sso.test-godaddy.com\n") // wrong
+	writeLocalEnvFile(t, root, "agents", "test", "SSO_HOST=sso.godaddy.com\n")     // wrong
+	writeLocalEnvFile(t, root, "agents", "prod", "SSO_HOST=sso.godaddy.com\n")     // correct
+
+	c := &AgentsLocalEnvCheck{}
+	result := c.Run(context.Background(), root)
+	if result.Status == preflight.StatusPass {
+		t.Fatalf("expected failure when .env.local.{dev,test} have wrong SSO_HOST, got Pass")
+	}
+	if !result.FixAvailable {
+		t.Error("expected FixAvailable=true when SSO_HOST is wrong")
+	}
+	if !strings.Contains(result.Message, "agents/.env.local.dev") {
+		t.Errorf("expected message to mention agents/.env.local.dev, got: %s", result.Message)
+	}
+	if !strings.Contains(result.Message, "agents/.env.local.test") {
+		t.Errorf("expected message to mention agents/.env.local.test (fail-fast regression?), got: %s", result.Message)
+	}
+	if !strings.Contains(result.Message, "sso.dev-godaddy.com") {
+		t.Errorf("expected message to mention expected value sso.dev-godaddy.com, got: %s", result.Message)
+	}
+}
+
+func TestAgentsLocalEnvCheck_MissingFiles(t *testing.T) {
+	root := t.TempDir()
+
+	c := &AgentsLocalEnvCheck{}
+	result := c.Run(context.Background(), root)
+	if result.Status == preflight.StatusPass {
+		t.Fatalf("expected failure when agents/.env.local.* files are missing, got Pass")
+	}
+	if !result.FixAvailable {
+		t.Error("expected FixAvailable=true when local env files are missing")
+	}
+}
+
+func TestAgentsLocalEnvCheck_Pass(t *testing.T) {
+	root := t.TempDir()
+	writeLocalEnvFiles(t, root, "agents")
+
+	c := &AgentsLocalEnvCheck{}
+	result := c.Run(context.Background(), root)
+	if result.Status != preflight.StatusPass {
+		t.Fatalf("expected Pass, got %v: %s", result.Status, result.Message)
+	}
+}
+
 func TestAgentsEnvCheck_APIKeyMode_RequiresOpenAIKey(t *testing.T) {
 	root := t.TempDir()
 	writeAgentsEnv(t, root, strings.Join([]string{

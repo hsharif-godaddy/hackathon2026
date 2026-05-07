@@ -295,6 +295,8 @@ func buildPreflightRunner(projectRoot string) *preflight.Runner {
 					{Check: &checks.AWSProfileCheck{}},
 					{Check: &checks.AppEnvCheck{}, Fixer: appEnvFixer},
 					{Check: &checks.AgentsEnvCheck{}, Fixer: agentsEnvFixer},
+					{Check: &checks.AppLocalEnvCheck{}, Fixer: &fixers.AppLocalEnvFixer{}},
+					{Check: &checks.AgentsLocalEnvCheck{}, Fixer: &fixers.AgentsLocalEnvFixer{}},
 					{Check: &checks.S2SAuthRecommendCheck{}, Fixer: &fixers.S2SMigrateFixer{}, OptIn: true},
 					{Check: &checks.ShellEnvConflictCheck{}},
 					{Check: &checks.GoProxyCheck{}, Fixer: &fixers.GoProxyFixer{}},
