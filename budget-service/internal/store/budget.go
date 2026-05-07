@@ -1148,7 +1148,7 @@ func (s *Store) GetBudgetSession(ctx context.Context, sessionID string) (*Budget
 }
 
 // CreateSessionReport applies each report line's budgetCost USD using the same per-item consumption rules as session PATCH.
-func (s *Store) CreateSessionReport(ctx context.Context, sessionID string, items []ReportLineInput) (string, string, error) {
+func (s *Store) CreateSessionReport(ctx context.Context, sessionID string, items []ReportLineInput, allowOverage bool) (string, string, error) {
 	if _, err := uuid.Parse(sessionID); err != nil {
 		return "", "", err
 	}
@@ -1208,6 +1208,7 @@ func (s *Store) CreateSessionReport(ctx context.Context, sessionID string, items
 
 	// Track totals and items for webhook payload
 	var budgetCostTotal, productCostTotal decimal.Decimal
+	var overageRemainder decimal.Decimal
 	reportItemsPayload := make([]ReportItemPayload, 0, len(items))
 
 	for i := range items {
@@ -1220,19 +1221,34 @@ func (s *Store) CreateSessionReport(ctx context.Context, sessionID string, items
 			return "", "", err
 		}
 
-		budgetCostTotal = budgetCostTotal.Add(bc)
+		var chunks []budgetCreditChunk
+		if allowOverage {
+			chunks, err = consumeBudgetCostUSDSession(bc, budgetItems, now)
+		} else {
+			chunks, err = consumeBudgetCostUSD(bc, budgetItems, now)
+		}
+		if err != nil {
+			return "", "", err
+		}
+
+		storedBudgetCost := bc
+		if allowOverage {
+			var allocated decimal.Decimal
+			for j := range chunks {
+				allocated = allocated.Add(chunks[j].usdChunk)
+			}
+			overageRemainder = overageRemainder.Add(bc.Sub(allocated))
+			storedBudgetCost = allocated
+		}
+
+		budgetCostTotal = budgetCostTotal.Add(storedBudgetCost)
 		productCostTotal = productCostTotal.Add(pc)
 
 		itemID := uuid.NewString()
 		_, err = tx.ExecContext(ctx, `
 			INSERT INTO budget_session_report_items (id, report_id, budget_cost, product_cost, label)
 			VALUES ($1, $2, $3, $4, $5)
-		`, itemID, reportID, credits.Format(bc), credits.Format(pc), strings.TrimSpace(items[i].Label))
-		if err != nil {
-			return "", "", err
-		}
-
-		chunks, err := consumeBudgetCostUSD(bc, budgetItems, now)
+		`, itemID, reportID, credits.Format(storedBudgetCost), credits.Format(pc), strings.TrimSpace(items[i].Label))
 		if err != nil {
 			return "", "", err
 		}
@@ -1274,11 +1290,32 @@ func (s *Store) CreateSessionReport(ctx context.Context, sessionID string, items
 
 		reportItemsPayload = append(reportItemsPayload, ReportItemPayload{
 			ReportItemID: itemID,
-			BudgetCost:   credits.Format(bc),
+			BudgetCost:   credits.Format(storedBudgetCost),
 			ProductCost:  credits.Format(pc),
 			Label:        strings.TrimSpace(items[i].Label),
 			CreatedAt:    now,
 			BudgetItems:  allocations,
+		})
+	}
+
+	if allowOverage && overageRemainder.IsPositive() {
+		overageItemID := uuid.NewString()
+		zero := decimal.Zero
+		_, err = tx.ExecContext(ctx, `
+			INSERT INTO budget_session_report_items (id, report_id, budget_cost, product_cost, label)
+			VALUES ($1, $2, $3, $4, $5)
+		`, overageItemID, reportID, credits.Format(zero), credits.Format(overageRemainder), "allowed-overage")
+		if err != nil {
+			return "", "", err
+		}
+		productCostTotal = productCostTotal.Add(overageRemainder)
+		reportItemsPayload = append(reportItemsPayload, ReportItemPayload{
+			ReportItemID: overageItemID,
+			BudgetCost:   credits.Format(zero),
+			ProductCost:  credits.Format(overageRemainder),
+			Label:        "allowed-overage",
+			CreatedAt:    now,
+			BudgetItems:  nil,
 		})
 	}
 

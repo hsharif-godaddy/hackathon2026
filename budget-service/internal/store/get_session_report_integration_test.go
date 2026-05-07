@@ -50,7 +50,7 @@ func TestGetSessionReportAllocationsSingleQueryParity(t *testing.T) {
 	reportID, _, err := st.CreateSessionReport(ctx, sessionID, []ReportLineInput{
 		{BudgetCost: "8.000000", ProductCost: "8.000000", Label: "line1"},
 		{BudgetCost: "1.000000", ProductCost: "1.000000", Label: "line2"},
-	})
+	}, false)
 	if err != nil {
 		t.Fatalf("CreateSessionReport: %v", err)
 	}

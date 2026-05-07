@@ -1141,7 +1141,8 @@ type sessionReportItemBody struct {
 }
 
 type postSessionReportBody struct {
-	ReportItems []sessionReportItemBody `json:"reportItems"`
+	ReportItems  []sessionReportItemBody `json:"reportItems"`
+	AllowOverage bool                    `json:"allowOverage"`
 }
 
 func (s *Server) postBudgetSessionReport(w http.ResponseWriter, r *http.Request) {
@@ -1169,6 +1170,10 @@ func (s *Server) postBudgetSessionReport(w http.ResponseWriter, r *http.Request)
 			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "label "+msg)
 			return
 		}
+		if strings.EqualFold(ri.Label, "allowed-overage") {
+			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "label \"allowed-overage\" is reserved")
+			return
+		}
 		if strings.TrimSpace(string(ri.BudgetCost)) == "" || strings.TrimSpace(string(ri.ProductCost)) == "" {
 			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "each reportItem requires budgetCost and productCost")
 			return
@@ -1192,7 +1197,7 @@ func (s *Server) postBudgetSessionReport(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	reportID, budgetID, err := s.Store.CreateSessionReport(r.Context(), sessionID, lines)
+	reportID, budgetID, err := s.Store.CreateSessionReport(r.Context(), sessionID, lines, payload.AllowOverage)
 	if err != nil {
 		writeBudgetStoreError(w, "budget.post_session_report", err)
 		return

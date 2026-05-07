@@ -770,7 +770,7 @@ func TestCreateSessionReportTriggersExhaustedWebhook(t *testing.T) {
 	// Create report that exactly exhausts the budget (10 credits = $10)
 	reportID, _, err := st.CreateSessionReport(ctx, sessionID, []ReportLineInput{
 		{BudgetCost: "10.000000", ProductCost: "10.000000", Label: "exhaust"},
-	})
+	}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -823,7 +823,7 @@ func TestCreateSessionReportNoExhaustedWebhookWhenNotFullyConsumed(t *testing.T)
 	// Create report that only uses 50 credits (not exhausted)
 	_, _, err = st.CreateSessionReport(ctx, sessionID, []ReportLineInput{
 		{BudgetCost: "50.000000", ProductCost: "50.000000", Label: "partial"},
-	})
+	}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -885,7 +885,7 @@ func TestCreateSessionReportNoExhaustedWebhookWhenAlreadyExhausted(t *testing.T)
 	// Create report with zero budget cost (nothing to allocate)
 	_, _, err = st.CreateSessionReport(ctx, sessionID, []ReportLineInput{
 		{BudgetCost: "0.000000", ProductCost: "5.000000", Label: "no budget cost"},
-	})
+	}, false)
 	if err != nil {
 		t.Fatal(err)
 	}

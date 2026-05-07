@@ -38,7 +38,7 @@ func TestSumReportAggregateIncludesSoftDeletedBudget(t *testing.T) {
 
 	_, _, err := st.CreateSessionReport(ctx, sessionID, []ReportLineInput{
 		{BudgetCost: "2.500000", ProductCost: "1.250000", Label: label},
-	})
+	}, false)
 	if err != nil {
 		t.Fatalf("CreateSessionReport: %v", err)
 	}

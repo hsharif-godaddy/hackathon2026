@@ -15,7 +15,11 @@ Spec for API shape, flow, and numbers. Code lives under `budget-service/`.
 
 ### Overages (reconciling budget vs product cost)
 
-If usage exceeds what the budget can absorb as **budget** spend, callers should not put the uncovered USD entirely in `budgetCost`. Allocate up to the pool in `budgetCost`, put the remainder in **`productCost`**, typically on a line with **`label`: `"overages"`**. The error body for `INSUFFICIENT_CREDITS` describes this split. The service does not auto-split report lines.
+If usage exceeds what the budget can absorb as **budget** spend, callers should not put the uncovered USD entirely in `budgetCost`. Allocate up to the pool in `budgetCost`, put the remainder in **`productCost`**, typically on a line with **`label`: `"overages"`**. The error body for `INSUFFICIENT_CREDITS` describes this split.
+
+**Manual approach (default):** The service does not auto-split report lines when `allowOverage` is omitted or `false`. Callers must perform the split themselves or receive a **400** `INSUFFICIENT_CREDITS` error.
+
+**Automatic overage splitting:** Pass **`"allowOverage": true`** in the request body of the report `POST` to let the service handle the split automatically. When set, the service allocates as many credits as available (non-strict mode), stores only the allocated amount as each item's `budgetCost`, and appends an additional report item with `budgetCost: "0"`, `productCost` equal to the aggregate unallocated remainder across all items, and `label: "allowed-overage"`. The session is closed normally. If the budget has sufficient credits, no overage item is appended. The label `"allowed-overage"` is reserved and cannot be used by callers.
 
 7. **DELETE APIs (soft-delete)** — `budgets`, `budget_items`, `products`, and `webhooks` use **`deleted_at`**; rows stay in place so FKs (sessions, reports, allocations) remain valid. **`GET`** budget responses include **`deletedAt`** on the budget header when the budget is soft-deleted. Nested **`items`** omit soft-deleted budget items by default; use query **`includeDeleted=true`** or **`includeDeleted=1`** to include them (and to fetch a single soft-deleted budget item, or to list soft-deleted products/webhooks). Mutations require an **active** budget/product (no `deleted_at`).
 

@@ -199,7 +199,7 @@ func TestAppendRacesReconciliation(t *testing.T) {
 	}
 	if _, _, err := st.CreateSessionReport(ctx, sessionID, []ReportLineInput{
 		{BudgetCost: "1.000000", ProductCost: "1.000000", Label: "t"},
-	}); err != nil {
+	}, false); err != nil {
 		t.Fatalf("CreateSessionReport: %v", err)
 	}
 
@@ -247,13 +247,13 @@ func TestCreateSessionReportConcurrentExactlyOneWins(t *testing.T) {
 		defer wg.Done()
 		_, _, err1 = st.CreateSessionReport(ctx, sessionID, []ReportLineInput{
 			{BudgetCost: "1.000000", ProductCost: "1.000000", Label: "a"},
-		})
+		}, false)
 	}()
 	go func() {
 		defer wg.Done()
 		_, _, err2 = st.CreateSessionReport(ctx, sessionID, []ReportLineInput{
 			{BudgetCost: "1.000000", ProductCost: "1.000000", Label: "b"},
-		})
+		}, false)
 	}()
 	wg.Wait()
 

@@ -660,10 +660,14 @@ paths:
       tags: [v1]
       summary: Close session with report (sets reconciled_at)
       description: >
-        Each `reportItems` line allocates `budgetCost` USD against the budget using the same walk as session spend;
-        full coverage is required per line. If `budgetCost` exceeds remaining allocatable credits, **400** with
-        `code` **INSUFFICIENT_CREDITS** — reduce `budgetCost` to what fits, move uncovered USD to `productCost`,
-        e.g. a line with `label` **overages**. Ledger spend is applied here (not on PATCH).
+        Each `reportItems` line allocates `budgetCost` USD against the budget using the same walk as session spend.
+        By default, full coverage is required per line — if `budgetCost` exceeds remaining allocatable credits,
+        **400** with `code` **INSUFFICIENT_CREDITS**. To handle this manually, reduce `budgetCost` to what fits
+        and move uncovered USD to `productCost` (e.g. a line with `label` **overages**).
+        Alternatively, set `allowOverage: true` to let the service split automatically: each line allocates
+        as many credits as available, and any unallocated remainder is appended as an extra report item
+        (`label: "allowed-overage"`, `budgetCost: 0`, `productCost` = remainder). The original item's stored
+        `budgetCost` reflects only what was actually allocated. Ledger spend is applied here (not on PATCH).
       parameters:
         - $ref: "#/components/parameters/sessionIdPath"
       requestBody:
@@ -686,6 +690,15 @@ paths:
                         description: Non-negative USD (string or number)
                       label:
                         type: string
+                allowOverage:
+                  type: boolean
+                  default: false
+                  description: >
+                    When true, allows report creation even if budgetCost exceeds available credits.
+                    The unallocated remainder is added as an extra report item with label "allowed-overage"
+                    (budgetCost=0, productCost=remainder). The original item's stored budgetCost reflects
+                    only the actually allocated amount. The label "allowed-overage" is reserved and cannot
+                    be used as a reportItems label.
       responses:
         "201":
           description: Created
