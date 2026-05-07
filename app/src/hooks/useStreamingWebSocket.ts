@@ -79,6 +79,9 @@ export interface SendMessageOptions {
   /** AI edit context for code modifications */
   aiEditContext?: AIEditContext | null
 
+  /** Multiple AI edit contexts (flag: appbuilder-multi-element-select) */
+  aiEditContexts?: AIEditContext[]
+
   /** Selected assets (images/videos) to attach */
   selectedAssets?: AssetManagerItem[]
 
@@ -384,6 +387,7 @@ export function useStreamingWebSocket({ enabled = true }: { enabled?: boolean } 
           content: options.content,
           visualContext: defaults.visualContext,
           aiEditContext: options.aiEditContext ?? undefined,
+          aiEditContexts: options.aiEditContexts,
           selectedAssets: options.selectedAssets,
           todoListContext: options.todoListContext,
           isActionRequest: options.isActionRequest,

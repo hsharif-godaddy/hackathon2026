@@ -60,6 +60,8 @@ export interface AiEditContext {
     type: 'img' | 'background' | 'contains-img' | 'sibling-img'
     currentUrl: string | null
   }
+  // Multi-element selection number (1-based, used when appbuilder-multi-element-select flag is on)
+  number?: number
 }
 
 export enum ViewMode {

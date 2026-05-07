@@ -9,13 +9,13 @@ import { useImageHoverDetection } from "./useImageHoverDetection";
  * - useHoverHint — AI sparkle button, selection overlay, scroll tracking
  * - useImageHoverDetection — image hover state for ImageHoverBar
  */
-export function useEditMode(isEditModeActive: boolean) {
+export function useEditMode(isEditModeActive: boolean, isMultiSelectActive = false) {
   const { editingElement, saveStatus, stateRef, stopEditing } =
     useTextEditing(isEditModeActive);
 
-  useHoverHint(isEditModeActive, stateRef);
+  useHoverHint(isEditModeActive, stateRef, isMultiSelectActive);
 
-  const { hoveredImage, handleBarMouseEnter, handleBarMouseLeave } =
+  const { hoveredImage, hoveredElement, handleBarMouseEnter, handleBarMouseLeave } =
     useImageHoverDetection(isEditModeActive, stateRef);
 
   return {
@@ -23,6 +23,7 @@ export function useEditMode(isEditModeActive: boolean) {
     editingElement,
     saveStatus,
     hoveredImage,
+    hoveredElement,
     handleBarMouseEnter,
     handleBarMouseLeave,
     stopEditing,

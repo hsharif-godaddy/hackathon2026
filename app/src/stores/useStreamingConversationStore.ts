@@ -196,6 +196,8 @@ export interface StreamingConversationState {
 
   // Additional context
   aiEditContext: AiEditContext | null
+  // Multi-element selection (flag: appbuilder-multi-element-select)
+  aiEditContexts: AiEditContext[]
   buildErrorContext: { error: string; details: string; exitCode?: number } | null
   availableAgents: AgentSummary[]
   defaultAgentId: string | null
@@ -256,6 +258,10 @@ export interface StreamingConversationState {
   setInputValue: (value: string) => void
   setIsLoading: (loading: boolean) => void
   setAiEditContext: (context: AiEditContext | null) => void
+  // Multi-element selection actions (flag: appbuilder-multi-element-select)
+  addAiEditContext: (context: AiEditContext) => number
+  removeAiEditContext: (number: number) => void
+  clearAiEditContexts: () => void
   setBuildErrorContext: (context: { error: string; details: string; exitCode?: number } | null) => void
   setAgentCatalog: (agents: AgentSummary[], defaultAgentId: string | null) => void
   setCurrentAgentName: (agentName: string | null) => void
@@ -543,6 +549,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
   inputValue: '',
   isLoading: false,
   aiEditContext: null,
+  aiEditContexts: [],
   buildErrorContext: null,
   availableAgents: [],
   defaultAgentId: null,
@@ -1165,6 +1172,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
         currentStep: 0,
         inputValue: '',
         aiEditContext: null,
+        aiEditContexts: [],
         buildErrorContext: null,
         availableAgents: [],
         defaultAgentId: null,
@@ -1191,6 +1199,16 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
   setInputValue: (value) => set({ inputValue: value }),
   setIsLoading: (loading) => set({ isLoading: loading }),
   setAiEditContext: (context) => set({ aiEditContext: context }),
+  addAiEditContext: (context) => {
+    const number = context.number ?? get().aiEditContexts.length + 1
+    const numbered = { ...context, number }
+    set({ aiEditContexts: [...get().aiEditContexts, numbered] })
+    return number
+  },
+  removeAiEditContext: (number) => {
+    set({ aiEditContexts: get().aiEditContexts.filter(c => c.number !== number) })
+  },
+  clearAiEditContexts: () => set({ aiEditContexts: [] }),
   setBuildErrorContext: (context) => set({ buildErrorContext: context }),
   setAgentCatalog: (agents, defaultAgentId) => set({
     availableAgents: agents,
@@ -1352,6 +1370,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       inputValue: '',
       isLoading: false,
       aiEditContext: null,
+      aiEditContexts: [],
       appChatHistory: {},
       websocket: { connected: false, status: 'idle' },
       connectionRetry: {
@@ -1574,6 +1593,10 @@ export const useCheckStaleRetry = () => useStreamingConversationStore(state => s
 
 export const useDevelopmentPlan = () => useStreamingConversationStore(state => state.developmentPlan)
 export const useAiEditContext = () => useStreamingConversationStore(state => state.aiEditContext)
+export const useAiEditContexts = () => useStreamingConversationStore(state => state.aiEditContexts)
+export const useAddAiEditContext = () => useStreamingConversationStore(state => state.addAiEditContext)
+export const useRemoveAiEditContext = () => useStreamingConversationStore(state => state.removeAiEditContext)
+export const useClearAiEditContexts = () => useStreamingConversationStore(state => state.clearAiEditContexts)
 export const useBuildErrorContext = () => useStreamingConversationStore(state => state.buildErrorContext)
 export const useAvailableAgents = () => useStreamingConversationStore(state => state.availableAgents)
 export const useDefaultAgentId = () => useStreamingConversationStore(state => state.defaultAgentId)

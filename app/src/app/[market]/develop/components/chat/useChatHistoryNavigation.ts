@@ -34,10 +34,11 @@ export function useChatHistoryNavigation({
     draftRef.current = ''
   }, [appId])
 
-  const handleArrowUp = useCallback((textarea: HTMLTextAreaElement): boolean => {
+  const handleArrowUp = useCallback((textarea: HTMLTextAreaElement | null): boolean => {
     if (isDisabled || userMessages.length === 0) return false
 
-    if (!isAtStart(textarea.selectionStart)) return false
+    // When textarea is null, cursor-at-start check was done by caller (Lexical path)
+    if (textarea && !isAtStart(textarea.selectionStart)) return false
 
     let newIndex: number
     if (historyIndex === null) {
@@ -56,10 +57,11 @@ export function useChatHistoryNavigation({
     return true
   }, [isDisabled, userMessages, historyIndex, inputValue, onInputChange])
 
-  const handleArrowDown = useCallback((textarea: HTMLTextAreaElement): boolean => {
+  const handleArrowDown = useCallback((textarea: HTMLTextAreaElement | null): boolean => {
     if (isDisabled || historyIndex === null) return false
 
-    if (!isAtEnd(textarea.value, textarea.selectionStart)) return false
+    // When textarea is null, cursor-at-end check was done by caller (Lexical path)
+    if (textarea && !isAtEnd(textarea.value, textarea.selectionStart)) return false
 
     if (historyIndex < userMessages.length - 1) {
       const newIndex = historyIndex + 1

@@ -173,6 +173,7 @@ interface DevelopPageStore {
   previewViewMode: PreviewViewMode
   selectedDeviceId: string
   isEditModeEnabled: boolean
+  isMultiSelectEnabled: boolean
   expandedPlan: boolean
   chatPaneWidth: number
   originalChatPaneWidth: number | null
@@ -268,6 +269,7 @@ interface DevelopPageStore {
   setPreviewViewMode: (mode: PreviewViewMode) => void
   setSelectedDeviceId: (deviceId: string) => void
   setIsEditModeEnabled: (enabled: boolean) => void
+  setIsMultiSelectEnabled: (enabled: boolean) => void
   setExpandedPlan: (expanded: boolean) => void
   setChatPaneWidth: (width: number) => void
   setIsChatPaneCollapsed: (collapsed: boolean) => void
@@ -383,6 +385,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     previewViewMode: PreviewViewMode.DESKTOP,
     selectedDeviceId: 'full',
     isEditModeEnabled: true,
+    isMultiSelectEnabled: false,
     expandedPlan: false,
     chatPaneWidth: DEFAULT_CHAT_PANE_WIDTH,
     originalChatPaneWidth: null,
@@ -453,6 +456,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     }),
     setSelectedDeviceId: (deviceId) => set((state) => { state.selectedDeviceId = deviceId }),
     setIsEditModeEnabled: (enabled) => set((state) => { state.isEditModeEnabled = enabled }),
+    setIsMultiSelectEnabled: (enabled) => set((state) => { state.isMultiSelectEnabled = enabled }),
     setExpandedPlan: (expanded) => set((state) => { state.expandedPlan = expanded }),
     setChatPaneWidth: (width) => set((state) => { state.chatPaneWidth = width }),
     setIsChatPaneCollapsed: (collapsed) => set((state) => { state.isChatPaneCollapsed = collapsed }),
@@ -919,6 +923,9 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
       const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement
       if (iframe) {
         postMessageToIframe(iframe, { type: newEditMode ? IframeMessageType.EDIT_MODE_ENABLED : IframeMessageType.EDIT_MODE_DISABLED })
+        if (get().isMultiSelectEnabled) {
+          postMessageToIframe(iframe, { type: newEditMode ? 'MULTI_SELECT_ENABLED' : 'MULTI_SELECT_DISABLED' })
+        }
       }
     },
 
@@ -952,6 +959,9 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement
         if (iframe) {
           postMessageToIframe(iframe, { type: editModeEnabled ? IframeMessageType.EDIT_MODE_ENABLED : IframeMessageType.EDIT_MODE_DISABLED })
+          if (get().isMultiSelectEnabled) {
+            postMessageToIframe(iframe, { type: editModeEnabled ? 'MULTI_SELECT_ENABLED' : 'MULTI_SELECT_DISABLED' })
+          }
         }
       }
 

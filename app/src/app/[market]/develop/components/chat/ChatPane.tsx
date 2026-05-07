@@ -50,14 +50,17 @@ import { useSiteStore } from '@/stores/useSiteStore'
 import {
   useActiveStream,
   useAiEditContext,
+  useAiEditContexts,
   useBudgetExceeded,
   useBuildErrorContext,
+  useClearAiEditContexts,
   useCurrentAppId,
   useDevelopmentPlan,
   useInputValue,
   useIsActivelyStreaming,
   useIsLoading,
   useMessages,
+  useRemoveAiEditContext,
   useSetAiEditContext,
   useSetBuildErrorContext,
   useSetCurrentAppId,
@@ -202,6 +205,10 @@ export default function ChatPane({
   const budgetExceededFlag = useBudgetExceeded()
   const setInputValue = useSetInputValue()
   const setAiEditContext = useSetAiEditContext()
+  const aiEditContexts = useAiEditContexts()
+  const removeAiEditContext = useRemoveAiEditContext()
+  const clearAiEditContexts = useClearAiEditContexts()
+  const isMultiElementSelect = useDevelopPageStore((state) => state.isMultiSelectEnabled)
   const setBuildErrorContext = useSetBuildErrorContext()
   const setCurrentAppId = useSetCurrentAppId()
 
@@ -412,6 +419,7 @@ export default function ChatPane({
   }, [activeColorSchemeSuggestCandidate, activeFontThemeSuggestCandidate, visibleMessages])
   const safeInputValue = (currentAppId === appId) ? (inputValue || '') : ''
   const safeAiEditContext = (currentAppId === appId) ? aiEditContext : null
+  const safeAiEditContexts = (currentAppId === appId) ? aiEditContexts : []
   const safeBuildErrorContext = (currentAppId === appId) ? buildErrorContext : null
 
   // Calculate maxAssets based on image replacement mode
@@ -474,6 +482,37 @@ export default function ChatPane({
     // Clear the context in the store
     setAiEditContext(null)
   }, [setAiEditContext])
+
+  // Handle clearing all AI edit contexts (multi-select)
+  const handleClearAllAiEditContexts = useCallback(() => {
+    const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement
+    if (iframe) {
+      postMessageToIframe(iframe, { type: 'CLEAR_ALL_SELECTIONS' })
+    }
+    clearAiEditContexts()
+  }, [clearAiEditContexts])
+
+  // Handle removing a single AI edit context by number (multi-select)
+  const handleRemoveAiEditContext = useCallback((number: number) => {
+    const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement
+    if (iframe) {
+      postMessageToIframe(iframe, { type: 'REMOVE_SELECTION', data: { number } })
+    }
+    removeAiEditContext(number)
+  }, [removeAiEditContext])
+
+  // Scroll preview to the element for a clicked mention chip
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { number } = (e as CustomEvent).detail
+      const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement
+      if (iframe) {
+        postMessageToIframe(iframe, { type: 'SCROLL_TO_SELECTION', data: { number } })
+      }
+    }
+    document.addEventListener('scroll-to-mention', handler)
+    return () => document.removeEventListener('scroll-to-mention', handler)
+  }, [])
 
   // Handle clearing selected assets
   const handleClearSelectedAsset = useCallback(() => {
@@ -803,16 +842,21 @@ export default function ChatPane({
         isActionRequest: options?.isActionRequest,
         customContext: mergedCustomContext,
       })
+      handleClearAllAiEditContexts()
     } else {
-      void sendMessage({
+      const sendOptions: Parameters<typeof sendMessage>[0] = {
         content: outboundContent,
-        aiEditContext: { ...safeAiEditContext, screenshot: null },
+        aiEditContext: isMultiElementSelect ? undefined : { ...safeAiEditContext, screenshot: null },
+        aiEditContexts: isMultiElementSelect && safeAiEditContexts.length > 0 ? safeAiEditContexts.map(c => ({ ...c, screenshot: null })) : undefined,
         selectedAssets: mergedAssets,
         customContext: mergedCustomContext,
-      })
+      }
+      void sendMessage(sendOptions)
 
       // Clear contexts only for user input sends
-      if (safeAiEditContext) {
+      if (isMultiElementSelect && safeAiEditContexts.length > 0) {
+        handleClearAllAiEditContexts()
+      } else if (safeAiEditContext) {
         handleClearAiEditContext()
       }
       if (selectedAssets.length > 0) {
@@ -1332,6 +1376,10 @@ export default function ChatPane({
               onClearReferencedFile={handleClearSingleReferencedFile}
               aiEditContext={safeAiEditContext}
               onClearAiEditContext={handleClearAiEditContext}
+              aiEditContexts={safeAiEditContexts}
+              onRemoveAiEditContext={handleRemoveAiEditContext}
+              onClearAiEditContexts={handleClearAllAiEditContexts}
+              isMultiElementSelect={Boolean(isMultiElementSelect)}
               onLargePasteDetected={handleLargePasteDetected}
               userMessages={userMessages}
             />

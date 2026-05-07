@@ -437,6 +437,7 @@ export class StreamingWebSocketController extends EventEmitter {
     content: string
     visualContext?: VisualContext | null
     aiEditContext?: AIEditContext
+    aiEditContexts?: AIEditContext[]
     selectedAssets?: AssetManagerItem[]
     todoListContext?: TodoContext
     isActionRequest?: boolean
@@ -511,6 +512,7 @@ export class StreamingWebSocketController extends EventEmitter {
         conversationId,
         visualContext: params.visualContext,
         aiEditContext: params.aiEditContext,
+        aiEditContexts: params.aiEditContexts,
         selectedAssets: params.selectedAssets,
         todoListContext: params.todoListContext,
         buildErrorContext,

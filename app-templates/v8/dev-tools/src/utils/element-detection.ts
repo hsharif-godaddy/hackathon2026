@@ -111,7 +111,8 @@ export function isDevToolsElement(element: HTMLElement): boolean {
   return (
     !!element.closest("#dev-mode-overlay") ||
     !!element.closest("[data-dev-tools]") ||
-    !!element.closest(".edit-mode-hover-bar")
+    !!element.closest(".edit-mode-hover-bar") ||
+    !!element.closest("[id^='ai-select-overlay']")
   );
 }
 

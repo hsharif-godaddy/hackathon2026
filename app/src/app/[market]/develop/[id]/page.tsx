@@ -66,6 +66,7 @@ import { useServerPollingStore } from '@/stores/useServerPollingStore'
 import { useSiteStore } from '@/stores/useSiteStore'
 import {
   useActiveStream,
+  useAddAiEditContext,
   useAutoSendInitialMessage,
   useHistoryLoadingComplete,
   useIsActivelyStreaming,
@@ -201,6 +202,8 @@ function DevelopPageContent() {
   const activeStream = useActiveStream()
   const setInputValue = useSetInputValue()
   const setAiEditContext = useSetAiEditContext()
+  const addAiEditContext = useAddAiEditContext()
+  const isMultiElementSelect = useSwitchboard('appbuilder-multi-element-select')
   const autoSendInitialMessage = useAutoSendInitialMessage()
   const ws = useChatTransport()
   const isLoading = useIsLoading()
@@ -391,6 +394,22 @@ function DevelopPageContent() {
   const securityQuickFixFailCountRef = useRef<Map<string, number>>(new Map())
   const [securityHandoffRetryNonce, setSecurityHandoffRetryNonce] = useState(0)
 
+  // Sync switchboard flag into store and send multi-select state to iframe
+  useEffect(() => {
+    const enabled = Boolean(isMultiElementSelect)
+    useDevelopPageStore.getState().setIsMultiSelectEnabled(enabled)
+    const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement
+    if (iframe && isEditModeEnabled) {
+      if (enabled) {
+        const contexts = useStreamingConversationStore.getState().aiEditContexts
+        const nextNumber = contexts.reduce((max, c) => Math.max(max, c.number ?? 0), 0)
+        postMessageToIframe(iframe, { type: 'MULTI_SELECT_ENABLED', data: { nextNumber } })
+      } else {
+        postMessageToIframe(iframe, { type: 'MULTI_SELECT_DISABLED' })
+      }
+    }
+  }, [isMultiElementSelect, isEditModeEnabled])
+
   // Sync optimistic state with URL state
   useEffect(() => {
     setOptimisticMobileTab(activeChatTab)
@@ -440,6 +459,12 @@ function DevelopPageContent() {
     const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement
     if (iframe) {
       postMessageToIframe(iframe, { type: enabled ? IframeMessageType.EDIT_MODE_ENABLED : IframeMessageType.EDIT_MODE_DISABLED })
+      // Send multi-select mode state alongside edit mode
+      if (useDevelopPageStore.getState().isMultiSelectEnabled) {
+        const contexts = useStreamingConversationStore.getState().aiEditContexts
+        const nextNumber = contexts.reduce((max, c) => Math.max(max, c.number ?? 0), 0)
+        postMessageToIframe(iframe, { type: enabled ? 'MULTI_SELECT_ENABLED' : 'MULTI_SELECT_DISABLED', data: { nextNumber } })
+      }
     }
   }, [])
 
@@ -845,12 +870,26 @@ function DevelopPageContent() {
           sendTextUpdate(event.data.data)
           break
         case 'EDIT_WITH_AI':
-          setAiEditContext(event.data.data)
+          if (useDevelopPageStore.getState().isMultiSelectEnabled && event.data.data?.selectionNumber != null) {
+            // Multi-select: iframe assigned the number, use it
+            addAiEditContext({ ...event.data.data, number: event.data.data.selectionNumber })
+          } else {
+            setAiEditContext(event.data.data)
+          }
           useDevelopPageStore.getState().setActiveChatTab(ChatTab.CHAT)
           logger.info('develop-page.ai-edit-requested', { appId })
           break
+        case 'REMOVE_SELECTION_FROM_PREVIEW':
+          if (event.data.data?.number != null) {
+            useStreamingConversationStore.getState().removeAiEditContext(event.data.data.number)
+          }
+          break
         case 'CLEAR_AI_EDIT_CONTEXT':
           setAiEditContext(null)
+          break
+        case 'SELECTIONS_CLEARED_BY_NAVIGATION':
+          setAiEditContext(null)
+          useStreamingConversationStore.getState().clearAiEditContexts()
           break
         case 'REPLACE_IMAGE': {
           const replaceImageContext = {
@@ -1144,7 +1183,7 @@ function DevelopPageContent() {
 
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)
-  }, [sendTextUpdate, setAiEditContext, ws.actions.send, setInputValue, handleScreenshotUpload, handleEvalViewportScreenshot, setIsAssetManagerOpen, appId, scheduleMicrotask, sendEditModeMessage, isEditModeEnabled, handleAutoImportMediaSlot, sendUserRequestedFix])
+  }, [sendTextUpdate, setAiEditContext, addAiEditContext, ws.actions.send, setInputValue, handleScreenshotUpload, handleEvalViewportScreenshot, setIsAssetManagerOpen, appId, scheduleMicrotask, sendEditModeMessage, isEditModeEnabled, handleAutoImportMediaSlot, sendUserRequestedFix])
   // Warn user before leaving page with unsaved changes
   useEffect(() => {
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {

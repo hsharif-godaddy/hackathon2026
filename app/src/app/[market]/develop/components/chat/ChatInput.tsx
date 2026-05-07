@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useIntl } from 'react-intl'
 import Button from '@ux/button'
+import Chip from '@ux/chip'
+import CodeIcon from '@ux/icon/code'
 import MicIcon from '@ux/icon/mic'
 import SendIcon from '@ux/icon/send'
 import StopIcon from '@ux/icon/stop'
@@ -13,6 +15,7 @@ import { AssetManagerItem, MediaType } from '@/app/[market]/develop/components/c
 import ChatAttachmentMenu from '@/app/[market]/develop/components/chat/ChatAttachmentMenu'
 import type { SendMessageOptions } from '@/app/[market]/develop/components/chat/ChatContext'
 import InputActionsPanel from '@/app/[market]/develop/components/chat/InputActionsPanel'
+import LexicalChatEditor, { type LexicalChatEditorHandle } from '@/app/[market]/develop/components/chat/LexicalChatEditor'
 import UsageGauge from '@/app/[market]/develop/components/chat/usage-gauge/UsageGauge'
 import { useChatHistoryNavigation } from '@/app/[market]/develop/components/chat/useChatHistoryNavigation'
 import type { AiEditContext } from '@/app/[market]/develop/components/types'
@@ -89,6 +92,11 @@ interface ChatInputProps {
   onClearReferencedFile?: (index: number) => void
   aiEditContext?: AiEditContext | null
   onClearAiEditContext?: () => void
+  // Multi-element selection (flag: appbuilder-multi-element-select)
+  aiEditContexts?: AiEditContext[]
+  onRemoveAiEditContext?: (number: number) => void
+  onClearAiEditContexts?: () => void
+  isMultiElementSelect?: boolean
   onLargePasteDetected?: (content: string) => void
   mediaLimitError?: string | null
   userMessages?: string[]
@@ -121,6 +129,10 @@ export default function ChatInput({
   onClearReferencedFile,
   aiEditContext,
   onClearAiEditContext,
+  aiEditContexts = [],
+  onRemoveAiEditContext,
+  onClearAiEditContexts,
+  isMultiElementSelect = false,
   onLargePasteDetected,
   userMessages = [],
   activeColorSchemeSuggest = null,
@@ -140,6 +152,7 @@ export default function ChatInput({
 
   const textBeforeListeningRef = useRef('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const lexicalEditorRef = useRef<LexicalChatEditorHandle>(null)
   const [isFileDragOver, setIsFileDragOver] = useState(false)
 
   const { handleArrowUp, handleArrowDown, resetNavigation, exitNavigationMode, navRevision } =
@@ -158,6 +171,36 @@ export default function ChatInput({
       textareaRef.current.setSelectionRange(len, len)
     }
   }, [navRevision])
+
+  // Sync mentions in Lexical editor with aiEditContexts (multi-select mode)
+  const prevContextNumbersRef = useRef(new Set<number>())
+  useEffect(() => {
+    if (!isMultiElementSelect) {
+      prevContextNumbersRef.current = new Set()
+      return
+    }
+    const currentNumbers = new Set(aiEditContexts.map(c => c.number).filter((n): n is number => n != null))
+
+    // Insert mentions for newly added contexts
+    for (const num of currentNumbers) {
+      if (!prevContextNumbersRef.current.has(num)) {
+        const ctx = aiEditContexts.find(c => c.number === num)
+        if (ctx && lexicalEditorRef.current) {
+          lexicalEditorRef.current.insertElementMention(num, ctx.elementInfo.tagName)
+          lexicalEditorRef.current.focus()
+        }
+      }
+    }
+
+    // Remove mentions for contexts that were removed (e.g., from preview badge click)
+    for (const num of prevContextNumbersRef.current) {
+      if (!currentNumbers.has(num) && lexicalEditorRef.current) {
+        lexicalEditorRef.current.removeElementMention(num)
+      }
+    }
+
+    prevContextNumbersRef.current = currentNumbers
+  }, [isMultiElementSelect, aiEditContexts])
 
   const {
     isListening,
@@ -392,25 +435,15 @@ export default function ChatInput({
             </div>
           )}
 
-          {/* AI Edit Context - element-only (no screenshot) */}
-          {aiEditContext && !aiEditContext.screenshot && (
-            <div className="flex items-center gap-1.5 mb-1 px-2 py-1 bg-intents-ux-box-backgroundColor border border-intents-ux-boxHighContrast-borderColor rounded text-xs">
-              <span className="inline-block w-2 h-2 rounded-full flex-shrink-0 bg-intents-ux-action-backgroundColor" />
-              <span className="text-intents-ux-box-foregroundColor">
-                {t('builder_chatpane_editing_element', undefined, 'Editing')} <strong>&lt;{aiEditContext.elementInfo.tagName}&gt;</strong>
-              </span>
-              {onClearAiEditContext && (
-                <Button
-                  design="inline"
-                  size="sm"
-                  onClick={onClearAiEditContext}
-                  aria-label={t('builder_chatpane_clear_edit_context', undefined, 'Clear edit context')}
-                  className="ml-auto"
-                  data-partial="componentAiro"
-                >
-                  <XIcon className="size-2" />
-                </Button>
-              )}
+          {/* AI Edit Context - element-only (no screenshot) — single-select mode only */}
+          {!isMultiElementSelect && aiEditContext && !aiEditContext.screenshot && (
+            <div className="mb-1">
+              <Chip
+                size="sm"
+                icon={<CodeIcon className="size-2.5" />}
+                label={`<${aiEditContext.elementInfo.tagName}>`}
+                onRemove={onClearAiEditContext}
+              />
             </div>
           )}
 
@@ -465,24 +498,50 @@ export default function ChatInput({
           )}
 
           <div className="flex items-stretch space-x-1">
-            <div className="flex-1 relative">
-              <textarea
-                ref={textareaRef}
-                id="chat-input-textarea"
-                data-testid="chat-input-textarea"
-                value={inputValue}
-                onChange={(e) => {
-                  if (isListening) return
-                  exitNavigationMode()
-                  onInputChange(e.target.value)
-                }}
-                onPaste={handlePaste}
-                onKeyDown={onKeyDown}
-                placeholder={getPlaceholder()}
-                rows={3}
-                disabled={(isDisabled && !isStreaming) || isListening || isBudgetExceeded}
-                className={`w-full h-full resize-none border-0 focus:ring-0 focus:outline-none text-base md:text-sm chat-input-text`}
-              />
+            <div className="flex-1">
+              {isMultiElementSelect ? (
+                <LexicalChatEditor
+                  ref={lexicalEditorRef}
+                  inputValue={inputValue}
+                  onInputChange={onInputChange}
+                  onSubmit={handleSend}
+                  canSubmit={canSubmit}
+                  isDisabled={Boolean(isDisabled)}
+                  isStreaming={Boolean(isStreaming)}
+                  isBudgetExceeded={Boolean(isBudgetExceeded)}
+                  isListening={isListening}
+                  uploadingStagedFileIds={uploadingStagedFileIds}
+                  onStopGeneration={onStopGeneration}
+                  onLargePasteDetected={onLargePasteDetected}
+                  onStageFiles={onStageFiles}
+                  onScreenshotCaptured={onScreenshotCaptured}
+                  canStageFiles={canStageFiles}
+                  canAddAsset={canAddAsset}
+                  placeholder={isBudgetExceeded ? t('builder_chatinput_budget_exceeded') : (isDisabled && !isStreaming) ? t('builder_chatinput_processing') : t('builder_chatinput_ask_airo')}
+                  onArrowUp={(cursorAtStart) => cursorAtStart ? handleArrowUp(null) : false}
+                  onArrowDown={(cursorAtEnd) => cursorAtEnd ? handleArrowDown(null) : false}
+                  exitNavigationMode={exitNavigationMode}
+                  onMentionRemoved={onRemoveAiEditContext}
+                />
+              ) : (
+                <textarea
+                  ref={textareaRef}
+                  id="chat-input-textarea"
+                  data-testid="chat-input-textarea"
+                  value={inputValue}
+                  onChange={(e) => {
+                    if (isListening) return
+                    exitNavigationMode()
+                    onInputChange(e.target.value)
+                  }}
+                  onPaste={handlePaste}
+                  onKeyDown={onKeyDown}
+                  placeholder={getPlaceholder()}
+                  rows={3}
+                  disabled={(isDisabled && !isStreaming) || isListening || isBudgetExceeded}
+                  className={`w-full h-full resize-none border-0 focus:ring-0 focus:outline-none text-base md:text-sm chat-input-text`}
+                />
+              )}
             </div>
           </div>
 

@@ -2,15 +2,16 @@ import { useState, useEffect } from 'react'
 import { safePostMessage, isOriginAllowed } from '../utils/postMessage'
 import { captureAndResizeScreenshot, captureViewportScreenshot } from '../utils/screenshot'
 import { useEditMode } from "../hooks/useEditMode";
-import ImageHoverBar from "./ImageHoverBar";
+import ElementHoverBar from "./ElementHoverBar";
 import { initTranslations } from "../utils/translations";
 
 export default function DevelopmentMode() {
   // Load translations from i18n API on mount
   useEffect(() => { void initTranslations(); }, []);
   const [isEditModeActive, setIsEditModeActive] = useState(false); // off by default, parent enables via EDIT_MODE_ENABLED message
+  const [isMultiSelectActive, setIsMultiSelectActive] = useState(false); // off by default, parent enables via MULTI_SELECT_ENABLED message
 
-  const { hoveredImage, handleBarMouseEnter, handleBarMouseLeave } = useEditMode(isEditModeActive)
+  const { hoveredImage, hoveredElement, handleBarMouseEnter, handleBarMouseLeave } = useEditMode(isEditModeActive, isMultiSelectActive)
 
   // Visual context capture for AI assistance
   useEffect(() => {
@@ -615,6 +616,14 @@ export default function DevelopmentMode() {
           setIsEditModeActive(false);
           return;
         }
+        if (event.data && event.data.type === 'MULTI_SELECT_ENABLED') {
+          setIsMultiSelectActive(true);
+          return;
+        }
+        if (event.data && event.data.type === 'MULTI_SELECT_DISABLED') {
+          setIsMultiSelectActive(false);
+          return;
+        }
         if (event.data && event.data.type === 'RESTORE_SCROLL_POSITION') {
           if (event.data.scrollPosition) {
             try {
@@ -765,9 +774,10 @@ export default function DevelopmentMode() {
 
   return (
     <div data-airo-dev-tools>
-      {isEditModeActive && hoveredImage && (
-        <ImageHoverBar
-          hoveredImage={hoveredImage}
+      {isEditModeActive && hoveredElement && !(isMultiSelectActive && hoveredElement.element.hasAttribute("data-ai-selected-num")) && (
+        <ElementHoverBar
+          hoveredElement={hoveredElement}
+          isMultiSelectActive={isMultiSelectActive}
           onMouseEnter={handleBarMouseEnter}
           onMouseLeave={handleBarMouseLeave}
         />

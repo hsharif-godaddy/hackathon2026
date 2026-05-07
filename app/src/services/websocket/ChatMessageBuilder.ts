@@ -46,6 +46,7 @@ export interface BuildMessageParams<
   conversationId?: string | null
   visualContext?: VisualContext | null
   aiEditContext?: AIEditContext
+  aiEditContexts?: AIEditContext[]
   selectedAssets?: TAsset[]
   todoListContext?: TodoContext
   buildErrorContext?: BuildError | null
@@ -98,7 +99,19 @@ export class ChatMessageBuilder {
     const attachments: ContextAttachment[] = []
     const timestamp = Date.now()
 
-    if (params.aiEditContext) {
+    if (params.aiEditContexts && params.aiEditContexts.length > 0) {
+      // Multi-element selection (flag: appbuilder-multi-element-select)
+      attachments.push({
+        type: 'ai_edit_contexts',
+        data: params.aiEditContexts,
+        persistence: 'save',
+        renderStrategy: 'before_prompt',
+        metadata: {
+          timestamp,
+          source: 'ai-edit-dialog'
+        }
+      })
+    } else if (params.aiEditContext) {
       attachments.push({
         type: 'ai_edit_context',
         data: params.aiEditContext,

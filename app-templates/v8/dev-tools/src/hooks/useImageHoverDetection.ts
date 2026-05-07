@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from "react";
-import { isDevToolsElement, detectImage, getMediaSlotPath } from "../utils/element-detection";
+import { isDevToolsElement, isContentElement, detectImage, getMediaSlotPath } from "../utils/element-detection";
 
 export interface HoveredImage {
   element: HTMLElement;
@@ -7,6 +7,10 @@ export interface HoveredImage {
   isMediaSlot: boolean;
   slotPath: string | null;
 }
+
+export type HoveredElement =
+  | { type: "image"; element: HTMLElement; imageUrl: string; isMediaSlot: boolean; slotPath: string | null }
+  | { type: "content"; element: HTMLElement };
 
 /**
  * Hook for detecting when the user hovers over an image element.
@@ -17,14 +21,27 @@ export function useImageHoverDetection(
   editingStateRef: React.RefObject<{ editingElement: HTMLElement | null }>,
 ) {
   const [hoveredImage, setHoveredImage] = useState<HoveredImage | null>(null);
+  const [hoveredElement, setHoveredElement] = useState<HoveredElement | null>(null);
   const hoveredImageRef = useRef<HoveredImage | null>(null);
+  const hoveredElementRef = useRef<HoveredElement | null>(null);
   const showBarTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hideBarTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const updateHoveredElement = useCallback((value: HoveredElement | null) => {
+    hoveredElementRef.current = value;
+    setHoveredElement(value);
+  }, []);
 
   // Keep ref in sync with state so event handlers (closures) see current value
   const updateHoveredImage = useCallback((value: HoveredImage | null) => {
     hoveredImageRef.current = value;
     setHoveredImage(value);
+    // Also update unified state
+    if (value) {
+      updateHoveredElement({ type: "image", ...value });
+    } else {
+      updateHoveredElement(null);
+    }
   }, []);
 
   useEffect(() => {
@@ -37,6 +54,54 @@ export function useImageHoverDetection(
       if (!target || isDevToolsElement(target)) return;
 
       if (editingStateRef.current?.editingElement?.contains(target)) return;
+
+      // If we're already tracking an element, handle bubbling:
+      const tracked = hoveredElementRef.current?.element;
+      if (tracked) {
+        // Target is the tracked element or a child of it — keep state
+        if (tracked === target || tracked.contains(target)) {
+          if (hideBarTimerRef.current) { clearTimeout(hideBarTimerRef.current); hideBarTimerRef.current = null; }
+          return;
+        }
+        // Target is a parent/ancestor of tracked element — start a delayed hide
+        // so we don't flicker, but do eventually dismiss if the mouse stays away
+        if (target.contains(tracked)) {
+          if (!hideBarTimerRef.current) {
+            hideBarTimerRef.current = setTimeout(() => {
+              hoveredElementRef.current = null;
+              hoveredImageRef.current = null;
+              updateHoveredImage(null);
+              updateHoveredElement(null);
+            }, 1500);
+          }
+          return;
+        }
+      }
+
+      // Check if the target is a direct content element (heading, paragraph, etc.)
+      // BEFORE image detection, since image detection walks siblings/children
+      // and might incorrectly claim a heading inside an image card.
+      const tag = target.tagName.toLowerCase();
+      const isDirectContentTag = ["p", "h1", "h2", "h3", "h4", "h5", "h6",
+        "span", "a", "button", "label", "li", "blockquote", "code", "pre", "figcaption"].includes(tag);
+      const directImageTag = tag === "img" || tag === "video" || tag === "picture" || tag === "canvas" || tag === "svg";
+
+      // For direct content tags (not images), skip image detection and go straight to content path.
+      // Content elements take priority over images they overlap (e.g. heading on top of hero image).
+      if (isDirectContentTag && !directImageTag && isContentElement(target)) {
+        if (hoveredElementRef.current?.element === target) return;
+        if (showBarTimerRef.current) clearTimeout(showBarTimerRef.current);
+        if (hideBarTimerRef.current) { clearTimeout(hideBarTimerRef.current); hideBarTimerRef.current = null; }
+        // Update ref immediately so mouseout bounds check uses this element
+        hoveredElementRef.current = { type: "content", element: target };
+        hoveredImageRef.current = null;
+        showBarTimerRef.current = setTimeout(() => {
+          showBarTimerRef.current = null;
+          updateHoveredImage(null);
+          updateHoveredElement({ type: "content", element: target });
+        }, 150);
+        return;
+      }
 
       let imageInfo = detectImage(target);
 
@@ -58,10 +123,9 @@ export function useImageHoverDetection(
 
       if (!imageInfo.isImage || !imageInfo.imageUrl) {
         // If the bar is already showing and the mouse is still within the
-        // image's bounding rect (e.g., hovering over text, buttons, or an SVG
-        // divider that overlays the image), keep the bar visible.
-        if (hoveredImageRef.current) {
-          const rect = hoveredImageRef.current.element.getBoundingClientRect();
+        // hovered element's bounding rect, keep the bar visible.
+        if (hoveredElementRef.current) {
+          const rect = hoveredElementRef.current.element.getBoundingClientRect();
           if (
             e.clientX >= rect.left && e.clientX <= rect.right &&
             e.clientY >= rect.top && e.clientY <= rect.bottom
@@ -74,10 +138,24 @@ export function useImageHoverDetection(
           }
         }
 
+        // Not an image — check if it's a content element (text, heading, link, etc.)
+        const tag = target.tagName.toLowerCase();
+        if (tag !== "body" && tag !== "html" && isContentElement(target)) {
+          if (hoveredElementRef.current?.element === target) return;
+          if (showBarTimerRef.current) clearTimeout(showBarTimerRef.current);
+          showBarTimerRef.current = setTimeout(() => {
+            showBarTimerRef.current = null;
+            updateHoveredImage(null); // Clear image state
+            updateHoveredElement({ type: "content", element: target });
+          }, 150); // Shorter delay for content elements
+          return;
+        }
+
         if (showBarTimerRef.current) {
           clearTimeout(showBarTimerRef.current);
           showBarTimerRef.current = null;
         }
+        updateHoveredElement(null);
         return;
       }
 
@@ -113,18 +191,21 @@ export function useImageHoverDetection(
       const relatedTarget = e.relatedTarget as HTMLElement | null;
       if (relatedTarget?.closest(".edit-mode-hover-bar")) return;
 
-      // If the mouse is moving to an element that's still visually within the
-      // hovered image's bounds (e.g., overlay gradient, SVG divider, hero text),
-      // don't dismiss the bar. Use the mouseout event coordinates which reflect
-      // where the mouse is heading.
-      if (hoveredImageRef.current && e.clientX && e.clientY) {
-        const rect = hoveredImageRef.current.element.getBoundingClientRect();
+      // If the mouse is still within the hovered element's bounds, keep the bar.
+      const currentEl = hoveredElementRef.current?.element ?? hoveredImageRef.current?.element;
+      if (currentEl && e.clientX && e.clientY) {
+        const rect = currentEl.getBoundingClientRect();
         if (
           e.clientX >= rect.left && e.clientX <= rect.right &&
           e.clientY >= rect.top && e.clientY <= rect.bottom
         ) {
           return;
         }
+      }
+
+      // If the related target is a child of the current element, keep the bar
+      if (currentEl && relatedTarget && currentEl.contains(relatedTarget)) {
+        return;
       }
 
       if (showBarTimerRef.current) {
@@ -145,7 +226,7 @@ export function useImageHoverDetection(
       if (showBarTimerRef.current) clearTimeout(showBarTimerRef.current);
       if (hideBarTimerRef.current) clearTimeout(hideBarTimerRef.current);
     };
-  }, [isEditModeActive, editingStateRef, updateHoveredImage]);
+  }, [isEditModeActive, editingStateRef, updateHoveredImage, updateHoveredElement]);
 
   const handleBarMouseEnter = useCallback(() => {
     if (hideBarTimerRef.current) {
@@ -157,11 +238,13 @@ export function useImageHoverDetection(
   const handleBarMouseLeave = useCallback(() => {
     hideBarTimerRef.current = setTimeout(() => {
       updateHoveredImage(null);
+      updateHoveredElement(null);
     }, 300);
-  }, [updateHoveredImage]);
+  }, [updateHoveredImage, updateHoveredElement]);
 
   return {
     hoveredImage,
+    hoveredElement,
     handleBarMouseEnter,
     handleBarMouseLeave,
   };
