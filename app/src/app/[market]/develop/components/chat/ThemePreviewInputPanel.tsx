@@ -2,9 +2,9 @@
 
 import { Check, Loader2 } from 'lucide-react'
 import { type ReactNode, useEffect, useState } from 'react'
-import Button from '@ux/button'
 import text from '@ux/text'
 
+import AgentChoiceActionFooter from '@/app/[market]/develop/components/chat/AgentChoiceActionFooter'
 import { useSendUserMessage } from '@/app/[market]/develop/components/chat/ChatContext'
 import { similar } from '@/app/[market]/develop/components/utils/colorSimilarity'
 import type { ColorSchemePaletteOption } from '@/app/[market]/develop/components/utils/findLatestColorSchemeSuggest'
@@ -186,37 +186,33 @@ export default function ThemePreviewInputPanel({
       </div>
     )
 
-  const footerRow = (
-    <div className="flex w-full min-w-0 flex-wrap items-center justify-between gap-1">
-      <Button
-        data-testid="theme-preview-more-options"
-        text={t('builder_common_generate_more', undefined, 'Generate More')}
-        design="tertiary"
-        size="sm"
-        disabled={isProcessing || applyingTheme || disabled}
-        onClick={handleMoreOptions}
-      />
-      <div className="flex gap-1">
-        {onCancel && (
-          <Button
-            data-testid="theme-preview-cancel"
-            text={t('builder_common_cancel', undefined, 'Cancel')}
-            design="secondary"
-            size="sm"
-            disabled={isProcessing || applyingTheme}
-            onClick={handleCancel}
-          />
-        )}
-        <Button
-          data-testid="theme-preview-apply"
-          text={t('builder_common_apply', undefined, 'Apply')}
-          design="primary"
-          size="sm"
-          disabled={isProcessing || applyingTheme || disabled || !palettes[selectedIndex]}
-          onClick={handleApply}
-        />
-      </div>
-    </div>
+  const footerRow = onCancel ? (
+    <AgentChoiceActionFooter
+      showCancel
+      applyLabel={t('builder_common_apply', undefined, 'Apply')}
+      applyTestId="theme-preview-apply"
+      cancelLabel={t('builder_common_cancel', undefined, 'Cancel')}
+      cancelTestId="theme-preview-cancel"
+      disableApply={isProcessing || applyingTheme || disabled || !palettes[selectedIndex]}
+      disableCancel={isProcessing || applyingTheme}
+      disableGenerateMore={isProcessing || applyingTheme || disabled}
+      generateMoreLabel={t('builder_common_generate_more', undefined, 'Generate More')}
+      generateMoreTestId="theme-preview-more-options"
+      onApply={handleApply}
+      onCancel={handleCancel}
+      onGenerateMore={handleMoreOptions}
+    />
+  ) : (
+    <AgentChoiceActionFooter
+      applyLabel={t('builder_common_apply', undefined, 'Apply')}
+      applyTestId="theme-preview-apply"
+      disableApply={isProcessing || applyingTheme || disabled || !palettes[selectedIndex]}
+      disableGenerateMore={isProcessing || applyingTheme || disabled}
+      generateMoreLabel={t('builder_common_generate_more', undefined, 'Generate More')}
+      generateMoreTestId="theme-preview-more-options"
+      onApply={handleApply}
+      onGenerateMore={handleMoreOptions}
+    />
   )
 
   const body = (

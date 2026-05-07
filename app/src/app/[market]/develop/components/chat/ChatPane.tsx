@@ -27,6 +27,8 @@ import { ChatTab } from '@/app/[market]/develop/components/types'
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import { isColorSuggestPanelVisible } from '@/app/[market]/develop/components/utils/colorSuggestPanelVisibility'
 import { findLatestColorSchemeSuggest } from '@/app/[market]/develop/components/utils/findLatestColorSchemeSuggest'
+import { findLatestFontThemeSuggest } from '@/app/[market]/develop/components/utils/findLatestFontThemeSuggest'
+import { isFontSuggestPanelVisible } from '@/app/[market]/develop/components/utils/fontSuggestPanelVisibility'
 import { useAuthContext } from '@/components/providers/AuthProvider'
 import { useAotPreload } from '@/hooks/useAotPreload'
 import { useChatTabs } from '@/hooks/useChatTabs'
@@ -207,6 +209,7 @@ export default function ChatPane({
   useConversionEvent(subscription)
   const areChatPlansEnabled = useSwitchboard('airo-builder-chat-plans')
   const isThemeSelectionChatEnabled = useSwitchboard('airo-builder-theme-selection-chat')
+  const isFontSelectionChatEnabled = useSwitchboard('airo-builder-font-selection-chat')
 
   // Unified grants fetch - works for both BMS and legacy paths
   const { data: grants, isFetching: isGrantsFetching } = useCreditGrants({
@@ -372,12 +375,41 @@ export default function ChatPane({
         : null,
     [appId, currentAppId, isThemeSelectionChatEnabled, visibleMessages]
   )
-  const activeColorSchemeSuggest = useMemo(() => {
+  const activeColorSchemeSuggestCandidate = useMemo(() => {
     if (!isThemeSelectionChatEnabled) return null
     if (!activeColorSchemeSuggestRaw) return null
     if (!isColorSuggestPanelVisible(visibleMessages, activeColorSchemeSuggestRaw, t)) return null
     return activeColorSchemeSuggestRaw
   }, [activeColorSchemeSuggestRaw, isThemeSelectionChatEnabled, t, visibleMessages])
+
+  const activeFontThemeSuggestRaw = useMemo(
+    () =>
+      isFontSelectionChatEnabled && currentAppId === appId
+        ? findLatestFontThemeSuggest(visibleMessages)
+        : null,
+    [appId, currentAppId, isFontSelectionChatEnabled, visibleMessages]
+  )
+  const activeFontThemeSuggestCandidate = useMemo(() => {
+    if (!isFontSelectionChatEnabled) return null
+    if (!activeFontThemeSuggestRaw) return null
+    if (!isFontSuggestPanelVisible(visibleMessages, activeFontThemeSuggestRaw)) return null
+    return activeFontThemeSuggestRaw
+  }, [activeFontThemeSuggestRaw, isFontSelectionChatEnabled, visibleMessages])
+
+  const { activeColorSchemeSuggest, activeFontThemeSuggest } = useMemo(() => {
+    const color = activeColorSchemeSuggestCandidate
+    const font = activeFontThemeSuggestCandidate
+    if (!color && !font) return { activeColorSchemeSuggest: null, activeFontThemeSuggest: null }
+    if (color && !font) return { activeColorSchemeSuggest: color, activeFontThemeSuggest: null }
+    if (!color && font) return { activeColorSchemeSuggest: null, activeFontThemeSuggest: font }
+    // Both color and font are non-null here due to prior conditional returns
+    const colorNonNull = color
+    const fontNonNull = font
+    const ic = visibleMessages.findIndex((m) => m.id === colorNonNull.messageId)
+    const ifont = visibleMessages.findIndex((m) => m.id === fontNonNull.messageId)
+    if (ifont > ic) return { activeColorSchemeSuggest: null, activeFontThemeSuggest: fontNonNull }
+    return { activeColorSchemeSuggest: colorNonNull, activeFontThemeSuggest: null }
+  }, [activeColorSchemeSuggestCandidate, activeFontThemeSuggestCandidate, visibleMessages])
   const safeInputValue = (currentAppId === appId) ? (inputValue || '') : ''
   const safeAiEditContext = (currentAppId === appId) ? aiEditContext : null
   const safeBuildErrorContext = (currentAppId === appId) ? buildErrorContext : null
@@ -1160,6 +1192,7 @@ export default function ChatPane({
           )}
           <ChatInput
             activeColorSchemeSuggest={activeColorSchemeSuggest}
+            activeFontThemeSuggest={activeFontThemeSuggest}
             appId={appId}
             inputValue={safeInputValue}
             isDisabled={isProcessing}
@@ -1274,6 +1307,7 @@ export default function ChatPane({
             )}
             <ChatInput
               activeColorSchemeSuggest={activeColorSchemeSuggest}
+              activeFontThemeSuggest={activeFontThemeSuggest}
               appId={appId}
               inputValue={safeInputValue}
               isDisabled={isProcessing}

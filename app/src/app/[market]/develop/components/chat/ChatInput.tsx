@@ -17,6 +17,7 @@ import UsageGauge from '@/app/[market]/develop/components/chat/usage-gauge/Usage
 import { useChatHistoryNavigation } from '@/app/[market]/develop/components/chat/useChatHistoryNavigation'
 import type { AiEditContext } from '@/app/[market]/develop/components/types'
 import type { ActiveColorSchemeSuggest } from '@/app/[market]/develop/components/utils/findLatestColorSchemeSuggest'
+import type { ActiveFontThemeSuggest } from '@/app/[market]/develop/components/utils/findLatestFontThemeSuggest'
 import { EXPERIMENT_IDS } from '@/config/experiments'
 import { useHivemind } from '@/hooks/useHivemind'
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition'
@@ -92,6 +93,7 @@ interface ChatInputProps {
   mediaLimitError?: string | null
   userMessages?: string[]
   activeColorSchemeSuggest?: ActiveColorSchemeSuggest | null
+  activeFontThemeSuggest?: ActiveFontThemeSuggest | null
 }
 
 export default function ChatInput({
@@ -122,6 +124,7 @@ export default function ChatInput({
   onLargePasteDetected,
   userMessages = [],
   activeColorSchemeSuggest = null,
+  activeFontThemeSuggest = null,
 }: ChatInputProps) {
   const t = useTranslations();
   const clickContext = useMemo(() => (appId ? { appId } : undefined), [appId]);
@@ -368,7 +371,10 @@ export default function ChatInput({
           onDrop={handleDrop}
         >
           {areChatPlansEnabled ? (
-            <InputActionsPanel activeColorSchemeSuggest={activeColorSchemeSuggest} />
+            <InputActionsPanel
+              activeColorSchemeSuggest={activeColorSchemeSuggest}
+              activeFontThemeSuggest={activeFontThemeSuggest}
+            />
           ) : null}
 
           {/* AI Edit Context - shows screenshot (works for both Edit with AI and Replace Image) */}

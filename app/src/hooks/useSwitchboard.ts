@@ -14,6 +14,7 @@
  */
 export function getSwitchboardFlag(featureName: string): boolean | undefined {
   if (typeof window === 'undefined') return undefined;
+
   const value = window.gasketData?.switchboard?.[featureName];
   return typeof value === 'boolean' ? value : undefined;
 }

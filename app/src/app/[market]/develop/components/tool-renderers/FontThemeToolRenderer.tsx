@@ -7,17 +7,13 @@ import type { DefaultToolRendererProps } from '@/app/[market]/develop/components
 import FontThemeModal from '@/app/[market]/develop/components/tool-renderers/FontThemeModal'
 import ToolHeader from '@/app/[market]/develop/components/tool-renderers/ToolHeader'
 import ToolModal from '@/app/[market]/develop/components/tool-renderers/ToolModal'
+import FontPaletteWidget from '@/app/[market]/develop/components/widgets/FontPaletteWidget'
 import FontThemeGridWidget from '@/app/[market]/develop/components/widgets/FontThemeGridWidget'
+import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 
-/**
- * Font Theme Tool Renderer
- *
- * Handles rendering for the fontTheme tool which has two modes:
- * - suggest: Shows multiple font theme options in a grid
- * - apply: Shows confirmation message
- */
-export default function FontThemeToolRenderer({
+/** @deprecated Remove when `airo-builder-font-selection-chat` is permanently on */
+function FontThemeToolRendererLegacy({
   toolName: _toolName,
   toolStatus,
   input,
@@ -32,7 +28,7 @@ export default function FontThemeToolRenderer({
   const isSuggestMode = mode === 'suggest'
   const isApplyMode = mode === 'apply'
 
-  const resultObj = typeof result === 'object' && result !== null ? (result as Record<string, any>) : {}
+  const resultObj = typeof result === 'object' && result !== null ? (result as Record<string, unknown>) : {}
   const widget = resultObj.widget as { widgetData?: { themes?: unknown[] } } | undefined
   const themes = resultObj.themes || widget?.widgetData?.themes || []
   const hasThemes = Array.isArray(themes) && themes.length > 0
@@ -139,20 +135,15 @@ export default function FontThemeToolRenderer({
     ? `${t('builder_tools_font_theme', undefined, 'Font Theme')}: ${t('builder_tools_font_theme_options', undefined, 'Options')}`
     : t('builder_tools_font_theme', undefined, 'Font Theme')
 
-  // Show header only for suggest mode, while loading, or on error
-  const showHeader = isSuggestMode || toolStatus !== 'completed'
-
   return (
     <div>
-      {showHeader && (
-        <ToolHeader
-          icon={<Type className="w-2 h-2" />}
-          displayName={displayName}
-          toolStatus={toolStatus}
-          hasDetails={toolStatus === 'error' && !!error}
-          onOpenModal={toolStatus === 'error' && error ? () => setIsErrorModalOpen(true) : undefined}
-        />
-      )}
+      <ToolHeader
+        icon={<Type className="w-2 h-2" />}
+        displayName={displayName}
+        toolStatus={toolStatus}
+        hasDetails={toolStatus === 'error' && !!error}
+        onOpenModal={toolStatus === 'error' && error ? () => setIsErrorModalOpen(true) : undefined}
+      />
 
       {/* Error details modal */}
       {toolStatus === 'error' && error && (
@@ -194,7 +185,7 @@ export default function FontThemeToolRenderer({
         </div>
       )}
 
-      {/* APPLY MODE: Show card with font preview matching ColorPaletteWidget style */}
+      {/* APPLY MODE: Show read-only card with font preview */}
       {toolStatus === 'completed' && isApplyMode && (headerFontName || bodyFontName) && (
         <div className="mt-2 mb-2">
           <button
@@ -285,4 +276,150 @@ export default function FontThemeToolRenderer({
       )}
     </div>
   )
+}
+
+function FontThemeToolRendererModern({
+  toolStatus,
+  input,
+  result
+}: DefaultToolRendererProps) {
+  const mode = input?.mode as 'suggest' | 'apply' | 'set' | undefined
+  const isApplyMode = mode === 'apply' || mode === 'set'
+
+  const resultObj = typeof result === 'object' && result !== null ? (result as Record<string, unknown>) : {}
+
+  // Extract font information for preview - supports new headerFont/bodyFont and legacy fontName
+  const appliedFont = resultObj.appliedFont as {
+    name?: string
+    fontName?: string
+    weights?: string[]
+    headerFont?: { name: string; weights: string[]; category: string }
+    bodyFont?: { name: string; weights: string[]; category: string }
+  } | undefined
+
+  // Theme name
+  const themeName = (resultObj.themeName as string | undefined) || appliedFont?.name || 'Font Theme'
+
+  // Support new headerFont/bodyFont structure or fall back to legacy fontName
+  const headerFont = appliedFont?.headerFont ||
+    (appliedFont?.fontName
+      ? {
+          name: appliedFont.fontName,
+          weights: appliedFont.weights || ['400', '700'],
+          category: 'sans-serif'
+        }
+      : undefined) ||
+    (resultObj.headerFont as { name: string; weights: string[] } | undefined)
+
+  const bodyFont = appliedFont?.bodyFont ||
+    (appliedFont?.fontName
+      ? {
+          name: appliedFont.fontName,
+          weights: appliedFont.weights || ['400', '700'],
+          category: 'sans-serif'
+        }
+      : undefined) ||
+    (resultObj.bodyFont as { name: string; weights: string[] } | undefined)
+
+  // Extract font names - handle both object format (set mode) and string format (apply mode)
+  const headerFontFromResult = resultObj.headerFont
+  const bodyFontFromResult = resultObj.bodyFont
+  const legacyFontName = resultObj.fontName as string | undefined
+
+  const headerFontName = headerFont?.name ||
+    (typeof headerFontFromResult === 'string' ? headerFontFromResult : undefined) ||
+    legacyFontName
+
+  const bodyFontName = bodyFont?.name ||
+    (typeof bodyFontFromResult === 'string' ? bodyFontFromResult : undefined) ||
+    legacyFontName
+
+  // Load Google Fonts when fonts are applied
+  useEffect(function loadGoogleFonts() {
+    if ((!headerFontName && !bodyFontName) || !toolStatus || toolStatus !== 'completed') return
+
+    const linkId = 'font-theme-renderer-modern-font'
+    let link = document.getElementById(linkId) as HTMLLinkElement
+
+    if (!link) {
+      link = document.createElement('link')
+      link.id = linkId
+      link.rel = 'stylesheet'
+      document.head.appendChild(link)
+    }
+
+    // Build font families with default weights
+    const fontMap = new Map<string, Set<string>>()
+
+    if (headerFontName) {
+      const existing = fontMap.get(headerFontName) || new Set<string>()
+      // Use weights from font info if available, otherwise default
+      const weights = headerFont?.weights || ['400', '600', '700']
+      weights.forEach((w: string) => existing.add(w))
+      fontMap.set(headerFontName, existing)
+    }
+
+    if (bodyFontName) {
+      const existing = fontMap.get(bodyFontName) || new Set<string>()
+      // Use weights from font info if available, otherwise default
+      const weights = bodyFont?.weights || ['400', '500', '600']
+      weights.forEach((w: string) => existing.add(w))
+      fontMap.set(bodyFontName, existing)
+    }
+
+    const fontFamilies: string[] = []
+    fontMap.forEach((weights, name) => {
+      const encodedName = encodeURIComponent(name).replace(/%20/g, '+')
+      const weightsStr = Array.from(weights).sort().join(';')
+      fontFamilies.push(`${encodedName}:wght@${weightsStr}`)
+    })
+
+    if (fontFamilies.length === 0) return
+
+    const fontUrl = `https://fonts.googleapis.com/css2?family=${fontFamilies.join('&family=')}&display=swap`
+
+    if (link.href !== fontUrl) {
+      link.href = fontUrl
+    }
+  }, [headerFont, bodyFont, headerFontName, bodyFontName, toolStatus])
+
+  // Render direct-apply results from apply mode
+  if (toolStatus === 'completed' && isApplyMode && headerFontName && bodyFontName) {
+    // Normalize fonts to ensure weights array exists
+    const normalizedHeaderFont = (headerFont && headerFont.weights) ? headerFont : {
+      name: headerFontName,
+      weights: ['400', '600', '700'],
+    }
+    const normalizedBodyFont = (bodyFont && bodyFont.weights) ? bodyFont : {
+      name: bodyFontName,
+      weights: ['400', '500', '600'],
+    }
+
+    return (
+      <div className="mt-2 mb-2">
+        <FontPaletteWidget
+          name={themeName}
+          headerFont={normalizedHeaderFont}
+          bodyFont={normalizedBodyFont}
+        />
+      </div>
+    )
+  }
+
+  return null
+}
+
+/**
+ * Font Theme Tool Renderer
+ *
+ * Handles rendering for the fontTheme tool which has two modes:
+ * - suggest: Shows multiple font theme options in a grid
+ * - apply: Shows confirmation message
+ */
+export default function FontThemeToolRenderer(props: DefaultToolRendererProps) {
+  const isFontSelectionChatEnabled = useSwitchboard('airo-builder-font-selection-chat')
+  if (!isFontSelectionChatEnabled) {
+    return <FontThemeToolRendererLegacy {...props} />
+  }
+  return <FontThemeToolRendererModern {...props} />
 }

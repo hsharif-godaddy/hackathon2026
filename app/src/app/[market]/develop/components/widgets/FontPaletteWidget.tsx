@@ -1,53 +1,47 @@
 'use client'
 
-import { useEffect, useMemo } from 'react'
+import { useEffect } from 'react'
+import PlusIcon from '@ux/icon/plus'
+import text from '@ux/text'
 
-/**
- * Font data structure
- */
-export interface FontInfo {
-  name: string
-  weight?: string | number
-  category?: string
-  fallback?: string
-  description?: string
-}
+import type { FontThemeSuggestFont } from '@/app/[market]/develop/components/utils/findLatestFontThemeSuggest'
 
 /**
  * Font palette widget props
  */
 export interface FontPaletteWidgetProps {
   name?: string
-  fonts: FontInfo[]
+  headerFont: FontThemeSuggestFont
+  bodyFont: FontThemeSuggestFont
   className?: string
 }
 
 /**
  * Font Palette Widget
  *
- * Displays Google Fonts with preview examples:
- * - Loads fonts dynamically from Google Fonts
- * - Shows font name, category, and preview text
- * - Displays different font sizes and weights
+ * Displays Google Fonts with preview matching the selected option style
+ * from the font selection widget.
  */
-export default function FontPaletteWidget({ name, fonts, className = '' }: FontPaletteWidgetProps) {
-  // Safely extract font data with fallbacks - memoized to prevent useEffect dependency changes
-  const safeFonts = useMemo(() => fonts || [], [fonts])
-  const hasFonts = safeFonts.length > 0
-
+export default function FontPaletteWidget({ name, headerFont, bodyFont, className = '' }: FontPaletteWidgetProps) {
   useEffect(function loadGoogleFonts() {
-    if (!hasFonts) return
+    const fontMap = new Map<string, Set<string>>()
 
-    const fontFamilies = safeFonts
-      .filter(font => font?.name)
-      .map(font => {
-        const fontName = font.name.replace(/\s+/g, '+')
-        const weight = font.weight || '400'
-        return `${fontName}:wght@${weight}`
-      })
-      .join('&family=')
+    // Collect all weights for each unique font
+    for (const font of [headerFont, bodyFont]) {
+      if (!font?.name) continue
+      const existing = fontMap.get(font.name) || new Set<string>()
+      for (const w of font.weights) existing.add(w)
+      fontMap.set(font.name, existing)
+    }
 
-    if (!fontFamilies) return
+    if (fontMap.size === 0) return
+
+    const fontFamilies: string[] = []
+    fontMap.forEach((weights, fontName) => {
+      const encodedName = encodeURIComponent(fontName).replace(/%20/g, '+')
+      const weightsStr = Array.from(weights).sort().join(';')
+      fontFamilies.push(`${encodedName}:wght@${weightsStr}`)
+    })
 
     const linkId = 'widget-google-fonts'
     let link = document.getElementById(linkId) as HTMLLinkElement
@@ -59,63 +53,65 @@ export default function FontPaletteWidget({ name, fonts, className = '' }: FontP
       document.head.appendChild(link)
     }
 
-    link.href = `https://fonts.googleapis.com/css2?family=${fontFamilies}&display=swap`
-  }, [safeFonts, hasFonts])
+    link.href = `https://fonts.googleapis.com/css2?family=${fontFamilies.join('&family=')}&display=swap`
+  }, [headerFont, bodyFont])
 
-  if (!hasFonts) {
-    return (
-      <div className={`rounded-lg border bg-white p-2 shadow-sm max-w-2xl ${className}`}>
-        <p className="text-gray-500">No fonts to display</p>
-      </div>
-    )
-  }
+  const isSameFont = headerFont.name === bodyFont.name
+
+  // Pick representative weights for display (with defensive fallbacks)
+  const headerWeights = headerFont.weights || ['400', '700']
+  const bodyWeights = bodyFont.weights || ['400', '600']
+  const headerWeight = headerWeights[headerWeights.length - 1] || '700'
+  const bodyWeight = bodyWeights[0] || '400'
 
   return (
-    <div className={`rounded-lg border bg-white p-1.5 shadow-sm max-w-2xl ${className}`}>
-      {/* Title */}
-      {name && (
-        <h3 className="text-base font-bold mb-1 text-gray-900">{name}</h3>
-      )}
+    <div
+      className={`flex items-center justify-between gap-2 rounded-md border-2 border-border px-1.5 py-1 bg-intents-ux-box-backgroundColor ${className}`}
+    >
+      {/* Theme name in header font */}
+      <text.span
+        className="truncate font-semibold leading-none"
+        size={0}
+        style={{
+          fontFamily: `"${headerFont.name}", ui-sans-serif, system-ui, sans-serif`,
+          fontWeight: headerWeight,
+        }}
+      >
+        {name}
+      </text.span>
 
-      <div className="space-y-1">
-        {safeFonts.map((font, index) => {
-          const fontFamily = font?.name || 'Arial'
-          const fontWeight = font?.weight || '400'
-          const fontFallback = font?.fallback || 'sans-serif'
-          const fontDescription = font?.description || 'The quick brown fox jumps over the lazy dog'
-
-          return (
-            <div
-              key={index}
-              className="rounded borderp-1.5 space-y-1"
+      {/* Font pairing */}
+      <div className="flex items-center gap-1 text-xs text-intents-ux-boxLowContrast-foregroundColor">
+        {isSameFont ? (
+          <span
+            style={{
+              fontFamily: `"${headerFont.name}", ui-sans-serif, system-ui, sans-serif`,
+              fontWeight: headerWeight,
+            }}
+          >
+            {headerFont.name}
+          </span>
+        ) : (
+          <>
+            <span
+              style={{
+                fontFamily: `"${headerFont.name}", ui-sans-serif, system-ui, sans-serif`,
+                fontWeight: headerWeight,
+              }}
             >
-              {/* Font preview samples */}
-              <div className="space-y-1 pt-0.5">
-                {/* Heading sample */}
-                <div
-                  className="text-xl leading-tight"
-                  style={{
-                    fontFamily: `"${fontFamily}", ${fontFallback}`,
-                    fontWeight: fontWeight
-                  }}
-                >
-                  {fontFamily}
-                </div>
-
-                {/* Character set sample - single line with wrapping */}
-                <div
-                  className="text-xs break-all"
-                  style={{
-                    fontFamily: `"${fontFamily}", ${fontFallback}`,
-                    fontWeight: fontWeight
-                  }}
-                >
-                  {fontDescription}
-                </div>
-              </div>
-            </div>
-          )
-        })}
+              {headerFont.name}
+            </span>
+            <PlusIcon className="size-2 shrink-0" />
+            <span
+              style={{
+                fontFamily: `"${bodyFont.name}", ui-sans-serif, system-ui, sans-serif`,
+                fontWeight: bodyWeight,
+              }}
+            >
+              {bodyFont.name}
+            </span>
+          </>
+        )}
       </div>
     </div>
   )

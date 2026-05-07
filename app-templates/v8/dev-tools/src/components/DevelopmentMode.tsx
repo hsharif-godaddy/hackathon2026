@@ -52,6 +52,7 @@ export default function DevelopmentMode() {
     // Clear stale theme preview state from previous sessions
     localStorage.removeItem('airo-dev-original-theme')
     localStorage.removeItem('airo-dev-preview-theme')
+    localStorage.removeItem('airo-dev-original-font')
 
     // Theme preview: convert hex to HSL for CSS custom properties
     function hexToHsl(hex: string): string {
@@ -157,6 +158,69 @@ export default function DevelopmentMode() {
 
       localStorage.removeItem('airo-dev-original-theme')
       localStorage.removeItem('airo-dev-preview-theme')
+    }
+
+    function buildGoogleFontsHref(headerFont: { name: string; weights: string[] }, bodyFont: { name: string; weights: string[] }) {
+      const fontMap = new Map<string, Set<string>>()
+      for (const f of [headerFont, bodyFont]) {
+        if (!f?.name) continue
+        const existing = fontMap.get(f.name) || new Set<string>()
+        for (const w of f.weights || ['400', '700']) existing.add(w)
+        fontMap.set(f.name, existing)
+      }
+      const parts: string[] = []
+      fontMap.forEach((weights, name) => {
+        const enc = encodeURIComponent(name).replace(/%20/g, '+')
+        parts.push(`${enc}:wght@${Array.from(weights).sort().join(';')}`)
+      })
+      return `https://fonts.googleapis.com/css2?family=${parts.join('&family=')}&display=swap`
+    }
+
+    function applyFontPreview(data: { headerFont: { name: string; weights: string[] }; bodyFont: { name: string; weights: string[] } }) {
+      const root = document.documentElement
+      const { headerFont, bodyFont } = data
+      if (!headerFont?.name || !bodyFont?.name) return
+
+      const hasOriginalFont = localStorage.getItem('airo-dev-original-font')
+      if (!hasOriginalFont) {
+        const originalFont: Record<string, string> = {
+          '--font-heading': getComputedStyle(root).getPropertyValue('--font-heading').trim(),
+          '--font-sans': getComputedStyle(root).getPropertyValue('--font-sans').trim(),
+        }
+        localStorage.setItem('airo-dev-original-font', JSON.stringify(originalFont))
+      }
+
+      let fontLink = document.getElementById('airo-preview-font-link') as HTMLLinkElement | null
+      if (!fontLink) {
+        fontLink = document.createElement('link')
+        fontLink.id = 'airo-preview-font-link'
+        fontLink.rel = 'stylesheet'
+        document.head.appendChild(fontLink)
+      }
+      fontLink.href = buildGoogleFontsHref(headerFont, bodyFont)
+
+      root.style.setProperty('--font-heading', `"${headerFont.name}", ui-sans-serif, system-ui, sans-serif`)
+      root.style.setProperty('--font-sans', `"${bodyFont.name}", ui-sans-serif, system-ui, sans-serif`)
+    }
+
+    function revertFontPreview() {
+      const originalFontStr = localStorage.getItem('airo-dev-original-font')
+      if (!originalFontStr) return
+
+      try {
+        const originalFont = JSON.parse(originalFontStr) as Record<string, string>
+        const root = document.documentElement
+        Object.entries(originalFont).forEach(([key, value]) => {
+          root.style.setProperty(key, value)
+        })
+        localStorage.removeItem('airo-dev-original-font')
+        const fontLink = document.getElementById('airo-preview-font-link')
+        fontLink?.remove()
+      } catch (error) {
+        // Clear stale/corrupt localStorage key but keep preview font active
+        // (removing the link without restoring CSS vars would break the preview)
+        localStorage.removeItem('airo-dev-original-font')
+      }
     }
 
     // Media version cache-busting via MutationObserver
@@ -627,11 +691,31 @@ export default function DevelopmentMode() {
           applyThemePreview(event.data.palette)
         } else if (event.data?.type === 'REVERT_THEME') {
           revertThemePreview()
+        } else if (
+          event.data?.type === 'PREVIEW_FONT' &&
+          event.data.headerFont &&
+          event.data.bodyFont
+        ) {
+          try {
+            applyFontPreview({
+              bodyFont: event.data.bodyFont as { name: string; weights: string[] },
+              headerFont: event.data.headerFont as { name: string; weights: string[] },
+            })
+          } catch (fontError) {
+            console.error('[DevTools] Font preview failed:', fontError)
+          }
+        } else if (event.data?.type === 'REVERT_FONT') {
+          try {
+            revertFontPreview()
+          } catch (fontError) {
+            console.error('[DevTools] Font revert failed:', fontError)
+          }
         }
       } catch (error) {
+        console.error('[DevTools] Message handler error:', error, 'Message type:', event.data?.type)
 
-        // Send error response
-        if (window.parent !== window) {
+        // Send error response only for visual context requests (not font/theme preview errors)
+        if (window.parent !== window && event.data?.type === 'REQUEST_VISUAL_CONTEXT') {
           safePostMessage(window.parent, {
             type: 'VISUAL_CONTEXT_RESPONSE',
             context: {

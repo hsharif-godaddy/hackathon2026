@@ -7,6 +7,7 @@ import { useQueryClient } from '@tanstack/react-query'
 
 import { useSendUserMessage } from '@/app/[market]/develop/components/chat/ChatContext'
 import CollapsibleChatInputSection, { CollapseChevron } from '@/app/[market]/develop/components/chat/CollapsibleChatInputSection'
+import FontThemePreviewInputPanel from '@/app/[market]/develop/components/chat/FontThemePreviewInputPanel'
 import ThemePreviewInputPanel from '@/app/[market]/develop/components/chat/ThemePreviewInputPanel'
 import { useLatestNBAs } from '@/app/[market]/develop/components/chat/useLatestNBAs'
 import ThinkingIndicator from '@/app/[market]/develop/components/ThinkingIndicator'
@@ -18,7 +19,10 @@ import { useNumberKeySelection } from '@/app/[market]/develop/components/tool-re
 import { ViewMode } from '@/app/[market]/develop/components/types'
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import { findLatestAppliedColorScheme } from '@/app/[market]/develop/components/utils/findLatestAppliedColorScheme'
+import { findLatestAppliedFontTheme } from '@/app/[market]/develop/components/utils/findLatestAppliedFontTheme'
 import type { ActiveColorSchemeSuggest } from '@/app/[market]/develop/components/utils/findLatestColorSchemeSuggest'
+import type { ActiveFontThemeSuggest } from '@/app/[market]/develop/components/utils/findLatestFontThemeSuggest'
+import { previewFontInIframe } from '@/app/[market]/develop/components/utils/previewFontInIframe'
 import { previewThemeInIframe } from '@/app/[market]/develop/components/utils/previewThemeInIframe'
 import { useNextActions } from '@/app/[market]/develop/hooks/useNextActions'
 import { useRebuildPages } from '@/app/[market]/develop/hooks/useRebuildPages'
@@ -48,6 +52,7 @@ const MAX_COMBINED_ITEMS = 4
  */
 type InputActionsPanelProps = {
   activeColorSchemeSuggest?: ActiveColorSchemeSuggest | null
+  activeFontThemeSuggest?: ActiveFontThemeSuggest | null
 }
 
 function isAskQuestionToolResult(toolResult: unknown): boolean {
@@ -904,7 +909,10 @@ function TodoListModal({
   )
 }
 
-function InputActionsPanelThemeSelection({ activeColorSchemeSuggest = null }: InputActionsPanelProps) {
+function InputActionsPanelThemeSelection({
+  activeColorSchemeSuggest = null,
+  activeFontThemeSuggest = null,
+}: InputActionsPanelProps) {
   const t = useTranslations()
   const queryClient = useQueryClient()
   const sendUserMessage = useSendUserMessage()
@@ -944,12 +952,15 @@ function InputActionsPanelThemeSelection({ activeColorSchemeSuggest = null }: In
 
   // Get the currently applied theme to prepend to suggestions
   const currentAppliedTheme = useMemo(() => findLatestAppliedColorScheme(messages), [messages])
+  const currentAppliedFont = useMemo(() => findLatestAppliedFontTheme(messages), [messages])
 
   const [fullPlanExpanded, setFullPlanExpanded] = useState(false)
   const [continueBuildingExpanded, setContinueBuildingExpanded] = useState(true)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [dismissedColorSuggestId, setDismissedColorSuggestId] = useState<string | null>(null)
+  const [dismissedFontSuggestId, setDismissedFontSuggestId] = useState<string | null>(null)
   const [selectedThemeIndex, setSelectedThemeIndex] = useState<number>(0)
+  const [selectedFontIndex, setSelectedFontIndex] = useState<number>(0)
   const [askQuestionCompleted, setAskQuestionCompleted] = useState(false)
   const [currentAskQuestionText, setCurrentAskQuestionText] = useState<string | null>(null)
   useEffect(() => { setAskQuestionCompleted(false); setCurrentAskQuestionText(null) }, [nbaData?.toolResult])
@@ -989,6 +1000,8 @@ function InputActionsPanelThemeSelection({ activeColorSchemeSuggest = null }: In
   const hasNextActions = nextActionSuggestions.length > 0
   const hasCombinedItems = nbaSuggestions.length > 0 || planPreviewItems.length > 0 || hasNextActions
   const showColor = Boolean(activeColorSchemeSuggest) && dismissedColorSuggestId !== activeColorSchemeSuggest?.toolCallId
+  const showFont = Boolean(activeFontThemeSuggest) && dismissedFontSuggestId !== activeFontThemeSuggest?.toolCallId
+  const showAnySuggest = showColor || showFont
   const isPreviewMode = viewMode === ViewMode.PREVIEW || viewMode === ViewMode.EDIT
 
   // Prepend the current applied theme to the suggestions if it exists, filtering duplicates by name
@@ -1002,12 +1015,28 @@ function InputActionsPanelThemeSelection({ activeColorSchemeSuggest = null }: In
     [activeColorSchemeSuggest, currentAppliedTheme]
   )
 
+  // Prepend the current applied font theme to the suggestions if it exists, filtering duplicates by font names
+  const themesWithCurrent = useMemo(
+    () =>
+      activeFontThemeSuggest && currentAppliedFont
+        ? [currentAppliedFont, ...activeFontThemeSuggest.themes].filter(
+            (theme, index, arr) =>
+              arr.findIndex(
+                t =>
+                  t.headerFont.name === theme.headerFont.name &&
+                  t.bodyFont.name === theme.bodyFont.name
+              ) === index
+          )
+        : activeFontThemeSuggest?.themes ?? [],
+    [activeFontThemeSuggest, currentAppliedFont]
+  )
+
   // Auto-open "Continue Building" when content is available
   useEffect(() => {
-    if (hasCombinedItems || hasPlan || showColor || hasRebuildPages) {
+    if (hasCombinedItems || hasPlan || showAnySuggest || hasRebuildPages) {
       setContinueBuildingExpanded(true)
     }
-  }, [showColor, hasCombinedItems, hasPlan, hasRebuildPages])
+  }, [showAnySuggest, hasCombinedItems, hasPlan, hasRebuildPages])
 
   // Reset dismissed state and theme selection when color suggest changes
   useEffect(() => {
@@ -1016,6 +1045,13 @@ function InputActionsPanelThemeSelection({ activeColorSchemeSuggest = null }: In
       setSelectedThemeIndex(0)
     }
   }, [activeColorSchemeSuggest?.toolCallId])
+
+  useEffect(() => {
+    if (activeFontThemeSuggest?.toolCallId) {
+      setDismissedFontSuggestId(null)
+      setSelectedFontIndex(0)
+    }
+  }, [activeFontThemeSuggest?.toolCallId])
 
   // Track selected theme index in a ref to avoid effect over-firing
   const selectedThemeIndexRef = useRef(selectedThemeIndex)
@@ -1036,6 +1072,23 @@ function InputActionsPanelThemeSelection({ activeColorSchemeSuggest = null }: In
       previewThemeInIframe(palette.name, palette.palette)
     }
   }, [viewMode, palettesWithCurrent, isPreviewMode])
+
+  const selectedFontIndexRef = useRef(selectedFontIndex)
+  useEffect(() => {
+    selectedFontIndexRef.current = selectedFontIndex
+  }, [selectedFontIndex])
+
+  // Handle font theme selection when switching view modes
+  useEffect(() => {
+    if (viewMode === ViewMode.BRAND) {
+      setSelectedFontIndex(0)
+    }
+    if (!isPreviewMode || selectedFontIndexRef.current === 0) return
+    const th = themesWithCurrent[selectedFontIndexRef.current]
+    if (th) {
+      previewFontInIframe({ bodyFont: th.bodyFont, headerFont: th.headerFont })
+    }
+  }, [viewMode, themesWithCurrent, isPreviewMode])
 
   // Track which list ID we last auto-revealed, so a new list triggers again.
   const revealedListIdRef = useRef<string | null>(currentList?.id ?? null)
@@ -1088,8 +1141,8 @@ function InputActionsPanelThemeSelection({ activeColorSchemeSuggest = null }: In
   useEffect(() => {
     if (!hasPlan) return
 
-    // Don't auto-expand plan when there's an active color scheme suggestion
-    if (activeColorSchemeSuggest) {
+    // Don't auto-expand plan when there's an active color or font suggestion panel
+    if (activeColorSchemeSuggest || activeFontThemeSuggest) {
       // Only collapse if it was auto-expanded, don't touch user-opened plans
       if (autoExpandedRef.current && fullPlanExpandedRef.current) {
         setFullPlanExpanded(false)
@@ -1117,7 +1170,7 @@ function InputActionsPanelThemeSelection({ activeColorSchemeSuggest = null }: In
     autoExpandedRef.current = true
     setFullPlanExpanded(true)
     startAutoCollapseTimer()
-  }, [activeColorSchemeSuggest, viewState, hasPlan, isProcessing, currentListId])
+  }, [activeColorSchemeSuggest, activeFontThemeSuggest, viewState, hasPlan, isProcessing, currentListId])
 
   // When all items in the current list are completed, auto-switch to another
   // list that has undone items. If none exist, keep the completed list showing.
@@ -1267,6 +1320,13 @@ function InputActionsPanelThemeSelection({ activeColorSchemeSuggest = null }: In
     setSelectedThemeIndex(0)
   }
 
+  function handleFontCancel() {
+    if (activeFontThemeSuggest) {
+      setDismissedFontSuggestId(activeFontThemeSuggest.toolCallId)
+    }
+    setSelectedFontIndex(0)
+  }
+
 
   // ── Mode C: Agent working ────────────────────────────────────────────────
   if (isProcessing) {
@@ -1276,7 +1336,7 @@ function InputActionsPanelThemeSelection({ activeColorSchemeSuggest = null }: In
         {/* Thinking indicator with optional plan toggle (hide plan when applying theme) */}
         <div className="flex items-center justify-between px-1 py-0.5 mb-1 min-h-[22px]">
           <ThinkingIndicator active={true} inline={true} />
-          {hasPlan && !showColor && (
+          {hasPlan && !showAnySuggest && (
             <button
               type="button"
               className="flex items-center gap-0.5 text-xs text-muted-foreground hover:text-foreground transition-colors flex-shrink-0 ml-2"
@@ -1293,7 +1353,7 @@ function InputActionsPanelThemeSelection({ activeColorSchemeSuggest = null }: In
 
         {/* Nested plan details when expanded (hide when applying theme) */}
         <AnimatePresence initial={false}>
-          {hasPlan && fullPlanExpanded && !showColor && (
+          {hasPlan && fullPlanExpanded && !showAnySuggest && (
             <motion.div
               key="full-plan-processing"
               initial={{ height: 0, opacity: 0 }}
@@ -1347,13 +1407,15 @@ function InputActionsPanelThemeSelection({ activeColorSchemeSuggest = null }: In
   }
 
   // ── Mode A: Agent idle, nothing to show ──────────────────────────────────
-  if (!hasCombinedItems && !hasPlan && !showColor && !hasRebuildPages) {
+  if (!hasCombinedItems && !hasPlan && !showAnySuggest && !hasRebuildPages) {
     return null
   }
 
   const continueBuildingTitleText = showColor
     ? t('builder_theme_preview_panel_title', undefined, 'Choose a color scheme')
-    : nbaSuggestions.length > 0 && nbaData?.question
+    : showFont
+      ? `${t('builder_tools_font_theme', undefined, 'Font Theme')}: ${t('builder_tools_font_theme_options', undefined, 'Options')}`
+      : nbaSuggestions.length > 0 && nbaData?.question
       ? nbaData.question
       : t('builder_todo_continue_building')
 
@@ -1436,7 +1498,7 @@ function InputActionsPanelThemeSelection({ activeColorSchemeSuggest = null }: In
   // ── Mode B: Agent idle, has data ─────────────────────────────────────────
   return (
     <>
-      {(hasCombinedItems || hasPlan || showColor || hasRebuildPages) && (
+      {(hasCombinedItems || hasPlan || showAnySuggest || hasRebuildPages) && (
         <>
           {showColor && activeColorSchemeSuggest ? (
             <ThemePreviewInputPanel
@@ -1459,6 +1521,27 @@ function InputActionsPanelThemeSelection({ activeColorSchemeSuggest = null }: In
                 </CollapsibleChatInputSection>
               )}
             </ThemePreviewInputPanel>
+          ) : showFont && activeFontThemeSuggest ? (
+            <FontThemePreviewInputPanel
+              key={activeFontThemeSuggest.toolCallId}
+              disabled={!isPreviewMode}
+              onCancel={handleFontCancel}
+              selectedIndex={selectedFontIndex}
+              themes={themesWithCurrent}
+              toolCallId={activeFontThemeSuggest.toolCallId}
+              onSelectedIndexChange={setSelectedFontIndex}
+            >
+              {({ body, footer }) => (
+                <CollapsibleChatInputSection
+                  title={continueBuildingTitle}
+                  expanded={continueBuildingExpanded}
+                  footer={footer}
+                  onExpandedChange={setContinueBuildingExpanded}
+                >
+                  {body}
+                </CollapsibleChatInputSection>
+              )}
+            </FontThemePreviewInputPanel>
           ) : isAskQuestionActive ? (
             <CollapsibleChatInputSection
               title={<span className="text-foreground">{currentAskQuestionText || nbaData.question}</span>}
@@ -1494,10 +1577,19 @@ function InputActionsPanelThemeSelection({ activeColorSchemeSuggest = null }: In
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-export default function InputActionsPanel({ activeColorSchemeSuggest = null }: InputActionsPanelProps) {
+export default function InputActionsPanel({
+  activeColorSchemeSuggest = null,
+  activeFontThemeSuggest = null,
+}: InputActionsPanelProps) {
   const isThemeSelectionChatEnabled = useSwitchboard('airo-builder-theme-selection-chat')
-  if (isThemeSelectionChatEnabled) {
-    return <InputActionsPanelThemeSelection activeColorSchemeSuggest={activeColorSchemeSuggest} />
+  const isFontSelectionChatEnabled = useSwitchboard('airo-builder-font-selection-chat')
+  if (isThemeSelectionChatEnabled || isFontSelectionChatEnabled) {
+    return (
+      <InputActionsPanelThemeSelection
+        activeColorSchemeSuggest={activeColorSchemeSuggest}
+        activeFontThemeSuggest={activeFontThemeSuggest}
+      />
+    )
   }
   return <InputActionsPanelLegacy />
 }
