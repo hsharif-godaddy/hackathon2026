@@ -92,11 +92,11 @@ vi.mock('@/components/providers/AuthProvider', () => ({
   }),
 }));
 
-// Stub ShareMenu so we can assert placement without rendering its full
-// popover + hooks. Same pattern Header.test.tsx uses.
-vi.mock('@/app/[market]/develop/components/layout/ShareMenu', () => ({
-  default: ({ location }: { location?: string }) => (
-    <div data-testid="share-menu" data-location={location}>ShareMenu</div>
+// Stub DomainMenu so we can assert placement without rendering its full
+// popover + hooks.
+vi.mock('@/app/[market]/develop/components/layout/DomainMenu', () => ({
+  default: () => (
+    <div data-testid="domain-menu">DomainMenu</div>
   ),
 }));
 
@@ -159,52 +159,35 @@ describe('ChatToolbar', () => {
     expect(screen.getByLabelText('builder_chat_toolbar_button_view')).toBeInTheDocument();
   });
 
-  describe('Domain button in mobile preview mode', () => {
-    it('renders View and Code without Domain (Domain moved to Settings menu on mobile)', () => {
-      mockDevelopStore.isMobile = true;
-      mockDevelopStore.mobileMode = MobileMode.PREVIEW;
-
-      renderWithProviders(<ChatToolbar {...defaultProps} />);
-
-      expect(screen.getByLabelText('builder_chat_toolbar_button_view')).toBeInTheDocument();
-      expect(screen.getByLabelText('builder_chat_toolbar_button_code')).toBeInTheDocument();
-      expect(screen.queryByLabelText('builder_domain_title')).not.toBeInTheDocument();
-    });
-  });
-
-  describe('ShareMenu placement', () => {
-    it('renders ShareMenu in mobile TOOLS mode (next to AppPublish)', () => {
+  describe('DomainMenu placement', () => {
+    it('renders DomainMenu in mobile TOOLS mode (next to AppPublish)', () => {
       mockDevelopStore.isMobile = true;
       mockDevelopStore.mobileMode = MobileMode.TOOLS;
 
       renderWithProviders(<ChatToolbar {...defaultProps} />);
 
-      const share = screen.getByTestId('share-menu');
-      expect(share).toBeInTheDocument();
-      expect(share).toHaveAttribute('data-location', 'develop.chat_toolbar');
+      const domainMenus = screen.getAllByTestId('domain-menu');
+      expect(domainMenus.length).toBeGreaterThanOrEqual(1);
     });
 
-    it('renders ShareMenu in mobile PREVIEW mode (next to DomainMenu + AppPublish)', () => {
+    it('renders DomainMenu in mobile PREVIEW mode (next to AppPublish)', () => {
       mockDevelopStore.isMobile = true;
       mockDevelopStore.mobileMode = MobileMode.PREVIEW;
 
       renderWithProviders(<ChatToolbar {...defaultProps} />);
 
-      const share = screen.getByTestId('share-menu');
-      expect(share).toBeInTheDocument();
-      expect(share).toHaveAttribute('data-location', 'develop.chat_toolbar');
+      const domainMenus = screen.getAllByTestId('domain-menu');
+      expect(domainMenus.length).toBeGreaterThanOrEqual(1);
     });
 
-    it('does NOT render ShareMenu on desktop (Header.tsx owns it there)', () => {
+    it('does NOT render DomainMenu on desktop (Header.tsx owns it there)', () => {
       mockDevelopStore.isMobile = false;
 
       renderWithProviders(<ChatToolbar {...defaultProps} />);
 
       // The desktop tools-mode block has the chat tabs + SettingsMenu but no
-      // Share/Publish — those live in the desktop Header. A regression that
-      // adds ShareMenu to the desktop branch of ChatToolbar would surface
-      // as a duplicate testid here (use queryAllByTestId to be explicit).
-      expect(screen.queryAllByTestId('share-menu')).toHaveLength(0);
+      // DomainMenu/Publish — those live in the desktop Header.
+      expect(screen.queryAllByTestId('domain-menu')).toHaveLength(0);
     });
   });
 

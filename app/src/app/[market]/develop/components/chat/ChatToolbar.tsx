@@ -14,7 +14,6 @@ import ShowIcon from '@ux/icon/show'
 import { ButtonGroup } from '@/app/[market]/develop/components/ButtonGroup'
 import IconButton from '@/app/[market]/develop/components/IconButton'
 import DomainMenu from '@/app/[market]/develop/components/layout/DomainMenu'
-import ShareMenu from '@/app/[market]/develop/components/layout/ShareMenu'
 import SettingsMenu, { SettingsMenuRef } from '@/app/[market]/develop/components/settings/SettingsMenu'
 import { ChatTab, MobileMode, ViewMode } from '@/app/[market]/develop/components/types'
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
@@ -191,7 +190,7 @@ export default function ChatToolbar({
 
           {isMobile && (
             <>
-              <ShareMenu location="develop.chat_toolbar" />
+              <DomainMenu />
               <AppPublish location="develop.chat_toolbar" />
             </>
           )}
@@ -253,7 +252,6 @@ export default function ChatToolbar({
 
           <Box orientation="horizontal" gap="sm">
             <DomainMenu />
-            <ShareMenu location="develop.chat_toolbar" />
             <AppPublish location="develop.chat_toolbar" />
           </Box>
         </>

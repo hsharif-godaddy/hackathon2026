@@ -19,7 +19,6 @@ import Tag from '@ux/tag';
 import { ButtonGroup } from '@/app/[market]/develop/components/ButtonGroup';
 import IconButton from '@/app/[market]/develop/components/IconButton';
 import DomainMenu from '@/app/[market]/develop/components/layout/DomainMenu';
-import ShareMenu from '@/app/[market]/develop/components/layout/ShareMenu';
 import DeviceSelector from '@/app/[market]/develop/components/preview/DeviceSelector'
 import { MobileMode, ViewMode } from '@/app/[market]/develop/components/types'
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
@@ -32,7 +31,7 @@ import UserMenu from '@/components/layout/UserMenu';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
-import { generateClickEID, logClickEvent } from '@/utils/instrumentation'
+import { logClickEvent } from '@/utils/instrumentation'
 
 const VIEW_MODE_EID_MAP: Record<string, string> = {
   [ViewMode.PREVIEW]: 'develop.header.iframe',
@@ -182,10 +181,9 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
 
               <DomainMenu />
 
-              {/* Always show Upgrade/Share/Publish/UserMenu */}
+              {/* Always show Upgrade/Publish/UserMenu */}
               <ButtonGroup>
                 <HeaderUpgradeButton location="develop" />
-                <ShareMenu location="develop" />
                 <AppPublish location="develop" />
               </ButtonGroup>
 
