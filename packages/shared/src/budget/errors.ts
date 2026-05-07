@@ -100,7 +100,7 @@ export function mapBudgetErrorToResponse(error: BudgetServiceError): BudgetError
 
   if (error instanceof BudgetNotFoundError) {
     return {
-      message: 'Budget resource not found',
+      message: 'Budget not found',
       errorType: BudgetErrorType.BUDGET_NOT_FOUND,
       statusCode: 404,
     }

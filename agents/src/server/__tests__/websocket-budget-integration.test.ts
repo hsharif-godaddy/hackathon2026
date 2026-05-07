@@ -226,7 +226,7 @@ describe('budget error mapping contracts', () => {
     const response = mapBudgetErrorToResponse(new BudgetNotFoundError('not found', '{}'))
     expect(response.errorType).toBe(BudgetErrorType.BUDGET_NOT_FOUND)
     expect(response.statusCode).toBe(404)
-    expect(response.message).toBe('Budget resource not found')
+    expect(response.message).toBe('Budget not found')
   })
 
   it('generic BudgetServiceError 5xx maps to service error', () => {

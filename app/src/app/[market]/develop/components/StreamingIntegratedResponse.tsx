@@ -2,6 +2,7 @@
 
 import { useMemo } from 'react'
 import { isEmployeeAuthType } from '@airo/shared/auth'
+import { BudgetErrorType } from '@airo/shared/budget'
 
 import { groupConsecutiveActionTools, groupConsecutiveMediaTools } from '@/app/[market]/develop/components/actionToolGrouping'
 import BudgetExceededBanner from '@/app/[market]/develop/components/chat/BudgetExceededBanner'
@@ -271,6 +272,12 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
               type="Critical"
               title="Network Error"
               message="Unable to reach the service. Please check your internet connection and try again."
+            />
+          ) : message.errorType === BudgetErrorType.BUDGET_NOT_FOUND || message.errorType === BudgetErrorType.BUDGET_SERVICE_UNAVAILABLE || message.errorType === BudgetErrorType.BUDGET_SERVICE_ERROR || message.errorType === BudgetErrorType.BUDGET_SERVICE_AUTH_ERROR ? (
+            <StreamingAlertMessage
+              type="Critical"
+              title={t('builder_bms_error_title', undefined, 'Unable to Process Request')}
+              message={t('builder_bms_error_message', undefined, 'Something went wrong on our end. Please try again.')}
             />
           ) : (
             /* Generic upstream error for all other types */

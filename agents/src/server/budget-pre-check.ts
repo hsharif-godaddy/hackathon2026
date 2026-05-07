@@ -7,6 +7,7 @@
  * the need for a separate getBudget call before session creation.
  *
  * @throws {BudgetExceededError} When createSession returns 402 (no credits available)
+ * @throws {BudgetNotFoundError} When budget does not exist in BMS (404)
  * @throws {BudgetServiceUnavailableError} When budget client is not configured or BMS is unreachable
  * @throws {BudgetServiceTimeoutError} When createSession times out
  * @throws {BudgetServiceAuthError} When S2S auth fails (401/403)
@@ -14,7 +15,7 @@
  */
 
 import type { BudgetServiceClient } from '@airo/ai-lib/budget'
-import { BudgetServiceUnavailableError, BudgetNoCapacityError } from '@airo/ai-lib/budget'
+import { BudgetServiceUnavailableError, BudgetNoCapacityError, BudgetNotFoundError } from '@airo/ai-lib/budget'
 import { BudgetExceededError } from '@airo/ai-common'
 import type { LoggerLike } from '@airo/ai-common'
 
@@ -92,6 +93,18 @@ export async function performBudgetPreCheck(
         bmsResponse: err.responseBody,
       })
       throw BudgetExceededError.fromBudgetCheck(budgetId)
+    }
+    // Log 404 BudgetNotFoundError before re-throwing for fail-closed behavior.
+    // This indicates a configuration issue (budget deleted or never created).
+    if (err instanceof BudgetNotFoundError) {
+      deps.logger.error('budget.precheck.budget_not_found', {
+        appId: metadata.appId,
+        budgetId,
+        subscriptionId: metadata.subscriptionId,
+        reason: 'Budget does not exist in BMS',
+        error: err.message,
+        responseBody: err.responseBody,
+      })
     }
     throw err
   }

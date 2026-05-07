@@ -77,7 +77,7 @@ describe('mapBudgetErrorToResponse', () => {
     )
 
     expect(response).toEqual({
-      message: 'Budget resource not found',
+      message: 'Budget not found',
       errorType: BudgetErrorType.BUDGET_NOT_FOUND,
       statusCode: 404,
     })

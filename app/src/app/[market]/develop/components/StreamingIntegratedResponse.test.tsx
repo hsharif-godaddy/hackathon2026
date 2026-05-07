@@ -4,6 +4,7 @@
 import '@testing-library/jest-dom';
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { BudgetErrorType } from '@airo/shared/budget';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 
 import type { SiteInfo } from '@/lib/control-plane/types';
@@ -72,6 +73,20 @@ function budgetExceededMessage(overrides: Record<string, unknown> = {}) {
     segments: [],
     timestamp: new Date(),
     budgetExceeded: true,
+    ...overrides,
+  };
+}
+
+function upstreamErrorMessage(errorType: string, overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'msg-upstream-1',
+    role: 'assistant' as const,
+    content: '',
+    segments: [],
+    timestamp: new Date(),
+    upstreamError: true,
+    errorType,
+    error: 'Test error message',
     ...overrides,
   };
 }
@@ -261,6 +276,86 @@ describe('StreamingIntegratedResponse', function streamingIntegratedResponseTest
         />
       );
 
+      expect(screen.getByText('builder_usage_limit_title')).toBeInTheDocument();
+    });
+  });
+
+  describe('budget service error handling', function budgetServiceErrorTests() {
+    it('shows translated BMS error banner for BUDGET_NOT_FOUND errorType', function budgetNotFoundError() {
+      renderWithProviders(
+        <StreamingIntegratedResponse
+          message={upstreamErrorMessage(BudgetErrorType.BUDGET_NOT_FOUND)}
+          streamingState="idle"
+        />
+      );
+
+      expect(screen.getByText('builder_bms_error_title')).toBeInTheDocument();
+      expect(screen.getByText('builder_bms_error_message')).toBeInTheDocument();
+    });
+
+    it('shows translated BMS error banner for BUDGET_SERVICE_UNAVAILABLE errorType', function budgetServiceUnavailableError() {
+      renderWithProviders(
+        <StreamingIntegratedResponse
+          message={upstreamErrorMessage(BudgetErrorType.BUDGET_SERVICE_UNAVAILABLE)}
+          streamingState="idle"
+        />
+      );
+
+      expect(screen.getByText('builder_bms_error_title')).toBeInTheDocument();
+      expect(screen.getByText('builder_bms_error_message')).toBeInTheDocument();
+    });
+
+    it('shows translated BMS error banner for BUDGET_SERVICE_ERROR errorType', function budgetServiceError() {
+      renderWithProviders(
+        <StreamingIntegratedResponse
+          message={upstreamErrorMessage(BudgetErrorType.BUDGET_SERVICE_ERROR)}
+          streamingState="idle"
+        />
+      );
+
+      expect(screen.getByText('builder_bms_error_title')).toBeInTheDocument();
+      expect(screen.getByText('builder_bms_error_message')).toBeInTheDocument();
+    });
+
+    it('shows translated BMS error banner for BUDGET_SERVICE_AUTH_ERROR errorType', function budgetServiceAuthError() {
+      renderWithProviders(
+        <StreamingIntegratedResponse
+          message={upstreamErrorMessage(BudgetErrorType.BUDGET_SERVICE_AUTH_ERROR)}
+          streamingState="idle"
+        />
+      );
+
+      expect(screen.getByText('builder_bms_error_title')).toBeInTheDocument();
+      expect(screen.getByText('builder_bms_error_message')).toBeInTheDocument();
+    });
+
+    it('falls through to generic error for unhandled budget error types', function genericErrorFallthrough() {
+      renderWithProviders(
+        <StreamingIntegratedResponse
+          message={upstreamErrorMessage(BudgetErrorType.BUDGET_NO_CAPACITY)}
+          streamingState="idle"
+        />
+      );
+
+      // BUDGET_NO_CAPACITY is not in the BMS error branch, should fall through to generic
+      expect(screen.queryByText('builder_bms_error_title')).not.toBeInTheDocument();
+      expect(screen.getByText('Error')).toBeInTheDocument();
+      expect(screen.getByText('Test error message')).toBeInTheDocument();
+    });
+
+    it('shows BudgetExceededBanner instead of BMS error when both budgetExceeded and errorType are present', function budgetExceededTakesPrecedence() {
+      mockSite = createMockSite({ id: 'test-app-123' });
+
+      renderWithProviders(
+        <StreamingIntegratedResponse
+          message={upstreamErrorMessage(BudgetErrorType.BUDGET_NOT_FOUND, { budgetExceeded: true })}
+          streamingState="idle"
+        />
+      );
+
+      // budgetExceeded should win - BMS error banner should NOT appear
+      expect(screen.queryByText('builder_bms_error_title')).not.toBeInTheDocument();
+      // BudgetExceededBanner should be shown instead
       expect(screen.getByText('builder_usage_limit_title')).toBeInTheDocument();
     });
   });

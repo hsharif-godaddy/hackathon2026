@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { performBudgetPreCheck, type BudgetPreCheckDeps } from '../budget-pre-check.js'
 import { BudgetExceededError } from '@airo/ai-common'
-import { BudgetServiceUnavailableError, BudgetNoCapacityError } from '@airo/ai-lib/budget'
+import { BudgetServiceUnavailableError, BudgetNoCapacityError, BudgetNotFoundError } from '@airo/ai-lib/budget'
 
 describe('performBudgetPreCheck', () => {
   const mockLogger = {
@@ -133,6 +133,30 @@ describe('performBudgetPreCheck', () => {
         ),
       ).rejects.toMatchObject({
         responseBody: expect.stringContaining('budget-1'),
+      })
+    })
+  })
+
+  describe('when budget is not found (404 from BMS)', () => {
+    it('logs error and re-throws BudgetNotFoundError for fail-closed behavior', async () => {
+      mockBudgetClient.createSession.mockRejectedValue(
+        new BudgetNotFoundError('Budget Service not found: POST /api/v1/sessions', '{"code":"NOT_FOUND"}'),
+      )
+
+      await expect(
+        performBudgetPreCheck(
+          { budgetServiceEnabled: true, bmsBudgetId: 'budget-1', subscriptionId: 'sub-1', appId: 'app-1' },
+          deps,
+        ),
+      ).rejects.toThrow(BudgetNotFoundError)
+
+      expect(mockLogger.error).toHaveBeenCalledWith('budget.precheck.budget_not_found', {
+        appId: 'app-1',
+        budgetId: 'budget-1',
+        subscriptionId: 'sub-1',
+        reason: 'Budget does not exist in BMS',
+        error: 'Budget Service not found: POST /api/v1/sessions',
+        responseBody: '{"code":"NOT_FOUND"}',
       })
     })
   })
