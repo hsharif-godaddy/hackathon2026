@@ -633,7 +633,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
       isSearch: true
     }
 
-    setOpenFiles(prev => [...prev, searchFile])
+    setOpenFiles(prev => [searchFile, ...prev])
     setActiveFile(SEARCH_PATH)
 
     // On mobile, close file tree after opening search
@@ -852,7 +852,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
             {/* Search button that transforms into input */}
             <div
               className={clsx(
-                "flex items-center rounded-md bg-intents-ux-boxLowContrast-backgroundColor transition-[width] duration-300 ease-in-out",
+                "flex items-center rounded-md bg-intents-ux-boxLowContrast-backgroundColor focus-within:ring-1 focus-within:ring-intents-ux-info-borderColor transition-[width] duration-300 ease-in-out",
                 isSearchExpanded ? "w-full" : "w-[28px]"
               )}
             >
@@ -892,7 +892,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
                 placeholder={t('builder_code_search_placeholder_code', undefined, 'Search files and code')}
                 className={clsx(
                   "bg-transparent outline-none text-sm h-[28px] transition-opacity duration-300 ease-in-out",
-                  isSearchExpanded ? "flex-1 opacity-100 delay-150" : "w-0 opacity-0"
+                  isSearchExpanded ? "flex-1 min-w-0 opacity-100 delay-150" : "w-0 opacity-0"
                 )}
                 aria-label={t('builder_code_search_placeholder_code', undefined, 'Search')}
                 data-testid="search-input-header"
@@ -909,7 +909,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
                     )
                     searchInputRef.current?.focus()
                   }}
-                  className="flex-shrink-0 p-1 mr-1 opacity-60 hover:opacity-100 transition-opacity"
+                  className="flex-shrink-0 p-1 opacity-60 hover:opacity-100 transition-opacity"
                   aria-label={t('builder_common_clear', undefined, 'Clear')}
                 >
                   <XIcon className="w-1.5 h-1.5" />
