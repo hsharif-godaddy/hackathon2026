@@ -97,8 +97,10 @@ function adaptBudgetItemToGrant(
   budgetId: string
 ): CreditGrant {
   const creditsMax = toNumber(item.creditsTotal)
-  const creditsSpent = toNumber(item.creditsUsed)
-  const creditsRemaining = creditsMax - creditsSpent
+  const creditsUsed = toNumber(item.creditsUsed)
+  // creditsUsed kept unfloored for accurate remaining; only creditsSpent is floored for display
+  const creditsSpent = Math.floor(creditsUsed)
+  const creditsRemaining = creditsMax - creditsUsed
   const now = new Date().toISOString()
   const effectiveExpiration = getEffectiveExpiration(item)
 

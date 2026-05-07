@@ -286,17 +286,31 @@ describe('adaptBudgetToGrants', () => {
   })
 
   describe('numeric conversion', () => {
-    it('should convert string credits to numbers', () => {
+    it('should convert string credits to numbers and floor creditsSpent', () => {
       const item = createBudgetItem({
-        creditsTotal: '1500.50',
+        creditsTotal: '1500',
         creditsUsed: '750.25',
       })
       const budget = createBudgetResponse([item])
 
       const grants = adaptBudgetToGrants(budget, SUBSCRIPTION_ID)
 
-      expect(grants[0].creditsMax).toBe(1500.5)
-      expect(grants[0].creditsSpent).toBe(750.25)
+      expect(grants[0].creditsMax).toBe(1500)
+      expect(grants[0].creditsSpent).toBe(750) // floored from 750.25
+    })
+
+    it('should keep grant available at fractional boundary', () => {
+      const item = createBudgetItem({
+        creditsTotal: '1000',
+        creditsUsed: '999.9',
+      })
+      const budget = createBudgetResponse([item])
+
+      const grants = adaptBudgetToGrants(budget, SUBSCRIPTION_ID)
+
+      // creditsSpent floored for display, but availability uses unfloored remaining (0.1)
+      expect(grants[0].creditsSpent).toBe(999)
+      expect(grants[0].isAvailable).toBe(true)
     })
 
     it('should handle invalid numeric strings as 0', () => {
