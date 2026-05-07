@@ -32,6 +32,8 @@ vi.mock('../../budget-pre-check.js', () => ({
   performBudgetPreCheck: (...args: any[]) => mockBudgetPreCheck(...args),
 }))
 
+const EXPECTED_SSE_OPEN_PADDING_MIN_BYTES = 4096
+
 function createMockDeps() {
   return {
     registry: new EventStreamRegistry(),
@@ -122,7 +124,7 @@ describe('SSE routes', () => {
       expect(res.headers['connection']).toBe('keep-alive')
     })
 
-    it('sends retry directive as first message', async () => {
+    it('sends opening padding and retry directive', async () => {
       let capturedData = ''
       await request(app)
         .get('/api/conversations/abcdefghij/conv_1/stream')
@@ -133,7 +135,13 @@ describe('SSE routes', () => {
           setTimeout(() => { res.destroy(); callback(null, capturedData) }, 100)
         })
 
-      expect(capturedData).toContain('retry: 1000')
+      const openingFrameEnd = capturedData.indexOf('\n\n')
+      const openingFrame = capturedData.slice(0, openingFrameEnd)
+
+      expect(openingFrameEnd).toBeGreaterThan(0)
+      expect(openingFrame.startsWith(': open ')).toBe(true)
+      expect(openingFrame.slice(': open '.length).length).toBeGreaterThanOrEqual(EXPECTED_SSE_OPEN_PADDING_MIN_BYTES)
+      expect(capturedData.slice(openingFrameEnd + 2)).toContain('retry: 1000')
     })
 
     it('sends initialize event with serverConfig (no connectionId)', async () => {
@@ -210,6 +218,147 @@ describe('SSE routes', () => {
       expect(capturedData).toContain('"streamCompleted":true')
     })
 
+    it('emits stream_error when reconnect cannot recover a lost active stream', async () => {
+      deps.getEventChannel.mockReturnValue({
+        getEventsSince: vi.fn().mockReturnValue([]),
+        getMetadata: vi.fn().mockReturnValue({ pendingMessageIds: ['msg_1'] }),
+      })
+      ;(deps as any).executionService = {
+        subscribeStream: vi.fn(),
+        hasActiveStream: vi.fn().mockReturnValue(false),
+      }
+
+      let capturedData = ''
+      await request(app)
+        .get('/api/conversations/abcdefghij/conv_1/stream')
+        .set('Accept', 'text/event-stream')
+        .set('Last-Event-ID', '69')
+        .buffer(false)
+        .parse((res: any, callback: any) => {
+          res.on('data', (chunk: Buffer) => { capturedData += chunk.toString() })
+          setTimeout(() => { res.destroy(); callback(null, capturedData) }, 100)
+        })
+
+      expect(capturedData).toContain('event: recovery_status')
+      expect(capturedData).toContain('"streamCompleted":false')
+      expect(capturedData).toContain('event: replay_complete')
+      expect(capturedData).toContain('"replayedCount":0')
+      expect(capturedData).toContain('event: stream_error')
+      expect(capturedData).toContain('"errorType":"STREAM_RECOVERY_LOST"')
+      expect(capturedData).toContain('"reason":"stream_lost_after_restart"')
+      expect(capturedData).toContain('"recoverable":true')
+      expect(capturedData.indexOf('event: stream_error')).toBeLessThan(capturedData.indexOf('event: initialize'))
+      expect(capturedData).toContain('event: initialize')
+      expect((deps as any).executionService.subscribeStream).toHaveBeenCalled()
+    })
+
+    it('does not emit stream_error when reconnect can attach to an active stream', async () => {
+      deps.getEventChannel.mockReturnValue({
+        getEventsSince: vi.fn().mockReturnValue([]),
+        getMetadata: vi.fn().mockReturnValue({ pendingMessageIds: ['msg_1'] }),
+      })
+      ;(deps as any).executionService = {
+        subscribeStream: vi.fn(),
+        hasActiveStream: vi.fn().mockReturnValue(true),
+      }
+
+      let capturedData = ''
+      await request(app)
+        .get('/api/conversations/abcdefghij/conv_1/stream')
+        .set('Accept', 'text/event-stream')
+        .set('Last-Event-ID', '69')
+        .buffer(false)
+        .parse((res: any, callback: any) => {
+          res.on('data', (chunk: Buffer) => { capturedData += chunk.toString() })
+          setTimeout(() => { res.destroy(); callback(null, capturedData) }, 100)
+        })
+
+      expect(capturedData).toContain('event: recovery_status')
+      expect(capturedData).toContain('"streamCompleted":false')
+      expect(capturedData).toContain('event: replay_complete')
+      expect(capturedData).toContain('"replayedCount":0')
+      expect(capturedData).not.toContain('event: stream_error')
+      expect((deps as any).executionService.subscribeStream).toHaveBeenCalled()
+    })
+
+    it('does not emit stream_error when stream is complete and replay buffer is empty', async () => {
+      deps.getEventChannel.mockReturnValue({
+        getEventsSince: vi.fn().mockReturnValue([]),
+        getMetadata: vi.fn().mockReturnValue({ pendingMessageIds: [] }),
+      })
+      ;(deps as any).executionService = {
+        subscribeStream: vi.fn(),
+        hasActiveStream: vi.fn().mockReturnValue(false),
+      }
+
+      let capturedData = ''
+      await request(app)
+        .get('/api/conversations/abcdefghij/conv_1/stream')
+        .set('Accept', 'text/event-stream')
+        .set('Last-Event-ID', '69')
+        .buffer(false)
+        .parse((res: any, callback: any) => {
+          res.on('data', (chunk: Buffer) => { capturedData += chunk.toString() })
+          setTimeout(() => { res.destroy(); callback(null, capturedData) }, 100)
+        })
+
+      expect(capturedData).toContain('event: recovery_status')
+      expect(capturedData).toContain('"hasBufferedEvents":false')
+      expect(capturedData).toContain('"streamCompleted":true')
+      expect(capturedData).toContain('event: replay_complete')
+      expect(capturedData).toContain('"replayedCount":0')
+      expect(capturedData).not.toContain('event: stream_error')
+    })
+
+    it('emits stream_error when executionService is unavailable during lost-stream recovery', async () => {
+      deps.getEventChannel.mockReturnValue({
+        getEventsSince: vi.fn().mockReturnValue([]),
+        getMetadata: vi.fn().mockReturnValue({ pendingMessageIds: ['msg_1'] }),
+      })
+      expect((deps as any).executionService).toBeUndefined()
+
+      let capturedData = ''
+      await request(app)
+        .get('/api/conversations/abcdefghij/conv_1/stream')
+        .set('Accept', 'text/event-stream')
+        .set('Last-Event-ID', '69')
+        .buffer(false)
+        .parse((res: any, callback: any) => {
+          res.on('data', (chunk: Buffer) => { capturedData += chunk.toString() })
+          setTimeout(() => { res.destroy(); callback(null, capturedData) }, 100)
+        })
+
+      expect(capturedData).toContain('event: stream_error')
+      expect(capturedData).toContain('"errorType":"STREAM_RECOVERY_LOST"')
+    })
+
+    it('emits stream_error when metadata is unavailable and replay buffer is empty', async () => {
+      deps.getEventChannel.mockReturnValue({
+        getEventsSince: vi.fn().mockReturnValue([]),
+        getMetadata: vi.fn().mockReturnValue(null),
+      })
+      ;(deps as any).executionService = {
+        subscribeStream: vi.fn(),
+        hasActiveStream: vi.fn().mockReturnValue(false),
+      }
+
+      let capturedData = ''
+      await request(app)
+        .get('/api/conversations/abcdefghij/conv_1/stream')
+        .set('Accept', 'text/event-stream')
+        .set('Last-Event-ID', '69')
+        .buffer(false)
+        .parse((res: any, callback: any) => {
+          res.on('data', (chunk: Buffer) => { capturedData += chunk.toString() })
+          setTimeout(() => { res.destroy(); callback(null, capturedData) }, 100)
+        })
+
+      expect(capturedData).toContain('event: recovery_status')
+      expect(capturedData).toContain('"streamCompleted":false')
+      expect(capturedData).toContain('event: stream_error')
+      expect(capturedData).toContain('"errorType":"STREAM_RECOVERY_LOST"')
+    })
+
     it('falls back to complete event detection if recovery metadata is unavailable', async () => {
       const mockEvents = [
         { id: 'e1', type: 'text_delta', sequence: 42, conversationId: 'conv_1', content: 'done', data: {} },
@@ -274,6 +423,25 @@ describe('SSE routes', () => {
         })
 
       expect(mockGetEventsSince).not.toHaveBeenCalled()
+    })
+
+    it('replays events from Last-Event-ID zero', async () => {
+      const mockGetEventsSince = vi.fn().mockReturnValue([])
+      deps.getEventChannel.mockReturnValue({
+        getEventsSince: mockGetEventsSince,
+        getMetadata: vi.fn().mockReturnValue({ pendingMessageIds: [] }),
+      })
+
+      await request(app)
+        .get('/api/conversations/abcdefghij/conv_1/stream')
+        .set('Accept', 'text/event-stream')
+        .set('Last-Event-ID', '0')
+        .buffer(false)
+        .parse((res, callback) => {
+          setTimeout(() => { res.destroy(); callback(null, '') }, 100)
+        })
+
+      expect(mockGetEventsSince).toHaveBeenCalledWith('conv_1', 0)
     })
 
     it('writes recovery_status error event when getEventsSince throws', async () => {

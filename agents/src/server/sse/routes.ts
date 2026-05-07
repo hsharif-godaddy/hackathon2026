@@ -24,6 +24,8 @@ import { asyncHandler } from '../middleware/async-handler.js'
 
 const HEARTBEAT_INTERVAL_MS = 15_000
 const RETRY_MS = 1000
+const SSE_OPEN_PADDING_MIN_BYTES = 4096
+const SSE_OPEN_PADDING_COMMENT = `open ${' '.repeat(SSE_OPEN_PADDING_MIN_BYTES)}`
 const MAX_CONTENT_LENGTH = 100_000
 
 interface SSERouteDeps {
@@ -122,6 +124,9 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
 
     const writer = createSSEWriter(req, res, { logger })
 
+    // Some edge/proxy paths buffer tiny SSE frames. Send an initial comment
+    // large enough to make the response body visible before recovery events.
+    writer.comment(SSE_OPEN_PADDING_COMMENT)
     writer.retry(RETRY_MS)
 
     const { subscriber } = deps.registry.register(conversationId, appId, writer)
@@ -176,12 +181,42 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
             replayedCount: missedEvents.length,
           })
 
+          // execute() registers activeStreams synchronously before its first
+          // awaited operation. If a reconnect cannot replay anything and no
+          // active stream is visible here, there is no in-process producer to
+          // attach to. Treat a missing executionService the same way.
+          const hasActiveStream = deps.executionService?.hasActiveStream(conversationId) === true
+          const streamLost = missedEvents.length === 0 && !streamCompleted && !hasActiveStream
+          if (streamLost) {
+            const reason = 'stream_lost_after_restart'
+            const message = 'Stream was interrupted and could not be recovered. Please retry your message.'
+            // Keep both fields for compatibility with existing client error
+            // handlers that read either `error` or `message`.
+            writeFormatted('stream_error', {
+              conversationId,
+              error: message,
+              message,
+              errorType: 'STREAM_RECOVERY_LOST',
+              reason,
+              recoverable: true,
+            })
+            logger.warn('sse.recovery.lost_active_stream', {
+              appId,
+              conversationId,
+              lastEventId,
+              replayedCount: missedEvents.length,
+              streamCompleted,
+              reason,
+            })
+          }
+
           logger.info('sse.recovery.replayed', {
             appId,
             conversationId,
             lastEventId,
             replayedCount: missedEvents.length,
             streamCompleted,
+            recoveryOutcome: streamLost ? 'stream_lost' : 'replayed',
           })
         } catch (err) {
           logger.warn('sse.recovery.failed', { appId, conversationId, ...errorFields(err) })
