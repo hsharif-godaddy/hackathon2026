@@ -25,18 +25,27 @@ const SpinnerFallback = () => (
   </div>
 );
 
+const rootElement = (
+  <Suspense fallback={<SpinnerFallback />}>
+    <RootLayout>
+      <Outlet />
+    </RootLayout>
+  </Suspense>
+);
+
 // Wrap the agent-editable flat `routes` array in a layout route so ScrollRestoration
 // + shared chrome live once above every page. Keeping the wrap here (instead of
-// in routes.tsx) preserves the agent's simple flat-route contract.
+// in routes.tsx) preserves the agent's simple flat-route contract. The dev
+// boundary must live inside the route element so React Router doesn't replace it
+// with its default route error UI before our boundary can catch render errors.
 const routeTree: RouteObject[] = [
   {
-    element: (
-      <Suspense fallback={<SpinnerFallback />}>
-        <RootLayout>
-          <Outlet />
-        </RootLayout>
-      </Suspense>
-    ),
+    element:
+      import.meta.env.MODE === 'development' ? (
+        <AiroErrorBoundary>{rootElement}</AiroErrorBoundary>
+      ) : (
+        rootElement
+      ),
     children: routes,
   },
 ];
@@ -44,16 +53,9 @@ const routeTree: RouteObject[] = [
 const router = createBrowserRouter(routeTree);
 
 export default function App() {
-  const tree = <RouterProvider router={router} />;
-  const withDevBoundary =
-    import.meta.env.MODE === 'development' ? (
-      <AiroErrorBoundary>{tree}</AiroErrorBoundary>
-    ) : (
-      tree
-    );
   return (
     <>
-      {withDevBoundary}
+      <RouterProvider router={router} />
       {/*
         CookieBanner reads document.cookie and subscribes to browser events.
         App.tsx is client-only (entry-server.tsx renders the route tree

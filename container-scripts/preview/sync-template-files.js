@@ -98,7 +98,8 @@ const SYNC_MANIFEST = [
       '307d295de691b65ea9217a74ca9d02d6', // 0bd48df3b - before CookieBanner
       '966395da41e36083d6bd9e08811ef3ea', // intermediate - inline CookieBannerErrorBoundary (before extraction)
       '9be50c9e3b4a1eeb6d385adc80f6dfa7', // pre-SSR createBrowserRouter version
-      '1b5f3b0e5efcbde4ffeacb6069d8c539'  // BrowserRouter/StaticRouter split; before data-router refactor (pre-2026-05-01)
+      '1b5f3b0e5efcbde4ffeacb6069d8c539', // BrowserRouter/StaticRouter split; before data-router refactor (pre-2026-05-01)
+      '3a10be7c15f2a3882ae12369af51c6e8'  // data-router with dev boundary outside RouterProvider; before route-element boundary fix
     ],
     force: false,
     syncGroup: 'ssrMigration'
