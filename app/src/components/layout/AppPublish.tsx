@@ -81,28 +81,25 @@ function PublishFailedMessage({
   isFix: boolean;
   growl?: boolean;
 }) {
+  const t = useTranslations();
   const handler = isFix ? onFix : onRetry;
-  const id = isFix
-    ? `builder_publish${growl ? '_growl' : ''}_failed_fix`
-    : 'builder_publish_failed_retry_v2';
-
-  return (
-    <FormattedMessage
-      id={id}
-      values={{
-        action: (chunks) => (
-          <button
-            type='button'
-            className='underline cursor-pointer text-inherit'
-            data-testid='publish-failed-action'
-            onClick={() => void handler()}
-          >
-            {chunks}
-          </button>
-        ),
-      }}
-    />
+  const buttonText = isFix
+    ? t('builder_publish_fix_in_chat')
+    : t('builder_common_try_again');
+  const button = (
+    <button
+      type='button'
+      className='underline cursor-pointer text-inherit'
+      data-testid='publish-failed-action'
+      onClick={() => void handler()}
+    >
+      {buttonText}
+    </button>
   );
+  if (growl) {
+    return button;
+  }
+  return <span>{t('builder_publish_failed_inline')} {button}</span>;
 }
 
 export default function AppPublish({ location = 'develop' }: { location?: string }) {
