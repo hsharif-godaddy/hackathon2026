@@ -2778,7 +2778,7 @@ func TestPostBudgetCreditsUsedCannotExceedCreditsTotal(t *testing.T) {
 	}
 }
 
-func TestPatchBudgetItemRejectsCreditsUsed(t *testing.T) {
+func TestPatchBudgetItemRejectsCreditsUsedWithoutReason(t *testing.T) {
 	t.Parallel()
 	s := &Server{}
 	r := mux.NewRouter()
@@ -2793,20 +2793,19 @@ func TestPatchBudgetItemRejectsCreditsUsed(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
 	}
-	// creditsUsed is only valid when creating a budget item, not when updating
-	if !strings.Contains(rec.Body.String(), "creditsUsed can only be set when creating") {
-		t.Fatalf("expected creditsUsed create-only error, got %s", rec.Body.String())
+	if !strings.Contains(rec.Body.String(), "creditsUsedReason is required when updating creditsUsed") {
+		t.Fatalf("expected creditsUsedReason required error, got %s", rec.Body.String())
 	}
 }
 
-func TestPatchBudgetExistingItemRejectsCreditsUsed(t *testing.T) {
+func TestPatchBudgetExistingItemRejectsCreditsUsedWithoutReason(t *testing.T) {
 	t.Parallel()
 	s := &Server{}
 	r := mux.NewRouter()
 	r.HandleFunc("/budgets/{budgetId}", s.patchBudget).Methods(http.MethodPatch)
 	budgetID := uuid.NewString()
 	itemID := uuid.NewString()
-	// Update an existing item (budgetItemId set) with creditsUsed — should be rejected
+	// Update an existing item (budgetItemId set) with creditsUsed but no reason — should be rejected
 	body := `{"items":[{"budgetItemId":"` + itemID + `","creditsTotal":"100.000000","creditsUsed":"50.000000"}]}`
 	req := httptest.NewRequest(http.MethodPatch, "/budgets/"+budgetID, strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -2815,8 +2814,8 @@ func TestPatchBudgetExistingItemRejectsCreditsUsed(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
 	}
-	if !strings.Contains(rec.Body.String(), "creditsUsed can only be set when creating") {
-		t.Fatalf("expected creditsUsed create-only error, got %s", rec.Body.String())
+	if !strings.Contains(rec.Body.String(), "creditsUsedReason is required when updating creditsUsed") {
+		t.Fatalf("expected creditsUsedReason required error, got %s", rec.Body.String())
 	}
 }
 
@@ -4023,5 +4022,678 @@ func TestToItemInputRejectsOversizedResetInterval(t *testing.T) {
 	}
 	if !strings.Contains(msg, "exceeds maximum length") {
 		t.Fatalf("unexpected message: %s", msg)
+	}
+}
+
+func TestPatchBudgetItemCreditsUsedUpgrade(t *testing.T) {
+	ctx := context.Background()
+	st := testStore(t)
+	key := "credits-used-upgrade-" + uuid.NewString()
+	if _, err := st.CreateProduct(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	budgetID := uuid.NewString()
+	if err := st.CreateBudget(ctx, budgetID, key, []store.ItemInput{
+		{CreditsTotal: "100.000000", CostCreditRatio: "1.000000"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("postgres", os.Getenv("TEST_DATABASE_URL"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	var itemID string
+	if err := db.QueryRowContext(ctx, `SELECT id FROM budget_items WHERE budget_id = $1`, budgetID).Scan(&itemID); err != nil {
+		t.Fatal(err)
+	}
+
+	s := &Server{Store: st}
+	r := mux.NewRouter()
+	r.HandleFunc("/budgets/{budgetId}/budget-items/{budgetItemId}", s.patchBudgetItem).Methods(http.MethodPatch)
+
+	body := `{"creditsUsed":"25.000000","creditsUsedReason":"upgrade"}`
+	req := httptest.NewRequest(http.MethodPatch, "/budgets/"+budgetID+"/budget-items/"+itemID, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+
+	resp := decodeJSONMapUseNumber(t, rec.Body.String())
+	if resp["creditsUsed"] != "25.000000" {
+		t.Fatalf("expected creditsUsed 25.000000, got %v", resp["creditsUsed"])
+	}
+
+	var entryKind string
+	var creditsDelta string
+	if err := db.QueryRowContext(ctx,
+		`SELECT entry_kind, credits_delta FROM budget_item_credit_ledger WHERE budget_item_id = $1 ORDER BY created_at DESC LIMIT 1`,
+		itemID).Scan(&entryKind, &creditsDelta); err != nil {
+		t.Fatal(err)
+	}
+	if entryKind != "upgrade" {
+		t.Fatalf("expected entry_kind 'upgrade', got %q", entryKind)
+	}
+	if creditsDelta != "25.000000" {
+		t.Fatalf("expected credits_delta 25.000000, got %s", creditsDelta)
+	}
+}
+
+func TestPatchBudgetItemCreditsUsedDowngrade(t *testing.T) {
+	ctx := context.Background()
+	st := testStore(t)
+	key := "credits-used-downgrade-" + uuid.NewString()
+	if _, err := st.CreateProduct(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	budgetID := uuid.NewString()
+	if err := st.CreateBudget(ctx, budgetID, key, []store.ItemInput{
+		{CreditsTotal: "100.000000", CostCreditRatio: "1.000000", CreditsUsed: "60.000000"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("postgres", os.Getenv("TEST_DATABASE_URL"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	var itemID string
+	if err := db.QueryRowContext(ctx, `SELECT id FROM budget_items WHERE budget_id = $1`, budgetID).Scan(&itemID); err != nil {
+		t.Fatal(err)
+	}
+
+	s := &Server{Store: st}
+	r := mux.NewRouter()
+	r.HandleFunc("/budgets/{budgetId}/budget-items/{budgetItemId}", s.patchBudgetItem).Methods(http.MethodPatch)
+
+	body := `{"creditsUsed":"30.000000","creditsUsedReason":"downgrade"}`
+	req := httptest.NewRequest(http.MethodPatch, "/budgets/"+budgetID+"/budget-items/"+itemID, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+
+	resp := decodeJSONMapUseNumber(t, rec.Body.String())
+	if resp["creditsUsed"] != "30.000000" {
+		t.Fatalf("expected creditsUsed 30.000000, got %v", resp["creditsUsed"])
+	}
+
+	var entryKind string
+	var creditsDelta string
+	if err := db.QueryRowContext(ctx,
+		`SELECT entry_kind, credits_delta FROM budget_item_credit_ledger WHERE budget_item_id = $1 AND entry_kind = 'downgrade'`,
+		itemID).Scan(&entryKind, &creditsDelta); err != nil {
+		t.Fatal(err)
+	}
+	if creditsDelta != "-30.000000" {
+		t.Fatalf("expected credits_delta -30.000000, got %s", creditsDelta)
+	}
+}
+
+func TestPatchBudgetItemCreditsUsedReasonWithoutCreditsUsed(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	r := mux.NewRouter()
+	r.HandleFunc("/budgets/{budgetId}/budget-items/{budgetItemId}", s.patchBudgetItem).Methods(http.MethodPatch)
+	budgetID := uuid.NewString()
+	itemID := uuid.NewString()
+	body := `{"creditsUsedReason":"upgrade"}`
+	req := httptest.NewRequest(http.MethodPatch, "/budgets/"+budgetID+"/budget-items/"+itemID, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "creditsUsed is required when creditsUsedReason is provided") {
+		t.Fatalf("unexpected error: %s", rec.Body.String())
+	}
+}
+
+func TestPatchBudgetItemCreditsUsedInvalidReason(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	r := mux.NewRouter()
+	r.HandleFunc("/budgets/{budgetId}/budget-items/{budgetItemId}", s.patchBudgetItem).Methods(http.MethodPatch)
+	budgetID := uuid.NewString()
+	itemID := uuid.NewString()
+	body := `{"creditsUsed":"10.000000","creditsUsedReason":"refund"}`
+	req := httptest.NewRequest(http.MethodPatch, "/budgets/"+budgetID+"/budget-items/"+itemID, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "creditsUsedReason must be one of: upgrade, downgrade, reimbursement") {
+		t.Fatalf("unexpected error: %s", rec.Body.String())
+	}
+}
+
+func TestPatchBudgetItemCreditsUsedExceedsTotal(t *testing.T) {
+	ctx := context.Background()
+	st := testStore(t)
+	key := "credits-exceeds-" + uuid.NewString()
+	if _, err := st.CreateProduct(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	budgetID := uuid.NewString()
+	if err := st.CreateBudget(ctx, budgetID, key, []store.ItemInput{
+		{CreditsTotal: "100.000000", CostCreditRatio: "1.000000"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("postgres", os.Getenv("TEST_DATABASE_URL"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	var itemID string
+	if err := db.QueryRowContext(ctx, `SELECT id FROM budget_items WHERE budget_id = $1`, budgetID).Scan(&itemID); err != nil {
+		t.Fatal(err)
+	}
+
+	s := &Server{Store: st}
+	r := mux.NewRouter()
+	r.HandleFunc("/budgets/{budgetId}/budget-items/{budgetItemId}", s.patchBudgetItem).Methods(http.MethodPatch)
+
+	body := `{"creditsUsed":"150.000000","creditsUsedReason":"upgrade"}`
+	req := httptest.NewRequest(http.MethodPatch, "/budgets/"+budgetID+"/budget-items/"+itemID, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	resp := decodeJSONMapUseNumber(t, rec.Body.String())
+	if resp["code"] != "CREDITS_EXCEED_TOTAL" {
+		t.Fatalf("expected code CREDITS_EXCEED_TOTAL, got %v", resp["code"])
+	}
+	if resp["error"] != "creditsUsed cannot exceed creditsTotal" {
+		t.Fatalf("expected error message, got %v", resp["error"])
+	}
+}
+
+func TestPatchBudgetItemCreditsUsedZeroDeltaNoLedgerEntry(t *testing.T) {
+	ctx := context.Background()
+	st := testStore(t)
+	key := "credits-zero-delta-" + uuid.NewString()
+	if _, err := st.CreateProduct(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	budgetID := uuid.NewString()
+	if err := st.CreateBudget(ctx, budgetID, key, []store.ItemInput{
+		{CreditsTotal: "100.000000", CostCreditRatio: "1.000000", CreditsUsed: "50.000000"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("postgres", os.Getenv("TEST_DATABASE_URL"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	var itemID string
+	if err := db.QueryRowContext(ctx, `SELECT id FROM budget_items WHERE budget_id = $1`, budgetID).Scan(&itemID); err != nil {
+		t.Fatal(err)
+	}
+
+	// Count existing ledger entries (initial_spend from creation)
+	var beforeCount int
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM budget_item_credit_ledger WHERE budget_item_id = $1`, itemID).Scan(&beforeCount); err != nil {
+		t.Fatal(err)
+	}
+
+	s := &Server{Store: st}
+	r := mux.NewRouter()
+	r.HandleFunc("/budgets/{budgetId}/budget-items/{budgetItemId}", s.patchBudgetItem).Methods(http.MethodPatch)
+
+	// Set creditsUsed to the same value — delta is zero, no ledger entry should be created
+	body := `{"creditsUsed":"50.000000","creditsUsedReason":"upgrade"}`
+	req := httptest.NewRequest(http.MethodPatch, "/budgets/"+budgetID+"/budget-items/"+itemID, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+
+	var afterCount int
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM budget_item_credit_ledger WHERE budget_item_id = $1`, itemID).Scan(&afterCount); err != nil {
+		t.Fatal(err)
+	}
+	if afterCount != beforeCount {
+		t.Fatalf("expected no new ledger entry (before=%d after=%d)", beforeCount, afterCount)
+	}
+}
+
+func TestPatchBudgetBatchCreditsUsed(t *testing.T) {
+	ctx := context.Background()
+	st := testStore(t)
+	key := "batch-credits-used-" + uuid.NewString()
+	if _, err := st.CreateProduct(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	budgetID := uuid.NewString()
+	if err := st.CreateBudget(ctx, budgetID, key, []store.ItemInput{
+		{CreditsTotal: "100.000000", CostCreditRatio: "1.000000"},
+		{CreditsTotal: "200.000000", CostCreditRatio: "1.000000"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("postgres", os.Getenv("TEST_DATABASE_URL"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	rows, err := db.QueryContext(ctx, `SELECT id FROM budget_items WHERE budget_id = $1 ORDER BY created_at`, budgetID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var itemIDs []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		itemIDs = append(itemIDs, id)
+	}
+	if err := rows.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if len(itemIDs) != 2 {
+		t.Fatalf("expected 2 items, got %d", len(itemIDs))
+	}
+
+	s := &Server{Store: st}
+	r := mux.NewRouter()
+	r.HandleFunc("/budgets/{budgetId}", s.patchBudget).Methods(http.MethodPatch)
+
+	body := fmt.Sprintf(`{"items":[{"budgetItemId":"%s","creditsUsed":"10.000000","creditsUsedReason":"upgrade"},{"budgetItemId":"%s","creditsUsed":"20.000000","creditsUsedReason":"downgrade"}]}`,
+		itemIDs[0], itemIDs[1])
+	req := httptest.NewRequest(http.MethodPatch, "/budgets/"+budgetID, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+
+	// Verify both items have ledger entries
+	var kind1, delta1 string
+	if err := db.QueryRowContext(ctx, `SELECT entry_kind, credits_delta FROM budget_item_credit_ledger WHERE budget_item_id = $1 AND entry_kind = 'upgrade'`, itemIDs[0]).Scan(&kind1, &delta1); err != nil {
+		t.Fatalf("item 0 ledger entry: %v", err)
+	}
+	if delta1 != "10.000000" {
+		t.Fatalf("item 0 expected delta 10.000000, got %s", delta1)
+	}
+
+	var kind2, delta2 string
+	if err := db.QueryRowContext(ctx, `SELECT entry_kind, credits_delta FROM budget_item_credit_ledger WHERE budget_item_id = $1 AND entry_kind = 'downgrade'`, itemIDs[1]).Scan(&kind2, &delta2); err != nil {
+		t.Fatalf("item 1 ledger entry: %v", err)
+	}
+	if delta2 != "20.000000" {
+		t.Fatalf("item 1 expected delta 20.000000, got %s", delta2)
+	}
+}
+
+func TestPatchBudgetItemCreditsUsedNegativeRejectedByHandler(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	r := mux.NewRouter()
+	r.HandleFunc("/budgets/{budgetId}/budget-items/{budgetItemId}", s.patchBudgetItem).Methods(http.MethodPatch)
+	budgetID := uuid.NewString()
+	itemID := uuid.NewString()
+
+	body := `{"creditsUsed":"-5.000000","creditsUsedReason":"downgrade"}`
+	req := httptest.NewRequest(http.MethodPatch, "/budgets/"+budgetID+"/budget-items/"+itemID, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "creditsUsed must be a valid NUMERIC(20,6) non-negative value") {
+		t.Fatalf("expected non-negative validation error, got %s", rec.Body.String())
+	}
+}
+
+func TestPatchBudgetItemReimbursementRequiresReduction(t *testing.T) {
+	ctx := context.Background()
+	st := testStore(t)
+	key := "reimburse-increase-" + uuid.NewString()
+	if _, err := st.CreateProduct(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	budgetID := uuid.NewString()
+	if err := st.CreateBudget(ctx, budgetID, key, []store.ItemInput{
+		{CreditsTotal: "100.000000", CostCreditRatio: "1.000000", CreditsUsed: "30.000000"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("postgres", os.Getenv("TEST_DATABASE_URL"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	var itemID string
+	if err := db.QueryRowContext(ctx, `SELECT id FROM budget_items WHERE budget_id = $1`, budgetID).Scan(&itemID); err != nil {
+		t.Fatal(err)
+	}
+
+	s := &Server{Store: st}
+	r := mux.NewRouter()
+	r.HandleFunc("/budgets/{budgetId}/budget-items/{budgetItemId}", s.patchBudgetItem).Methods(http.MethodPatch)
+
+	// Reimbursement with an increase in creditsUsed (50 > current 30) should be rejected
+	body := `{"creditsUsed":"50.000000","creditsUsedReason":"reimbursement"}`
+	req := httptest.NewRequest(http.MethodPatch, "/budgets/"+budgetID+"/budget-items/"+itemID, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	resp := decodeJSONMapUseNumber(t, rec.Body.String())
+	if resp["code"] != "REIMBURSEMENT_REQUIRES_REDUCTION" {
+		t.Fatalf("expected code REIMBURSEMENT_REQUIRES_REDUCTION, got %v", resp["code"])
+	}
+	if resp["error"] != "reimbursement requires a reduction in creditsUsed" {
+		t.Fatalf("expected error message, got %v", resp["error"])
+	}
+}
+
+func TestPatchBudgetItemReimbursementHappyPath(t *testing.T) {
+	ctx := context.Background()
+	st := testStore(t)
+	key := "reimburse-happy-" + uuid.NewString()
+	if _, err := st.CreateProduct(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	budgetID := uuid.NewString()
+	if err := st.CreateBudget(ctx, budgetID, key, []store.ItemInput{
+		{CreditsTotal: "100.000000", CostCreditRatio: "1.000000", CreditsUsed: "60.000000"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("postgres", os.Getenv("TEST_DATABASE_URL"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	var itemID string
+	if err := db.QueryRowContext(ctx, `SELECT id FROM budget_items WHERE budget_id = $1`, budgetID).Scan(&itemID); err != nil {
+		t.Fatal(err)
+	}
+
+	s := &Server{Store: st}
+	r := mux.NewRouter()
+	r.HandleFunc("/budgets/{budgetId}/budget-items/{budgetItemId}", s.patchBudgetItem).Methods(http.MethodPatch)
+
+	body := `{"creditsUsed":"20.000000","creditsUsedReason":"reimbursement"}`
+	req := httptest.NewRequest(http.MethodPatch, "/budgets/"+budgetID+"/budget-items/"+itemID, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+
+	resp := decodeJSONMapUseNumber(t, rec.Body.String())
+	if resp["creditsUsed"] != "20.000000" {
+		t.Fatalf("expected creditsUsed 20.000000, got %v", resp["creditsUsed"])
+	}
+
+	var entryKind string
+	var creditsDelta string
+	if err := db.QueryRowContext(ctx,
+		`SELECT entry_kind, credits_delta FROM budget_item_credit_ledger WHERE budget_item_id = $1 AND entry_kind = 'reimbursement'`,
+		itemID).Scan(&entryKind, &creditsDelta); err != nil {
+		t.Fatal(err)
+	}
+	if entryKind != "reimbursement" {
+		t.Fatalf("expected entry_kind 'reimbursement', got %q", entryKind)
+	}
+	if creditsDelta != "-40.000000" {
+		t.Fatalf("expected credits_delta -40.000000, got %s", creditsDelta)
+	}
+}
+
+func TestPatchBudgetItemCreditsTotalAndCreditsUsedTogether(t *testing.T) {
+	ctx := context.Background()
+	st := testStore(t)
+	key := "total-and-used-" + uuid.NewString()
+	if _, err := st.CreateProduct(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	budgetID := uuid.NewString()
+	if err := st.CreateBudget(ctx, budgetID, key, []store.ItemInput{
+		{CreditsTotal: "100.000000", CostCreditRatio: "1.000000"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("postgres", os.Getenv("TEST_DATABASE_URL"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	var itemID string
+	if err := db.QueryRowContext(ctx, `SELECT id FROM budget_items WHERE budget_id = $1`, budgetID).Scan(&itemID); err != nil {
+		t.Fatal(err)
+	}
+
+	s := &Server{Store: st}
+	r := mux.NewRouter()
+	r.HandleFunc("/budgets/{budgetId}/budget-items/{budgetItemId}", s.patchBudgetItem).Methods(http.MethodPatch)
+
+	// Lower creditsTotal to 50 while setting creditsUsed to 60 — should fail
+	body := `{"creditsTotal":"50.000000","creditsUsed":"60.000000","creditsUsedReason":"upgrade"}`
+	req := httptest.NewRequest(http.MethodPatch, "/budgets/"+budgetID+"/budget-items/"+itemID, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	resp := decodeJSONMapUseNumber(t, rec.Body.String())
+	if resp["code"] != "CREDITS_EXCEED_TOTAL" {
+		t.Fatalf("expected code CREDITS_EXCEED_TOTAL, got %v", resp["code"])
+	}
+}
+
+func TestPatchBudgetItemCreditsUsedExceedsTotalWithoutCreditsTotalInPayload(t *testing.T) {
+	ctx := context.Background()
+	st := testStore(t)
+	key := "exceed-no-total-" + uuid.NewString()
+	if _, err := st.CreateProduct(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	budgetID := uuid.NewString()
+	if err := st.CreateBudget(ctx, budgetID, key, []store.ItemInput{
+		{CreditsTotal: "50.000000", CostCreditRatio: "1.000000"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("postgres", os.Getenv("TEST_DATABASE_URL"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	var itemID string
+	if err := db.QueryRowContext(ctx, `SELECT id FROM budget_items WHERE budget_id = $1`, budgetID).Scan(&itemID); err != nil {
+		t.Fatal(err)
+	}
+
+	s := &Server{Store: st}
+	r := mux.NewRouter()
+	r.HandleFunc("/budgets/{budgetId}/budget-items/{budgetItemId}", s.patchBudgetItem).Methods(http.MethodPatch)
+
+	// creditsTotal not in payload — hydrated from DB (50). creditsUsed=75 exceeds it.
+	body := `{"creditsUsed":"75.000000","creditsUsedReason":"upgrade"}`
+	req := httptest.NewRequest(http.MethodPatch, "/budgets/"+budgetID+"/budget-items/"+itemID, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	resp := decodeJSONMapUseNumber(t, rec.Body.String())
+	if resp["code"] != "CREDITS_EXCEED_TOTAL" {
+		t.Fatalf("expected code CREDITS_EXCEED_TOTAL, got %v", resp["code"])
+	}
+}
+
+func TestValidateCreditsUsedReasonUnit(t *testing.T) {
+	t.Parallel()
+
+	fa := func(s string) *flexAmount {
+		v := flexAmount(s)
+		return &v
+	}
+	sp := func(s string) *string {
+		return &s
+	}
+
+	tests := []struct {
+		name     string
+		credUsed *flexAmount
+		reason   *string
+		wantMsg  string
+	}{
+		{name: "both nil", credUsed: nil, reason: nil, wantMsg: ""},
+		{name: "valid upgrade", credUsed: fa("10.000000"), reason: sp("upgrade"), wantMsg: ""},
+		{name: "valid downgrade", credUsed: fa("5.000000"), reason: sp("downgrade"), wantMsg: ""},
+		{name: "valid reimbursement", credUsed: fa("3.000000"), reason: sp("reimbursement"), wantMsg: ""},
+		{name: "creditsUsed without reason", credUsed: fa("10.000000"), reason: nil, wantMsg: "creditsUsedReason is required when updating creditsUsed"},
+		{name: "reason without creditsUsed", credUsed: nil, reason: sp("upgrade"), wantMsg: "creditsUsed is required when creditsUsedReason is provided"},
+		{name: "invalid reason", credUsed: fa("10.000000"), reason: sp("refund"), wantMsg: "creditsUsedReason must be one of: upgrade, downgrade, reimbursement"},
+		{name: "whitespace-only creditsUsed with reason", credUsed: fa("   "), reason: sp("upgrade"), wantMsg: "creditsUsed is required when creditsUsedReason is provided"},
+		{name: "creditsUsed with whitespace-only reason", credUsed: fa("10.000000"), reason: sp("   "), wantMsg: "creditsUsedReason is required when updating creditsUsed"},
+		{name: "reason with leading/trailing spaces", credUsed: fa("10.000000"), reason: sp("  upgrade  "), wantMsg: ""},
+		{name: "empty string creditsUsed", credUsed: fa(""), reason: nil, wantMsg: ""},
+		{name: "empty string reason with creditsUsed", credUsed: fa("10.000000"), reason: sp(""), wantMsg: "creditsUsedReason is required when updating creditsUsed"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := validateCreditsUsedReason(tt.credUsed, tt.reason)
+			if got != tt.wantMsg {
+				t.Errorf("validateCreditsUsedReason() = %q, want %q", got, tt.wantMsg)
+			}
+		})
+	}
+}
+
+func TestPatchBudgetBatchReimbursementRequiresReduction(t *testing.T) {
+	ctx := context.Background()
+	st := testStore(t)
+	key := "batch-reimburse-reject-" + uuid.NewString()
+	if _, err := st.CreateProduct(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	budgetID := uuid.NewString()
+	if err := st.CreateBudget(ctx, budgetID, key, []store.ItemInput{
+		{CreditsTotal: "100.000000", CostCreditRatio: "1.000000", CreditsUsed: "30.000000"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("postgres", os.Getenv("TEST_DATABASE_URL"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	var itemID string
+	if err := db.QueryRowContext(ctx, `SELECT id FROM budget_items WHERE budget_id = $1`, budgetID).Scan(&itemID); err != nil {
+		t.Fatal(err)
+	}
+
+	s := &Server{Store: st}
+	r := mux.NewRouter()
+	r.HandleFunc("/budgets/{budgetId}", s.patchBudget).Methods(http.MethodPatch)
+
+	body := fmt.Sprintf(`{"items":[{"budgetItemId":"%s","creditsUsed":"50.000000","creditsUsedReason":"reimbursement"}]}`, itemID)
+	req := httptest.NewRequest(http.MethodPatch, "/budgets/"+budgetID, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	resp := decodeJSONMapUseNumber(t, rec.Body.String())
+	if resp["code"] != "REIMBURSEMENT_REQUIRES_REDUCTION" {
+		t.Fatalf("expected code REIMBURSEMENT_REQUIRES_REDUCTION, got %v", resp["code"])
+	}
+}
+
+func TestPatchBudgetBatchMixedAdjustments(t *testing.T) {
+	ctx := context.Background()
+	st := testStore(t)
+	key := "batch-mixed-adj-" + uuid.NewString()
+	if _, err := st.CreateProduct(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	budgetID := uuid.NewString()
+	if err := st.CreateBudget(ctx, budgetID, key, []store.ItemInput{
+		{CreditsTotal: "100.000000", CostCreditRatio: "1.000000"},
+		{CreditsTotal: "200.000000", CostCreditRatio: "1.000000"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("postgres", os.Getenv("TEST_DATABASE_URL"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	rows, err := db.QueryContext(ctx, `SELECT id FROM budget_items WHERE budget_id = $1 ORDER BY created_at`, budgetID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var itemIDs []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		itemIDs = append(itemIDs, id)
+	}
+	if err := rows.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if len(itemIDs) != 2 {
+		t.Fatalf("expected 2 items, got %d", len(itemIDs))
+	}
+
+	s := &Server{Store: st}
+	r := mux.NewRouter()
+	r.HandleFunc("/budgets/{budgetId}", s.patchBudget).Methods(http.MethodPatch)
+
+	// Only item 0 gets creditsUsed; item 1 only updates label
+	body := fmt.Sprintf(`{"items":[{"budgetItemId":"%s","creditsUsed":"15.000000","creditsUsedReason":"upgrade"},{"budgetItemId":"%s","label":"updated"}]}`,
+		itemIDs[0], itemIDs[1])
+	req := httptest.NewRequest(http.MethodPatch, "/budgets/"+budgetID, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+
+	// Verify item 0 has a ledger entry
+	var kind string
+	if err := db.QueryRowContext(ctx, `SELECT entry_kind FROM budget_item_credit_ledger WHERE budget_item_id = $1 AND entry_kind = 'upgrade'`, itemIDs[0]).Scan(&kind); err != nil {
+		t.Fatalf("item 0 should have upgrade ledger entry: %v", err)
+	}
+
+	// Verify item 1 has NO adjustment ledger entry (only initial_spend from creation)
+	var count int
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM budget_item_credit_ledger WHERE budget_item_id = $1 AND entry_kind IN ('upgrade','downgrade','reimbursement')`, itemIDs[1]).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("item 1 should have no adjustment ledger entries, got %d", count)
 	}
 }

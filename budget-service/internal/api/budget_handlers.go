@@ -172,6 +172,18 @@ func writeBudgetStoreError(w http.ResponseWriter, op string, err error) {
 		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid amount")
 		return
 	}
+	if errors.Is(err, store.ErrCreditsUsedExceedsTotal) {
+		writeError(w, http.StatusBadRequest, "CREDITS_EXCEED_TOTAL", "creditsUsed cannot exceed creditsTotal")
+		return
+	}
+	if errors.Is(err, store.ErrCreditsUsedNegative) {
+		writeError(w, http.StatusBadRequest, "CREDITS_USED_NEGATIVE", "creditsUsed cannot be negative")
+		return
+	}
+	if errors.Is(err, store.ErrReimbursementRequiresReduction) {
+		writeError(w, http.StatusBadRequest, "REIMBURSEMENT_REQUIRES_REDUCTION", "reimbursement requires a reduction in creditsUsed")
+		return
+	}
 	writeInternalError(w, op, err)
 }
 
@@ -213,6 +225,30 @@ func hasNonEmptyStringValue(p *string) bool {
 
 func hasMissingFlexAmountValue(p *flexAmount) bool {
 	return p == nil || strings.TrimSpace(string(*p)) == ""
+}
+
+var validCreditsUsedReasons = map[string]struct{}{
+	"upgrade":       {},
+	"downgrade":     {},
+	"reimbursement": {},
+}
+
+func validateCreditsUsedReason(creditsUsed *flexAmount, reason *string) string {
+	hasCreditsUsed := creditsUsed != nil && strings.TrimSpace(string(*creditsUsed)) != ""
+	hasReason := reason != nil && strings.TrimSpace(*reason) != ""
+
+	if hasCreditsUsed && !hasReason {
+		return "creditsUsedReason is required when updating creditsUsed"
+	}
+	if hasReason && !hasCreditsUsed {
+		return "creditsUsed is required when creditsUsedReason is provided"
+	}
+	if hasReason {
+		if _, ok := validCreditsUsedReasons[strings.TrimSpace(*reason)]; !ok {
+			return "creditsUsedReason must be one of: upgrade, downgrade, reimbursement"
+		}
+	}
+	return ""
 }
 
 // hydrateMissingBudgetItemUpdateFields loads the current DB record and fills only missing
@@ -313,12 +349,9 @@ func (b budgetItemBody) toItemInput(validateCreate bool) (store.ItemInput, strin
 		formattedCreditsTotal = credits.Format(ct)
 	}
 
-	// Parse creditsUsed (optional, only valid for create).
+	// Parse creditsUsed (optional on create; requires creditsUsedReason on update).
 	var formattedCreditsUsed string
 	if b.CreditsUsed != nil && strings.TrimSpace(string(*b.CreditsUsed)) != "" {
-		if !validateCreate {
-			return store.ItemInput{}, "creditsUsed can only be set when creating a budget item"
-		}
 		cu, err := credits.ParseNonNegative(strings.TrimSpace(string(*b.CreditsUsed)))
 		if err != nil {
 			return store.ItemInput{}, "creditsUsed must be a valid NUMERIC(20,6) non-negative value"
@@ -549,6 +582,7 @@ type patchBudgetItem struct {
 	BudgetItemID      *string     `json:"budgetItemId"`
 	CreditsTotal      flexAmount  `json:"creditsTotal"`
 	CreditsUsed       *flexAmount `json:"creditsUsed"`
+	CreditsUsedReason *string     `json:"creditsUsedReason"`
 	CostToCreditRatio *flexAmount `json:"costToCreditRatio"`
 	ExpiresAt         *string     `json:"expiresAt"`
 	StartsAt          *string     `json:"startsAt"`
@@ -567,6 +601,7 @@ var patchBudgetItemAllowedFields = map[string]struct{}{
 	"budgetItemId":      {},
 	"creditsTotal":      {},
 	"creditsUsed":       {},
+	"creditsUsedReason": {},
 	"costToCreditRatio": {},
 	"expiresAt":         {},
 	"startsAt":          {},
@@ -668,6 +703,10 @@ func (s *Server) patchBudget(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "BAD_REQUEST", msg)
 			return
 		}
+		if msg := validateCreditsUsedReason(payload.Items[i].CreditsUsed, payload.Items[i].CreditsUsedReason); msg != "" {
+			writeError(w, http.StatusBadRequest, "BAD_REQUEST", msg)
+			return
+		}
 	}
 
 	if !s.requireStore(w) {
@@ -705,6 +744,7 @@ func (s *Server) patchBudget(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rows := make([]store.PutItemInput, len(payload.Items))
+	adjs := make([]*store.CreditAdjustment, len(payload.Items))
 	for i := range payload.Items {
 		row, msg := payload.Items[i].toPutItemInput(false)
 		if msg != "" {
@@ -712,9 +752,15 @@ func (s *Server) patchBudget(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		rows[i] = row
+		if row.CreditsUsed != "" {
+			adjs[i] = &store.CreditAdjustment{
+				NewCreditsUsed: row.CreditsUsed,
+				EntryKind:      strings.TrimSpace(*payload.Items[i].CreditsUsedReason),
+			}
+		}
 	}
 
-	if err := s.Store.UpdateBudgetItems(r.Context(), budgetID, rows); err != nil {
+	if err := s.Store.UpdateBudgetItems(r.Context(), budgetID, rows, adjs); err != nil {
 		writeBudgetStoreError(w, "budget.patch_budget", err)
 		return
 	}
@@ -826,6 +872,11 @@ func (s *Server) patchBudgetItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if msg := validateCreditsUsedReason(payload.CreditsUsed, payload.CreditsUsedReason); msg != "" {
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", msg)
+		return
+	}
+
 	if !s.requireStore(w) {
 		return
 	}
@@ -871,7 +922,15 @@ func (s *Server) patchBudgetItem(w http.ResponseWriter, r *http.Request) {
 		Label:           putRow.Label,
 	}
 
-	if err := s.Store.UpdateBudgetItem(r.Context(), budgetID, budgetItemID, row); err != nil {
+	var adj *store.CreditAdjustment
+	if putRow.CreditsUsed != "" {
+		adj = &store.CreditAdjustment{
+			NewCreditsUsed: putRow.CreditsUsed,
+			EntryKind:      strings.TrimSpace(*payload.CreditsUsedReason),
+		}
+	}
+
+	if err := s.Store.UpdateBudgetItem(r.Context(), budgetID, budgetItemID, row, adj); err != nil {
 		writeBudgetStoreError(w, "budget.patch_budget_item", err)
 		return
 	}

@@ -42,6 +42,11 @@ type PutItemInput struct {
 	Label           *string
 }
 
+type CreditAdjustment struct {
+	NewCreditsUsed string // absolute target value (NUMERIC(20,6))
+	EntryKind      string // "upgrade", "downgrade", or "reimbursement"
+}
+
 type SessionLine struct {
 	Cost          string
 	CallRequestID string
@@ -609,7 +614,7 @@ func (s *Store) GetBudgetItem(ctx context.Context, budgetID, itemID string, incl
 	return &r, nil
 }
 
-func (s *Store) UpdateBudgetItems(ctx context.Context, budgetID string, items []PutItemInput) error {
+func (s *Store) UpdateBudgetItems(ctx context.Context, budgetID string, items []PutItemInput, adjs []*CreditAdjustment) error {
 	if _, err := uuid.Parse(budgetID); err != nil {
 		return err
 	}
@@ -679,6 +684,11 @@ func (s *Store) UpdateBudgetItems(ctx context.Context, budgetID string, items []
 		if affected == 0 {
 			return ErrNotFound
 		}
+		if adjs != nil && i < len(adjs) && adjs[i] != nil {
+			if err := applyCreditAdjustment(ctx, tx, itemID, it.CreditsTotal, adjs[i]); err != nil {
+				return err
+			}
+		}
 	}
 	return tx.Commit()
 }
@@ -708,7 +718,7 @@ func (s *Store) InsertBudgetItem(ctx context.Context, budgetID string, in ItemIn
 	return id, tx.Commit()
 }
 
-func (s *Store) UpdateBudgetItem(ctx context.Context, budgetID, itemID string, in ItemInput) error {
+func (s *Store) UpdateBudgetItem(ctx context.Context, budgetID, itemID string, in ItemInput, adj *CreditAdjustment) error {
 	if _, err := uuid.Parse(budgetID); err != nil {
 		return err
 	}
@@ -765,7 +775,62 @@ func (s *Store) UpdateBudgetItem(ctx context.Context, budgetID, itemID string, i
 	if n == 0 {
 		return ErrNotFound
 	}
+	if adj != nil {
+		if err := applyCreditAdjustment(ctx, tx, itemID, in.CreditsTotal, adj); err != nil {
+			return err
+		}
+	}
 	return tx.Commit()
+}
+
+func applyCreditAdjustment(ctx context.Context, tx *sql.Tx, itemID, creditsTotal string, adj *CreditAdjustment) error {
+	var currentUsed string
+	err := tx.QueryRowContext(ctx, `
+		SELECT credits_used FROM budget_items WHERE id = $1 AND deleted_at IS NULL FOR UPDATE
+	`, itemID).Scan(&currentUsed)
+	if err != nil {
+		return mapNotFound(err)
+	}
+
+	current, err := decimal.NewFromString(currentUsed)
+	if err != nil {
+		return err
+	}
+	target, err := decimal.NewFromString(adj.NewCreditsUsed)
+	if err != nil {
+		return err
+	}
+
+	if target.IsNegative() {
+		return ErrCreditsUsedNegative
+	}
+	if creditsTotal != "" {
+		total, err := decimal.NewFromString(creditsTotal)
+		if err != nil {
+			return err
+		}
+		if target.GreaterThan(total) {
+			return ErrCreditsUsedExceedsTotal
+		}
+	}
+
+	delta := target.Sub(current)
+	if delta.IsZero() {
+		if adj.EntryKind == "reimbursement" {
+			return ErrReimbursementRequiresReduction
+		}
+		return nil
+	}
+
+	if adj.EntryKind == "reimbursement" && delta.IsPositive() {
+		return ErrReimbursementRequiresReduction
+	}
+
+	_, err = tx.ExecContext(ctx, `
+		INSERT INTO budget_item_credit_ledger (id, budget_item_id, entry_kind, credits_delta)
+		VALUES ($1, $2, $3, $4)
+	`, uuid.NewString(), itemID, adj.EntryKind, credits.Format(delta))
+	return err
 }
 
 func (s *Store) CreateBudgetSession(ctx context.Context, budgetID, sessionID string, metadataJSON []byte) error {

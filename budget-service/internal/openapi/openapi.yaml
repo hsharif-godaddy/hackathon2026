@@ -889,6 +889,13 @@ components:
           nullable: true
         creditsTotal:
           type: string
+        creditsUsed:
+          type: string
+          description: New absolute creditsUsed value. Requires creditsUsedReason.
+        creditsUsedReason:
+          type: string
+          enum: [upgrade, downgrade, reimbursement]
+          description: Reason for the creditsUsed change. Required when creditsUsed is provided.
         costToCreditRatio:
           type: string
         expiresAt:

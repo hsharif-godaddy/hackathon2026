@@ -117,10 +117,11 @@ flowchart TB
 
 - **PK:** `id` (uuid). **FK:** `budget_item_id` → `budget_items` **ON DELETE CASCADE**.
 - **Optional FK:** `report_item_id` → `budget_session_report_items` **ON DELETE SET NULL** (set for `session_spend` from reconciliation).
-- **`entry_kind`:** `session_spend` | `periodic_reset` | `reimbursement`.
+- **`entry_kind`:** `initial_spend` | `session_spend` | `periodic_reset` | `reimbursement` | `upgrade` | `downgrade`.
 - **`credits_delta`:** signed movement applied to the item’s cached `credits_used` via trigger:
-  - `session_spend` → **must be > 0**
+  - `session_spend` | `initial_spend` → **must be > 0**
   - `periodic_reset` | `reimbursement` → **must be < 0**
+  - `upgrade` | `downgrade` → **any non-zero value** (positive or negative; these are reason labels for plan-tier changes, not direction indicators)
 - **CHECK:** `credits_delta ≠ 0`.
 - **Contract:** **Append-only.** Do not `UPDATE` or `DELETE` ledger rows; if you do, `budget_items.credits_used` will **diverge** from `SUM(credits_delta)` for that item. Table comment in SQL states this.
 
@@ -135,7 +136,7 @@ flowchart TB
 ## Credit ledger vs `budget_items.credits_used`
 
 | Concern                                    | Mechanism                                                                                                                  |
-| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
+|--------------------------------------------|----------------------------------------------------------------------------------------------------------------------------|
 | **Audit / why credits moved**              | Rows in `budget_item_credit_ledger` (`entry_kind`, `credits_delta`, optional `report_item_id`, `created_at`).              |
 | **Fast read / consumption input**          | `budget_items.credits_used` — maintained **only** by the database trigger below (not read-then-write in application code). |
 | **Invariant** (when ledger is append-only) | For each `budget_item_id`, `credits_used = SUM(credits_delta)` over all ledger rows for that item.                         |
@@ -149,7 +150,7 @@ flowchart TB
 
 For a due item with `credits_used > 0`, the processor inserts a `periodic_reset` ledger row with `credits_delta = -credits_used`, which brings the cached usage back to zero through the trigger. For a due item already at zero usage, the processor advances `resets_at` without inserting a ledger row.
 
-**Future writers** (e.g. reimbursements) should **only** insert ledger rows with the appropriate `entry_kind` and `credits_delta`; the trigger keeps `credits_used` consistent for any client connection.
+**Administrative adjustments:** `PATCH` budget item with `creditsUsed` + `creditsUsedReason` (one of `upgrade`, `downgrade`, `reimbursement`) inserts a ledger row whose `credits_delta` is the difference between the new and current `credits_used`. Validation: `creditsUsed` must be non-negative and ≤ `creditsTotal`; `reimbursement` requires a reduction (negative delta). The trigger keeps `credits_used` consistent for any client connection.
 
 ---
 

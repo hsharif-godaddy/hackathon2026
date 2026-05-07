@@ -30,4 +30,10 @@ var (
 	ErrResetIntervalInvalidFormat = errors.New("reset interval invalid format")
 	// ErrResetIntervalOutOfRange is returned when the numeric portion is invalid or overflows supported range.
 	ErrResetIntervalOutOfRange = errors.New("reset interval numeric out of range")
+	// ErrCreditsUsedExceedsTotal is returned when creditsUsed would exceed creditsTotal.
+	ErrCreditsUsedExceedsTotal = errors.New("creditsUsed cannot exceed creditsTotal")
+	// ErrCreditsUsedNegative is returned when creditsUsed would become negative.
+	ErrCreditsUsedNegative = errors.New("creditsUsed cannot be negative")
+	// ErrReimbursementRequiresReduction is returned when a reimbursement entry does not reduce creditsUsed.
+	ErrReimbursementRequiresReduction = errors.New("reimbursement requires a reduction in creditsUsed")
 )

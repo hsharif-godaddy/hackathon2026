@@ -49,7 +49,7 @@ flowchart TB
 | `budget_session_reports` | One report per session (reconciliation). |
 | `budget_session_report_items` | Report lines (`budget_cost`, `product_cost`, `label`). |
 | `budget_session_report_item_allocations` | Per-line credit allocation to items. |
-| `budget_item_credit_ledger` | Append-only credit movements (`entry_kind`, `credits_delta`). |
+| `budget_item_credit_ledger` | Append-only credit movements (`entry_kind`: `initial_spend`, `session_spend`, `periodic_reset`, `reimbursement`, `upgrade`, `downgrade`; `credits_delta`). |
 | `webhooks` | Registered callback URLs per product/event; soft-delete. |
 | `webhook_outbox` | Durable queue for outbound webhook delivery (payload, retries, status). |
 
