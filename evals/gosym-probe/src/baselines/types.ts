@@ -1,12 +1,16 @@
 import type { Scenario, StabilityLevel } from '../scenarios/types.js';
 
 export interface BaselineEvalScores {
-  passAtK: boolean;
-  passToTheK: boolean;
+  /** Absent when regressionMode === 'score'. */
+  passAtK?: boolean;
+  /** Absent when regressionMode === 'score'. */
+  passToTheK?: boolean;
   passingTrials: number;
   totalTrials: number;
   /** Median score across trials; populated for score-mode evaluators. */
   medianScore?: number;
+  /** When true, score increase = regression. Present only for score-mode evaluators. */
+  lowerIsBetter?: boolean;
 }
 
 export interface BaselineScores {
@@ -40,15 +44,20 @@ export interface RegressionEvalResult {
    * NaN when no baseline data exists.
    */
   baselineScore: number;
-  /** currentScore - baselineScore; NaN if either is NaN. */
+  /**
+   * currentScore - baselineScore; NaN if either is NaN.
+   * Sign interpretation depends on evaluator direction:
+   * - higher-is-better: negative delta = regression.
+   * - lowerIsBetter: positive delta = regression.
+   */
   delta: number;
   /**
-   * Pass-rate mode: true when absolute drop exceeds
-   * threshold.
-   * Score mode: true when relative drop
-   * (baseline - current) / baseline exceeds threshold.
-   * False for NaN scores, missing baseline, or zero
-   * baseline score.
+   * Pass-rate mode: true when absolute drop exceeds threshold.
+   * Score mode (higher-is-better): true when relative drop
+   *   (baseline - current) / baseline exceeds threshold.
+   * Score mode (lowerIsBetter): true when relative increase
+   *   (current - baseline) / baseline exceeds threshold.
+   * False for NaN scores, missing baseline, or zero baseline score.
    */
   exceeded: boolean;
 }

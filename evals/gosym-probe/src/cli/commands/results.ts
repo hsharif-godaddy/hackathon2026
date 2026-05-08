@@ -47,7 +47,7 @@ export function formatEvaluatorScores(
   const rows = Object.entries(agg.evaluators).map(
     ([name, ev]) => [
       name,
-      ev.passAtK ? 'PASS' : 'FAIL',
+      ev.passAtK === undefined ? 'n/a' : ev.passAtK ? 'PASS' : 'FAIL',
       `${ev.passingTrials}/${ev.totalTrials}`,
       ev.scores.mean.toFixed(2),
     ],

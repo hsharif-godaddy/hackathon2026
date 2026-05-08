@@ -343,8 +343,12 @@ export class MdReporter {
     evalIndex: Map<number, Map<string, EvalResult>>,
     baselineCellValue?: string,
   ): string {
-    const passAtK = agg.passAtK ? 'pass' : 'fail';
-    const passToTheK = agg.passToTheK ? 'pass' : 'fail';
+    const passAtK = agg.passAtK === undefined
+      ? '\u2014'
+      : agg.passAtK ? 'pass' : 'fail';
+    const passToTheK = agg.passToTheK === undefined
+      ? '\u2014'
+      : agg.passToTheK ? 'pass' : 'fail';
 
     const scores: number[] = [];
     for (let i = 0; i < trialCount; i++) {

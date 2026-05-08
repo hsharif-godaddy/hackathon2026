@@ -611,13 +611,20 @@ export class EvalStore {
       const { scores, verdicts } = byEval.get(evalName) ??
         { scores: [], verdicts: {} };
       evaluators[evalName] = {
-        passAtK: agg.passAtK,
-        passToTheK: agg.passToTheK,
+        ...(agg.passAtK !== undefined && {
+          passAtK: agg.passAtK,
+        }),
+        ...(agg.passToTheK !== undefined && {
+          passToTheK: agg.passToTheK,
+        }),
         passingTrials: agg.passingTrials,
         totalTrials: agg.totalTrials,
         scores: computeScoreStats(scores),
         verdicts,
         ...(agg.medianScore != null && { medianScore: agg.medianScore }),
+        ...(agg.lowerIsBetter !== undefined && {
+          lowerIsBetter: agg.lowerIsBetter,
+        }),
       };
     }
 

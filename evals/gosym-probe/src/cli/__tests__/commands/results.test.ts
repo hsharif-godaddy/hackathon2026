@@ -263,4 +263,35 @@ describe('formatEvaluatorScores', () => {
     };
     expect(() => formatEvaluatorScores(emptyAgg)).not.toThrow();
   });
+
+  it('shows n/a in Pass@K column when passAtK is absent (score-mode evaluator)', () => {
+    const scoreAgg: StoredAggregated = {
+      ...baseAgg,
+      evaluators: {
+        'latency': {
+          passingTrials: 3,
+          totalTrials: 3,
+          scores: {
+            min: 0.7,
+            max: 0.9,
+            mean: 0.8,
+            median: 0.8,
+            stddev: 0.1,
+          },
+          verdicts: { observed: 3 },
+          medianScore: 0.8,
+        },
+      },
+    };
+    const result = formatEvaluatorScores(scoreAgg);
+    expect(result).toContain('n/a');
+    expect(result).not.toContain('PASS');
+    expect(result).not.toContain('FAIL');
+  });
+
+  it('still shows PASS/FAIL for pass-rate evaluator with defined passAtK', () => {
+    const result = formatEvaluatorScores(baseAgg);
+    expect(result).toContain('PASS');
+    expect(result).not.toContain('n/a');
+  });
 });

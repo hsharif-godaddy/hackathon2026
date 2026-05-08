@@ -13,10 +13,10 @@ export interface TrialResult {
 }
 
 export interface AggregatedResult {
-  /** At least one trial passed. */
-  passAtK: boolean;
-  /** All trials passed. */
-  passToTheK: boolean;
+  /** At least one trial passed. Absent when regressionMode === 'score'. */
+  passAtK?: boolean;
+  /** All trials passed. Absent when regressionMode === 'score'. */
+  passToTheK?: boolean;
   passingTrials: number;
   /** Total number of trials run (includes all verdicts). */
   totalTrials: number;
@@ -28,6 +28,11 @@ export interface AggregatedResult {
    * 'score': compare median score via relative delta.
    */
   regressionMode?: 'passRate' | 'score';
+  /**
+   * When true, a score increase is treated as a regression.
+   * Propagated from Evaluator.lowerIsBetter.
+   */
+  lowerIsBetter?: boolean;
 }
 
 export interface ScenarioResult {

@@ -63,14 +63,21 @@ export class BaselineStore {
         Object.entries(result.aggregated).map(([name, agg]) => [
           name,
           {
-            passAtK: agg.passAtK,
-            passToTheK: agg.passToTheK,
+            ...(agg.passAtK !== undefined && {
+              passAtK: agg.passAtK,
+            }),
+            ...(agg.passToTheK !== undefined && {
+              passToTheK: agg.passToTheK,
+            }),
             passingTrials: agg.passingTrials,
             totalTrials: agg.totalTrials,
             ...(scoreNamesSet.has(name) &&
               agg.medianScore != null && {
                 medianScore: agg.medianScore,
               }),
+            ...(agg.lowerIsBetter !== undefined && {
+              lowerIsBetter: agg.lowerIsBetter,
+            }),
           },
         ]),
       ),
@@ -145,14 +152,21 @@ export class BaselineStore {
         Object.entries(stored.evaluators).map(([name, ev]) => [
           name,
           {
-            passAtK: ev.passAtK,
-            passToTheK: ev.passToTheK,
+            ...(!scoreNamesSet.has(name) && ev.passAtK !== undefined && {
+              passAtK: ev.passAtK,
+            }),
+            ...(!scoreNamesSet.has(name) && ev.passToTheK !== undefined && {
+              passToTheK: ev.passToTheK,
+            }),
             passingTrials: ev.passingTrials,
             totalTrials: ev.totalTrials,
             ...(scoreNamesSet.has(name) &&
               ev.medianScore != null && {
                 medianScore: ev.medianScore,
               }),
+            ...(ev.lowerIsBetter !== undefined && {
+              lowerIsBetter: ev.lowerIsBetter,
+            }),
           },
         ]),
       ),

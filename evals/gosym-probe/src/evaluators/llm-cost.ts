@@ -13,7 +13,7 @@ import type {
   ProbeUsage,
   ProbeUsageSource,
 } from '../clients/gocode-client.js';
-import { scoreToVerdict, computeProbeDelta } from './eval-utils.js';
+import { computeProbeDelta } from './eval-utils.js';
 
 // Pricing for models gosym-probe actually uses.
 // Source: Anthropic pricing (ai-lib/src/utils/model-pricing.ts reference).
@@ -31,6 +31,8 @@ const MODEL_PRICING: Record<
 export class LLMCostEvaluator implements Evaluator {
   readonly name = 'llm-cost';
   readonly deterministic = false;
+  readonly regressionMode = 'score' as const;
+  readonly lowerIsBetter = true;
 
   private readonly baselines = new Map<number, ProbeUsage>();
   private readonly afterSnapshots = new Map<number, ProbeUsage>();
@@ -40,7 +42,6 @@ export class LLMCostEvaluator implements Evaluator {
       collector: TokenUsageCollector;
       gocodeClient: ProbeUsageSource;
       probeModel?: string;
-      maxCostUsd?: number;
     },
   ) {}
 
@@ -71,10 +72,9 @@ export class LLMCostEvaluator implements Evaluator {
     _scenario: Scenario,
     _snapshot?: DOMSnapshot,
   ): Promise<EvalResult> {
-    const { collector, gocodeClient, probeModel, maxCostUsd } = this.options;
+    const { collector, gocodeClient, probeModel } = this.options;
     const { trialIndex } = transcript;
 
-    const aabData = collector.collect(trialIndex);
     const baseline = this.baselines.get(trialIndex);
     this.baselines.delete(trialIndex);
 
@@ -84,6 +84,16 @@ export class LLMCostEvaluator implements Evaluator {
         score: 0,
         verdict: 'unknown',
         reason: 'evaluate() called without a prior hookClient() for this trial',
+      };
+    }
+
+    const aabData = collector.collect(trialIndex);
+    if (aabData === null) {
+      return {
+        evaluator: this.name,
+        score: 0,
+        verdict: 'unknown',
+        reason: 'no cost data available for this trial (collector returned null)',
       };
     }
 
@@ -97,7 +107,7 @@ export class LLMCostEvaluator implements Evaluator {
       ? 0
       : computeProbeCost(probeDelta, probeModel);
 
-    const aabCost = aabData?.totalCost ?? 0;
+    const aabCost = aabData.totalCost;
     const totalCost = aabCost + probeCost;
 
     const details = {
@@ -111,56 +121,19 @@ export class LLMCostEvaluator implements Evaluator {
       total: { costUsd: totalCost },
     };
 
-    if (unknownModel && maxCostUsd !== undefined) {
-      return {
-        evaluator: this.name,
-        score: 0,
-        verdict: 'unknown',
-        reason: `probe model "${probeModel}" not in pricing table; cannot check against budget`,
-        details,
-      };
-    }
-
     const unknownModelNote = unknownModel
       ? ` (probe model "${probeModel}" not in pricing table, probe cost=0)`
       : '';
 
-    if (maxCostUsd === undefined) {
-      return {
-        evaluator: this.name,
-        score: 0,
-        verdict: 'unknown',
-        reason:
-          `aab=$${aabCost.toFixed(4)} probe=$${probeCost.toFixed(4)}` +
-          ` total=$${totalCost.toFixed(4)} (no budget set)` +
-          unknownModelNote,
-        details,
-      };
-    }
-
-    if (!Number.isFinite(maxCostUsd) || maxCostUsd <= 0) {
-      return {
-        evaluator: this.name,
-        score: 0,
-        verdict: 'fail',
-        reason:
-          `Used $${totalCost.toFixed(4)} with invalid budget` +
-          ` (maxCostUsd=${maxCostUsd})`,
-        details,
-      };
-    }
-
-    const score = Math.max(0, 1 - totalCost / maxCostUsd);
-    const verdict = scoreToVerdict(score);
-
+    // Score uses AAB-only cost: regression detection targets agent cost,
+    // not probe overhead which varies with model choice and prompt length.
     return {
       evaluator: this.name,
-      score,
-      verdict,
+      score: aabCost,
+      verdict: 'observed',
       reason:
-        `Used $${totalCost.toFixed(4)} of $${maxCostUsd.toFixed(4)} budget` +
-        ` (efficiency: ${(score * 100).toFixed(0)}%)` +
-        ` [aab=$${aabCost.toFixed(4)} probe=$${probeCost.toFixed(4)}]` +
+        `aab=$${aabCost.toFixed(4)} probe=$${probeCost.toFixed(4)}` +
+        ` total=$${totalCost.toFixed(4)}` +
         unknownModelNote,
       details,
     };
@@ -193,4 +166,3 @@ function buildAabDetails(
     lastModelName: data?.lastModelName ?? '',
   };
 }
-

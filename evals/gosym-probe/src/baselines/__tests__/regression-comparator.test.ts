@@ -28,8 +28,6 @@ function makeAgg(
 
 function makeScoreAgg(medianScore?: number): AggregatedResult {
   return {
-    passAtK: false,
-    passToTheK: false,
     passingTrials: 0,
     totalTrials: 1,
     ...(medianScore !== undefined ? { medianScore } : {}),
@@ -520,6 +518,53 @@ describe('RegressionComparator', () => {
       expect(e?.currentScore).toBeCloseTo(0.56);
       expect(e?.baselineScore).toBeCloseTo(0.8);
       expect(e?.delta).toBeCloseTo(0.56 - 0.8);
+    });
+
+    describe('lowerIsBetter evaluator', () => {
+      it('flags regression when score increases past threshold', () => {
+        // baseline=7000, current=8500, increase=(8500-7000)/7000≈0.214 > 0.1
+        const result = makeResult('regression', {
+          latency: { ...makeScoreAgg(8500), lowerIsBetter: true },
+        });
+        const baseline = makeScoreBaseline(7000);
+        const r = comparator.compare(result, baseline, THRESHOLDS);
+        const e = r.evaluators.find((x) => x.evaluator === 'latency');
+        expect(e?.exceeded).toBe(true);
+        expect(r.gate).toBe('error');
+      });
+
+      it('does not flag regression when score decreases (improvement)', () => {
+        // baseline=7000, current=5500, decrease — lower is better, this is good
+        const result = makeResult('regression', {
+          latency: { ...makeScoreAgg(5500), lowerIsBetter: true },
+        });
+        const baseline = makeScoreBaseline(7000);
+        const r = comparator.compare(result, baseline, THRESHOLDS);
+        const e = r.evaluators.find((x) => x.evaluator === 'latency');
+        expect(e?.exceeded).toBe(false);
+        expect(r.gate).toBe('pass');
+      });
+
+      it('does not flag regression when score increase is within threshold', () => {
+        // baseline=7000, current=7500, increase=(7500-7000)/7000≈0.071 < 0.1
+        const result = makeResult('regression', {
+          latency: { ...makeScoreAgg(7500), lowerIsBetter: true },
+        });
+        const baseline = makeScoreBaseline(7000);
+        const r = comparator.compare(result, baseline, THRESHOLDS);
+        const e = r.evaluators.find((x) => x.evaluator === 'latency');
+        expect(e?.exceeded).toBe(false);
+      });
+
+      it('baseline 0 with lowerIsBetter → exceeded = false (no division by zero)', () => {
+        const result = makeResult('regression', {
+          latency: { ...makeScoreAgg(100), lowerIsBetter: true },
+        });
+        const baseline = makeScoreBaseline(0);
+        const r = comparator.compare(result, baseline, THRESHOLDS);
+        const e = r.evaluators.find((x) => x.evaluator === 'latency');
+        expect(e?.exceeded).toBe(false);
+      });
     });
 
     describe('stability-level gate severity', () => {

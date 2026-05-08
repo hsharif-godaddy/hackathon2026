@@ -411,6 +411,241 @@ describe('TrialAggregator', () => {
     });
   });
 
+  describe('lowerIsBetter propagation', () => {
+    const lowerIsBetterEval = {
+      name: 'token-usage',
+      deterministic: true,
+      regressionMode: 'score' as const,
+      lowerIsBetter: true,
+      evaluate: async () => ({
+        evaluator: 'token-usage',
+        score: 5000,
+        verdict: 'observed' as const,
+        reason: '',
+      }),
+    } satisfies Evaluator;
+
+    it('propagates lowerIsBetter: true from evaluator to aggregated result', () => {
+      const scenario = makeScenario({ evaluators: [lowerIsBetterEval] });
+      const trials = [
+        {
+          trialIndex: 0,
+          transcript: {
+            scenarioName: 'test-scenario',
+            trialIndex: 0,
+            turns: [],
+            snapshots: [],
+            errors: [],
+          },
+          evalResults: [
+            {
+              evaluator: 'token-usage',
+              score: 5000,
+              verdict: 'observed' as const,
+              reason: '',
+            },
+          ],
+        },
+      ];
+      const result = agg.aggregate(scenario, trials);
+      expect(result.aggregated['token-usage'].lowerIsBetter).toBe(true);
+    });
+
+    it('does not set lowerIsBetter when evaluator omits it', () => {
+      const trials = [makeTrial(0, { eval: 'pass' })];
+      const result = agg.aggregate(makeScenario(), trials);
+      expect(result.aggregated['eval'].lowerIsBetter).toBeUndefined();
+    });
+
+    it('lowerIsBetter: false propagates explicitly when set', () => {
+      const explicitFalseEval = {
+        ...lowerIsBetterEval,
+        name: 'explicit-false',
+        lowerIsBetter: false as const,
+      } satisfies Evaluator;
+      const scenario = makeScenario({ evaluators: [explicitFalseEval] });
+      const trials = [
+        {
+          trialIndex: 0,
+          transcript: {
+            scenarioName: 'test-scenario',
+            trialIndex: 0,
+            turns: [],
+            snapshots: [],
+            errors: [],
+          },
+          evalResults: [
+            {
+              evaluator: 'explicit-false',
+              score: 0.8,
+              verdict: 'observed' as const,
+              reason: '',
+            },
+          ],
+        },
+      ];
+      const result = agg.aggregate(scenario, trials);
+      expect(result.aggregated['explicit-false'].lowerIsBetter).toBe(false);
+    });
+  });
+
+  describe('score-mode: passAtK and passToTheK omitted', () => {
+    const scoreModeEval = {
+      name: 'score-eval',
+      deterministic: false,
+      regressionMode: 'score' as const,
+      evaluate: async () => ({
+        evaluator: 'score-eval',
+        score: 0,
+        verdict: 'observed' as const,
+        reason: '',
+      }),
+    } satisfies Evaluator;
+
+    function makeScoreModeScenario(): Scenario {
+      return makeScenario({ evaluators: [scoreModeEval] });
+    }
+
+    it('omits passAtK and passToTheK for score-mode evaluator', () => {
+      const trials: TrialResult[] = [
+        {
+          trialIndex: 0,
+          transcript: {
+            scenarioName: 'test-scenario',
+            trialIndex: 0,
+            turns: [],
+            snapshots: [],
+            errors: [],
+          },
+          evalResults: [{
+            evaluator: 'score-eval',
+            score: 0.5,
+            verdict: 'observed' as const,
+            reason: '',
+          }],
+        },
+        {
+          trialIndex: 1,
+          transcript: {
+            scenarioName: 'test-scenario',
+            trialIndex: 1,
+            turns: [],
+            snapshots: [],
+            errors: [],
+          },
+          evalResults: [{
+            evaluator: 'score-eval',
+            score: 0.7,
+            verdict: 'observed' as const,
+            reason: '',
+          }],
+        },
+      ];
+      const result = agg.aggregate(makeScoreModeScenario(), trials);
+      expect(result.aggregated['score-eval'].passAtK).toBeUndefined();
+      expect(result.aggregated['score-eval'].passToTheK).toBeUndefined();
+    });
+
+    it('keeps passAtK and passToTheK as boolean for pass-rate evaluator', () => {
+      const trials = [
+        makeTrial(0, { 'pr-eval': 'pass' }),
+        makeTrial(1, { 'pr-eval': 'fail' }),
+      ];
+      const result = agg.aggregate(makeScenario(), trials);
+      expect(typeof result.aggregated['pr-eval'].passAtK).toBe('boolean');
+      expect(typeof result.aggregated['pr-eval'].passToTheK).toBe('boolean');
+    });
+
+    it('treats regressionMode absent as pass-rate (boolean fields present)', () => {
+      const noModeEval = {
+        name: 'no-mode',
+        deterministic: false,
+        evaluate: async () => ({
+          evaluator: 'no-mode',
+          score: 1.0,
+          verdict: 'pass' as const,
+          reason: '',
+        }),
+      } satisfies Evaluator;
+      const scenario = makeScenario({ evaluators: [noModeEval] });
+      const trials = [makeTrial(0, { 'no-mode': 'pass' })];
+      const result = agg.aggregate(scenario, trials);
+      expect(typeof result.aggregated['no-mode'].passAtK).toBe('boolean');
+      expect(typeof result.aggregated['no-mode'].passToTheK).toBe('boolean');
+    });
+
+    it('mixed: score-mode omits passAtK/passToTheK, pass-rate retains them', () => {
+      const passRateEval = {
+        name: 'pass-rate-eval',
+        deterministic: false,
+        evaluate: async () => ({
+          evaluator: 'pass-rate-eval',
+          score: 0,
+          verdict: 'fail' as const,
+          reason: '',
+        }),
+      } satisfies Evaluator;
+      const mixedScenario = makeScenario({
+        evaluators: [scoreModeEval, passRateEval],
+      });
+      const trials: TrialResult[] = [
+        {
+          trialIndex: 0,
+          transcript: {
+            scenarioName: 'test-scenario',
+            trialIndex: 0,
+            turns: [],
+            snapshots: [],
+            errors: [],
+          },
+          evalResults: [
+            {
+              evaluator: 'score-eval',
+              score: 0.5,
+              verdict: 'observed' as const,
+              reason: '',
+            },
+            {
+              evaluator: 'pass-rate-eval',
+              score: 1.0,
+              verdict: 'pass' as const,
+              reason: '',
+            },
+          ],
+        },
+        {
+          trialIndex: 1,
+          transcript: {
+            scenarioName: 'test-scenario',
+            trialIndex: 1,
+            turns: [],
+            snapshots: [],
+            errors: [],
+          },
+          evalResults: [
+            {
+              evaluator: 'score-eval',
+              score: 0.3,
+              verdict: 'observed' as const,
+              reason: '',
+            },
+            {
+              evaluator: 'pass-rate-eval',
+              score: 0.0,
+              verdict: 'fail' as const,
+              reason: '',
+            },
+          ],
+        },
+      ];
+      const result = agg.aggregate(mixedScenario, trials);
+      expect(result.aggregated['score-eval'].passAtK).toBeUndefined();
+      expect(result.aggregated['score-eval'].passToTheK).toBeUndefined();
+      expect(result.aggregated['pass-rate-eval'].passAtK).toBe(true);
+      expect(result.aggregated['pass-rate-eval'].passToTheK).toBe(false);
+    });
+  });
+
   describe('stabilityLevel', () => {
     it('copies stabilityLevel from scenario when present', () => {
       const result = agg.aggregate(

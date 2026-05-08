@@ -110,15 +110,20 @@ export class RegressionComparator {
       ?? config.thresholds[name]
       ?? config.defaultThreshold;
 
-    // Relative delta: (baseline - current) / baseline > threshold.
-    // baselineScore > 0 guards against division by zero. LatencyEvaluator
-    // cannot produce score: 0 for an observed verdict (2^(-x) > 0 always),
-    // but a score-mode evaluator with a zero baseline will silently produce
-    // exceeded: false.
+    // Relative delta: for higher-is-better evaluators, regression = score drop.
+    // For lowerIsBetter evaluators (e.g. token counts, cost), regression =
+    // score increase. We achieve this by checking opposite numerators.
+    // baselineScore > 0 guards against division by zero.
+    // Note: we read lowerIsBetter from the live run's AggregatedResult (not
+    // baselineEntry) because the current evaluator config is the source of truth.
+    const exceededNumerator = agg.lowerIsBetter === true
+      ? currentScore - baselineScore   // regression when score increased
+      : baselineScore - currentScore;  // regression when score dropped
+
     const exceeded =
       !Number.isNaN(delta) &&
       baselineScore > 0 &&
-      (baselineScore - currentScore) / baselineScore > threshold;
+      exceededNumerator / baselineScore > threshold;
 
     return { evaluator: name, currentScore, baselineScore, delta, exceeded };
   }

@@ -10,7 +10,10 @@ import type {
 export interface EvalResult {
   evaluator: string;
   /**
-   * Evaluator-specific numeric score in [0.0, 1.0].
+   * Evaluator-specific numeric score.
+   * - Non-observed-verdict evaluators: normalized to [0.0, 1.0].
+   * - Observed-verdict evaluators (regressionMode: 'score'): raw
+   *   measurement (e.g. token count, USD cost). Not clamped.
    */
   score: number;
   verdict: 'pass' | 'partial' | 'fail' | 'unknown' | 'observed';
@@ -27,6 +30,11 @@ export interface Evaluator {
    * - 'score': compare median score across trials
    */
   regressionMode?: 'passRate' | 'score';
+  /**
+   * When true, a score *increase* is treated as a regression (lower is better).
+   * Only meaningful when regressionMode is 'score'.
+   */
+  lowerIsBetter?: boolean;
   evaluate(
     transcript: Transcript,
     scenario: Scenario,

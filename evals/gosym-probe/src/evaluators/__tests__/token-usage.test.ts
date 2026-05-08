@@ -27,6 +27,22 @@ describe('TokenUsageEvaluator', () => {
     expect(evaluator.deterministic).toBe(false);
   });
 
+  it('has regressionMode "score"', () => {
+    const evaluator = new TokenUsageEvaluator({
+      collector: makeMockCollector(),
+      gocodeClient: makeMockGocodeClient(),
+    });
+    expect(evaluator.regressionMode).toBe('score');
+  });
+
+  it('has lowerIsBetter true', () => {
+    const evaluator = new TokenUsageEvaluator({
+      collector: makeMockCollector(),
+      gocodeClient: makeMockGocodeClient(),
+    });
+    expect(evaluator.lowerIsBetter).toBe(true);
+  });
+
   describe('hookClient', () => {
     it('delegates to collector.hook', () => {
       const collector = makeMockCollector();
@@ -79,7 +95,6 @@ describe('TokenUsageEvaluator', () => {
       const evaluator = new TokenUsageEvaluator({
         collector,
         gocodeClient: gocode,
-        maxTokens: 100000,
       });
 
       evaluator.hookClient(makeMockClient(), 0);
@@ -101,7 +116,6 @@ describe('TokenUsageEvaluator', () => {
       const evaluator = new TokenUsageEvaluator({
         collector,
         gocodeClient: gocode,
-        maxTokens: 100000,
       });
 
       evaluator.hookClient(makeMockClient(), 0);
@@ -133,8 +147,8 @@ describe('TokenUsageEvaluator', () => {
     });
   });
 
-  describe('evaluate() - no budget set', () => {
-    it('returns verdict unknown and score 0 when no maxTokens', async () => {
+  describe('evaluate() - error paths', () => {
+    it('returns verdict unknown and score 0 when hookClient was never called', async () => {
       const collector = makeMockCollector(makeTrialTokenData());
       const evaluator = new TokenUsageEvaluator({
         collector,
@@ -150,9 +164,40 @@ describe('TokenUsageEvaluator', () => {
       expect(result.score).toBe(0);
     });
 
-    it('includes token counts in reason even without budget', async () => {
+    it('returns verdict unknown when evaluate() is called twice for the same trial', async () => {
+      const collector = makeMockCollector(null);
+      const evaluator = new TokenUsageEvaluator({
+        collector,
+        gocodeClient: makeMockGocodeClient(),
+      });
+
+      evaluator.hookClient(makeMockClient(), 0);
+      await evaluator.evaluate(makeTranscript(0), makeScenario());
+      const result = await evaluator.evaluate(makeTranscript(0), makeScenario());
+
+      expect(result.verdict).toBe('unknown');
+    });
+
+    it('returns verdict unknown with score 0 when collector returns null', async () => {
+      const collector = makeMockCollector(null);
+      const evaluator = new TokenUsageEvaluator({
+        collector,
+        gocodeClient: makeMockGocodeClient(),
+      });
+
+      evaluator.hookClient(makeMockClient(), 0);
+      const result = await evaluator.evaluate(makeTranscript(0), makeScenario());
+
+      expect(result.verdict).toBe('unknown');
+      expect(result.score).toBe(0);
+      expect(result.reason).toContain('collector returned null');
+    });
+  });
+
+  describe('evaluate() - observed scoring', () => {
+    it('score equals aabData.totalTokens', async () => {
       const collector = makeMockCollector(
-        makeTrialTokenData({ totalTokens: 2000 }),
+        makeTrialTokenData({ totalTokens: 7000 }),
       );
       const evaluator = new TokenUsageEvaluator({
         collector,
@@ -160,23 +205,56 @@ describe('TokenUsageEvaluator', () => {
       });
 
       evaluator.hookClient(makeMockClient(), 0);
-      const result = await evaluator.evaluate(
-        makeTranscript(0),
-        makeScenario(),
-      );
+      const result = await evaluator.evaluate(makeTranscript(0), makeScenario());
 
-      expect(result.reason).toContain('2000');
+      expect(result.verdict).toBe('observed');
+      expect(result.score).toBe(7000);
+    });
+
+    it('score is 0 for zero aab tokens', async () => {
+      const collector = makeMockCollector(
+        makeTrialTokenData({ totalTokens: 0 }),
+      );
+      const evaluator = new TokenUsageEvaluator({
+        collector,
+        gocodeClient: makeMockGocodeClient(),
+      });
+
+      evaluator.hookClient(makeMockClient(), 0);
+      const result = await evaluator.evaluate(makeTranscript(0), makeScenario());
+
+      expect(result.verdict).toBe('observed');
+      expect(result.score).toBe(0);
+    });
+
+    it('reason includes aab and probe token counts', async () => {
+      const collector = makeMockCollector(
+        makeTrialTokenData({ totalTokens: 5000 }),
+      );
+      const gocode = makeMockGocodeClient({ totalTokens: 0 });
+      const evaluator = new TokenUsageEvaluator({
+        collector,
+        gocodeClient: gocode,
+      });
+
+      evaluator.hookClient(makeMockClient(), 0);
+      gocode.setUsage({ totalTokens: 300, promptTokens: 250, completionTokens: 50, calls: 2 });
+      const result = await evaluator.evaluate(makeTranscript(0), makeScenario());
+
+      expect(result.reason).toContain('5000');
+      expect(result.reason).toContain('300');
     });
   });
 
-  describe('evaluate() - no AAB data', () => {
-    it('reports probe-only tokens when collector returns null', async () => {
-      const collector = makeMockCollector(null);
+  describe('evaluate() - zero AAB tokens', () => {
+    it('reports probe-only tokens when AAB reports zero', async () => {
+      const collector = makeMockCollector(
+        makeTrialTokenData({ totalTokens: 0, inputTokens: 0, outputTokens: 0 }),
+      );
       const gocode = makeMockGocodeClient({ totalTokens: 100 });
       const evaluator = new TokenUsageEvaluator({
         collector,
         gocodeClient: gocode,
-        maxTokens: 200000,
       });
 
       evaluator.hookClient(makeMockClient(), 0);
@@ -205,7 +283,7 @@ describe('TokenUsageEvaluator', () => {
   });
 
   describe('evaluate() - with AAB data', () => {
-    it('sums AAB and probe tokens into total', async () => {
+    it('sums AAB and probe tokens into total in details', async () => {
       const collector = makeMockCollector(
         makeTrialTokenData({
           inputTokens: 5000,
@@ -223,7 +301,6 @@ describe('TokenUsageEvaluator', () => {
       const evaluator = new TokenUsageEvaluator({
         collector,
         gocodeClient: gocode,
-        maxTokens: 100000,
       });
 
       evaluator.hookClient(makeMockClient(), 0);
@@ -246,10 +323,10 @@ describe('TokenUsageEvaluator', () => {
         totalTokens: 7000,
       });
       expect(result.details?.probe).toMatchObject({
-        promptTokens: 300,   // 800 - 500
+        promptTokens: 300,    // 800 - 500
         completionTokens: 200, // 200 - 0
-        totalTokens: 1000,   // 1500 - 500
-        calls: 5,            // 5 - 0
+        totalTokens: 1000,    // 1500 - 500
+        calls: 5,             // 5 - 0
       });
       expect(result.details?.total).toMatchObject({
         tokens: 8000, // 7000 + 1000
@@ -278,164 +355,6 @@ describe('TokenUsageEvaluator', () => {
         cachedInputTokensRead: 200,
         cachedInputTokensWrite: 80,
       });
-    });
-  });
-
-  describe('evaluate() - budget scoring', () => {
-    it('produces score 0.4 for 60000 tokens with maxTokens=100000', async () => {
-      // AAB=40000, probe=20000, total=60000
-      // score = max(0, 1 - 60000/100000) = 0.4
-      const collector = makeMockCollector(
-        makeTrialTokenData({ totalTokens: 40000 }),
-      );
-      const gocode = makeMockGocodeClient({ totalTokens: 0 });
-      const evaluator = new TokenUsageEvaluator({
-        collector,
-        gocodeClient: gocode,
-        maxTokens: 100000,
-      });
-
-      evaluator.hookClient(makeMockClient(), 0);
-      gocode.setUsage({
-        promptTokens: 15000,
-        completionTokens: 5000,
-        totalTokens: 20000,
-        calls: 10,
-      });
-
-      const result = await evaluator.evaluate(
-        makeTranscript(0),
-        makeScenario(),
-      );
-
-      expect(result.score).toBeCloseTo(0.4);
-      expect(result.verdict).toBe('partial');
-    });
-
-    it('returns pass when total tokens are well within budget', async () => {
-      // total=10000, maxTokens=100000 → score=0.9 → pass
-      const collector = makeMockCollector(
-        makeTrialTokenData({ totalTokens: 10000 }),
-      );
-      const evaluator = new TokenUsageEvaluator({
-        collector,
-        gocodeClient: makeMockGocodeClient(),
-        maxTokens: 100000,
-      });
-
-      evaluator.hookClient(makeMockClient(), 0);
-      const result = await evaluator.evaluate(
-        makeTranscript(0),
-        makeScenario(),
-      );
-
-      expect(result.score).toBeCloseTo(0.9);
-      expect(result.verdict).toBe('pass');
-    });
-
-    it('returns fail when total tokens far exceed budget', async () => {
-      // total=95000, maxTokens=100000 → score=0.05 → fail
-      const collector = makeMockCollector(
-        makeTrialTokenData({ totalTokens: 95000 }),
-      );
-      const evaluator = new TokenUsageEvaluator({
-        collector,
-        gocodeClient: makeMockGocodeClient(),
-        maxTokens: 100000,
-      });
-
-      evaluator.hookClient(makeMockClient(), 0);
-      const result = await evaluator.evaluate(
-        makeTranscript(0),
-        makeScenario(),
-      );
-
-      expect(result.score).toBeCloseTo(0.05);
-      expect(result.verdict).toBe('fail');
-    });
-
-    it('returns fail and non-NaN score when maxTokens is NaN', async () => {
-      const collector = makeMockCollector(makeTrialTokenData({ totalTokens: 1000 }));
-      const evaluator = new TokenUsageEvaluator({
-        collector,
-        gocodeClient: makeMockGocodeClient(),
-        maxTokens: NaN,
-      });
-
-      evaluator.hookClient(makeMockClient(), 0);
-      const result = await evaluator.evaluate(makeTranscript(0), makeScenario());
-
-      expect(result.verdict).toBe('fail');
-      expect(Number.isNaN(result.score)).toBe(false);
-    });
-
-    it('returns fail when maxTokens is Infinity', async () => {
-      const collector = makeMockCollector(makeTrialTokenData({ totalTokens: 1000 }));
-      const evaluator = new TokenUsageEvaluator({
-        collector,
-        gocodeClient: makeMockGocodeClient(),
-        maxTokens: Infinity,
-      });
-
-      evaluator.hookClient(makeMockClient(), 0);
-      const result = await evaluator.evaluate(makeTranscript(0), makeScenario());
-
-      expect(result.verdict).toBe('fail');
-    });
-
-    it('returns fail when maxTokens is negative', async () => {
-      const collector = makeMockCollector(makeTrialTokenData({ totalTokens: 100 }));
-      const evaluator = new TokenUsageEvaluator({
-        collector,
-        gocodeClient: makeMockGocodeClient(),
-        maxTokens: -1,
-      });
-
-      evaluator.hookClient(makeMockClient(), 0);
-      const result = await evaluator.evaluate(makeTranscript(0), makeScenario());
-
-      expect(result.verdict).toBe('fail');
-    });
-
-    it('returns score 0 and verdict fail when maxTokens is 0', async () => {
-      const collector = makeMockCollector(
-        makeTrialTokenData({ totalTokens: 0 }),
-      );
-      const evaluator = new TokenUsageEvaluator({
-        collector,
-        gocodeClient: makeMockGocodeClient(),
-        maxTokens: 0,
-      });
-
-      evaluator.hookClient(makeMockClient(), 0);
-      const result = await evaluator.evaluate(
-        makeTranscript(0),
-        makeScenario(),
-      );
-
-      expect(result.score).toBe(0);
-      expect(result.verdict).toBe('fail');
-      expect(Number.isNaN(result.score)).toBe(false);
-    });
-
-    it('clamps score to 0 when tokens exceed maxTokens', async () => {
-      const collector = makeMockCollector(
-        makeTrialTokenData({ totalTokens: 150000 }),
-      );
-      const evaluator = new TokenUsageEvaluator({
-        collector,
-        gocodeClient: makeMockGocodeClient(),
-        maxTokens: 100000,
-      });
-
-      evaluator.hookClient(makeMockClient(), 0);
-      const result = await evaluator.evaluate(
-        makeTranscript(0),
-        makeScenario(),
-      );
-
-      expect(result.score).toBe(0);
-      expect(result.verdict).toBe('fail');
     });
   });
 
@@ -517,39 +436,8 @@ describe('TokenUsageEvaluator', () => {
     });
   });
 
-  describe('evaluate() - baseline guard', () => {
-    it('returns unknown when hookClient was never called', async () => {
-      const collector = makeMockCollector(null);
-      const evaluator = new TokenUsageEvaluator({
-        collector,
-        gocodeClient: makeMockGocodeClient(),
-        maxTokens: 100000,
-      });
-
-      const result = await evaluator.evaluate(makeTranscript(0), makeScenario());
-
-      expect(result.verdict).toBe('unknown');
-      expect(result.score).toBe(0);
-    });
-
-    it('returns unknown when evaluate() is called twice for the same trial', async () => {
-      const collector = makeMockCollector(null);
-      const evaluator = new TokenUsageEvaluator({
-        collector,
-        gocodeClient: makeMockGocodeClient(),
-        maxTokens: 100000,
-      });
-
-      evaluator.hookClient(makeMockClient(), 0);
-      await evaluator.evaluate(makeTranscript(0), makeScenario());
-      const result = await evaluator.evaluate(makeTranscript(0), makeScenario());
-
-      expect(result.verdict).toBe('unknown');
-    });
-  });
-
   describe('multi-trial isolation', () => {
-    it('uses the correct afterSnapshot for each trial', async () => {
+    it('score equals aabData.totalTokens for each trial independently', async () => {
       const collector: TokenUsageCollector = {
         hook: vi.fn(),
         collect: vi.fn().mockImplementation((trialIndex: number) =>
@@ -564,7 +452,6 @@ describe('TokenUsageEvaluator', () => {
       const evaluator = new TokenUsageEvaluator({
         collector,
         gocodeClient: gocode,
-        maxTokens: 100000,
       });
 
       evaluator.hookClient(makeMockClient(), 0); // baseline trial 0 = 0
@@ -573,6 +460,39 @@ describe('TokenUsageEvaluator', () => {
       evaluator.hookClient(makeMockClient(), 1); // baseline trial 1 = 500
       gocode.setUsage({ totalTokens: 1500 });
       evaluator.afterSimulation(1);             // snapshot trial 1 end = 1500
+
+      const result0 = await evaluator.evaluate(makeTranscript(0), makeScenario());
+      const result1 = await evaluator.evaluate(makeTranscript(1), makeScenario());
+
+      expect(result0.score).toBe(1000); // aab totalTokens for trial 0
+      expect(result1.score).toBe(2000); // aab totalTokens for trial 1
+      expect(result0.verdict).toBe('observed');
+      expect(result1.verdict).toBe('observed');
+    });
+
+    it('details total tokens are correct per trial', async () => {
+      const collector: TokenUsageCollector = {
+        hook: vi.fn(),
+        collect: vi.fn().mockImplementation((trialIndex: number) =>
+          makeTrialTokenData({
+            totalTokens: trialIndex === 0 ? 1000 : 2000,
+          }),
+        ),
+        unhook: vi.fn(),
+      } as unknown as TokenUsageCollector;
+
+      const gocode = makeMockGocodeClient({ totalTokens: 0 });
+      const evaluator = new TokenUsageEvaluator({
+        collector,
+        gocodeClient: gocode,
+      });
+
+      evaluator.hookClient(makeMockClient(), 0);
+      gocode.setUsage({ totalTokens: 500 });
+      evaluator.afterSimulation(0);
+      evaluator.hookClient(makeMockClient(), 1);
+      gocode.setUsage({ totalTokens: 1500 });
+      evaluator.afterSimulation(1);
 
       const result0 = await evaluator.evaluate(makeTranscript(0), makeScenario());
       const result1 = await evaluator.evaluate(makeTranscript(1), makeScenario());
@@ -586,12 +506,13 @@ describe('TokenUsageEvaluator', () => {
 
   describe('afterSimulation - backward compat', () => {
     it('evaluate falls back to live accumulator when afterSimulation was never called', async () => {
-      const collector = makeMockCollector(null);
+      const collector = makeMockCollector(
+        makeTrialTokenData({ totalTokens: 0 }),
+      );
       const gocode = makeMockGocodeClient({ totalTokens: 0 });
       const evaluator = new TokenUsageEvaluator({
         collector,
         gocodeClient: gocode,
-        maxTokens: 100000,
       });
 
       evaluator.hookClient(makeMockClient(), 0);

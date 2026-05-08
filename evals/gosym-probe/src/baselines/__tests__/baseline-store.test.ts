@@ -286,6 +286,39 @@ describe('BaselineStore', () => {
     );
   });
 
+  describe('save() — passAtK/passToTheK conditional', () => {
+    it('omits passAtK and passToTheK for score-mode evaluator (passAtK absent)', async () => {
+      const store = new BaselineStore();
+      const result: ScenarioResult = {
+        ...SCENARIO_RESULT,
+        aggregated: {
+          'latency': {
+            passingTrials: 3,
+            totalTrials: 3,
+            medianScore: 0.75,
+            regressionMode: 'score',
+          },
+        },
+      };
+      await store.save('run-001', result);
+
+      const [, raw] = mockWriteFile.mock.calls[0];
+      const parsed = JSON.parse(raw as string) as BaselineScores;
+      expect(parsed.scores['latency']).not.toHaveProperty('passAtK');
+      expect(parsed.scores['latency']).not.toHaveProperty('passToTheK');
+    });
+
+    it('preserves passAtK and passToTheK for pass-rate evaluators', async () => {
+      const store = new BaselineStore();
+      await store.save('run-001', SCENARIO_RESULT);
+
+      const [, raw] = mockWriteFile.mock.calls[0];
+      const parsed = JSON.parse(raw as string) as BaselineScores;
+      expect(parsed.scores['bug-hit-rate']).toHaveProperty('passAtK', true);
+      expect(parsed.scores['bug-hit-rate']).toHaveProperty('passToTheK', false);
+    });
+  });
+
   describe('save() — existingBaseline optimization', () => {
     const SCORE_RESULT: ScenarioResult = {
       ...SCENARIO_RESULT,
@@ -483,6 +516,49 @@ describe('BaselineStore', () => {
       ).rejects.toThrow(
         /Failed to parse baseline.*build-landing-page/,
       );
+    });
+  });
+
+  describe('saveFromStored() — passAtK/passToTheK conditional', () => {
+    it('omits passAtK and passToTheK for score-mode evaluator (passAtK absent)', async () => {
+      const stored: StoredAggregated = {
+        scenarioName: 'build-landing-page',
+        category: 'regression',
+        evaluators: {
+          'latency': {
+            passingTrials: 3,
+            totalTrials: 3,
+            scores: { min: 0.7, max: 0.9, mean: 0.8, median: 0.8, stddev: 0.05 },
+            verdicts: { observed: 3 },
+            medianScore: 0.75,
+          },
+        },
+        timing: {
+          totalDurationMs: 6000,
+          avgTrialDurationMs: 2000,
+          avgTurnsPerTrial: 4,
+        },
+      };
+      const store = new BaselineStore();
+      await store.saveFromStored('run-001', stored, undefined, {
+        scoreEvaluatorNames: ['latency'],
+        defaultThreshold: 0.1,
+      });
+
+      const [, raw] = mockWriteFile.mock.calls[0];
+      const parsed = JSON.parse(raw as string) as BaselineScores;
+      expect(parsed.scores['latency']).not.toHaveProperty('passAtK');
+      expect(parsed.scores['latency']).not.toHaveProperty('passToTheK');
+    });
+
+    it('preserves passAtK and passToTheK for pass-rate evaluators in saveFromStored', async () => {
+      const store = new BaselineStore();
+      await store.saveFromStored('run-001', STORED_AGGREGATED);
+
+      const [, raw] = mockWriteFile.mock.calls[0];
+      const parsed = JSON.parse(raw as string) as BaselineScores;
+      expect(parsed.scores['bug-hit-rate']).toHaveProperty('passAtK', true);
+      expect(parsed.scores['bug-hit-rate']).toHaveProperty('passToTheK', false);
     });
   });
 

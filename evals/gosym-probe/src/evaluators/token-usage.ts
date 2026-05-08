@@ -13,11 +13,13 @@ import type {
   ProbeUsage,
   ProbeUsageSource,
 } from '../clients/gocode-client.js';
-import { scoreToVerdict, computeProbeDelta } from './eval-utils.js';
+import { computeProbeDelta } from './eval-utils.js';
 
 export class TokenUsageEvaluator implements Evaluator {
   readonly name = 'token-usage';
   readonly deterministic = false;
+  readonly regressionMode = 'score' as const;
+  readonly lowerIsBetter = true;
 
   private readonly baselines = new Map<number, ProbeUsage>();
   private readonly afterSnapshots = new Map<number, ProbeUsage>();
@@ -26,7 +28,6 @@ export class TokenUsageEvaluator implements Evaluator {
     private readonly options: {
       collector: TokenUsageCollector;
       gocodeClient: ProbeUsageSource;
-      maxTokens?: number;
     },
   ) {}
 
@@ -57,10 +58,9 @@ export class TokenUsageEvaluator implements Evaluator {
     _scenario: Scenario,
     _snapshot?: DOMSnapshot,
   ): Promise<EvalResult> {
-    const { collector, gocodeClient, maxTokens } = this.options;
+    const { collector, gocodeClient } = this.options;
     const { trialIndex } = transcript;
 
-    const aabData = collector.collect(trialIndex);
     const baseline = this.baselines.get(trialIndex);
     this.baselines.delete(trialIndex);
 
@@ -73,11 +73,21 @@ export class TokenUsageEvaluator implements Evaluator {
       };
     }
 
+    const aabData = collector.collect(trialIndex);
+    if (aabData === null) {
+      return {
+        evaluator: this.name,
+        score: 0,
+        verdict: 'unknown',
+        reason: 'no token data available for this trial (collector returned null)',
+      };
+    }
+
     const probeEnd = this.afterSnapshots.get(trialIndex) ?? gocodeClient.getAccumulatedUsage();
     this.afterSnapshots.delete(trialIndex);
     const probeDelta = computeProbeDelta(probeEnd, baseline);
 
-    const aabTotalTokens = aabData?.totalTokens ?? 0;
+    const aabTotalTokens = aabData.totalTokens;
     const totalTokens = aabTotalTokens + probeDelta.totalTokens;
 
     const details = {
@@ -91,41 +101,15 @@ export class TokenUsageEvaluator implements Evaluator {
       total: { tokens: totalTokens },
     };
 
-    if (maxTokens === undefined) {
-      return {
-        evaluator: this.name,
-        score: 0,
-        verdict: 'unknown',
-        reason:
-          `aab=${aabTotalTokens} probe=${probeDelta.totalTokens}` +
-          ` total=${totalTokens} tokens (no budget set)`,
-        details,
-      };
-    }
-
-    if (!Number.isFinite(maxTokens) || maxTokens <= 0) {
-      return {
-        evaluator: this.name,
-        score: 0,
-        verdict: 'fail',
-        reason:
-          `Used ${totalTokens} tokens with invalid budget` +
-          ` (maxTokens=${maxTokens})`,
-        details,
-      };
-    }
-
-    const score = Math.max(0, 1 - totalTokens / maxTokens);
-    const verdict = scoreToVerdict(score);
-
+    // Score uses AAB-only tokens: regression detection targets agent cost,
+    // not probe overhead which varies with model choice and prompt length.
     return {
       evaluator: this.name,
-      score,
-      verdict,
+      score: aabTotalTokens,
+      verdict: 'observed',
       reason:
-        `Used ${totalTokens} of ${maxTokens} max tokens` +
-        ` (efficiency: ${(score * 100).toFixed(0)}%)` +
-        ` [aab=${aabTotalTokens} probe=${probeDelta.totalTokens}]`,
+        `aab=${aabTotalTokens} probe=${probeDelta.totalTokens}` +
+        ` total=${totalTokens} tokens`,
       details,
     };
   }
@@ -143,4 +127,3 @@ function buildAabDetails(
     cachedInputTokensWrite: data?.cachedInputTokensWrite ?? 0,
   };
 }
-

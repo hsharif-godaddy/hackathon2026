@@ -279,7 +279,10 @@ export class MyEvaluator implements Evaluator {
   all trials (e.g. structural checks on DOM or transcript).
 - `deterministic: false` — evaluator runs once per trial (e.g. LLM
   judge).
-- `score` must be in `[0.0, 1.0]`.
+- `score` must be in `[0.0, 1.0]` for non-observed verdicts (`pass`,
+  `fail`, `partial`, `unknown`). For `observed`-verdict evaluators
+  (`regressionMode: 'score'`), emit the raw measurement (e.g. token
+  count, USD cost); `normalizeEvalResult` leaves it unclamped.
 - Return `verdict: 'unknown'` when inputs are insufficient to judge.
 - Return `verdict: 'observed'` for score-mode evaluators that record a
   measurement (no pass/fail semantics).

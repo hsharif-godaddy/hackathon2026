@@ -10,7 +10,9 @@ const VALID_VERDICTS: ReadonlySet<string> = new Set([
  * all downstream consumers (reporters, store, aggregators)
  * can trust the data shape without per-site guards.
  *
- * - Clamps score to [0, 1], coercing NaN/Infinity to 0.
+ * - Coerces NaN/Infinity to 0. For pass/fail verdicts, also
+ *   clamps to [0, 1]. Observed-verdict scores are left
+ *   unbounded (raw measurements like token counts or USD).
  * - Flattens multiline reasons to a single line.
  * - Defaults null/non-string reasons to empty string.
  * - Falls back to 'unknown' for invalid verdicts.
@@ -20,10 +22,13 @@ export function normalizeEvalResult(
   raw: EvalResult,
   logger: { warn: (...args: unknown[]) => void } = console,
 ): EvalResult {
-  const score = Math.min(
-    1,
-    Math.max(0, toFiniteNumber(raw.score, 0)),
-  );
+  const finiteScore = toFiniteNumber(raw.score, 0);
+  // Observed-verdict evaluators emit raw numeric measurements (e.g. token
+  // counts, cost in USD) that legitimately exceed [0, 1]. Skip the clamp but
+  // still coerce NaN / Infinity to 0 via toFiniteNumber above.
+  const score = raw.verdict === 'observed'
+    ? finiteScore
+    : Math.min(1, Math.max(0, finiteScore));
 
   const rawReason: unknown = raw.reason;
   const reason = typeof rawReason === 'string'

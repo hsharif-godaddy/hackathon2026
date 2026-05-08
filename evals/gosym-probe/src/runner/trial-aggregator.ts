@@ -21,6 +21,13 @@ export class TrialAggregator {
       ]),
     );
 
+    const lowerIsBetterMap = new Map<string, boolean>(
+      scenario.evaluators
+        .filter((e): e is typeof e & { lowerIsBetter: boolean } =>
+          e.lowerIsBetter !== undefined)
+        .map((e) => [e.name, e.lowerIsBetter]),
+    );
+
     // Single pass: collect verdicts and scores per evaluator
     const evalDataMap = new Map<string, EvalData>();
     for (const trial of trials) {
@@ -41,14 +48,18 @@ export class TrialAggregator {
       const filteredMedian = mode === 'score'
         ? median(scores.filter((_, i) => verdicts[i] !== 'unknown'))
         : null;
+      const lowerIsBetter = lowerIsBetterMap.get(name);
 
       aggregated[name] = {
-        passAtK: passingTrials > 0,
-        passToTheK: totalTrials > 0 && passingTrials === totalTrials,
+        ...(mode !== 'score' && {
+          passAtK: passingTrials > 0,
+          passToTheK: totalTrials > 0 && passingTrials === totalTrials,
+        }),
         passingTrials,
         totalTrials,
         ...(filteredMedian != null && { medianScore: filteredMedian }),
         ...(mode !== undefined && { regressionMode: mode }),
+        ...(mode === 'score' && lowerIsBetter !== undefined && { lowerIsBetter }),
       };
     }
 

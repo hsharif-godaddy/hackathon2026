@@ -27,6 +27,22 @@ describe('LLMCostEvaluator', () => {
     expect(evaluator.deterministic).toBe(false);
   });
 
+  it('has regressionMode "score"', () => {
+    const evaluator = new LLMCostEvaluator({
+      collector: makeMockCollector(),
+      gocodeClient: makeMockGocodeClient(),
+    });
+    expect(evaluator.regressionMode).toBe('score');
+  });
+
+  it('has lowerIsBetter true', () => {
+    const evaluator = new LLMCostEvaluator({
+      collector: makeMockCollector(),
+      gocodeClient: makeMockGocodeClient(),
+    });
+    expect(evaluator.lowerIsBetter).toBe(true);
+  });
+
   describe('hookClient', () => {
     it('delegates to collector.hook', () => {
       const collector = makeMockCollector();
@@ -79,7 +95,6 @@ describe('LLMCostEvaluator', () => {
         collector,
         gocodeClient: gocode,
         probeModel: 'claude-sonnet-4-6',
-        maxCostUsd: 1.0,
       });
 
       evaluator.hookClient(makeMockClient(), 0);
@@ -102,7 +117,6 @@ describe('LLMCostEvaluator', () => {
         collector,
         gocodeClient: gocode,
         probeModel: 'claude-sonnet-4-6',
-        maxCostUsd: 1.0,
       });
 
       evaluator.hookClient(makeMockClient(), 0);
@@ -134,8 +148,8 @@ describe('LLMCostEvaluator', () => {
     });
   });
 
-  describe('evaluate() - no budget set', () => {
-    it('returns verdict unknown and score 0 when no maxCostUsd', async () => {
+  describe('evaluate() - error paths', () => {
+    it('returns verdict unknown and score 0 when hookClient was never called', async () => {
       const collector = makeMockCollector(makeTrialTokenData({ totalCost: 0.10 }));
       const evaluator = new LLMCostEvaluator({
         collector,
@@ -148,8 +162,22 @@ describe('LLMCostEvaluator', () => {
       expect(result.score).toBe(0);
     });
 
-    it('includes cost amounts in reason even without budget', async () => {
-      const collector = makeMockCollector(makeTrialTokenData({ totalCost: 0.25 }));
+    it('returns verdict unknown when evaluate() is called twice for the same trial', async () => {
+      const collector = makeMockCollector(null);
+      const evaluator = new LLMCostEvaluator({
+        collector,
+        gocodeClient: makeMockGocodeClient(),
+      });
+
+      evaluator.hookClient(makeMockClient(), 0);
+      await evaluator.evaluate(makeTranscript(0), makeScenario());
+      const result = await evaluator.evaluate(makeTranscript(0), makeScenario());
+
+      expect(result.verdict).toBe('unknown');
+    });
+
+    it('returns verdict unknown with score 0 when collector returns null', async () => {
+      const collector = makeMockCollector(null);
       const evaluator = new LLMCostEvaluator({
         collector,
         gocodeClient: makeMockGocodeClient(),
@@ -158,7 +186,59 @@ describe('LLMCostEvaluator', () => {
       evaluator.hookClient(makeMockClient(), 0);
       const result = await evaluator.evaluate(makeTranscript(0), makeScenario());
 
-      expect(result.reason).toContain('0.25');
+      expect(result.verdict).toBe('unknown');
+      expect(result.score).toBe(0);
+      expect(result.reason).toContain('collector returned null');
+    });
+  });
+
+  describe('evaluate() - observed scoring', () => {
+    it('score equals aabData.totalCost', async () => {
+      const collector = makeMockCollector(
+        makeTrialTokenData({ totalCost: 0.25 }),
+      );
+      const evaluator = new LLMCostEvaluator({
+        collector,
+        gocodeClient: makeMockGocodeClient(),
+      });
+
+      evaluator.hookClient(makeMockClient(), 0);
+      const result = await evaluator.evaluate(makeTranscript(0), makeScenario());
+
+      expect(result.verdict).toBe('observed');
+      expect(result.score).toBeCloseTo(0.25);
+    });
+
+    it('score is 0 for zero aab cost', async () => {
+      const collector = makeMockCollector(
+        makeTrialTokenData({ totalCost: 0 }),
+      );
+      const evaluator = new LLMCostEvaluator({
+        collector,
+        gocodeClient: makeMockGocodeClient(),
+      });
+
+      evaluator.hookClient(makeMockClient(), 0);
+      const result = await evaluator.evaluate(makeTranscript(0), makeScenario());
+
+      expect(result.verdict).toBe('observed');
+      expect(result.score).toBe(0);
+    });
+
+    it('reason includes aab and probe cost values', async () => {
+      const collector = makeMockCollector(makeTrialTokenData({ totalCost: 0.15 }));
+      const gocode = makeMockGocodeClient({ promptTokens: 0, completionTokens: 0 });
+      const evaluator = new LLMCostEvaluator({
+        collector,
+        gocodeClient: gocode,
+        probeModel: 'claude-sonnet-4-6',
+      });
+
+      evaluator.hookClient(makeMockClient(), 0);
+      gocode.setUsage({ promptTokens: 1000, completionTokens: 0 });
+      const result = await evaluator.evaluate(makeTranscript(0), makeScenario());
+
+      expect(result.reason).toContain('0.15');
     });
   });
 
@@ -170,15 +250,13 @@ describe('LLMCostEvaluator', () => {
       const evaluator = new LLMCostEvaluator({
         collector,
         gocodeClient: makeMockGocodeClient(),
-        maxCostUsd: 1.0,
       });
 
       evaluator.hookClient(makeMockClient(), 0);
       const result = await evaluator.evaluate(makeTranscript(0), makeScenario());
 
-      // Probe delta is zero (no hook called), so total = AAB cost
       expect(result.details?.aab).toMatchObject({ totalCost: 0.12 });
-      expect(result.details?.total).toMatchObject({ costUsd: 0.12 });
+      expect(result.details?.total).toMatchObject({ costUsd: expect.any(Number) });
     });
 
     it('includes AAB cost fields in details', async () => {
@@ -212,12 +290,13 @@ describe('LLMCostEvaluator', () => {
       });
     });
 
-    it('reports zero AAB cost when collector returns null', async () => {
-      const collector = makeMockCollector(null);
+    it('reports zero AAB cost when aab cost is zero', async () => {
+      const collector = makeMockCollector(
+        makeTrialTokenData({ totalCost: 0 }),
+      );
       const evaluator = new LLMCostEvaluator({
         collector,
         gocodeClient: makeMockGocodeClient(),
-        maxCostUsd: 1.0,
       });
 
       evaluator.hookClient(makeMockClient(), 0);
@@ -232,13 +311,12 @@ describe('LLMCostEvaluator', () => {
       // claude-sonnet-4-6: input=$0.003/1K, output=$0.015/1K
       // promptTokens delta=10000, completionTokens delta=2000
       // probe cost = (10000/1000 * 0.003) + (2000/1000 * 0.015) = 0.03 + 0.03 = 0.06
-      const collector = makeMockCollector(null);
+      const collector = makeMockCollector(makeTrialTokenData({ totalCost: 0 }));
       const gocode = makeMockGocodeClient({ promptTokens: 0, completionTokens: 0 });
       const evaluator = new LLMCostEvaluator({
         collector,
         gocodeClient: gocode,
         probeModel: 'claude-sonnet-4-6',
-        maxCostUsd: 1.0,
       });
 
       evaluator.hookClient(makeMockClient(), 0);
@@ -255,13 +333,12 @@ describe('LLMCostEvaluator', () => {
     });
 
     it('includes probe token counts and model name in details', async () => {
-      const collector = makeMockCollector(null);
+      const collector = makeMockCollector(makeTrialTokenData({ totalCost: 0 }));
       const gocode = makeMockGocodeClient({ promptTokens: 0, completionTokens: 0 });
       const evaluator = new LLMCostEvaluator({
         collector,
         gocodeClient: gocode,
         probeModel: 'claude-haiku-4-5',
-        maxCostUsd: 1.0,
       });
 
       evaluator.hookClient(makeMockClient(), 0);
@@ -282,7 +359,7 @@ describe('LLMCostEvaluator', () => {
       });
     });
 
-    it('sums AAB cost and probe cost into total', async () => {
+    it('sums AAB cost and probe cost into total in details', async () => {
       // AAB totalCost=0.10, probe=0 (no delta) → total=0.10
       const collector = makeMockCollector(
         makeTrialTokenData({ totalCost: 0.10 }),
@@ -292,7 +369,6 @@ describe('LLMCostEvaluator', () => {
         collector,
         gocodeClient: gocode,
         probeModel: 'claude-sonnet-4-6',
-        maxCostUsd: 1.0,
       });
 
       // Hook at baseline = {100, 50}; no change before evaluate → probe delta = 0
@@ -305,174 +381,14 @@ describe('LLMCostEvaluator', () => {
     });
   });
 
-  describe('evaluate() - budget scoring', () => {
-    it('produces score 0.6 for $0.20 with maxCostUsd=0.50', async () => {
-      // AAB totalCost=0.20, probe delta=0 → total=0.20
-      // score = max(0, 1 - 0.20/0.50) = 0.6
-      const collector = makeMockCollector(
-        makeTrialTokenData({ totalCost: 0.20 }),
-      );
-      const gocode = makeMockGocodeClient({ promptTokens: 0, completionTokens: 0 });
-      const evaluator = new LLMCostEvaluator({
-        collector,
-        gocodeClient: gocode,
-        probeModel: 'claude-sonnet-4-6',
-        maxCostUsd: 0.50,
-      });
-
-      // Baseline = current → probe delta = 0
-      evaluator.hookClient(makeMockClient(), 0);
-
-      const result = await evaluator.evaluate(makeTranscript(0), makeScenario());
-
-      expect(result.score).toBeCloseTo(0.6);
-      expect(result.verdict).toBe('partial');
-    });
-
-    it('returns pass when cost is well within budget', async () => {
-      // total=0.05, maxCostUsd=0.50 → score=0.9 → pass
-      const collector = makeMockCollector(
-        makeTrialTokenData({ totalCost: 0.05 }),
-      );
-      const evaluator = new LLMCostEvaluator({
-        collector,
-        gocodeClient: makeMockGocodeClient(),
-        maxCostUsd: 0.50,
-      });
-
-      evaluator.hookClient(makeMockClient(), 0);
-      const result = await evaluator.evaluate(makeTranscript(0), makeScenario());
-
-      expect(result.score).toBeCloseTo(0.9);
-      expect(result.verdict).toBe('pass');
-    });
-
-    it('returns fail when cost far exceeds budget', async () => {
-      // total=0.48, maxCostUsd=0.50 → score=0.04 → fail
-      const collector = makeMockCollector(
-        makeTrialTokenData({ totalCost: 0.48 }),
-      );
-      const evaluator = new LLMCostEvaluator({
-        collector,
-        gocodeClient: makeMockGocodeClient(),
-        maxCostUsd: 0.50,
-      });
-
-      evaluator.hookClient(makeMockClient(), 0);
-      const result = await evaluator.evaluate(makeTranscript(0), makeScenario());
-
-      expect(result.score).toBeCloseTo(0.04);
-      expect(result.verdict).toBe('fail');
-    });
-
-    it('returns fail and non-NaN score when maxCostUsd is NaN', async () => {
-      const collector = makeMockCollector(makeTrialTokenData({ totalCost: 0.10 }));
-      const evaluator = new LLMCostEvaluator({
-        collector,
-        gocodeClient: makeMockGocodeClient(),
-        maxCostUsd: NaN,
-      });
-
-      evaluator.hookClient(makeMockClient(), 0);
-      const result = await evaluator.evaluate(makeTranscript(0), makeScenario());
-
-      expect(result.verdict).toBe('fail');
-      expect(Number.isNaN(result.score)).toBe(false);
-    });
-
-    it('returns fail when maxCostUsd is Infinity', async () => {
-      const collector = makeMockCollector(makeTrialTokenData({ totalCost: 0.10 }));
-      const evaluator = new LLMCostEvaluator({
-        collector,
-        gocodeClient: makeMockGocodeClient(),
-        maxCostUsd: Infinity,
-      });
-
-      evaluator.hookClient(makeMockClient(), 0);
-      const result = await evaluator.evaluate(makeTranscript(0), makeScenario());
-
-      expect(result.verdict).toBe('fail');
-    });
-
-    it('returns fail when maxCostUsd is negative', async () => {
-      const collector = makeMockCollector(makeTrialTokenData({ totalCost: 0.05 }));
-      const evaluator = new LLMCostEvaluator({
-        collector,
-        gocodeClient: makeMockGocodeClient(),
-        maxCostUsd: -0.50,
-      });
-
-      evaluator.hookClient(makeMockClient(), 0);
-      const result = await evaluator.evaluate(makeTranscript(0), makeScenario());
-
-      expect(result.verdict).toBe('fail');
-    });
-
-    it('returns score 0 and verdict fail when maxCostUsd is 0', async () => {
-      const collector = makeMockCollector(
-        makeTrialTokenData({ totalCost: 0 }),
-      );
-      const evaluator = new LLMCostEvaluator({
-        collector,
-        gocodeClient: makeMockGocodeClient(),
-        maxCostUsd: 0,
-      });
-
-      evaluator.hookClient(makeMockClient(), 0);
-      const result = await evaluator.evaluate(makeTranscript(0), makeScenario());
-
-      expect(result.score).toBe(0);
-      expect(result.verdict).toBe('fail');
-      expect(Number.isNaN(result.score)).toBe(false);
-    });
-
-    it('clamps score to 0 when cost exceeds maxCostUsd', async () => {
-      const collector = makeMockCollector(
-        makeTrialTokenData({ totalCost: 1.00 }),
-      );
-      const evaluator = new LLMCostEvaluator({
-        collector,
-        gocodeClient: makeMockGocodeClient(),
-        maxCostUsd: 0.50,
-      });
-
-      evaluator.hookClient(makeMockClient(), 0);
-      const result = await evaluator.evaluate(makeTranscript(0), makeScenario());
-
-      expect(result.score).toBe(0);
-      expect(result.verdict).toBe('fail');
-    });
-  });
-
   describe('evaluate() - unknown probe model', () => {
-    it('returns verdict unknown when probeModel is not in pricing table and maxCostUsd is set', async () => {
-      const collector = makeMockCollector(null);
-      const gocode = makeMockGocodeClient({ promptTokens: 0, completionTokens: 0 });
-      const evaluator = new LLMCostEvaluator({
-        collector,
-        gocodeClient: gocode,
-        probeModel: 'unknown-model-xyz',
-        maxCostUsd: 1.0,
-      });
-
-      evaluator.hookClient(makeMockClient(), 0);
-      gocode.setUsage({ promptTokens: 10000, completionTokens: 2000 });
-
-      const result = await evaluator.evaluate(makeTranscript(0), makeScenario());
-
-      expect(result.verdict).toBe('unknown');
-      expect(result.score).toBe(0);
-      expect(result.reason).toContain('unknown-model-xyz');
-    });
-
     it('reports probe cost as 0 when probeModel is not in pricing table', async () => {
-      const collector = makeMockCollector(null);
+      const collector = makeMockCollector(makeTrialTokenData({ totalCost: 0 }));
       const gocode = makeMockGocodeClient({ promptTokens: 0, completionTokens: 0 });
       const evaluator = new LLMCostEvaluator({
         collector,
         gocodeClient: gocode,
         probeModel: 'unknown-model-xyz',
-        maxCostUsd: 1.0,
       });
 
       evaluator.hookClient(makeMockClient(), 0);
@@ -483,14 +399,31 @@ describe('LLMCostEvaluator', () => {
       expect((result.details?.probe as Record<string, unknown>)?.cost).toBe(0);
     });
 
-    it('includes a warning in reason when probe model is unknown', async () => {
-      const collector = makeMockCollector(null);
+    it('still emits observed verdict when probe model is unknown', async () => {
+      const collector = makeMockCollector(makeTrialTokenData({ totalCost: 0.05 }));
       const gocode = makeMockGocodeClient({ promptTokens: 0, completionTokens: 0 });
       const evaluator = new LLMCostEvaluator({
         collector,
         gocodeClient: gocode,
         probeModel: 'unknown-model-xyz',
-        maxCostUsd: 1.0,
+      });
+
+      evaluator.hookClient(makeMockClient(), 0);
+      gocode.setUsage({ promptTokens: 10000, completionTokens: 2000 });
+
+      const result = await evaluator.evaluate(makeTranscript(0), makeScenario());
+
+      expect(result.verdict).toBe('observed');
+      expect(result.score).toBeCloseTo(0.05); // aab cost flows through
+    });
+
+    it('includes a warning in reason when probe model is unknown', async () => {
+      const collector = makeMockCollector(makeTrialTokenData({ totalCost: 0 }));
+      const gocode = makeMockGocodeClient({ promptTokens: 0, completionTokens: 0 });
+      const evaluator = new LLMCostEvaluator({
+        collector,
+        gocodeClient: gocode,
+        probeModel: 'unknown-model-xyz',
       });
 
       evaluator.hookClient(makeMockClient(), 0);
@@ -502,12 +435,11 @@ describe('LLMCostEvaluator', () => {
     });
 
     it('reports probe cost as 0 when probeModel is omitted', async () => {
-      const collector = makeMockCollector(null);
+      const collector = makeMockCollector(makeTrialTokenData({ totalCost: 0 }));
       const gocode = makeMockGocodeClient({ promptTokens: 0, completionTokens: 0 });
       const evaluator = new LLMCostEvaluator({
         collector,
         gocodeClient: gocode,
-        maxCostUsd: 1.0,
       });
 
       evaluator.hookClient(makeMockClient(), 0);
@@ -588,39 +520,8 @@ describe('LLMCostEvaluator', () => {
     });
   });
 
-  describe('evaluate() - baseline guard', () => {
-    it('returns unknown when hookClient was never called', async () => {
-      const collector = makeMockCollector(null);
-      const evaluator = new LLMCostEvaluator({
-        collector,
-        gocodeClient: makeMockGocodeClient(),
-        maxCostUsd: 1.0,
-      });
-
-      const result = await evaluator.evaluate(makeTranscript(0), makeScenario());
-
-      expect(result.verdict).toBe('unknown');
-      expect(result.score).toBe(0);
-    });
-
-    it('returns unknown when evaluate() is called twice for the same trial', async () => {
-      const collector = makeMockCollector(null);
-      const evaluator = new LLMCostEvaluator({
-        collector,
-        gocodeClient: makeMockGocodeClient(),
-        maxCostUsd: 1.0,
-      });
-
-      evaluator.hookClient(makeMockClient(), 0);
-      await evaluator.evaluate(makeTranscript(0), makeScenario());
-      const result = await evaluator.evaluate(makeTranscript(0), makeScenario());
-
-      expect(result.verdict).toBe('unknown');
-    });
-  });
-
   describe('multi-trial isolation', () => {
-    it('uses the correct afterSnapshot for each trial', async () => {
+    it('score equals aabData.totalCost for each trial independently', async () => {
       const collector: TokenUsageCollector = {
         hook: vi.fn(),
         collect: vi.fn().mockImplementation((trialIndex: number) =>
@@ -636,7 +537,40 @@ describe('LLMCostEvaluator', () => {
         collector,
         gocodeClient: gocode,
         probeModel: 'claude-sonnet-4-6',
-        maxCostUsd: 1.0,
+      });
+
+      evaluator.hookClient(makeMockClient(), 0);
+      gocode.setUsage({ promptTokens: 1000, completionTokens: 0 });
+      evaluator.afterSimulation(0);
+      evaluator.hookClient(makeMockClient(), 1);
+      gocode.setUsage({ promptTokens: 2000, completionTokens: 0 });
+      evaluator.afterSimulation(1);
+
+      const result0 = await evaluator.evaluate(makeTranscript(0), makeScenario());
+      const result1 = await evaluator.evaluate(makeTranscript(1), makeScenario());
+
+      expect(result0.score).toBeCloseTo(0.10); // aab totalCost for trial 0
+      expect(result1.score).toBeCloseTo(0.20); // aab totalCost for trial 1
+      expect(result0.verdict).toBe('observed');
+      expect(result1.verdict).toBe('observed');
+    });
+
+    it('details total costUsd is correct per trial', async () => {
+      const collector: TokenUsageCollector = {
+        hook: vi.fn(),
+        collect: vi.fn().mockImplementation((trialIndex: number) =>
+          makeTrialTokenData({
+            totalCost: trialIndex === 0 ? 0.10 : 0.20,
+          }),
+        ),
+        unhook: vi.fn(),
+      } as unknown as TokenUsageCollector;
+
+      const gocode = makeMockGocodeClient({ promptTokens: 0, completionTokens: 0 });
+      const evaluator = new LLMCostEvaluator({
+        collector,
+        gocodeClient: gocode,
+        probeModel: 'claude-sonnet-4-6',
       });
 
       evaluator.hookClient(makeMockClient(), 0);         // baseline = {promptTokens: 0}
@@ -660,13 +594,12 @@ describe('LLMCostEvaluator', () => {
 
   describe('afterSimulation - backward compat', () => {
     it('evaluate falls back to live accumulator when afterSimulation was never called', async () => {
-      const collector = makeMockCollector(null);
+      const collector = makeMockCollector(makeTrialTokenData({ totalCost: 0 }));
       const gocode = makeMockGocodeClient({ promptTokens: 0, completionTokens: 0 });
       const evaluator = new LLMCostEvaluator({
         collector,
         gocodeClient: gocode,
         probeModel: 'claude-sonnet-4-6',
-        maxCostUsd: 1.0,
       });
 
       evaluator.hookClient(makeMockClient(), 0);

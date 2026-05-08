@@ -1023,6 +1023,68 @@ describe('MdReporter — failure/error counts', () => {
   });
 });
 
+describe('MdReporter — score-mode pass@k rendering', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockMkdir.mockResolvedValue(undefined);
+    mockWriteFile.mockResolvedValue(undefined);
+  });
+
+  it('renders — in pass@k and pass^k columns when passAtK is absent', () => {
+    const scoreModeResult: ScenarioResult = {
+      scenarioName: 'latency-check',
+      category: 'capability',
+      stabilityLevel: 'medium',
+      trials: [
+        makeTrial(0, [makeEvalResult('latency', 'observed', 0.75)]),
+      ],
+      aggregated: {
+        'latency': {
+          passingTrials: 0,
+          totalTrials: 1,
+          medianScore: 0.75,
+          regressionMode: 'score',
+        },
+      },
+    };
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [scoreModeResult]);
+    const lines = content.split('\n');
+    const latencyRow = lines.find((l) => l.includes('latency') && l.startsWith('|'));
+    expect(latencyRow).toContain('| — | — |');
+  });
+
+  it('still renders pass/fail for pass-rate evaluator with defined passAtK', () => {
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [REGRESSION_RESULT]);
+    const lines = content.split('\n');
+    const bugRow = lines.find((l) => l.includes('bug-hit-rate'));
+    expect(bugRow).toContain('| pass | pass |');
+  });
+
+  it('renders — for passAtK: undefined even when regressionMode is absent', () => {
+    const noModeResult: ScenarioResult = {
+      scenarioName: 'no-mode',
+      category: 'capability',
+      stabilityLevel: 'medium',
+      trials: [
+        makeTrial(0, [makeEvalResult('my-eval', 'observed', 0.5)]),
+      ],
+      aggregated: {
+        'my-eval': {
+          passingTrials: 0,
+          totalTrials: 1,
+        },
+      },
+    };
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [noModeResult]);
+    const lines = content.split('\n');
+    const row = lines.find((l) => l.includes('my-eval') && l.startsWith('|'));
+    expect(row).toContain('| — | — |');
+  });
+});
+
 describe('MdReporter — formatDuration', () => {
   it('formats seconds-only duration', () => {
     // Single trial with 30s span

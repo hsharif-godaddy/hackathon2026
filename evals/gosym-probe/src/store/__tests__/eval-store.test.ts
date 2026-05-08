@@ -653,6 +653,71 @@ describe('EvalStore', () => {
       expect(parsed.timing.avgTurnsPerTrial).toBe(2);
     });
 
+    it('omits passAtK and passToTheK from aggregated.json for score-mode evaluator', async () => {
+      const store = new EvalStore();
+      const trial: TrialResult = {
+        trialIndex: 0,
+        transcript: {
+          scenarioName: 'test-scenario',
+          trialIndex: 0,
+          turns: [
+            {
+              role: 'user',
+              content: 'Go',
+              toolCalls: [],
+              timestamp: 1000,
+            },
+            {
+              role: 'assistant',
+              content: 'Done',
+              toolCalls: [],
+              timestamp: 3000,
+            },
+          ],
+          snapshots: [],
+          errors: [],
+        },
+        evalResults: [
+          {
+            evaluator: 'test-evaluator',
+            score: 0.75,
+            verdict: 'observed',
+            reason: 'measured',
+          },
+        ],
+      };
+      const scenario = makeScenario();
+      const result: ScenarioResult = {
+        scenarioName: scenario.name,
+        category: scenario.category,
+        stabilityLevel: 'medium',
+        trials: [trial],
+        aggregated: {
+          'test-evaluator': {
+            passingTrials: 0,
+            totalTrials: 1,
+            medianScore: 0.75,
+            regressionMode: 'score',
+            lowerIsBetter: true,
+          },
+        },
+      };
+
+      await store.save('run-001', [result], [scenario], makeConfig());
+
+      const call = mockWriteFile.mock.calls.find(([p]) =>
+        (p as string).endsWith('aggregated.json'),
+      );
+      expect(call).toBeDefined();
+      const parsed = JSON.parse(call![1] as string);
+      const evalSummary = parsed.evaluators['test-evaluator'];
+      expect(evalSummary).not.toHaveProperty('passAtK');
+      expect(evalSummary).not.toHaveProperty('passToTheK');
+      expect(evalSummary.passingTrials).toBe(0);
+      expect(evalSummary.totalTrials).toBe(1);
+      expect(evalSummary.lowerIsBetter).toBe(true);
+    });
+
     it('includes regressionStatus in aggregated.json when present', async () => {
       const store = new EvalStore();
       const scenario = makeScenario({ category: 'regression' });

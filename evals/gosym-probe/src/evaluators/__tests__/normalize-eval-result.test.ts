@@ -231,11 +231,35 @@ describe('normalizeEvalResult', () => {
       expect(output.verdict).toBe('observed');
     });
 
-    it('clamps out-of-range score 1.5 to 1', () => {
+    it('passes through score > 1 unclamped for observed verdict', () => {
+      const output = normalizeEvalResult(
+        makeResult({ verdict: 'observed' as EvalResult['verdict'], score: 7500 }),
+      );
+      expect(output.score).toBe(7500);
+      expect(output.verdict).toBe('observed');
+    });
+
+    it('passes through score 1.5 unclamped for observed verdict', () => {
       const output = normalizeEvalResult(
         makeResult({ verdict: 'observed' as EvalResult['verdict'], score: 1.5 }),
       );
-      expect(output.score).toBe(1);
+      expect(output.score).toBe(1.5);
+      expect(output.verdict).toBe('observed');
+    });
+
+    it('coerces NaN to 0 even for observed verdict', () => {
+      const output = normalizeEvalResult(
+        makeResult({ verdict: 'observed' as EvalResult['verdict'], score: NaN }),
+      );
+      expect(output.score).toBe(0);
+      expect(output.verdict).toBe('observed');
+    });
+
+    it('coerces Infinity to 0 even for observed verdict', () => {
+      const output = normalizeEvalResult(
+        makeResult({ verdict: 'observed' as EvalResult['verdict'], score: Infinity }),
+      );
+      expect(output.score).toBe(0);
       expect(output.verdict).toBe('observed');
     });
   });

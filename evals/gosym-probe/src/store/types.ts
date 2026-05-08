@@ -56,14 +56,18 @@ export interface ScoreStats {
 }
 
 export interface EvaluatorSummary {
-  passAtK: boolean;
-  passToTheK: boolean;
+  /** Absent when regressionMode === 'score'. */
+  passAtK?: boolean;
+  /** Absent when regressionMode === 'score'. */
+  passToTheK?: boolean;
   passingTrials: number;
   totalTrials: number;
   scores: ScoreStats;
   verdicts: Record<string, number>;
   /** Median score excluding unknown-verdict trials; present only for score-mode evaluators. */
   medianScore?: number;
+  /** When true, score increase = regression. Present only for score-mode evaluators. */
+  lowerIsBetter?: boolean;
 }
 
 export interface TimingStats {

@@ -31,6 +31,24 @@ describe('createTokenEvaluators', () => {
     expect(names).toContain('llm-cost');
   });
 
+  it('both evaluators have regressionMode "score"', () => {
+    const gocode = makeMockGocode();
+    const evaluators = createTokenEvaluators(gocode);
+
+    for (const ev of evaluators) {
+      expect(ev.regressionMode).toBe('score');
+    }
+  });
+
+  it('both evaluators have lowerIsBetter true', () => {
+    const gocode = makeMockGocode();
+    const evaluators = createTokenEvaluators(gocode);
+
+    for (const ev of evaluators) {
+      expect(ev.lowerIsBetter).toBe(true);
+    }
+  });
+
   it('both evaluators share the same collector instance', () => {
     const gocode = makeMockGocode();
     const evaluators = createTokenEvaluators(gocode);
