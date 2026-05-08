@@ -11,7 +11,13 @@ import { type AiroCreditGrant, AiroGrantFinalState, AiroGrantType } from '@/lib/
 import { CreditsSource } from '@/types/credits';
 
 // Mock dependencies before importing the route
-vi.mock('@/lib/mgmt-airo');
+vi.mock('@/lib/mgmt-airo', async () => {
+  const actual = await vi.importActual('@/lib/mgmt-airo');
+  return {
+    ...actual,
+    AiroMgmtClient: vi.fn(),
+  };
+});
 vi.mock('@/lib/customer-auth', () => ({
   withCustomerAuth: (handler: any) => handler,
 }));
@@ -198,7 +204,7 @@ describe('GET /api/credits/grants', () => {
     });
   });
 
-  describe('BMS path (feature flag ON)', () => {
+  describe('BMS path (three-lever check: both flags ON + migrated subscription)', () => {
     let mockBudgetClient: any;
     let mockAdaptBudgetToGrants: any;
     let mockCheckSwitchboardFlag: any;
@@ -218,16 +224,17 @@ describe('GET /api/credits/grants', () => {
         getBudget: vi.fn(),
       };
 
-      // Enable BMS: flag ON + subscription has bmsBudgetId + client available
+      // Enable BMS: both flags ON + subscription has bmsBudgetId + migration attribute + client available
       mockCheckSwitchboardFlag.mockResolvedValue(true);
       mockGetBudgetServiceClient.mockReturnValue(mockBudgetClient);
       mockClient.getSubscription.mockResolvedValue({
         id: 'sub-123',
         bmsBudgetId: 'budget-uuid-123',
+        attributes: [{ key: 'bms-migration', value: { migrationDate: '2026-05-05T00:00:00Z' } }],
       });
     });
 
-    it('should use BMS path when flag enabled and subscription has bmsBudgetId', async () => {
+    it('should use BMS path when both flags enabled and subscription is fully migrated', async () => {
       const request = new NextRequest('http://localhost/api/credits/grants?subscriptionId=sub-123');
       const authContext = createAuthContext('jwt-token');
 
@@ -256,25 +263,114 @@ describe('GET /api/credits/grants', () => {
       expect(mockClient.getCreditGrants).not.toHaveBeenCalled();
     });
 
-    it('should return empty grants when subscription has no bmsBudgetId', async () => {
+    it('should fall back to grants when subscription has no bmsBudgetId (migration not complete)', async () => {
       const request = new NextRequest('http://localhost/api/credits/grants?subscriptionId=sub-123');
       const authContext = createAuthContext('jwt-token');
 
-      // Subscription has no bmsBudgetId
+      // Subscription has migration attribute but no bmsBudgetId
       mockClient.getSubscription.mockResolvedValue({
         id: 'sub-123',
         bmsBudgetId: null,
+        attributes: [{ key: 'bms-migration', value: { migrationDate: '2026-05-05T00:00:00Z' } }],
       });
+      mockClient.getCreditGrants.mockResolvedValue(MOCK_GRANTS);
 
       const response = await GET(request, authContext);
       const data = await response.json();
 
       expect(response.status).toBe(200);
       expect(data.success).toBe(true);
-      expect(data.data).toEqual([]);
-      expect(data.source).toBe(CreditsSource.Unavailable);
+      expect(data.source).toBe(CreditsSource.Grants);
       expect(mockBudgetClient.getBudget).not.toHaveBeenCalled();
+      expect(mockClient.getCreditGrants).toHaveBeenCalled();
+    });
+
+    it('should use BMS for NEW user (bmsBudgetId present, no migration attribute) when budgetServiceEnabled', async () => {
+      const request = new NextRequest('http://localhost/api/credits/grants?subscriptionId=sub-123');
+      const authContext = createAuthContext('jwt-token');
+
+      // Subscription has bmsBudgetId but no migration attribute = NEW user
+      mockClient.getSubscription.mockResolvedValue({
+        id: 'sub-123',
+        bmsBudgetId: 'budget-uuid-123',
+        attributes: [],
+      });
+
+      const mockBudget = {
+        budgetId: 'budget-uuid-123',
+        items: [{ budgetItemId: 'item-1', creditsTotal: '1000', creditsUsed: '500' }],
+      };
+      const mockAdaptedGrants = [
+        { id: 'grant-1', type: 'plan_monthly', creditsMax: 1000, creditsSpent: 500 },
+      ];
+
+      mockBudgetClient.getBudget.mockResolvedValue(mockBudget);
+      mockAdaptBudgetToGrants.mockReturnValue(mockAdaptedGrants);
+
+      const response = await GET(request, authContext);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.success).toBe(true);
+      expect(data.source).toBe(CreditsSource.Bms);
+      expect(mockBudgetClient.getBudget).toHaveBeenCalledWith('budget-uuid-123');
       expect(mockClient.getCreditGrants).not.toHaveBeenCalled();
+    });
+
+    it('should fall back to grants for NEW user when budgetServiceEnabled is false', async () => {
+      const request = new NextRequest('http://localhost/api/credits/grants?subscriptionId=sub-123');
+      const authContext = createAuthContext('jwt-token');
+
+      // Only bmsExistingEnabled is true, but this is a NEW user (no migration attribute)
+      mockCheckSwitchboardFlag.mockImplementation((flag: string) => {
+        if (flag === 'app-builder-budget-service') return Promise.resolve(false);
+        if (flag === 'app-builder-bms-existing') return Promise.resolve(true);
+        return Promise.resolve(false);
+      });
+
+      mockClient.getSubscription.mockResolvedValue({
+        id: 'sub-123',
+        bmsBudgetId: 'budget-uuid-123',
+        attributes: [], // No migration attribute = NEW user
+      });
+      mockClient.getCreditGrants.mockResolvedValue(MOCK_GRANTS);
+
+      const response = await GET(request, authContext);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.success).toBe(true);
+      expect(data.source).toBe(CreditsSource.Grants);
+      expect(mockBudgetClient.getBudget).not.toHaveBeenCalled();
+      expect(mockClient.getCreditGrants).toHaveBeenCalled();
+    });
+
+    it('should fall back to grants for EXISTING user when bmsExistingEnabled is false', async () => {
+      const request = new NextRequest('http://localhost/api/credits/grants?subscriptionId=sub-123');
+      const authContext = createAuthContext('jwt-token');
+
+      // Only budgetServiceEnabled is true, but this is an EXISTING user (has migration attribute)
+      mockCheckSwitchboardFlag.mockImplementation((flag: string) => {
+        if (flag === 'app-builder-budget-service') return Promise.resolve(true);
+        if (flag === 'app-builder-bms-existing') return Promise.resolve(false);
+        return Promise.resolve(false);
+      });
+
+      mockClient.getSubscription.mockResolvedValue({
+        id: 'sub-123',
+        bmsBudgetId: 'budget-uuid-123',
+        attributes: [{ key: 'bms-migration', value: { migrationDate: '2026-05-05T00:00:00Z' } }],
+      });
+      mockClient.getCreditGrants.mockResolvedValue(MOCK_GRANTS);
+
+      const response = await GET(request, authContext);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.success).toBe(true);
+      expect(data.source).toBe(CreditsSource.Grants);
+      expect(mockBudgetClient.getBudget).not.toHaveBeenCalled();
+      expect(mockClient.getCreditGrants).toHaveBeenCalled();
     });
 
     it('should fall back to grants path when budget client unavailable', async () => {

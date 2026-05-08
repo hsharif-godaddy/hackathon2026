@@ -57,7 +57,8 @@ vi.mock('@/lib/control-plane', function mockControlPlaneModule() {
 vi.mock('@/lib/mgmt-airo', function mockMgmtAiroModule() {
   return {
     AiroMgmtClient: vi.fn().mockImplementation(() => mockMgmtClient),
-    AIRO_OWNER_PRODUCTS: { AIRO_APP_BUILDER: 'AiroAppBuilder', PAAS_NODEJS: 'PaaSNodeJS' }
+    AIRO_OWNER_PRODUCTS: { AIRO_APP_BUILDER: 'AiroAppBuilder', PAAS_NODEJS: 'PaaSNodeJS' },
+    ATTRIBUTE_KEYS: { BMS_MIGRATION: 'bms-migration', FREE_PLAN: 'free-plan' }
   };
 });
 
@@ -550,7 +551,7 @@ describe('agent-token', function packageTests() {
         );
       });
 
-      it('should pass budgetServiceEnabled and subscriptionId when flag is on and site has subscription', async function budgetServiceEnabled() {
+      it('should pass budgetServiceEnabled and subscriptionId when both flags are on and subscription is migrated', async function budgetServiceEnabled() {
         mockAuthenticateCustomer.mockResolvedValue({
           isAuthenticated: true,
           user: MOCK_USER,
@@ -559,10 +560,13 @@ describe('agent-token', function packageTests() {
 
         mockControlPlaneAdapter.appExists.mockResolvedValue(true);
         mockCheckSwitchboardFlag.mockImplementation((flag: string) =>
-          Promise.resolve(flag === 'app-builder-budget-service')
+          Promise.resolve(flag === 'app-builder-budget-service' || flag === 'app-builder-bms-existing')
         );
         mockControlPlaneAdapter.getSite.mockResolvedValue({ subscription_id: 'sub-123' });
-        mockMgmtClient.getSubscription.mockResolvedValue({ bmsBudgetId: 'budget-123' });
+        mockMgmtClient.getSubscription.mockResolvedValue({
+          bmsBudgetId: 'budget-123',
+          attributes: [{ key: 'bms-migration', value: { migrationDate: '2026-05-05T00:00:00Z' } }]
+        });
 
         const request = createMockRequest({ siteId: MOCK_SITE_ID });
         const response = await POST(request);
@@ -577,7 +581,40 @@ describe('agent-token', function packageTests() {
         );
       });
 
-      it('should succeed with undefined bmsBudgetId when getSite rejects and budget service is enabled', async function budgetServiceGetSiteRejects() {
+      it('should enable budgetServiceEnabled for EXISTING user when only bmsExistingEnabled flag is on', async function existingUserOnlyBmsExistingFlag() {
+        mockAuthenticateCustomer.mockResolvedValue({
+          isAuthenticated: true,
+          user: MOCK_USER,
+          jwt: 'user-jwt-token'
+        });
+
+        mockControlPlaneAdapter.appExists.mockResolvedValue(true);
+        // Only bmsExistingEnabled is true, budgetServiceEnabled is false
+        mockCheckSwitchboardFlag.mockImplementation((flag: string) =>
+          Promise.resolve(flag === 'app-builder-bms-existing')
+        );
+        mockControlPlaneAdapter.getSite.mockResolvedValue({ subscription_id: 'sub-123' });
+        // Existing user with migration complete
+        mockMgmtClient.getSubscription.mockResolvedValue({
+          bmsBudgetId: 'budget-456',
+          attributes: [{ key: 'bms-migration', value: { migrationDate: '2026-05-05T00:00:00Z' } }]
+        });
+
+        const request = createMockRequest({ siteId: MOCK_SITE_ID });
+        const response = await POST(request);
+
+        expect(response.status).toBe(200);
+        // Critical: budgetServiceEnabled must be true for agents service to use BMS mode
+        expect(mockJWTService.getToken).toHaveBeenCalledWith(
+          expect.objectContaining({
+            budgetServiceEnabled: true,
+            subscriptionId: 'sub-123',
+            bmsBudgetId: 'budget-456'
+          })
+        );
+      });
+
+      it('should succeed with undefined bmsBudgetId when getSite rejects and budget service flags are enabled', async function budgetServiceGetSiteRejects() {
         mockAuthenticateCustomer.mockResolvedValue({
           isAuthenticated: true,
           user: MOCK_USER,
@@ -586,7 +623,7 @@ describe('agent-token', function packageTests() {
 
         mockControlPlaneAdapter.appExists.mockResolvedValue(true);
         mockCheckSwitchboardFlag.mockImplementation((flag: string) =>
-          Promise.resolve(flag === 'app-builder-budget-service')
+          Promise.resolve(flag === 'app-builder-budget-service' || flag === 'app-builder-bms-existing')
         );
         mockControlPlaneAdapter.getSite.mockRejectedValue(new Error('control plane error'));
 
@@ -599,7 +636,7 @@ describe('agent-token', function packageTests() {
         expect(body.token).toBeDefined();
       });
 
-      it('should succeed with undefined bmsBudgetId when getSite rejects on cache-hit path and budget service is enabled', async function budgetServiceGetSiteRejectsCacheHit() {
+      it('should succeed with undefined bmsBudgetId when getSite rejects on cache-hit path and budget service flags are enabled', async function budgetServiceGetSiteRejectsCacheHit() {
         mockAuthenticateCustomer.mockResolvedValue({
           isAuthenticated: true,
           user: MOCK_USER,
@@ -608,12 +645,15 @@ describe('agent-token', function packageTests() {
 
         mockControlPlaneAdapter.appExists.mockResolvedValue(true);
         mockCheckSwitchboardFlag.mockImplementation((flag: string) =>
-          Promise.resolve(flag === 'app-builder-budget-service')
+          Promise.resolve(flag === 'app-builder-budget-service' || flag === 'app-builder-bms-existing')
         );
 
         // First request: populate the site validation cache with a successful getSite
         mockControlPlaneAdapter.getSite.mockResolvedValue({ subscription_id: 'sub-123' });
-        mockMgmtClient.getSubscription.mockResolvedValue({ bmsBudgetId: 'budget-123' });
+        mockMgmtClient.getSubscription.mockResolvedValue({
+          bmsBudgetId: 'budget-123',
+          attributes: [{ key: 'bms-migration', value: { migrationDate: '2026-05-05T00:00:00Z' } }]
+        });
         const request1 = createMockRequest({ siteId: MOCK_SITE_ID });
         await POST(request1);
 
@@ -622,7 +662,7 @@ describe('agent-token', function packageTests() {
         const request2 = createMockRequest({ siteId: MOCK_SITE_ID });
         const response2 = await POST(request2);
 
-        // Graceful degradation: returns 200 with budgetServiceEnabled but no bmsBudgetId
+        // Graceful degradation: returns 200 but budgetServiceEnabled is false (no subscriptionId)
         expect(response2.status).toBe(200);
         // Verify cache-hit path was taken: appExists should only have been called once (first request)
         expect(mockControlPlaneAdapter.appExists).toHaveBeenCalledTimes(1);
@@ -630,7 +670,7 @@ describe('agent-token', function packageTests() {
         expect(body.token).toBeDefined();
       });
 
-      it('should succeed with undefined bmsBudgetId when subscriptionId is missing and budget service is enabled', async function budgetServiceMissingSubscription() {
+      it('should fall back to legacy grants when subscriptionId is missing and budget service flags are enabled', async function budgetServiceMissingSubscription() {
         mockAuthenticateCustomer.mockResolvedValue({
           isAuthenticated: true,
           user: MOCK_USER,
@@ -639,20 +679,20 @@ describe('agent-token', function packageTests() {
 
         mockControlPlaneAdapter.appExists.mockResolvedValue(true);
         mockCheckSwitchboardFlag.mockImplementation((flag: string) =>
-          Promise.resolve(flag === 'app-builder-budget-service')
+          Promise.resolve(flag === 'app-builder-budget-service' || flag === 'app-builder-bms-existing')
         );
         mockControlPlaneAdapter.getSite.mockResolvedValue({});
 
         const request = createMockRequest({ siteId: MOCK_SITE_ID });
         const response = await POST(request);
 
-        // Graceful degradation: returns 200 with budgetServiceEnabled but no bmsBudgetId
+        // Graceful degradation: returns 200 but budgetServiceEnabled is false (no subscriptionId to check)
         expect(response.status).toBe(200);
         const body = await response.json();
         expect(body.token).toBeDefined();
       });
 
-      it('should succeed with undefined bmsBudgetId when bmsBudgetId is missing from subscription', async function budgetServiceMissingBmsBudgetId() {
+      it('should fall back to legacy grants when bmsBudgetId is missing from subscription (migration not complete)', async function budgetServiceMissingBmsBudgetId() {
         mockAuthenticateCustomer.mockResolvedValue({
           isAuthenticated: true,
           user: MOCK_USER,
@@ -661,22 +701,26 @@ describe('agent-token', function packageTests() {
 
         mockControlPlaneAdapter.appExists.mockResolvedValue(true);
         mockCheckSwitchboardFlag.mockImplementation((flag: string) =>
-          Promise.resolve(flag === 'app-builder-budget-service')
+          Promise.resolve(flag === 'app-builder-budget-service' || flag === 'app-builder-bms-existing')
         );
         mockControlPlaneAdapter.getSite.mockResolvedValue({ subscription_id: 'sub-123' });
-        mockMgmtClient.getSubscription.mockResolvedValue({ bmsBudgetId: null });
+        // Subscription has migration attribute but no bmsBudgetId — migration not complete
+        mockMgmtClient.getSubscription.mockResolvedValue({
+          bmsBudgetId: null,
+          attributes: [{ key: 'bms-migration', value: { migrationDate: '2026-05-05T00:00:00Z' } }]
+        });
 
         const request = createMockRequest({ siteId: MOCK_SITE_ID });
         const response = await POST(request);
 
-        // Graceful degradation: returns 200 with budgetServiceEnabled but bmsBudgetId undefined
+        // Falls back to legacy grants: budgetServiceEnabled=false, bmsBudgetId undefined
         expect(response.status).toBe(200);
         expect(mockJWTService.getToken).toHaveBeenCalledWith(
-          expect.objectContaining({ budgetServiceEnabled: true, bmsBudgetId: undefined })
+          expect.objectContaining({ budgetServiceEnabled: false, bmsBudgetId: undefined })
         );
       });
 
-      it('should succeed with undefined bmsBudgetId when getSubscription throws', async function budgetServiceSubscriptionFetchFailed() {
+      it('should fall back to legacy grants when getSubscription throws', async function budgetServiceSubscriptionFetchFailed() {
         mockAuthenticateCustomer.mockResolvedValue({
           isAuthenticated: true,
           user: MOCK_USER,
@@ -685,7 +729,7 @@ describe('agent-token', function packageTests() {
 
         mockControlPlaneAdapter.appExists.mockResolvedValue(true);
         mockCheckSwitchboardFlag.mockImplementation((flag: string) =>
-          Promise.resolve(flag === 'app-builder-budget-service')
+          Promise.resolve(flag === 'app-builder-budget-service' || flag === 'app-builder-bms-existing')
         );
         mockControlPlaneAdapter.getSite.mockResolvedValue({ subscription_id: 'sub-123' });
         mockMgmtClient.getSubscription.mockRejectedValue(new Error('mgmt-airo down'));
@@ -693,10 +737,96 @@ describe('agent-token', function packageTests() {
         const request = createMockRequest({ siteId: MOCK_SITE_ID });
         const response = await POST(request);
 
-        // Graceful degradation: returns 200 with budgetServiceEnabled but bmsBudgetId undefined
+        // Falls back to legacy grants: budgetServiceEnabled=false, bmsBudgetId undefined
         expect(response.status).toBe(200);
         expect(mockJWTService.getToken).toHaveBeenCalledWith(
-          expect.objectContaining({ budgetServiceEnabled: true, bmsBudgetId: undefined })
+          expect.objectContaining({ budgetServiceEnabled: false, bmsBudgetId: undefined })
+        );
+      });
+
+      it('should use BMS for NEW user (no migration attribute) when budgetServiceEnabled is true', async function budgetServiceNewUser() {
+        mockAuthenticateCustomer.mockResolvedValue({
+          isAuthenticated: true,
+          user: MOCK_USER,
+          jwt: 'user-jwt-token'
+        });
+
+        mockControlPlaneAdapter.appExists.mockResolvedValue(true);
+        mockCheckSwitchboardFlag.mockImplementation((flag: string) =>
+          Promise.resolve(flag === 'app-builder-budget-service' || flag === 'app-builder-bms-existing')
+        );
+        mockControlPlaneAdapter.getSite.mockResolvedValue({ subscription_id: 'sub-123' });
+        // Has bmsBudgetId but no migration attribute = NEW user
+        mockMgmtClient.getSubscription.mockResolvedValue({
+          bmsBudgetId: 'budget-123',
+          attributes: []
+        });
+
+        const request = createMockRequest({ siteId: MOCK_SITE_ID });
+        const response = await POST(request);
+
+        // NEW user with budgetServiceEnabled=true → should use BMS
+        expect(response.status).toBe(200);
+        expect(mockJWTService.getToken).toHaveBeenCalledWith(
+          expect.objectContaining({ budgetServiceEnabled: true, bmsBudgetId: 'budget-123' })
+        );
+      });
+
+      it('should fall back to legacy grants for EXISTING user when bmsExistingEnabled is false', async function budgetServiceExistingUserFlagDisabled() {
+        mockAuthenticateCustomer.mockResolvedValue({
+          isAuthenticated: true,
+          user: MOCK_USER,
+          jwt: 'user-jwt-token'
+        });
+
+        mockControlPlaneAdapter.appExists.mockResolvedValue(true);
+        // Only app-builder-budget-service is enabled, not app-builder-bms-existing
+        mockCheckSwitchboardFlag.mockImplementation((flag: string) =>
+          Promise.resolve(flag === 'app-builder-budget-service')
+        );
+        mockControlPlaneAdapter.getSite.mockResolvedValue({ subscription_id: 'sub-123' });
+        // EXISTING user (has migration attribute) but bmsExistingEnabled is false
+        mockMgmtClient.getSubscription.mockResolvedValue({
+          bmsBudgetId: 'budget-123',
+          attributes: [{ key: 'bms-migration', value: { migrationDate: '2026-05-05T00:00:00Z' } }]
+        });
+
+        const request = createMockRequest({ siteId: MOCK_SITE_ID });
+        const response = await POST(request);
+
+        // EXISTING user with bmsExistingEnabled=false → falls back to legacy grants
+        expect(response.status).toBe(200);
+        expect(mockJWTService.getToken).toHaveBeenCalledWith(
+          expect.objectContaining({ budgetServiceEnabled: false, bmsBudgetId: undefined })
+        );
+      });
+
+      it('should fall back to legacy grants for NEW user when budgetServiceEnabled is false', async function budgetServiceNewUserFlagDisabled() {
+        mockAuthenticateCustomer.mockResolvedValue({
+          isAuthenticated: true,
+          user: MOCK_USER,
+          jwt: 'user-jwt-token'
+        });
+
+        mockControlPlaneAdapter.appExists.mockResolvedValue(true);
+        // Only app-builder-bms-existing is enabled, not app-builder-budget-service
+        mockCheckSwitchboardFlag.mockImplementation((flag: string) =>
+          Promise.resolve(flag === 'app-builder-bms-existing')
+        );
+        mockControlPlaneAdapter.getSite.mockResolvedValue({ subscription_id: 'sub-123' });
+        // NEW user (no migration attribute) but budgetServiceEnabled is false
+        mockMgmtClient.getSubscription.mockResolvedValue({
+          bmsBudgetId: 'budget-123',
+          attributes: []
+        });
+
+        const request = createMockRequest({ siteId: MOCK_SITE_ID });
+        const response = await POST(request);
+
+        // NEW user with budgetServiceEnabled=false → falls back to legacy grants
+        expect(response.status).toBe(200);
+        expect(mockJWTService.getToken).toHaveBeenCalledWith(
+          expect.objectContaining({ budgetServiceEnabled: false, bmsBudgetId: undefined })
         );
       });
     });

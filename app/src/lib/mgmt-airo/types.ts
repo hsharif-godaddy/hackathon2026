@@ -44,6 +44,7 @@ export interface AiroSubscription {
 
 export const ATTRIBUTE_KEYS = {
   FREE_PLAN: 'free-plan',
+  BMS_MIGRATION: 'bms-migration',
 } as const;
 
 /**

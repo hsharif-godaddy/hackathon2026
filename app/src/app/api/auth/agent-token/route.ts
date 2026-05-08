@@ -11,6 +11,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isEmployeeAuthType, type ProductType } from '@airo/shared/auth';
 
+import { checkBmsMigration, getMigrationDate, shouldCheckBmsMigration } from '@/lib/bms-migration';
 import { getControlPlaneAdapter } from '@/lib/control-plane';
 import { createCustomerAuthError, type CustomerAuthContext, customerHasAccount, type CustomerUser, withCustomerAuth } from '@/lib/customer-auth';
 import { getJWTService } from '@/lib/jwt-service';
@@ -224,6 +225,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     let canPurchaseDomain = false;
     let useTestBudget = false;
     let budgetServiceEnabled = false;
+    let bmsExistingEnabled = false;
     let subscriptionId: string | undefined;
     let enableAssessmentAgent = false;
     let enableAssessmentOverride = false;
@@ -237,7 +239,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     if (siteValidationCacheHit) {
       // Cache hit: skip site validation, run paywall + switchboard + subscription lookup in parallel
       const parallelStart = Date.now();
-      const [paywallResult, domainPurchaseResult, testBudgetResult, budgetServiceResult, siteInfoResult, assessmentAgentResult, assessmentOverrideResult, assessmentClassifierResult, modelSelectorResult, modelOverrideResult, agentProfileSelectorResult, agentProfileResult, costAttributionDryRunResult] = await Promise.allSettled([
+      const [paywallResult, domainPurchaseResult, testBudgetResult, budgetServiceResult, bmsExistingResult, siteInfoResult, assessmentAgentResult, assessmentOverrideResult, assessmentClassifierResult, modelSelectorResult, modelOverrideResult, agentProfileSelectorResult, agentProfileResult, costAttributionDryRunResult] = await Promise.allSettled([
         checkPaywallEligibility(
           new ServerPaywallProvider(authContext.jwt || '', user.customerId, request.headers),
           body.siteId,
@@ -246,6 +248,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
         checkSwitchboardFlag('appbuilder-domain-purchase', request),
         checkSwitchboardFlag('appbuilder-test-budget', request),
         checkSwitchboardFlag('app-builder-budget-service', request),
+        checkSwitchboardFlag('app-builder-bms-existing', request),
         adapter.getSite(body.siteId, authContext.jwt || '', body.owningProduct || AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER),
         checkSwitchboardFlag('appbuilder-assessment-agent', request),
         checkSwitchboardFlag('appbuilder-assessment-override', request),
@@ -262,6 +265,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       canPurchaseDomain = resolveBooleanFlag(domainPurchaseResult, 'agent-token.domain-purchase-flag-check-failed', body.siteId, user.customerId);
       useTestBudget = resolveBooleanFlag(testBudgetResult, 'agent-token.test-budget-flag-check-failed', body.siteId, user.customerId);
       budgetServiceEnabled = resolveBooleanFlag(budgetServiceResult, 'agent-token.budget-service-flag-check-failed', body.siteId, user.customerId);
+      bmsExistingEnabled = resolveBooleanFlag(bmsExistingResult, 'agent-token.bms-existing-flag-check-failed', body.siteId, user.customerId);
       subscriptionId = resolveSubscriptionId(siteInfoResult, body.siteId, user.customerId);
       enableAssessmentAgent = resolveBooleanFlag(assessmentAgentResult, 'agent-token.assessment-agent-flag-check-failed', body.siteId, user.customerId);
       enableAssessmentOverride = resolveBooleanFlag(assessmentOverrideResult, 'agent-token.assessment-override-flag-check-failed', body.siteId, user.customerId);
@@ -277,7 +281,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     } else {
       // Cache miss: run site validation, paywall, switchboard, and subscription lookup all in parallel
       const parallelStart = Date.now();
-      const [siteResult, paywallResult, domainPurchaseResult, testBudgetResult, budgetServiceResult, siteInfoResult, assessmentAgentResult, assessmentOverrideResult, assessmentClassifierResult, modelSelectorResult, modelOverrideResult, agentProfileSelectorResult, agentProfileResult, costAttributionDryRunResult] = await Promise.allSettled([
+      const [siteResult, paywallResult, domainPurchaseResult, testBudgetResult, budgetServiceResult, bmsExistingResult, siteInfoResult, assessmentAgentResult, assessmentOverrideResult, assessmentClassifierResult, modelSelectorResult, modelOverrideResult, agentProfileSelectorResult, agentProfileResult, costAttributionDryRunResult] = await Promise.allSettled([
         validateSiteAccess(body.siteId, user, authContext.jwt || '', body.owningProduct),
         checkPaywallEligibility(
           new ServerPaywallProvider(authContext.jwt || '', user.customerId, request.headers),
@@ -287,6 +291,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
         checkSwitchboardFlag('appbuilder-domain-purchase', request),
         checkSwitchboardFlag('appbuilder-test-budget', request),
         checkSwitchboardFlag('app-builder-budget-service', request),
+        checkSwitchboardFlag('app-builder-bms-existing', request),
         adapter.getSite(body.siteId, authContext.jwt || '', body.owningProduct || AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER),
         checkSwitchboardFlag('appbuilder-assessment-agent', request),
         checkSwitchboardFlag('appbuilder-assessment-override', request),
@@ -312,6 +317,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       canPurchaseDomain = resolveBooleanFlag(domainPurchaseResult, 'agent-token.domain-purchase-flag-check-failed', body.siteId, user.customerId);
       useTestBudget = resolveBooleanFlag(testBudgetResult, 'agent-token.test-budget-flag-check-failed', body.siteId, user.customerId);
       budgetServiceEnabled = resolveBooleanFlag(budgetServiceResult, 'agent-token.budget-service-flag-check-failed', body.siteId, user.customerId);
+      bmsExistingEnabled = resolveBooleanFlag(bmsExistingResult, 'agent-token.bms-existing-flag-check-failed', body.siteId, user.customerId);
       subscriptionId = resolveSubscriptionId(siteInfoResult, body.siteId, user.customerId);
       enableAssessmentAgent = resolveBooleanFlag(assessmentAgentResult, 'agent-token.assessment-agent-flag-check-failed', body.siteId, user.customerId);
       enableAssessmentOverride = resolveBooleanFlag(assessmentOverrideResult, 'agent-token.assessment-override-flag-check-failed', body.siteId, user.customerId);
@@ -338,15 +344,38 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       canPublish = true;
     }
 
-    // Fetch bmsBudgetId from subscription when budget service is enabled
+    // Three-lever BMS migration check (see checkBmsMigration for details)
+    // Either flag enables BMS: budgetServiceEnabled (new users) OR bmsExistingEnabled (migrated users)
     // If fetch fails, bmsBudgetId stays undefined (cost assigned to GoDaddy)
     let bmsBudgetId: string | undefined;
-    if (budgetServiceEnabled && subscriptionId) {
+    const bmsMigrationFlags = { budgetServiceEnabled, bmsExistingEnabled };
+    if (shouldCheckBmsMigration(bmsMigrationFlags) && subscriptionId) {
       try {
         const baseUrl = process.env.MGMT_AIRO_BASE_URL || 'https://mgmt.nstk.net';
         const mgmtClient = new AiroMgmtClient({ baseUrl, jwt: authContext.jwt || '' });
-        const subscription = await mgmtClient.getSubscription(subscriptionId);
-        bmsBudgetId = subscription.bmsBudgetId ?? undefined;
+        const subscription = await mgmtClient.getSubscription(subscriptionId, { includeAttributes: true });
+
+        const migrationResult = checkBmsMigration(subscription, bmsMigrationFlags);
+
+        if (migrationResult.useBms) {
+          bmsBudgetId = migrationResult.bmsBudgetId;
+          budgetServiceEnabled = true; // Enable BMS mode in JWT for agents service
+          logger.info('agent-token.bms-migration-enabled', {
+            siteId: body.siteId,
+            customerId: user.customerId,
+            subscriptionId,
+            bmsBudgetId,
+            migrationDate: getMigrationDate(subscription),
+          });
+        } else {
+          budgetServiceEnabled = false;
+          logger.info('agent-token.bms-migration-not-ready', {
+            siteId: body.siteId,
+            customerId: user.customerId,
+            subscriptionId,
+            reason: migrationResult.reason,
+          });
+        }
       } catch (err) {
         logger.error('agent-token.bms-budget-id-fetch-failed', {
           siteId: body.siteId,
@@ -355,6 +384,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
           error: err instanceof Error ? err.message : 'Unknown',
         });
         // bmsBudgetId stays undefined → cost assigned to GoDaddy
+        budgetServiceEnabled = false;
       }
     }
     // Enforce dependency: enableAssessmentOverride requires enableAssessmentAgent
