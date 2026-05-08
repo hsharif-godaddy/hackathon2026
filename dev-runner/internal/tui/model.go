@@ -319,7 +319,7 @@ func buildPreflightRunner(projectRoot string) *preflight.Runner {
 					{Check: &checks.GettyCheck{}, Fixer: &fixers.GettyFixer{}},
 					{Check: &checks.KnowBCheck{}, Fixer: &fixers.KnowBFixer{TokenCache: ssoTokenCache}},
 					{Check: &checks.DesignRAGCheck{}, Fixer: &fixers.DesignRAGFixer{TokenCache: ssoTokenCache}},
-					{Check: &checks.ImageSearchEnvCheck{}, Fixer: &fixers.ImageSearchEnvFixer{}, OptIn: true},
+					{Check: &checks.ImageSearchEnvCheck{}, Fixer: &fixers.ImageSearchEnvFixer{}},
 					{Check: &checks.E2ECheck{}, Fixer: &fixers.E2EFixer{ProjectRoot: projectRoot}},
 				},
 			},

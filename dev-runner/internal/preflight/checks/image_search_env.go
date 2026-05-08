@@ -10,8 +10,8 @@ import (
 )
 
 // ImageSearchEnvCheck verifies that image-search-service/.env exists and is
-// configured. This is an optional service — only needed when working on media
-// search features. Registered with OptIn: true in buildPreflightRunner.
+// configured. The fixer relies on the AWS SSO profile and Getty access that
+// other required checks already ensure, so it runs by default.
 type ImageSearchEnvCheck struct{}
 
 func (c *ImageSearchEnvCheck) Name() string     { return "Image Search .env" }
