@@ -65,7 +65,10 @@ const SYNC_MANIFEST = [
     file: 'src/entry-server.tsx',
     description: 'SSR render entry point used by entry.ts in prod',
     known_hashes: [
-      'e087bd8703e07221ae2902e246e8f862' // renderToString(<App url />) via BrowserRouter/StaticRouter split; before data-router refactor
+      'e087bd8703e07221ae2902e246e8f862', // renderToString(<App url />) via BrowserRouter/StaticRouter split; before data-router refactor
+      // Historical backfill (generated from git log of app-templates/v8/src/entry-server.tsx):
+      'e2c0d878f6f9f4e2e5179c7ed87ae913', // af04b837b - SSR-derived canonical/og:url origin
+      'e03a7b4c1c0054b0e69a2ad60016a6d8'  // 42c8f2c16 - SSR + SEO foundation initial shape
     ],
     force: false,
     syncGroup: 'ssrMigration'
@@ -81,7 +84,15 @@ const SYNC_MANIFEST = [
     description: 'Client entry; hydrateRoot when SSR markup present, createRoot otherwise',
     known_hashes: [
       '13101631d2bee2ae872743b93f8cb7a3', // createRoot only, before hydrateRoot branch
-      'dc37acfb8a11bc79e0159310eaede77d'  // before data-router refactor (pre-2026-05-01)
+      'dc37acfb8a11bc79e0159310eaede77d', // before data-router refactor (pre-2026-05-01)
+      // Historical backfill (generated from git log of app-templates/v8/src/main.tsx):
+      'cd27c646bde48f518e3a9911fa045a10', // 42c8f2c16 - SSR + SEO foundation shape
+      'e790c445cade0cb4ba4c3aa4715b04b2', // d16667fa5 - before hydrateRoot branch / react-helmet introduction
+      '52eb36f89189ccba172bc8abb8819434', // 0bd48df3b - ENV mode fix
+      'a5ddaa13c9e6cfc91bf3e433953d301e', // 072cb6366 - post-revert of SCC c2 tracking
+      'bb299fecd14512abe14dc2d69869ede8', // a4caff8d2 - SCC c2 event/route tracking (later reverted)
+      '3cf05669f4c56c9ee509f744153edb13', // ef7b09510 - disallow web crawler traffic
+      'e88e1cfddeaa4d4c0f04434ebbc12600'  // 8fe3b5cb7 - initial v8 template shape
     ],
     force: false,
     syncGroup: 'ssrMigration'
@@ -99,7 +110,18 @@ const SYNC_MANIFEST = [
       '966395da41e36083d6bd9e08811ef3ea', // intermediate - inline CookieBannerErrorBoundary (before extraction)
       '9be50c9e3b4a1eeb6d385adc80f6dfa7', // pre-SSR createBrowserRouter version
       '1b5f3b0e5efcbde4ffeacb6069d8c539', // BrowserRouter/StaticRouter split; before data-router refactor (pre-2026-05-01)
-      '3a10be7c15f2a3882ae12369af51c6e8'  // data-router with dev boundary outside RouterProvider; before route-element boundary fix
+      '3a10be7c15f2a3882ae12369af51c6e8', // data-router with dev boundary outside RouterProvider; before route-element boundary fix
+      // Historical backfill (generated from git log of app-templates/v8/src/App.tsx):
+      '6b96bf98a90ddadb919ba7ff47d5edb7', // 0169f28ed - route errors in dev boundary
+      '97e2f3f17cb67d8162c91181737eaa21', // d16667fa5 - react-helmet head injection
+      '44196e307bffd4c9555236f44610d489', // 8c484796c - simplified Header/Footer
+      'bc9bcb3246e03b768f86a09c8930eea1', // 072cb6366 - post-revert of SCC c2 tracking
+      'ee2cdac13d29fc19367ce681df57f564', // a4caff8d2 - SCC c2 tracking (later reverted)
+      '5b08b7a13bd660060b4f882a68b20a18', // 153b8e50c - dynamic context develop agent
+      '18b5302d1caefc27173db4da09ebf7b1', // 97812429c - page loading experience improvements
+      'b2c73564f9d379ab0e81cb94cc667cfc', // a90e444f5 - hot reload fix
+      '4dd3e794803357412bbbfa22a8d0fb5f', // e9edf480d - error capture improvements
+      'e0f0d7a0f9ae9457a3c3674f250a85f9'  // 8fe3b5cb7 - initial v8 template shape
     ],
     force: false,
     syncGroup: 'ssrMigration'
@@ -187,7 +209,33 @@ const SYNC_MANIFEST = [
       'f7c0080a7b7a32e8fc84002ae4b478d5', // ed8aa444 (#2284) - tscWatchPlugin added, before extractHostname .host -> .hostname fix
       '3e9501608607628f08fd458d8831ecb8', // tscWatchPlugin, before extractHostname .host -> .hostname fix
       '0cd4b63e3ebfaa63088ac218924a9e6f', // before tscWatchPlugin removal (post-hook tsc migration)
-      '641596ecb45dc0cfdcb2d49159b33cf6'  // before vite-plugin-api-routes removal and SSR build split
+      '641596ecb45dc0cfdcb2d49159b33cf6', // before vite-plugin-api-routes removal and SSR build split
+      // Historical backfill (generated from git log of app-templates/v8/vite.config.ts):
+      'bb713c7973458231b47f8d6571b72bb0', // b9423f06b - revert CMS merge
+      'b607521e17428fce0621bc926ff4162c', // 4ee542a92 - merge main into cms branch
+      '2ea569b4c4ed16b9a5c1a998d4cf8a2d', // 99146c890 - CMS runtime library extraction
+      'deb80aae7a748a8e3545daf174c5ff23', // e211992d1 - Vite content plugin for virtual:content
+      'd47d2a7bb02651ee9895e9113b00b113', // 00ba3e685 - align with publish container conventions
+      'd29d67864e000b00ee7117c359f5c135', // f8055563d - replace plugin+esbuild with Vite SSR build
+      'b0aa0170d511b28e04049bbd2a4dafb4', // cf95889e4 - vite-plugin-api-routes inline plugin (variant A)
+      '106434a6c3a8cb997a189d6f749ced80', // ff895d2ba - vite-plugin-api-routes inline plugin (variant B)
+      '0e72c976f8d7ff1c91a59685a79450be', // d5c7d7ceb - nginx proxy for HTTPS termination
+      '657efb29d5179d1210f3470ca8d72658', // b1a065812 - database agent codegen fixes
+      '098101c26887115b2b8ed10311aec615', // a76ff0029 - basic database support
+      '79d0fd4d3f4814d9c8f77dc32c49de38', // 0f3a3f653 - SSL cert automation
+      '7d437667b434e8f94def659a50c479d2', // 4330460b0 - rollup all dependencies
+      '72ad6aa914d3ca713bd0eafa9364b059', // 6ef0b956b - iframes previews over https
+      '79600ba2395dc842f4786b8c544c8bc4', // 8c779b557 - app publish support
+      'e3ee8d4b9b8826a77a3b7b3497df9b62', // 6fa206363 - API and email documentation
+      '8c8784207e444fb13ddc8bb29604f1e3', // a90e444f5 - hot reload fix
+      'a92fb857f649d67bc653ed43e664c8c7', // e9edf480d - error capture improvements
+      '5342406b7dc9edf5d85a44e1d7d26a53', // e263f5993 - auth + app creation refactor
+      '4bbe3b0ae32dd551134b468179545c73', // 0224f9e79 - prevent vite dev server port auto-select
+      '253224a7efa87609c386e1509cca4c88', // b6223cc3b - fullstory unmask elements
+      '3d56a8c11d01f1ab838efc5ca22b0fab', // d4d0b652a - switch nomad job to v8 template
+      '29998491ae42daa36a849f98768adcf7', // 7f6cf57d0 - prod mode refactor
+      'e2afec2400ba08ac1e3e1578ab6cb057', // 8b205e08b - hooks and stores introduction
+      '4999ddbeb0b0fa89df23daf9cd01eacb'  // 451020eac - initial v8 template vite.config.ts shape
     ],
     force: false,
     syncGroup: 'ssrMigration'
@@ -328,6 +376,7 @@ export function isSsrInstalled(customerDir) {
       // rules filtering on level=error would miss a warn.
       console.error(JSON.stringify({
         event: 'isSsrInstalled.read-error',
+        customerDir,
         code: err && err.code ? err.code : undefined,
         error: err instanceof Error ? err.message : String(err),
       }));
@@ -439,7 +488,7 @@ export const MIGRATIONS = [
     description: 'Remove public/assets from .gitignore so uploaded assets are tracked in git',
     run(customerDir, _syncedFiles) {
       const gitignorePath = join(customerDir, '.gitignore');
-      if (!existsSync(gitignorePath)) return 'skipped';
+      if (!existsSync(gitignorePath)) return { status: 'skipped', reason: 'gitignore_missing' };
 
       const content = readFileSync(gitignorePath, 'utf8');
       // Remove the "# Public Assets" comment and "public/assets" entry independently
@@ -470,11 +519,11 @@ export const MIGRATIONS = [
       // runtime - without it the SSR branch will always throw.
       if (!existsSync(entryServerPath)) {
         console.log('  ⏭️  src/entry-server.tsx not present (SSR foundation not in place)');
-        return 'skipped';
+        return { status: 'skipped', reason: 'entry_server_missing' };
       }
       if (!existsSync(entryPath) || !existsSync(apiDir)) {
         console.log('  ⏭️  src/server/entry.ts or src/server/api not present');
-        return 'skipped';
+        return { status: 'skipped', reason: 'server_entry_or_api_missing' };
       }
 
       // 1. entry.ts API registrations. Idempotent: marked-block shape is
@@ -509,7 +558,7 @@ export const MIGRATIONS = [
           // Rewriting bare → marked with no routes would drop the health
           // import and leave entry.ts unrunnable.
           console.log('  No API handlers found in src/server/api; leaving bare entry.ts untouched');
-          return 'skipped';
+          return { status: 'skipped', reason: 'bare_entry_no_api_handlers' };
         }
         const { imports, registrations } = generateEntryApiBlocks(entries);
         const importBlock = `// <api-imports>\n${imports}\n// </api-imports>`;
@@ -522,7 +571,7 @@ export const MIGRATIONS = [
         entryHasMarkers = true;
       } else {
         console.log('  entry.ts does not match expected template markers; leaving as-is');
-        return 'skipped';
+        return { status: 'skipped', reason: 'entry_ts_custom_shape' };
       }
 
       // 2. package.json cleanup + SSR build script. Runs whenever entry.ts
@@ -625,7 +674,7 @@ export const MIGRATIONS = [
           // 'skipped' so the emitted event reflects that the core work
           // didn't complete, rather than 'applied' which reads as success.
           console.log('  ⚠️  package.json not found; skipping dep-cleanup and build-script steps');
-          return 'skipped';
+          return { status: 'skipped', reason: 'package_json_missing' };
         }
       }
 
@@ -657,10 +706,10 @@ export const MIGRATIONS = [
     id: 'normalize-vite-html-entry',
     description: 'Restore static Vite main entry; add CSS-link fallback for customized boot scripts',
     run(customerDir, syncedFiles) {
-      if (syncedFiles.has('index.html')) return 'skipped';
+      if (syncedFiles.has('index.html')) return { status: 'skipped', reason: 'index_html_synced_fresh' };
 
       const htmlPath = join(customerDir, 'index.html');
-      if (!existsSync(htmlPath)) return 'skipped';
+      if (!existsSync(htmlPath)) return { status: 'skipped', reason: 'index_html_missing' };
 
       const original = readFileSync(htmlPath, 'utf8');
       const { html: staticEntryHtml, replaced } = replaceKnownDevRetryEntry(original);
@@ -671,7 +720,7 @@ export const MIGRATIONS = [
       } else if (!updated.includes(STATIC_MAIN_ENTRY)) {
         if (!MODULE_SCRIPT_RE.test(updated)) {
           console.log('  ⚠️  No module boot script found in index.html; skipping CSS-link fallback');
-          return 'skipped';
+          return { status: 'skipped', reason: 'no_module_boot_script' };
         }
 
         if (GLOBALS_CSS_LINK_RE.test(updated)) {
@@ -683,7 +732,7 @@ export const MIGRATIONS = [
         const globalsPath = join(customerDir, 'src/styles/globals.css');
         if (!existsSync(globalsPath)) {
           console.log('  ⚠️  src/styles/globals.css not found; skipping CSS-link fallback');
-          return 'skipped';
+          return { status: 'skipped', reason: 'globals_css_missing' };
         }
 
         const result = injectGlobalsCssLink(updated);
@@ -692,7 +741,7 @@ export const MIGRATIONS = [
           console.log('  Injected globals.css stylesheet link into index.html');
         } else {
           console.log('  ⚠️  Could not locate <head> for CSS-link fallback');
-          return 'skipped';
+          return { status: 'skipped', reason: 'head_tag_missing' };
         }
       }
 
@@ -710,9 +759,9 @@ export const MIGRATIONS = [
     id: 'inject-ssr-markers',
     description: 'Inject <!--app-head--> and <!--app-html--> into customer-modified index.html',
     run(customerDir, syncedFiles) {
-      if (syncedFiles.has('index.html')) return 'skipped';
+      if (syncedFiles.has('index.html')) return { status: 'skipped', reason: 'index_html_synced_fresh' };
       const htmlPath = join(customerDir, 'index.html');
-      if (!existsSync(htmlPath)) return 'skipped';
+      if (!existsSync(htmlPath)) return { status: 'skipped', reason: 'index_html_missing' };
 
       // Don't inject markers when SSR isn't fully installed — otherwise an
       // app whose ssrMigration sync group was blocked (e.g. customer-modified
@@ -721,7 +770,7 @@ export const MIGRATIONS = [
       // replaces, and later agent edits of index.html get confused by them.
       if (!isSsrInstalled(customerDir)) {
         console.log('  ⏭️  SSR not installed; skipping marker injection');
-        return 'skipped';
+        return { status: 'skipped', reason: 'ssr_not_installed' };
       }
 
       const original = readFileSync(htmlPath, 'utf8');
@@ -734,7 +783,7 @@ export const MIGRATIONS = [
       const appDivRe = /<div id="app"([^>]*)><\/div>/;
       if (!hasHtml && !appDivRe.test(original)) {
         console.log('  ⚠️  Could not locate empty <div id="app"></div>; skipping both markers (ambiguous)');
-        return 'skipped';
+        return { status: 'skipped', reason: 'app_div_missing' };
       }
 
       let updated = original;
@@ -742,7 +791,7 @@ export const MIGRATIONS = [
         const headCloseIdx = updated.indexOf('</head>');
         if (headCloseIdx < 0) {
           console.log('  ⚠️  No </head> found; skipping injection (ambiguous)');
-          return 'skipped';
+          return { status: 'skipped', reason: 'head_tag_missing' };
         }
         updated = updated.slice(0, headCloseIdx) + '<!--app-head-->' + updated.slice(headCloseIdx);
       }
@@ -763,18 +812,18 @@ export const MIGRATIONS = [
     description: 'Strip bare <title> from customer index.html once SSR + Helmet own head metadata',
     run(customerDir, _syncedFiles) {
       const htmlPath = join(customerDir, 'index.html');
-      if (!existsSync(htmlPath)) return 'skipped';
+      if (!existsSync(htmlPath)) return { status: 'skipped', reason: 'index_html_missing' };
 
       // Gate on SSR being fully installed. Without SSR wired end-to-end,
       // Helmet isn't driving the head and stripping the static <title>
       // would leave the page titleless.
-      if (!isSsrInstalled(customerDir)) return 'skipped';
+      if (!isSsrInstalled(customerDir)) return { status: 'skipped', reason: 'ssr_not_installed' };
 
       const original = readFileSync(htmlPath, 'utf8');
-      if (!original.includes('<!--app-head-->')) return 'skipped';
+      if (!original.includes('<!--app-head-->')) return { status: 'skipped', reason: 'app_head_marker_missing' };
 
       const titleRe = /[ \t]*<title(?:\s[^>]*)?>[\s\S]*?<\/title>\r?\n?/i;
-      if (!titleRe.test(original)) return 'skipped';
+      if (!titleRe.test(original)) return { status: 'skipped', reason: 'no_stale_title' };
 
       const updated = original.replace(titleRe, '');
       if (updated !== original) {
@@ -800,6 +849,7 @@ const ALREADY_CURRENT = 'already_current';
 function computeWouldSync(baseDir, customerDir) {
   const wouldSync = new Map();
   const baseContents = new Map();
+  const customerHashes = new Map();
 
   for (let i = 0; i < SYNC_MANIFEST.length; i++) {
     const entry = SYNC_MANIFEST[i];
@@ -816,6 +866,11 @@ function computeWouldSync(baseDir, customerDir) {
     baseContents.set(i, baseContent);
 
     if (force) {
+      // Intentionally no customerHashes entry: force skips the customer read
+      // entirely. A future manifest entry that combines { force: true,
+      // syncGroup: '...' } would therefore emit sync.file.blocked without
+      // customerHash if the group is blocked by a sibling. Prefer not
+      // combining those flags — force is meant to sidestep hash gating.
       wouldSync.set(i, true);
       continue;
     }
@@ -827,6 +882,7 @@ function computeWouldSync(baseDir, customerDir) {
 
     const customerContent = readFileSync(customerPath, 'utf8');
     const customerHash = md5(customerContent);
+    customerHashes.set(i, customerHash);
     const baseHash = md5(baseContent);
     if (customerHash === baseHash) {
       wouldSync.set(i, ALREADY_CURRENT);
@@ -856,7 +912,7 @@ function computeWouldSync(baseDir, customerDir) {
     }
   }
 
-  return { wouldSync, baseContents };
+  return { wouldSync, baseContents, customerHashes };
 }
 
 export function runMigrations(customerDir, syncedFiles) {
@@ -867,8 +923,17 @@ export function runMigrations(customerDir, syncedFiles) {
     console.log(`Migration: ${migration.id} — ${migration.description}`);
     const start = Date.now();
     let status;
+    let reason;
     try {
-      status = migration.run(customerDir, syncedFiles) === 'skipped' ? 'skipped' : 'applied';
+      const result = migration.run(customerDir, syncedFiles);
+      // Result contract: bare 'skipped' | 'applied' | undefined for backward-
+      // compatible paths that don't carry a reason; { status, reason? } when
+      // the migration wants to surface a skip classification to telemetry.
+      const resultStatus = typeof result === 'string' ? result : result?.status;
+      status = resultStatus === 'skipped' ? 'skipped' : 'applied';
+      if (status === 'skipped' && typeof result === 'object' && result?.reason) {
+        reason = result.reason;
+      }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       // Failure event goes to stderr so Loki / Docker log drivers that split
@@ -888,6 +953,7 @@ export function runMigrations(customerDir, syncedFiles) {
       event: `migration.${migration.id}.${status}`,
       migrationId: migration.id,
       durationMs: Date.now() - start,
+      ...(reason ? { reason } : {}),
     }));
   }
 }
@@ -898,7 +964,7 @@ function sync(baseDir, customerDir) {
   console.log(`Customer app:  ${customerDir}`);
   console.log('');
 
-  const { wouldSync, baseContents } = computeWouldSync(baseDir, customerDir);
+  const { wouldSync, baseContents, customerHashes } = computeWouldSync(baseDir, customerDir);
 
   const syncedFiles = new Set();
   let synced = 0;
@@ -929,9 +995,8 @@ function sync(baseDir, customerDir) {
       continue;
     }
     if (!syncState) {
-      if (existsSync(customerPath)) {
-        const customerContent = readFileSync(customerPath, 'utf8');
-        const customerHash = md5(customerContent);
+      const customerHash = customerHashes.get(i);
+      if (customerHash) {
         console.log(`  Current hash: ${customerHash}`);
       }
       if (syncGroup) {
@@ -939,6 +1004,17 @@ function sync(baseDir, customerDir) {
       } else {
         console.log(`  ⏭️  Hash doesn't match known versions, skipping (customer modified)`);
       }
+      // Structured telemetry: one event per blocked/unsynced file so Loki can
+      // histogram which files are blocking which groups. customerHash tells
+      // us whether to extend known_hashes (one dominant hash → backfill) or
+      // accept it as real divergence (long tail of unique hashes).
+      console.log(JSON.stringify({
+        event: 'sync.file.blocked',
+        file,
+        reason: syncGroup ? 'sync_group_member_blocked' : 'customer_modified_unknown_hash',
+        ...(syncGroup ? { syncGroup } : {}),
+        ...(customerHash ? { customerHash } : {}),
+      }));
       skipped++;
       continue;
     }

@@ -6,10 +6,17 @@ import { tmpdir } from 'node:os';
 // @ts-expect-error - .js import of plain ESM script outside the TS rootDir
 import { MIGRATIONS, runMigrations, isSsrInstalled } from '../../../../container-scripts/preview/sync-template-files.js';
 
+type MigrationResult = 'applied' | 'skipped' | undefined | { status: 'applied' | 'skipped'; reason?: string };
+
 interface Migration {
   id: string;
   description: string;
-  run: (customerDir: string, syncedFiles: Set<string>) => 'applied' | 'skipped' | undefined;
+  run: (customerDir: string, syncedFiles: Set<string>) => MigrationResult;
+}
+
+function resultStatus(r: MigrationResult): 'applied' | 'skipped' | undefined {
+  if (typeof r === 'string' || r === undefined) return r;
+  return r.status;
 }
 
 function findMigration(id: string): Migration {
@@ -23,6 +30,7 @@ interface MigrationEvent {
   migrationId: string;
   durationMs: number;
   error?: string;
+  reason?: string;
 }
 
 function parseMigrationEvents(spy: ReturnType<typeof vi.spyOn>): MigrationEvent[] {
@@ -218,7 +226,7 @@ describe('sync-template-files migrations', () => {
       // .skipped event so operators don't read it as success.
       setupBareAppWith();
       rmSync(join(dir, 'package.json'));
-      expect(migration.run(dir, new Set())).toBe('skipped');
+      expect(resultStatus(migration.run(dir, new Set()))).toBe('skipped');
     });
 
     it('strips scripts.bundle when it matches the legacy "node bundle.js" pattern', () => {
@@ -304,13 +312,13 @@ describe('sync-template-files migrations', () => {
     it('returns skipped when src/server/entry.ts is missing', () => {
       setupBareAppWith();
       rmSync(join(dir, 'src/server/entry.ts'));
-      expect(migration.run(dir, new Set())).toBe('skipped');
+      expect(resultStatus(migration.run(dir, new Set()))).toBe('skipped');
     });
 
     it('returns skipped when src/server/api dir is missing', () => {
       setupBareAppWith();
       rmSync(join(dir, 'src/server/api'), { recursive: true });
-      expect(migration.run(dir, new Set())).toBe('skipped');
+      expect(resultStatus(migration.run(dir, new Set()))).toBe('skipped');
     });
 
     it('leaves everything alone when entry.ts has unexpected shape', () => {
@@ -519,7 +527,7 @@ export default app;
       const entryBefore = readFileSync(entryPath, 'utf8');
       const pkgBefore = readFileSync(pkgPath, 'utf8');
 
-      expect(migration.run(dir, new Set())).toBe('applied');
+      expect(resultStatus(migration.run(dir, new Set()))).toBe('applied');
 
       expect(readFileSync(entryPath, 'utf8')).toBe(entryBefore);
       expect(readFileSync(pkgPath, 'utf8')).toBe(pkgBefore);
@@ -534,7 +542,7 @@ export default app;
       mkdirSync(join(dir, 'src/server/api'), { recursive: true });
       const entryBefore = readFileSync(join(dir, 'src/server/entry.ts'), 'utf8');
 
-      expect(migration.run(dir, new Set())).toBe('skipped');
+      expect(resultStatus(migration.run(dir, new Set()))).toBe('skipped');
       expect(readFileSync(join(dir, 'src/server/entry.ts'), 'utf8')).toBe(entryBefore);
     });
 
@@ -619,7 +627,7 @@ export default app;
       const html = '<html><head></head><body><div id="app"></div></body></html>';
       writeHtml(html);
 
-      const status = migration.run(dir, new Set());
+      const status = resultStatus(migration.run(dir, new Set()));
 
       expect(status).toBe('skipped');
       expect(readFileSync(join(dir, 'index.html'), 'utf8')).toBe(html);
@@ -730,7 +738,7 @@ export default app;
   </body>
 </html>`);
 
-      const status = migration.run(dir, new Set());
+      const status = resultStatus(migration.run(dir, new Set()));
       const content = readFileSync(join(dir, 'index.html'), 'utf8');
 
       expect(status).toBe('applied');
@@ -746,7 +754,7 @@ export default app;
         '<html><head><!--app-head--></head><body><div id="app"></div><script type="module">import("/custom-entry.tsx")</script></body></html>',
       );
 
-      const status = migration.run(dir, new Set());
+      const status = resultStatus(migration.run(dir, new Set()));
       const content = readFileSync(join(dir, 'index.html'), 'utf8');
 
       expect(status).toBe('applied');
@@ -780,7 +788,7 @@ export default app;
   </body>
 </html>`);
 
-      const status = migration.run(dir, new Set());
+      const status = resultStatus(migration.run(dir, new Set()));
       const content = readFileSync(join(dir, 'index.html'), 'utf8');
 
       expect(status).toBe('applied');
@@ -797,7 +805,7 @@ export default app;
         '<html><head><title>Custom</title></head><body><script type="module">import("/custom-entry.tsx")</script></body></html>',
       );
 
-      const status = migration.run(dir, new Set());
+      const status = resultStatus(migration.run(dir, new Set()));
       const content = readFileSync(join(dir, 'index.html'), 'utf8');
 
       expect(status).toBe('applied');
@@ -813,7 +821,7 @@ export default app;
         '<html><head><link rel="stylesheet" href="/src/styles/globals.css" /><!--app-head--></head><body><script type="module">import("/custom-entry.tsx")</script></body></html>';
       writeHtml(html);
 
-      const status = migration.run(dir, new Set());
+      const status = resultStatus(migration.run(dir, new Set()));
 
       expect(status).toBe('applied');
       expect(readFileSync(join(dir, 'index.html'), 'utf8')).toBe(html);
@@ -825,7 +833,7 @@ export default app;
       const html = '<html><head><!--app-head--></head><body><div id="app"></div></body></html>';
       writeHtml(html);
 
-      const status = migration.run(dir, new Set());
+      const status = resultStatus(migration.run(dir, new Set()));
 
       expect(status).toBe('skipped');
       expect(readFileSync(join(dir, 'index.html'), 'utf8')).toBe(html);
@@ -837,7 +845,7 @@ export default app;
       const html = '<html><body><script type="module">import("/custom-entry.tsx")</script></body></html>';
       writeHtml(html);
 
-      const status = migration.run(dir, new Set());
+      const status = resultStatus(migration.run(dir, new Set()));
 
       expect(status).toBe('skipped');
       expect(readFileSync(join(dir, 'index.html'), 'utf8')).toBe(html);
@@ -848,7 +856,7 @@ export default app;
         '<html><head><!--app-head--></head><body><script type="module">import("/custom-entry.tsx")</script></body></html>';
       writeHtml(html);
 
-      const status = migration.run(dir, new Set());
+      const status = resultStatus(migration.run(dir, new Set()));
 
       expect(status).toBe('skipped');
       expect(readFileSync(join(dir, 'index.html'), 'utf8')).toBe(html);
@@ -861,9 +869,9 @@ export default app;
         '<html><head><!--app-head--></head><body><script type="module">import("/custom-entry.tsx")</script></body></html>',
       );
 
-      expect(migration.run(dir, new Set())).toBe('applied');
+      expect(resultStatus(migration.run(dir, new Set()))).toBe('applied');
       const afterFirstRun = readFileSync(join(dir, 'index.html'), 'utf8');
-      expect(migration.run(dir, new Set())).toBe('applied');
+      expect(resultStatus(migration.run(dir, new Set()))).toBe('applied');
 
       expect(readFileSync(join(dir, 'index.html'), 'utf8')).toBe(afterFirstRun);
       expect((afterFirstRun.match(/\/src\/styles\/globals\.css/g) ?? []).length).toBe(1);
@@ -874,7 +882,7 @@ export default app;
         '<html><head><!--app-head--></head><body><script type="module" src="/src/main.tsx"></script></body></html>';
       writeHtml(html);
 
-      const status = migration.run(dir, new Set());
+      const status = resultStatus(migration.run(dir, new Set()));
 
       expect(status).toBe('applied');
       expect(readFileSync(join(dir, 'index.html'), 'utf8')).toBe(html);
@@ -885,7 +893,7 @@ export default app;
         '<html><head><!--app-head--></head><body><script type="module">import("/custom-entry.tsx")</script></body></html>';
       writeHtml(html);
 
-      const status = migration.run(dir, new Set(['index.html']));
+      const status = resultStatus(migration.run(dir, new Set(['index.html'])));
 
       expect(status).toBe('skipped');
       expect(readFileSync(join(dir, 'index.html'), 'utf8')).toBe(html);
@@ -919,7 +927,7 @@ export default app;
       const html = '<html><head><title>Stale</title><!--app-head--></head><body></body></html>';
       writeHtml(html);
 
-      const status = migration.run(dir, new Set());
+      const status = resultStatus(migration.run(dir, new Set()));
 
       expect(status).toBe('skipped');
       expect(readFileSync(join(dir, 'index.html'), 'utf8')).toBe(html);
@@ -1058,7 +1066,7 @@ export default app;
       expect(applied!.durationMs).toBeGreaterThanOrEqual(0);
     });
 
-    it('emits migration.<id>.skipped with durationMs when precondition unmet', () => {
+    it('emits migration.<id>.skipped with durationMs and reason when precondition unmet', () => {
       // Empty dir: remove-public-assets-gitignore skips (no .gitignore file).
       runMigrations(dir, new Set());
 
@@ -1067,6 +1075,41 @@ export default app;
       expect(skipped).toBeDefined();
       expect(skipped!.migrationId).toBe('remove-public-assets-gitignore');
       expect(typeof skipped!.durationMs).toBe('number');
+      // reason is the primary telemetry deliverable of this event. Without
+      // this assertion, a regression like renaming `result.reason` in the
+      // runner would pass all other tests while silently dropping the field.
+      expect(skipped!.reason).toBe('gitignore_missing');
+    });
+
+    it('omits reason on applied events and preserves it across all skip paths', () => {
+      // One parameterized sweep covers every skip path's reason at once so
+      // the next time a migration is added, the contributor only has to
+      // extend this table rather than add a new test per migration.
+      const skipCases: Array<{ migrationId: string; reason: string }> = [
+        { migrationId: 'remove-public-assets-gitignore', reason: 'gitignore_missing' },
+        { migrationId: 'migrate-to-ssr-entry', reason: 'entry_server_missing' },
+        { migrationId: 'normalize-vite-html-entry', reason: 'index_html_missing' },
+        { migrationId: 'inject-ssr-markers', reason: 'index_html_missing' },
+        { migrationId: 'strip-stale-index-title', reason: 'index_html_missing' },
+      ];
+
+      runMigrations(dir, new Set());
+      const events = parseMigrationEvents(consoleLogSpy);
+
+      for (const { migrationId, reason } of skipCases) {
+        const event = events.find((e) => e.event === `migration.${migrationId}.skipped`);
+        expect(event, `expected skipped event for ${migrationId}`).toBeDefined();
+        expect(event!.reason, `expected reason on ${migrationId} skip`).toBe(reason);
+      }
+
+      // Sanity: an applied event elsewhere (e.g. in other tests) must not
+      // carry reason. Here the empty dir produces only skips, so check the
+      // shape of one event directly: reason only appears on skipped status.
+      for (const e of events) {
+        if (e.event.endsWith('.applied')) {
+          expect(e.reason, `applied events must not carry reason (${e.migrationId})`).toBeUndefined();
+        }
+      }
     });
   });
 
