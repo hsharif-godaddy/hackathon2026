@@ -258,6 +258,27 @@ describe('LexicalChatEditor', () => {
     })
   })
 
+  describe('external sync clears editor after programmatic set', () => {
+    it('clears editor content when inputValue is cleared after an external set', async () => {
+      const onInputChange = vi.fn()
+      const { rerender } = renderEditor({ inputValue: '', onInputChange })
+
+      rerender(
+        <LexicalChatEditor {...defaultProps} inputValue="hello from auto-send" onInputChange={onInputChange} />
+      )
+      await waitFor(() => {
+        expect(screen.getByTestId('chat-input-textarea').textContent).toBe('hello from auto-send')
+      })
+
+      rerender(
+        <LexicalChatEditor {...defaultProps} inputValue="" onInputChange={onInputChange} />
+      )
+      await waitFor(() => {
+        expect(screen.getByTestId('chat-input-textarea').textContent).toBe('')
+      })
+    })
+  })
+
   describe('large paste detection', () => {
     it('calls onLargePasteDetected for text over 4000 chars', async () => {
       const onLargePasteDetected = vi.fn()

@@ -307,10 +307,12 @@ function ExternalSyncPlugin({
   inputValue,
   isListening,
   internalChangeRef,
+  isSyncingExternallyRef,
 }: {
   inputValue: string
   isListening: boolean
   internalChangeRef: React.RefObject<boolean>
+  isSyncingExternallyRef: React.MutableRefObject<boolean>
 }) {
   const [editor] = useLexicalComposerContext()
 
@@ -323,40 +325,48 @@ function ExternalSyncPlugin({
       if (inputValue !== '') return
     }
 
-    editor.update(() => {
-      const root = $getRoot()
-      // Strip mention text from current content for comparison, since
-      // inputValue (from speech/history) won't contain mention markup
-      let plainText = ''
-      const mentionNodes: InstanceType<typeof BeautifulMentionNode>[] = []
-      root.getChildren().forEach(child => {
-        if ($isElementNode(child)) {
-          child.getChildren().forEach(node => {
-            if (node instanceof BeautifulMentionNode) {
-              mentionNodes.push(node)
-            } else {
-              plainText += node.getTextContent()
-            }
-          })
-        }
-      })
-      if (plainText.trim() === inputValue.trim() && mentionNodes.length > 0) return
-      if (root.getTextContent() === inputValue) return
+    isSyncingExternallyRef.current = true
+    editor.update(
+      () => {
+        const root = $getRoot()
+        // Strip mention text from current content for comparison, since
+        // inputValue (from speech/history) won't contain mention markup
+        let plainText = ''
+        const mentionNodes: InstanceType<typeof BeautifulMentionNode>[] = []
+        root.getChildren().forEach(child => {
+          if ($isElementNode(child)) {
+            child.getChildren().forEach(node => {
+              if (node instanceof BeautifulMentionNode) {
+                mentionNodes.push(node)
+              } else {
+                plainText += node.getTextContent()
+              }
+            })
+          }
+        })
+        if (plainText.trim() === inputValue.trim() && mentionNodes.length > 0) return
+        if (root.getTextContent() === inputValue) return
 
-      // Preserve existing mention nodes — only replace text content
-      root.clear()
-      const paragraph = $createParagraphNode()
-      if (inputValue) {
-        paragraph.append($createTextNode(inputValue))
-      }
-      // Re-append mention nodes
-      for (const mention of mentionNodes) {
-        paragraph.append($createTextNode(' '))
-        paragraph.append(mention)
-      }
-      root.append(paragraph)
-    })
-  }, [editor, inputValue, isListening, internalChangeRef])
+        // Preserve existing mention nodes — only replace text content
+        root.clear()
+        const paragraph = $createParagraphNode()
+        if (inputValue) {
+          paragraph.append($createTextNode(inputValue))
+        }
+        // Re-append mention nodes
+        for (const mention of mentionNodes) {
+          paragraph.append($createTextNode(' '))
+          paragraph.append(mention)
+        }
+        root.append(paragraph)
+      },
+      {
+        onUpdate: () => {
+          isSyncingExternallyRef.current = false
+        },
+      },
+    )
+  }, [editor, inputValue, isListening, internalChangeRef, isSyncingExternallyRef])
 
   return null
 }
@@ -367,6 +377,7 @@ const LexicalChatEditorInner = forwardRef<LexicalChatEditorHandle, LexicalChatEd
     const [editor] = useLexicalComposerContext()
     const { insertMention } = useBeautifulMentions()
     const internalChangeRef = useRef(false)
+    const isSyncingExternallyRef = useRef(false)
 
     useImperativeHandle(ref, () => ({
       insertElementMention(number: number, tagName: string) {
@@ -418,7 +429,9 @@ const LexicalChatEditorInner = forwardRef<LexicalChatEditorHandle, LexicalChatEd
       (editorState: EditorState) => {
         editorState.read(() => {
           const text = $getRoot().getTextContent()
-          internalChangeRef.current = true
+          if (!isSyncingExternallyRef.current) {
+            internalChangeRef.current = true
+          }
           props.onInputChange(text)
 
           // Detect removed mentions
@@ -525,6 +538,7 @@ const LexicalChatEditorInner = forwardRef<LexicalChatEditorHandle, LexicalChatEd
           inputValue={props.inputValue}
           isListening={props.isListening}
           internalChangeRef={internalChangeRef}
+          isSyncingExternallyRef={isSyncingExternallyRef}
         />
       </>
     )
