@@ -60,6 +60,17 @@ const STREAM_UPDATE_EVENTS = new Set([
   'tool_call',
 ])
 
+export function lastAssistantMessageIsComplete(messages: readonly { role: string; isComplete?: boolean }[]): boolean {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i]
+    if (msg.role !== 'assistant') continue
+    // Persisted ChatMessage has no `isComplete` field; its presence (false)
+    // only appears on recovered/streaming records. Absent → complete.
+    return !('isComplete' in msg && msg.isComplete === false)
+  }
+  return false
+}
+
 function ensureSSEActiveStream(reason: string, conversationId?: string): void {
   const state = useStreamingConversationStore.getState()
   if (state.activeStream) return
@@ -595,6 +606,20 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                   // handler, per app/CLAUDE.md lifecycle rules.
                   setTransportState('streaming')
                 }
+
+                // Ambiguous recovery: server lost context; clear stale placeholder if history confirms turn finished.
+                if (!payload?.hasBufferedEvents && !payload?.streamCompleted) {
+                  const afterStore = useStreamingConversationStore.getState()
+                  if (afterStore.activeStream && lastAssistantMessageIsComplete(afterStore.messages)) {
+                    const staleStreamId = afterStore.activeStream.id
+                    afterStore.clearActiveStream()
+                    logger.info('sse.recovery.fallback.cleared_stale_stream', {
+                      appId: currentAppId,
+                      streamId: staleStreamId,
+                    })
+                  }
+                }
+
                 logger.info('sse.recovery.status', {
                   appId: currentAppId,
                   hasBufferedEvents: payload?.hasBufferedEvents,
@@ -807,12 +832,19 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
   }, [])
 
   const stop = useCallback(() => {
-    const appId = useStreamingConversationStore.getState().currentAppId
     transportRef.current?.stopGeneration().catch(err => {
+      const appId = useStreamingConversationStore.getState().currentAppId
       logger.warn('sse.stop.failed', {
         appId, error: err instanceof Error ? err.message : String(err),
       })
     })
+
+    // Server goes silent if the turn ended; finalize locally so Stop always works.
+    const store = useStreamingConversationStore.getState()
+    if (store.activeStream) {
+      flushStoreUpdateBufferImmediate()
+      store.finalizeStream({ finishReason: 'user_stopped' })
+    }
   }, [])
 
   const reconnect = useCallback(async (): Promise<void> => {

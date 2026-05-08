@@ -334,6 +334,48 @@ describe('useStreamingWebSocket', () => {
     });
   });
 
+  describe('stop', () => {
+    it('finalizes the stream locally when activeStream is set', async () => {
+      const { useStreamingWebSocket } = await import('./useStreamingWebSocket');
+      const { useCurrentAppId } = await import('@/stores/useStreamingConversationStore');
+      vi.mocked(useCurrentAppId).mockReturnValue('test-app-123');
+      streamingStoreState.currentAppId = 'test-app-123';
+      streamingStoreState.activeStream = {
+        id: 'stream-stop',
+        role: 'assistant',
+        content: '',
+        segments: [],
+        toolCalls: [],
+        timestamp: new Date(),
+        isComplete: false,
+      } as any;
+
+      const { result } = renderHook(() => useStreamingWebSocket());
+
+      act(() => {
+        result.current.actions.stop();
+      });
+
+      expect(mockFinalizeStream).toHaveBeenCalledWith({ finishReason: 'user_stopped' });
+    });
+
+    it('does not finalize when activeStream is null', async () => {
+      const { useStreamingWebSocket } = await import('./useStreamingWebSocket');
+      const { useCurrentAppId } = await import('@/stores/useStreamingConversationStore');
+      vi.mocked(useCurrentAppId).mockReturnValue('test-app-123');
+      streamingStoreState.currentAppId = 'test-app-123';
+      streamingStoreState.activeStream = null;
+
+      const { result } = renderHook(() => useStreamingWebSocket());
+
+      act(() => {
+        result.current.actions.stop();
+      });
+
+      expect(mockFinalizeStream).not.toHaveBeenCalled();
+    });
+  });
+
   describe('sendMessage functionality', () => {
     it('should not send empty or whitespace-only messages', async () => {
       const { useStreamingWebSocket } = await import('./useStreamingWebSocket');

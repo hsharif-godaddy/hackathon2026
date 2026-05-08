@@ -425,6 +425,14 @@ export function useStreamingWebSocket({ enabled = true }: { enabled?: boolean } 
    */
   const stopGeneration = useCallback(() => {
     controllerRef.current?.stopGeneration()
+
+    // Server goes silent if the turn ended; finalize locally so Stop always works.
+    const store = useStreamingConversationStore.getState()
+    if (store.activeStream) {
+      flushToolDeltaBufferImmediate()
+      flushStoreUpdateBufferImmediate()
+      store.finalizeStream({ finishReason: 'user_stopped' })
+    }
   }, [])
 
   /**

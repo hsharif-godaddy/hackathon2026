@@ -706,6 +706,36 @@ describe('useSSEChat', () => {
     expect(lastTransport.stopGeneration).toHaveBeenCalled()
   })
 
+  it('stop finalizes the stream locally when activeStream is set', async () => {
+    const hook = await setupHook()
+    storeState.activeStream = {
+      id: 'stream-stop',
+      role: 'assistant',
+      content: '',
+      segments: [],
+      toolCalls: [],
+      timestamp: new Date(),
+      isComplete: false,
+    }
+
+    act(() => {
+      hook.result.current.actions.stop()
+    })
+
+    expect(mockFinalizeStream).toHaveBeenCalledWith({ finishReason: 'user_stopped' })
+  })
+
+  it('stop does not finalize when activeStream is null', async () => {
+    const hook = await setupHook()
+    storeState.activeStream = null
+
+    act(() => {
+      hook.result.current.actions.stop()
+    })
+
+    expect(mockFinalizeStream).not.toHaveBeenCalled()
+  })
+
   it('connection.isConnected is false initially', async () => {
     const hook = await setupHook()
 
@@ -1231,6 +1261,111 @@ describe('useSSEChat', () => {
       expect(streamingCalls).toHaveLength(0)
     })
 
+    it('ambiguous recovery_status clears stale activeStream when history is complete', async () => {
+      await setupHook()
+      storeState.activeStream = {
+        id: 'stale-placeholder',
+        role: 'assistant',
+        content: '',
+        segments: [],
+        toolCalls: [],
+        timestamp: new Date(),
+        isComplete: false,
+      }
+      storeState.messages = [
+        { id: 'm1', role: 'user', content: 'hello' },
+        { id: 'm2', role: 'assistant', content: 'done' },
+      ]
+
+      act(() => {
+        lastTransport.callbacks?.onEvent({
+          type: 'recovery_status',
+          data: { hasBufferedEvents: false, bufferedCount: 0, streamCompleted: false },
+        })
+      })
+
+      expect(mockClearActiveStream).toHaveBeenCalled()
+    })
+
+    it('recovery_status with buffered events does not clear activeStream via the fallback', async () => {
+      await setupHook()
+      storeState.messages = [
+        { id: 'm1', role: 'user', content: 'hello' },
+        { id: 'm2', role: 'assistant', content: 'done' },
+      ]
+
+      act(() => {
+        lastTransport.callbacks?.onEvent({
+          type: 'recovery_status',
+          data: { hasBufferedEvents: true, bufferedCount: 3, streamCompleted: false },
+        })
+      })
+
+      expect(mockClearActiveStream).not.toHaveBeenCalled()
+    })
+
+    it('streamCompleted=true does not fire the ambiguous fallback', async () => {
+      await setupHook()
+      storeState.messages = [
+        { id: 'm1', role: 'user', content: 'hello' },
+        { id: 'm2', role: 'assistant', content: 'done' },
+      ]
+
+      act(() => {
+        lastTransport.callbacks?.onEvent({
+          type: 'recovery_status',
+          data: { hasBufferedEvents: false, bufferedCount: 0, streamCompleted: true },
+        })
+      })
+
+      // clearActiveStream should fire from the existing streamCompleted branch,
+      // not the fallback — but only when activeStream is set (it isn't here).
+      expect(mockClearActiveStream).not.toHaveBeenCalled()
+    })
+
+    it('ambiguous recovery_status with null activeStream does not call clearActiveStream', async () => {
+      await setupHook()
+      storeState.activeStream = null
+      storeState.messages = [
+        { id: 'm1', role: 'user', content: 'hello' },
+        { id: 'm2', role: 'assistant', content: 'done' },
+      ]
+
+      act(() => {
+        lastTransport.callbacks?.onEvent({
+          type: 'recovery_status',
+          data: { hasBufferedEvents: false, bufferedCount: 0, streamCompleted: false },
+        })
+      })
+
+      expect(mockClearActiveStream).not.toHaveBeenCalled()
+    })
+
+    it('ambiguous recovery_status with only user messages does not clear activeStream', async () => {
+      await setupHook()
+      storeState.activeStream = {
+        id: 'live-placeholder',
+        role: 'assistant',
+        content: '',
+        segments: [],
+        toolCalls: [],
+        timestamp: new Date(),
+        isComplete: false,
+      }
+      storeState.messages = [
+        { id: 'm1', role: 'user', content: 'hello' },
+      ]
+
+      act(() => {
+        lastTransport.callbacks?.onEvent({
+          type: 'recovery_status',
+          data: { hasBufferedEvents: false, bufferedCount: 0, streamCompleted: false },
+        })
+      })
+
+      expect(mockClearActiveStream).not.toHaveBeenCalled()
+    })
+
     it('replay_complete event does not throw', async () => {
       await setupHook()
 
@@ -1243,5 +1378,50 @@ describe('useSSEChat', () => {
 
       expect(mockFinalizeStream).not.toHaveBeenCalled()
     })
+  })
+})
+
+describe('lastAssistantMessageIsComplete', () => {
+  it('returns false for empty array', async () => {
+    const { lastAssistantMessageIsComplete } = await import('../useSSEChat')
+    expect(lastAssistantMessageIsComplete([])).toBe(false)
+  })
+
+  it('returns false when there is no assistant message', async () => {
+    const { lastAssistantMessageIsComplete } = await import('../useSSEChat')
+    expect(lastAssistantMessageIsComplete([
+      { role: 'user' },
+      { role: 'system' },
+    ])).toBe(false)
+  })
+
+  it('returns true when last assistant message has no isComplete field (persisted)', async () => {
+    const { lastAssistantMessageIsComplete } = await import('../useSSEChat')
+    expect(lastAssistantMessageIsComplete([
+      { role: 'user' },
+      { role: 'assistant' },
+    ])).toBe(true)
+  })
+
+  it('returns false when last assistant message is isComplete: false (streaming)', async () => {
+    const { lastAssistantMessageIsComplete } = await import('../useSSEChat')
+    expect(lastAssistantMessageIsComplete([
+      { role: 'assistant', isComplete: false },
+    ])).toBe(false)
+  })
+
+  it('returns true when last assistant message is isComplete: true', async () => {
+    const { lastAssistantMessageIsComplete } = await import('../useSSEChat')
+    expect(lastAssistantMessageIsComplete([
+      { role: 'assistant', isComplete: true },
+    ])).toBe(true)
+  })
+
+  it('ignores trailing non-assistant messages and inspects the last assistant', async () => {
+    const { lastAssistantMessageIsComplete } = await import('../useSSEChat')
+    expect(lastAssistantMessageIsComplete([
+      { role: 'assistant', isComplete: false },
+      { role: 'user' },
+    ])).toBe(false)
   })
 })
