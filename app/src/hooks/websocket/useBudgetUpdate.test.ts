@@ -145,10 +145,6 @@ describe('useBudgetUpdate', function useBudgetUpdateTests() {
 
       triggerUpdate({ refreshRequired: true })
 
-      expect(logger.info).toHaveBeenCalledWith('budget.update.received', {
-        subscriptionId: 'sub-1',
-        refreshRequired: true,
-      })
       expect(logger.info).toHaveBeenCalledWith('budget.update.invalidating', {
         subscriptionId: 'sub-1',
       })
@@ -171,10 +167,10 @@ describe('useBudgetUpdate', function useBudgetUpdateTests() {
       triggerUpdate({
         refreshRequired: false,
         customerRemaining: 90,
-        budgets: [],
-        assignment: { customer: [] },
-        items: [createBudgetItem()],
+        assignment: { customer: [], reportItems: [] },
+        budgetItems: [createBudgetItem()],
         budgetId: 'budget-1',
+        sessionWasFree: false,
       })
 
       expect(logger.error).toHaveBeenCalledWith('budget.update.no_subscription_id', {
@@ -203,10 +199,10 @@ describe('useBudgetUpdate', function useBudgetUpdateTests() {
       triggerUpdate({
         refreshRequired: false,
         customerRemaining: 90,
-        budgets: [],
-        assignment: { customer: [] },
-        items: [budgetItem],
+        assignment: { customer: [], reportItems: [] },
+        budgetItems: [budgetItem],
         budgetId: 'budget-happy',
+        sessionWasFree: false,
       })
 
       // Should call adapter with correct args
@@ -216,10 +212,12 @@ describe('useBudgetUpdate', function useBudgetUpdateTests() {
         'sub-happy'
       )
 
-      // Should log cache update
+      // Should log cache update with reportItems info
       expect(logger.info).toHaveBeenCalledWith('budget.update.cache_updated', {
         subscriptionId: 'sub-happy',
         grantCount: 2,
+        reportItemCount: 0,
+        sessionWasFree: false,
       })
 
       // Should update both syncSpend variants
@@ -232,6 +230,73 @@ describe('useBudgetUpdate', function useBudgetUpdateTests() {
         mockGrants
       )
       expect(mockInvalidateQueries).not.toHaveBeenCalled()
+    })
+
+    it('logs sessionWasFree=true when server indicates session was free', function sessionWasFreeTrue() {
+      const { controller, triggerUpdate } = createController()
+      mockAdaptBudgetItemsToGrants.mockReturnValue([{ id: 'grant-1' }])
+
+      renderHookWithProviders(() =>
+        useBudgetUpdate({
+          controller,
+          subscriptionId: 'sub-free',
+        })
+      )
+
+      triggerUpdate({
+        refreshRequired: false,
+        customerRemaining: 100,
+        assignment: {
+          customer: [],
+          reportItems: [
+            { budgetCost: 0, productCost: 5, category: 'airo-builder:tool-failure' },
+            { budgetCost: 0, productCost: 3, category: 'airo-builder:no-output' },
+          ],
+        },
+        budgetItems: [createBudgetItem()],
+        budgetId: 'budget-free',
+        sessionWasFree: true,
+      })
+
+      expect(logger.info).toHaveBeenCalledWith('budget.update.cache_updated', {
+        subscriptionId: 'sub-free',
+        grantCount: 1,
+        reportItemCount: 2,
+        sessionWasFree: true,
+      })
+    })
+
+    it('logs sessionWasFree=false when session had customer cost', function sessionWasFreeFalse() {
+      const { controller, triggerUpdate } = createController()
+      mockAdaptBudgetItemsToGrants.mockReturnValue([{ id: 'grant-1' }])
+
+      renderHookWithProviders(() =>
+        useBudgetUpdate({
+          controller,
+          subscriptionId: 'sub-paid',
+        })
+      )
+
+      triggerUpdate({
+        refreshRequired: false,
+        customerRemaining: 95,
+        assignment: {
+          customer: [{ budgetItemId: 'item-1', amount: 5 }],
+          reportItems: [
+            { budgetCost: 5, productCost: 0, category: 'airo-builder:general' },
+          ],
+        },
+        budgetItems: [createBudgetItem()],
+        budgetId: 'budget-paid',
+        sessionWasFree: false,
+      })
+
+      expect(logger.info).toHaveBeenCalledWith('budget.update.cache_updated', {
+        subscriptionId: 'sub-paid',
+        grantCount: 1,
+        reportItemCount: 1,
+        sessionWasFree: false,
+      })
     })
   })
 

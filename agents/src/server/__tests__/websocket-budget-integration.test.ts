@@ -312,7 +312,7 @@ describe('budget report creation', () => {
     // getBudget for per-item breakdown (graceful degradation)
     try {
       const budget = await client.getBudget(budgetId)
-      return { refreshRequired: false as const, payload: toBudgetUpdatePayload(report, budget) }
+      return { refreshRequired: false as const, payload: toBudgetUpdatePayload(report, budget, false) }
     } catch {
       return { refreshRequired: true as const }
     }

@@ -42,11 +42,6 @@ export function useBudgetUpdate({ controller, subscriptionId, enabled = true }: 
     if (!controller || !effectiveEnabled) return
 
     const unsubscribe = controller.onBudgetUpdate((data) => {
-      logger.info('budget.update.received', {
-        subscriptionId,
-        refreshRequired: data.refreshRequired,
-      })
-
       if (!isBudgetUpdateSuccess(data)) {
         // Error path: agent couldn't build full payload, need to refetch from BFF
         logger.info('budget.update.invalidating', { subscriptionId })
@@ -64,11 +59,13 @@ export function useBudgetUpdate({ controller, subscriptionId, enabled = true }: 
       }
 
       // Adapt BudgetItem[] to CreditGrant[] format
-      const grants = adaptBudgetItemsToGrants(data.items, data.budgetId, subscriptionId)
+      const grants = adaptBudgetItemsToGrants(data.budgetItems, data.budgetId, subscriptionId)
 
       logger.info('budget.update.cache_updated', {
         subscriptionId,
         grantCount: grants.length,
+        reportItemCount: data.assignment.reportItems.length,
+        sessionWasFree: data.sessionWasFree,
       })
 
       // Update cache for both syncSpend variants

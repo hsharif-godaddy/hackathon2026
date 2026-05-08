@@ -64,28 +64,29 @@ export type BudgetUpdatePayload = BudgetUpdateSuccess | BudgetUpdateRefreshRequi
 export interface BudgetUpdateSuccess {
   readonly refreshRequired: false
   readonly customerRemaining: number
-  readonly budgets: readonly BudgetSummary[]
   readonly assignment: CostAssignment
   /** Full budget items for client-side cache update (avoids BFF round-trip) */
-  readonly items: readonly BudgetItem[]
+  readonly budgetItems: readonly BudgetItem[]
   /** Budget ID for adapting items to grants */
   readonly budgetId: string
+  /** Whether the session was free for the customer (GoDaddy covered all cost) */
+  readonly sessionWasFree: boolean
 }
 
 export interface BudgetUpdateRefreshRequired {
   readonly refreshRequired: true
 }
 
-export interface BudgetSummary {
-  readonly budgetItemId: string
-  readonly remaining: number
-  readonly expiration: string | null
-}
 
 export interface CostAssignment {
   readonly customer: readonly CustomerDeduction[]
-  readonly godaddy?: GodaddyDeduction
-  readonly overflow?: { readonly amount: number }
+  /**
+   * Full breakdown of cost attribution by category (label).
+   * Each item shows how much was charged to customer vs GoDaddy for that category.
+   * Categories are namespaced: 'airo-builder:general', 'airo-builder:tool-failure',
+   * 'airo-builder:infrastructure', 'airo-builder:no-output', etc.
+   */
+  readonly reportItems: readonly ReportItemSummary[]
 }
 
 export interface CustomerDeduction {
@@ -93,7 +94,15 @@ export interface CustomerDeduction {
   readonly amount: number
 }
 
-export interface GodaddyDeduction {
+/**
+ * Summary of a single report item for client-side cost attribution display.
+ * Simplified from the full ReportItemResponse (which includes budgetItems array).
+ */
+export interface ReportItemSummary {
+  /** Cost charged to customer's budget */
+  readonly budgetCost: number
+  /** Cost covered by GoDaddy (free for customer) */
+  readonly productCost: number
+  /** Attribution category/label (e.g., 'airo-builder:general', 'airo-builder:tool-failure') */
   readonly category: string
-  readonly amount: number
 }

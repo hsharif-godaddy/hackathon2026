@@ -16,11 +16,8 @@ export type {
   ReportItemResponse,
   ReportResponse,
 } from './report-types.js'
-export type { CreditStatusResponse } from './types.js'
 export {
   computeRemaining,
-  toBudgetSummary,
-  toCreditStatusResponse,
   toBudgetUpdatePayload,
 } from './types.js'
 export { getBillingMode } from './billing-mode.js'

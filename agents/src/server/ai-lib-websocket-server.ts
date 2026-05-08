@@ -2331,7 +2331,23 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         // Note: createReport succeeded at this point, so sessionWasFree is valid even if getBudget fails
         try {
           const budget = await client.getBudget(budgetId)
-          return { refreshRequired: false, payload: toBudgetUpdatePayload(report, budget), sessionWasFree, reportId: report.reportId }
+          const payload = toBudgetUpdatePayload(report, budget, sessionWasFree)
+
+          // Log the payload sent to client with reportItems summary
+          const clientReportItems = payload.assignment.reportItems
+          logger.info('budget.update.payload_sent', {
+            budgetId,
+            sessionId,
+            reportId: report.reportId,
+            sessionWasFree,
+            reportItemCount: clientReportItems.length,
+            totalBudgetCost: report.budgetCostTotal,
+            totalProductCost: report.productCostTotal,
+            categories: clientReportItems.map(item => item.category),
+            budgetItemCount: payload.budgetItems.length,
+          })
+
+          return { refreshRequired: false, payload, sessionWasFree, reportId: report.reportId }
         } catch (err) {
           logger.error('budget.report.payload_failed', {
             budgetId,

@@ -7,9 +7,7 @@
 
 import type {
   BudgetResponse,
-  BudgetItem,
   BudgetUpdateSuccess,
-  BudgetSummary,
 } from '@airo/shared/budget'
 import type { ReportResponse } from './report-types.js'
 
@@ -25,53 +23,24 @@ export function computeRemaining(total: string, used: string): number {
   return Math.round(result * 1e6) / 1e6
 }
 
-// ── BFF credit status response ──
-
-export interface CreditStatusResponse {
-  remaining: number
-  budgets: BudgetSummary[]
-}
-
-export function toBudgetSummary(item: BudgetItem): BudgetSummary {
-  return {
-    budgetItemId: item.budgetItemId,
-    remaining: computeRemaining(item.creditsTotal, item.creditsUsed),
-    expiration: item.expiresAt,
-  }
-}
-
-export function toCreditStatusResponse(raw: BudgetResponse): CreditStatusResponse {
-  return {
-    remaining: computeRemaining(raw.creditsTotal, raw.creditsUsed),
-    budgets: raw.items.map(toBudgetSummary),
-  }
-}
 
 // ── budget_update WebSocket event ──
 
 export function toBudgetUpdatePayload(
   reportResponse: ReportResponse,
-  budgetResponse: BudgetResponse
+  budgetResponse: BudgetResponse,
+  sessionWasFree: boolean
 ): BudgetUpdateSuccess {
-  // Calculate GoDaddy deduction from productCost
-  // TODO: Return all godaddy item categories instead of just the highest-cost one
-  // (needed when per-call attribution produces multiple GoDaddy-covered items with different labels)
-  const godaddyItems = reportResponse.reportItems.filter((ri) => ri.productCost > 0)
-  const godaddyDeduction =
-    godaddyItems.length > 0
-      ? {
-          // Use the category from the item with the highest productCost
-          category: godaddyItems.reduce((prev, curr) =>
-            curr.productCost > prev.productCost ? curr : prev
-          ).category,
-          amount: reportResponse.productCostTotal,
-        }
-      : undefined
+  // Full breakdown of all report items for detailed cost attribution display
+  const reportItems = reportResponse.reportItems.map((ri) => ({
+    budgetCost: ri.budgetCost,
+    productCost: ri.productCost,
+    category: ri.category,
+  }))
 
   return {
     refreshRequired: false,
     customerRemaining: computeRemaining(budgetResponse.creditsTotal, budgetResponse.creditsUsed),
-    budgets: budgetResponse.items.map(toBudgetSummary),
     assignment: {
       customer: reportResponse.reportItems.flatMap((ri) =>
         ri.budgetItems.map((bi) => ({
@@ -79,10 +48,11 @@ export function toBudgetUpdatePayload(
           amount: bi.creditsUsed,
         }))
       ),
-      ...(godaddyDeduction && { godaddy: godaddyDeduction }),
+      reportItems,
     },
-    items: budgetResponse.items,
+    budgetItems: budgetResponse.items,
     budgetId: budgetResponse.budgetId,
+    sessionWasFree,
   }
 }
 

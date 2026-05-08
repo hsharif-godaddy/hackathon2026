@@ -784,7 +784,7 @@ export class MessageExecutionService {
 
       // Read back commitHash and usedFreeGrants (set above or by persistence fallback)
       const commitHash: string | null = persistenceContext.commitHash ?? null
-      const usedFreeGrants: boolean = persistenceContext.usedFreeGrants ?? false
+      let usedFreeGrants: boolean = persistenceContext.usedFreeGrants ?? false
 
       if (!loopAborted && bmsBudgetId && budgetSessionId) {
         try {
@@ -806,14 +806,32 @@ export class MessageExecutionService {
               },
               { budgetId: bmsBudgetId, sessionId: budgetSessionId },
             )
-            const { reportItems } = budgetResult
+            const { reportItems, sessionWasFree } = budgetResult
 
             const report = await budgetClient.createReport(budgetSessionId, { reportItems })
+            // BMS mode: update usedFreeGrants from cost attribution result
+            // (persistenceContext.usedFreeGrants is always false in BMS mode since
+            // deriveUsedFreeGrants returns false when budgetServiceEnabled=true)
+            usedFreeGrants = sessionWasFree
             try {
               const budget = await budgetClient.getBudget(bmsBudgetId)
+              const payload = toBudgetUpdatePayload(report, budget, sessionWasFree)
+
+              logger.info('budget.update.payload_sent', {
+                budgetId: bmsBudgetId,
+                sessionId: budgetSessionId,
+                reportId: report.reportId,
+                sessionWasFree,
+                reportItemCount: payload.assignment.reportItems.length,
+                totalBudgetCost: report.budgetCostTotal,
+                totalProductCost: report.productCostTotal,
+                categories: payload.assignment.reportItems.map(item => item.category),
+                budgetItemCount: payload.budgetItems.length,
+              })
+
               await this.publishNonTerminal(appId, conversationId, {
                 conversationId, type: 'budget_update', content: '',
-                data: toBudgetUpdatePayload(report, budget) as unknown as Record<string, unknown>,
+                data: payload as unknown as Record<string, unknown>,
                 agentName: 'system',
               })
             } catch (getBudgetErr) {
