@@ -311,6 +311,7 @@ func buildPreflightRunner(projectRoot string) *preflight.Runner {
 					{Check: &checks.ShellEnvConflictCheck{}},
 					{Check: &checks.GoProxyCheck{}, Fixer: &fixers.GoProxyFixer{}},
 					{Check: &checks.LCPEnvCheck{}, Fixer: &fixers.LCPEnvFixer{}},
+					{Check: &checks.EvalProbeEnvCheck{}, Fixer: &fixers.EvalProbeEnvFixer{}},
 					{Check: &checks.AWSSSOCheck{}, Fixer: &fixers.AWSSSOFixer{}},
 					{Check: &checks.GasketDevCertsCheck{}},
 					{Check: &checks.S2SCertsCheck{}, Fixer: &fixers.S2SCertsFixer{}},
