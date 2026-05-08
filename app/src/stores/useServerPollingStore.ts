@@ -23,24 +23,250 @@ enableMapSet()
  * @param siteId - The site ID to generate token for
  * @returns Site-scoped JWT token or null if unavailable
  */
-// Bootstrap-fetch retry helper. Extracted from `_checkUrlHealth` so the
-// caller can bind the result to `const` rather than mutating two `let`
-// bindings (per the project guidelines on minimizing mutable state).
+// Bootstrap-race prevention: ensure the managed customer process (vite/node)
+// is actually serving requests before issuing the auth-bearing bootstrap
+// fetch. dev-supervisor's /airo/health is JWT-excluded but PASSIVE — it
+// reports the current process state without triggering a wake-up.
 //
-// Retries up to MAX_BOOTSTRAP_ATTEMPTS times. Only 5xx and network/
-// timeout errors are retried — 4xx and `redirect: 'manual'` opaque
-// redirects (status 0) are definitive and break out of the loop
-// immediately to avoid wasting backoff time.
+// See dev-supervisor/internal/proxy/http/health.go for the response shape:
+//   - 200 {"status":"healthy"}                    → vite probe returned 2xx;
+//                                                    actually ready to serve
+//   - 200 {"status":"healthy","reason":"autostart"} → process stopped but
+//                                                    autostart-capable; the
+//                                                    next authed request to
+//                                                    `/` will trigger
+//                                                    `handleAutoStart` and
+//                                                    block until vite binds
+//   - 503 {"status":"unhealthy",...}              → starting transition /
+//                                                    target unreachable
+//
+// Strategy:
+//   1. Poll /airo/health for up to HEALTH_POLL_TIMEOUT_MS.
+//   2. If we ever see "actually ready" (200 with no `reason: autostart`),
+//      return true.
+//   3. If we see `reason: autostart`, the process is hibernated. Issue a
+//      blocking `HEAD /` with the JWT — this routes through dev-supervisor's
+//      RequestRouter (router.go:22-30), triggers handleAutoStart
+//      (autostart.go:22), and the request stays open until vite is ready.
+//      Server-side deadline is 60s for state transition + 30s for TCP
+//      probe = 90s total worst case (autostart.go:66, autostart.go:17).
+//      When the HEAD returns 2xx, dev-supervisor has forwarded the
+//      original request to vite (autostart.go:105) and the response is
+//      vite's actual response — guaranteeing readiness. (We don't
+//      re-poll /airo/health afterward; the wake-up response IS the
+//      readiness signal.)
+//   4. If we never see 200 within the deadline (only 503 / errors), the
+//      process is in transition; return false and let the outer polling
+//      cycle retry.
+//
+// Why blocking wake-up vs fire-and-forget poll: dev-supervisor's
+// handleAutoStart already implements the "block until ready" semantics for
+// us. Polling concurrently with it would create two in-flight requests to
+// `/` (handled gracefully via ErrAlreadyStarting, but wasteful) and add a
+// second source of truth. Letting one request both trigger and confirm
+// keeps the contract simple.
+//
+// Why this isn't unifiable into a single bootstrap call: the auth bootstrap
+// in _checkUrlHealth needs a HEAD request that sets the cross-domain
+// `preview_auth` cookie via Set-Cookie. The wake-up here uses the same JWT
+// but conceptually has a different job ("trigger autostart"). Once vite is
+// up, the bootstrap proceeds; if its first try happens to succeed, the
+// cookie is set in one round trip rather than two — but the wake-up
+// guarantees that the bootstrap doesn't race against an idle process.
 //
 // Exported for unit tests in useServerPollingStore.test.ts.
+export const HEALTH_POLL_TIMEOUT_MS = 5000
+export const HEALTH_POLL_INTERVAL_MS = 250
+export const HEALTH_PROBE_TIMEOUT_MS = 2000
+// Hibernation wake-up uses dev-supervisor's autostart-and-block path.
+// dev-supervisor's own budget is two-phase:
+//   1. autostart.go:66 — wait up to 60s for ProcessState → Running
+//   2. autostart.go:17 (tcpProbeDeadline) — after Running, probe backend
+//      TCP for up to 30s before forwarding
+// Total worst-case server-side: 90s. We use 100s here to give a small
+// client-side margin (network RTT, scheduling jitter). Using a value
+// shorter than ~95s would cause the AbortController to cancel the HEAD
+// while dev-supervisor is still legitimately working — exactly the
+// failure mode this PR exists to fix.
+export const WAKEUP_TIMEOUT_MS = 100000
+
+// Bootstrap-fetch retry — sets the cross-domain `preview_auth` cookie via
+// dev-supervisor's `/airo/auth-check` endpoint, with a small retry budget
+// for transient failures. CRITICAL: the bootstrap targets `/airo/auth-check`
+// (not the root `/`) so the request bypasses dev-supervisor's RequestRouter
+// and never triggers autostart.
+//
+// Why /airo/auth-check specifically:
+//   - server.go:125 registers `/airo/auth-check` directly on the mux
+//     (not via the `/` → RequestRouter path).
+//   - JWT middleware wraps the mux, so the request goes through Bearer
+//     auth and middleware.go:130-160 queues Set-Cookie on validation.
+//   - handleAuthCheck (auth_check.go:19) writes the JSON response body
+//     immediately, FLUSHING the response. The Set-Cookie travels on the
+//     same flush — typically ~100ms total.
+//   - vite is never involved. autostart is never triggered. Cookie
+//     reaches the browser regardless of customer-process state.
+//
+// Why this matters: a previous design sent HEAD `/` for the bootstrap.
+// JWT middleware queued Set-Cookie, but the request then flowed to
+// RequestRouter → handleAutoStart, which BLOCKED the response for up
+// to 90s waiting for vite. If the client AbortController fired before
+// vite was ready, the response was never flushed and the cookie never
+// crossed the wire — even though it had been "set" in dev-supervisor's
+// in-memory header buffer. Hibernated apps systematically failed this
+// bootstrap. Switching to `/airo/auth-check` decouples cookie-set from
+// vite-readiness entirely.
+//
+// Distinct from the PR #3489 retry approach this restores: then, retry
+// was the PRIMARY mechanism for absorbing startup-race latency
+// (vite-not-yet-bound returning 502). Now, prevention (waitForViteReady)
+// handles vite-readiness as a separate concern, and the bootstrap is
+// vite-independent. Retry only catches transients in dev-supervisor
+// itself: brief 5xx, network blip, JWKS-fetch hiccup — things that
+// recover within a few attempts.
+//
+// Only 5xx and network/timeout errors retry. 4xx (auth failures) and
+// status 0 (opaque-redirect from `redirect: 'manual'`) are definitive —
+// won't recover on retry, break early to save the backoff budget.
+//
+// Sleep schedule between attempts: 250ms then 750ms (BACKOFF_BASE_MS *
+// 3^attempt; only the first two sleeps fire across 3 attempts).
+// Worst-case total: 3 × 5s timeout + 1s backoff = ~16s when fully
+// exhausted on persistent 5xx; happy path (first 200) is one round trip.
 export const MAX_BOOTSTRAP_ATTEMPTS = 3
 export const BOOTSTRAP_BACKOFF_BASE_MS = 250
 export const BOOTSTRAP_FETCH_TIMEOUT_MS = 5000
 
-export async function fetchWithRetry(
-  url: string,
+interface HealthBody {
+  status?: string
+  reason?: string
+}
+
+async function probeHealth(healthUrl: string): Promise<{ ok: boolean; body: HealthBody }> {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), HEALTH_PROBE_TIMEOUT_MS)
+  try {
+    const res = await fetch(healthUrl, {
+      method: 'GET',
+      cache: 'no-store',
+      // No credentials — /airo/health is JWT-excluded; sending cookies
+      // would just trigger a CORS preflight unnecessarily.
+      signal: controller.signal,
+    })
+    if (!res.ok) return { ok: false, body: {} }
+    // Defensive parse: if the body isn't JSON or is missing the `reason`
+    // field, treat as ready. This avoids a regression on hypothetical
+    // pre-`reason`-field dev-supervisor versions where the absence of
+    // the field is also "ready".
+    const body = await res.json().catch(() => ({}))
+    return { ok: true, body: body as HealthBody }
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
+
+async function triggerWakeup(url: string, token: string): Promise<boolean> {
+  // Use AbortSignal.timeout for the wake-up; the per-call timeout has to
+  // accommodate dev-supervisor's autostart-and-block window (~30s).
+  const wakeupController = new AbortController()
+  const timeoutId = setTimeout(() => wakeupController.abort(), WAKEUP_TIMEOUT_MS)
+  try {
+    const res = await fetch(url, {
+      method: 'HEAD',
+      cache: 'no-store',
+      // No credentials here — this is a wake-up trigger, not the cookie
+      // bootstrap. The follow-up bootstrap fetch in _checkUrlHealth uses
+      // credentials:'include' to receive the Set-Cookie header.
+      redirect: 'manual',
+      headers: { 'Authorization': `Bearer ${token}` },
+      signal: wakeupController.signal,
+    })
+    return res.ok
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
+
+export async function waitForViteReady(url: string, token: string | null): Promise<boolean> {
+  const healthUrl = new URL('/airo/health', url).toString()
+  const deadline = Date.now() + HEALTH_POLL_TIMEOUT_MS
+  while (Date.now() < deadline) {
+    try {
+      const { ok, body } = await probeHealth(healthUrl)
+      if (ok) {
+        if (body.reason !== 'autostart') {
+          // Actually ready — vite probe returned 2xx.
+          return true
+        }
+        // Hibernated. Without a token we can't trigger autostart (the
+        // wake-up HEAD requires the JWT to pass dev-supervisor's auth
+        // middleware), so bail out and let the outer polling cycle retry
+        // with a fresh token.
+        if (!token) {
+          logger.warn('server-polling.wakeup-skipped-no-token', {
+            message: 'Preview app is hibernated but no JWT available to trigger wake-up',
+            url,
+          })
+          return false
+        }
+        // Fire the blocking wake-up and treat its response as the
+        // readiness signal.
+        try {
+          const woke = await triggerWakeup(url, token)
+          if (!woke) {
+            logger.warn('server-polling.wakeup-failed', {
+              message: 'Wake-up HEAD did not return 2xx — autostart may have timed out',
+              url,
+            })
+          }
+          return woke
+        } catch (wakeupError) {
+          logger.warn('server-polling.wakeup-error', {
+            message: 'Wake-up request errored or timed out',
+            url,
+            error: wakeupError instanceof Error ? wakeupError.message : String(wakeupError),
+          })
+          return false
+        }
+      }
+      // 503 → vite is starting; keep polling until it transitions to 200.
+    } catch {
+      // Network error / abort on the health probe itself — keep polling
+      // until the deadline.
+    }
+    await new Promise(r => setTimeout(r, HEALTH_POLL_INTERVAL_MS))
+  }
+  return false
+}
+
+/**
+ * Bootstrap the cross-domain `preview_auth` cookie via /airo/auth-check.
+ *
+ * Sends a HEAD to `<previewUrl>/airo/auth-check` with the site-scoped JWT
+ * in the Authorization header. dev-supervisor's JWT middleware validates
+ * the Bearer, sets Set-Cookie on the response, and forwards to
+ * handleAuthCheck which immediately writes a 200. The response (with
+ * Set-Cookie) flushes in ~100ms — vite is never involved. See the
+ * top-of-file comment block for the full rationale.
+ *
+ * On 5xx or network/timeout error, retries up to MAX_BOOTSTRAP_ATTEMPTS
+ * with backoff. On 4xx (definitive auth failure) or status 0 (opaque
+ * redirect from `redirect: 'manual'`), breaks early.
+ *
+ * @param previewBaseUrl  Preview origin, e.g. `https://abc.preview.c4.airoapp.ai`.
+ *                        The `/airo/auth-check` path is appended internally.
+ * @param token           Site-scoped JWT, or null for unauthenticated previews.
+ *
+ * Exported for unit tests.
+ */
+export async function bootstrapWithRetry(
+  previewBaseUrl: string,
   token: string | null,
 ): Promise<{ response: Response | undefined; lastError: unknown; attempts: number }> {
+  // Construct the auth-check URL internally so callers can't accidentally
+  // point this at the root `/` (which would re-introduce the autostart
+  // dependency this PR exists to fix).
+  const authCheckUrl = new URL('/airo/auth-check', previewBaseUrl).toString()
   let response: Response | undefined
   let lastError: unknown
   let attempts = 0
@@ -49,25 +275,23 @@ export async function fetchWithRetry(
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), BOOTSTRAP_FETCH_TIMEOUT_MS)
     try {
-      response = await fetch(url, {
+      response = await fetch(authCheckUrl, {
         signal: controller.signal,
         method: 'HEAD',
         cache: 'no-store',
-        credentials: 'include', // Include cookies (once set by dev-supervisor)
-        redirect: 'manual', // Don't follow redirects to avoid CORS errors on SSO redirects
+        credentials: 'include', // Receive Set-Cookie cross-origin
+        redirect: 'manual', // Don't follow auth-failure 307s
         headers: token ? { 'Authorization': `Bearer ${token}` } : {},
       })
       if (response.ok) return { response, lastError: undefined, attempts }
       lastError = new Error(`status ${response.status}`)
-      // Only 5xx is retryable. Everything else (4xx client errors and
-      // status 0 from `redirect: 'manual'` opaque-redirects) is
-      // definitive and won't recover on retry — break to skip the
-      // rest of the backoff. The `< 500` form covers both 4xx and 0.
+      // Only 5xx is retryable. 4xx (auth failure) and status 0 (opaque
+      // redirect from `redirect: 'manual'`) are definitive and won't
+      // recover. The `< 500` form covers both.
       if (response.status < 500) break
     } catch (err) {
       lastError = err
-      // Network/timeout errors fall through to the backoff — these
-      // are transient and the next attempt may succeed.
+      // Network errors (timeout, abort, ECONNRESET) are transient — retry.
     } finally {
       clearTimeout(timeoutId)
     }
@@ -420,55 +644,75 @@ export const useServerPollingStore = create<ServerPollingStore>()(
 
     _checkUrlHealth: async (url: string, appId: string): Promise<{ healthy: boolean; cookieVerified?: boolean }> => {
       try {
-        // Cross-domain authentication bootstrap:
-        // Preview apps run on different domains (localhost or preview.c4.test-airoapp.ai)
-        // than builder app (*.dev-godaddy.com), so GoDaddy SSO cookie won't be sent.
-        //
-        // Solution: Send site-scoped JWT via Authorization header on first request.
-        // This allows dev-supervisor JWT middleware to:
-        // 1. Validate the site-scoped JWT from Authorization header
-        // 2. Verify siteId claim matches the container's SITE_ID
-        // 3. Set airo_preview cookie on preview app's domain
-        // 4. Subsequent iframe navigation uses the cookie automatically
+        // Fetch the site-scoped JWT FIRST — both phases need it. The
+        // bootstrap uses it to set the cross-domain cookie via /airo/auth-check;
+        // waitForViteReady uses it to trigger autostart on a hibernated
+        // preview. One token, two consumers, no duplicate /api/auth/token call.
         const token = await getPreviewAppToken(appId)
 
         // Debug: Log URL being checked to detect stale allocation IDs
         const urlHostname = new URL(url).hostname
         logger.debug('server-polling.health-check.url', { appId, url, hostname: urlHostname })
 
-        // Retry the bootstrap fetch up to 3 times. The first attempt
-        // commonly fails when the managed process is still starting up
-        // (Start-on-Request from auto-stopped idle apps) — dev-supervisor
-        // returns 502/503 while it waits for the process to be ready, or
-        // the managed process is still binding its port. Without retry,
-        // a single transient failure marks the server as unhealthy and
-        // the user has to manually refresh.
+        // Phase 1: cross-domain auth cookie bootstrap (vite-independent).
         //
-        // Only 5xx and network-level errors (timeouts, connection refused)
-        // get retried — 4xx, 3xx, and `redirect: 'manual'` opaque
-        // redirects are definitive responses that won't recover, so we
-        // break early to avoid wasting backoff time on hopeless cases.
+        // Sends HEAD to /airo/auth-check with the JWT. dev-supervisor's
+        // JWT middleware queues Set-Cookie; handleAuthCheck flushes the
+        // response immediately (~100ms). Crucially, /airo/auth-check is
+        // registered DIRECTLY on the mux — it does NOT pass through
+        // RequestRouter, so it does NOT trigger autostart and does NOT
+        // depend on the customer process being up.
         //
-        // Worst-case latency: 3 × 5s timeout + ~1s backoff sleeps =
-        // ~16s. Best case (first attempt 200): single round trip.
-        // Sleep schedule between attempts: 250ms then 750ms (formula:
-        // BACKOFF_BASE_MS * 3^attempt, only first two sleeps fire).
-        const { response, lastError, attempts } = await fetchWithRetry(url, token)
+        // This ordering matters: by setting the cookie before waiting for
+        // vite, we (a) fail fast on auth errors without waiting up to 90s
+        // for autostart, (b) ensure the cookie is in place before
+        // waitForViteReady's wake-up HEAD fires (so dev-supervisor's
+        // autostart-blocked response can also benefit from cookie auth
+        // if Bearer somehow becomes invalid mid-flow), and (c) let any
+        // concurrent iframe navigation (e.g. user opens preview in new
+        // tab during loading) succeed earlier.
+        //
+        // Retry budget (defense in depth): brief 5xx from dev-supervisor,
+        // network blip, JWKS-fetch hiccup. 4xx and opaque redirects
+        // break early — see bootstrapWithRetry comment.
+        const { response, lastError, attempts } = await bootstrapWithRetry(url, token)
 
-        // Validate response status
-        // Only 2xx is healthy - redirects indicate auth failure, 4xx/5xx are errors.
-        // Log at warn (not debug): a failed bootstrap means the user-visible
-        // preview never becomes "ready" without operator visibility at default
-        // LOG_LEVEL. The `attempts` field distinguishes a transient 5xx that
-        // gave up after MAX_BOOTSTRAP_ATTEMPTS from a 4xx/opaque-redirect that
-        // bailed after a single attempt — same warn event, different cause.
+        // Validate bootstrap response.
+        // 2xx = JWT validated, Set-Cookie sent. Anything else is a definitive
+        // or exhausted-transient failure. Log at warn (not debug) for
+        // operator visibility — a failed bootstrap means the user-visible
+        // preview never becomes "ready". The `attempts` field distinguishes
+        // a transient 5xx that gave up after MAX_BOOTSTRAP_ATTEMPTS from a
+        // 4xx/opaque-redirect that bailed after one attempt.
         if (!response?.ok) {
-          logger.warn('server-polling.health-check.failed', {
-            message: 'Bootstrap fetch failed',
-            attempts,
+          logger.warn('server-polling.health-check.bootstrap-failed', {
+            message: 'Cookie bootstrap failed at /airo/auth-check — auth or transient network',
             appId,
             url,
+            attempts,
+            status: response?.status,
             error: lastError instanceof Error ? lastError.message : String(lastError),
+          })
+          return { healthy: false }
+        }
+
+        // Phase 2: wait for vite to be reachable (and wake it up if it's
+        // hibernated). See waitForViteReady comment for the contract.
+        //
+        // After this PR's refactor, this gate exists ONLY to ensure the
+        // iframe will load cleanly — a blank-iframe-during-90s-autostart
+        // is bad UX. Cookie set is no longer dependent on this; it
+        // succeeded in Phase 1.
+        //
+        // Bails fast on the original "vite-starting" race (503 → keep
+        // polling). On hibernation, blocks for up to WAKEUP_TIMEOUT_MS
+        // while dev-supervisor's autostart completes.
+        const ready = await waitForViteReady(url, token)
+        if (!ready) {
+          logger.debug('server-polling.health-check.not-ready', {
+            message: 'vite not ready (poll deadline or wake-up failure)',
+            appId,
+            url,
           })
           return { healthy: false }
         }
