@@ -113,7 +113,7 @@
     "@ux/radio": "^2500.9.0",
     "@ux/select": "^2500.11.1",
     "@ux/select-input": "^2500.11.1",
-    "@ux/sibling-set": "^2500.11.1",
+    "@ux/sibling-set": "^2500.11.3",
     "@ux/skeleton": "^2500.11.1",
     "@ux/spinner": "^2500.9.0",
     "@ux/table": "^2500.11.1",

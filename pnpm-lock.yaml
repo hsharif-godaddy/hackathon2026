@@ -790,8 +790,8 @@ importers:
         specifier: 2500.11.1
         version: 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/sibling-set':
-        specifier: ^2500.11.1
-        version: 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+        specifier: ^2500.11.3
+        version: 2500.11.3(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/skeleton':
         specifier: 2500.11.1
         version: 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -7041,15 +7041,6 @@ packages:
   '@ux/short-css-vars@2500.9.0':
     resolution: {integrity: sha512-bOrq4vb0fEr+XH0r86wwgoRUtNpqvVvai/Mg6nyAxviFMnmPqIfl+Yi2K8JJsR6CuFxeGOfFxh8TajDLHE0mSQ==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/short-css-vars/-/@ux/short-css-vars-2500.9.0.tgz}
     engines: {node: '>= 18'}
-
-  '@ux/sibling-set@2500.11.1':
-    resolution: {integrity: sha512-TDE1eTP9u1gD0Uzhs29c9E7mMkdC9PSv4sMMnwL4/L/h8eC8m/qSMwY+6zGTrfMNMzClszIALGC+iwHewwsKzQ==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/sibling-set/-/@ux/sibling-set-2500.11.1.tgz}
-    engines: {node: '>= 18'}
-    deprecated: This component has been deprecated since v2500. Please consider using the  component instead.
-    peerDependencies:
-      prop-types: ^15.7.2
-      react: 19.1.0
-      react-dom: 19.1.0
 
   '@ux/sibling-set@2500.11.3':
     resolution: {integrity: sha512-0kqOvC46Orz8vAGXxD60oMCJ7F2xyFdB5g+Qw+/Ja3QW9DY0x8co9QFAxBOeA8AjvJbysjafMtFG+B9vznEuMg==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/sibling-set/-/@ux/sibling-set-2500.11.3.tgz}
@@ -20528,7 +20519,7 @@ snapshots:
       '@ux/button': 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/icon': 2500.11.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/intents': 2500.9.0
-      '@ux/sibling-set': 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/sibling-set': 2500.11.3(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/text': 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       classnames: 2.5.1
       prop-types: 15.8.1
@@ -20781,16 +20772,6 @@ snapshots:
   '@ux/short-css-vars@2500.9.0':
     dependencies:
       string-hash: 1.1.3
-
-  '@ux/sibling-set@2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
-    dependencies:
-      '@ux/intents': 2500.9.0
-      '@ux/label': 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/text': 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      classnames: 2.5.1
-      prop-types: 15.8.1
-      react: 19.1.0
-      react-dom: 19.1.0(react@19.1.0)
 
   '@ux/sibling-set@2500.11.3(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
