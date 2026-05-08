@@ -1253,22 +1253,40 @@ Please retry your tool call with corrected input formatting.`
       throw error
     }
 
+    // Preserve getter evaluation order: textStream → response → baseStream.
+    // Accessing .response triggers the AI SDK's internal consumeStream() →
+    // teeStream() which locks the current baseStream fork, so .response must
+    // be read BEFORE .baseStream to ensure baseStream captures the post-tee
+    // unlocked fork.
+    const textStream = streamResult.textStream
+    const responsePromise = streamResult.response
+    // Attach a rejection handler at the library boundary so callers that
+    // don't attach their own handler can't leak an unhandled rejection and
+    // trip the agents service's global handler. Transports are expected to
+    // consume this promise non-blockingly (see
+    // `@airo/ai-transport` → `captureResponseMetadata`); this catch is the
+    // backstop. Abort-triggered rejections are silent; everything else is
+    // logged at warn so HTTP-layer failures that surface only through
+    // `response` (ECONNRESET, TLS, 502 before body) remain diagnosable.
+    void Promise.resolve(responsePromise).catch((err: unknown) => {
+      const e = err as { name?: string; code?: string } | null | undefined
+      const isAbort = e?.name === 'AbortError' || e?.code === 'ABORT_ERR'
+      if (isAbort) return
+      logger.warn('agent.stream.response_promise.rejected', {
+        error: err instanceof Error ? err.message : String(err),
+      })
+    })
+    const baseStream = (streamResult as any).baseStream
+
     return {
-      // Provide the text stream for the caller to iterate over
-      // ToolLoopAgent internal types are provider-specific
-      textStream: streamResult.textStream,
+      textStream,
 
-      // Expose the response metadata promise (includes headers from GoCode/LLM provider)
-      // IMPORTANT: must be evaluated BEFORE baseStream — accessing .response triggers
-      // the AI SDK's internal consumeStream() → teeStream() which locks the current
-      // this.baseStream fork. Evaluating it first ensures baseStream captures the
-      // post-tee unlocked fork.
-      response: streamResult.response,
+      // Response metadata promise (includes headers from GoCode/LLM provider)
+      response: responsePromise,
 
-      // Provide access to the raw baseStream for real-time tool call events
-      // baseStream exists at runtime but is not in the AI SDK type definitions
-
-      baseStream: (streamResult as any).baseStream,
+      // Raw baseStream for real-time tool call events. Exists at runtime but
+      // not in the AI SDK type definitions.
+      baseStream,
 
       // Function to get final result after streaming is complete
       getFinalResult: async () => {

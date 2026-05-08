@@ -18,6 +18,7 @@ import type { ExecutionStep } from '@airo/ai-lib/budget'
 import { classifyError, BudgetExceededError, isBudgetExceededAPIError, containsBudgetExceededPattern, createLogger } from '@airo/ai-common'
 import { isBudgetServiceError, mapBudgetErrorToResponse } from '@airo/shared/budget'
 import { StreamPartProcessor } from './stream-part-processor.js'
+import { captureResponseMetadata, awaitResponseMetadata } from './response-metadata-capture.js'
 import { redactSkillOutput } from './redact-skill-output.js'
 import type { AgentsCollection } from '@airo/ai-lib'
 import type { HandoffStateManager } from '@airo/ai-lib'
@@ -2177,36 +2178,10 @@ export class WebSocketServer {
     return isNetworkErrorName || hasNetworkMessage
   }
 
-  /**
-   * Try to extract response metadata (headers, id, modelId) from a stream result.
-   * Returns whatever was resolved; never throws or blocks indefinitely.
-   */
-  private async extractResponseMetadata(streamResult: any): Promise<{
-    headers?: Record<string, string>
-    responseId?: string
-    modelId?: string
-  }> {
-    if (!streamResult?.response) return {}
-    let timer: ReturnType<typeof setTimeout> | undefined
-    try {
-      const res = await Promise.race([
-        streamResult.response,
-        new Promise(resolve => {
-          timer = setTimeout(resolve, 500)
-          timer.unref()
-        }),
-      ])
-      if (!res) return {}
-      return {
-        headers: res.headers,
-        responseId: res.id,
-        modelId: res.modelId,
-      }
-    } catch {
-      return {}
-    } finally {
-      if (timer) clearTimeout(timer)
-    }
+  /** Delegates to the shared `awaitResponseMetadata` helper. Preserved as a
+   * method for callers inside this class that expect `this.extractResponseMetadata`. */
+  private extractResponseMetadata(streamResult: any) {
+    return awaitResponseMetadata(streamResult?.response)
   }
 
   /**
@@ -3885,16 +3860,11 @@ export class WebSocketServer {
         })
       })
 
-      if (streamResult.response) {
-        streamResult.response.then(
-          (res: any) => {
-            capturedResponseHeaders = res?.headers
-            capturedResponseId = res?.id
-            capturedModelId = res?.modelId
-          },
-          () => { /* response promise rejected — headers unavailable */ }
-        )
-      }
+      captureResponseMetadata(streamResult.response, (meta) => {
+        capturedResponseHeaders = meta.headers
+        capturedResponseId = meta.responseId
+        capturedModelId = meta.modelId
+      })
 
       // Check if this is a tool validation error with mock stream
       if (streamResult && (streamResult as any).isToolValidationError) {

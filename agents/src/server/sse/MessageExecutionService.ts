@@ -1,5 +1,6 @@
 import type { ConversationEventChannel, ConversationMessage, PersistenceStreamingEvent, ConversationContext } from '@airo/ai-transport'
-import { StreamPartProcessor, executeAgentLoop } from '@airo/ai-transport'
+import { StreamPartProcessor, executeAgentLoop, captureResponseMetadata, awaitResponseMetadata } from '@airo/ai-transport'
+import type { ResponseMetadata } from '@airo/ai-transport'
 import { BudgetExceededError, containsBudgetExceededPattern } from '@airo/ai-common'
 import type { AgentsMessagePersistence } from '../conversation-persistence.js'
 import type { EventStreamRegistry } from './EventStreamRegistry.js'
@@ -235,7 +236,7 @@ export class MessageExecutionService {
       executionContext: Record<string, unknown>
       streamState: ActiveStream
     },
-  ): Promise<{ accumulatedContent: string; currentStep: number; finalResult: any; finishReason: string }> {
+  ): Promise<{ accumulatedContent: string; currentStep: number; finalResult: any; finishReason: string; responseMetadata: ResponseMetadata }> {
     const { conversationId, appId, siteId, sseSocketId, abortSignal, streamingEvents, executionContext, streamState } = opts
 
     const pendingPublishes: Promise<unknown>[] = []
@@ -379,6 +380,14 @@ export class MessageExecutionService {
       abortSignal,
     })
 
+    // Eagerly capture LLM provider response metadata (response id, model id,
+    // headers like x-correlation-id) for observability parity with WS. Rejection
+    // is suppressed at the ai-lib boundary, so this is fire-and-forget.
+    let capturedMetadata: ResponseMetadata = {}
+    captureResponseMetadata(streamResult.response, (meta) => {
+      capturedMetadata = meta
+    })
+
     const baseStream = streamResult.baseStream
     if (baseStream) {
       const reader: ReadableStreamDefaultReader = (baseStream as ReadableStream).getReader()
@@ -414,8 +423,22 @@ export class MessageExecutionService {
       logger.warn('sse.execution.getFinalResult.failed', { appId, conversationId, ...errorFields(err) })
     }
 
+    // Ensure metadata is available for terminal telemetry even if the eager
+    // capture hasn't resolved yet (500ms timeout). Falls back to {} on reject.
+    if (!capturedMetadata.headers && !capturedMetadata.responseId) {
+      capturedMetadata = await awaitResponseMetadata(streamResult.response)
+    }
+
+    logger.info('sse.llm.response.metadata', {
+      appId, conversationId,
+      responseId: capturedMetadata.responseId,
+      modelId: capturedMetadata.modelId,
+      correlationId: capturedMetadata.headers?.['x-correlation-id'],
+      finishReason,
+    })
+
     const { accumulatedContent, currentStep } = processor.getState()
-    return { accumulatedContent, currentStep, finalResult, finishReason }
+    return { accumulatedContent, currentStep, finalResult, finishReason, responseMetadata: capturedMetadata }
   }
 
   async execute(params: ExecuteParams): Promise<void> {

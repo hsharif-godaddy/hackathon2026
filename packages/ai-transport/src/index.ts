@@ -85,6 +85,10 @@ export type {
   StateManagerLogger
 } from './connection-state-manager.js'
 
+// LLM Response Metadata Capture (shared by WS + SSE)
+export { captureResponseMetadata, awaitResponseMetadata } from './response-metadata-capture.js'
+export type { ResponseMetadata } from './response-metadata-capture.js'
+
 // SSE Formatting
 export { formatSSEEvent, safeFormatSSEEvent } from './sse-format.js'
 export type { SSEFormatLogger } from './sse-format.js'

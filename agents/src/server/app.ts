@@ -7,6 +7,7 @@ setLoggerFactory((moduleName) => Logger.create({ component: `ai-lib.${moduleName
 
 // Initialize OpenTelemetry with Langfuse (imported from instrumentation.ts)
 import './instrumentation.js';
+import { handleUnhandledRejection } from './unhandled-rejection-handler.js';
 
 // Initialize Elastic APM
 import apmAgent from 'elastic-apm-node';
@@ -857,13 +858,9 @@ process.on('uncaughtException', (error) => {
   shutdown();
 });
 
-process.on('unhandledRejection', (reason, promise) => {
-  logger.error('server.unhandled.rejection', {
-    reason: String(reason),
-    promise: String(promise),
-  });
-  shutdown();
-});
+process.on('unhandledRejection', (reason, promise) =>
+  handleUnhandledRejection(reason, promise, { logger, shutdown })
+);
 
 // Start the application
 if (import.meta.url === `file://${process.argv[1]}`) {
