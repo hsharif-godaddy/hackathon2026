@@ -10,25 +10,43 @@
  */
 import { test, expect } from '@playwright/test';
 
-import { deleteAllSitesViaAPI } from '../helpers/api';
+import { deleteAppsWithPrefix, evictOldestE2eAppsToFitLimit } from '../helpers/api';
 import { handleSsoLogin, ensureAuthenticated } from '../helpers/auth';
-import { LONG_TIMEOUT, DEFAULT_TIMEOUT, PREVIEW_TIMEOUT, AI_RESPONSE_TIMEOUT_MS, CHAT_INPUT_TIMEOUT, getSpecPrefix } from '../helpers/constants';
+import { LONG_TIMEOUT, DEFAULT_TIMEOUT, PREVIEW_TIMEOUT, AI_RESPONSE_TIMEOUT_MS, CHAT_INPUT_TIMEOUT, E2E_NO_DELETE, getSpecPrefix } from '../helpers/constants';
 import { dismissOverlays, logTestResult, logTestStart, waitForDevelopPage, waitForChatInput } from '../helpers/ui';
 
+/** Spec prefixes used by `getSpecPrefix(...)` calls in this describe block. */
+const SPEC_PREFIXES = ['media'] as const;
+
 test.describe('Develop Page - Media Tab', () => {
-  test.beforeEach(async ({}, testInfo) => {
+  test.beforeEach(async ({ page }, testInfo) => {
     logTestStart(testInfo);
+    if (!E2E_NO_DELETE) {
+      await page.goto('/');
+      await evictOldestE2eAppsToFitLimit(page).catch(() => {});
+    }
   });
 
   test.afterEach(async ({ page }, testInfo) => {
     await logTestResult(page, testInfo);
 
+    if (E2E_NO_DELETE) {
+      console.log('🧹 Cleanup skipped (E2E_NO_DELETE=true)');
+      return;
+    }
+
     console.log('🧹 Cleanup...');
     try {
       await page.goto('/apps');
-      await deleteAllSitesViaAPI(page);
-    } catch {
-      console.log('  ⚠ Cleanup skipped');
+      for (const name of SPEC_PREFIXES) {
+        try {
+          await deleteAppsWithPrefix(page, getSpecPrefix(name));
+        } catch (err) {
+          console.error(`  Cleanup of prefix '${name}' failed:`, err);
+        }
+      }
+    } catch (err) {
+      console.error('  Cleanup failed:', err);
     }
   });
 
@@ -159,11 +177,9 @@ test.describe('Develop Page - Media Tab', () => {
     await waitForChatInput(page);
     console.log('  ✓ Chat tab restored');
 
-    // ========================================
-    // CLEANUP
-    // ========================================
-    console.log('🧹 Cleanup: Deleting test app...');
-    await deleteAllSitesViaAPI(page, `${getSpecPrefix('media')}`);
+    // Cleanup runs in test.afterEach above (per-prefix delete). The previous
+    // inline call here was redundant — afterEach found 0 apps to delete after
+    // this test ran the inline cleanup first.
     console.log('✅ Test complete');
   });
 

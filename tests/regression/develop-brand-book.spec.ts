@@ -12,18 +12,41 @@
  */
 import { test, expect } from '@playwright/test';
 
-import { deleteAllSitesViaAPI } from '../helpers/api';
+import { deleteAppsWithPrefix, evictOldestE2eAppsToFitLimit } from '../helpers/api';
 import { handleSsoLogin, ensureAuthenticated } from '../helpers/auth';
-import { LONG_TIMEOUT, DEFAULT_TIMEOUT, AI_RESPONSE_TIMEOUT_MS, getSpecPrefix } from '../helpers/constants';
+import { LONG_TIMEOUT, DEFAULT_TIMEOUT, AI_RESPONSE_TIMEOUT_MS, E2E_NO_DELETE, getSpecPrefix } from '../helpers/constants';
 import { dismissOverlays, logTestResult, logTestStart, waitForDevelopPage } from '../helpers/ui';
 
+/** Spec prefixes used by `getSpecPrefix(...)` calls in this describe block. */
+const SPEC_PREFIXES = ['brand-book'] as const;
+
 test.describe('Brand Book Tab', () => {
-  test.beforeEach(async ({}, testInfo) => {
+  test.beforeEach(async ({ page }, testInfo) => {
     logTestStart(testInfo);
+    if (!E2E_NO_DELETE) {
+      await page.goto('/');
+      await evictOldestE2eAppsToFitLimit(page).catch(() => {});
+    }
   });
 
   test.afterEach(async ({ page }) => {
-    await deleteAllSitesViaAPI(page).catch(() => {});
+    if (E2E_NO_DELETE) {
+      console.log('🧹 Cleanup skipped (E2E_NO_DELETE=true)');
+      return;
+    }
+
+    try {
+      await page.goto('/apps');
+      for (const name of SPEC_PREFIXES) {
+        try {
+          await deleteAppsWithPrefix(page, getSpecPrefix(name));
+        } catch (err) {
+          console.error(`  Cleanup of prefix '${name}' failed:`, err);
+        }
+      }
+    } catch (err) {
+      console.error('  Cleanup failed:', err);
+    }
   });
 
   test('Brand Book tab switch and content render', async ({ page }, testInfo) => {

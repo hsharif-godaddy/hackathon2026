@@ -11,14 +11,21 @@
  */
 import { test, expect } from '@playwright/test';
 
-import { deleteAllSitesViaAPI } from '../helpers/api';
+import { deleteAppsWithPrefix, evictOldestE2eAppsToFitLimit } from '../helpers/api';
 import { handleSsoLogin, ensureAuthenticated } from '../helpers/auth';
-import { LONG_TIMEOUT, DEFAULT_TIMEOUT, AI_RESPONSE_TIMEOUT_MS, getSpecPrefix } from '../helpers/constants';
+import { LONG_TIMEOUT, DEFAULT_TIMEOUT, AI_RESPONSE_TIMEOUT_MS, E2E_NO_DELETE, getSpecPrefix } from '../helpers/constants';
 import { dismissOverlays, logTestResult, logTestStart, waitForDevelopPage } from '../helpers/ui';
 
+/** Spec prefixes used by `getSpecPrefix(...)` calls in this describe block. */
+const SPEC_PREFIXES = ['edit-interactions', 'unified-search'] as const;
+
 test.describe('Edit Interactions', () => {
-  test.beforeEach(async ({}, testInfo) => {
+  test.beforeEach(async ({ page }, testInfo) => {
     logTestStart(testInfo);
+    if (!E2E_NO_DELETE) {
+      await page.goto('/');
+      await evictOldestE2eAppsToFitLimit(page).catch(() => {});
+    }
   });
 
   test('Edit mode toggle', async ({ page }) => {
@@ -247,12 +254,23 @@ test.describe('Edit Interactions', () => {
   test.afterEach(async ({ page }, testInfo) => {
     await logTestResult(page, testInfo);
 
+    if (E2E_NO_DELETE) {
+      console.log('Cleanup skipped (E2E_NO_DELETE=true)');
+      return;
+    }
+
     console.log('Cleanup...');
     try {
       await page.goto('/apps');
-      await deleteAllSitesViaAPI(page);
-    } catch {
-      console.log('  Cleanup skipped');
+      for (const name of SPEC_PREFIXES) {
+        try {
+          await deleteAppsWithPrefix(page, getSpecPrefix(name));
+        } catch (err) {
+          console.error(`  Cleanup of prefix '${name}' failed:`, err);
+        }
+      }
+    } catch (err) {
+      console.error('  Cleanup failed:', err);
     }
   });
 });

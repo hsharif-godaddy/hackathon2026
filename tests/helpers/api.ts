@@ -1,11 +1,21 @@
 import type { Page, APIRequestContext } from '@playwright/test';
-import { DEPLOYMENT_POLL_INTERVAL_MS, DEPLOYMENT_TIMEOUT_MS } from './constants';
+import { DEPLOYMENT_POLL_INTERVAL_MS, DEPLOYMENT_TIMEOUT_MS, MAX_TEST_APPS, TEST_APP_BUFFER } from './constants';
 
 interface SiteInfo {
   id: string;
   name?: string;
   initial_prompt?: string;
+  /** ISO8601 timestamp from GET /api/sites — used to find the oldest apps for eviction. */
+  created_at?: string;
 }
+
+/**
+ * Substring that every test-created app's `name` or `initial_prompt` carries
+ * via `getSpecPrefix(...)` in `tests/helpers/constants.ts` — always
+ * `[e2e:<spec>:<salt>]`. Used by the eviction guard to identify test-owned
+ * apps so we never touch non-test apps in the same account.
+ */
+const E2E_PREFIX_MARKER = '[e2e:';
 
 interface DeploymentPollResult {
   success: boolean;
@@ -60,7 +70,7 @@ export async function deleteAppsWithPrefix(page: Page, prefix: string): Promise<
       const response = await fetch('/api/sites');
       if (!response.ok) return { deletedCount: 0, error: `API error: ${response.status}` };
 
-      const sites = await response.json() as Array<{ id: string; name?: string; initial_prompt?: string }>;
+      const sites = await response.json() as SiteInfo[];
       if (!Array.isArray(sites) || sites.length === 0) return { deletedCount: 0 };
 
       const toDelete = sites.filter((site) => {
@@ -86,60 +96,124 @@ export async function deleteAppsWithPrefix(page: Page, prefix: string): Promise<
     console.log(`Could not delete apps with prefix '${prefix}': ${result.error}`);
   } else if (result.deletedCount > 0) {
     console.log(`Deleted ${result.deletedCount} app(s) with prefix: ${prefix}`);
+  } else {
+    // Log the zero case so a mistyped SPEC_PREFIXES entry is distinguishable
+    // from "cleanup ran and matched nothing" when investigating orphans.
+    console.log(`No apps matched prefix: ${prefix}`);
   }
 
   return result.deletedCount;
 }
 
 /**
- * Delete all test sites via API using the browser's authenticated context
+ * Pre-flight guard for the mgmt-airo "Maximum N apps per system" cap. If the
+ * test account has accumulated e2e-tagged apps close to that hard cap, evict
+ * the oldest e2e apps so this run has room to create new ones. Compensates
+ * for prior cleanup failures (test crashes, network blips in afterEach) that
+ * leave orphans behind across runs — without this, accumulated orphans
+ * eventually trip APP_LIMIT_EXCEEDED and break every future run.
+ *
+ * Only apps whose `name` or `initial_prompt` contains `[e2e:` are eligible —
+ * non-test apps in the account are never touched. Sorted by `created_at`
+ * ascending so the oldest go first.
+ *
+ * Trigger: total sites visible to this JWT >= (MAX_TEST_APPS - TEST_APP_BUFFER).
+ * On trigger we delete enough oldest e2e apps to land at threshold - 1.
+ *
+ * No-op (returns 0) when below the threshold or when the GET fails — better
+ * to let the test surface the real auth/network error than swallow it here.
  */
-export async function deleteAllSitesViaAPI(page: Page): Promise<number> {
-  console.log('🧹 Cleaning up test sites via API...');
+export async function evictOldestE2eAppsToFitLimit(
+  page: Page,
+  opts: { threshold?: number } = {},
+): Promise<number> {
+  const threshold = opts.threshold ?? (MAX_TEST_APPS - TEST_APP_BUFFER);
 
-  const result = await page.evaluate(async () => {
+  const result = await page.evaluate(async ({ thresholdValue, marker }) => {
     try {
       const response = await fetch('/api/sites');
       if (!response.ok) {
-        return { error: `Could not fetch sites: ${response.status}`, deletedCount: 0 };
+        return { evicted: 0, fetchError: `GET /api/sites returned ${response.status}` };
+      }
+      const sites = await response.json() as SiteInfo[];
+      if (!Array.isArray(sites)) {
+        return { evicted: 0, fetchError: 'GET /api/sites did not return an array' };
       }
 
-      const sites = await response.json();
-      if (!Array.isArray(sites) || sites.length === 0) {
-        return { message: 'No sites found to clean up', deletedCount: 0 };
+      const total = sites.length;
+      if (total < thresholdValue) {
+        return { evicted: 0, total, e2eCount: 0, skipped: true };
       }
 
-      let deletedCount = 0;
+      const e2eApps = sites.filter((site) => {
+        const haystack = [site.name, site.initial_prompt].filter(Boolean).join(' ');
+        return haystack.includes(marker);
+      });
+
+      // Oldest first. Sites without `created_at` (or with malformed timestamps
+      // that Date.parse returns NaN for) sort to the end as "newest unknown",
+      // so we don't accidentally evict apps with broken timestamps before
+      // known-old ones. Without the NaN guard the comparator returns NaN
+      // and Array.sort treats it as 0 — broken-timestamp apps end up in
+      // random positions instead of at the end.
+      e2eApps.sort((a, b) => {
+        const parseOrInf = (s: string | undefined): number => {
+          if (!s) return Number.POSITIVE_INFINITY;
+          const t = Date.parse(s);
+          return isNaN(t) ? Number.POSITIVE_INFINITY : t;
+        };
+        return parseOrInf(a.created_at) - parseOrInf(b.created_at);
+      });
+
+      // Land at `threshold - 1` so the create call after this guard has room.
+      const evictTarget = total - thresholdValue + 1;
+      const toEvict = e2eApps.slice(0, evictTarget);
+
+      let evicted = 0;
       const errors: string[] = [];
-
-      for (const site of sites) {
-        try {
-          const deleteResponse = await fetch(`/api/sites/${site.id}`, { method: 'DELETE' });
-          if (deleteResponse.ok) {
-            deletedCount++;
-          } else {
-            errors.push(`Failed to delete ${site.id}: ${deleteResponse.status}`);
-          }
-        } catch (err) {
-          errors.push(`Error deleting ${site.id}: ${String(err)}`);
+      for (const site of toEvict) {
+        const deleteResponse = await fetch(`/api/sites/${site.id}`, { method: 'DELETE' });
+        if (deleteResponse.ok) {
+          evicted++;
+        } else {
+          errors.push(`${site.id}: ${deleteResponse.status}`);
         }
       }
 
-      return { deletedCount, total: sites.length, errors };
+      return {
+        evicted,
+        total,
+        e2eCount: e2eApps.length,
+        wanted: evictTarget,
+        errors,
+      };
     } catch (err) {
-      return { error: String(err), deletedCount: 0 };
+      return { evicted: 0, fetchError: String(err) };
     }
-  });
+  }, { thresholdValue: threshold, marker: E2E_PREFIX_MARKER });
 
-  if ('error' in result && result.error) {
-    console.log(`⚠️ ${result.error}`);
-  } else if ('message' in result && result.message) {
-    console.log(`⚠️ ${result.message}`);
-  } else {
-    console.log(`🎯 API cleanup completed: ${result.deletedCount}/${result.total} sites deleted`);
+  if ('fetchError' in result && result.fetchError) {
+    console.log(`⚠️ App-limit guard skipped: ${result.fetchError}`);
+    return 0;
   }
-
-  return result.deletedCount || 0;
+  if ('skipped' in result && result.skipped) {
+    return 0;
+  }
+  const { evicted = 0, total = 0, e2eCount = 0, wanted = 0, errors = [] } = result;
+  if (evicted < wanted) {
+    console.log(
+      `⚠️ App-limit guard: evicted ${evicted}/${wanted} oldest e2e apps ` +
+      `(total=${total}, e2eCount=${e2eCount}, threshold=${threshold}). ` +
+      `Test may still hit APP_LIMIT_EXCEEDED.` +
+      (errors.length > 0 ? ` Delete errors: ${errors.join('; ')}` : ''),
+    );
+  } else {
+    console.log(
+      `🧹 App-limit guard: evicted ${evicted} oldest e2e app(s) ` +
+      `(total=${total}, e2eCount=${e2eCount}, threshold=${threshold})`,
+    );
+  }
+  return evicted;
 }
 
 /** Terminal deployment statuses that should stop polling */

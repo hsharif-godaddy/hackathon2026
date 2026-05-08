@@ -9,9 +9,9 @@
  */
 import { expect, test, type Page } from '@playwright/test';
 
-import { deleteAllSitesViaAPI } from '../helpers/api';
+import { deleteAppsWithPrefix, evictOldestE2eAppsToFitLimit } from '../helpers/api';
 import { handleSsoLogin } from '../helpers/auth';
-import { DEFAULT_TIMEOUT, LONG_TIMEOUT, getSpecPrefix } from '../helpers/constants';
+import { DEFAULT_TIMEOUT, E2E_NO_DELETE, LONG_TIMEOUT, getSpecPrefix } from '../helpers/constants';
 import { dismissOverlays, logTestResult, logTestStart, waitForDevelopPage } from '../helpers/ui';
 
 const ARCHIVE_STATUS_GLOB = '**/api/sites/*/archive-status**';
@@ -134,9 +134,16 @@ async function installArchiveRestoreFailThenRetryMocks(page: Page, appId: string
  * route mocks entirely. Once green locally, drop the .skip and run
  * regression in CI to confirm.
  */
+/** Spec prefixes used by `getSpecPrefix(...)` calls in this describe block. */
+const SPEC_PREFIXES = ['archive-restore', 'archive-retry'] as const;
+
 test.describe.skip('Cold archive restore', () => {
-  test.beforeEach(async ({}, testInfo) => {
+  test.beforeEach(async ({ page }, testInfo) => {
     logTestStart(testInfo);
+    if (!E2E_NO_DELETE) {
+      await page.goto('/');
+      await evictOldestE2eAppsToFitLimit(page).catch(() => {});
+    }
   });
 
   test('shows restoring UI when archive-status reports archived and restore job is in progress', async ({ page }) => {
@@ -210,10 +217,21 @@ test.describe.skip('Cold archive restore', () => {
     await unrouteArchiveMocks(page);
     await logTestResult(page, testInfo);
 
+    if (E2E_NO_DELETE) {
+      console.log('Cleanup skipped (E2E_NO_DELETE=true)');
+      return;
+    }
+
     console.log('Cleanup...');
     try {
       await page.goto('/apps');
-      await deleteAllSitesViaAPI(page);
+      for (const name of SPEC_PREFIXES) {
+        try {
+          await deleteAppsWithPrefix(page, getSpecPrefix(name));
+        } catch (err) {
+          console.error(`  Cleanup of prefix '${name}' failed:`, err);
+        }
+      }
     } catch (err) {
       console.error('  Cleanup failed:', err);
     }

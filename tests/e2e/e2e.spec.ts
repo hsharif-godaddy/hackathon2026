@@ -27,12 +27,13 @@
  */
 import { test, expect } from '@playwright/test';
 
-import { deleteAllSitesViaAPI } from '../helpers/api';
+import { deleteAppsWithPrefix, evictOldestE2eAppsToFitLimit } from '../helpers/api';
 import { detectSsoType, handleSsoLogin, isSignInUIResult, ensureAuthenticated } from '../helpers/auth';
 import {
   AI_RESPONSE_TIMEOUT_MS,
   CHAT_INPUT_TIMEOUT,
   DEFAULT_TIMEOUT,
+  E2E_NO_DELETE,
   LONG_TIMEOUT,
   PREVIEW_TIMEOUT,
   PUBLISH_TIMEOUT_MS,
@@ -48,9 +49,24 @@ import {
   waitForDevelopPage,
 } from '../helpers/ui';
 
+/**
+ * Spec prefixes used by `getSpecPrefix(...)` calls inside this describe block.
+ * Kept in sync with the prompts in each `test()` so per-spec cleanup deletes
+ * exactly the apps THIS spec created — never another worker's apps. Add new
+ * names here whenever a new `getSpecPrefix(...)` arg is introduced below.
+ */
+const SPEC_PREFIXES = ['e2e'] as const;
+
 test.describe('E2E - Critical Path', () => {
-  test.beforeEach(async ({}, testInfo) => {
+  test.beforeEach(async ({ page }, testInfo) => {
     logTestStart(testInfo);
+    // Pre-flight guard: evict oldest e2e-tagged orphans if the test account
+    // has accumulated near the mgmt-airo cap. Skipped when E2E_NO_DELETE is
+    // set (local/dev mode) so iterations preserve apps for inspection.
+    if (!E2E_NO_DELETE) {
+      await page.goto('/');
+      await evictOldestE2eAppsToFitLimit(page).catch(() => {});
+    }
   });
 
   test('Single app happy path - create through publish', async ({ page }, testInfo) => {
@@ -424,10 +440,25 @@ test.describe('E2E - Critical Path', () => {
   test.afterEach(async ({ page }, testInfo) => {
     await logTestResult(page, testInfo);
 
+    if (E2E_NO_DELETE) {
+      console.log('Cleanup skipped (E2E_NO_DELETE=true)');
+      return;
+    }
+
     console.log('Cleanup...');
     try {
       await page.goto('/apps');
-      await deleteAllSitesViaAPI(page);
+      // Per-test cleanup: only delete apps THIS spec created. Each entry in
+      // SPEC_PREFIXES corresponds to a `getSpecPrefix(...)` call above; keep
+      // the two lists in sync when adding new test cases. Per-prefix
+      // try/catch so one failing prefix doesn't skip cleanup of the rest.
+      for (const name of SPEC_PREFIXES) {
+        try {
+          await deleteAppsWithPrefix(page, getSpecPrefix(name));
+        } catch (err) {
+          console.error(`  Cleanup of prefix '${name}' failed:`, err);
+        }
+      }
     } catch (err) {
       // A bare empty catch silently leaks the created app on every retry. Log
       // the actual error so quota/auth/schema regressions are debuggable.

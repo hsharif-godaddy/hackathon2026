@@ -19,7 +19,7 @@
  */
 import { test, expect } from '@playwright/test';
 
-import { deleteAllSitesViaAPI } from '../helpers/api';
+import { deleteAppsWithPrefix, evictOldestE2eAppsToFitLimit } from '../helpers/api';
 import { handleSsoLogin, openUserMenu, ensureAuthenticated } from '../helpers/auth';
 import {
   LONG_TIMEOUT,
@@ -28,6 +28,7 @@ import {
   PUBLISH_TIMEOUT_MS,
   AI_RESPONSE_TIMEOUT_MS,
   CHAT_INPUT_TIMEOUT,
+  E2E_NO_DELETE,
   getSpecPrefix,
 } from '../helpers/constants';
 import {
@@ -39,9 +40,16 @@ import {
   waitForChatInput,
 } from '../helpers/ui';
 
+/** Spec prefixes used by `getSpecPrefix(...)` calls in this describe block. */
+const SPEC_PREFIXES = ['develop'] as const;
+
 test.describe('Develop Page', () => {
-  test.beforeEach(async ({}, testInfo) => {
+  test.beforeEach(async ({ page }, testInfo) => {
     logTestStart(testInfo);
+    if (!E2E_NO_DELETE) {
+      await page.goto('/');
+      await evictOldestE2eAppsToFitLimit(page).catch(() => {});
+    }
   });
 
   test('Header, Preview, Chat & Navigation - Full UI Flow', async ({ page }, testInfo) => {
@@ -567,12 +575,23 @@ test.describe('Develop Page', () => {
   test.afterEach(async ({ page }, testInfo) => {
     await logTestResult(page, testInfo);
 
+    if (E2E_NO_DELETE) {
+      console.log('🧹 Cleanup skipped (E2E_NO_DELETE=true)');
+      return;
+    }
+
     console.log('🧹 Cleanup...');
     try {
       await page.goto('/apps');
-      await deleteAllSitesViaAPI(page);
-    } catch {
-      console.log('  ⚠ Cleanup skipped');
+      for (const name of SPEC_PREFIXES) {
+        try {
+          await deleteAppsWithPrefix(page, getSpecPrefix(name));
+        } catch (err) {
+          console.error(`  Cleanup of prefix '${name}' failed:`, err);
+        }
+      }
+    } catch (err) {
+      console.error('  Cleanup failed:', err);
     }
   });
 });

@@ -16,12 +16,13 @@
  */
 import { test, expect } from '@playwright/test';
 
-import { deleteAllSitesViaAPI } from '../helpers/api';
+import { deleteAppsWithPrefix, evictOldestE2eAppsToFitLimit } from '../helpers/api';
 import { handleSsoLogin, ensureAuthenticated } from '../helpers/auth';
 import {
   AI_RESPONSE_TIMEOUT_MS,
   DEFAULT_TIMEOUT,
   DEPLOYMENT_TIMEOUT_MS,
+  E2E_NO_DELETE,
   LONG_TIMEOUT,
   PUBLISH_TIMEOUT_MS,
   getSpecPrefix,
@@ -36,9 +37,16 @@ import {
   waitForDevelopPage,
 } from '../helpers/ui';
 
+/** Spec prefixes used by `getSpecPrefix(...)` calls in this describe block. */
+const SPEC_PREFIXES = ['publish', 'publish-seo', 'publish-dns-conflict'] as const;
+
 test.describe('Publish Flow', () => {
-  test.beforeEach(async ({}, testInfo) => {
+  test.beforeEach(async ({ page }, testInfo) => {
     logTestStart(testInfo);
+    if (!E2E_NO_DELETE) {
+      await page.goto('/');
+      await evictOldestE2eAppsToFitLimit(page).catch(() => {});
+    }
   });
 
   test('AI Auto-Publish - Create App, Deploy & Verify Live Status', async ({ page }) => {
@@ -360,12 +368,26 @@ test.describe('Publish Flow', () => {
   test.afterEach(async ({ page }, testInfo) => {
     await logTestResult(page, testInfo);
 
+    if (E2E_NO_DELETE) {
+      console.log('🧹 Cleanup skipped (E2E_NO_DELETE=true)');
+      return;
+    }
+
     console.log('🧹 Cleanup...');
     try {
       await page.goto('/apps');
-      await deleteAllSitesViaAPI(page);
-    } catch {
-      console.log('  ⚠ Cleanup skipped');
+      // Per-prefix try/catch so one prefix failing (e.g., transient 401)
+      // doesn't skip cleanup of the remaining ones — important here because
+      // SPEC_PREFIXES has 3 entries and orphans on any of them accumulate.
+      for (const name of SPEC_PREFIXES) {
+        try {
+          await deleteAppsWithPrefix(page, getSpecPrefix(name));
+        } catch (err) {
+          console.error(`  Cleanup of prefix '${name}' failed:`, err);
+        }
+      }
+    } catch (err) {
+      console.error('  Cleanup failed:', err);
     }
   });
 });

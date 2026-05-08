@@ -33,6 +33,35 @@ export const GO_LIVE_MODAL_TIMEOUT = 20000;
 export const APPS_GRID_PAGE_SIZE = 12;
 
 /**
+ * Hard cap enforced by mgmt-airo (returns HTTP 422 with errorCode
+ * `APP_LIMIT_EXCEEDED` from `app/src/app/api/sites/quick-create/route.ts:147-152`
+ * when create is attempted above this). The actual upstream limit is set by
+ * mgmt-airo and not configured here; 80 is the effective cap we observe and
+ * want to stay below in tests.
+ */
+export const MAX_TEST_APPS = 80;
+/**
+ * Headroom kept below {@link MAX_TEST_APPS} so parallel Playwright workers
+ * don't race the cap. Eviction triggers when the test account holds at least
+ * `(MAX_TEST_APPS - TEST_APP_BUFFER)` e2e-tagged apps.
+ */
+export const TEST_APP_BUFFER = 5;
+
+/**
+ * Skip both per-spec cleanup (afterEach `deleteAppsWithPrefix`) and the
+ * pre-flight eviction guard (beforeEach `evictOldestE2eAppsToFitLimit`)
+ * when this flag is set. Useful when iterating locally and you want the
+ * created apps to survive so you can inspect them in the UI afterward.
+ *
+ * Wired via `--no-delete` in `scripts/e2e.sh`, which exports
+ * `E2E_NO_DELETE=true`. The wrapper also defaults this to `true` for
+ * `--env=local` and `--env=dev` (so devs don't lose their apps by
+ * accident); CI environments (`pre-test`, `test`, `prod`) still clean
+ * up unless the flag is explicitly negated.
+ */
+export const E2E_NO_DELETE = process.env.E2E_NO_DELETE === 'true';
+
+/**
  * Environment configuration
  */
 export type Environment = 'local' | 'dev' | 'pre-test' | 'test' | 'prod';

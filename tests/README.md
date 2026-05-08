@@ -39,6 +39,13 @@ pnpm test:e2e --env=prod  --project=e2e --headed   # https://airo-builder.godadd
 # both URL and which *_USERNAME/*_PASSWORD pair getCredentials() reads.
 # PLAYWRIGHT_BASE_URL still wins as an explicit override.
 PLAYWRIGHT_ENV=prod pnpm exec playwright test --project=e2e --headed
+
+# Preserve apps after the run instead of cleaning them up (useful when
+# iterating locally and inspecting the result in the UI). --no-delete is
+# defaulted ON for --env=local and --env=dev; pass --delete to force
+# cleanup on a local run.
+pnpm test:e2e --env=prod  --project=e2e --no-delete   # debug a prod-only failure without losing the app
+pnpm test:e2e --env=local --project=e2e --delete      # force cleanup locally
 ```
 
 ## Environment Setup
@@ -177,10 +184,18 @@ await handleSsoLogin(page);
 ### API (`helpers/api.ts`)
 
 ```typescript
-import { deleteAllSitesViaAPI } from "../helpers/api";
+import {
+  deleteAppsWithPrefix,
+  evictOldestE2eAppsToFitLimit,
+} from "../helpers/api";
+import { getSpecPrefix } from "../helpers/constants";
 
-// Cleanup test sites
-await deleteAllSitesViaAPI(page);
+// Per-spec cleanup: only delete apps THIS spec created.
+await deleteAppsWithPrefix(page, getSpecPrefix("my-spec"));
+
+// Pre-flight guard: evict oldest e2e-tagged apps if the account is near
+// the mgmt-airo "Maximum N apps per system" cap (no-op below threshold).
+await evictOldestE2eAppsToFitLimit(page);
 ```
 
 ### UI (`helpers/ui.ts`)
@@ -284,15 +299,30 @@ pnpm exec playwright show-trace test-results/*/trace.zip
 ```typescript
 import { test, expect } from "@playwright/test";
 import { handleSsoLogin } from "../helpers/auth";
-import { deleteAllSitesViaAPI } from "../helpers/api";
+import {
+  deleteAppsWithPrefix,
+  evictOldestE2eAppsToFitLimit,
+} from "../helpers/api";
 import { waitForDevelopPage, waitForChatInput } from "../helpers/ui";
-import { LONG_TIMEOUT } from "../helpers/constants";
+import { LONG_TIMEOUT, getSpecPrefix } from "../helpers/constants";
+
+/** Spec prefixes used by `getSpecPrefix(...)` calls below. Keep in sync with
+ *  every prompt that tags an app, otherwise per-spec cleanup will leak it. */
+const SPEC_PREFIXES = ["my-spec"] as const;
 
 test.describe("My Feature", () => {
-  test("complete flow", async ({ page }) => {
-    // Step 1: Create app
+  test.beforeEach(async ({ page }) => {
+    // Pre-flight guard: evict oldest e2e-tagged orphans if account is near cap.
     await page.goto("/");
-    await page.getByTestId("homepage-prompt-input").fill("Create a simple app");
+    await evictOldestE2eAppsToFitLimit(page).catch(() => {});
+  });
+
+  test("complete flow", async ({ page }) => {
+    // Step 1: Create app — tag the prompt so cleanup can find it later.
+    await page.goto("/");
+    await page
+      .getByTestId("homepage-prompt-input")
+      .fill(`${getSpecPrefix("my-spec")} Create a simple app`);
     await page.locator('[data-eid*="homepage.prompt.submit"]').click();
     await handleSsoLogin(page);
 
@@ -306,8 +336,18 @@ test.describe("My Feature", () => {
   });
 
   test.afterEach(async ({ page }) => {
-    await page.goto("/apps");
-    await deleteAllSitesViaAPI(page);
+    try {
+      await page.goto("/apps");
+      for (const name of SPEC_PREFIXES) {
+        try {
+          await deleteAppsWithPrefix(page, getSpecPrefix(name));
+        } catch (err) {
+          console.error(`  Cleanup of prefix '${name}' failed:`, err);
+        }
+      }
+    } catch (err) {
+      console.error("  Cleanup failed:", err);
+    }
   });
 });
 ```
