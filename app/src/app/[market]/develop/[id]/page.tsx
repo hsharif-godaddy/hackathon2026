@@ -261,6 +261,7 @@ function DevelopPageContent() {
     ws.actions.reconnect,
   ])
 
+  const viewMode = useDevelopPageStore((state) => state.viewMode)
   const chatPaneWidth = useDevelopPageStore((state) => state.chatPaneWidth)
   const hasUnsavedChanges = useDevelopPageStore((state) => state.hasUnsavedChanges)
   const isChatPaneCollapsed = useDevelopPageStore((state) => state.isChatPaneCollapsed)
@@ -1423,7 +1424,7 @@ function DevelopPageContent() {
                     onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
                     isMutatingFiles={isMutatingFiles}
                     isProcessing={isProcessing}
-                    showBuildingOverlay={init.ui.showPreviewLoader}
+                    showBuildingOverlay={init.ui.showPreviewLoader && viewMode !== ViewMode.BRAND}
                     isHibernated={hibernation.isHibernated}
                     isResuming={hibernation.isResuming}
                     resumeFailed={hibernation.resumeFailed}
@@ -1505,7 +1506,7 @@ function DevelopPageContent() {
                         onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
                         isMutatingFiles={isMutatingFiles}
                         isProcessing={isProcessing}
-                        showBuildingOverlay={init.ui.showPreviewLoader}
+                        showBuildingOverlay={init.ui.showPreviewLoader && viewMode !== ViewMode.BRAND}
                         isHibernated={hibernation.isHibernated}
                         isResuming={hibernation.isResuming}
                         resumeFailed={hibernation.resumeFailed}
