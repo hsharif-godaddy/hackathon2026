@@ -25,11 +25,11 @@ catalogs:
       specifier: ^8.19.1
       version: 8.19.1
     '@godaddy/agent-observability-events':
-      specifier: ^2.1.0
-      version: 2.1.0
+      specifier: ^2.2.0
+      version: 2.2.0
     '@godaddy/agent-otel-sdk':
-      specifier: ^2.3.0
-      version: 2.3.0
+      specifier: ^2.4.1
+      version: 2.4.1
     '@godaddy/goknowb-client':
       specifier: ^1.0.9
       version: 1.0.9
@@ -337,10 +337,10 @@ importers:
         version: 7.29.0
       '@godaddy/agent-observability-events':
         specifier: 'catalog:'
-        version: 2.1.0
+        version: 2.2.0
       '@godaddy/agent-otel-sdk':
         specifier: 'catalog:'
-        version: 2.3.0(@opentelemetry/api@1.9.0)
+        version: 2.4.1(@opentelemetry/api@1.9.0)
       '@godaddy/goknowb-client':
         specifier: 'catalog:'
         version: 1.0.9
@@ -1373,7 +1373,7 @@ importers:
         version: link:../shared
       '@godaddy/agent-otel-sdk':
         specifier: 'catalog:'
-        version: 2.3.0(@opentelemetry/api@1.9.0)
+        version: 2.4.1(@opentelemetry/api@1.9.0)
       '@langfuse/tracing':
         specifier: 'catalog:'
         version: 4.6.1(@opentelemetry/api@1.9.0)
@@ -1471,10 +1471,10 @@ importers:
         version: link:../shared
       '@godaddy/agent-observability-events':
         specifier: 'catalog:'
-        version: 2.1.0
+        version: 2.2.0
       '@godaddy/agent-otel-sdk':
         specifier: 'catalog:'
-        version: 2.3.0(@opentelemetry/api@1.9.0)
+        version: 2.4.1(@opentelemetry/api@1.9.0)
       '@opentelemetry/api':
         specifier: 'catalog:'
         version: 1.9.0
@@ -3430,11 +3430,11 @@ packages:
       - commander
       - winston
 
-  '@godaddy/agent-observability-events@2.1.0':
-    resolution: {integrity: sha512-BhhIUfJpw8XD2r/7uFOP1TyzWWJzAjYoc+5lh0m2CpK/ihiOy0vMByMyAMWROzc1DOYJZ5AGBMDbKHhIWedqCw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@godaddy/agent-observability-events/-/@godaddy/agent-observability-events-2.1.0.tgz}
+  '@godaddy/agent-observability-events@2.2.0':
+    resolution: {integrity: sha512-gIqqnLeTTbZntXFhZCrfK91pW8oiNSlmJtte8Jo1/kDq6nCNvXcEDKqvTYmRQ7QMsVymyCgEISYNSKAl5KJXRg==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@godaddy/agent-observability-events/-/@godaddy/agent-observability-events-2.2.0.tgz}
 
-  '@godaddy/agent-otel-sdk@2.3.0':
-    resolution: {integrity: sha512-bpBCchrb/SDPjO2827CkdHL1qRWvuqn8PSNg0vzw7DtJkfdhF+fmUHG0SFsAnvYbuKzXIXGwao+P8CSurhEo9g==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@godaddy/agent-otel-sdk/-/@godaddy/agent-otel-sdk-2.3.0.tgz}
+  '@godaddy/agent-otel-sdk@2.4.1':
+    resolution: {integrity: sha512-bAS+Ngqo5uqbC1prIptijvgtd0C+M8ZnAvP1ltXsvdlGoA9LlCBbEd3MP7Ku06LBhadUTrpYJJFoKRNj3fIWPQ==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@godaddy/agent-otel-sdk/-/@godaddy/agent-otel-sdk-2.4.1.tgz}
     peerDependencies:
       '@opentelemetry/api': ^1.0.0
 
@@ -16327,16 +16327,16 @@ snapshots:
       aws-cdk-lib: 2.245.0(constructs@10.6.0)
       constructs: 10.6.0
 
-  '@godaddy/agent-observability-events@2.1.0':
+  '@godaddy/agent-observability-events@2.2.0':
     dependencies:
       '@signals/event-bus-client': 2.0.0
     transitivePeerDependencies:
       - aws-crt
       - debug
 
-  '@godaddy/agent-otel-sdk@2.3.0(@opentelemetry/api@1.9.0)':
+  '@godaddy/agent-otel-sdk@2.4.1(@opentelemetry/api@1.9.0)':
     dependencies:
-      '@godaddy/agent-observability-events': 2.1.0
+      '@godaddy/agent-observability-events': 2.2.0
       '@opentelemetry/api': 1.9.0
       '@signals/event-bus-client': 2.0.0
       '@signals/otel-sdk': 0.2.0(@opentelemetry/api@1.9.0)
@@ -23001,7 +23001,7 @@ snapshots:
       eslint: 9.28.0(jiti@2.5.1)
       eslint-import-resolver-node: 0.3.9
       eslint-import-resolver-typescript: 3.10.1(eslint-plugin-import@2.32.0(eslint@9.28.0(jiti@2.5.1)))(eslint@9.28.0(jiti@2.5.1))
-      eslint-plugin-import: 2.32.0(eslint-import-resolver-typescript@3.10.1)(eslint@9.28.0(jiti@2.5.1))
+      eslint-plugin-import: 2.32.0(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(eslint@9.28.0(jiti@2.5.1)))(eslint@9.28.0(jiti@2.5.1)))(eslint@9.28.0(jiti@2.5.1))
       eslint-plugin-jsx-a11y: 6.10.2(eslint@9.28.0(jiti@2.5.1))
       eslint-plugin-react: 7.37.5(eslint@9.28.0(jiti@2.5.1))
       eslint-plugin-react-hooks: 7.0.1(eslint@9.28.0(jiti@2.5.1))
@@ -23038,7 +23038,7 @@ snapshots:
       tinyglobby: 0.2.15
       unrs-resolver: 1.11.1
     optionalDependencies:
-      eslint-plugin-import: 2.32.0(eslint-import-resolver-typescript@3.10.1)(eslint@9.28.0(jiti@2.5.1))
+      eslint-plugin-import: 2.32.0(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(eslint@9.28.0(jiti@2.5.1)))(eslint@9.28.0(jiti@2.5.1)))(eslint@9.28.0(jiti@2.5.1))
     transitivePeerDependencies:
       - supports-color
 
@@ -23066,7 +23066,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  eslint-plugin-import@2.32.0(eslint-import-resolver-typescript@3.10.1)(eslint@9.28.0(jiti@2.5.1)):
+  eslint-plugin-import@2.32.0(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(eslint@9.28.0(jiti@2.5.1)))(eslint@9.28.0(jiti@2.5.1)))(eslint@9.28.0(jiti@2.5.1)):
     dependencies:
       '@rtsao/scc': 1.1.0
       array-includes: 3.1.9
