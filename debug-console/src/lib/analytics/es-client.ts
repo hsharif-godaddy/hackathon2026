@@ -4,7 +4,8 @@ import { logger } from '@/lib/logger';
 
 const WRITE_ES_URL = process.env.AIRO_BUILDER_ES_ENDPOINT || 'http://localhost:9200';
 
-// Write client for local ES storage (analytics data)
+// Write client used by credit-pack-utils for its small transactional store.
+// Everything else has moved to direct Loki / Katana ES queries.
 export const writeClient = new Client({
   node: WRITE_ES_URL,
   auth: {
@@ -12,127 +13,13 @@ export const writeClient = new Client({
   }
 });
 
-// Index prefix for all analytics indices
 const INDEX_PREFIX = process.env.ES_INDEX_PREFIX || 'airo_analytics_';
 
-// Index names for processed data
 export const INDICES = {
-  AGENT_RUNS: `${INDEX_PREFIX}agent_runs`,
-  COMPRESSIONS: `${INDEX_PREFIX}compressions`,
-  ERRORS: `${INDEX_PREFIX}errors`,
-  CONVERSATIONS: `${INDEX_PREFIX}conversations`,
-  SUMMARIZATIONS: `${INDEX_PREFIX}summarizations`,
-  TOOL_FAILURES: `${INDEX_PREFIX}tool_failures`,
-  PUBLISH_EVENTS: `${INDEX_PREFIX}publish_events`,
-  CLIENT_ERRORS: `${INDEX_PREFIX}client_errors`,
-  CREDIT_PACKS: `${INDEX_PREFIX}credit_packs`
+  CREDIT_PACKS: `${INDEX_PREFIX}credit_packs`,
 } as const;
 
-// Index mappings
 const MAPPINGS = {
-  [INDICES.AGENT_RUNS]: {
-    properties: {
-      es_id: { type: 'keyword' },
-      timestamp: { type: 'date' },
-      app_id: { type: 'keyword' },
-      agent_id: { type: 'keyword' },
-      agent_name: { type: 'keyword' },
-      finish_reason: { type: 'keyword' },
-      steps: { type: 'integer' },
-      input_tokens: { type: 'long' },
-      output_tokens: { type: 'long' },
-      cached_input_tokens: { type: 'long' },
-      total_tokens: { type: 'long' },
-      cost: { type: 'float' }
-    }
-  },
-  [INDICES.COMPRESSIONS]: {
-    properties: {
-      es_id: { type: 'keyword' },
-      timestamp: { type: 'date' },
-      app_id: { type: 'keyword' },
-      total_messages: { type: 'integer' },
-      compressed_messages: { type: 'integer' },
-      original_bytes: { type: 'long' },
-      compressed_bytes: { type: 'long' },
-      compression_ratio: { type: 'float' },
-      saved_bytes: { type: 'long' },
-      strategies: { type: 'object', enabled: false }
-    }
-  },
-  [INDICES.ERRORS]: {
-    properties: {
-      es_id: { type: 'keyword' },
-      timestamp: { type: 'date' },
-      app_id: { type: 'keyword' },
-      event_type: { type: 'keyword' },
-      error_message: { type: 'text' },
-      status_code: { type: 'integer' },
-      url: { type: 'keyword' }
-    }
-  },
-  [INDICES.CONVERSATIONS]: {
-    properties: {
-      es_id: { type: 'keyword' },
-      timestamp: { type: 'date' },
-      app_id: { type: 'keyword' },
-      agent_id: { type: 'keyword' },
-      event_type: { type: 'keyword' },
-      socket_id: { type: 'keyword' },
-      dropped_messages: { type: 'integer' },
-      processed_messages: { type: 'integer' }
-    }
-  },
-  [INDICES.SUMMARIZATIONS]: {
-    properties: {
-      es_id: { type: 'keyword' },
-      timestamp: { type: 'date' },
-      app_id: { type: 'keyword' },
-      original_tokens: { type: 'long' },
-      summary_tokens: { type: 'long' },
-      compression_ratio: { type: 'float' },
-      success: { type: 'boolean' },
-      error_message: { type: 'text' }
-    }
-  },
-  [INDICES.TOOL_FAILURES]: {
-    properties: {
-      es_id: { type: 'keyword' },
-      timestamp: { type: 'date' },
-      app_id: { type: 'keyword' },
-      agent_id: { type: 'keyword' },
-      tool_name: { type: 'keyword' },
-      error_message: { type: 'text' },
-      file_path: { type: 'keyword' }
-    }
-  },
-  [INDICES.PUBLISH_EVENTS]: {
-    properties: {
-      es_id: { type: 'keyword' },
-      timestamp: { type: 'date' },
-      app_id: { type: 'keyword' },
-      event_type: { type: 'keyword' },
-      success: { type: 'boolean' },
-      error_message: { type: 'text' },
-      commit_hash: { type: 'keyword' }
-    }
-  },
-  [INDICES.CLIENT_ERRORS]: {
-    properties: {
-      es_id: { type: 'keyword' },
-      timestamp: { type: 'date' },
-      app_id: { type: 'keyword' },
-      event_type: { type: 'keyword' },
-      error_message: { type: 'text' },
-      customer_id: { type: 'keyword' },
-      session_id: { type: 'keyword' },
-      client_ip: { type: 'keyword' },
-      user_agent: { type: 'text' },
-      page_url: { type: 'keyword' },
-      conversation_id: { type: 'keyword' },
-      extra_data: { type: 'object', enabled: false }
-    }
-  },
   [INDICES.CREDIT_PACKS]: {
     properties: {
       es_id: { type: 'keyword' },
@@ -157,7 +44,7 @@ const MAPPINGS = {
         }
       }
     }
-  }
+  },
 };
 
 export async function initIndices(indicesToInit: string[] = Object.values(INDICES), forceUpdate: boolean = false) {
@@ -186,7 +73,6 @@ export async function initIndices(indicesToInit: string[] = Object.values(INDICE
   }
 }
 
-// Bulk operations helper
 interface BulkDoc {
   index: string;
   id: string;
@@ -213,11 +99,6 @@ export async function bulkIndex(docs: BulkDoc[]) {
       errorCount: errorItems.length,
       samples,
     });
-    // Throw so flushPendingDocs's catch block actually fires on partial
-    // failures (mapping conflicts, auth-rejected docs). Without this throw,
-    // partial failures clear `pendingDocs` without re-queueing un-attempted
-    // sub-batches; the docs near the watermark boundary are then dropped
-    // with no retry path.
     const firstReason =
       typeof samples[0]?.error === 'object' && samples[0]?.error !== null
         ? (samples[0].error as { reason?: string }).reason || JSON.stringify(samples[0].error)
@@ -228,9 +109,4 @@ export async function bulkIndex(docs: BulkDoc[]) {
   }
 
   return result;
-}
-
-// "airobuilde" (no trailing 'r') matches the actual ES domain naming convention
-export function isProdES(): boolean {
-  return WRITE_ES_URL.startsWith('https://airobuilde-prod-');
 }

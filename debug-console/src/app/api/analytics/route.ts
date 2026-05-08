@@ -1,35 +1,16 @@
 import { NextResponse } from 'next/server';
 
-import { getSummary, getAllApps, getToolStats, getHealthMetrics, getHourlyStats, getErrorStats, getHourlyErrorStats, getLast24HoursStats, getLast24HoursErrorStats, getSummarizationStats, getHourlySummarizationStats, getRollingHourlySummarizations, getPublishStats, getHourlyPublishStats, getRollingHourlyPublish, getClientErrorStats, getHourlyClientErrorStats, getRollingHourlyClientErrors, getDiagnostics, init } from '@/lib/analytics/es-db';
-import { getSchedulerStatus, runBackfill, startScheduler, type BackfillIndexFilter } from '@/lib/analytics/scheduler';
 import { getPdnaSnapshot } from '@/lib/analytics/pdna-db';
 import { getDateRangeError } from '@/lib/analytics/date-range';
+import { getDirectBudgetErrorStats, getDirectClientErrorStats, getDirectHourlyBudgetErrorStats, getDirectHourlyClientErrorStats, getDirectRollingHourlyBudgetErrors, getDirectRollingHourlyClientErrors } from '@/lib/analytics/katana-client-errors';
+import { getDirectHourlyPublishStats, getDirectHourlySummarizationStats, getDirectHourlyWebsocketErrorStats, getDirectPublishStats, getDirectRollingHourlyPublish, getDirectRollingHourlySummarizations, getDirectRollingHourlyWebsocketErrors, getDirectSummarizationStats, getDirectWebsocketErrorStats } from '@/lib/analytics/loki-events';
 import { withAuth } from '@/lib/api-auth';
 
 export const dynamic = 'force-dynamic';
 
-let initialized = false;
-
-async function ensureInitialized() {
-  if (!initialized) {
-    console.log('[analytics] Initializing ES indices and scheduler...');
-    try {
-      await init();
-      startScheduler(30);
-      initialized = true;
-      console.log('[analytics] Initialization complete');
-    } catch (error) {
-      console.error('[analytics] Initialization failed:', error instanceof Error ? error.message : error);
-      throw error;
-    }
-  }
-}
-
 export const GET = withAuth(async (request, _auth) => {
-  await ensureInitialized();
-
   const { searchParams } = new URL(request.url);
-  const action = searchParams.get('action') || 'summary';
+  const action = searchParams.get('action') || 'errors';
   const start = searchParams.get('start') || undefined;
   const end = searchParams.get('end') || undefined;
 
@@ -40,44 +21,16 @@ export const GET = withAuth(async (request, _auth) => {
 
   try {
     switch (action) {
-      case 'summary':
-        return NextResponse.json(await getSummary(start, end));
-
-      case 'apps':
-        return NextResponse.json(await getAllApps(start, end));
-
-      case 'tools':
-        return NextResponse.json(await getToolStats(start, end));
-
-      case 'health':
-        return NextResponse.json(await getHealthMetrics());
-
-      case 'scheduler-status':
-        return NextResponse.json(getSchedulerStatus());
-
-      case 'backfill': {
-        const days = parseInt(searchParams.get('days') || '7', 10);
-        if (days < 1 || days > 30) {
-          return NextResponse.json({ error: 'days must be 1-30' }, { status: 400 });
-        }
-        const validIndices = ['all', 'errors', 'agent_runs', 'compressions', 'conversations', 'summarizations', 'tool_failures', 'publish_events', 'client_errors'];
-        const indexParam = searchParams.get('index') || 'all';
-        if (!validIndices.includes(indexParam)) {
-          return NextResponse.json({ error: `index must be one of: ${validIndices.join(', ')}` }, { status: 400 });
-        }
-        return NextResponse.json(await runBackfill(days, indexParam as BackfillIndexFilter));
+      case 'errors': {
+        const [websocket, budget] = await Promise.all([
+          getDirectWebsocketErrorStats(start, end),
+          getDirectBudgetErrorStats(start, end),
+        ]);
+        return NextResponse.json({ websocket, budget });
       }
 
-      case 'hourly': {
-        const date = searchParams.get('date');
-        if (!date) {
-          return NextResponse.json({ error: 'date parameter required' }, { status: 400 });
-        }
-        return NextResponse.json(await getHourlyStats(date));
-      }
-
-      case 'errors':
-        return NextResponse.json(await getErrorStats(start, end));
+      case 'budget-errors':
+        return NextResponse.json(await getDirectBudgetErrorStats(start, end));
 
       case 'hourly-errors': {
         const date = searchParams.get('date');
@@ -88,64 +41,64 @@ export const GET = withAuth(async (request, _auth) => {
         if (!errorType || !['websocket', 'budget'].includes(errorType)) {
           return NextResponse.json({ error: 'errorType parameter required (websocket or budget)' }, { status: 400 });
         }
-        return NextResponse.json(await getHourlyErrorStats(date, errorType));
+        if (errorType === 'budget') {
+          return NextResponse.json(await getDirectHourlyBudgetErrorStats(date));
+        }
+        return NextResponse.json(await getDirectHourlyWebsocketErrorStats(date));
       }
-
-      case 'last-24h':
-        return NextResponse.json(await getLast24HoursStats());
 
       case 'last-24h-errors': {
         const errorType = searchParams.get('errorType') as 'websocket' | 'budget' | null;
         if (!errorType || !['websocket', 'budget'].includes(errorType)) {
           return NextResponse.json({ error: 'errorType parameter required (websocket or budget)' }, { status: 400 });
         }
-        return NextResponse.json(await getLast24HoursErrorStats(errorType));
+        if (errorType === 'budget') {
+          return NextResponse.json(await getDirectRollingHourlyBudgetErrors());
+        }
+        return NextResponse.json(await getDirectRollingHourlyWebsocketErrors());
       }
 
       case 'summarizations':
-        return NextResponse.json(await getSummarizationStats(start, end));
+        return NextResponse.json(await getDirectSummarizationStats(start, end));
 
       case 'hourly-summarizations': {
         const date = searchParams.get('date');
         if (!date) {
           return NextResponse.json({ error: 'date parameter required' }, { status: 400 });
         }
-        return NextResponse.json(await getHourlySummarizationStats(date));
+        return NextResponse.json(await getDirectHourlySummarizationStats(date));
       }
 
       case 'last-24h-summarizations':
-        return NextResponse.json(await getRollingHourlySummarizations());
+        return NextResponse.json(await getDirectRollingHourlySummarizations());
 
       case 'publish':
-        return NextResponse.json(await getPublishStats(start || '', end || ''));
+        return NextResponse.json(await getDirectPublishStats(start, end));
 
       case 'hourly-publish': {
         const date = searchParams.get('date');
         if (!date) {
           return NextResponse.json({ error: 'date parameter required' }, { status: 400 });
         }
-        return NextResponse.json(await getHourlyPublishStats(date));
+        return NextResponse.json(await getDirectHourlyPublishStats(date));
       }
 
       case 'last-24h-publish':
-        return NextResponse.json(await getRollingHourlyPublish());
+        return NextResponse.json(await getDirectRollingHourlyPublish());
 
       case 'client-errors':
-        return NextResponse.json(await getClientErrorStats(start, end));
+        return NextResponse.json(await getDirectClientErrorStats(start, end));
 
       case 'hourly-client-errors': {
         const date = searchParams.get('date');
         if (!date) {
           return NextResponse.json({ error: 'date parameter required' }, { status: 400 });
         }
-        return NextResponse.json(await getHourlyClientErrorStats(date));
+        return NextResponse.json(await getDirectHourlyClientErrorStats(date));
       }
 
       case 'last-24h-client-errors':
-        return NextResponse.json(await getRollingHourlyClientErrors());
-
-      case 'diagnostics':
-        return NextResponse.json(await getDiagnostics());
+        return NextResponse.json(await getDirectRollingHourlyClientErrors());
 
       case 'pdna-snapshot': {
         const snapshot = await getPdnaSnapshot();

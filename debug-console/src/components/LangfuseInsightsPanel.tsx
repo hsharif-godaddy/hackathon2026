@@ -391,7 +391,6 @@ export default function LangfuseInsightsPanel({ fromTimestamp, toTimestamp }: La
         >
         {[
           { label: 'Traces', value: overview.total_traces.toLocaleString(), color: '#7c3aed' },
-          { label: 'Total cost', value: `$${overview.total_cost.toFixed(4)}`, color: '#dc2626' },
           { label: 'Scores (events)', value: overview.total_scores.toLocaleString(), color: '#0d9488' },
           {
             label: 'Latest model',
@@ -408,30 +407,6 @@ export default function LangfuseInsightsPanel({ fromTimestamp, toTimestamp }: La
         ))}
       </div>
       </InsightSection>
-
-      {overview.model_costs.length > 0 && (
-        <InsightSection title="Cost & tokens" subtitle="Spend and token volume by model.">
-        <MiniTable
-          title="Cost by model"
-          columns={[
-            { key: 'model', label: 'Model' },
-            { key: 'cost', label: 'Cost' },
-            { key: 'input_tokens', label: 'In tok' },
-            { key: 'output_tokens', label: 'Out tok' },
-            { key: 'count_obs', label: 'Obs' },
-          ]}
-          rows={overview.model_costs.map((m) => ({
-            model: m.model || '__untracked__',
-            cost: m.cost.toFixed(6),
-            cost_num: m.cost,
-            input_tokens: m.input_tokens,
-            output_tokens: m.output_tokens,
-            count_obs: m.count_obs,
-          }))}
-          verticalBar={{ labelKey: 'model', valueKey: 'cost_num', barColor: '#7c3aed', chartHeight: 220 }}
-        />
-        </InsightSection>
-      )}
 
       <InsightSection title="Sentiment" subtitle="Emotion-type and polarity distributions from scored traces.">
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1rem' }}>

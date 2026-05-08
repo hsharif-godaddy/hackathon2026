@@ -128,23 +128,6 @@ interface SessionsResponse {
   };
 }
 
-interface ESError {
-  timestamp: string;
-  type: 'error' | 'client_error';
-  message: string;
-  eventType?: string;
-  count: number;
-  firstSeen: string;
-  lastSeen: string;
-}
-
-interface ESErrorsResponse {
-  errors: ESError[];
-  totalErrors: number;
-  totalClientErrors: number;
-  uniqueErrors: number;
-}
-
 interface ToolCallInfo {
   name: string;
   args?: string;
@@ -1891,62 +1874,20 @@ function DateSeparator({ date }: { date: string }) {
   );
 }
 
-function ErrorMessage({ error }: { error: ESError }) {
-  const [expanded, setExpanded] = useState(false);
-  return (
-    <div style={{ marginBottom: '1rem', display: 'flex', gap: '0.6rem' }}>
-      <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#dc2626', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '0.9rem', flexShrink: 0 }}>⚠️</div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.3rem', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#dc2626' }}>{error.type === 'client_error' ? 'Client Error' : 'Error'}</span>
-          <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>{formatTime(error.lastSeen)}</span>
-          {error.count > 1 && (
-            <span style={{ fontSize: '0.7rem', fontWeight: 600, backgroundColor: '#fee2e2', color: '#dc2626', padding: '0.15rem 0.4rem', borderRadius: '4px' }}>×{error.count}</span>
-          )}
-          {error.eventType && (
-            <span style={{ fontSize: '0.7rem', backgroundColor: '#fef3c7', color: '#92400e', padding: '0.15rem 0.4rem', borderRadius: '4px', fontFamily: 'monospace' }}>{error.eventType}</span>
-          )}
-        </div>
-        <div
-          onClick={() => setExpanded(!expanded)}
-          style={{ backgroundColor: '#fef2f2', borderRadius: '10px', padding: '0.6rem 0.8rem', fontSize: '0.85rem', color: '#991b1b', cursor: 'pointer', borderLeft: '3px solid #dc2626', lineHeight: 1.5 }}
-        >
-          {expanded ? error.message : (error.message.length > 100 ? error.message.substring(0, 100) + '...' : error.message)}
-          {error.message.length > 100 && (
-            <span style={{ color: '#dc2626', fontSize: '0.6rem', marginLeft: '0.3rem' }}>{expanded ? '↑' : '↓'}</span>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-interface TimelineItem {
-  type: 'conversation' | 'error';
-  timestamp: string;
-  data: ConversationItem | ESError;
-}
-
-function ConversationView({ items, errors }: { items: ConversationItem[]; errors?: ESError[] }) {
-  const timeline: TimelineItem[] = [
-    ...items.map(item => ({ type: 'conversation' as const, timestamp: item.timestamp, data: item })),
-    ...(errors || []).map(err => ({ type: 'error' as const, timestamp: err.lastSeen, data: err }))
-  ].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-
+function ConversationView({ items }: { items: ConversationItem[] }) {
   let lastDate = '';
   return (
     <div>
-      {timeline.map((item, idx) => {
+      {items.map((item, idx) => {
         const itemDate = formatDate(item.timestamp);
         const showDateSeparator = itemDate !== lastDate;
         lastDate = itemDate;
         return (
-          <React.Fragment key={`${item.type}-${idx}`}>
+          <React.Fragment key={`conversation-${idx}`}>
             {showDateSeparator && <DateSeparator date={itemDate} />}
-            {item.type === 'error' && <ErrorMessage error={item.data as ESError} />}
-            {item.type === 'conversation' && (item.data as ConversationItem).type === 'user' && <UserMessage item={item.data as ConversationItem} />}
-            {item.type === 'conversation' && (item.data as ConversationItem).type === 'assistant' && <AssistantMessage item={item.data as ConversationItem} />}
-            {item.type === 'conversation' && (item.data as ConversationItem).type === 'summarization' && <SummarizationMessage item={item.data as ConversationItem} />}
+            {item.type === 'user' && <UserMessage item={item} />}
+            {item.type === 'assistant' && <AssistantMessage item={item} />}
+            {item.type === 'summarization' && <SummarizationMessage item={item} />}
           </React.Fragment>
         );
       })}
@@ -1956,7 +1897,6 @@ function ConversationView({ items, errors }: { items: ConversationItem[]; errors
 
 export default function LangfusePanel({ globalAppId, refreshKey = 0, onRefresh }: LangfusePanelProps) {
   const [sessions, setSessions] = useState<Session[]>([]);
-  const [esErrors, setEsErrors] = useState<ESErrorsResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -2116,7 +2056,6 @@ export default function LangfusePanel({ globalAppId, refreshKey = 0, onRefresh }
       fetchPage(1);
     } else {
       setSessions([]);
-      setEsErrors(null);
       prefetchedRef.current.clear();
       prefetchingRef.current.clear();
     }
@@ -2127,7 +2066,6 @@ export default function LangfusePanel({ globalAppId, refreshKey = 0, onRefresh }
     if (refreshKey > 0 && globalAppId) {
       loadingMoreRef.current = false; // Reset loading state
       setSessions([]);
-      setEsErrors(null);
       setCurrentPage(0);
       setHasMore(true);
       prefetchedRef.current.clear();
@@ -2135,24 +2073,6 @@ export default function LangfusePanel({ globalAppId, refreshKey = 0, onRefresh }
       fetchPage(1, { forceRefresh: true });
     }
   }, [refreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    if (loading || sessions.length === 0 || !globalAppId) return;
-
-    let earliestTimestamp: string | undefined;
-    for (const session of sessions) {
-      if (session.firstTrace && (!earliestTimestamp || session.firstTrace < earliestTimestamp)) {
-        earliestTimestamp = session.firstTrace;
-      }
-    }
-
-    if (!earliestTimestamp) return;
-
-    fetch(`/api/analytics/${encodeURIComponent(globalAppId)}/errors?fromTimestamp=${encodeURIComponent(earliestTimestamp)}`)
-      .then(res => res.ok ? res.json() : null)
-      .then(data => { if (data) setEsErrors(data); })
-      .catch(() => {});
-  }, [globalAppId, loading, sessions]);
 
   const conversationItems = useMemo(() => extractConversationItems(sessions), [sessions]);
   const userMessages = conversationItems.filter(i => i.type === 'user').length;
@@ -2304,11 +2224,6 @@ export default function LangfusePanel({ globalAppId, refreshKey = 0, onRefresh }
             <span>👤 {userMessages}</span>
             <span>🤖 {assistantMessages}</span>
             <span>🔧 {totalTools}</span>
-            {esErrors && esErrors.uniqueErrors > 0 && (
-              <span style={{ color: '#dc2626', fontWeight: 600 }} title="Errors">
-                ⚠️ {esErrors.totalErrors + esErrors.totalClientErrors}
-              </span>
-            )}
             <span style={{ color: '#64748b' }}>|</span>
             <span style={{ color: '#64748b' }}>{lfTotals.traceCount} traces</span>
             <span style={{ color: '#334155', fontWeight: 600 }}>
@@ -2417,7 +2332,7 @@ export default function LangfusePanel({ globalAppId, refreshKey = 0, onRefresh }
                 Each page fetches 20 traces in parallel from Langfuse, and the next page is prefetched. Only fetch older messages if you really need them.
               </div>
             )}
-            <ConversationView items={conversationItems} errors={esErrors?.errors} />
+            <ConversationView items={conversationItems} />
           </div>
         </>
       )}

@@ -6,44 +6,10 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import C1AnalyticsPanel from '@/components/C1AnalyticsPanel';
 import FeedbackAnalyticsPanel from '@/components/FeedbackAnalyticsPanel';
 import LangfuseInsightsPanel from '@/components/LangfuseInsightsPanel';
-import LangfuseMetricCards from '@/components/LangfuseMetricCards';
 import ProtectedRoute from '@/components/ProtectedRoute';
 
 import type { C1Period } from '@/lib/c1-analytics-server';
 import { getDateRangeError, isDateRangeValid } from '@/lib/analytics/date-range';
-
-interface DailyStat {
-  date: string;
-  apps: number;
-  cost: number;
-  runs: number;
-  steps: number;
-  avg_cost_per_app: number;
-  avg_steps_per_run: number;
-}
-
-interface Summary {
-  total_apps: number;
-  apps_per_day: number;
-  total_runs: number;
-  total_input_tokens: number;
-  total_output_tokens: number;
-  total_cost: number;
-  start_date: string;
-  end_date: string;
-  avg_cost_per_app: number;
-  daily_stats: DailyStat[];
-}
-
-interface SchedulerStatus {
-  running: boolean;
-  isCurrentlyFetching: boolean;
-  lastRun: {
-    startTime: string;
-    endTime: string;
-    counts: Record<string, number>;
-  } | null;
-}
 
 interface ErrorTypeStats {
   total: number;
@@ -59,12 +25,6 @@ interface HourlyErrorStats {
   date: string;
   errorType: 'websocket' | 'budget';
   hourly_stats: Array<{ hour: number; errors: number; apps: number }>;
-}
-
-interface Last24HoursStats {
-  start: string;
-  end: string;
-  hourly_stats: Array<{ hoursAgo: number; timestamp: string; apps: number; runs: number; cost: number; steps: number }>;
 }
 
 interface Last24HoursErrorStats {
@@ -353,27 +313,40 @@ function formatDateInput(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
-const ANALYTICS_TAB_IDS = ['airo', 'langfuse', 'c1', 'feedback', 'pdna'] as const;
+const ANALYTICS_TAB_IDS = ['apps', 'langfuse', 'c1', 'feedback'] as const;
 type AnalyticsTabId = (typeof ANALYTICS_TAB_IDS)[number];
 
 function parseAnalyticsTab(value: string | null | undefined): AnalyticsTabId {
+  if (value === 'airo' || value === 'pdna') return 'apps';
   if (value && (ANALYTICS_TAB_IDS as readonly string[]).includes(value)) {
     return value as AnalyticsTabId;
   }
-  return 'airo';
+  return 'apps';
 }
 
 const ANALYTICS_TABS: ReadonlyArray<{ id: AnalyticsTabId; label: string }> = [
-  { id: 'airo', label: 'Airo Events' },
+  { id: 'apps', label: 'Apps' },
   { id: 'langfuse', label: 'Langfuse' },
   { id: 'c1', label: 'C1 (ClickHouse)' },
   { id: 'feedback', label: 'Feedback' },
-  { id: 'pdna', label: 'PDNA' },
 ];
 
+interface PdnaSnapshot {
+  snapshotDate: string;
+  totalApps: number;
+  publishedCount: number;
+  publishRate: number;
+  hibernatedCount: number;
+  hibernationRate: number;
+  deletedCount: number;
+  appsCreatedDaily: Array<{ date: string; created: number }>;
+  appsDeletedDaily: Array<{ date: string; deleted: number }>;
+  uniqueCustomersDaily: Array<{ date: string; uniqueCustomers: number }>;
+  statuses: Record<string, number>;
+  plans: Record<string, number>;
+}
+
 function AnalyticsContent() {
-  const [summary, setSummary] = useState<Summary | null>(null);
-  const [schedulerStatus, setSchedulerStatus] = useState<SchedulerStatus | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -398,10 +371,6 @@ function AnalyticsContent() {
     [datePreset, customStart, customEnd],
   );
 
-  // Hourly drilldown state
-  const [hourlyData, setHourlyData] = useState<{ date: string; hourly_stats: Array<{ hour: number; apps: number; runs: number; cost: number; steps: number; avg_steps_per_run: number }> } | null>(null);
-  const [hourlyLoading, setHourlyLoading] = useState(false);
-
   // Error stats state
   const [errorStats, setErrorStats] = useState<ErrorStats | null>(null);
   const [hourlyWsErrorData, setHourlyWsErrorData] = useState<HourlyErrorStats | null>(null);
@@ -410,7 +379,6 @@ function AnalyticsContent() {
   const [hourlyBudgetErrorLoading, setHourlyBudgetErrorLoading] = useState(false);
 
   // Last 24 hours rolling window stats
-  const [last24hStats, setLast24hStats] = useState<Last24HoursStats | null>(null);
   const [last24hWsErrors, setLast24hWsErrors] = useState<Last24HoursErrorStats | null>(null);
   const [last24hBudgetErrors, setLast24hBudgetErrors] = useState<Last24HoursErrorStats | null>(null);
 
@@ -434,8 +402,8 @@ function AnalyticsContent() {
 
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [activeTab, setActiveTab] = useState<AnalyticsTabId>('airo');
-  const [visitedTabs, setVisitedTabs] = useState(() => new Set<AnalyticsTabId>(['airo']));
+  const [activeTab, setActiveTab] = useState<AnalyticsTabId>('apps');
+  const [visitedTabs, setVisitedTabs] = useState(() => new Set<AnalyticsTabId>(['apps']));
 
   useEffect(() => {
     const tab = parseAnalyticsTab(searchParams?.get('tab') ?? undefined);
@@ -444,32 +412,73 @@ function AnalyticsContent() {
   }, [searchParams]);
 
   const showDateRangeControls =
-    activeTab === 'airo' || activeTab === 'langfuse' || activeTab === 'c1' || activeTab === 'feedback';
+    activeTab === 'apps' || activeTab === 'langfuse' || activeTab === 'c1' || activeTab === 'feedback';
 
   const navigateToTab = useCallback(
     (tab: AnalyticsTabId) => {
       setActiveTab(tab);
       setVisitedTabs((prev) => (prev.has(tab) ? prev : new Set(prev).add(tab)));
-      const path = tab === 'airo' ? '/analytics' : `/analytics?tab=${encodeURIComponent(tab)}`;
+      const path = tab === 'apps' ? '/analytics' : `/analytics?tab=${encodeURIComponent(tab)}`;
       router.replace(path, { scroll: false });
     },
     [router],
   );
 
   // PDNA provisioning state
-  const [pdnaSnapshot, setPdnaSnapshot] = useState<{
-    snapshotDate: string; totalApps: number;
-    publishedCount: number; publishRate: number;
-    hibernatedCount: number; hibernationRate: number;
-    deletedCount: number;
-    appsCreatedDaily: Array<{ date: string; created: number }>;
-    appsDeletedDaily: Array<{ date: string; deleted: number }>;
-    uniqueCustomersDaily: Array<{ date: string; uniqueCustomers: number }>;
-    statuses: Record<string, number>;
-    plans: Record<string, number>;
-  } | null>(null);
+  const [pdnaSnapshot, setPdnaSnapshot] = useState<PdnaSnapshot | null>(null);
   const [pdnaLoading, setPdnaLoading] = useState(false);
   const [pdnaError, setPdnaError] = useState<string | null>(null);
+
+  const pdnaAppsCreatedInRange = useMemo(() => {
+    if (!pdnaSnapshot) return [];
+
+    let startDate: string;
+    let endDate: string;
+    if (datePreset === 'custom' && customStart && customEnd && isDateRangeValid(customStart, customEnd)) {
+      startDate = customStart;
+      endDate = customEnd;
+    } else {
+      const range = getDateRange(datePreset);
+      startDate = formatDateInput(range.start);
+      endDate = formatDateInput(range.end);
+    }
+
+    return pdnaSnapshot.appsCreatedDaily.filter((day) => day.date >= startDate && day.date <= endDate);
+  }, [pdnaSnapshot, datePreset, customStart, customEnd]);
+
+  const pdnaAppsDeletedInRange = useMemo(() => {
+    if (!pdnaSnapshot) return [];
+
+    let startDate: string;
+    let endDate: string;
+    if (datePreset === 'custom' && customStart && customEnd && isDateRangeValid(customStart, customEnd)) {
+      startDate = customStart;
+      endDate = customEnd;
+    } else {
+      const range = getDateRange(datePreset);
+      startDate = formatDateInput(range.start);
+      endDate = formatDateInput(range.end);
+    }
+
+    return pdnaSnapshot.appsDeletedDaily.filter((day) => day.date >= startDate && day.date <= endDate);
+  }, [pdnaSnapshot, datePreset, customStart, customEnd]);
+
+  const pdnaUniqueCustomersInRange = useMemo(() => {
+    if (!pdnaSnapshot) return [];
+
+    let startDate: string;
+    let endDate: string;
+    if (datePreset === 'custom' && customStart && customEnd && isDateRangeValid(customStart, customEnd)) {
+      startDate = customStart;
+      endDate = customEnd;
+    } else {
+      const range = getDateRange(datePreset);
+      startDate = formatDateInput(range.start);
+      endDate = formatDateInput(range.end);
+    }
+
+    return pdnaSnapshot.uniqueCustomersDaily.filter((day) => day.date >= startDate && day.date <= endDate);
+  }, [pdnaSnapshot, datePreset, customStart, customEnd]);
 
   const fetchData = useCallback(async function fetchData() {
     try {
@@ -488,30 +497,33 @@ function AnalyticsContent() {
       }
 
       const params = new URLSearchParams({ start, end });
+      const shouldFetchDailyEventCharts = datePreset !== '1d';
 
-      const [summaryRes, statusRes, errorsRes, sumRes, pubRes, clientErrRes] = await Promise.all([
-        fetch(`/api/analytics?action=summary&${params}`),
-        fetch('/api/analytics?action=scheduler-status'),
+      const [errorsRes, budgetErrorsRes, sumRes, pubRes, clientErrRes] = await Promise.all([
         fetch(`/api/analytics?action=errors&${params}`),
-        fetch(`/api/analytics?action=summarizations&${params}`),
-        fetch(`/api/analytics?action=publish&${params}`),
+        fetch(`/api/analytics?action=budget-errors&${params}`),
+        shouldFetchDailyEventCharts ? fetch(`/api/analytics?action=summarizations&${params}`) : Promise.resolve(null),
+        shouldFetchDailyEventCharts ? fetch(`/api/analytics?action=publish&${params}`) : Promise.resolve(null),
         fetch(`/api/analytics?action=client-errors&${params}`)
       ]);
 
-      if (!summaryRes.ok) {
-        throw new Error('Failed to fetch analytics data');
+      if (errorsRes.ok || budgetErrorsRes.ok) {
+        const wsStats = errorsRes.ok ? await errorsRes.json() : null;
+        const budgetStats = budgetErrorsRes.ok ? await budgetErrorsRes.json() : wsStats?.budget;
+        setErrorStats({
+          websocket: wsStats?.websocket ?? { total: 0, daily_stats: [] },
+          budget: budgetStats ?? { total: 0, daily_stats: [] }
+        });
       }
-
-      setSummary(await summaryRes.json());
-      setSchedulerStatus(await statusRes.json());
-      if (errorsRes.ok) {
-        setErrorStats(await errorsRes.json());
-      }
-      if (sumRes.ok) {
+      if (sumRes?.ok) {
         setSummarizationStats(await sumRes.json());
+      } else if (!shouldFetchDailyEventCharts) {
+        setSummarizationStats(null);
       }
-      if (pubRes.ok) {
+      if (pubRes?.ok) {
         setPublishStats(await pubRes.json());
+      } else if (!shouldFetchDailyEventCharts) {
+        setPublishStats(null);
       }
       if (clientErrRes.ok) {
         setClientErrorStats(await clientErrRes.json());
@@ -520,35 +532,28 @@ function AnalyticsContent() {
 
       // Auto-fetch rolling 24h hourly data when 24h is selected
       if (datePreset === '1d') {
-        const [last24hRes, last24hWsRes, last24hBudgetRes, last24hSumRes, last24hPubRes, last24hClientErrRes] = await Promise.all([
-          fetch('/api/analytics?action=last-24h'),
+        const [last24hWsRes, last24hBudgetRes, last24hSumRes, last24hPubRes, last24hClientErrRes] = await Promise.all([
           fetch('/api/analytics?action=last-24h-errors&errorType=websocket'),
           fetch('/api/analytics?action=last-24h-errors&errorType=budget'),
           fetch('/api/analytics?action=last-24h-summarizations'),
           fetch('/api/analytics?action=last-24h-publish'),
           fetch('/api/analytics?action=last-24h-client-errors')
         ]);
-        if (last24hRes.ok) setLast24hStats(await last24hRes.json());
         if (last24hWsRes.ok) setLast24hWsErrors(await last24hWsRes.json());
         if (last24hBudgetRes.ok) setLast24hBudgetErrors(await last24hBudgetRes.json());
         if (last24hSumRes.ok) setLast24hSummarizations(await last24hSumRes.json());
         if (last24hPubRes.ok) setLast24hPublish(await last24hPubRes.json());
         if (last24hClientErrRes.ok) setLast24hClientErrors(await last24hClientErrRes.json());
-        // Clear day-based hourly data
-        setHourlyData(null);
         setHourlyWsErrorData(null);
         setHourlyBudgetErrorData(null);
         setHourlySummarizationData(null);
         setHourlyPublishData(null);
         setHourlyClientErrorData(null);
       } else {
-        // Clear rolling 24h data for non-24h views
-        setLast24hStats(null);
         setLast24hWsErrors(null);
         setLast24hBudgetErrors(null);
         setLast24hSummarizations(null);
         setLast24hClientErrors(null);
-        setHourlyData(null);
         setHourlyWsErrorData(null);
         setHourlyBudgetErrorData(null);
         setHourlySummarizationData(null);
@@ -561,16 +566,16 @@ function AnalyticsContent() {
     }
   }, [datePreset, customStart, customEnd]);
 
-  // Fetch airo events data when Airo tab is active
+  // Fetch app analytics data when Apps tab is active
   useEffect(() => {
-    if (activeTab !== 'airo') return;
+    if (activeTab !== 'apps') return;
     fetchData();
   }, [activeTab, fetchData]);
 
-  // Fetch PDNA latest snapshot when PDNA tab is active (skip if already loaded)
+  // Fetch PDNA latest snapshot when Apps tab is active (skip if already loaded)
   // PDNA is a complete daily dump — no date range needed, just the latest snapshot
   useEffect(() => {
-    if (activeTab !== 'pdna' || pdnaSnapshot) return;
+    if (activeTab !== 'apps' || pdnaSnapshot) return;
     setPdnaLoading(true);
     setPdnaError(null);
     fetch('/api/analytics?action=pdna-snapshot')
@@ -588,49 +593,6 @@ function AnalyticsContent() {
       })
       .finally(() => setPdnaLoading(false));
   }, [activeTab, pdnaSnapshot]);
-
-  useEffect(() => {
-    let isMounted = true;
-    const abortController = new AbortController();
-
-    fetch('/api/analytics?action=scheduler-status', { signal: abortController.signal })
-      .then(function parseSchedulerResponse(res) { return res.ok ? res.json() : null; })
-      .then(function updateSchedulerStatus(data) { if (data && isMounted) setSchedulerStatus(data); })
-      .catch(function handleSchedulerError() {});
-
-    const interval = setInterval(async function refreshStatus() {
-      if (!isMounted) return;
-      try {
-        const res = await fetch('/api/analytics?action=scheduler-status');
-        if (res.ok && isMounted) {
-          setSchedulerStatus(await res.json());
-        }
-      } catch (err) {
-        console.warn('analytics.scheduler.status.failed', { error: String(err) });
-      }
-    }, 30000);
-
-    return () => {
-      isMounted = false;
-      abortController.abort();
-      clearInterval(interval);
-    };
-  }, []);
-
-
-  async function fetchHourlyData(date: string) {
-    setHourlyLoading(true);
-    try {
-      const res = await fetch(`/api/analytics?action=hourly&date=${encodeURIComponent(date)}`);
-      if (res.ok) {
-        setHourlyData(await res.json());
-      }
-    } catch (err) {
-      console.error('Failed to fetch hourly data:', err);
-    } finally {
-      setHourlyLoading(false);
-    }
-  }
 
   async function fetchHourlyWsErrorData(date: string) {
     setHourlyWsErrorLoading(true);
@@ -702,20 +664,6 @@ function AnalyticsContent() {
     }
   }
 
-  function formatCost(cost: number) {
-    return `$${cost.toFixed(2)}`;
-  }
-
-  function formatTimestamp(dateStr: string) {
-    if (!dateStr) return '-';
-    const d = new Date(dateStr);
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    const hours = String(d.getHours()).padStart(2, '0');
-    const mins = String(d.getMinutes()).padStart(2, '0');
-    return `${month}/${day} ${hours}:${mins}`;
-  }
-
 
   function formatShortDay(dateStr: string) {
     if (!dateStr) return '';
@@ -764,7 +712,7 @@ function AnalyticsContent() {
               📊 Apps Analytics
             </h1>
             <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.8rem', color: '#64748b' }}>
-              AI Agent usage and cost analytics
+              App creation, usage, and error analytics
             </p>
           </div>
 
@@ -794,19 +742,6 @@ function AnalyticsContent() {
             >
               ← Dashboard
             </a>
-            {schedulerStatus && (
-              <div style={{ fontSize: '0.7rem', color: '#64748b', textAlign: 'right' }}>
-                <div>
-                  {schedulerStatus.running ? '🟢' : '🔴'} Scheduler
-                  {schedulerStatus.isCurrentlyFetching && ' (syncing...)'}
-                </div>
-                {schedulerStatus.lastRun && (
-                  <div style={{ marginTop: '0.15rem' }}>
-                    Last: {formatTimestamp(schedulerStatus.lastRun.endTime)}
-                  </div>
-                )}
-              </div>
-            )}
           </div>
         </header>
 
@@ -915,16 +850,16 @@ function AnalyticsContent() {
           </div>
         )}
 
-        {visitedTabs.has('airo') && (
+        {visitedTabs.has('apps') && (
           <div
-            id="analytics-panel-airo"
+            id="analytics-panel-apps"
             role="tabpanel"
-            aria-labelledby="analytics-tab-airo"
-            hidden={activeTab !== 'airo'}
+            aria-labelledby="analytics-tab-apps"
+            hidden={activeTab !== 'apps'}
             style={{ marginBottom: '1.25rem' }}
           >
             {loading && (
-              <div style={{ color: '#94a3b8', fontSize: '0.85rem', marginBottom: '0.75rem' }}>Loading Airo events…</div>
+              <div style={{ color: '#94a3b8', fontSize: '0.85rem', marginBottom: '0.75rem' }}>Loading app analytics...</div>
             )}
             {error && (
             <div style={{ backgroundColor: 'rgba(255,255,255,0.95)', borderRadius: '12px', padding: '1.5rem', borderLeft: '4px solid #ef4444', marginBottom: '0.75rem' }}>
@@ -933,109 +868,72 @@ function AnalyticsContent() {
               <button type="button" onClick={() => fetchData()} style={{ marginTop: '0.75rem', padding: '0.4rem 0.75rem', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem' }}>Retry</button>
             </div>
             )}
-            {summary && summary.daily_stats.length > 0 && (
+            {(errorStats || summarizationStats || publishStats || clientErrorStats || pdnaSnapshot || pdnaLoading || pdnaError) && (
           <div style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
             gap: '1rem',
             marginBottom: '1.25rem'
           }}>
-            {/* Apps/Day Chart */}
+            {/* Apps Created Chart */}
             {(() => {
-              if (hourlyLoading) {
+              if (pdnaLoading) {
                 return <ChartLoadingState />;
               }
-              if (datePreset === '1d' && last24hStats) {
+              if (pdnaAppsCreatedInRange.length > 0) {
+                const totalCreated = pdnaAppsCreatedInRange.reduce((sum, day) => sum + day.created, 0);
                 return (
                   <MiniChart
-                    title="Apps (Last 24h)"
-                    value={`Total: ${last24hStats.hourly_stats.reduce((sum, h) => sum + h.apps, 0)}`}
+                    title="Apps Created"
+                    value={`Total: ${totalCreated.toLocaleString()}`}
                     valueColor="#3b82f6"
-                    data={buildRolling24hChartData(last24hStats.hourly_stats, s => s.apps, (h, s) => `${h}h ago: ${s.apps} apps`)}
-                    barColor="#60a5fa"
+                    data={buildDailyChartData(pdnaAppsCreatedInRange, s => s.created, (d, s) => `${formatShortDay(d)}: ${s.created} created`, formatShortDay)}
+                    barColor="#3b82f6"
+                    barColorLight="#60a5fa"
                   />
                 );
               }
-              if (hourlyData) {
-                return (
-                  <MiniChart
-                    title="Apps/Hour"
-                    value={`Total: ${hourlyData.hourly_stats.reduce((sum, h) => sum + h.apps, 0)}`}
-                    valueColor="#3b82f6"
-                    data={buildHourlyChartData(hourlyData.hourly_stats, s => s.apps, (h, s) => `${h}:00 - ${s.apps} apps`)}
-                    barColor="#60a5fa"
-                    showBack={true}
-                    backAction={() => setHourlyData(null)}
-                  />
-                );
-              }
-              return (
-                <MiniChart
-                  title="Apps/Day"
-                  value={`Avg: ${summary.apps_per_day.toFixed(1)}`}
-                  valueColor="#3b82f6"
-                  data={buildDailyChartData(summary.daily_stats, s => s.apps, (d, s) => `${formatShortDay(d)}: ${s.apps} apps`, formatShortDay)}
-                  barColor="#3b82f6"
-                  barColorLight="#60a5fa"
-                  onClick={(i) => fetchHourlyData(summary.daily_stats[i].date)}
-                />
-              );
+              return <ChartEmptyState message={pdnaError || 'No PDNA app creation data'} />;
             })()}
 
-            {/* Avg Cost/App Chart */}
+            {/* Apps Deleted Chart */}
             {(() => {
-              if (datePreset === '1d' && last24hStats) {
-                const totalCost = last24hStats.hourly_stats.reduce((sum, h) => sum + h.cost, 0);
-                const totalApps = last24hStats.hourly_stats.reduce((sum, h) => sum + h.apps, 0);
-                const avgCost = totalApps > 0 ? totalCost / totalApps : 0;
+              if (pdnaLoading) {
+                return <ChartLoadingState />;
+              }
+              if (pdnaAppsDeletedInRange.length > 0) {
                 return (
                   <MiniChart
-                    title="Avg Cost/App (Last 24h)"
-                    value={`Avg: ${formatCost(avgCost)}`}
-                    valueColor="#059669"
-                    data={buildRolling24hChartData(last24hStats.hourly_stats, s => s.apps > 0 ? s.cost / s.apps : 0, (h, s) => `${h}h ago: ${formatCost(s.apps > 0 ? s.cost / s.apps : 0)} (${s.apps} apps)`)}
-                    barColor="#10b981"
+                    title="Apps Deleted"
+                    value={`Total: ${pdnaAppsDeletedInRange.reduce((s, d) => s + d.deleted, 0).toLocaleString()}`}
+                    valueColor="#dc2626"
+                    data={buildDailyChartData(pdnaAppsDeletedInRange, s => s.deleted, (d, s) => `${formatShortDay(d)}: ${s.deleted} deleted`, formatShortDay)}
+                    barColor="#dc2626"
+                    barColorLight="#f87171"
                   />
                 );
               }
-              return (
-                <MiniChart
-                  title="Avg Cost/App"
-                  value={`Avg: ${formatCost(summary.avg_cost_per_app)}`}
-                  valueColor="#059669"
-                  data={buildDailyChartData(summary.daily_stats, s => s.avg_cost_per_app, (d, s) => `${formatShortDay(d)}: ${formatCost(s.avg_cost_per_app)}`, formatShortDay)}
-                  barColor="#059669"
-                  barColorLight="#10b981"
-                />
-              );
+              return <ChartEmptyState message={pdnaError || 'No PDNA app deletion data'} />;
             })()}
 
-            {/* Avg Steps/Run Chart */}
+            {/* Unique Customers Chart */}
             {(() => {
-              if (datePreset === '1d' && last24hStats) {
-                const totalSteps = last24hStats.hourly_stats.reduce((sum, h) => sum + h.steps, 0);
-                const totalRuns = last24hStats.hourly_stats.reduce((sum, h) => sum + h.runs, 0);
-                const avgSteps = totalRuns > 0 ? totalSteps / totalRuns : 0;
+              if (pdnaLoading) {
+                return <ChartLoadingState />;
+              }
+              if (pdnaUniqueCustomersInRange.length > 0) {
                 return (
                   <MiniChart
-                    title="Avg Steps/Run (Last 24h)"
-                    value={`Avg: ${avgSteps.toFixed(1)}`}
-                    valueColor="#8b5cf6"
-                    data={buildRolling24hChartData(last24hStats.hourly_stats, s => s.runs > 0 ? s.steps / s.runs : 0, (h, s) => `${h}h ago: ${(s.runs > 0 ? s.steps / s.runs : 0).toFixed(1)} steps/run (${s.runs} runs)`)}
-                    barColor="#a78bfa"
+                    title="Unique Customers"
+                    value={`Total: ${pdnaUniqueCustomersInRange.reduce((s, d) => s + d.uniqueCustomers, 0).toLocaleString()}`}
+                    valueColor="#7c3aed"
+                    data={buildDailyChartData(pdnaUniqueCustomersInRange, s => s.uniqueCustomers, (d, s) => `${formatShortDay(d)}: ${s.uniqueCustomers} customers`, formatShortDay)}
+                    barColor="#7c3aed"
+                    barColorLight="#a78bfa"
                   />
                 );
               }
-              return (
-                <MiniChart
-                  title="Avg Steps/Run"
-                  value={`Avg: ${(summary.daily_stats.reduce((sum, d) => sum + d.avg_steps_per_run, 0) / summary.daily_stats.length).toFixed(1)}`}
-                  valueColor="#8b5cf6"
-                  data={buildDailyChartData(summary.daily_stats, s => s.avg_steps_per_run, (d, s) => `${formatShortDay(d)}: ${s.avg_steps_per_run.toFixed(1)} steps/run`, formatShortDay)}
-                  barColor="#8b5cf6"
-                  barColorLight="#a78bfa"
-                />
-              );
+              return <ChartEmptyState message={pdnaError || 'No PDNA unique customer data'} />;
             })()}
 
             {/* WebSocket Errors/Day Chart */}
@@ -1288,6 +1186,70 @@ function AnalyticsContent() {
 
           </div>
             )}
+            {pdnaLoading ? (
+              <div style={{ backgroundColor: 'rgba(255,255,255,0.97)', borderRadius: '10px', padding: '2rem', textAlign: 'center', marginBottom: '1.25rem' }}>
+                <span style={{ color: '#64748b', fontSize: '0.85rem' }}>Loading PDNA snapshot...</span>
+              </div>
+            ) : pdnaError ? (
+              <div style={{ backgroundColor: 'rgba(255,255,255,0.95)', borderRadius: '10px', padding: '1.5rem', borderLeft: '4px solid #ef4444', marginBottom: '1.25rem' }}>
+                <p style={{ margin: '0 0 0.5rem 0', color: '#dc2626', fontWeight: 600, fontSize: '0.85rem' }}>PDNA Error</p>
+                <p style={{ margin: 0, color: '#666', fontSize: '0.8rem' }}>{pdnaError}</p>
+              </div>
+            ) : pdnaSnapshot ? (
+              <div style={{ marginBottom: '1.25rem' }}>
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+                  gap: '0.75rem',
+                  marginBottom: '1rem',
+                }}>
+                  {[
+                    { label: 'Snapshot Date', value: pdnaSnapshot.snapshotDate, color: '#475569' },
+                    { label: 'Total Apps', value: pdnaSnapshot.totalApps.toLocaleString(), color: '#1d4ed8' },
+                    { label: 'Published', value: `${pdnaSnapshot.publishedCount.toLocaleString()} (${pdnaSnapshot.publishRate}%)`, color: '#0d9488' },
+                    { label: 'Hibernated', value: `${pdnaSnapshot.hibernatedCount.toLocaleString()} (${pdnaSnapshot.hibernationRate}%)`, color: '#be185d' },
+                    { label: 'Deleted', value: pdnaSnapshot.deletedCount.toLocaleString(), color: '#dc2626' },
+                    ...Object.entries(pdnaSnapshot.statuses).map(([status, count]) => ({
+                      label: status.charAt(0).toUpperCase() + status.slice(1),
+                      value: count.toLocaleString(),
+                      color: status === 'active' ? '#16a34a' : status === 'cancelled' ? '#dc2626' : '#d97706',
+                    })),
+                  ].map(({ label, value, color }) => (
+                    <div key={label} style={{
+                      backgroundColor: 'rgba(255,255,255,0.97)',
+                      padding: '0.75rem 1rem',
+                      borderRadius: '10px',
+                      boxShadow: '0 2px 10px rgba(0,0,0,0.08)',
+                    }}>
+                      <div style={{ fontSize: '0.6rem', fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>{label}</div>
+                      <div style={{ fontSize: '1rem', fontWeight: 700, color, fontFamily: 'monospace' }}>{value}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {Object.keys(pdnaSnapshot.plans).length > 0 && (
+                  <div style={{
+                    backgroundColor: 'rgba(255,255,255,0.97)',
+                    padding: '0.75rem 1rem',
+                    borderRadius: '10px',
+                    boxShadow: '0 2px 10px rgba(0,0,0,0.08)',
+                    marginBottom: '1rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '1.5rem',
+                    flexWrap: 'wrap',
+                  }}>
+                    <span style={{ fontSize: '0.7rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Plans</span>
+                    {Object.entries(pdnaSnapshot.plans).sort((a, b) => b[1] - a[1]).map(([plan, count]) => (
+                      <span key={plan} style={{ fontSize: '0.8rem', color: '#374151' }}>
+                        <strong style={{ fontFamily: 'monospace' }}>{plan}</strong>: {count.toLocaleString()}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+              </div>
+            ) : null}
           </div>
         )}
 
@@ -1301,7 +1263,6 @@ function AnalyticsContent() {
             <p style={{ margin: 0, fontSize: '0.75rem', color: '#94a3b8' }}>
               Uses the date range from the page header (presets or custom).
             </p>
-            <LangfuseMetricCards fromTimestamp={langfuseWindow.start} toTimestamp={langfuseWindow.end} />
             <LangfuseInsightsPanel fromTimestamp={langfuseWindow.start} toTimestamp={langfuseWindow.end} />
           </div>
         )}
@@ -1325,124 +1286,6 @@ function AnalyticsContent() {
             style={{ marginBottom: '1.25rem' }}
           >
             <FeedbackAnalyticsPanel datePreset={datePreset} customStart={customStart} customEnd={customEnd} />
-          </div>
-        )}
-
-        {visitedTabs.has('pdna') && (
-          <div
-            id="analytics-panel-pdna"
-            role="tabpanel"
-            aria-labelledby="analytics-tab-pdna"
-            hidden={activeTab !== 'pdna'}
-            style={{ marginBottom: '1.25rem' }}
-          >
-            {pdnaLoading ? (
-            <div style={{ backgroundColor: 'rgba(255,255,255,0.97)', borderRadius: '0 0 12px 12px', padding: '2rem', textAlign: 'center', marginBottom: '1.25rem' }}>
-              <span style={{ color: '#64748b', fontSize: '0.85rem' }}>Loading PDNA snapshot...</span>
-            </div>
-          ) : pdnaError ? (
-            <div style={{ backgroundColor: 'rgba(255,255,255,0.95)', borderRadius: '0 0 12px 12px', padding: '1.5rem', borderLeft: '4px solid #ef4444', marginBottom: '1.25rem' }}>
-              <p style={{ margin: '0 0 0.5rem 0', color: '#dc2626', fontWeight: 600, fontSize: '0.85rem' }}>PDNA Error</p>
-              <p style={{ margin: 0, color: '#666', fontSize: '0.8rem' }}>{pdnaError}</p>
-            </div>
-          ) : pdnaSnapshot ? (
-            <div style={{ marginBottom: '1.25rem' }}>
-              {/* Summary cards */}
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
-                gap: '0.75rem',
-                marginBottom: '1rem',
-              }}>
-                {[
-                  { label: 'Snapshot Date', value: pdnaSnapshot.snapshotDate, color: '#475569' },
-                  { label: 'Total Apps', value: pdnaSnapshot.totalApps.toLocaleString(), color: '#1d4ed8' },
-                  { label: 'Published', value: `${pdnaSnapshot.publishedCount.toLocaleString()} (${pdnaSnapshot.publishRate}%)`, color: '#0d9488' },
-                  { label: 'Hibernated', value: `${pdnaSnapshot.hibernatedCount.toLocaleString()} (${pdnaSnapshot.hibernationRate}%)`, color: '#be185d' },
-                  { label: 'Deleted', value: pdnaSnapshot.deletedCount.toLocaleString(), color: '#dc2626' },
-                  ...Object.entries(pdnaSnapshot.statuses).map(([status, count]) => ({
-                    label: status.charAt(0).toUpperCase() + status.slice(1),
-                    value: count.toLocaleString(),
-                    color: status === 'active' ? '#16a34a' : status === 'cancelled' ? '#dc2626' : '#d97706',
-                  })),
-                ].map(({ label, value, color }) => (
-                  <div key={label} style={{
-                    backgroundColor: 'rgba(255,255,255,0.97)',
-                    padding: '0.75rem 1rem',
-                    borderRadius: '10px',
-                    boxShadow: '0 2px 10px rgba(0,0,0,0.08)',
-                  }}>
-                    <div style={{ fontSize: '0.6rem', fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>{label}</div>
-                    <div style={{ fontSize: '1rem', fontWeight: 700, color, fontFamily: 'monospace' }}>{value}</div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Plans breakdown */}
-              {Object.keys(pdnaSnapshot.plans).length > 0 && (
-                <div style={{
-                  backgroundColor: 'rgba(255,255,255,0.97)',
-                  padding: '0.75rem 1rem',
-                  borderRadius: '10px',
-                  boxShadow: '0 2px 10px rgba(0,0,0,0.08)',
-                  marginBottom: '1rem',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '1.5rem',
-                  flexWrap: 'wrap',
-                }}>
-                  <span style={{ fontSize: '0.7rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Plans</span>
-                  {Object.entries(pdnaSnapshot.plans).sort((a, b) => b[1] - a[1]).map(([plan, count]) => (
-                    <span key={plan} style={{ fontSize: '0.8rem', color: '#374151' }}>
-                      <strong style={{ fontFamily: 'monospace' }}>{plan}</strong>: {count.toLocaleString()}
-                    </span>
-                  ))}
-                </div>
-              )}
-
-              {/* Daily charts (last 3 months) */}
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-                gap: '1rem',
-              }}>
-                {pdnaSnapshot.appsCreatedDaily.length > 0 && (
-                  <MiniChart
-                    title="Apps Created/Day"
-                    value={`Total: ${pdnaSnapshot.appsCreatedDaily.reduce((s, d) => s + d.created, 0).toLocaleString()}`}
-                    valueColor="#6366f1"
-                    data={buildDailyChartData(pdnaSnapshot.appsCreatedDaily, s => s.created, (d, s) => `${formatShortDay(d)}: ${s.created} created`, formatShortDay)}
-                    barColor="#6366f1"
-                    barColorLight="#818cf8"
-                  />
-                )}
-                {pdnaSnapshot.appsDeletedDaily.length > 0 && (
-                  <MiniChart
-                    title="Apps Deleted/Day"
-                    value={`Total: ${pdnaSnapshot.appsDeletedDaily.reduce((s, d) => s + d.deleted, 0).toLocaleString()}`}
-                    valueColor="#dc2626"
-                    data={buildDailyChartData(pdnaSnapshot.appsDeletedDaily, s => s.deleted, (d, s) => `${formatShortDay(d)}: ${s.deleted} deleted`, formatShortDay)}
-                    barColor="#dc2626"
-                    barColorLight="#f87171"
-                  />
-                )}
-                {pdnaSnapshot.uniqueCustomersDaily.length > 0 && (
-                  <MiniChart
-                    title="Unique Customers/Day"
-                    value={`Total: ${pdnaSnapshot.uniqueCustomersDaily.reduce((s, d) => s + d.uniqueCustomers, 0).toLocaleString()}`}
-                    valueColor="#7c3aed"
-                    data={buildDailyChartData(pdnaSnapshot.uniqueCustomersDaily, s => s.uniqueCustomers, (d, s) => `${formatShortDay(d)}: ${s.uniqueCustomers} customers`, formatShortDay)}
-                    barColor="#7c3aed"
-                    barColorLight="#a78bfa"
-                  />
-                )}
-              </div>
-            </div>
-          ) : (
-            <div style={{ backgroundColor: 'rgba(255,255,255,0.97)', borderRadius: '0 0 12px 12px', padding: '2rem', textAlign: 'center', marginBottom: '1.25rem' }}>
-              <span style={{ color: '#94a3b8', fontSize: '0.85rem' }}>No PDNA data available</span>
-            </div>
-          )}
           </div>
         )}
 
