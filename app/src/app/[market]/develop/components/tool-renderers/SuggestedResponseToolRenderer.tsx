@@ -1,10 +1,10 @@
 'use client'
 
+import { ChoiceList } from '@airo/components/chat/choice-list'
 import Box from '@ux/box'
 
 import { useSendUserMessage } from '@/app/[market]/develop/components/chat/ChatContext'
 import type { DefaultToolRendererProps } from '@/app/[market]/develop/components/tool-renderers/DefaultToolRenderer'
-import OptionButton from '@/app/[market]/develop/components/tool-renderers/OptionButton'
 import { useTranslations } from '@/hooks/useTranslations'
 import { useIsActivelyStreaming, useIsLoading } from '@/stores/useStreamingConversationStore'
 
@@ -54,22 +54,18 @@ export default function SuggestedResponseToolRenderer({
         {widgetData.question}
       </div>
 
-      <Box
-        orientation="vertical"
-        gap="sm"
+      <ChoiceList
+        onDecision={(value) => handleSuggestionClick(widgetData.suggestions[parseInt(value, 10)])}
+        ariaLabel={widgetData.question}
+        variant="minimal"
+        optionDividers
       >
         {widgetData.suggestions.map((suggestion, index) => (
-          <OptionButton
-            key={index}
-            text={suggestion.text}
-            disabled={isProcessing}
-            onClick={() => handleSuggestionClick(suggestion)}
-            animationDelay={index * 0.2}
-            isSelectable={true}
-            keyboardShortcut={index + 1}
-          />
+          <ChoiceList.Item key={index} value={String(index)}>
+            {suggestion.text}
+          </ChoiceList.Item>
         ))}
-      </Box>
+      </ChoiceList>
 
       <Box
         orientation="horizontal"

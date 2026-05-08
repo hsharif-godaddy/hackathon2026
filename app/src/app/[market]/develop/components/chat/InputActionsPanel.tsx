@@ -3,6 +3,7 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { ChoiceList } from '@airo/components/chat/choice-list'
 import { useQueryClient } from '@tanstack/react-query'
 
 import { useSendUserMessage } from '@/app/[market]/develop/components/chat/ChatContext'
@@ -413,17 +414,20 @@ function InputActionsPanelLegacy() {
               </div>
             )}
 
-            {nbaSuggestions.map((suggestion, index) => (
-              <OptionButton
-                key={`nba-${index}`}
-                text={suggestion.text}
-                disabled={isProcessing}
-                onClick={() => handleSuggestionClick(suggestion)}
-                animationDelay={index * 0.1}
-                isSelectable={true}
-                keyboardShortcut={index + 1}
-              />
-            ))}
+            {nbaSuggestions.length > 0 && (
+              <ChoiceList
+                onDecision={(value) => handleSuggestionClick(nbaSuggestions[parseInt(value, 10)])}
+                ariaLabel={nbaData?.question ?? t('builder_todo_continue_building')}
+                variant="minimal"
+                optionDividers
+              >
+                {nbaSuggestions.map((suggestion, index) => (
+                  <ChoiceList.Item key={index} value={String(index)}>
+                    {suggestion.text}
+                  </ChoiceList.Item>
+                ))}
+              </ChoiceList>
+            )}
 
             {showOtherInput && (
               <OptionInput
@@ -1447,29 +1451,31 @@ function InputActionsPanelThemeSelection({
           hideQuestion={true}
         />
       ) : nbaSuggestions.length > 0 ? (
-        nbaSuggestions.map((suggestion, index) => (
-          <OptionButton
-            key={`nba-${index}`}
-            text={suggestion.text}
-            disabled={isProcessing}
-            onClick={() => handleSuggestionClick(suggestion)}
-            animationDelay={index * 0.1}
-            isSelectable={true}
-            keyboardShortcut={index + 1}
-          />
-        ))
-      ) : !hasPendingPlanItems ? (
-        nextActionSuggestions.map((suggestion, index) => (
-          <OptionButton
-            key={`next-${index}`}
-            text={suggestion.text}
-            disabled={isProcessing}
-            onClick={() => handleSuggestionClick(suggestion.text)}
-            animationDelay={index * 0.1}
-            isSelectable={true}
-            keyboardShortcut={index + 1}
-          />
-        ))
+        <ChoiceList
+          onDecision={(value) => handleSuggestionClick(nbaSuggestions[parseInt(value, 10)])}
+          ariaLabel={nbaData?.question ?? t('builder_todo_continue_building')}
+          variant="minimal"
+          optionDividers
+        >
+          {nbaSuggestions.map((suggestion, index) => (
+            <ChoiceList.Item key={index} value={String(index)}>
+              {suggestion.text}
+            </ChoiceList.Item>
+          ))}
+        </ChoiceList>
+      ) : !hasPendingPlanItems && nextActionSuggestions.length > 0 ? (
+        <ChoiceList
+          onDecision={(value) => handleSuggestionClick(nextActionSuggestions[parseInt(value, 10)].text)}
+          ariaLabel={t('builder_todo_continue_building')}
+          variant="minimal"
+          optionDividers
+        >
+          {nextActionSuggestions.map((suggestion, index) => (
+            <ChoiceList.Item key={index} value={String(index)}>
+              {suggestion.text}
+            </ChoiceList.Item>
+          ))}
+        </ChoiceList>
       ) : null}
 
       {hasRebuildPages && rebuildPagesData && nbaData?.source !== 'askQuestion' && (

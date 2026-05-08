@@ -1,14 +1,13 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
+import { ChoiceList } from '@airo/components/chat/choice-list'
 import Box from '@ux/box'
 
 import { useSendUserMessage } from '@/app/[market]/develop/components/chat/ChatContext'
 import type { DefaultToolRendererProps } from '@/app/[market]/develop/components/tool-renderers/DefaultToolRenderer'
 import DefaultToolRenderer from '@/app/[market]/develop/components/tool-renderers/DefaultToolRenderer'
-import OptionButton from '@/app/[market]/develop/components/tool-renderers/OptionButton'
 import OptionInput from '@/app/[market]/develop/components/tool-renderers/OptionInput'
-import { useNumberKeySelection } from '@/app/[market]/develop/components/tool-renderers/useNumberKeySelection'
 import { useTranslations } from '@/hooks/useTranslations'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { prelaunchKindForUserMessage } from '@/lib/post-publish-prelaunch-ask-question'
@@ -95,26 +94,6 @@ export default function AskQuestionToolRenderer({
   useEffect(() => {
     if (isSubmittedForHooks && onComplete) onComplete()
   }, [isSubmittedForHooks, onComplete])
-
-  const currentQuestionForKeyboard = parsedQuestions?.[currentQuestionIndex] as Question | undefined
-  const keyboardItemCount = currentQuestionForKeyboard?.suggestions?.length ?? 0
-  const isKeyboardDisabled = isProcessing || toolStatus !== 'completed' || !result || isLastAssistantMessage === false || isSubmittedForHooks
-
-  useNumberKeySelection({
-    itemCount: keyboardItemCount,
-    disabled: isKeyboardDisabled,
-    onSelect: useCallback((index: number) => {
-      if (!currentQuestionForKeyboard || index >= currentQuestionForKeyboard.suggestions.length) return
-      const suggestion = currentQuestionForKeyboard.suggestions[index]
-      logAiroHQEvent({
-        category: 'click',
-        recommendation_task: 'builder_askquestion_suggestion_click',
-        recommendation_type: 'askquestion_suggestion',
-        recommendation_id: `q${currentQuestionIndex}_s${index}`,
-      })()
-      submitAnswer(suggestion.value || suggestion.text)
-    }, [currentQuestionForKeyboard, currentQuestionIndex]),
-  })
 
   if (toolStatus === 'error') {
     return (
@@ -237,18 +216,21 @@ export default function AskQuestionToolRenderer({
       )}
 
       <Box orientation="vertical" gap="sm">
-        {currentQuestion.suggestions.map((suggestion, index) => (
-          <OptionButton
-            key={index}
-            text={suggestion.text}
-            disabled={isProcessing}
-            onClick={() => handleSuggestionClick(suggestion, index)}
-            animationDelay={index * 0.2}
-            isSelectable={true}
-            keyboardShortcut={index + 1}
-            testId={suggestion.testId}
-          />
-        ))}
+        <ChoiceList
+          onDecision={(value) => {
+            const index = parseInt(value, 10)
+            handleSuggestionClick(currentQuestion.suggestions[index], index)
+          }}
+          ariaLabel={currentQuestion.question}
+          variant="minimal"
+          optionDividers
+        >
+          {currentQuestion.suggestions.map((suggestion, index) => (
+            <ChoiceList.Item key={index} value={String(index)}>
+              {suggestion.text}
+            </ChoiceList.Item>
+          ))}
+        </ChoiceList>
 
         {currentQuestion.allowOther !== false && (
           <OptionInput

@@ -107,6 +107,7 @@ jobs:
           echo "registry=https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/" > .npmrc
           echo "//gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/:_authToken=${OIDC_TOKEN}" >> .npmrc
           echo "//gdartifactory1.jfrog.io/artifactory/api/npm/npm-gasket-core-local/:_authToken=${OIDC_TOKEN}" >> .npmrc
+          echo "//gdartifactory1.jfrog.io/artifactory/api/npm/npm-user-experience-local/:_authToken=${OIDC_TOKEN}" >> .npmrc
 
       # Note: pnpm store path is Linux-specific; self-hosted runners are Linux-only
       - name: Cache pnpm store
@@ -214,6 +215,7 @@ jobs:
           echo "registry=https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/" > .npmrc
           echo "//gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/:_authToken=${OIDC_TOKEN}" >> .npmrc
           echo "//gdartifactory1.jfrog.io/artifactory/api/npm/npm-gasket-core-local/:_authToken=${OIDC_TOKEN}" >> .npmrc
+          echo "//gdartifactory1.jfrog.io/artifactory/api/npm/npm-user-experience-local/:_authToken=${OIDC_TOKEN}" >> .npmrc
 
       # Note: pnpm store path is Linux-specific; self-hosted runners are Linux-only
       - name: Cache pnpm store

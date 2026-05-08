@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "airo-components": {
+      "command": "npx",
+      "args": [
+        "@ux/aichemy@0.1.0",
+        "mcp",
+        "https://gdcorp-ux.github.io/airo-components/codex.json",
+        "--refresh-interval",
+        "30"
+      ]
+    }
+  }
+}
