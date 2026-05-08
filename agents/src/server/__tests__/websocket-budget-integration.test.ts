@@ -308,6 +308,7 @@ describe('budget report creation', () => {
         productCost: '0',
         label: 'airo-builder:general',
       }],
+      allowOverage: true,
     })
     // getBudget for per-item breakdown (graceful degradation)
     try {
@@ -326,6 +327,7 @@ describe('budget report creation', () => {
     expect(client.getSession).toHaveBeenCalledWith('session-1')
     expect(client.createReport).toHaveBeenCalledWith('session-1', {
       reportItems: [{ budgetCost: '0.05', productCost: '0', label: 'airo-builder:general' }],
+      allowOverage: true,
     })
     if (!result.refreshRequired) {
       expect(result.payload.customerRemaining).toBe(99.925)
@@ -341,6 +343,7 @@ describe('budget report creation', () => {
     expect(result.refreshRequired).toBe(false)
     expect(client.createReport).toHaveBeenCalledWith('session-1', {
       reportItems: [{ budgetCost: '0', productCost: '0', label: 'airo-builder:general' }],
+      allowOverage: true,
     })
   })
 

@@ -174,7 +174,41 @@ describe('toBudgetUpdatePayload', () => {
       ])
     })
 
-    it('includes empty reportItems array when no items', () => {
+    it('includes allowed-overage items in reportItems breakdown', () => {
+      const reportResponse: ReportResponse = {
+        reportId: 'rpt-1',
+        budgetId: 'b-1',
+        sessionId: 'sess-1',
+        productKey: 'airo-builder',
+        budgetCostTotal: 5,
+        productCostTotal: 10,
+        creditsAvailable: 95,
+        reportItems: [
+          {
+            budgetCost: 5,
+            productCost: 3,
+            category: 'airo-builder:general',
+            budgetItems: [{ budgetItemId: 'bi-1', creditsUsed: 5 }],
+          },
+          {
+            budgetCost: 0,
+            productCost: 7,
+            category: 'allowed-overage',
+            budgetItems: [],
+          },
+        ],
+      }
+      const budgetResponse = makeBudgetResponse()
+
+      const payload = toBudgetUpdatePayload(reportResponse, budgetResponse, false)
+
+      expect(payload.assignment.reportItems).toEqual([
+        { budgetCost: 5, productCost: 3, category: 'airo-builder:general' },
+        { budgetCost: 0, productCost: 7, category: 'allowed-overage' },
+      ])
+    })
+
+    it('omits godaddy assignment when no productCost items', () => {
       const reportResponse: ReportResponse = {
         reportId: 'rpt-1',
         budgetId: 'b-1',

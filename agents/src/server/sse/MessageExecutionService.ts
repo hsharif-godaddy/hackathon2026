@@ -808,7 +808,7 @@ export class MessageExecutionService {
             )
             const { reportItems, sessionWasFree } = budgetResult
 
-            const report = await budgetClient.createReport(budgetSessionId, { reportItems })
+            const report = await budgetClient.createReport(budgetSessionId, { reportItems, allowOverage: true })
             // BMS mode: update usedFreeGrants from cost attribution result
             // (persistenceContext.usedFreeGrants is always false in BMS mode since
             // deriveUsedFreeGrants returns false when budgetServiceEnabled=true)

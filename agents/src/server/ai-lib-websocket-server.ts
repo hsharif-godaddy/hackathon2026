@@ -2209,7 +2209,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         // by getBudget failure. Returns full ReportResponse (BMS parity, PR #2577).
         let report
         try {
-          report = await client.createReport(sessionId, { reportItems })
+          report = await client.createReport(sessionId, { reportItems, allowOverage: true })
         } catch (err) {
           // 409 Conflict = report already exists for this session (idempotency).
           // Credits were already deducted by the prior POST. Tell client to refresh

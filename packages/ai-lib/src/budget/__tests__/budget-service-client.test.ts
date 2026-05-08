@@ -292,6 +292,21 @@ describe('BudgetServiceClient', () => {
       expect(init.method).toBe('POST')
       const sentBody = JSON.parse(init.body)
       expect(sentBody.reportItems[0].budgetCost).toBe('3.5')
+      expect(sentBody.allowOverage).toBeUndefined()
+    })
+
+    it('serializes allowOverage flag in request body', async () => {
+      const fetchMock = mockFetchWithText(true, 200, VALID_CREATE_REPORT_RESPONSE)
+      const client = clientWith(fetchMock)
+
+      await client.createReport('sess-abc', {
+        reportItems: [{ budgetCost: '3.5', productCost: '0', label: 'airo-builder:general' }],
+        allowOverage: true,
+      })
+
+      const [, init] = (fetchMock as ReturnType<typeof vi.fn>).mock.calls[0]!
+      const sentBody = JSON.parse(init.body)
+      expect(sentBody.allowOverage).toBe(true)
     })
 
 

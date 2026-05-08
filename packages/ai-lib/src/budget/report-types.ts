@@ -14,6 +14,16 @@ export interface ReportItemRequest {
 
 export interface CreateReportRequest {
   readonly reportItems: readonly ReportItemRequest[]
+  /**
+   * When true, allows report creation even if budgetCost exceeds available credits.
+   * The server appends an extra report item with the reserved category "allowed-overage"
+   * (budgetCost=0, productCost=remainder). Original item's stored budgetCost reflects
+   * only the actually allocated amount.
+   *
+   * Note: callers must NOT use "allowed-overage" as a label in reportItems — it is
+   * reserved for the server-generated overage line and will be rejected by the API.
+   */
+  readonly allowOverage?: boolean
 }
 
 export interface BudgetItemDeduction {
