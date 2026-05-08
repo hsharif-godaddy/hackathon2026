@@ -74,6 +74,62 @@ func TestTokenFromNpmrcBytes(t *testing.T) {
 	}
 }
 
+func TestNpmrcEntryFromBytes(t *testing.T) {
+	cases := map[string]struct {
+		input      string
+		wantPrefix string
+		wantToken  string
+	}{
+		"narrow scope": {
+			input:      "//gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/:_authToken=abc\n",
+			wantPrefix: "//gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/",
+			wantToken:  "abc",
+		},
+		"broad scope": {
+			input:      "//gdartifactory1.jfrog.io/artifactory/api/npm/:_authToken=abc\n",
+			wantPrefix: "//gdartifactory1.jfrog.io/artifactory/api/npm/",
+			wantToken:  "abc",
+		},
+		"skips commented line": {
+			input: "# //gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/:_authToken=stale\n" +
+				"//gdartifactory1.jfrog.io/artifactory/api/npm/:_authToken=active\n",
+			wantPrefix: "//gdartifactory1.jfrog.io/artifactory/api/npm/",
+			wantToken:  "active",
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			gotPrefix, gotToken := npmrcEntryFromBytes([]byte(tc.input))
+			if gotPrefix != tc.wantPrefix {
+				t.Errorf("prefix: got %q, want %q", gotPrefix, tc.wantPrefix)
+			}
+			if gotToken != tc.wantToken {
+				t.Errorf("token: got %q, want %q", gotToken, tc.wantToken)
+			}
+		})
+	}
+}
+
+func TestIsNarrowNpmPrefix(t *testing.T) {
+	cases := map[string]struct {
+		prefix string
+		want   bool
+	}{
+		"node-virt is narrow":                 {"//gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/", true},
+		"npm-user-experience-local is narrow": {"//gdartifactory1.jfrog.io/artifactory/api/npm/npm-user-experience-local/", true},
+		"broad /api/npm/ is not narrow":       {"//gdartifactory1.jfrog.io/artifactory/api/npm/", false},
+		"unrelated host":                      {"//example.com/", false},
+		"empty":                               {"", false},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			if got := IsNarrowNpmPrefix(tc.prefix); got != tc.want {
+				t.Errorf("got %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestTokenFromProxyURL(t *testing.T) {
 	cases := map[string]struct {
 		input string

@@ -22,15 +22,15 @@ type ArtifactoryCheck struct{}
 func (c *ArtifactoryCheck) Name() string     { return "Artifactory Auth" }
 func (c *ArtifactoryCheck) Category() string { return preflight.CategoryTools }
 
-const loginHint = "pnpm login --registry https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/ --auth-type web"
+const loginHint = "pnpm login --registry https://gdartifactory1.jfrog.io/artifactory/api/npm/ --auth-type web"
 
 func (c *ArtifactoryCheck) Run(ctx context.Context, _ string) preflight.CheckResult {
 	// Single read (no prior Stat) to avoid a TOCTOU window during
 	// pnpm login's atomic write-then-rename of ~/.npmrc.
-	token, err := jfrog.TokenFromNpmrc()
+	prefix, token, err := jfrog.NpmrcEntry()
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return c.fail("~/.npmrc not found -- pnpm install will fail for private GoDaddy packages")
+			return c.fail("~/.npmrc not found -- pnpm install will fail for private GoDaddy packages", loginHint)
 		}
 		return preflight.CheckResult{
 			Status:   preflight.StatusFail,
@@ -40,23 +40,30 @@ func (c *ArtifactoryCheck) Run(ctx context.Context, _ string) preflight.CheckRes
 		}
 	}
 	if token == "" {
-		return c.fail("~/.npmrc has no Artifactory _authToken -- pnpm install will fail for private GoDaddy packages")
+		return c.fail("~/.npmrc has no Artifactory _authToken -- pnpm install will fail for private GoDaddy packages", loginHint)
 	}
 
 	if err := jfrog.Probe(ctx, token); err != nil {
 		if errors.Is(err, jfrog.ErrUnauthorized) {
-			return c.fail("Artifactory rejected the token in ~/.npmrc (expired or revoked) -- pnpm install will fail with 401")
+			return c.fail("Artifactory rejected the token in ~/.npmrc (expired or revoked) -- pnpm install will fail with 401", loginHint)
 		}
 		// Anything else (timeout, DNS, TLS, 5xx, etc.) is inconclusive.
 		// Surface the underlying error so a developer with e.g. a
 		// corporate-MITM cert error doesn't chase phantom "offline"
-		// causes.
+		// causes. Narrow-scope detection still runs below.
+		if jfrog.IsNarrowNpmPrefix(prefix) {
+			return c.fail(narrowScopeMessage(prefix), narrowScopeHint(prefix))
+		}
 		return preflight.CheckResult{
 			Status:   preflight.StatusPass,
 			Name:     c.Name(),
 			Category: c.Category(),
 			Message:  fmt.Sprintf("Artifactory credentials found (probe inconclusive: %v)", err),
 		}
+	}
+
+	if jfrog.IsNarrowNpmPrefix(prefix) {
+		return c.fail(narrowScopeMessage(prefix), narrowScopeHint(prefix))
 	}
 
 	return preflight.CheckResult{
@@ -67,13 +74,21 @@ func (c *ArtifactoryCheck) Run(ctx context.Context, _ string) preflight.CheckRes
 	}
 }
 
-func (c *ArtifactoryCheck) fail(msg string) preflight.CheckResult {
+func (c *ArtifactoryCheck) fail(msg, hint string) preflight.CheckResult {
 	return preflight.CheckResult{
 		Status:       preflight.StatusFail,
 		Name:         c.Name(),
 		Category:     c.Category(),
 		FixAvailable: true,
 		Message:      msg,
-		InstallHint:  loginHint,
+		InstallHint:  hint,
 	}
+}
+
+func narrowScopeMessage(prefix string) string {
+	return fmt.Sprintf("~/.npmrc _authToken is scoped to %s -- pnpm install will 401 for packages in other jfrog npm repos (e.g. @airo/components from npm-user-experience-local)", prefix)
+}
+
+func narrowScopeHint(prefix string) string {
+	return fmt.Sprintf("Replace %s:_authToken=... with %s:_authToken=... in ~/.npmrc", prefix, jfrog.NpmScopePrefix)
 }

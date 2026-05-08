@@ -23,6 +23,13 @@ import (
 // Host is the Artifactory hostname shared by npm and Go repos.
 const Host = "gdartifactory1.jfrog.io"
 
+// NpmScopePrefix is the recommended npm auth prefix for ~/.npmrc. Using this
+// broader prefix (rather than a repo-specific one like .../api/npm/node-virt/)
+// lets a single token authenticate against every jfrog npm repo. Narrower
+// prefixes cause pnpm install to fail with 401 when resolving packages from a
+// different repo (e.g. npm-user-experience-local).
+const NpmScopePrefix = "//" + Host + "/artifactory/api/npm/"
+
 // ValidateEndpoint is probed by Probe; overridable for tests.
 // `/api/system/version` is the canonical JFrog "am I authenticated?" endpoint:
 // it returns 200 for any authenticated user (since JFrog 2.2.1) and 401 when
@@ -44,19 +51,36 @@ var (
 // ~/.npmrc. Returns an empty string (and no error) when the file exists but
 // has no matching line, so callers can distinguish "no token" from IO errors.
 func TokenFromNpmrc() (string, error) {
+	_, token, err := NpmrcEntry()
+	return token, err
+}
+
+// NpmrcEntry returns the URL prefix and token of the first active
+// gdartifactory1.jfrog.io _authToken line in ~/.npmrc. Prefix includes the
+// leading "//" and trailing "/" as written (e.g.
+// "//gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/"), with no
+// trailing colon. Empty prefix/token (and no error) when the file exists
+// but has no matching line.
+func NpmrcEntry() (prefix, token string, err error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	data, err := os.ReadFile(filepath.Join(home, ".npmrc"))
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	return tokenFromNpmrcBytes(data), nil
+	p, t := npmrcEntryFromBytes(data)
+	return p, t, nil
 }
 
 func tokenFromNpmrcBytes(data []byte) string {
-	for _, line := range strings.Split(string(data), "\n") {
+	_, token := npmrcEntryFromBytes(data)
+	return token
+}
+
+func npmrcEntryFromBytes(data []byte) (prefix, token string) {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		line = strings.TrimSpace(line)
 		// Skip blank lines and ini-style comments (`#` or `;`). Without
 		// this, a stale commented-out token would be returned in
@@ -67,17 +91,27 @@ func tokenFromNpmrcBytes(data []byte) string {
 		if !strings.Contains(line, Host) {
 			continue
 		}
-		if _, token, ok := strings.Cut(line, "_authToken="); ok {
-			return strings.TrimSpace(token)
+		head, tok, ok := strings.Cut(line, "_authToken=")
+		if !ok {
+			continue
 		}
+		return strings.TrimSuffix(strings.TrimSpace(head), ":"), strings.TrimSpace(tok)
 	}
-	return ""
+	return "", ""
+}
+
+// IsNarrowNpmPrefix reports whether an npm auth prefix is scoped to a
+// specific jfrog npm repo (e.g. .../api/npm/node-virt/) rather than the
+// broader .../api/npm/ path. Narrow prefixes cause pnpm install to 401 when
+// resolving a package from any other jfrog npm repo.
+func IsNarrowNpmPrefix(prefix string) bool {
+	return strings.HasPrefix(prefix, NpmScopePrefix) && prefix != NpmScopePrefix
 }
 
 // TokenFromProxyURL extracts the JWT from the first comma-separated entry of
 // a GOPROXY string that points at Artifactory.
 func TokenFromProxyURL(goproxy string) string {
-	for _, entry := range strings.Split(goproxy, ",") {
+	for entry := range strings.SplitSeq(goproxy, ",") {
 		entry = strings.TrimSpace(entry)
 		if !strings.Contains(entry, Host) {
 			continue
