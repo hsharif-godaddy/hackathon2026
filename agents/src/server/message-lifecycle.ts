@@ -17,6 +17,7 @@ import type {
   AssessmentAgent,
   AssessmentOutcome,
   AssessmentTaskType,
+  ClassifierMode,
 } from '../agents/assessment-agent/index.js'
 import type { ILogger } from '../logging/types.js'
 
@@ -106,6 +107,8 @@ export interface StartAssessmentParams {
   previousUserMessage?: string
   /** Override for previous task type; falls back to the store when omitted. */
   previousAssessmentTaskType?: AssessmentTaskType
+  /** Which classifier to use (derived from switchboard via JWT). Defaults to cosine-similarity when absent. */
+  classifierMode?: ClassifierMode
 }
 
 export interface StartAssessmentResult {
@@ -127,7 +130,7 @@ export async function runStartAssessment(
   const { getAssessmentAgent, sessionStore, logger } = deps
   const {
     appId, sessionKey, message, customerId, isInitialPrompt,
-    enableAssessmentAgent, enableAssessmentOverride,
+    enableAssessmentAgent, enableAssessmentOverride, classifierMode,
   } = params
 
   if (!enableAssessmentAgent) return {}
@@ -145,6 +148,7 @@ export async function runStartAssessment(
       previousUserMessage,
       previousAssessmentTaskType,
       isInitialPrompt,
+      classifierMode,
     })
   } catch (err) {
     logger.warn('message_lifecycle.assessment.classify.error', {

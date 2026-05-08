@@ -10,6 +10,7 @@ import { getJWTValidator } from '../../lib/jwt-validator.js';
 import { validateJWTAgentConfig } from '../../lib/jwks-config.js';
 import { auth, AuthType } from '../../services/features.js';
 import { logger } from '../../logging/index.js';
+import { ClassifierMode } from '../../agents/assessment-agent/types.js';
 
 export type { ProductType };
 
@@ -20,6 +21,16 @@ export type { ProductType };
  */
 export function coerceProductType(raw: string | undefined | null): ProductType {
   return raw === 'PaaSNodeJS' ? 'PaaSNodeJS' : 'AiroAppBuilder';
+}
+
+/**
+ * Coerce a raw classifier claim to a valid ClassifierMode.
+ * Unknown or missing values return undefined (agents default to ClassifierMode.CosineSimilarity).
+ */
+function coerceClassifierMode(raw: string | undefined | null): ClassifierMode | undefined {
+  if (raw === ClassifierMode.LogisticRegression) return ClassifierMode.LogisticRegression;
+  if (raw === ClassifierMode.CosineSimilarity) return ClassifierMode.CosineSimilarity;
+  return undefined;
 }
 
 export interface AgentContext {
@@ -38,6 +49,7 @@ export interface AgentContext {
   bmsBudgetId?: string; // BMS budget ID for cost allocation (undefined = cost to GoDaddy)
   enableAssessmentAgent?: boolean; // Enable assessment agent for prompt classification
   enableAssessmentOverride?: boolean; // Apply budget override from assessment (requires enableAssessmentAgent)
+  assessmentClassifier?: ClassifierMode; // Which classifier to use (switchboard: appbuilder-assessment-classifier)
   product: ProductType;    // Product type: 'AiroAppBuilder' (default) or 'PaaSNodeJS'
   modelOverride?: string; // Override the default agent model (switchboard: appbuilder-model-override)
   modelSelectorEnabled?: boolean; // Allow per-project model selection from frontend (switchboard: appbuilder-model-selector)
@@ -75,6 +87,7 @@ export function buildAgentContext(raw: Record<string, unknown>): AgentContext {
     bmsBudgetId: raw.bmsBudgetId as string | undefined,
     enableAssessmentAgent: (raw.enableAssessmentAgent as boolean) ?? false,
     enableAssessmentOverride: (raw.enableAssessmentOverride as boolean) ?? false,
+    assessmentClassifier: coerceClassifierMode(raw.assessmentClassifier as string | undefined),
     product: coerceProductType(raw.product as string | undefined),
     modelOverride: raw.modelOverride as string | undefined,
     modelSelectorEnabled: (raw.modelSelectorEnabled as boolean) ?? false,

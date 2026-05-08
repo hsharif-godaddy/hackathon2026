@@ -29,6 +29,7 @@ export interface CreateTokenOptions {
   bmsBudgetId?: string; // BMS budget ID for direct Budget Service API calls
   enableAssessmentAgent?: boolean; // Enable assessment agent for prompt classification
   enableAssessmentOverride?: boolean; // Apply budget override from assessment (requires enableAssessmentAgent)
+  assessmentClassifier?: string; // Which classifier to use (switchboard: appbuilder-assessment-classifier)
   product?: ProductType; // Product type: 'AiroAppBuilder' (default) or 'PaaSNodeJS'
   modelOverride?: string; // Override the default agent model (switchboard: appbuilder-model-override)
   modelSelectorEnabled?: boolean; // Allow per-project model selection from frontend (switchboard: appbuilder-model-selector)
@@ -190,6 +191,7 @@ export class JWTService {
       bmsBudgetId: options.bmsBudgetId,
       enableAssessmentAgent: options.enableAssessmentAgent ?? false,
       enableAssessmentOverride: options.enableAssessmentOverride ?? false,
+      ...(options.assessmentClassifier && { assessmentClassifier: options.assessmentClassifier }),
       product: options.product || 'AiroAppBuilder',
       ...(options.modelOverride && { modelOverride: options.modelOverride }),
       modelSelectorEnabled: options.modelSelectorEnabled ?? false,
@@ -257,7 +259,7 @@ export class JWTService {
    */
   private getCacheKey(options: CreateTokenOptions): string {
     const authType = options.authType || 'basic';
-    return `${options.siteId}:${options.customerId || ''}:${options.canDownload}:${options.canPublish}:${options.canPurchaseDomain ?? false}:${authType}:${options.useTestBudget ?? false}:${options.budgetServiceEnabled ?? false}:${options.subscriptionId || ''}:${options.enableAssessmentAgent ?? false}:${options.enableAssessmentOverride ?? false}:${options.product || 'AiroAppBuilder'}:${options.modelOverride || ''}:${options.modelSelectorEnabled ?? false}:${options.agentProfile || ''}:${options.agentProfileSelectorEnabled ?? false}:${options.costAttributionDryRun ?? false}:${options.bmsBudgetId || ''}`;
+    return `${options.siteId}:${options.customerId || ''}:${options.canDownload}:${options.canPublish}:${options.canPurchaseDomain ?? false}:${authType}:${options.useTestBudget ?? false}:${options.budgetServiceEnabled ?? false}:${options.subscriptionId || ''}:${options.enableAssessmentAgent ?? false}:${options.enableAssessmentOverride ?? false}:${options.assessmentClassifier || ''}:${options.product || 'AiroAppBuilder'}:${options.modelOverride || ''}:${options.modelSelectorEnabled ?? false}:${options.agentProfile || ''}:${options.agentProfileSelectorEnabled ?? false}:${options.costAttributionDryRun ?? false}:${options.bmsBudgetId || ''}`;
   }
 
   /**

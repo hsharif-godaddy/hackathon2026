@@ -27,7 +27,7 @@
     "local:test": "GASKET_ENV=local.test NODE_OPTIONS='--max-old-space-size=1536' node load-env.cjs pnpm run dev:watch",
     "local:prod": "GASKET_ENV=local.prod NODE_OPTIONS='--max-old-space-size=1536' node load-env.cjs pnpm run dev:watch",
     "build:deps": "pnpm exec turbo run build --filter=@airo/agents^...",
-    "build": "tsc",
+    "build": "tsc && node scripts/copy-assessment-agent-models.mjs",
     "typecheck": "tsc --noEmit",
     "start": "node --env-file=.env dist/server/app.js",
     "test": "NODE_OPTIONS='--max-old-space-size=512' vitest run --exclude='**/*.integration.test.ts'",

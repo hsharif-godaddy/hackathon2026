@@ -191,7 +191,7 @@ cases:
 
   - id: "dom-035"
     prompt: "what domains are available"
-    expectedTaskType: "general"
+    expectedTaskType: "domain"
     tags: ["domain", "question"]
     rationale: "Browsing question, not clear purchase intent"
 
@@ -262,7 +262,7 @@ cases:
 
   - id: "dom-049"
     prompt: "DOMAIN"
-    expectedTaskType: "general"
+    expectedTaskType: "domain"
     tags: ["domain", "keyword-only"]
     rationale: "Just a keyword, no action intent"
 
@@ -280,31 +280,31 @@ cases:
 
   - id: "dom-q-001"
     prompt: "how do i get a domain"
-    expectedTaskType: "general"
+    expectedTaskType: "domain"
     tags: ["domain", "question"]
     rationale: "Informational question, not action request"
 
   - id: "dom-q-002"
     prompt: "how much is a domain"
-    expectedTaskType: "general"
+    expectedTaskType: "domain"
     tags: ["domain", "question"]
     rationale: "Pricing question, not purchase request"
 
   - id: "dom-q-003"
     prompt: "how much does a domain cost"
-    expectedTaskType: "general"
+    expectedTaskType: "domain"
     tags: ["domain", "question"]
     rationale: "Pricing question, not purchase request"
 
   - id: "dom-q-004"
     prompt: "do i need a domain"
-    expectedTaskType: "general"
+    expectedTaskType: "domain"
     tags: ["domain", "question"]
     rationale: "Informational question, not action request"
 
   - id: "dom-q-005"
     prompt: "what is a domain"
-    expectedTaskType: "general"
+    expectedTaskType: "domain"
     tags: ["domain", "question"]
     rationale: "Definition question, not action request"
 
@@ -316,7 +316,7 @@ cases:
 
   - id: "dom-q-007"
     prompt: "how do domains work"
-    expectedTaskType: "general"
+    expectedTaskType: "domain"
     tags: ["domain", "question"]
     rationale: "Educational question, not action request"
 
@@ -328,13 +328,13 @@ cases:
 
   - id: "dom-q-009"
     prompt: "tell me about domains"
-    expectedTaskType: "general"
+    expectedTaskType: "domain"
     tags: ["domain", "question"]
     rationale: "Informational request, not action request"
 
   - id: "dom-q-010"
     prompt: "domain options"
-    expectedTaskType: "general"
+    expectedTaskType: "domain"
     tags: ["domain", "question"]
     rationale: "Browsing/exploring, not clear action intent"
 
@@ -536,7 +536,7 @@ cases:
 
   - id: "dom-long-001"
     prompt: "can you help me understand how to get my own custom domain name that matches my business name instead of using the default one"
-    expectedTaskType: "general"
+    expectedTaskType: "domain"
     tags: ["domain", "long", "question"]
     rationale: "Asking for explanation/understanding, not action"
 
@@ -547,7 +547,7 @@ cases:
 
   - id: "dom-long-003"
     prompt: "i want my business to have a professional web presence with its own domain name that people can easily remember and find"
-    expectedTaskType: "general"
+    expectedTaskType: "domain"
     tags: ["domain", "long"]
     rationale: "Statement of desire, not action request"
 
@@ -573,7 +573,7 @@ cases:
 
   - id: "dom-long-008"
     prompt: "what domains would you recommend for a photography business"
-    expectedTaskType: "general"
+    expectedTaskType: "domain"
     tags: ["domain", "long", "question"]
     rationale: "Recommendation question, not purchase request"
 
@@ -598,7 +598,7 @@ cases:
 
   - id: "dom-complex-004"
     prompt: "help me find a professional domain name for my photography business that is short and memorable"
-    expectedTaskType: "general"
+    expectedTaskType: "domain"
     tags: ["domain", "complex", "question"]
     rationale: "Asking for suggestions/help, not direct purchase action"
 

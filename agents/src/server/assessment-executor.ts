@@ -6,7 +6,7 @@
  * cleaner separation of concerns and easier testing.
  */
 
-import { getAssessmentAgent, type AssessmentOutcome, AssessmentTaskType } from '../agents/assessment-agent/index.js'
+import { getAssessmentAgent, type AssessmentOutcome, type ClassifierMode, AssessmentTaskType } from '../agents/assessment-agent/index.js'
 import { logger } from '../logging/index.js'
 
 /** Assessment execution mode constants */
@@ -106,6 +106,7 @@ export interface AssessmentExecutorContext {
   isInitialPrompt: boolean
   previousUserMessage?: string
   previousAssessmentTaskType?: AssessmentTaskType
+  classifierMode?: ClassifierMode
 }
 
 /**
@@ -159,6 +160,7 @@ export async function executeAssessment(
     previousUserMessage: ctx.previousUserMessage,
     previousAssessmentTaskType: ctx.previousAssessmentTaskType,
     isInitialPrompt: ctx.isInitialPrompt,
+    classifierMode: ctx.classifierMode,
   }
 
   if (ctx.budgetServiceEnabled) {

@@ -15,77 +15,23 @@ import { getEmbeddingModel, generateEmbeddings, cosineSimilarity, type Embedding
 import { llmMetadataContext, type LitellmMetadata } from '@airo/ai-common'
 import { BudgetOverride, LlmCallSource } from '@airo/ai-grants'
 import { Logger } from '../../logging/index.js'
-import { AssessmentTaskType } from './types.js'
+import { NEGATION_PATTERNS } from './keywords.js'
+import { AssessmentTaskType, type ClassificationResult, type IClassifier } from './types.js'
 
 const logger = Logger.create({ component: 'embedding-classifier' })
+
+/** Network call (batch embed examples); transient failures are worth retrying. */
+const INIT_MAX_ATTEMPTS = 3
 
 // ============================================================================
 // CONFIGURATION
 // ============================================================================
 
-/**
- * Negation patterns for all supported locales.
- *
- * WHY EXPLICIT PATTERNS: Embeddings handle semantics well across languages,
- * but negation is SYNTACTIC - "publish" and "don't publish" have nearly
- * identical embeddings. This is a known limitation that requires lexical detection.
- *
- * WHY ALL LANGUAGES: Unlike examples (where cross-lingual similarity works),
- * negation words must be explicitly matched per language.
- */
-const NEGATION_PATTERNS = new RegExp(
-  '(' +
-    // English (en-us)
-    // Note: "not working", "is not", "not broken" are excluded - they describe problem states, not command negations
-    // "it's not" / "its not" / "isn't" use negative lookahead to exclude fix-intent phrases like "its not working"
-    // These patterns should only match when negating a problem state ("it's not broken" = general)
-    "\\b(don'?t|do not|never|stop|cancel|wait|later|not yet|hold off)\\b" +
-    "|(it'?s not|its not|isn'?t)(?! working| loading| saving| submitting| showing| displaying| responding| functioning| connecting)" +
-    // Spanish (es-es, es-mx, es-us, es-ar, es-cl, es-co, es-pe, es-ve)
-    '|\\b(no quiero|no lo hagas|todavía no|espera|cancelar|más tarde|nunca)\\b' +
-    // French (fr-fr, fr-ca, fr-be, fr-ch)
-    "|\\b(ne pas|pas encore|annuler|attendre|plus tard|jamais)\\b" +
-    // German (de-de, de-at, de-ch)
-    '|\\b(nicht|noch nicht|warte|abbrechen|später|niemals)\\b' +
-    // Portuguese (pt-br, pt-pt)
-    '|\\b(não|ainda não|espere|cancelar|mais tarde|nunca)\\b' +
-    // Italian (it-it, it-ch)
-    '|\\b(non|non ancora|aspetta|annulla|più tardi|mai)\\b' +
-    // Dutch (nl-nl, nl-be)
-    '|\\b(niet|nog niet|wacht|annuleren|later|nooit)\\b' +
-    // Danish (da-dk)
-    '|\\b(ikke|vent|annuller|senere|aldrig)\\b' +
-    // Greek (el-gr)
-    '|\\b(δεν|όχι|μην|περίμενε|ακύρωση|αργότερα|ποτέ)\\b' +
-    // Finnish (fi-fi)
-    '|\\b(ei|älä|odota|peruuta|myöhemmin|ei koskaan)\\b' +
-    // Hindi (hi-in)
-    '|(नहीं|मत|रुको|रद्द|बाद में|कभी नहीं)' +
-    // Indonesian (id-id)
-    '|\\b(tidak|jangan|tunggu|batal|nanti|tidak pernah)\\b' +
-    // Norwegian (nb-no)
-    '|\\b(ikke|vent|avbryt|senere|aldri)\\b' +
-    // Polish (pl-pl)
-    '|\\b(nie|poczekaj|anuluj|później|nigdy)\\b' +
-    // Swedish (sv-se)
-    '|\\b(inte|vänta|avbryt|senare|aldrig)\\b' +
-    // Turkish (tr-tr)
-    '|\\b(yapma|hayır|bekle|iptal|sonra|asla)\\b' +
-    // Ukrainian (uk-ua)
-    '|(не|ні|зачекай|скасувати|пізніше|ніколи)' +
-    // Vietnamese (vi-vn)
-    '|\\b(không|đừng|chưa|chờ|hủy|sau)\\b' +
-    // Japanese (ja-jp) - no word boundaries for Japanese
-    '|(しない|やめて|まだ|後で|キャンセル|ないで)' +
-    // Korean (ko-kr) - no word boundaries for Korean
-    '|(하지마|안|아직|나중에|취소)' +
-    // Thai (th-th) - no word boundaries for Thai
-    '|(ไม่|อย่า|ยัง|รอ|ยกเลิก|ทีหลัง)' +
-    // Chinese Simplified/Traditional (zh-cn, zh-tw, zh-hk, zh-sg)
-    '|(不要|别|不|还没|等一下|取消|以后|還沒|等一下)' +
-    ')',
-  'i'
-)
+// Similarity threshold above which we trust embedding without Haiku verification
+const HIGH_CONFIDENCE_SIMILARITY = 0.75
+
+// Minimum confidence score required to trust embedding without Haiku verification
+const MIN_CONFIDENCE_FOR_EMBEDDING = 65
 
 /**
  * Maximum prompt length to embed (text-embedding-3-small limit is 8191 tokens)
@@ -109,8 +55,43 @@ const MAX_PROMPT_LENGTH = 2000
  * Haiku fallback handles edge cases perfectly.
  */
 const CATEGORY_EXAMPLES: Record<AssessmentTaskType, string[]> = {
-  [AssessmentTaskType.Publish]: [
-    // English - primary examples (cross-lingual similarity handles Latin scripts)
+  [AssessmentTaskType.Domain]:[  // English - primary examples
+    'buy a domain',
+    'attach a custom domain',
+    'connect my domain',
+    'add a domain',
+    'get a custom URL',
+    'purchase a domain name',
+    'use my own domain',
+    'set up my domain',
+    'configure DNS',
+    'domain settings',
+    'custom domain setup',
+    'I want my own domain',
+    'attach domain',
+    'connect domain',
+    // Typo variations
+    'domainn',
+    'domian',
+    'dmain',
+    'doman',
+    'get a domian',
+    // Domain search/availability actions
+    'search for domains',
+    'check domain availability',
+    'is mybusiness.com available',
+    'suggest some domains',
+    // CJK + Thai - structurally different
+    '购买域名',          // Chinese Simplified: buy domain
+    '绑定域名',          // Chinese: connect domain
+    '購買網域',          // Chinese Traditional: buy domain
+    'ドメインを購入',     // Japanese: buy domain
+    'ドメイン設定',       // Japanese: domain settings
+    '도메인 구매',        // Korean: buy domain
+    '도메인 연결',        // Korean: connect domain
+    'ซื้อโดเมน',          // Thai: buy domain
+],
+  [AssessmentTaskType.Publish]:[// English - primary examples (cross-lingual similarity handles Latin scripts)
     'publish my app',
     'publish my site',
     'deploy to production',
@@ -147,42 +128,91 @@ const CATEGORY_EXAMPLES: Record<AssessmentTaskType, string[]> = {
     '배포하기',          // Korean: deploy
     'เผยแพร่แอป',        // Thai: publish app
   ],
-  [AssessmentTaskType.Domain]: [
-    // English - primary examples
-    'buy a domain',
-    'attach a custom domain',
-    'connect my domain',
-    'add a domain',
-    'get a custom URL',
-    'purchase a domain name',
-    'use my own domain',
-    'set up my domain',
-    'configure DNS',
-    'domain settings',
-    'custom domain setup',
-    'I want my own domain',
-    'attach domain',
-    'connect domain',
-    // Typo variations
-    'domainn',
-    'domian',
-    'dmain',
-    'doman',
-    'get a domian',
-    // Domain search/availability actions
-    'search for domains',
-    'check domain availability',
-    'is mybusiness.com available',
-    'suggest some domains',
+  [AssessmentTaskType.General]: [
+  
+    'create a website for my bakery',
+    'build me an online store',
+    'make me a portfolio site',
+    'I want a landing page for my business',
+    'design a website for my restaurant',
+    'build an app for my company',
+    'create a blog',
+    'make a simple website',
+    'build me a site',
+    'create a site for my business',
+    'make me a website',
+    'I need a website',
+    'build a website',
+    'create my website',
+
+    // Feature requests (common follow-ups)
+    'add a contact form',
+    'change the colors',
+    'add a new page',
+    'update the header',
+    'add more images',
+    'change the font',
+
+    // Questions (should not trigger special tasks)
+    'how do I publish my site',
+    'what is my domain',
+    'how does this work',
+
+    // =========================================================================
+    // CONTINUATION PATTERNS (NOT fixes - user resuming interrupted work)
+    // =========================================================================
+    'continue',
+    'keep going',
+    'continue building',
+    'finish this',
+    'finish the site',
+    'complete this',
+    'complete the page',
+    'resume',
+    'pick up where you left off',
+    'continue from where you stopped',
+    'keep working on this',
+    'finish what you started',
+    'you stopped, continue',
+
+    // =========================================================================
+    // INCOMPLETE WORK PATTERNS (NOT fixes)
+    // Focus on "missing/empty/unfinished" language that's distinct from fix patterns
+    // =========================================================================
+    // "Unfinished" - clearly about completion
+    'this isnt finished',
+    'you didnt finish',
+    'the page is incomplete',
+    'you left this unfinished',
+    'you stopped in the middle',
+
+    // "Missing/empty" - about absence, not malfunction
+    'the page is empty',
+    'content is missing',
+    'the about page is missing',
+    'some pages are missing',
+
+    // "Doesn't go anywhere" - destination missing (distinct from "doesn't work")
+    'the link doesnt go anywhere',
+    'links arent set up yet',
+
     // CJK + Thai - structurally different
-    '购买域名',          // Chinese Simplified: buy domain
-    '绑定域名',          // Chinese: connect domain
-    '購買網域',          // Chinese Traditional: buy domain
-    'ドメインを購入',     // Japanese: buy domain
-    'ドメイン設定',       // Japanese: domain settings
-    '도메인 구매',        // Korean: buy domain
-    '도메인 연결',        // Korean: connect domain
-    'ซื้อโดเมน',          // Thai: buy domain
+    '为我的面包店创建网站',      // Chinese Simplified: create website for bakery
+    '帮我建一个网站',           // Chinese: help me build a website
+    '為我的餐廳設計網站',        // Chinese Traditional: design website for my restaurant
+    'ウェブサイトを作って',      // Japanese: make a website
+    'ポートフォリオを作成',      // Japanese: create portfolio
+    '웹사이트 만들어줘',         // Korean: make me a website
+    '블로그 만들기',            // Korean: create a blog
+    'สร้างเว็บไซต์',           // Thai: create website
+
+    // Continuation patterns - CJK
+    '继续',                     // Chinese: continue
+    '继续工作',                 // Chinese: keep working
+    '完成这个',                 // Chinese: finish this
+    '続けて',                   // Japanese: continue
+    '계속해',                   // Korean: continue
+    'ทำต่อ',                    // Thai: continue
   ],
   [AssessmentTaskType.Fix]: [
     // =========================================================================
@@ -299,92 +329,7 @@ const CATEGORY_EXAMPLES: Record<AssessmentTaskType, string[]> = {
     '버그 수정',          // Korean: fix bug
     '오류가 발생했습니다', // Korean: an error occurred
     'แก้ไขบัค',          // Thai: fix bug
-  ],
-  [AssessmentTaskType.General]: [
-    'create a website for my bakery',
-    'build me an online store',
-    'make me a portfolio site',
-    'I want a landing page for my business',
-    'design a website for my restaurant',
-    'build an app for my company',
-    'create a blog',
-    'make a simple website',
-    'build me a site',
-    'create a site for my business',
-    'make me a website',
-    'I need a website',
-    'build a website',
-    'create my website',
-
-    // Feature requests (common follow-ups)
-    'add a contact form',
-    'change the colors',
-    'add a new page',
-    'update the header',
-    'add more images',
-    'change the font',
-
-    // Questions (should not trigger special tasks)
-    'how do I publish my site',
-    'what is my domain',
-    'how does this work',
-
-    // =========================================================================
-    // CONTINUATION PATTERNS (NOT fixes - user resuming interrupted work)
-    // =========================================================================
-    'continue',
-    'keep going',
-    'continue building',
-    'finish this',
-    'finish the site',
-    'complete this',
-    'complete the page',
-    'resume',
-    'pick up where you left off',
-    'continue from where you stopped',
-    'keep working on this',
-    'finish what you started',
-    'you stopped, continue',
-
-    // =========================================================================
-    // INCOMPLETE WORK PATTERNS (NOT fixes)
-    // Focus on "missing/empty/unfinished" language that's distinct from fix patterns
-    // =========================================================================
-    // "Unfinished" - clearly about completion
-    'this isnt finished',
-    'you didnt finish',
-    'the page is incomplete',
-    'you left this unfinished',
-    'you stopped in the middle',
-
-    // "Missing/empty" - about absence, not malfunction
-    'the page is empty',
-    'content is missing',
-    'the about page is missing',
-    'some pages are missing',
-
-    // "Doesn't go anywhere" - destination missing (distinct from "doesn't work")
-    'the link doesnt go anywhere',
-    'links arent set up yet',
-
-    // CJK + Thai - structurally different
-    '为我的面包店创建网站',      // Chinese Simplified: create website for bakery
-    '帮我建一个网站',           // Chinese: help me build a website
-    '為我的餐廳設計網站',        // Chinese Traditional: design website for my restaurant
-    'ウェブサイトを作って',      // Japanese: make a website
-    'ポートフォリオを作成',      // Japanese: create portfolio
-    '웹사이트 만들어줘',         // Korean: make me a website
-    '블로그 만들기',            // Korean: create a blog
-    'สร้างเว็บไซต์',           // Thai: create website
-
-    // Continuation patterns - CJK
-    '继续',                     // Chinese: continue
-    '继续工作',                 // Chinese: keep working
-    '完成这个',                 // Chinese: finish this
-    '続けて',                   // Japanese: continue
-    '계속해',                   // Korean: continue
-    'ทำต่อ',                    // Thai: continue
-  ],
+  ]
 }
 
 // Stored example with its embedding
@@ -394,17 +339,7 @@ interface StoredExample {
   embedding: number[]
 }
 
-interface ClassificationResult {
-  taskType: AssessmentTaskType
-  confidence: number
-  similarity: number
-  matchedExample: string
-  margin: number // Difference from best match of different category
-  method: 'embedding-nn'
-  hasNegation: boolean // True if prompt contains negation words like "don't", "not yet"
-}
-
-export class EmbeddingClassifier {
+export class EmbeddingClassifier implements IClassifier {
   private examples: StoredExample[] = []
   private embeddingModel: EmbeddingModel | null = null
   private initialized = false
@@ -425,7 +360,6 @@ export class EmbeddingClassifier {
   private async doInitialize(): Promise<void> {
     const startTime = Date.now()
 
-    // Count examples per category for logging
     const exampleCounts: Record<string, number> = {}
     for (const [taskType, examples] of Object.entries(CATEGORY_EXAMPLES)) {
       exampleCounts[taskType] = examples.length
@@ -435,82 +369,87 @@ export class EmbeddingClassifier {
       method: 'nearest-neighbor',
       exampleCounts,
       totalExamples: Object.values(exampleCounts).reduce((a, b) => a + b, 0),
+      maxAttempts: INIT_MAX_ATTEMPTS,
     })
 
-    try {
-      // Get embedding model (text-embedding-3-small is fast and cheap)
-      const modelStartTime = Date.now()
-      this.embeddingModel = await getEmbeddingModel('text-embedding-3-small')
-      const modelDurationMs = Date.now() - modelStartTime
+    let lastError: unknown
 
-      logger.info('embedding_classifier.model.loaded', {
-        model: 'text-embedding-3-small',
-        durationMs: modelDurationMs,
-      })
+    for (let attempt = 1; attempt <= INIT_MAX_ATTEMPTS; attempt++) {
+      try {
+        this.embeddingModel = await getEmbeddingModel('text-embedding-3-small')
 
-      // Use assessment agent budget for initialization
-      const metadata: LitellmMetadata = {
-        user: BudgetOverride.AssessAgent,
-        tags: [`source:${LlmCallSource.AgentAssessment}`, 'source:embedding-init'],
-      }
+        const metadata: LitellmMetadata = {
+          user: BudgetOverride.AssessAgent,
+          tags: [`source:${LlmCallSource.AgentAssessment}`, 'source:embedding-init'],
+        }
 
-      // Collect all examples with their task types
-      const allExamples: { text: string; taskType: AssessmentTaskType }[] = []
-      for (const [taskType, examples] of Object.entries(CATEGORY_EXAMPLES)) {
-        if (examples.length > 0) {
-          for (const text of examples) {
-            allExamples.push({ text, taskType: taskType as AssessmentTaskType })
+        const allExamples: { text: string; taskType: AssessmentTaskType }[] = []
+        for (const [taskType, examples] of Object.entries(CATEGORY_EXAMPLES)) {
+          if (examples.length > 0) {
+            for (const text of examples) {
+              allExamples.push({ text, taskType: taskType as AssessmentTaskType })
+            }
           }
         }
-      }
 
-      // Batch embed all examples at once (more efficient)
-      const texts = allExamples.map((e) => e.text)
+        const texts = allExamples.map((e) => e.text)
 
-      const embeddings = await llmMetadataContext.run(metadata, async () => {
-        const result = await generateEmbeddings(texts, this.embeddingModel)
-        if (!result.embeddings || result.embeddings.length !== texts.length) {
-          throw new Error(`Expected ${texts.length} embeddings, got ${result.embeddings?.length || 0}`)
-        }
-        return result.embeddings.map((e) => e.embedding)
-      })
-
-      // Store examples with their embeddings
-      for (let i = 0; i < allExamples.length; i++) {
-        const example = allExamples[i]
-        const embedding = embeddings[i]
-        if (example && embedding) {
-          this.examples.push({
-            text: example.text,
-            taskType: example.taskType,
-            embedding,
+        const embeddings = await llmMetadataContext.run(metadata, async () => {
+          const result = await generateEmbeddings(texts, this.embeddingModel)
+          if (!result.embeddings || result.embeddings.length !== texts.length) {
+            throw new Error(
+              `Expected ${texts.length} embeddings, got ${result.embeddings?.length || 0}`
+            )
+          }
+          return result.embeddings.map((e, i) => {
+            if (!e?.embedding) throw new Error(`No embedding at batch index ${i}`)
+            return e.embedding
           })
+        })
+
+        this.examples = []
+        for (let i = 0; i < allExamples.length; i++) {
+          const example = allExamples[i]
+          const embedding = embeddings[i]
+          if (example && embedding) {
+            this.examples.push({ text: example.text, taskType: example.taskType, embedding })
+          }
         }
+
+        this.initialized = true
+
+        const categoryCounts: Record<string, number> = {}
+        for (const ex of this.examples) {
+          categoryCounts[ex.taskType] = (categoryCounts[ex.taskType] || 0) + 1
+        }
+
+        logger.info('embedding_classifier.initialization.complete', {
+          attempt,
+          method: 'nearest-neighbor',
+          totalExamples: this.examples.length,
+          categoryCounts,
+          durationMs: Date.now() - startTime,
+        })
+        return
+      } catch (error) {
+        lastError = error
+        this.examples = []
+        this.embeddingModel = null
+
+        logger.error('embedding_classifier.initialization.attempt_failed', {
+          attempt,
+          maxAttempts: INIT_MAX_ATTEMPTS,
+          error: error instanceof Error ? error.message : String(error),
+        })
       }
-
-      this.initialized = true
-      const durationMs = Date.now() - startTime
-
-      // Count examples per category
-      const categoryCounts: Record<string, number> = {}
-      for (const ex of this.examples) {
-        categoryCounts[ex.taskType] = (categoryCounts[ex.taskType] || 0) + 1
-      }
-
-      logger.info('embedding_classifier.initialization.complete', {
-        method: 'nearest-neighbor',
-        totalExamples: this.examples.length,
-        categoryCounts,
-        durationMs,
-      })
-    } catch (error) {
-      logger.error('embedding_classifier.initialization.error', {
-        error: error instanceof Error ? error.message : String(error),
-      })
-      // Mark as initialized to prevent retry loops, will fall back to general
-      this.initialized = true
-      throw error
     }
+
+    logger.error('embedding_classifier.initialization.exhausted', {
+      attempts: INIT_MAX_ATTEMPTS,
+      durationMs: Date.now() - startTime,
+      error: lastError instanceof Error ? lastError.message : String(lastError),
+    })
+    this.initialized = true
   }
 
   /**
@@ -540,6 +479,7 @@ export class EmbeddingClassifier {
         margin: 0,
         method: 'embedding-nn',
         hasNegation: false,
+        requiresHaikuVerification: false,
       }
     }
 
@@ -626,6 +566,7 @@ export class EmbeddingClassifier {
           margin: 0,
           method: 'embedding-nn',
           hasNegation,
+          requiresHaikuVerification: false,
         }
       }
 
@@ -674,6 +615,9 @@ export class EmbeddingClassifier {
         margin,
         method: 'embedding-nn',
         hasNegation,
+        requiresHaikuVerification: best.similarity < HIGH_CONFIDENCE_SIMILARITY
+          || confidence < MIN_CONFIDENCE_FOR_EMBEDDING
+          || hasNegation,
       }
     } catch (error) {
       const durationMs = Date.now() - startTime
@@ -690,6 +634,7 @@ export class EmbeddingClassifier {
         margin: 0,
         method: 'embedding-nn',
         hasNegation: false,
+        requiresHaikuVerification: false,
       }
     }
   }

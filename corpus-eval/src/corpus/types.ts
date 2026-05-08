@@ -51,7 +51,7 @@ export const TestCaseSchema = z.object({
   rationale: z.string().optional(),
 
   /** Additional metadata */
-  metadata: z.record(z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 
   /** Skip this test case */
   skip: z.boolean().optional().default(false),
@@ -117,7 +117,13 @@ export type Corpus = z.infer<typeof CorpusSchema>;
 /**
  * Actual classification path taken
  */
-export type ActualPath = 'embedding' | 'haiku' | 'initial_prompt' | 'timeout' | 'error';
+export type ActualPath =
+  | 'embedding'
+  | 'embedding_timeout_fallback'
+  | 'haiku'
+  | 'initial_prompt'
+  | 'timeout'
+  | 'error';
 
 /**
  * Result of evaluating a single test case
@@ -163,6 +169,23 @@ export interface CaseResult {
 
   /** Tags from test case */
   tags: string[];
+
+  /**
+   * LR vs nearest-neighbor embedding shadow classifiers (assessment-agent embedding path only).
+   */
+  classifierComparison?: {
+    agree: boolean;
+    lr: {
+      taskType: TaskType;
+      confidence: number;
+      requiresHaikuVerification: boolean;
+    };
+    nn: {
+      taskType: TaskType;
+      confidence: number;
+      requiresHaikuVerification: boolean;
+    };
+  };
 }
 
 /**
@@ -220,6 +243,22 @@ export interface LatencyStats {
 }
 
 /**
+ * Aggregated LR vs NN (embedding) shadow metrics for assessment-agent evals.
+ */
+export interface ClassifierAbSummary {
+  casesWithShadow: number;
+  agreeCount: number;
+  disagreeCount: number;
+  agreeRatio: number;
+  disagreeRatio: number;
+  lrMatchesGoldNnWrongCount: number;
+  lrMatchesGoldNnWrongRatio: number;
+  nnHaikuLrConfidentSetupCount: number;
+  nnHaikuLrConfidentFastPathGoldCount: number;
+  nnHaikuLrConfidentFastPathGoldRatio: number;
+}
+
+/**
  * Complete evaluation report
  */
 export interface EvalReport {
@@ -241,11 +280,15 @@ export interface EvalReport {
     accuracy: number;
     avgLatencyMs: number;
     embeddingPathRatio: number;
+    embeddingTimeoutFallbackPathRatio: number;
     haikuPathRatio: number;
     initialPromptPathRatio: number;
     /** Number of cases with path mismatches (not failures) */
     pathMismatches: number;
   };
+
+  /** LR vs NN shadow classifier agreement and gold-label breakdown (assessment-agent only). */
+  classifierAb?: ClassifierAbSummary;
 
   /** Detailed metrics */
   metrics: {

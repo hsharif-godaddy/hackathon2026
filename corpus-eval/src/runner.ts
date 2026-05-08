@@ -9,6 +9,7 @@ import {
   calculatePathRatios,
   buildConfusionMatrix,
   calculateLatencyStats,
+  calculateClassifierAbSummary,
 } from './metrics/index.js';
 
 export interface RunOptions {
@@ -110,6 +111,9 @@ export async function runEvaluation(options: RunOptions): Promise<EvalReport> {
   const passed = results.filter(r => r.passed).length;
   const failed = results.filter(r => !r.passed).length;
   const pathMismatches = results.filter(r => r.pathWarnings.length > 0).length;
+  const classifierAb = activeCorpus.metadata.agent === 'assessment-agent'
+    ? calculateClassifierAbSummary(results)
+    : undefined;
 
   // Build report
   const report: EvalReport = {
@@ -117,7 +121,7 @@ export async function runEvaluation(options: RunOptions): Promise<EvalReport> {
       timestamp: new Date().toISOString(),
       corpusPath: options.corpusPath,
       corpusName: corpus.metadata.name,
-      modelUsed: evaluatorConfig.model!,
+      modelUsed: evaluator.getModelUsed(),
       duration: Date.now() - startTime,
     },
     summary: {
@@ -128,6 +132,7 @@ export async function runEvaluation(options: RunOptions): Promise<EvalReport> {
       accuracy: overallMetrics.accuracy,
       avgLatencyMs: latencyStats.avg,
       embeddingPathRatio: pathRatios.embedding,
+      embeddingTimeoutFallbackPathRatio: pathRatios.embedding_timeout_fallback,
       haikuPathRatio: pathRatios.haiku,
       initialPromptPathRatio: pathRatios.initial_prompt,
       pathMismatches,
@@ -159,6 +164,7 @@ export async function runEvaluation(options: RunOptions): Promise<EvalReport> {
         actualPath: r.actual.path,
         warning: r.pathWarnings[0],
       })),
+    ...(classifierAb ? { classifierAb } : {}),
   };
 
   return report;
@@ -180,6 +186,9 @@ export function printSummary(report: EvalReport): void {
   console.log(`Path Efficiency`);
   console.log(`---------------`);
   console.log(`Embedding (fast): ${(summary.embeddingPathRatio * 100).toFixed(1)}%`);
+  if (summary.embeddingTimeoutFallbackPathRatio > 0) {
+    console.log(`Embedding timeout fallback: ${(summary.embeddingTimeoutFallbackPathRatio * 100).toFixed(1)}%`);
+  }
   console.log(`Haiku (fallback): ${(summary.haikuPathRatio * 100).toFixed(1)}%`);
   if (summary.initialPromptPathRatio > 0) {
     console.log(`Initial Prompt (bypass): ${(summary.initialPromptPathRatio * 100).toFixed(1)}%`);
@@ -244,6 +253,21 @@ export function printSummary(report: EvalReport): void {
     if (report.pathWarnings.length > 5) {
       console.log(`  ... and ${report.pathWarnings.length - 5} more path warnings`);
     }
+    console.log();
+  }
+
+  if (report.classifierAb && report.classifierAb.casesWithShadow > 0) {
+    const ab = report.classifierAb;
+    console.log(`LR vs embedding (NN) shadow`);
+    console.log(`-------------------------`);
+    console.log(`  Cases with shadow: ${ab.casesWithShadow}`);
+    console.log(`  Agree: ${(ab.agreeRatio * 100).toFixed(1)}% | Disagree: ${(ab.disagreeRatio * 100).toFixed(1)}%`);
+    console.log(
+      `  LR matches gold, NN does not: ${(ab.lrMatchesGoldNnWrongRatio * 100).toFixed(1)}% (${ab.lrMatchesGoldNnWrongCount}/${ab.casesWithShadow})`
+    );
+    console.log(
+      `  NN wanted Haiku, LR confident → fast path + LR gold: ${(ab.nnHaikuLrConfidentFastPathGoldRatio * 100).toFixed(1)}% (${ab.nnHaikuLrConfidentFastPathGoldCount}/${ab.nnHaikuLrConfidentSetupCount} setups)`
+    );
     console.log();
   }
 

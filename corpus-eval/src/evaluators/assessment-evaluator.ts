@@ -1,8 +1,12 @@
+import { createInterface } from 'node:readline/promises';
+import { stdin, stdout } from 'node:process';
+
 // Import from @airo/agents subpath export
 import {
   createAssessmentAgent,
   AssessmentReason,
   AssessmentTaskType,
+  ClassifierMode,
   MIN_CONFIDENCE_FOR_OVERRIDE,
   type AssessmentAgent,
   type AssessmentOutcome,
@@ -10,6 +14,7 @@ import {
 } from '@airo/agents/assessment-agent';
 
 import type { TestCase, CaseResult, TaskType, ActualPath } from '../corpus/types.js';
+
 import { BaseEvaluator, type EvaluatorConfig, registerEvaluator } from './base-evaluator.js';
 
 /**
@@ -20,6 +25,8 @@ function reasonToPath(reason: AssessmentReason): ActualPath {
     case AssessmentReason.EmbeddingCompleted:
     case AssessmentReason.BelowThreshold:
       return 'embedding';
+    case AssessmentReason.EmbeddingTimeoutFallback:
+      return 'embedding_timeout_fallback';
     case AssessmentReason.InitialPrompt:
       return 'initial_prompt';
     case AssessmentReason.LlmCompleted:
@@ -35,10 +42,41 @@ function reasonToPath(reason: AssessmentReason): ActualPath {
 }
 
 /**
+ * Resolves the classifier mode from MODEL_NAME env var, or prompts the user
+ * interactively if the env var is not set.
+ */
+async function resolveClassifierMode(): Promise<ClassifierMode> {
+  const envValue = process.env.MODEL_NAME;
+
+  if (envValue) {
+    if (envValue === ClassifierMode.LogisticRegression || envValue === ClassifierMode.CosineSimilarity) {
+      return envValue as ClassifierMode;
+    }
+    throw new Error(
+      `Invalid MODEL_NAME: "${envValue}". Must be one of: ${ClassifierMode.LogisticRegression}, ${ClassifierMode.CosineSimilarity}`
+    );
+  }
+
+  console.log('\nSelect classifier mode (MODEL_NAME env var not set):');
+  console.log('  1. logistic-regression');
+  console.log('  2. cosine-similarity');
+
+  const rl = createInterface({ input: stdin, output: stdout });
+  const answer = await rl.question('\nEnter 1 or 2: ');
+  rl.close();
+
+  if (answer.trim() === '1') return ClassifierMode.LogisticRegression;
+  if (answer.trim() === '2') return ClassifierMode.CosineSimilarity;
+
+  throw new Error(`Invalid selection: "${answer.trim()}". Enter 1 or 2.`);
+}
+
+/**
  * Evaluator for the AssessmentAgent
  */
 export class AssessmentEvaluator extends BaseEvaluator {
   private agent: AssessmentAgent | null = null;
+  private classifierMode: ClassifierMode | null = null;
 
   get name(): string {
     return 'Assessment Agent Evaluator';
@@ -48,15 +86,20 @@ export class AssessmentEvaluator extends BaseEvaluator {
     return 'assessment-agent';
   }
 
+  override getModelUsed(): string {
+    return this.classifierMode ?? this.config.model ?? 'unknown';
+  }
+
   async initialize(): Promise<void> {
-    // Create the assessment agent with evaluation-friendly config
+    this.classifierMode = await resolveClassifierMode();
+    console.log(`\nUsing classifier mode: ${this.classifierMode}\n`);
+
     this.agent = createAssessmentAgent({
       timeoutMs: this.config.timeoutMs || 5000,
       confidenceThreshold: this.config.confidenceThreshold ?? MIN_CONFIDENCE_FOR_OVERRIDE,
-      enabled: true, // Always enabled for evaluation
+      enabled: true,
     });
 
-    // Initialize the agent (pre-computes embeddings)
     await this.agent.initialize();
   }
 
@@ -83,6 +126,7 @@ export class AssessmentEvaluator extends BaseEvaluator {
       previousUserMessage: testCase.previousMessage,
       previousAssessmentTaskType: testCase.previousAssessmentTaskType as AssessmentTaskType | undefined,
       isInitialPrompt,
+      classifierMode: this.classifierMode ?? ClassifierMode.CosineSimilarity,
     };
 
     // Run classification

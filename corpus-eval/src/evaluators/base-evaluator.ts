@@ -18,7 +18,7 @@ export interface EvaluatorResult {
 }
 
 /** Default concurrency limit to avoid overwhelming APIs */
-export const DEFAULT_CONCURRENCY = 5;
+export const DEFAULT_CONCURRENCY = 10; 
 
 /** Default max retries for transient failures */
 export const DEFAULT_MAX_RETRIES = 2;
@@ -90,6 +90,11 @@ export abstract class BaseEvaluator {
 
   /** Agent type this evaluator targets */
   abstract get agentType(): string;
+
+  /** Model/classifier label to include in reports */
+  getModelUsed(): string {
+    return this.config.model || 'unknown';
+  }
 
   /**
    * Initialize the evaluator (e.g., create agent instance)

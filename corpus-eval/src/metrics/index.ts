@@ -19,3 +19,5 @@ export {
   calculateLatencyByPath,
   formatLatencyStats,
 } from './latency.js';
+
+export { calculateClassifierAbSummary } from './classifier-ab.js';

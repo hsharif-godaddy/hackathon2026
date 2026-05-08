@@ -201,6 +201,7 @@ function generateHTMLReport(report: EvalReport): string {
       border-radius: 4px;
     }
     .path-embedding { background: #28a745; }
+    .path-embedding-timeout-fallback { background: #fd7e14; }
     .path-haiku { background: #007bff; }
     .path-timeout { background: #ffc107; color: #333; }
     .path-error { background: #dc3545; }
@@ -275,9 +276,26 @@ function generateHTMLReport(report: EvalReport): string {
   <h2>Path Efficiency</h2>
   <div class="path-distribution">
     ${summary.embeddingPathRatio > 0 ? `<div class="path-bar path-embedding" style="flex: ${summary.embeddingPathRatio}">Embedding ${(summary.embeddingPathRatio * 100).toFixed(0)}%</div>` : ''}
+    ${summary.embeddingTimeoutFallbackPathRatio > 0 ? `<div class="path-bar path-embedding-timeout-fallback" style="flex: ${summary.embeddingTimeoutFallbackPathRatio}">Embed Timeout Fallback ${(summary.embeddingTimeoutFallbackPathRatio * 100).toFixed(0)}%</div>` : ''}
     ${summary.haikuPathRatio > 0 ? `<div class="path-bar path-haiku" style="flex: ${summary.haikuPathRatio}">Haiku ${(summary.haikuPathRatio * 100).toFixed(0)}%</div>` : ''}
   </div>
   ${summary.pathMismatches > 0 ? `<p style="margin-top: 10px; color: #856404;"><strong>${summary.pathMismatches}</strong> cases took an unexpected path (see Path Warnings below)</p>` : ''}
+
+  ${report.classifierAb && report.classifierAb.casesWithShadow > 0 ? `
+  <h2>LR vs embedding (NN) shadow</h2>
+  <table>
+    <thead>
+      <tr><th>Metric</th><th>Value</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Cases with shadow</td><td>${report.classifierAb.casesWithShadow}</td></tr>
+      <tr><td>LR / NN agree</td><td>${(report.classifierAb.agreeRatio * 100).toFixed(1)}% (${report.classifierAb.agreeCount})</td></tr>
+      <tr><td>LR / NN disagree</td><td>${(report.classifierAb.disagreeRatio * 100).toFixed(1)}% (${report.classifierAb.disagreeCount})</td></tr>
+      <tr><td>LR matches gold, NN does not</td><td>${(report.classifierAb.lrMatchesGoldNnWrongRatio * 100).toFixed(1)}% (${report.classifierAb.lrMatchesGoldNnWrongCount})</td></tr>
+      <tr><td>NN wanted Haiku, LR confident → fast path + LR gold</td><td>${report.classifierAb.nnHaikuLrConfidentSetupCount > 0 ? `${(report.classifierAb.nnHaikuLrConfidentFastPathGoldRatio * 100).toFixed(1)}% (${report.classifierAb.nnHaikuLrConfidentFastPathGoldCount} / ${report.classifierAb.nnHaikuLrConfidentSetupCount})` : 'n/a (0 setups)'}</td></tr>
+    </tbody>
+  </table>
+  ` : ''}
 
   <h2>Per-Category Metrics</h2>
   <table>

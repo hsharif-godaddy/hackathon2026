@@ -60,6 +60,39 @@ export const TASK_BUDGET_MAP: Record<AssessmentTaskType, BudgetOverride | null> 
 }
 
 /**
+ * Lexical negation across locales. Embeddings conflate commands with negated commands,
+ * so classifiers detect negation with explicit word lists (same pattern set for LR + embedding paths).
+ */
+export const NEGATION_PATTERNS = new RegExp(
+  '(' +
+    "\\b(don'?t|do not|never|stop|cancel|wait|later|not yet|hold off)\\b" +
+    "|(it'?s not|its not|isn'?t)(?! working| loading| saving| submitting| showing| displaying| responding| functioning| connecting)" +
+    '|\\b(no quiero|no lo hagas|todavía no|espera|cancelar|más tarde|nunca)\\b' +
+    "|\\b(ne pas|pas encore|annuler|attendre|plus tard|jamais)\\b" +
+    '|\\b(nicht|noch nicht|warte|abbrechen|später|niemals)\\b' +
+    '|\\b(não|ainda não|espere|cancelar|mais tarde|nunca)\\b' +
+    '|\\b(non|non ancora|aspetta|annulla|più tardi|mai)\\b' +
+    '|\\b(niet|nog niet|wacht|annuleren|later|nooit)\\b' +
+    '|\\b(ikke|vent|annuller|senere|aldrig)\\b' +
+    '|\\b(δεν|όχι|μην|περίμενε|ακύρωση|αργότερα|ποτέ)\\b' +
+    '|\\b(ei|älä|odota|peruuta|myöhemmin|ei koskaan)\\b' +
+    '|(नहीं|मत|रुको|रद्द|बाद में|कभी नहीं)' +
+    '|\\b(tidak|jangan|tunggu|batal|nanti|tidak pernah)\\b' +
+    '|\\b(ikke|vent|avbryt|senere|aldri)\\b' +
+    '|\\b(nie|poczekaj|anuluj|później|nigdy)\\b' +
+    '|\\b(inte|vänta|avbryt|senare|aldrig)\\b' +
+    '|\\b(yapma|hayır|bekle|iptal|sonra|asla)\\b' +
+    '|(не|ні|зачекай|скасувати|пізніше|ніколи)' +
+    '|\\b(không|đừng|chưa|chờ|hủy|sau)\\b' +
+    '|(しない|やめて|まだ|後で|キャンセル|ないで)' +
+    '|(하지마|안|아직|나중에|취소)' +
+    '|(ไม่|อย่า|ยัง|รอ|ยกเลิก|ทีหลัง)' +
+    '|(不要|别|不|还没|等一下|取消|以后|還沒|等一下)' +
+    ')',
+  'i'
+)
+
+/**
  * Match keywords in prompt to determine task type hint
  * Uses ordered iteration to ensure deterministic priority (Fix > Publish > Domain)
  */

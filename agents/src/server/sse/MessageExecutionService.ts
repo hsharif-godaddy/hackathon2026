@@ -14,7 +14,7 @@ import { safeProcessBudgetReport } from '../budget-report-handler.js'
 import { runWithModelOverride } from '@airo/ai-lib'
 import { resolveProfile, runWithProfile } from '../../profiles/index.js'
 import { guardAllowedOverrideModel, resolveOverride } from '../model-override.js'
-import type { AssessmentOutcome } from '../../agents/assessment-agent/index.js'
+import type { AssessmentOutcome, ClassifierMode } from '../../agents/assessment-agent/index.js'
 import type { PostStreamValidatorResult } from '../post-stream-validator.js'
 import {
   runStartGitHook, runStartAssessment, runMessageEndHooks,
@@ -76,6 +76,7 @@ interface LifecycleContext {
   agentContext?: {
     enableAssessmentAgent?: boolean
     enableAssessmentOverride?: boolean
+    assessmentClassifier?: ClassifierMode
     modelOverride?: string
     modelSelectorEnabled?: boolean
     agentProfile?: string
@@ -477,6 +478,7 @@ export class MessageExecutionService {
         isInitialPrompt: !!lifecycleContext?.isInitialPrompt,
         enableAssessmentAgent,
         enableAssessmentOverride,
+        classifierMode: agentCtx?.assessmentClassifier,
       })
       assessmentOutcome = startResult.assessmentOutcome
       budgetOverrideSubscriptionId = startResult.budgetOverrideSubscriptionId

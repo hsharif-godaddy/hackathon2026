@@ -2,12 +2,17 @@ export { AssessmentAgent, getAssessmentAgent, createAssessmentAgent, MIN_CONFIDE
 
 export { EmbeddingClassifier, getEmbeddingClassifier } from './embedding-classifier.js'
 
-export { matchKeywords, KEYWORD_PATTERNS, TASK_BUDGET_MAP } from './keywords.js'
+export { getClassifier } from './classifier-factory.js'
+
+export { matchKeywords, KEYWORD_PATTERNS, NEGATION_PATTERNS, TASK_BUDGET_MAP } from './keywords.js'
 
 export {
   AssessmentTaskType,
   AssessmentReason,
   AssessmentResultSchema,
+  HaikuAssessmentResultSchema,
+  HaikuBinaryAssessmentResultSchema,
+  ClassifierMode,
 } from './types.js'
 
 export type {
@@ -15,5 +20,8 @@ export type {
   AssessmentConfig,
   AssessmentContext,
   AssessmentOutcome,
+  ABComparisonResult,
+  ClassificationResult,
+  IClassifier,
   CostPrediction,
 } from './types.js'

@@ -56,7 +56,7 @@ export async function loadCorpus(filePath: string): Promise<Corpus> {
   // Validate against schema
   const result = CorpusSchema.safeParse(expanded);
   if (!result.success) {
-    const errors = result.error.errors.map(e => `  ${e.path.join('.')}: ${e.message}`).join('\n');
+    const errors = result.error.issues.map((issue) => `  ${issue.path.join('.')}: ${issue.message}`).join('\n');
     throw new Error(`Invalid corpus file ${filePath}:\n${errors}`);
   }
 

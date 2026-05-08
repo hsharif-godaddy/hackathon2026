@@ -1594,6 +1594,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         const agentContext = socket?.handshake?.auth?.agentContext
         const enableAssessmentAgent = agentContext?.enableAssessmentAgent
         const enableAssessmentOverride = agentContext?.enableAssessmentOverride
+        const assessmentClassifier = agentContext?.assessmentClassifier
         // Read budgetServiceEnabled from JWT agentContext, not context metadata
         // Context metadata isn't populated until contextProvider runs (after onMessageStart)
         // Employee/test sessions flow through BMS with 100% GoDaddy attribution (isBmsOverride)
@@ -1615,6 +1616,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           socketId,
           enableAssessmentAgent,
           enableAssessmentOverride,
+          assessmentClassifier,
           budgetServiceEnabled,
           budgetServiceFlagFromJwt: agentContext?.budgetServiceEnabled === true,
           isEmployeeSession,
@@ -1660,6 +1662,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
               isInitialPrompt,
               previousUserMessage,
               previousAssessmentTaskType,
+              classifierMode: assessmentClassifier,
             })
           } catch (err) {
             // Assessment failed - log with context and clean up tracking state

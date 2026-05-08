@@ -227,6 +227,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     let subscriptionId: string | undefined;
     let enableAssessmentAgent = false;
     let enableAssessmentOverride = false;
+    let assessmentClassifier: string | undefined;
     let modelSelectorEnabled = false;
     let modelOverride: string | undefined;
     let agentProfileSelectorEnabled = false;
@@ -236,7 +237,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     if (siteValidationCacheHit) {
       // Cache hit: skip site validation, run paywall + switchboard + subscription lookup in parallel
       const parallelStart = Date.now();
-      const [paywallResult, domainPurchaseResult, testBudgetResult, budgetServiceResult, siteInfoResult, assessmentAgentResult, assessmentOverrideResult, modelSelectorResult, modelOverrideResult, agentProfileSelectorResult, agentProfileResult, costAttributionDryRunResult] = await Promise.allSettled([
+      const [paywallResult, domainPurchaseResult, testBudgetResult, budgetServiceResult, siteInfoResult, assessmentAgentResult, assessmentOverrideResult, assessmentClassifierResult, modelSelectorResult, modelOverrideResult, agentProfileSelectorResult, agentProfileResult, costAttributionDryRunResult] = await Promise.allSettled([
         checkPaywallEligibility(
           new ServerPaywallProvider(authContext.jwt || '', user.customerId, request.headers),
           body.siteId,
@@ -248,6 +249,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
         adapter.getSite(body.siteId, authContext.jwt || '', body.owningProduct || AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER),
         checkSwitchboardFlag('appbuilder-assessment-agent', request),
         checkSwitchboardFlag('appbuilder-assessment-override', request),
+        checkSwitchboardValue('appbuilder-assessment-classifier', request),
         checkSwitchboardFlag('appbuilder-model-selector', request),
         checkSwitchboardValue('appbuilder-model-override', request),
         checkSwitchboardFlag('appbuilder-agent-profile-selector', request),
@@ -263,6 +265,8 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       subscriptionId = resolveSubscriptionId(siteInfoResult, body.siteId, user.customerId);
       enableAssessmentAgent = resolveBooleanFlag(assessmentAgentResult, 'agent-token.assessment-agent-flag-check-failed', body.siteId, user.customerId);
       enableAssessmentOverride = resolveBooleanFlag(assessmentOverrideResult, 'agent-token.assessment-override-flag-check-failed', body.siteId, user.customerId);
+      const rawAssessmentClassifier = resolveStringFlag(assessmentClassifierResult, 'agent-token.assessment-classifier-flag-check-failed', body.siteId, user.customerId);
+      assessmentClassifier = rawAssessmentClassifier || undefined;
       modelSelectorEnabled = resolveBooleanFlag(modelSelectorResult, 'agent-token.model-selector-flag-check-failed', body.siteId, user.customerId);
       const rawModelOverride = resolveStringFlag(modelOverrideResult, 'agent-token.model-override-flag-check-failed', body.siteId, user.customerId);
       modelOverride = rawModelOverride && rawModelOverride !== 'default' ? rawModelOverride : undefined;
@@ -273,7 +277,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     } else {
       // Cache miss: run site validation, paywall, switchboard, and subscription lookup all in parallel
       const parallelStart = Date.now();
-      const [siteResult, paywallResult, domainPurchaseResult, testBudgetResult, budgetServiceResult, siteInfoResult, assessmentAgentResult, assessmentOverrideResult, modelSelectorResult, modelOverrideResult, agentProfileSelectorResult, agentProfileResult, costAttributionDryRunResult] = await Promise.allSettled([
+      const [siteResult, paywallResult, domainPurchaseResult, testBudgetResult, budgetServiceResult, siteInfoResult, assessmentAgentResult, assessmentOverrideResult, assessmentClassifierResult, modelSelectorResult, modelOverrideResult, agentProfileSelectorResult, agentProfileResult, costAttributionDryRunResult] = await Promise.allSettled([
         validateSiteAccess(body.siteId, user, authContext.jwt || '', body.owningProduct),
         checkPaywallEligibility(
           new ServerPaywallProvider(authContext.jwt || '', user.customerId, request.headers),
@@ -286,6 +290,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
         adapter.getSite(body.siteId, authContext.jwt || '', body.owningProduct || AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER),
         checkSwitchboardFlag('appbuilder-assessment-agent', request),
         checkSwitchboardFlag('appbuilder-assessment-override', request),
+        checkSwitchboardValue('appbuilder-assessment-classifier', request),
         checkSwitchboardFlag('appbuilder-model-selector', request),
         checkSwitchboardValue('appbuilder-model-override', request),
         checkSwitchboardFlag('appbuilder-agent-profile-selector', request),
@@ -310,6 +315,8 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       subscriptionId = resolveSubscriptionId(siteInfoResult, body.siteId, user.customerId);
       enableAssessmentAgent = resolveBooleanFlag(assessmentAgentResult, 'agent-token.assessment-agent-flag-check-failed', body.siteId, user.customerId);
       enableAssessmentOverride = resolveBooleanFlag(assessmentOverrideResult, 'agent-token.assessment-override-flag-check-failed', body.siteId, user.customerId);
+      const rawAssessmentClassifierMiss = resolveStringFlag(assessmentClassifierResult, 'agent-token.assessment-classifier-flag-check-failed', body.siteId, user.customerId);
+      assessmentClassifier = rawAssessmentClassifierMiss || undefined;
       modelSelectorEnabled = resolveBooleanFlag(modelSelectorResult, 'agent-token.model-selector-flag-check-failed', body.siteId, user.customerId);
       const rawModelOverride = resolveStringFlag(modelOverrideResult, 'agent-token.model-override-flag-check-failed', body.siteId, user.customerId);
       modelOverride = rawModelOverride && rawModelOverride !== 'default' ? rawModelOverride : undefined;
@@ -421,6 +428,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       bmsBudgetId,
       enableAssessmentAgent,
       enableAssessmentOverride,
+      assessmentClassifier,
       product,
       modelSelectorEnabled,
       modelOverride,

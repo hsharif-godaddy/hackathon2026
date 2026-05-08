@@ -159,7 +159,7 @@ export function calculateMetricsByTag(
 export function calculateMetricsByPath(
   results: CaseResult[]
 ): Record<ActualPath, ClassificationMetrics> {
-  const paths: ActualPath[] = ['embedding', 'haiku', 'initial_prompt', 'timeout', 'error'];
+  const paths: ActualPath[] = ['embedding', 'embedding_timeout_fallback', 'haiku', 'initial_prompt', 'timeout', 'error'];
   const metrics: Record<string, ClassificationMetrics> = {};
 
   for (const path of paths) {
@@ -175,14 +175,15 @@ export function calculateMetricsByPath(
  */
 export function calculatePathRatios(
   results: CaseResult[]
-): { embedding: number; haiku: number; initial_prompt: number; timeout: number; error: number } {
+): { embedding: number; embedding_timeout_fallback: number; haiku: number; initial_prompt: number; timeout: number; error: number } {
   const total = results.length;
   if (total === 0) {
-    return { embedding: 0, haiku: 0, initial_prompt: 0, timeout: 0, error: 0 };
+    return { embedding: 0, embedding_timeout_fallback: 0, haiku: 0, initial_prompt: 0, timeout: 0, error: 0 };
   }
 
   const counts = {
     embedding: results.filter(r => r.actual.path === 'embedding').length,
+    embedding_timeout_fallback: results.filter(r => r.actual.path === 'embedding_timeout_fallback').length,
     haiku: results.filter(r => r.actual.path === 'haiku').length,
     initial_prompt: results.filter(r => r.actual.path === 'initial_prompt').length,
     timeout: results.filter(r => r.actual.path === 'timeout').length,
@@ -191,6 +192,7 @@ export function calculatePathRatios(
 
   return {
     embedding: counts.embedding / total,
+    embedding_timeout_fallback: counts.embedding_timeout_fallback / total,
     haiku: counts.haiku / total,
     initial_prompt: counts.initial_prompt / total,
     timeout: counts.timeout / total,

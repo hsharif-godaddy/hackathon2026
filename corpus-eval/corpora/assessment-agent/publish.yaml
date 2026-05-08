@@ -281,61 +281,61 @@ cases:
 
   - id: "pub-q-001"
     prompt: "how do i publish"
-    expectedTaskType: "general"
+    expectedTaskType: "publish"
     tags: ["publish", "question"]
     rationale: "How-to question, not action request"
 
   - id: "pub-q-002"
     prompt: "how do i publish my site"
-    expectedTaskType: "general"
+    expectedTaskType: "publish"
     tags: ["publish", "question"]
     rationale: "How-to question, not action request"
 
   - id: "pub-q-003"
     prompt: "how can i publish"
-    expectedTaskType: "general"
+    expectedTaskType: "publish"
     tags: ["publish", "question"]
     rationale: "How-to question, not action request"
 
   - id: "pub-q-004"
     prompt: "how to publish"
-    expectedTaskType: "general"
+    expectedTaskType: "publish"
     tags: ["publish", "question"]
     rationale: "How-to question, not action request"
 
   - id: "pub-q-005"
     prompt: "whats the publishing process"
-    expectedTaskType: "general"
+    expectedTaskType: "publish"
     tags: ["publish", "question"]
     rationale: "Process question, not action request"
 
   - id: "pub-q-006"
     prompt: "can you explain how to deploy"
-    expectedTaskType: "general"
+    expectedTaskType: "publish"
     tags: ["publish", "question"]
     rationale: "Explanation request, not action request"
 
   - id: "pub-q-007"
     prompt: "what happens when i publish"
-    expectedTaskType: "general"
+    expectedTaskType: "publish"
     tags: ["publish", "question"]
     rationale: "Informational question, not action request"
 
   - id: "pub-q-008"
     prompt: "is my site ready to publish"
-    expectedTaskType: "general"
+    expectedTaskType: "publish"
     tags: ["publish", "question"]
     rationale: "Readiness check, not publish request"
 
   - id: "pub-q-009"
     prompt: "how long does publishing take"
-    expectedTaskType: "general"
+    expectedTaskType: "publish"
     tags: ["publish", "question"]
     rationale: "Timing question, not action request"
 
   - id: "pub-q-010"
     prompt: "can i publish without a domain"
-    expectedTaskType: "general"
+    expectedTaskType: "publish"
     tags: ["publish", "question"]
     rationale: "Capability question, not action request"
 

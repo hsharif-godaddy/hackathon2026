@@ -41,7 +41,7 @@ export function calculateLatencyStats(results: CaseResult[]): LatencyStats {
 export function calculateLatencyByPath(
   results: CaseResult[]
 ): Record<string, LatencyStats> {
-  const paths = ['embedding', 'haiku', 'initial_prompt', 'timeout', 'error'] as const;
+  const paths = ['embedding', 'embedding_timeout_fallback', 'haiku', 'initial_prompt', 'timeout', 'error'] as const;
   const stats: Record<string, LatencyStats> = {};
 
   for (const path of paths) {

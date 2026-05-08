@@ -5,23 +5,23 @@ Test corpus for evaluating the AssessmentAgent classification accuracy. Contains
 ## Overview
 
 The AssessmentAgent classifies user prompts into task types for budget billing:
-- **publish**: Publishing/deploying the app
-- **domain**: Domain registration and management
+
 - **fix**: Bug fixes and troubleshooting
 - **general**: Everything else (default)
 
 The agent uses a two-tier classification approach:
+
 1. **Embedding path** (~50-100ms): Fast semantic similarity matching
 2. **Haiku LLM fallback** (~1-2s): For ambiguous cases requiring reasoning
 
 ## Corpus Files
 
-| File | Cases | Description |
-|------|-------|-------------|
-| `publish.yaml` | 113 | Publish/deploy related prompts |
-| `domain.yaml` | 110 | Domain registration and management |
-| `fix.yaml` | 115 | Bug fixes and troubleshooting |
-| `general.yaml` | 230 | General requests + edge cases + negations + initial prompts |
+| File           | Cases | Description                                                 |
+| -------------- | ----- | ----------------------------------------------------------- |
+| `publish.yaml` | 113   | Publish/deploy related prompts                              |
+| `domain.yaml`  | 110   | Domain registration and management                          |
+| `fix.yaml`     | 115   | Bug fixes and troubleshooting                               |
+| `general.yaml` | 230   | General requests + edge cases + negations + initial prompts |
 
 **Total: 568 test cases**
 
@@ -30,6 +30,7 @@ The agent uses a two-tier classification approach:
 Each corpus file contains various test categories:
 
 ### By Complexity
+
 - **Clear intent**: Direct, unambiguous requests ("publish my app")
 - **Questions**: Interrogative forms ("can you publish my app?")
 - **Typos/informal**: Misspellings and casual language ("publsh my site plz")
@@ -39,6 +40,7 @@ Each corpus file contains various test categories:
 - **Complex**: Multi-detail requests combining several related needs
 
 ### Special Categories (in general.yaml)
+
 - **Negations**: "don't publish", "not yet", "cancel the deploy"
 - **Edge cases**: Ambiguous intent, keyword-in-context issues
 - **Adversarial**: Prompt injection attempts, misleading context
@@ -46,9 +48,11 @@ Each corpus file contains various test categories:
 ## Tags
 
 ### By Task Type
+
 - `publish`, `domain`, `fix`, `general`
 
 ### By Test Category
+
 - `clear-intent` - Unambiguous requests
 - `question` - Interrogative forms
 - `typo` - Misspellings and informal language
@@ -65,6 +69,7 @@ Each corpus file contains various test categories:
 - `launch-keyword` - Contains "launch" but means create, not publish
 
 ### By Language
+
 - `en-us` - English
 - `es-es` - Spanish
 - `fr-fr` - French
@@ -77,6 +82,7 @@ Each corpus file contains various test categories:
 - `it-it` - Italian
 
 ### Path Validation
+
 - `path-validation` - Cases with explicit path expectations (for routing tests)
 - `embedding` - Should match via fast embedding path
 - `haiku` - Should require LLM fallback
@@ -111,14 +117,14 @@ pnpm --filter corpus-eval eval run corpora/assessment-agent/ --html
 
 ## Expected Accuracy Targets
 
-| Category | Target |
-|----------|--------|
-| **Overall** | > 85% |
-| **Clear intent** | > 95% |
-| **Multilingual** | > 80% |
-| **Multi-turn** | > 85% |
-| **Negation handling** | > 90% |
-| **Edge cases** | > 75% |
+| Category              | Target |
+| --------------------- | ------ |
+| **Overall**           | > 85%  |
+| **Clear intent**      | > 95%  |
+| **Multilingual**      | > 80%  |
+| **Multi-turn**        | > 85%  |
+| **Negation handling** | > 90%  |
+| **Edge cases**        | > 75%  |
 
 ## Adding Test Cases
 
@@ -131,6 +137,7 @@ When adding new test cases:
 5. For multi-turn cases, include `previousMessage`
 
 Example:
+
 ```yaml
 - id: "publish-complex-042"
   prompt: "I've tested everything locally and it looks good. Can you deploy the latest version to production?"
