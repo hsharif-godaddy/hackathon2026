@@ -197,4 +197,14 @@ describe('OptionButton', () => {
     button = screen.getByRole('button')
     expect(button).toBeDisabled()
   })
+
+  it('should set data-testid when testId is provided', () => {
+    const onClick = vi.fn()
+    renderWithProviders(
+      <OptionButton text="Test Option" onClick={onClick} testId="option-button-test-id" />,
+    )
+
+    expect(screen.getByTestId('option-button-test-id')).toBeInTheDocument()
+    expect(screen.getByTestId('option-button-test-id')).toHaveTextContent('Test Option')
+  })
 })

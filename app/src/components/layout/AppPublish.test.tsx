@@ -154,6 +154,9 @@ vi.mock('@/hooks/useSubscription', () => ({
   useSubscription: () => ({ data: null }),
 }));
 
+const appPublishSwitchboardTestState = vi.hoisted(() => ({
+  goLiveFeatureEnabled: true,
+}));
 const mockSwitchboardOverrides: Record<string, boolean> = {};
 
 vi.mock('@/hooks/useSwitchboard', () => ({
@@ -169,6 +172,9 @@ vi.mock('@/hooks/useSwitchboard', () => ({
     }
     if (feature === 'appbuilder-post-publish-feature-selection') {
       return true;
+    }
+    if (feature === 'appbuilder-go-live-feature') {
+      return appPublishSwitchboardTestState.goLiveFeatureEnabled;
     }
     if (feature === 'appbuilder-settings-secrets') {
       return false;
@@ -238,6 +244,7 @@ describe('AppPublish', () => {
     mockDeploymentsData = [];
     mockStreaming.isLoading = false;
     mockStreaming.streamingState = 'idle';
+    appPublishSwitchboardTestState.goLiveFeatureEnabled = true;
     mockRunGate.mockReset();
     mockRunGate.mockResolvedValue({ proceed: true });
     mockMutateAsync.mockReset();
@@ -613,6 +620,27 @@ describe('AppPublish', () => {
     });
   });
 
+  it('should not show chat pre-launch CTA when appbuilder-go-live-feature is off', async function noChatPrelaunchWhenGoLiveFeatureOff() {
+    appPublishSwitchboardTestState.goLiveFeatureEnabled = false;
+    mockSiteStore.getSite.mockReturnValue(
+      createMockSite({
+        id: 'app-123',
+        agent_url: 'https://app-123.agent.test',
+        variants: ['publish'],
+      }),
+    );
+
+    const { user } = renderWithProviders(<AppPublish />);
+    const trigger = await screen.findByRole('button', { name: 'builder_publish_button' });
+    await user.click(trigger);
+
+    await waitFor(() => {
+      expect(screen.getByText('builder_publish_popover_title')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByRole('button', { name: /Check SEO, QA, and Security/ })).not.toBeInTheDocument();
+  });
+
   it('should show Go Live button when app was published and post-publish flag is on', async function goLiveButton() {
     mockSiteStore.getSite.mockReturnValue(
       createMockSite({
@@ -627,7 +655,7 @@ describe('AppPublish', () => {
     await user.click(trigger);
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /builder_golive_marketing_seo_title/ })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Check SEO, QA, and Security/ })).toBeInTheDocument();
     });
   });
 
@@ -644,7 +672,7 @@ describe('AppPublish', () => {
     const trigger = await screen.findByRole('button', { name: 'builder_publish_button' });
     await user.click(trigger);
 
-    const goLive = await screen.findByRole('button', { name: /builder_golive_marketing_seo_title/ });
+    const goLive = await screen.findByRole('button', { name: /Check SEO, QA, and Security/ });
     await user.click(goLive);
 
     expect(vi.mocked(openPostPublishFeatureSelectionInChat)).toHaveBeenCalledWith('app-123');
@@ -667,7 +695,7 @@ describe('AppPublish', () => {
     const trigger = await screen.findByRole('button', { name: /builder_publish_button/ });
     await user.click(trigger);
 
-    const goLive = await screen.findByRole('button', { name: /builder_golive_marketing_seo_title/ });
+    const goLive = await screen.findByRole('button', { name: /Check SEO, QA, and Security/ });
     expect(goLive).toBeDisabled();
     await user.click(goLive);
     expect(vi.mocked(openPostPublishFeatureSelectionInChat)).not.toHaveBeenCalled();
@@ -687,7 +715,7 @@ describe('AppPublish', () => {
     const trigger = await screen.findByRole('button', { name: 'builder_publish_button' });
     await user.click(trigger);
 
-    const goLive = await screen.findByRole('button', { name: /builder_golive_marketing_seo_title/ });
+    const goLive = await screen.findByRole('button', { name: /Check SEO, QA, and Security/ });
     expect(goLive).toBeDisabled();
     await user.click(goLive);
     expect(vi.mocked(openPostPublishFeatureSelectionInChat)).not.toHaveBeenCalled();
@@ -707,7 +735,7 @@ describe('AppPublish', () => {
     const trigger = await screen.findByRole('button', { name: 'builder_publish_button' });
     await user.click(trigger);
 
-    const goLive = await screen.findByRole('button', { name: /builder_golive_marketing_seo_title/ });
+    const goLive = await screen.findByRole('button', { name: /Check SEO, QA, and Security/ });
     expect(goLive).toBeDisabled();
     await user.click(goLive);
     expect(vi.mocked(openPostPublishFeatureSelectionInChat)).not.toHaveBeenCalled();
@@ -726,7 +754,7 @@ describe('AppPublish', () => {
     const trigger = await screen.findByRole('button', { name: 'builder_publish_button' });
     await user.click(trigger);
 
-    expect(screen.queryByRole('button', { name: /builder_golive_marketing_seo_title/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Check SEO, QA, and Security/ })).not.toBeInTheDocument();
   });
 
   it('should add success growl with feedback CTA when publish completes while popover closed', async function successGrowlIncludesFeedback() {

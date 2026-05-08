@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect,useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import Box from '@ux/box'
 
 import { useSendUserMessage } from '@/app/[market]/develop/components/chat/ChatContext'
@@ -10,12 +10,16 @@ import OptionButton from '@/app/[market]/develop/components/tool-renderers/Optio
 import OptionInput from '@/app/[market]/develop/components/tool-renderers/OptionInput'
 import { useNumberKeySelection } from '@/app/[market]/develop/components/tool-renderers/useNumberKeySelection'
 import { useTranslations } from '@/hooks/useTranslations'
+import { shipAnalyticsLog } from '@/lib/logging'
+import { prelaunchKindForUserMessage } from '@/lib/post-publish-prelaunch-ask-question'
+import { logger } from '@/lib/request-context'
 import { useIsActivelyStreaming, useIsLoading } from '@/stores/useStreamingConversationStore'
 import { logAiroHQEvent } from '@/utils/instrumentation'
 
 interface Suggestion {
   text: string
   value?: string
+  testId?: string
 }
 
 interface Question {
@@ -159,6 +163,23 @@ export default function AskQuestionToolRenderer({
     if (isLastQuestion) {
       setCurrentQuestionIndex(totalQuestions)
 
+      const rawResult = result as Record<string, unknown> | undefined
+      const meta = rawResult?.metadata
+      const postPublishAppId =
+        typeof meta === 'object' &&
+        meta !== null &&
+        'postPublishAnalyticsAppId' in meta
+          ? String((meta as { postPublishAnalyticsAppId: string }).postPublishAnalyticsAppId)
+          : undefined
+      if (postPublishAppId) {
+        const firstAnswer = newAnswers[0] ?? answer
+        const kind = prelaunchKindForUserMessage(firstAnswer ?? '')
+        if (kind) {
+          logger.info(`go-live.chat.${kind}_check_requested`, { appId: postPublishAppId })
+          shipAnalyticsLog(`go_live.chat.${kind}_check_requested`, { appId: postPublishAppId })
+        }
+      }
+
       if (totalQuestions === 1) {
         sendUserMessage(answer, { isActionRequest: true })
       } else {
@@ -225,6 +246,7 @@ export default function AskQuestionToolRenderer({
             animationDelay={index * 0.2}
             isSelectable={true}
             keyboardShortcut={index + 1}
+            testId={suggestion.testId}
           />
         ))}
 

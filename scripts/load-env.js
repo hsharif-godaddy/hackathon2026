@@ -87,6 +87,9 @@ if (process.env.SSO_LOGIN_URL) {
 // Check AWS SSO login status for Switchboard (only when AUTH_TYPE=jwt)
 const authType = process.env.AUTH_TYPE?.toLowerCase();
 const isJWTMode = !authType || authType === 'jwt';
+const disableGasketSwitchboard =
+  process.env.GASKET_DISABLE_SWITCHBOARD === 'true' ||
+  process.env.GASKET_DISABLE_SWITCHBOARD === '1';
 
 if (isJWTMode && process.env.AWS_PROFILE) {
   const { execFileSync } = require('child_process');
@@ -134,7 +137,16 @@ if (isJWTMode && process.env.AWS_PROFILE) {
       }
       console.error('');
     }
-    process.exit(1);
+    if (disableGasketSwitchboard) {
+      console.warn(
+        '   Continuing without valid AWS credentials: GASKET_DISABLE_SWITCHBOARD is set, so the Switchboard plugin is omitted.',
+      );
+      console.warn(
+        '   Run `aws sso login` before removing that flag, or Switchboard will fail at runtime.\n',
+      );
+    } else {
+      process.exit(1);
+    }
   }
 } else if (isJWTMode && !process.env.AWS_PROFILE) {
   console.warn('\n   WARNING: AUTH_TYPE=jwt but AWS_PROFILE is not set!');

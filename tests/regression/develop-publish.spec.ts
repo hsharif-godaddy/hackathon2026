@@ -8,7 +8,7 @@
  *    success Growl (first publish suppresses the growl in favor of the modal)
  *
  * Second test: after publish, publish popover → Pre-Launch Check → SEO prompt in chat
- * (`post-publish-feature-selection`, `post-publish-prelaunch-seo-prompt`).
+ * (injected `askQuestion` in chat; `data-testid` on option buttons, e.g. post-publish-prelaunch-seo-run-button).
  *
  * Strategy:
  * - AI agent handles publishing automatically
@@ -204,7 +204,7 @@ test.describe('Publish Flow', () => {
     ).toBeVisible({ timeout: DEFAULT_TIMEOUT });
 
     const preLaunchCheck = page.getByRole('button', {
-      name: /builder_golive_marketing_seo_title|SEO Optimization/i,
+      name: /Check SEO, QA, and Security|Run Pre-Launch Check/i,
     });
 
     const isPreLaunchVisible = await preLaunchCheck.isVisible({ timeout: DEFAULT_TIMEOUT }).catch(() => false);
@@ -216,13 +216,10 @@ test.describe('Publish Flow', () => {
 
     await preLaunchCheck.click();
 
-    const featureSelection = page.getByTestId('post-publish-feature-selection');
-    await expect(featureSelection).toBeVisible({ timeout: DEFAULT_TIMEOUT });
-    await expect(page.getByTestId('post-publish-prelaunch-seo-prompt')).toBeVisible();
+    const seoPrelaunchOption = page.getByTestId('post-publish-prelaunch-seo-run-button');
+    await expect(seoPrelaunchOption).toBeVisible({ timeout: DEFAULT_TIMEOUT });
 
-    await page.getByTestId('post-publish-prelaunch-seo-run-button').getByRole('button').click();
-
-    await expect(featureSelection).not.toBeVisible({ timeout: DEFAULT_TIMEOUT });
+    await seoPrelaunchOption.click();
 
     await expect(
       page.getByText(/Run an SEO check|builder_post_publish_prelaunch_seo_action_message/i),

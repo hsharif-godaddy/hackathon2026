@@ -159,7 +159,11 @@ async function MarketLayout({
     headersList.forEach((value, key) => {
       headersObj[key] = value;
     });
-    const cohorts = await gasket.actions.getExperimentCohorts({ headers: headersObj });
+    const getExperimentCohorts = gasket.actions.getExperimentCohorts;
+    const cohorts =
+      typeof getExperimentCohorts === 'function'
+        ? await getExperimentCohorts({ headers: headersObj })
+        : undefined;
     const aaCohort = cohorts?.['aa-airo-builder'];
     homepageEngagementCohort = cohorts?.[EXPERIMENT_IDS.homepageEngagement] as string | undefined;
 
@@ -178,15 +182,15 @@ async function MarketLayout({
 
   return (
     <PresentationLayout params={params}>
-      <FrameBuster />
-      <JourneyTrackerInit />
+      <FrameBuster key="market-frame-buster" />
+      <JourneyTrackerInit key="market-journey-tracker-init" />
       <Suspense fallback={null}>
-        <ConversationIdCookie />
-        <ReferralTracker />
-        <ItcInitializer />
+        <ConversationIdCookie key="market-conversation-id-cookie" />
+        <ReferralTracker key="market-referral-tracker" />
+        <ItcInitializer key="market-itc-initializer" />
       </Suspense>
-      <FullStoryProvider>
-        <QueryClientProvider>
+      <FullStoryProvider key="market-fullstory">
+        <QueryClientProvider key="market-query-client">
           <TranslationsProvider
             homepageEngagementCohort={homepageEngagementCohort}
             locale={locale}
@@ -194,13 +198,13 @@ async function MarketLayout({
             packages={['@airo-app-builder/aab']}
           >
             <AuthProvider homepageEngagementCohort={homepageEngagementCohort}>
-              <JourneyTrackerAuth />
-              <SubscriptionCacheProvider>
-                <main className="flex-1 relative min-h-dvh">
+              <JourneyTrackerAuth key="market-journey-tracker-auth" />
+              <SubscriptionCacheProvider key="market-subscription-cache">
+                <main className="flex-1 relative min-h-dvh" key="market-main">
                   {children}
                 </main>
-                <GlobalSsoLogin />
-                <SsoDebugTools />
+                <GlobalSsoLogin key="market-global-sso-login" />
+                <SsoDebugTools key="market-sso-debug-tools" />
               </SubscriptionCacheProvider>
             </AuthProvider>
           </TranslationsProvider>

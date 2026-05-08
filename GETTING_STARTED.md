@@ -74,6 +74,12 @@ Most issues are caught and fixed by preflight on the next `pnpm run dev`. Except
 - **Port conflict on generated app port (5001+)** → `lsof -ti:5001 | xargs kill -9`
 - **Stale build cache** → `pnpm install --force && pnpm build --force`
 
+### Switchboard DNS / VPN (iam-token host not found)
+
+If Switchboard cannot reach internal SSO token endpoints (`iam-token.*.sso.test-godaddy.com`), connect corporate VPN so internal DNS resolves, then restart the dev server.
+
+**Workaround (limited local UI):** set `GASKET_DISABLE_SWITCHBOARD=1` in your env (e.g. `app/.env.local.test`) to omit the Gasket Switchboard plugin.
+
 ---
 
 - Full docs: [README.md](./README.md), [docs/](./docs/)

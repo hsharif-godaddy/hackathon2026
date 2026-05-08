@@ -30,6 +30,7 @@ import { findLatestColorSchemeSuggest } from '@/app/[market]/develop/components/
 import { findLatestFontThemeSuggest } from '@/app/[market]/develop/components/utils/findLatestFontThemeSuggest'
 import { isFontSuggestPanelVisible } from '@/app/[market]/develop/components/utils/fontSuggestPanelVisibility'
 import { useAuthContext } from '@/components/providers/AuthProvider'
+import { SWITCHBOARD_APPBUILDER_GO_LIVE_FEATURE } from '@/config/switchboard-flags'
 import { useAotPreload } from '@/hooks/useAotPreload'
 import { useChatTabs } from '@/hooks/useChatTabs'
 import { useConversionEvent } from '@/hooks/useConversionEvent'
@@ -43,6 +44,7 @@ import { useVisitedTabs } from '@/hooks/useVisitedTabs'
 import { getFileUploadAgent } from '@/lib/file-agent'
 import { appFetch } from '@/lib/gasket-config'
 import { shipAnalyticsLog } from '@/lib/logging'
+import { createPostPublishPreLaunchAssistantMessage } from '@/lib/post-publish-prelaunch-ask-question'
 import { logger } from '@/lib/request-context'
 import { appService } from '@/services/AppService'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
@@ -84,11 +86,9 @@ const SettingsView = dynamic(() => import('@/app/[market]/develop/components/set
 // Lazy-loaded but preloaded on idle after mount
 // We do them AOT to avoid skeleton/loader flashes - purely UX and non-blocking.
 const importBudgetExceededBanner = () => import('@/app/[market]/develop/components/chat/BudgetExceededBanner')
-const importPostPublishFeatureSelection = () => import('@/app/[market]/develop/components/chat/PostPublishFeatureSelection')
 const BudgetExceededBanner = dynamic(importBudgetExceededBanner)
-const PostPublishFeatureSelection = dynamic(importPostPublishFeatureSelection)
 
-const aotImports = [importBudgetExceededBanner, importPostPublishFeatureSelection]
+const aotImports = [importBudgetExceededBanner]
 
 interface ChatPaneProps {
   sendMessage: (options: SendMessageOptions) => Promise<void>
@@ -216,6 +216,7 @@ export default function ChatPane({
   useConversionEvent(subscription)
   const areChatPlansEnabled = useSwitchboard('airo-builder-chat-plans')
   const isThemeSelectionChatEnabled = useSwitchboard('airo-builder-theme-selection-chat')
+  const isGoLiveFeatureEnabled = useSwitchboard(SWITCHBOARD_APPBUILDER_GO_LIVE_FEATURE) === true
   const isFontSelectionChatEnabled = useSwitchboard('airo-builder-font-selection-chat')
 
   // Unified grants fetch - works for both BMS and legacy paths
@@ -252,6 +253,7 @@ export default function ChatPane({
   const showProactiveBudgetBanner = budgetExceeded && !budgetExceededFlag && !isProactiveBannerDismissed
 
   const hasLoggedFirstUserMessageRef = useRef(false)
+  const lastInjectedPreLaunchNonceRef = useRef<number | null>(null)
 
   const expandedPlan = useDevelopPageStore((state) => state.expandedPlan)
   const toggleExpandedPlan = useDevelopPageStore((state) => state.toggleExpandedPlan)
@@ -272,6 +274,58 @@ export default function ChatPane({
     appId && state.publishStates?.[appId]
       ? state.publishStates[appId].postPublishFeatureSelectionNonce
       : 0
+  )
+
+  useEffect(
+    function resetPreLaunchInjectNonceOnAppChange() {
+      lastInjectedPreLaunchNonceRef.current = null
+    },
+    [appId],
+  )
+
+  useEffect(
+    function injectPreLaunchAskQuestionWhenOpened() {
+      if (!appId || !showPostPublishFeatureSelection || !isGoLiveFeatureEnabled) return
+      if (lastInjectedPreLaunchNonceRef.current === postPublishFeatureSelectionNonce) return
+
+      const streamState = useStreamingConversationStore.getState()
+      if (streamState.currentAppId !== appId) {
+        logger.warn('publish.prelaunch.inject.skip_wrong_app', {
+          streamAppId: streamState.currentAppId,
+          targetAppId: appId,
+        })
+        return
+      }
+
+      const assistantMessage = createPostPublishPreLaunchAssistantMessage({
+        appId,
+        nonce: postPublishFeatureSelectionNonce,
+      })
+
+      try {
+        useStreamingConversationStore.getState().persistHistory({
+          appId,
+          messages: [assistantMessage],
+          mode: 'append',
+        })
+
+        lastInjectedPreLaunchNonceRef.current = postPublishFeatureSelectionNonce
+
+        useDevelopPageStore.getState().setPostPublishFeatureSelection(appId, false)
+
+        logger.info('publish.prelaunch.ask_question_injected', {
+          appId,
+          nonce: postPublishFeatureSelectionNonce,
+        })
+      } catch (error) {
+        logger.error('publish.prelaunch.ask_question_inject.failed', {
+          appId,
+          nonce: postPublishFeatureSelectionNonce,
+          errorMessage: error instanceof Error ? error.message : String(error),
+        })
+      }
+    },
+    [appId, isGoLiveFeatureEnabled, showPostPublishFeatureSelection, postPublishFeatureSelectionNonce],
   )
 
   // Load current todo list into store so InputActionsPanel has data when the flag is on
@@ -1209,17 +1263,6 @@ export default function ChatPane({
             hasInitialPrompt={hasInitialPrompt}
             initialPromptText={initialPromptText}
             transcriptContainerVisible
-            transcriptFooter={
-              showPostPublishFeatureSelection && appId ? (
-                <PostPublishFeatureSelection
-                  key={postPublishFeatureSelectionNonce}
-                  appId={appId}
-                />
-              ) : null
-            }
-            transcriptFooterScrollNonce={
-              showPostPublishFeatureSelection && appId ? postPublishFeatureSelectionNonce : 0
-            }
           />
 
           {showProactiveBudgetBanner && (
@@ -1291,17 +1334,6 @@ export default function ChatPane({
             hasInitialPrompt={hasInitialPrompt}
             initialPromptText={initialPromptText}
             transcriptContainerVisible={activeChatTab === ChatTab.CHAT}
-            transcriptFooter={
-              showPostPublishFeatureSelection && appId ? (
-                <PostPublishFeatureSelection
-                  key={postPublishFeatureSelectionNonce}
-                  appId={appId}
-                />
-              ) : null
-            }
-            transcriptFooterScrollNonce={
-              showPostPublishFeatureSelection && appId ? postPublishFeatureSelectionNonce : 0
-            }
           />
 
           {safeBuildErrorContext && (

@@ -28,6 +28,12 @@ import gasketData from './gasket-data.js';
 // Check if we should enable JWT authentication
 const authType = process.env.AUTH_TYPE?.toLowerCase() || 'jwt';
 const isJWTMode = authType === 'jwt' || (process.env.NODE_ENV === 'production' && !authType);
+
+/** When true, omit Hivemind/Switchboard native client (no IAM token calls to *.sso.test-godaddy.com). Use offline or without corporate DNS/VPN. */
+const disableGasketSwitchboard =
+  process.env.GASKET_DISABLE_SWITCHBOARD === 'true' ||
+  process.env.GASKET_DISABLE_SWITCHBOARD === '1';
+
 export default makeGasket({
   environments: {
     'local.analyze': {
@@ -202,7 +208,7 @@ export default makeGasket({
     pluginUxp,
     pluginOtel,
     pluginCds,
-    pluginSwitchboard
+    ...(disableGasketSwitchboard ? [] : [pluginSwitchboard])
   ],
   commands: {
     docs: {
@@ -354,7 +360,7 @@ export default makeGasket({
       primaryRegion: 'us-west-2',
       secondaryRegion: 'us-east-1'
     },
-    enableGasketData: true,
+    enableGasketData: !disableGasketSwitchboard,
     dataRetrieval: {
       hivemind: {
         settings: [

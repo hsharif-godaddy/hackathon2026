@@ -1003,6 +1003,7 @@ function InputActionsPanelThemeSelection({
   const showFont = Boolean(activeFontThemeSuggest) && dismissedFontSuggestId !== activeFontThemeSuggest?.toolCallId
   const showAnySuggest = showColor || showFont
   const isPreviewMode = viewMode === ViewMode.PREVIEW || viewMode === ViewMode.EDIT
+  const isAskQuestionActive = isAskQuestionNBA(nbaData) && !!nbaData?.toolResult && !askQuestionCompleted
 
   // Prepend the current applied theme to the suggestions if it exists, filtering duplicates by name
   const palettesWithCurrent = useMemo(
@@ -1031,12 +1032,12 @@ function InputActionsPanelThemeSelection({
     [activeFontThemeSuggest, currentAppliedFont]
   )
 
-  // Auto-open "Continue Building" when content is available
+  // Auto-open "Continue Building" when content is available (including askQuestion NBAs e.g. post-publish pre-launch)
   useEffect(() => {
-    if (hasCombinedItems || hasPlan || showAnySuggest || hasRebuildPages) {
+    if (hasCombinedItems || hasPlan || showAnySuggest || hasRebuildPages || isAskQuestionActive) {
       setContinueBuildingExpanded(true)
     }
-  }, [showAnySuggest, hasCombinedItems, hasPlan, hasRebuildPages])
+  }, [showAnySuggest, hasCombinedItems, hasPlan, hasRebuildPages, isAskQuestionActive])
 
   // Reset dismissed state and theme selection when color suggest changes
   useEffect(() => {
@@ -1234,8 +1235,6 @@ function InputActionsPanelThemeSelection({
     () => planPreviewItems.slice(0, MAX_KEYBOARD_SHORTCUTS),
     [planPreviewItems]
   )
-
-  const isAskQuestionActive = isAskQuestionNBA(nbaData) && !!nbaData?.toolResult && !askQuestionCompleted
 
   const handlePlanItemClickCallback = useCallback(
     (item: TodoItem) => {
@@ -1547,7 +1546,6 @@ function InputActionsPanelThemeSelection({
               title={<span className="text-foreground">{currentAskQuestionText || nbaData.question}</span>}
               expanded={continueBuildingExpanded}
               onExpandedChange={setContinueBuildingExpanded}
-              headerRight={progressButton}
             >
               {continueBuildingTodoBody}
             </CollapsibleChatInputSection>

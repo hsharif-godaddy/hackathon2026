@@ -23,7 +23,7 @@ import TextLockup from '@ux/text-lockup';
 import IconButton from '@/app/[market]/develop/components/IconButton';
 import { ChatTab, MobileMode, SettingsSection, ViewMode } from '@/app/[market]/develop/components/types';
 import { FEEDBACK_ID } from '@/components/feedback/utils';
-import { InfoTooltip } from '@/components/ui/InfoTooltip';
+import { SWITCHBOARD_APPBUILDER_GO_LIVE_FEATURE } from '@/config/switchboard-flags';
 import { useChatTabs } from '@/hooks/useChatTabs';
 import { useDeploymentsQuery } from '@/hooks/useDeploymentsQuery';
 import { useDnsConflictGate } from '@/hooks/useDnsConflictGate';
@@ -104,7 +104,7 @@ function PublishFailedMessage({
 
 export default function AppPublish({ location = 'develop' }: { location?: string }) {
   const t = useTranslations();
-  const publishGoLiveChatButtonLabel = t('builder_golive_marketing_seo_title', {}, 'SEO Optimization');
+  const publishPreLaunchCheckLabel = 'Check SEO, QA, and Security';
   const [open, setOpen] = useState(false);
   const [publishResult, setPublishResult] = useState<'success' | 'failed' | null>(null);
   const [isFixingBuildError, setIsFixingBuildError] = useState(false);
@@ -145,6 +145,7 @@ export default function AppPublish({ location = 'develop' }: { location?: string
   const publishFlagsEnabled = isPublishButtonEnabled && isDevelopPage;
   const isSecretsEnabled = useSwitchboard('appbuilder-settings-secrets');
   const isPostPublishFeatureSelectionEnabled = useSwitchboard('appbuilder-post-publish-feature-selection');
+  const isGoLiveFeatureEnabled = useSwitchboard(SWITCHBOARD_APPBUILDER_GO_LIVE_FEATURE) === true;
   const isTopLevelDomainEnabled = useSwitchboard('appbuilder-domain-top-level');
 
   const isChatToolbar = location === 'develop.chat_toolbar';
@@ -558,13 +559,13 @@ export default function AppPublish({ location = 'develop' }: { location?: string
   }, [clickContext, handleMobileModeChange, handleViewModeChange, hasUnsavedChanges, isMobile, isTopLevelDomainEnabled, location, setActiveChatTab, setActiveSettingsSection, setOpen]);
 
   const handleGoLiveInChat = useCallback(() => {
-    if (!currentAppId || isPreLaunchCheckFromPublishDisabled) {
+    if (!currentAppId || !isGoLiveFeatureEnabled || isPreLaunchCheckFromPublishDisabled) {
       return;
     }
     openPostPublishFeatureSelectionInChat(currentAppId);
     shipAnalyticsLog('go_live.chat.opened_from_publish_popover', { appId: currentAppId });
     setOpen(false);
-  }, [currentAppId, isPreLaunchCheckFromPublishDisabled, setOpen]);
+  }, [currentAppId, isGoLiveFeatureEnabled, isPreLaunchCheckFromPublishDisabled, setOpen]);
 
   // Register deployments refetch function in store for retry functionality
   useEffect(() => {
@@ -785,33 +786,19 @@ export default function AppPublish({ location = 'develop' }: { location?: string
 
             <Separator />
 
-            {isPostPublishFeatureSelectionEnabled === true && currentAppId && !isFirstTimePublishing && (
-              <div className='relative w-full'>
-                <Button
-                  className='w-full'
-                  design='tertiary'
-                  size='sm'
-                  data-eid={generateClickEID(`${location}.header.publish_go_live_chat`)}
-                  onClick={handleGoLiveInChat}
-                  disabled={isPreLaunchCheckFromPublishDisabled}
-                  text={publishGoLiveChatButtonLabel}
-                />
-                <div className='pointer-events-none absolute inset-0 flex items-center justify-center'>
-                  <div className='inline-flex items-center gap-[8px] me-[calc((8px+0.5rem)/2)]'>
-                    <InfoTooltip
-                      embedded
-                      content={t(
-                        'builder_golive_marketing_seo_description',
-                        {},
-                        'Optimize meta tags, descriptions, and search engine visibility',
-                      )}
-                    />
-                    <span aria-hidden className='invisible select-none whitespace-pre'>
-                      {publishGoLiveChatButtonLabel}
-                    </span>
-                  </div>
-                </div>
-              </div>
+            {isPostPublishFeatureSelectionEnabled === true &&
+              isGoLiveFeatureEnabled &&
+              currentAppId &&
+              !isFirstTimePublishing && (
+              <Button
+                className='w-full'
+                design='tertiary'
+                size='sm'
+                data-eid={generateClickEID(`${location}.header.publish_go_live_chat`)}
+                onClick={handleGoLiveInChat}
+                disabled={isPreLaunchCheckFromPublishDisabled}
+                text={publishPreLaunchCheckLabel}
+              />
             )}
 
             {isAiroSubdomain(fqdn) && !isFirstTimePublishing && (
