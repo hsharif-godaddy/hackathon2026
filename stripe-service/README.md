@@ -29,14 +29,16 @@ make dev                           # go run ./cmd/server, debug logs, text forma
 make test                          # go test -race ./...
 make lint                          # go vet + gofmt check
 make build                         # builds bin/stripe-service
-curl http://localhost:4200/health  # sanity check
+curl http://localhost:8443/health  # sanity check
 ```
 
 ## Env vars
 
 | Var                    | Default | Purpose                                              |
 | ---------------------- | ------- | ---------------------------------------------------- |
-| `STRIPE_SERVICE_ADDR`  | `:4200` | HTTP listen address.                                 |
+| `STRIPE_SERVICE_ADDR`  | `:8443` | Listen address.                                      |
+| `SERVER_CERT_PATH`     | *unset* | TLS cert path. Both cert and key must be set or neither. Container image sets both; local dev serves plain HTTP. |
+| `SERVER_KEY_PATH`      | *unset* | TLS key path.                                        |
 | `ENVIRONMENT`          | `local` | `local` \| `dev` \| `test` \| `prod`. Surfaced in `/health`. |
 | `LOG_LEVEL`            | `info`  | `debug` \| `info` \| `warn` \| `error`.              |
 | `LOG_FORMAT`           | `json`  | `json` (structured) or `text` (human).               |

@@ -10,6 +10,7 @@ func clearEnv(t *testing.T) {
 	for _, k := range []string{
 		"STRIPE_SERVICE_ADDR", "ENVIRONMENT", "LOG_LEVEL", "LOG_FORMAT",
 		"HTTP_READ_TIMEOUT", "HTTP_WRITE_TIMEOUT", "HTTP_IDLE_TIMEOUT", "SHUTDOWN_TIMEOUT",
+		"SERVER_CERT_PATH", "SERVER_KEY_PATH",
 	} {
 		t.Setenv(k, "")
 	}
@@ -21,8 +22,8 @@ func TestLoadDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if cfg.Addr != ":4200" {
-		t.Errorf("Addr: want :4200, got %q", cfg.Addr)
+	if cfg.Addr != ":8443" {
+		t.Errorf("Addr: want :8443, got %q", cfg.Addr)
 	}
 	if cfg.Environment != EnvLocal {
 		t.Errorf("Environment: want local, got %q", cfg.Environment)
@@ -130,6 +131,28 @@ func TestLoadRejectsUnparseableDuration(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "HTTP_READ_TIMEOUT") {
 		t.Errorf("error should mention HTTP_READ_TIMEOUT; got %q", err)
+	}
+}
+
+func TestLoadRejectsTLSOnlyOnePathSet(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("SERVER_CERT_PATH", "/tmp/cert.pem")
+	_, err := Load()
+	if err == nil {
+		t.Fatal("want error when SERVER_CERT_PATH is set but SERVER_KEY_PATH is not")
+	}
+}
+
+func TestLoadAcceptsBothTLSPaths(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("SERVER_CERT_PATH", "/tmp/cert.pem")
+	t.Setenv("SERVER_KEY_PATH", "/tmp/key.pem")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.TLSCertPath != "/tmp/cert.pem" || cfg.TLSKeyPath != "/tmp/key.pem" {
+		t.Errorf("TLS paths: cert=%q key=%q", cfg.TLSCertPath, cfg.TLSKeyPath)
 	}
 }
 

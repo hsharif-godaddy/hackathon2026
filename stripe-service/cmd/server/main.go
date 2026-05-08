@@ -47,14 +47,22 @@ func main() {
 		"addr", cfg.Addr,
 		"environment", cfg.Environment,
 		"version", version,
+		"tls", cfg.TLSCertPath != "" && cfg.TLSKeyPath != "",
 	)
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
 	errCh := make(chan error, 1)
+	tlsEnabled := cfg.TLSCertPath != "" && cfg.TLSKeyPath != ""
 	go func() {
-		if err := httpSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		var err error
+		if tlsEnabled {
+			err = httpSrv.ListenAndServeTLS(cfg.TLSCertPath, cfg.TLSKeyPath)
+		} else {
+			err = httpSrv.ListenAndServe()
+		}
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errCh <- err
 		}
 	}()

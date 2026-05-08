@@ -21,16 +21,28 @@ FROM 764525110978.dkr.ecr.us-west-2.amazonaws.com/alpine:3.22
 USER root
 WORKDIR /app
 
-RUN apk --no-cache add ca-certificates wget
+RUN apk --no-cache add ca-certificates wget openssl
+
+RUN mkdir -p /app/certs && \
+    openssl req -x509 -newkey rsa:2048 \
+    -keyout /app/certs/server.key -out /app/certs/server.crt \
+    -days 365 -nodes -subj "/CN=stripe-service" \
+    -addext "subjectAltName=DNS:*,IP:127.0.0.1,IP:0.0.0.0" && \
+    chmod 644 /app/certs/server.crt && \
+    chmod 600 /app/certs/server.key && \
+    chown 1000:1000 /app/certs/server.key /app/certs/server.crt
 
 COPY --from=builder /app/server /app/server
 RUN chown -R 1000:1000 /app
 
 USER 1000
 
-EXPOSE 4200
+ENV SERVER_CERT_PATH=/app/certs/server.crt
+ENV SERVER_KEY_PATH=/app/certs/server.key
+
+EXPOSE 8443
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:4200/health || exit 1
+  CMD wget --no-verbose --tries=1 --spider --no-check-certificate https://localhost:8443/health || exit 1
 
 CMD ["/app/server"]

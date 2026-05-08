@@ -30,6 +30,8 @@ type Config struct {
 	HTTPWriteTimeout time.Duration
 	HTTPIdleTimeout  time.Duration
 	ShutdownTimeout  time.Duration
+	TLSCertPath      string
+	TLSKeyPath       string
 }
 
 // Load reads env, applies defaults, validates. Returns error on any invalid
@@ -37,7 +39,9 @@ type Config struct {
 // unparseable (bad enum, bad duration, bad port) produce a descriptive error.
 func Load() (Config, error) {
 	cfg := Config{
-		Addr: getEnv("STRIPE_SERVICE_ADDR", ":4200"),
+		Addr:        getEnv("STRIPE_SERVICE_ADDR", ":8443"),
+		TLSCertPath: os.Getenv("SERVER_CERT_PATH"),
+		TLSKeyPath:  os.Getenv("SERVER_KEY_PATH"),
 	}
 
 	var err error
@@ -65,6 +69,9 @@ func Load() (Config, error) {
 	}
 	if err := validateAddr(cfg.Addr); err != nil {
 		return Config{}, err
+	}
+	if (cfg.TLSCertPath != "") != (cfg.TLSKeyPath != "") {
+		return Config{}, fmt.Errorf("SERVER_CERT_PATH and SERVER_KEY_PATH must both be set or both empty")
 	}
 	return cfg, nil
 }
@@ -104,11 +111,11 @@ func parseLogFormat(s string) (string, error) {
 }
 
 // validateAddr checks that the listen address has a numeric port in [1,65535].
-// Accepts ":4200" or "0.0.0.0:4200". Empty host is fine.
+// Accepts ":8443" or "0.0.0.0:8443". Empty host is fine.
 func validateAddr(addr string) error {
 	idx := strings.LastIndex(addr, ":")
 	if idx < 0 {
-		return fmt.Errorf("STRIPE_SERVICE_ADDR must include a port (e.g. :4200); got %q", addr)
+		return fmt.Errorf("STRIPE_SERVICE_ADDR must include a port (e.g. :8443); got %q", addr)
 	}
 	portStr := addr[idx+1:]
 	port, err := strconv.Atoi(portStr)
