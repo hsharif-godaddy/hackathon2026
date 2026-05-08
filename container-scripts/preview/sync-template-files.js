@@ -129,7 +129,8 @@ const SYNC_MANIFEST = [
       '398cc701e5338594788187c0ac488712', // 0bd48df3b - FIX: Use ENV mode
       '89379a72aadeed8ac76dee704aabfd91', // main - WITH CookieBanner (pre-PR)
       '72c4eef20dcee8a90cd547b1a042ad70', // Before ScrollToTop - CookieBanner removed
-      '0d65cc5e501da40c7dc28ed173027125'  // #3311 (AIROBUILD-1478) - <ScrollRestoration />; template comment refreshed in SSR branch
+      '0d65cc5e501da40c7dc28ed173027125', // #3311 (AIROBUILD-1478) - <ScrollRestoration />; template comment refreshed in SSR branch
+      '172c2f9a5200e19829052f765705cfb4'  // before default <Helmet> site title/description added to RootLayout
     ],
     force: false,
     syncGroup: 'cookieBanner'

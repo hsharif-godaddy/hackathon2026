@@ -68,8 +68,8 @@ describe('set-project-name', function setProjectNameTests() {
     mockMemorySet.mockResolvedValue({ success: true })
   })
 
-  describe('index.html title update', function titleUpdateTests() {
-    it('should update index.html title when it has default value', async function updateDefaultTitle() {
+  describe('RootLayout.tsx title update', function titleUpdateTests() {
+    it('should update RootLayout.tsx title when it has default value', async function updateDefaultTitle() {
       const appId = 'test-app-1'
       const newName = 'My Awesome App'
       const appPath = '/tmp/apps/test-app-1/app'
@@ -80,7 +80,7 @@ describe('set-project-name', function setProjectNameTests() {
         path: appPath
       })
       mockUpdate.mockReturnValue({ id: appId, name: newName })
-      mockEditFile.mockResolvedValue({ success: true, path: 'index.html', mode: 'edit' })
+      mockEditFile.mockResolvedValue({ success: true, path: 'src/layouts/RootLayout.tsx', mode: 'edit' })
 
       const result = await setProjectNameAITool.execute(
         { name: newName },
@@ -92,7 +92,7 @@ describe('set-project-name', function setProjectNameTests() {
       expect(mockEditFile).toHaveBeenCalledWith(
         appPath,
         {
-          path: 'index.html',
+          path: 'src/layouts/RootLayout.tsx',
           mode: 'edit',
           edits: [{ old: '<title>App Template</title>', new: `<title>${newName}</title>` }],
           autoCommit: true,
@@ -102,7 +102,7 @@ describe('set-project-name', function setProjectNameTests() {
       )
     })
 
-    it('should not update index.html title when already customized', async function skipCustomizedTitle() {
+    it('should not update RootLayout.tsx title when already customized', async function skipCustomizedTitle() {
       const appId = 'test-app-2'
       const newName = 'My New App'
       const appPath = '/tmp/apps/test-app-2/app'
@@ -113,12 +113,13 @@ describe('set-project-name', function setProjectNameTests() {
         path: appPath
       })
       mockUpdate.mockReturnValue({ id: appId, name: newName })
-      // FileEditTool returns error when search string not found
+      // FileEditTool returns this exact error when search string not found
+      // (see file-edit.ts:1220/1246)
       mockEditFile.mockResolvedValue({
         success: false,
-        path: 'index.html',
+        path: 'src/layouts/RootLayout.tsx',
         mode: 'edit',
-        error: 'Search text not found in file'
+        error: 'Search text not found'
       })
 
       const result = await setProjectNameAITool.execute(
@@ -173,10 +174,11 @@ describe('set-project-name', function setProjectNameTests() {
       expect(mockEditFile).not.toHaveBeenCalled()
     })
 
-    it('should escape HTML special characters in project name to prevent XSS', async function escapeHtmlChars() {
+    it('should escape HTML and JSX delimiters in project name', async function escapeJsxTextChars() {
       const appId = 'test-app-5'
-      const maliciousName = '</title><script>alert("xss")</script><title>'
-      const escapedName = '&lt;/title&gt;&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;&lt;title&gt;'
+      const maliciousName = '</title><script>alert("xss")</script>{evil}<title>'
+      const escapedName =
+        '&lt;/title&gt;&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;&#123;evil&#125;&lt;title&gt;'
       const appPath = '/tmp/apps/test-app-5/app'
 
       mockFindById.mockReturnValue({
@@ -185,7 +187,7 @@ describe('set-project-name', function setProjectNameTests() {
         path: appPath
       })
       mockUpdate.mockReturnValue({ id: appId, name: maliciousName })
-      mockEditFile.mockResolvedValue({ success: true, path: 'index.html', mode: 'edit' })
+      mockEditFile.mockResolvedValue({ success: true, path: 'src/layouts/RootLayout.tsx', mode: 'edit' })
 
       await setProjectNameAITool.execute(
         { name: maliciousName },
@@ -196,7 +198,7 @@ describe('set-project-name', function setProjectNameTests() {
       expect(mockEditFile).toHaveBeenCalledWith(
         appPath,
         {
-          path: 'index.html',
+          path: 'src/layouts/RootLayout.tsx',
           mode: 'edit',
           edits: [{ old: '<title>App Template</title>', new: `<title>${escapedName}</title>` }],
           autoCommit: true,

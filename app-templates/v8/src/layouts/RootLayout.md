@@ -54,6 +54,10 @@ To customize the header or footer, directly edit the component files:
 - **Header**: Edit `src/layouts/parts/Header.tsx`
 - **Footer**: Edit `src/layouts/parts/Footer.tsx`
 
+### Customizing Site Title and Default Metadata
+
+RootLayout renders a `<Helmet>` with the site-wide default `<title>` and `<meta name="description">`. To change the site title or default description, edit the `<Helmet>` block in `src/layouts/RootLayout.tsx`. Per-page `<Helmet>` blocks in route components override these defaults (last-mounted wins). Do not add SEO head tags (`<title>`, `<meta name="description">`, canonical, Open Graph, JSON-LD, etc.) to `index.html` — head management for those is owned by react-helmet at render time. Static shell tags that must be in the initial HTML (`<meta charset>`, `<meta name="viewport">`, `<link rel="icon">`) stay in `index.html`.
+
 **Example - Updating navigation in Header.tsx:**
 
 ```tsx

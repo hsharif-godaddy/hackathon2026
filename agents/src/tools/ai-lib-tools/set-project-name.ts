@@ -9,15 +9,21 @@ import { Logger } from '../../logging/index.js'
 const logger = Logger.create({ component: 'set-project-name-tool' })
 
 /**
- * Escape HTML special characters to prevent XSS when inserting into HTML
+ * Escape characters that are unsafe to splice into JSX text content.
+ * Includes the standard HTML entities plus `{` / `}`, which open JSX
+ * expression slots and would turn a name like `My {App}` into a compile
+ * error when written into RootLayout.tsx. JSX parsers decode these
+ * numeric entities back into literal characters at render time.
  */
-function escapeHtml(text: string): string {
+function escapeJsxText(text: string): string {
   return text
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;')
+    .replace(/\{/g, '&#123;')
+    .replace(/\}/g, '&#125;')
 }
 
 /**
@@ -95,17 +101,19 @@ export const setProjectNameAITool: Tool = createTool(
         newName: input.name
       })
 
-      // Update index.html title if it still has the default value
+      // Update the default <title> in RootLayout.tsx if it still has the default value.
+      // Site-wide head management lives in a <Helmet> in src/layouts/RootLayout.tsx
+      // (see app-templates/v8); index.html has no <title> tag under SSR.
       if (existingApp.path) {
         try {
           const defaultTitle = '<title>App Template</title>'
-          // Escape HTML to prevent XSS from malicious project names
-          const safeTitle = escapeHtml(input.name)
+          // Escape for JSX text content (HTML entities + JSX `{`/`}` delimiters)
+          const safeTitle = escapeJsxText(input.name)
           const newTitle = `<title>${safeTitle}</title>`
 
           const fileEditTool = new FileEditTool()
           const result = await fileEditTool.editFile(existingApp.path, {
-            path: 'index.html',
+            path: 'src/layouts/RootLayout.tsx',
             mode: 'edit',
             edits: [{ old: defaultTitle, new: newTitle }],
             autoCommit: true,
@@ -114,7 +122,10 @@ export const setProjectNameAITool: Tool = createTool(
 
           if (result.success) {
             logger.info('setProjectName.titleUpdated', { appId, title: input.name })
-          } else if (result.error?.includes('not found in file')) {
+          } else if (
+            result.error?.includes('Search text not found') ||
+            result.error?.includes('No changes were applied')
+          ) {
             // Title was already customized - the default title string wasn't found
             logger.info('setProjectName.titleSkipped', { appId, reason: 'already-customized' })
           } else {
