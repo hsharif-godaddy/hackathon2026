@@ -39,11 +39,13 @@ const mockIncrementSessionPromptCount = vi.fn()
 const mockMaybeShowFeedbackBanner = vi.fn()
 const mockMaybeFireEvalSnapshot = vi.fn()
 const mockScheduleUsageRefresh = vi.fn()
+const mockTrackInitialBuildComplete = vi.fn()
 vi.mock('@/hooks/shared/completionSideEffects', async (importOriginal) => {
   const actual = await importOriginal() as Record<string, unknown>
   return {
     ...actual,
     trackCompletion: (...args: unknown[]) => mockTrackCompletion(...args),
+    trackInitialBuildComplete: (...args: unknown[]) => mockTrackInitialBuildComplete(...args),
     incrementSessionPromptCount: (...args: unknown[]) => mockIncrementSessionPromptCount(...args),
     maybeShowFeedbackBanner: (...args: unknown[]) => mockMaybeShowFeedbackBanner(...args),
     maybeFireEvalSnapshot: (...args: unknown[]) => mockMaybeFireEvalSnapshot(...args),

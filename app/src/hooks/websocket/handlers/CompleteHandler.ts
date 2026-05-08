@@ -6,6 +6,7 @@ import {
   maybeShowFeedbackBanner,
   scheduleUsageRefresh,
   trackCompletion,
+  trackInitialBuildComplete,
   updateSiteTimestamp,
 } from '@/hooks/shared/completionSideEffects'
 import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
@@ -45,7 +46,7 @@ export class CompleteHandler implements MessageHandler {
     })
 
     trackCompletion(!!data.data?.usage)
-
+    trackInitialBuildComplete(commitHash)
 
     if (appId) {
       invalidateMediaManifestIfNeeded(appId)

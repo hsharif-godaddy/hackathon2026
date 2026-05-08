@@ -31,6 +31,7 @@ import { findLatestFontThemeSuggest } from '@/app/[market]/develop/components/ut
 import { isFontSuggestPanelVisible } from '@/app/[market]/develop/components/utils/fontSuggestPanelVisibility'
 import { useAuthContext } from '@/components/providers/AuthProvider'
 import { SWITCHBOARD_APPBUILDER_GO_LIVE_FEATURE } from '@/config/switchboard-flags'
+import { trackPostInteraction } from '@/hooks/shared/initialBuildFunnel'
 import { useAotPreload } from '@/hooks/useAotPreload'
 import { useChatTabs } from '@/hooks/useChatTabs'
 import { useConversionEvent } from '@/hooks/useConversionEvent'
@@ -862,6 +863,8 @@ export default function ChatPane({
       hasBuildErrorContext: !!safeBuildErrorContext,
       hasReferencedFiles: referencedFiles.length > 0
     });
+
+    trackPostInteraction()
 
     if (!hasLoggedFirstUserMessageRef.current && appId && isCreateFlowSession && userInitiated) {
       let userCount = 0

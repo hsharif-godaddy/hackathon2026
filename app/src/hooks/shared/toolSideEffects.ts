@@ -7,6 +7,7 @@
  */
 
 import { getQueryClient } from '@/components/providers/QueryClientProvider'
+import { trackHandoff, trackQuestionReceived } from '@/hooks/shared/initialBuildFunnel'
 import { BRAND_DATA_UPDATED_EVENT } from '@/hooks/useBrandData'
 import { logger } from '@/lib/request-context'
 import { type FileOperationType, useCodeSyncStore } from '@/stores/useCodeSyncStore'
@@ -195,6 +196,16 @@ export async function handleToolResultSideEffects(
   if (!hasError && (BRAND_UPDATE_TOOLS.has(tool.name) || isBrandMemorySet(tool))) {
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent(BRAND_DATA_UPDATED_EVENT, { detail: { appId } }))
+    }
+  }
+
+  // Initial build funnel: question received / handoff
+  if (!hasError) {
+    if (tool.name === 'askQuestion' || tool.name === 'suggestedResponse') {
+      trackQuestionReceived()
+    }
+    if (tool.name === 'handoff') {
+      trackHandoff()
     }
   }
 

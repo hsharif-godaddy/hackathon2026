@@ -7,6 +7,7 @@
  */
 
 import { getQueryClient } from '@/components/providers/QueryClientProvider'
+import { trackBuildComplete } from '@/hooks/shared/initialBuildFunnel'
 import { sendToolImpressionEvent } from '@/hooks/websocket/useWebSocketHelpers'
 import { appFetch } from '@/lib/gasket-config'
 import { JourneyTracker } from '@/lib/journeyTracker'
@@ -202,6 +203,12 @@ export function trackCompletion(hasUsage: boolean): void {
   JourneyTracker.current()?.completeActivePrompt({ success: true })
   if (hasUsage) logImpressionEvent('credits.usage.consumed')()
   sendToolImpressionEvent('complete')
+}
+
+export function trackInitialBuildComplete(commitHash: string | undefined): void {
+  if (commitHash) {
+    trackBuildComplete(commitHash)
+  }
 }
 
 export function trackError(errorType?: string): void {

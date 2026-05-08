@@ -41,6 +41,7 @@ import {
   scheduleUsageRefresh,
   trackCompletion,
   trackError,
+  trackInitialBuildComplete,
   trackStepStart,
   trackToolResult,
   updateSiteTimestamp,
@@ -374,6 +375,7 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                 incrementSessionPromptCount(activeAppId)
                 maybeShowFeedbackBanner()
                 trackCompletion(!!completeData?.usage)
+                trackInitialBuildComplete(commitHash)
 
                 if (activeAppId) {
                   invalidateMediaManifestIfNeeded(activeAppId)

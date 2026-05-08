@@ -33,6 +33,7 @@ import { FEEDBACK_ID } from '@/components/feedback/utils'
 import { buildDynamicApiUrl, dynamicApiConfigService } from '@/config/dynamic-api'
 import { EXPERIMENT_IDS } from '@/config/experiments'
 import { WebSocketProvider } from '@/contexts/WebSocketContext'
+import { activateInitialBuildFunnel } from '@/hooks/shared/initialBuildFunnel'
 import { useAotPreload } from '@/hooks/useAotPreload'
 import { useAppArchiveRestore } from '@/hooks/useAppArchiveRestore'
 import { useAppDetails } from '@/hooks/useAppDetails'
@@ -1268,6 +1269,8 @@ function DevelopPageContent() {
           appId,
           promptLength: init.ui.autoSendPromptText.length,
         })
+
+        activateInitialBuildFunnel(appId)
 
         JourneyTracker.current()?.trackMilestone('onboarding_started', { appId })
         if (init.ui.templateId && init.ui.templateId !== 'default') {
