@@ -1,15 +1,15 @@
 # airo-investigator
 
 Lambda container that runs the repo-owned `airo-log-investigate` skill via
-Claude CLI. This PR enables the `airo-app-frontend` source (`source=airo-app`)
-for one appId and stores exhaustive bounded raw log pages under `/tmp` before
-Claude reads a compact index.
+Claude CLI. The skill calls the console-owned evidence endpoint for one appId
+and stores bounded raw log pages plus compact per-source indexes under `/tmp`
+before Claude reads the indexes.
 
 ## Components
 
 - `Dockerfile` — Lambda container image (private ECR mirror of AWS Lambda Node 22 base, Claude CLI, repo-owned skill copied into `/opt/skills/airo-log-investigate`)
 - `handler.mjs` — cold-start bootstrap, spawns `claude -p`, heartbeats S3 state, uploads report
-- `skills/airo-log-investigate/` — owned log investigation skill and exhaustive bounded `airo-app` log fetcher/indexer.
+- `skills/airo-log-investigate/` — owned log investigation skill and console evidence fetcher/indexer.
 - `docker/claude-template/` — read-only Claude config template baked into `/opt/`; rehydrated into `/tmp/.claude` at cold start because Lambda's root FS is read-only.
 
 ## Invocation contract
@@ -75,24 +75,18 @@ The Lambda runs with more memory so Claude Code gets more proportional CPU:
 dev-private uses 4 GiB (~2 vCPU class), prod uses 8 GiB (~4 vCPU class). Both
 use a 4 GiB `/tmp` workspace.
 
-The frontend skill uses a coverage-first retrieval strategy for huge log
-sources:
+The skill uses a coverage-first retrieval strategy for huge log sources:
 
-- scope every query to `appId`, `source=airo-app`, and bounded time buckets,
-- paginate every bucket to `/tmp/airo-log-investigate/{appId}/`,
-- adaptively split failed buckets down to smaller windows before marking them incomplete,
-- build a compact index with bucket counts, status/level counts, top signatures, rare errors, and raw refs,
+- scope every query to `appId`, a bounded source list, and a bounded time window,
+- call the console `/api/investigate-evidence` endpoint so Loki/ES credentials stay in debug-console,
+- write source-specific raw pages and indexes to `/tmp/airo-log-investigate/{appId}/`,
+- preserve compact index metadata with status/level counts, top signatures, rare errors, and raw refs,
 - have Claude read the index first and drill into only cited raw refs.
 
-The searcher uses a source registry. The first registered source is
-`airo-app-frontend`, which maps to the console API's `source=airo-app`. Its
-field extraction was checked against `sre-airo-feedback-tool` references:
-UI/frontend logs use app scoping by `data.appId`, the `message` field, and
-lowercase `level`; the console `/api/es-logs` endpoint exposes normalized
-`logs[]` for `airo-app`.
-
-Future sources should be added as new registry entries while preserving the same
-fetch/index/drilldown contract.
+The searcher uses a source registry. Registered sources map to console source
+ids: `airo-app`, `control_plane`, `airo-agents`, `airo-preview`, and
+`airo-publish`. Future sources should be added as registry entries while
+preserving the same fetch/index/drilldown contract.
 
 ## Runtime user
 

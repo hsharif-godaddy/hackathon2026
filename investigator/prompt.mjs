@@ -35,11 +35,11 @@ export function buildPrompt({ appId, feedback, fullstoryUrl, timeWindow }) {
   const tw = timeWindow ? ` (time window: ${timeWindow})` : '';
   const searchMode = [
     '',
-    'Only investigate source=airo-app frontend logs for this appId and requested time window.',
-    'Fetch all available bounded raw logs to /tmp through the skill accelerator, then analyze from the compact index.',
-    'Read the compact index first and drill into only relevant rawRef files/rows for citations.',
+    'Investigate the console evidence bundle for this appId and requested time window.',
+    'Fetch bounded raw logs for airo-app, control_plane, airo-agents, airo-preview, and airo-publish to /tmp through the skill accelerator, then analyze from compact indexes.',
+    'Read compact indexes first and drill into only relevant rawRef files/rows for citations.',
     'Do not paste huge raw files into context.',
-    'If any bucket cannot be fetched after adaptive splitting, report it as incomplete coverage.',
+    'If any source or bucket cannot be fetched, report it as incomplete coverage.',
   ].join(' ');
   const feedbackBlock = buildFeedbackBlock(feedback);
   const safeFeedback = `${feedbackBlock}${tw}${searchMode}`;

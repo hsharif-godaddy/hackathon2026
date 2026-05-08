@@ -1,6 +1,12 @@
 import importlib.util
+import argparse
+import contextlib
+import io
+import os
 import sys
+import tempfile
 import unittest
+from unittest import mock
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -37,6 +43,41 @@ class FrontendLogSearchTest(unittest.TestCase):
         self.assertTrue(source.is_error({"level": "warn", "message": "slow route"}))
         self.assertTrue(source.is_error({"message": "GET /foo returned 500"}))
 
+    def test_loki_and_control_plane_sources_are_registered_for_multi_source_evidence(self):
+        expected = {
+            "airo-app-frontend": "airo-app",
+            "airo-agents": "airo-agents",
+            "airo-preview": "airo-preview",
+            "airo-publish": "airo-publish",
+            "control-plane": "control_plane",
+        }
+
+        for source_name, console_source in expected.items():
+            with self.subTest(source=source_name):
+                source = search_frontend_logs.get_log_source(source_name)
+                self.assertEqual(source.console_source, console_source)
+                self.assertTrue(source.message_fields)
+                self.assertTrue(source.level_fields)
+
+    def test_batched_evidence_path_is_scoped_to_all_sources_and_app(self):
+        sources = [
+            search_frontend_logs.get_log_source("airo-app-frontend"),
+            search_frontend_logs.get_log_source("airo-agents"),
+            search_frontend_logs.get_log_source("airo-preview"),
+        ]
+
+        path = search_frontend_logs.build_investigate_evidence_path(
+            sources=sources,
+            app_id="app123",
+            window="24h",
+        )
+
+        self.assertEqual(path, "/api/investigate-evidence")
+        payload = search_frontend_logs.build_investigate_evidence_payload(sources, "app123", "24h")
+        self.assertEqual(payload["appId"], "app123")
+        self.assertEqual(payload["timeWindow"], "24h")
+        self.assertEqual(payload["sources"], ["airo-app", "airo-agents", "airo-preview"])
+
     def test_console_base_url_allows_only_expected_https_hosts(self):
         self.assertEqual(
             search_frontend_logs.validate_console_base("https://console.airo-builder.godaddy.com/"),
@@ -70,6 +111,25 @@ class FrontendLogSearchTest(unittest.TestCase):
             with self.subTest(path=path):
                 with self.assertRaises(ValueError):
                     search_frontend_logs.build_console_url(base, path)
+
+    def test_console_http_redirects_are_blocked(self):
+        handler = search_frontend_logs.NoRedirectHTTPHandler()
+        req = search_frontend_logs.urllib.request.Request(
+            "https://console.airo-builder.godaddy.com/api/investigate-evidence"
+        )
+
+        with self.assertRaises(search_frontend_logs.urllib.error.HTTPError) as ctx:
+            handler.redirect_request(
+                req=req,
+                fp=None,
+                code=302,
+                msg="Found",
+                headers={},
+                newurl="https://169.254.169.254/latest/meta-data",
+            )
+
+        self.assertEqual(ctx.exception.code, 302)
+        ctx.exception.close()
 
     def test_builds_exhaustive_buckets_for_7_day_window(self):
         now = datetime(2026, 5, 7, 12, 0, tzinfo=timezone.utc)
@@ -120,6 +180,32 @@ class FrontendLogSearchTest(unittest.TestCase):
         self.assertEqual(page_files["b000"], [])
         self.assertEqual(incomplete[0]["bucket"], "b000")
         self.assertIn("RuntimeError: malformed response", incomplete[0]["error"])
+
+    def test_batched_evidence_errors_return_diagnostic_without_traceback(self):
+        args = argparse.Namespace(
+            appId="app123",
+            source="airo-app-frontend",
+            sources="airo-app-frontend",
+            window="24h",
+            output_dir="",
+            page_size=500,
+            bucket_hours=None,
+            workers=8,
+            timeout=1,
+            fail_on_incomplete=False,
+            batched_evidence=True,
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            args.output_dir = tmp
+            stderr = io.StringIO()
+            with mock.patch.dict(os.environ, {"JOMAX_TOKEN": "token", "CONSOLE_BASE": "https://console.airo-builder.godaddy.com"}):
+                with mock.patch.object(search_frontend_logs, "post_json", side_effect=RuntimeError("console 500")):
+                    with contextlib.redirect_stderr(stderr):
+                        result = search_frontend_logs.run(args)
+
+        self.assertEqual(result, 1)
+        self.assertIn("ERROR: batched evidence collection failed: RuntimeError: console 500", stderr.getvalue())
 
     def test_index_includes_every_bucket_and_rare_error_signatures(self):
         bucket = search_frontend_logs.TimeBucket("b000", "start", "end")

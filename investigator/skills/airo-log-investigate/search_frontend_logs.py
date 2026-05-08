@@ -36,6 +36,14 @@ ALLOWED_CONSOLE_HOSTS = {
 DEFAULT_OUTPUT_DIR = "/tmp/airo-log-investigate"
 
 
+class NoRedirectHTTPHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req: Any, fp: Any, code: int, msg: str, headers: Any, newurl: str) -> None:
+        raise urllib.error.HTTPError(req.full_url, code, msg, headers, fp)
+
+
+CONSOLE_OPENER = urllib.request.build_opener(NoRedirectHTTPHandler)
+
+
 def field_value(data: dict[str, Any], path: str) -> Any:
     current: Any = data
     for part in path.split("."):
@@ -110,6 +118,42 @@ LOG_SOURCES = {
         level_fields=("level", "severity"),
         status_fields=("statusCode", "httpStatus", "responseStatus", "http.response.status_code", "status"),
         error_terms=("error", "exception", "failed", "typeerror", "referenceerror", "blank"),
+    ),
+    "airo-agents": LogSource(
+        name="airo-agents",
+        console_source="airo-agents",
+        description="Airo agent service logs from the console evidence API Loki collector.",
+        message_fields=("message", "msg", "log", "event", "type"),
+        level_fields=("level", "detected_level", "severity"),
+        status_fields=("status", "statusCode", "http.status_code", "http.response.status_code"),
+        error_terms=("error", "exception", "failed", "timeout", "agent", "tool"),
+    ),
+    "airo-preview": LogSource(
+        name="airo-preview",
+        console_source="airo-preview",
+        description="Preview application container logs from the console evidence API Loki collector.",
+        message_fields=("msg", "message", "log", "type", "path"),
+        level_fields=("level", "detected_level", "severity"),
+        status_fields=("status", "statusCode", "http.status_code", "http.response.status_code"),
+        error_terms=("error", "exception", "failed", "timeout", "500", "blank"),
+    ),
+    "airo-publish": LogSource(
+        name="airo-publish",
+        console_source="airo-publish",
+        description="Published application container logs from the console evidence API Loki collector.",
+        message_fields=("msg", "message", "log", "type", "path"),
+        level_fields=("level", "detected_level", "severity"),
+        status_fields=("status", "statusCode", "http.status_code", "http.response.status_code"),
+        error_terms=("error", "exception", "failed", "timeout", "500", "blank"),
+    ),
+    "control-plane": LogSource(
+        name="control-plane",
+        console_source="control_plane",
+        description="Control plane hosting activity logs from the console evidence API ES collector.",
+        message_fields=("message", "log", "event", "msg"),
+        level_fields=("level", "log.level", "severity"),
+        status_fields=("status", "statusCode", "http.status_code", "http.response.status_code"),
+        error_terms=("error", "exception", "failed", "timeout", "deploy", "publish"),
     ),
 }
 
@@ -201,6 +245,20 @@ def build_es_logs_path(source: LogSource, app_id: str, bucket: TimeBucket, size:
     return f"/api/es-logs?{urllib.parse.urlencode(params)}"
 
 
+def build_investigate_evidence_path(*, sources: list[LogSource], app_id: str, window: str) -> str:
+    # The source/app/window contract is carried in the POST body; keep the path
+    # fixed so the URL allowlist can remain simple and SSRF-resistant.
+    return "/api/investigate-evidence"
+
+
+def build_investigate_evidence_payload(sources: list[LogSource], app_id: str, window: str) -> dict[str, Any]:
+    return {
+        "appId": app_id,
+        "timeWindow": window,
+        "sources": [source.console_source for source in sources],
+    }
+
+
 def safe_name(value: str) -> str:
     return re.sub(r"[^a-zA-Z0-9_.-]+", "_", value).strip("_").lower()
 
@@ -251,8 +309,25 @@ def request_json(base_url: str, token: str, path: str, timeout: int) -> Any:
         headers={"Authorization": f"Bearer {token}"},
     )
     # nosemgrep: godaddy.python.security.packages.ssrf, python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
-    # URL is constrained by validate_console_base() and build_console_url(): only approved HTTPS console hosts and relative /api/ paths.
-    with urllib.request.urlopen(req, timeout=timeout) as response:
+    # URL is constrained by validate_console_base() and build_console_url(): only approved HTTPS console hosts and relative /api/ paths. CONSOLE_OPENER blocks redirects.
+    with CONSOLE_OPENER.open(req, timeout=timeout) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def post_json(base_url: str, token: str, path: str, payload: dict[str, Any], timeout: int) -> Any:
+    body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+    req = urllib.request.Request(
+        build_console_url(base_url, path),
+        data=body,
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    # nosemgrep: godaddy.python.security.packages.ssrf, python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
+    # URL is constrained by validate_console_base() and build_console_url(): only approved HTTPS console hosts and relative /api/ paths. CONSOLE_OPENER blocks redirects.
+    with CONSOLE_OPENER.open(req, timeout=timeout) as response:
         return json.loads(response.read().decode("utf-8"))
 
 
@@ -433,6 +508,65 @@ def render_toon(index: dict[str, Any], index_path: Path) -> str:
     return "\n".join(lines)
 
 
+def write_batched_evidence(data: dict[str, Any], out_dir: Path) -> list[Path]:
+    index_paths: list[Path] = []
+    sources = data.get("sources") if isinstance(data, dict) else None
+    if not isinstance(sources, list):
+        raise ValueError("Evidence response is missing sources[]")
+
+    for source_result in sources:
+        if not isinstance(source_result, dict):
+            continue
+        source_id = str(source_result.get("sourceId") or "unknown")
+        source_dir = out_dir / safe_name(source_id)
+        source_dir.mkdir(parents=True, exist_ok=True)
+
+        raw_pages = source_result.get("rawPages") or []
+        if isinstance(raw_pages, list):
+            for page in raw_pages:
+                if not isinstance(page, dict):
+                    continue
+                bucket = safe_name(str(page.get("bucket") or "b000")) or "b000"
+                page_num = int(page.get("page") or 0)
+                page_path = source_dir / f"{bucket}-p{page_num:04d}.json"
+                page_path.write_text(json.dumps({"logs": page.get("logs") or []}, separators=(",", ":")), encoding="utf-8")
+
+        index = source_result.get("index")
+        if isinstance(index, dict):
+            index_path = source_dir / "index.json"
+            index_path.write_text(json.dumps(index, indent=2), encoding="utf-8")
+            index_paths.append(index_path)
+
+    bundle_path = out_dir / "evidence.json"
+    bundle_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    return index_paths
+
+
+def render_batched_toon(data: dict[str, Any], index_paths: list[Path]) -> str:
+    lines = [
+        "# airo_evidence_bundle",
+        f"appId: {data.get('appId', '')}",
+        f"timeWindow: {data.get('timeWindow', '')}",
+        f"complete: {data.get('complete', False)}",
+        "sources{source,complete,logs,incomplete,indexFile}:",
+    ]
+    path_by_source = {path.parent.name: path for path in index_paths}
+    for source in data.get("sources", []):
+        if not isinstance(source, dict):
+            continue
+        index = source.get("index") if isinstance(source.get("index"), dict) else {}
+        coverage = index.get("coverage", {}) if isinstance(index, dict) else {}
+        source_id = str(source.get("sourceId") or index.get("source", {}).get("id", "unknown"))
+        index_path = path_by_source.get(safe_name(source_id), "")
+        lines.append(
+            f"  {source_id}|{source.get('complete', False)}|{coverage.get('fetchedLogCount', 0)}|{coverage.get('incompleteBucketCount', 0)}|{index_path}"
+        )
+        for row in (index.get("rareErrorSignatures", []) if isinstance(index, dict) else [])[:5]:
+            if isinstance(row, dict):
+                lines.append(f"    rare|{row.get('count', 0)}|{compact_text(row.get('signature', ''), 160)}|{row.get('rawRef', '')}")
+    return "\n".join(lines)
+
+
 class BucketFailure:
     def __init__(self, future: Any, error: BaseException):
         self.future = future
@@ -477,12 +611,39 @@ def run(args: argparse.Namespace) -> int:
         print("ERROR: JOMAX_TOKEN is required", file=sys.stderr)
         return 2
 
-    source = get_log_source(args.source)
     window = parse_window(args.window)
-    buckets = build_time_buckets(window, args.bucket_hours)
     out_dir = Path(args.output_dir) / safe_name(args.appId)
     out_dir.mkdir(parents=True, exist_ok=True)
     base_url = validate_console_base(os.environ.get("CONSOLE_BASE", CONSOLE_BASE))
+
+    if args.batched_evidence:
+        sources = [get_log_source(name.strip()) for name in args.sources.split(",") if name.strip()]
+        path = build_investigate_evidence_path(sources=sources, app_id=args.appId, window=window.label)
+        payload = build_investigate_evidence_payload(sources, args.appId, window.label)
+        try:
+            data = post_json(base_url, token, path, payload, args.timeout)
+        except Exception as err:  # noqa: BLE001 - report console/API failures without a raw traceback.
+            message = compact_text(f"{type(err).__name__}: {err}", 500)
+            diagnostic = {
+                "appId": args.appId,
+                "timeWindow": window.label,
+                "complete": False,
+                "error": message,
+                "sources": [source.console_source for source in sources],
+            }
+            (out_dir / "evidence-error.json").write_text(json.dumps(diagnostic, indent=2), encoding="utf-8")
+            print(f"ERROR: batched evidence collection failed: {message}", file=sys.stderr)
+            return 1
+        index_paths = write_batched_evidence(data, out_dir)
+        print(render_batched_toon(data, index_paths))
+        incomplete = any(
+            isinstance(source, dict) and not source.get("complete", False)
+            for source in data.get("sources", [])
+        )
+        return 1 if incomplete and args.fail_on_incomplete else 0
+
+    source = get_log_source(args.source)
+    buckets = build_time_buckets(window, args.bucket_hours)
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=args.workers) as pool:
         future_by_bucket = {
@@ -505,6 +666,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Fetch and index all bounded airo-app logs for one app.")
     parser.add_argument("--appId", required=True)
     parser.add_argument("--source", default="airo-app-frontend", choices=sorted(LOG_SOURCES))
+    parser.add_argument("--sources", default="airo-app-frontend,airo-agents,airo-preview,airo-publish,control-plane")
     parser.add_argument("--window", default="24h", help="24h, 7d, or startISO,endISO")
     parser.add_argument("--output-dir", default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--page-size", type=int, default=500)
@@ -512,6 +674,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--workers", type=int, default=8)
     parser.add_argument("--timeout", type=int, default=45)
     parser.add_argument("--fail-on-incomplete", action="store_true")
+    parser.add_argument("--batched-evidence", action=argparse.BooleanOptionalAction, default=True)
     return run(parser.parse_args(argv))
 
 

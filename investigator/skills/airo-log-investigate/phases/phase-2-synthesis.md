@@ -1,14 +1,14 @@
-# Phase 2: Synthesize Frontend Report
+# Phase 2: Synthesize Evidence Report
 
-Write a concise Slack-ready frontend-only report.
+Write a concise Slack-ready multi-source report.
 
 Required sections:
 
 **App:** `{appId}`
 
 **What I checked**
-- State that this run checked `source=airo-app` logs only.
-- Include window and fetched log count from the index.
+- State which sources were checked: `airo-app`, `control_plane`, `airo-agents`, `airo-preview`, and `airo-publish`.
+- Include window and fetched log counts from the indexes.
 - If coverage is incomplete, say so here and in Unknowns.
 
 **What happened**
@@ -23,6 +23,6 @@ Required sections:
 
 **Unknowns**
 - Missing or incomplete buckets.
-- Any required source outside `airo-app`, explicitly marked out of scope.
+- Any required source outside the evidence bundle, explicitly marked out of scope.
 
 Keep it under 40 lines unless the evidence truly needs more detail.

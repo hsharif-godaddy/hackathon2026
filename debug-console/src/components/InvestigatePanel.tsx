@@ -56,7 +56,7 @@ function formatDurationMs(ms: number | null): string {
 // string.
 const PHASE_LABELS: Record<string, string> = {
   bootstrap: 'Warming up',
-  'phase-0-gather': 'Gathering airo-app frontend logs',
+  'phase-0-gather': 'Gathering multi-source log evidence',
   'phase-1-fullstory': 'FullStory session analysis (skipped in Lambda)',
   'phase-2-conversation': 'Analyzing agent conversation',
   'phase-3-logs': 'Querying logs',
