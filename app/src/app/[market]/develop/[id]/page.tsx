@@ -893,6 +893,27 @@ function DevelopPageContent() {
           setAiEditContext(null)
           useStreamingConversationStore.getState().clearAiEditContexts()
           break
+        case 'QUICK_EDIT_SEND': {
+          const { prompt, selectionNumber } = event.data.data ?? {}
+          if (prompt) {
+            const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement
+            let aiEditContext
+            if (selectionNumber != null) {
+              // Multi-select quick edit: send only this element's context, then clean it up
+              const store = useStreamingConversationStore.getState()
+              aiEditContext = store.aiEditContexts.find((c) => c.number === selectionNumber) ?? null
+              store.removeAiEditContext(selectionNumber)
+              if (iframe) postMessageToIframe(iframe, { type: 'REMOVE_SELECTION', data: { number: selectionNumber } })
+            } else {
+              aiEditContext = useStreamingConversationStore.getState().aiEditContext
+              setAiEditContext(null)
+              if (iframe) postMessageToIframe(iframe, { type: 'CLEAR_SELECTION' })
+            }
+            void ws.actions.send({ content: prompt, aiEditContext })
+            logger.info('develop-page.quick-edit-sent', { appId })
+          }
+          break
+        }
         case 'REPLACE_IMAGE': {
           const replaceImageContext = {
             ...event.data.data,

@@ -244,7 +244,10 @@ function getOrCreateSSEExecutionService(): MessageExecutionService | null {
     getAgent: (agentId?: string) => agentFactory.agents.get((agentId ?? 'develop') as any),
     contextManager: {
       loadContextMessages: async (context: Record<string, unknown>) => {
-        const contextAttachments: any[] = []
+        // Start with existing contextAttachments from MessageExecutionService (e.g., ai_edit_context)
+        const contextAttachments: any[] = Array.isArray(context.contextAttachments) ? [...context.contextAttachments] : []
+
+        // Add selectedAssets as an additional attachment if present
         if (Array.isArray(context.selectedAssets) && context.selectedAssets.length > 0) {
           contextAttachments.push({
             type: 'selected_assets',

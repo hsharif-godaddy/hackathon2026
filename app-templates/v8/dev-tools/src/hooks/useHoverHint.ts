@@ -32,7 +32,7 @@ export function useHoverHint(
 		if (!document.getElementById(id)) {
 			const style = document.createElement("style");
 			style.id = id;
-			style.textContent = `@keyframes editBarFadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }`;
+			style.textContent = `@keyframes editBarFadeIn { from { opacity: 0; scale: 0.92; } to { opacity: 1; scale: 1; } }`;
 			document.head.appendChild(style);
 		}
 	}, []);
@@ -43,17 +43,9 @@ export function useHoverHint(
 	useEffect(() => {
 		if (!isEditModeActive) return;
 		let hoveredEl: HTMLElement | null = null;
-		let aiBtn: HTMLButtonElement | null = null;
 		let hideTimer: ReturnType<typeof setTimeout> | null = null;
 		let selectedEl: HTMLElement | null = null;
 		const multiSelectElements = new Map<number, HTMLElement>();
-
-		const removeBtn = () => {
-			if (aiBtn) {
-				aiBtn.remove();
-				aiBtn = null;
-			}
-		};
 
 		const clearSelection = () => {
 			const hadSelection =
@@ -65,25 +57,8 @@ export function useHoverHint(
 			}
 		};
 
-		const selectElement = (el: HTMLElement) => {
-			if (!isMultiSelectActive) {
-				clearSelection();
-			}
-			selectedEl = el;
-			showSelectionOverlay(el);
-		};
-
 		const clearHover = () => {
-			if (
-				hoveredEl &&
-				hoveredEl !== selectedEl &&
-				!hoveredEl.hasAttribute("data-ai-selected")
-			) {
-				hoveredEl.style.outline = "";
-				hoveredEl.style.outlineOffset = "";
-			}
 			hoveredEl = null;
-			removeBtn();
 		};
 
 		const handleMouseOver = (e: MouseEvent) => {

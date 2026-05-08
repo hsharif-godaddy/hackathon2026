@@ -63,17 +63,10 @@ export function useImageHoverDetection(
           if (hideBarTimerRef.current) { clearTimeout(hideBarTimerRef.current); hideBarTimerRef.current = null; }
           return;
         }
-        // Target is a parent/ancestor of tracked element — start a delayed hide
-        // so we don't flicker, but do eventually dismiss if the mouse stays away
+        // Target is a parent/ancestor of tracked element — cancel any pending
+        // hide timer (mouse is still within the content hierarchy) and keep state.
         if (target.contains(tracked)) {
-          if (!hideBarTimerRef.current) {
-            hideBarTimerRef.current = setTimeout(() => {
-              hoveredElementRef.current = null;
-              hoveredImageRef.current = null;
-              updateHoveredImage(null);
-              updateHoveredElement(null);
-            }, 1500);
-          }
+          if (hideBarTimerRef.current) { clearTimeout(hideBarTimerRef.current); hideBarTimerRef.current = null; }
           return;
         }
       }
@@ -89,9 +82,9 @@ export function useImageHoverDetection(
       // For direct content tags (not images), skip image detection and go straight to content path.
       // Content elements take priority over images they overlap (e.g. heading on top of hero image).
       if (isDirectContentTag && !directImageTag && isContentElement(target)) {
+        if (hideBarTimerRef.current) { clearTimeout(hideBarTimerRef.current); hideBarTimerRef.current = null; }
         if (hoveredElementRef.current?.element === target) return;
         if (showBarTimerRef.current) clearTimeout(showBarTimerRef.current);
-        if (hideBarTimerRef.current) { clearTimeout(hideBarTimerRef.current); hideBarTimerRef.current = null; }
         // Update ref immediately so mouseout bounds check uses this element
         hoveredElementRef.current = { type: "content", element: target };
         hoveredImageRef.current = null;
@@ -141,6 +134,7 @@ export function useImageHoverDetection(
         // Not an image — check if it's a content element (text, heading, link, etc.)
         const tag = target.tagName.toLowerCase();
         if (tag !== "body" && tag !== "html" && isContentElement(target)) {
+          if (hideBarTimerRef.current) { clearTimeout(hideBarTimerRef.current); hideBarTimerRef.current = null; }
           if (hoveredElementRef.current?.element === target) return;
           if (showBarTimerRef.current) clearTimeout(showBarTimerRef.current);
           showBarTimerRef.current = setTimeout(() => {
@@ -155,7 +149,14 @@ export function useImageHoverDetection(
           clearTimeout(showBarTimerRef.current);
           showBarTimerRef.current = null;
         }
-        updateHoveredElement(null);
+        // Delay the null to prevent flicker when mouse briefly crosses
+        // non-content wrapper elements between content elements.
+        if (!hideBarTimerRef.current) {
+          hideBarTimerRef.current = setTimeout(() => {
+            hideBarTimerRef.current = null;
+            updateHoveredImage(null);
+          }, 200);
+        }
         return;
       }
 

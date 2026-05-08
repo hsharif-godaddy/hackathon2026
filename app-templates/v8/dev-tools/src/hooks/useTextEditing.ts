@@ -6,7 +6,6 @@ import {
   extractDevContext,
 } from "../utils/element-helpers";
 import {
-  isClickable,
   isDevToolsElement,
   generateSelector,
   isBodyTextElement,
@@ -469,8 +468,14 @@ export function useTextEditing(isEditModeActive: boolean) {
     if (!isEditModeActive) return;
 
     const handleClick = (e: MouseEvent) => {
+      if (!e.isTrusted) return; // Let synthetic events (e.g. Follow button) through
       const rawTarget = e.target as HTMLElement;
       if (!rawTarget || isDevToolsElement(rawTarget)) return;
+
+      // Always block navigation on clickable elements (links, buttons) in edit mode
+      if (rawTarget.closest("a, button, [role='button']")) {
+        e.preventDefault();
+      }
 
       if (stateRef.current.editingElement) return;
       if (stateRef.current.saveStatus === "saving") return;
@@ -491,17 +496,9 @@ export function useTextEditing(isEditModeActive: boolean) {
         return;
       }
 
-      if (isClickable(target)) {
-        if (e.altKey) {
-          e.preventDefault();
-          e.stopPropagation();
-          startEditing(target, brParent);
-        }
-      } else {
-        e.preventDefault();
-        e.stopPropagation();
-        startEditing(target, brParent);
-      }
+      e.preventDefault();
+      e.stopPropagation();
+      startEditing(target, brParent);
     };
 
     document.addEventListener("click", handleClick, true);

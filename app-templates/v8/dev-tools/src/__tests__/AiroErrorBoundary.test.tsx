@@ -253,7 +253,7 @@ describe('AiroErrorBoundary dev-tools suppression', () => {
 
     function DevToolsBoom(): JSX.Element {
       throw makeError(
-        'Error: dev-tools-render\n    at DevToolsBoom (http://localhost:3000/dev-tools/src/components/ImageHoverBar.tsx:42:9)',
+        'Error: dev-tools-render\n    at DevToolsBoom (http://localhost:3000/dev-tools/src/components/ElementHoverBar.tsx:42:9)',
         'dev-tools-render',
       );
     }
@@ -327,7 +327,7 @@ describe('AiroErrorBoundary dev-tools suppression', () => {
     // Pre-build the Error so we can re-dispatch the same reference after
     // the render catch.
     const devToolsErr = makeError(
-      'Error: dev-tools-render\n    at DevToolsBoom (http://localhost:3000/dev-tools/src/components/ImageHoverBar.tsx:42:9)',
+      'Error: dev-tools-render\n    at DevToolsBoom (http://localhost:3000/dev-tools/src/components/ElementHoverBar.tsx:42:9)',
       'dev-tools-render',
     );
     function DevToolsBoom(): JSX.Element {

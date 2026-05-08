@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { safePostMessage, isOriginAllowed } from '../utils/postMessage'
 import { captureAndResizeScreenshot, captureViewportScreenshot } from '../utils/screenshot'
 import { useEditMode } from "../hooks/useEditMode";
@@ -11,7 +11,16 @@ export default function DevelopmentMode() {
   const [isEditModeActive, setIsEditModeActive] = useState(false); // off by default, parent enables via EDIT_MODE_ENABLED message
   const [isMultiSelectActive, setIsMultiSelectActive] = useState(false); // off by default, parent enables via MULTI_SELECT_ENABLED message
 
-  const { hoveredImage, hoveredElement, handleBarMouseEnter, handleBarMouseLeave } = useEditMode(isEditModeActive, isMultiSelectActive)
+  const { hoveredElement, handleBarMouseEnter, handleBarMouseLeave } = useEditMode(isEditModeActive, isMultiSelectActive)
+  const [quickEditActive, setQuickEditActive] = useState(false)
+  const frozenElementRef = useRef(hoveredElement)
+
+  // Keep the frozen ref up to date whenever we're not in quick edit mode
+  if (!quickEditActive && hoveredElement) {
+    frozenElementRef.current = hoveredElement
+  }
+
+  const effectiveElement = quickEditActive ? frozenElementRef.current : hoveredElement
 
   // Visual context capture for AI assistance
   useEffect(() => {
@@ -774,12 +783,13 @@ export default function DevelopmentMode() {
 
   return (
     <div data-airo-dev-tools>
-      {isEditModeActive && hoveredElement && !(isMultiSelectActive && hoveredElement.element.hasAttribute("data-ai-selected-num")) && (
+      {isEditModeActive && effectiveElement && !(isMultiSelectActive && effectiveElement.element.hasAttribute("data-ai-selected-num")) && (
         <ElementHoverBar
-          hoveredElement={hoveredElement}
+          hoveredElement={effectiveElement}
           isMultiSelectActive={isMultiSelectActive}
           onMouseEnter={handleBarMouseEnter}
           onMouseLeave={handleBarMouseLeave}
+          onQuickEditModeChange={setQuickEditActive}
         />
       )}
     </div>

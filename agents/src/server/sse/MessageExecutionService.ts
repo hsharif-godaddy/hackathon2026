@@ -544,14 +544,71 @@ export class MessageExecutionService {
     const streamingEvents: PersistenceStreamingEvent[] = []
 
     // Shared execution context - tools modify this in-place (e.g. __autoContinue)
+    // Build contextAttachments from the incoming context data (SSE path)
+    // This mirrors the ChatMessageBuilder conversion on the WebSocket path
+    const contextAttachments: Array<{ type: string; data: unknown; persistence: string; renderStrategy: string; metadata: { timestamp: number; source: string } }> = []
+    const timestamp = Date.now()
+
+    if (aiEditContext) {
+      contextAttachments.push({
+        type: 'ai_edit_context',
+        data: aiEditContext,
+        persistence: 'save',
+        renderStrategy: 'before_prompt',
+        metadata: {
+          timestamp,
+          source: 'ai-edit-dialog'
+        }
+      })
+    }
+
+    if (visualContext) {
+      contextAttachments.push({
+        type: 'visual_context',
+        data: visualContext,
+        persistence: 'ephemeral',
+        renderStrategy: 'before_prompt',
+        metadata: {
+          timestamp,
+          source: 'iframe-capture'
+        }
+      })
+    }
+
+    if (selectedAssets) {
+      contextAttachments.push({
+        type: 'selected_assets',
+        data: selectedAssets,
+        persistence: 'ephemeral',
+        renderStrategy: 'before_prompt',
+        metadata: {
+          timestamp,
+          source: 'asset-manager'
+        }
+      })
+    }
+
+    if (buildErrorContext) {
+      contextAttachments.push({
+        type: 'build_error',
+        data: buildErrorContext,
+        persistence: 'ephemeral',
+        renderStrategy: 'before_prompt',
+        metadata: {
+          timestamp,
+          source: 'publish-failure'
+        }
+      })
+    }
+
     const executionContext: Record<string, unknown> = {
       metadata: {
         appId, siteId, conversationId, templateId, modelOverride, agentProfile,
         ...(budgetOverrideSubscriptionId && { subscriptionId: budgetOverrideSubscriptionId }),
         ...(agentCtx?.customerId && { customerId: agentCtx.customerId }),
       },
-      visualContext, aiEditContext, selectedAssets,
-      todoListContext, isActionRequest, customContext, buildErrorContext,
+      ...(contextAttachments.length > 0 && { contextAttachments }),
+      todoListContext, isActionRequest, customContext,
     }
 
     if (budgetOverrideSubscriptionId) {
