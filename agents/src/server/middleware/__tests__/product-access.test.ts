@@ -104,6 +104,10 @@ describe('product-access middleware', () => {
       { method: 'POST', path: '/apps/abc123/publish/restart' },
       // App lifecycle
       { method: 'POST', path: '/apps/abc123/restart' },
+      // Share links
+      { method: 'POST', path: '/apps/abc123/share' },
+      { method: 'GET', path: '/apps/abc123/share' },
+      { method: 'GET', path: '/api/share/validate/tok123abc' },
       // Customer logs
       { method: 'GET', path: '/apps/abc123/customer-logs' },
       // Files API
@@ -264,6 +268,12 @@ describe('isRouteAllowedForPaaS', () => {
 
   it('should allow diagnose route', () => {
     expect(isRouteAllowedForPaaS('POST', '/apps/test-app/diagnose')).toBe(true);
+  });
+
+  it('should allow share routes', () => {
+    expect(isRouteAllowedForPaaS('POST', '/apps/test-app/share')).toBe(true);
+    expect(isRouteAllowedForPaaS('GET', '/apps/test-app/share')).toBe(true);
+    expect(isRouteAllowedForPaaS('GET', '/api/share/validate/tok123abc')).toBe(true);
   });
 
   it('should allow customer-logs route', () => {

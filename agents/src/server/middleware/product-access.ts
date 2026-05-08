@@ -44,6 +44,11 @@ const PAAS_ALLOWED_ROUTES: RoutePattern[] = [
   // Diagnose
   { method: 'POST', path: '/apps/:id/diagnose' },
 
+  // Share links (validate is public; allowlisted for PaaS parity with the share surface)
+  { method: 'POST', path: '/apps/:id/share' },
+  { method: 'GET', path: '/apps/:id/share' },
+  { method: 'GET', path: '/api/share/validate/:token' },
+
   // Customer logs
   { method: 'GET', path: '/apps/:appId/customer-logs' },
 
