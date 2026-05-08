@@ -12,43 +12,6 @@ interface SSETransportConfig {
   baseUrl: string
 }
 
-// Persist the last seen SSE sequence id per conversation in sessionStorage so
-// /stream after a page reload can resume via the server's replay buffer.
-// Cleared on `complete` (nothing to replay for a finished turn) or on
-// conversation change. Within a single JS session the polyfill tracks the id
-// internally; this storage only matters across reloads.
-const LEID_KEY_PREFIX = 'sse:lastEventId:'
-
-function readStoredLastEventId(conversationId: string): string | null {
-  try {
-    return sessionStorage.getItem(`${LEID_KEY_PREFIX}${conversationId}`)
-  } catch { return null }
-}
-
-function writeStoredLastEventId(conversationId: string, id: string): void {
-  try {
-    sessionStorage.setItem(`${LEID_KEY_PREFIX}${conversationId}`, id)
-  } catch (err) {
-    // Quota exceeded, private-mode sandbox, etc. Cross-reload resume stops
-    // working but the live stream continues — log so it is diagnosable.
-    logger.warn('sse.transport.leid_write.failed', {
-      conversationId,
-      error: err instanceof Error ? err.message : String(err),
-    })
-  }
-}
-
-function clearStoredLastEventId(conversationId: string): void {
-  try {
-    sessionStorage.removeItem(`${LEID_KEY_PREFIX}${conversationId}`)
-  } catch (err) {
-    logger.warn('sse.transport.leid_clear.failed', {
-      conversationId,
-      error: err instanceof Error ? err.message : String(err),
-    })
-  }
-}
-
 export class SSETransport implements ChatTransport {
   private config: SSETransportConfig
   private eventSource: InstanceType<typeof EventSource> | null = null
@@ -76,10 +39,6 @@ export class SSETransport implements ChatTransport {
   }
 
   connect(appId: string, token: string, conversationId?: string): void {
-    // Clear any stale leid when connecting to a different conversation.
-    if (this.conversationId && this.conversationId !== conversationId) {
-      clearStoredLastEventId(this.conversationId)
-    }
     this.appId = appId
     this.token = token
     this.conversationId = conversationId ?? null
@@ -302,23 +261,23 @@ export class SSETransport implements ChatTransport {
 
     const url = `${this.convPath}/stream`
     const token = this.token
-    const conversationId = this.conversationId
-    // Seed Last-Event-Id from sessionStorage on the FIRST request of this
-    // EventSource instance so cross-reload resume works. The polyfill's
-    // internal tracking covers subsequent same-session auto-reconnects, and
-    // overrides this header once it has seen an `id:` line.
-    const storedLeid = conversationId ? readStoredLastEventId(conversationId) : null
-    let seededHeaderOnce = false
+    let firstFetch = true
     this.eventSource = new EventSource(url, {
       fetch: (input: any, init: any) => {
         const headers: Record<string, string> = {
           ...init?.headers,
           Authorization: `Bearer ${token}`,
         }
-        if (!seededHeaderOnce && storedLeid && !headers['Last-Event-ID'] && !headers['last-event-id']) {
-          headers['Last-Event-ID'] = storedLeid
+        // On the first open of this EventSource, don't send Last-Event-Id:
+        // the server reads its absence as "no in-memory deltas" and replays
+        // the full buffer so an in-progress turn can be reconstructed.
+        // Polyfill auto-reconnects inject their tracked cursor on later
+        // fetches, which triggers delta replay.
+        if (firstFetch) {
+          delete headers['Last-Event-ID']
+          delete headers['last-event-id']
         }
-        seededHeaderOnce = true
+        firstFetch = false
         return fetch(input, { ...init, headers })
       },
     })
@@ -410,14 +369,6 @@ export class SSETransport implements ChatTransport {
       return
     }
 
-    // Persist the event id so a page reload can resume via replay. The
-    // polyfill only populates `lastEventId` when the frame carried `id:`,
-    // so non-id events (initialize, recovery_status, etc.) don't advance
-    // the stored cursor.
-    if (this.conversationId && event.lastEventId) {
-      writeStoredLastEventId(this.conversationId, event.lastEventId)
-    }
-
     const subscribers = this.eventSubscribers.get(type)
     if (subscribers?.size) {
       for (const cb of subscribers) cb(data)
@@ -431,8 +382,6 @@ export class SSETransport implements ChatTransport {
     }
 
     if (type === 'complete') {
-      // Turn finished — nothing to replay on next reload.
-      if (this.conversationId) clearStoredLastEventId(this.conversationId)
       this.setState('connected')
     } else if (type === 'error' || type === 'stream_error') {
       this.setState('connected')

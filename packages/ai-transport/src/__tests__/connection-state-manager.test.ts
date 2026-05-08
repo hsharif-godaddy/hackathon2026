@@ -591,6 +591,60 @@ describe('ConnectionStateManager', () => {
       })
     })
 
+    describe('hasActiveStreamForConversation', () => {
+      it('returns false when no connection for the conversation', () => {
+        expect(manager.hasActiveStreamForConversation('conv-none')).toBe(false)
+      })
+
+      it('returns false when connection exists but has no controller', () => {
+        expect(manager.hasActiveStreamForConversation('conv-1')).toBe(false)
+      })
+
+      it('returns true for a live controller on a connected socket', () => {
+        manager.updateConnection('socket-1', { abortController: new AbortController() })
+        expect(manager.hasActiveStreamForConversation('conv-1')).toBe(true)
+      })
+
+      it('returns true for a live controller on a disconnected socket (in recovery window)', () => {
+        // The exact regression-window scenario: the old socket dropped but
+        // the producer keeps running while the client reconnects. Must
+        // still report "active" so recovery_status doesn't falsely report
+        // streamCompleted=true.
+        manager.updateConnection('socket-1', { abortController: new AbortController() })
+        manager.transitionTo('socket-1', 'disconnected')
+        expect(manager.hasActiveStreamForConversation('conv-1')).toBe(true)
+      })
+
+      it('returns false when the controller has been aborted', () => {
+        const controller = new AbortController()
+        manager.updateConnection('socket-1', { abortController: controller })
+        controller.abort()
+        expect(manager.hasActiveStreamForConversation('conv-1')).toBe(false)
+      })
+
+      it('returns true when any connection for the conversation has a live controller', () => {
+        manager.createConnection('socket-2', {
+          conversationId: 'conv-1',
+          agentName: 'agent',
+          context: { socketId: 'socket-2', agentName: 'agent' }
+        })
+        manager.updateConnection('socket-2', { abortController: new AbortController() })
+        // socket-1 has no controller, socket-2 does — both on conv-1.
+        expect(manager.hasActiveStreamForConversation('conv-1')).toBe(true)
+      })
+
+      it('does not leak across conversations', () => {
+        manager.createConnection('socket-2', {
+          conversationId: 'conv-2',
+          agentName: 'agent',
+          context: { socketId: 'socket-2', agentName: 'agent' }
+        })
+        manager.updateConnection('socket-2', { abortController: new AbortController() })
+        expect(manager.hasActiveStreamForConversation('conv-1')).toBe(false)
+        expect(manager.hasActiveStreamForConversation('conv-2')).toBe(true)
+      })
+    })
+
     describe('hasConversation', () => {
       it('returns true for existing connection', () => {
         expect(manager.hasConversation('socket-1')).toBe(true)

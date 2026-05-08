@@ -1,13 +1,13 @@
 import type { Socket } from 'socket.io'
 import type {
   StreamingEvent,
-  ConversationContext,
-  EventMetadata
+  ConversationContext
 } from './interfaces.js'
 import type { ConversationEventChannel } from './conversation-event-channel.js'
 import type { ConnectionStateManager, ConnectionStateData } from './connection-state-manager.js'
 import { WebSocketSubscriber } from './subscribers/websocket-subscriber.js'
 import { coalesceEvents } from './coalesce-events.js'
+import { computeRecoveryPlan } from './recovery-plan.js'
 import { createLogger } from '@airo/ai-common'
 
 /**
@@ -498,67 +498,26 @@ export class ConnectionRecoveryManager {
     }
   ): Promise<void> {
     const preReplaySequence = context.lastDeliveredSequence
-
-    // Get events to replay.
-    // For manual/initial recovery (page refresh or reload after state expiry), the client
-    // has no in-memory state, so replay ALL buffered events from the beginning to fully
-    // rebuild in-progress messages. For conversation recovery (auto-reconnect/tab restore),
-    // the client may still have prior state and only needs events since the last delivered.
     const clientHasNoState = context.mode === 'manual' || context.mode === 'initial'
-    const replayFromSequence = clientHasNoState ? -1 : context.lastDeliveredSequence
-    const events = this.eventChannel.getEventsSince(
-      context.conversationId,
-      replayFromSequence
-    )
-    const replayMetadata = this.eventChannel.getMetadata(context.conversationId)
 
-    // Track in-progress message IDs so the event replay filter can use them.
-    // These messages have partial DB content; events keep the stream alive.
-    const pendingMessageIdsFromMetadata = replayMetadata?.pendingMessageIds ?? []
-    const inProgressMessageIds = new Set<string>(pendingMessageIdsFromMetadata)
-
-    // Check for buffer loss — only meaningful for conversation recovery where the client
-    // has prior state and expects a contiguous event sequence. For manual/initial recovery,
-    // the client will load history via load_history event, so missing events are covered.
-    let lossDetected = false
-    let lostEventCount = 0
-    if (!clientHasNoState) {
-      const expectedNextSequence = context.lastDeliveredSequence + 1
-      const lossInfo = this.getBufferLossInfo(
-        context.conversationId,
-        expectedNextSequence,
-        replayMetadata
-      )
-      lossDetected = lossInfo.lossDetected
-      lostEventCount = lossInfo.lostEventCount
-
-      if (lossDetected) {
-        this.logger.warn('recovery.buffer_loss_detected', {
-          socketId: context.newSocketId,
-          conversationId: context.conversationId,
-          lostEventCount
-        })
-      }
-    }
-
-    const replayLastSequence = events.length > 0
-      ? events[events.length - 1]!.sequence
-      : preReplaySequence
-
-    // Filter out persisted events for COMPLETED messages.
-    // For IN-PROGRESS messages, only replay non-persisted (tail) events —
-    // the client will load the DB snapshot via load_history.
-    const eventsToReplay = events.filter(e => {
-      const messageId = e.data?.messageId as string | undefined
-      if (messageId && inProgressMessageIds.has(messageId)) return !e.persisted
-      if (!messageId) return true
-      return !e.persisted
+    const plan = computeRecoveryPlan({
+      conversationId: context.conversationId,
+      channel: this.eventChannel,
+      lastDeliveredSequence: preReplaySequence,
+      clientHasNoState,
+      hasActiveStream: this.stateManager.hasActiveStreamForConversation(context.conversationId),
     })
 
-    const coalescedReplay = coalesceEvents(eventsToReplay)
+    if (plan.lossDetected) {
+      this.logger.warn('recovery.buffer_loss_detected', {
+        socketId: context.newSocketId,
+        conversationId: context.conversationId,
+        lostEventCount: plan.lostEventCount
+      })
+    }
 
-    // The server's event channel is the authority on whether a stream is still active.
-    const streamCompleted = inProgressMessageIds.size === 0
+    const coalescedReplay = plan.eventsToReplay
+    const replayLastSequence = plan.lastReplaySequence
 
     // Send recovery status — client will emit load_history independently
     socket.emit('message', {
@@ -568,14 +527,14 @@ export class ConnectionRecoveryManager {
         isRecovering: true,
         hasBufferedEvents: coalescedReplay.length > 0,
         bufferedEventCount: coalescedReplay.length,
-        streamCompleted,
+        streamCompleted: plan.streamCompleted,
         conversationId: context.conversationId,
         agentName: stateData?.agentName ?? context.agentName,
         recoveryMode: context.mode,
         requiresAck: true,
         lastSequence: replayLastSequence,
-        lossDetected,
-        lostEventCount
+        lossDetected: plan.lossDetected,
+        lostEventCount: plan.lostEventCount
       }
     } as WebSocketMessage)
 
@@ -831,27 +790,6 @@ export class ConnectionRecoveryManager {
 
     socket.once('catchup_ack', handleCatchUpAck)
     socket.once('disconnect', handleDisconnect)
-  }
-
-  /**
-   * Get buffer loss information
-   */
-  getBufferLossInfo(
-    conversationId: string,
-    expectedNextSequence: number,
-    metadataOverride?: EventMetadata | null
-  ): { lossDetected: boolean; lostEventCount: number } {
-    const metadata = metadataOverride ?? this.eventChannel.getMetadata(conversationId)
-    if (!metadata) {
-      return { lossDetected: false, lostEventCount: 0 }
-    }
-
-    const missingEvents = metadata.firstSequence - expectedNextSequence
-    if (missingEvents > 0) {
-      return { lossDetected: true, lostEventCount: missingEvents }
-    }
-
-    return { lossDetected: false, lostEventCount: 0 }
   }
 
   /**

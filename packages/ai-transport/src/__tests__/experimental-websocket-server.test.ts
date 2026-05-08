@@ -4085,3 +4085,105 @@ describe('Mid-Stream Budget Exceeded Grant Advancement', () => {
     expect(BudgetExceededError.isInstance(new Error('not budget'))).toBe(false)
   })
 })
+
+describe('WebSocketServer - load_history streamCompleted handling', () => {
+  let httpServer: HTTPServer
+  let server: WebSocketServer
+  let loadHistoryHandler: (data: { conversationId: string; cursor?: string; limit?: number }) => Promise<void>
+
+  async function setupWithLoadHistory(
+    historyMessages: Array<{ id: string; content: string; metadata?: Record<string, unknown> }>
+  ): Promise<void> {
+    vi.clearAllMocks()
+    mockSocket.id = 'test-socket-id'
+    mockSocket.handshake.auth = { appId: 'app_1' }
+    httpServer = new HTTPServer()
+
+    let connectionHandler: ((socket: any) => Promise<void>) | null = null
+    mockIO.on.mockImplementation((event: string, handler: any) => {
+      if (event === 'connection') connectionHandler = handler
+    })
+
+    server = new WebSocketServer(httpServer, {
+      agents: mockAgents,
+      defaultAgent: 'test-agent',
+      messagePersistence: createNoOpPersistence(),
+      historyProvider: {
+        loadHistory: vi.fn().mockResolvedValue({
+          messages: historyMessages,
+          hasMore: false,
+          nextCursor: null,
+          total: historyMessages.length,
+        }),
+      },
+    } as any)
+
+    if (connectionHandler) {
+      await (connectionHandler as (socket: any) => Promise<void>)(mockSocket)
+    }
+
+    const onCall = mockSocket.on.mock.calls.find((call: any[]) => call[0] === 'load_history')
+    if (!onCall) throw new Error('load_history handler not registered')
+    loadHistoryHandler = onCall[1]
+  }
+
+  afterEach(() => {
+    httpServer?.close()
+  })
+
+  function historyMessageEmits(): Array<Record<string, any>> {
+    return mockSocket.emit.mock.calls
+      .filter((c: any[]) => c[0] === 'message' && c[1]?.type === 'history_message')
+      .map((c: any[]) => c[1].data)
+  }
+
+  it('preserves inProgress when a producer is still attached (mid-turn)', async () => {
+    // Regression guard for the fix: between agent steps pendingMessageIds
+    // is transiently empty, but the producer is still running. The
+    // history_message must NOT have its inProgress flag stripped.
+    await setupWithLoadHistory([
+      { id: 'm1', content: 'so far', metadata: { inProgress: true } },
+    ])
+
+    // Live AbortController for this conversation → hasActiveStream is true.
+    const abortController = new AbortController()
+    const stateManager = (server as any).stateManager
+    stateManager.createConnection('producer-socket', {
+      conversationId: 'conv-1',
+      agentName: 'test-agent',
+      context: { socketId: 'producer-socket', agentName: 'test-agent' }
+    })
+    stateManager.updateConnection('producer-socket', { abortController })
+
+    await loadHistoryHandler({ conversationId: 'conv-1' })
+
+    const emits = historyMessageEmits()
+    expect(emits.length).toBe(1)
+    expect(emits[0].metadata?.inProgress).toBe(true)
+  })
+
+  it('clears inProgress when no producer is attached', async () => {
+    await setupWithLoadHistory([
+      { id: 'm1', content: 'stale partial', metadata: { inProgress: true } },
+    ])
+
+    await loadHistoryHandler({ conversationId: 'conv-1' })
+
+    const emits = historyMessageEmits()
+    expect(emits.length).toBe(1)
+    expect(emits[0].metadata?.inProgress).toBe(false)
+  })
+
+  it('skips the streamCompleted check for pagination requests (older history keeps its flags)', async () => {
+    await setupWithLoadHistory([
+      { id: 'old-1', content: 'old', metadata: { inProgress: true } },
+    ])
+
+    await loadHistoryHandler({ conversationId: 'conv-1', cursor: 'cursor-abc' })
+
+    const emits = historyMessageEmits()
+    expect(emits.length).toBe(1)
+    // Pagination path doesn't touch metadata — the flag survives untouched.
+    expect(emits[0].metadata?.inProgress).toBe(true)
+  })
+})

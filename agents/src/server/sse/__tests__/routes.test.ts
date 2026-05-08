@@ -169,8 +169,14 @@ describe('SSE routes', () => {
       ]
       deps.getEventChannel.mockReturnValue({
         getEventsSince: vi.fn().mockReturnValue(mockEvents),
-        getMetadata: vi.fn().mockReturnValue({ pendingMessageIds: ['msg_1'] }),
+        getMetadata: vi.fn().mockReturnValue({ pendingMessageIds: [], firstSequence: 42, lastSequence: 43 }),
       })
+      // Live producer → streamCompleted must be false so the client keeps the
+      // streaming UI through the reconnect gap.
+      ;(deps as any).executionService = {
+        subscribeStream: vi.fn(),
+        hasActiveStream: vi.fn().mockReturnValue(true),
+      }
 
       let capturedData = ''
       await request(app)
@@ -187,9 +193,6 @@ describe('SSE routes', () => {
       expect(capturedData).toContain('id: 43\nevent: text_delta')
       expect(capturedData).toContain('event: replay_complete')
       expect(capturedData).toContain('"replayedCount":2')
-      // streamCompleted tells the client whether the stream ended mid-turn
-      // (reconnect into a live turn) vs. already finished. No `complete`
-      // event in the buffer means streamCompleted: false.
       expect(capturedData).toContain('event: recovery_status')
       expect(capturedData).toContain('"bufferedCount":2')
       expect(capturedData).toContain('"bufferedEventCount":2')
@@ -197,14 +200,18 @@ describe('SSE routes', () => {
       expect(deps.getEventChannel().getEventsSince).toHaveBeenCalledWith('conv_1', 41)
     })
 
-    it('sets recovery_status streamCompleted=true when no messages are pending', async () => {
+    it('sets recovery_status streamCompleted=true when no producer is attached', async () => {
       const mockEvents = [
         { id: 'e1', type: 'text_delta', sequence: 42, conversationId: 'conv_1', content: 'done', data: {} },
       ]
       deps.getEventChannel.mockReturnValue({
         getEventsSince: vi.fn().mockReturnValue(mockEvents),
-        getMetadata: vi.fn().mockReturnValue({ pendingMessageIds: [] }),
+        getMetadata: vi.fn().mockReturnValue({ pendingMessageIds: [], firstSequence: 42, lastSequence: 42 }),
       })
+      ;(deps as any).executionService = {
+        subscribeStream: vi.fn(),
+        hasActiveStream: vi.fn().mockReturnValue(false),
+      }
 
       let capturedData = ''
       await request(app)
@@ -220,44 +227,39 @@ describe('SSE routes', () => {
       expect(capturedData).toContain('"streamCompleted":true')
     })
 
-    it('emits stream_error when reconnect cannot recover a lost active stream', async () => {
+    it('regression: streamCompleted=false when mid-turn gap leaves pendingMessageIds empty but a producer is running', async () => {
+      // The scenario that broke mid-turn reloads: between agent step_complete
+      // and the next step_start, pendingMessageIds is momentarily empty, yet
+      // the turn is still running. The old signal would tell the client the
+      // stream is done; the new signal (hasActiveStream) must keep it alive.
       deps.getEventChannel.mockReturnValue({
         getEventsSince: vi.fn().mockReturnValue([]),
-        getMetadata: vi.fn().mockReturnValue({ pendingMessageIds: ['msg_1'] }),
+        getMetadata: vi.fn().mockReturnValue({ pendingMessageIds: [], firstSequence: 0, lastSequence: 1390 }),
       })
       ;(deps as any).executionService = {
         subscribeStream: vi.fn(),
-        hasActiveStream: vi.fn().mockReturnValue(false),
+        hasActiveStream: vi.fn().mockReturnValue(true),
       }
 
       let capturedData = ''
       await request(app)
         .get('/api/conversations/abcdefghij/conv_1/stream')
         .set('Accept', 'text/event-stream')
-        .set('Last-Event-ID', '69')
+        .set('Last-Event-ID', '1390')
         .buffer(false)
         .parse((res: any, callback: any) => {
           res.on('data', (chunk: Buffer) => { capturedData += chunk.toString() })
           setTimeout(() => { res.destroy(); callback(null, capturedData) }, 100)
         })
 
-      expect(capturedData).toContain('event: recovery_status')
       expect(capturedData).toContain('"streamCompleted":false')
-      expect(capturedData).toContain('event: replay_complete')
-      expect(capturedData).toContain('"replayedCount":0')
-      expect(capturedData).toContain('event: stream_error')
-      expect(capturedData).toContain('"errorType":"STREAM_RECOVERY_LOST"')
-      expect(capturedData).toContain('"reason":"stream_lost_after_restart"')
-      expect(capturedData).toContain('"recoverable":true')
-      expect(capturedData.indexOf('event: stream_error')).toBeLessThan(capturedData.indexOf('event: initialize'))
-      expect(capturedData).toContain('event: initialize')
-      expect((deps as any).executionService.subscribeStream).toHaveBeenCalled()
+      expect(capturedData).toContain('"hasBufferedEvents":false')
     })
 
     it('does not emit stream_error when reconnect can attach to an active stream', async () => {
       deps.getEventChannel.mockReturnValue({
         getEventsSince: vi.fn().mockReturnValue([]),
-        getMetadata: vi.fn().mockReturnValue({ pendingMessageIds: ['msg_1'] }),
+        getMetadata: vi.fn().mockReturnValue({ pendingMessageIds: ['msg_1'], firstSequence: 0, lastSequence: 69 }),
       })
       ;(deps as any).executionService = {
         subscribeStream: vi.fn(),
@@ -279,14 +281,13 @@ describe('SSE routes', () => {
       expect(capturedData).toContain('"streamCompleted":false')
       expect(capturedData).toContain('event: replay_complete')
       expect(capturedData).toContain('"replayedCount":0')
-      expect(capturedData).not.toContain('event: stream_error')
       expect((deps as any).executionService.subscribeStream).toHaveBeenCalled()
     })
 
     it('does not emit stream_error when stream is complete and replay buffer is empty', async () => {
       deps.getEventChannel.mockReturnValue({
         getEventsSince: vi.fn().mockReturnValue([]),
-        getMetadata: vi.fn().mockReturnValue({ pendingMessageIds: [] }),
+        getMetadata: vi.fn().mockReturnValue({ pendingMessageIds: [], firstSequence: 0, lastSequence: 69 }),
       })
       ;(deps as any).executionService = {
         subscribeStream: vi.fn(),
@@ -309,80 +310,42 @@ describe('SSE routes', () => {
       expect(capturedData).toContain('"streamCompleted":true')
       expect(capturedData).toContain('event: replay_complete')
       expect(capturedData).toContain('"replayedCount":0')
-      expect(capturedData).not.toContain('event: stream_error')
     })
 
-    it('emits stream_error when executionService is unavailable during lost-stream recovery', async () => {
+    it('replays the full buffer when the client provides no Last-Event-Id (fresh page load)', async () => {
+      // Mirrors the WS manual/initial recovery mode: a fresh client has no
+      // in-memory deltas, so the server must replay every buffered event
+      // (including persisted-but-not-yet-emitted tails) so the in-progress
+      // turn can be reconstructed from scratch.
+      const mockEvents = [
+        { id: 'e1', type: 'tool_start', sequence: 100, conversationId: 'conv_1', content: '', data: { messageId: 'm1', tool: { id: 't1' } } },
+        { id: 'e2', type: 'chunk', sequence: 101, conversationId: 'conv_1', content: 'text', data: { messageId: 'm1' } },
+      ]
+      const getEventsSince = vi.fn().mockReturnValue(mockEvents)
       deps.getEventChannel.mockReturnValue({
-        getEventsSince: vi.fn().mockReturnValue([]),
-        getMetadata: vi.fn().mockReturnValue({ pendingMessageIds: ['msg_1'] }),
-      })
-      expect((deps as any).executionService).toBeUndefined()
-
-      let capturedData = ''
-      await request(app)
-        .get('/api/conversations/abcdefghij/conv_1/stream')
-        .set('Accept', 'text/event-stream')
-        .set('Last-Event-ID', '69')
-        .buffer(false)
-        .parse((res: any, callback: any) => {
-          res.on('data', (chunk: Buffer) => { capturedData += chunk.toString() })
-          setTimeout(() => { res.destroy(); callback(null, capturedData) }, 100)
-        })
-
-      expect(capturedData).toContain('event: stream_error')
-      expect(capturedData).toContain('"errorType":"STREAM_RECOVERY_LOST"')
-    })
-
-    it('emits stream_error when metadata is unavailable and replay buffer is empty', async () => {
-      deps.getEventChannel.mockReturnValue({
-        getEventsSince: vi.fn().mockReturnValue([]),
-        getMetadata: vi.fn().mockReturnValue(null),
+        getEventsSince,
+        getMetadata: vi.fn().mockReturnValue({ pendingMessageIds: ['m1'], firstSequence: 100, lastSequence: 101 }),
       })
       ;(deps as any).executionService = {
         subscribeStream: vi.fn(),
-        hasActiveStream: vi.fn().mockReturnValue(false),
+        hasActiveStream: vi.fn().mockReturnValue(true),
       }
 
       let capturedData = ''
       await request(app)
         .get('/api/conversations/abcdefghij/conv_1/stream')
         .set('Accept', 'text/event-stream')
-        .set('Last-Event-ID', '69')
         .buffer(false)
         .parse((res: any, callback: any) => {
           res.on('data', (chunk: Buffer) => { capturedData += chunk.toString() })
           setTimeout(() => { res.destroy(); callback(null, capturedData) }, 100)
         })
 
+      expect(getEventsSince).toHaveBeenCalledWith('conv_1', -1)
       expect(capturedData).toContain('event: recovery_status')
       expect(capturedData).toContain('"streamCompleted":false')
-      expect(capturedData).toContain('event: stream_error')
-      expect(capturedData).toContain('"errorType":"STREAM_RECOVERY_LOST"')
-    })
-
-    it('falls back to complete event detection if recovery metadata is unavailable', async () => {
-      const mockEvents = [
-        { id: 'e1', type: 'text_delta', sequence: 42, conversationId: 'conv_1', content: 'done', data: {} },
-        { id: 'e2', type: 'complete', sequence: 43, conversationId: 'conv_1', content: '', data: { finishReason: 'complete' } },
-      ]
-      deps.getEventChannel.mockReturnValue({
-        getEventsSince: vi.fn().mockReturnValue(mockEvents),
-        getMetadata: vi.fn().mockReturnValue(null),
-      })
-
-      let capturedData = ''
-      await request(app)
-        .get('/api/conversations/abcdefghij/conv_1/stream')
-        .set('Accept', 'text/event-stream')
-        .set('Last-Event-ID', '41')
-        .buffer(false)
-        .parse((res: any, callback: any) => {
-          res.on('data', (chunk: Buffer) => { capturedData += chunk.toString() })
-          setTimeout(() => { res.destroy(); callback(null, capturedData) }, 100)
-        })
-
-      expect(capturedData).toContain('"streamCompleted":true')
+      expect(capturedData).toContain('event: tool_start')
+      expect(capturedData).toContain('event: chunk')
     })
 
     it('registers connection in registry by conversationId', async () => {
@@ -411,9 +374,16 @@ describe('SSE routes', () => {
       expect(res.status).toBe(404)
     })
 
-    it('does not replay events for negative Last-Event-ID', async () => {
+    it('treats negative Last-Event-ID as a fresh-state client (full replay)', async () => {
       const mockGetEventsSince = vi.fn().mockReturnValue([])
-      deps.getEventChannel.mockReturnValue({ getEventsSince: mockGetEventsSince })
+      deps.getEventChannel.mockReturnValue({
+        getEventsSince: mockGetEventsSince,
+        getMetadata: vi.fn().mockReturnValue(null),
+      })
+      ;(deps as any).executionService = {
+        subscribeStream: vi.fn(),
+        hasActiveStream: vi.fn().mockReturnValue(false),
+      }
 
       await request(app)
         .get('/api/conversations/abcdefghij/conv_1/stream')
@@ -424,7 +394,7 @@ describe('SSE routes', () => {
           setTimeout(() => { res.destroy(); callback(null, '') }, 100)
         })
 
-      expect(mockGetEventsSince).not.toHaveBeenCalled()
+      expect(mockGetEventsSince).toHaveBeenCalledWith('conv_1', -1)
     })
 
     it('replays events from Last-Event-ID zero', async () => {
@@ -468,6 +438,32 @@ describe('SSE routes', () => {
       expect(capturedData).toContain('event: recovery_status')
       expect(capturedData).toContain('"bufferedEventCount":0')
       expect(capturedData).toContain('"error":"replay_failed"')
+      // replay_complete must follow so the client flushes its store-update
+      // buffer — without it, queued events are stranded until the next
+      // recovery cycle.
+      expect(capturedData).toContain('event: replay_complete')
+    })
+
+    it('emits recovery_status + replay_complete when event channel is unavailable', async () => {
+      // Fresh connects always run the recovery path. When getEventChannel
+      // returns null (misconfig), the client must still receive the init
+      // signals it expects or it stalls waiting for a replay that never
+      // comes.
+      deps.getEventChannel.mockReturnValue(null)
+
+      let capturedData = ''
+      await request(app)
+        .get('/api/conversations/abcdefghij/conv_1/stream')
+        .set('Accept', 'text/event-stream')
+        .buffer(false)
+        .parse((res: any, callback: any) => {
+          res.on('data', (chunk: Buffer) => { capturedData += chunk.toString() })
+          setTimeout(() => { res.destroy(); callback(null, capturedData) }, 100)
+        })
+
+      expect(capturedData).toContain('event: recovery_status')
+      expect(capturedData).toContain('"error":"event_channel_unavailable"')
+      expect(capturedData).toContain('event: replay_complete')
     })
 
     it('returns 403 when conversation belongs to different app', async () => {

@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import type { Request, Response, NextFunction } from 'express'
 import type { ConversationEventChannel } from '@airo/ai-transport'
-import { createSSEWriter } from '@airo/ai-transport'
+import { createSSEWriter, computeRecoveryPlan } from '@airo/ai-transport'
 import { grantSessionManager, resolveBmsSubscriptionId } from '@airo/ai-grants'
 import { EventStreamRegistry } from './EventStreamRegistry.js'
 import { MessageExecutionService } from './MessageExecutionService.js'
@@ -121,9 +121,14 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
   router.get('/:appId/:conversationId/stream', deps.authenticate, validateAppOwnershipFromParam('appId'), convOwnership, asyncHandler(async (req: Request, res: Response) => {
     const appId = req.params.appId!
     const conversationId = req.params.conversationId!
-    const lastEventId = req.headers['last-event-id']
-      ? parseInt(req.headers['last-event-id'] as string, 10)
-      : null
+    // Last-Event-Id present = polyfill resuming from a delivered cursor.
+    // Absent = first open of a JS session; client has no in-memory deltas,
+    // so the server must replay the full buffer to reconstruct in-progress
+    // turns. Matches the WS ConnectionRecoveryManager clientHasNoState policy.
+    const parsedLeid = parseInt(req.headers['last-event-id'] as string ?? '', 10)
+    const hasCursor = Number.isFinite(parsedLeid) && parsedLeid >= 0
+    const lastEventId = hasCursor ? parsedLeid : null
+    const clientHasNoState = !hasCursor
 
     const writer = createSSEWriter(req, res, { logger })
 
@@ -147,91 +152,82 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
       if (text) writer.write(text)
     }
 
-    // On reconnect, replay missed events using per-conversation sequences.
-    if (lastEventId !== null && !isNaN(lastEventId) && lastEventId >= 0) {
-      const eventChannel = deps.getEventChannel()
-      if (eventChannel) {
-        try {
-          const missedEvents = eventChannel.getEventsSince(conversationId, lastEventId)
-          const metadata = eventChannel.getMetadata(conversationId)
-          const streamCompleted = metadata
-            ? metadata.pendingMessageIds.length === 0
-            : missedEvents.some(e => e.type === 'complete')
-
-          writeFormatted('recovery_status', {
-            hasBufferedEvents: missedEvents.length > 0,
-            bufferedCount: missedEvents.length,
-            bufferedEventCount: missedEvents.length,
-            conversationId,
-            streamCompleted,
-          })
-
-          for (const event of missedEvents) {
-            writeFormatted(event.type, {
-              ...event.data,
-              content: event.content,
-              conversationId: event.conversationId,
-              agentName: event.agentName,
-            }, event.sequence)
-          }
-
-          const lastReplaySeq = missedEvents.length > 0
-            ? missedEvents[missedEvents.length - 1]!.sequence
-            : lastEventId
-
-          writeFormatted('replay_complete', {
-            lastSequence: lastReplaySeq,
-            replayedCount: missedEvents.length,
-          })
-
+    const eventChannel = deps.getEventChannel()
+    if (!eventChannel) {
+      // Fresh connects now always run the recovery path, so a missing
+      // event channel silently skips every recovery signal. Emit a minimal
+      // recovery_status + replay_complete pair so the client still gets
+      // the initialization signals it expects, and log so the misconfig
+      // is diagnosable.
+      logger.warn('sse.connection.no_event_channel', { appId, conversationId })
+      writeFormatted('recovery_status', {
+        hasBufferedEvents: false,
+        bufferedCount: 0,
+        bufferedEventCount: 0,
+        conversationId,
+        streamCompleted: false,
+        error: 'event_channel_unavailable',
+      })
+      writeFormatted('replay_complete', { lastSequence: -1, replayedCount: 0 })
+    } else {
+      try {
+        const plan = computeRecoveryPlan({
+          conversationId,
+          channel: eventChannel,
+          lastDeliveredSequence: lastEventId,
+          clientHasNoState,
           // execute() registers activeStreams synchronously before its first
-          // awaited operation. If a reconnect cannot replay anything and no
-          // active stream is visible here, there is no in-process producer to
-          // attach to. Treat a missing executionService the same way.
-          const hasActiveStream = deps.executionService?.hasActiveStream(conversationId) === true
-          const streamLost = missedEvents.length === 0 && !streamCompleted && !hasActiveStream
-          if (streamLost) {
-            const reason = 'stream_lost_after_restart'
-            const message = 'Stream was interrupted and could not be recovered. Please retry your message.'
-            // Keep both fields for compatibility with existing client error
-            // handlers that read either `error` or `message`.
-            writeFormatted('stream_error', {
-              conversationId,
-              error: message,
-              message,
-              errorType: 'STREAM_RECOVERY_LOST',
-              reason,
-              recoverable: true,
-            })
-            logger.warn('sse.recovery.lost_active_stream', {
-              appId,
-              conversationId,
-              lastEventId,
-              replayedCount: missedEvents.length,
-              streamCompleted,
-              reason,
-            })
-          }
+          // awaited operation, so the answer is truthful at reconnect time.
+          hasActiveStream: deps.executionService?.hasActiveStream(conversationId) === true,
+        })
 
-          logger.info('sse.recovery.replayed', {
-            appId,
-            conversationId,
-            lastEventId,
-            replayedCount: missedEvents.length,
-            streamCompleted,
-            recoveryOutcome: streamLost ? 'stream_lost' : 'replayed',
-          })
-        } catch (err) {
-          logger.warn('sse.recovery.failed', { appId, conversationId, ...errorFields(err) })
-          writeFormatted('recovery_status', {
-            hasBufferedEvents: false,
-            bufferedCount: 0,
-            bufferedEventCount: 0,
-            conversationId,
-            streamCompleted: false,
-            error: 'replay_failed',
-          })
+        writeFormatted('recovery_status', {
+          hasBufferedEvents: plan.eventsToReplay.length > 0,
+          bufferedCount: plan.eventsToReplay.length,
+          bufferedEventCount: plan.eventsToReplay.length,
+          conversationId,
+          streamCompleted: plan.streamCompleted,
+          lossDetected: plan.lossDetected,
+          lostEventCount: plan.lostEventCount,
+          recoveryMode: clientHasNoState ? 'initial' : 'delta',
+        })
+
+        for (const event of plan.eventsToReplay) {
+          writeFormatted(event.type, {
+            ...event.data,
+            content: event.content,
+            conversationId: event.conversationId,
+            agentName: event.agentName,
+          }, event.sequence)
         }
+
+        writeFormatted('replay_complete', {
+          lastSequence: plan.lastReplaySequence,
+          replayedCount: plan.eventsToReplay.length,
+        })
+
+        logger.info('sse.recovery.replayed', {
+          appId,
+          conversationId,
+          lastEventId,
+          recoveryMode: clientHasNoState ? 'initial' : 'delta',
+          replayFromSequence: plan.replayFromSequence,
+          replayedCount: plan.eventsToReplay.length,
+          streamCompleted: plan.streamCompleted,
+        })
+      } catch (err) {
+        logger.warn('sse.recovery.failed', { appId, conversationId, ...errorFields(err) })
+        writeFormatted('recovery_status', {
+          hasBufferedEvents: false,
+          bufferedCount: 0,
+          bufferedEventCount: 0,
+          conversationId,
+          streamCompleted: false,
+          error: 'replay_failed',
+        })
+        // Without replay_complete the client's store-update buffer never
+        // flushes, leaving any queued events stranded.
+        writeFormatted('replay_complete', { lastSequence: -1, replayedCount: 0 })
       }
     }
 

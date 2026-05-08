@@ -116,6 +116,10 @@ export type { AgentExecutionLoopCallbacks, AgentExecutionLoopResult, AgentExecut
 export { ClientActionRegistry } from './client-action-registry.js'
 export type { ClientActionHandler, ClientActionRequest, ClientActionResult } from './client-action-registry.js'
 
+// Recovery Plan (shared WS + SSE replay decision)
+export { computeRecoveryPlan } from './recovery-plan.js'
+export type { RecoveryPlan, RecoveryPlanInput } from './recovery-plan.js'
+
 // Connection Recovery Management
 export {
   ConnectionRecoveryManager

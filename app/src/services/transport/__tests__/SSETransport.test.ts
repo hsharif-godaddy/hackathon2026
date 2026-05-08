@@ -23,9 +23,11 @@ vi.mock('@/lib/agent-fetch', () => ({
 }))
 
 let eventListeners: Record<string, Array<(e: MessageEvent) => void>> = {}
+let lastEventSourceOptions: any = null
 
 vi.mock('eventsource', () => ({
-  EventSource: vi.fn().mockImplementation((url: string, _options: any) => {
+  EventSource: vi.fn().mockImplementation((url: string, options: any) => {
+    lastEventSourceOptions = options
     const instance = {
       url,
       readyState: 1,
@@ -62,6 +64,7 @@ describe('SSETransport', () => {
 
   beforeEach(() => {
     eventListeners = {}
+    lastEventSourceOptions = null
     ;(global.fetch as ReturnType<typeof vi.fn>).mockClear()
     callbacks = {
       onEvent: vi.fn(),
@@ -179,6 +182,45 @@ describe('SSETransport', () => {
     await expect(
       transport.sendMessage({ content: 'Hello', sessionId: 's' })
     ).rejects.toThrow('Not connected')
+  })
+
+  it('omits Last-Event-Id on the first fetch (fresh-state signal to server)', async () => {
+    transport.connect('app_1', 'token_123', 'conv_1')
+    await vi.waitFor(() => {
+      expect(callbacks.onStateChange).toHaveBeenCalledWith('connected')
+    })
+
+    // Invoke the polyfill's fetch override directly and assert that the
+    // first call strips both casings of Last-Event-Id while later calls
+    // (polyfill auto-reconnects) preserve the cursor the polyfill injects.
+    // Save/restore global.fetch so this stub doesn't leak into later tests.
+    const originalFetch = globalThis.fetch
+    const fetchStub = vi.fn().mockResolvedValue(new Response(null, { status: 200 }))
+    globalThis.fetch = fetchStub as unknown as typeof globalThis.fetch
+
+    try {
+      lastEventSourceOptions.fetch('http://localhost:4000/api/conversations/app_1/conv_1/stream', {
+        headers: {
+          'Last-Event-ID': '42',
+          'last-event-id': '42',
+        },
+      })
+
+      const firstCallHeaders = fetchStub.mock.calls[0][1].headers
+      expect(firstCallHeaders['Last-Event-ID']).toBeUndefined()
+      expect(firstCallHeaders['last-event-id']).toBeUndefined()
+      expect(firstCallHeaders['Authorization']).toBe('Bearer token_123')
+
+      lastEventSourceOptions.fetch('http://localhost:4000/api/conversations/app_1/conv_1/stream', {
+        headers: {
+          'Last-Event-ID': '100',
+        },
+      })
+      const secondCallHeaders = fetchStub.mock.calls[1][1].headers
+      expect(secondCallHeaders['Last-Event-ID']).toBe('100')
+    } finally {
+      globalThis.fetch = originalFetch
+    }
   })
 
   it('closes EventSource on disconnect', () => {

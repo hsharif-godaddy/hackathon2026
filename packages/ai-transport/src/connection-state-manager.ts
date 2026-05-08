@@ -555,6 +555,23 @@ export class ConnectionStateManager {
   }
 
   /**
+   * Is there a producer still running for this conversation?
+   *
+   * Checks every tracked connection (including disconnected ones inside the
+   * recovery window) for a non-aborted AbortController. True iff the agent
+   * turn is genuinely still in flight on the server — the authoritative
+   * "streamCompleted" signal for recovery.
+   */
+  hasActiveStreamForConversation(conversationId: string): boolean {
+    for (const data of this.connections.values()) {
+      if (data.conversationId !== conversationId) continue
+      const ctrl = data.abortController
+      if (ctrl && !ctrl.signal.aborted) return true
+    }
+    return false
+  }
+
+  /**
    * Find a disconnected connection by conversation ID
    * Used for conversation-based recovery
    * @returns [socketId, stateData] tuple or null if not found

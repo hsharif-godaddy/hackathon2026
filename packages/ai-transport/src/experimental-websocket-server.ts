@@ -706,14 +706,12 @@ export class WebSocketServer {
             ? { hasMore: false, nextCursor: null, total: messages.length }
             : { hasMore: historyResult.hasMore, nextCursor: historyResult.nextCursor, total: historyResult.total ?? messages.length }
 
-          // If the event channel has no pending messages the stream is authoritative complete.
-          // Clear stale metadata.inProgress so the client doesn't falsely detect an active
-          // stream from a crashed/stopped agent. Skip the check for pagination requests
-          // since they load older history that can't contain an in-progress stream.
-          const streamCompleted = !isPagination && (() => {
-            const meta = this.eventChannel.getMetadata(data.conversationId)
-            return !meta || (meta.pendingMessageIds?.length ?? 0) === 0
-          })()
+          // Clear stale metadata.inProgress when no producer is attached, so the client
+          // doesn't falsely detect an active stream from a crashed/stopped agent.
+          // Skip the check for pagination — older history can't contain the current
+          // in-progress stream.
+          const streamCompleted = !isPagination &&
+            !this.stateManager.hasActiveStreamForConversation(data.conversationId)
 
           let historySequence = -1000
           for (const msg of messages) {

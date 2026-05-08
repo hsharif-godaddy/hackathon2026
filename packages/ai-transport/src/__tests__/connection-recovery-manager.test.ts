@@ -706,18 +706,11 @@ describe('ConnectionRecoveryManager', () => {
       }))
     })
 
-    it('sends streamCompleted: true when pendingMessageIds is empty (terminal error cleared them)', async () => {
-      // Simulate: a terminal error already cleared pendingMessageIds in the event channel
+    it('sends streamCompleted: true when no producer is attached', async () => {
+      // Abort the controller set up in beforeEach → state manager reports
+      // no active stream for conv-1.
+      stateManager.getStateData('socket-old')?.abortController?.abort()
       eventChannel.getEventsSince.mockReturnValue([])
-      eventChannel.getMetadata.mockReturnValue({
-        conversationId: 'conv-1',
-        totalEvents: 5,
-        firstSequence: 0,
-        lastSequence: 4,
-        pendingMessageIds: [], // Empty — terminal error cleared them
-        oldestTimestamp: new Date(),
-        newestTimestamp: new Date()
-      })
 
       await manager.handleConversationRecovery(socket, 'conv-1', validateAppId, callbacks)
 
@@ -728,18 +721,12 @@ describe('ConnectionRecoveryManager', () => {
       expect(recoveryStatusCall[1].data.streamCompleted).toBe(true)
     })
 
-    it('sends streamCompleted: false when pendingMessageIds has stale entries', async () => {
-      // Simulate: pendingMessageIds NOT cleared (pre-fix behavior)
+    it('sends streamCompleted: false when a producer is still attached (mid-turn gap)', async () => {
+      // The key regression guard: between agent steps the buffer's pending
+      // message set is transiently empty, but the execution is still running.
+      // streamCompleted must track the AbortController, not the buffer.
+      // beforeEach already created a live AbortController for conv-1.
       eventChannel.getEventsSince.mockReturnValue([])
-      eventChannel.getMetadata.mockReturnValue({
-        conversationId: 'conv-1',
-        totalEvents: 5,
-        firstSequence: 0,
-        lastSequence: 4,
-        pendingMessageIds: ['stale-msg-id'], // Stale — error didn't clear
-        oldestTimestamp: new Date(),
-        newestTimestamp: new Date()
-      })
 
       await manager.handleConversationRecovery(socket, 'conv-1', validateAppId, callbacks)
 
@@ -973,43 +960,6 @@ describe('ConnectionRecoveryManager', () => {
       socket.trigger('disconnect')
 
       expect(onTimeout).toHaveBeenCalled()
-    })
-  })
-
-  describe('getBufferLossInfo', () => {
-    it('returns no loss when metadata is null', () => {
-      eventChannel.getMetadata.mockReturnValue(null)
-
-      const result = manager.getBufferLossInfo('conv-1', 10)
-
-      expect(result).toEqual({ lossDetected: false, lostEventCount: 0 })
-    })
-
-    it('returns no loss when no events missing', () => {
-      eventChannel.getMetadata.mockReturnValue({
-        conversationId: 'conv-1',
-        firstSequence: 10,
-        lastSequence: 20,
-        totalEvents: 11
-      })
-
-      const result = manager.getBufferLossInfo('conv-1', 10)
-
-      expect(result).toEqual({ lossDetected: false, lostEventCount: 0 })
-    })
-
-    it('detects loss when events missing', () => {
-      eventChannel.getMetadata.mockReturnValue({
-        conversationId: 'conv-1',
-        firstSequence: 15, // Buffer starts at 15
-        lastSequence: 25,
-        totalEvents: 11
-      })
-
-      // Client expects sequence 10, but buffer starts at 15
-      const result = manager.getBufferLossInfo('conv-1', 10)
-
-      expect(result).toEqual({ lossDetected: true, lostEventCount: 5 })
     })
   })
 
