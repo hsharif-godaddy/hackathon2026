@@ -7,7 +7,24 @@
 import { logger } from '@/lib/request-context'
 import { INITIAL_RETRY_DELAY_MS, MAX_RETRIES, MAX_RETRY_DELAY_MS, REQUEST_TIMEOUT_MS } from './constants'
 import { calculateBackoffDelay, classifyError, sleep } from './error-handler'
-import type { InsightCountResponse } from './types'
+
+function graphQLErrorMessages(result: unknown): string[] | null {
+  if (result === null || typeof result !== 'object') return null
+  const errors = (result as { errors?: unknown }).errors
+  if (!Array.isArray(errors) || errors.length === 0) return null
+  const messages: string[] = []
+  for (const item of errors) {
+    if (
+      item !== null &&
+      typeof item === 'object' &&
+      'message' in item &&
+      typeof (item as { message: unknown }).message === 'string'
+    ) {
+      messages.push((item as { message: string }).message)
+    }
+  }
+  return messages.length > 0 ? messages : null
+}
 
 /**
  * Execute GraphQL query with timeout, retry, and error handling
@@ -18,14 +35,14 @@ import type { InsightCountResponse } from './types'
  * @param query - GraphQL query string
  * @param operationName - Name of the operation for logging
  * @param appId - App/site ID for ownership validation
- * @returns Promise resolving to GraphQL response
+ * @returns Promise resolving to the parsed GraphQL JSON body (caller narrows shape)
  * @throws Error if all retries are exhausted
  */
 export async function executeGraphQLQuery(
   query: string,
   operationName: string,
   appId?: string,
-): Promise<InsightCountResponse> {
+): Promise<unknown> {
   let lastError: Error | null = null
 
   // Use Next.js API route proxy to avoid CORS issues
@@ -52,11 +69,10 @@ export async function executeGraphQLQuery(
         throw new Error(`HTTP ${response.status}: ${errorText}`)
       }
 
-      const result: InsightCountResponse = await response.json()
-
-      if (result.errors && result.errors.length > 0) {
-        const errorMessages = result.errors.map(e => e.message).join('; ')
-        const error = new Error(`GraphQL errors: ${errorMessages}`)
+      const result: unknown = await response.json()
+      const errorMessages = graphQLErrorMessages(result)
+      if (errorMessages) {
+        const error = new Error(`GraphQL errors: ${errorMessages.join('; ')}`)
         ;(error as Error & { isGraphQLError?: boolean }).isGraphQLError = true
         throw error
       }

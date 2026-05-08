@@ -8,7 +8,7 @@
  * Escape a string for safe inclusion inside a GraphQL double-quoted string literal.
  * Handles backslashes, double quotes, and control characters.
  */
-function escapeGraphQL(value: string): string {
+export function escapeGraphQL(value: string): string {
   return value
     .replace(/\\/g, '\\\\')
     .replace(/"/g, '\\"')

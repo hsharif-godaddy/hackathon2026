@@ -10,6 +10,7 @@ import Spinner from '@ux/spinner'
 import text from '@ux/text'
 
 import PanelSkeleton from '@/app/[market]/develop/components/PanelSkeleton'
+import InsightsBanner from '@/app/[market]/develop/components/settings/Analytics/InsightsBanner'
 import SettingsSection from '@/app/[market]/develop/components/settings/SettingsSection'
 import { ChatTab } from '@/app/[market]/develop/components/types'
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
@@ -491,7 +492,7 @@ export default function RUM() {
   return (
     <SettingsSection
       title={t('builder_analytics_title')}
-      description={t('builder_analytics_rum_description')}
+      description={t('builder_analytics_header_rum_description')}
       hideStatus
       button={(
         <div className="flex items-center gap-2">
@@ -557,7 +558,10 @@ export default function RUM() {
       )}
       className="pb-2 px-1.5 md:px-0.5"
     >
-      <div>
+      <Box gap="md">
+        <InsightsBanner />
+
+        <div>
         {/* ═══════════ OVERVIEW ═══════════ */}
         <Collapsible
           id="overview"
@@ -1081,7 +1085,8 @@ export default function RUM() {
           </CollapsibleContent>
         </Collapsible>
         }
-      </div>
+        </div>
+      </Box>
     </SettingsSection>
   )
 }
