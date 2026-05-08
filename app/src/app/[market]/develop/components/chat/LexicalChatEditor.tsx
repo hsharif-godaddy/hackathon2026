@@ -315,10 +315,12 @@ function ExternalSyncPlugin({
   const [editor] = useLexicalComposerContext()
 
   useEffect(() => {
-    // Skip if the change came from the editor's own onChange
+    // Skip if the change came from the editor's own onChange,
+    // but always honor an explicit clear (inputValue === '') so that
+    // programmatic clears (e.g. startNewStream after auto-send) still apply.
     if (internalChangeRef.current) {
       internalChangeRef.current = false
-      return
+      if (inputValue !== '') return
     }
 
     editor.update(() => {

@@ -68,12 +68,12 @@ describe('sendPendingAutoSendMessage', () => {
     })
   })
 
-  it('does not restore the prompt to the input on the success path', async () => {
+  it('clears the input on the success path so the editor does not wait for the first streaming chunk', async () => {
     const setInputValue = vi.fn()
 
     await sendPendingAutoSendMessage(buildOptions({ setInputValue }))
 
-    expect(setInputValue).not.toHaveBeenCalled()
+    expect(setInputValue).toHaveBeenCalledExactlyOnceWith('')
   })
 
   it('releases the lock and clears caller-owned refs on the success path', async () => {

@@ -94,6 +94,7 @@ export async function sendPendingAutoSendMessage(
         },
       }),
     })
+    setInputValue('')
   } catch (error) {
     outerError = error
     logger.error('develop-page.auto-send.failed', {
