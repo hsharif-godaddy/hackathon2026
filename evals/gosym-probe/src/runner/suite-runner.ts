@@ -1,4 +1,5 @@
 import { Simulation } from './simulation.js';
+import type { SimulationCaptureContext } from './simulation.js';
 import { TrialAggregator } from './trial-aggregator.js';
 import { RegressionComparator } from '../baselines/regression-comparator.js';
 import type { Scenario } from '../scenarios/types.js';
@@ -6,7 +7,7 @@ import type { ScenarioResult, TrialResult } from './types.js';
 import type { Config } from '../../config/environments/types.js';
 import type { AgentClient } from '../clients/agent-client.js';
 import type { SyntheticUserAgent } from './synthetic-user.js';
-import type { DOMCapture } from '../clients/dom-capture.js';
+import type { SiteCapture } from '../clients/dom-capture.js';
 import type { DOMSnapshot, Transcript } from './transcript.js';
 import type { BaselineScores } from '../baselines/types.js';
 import type { EvalResult, Evaluator } from '../evaluators/evaluator.js';
@@ -58,7 +59,7 @@ export interface SuiteRunnerOptions {
   /** Per-trial async factory; each Simulation owns its connection. */
   makeAgentClient?: () => Promise<AgentClient>;
   syntheticUser?: SyntheticUserAgent;
-  domCapture?: DOMCapture;
+  siteCapture?: SiteCapture;
   trialsOverride?: number;
   concurrencyOverride?: number;
   maxTurnsOverride?: number;
@@ -83,6 +84,15 @@ export interface SuiteRunnerOptions {
     scenarioName: string,
     trial: TrialResult,
   ) => void;
+  /**
+   * Resolves the on-disk trial output directory before the capture
+   * step runs. Forwarded to `Simulation` so `SiteCapture` writes
+   * snapshot/tile artifacts directly under that directory.
+   */
+  getTrialOutputDir?: (
+    scenarioName: string,
+    trialIndex: number,
+  ) => Promise<string>;
 }
 
 export class SuiteRunner {
@@ -119,20 +129,9 @@ export class SuiteRunner {
       concurrencyOverride,
       makeAgentClient,
       syntheticUser,
-      domCapture,
+      siteCapture,
       baselineStore,
     } = this.options;
-
-    if (!makeAgentClient) {
-      throw new Error(
-        `processScenario: makeAgentClient is required to run scenario "${scenario.name}"`,
-      );
-    }
-    if (!syntheticUser) {
-      throw new Error(
-        `processScenario: syntheticUser is required to run scenario "${scenario.name}"`,
-      );
-    }
 
     const mode =
       this.options.executionModeOverride
@@ -142,30 +141,49 @@ export class SuiteRunner {
     const makeRun = async (
       i: number,
     ): Promise<Transcript> => {
-       
+      if (!syntheticUser) {
+        throw new Error('syntheticUser is required');
+      }
+      if (!makeAgentClient) {
+        throw new Error('makeAgentClient is required');
+      }
       const client = await makeAgentClient();
       try {
         scenario.beforeTrial?.(client, i);
         for (const ev of scenario.evaluators) {
           ev.hookClient?.(client, i);
         }
+        const { getTrialOutputDir } = this.options;
+        if (siteCapture && !getTrialOutputDir) {
+          console.warn('[SuiteRunner] siteCapture provided without getTrialOutputDir — snapshot capture will be disabled');
+        }
+        if (!siteCapture && getTrialOutputDir) {
+          console.warn('[SuiteRunner] getTrialOutputDir provided without siteCapture — snapshot capture will be disabled');
+        }
+        const captureContext: SimulationCaptureContext | undefined =
+          siteCapture && getTrialOutputDir
+            ? {
+              siteCapture,
+              getTrialOutputDir: (trialIndex: number) =>
+                getTrialOutputDir(scenario.name, trialIndex),
+            }
+            : undefined;
         const transcript = await new Simulation({
           scenario,
           agentClient: client,
-           
           syntheticUser,
-          domCapture,
+          captureContext,
           config,
-          maxTurnsOverride:
-            this.options.maxTurnsOverride,
+          maxTurnsOverride: this.options.maxTurnsOverride,
         }).run(i);
         for (const ev of scenario.evaluators) {
           try {
             ev.afterSimulation?.(i);
           } catch (err) {
-            const msg: string = err instanceof Error ? err.message : String(err);
-            // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring
-            console.warn(`afterSimulation failed for ${ev.name}: ${msg}`);
+            console.warn(
+              `afterSimulation failed for ${ev.name}:`,
+              err instanceof Error ? err.message : String(err),
+            );
           }
         }
         return transcript;
@@ -237,9 +255,7 @@ export class SuiteRunner {
         await evaluator.evaluate(transcript, scenario, snapshot),
       );
     } catch (err) {
-      const msg: string = err instanceof Error ? err.message : String(err);
-      // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring
-      console.warn(`safeEvaluate: evaluator "${evaluator.name}" threw: ${msg}`);
+      console.error(`Error evaluating ${evaluator.name}:`, err instanceof Error ? err.message : String(err));
       return normalizeEvalResult({
         evaluator: evaluator.name,
         score: 0,

@@ -1,21 +1,15 @@
-import type { Scenario, SetupContext } from '../scenarios/types.js';
+import type { Config } from '../../config/environments/types.js';
 import type {
   AgentClient,
   AgentEvent,
 } from '../clients/agent-client.js';
-import type { SyntheticUserAgent } from './synthetic-user.js';
-import type { DOMCapture } from '../clients/dom-capture.js';
-import type { Transcript, ToolCall, Turn } from './transcript.js';
-import type { Config } from '../../config/environments/types.js';
-import { TranscriptBuilder } from './transcript.js';
-import { GoalTracker } from './goal-tracker.js';
+import type { SiteCapture } from '../clients/dom-capture.js';
+import type { Scenario, SetupContext } from '../scenarios/types.js';
 import { Agent } from 'undici';
-
-// Scoped TLS bypass for the local preview container's self-signed cert.
-// Using a dedicated Agent keeps the bypass off all other HTTPS requests in
-// this process. Node 22's global fetch forwards the dispatcher to undici.
-// nosemgrep: problem-based-packs.insecure-transport.js-node.bypass-tls-verification.bypass-tls-verification
-const TLS_UNSAFE_AGENT = new Agent({ connect: { rejectUnauthorized: false } });
+import { GoalTracker } from './goal-tracker.js';
+import type { SyntheticUserAgent } from './synthetic-user.js';
+import type { Transcript, ToolCall, Turn } from './transcript.js';
+import { TranscriptBuilder } from './transcript.js';
 
 export class FatalAABError extends Error {
   constructor(message: string) {
@@ -30,11 +24,27 @@ export function isFatalError(error: string): boolean {
     || /\bS2S token\b/i.test(error);
 }
 
+/**
+ * Pairs `SiteCapture` with the trial-directory resolver it needs.
+ * Both fields are required together — providing one without the
+ * other is invalid, hence they live in a single value rather than
+ * two separate optional fields.
+ */
+export interface SimulationCaptureContext {
+  siteCapture: SiteCapture;
+  getTrialOutputDir: (trialIndex: number) => Promise<string>;
+}
+
 export interface SimulationOptions {
   scenario: Scenario;
   agentClient: AgentClient;
   syntheticUser: SyntheticUserAgent;
-  domCapture?: DOMCapture;
+  /**
+   * When provided, captures the preview-app DOM snapshot and
+   * per-route screenshots after the agent loop completes and
+   * writes artifacts to the resolved trial directory.
+   */
+  captureContext?: SimulationCaptureContext;
   config: Config;
   maxTurnsOverride?: number;
 }
@@ -132,7 +142,7 @@ export class Simulation {
         assistantTurnCount++;
       }
 
-      await this.captureSnapshot(trialIndex, setupResult, builder);
+      await this.runCapture(trialIndex, setupResult, builder);
     } finally {
       try {
         await scenario.teardown?.(setupResult ?? {});
@@ -241,7 +251,7 @@ export class Simulation {
   private async runSetup(
     trialIndex: number,
   ): Promise<SetupContext | void> {
-    const { scenario, agentClient, domCapture } = this.options;
+    const { scenario, agentClient, captureContext } = this.options;
     let setupResult: SetupContext | void;
     try {
       setupResult = await scenario.setup?.();
@@ -251,20 +261,25 @@ export class Simulation {
         `[${scenario.name}] setup failed on trial ${trialIndex}: ${msg}`,
       );
     }
+
     agentClient.configure(setupResult ?? {});
 
     // Pre-warm the preview URL so Vite is already running when the
     // snapshot fires. Fire-and-forget — errors are intentionally
     // swallowed since a failed pre-warm is not fatal.
     if (
-      domCapture &&
+      captureContext &&
       typeof setupResult?.previewUrl === 'string'
     ) {
       const url = setupResult.previewUrl as string;
-      fetch(url, {
+      const fetchOptions: RequestInit = {
         signal: AbortSignal.timeout(5_000),
-        dispatcher: TLS_UNSAFE_AGENT,
-      } as RequestInit).catch(() => {});
+      };
+      if (this.options.config.playwright.ignoreHttpsErrors) {
+        (fetchOptions as RequestInit & { dispatcher: unknown }).dispatcher =
+          new Agent({ connect: { rejectUnauthorized: false } }); // nosemgrep: problem-based-packs.insecure-transport.js-node.bypass-tls-verification.bypass-tls-verification
+      }
+      fetch(url, fetchOptions).catch(() => {});
     }
 
     return setupResult;
@@ -308,22 +323,45 @@ export class Simulation {
     return content;
   }
 
-  private async captureSnapshot(
+  private async runCapture(
     trialIndex: number,
     setupResult: SetupContext | void,
     builder: TranscriptBuilder,
   ): Promise<void> {
-    const { domCapture } = this.options;
-    if (!domCapture) return;
+    const { captureContext } = this.options;
+    if (!captureContext) return;
+
+    let trialDir: string;
     try {
-      const snapshot = await domCapture.capture(
-        setupResult ?? {},
-      );
-      builder.addSnapshot(snapshot);
+      trialDir = await captureContext.getTrialOutputDir(trialIndex);
     } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      builder.addError(
+        `Capture failed (trial ${trialIndex}): ${msg}`,
+      );
       // nosemgrep: javascript.lang.security.audit.unsafe-formatstring
       console.warn(
-        '[Trial %d] Snapshot skipped:',
+        '[Trial %d] Capture skipped: trial output dir failed:',
+        trialIndex, err,
+      );
+      return;
+    }
+
+    try {
+      const result = await captureContext.siteCapture.capture(
+        setupResult ?? {},
+        trialDir,
+      );
+      builder.addSnapshot(result.snapshot);
+      builder.addCapturedSite(result.capturedSite);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      builder.addError(
+        `Capture failed (trial ${trialIndex}): ${msg}`,
+      );
+      // nosemgrep: javascript.lang.security.audit.unsafe-formatstring
+      console.warn(
+        '[Trial %d] Capture skipped:',
         trialIndex, err,
       );
     }

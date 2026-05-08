@@ -5,8 +5,8 @@ import { AABClient } from './clients/aab-client.js';
 import { AABCtrlPlaneClient } from './clients/aab-ctrl-plane-client.js';
 import { GocodeClient } from './clients/gocode-client.js';
 import {
-  DOMCapture,
   SetupContextResolver,
+  SiteCapture,
 } from './clients/dom-capture.js';
 import { GocodeSyntheticUser } from './runner/gocode-synthetic-user.js';
 import {
@@ -117,7 +117,6 @@ async function main(): Promise<void> {
     graduate: values.graduate,
     graduateSuite: values['graduate-suite'],
     stability: values.stability,
-    trials: values.trials,
     concurrency: values.concurrency,
     maxTurns: values['max-turns'],
   });
@@ -146,7 +145,7 @@ async function main(): Promise<void> {
   const ctrlPlane     = new AABCtrlPlaneClient({
     baseUrl: config.aab.controlPlaneUrl,
   });
-  const domCapture    = new DOMCapture({
+  const siteCapture   = new SiteCapture({
     resolver: new SetupContextResolver(),
     ignoreHttpsErrors: config.playwright.ignoreHttpsErrors,
   });
@@ -186,7 +185,7 @@ async function main(): Promise<void> {
         config,
         makeAgentClient,
         syntheticUser,
-        domCapture,
+        siteCapture,
         baselineStore: new BaselineStore(),
         stabilityLevelOverride: stabilityOverride,
         concurrencyOverride,
@@ -269,7 +268,7 @@ async function main(): Promise<void> {
       config,
       makeAgentClient,
       syntheticUser,
-      domCapture,
+      siteCapture,
       baselineStore: new BaselineStore(),
       stabilityLevelOverride: stabilityOverride,
       concurrencyOverride,
@@ -337,25 +336,28 @@ async function main(): Promise<void> {
   }
 
   const store = new EvalStore(undefined, config.storage?.maxRuns);
-  const dirName = await store.initRun(
-    runId, scenarios, config,
-    trialsOverride, concurrencyOverride, maxTurnsOverride,
-  );
+  const dirName = await store.initRun(runId, scenarios, config, {
+    trialsOverride,
+    concurrencyOverride,
+    maxTurnsOverride,
+  });
 
-  let writeFailures = 0;
   const pendingWrites: Promise<void>[] = [];
+  let writeFailures = 0;
 
   const runner = new SuiteRunner({
     scenarios,
     config,
     makeAgentClient,
     syntheticUser,
-    domCapture,
+    siteCapture,
     trialsOverride,
     concurrencyOverride,
     maxTurnsOverride,
     baselineStore,
     suiteMode: parallelSuites ? 'parallel' : undefined,
+    getTrialOutputDir: (scenarioName, trialIndex) =>
+      store.ensureTrialDir(dirName, scenarioName, trialIndex),
     onTrialEvaluated: (scenarioName, trial) => {
       const p = store
         .writeTrial(dirName, scenarioName, trial)
@@ -371,8 +373,22 @@ async function main(): Promise<void> {
     },
   });
 
-
   const results = await runner.run();
+
+  await Promise.all(pendingWrites);
+
+  if (writeFailures > 0) {
+    console.error(
+      `Error: ${writeFailures} trial write(s) failed; ` +
+      'run output may be incomplete.',
+    );
+    process.exitCode = 1;
+  }
+  const runDir = await store.finalizeRun(dirName, runId, results);
+  await store.prune();
+
+  console.log('\nResults written to:');
+  console.log(`  ${runDir}`);
 
   if (!skipBaseline) {
     const missingBaselines = results.filter(
@@ -417,16 +433,6 @@ async function main(): Promise<void> {
       }
     }
   }
-
-  await Promise.all(pendingWrites);
-  if (writeFailures > 0) {
-    process.exitCode = 1;
-  }
-  const runDir = await store.finalizeRun(dirName, runId, results);
-  await store.prune();
-
-  console.log('\nResults written to:');
-  console.log(`  ${runDir}`);
 }
 
 main().catch((err: unknown) => {

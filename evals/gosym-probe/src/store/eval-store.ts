@@ -39,6 +39,14 @@ import { renderConversation } from
 import { computeTimingStats } from '../util/timing.js';
 import { computeScoreStats } from '../util/score-stats.js';
 
+export interface RunOptions {
+  trialsOverride?: number;
+  concurrencyOverride?: number;
+  maxTurnsOverride?: number;
+  kind?: 'eval' | 'graduation';
+  dirName?: string;
+}
+
 export class EvalStore {
   constructor(
     private readonly runsDir: string = 'runs',
@@ -50,37 +58,45 @@ export class EvalStore {
     results: ScenarioResult[],
     scenarios: Scenario[],
     config: Config,
-    trialsOverride?: number,
-    concurrencyOverride?: number,
-    maxTurnsOverride?: number,
-    kind?: 'eval' | 'graduation',
+    options: RunOptions = {},
   ): Promise<string> {
-    const dirName = await this.initRun(
+    const {
+      trialsOverride,
+      concurrencyOverride,
+      maxTurnsOverride,
+      kind,
+      dirName,
+    } = options;
+    const resolvedDirName = dirName ?? await this.initRun(
       runId, scenarios, config,
-      trialsOverride, concurrencyOverride,
-      maxTurnsOverride, kind,
+      { trialsOverride, concurrencyOverride, maxTurnsOverride, kind },
     );
     for (const result of results) {
       for (const trial of result.trials) {
-        await this.writeTrial(dirName, result.scenarioName, trial);
+        await this.writeTrial(resolvedDirName, result.scenarioName, trial);
       }
     }
-    return this.finalizeRun(dirName, runId, results, kind);
+    return this.finalizeRun(resolvedDirName, runId, results, kind);
   }
 
   async initRun(
     runId: string,
     scenarios: Scenario[],
     config: Config,
-    trialsOverride?: number,
-    concurrencyOverride?: number,
-    maxTurnsOverride?: number,
-    kind?: 'eval' | 'graduation',
+    options: RunOptions = {},
   ): Promise<string> {
+    const {
+      trialsOverride,
+      concurrencyOverride,
+      maxTurnsOverride,
+      kind,
+      dirName,
+    } = options;
     const gitSha = await this.getGitSha();
     const timestamp = new Date().toISOString();
-    const dirName = `${toCompactTimestamp(timestamp)}_${runId}`;
-    const runDir = this.runDir(dirName);
+    const resolvedDirName =
+      dirName ?? `${toCompactTimestamp(timestamp)}_${runId}`;
+    const runDir = this.runDir(resolvedDirName);
 
     await mkdir(runDir, { recursive: true });
     await this.writeMetadata(
@@ -97,7 +113,7 @@ export class EvalStore {
     );
 
     for (const scenario of scenarios) {
-      const scenDir = this.scenarioDir(dirName, scenario.name);
+      const scenDir = this.scenarioDir(resolvedDirName, scenario.name);
       await mkdir(scenDir, { recursive: true });
       await writeFile(
         join(scenDir, 'scenario-config.json'),
@@ -109,7 +125,7 @@ export class EvalStore {
       );
     }
 
-    return dirName;
+    return resolvedDirName;
   }
 
   async finalizeRun(
@@ -422,14 +438,31 @@ export class EvalStore {
     try {
       await this.writeTrialFiles(trialDir, trial);
     } catch (err) {
+      // Capture-owned artifacts (snapshots, route tiles) live under
+      // trialDir already; we deliberately do NOT rm -rf the trial dir
+      // on metadata-write failure so those files survive.
       console.error('writeTrial: write failed', { trialDir }, err);
-      await rm(
-        trialDir, { recursive: true, force: true },
-      ).catch((rmErr) => {
-        console.error('writeTrial: cleanup failed', { trialDir }, rmErr);
-      });
       throw err;
     }
+  }
+
+  /**
+   * Creates the trial directory ahead of trial completion so
+   * pre-teardown hooks can write artifacts directly to the final
+   * location. Returns the absolute path.
+   */
+  async ensureTrialDir(
+    dirName: string,
+    scenarioName: string,
+    trialIndex: number,
+  ): Promise<string> {
+    const trialDir = this.trialDirFrom(
+      this.runDir(dirName),
+      scenarioName,
+      trialIndex,
+    );
+    await mkdir(trialDir, { recursive: true });
+    return trialDir;
   }
 
   private async writeTrialFiles(
@@ -493,6 +526,10 @@ export class EvalStore {
       );
     }
 
+    // Snapshot PNG + HTML are written directly to disk by SiteCapture
+    // before this method runs; here we only persist the in-memory
+    // metadata (URL, timestamp, console logs) sourced from the
+    // transcript.
     for (let i = 0; i < trial.transcript.snapshots.length; i++) {
       const snap = trial.transcript.snapshots[i];
       const meta: StoredSnapshotMeta = {
@@ -500,8 +537,6 @@ export class EvalStore {
         url: snap.url,
         timestamp: snap.timestamp,
       };
-      await writeFile(join(snapshotsDir, `${i}.png`), snap.screenshot);
-      await writeFile(join(snapshotsDir, `${i}.html`), snap.html);
       await writeFile(
         join(snapshotsDir, `${i}.meta.json`),
         JSON.stringify(meta, null, 2),
@@ -509,6 +544,17 @@ export class EvalStore {
       await writeFile(
         join(snapshotsDir, `${i}.console-logs.json`),
         JSON.stringify(snap.consoleLogs, null, 2),
+      );
+    }
+
+    // Per-route per-viewport tiles are written by SiteCapture/captureRoutes
+    // into <trialDir>/snapshots/{mobile,laptop}/. Persist the structured
+    // manifest (routes, perRoute, errors, timing) alongside them so
+    // downstream consumers don't have to rescan the directory.
+    if (trial.transcript.capturedSite) {
+      await writeFile(
+        join(snapshotsDir, 'capture.json'),
+        JSON.stringify(trial.transcript.capturedSite, null, 2),
       );
     }
   }

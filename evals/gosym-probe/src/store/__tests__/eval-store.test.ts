@@ -4,6 +4,7 @@ import type { DOMSnapshot } from '../../clients/dom-capture.js';
 import type { EvalResult } from '../../evaluators/evaluator.js';
 import type { ScenarioResult, TrialResult } from '../../runner/types.js';
 import type { Scenario } from '../../scenarios/types.js';
+import type { CapturedSite } from '../../clients/site-capture/types.js';
 import type {
   RunIndex,
   RunMetadata,
@@ -100,8 +101,8 @@ function makeConfig(): Config {
 function makeDOMSnapshot(i: number = 0): DOMSnapshot {
   return {
     url: `https://example.com/page-${i}`,
-    html: `<html><body>snapshot ${i}</body></html>`,
-    screenshot: Buffer.from(`screenshot-${i}`),
+    htmlPath: `/tmp/run/snapshots/${i}.html`,
+    screenshotPath: `/tmp/run/snapshots/${i}.png`,
     timestamp: `2026-04-09T00:0${i}:00.000Z`,
     consoleLogs: [],
   };
@@ -310,7 +311,7 @@ describe('EvalStore', () => {
       const result = makeScenarioResult(scenario, [makeTrialResult()]);
 
       await store.save(
-        'run-001', [result], [scenario], makeConfig(), 5,
+        'run-001', [result], [scenario], makeConfig(), { trialsOverride: 5 },
       );
 
       const call = mockWriteFile.mock.calls.find(([p]) =>
@@ -503,37 +504,28 @@ describe('EvalStore', () => {
       expect(manifestCall).toBeUndefined();
     });
 
-    it('writes .png as raw Buffer for each snapshot', async () => {
-      const store = new EvalStore();
-      const snapshot = makeDOMSnapshot(0);
-      const trial = makeTrialResult(0, [snapshot]);
-      const scenario = makeScenario();
-      const result = makeScenarioResult(scenario, [trial]);
+    it(
+      'does not write .png/.html for snapshots ' +
+        '(SiteCapture writes those directly)',
+      async () => {
+        const store = new EvalStore();
+        const snapshot = makeDOMSnapshot(0);
+        const trial = makeTrialResult(0, [snapshot]);
+        const scenario = makeScenario();
+        const result = makeScenarioResult(scenario, [trial]);
 
-      await store.save('run-001', [result], [scenario], makeConfig());
+        await store.save('run-001', [result], [scenario], makeConfig());
 
-      const pngCall = mockWriteFile.mock.calls.find(([p]) =>
-        (p as string).endsWith('0.png'),
-      );
-      expect(pngCall).toBeDefined();
-      expect(pngCall![1]).toEqual(snapshot.screenshot);
-    });
-
-    it('writes .html as string for each snapshot', async () => {
-      const store = new EvalStore();
-      const snapshot = makeDOMSnapshot(0);
-      const trial = makeTrialResult(0, [snapshot]);
-      const scenario = makeScenario();
-      const result = makeScenarioResult(scenario, [trial]);
-
-      await store.save('run-001', [result], [scenario], makeConfig());
-
-      const htmlCall = mockWriteFile.mock.calls.find(([p]) =>
-        (p as string).endsWith('0.html'),
-      );
-      expect(htmlCall).toBeDefined();
-      expect(htmlCall![1]).toBe(snapshot.html);
-    });
+        const pngCall = mockWriteFile.mock.calls.find(([p]) =>
+          (p as string).endsWith('0.png'),
+        );
+        const htmlCall = mockWriteFile.mock.calls.find(([p]) =>
+          (p as string).endsWith('0.html'),
+        );
+        expect(pngCall).toBeUndefined();
+        expect(htmlCall).toBeUndefined();
+      },
+    );
 
     it('writes .meta.json with url and timestamp for each snapshot', async () => {
       const store = new EvalStore();
@@ -842,8 +834,7 @@ describe('EvalStore', () => {
       );
 
       await store.save(
-        'run-001', [result], [scenario], makeConfig(),
-        undefined, undefined, undefined, 'graduation',
+        'run-001', [result], [scenario], makeConfig(), { kind: 'graduation' },
       );
 
       const call = mockWriteFile.mock.calls.find(([p]) =>
@@ -877,8 +868,7 @@ describe('EvalStore', () => {
       );
 
       await store.save(
-        'run-001', [result], [scenario], makeConfig(),
-        undefined, undefined, undefined, 'graduation',
+        'run-001', [result], [scenario], makeConfig(), { kind: 'graduation' },
       );
 
       const tmpCall = mockWriteFile.mock.calls.find(([p]) =>
@@ -944,6 +934,53 @@ describe('EvalStore', () => {
       );
       expect((tmpCall![0] as string).startsWith('/custom/runs')).toBe(
         true,
+      );
+    });
+    it('uses provided dirName and skips initRun when dirName is given',
+      async () => {
+        const store = new EvalStore();
+        const scenario = makeScenario();
+        const trial = makeTrialResult(0);
+        const result = makeScenarioResult(scenario, [trial]);
+
+        const path = await store.save(
+          'run-001',
+          [result],
+          [scenario],
+          makeConfig(),
+          { dirName: 'custom-dir-name' },
+        );
+
+        expect(path).toBe('runs/custom-dir-name');
+        // initRun creates the run root dir; with dirName provided it must not
+        expect(mockMkdir).not.toHaveBeenCalledWith(
+          'runs/custom-dir-name',
+          { recursive: true },
+        );
+      },
+    );
+  });
+
+  describe('ensureTrialDir()', () => {
+    it('mkdirs and returns the trial directory path', async () => {
+      const store = new EvalStore();
+      const dirName = `${FIXED_COMPACT}_run-001`;
+      const path = await store.ensureTrialDir(dirName, 'my-scenario', 3);
+
+      expect(path).toBe(
+        `runs/${FIXED_COMPACT}_run-001/scenarios/my-scenario/trials/3`,
+      );
+      expect(mockMkdir).toHaveBeenCalledWith(path, { recursive: true });
+    });
+
+    it('honours a custom runsDir', async () => {
+      const store = new EvalStore('/custom/runs');
+      const dirName = `${FIXED_COMPACT}_run-001`;
+      const path = await store.ensureTrialDir(dirName, 'my-scenario', 0);
+
+      expect(path).toBe(
+        `/custom/runs/${FIXED_COMPACT}_run-001/scenarios/my-scenario` +
+        '/trials/0',
       );
     });
   });
@@ -1283,7 +1320,9 @@ describe('EvalStore', () => {
         const store = new EvalStore();
         const scenario = makeScenario();
 
-        await store.initRun('run-001', [scenario], makeConfig(), 5);
+        await store.initRun(
+          'run-001', [scenario], makeConfig(), { trialsOverride: 5 },
+        );
 
         const call = mockWriteFile.mock.calls.find(([p]) =>
           (p as string).endsWith('run-metadata.json'),
@@ -1331,8 +1370,7 @@ describe('EvalStore', () => {
       const scenario = makeScenario();
 
       await store.initRun(
-        'run-001', [scenario], makeConfig(),
-        undefined, undefined, undefined, 'graduation',
+        'run-001', [scenario], makeConfig(), { kind: 'graduation' },
       );
 
       const call = mockWriteFile.mock.calls.find(([p]) =>
@@ -1340,6 +1378,21 @@ describe('EvalStore', () => {
       );
       const parsed = JSON.parse(call![1] as string);
       expect(parsed.kind).toBe('graduation');
+    });
+
+    it('uses provided dirName instead of generating one', async () => {
+      const store = new EvalStore();
+      const scenario = makeScenario();
+
+      const result = await store.initRun(
+        'run-001', [scenario], makeConfig(), { dirName: 'my-fixed-dir' },
+      );
+
+      expect(result).toBe('my-fixed-dir');
+      expect(mockMkdir).toHaveBeenCalledWith(
+        'runs/my-fixed-dir',
+        { recursive: true },
+      );
     });
   });
 
@@ -1414,25 +1467,28 @@ describe('EvalStore', () => {
       );
     });
 
-    it('removes trial dir and re-throws when a write fails', async () => {
-      const store = new EvalStore();
-      const trial = makeTrialResult(0);
-      const writeError = new Error('disk full');
-      mockWriteFile
-        .mockResolvedValueOnce(undefined)  // transcript.json
-        .mockRejectedValueOnce(writeError); // eval-results.json
+    it(
+      're-throws but does not delete trial dir when a write fails',
+      async () => {
+        const store = new EvalStore();
+        const trial = makeTrialResult(0);
+        const writeError = new Error('disk full');
+        mockWriteFile
+          .mockResolvedValueOnce(undefined)
+          .mockRejectedValueOnce(writeError);
 
-      await expect(
-        store.writeTrial(DIR_NAME, 'test-scenario', trial),
-      ).rejects.toThrow('disk full');
+        await expect(
+          store.writeTrial(DIR_NAME, 'test-scenario', trial),
+        ).rejects.toThrow('disk full');
 
-      expect(mockRm).toHaveBeenCalledWith(
-        `runs/${DIR_NAME}/scenarios/test-scenario/trials/0`,
-        { recursive: true, force: true },
-      );
-    });
+        const trialDirRm = mockRm.mock.calls.find(([p]) =>
+          (p as string).endsWith('trials/0'),
+        );
+        expect(trialDirRm).toBeUndefined();
+      },
+    );
 
-    it('logs write error to stderr before cleanup', async () => {
+    it('logs write error to stderr without cleanup', async () => {
       const store = new EvalStore();
       const trial = makeTrialResult(0);
       const writeError = new Error('disk full');
@@ -1455,65 +1511,105 @@ describe('EvalStore', () => {
       consoleErrorSpy.mockRestore();
     });
 
-    it('logs rm error to stderr when cleanup itself fails', async () => {
-      const store = new EvalStore();
-      const trial = makeTrialResult(0);
-      const writeError = new Error('disk full');
-      const rmError = new Error('permission denied');
-      const consoleErrorSpy = vi
-        .spyOn(console, 'error')
-        .mockImplementation(() => {});
-      mockWriteFile
-        .mockResolvedValueOnce(undefined)
-        .mockRejectedValueOnce(writeError);
-      mockRm.mockRejectedValueOnce(rmError);
+    it(
+      're-throws but does not delete trial dir when ' +
+        'renderConversation throws',
+      async () => {
+        const store = new EvalStore();
+        const trial = makeTrialResult(0);
+        const renderError = new Error('render failed');
+        mockRenderConversation.mockImplementationOnce(() => {
+          throw renderError;
+        });
 
-      await expect(
-        store.writeTrial(DIR_NAME, 'test-scenario', trial),
-      ).rejects.toThrow('disk full');
+        await expect(
+          store.writeTrial(DIR_NAME, 'test-scenario', trial),
+        ).rejects.toThrow('render failed');
 
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        expect.stringContaining('cleanup'),
-        expect.objectContaining({ trialDir: expect.any(String) }),
-        rmError,
-      );
-      consoleErrorSpy.mockRestore();
-    });
+        expect(mockWriteFile).not.toHaveBeenCalled();
+        const trialDirRm = mockRm.mock.calls.find(([p]) =>
+          (p as string).endsWith('trials/0'),
+        );
+        expect(trialDirRm).toBeUndefined();
+      },
+    );
 
-    it('removes trial dir and re-throws when renderConversation throws', async () => {
-      const store = new EvalStore();
-      const trial = makeTrialResult(0);
-      const renderError = new Error('render failed');
-      mockRenderConversation.mockImplementationOnce(() => {
-        throw renderError;
-      });
+    it(
+      'writes meta.json and console-logs.json for snapshots ' +
+        '(but not png/html)',
+      async () => {
+        const store = new EvalStore();
+        const trial = makeTrialResult(0, [makeDOMSnapshot(0)]);
 
-      await expect(
-        store.writeTrial(DIR_NAME, 'test-scenario', trial),
-      ).rejects.toThrow('render failed');
+        await store.writeTrial(DIR_NAME, 'test-scenario', trial);
 
-      expect(mockWriteFile).not.toHaveBeenCalled();
-      expect(mockRm).toHaveBeenCalledWith(
-        `runs/${DIR_NAME}/scenarios/test-scenario/trials/0`,
-        { recursive: true, force: true },
-      );
-    });
+        expect(mockMkdir).toHaveBeenCalledWith(
+          expect.stringContaining('trials/0/snapshots'),
+          { recursive: true },
+        );
+        const metaCall = mockWriteFile.mock.calls.find(([p]) =>
+          (p as string).endsWith('0.meta.json'),
+        );
+        const consoleCall = mockWriteFile.mock.calls.find(([p]) =>
+          (p as string).endsWith('0.console-logs.json'),
+        );
+        expect(metaCall).toBeDefined();
+        expect(consoleCall).toBeDefined();
+        const pngCall = mockWriteFile.mock.calls.find(([p]) =>
+          (p as string).endsWith('0.png'),
+        );
+        const htmlCall = mockWriteFile.mock.calls.find(([p]) =>
+          (p as string).endsWith('0.html'),
+        );
+        expect(pngCall).toBeUndefined();
+        expect(htmlCall).toBeUndefined();
+      },
+    );
 
-    it('writes snapshot files when snapshots present', async () => {
-      const store = new EvalStore();
-      const trial = makeTrialResult(0, [makeDOMSnapshot(0)]);
+    it(
+      'writes snapshots/capture.json when capturedSite present',
+      async () => {
+        const store = new EvalStore();
+        const capturedSite: CapturedSite = {
+          previewUrl: 'https://example.com',
+          generatedAt: '2026-04-09T00:00:00.000Z',
+          durationMs: 1234,
+          outputDir:
+            `runs/${DIR_NAME}/scenarios/test-scenario` +
+            '/trials/0/snapshots',
+          routes: [],
+          perRoute: [],
+          errors: [],
+        };
+        const trial = makeTrialResult(0);
+        trial.transcript.capturedSite = capturedSite;
 
-      await store.writeTrial(DIR_NAME, 'test-scenario', trial);
+        await store.writeTrial(DIR_NAME, 'test-scenario', trial);
 
-      expect(mockMkdir).toHaveBeenCalledWith(
-        expect.stringContaining('trials/0/snapshots'),
-        { recursive: true },
-      );
-      const pngCall = mockWriteFile.mock.calls.find(([p]) =>
-        (p as string).endsWith('0.png'),
-      );
-      expect(pngCall).toBeDefined();
-    });
+        const captureCall = mockWriteFile.mock.calls.find(([p]) =>
+          (p as string).endsWith('snapshots/capture.json'),
+        );
+        expect(captureCall).toBeDefined();
+        const parsed = JSON.parse(captureCall![1] as string);
+        expect(parsed.previewUrl).toBe('https://example.com');
+        expect(parsed.durationMs).toBe(1234);
+      },
+    );
+
+    it(
+      'omits capture.json write when capturedSite is absent',
+      async () => {
+        const store = new EvalStore();
+        const trial = makeTrialResult(0);
+
+        await store.writeTrial(DIR_NAME, 'test-scenario', trial);
+
+        const captureCall = mockWriteFile.mock.calls.find(([p]) =>
+          (p as string).endsWith('capture.json'),
+        );
+        expect(captureCall).toBeUndefined();
+      },
+    );
   });
 
   describe('finalizeRun()', () => {

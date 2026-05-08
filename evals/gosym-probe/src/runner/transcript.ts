@@ -1,4 +1,5 @@
 import type { DOMSnapshot } from '../clients/dom-capture.js';
+import type { CapturedSite } from '../clients/site-capture/types.js';
 
 export type { DOMSnapshot };
 
@@ -27,6 +28,7 @@ export interface Transcript {
   trialIndex: number;
   turns: Turn[];
   snapshots: DOMSnapshot[];
+  capturedSite?: CapturedSite;
   errors: string[];
 }
 
@@ -34,6 +36,7 @@ export class TranscriptBuilder {
   private readonly _turns: Turn[] = [];
   private readonly _snapshots: DOMSnapshot[] = [];
   private readonly _errors: string[] = [];
+  private _capturedSite: CapturedSite | undefined;
 
   constructor(
     private readonly scenarioName: string,
@@ -48,6 +51,10 @@ export class TranscriptBuilder {
     this._snapshots.push(snapshot);
   }
 
+  addCapturedSite(captured: CapturedSite): void {
+    this._capturedSite = captured;
+  }
+
   addError(error: string): void {
     this._errors.push(error);
   }
@@ -58,6 +65,9 @@ export class TranscriptBuilder {
       trialIndex: this.trialIndex,
       turns: [...this._turns],
       snapshots: [...this._snapshots],
+      ...(this._capturedSite !== undefined && {
+        capturedSite: this._capturedSite,
+      }),
       errors: [...this._errors],
     };
   }

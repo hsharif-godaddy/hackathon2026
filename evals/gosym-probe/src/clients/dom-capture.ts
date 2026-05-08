@@ -1,6 +1,17 @@
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+
 import { chromium } from 'playwright';
+import type {
+  BrowserContext,
+  Page,
+} from 'playwright';
 import { Agent } from 'undici';
+
 import type { SetupContext } from '../scenarios/types.js';
+import { captureRoutes } from './site-capture/capture.js';
+import { dismissCookieConsent } from './site-capture/cookie-dismiss.js';
+import type { CapturedSite } from './site-capture/types.js';
 
 export interface ConsoleLogEntry {
   type: string;
@@ -9,101 +20,132 @@ export interface ConsoleLogEntry {
 
 export interface DOMSnapshot {
   url: string;
-  html: string;
-  screenshot: Buffer;
+  screenshotPath: string;
+  htmlPath: string;
   timestamp: string;
   consoleLogs: ConsoleLogEntry[];
+}
+
+export interface CapturedTrial {
+  snapshot: DOMSnapshot;
+  capturedSite: CapturedSite;
 }
 
 export interface PreviewUrlResolver {
   resolve(ctx: SetupContext): Promise<string>;
 }
 
-export interface DOMCaptureConfig {
+export interface SiteCaptureConfig {
   resolver: PreviewUrlResolver;
   ignoreHttpsErrors: boolean;
   readySelector?: string;
   readyTimeoutMs?: number;
-  maxRetries?: number;
+  /** Forwarded to captureRoutes(). */
+  maxRoutes?: number;
 }
 
-export class DOMCapture {
+export class SiteCapture {
   private readonly resolver: PreviewUrlResolver;
   private readonly ignoreHttpsErrors: boolean;
   private readonly readySelector: string;
   private readonly readyTimeoutMs: number;
-  private readonly maxRetries: number;
+  private readonly maxRoutes: number | undefined;
 
-  constructor(config: DOMCaptureConfig) {
+  constructor(config: SiteCaptureConfig) {
     this.resolver = config.resolver;
     this.ignoreHttpsErrors = config.ignoreHttpsErrors;
     this.readySelector = config.readySelector ?? '#app > *';
     this.readyTimeoutMs = config.readyTimeoutMs ?? 90_000;
-    this.maxRetries = config.maxRetries ?? 0;
+    this.maxRoutes = config.maxRoutes;
   }
 
-  async capture(ctx: SetupContext): Promise<DOMSnapshot> {
+  async capture(
+    ctx: SetupContext,
+    trialDir: string,
+  ): Promise<CapturedTrial> {
     const previewUrl = await this.resolver.resolve(ctx);
-    const timeout = this.readyTimeoutMs;
-    const maxAttempts = this.maxRetries + 1;
-    let lastError: unknown;
+    const snapshotsDir = join(trialDir, 'snapshots');
 
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      const browser = await chromium.launch();
-      const context = await browser.newContext({
+    await mkdir(snapshotsDir, { recursive: true });
+
+    const screenshotPath = join(snapshotsDir, '0.png');
+    const htmlPath = join(snapshotsDir, '0.html');
+
+    const browser = await chromium.launch();
+    let context: BrowserContext | undefined;
+    let homepagePage: Page | undefined;
+    try {
+      context = await browser.newContext({
         ignoreHTTPSErrors: this.ignoreHttpsErrors,
       });
-      const page = await context.newPage();
+
+      const page: Page = await context.newPage();
       const consoleLogs: ConsoleLogEntry[] = [];
       page.on('console', (msg) => {
         consoleLogs.push({ type: msg.type(), text: msg.text() });
       });
+
       try {
         await page.goto(
           previewUrl,
-          { waitUntil: 'networkidle', timeout },
+          { waitUntil: 'domcontentloaded', timeout: this.readyTimeoutMs },
         );
         const finalUrl = page.url();
         if (new URL(finalUrl).href !== new URL(previewUrl).href) {
           console.warn(
-            'DOMCapture: redirect detected',
+            'SiteCapture: redirect detected',
             { expected: previewUrl, actual: finalUrl },
           );
         }
         await page.waitForSelector(
           this.readySelector,
-          { timeout },
+          { timeout: this.readyTimeoutMs },
         );
+        await dismissCookieConsent(page);
         const html = await page.content();
-        const screenshot = await page.screenshot();
-        return {
-          url: previewUrl,
-          html,
-          screenshot,
-          timestamp: new Date().toISOString(),
-          consoleLogs,
-        };
+        await writeFile(screenshotPath, await page.screenshot());
+        await writeFile(htmlPath, html);
+        homepagePage = page;
       } catch (err) {
-        lastError = err;
-        const isFinalAttempt = attempt === maxAttempts - 1;
-        if (!isFinalAttempt) {
-          console.warn(
-            'DOMCapture: attempt failed, retrying',
-            { attempt: attempt + 1 },
-            err,
-          );
-          await this.delay(2_000);
-        }
-      } finally {
-        await browser.close();
+        await page.close().catch((closeErr: unknown) => {
+          console.warn('SiteCapture: page.close() failed during cleanup', closeErr);
+        });
+        throw err;
       }
+
+      const snapshot: DOMSnapshot = {
+        url: previewUrl,
+        screenshotPath,
+        htmlPath,
+        timestamp: new Date().toISOString(),
+        consoleLogs,
+      };
+
+      const capturedSite = await captureRoutes({
+        previewUrl,
+        context,
+        homepagePage,
+        outputDir: snapshotsDir,
+        ignoreHttpsErrors: this.ignoreHttpsErrors,
+        maxRoutes: this.maxRoutes,
+      });
+
+      return { snapshot, capturedSite };
+    } finally {
+      if (homepagePage) {
+        await homepagePage.close().catch((err: unknown) => {
+          console.warn('SiteCapture: page.close() failed', err);
+        });
+      }
+      if (context) {
+        await context.close().catch((err: unknown) => {
+          console.warn('SiteCapture: context.close() failed', err);
+        });
+      }
+      await browser.close().catch((err: unknown) => {
+        console.warn('SiteCapture: browser.close() failed', err);
+      });
     }
-
-    throw lastError;
-  }
-
-  private async delay(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }
 
@@ -116,7 +158,7 @@ export class AABPreviewUrlResolver implements PreviewUrlResolver {
   ) {}
 
   async resolve(ctx: SetupContext): Promise<string> {
-    const appId = ctx.appId;
+    const appId = ctx.appId as string | undefined;
     const url = `${this.config.bffUrl}/api/servers/${appId}`;
     // Scope TLS bypass to this request via a per-call undici Agent
     // rather than mutating NODE_TLS_REJECT_UNAUTHORIZED globally.
@@ -127,10 +169,16 @@ export class AABPreviewUrlResolver implements PreviewUrlResolver {
     let res: Response;
     if (this.config.ignoreHttpsErrors) {
       res = await fetch(url, {
+        signal: AbortSignal.timeout(5_000),
         dispatcher: new Agent({
           connect: { rejectUnauthorized: false }, // nosemgrep: problem-based-packs.insecure-transport.js-node.bypass-tls-verification.bypass-tls-verification
         }),
-      } as RequestInit);
+      } as RequestInit).catch((err: unknown) => {
+        const reason = err instanceof Error ? err.message : String(err);
+        throw new Error(
+          `Failed to resolve preview URL for app '${appId}': ${reason}`,
+        );
+      });
     } else {
       res = await fetch(url);
     }
@@ -148,7 +196,7 @@ export class AABPreviewUrlResolver implements PreviewUrlResolver {
 
 export class SetupContextResolver implements PreviewUrlResolver {
   async resolve(ctx: SetupContext): Promise<string> {
-    const url = ctx.previewUrl;
+    const url = ctx.previewUrl as string | undefined;
     if (!url) {
       throw new Error('SetupContext is missing previewUrl');
     }

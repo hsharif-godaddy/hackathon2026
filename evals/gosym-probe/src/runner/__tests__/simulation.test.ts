@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Simulation, isFatalError } from '../simulation.js';
+import type { SimulationCaptureContext } from '../simulation.js';
 import { GoalTracker } from '../goal-tracker.js';
 import type { AgentClient, AgentEvent } from '../../clients/agent-client.js';
 import type { SyntheticUserAgent } from '../synthetic-user.js';
@@ -70,6 +71,22 @@ function makeScenario(overrides: Partial<Scenario> = {}): Scenario {
     setup: vi.fn().mockResolvedValue(undefined),
     teardown: vi.fn().mockResolvedValue(undefined),
     ...overrides,
+  };
+}
+
+function makeSnapshotMeta(): {
+  url: string;
+  screenshotPath: string;
+  htmlPath: string;
+  timestamp: string;
+  consoleLogs: { type: string; text: string }[];
+} {
+  return {
+    url: 'https://localhost:5001',
+    screenshotPath: '/tmp/trials/0/snapshots/0.png',
+    htmlPath: '/tmp/trials/0/snapshots/0.html',
+    timestamp: new Date().toISOString(),
+    consoleLogs: [],
   };
 }
 
@@ -346,7 +363,7 @@ describe('Simulation', () => {
   });
 
   it(
-    'captures a single DOM snapshot after the conversation completes',
+    'captures a single snapshot after the conversation completes',
     async () => {
       const scenario = makeScenario({
         setup: vi.fn().mockResolvedValue({ appId: 'test-app' }),
@@ -360,28 +377,33 @@ describe('Simulation', () => {
           .mockResolvedValueOnce('second turn')
           .mockResolvedValue(null),
       };
-      const mockDomCapture = {
+      const mockSiteCapture = {
         capture: vi.fn().mockResolvedValue({
-          url: 'https://localhost:5001',
-          html: '<html>app</html>',
-          screenshot: Buffer.from(''),
-          timestamp: new Date().toISOString(),
+          snapshot: makeSnapshotMeta(),
         }),
       };
       const agent = makeAutoAgent();
+      const getTrialOutputDir = vi
+        .fn()
+        .mockResolvedValue('/tmp/trials/0');
+      const captureContext: SimulationCaptureContext = {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        siteCapture: mockSiteCapture as any,
+        getTrialOutputDir,
+      };
 
       const transcript = await new Simulation({
         scenario,
         agentClient: agent,
         syntheticUser,
-         
-        domCapture: mockDomCapture as any,
+        captureContext,
         config: mockConfig,
       }).run(0);
 
-      expect(mockDomCapture.capture).toHaveBeenCalledOnce();
-      expect(mockDomCapture.capture).toHaveBeenCalledWith(
+      expect(mockSiteCapture.capture).toHaveBeenCalledOnce();
+      expect(mockSiteCapture.capture).toHaveBeenCalledWith(
         { appId: 'test-app' },
+        '/tmp/trials/0',
       );
       expect(transcript.snapshots).toHaveLength(1);
     },
@@ -401,33 +423,81 @@ describe('Simulation', () => {
         .mockResolvedValueOnce('hello')
         .mockResolvedValue(null),
     };
-    const mockDomCapture = {
+    const mockSiteCapture = {
       capture: vi.fn().mockImplementation(async () => {
         callOrder.push('snapshot');
-        return {
-          url: 'https://localhost:5001',
-          html: '<html>app</html>',
-          screenshot: Buffer.from(''),
-          timestamp: new Date().toISOString(),
-        };
+        return { snapshot: makeSnapshotMeta() };
       }),
     };
     const agent = makeAutoAgent();
+    const getTrialOutputDir = vi
+      .fn()
+      .mockResolvedValue('/tmp/trials/0');
+    const captureContext: SimulationCaptureContext = {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      siteCapture: mockSiteCapture as any,
+      getTrialOutputDir,
+    };
 
     await new Simulation({
       scenario,
       agentClient: agent,
       syntheticUser,
-       
-      domCapture: mockDomCapture as any,
+      captureContext,
       config: mockConfig,
     }).run(0);
 
     expect(callOrder).toEqual(['snapshot', 'teardown']);
   });
 
+  it('attaches capturedSite to transcript when present', async () => {
+    const scenario = makeScenario({
+      setup: vi.fn().mockResolvedValue({ appId: 'app' }),
+    });
+    const syntheticUser: SyntheticUserAgent = {
+      nextMessage: vi
+        .fn()
+        .mockResolvedValueOnce('hello')
+        .mockResolvedValue(null),
+    };
+    const capturedSite = {
+      previewUrl: 'https://example.com',
+      generatedAt: new Date().toISOString(),
+      durationMs: 100,
+      outputDir: '/tmp/trials/0/snapshots',
+      routes: [],
+      perRoute: [],
+      errors: [],
+    };
+    const mockSiteCapture = {
+      capture: vi.fn().mockResolvedValue({
+        snapshot: makeSnapshotMeta(),
+        capturedSite,
+      }),
+    };
+    const agent = makeAutoAgent();
+    const getTrialOutputDir = vi
+      .fn()
+      .mockResolvedValue('/tmp/trials/0');
+    const captureContext: SimulationCaptureContext = {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      siteCapture: mockSiteCapture as any,
+      getTrialOutputDir,
+    };
+
+    const transcript = await new Simulation({
+      scenario,
+      agentClient: agent,
+      syntheticUser,
+      captureContext,
+      config: mockConfig,
+    }).run(0);
+
+    expect(transcript.capturedSite).toEqual(capturedSite);
+  });
+
   it(
-    'calls teardown even when snapshot capture throws',
+    'calls teardown even when site capture throws',
     async () => {
       const warnSpy = vi
         .spyOn(console, 'warn')
@@ -441,19 +511,23 @@ describe('Simulation', () => {
           .mockResolvedValueOnce('hello')
           .mockResolvedValue(null),
       };
-      const mockDomCapture = {
+      const mockSiteCapture = {
         capture: vi
           .fn()
           .mockRejectedValue(new Error('browser crash')),
       };
       const agent = makeAutoAgent();
+      const captureContext: SimulationCaptureContext = {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        siteCapture: mockSiteCapture as any,
+        getTrialOutputDir: vi.fn().mockResolvedValue('/tmp/trials/0'),
+      };
 
       await new Simulation({
         scenario,
         agentClient: agent,
         syntheticUser,
-         
-        domCapture: mockDomCapture as any,
+        captureContext,
         config: mockConfig,
       }).run(0);
 
@@ -1476,7 +1550,7 @@ describe('preview URL pre-warm', () => {
   });
 
   it(
-    'fires fetch to previewUrl when domCapture present ' +
+    'fires fetch to previewUrl when siteCapture present ' +
       'and setupResult has previewUrl',
     async () => {
       const previewUrl = 'https://preview.local:5001';
@@ -1486,21 +1560,23 @@ describe('preview URL pre-warm', () => {
       const syntheticUser: SyntheticUserAgent = {
         nextMessage: vi.fn().mockResolvedValue(null),
       };
-      const mockDomCapture = {
+      const mockSiteCapture = {
         capture: vi.fn().mockResolvedValue({
-          url: previewUrl,
-          html: '<html></html>',
-          screenshot: Buffer.from(''),
-          timestamp: new Date().toISOString(),
+          snapshot: makeSnapshotMeta(),
         }),
+      };
+
+      const captureContext: SimulationCaptureContext = {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        siteCapture: mockSiteCapture as any,
+        getTrialOutputDir: vi.fn().mockResolvedValue('/tmp/trials/0'),
       };
 
       await new Simulation({
         scenario,
         agentClient,
         syntheticUser,
-         
-        domCapture: mockDomCapture as any,
+        captureContext,
         config: mockConfig,
       }).run(0);
 
@@ -1521,21 +1597,23 @@ describe('preview URL pre-warm', () => {
       const syntheticUser: SyntheticUserAgent = {
         nextMessage: vi.fn().mockResolvedValue(null),
       };
-      const mockDomCapture = {
+      const mockSiteCapture = {
         capture: vi.fn().mockResolvedValue({
-          url: 'https://preview.local:5001',
-          html: '<html></html>',
-          screenshot: Buffer.from(''),
-          timestamp: new Date().toISOString(),
+          snapshot: makeSnapshotMeta(),
         }),
+      };
+
+      const captureContext: SimulationCaptureContext = {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        siteCapture: mockSiteCapture as any,
+        getTrialOutputDir: vi.fn().mockResolvedValue('/tmp/trials/0'),
       };
 
       await new Simulation({
         scenario,
         agentClient,
         syntheticUser,
-         
-        domCapture: mockDomCapture as any,
+        captureContext,
         config: mockConfig,
       }).run(0);
 
@@ -1543,7 +1621,7 @@ describe('preview URL pre-warm', () => {
     },
   );
 
-  it('does not fire pre-warm when domCapture is absent', async () => {
+  it('does not fire pre-warm when siteCapture is absent', async () => {
     const previewUrl = 'https://preview.local:5001';
     const scenario = makeScenario({
       setup: vi.fn().mockResolvedValue({ previewUrl }),
@@ -1571,13 +1649,16 @@ describe('preview URL pre-warm', () => {
     const syntheticUser: SyntheticUserAgent = {
       nextMessage: vi.fn().mockResolvedValue(null),
     };
-    const mockDomCapture = {
+    const mockSiteCapture = {
       capture: vi.fn().mockResolvedValue({
-        url: previewUrl,
-        html: '<html></html>',
-        screenshot: Buffer.from(''),
-        timestamp: new Date().toISOString(),
+        snapshot: makeSnapshotMeta(),
       }),
+    };
+
+    const captureContext: SimulationCaptureContext = {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      siteCapture: mockSiteCapture as any,
+      getTrialOutputDir: vi.fn().mockResolvedValue('/tmp/trials/0'),
     };
 
     await expect(
@@ -1585,8 +1666,7 @@ describe('preview URL pre-warm', () => {
         scenario,
         agentClient,
         syntheticUser,
-         
-        domCapture: mockDomCapture as any,
+        captureContext,
         config: mockConfig,
       }).run(0),
     ).resolves.toBeDefined();

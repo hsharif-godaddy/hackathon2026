@@ -804,6 +804,12 @@ describe('GraduationRunner', () => {
 
         const mockStore = {
           save: vi.fn<EvalStore['save']>().mockResolvedValue('/path'),
+          initRun: vi
+            .fn<EvalStore['initRun']>()
+            .mockResolvedValue('20260101_run-store-stable'),
+          ensureTrialDir: vi
+            .fn<EvalStore['ensureTrialDir']>()
+            .mockResolvedValue('/tmp/trial'),
         };
         const runner = new GraduationRunner({
           scenario: mockScenario,
@@ -818,10 +824,10 @@ describe('GraduationRunner', () => {
           [expect.objectContaining({ scenarioName: 'test-scenario' })],
           [mockScenario],
           mockConfig,
-          undefined,
-          undefined,
-          undefined,
-          'graduation',
+          expect.objectContaining({
+            kind: 'graduation',
+            dirName: '20260101_run-store-stable',
+          }),
         );
       },
     );
@@ -836,6 +842,12 @@ describe('GraduationRunner', () => {
 
         const mockStore = {
           save: vi.fn<EvalStore['save']>().mockResolvedValue('/path'),
+          initRun: vi
+            .fn<EvalStore['initRun']>()
+            .mockResolvedValue('20260101_run-store-unstable'),
+          ensureTrialDir: vi
+            .fn<EvalStore['ensureTrialDir']>()
+            .mockResolvedValue('/tmp/trial'),
         };
         const runner = new GraduationRunner({
           scenario: mockScenario,
@@ -850,11 +862,40 @@ describe('GraduationRunner', () => {
           [expect.objectContaining({ scenarioName: 'test-scenario' })],
           [mockScenario],
           mockConfig,
-          undefined,
-          undefined,
-          undefined,
-          'graduation',
+          expect.objectContaining({
+            kind: 'graduation',
+            dirName: '20260101_run-store-unstable',
+          }),
         );
+      },
+    );
+
+    it('calls initRun exactly once — never twice (double-dir bug guard)',
+      async () => {
+        mockSuiteRunnerRun.mockResolvedValue([
+          makeScenarioResult([
+            'pass', 'pass', 'pass', 'pass', 'pass', 'pass',
+          ]),
+        ]);
+
+        const mockStore = {
+          save: vi.fn<EvalStore['save']>().mockResolvedValue('/path'),
+          initRun: vi
+            .fn<EvalStore['initRun']>()
+            .mockResolvedValue('20260101_run-once'),
+          ensureTrialDir: vi
+            .fn<EvalStore['ensureTrialDir']>()
+            .mockResolvedValue('/tmp/trial'),
+        };
+        const runner = new GraduationRunner({
+          scenario: mockScenario,
+          config: mockConfig,
+          baselineStore: mockBaselineStore,
+          store: mockStore as unknown as EvalStore,
+        });
+        await runner.run('run-once');
+
+        expect(mockStore.initRun).toHaveBeenCalledTimes(1);
       },
     );
 

@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
+import type { DOMSnapshot } from '../../clients/dom-capture.js';
+import type { CapturedSite } from '../../clients/site-capture/types.js';
 import { TranscriptBuilder } from '../transcript.js';
 import type { Turn, ToolCall } from '../transcript.js';
-import type { DOMSnapshot } from '../../clients/dom-capture.js';
 
 const makeTurn = (overrides: Partial<Turn> = {}): Turn => ({
   role: 'user',
@@ -21,10 +22,12 @@ const makeToolCall = (overrides: Partial<ToolCall> = {}): ToolCall => ({
   ...overrides,
 });
 
-const makeSnapshot = (html = '<html/>'): DOMSnapshot => ({
+const makeSnapshot = (
+  htmlPath = '/tmp/snap/0.html',
+): DOMSnapshot => ({
   url: 'https://localhost:8443',
-  html,
-  screenshot: Buffer.from(''),
+  htmlPath,
+  screenshotPath: '/tmp/snap/0.png',
   timestamp: new Date().toISOString(),
   consoleLogs: [],
 });
@@ -125,26 +128,70 @@ describe('TranscriptBuilder', () => {
   describe('addSnapshot()', () => {
     it('attaches snapshots in insertion order', () => {
       const builder = new TranscriptBuilder('s', 0);
-      builder.addSnapshot(makeSnapshot('<html>1</html>'));
-      builder.addSnapshot(makeSnapshot('<html>2</html>'));
+      builder.addSnapshot(makeSnapshot('/tmp/snap-a/0.html'));
+      builder.addSnapshot(makeSnapshot('/tmp/snap-b/0.html'));
       const { snapshots } = builder.build();
       expect(snapshots).toHaveLength(2);
-      expect(snapshots[0].html).toBe('<html>1</html>');
-      expect(snapshots[1].html).toBe('<html>2</html>');
+      expect(snapshots[0].htmlPath).toBe('/tmp/snap-a/0.html');
+      expect(snapshots[1].htmlPath).toBe('/tmp/snap-b/0.html');
     });
 
-    it('preserves snapshot url, html, screenshot, timestamp', () => {
+    it('preserves snapshot url, paths, timestamp, consoleLogs', () => {
       const builder = new TranscriptBuilder('s', 0);
       const ts = '2026-04-03T00:00:00.000Z';
       const snap: DOMSnapshot = {
         url: 'https://localhost:8443/app',
-        html: '<div>app</div>',
-        screenshot: Buffer.from([1, 2, 3]),
+        htmlPath: '/tmp/snap/0.html',
+        screenshotPath: '/tmp/snap/0.png',
         timestamp: ts,
-        consoleLogs: [],
+        consoleLogs: [{ type: 'log', text: 'hi' }],
       };
       builder.addSnapshot(snap);
       expect(builder.build().snapshots[0]).toEqual(snap);
+    });
+  });
+
+  describe('addCapturedSite()', () => {
+    const sample: CapturedSite = {
+      previewUrl: 'https://example.com',
+      generatedAt: '2026-04-29T00:00:00.000Z',
+      durationMs: 1234,
+      outputDir: '/tmp/out',
+      routes: [
+        {
+          path: '/',
+          url: 'https://example.com',
+          origin: 'homepage',
+          status: 'ok',
+          httpStatus: 200,
+        },
+      ],
+      perRoute: [],
+      errors: [],
+    };
+
+    it('is omitted from the built transcript when never attached', () => {
+      const transcript = new TranscriptBuilder('s', 0).build();
+      expect(transcript.capturedSite).toBeUndefined();
+    });
+
+    it('attaches the captured site to the built transcript', () => {
+      const builder = new TranscriptBuilder('s', 0);
+      builder.addCapturedSite(sample);
+      expect(builder.build().capturedSite).toEqual(sample);
+    });
+
+    it('keeps only the most recent captured site when called twice', () => {
+      const builder = new TranscriptBuilder('s', 0);
+      builder.addCapturedSite(sample);
+      const replacement: CapturedSite = {
+        ...sample,
+        previewUrl: 'https://other.example.com',
+      };
+      builder.addCapturedSite(replacement);
+      expect(builder.build().capturedSite?.previewUrl).toBe(
+        'https://other.example.com',
+      );
     });
   });
 

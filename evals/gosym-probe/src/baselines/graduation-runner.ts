@@ -9,7 +9,7 @@ import type {
 import type { Config } from '../../config/environments/types.js';
 import type { AgentClient } from '../clients/agent-client.js';
 import type { SyntheticUserAgent } from '../runner/synthetic-user.js';
-import type { DOMCapture } from '../clients/dom-capture.js';
+import type { SiteCapture } from '../clients/dom-capture.js';
 import type {
   AggregatedResult,
   ScenarioResult,
@@ -30,7 +30,7 @@ export interface GraduationRunnerOptions {
   config: Config;
   makeAgentClient?: () => Promise<AgentClient>;
   syntheticUser?: SyntheticUserAgent;
-  domCapture?: DOMCapture;
+  siteCapture?: SiteCapture;
   baselineStore: BaselineStore;
   stabilityLevelOverride?: StabilityLevel;
   concurrencyOverride?: number;
@@ -62,8 +62,9 @@ export class GraduationRunner {
       config,
       makeAgentClient,
       syntheticUser,
-      domCapture,
+      siteCapture,
       baselineStore,
+      store,
     } = this.options;
 
     const stabilityLevel =
@@ -77,16 +78,28 @@ export class GraduationRunner {
     const executionModeOverride =
       stabilityLevel !== 'low' ? 'parallel' as const : undefined;
 
+    const dirName = store
+      ? await store.initRun(runId, [scenario], config, {
+        concurrencyOverride: this.options.concurrencyOverride,
+        maxTurnsOverride: this.options.maxTurnsOverride,
+        kind: 'graduation',
+      })
+      : undefined;
+
     const runner = new SuiteRunner({
       scenarios: [scenario],
       config,
       makeAgentClient,
       syntheticUser,
-      domCapture,
+      siteCapture,
       trialsOverride: totalTrials,
       concurrencyOverride: this.options.concurrencyOverride,
       maxTurnsOverride: this.options.maxTurnsOverride,
       executionModeOverride,
+      ...(store && dirName && {
+        getTrialOutputDir: (scenarioName, trialIndex) =>
+          store.ensureTrialDir(dirName, scenarioName, trialIndex),
+      }),
     });
 
     const [result] = await runner.run();
@@ -103,17 +116,13 @@ export class GraduationRunner {
     const promoted =
       !Number.isNaN(minPassRate) && minPassRate >= threshold;
 
-    if (this.options.store) {
-      await this.options.store.save(
-        runId,
-        [result],
-        [scenario],
-        config,
-        undefined,
-        this.options.concurrencyOverride,
-        this.options.maxTurnsOverride,
-        'graduation',
-      );
+    if (this.options.store && dirName) {
+      await this.options.store.save(runId, [result], [scenario], config, {
+        concurrencyOverride: this.options.concurrencyOverride,
+        maxTurnsOverride: this.options.maxTurnsOverride,
+        kind: 'graduation',
+        dirName,
+      });
     }
 
     if (promoted) {

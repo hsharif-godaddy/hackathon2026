@@ -1,7 +1,9 @@
-import type { EvalResult, Evaluator } from './evaluator.js';
+import { readFile } from 'node:fs/promises';
+
+import type { GocodeClient } from '../clients/gocode-client.js';
 import type { DOMSnapshot, Transcript } from '../runner/transcript.js';
 import type { Scenario } from '../scenarios/types.js';
-import type { GocodeClient } from '../clients/gocode-client.js';
+import type { EvalResult, Evaluator } from './evaluator.js';
 
 const MAX_HTML_CHARS = 10_000;
 const BODY_RE = /<body[^>]*>([\s\S]*?)<\/body>/i;
@@ -18,8 +20,12 @@ function isDOMSnapshot(value: unknown): value is DOMSnapshot {
   return (
     typeof value === 'object' &&
     value !== null &&
-    'html' in value
+    'htmlPath' in value
   );
+}
+
+async function readHtml(snapshot: DOMSnapshot): Promise<string> {
+  return readFile(snapshot.htmlPath, 'utf-8');
 }
 
 export class OutputQualityEvaluator implements Evaluator {
@@ -33,7 +39,30 @@ export class OutputQualityEvaluator implements Evaluator {
     scenario: Scenario,
     snapshot?: DOMSnapshot,
   ): Promise<EvalResult> {
-    if (!snapshot || !snapshot.html.trim()) {
+    if (!snapshot) {
+      return {
+        evaluator: this.name,
+        score: 0,
+        verdict: 'unknown',
+        reason: 'No DOM snapshot available to evaluate',
+      };
+    }
+
+    let html: string;
+    try {
+      html = await readHtml(snapshot);
+    } catch (err) {
+      return {
+        evaluator: this.name,
+        score: 0,
+        verdict: 'unknown',
+        reason:
+          'Failed to read snapshot html: ' +
+          (err instanceof Error ? err.message : String(err)),
+      };
+    }
+
+    if (!html.trim()) {
       return {
         evaluator: this.name,
         score: 0,
@@ -45,12 +74,17 @@ export class OutputQualityEvaluator implements Evaluator {
     const taskDescription = scenario.goals
       .map((g) => g.description)
       .join('; ');
-    const htmlContent = extractBodyContent(snapshot.html);
+    const htmlContent = extractBodyContent(html);
 
     let refSection = '';
     if (isDOMSnapshot(scenario.referenceSolution)) {
-      const refBody = extractBodyContent(scenario.referenceSolution.html);
-      refSection = `\nReference DOM:\n${refBody}\n`;
+      const refHtml = await readHtml(scenario.referenceSolution).catch(
+        () => '',
+      );
+      if (refHtml) {
+        const refBody = extractBodyContent(refHtml);
+        refSection = `\nReference DOM:\n${refBody}\n`;
+      }
     }
 
     const prompt = [
@@ -59,9 +93,6 @@ export class OutputQualityEvaluator implements Evaluator {
       '',
       `Task: ${taskDescription}`,
       '',
-      'DOM Snapshot:',
-      htmlContent,
-      refSection,
       'Evaluate output quality on a 0.0\u20131.0 scale:',
       '- 1.0: Excellent, fully meets requirements',
       '- 0.7\u20130.9: Good, minor issues',
@@ -77,8 +108,20 @@ export class OutputQualityEvaluator implements Evaluator {
       'Use VERDICT: unknown if the snapshot is empty or insufficient.',
     ].join('\n');
 
+    let userPrompt = [
+      'DOM Snapshot by the AI agent for the user task',
+      '<DOM SNAPSHOT BEGIN>',
+      htmlContent,
+      '<DOM SNAPSHOT END>'
+    ].join('\n');
+    
+    if (refSection) {
+      userPrompt += '\n<REFERENCE SECTION BEGIN>\n' + refSection + '\n<REFERENCE SECTION END>';
+    }
+
     const response = await this.gocodeClient.complete([
-      { role: 'user', content: prompt },
+      { role: 'system', content: prompt },
+      { role: 'user', content: userPrompt },
     ]);
 
     return this.parseResponse(response);
