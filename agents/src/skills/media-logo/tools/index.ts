@@ -484,7 +484,7 @@ export const generateLogoTool: SkillToolDefinition = {
   },
 
   config: {
-    timeout: 120000,
+    timeout: 240_000,
   },
 };
 
@@ -647,7 +647,7 @@ export const editLogoTool: SkillToolDefinition = {
   },
 
   config: {
-    timeout: 120000,
+    timeout: 240_000,
   },
 };
 
