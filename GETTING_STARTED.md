@@ -18,7 +18,6 @@
 cd airo-app-builder
 direnv allow                # one-time; activates Node + corepack + pnpm wrapper via .envrc
 pnpm install
-aws sso login --profile airobuild-dev-private-sso    # first run or after session expiry
 pnpm run dev
 ```
 
