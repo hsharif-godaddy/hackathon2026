@@ -15,7 +15,7 @@
 
 import { Router, Request, Response, IRouter } from 'express';
 import { existsSync, writeFileSync, createWriteStream, mkdirSync } from 'fs';
-import { basename, dirname, join as pathJoin, normalize, sep } from 'path';
+import { join as pathJoin } from 'path';
 
 import multer from 'multer';
 import { AppRepository } from '../../database/index.js';
@@ -35,6 +35,7 @@ import { BYPASS_SITE_IDS } from '../../services/features.js';
 import { searchCode } from '../../utils/code-search.js';
 import type { AuthenticatedRequest } from '../middleware/jwt-auth.js';
 import { validateAppOwnership } from '../middleware/app-ownership.js';
+import { resolveScreenshotDir } from './screenshot-paths.js';
 
 const router: IRouter = Router();
 
@@ -46,23 +47,6 @@ const astStyleEditor = new ASTStyleEditor();
 const astTextEditor = new ASTTextEditor();
 
 const logger = Logger.create({ component: 'apps-routes' });
-
-// Local dev runs agents on the host and preview in Docker. When SCREENSHOT_DIR is
-// not set, store screenshots in the app's agent directory so they don't end up in
-// the preview app workspace/container path.
-function resolveScreenshotDir(appPath: string): string {
-  if (process.env.SCREENSHOT_DIR) {
-    return process.env.SCREENSHOT_DIR;
-  }
-
-  const normalizedAppPath = normalize(appPath);
-
-  if (basename(normalizedAppPath) === 'preview') {
-    return `${dirname(normalizedAppPath)}${sep}agent`;
-  }
-
-  return normalizedAppPath;
-}
 
 /**
  * GET /apps - List all apps (scoped to authenticated user's siteId)
@@ -1163,8 +1147,12 @@ router.post('/suggest-name', async (req: Request, res: Response) => {
 
 /**
  * GET /apps/:id/screenshot - Get app screenshot
- * Serves the screenshot.png file from SCREENSHOT_DIR when configured, otherwise
- * from the local agent directory for preview workspaces or the app directory.
+ *
+ * PaaS callers: serves the screenshot captured via POST /capture-screenshot,
+ * stored in the directory resolved by resolveScreenshotDir().
+ *
+ * Non-PaaS callers: serves the screenshot uploaded via POST /screenshot,
+ * stored in the app directory itself.
  */
 router.get('/:id/screenshot', (req: Request, res: Response) => {
   try {
@@ -1178,14 +1166,29 @@ router.get('/:id/screenshot', (req: Request, res: Response) => {
       return res.status(404).json({ error: 'App not found' });
     }
 
-    const screenshotDir = resolveScreenshotDir(app.path);
-    const screenshotPath = pathJoin(screenshotDir, `${app.id}-screenshot.png`);
+    const { product } = (req as AuthenticatedRequest).agentContext ?? {};
 
-    if (existsSync(screenshotPath)) {
-      return res.sendFile(screenshotPath);
-    } else {
+    // PaaS branch — hosting-web-apps relies on this path for server-side
+    // screenshot capture. The filename/directory may diverge from the Airo
+    // branch below, so keep the two branches separate even if they look
+    // identical today.
+    if (product === 'PaaSNodeJS') {
+      const screenshotDir = resolveScreenshotDir(app.path);
+      const screenshotPath = pathJoin(screenshotDir, `${app.id}-screenshot.png`);
+
+      if (existsSync(screenshotPath)) {
+        return res.sendFile(screenshotPath);
+      }
       return res.status(404).json({ error: 'Screenshot not found' });
     }
+
+    // Non-PaaS: serve from the same directory as POST /screenshot uploads
+    const screenshotDir = resolveScreenshotDir(app.path);
+    const screenshotPath = pathJoin(screenshotDir, `${app.id}-screenshot.png`);
+    if (existsSync(screenshotPath)) {
+      return res.sendFile(screenshotPath);
+    }
+    return res.status(404).json({ error: 'Screenshot not found' });
   } catch (error) {
     const contextLogger = req.params.id ? log.forApp(req.params.id) : logger;
     log.error(contextLogger, 'route.apps.screenshot.get.error', error as Error, {});

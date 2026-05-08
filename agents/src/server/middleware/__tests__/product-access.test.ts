@@ -110,6 +110,9 @@ describe('product-access middleware', () => {
       { method: 'GET', path: '/apps/abc123/files' },
       { method: 'GET', path: '/apps/abc123/files/read' },
       { method: 'POST', path: '/apps/abc123/files/write' },
+      // Screenshots
+      { method: 'GET', path: '/apps/abc123/screenshot' },
+      { method: 'POST', path: '/apps/abc123/capture-screenshot' },
     ];
 
     it.each(allowedRoutes)(

@@ -65,6 +65,10 @@ const PAAS_ALLOWED_ROUTES: RoutePattern[] = [
   { method: 'PUT', path: '/apps/:id/database/tables/:tableName/rows' },
   { method: 'DELETE', path: '/apps/:id/database/tables/:tableName/rows' },
   { method: 'GET', path: '/apps/:id/database/tables/:tableName/export' },
+
+  // Screenshots
+  { method: 'GET', path: '/apps/:id/screenshot' },
+  { method: 'POST', path: '/apps/:id/capture-screenshot' },
 ];
 
 /**
