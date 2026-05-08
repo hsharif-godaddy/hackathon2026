@@ -274,6 +274,17 @@ func buildPreflightRunner(projectRoot string) *preflight.Runner {
 
 	return &preflight.Runner{
 		Categories: []preflight.CategoryGroup{
+			// direnv runs alone first as a blocking prerequisite: without it, the
+			// shell hasn't sourced .envrc so subsequent checks (Node version,
+			// pnpm, etc.) would read the wrong toolchain from PATH and emit
+			// misleading failures that mask the real problem.
+			{
+				Name:           preflight.CategoryTools,
+				BlockOnFailure: true,
+				Checks: []preflight.CheckWithFixer{
+					{Check: &checks.DirenvCheck{}},
+				},
+			},
 			{
 				Name: preflight.CategoryTools,
 				Checks: []preflight.CheckWithFixer{
@@ -285,7 +296,6 @@ func buildPreflightRunner(projectRoot string) *preflight.Runner {
 					{Check: &checks.DockerCheck{}},
 					{Check: &checks.AWSCLICheck{}},
 					{Check: &checks.ArtifactoryCheck{}, Fixer: &fixers.ArtifactoryFixer{}},
-					{Check: &checks.DirenvCheck{}},
 				},
 			},
 			{

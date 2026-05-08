@@ -63,7 +63,7 @@ func (m Model) renderPreflightDashboard() string {
 			fmt.Sprintf("%d item(s) can be auto-fixed. ", len(fixable)) + m.help.View(m.preflightKeys)))
 	} else if failCount > 0 {
 		b.WriteString(preflightFooterStyle.Render(
-			"No auto-fixes available. Install missing tools and run again."))
+			"No auto-fixes available. Install missing tools and run again. Press q to quit."))
 	} else if warnCount > 0 {
 		b.WriteString(preflightFooterStyle.Render(m.help.View(m.preflightKeys)))
 	}

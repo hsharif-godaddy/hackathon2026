@@ -12,23 +12,36 @@ type Runner struct {
 }
 
 // CategoryGroup holds checks for a single category.
+//
+// When BlockOnFailure is true and any check in the group returns StatusFail,
+// both RunAll and RunFailed stop immediately and subsequent categories are
+// not executed. Use this for prerequisite checks (e.g. direnv) whose failure
+// would make downstream checks produce misleading results — without direnv
+// loaded, the Node version check would read the wrong node from PATH and
+// report a false version mismatch.
 type CategoryGroup struct {
-	Name   string
-	Checks []CheckWithFixer
+	Name           string
+	Checks         []CheckWithFixer
+	BlockOnFailure bool
 }
 
 // RunAll executes all checks and returns results.
 // Categories run in order. Within each category, checks run concurrently.
+// A category marked BlockOnFailure halts execution on any StatusFail.
 func (r *Runner) RunAll(ctx context.Context, projectRoot string) []CheckResult {
 	var allResults []CheckResult
 	for _, cat := range r.Categories {
 		results := r.runCategory(ctx, projectRoot, cat)
 		allResults = append(allResults, results...)
+		if cat.BlockOnFailure && HasFailures(results) {
+			break
+		}
 	}
 	return allResults
 }
 
-// RunFailed re-runs only checks that previously failed.
+// RunFailed re-runs only checks that previously failed. A category marked
+// BlockOnFailure halts execution on any StatusFail, matching RunAll.
 func (r *Runner) RunFailed(ctx context.Context, projectRoot string, failedNames map[string]bool) []CheckResult {
 	var allResults []CheckResult
 	for _, cat := range r.Categories {
@@ -41,9 +54,12 @@ func (r *Runner) RunFailed(ctx context.Context, projectRoot string, failedNames 
 		if len(toRun) == 0 {
 			continue
 		}
-		group := CategoryGroup{Name: cat.Name, Checks: toRun}
+		group := CategoryGroup{Name: cat.Name, Checks: toRun, BlockOnFailure: cat.BlockOnFailure}
 		results := r.runCategory(ctx, projectRoot, group)
 		allResults = append(allResults, results...)
+		if cat.BlockOnFailure && HasFailures(results) {
+			break
+		}
 	}
 	return allResults
 }
