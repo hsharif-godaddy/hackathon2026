@@ -1,7 +1,7 @@
 import { useIsMutating, useMutation, useQueryClient } from '@tanstack/react-query'
 
 import { getErrorMessage } from '@/lib/errors'
-import { waitForQueryUpdate } from '@/lib/query-utils'
+import { invalidatePlanQueries, waitForQueryUpdate } from '@/lib/query-utils'
 import { logger } from '@/lib/request-context'
 import type { CreditGrant } from '@/types/credits'
 import { GrantType } from '@/types/credits'
@@ -153,10 +153,7 @@ export function useUpgradePurchase(): UseUpgradePurchaseResult {
       return { planAfterPurchase: finalPlan, updated, grantUpdated }
     },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ['subscriptions'] })
-      queryClient.invalidateQueries({ queryKey: ['active-subscription'] })
-      queryClient.invalidateQueries({ queryKey: ['paywall-feature-flags'] })
-      queryClient.invalidateQueries({ queryKey: ['credit-grants'] })
+      invalidatePlanQueries(queryClient)
     },
     onError: (error, { planBeforePurchase, isUpgrade }) => {
       const changeType = isUpgrade ? 'upgrade' : 'downgrade'

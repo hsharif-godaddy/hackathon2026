@@ -12,6 +12,7 @@ import { getItcOverride } from '@/lib/itc'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { AiroSubscription } from '@/lib/mgmt-airo/types';
 import { isPlanUpgrade } from '@/lib/paywall/shared'
+import { invalidatePlanQueries } from '@/lib/query-utils'
 import type { CreditGrant } from '@/types/credits';
 import { GrantType, SubscriptionPlan } from '@/types/credits';
 import { resetFocusOnModalClose } from '@/utils/focus'
@@ -85,12 +86,18 @@ const HigherPlansUpgradeContainer = ({
     // Renewal: same plan before and after - no polling needed since plan won't change
     if (planBeforePurchase && planAfterPurchase && planBeforePurchase === planAfterPurchase) {
       shipAnalyticsLog('paid_plan.renewal.success', { source, productId, plan: planAfterPurchase })
+      invalidatePlanQueries(queryClient)
+      onSuccessClick?.()
+      resetFocusOnModalClose()
       return
     }
 
     // Renewal of the scheduled downgrade plan - no polling needed since plan won't change
     if (planBeforePurchase && downgradedPlan && planAfterPurchase && downgradedPlan === planAfterPurchase) {
       shipAnalyticsLog('paid_plan.renewal_downgrade.success', { source, productId, plan: planAfterPurchase })
+      invalidatePlanQueries(queryClient)
+      onSuccessClick?.()
+      resetFocusOnModalClose()
       return
     }
 
@@ -143,7 +150,7 @@ const HigherPlansUpgradeContainer = ({
         })
       }
     })
-  }, [source, productId, queryClient, handlePurchaseSuccess, subscriptionId])
+  }, [source, productId, queryClient, handlePurchaseSuccess, subscriptionId, onSuccessClick])
 
   const handleError = useCallback((error: Error) => {
     shipAnalyticsLog('paywall.cds.load.error', {

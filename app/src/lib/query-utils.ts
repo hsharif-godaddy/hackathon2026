@@ -5,16 +5,13 @@ interface WaitForUpdateOptions {
   intervalMs?: number
 }
 
-/**
- * Polls a query until a condition is met or timeout is reached.
- * Useful for waiting on external services to reflect changes (e.g., after purchase).
- *
- * @param queryClient - React Query client
- * @param queryKey - Query key to refetch
- * @param hasChanged - Predicate that returns true when the expected change is detected
- * @param options - Polling options (maxAttempts defaults to 30, intervalMs defaults to 1000)
- * @returns true if condition was met, false if timed out
- */
+export function invalidatePlanQueries(queryClient: QueryClient) {
+  queryClient.invalidateQueries({ queryKey: ['subscriptions'] })
+  queryClient.invalidateQueries({ queryKey: ['active-subscription'] })
+  queryClient.invalidateQueries({ queryKey: ['paywall-feature-flags'] })
+  queryClient.invalidateQueries({ queryKey: ['credit-grants'] })
+}
+
 export async function waitForQueryUpdate<T>(
   queryClient: QueryClient,
   queryKey: QueryKey,

@@ -1,7 +1,23 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { QueryClient } from '@tanstack/react-query'
 
-import { waitForQueryUpdate } from './query-utils'
+import { invalidatePlanQueries, waitForQueryUpdate } from './query-utils'
+
+describe('invalidatePlanQueries', () => {
+  it('invalidates all plan-related query keys', () => {
+    const mockQueryClient = {
+      invalidateQueries: vi.fn(),
+    } as unknown as QueryClient
+
+    invalidatePlanQueries(mockQueryClient)
+
+    expect(mockQueryClient.invalidateQueries).toHaveBeenCalledTimes(4)
+    expect(mockQueryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['subscriptions'] })
+    expect(mockQueryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['active-subscription'] })
+    expect(mockQueryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['paywall-feature-flags'] })
+    expect(mockQueryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['credit-grants'] })
+  })
+})
 
 describe('waitForQueryUpdate', () => {
   let mockQueryClient: QueryClient

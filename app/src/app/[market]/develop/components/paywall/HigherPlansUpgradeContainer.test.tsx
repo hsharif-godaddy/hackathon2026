@@ -15,6 +15,7 @@ const mockOnSuccessClick = vi.fn();
 const mockOnErrorClick = vi.fn();
 const mockOnError = vi.fn();
 const mockGetQueryData = vi.fn();
+const mockInvalidateQueries = vi.fn();
 const mockHandlePurchaseSuccess = vi.fn();
 
 vi.mock('@/hooks/useGasketData', () => ({
@@ -36,6 +37,7 @@ vi.mock('@tanstack/react-query', async () => {
     ...actual,
     useQueryClient: () => ({
       getQueryData: mockGetQueryData,
+      invalidateQueries: mockInvalidateQueries,
     }),
   };
 });
@@ -73,6 +75,10 @@ vi.mock('@/lib/paywall/shared', () => ({
     const priority: Record<string, number> = { free: 0, starter: 1, professional: 2, ultimate: 3 };
     return (priority[newPlan as string] ?? 0) > (priority[oldPlan as string] ?? 0);
   }),
+}));
+
+vi.mock('@/utils/focus', () => ({
+  resetFocusOnModalClose: vi.fn(),
 }));
 
 vi.mock('@/utils/instrumentation', () => ({
@@ -166,6 +172,7 @@ vi.mock('./PaywallLoadingModal', () => ({
 
 import { useSubscription } from '@/hooks/useSubscription';
 import { shipAnalyticsLog } from '@/lib/logging';
+import { resetFocusOnModalClose } from '@/utils/focus';
 import { logImpressionEvent } from '@/utils/instrumentation';
 
 describe('HigherPlansUpgradeContainer', function higherPlansUpgradeContainerTests() {
@@ -309,12 +316,14 @@ describe('HigherPlansUpgradeContainer', function higherPlansUpgradeContainerTest
       fromPlan: 'professional',
       toPlan: SubscriptionPlan.Ultimate,
     }));
+    expect(mockOnSuccessClick).not.toHaveBeenCalled();
   });
 
   it('handles downgrade and triggers polling', async function handlesDowngrade() {
     renderWithProviders(
       <HigherPlansUpgradeContainer
         onClose={mockOnClose}
+        onSuccessClick={mockOnSuccessClick}
         source="test-source"
       />
     );
@@ -331,6 +340,7 @@ describe('HigherPlansUpgradeContainer', function higherPlansUpgradeContainerTest
       undefined, // no subscriptionId for downgrades (no grant polling)
       undefined // no initialPlanMonthlyGrantId for downgrades
     );
+    expect(mockOnSuccessClick).not.toHaveBeenCalled();
   });
 
   it('calls onSuccessClick when success click button is triggered', function callsOnSuccessClick() {
@@ -566,6 +576,7 @@ describe('HigherPlansUpgradeContainer', function higherPlansUpgradeContainerTest
     renderWithProviders(
       <HigherPlansUpgradeContainer
         onClose={mockOnClose}
+        onSuccessClick={mockOnSuccessClick}
         source="test-source"
       />
     );
@@ -593,6 +604,39 @@ describe('HigherPlansUpgradeContainer', function higherPlansUpgradeContainerTest
     }));
     // Should NOT call handlePurchaseSuccess for renewals - no polling needed
     expect(mockHandlePurchaseSuccess).not.toHaveBeenCalled();
+    // Should close modal and invalidate queries
+    expect(mockOnSuccessClick).toHaveBeenCalledTimes(1);
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['subscriptions'] });
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['active-subscription'] });
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['paywall-feature-flags'] });
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['credit-grants'] });
+    expect(resetFocusOnModalClose).toHaveBeenCalled();
+  });
+
+  it('handles renewal without onSuccessClick prop', function handlesRenewalWithoutOnSuccessClick() {
+    mockGetQueryData.mockReturnValue({
+      active: {
+        plan: 'professional',
+        downgradedPlan: undefined,
+      },
+    });
+
+    renderWithProviders(
+      <HigherPlansUpgradeContainer
+        onClose={mockOnClose}
+        source="test-source"
+      />
+    );
+
+    fireEvent.click(screen.getByTestId('renew-professional-button'));
+
+    expect(mockHandlePurchaseSuccess).not.toHaveBeenCalled();
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['subscriptions'] });
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['active-subscription'] });
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['paywall-feature-flags'] });
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['credit-grants'] });
+    expect(resetFocusOnModalClose).toHaveBeenCalled();
+    expect(mockOnSuccessClick).not.toHaveBeenCalled();
   });
 
   it('skips polling for renewal of scheduled downgrade plan', function skipsPollingForDowngradeRenewal() {
@@ -606,6 +650,7 @@ describe('HigherPlansUpgradeContainer', function higherPlansUpgradeContainerTest
     renderWithProviders(
       <HigherPlansUpgradeContainer
         onClose={mockOnClose}
+        onSuccessClick={mockOnSuccessClick}
         source="test-source"
       />
     );
@@ -634,5 +679,38 @@ describe('HigherPlansUpgradeContainer', function higherPlansUpgradeContainerTest
     }));
     // Should NOT call handlePurchaseSuccess for renewal of downgrade - no polling needed
     expect(mockHandlePurchaseSuccess).not.toHaveBeenCalled();
+    // Should close modal and invalidate queries
+    expect(mockOnSuccessClick).toHaveBeenCalledTimes(1);
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['subscriptions'] });
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['active-subscription'] });
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['paywall-feature-flags'] });
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['credit-grants'] });
+    expect(resetFocusOnModalClose).toHaveBeenCalled();
+  });
+
+  it('handles downgrade renewal without onSuccessClick prop', function handlesDowngradeRenewalWithoutOnSuccessClick() {
+    mockGetQueryData.mockReturnValue({
+      active: {
+        plan: 'professional',
+        downgradedPlan: 'starter',
+      },
+    });
+
+    renderWithProviders(
+      <HigherPlansUpgradeContainer
+        onClose={mockOnClose}
+        source="test-source"
+      />
+    );
+
+    fireEvent.click(screen.getByTestId('renew-starter-button'));
+
+    expect(mockHandlePurchaseSuccess).not.toHaveBeenCalled();
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['subscriptions'] });
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['active-subscription'] });
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['paywall-feature-flags'] });
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['credit-grants'] });
+    expect(resetFocusOnModalClose).toHaveBeenCalled();
+    expect(mockOnSuccessClick).not.toHaveBeenCalled();
   });
 });

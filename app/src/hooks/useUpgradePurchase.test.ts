@@ -11,9 +11,10 @@ import { act, waitFor } from '@testing-library/react';
 import { renderHookWithProviders } from '@/tests/test-utils';
 import { useIsUpgradePolling, useUpgradePurchase } from './useUpgradePurchase';
 
-// Mock waitForQueryUpdate
+// Mock query-utils
 vi.mock('@/lib/query-utils', () => ({
   waitForQueryUpdate: vi.fn(),
+  invalidatePlanQueries: vi.fn(),
 }));
 
 // Mock logger
