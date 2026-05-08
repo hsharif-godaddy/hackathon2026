@@ -92,6 +92,7 @@ const SettingsMenu = forwardRef<SettingsMenuRef>((props, ref) => {
               text={item.label}
               disabled={item.disabled}
               className="!justify-start"
+              data-testid={item.testId}
               onClick={() => {
                 logClickEvent(`develop.settings_menu.${item.id}`, clickContext)();
                 if (item.onClick) {

@@ -43,16 +43,19 @@ export function CategorySelectStep({ onSelectCategory }: CategorySelectStepProps
         <OptionButton
           text={t('builder_feedback_category_support')}
           isSelectable
+          testId="feedback-category-support"
           onClick={() => { logClickEvent('feedback.category.support')(); onSelectCategory('support'); }}
         />
         <OptionButton
           text={t('builder_feedback_category_issue')}
           isSelectable
+          testId="feedback-category-issue"
           onClick={() => { logClickEvent('feedback.category.issue')(); onSelectCategory('issue'); }}
         />
         <OptionButton
           text={t('builder_feedback_category_share')}
           isSelectable
+          testId="feedback-category-share"
           onClick={() => { logClickEvent('feedback.category.share')(); onSelectCategory('feedback'); }}
         />
       </div>

@@ -8,6 +8,7 @@ interface OptionButtonProps {
   animationDelay?: number
   keyboardShortcut?: number
   compact?: boolean
+  testId?: string
 }
 
 export default function OptionButton({
@@ -18,10 +19,12 @@ export default function OptionButton({
   animationDelay = 0,
   keyboardShortcut,
   compact = false,
+  testId,
 }: OptionButtonProps) {
   return (
     <motion.button
       type="button"
+      data-testid={testId}
       onClick={onClick}
       disabled={disabled}
       initial={{ opacity: 0, y: 5 }}

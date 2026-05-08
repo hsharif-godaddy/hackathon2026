@@ -26,6 +26,7 @@ export interface SettingsNavItem {
   icon: ReactNode;
   disabled: boolean;
   onClick?: () => void;
+  testId?: string;
 }
 
 /**
@@ -112,6 +113,7 @@ export function useSettingsNavItems(): SettingsNavItem[] {
       icon: <ClipboardIcon />,
       disabled: false,
       onClick: handleFeedbackClick,
+      testId: 'settings-feedback-item',
     },
   ];
 }
