@@ -5,7 +5,7 @@ FROM 764525110978.dkr.ecr.us-west-2.amazonaws.com/alpine-golang:1.25-alpine AS b
 USER root
 WORKDIR /app
 
-COPY stripe-service/go.mod stripe-service/go.sum* ./
+COPY stripe-service/go.mod stripe-service/go.sum ./
 RUN go mod download
 
 COPY stripe-service/cmd ./cmd
