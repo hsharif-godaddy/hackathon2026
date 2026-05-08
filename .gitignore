@@ -4,6 +4,8 @@
 node_modules
 .pnpm-store/
 cdk/package-lock.json
+__pycache__/
+*.pyc
 
 # Local clone of gdcorp-golang/auth (needed for Go replace directives)
 /auth

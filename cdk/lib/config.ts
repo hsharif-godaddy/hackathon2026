@@ -69,6 +69,14 @@ interface Config {
   postgresReadersCount: number;
   gocodeAssumeRoleArns: string[];
   katanaEcsTaskRoleArn: string[];  // Katana ECS Task Role for JWT access
+  /**
+   * ARNs of the debug-console Katana ECS task role(s) allowed to invoke the
+   * investigator Lambda and read/write the investigations state bucket.
+   * Scoped narrowly (only the console role) — the broader
+   * `katanaEcsTaskRoleArn` list is for JWT access and doesn't need invoke
+   * permission on the investigator.
+   */
+  investigatorInvokerRoleArns: string[];
   awsIamJwtAccount: string[];
   monitoring: MonitoringConfig;
   jwt: {
@@ -110,6 +118,9 @@ const devConfig: Config = {
     'arn:aws:iam::694282668781:role/airobuilde-custom-KatanaEnvironment9599GlobalEcsTaskRole78E503A1', // budget-service dev-private
     'arn:aws:iam::694282668781:role/airobuilde-custom-KatanaEnvironment7794GlobalEcsTaskRole03DD121F', // console-service dev-private
     'arn:aws:iam::694282668781:role/GD-AWS-USA-GD-AiroBuilde-Ops'
+  ],
+  investigatorInvokerRoleArns: [
+    'arn:aws:iam::694282668781:role/airobuilde-custom-KatanaEnvironment7794GlobalEcsTaskRole03DD121F', // console-service dev-private
   ],
   vpnIps: {
     "165.1.180.132/31": "Prisma External (India West)",
@@ -180,6 +191,9 @@ const testConfig: Config = {
     'arn:aws:iam::269423819739:role/airobuilde-custom-KatanaEnvironment9636GlobalEcsTaskRoleC9421049', // budget-service test
     'arn:aws:iam::694282668781:role/airobuilde-custom-KatanaEnvironment7794GlobalEcsTaskRole03DD121F', // console-service dev-private (test is dev-private only for console)
   ],
+  // AiroInvestigatorStack isn't deployed in test (see main.ts), so this is a
+  // safe empty list; kept here to satisfy the type contract.
+  investigatorInvokerRoleArns: [],
   vpnIps: {},
   awsIamJwtAccount: ['333184933228'],
   monitoring: {
@@ -243,6 +257,9 @@ const prodConfig: Config = {
     'arn:aws:iam::644094189644:role/airobuilde-custom-KatanaEnvironment6030GlobalEcsTaskRole99409837', // airo builder ui prod
     'arn:aws:iam::644094189644:role/airobuilde-custom-KatanaEnvironment7797GlobalEcsTaskRole2CAC93CD', // console-service prod
     'arn:aws:iam::644094189644:role/airobuilde-custom-KatanaEnvironment9637GlobalEcsTaskRoleCE42F0DB', // budget-service prod
+  ],
+  investigatorInvokerRoleArns: [
+    'arn:aws:iam::644094189644:role/airobuilde-custom-KatanaEnvironment7797GlobalEcsTaskRole2CAC93CD', // console-service prod
   ],
   vpnIps: {},
   awsIamJwtAccount: ['377100941779'],

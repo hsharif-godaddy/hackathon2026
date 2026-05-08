@@ -15,6 +15,7 @@ import type { LlmSpendData } from "@/lib/spend-types";
 import { formatTimestamp } from "@/lib/date-utils";
 import { CUSTOMER_ID_RE, SHOPPER_ID_RE } from "@/lib/mgmt-helpers";
 import LogsPanel, { type LogSource } from "@/components/LogsPanel";
+import InvestigatePanel from "@/components/InvestigatePanel";
 import UserMenu from "@/components/UserMenu";
 const TIME_RANGES = [
   { label: "Last 1 hour", value: "1h" },
@@ -53,7 +54,8 @@ type TabId =
   | "summary"
   | "conversations"
   | "care"
-  | "logs";
+  | "logs"
+  | "investigate";
 
 export default function Dashboard() {
   const router = useRouter();
@@ -105,6 +107,7 @@ export default function Dashboard() {
     conversations: 0,
     care: 0,
     logs: 0,
+    investigate: 0,
   });
 
   // Tabs are mounted lazily on first visit, then kept alive via display:none.
@@ -190,7 +193,7 @@ export default function Dashboard() {
       setConversationsSource("agent");
     } else if (
       urlTab &&
-      ["details", "summary", "conversations", "care", "logs"].includes(urlTab)
+      ["details", "summary", "conversations", "care", "logs", "investigate"].includes(urlTab)
     ) {
       setActiveTab(urlTab as TabId);
       if (
@@ -485,6 +488,15 @@ export default function Dashboard() {
     setShopperId(app?.shopperId || null);
   }, []);
 
+  // When user searches by appId alone, submittedCustomerId stays blank.
+  // AppDetailsPanel fetches the subscription (which knows the customerId)
+  // and bubbles it up here so the Investigate tab can stop short-circuiting
+  // to "Enter a customer ID...".
+  const handleCustomerIdLoaded = useCallback((customerId: string | null) => {
+    if (!customerId) return;
+    setSubmittedCustomerId((prev) => (prev === customerId ? prev : customerId));
+  }, []);
+
   const handleClear = () => {
     setAppId("");
     setSubmittedAppId("");
@@ -557,6 +569,7 @@ export default function Dashboard() {
     { id: "conversations", label: "Conversations", icon: "💬" },
     { id: "logs", label: "Logs", icon: "📋" },
     { id: "care", label: "Care Contacts", icon: "🎧" },
+    { id: "investigate", label: "Investigate", icon: "🔍" },
   ];
 
   return (
@@ -1283,6 +1296,7 @@ export default function Dashboard() {
                   onRefresh={() => handleRefreshTab("details")}
                   onGrantsLoaded={handleGrantsLoaded}
                   onAppLoaded={handleAppLoaded}
+                  onCustomerIdLoaded={handleCustomerIdLoaded}
                   llmSpend={llmSpend}
                   llmSpendLoading={llmSpendLoading}
                   llmSpendError={llmSpendError}
@@ -1789,6 +1803,25 @@ export default function Dashboard() {
                     refreshKey={refreshKeys.logs}
                     onRefresh={() => handleRefreshTab("logs")}
                   />
+                </div>
+              )}
+
+              {/* Investigate Tab — lazy-mounted on first visit. Requires
+                  both appId and customerId; the panel auto-loads the most
+                  recent investigation from S3 so reopening the tab shows
+                  the last report without rerunning. */}
+              {visitedTabs.has("investigate") && (
+                <div style={{ display: activeTab === "investigate" ? "block" : "none" }}>
+                  {submittedAppId && submittedCustomerId ? (
+                    <InvestigatePanel
+                      appId={submittedAppId}
+                      customerId={submittedCustomerId}
+                    />
+                  ) : (
+                    <div style={{ color: "#6b7280", fontSize: 13, padding: 16 }}>
+                      Enter an App ID and Customer / Shopper ID above to run an investigation.
+                    </div>
+                  )}
                 </div>
               )}
 

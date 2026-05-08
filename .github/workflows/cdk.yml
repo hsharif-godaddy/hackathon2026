@@ -30,6 +30,8 @@ on:
           - "LakeFormationAdminsStack"
           - "QdrantEcrStack"
           - "QdrantVectorDbStack"
+          - "LambdaBaseEcrStack"
+          - "AiroInvestigatorStack"
         default: "--all"
       DEFAULT_ACTION:
         description: "Default action to take"
@@ -157,6 +159,8 @@ jobs:
           CDK_AWS_ACCOUNT_ID: ${{ env.CDK_AWS_ACCOUNT_ID }}
           STACK_NAME: ${{ env.STACK_NAME }}
           DEFAULT_ACTION: ${{ env.DEFAULT_ACTION }}
+          # Enable BuildKit for Docker asset builds.
+          DOCKER_BUILDKIT: "1"
         run: |
           # Ensure pipeline failures are detected (grep was swallowing exit codes)
           set -o pipefail
@@ -165,6 +169,15 @@ jobs:
           export $(printf "AWS_ACCESS_KEY_ID=%s AWS_SECRET_ACCESS_KEY=%s AWS_SESSION_TOKEN=%s" $(aws sts assume-role \
           --role-arn arn:aws:iam::${CDK_AWS_ACCOUNT_ID}:role/GD-AWS-SSG-Deploy-Role --role-session-name CLISession \
           --query "Credentials.[AccessKeyId,SecretAccessKey,SessionToken]" --output text))
+
+          if { [ "${STACK_NAME}" = "--all" ] || [ "${STACK_NAME}" = "AiroInvestigatorStack" ]; } && { [ "${ENV_NAME}" = "dev" ] || [ "${ENV_NAME}" = "prod" ]; }; then
+            echo "Checking private Lambda base mirror: lambda-nodejs:22"
+            aws ecr describe-images \
+              --repository-name lambda-nodejs \
+              --image-ids imageTag="22" \
+              --region us-west-2 \
+              --no-cli-pager >/dev/null
+          fi
 
           # bootstrap the CDK, required once per account
           npx cdk bootstrap --template node_modules/@gd-safeguard/godaddy-constructs/bootstrap-template.yaml --tags godaddy:governance:tool=safeguard | grep -v "warn: ⚙️ \|warn: \""

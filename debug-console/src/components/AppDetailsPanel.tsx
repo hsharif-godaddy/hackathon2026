@@ -13,6 +13,11 @@ interface Props {
     onRefresh?: () => void;
     onGrantsLoaded?: (subscriptionId: string, grants: MgmtSubscriptionGrants) => void;
     onAppLoaded?: (app: MgmtAppDetails | null) => void;
+    // Emitted once the subscription fetch surfaces the customerId for this
+    // app. Dashboard uses this to populate `submittedCustomerId` when the
+    // user searched by appId only, so the Investigate tab knows whose
+    // investigation bucket path to use.
+    onCustomerIdLoaded?: (customerId: string | null) => void;
     llmSpend?: LlmSpendData | null;
     llmSpendLoading?: boolean;
     llmSpendError?: string | null;
@@ -550,7 +555,7 @@ function SubscriptionBlock({ subscription, subscriptionLoading, grants, grantsLo
     );
 }
 
-export default function AppDetailsPanel({ appId, refreshKey, onRefresh, onGrantsLoaded, onAppLoaded, llmSpend, llmSpendLoading, llmSpendError }: Props) {
+export default function AppDetailsPanel({ appId, refreshKey, onRefresh, onGrantsLoaded, onAppLoaded, onCustomerIdLoaded, llmSpend, llmSpendLoading, llmSpendError }: Props) {
     const [app, setApp] = useState<MgmtAppDetails | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -573,6 +578,8 @@ export default function AppDetailsPanel({ appId, refreshKey, onRefresh, onGrants
     onGrantsLoadedRef.current = onGrantsLoaded;
     const onAppLoadedRef = useRef(onAppLoaded);
     onAppLoadedRef.current = onAppLoaded;
+    const onCustomerIdLoadedRef = useRef(onCustomerIdLoaded);
+    onCustomerIdLoadedRef.current = onCustomerIdLoaded;
 
     function stopPolling() {
         if (pollingRef.current) {
@@ -610,7 +617,10 @@ export default function AppDetailsPanel({ appId, refreshKey, onRefresh, onGrants
                 if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
                 return data as MgmtSubscription;
             })
-            .then(data => setSubscription(data))
+            .then(data => {
+                setSubscription(data);
+                onCustomerIdLoadedRef.current?.(data?.customerId ?? null);
+            })
             .catch(err => { if (err.name !== 'AbortError') console.warn('[AppDetailsPanel] subscription fetch failed', err); })
             .finally(() => { if (!controller.signal.aborted) setSubscriptionLoading(false); });
 

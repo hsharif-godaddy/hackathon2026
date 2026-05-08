@@ -1,0 +1,656 @@
+'use client';
+
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+
+type StartResponse = {
+  investigationId: string;
+  status: string;
+  statusUrl: string;
+  bucket: string;
+};
+
+type ConflictResponse = {
+  error: 'investigation_in_progress';
+  investigationId: string;
+  status: string;
+  startedAt: string;
+};
+
+type StatusResponse = {
+  investigationId: string;
+  appId: string;
+  customerId: string;
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'killed';
+  phase: string | null;
+  lastEvent: string | null;
+  startedAt: string;
+  heartbeatAt: string;
+  completedAt: string | null;
+  durationMs: number | null;
+  stale: boolean;
+  error: string | null;
+  reportAvailable: boolean;
+  reportFilename: string | null;
+  markdown: string | null;
+};
+
+const POLL_MS = 2500;
+const CLIENT_POLL_TIMEOUT_MS = 16 * 60 * 1000;
+const GOCODE_KEY_STORAGE = 'airo-investigate.gocodeApiKey';
+
+function formatDurationMs(ms: number | null): string {
+  if (ms == null) return '';
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  const rem = s % 60;
+  return rem === 0 ? `${m}m` : `${m}m ${rem}s`;
+}
+
+// Phases emitted by the skill (matches `phase-N-name` strings Claude CLI
+// prints). Keep this list in sync with the skill's phase files so the UI
+// always has a friendly label. Unknown phases fall through to the raw
+// string.
+const PHASE_LABELS: Record<string, string> = {
+  bootstrap: 'Warming up',
+  'phase-0-gather': 'Gathering airo-app frontend logs',
+  'phase-1-fullstory': 'FullStory session analysis (skipped in Lambda)',
+  'phase-2-conversation': 'Analyzing agent conversation',
+  'phase-3-logs': 'Querying logs',
+  'phase-4-blast-radius': 'Assessing blast radius',
+  'phase-5-codebase': 'Cross-referencing codebase',
+  'phase-6-synthesis': 'Writing report',
+};
+
+function friendlyPhase(phase: string | null): string {
+  if (!phase) return 'Starting…';
+  return PHASE_LABELS[phase] ?? phase;
+}
+
+function badgeColor(status: StatusResponse['status'] | 'pending'): string {
+  switch (status) {
+    case 'completed': return '#10b981';
+    case 'failed': return '#ef4444';
+    case 'killed': return '#f59e0b';
+    case 'running': return '#3b82f6';
+    default: return '#6b7280';
+  }
+}
+
+interface Props {
+  // When rendered inside AppDetailsPanel tab, the parent already knows which
+  // app is in focus — pass them in so the user doesn't retype. Standalone
+  // /investigate route calls this with no props and falls back to the URL
+  // query string prefill below.
+  appId?: string;
+  customerId?: string;
+}
+
+export default function InvestigatePanel(props: Props = {}) {
+  const searchParams = useSearchParams();
+  const embedded = Boolean(props.appId && props.customerId);
+
+  const [appId, setAppId] = useState(props.appId ?? '');
+  const [customerId, setCustomerId] = useState(props.customerId ?? '');
+  const [feedback, setFeedback] = useState('');
+  const [fullstoryUrl, setFullstoryUrl] = useState('');
+  const [timeWindow, setTimeWindow] = useState('24h');
+  const [gocodeApiKey, setGocodeApiKey] = useState('');
+  const [gocodeKeyRevealed, setGocodeKeyRevealed] = useState(false);
+
+  // Rehydrate GoCode key from sessionStorage so users paste once per browser
+  // session/tab, without leaving a long-lived billed token in localStorage.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const stored = window.sessionStorage.getItem(GOCODE_KEY_STORAGE);
+    if (stored) setGocodeApiKey(stored);
+  }, []);
+
+  const [investigationId, setInvestigationId] = useState<string | null>(null);
+  const [status, setStatus] = useState<StatusResponse | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Prefill from query string (standalone /investigate route) or parent
+  // props (embedded in AppDetailsPanel tab). Props win because the parent
+  // is authoritative for the app currently in focus.
+  useEffect(() => {
+    if (props.appId) setAppId(props.appId);
+    if (props.customerId) setCustomerId(props.customerId);
+    if (props.appId || props.customerId) return;
+    if (!searchParams) return;
+    const a = searchParams.get('appId');
+    const c = searchParams.get('customerId');
+    if (a && !appId) setAppId(a);
+    if (c && !customerId) setCustomerId(c);
+  }, [searchParams, appId, customerId, props.appId, props.customerId]);
+
+  const stopPolling = useCallback(() => {
+    if (pollTimerRef.current) {
+      clearTimeout(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+  }, []);
+
+  const pollOnce = useCallback(async (id: string, app: string, cust: string) => {
+    try {
+      const res = await fetch(
+        `/api/investigate/${encodeURIComponent(id)}/status?appId=${encodeURIComponent(app)}&customerId=${encodeURIComponent(cust)}`,
+        { cache: 'no-store' },
+      );
+      if (!res.ok) {
+        // 410 superseded or 404 — stop polling.
+        stopPolling();
+        setStatus(null);
+        setSubmitError(`Status lookup failed: ${res.status}`);
+        return;
+      }
+      const data = (await res.json()) as StatusResponse;
+      setStatus(data);
+      const running = data.status === 'pending' || data.status === 'running';
+      const startedMs = Date.parse(data.startedAt);
+      const exceededClientTimeout =
+        running &&
+        !Number.isNaN(startedMs) &&
+        Date.now() - startedMs > CLIENT_POLL_TIMEOUT_MS;
+      if (exceededClientTimeout) {
+        stopPolling();
+        setSubmitError('Investigation exceeded the Lambda time limit without a terminal state. Polling stopped.');
+        return;
+      }
+      if (running && !data.stale) {
+        pollTimerRef.current = setTimeout(() => { pollOnce(id, app, cust); }, POLL_MS);
+      } else {
+        stopPolling();
+      }
+    } catch (err) {
+      stopPolling();
+      setSubmitError(err instanceof Error ? err.message : 'Polling failed');
+    }
+  }, [stopPolling]);
+
+  useEffect(() => () => { stopPolling(); }, [stopPolling]);
+
+  // Embedded mode: on mount (or when appId changes) fetch the most recent
+  // investigation for this (customer, app). Lets users reopen the tab later
+  // and see the last report without re-running. If an investigation is
+  // still in flight, fall into the polling loop.
+  const [autoLoadedOnce, setAutoLoadedOnce] = useState(false);
+  const [showForm, setShowForm] = useState(!embedded);
+  useEffect(() => {
+    if (!embedded) return;
+    if (!appId || !customerId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(
+          `/api/investigate/latest?appId=${encodeURIComponent(appId)}&customerId=${encodeURIComponent(customerId)}`,
+          { cache: 'no-store' },
+        );
+        if (!res.ok || cancelled) return;
+        const data = await res.json() as { exists: boolean } & Partial<StatusResponse>;
+        if (cancelled) return;
+        if (data.exists && data.investigationId) {
+          setStatus(data as StatusResponse);
+          setInvestigationId(data.investigationId);
+          // If it's still running, resume polling. Otherwise static display.
+          if ((data.status === 'pending' || data.status === 'running') && !data.stale) {
+            pollOnce(data.investigationId, appId, customerId);
+          }
+        }
+      } catch {
+        // Best-effort load — silently ignore so the tab still renders.
+      } finally {
+        if (!cancelled) setAutoLoadedOnce(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [embedded, appId, customerId, pollOnce]);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setSubmitError(null);
+    if (!appId.trim() || !customerId.trim() || !feedback.trim()) {
+      setSubmitError('appId, customerId, and feedback are required');
+      return;
+    }
+    if (!gocodeApiKey.trim()) {
+      setSubmitError('GoCode API key is required');
+      return;
+    }
+    setSubmitting(true);
+    setStatus(null);
+    setInvestigationId(null);
+    stopPolling();
+
+    // Store only for the current browser session. A malicious extension or XSS
+    // on the debug-console origin could still read it while the tab is active,
+    // but this avoids a long-lived localStorage token billed to the user.
+    try { window.sessionStorage.setItem(GOCODE_KEY_STORAGE, gocodeApiKey.trim()); } catch { /* ignore */ }
+
+    try {
+      const res = await fetch('/api/investigate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          appId: appId.trim(),
+          customerId: customerId.trim(),
+          feedback: feedback.trim(),
+          fullstoryUrl: fullstoryUrl.trim() || null,
+          timeWindow: timeWindow.trim() || null,
+          gocodeApiKey: gocodeApiKey.trim(),
+        }),
+      });
+
+      if (res.status === 409) {
+        const data = (await res.json()) as ConflictResponse;
+        setInvestigationId(data.investigationId);
+        setSubmitError(`Another investigation is already running for this app (started ${data.startedAt}). Showing its status.`);
+        pollOnce(data.investigationId, appId.trim(), customerId.trim());
+        return;
+      }
+
+      if (!res.ok) {
+        const errBody = (await res.json().catch(() => ({}))) as { error?: string };
+        setSubmitError(errBody.error ? `Failed: ${errBody.error}` : `Failed with status ${res.status}`);
+        return;
+      }
+
+      const data = (await res.json()) as StartResponse;
+      setInvestigationId(data.investigationId);
+      pollOnce(data.investigationId, appId.trim(), customerId.trim());
+      // Embedded: collapse the form so the user sees the live progress +
+      // (eventually) the report without scrolling past their own inputs.
+      if (embedded) setShowForm(false);
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : 'Request failed');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const [copiedAt, setCopiedAt] = useState<number | null>(null);
+  const copyLabel = copiedAt ? 'Copied ✓' : 'Copy markdown';
+
+  async function handleCopy() {
+    if (!status?.markdown) return;
+    try {
+      await navigator.clipboard.writeText(status.markdown);
+      setCopiedAt(Date.now());
+      setTimeout(() => setCopiedAt(null), 2000);
+    } catch {
+      /* ignore — older browsers without clipboard access silently skip */
+    }
+  }
+
+  const running = status?.status === 'pending' || status?.status === 'running';
+  const activelyPolling = running && !status?.stale;
+  const actionDisabled = submitting || activelyPolling;
+
+  const headerBadge = useMemo(() => {
+    if (!status) return null;
+    const color = badgeColor(status.status);
+    return (
+      <span style={{
+        background: color,
+        color: 'white',
+        padding: '2px 10px',
+        borderRadius: 10,
+        fontSize: 12,
+        fontWeight: 600,
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
+      }}>{status.status}</span>
+    );
+  }, [status]);
+
+  // Hide embedded form until user asks to run something new — saves scroll
+  // and signals "we already loaded the latest". Also skip the page heading
+  // in embedded mode since the tab label already names the surface.
+  const showHeading = !embedded;
+  const hideIdentityFields = embedded;
+  const formCollapsed = embedded && status !== null && !showForm;
+
+  return (
+    <div style={{
+      padding: embedded ? 0 : 24,
+      maxWidth: embedded ? 'none' : 1100,
+      margin: embedded ? 0 : '0 auto',
+      fontFamily: 'system-ui, sans-serif',
+    }}>
+      {showHeading && <h1 style={{ marginTop: 0, marginBottom: 20 }}>Investigate feedback</h1>}
+
+      <div style={topNoticeRowStyle}>
+        <div style={{ ...wipWarningStyle, flex: '1 1 360px' }}>
+          <strong>Work in progress:</strong> Treat investigation results as a starting point, not a final answer.
+        </div>
+
+        {formCollapsed && (
+          <button
+            type="button"
+            onClick={() => { setShowForm(true); }}
+            style={{
+              padding: '6px 12px',
+              background: '#2563eb',
+              color: 'white',
+              border: 0,
+              borderRadius: 6,
+              fontSize: 12,
+              fontWeight: 500,
+              cursor: 'pointer',
+              flex: '0 0 auto',
+              marginLeft: 'auto',
+            }}
+          >
+            Run new investigation
+          </button>
+        )}
+      </div>
+
+      {!formCollapsed && (
+      <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 12, marginTop: embedded ? 0 : 20 }}>
+        {!hideIdentityFields && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <label style={{ display: 'grid', gap: 4 }}>
+            <span style={{ fontSize: 13, fontWeight: 500 }}>App ID *</span>
+            <input
+              value={appId}
+              onChange={(e) => setAppId(e.target.value)}
+              placeholder="f4q85qcf0k"
+              required
+              style={inputStyle}
+            />
+          </label>
+          <label style={{ display: 'grid', gap: 4 }}>
+            <span style={{ fontSize: 13, fontWeight: 500 }}>Customer / Shopper ID *</span>
+            <input
+              value={customerId}
+              onChange={(e) => setCustomerId(e.target.value)}
+              placeholder="12345678"
+              required
+              style={inputStyle}
+            />
+          </label>
+        </div>
+        )}
+
+        <label style={{ display: 'grid', gap: 4 }}>
+          <span style={{ fontSize: 13, fontWeight: 500 }}>Customer feedback *</span>
+          <textarea
+            value={feedback}
+            onChange={(e) => setFeedback(e.target.value)}
+            placeholder="Agent kept repeating the same fix and wasting my credits..."
+            required
+            rows={4}
+            style={{ ...inputStyle, resize: 'vertical', minHeight: 90 }}
+          />
+        </label>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12 }}>
+          <label style={{ display: 'grid', gap: 4 }}>
+            <span style={{ fontSize: 13, fontWeight: 500 }}>FullStory URL (optional)</span>
+            <input
+              value={fullstoryUrl}
+              onChange={(e) => setFullstoryUrl(e.target.value)}
+              placeholder="https://app.fullstory.com/ui/YKBRC/session/..."
+              style={inputStyle}
+            />
+          </label>
+          <label style={{ display: 'grid', gap: 4 }}>
+            <span style={{ fontSize: 13, fontWeight: 500 }}>Time window</span>
+            <select
+              value={timeWindow}
+              onChange={(e) => setTimeWindow(e.target.value)}
+              style={inputStyle}
+            >
+              <option value="15m">Last 15 min</option>
+              <option value="1h">Last hour</option>
+              <option value="6h">Last 6 hours</option>
+              <option value="24h">Last 24 hours</option>
+              <option value="7d">Last 7 days</option>
+            </select>
+          </label>
+        </div>
+
+        <label style={{ display: 'grid', gap: 4 }}>
+          <span style={{ fontSize: 13, fontWeight: 500 }}>
+            GoCode API key *
+            <span style={{ color: '#6b7280', fontWeight: 400, marginLeft: 8 }}>
+              (stored for this browser session only — forwarded to the Lambda)
+            </span>
+          </span>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input
+              type={gocodeKeyRevealed ? 'text' : 'password'}
+              value={gocodeApiKey}
+              onChange={(e) => setGocodeApiKey(e.target.value)}
+              placeholder="Paste your GoCode API key"
+              required
+              autoComplete="off"
+              style={{ ...inputStyle, flex: 1 }}
+            />
+            <button
+              type="button"
+              onClick={() => setGocodeKeyRevealed((v) => !v)}
+              style={smallBtn}
+            >{gocodeKeyRevealed ? 'Hide' : 'Show'}</button>
+            <button
+              type="button"
+              onClick={() => {
+                setGocodeApiKey('');
+                try { window.sessionStorage.removeItem(GOCODE_KEY_STORAGE); } catch { /* ignore */ }
+              }}
+              style={smallBtn}
+            >Clear</button>
+          </div>
+        </label>
+
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+          <button
+            type="submit"
+            disabled={actionDisabled}
+            style={{
+              padding: '10px 20px',
+              background: actionDisabled ? '#9ca3af' : '#2563eb',
+              color: 'white',
+              border: 0,
+              borderRadius: 6,
+              fontSize: 14,
+              fontWeight: 600,
+              cursor: actionDisabled ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {submitting ? 'Starting…' : activelyPolling ? 'Investigating…' : 'Investigate'}
+          </button>
+          {submitError && <span style={{ color: '#dc2626', fontSize: 13 }}>{submitError}</span>}
+          {embedded && status && (
+            <button
+              type="button"
+              onClick={() => setShowForm(false)}
+              style={{
+                padding: '8px 12px',
+                background: 'transparent',
+                color: '#6b7280',
+                border: '1px solid #d1d5db',
+                borderRadius: 6,
+                fontSize: 13,
+                cursor: 'pointer',
+              }}
+            >
+              Cancel
+            </button>
+          )}
+        </div>
+      </form>
+      )}
+
+      {embedded && !status && autoLoadedOnce && !showForm && (
+        <div style={{ fontSize: 13, color: '#6b7280', padding: 12 }}>
+          No prior investigations for this app. Use the form above to run one.
+        </div>
+      )}
+
+      {status && (
+        <section style={{ marginTop: 28, border: '1px solid #e5e7eb', borderRadius: 10, padding: 18 }}>
+          <header style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            {headerBadge}
+            <div style={{ fontFamily: 'monospace', fontSize: 13, color: '#6b7280' }}>
+              {status.investigationId}
+            </div>
+            {status.durationMs != null && (
+              <div style={{ fontSize: 12, color: '#6b7280' }}>
+                in {formatDurationMs(status.durationMs)}
+              </div>
+            )}
+            {status.stale && running && (
+              <span style={{ color: '#b45309', fontSize: 12 }}>⚠ heartbeat stale</span>
+            )}
+          </header>
+
+          {activelyPolling && (
+            <div style={{ marginTop: 12, fontSize: 13, color: '#374151' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{
+                  display: 'inline-block',
+                  width: 10,
+                  height: 10,
+                  borderRadius: '50%',
+                  background: '#3b82f6',
+                  animation: 'pulse 1.2s ease-in-out infinite',
+                }} />
+                <span><strong>{friendlyPhase(status.phase)}</strong></span>
+              </div>
+              <div style={{ marginTop: 6, color: '#6b7280', fontSize: 12 }}>
+                Typical run: 3–6 minutes. Updates every {POLL_MS / 1000}s.
+              </div>
+              <style>{`@keyframes pulse { 0%, 100% { opacity: 1 } 50% { opacity: .3 } }`}</style>
+            </div>
+          )}
+
+          {running && status.stale && (
+            <div style={{ marginTop: 12, color: '#b45309', fontSize: 13 }}>
+              Investigation appears stuck because the Lambda heartbeat is stale. Polling has stopped; run a new investigation after the Lambda deploy is healthy.
+            </div>
+          )}
+
+          {status.status === 'failed' && (
+            <div style={{ marginTop: 12, color: '#dc2626', fontSize: 13 }}>
+              {status.error || 'Investigation failed. Check CloudWatch for Lambda logs.'}
+            </div>
+          )}
+
+          {status.status === 'killed' && (
+            <div style={{ marginTop: 12, color: '#b45309', fontSize: 13 }}>
+              Investigation hit the 15-minute Lambda cap and was killed.
+            </div>
+          )}
+
+          {status.markdown && (
+            <>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16 }}>
+                <h2 style={{ margin: 0, fontSize: 16 }}>Report</h2>
+                <button
+                  type="button"
+                  onClick={handleCopy}
+                  style={{
+                    padding: '6px 12px',
+                    background: '#1f2937',
+                    color: 'white',
+                    border: 0,
+                    borderRadius: 6,
+                    fontSize: 12,
+                    cursor: 'pointer',
+                  }}
+                  title="Copies the raw markdown source to your clipboard"
+                >
+                  {copyLabel}
+                </button>
+              </div>
+              <div style={{ ...wipWarningStyle, marginTop: 10 }}>
+                <strong>Verify before sharing:</strong> This report is a work-in-progress AI investigation. Confirm cited logs and coverage gaps before using it as a decision record.
+              </div>
+              <div className="investigate-report" style={{
+                marginTop: 8,
+                padding: '16px 20px',
+                background: '#ffffff',
+                border: '1px solid #e5e7eb',
+                borderRadius: 6,
+                fontSize: 14,
+                lineHeight: 1.6,
+                color: '#111827',
+              }}>
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{status.markdown}</ReactMarkdown>
+              </div>
+              <style>{`
+                .investigate-report h1 { font-size: 22px; margin: 16px 0 10px; }
+                .investigate-report h2 { font-size: 18px; margin: 20px 0 8px; border-bottom: 1px solid #e5e7eb; padding-bottom: 4px; }
+                .investigate-report h3 { font-size: 15px; margin: 16px 0 6px; }
+                .investigate-report p { margin: 8px 0; }
+                .investigate-report ul, .investigate-report ol { margin: 8px 0; padding-left: 24px; }
+                .investigate-report li { margin: 3px 0; }
+                .investigate-report code { background: #f3f4f6; padding: 1px 6px; border-radius: 3px; font-size: 13px; }
+                .investigate-report pre { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; padding: 12px; overflow-x: auto; }
+                .investigate-report pre code { background: transparent; padding: 0; }
+                .investigate-report blockquote { border-left: 3px solid #d1d5db; margin: 10px 0; padding: 4px 12px; color: #4b5563; background: #f9fafb; }
+                .investigate-report table { border-collapse: collapse; margin: 10px 0; }
+                .investigate-report th, .investigate-report td { border: 1px solid #e5e7eb; padding: 6px 10px; text-align: left; }
+                .investigate-report th { background: #f3f4f6; }
+                .investigate-report a { color: #2563eb; text-decoration: underline; }
+                .investigate-report hr { border: 0; border-top: 1px solid #e5e7eb; margin: 16px 0; }
+              `}</style>
+            </>
+          )}
+
+          {!status.markdown && status.reportAvailable && (
+            <div style={{ marginTop: 12, padding: '10px 14px', background: '#f3f4f6', borderRadius: 6, fontSize: 13, color: '#374151' }}>
+              Report saved to S3 but exceeds the 1 MB inline limit — fetch it directly:
+              <pre style={{ margin: '8px 0 0', fontSize: 12, background: '#e5e7eb', padding: '6px 10px', borderRadius: 4, overflowX: 'auto' }}>
+                {`aws s3 cp s3://<INVESTIGATE_BUCKET>/active/${status.customerId}/${status.appId}/result.md /tmp/report.md`}
+              </pre>
+            </div>
+          )}
+        </section>
+      )}
+    </div>
+  );
+}
+
+const inputStyle: React.CSSProperties = {
+  padding: '8px 10px',
+  border: '1px solid #d1d5db',
+  borderRadius: 6,
+  fontSize: 13,
+  fontFamily: 'inherit',
+};
+
+const smallBtn: React.CSSProperties = {
+  padding: '8px 10px',
+  background: '#f3f4f6',
+  border: '1px solid #d1d5db',
+  borderRadius: 6,
+  fontSize: 12,
+  cursor: 'pointer',
+};
+
+const topNoticeRowStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'flex-start',
+  gap: 12,
+  flexWrap: 'wrap',
+  marginBottom: 12,
+};
+
+const wipWarningStyle: React.CSSProperties = {
+  padding: '10px 12px',
+  background: '#fffbeb',
+  border: '1px solid #f59e0b',
+  borderRadius: 8,
+  color: '#92400e',
+  fontSize: 13,
+  lineHeight: 1.45,
+};

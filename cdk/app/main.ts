@@ -13,6 +13,8 @@ import { FeedbackS3Stack } from "../lib/feedback-s3-stack";
 import { LakeFormationAdminsStack } from "../lib/lake-formation-admins-stack";
 import { QdrantStack } from "../lib/qdrant-stack";
 import { QdrantEcrStack } from "../lib/qdrant-ecr-stack";
+import { LambdaBaseEcrStack } from "../lib/lambda-base-ecr-stack";
+import { AiroInvestigatorStack } from "../lib/investigator-stack";
 
 /**
  * Main function to execute the CDK app
@@ -79,6 +81,22 @@ async function main() {
     roleNames: config.dataLakeAdminRoleNames,
     envName: config.envName as 'dev' | 'test' | 'prod',
   });
+
+  // Lambda base image ECR mirror — deployed before AiroInvestigatorStack
+  // so the repo exists when the Docker build runs. Mirrors
+  // public.ecr.aws/lambda/nodejs:* into Airo's own ECR (GCI compliance).
+  // Populate via docker-mirror-lambda-base.yml workflow after first deploy.
+  if (config.envName === 'dev' || config.envName === 'prod') {
+    new LambdaBaseEcrStack(app, 'LambdaBaseEcrStack', { env });
+  }
+
+  // Create Airo Investigator Lambda + S3 bucket (dev first, promote to prod
+  // once validated). The Lambda runs the airo-log-investigate skill on
+  // demand; the bucket stores per-investigation state + reports.
+  // Requires LambdaBaseEcrStack deployed + docker-mirror-lambda-base.yml run.
+  if (config.envName === 'dev' || config.envName === 'prod') {
+    new AiroInvestigatorStack(app, 'AiroInvestigatorStack', { env });
+  }
 
   // Create Qdrant ECR repository (dev and prod only)
   // Deploy this first to allow pre-populating Docker images

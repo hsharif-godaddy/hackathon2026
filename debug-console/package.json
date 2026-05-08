@@ -13,6 +13,7 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@aws-sdk/client-lambda": "^3.1034.0",
     "@aws-sdk/client-s3": "^3.1034.0",
     "@aws-sdk/client-secrets-manager": "^3.1034.0",
     "@elastic/elasticsearch": "catalog:",
@@ -23,7 +24,9 @@
     "next": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
+    "react-markdown": "catalog:",
     "recharts": "^2.15.4",
+    "remark-gfm": "catalog:",
     "tsx": "catalog:"
   },
   "devDependencies": {

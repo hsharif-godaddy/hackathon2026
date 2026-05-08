@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(bash /opt/skills/airo-log-investigate/run_search_frontend_logs.sh*)",
+      "Bash(python3 -c*)",
+      "Bash(jq*)",
+      "Bash(bc*)",
+      "Bash(date*)",
+      "Bash(ls /tmp*)",
+      "Bash(cat /tmp/*)",
+      "Bash(cat /tmp/**)",
+      "Bash(head /tmp/*)",
+      "Bash(head /tmp/**)",
+      "Bash(tail /tmp/*)",
+      "Bash(tail /tmp/**)",
+      "Bash(grep*)",
+      "Write(/tmp/*)",
+      "Write(/tmp/**)",
+      "Read(/tmp/*)",
+      "Read(/tmp/**)",
+      "Read(/opt/skills/**)"
+    ]
+  }
+}

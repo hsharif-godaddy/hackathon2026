@@ -1,0 +1,163 @@
+name: Mirror Lambda Base Image
+
+# Mirrors public.ecr.aws/lambda/nodejs:<version> into Airo's own ECR
+# (lambda-nodejs repo created by LambdaBaseEcrStack). Re-run this workflow
+# when bumping the Node version in investigator/Dockerfile.
+#
+# Requires LambdaBaseEcrStack to be deployed first (creates the ECR repo).
+# Mirrors are immutable once pushed — the build won't re-push an existing tag.
+
+on:
+  # TEMP: Auto-trigger on push to the investigator branch so this workflow can
+  # run before workflow_dispatch is available from the default branch. Remove
+  # this push trigger once the workflow file lands on main — at that point
+  # workflow_dispatch alone is sufficient for prod.
+  push:
+    branches:
+      - skilaru/investigator-cdk
+    paths:
+      - .github/workflows/docker-mirror-lambda-base.yml
+
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment (ECR account)"
+        required: true
+        default: "dev"
+        type: choice
+        options:
+          - dev
+          - prod
+      node_version:
+        description: "Lambda Node runtime version to mirror (e.g. 22)"
+        required: true
+        default: "22"
+        type: string
+      force_refresh:
+        description: "Delete and recreate the tag if it already exists"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  mirror:
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+
+    steps:
+      - name: Determine target account
+        id: env
+        run: |
+          # Push triggers have no inputs — default to dev/22 without force-refresh.
+          ENV="${{ inputs.environment || 'dev' }}"
+          VERSION="${{ inputs.node_version || '22' }}"
+          FORCE_REFRESH="${{ inputs.force_refresh || 'false' }}"
+          case "$ENV" in
+            dev)  echo "ACCOUNT_ID=694282668781" >> $GITHUB_ENV ;;
+            prod) echo "ACCOUNT_ID=644094189644" >> $GITHUB_ENV ;;
+            *)
+              echo "ERROR: Unknown environment '${ENV}'. Valid: dev | prod"
+              exit 1
+              ;;
+          esac
+          echo "NODE_VERSION=${VERSION}" >> $GITHUB_ENV
+          echo "FORCE_REFRESH=${FORCE_REFRESH}" >> $GITHUB_ENV
+          echo "REGION=us-west-2" >> $GITHUB_ENV
+
+      - name: Get Artifactory Token
+        id: jfrog
+        uses: jfrog/setup-jfrog-cli@1641575d87647fb969c0545f0b6a76873e328b7c # v5.0.0
+        env:
+          JF_URL: ${{ vars.JF_URL }}
+        with:
+          oidc-provider-name: github
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4.0.0
+
+      # public.ecr.aws is a public registry — no auth needed for docker pull.
+      # (ecr-public get-login-password requires sts:GetServiceBearerToken
+      # which the runner and deploy roles don't have; skip it entirely.)
+
+      - name: Assume deploy role
+        run: |
+          export $(printf "AWS_ACCESS_KEY_ID=%s AWS_SECRET_ACCESS_KEY=%s AWS_SESSION_TOKEN=%s" \
+            $(aws sts assume-role \
+              --role-arn arn:aws:iam::${ACCOUNT_ID}:role/GD-AWS-SSG-Deploy-Role \
+              --role-session-name MirrorLambdaBase \
+              --query "Credentials.[AccessKeyId,SecretAccessKey,SessionToken]" \
+              --output text))
+          echo "AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID" >> $GITHUB_ENV
+          echo "AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY" >> $GITHUB_ENV
+          echo "AWS_SESSION_TOKEN=$AWS_SESSION_TOKEN" >> $GITHUB_ENV
+
+      - name: Check if mirror already exists
+        id: check
+        run: |
+          # Suppress only the expected "image not found" exit code; fail fast
+          # on everything else (repo missing = LambdaBaseEcrStack not deployed,
+          # AccessDenied = IAM misconfiguration, network error = runner issue).
+          # Capturing stderr lets us distinguish the error class before deciding
+          # whether to proceed.
+          set +e
+          ERR=$(aws ecr describe-images \
+              --repository-name lambda-nodejs \
+              --image-ids imageTag="${NODE_VERSION}" \
+              --region "${REGION}" \
+              --no-cli-pager 2>&1)
+          RC=$?
+          set -e
+
+          if [ $RC -eq 0 ]; then
+            if [ "${FORCE_REFRESH}" = "true" ]; then
+              echo "Image lambda-nodejs:${NODE_VERSION} already exists and force_refresh=true — deleting before mirror."
+              aws ecr batch-delete-image \
+                --repository-name lambda-nodejs \
+                --image-ids imageTag="${NODE_VERSION}" \
+                --region "${REGION}" \
+                --no-cli-pager
+              echo "exists=false" >> $GITHUB_OUTPUT
+            else
+              echo "exists=true" >> $GITHUB_OUTPUT
+              echo "Image lambda-nodejs:${NODE_VERSION} already in ECR — skipping push."
+            fi
+          elif echo "$ERR" | grep -q "ImageNotFoundException\|image does not exist"; then
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "Image not found in ECR — will mirror."
+          else
+            echo "ERROR: ECR describe-images failed for an unexpected reason:"
+            echo "$ERR"
+            echo ""
+            echo "Common causes:"
+            echo "  RepositoryNotFoundException → LambdaBaseEcrStack not yet deployed"
+            echo "  AccessDenied               → assume-role lacks ecr:DescribeImages"
+            echo "  other                      → check AWS connectivity"
+            exit 1
+          fi
+
+      - name: Authenticate Docker to Airo ECR
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          aws ecr get-login-password --region "${REGION}" \
+            | docker login "${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com" -u AWS --password-stdin
+
+      - name: Mirror image
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          SRC="public.ecr.aws/lambda/nodejs:${NODE_VERSION}"
+          DEST="${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/lambda-nodejs:${NODE_VERSION}"
+
+          echo "Mirroring ${SRC} → ${DEST}…"
+          docker buildx imagetools create --tag "${DEST}" "${SRC}"
+
+          echo "Inspecting mirrored image…"
+          docker buildx imagetools inspect "${DEST}"
+
+          echo ""
+          echo "Mirrored: ${DEST}"
