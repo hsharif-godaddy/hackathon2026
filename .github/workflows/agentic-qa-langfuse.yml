@@ -76,8 +76,7 @@ jobs:
       - name: Configure pnpm registry
         run: |
           echo "registry=https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/" > .npmrc
-          echo "//gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/:_authToken=${{ env.ARTIFACTORY_NPM_TOKEN }}" >> .npmrc
-          echo "//gdartifactory1.jfrog.io/artifactory/api/npm/npm-gasket-core-local/:_authToken=${{ env.ARTIFACTORY_NPM_TOKEN }}" >> .npmrc
+          echo "//gdartifactory1.jfrog.io/artifactory/api/npm/:_authToken=${{ env.ARTIFACTORY_NPM_TOKEN }}" >> .npmrc
 
       - name: Get AWS IAM Token for CaaS proxy
         id: get-awsiam-test

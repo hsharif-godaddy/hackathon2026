@@ -89,8 +89,7 @@ jobs:
           echo "pnpm version $ACTUAL_VERSION matches expected version"
 
           echo "registry=https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/" > .npmrc
-          echo "//gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/:_authToken=${OIDC_TOKEN}" >> .npmrc
-          echo "//gdartifactory1.jfrog.io/artifactory/api/npm/npm-gasket-core-local/:_authToken=${OIDC_TOKEN}" >> .npmrc
+          echo "//gdartifactory1.jfrog.io/artifactory/api/npm/:_authToken=${OIDC_TOKEN}" >> .npmrc
 
       - name: Cache pnpm store
         uses: actions/cache@v5.0.5
