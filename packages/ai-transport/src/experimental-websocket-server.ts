@@ -47,9 +47,9 @@ import {
   emitError,
   emitHandoff
 } from '@godaddy/agent-otel-sdk'
-import { context as otelContext, trace, type Context } from '@opentelemetry/api'
-import { createTraceContext } from '@signals/otel-sdk'
-import { getSignalsContext, type SignalsContext } from '@signals/sdk'
+import { context as otelContext, trace } from '@opentelemetry/api'
+import { buildChatSignalsTraceContext, type JwtAgentContextSubset } from './chat-signals-trace-context.js'
+import { inferProviderFromModelName, type ChatLlmProvider } from './infer-llm-provider.js'
 import {
   StreamTimingTracker,
   type StreamTimingData,
@@ -2222,89 +2222,22 @@ export class WebSocketServer {
       conversationId: (data.context as any)?.conversation?.conversationId
     })
 
-    // Create trace context early so all events (including conversation_start) share the same trace ID.
-    // Handshake headers are passed for extracting common Event Bus metadata like visitor ID, customer ID, etc.
-    // Business context includes app-specific metadata (appId) for Event Bus enrichment
+    // Build trace context early so all events (including conversation_start) share the same trace ID.
     const appId = extractAppIdFromMessageContext(data.context)
-    const BUSINESS_CONTEXT_SCHEMA_ID = 'urn:shared:user:business-context:/airo-app-builder/v1';
-
-    // Build screenshot URLs so the observability system (Event Bus / Langfuse) can
-    // link directly to app screenshots stored in debug-console without relative paths.
-    let screenshotUrl: string | undefined
-    let listPublishedSnapshotsUrl: string | undefined
-    if (appId) {
-      const apiUrl = process.env.GODADDY_API_BASE_URL
-      if (apiUrl) {
-        const isNonProd = apiUrl.includes('dev') || apiUrl.includes('test')
-        const host = isNonProd
-          ? 'https://console.airo-builder.test-godaddy.com'
-          : 'https://console.airo-builder.godaddy.com'
-        screenshotUrl = `${host}/api/screenshots/default/${encodeURIComponent(appId)}`
-        listPublishedSnapshotsUrl = `${host}/api/screenshots/publishes/${encodeURIComponent(appId)}`
-      }
-    }
-
     const handshakeHeaders = socket.handshake?.headers as
       | Record<string, string | string[] | undefined>
       | undefined
-    let baseSignals: SignalsContext = {}
-    try {
-      baseSignals = getSignalsContext(
-        handshakeHeaders ? { headers: handshakeHeaders } : {},
-      )
-    } catch (err) {
-      this.logger.warn('websocket.signals.get_context_failed', {
-        socketId,
-        error: err instanceof Error ? err.message : String(err),
-      })
-    }
-    // Subset of agents/src/server/middleware/jwt-auth.ts AgentContext (handshake.auth.agentContext).
-    // trafficSessionId is copied to SignalsContext.sessionId in the spread below (JWT name ≠ Signals property).
-    const jwtAgentCtx = socket.handshake?.auth?.agentContext as
-      | {
-        customerId?: string
-        visitorId?: string
-        trafficSessionId?: string
-      }
-      | undefined
-    const signalsContext: SignalsContext = {
-      ...baseSignals,
-      ...(typeof jwtAgentCtx?.customerId === 'string' &&
-        jwtAgentCtx.customerId.length > 0 && { customerId: jwtAgentCtx.customerId }),
-      ...(typeof jwtAgentCtx?.visitorId === 'string' &&
-        jwtAgentCtx.visitorId.length > 0 && { visitorId: jwtAgentCtx.visitorId }),
-      ...(typeof jwtAgentCtx?.trafficSessionId === 'string' &&
-        jwtAgentCtx.trafficSessionId.length > 0 && { sessionId: jwtAgentCtx.trafficSessionId }),
-    }
-
-    let traceCtx: Context
-    try {
-      traceCtx = createTraceContext({
-        signalsContext,
-        ...(appId && {
-          businessContext: {
-            schemaId: BUSINESS_CONTEXT_SCHEMA_ID,
-            data: {
-              appId,
-              ...(screenshotUrl && {
-                defaultScreenshotUrl: screenshotUrl,
-                listPublishedSnapshotsUrl,
-              }),
-            }
-          }
-        })
-      })
-    } catch (err) {
-      this.logger.warn('websocket.signals.create_trace_context_failed', {
-        socketId,
-        error: err instanceof Error ? err.message : String(err),
-      })
-      traceCtx = otelContext.active()
-    }
+    const jwtAgentCtx = socket.handshake?.auth?.agentContext as JwtAgentContextSubset | undefined
+    const traceCtx = buildChatSignalsTraceContext({
+      ...(handshakeHeaders !== undefined && { headers: handshakeHeaders }),
+      ...(jwtAgentCtx != null && { jwtAgentContext: jwtAgentCtx }),
+      ...(appId !== undefined && appId.length > 0 && { appId }),
+      logPrefix: 'websocket',
+      logFields: { socketId },
+      logger: { warn: (event, fields) => this.logger.warn(event, fields) },
+    })
 
     return otelContext.with(traceCtx, () =>
-      // Queue this message to prevent concurrent handleChatMessage races
-      // StateManager handles the queue chain, cleanup, and error isolation
       this.stateManager.queueMessage(socketId, () => this.handleChatMessageInternal(socket, data))
     ).catch((err: unknown) => {
       this.logger.error('websocket.chat_message.queue_failed', {
@@ -3716,16 +3649,11 @@ export class WebSocketServer {
 
     // Get model information for observability
     let modelName = 'unknown'
-    let providerName = 'anthropic' // Default provider
+    let providerName: ChatLlmProvider = 'anthropic'
     try {
       const agentConfig = agent.getConfig()
       modelName = agentConfig.modelName || agentName || 'unknown'
-      // Extract provider from model name convention (e.g., 'claude-sonnet-4-6' -> anthropic)
-      if (modelName.includes('claude') || modelName.includes('anthropic')) {
-        providerName = 'anthropic'
-      } else if (modelName.includes('gpt') || modelName.includes('openai')) {
-        providerName = 'openai'
-      }
+      providerName = inferProviderFromModelName(modelName)
     } catch (error) {
       this.logger.warn('model.info.failure', { error: error instanceof Error ? error.message : String(error) })
     }

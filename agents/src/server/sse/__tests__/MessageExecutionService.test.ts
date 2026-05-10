@@ -1,4 +1,40 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { context as otelContext, trace as otelTrace } from '@opentelemetry/api'
+
+// Mock the Langfuse invocation-span SDK so tests can assert the lifecycle
+// (createAgentInvocationSpan → end) that MessageExecutionService now owns.
+// Dropping an `invocation.end()` call on any exit path would leave the
+// Langfuse span permanently open and zero tests would fail without this spy.
+//
+// The mock invocation context carries a wrapped SpanContext with a real
+// traceId so `trace.getSpan(invocation.context).spanContext().traceId`
+// resolves. Without this, `otelContext.active()` returns the root NOOP
+// context, `getSpan` returns undefined, and the traceId-injection branch
+// in streamAgentTurn (executionContext.metadata.traceId = …) never fires
+// in any test — leaving the primary behavioral change of this PR
+// untested. The traceId assertion in the success test pins that wiring.
+const MOCK_TRACE_ID = 'abcdef1234567890abcdef1234567890'
+const mockSpan = otelTrace.wrapSpanContext({
+  traceId: MOCK_TRACE_ID,
+  spanId: '0123456789abcdef',
+  traceFlags: 1,
+  isRemote: false,
+})
+const mockInvocationContext = otelTrace.setSpan(otelContext.active(), mockSpan)
+const mockInvocationEnd = vi.fn()
+const mockCreateAgentInvocationSpan = vi.fn(() => ({
+  context: mockInvocationContext,
+  end: mockInvocationEnd,
+}))
+vi.mock('@godaddy/agent-otel-sdk', async () => {
+  const actual = await vi.importActual<Record<string, unknown>>('@godaddy/agent-otel-sdk')
+  return {
+    ...actual,
+    createAgentContext: vi.fn(() => otelContext.active()),
+    createAgentInvocationSpan: (...args: any[]) => mockCreateAgentInvocationSpan(...args),
+  }
+})
+
 import { MessageExecutionService } from '../MessageExecutionService.js'
 
 // Mock ai-lib-websocket-server to avoid heavy dependency chain.
@@ -107,6 +143,8 @@ describe('MessageExecutionService', () => {
 
   beforeEach(() => {
     actionServiceMap.clear()
+    mockInvocationEnd.mockReset()
+    mockCreateAgentInvocationSpan.mockClear()
     deps = createMockDeps()
     service = new MessageExecutionService(deps as any)
   })
@@ -1191,6 +1229,111 @@ describe('MessageExecutionService', () => {
     it('is a no-op when called for an unknown conversation', () => {
       service = new MessageExecutionService(deps as any)
       expect(() => service.stop('never-started')).not.toThrow()
+    })
+  })
+
+  // These pin the Langfuse invocation-span lifecycle that streamAgentTurn now
+  // owns. A future refactor that drops an invocation.end() on any exit path
+  // (success, abort, getFinalResult failure, stream error) would leave the
+  // Langfuse span permanently open; without these assertions, the test suite
+  // would stay green while observability silently regressed.
+  describe('Langfuse invocation span lifecycle', () => {
+    it('ends the invocation span with success:true on a clean stream', async () => {
+      deps.getAgent.mockReturnValue({
+        streamGenerate: vi.fn().mockResolvedValue({
+          textStream: (async function* () {})(),
+          baseStream: makeReadableStream([{ type: 'text-delta', text: 'hi' }]),
+          getFinalResult: vi.fn().mockResolvedValue({ finishReason: 'complete' }),
+        }),
+        getName: vi.fn().mockReturnValue('AI Developer'),
+      })
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute(DEFAULT_PARAMS)
+
+      expect(mockCreateAgentInvocationSpan).toHaveBeenCalledTimes(1)
+      expect(mockInvocationEnd).toHaveBeenCalledTimes(1)
+      expect(mockInvocationEnd).toHaveBeenCalledWith(
+        expect.objectContaining({ success: true, finishReason: 'complete' }),
+      )
+
+      // Pin the x-trace-id wiring: streamAgentTurn must extract the
+      // invocation-span traceId and inject it into executionContext.metadata
+      // so unified-provider sets x-trace-id on outgoing GoCode requests.
+      // Without the mock SpanContext set up at the top of this file, this
+      // branch would never fire and the assertion would silently pass if
+      // reworded — keep it keyed to MOCK_TRACE_ID.
+      const streamCall = (deps.getAgent().streamGenerate as any).mock.calls[0]
+      expect(streamCall[1].executionContext.metadata.traceId).toBe(MOCK_TRACE_ID)
+    })
+
+    it('ends the invocation span with success:false, finishReason:aborted when the client aborts', async () => {
+      let resolveStream: () => void
+      const streamGate = new Promise<void>(r => { resolveStream = r })
+
+      deps.getAgent.mockReturnValue({
+        streamGenerate: vi.fn().mockImplementation(async (_content: string, opts: any) => ({
+          textStream: (async function* () {})(),
+          baseStream: new ReadableStream({
+            async pull(controller) {
+              await streamGate
+              // Client aborted -> close cleanly so the happy path falls through
+              // to the `abortSignal.aborted` branch and ends the span as aborted.
+              if (opts?.abortSignal?.aborted) controller.close()
+              else controller.close()
+            },
+          }),
+        })),
+        getName: vi.fn().mockReturnValue('AI Developer'),
+      })
+      service = new MessageExecutionService(deps as any)
+
+      const execPromise = service.execute(DEFAULT_PARAMS)
+      const sg = deps.getAgent().streamGenerate as any
+      for (let i = 0; i < 100; i++) {
+        if (sg.mock.calls.length > 0) break
+        await new Promise(r => setTimeout(r, 5))
+      }
+      service.stop('conv_1')
+      resolveStream!()
+      await execPromise
+
+      expect(mockInvocationEnd).toHaveBeenCalledWith(
+        expect.objectContaining({ success: false, finishReason: 'aborted' }),
+      )
+    })
+
+    it('ends the invocation span with success:false, finishReason:result_fetch_failed when getFinalResult throws', async () => {
+      deps.getAgent.mockReturnValue({
+        streamGenerate: vi.fn().mockResolvedValue({
+          textStream: (async function* () {})(),
+          baseStream: makeReadableStream([{ type: 'text-delta', text: 'partial' }]),
+          getFinalResult: vi.fn().mockRejectedValue(new Error('result fetch boom')),
+        }),
+        getName: vi.fn().mockReturnValue('AI Developer'),
+      })
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute(DEFAULT_PARAMS)
+
+      expect(mockInvocationEnd).toHaveBeenCalledWith(
+        expect.objectContaining({ success: false, finishReason: 'result_fetch_failed' }),
+      )
+    })
+
+    it('ends the invocation span with error:<err>, success:false when streamGenerate throws', async () => {
+      const boom = new Error('streamGenerate boom')
+      deps.getAgent.mockReturnValue({
+        streamGenerate: vi.fn().mockRejectedValue(boom),
+        getName: vi.fn().mockReturnValue('AI Developer'),
+      })
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute(DEFAULT_PARAMS)
+
+      expect(mockInvocationEnd).toHaveBeenCalledWith(
+        expect.objectContaining({ success: false, error: boom }),
+      )
     })
   })
 })

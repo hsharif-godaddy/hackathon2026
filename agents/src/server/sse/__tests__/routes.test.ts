@@ -603,6 +603,51 @@ describe('SSE routes', () => {
         lifecycleContext: expect.objectContaining({ isInitialPrompt: false }),
       }))
     })
+
+    it('forwards requestHeaders and JWT visitor, traffic, and customer ids to execute()', async () => {
+      const mockExecute = vi.fn().mockResolvedValue(undefined)
+      const authenticateWithJwt = vi.fn((req: any, _res: any, next: any) => {
+        req.agentContext = {
+          siteId: 'abcdefghij',
+          customerId: 'cust_x',
+          visitorId: 'vis_y',
+          trafficSessionId: 'traffic_z',
+          enableAssessmentAgent: true,
+        }
+        next()
+      })
+      const depsWithService = {
+        ...deps,
+        authenticate: authenticateWithJwt,
+        executionService: { execute: mockExecute, hasActiveStream: vi.fn().mockReturnValue(false) },
+      }
+      const appWithService = express()
+      appWithService.use(express.json())
+      appWithService.use('/api/conversations', createSSERoutes(depsWithService as any))
+
+      const res = await request(appWithService)
+        .post('/api/conversations/abcdefghij/conv_1/messages')
+        .set('x-custom-probe', 'probe-value')
+        .send({ content: 'hello' })
+
+      expect(res.status).toBe(202)
+      for (let i = 0; i < 50 && mockExecute.mock.calls.length === 0; i++) {
+        await new Promise(r => setTimeout(r, 5))
+      }
+      const arg = mockExecute.mock.calls[0][0] as Record<string, unknown>
+      expect(arg.requestHeaders).toEqual(expect.any(Object))
+      expect((arg.requestHeaders as Record<string, unknown>)['x-custom-probe']).toBe('probe-value')
+      expect(arg.lifecycleContext).toEqual(
+        expect.objectContaining({
+          agentContext: expect.objectContaining({
+            customerId: 'cust_x',
+            visitorId: 'vis_y',
+            trafficSessionId: 'traffic_z',
+            enableAssessmentAgent: true,
+          }),
+        }),
+      )
+    })
   })
 
   describe('POST /api/conversations/:appId/:conversationId/stop', () => {

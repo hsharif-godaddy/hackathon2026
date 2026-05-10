@@ -432,6 +432,7 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
       budgetSessionId,
       subscriptionId: effectiveSubscriptionId,
       authType: agentContext?.authType,
+      requestHeaders: req.headers as Record<string, string | string[] | undefined>,
       lifecycleContext: {
         agentContext: {
           enableAssessmentAgent: agentContext?.enableAssessmentAgent,
@@ -441,6 +442,8 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
           agentProfile: agentContext?.agentProfile,
           agentProfileSelectorEnabled: agentContext?.agentProfileSelectorEnabled,
           customerId: agentContext?.customerId,
+          visitorId: agentContext?.visitorId,
+          trafficSessionId: agentContext?.trafficSessionId,
         },
         isInitialPrompt,
       },

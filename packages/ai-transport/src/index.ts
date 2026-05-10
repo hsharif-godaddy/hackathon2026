@@ -108,6 +108,18 @@ export { redactSkillOutput } from './redact-skill-output.js'
 // Non-idempotent tool detection (for mid-stream budget retry decisions)
 export { hasNonIdempotentTools } from './non-idempotent-tools.js'
 
+// Signals + OTEL trace context for chat transports (WS handshake, SSE request)
+export { buildChatSignalsTraceContext } from './chat-signals-trace-context.js'
+export type {
+  ChatSignalsTraceLogPrefix,
+  ChatSignalsTraceLogger,
+  JwtAgentContextSubset,
+} from './chat-signals-trace-context.js'
+
+// LLM provider inference for OTEL invocation spans
+export { inferProviderFromModelName } from './infer-llm-provider.js'
+export type { ChatLlmProvider } from './infer-llm-provider.js'
+
 // Agent Execution Loop
 export { executeAgentLoop, AgentNotFoundError, MAX_HANDOFFS } from './agent-execution-loop.js'
 export type { AgentExecutionLoopCallbacks, AgentExecutionLoopResult, AgentExecutionTermination } from './agent-execution-loop.js'

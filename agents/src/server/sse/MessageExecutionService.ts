@@ -1,7 +1,16 @@
 import type { ConversationEventChannel, ConversationMessage, PersistenceStreamingEvent, ConversationContext } from '@airo/ai-transport'
-import { StreamPartProcessor, executeAgentLoop, captureResponseMetadata, awaitResponseMetadata } from '@airo/ai-transport'
+import {
+  StreamPartProcessor,
+  executeAgentLoop,
+  captureResponseMetadata,
+  awaitResponseMetadata,
+  buildChatSignalsTraceContext,
+  inferProviderFromModelName,
+} from '@airo/ai-transport'
 import type { ResponseMetadata } from '@airo/ai-transport'
 import { BudgetExceededError, containsBudgetExceededPattern } from '@airo/ai-common'
+import { createAgentContext, createAgentInvocationSpan } from '@godaddy/agent-otel-sdk'
+import { context as otelContext, trace } from '@opentelemetry/api'
 import type { AgentsMessagePersistence } from '../conversation-persistence.js'
 import type { EventStreamRegistry } from './EventStreamRegistry.js'
 import { SSEClientActionService } from './SSEClientActionService.js'
@@ -82,6 +91,8 @@ interface LifecycleContext {
     agentProfile?: string
     agentProfileSelectorEnabled?: boolean
     customerId?: string
+    visitorId?: string
+    trafficSessionId?: string
   }
   isInitialPrompt?: boolean
 }
@@ -109,6 +120,8 @@ interface ExecuteParams {
   /** Original subscriptionId for override detection (care agent, test accounts) */
   subscriptionId?: string
   authType?: string
+  /** Raw HTTP request headers — used to extract Signals/OTEL trace propagation. */
+  requestHeaders?: Record<string, string | string[] | undefined>
   /** JWT agent context + derived lifecycle hints (isInitialPrompt, multi-turn caches). */
   lifecycleContext?: LifecycleContext
 }
@@ -370,79 +383,194 @@ export class MessageExecutionService {
 
     const messages = [...historyMessages, ...afterHistory, ...extraAfterHistory]
 
-    const streamResult = await agent.streamGenerate(message, {
-      ...(beforeHistory.length > 0 && { context: beforeHistory }),
-      ...(messages.length > 0 && { messages }),
-      executionContext: {
-        socketId: sseSocketId,
-        ...executionContext,
-      },
-      ...(processedFiles && processedFiles.length > 0 && { files: processedFiles }),
-      abortSignal,
+    // Create the Langfuse-facing agent-invocation span under the trace context
+    // established in execute(). This mirrors the WS path (streamAgentResponse)
+    // so both transports produce identical invocation telemetry. The span is
+    // ended on every exit path (success, abort, error) so the trace closes
+    // cleanly even when the client stops mid-stream.
+    const modelName = (() => {
+      try {
+        return agent.getConfig().modelName || agentName
+      } catch {
+        return agentName
+      }
+    })()
+    const agentOtelContext = createAgentContext({
+      conversationId,
+      agentId: `airo-app-builder-${agentName}`,
     })
+    const invocation = otelContext.with(agentOtelContext, () =>
+      createAgentInvocationSpan({
+        prompt: message,
+        model: modelName,
+        provider: inferProviderFromModelName(modelName),
+      }),
+    )
+
+    // Propagate OTel trace ID to GoCode via x-trace-id header for cross-service
+    // log correlation (mirrors WS at experimental-websocket-server.ts:3761-3770).
+    // unified-provider reads this off executionContext.metadata.traceId when
+    // building outgoing GoCode requests; without it, SSE-initiated LLM calls
+    // land in GoCode logs with no trace link back to the conversation.
+    const invocationSpan = trace.getSpan(invocation.context)
+    const traceId = invocationSpan?.spanContext().traceId
+    const executionContextWithTrace: Record<string, unknown> = {
+      socketId: sseSocketId,
+      ...executionContext,
+      ...(traceId && {
+        metadata: {
+          ...((executionContext.metadata as Record<string, unknown> | undefined) ?? {}),
+          traceId,
+        },
+      }),
+    }
 
     // Eagerly capture LLM provider response metadata (response id, model id,
     // headers like x-correlation-id) for observability parity with WS. Rejection
     // is suppressed at the ai-lib boundary, so this is fire-and-forget.
     let capturedMetadata: ResponseMetadata = {}
-    captureResponseMetadata(streamResult.response, (meta) => {
-      capturedMetadata = meta
-    })
 
-    const baseStream = streamResult.baseStream
-    if (baseStream) {
-      const reader: ReadableStreamDefaultReader = (baseStream as ReadableStream).getReader()
-      try {
-        while (true) {
-          if (abortSignal.aborted) break
-          const { done, value } = await reader.read()
-          if (done) break
-          if (value?.part) {
-            processor.processPart(value.part)
-            await Promise.all(pendingPublishes.splice(0))
+    try {
+      const streamResult = await otelContext.with(invocation.context, async () =>
+        agent.streamGenerate(message, {
+          ...(beforeHistory.length > 0 && { context: beforeHistory }),
+          ...(messages.length > 0 && { messages }),
+          executionContext: executionContextWithTrace,
+          ...(processedFiles && processedFiles.length > 0 && { files: processedFiles }),
+          abortSignal,
+        }),
+      )
+
+      captureResponseMetadata(streamResult.response, (meta) => {
+        capturedMetadata = meta
+      })
+
+      const baseStream = streamResult.baseStream
+      if (baseStream) {
+        const reader: ReadableStreamDefaultReader = (baseStream as ReadableStream).getReader()
+        try {
+          while (true) {
+            if (abortSignal.aborted) break
+            const { done, value } = await reader.read()
+            if (done) break
+            if (value?.part) {
+              processor.processPart(value.part)
+              await Promise.all(pendingPublishes.splice(0))
+            }
           }
+        } finally {
+          reader.releaseLock()
+          if (pendingPublishes.length > 0) await Promise.all(pendingPublishes.splice(0))
         }
-      } finally {
-        reader.releaseLock()
+      } else {
+        for await (const chunk of streamResult.textStream) {
+          if (abortSignal.aborted) break
+          processor.processPart({ type: 'text-delta', text: chunk })
+          await Promise.all(pendingPublishes.splice(0))
+        }
         if (pendingPublishes.length > 0) await Promise.all(pendingPublishes.splice(0))
       }
-    } else {
-      for await (const chunk of streamResult.textStream) {
-        if (abortSignal.aborted) break
-        processor.processPart({ type: 'text-delta', text: chunk })
-        await Promise.all(pendingPublishes.splice(0))
+
+      let finishReason = 'complete'
+      let finalResult: any
+      let finalResultFailed = false
+      try {
+        finalResult = await streamResult.getFinalResult()
+        finishReason = finalResult?.finishReason ?? 'complete'
+      } catch (err) {
+        // Preserve the legacy warn log + continue returning a result to the
+        // caller, but do NOT let this fall through to invocation.end({success:
+        // true}) below — without usage and with no final result, the span would
+        // misleadingly show a successful turn in Langfuse. Mark finishReason so
+        // the branch below ends the span as a failure. WS doesn't wrap
+        // getFinalResult at all (its outer catch handles it); SSE keeps the
+        // wrap for callers that inspect finishReason but surfaces the failure
+        // to telemetry.
+        logger.warn('sse.execution.getFinalResult.failed', { appId, conversationId, ...errorFields(err) })
+        finalResultFailed = true
+        finishReason = 'result_fetch_failed'
       }
-      if (pendingPublishes.length > 0) await Promise.all(pendingPublishes.splice(0))
-    }
 
-    let finishReason = 'complete'
-    let finalResult: any
-    try {
-      finalResult = await streamResult.getFinalResult()
-      finishReason = finalResult?.finishReason ?? 'complete'
+      // Ensure metadata is available for terminal telemetry even if the eager
+      // capture hasn't resolved yet (500ms timeout). Falls back to {} on reject.
+      if (!capturedMetadata.headers && !capturedMetadata.responseId) {
+        capturedMetadata = await awaitResponseMetadata(streamResult.response)
+      }
+
+      logger.info('sse.llm.response.metadata', {
+        appId, conversationId,
+        responseId: capturedMetadata.responseId,
+        modelId: capturedMetadata.modelId,
+        correlationId: capturedMetadata.headers?.['x-correlation-id'],
+        finishReason,
+      })
+
+      const { accumulatedContent, currentStep } = processor.getState()
+
+      // End the Langfuse invocation span before returning. When the client
+      // aborted we still have a partial response to report; flag it so the
+      // trace doesn't misleadingly show success.
+      if (abortSignal.aborted) {
+        invocation.end({
+          outputText: accumulatedContent,
+          responseType: accumulatedContent ? 'llm_reply' : 'tool_call',
+          success: false,
+          finishReason: 'aborted',
+        })
+      } else if (finalResultFailed) {
+        invocation.end({
+          outputText: accumulatedContent,
+          responseType: accumulatedContent ? 'llm_reply' : 'tool_call',
+          success: false,
+          finishReason,
+        })
+      } else {
+        const usageToTrack = finalResult?.totalUsage ?? finalResult?.usage
+        invocation.end({
+          outputText: accumulatedContent,
+          responseType: accumulatedContent ? 'llm_reply' : 'tool_call',
+          ...(usageToTrack && { usage: usageToTrack }),
+          finishReason,
+          success: true,
+        })
+      }
+
+      return { accumulatedContent, currentStep, finalResult, finishReason, responseMetadata: capturedMetadata }
     } catch (err) {
-      logger.warn('sse.execution.getFinalResult.failed', { appId, conversationId, ...errorFields(err) })
+      invocation.end({
+        error: err instanceof Error ? err : String(err),
+        success: false,
+      })
+      throw err
     }
-
-    // Ensure metadata is available for terminal telemetry even if the eager
-    // capture hasn't resolved yet (500ms timeout). Falls back to {} on reject.
-    if (!capturedMetadata.headers && !capturedMetadata.responseId) {
-      capturedMetadata = await awaitResponseMetadata(streamResult.response)
-    }
-
-    logger.info('sse.llm.response.metadata', {
-      appId, conversationId,
-      responseId: capturedMetadata.responseId,
-      modelId: capturedMetadata.modelId,
-      correlationId: capturedMetadata.headers?.['x-correlation-id'],
-      finishReason,
-    })
-
-    const { accumulatedContent, currentStep } = processor.getState()
-    return { accumulatedContent, currentStep, finalResult, finishReason, responseMetadata: capturedMetadata }
   }
 
   async execute(params: ExecuteParams): Promise<void> {
+    // Build the Signals/OTEL trace context from HTTP headers + JWT early, so
+    // every span emitted during this turn (AI SDK LLM spans, tool spans, the
+    // agent-invocation span below) inherits the same traceparent. Without
+    // this wrap, SSE turns produce orphan spans that never land on the
+    // conversation's Langfuse trace, which is exactly the failure Synthia
+    // surfaces as "No traces found in Langfuse for conversationId: …".
+    const jwtCtx = params.lifecycleContext?.agentContext
+    const traceCtx = buildChatSignalsTraceContext({
+      ...(params.requestHeaders !== undefined && { headers: params.requestHeaders }),
+      ...(jwtCtx && {
+        jwtAgentContext: {
+          ...(jwtCtx.customerId !== undefined && { customerId: jwtCtx.customerId }),
+          ...(jwtCtx.visitorId !== undefined && { visitorId: jwtCtx.visitorId }),
+          ...(jwtCtx.trafficSessionId !== undefined && { trafficSessionId: jwtCtx.trafficSessionId }),
+        },
+      }),
+      ...(params.appId.length > 0 && { appId: params.appId }),
+      logPrefix: 'sse',
+      logFields: { appId: params.appId, conversationId: params.conversationId },
+      logger: { warn: (event, fields) => logger.warn(event, fields) },
+    })
+    await otelContext.with(traceCtx, () => this.executeUnderTrace(params))
+  }
+
+  private async executeUnderTrace(params: ExecuteParams): Promise<void> {
     const {
       appId, conversationId, content, siteId, agentId, agentProfile,
       templateId, modelOverride,
