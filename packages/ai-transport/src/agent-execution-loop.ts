@@ -1,3 +1,23 @@
+import { emitHandoff } from '@godaddy/agent-otel-sdk'
+import { createHandoff } from '@godaddy/agent-observability-events'
+
+/** Loop-wide observability options. When provided, the loop emits
+ * `emitHandoff` around each handoff boundary. Telemetry failures are
+ * caught inside the loop and never propagate — observability is
+ * additive, never fatal.
+ *
+ * `onTelemetryError` surfaces those swallowed failures to the caller's
+ * log stream. Without it, a broken `emitHandoff` is invisible; with it,
+ * transports get a `handoff.telemetry_emit_failed` record via the same
+ * logger they already use for other telemetry paths. The callback itself
+ * must not throw — the loop still catches and swallows any secondary
+ * throw from the handler. */
+export interface LoopObservabilityOptions {
+  conversationId: string
+  getAgentId: (agentName: string) => string
+  onTelemetryError?: (event: string, fields: Record<string, unknown>) => void
+}
+
 /** Callbacks driving `executeAgentLoop`.
  *
  * **Error contract:** the loop awaits async callbacks and does NOT catch
@@ -57,6 +77,7 @@ export async function executeAgentLoop<TAgent = unknown>(
   initialAgent: string,
   initialMessage: string,
   callbacks: AgentExecutionLoopCallbacks<TAgent>,
+  observability?: LoopObservabilityOptions,
 ): Promise<AgentExecutionLoopResult> {
   let agentName = initialAgent
   let currentMessage = initialMessage
@@ -95,6 +116,35 @@ export async function executeAgentLoop<TAgent = unknown>(
       return { finalAgentName: agentName, iterations: iteration + 1, termination: 'completed' }
     }
 
+    if (observability) {
+      try {
+        emitHandoff({
+          conversationId: observability.conversationId,
+          agentId: observability.getAgentId(agentName),
+          eventData: createHandoff({
+            fromAgentId: observability.getAgentId(agentName),
+            fromAgentName: agentName,
+            toAgentId: observability.getAgentId(handoff.newAgentName),
+            toAgentName: handoff.newAgentName,
+            reason: 'Agent handoff',
+            routingMethod: 'llm',
+          }),
+        })
+      } catch (telemetryErr) {
+        // Telemetry must never abort a handoff. Surface it through the
+        // caller's logger so a broken emitHandoff isn't invisible; guard
+        // the callback itself so a throwing handler doesn't promote a
+        // telemetry failure to a fatal loop error.
+        try {
+          observability.onTelemetryError?.('handoff.telemetry_emit_failed', {
+            conversationId: observability.conversationId,
+            fromAgent: agentName,
+            toAgent: handoff.newAgentName,
+            telemetryError: telemetryErr instanceof Error ? telemetryErr.message : String(telemetryErr),
+          })
+        } catch { /* additive, never fatal */ }
+      }
+    }
     await callbacks.onHandoff(agentName, handoff.newAgentName)
     agentName = handoff.newAgentName
     currentMessage = handoff.handoffPrompt

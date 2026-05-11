@@ -1,4 +1,11 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+
+vi.mock('@godaddy/agent-otel-sdk', async () => {
+  const actual = await vi.importActual<Record<string, unknown>>('@godaddy/agent-otel-sdk')
+  return { ...actual, emitHandoff: vi.fn() }
+})
+
+import { emitHandoff } from '@godaddy/agent-otel-sdk'
 import {
   executeAgentLoop,
   AgentNotFoundError,
@@ -275,5 +282,95 @@ describe('executeAgentLoop', () => {
     expect(result.termination).toBe('max_handoffs')
     expect(result.iterations).toBe(10)
     expect(cb.streamAgentTurn).toHaveBeenCalledTimes(10)
+  })
+})
+
+describe('executeAgentLoop observability', () => {
+  beforeEach(() => {
+    vi.mocked(emitHandoff).mockReset()
+  })
+
+  it('emits handoff with formatted agent IDs when observability is provided', async () => {
+    const cb = baseCallbacks({
+      getHandoffDetails: vi.fn()
+        .mockReturnValueOnce({ newAgentName: 'marketing', handoffPrompt: 'continue' })
+        .mockReturnValue(null),
+    })
+    await executeAgentLoop('develop', 'hi', cb, {
+      conversationId: 'conv_1',
+      getAgentId: (n) => `airo-app-builder-${n}`,
+    })
+    expect(vi.mocked(emitHandoff)).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(emitHandoff)).toHaveBeenCalledWith(expect.objectContaining({
+      conversationId: 'conv_1',
+      agentId: 'airo-app-builder-develop',
+    }))
+    expect(cb.onHandoff).toHaveBeenCalledWith('develop', 'marketing')
+  })
+
+  it('does not emit handoff when no observability options are passed (back-compat)', async () => {
+    const cb = baseCallbacks({
+      getHandoffDetails: vi.fn()
+        .mockReturnValueOnce({ newAgentName: 'marketing', handoffPrompt: 'p' })
+        .mockReturnValue(null),
+    })
+    await executeAgentLoop('develop', 'hi', cb)
+    expect(vi.mocked(emitHandoff)).not.toHaveBeenCalled()
+  })
+
+  it('does not propagate emitHandoff failures to the caller', async () => {
+    vi.mocked(emitHandoff).mockImplementation(() => { throw new Error('telemetry down') })
+    const cb = baseCallbacks({
+      getHandoffDetails: vi.fn()
+        .mockReturnValueOnce({ newAgentName: 'marketing', handoffPrompt: 'p' })
+        .mockReturnValue(null),
+    })
+    const result = await executeAgentLoop('develop', 'hi', cb, {
+      conversationId: 'conv_1',
+      getAgentId: (n) => `airo-app-builder-${n}`,
+    })
+    expect(result.termination).toBe('completed')
+    expect(cb.onHandoff).toHaveBeenCalled()
+  })
+
+  it('routes swallowed emitHandoff failures to onTelemetryError with agent + error context', async () => {
+    vi.mocked(emitHandoff).mockImplementation(() => { throw new Error('telemetry down') })
+    const onTelemetryError = vi.fn()
+    const cb = baseCallbacks({
+      getHandoffDetails: vi.fn()
+        .mockReturnValueOnce({ newAgentName: 'marketing', handoffPrompt: 'p' })
+        .mockReturnValue(null),
+    })
+    await executeAgentLoop('develop', 'hi', cb, {
+      conversationId: 'conv_1',
+      getAgentId: (n) => `airo-app-builder-${n}`,
+      onTelemetryError,
+    })
+    expect(onTelemetryError).toHaveBeenCalledWith('handoff.telemetry_emit_failed', {
+      conversationId: 'conv_1',
+      fromAgent: 'develop',
+      toAgent: 'marketing',
+      telemetryError: 'telemetry down',
+    })
+    // Loop still completes normally — telemetry-reporting is additive.
+    expect(cb.onHandoff).toHaveBeenCalledWith('develop', 'marketing')
+  })
+
+  it('does not propagate onTelemetryError throws (additive, never fatal)', async () => {
+    vi.mocked(emitHandoff).mockImplementation(() => { throw new Error('telemetry down') })
+    const onTelemetryError = vi.fn(() => { throw new Error('logger broken') })
+    const cb = baseCallbacks({
+      getHandoffDetails: vi.fn()
+        .mockReturnValueOnce({ newAgentName: 'marketing', handoffPrompt: 'p' })
+        .mockReturnValue(null),
+    })
+    const result = await executeAgentLoop('develop', 'hi', cb, {
+      conversationId: 'conv_1',
+      getAgentId: (n) => `airo-app-builder-${n}`,
+      onTelemetryError,
+    })
+    expect(result.termination).toBe('completed')
+    expect(onTelemetryError).toHaveBeenCalled()
+    expect(cb.onHandoff).toHaveBeenCalled()
   })
 })

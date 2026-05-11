@@ -4,6 +4,8 @@ import {
   executeAgentLoop,
   buildChatSignalsTraceContext,
   createAgentInvocation,
+  formatAgentId,
+  emitTurnError,
 } from '@airo/ai-transport'
 import type { ResponseMetadata } from '@airo/ai-transport'
 import { BudgetExceededError, containsBudgetExceededPattern } from '@airo/ai-common'
@@ -813,6 +815,10 @@ export class MessageExecutionService {
             }
           },
         }),
+      }, {
+        conversationId,
+        getAgentId: formatAgentId,
+        onTelemetryError: (event, fields) => logger.warn(event, fields),
       })
 
       const runWithOverride = async () => {
@@ -1009,6 +1015,16 @@ export class MessageExecutionService {
         await this.publishTerminal(appId, conversationId, {
           type: 'complete', content: '', data: { finishReason: 'error' },
           conversationId, agentName: 'system',
+        })
+        // SSE has no WS-style statusCode/errorType classification yet — fall
+        // back to defaults. When classification lands (mirror WS analyzeStreamError),
+        // forward errorType + isRetryable here.
+        emitTurnError({
+          conversationId,
+          agentId: formatAgentId(resolvedAgentId),
+          error: err,
+          errorPhase: 'execution',
+          logger: { warn: (event, fields) => logger.warn(event, fields) },
         })
       }
     } finally {

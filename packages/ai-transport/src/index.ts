@@ -134,7 +134,7 @@ export type {
 
 // Agent Execution Loop
 export { executeAgentLoop, AgentNotFoundError, MAX_HANDOFFS } from './agent-execution-loop.js'
-export type { AgentExecutionLoopCallbacks, AgentExecutionLoopResult, AgentExecutionTermination } from './agent-execution-loop.js'
+export type { AgentExecutionLoopCallbacks, AgentExecutionLoopResult, AgentExecutionTermination, LoopObservabilityOptions } from './agent-execution-loop.js'
 
 // Client Action Registry
 export { ClientActionRegistry } from './client-action-registry.js'

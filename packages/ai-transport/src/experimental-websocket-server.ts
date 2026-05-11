@@ -40,15 +40,10 @@ import { PersistenceSubscriber } from './subscribers/persistence-subscriber.js'
 import { ConnectionStateManager, type ConnectionStateData } from './connection-state-manager.js'
 import { ConnectionRecoveryManager } from './connection-recovery-manager.js'
 import { executeAgentLoop, AgentNotFoundError } from './agent-execution-loop.js'
-import { createError, createHandoff } from '@godaddy/agent-observability-events'
-import {
-  emitError,
-  emitHandoff
-} from '@godaddy/agent-otel-sdk'
 import { context as otelContext, trace } from '@opentelemetry/api'
 import { buildChatSignalsTraceContext, type JwtAgentContextSubset } from './chat-signals-trace-context.js'
 import { inferProviderFromModelName, type ChatLlmProvider } from './infer-llm-provider.js'
-import { createAgentInvocation } from './agent-invocation.js'
+import { createAgentInvocation, emitTurnError } from './agent-invocation.js'
 import {
   StreamTimingTracker,
   type StreamTimingData,
@@ -2732,28 +2727,9 @@ export class WebSocketServer {
             this.config.stateManager.setSessionMetadata(socketId, { appId: currentAppId })
           }
 
-          try {
-            emitHandoff({
-              conversationId: conversationIdForCleanup,
-              agentId: this.getAgentId(oldAgent),
-              eventData: createHandoff({
-                fromAgentId: this.getAgentId(oldAgent),
-                fromAgentName: oldAgent,
-                toAgentId: this.getAgentId(newAgent),
-                toAgentName: newAgent,
-                reason: 'Agent handoff',
-                routingMethod: 'llm'
-              })
-            })
-          } catch (telemetryError) {
-            // Telemetry must never abort a handoff; log and continue.
-            this.logger.warn('handoff.telemetry_emit_failed', {
-              socketId,
-              fromAgent: oldAgent,
-              toAgent: newAgent,
-              error: telemetryError instanceof Error ? telemetryError.message : String(telemetryError)
-            })
-          }
+          // Handoff emission now happens inside executeAgentLoop via the
+          // LoopObservabilityOptions passed below — both transports share
+          // that code path and get identical handoff telemetry.
 
           const conversation = this.getConversation(socketId)
           if (conversation && this.config.onAgentChanged) {
@@ -2764,7 +2740,7 @@ export class WebSocketServer {
             // agent and conversation history in an inconsistent state.
             // Surfacing the rejection propagates to the outer catch and
             // aborts the turn so the client retry starts with clean state
-            // instead of a corrupt one. Contrast `emitHandoff` above
+            // instead of a corrupt one. Contrast the loop's emitHandoff
             // (observability-only, non-fatal).
             await this.config.onAgentChanged(
               conversation.conversationId,
@@ -2775,7 +2751,11 @@ export class WebSocketServer {
           }
         },
         isAborted: () => abortSignal.aborted,
-      })
+      }, conversationIdForCleanup ? {
+        conversationId: conversationIdForCleanup,
+        getAgentId: (n) => this.getAgentId(n),
+        onTelemetryError: (event, fields) => this.logger.warn(event, fields),
+      } : undefined)
       agentName = loopResult.finalAgentName
       if (loopResult.termination === 'aborted') {
         this.logger.info('stream.aborted.skip_completion', { socketId, agentName })
@@ -2945,17 +2925,17 @@ export class WebSocketServer {
         } as WebSocketMessage)
       }
 
-      emitError({
-        conversationId: conversationIdForCleanup,
-        agentId: this.getAgentId(agentName),
-        eventData: createError({
+      if (conversationIdForCleanup) {
+        emitTurnError({
+          conversationId: conversationIdForCleanup,
+          agentId: this.getAgentId(agentName),
+          error,
           errorType: errorType || error?.constructor?.name || 'Error',
-          errorMessage,
           errorPhase: 'execution',
           isRetryable: errorType === 'RETRY_ERROR' || statusCode === 503 || statusCode === 429 || (errorType === 'BUDGET_SERVICE_ERROR' && statusCode !== undefined && statusCode >= 500),
-          ...(error instanceof Error ? { errorStack: error.stack } : {})
+          logger: { warn: (event, fields) => this.logger.warn(event, fields) },
         })
-      })
+      }
 
       await this.config.onError?.(socketId, error instanceof Error ? error : new Error(String(error)), data.message, processedContext)
 
