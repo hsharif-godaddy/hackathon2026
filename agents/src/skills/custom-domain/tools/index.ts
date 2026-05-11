@@ -21,9 +21,11 @@ function messageForAttachWidget(base: string): string {
     return `${base.trimEnd()}\n\n${DOMAIN_ATTACH_AGENT_EXPLAINER}`
 }
 
+const DOMAIN_FORWARDING_HELP_ARTICLE = 'https://www.godaddy.com/help/forward-my-godaddy-domain-12123'
+
 const domainInputSchema = z.object({
-    action: z.enum(['purchase', 'attach']).describe(
-        'purchase = buy/find new; attach = connect existing'
+    action: z.enum(['purchase', 'attach', 'forward']).describe(
+        'purchase = buy/find new; attach = connect existing; forward = set up forwarding for secondary domain'
     ),
     brandName: z.string().optional().describe(
         'Business/project name for suggestions. NOT a domain — no dots/TLDs. Omit if user gave an exact domain.'
@@ -245,6 +247,113 @@ async function autoAttach(
     }
 }
 
+async function forward(
+    input: z.infer<typeof domainInputSchema>,
+    context: any,
+    appId: string
+) {
+    // No canPurchaseDomain gate — forwarding is guidance-only (no mutations), safe for all users.
+    const socketId = context?.socketId
+    if (!socketId || typeof socketId !== 'string') {
+        logger.error('domain.forward.missing-socket-id', { appId })
+        return {
+            success: false,
+            error: 'Socket ID not available',
+            message: 'Cannot verify app status — try again.'
+        }
+    }
+
+    const clientActionService = getClientActionService(socketId)
+    if (!clientActionService) {
+        logger.error('domain.forward.client-action-service-unavailable', { appId })
+        return {
+            success: false,
+            error: 'Client action service unavailable',
+            message: 'Cannot verify app status — try again.'
+        }
+    }
+
+    const sourceDomain = input.domain?.trim() || undefined
+
+    if (sourceDomain) {
+        const validation = validateDomainName(sourceDomain)
+        if (!validation.valid) {
+            logger.warn('domain.forward.invalid-domain', {
+                domain: sourceDomain,
+                error: validation.error,
+            })
+            return {
+                success: false,
+                error: validation.error,
+                message: `"${sourceDomain}" is not a valid domain name. ${validation.error}`
+            }
+        }
+    }
+
+    const { domains: siteDomains } = await getSiteContextForAttach(clientActionService, appId)
+
+    // undefined = fetch failed (unknown state); [] = known empty
+    if (!siteDomains) {
+        return {
+            success: false,
+            error: 'Unable to check connected domains',
+            message: 'Unable to check connected domains — please try again.',
+        }
+    }
+
+    // SiteDomainForAttachCheck has no canonical "primary" flag or attachedAt timestamp,
+    // so we pick the first active non-prefix domain. In practice apps have at most one
+    // custom domain today; if multiple exist, API ordering is unspecified.
+    const primaryDomain = siteDomains
+        .filter((d) => d.domainType !== 'prefix')
+        .find((d) => (d.status ?? '').toLowerCase() === 'active')
+        ?.fqdn
+
+    logger.info('domain.forward.instructions', {
+        appId,
+        sourceDomain: sourceDomain || 'not-provided',
+        primaryDomain: primaryDomain || 'not-found',
+    })
+
+    if (!primaryDomain) {
+        return {
+            success: false,
+            error: 'No primary domain attached',
+            forwardingInstructions: {
+                sourceDomain,
+                helpArticle: DOMAIN_FORWARDING_HELP_ARTICLE,
+            },
+            message: 'No domain is currently attached to this app. Attach a primary domain first, then set up forwarding for additional domains.',
+        }
+    }
+
+    const dccLink = sourceDomain
+        ? `https://dcc.godaddy.com/control/portfolio/${sourceDomain}/settings?tab=forwarding`
+        : undefined
+
+    return {
+        success: true,
+        forwardingInstructions: {
+            sourceDomain,
+            primaryDomain,
+            dccLink,
+            helpArticle: DOMAIN_FORWARDING_HELP_ARTICLE,
+        },
+        message: buildForwardingMessage(sourceDomain, primaryDomain),
+    }
+}
+
+function buildForwardingMessage(
+    sourceDomain: string | undefined,
+    primaryDomain: string,
+): string {
+    if (sourceDomain) {
+        const dccLink = `https://dcc.godaddy.com/control/portfolio/${sourceDomain}/settings?tab=forwarding`
+        return `To forward ${sourceDomain} to ${primaryDomain}: if ${sourceDomain} is a GoDaddy domain, set up forwarding at ${dccLink} using a 301 (Permanent) redirect. If it's registered elsewhere, set up a URL redirect/forward to ${primaryDomain} at that registrar. Full instructions: ${DOMAIN_FORWARDING_HELP_ARTICLE}`
+    }
+    return `Your app is live at ${primaryDomain}. To point additional domains here, set up domain forwarding — GoDaddy domains via DCC, external domains via the registrar's redirect settings. Instructions: ${DOMAIN_FORWARDING_HELP_ARTICLE}`
+}
+
 function formatSiteCustomDomainsSummary(domains: SiteDomainForAttachCheck[] | undefined): string {
     if (!domains?.length) return ''
     const rows = domains.filter((d) => d.domainType !== 'prefix')
@@ -275,7 +384,7 @@ async function getSiteContextForAttach(
             }
         }
     } catch (error) {
-        logger.warn('domain.attach.site-context-failed', {
+        logger.warn('domain.site-context.fetch-failed', {
             appId,
             error: error instanceof Error ? error.message : String(error),
         })
@@ -319,10 +428,11 @@ async function storePurchasedDomain(appId: string, fqdn: string, context?: { met
 
 export const domainPurchaseTool: SkillToolDefinition = {
     name: 'domainPurchase',
-    description: `Purchase or attach a domain.
+    description: `Purchase, attach, or forward a domain.
 
 purchase: show domain search/buy widget.
 attach: connect an existing domain to this app.
+forward: explain how to set up domain forwarding for secondary domains.
 
 Rules:
 1. Call this tool immediately on domain requests (do not  prose-reply)
@@ -333,7 +443,8 @@ Rules:
 6. Use this tool for all domain operations (do not redirect to Settings)
 7. Call attach for DNS requests to show the official record table
 8. Show the widget directly (skip clarifying questions)
-9. Use only real DNS values from tool results (not fabricated or Preview URL \`*.preview.*\`)`,
+9. Use only real DNS values from tool results (not fabricated or Preview URL \`*.preview.*\`)
+10. For "forward" requests, guide the user through GoDaddy forwarding (DCC deep link) — never suggest attaching a second domain as primary`,
     parameters: domainInputSchema,
     execute: async (input, context) => {
         const appId = (context?.metadata?.appId as string) || input.appId
@@ -346,8 +457,8 @@ Rules:
             }
         }
 
-        return input.action === 'purchase'
-            ? purchase(input, context, appId)
-            : attach(input, context, appId)
+        if (input.action === 'purchase') return purchase(input, context, appId)
+        if (input.action === 'forward') return forward(input, context, appId)
+        return attach(input, context, appId)
     }
 }

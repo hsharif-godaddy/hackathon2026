@@ -532,4 +532,266 @@ describe('custom-domain', function packageTests() {
             expect(result.error).toBe('Socket ID not available')
         })
     })
+
+    describe('#forward action', function forwardTests() {
+        it('should not be blocked by canPurchaseDomain: false', async function permissionBypass() {
+            mockGetClientActionService.mockReturnValue({
+                executeAction: vi.fn().mockResolvedValue({
+                    success: true,
+                    result: {
+                        variants: ['publish'],
+                        domains: [{ fqdn: 'primary.com', domainType: 'custom', status: 'active' }],
+                    },
+                })
+            } as any)
+
+            const result = await execute(
+                { action: 'forward' },
+                {
+                    metadata: { appId: 'app-123', permissions: { canPurchaseDomain: false } },
+                    socketId: 'socket-123'
+                }
+            )
+
+            expect(result.success).toBe(true)
+            expect(result.forwardingInstructions.primaryDomain).toBe('primary.com')
+        })
+
+        it('should reject when socketId is missing', async function missingSocket() {
+            const result = await execute(
+                { action: 'forward' },
+                { metadata: { appId: 'app-123', permissions: { canPurchaseDomain: true } } }
+            )
+
+            expect(result.success).toBe(false)
+            expect(result.error).toBe('Socket ID not available')
+        })
+
+        it('should reject when clientActionService is unavailable', async function noService() {
+            mockGetClientActionService.mockReturnValue(undefined as any)
+
+            const result = await execute(
+                { action: 'forward' },
+                {
+                    metadata: { appId: 'app-123', permissions: { canPurchaseDomain: true } },
+                    socketId: 'socket-123'
+                }
+            )
+
+            expect(result.success).toBe(false)
+            expect(result.error).toBe('Client action service unavailable')
+        })
+
+        it('should return neutral error when site context fetch fails', async function siteContextFailed() {
+            mockGetClientActionService.mockReturnValue({
+                executeAction: vi.fn().mockRejectedValue(new Error('timeout'))
+            } as any)
+
+            const result = await execute(
+                { action: 'forward' },
+                {
+                    metadata: { appId: 'app-123', permissions: { canPurchaseDomain: true } },
+                    socketId: 'socket-123'
+                }
+            )
+
+            expect(result.success).toBe(false)
+            expect(result.error).toBe('Unable to check connected domains')
+            expect(result.message).toContain('try again')
+        })
+
+        it('should reject invalid domain names', async function invalidDomain() {
+            mockGetClientActionService.mockReturnValue({
+                executeAction: vi.fn().mockResolvedValue({
+                    success: true,
+                    result: { variants: ['publish'], domains: [] },
+                })
+            } as any)
+
+            const result = await execute(
+                { action: 'forward', domain: 'not-a-domain' },
+                {
+                    metadata: { appId: 'app-123', permissions: { canPurchaseDomain: true } },
+                    socketId: 'socket-123'
+                }
+            )
+
+            expect(result.success).toBe(false)
+            expect(result.message).toContain('"not-a-domain" is not a valid domain name')
+        })
+
+        it('should return forwarding instructions with DCC link when domain is provided', async function withDomain() {
+            mockGetClientActionService.mockReturnValue({
+                executeAction: vi.fn().mockResolvedValue({
+                    success: true,
+                    result: {
+                        variants: ['publish'],
+                        domains: [{ fqdn: 'primary.com', domainType: 'custom', status: 'active' }],
+                    },
+                })
+            } as any)
+
+            const result = await execute(
+                { action: 'forward', domain: 'secondary.com' },
+                {
+                    metadata: { appId: 'app-123', permissions: { canPurchaseDomain: true } },
+                    socketId: 'socket-123'
+                }
+            )
+
+            expect(result.success).toBe(true)
+            expect(result.forwardingInstructions.dccLink).toBe('https://dcc.godaddy.com/control/portfolio/secondary.com/settings?tab=forwarding')
+            expect(result.forwardingInstructions.sourceDomain).toBe('secondary.com')
+            expect(result.forwardingInstructions.primaryDomain).toBe('primary.com')
+            expect(result.message).toContain('secondary.com')
+            expect(result.message).toContain('primary.com')
+            expect(result.message).toContain('if secondary.com is a GoDaddy domain')
+            expect(result.message).toContain('registered elsewhere')
+        })
+
+        it('should match status case-insensitively', async function caseInsensitiveStatus() {
+            mockGetClientActionService.mockReturnValue({
+                executeAction: vi.fn().mockResolvedValue({
+                    success: true,
+                    result: {
+                        variants: ['publish'],
+                        domains: [{ fqdn: 'primary.com', domainType: 'custom', status: 'Active' }],
+                    },
+                })
+            } as any)
+
+            const result = await execute(
+                { action: 'forward' },
+                {
+                    metadata: { appId: 'app-123', permissions: { canPurchaseDomain: true } },
+                    socketId: 'socket-123'
+                }
+            )
+
+            expect(result.success).toBe(true)
+            expect(result.forwardingInstructions.primaryDomain).toBe('primary.com')
+        })
+
+        it('should return forwarding instructions without DCC link when no domain provided', async function withoutDomain() {
+            mockGetClientActionService.mockReturnValue({
+                executeAction: vi.fn().mockResolvedValue({
+                    success: true,
+                    result: {
+                        variants: ['publish'],
+                        domains: [{ fqdn: 'primary.com', domainType: 'custom', status: 'active' }],
+                    },
+                })
+            } as any)
+
+            const result = await execute(
+                { action: 'forward' },
+                {
+                    metadata: { appId: 'app-123', permissions: { canPurchaseDomain: true } },
+                    socketId: 'socket-123'
+                }
+            )
+
+            expect(result.success).toBe(true)
+            expect(result.forwardingInstructions.dccLink).toBeUndefined()
+            expect(result.forwardingInstructions.sourceDomain).toBeUndefined()
+            expect(result.forwardingInstructions.primaryDomain).toBe('primary.com')
+            expect(result.message).toContain('primary.com')
+        })
+
+        it('should include primary domain from site context when available', async function primaryFromSite() {
+            mockGetClientActionService.mockReturnValue({
+                executeAction: vi.fn().mockResolvedValue({
+                    success: true,
+                    result: {
+                        variants: ['publish'],
+                        domains: [
+                            { fqdn: 'prefix.airoapp.ai', domainType: 'prefix', status: 'active' },
+                            { fqdn: 'mysite.com', domainType: 'custom', status: 'active' },
+                        ],
+                    },
+                })
+            } as any)
+
+            const result = await execute(
+                { action: 'forward', domain: 'other.com' },
+                {
+                    metadata: { appId: 'app-123', permissions: { canPurchaseDomain: true } },
+                    socketId: 'socket-123'
+                }
+            )
+
+            expect(result.forwardingInstructions.primaryDomain).toBe('mysite.com')
+        })
+
+        it('should return success false when no primary domain is attached', async function noPrimaryDomain() {
+            mockGetClientActionService.mockReturnValue({
+                executeAction: vi.fn().mockResolvedValue({
+                    success: true,
+                    result: {
+                        variants: ['publish'],
+                        domains: [],
+                    },
+                })
+            } as any)
+
+            const result = await execute(
+                { action: 'forward', domain: 'secondary.com' },
+                {
+                    metadata: { appId: 'app-123', permissions: { canPurchaseDomain: true } },
+                    socketId: 'socket-123'
+                }
+            )
+
+            expect(result.success).toBe(false)
+            expect(result.error).toBe('No primary domain attached')
+            expect(result.forwardingInstructions.primaryDomain).toBeUndefined()
+            expect(result.forwardingInstructions.dccLink).toBeUndefined()
+            expect(result.message).toContain('Attach a primary domain first')
+        })
+
+        it('should always include help article link', async function helpArticle() {
+            mockGetClientActionService.mockReturnValue({
+                executeAction: vi.fn().mockResolvedValue({
+                    success: true,
+                    result: { variants: ['publish'], domains: [] },
+                })
+            } as any)
+
+            const result = await execute(
+                { action: 'forward' },
+                {
+                    metadata: { appId: 'app-123', permissions: { canPurchaseDomain: true } },
+                    socketId: 'socket-123'
+                }
+            )
+
+            expect(result.forwardingInstructions.helpArticle).toBe('https://www.godaddy.com/help/forward-my-godaddy-domain-12123')
+        })
+
+        it('should skip prefix domains when finding primary', async function skipPrefix() {
+            mockGetClientActionService.mockReturnValue({
+                executeAction: vi.fn().mockResolvedValue({
+                    success: true,
+                    result: {
+                        variants: ['publish'],
+                        domains: [
+                            { fqdn: 'abc123.preview.airoapp.ai', domainType: 'prefix', status: 'active' },
+                        ],
+                    },
+                })
+            } as any)
+
+            const result = await execute(
+                { action: 'forward' },
+                {
+                    metadata: { appId: 'app-123', permissions: { canPurchaseDomain: true } },
+                    socketId: 'socket-123'
+                }
+            )
+
+            expect(result.success).toBe(false)
+            expect(result.forwardingInstructions.primaryDomain).toBeUndefined()
+            expect(result.message).toContain('Attach a primary domain first')
+        })
+    })
 })
