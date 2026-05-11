@@ -15,6 +15,7 @@ import PricingSection from '@/components/layout/PricingSection'
 import Header from '@/experiments/homepage-engagement-variations/light_homepage/Header'
 import HeroSection from '@/experiments/homepage-engagement-variations/light_homepage/HeroSection'
 import { useHomepageSubmission } from '@/hooks/useHomepageSubmission'
+import { usePaywallDeeplinkWithStore } from '@/hooks/usePaywallDeeplinkWithStore'
 import { useTranslations } from '@/hooks/useTranslations'
 import { isFeatureEnabled } from '@/lib/features'
 import { shipAnalyticsLog } from '@/lib/logging'
@@ -27,6 +28,7 @@ interface HomeContentProps {
 export function LightHomepageHomePage({ serverFeatures }: HomeContentProps) {
   const t = useTranslations()
   const hp = useHomepageSubmission()
+  usePaywallDeeplinkWithStore()
 
   return (
     <>

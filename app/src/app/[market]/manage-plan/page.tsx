@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { FormattedMessage } from "react-intl";
 import Alert from "@ux/alert";
 import Button from "@ux/button";
@@ -31,6 +31,7 @@ import { useIsCreditPolling } from "@/hooks/useCreditPurchase";
 import { useEcommSubscriptionAutoRenew } from "@/hooks/useEcommSubscriptionAutoRenew";
 import { useEcommSubscriptionAutoRenewStatus } from "@/hooks/useEcommSubscriptionAutoRenewStatus";
 import { useGasketData } from "@/hooks/useGasketData";
+import { usePaywallDeeplink } from "@/hooks/usePaywallDeeplink";
 import {
   useIsRenewalPolling,
   useSubscriptionRenewal,
@@ -149,17 +150,16 @@ function ManagePlanContent() {
   const isUnpublishEnabled = useSwitchboard("appbuilder-unpublish");
   const isSuspendedBannerEnabled = useSwitchboard("appbuilder-suspended-nonpayment-banner");
 
-  const openPaywall = (
-    source: string,
-    type: PaywallType = "upgrade",
-    itc?: string,
-  ) => {
-    setPaywallSource(source);
-    setPaywallType(type);
-    setPaywallItc(itc ?? null);
-    setShowPaywallModal(true);
-    shipAnalyticsLog(`${source}.shown`, { paywallType: type });
-  };
+  const openPaywall = useCallback(
+    (source: string, type: PaywallType = "upgrade", itc?: string) => {
+      setPaywallSource(source);
+      setPaywallType(type);
+      setPaywallItc(itc ?? null);
+      setShowPaywallModal(true);
+      shipAnalyticsLog(`${source}.shown`, { paywallType: type });
+    },
+    []
+  );
 
   const closePaywall = () => {
     setShowPaywallModal(false);
@@ -219,6 +219,11 @@ function ManagePlanContent() {
     },
     [grantsData],
   );
+
+  usePaywallDeeplink({
+    openPaywall,
+    enabled: !isSubscriptionLoading && !isSubscriptionError,
+  });
 
   if (isSubscriptionLoading || isGrantsLoading) {
     return (

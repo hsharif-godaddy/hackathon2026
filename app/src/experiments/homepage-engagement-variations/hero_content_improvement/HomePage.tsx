@@ -13,6 +13,7 @@ import PricingSection from '@/components/layout/PricingSection'
 import HeroSection from '@/experiments/homepage-engagement-variations/hero_content_improvement/HeroSection'
 import StartSection from '@/experiments/homepage-engagement-variations/hero_content_improvement/StartSection'
 import { useHomepageSubmission } from '@/hooks/useHomepageSubmission'
+import { usePaywallDeeplinkWithStore } from '@/hooks/usePaywallDeeplinkWithStore'
 import { useTranslations } from '@/hooks/useTranslations'
 import { isFeatureEnabled } from '@/lib/features'
 import { shipAnalyticsLog } from '@/lib/logging'
@@ -25,6 +26,7 @@ interface HomeContentProps {
 export function HeroContentImprovementHomePage({ serverFeatures }: HomeContentProps) {
   const t = useTranslations()
   const hp = useHomepageSubmission()
+  usePaywallDeeplinkWithStore()
 
   return (
     <>

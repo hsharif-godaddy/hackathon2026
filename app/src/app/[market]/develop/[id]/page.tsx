@@ -44,6 +44,7 @@ import { useChatTransport } from '@/hooks/useChatTransport'
 import { useGitHistoryQuery } from '@/hooks/useGitHistory'
 import { useHivemind } from '@/hooks/useHivemind'
 import { useImageReadiness } from '@/hooks/useImageReadiness'
+import { usePaywallDeeplinkWithStore } from '@/hooks/usePaywallDeeplinkWithStore'
 import { prefetchSubscription } from '@/hooks/useSubscription'
 import { useIsRenewalPolling } from '@/hooks/useSubscriptionRenewal'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
@@ -305,6 +306,8 @@ function DevelopPageContent() {
   const publishLimitData = publishLimitModalState?.publishLimitData;
   const setShowPublishLimitModal = useDevelopPageStore((state) => state.setShowPublishLimitModal);
   const setShowPaywallModal = useDevelopPageStore((state) => state.setShowPaywallModal);
+
+  usePaywallDeeplinkWithStore({ enabled: loadingPhase === 'ready' });
 
   const gitHistoryQuery = useGitHistoryQuery({
     appId: appId || '',

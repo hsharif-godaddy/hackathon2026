@@ -13,6 +13,7 @@ import HeroSection from '@/experiments/homepage-engagement-variations/abstract_a
 import InfraSection from '@/experiments/homepage-engagement-variations/abstract_animation/InfraSection'
 import StartSection from '@/experiments/homepage-engagement-variations/abstract_animation/StartSection'
 import { useHomepageSubmission } from '@/hooks/useHomepageSubmission'
+import { usePaywallDeeplinkWithStore } from '@/hooks/usePaywallDeeplinkWithStore'
 import { useTranslations } from '@/hooks/useTranslations'
 import { isFeatureEnabled } from '@/lib/features'
 import { shipAnalyticsLog } from '@/lib/logging'
@@ -25,6 +26,7 @@ interface HomeContentProps {
 export function AbstractAnimationHomePage({ serverFeatures }: HomeContentProps) {
   const t = useTranslations()
   const hp = useHomepageSubmission()
+  usePaywallDeeplinkWithStore()
 
   return (
     <>
