@@ -191,9 +191,11 @@ import { EventStreamRegistry } from './sse/EventStreamRegistry.js';
 import { initSSERegistry } from './sse/registry-singleton.js';
 import { createSSERoutes } from './sse/routes.js';
 import { MessageExecutionService } from './sse/MessageExecutionService.js';
+import { createSSEContextLoader } from './sse/context-loader.js';
 import { buildSharedPostStreamValidator } from './post-stream-validator.js';
 import { AgentsMessagePersistence } from './conversation-persistence.js';
 import { AILibContextManager } from '../agents/ai-lib-agents/context-manager.js';
+import { hasUnbuiltRebuildPages } from '../tools/ai-lib-tools/rebuild-page-selector.js';
 import { getBackgroundSummarizer } from '../services/summarization/index.js';
 import {
   getConversationLifecycleStore,
@@ -243,29 +245,11 @@ function getOrCreateSSEExecutionService(): MessageExecutionService | null {
   sseExecutionService = new MessageExecutionService({
     getAgent: (agentId?: string) => agentFactory.agents.get((agentId ?? 'develop') as any),
     contextManager: {
-      loadContextMessages: async (context: Record<string, unknown>) => {
-        // Start with existing contextAttachments from MessageExecutionService (e.g., ai_edit_context)
-        const contextAttachments: any[] = Array.isArray(context.contextAttachments) ? [...context.contextAttachments] : []
-
-        // Add selectedAssets as an additional attachment if present
-        if (Array.isArray(context.selectedAssets) && context.selectedAssets.length > 0) {
-          contextAttachments.push({
-            type: 'selected_assets',
-            data: context.selectedAssets,
-            persistence: 'ephemeral',
-            renderStrategy: 'before_prompt',
-          })
-        }
-        const agentContext = {
-          metadata: context.metadata ?? {},
-          visualContext: context.visualContext,
-          aiEditContext: context.aiEditContext,
-          contextAttachments: contextAttachments.length > 0 ? contextAttachments : undefined,
-        }
-        const enhancedContext = contextMgr.convertToEnhancedContext(agentContext as any)
-        const result = await contextMgr.buildContextMessages('', enhancedContext, undefined)
-        return { contextMessages: result.contextMessages, formattedContexts: result.formattedContexts }
-      }
+      loadContextMessages: createSSEContextLoader({
+        agentFactory: agentFactory as any,
+        contextMgr: contextMgr as any,
+        hasUnbuiltRebuildPages,
+      }),
     },
     loadConversationHistory: async (conversationId, appId, agentName) => {
       const historyLoader = sseConversationContextManager.getHistoryLoader()

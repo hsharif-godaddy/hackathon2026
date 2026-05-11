@@ -694,6 +694,7 @@ export class MessageExecutionService {
     const executionContext: Record<string, unknown> = {
       metadata: {
         appId, siteId, conversationId, templateId, modelOverride, agentProfile,
+        agentId: resolvedAgentId,
         ...(budgetOverrideSubscriptionId && { subscriptionId: budgetOverrideSubscriptionId }),
         ...(agentCtx?.customerId && { customerId: agentCtx.customerId }),
       },
