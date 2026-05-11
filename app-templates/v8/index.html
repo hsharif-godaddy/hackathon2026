@@ -2,6 +2,49 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <!--
+      Strip ?airoShareToken=... from the URL as early as possible. The token
+      is only needed for the initial request: dev-supervisor reads it,
+      validates, and sets the airo_share_token cookie (HttpOnly, first-party
+      on the preview origin). Subsequent requests use the cookie path —
+      the URL parameter is dead weight after the cookie is stored.
+
+      Leaving it in the URL is a leak risk:
+        - Visible in the address bar (top-level "Open in new tab" path)
+        - Recorded in browser history
+        - Sent as Referer on sub-resources loaded before this runs (mitigated
+          by the same-origin referrer-policy meta tag below)
+        - Copy/pasted or screenshotted, accidentally sharing access
+
+      Inline at the top of <head> so it runs synchronously BEFORE any
+      <link>, <script>, or sub-resource fires. The window where the token
+      is in the URL collapses to "while the browser is parsing this script"
+      — effectively zero.
+
+      replaceState (not pushState) means the original URL is replaced in the
+      browser's history entry, not pushed as a new entry — the back button
+      doesn't return to a URL with the token.
+    -->
+    <script>
+      (function () {
+        try {
+          var u = new URL(location.href);
+          if (u.searchParams.has('airoShareToken')) {
+            u.searchParams.delete('airoShareToken');
+            history.replaceState(null, '', u.toString());
+          }
+        } catch (e) { /* ignore — URL parser unavailable in this environment */ }
+      })();
+    </script>
+    <!--
+      Prevent sub-resources (CSS/JS/images/fonts/etc.) from sending the
+      token-bearing URL as their Referer header during the brief window
+      between page-load and the strip-script above. `same-origin` allows
+      the referrer for first-party requests (preserving analytics and
+      relative-link behavior) but strips it for cross-origin requests,
+      which is where the token-leak risk actually lives.
+    -->
+    <meta name="referrer" content="same-origin" />
     <link rel="icon" type="image/svg+xml" href="/favicon.ico" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <!--app-head-->
