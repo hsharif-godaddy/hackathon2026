@@ -48,6 +48,7 @@ import {
 } from './shared/completionSideEffects'
 import { mapToolCall, mapToolResult, mapToolStart } from './shared/toolMappers'
 import { handleToolCallSideEffects, handleToolResultSideEffects } from './shared/toolSideEffects'
+import { buildValidationToolCallFromEvent } from './shared/validationToolCallBuilder'
 import type { SendMessageOptions } from './useStreamingWebSocket'
 import { useBudgetUpdate } from './websocket/useBudgetUpdate'
 import { useGrantContext } from './websocket/useGrantContext'
@@ -362,6 +363,13 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                       error: err instanceof Error ? err.message : String(err),
                     })
                   })
+                }
+              } else if (type === 'validation_message') {
+                const { toolCall, isTerminal } = buildValidationToolCallFromEvent(event.data, event.content)
+                flushStoreUpdateBufferImmediate()
+                bufferStoreUpdate(() => store.addToolStartSegment(toolCall))
+                if (isTerminal) {
+                  bufferStoreUpdate(() => store.addToolResultSegment(toolCall))
                 }
               } else if (type === 'complete') {
                 flushStoreUpdateBufferImmediate()

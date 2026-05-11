@@ -342,8 +342,12 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
       todoListContext, isActionRequest, customContext, buildErrorContext,
     } = req.body
 
-    if (typeof content !== 'string' || content.trim().length === 0) {
-      res.status(400).json({ error: 'content must be a non-empty string' })
+    // WS permits empty content after stripping /agent markers and when the
+    // prompt is carried entirely by asset/file references — mirror that here
+    // so asset-only prompts reach the agent. The client (useSSEChat) already
+    // refuses truly-empty submissions (no text, assets, or referenced files).
+    if (typeof content !== 'string') {
+      res.status(400).json({ error: 'content must be a string' })
       return
     }
 

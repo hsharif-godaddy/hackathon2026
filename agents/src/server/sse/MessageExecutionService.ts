@@ -1,4 +1,4 @@
-import type { ConversationEventChannel, ConversationMessage, PersistenceStreamingEvent, ConversationContext } from '@airo/ai-transport'
+import type { ConversationEventChannel, ConversationMessage, PersistenceStreamingEvent, ConversationContext, ValidationMessageEventData } from '@airo/ai-transport'
 import {
   StreamPartProcessor,
   executeAgentLoop,
@@ -8,6 +8,7 @@ import {
   formatAgentId,
   emitTurnError,
   classifyTurnError,
+  runPostStreamValidation,
 } from '@airo/ai-transport'
 import type { ResponseMetadata } from '@airo/ai-transport'
 import { BudgetExceededError, containsBudgetExceededPattern } from '@airo/ai-common'
@@ -732,10 +733,12 @@ export class MessageExecutionService {
 
     try {
       let lastTurnResult: Awaited<ReturnType<typeof this.streamAgentTurn>> | undefined
+      let currentIteration = 0
 
       const runLoop = () => executeAgentLoop(resolvedAgentId, content, {
         getAgent: (name) => this.deps.getAgent(name),
         streamAgentTurn: async (agent, agentName, message, iteration) => {
+          currentIteration = iteration
           if (iteration > 0) {
             // Update persistence context for the new agent
             persistenceContext.agentName = agentName
@@ -795,29 +798,58 @@ export class MessageExecutionService {
             const toolCalls = streamingEvents
               .filter((e: any) => e.type === 'tool_start' && e.data?.tool)
               .map((e: any) => ({ toolName: e.data.tool.name, args: e.data.tool.input }))
-            try {
-              const result = await this.deps.postStreamValidator!({
-                socketId: sseSocketId,
-                context: executionContext,
-                agentName,
-                toolCalls,
-                abortSignal: abortController.signal,
-                emitChunk: async (text) => {
-                  if (!text) return
-                  await this.publishNonTerminal(appId, conversationId, {
-                    conversationId, type: 'chunk', content: text, data: {}, agentName,
-                  })
-                },
-              })
-              if (result && typeof result === 'object' && typeof (result as { continuationPrompt?: unknown }).continuationPrompt === 'string') {
-                meta.__autoContinue = true
-                meta.__continuationPrompt = (result as { continuationPrompt: string }).continuationPrompt
-                executionContext.metadata = meta
-              }
-            } catch (err) {
-              logger.warn('sse.post_stream_validator.failure', {
-                conversationId, appId, agentName, ...errorFields(err),
-              })
+
+            const result = await runPostStreamValidation({
+              validator: this.deps.postStreamValidator!,
+              socketId: sseSocketId,
+              agentName,
+              context: executionContext,
+              toolCalls,
+              abortSignal: abortController.signal,
+              iteration: currentIteration,
+              emitChunk: async (text) => {
+                if (!text) return
+                await this.publishNonTerminal(appId, conversationId, {
+                  conversationId, type: 'chunk', content: text, data: {}, agentName,
+                })
+              },
+              publishValidationMessage: async (content, data: ValidationMessageEventData) => {
+                await this.publishNonTerminal(appId, conversationId, {
+                  conversationId,
+                  type: 'validation_message',
+                  content,
+                  data: data as unknown as Record<string, unknown>,
+                  agentName,
+                })
+                // Deliberate divergence from WS (which returns sequence !== undefined):
+                // publishNonTerminal → guardedPublish has an internal .catch, so the
+                // await always resolves and no delivery signal is available. SSE's
+                // replay buffer means missed running-events still reach reconnecting
+                // clients, so gating terminal statuses on delivery is unnecessary.
+                return true
+              },
+              persistValidationMessage: async (continuationPrompt) => {
+                return await this.deps.conversationPersistence.continueConversation(
+                  conversationId,
+                  continuationPrompt,
+                  {
+                    ...persistenceContext,
+                    messageMetadata: {
+                      source: 'post_stream_validator',
+                      displayAs: 'validation',
+                      validationStatus: 'failed',
+                    },
+                  },
+                )
+              },
+              logger,
+              logContext: { appId, conversationId },
+            })
+
+            if (result) {
+              meta.__autoContinue = true
+              meta.__continuationPrompt = result.continuationPrompt
+              executionContext.metadata = meta
             }
           },
         }),

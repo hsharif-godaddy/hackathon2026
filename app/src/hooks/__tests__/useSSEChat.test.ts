@@ -578,6 +578,102 @@ describe('useSSEChat', () => {
     })
   })
 
+  it('validation_message running event adds a validateCode tool-start segment', async () => {
+    await setupHook()
+
+    act(() => {
+      lastTransport.callbacks?.onEvent({
+        type: 'validation_message',
+        content: 'Validating code...',
+        data: {
+          validationId: 'post_stream_validation_0_123',
+          metadata: { source: 'post_stream_validator', displayAs: 'validation', validationStatus: 'running' },
+          agentId: 'develop',
+        },
+      })
+    })
+
+    expect(mockAddToolStartSegment).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'post_stream_validation_0_123',
+      name: 'validateCode',
+      status: 'running',
+    }))
+    expect(mockAddToolResultSegment).not.toHaveBeenCalled()
+  })
+
+  it('validation_message completed event adds both start and result segments', async () => {
+    await setupHook()
+
+    act(() => {
+      lastTransport.callbacks?.onEvent({
+        type: 'validation_message',
+        content: 'No issues found.',
+        data: {
+          validationId: 'post_stream_validation_0_123',
+          metadata: { source: 'post_stream_validator', displayAs: 'validation', validationStatus: 'completed' },
+          agentId: 'develop',
+        },
+      })
+    })
+
+    expect(mockAddToolStartSegment).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'post_stream_validation_0_123',
+      name: 'validateCode',
+      status: 'completed',
+    }))
+    expect(mockAddToolResultSegment).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'post_stream_validation_0_123',
+      status: 'completed',
+    }))
+  })
+
+  it('validation_message error event populates the error field on the tool call', async () => {
+    await setupHook()
+
+    act(() => {
+      lastTransport.callbacks?.onEvent({
+        type: 'validation_message',
+        content: 'Validation could not resolve all issues.',
+        data: {
+          validationId: 'post_stream_validation_2_789',
+          metadata: { source: 'post_stream_validator', displayAs: 'validation', validationStatus: 'error' },
+          agentId: 'develop',
+        },
+      })
+    })
+
+    expect(mockAddToolResultSegment).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'post_stream_validation_2_789',
+      name: 'validateCode',
+      status: 'error',
+      error: 'Validation could not resolve all issues.',
+    }))
+  })
+
+  it('validation_message failed event marks the tool call completed with diagnostics', async () => {
+    await setupHook()
+
+    act(() => {
+      lastTransport.callbacks?.onEvent({
+        type: 'validation_message',
+        content: 'tsc reported 1 error in src/foo.ts',
+        data: {
+          validationId: 'post_stream_validation_1_456',
+          messageId: 'persisted-789',
+          role: 'user',
+          metadata: { source: 'post_stream_validator', displayAs: 'validation', validationStatus: 'failed' },
+          agentId: 'develop',
+        },
+      })
+    })
+
+    expect(mockAddToolResultSegment).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'post_stream_validation_1_456',
+      name: 'validateCode',
+      result: expect.objectContaining({ status: 'failed', diagnostics: 'tsc reported 1 error in src/foo.ts' }),
+    }))
+  })
+
   it('tool_result event does not synthesize an active stream', async () => {
     await setupHook()
     const tool = { id: 't3', name: 'read_file', input: { path: '/bar' }, result: 'content', startTime: 123, status: 'completed' as const }

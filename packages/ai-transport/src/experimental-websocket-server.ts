@@ -51,6 +51,7 @@ import {
   type StreamTimingData,
 } from './stream-timing-tracker.js'
 import { ChunkTimeoutGuard } from './chunk-timeout-guard.js'
+import { runPostStreamValidation, type ValidationMessageEventData } from './post-stream-validation-runner.js'
 
 /**
  * APM agent type for tool execution tracking
@@ -2354,212 +2355,61 @@ export class WebSocketServer {
               ...(tc.input !== undefined && { args: tc.input })
             }))
             : []
-          const validationId = `post_stream_validation_${currentLoopIteration}_${Date.now()}`
-          let validationStarted = false
-          try {
-            const resolvedAgentName = name || this.config.defaultAgent || 'unknown'
-            const validatorResult = await this.config.postStreamValidator({
-              socketId,
-              context: continuationContext,
-              agentName: resolvedAgentName,
-              toolCalls: validatorToolCalls,
-              abortSignal,
-              emitChunk: async (text: string) => {
-                if (!text) return
-                await this.publishToEventChannel(
-                  socketId,
-                  'chunk',
-                  text,
-                  { agentId: resolvedAgentName },
-                  resolvedAgentName
+          const resolvedAgentName = name || this.config.defaultAgent || 'unknown'
+          const conversation = this.getConversation(socketId)
+
+          const validationResult = await runPostStreamValidation({
+            validator: this.config.postStreamValidator,
+            socketId,
+            agentName: resolvedAgentName,
+            context: continuationContext,
+            toolCalls: validatorToolCalls,
+            abortSignal,
+            iteration: currentLoopIteration,
+            emitChunk: async (text: string) => {
+              if (!text) return
+              await this.publishToEventChannel(
+                socketId,
+                'chunk',
+                text,
+                { agentId: resolvedAgentName },
+                resolvedAgentName,
+              )
+            },
+            publishValidationMessage: async (content, data: ValidationMessageEventData) => {
+              const sequence = await this.publishToEventChannel(
+                socketId,
+                'validation_message',
+                content,
+                data as unknown as Record<string, unknown>,
+                resolvedAgentName,
+              )
+              return sequence !== undefined
+            },
+            ...(conversation && this.config.messagePersistence.continueConversation && {
+              persistValidationMessage: async (continuationPrompt) => {
+                return await this.config.messagePersistence.continueConversation!(
+                  conversation.conversationId,
+                  continuationPrompt,
+                  {
+                    ...conversation.context,
+                    messageMetadata: {
+                      source: 'post_stream_validator',
+                      displayAs: 'validation',
+                      validationStatus: 'failed',
+                    },
+                  },
                 )
               },
-              emitValidationStart: async () => {
-                const sequence = await this.publishToEventChannel(
-                  socketId,
-                  'validation_message',
-                  'Validating code...',
-                  {
-                    validationId,
-                    metadata: {
-                      source: 'post_stream_validator',
-                      displayAs: 'validation',
-                      validationStatus: 'running'
-                    },
-                    agentId: resolvedAgentName
-                  },
-                  resolvedAgentName
-                )
-                validationStarted = sequence !== undefined
-              }
-            })
+            }),
+            logger: this.logger,
+            ...(conversation && { logContext: { conversationId: conversation.conversationId } }),
+          })
 
-            if (
-              validatorResult &&
-              typeof validatorResult === 'object' &&
-              typeof (validatorResult as { continuationPrompt?: unknown }).continuationPrompt === 'string' &&
-              !abortSignal.aborted
-            ) {
-              const continuationPrompt = (validatorResult as { continuationPrompt: string }).continuationPrompt
-              const validationMessage = typeof (validatorResult as { message?: unknown }).message === 'string'
-                ? (validatorResult as { message: string }).message
-                : continuationPrompt
-              const conversation = this.getConversation(socketId)
-              let validationMessageId: string | undefined = undefined
-              if (conversation && this.config.messagePersistence.continueConversation) {
-                try {
-                  validationMessageId = await this.config.messagePersistence.continueConversation(
-                    conversation.conversationId,
-                    continuationPrompt,
-                    {
-                      ...conversation.context,
-                      messageMetadata: {
-                        source: 'post_stream_validator',
-                        displayAs: 'validation',
-                        validationStatus: 'failed'
-                      }
-                    }
-                  )
-                } catch (persistenceError) {
-                  this.logger.error('post_stream_validator.persistence_failure', {
-                    socketId,
-                    conversationId: conversation.conversationId,
-                    agentName: resolvedAgentName,
-                    error: persistenceError instanceof Error ? persistenceError.message : String(persistenceError)
-                  })
-                }
-              }
-              if (validationStarted) {
-                await this.publishToEventChannel(
-                  socketId,
-                  'validation_message',
-                  validationMessage,
-                  {
-                    validationId,
-                    ...(validationMessageId !== undefined && { messageId: validationMessageId }),
-                    role: 'user',
-                    metadata: {
-                      source: 'post_stream_validator',
-                      displayAs: 'validation',
-                      validationStatus: 'failed'
-                    },
-                    agentId: resolvedAgentName
-                  },
-                  resolvedAgentName
-                )
-              }
-              continuationMetadata.__autoContinue = true
-              continuationMetadata.__continuationPrompt = continuationPrompt
-              continuationContext.metadata = continuationMetadata
-            } else if (!abortSignal.aborted && validationStarted) {
-              const skippedResult = validatorResult &&
-                typeof validatorResult === 'object' &&
-                (validatorResult as { skipped?: unknown }).skipped === true
-                  ? validatorResult as { skipped: true; reason: string; message?: string }
-                  : undefined
-              if (skippedResult?.reason === 'exhausted') {
-                await this.publishToEventChannel(
-                  socketId,
-                  'validation_message',
-                  'Validation could not resolve all issues.',
-                  {
-                    validationId,
-                    metadata: {
-                      source: 'post_stream_validator',
-                      displayAs: 'validation',
-                      validationStatus: 'error'
-                    },
-                    agentId: resolvedAgentName
-                  },
-                  resolvedAgentName
-                )
-              } else if (!skippedResult) {
-                await this.publishToEventChannel(
-                  socketId,
-                  'validation_message',
-                  'No issues found.',
-                  {
-                    validationId,
-                    metadata: {
-                      source: 'post_stream_validator',
-                      displayAs: 'validation',
-                      validationStatus: 'completed'
-                    },
-                    agentId: resolvedAgentName
-                  },
-                  resolvedAgentName
-                )
-              } else {
-                this.logger.warn('post_stream_validator.unhandled_skipped_result', {
-                  socketId,
-                  agentName: resolvedAgentName,
-                  reason: skippedResult.reason
-                })
-                await this.publishToEventChannel(
-                  socketId,
-                  'validation_message',
-                  'Validation stopped before completing.',
-                  {
-                    validationId,
-                    metadata: {
-                      source: 'post_stream_validator',
-                      displayAs: 'validation',
-                      validationStatus: 'error'
-                    },
-                    agentId: resolvedAgentName
-                  },
-                  resolvedAgentName
-                )
-              }
-            }
-          } catch (validatorError) {
-            // Validator is additive; failures must never block message
-            // completion. Record every throw — an abort-concurrent throw gets
-            // an info-level event (expected) while a genuine validator bug
-            // gets an error (investigate). Losing either to an unconditional
-            // early-return would mean silent data loss on races.
-            const errMsg = validatorError instanceof Error ? validatorError.message : String(validatorError)
-            const errStack = validatorError instanceof Error ? validatorError.stack : undefined
-            if (abortSignal.aborted) {
-              this.logger.info('post_stream_validator.aborted', { socketId, agentName: name, error: errMsg })
-              return
-            }
-            this.logger.error('post_stream_validator.failure', {
-              socketId,
-              agentName: name,
-              error: errMsg,
-              stack: errStack,
-            })
-            if (validationStarted) {
-              // Use the callback `name` param, not the outer `agentName`
-              // closure which is only updated after executeAgentLoop returns.
-              // Post-handoff, the outer `agentName` would be 'a' while this
-              // iteration is actually running under 'b'.
-              const resolvedAgentName = name || this.config.defaultAgent || 'unknown'
-              try {
-                await this.publishToEventChannel(
-                  socketId,
-                  'validation_message',
-                  errMsg,
-                  {
-                    validationId,
-                    metadata: {
-                      source: 'post_stream_validator',
-                      displayAs: 'validation',
-                      validationStatus: 'error'
-                    },
-                    agentId: resolvedAgentName
-                  },
-                  resolvedAgentName
-                )
-              } catch (publishError) {
-                this.logger.warn('post_stream_validator.error_publish_failure', {
-                  socketId,
-                  agentName: resolvedAgentName,
-                  error: publishError instanceof Error ? publishError.message : String(publishError)
-                })
-              }
-            }
+          if (validationResult) {
+            continuationMetadata.__autoContinue = true
+            continuationMetadata.__continuationPrompt = validationResult.continuationPrompt
+            continuationContext.metadata = continuationMetadata
           }
         },
         getAutoContinuation: () => {

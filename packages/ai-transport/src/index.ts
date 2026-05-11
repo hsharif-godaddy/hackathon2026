@@ -150,6 +150,19 @@ export type { AgentExecutionLoopCallbacks, AgentExecutionLoopResult, AgentExecut
 export { ClientActionRegistry } from './client-action-registry.js'
 export type { ClientActionHandler, ClientActionRequest, ClientActionResult } from './client-action-registry.js'
 
+// Post-stream validator orchestration (shared WS + SSE)
+export { runPostStreamValidation } from './post-stream-validation-runner.js'
+export type {
+  ValidationStatus,
+  ValidationMessageEventData,
+  PostStreamValidatorInput,
+  PostStreamValidatorResult,
+  PostStreamValidatorFn,
+  PostStreamValidationLogger,
+  RunPostStreamValidationParams,
+  RunPostStreamValidationResult,
+} from './post-stream-validation-runner.js'
+
 // Recovery Plan (shared WS + SSE replay decision)
 export { computeRecoveryPlan } from './recovery-plan.js'
 export type { RecoveryPlan, RecoveryPlanInput } from './recovery-plan.js'
