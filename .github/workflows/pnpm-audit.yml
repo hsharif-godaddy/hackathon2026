@@ -1,0 +1,67 @@
+name: pnpm audit
+
+on:
+  pull_request:
+    paths:
+      - "pnpm-lock.yaml"
+      - ".github/workflows/pnpm-audit.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "pnpm-lock.yaml"
+  schedule:
+    # Weekly catch for new advisories against an unchanged lockfile.
+    - cron: "17 13 * * 1"
+  workflow_dispatch:
+
+jobs:
+  audit:
+    name: pnpm audit (high+ advisories)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    # TODO(supply-chain): flip to `false` once
+    # `pnpm audit --audit-level=high --prod` exits 0 on main. Until then, new
+    # advisories introduced by a PR will show a green check — compensated by
+    # the weekly cron run against main which surfaces them in the Actions UI.
+    # Tracked as a follow-up to the PR that introduced this workflow.
+    continue-on-error: true
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: "22.12"
+
+      # Uses the corepack shim bundled with Node 22 — no separate install.
+      # `corepack enable` activates the version declared in packageManager,
+      # whose +sha512 integrity suffix pins the pnpm binary.
+      - name: Enable Corepack and activate pnpm
+        run: |
+          set -euo pipefail
+          corepack enable
+          EXPECTED_VERSION=$(node -p "
+            const pkg = require('./package.json');
+            const pm = pkg.packageManager || '';
+            const match = pm.match(/^pnpm@(.+?)(\\+|$)/);
+            if (!match) {
+              console.error('ERROR: Could not parse packageManager field:', pm);
+              process.exit(1);
+            }
+            match[1];
+          ")
+          corepack prepare "pnpm@${EXPECTED_VERSION}" --activate
+          ACTUAL_VERSION=$(pnpm --version)
+          if [ "$ACTUAL_VERSION" != "$EXPECTED_VERSION" ]; then
+            echo "ERROR: pnpm version mismatch! Expected $EXPECTED_VERSION, got $ACTUAL_VERSION"
+            exit 1
+          fi
+
+      # Audit queries the public npm advisory database directly, bypassing the
+      # JFrog virtual registry (which does not proxy the advisory endpoint).
+      # --prod skips devDependencies; --audit-level=high ignores low/moderate.
+      - name: Run pnpm audit
+        run: pnpm audit --audit-level=high --prod --registry=https://registry.npmjs.org

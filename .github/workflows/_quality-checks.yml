@@ -57,8 +57,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
-
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - name: Setup Artifactory and Node.js
         id: setup
         uses: jfrog/setup-jfrog-cli@1641575d87647fb969c0545f0b6a76873e328b7c
@@ -68,7 +67,7 @@ jobs:
           oidc-provider-name: github
 
       - name: Set up Node.js ${{ inputs.node-version }}
-        uses: actions/setup-node@v6.3.0
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
         with:
           node-version: ${{ inputs.node-version }}
 
@@ -111,7 +110,7 @@ jobs:
 
       # Note: pnpm store path is Linux-specific; self-hosted runners are Linux-only
       - name: Cache pnpm store
-        uses: actions/cache@v5.0.5
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: ~/.local/share/pnpm/store
           key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
@@ -119,14 +118,14 @@ jobs:
 
       - name: Cache Next.js build
         if: inputs.cache-next-build
-        uses: actions/cache@v5.0.5
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: ${{ inputs.working-directory }}/.next/cache
           key: nextjs-${{ runner.os }}-${{ hashFiles(format('{0}/**/*.ts', inputs.working-directory), format('{0}/**/*.tsx', inputs.working-directory), format('{0}/next.config.*', inputs.working-directory), format('{0}/tailwind.config.*', inputs.working-directory), format('{0}/tsconfig*.json', inputs.working-directory), format('{0}/package.json', inputs.working-directory), 'pnpm-lock.yaml') }}
           restore-keys: nextjs-${{ runner.os }}-
 
       - name: Cache Turborepo
-        uses: actions/cache@v5.0.5
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: .turbo
           key: turbo-${{ runner.os }}-${{ github.sha }}
@@ -143,7 +142,7 @@ jobs:
 
       - name: Upload license report
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: license-report-${{ inputs.package-name }}
           path: ${{ inputs.working-directory }}/licenses-report.txt
@@ -165,8 +164,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
-
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - name: Setup Artifactory and Node.js
         id: setup
         uses: jfrog/setup-jfrog-cli@1641575d87647fb969c0545f0b6a76873e328b7c
@@ -176,7 +174,7 @@ jobs:
           oidc-provider-name: github
 
       - name: Set up Node.js ${{ inputs.node-version }}
-        uses: actions/setup-node@v6.3.0
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
         with:
           node-version: ${{ inputs.node-version }}
 
@@ -219,14 +217,14 @@ jobs:
 
       # Note: pnpm store path is Linux-specific; self-hosted runners are Linux-only
       - name: Cache pnpm store
-        uses: actions/cache@v5.0.5
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: ~/.local/share/pnpm/store
           key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
           restore-keys: pnpm-store-${{ runner.os }}-
 
       - name: Cache Turborepo
-        uses: actions/cache@v5.0.5
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: .turbo
           key: turbo-${{ runner.os }}-${{ github.sha }}

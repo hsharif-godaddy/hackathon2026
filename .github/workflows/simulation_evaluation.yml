@@ -156,8 +156,7 @@ jobs:
           echo "✅ All inputs validated"
 
       - name: Checkout code
-        uses: actions/checkout@v4
-
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - name: Load Synthetic Users
         id: load-users
         uses: gdcorp-dna/synthia/actions/load-synthetic-users@f11b73e55b89458c729d78f8f10cb9cb4a92528c # release-1.1.1

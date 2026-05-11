@@ -79,8 +79,7 @@ jobs:
           exit 1
 
       - name: Checkout repository
-        uses: actions/checkout@v6
-
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - name: Fetch certificates and generate SSO JWT
         env:
           AWS_REGION: us-west-2

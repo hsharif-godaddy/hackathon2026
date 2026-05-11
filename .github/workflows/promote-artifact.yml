@@ -139,19 +139,17 @@ jobs:
       # Authenticate with Katana
       - id: katana-auth
         name: Authenticate with Katana
-        uses: gdcorp-actions/katana-auth@v1
-
-      # Get Katana app info based on component
+        uses: gdcorp-actions/katana-auth@8ad45fa591b1cc9105510f220aa8f01bd299343c # v1
       - id: katana-app
         name: Get Katana App Info for ${{ inputs.component }}
-        uses: gdcorp-actions/katana-get-app@v1
+        uses: gdcorp-actions/katana-get-app@52402efba54793a0dd9ae14d33e55641a6efb485 # v1
         with:
           path: /${{ inputs.component }}
 
       # Promote the artifact
       - name: ${{ inputs.component }} - Promote ${{ inputs.artifact_id }} to ${{ steps.resolve.outputs.TARGET_ENV }}
         id: promote
-        uses: gdcorp-actions/katana-promote-artifact@v1
+        uses: gdcorp-actions/katana-promote-artifact@606ea83db07cdbf1729450e6482f2d02d953b23e # v1
         with:
           namespace: ${{ steps.katana-app.outputs.namespace }}
           app: ${{ steps.katana-app.outputs.app }}

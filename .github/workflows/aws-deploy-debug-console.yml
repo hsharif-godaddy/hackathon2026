@@ -33,7 +33,7 @@ jobs:
       # Retrieve Katana application info with the katana-get-app GitHub Action
       - id: katana-app
         name: Get Katana App Info
-        uses: gdcorp-actions/katana-get-app@v1
+        uses: gdcorp-actions/katana-get-app@52402efba54793a0dd9ae14d33e55641a6efb485 # v1
         with:
           path: /debug-console
 
@@ -99,7 +99,7 @@ jobs:
       # Publish the built container image to Katana with the katana-publish-artifact GitHub Action
       - id: katana-publish
         name: Publish Katana Artifact
-        uses: gdcorp-actions/katana-publish-artifact@v1
+        uses: gdcorp-actions/katana-publish-artifact@df952a1ac3cecf94b34c838265ce23f6271838f8 # v1
         with:
           namespace: ${{ steps.katana-app.outputs.namespace }}
           app: console
@@ -115,7 +115,7 @@ jobs:
 
       # Promote the published artifact to dev-private environment with the katana-promote-artifact GitHub Action
       - name: Promote to dev-private Environment
-        uses: gdcorp-actions/katana-promote-artifact@v1
+        uses: gdcorp-actions/katana-promote-artifact@606ea83db07cdbf1729450e6482f2d02d953b23e # v1
         with:
           namespace: ${{ steps.katana-app.outputs.namespace }}
           app: console

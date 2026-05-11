@@ -44,7 +44,7 @@ jobs:
 
     steps:
       - name: Request CirrusScan Scans
-        uses: gdcorp-actions/cirrusscan-request-scan@v7
+        uses: gdcorp-actions/cirrusscan-request-scan@7623cd26033b4227ce77413ebeb259f7c646111b # v7
         with:
           requester_arn: arn:aws:iam::694282668781:role/GD-AWS-USA-GD-AiroBuilde-Dev-Private-Deploy
           github_commit: ${{ github.sha }}
@@ -67,7 +67,7 @@ jobs:
 
     steps:
       - name: Request CirrusScan Scans
-        uses: gdcorp-actions/cirrusscan-request-scan@v7
+        uses: gdcorp-actions/cirrusscan-request-scan@7623cd26033b4227ce77413ebeb259f7c646111b # v7
         with:
           requester_arn: arn:aws:iam::644094189644:role/GD-AWS-USA-GD-AiroBuilde-Prod-Deploy
           github_commit: ${{ github.sha }}

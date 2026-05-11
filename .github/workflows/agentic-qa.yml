@@ -231,8 +231,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
-
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - name: Get Artifactory Token
         id: jfrog
         uses: jfrog/setup-jfrog-cli@1641575d87647fb969c0545f0b6a76873e328b7c # v5.0.0
@@ -281,7 +280,7 @@ jobs:
 
       - name: Get AWS IAM Token for CaaS proxy
         id: get-awsiam-token
-        uses: gdcorp-actions/sso-awsiam-jwt@2.0.0
+        uses: gdcorp-actions/sso-awsiam-jwt@4fa027318def6898322564a008818dad427387b2 # 2.0.0
         with:
           sso_host: sso.godaddy.com
 
@@ -370,7 +369,7 @@ jobs:
           fi
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6.3.0
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
         with:
           node-version: "22"
 
@@ -486,7 +485,7 @@ jobs:
           echo "name=$SCENARIO_NAME" >> $GITHUB_OUTPUT
 
       - name: Upload Agentic QA Reports
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: always()
         with:
           name: agentic-qa-reports-${{ steps.scenario-name.outputs.name }}
@@ -494,7 +493,7 @@ jobs:
           retention-days: 30
 
       - name: Upload Screenshots
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: always()
         with:
           name: agentic-qa-screenshots-${{ steps.scenario-name.outputs.name }}
