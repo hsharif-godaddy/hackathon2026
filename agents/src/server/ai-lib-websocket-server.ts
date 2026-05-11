@@ -87,6 +87,7 @@ import {
   calculateContextWindowUtilization
 } from '../utils/model-context-window.js'
 import type { AgentsAppContext } from '../types/websocket-context.js'
+import { selectCacheConversationId } from './budget-report-conversation-id.js'
 import { AppRepository } from '../database/repositories/AppRepository.js'
 import { initializeContextRegistry } from '../services/initializeContextRegistry.js'
 import {
@@ -1561,11 +1562,27 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
             typedContext.metadata.budgetSessionId = budgetResult.sessionId
           }
 
-          const sessionConversationId = typedContext?.conversation?.conversationId
-          if (sessionConversationId) {
+          const selection = selectCacheConversationId(typedContext)
+          if (selection.value) {
             budgetReportConversationCache.set(socketId, {
-              conversationId: sessionConversationId,
+              conversationId: selection.value,
               createdAt: Date.now(),
+            })
+            logger.debug('budget.report.cache_written', {
+              socketId,
+              appId: siteId,
+              customerId,
+              conversationId: selection.value,
+              sourceField: selection.source,
+            })
+          } else {
+            logger.warn('budget.report.cache_write_skipped', {
+              socketId,
+              appId: siteId,
+              customerId,
+              reason: 'no conversationId on metadata or conversation context',
+              hasMetadata: !!typedContext?.metadata,
+              hasConversation: !!typedContext?.conversation,
             })
           }
         }

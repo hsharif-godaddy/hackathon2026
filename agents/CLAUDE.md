@@ -96,6 +96,8 @@ Key integration file: `src/server/ai-lib-websocket-server.ts` (extends ai-lib's 
 
 OpenTelemetry + Langfuse via `@signals/otel-sdk`, `@godaddy/agent-otel-sdk`, `@godaddy/agent-observability-events`. Context layers: `createTraceContext` → `createAgentContext` → `createAgentInvocationSpan` → AI SDK spans inherit context. Explicit events: `emitConversationStart`, `emitHandoff`, `emitError` — LLM/tool events are automatic via the span processor. Config: `ENABLE_OBSERVABILITY_EVENTS=true`; env derived from `GODADDY_API_BASE_URL`. Key files: `src/server/instrumentation.ts`, `src/server/conversation-persistence.ts`.
 
+**conversationId for cost-attribution context**: server-populated `conversationId` lives on `context.metadata.conversationId` (written by `attachConversationId` in `packages/ai-transport/src/experimental-websocket-server.ts` before `onMessageStart`). The client-sent `context.conversation.conversationId` is only populated on follow-up messages once the frontend has a prior conversationId to send. Any code reading `conversationId` from the message context inside `onMessageStart` or earlier must prefer `metadata.conversationId` and fall back to `conversation.conversationId`, or InitialAgent first-message sessions will silently drop their OTel cost-attribution spans. Use `selectCacheConversationId()` from `src/server/budget-report-conversation-id.ts` as the canonical helper.
+
 ## Memory Debugging
 
 - `/health` — public, basic metrics
