@@ -77,6 +77,16 @@ class FrontendLogSearchTest(unittest.TestCase):
         self.assertEqual(payload["appId"], "app123")
         self.assertEqual(payload["timeWindow"], "24h")
         self.assertEqual(payload["sources"], ["airo-app", "airo-agents", "airo-preview"])
+        self.assertNotIn("fullstoryUrl", payload)
+
+    def test_batched_evidence_payload_forwards_fullstory_url_when_set(self):
+        sources = [search_frontend_logs.get_log_source("fullstory")]
+        url = "https://app.fullstory.com/ui/YKBRC/session/111:222:333"
+        payload = search_frontend_logs.build_investigate_evidence_payload(
+            sources, "app123", "24h", fullstory_url=url
+        )
+        self.assertEqual(payload["fullstoryUrl"], url)
+        self.assertEqual(payload["sources"], ["fullstory"])
 
     def test_console_base_url_allows_only_expected_https_hosts(self):
         self.assertEqual(
@@ -194,6 +204,7 @@ class FrontendLogSearchTest(unittest.TestCase):
             timeout=1,
             fail_on_incomplete=False,
             batched_evidence=True,
+            fullstory_url=None,
         )
 
         with tempfile.TemporaryDirectory() as tmp:

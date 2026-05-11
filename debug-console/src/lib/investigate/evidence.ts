@@ -1,5 +1,13 @@
 import { buildAppIdQuery, getLogSourceConfig, getNestedValue, type LogSourceConfig } from '@/lib/log-sources';
 import { buildAppIdFilter, getLangfuseEbConfig } from '@/lib/langfuse-eb-client';
+import {
+  buildAiroSegmentQuery,
+  callFullstoryMcpTool,
+  FullstoryMcpError,
+  getFullstoryMcpConfig,
+  parseFullstorySessionUrl,
+  type FullstoryMcpConfig,
+} from '@/lib/fullstory-mcp-client';
 import { parseTimeRange } from '@/lib/time-range';
 
 export const DEFAULT_EVIDENCE_SOURCE_IDS = [
@@ -9,6 +17,7 @@ export const DEFAULT_EVIDENCE_SOURCE_IDS = [
   'airo-preview',
   'airo-publish',
   'langfuse',
+  'fullstory',
 ] as const;
 
 export type EvidenceSourceId = typeof DEFAULT_EVIDENCE_SOURCE_IDS[number];
@@ -23,6 +32,11 @@ const LANGFUSE_DETAIL_BATCH_SIZE = 20;
 const MAX_LANGFUSE_PAGES = 200;
 const MAX_LANGFUSE_DETAIL_FAILURES = 20;
 const MAX_LANGFUSE_DETAIL_ERROR_SAMPLES = 5;
+// Wall-clock ceiling for a single Langfuse collection pass. MAX_LANGFUSE_PAGES
+// alone can still chew ~5min on a 7-day, high-traffic app (200 pages × 5 batches
+// of 20 parallel detail fetches × ~300ms/batch), which is uncomfortably close to
+// the Lambda's 15-minute cap once other sources run alongside.
+const MAX_LANGFUSE_ELAPSED_MS = 4 * 60 * 1000;
 
 export interface EvidenceLog {
   id?: string;
@@ -48,6 +62,14 @@ export interface EvidenceDiagnostics {
   query: string;
   truncated: boolean;
   error?: string;
+  /**
+   * Informational messages that do NOT indicate incomplete coverage — e.g.
+   * "paged to first 3 of 10 matched sessions", "used segment discovery
+   * because the URL was a UUID share link". Kept separate from
+   * coverage.incomplete so the AI investigator can distinguish "I am missing
+   * data" from "I chose this path for a good reason".
+   */
+  notes?: string[];
 }
 
 export interface EvidenceIndex {
@@ -56,7 +78,7 @@ export interface EvidenceIndex {
     id: string;
     name: string;
     consoleSource: string;
-    backendType: LogSourceConfig['backendType'] | 'langfuse';
+    backendType: LogSourceConfig['backendType'] | 'langfuse' | 'fullstory';
     description: string;
   };
   window: { label: string; start: string; end: string };
@@ -85,6 +107,7 @@ export interface NormalizedEvidenceRequest {
   timeWindow: string;
   sources: EvidenceSourceId[];
   bucketHours: number;
+  fullstoryUrl?: string;
 }
 
 interface LokiStream {
@@ -159,11 +182,14 @@ export function normalizeEvidenceRequest(body: unknown): NormalizedEvidenceReque
     ? Math.min(Math.floor(input.bucketHours), 24)
     : DEFAULT_BUCKET_HOURS;
 
+  const fullstoryUrlRaw = typeof input.fullstoryUrl === 'string' ? input.fullstoryUrl.trim() : '';
+
   return {
     appId,
     timeWindow: clampWindow(typeof input.timeWindow === 'string' ? input.timeWindow : undefined),
     sources: sources.length > 0 ? sources : [...DEFAULT_EVIDENCE_SOURCE_IDS],
     bucketHours,
+    ...(fullstoryUrlRaw ? { fullstoryUrl: fullstoryUrlRaw } : {}),
   };
 }
 
@@ -608,7 +634,7 @@ function isErrorObservation(observation: LangfuseObservation): boolean {
   return observationLevel(observation) === 'error';
 }
 
-function normalizeLangfuseTrace(trace: LangfuseTraceDetail, sourceId = 'langfuse'): EvidenceLog {
+function normalizeLangfuseTrace(trace: LangfuseTraceDetail): EvidenceLog {
   const observations = Array.isArray(trace.observations) ? trace.observations : [];
   const hasError = observations.some(isErrorObservation);
   const level = hasError ? 'error' : 'info';
@@ -625,7 +651,7 @@ function normalizeLangfuseTrace(trace: LangfuseTraceDetail, sourceId = 'langfuse
     level,
     message: messageParts.join(' | '),
     event: trace.name || undefined,
-    sourceId,
+    sourceId: 'langfuse',
     raw: {
       ...trace,
       observationCount: observations.length,
@@ -658,10 +684,24 @@ export async function collectLangfuseEvidence(params: {
   let complete = true;
   let page = 1;
   let totalPages = 1;
+  // Intentionally not reset between pages: a sustained auth or network failure
+  // should terminate the source quickly rather than drain the page budget.
   let detailFailureCount = 0;
   let stopCollection = false;
 
   while (page <= totalPages) {
+    // Global wall-clock ceiling prevents a noisy app from starving other
+    // evidence sources of the Lambda's remaining runtime.
+    if (Date.now() - started > MAX_LANGFUSE_ELAPSED_MS) {
+      complete = false;
+      incomplete.push({
+        bucket: `p${String(page).padStart(3, '0')}`,
+        start: params.startTime.toISOString(),
+        end: params.endTime.toISOString(),
+        error: `Langfuse collection exceeded ${MAX_LANGFUSE_ELAPSED_MS}ms budget after ${page - 1} pages; stopping`,
+      });
+      break;
+    }
     const bucket = `p${String(page).padStart(3, '0')}`;
     const url = new URL(`${endpoint}/api/public/traces`);
     url.searchParams.set('page', String(page));
@@ -803,15 +843,307 @@ function langfuseSourceConfig(): EvidenceSourceConfig {
   };
 }
 
+function fullstorySourceConfig(): EvidenceSourceConfig {
+  return {
+    id: 'fullstory',
+    name: 'FullStory',
+    description: 'FullStory session replays discovered via hosted MCP server (build_segment + get_sessions + get_session_events)',
+    backendType: 'fullstory',
+  };
+}
+
+const FULLSTORY_MAX_SESSIONS = 3;
+const FULLSTORY_LIST_LIMIT = 10;
+const FULLSTORY_MAX_EVENT_LINES_PER_SESSION = 1000;
+const FULLSTORY_PAIN_EVENT_PATTERN = /rage[-_ ]?click|dead[-_ ]?click|error[-_ ]?click|console-error|feedback|exception|uncaught|\berror\b/i;
+
+interface FullstorySessionRef {
+  device_id: string;
+  session_id: string;
+  session_url?: string;
+  /** Epoch-ms anchor from the URL's third segment, when known. */
+  anchor_epoch_ms?: number;
+}
+
+interface FullstoryGetSessionsResponse {
+  sessions?: FullstorySessionRef[];
+}
+
+interface FullstoryBuildSegmentResponse {
+  segment_id?: string;
+  segment_name?: string;
+  segment_url?: string;
+}
+
+interface FullstoryGetSessionEventsResponse {
+  events?: string;
+  session_url?: string;
+  device_id?: string;
+  session_id?: string;
+}
+
+/** Lines in the transcript look like `[MM:SS]`, `(+Xs)`, or bare continuations. */
+function parseEventLineOffsetSec(line: string, previousOffsetSec: number): number {
+  const abs = line.match(/^\s*\[(\d+):(\d{1,2})\]/);
+  if (abs) return Number(abs[1]) * 60 + Number(abs[2]);
+  const rel = line.match(/\(\+(\d+)s\)/);
+  if (rel) return previousOffsetSec + Number(rel[1]);
+  return previousOffsetSec;
+}
+
+function detectEventLevel(line: string): string {
+  return FULLSTORY_PAIN_EVENT_PATTERN.test(line) ? 'error' : 'info';
+}
+
+function detectEventKind(line: string): string | undefined {
+  const match = line.match(/\b(navigate|click|element-seen|rage-click|dead-click|error-click|console-error|feedback|page-view)\b/i);
+  return match ? match[1].toLowerCase() : undefined;
+}
+
+function normalizeFullstorySessionEvents(
+  session: FullstorySessionRef,
+  eventsText: string,
+): EvidenceLog[] {
+  const lines = eventsText
+    .split('\n')
+    .map((line) => line.replace(/\s+$/g, ''))
+    .filter((line) => line.trim().length > 0 && !line.startsWith('#') && !line.startsWith('<<<') && !line.startsWith('>>>'));
+
+  // Timestamp strategy depends on whether the caller had a real epoch anchor
+  // (typically from a numeric URL's `:TS` suffix captured at feedback-submit
+  // time):
+  //   - With an anchor: approximate session start as `anchor - maxOffsetSec`,
+  //     then emit real UTC timestamps so they correlate directly with
+  //     Loki/Langfuse events.
+  //   - Without an anchor (discovery path): anchor to the Unix epoch so the
+  //     `1970-01-01T00:MM:SS` prefix is an obvious "session-relative, not
+  //     wall-clock" signal. `raw.offset_seconds` plus `session_url` are the
+  //     correlation handles in that case.
+  let maxOffsetSec = 0;
+  {
+    let cursor = 0;
+    for (const line of lines) {
+      cursor = parseEventLineOffsetSec(line, cursor);
+      if (cursor > maxOffsetSec) maxOffsetSec = cursor;
+    }
+  }
+  const sessionStartMs = session.anchor_epoch_ms
+    ? session.anchor_epoch_ms - maxOffsetSec * 1000
+    : 0;
+
+  const logs: EvidenceLog[] = [];
+  let offsetSec = 0;
+  for (const line of lines) {
+    offsetSec = parseEventLineOffsetSec(line, offsetSec);
+    const level = detectEventLevel(line);
+    // Keep all pain events; sample boring events to stay within budget.
+    if (level !== 'error' && logs.length >= FULLSTORY_MAX_EVENT_LINES_PER_SESSION) continue;
+    const timestamp = new Date(sessionStartMs + offsetSec * 1000).toISOString();
+    logs.push({
+      id: `${session.session_id}-${offsetSec}-${logs.length}`,
+      timestamp,
+      level,
+      message: line.trim().slice(0, 500),
+      event: detectEventKind(line),
+      sourceId: 'fullstory',
+      raw: {
+        device_id: session.device_id,
+        session_id: session.session_id,
+        session_url: session.session_url,
+        offset_seconds: offsetSec,
+        line: line.trim(),
+      },
+    });
+  }
+  return logs;
+}
+
+export async function collectFullstoryEvidence(params: {
+  appId: string;
+  startTime: Date;
+  endTime: Date;
+  fullstory: FullstoryMcpConfig;
+  fullstoryUrl?: string;
+  fetchImpl?: typeof fetch;
+  timeoutMs?: number;
+}): Promise<{ complete: boolean; rawPages: EvidenceRawPage[]; diagnostics: EvidenceDiagnostics; incomplete: EvidenceIndex['coverage']['incomplete'] }> {
+  const started = Date.now();
+  const incomplete: EvidenceIndex['coverage']['incomplete'] = [];
+  const notes: string[] = [];
+  const rawPages: EvidenceRawPage[] = [];
+  const windowStart = params.startTime.toISOString();
+  const windowEnd = params.endTime.toISOString();
+  const callOpts = { fetchImpl: params.fetchImpl, timeoutMs: params.timeoutMs };
+  let complete = true;
+  let query = '';
+
+  const sessions: FullstorySessionRef[] = [];
+
+  let fellBackToDiscovery = false;
+  if (params.fullstoryUrl) {
+    const parsed = parseFullstorySessionUrl(params.fullstoryUrl);
+    if (!parsed) {
+      incomplete.push({ bucket: 'url', start: windowStart, end: windowEnd, error: `unparseable FullStory URL: ${params.fullstoryUrl}` });
+      complete = false;
+    } else if (parsed.kind === 'uuid') {
+      // Share-link URLs carry UUID-form IDs that FullStory does not expose a
+      // public resolver for. Fall back to segment discovery scoped to appId.
+      // This is a deliberate path choice, not missing coverage — recorded in
+      // notes[] so the AI investigator does not treat it as a gap.
+      notes.push(`FullStory URL uses UUID client-session IDs (not resolvable via API); fell back to segment discovery for appId ${params.appId}`);
+      fellBackToDiscovery = true;
+    } else {
+      sessions.push({
+        device_id: parsed.deviceId,
+        session_id: parsed.sessionId,
+        session_url: params.fullstoryUrl,
+        ...(parsed.anchorEpochMs ? { anchor_epoch_ms: parsed.anchorEpochMs } : {}),
+      });
+      query = `fullstoryUrl=${params.fullstoryUrl}`;
+      if (!parsed.anchorEpochMs) {
+        notes.push('FullStory URL did not include an epoch-ms anchor; session timestamps are 1970-relative (use offset_seconds + session_url to correlate)');
+      }
+    }
+  }
+
+  if (!params.fullstoryUrl || fellBackToDiscovery) {
+    // Derive lookback from the requested evidence window so a "Last 15 min"
+    // investigation doesn't surface sessions from 7 days ago. Clamp to at
+    // least 1 day since FullStory segments round to day boundaries and
+    // sub-day lookbacks produce empty segments.
+    const windowSpanMs = params.endTime.getTime() - params.startTime.getTime();
+    const lookbackDays = Math.min(7, Math.max(1, Math.ceil(windowSpanMs / (24 * 3600 * 1000))));
+    const segmentQuery = buildAiroSegmentQuery(params.appId, lookbackDays);
+    query = segmentQuery;
+    try {
+      // `build_segment` is empirically ephemeral on FullStory's hosted MCP —
+      // the returned segment_url carries `?create=true`, meaning the segment
+      // is a draft compiled for this request and only persists to the
+      // customer's Segments tab if a human clicks Save. Still, name it with a
+      // timestamp suffix so IF the behavior ever changes, the leaked rows are
+      // obviously machine-generated and cleanable by prefix.
+      const segmentName = `airo-investigate-${params.appId}-${Date.now()}`;
+      const segment = await callFullstoryMcpTool<FullstoryBuildSegmentResponse>(
+        params.fullstory,
+        'build_segment',
+        { query: segmentQuery, name: segmentName },
+        callOpts,
+      );
+      if (!segment.segment_id) {
+        throw new FullstoryMcpError('build_segment returned no segment_id');
+      }
+      const sessionList = await callFullstoryMcpTool<FullstoryGetSessionsResponse>(
+        params.fullstory,
+        'get_sessions',
+        { segment_id: segment.segment_id, limit: FULLSTORY_LIST_LIMIT },
+        callOpts,
+      );
+      const found = Array.isArray(sessionList.sessions) ? sessionList.sessions : [];
+      const picked = found.slice(0, FULLSTORY_MAX_SESSIONS);
+      sessions.push(...picked);
+      // Per-feedback investigation is scoped narrowly — 3 recent sessions is
+      // enough to root-cause a single complaint. When the segment is larger,
+      // note the trim so the AI investigator knows more data exists without
+      // treating the result as incomplete.
+      if (found.length > picked.length) {
+        notes.push(`segment matched ${found.length} sessions in the last ${lookbackDays}d; fetched the ${picked.length} most recent for event analysis`);
+      }
+    } catch (err) {
+      complete = false;
+      incomplete.push({
+        bucket: 'discovery',
+        start: windowStart,
+        end: windowEnd,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  if (sessions.length === 0 && complete) {
+    incomplete.push({ bucket: 'discovery', start: windowStart, end: windowEnd, error: `no FullStory sessions found for appId ${params.appId}` });
+    complete = false;
+  }
+
+  const sessionResults = await Promise.all(sessions.map(async (session): Promise<{ session: FullstorySessionRef; logs: EvidenceLog[]; error?: string }> => {
+    try {
+      const events = await callFullstoryMcpTool<FullstoryGetSessionEventsResponse>(
+        params.fullstory,
+        'get_session_events',
+        { device_id: session.device_id, session_id: session.session_id },
+        callOpts,
+      );
+      const eventsText = events.events || '';
+      if (!eventsText) return { session, logs: [], error: 'empty events' };
+      const session_url = session.session_url || events.session_url;
+      return { session: { ...session, session_url }, logs: normalizeFullstorySessionEvents({ ...session, session_url }, eventsText) };
+    } catch (err) {
+      return { session, logs: [], error: err instanceof Error ? err.message : String(err) };
+    }
+  }));
+
+  sessionResults.forEach((result, index) => {
+    const bucket = `s${String(index + 1).padStart(2, '0')}-${result.session.session_id}`;
+    if (result.error) {
+      complete = false;
+      incomplete.push({ bucket, start: windowStart, end: windowEnd, error: result.error });
+      return;
+    }
+    rawPages.push({
+      page: index,
+      bucket,
+      start: windowStart,
+      end: windowEnd,
+      logs: result.logs,
+    });
+  });
+
+  return {
+    complete,
+    rawPages,
+    incomplete,
+    diagnostics: {
+      elapsedMs: Date.now() - started,
+      pageCount: rawPages.length,
+      query,
+      truncated: !complete,
+      ...(incomplete[0]?.error ? { error: incomplete[0].error } : {}),
+      ...(notes.length > 0 ? { notes } : {}),
+    },
+  };
+}
+
 export async function collectEvidenceForSource(params: {
   sourceId: string;
   appId: string;
   timeWindow: string;
   bucketHours?: number;
   fetchImpl?: FetchImpl;
+  fullstoryUrl?: string;
 }): Promise<EvidenceSourceResult> {
   const { startTime, endTime } = parseTimeRange(params.timeWindow);
   const window = { label: params.timeWindow, start: startTime.toISOString(), end: endTime.toISOString() };
+
+  if (params.sourceId === 'fullstory') {
+    const config = getFullstoryMcpConfig();
+    if (!config) throw new Error('FullStory MCP config missing (FULLSTORY_API_KEY)');
+    const collected = await collectFullstoryEvidence({
+      appId: params.appId,
+      startTime,
+      endTime,
+      fullstory: config,
+      fullstoryUrl: params.fullstoryUrl,
+      fetchImpl: params.fetchImpl,
+    });
+    const index = buildEvidenceIndex({
+      source: fullstorySourceConfig(),
+      appId: params.appId,
+      window,
+      rawPages: collected.rawPages,
+      incomplete: collected.incomplete,
+      diagnostics: collected.diagnostics,
+    });
+    return { sourceId: params.sourceId, complete: collected.complete && index.coverage.complete, rawPages: collected.rawPages, index };
+  }
 
   if (params.sourceId === 'langfuse') {
     const config = getLangfuseEbConfig();
@@ -893,11 +1225,21 @@ function fallbackSourceConfig(sourceId: string): LogSourceConfig {
 export async function collectInvestigateEvidence(request: NormalizedEvidenceRequest): Promise<{ appId: string; timeWindow: string; complete: boolean; sources: EvidenceSourceResult[] }> {
   const sources = await Promise.all(request.sources.map(async (sourceId) => {
     try {
-      return await collectEvidenceForSource({ sourceId, appId: request.appId, timeWindow: request.timeWindow, bucketHours: request.bucketHours });
+      return await collectEvidenceForSource({
+        sourceId,
+        appId: request.appId,
+        timeWindow: request.timeWindow,
+        bucketHours: request.bucketHours,
+        fullstoryUrl: request.fullstoryUrl,
+      });
     } catch (err) {
       let fallbackSource: EvidenceSourceConfig;
       try {
-        fallbackSource = sourceId === 'langfuse' ? langfuseSourceConfig() : getLogSourceConfig(sourceId) || fallbackSourceConfig(sourceId);
+        fallbackSource = sourceId === 'fullstory'
+          ? fullstorySourceConfig()
+          : sourceId === 'langfuse'
+            ? langfuseSourceConfig()
+            : getLogSourceConfig(sourceId) || fallbackSourceConfig(sourceId);
       } catch {
         fallbackSource = fallbackSourceConfig(sourceId);
       }

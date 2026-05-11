@@ -70,6 +70,27 @@ function friendlyPhase(phase: string | null): string {
   return PHASE_LABELS[phase] ?? phase;
 }
 
+const FULLSTORY_NUMERIC_SESSION_RE = /\/session\/\d{6,}:\d{6,}/;
+const FULLSTORY_UUID_SESSION_RE = /\/client-session\//;
+
+function FullstoryUrlHint({ value }: { value: string }): React.JSX.Element | null {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return (
+      <span style={fullstoryHintStyle}>
+        Prefer the numeric <code>/session/</code> URL from the browser address bar for a direct 1-call fetch. Share links work too but fall back to segment discovery.
+      </span>
+    );
+  }
+  if (FULLSTORY_NUMERIC_SESSION_RE.test(trimmed)) {
+    return <span style={{ ...fullstoryHintStyle, color: '#047857' }}>✓ Direct session fetch (1 API call).</span>;
+  }
+  if (FULLSTORY_UUID_SESSION_RE.test(trimmed)) {
+    return <span style={{ ...fullstoryHintStyle, color: '#92400e' }}>⚠ Share link — falls back to segment discovery. Paste the numeric <code>/session/</code> URL for a direct fetch.</span>;
+  }
+  return <span style={{ ...fullstoryHintStyle, color: '#b91c1c' }}>✗ Unrecognised FullStory URL.</span>;
+}
+
 function badgeColor(status: StatusResponse['status'] | 'pending'): string {
   switch (status) {
     case 'completed': return '#10b981';
@@ -379,26 +400,16 @@ export default function InvestigatePanel(props: Props = {}) {
         </div>
         )}
 
-        <label style={{ display: 'grid', gap: 4 }}>
-          <span style={{ fontSize: 13, fontWeight: 500 }}>Customer feedback *</span>
-          <textarea
-            value={feedback}
-            onChange={(e) => setFeedback(e.target.value)}
-            placeholder="Agent kept repeating the same fix and wasting my credits..."
-            required
-            rows={4}
-            style={{ ...inputStyle, resize: 'vertical', minHeight: 90 }}
-          />
-        </label>
-
-        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 180px', gap: 12, alignItems: 'start' }}>
           <label style={{ display: 'grid', gap: 4 }}>
-            <span style={{ fontSize: 13, fontWeight: 500 }}>FullStory URL (optional)</span>
-            <input
-              value={fullstoryUrl}
-              onChange={(e) => setFullstoryUrl(e.target.value)}
-              placeholder="https://app.fullstory.com/ui/YKBRC/session/..."
-              style={inputStyle}
+            <span style={{ fontSize: 13, fontWeight: 500 }}>Customer feedback *</span>
+            <textarea
+              value={feedback}
+              onChange={(e) => setFeedback(e.target.value)}
+              placeholder="Agent kept repeating the same fix and wasting my credits..."
+              required
+              rows={4}
+              style={{ ...inputStyle, resize: 'vertical', minHeight: 90 }}
             />
           </label>
           <label style={{ display: 'grid', gap: 4 }}>
@@ -416,6 +427,17 @@ export default function InvestigatePanel(props: Props = {}) {
             </select>
           </label>
         </div>
+
+        <label style={{ display: 'grid', gap: 4 }}>
+          <span style={{ fontSize: 13, fontWeight: 500 }}>FullStory URL (optional)</span>
+          <input
+            value={fullstoryUrl}
+            onChange={(e) => setFullstoryUrl(e.target.value)}
+            placeholder="https://app.fullstory.com/ui/YKBRC/session/1388843285576721830:1562263520177247197:..."
+            style={inputStyle}
+          />
+          <FullstoryUrlHint value={fullstoryUrl} />
+        </label>
 
         <label style={{ display: 'grid', gap: 4 }}>
           <span style={{ fontSize: 13, fontWeight: 500 }}>
@@ -643,6 +665,12 @@ const topNoticeRowStyle: React.CSSProperties = {
   gap: 12,
   flexWrap: 'wrap',
   marginBottom: 12,
+};
+
+const fullstoryHintStyle: React.CSSProperties = {
+  fontSize: 11,
+  color: '#6b7280',
+  lineHeight: 1.4,
 };
 
 const wipWarningStyle: React.CSSProperties = {

@@ -165,6 +165,16 @@ LOG_SOURCES = {
         status_fields=("status", "statusCode", "http.status_code", "http.response.status_code"),
         error_terms=("error", "exception", "failed", "timeout", "tool", "generation"),
     ),
+
+    "fullstory": LogSource(
+        name="fullstory",
+        console_source="fullstory",
+        description="FullStory session replays discovered via hosted MCP server (build_segment + get_sessions + get_session_events) scoped to /develop/{appId}.",
+        message_fields=("message", "event", "line"),
+        level_fields=("level",),
+        status_fields=("status",),
+        error_terms=("rage", "dead-click", "error-click", "console-error", "feedback", "exception"),
+    ),
 }
 
 
@@ -261,12 +271,21 @@ def build_investigate_evidence_path(*, sources: list[LogSource], app_id: str, wi
     return "/api/investigate-evidence"
 
 
-def build_investigate_evidence_payload(sources: list[LogSource], app_id: str, window: str) -> dict[str, Any]:
-    return {
+def build_investigate_evidence_payload(
+    sources: list[LogSource],
+    app_id: str,
+    window: str,
+    *,
+    fullstory_url: str | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
         "appId": app_id,
         "timeWindow": window,
         "sources": [source.console_source for source in sources],
     }
+    if fullstory_url:
+        payload["fullstoryUrl"] = fullstory_url
+    return payload
 
 
 def safe_name(value: str) -> str:
@@ -629,7 +648,9 @@ def run(args: argparse.Namespace) -> int:
     if args.batched_evidence:
         sources = [get_log_source(name.strip()) for name in args.sources.split(",") if name.strip()]
         path = build_investigate_evidence_path(sources=sources, app_id=args.appId, window=window.label)
-        payload = build_investigate_evidence_payload(sources, args.appId, window.label)
+        payload = build_investigate_evidence_payload(
+            sources, args.appId, window.label, fullstory_url=args.fullstory_url or None
+        )
         try:
             data = post_json(base_url, token, path, payload, args.timeout)
         except Exception as err:  # noqa: BLE001 - report console/API failures without a raw traceback.
@@ -676,8 +697,9 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Fetch and index all bounded airo-app logs for one app.")
     parser.add_argument("--appId", required=True)
     parser.add_argument("--source", default="airo-app-frontend", choices=sorted(LOG_SOURCES))
-    parser.add_argument("--sources", default="airo-app-frontend,airo-agents,airo-preview,airo-publish,control-plane,langfuse")
+    parser.add_argument("--sources", default="airo-app-frontend,airo-agents,airo-preview,airo-publish,control-plane,langfuse,fullstory")
     parser.add_argument("--window", default="24h", help="24h, 7d, or startISO,endISO")
+    parser.add_argument("--fullstory-url", default=None, help="Optional FullStory session URL forwarded to /api/investigate-evidence for exact session lookup")
     parser.add_argument("--output-dir", default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--page-size", type=int, default=500)
     parser.add_argument("--bucket-hours", type=int, default=None)
