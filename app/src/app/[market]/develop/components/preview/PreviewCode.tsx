@@ -127,6 +127,8 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
   // This prevents redundant ensure-running calls since the initialization state machine
   // already handles app readiness verification
   const loadingPhase = useDevelopPageStore((state) => state.loadingPhase)
+  const loadingError = useDevelopPageStore((state) => state.loadingError)
+  const currentAppId = useDevelopPageStore((state) => state.currentAppId)
   const viewMode = useDevelopPageStore((state) => state.viewMode)
   // Track previous viewMode to detect tab switches.
   // Initialized to null so that mounting directly into CODE mode (e.g. after
@@ -759,7 +761,28 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
 
   const currentFile = openFiles.find(f => f.path === activeFile)
 
-  if (isLoading) {
+  const isPageNotReady = loadingPhase !== 'ready'
+
+  if (isPageNotReady && loadingError && currentAppId === effectiveAppId) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-lg font-semibold mb-1">{t('builder_code_error_failed')}</div>
+          <div className="text-sm mb-2">{loadingError}</div>
+          {/* TODO: Route retry through useInitialization's XState machine
+             instead of calling initializePage directly. Currently the machine
+             stays in error state after a successful retry. */}
+          <Button
+            onClick={() => useDevelopPageStore.getState().initializePage(effectiveAppId).catch(() => {})}
+            design="secondary"
+            text={t('builder_common_retry')}
+          />
+        </div>
+      </div>
+    )
+  }
+
+  if (isLoading || isPageNotReady) {
     return (
       <div className="h-full flex flex-col items-center justify-center gap-1">
         <Spinner data-partial="gradientAiro" />

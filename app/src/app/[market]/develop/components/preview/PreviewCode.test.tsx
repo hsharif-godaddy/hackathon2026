@@ -49,18 +49,25 @@ vi.mock('@/stores/useFileTreeStore', () => {
 });
 
 // Mock stores
-vi.mock('@/stores/useDevelopPageStore', () => ({
-  useDevelopPageStore: vi.fn((selector: any) =>
-    selector({
-      isMobile: false,
-      isFileTreeCollapsed: false,
-      setIsFileTreeCollapsed: vi.fn(),
-      setHasUnsavedChanges: vi.fn(),
-      loadingPhase: 'ready', // Default to ready so file loading triggers
-      viewMode: ViewMode.PREVIEW, // Default to PREVIEW
-    })
-  ),
-}));
+const mockDevelopPageState = {
+  isMobile: false,
+  isFileTreeCollapsed: false,
+  setIsFileTreeCollapsed: vi.fn(),
+  setHasUnsavedChanges: vi.fn(),
+  loadingPhase: 'ready',
+  loadingError: null as string | null,
+  currentAppId: null as string | null,
+  viewMode: ViewMode.PREVIEW,
+  initializePage: vi.fn(() => Promise.resolve()),
+};
+
+vi.mock('@/stores/useDevelopPageStore', () => {
+  const store = Object.assign(
+    vi.fn((selector: any) => selector(mockDevelopPageState)),
+    { getState: () => mockDevelopPageState }
+  );
+  return { useDevelopPageStore: store };
+});
 
 vi.mock('@/stores/useSiteCreationStore', () => ({
   useSiteCreationStore: vi.fn((selector: any) =>
@@ -114,6 +121,9 @@ describe('PreviewCode', () => {
     mockFileTreeState.files = {};
     mockFileTreeState.loading = {};
     mockFileTreeState.errors = {};
+    mockDevelopPageState.loadingPhase = 'ready';
+    mockDevelopPageState.loadingError = null;
+    mockDevelopPageState.viewMode = ViewMode.PREVIEW;
   });
 
   it('should render without crashing', async () => {
@@ -134,13 +144,13 @@ describe('PreviewCode', () => {
         isFileTreeCollapsed: false,
         setIsFileTreeCollapsed: vi.fn(),
         setHasUnsavedChanges: vi.fn(),
-        loadingPhase: 'loading-app', // Not ready yet
+        loadingPhase: 'loading-app',
+        loadingError: null,
       })
     );
 
     renderWithProviders(<PreviewCode appId="test-app-123" />);
 
-    // loadFiles action should NOT be called when loadingPhase is not 'ready'
     expect(mockFileTreeState.loadFiles).not.toHaveBeenCalled();
   });
 
@@ -156,6 +166,7 @@ describe('PreviewCode', () => {
         setIsFileTreeCollapsed: vi.fn(),
         setHasUnsavedChanges: vi.fn(),
         loadingPhase: currentLoadingPhase,
+        loadingError: null,
       })
     );
 
@@ -173,6 +184,7 @@ describe('PreviewCode', () => {
         setIsFileTreeCollapsed: vi.fn(),
         setHasUnsavedChanges: vi.fn(),
         loadingPhase: currentLoadingPhase,
+        loadingError: null,
       })
     );
 
@@ -217,6 +229,7 @@ describe('PreviewCode', () => {
         setIsFileTreeCollapsed: vi.fn(),
         setHasUnsavedChanges: vi.fn(),
         loadingPhase: 'ready',
+        loadingError: null,
       })
     );
 
@@ -245,6 +258,7 @@ describe('PreviewCode', () => {
         setIsFileTreeCollapsed: vi.fn(),
         setHasUnsavedChanges: vi.fn(),
         loadingPhase: 'ready',
+        loadingError: null,
       })
     );
 
@@ -273,6 +287,7 @@ describe('PreviewCode', () => {
         setIsFileTreeCollapsed: vi.fn(),
         setHasUnsavedChanges: vi.fn(),
         loadingPhase: 'ready',
+        loadingError: null,
       })
     );
 
@@ -311,6 +326,7 @@ describe('PreviewCode', () => {
         setIsFileTreeCollapsed: vi.fn(),
         setHasUnsavedChanges: vi.fn(),
         loadingPhase: 'ready',
+        loadingError: null,
       })
     );
 
@@ -340,6 +356,7 @@ describe('PreviewCode', () => {
         setIsFileTreeCollapsed: vi.fn(),
         setHasUnsavedChanges: vi.fn(),
         loadingPhase: 'ready',
+        loadingError: null,
         viewMode: ViewMode.PREVIEW,
       })
     );
@@ -357,6 +374,63 @@ describe('PreviewCode', () => {
     });
   });
 
+  describe('page initialization states', () => {
+    it('should show spinner when loadingPhase is not ready', async () => {
+      const { useDevelopPageStore } = await import('@/stores/useDevelopPageStore');
+      vi.mocked(useDevelopPageStore).mockImplementation((selector: any) =>
+        selector({
+          isMobile: false,
+          isFileTreeCollapsed: false,
+          setIsFileTreeCollapsed: vi.fn(),
+          setHasUnsavedChanges: vi.fn(),
+          loadingPhase: 'loading-app',
+          loadingError: null,
+        })
+      );
+
+      renderWithProviders(<PreviewCode appId="test-app-123" />);
+
+      await waitFor(() => {
+        expect(screen.getByText('builder_code_loading_files')).toBeInTheDocument();
+      });
+    });
+
+    it('should show error with retry button when init fails', async () => {
+      const { useDevelopPageStore } = await import('@/stores/useDevelopPageStore');
+      const { useSiteCreationStore } = await import('@/stores/useSiteCreationStore');
+      const mockInitializePage = vi.fn(() => Promise.resolve());
+
+      vi.mocked(useSiteCreationStore).mockImplementation((selector: any) =>
+        selector({ realAppId: null })
+      );
+      vi.mocked(useDevelopPageStore).mockImplementation((selector: any) =>
+        selector({
+          isMobile: false,
+          isFileTreeCollapsed: false,
+          setIsFileTreeCollapsed: vi.fn(),
+          setHasUnsavedChanges: vi.fn(),
+          loadingPhase: 'idle',
+          loadingError: 'Network request failed',
+          currentAppId: 'test-app-123',
+        })
+      );
+      Object.assign(vi.mocked(useDevelopPageStore), {
+        getState: () => ({ initializePage: mockInitializePage }),
+      });
+
+      const { user } = renderWithProviders(<PreviewCode appId="test-app-123" />);
+
+      await waitFor(() => {
+        expect(screen.getByText('builder_code_error_failed')).toBeInTheDocument();
+        expect(screen.getByText('Network request failed')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByRole('button', { name: 'builder_common_retry' }));
+
+      expect(mockInitializePage).toHaveBeenCalledWith('test-app-123');
+    });
+  });
+
   describe('auto-expand search on Code tab switch', () => {
     it('should expand search when switching from non-CODE to CODE view', async () => {
       const { useDevelopPageStore } = await import('@/stores/useDevelopPageStore');
@@ -370,6 +444,7 @@ describe('PreviewCode', () => {
           setIsFileTreeCollapsed: vi.fn(),
           setHasUnsavedChanges: vi.fn(),
           loadingPhase: 'ready',
+          loadingError: null,
           viewMode: currentViewMode,
         })
       );
@@ -390,6 +465,7 @@ describe('PreviewCode', () => {
           setIsFileTreeCollapsed: vi.fn(),
           setHasUnsavedChanges: vi.fn(),
           loadingPhase: 'ready',
+          loadingError: null,
           viewMode: currentViewMode,
         })
       );
@@ -414,6 +490,7 @@ describe('PreviewCode', () => {
           setIsFileTreeCollapsed: vi.fn(),
           setHasUnsavedChanges: vi.fn(),
           loadingPhase: 'loading-app',
+          loadingError: null,
           viewMode: currentViewMode,
         })
       );
@@ -430,7 +507,8 @@ describe('PreviewCode', () => {
           isFileTreeCollapsed: false,
           setIsFileTreeCollapsed: vi.fn(),
           setHasUnsavedChanges: vi.fn(),
-          loadingPhase: 'loading-app', // Still not ready
+          loadingPhase: 'loading-app',
+          loadingError: null,
           viewMode: currentViewMode,
         })
       );
@@ -454,6 +532,7 @@ describe('PreviewCode', () => {
           setIsFileTreeCollapsed: vi.fn(),
           setHasUnsavedChanges: vi.fn(),
           loadingPhase: currentLoadingPhase,
+          loadingError: null,
           viewMode: currentViewMode,
         })
       );
@@ -470,7 +549,8 @@ describe('PreviewCode', () => {
           isFileTreeCollapsed: false,
           setIsFileTreeCollapsed: vi.fn(),
           setHasUnsavedChanges: vi.fn(),
-          loadingPhase: currentLoadingPhase, // Still not ready
+          loadingPhase: currentLoadingPhase,
+          loadingError: null,
           viewMode: currentViewMode,
         })
       );
@@ -489,6 +569,7 @@ describe('PreviewCode', () => {
           setIsFileTreeCollapsed: vi.fn(),
           setHasUnsavedChanges: vi.fn(),
           loadingPhase: currentLoadingPhase,
+          loadingError: null,
           viewMode: currentViewMode,
         })
       );
@@ -511,6 +592,7 @@ describe('PreviewCode', () => {
           setIsFileTreeCollapsed: vi.fn(),
           setHasUnsavedChanges: vi.fn(),
           loadingPhase: 'ready',
+          loadingError: null,
           viewMode: ViewMode.CODE,
         })
       );
@@ -537,6 +619,7 @@ describe('PreviewCode', () => {
           setIsFileTreeCollapsed: vi.fn(),
           setHasUnsavedChanges: vi.fn(),
           loadingPhase: 'ready',
+          loadingError: null,
           viewMode: currentViewMode,
         })
       );
@@ -555,6 +638,7 @@ describe('PreviewCode', () => {
           setIsFileTreeCollapsed: vi.fn(),
           setHasUnsavedChanges: vi.fn(),
           loadingPhase: 'ready',
+          loadingError: null,
           viewMode: currentViewMode,
         })
       );
@@ -578,6 +662,7 @@ describe('PreviewCode', () => {
           setIsFileTreeCollapsed: vi.fn(),
           setHasUnsavedChanges: vi.fn(),
           loadingPhase: 'ready',
+          loadingError: null,
           viewMode: currentViewMode,
         })
       );
@@ -601,6 +686,7 @@ describe('PreviewCode', () => {
           setIsFileTreeCollapsed: vi.fn(),
           setHasUnsavedChanges: vi.fn(),
           loadingPhase: 'ready',
+          loadingError: null,
           viewMode: currentViewMode,
         })
       );
@@ -623,6 +709,7 @@ describe('PreviewCode', () => {
         setIsFileTreeCollapsed: vi.fn(),
         setHasUnsavedChanges: vi.fn(),
         loadingPhase: 'ready',
+        loadingError: null,
         viewMode: ViewMode.CODE as ViewMode,
       };
       vi.mocked(useDevelopPageStore).mockImplementation((selector: any) =>
