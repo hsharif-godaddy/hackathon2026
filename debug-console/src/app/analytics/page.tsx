@@ -7,10 +7,13 @@ import C1AnalyticsPanel from '@/components/C1AnalyticsPanel';
 import FeedbackAnalyticsPanel from '@/components/FeedbackAnalyticsPanel';
 import LangfuseInsightsPanel from '@/components/LangfuseInsightsPanel';
 import ProtectedRoute from '@/components/ProtectedRoute';
+import { ChartEmptyState, ChartLoadingState } from '@/components/analytics/ChartStates';
+import { CloudflareChartsGrid, formatBandwidth } from '@/components/analytics/CloudflareChartsGrid';
 import { EChartsMiniChart } from '@/components/analytics/EChartsMiniChart';
 import { HelpBadge, type HelpInfo } from '@/components/analytics/HelpBadge';
 
 import type { C1Period } from '@/lib/c1-analytics-server';
+import type { CloudflareBucketInterval, CloudflareOverview } from '@/lib/analytics/cloudflare-db';
 import { getDateRangeError, isDateRangeValid } from '@/lib/analytics/date-range';
 
 interface ErrorTypeStats {
@@ -68,32 +71,6 @@ interface Last24HoursPublishStats {
   start: string;
   end: string;
   hourly_stats: Array<{ hoursAgo: number; timestamp: string; begins: number; successes: number; failures: number }>;
-}
-
-const chartLoadingStyle: React.CSSProperties = {
-  backgroundColor: 'rgba(255,255,255,0.97)',
-  padding: '1rem 1.25rem',
-  borderRadius: '10px',
-  boxShadow: '0 2px 10px rgba(0,0,0,0.08)',
-  display: 'flex',
-  justifyContent: 'center',
-  alignItems: 'center',
-  height: '120px',
-  color: '#64748b'
-};
-
-const chartEmptyStyle: React.CSSProperties = {
-  ...chartLoadingStyle,
-  color: '#94a3b8',
-  fontSize: '0.75rem'
-};
-
-function ChartLoadingState() {
-  return <div style={chartLoadingStyle}>Loading...</div>;
-}
-
-function ChartEmptyState({ message }: { message: string }) {
-  return <div style={chartEmptyStyle}>{message}</div>;
 }
 
 // Helper to build chart data for rolling 24h hourly view
@@ -337,7 +314,37 @@ function formatDateInput(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
-const ANALYTICS_TAB_IDS = ['apps', 'langfuse', 'c1', 'feedback'] as const;
+/**
+ * Maps a Cloudflare-tab preset/custom range into the {startMs, endMs,
+ * bucketInterval} tuple the backend expects. Bucket sizing is picked
+ * from the span length so we always return O(50–150) histogram buckets.
+ */
+function resolveCloudflareWindow(
+  preset: DatePreset,
+  customStart: string,
+  customEnd: string,
+): { startMs: number | null; endMs: number | null; bucketInterval: CloudflareBucketInterval } {
+  if (preset === 'custom') {
+    if (!customStart || !customEnd || !isDateRangeValid(customStart, customEnd)) {
+      return { startMs: null, endMs: null, bucketInterval: '1h' };
+    }
+    const startMs = new Date(`${customStart}T00:00:00.000Z`).getTime();
+    const endMs = new Date(`${customEnd}T23:59:59.999Z`).getTime();
+    const spanDays = (endMs - startMs) / (24 * 60 * 60 * 1000);
+    const bucketInterval: CloudflareBucketInterval =
+      spanDays <= 2 ? '15m' : spanDays <= 14 ? '1h' : '1d';
+    return { startMs, endMs, bucketInterval };
+  }
+  const { start, end } = getDateRange(preset);
+  const bucketInterval: CloudflareBucketInterval =
+    preset === '1h' ? '5m'
+    : preset === '1d' ? '15m'
+    : preset === '7d' || preset === '14d' ? '1h'
+    : '1d';
+  return { startMs: start.getTime(), endMs: end.getTime(), bucketInterval };
+}
+
+const ANALYTICS_TAB_IDS = ['apps', 'cloudflare', 'langfuse', 'c1', 'feedback'] as const;
 type AnalyticsTabId = (typeof ANALYTICS_TAB_IDS)[number];
 
 function parseAnalyticsTab(value: string | null | undefined): AnalyticsTabId {
@@ -350,6 +357,7 @@ function parseAnalyticsTab(value: string | null | undefined): AnalyticsTabId {
 
 const ANALYTICS_TABS: ReadonlyArray<{ id: AnalyticsTabId; label: string }> = [
   { id: 'apps', label: 'Apps' },
+  { id: 'cloudflare', label: 'Cloudflare' },
   { id: 'langfuse', label: 'Langfuse' },
   { id: 'c1', label: 'C1 (ClickHouse)' },
   { id: 'feedback', label: 'Feedback' },
@@ -455,6 +463,27 @@ function AnalyticsContent() {
   const [feedbackDatePreset, setFeedbackDatePreset] = useState<StandardDatePreset>('7d');
   const [feedbackCustomStart, setFeedbackCustomStart] = useState<string>('');
   const [feedbackCustomEnd, setFeedbackCustomEnd] = useState<string>('');
+
+  // Cloudflare tab — CDN logs (airo-app-cloudflare-cdn-logs-prod-*).
+  // Same preset family as Dynamic section since the index is near-real-time.
+  const [cloudflareDatePreset, setCloudflareDatePreset] = useState<DatePreset>('1h');
+  const [cloudflareCustomStart, setCloudflareCustomStart] = useState<string>('');
+  const [cloudflareCustomEnd, setCloudflareCustomEnd] = useState<string>('');
+  const [cloudflareOverview, setCloudflareOverview] = useState<CloudflareOverview | null>(null);
+  const [cloudflareLoading, setCloudflareLoading] = useState(false);
+  const [cloudflareError, setCloudflareError] = useState<string | null>(null);
+  const [cloudflareChartSize, setCloudflareChartSize] = useState<'small' | 'large' | 'full'>('large');
+  const [cloudflareZoomStart, setCloudflareZoomStart] = useState<number>(0);
+  const [cloudflareZoomEnd, setCloudflareZoomEnd] = useState<number>(100);
+  const onCloudflareZoomChange = useCallback((s: number, e: number) => {
+    setCloudflareZoomStart(s);
+    setCloudflareZoomEnd(e);
+  }, []);
+  useEffect(() => {
+    // Reset zoom window when the range changes — same rationale as PDNA.
+    setCloudflareZoomStart(0);
+    setCloudflareZoomEnd(100);
+  }, [cloudflareDatePreset, cloudflareCustomStart, cloudflareCustomEnd]);
 
   const langfuseWindow = useMemo(() => {
     if (langfuseDatePreset === 'custom' && langfuseCustomStart && langfuseCustomEnd) {
@@ -915,6 +944,36 @@ function AnalyticsContent() {
       })
       .finally(() => setPdnaLoading(false));
   }, [activeTab, pdnaTlaFilter]);
+
+  // Fetch Cloudflare overview when the Cloudflare tab is active. Re-runs
+  // whenever the preset or custom range changes.
+  useEffect(() => {
+    if (activeTab !== 'cloudflare') return;
+    const { startMs, endMs, bucketInterval } = resolveCloudflareWindow(cloudflareDatePreset, cloudflareCustomStart, cloudflareCustomEnd);
+    if (startMs == null || endMs == null) {
+      setCloudflareOverview(null);
+      setCloudflareError(null);
+      return;
+    }
+    setCloudflareLoading(true);
+    setCloudflareError(null);
+    const controller = new AbortController();
+    fetch(`/api/analytics?action=cloudflare-overview&startMs=${startMs}&endMs=${endMs}&bucketInterval=${bucketInterval}`, { signal: controller.signal })
+      .then(async (res) => {
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body.error || `HTTP ${res.status}`);
+        }
+        const data: CloudflareOverview = await res.json();
+        setCloudflareOverview(data);
+      })
+      .catch((err: unknown) => {
+        if (err instanceof Error && err.name === 'AbortError') return;
+        setCloudflareError(err instanceof Error ? err.message : 'Failed to fetch Cloudflare data');
+      })
+      .finally(() => setCloudflareLoading(false));
+    return () => controller.abort();
+  }, [activeTab, cloudflareDatePreset, cloudflareCustomStart, cloudflareCustomEnd]);
 
   async function fetchHourlyWsErrorData(date: string) {
     setHourlyWsErrorLoading(true);
@@ -1992,6 +2051,122 @@ function AnalyticsContent() {
               </div>
             </div>
 
+          </div>
+        )}
+
+        {activeTab === 'cloudflare' && (
+          <div
+            id="analytics-panel-cloudflare"
+            role="tabpanel"
+            aria-labelledby="analytics-tab-cloudflare"
+            style={{ marginBottom: '1.25rem' }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem', gap: '1rem', flexWrap: 'wrap' }}>
+              <h2 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: '#e2e8f0' }}>
+                Cloudflare CDN <span style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 500 }}>(all airoapp domains)</span>
+              </h2>
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: '0.4rem',
+                backgroundColor: 'rgba(255,255,255,0.97)',
+                padding: '0.3rem 0.5rem',
+                borderRadius: '10px',
+                boxShadow: '0 2px 10px rgba(0,0,0,0.08)',
+              }}>
+                <span style={{ fontSize: '0.62rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Size</span>
+                {(['small', 'large', 'full'] as const).map(id => (
+                  <button
+                    key={id}
+                    title={id === 'small' ? 'Small — 2-col default' : id === 'large' ? 'Large — 2× width' : 'Full width — one per row'}
+                    onClick={() => setCloudflareChartSize(id)}
+                    style={{
+                      padding: '0.3rem 0.65rem',
+                      backgroundColor: cloudflareChartSize === id ? '#1d4ed8' : '#f3f4f6',
+                      color: cloudflareChartSize === id ? 'white' : '#374151',
+                      border: 'none', borderRadius: '6px', cursor: 'pointer',
+                      fontSize: '0.72rem', fontWeight: 500,
+                    }}
+                  >{id === 'small' ? 'S' : id === 'large' ? 'L' : 'Full'}</button>
+                ))}
+              </div>
+            </div>
+            <DateRangeSelector
+              presets={['1h', '1d', '7d', '14d', '30d', 'custom'] as const}
+              value={cloudflareDatePreset}
+              onValueChange={setCloudflareDatePreset}
+              customStart={cloudflareCustomStart}
+              customEnd={cloudflareCustomEnd}
+              onCustomStartChange={setCloudflareCustomStart}
+              onCustomEndChange={setCloudflareCustomEnd}
+              onCustomApply={() => { /* fetch effect reacts to state */ }}
+            />
+
+            {cloudflareLoading && !cloudflareOverview ? (
+              <ChartLoadingState />
+            ) : cloudflareError ? (
+              <div style={{ backgroundColor: 'rgba(255,255,255,0.95)', borderRadius: '10px', padding: '1rem', borderLeft: '4px solid #ef4444', marginBottom: '1rem' }}>
+                <p style={{ margin: 0, color: '#dc2626', fontWeight: 600, fontSize: '0.8rem' }}>Cloudflare error: {cloudflareError}</p>
+              </div>
+            ) : cloudflareOverview ? (
+              <>
+                {/* Summary pills — mirror the PDNA pills grid. */}
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
+                  gap: '0.6rem',
+                  marginBottom: '0.75rem',
+                }}>
+                  {[
+                    { label: 'Total Requests', value: cloudflareOverview.totalRequests.toLocaleString(), color: '#1e40af' },
+                    { label: 'Unique Domains', value: cloudflareOverview.uniqueDomains.toLocaleString(), color: '#7c3aed' },
+                    { label: 'Unique Clients', value: cloudflareOverview.uniqueClients.toLocaleString(), color: '#0ea5e9' },
+                    { label: 'Bandwidth', value: formatBandwidth(cloudflareOverview.sumBytes), color: '#10b981' },
+                    { label: 'p50 Latency', value: cloudflareOverview.p50Ms != null ? `${cloudflareOverview.p50Ms.toFixed(0)} ms` : '—', color: '#0ea5e9' },
+                    { label: 'p95 Latency', value: cloudflareOverview.p95Ms != null ? `${cloudflareOverview.p95Ms.toFixed(0)} ms` : '—', color: '#0284c7' },
+                    (() => {
+                      const total = cloudflareOverview.statusClassDaily.reduce((s, d) => s + d.c2xx + d.c3xx + d.c4xx + d.c5xx + d.cOther, 0);
+                      const c4xx = cloudflareOverview.statusClassDaily.reduce((s, d) => s + d.c4xx, 0);
+                      const pct = total > 0 ? ((c4xx / total) * 100).toFixed(1) : '0.0';
+                      return { label: '4xx Rate', value: `${pct}% (${c4xx.toLocaleString()})`, color: '#f59e0b' };
+                    })(),
+                    (() => {
+                      const total = cloudflareOverview.statusClassDaily.reduce((s, d) => s + d.c2xx + d.c3xx + d.c4xx + d.c5xx + d.cOther, 0);
+                      const c5xx = cloudflareOverview.statusClassDaily.reduce((s, d) => s + d.c5xx, 0);
+                      const pct = total > 0 ? ((c5xx / total) * 100).toFixed(1) : '0.0';
+                      return { label: '5xx Rate', value: `${pct}% (${c5xx.toLocaleString()})`, color: '#dc2626' };
+                    })(),
+                    (() => {
+                      const hit = cloudflareOverview.cacheResult.find(c => c.key === 'hit')?.count ?? 0;
+                      const miss = cloudflareOverview.cacheResult.find(c => c.key === 'miss')?.count ?? 0;
+                      const denom = hit + miss;
+                      const pct = denom > 0 ? ((hit / denom) * 100).toFixed(1) : '—';
+                      return { label: 'Cache Hit %', value: `${pct}%${denom > 0 ? ` (${hit.toLocaleString()}/${denom.toLocaleString()})` : ''}`, color: '#22c55e' };
+                    })(),
+                  ].map(({ label, value, color }) => (
+                    <div key={label} style={{
+                      backgroundColor: 'rgba(255,255,255,0.97)',
+                      padding: '0.6rem 0.8rem',
+                      borderRadius: '10px',
+                      boxShadow: '0 2px 10px rgba(0,0,0,0.08)',
+                    }}>
+                      <div style={{ fontSize: '0.58rem', fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</div>
+                      <div style={{ fontSize: '0.95rem', fontWeight: 700, color, fontFamily: 'monospace', marginTop: '0.15rem' }}>{value}</div>
+                    </div>
+                  ))}
+                </div>
+
+                <CloudflareChartsGrid
+                  data={cloudflareOverview}
+                  group="cloudflare"
+                  zoomStart={cloudflareZoomStart}
+                  zoomEnd={cloudflareZoomEnd}
+                  onZoomChange={onCloudflareZoomChange}
+                  chartSize={cloudflareChartSize}
+                  showEdgeCharts
+                />
+              </>
+            ) : (
+              <ChartEmptyState message="No Cloudflare data for this window" />
+            )}
           </div>
         )}
 

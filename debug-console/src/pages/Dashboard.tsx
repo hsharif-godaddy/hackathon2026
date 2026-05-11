@@ -15,6 +15,7 @@ import type { LlmSpendData } from "@/lib/spend-types";
 import { formatTimestamp } from "@/lib/date-utils";
 import { CUSTOMER_ID_RE, SHOPPER_ID_RE } from "@/lib/mgmt-helpers";
 import LogsPanel, { type LogSource } from "@/components/LogsPanel";
+import TrafficPanel from "@/components/TrafficPanel";
 import InvestigatePanel from "@/components/InvestigatePanel";
 import UserMenu from "@/components/UserMenu";
 const TIME_RANGES = [
@@ -55,6 +56,7 @@ type TabId =
   | "conversations"
   | "care"
   | "logs"
+  | "traffic"
   | "investigate";
 
 export default function Dashboard() {
@@ -99,6 +101,12 @@ export default function Dashboard() {
 
   const [shopperId, setShopperId] = useState<string | null>(null);
 
+  // fqdns of every domain attached to the loaded app — populated from
+  // MgmtAppDetails.domains by AppDetailsPanel's onAppLoaded callback.
+  // Used by the Traffic tab so it can query Cloudflare CDN logs for
+  // just this app's domains instead of the whole fleet.
+  const [loadedAppDomains, setLoadedAppDomains] = useState<string[]>([]);
+
   const [conversationsSource, setConversationsSource] = useState<ConversationsSource>("langfuse");
 
   const [refreshKeys, setRefreshKeys] = useState({
@@ -107,6 +115,7 @@ export default function Dashboard() {
     conversations: 0,
     care: 0,
     logs: 0,
+    traffic: 0,
     investigate: 0,
   });
 
@@ -486,7 +495,16 @@ export default function Dashboard() {
 
   const handleAppLoaded = useCallback((app: MgmtAppDetails | null) => {
     setShopperId(app?.shopperId || null);
+    setLoadedAppDomains((app?.domains ?? []).map((d) => d.fqdn).filter(Boolean));
   }, []);
+
+  // When the user switches to a different app, clear the cached domain
+  // list until `handleAppLoaded` fires for the new app. Without this,
+  // an already-mounted Traffic tab would briefly query Cloudflare for
+  // the previous app's domains against the new appId.
+  useEffect(() => {
+    setLoadedAppDomains([]);
+  }, [submittedAppId]);
 
   // When user searches by appId alone, submittedCustomerId stays blank.
   // AppDetailsPanel fetches the subscription (which knows the customerId)
@@ -505,6 +523,7 @@ export default function Dashboard() {
     setCustomerAppsError(null);
     setContext(null);
     setShopperId(null);
+    setLoadedAppDomains([]);
     setSearchError(null);
     setActiveTab("summary");
     router.push("/", { scroll: false });
@@ -568,6 +587,7 @@ export default function Dashboard() {
     { id: "summary", label: "Summary", icon: "📊" },
     { id: "conversations", label: "Conversations", icon: "💬" },
     { id: "logs", label: "Logs", icon: "📋" },
+    { id: "traffic", label: "Traffic", icon: "🌐" },
     { id: "care", label: "Care Contacts", icon: "🎧" },
     { id: "investigate", label: "Investigate", icon: "🔍" },
   ];
@@ -1802,6 +1822,18 @@ export default function Dashboard() {
                     timeRange={timeRange}
                     refreshKey={refreshKeys.logs}
                     onRefresh={() => handleRefreshTab("logs")}
+                  />
+                </div>
+              )}
+
+              {/* Traffic Tab — Cloudflare CDN logs for this app's domains. */}
+              {visitedTabs.has("traffic") && (
+                <div style={{ display: activeTab === "traffic" ? "block" : "none" }}>
+                  <TrafficPanel
+                    appId={submittedAppId}
+                    appDomains={loadedAppDomains}
+                    refreshKey={refreshKeys.traffic}
+                    onRefresh={() => handleRefreshTab("traffic")}
                   />
                 </div>
               )}

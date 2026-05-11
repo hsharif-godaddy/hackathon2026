@@ -1,15 +1,31 @@
 import { NextResponse } from 'next/server';
 
+import { getCloudflareAppTraffic, getCloudflareOverview, type CloudflareBucketInterval } from '@/lib/analytics/cloudflare-db';
+import { getDateRangeError } from '@/lib/analytics/date-range';
+import { getDirectBudgetErrorStats, getDirectClientErrorStats, getDirectHourlyBudgetErrorStats, getDirectHourlyClientErrorStats, getDirectHourlyUiAuthEventStats, getDirectLast1HourBudgetErrors, getDirectLast1HourClientErrors, getDirectLast1HourUiAuthEvents, getDirectRollingHourlyBudgetErrors, getDirectRollingHourlyClientErrors, getDirectRollingHourlyUiAuthEvents, getDirectUiAuthEventStats } from '@/lib/analytics/katana-client-errors';
+import { getDirectHourlyPublishStats, getDirectHourlySummarizationStats, getDirectHourlyWebsocketErrorStats, getDirectLast1HourPublish, getDirectLast1HourSummarizations, getDirectLast1HourWebsocketErrors, getDirectPublishStats, getDirectRollingHourlyPublish, getDirectRollingHourlySummarizations, getDirectRollingHourlyWebsocketErrors, getDirectSummarizationStats, getDirectWebsocketErrorStats } from '@/lib/analytics/loki-events';
 import { getPdnaHourlyStats, getPdnaSnapshot, type PdnaHourlyMetric, type PdnaTlaFilter } from '@/lib/analytics/pdna-db';
+import { withAuth } from '@/lib/api-auth';
 
 function parseTla(value: string | null): PdnaTlaFilter {
   if (value === 'tla' || value === 'all') return value;
   return 'non-tla';
 }
-import { getDateRangeError } from '@/lib/analytics/date-range';
-import { getDirectBudgetErrorStats, getDirectClientErrorStats, getDirectHourlyBudgetErrorStats, getDirectHourlyClientErrorStats, getDirectHourlyUiAuthEventStats, getDirectLast1HourBudgetErrors, getDirectLast1HourClientErrors, getDirectLast1HourUiAuthEvents, getDirectRollingHourlyBudgetErrors, getDirectRollingHourlyClientErrors, getDirectRollingHourlyUiAuthEvents, getDirectUiAuthEventStats } from '@/lib/analytics/katana-client-errors';
-import { getDirectHourlyPublishStats, getDirectHourlySummarizationStats, getDirectHourlyWebsocketErrorStats, getDirectLast1HourPublish, getDirectLast1HourSummarizations, getDirectLast1HourWebsocketErrors, getDirectPublishStats, getDirectRollingHourlyPublish, getDirectRollingHourlySummarizations, getDirectRollingHourlyWebsocketErrors, getDirectSummarizationStats, getDirectWebsocketErrorStats } from '@/lib/analytics/loki-events';
-import { withAuth } from '@/lib/api-auth';
+
+function parseCloudflareInterval(value: string | null): CloudflareBucketInterval {
+  if (value === '5m' || value === '15m' || value === '1h' || value === '1d') return value;
+  return '1h';
+}
+
+/**
+ * Parses a numeric query-string param. `Number(null) === 0` passes a
+ * plain `isFinite` guard, so a caller that omits `startMs` altogether
+ * would otherwise be silently treated as epoch 0 (1970). Treat missing
+ * values as NaN so the caller gets a clear 400.
+ */
+function parseFiniteNumberParam(value: string | null): number {
+  return value !== null ? Number(value) : NaN;
+}
 
 export const dynamic = 'force-dynamic';
 
@@ -160,6 +176,32 @@ export const GET = withAuth(async (request, _auth) => {
         const hourly = await getPdnaHourlyStats(date, metric, tla);
         if (!hourly) return NextResponse.json({ error: 'PDNA not configured or no data available' }, { status: 503 });
         return NextResponse.json(hourly);
+      }
+
+      case 'cloudflare-overview': {
+        const startMs = parseFiniteNumberParam(searchParams.get('startMs'));
+        const endMs = parseFiniteNumberParam(searchParams.get('endMs'));
+        const bucketInterval = parseCloudflareInterval(searchParams.get('bucketInterval'));
+        if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || startMs >= endMs) {
+          return NextResponse.json({ error: 'startMs and endMs (startMs < endMs) are required' }, { status: 400 });
+        }
+        const overview = await getCloudflareOverview({ startMs, endMs, bucketInterval });
+        if (!overview) return NextResponse.json({ error: 'Cloudflare ES client not configured' }, { status: 503 });
+        return NextResponse.json(overview);
+      }
+
+      case 'cloudflare-app-traffic': {
+        const startMs = parseFiniteNumberParam(searchParams.get('startMs'));
+        const endMs = parseFiniteNumberParam(searchParams.get('endMs'));
+        const bucketInterval = parseCloudflareInterval(searchParams.get('bucketInterval'));
+        const domainsParam = searchParams.get('domains') ?? '';
+        const domains = domainsParam.split(',').map(s => s.trim()).filter(Boolean);
+        if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || startMs >= endMs) {
+          return NextResponse.json({ error: 'startMs and endMs (startMs < endMs) are required' }, { status: 400 });
+        }
+        const traffic = await getCloudflareAppTraffic({ domains, startMs, endMs, bucketInterval });
+        if (!traffic) return NextResponse.json({ error: 'Cloudflare ES client not configured' }, { status: 503 });
+        return NextResponse.json(traffic);
       }
 
       default:
