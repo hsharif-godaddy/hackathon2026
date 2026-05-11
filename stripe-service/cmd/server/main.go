@@ -1,6 +1,6 @@
-// Command server is the stripe-service HTTP entrypoint. Walking skeleton: only
-// /health is implemented. Real routes, auth middleware, and AWS SDK wiring land
-// in follow-up PRs.
+// Command server is the stripe-service HTTP entrypoint. Wires AWS SDK
+// clients and api.Server, applies graceful shutdown on SIGINT/SIGTERM.
+// Real agent-facing handlers and Stripe client wiring land in follow-up PRs.
 package main
 
 import (
@@ -13,6 +13,7 @@ import (
 	"syscall"
 
 	"github.com/gdcorp-partners/airo-app-builder/stripe-service/internal/api"
+	"github.com/gdcorp-partners/airo-app-builder/stripe-service/internal/awsclients"
 	"github.com/gdcorp-partners/airo-app-builder/stripe-service/internal/config"
 )
 
@@ -29,9 +30,17 @@ func main() {
 	}
 	setupLogger(cfg.LogLevel, cfg.LogFormat)
 
+	clients, err := awsclients.New(context.Background())
+	if err != nil {
+		slog.Error("stripe_service.awsclients.new", "error", err)
+		os.Exit(1)
+	}
+
 	srv := &api.Server{
-		Environment: string(cfg.Environment),
-		Version:     version,
+		Environment:   string(cfg.Environment),
+		Version:       version,
+		Prober:        clients,
+		ResourceNames: cfg.ResourceNames(),
 	}
 	handler := api.NewRouter(srv)
 

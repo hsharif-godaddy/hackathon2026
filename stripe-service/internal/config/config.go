@@ -34,6 +34,33 @@ type Config struct {
 	TLSKeyPath       string
 }
 
+// ResourceNames holds the fully-qualified AWS resource names for this env,
+// mirroring what AiroStripeServiceStack provisions. Kept out of handlers so
+// the naming convention has one source of truth.
+type ResourceNames struct {
+	SandboxesTable       string
+	EventsTable          string
+	PlatformKeySecret    string
+	WebhookSigningSecret string
+	ManagedKeysAlias     string
+}
+
+// ResourceNames returns the AWS resource names for this env. Environment=local
+// maps to the dev account's names so SSO'd devs can probe real dev resources.
+func (c Config) ResourceNames() ResourceNames {
+	env := string(c.Environment)
+	if c.Environment == EnvLocal {
+		env = string(EnvDev)
+	}
+	return ResourceNames{
+		SandboxesTable:       env + "-airo-stripe-sandboxes",
+		EventsTable:          env + "-airo-stripe-events",
+		PlatformKeySecret:    env + "-airo-stripe-platform-key",
+		WebhookSigningSecret: env + "-airo-stripe-webhook-signing",
+		ManagedKeysAlias:     "alias/" + env + "-airo-stripe-managed-keys",
+	}
+}
+
 // Load reads env, applies defaults, validates. Returns error on any invalid
 // value. Unset env vars fall back to documented defaults; vars that are set but
 // unparseable (bad enum, bad duration, bad port) produce a descriptive error.

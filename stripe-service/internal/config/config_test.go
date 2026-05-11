@@ -156,6 +156,37 @@ func TestLoadAcceptsBothTLSPaths(t *testing.T) {
 	}
 }
 
+func TestResourceNames(t *testing.T) {
+	tests := []struct {
+		name    string
+		env     Environment
+		envPart string
+	}{
+		{"local maps to dev", EnvLocal, "dev"},
+		{"dev", EnvDev, "dev"},
+		{"test", EnvTest, "test"},
+		{"prod", EnvProd, "prod"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Config{Environment: tt.env}.ResourceNames()
+			want := ResourceNames{
+				SandboxesTable:       tt.envPart + "-airo-stripe-sandboxes",
+				EventsTable:          tt.envPart + "-airo-stripe-events",
+				PlatformKeySecret:    tt.envPart + "-airo-stripe-platform-key",
+				WebhookSigningSecret: tt.envPart + "-airo-stripe-webhook-signing",
+				ManagedKeysAlias:     "alias/" + tt.envPart + "-airo-stripe-managed-keys",
+			}
+			if got != want {
+				t.Errorf("ResourceNames:\n  got  %+v\n  want %+v", got, want)
+			}
+			if !strings.HasPrefix(got.ManagedKeysAlias, "alias/") {
+				t.Errorf("ManagedKeysAlias must be prefixed with alias/, got %q", got.ManagedKeysAlias)
+			}
+		})
+	}
+}
+
 func TestLoadAcceptsValidDurations(t *testing.T) {
 	clearEnv(t)
 	t.Setenv("HTTP_READ_TIMEOUT", "45s")
