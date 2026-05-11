@@ -764,6 +764,42 @@ describe('SSE routes', () => {
       expect(mockExec.execute).not.toHaveBeenCalled()
     })
 
+    it('passes bmsBudgetId and budgetSessionId to execute when pre-check succeeds', async () => {
+      const mockExec = {
+        execute: vi.fn().mockResolvedValue(undefined),
+        stop: vi.fn(),
+        subscribeStream: vi.fn(),
+        hasActiveStream: vi.fn().mockReturnValue(false),
+      }
+      ;(deps as any).executionService = mockExec
+      ;(deps.authenticate as any).mockImplementation((req: any, _res: any, next: any) => {
+        req.agentContext = {
+          siteId: req.params.appId ?? 'abcdefghij',
+          budgetServiceEnabled: true,
+          bmsBudgetId: 'budget-123',
+          subscriptionId: 'sub-456',
+        }
+        next()
+      })
+      app = express()
+      app.use(express.json())
+      app.use('/api/conversations', createSSERoutes(deps as any))
+
+      mockBudgetPreCheck.mockResolvedValueOnce({ budgetId: 'budget-123', sessionId: 'session-789' })
+
+      const res = await request(app)
+        .post('/api/conversations/abcdefghij/conv_1/messages')
+        .send({ content: 'hi' })
+
+      expect(res.status).toBe(202)
+      expect(mockExec.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          bmsBudgetId: 'budget-123',
+          budgetSessionId: 'session-789',
+        })
+      )
+    })
+
     it('forwards non-budget errors through asyncHandler to the Express error handler (500)', async () => {
       const errorApp = express()
       errorApp.use(express.json())

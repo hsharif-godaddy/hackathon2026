@@ -179,4 +179,45 @@ describe('AgentWrapper - exhausted grants refresh', function exhaustedGrantsTest
       ).rejects.toThrow()
     })
   })
+
+  describe('#streamGenerate - BMS mode skips grants', function bmsTests() {
+    const bmsContext = { socketId, metadata: { appId: 'app-1', budgetServiceEnabled: true } }
+
+    it('skips grant provisioning when budgetServiceEnabled is true', async function skipProvisioning() {
+      const { grantSessionManager } = await import('@airo/ai-grants')
+
+      vi.mocked(grantSessionManager.hasGrants).mockReturnValue(false)
+      mockStream.mockResolvedValue(makeValidStream())
+
+      await agentWrapper.streamGenerate('test prompt', { executionContext: bmsContext })
+
+      expect(grantSessionManager.requestGrantRefreshAndWait).not.toHaveBeenCalled()
+      expect(mockStream).toHaveBeenCalledTimes(1)
+    })
+
+    it('rethrows BudgetExceededError immediately in BMS mode without grant fallback', async function noFallback() {
+      const { grantSessionManager, isGrantsExhausted } = await import('@airo/ai-grants')
+
+      vi.mocked(grantSessionManager.hasGrants).mockReturnValue(true)
+      vi.mocked(isGrantsExhausted).mockReturnValue(false)
+
+      const budgetAPIError = new APICallError({
+        message: 'Budget has been exceeded',
+        url: 'https://api.gocode.caas.dev-gdcorp.tools/v1/messages',
+        requestBodyValues: {},
+        statusCode: 400,
+        responseBody: '{"error":{"message":"Budget has been exceeded! Current cost: 50.01, Max budget: 50.00","type":"budget_exceeded"}}',
+        isRetryable: false,
+      })
+      mockStream.mockRejectedValueOnce(budgetAPIError)
+
+      await expect(
+        agentWrapper.streamGenerate('test prompt', { executionContext: bmsContext })
+      ).rejects.toThrow()
+
+      expect(grantSessionManager.advanceToNextGrant).not.toHaveBeenCalled()
+      expect(grantSessionManager.requestGrantRefreshAndWait).not.toHaveBeenCalled()
+      expect(mockStream).toHaveBeenCalledTimes(1)
+    })
+  })
 })

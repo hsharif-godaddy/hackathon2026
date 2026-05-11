@@ -701,7 +701,10 @@ export class MessageExecutionService {
       metadata: {
         appId, siteId, conversationId, templateId, modelOverride, agentProfile,
         agentId: resolvedAgentId,
+        ...(subscriptionId && { subscriptionId }),
         ...(agentCtx?.customerId && { customerId: agentCtx.customerId }),
+        ...(bmsBudgetId && { bmsBudgetId, budgetServiceEnabled: true }),
+        ...(budgetSessionId && { budgetSessionId }),
       },
       ...(contextAttachments.length > 0 && { contextAttachments }),
       todoListContext, isActionRequest, customContext,

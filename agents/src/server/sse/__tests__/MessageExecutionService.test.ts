@@ -1434,4 +1434,46 @@ describe('MessageExecutionService', () => {
       )
     })
   })
+
+  describe('BMS metadata propagation', () => {
+    it('includes budgetServiceEnabled, bmsBudgetId, and budgetSessionId in executionContext.metadata', async () => {
+      deps = createMockDeps()
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute({
+        ...DEFAULT_PARAMS,
+        bmsBudgetId: 'budget-abc',
+        budgetSessionId: 'session-xyz',
+      })
+
+      const streamCall = deps.getAgent().streamGenerate as ReturnType<typeof vi.fn>
+      expect(streamCall).toHaveBeenCalled()
+
+      const callArgs = streamCall.mock.calls[0]
+      const execContext = callArgs[1]?.executionContext
+      expect(execContext?.metadata).toEqual(expect.objectContaining({
+        bmsBudgetId: 'budget-abc',
+        budgetServiceEnabled: true,
+        budgetSessionId: 'session-xyz',
+      }))
+    })
+
+    it('includes subscriptionId in executionContext.metadata when provided', async () => {
+      deps = createMockDeps()
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute({
+        ...DEFAULT_PARAMS,
+        bmsBudgetId: 'budget-abc',
+        budgetSessionId: 'session-xyz',
+        subscriptionId: 'sub-123',
+      })
+
+      const streamCall = deps.getAgent().streamGenerate as ReturnType<typeof vi.fn>
+      const execContext = streamCall.mock.calls[0][1]?.executionContext
+      expect(execContext?.metadata).toEqual(expect.objectContaining({
+        subscriptionId: 'sub-123',
+      }))
+    })
+  })
 })

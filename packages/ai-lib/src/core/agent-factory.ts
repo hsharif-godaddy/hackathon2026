@@ -32,6 +32,7 @@ import {
   isGrantsExhausted,
   GrantErrorCode,
 } from '@airo/ai-grants'
+import type { ExecutionContext } from '@airo/ai-grants'
 
 const logger = createLogger('agent-factory')
 
@@ -998,7 +999,10 @@ export class AgentWrapper {
   }> {
     // For new accounts: wait for grants to be provisioned if feature is enabled but grants are empty
     // This handles the case where subscription is active but grants haven't been created yet
-    if (socketId && retryCount === 0) {
+    // Skip entirely in BMS mode
+    const typedContext = options?.executionContext as ExecutionContext | undefined
+    const budgetServiceEnabled = typedContext?.metadata?.budgetServiceEnabled === true
+    if (socketId && retryCount === 0 && !budgetServiceEnabled) {
       const hasGrants = grantSessionManager.hasGrants(socketId)
 
       if (!hasGrants) {
@@ -1124,6 +1128,10 @@ export class AgentWrapper {
         if (error.stack) normalizedError.stack = error.stack
       }
       if (BudgetExceededError.isInstance(normalizedError)) {
+        // In BMS mode, budget enforcement is via GoCode headers - no grant fallback
+        if (budgetServiceEnabled) {
+          throw normalizedError
+        }
         if (!socketId || !grantSessionManager.hasGrants(socketId)) {
           throw normalizedError // No grant fallback available
         }
