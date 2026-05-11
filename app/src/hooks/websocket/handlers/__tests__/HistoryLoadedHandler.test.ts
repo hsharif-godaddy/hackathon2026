@@ -12,10 +12,13 @@
  *    On error leave it false so the client-side safety timeout can retry.
  *  - Update pagination state (hasMore / nextCursor)
  *  - Clear historyBatch and historyBatchTimer refs
+ *  - Ambiguous recovery fallback: clear stale activeStream placeholder if history
+ *    confirms the turn finished (handles timing window where RecoveryStatusHandler
+ *    created placeholder before history was available)
  *
- * Stream finalisation is NOT this handler's job — it is handled upstream by
- * ReplayCompleteHandler (buffered-events path) and RecoveryStatusHandler
- * (stream-already-complete path).
+ * Primary stream finalisation is handled upstream by ReplayCompleteHandler
+ * (buffered-events path) and RecoveryStatusHandler (stream-already-complete path).
+ * This handler provides a fallback for edge cases.
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -322,8 +325,132 @@ describe('HistoryLoadedHandler', function packageTests() {
     })
   })
 
-  describe('#handle — no side effects on machine or stream', function noSideEffectsTests() {
-    it('should not send any machine events', async function noMachineEvents() {
+  describe('#handle — ambiguous recovery fallback', function ambiguousRecoveryTests() {
+    it('should clear empty placeholder when history shows turn completed', async function clearsStaleStream() {
+      const setHistoryLoadingComplete = vi.fn()
+      const setHistoryPagination = vi.fn()
+      const clearActiveStream = vi.fn()
+      const context = createMockMessageContext()
+
+      // Machine in streaming state (placeholder was created)
+      context.machine.getSnapshot.mockReturnValue({
+        matches: vi.fn((path: any) => {
+          if (typeof path === 'object' && path.stream?.streaming === 'receiving') return true
+          return false
+        })
+      })
+
+      mockStore.getState.mockReturnValue({
+        setHistoryLoadingComplete,
+        setHistoryPagination,
+        // Empty placeholder (no content, segments, or toolCalls)
+        activeStream: { id: 'recovered_123', role: 'assistant', content: '', segments: [], toolCalls: [], timestamp: new Date(), isComplete: false },
+        messages: [
+          { id: 'msg-1', role: 'user', content: 'hello', timestamp: new Date() },
+          // Last assistant message is finalized (no isComplete field)
+          { id: 'msg-2', role: 'assistant', content: 'response', timestamp: new Date() },
+        ],
+        clearActiveStream,
+      })
+
+      await handler.handle(
+        { type: 'history_loaded', content: '', data: { messageCount: 2, hasMore: false, nextCursor: null } },
+        context
+      )
+
+      expect(clearActiveStream).toHaveBeenCalled()
+      expect(context.machine.send).toHaveBeenCalledWith({ type: 'STREAM_COMPLETE' })
+    })
+
+    it('should not clear placeholder when it has been populated by replay events', async function keepsPopulatedPlaceholder() {
+      const setHistoryLoadingComplete = vi.fn()
+      const setHistoryPagination = vi.fn()
+      const clearActiveStream = vi.fn()
+      const context = createMockMessageContext()
+
+      mockStore.getState.mockReturnValue({
+        setHistoryLoadingComplete,
+        setHistoryPagination,
+        // Populated placeholder (has content from replay)
+        activeStream: {
+          id: 'msg-3',
+          role: 'assistant',
+          content: 'Thinking...',
+          segments: [{ id: 's1', type: 'text', content: 'Thinking...', timestamp: new Date() }],
+          toolCalls: [],
+          timestamp: new Date(),
+          isComplete: false
+        },
+        messages: [
+          { id: 'msg-1', role: 'user', content: 'hello', timestamp: new Date() },
+          // Last persisted message is complete, but placeholder has content
+          { id: 'msg-2', role: 'assistant', content: 'response', timestamp: new Date() },
+        ],
+        clearActiveStream,
+      })
+
+      await handler.handle(
+        { type: 'history_loaded', content: '', data: { messageCount: 2, hasMore: false, nextCursor: null } },
+        context
+      )
+
+      expect(clearActiveStream).not.toHaveBeenCalled()
+      expect(context.machine.send).not.toHaveBeenCalled()
+    })
+
+    it('should not clear activeStream when turn is genuinely in progress', async function keepsActiveStream() {
+      const setHistoryLoadingComplete = vi.fn()
+      const setHistoryPagination = vi.fn()
+      const clearActiveStream = vi.fn()
+      const context = createMockMessageContext()
+
+      mockStore.getState.mockReturnValue({
+        setHistoryLoadingComplete,
+        setHistoryPagination,
+        activeStream: { id: 'msg-3', role: 'assistant', content: '', segments: [], toolCalls: [], timestamp: new Date(), isComplete: false },
+        messages: [
+          { id: 'msg-1', role: 'user', content: 'hello', timestamp: new Date() },
+          // Last assistant message still streaming (has isComplete: false)
+          { id: 'msg-2', role: 'assistant', content: 'partial', timestamp: new Date(), isComplete: false },
+        ],
+        clearActiveStream,
+      })
+
+      await handler.handle(
+        { type: 'history_loaded', content: '', data: { messageCount: 2, hasMore: false, nextCursor: null } },
+        context
+      )
+
+      expect(clearActiveStream).not.toHaveBeenCalled()
+      expect(context.machine.send).not.toHaveBeenCalled()
+    })
+
+    it('should not clear activeStream when no assistant messages exist', async function noAssistantMessages() {
+      const setHistoryLoadingComplete = vi.fn()
+      const setHistoryPagination = vi.fn()
+      const clearActiveStream = vi.fn()
+      const context = createMockMessageContext()
+
+      mockStore.getState.mockReturnValue({
+        setHistoryLoadingComplete,
+        setHistoryPagination,
+        activeStream: { id: 'recovered_123', role: 'assistant', content: '', segments: [], toolCalls: [], timestamp: new Date(), isComplete: false },
+        messages: [],
+        clearActiveStream,
+      })
+
+      await handler.handle(
+        { type: 'history_loaded', content: '', data: { messageCount: 0, hasMore: false, nextCursor: null } },
+        context
+      )
+
+      expect(clearActiveStream).not.toHaveBeenCalled()
+      expect(context.machine.send).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('#handle — no side effects when no stale stream', function noSideEffectsTests() {
+    it('should not send machine events when no activeStream present', async function noMachineEvents() {
       const setHistoryLoadingComplete = vi.fn()
       const setHistoryPagination = vi.fn()
       const context = createMockMessageContext()
@@ -331,6 +458,8 @@ describe('HistoryLoadedHandler', function packageTests() {
       mockStore.getState.mockReturnValue({
         setHistoryLoadingComplete,
         setHistoryPagination,
+        activeStream: null,
+        messages: [],
       })
 
       await handler.handle(
@@ -349,6 +478,8 @@ describe('HistoryLoadedHandler', function packageTests() {
       mockStore.getState.mockReturnValue({
         setHistoryLoadingComplete,
         setHistoryPagination,
+        activeStream: null,
+        messages: [],
       })
 
       await handler.handle(
