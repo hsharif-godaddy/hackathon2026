@@ -80,6 +80,52 @@ ensure_vm_started() {
   fi
 }
 
+ensure_docker_host_gateway() {
+  # Docker's `host-gateway` magic token defaults to docker0 (172.17.0.1), which
+  # is only reachable from containers on the default bridge. Preview/publish
+  # containers run on a user-defined network, so `extra_hosts: host-gateway`
+  # silently points them at an unreachable IP. Pin it to host.lima.internal
+  # (the macOS host as seen from the VM) so the token resolves correctly on
+  # every Docker network.
+  local host_ip current_ip
+  # Let limactl errors surface so VM connectivity problems abort with a visible
+  # message. Swallow only getent's NXDOMAIN exit (2) so the empty-check below
+  # runs — without this, `set -eo pipefail` aborts before the warn path.
+  host_ip=$(limactl shell "${INSTANCE}" -- bash -c 'getent hosts host.lima.internal || true' | awk '{print $1}' | head -1)
+  if [[ -z "${host_ip}" ]]; then
+    warn "could not resolve host.lima.internal inside ${INSTANCE}; skipping host-gateway pin"
+    return
+  fi
+  # jq is in the provision script for fresh VMs; install on demand for older ones.
+  limactl shell "${INSTANCE}" -- bash -c 'command -v jq >/dev/null || sudo dnf install -y jq >/dev/null'
+  # `|| true` is inside bash -c so it only swallows jq failures (missing file);
+  # a limactl failure still aborts via set -e with its own error.
+  current_ip=$(limactl shell "${INSTANCE}" -- bash -c 'jq -r ".\"host-gateway-ip\" // \"\"" /etc/docker/daemon.json 2>/dev/null || true')
+  if [[ "${current_ip}" == "${host_ip}" ]]; then
+    ok "docker host-gateway pinned to ${host_ip}"
+    return
+  fi
+  info "Pinning docker host-gateway to ${host_ip} (host.lima.internal)"
+  # Merge into existing daemon.json, preserving other keys. Warns and falls
+  # back to `{}` if the file is invalid JSON so the data loss is visible.
+  limactl shell "${INSTANCE}" -- sudo env HOST_GATEWAY_IP="${host_ip}" bash -c '
+    set -euo pipefail
+    mkdir -p /etc/docker
+    existing="{}"
+    if [[ -s /etc/docker/daemon.json ]]; then
+      if jq -e . /etc/docker/daemon.json >/dev/null 2>&1; then
+        existing=$(cat /etc/docker/daemon.json)
+      else
+        echo "WARN: /etc/docker/daemon.json is not valid JSON; replacing with {}" >&2
+      fi
+    fi
+    printf "%s" "$existing" | jq --arg ip "$HOST_GATEWAY_IP" ". + {\"host-gateway-ip\": \$ip}" > /etc/docker/daemon.json.tmp
+    mv /etc/docker/daemon.json.tmp /etc/docker/daemon.json
+  '
+  limactl shell "${INSTANCE}" -- sudo systemctl restart docker
+  ok "docker restarted with host-gateway-ip=${host_ip}"
+}
+
 ensure_context() {
   if docker context inspect "${CONTEXT}" >/dev/null 2>&1; then
     ok "docker context ${CONTEXT} already exists"
@@ -119,6 +165,7 @@ cmd_setup() {
   ensure_docker_cli
   ensure_lima_installed
   ensure_vm_started
+  ensure_docker_host_gateway
   ensure_context
   health_check
   cat <<EOF

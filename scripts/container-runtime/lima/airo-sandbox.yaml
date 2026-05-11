@@ -46,7 +46,24 @@ provision:
       set -euxo pipefail
       dnf install -y dnf-plugins-core
       dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
-      dnf install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+      dnf install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin jq
+      # Point Docker's `host-gateway` magic token at the macOS host
+      # (host.lima.internal). Without this it defaults to docker0 (172.17.0.1),
+      # which is only reachable from containers on the default bridge — breaking
+      # `extra_hosts: host-gateway` resolution for any user-defined network
+      # (e.g. the `airo-network` used by preview/publish containers).
+      host_gateway_ip=$(getent hosts host.lima.internal | awk '{print $1}' | head -1)
+      if [[ -z "$host_gateway_ip" ]]; then
+        echo "ERROR: could not resolve host.lima.internal during provisioning" >&2
+        exit 1
+      fi
+      mkdir -p /etc/docker
+      existing='{}'
+      if [[ -s /etc/docker/daemon.json ]] && jq -e . /etc/docker/daemon.json >/dev/null 2>&1; then
+        existing=$(cat /etc/docker/daemon.json)
+      fi
+      printf '%s' "$existing" | jq --arg ip "$host_gateway_ip" '. + {"host-gateway-ip": $ip}' > /etc/docker/daemon.json.tmp
+      mv /etc/docker/daemon.json.tmp /etc/docker/daemon.json
       systemctl enable --now docker
   - mode: user
     script: |
