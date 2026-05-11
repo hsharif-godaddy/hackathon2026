@@ -15,6 +15,7 @@ import { useAuthContext } from '@/components/providers/AuthProvider'
 import { EXPERIMENT_IDS } from '@/config/experiments'
 import { useAnalytics } from '@/hooks/useAnalytics'
 import { useBreakpoints } from '@/hooks/useBreakpoints'
+import { useImpression } from '@/hooks/useImpression'
 import { useRTL } from '@/hooks/useRTL'
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
@@ -45,6 +46,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
   onFileChange,
 }, ref) => {
   const t = useTranslations();
+  useImpression('homepage.firstprompt.view', { customProperties: { variant: 'original' } })
   const isTemplateSelectorEnabled = useSwitchboard('appbuilder-template-selector')
   const { isAuthenticated } = useAuthContext()
   const { logAnalytics } = useAnalytics({
