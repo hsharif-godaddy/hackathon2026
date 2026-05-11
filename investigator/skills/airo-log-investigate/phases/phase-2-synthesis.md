@@ -7,7 +7,7 @@ Required sections:
 **App:** `{appId}`
 
 **What I checked**
-- State which sources were checked: `airo-app`, `control_plane`, `airo-agents`, `airo-preview`, and `airo-publish`.
+- State which sources were checked: `airo-app`, `control_plane`, `airo-agents`, `airo-preview`, `airo-publish`, and `langfuse`.
 - Include window and fetched log counts from the indexes.
 - If coverage is incomplete, say so here and in Unknowns.
 

@@ -8,7 +8,7 @@ bash /opt/skills/airo-log-investigate/run_search_frontend_logs.sh \
   --window {timeWindow}
 ```
 
-Use `24h` when no time window is provided. The script calls the console-owned `/api/investigate-evidence` endpoint for `airo-app`, `control_plane`, `airo-agents`, `airo-preview`, and `airo-publish`, then writes the bundle to `/tmp/airo-log-investigate/{appId}/`. Each source gets its own compact index and raw page files.
+Use `24h` when no time window is provided. The script calls the console-owned `/api/investigate-evidence` endpoint for `airo-app`, `control_plane`, `airo-agents`, `airo-preview`, `airo-publish`, and `langfuse`, then writes the bundle to `/tmp/airo-log-investigate/{appId}/`. Each source gets its own compact index and raw page files.
 
 After it runs:
 

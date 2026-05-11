@@ -155,6 +155,16 @@ LOG_SOURCES = {
         status_fields=("status", "statusCode", "http.status_code", "http.response.status_code"),
         error_terms=("error", "exception", "failed", "timeout", "deploy", "publish"),
     ),
+
+    "langfuse": LogSource(
+        name="langfuse",
+        console_source="langfuse",
+        description="EB Langfuse traces and observations filtered by metadata.business_data_appId through the console evidence API.",
+        message_fields=("message", "name", "event", "statusMessage", "output", "input"),
+        level_fields=("level", "severity"),
+        status_fields=("status", "statusCode", "http.status_code", "http.response.status_code"),
+        error_terms=("error", "exception", "failed", "timeout", "tool", "generation"),
+    ),
 }
 
 
@@ -666,7 +676,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Fetch and index all bounded airo-app logs for one app.")
     parser.add_argument("--appId", required=True)
     parser.add_argument("--source", default="airo-app-frontend", choices=sorted(LOG_SOURCES))
-    parser.add_argument("--sources", default="airo-app-frontend,airo-agents,airo-preview,airo-publish,control-plane")
+    parser.add_argument("--sources", default="airo-app-frontend,airo-agents,airo-preview,airo-publish,control-plane,langfuse")
     parser.add_argument("--window", default="24h", help="24h, 7d, or startISO,endISO")
     parser.add_argument("--output-dir", default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--page-size", type=int, default=500)

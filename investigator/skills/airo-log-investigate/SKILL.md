@@ -10,10 +10,12 @@ Investigate one Airo app through registered log sources. The skill uses the cons
 ## Inputs
 
 Required:
+
 1. `appId`
 2. customer feedback or complaint context
 
 Optional:
+
 - `fullstory_url` may be cited as a manual-review link only. Do not analyze FullStory in this Lambda runner.
 - `timeWindow`, default `24h`; use the provided window when present.
 
@@ -21,13 +23,14 @@ Optional:
 
 This skill currently enables these registered log sources:
 
-| Skill source | Console source | Purpose |
-|---|---|---|
-| `airo-app-frontend` | `airo-app` | Frontend/browser-facing runtime logs for one Airo app |
-| `control-plane` | `control_plane` | Hosting/control-plane app activity |
-| `airo-agents` | `airo-agents` | Agent service logs |
-| `airo-preview` | `airo-preview` | Preview app container logs |
-| `airo-publish` | `airo-publish` | Published app container logs |
+| Skill source        | Console source  | Purpose                                               |
+| ------------------- | --------------- | ----------------------------------------------------- |
+| `airo-app-frontend` | `airo-app`      | Frontend/browser-facing runtime logs for one Airo app |
+| `control-plane`     | `control_plane` | Hosting/control-plane app activity                    |
+| `airo-agents`       | `airo-agents`   | Agent service logs                                    |
+| `airo-preview`      | `airo-preview`  | Preview app container logs                            |
+| `airo-publish`      | `airo-publish`  | Published app container logs                          |
+| `langfuse`          | `langfuse`      | EB Langfuse traces and observations for the app       |
 
 The `airo-app-frontend` contract was checked against `sre-airo-feedback-tool` references:
 
@@ -70,4 +73,4 @@ Every source must preserve this contract:
 
 ## Out of Scope
 
-If the answer requires FullStory, Langfuse, source code analysis, or a source not present in the evidence bundle, say it is outside this run and name the missing source.
+If the answer requires FullStory, source code analysis, or a source not present in the evidence bundle, say it is outside this run and name the missing source.

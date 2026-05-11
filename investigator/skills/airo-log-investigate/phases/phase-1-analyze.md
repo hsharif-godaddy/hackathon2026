@@ -2,7 +2,7 @@
 
 Use the index to answer three questions:
 
-1. What user-visible symptoms appear across `airo-app`, `control_plane`, `airo-agents`, `airo-preview`, and `airo-publish` evidence?
+1. What user-visible symptoms appear across `airo-app`, `control_plane`, `airo-agents`, `airo-preview`, `airo-publish`, and `langfuse` evidence?
 2. When did they occur relative to the feedback window?
 3. What exact raw log refs support each finding?
 
@@ -16,6 +16,7 @@ Look for:
 - agent/tool failures
 - preview or publish container 4xx/5xx responses
 - control-plane publish/deploy failures
+- Langfuse trace/observation errors, failed tool calls, model errors, and high-latency agent turns
 - repeated or rare failure signatures
 - buckets with sudden spikes in log count or error count
 

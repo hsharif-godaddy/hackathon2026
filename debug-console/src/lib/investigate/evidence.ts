@@ -1,4 +1,5 @@
 import { buildAppIdQuery, getLogSourceConfig, getNestedValue, type LogSourceConfig } from '@/lib/log-sources';
+import { buildAppIdFilter, getLangfuseEbConfig } from '@/lib/langfuse-eb-client';
 import { parseTimeRange } from '@/lib/time-range';
 
 export const DEFAULT_EVIDENCE_SOURCE_IDS = [
@@ -7,6 +8,7 @@ export const DEFAULT_EVIDENCE_SOURCE_IDS = [
   'airo-agents',
   'airo-preview',
   'airo-publish',
+  'langfuse',
 ] as const;
 
 export type EvidenceSourceId = typeof DEFAULT_EVIDENCE_SOURCE_IDS[number];
@@ -16,6 +18,11 @@ const MAX_WINDOW_HOURS = 24 * 7;
 const DEFAULT_BUCKET_HOURS = 6;
 const LOKI_LIMIT = 5000;
 const ES_PAGE_SIZE = 1000;
+const LANGFUSE_PAGE_SIZE = 100;
+const LANGFUSE_DETAIL_BATCH_SIZE = 20;
+const MAX_LANGFUSE_PAGES = 200;
+const MAX_LANGFUSE_DETAIL_FAILURES = 20;
+const MAX_LANGFUSE_DETAIL_ERROR_SAMPLES = 5;
 
 export interface EvidenceLog {
   id?: string;
@@ -49,7 +56,7 @@ export interface EvidenceIndex {
     id: string;
     name: string;
     consoleSource: string;
-    backendType: LogSourceConfig['backendType'];
+    backendType: LogSourceConfig['backendType'] | 'langfuse';
     description: string;
   };
   window: { label: string; start: string; end: string };
@@ -381,8 +388,10 @@ function mergeCollected(parts: Array<{
   };
 }
 
+type EvidenceSourceConfig = Pick<EvidenceIndex['source'], 'id' | 'name' | 'description' | 'backendType'>;
+
 export function buildEvidenceIndex(params: {
-  source: LogSourceConfig;
+  source: EvidenceSourceConfig;
   appId: string;
   window: { label: string; start: string; end: string };
   rawPages: EvidenceRawPage[];
@@ -545,6 +554,255 @@ export async function collectElasticsearchEvidence(params: {
   };
 }
 
+
+interface LangfuseConfig {
+  baseUrl: string;
+  authHeader: string;
+}
+
+interface LangfuseTraceListResponse {
+  data?: Array<{ id?: string }>;
+  meta?: { totalPages?: number; totalItems?: number };
+}
+
+interface LangfuseObservation {
+  id?: string;
+  name?: string | null;
+  type?: string | null;
+  level?: string | null;
+  statusMessage?: string | null;
+  startTime?: string | null;
+  endTime?: string | null;
+  totalTokens?: number | null;
+  promptTokens?: number | null;
+  completionTokens?: number | null;
+  calculatedTotalCost?: number | null;
+}
+
+interface LangfuseTraceDetail {
+  id?: string;
+  name?: string | null;
+  timestamp?: string;
+  sessionId?: string | null;
+  userId?: string | null;
+  input?: unknown;
+  output?: unknown;
+  metadata?: Record<string, unknown> | null;
+  tags?: string[];
+  totalCost?: number | null;
+  latency?: number | null;
+  observations?: LangfuseObservation[];
+}
+
+function compactJson(value: unknown, limit = 220): string {
+  if (value == null) return '';
+  const text = typeof value === 'string' ? value : JSON.stringify(value);
+  return text.replace(/\s+/g, ' ').slice(0, limit);
+}
+
+function observationLevel(observation: LangfuseObservation): string {
+  return String(observation.level || '').toLowerCase();
+}
+
+function isErrorObservation(observation: LangfuseObservation): boolean {
+  return observationLevel(observation) === 'error';
+}
+
+function normalizeLangfuseTrace(trace: LangfuseTraceDetail, sourceId = 'langfuse'): EvidenceLog {
+  const observations = Array.isArray(trace.observations) ? trace.observations : [];
+  const hasError = observations.some(isErrorObservation);
+  const level = hasError ? 'error' : 'info';
+  const status = observations.find((obs) => obs.statusMessage)?.statusMessage;
+  const messageParts = [trace.name || 'langfuse trace'];
+  if (trace.sessionId) messageParts.push(`session=${trace.sessionId}`);
+  if (status) messageParts.push(`status=${status}`);
+  const output = compactJson(trace.output);
+  if (output) messageParts.push(output);
+
+  return {
+    id: trace.id,
+    timestamp: trace.timestamp || '',
+    level,
+    message: messageParts.join(' | '),
+    event: trace.name || undefined,
+    sourceId,
+    raw: {
+      ...trace,
+      observationCount: observations.length,
+      errorObservationCount: observations.filter(isErrorObservation).length,
+    } as Record<string, unknown>,
+  };
+}
+
+
+interface LangfuseTraceDetailResult {
+  trace?: LangfuseTraceDetail;
+  error?: string;
+}
+
+export async function collectLangfuseEvidence(params: {
+  appId: string;
+  startTime: Date;
+  endTime: Date;
+  langfuse: LangfuseConfig;
+  fetchImpl?: FetchImpl;
+  timeoutMs?: number;
+}): Promise<{ complete: boolean; rawPages: EvidenceRawPage[]; diagnostics: EvidenceDiagnostics; incomplete: EvidenceIndex['coverage']['incomplete'] }> {
+  const started = Date.now();
+  const fetchImpl = params.fetchImpl || fetch;
+  const endpoint = params.langfuse.baseUrl.replace(/\/+$/, '');
+  const incomplete: EvidenceIndex['coverage']['incomplete'] = [];
+  const rawPages: EvidenceRawPage[] = [];
+  const appIdFilter = buildAppIdFilter(params.appId);
+  const query = JSON.stringify({ filter: appIdFilter, fromTimestamp: params.startTime.toISOString(), toTimestamp: params.endTime.toISOString() });
+  let complete = true;
+  let page = 1;
+  let totalPages = 1;
+  let detailFailureCount = 0;
+  let stopCollection = false;
+
+  while (page <= totalPages) {
+    const bucket = `p${String(page).padStart(3, '0')}`;
+    const url = new URL(`${endpoint}/api/public/traces`);
+    url.searchParams.set('page', String(page));
+    url.searchParams.set('limit', String(LANGFUSE_PAGE_SIZE));
+    url.searchParams.set('filter', appIdFilter);
+    url.searchParams.set('fromTimestamp', params.startTime.toISOString());
+    url.searchParams.set('toTimestamp', params.endTime.toISOString());
+
+    let response: Response;
+    try {
+      response = await fetchImpl(url, {
+        headers: {
+          Authorization: params.langfuse.authHeader,
+          'Accept-Encoding': 'gzip, deflate, br',
+        },
+        signal: AbortSignal.timeout(params.timeoutMs || 60_000),
+      });
+    } catch (err) {
+      complete = false;
+      incomplete.push({ bucket, start: params.startTime.toISOString(), end: params.endTime.toISOString(), error: err instanceof Error ? err.message : String(err) });
+      break;
+    }
+
+    if (!response.ok) {
+      const body = await response.text().catch(() => '<body read failed>');
+      complete = false;
+      incomplete.push({ bucket, start: params.startTime.toISOString(), end: params.endTime.toISOString(), error: `HTTP ${response.status}: ${body.slice(0, 300)}` });
+      break;
+    }
+
+    let listJson: LangfuseTraceListResponse;
+    try {
+      listJson = await response.json() as LangfuseTraceListResponse;
+    } catch (err) {
+      complete = false;
+      incomplete.push({ bucket, start: params.startTime.toISOString(), end: params.endTime.toISOString(), error: `non-JSON response: ${err instanceof Error ? err.message : String(err)}` });
+      break;
+    }
+
+    const traceIds = (Array.isArray(listJson.data) ? listJson.data : [])
+      .map((trace) => trace.id)
+      .filter((id): id is string => typeof id === 'string' && id.length > 0);
+    totalPages = Math.max(1, Number(listJson.meta?.totalPages || 1));
+    if (totalPages > MAX_LANGFUSE_PAGES) {
+      complete = false;
+      totalPages = MAX_LANGFUSE_PAGES;
+    }
+    const traces: LangfuseTraceDetail[] = [];
+
+    for (let offset = 0; offset < traceIds.length; offset += LANGFUSE_DETAIL_BATCH_SIZE) {
+      const batch = traceIds.slice(offset, offset + LANGFUSE_DETAIL_BATCH_SIZE);
+      const results = await Promise.all(batch.map(async (traceId): Promise<LangfuseTraceDetailResult> => {
+        try {
+          const detailResponse = await fetchImpl(`${endpoint}/api/public/traces/${encodeURIComponent(traceId)}`, {
+            headers: {
+              Authorization: params.langfuse.authHeader,
+              'Accept-Encoding': 'gzip, deflate, br',
+            },
+            signal: AbortSignal.timeout(params.timeoutMs || 60_000),
+          });
+          if (!detailResponse.ok) {
+            const body = await detailResponse.text().catch(() => '<body read failed>');
+            throw new Error(`trace detail ${traceId} HTTP ${detailResponse.status}: ${body.slice(0, 120)}`);
+          }
+          return { trace: await detailResponse.json() as LangfuseTraceDetail };
+        } catch (err) {
+          return { error: err instanceof Error ? err.message : String(err) };
+        }
+      }));
+      for (const result of results) {
+        if (result.trace) {
+          traces.push(result.trace);
+          continue;
+        }
+        if (!result.error) continue;
+        complete = false;
+        detailFailureCount += 1;
+        if (detailFailureCount <= MAX_LANGFUSE_DETAIL_ERROR_SAMPLES) {
+          incomplete.push({ bucket, start: params.startTime.toISOString(), end: params.endTime.toISOString(), error: result.error });
+        }
+      }
+      if (detailFailureCount >= MAX_LANGFUSE_DETAIL_FAILURES) {
+        incomplete.push({
+          bucket,
+          start: params.startTime.toISOString(),
+          end: params.endTime.toISOString(),
+          error: `too many Langfuse trace detail failures (${detailFailureCount}); stopping detail collection`,
+        });
+        stopCollection = true;
+        break;
+      }
+    }
+
+    rawPages.push({
+      page: page - 1,
+      bucket,
+      start: params.startTime.toISOString(),
+      end: params.endTime.toISOString(),
+      logs: traces
+        .sort((a, b) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime())
+        .map((trace) => normalizeLangfuseTrace(trace)),
+    });
+
+    if (stopCollection) break;
+    if (page >= totalPages) {
+      if (Number(listJson.meta?.totalPages || 1) > MAX_LANGFUSE_PAGES) {
+        incomplete.push({
+          bucket,
+          start: params.startTime.toISOString(),
+          end: params.endTime.toISOString(),
+          error: `Langfuse page limit reached (${MAX_LANGFUSE_PAGES}); source may have more traces`,
+        });
+      }
+      break;
+    }
+    page += 1;
+  }
+
+  return {
+    complete,
+    rawPages,
+    incomplete,
+    diagnostics: {
+      elapsedMs: Date.now() - started,
+      pageCount: rawPages.length,
+      query,
+      truncated: !complete,
+      ...(incomplete[0]?.error ? { error: incomplete[0].error } : {}),
+    },
+  };
+}
+
+function langfuseSourceConfig(): EvidenceSourceConfig {
+  return {
+    id: 'langfuse',
+    name: 'Langfuse',
+    description: 'EB Langfuse traces filtered by metadata.business_data_appId',
+    backendType: 'langfuse',
+  };
+}
+
 export async function collectEvidenceForSource(params: {
   sourceId: string;
   appId: string;
@@ -552,10 +810,32 @@ export async function collectEvidenceForSource(params: {
   bucketHours?: number;
   fetchImpl?: FetchImpl;
 }): Promise<EvidenceSourceResult> {
-  const sourceConfig = getLogSourceConfig(params.sourceId);
-  if (!sourceConfig) throw new Error(`Unknown log source: ${params.sourceId}`);
   const { startTime, endTime } = parseTimeRange(params.timeWindow);
   const window = { label: params.timeWindow, start: startTime.toISOString(), end: endTime.toISOString() };
+
+  if (params.sourceId === 'langfuse') {
+    const config = getLangfuseEbConfig();
+    if (!config) throw new Error('EB Langfuse config missing');
+    const collected = await collectLangfuseEvidence({
+      appId: params.appId,
+      startTime,
+      endTime,
+      langfuse: config,
+      fetchImpl: params.fetchImpl,
+    });
+    const index = buildEvidenceIndex({
+      source: langfuseSourceConfig(),
+      appId: params.appId,
+      window,
+      rawPages: collected.rawPages,
+      incomplete: collected.incomplete,
+      diagnostics: collected.diagnostics,
+    });
+    return { sourceId: params.sourceId, complete: collected.complete && index.coverage.complete, rawPages: collected.rawPages, index };
+  }
+
+  const sourceConfig = getLogSourceConfig(params.sourceId);
+  if (!sourceConfig) throw new Error(`Unknown log source: ${params.sourceId}`);
   const buckets = buildEvidenceBuckets(startTime, endTime, params.bucketHours || DEFAULT_BUCKET_HOURS);
   const collectedParts = await Promise.all(buckets.map((bucket) => (
     sourceConfig.backendType === 'loki'
@@ -615,19 +895,21 @@ export async function collectInvestigateEvidence(request: NormalizedEvidenceRequ
     try {
       return await collectEvidenceForSource({ sourceId, appId: request.appId, timeWindow: request.timeWindow, bucketHours: request.bucketHours });
     } catch (err) {
-      let fallbackSource: LogSourceConfig;
+      let fallbackSource: EvidenceSourceConfig;
       try {
-        fallbackSource = getLogSourceConfig(sourceId) || fallbackSourceConfig(sourceId);
+        fallbackSource = sourceId === 'langfuse' ? langfuseSourceConfig() : getLogSourceConfig(sourceId) || fallbackSourceConfig(sourceId);
       } catch {
         fallbackSource = fallbackSourceConfig(sourceId);
       }
-      const now = new Date().toISOString();
+      const fallbackWindow = parseTimeRange(request.timeWindow);
+      const start = fallbackWindow.startTime.toISOString();
+      const end = fallbackWindow.endTime.toISOString();
       const index = buildEvidenceIndex({
         source: fallbackSource,
         appId: request.appId,
-        window: { label: request.timeWindow, start: now, end: now },
+        window: { label: request.timeWindow, start, end },
         rawPages: [],
-        incomplete: [{ bucket: 'source', start: now, end: now, error: err instanceof Error ? err.message : String(err) }],
+        incomplete: [{ bucket: 'source', start, end, error: err instanceof Error ? err.message : String(err) }],
         diagnostics: { elapsedMs: 0, pageCount: 0, query: '', truncated: true, error: err instanceof Error ? err.message : String(err) },
       });
       return { sourceId, complete: false, rawPages: [], index };
