@@ -258,6 +258,61 @@ describe('SuiteRunner', () => {
     expect(detEval.evaluate).toHaveBeenCalledTimes(1);
   });
 
+  it('does not reuse resumed trial results for deterministic evaluators', async () => {
+    mockSimulationRun.mockResolvedValue(makeTranscript('resume-scenario', 1));
+    const detEval: Evaluator = {
+      name: 'det',
+      deterministic: true,
+      evaluate: vi.fn(async function evaluate(transcript): Promise<EvalResult> {
+        return {
+          evaluator: 'det',
+          score: transcript.trialIndex,
+          verdict: 'pass',
+          reason: `trial ${transcript.trialIndex}`,
+        };
+      }),
+    };
+    const scenario = makeScenario({
+      name: 'resume-scenario',
+      trials: 2,
+      evaluators: [detEval],
+    });
+
+    const [result] = await new SuiteRunner({
+      scenarios: [scenario],
+      config: mockConfig,
+      makeAgentClient,
+      syntheticUser: mockSyntheticUser,
+      existingTrialsByScenario: new Map([
+        [
+          'resume-scenario',
+          [{
+            trialIndex: 0,
+            transcript: makeTranscript('resume-scenario', 0),
+            evalResults: [{
+              evaluator: 'det',
+              score: 999,
+              verdict: 'pass',
+              reason: 'existing result should not be cached',
+            }],
+          }],
+        ],
+      ]),
+      trialIndicesByScenario: new Map([['resume-scenario', [1]]]),
+    }).run();
+
+    expect(detEval.evaluate).toHaveBeenCalledTimes(1);
+    expect(result.trials.map(function index(trial) {
+      return trial.trialIndex;
+    })).toEqual([0, 1]);
+    expect(result.trials[1].evalResults[0]).toEqual(
+      expect.objectContaining({
+        score: 1,
+        reason: 'trial 1',
+      }),
+    );
+  });
+
   it('calls non-deterministic evaluators once per trial', async () => {
     mockSimulationRun.mockResolvedValue(makeTranscript());
     const ndEval = makeEvaluator('nd', false, makePassResult('nd'));

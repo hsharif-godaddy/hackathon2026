@@ -1,0 +1,38 @@
+---
+name: Home baker creating Sweet Porch Bakery (Food & Beverage)
+type: airo-baseline-syn_a91f3c7d2e4b8051
+syntheticId: syn_a91f3c7d2e4b8051
+persona:
+  name: Home baker creating Sweet Porch Bakery (Food & Beverage)
+  coreTraits:
+    - first-time website owner
+    - uses short plain messages
+    - cares about photos
+    - wants orders to be easy
+    - "risk tolerance: Low - wants simple setup"
+    - "Complexity: easy | Primary intent: new website + contact/order form | Skill under test:
+      forms/content/media | Scenario cluster: Simple local business website | Expected: create clear
+      hero, menu, photos, hours, and inquiry form"
+  decisionPattern: They approve when the menu is easy to read, the site feels friendly, and customers
+    can send an order request.
+  communicationStyle:
+    formality: low
+    detailLevel: low
+    technicalLevel: low
+    examples:
+      - Can you make me a website? I bake cakes from home.
+      - I mostly need people to see flavors and ask about orders.
+      - Make it cute but not too fancy.
+  rejectionTriggers:
+    - hard-to-find-menu
+    - confusing-form
+    - too-corporate-look
+  acceptanceTriggers:
+    - clear-menu
+    - warm-hero-section
+    - easy-order-request
+  exitTriggers:
+    - order-form-not-working
+  retryTriggers:
+    - show-simple-options
+    - make-it-more-homey

@@ -2,7 +2,10 @@ import { Simulation } from './simulation.js';
 import type { SimulationCaptureContext } from './simulation.js';
 import { TrialAggregator } from './trial-aggregator.js';
 import { RegressionComparator } from '../baselines/regression-comparator.js';
-import type { Scenario } from '../scenarios/types.js';
+import type {
+  Scenario,
+  SetupContext,
+} from '../scenarios/types.js';
 import type { ScenarioResult, TrialResult } from './types.js';
 import type { Config } from '../../config/environments/types.js';
 import type { AgentClient } from '../clients/agent-client.js';
@@ -84,6 +87,8 @@ export interface SuiteRunnerOptions {
     scenarioName: string,
     trial: TrialResult,
   ) => void;
+  existingTrialsByScenario?: Map<string, TrialResult[]>;
+  trialIndicesByScenario?: Map<string, number[]>;
   /**
    * Resolves the on-disk trial output directory before the capture
    * step runs. Forwarded to `Simulation` so `SiteCapture` writes
@@ -131,21 +136,31 @@ export class SuiteRunner {
       syntheticUser,
       siteCapture,
       baselineStore,
+      existingTrialsByScenario,
+      trialIndicesByScenario,
     } = this.options;
 
     const mode =
       this.options.executionModeOverride
       ?? scenario.executionMode
       ?? 'sequential';
+    const trialIndices = trialIndicesByScenario?.get(scenario.name)
+      ?? Array.from({ length: k }, function index(_, i) {
+        return i;
+      });
 
     const makeRun = async (
       i: number,
     ): Promise<Transcript> => {
-      if (!syntheticUser) {
-        throw new Error('syntheticUser is required');
-      }
       if (!makeAgentClient) {
-        throw new Error('makeAgentClient is required');
+        throw new Error(
+          `processScenario: makeAgentClient is required to run scenario "${scenario.name}"`,
+        );
+      }
+      if (!syntheticUser) {
+        throw new Error(
+          `processScenario: syntheticUser is required to run scenario "${scenario.name}"`,
+        );
       }
       const client = await makeAgentClient();
       try {
@@ -155,10 +170,14 @@ export class SuiteRunner {
         }
         const { getTrialOutputDir } = this.options;
         if (siteCapture && !getTrialOutputDir) {
-          console.warn('[SuiteRunner] siteCapture provided without getTrialOutputDir — snapshot capture will be disabled');
+          console.warn(
+            '[SuiteRunner] siteCapture provided without getTrialOutputDir; snapshot capture will be disabled.',
+          );
         }
         if (!siteCapture && getTrialOutputDir) {
-          console.warn('[SuiteRunner] getTrialOutputDir provided without siteCapture — snapshot capture will be disabled');
+          console.warn(
+            '[SuiteRunner] getTrialOutputDir provided without siteCapture; snapshot capture will be disabled.',
+          );
         }
         const captureContext: SimulationCaptureContext | undefined =
           siteCapture && getTrialOutputDir
@@ -176,17 +195,22 @@ export class SuiteRunner {
           config,
           maxTurnsOverride: this.options.maxTurnsOverride,
         }).run(i);
+        const indexedTranscript = { ...transcript, trialIndex: i };
         for (const ev of scenario.evaluators) {
           try {
             ev.afterSimulation?.(i);
           } catch (err) {
             console.warn(
-              `afterSimulation failed for ${ev.name}:`,
-              err instanceof Error ? err.message : String(err),
+              'afterSimulation failed.',
+              {
+                evaluator: ev.name,
+                trialIndex: i,
+                error: err instanceof Error ? err.message : String(err),
+              },
             );
           }
         }
-        return transcript;
+        return indexedTranscript;
       } finally {
         client.disconnect();
       }
@@ -199,13 +223,19 @@ export class SuiteRunner {
     try {
       const transcripts: Transcript[] =
         mode === 'parallel'
-          ? await runCapped(k, concurrency, makeRun)
-          : await this.runSequential(k, makeRun);
+          ? await runCapped(trialIndices.length, concurrency, function run(i) {
+            return makeRun(trialIndices[i]);
+          })
+          : await this.runSequential(trialIndices, makeRun);
 
-      const trialResults = await this.evaluateTrials(
+      const newTrialResults = await this.evaluateTrials(
         scenario,
         transcripts,
       );
+      const trialResults = [
+        ...(existingTrialsByScenario?.get(scenario.name) ?? []),
+        ...newTrialResults,
+      ].sort((a, b) => a.trialIndex - b.trialIndex);
       const result = this.aggregator.aggregate(
         scenario,
         trialResults,
@@ -225,21 +255,21 @@ export class SuiteRunner {
 
       return result;
     } finally {
-      for (let i = 0; i < k; i++) {
+      for (const trialIndex of trialIndices) {
         for (const ev of scenario.evaluators) {
-          ev.unhookTrial?.(i);
+          ev.unhookTrial?.(trialIndex);
         }
       }
     }
   }
 
   private async runSequential(
-    k: number,
+    trialIndices: number[],
     makeRun: (i: number) => Promise<Transcript>,
   ): Promise<Transcript[]> {
     const results: Transcript[] = [];
-    for (let i = 0; i < k; i++) {
-      results.push(await makeRun(i));
+    for (const trialIndex of trialIndices) {
+      results.push(await makeRun(trialIndex));
     }
     return results;
   }
@@ -255,7 +285,13 @@ export class SuiteRunner {
         await evaluator.evaluate(transcript, scenario, snapshot),
       );
     } catch (err) {
-      console.error(`Error evaluating ${evaluator.name}:`, err instanceof Error ? err.message : String(err));
+      console.error(
+        'Evaluator threw during safe evaluation.',
+        {
+          evaluator: evaluator.name,
+          error: err instanceof Error ? err.message : String(err),
+        },
+      );
       return normalizeEvalResult({
         evaluator: evaluator.name,
         score: 0,
@@ -271,8 +307,8 @@ export class SuiteRunner {
   ): Promise<TrialResult[]> {
     const trialResults: TrialResult[] = [];
 
-    for (let i = 0; i < transcripts.length; i++) {
-      const transcript = transcripts[i];
+    for (const transcript of transcripts) {
+      const trialIndex = transcript.trialIndex;
 
       // Outer trial loop stays sequential: trial 0 must complete so
       // deterministic results are cached before later trials read them.
@@ -283,7 +319,7 @@ export class SuiteRunner {
 
       const evalResults = await Promise.all(
         scenario.evaluators.map((evaluator) => {
-          if (evaluator.deterministic && i > 0) {
+          if (evaluator.deterministic && trialResults.length > 0) {
             const cached = trialResults[0].evalResults.find(
               (r) => r.evaluator === evaluator.name,
             );
@@ -295,11 +331,11 @@ export class SuiteRunner {
         }),
       );
 
-      const trialResult = { trialIndex: i, transcript, evalResults };
+      const trialResult = { trialIndex, transcript, evalResults };
       trialResults.push(trialResult);
       this.options.onTrialEvaluated?.(scenario.name, trialResult);
     }
 
-    return trialResults;
+    return trialResults.sort((a, b) => a.trialIndex - b.trialIndex);
   }
 }

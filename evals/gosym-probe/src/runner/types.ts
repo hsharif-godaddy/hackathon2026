@@ -28,6 +28,7 @@ export interface AggregatedResult {
    * 'score': compare median score via relative delta.
    */
   regressionMode?: 'passRate' | 'score';
+  evalVersion?: string;
   /**
    * When true, a score increase is treated as a regression.
    * Propagated from Evaluator.lowerIsBetter.

@@ -1,0 +1,38 @@
+---
+name: Candle maker launching Ember & Wick (Retail & E-commerce)
+type: airo-baseline-syn_d85e2c4a7f90b316
+syntheticId: syn_d85e2c4a7f90b316
+persona:
+  name: Candle maker launching Ember & Wick (Retail & E-commerce)
+  coreTraits:
+    - wants products to look premium
+    - does not understand checkout setup
+    - cares about SEO
+    - wants to go live
+    - "risk tolerance: Medium - comfortable with guided commerce setup"
+    - "Complexity: hard | Primary intent: ecommerce website + publish | Skill under test:
+      commerce/media/seo/publishing | Scenario cluster: Small storefront with checkout and go-live
+      path | Expected: setup storefront, products, SEO basics, and publish guidance"
+  decisionPattern: They approve when products are easy to browse, checkout feels real, and the site is
+    ready to publish.
+  communicationStyle:
+    formality: low
+    detailLevel: medium
+    technicalLevel: low
+    examples:
+      - I make candles and want to sell them somehow.
+      - There are only a few scents right now. Can you make them look nice?
+      - If it's ready, help me get it live.
+  rejectionTriggers:
+    - messy-product-grid
+    - checkout-missing
+    - domain-steps-confusing
+  acceptanceTriggers:
+    - clean-storefront
+    - clear-product-pricing
+    - publish-ready
+  exitTriggers:
+    - cannot-sell-products
+  retryTriggers:
+    - start-with-few-products
+    - explain-next-step

@@ -9,6 +9,7 @@ export interface BaselineEvalScores {
   totalTrials: number;
   /** Median score across trials; populated for score-mode evaluators. */
   medianScore?: number;
+  evalVersion?: string;
   /** When true, score increase = regression. Present only for score-mode evaluators. */
   lowerIsBetter?: boolean;
 }
@@ -60,6 +61,10 @@ export interface RegressionEvalResult {
    * False for NaN scores, missing baseline, or zero baseline score.
    */
   exceeded: boolean;
+  skipped?: boolean;
+  skipReason?: string;
+  currentEvalVersion?: string;
+  baselineEvalVersion?: string;
 }
 
 export interface RegressionResult {

@@ -13,6 +13,7 @@ import {
   SuiteRunner,
   runCapped,
 } from './runner/suite-runner.js';
+import type { TrialResult } from './runner/types.js';
 import { EvalStore } from './store/eval-store.js';
 import { BaselineStore } from './baselines/baseline-store.js';
 import {
@@ -88,6 +89,29 @@ function printGraduationResult(result: GraduationResult): void {
   }
 }
 
+function scenarioSetMismatch(
+  savedScenarioNames: string[],
+  scenarios: Scenario[],
+): string | null {
+  const currentScenarioNames = scenarios.map((scenario) => scenario.name);
+  const saved = new Set(savedScenarioNames);
+  const current = new Set(currentScenarioNames);
+  const missing = savedScenarioNames.filter((name) => !current.has(name));
+  const extra = currentScenarioNames.filter((name) => !saved.has(name));
+
+  if (missing.length === 0 && extra.length === 0) return null;
+
+  return [
+    'Current scenario set does not match the resumed run.',
+    missing.length > 0
+      ? `Missing from current run: ${missing.join(', ')}.`
+      : '',
+    extra.length > 0
+      ? `Extra in current run: ${extra.join(', ')}.`
+      : '',
+  ].filter(Boolean).join(' ');
+}
+
 async function main(): Promise<void> {
   const { values } = parseArgs({
     args: process.argv.slice(2),
@@ -102,6 +126,7 @@ async function main(): Promise<void> {
       'parallel-suites':  { type: 'boolean' },
       graduate:           { type: 'string' },
       'graduate-suite':   { type: 'string' },
+      resume:             { type: 'string' },
       stability:          { type: 'string' },
     },
   });
@@ -191,6 +216,9 @@ async function main(): Promise<void> {
         concurrencyOverride,
         maxTurnsOverride,
         store: gradStore,
+      } as ConstructorParameters<typeof GraduationRunner>[0] & {
+        siteCapture?: unknown;
+        domCapture?: unknown;
       });
 
     const runScenario = async (
@@ -274,6 +302,9 @@ async function main(): Promise<void> {
       concurrencyOverride,
       maxTurnsOverride,
       store: singleGradStore,
+    } as ConstructorParameters<typeof GraduationRunner>[0] & {
+      siteCapture?: unknown;
+      domCapture?: unknown;
     });
 
     const runId = randomUUID();
@@ -297,8 +328,89 @@ async function main(): Promise<void> {
 
   const parallelSuites = values['parallel-suites'] ?? false;
 
-  const runId = randomUUID();
+  const store = new EvalStore(undefined, config.storage?.maxRuns);
+  let runId: string = randomUUID();
+  let dirName: string;
+  const existingTrialsByScenario = new Map<string, TrialResult[]>();
+  const trialIndicesByScenario = new Map<string, number[]>();
+  let releaseRunLock: (() => Promise<void>) | undefined;
+  const releaseLock = async (): Promise<void> => {
+    if (!releaseRunLock) return;
+    const release = releaseRunLock;
+    releaseRunLock = undefined;
+    await release();
+  };
+
+  if (values.resume) {
+    const resumeDirName = await store.resolveRunDirName(values.resume);
+    if (!resumeDirName) {
+      console.error(`Error: run not found for --resume "${values.resume}".`);
+      process.exit(1);
+    }
+
+    dirName = resumeDirName;
+    const metadata = await store.loadRunMetadataByDirName(dirName);
+    if (!metadata) {
+      console.error(
+        `Error: run metadata missing for --resume "${values.resume}"` +
+        ` in "${dirName}". Cannot resume an incomplete run directory.`,
+      );
+      process.exit(1);
+    }
+    runId = metadata.runId;
+    const mismatch = scenarioSetMismatch(metadata.scenarios, scenarios);
+    if (mismatch) {
+      console.error(
+        `Error: cannot resume "${values.resume}". ${mismatch}`,
+      );
+      process.exit(1);
+    }
+    releaseRunLock = await store.acquireRunLock(dirName);
+
+    try {
+      for (const scenario of scenarios) {
+        const trialCount =
+          trialsOverride
+          ?? metadata.trialsOverride
+          ?? scenario.trials;
+        const completed = await store.listCompletedTrialIndices(
+          dirName,
+          scenario.name,
+        );
+        const existing: TrialResult[] = [];
+        for (const trialIndex of completed.filter((i) => i < trialCount)) {
+          const trial = await store.loadTrialResultByDirName(
+            dirName,
+            scenario.name,
+            trialIndex,
+          );
+          if (trial) existing.push(trial);
+        }
+
+        existingTrialsByScenario.set(scenario.name, existing);
+        trialIndicesByScenario.set(
+          scenario.name,
+          Array.from({ length: trialCount }, function index(_, i) {
+            return i;
+          }).filter((i) => !completed.includes(i)),
+        );
+      }
+    } catch (error) {
+      await releaseLock();
+      throw error;
+    }
+  } else {
+    dirName = await store.initRun(runId, scenarios, config, {
+      trialsOverride,
+      concurrencyOverride,
+      maxTurnsOverride,
+    });
+  }
+
   console.log(`Starting eval run: ${runId}`);
+  if (values.resume) {
+    console.log(`Resuming run directory: ${dirName}`);
+  }
   console.log(`Scenarios: ${scenarios.map((s) => s.name).join(', ')}`);
   if (trialsOverride !== undefined) {
     console.log(`Trials override: ${trialsOverride}`);
@@ -335,13 +447,6 @@ async function main(): Promise<void> {
     }
   }
 
-  const store = new EvalStore(undefined, config.storage?.maxRuns);
-  const dirName = await store.initRun(runId, scenarios, config, {
-    trialsOverride,
-    concurrencyOverride,
-    maxTurnsOverride,
-  });
-
   const pendingWrites: Promise<void>[] = [];
   let writeFailures = 0;
 
@@ -356,6 +461,8 @@ async function main(): Promise<void> {
     maxTurnsOverride,
     baselineStore,
     suiteMode: parallelSuites ? 'parallel' : undefined,
+    existingTrialsByScenario,
+    trialIndicesByScenario,
     getTrialOutputDir: (scenarioName, trialIndex) =>
       store.ensureTrialDir(dirName, scenarioName, trialIndex),
     onTrialEvaluated: (scenarioName, trial) => {
@@ -373,65 +480,71 @@ async function main(): Promise<void> {
     },
   });
 
-  const results = await runner.run();
-
-  await Promise.all(pendingWrites);
-
-  if (writeFailures > 0) {
-    console.error(
-      `Error: ${writeFailures} trial write(s) failed; ` +
-      'run output may be incomplete.',
-    );
-    process.exitCode = 1;
-  }
-  const runDir = await store.finalizeRun(dirName, runId, results);
-  await store.prune();
-
-  console.log('\nResults written to:');
-  console.log(`  ${runDir}`);
-
-  if (!skipBaseline) {
-    const missingBaselines = results.filter(
-      (r) => r.regressionStatus?.gate === 'missing-baseline',
-    );
-    if (missingBaselines.length > 0) {
-      for (const r of missingBaselines) {
-        console.error(
-          `Error: regression scenario "${r.scenarioName}" has no ` +
-          `baseline. Run save-baseline after a stable eval run, or ` +
-          `use --graduate ${r.scenarioName} to validate stability.`,
-        );
-      }
-      process.exit(1);
+  try {
+    const results = await runner.run();
+    await Promise.all(pendingWrites);
+    if (writeFailures > 0) {
+      console.error(
+        `Error: ${writeFailures} trial write(s) failed;` +
+        ` skipping finalization for run directory "${dirName}".`,
+      );
+      process.exitCode = 1;
+      return;
     }
 
-    const regressionFailures = results.filter(
-      (r) =>
-        r.regressionStatus?.gate === 'error' ||
-        r.regressionStatus?.gate === 'critical',
-    );
-    if (regressionFailures.length > 0) {
-      for (const r of regressionFailures) {
-        const gate = r.regressionStatus!.gate as 'error' | 'critical';
-        const level = r.regressionStatus!.stabilityLevel;
-        const label = gate === 'critical' ? 'Critical' : 'Error';
-        console.error(
-          `${label}: regression detected in "${r.scenarioName}"` +
-          ` (${level} stability).`,
-        );
-      }
-      process.exit(1);
-    }
+    const runDir = await store.finalizeRun(dirName, runId, results);
+    await store.prune();
 
-    for (const r of results) {
-      if (r.regressionStatus?.gate === 'warning') {
-        console.warn(
-          `⚠ Warning: regression detected in "${r.scenarioName}"` +
-          ` (low stability). Consider re-graduating at medium or` +
-          ` high stability.`,
-        );
+    console.log('\nResults written to:');
+    console.log(`  ${runDir}`);
+
+    if (!skipBaseline) {
+      const missingBaselines = results.filter(
+        (r) => r.regressionStatus?.gate === 'missing-baseline',
+      );
+      if (missingBaselines.length > 0) {
+        for (const r of missingBaselines) {
+          console.error(
+            `Error: regression scenario "${r.scenarioName}" has no ` +
+            `baseline. Run save-baseline after a stable eval run, or ` +
+            `use --graduate ${r.scenarioName} to validate stability.`,
+          );
+        }
+        process.exitCode = 1;
+        return;
+      }
+
+      const regressionFailures = results.filter(
+        (r) =>
+          r.regressionStatus?.gate === 'error' ||
+          r.regressionStatus?.gate === 'critical',
+      );
+      if (regressionFailures.length > 0) {
+        for (const r of regressionFailures) {
+          const gate = r.regressionStatus!.gate as 'error' | 'critical';
+          const level = r.regressionStatus!.stabilityLevel;
+          const label = gate === 'critical' ? 'Critical' : 'Error';
+          console.error(
+            `${label}: regression detected in "${r.scenarioName}"` +
+            ` (${level} stability).`,
+          );
+        }
+        process.exitCode = 1;
+        return;
+      }
+
+      for (const r of results) {
+        if (r.regressionStatus?.gate === 'warning') {
+          console.warn(
+            `⚠ Warning: regression detected in "${r.scenarioName}"` +
+            ` (low stability). Consider re-graduating at medium or` +
+            ` high stability.`,
+          );
+        }
       }
     }
+  } finally {
+    await releaseLock();
   }
 }
 

@@ -10,6 +10,8 @@ import { median } from '../util/median.js';
 type EvalData = {
   verdicts: EvalResult['verdict'][];
   scores: number[];
+  versions: Set<string>;
+  versionedResults: number;
 };
 
 export class TrialAggregator {
@@ -33,15 +35,24 @@ export class TrialAggregator {
     for (const trial of trials) {
       for (const r of trial.evalResults) {
         const data = evalDataMap.get(r.evaluator)
-          ?? { verdicts: [], scores: [] };
+          ?? {
+            verdicts: [],
+            scores: [],
+            versions: new Set<string>(),
+            versionedResults: 0,
+          };
         data.verdicts.push(r.verdict);
         data.scores.push(r.score);
+        if (r.evalVersion) {
+          data.versions.add(r.evalVersion);
+          data.versionedResults++;
+        }
         evalDataMap.set(r.evaluator, data);
       }
     }
 
     const aggregated: Record<string, AggregatedResult> = {};
-    for (const [name, { verdicts, scores }] of evalDataMap) {
+    for (const [name, { verdicts, scores, versions, versionedResults }] of evalDataMap) {
       const passingTrials = verdicts.filter((v) => v === 'pass').length;
       const totalTrials = verdicts.length;
       const mode = modeMap.get(name);
@@ -59,6 +70,8 @@ export class TrialAggregator {
         totalTrials,
         ...(filteredMedian != null && { medianScore: filteredMedian }),
         ...(mode !== undefined && { regressionMode: mode }),
+        ...(versions.size === 1 &&
+          versionedResults === totalTrials && { evalVersion: [...versions][0] }),
         ...(mode === 'score' && lowerIsBetter !== undefined && { lowerIsBetter }),
       };
     }

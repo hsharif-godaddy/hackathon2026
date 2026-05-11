@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { MdReporter } from '../md-reporter.js';
+import {
+  MdReporter,
+  renderTrialEvalResultsMarkdown,
+} from '../md-reporter.js';
 import type { ScenarioResult } from '../../runner/types.js';
 import type { Turn } from '../../runner/transcript.js';
 import { makeTurn, makeToolCall, makeTurnWithToolCalls } from './fixtures.js';
@@ -176,6 +179,45 @@ describe('MdReporter', () => {
     expect(content as string).toContain('Capability Scenarios');
   });
 
+  it('includes the suite summary tables', () => {
+    const reporter = new MdReporter();
+    const content = reporter.render(
+      'run-001',
+      [REGRESSION_RESULT, CAPABILITY_RESULT],
+    );
+
+    expect(content).toContain('## Suite Summary');
+    expect(content).toContain('### Scenario pass rate (overall)');
+    expect(content).toContain('### Evaluator rollup (across scenarios)');
+    expect(content).toContain('| Scenario ID | Scenario name | Category | Overall | Evaluators passed | Links |');
+    expect(content).toContain('| Evaluator | pass | partial | fail | unknown | pass rate |');
+  });
+
+  it('links scenario pass-rate rows to every trial markdown result', () => {
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [REGRESSION_RESULT]);
+
+    expect(content).toContain(
+      '[T1](scenarios/build-landing-page/trials/0/eval-results.md)',
+    );
+    expect(content).toContain(
+      '[T2](scenarios/build-landing-page/trials/1/eval-results.md)',
+    );
+    expect(content).toContain(
+      '[T3](scenarios/build-landing-page/trials/2/eval-results.md)',
+    );
+  });
+
+  it('includes a category-level evaluator matrix', () => {
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [REGRESSION_RESULT]);
+
+    expect(content).toContain('| Scenario | Evaluator | pass@k | pass^k | T1 | T2 | T3 |');
+    expect(content).toContain(
+      '| build-landing-page | jtbd-completion | ✓ | ✗ | pass | ⚠️ unknown | partial |',
+    );
+  });
+
   it('lists regression scenario name in regression section', async () => {
     const reporter = new MdReporter();
     await reporter.write('run-001', [REGRESSION_RESULT]);
@@ -216,8 +258,10 @@ describe('MdReporter', () => {
     // jtbd-completion: passAtK=true, passToTheK=false
     const content = reporter.render('run-001', [REGRESSION_RESULT]);
     const lines = content.split('\n');
-    const bugRow = lines.find((l) => l.includes('bug-hit-rate'));
-    const jtbdRow = lines.find((l) => l.includes('jtbd-completion'));
+    const bugRow = lines.find((l) =>
+      l.includes('| bug-hit-rate | pass | pass |'));
+    const jtbdRow = lines.find((l) =>
+      l.includes('| jtbd-completion | pass | fail |'));
     // per-trial cells use "pass (n.nn)" format, so bare "| pass |"
     // and "| fail |" tokens are unique to the passAtK / passToTheK columns
     expect(bugRow).toContain('| pass | pass |');
@@ -1050,7 +1094,8 @@ describe('MdReporter — score-mode pass@k rendering', () => {
     const reporter = new MdReporter();
     const content = reporter.render('run-001', [scoreModeResult]);
     const lines = content.split('\n');
-    const latencyRow = lines.find((l) => l.includes('latency') && l.startsWith('|'));
+    const latencyRow = lines.find((l) =>
+      l.startsWith('| latency-check | latency |'));
     expect(latencyRow).toContain('| — | — |');
   });
 
@@ -1058,7 +1103,8 @@ describe('MdReporter — score-mode pass@k rendering', () => {
     const reporter = new MdReporter();
     const content = reporter.render('run-001', [REGRESSION_RESULT]);
     const lines = content.split('\n');
-    const bugRow = lines.find((l) => l.includes('bug-hit-rate'));
+    const bugRow = lines.find((l) =>
+      l.startsWith('| build-landing-page | bug-hit-rate |'));
     expect(bugRow).toContain('| pass | pass |');
   });
 
@@ -1080,7 +1126,8 @@ describe('MdReporter — score-mode pass@k rendering', () => {
     const reporter = new MdReporter();
     const content = reporter.render('run-001', [noModeResult]);
     const lines = content.split('\n');
-    const row = lines.find((l) => l.includes('my-eval') && l.startsWith('|'));
+    const row = lines.find((l) =>
+      l.startsWith('| no-mode | my-eval |'));
     expect(row).toContain('| — | — |');
   });
 });
@@ -1144,5 +1191,21 @@ describe('MdReporter — formatDuration', () => {
     const content = reporter.render('run-001', [scenario]);
     // 150s = 2m 30s
     expect(content).toContain('2m 30s');
+  });
+
+  it('renders per-trial eval results markdown', () => {
+    const content = renderTrialEvalResultsMarkdown(
+      makeTrial(0, [
+        makeEvalResult('eval-b', 'fail', 0.25, 'bad | reason'),
+        makeEvalResult('eval-a', 'pass', 1, 'good'),
+      ]),
+    );
+
+    expect(content).toContain('## Eval results');
+    expect(content).toContain('- Scenario: `test`');
+    expect(content).toContain('- Trial: `0`');
+    expect(content).toContain('| Evaluator | Verdict | Score | Reason |');
+    expect(content).toContain('| eval-a | pass | 1.00 | good |');
+    expect(content).toContain('| eval-b | fail | 0.25 | bad   reason |');
   });
 });

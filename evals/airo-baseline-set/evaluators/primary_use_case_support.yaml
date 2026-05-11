@@ -1,0 +1,77 @@
+---
+name: primary_use_case_support
+description: Scores whether the final site supports the user's main conversion or
+  business outcome.
+type: llm
+scoreType: NUMERIC
+scoreName: primary_use_case_support
+llmConfig:
+  model: gpt-4o
+  temperature: 0
+  maxTokens: 2000
+projectId: airo-builder-regression
+staticContext: 'Primary evidence: the requested business outcome plus the final website
+  artifact. Judge whether the main visitor task is actually supported by the output.'
+criteriaSchemaFile: schemas/empty-object.json
+template: |
+  You are grading `primary_use_case_support` for an Airo Builder output.
+
+  Judge whether the final site supports the main business task the user needed, not whether it looks polished.
+
+  ## Use-Case Context
+  {{#if scenario.business}}
+  Business: {{scenario.business.businessName}} ({{scenario.business.industry}})
+  Description: {{scenario.business.businessDescription}}
+  Audience: {{scenario.business.targetAudience}}
+  {{/if}}
+  {{#if scenario.goal}}
+  Primary goal: {{scenario.goal.name}}
+  Goal bullets:
+  {{#each scenario.goal.goals}}
+  - {{this}}
+  {{/each}}
+  {{/if}}
+
+  ## Final Site Evidence
+  Page title: {{pageContent.title}}
+  Main H1: {{pageContent.h1}}
+  Headings:
+  {{#each pageContent.headings}}
+  - {{this}}
+  {{/each}}
+  Buttons:
+  {{#each pageContent.buttons}}
+  - {{this}}
+  {{/each}}
+  Links:
+  {{#each pageContent.links}}
+  - {{this}}
+  {{/each}}
+  Form count: {{pageContent.formCount}}
+  Main text:
+  {{pageContent.mainText}}
+
+  ## Judge This
+  Ask: could a real visitor accomplish the primary outcome this site is supposed to drive?
+
+  Example outcomes:
+  - request a quote
+  - book an appointment
+  - contact the business
+  - browse services/products/listings/courses
+  - understand enough to take the next step confidently
+
+  Penalize when the site talks about the use case but does not visibly support it.
+
+  ## Rubric
+  5 = the primary use case is strongly supported end to end.
+  4 = supported with minor friction or one modest gap.
+  3 = partially supported; the visitor can progress, but key pieces are weak.
+  2 = major gaps in the main use case.
+  1 = the site barely supports the intended outcome.
+  0 = the primary use case is not meaningfully supported.
+
+  Weight the main business outcome more heavily than design polish or minor wording issues.
+scoreConfig:
+  min: 0
+  max: 5

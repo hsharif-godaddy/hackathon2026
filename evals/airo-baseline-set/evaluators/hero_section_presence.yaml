@@ -1,0 +1,53 @@
+---
+name: hero_section_presence
+description: Explicitly checks whether the final site has a clear hero section with
+  a prominent headline and opening value proposition.
+type: llm
+scoreType: BOOLEAN
+scoreName: hero_section_presence
+llmConfig:
+  model: gpt-4o
+  temperature: 0
+  maxTokens: 2000
+projectId: airo-builder-regression
+staticContext: 'Primary evidence: final screenshots and above-the-fold artifact cues.
+  Judge whether the visible opening section functions as a real hero for this site.
+  Return checklist evidence and set the boolean score to whether the item passes.'
+criteriaSchemaFile: schemas/checklist-single-item.json
+template: |
+  You are grading `hero_section_presence` for an Airo Builder output.
+
+  Use screenshots first, with page title/H1 as supporting evidence. Judge only what is visibly presented above the fold.
+
+  ## Site Context
+  {{#if scenario.business}}
+  Business: {{scenario.business.businessName}} ({{scenario.business.industry}})
+  {{/if}}
+  {{#if scenario.goal}}
+  Primary goal: {{scenario.goal.name}}
+  {{/if}}
+
+  ## Visible Evidence
+  Page title: {{pageContent.title}}
+  Main H1: {{pageContent.h1}}
+  Buttons:
+  {{#each pageContent.buttons}}
+  - {{this}}
+  {{/each}}
+  Screenshots of the final site are attached separately.
+
+  ## Checklist
+  For each checklist item, decide pass/fail and provide short visual evidence.
+  {{#each criteria.checklist}}
+  - {{id}}: {{description}}
+  {{/each}}
+
+  ## Judge This
+  A hero section counts when the opening section clearly establishes:
+  - what the business/offer is
+  - why a visitor should care
+  - a natural next action or orientation cue when appropriate
+
+  Accept image-led, text-led, or minimalist heroes. Do not require a specific layout pattern. Fail only when the visible opening area does not function as a clear introductory hero.
+
+  Set the top-level boolean score to true only if every checklist item passes.

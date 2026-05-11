@@ -66,6 +66,7 @@ export interface EvaluatorSummary {
   verdicts: Record<string, number>;
   /** Median score excluding unknown-verdict trials; present only for score-mode evaluators. */
   medianScore?: number;
+  evalVersion?: string;
   /** When true, score increase = regression. Present only for score-mode evaluators. */
   lowerIsBetter?: boolean;
 }

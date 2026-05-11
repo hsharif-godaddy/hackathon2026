@@ -1,0 +1,73 @@
+---
+name: content_specificity
+description: Scores whether the site content is specific to the business rather than
+  generic filler.
+type: llm
+scoreType: NUMERIC
+scoreName: content_specificity
+llmConfig:
+  model: gpt-4o
+  temperature: 0
+  maxTokens: 2000
+projectId: airo-builder-regression
+staticContext: 'Primary evidence: business context plus final page content. Judge whether
+  the copy is specific to the business, offer, audience, and use case rather than
+  generic template filler.'
+criteriaSchemaFile: schemas/empty-object.json
+template: |
+  You are grading `content_specificity` for an Airo Builder output.
+
+  Use the business context and the visible final-site copy. Do not judge factual correctness of claims unless the text is obviously placeholder or fabricated.
+
+  ## Business Context
+  {{#if scenario.business}}
+  Business: {{scenario.business.businessName}} ({{scenario.business.industry}})
+  Description: {{scenario.business.businessDescription}}
+  Audience: {{scenario.business.targetAudience}}
+  {{/if}}
+  {{#if scenario.goal}}
+  Primary goal: {{scenario.goal.name}}
+  {{/if}}
+  Customer summary: {{scenario.customerSummary}}
+
+  ## Final Copy Evidence
+  Page title: {{pageContent.title}}
+  Main H1: {{pageContent.h1}}
+  Meta description: {{pageContent.metaDescription}}
+  Headings:
+  {{#each pageContent.headings}}
+  - {{this}}
+  {{/each}}
+  Buttons:
+  {{#each pageContent.buttons}}
+  - {{this}}
+  {{/each}}
+  Main text:
+  {{pageContent.mainText}}
+
+  ## Judge This
+  Score how specific the visible content is to this business.
+
+  Reward copy that is clearly grounded in:
+  - the actual business or offer
+  - the target audience
+  - concrete services, products, process details, outcomes, neighborhoods, pricing cues, or category-specific terminology
+
+  Penalize:
+  - generic marketing filler that could fit almost any business
+  - vague buzzwords with little concrete meaning
+  - obvious placeholder phrasing
+  - copy that names the business but remains otherwise generic
+
+  ## Rubric
+  5 = highly specific, grounded, and relevant throughout.
+  4 = mostly specific with a little generic filler.
+  3 = mixed; some sections are useful while important parts stay generic.
+  2 = largely generic with only limited business detail.
+  1 = mostly filler content.
+  0 = essentially no meaningful business-specific content.
+
+  In the reasoning, quote a few concrete phrases that support the score.
+scoreConfig:
+  min: 0
+  max: 5

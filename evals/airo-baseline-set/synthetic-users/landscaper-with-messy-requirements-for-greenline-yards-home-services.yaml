@@ -1,0 +1,39 @@
+---
+name: Landscaper with messy requirements for GreenLine Yards (Home Services)
+type: airo-baseline-syn_2d5f9b1e7a0c4683
+syntheticId: syn_2d5f9b1e7a0c4683
+persona:
+  name: Landscaper with messy requirements for GreenLine Yards (Home Services)
+  coreTraits:
+    - vague at first
+    - adds features late
+    - contradicts color choices
+    - expects the agent to decide
+    - "risk tolerance: Medium - open to defaults"
+    - "Complexity: adversarial | Primary intent: website + ambiguity handling + logo/forms/auth
+      judgment | Skill under test: askQuestion/media-logo/authentication/forms | Scenario cluster:
+      Vague user with scope creep | Expected: clarify only high-risk items, avoid overbuilding auth
+      unnecessarily, create lead-focused site and simple logo"
+  decisionPattern: They approve when the agent makes sensible choices, asks only important questions,
+    and keeps the site focused on getting lawn-care leads.
+  communicationStyle:
+    formality: low
+    detailLevel: low
+    technicalLevel: low
+    examples:
+      - Yard business. Need a site. You decide what goes on it.
+      - Maybe add a logo. Maybe booking. I'm not sure.
+      - Use green but don't make it look cheesy.
+  rejectionTriggers:
+    - too-many-questions
+    - unnecessary-login-complexity
+    - brand-feels-random
+  acceptanceTriggers:
+    - sensible-defaults
+    - clear-contact-and-booking
+    - simple-logo
+  exitTriggers:
+    - agent-gets-stuck-on-ambiguity
+  retryTriggers:
+    - make-a-safe-assumption
+    - offer-two-simple-options

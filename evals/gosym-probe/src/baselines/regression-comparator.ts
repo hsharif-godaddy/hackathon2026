@@ -62,6 +62,9 @@ export class RegressionComparator {
     baseline: BaselineScores | null,
     config: RegressionConfig,
   ): RegressionEvalResult {
+    const versionMismatch = this.versionMismatch(name, agg, baseline);
+    if (versionMismatch) return versionMismatch;
+
     const currentScore =
       agg.totalTrials > 0
         ? agg.passingTrials / agg.totalTrials
@@ -94,6 +97,9 @@ export class RegressionComparator {
     baseline: BaselineScores | null,
     config: RegressionConfig,
   ): RegressionEvalResult {
+    const versionMismatch = this.versionMismatch(name, agg, baseline);
+    if (versionMismatch) return versionMismatch;
+
     const currentScore = agg.medianScore ?? NaN;
 
     const baselineEntry = baseline?.scores[name];
@@ -128,6 +134,38 @@ export class RegressionComparator {
     return { evaluator: name, currentScore, baselineScore, delta, exceeded };
   }
 
+  private versionMismatch(
+    name: string,
+    agg: AggregatedResult,
+    baseline: BaselineScores | null,
+  ): RegressionEvalResult | null {
+    const currentEvalVersion = agg.evalVersion;
+    const baselineEvalVersion = baseline?.scores[name]?.evalVersion;
+    if (baseline === null) return null;
+    if (!currentEvalVersion && !baselineEvalVersion) return null;
+    if (currentEvalVersion === baselineEvalVersion) {
+      return null;
+    }
+
+    console.warn('Skipping baseline comparison because evaluator version changed.', {
+      evaluator: name,
+      currentEvalVersion,
+      baselineEvalVersion: baselineEvalVersion ?? 'missing',
+    });
+
+    return {
+      evaluator: name,
+      currentScore: NaN,
+      baselineScore: NaN,
+      delta: NaN,
+      exceeded: false,
+      skipped: true,
+      skipReason: 'evaluator-version-mismatch',
+      currentEvalVersion,
+      ...(baselineEvalVersion !== undefined && { baselineEvalVersion }),
+    };
+  }
+
   private computeGate(
     category: 'capability' | 'regression',
     hasBaseline: boolean,
@@ -136,7 +174,40 @@ export class RegressionComparator {
   ): RegressionResult['gate'] {
     if (category === 'capability') return 'informational';
     if (!hasBaseline) return 'missing-baseline';
+    if (
+      evaluators.length > 0 &&
+      evaluators.every((e) => e.skipped)
+    ) {
+      const gate = STABILITY_GATE[stabilityLevel];
+      this.logSkippedGate(evaluators, gate);
+      return gate;
+    }
     if (!evaluators.some((e) => e.exceeded)) return 'pass';
     return STABILITY_GATE[stabilityLevel];
+  }
+
+  private logSkippedGate(
+    evaluators: RegressionEvalResult[],
+    gate: RegressionResult['gate'],
+  ): void {
+    const reasons = [
+      ...new Set(
+        evaluators.map(function reason(evaluator) {
+          return evaluator.skipReason ?? 'unknown';
+        }),
+      ),
+    ].join(', ');
+    if (gate === 'error' || gate === 'critical') {
+      console.error('Regression gate failed because all evaluator comparisons were skipped.', {
+        gate,
+        reasons,
+      });
+      return;
+    }
+
+    console.warn('Regression gate warning because all evaluator comparisons were skipped.', {
+      gate,
+      reasons,
+    });
   }
 }

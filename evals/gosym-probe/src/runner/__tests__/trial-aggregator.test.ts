@@ -29,6 +29,7 @@ function makeScenario(overrides: Partial<Scenario> = {}): Scenario {
 function makeTrial(
   trialIndex: number,
   verdicts: Record<string, EvalResult['verdict']>,
+  evalVersions: Record<string, string | undefined> = {},
 ): TrialResult {
   const evalResults: EvalResult[] = Object.entries(verdicts).map(
     ([name, verdict]) => ({
@@ -39,6 +40,9 @@ function makeTrial(
         : 0.0,
       verdict,
       reason: 'test',
+      ...(evalVersions[name] !== undefined && {
+        evalVersion: evalVersions[name],
+      }),
     }),
   );
   return {
@@ -178,6 +182,35 @@ describe('TrialAggregator', () => {
       const result = agg.aggregate(makeScenario(), trials);
       expect(result.aggregated['eval1'].passAtK).toBe(true);
       expect(result.aggregated['eval2'].passAtK).toBe(false);
+    });
+  });
+
+  describe('evaluator versions', () => {
+    it('preserves evalVersion when every result has the same version', () => {
+      const result = agg.aggregate(makeScenario(), [
+        makeTrial(0, { eval: 'pass' }, { eval: 'v1' }),
+        makeTrial(1, { eval: 'pass' }, { eval: 'v1' }),
+      ]);
+
+      expect(result.aggregated.eval.evalVersion).toBe('v1');
+    });
+
+    it('omits evalVersion for mixed versioned and unversioned results', () => {
+      const result = agg.aggregate(makeScenario(), [
+        makeTrial(0, { eval: 'pass' }),
+        makeTrial(1, { eval: 'pass' }, { eval: 'v1' }),
+      ]);
+
+      expect(result.aggregated.eval.evalVersion).toBeUndefined();
+    });
+
+    it('omits evalVersion when result versions disagree', () => {
+      const result = agg.aggregate(makeScenario(), [
+        makeTrial(0, { eval: 'pass' }, { eval: 'v1' }),
+        makeTrial(1, { eval: 'pass' }, { eval: 'v2' }),
+      ]);
+
+      expect(result.aggregated.eval.evalVersion).toBeUndefined();
     });
   });
 

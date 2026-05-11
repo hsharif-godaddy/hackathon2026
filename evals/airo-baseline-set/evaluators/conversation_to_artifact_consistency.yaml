@@ -1,0 +1,79 @@
+---
+name: conversation_to_artifact_consistency
+description: Scores whether what the agent said it would do is reflected in the final
+  artifact.
+type: llm
+scoreType: NUMERIC
+scoreName: conversation_to_artifact_consistency
+llmConfig:
+  model: gpt-4o
+  temperature: 0
+  maxTokens: 2000
+projectId: airo-builder-regression
+staticContext: 'Use both the conversation/tool-call evidence and the final artifact.
+  Judge whether concrete commitments or claimed changes made in the conversation are
+  actually reflected in the visible site.'
+criteriaSchemaFile: schemas/empty-object.json
+template: |
+  You are grading `conversation_to_artifact_consistency` for an Airo Builder session.
+
+  Compare what the agent explicitly said it did or would do against what is visible in the final artifact.
+
+  ## Claimed Work
+  {{#if conversation.originalPrompt}}
+  Original request:
+  {{conversation.originalPrompt}}
+  {{/if}}
+  {{#if conversation.messages}}
+  Transcript:
+  {{#each conversation.messages}}
+  TURN {{turn}} {{uppercase role}}: {{content}}
+  {{#if toolCalls}}
+  Tool calls on this turn:
+  {{#each toolCalls}}
+  - {{name}}{{#if args}} args={{args}}{{/if}}
+  {{/each}}
+  {{/if}}
+  {{/each}}
+  {{/if}}
+
+  ## Final Artifact Evidence
+  Page title: {{pageContent.title}}
+  Main H1: {{pageContent.h1}}
+  Headings:
+  {{#each pageContent.headings}}
+  - {{this}}
+  {{/each}}
+  Buttons:
+  {{#each pageContent.buttons}}
+  - {{this}}
+  {{/each}}
+  Links:
+  {{#each pageContent.links}}
+  - {{this}}
+  {{/each}}
+  Form count: {{pageContent.formCount}}
+  Image count: {{pageContent.imageCount}}
+  Main text:
+  {{pageContent.mainText}}
+
+  ## Judge This
+  Look for explicit or near-explicit commitments such as:
+  - added booking, contact, quote, gallery, pricing, FAQ, testimonials, map, or blog content
+  - created pages or sections
+  - updated copy, branding, or CTA paths
+
+  Treat explicit commitments more seriously than vague aspirations or exploratory statements.
+
+  ## Rubric
+  5 = concrete commitments are reflected consistently in the artifact.
+  4 = mostly consistent with only minor misses.
+  3 = mixed consistency; some stated changes are hard to verify or partly missing.
+  2 = several claimed changes are not reflected.
+  1 = major mismatch between claims and output.
+  0 = claims and artifact are fundamentally inconsistent.
+
+  In the reasoning, name the specific claim(s) you checked and whether they appear in the artifact.
+scoreConfig:
+  min: 0
+  max: 5

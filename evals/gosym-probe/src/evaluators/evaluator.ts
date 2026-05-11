@@ -19,11 +19,13 @@ export interface EvalResult {
   verdict: 'pass' | 'partial' | 'fail' | 'unknown' | 'observed';
   reason: string;
   details?: Record<string, unknown>;
+  evalVersion?: string;
 }
 
 export interface Evaluator {
   name: string;
   deterministic: boolean;
+  evalVersion?: string;
   /**
    * Controls how RegressionComparator handles this evaluator.
    * - 'passRate' (default): compare pass-rate across trials

@@ -1,0 +1,72 @@
+---
+name: scope_drift_overgeneration
+description: Checks whether the site stays appropriately within the requested scope
+  without irrelevant overgeneration.
+type: llm
+scoreType: BOOLEAN
+scoreName: no_scope_drift_overgeneration
+llmConfig:
+  model: gpt-4o
+  temperature: 0
+  maxTokens: 2000
+projectId: airo-builder-regression
+staticContext: 'Use the requested scope plus the final artifact. Return true only when
+  there is no meaningful scope drift, irrelevant overgeneration, or extra complexity
+  that weakens the requested site.'
+criteriaSchemaFile: schemas/empty-object.json
+template: |
+  You are grading `scope_drift_overgeneration` for an Airo Builder output.
+
+  Compare the requested site scope with the visible output. This evaluator is about irrelevant or dilutive additions, not missing features.
+
+  ## Requested Scope
+  {{#if scenario.goal}}
+  Primary goal: {{scenario.goal.name}}
+  Goal bullets:
+  {{#each scenario.goal.goals}}
+  - {{this}}
+  {{/each}}
+  {{/if}}
+  {{#if conversation.originalPrompt}}
+  Original request:
+  {{conversation.originalPrompt}}
+  {{/if}}
+  {{#if conversation.userMessages}}
+  User refinements:
+  {{#each conversation.userMessages}}
+  - {{this}}
+  {{/each}}
+  {{/if}}
+
+  ## Final Output Evidence
+  Headings:
+  {{#each pageContent.headings}}
+  - {{this}}
+  {{/each}}
+  Buttons:
+  {{#each pageContent.buttons}}
+  - {{this}}
+  {{/each}}
+  Links:
+  {{#each pageContent.links}}
+  - {{this}}
+  {{/each}}
+  Main text:
+  {{pageContent.mainText}}
+
+  ## Judge This
+  Return true only when the site stays meaningfully within scope.
+
+  Do not penalize:
+  - small helpful additions
+  - normal marketing/supporting sections
+  - reasonable defaults that strengthen the requested site
+
+  Do penalize:
+  - extra feature areas that pull the site toward a different use case
+  - unnecessary complexity that muddies the visitor journey
+  - irrelevant sections that compete with the requested primary outcome
+
+  Return false when there is clear, meaningful scope drift or irrelevant overgeneration.
+
+  The reasoning should explain why the extra material is genuinely off-scope rather than merely additional.

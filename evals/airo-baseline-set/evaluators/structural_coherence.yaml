@@ -1,0 +1,79 @@
+---
+name: structural_coherence
+description: Scores whether the pages, headings, links, and sections form a coherent
+  site structure.
+type: llm
+scoreType: NUMERIC
+scoreName: structural_coherence
+llmConfig:
+  model: gpt-4o
+  temperature: 0
+  maxTokens: 2000
+projectId: airo-builder-regression
+staticContext: 'Primary evidence: final page structure, headings, links, buttons, and
+  screenshots when available. Judge information architecture and section logic, not
+  conversational behavior.'
+criteriaSchemaFile: schemas/empty-object.json
+template: |
+  You are grading `structural_coherence` for an Airo Builder output.
+
+  Focus on information architecture and section logic. Do not score tone or visual polish except where they make structure impossible to judge.
+
+  ## Requested Site Context
+  {{#if scenario.business}}
+  Business: {{scenario.business.businessName}} ({{scenario.business.industry}})
+  Description: {{scenario.business.businessDescription}}
+  {{/if}}
+  {{#if scenario.goal}}
+  Primary goal: {{scenario.goal.name}}
+  Goal bullets:
+  {{#each scenario.goal.goals}}
+  - {{this}}
+  {{/each}}
+  {{/if}}
+
+  ## Final Structure Evidence
+  Page title: {{pageContent.title}}
+  Main H1: {{pageContent.h1}}
+  Headings:
+  {{#each pageContent.headings}}
+  - {{this}}
+  {{/each}}
+  Links:
+  {{#each pageContent.links}}
+  - {{this}}
+  {{/each}}
+  Buttons:
+  {{#each pageContent.buttons}}
+  - {{this}}
+  {{/each}}
+  Main text:
+  {{pageContent.mainText}}
+
+  ## Judge This
+  Score whether the visible site structure is coherent for the requested use case.
+
+  Consider:
+  - whether the page appears to have a logical flow from intro to supporting sections to action
+  - whether headings and sections feel non-redundant and appropriately grouped
+  - whether navigation/wayfinding and section names make sense together
+  - whether the structure covers the main informational needs of this kind of business
+
+  Penalize:
+  - disconnected or repetitive sections
+  - confusing heading hierarchy
+  - a page that reads like unrelated blocks rather than a coherent site
+  - important structural omissions for the use case
+
+  ## Rubric
+  5 = coherent and well organized.
+  4 = strong structure with minor rough edges.
+  3 = workable but uneven or partially redundant.
+  2 = confusing or noticeably incomplete structure.
+  1 = poor structure that harms usability.
+  0 = no coherent structure.
+
+  Explain which sections or headings make the structure work or fail.
+scoreConfig:
+  min: 0
+  max: 5

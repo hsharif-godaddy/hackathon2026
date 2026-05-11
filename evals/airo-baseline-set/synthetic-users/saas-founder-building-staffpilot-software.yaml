@@ -1,0 +1,39 @@
+---
+name: SaaS founder building StaffPilot (Software)
+type: airo-baseline-syn_f26c0a9e4d7b5318
+syntheticId: syn_f26c0a9e4d7b5318
+persona:
+  name: SaaS founder building StaffPilot (Software)
+  coreTraits:
+    - has a big idea
+    - uses startup words
+    - wants it to feel real
+    - needs guidance on auth
+    - "risk tolerance: Medium - okay with mocked functionality if clearly explained"
+    - "Complexity: hard | Primary intent: SaaS website + auth + dashboard + i18n/blog | Skill under
+      test: authentication/i18n/blog | Scenario cluster: Startup app marketing and auth flow |
+      Expected: build marketing pages, auth screens, mock dashboard, blog/resource content, and
+      basic language support"
+  decisionPattern: They approve when the landing page explains the product, auth pages exist, and the
+    dashboard preview looks believable.
+  communicationStyle:
+    formality: medium
+    detailLevel: high
+    technicalLevel: low
+    examples:
+      - I have an idea for staff scheduling software.
+      - It should feel like a real startup site, with sign up and a simple inside page.
+      - Maybe later Spanish too, but start with the basics.
+  rejectionTriggers:
+    - fake-claim-not-explained
+    - missing-signup
+    - dashboard-too-empty
+  acceptanceTriggers:
+    - clear-signup-flow
+    - dashboard-preview
+    - simple-language-switcher
+  exitTriggers:
+    - auth-flow-confusing
+  retryTriggers:
+    - start-with-mock-dashboard
+    - ask-fewer-questions

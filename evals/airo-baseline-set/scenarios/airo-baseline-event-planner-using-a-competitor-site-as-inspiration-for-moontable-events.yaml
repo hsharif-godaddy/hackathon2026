@@ -1,0 +1,190 @@
+---
+key: airo-baseline-syn_1c4e8a0d6f9b2375
+name: Event planner using a competitor site as inspiration for MoonTable Events (Events)
+suite: airo-baseline
+syntheticUserId: syn_1c4e8a0d6f9b2375
+syntheticUserName: Event planner using a competitor site as inspiration for MoonTable Events (Events)
+agentName: airo-builder
+business:
+  industry: Events
+  businessName: MoonTable Events
+  businessDescription: Small event planning studio for birthdays, showers, and corporate dinners
+  targetAudience: People planning private events in the city
+  brandPersonality:
+    - polished
+    - warm
+    - organized
+  colorPreferences:
+    - champagne
+    - black
+    - ivory
+  stylePreferences:
+    - elegant
+    - sectioned
+    - photo-led
+goal:
+  name: event planning site inspired by a reference
+  goals:
+    - Build an original event-planning site that borrows only safe structural inspiration from a
+      reference and still delivers packages, gallery, and inquiry flow.
+customerSummary: pushy but realistic, wants a polished event planning website that resembles a
+  competitor's layout without copying exact text or branding. adversarial scenario.
+testingCapability: "Complexity: adversarial | Primary intent: reference-site rebuild + originality +
+  lead capture | Skill under test: websiteScraper/rebuild/content/forms | Scenario cluster:
+  Competitor-inspired site without copying | Expected: use reference safely, create original copy,
+  add packages, gallery, and inquiry form"
+complexity: adversarial
+trials: 1
+maxTurns: 45
+executionMode: sequential
+category: capability
+llmConfig:
+  model: gpt-4.1
+  temperature: 0.6
+  maxTokens: 32000
+browserConfig:
+  elementHints:
+    chatInputHint: "Home page: textarea[data-testid='homepage-prompt-input']. Develop page (after
+      redirect): textarea[data-testid='chat-input-textarea'] or #chat-input-textarea"
+    sendButtonHint: "Home page: button[aria-label='Start building'] or
+      button[data-eid='appbuilder.homepage.prompt.submit.click']. Develop page:
+      button[data-testid='chat-send-button'] or button[aria-label='Send message'] or
+      #chat-send-button"
+    messageAreaHint: "Develop page: div[data-testid='chat-transcript'] - contains conversation history
+      and agent responses"
+    previewFrameHint: "Develop page only: iframe[data-testid='preview-iframe'] or #preview-iframe. This
+      iframe contains the generated website to evaluate."
+  viewport:
+    width: 1440
+    height: 900
+  responseTimeout: 300000
+  outputCapture:
+    pageScreenshots: true
+    previewScreenshots: true
+    screenshotPositions:
+      - top
+      - middle
+      - bottom
+    previewUrl: true
+  qualityEval:
+    enabled: true
+    siteType: service-business
+    wcagLevel: AA
+    thresholds:
+      minOverallScore: 70
+      minAccessibility: 75
+evaluators:
+  - evaluatorName: Functional Evaluator
+    weight: 25
+    criteria:
+      checkLinks: true
+      checkImages: true
+      checkConsoleErrors: true
+  - evaluatorName: Accessibility Evaluator
+    weight: 10
+    criteria:
+      wcagLevel: AA
+  - evaluatorName: SEO Evaluator
+    weight: 5
+    criteria:
+      checkOpenGraph: true
+      checkTwitterCards: true
+  - evaluatorName: Performance Evaluator
+    weight: 10
+    criteria:
+      timeout: 30000
+  - evaluatorName: Security Evaluator
+    weight: 3
+    criteria:
+      requireHttps: true
+      checkHeaders: true
+  - evaluatorName: intent_inference_quality
+    weight: 7
+    criteria: {}
+  - evaluatorName: intent_to_output_alignment
+    weight: 4
+    criteria: {}
+  - evaluatorName: implicit_feature_gap
+    weight: 4
+    criteria:
+      checklist:
+        - id: booking_or_appointment_path_present
+          description: Is there a visible booking, appointment request, or trial-signup path that reasonably
+            supports the use case?
+        - id: visual_showcase_present
+          description: Does the site include a meaningful visual showcase such as a gallery, photos,
+            portfolio, or product imagery when the use case clearly calls for it?
+        - id: core_catalog_or_service_information_present
+          description: Does the site surface the core catalog, menu, service, listing, room, course, or
+            equivalent business information that visitors would expect to browse?
+  - evaluatorName: trust_signal_coverage
+    weight: 1
+    criteria:
+      checklist:
+        - id: contact_information_present
+          description: Does the site include clear contact information or a clearly reachable inquiry/contact
+            path for the business?
+        - id: location_or_service_area_present
+          description: Does the site make location, directions, service area, or other real-world operating
+            context easy to find when that matters for trust?
+        - id: credibility_signals_present
+          description: Does the site include credibility signals such as testimonials, reviews, credentials,
+            bios, insurance/policy details, or similar trust-building content appropriate to the
+            business?
+        - id: core_information_visible
+          description: Is key decision-making information visible and easy to find, such as pricing, services,
+            room/course details, schedule, hours, policies, or equivalent core business information?
+  - evaluatorName: scope_drift_overgeneration
+    weight: 2
+    criteria: {}
+  - evaluatorName: primary_use_case_support
+    weight: 5
+    criteria: {}
+  - evaluatorName: conversion_path_clarity
+    weight: 4
+    criteria: {}
+  - evaluatorName: content_tone_alignment
+    weight: 1
+    criteria: {}
+  - evaluatorName: content_specificity
+    weight: 2
+    criteria: {}
+  - evaluatorName: conversation_to_artifact_consistency
+    weight: 4
+    criteria: {}
+  - evaluatorName: silent_hallucination
+    weight: 3
+    criteria: {}
+  - evaluatorName: ambiguity_handling_quality
+    weight: 2
+    criteria: {}
+  - evaluatorName: flow_efficiency
+    weight: 2
+    criteria: {}
+  - evaluatorName: structural_coherence
+    weight: 2
+    criteria: {}
+  - evaluatorName: hero_section_presence
+    weight: 1
+    criteria:
+      checklist:
+        - id: hero_section_present
+          description: Does the final site have a clear hero section near the top with a prominent
+            headline/value proposition that serves as the main opening section?
+  - evaluatorName: navigation_presence
+    weight: 1
+    criteria:
+      checklist:
+        - id: navigation_present
+          description: Does the final site provide clear navigation or equivalent wayfinding (header nav,
+            anchor nav, section menu, or another obvious navigation pattern)?
+  - evaluatorName: primary_cta_presence
+    weight: 1
+    criteria:
+      checklist:
+        - id: primary_cta_present
+          description: Does the final site include a clear, visible primary CTA aligned with the main user
+            goal such as book, inquire, request a quote, sign up, contact, reserve, or order?
+  - evaluatorName: visual_layout_sanity
+    weight: 1
+    criteria: {}

@@ -1,0 +1,73 @@
+---
+name: conversion_path_clarity
+description: Scores whether the site offers a clear, easy next step aligned to user
+  goals.
+type: llm
+scoreType: NUMERIC
+scoreName: conversion_path_clarity
+llmConfig:
+  model: gpt-4o
+  temperature: 0
+  maxTokens: 2000
+projectId: airo-builder-regression
+staticContext: 'Primary evidence: visible buttons, links, forms, and the business goal.
+  Judge whether a visitor can clearly identify the right next step from the final
+  site.'
+criteriaSchemaFile: schemas/empty-object.json
+template: |
+  You are grading `conversion_path_clarity` for an Airo Builder output.
+
+  Focus on the visible visitor journey from landing on the site to the intended next action.
+
+  ## Goal Context
+  {{#if scenario.business}}
+  Business: {{scenario.business.businessName}} ({{scenario.business.industry}})
+  {{/if}}
+  {{#if scenario.goal}}
+  Primary goal: {{scenario.goal.name}}
+  Goal bullets:
+  {{#each scenario.goal.goals}}
+  - {{this}}
+  {{/each}}
+  {{/if}}
+
+  ## Conversion Evidence
+  Buttons:
+  {{#each pageContent.buttons}}
+  - {{this}}
+  {{/each}}
+  Links:
+  {{#each pageContent.links}}
+  - {{this}}
+  {{/each}}
+  Form count: {{pageContent.formCount}}
+  Headings:
+  {{#each pageContent.headings}}
+  - {{this}}
+  {{/each}}
+  Main text:
+  {{pageContent.mainText}}
+
+  ## Judge This
+  Score whether a real visitor can quickly identify and take the intended next step.
+
+  Consider:
+  - clarity of CTA wording
+  - prominence and placement of the next action
+  - whether supporting copy explains why or how to take the step
+  - whether the next step matches the business outcome the site is supposed to drive
+
+  Penalize buried, ambiguous, competing, or mismatched CTAs.
+
+  ## Rubric
+  5 = the conversion path is obvious, well labeled, and aligned.
+  4 = clear with only minor friction.
+  3 = a next step exists but is not especially clear or prominent.
+  2 = weak, confusing, or buried conversion path.
+  1 = barely visible or clearly mismatched next step.
+  0 = no meaningful conversion path.
+
+  Base the reasoning on specific visible CTAs, forms, and supporting copy.
+scoreConfig:
+  min: 0
+  max: 5

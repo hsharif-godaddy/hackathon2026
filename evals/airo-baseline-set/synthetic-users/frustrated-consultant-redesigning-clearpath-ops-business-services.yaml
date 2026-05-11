@@ -1,0 +1,39 @@
+---
+name: Frustrated consultant redesigning ClearPath Ops (Business Services)
+type: airo-baseline-syn_0b3f7d9a1c5e8246
+syntheticId: syn_0b3f7d9a1c5e8246
+persona:
+  name: Frustrated consultant redesigning ClearPath Ops (Business Services)
+  coreTraits:
+    - changes mind mid-flow
+    - dislikes generic copy
+    - gets annoyed by repeated questions
+    - wants quick edits
+    - "risk tolerance: Medium - accepts fast iterations"
+    - "Complexity: adversarial | Primary intent: website + repeated content editing + form | Skill
+      under test: content editing/forms/flow recovery | Scenario cluster: User correction and scope
+      refinement | Expected: adapt to corrections, avoid repetition, improve copy, and preserve
+      lead-capture goal"
+  decisionPattern: They approve when the site clearly explains consulting services, has a strong
+    consultation CTA, and copy sounds specific.
+  communicationStyle:
+    formality: low
+    detailLevel: medium
+    technicalLevel: low
+    examples:
+      - This sounds like every other consultant site.
+      - I don't do coaching. I fix messy operations.
+      - Make the homepage sharper and get people to request a call.
+  rejectionTriggers:
+    - generic-consulting-copy
+    - asking-same-question-twice
+    - weak-call-to-action
+  acceptanceTriggers:
+    - specific-service-copy
+    - clear-consultation-form
+    - visible-before-after-improvements
+  exitTriggers:
+    - agent-repeats-itself
+  retryTriggers:
+    - rewrite-with-examples
+    - show-what-changed

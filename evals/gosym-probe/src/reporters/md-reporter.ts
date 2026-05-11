@@ -1,6 +1,6 @@
 import { writeFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { ScenarioResult, AggregatedResult } from
+import type { ScenarioResult, AggregatedResult, TrialResult } from
   '../runner/types.js';
 import type { EvalResult } from '../evaluators/evaluator.js';
 import type { RegressionEvalResult } from '../baselines/types.js';
@@ -26,6 +26,15 @@ function escapePipeForMarkdown(
 ): string {
   if (!reason) return '';
   return reason.replace(/[\r\n]+/g, ' ').replace(/\|/g, ' ').trim();
+}
+
+function truncateCell(
+  value: string | null | undefined,
+  maxLength = 200,
+): string {
+  const text = escapePipeForMarkdown(value);
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength - 1)}…`;
 }
 
 function verdictWithScore(r: EvalResult): string {
@@ -134,6 +143,132 @@ function renderUnknowns(
   return lines.join('\n');
 }
 
+function compactVerdict(
+  result: EvalResult | undefined,
+): string {
+  if (!result) return '\u2014';
+  if (result.verdict === 'unknown') return '\u26a0\ufe0f unknown';
+  return result.verdict;
+}
+
+function passIcon(value: boolean | undefined): string {
+  if (value === undefined) return '\u2014';
+  return value ? '✓' : '✗';
+}
+
+function formatPercent(
+  numerator: number,
+  denominator: number,
+): string {
+  if (denominator === 0) return '0%';
+  return `${Math.round((numerator / denominator) * 100)}%`;
+}
+
+function scenarioPassCounts(
+  result: ScenarioResult,
+): { passed: number; total: number } {
+  const values = Object.values(result.aggregated);
+  return {
+    passed: values.filter((agg) => agg.passAtK).length,
+    total: values.length,
+  };
+}
+
+function scenarioOverall(
+  result: ScenarioResult,
+): 'pass' | 'fail' {
+  const counts = scenarioPassCounts(result);
+  if (counts.total === 0) return 'fail';
+  return counts.passed / counts.total >= 0.75 ? 'pass' : 'fail';
+}
+
+function renderTrialLinks(result: ScenarioResult): string {
+  return result.trials
+    .map((trial) =>
+      `[T${trial.trialIndex + 1}](scenarios/`
+      + `${result.scenarioName}/trials/`
+      + `${trial.trialIndex}/eval-results.md)`)
+    .join(', ');
+}
+
+function buildEvalIndex(
+  result: ScenarioResult,
+): Map<number, Map<string, EvalResult>> {
+  const evalIndex = new Map<number, Map<string, EvalResult>>();
+  result.trials.forEach((trial) => {
+    const evalMap = new Map<string, EvalResult>();
+    for (const r of trial.evalResults) {
+      evalMap.set(r.evaluator, r);
+    }
+    evalIndex.set(trial.trialIndex, evalMap);
+  });
+  return evalIndex;
+}
+
+function renderCategoryMatrix(results: ScenarioResult[]): string[] {
+  if (results.length === 0) return ['*(none)*'];
+
+  const maxTrials = Math.max(
+    ...results.map((result) => result.trials.length),
+  );
+  const trialHeaders = Array.from(
+    { length: maxTrials },
+    (_, i) => `T${i + 1}`,
+  );
+  const cols = ['Scenario', 'Evaluator', 'pass@k', 'pass^k', ...trialHeaders];
+  const lines = [
+    `| ${cols.join(' | ')} |`,
+    `|${cols.map((col) => '-'.repeat(col.length + 2)).join('|')}|`,
+  ];
+
+  for (const result of results) {
+    const evalIndex = buildEvalIndex(result);
+    for (const [name, agg] of Object.entries(result.aggregated)) {
+      const cells = [
+        escapePipeForMarkdown(result.scenarioName),
+        escapePipeForMarkdown(name),
+        passIcon(agg.passAtK),
+        passIcon(agg.passToTheK),
+      ];
+      for (let i = 0; i < maxTrials; i++) {
+        cells.push(compactVerdict(evalIndex.get(i)?.get(name)));
+      }
+      lines.push(`| ${cells.join(' | ')} |`);
+    }
+  }
+
+  return lines;
+}
+
+export function renderTrialEvalResultsMarkdown(
+  trial: TrialResult,
+): string {
+  const lines = [
+    '## Eval results',
+    '',
+    `- Scenario: \`${trial.transcript.scenarioName}\``,
+    `- Trial: \`${trial.trialIndex}\``,
+    '',
+    '| Evaluator | Verdict | Score | Reason |',
+    '|----------|---------|-------|--------|',
+  ];
+
+  for (const result of [...trial.evalResults].sort((a, b) =>
+    a.evaluator.localeCompare(b.evaluator))) {
+    const score = Number.isFinite(result.score)
+      ? result.score.toFixed(2)
+      : '\u2014';
+    lines.push(
+      `| ${escapePipeForMarkdown(result.evaluator)}`
+      + ` | ${compactVerdict(result)}`
+      + ` | ${score}`
+      + ` | ${truncateCell(result.reason)} |`,
+    );
+  }
+
+  return `${lines.join('\n')}\n`;
+}
+
 // ── MdReporter class ─────────────────────────────────────────
 
 export class MdReporter {
@@ -157,6 +292,10 @@ export class MdReporter {
       `# Eval Run: ${runId}`,
       `**Generated:** ${new Date().toISOString()}`,
       '',
+      '---',
+      '',
+      this.renderSuiteSummary(results),
+      '',
       this.renderRunDetails(results),
       '',
       '---',
@@ -179,6 +318,132 @@ export class MdReporter {
     }
 
     return sections.join('\n');
+  }
+
+  private renderSuiteSummary(
+    results: ScenarioResult[],
+  ): string {
+    const regression = results.filter((r) => r.category === 'regression');
+    const capability = results.filter((r) => r.category === 'capability');
+    const totalTrials = results.reduce(
+      (sum, result) => sum + result.trials.length,
+      0,
+    );
+    const scenarioPasses = results.filter(
+      (result) => scenarioOverall(result) === 'pass',
+    ).length;
+    const regressionPasses = regression.filter(
+      (result) => scenarioOverall(result) === 'pass',
+    ).length;
+    const capabilityPasses = capability.filter(
+      (result) => scenarioOverall(result) === 'pass',
+    ).length;
+
+    return [
+      '## Suite Summary',
+      '',
+      `- Scenarios: **${results.length}**`,
+      `- Trials: **${totalTrials}**`,
+      `- Scenarios passed: **${scenarioPasses}** / ${results.length} `
+        + `(${formatPercent(scenarioPasses, results.length)})`,
+      `- Regression passed: **${regressionPasses}** / ${regression.length} `
+        + `(${formatPercent(regressionPasses, regression.length)})`,
+      `- Capability passed: **${capabilityPasses}** / ${capability.length} `
+        + `(${formatPercent(capabilityPasses, capability.length)})`,
+      '',
+      '### Scenario pass rate (overall)',
+      '',
+      ...this.renderScenarioPassRateTable(results),
+      '',
+      '### Evaluator rollup (across scenarios)',
+      '',
+      ...this.renderEvaluatorRollupTable(results),
+    ].join('\n');
+  }
+
+  private renderScenarioPassRateTable(
+    results: ScenarioResult[],
+  ): string[] {
+    const lines = [
+      '| Scenario ID | Scenario name | Category | Overall | Evaluators passed | Links |',
+      '|------------|---------------|----------|---------|------------------|-------|',
+    ];
+
+    for (const result of results) {
+      const counts = scenarioPassCounts(result);
+      lines.push(
+        `| ${escapePipeForMarkdown(result.scenarioName)}`
+        + ` | ${truncateCell(result.scenarioName, 120)}`
+        + ` | ${result.category}`
+        + ` | ${scenarioOverall(result)}`
+        + ` | ${counts.passed}/${counts.total} `
+        + `(${formatPercent(counts.passed, counts.total)})`
+        + ` | ${renderTrialLinks(result)} |`,
+      );
+    }
+
+    return lines;
+  }
+
+  private renderEvaluatorRollupTable(
+    results: ScenarioResult[],
+  ): string[] {
+    const counts = new Map<
+      string,
+      { pass: number; partial: number; fail: number; unknown: number }
+    >();
+
+    for (const result of results) {
+      for (const trial of result.trials) {
+        for (const evalResult of trial.evalResults) {
+          if (evalResult.verdict === 'observed') continue;
+          if (!counts.has(evalResult.evaluator)) {
+            counts.set(evalResult.evaluator, {
+              pass: 0,
+              partial: 0,
+              fail: 0,
+              unknown: 0,
+            });
+          }
+          switch (evalResult.verdict) {
+            case 'pass':
+              counts.get(evalResult.evaluator)!.pass++;
+              break;
+            case 'partial':
+              counts.get(evalResult.evaluator)!.partial++;
+              break;
+            case 'fail':
+              counts.get(evalResult.evaluator)!.fail++;
+              break;
+            case 'unknown':
+              counts.get(evalResult.evaluator)!.unknown++;
+              break;
+          }
+        }
+      }
+    }
+
+    const lines = [
+      '| Evaluator | pass | partial | fail | unknown | pass rate |',
+      '|----------|------|---------|------|---------|-----------|',
+    ];
+
+    for (const [evaluator, count] of [...counts.entries()].sort(
+      ([a], [b]) => a.localeCompare(b),
+    )) {
+      const total =
+        count.pass + count.partial + count.fail + count.unknown;
+      lines.push(
+        `| ${escapePipeForMarkdown(evaluator)}`
+        + ` | ${count.pass}`
+        + ` | ${count.partial}`
+        + ` | ${count.fail}`
+        + ` | ${count.unknown}`
+        + ` | ${formatPercent(count.pass, total)} |`,
+      );
+    }
+
+    return lines;
   }
 
   // ── Run details ──────────────────────────────────────────
@@ -228,6 +493,8 @@ export class MdReporter {
       lines.push('*(none)*');
       return lines.join('\n');
     }
+
+    lines.push(...renderCategoryMatrix(results), '');
 
     for (const result of results) {
       lines.push(...this.renderScenario(result));
@@ -293,16 +560,7 @@ export class MdReporter {
       .map(c => '-'.repeat(c.length + 2))
       .join('|')}|`;
 
-    // Build O(1) lookup: trial index -> evaluator -> result
-    const evalIndex =
-      new Map<number, Map<string, EvalResult>>();
-    result.trials.forEach((trial, i) => {
-      const evalMap = new Map<string, EvalResult>();
-      for (const r of trial.evalResults) {
-        evalMap.set(r.evaluator, r);
-      }
-      evalIndex.set(i, evalMap);
-    });
+    const evalIndex = buildEvalIndex(result);
 
     const evalNames = Object.keys(result.aggregated);
     const rows = evalNames.map((name) =>

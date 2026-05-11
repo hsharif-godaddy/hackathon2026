@@ -1,3 +1,4 @@
+import { buildAiroBaselineScenarios } from './airo-baseline/index.js';
 import {
   businessSiteScenario,
   multipageCatalogScenario,
@@ -33,5 +34,6 @@ export function createAllScenarios(
     symptomModuleNotFoundScenario(gocode, ctrlPlane),
     multiTurnPublishFlowScenario(gocode, ctrlPlane),
     complexPromptLatencyScenario(gocode, ctrlPlane),
+    ...buildAiroBaselineScenarios(gocode, ctrlPlane),
   ];
 }

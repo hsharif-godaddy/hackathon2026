@@ -75,6 +75,9 @@ export class BaselineStore {
               agg.medianScore != null && {
                 medianScore: agg.medianScore,
               }),
+            ...(agg.evalVersion !== undefined && {
+              evalVersion: agg.evalVersion,
+            }),
             ...(agg.lowerIsBetter !== undefined && {
               lowerIsBetter: agg.lowerIsBetter,
             }),
@@ -164,6 +167,9 @@ export class BaselineStore {
               ev.medianScore != null && {
                 medianScore: ev.medianScore,
               }),
+            ...(ev.evalVersion !== undefined && {
+              evalVersion: ev.evalVersion,
+            }),
             ...(ev.lowerIsBetter !== undefined && {
               lowerIsBetter: ev.lowerIsBetter,
             }),

@@ -1,0 +1,13 @@
+---
+evaluatorId: system-seo
+name: SEO Evaluator
+description: Deterministic SEO checks for title/meta/heading structure on the generated
+  preview.
+type: system
+systemCategory: seo
+scoreType: NUMERIC
+scoreName: seo_score
+scoreConfig:
+  min: 0
+  max: 100
+projectId: airo-builder-regression

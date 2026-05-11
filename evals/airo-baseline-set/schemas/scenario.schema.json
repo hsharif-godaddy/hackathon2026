@@ -1,0 +1,174 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "airo-baseline-set/schemas/scenario.schema.json",
+  "title": "Airo Baseline Scenario",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "key",
+    "name",
+    "suite",
+    "syntheticUserId",
+    "syntheticUserName",
+    "agentName",
+    "business",
+    "goal",
+    "customerSummary",
+    "testingCapability",
+    "complexity",
+    "trials",
+    "maxTurns",
+    "executionMode",
+    "category",
+    "llmConfig",
+    "browserConfig",
+    "evaluators"
+  ],
+  "properties": {
+    "key": {
+      "type": "string",
+      "pattern": "^airo-baseline-syn_[a-z0-9]+$"
+    },
+    "name": { "type": "string", "minLength": 1 },
+    "suite": { "const": "airo-baseline" },
+    "syntheticUserId": {
+      "type": "string",
+      "pattern": "^syn_[a-z0-9]+$"
+    },
+    "syntheticUserName": { "type": "string", "minLength": 1 },
+    "agentName": { "const": "airo-builder" },
+    "business": { "$ref": "#/$defs/businessContext" },
+    "goal": { "$ref": "#/$defs/goal" },
+    "customerSummary": { "type": "string", "minLength": 1 },
+    "testingCapability": { "type": "string", "minLength": 1 },
+    "complexity": {
+      "enum": ["easy", "hard", "adversarial", "out-of-bound", "out-of-bounds"]
+    },
+    "trials": { "type": "integer", "minimum": 1 },
+    "maxTurns": { "type": "integer", "minimum": 1 },
+    "executionMode": { "enum": ["sequential", "parallel"] },
+    "category": { "enum": ["capability", "regression"] },
+    "llmConfig": { "$ref": "#/$defs/llmConfig" },
+    "browserConfig": { "$ref": "#/$defs/browserConfig" },
+    "evaluators": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/evaluatorRef" }
+    }
+  },
+  "$defs": {
+    "businessContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "industry",
+        "businessName",
+        "businessDescription",
+        "targetAudience",
+        "brandPersonality",
+        "colorPreferences",
+        "stylePreferences"
+      ],
+      "properties": {
+        "industry": { "type": "string", "minLength": 1 },
+        "businessName": { "type": "string", "minLength": 1 },
+        "businessDescription": { "type": "string", "minLength": 1 },
+        "targetAudience": { "type": "string", "minLength": 1 },
+        "brandPersonality": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "colorPreferences": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "stylePreferences": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "goal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "goals"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "goals": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "llmConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["model", "temperature", "maxTokens"],
+      "properties": {
+        "model": { "type": "string", "minLength": 1 },
+        "temperature": { "type": "number", "minimum": 0 },
+        "maxTokens": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "browserConfig": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "elementHints",
+        "viewport",
+        "responseTimeout",
+        "outputCapture"
+      ],
+      "properties": {
+        "elementHints": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "chatInputHint",
+            "sendButtonHint",
+            "messageAreaHint",
+            "previewFrameHint"
+          ],
+          "properties": {
+            "chatInputHint": { "type": "string", "minLength": 1 },
+            "sendButtonHint": { "type": "string", "minLength": 1 },
+            "messageAreaHint": { "type": "string", "minLength": 1 },
+            "previewFrameHint": { "type": "string", "minLength": 1 }
+          }
+        },
+        "viewport": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["width", "height"],
+          "properties": {
+            "width": { "type": "integer", "minimum": 1 },
+            "height": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "responseTimeout": { "type": "integer", "minimum": 1 },
+        "outputCapture": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "qualityEval": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "evaluatorRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["evaluatorName", "weight", "criteria"],
+      "properties": {
+        "evaluatorName": { "type": "string", "minLength": 1 },
+        "weight": { "type": "number", "minimum": 0 },
+        "criteria": { "type": "object" }
+      }
+    }
+  }
+}

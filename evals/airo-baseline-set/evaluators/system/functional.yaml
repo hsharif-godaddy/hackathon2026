@@ -1,0 +1,12 @@
+---
+evaluatorId: system-functional
+name: Functional Evaluator
+description: Deterministic functional checks over the generated preview using Playwright.
+type: system
+systemCategory: functional
+scoreType: NUMERIC
+scoreName: functional_score
+scoreConfig:
+  min: 0
+  max: 100
+projectId: airo-builder-regression

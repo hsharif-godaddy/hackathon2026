@@ -1,0 +1,38 @@
+---
+name: Fitness coach building Lift & Flow Studio (Health & Wellness)
+type: airo-baseline-syn_c73a9f1d5b0e2468
+syntheticId: syn_c73a9f1d5b0e2468
+persona:
+  name: Fitness coach building Lift & Flow Studio (Health & Wellness)
+  coreTraits:
+    - time-constrained
+    - wants bookings quickly
+    - cares about mobile
+    - asks for practical wording
+    - "risk tolerance: Medium - will follow setup steps if they are clear"
+    - "Complexity: hard | Primary intent: website + appointments + payments | Skill under test:
+      online-appointments/commerce-one-time-payment | Scenario cluster: Booking and payment flow |
+      Expected: create class pages, booking request flow, pricing, and simple payment CTA"
+  decisionPattern: They approve when visitors can see classes, request a booking, and understand how
+    to pay for a drop-in class.
+  communicationStyle:
+    formality: low
+    detailLevel: medium
+    technicalLevel: low
+    examples:
+      - I want more people to book my classes from their phone.
+      - I teach strength and yoga. Maybe people can pay for a drop-in?
+      - Keep it clear. I don't want a bunch of confusing steps.
+  rejectionTriggers:
+    - booking-hard-to-find
+    - unclear-pricing
+    - payment-flow-confusing
+  acceptanceTriggers:
+    - schedule-visible
+    - book-class-cta
+    - simple-payment-option
+  exitTriggers:
+    - booking-or-payment-broken
+  retryTriggers:
+    - simplify-the-flow
+    - show-test-step

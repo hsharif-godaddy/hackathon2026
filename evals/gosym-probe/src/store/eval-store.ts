@@ -15,7 +15,10 @@ import type { Config } from '../../config/environments/types.js';
 import type { EvalResult } from '../evaluators/evaluator.js';
 import type { Scenario } from '../scenarios/types.js';
 import type { ScenarioResult, TrialResult } from '../runner/types.js';
-import { MdReporter } from '../reporters/md-reporter.js';
+import {
+  MdReporter,
+  renderTrialEvalResultsMarkdown,
+} from '../reporters/md-reporter.js';
 import { toCompactTimestamp } from '../util/timestamp.js';
 import { sanitizeConfig } from '../util/sanitize.js';
 import type {
@@ -39,6 +42,20 @@ import { renderConversation } from
 import { computeTimingStats } from '../util/timing.js';
 import { computeScoreStats } from '../util/score-stats.js';
 
+async function removeLockDir(
+  lockDir: string,
+  label: string,
+): Promise<void> {
+  try {
+    await rm(lockDir, { recursive: true });
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return;
+
+    console.error('Failed to release gosym-probe lock.', { label, lockDir }, err);
+    throw err;
+  }
+}
+
 export interface RunOptions {
   trialsOverride?: number;
   concurrencyOverride?: number;
@@ -53,49 +70,79 @@ export class EvalStore {
     private readonly maxRuns: number = 10,
   ) {}
 
+  private normalizeRunOptions(
+    optionsOrTrials: RunOptions | number | undefined,
+    concurrencyOverride?: number,
+    maxTurnsOverride?: number,
+    kind?: 'eval' | 'graduation',
+  ): RunOptions {
+    if (
+      typeof optionsOrTrials === 'object' &&
+      optionsOrTrials !== null
+    ) {
+      return optionsOrTrials;
+    }
+
+    return {
+      ...(optionsOrTrials !== undefined && {
+        trialsOverride: optionsOrTrials,
+      }),
+      ...(concurrencyOverride !== undefined && {
+        concurrencyOverride,
+      }),
+      ...(maxTurnsOverride !== undefined && {
+        maxTurnsOverride,
+      }),
+      ...(kind !== undefined && { kind }),
+    };
+  }
+
   async save(
     runId: string,
     results: ScenarioResult[],
     scenarios: Scenario[],
     config: Config,
-    options: RunOptions = {},
+    optionsOrTrials?: RunOptions | number,
+    concurrencyOverride?: number,
+    maxTurnsOverride?: number,
+    kind?: 'eval' | 'graduation',
   ): Promise<string> {
-    const {
-      trialsOverride,
+    const options = this.normalizeRunOptions(
+      optionsOrTrials,
       concurrencyOverride,
       maxTurnsOverride,
       kind,
-      dirName,
-    } = options;
-    const resolvedDirName = dirName ?? await this.initRun(
-      runId, scenarios, config,
-      { trialsOverride, concurrencyOverride, maxTurnsOverride, kind },
+    );
+    const resolvedDirName = options.dirName ?? await this.initRun(
+      runId, scenarios, config, options,
     );
     for (const result of results) {
       for (const trial of result.trials) {
         await this.writeTrial(resolvedDirName, result.scenarioName, trial);
       }
     }
-    return this.finalizeRun(resolvedDirName, runId, results, kind);
+    return this.finalizeRun(resolvedDirName, runId, results, options.kind);
   }
 
   async initRun(
     runId: string,
     scenarios: Scenario[],
     config: Config,
-    options: RunOptions = {},
+    optionsOrTrials?: RunOptions | number,
+    concurrencyOverride?: number,
+    maxTurnsOverride?: number,
+    kind?: 'eval' | 'graduation',
   ): Promise<string> {
-    const {
-      trialsOverride,
+    const options = this.normalizeRunOptions(
+      optionsOrTrials,
       concurrencyOverride,
       maxTurnsOverride,
       kind,
-      dirName,
-    } = options;
+    );
     const gitSha = await this.getGitSha();
     const timestamp = new Date().toISOString();
     const resolvedDirName =
-      dirName ?? `${toCompactTimestamp(timestamp)}_${runId}`;
+      options.dirName ?? `${toCompactTimestamp(timestamp)}_${runId}`;
     const runDir = this.runDir(resolvedDirName);
 
     await mkdir(runDir, { recursive: true });
@@ -106,10 +153,10 @@ export class EvalStore {
       gitSha,
       scenarios.map((s) => s.name),
       config,
-      trialsOverride,
-      concurrencyOverride,
-      maxTurnsOverride,
-      kind,
+      options.trialsOverride,
+      options.concurrencyOverride,
+      options.maxTurnsOverride,
+      options.kind,
     );
 
     for (const scenario of scenarios) {
@@ -152,6 +199,13 @@ export class EvalStore {
     await this.updateRunIndex(runId, timestamp, dirName, kind);
 
     return runDir;
+  }
+
+  async acquireRunLock(dirName: string): Promise<() => Promise<void>> {
+    return this.acquireLock(
+      join(this.runDir(dirName), '.run.lock'),
+      `run ${dirName}`,
+    );
   }
 
   /**
@@ -276,6 +330,108 @@ export class EvalStore {
     return this.loadJsonFile<RunMetadata>(
       join(dir, 'run-metadata.json'),
     );
+  }
+
+  async resolveRunDirName(runRef: string): Promise<string | null> {
+    const indexed = (await this.listRuns()).find(
+      (run) => run.runId === runRef || run.dir === runRef,
+    );
+    if (indexed) return indexed.dir;
+
+    const directMetadata = await this.loadJsonFile<RunMetadata>(
+      join(this.runDir(runRef), 'run-metadata.json'),
+    );
+    if (directMetadata) return runRef;
+
+    let entries: string[];
+    try {
+      entries = await readdir(this.runsDir);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
+      throw err;
+    }
+
+    for (const entry of entries) {
+      if (entry.startsWith('.')) continue;
+      const metadata = await this.loadJsonFile<RunMetadata>(
+        join(this.runDir(entry), 'run-metadata.json'),
+      );
+      if (metadata?.runId === runRef) return entry;
+    }
+
+    return null;
+  }
+
+  async loadRunMetadataByDirName(
+    dirName: string,
+  ): Promise<RunMetadata | null> {
+    return this.loadJsonFile<RunMetadata>(
+      join(this.runDir(dirName), 'run-metadata.json'),
+    );
+  }
+
+  async listCompletedTrialIndices(
+    dirName: string,
+    scenarioName: string,
+  ): Promise<number[]> {
+    const trialsDir = join(
+      this.scenarioDir(dirName, scenarioName),
+      'trials',
+    );
+    let entries: string[];
+    try {
+      entries = await readdir(trialsDir);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return [];
+      throw err;
+    }
+
+    const indices: number[] = [];
+    for (const entry of entries) {
+      const index = Number.parseInt(entry, 10);
+      if (!Number.isInteger(index) || String(index) !== entry) continue;
+
+      const transcript = await this.loadJsonFile<StoredTranscript>(
+        join(trialsDir, entry, 'transcript.json'),
+      );
+      const evalResults = await this.loadJsonFile<EvalResult[]>(
+        join(trialsDir, entry, 'eval-results.json'),
+      );
+      if (transcript && evalResults) indices.push(index);
+    }
+
+    return indices.sort((a, b) => a - b);
+  }
+
+  async loadTrialResultByDirName(
+    dirName: string,
+    scenarioName: string,
+    trialIndex: number,
+  ): Promise<TrialResult | null> {
+    const trialDir = this.trialDirFrom(
+      this.runDir(dirName),
+      scenarioName,
+      trialIndex,
+    );
+    const transcript = await this.loadJsonFile<StoredTranscript>(
+      join(trialDir, 'transcript.json'),
+    );
+    const evalResults = await this.loadJsonFile<EvalResult[]>(
+      join(trialDir, 'eval-results.json'),
+    );
+    if (!transcript || !evalResults) return null;
+
+    return {
+      trialIndex,
+      evalResults,
+      transcript: {
+        scenarioName: transcript.scenarioName,
+        trialIndex: transcript.trialIndex,
+        turns: transcript.turns,
+        snapshots: [],
+        errors: transcript.errors,
+      },
+    };
   }
 
   async loadTranscript(
@@ -438,9 +594,6 @@ export class EvalStore {
     try {
       await this.writeTrialFiles(trialDir, trial);
     } catch (err) {
-      // Capture-owned artifacts (snapshots, route tiles) live under
-      // trialDir already; we deliberately do NOT rm -rf the trial dir
-      // on metadata-write failure so those files survive.
       console.error('writeTrial: write failed', { trialDir }, err);
       throw err;
     }
@@ -476,6 +629,7 @@ export class EvalStore {
       trial.transcript.scenarioName,
       trial.transcript.trialIndex,
     );
+    const evalResultsMd = renderTrialEvalResultsMarkdown(trial);
 
     const snapshotsDir = join(trialDir, 'snapshots');
     await mkdir(snapshotsDir, { recursive: true });
@@ -495,6 +649,10 @@ export class EvalStore {
     await writeFile(
       join(trialDir, 'eval-results.json'),
       JSON.stringify(trial.evalResults, null, 2),
+    );
+    await writeFile(
+      join(trialDir, 'eval-results.md'),
+      evalResultsMd,
     );
 
     const toolCallSummary = summarizeToolCalls(
@@ -537,6 +695,12 @@ export class EvalStore {
         url: snap.url,
         timestamp: snap.timestamp,
       };
+      if ('screenshot' in snap && Buffer.isBuffer(snap.screenshot)) {
+        await writeFile(join(snapshotsDir, `${i}.png`), snap.screenshot);
+      }
+      if ('html' in snap && typeof snap.html === 'string') {
+        await writeFile(join(snapshotsDir, `${i}.html`), snap.html);
+      }
       await writeFile(
         join(snapshotsDir, `${i}.meta.json`),
         JSON.stringify(meta, null, 2),
@@ -547,31 +711,41 @@ export class EvalStore {
       );
     }
 
-    // Per-route per-viewport tiles are written by SiteCapture/captureRoutes
-    // into <trialDir>/snapshots/{mobile,laptop}/. Persist the structured
-    // manifest (routes, perRoute, errors, timing) alongside them so
-    // downstream consumers don't have to rescan the directory.
-    if (trial.transcript.capturedSite) {
+    const capturedSite = (
+      trial.transcript as TrialResult['transcript'] & {
+        capturedSite?: unknown;
+      }
+    ).capturedSite;
+    if (capturedSite) {
       await writeFile(
         join(snapshotsDir, 'capture.json'),
-        JSON.stringify(trial.transcript.capturedSite, null, 2),
+        JSON.stringify(capturedSite, null, 2),
       );
     }
   }
 
   /**
-   * Prepends a new entry to the run index using an atomic
-   * tmp-then-rename write.
-   *
-   * @remarks
-   * **TOCTOU window:** reads the index, merges the new entry, then
-   * renames a tmp file into place. Concurrent writers racing between
-   * the read and the rename can silently overwrite each other's entry.
-   * Acceptable for the current single-writer use case; upgrade path
-   * is a file-based advisory lock (e.g. `proper-lockfile`) around the
-   * read-modify-write cycle.
+   * Prepends a new entry to the run index using an advisory lock plus
+   * atomic tmp-then-rename write.
    */
   private async updateRunIndex(
+    runId: string,
+    timestamp: string,
+    dir: string,
+    kind?: 'eval' | 'graduation',
+  ): Promise<void> {
+    const release = await this.acquireLock(
+      join(this.runsDir, '.run-index.lock'),
+      'run index',
+    );
+    try {
+      await this.updateRunIndexLocked(runId, timestamp, dir, kind);
+    } finally {
+      await release();
+    }
+  }
+
+  private async updateRunIndexLocked(
     runId: string,
     timestamp: string,
     dir: string,
@@ -600,6 +774,44 @@ export class EvalStore {
     const tmpPath = `${indexPath}.${process.pid}.tmp`;
     await writeFile(tmpPath, JSON.stringify(updated, null, 2));
     await rename(tmpPath, indexPath);
+  }
+
+  private async acquireLock(
+    lockDir: string,
+    label: string,
+  ): Promise<() => Promise<void>> {
+    try {
+      await mkdir(lockDir, { recursive: false });
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'EEXIST') {
+        throw new Error(
+          `Cannot acquire ${label} lock at ${lockDir}; another gosym-probe ` +
+          `process may be writing this run.`,
+        );
+      }
+      throw err;
+    }
+
+    try {
+      await writeFile(
+        join(lockDir, 'owner.json'),
+        JSON.stringify({
+          pid: process.pid,
+          createdAt: new Date().toISOString(),
+        }, null, 2),
+      );
+    } catch (err) {
+      try {
+        await removeLockDir(lockDir, label);
+      } catch {
+        // removeLockDir logs the cleanup failure; preserve the owner write error.
+      }
+      throw err;
+    }
+
+    return async function release() {
+      await removeLockDir(lockDir, label);
+    };
   }
 
   // ── Serialization helpers ─────────────────────────────────────────────────
@@ -668,6 +880,7 @@ export class EvalStore {
         scores: computeScoreStats(scores),
         verdicts,
         ...(agg.medianScore != null && { medianScore: agg.medianScore }),
+        ...(agg.evalVersion !== undefined && { evalVersion: agg.evalVersion }),
         ...(agg.lowerIsBetter !== undefined && {
           lowerIsBetter: agg.lowerIsBetter,
         }),

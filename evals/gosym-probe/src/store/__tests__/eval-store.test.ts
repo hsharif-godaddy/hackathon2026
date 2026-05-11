@@ -56,7 +56,10 @@ import {
   rename,
   rm,
 } from 'node:fs/promises';
-import { MdReporter } from '../../reporters/md-reporter.js';
+import {
+  MdReporter,
+  renderTrialEvalResultsMarkdown,
+} from '../../reporters/md-reporter.js';
 import {
   renderConversation,
 } from '../../util/conversation-renderer.js';
@@ -66,6 +69,9 @@ const mockRenderConversation = vi.mocked(renderConversation);
 
 const mockMkdir = vi.mocked(mkdir);
 const mockWriteFile = vi.mocked(writeFile);
+const mockRenderTrialEvalResultsMarkdown = vi.mocked(
+  renderTrialEvalResultsMarkdown,
+);
 const mockReadFile = readFile as unknown as ReturnType<typeof vi.fn>;
 const mockReaddir =
   readdir as unknown as ReturnType<typeof vi.fn>;
@@ -248,6 +254,9 @@ describe('EvalStore', () => {
     vi.mocked(MdReporter).mockImplementation(
       () => ({ render: mockRender }) as unknown as MdReporter,
     );
+    mockRenderTrialEvalResultsMarkdown.mockReturnValue(
+      '## mock eval results\n',
+    );
     mockRenderConversation.mockReturnValue('# mock conversation');
   });
 
@@ -417,6 +426,22 @@ describe('EvalStore', () => {
       expect(parsed[0].evaluator).toBe('test-evaluator');
       expect(parsed[0].score).toBe(0.8);
       expect(parsed[0].verdict).toBe('pass');
+    });
+
+    it('writes eval-results.md per trial', async () => {
+      const store = new EvalStore();
+      const trial = makeTrialResult(0, [], [0.8]);
+      const scenario = makeScenario();
+      const result = makeScenarioResult(scenario, [trial]);
+
+      await store.save('run-001', [result], [scenario], makeConfig());
+
+      const call = mockWriteFile.mock.calls.find(([p]) =>
+        (p as string).endsWith('eval-results.md'),
+      );
+      expect(call).toBeDefined();
+      expect(call![1]).toBe('## mock eval results\n');
+      expect(mockRenderTrialEvalResultsMarkdown).toHaveBeenCalledWith(trial);
     });
 
     it('writes tool_calls.json per trial', async () => {
@@ -1430,6 +1455,23 @@ describe('EvalStore', () => {
       expect(parsed[0].score).toBe(0.9);
     });
 
+    it('writes eval-results.md for the trial', async () => {
+      const store = new EvalStore();
+      const trial = makeTrialResult(0, [], [0.9]);
+
+      await store.writeTrial(DIR_NAME, 'test-scenario', trial);
+
+      const call = mockWriteFile.mock.calls.find(([p]) =>
+        (p as string).endsWith('eval-results.md'),
+      );
+      expect(call).toBeDefined();
+      expect(call![1]).toBe('## mock eval results\n');
+      expect(
+        (call![0] as string).includes('trials/0'),
+      ).toBe(true);
+      expect(mockRenderTrialEvalResultsMarkdown).toHaveBeenCalledWith(trial);
+    });
+
     it('writes tool_calls.json for the trial', async () => {
       const store = new EvalStore();
       const trial = makeTrialResult(0);
@@ -1699,6 +1741,74 @@ describe('EvalStore', () => {
       );
       const parsed = JSON.parse(tmpCall![1] as string);
       expect(parsed.runs[0].kind).toBe('graduation');
+    });
+  });
+
+  describe('acquireRunLock()', () => {
+    it('throws when the run lock is already held', async () => {
+      const store = new EvalStore();
+      mockMkdir.mockRejectedValueOnce(
+        Object.assign(new Error('exists'), { code: 'EEXIST' }),
+      );
+
+      await expect(
+        store.acquireRunLock(`${FIXED_COMPACT}_run-001`),
+      ).rejects.toThrow('Cannot acquire run');
+    });
+
+    it('removes the lock directory on release', async () => {
+      const store = new EvalStore();
+      const release = await store.acquireRunLock(`${FIXED_COMPACT}_run-001`);
+
+      await release();
+
+      expect(mockMkdir).toHaveBeenCalledWith(
+        `runs/${FIXED_COMPACT}_run-001/.run.lock`,
+        { recursive: false },
+      );
+      expect(mockRm).toHaveBeenCalledWith(
+        `runs/${FIXED_COMPACT}_run-001/.run.lock`,
+        { recursive: true },
+      );
+    });
+
+    it('removes the lock directory when owner write fails', async function ownerWriteFailure() {
+      const store = new EvalStore();
+      const writeError = new Error('owner write failed');
+      mockWriteFile.mockRejectedValueOnce(writeError);
+
+      await expect(
+        store.acquireRunLock(`${FIXED_COMPACT}_run-001`),
+      ).rejects.toThrow('owner write failed');
+
+      expect(mockRm).toHaveBeenCalledWith(
+        `runs/${FIXED_COMPACT}_run-001/.run.lock`,
+        { recursive: true },
+      );
+    });
+
+    it('logs and throws when lock release fails', async function releaseFailure() {
+      const store = new EvalStore();
+      const rmError = Object.assign(new Error('permission denied'), {
+        code: 'EPERM',
+      });
+      const consoleErrorSpy = vi
+        .spyOn(console, 'error')
+        .mockImplementation(function error() {});
+      const release = await store.acquireRunLock(`${FIXED_COMPACT}_run-001`);
+      mockRm.mockRejectedValueOnce(rmError);
+
+      await expect(release()).rejects.toThrow('permission denied');
+
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        'Failed to release gosym-probe lock.',
+        {
+          label: `run ${FIXED_COMPACT}_run-001`,
+          lockDir: `runs/${FIXED_COMPACT}_run-001/.run.lock`,
+        },
+        rmError,
+      );
+      consoleErrorSpy.mockRestore();
     });
   });
 

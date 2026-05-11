@@ -1,0 +1,12 @@
+---
+evaluatorId: system-security
+name: Security Evaluator
+description: Deterministic HTTPS/security-header checks over the generated preview.
+type: system
+systemCategory: security
+scoreType: NUMERIC
+scoreName: security_score
+scoreConfig:
+  min: 0
+  max: 100
+projectId: airo-builder-regression

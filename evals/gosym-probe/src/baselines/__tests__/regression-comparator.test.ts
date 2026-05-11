@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { RegressionComparator } from '../regression-comparator.js';
 import type { ScenarioResult, AggregatedResult } from
   '../../runner/types.js';
@@ -140,6 +140,79 @@ describe('RegressionComparator', () => {
       const e = r.evaluators.find((x) => x.evaluator === 'latency');
       expect(e?.exceeded).toBe(false);
       expect(Number.isNaN(e?.baselineScore)).toBe(true);
+    });
+
+    it('skips evaluator comparison when evaluator versions differ', () => {
+      const result = makeResult('regression', {
+        latency: {
+          ...makeScoreAgg(0.7),
+          evalVersion: 'current-version',
+        },
+      });
+      const baseline = makeScoreBaseline(0.9);
+      baseline.scores.latency.evalVersion = 'baseline-version';
+      const consoleWarnSpy = vi
+        .spyOn(console, 'warn')
+        .mockImplementation(function warn() {});
+      const consoleErrorSpy = vi
+        .spyOn(console, 'error')
+        .mockImplementation(function error() {});
+
+      const r = comparator.compare(result, baseline, THRESHOLDS);
+      const e = r.evaluators.find((x) => x.evaluator === 'latency');
+
+      expect(e).toMatchObject({
+        exceeded: false,
+        skipped: true,
+        skipReason: 'evaluator-version-mismatch',
+        currentEvalVersion: 'current-version',
+        baselineEvalVersion: 'baseline-version',
+      });
+      expect(r.gate).toBe('error');
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        'Regression gate failed because all evaluator comparisons were skipped.',
+        {
+          gate: 'error',
+          reasons: 'evaluator-version-mismatch',
+        },
+      );
+      expect(Number.isNaN(e?.currentScore)).toBe(true);
+      expect(Number.isNaN(e?.baselineScore)).toBe(true);
+      consoleWarnSpy.mockRestore();
+      consoleErrorSpy.mockRestore();
+    });
+
+    it('skips evaluator comparison when baseline version is missing', () => {
+      const result = makeResult('regression', {
+        latency: {
+          ...makeScoreAgg(0.7),
+          evalVersion: 'current-version',
+        },
+      });
+      const consoleWarnSpy = vi
+        .spyOn(console, 'warn')
+        .mockImplementation(function warn() {});
+      const consoleErrorSpy = vi
+        .spyOn(console, 'error')
+        .mockImplementation(function error() {});
+      const r = comparator.compare(result, makeScoreBaseline(0.9), THRESHOLDS);
+      const e = r.evaluators.find((x) => x.evaluator === 'latency');
+
+      expect(e).toMatchObject({
+        skipped: true,
+        skipReason: 'evaluator-version-mismatch',
+        currentEvalVersion: 'current-version',
+      });
+      expect(r.gate).toBe('error');
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        'Regression gate failed because all evaluator comparisons were skipped.',
+        {
+          gate: 'error',
+          reasons: 'evaluator-version-mismatch',
+        },
+      );
+      consoleWarnSpy.mockRestore();
+      consoleErrorSpy.mockRestore();
     });
   });
 
