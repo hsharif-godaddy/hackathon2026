@@ -294,6 +294,7 @@ func buildPreflightRunner(projectRoot string) *preflight.Runner {
 					{Check: &checks.GoCheck{}},
 					{Check: &checks.MakeCheck{}},
 					{Check: &checks.DockerCheck{}},
+					{Check: &checks.SandboxCheck{}},
 					{Check: &checks.AWSCLICheck{}},
 					{Check: &checks.ArtifactoryCheck{}, Fixer: &fixers.ArtifactoryFixer{}},
 				},

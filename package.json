@@ -26,6 +26,12 @@
     "apm:status": "./scripts/local-apm.sh status",
     "apm:logs": "./scripts/local-apm.sh logs",
     "apm:clean": "./scripts/local-apm.sh clean",
+    "runtime:sandbox:setup": "./scripts/container-runtime/lima/manage.sh setup",
+    "runtime:sandbox:teardown": "./scripts/container-runtime/lima/manage.sh teardown",
+    "runtime:sandbox:status": "./scripts/container-runtime/lima/manage.sh status",
+    "sandbox:on": "./scripts/container-runtime/sandbox-flag.sh on",
+    "sandbox:off": "./scripts/container-runtime/sandbox-flag.sh off",
+    "sandbox:status": "./scripts/container-runtime/sandbox-flag.sh status",
     "release": "cd release-manager && make build && ./dist/release-manager"
   },
   "devDependencies": {

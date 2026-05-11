@@ -1,0 +1,77 @@
+# Lima VM for running preview/publish containers on an AlmaLinux 9.7 kernel,
+# for kernel parity with production (Landlock ABI v6, cgroups v2, etc.) without
+# swapping the whole dev environment. Agent and local-control-plane still run
+# on macOS and talk to this VM's Docker daemon via a "airo-sandbox" docker
+# context.
+#
+# Do not run limactl directly — use the wrapper so context + health checks stay
+# in sync:
+#
+#   pnpm run runtime:sandbox:setup      # install lima if needed, start VM, create context
+#   pnpm run runtime:sandbox:teardown   # stop + delete VM, remove context
+#
+# Independent of the VM, enable the dev-supervisor sandbox flag with:
+#
+#   pnpm run sandbox:on                 # writes DEV_SUPERVISOR_SANDBOX_ENABLED=true to .envrc.local
+#   pnpm run sandbox:off                # removes that line
+
+vmType: vz
+vmOpts:
+  vz:
+    rosetta:
+      enabled: true
+      binfmt: true
+
+images:
+  - location: "https://repo.almalinux.org/almalinux/9.7/cloud/aarch64/images/AlmaLinux-9-GenericCloud-latest.aarch64.qcow2"
+    arch: "aarch64"
+  - location: "https://repo.almalinux.org/almalinux/9.7/cloud/x86_64/images/AlmaLinux-9-GenericCloud-latest.x86_64.qcow2"
+    arch: "x86_64"
+
+cpus: 4
+memory: "8GiB"
+disk: "60GiB"
+
+mountType: virtiofs
+mounts:
+  - location: "/tmp/airo-app-builder"
+    writable: true
+    # Preview/publish workspaces live here today. Removable once the agent
+    # stops bind-mounting per-app directories into containers.
+
+provision:
+  - mode: system
+    script: |
+      #!/usr/bin/env bash
+      set -euxo pipefail
+      dnf install -y dnf-plugins-core
+      dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+      dnf install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+      systemctl enable --now docker
+  - mode: user
+    script: |
+      #!/usr/bin/env bash
+      set -euxo pipefail
+      sudo usermod -aG docker "$(whoami)"
+      # The SSH session Lima's hostagent holds open for docker-socket forwarding
+      # was established before this group change, so the socket is inaccessible
+      # until the session reconnects. manage.sh does a stop/start immediately
+      # after first-time creation to force that reconnect; the docker socket
+      # stays at its default 0660 (root:docker).
+
+hostResolver:
+  enabled: true
+  ipv6: false
+
+portForwards:
+  # Expose the in-VM Docker socket on the host so `docker context` can target it
+  # without SSH hops.
+  - guestSocket: "/var/run/docker.sock"
+    hostSocket: "{{.Dir}}/sock/docker.sock"
+  # Catch-all: forward any container port bound on the guest to the same host
+  # port. Preview/publish containers bind ephemeral ports chosen by
+  # local-control-plane; this keeps them reachable from the host agent.
+  - guestIPMustBeZero: true
+    guestIP: 0.0.0.0
+    guestPortRange: [1024, 65535]
+    hostIP: 127.0.0.1

@@ -46,6 +46,9 @@ packages/design-extractor/output/
 .env
 .env.*
 
+# Untracked direnv overrides (loaded by .envrc; written by `pnpm run sandbox:on`)
+.envrc.local
+
 
 # Development CA (per-project certificate authority)
 .dev-ca/

@@ -147,6 +147,7 @@ Use `pnpm run dev` — preflight checks generate `.env` files automatically. Don
 - Logging: `LOGGING-GUIDE.md`
 - Setup: `GETTING_STARTED.md`
 - Mock auth: `app/MOCK-AUTH-SETUP.md`
+- Sandbox-parity runtime (optional Lima VM for kernel parity): `scripts/container-runtime/README.md`
 - Documentation: browse `docs/` and read files relevant to your task
 
 ## i18n Validation
