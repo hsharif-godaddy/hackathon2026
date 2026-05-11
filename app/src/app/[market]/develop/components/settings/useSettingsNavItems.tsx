@@ -46,6 +46,10 @@ export function useSettingsNavItems(): SettingsNavItem[] {
   const secrets = useSwitchboard('appbuilder-settings-secrets');
   const social = useSwitchboard('appbuilder-settings-social');
   const marketing = useSwitchboard('appbuilder-settings-marketing');
+  const isTopLevelDomainEnabled = useSwitchboard('appbuilder-domain-top-level');
+  // Show on mobile (no header tab there), or on desktop when the tab flag is off or unresolved —
+  // fail open so users aren't locked out while Switchboard loads or if the flag is missing.
+  const showDomainSettingsItem = isMobile || !isTopLevelDomainEnabled;
 
   const handleFeedbackClick = () => {
     localStorage.removeItem(`airo-feedback-shown:${FEEDBACK_ID}`);
@@ -59,7 +63,7 @@ export function useSettingsNavItems(): SettingsNavItem[] {
       icon: <SettingsIcon />,
       disabled: project !== true,
     },
-    ...(isMobile ? [{
+    ...(showDomainSettingsItem ? [{
       id: SettingsSection.DOMAIN,
       label: t('builder_domain_title'),
       icon: <WorldIcon />,

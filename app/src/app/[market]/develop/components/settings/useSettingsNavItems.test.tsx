@@ -20,7 +20,7 @@ const mockSwitchboardResults: Record<string, boolean | undefined> = {};
 
 vi.mock('@/hooks/useSwitchboard', () => ({
   useSwitchboard: (feature: string) => {
-    if (mockSwitchboardResults[feature]) return mockSwitchboardResults[feature];
+    if (feature in mockSwitchboardResults) return mockSwitchboardResults[feature];
     if (feature === 'appbuilder-settings-project') return true;
     if (feature === 'appbuilder-settings-domain') return true;
     if (feature === 'appbuilder-settings-backups') return true;
@@ -58,8 +58,9 @@ describe('useSettingsNavItems', () => {
     expect(projectItem?.disabled).toBe(false);
   });
 
-  it('should not include domain item on desktop', () => {
+  it('should not include domain item on desktop when top-level domain tab is enabled', () => {
     mockDevelopStore.isMobile = false;
+    mockSwitchboardResults['appbuilder-domain-top-level'] = true;
 
     const { result } = renderHookWithProviders(() => useSettingsNavItems());
 
@@ -201,6 +202,66 @@ describe('useSettingsNavItems', () => {
 
     const projectItem = result.current.find(item => item.id === SettingsSection.PROJECT);
     expect(projectItem?.onClick).toBeUndefined();
+  });
+
+  describe('domain nav item vs appbuilder-domain-top-level', () => {
+    function hasDomainItem(items: ReturnType<typeof useSettingsNavItems>) {
+      return items.some((item) => item.id === SettingsSection.DOMAIN);
+    }
+
+    it('mobile + flag ON → domain item present', () => {
+      mockDevelopStore.isMobile = true;
+      mockSwitchboardResults['appbuilder-domain-top-level'] = true;
+
+      const { result } = renderHookWithProviders(() => useSettingsNavItems());
+
+      expect(hasDomainItem(result.current)).toBe(true);
+    });
+
+    it('mobile + flag OFF → domain item present', () => {
+      mockDevelopStore.isMobile = true;
+      mockSwitchboardResults['appbuilder-domain-top-level'] = false;
+
+      const { result } = renderHookWithProviders(() => useSettingsNavItems());
+
+      expect(hasDomainItem(result.current)).toBe(true);
+    });
+
+    it('mobile + flag undefined → domain item present', () => {
+      mockDevelopStore.isMobile = true;
+      mockSwitchboardResults['appbuilder-domain-top-level'] = undefined;
+
+      const { result } = renderHookWithProviders(() => useSettingsNavItems());
+
+      expect(hasDomainItem(result.current)).toBe(true);
+    });
+
+    it('desktop + flag ON → domain item NOT present', () => {
+      mockDevelopStore.isMobile = false;
+      mockSwitchboardResults['appbuilder-domain-top-level'] = true;
+
+      const { result } = renderHookWithProviders(() => useSettingsNavItems());
+
+      expect(hasDomainItem(result.current)).toBe(false);
+    });
+
+    it('desktop + flag OFF → domain item present', () => {
+      mockDevelopStore.isMobile = false;
+      mockSwitchboardResults['appbuilder-domain-top-level'] = false;
+
+      const { result } = renderHookWithProviders(() => useSettingsNavItems());
+
+      expect(hasDomainItem(result.current)).toBe(true);
+    });
+
+    it('desktop + flag undefined → domain item present', () => {
+      mockDevelopStore.isMobile = false;
+      mockSwitchboardResults['appbuilder-domain-top-level'] = undefined;
+
+      const { result } = renderHookWithProviders(() => useSettingsNavItems());
+
+      expect(hasDomainItem(result.current)).toBe(true);
+    });
   });
 
 });
