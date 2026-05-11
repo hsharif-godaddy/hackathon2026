@@ -2,14 +2,11 @@ import type { ConversationEventChannel, ConversationMessage, PersistenceStreamin
 import {
   StreamPartProcessor,
   executeAgentLoop,
-  captureResponseMetadata,
-  awaitResponseMetadata,
   buildChatSignalsTraceContext,
-  inferProviderFromModelName,
+  createAgentInvocation,
 } from '@airo/ai-transport'
 import type { ResponseMetadata } from '@airo/ai-transport'
 import { BudgetExceededError, containsBudgetExceededPattern } from '@airo/ai-common'
-import { createAgentContext, createAgentInvocationSpan } from '@godaddy/agent-otel-sdk'
 import { context as otelContext, trace } from '@opentelemetry/api'
 import type { AgentsMessagePersistence } from '../conversation-persistence.js'
 import type { EventStreamRegistry } from './EventStreamRegistry.js'
@@ -385,27 +382,15 @@ export class MessageExecutionService {
 
     // Create the Langfuse-facing agent-invocation span under the trace context
     // established in execute(). This mirrors the WS path (streamAgentResponse)
-    // so both transports produce identical invocation telemetry. The span is
-    // ended on every exit path (success, abort, error) so the trace closes
-    // cleanly even when the client stops mid-stream.
-    const modelName = (() => {
-      try {
-        return agent.getConfig().modelName || agentName
-      } catch {
-        return agentName
-      }
-    })()
-    const agentOtelContext = createAgentContext({
+    // so both transports produce identical invocation telemetry. The handle
+    // ends on every exit path (success, abort, error), idempotently.
+    const invocation = createAgentInvocation({
+      agent,
+      agentName,
+      prompt: message,
       conversationId,
-      agentId: `airo-app-builder-${agentName}`,
+      logger: { warn: (event, fields) => logger.warn(event, fields) },
     })
-    const invocation = otelContext.with(agentOtelContext, () =>
-      createAgentInvocationSpan({
-        prompt: message,
-        model: modelName,
-        provider: inferProviderFromModelName(modelName),
-      }),
-    )
 
     // Propagate OTel trace ID to GoCode via x-trace-id header for cross-service
     // log correlation (mirrors WS at experimental-websocket-server.ts:3761-3770).
@@ -425,13 +410,8 @@ export class MessageExecutionService {
       }),
     }
 
-    // Eagerly capture LLM provider response metadata (response id, model id,
-    // headers like x-correlation-id) for observability parity with WS. Rejection
-    // is suppressed at the ai-lib boundary, so this is fire-and-forget.
-    let capturedMetadata: ResponseMetadata = {}
-
     try {
-      const streamResult = await otelContext.with(invocation.context, async () =>
+      const streamResult: any = await invocation.runUnder(async () =>
         agent.streamGenerate(message, {
           ...(beforeHistory.length > 0 && { context: beforeHistory }),
           ...(messages.length > 0 && { messages }),
@@ -441,9 +421,7 @@ export class MessageExecutionService {
         }),
       )
 
-      captureResponseMetadata(streamResult.response, (meta) => {
-        capturedMetadata = meta
-      })
+      invocation.captureMetadata(streamResult.response)
 
       const baseStream = streamResult.baseStream
       if (baseStream) {
@@ -473,74 +451,54 @@ export class MessageExecutionService {
 
       let finishReason = 'complete'
       let finalResult: any
-      let finalResultFailed = false
+      let finalResultError: unknown
       try {
         finalResult = await streamResult.getFinalResult()
         finishReason = finalResult?.finishReason ?? 'complete'
       } catch (err) {
         // Preserve the legacy warn log + continue returning a result to the
-        // caller, but do NOT let this fall through to invocation.end({success:
-        // true}) below — without usage and with no final result, the span would
-        // misleadingly show a successful turn in Langfuse. Mark finishReason so
-        // the branch below ends the span as a failure. WS doesn't wrap
-        // getFinalResult at all (its outer catch handles it); SSE keeps the
-        // wrap for callers that inspect finishReason but surfaces the failure
-        // to telemetry.
+        // caller, but do NOT let this fall through to invocation.endSuccess()
+        // below — without usage and with no final result, the span would
+        // misleadingly show a successful turn in Langfuse. Capture the error
+        // and mark finishReason so the branch below ends the span as a
+        // failure via invocation.endError. WS doesn't wrap getFinalResult at
+        // all (its outer catch handles it); SSE keeps the wrap for callers
+        // that inspect finishReason but surfaces the failure to telemetry.
         logger.warn('sse.execution.getFinalResult.failed', { appId, conversationId, ...errorFields(err) })
-        finalResultFailed = true
+        finalResultError = err
         finishReason = 'result_fetch_failed'
       }
 
-      // Ensure metadata is available for terminal telemetry even if the eager
-      // capture hasn't resolved yet (500ms timeout). Falls back to {} on reject.
-      if (!capturedMetadata.headers && !capturedMetadata.responseId) {
-        capturedMetadata = await awaitResponseMetadata(streamResult.response)
-      }
+      const finalMetadata: ResponseMetadata = await invocation.awaitMetadata(streamResult.response)
 
       logger.info('sse.llm.response.metadata', {
         appId, conversationId,
-        responseId: capturedMetadata.responseId,
-        modelId: capturedMetadata.modelId,
-        correlationId: capturedMetadata.headers?.['x-correlation-id'],
+        responseId: finalMetadata.responseId,
+        modelId: finalMetadata.modelId,
+        correlationId: finalMetadata.headers?.['x-correlation-id'],
         finishReason,
       })
 
       const { accumulatedContent, currentStep } = processor.getState()
+      const responseType: 'llm_reply' | 'tool_call' = accumulatedContent ? 'llm_reply' : 'tool_call'
 
-      // End the Langfuse invocation span before returning. When the client
-      // aborted we still have a partial response to report; flag it so the
-      // trace doesn't misleadingly show success.
       if (abortSignal.aborted) {
-        invocation.end({
-          outputText: accumulatedContent,
-          responseType: accumulatedContent ? 'llm_reply' : 'tool_call',
-          success: false,
-          finishReason: 'aborted',
-        })
-      } else if (finalResultFailed) {
-        invocation.end({
-          outputText: accumulatedContent,
-          responseType: accumulatedContent ? 'llm_reply' : 'tool_call',
-          success: false,
-          finishReason,
-        })
+        invocation.endAborted({ outputText: accumulatedContent, responseType })
+      } else if (finalResultError !== undefined) {
+        invocation.endError(finalResultError, { finishReason })
       } else {
         const usageToTrack = finalResult?.totalUsage ?? finalResult?.usage
-        invocation.end({
+        invocation.endSuccess({
           outputText: accumulatedContent,
-          responseType: accumulatedContent ? 'llm_reply' : 'tool_call',
+          responseType,
           ...(usageToTrack && { usage: usageToTrack }),
           finishReason,
-          success: true,
         })
       }
 
-      return { accumulatedContent, currentStep, finalResult, finishReason, responseMetadata: capturedMetadata }
+      return { accumulatedContent, currentStep, finalResult, finishReason, responseMetadata: finalMetadata }
     } catch (err) {
-      invocation.end({
-        error: err instanceof Error ? err : String(err),
-        success: false,
-      })
+      invocation.endError(err)
       throw err
     }
   }

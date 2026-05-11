@@ -10,6 +10,10 @@ vi.mock('@airo/ai-lib', () => ({
   calculateCostEstimate: vi.fn(),
   formatCostEstimate: vi.fn(),
   getCacheHitRate: vi.fn(),
+  // inferProviderFromModelName (used by createAgentInvocation) now
+  // delegates to getModelProvider; mock it so the ai-lib boundary
+  // resolves without bringing in the real normalization module.
+  getModelProvider: vi.fn(() => 'anthropic'),
 }));
 
 const mockSocket: Record<string, any> = {

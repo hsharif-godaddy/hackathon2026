@@ -1,10 +1,20 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { context as otelContext } from '@opentelemetry/api'
+
+const spanEndCalls: unknown[] = []
 
 vi.mock('@godaddy/agent-otel-sdk', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('@godaddy/agent-otel-sdk')
   return {
     ...actual,
     emitError: vi.fn(),
+    createAgentContext: vi.fn(() => otelContext.active()),
+    createAgentInvocationSpan: vi.fn(() => ({
+      context: otelContext.active(),
+      end: vi.fn((input: unknown) => {
+        spanEndCalls.push(input)
+      }),
+    })),
   }
 })
 vi.mock('@godaddy/agent-observability-events', async () => {
@@ -15,9 +25,9 @@ vi.mock('@godaddy/agent-observability-events', async () => {
   }
 })
 
-import { emitError } from '@godaddy/agent-otel-sdk'
+import { emitError, createAgentInvocationSpan } from '@godaddy/agent-otel-sdk'
 import { createError } from '@godaddy/agent-observability-events'
-import { formatAgentId, emitTurnError } from '../agent-invocation.js'
+import { formatAgentId, emitTurnError, createAgentInvocation } from '../agent-invocation.js'
 
 describe('formatAgentId', () => {
   it('prepends the airo-app-builder prefix', () => {
@@ -133,5 +143,173 @@ describe('emitTurnError', () => {
     } finally {
       consoleErrorSpy.mockRestore()
     }
+  })
+})
+
+describe('createAgentInvocation', () => {
+  const logger = { warn: vi.fn() }
+
+  beforeEach(() => {
+    spanEndCalls.length = 0
+    logger.warn.mockReset()
+    vi.mocked(createAgentInvocationSpan).mockClear()
+  })
+
+  it('exposes a context and calls endSuccess exactly once with provided fields', () => {
+    const inv = createAgentInvocation({
+      agent: { getConfig: () => ({ modelName: 'claude-sonnet-4-6' }) },
+      agentName: 'develop',
+      prompt: 'hi',
+      conversationId: 'conv_1',
+      logger,
+    })
+    expect(inv.ended).toBe(false)
+    inv.endSuccess({ outputText: 'ok', responseType: 'llm_reply', finishReason: 'complete' })
+    expect(inv.ended).toBe(true)
+    expect(spanEndCalls).toHaveLength(1)
+    expect(spanEndCalls[0]).toMatchObject({
+      outputText: 'ok',
+      responseType: 'llm_reply',
+      finishReason: 'complete',
+      success: true,
+    })
+  })
+
+  it('endAborted records success:false with finishReason="aborted"', () => {
+    const inv = createAgentInvocation({
+      agent: { getConfig: () => ({ modelName: 'claude-sonnet-4-6' }) },
+      agentName: 'develop',
+      prompt: 'hi',
+      conversationId: 'conv_1',
+      logger,
+    })
+    inv.endAborted({ outputText: '', responseType: 'tool_call' })
+    expect(spanEndCalls[0]).toMatchObject({ success: false, finishReason: 'aborted' })
+  })
+
+  it('endError records success:false and preserves provided finishReason', () => {
+    const inv = createAgentInvocation({
+      agent: { getConfig: () => ({ modelName: 'claude-sonnet-4-6' }) },
+      agentName: 'develop',
+      prompt: 'hi',
+      conversationId: 'conv_1',
+      logger,
+    })
+    inv.endError(new Error('x'), { finishReason: 'budget_retry' })
+    expect(spanEndCalls[0]).toMatchObject({ success: false, finishReason: 'budget_retry' })
+  })
+
+  it('ignores repeated end() calls (idempotent)', () => {
+    const inv = createAgentInvocation({
+      agent: { getConfig: () => ({ modelName: 'claude-sonnet-4-6' }) },
+      agentName: 'develop',
+      prompt: 'hi',
+      conversationId: 'conv_1',
+      logger,
+    })
+    inv.endSuccess({ outputText: 'a', responseType: 'llm_reply' })
+    inv.endError(new Error('late'))
+    expect(spanEndCalls).toHaveLength(1)
+  })
+
+  it('inferProvider defaults to anthropic for claude model names', () => {
+    const inv = createAgentInvocation({
+      agent: { getConfig: () => ({ modelName: 'claude-sonnet-4-6' }) },
+      agentName: 'develop',
+      prompt: 'hi',
+      conversationId: 'conv_1',
+      logger,
+    })
+    inv.endSuccess({ outputText: '', responseType: 'tool_call' })
+    expect(vi.mocked(createAgentInvocationSpan)).toHaveBeenCalledWith(expect.objectContaining({
+      provider: 'anthropic',
+      model: 'claude-sonnet-4-6',
+    }))
+  })
+
+  // end*() are called from outer catch blocks in both transports. A throw
+  // from the OTEL SDK there would replace the original error or silently
+  // fail a happy path. These tests pin the safeEnd fallback: warn first,
+  // console.error if the logger itself throws, never bubble.
+  describe('safeEnd fallback (logger guard around invocation.end)', () => {
+    function mockThrowingSpan(): void {
+      vi.mocked(createAgentInvocationSpan).mockImplementationOnce(() => ({
+        context: otelContext.active(),
+        end: vi.fn(() => { throw new Error('otel sdk exploded') }),
+      }) as any)
+    }
+
+    it('endSuccess swallows span.end throws and warns with agentId + conversationId + telemetryError', () => {
+      mockThrowingSpan()
+      const inv = createAgentInvocation({
+        agent: { getConfig: () => ({ modelName: 'claude-sonnet-4-6' }) },
+        agentName: 'develop',
+        prompt: 'hi',
+        conversationId: 'conv_1',
+        logger,
+      })
+      expect(() => inv.endSuccess({ outputText: 'ok', responseType: 'llm_reply' })).not.toThrow()
+      expect(logger.warn).toHaveBeenCalledWith('agent.invocation.end_failed', {
+        conversationId: 'conv_1',
+        agentId: 'airo-app-builder-develop',
+        telemetryError: 'otel sdk exploded',
+      })
+      expect(inv.ended).toBe(true)
+    })
+
+    it('endError swallows span.end throws (preserves original error propagation to caller)', () => {
+      mockThrowingSpan()
+      const inv = createAgentInvocation({
+        agent: { getConfig: () => ({ modelName: 'claude-sonnet-4-6' }) },
+        agentName: 'develop',
+        prompt: 'hi',
+        conversationId: 'conv_1',
+        logger,
+      })
+      // The caller's pattern is: catch(err) { inv.endError(err); throw err }.
+      // If endError throws, the original error is replaced — critical to guard.
+      expect(() => inv.endError(new Error('original'))).not.toThrow()
+      expect(logger.warn).toHaveBeenCalledWith(
+        'agent.invocation.end_failed',
+        expect.objectContaining({ telemetryError: 'otel sdk exploded' }),
+      )
+    })
+
+    it('falls back to console.error when both span.end and logger.warn throw', () => {
+      mockThrowingSpan()
+      const throwingLogger = { warn: vi.fn(() => { throw new Error('logger broken') }) }
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      try {
+        const inv = createAgentInvocation({
+          agent: { getConfig: () => ({ modelName: 'claude-sonnet-4-6' }) },
+          agentName: 'develop',
+          prompt: 'hi',
+          conversationId: 'conv_1',
+          logger: throwingLogger,
+        })
+        expect(() => inv.endAborted({ outputText: '', responseType: 'tool_call' })).not.toThrow()
+        expect(consoleErrorSpy).toHaveBeenCalledWith('agent.invocation.end_failed', expect.objectContaining({
+          conversationId: 'conv_1',
+          agentId: 'airo-app-builder-develop',
+          telemetryError: 'otel sdk exploded',
+        }))
+      } finally {
+        consoleErrorSpy.mockRestore()
+      }
+    })
+
+    it('omits conversationId from the warn payload when none was supplied', () => {
+      mockThrowingSpan()
+      const inv = createAgentInvocation({
+        agent: { getConfig: () => ({ modelName: 'claude-sonnet-4-6' }) },
+        agentName: 'develop',
+        prompt: 'hi',
+        logger,
+      })
+      inv.endSuccess({ outputText: '', responseType: 'tool_call' })
+      const payload = (logger.warn as any).mock.calls[0][1]
+      expect(payload).not.toHaveProperty('conversationId')
+      expect(payload).toMatchObject({ agentId: 'airo-app-builder-develop' })
+    })
   })
 })

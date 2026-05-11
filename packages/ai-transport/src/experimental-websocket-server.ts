@@ -18,7 +18,7 @@ import type { ExecutionStep } from '@airo/ai-lib/budget'
 import { classifyError, BudgetExceededError, isBudgetExceededAPIError, containsBudgetExceededPattern, createLogger } from '@airo/ai-common'
 import { isBudgetServiceError, mapBudgetErrorToResponse } from '@airo/shared/budget'
 import { StreamPartProcessor } from './stream-part-processor.js'
-import { captureResponseMetadata, awaitResponseMetadata } from './response-metadata-capture.js'
+import { awaitResponseMetadata } from './response-metadata-capture.js'
 import { redactSkillOutput } from './redact-skill-output.js'
 import type { AgentsCollection } from '@airo/ai-lib'
 import type { HandoffStateManager } from '@airo/ai-lib'
@@ -42,14 +42,13 @@ import { ConnectionRecoveryManager } from './connection-recovery-manager.js'
 import { executeAgentLoop, AgentNotFoundError } from './agent-execution-loop.js'
 import { createError, createHandoff } from '@godaddy/agent-observability-events'
 import {
-  createAgentContext,
-  createAgentInvocationSpan,
   emitError,
   emitHandoff
 } from '@godaddy/agent-otel-sdk'
 import { context as otelContext, trace } from '@opentelemetry/api'
 import { buildChatSignalsTraceContext, type JwtAgentContextSubset } from './chat-signals-trace-context.js'
 import { inferProviderFromModelName, type ChatLlmProvider } from './infer-llm-provider.js'
+import { createAgentInvocation } from './agent-invocation.js'
 import {
   StreamTimingTracker,
   type StreamTimingData,
@@ -3729,32 +3728,21 @@ export class WebSocketServer {
 
     const llmStartTime = Date.now()
 
-    // Build OTel context with agent-specific data.
-    // Signals context is already set by createTraceContext in handleChatMessage.
-    const agentOtelContext = createAgentContext({
-      conversationId,
-      agentId: this.getAgentId(agentName),
+    // Create invocation handle: owns agent context, invocation span, response
+    // metadata capture, and span lifecycle. Idempotent end*() handles the
+    // WS budget-retry paths that used to race toward a second invocation.end.
+    const invocation = createAgentInvocation({
+      agent,
+      agentName,
+      prompt: originalPrompt,
+      ...(conversationId !== undefined && { conversationId }),
+      logger: { warn: (event, fields) => this.logger.warn(event, fields) },
     })
-
-    // Create invocation span within the agent context.
-    const invocation = otelContext.with(agentOtelContext, () =>
-      createAgentInvocationSpan({
-        prompt: originalPrompt,
-        model: modelName,
-        provider: providerName,
-      })
-    )
 
     // Get abort signal from state manager for stream cancellation.
     // Captured outside try so it's accessible in both try and catch blocks —
     // immune to cleanupConversation removing the state manager entry during async abort.
     const abortSignal = this.stateManager.getAbortController(socket.id)?.signal
-
-    // Captured eagerly after streamGenerate returns so response headers from GoCode
-    // are available in error handlers even when the stream body fails mid-flight.
-    let capturedResponseHeaders: Record<string, string> | undefined
-    let capturedResponseId: string | undefined
-    let capturedModelId: string | undefined
 
     // Propagate OTel trace ID to GoCode via x-trace-id header for cross-service log correlation.
     // Per-call uniqueness is provided separately via x-correlation-id in the fetch wrapper.
@@ -3786,11 +3774,7 @@ export class WebSocketServer {
         })
       })
 
-      captureResponseMetadata(streamResult.response, (meta) => {
-        capturedResponseHeaders = meta.headers
-        capturedResponseId = meta.responseId
-        capturedModelId = meta.modelId
-      })
+      invocation.captureMetadata(streamResult.response)
 
       // Check if this is a tool validation error with mock stream
       if (streamResult && (streamResult as any).isToolValidationError) {
@@ -3814,7 +3798,7 @@ export class WebSocketServer {
         })
 
         // End invocation span with error before throwing
-        invocation.end({ error, success: false })
+        invocation.endError(error)
         throw new BudgetExceededError(
           'Your AI usage budget has been reached.',
           error.statusCode ?? 400,
@@ -3928,7 +3912,7 @@ Please try again with corrected formatting.`
           // If retry also fails, fall back to error handling
           this.logger.error('stream.retry.failure', { message: retryError.message })
           // End invocation span with error before throwing
-          invocation.end({ error: retryError, success: false })
+          invocation.endError(retryError)
           throw retryError
         }
       } else {
@@ -3953,7 +3937,7 @@ Please try again with corrected formatting.`
         }
 
         // End invocation span with error before throwing
-        invocation.end({ error, success: false })
+        invocation.endError(error)
         // Re-throw to be handled by outer catch block or AI SDK retry mechanism
         throw error;
       }
@@ -4014,7 +3998,7 @@ Please try again with corrected formatting.`
         const toolResultsForSpan = conversationAfterStream?.pendingToolCalls
         const hasToolResultsForSpan = toolResultsForSpan && toolResultsForSpan.size > 0
 
-        invocation.end({
+        invocation.endAborted({
           outputText: fullContent,
           responseType: fullContent ? 'llm_reply' : 'tool_call',
           ...(hasToolResultsForSpan && {
@@ -4024,8 +4008,6 @@ Please try again with corrected formatting.`
               output: t.result,
             }))
           }),
-          success: false,
-          finishReason: 'aborted',
         })
 
         // Return any steps captured before abort for cost attribution
@@ -4185,11 +4167,8 @@ Please try again with corrected formatting.`
       const onLlmEnd = this.config.onLlmEnd
 
       // Ensure response headers are available before onLlmEnd (may not have resolved from .then())
-      if (streamResult && !capturedResponseHeaders) {
-        const meta = await this.extractResponseMetadata(streamResult)
-        capturedResponseHeaders ??= meta.headers
-        capturedResponseId ??= meta.responseId
-        capturedModelId ??= meta.modelId
+      if (streamResult && !invocation.metadata.headers) {
+        await invocation.awaitMetadata(streamResult.response)
       }
 
       // Call LLM end hook for observability
@@ -4247,7 +4226,7 @@ Please try again with corrected formatting.`
             llmEndParams.reasoningSummary = finalResult.reasoningSummary
           }
 
-          const correlationId = capturedResponseHeaders?.['x-correlation-id']
+          const correlationId = invocation.metadata.headers?.['x-correlation-id']
           if (correlationId) {
             llmEndParams.correlationId = correlationId
           }
@@ -4289,7 +4268,7 @@ Please try again with corrected formatting.`
       const toolResults = conversationAfterStream?.pendingToolCalls
       const hasToolResults = toolResults && toolResults.size > 0
 
-      invocation.end({
+      invocation.endSuccess({
         outputText: fullContent,
         responseType: fullContent ? 'llm_reply' : 'tool_call',
         ...(hasToolResults && {
@@ -4302,7 +4281,6 @@ Please try again with corrected formatting.`
         usage: usageToTrack,
         totalCost: costEstimateTotalCost,
         finishReason: finalResult.finishReason,
-        success: true,
       })
     } catch (postStreamError: unknown) {
       // Check abort signal directly — avoids false positives from analyzeStreamError's
@@ -4310,7 +4288,7 @@ Please try again with corrected formatting.`
       // Uses the signal captured at the top of the try block — immune to
       // cleanupConversation removing the state manager entry during async abort.
       if (abortSignal?.aborted) {
-        invocation.end({ error: postStreamError instanceof Error ? postStreamError : String(postStreamError), success: false })
+        invocation.endError(postStreamError)
         this.logger.info('stream.aborted', {
           socketId: socket.id,
           agentName,
@@ -4359,7 +4337,7 @@ Please try again with corrected formatting.`
             agentName,
             ...(timedOut ? { timeoutMs: MID_STREAM_CALLBACK_TIMEOUT_MS } : { error: callbackErr instanceof Error ? callbackErr.message : String(callbackErr) }),
           })
-          invocation.end({ error: postStreamError, success: false })
+          invocation.endError(postStreamError)
           throw postStreamError
         }
         if (result.retry && result.newUserId) {
@@ -4377,7 +4355,7 @@ Please try again with corrected formatting.`
               agentName,
               hasContext: !!context,
             })
-            invocation.end({ error: postStreamError, success: false })
+            invocation.endError(postStreamError)
             throw postStreamError
           }
           metadata.user = result.newUserId
@@ -4396,7 +4374,7 @@ Please try again with corrected formatting.`
               conv.pendingSegments = []
             }
 
-            invocation.end({ error: postStreamError, success: false, finishReason: 'budget_retry' })
+            invocation.endError(postStreamError, { finishReason: 'budget_retry' })
 
             try {
               return await this.streamAgentResponse(socket, agent, data, context, agentName, startTime, shouldComplete, midStreamRetryCount + 1, originalPrompt)
@@ -4423,7 +4401,7 @@ Please try again with corrected formatting.`
               conv.pendingSegments = []
             }
 
-            invocation.end({ error: postStreamError, success: false, finishReason: 'budget_continuation' })
+            invocation.endError(postStreamError, { finishReason: 'budget_continuation' })
 
             const continuationData: ChatMessage = { ...data, message: continuationContext }
             try {
@@ -4455,7 +4433,7 @@ Please try again with corrected formatting.`
         })
       }
 
-      invocation.end({ error: postStreamError instanceof Error ? postStreamError : String(postStreamError), success: false })
+      invocation.endError(postStreamError)
 
       const postErrorInfo = this.analyzeStreamError(postStreamError)
       this.logger.error('stream.post_stream.error', {
@@ -4472,9 +4450,9 @@ Please try again with corrected formatting.`
         responseBody: postErrorInfo.responseBody,
         isNetworkError: postErrorInfo.isNetworkError,
         step: currentStep,
-        responseHeaders: capturedResponseHeaders,
-        responseId: capturedResponseId,
-        responseModelId: capturedModelId,
+        responseHeaders: invocation.metadata.headers,
+        responseId: invocation.metadata.responseId,
+        responseModelId: invocation.metadata.modelId,
       })
 
       throw postStreamError
