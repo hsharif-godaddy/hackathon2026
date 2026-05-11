@@ -6,6 +6,7 @@ on:
     paths:
       - "stripe-service/**"
       - ".github/workflows/aws-deploy-stripe-service.yml"
+      - "packages/go-auth/**"
 
   # Manual deployment with environment choice
   workflow_dispatch:
@@ -51,14 +52,28 @@ jobs:
         with:
           path: /stripe-service
 
+      # JFrog OIDC token is required to pull private gdcorp-golang modules
+      # (transitive deps of packages/go-auth) during the docker build.
+      - name: Get Artifactory Token
+        id: jfrog
+        uses: jfrog/setup-jfrog-cli@1641575d87647fb969c0545f0b6a76873e328b7c # v5.0.0
+        env:
+          JF_URL: ${{ vars.JF_URL }}
+        with:
+          oidc-provider-name: github
+
       # Sets up authentication with the Golden Container Registry.
       - name: Golden Container Registry Login
         run: |
           aws ecr get-login-password --region us-west-2 | docker login 764525110978.dkr.ecr.us-west-2.amazonaws.com -u AWS --password-stdin
 
       - name: Build Container
+        env:
+          JFROG_TOKEN: ${{ steps.jfrog.outputs.oidc-token }}
         run: |
+          echo "::add-mask::$JFROG_TOKEN"
           DOCKER_BUILDKIT=1 docker build --platform linux/amd64 \
+            --secret id=jfrog_token,env=JFROG_TOKEN \
             -f stripe-service/Dockerfile \
             --build-arg GIT_SHA=${{ github.sha }} \
             -t ${{ steps.katana-app.outputs.app }}:${{ github.sha }} \

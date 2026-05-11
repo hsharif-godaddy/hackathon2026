@@ -6,10 +6,12 @@ on:
       - main
     paths:
       - "stripe-service/**"
+      - "packages/go-auth/**"
       - ".github/workflows/quality-checks-stripe-service.yml"
   pull_request:
     paths:
       - "stripe-service/**"
+      - "packages/go-auth/**"
       - ".github/workflows/quality-checks-stripe-service.yml"
 
 permissions:
@@ -26,6 +28,22 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+
+      - name: Get Artifactory Token
+        id: jfrog
+        uses: jfrog/setup-jfrog-cli@1641575d87647fb969c0545f0b6a76873e328b7c # v5.0.0
+        env:
+          JF_URL: ${{ vars.JF_URL }}
+        with:
+          oidc-provider-name: github
+
+      - name: Configure Go environment for JFrog
+        env:
+          OIDC_TOKEN: ${{ steps.jfrog.outputs.oidc-token }}
+        run: |
+          echo "::add-mask::$OIDC_TOKEN"
+          echo "GOPROXY=https://:${OIDC_TOKEN}@gdartifactory1.jfrog.io/artifactory/api/go/go-virt|direct" >> $GITHUB_ENV
+          echo "GONOSUMDB=github.com/gdcorp-golang/*" >> $GITHUB_ENV
 
       - name: Set up Go
         uses: actions/setup-go@v6
@@ -59,6 +77,22 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+
+      - name: Get Artifactory Token
+        id: jfrog
+        uses: jfrog/setup-jfrog-cli@1641575d87647fb969c0545f0b6a76873e328b7c # v5.0.0
+        env:
+          JF_URL: ${{ vars.JF_URL }}
+        with:
+          oidc-provider-name: github
+
+      - name: Configure Go environment for JFrog
+        env:
+          OIDC_TOKEN: ${{ steps.jfrog.outputs.oidc-token }}
+        run: |
+          echo "::add-mask::$OIDC_TOKEN"
+          echo "GOPROXY=https://:${OIDC_TOKEN}@gdartifactory1.jfrog.io/artifactory/api/go/go-virt|direct" >> $GITHUB_ENV
+          echo "GONOSUMDB=github.com/gdcorp-golang/*" >> $GITHUB_ENV
 
       - name: Set up Go
         uses: actions/setup-go@v6

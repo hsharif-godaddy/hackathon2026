@@ -8,7 +8,7 @@ import (
 )
 
 func TestGetHealthReturnsOK(t *testing.T) {
-	srv := &Server{Environment: "test", Version: "0.0.0"}
+	srv := newTestRouterServer("test", "0.0.0", "none")
 	h := NewRouter(srv)
 
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
@@ -37,7 +37,7 @@ func TestGetHealthReturnsOK(t *testing.T) {
 }
 
 func TestGetHealthHEADReturnsOKNoBody(t *testing.T) {
-	srv := &Server{Environment: "test", Version: "0.0.0"}
+	srv := newTestRouterServer("test", "0.0.0", "none")
 	h := NewRouter(srv)
 
 	req := httptest.NewRequest(http.MethodHead, "/health", nil)
@@ -53,7 +53,7 @@ func TestGetHealthHEADReturnsOKNoBody(t *testing.T) {
 }
 
 func TestUnknownRouteReturns404JSON(t *testing.T) {
-	srv := &Server{Environment: "test", Version: "0.0.0"}
+	srv := newTestRouterServer("test", "0.0.0", "none")
 	h := NewRouter(srv)
 
 	req := httptest.NewRequest(http.MethodGet, "/nope", nil)
@@ -73,7 +73,7 @@ func TestUnknownRouteReturns404JSON(t *testing.T) {
 }
 
 func TestWrongMethodReturns405JSON(t *testing.T) {
-	srv := &Server{Environment: "test", Version: "0.0.0"}
+	srv := newTestRouterServer("test", "0.0.0", "none")
 	h := NewRouter(srv)
 
 	req := httptest.NewRequest(http.MethodPost, "/health", nil)

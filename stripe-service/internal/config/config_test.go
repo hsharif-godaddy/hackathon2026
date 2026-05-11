@@ -11,9 +11,14 @@ func clearEnv(t *testing.T) {
 		"STRIPE_SERVICE_ADDR", "ENVIRONMENT", "LOG_LEVEL", "LOG_FORMAT",
 		"HTTP_READ_TIMEOUT", "HTTP_WRITE_TIMEOUT", "HTTP_IDLE_TIMEOUT", "SHUTDOWN_TIMEOUT",
 		"SERVER_CERT_PATH", "SERVER_KEY_PATH",
+		"AUTH_TYPE", "SSO_HOST",
 	} {
 		t.Setenv(k, "")
 	}
+	// Default to AUTH_TYPE=none for tests that don't care about auth, so
+	// Load() doesn't fail the SSO_HOST-required check. Tests exercising auth
+	// config explicitly override these.
+	t.Setenv("AUTH_TYPE", "none")
 }
 
 func TestLoadDefaults(t *testing.T) {
@@ -153,6 +158,73 @@ func TestLoadAcceptsBothTLSPaths(t *testing.T) {
 	}
 	if cfg.TLSCertPath != "/tmp/cert.pem" || cfg.TLSKeyPath != "/tmp/key.pem" {
 		t.Errorf("TLS paths: cert=%q key=%q", cfg.TLSCertPath, cfg.TLSKeyPath)
+	}
+}
+
+func TestLoadAuthTypeEmptyFallsToJwtRequiresSSOHost(t *testing.T) {
+	clearEnv(t)
+	// Override default-AuthType-none and leave SSO_HOST empty — should fail
+	// since AUTH_TYPE defaults to jwt and SSO_HOST has no default.
+	t.Setenv("AUTH_TYPE", "")
+	_, err := Load()
+	if err == nil {
+		t.Fatal("want error when AUTH_TYPE defaults to jwt and SSO_HOST is unset")
+	}
+	if !strings.Contains(err.Error(), "SSO_HOST") {
+		t.Errorf("error should mention SSO_HOST; got %q", err)
+	}
+}
+
+func TestLoadAuthTypeJwtWithSSOHost(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("AUTH_TYPE", "jwt")
+	t.Setenv("SSO_HOST", "sso.dev-godaddy.com")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.AuthType != "jwt" {
+		t.Errorf("AuthType: want jwt, got %q", cfg.AuthType)
+	}
+	if cfg.SSOHost != "sso.dev-godaddy.com" {
+		t.Errorf("SSOHost: want sso.dev-godaddy.com, got %q", cfg.SSOHost)
+	}
+}
+
+func TestLoadAuthTypeNoneSkipsSSOHost(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("AUTH_TYPE", "none")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.AuthType != "none" {
+		t.Errorf("AuthType: want none, got %q", cfg.AuthType)
+	}
+}
+
+func TestLoadRejectsInvalidAuthType(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("AUTH_TYPE", "basic")
+	_, err := Load()
+	if err == nil {
+		t.Fatal("want error for AUTH_TYPE=basic")
+	}
+	if !strings.Contains(err.Error(), "AUTH_TYPE") {
+		t.Errorf("error should mention AUTH_TYPE; got %q", err)
+	}
+}
+
+func TestLoadRejectsJwtWithoutSSOHost(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("AUTH_TYPE", "jwt")
+	t.Setenv("SSO_HOST", "")
+	_, err := Load()
+	if err == nil {
+		t.Fatal("want error for AUTH_TYPE=jwt without SSO_HOST")
+	}
+	if !strings.Contains(err.Error(), "SSO_HOST") {
+		t.Errorf("error should mention SSO_HOST; got %q", err)
 	}
 }
 

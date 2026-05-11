@@ -6,7 +6,7 @@ build:
 	cd $(_SVC_DIR) && go build -o bin/stripe-service ./cmd/server
 
 dev:
-	cd $(_SVC_DIR) && LOG_LEVEL=debug LOG_FORMAT=text go run ./cmd/server
+	cd $(_SVC_DIR) && LOG_LEVEL=debug LOG_FORMAT=text AUTH_TYPE=none go run ./cmd/server
 
 test:
 	cd $(_SVC_DIR) && go test -race ./...

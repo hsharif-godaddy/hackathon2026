@@ -1,12 +1,14 @@
 module github.com/gdcorp-partners/airo-app-builder/stripe-service
 
-go 1.25
+go 1.25.5
 
 require (
 	github.com/aws/aws-sdk-go-v2/config v1.32.17
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.57.3
 	github.com/aws/aws-sdk-go-v2/service/kms v1.51.1
 	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.41.7
+	github.com/gdcorp-golang/auth v1.0.0
+	github.com/gdcorp-partners/airo-app-builder/packages/go-auth v0.0.0
 	github.com/gorilla/mux v1.8.1
 )
 
@@ -26,3 +28,5 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sts v1.42.1 // indirect
 	github.com/aws/smithy-go v1.25.1 // indirect
 )
+
+replace github.com/gdcorp-partners/airo-app-builder/packages/go-auth => ../packages/go-auth

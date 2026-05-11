@@ -1,5 +1,6 @@
 // Command server is the stripe-service HTTP entrypoint. Wires AWS SDK
-// clients and api.Server, applies graceful shutdown on SIGINT/SIGTERM.
+// clients, gd-auth S2S middleware, and api.Server, applies graceful shutdown
+// on SIGINT/SIGTERM.
 // Real agent-facing handlers and Stripe client wiring land in follow-up PRs.
 package main
 
@@ -12,6 +13,9 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/gdcorp-golang/auth/gdsso"
+
+	goauth "github.com/gdcorp-partners/airo-app-builder/packages/go-auth"
 	"github.com/gdcorp-partners/airo-app-builder/stripe-service/internal/api"
 	"github.com/gdcorp-partners/airo-app-builder/stripe-service/internal/awsclients"
 	"github.com/gdcorp-partners/airo-app-builder/stripe-service/internal/config"
@@ -36,11 +40,28 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Preflight the SSO client so a misconfigured SSO_HOST surfaces as a
+	// loud startup failure rather than going through packages/go-auth's
+	// silent reject-all fallback — where /health would still return 200
+	// but every /v1/* request responds 401 "auth misconfigured". SSO
+	// client creation is the realistic failure mode; gdhttp.NewHandler
+	// errors (the other fallback paths) would indicate a go-auth bug
+	// that affects all callers equally and belong in a shared-package
+	// fix.
+	if cfg.AuthType == "jwt" {
+		if _, err := gdsso.NewClient(gdsso.WithHost(cfg.SSOHost)); err != nil {
+			slog.Error("stripe_service.sso.preflight", "error", err, "ssoHost", cfg.SSOHost)
+			os.Exit(1)
+		}
+	}
+	authMW := goauth.NewMiddleware(cfg.AuthType, cfg.SSOHost)
+
 	srv := &api.Server{
 		Environment:   string(cfg.Environment),
 		Version:       version,
 		Prober:        clients,
 		ResourceNames: cfg.ResourceNames(),
+		Auth:          authMW,
 	}
 	handler := api.NewRouter(srv)
 
@@ -57,6 +78,7 @@ func main() {
 		"environment", cfg.Environment,
 		"version", version,
 		"tls", cfg.TLSCertPath != "" && cfg.TLSKeyPath != "",
+		"authType", cfg.AuthType,
 	)
 
 	quit := make(chan os.Signal, 1)

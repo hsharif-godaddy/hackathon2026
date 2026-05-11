@@ -6,6 +6,7 @@ import (
 
 	"github.com/gorilla/mux"
 
+	goauth "github.com/gdcorp-partners/airo-app-builder/packages/go-auth"
 	"github.com/gdcorp-partners/airo-app-builder/stripe-service/internal/awsclients"
 	"github.com/gdcorp-partners/airo-app-builder/stripe-service/internal/config"
 )
@@ -17,10 +18,11 @@ type Server struct {
 	Version       string
 	Prober        awsclients.Prober
 	ResourceNames config.ResourceNames
+	Auth          *goauth.Middleware
 }
 
 // NewRouter returns the top-level http.Handler. /health and /v1/_probe are
-// open; /api/v1 routes will be added behind auth middleware in a follow-up PR.
+// open; /v1/* agent-facing routes require an AWS IAM SSO token.
 func NewRouter(s *Server) http.Handler {
 	r := mux.NewRouter()
 	r.NotFoundHandler = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -31,5 +33,8 @@ func NewRouter(s *Server) http.Handler {
 	})
 	r.HandleFunc("/health", s.getHealth).Methods(http.MethodGet, http.MethodHead)
 	r.HandleFunc("/v1/_probe", s.getProbe).Methods(http.MethodGet)
+
+	awsiam := s.Auth.AuthenticateWithKind("awsiam")
+	r.Handle("/v1/sandboxes", awsiam(http.HandlerFunc(s.postSandboxes))).Methods(http.MethodPost)
 	return r
 }

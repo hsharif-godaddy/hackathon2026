@@ -32,6 +32,8 @@ type Config struct {
 	ShutdownTimeout  time.Duration
 	TLSCertPath      string
 	TLSKeyPath       string
+	AuthType         string // "jwt" (default) or "none" (local dev bypass)
+	SSOHost          string // GoDaddy SSO hostname; required when AuthType=jwt
 }
 
 // ResourceNames holds the fully-qualified AWS resource names for this env,
@@ -100,7 +102,24 @@ func Load() (Config, error) {
 	if (cfg.TLSCertPath != "") != (cfg.TLSKeyPath != "") {
 		return Config{}, fmt.Errorf("SERVER_CERT_PATH and SERVER_KEY_PATH must both be set or both empty")
 	}
+	if cfg.AuthType, err = parseAuthType(getEnv("AUTH_TYPE", "jwt")); err != nil {
+		return Config{}, err
+	}
+	cfg.SSOHost = strings.TrimSpace(os.Getenv("SSO_HOST"))
+	if cfg.AuthType == "jwt" && cfg.SSOHost == "" {
+		return Config{}, fmt.Errorf("SSO_HOST must be set when AUTH_TYPE=jwt")
+	}
 	return cfg, nil
+}
+
+func parseAuthType(s string) (string, error) {
+	normalized := strings.ToLower(strings.TrimSpace(s))
+	switch normalized {
+	case "jwt", "none":
+		return normalized, nil
+	default:
+		return "", fmt.Errorf("AUTH_TYPE must be one of jwt|none; got %q", s)
+	}
 }
 
 // Enum parsers trim surrounding whitespace (and lowercase where the value is

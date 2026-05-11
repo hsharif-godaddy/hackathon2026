@@ -11,16 +11,26 @@ Go module: `github.com/gdcorp-partners/airo-app-builder/stripe-service`.
 
 Implemented: `/health` (public liveness) and `/v1/_probe` (public diagnostic —
 exercises read-only IAM grants against the CDK-provisioned resources). AWS SDK
-v2 clients for DynamoDB / Secrets Manager / KMS are wired. No Stripe SDK, no
-auth middleware, no real handler bodies yet.
+v2 clients for DynamoDB / Secrets Manager / KMS are wired. `POST /v1/sandboxes`
+is a stub that returns 501 but is wrapped in `gd-auth` S2S authentication (AWS
+IAM SSO tokens) to prove the middleware chain works end-to-end. No Stripe SDK
+and no real handler bodies yet.
 
 Next PRs:
 
-1. Auth middleware (mirroring `knowledge-service` / `budget-service`: `gd-auth`).
-2. Stripe webhook endpoint + signature verification.
-3. Agent-facing REST endpoints (`POST /v1/sandboxes`, `GET /v1/status`, `GET /v1/sandbox/:id/mcp-key`).
+1. Stripe webhook endpoint + signature verification.
+2. Real `POST /v1/sandboxes` body (Stripe `v2.core.claimableSandboxes.create` + DynamoDB write).
+3. `GET /v1/status`, `GET /v1/sandbox/:id/mcp-key`.
 4. KMS decrypt + Managed API Keys flow.
 5. mhp-airo callout (awsiam JWT) for alloc env rotation.
+
+## Protected routes
+
+- **Public:** `/health` (liveness, no auth).
+- **Agent-facing (S2S):** `/v1/*` requires an AWS IAM SSO token in `Authorization: Bearer <token>`.
+  Agents mint tokens via `getS2SToken()` from `@airo/ai-lib`; `stripe-service` validates via
+  `packages/go-auth` using `AuthenticateWithKind("awsiam")`. Missing or invalid tokens → 401;
+  valid tokens of the wrong kind → 403.
 
 ## Local dev
 
@@ -67,3 +77,5 @@ so local probes exercise real dev resources without a separate local stack.
 | `HTTP_WRITE_TIMEOUT`  | `60s`   | Go-duration format.                                                                                              |
 | `HTTP_IDLE_TIMEOUT`   | `120s`  | Go-duration format.                                                                                              |
 | `SHUTDOWN_TIMEOUT`    | `15s`   | Max time to drain in-flight requests on SIGTERM.                                                                 |
+| `AUTH_TYPE`           | `jwt`   | `jwt` enforces AWS IAM SSO tokens on `/v1/*`; `none` bypasses auth (local dev only).                             |
+| `SSO_HOST`            | _unset_ | GoDaddy SSO hostname; required when `AUTH_TYPE=jwt`. `sso.dev-godaddy.com` (dev) / `sso.godaddy.com` (prod).     |
