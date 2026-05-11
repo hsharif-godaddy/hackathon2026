@@ -1,6 +1,6 @@
 # budget-service — see README.md, docs/budget-service-spec.md, docs/local-e2e.md
 
-.PHONY: build dev test clean up down logs e2e-up e2e-down e2e-local dev-budget-ui verify-iam-auth \
+.PHONY: build dev test clean up down logs otel e2e-up e2e-down e2e-local dev-budget-ui verify-iam-auth \
        load-test load-test-contention load-test-throughput load-test-lifecycle load-test-monitor \
        bench-baseline bench-candidate bench-diff
 
@@ -67,6 +67,9 @@ down:
 
 logs:
 	$(_COMPOSE) logs -f postgres
+
+otel:
+	$(_COMPOSE) up otel-collector
 
 # ── Load tests (k6) ─────────────────────────────────────────────────
 # Prerequisites: brew install k6; make up && make dev

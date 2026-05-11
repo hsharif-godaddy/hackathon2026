@@ -17,11 +17,13 @@ flowchart TB
   db[(PostgreSQL)]
   sso[SSO_JWKS]
   wh[WebhookEndpoints]
+  otel[OTel_Collector]
 
   clients -->|TLS| edge
   edge -->|"JWT on /api/v1"| api
   api --> db
   api -->|token_validation| sso
+  api -->|"OTLP (metrics + traces)"| otel
   worker --> db
   worker -->|HTTPS_webhook_delivery| wh
 ```

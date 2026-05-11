@@ -16,14 +16,18 @@ import (
 	"syscall"
 	"time"
 
+	gotel "github.com/gdcorp-engineering/observability-go-otel"
+	otelconfig "github.com/gdcorp-engineering/observability-go-otel/config"
 	"github.com/gdcorp-partners/airo-app-builder/budget-service/internal/api"
 	"github.com/gdcorp-partners/airo-app-builder/budget-service/internal/auth"
 	"github.com/gdcorp-partners/airo-app-builder/budget-service/internal/config"
 	schemamigrate "github.com/gdcorp-partners/airo-app-builder/budget-service/internal/migrate"
+	"github.com/gdcorp-partners/airo-app-builder/budget-service/internal/observability"
 	"github.com/gdcorp-partners/airo-app-builder/budget-service/internal/store"
 	"github.com/gdcorp-partners/airo-app-builder/budget-service/internal/worker"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
+	"go.opentelemetry.io/contrib/instrumentation/runtime"
 )
 
 func main() {
@@ -39,6 +43,33 @@ func main() {
 	setupLogger(cfg.LogLevel)
 	if dotenvErr != nil {
 		slog.Debug("budget_service.dotenv", "message", "no .env file or read error", "error", dotenvErr)
+	}
+
+	// Initialize OTel (tracer + metrics)
+	otelCfg, otelCfgErr := otelconfig.NewOtelConfig(cfg.OTelServiceName, cfg.OTelServiceVersion, cfg.OTelEnvironment, cfg.OTelCloudPlatform)
+	if otelCfgErr != nil {
+		slog.Warn("otel.config.failed", "error", otelCfgErr)
+	}
+	var otelClient *gotel.OtelClient
+	if otelCfg != nil {
+		oc, otelInitErr := gotel.NewOtelClient(context.Background(), otelCfg)
+		if otelInitErr != nil {
+			slog.Warn("otel.client.init.failed", "error", otelInitErr)
+		} else {
+			otelClient = oc
+		}
+	}
+	if otelClient != nil {
+		defer func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := otelClient.Shutdown(ctx); err != nil {
+				slog.Warn("otel.shutdown.failed", "error", err)
+			}
+		}()
+		if err := runtime.Start(); err != nil {
+			slog.Warn("otel.runtime.metrics.failed", "error", err)
+		}
 	}
 
 	var sqlDB *sql.DB
@@ -89,6 +120,12 @@ func main() {
 		slog.Info("database.disabled", "message", "DATABASE_URL not set; /health reports database unconfigured")
 	}
 
+	if sqlDB != nil && otelClient != nil {
+		if err := observability.RegisterDBMetrics(sqlDB); err != nil {
+			slog.Warn("database.metrics.register.failed", "error", err)
+		}
+	}
+
 	authType := "jwt"
 	if cfg.LocalAuthDisable {
 		authType = "none"
@@ -123,6 +160,10 @@ func main() {
 		srv.TokenGenerator = tokenGen
 	}
 	handler := api.NewRouter(srv, authMW)
+	if otelClient != nil {
+		handler = otelClient.Metrics.MetricsMiddleware(handler)
+		handler = otelClient.Tracer.TracingMiddleware(handler)
+	}
 
 	// Start background worker for periodic resets and expirations
 	var workerCancel context.CancelFunc

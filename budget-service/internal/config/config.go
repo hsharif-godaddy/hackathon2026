@@ -58,6 +58,12 @@ type Config struct {
 	// When JWT auth is enabled (!LocalAuthDisable), must be non-empty or Load fails.
 	// When LOCAL_AUTH_DISABLE=true, unset/empty is allowed (local open API).
 	AuthAllowedCerts []string
+
+	// OTel metadata passed to the gotel library for resource attributes.
+	OTelServiceName    string
+	OTelServiceVersion string
+	OTelEnvironment    string
+	OTelCloudPlatform  string
 }
 
 // Load reads env and checks LOCAL_AUTH_DISABLE / SSO_HOST / TLS pair consistency.
@@ -84,6 +90,11 @@ func Load() (Config, error) {
 		OutboxMaxAttempts:    getEnvInt("OUTBOX_MAX_ATTEMPTS", 7),
 		OutboxDrainBatchSize: getEnvInt("OUTBOX_DRAIN_BATCH_SIZE", 100),
 		OutboxRetentionDays:  getEnvInt("OUTBOX_RETENTION_DAYS", 7),
+
+		OTelServiceName:    getEnv("KATANA_APP", "budget-service"),
+		OTelServiceVersion: getEnv("KATANA_ARTIFACT_VERSION", "0.0.0"),
+		OTelEnvironment:    getEnv("GD_ENV", "local"),
+		OTelCloudPlatform:  getEnv("OTEL_CLOUD_PLATFORM", "aws_ecs"),
 	}
 	var err error
 	if cfg.AuthAllowedRoles, err = parseJSONStringSlice("AUTH_ALLOWED_ROLES"); err != nil {

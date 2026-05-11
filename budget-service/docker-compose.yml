@@ -17,6 +17,15 @@ services:
       interval: 2s
       timeout: 5s
       retries: 10
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.151.0
+    configs:
+      - source: otel-collector-config
+        target: /etc/otelcol-contrib/config.yaml
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+
   # Local E2E only (docker compose --profile e2e up -d). Budget service on host POSTs webhooks to host:9999.
   webhook-sink:
     profiles: [e2e]
@@ -25,3 +34,25 @@ services:
       dockerfile: Dockerfile
     ports:
       - "9999:9090"
+
+configs:
+  otel-collector-config:
+    content: |
+      receivers:
+        otlp:
+          protocols:
+            http:
+              endpoint: 0.0.0.0:4318
+            grpc:
+              endpoint: 0.0.0.0:4317
+      exporters:
+        debug:
+          verbosity: detailed
+      service:
+        pipelines:
+          metrics:
+            receivers: [otlp]
+            exporters: [debug]
+          traces:
+            receivers: [otlp]
+            exporters: [debug]

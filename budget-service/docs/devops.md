@@ -27,6 +27,12 @@ Refer to the [Katana docs](https://tdl.gdcorp.tools/docs/products/compute/manage
 
 These dashboards surface structured JSON logs emitted by the service (see **Observability** in the main [README](../README.md)).
 
+## OpenTelemetry (Metrics & Traces)
+
+The service exports metrics and traces via OTLP to a sidecar OTel Collector (configured by Katana). Resource attributes (`service.name`, `service.version`, `deployment.environment`, `cloud.platform`) are derived from Katana-injected env vars (`KATANA_APP`, `KATANA_ARTIFACT_VERSION`, `GD_ENV`, `OTEL_CLOUD_PLATFORM`).
+
+Exported signals include HTTP request metrics/traces (all routes), Go runtime metrics, and database connection pool gauges. See [Observability in the README](../README.md#opentelemetry-metrics--traces) for the full list.
+
 ## Health Checks
 
 The service exposes `GET /health` (no auth). Katana uses this endpoint for liveness and readiness probes. The response includes database connectivity status.
