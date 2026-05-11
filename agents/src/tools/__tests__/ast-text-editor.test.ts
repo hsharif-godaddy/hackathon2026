@@ -812,4 +812,40 @@ describe('ASTTextEditor — Hello World test app', () => {
       expect(styledCount).toBe(1);
     });
   });
+
+  describe('data-dev-id matching', () => {
+    it('should match by data-dev-id even when line number is far off', async () => {
+      const devIdFixturePath = join(testAppPath, 'src', 'pages', 'dev-id-test.tsx');
+      await writeFile(devIdFixturePath, `import React from 'react';
+
+export default function DevIdPage() {
+  return (
+    <div>
+      <h1 data-dev-id="aaa111">Welcome</h1>
+      <p data-dev-id="bbb222">Original text here</p>
+      <p data-dev-id="ccc333">Other paragraph</p>
+    </div>
+  );
+}`);
+
+      const editor = new ASTTextEditor();
+      const result = await editor.editElementText(testAppPath, {
+        selector: 'p',
+        oldText: 'Original text here',
+        newText: 'Updated text here',
+        devContext: {
+          fileName: 'src/pages/dev-id-test.tsx',
+          componentName: 'DevIdPage',
+          lineNumber: 999, // Intentionally wrong
+          devId: 'bbb222',
+        },
+      });
+
+      expect(result.success).toBe(true);
+
+      const updated = await readFile(devIdFixturePath, 'utf-8');
+      expect(updated).toContain('Updated text here');
+      expect(updated).not.toContain('Original text here');
+    });
+  });
 });

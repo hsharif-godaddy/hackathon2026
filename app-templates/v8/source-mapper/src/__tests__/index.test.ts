@@ -409,3 +409,70 @@ describe('auto-wrap content expressions in mixed-child parents', () => {
     expect(output).toMatch(/<span[^>]*>literal text<\/span>/);
   });
 });
+
+describe('jsxSourceMapper — data-dev-id', () => {
+  it('injects data-dev-id on every element', () => {
+    const output = transform('<section><div><h1>Hello</h1></div></section>');
+    const matches = output.match(/data-dev-id="[0-9a-f]{6}"/g);
+    expect(matches).toHaveLength(3);
+  });
+
+  it('produces stable IDs across whitespace/reformat changes', () => {
+    const compact = transform('<section><div><h1>Hello</h1></div></section>');
+    const formatted = transform(`
+      <section>
+        <div>
+          <h1>Hello</h1>
+        </div>
+      </section>
+    `);
+    const extractIds = (code: string) =>
+      (code.match(/data-dev-id="([0-9a-f]{6})"/g) || []).map(m => m.match(/"(.+)"/)![1]);
+    expect(extractIds(compact)).toEqual(extractIds(formatted));
+  });
+
+  it('produces different IDs for elements at different structural positions', () => {
+    const output = transform('<div><p>First</p><p>Second</p></div>');
+    const ids = (output.match(/data-dev-id="([0-9a-f]{6})"/g) || []).map(m => m.match(/"(.+)"/)![1]);
+    // div, p#0, p#1 — all different
+    expect(new Set(ids).size).toBe(3);
+  });
+
+  it('produces different IDs when structure changes (new wrapper)', () => {
+    const before = transform('<section><h1>Title</h1></section>');
+    const after = transform('<section><div><h1>Title</h1></div></section>');
+    const extractH1Id = (code: string) => {
+      const match = code.match(/data-dev-id="([0-9a-f]{6})"[^>]*>\s*Title/);
+      return match?.[1];
+    };
+    expect(extractH1Id(before)).not.toBe(extractH1Id(after));
+  });
+
+  it('does not inject data-dev-id in excluded paths', () => {
+    const output = transform('<p>Hello</p>', '/app/src/components/ui/button.tsx');
+    expect(output).not.toContain('data-dev-id');
+  });
+
+  it('includes component names in structural path', () => {
+    const withComp = transform('<Layout><Hero><h1>Hi</h1></Hero></Layout>');
+    const withDiv = transform('<Layout><div><h1>Hi</h1></div></Layout>');
+    const extractH1Id = (code: string) => {
+      const match = code.match(/data-dev-id="([0-9a-f]{6})"[^>]*>\s*Hi/);
+      return match?.[1];
+    };
+    // Different ancestor (Hero vs div) → different ID
+    expect(extractH1Id(withComp)).not.toBe(extractH1Id(withDiv));
+  });
+
+  it('handles member-expression tags (motion.h1)', () => {
+    const output = transform('<motion.div><motion.h1>Title</motion.h1></motion.div>');
+    expect(output).toContain('data-dev-id=');
+    const ids = (output.match(/data-dev-id="([0-9a-f]{6})"/g) || []).map(m => m.match(/"(.+)"/)![1]);
+    expect(new Set(ids).size).toBe(2);
+  });
+
+  it('does not duplicate data-dev-id when data-dev-file already present', () => {
+    const output = transform('<p data-dev-file="/test" data-dev-line={1}>text</p>');
+    expect(output.match(/data-dev-id/g)).toBeNull();
+  });
+});

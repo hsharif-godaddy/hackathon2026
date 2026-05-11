@@ -225,6 +225,7 @@ export default function ElementHoverBar({
         tagName: el.tagName.toLowerCase(),
         className: getElementClassName(el),
         id: el.id,
+        dataId: devContext?.devId || '', // Maps to DOM data-dev-id; named dataId for ElementInfo API compat
         textContent: isImg ? "" : (el.textContent || "").substring(0, 500),
         computedStyles: {},
         rect: { top: elRect.top, left: elRect.left, width: elRect.width, height: elRect.height },

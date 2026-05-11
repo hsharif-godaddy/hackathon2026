@@ -82,6 +82,14 @@ export class ASTStyleEditor extends ASTEditorBase {
    * Check if a JSX element matches the target element info
    */
   protected isTargetElement(element: t.JSXElement, elementInfo: ElementInfo): boolean {
+    // Highest confidence: match on stable structural ID
+    if (elementInfo.dataId) {
+      const devId = this.getDevId(element);
+      if (devId && devId === elementInfo.dataId) {
+        return true;
+      }
+    }
+
     // Check tag name (using base class helper)
     const tagName = this.getTagName(element);
     if (!tagName || tagName.toLowerCase() !== elementInfo.tagName.toLowerCase()) {

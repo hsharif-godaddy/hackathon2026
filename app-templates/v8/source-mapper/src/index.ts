@@ -5,11 +5,17 @@ interface PluginOptions {
   excludePaths?: string[];
 }
 
+interface AncestorFrame {
+  tagName: string;
+  sameTagChildCount: Map<string, number>;
+}
+
 type PluginState = PluginPass & {
   opts?: PluginOptions;
   contentBindings: Set<string>;
   mapStack: IterationFrame[];
   mapFrames: WeakMap<CallExpression, IterationFrame>;
+  ancestorStack: AncestorFrame[];
 };
 
 interface IterationFrame {
@@ -19,6 +25,15 @@ interface IterationFrame {
 
 const CONTENT_MODULE = 'virtual:content';
 
+export function hashStructuralKey(key: string): string {
+  let hash = 5381;
+  for (let i = 0; i < key.length; i++) {
+    hash = ((hash << 5) + hash) + key.charCodeAt(i);
+    hash |= 0; // Force 32-bit integer for overflow semantics
+  }
+  return (hash >>> 0).toString(16).slice(-6).padStart(6, '0');
+}
+
 export default function jsxSourceMapper(babel: { types: typeof types }): PluginObj<PluginState> {
   const t = babel.types;
 
@@ -26,6 +41,33 @@ export default function jsxSourceMapper(babel: { types: typeof types }): PluginO
     return attrs.some(
       (attr) => t.isJSXAttribute(attr) && t.isJSXIdentifier(attr.name) && attr.name.name === name,
     );
+  }
+
+  function getJsxTagName(opening: JSXElement['openingElement']): string {
+    if (t.isJSXIdentifier(opening.name)) return opening.name.name;
+    if (t.isJSXMemberExpression(opening.name)) {
+      const parts: string[] = [];
+      let cur: types.JSXMemberExpression | types.JSXIdentifier = opening.name;
+      while (t.isJSXMemberExpression(cur)) {
+        parts.unshift(cur.property.name);
+        cur = cur.object;
+      }
+      if (t.isJSXIdentifier(cur)) parts.unshift(cur.name);
+      return parts.join('.');
+    }
+    if (t.isJSXNamespacedName(opening.name)) {
+      return `${opening.name.namespace.name}:${opening.name.name.name}`;
+    }
+    return 'unknown';
+  }
+
+  function normalizeFileName(raw: string): string {
+    const normalized = raw.replace(/\\/g, '/');
+    const srcIdx = normalized.indexOf('/src/');
+    if (srcIdx !== -1) return normalized.slice(srcIdx + 1);
+    const appIdx = normalized.indexOf('/app/');
+    if (appIdx !== -1) return normalized.slice(appIdx + 1);
+    return normalized;
   }
 
   // A "native-tag parent" is a lowercase JSX identifier (html element like
@@ -126,6 +168,7 @@ export default function jsxSourceMapper(babel: { types: typeof types }): PluginO
           state.contentBindings = new Set();
           state.mapStack = [];
           state.mapFrames = new WeakMap();
+          state.ancestorStack = [];
         },
       },
 
@@ -155,130 +198,143 @@ export default function jsxSourceMapper(babel: { types: typeof types }): PluginO
         },
       },
 
-      JSXElement(path: NodePath<JSXElement>, state: PluginState) {
-        // Skip in production
-        if (process.env.NODE_ENV === 'production') {
-          return;
-        }
+      JSXElement: {
+        enter(path: NodePath<JSXElement>, state: PluginState) {
+          // Skip in production
+          if (process.env.NODE_ENV === 'production') {
+            return;
+          }
 
-        const openingElement = path.node.openingElement;
+          const openingElement = path.node.openingElement;
+          const tagName = getJsxTagName(openingElement);
 
-        // Process all JSXElements — including member-expression names like
-        // `motion.h1` or `Foo.Bar`. Fragments (`<>...</>`) are a separate AST
-        // node type (JSXFragment) and don't reach this visitor at all.
+          // Track this element in the ancestor stack for structural ID computation
+          const parentFrame = state.ancestorStack[state.ancestorStack.length - 1];
+          let siblingIndex = 0;
+          if (parentFrame) {
+            siblingIndex = parentFrame.sameTagChildCount.get(tagName) || 0;
+            parentFrame.sameTagChildCount.set(tagName, siblingIndex + 1);
+          }
 
-        // Get source information
-        const fileName = state.filename || state.file.opts.filename || 'unknown';
+          // Push frame for this element's children
+          state.ancestorStack.push({ tagName, sameTagChildCount: new Map() });
 
-        // Default excluded paths (component libraries)
-        const defaultExcludePaths = [
-          'components/ui/',
-          '/components/ui/',
-          'src/components/ui/',
-          '/src/components/ui/'
-        ];
+          // Get source information
+          const fileName = state.filename || state.file.opts.filename || 'unknown';
 
-        const excludePaths = state.opts?.excludePaths || defaultExcludePaths;
+          // Default excluded paths (component libraries)
+          const defaultExcludePaths = [
+            'components/ui/',
+            '/components/ui/',
+            'src/components/ui/',
+            '/src/components/ui/'
+          ];
 
-        // Skip if file is in excluded paths (component libraries)
-        if (excludePaths.some(excludePath => fileName.includes(excludePath))) {
-          return;
-        }
+          const excludePaths = state.opts?.excludePaths || defaultExcludePaths;
 
-        // Pre-pass: when the element has mixed children AND one or more of
-        // them is a content-rooted expression (e.g., `<span>{home.a} · {home.b}</span>`),
-        // wrap each content expression in a single-child <span data-dev-content-key="...">.
-        // This lets the existing single-expression-child attribution path handle
-        // attribution on the wrapper — values that would otherwise fall into
-        // the data-dev-dynamic bucket become individually editable.
-        //
-        // Gated to native HTML tags and member-expression tags (motion.h1 etc.).
-        // React component parents are skipped to avoid changing their children
-        // prop contract.
-        if (isNativeTagParent(openingElement)) {
-          const meaningfulCount = path.node.children.filter(isMeaningfulChild).length;
-          if (meaningfulCount >= 2) {
-            for (let i = 0; i < path.node.children.length; i++) {
-              const child = path.node.children[i];
-              if (!child || !t.isJSXExpressionContainer(child)) continue;
-              if (t.isJSXEmptyExpression(child.expression)) continue;
-              const childKey = resolveContentKey(child.expression as Expression, state);
-              if (!childKey) continue;
-              const wrapAttr = childKey.includes('[]')
-                ? 'data-dev-content-key-template'
-                : 'data-dev-content-key';
-              const opening = t.jsxOpeningElement(
-                t.jsxIdentifier('span'),
-                [t.jsxAttribute(t.jsxIdentifier(wrapAttr), t.stringLiteral(childKey))],
-                false,
-              );
-              opening.loc = child.loc;
-              const wrapper = t.jsxElement(
-                opening,
-                t.jsxClosingElement(t.jsxIdentifier('span')),
-                [child],
-                false,
-              );
-              wrapper.loc = child.loc;
-              path.node.children[i] = wrapper;
+          // Skip if file is in excluded paths (component libraries)
+          if (excludePaths.some(excludePath => fileName.includes(excludePath))) {
+            return;
+          }
+
+          // Pre-pass: when the element has mixed children AND one or more of
+          // them is a content-rooted expression (e.g., `<span>{home.a} · {home.b}</span>`),
+          // wrap each content expression in a single-child <span data-dev-content-key="...">.
+          if (isNativeTagParent(openingElement)) {
+            const meaningfulCount = path.node.children.filter(isMeaningfulChild).length;
+            if (meaningfulCount >= 2) {
+              for (let i = 0; i < path.node.children.length; i++) {
+                const child = path.node.children[i];
+                if (!child || !t.isJSXExpressionContainer(child)) continue;
+                if (t.isJSXEmptyExpression(child.expression)) continue;
+                const childKey = resolveContentKey(child.expression as Expression, state);
+                if (!childKey) continue;
+                const wrapAttr = childKey.includes('[]')
+                  ? 'data-dev-content-key-template'
+                  : 'data-dev-content-key';
+                const opening = t.jsxOpeningElement(
+                  t.jsxIdentifier('span'),
+                  [t.jsxAttribute(t.jsxIdentifier(wrapAttr), t.stringLiteral(childKey))],
+                  false,
+                );
+                opening.loc = child.loc;
+                const wrapper = t.jsxElement(
+                  opening,
+                  t.jsxClosingElement(t.jsxIdentifier('span')),
+                  [child],
+                  false,
+                );
+                wrapper.loc = child.loc;
+                path.node.children[i] = wrapper;
+              }
             }
           }
-        }
 
-        // First, try to attribute the element to a content key. When it matches,
-        // skip the generic data-dev-dynamic marker — the content-key attribute
-        // is the canonical signal for the edit path.
-        const expression = pickSoleExpressionChild(path.node);
-        const contentKey = expression ? resolveContentKey(expression, state) : null;
+          // Content key attribution
+          const expression = pickSoleExpressionChild(path.node);
+          const contentKey = expression ? resolveContentKey(expression, state) : null;
 
-        if (contentKey) {
-          const attrName = contentKey.includes('[]')
-            ? 'data-dev-content-key-template'
-            : 'data-dev-content-key';
-          if (!hasAttr(openingElement.attributes, attrName)) {
-            openingElement.attributes.push(
-              t.jsxAttribute(t.jsxIdentifier(attrName), t.stringLiteral(contentKey)),
+          if (contentKey) {
+            const attrName = contentKey.includes('[]')
+              ? 'data-dev-content-key-template'
+              : 'data-dev-content-key';
+            if (!hasAttr(openingElement.attributes, attrName)) {
+              openingElement.attributes.push(
+                t.jsxAttribute(t.jsxIdentifier(attrName), t.stringLiteral(contentKey)),
+              );
+            }
+          } else {
+            const hasDynamic = path.node.children.some(child =>
+              t.isJSXExpressionContainer(child) &&
+              !t.isJSXEmptyExpression(child.expression) &&
+              !t.isStringLiteral(child.expression) &&
+              !(t.isTemplateLiteral(child.expression) && child.expression.expressions.length === 0)
             );
+
+            if (hasDynamic && !hasAttr(openingElement.attributes, 'data-dev-dynamic')) {
+              openingElement.attributes.push(
+                t.jsxAttribute(
+                  t.jsxIdentifier('data-dev-dynamic'),
+                  t.stringLiteral('true')
+                )
+              );
+            }
           }
-        } else {
-          // Mark elements whose children include dynamic expressions
-          const hasDynamic = path.node.children.some(child =>
-            t.isJSXExpressionContainer(child) &&
-            !t.isJSXEmptyExpression(child.expression) &&
-            !t.isStringLiteral(child.expression) &&
-            !(t.isTemplateLiteral(child.expression) && child.expression.expressions.length === 0)
+
+          // Skip if already attributed
+          if (hasAttr(openingElement.attributes, 'data-dev-file')) {
+            return;
+          }
+
+          const lineNumber = openingElement.loc ? openingElement.loc.start.line : 0;
+
+          // Compute structural ID from ancestor chain
+          const ancestorChain = state.ancestorStack.slice(0, -1).map(f => f.tagName).join('>');
+          const structuralKey = `${normalizeFileName(fileName)}:${ancestorChain}${ancestorChain ? '>' : ''}${tagName}#${siblingIndex}`;
+          const devId = hashStructuralKey(structuralKey);
+
+          // Add source attributes
+          openingElement.attributes.push(
+            t.jsxAttribute(
+              t.jsxIdentifier('data-dev-file'),
+              t.stringLiteral(fileName)
+            ),
+            t.jsxAttribute(
+              t.jsxIdentifier('data-dev-line'),
+              t.jsxExpressionContainer(t.numericLiteral(lineNumber))
+            ),
+            t.jsxAttribute(
+              t.jsxIdentifier('data-dev-id'),
+              t.stringLiteral(devId)
+            )
           );
+        },
 
-          if (hasDynamic && !hasAttr(openingElement.attributes, 'data-dev-dynamic')) {
-            openingElement.attributes.push(
-              t.jsxAttribute(
-                t.jsxIdentifier('data-dev-dynamic'),
-                t.stringLiteral('true')
-              )
-            );
-          }
-        }
-
-        // Only check data-dev-file; data-dev-line is always pushed alongside it
-        if (hasAttr(openingElement.attributes, 'data-dev-file')) {
-          return;
-        }
-
-        const lineNumber = openingElement.loc ? openingElement.loc.start.line : 0;
-
-        // Add source attributes
-        openingElement.attributes.push(
-          t.jsxAttribute(
-            t.jsxIdentifier('data-dev-file'),
-            t.stringLiteral(fileName)
-          ),
-          t.jsxAttribute(
-            t.jsxIdentifier('data-dev-line'),
-            t.jsxExpressionContainer(t.numericLiteral(lineNumber))
-          )
-        );
-
-      }
+        exit(_path: NodePath<JSXElement>, state: PluginState) {
+          if (process.env.NODE_ENV === 'production') return;
+          state.ancestorStack.pop();
+        },
+      },
     }
   };
 }

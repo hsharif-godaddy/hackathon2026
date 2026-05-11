@@ -18,6 +18,7 @@ export interface BaseEditContext {
   fileName: string;
   componentName: string;
   lineNumber: number;
+  devId?: string;
 }
 
 export interface BaseEditResult {
@@ -172,6 +173,24 @@ export abstract class ASTEditorBase {
   protected isOnTargetLine(element: t.JSXElement, targetLine: number, tolerance = 2): boolean {
     const elementLine = element.loc?.start.line;
     return elementLine ? Math.abs(elementLine - targetLine) <= tolerance : false;
+  }
+
+  /**
+   * Extract data-dev-id attribute value from a JSX element
+   */
+  protected getDevId(element: t.JSXElement): string | null {
+    const attr = element.openingElement.attributes.find(
+      (a) => this.t.isJSXAttribute(a) &&
+        this.t.isJSXIdentifier(a.name) &&
+        a.name.name === 'data-dev-id'
+    ) as t.JSXAttribute | undefined;
+    if (!attr) return null;
+    if (this.t.isStringLiteral(attr.value)) return attr.value.value;
+    if (this.t.isJSXExpressionContainer(attr.value) &&
+        this.t.isStringLiteral(attr.value.expression)) {
+      return attr.value.expression.value;
+    }
+    return null;
   }
 
   /**

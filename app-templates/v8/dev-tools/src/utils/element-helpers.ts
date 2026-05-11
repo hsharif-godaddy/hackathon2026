@@ -2,6 +2,7 @@ export interface DevContext {
   fileName: string;
   componentName: string;
   lineNumber: number;
+  devId?: string;
 }
 
 /**
@@ -59,6 +60,7 @@ export function extractDevContext(element: HTMLElement): DevContext | undefined 
           .replace(/.*\/app\//, "app/"),
         componentName: current.getAttribute("data-dev-component") || "unknown",
         lineNumber: parseInt(line, 10),
+        devId: current.getAttribute("data-dev-id") || undefined,
       };
     }
     current = current.parentElement;

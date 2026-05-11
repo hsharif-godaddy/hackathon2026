@@ -64,7 +64,7 @@ export class ASTTextEditor extends ASTEditorBase {
    * @param targetInfo - Target criteria including line number and expected text
    * @returns True if element matches target criteria
    */
-  protected isTargetElement(element: t.JSXElement, targetInfo: { lineNumber: number; textContent: string }): boolean {
+  protected isTargetElement(element: t.JSXElement, targetInfo: { lineNumber: number; textContent: string; devId?: string }): boolean {
     const elementLine = element.loc?.start.line;
     if (!elementLine) {
       return false;
@@ -328,20 +328,31 @@ export class ASTTextEditor extends ASTEditorBase {
         continue;
       }
 
-      // Skip candidates too far from target line unless they have a text-based match.
-      // Use a wider tolerance (30 lines) because devContext.lineNumber may point to
-      // a parent element while the actual target is a nested child further away.
+      // Skip candidates too far from target line unless they have a text-based match
+      // or a devId match. DevId matching is immune to line drift by design.
+      const hasDevIdMatch = request.devContext.devId
+        ? this.getDevId(candidate.element) === request.devContext.devId
+        : false;
       const hasTextOverlap = normalizedCandidateText === normalizedOldText ||
         normalizedCandidateText.includes(normalizedOldText) ||
         normalizedOldText.includes(normalizedCandidateText);
-      if (lineDiff > 30 && !hasTextOverlap) {
+      if (lineDiff > 30 && !hasTextOverlap && !hasDevIdMatch) {
         continue;
       }
 
       let score = 0;
       let matchType = 'no-match';
 
-      // Text matching (highest priority)
+      // Structural ID matching (highest priority — immune to line shifts)
+      if (request.devContext.devId) {
+        const candidateDevId = this.getDevId(candidate.element);
+        if (candidateDevId && candidateDevId === request.devContext.devId) {
+          score += 50000;
+          matchType = 'dev-id';
+        }
+      }
+
+      // Text matching (highest priority after dev-id)
       if (normalizedCandidateText === normalizedOldText) {
         score += 10000; // Exact text match dominates
         matchType = 'exact-text';

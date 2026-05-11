@@ -425,4 +425,55 @@ export default function DynamicPage() {
       expect(result.error).toMatch(/Cannot edit dynamic className|Element not found/);
     });
   });
+
+  describe('data-dev-id matching', () => {
+    it('should match by data-dev-id even when line number is wrong', async () => {
+      const componentWithDevId = `import React from 'react';
+
+export default function Page() {
+  return (
+    <div>
+      <h1 data-dev-id="abc123" className="text-3xl font-bold">Title</h1>
+      <p data-dev-id="def456" className="text-base text-blue-600 mt-4">
+        Paragraph text here.
+      </p>
+    </div>
+  );
+}`;
+
+      await writeFile(testFilePath, componentWithDevId);
+
+      const request = {
+        selector: 'p.text-blue-600',
+        property: 'color',
+        value: '#FF0000',
+        newClassName: 'text-base mt-4',
+        newStyle: 'color: #FF0000',
+        elementInfo: {
+          tagName: 'p',
+          className: 'text-base text-blue-600 mt-4',
+          id: '',
+          textContent: 'Paragraph text here.',
+          selector: 'p.text-blue-600',
+          dataId: 'def456',
+          devContext: {
+            fileName: '/src/frontend/pages/index.page.tsx',
+            componentName: 'Page',
+            lineNumber: 999, // Intentionally wrong — should still match via data-dev-id
+          },
+          rect: { top: 100, left: 50, width: 200, height: 20 },
+          computedStyles: {}
+        }
+      };
+
+      const result = await astEditor.editElementStyle(testAppPath, request);
+
+      expect(result.success).toBe(true);
+      expect(result.changes.property).toBe('color');
+
+      const updatedFile = await readFile(testFilePath, 'utf-8');
+      expect(updatedFile).toContain('text-base mt-4');
+      expect(updatedFile).not.toContain('text-blue-600');
+    });
+  });
 });
