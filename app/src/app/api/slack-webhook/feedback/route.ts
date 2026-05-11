@@ -18,9 +18,103 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isEmployeeAuthType } from '@airo/shared/auth';
 
+import { getControlPlaneAdapter } from '@/lib/control-plane';
 import { type CustomerAuthContext, withCustomerAuth } from '@/lib/customer-auth';
 import { logger } from '@/lib/request-context';
+import { injectShareTokenIntoPreviewUrl } from '@/lib/share/inject-preview-token';
 import { sendSlackBlockMessage, sendSlackMessage, type SlackBlockMessage } from '@/lib/slack-webhook';
+
+/**
+ * Mutate the "Preview" link in a SlackBlockMessage to include
+ * `?airoShareToken=<token>` so support staff (who have no builder session)
+ * can open the preview from the Slack notification.
+ *
+ * Bypasses the shopper-scoped `appbuilder-share-links` Switchboard flag —
+ * the Slack audience is internal support, so flag state on the customer's
+ * side is the wrong gate. Always inject when we have what we need.
+ *
+ * agent_url is looked up SERVER-SIDE via the control-plane adapter using the
+ * authenticated session's JWT — never trusted from the client request body.
+ * Trusting a client-supplied agentUrl would be an SSRF vector: the BFF
+ * issues an authenticated S2S fetch to it, so a malicious caller could
+ * point it at EC2 metadata (169.254.169.254) or any internal host.
+ *
+ * Fails open at every level: missing inputs, missing Preview link, adapter
+ * miss, helper throws, etc. — the original blockMessage is returned untouched
+ * so Slack delivery never depends on this best-effort enhancement.
+ */
+async function injectShareTokenIntoPreviewLink(
+  blockMessage: SlackBlockMessage,
+  appId: string | undefined,
+  jwt: string,
+): Promise<void> {
+  if (!appId) {
+    logger.debug('feedback.slack.preview_link.skipped', {
+      appId: null,
+      reason: 'missing-appId',
+    });
+    return;
+  }
+
+  const links = blockMessage.links;
+  if (!links || links.length === 0) {
+    return;
+  }
+
+  // Find by label, not by URL pattern — the URL may already carry the token
+  // (the BFF's /api/sites injection runs first for flag-on shoppers) or not.
+  // The label is the stable identifier for "this is the customer-preview link."
+  const previewLink = links.find((l) => l.text === 'Preview');
+  if (!previewLink) {
+    return;
+  }
+
+  // Look up agent_url via the authenticated control-plane adapter call. This
+  // is the trusted source — adapter.getSite enforces ownership against the
+  // shopper's JWT, so callers can only resolve agent_url for sites they
+  // legitimately access.
+  let agentUrl: string | undefined;
+  try {
+    const adapter = getControlPlaneAdapter();
+    const site = await adapter.getSite(appId, jwt);
+    agentUrl = site?.agent_url;
+  } catch (err) {
+    logger.warn('feedback.slack.preview_link.site_lookup_failed', {
+      appId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return;
+  }
+
+  if (!agentUrl) {
+    // Pre-bootstrap / archive-restoring / 404 — non-fatal, just no injection.
+    logger.debug('feedback.slack.preview_link.skipped', {
+      appId,
+      reason: 'missing-agentUrl',
+    });
+    return;
+  }
+
+  try {
+    const augmentedUrl = await injectShareTokenIntoPreviewUrl(appId, agentUrl, previewLink.url);
+    // The helper returns the bare URL on any internal failure — overwriting
+    // with the same value is a no-op. Only log "injected" if the URL was
+    // actually mutated to include the token.
+    if (augmentedUrl !== previewLink.url) {
+      previewLink.url = augmentedUrl;
+      logger.info('feedback.slack.preview_link.injected', { appId });
+    } else {
+      logger.warn('feedback.slack.preview_link.no_token', { appId });
+    }
+  } catch (err) {
+    // Helper has its own try/catch and shouldn't throw, but belt-and-suspenders
+    // — a thrown error here must NOT block Slack delivery.
+    logger.warn('feedback.slack.preview_link.inject_failed', {
+      appId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
 
 // Force dynamic rendering
 export const dynamic = 'force-dynamic';
@@ -35,10 +129,15 @@ interface FeedbackPayload {
 
 /**
  * Feedback request payload (Block Kit format)
+ *
+ * `agent_url` is intentionally NOT in this shape — the route handler resolves
+ * it server-side via the control-plane adapter (gated by the customer's JWT)
+ * to avoid SSRF. The client only needs to identify which app the feedback
+ * is for.
  */
 interface FeedbackBlockPayload {
   blockMessage: SlackBlockMessage;
-  appId?: string; // Optional appId for agent JWT token generation
+  appId?: string; // Used to look up agent_url server-side for share-token injection.
 }
 
 /**
@@ -120,6 +219,21 @@ export const POST = withCustomerAuth(async (
           { status: 400 }
         );
       }
+    }
+
+    // Mint a share-token and rewrite the "Preview" link in blockMessage.links
+    // BEFORE the dev-echo / send-to-Slack branches below — both consume the
+    // (potentially mutated) blockMessage. Mutation is in-place; the helper
+    // fails open so Slack delivery is never blocked by this enhancement.
+    // agent_url is resolved server-side (NOT from the request body) to keep
+    // outbound S2S fetches pinned to control-plane-trusted hosts.
+    if (isBlockFormat) {
+      const blockPayload = payload as FeedbackBlockPayload;
+      await injectShareTokenIntoPreviewLink(
+        blockPayload.blockMessage,
+        blockPayload.appId,
+        authContext.jwt,
+      );
     }
 
     // Get webhook URL from server-side environment variable (NOT exposed to client)

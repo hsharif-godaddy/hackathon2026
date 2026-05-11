@@ -30,6 +30,8 @@ const mockAuthContext = {
 const mockSendSlackMessage = vi.fn();
 const mockSendSlackBlockMessage = vi.fn();
 const mockIsEmployeeAuthType = vi.fn();
+const mockInjectShareTokenIntoPreviewUrl = vi.fn();
+const mockGetSite = vi.fn();
 
 vi.mock('@airo/shared/auth', () => ({
   isEmployeeAuthType: mockIsEmployeeAuthType
@@ -49,6 +51,14 @@ vi.mock('@/lib/slack-webhook', () => ({
   sendSlackMessage: mockSendSlackMessage,
   sendSlackBlockMessage: mockSendSlackBlockMessage,
   formatSlackBlockMessage: (data: any) => data, // Pass-through for testing
+}));
+
+vi.mock('@/lib/share/inject-preview-token', () => ({
+  injectShareTokenIntoPreviewUrl: mockInjectShareTokenIntoPreviewUrl,
+}));
+
+vi.mock('@/lib/control-plane', () => ({
+  getControlPlaneAdapter: vi.fn(() => ({ getSite: mockGetSite })),
 }));
 
 /**
@@ -477,6 +487,352 @@ describe('/api/slack-webhook/feedback', function feedbackWebhookTests() {
         const logData = JSON.stringify(call);
         expect(logData).not.toContain('hooks.slack.com');
       });
+    });
+  });
+
+  describe('POST - Preview Link Share-Token Injection', function previewTokenInjectionTests() {
+    // Shape returned by the link iterator for typed `.find` callbacks — the
+    // route's contract is `{ url, text }` per @/lib/slack-webhook's SlackLink.
+    // Declared locally to avoid pulling a real type import into the test file
+    // (the rest of the module is mocked via vi.mock).
+    type LinkShape = { url: string; text: string };
+
+    // Block-format payload with a Preview link in blockMessage.links — mirrors
+    // what slackBuilders.buildDiagnosticLinks() produces for feedback submissions.
+    // `agentUrl` is intentionally NOT in this shape: the route handler resolves
+    // agent_url server-side via the control-plane adapter (mocked via
+    // mockGetSite) so a client-supplied URL can never reach the outbound fetch.
+    function makeBlockPayload(overrides: {
+      appId?: string;
+      previewUrl?: string;
+      extraLinks?: LinkShape[];
+    } = {}): Record<string, unknown> {
+      const { appId, previewUrl, extraLinks = [] } = overrides;
+      return {
+        blockMessage: {
+          title: ':speech_balloon: Product Feedback',
+          links: [
+            { url: previewUrl ?? 'https://app-123.preview.c24.airoapp.ai', text: 'Preview' },
+            ...extraLinks,
+          ],
+        },
+        ...(appId !== undefined ? { appId } : {}),
+      };
+    }
+
+    it('rewrites the Preview link with the share-token when appId resolves to an agent_url', async function rewriteOnHappyPath() {
+      const { POST } = await import('./route');
+      mockSendSlackBlockMessage.mockResolvedValueOnce({ success: true });
+      mockGetSite.mockResolvedValueOnce({
+        id: 'app-123',
+        agent_url: 'https://agents.airoapp.ai',
+        preview_url: 'https://app-123.preview.c24.airoapp.ai',
+      });
+      mockInjectShareTokenIntoPreviewUrl.mockResolvedValueOnce(
+        'https://app-123.preview.c24.airoapp.ai/?airoShareToken=tok-xyz'
+      );
+
+      const request = createMockRequest(makeBlockPayload({ appId: 'app-123' }));
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      // adapter.getSite was called with the authenticated JWT — never a
+      // client-controlled value. This is the SSRF guard.
+      expect(mockGetSite).toHaveBeenCalledWith('app-123', mockAuthContext.jwt);
+      expect(mockInjectShareTokenIntoPreviewUrl).toHaveBeenCalledWith(
+        'app-123',
+        'https://agents.airoapp.ai',
+        'https://app-123.preview.c24.airoapp.ai',
+      );
+      // Slack receives the mutated blockMessage with the token-bearing URL.
+      const [, sentBlockMessage] = mockSendSlackBlockMessage.mock.calls[0];
+      const previewLink = sentBlockMessage.links.find((l: LinkShape) => l.text === 'Preview');
+      expect(previewLink.url).toBe('https://app-123.preview.c24.airoapp.ai/?airoShareToken=tok-xyz');
+      expect(mockLogger.info).toHaveBeenCalledWith(
+        'feedback.slack.preview_link.injected',
+        expect.objectContaining({ appId: 'app-123' }),
+      );
+    });
+
+    it('ignores a client-supplied agentUrl in the payload — never reaches outbound fetch (SSRF guard)', async function rejectsClientAgentUrl() {
+      const { POST } = await import('./route');
+      mockSendSlackBlockMessage.mockResolvedValueOnce({ success: true });
+      mockGetSite.mockResolvedValueOnce({
+        id: 'app-123',
+        agent_url: 'https://agents.airoapp.ai',
+        preview_url: 'https://app-123.preview.c24.airoapp.ai',
+      });
+      mockInjectShareTokenIntoPreviewUrl.mockResolvedValueOnce(
+        'https://app-123.preview.c24.airoapp.ai/?airoShareToken=tok-xyz'
+      );
+
+      // Attacker tries to inject http://169.254.169.254 — the route MUST
+      // ignore it and use the adapter-resolved URL.
+      const payload = {
+        ...makeBlockPayload({ appId: 'app-123' }),
+        agentUrl: 'http://169.254.169.254',
+      };
+      const request = createMockRequest(payload);
+      await POST(request);
+
+      // The helper saw ONLY the adapter-resolved trusted URL, never the
+      // attacker-supplied one.
+      expect(mockInjectShareTokenIntoPreviewUrl).toHaveBeenCalledWith(
+        'app-123',
+        'https://agents.airoapp.ai',
+        expect.any(String),
+      );
+      expect(mockInjectShareTokenIntoPreviewUrl).not.toHaveBeenCalledWith(
+        'app-123',
+        'http://169.254.169.254',
+        expect.any(String),
+      );
+    });
+
+    it('skips injection when appId is missing', async function skipNoAppId() {
+      const { POST } = await import('./route');
+      mockSendSlackBlockMessage.mockResolvedValueOnce({ success: true });
+
+      const request = createMockRequest(makeBlockPayload({ /* no appId */ }));
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      expect(mockGetSite).not.toHaveBeenCalled();
+      expect(mockInjectShareTokenIntoPreviewUrl).not.toHaveBeenCalled();
+      // Slack still receives the (bare) blockMessage — delivery is not blocked.
+      expect(mockSendSlackBlockMessage).toHaveBeenCalled();
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        'feedback.slack.preview_link.skipped',
+        expect.objectContaining({ reason: 'missing-appId' }),
+      );
+    });
+
+    it('skips injection when adapter.getSite returns a site without agent_url', async function skipNoAgentUrlInSite() {
+      const { POST } = await import('./route');
+      mockSendSlackBlockMessage.mockResolvedValueOnce({ success: true });
+      // Pre-bootstrap / archive-restoring app: site row exists but agent_url
+      // hasn't been assigned yet.
+      mockGetSite.mockResolvedValueOnce({
+        id: 'app-123',
+        preview_url: 'https://app-123.preview.c24.airoapp.ai',
+        // no agent_url
+      });
+
+      const request = createMockRequest(makeBlockPayload({ appId: 'app-123' }));
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      expect(mockInjectShareTokenIntoPreviewUrl).not.toHaveBeenCalled();
+      expect(mockSendSlackBlockMessage).toHaveBeenCalled();
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        'feedback.slack.preview_link.skipped',
+        expect.objectContaining({ reason: 'missing-agentUrl' }),
+      );
+    });
+
+    it('skips injection when adapter.getSite returns null (site not found)', async function skipSiteNotFound() {
+      const { POST } = await import('./route');
+      mockSendSlackBlockMessage.mockResolvedValueOnce({ success: true });
+      mockGetSite.mockResolvedValueOnce(null);
+
+      const request = createMockRequest(makeBlockPayload({ appId: 'app-123' }));
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      expect(mockInjectShareTokenIntoPreviewUrl).not.toHaveBeenCalled();
+      expect(mockSendSlackBlockMessage).toHaveBeenCalled();
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        'feedback.slack.preview_link.skipped',
+        expect.objectContaining({ reason: 'missing-agentUrl' }),
+      );
+    });
+
+    it('falls back to bare URL when adapter.getSite throws', async function siteLookupThrows() {
+      const { POST } = await import('./route');
+      mockSendSlackBlockMessage.mockResolvedValueOnce({ success: true });
+      mockGetSite.mockRejectedValueOnce(new Error('control-plane-down'));
+
+      const request = createMockRequest(makeBlockPayload({ appId: 'app-123' }));
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      expect(mockInjectShareTokenIntoPreviewUrl).not.toHaveBeenCalled();
+      // Slack still receives the bare blockMessage — delivery is not blocked
+      // by a transient control-plane outage.
+      expect(mockSendSlackBlockMessage).toHaveBeenCalled();
+      const [, sentBlockMessage] = mockSendSlackBlockMessage.mock.calls[0];
+      const previewLink = sentBlockMessage.links.find((l: LinkShape) => l.text === 'Preview');
+      expect(previewLink.url).toBe('https://app-123.preview.c24.airoapp.ai');
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        'feedback.slack.preview_link.site_lookup_failed',
+        expect.objectContaining({ appId: 'app-123', error: 'control-plane-down' }),
+      );
+    });
+
+    it('falls back to bare URL when the injection helper throws', async function helperThrowsFallback() {
+      const { POST } = await import('./route');
+      mockSendSlackBlockMessage.mockResolvedValueOnce({ success: true });
+      mockGetSite.mockResolvedValueOnce({
+        id: 'app-123',
+        agent_url: 'https://agents.airoapp.ai',
+        preview_url: 'https://app-123.preview.c24.airoapp.ai',
+      });
+      mockInjectShareTokenIntoPreviewUrl.mockRejectedValueOnce(new Error('agents-down'));
+
+      const request = createMockRequest(makeBlockPayload({ appId: 'app-123' }));
+      const response = await POST(request);
+
+      // Slack delivery succeeded with the BARE URL — failure is not fatal.
+      expect(response.status).toBe(200);
+      expect(mockSendSlackBlockMessage).toHaveBeenCalled();
+      const [, sentBlockMessage] = mockSendSlackBlockMessage.mock.calls[0];
+      const previewLink = sentBlockMessage.links.find((l: LinkShape) => l.text === 'Preview');
+      expect(previewLink.url).toBe('https://app-123.preview.c24.airoapp.ai');
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        'feedback.slack.preview_link.inject_failed',
+        expect.objectContaining({ appId: 'app-123', error: 'agents-down' }),
+      );
+    });
+
+    it('falls back to bare URL when the helper returns the bare URL (no-token case)', async function helperReturnsBareUrl() {
+      const { POST } = await import('./route');
+      mockSendSlackBlockMessage.mockResolvedValueOnce({ success: true });
+      mockGetSite.mockResolvedValueOnce({
+        id: 'app-123',
+        agent_url: 'https://agents.airoapp.ai',
+        preview_url: 'https://app-123.preview.c24.airoapp.ai',
+      });
+      // Helper "fails open" inside itself — returns the bare URL on internal error.
+      mockInjectShareTokenIntoPreviewUrl.mockResolvedValueOnce('https://app-123.preview.c24.airoapp.ai');
+
+      const request = createMockRequest(makeBlockPayload({ appId: 'app-123' }));
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      // The URL actually sent to Slack is the bare URL — no token snuck in.
+      const [, sentBlockMessage] = mockSendSlackBlockMessage.mock.calls[0];
+      const previewLink = sentBlockMessage.links.find((l: LinkShape) => l.text === 'Preview');
+      expect(previewLink.url).toBe('https://app-123.preview.c24.airoapp.ai');
+      // The route still warns so we have an audit trail for "we tried but got
+      // nothing to inject" — distinct from "we never tried because inputs missing."
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        'feedback.slack.preview_link.no_token',
+        expect.objectContaining({ appId: 'app-123' }),
+      );
+      // No "injected" log fires since the URL didn't change.
+      const injectedLogCalls = mockLogger.info.mock.calls.filter(
+        (call) => call[0] === 'feedback.slack.preview_link.injected'
+      );
+      expect(injectedLogCalls).toHaveLength(0);
+    });
+
+    it('does not touch non-Preview links (Published, Nexus, Console)', async function leavesOtherLinksAlone() {
+      const { POST } = await import('./route');
+      mockSendSlackBlockMessage.mockResolvedValueOnce({ success: true });
+      mockGetSite.mockResolvedValueOnce({
+        id: 'app-123',
+        agent_url: 'https://agents.airoapp.ai',
+        preview_url: 'https://app-123.preview.c24.airoapp.ai',
+      });
+      mockInjectShareTokenIntoPreviewUrl.mockResolvedValueOnce(
+        'https://app-123.preview.c24.airoapp.ai/?airoShareToken=tok-xyz'
+      );
+
+      const request = createMockRequest(makeBlockPayload({
+        appId: 'app-123',
+        extraLinks: [
+          { url: 'https://app-123.published.example.com', text: 'Published' },
+          { url: 'https://ctk.int.gdcorp.tools/nexus/results?criteria=app_id&term=app-123', text: 'Nexus' },
+          { url: 'https://console.airo-builder.godaddy.com/?appId=app-123', text: 'Console' },
+        ],
+      }));
+      await POST(request);
+
+      const [, sentBlockMessage] = mockSendSlackBlockMessage.mock.calls[0];
+      // The injection helper was called exactly once — for the Preview link.
+      expect(mockInjectShareTokenIntoPreviewUrl).toHaveBeenCalledTimes(1);
+      // Non-Preview URLs are untouched.
+      expect(sentBlockMessage.links.find((l: LinkShape) => l.text === 'Published').url)
+        .toBe('https://app-123.published.example.com');
+      expect(sentBlockMessage.links.find((l: LinkShape) => l.text === 'Nexus').url)
+        .toBe('https://ctk.int.gdcorp.tools/nexus/results?criteria=app_id&term=app-123');
+      expect(sentBlockMessage.links.find((l: LinkShape) => l.text === 'Console').url)
+        .toBe('https://console.airo-builder.godaddy.com/?appId=app-123');
+    });
+
+    it('overwrites an existing airoShareToken query param cleanly (idempotent)', async function idempotentOverwrite() {
+      const { POST } = await import('./route');
+      mockSendSlackBlockMessage.mockResolvedValueOnce({ success: true });
+      mockGetSite.mockResolvedValueOnce({
+        id: 'app-123',
+        agent_url: 'https://agents.airoapp.ai',
+        preview_url: 'https://app-123.preview.c24.airoapp.ai',
+      });
+      // Helper always returns a token-bearing URL (its internal URL.searchParams.set
+      // handles pre-existing token cleanly).
+      mockInjectShareTokenIntoPreviewUrl.mockResolvedValueOnce(
+        'https://app-123.preview.c24.airoapp.ai/?airoShareToken=fresh-token'
+      );
+
+      const request = createMockRequest(makeBlockPayload({
+        appId: 'app-123',
+        // URL already has a stale token from the BFF's /api/sites injection
+        previewUrl: 'https://app-123.preview.c24.airoapp.ai/?airoShareToken=stale-token',
+      }));
+      await POST(request);
+
+      const [, sentBlockMessage] = mockSendSlackBlockMessage.mock.calls[0];
+      const previewLink = sentBlockMessage.links.find((l: LinkShape) => l.text === 'Preview');
+      expect(previewLink.url).toBe('https://app-123.preview.c24.airoapp.ai/?airoShareToken=fresh-token');
+      // The helper was invoked with the original (already-tokened) URL — it
+      // owns the overwrite via URL.searchParams.set().
+      expect(mockInjectShareTokenIntoPreviewUrl).toHaveBeenCalledWith(
+        'app-123',
+        'https://agents.airoapp.ai',
+        'https://app-123.preview.c24.airoapp.ai/?airoShareToken=stale-token',
+      );
+    });
+
+    it('leaves legacy (non-block) FeedbackPayload requests unaffected', async function legacyFormatUntouched() {
+      const { POST } = await import('./route');
+      mockSendSlackMessage.mockResolvedValueOnce({ success: true });
+
+      const request = createMockRequest({
+        title: 'Legacy Feedback',
+        message: 'Some message body',
+      });
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      // Injection helper never runs for the legacy format — there's no
+      // blockMessage to mutate. adapter.getSite also untouched.
+      expect(mockGetSite).not.toHaveBeenCalled();
+      expect(mockInjectShareTokenIntoPreviewUrl).not.toHaveBeenCalled();
+      expect(mockSendSlackMessage).toHaveBeenCalled();
+    });
+
+    it('rewrites the Preview link even when the webhook is not configured (dev echo)', async function devEchoStillInjected() {
+      delete process.env.SLACK_FEEDBACK_WEBHOOK_URL;
+      const { POST } = await import('./route');
+      mockGetSite.mockResolvedValueOnce({
+        id: 'app-123',
+        agent_url: 'https://agents.airoapp.ai',
+        preview_url: 'https://app-123.preview.c24.airoapp.ai',
+      });
+      mockInjectShareTokenIntoPreviewUrl.mockResolvedValueOnce(
+        'https://app-123.preview.c24.airoapp.ai/?airoShareToken=tok-xyz'
+      );
+
+      const request = createMockRequest(makeBlockPayload({ appId: 'app-123' }));
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      // The echoed blockMessage carries the injected URL so devs can verify
+      // the rewrite from app/dev.log without configuring a Slack webhook.
+      const previewLink = data.blockMessage.links.find((l: LinkShape) => l.text === 'Preview');
+      expect(previewLink.url).toBe('https://app-123.preview.c24.airoapp.ai/?airoShareToken=tok-xyz');
+      expect(mockSendSlackBlockMessage).not.toHaveBeenCalled();
     });
   });
 
