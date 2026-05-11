@@ -20,6 +20,7 @@ import type {
   ClassifierMode,
 } from '../agents/assessment-agent/index.js'
 import type { ILogger } from '../logging/types.js'
+import { withTimeout } from '../utils/promise-utils.js'
 
 type LifecycleLogger = Pick<ILogger, 'info' | 'warn' | 'debug' | 'error'>
 
@@ -196,6 +197,108 @@ export async function runStartAssessment(
     ...(willApply && assessmentOutcome.appliedBudget && {
       budgetOverrideSubscriptionId: assessmentOutcome.appliedBudget,
     }),
+  }
+}
+
+export interface ParallelAssessmentHandle {
+  /**
+   * Await the classifier with a timeout.
+   *
+   * Returns the resolved outcome, or `undefined` on timeout or classifier
+   * rejection. Safe to call multiple times — the underlying classifier
+   * promise is shared, so a second call on an already-resolved outcome
+   * returns immediately (the inner timer is scheduled but cleared in the
+   * same microtask). A second call on a still-pending classifier will arm
+   * its own timer; SSE's usage pattern only awaits once per turn so this
+   * doesn't fire in practice.
+   */
+  awaitOutcome(opts: { timeoutMs: number }): Promise<AssessmentOutcome | undefined>
+}
+
+/**
+ * Fire the assessment classifier non-blocking. Intended for BMS callers
+ * (budget service mode) where cost attribution happens post-turn via the
+ * budget report — so the main agent turn does not need to wait for the
+ * classifier before starting.
+ *
+ * Eagerly populates the shared sessionStore when the classifier resolves so
+ * the next turn on this session has multi-turn context regardless of whether
+ * the current caller ever awaits the outcome.
+ */
+export function startParallelAssessment(
+  deps: Pick<MessageLifecycleDeps, 'getAssessmentAgent' | 'sessionStore' | 'logger'>,
+  params: StartAssessmentParams,
+): ParallelAssessmentHandle {
+  const { getAssessmentAgent, sessionStore, logger } = deps
+  const {
+    appId, sessionKey, message, customerId, isInitialPrompt,
+    enableAssessmentAgent, classifierMode,
+  } = params
+
+  if (!enableAssessmentAgent) {
+    return { awaitOutcome: async () => undefined }
+  }
+
+  const previousUserMessage = params.previousUserMessage
+    ?? sessionStore.getLastUserMessage(sessionKey)
+  const previousAssessmentTaskType = params.previousAssessmentTaskType
+    ?? sessionStore.getLastAssessmentTaskType(sessionKey)
+
+  const promise = getAssessmentAgent().classify(message, {
+    appId, customerId, socketId: sessionKey,
+    enabledOverride: enableAssessmentAgent,
+    previousUserMessage,
+    previousAssessmentTaskType,
+    isInitialPrompt,
+    classifierMode,
+  })
+
+  // Seed the cache eagerly so the next turn gets multi-turn context even if
+  // this turn never awaits (short-circuits on abort, transport error, etc.).
+  sessionStore.setLastUserMessage(sessionKey, message)
+
+  promise.then(
+    (outcome) => {
+      if (outcome.result?.taskType) {
+        sessionStore.setLastAssessmentTaskType(sessionKey, outcome.result.taskType)
+      }
+      logger.debug('assessment.parallel.resolved', {
+        appId, sessionKey,
+        taskType: outcome.result?.taskType,
+        confidence: outcome.result?.confidence,
+      })
+    },
+    (err) => {
+      // Match the blocking path (runStartAssessment) severity — both represent
+      // the same class of transient LLM/network failure, so both should or
+      // neither should page on-call.
+      logger.warn('assessment.parallel.rejected', {
+        appId, sessionKey,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    },
+  )
+
+  // Swallow rejections once so awaitOutcome can just time-race a never-rejecting
+  // promise, rather than juggling pre- vs post-timeout rejection handling.
+  const swallowed = promise.catch((): AssessmentOutcome | undefined => undefined)
+
+  return {
+    awaitOutcome: async ({ timeoutMs }) => {
+      const result = await withTimeout(
+        swallowed,
+        timeoutMs,
+        () => logger.warn('assessment.parallel.timeout', { appId, sessionKey, timeoutMs }),
+        // `swallowed = promise.catch(() => undefined)` is the invariant that
+        // makes this no-op safe: the wrapped promise can never reject, so
+        // withTimeout's late-rejection path is unreachable. Keep the swallow
+        // in sync with this handler if the rejection model changes.
+        () => { /* unreachable — swallowed never rejects */ },
+      )
+      // withTimeout returns null on timeout; normalize to undefined so callers
+      // have a single "outcome unavailable" sentinel.
+      return result === null ? undefined : result
+    },
   }
 }
 

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { context as otelContext, trace as otelTrace } from '@opentelemetry/api'
 
 // Mock the Langfuse invocation-span SDK so tests can assert the lifecycle
@@ -55,12 +55,11 @@ vi.mock('../../ai-lib-websocket-server.js', () => ({
 // Mock message-lifecycle helpers so the lifecycle-deps test can assert
 // commitHash / usedFreeGrants propagation without running real git hooks.
 const mockRunMessageEndHooks = vi.fn().mockResolvedValue({ commitHash: null, usedFreeGrants: false })
+const mockAwaitOutcome = vi.fn().mockResolvedValue(undefined)
+const mockStartParallelAssessment = vi.fn(() => ({ awaitOutcome: mockAwaitOutcome }))
 vi.mock('../../message-lifecycle.js', () => ({
   runStartGitHook: vi.fn().mockResolvedValue(undefined),
-  runStartAssessment: vi.fn().mockResolvedValue({
-    assessmentOutcome: undefined,
-    budgetOverrideSubscriptionId: undefined,
-  }),
+  startParallelAssessment: (...args: any[]) => mockStartParallelAssessment(...args),
   runMessageEndHooks: (...args: any[]) => mockRunMessageEndHooks(...args),
 }))
 
@@ -1005,6 +1004,105 @@ describe('MessageExecutionService', () => {
       )
       expect(complete).toBeDefined()
       expect(complete?.[1]?.data?.finishReason).not.toBe('error')
+    })
+  })
+
+  describe('parallel assessment outcome flow', () => {
+    const lifecycle = {
+      gitHookService: {} as any,
+      getAssessmentAgent: () => ({}) as any,
+      sessionStore: {
+        getLastUserMessage: vi.fn(),
+        setLastUserMessage: vi.fn(),
+        getLastAssessmentTaskType: vi.fn(),
+        setLastAssessmentTaskType: vi.fn(),
+        clearSession: vi.fn(),
+      },
+      logger: { info: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn() },
+    }
+
+    beforeEach(() => {
+      mockAwaitOutcome.mockReset()
+      mockAwaitOutcome.mockResolvedValue(undefined)
+      mockRunMessageEndHooks.mockReset()
+      mockRunMessageEndHooks.mockResolvedValue({ commitHash: null, usedFreeGrants: false })
+    })
+
+    afterEach(() => {
+      // Restore the file-level defaults so later describes don't inherit a
+      // mock that returns undefined (which would make `.catch(...)` on the
+      // awaited promise throw).
+      mockAwaitOutcome.mockReset()
+      mockAwaitOutcome.mockResolvedValue(undefined)
+      mockRunMessageEndHooks.mockReset()
+      mockRunMessageEndHooks.mockResolvedValue({ commitHash: null, usedFreeGrants: false })
+    })
+
+    it('forwards the awaited outcome to runMessageEndHooks on the success path', async () => {
+      const outcome = { result: { taskType: 'publish', confidence: 0.9 }, overrideApplied: true } as any
+      mockAwaitOutcome.mockResolvedValueOnce(outcome)
+
+      const svc = new MessageExecutionService({ ...createMockDeps(), lifecycle } as any)
+      await svc.execute(DEFAULT_PARAMS)
+
+      const completeCall = mockRunMessageEndHooks.mock.calls.find(
+        (c: any[]) => c[1]?.reason === 'complete'
+      )
+      expect(completeCall).toBeDefined()
+      expect(completeCall?.[1]?.assessmentOutcome).toBe(outcome)
+    })
+
+    it('skips the error-path awaitOutcome when the success-path await already populated the outcome', async () => {
+      // Scenario: success-path awaitOutcome resolves with an outcome, then a
+      // post-turn step throws into the outer catch. The error-path guard must
+      // NOT re-call awaitOutcome, and the end-hooks call on the error path
+      // must still receive the already-resolved outcome.
+      const outcome = { result: { taskType: 'fix', confidence: 0.8 } } as any
+      mockAwaitOutcome.mockResolvedValueOnce(outcome)
+
+      // First runMessageEndHooks call is the success-path attempt — make it
+      // throw so control jumps to the outer catch with assessmentOutcome already set.
+      mockRunMessageEndHooks
+        .mockRejectedValueOnce(new Error('end hook boom'))
+        .mockResolvedValue({ commitHash: null, usedFreeGrants: false })
+
+      const svc = new MessageExecutionService({ ...createMockDeps(), lifecycle } as any)
+      await svc.execute(DEFAULT_PARAMS)
+
+      // Exactly one awaitOutcome call (success-path); error-path guard short-circuited.
+      expect(mockAwaitOutcome).toHaveBeenCalledTimes(1)
+
+      // Error-path end-hooks got the already-resolved outcome.
+      const errorCall = mockRunMessageEndHooks.mock.calls.find(
+        (c: any[]) => c[1]?.reason === 'error'
+      )
+      expect(errorCall).toBeDefined()
+      expect(errorCall?.[1]?.assessmentOutcome).toBe(outcome)
+    })
+
+    it('falls back to the error-path awaitOutcome when stream throws before the success-path await', async () => {
+      // Scenario: streamGenerate throws before the success-path awaitOutcome
+      // ever runs. The error-path guard sees assessmentOutcome === undefined
+      // and awaits the handle with the shorter error-path timeout.
+      const outcome = { result: { taskType: 'publish', confidence: 0.9 } } as any
+      mockAwaitOutcome.mockResolvedValueOnce(outcome)
+
+      const d = createMockDeps() as any
+      d.getAgent.mockReturnValue({
+        streamGenerate: vi.fn().mockImplementation(async () => {
+          throw new Error('stream boom')
+        }),
+        getName: vi.fn().mockReturnValue('AI Developer'),
+      })
+      const svc = new MessageExecutionService({ ...d, lifecycle } as any)
+      await svc.execute(DEFAULT_PARAMS)
+
+      expect(mockAwaitOutcome).toHaveBeenCalledTimes(1)
+      const errorCall = mockRunMessageEndHooks.mock.calls.find(
+        (c: any[]) => c[1]?.reason === 'error'
+      )
+      expect(errorCall).toBeDefined()
+      expect(errorCall?.[1]?.assessmentOutcome).toBe(outcome)
     })
   })
 

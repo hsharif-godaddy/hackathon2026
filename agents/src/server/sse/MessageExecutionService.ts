@@ -24,16 +24,22 @@ import { runWithModelOverride } from '@airo/ai-lib'
 import { resolveProfile, runWithProfile } from '../../profiles/index.js'
 import { guardAllowedOverrideModel, resolveOverride } from '../model-override.js'
 import type { AssessmentOutcome, ClassifierMode } from '../../agents/assessment-agent/index.js'
+import { PARALLEL_ASSESSMENT_TIMEOUT_MS } from '../assessment-executor.js'
 import type { PostStreamValidatorResult } from '../post-stream-validator.js'
 import {
-  runStartGitHook, runStartAssessment, runMessageEndHooks,
-  type MessageLifecycleDeps,
+  runStartGitHook, startParallelAssessment, runMessageEndHooks,
+  type MessageLifecycleDeps, type ParallelAssessmentHandle,
 } from '../message-lifecycle.js'
 import {
   buildDynamicDataMessage, buildTodoContextMessage, buildRagContextMessage,
   collectImagesFromFormattedContexts, dataUrlsToProcessedFiles,
   checkAndTriggerSummarization,
 } from '../context-builders.js'
+
+/** Short timeout for awaiting the classifier on an errored turn — the user is
+ *  already seeing a failure, so don't delay terminal events for a slow classifier.
+ *  usedFreeGrants defaults to false when the outcome is unavailable. */
+const ERRORED_TURN_ASSESSMENT_TIMEOUT_MS = 500
 
 interface ExecutionDeps {
   getAgent: (agentId?: string) => any
@@ -550,17 +556,16 @@ export class MessageExecutionService {
 
     // Run message-start hooks (git branch + assessment classification).
     // Failures are logged inside the helpers; neither throws out of here.
+    //
+    // SSE is BMS-only (see PR #3577: client gates SSE behind budgetServiceEnabled).
+    // That means cost attribution is driven by the post-turn BMS report, not by a
+    // pre-turn subscriptionId override — so we fire the classifier non-blocking
+    // and await it right before runMessageEndHooks / safeProcessBudgetReport.
     let assessmentOutcome: AssessmentOutcome | undefined
-    let budgetOverrideSubscriptionId: string | undefined
+    let assessmentHandle: ParallelAssessmentHandle | undefined
     if (this.deps.lifecycle) {
-      await runStartGitHook(this.deps.lifecycle, {
-        appId, conversationId, sessionKey: sseSocketId, message: content,
-      })
-      // previousUserMessage + previousAssessmentTaskType are read from the
-      // shared sessionStore inside runStartAssessment. Because SSE keys by
-      // `sse:${conversationId}` (stable across HTTP requests), multi-turn
-      // context survives naturally without a DB fallback.
-      const startResult = await runStartAssessment(this.deps.lifecycle, {
+      // Fire the classifier first so it overlaps the git hook's branch creation.
+      assessmentHandle = startParallelAssessment(this.deps.lifecycle, {
         appId,
         sessionKey: sseSocketId,
         message: content,
@@ -570,8 +575,9 @@ export class MessageExecutionService {
         enableAssessmentOverride,
         classifierMode: agentCtx?.assessmentClassifier,
       })
-      assessmentOutcome = startResult.assessmentOutcome
-      budgetOverrideSubscriptionId = startResult.budgetOverrideSubscriptionId
+      await runStartGitHook(this.deps.lifecycle, {
+        appId, conversationId, sessionKey: sseSocketId, message: content,
+      })
     }
 
     const persistenceContext: SSEPersistenceContext = {
@@ -695,17 +701,10 @@ export class MessageExecutionService {
       metadata: {
         appId, siteId, conversationId, templateId, modelOverride, agentProfile,
         agentId: resolvedAgentId,
-        ...(budgetOverrideSubscriptionId && { subscriptionId: budgetOverrideSubscriptionId }),
         ...(agentCtx?.customerId && { customerId: agentCtx.customerId }),
       },
       ...(contextAttachments.length > 0 && { contextAttachments }),
       todoListContext, isActionRequest, customContext,
-    }
-
-    if (budgetOverrideSubscriptionId) {
-      logger.info('sse.context.assessment_budget_override', {
-        appId, socketId: sseSocketId, subscriptionId: budgetOverrideSubscriptionId,
-      })
     }
 
     // Resolve agent profile + model override from flags (per-project metadata
@@ -858,6 +857,14 @@ export class MessageExecutionService {
         })
       }
 
+      // Await the parallel classifier now — its outcome feeds both the end
+      // hooks (usedFreeGrants accounting) and the BMS report below. Timeout
+      // yields `undefined`, which both consumers handle (accounting defaults
+      // to "customer pays", BMS attribution defaults to the base subscription).
+      if (assessmentHandle) {
+        assessmentOutcome = await assessmentHandle.awaitOutcome({ timeoutMs: PARALLEL_ASSESSMENT_TIMEOUT_MS })
+      }
+
       // Run end-of-message git squash + compute usedFreeGrants BEFORE persistence,
       // so the commitHash propagates into the persisted message metadata (matches
       // the WS beforeMessageComplete -> completeConversation ordering).
@@ -974,6 +981,21 @@ export class MessageExecutionService {
       if (this.deps.lifecycle) {
         const reason: 'error' | 'disconnection' = abortController.signal.aborted
           ? 'disconnection' : 'error'
+        if (assessmentHandle && !assessmentOutcome) {
+          // awaitOutcome is designed never to throw (swallowed classifier
+          // rejection + withTimeout), so a throw here is a contract violation
+          // in startParallelAssessment — log at error to surface on monitoring.
+          // Don't let it escape the outer catch and leave the SSE client
+          // waiting for terminal events.
+          assessmentOutcome = await assessmentHandle
+            .awaitOutcome({ timeoutMs: ERRORED_TURN_ASSESSMENT_TIMEOUT_MS })
+            .catch((err) => {
+              logger.error('sse.execution.error_path_assessment_await_failed', {
+                appId, conversationId, ...errorFields(err),
+              })
+              return undefined
+            })
+        }
         // An end-hook throw on an already-errored path would otherwise escape
         // and skip the persistence write and terminal events below.
         try {
