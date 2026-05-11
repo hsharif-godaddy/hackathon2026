@@ -1,19 +1,5 @@
 import { SubscriptionPlan, SubscriptionStatus } from '@/types/credits';
 
-export interface FeedbackConfig {
-  pk: string;
-  title: string;
-  fields: {
-    id: string;
-    type: 'radio' | 'mtext' | 'boolean';
-    label: string;
-    options?: string[];
-    required?: boolean;
-    hint?: string;
-  }[];
-  onlyOneResponseAllowed: boolean;
-}
-
 export interface FeedbackBaseProps {
   onClose: () => void;
   /** If not provided Growl is used and onClose is invoked. */
@@ -29,11 +15,6 @@ export interface FeedbackBaseProps {
     onSubmitError?: string;
   };
   eids?: { submitButton?: string; cancelButton?: string };
-}
-
-export interface FeedbackFormProps extends FeedbackBaseProps {
-  config: FeedbackConfig;
-  origin?: string;
 }
 
 export interface FeedbackProps extends FeedbackBaseProps {

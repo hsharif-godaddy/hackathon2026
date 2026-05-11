@@ -132,10 +132,6 @@ vi.mock('@/utils/is-local-dev', () => ({
 }));
 
 vi.mock('./utils', () => ({
-  getMockFeedbackConfig: vi.fn(() => ({
-    pk: 'airo#app-builder',
-    fields: [],
-  })),
   getAppIdFromUrl: vi.fn(() => null),
   getBaseUrl: vi.fn(() => 'https://example.com/'),
   getFullStorySessionUrl: vi.fn(() => Promise.resolve(null)),
@@ -205,7 +201,6 @@ import { buildExperimentsLineFromSwitchboard } from '@/components/feedback/exper
 import { useAuthContext } from '@/components/providers/AuthProvider';
 import { EXPERIMENT_IDS } from '@/config/experiments';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
-import { logger } from '@/lib/request-context';
 import { renderWithProviders } from '@/tests/test-utils';
 import { isLocalDev } from '@/utils/is-local-dev';
 import { Feedback } from './Feedback';
@@ -933,246 +928,13 @@ describe('Feedback', function feedbackTests() {
   });
 
   describe('switchboard gate', function switchboardTests() {
-    it('should render legacy feedback when flag is off', async function legacyFallback() {
+    it('renders nothing when flag is disabled', function flagDisabled() {
       vi.mocked(useSwitchboard).mockReturnValue(false);
       mockAuth('basic');
-      renderWithProviders(<Feedback {...defaultProps} />);
-
-      await waitFor(() => {
-        expect(screen.getByRole('dialog')).toBeInTheDocument();
-      });
-
-      // Legacy flow shows the old title key and description, not the multi-step categories
-      expect(screen.queryByText('builder_feedback_category_support')).toBeNull();
-      expect(screen.queryByText('builder_feedback_category_issue')).toBeNull();
+      const { container } = renderWithProviders(<Feedback {...defaultProps} />);
+      expect(container).toBeEmptyDOMElement();
     });
 
-    it('should render multi-step feedback when flag is on', async function multiStepEnabled() {
-      vi.mocked(useSwitchboard).mockReturnValue(true);
-      mockAuth('basic');
-      renderWithProviders(<Feedback {...defaultProps} />);
-
-      await waitFor(() => {
-        expect(screen.getByText('builder_feedback_category_support')).toBeInTheDocument();
-        expect(screen.getByText('builder_feedback_category_issue')).toBeInTheDocument();
-        expect(screen.getByText('builder_feedback_category_share')).toBeInTheDocument();
-      });
-    });
-
-    it('should call storeToS3 on legacy form submit', async function legacyStoreToS3() {
-      vi.mocked(useSwitchboard).mockReturnValue(false);
-      vi.mocked(sendFeedbackToSlack).mockResolvedValue(undefined);
-      mockAuth('basic');
-      renderWithProviders(<Feedback {...defaultProps} />);
-
-      await waitFor(() => {
-        expect(screen.getByRole('dialog')).toBeInTheDocument();
-      });
-
-      fireEvent.click(screen.getByText('builder_common_submit'));
-
-      await waitFor(() => {
-        expect(storeToS3).toHaveBeenCalledWith(expect.objectContaining({
-          app_id: null,
-          consent_flag: null,
-          rating: null,
-        }));
-      });
-    });
-
-    it('should pass non-null subscription fields from sendToSlack to storeToS3 on legacy submit', async function legacySubscriptionFieldsPassThrough() {
-      vi.mocked(useSwitchboard).mockReturnValue(false);
-      vi.mocked(sendFeedbackToSlack).mockResolvedValue(undefined);
-      mockAuth('basic');
-
-      global.fetch = vi.fn((url: RequestInfo | URL) => {
-        if (String(url).includes('/api/subscriptions')) {
-          return Promise.resolve({
-            ok: true,
-            json: async () => ({
-              data: {
-                active: {
-                  id: 'sub-legacy-456',
-                  plan: 'professional',
-                  status: 'active',
-                },
-              },
-            }),
-          } as Response);
-        }
-        if (String(url).includes('/api/credits/grants')) {
-          return Promise.resolve({
-            ok: true,
-            json: async () => ({
-              success: true,
-              data: [{ creditsMax: 800, creditsSpent: 200 }],
-            }),
-          } as Response);
-        }
-        return Promise.resolve({ ok: true, json: async () => ({ success: true }) } as Response);
-      });
-
-      renderWithProviders(<Feedback {...defaultProps} />);
-
-      await waitFor(() => {
-        expect(screen.getByRole('dialog')).toBeInTheDocument();
-      });
-
-      fireEvent.click(screen.getByText('builder_common_submit'));
-
-      await waitFor(() => {
-        expect(storeToS3).toHaveBeenCalledWith(expect.objectContaining({
-          plan_type_name: 'professional',
-          subscription_id: 'sub-legacy-456',
-          subscription_status: 'active',
-          total_credit_cnt: 800,
-          available_credit_cnt: 600,
-        }));
-      });
-    });
-
-    it('should omit Experiments field from Slack payload when no cohorts are assigned', async function noExperimentsWhenEmpty() {
-      vi.mocked(useSwitchboard).mockReturnValue(false);
-       
-      mockUseGasketData.mockReturnValue({ switchboard: {} } as any);
-      mockAuth('basic');
-      renderWithProviders(<Feedback {...defaultProps} />);
-
-      await waitFor(() => {
-        expect(screen.getByRole('dialog')).toBeInTheDocument();
-      });
-
-      fireEvent.click(screen.getByText('builder_common_submit'));
-
-      await waitFor(() => {
-        expect(global.fetch).toHaveBeenCalledWith(
-          '/api/slack-webhook/feedback',
-          expect.objectContaining({ method: 'POST' }),
-        );
-      });
-
-      const slackCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.find(
-        ([url]: [string]) => url === '/api/slack-webhook/feedback',
-      );
-      const body = JSON.parse(slackCall[1].body);
-      const rightFields: Array<{ label?: string }> = body.blockMessage?.twoColumnSection?.rightFields ?? [];
-      expect(rightFields.find(f => f.label === 'Experiments')).toBeUndefined();
-    });
-
-    it('should report outcome:failed and skip storeToS3 when legacy Slack webhook errors in local dev', async function legacySlackFailure() {
-      vi.mocked(useSwitchboard).mockReturnValue(false);
-      // Local-dev path keeps Slack fatal: devs need to see delivery failures loudly,
-      // and there is no preceding DB save, so retry carries no duplicate-entry risk.
-      vi.mocked(isLocalDev).mockReturnValue(true);
-      // Fail ONLY the Slack webhook; other fetches (subscriptions, credits) resolve normally
-      global.fetch = vi.fn((url: RequestInfo | URL) => {
-        if (typeof url === 'string' && url === '/api/slack-webhook/feedback') {
-          return Promise.resolve({ ok: false, status: 500 } as Response);
-        }
-        return Promise.resolve({ ok: true, json: async () => ({ success: true }) } as Response);
-      });
-      mockAuth('basic');
-      renderWithProviders(<Feedback {...defaultProps} />);
-
-      await waitFor(() => {
-        expect(screen.getByRole('dialog')).toBeInTheDocument();
-      });
-
-      fireEvent.click(screen.getByText('builder_common_submit'));
-
-      // Without the !response.ok throw, outcome would always be 'success' and
-      // storeToS3 would always fire — both would corrupt ESSP + produce duplicate S3 records.
-      await waitFor(() => {
-        expect(mockShipAnalyticsLog).toHaveBeenCalledWith(
-          'feedback.submit',
-          expect.objectContaining({ outcome: 'failed' }),
-        );
-      });
-      expect(storeToS3).not.toHaveBeenCalled();
-    });
-
-    it('should treat Slack failure as non-fatal in production path (DB save is source of truth)', async function prodSlackFailureNonFatal() {
-      vi.mocked(useSwitchboard).mockReturnValue(false);
-      // Production path: DB save precedes Slack. If Slack failure re-opened the
-      // modal, a retry would duplicate the DB entry. The outcome reported to ESSP
-      // must stay 'success' from the user's POV because persistence succeeded.
-      vi.mocked(isLocalDev).mockReturnValue(false);
-      global.fetch = vi.fn((url: RequestInfo | URL) => {
-        const urlStr = typeof url === 'string' ? url : url.toString();
-        // FeedbackLegacy fetches the config on mount (non-local-dev path)
-        if (urlStr.includes('feedback-configs/')) {
-          return Promise.resolve({
-            ok: true,
-            json: async () => ({ pk: 'airo#app-builder', fields: [] }),
-          } as Response);
-        }
-        // Slack webhook fails; DB save (feedbacks/) succeeds via default branch
-        if (urlStr === '/api/slack-webhook/feedback') {
-          return Promise.resolve({ ok: false, status: 500 } as Response);
-        }
-        return Promise.resolve({ ok: true, json: async () => ({ success: true }) } as Response);
-      });
-      mockAuth('basic');
-      renderWithProviders(<Feedback {...defaultProps} />);
-
-      await waitFor(() => {
-        expect(screen.getByRole('dialog')).toBeInTheDocument();
-      });
-
-      fireEvent.click(screen.getByText('builder_common_submit'));
-
-      await waitFor(() => {
-        expect(mockShipAnalyticsLog).toHaveBeenCalledWith(
-          'feedback.submit',
-          expect.objectContaining({ outcome: 'success', slackDelivered: false }),
-        );
-      });
-      // storeToS3 still fires (DB save succeeded; Slack is a notification side-effect)
-      expect(storeToS3).toHaveBeenCalled();
-      // Loki audit trail for Grafana runbooks survives even when shipAnalyticsLog drops
-      expect(vi.mocked(logger.info)).toHaveBeenCalledWith(
-        'feedback.submit.success',
-        expect.objectContaining({ feedbackId: 'airo#app-builder' }),
-      );
-      // Modal closes (onClose called) since submission succeeded from user's POV
-      expect(defaultProps.onClose).toHaveBeenCalled();
-    });
-
-    it('should report outcome:failed when production DB save fails', async function prodDbSaveFailure() {
-      vi.mocked(useSwitchboard).mockReturnValue(false);
-      vi.mocked(isLocalDev).mockReturnValue(false);
-      global.fetch = vi.fn((url: RequestInfo | URL) => {
-        const urlStr = typeof url === 'string' ? url : url.toString();
-        if (urlStr.includes('feedback-configs/')) {
-          return Promise.resolve({
-            ok: true,
-            json: async () => ({ pk: 'airo#app-builder', fields: [] }),
-          } as Response);
-        }
-        // DB save fails — this is the one path where retry is correct (nothing persisted yet).
-        if (urlStr.includes('/feedbacks/')) {
-          return Promise.resolve({ ok: false, status: 500 } as Response);
-        }
-        return Promise.resolve({ ok: true, json: async () => ({ success: true }) } as Response);
-      });
-      mockAuth('basic');
-      renderWithProviders(<Feedback {...defaultProps} />);
-
-      await waitFor(() => {
-        expect(screen.getByRole('dialog')).toBeInTheDocument();
-      });
-
-      fireEvent.click(screen.getByText('builder_common_submit'));
-
-      await waitFor(() => {
-        expect(mockShipAnalyticsLog).toHaveBeenCalledWith(
-          'feedback.submit',
-          expect.objectContaining({ outcome: 'failed' }),
-        );
-      });
-      expect(storeToS3).not.toHaveBeenCalled();
-      expect(defaultProps.onClose).not.toHaveBeenCalled();
-    });
   });
 
   describe('initialStep prop (automatic triggers)', function initialStepTests() {
