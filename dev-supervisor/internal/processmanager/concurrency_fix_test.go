@@ -9,6 +9,7 @@ import (
 
 	"github.com/airo-ai-builder/dev-supervisor/internal/logs"
 	"github.com/airo-ai-builder/dev-supervisor/internal/process"
+	"github.com/airo-ai-builder/dev-supervisor/internal/sandbox"
 	"github.com/airo-ai-builder/dev-supervisor/internal/validation"
 )
 
@@ -82,7 +83,7 @@ func TestManagedProcess_StopDoesNotBlockGetInfo(t *testing.T) {
 		Command: "sleep 2",
 	}
 
-	mp, err := NewManagedProcess(req)
+	mp, err := NewManagedProcess(req, false, "", sandbox.VariantPreview, nil)
 	if err != nil {
 		t.Fatalf("Failed to create process: %v", err)
 	}
@@ -130,7 +131,7 @@ func TestManagedProcess_ConcurrentGetInfoDuringStop(t *testing.T) {
 		Command: "sleep 3",
 	}
 
-	mp, err := NewManagedProcess(req)
+	mp, err := NewManagedProcess(req, false, "", sandbox.VariantPreview, nil)
 	if err != nil {
 		t.Fatalf("Failed to create process: %v", err)
 	}

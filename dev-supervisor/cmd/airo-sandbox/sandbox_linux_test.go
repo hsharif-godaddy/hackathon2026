@@ -126,30 +126,16 @@ func TestFileAccessOnly_ExecutePreserved(t *testing.T) {
 	}
 }
 
-func TestBuildLandlockRules_WithDefaults(t *testing.T) {
+func TestBuildLandlockRules_AppliesDefaults(t *testing.T) {
 	t.Parallel()
 	cfg := &SandboxConfig{
-		Defaults: true,
-		Command:  "echo hello",
-		WorkDir:  "/tmp",
+		Command: "echo hello",
+		WorkDir: "/tmp",
 	}
 	rules := buildLandlockRules(cfg)
-	// Should have rules from defaults (at least some paths exist on any Linux)
+	// Defaults are always applied; at least some paths exist on any Linux host.
 	if len(rules) == 0 {
-		t.Error("buildLandlockRules with defaults produced no rules")
-	}
-}
-
-func TestBuildLandlockRules_WithoutDefaults(t *testing.T) {
-	t.Parallel()
-	cfg := &SandboxConfig{
-		Defaults: false,
-		Command:  "echo hello",
-		WorkDir:  "/tmp",
-	}
-	rules := buildLandlockRules(cfg)
-	if len(rules) != 0 {
-		t.Errorf("buildLandlockRules without defaults or paths should produce 0 rules, got %d", len(rules))
+		t.Error("buildLandlockRules produced no default rules")
 	}
 }
 
@@ -160,7 +146,6 @@ func TestBuildLandlockRules_UserPaths(t *testing.T) {
 	dir := t.TempDir()
 
 	cfg := &SandboxConfig{
-		Defaults: false,
 		Paths: []sandbox.PathRule{
 			{Mode: "rwc", Path: dir},
 		},
@@ -168,15 +153,17 @@ func TestBuildLandlockRules_UserPaths(t *testing.T) {
 		WorkDir: "/tmp",
 	}
 	rules := buildLandlockRules(cfg)
-	if len(rules) != 1 {
-		t.Errorf("expected 1 rule for user path, got %d", len(rules))
+	// Defaults + 1 user path. Can't assert exact count (defaults vary by distro),
+	// just that the user path added to the default baseline.
+	baseline := len(buildLandlockRules(&SandboxConfig{Command: "x", WorkDir: "/tmp"}))
+	if len(rules) != baseline+1 {
+		t.Errorf("expected %d rules (baseline + user path), got %d", baseline+1, len(rules))
 	}
 }
 
-func TestBuildLandlockRules_SkipsMissingPaths(t *testing.T) {
+func TestBuildLandlockRules_SkipsMissingUserPaths(t *testing.T) {
 	t.Parallel()
 	cfg := &SandboxConfig{
-		Defaults: false,
 		Paths: []sandbox.PathRule{
 			{Mode: "r", Path: "/nonexistent/path/that/does/not/exist"},
 		},
@@ -184,23 +171,25 @@ func TestBuildLandlockRules_SkipsMissingPaths(t *testing.T) {
 		WorkDir: "/tmp",
 	}
 	rules := buildLandlockRules(cfg)
-	if len(rules) != 0 {
-		t.Errorf("expected 0 rules for missing path, got %d", len(rules))
+	baseline := len(buildLandlockRules(&SandboxConfig{Command: "x", WorkDir: "/tmp"}))
+	if len(rules) != baseline {
+		t.Errorf("missing user path should not add rules: got %d, baseline %d", len(rules), baseline)
 	}
 }
 
 func TestBuildLandlockRules_NetworkPorts(t *testing.T) {
 	t.Parallel()
 	cfg := &SandboxConfig{
-		Defaults:   false,
 		ConnectTCP: []uint16{80, 443},
 		BindTCP:    []uint16{3000},
 		Command:    "echo hello",
 		WorkDir:    "/tmp",
 	}
 	rules := buildLandlockRules(cfg)
-	if len(rules) != 3 {
-		t.Errorf("expected 3 network rules (2 connect + 1 bind), got %d", len(rules))
+	baseline := len(buildLandlockRules(&SandboxConfig{Command: "x", WorkDir: "/tmp"}))
+	// 2 connect + 1 bind on top of defaults.
+	if len(rules) != baseline+3 {
+		t.Errorf("expected %d rules (baseline + 3 network), got %d", baseline+3, len(rules))
 	}
 }
 

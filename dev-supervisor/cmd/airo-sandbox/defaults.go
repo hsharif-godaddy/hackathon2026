@@ -5,8 +5,8 @@ package main
 import "github.com/airo-ai-builder/dev-supervisor/internal/sandbox"
 
 // defaultPaths returns the built-in system path rules that provide a working
-// execution environment. These are prepended before user-specified paths when
-// Defaults is true (the default).
+// execution environment. These are always prepended before user-specified paths —
+// without them the sandbox is unusable (no sh, no libc, no DNS resolution, etc.).
 //
 // Paths are designed for multi-distro compatibility (Debian, Alpine, RHEL, SLES).
 // Non-existent paths are silently skipped at Landlock apply time.

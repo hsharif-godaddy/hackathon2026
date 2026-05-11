@@ -15,10 +15,18 @@ import (
 
 	"github.com/airo-ai-builder/dev-supervisor/internal/logs"
 	"github.com/airo-ai-builder/dev-supervisor/internal/process"
+	"github.com/airo-ai-builder/dev-supervisor/internal/sandbox"
 	"github.com/airo-ai-builder/dev-supervisor/internal/validation"
 )
 
 const defaultTmpDir = "/tmp"
+
+// sandboxStartupTimeout bounds how long dev-supervisor waits for
+// airo-sandbox to either exec the child (closing fd 3 via CLOEXEC) or
+// write a wrapper-failure message. The expected case completes in
+// microseconds; the timeout only trips if the wrapper stalls in the
+// kernel (e.g. Landlock syscall hang) so process creation can't deadlock.
+const sandboxStartupTimeout = 10 * time.Second
 
 // ManagedProcess represents a single process instance with its own lifecycle.
 type ManagedProcess struct {
@@ -39,46 +47,100 @@ type ManagedProcess struct {
 	usePID1Wait    bool
 	externalWaitCh chan error
 
+	// Sandbox status pipe: parent read end of cmd fd 3. Non-nil only when the
+	// process was wrapped by airo-sandbox. Read once in Start() to detect
+	// wrapper-level failures; EOF means the exec succeeded.
+	sandboxStatus *os.File
+
 	// State change callback
 	// Called whenever the process state changes, allowing ProcessManager to broadcast
 	onStateChange func()
 }
 
 // NewManagedProcess creates a new process instance.
-func NewManagedProcess(config validation.ProcessStartRequest) (*ManagedProcess, error) {
+// If sandboxEnabled is true, the process is wrapped via the airo-sandbox binary.
+// sharedStorageDir is passed through for sandbox path resolution.
+// variant selects the preview vs publish sandbox profile layout.
+// bindPorts are the TCP ports the sandbox must allow this process to listen on.
+// They are resolved per start (caller-explicit or default-derived from env) and
+// passed in explicitly rather than read from config.Ports so that default-derived
+// ports get recomputed on restart if env changes.
+func NewManagedProcess(
+	config validation.ProcessStartRequest,
+	sandboxEnabled bool,
+	sharedStorageDir string,
+	variant sandbox.ProcessVariant,
+	bindPorts []int,
+) (*ManagedProcess, error) {
 	if config.Command == "" {
 		return nil, errors.New("command is required")
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	//nolint:gosec // G204: Command execution is the intended functionality for process management.
-	// nosemgrep: go.lang.security.audit.dangerous-exec-command.dangerous-exec-command
-	process := exec.CommandContext(ctx, "sh", "-c", config.Command)
-
-	// Set working directory.
-	if config.WorkingDir != "" {
-		process.Dir = config.WorkingDir
-	} else {
+	// Determine working directory
+	workDir := config.WorkingDir
+	if workDir == "" {
 		if currentDir, err := os.Getwd(); err == nil {
-			process.Dir = currentDir
+			workDir = currentDir
 		} else {
-			process.Dir = defaultTmpDir
+			workDir = defaultTmpDir
 		}
 	}
 
-	// Set environment variables.
+	// Build base environment
 	env := os.Environ()
 	for key, value := range config.Env {
 		env = append(env, fmt.Sprintf("%s=%s", key, value))
 	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	// Create process command (sandboxed or direct). Convert bindPorts to uint16
+	// for sandbox; validation mirrors the prior config.Ports path.
+	var sandboxBindPorts []uint16
+	for _, p := range bindPorts {
+		if p > 0 && p <= 65535 {
+			sandboxBindPorts = append(sandboxBindPorts, uint16(p))
+		}
+	}
+	spec := sandbox.BuildProcessProfile(variant, sharedStorageDir, config.Command, workDir, sandboxBindPorts)
+	sandboxCmd, sandboxErr := sandbox.WrapCommand(ctx, sandboxEnabled, spec, env)
+	if sandboxErr != nil {
+		cancel()
+		return nil, sandboxErr
+	}
+
+	var process *exec.Cmd
+	if sandboxCmd != nil {
+		process = sandboxCmd
+		env = sandboxCmd.Env
+	} else {
+		//nolint:gosec // G204: Command execution is the intended functionality for process management.
+		// nosemgrep: go.lang.security.audit.dangerous-exec-command.dangerous-exec-command
+		process = exec.CommandContext(ctx, "sh", "-c", config.Command)
+		process.Dir = workDir
+	}
+
 	process.Env = env
 
+	// Attach sandbox status pipe (fd 3) so wrapper-level failures surface distinctly
+	// from child exit codes. Only meaningful when the process is sandboxed.
+	var sandboxStatus *os.File
+	if sandboxCmd != nil {
+		pipe, pipeErr := sandbox.AttachStatusPipe(process)
+		if pipeErr != nil {
+			cancel()
+			return nil, pipeErr
+		}
+		sandboxStatus = pipe
+	}
+
 	return &ManagedProcess{
-		cmd:       process,
-		ctx:       ctx,
-		cancel:    cancel,
-		config:    config,
-		startTime: time.Now(),
+		cmd:           process,
+		ctx:           ctx,
+		cancel:        cancel,
+		config:        config,
+		startTime:     time.Now(),
+		sandboxStatus: sandboxStatus,
 		info: ProcessInfo{
 			Command:   config.Command,
 			State:     ProcessStateStarting,
@@ -110,11 +172,58 @@ func (mp *ManagedProcess) Start(
 
 	// Start the process.
 	if err := mp.cmd.Start(); err != nil {
+		if mp.sandboxStatus != nil {
+			_ = mp.sandboxStatus.Close()
+			mp.sandboxStatus = nil
+			sandbox.ReleaseStatusWrite(mp.cmd)
+		}
 		mp.infoMu.Lock()
 		mp.info.State = ProcessStateError
 		mp.info.Error = err.Error()
 		mp.infoMu.Unlock()
 		return fmt.Errorf("failed to start process: %w", err)
+	}
+
+	// Release the parent's copy of the sandbox status-pipe write end so EOF
+	// propagates when the child closes it (via CLOEXEC on successful exec) or
+	// exits (on wrapper failure). Must happen immediately after Start().
+	if mp.sandboxStatus != nil {
+		sandbox.ReleaseStatusWrite(mp.cmd)
+
+		// Read wrapper-level failure in a goroutine with a startup timeout so a
+		// stalled airo-sandbox (e.g. kernel syscall hang) can't deadlock
+		// process creation. On clean exec fd 3 closes via CLOEXEC and ReadFatal
+		// returns empty in microseconds; on wrapper failure airo-sandbox writes
+		// a line and exits.
+		fatalCh := make(chan string, 1)
+		go func() {
+			fatalCh <- sandbox.ReadFatal(mp.sandboxStatus)
+		}()
+
+		var fatalMsg string
+		select {
+		case fatalMsg = <-fatalCh:
+		case <-time.After(sandboxStartupTimeout):
+			// Kill the stalled wrapper and treat as a fatal startup failure.
+			_ = mp.cmd.Process.Kill()
+			fatalMsg = fmt.Sprintf("sandbox wrapper did not exec within %s", sandboxStartupTimeout)
+		}
+		_ = mp.sandboxStatus.Close()
+		mp.sandboxStatus = nil
+
+		if fatalMsg != "" {
+			// Wait for airo-sandbox to exit so we don't leak a zombie, then
+			// surface the wrapper error — the customer process never actually started.
+			_ = mp.cmd.Wait()
+			mp.infoMu.Lock()
+			mp.info.State = ProcessStateError
+			mp.info.Error = "sandbox wrapper failed: " + fatalMsg
+			mp.infoMu.Unlock()
+			if mp.cancel != nil {
+				mp.cancel()
+			}
+			return fmt.Errorf("sandbox wrapper failed: %s", fatalMsg)
+		}
 	}
 
 	mp.infoMu.Lock()

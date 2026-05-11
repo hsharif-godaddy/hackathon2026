@@ -1,4 +1,3 @@
-import { relative } from 'path';
 import { DevSupervisorClient, ExecOptions, ExecResult } from '../services/DevSupervisorClient.js';
 
 export interface CommandOverride {
@@ -89,57 +88,10 @@ export class TerminalTool {
       .replace(/\r/g, '');
   }
 
-  // Commands that are blocked for security reasons (use word boundaries for exact matches)
-  private readonly BLOCKED_COMMANDS = [
-    'rm -rf /',
-    '> /etc/',
-    '> /bin/', 
-    '> /usr/',
-    '> /var/',
-    '> /opt/',
-  ];
-
-  // Command prefixes that should be blocked (checked at word boundaries)
-  private readonly BLOCKED_COMMAND_PREFIXES = [
-    'sudo ',
-    'su ',
-    'chmod 777',
-    'chown ',
-    'passwd ',
-    'useradd ',
-    'userdel ',
-    'systemctl ',
-    'service ',
-    'mount ',
-    'umount ',
-    'fdisk ',
-    'mkfs.',
-    'dd ',  // Block 'dd ' (with space) to avoid false positives with 'add', 'shadcn', etc.
-  ];
-
-  // Potentially dangerous command patterns
-  private readonly DANGEROUS_PATTERNS = [
-    /rm\s+-rf\s+[/~]/,
-    />\s*\/(?:etc|bin|usr|var|opt|sys|proc)\//,
-    />\s*\/dev\/(?!(?:null|zero|stdin|stdout|stderr)(?:\s|$|[;&|<>'"()]))/i,
-    /sudo\s+/,
-    /su\s+/,
-    /chmod\s+777/,
-    /curl.*\|\s*sh/,
-    /wget.*\|\s*sh/,
-    /eval\s*\$\(/,
-    /\$\(.*curl/,
-    /\$\(.*wget/,
-    // Block dangerous file operations to system directories
-    /\btouch\s+\/(?:etc|bin|usr|var|opt|sys|proc)\//,
-    /\btouch\s+\/dev\/(?!(?:null|zero|stdin|stdout|stderr)(?:\s|$|[;&|<>'"()]))/i,
-    /\bmkdir\s+\/(?:etc|bin|usr|var|opt|sys|proc)\//,
-    /\bmkdir\s+\/dev\/(?!(?:null|zero|stdin|stdout|stderr)(?:\s|$|[;&|<>'"()]))/i,
-    // Block standalone 'dd' command (when used as a complete word)
-    /\bdd\s+if=/,
-    /\bdd\s+of=/,
-  ];
-
+  // Fork bomb pattern — Landlock can't limit process creation, so we keep this check.
+  // All other dangerous commands (filesystem destruction, network abuse, etc.) are enforced
+  // by the Landlock sandbox in dev-supervisor's airo-sandbox binary.
+  private readonly FORK_BOMB_PATTERN = /:\(\)\s*\{.*\|.*&\s*\}\s*;?\s*:/;
 
   /**
    * Apply command overrides to transform the command
@@ -304,13 +256,14 @@ export class TerminalTool {
 
 
   /**
-   * Validate that the command is safe to execute
+   * Validate that the command is safe to execute.
+   * Most dangerous command patterns (filesystem destruction, privilege escalation, etc.)
+   * are enforced by the Landlock sandbox at the kernel level. This validation only covers
+   * what Landlock can't enforce: fork bombs and basic input validation.
    */
   private validateCommand(command: string): void {
     const trimmedCommand = command.trim();
-    const lowerCommand = trimmedCommand.toLowerCase();
 
-    // Basic validation first
     if (!trimmedCommand) {
       throw new Error('Command cannot be empty');
     }
@@ -319,32 +272,9 @@ export class TerminalTool {
       throw new Error('Command is too long (max 1000 characters)');
     }
 
-    // Check blocked commands (exact substring matches)
-    for (const blocked of this.BLOCKED_COMMANDS) {
-      if (lowerCommand.includes(blocked.toLowerCase())) {
-        throw new Error(`Command contains blocked operation: ${blocked}`);
-      }
-    }
-
-    // Check blocked command prefixes (at word boundaries or start of command)
-    for (const prefix of this.BLOCKED_COMMAND_PREFIXES) {
-      const lowerPrefix = prefix.toLowerCase();
-      // Check if command starts with the prefix or has it after whitespace
-      if (lowerCommand.startsWith(lowerPrefix) || 
-          lowerCommand.includes(' ' + lowerPrefix) ||
-          lowerCommand.includes('\t' + lowerPrefix) ||
-          lowerCommand.includes(';' + lowerPrefix) ||
-          lowerCommand.includes('&&' + lowerPrefix) ||
-          lowerCommand.includes('||' + lowerPrefix)) {
-        throw new Error(`Command contains blocked operation: ${prefix.trim()}`);
-      }
-    }
-
-    // Check dangerous patterns
-    for (const pattern of this.DANGEROUS_PATTERNS) {
-      if (pattern.test(command)) {
-        throw new Error(`Command matches dangerous pattern: ${pattern.source}`);
-      }
+    // Fork bomb detection — Landlock can't limit process creation
+    if (this.FORK_BOMB_PATTERN.test(command)) {
+      throw new Error('Potentially dangerous command pattern detected');
     }
   }
 

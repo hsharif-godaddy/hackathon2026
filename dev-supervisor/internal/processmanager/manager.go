@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
+	"os"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -17,6 +19,7 @@ import (
 	"github.com/airo-ai-builder/dev-supervisor/internal/middleware"
 	"github.com/airo-ai-builder/dev-supervisor/internal/ports"
 	"github.com/airo-ai-builder/dev-supervisor/internal/process"
+	"github.com/airo-ai-builder/dev-supervisor/internal/sandbox"
 	"github.com/airo-ai-builder/dev-supervisor/internal/validation"
 )
 
@@ -100,6 +103,12 @@ type ProcessManager struct {
 	allocLoader          *allocconfig.Loader
 	deferredSetupRunning atomic.Bool  // True while setup script is executing
 	deferredSetupError   atomic.Value // stores string; empty = no error
+
+	// Sandbox configuration for child process isolation
+	sandboxEnabled   bool
+	sharedStorageDir string
+	processVariant   sandbox.ProcessVariant
+	defaultBindPort  int // Used when a start request omits Ports; the sandbox denies listens otherwise.
 }
 
 // SetupStatus represents the current state of setup script configuration and execution.
@@ -121,6 +130,33 @@ func NewProcessManager(logMgr logs.Logger, pid1Mgr *process.PID1Manager) *Proces
 		outputToStructuredLog: config.GetProcessLoggingToStdout(), // Default: enable structured logging output, configurable via env
 		stateChangeCh:         make(chan struct{}),                // Initialize state change broadcast channel
 	}
+}
+
+// SetSandboxEnabled configures whether managed processes use Landlock sandboxing.
+// Called once during startup in StartWithConfig before the server accepts connections.
+func (pm *ProcessManager) SetSandboxEnabled(enabled bool) {
+	pm.sandboxEnabled = enabled
+}
+
+// SetSharedStorageDir sets the shared storage directory for sandbox path resolution.
+// Called once during startup in StartWithConfig before the server accepts connections.
+func (pm *ProcessManager) SetSharedStorageDir(dir string) {
+	pm.sharedStorageDir = dir
+}
+
+// SetProcessVariant selects the sandbox profile layout (preview vs publish).
+// Called once during startup in StartWithConfig before the server accepts connections.
+func (pm *ProcessManager) SetProcessVariant(variant sandbox.ProcessVariant) {
+	pm.processVariant = variant
+}
+
+// SetDefaultBindPort configures the fallback TCP bind port appended to
+// ProcessStartRequest.Ports when a caller omits them. Without this, sandboxed
+// app processes cannot listen on their normal PORT because Landlock BindTCP
+// defaults to deny-all.
+// Called once during startup in StartWithConfig before the server accepts connections.
+func (pm *ProcessManager) SetDefaultBindPort(port int) {
+	pm.defaultBindPort = port
 }
 
 // broadcastStateChangeLocked notifies all waiters that process state has changed.
@@ -190,8 +226,16 @@ func (pm *ProcessManager) startLocked(req validation.ProcessStartRequest) error 
 	allocConfig, _ := allocLoader.Load()
 	req.Env = mergeAllocEnv(req.Env, allocConfig)
 
+	// Resolve effective bind ports for the sandbox. Caller-supplied ports are
+	// preserved as-is; otherwise we derive defaults from PORT env and variant.
+	// The caller's Ports are left untouched on req so default-derived values
+	// don't get persisted into the saved config — restarts will re-resolve
+	// from the then-current env (see Restart path).
+	bindPorts := effectiveBindPorts(req, pm.processVariant, pm.defaultBindPort)
+
 	// Blocking operations (no pm.mu, but lifecycleMu still held)
-	managedProcess, err := NewManagedProcess(req)
+	// sandboxEnabled/sharedStorageDir are safe to read without lock - set once at startup
+	managedProcess, err := NewManagedProcess(req, pm.sandboxEnabled, pm.sharedStorageDir, pm.processVariant, bindPorts)
 	if err != nil {
 		return err
 	}
@@ -389,7 +433,19 @@ func (pm *ProcessManager) Restart(req ProcessRestartRequest) error {
 	// Create and start a completely new managed process with the same config
 	slog.Info("starting new process", "command", config.Command, "working_dir", config.WorkingDir)
 
-	managedProcess, err := NewManagedProcess(config)
+	// Re-resolve effective bind ports per restart so default-derived ports pick
+	// up changes to PORT in the request or ambient env (e.g. via the environment
+	// API). Caller-explicit Ports on config are preserved.
+	bindPorts := effectiveBindPorts(config, pm.processVariant, pm.defaultBindPort)
+
+	// sandboxEnabled/sharedStorageDir are safe to read without lock - set once at startup
+	managedProcess, err := NewManagedProcess(
+		config,
+		pm.sandboxEnabled,
+		pm.sharedStorageDir,
+		pm.processVariant,
+		bindPorts,
+	)
 	if err != nil {
 		return err
 	}
@@ -859,6 +915,54 @@ func (pm *ProcessManager) stopProcessForRestart(
 	}
 
 	return nil
+}
+
+// effectiveBindPorts returns the TCP ports the sandbox must allow for a given
+// start request. Caller-supplied req.Ports are passed through untouched;
+// otherwise ports are derived from PORT env + variant defaults. Called on
+// every Start and Restart so that default-derived ports reflect the then-current
+// environment rather than a stale snapshot from the first start.
+func effectiveBindPorts(req validation.ProcessStartRequest, variant sandbox.ProcessVariant, fallback int) []int {
+	if len(req.Ports) > 0 {
+		return req.Ports
+	}
+	return resolveDefaultBindPorts(req.Env, variant, fallback)
+}
+
+// publishRuntimeDefaultPort mirrors the ${PORT:-20000} default in
+// container-scripts/publish/common.sh. Keep in sync with that file.
+const publishRuntimeDefaultPort = 20000
+
+// resolveDefaultBindPorts picks the bind ports to grant when a caller omits
+// ProcessStartRequest.Ports. Returns a deduplicated, non-zero slice in priority
+// order: request PORT, ambient PORT, configured fallback, and — for the publish
+// variant — the publish runtime default. Returns nil if no usable candidate
+// exists (sandbox will get empty BindTCP and the caller sees the listen failure).
+func resolveDefaultBindPorts(env map[string]string, variant sandbox.ProcessVariant, fallback int) []int {
+	candidates := []string{env["PORT"], os.Getenv("PORT")}
+
+	var ports []int
+	seen := make(map[int]bool)
+	add := func(p int) {
+		if p <= 0 || p > 65535 || seen[p] {
+			return
+		}
+		seen[p] = true
+		ports = append(ports, p)
+	}
+	for _, s := range candidates {
+		if s == "" {
+			continue
+		}
+		if p, err := strconv.Atoi(s); err == nil {
+			add(p)
+		}
+	}
+	add(fallback)
+	if variant == sandbox.VariantPublish {
+		add(publishRuntimeDefaultPort)
+	}
+	return ports
 }
 
 // mergeAllocEnv merges customer env and database env from alloc config.

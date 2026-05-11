@@ -33,28 +33,37 @@ func pathToRule(p sandbox.PathRule) (landlock.Rule, bool) {
 	return landlock.PathAccess(access, p.Path), true
 }
 
+// requiredABIVersion is the minimum Landlock ABI version airo-sandbox requires.
+// V6 adds IPC scoping and network restrictions needed for the security model.
+const requiredABIVersion = 6
+
 // applySandboxAndExec applies Landlock restrictions, then replaces the process with sh -c <command>.
 func applySandboxAndExec(cfg *SandboxConfig, env []string) error {
+	// Enforce kernel Landlock ABI v6 minimum. airo-sandbox does not degrade
+	// gracefully on older kernels — the operator must either upgrade the kernel
+	// or disable the sandbox via DEV_SUPERVISOR_SANDBOX_ENABLED=false.
+	abiVersion, abiErr := llsyscall.LandlockGetABIVersion()
+	if abiErr != nil {
+		return fmt.Errorf("landlock not supported by kernel: %w", abiErr)
+	}
+	if abiVersion < requiredABIVersion {
+		return fmt.Errorf("landlock ABI v%d required, kernel provides v%d",
+			requiredABIVersion, abiVersion)
+	}
+
 	// Build Landlock rules from config
 	rules := buildLandlockRules(cfg)
 
-	// Detect kernel Landlock support level and log it
-	abiVersion, abiErr := llsyscall.LandlockGetABIVersion()
-	if abiErr != nil {
-		slog.Warn("airo-sandbox: landlock not supported by kernel", "error", abiErr)
-	} else if abiVersion < 4 {
-		slog.Warn("airo-sandbox: landlock ABI too old for network restrictions, only filesystem rules will apply",
-			"kernel_abi", abiVersion, "requested_abi", 6)
-	} else if abiVersion < 6 {
-		slog.Warn("airo-sandbox: landlock ABI below requested version, some restrictions may not apply",
-			"kernel_abi", abiVersion, "requested_abi", 6)
+	// Apply Landlock strictly (no BestEffort — we've verified ABI above).
+	if err := landlock.V6.Restrict(rules...); err != nil {
+		return fmt.Errorf("failed to apply landlock restrictions: %w", err)
 	}
 
-	// Apply Landlock with BestEffort (degrades gracefully on older kernels)
-	// Silent on success — airo-sandbox is a transparent wrapper, its stderr
-	// becomes the child command's stderr which callers may parse.
-	if err := landlock.V6.BestEffort().Restrict(rules...); err != nil {
-		return fmt.Errorf("failed to apply landlock restrictions: %w", err)
+	// Restrict IPC scoping (V6+): prevents sandboxed processes from sending
+	// signals to or connecting abstract Unix sockets of processes outside the
+	// Landlock domain (e.g. dev-supervisor itself).
+	if err := landlock.V6.RestrictScoped(); err != nil {
+		return fmt.Errorf("failed to apply landlock IPC scoping: %w", err)
 	}
 
 	return execCommand(cfg, env)
@@ -96,24 +105,23 @@ func fileAccessOnly(access landlock.AccessFSSet) landlock.AccessFSSet {
 }
 
 // buildLandlockRules constructs Landlock path and network rules from config.
+// System default paths (binaries, libs, DNS, TLS, etc.) are always prepended —
+// the sandbox is unusable without them (e.g. no sh, no libc).
 func buildLandlockRules(cfg *SandboxConfig) []landlock.Rule {
 	var rules []landlock.Rule
 
 	// Apply default paths first (missing defaults are expected — multi-distro)
-	if cfg.Defaults {
-		defaultRulesStart := len(rules)
-		for _, p := range defaultPaths() {
-			if r, ok := pathToRule(p); ok {
-				rules = append(rules, r)
-			} else {
-				slog.Debug("airo-sandbox: skipping non-existent default path",
-					"path", p.Path, "mode", p.Mode)
-			}
+	for _, p := range defaultPaths() {
+		if r, ok := pathToRule(p); ok {
+			rules = append(rules, r)
+		} else {
+			slog.Debug("airo-sandbox: skipping non-existent default path",
+				"path", p.Path, "mode", p.Mode)
 		}
-		// Warn if defaults were requested but none were applied (possible security regression)
-		if len(rules) == defaultRulesStart {
-			slog.Warn("airo-sandbox: defaults enabled but no system paths found, sandbox may be ineffective")
-		}
+	}
+	// Warn if no system paths were applied (possible security regression)
+	if len(rules) == 0 {
+		slog.Warn("airo-sandbox: no system paths found, sandbox may be ineffective")
 	}
 
 	// Apply user-specified paths (missing user paths likely indicate misconfiguration)

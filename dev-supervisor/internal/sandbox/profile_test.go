@@ -22,24 +22,102 @@ func createTempBinary(t *testing.T) string {
 	return binaryPath
 }
 
+func TestExecPaths(t *testing.T) {
+	t.Parallel()
+
+	paths := sandbox.ExecPaths("/shared-storage")
+	pathMap := makePathMap(paths)
+
+	// Must include exec-specific paths
+	assertPath(t, pathMap, "/app", "rwc")
+	assertPath(t, pathMap, "/tmp", "rwc")
+	assertPath(t, pathMap, "/dist", "rwc")
+	assertPath(t, pathMap, "/home/agent", "rwc")
+	assertPath(t, pathMap, "/git-repo", "rwc")
+	assertPath(t, pathMap, "/private", "rwc")
+	assertPath(t, pathMap, "/npm-cache", "rwc")
+	assertPath(t, pathMap, "/node_modules", "rx")
+	assertPath(t, pathMap, "/shared-storage/public/assets", "rwc")
+
+	// Must NOT include paths that child processes shouldn't access
+	assertNoPath(t, pathMap, "/alloc")
+	assertNoPath(t, pathMap, "/app-template")
+	assertNoPath(t, pathMap, "/management-scripts")
+}
+
+func TestExecPaths_NoSharedStorage(t *testing.T) {
+	t.Parallel()
+
+	paths := sandbox.ExecPaths("")
+	pathMap := makePathMap(paths)
+
+	if _, ok := pathMap["/shared-storage/public/assets"]; ok {
+		t.Error("should not include shared-storage path when dir is empty")
+	}
+}
+
+func TestPreviewProcessPaths(t *testing.T) {
+	t.Parallel()
+
+	paths := sandbox.PreviewProcessPaths("/shared-storage")
+	pathMap := makePathMap(paths)
+
+	assertPath(t, pathMap, "/app", "rwc")
+	assertPath(t, pathMap, "/tmp", "rwc")
+	assertPath(t, pathMap, "/home/agent", "rwc")
+	assertPath(t, pathMap, "/private", "rwc")
+	assertPath(t, pathMap, "/node_modules", "rx")
+	assertPath(t, pathMap, "/shared-storage/public/assets", "rwc")
+
+	// Publish-only paths and forbidden paths
+	assertNoPath(t, pathMap, "/dist")
+	assertNoPath(t, pathMap, "/publish")
+	assertNoPath(t, pathMap, "/git-repo")
+	assertNoPath(t, pathMap, "/npm-cache")
+	assertNoPath(t, pathMap, "/alloc")
+	assertNoPath(t, pathMap, "/app-template")
+	assertNoPath(t, pathMap, "/management-scripts")
+}
+
+func TestPublishProcessPaths(t *testing.T) {
+	t.Parallel()
+
+	paths := sandbox.PublishProcessPaths("/shared-storage")
+	pathMap := makePathMap(paths)
+
+	assertPath(t, pathMap, "/app", "rwc")
+	assertPath(t, pathMap, "/tmp", "rwc")
+	assertPath(t, pathMap, "/home/agent", "rwc")
+	assertPath(t, pathMap, "/private", "rwc")
+	assertPath(t, pathMap, "/dist", "rwc")
+	assertPath(t, pathMap, "/publish", "rx")
+	assertPath(t, pathMap, "/shared-storage/public/assets", "rwc")
+
+	// Preview-only paths and forbidden paths
+	assertNoPath(t, pathMap, "/node_modules")
+	assertNoPath(t, pathMap, "/git-repo")
+	assertNoPath(t, pathMap, "/npm-cache")
+	assertNoPath(t, pathMap, "/alloc")
+	assertNoPath(t, pathMap, "/app-template")
+	assertNoPath(t, pathMap, "/management-scripts")
+}
+
+func TestProcessPaths_Dispatches(t *testing.T) {
+	t.Parallel()
+
+	preview := makePathMap(sandbox.ProcessPaths(sandbox.VariantPreview, ""))
+	assertPath(t, preview, "/node_modules", "rx")
+	assertNoPath(t, preview, "/publish")
+
+	publish := makePathMap(sandbox.ProcessPaths(sandbox.VariantPublish, ""))
+	assertPath(t, publish, "/publish", "rx")
+	assertNoPath(t, publish, "/node_modules")
+}
+
 func TestBuildExecProfile(t *testing.T) {
 	t.Parallel()
 
-	cfg := sandbox.Config{
-		Enabled:    true,
-		BinaryPath: "/usr/local/bin/airo-sandbox",
-		Paths: []sandbox.PathRule{
-			{Mode: "rwc", Path: "/app"},
-			{Mode: "rwc", Path: "/tmp"},
-			{Mode: "r", Path: "/usr"},
-			{Mode: "r", Path: "/lib"},
-		},
-		Defaults:   true,
-		ConnectTCP: []uint16{80, 443},
-		BindTCP:    []uint16{3000}, // Should be ignored for exec
-	}
-
-	spec := sandbox.BuildExecProfile(cfg, "npm install", "/app")
+	spec := sandbox.BuildExecProfile("/shared-storage", "npm install", "/app")
 
 	if spec.Command != "npm install" {
 		t.Errorf("Command = %q, want %q", spec.Command, "npm install")
@@ -50,34 +128,21 @@ func TestBuildExecProfile(t *testing.T) {
 	if len(spec.BindTCP) != 0 {
 		t.Errorf("BindTCP should be nil for exec profile, got %v", spec.BindTCP)
 	}
-	if len(spec.ConnectTCP) != 2 {
-		t.Errorf("ConnectTCP length = %d, want 2", len(spec.ConnectTCP))
-	}
-	if len(spec.Paths) != 4 {
-		t.Errorf("Paths length = %d, want 4", len(spec.Paths))
-	}
-	if !spec.Defaults {
-		t.Error("Defaults should be true")
+	if len(spec.ConnectTCP) != len(sandbox.ConnectTCPPorts) {
+		t.Errorf("ConnectTCP length = %d, want %d", len(spec.ConnectTCP), len(sandbox.ConnectTCPPorts))
 	}
 }
 
 func TestBuildProcessProfile(t *testing.T) {
 	t.Parallel()
 
-	cfg := sandbox.Config{
-		Enabled:    true,
-		BinaryPath: "/usr/local/bin/airo-sandbox",
-		Paths: []sandbox.PathRule{
-			{Mode: "rwc", Path: "/app"},
-			{Mode: "rwc", Path: "/tmp"},
-			{Mode: "r", Path: "/usr"},
-		},
-		Defaults:   true,
-		ConnectTCP: []uint16{80, 443},
-		BindTCP:    []uint16{},
-	}
-
-	spec := sandbox.BuildProcessProfile(cfg, "npm start", "/app", []uint16{3000, 20010})
+	spec := sandbox.BuildProcessProfile(
+		sandbox.VariantPreview,
+		"/shared-storage",
+		"npm start",
+		"/app",
+		[]uint16{3000, 20010},
+	)
 
 	if spec.Command != "npm start" {
 		t.Errorf("Command = %q, want %q", spec.Command, "npm start")
@@ -85,21 +150,21 @@ func TestBuildProcessProfile(t *testing.T) {
 	if len(spec.BindTCP) != 2 {
 		t.Errorf("BindTCP length = %d, want 2", len(spec.BindTCP))
 	}
+	if spec.BindTCP[0] != 3000 || spec.BindTCP[1] != 20010 {
+		t.Errorf("BindTCP = %v, want [3000, 20010]", spec.BindTCP)
+	}
+	if len(spec.ConnectTCP) != len(sandbox.ConnectTCPPorts) {
+		t.Errorf("ConnectTCP length = %d, want %d", len(spec.ConnectTCP), len(sandbox.ConnectTCPPorts))
+	}
 }
 
-func TestBuildProcessProfile_DeduplicatesPorts(t *testing.T) {
+func TestBuildProcessProfile_NilPorts(t *testing.T) {
 	t.Parallel()
 
-	cfg := sandbox.Config{
-		Enabled: true,
-		BindTCP: []uint16{3000, 80},
-	}
+	spec := sandbox.BuildProcessProfile(sandbox.VariantPreview, "", "npm start", "/app", nil)
 
-	spec := sandbox.BuildProcessProfile(cfg, "npm start", "/app", []uint16{3000, 443})
-
-	// 3000 appears in both base and extra — should be deduplicated
-	if len(spec.BindTCP) != 3 {
-		t.Errorf("BindTCP length = %d, want 3 (deduplicated), got %v", len(spec.BindTCP), spec.BindTCP)
+	if spec.BindTCP != nil {
+		t.Errorf("BindTCP should be nil when no ports provided, got %v", spec.BindTCP)
 	}
 }
 
@@ -112,9 +177,8 @@ func TestBuildEnv(t *testing.T) {
 	}
 
 	spec := sandbox.Spec{
-		Command:  "echo hello",
-		WorkDir:  "/tmp",
-		Defaults: true,
+		Command: "echo hello",
+		WorkDir: "/tmp",
 	}
 
 	env, err := sandbox.BuildEnv(baseEnv, spec)
@@ -179,14 +243,6 @@ func TestBuildEnv_RemovesExisting(t *testing.T) {
 	}
 }
 
-// TestBuildEnv_SafetyProperty_SuccessPath verifies BuildEnv's critical safety property
-// on the success path: it must return non-nil env when successful.
-//
-// Note: The error path (json.Marshal failure) is unreachable with the current Spec struct
-// (only basic JSON-marshalable types), so we cannot test that BuildEnv returns nil env on
-// error. The error handling code exists in BuildEnv and would properly propagate errors
-// if Spec were modified to include unmarshalable types, but that scenario can't be triggered
-// in tests without mocking json.Marshal.
 func TestBuildEnv_SafetyProperty_SuccessPath(t *testing.T) {
 	t.Parallel()
 
@@ -207,14 +263,86 @@ func TestBuildEnv_SafetyProperty_SuccessPath(t *testing.T) {
 func TestWrapCommand_Disabled(t *testing.T) {
 	t.Parallel()
 
-	cfg := sandbox.Config{Enabled: false}
 	spec := sandbox.Spec{Command: "echo hello", WorkDir: "/tmp"}
-	cmd, err := sandbox.WrapCommand(context.Background(), cfg, spec, nil)
+	cmd, err := sandbox.WrapCommand(context.Background(), false, spec, nil)
 	if err != nil {
 		t.Fatalf("WrapCommand returned unexpected error: %v", err)
 	}
 	if cmd != nil {
 		t.Error("WrapCommand should return nil when disabled")
+	}
+}
+
+func TestWrapCommand_Enabled(t *testing.T) {
+	// Cannot run in parallel — mutates package-level binary path.
+	tempBinary := createTempBinary(t)
+	sandbox.BinaryPathForTesting(t, tempBinary)
+
+	spec := sandbox.Spec{Command: "echo hello", WorkDir: "/tmp"}
+	baseEnv := []string{"PATH=/usr/bin", "HOME=/root"}
+
+	cmd, err := sandbox.WrapCommand(context.Background(), true, spec, baseEnv)
+	if err != nil {
+		t.Fatalf("WrapCommand returned unexpected error: %v", err)
+	}
+	if cmd == nil {
+		t.Fatal("WrapCommand should return a non-nil cmd when enabled")
+	}
+	if cmd.Path != tempBinary {
+		t.Errorf("cmd.Path = %q, want %q", cmd.Path, tempBinary)
+	}
+	if cmd.Dir != spec.WorkDir {
+		t.Errorf("cmd.Dir = %q, want %q", cmd.Dir, spec.WorkDir)
+	}
+
+	var configValue string
+	var hasPath, hasHome, hasConfig bool
+	for _, entry := range cmd.Env {
+		switch {
+		case strings.HasPrefix(entry, "AIRO_SANDBOX_CONFIG="):
+			hasConfig = true
+			configValue = strings.TrimPrefix(entry, "AIRO_SANDBOX_CONFIG=")
+		case entry == "PATH=/usr/bin":
+			hasPath = true
+		case entry == "HOME=/root":
+			hasHome = true
+		}
+	}
+	if !hasConfig {
+		t.Error("cmd.Env should contain AIRO_SANDBOX_CONFIG")
+	}
+	if !hasPath || !hasHome {
+		t.Errorf("cmd.Env should preserve base env (PATH=%v, HOME=%v)", hasPath, hasHome)
+	}
+	var parsed sandbox.Spec
+	if err := json.Unmarshal([]byte(configValue), &parsed); err != nil {
+		t.Errorf("AIRO_SANDBOX_CONFIG should be valid JSON: %v", err)
+	}
+	if parsed.Command != spec.Command || parsed.WorkDir != spec.WorkDir {
+		t.Errorf("parsed config mismatch: got %+v, want command=%q workDir=%q",
+			parsed, spec.Command, spec.WorkDir)
+	}
+}
+
+func TestWrapCommand_SetsEnv(t *testing.T) {
+	t.Parallel()
+
+	spec := sandbox.Spec{Command: "echo hello", WorkDir: "/tmp"}
+	baseEnv := []string{"PATH=/usr/bin", "AIRO_SANDBOX_CONFIG=stale_value"}
+
+	env, err := sandbox.BuildEnv(baseEnv, spec)
+	if err != nil {
+		t.Fatalf("BuildEnv returned unexpected error: %v", err)
+	}
+
+	// Should have PATH + new AIRO_SANDBOX_CONFIG (stale one removed)
+	if len(env) != 2 {
+		t.Errorf("expected 2 env vars, got %d: %v", len(env), env)
+	}
+	for _, entry := range env {
+		if entry == "AIRO_SANDBOX_CONFIG=stale_value" {
+			t.Error("stale AIRO_SANDBOX_CONFIG should have been removed")
+		}
 	}
 }
 
@@ -251,106 +379,6 @@ func TestIsValidMode(t *testing.T) {
 	}
 }
 
-func TestParsePathRulesString(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name    string
-		input   string
-		want    int
-		wantErr bool
-	}{
-		{"empty", "", 0, false},
-		{"single", "rx:/usr/bin", 1, false},
-		{"multiple", "rx:/usr/bin,r:/etc/hosts,rwc:/app", 3, false},
-		{"with_spaces", "rx:/usr/bin , r:/etc/hosts", 2, false},
-		{"invalid_mode", "z:/app", 0, true},
-		{"missing_colon", "/usr/bin", 0, true},
-		{"empty_path", "r:", 0, true},
-		{"duplicate_mode_chars", "rr:/app", 0, true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			rules, err := sandbox.ParsePathRulesString(tt.input)
-			if (err != nil) != tt.wantErr {
-				t.Errorf(
-					"ParsePathRulesString(%q) error = %v, wantErr %v",
-					tt.input, err, tt.wantErr)
-				return
-			}
-			if !tt.wantErr && len(rules) != tt.want {
-				t.Errorf(
-					"ParsePathRulesString(%q) got %d rules, want %d",
-					tt.input, len(rules), tt.want)
-			}
-		})
-	}
-}
-
-func TestWrapCommand_Enabled(t *testing.T) {
-	t.Parallel()
-
-	cfg := sandbox.Config{
-		Enabled:    true,
-		BinaryPath: createTempBinary(t),
-	}
-	spec := sandbox.Spec{Command: "echo hello", WorkDir: "/tmp"}
-	baseEnv := []string{"PATH=/usr/bin", "HOME=/root"}
-
-	cmd, err := sandbox.WrapCommand(context.Background(), cfg, spec, baseEnv)
-	if err != nil {
-		t.Fatalf("WrapCommand returned unexpected error: %v", err)
-	}
-	if cmd == nil {
-		t.Fatal("WrapCommand should return non-nil when enabled")
-	}
-	if cmd.Dir != "/tmp" {
-		t.Errorf("cmd.Dir = %q, want %q", cmd.Dir, "/tmp")
-	}
-	if cmd.Path != cfg.BinaryPath {
-		t.Errorf("cmd.Path = %q, want %q", cmd.Path, cfg.BinaryPath)
-	}
-	// Verify AIRO_SANDBOX_CONFIG is in cmd.Env
-	var found bool
-	for _, entry := range cmd.Env {
-		if strings.HasPrefix(entry, "AIRO_SANDBOX_CONFIG=") {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Error("cmd.Env should contain AIRO_SANDBOX_CONFIG")
-	}
-}
-
-func TestWrapCommand_SetsEnv(t *testing.T) {
-	t.Parallel()
-
-	cfg := sandbox.Config{
-		Enabled:    true,
-		BinaryPath: createTempBinary(t),
-	}
-	spec := sandbox.Spec{Command: "echo hello", WorkDir: "/tmp", Defaults: true}
-	baseEnv := []string{"PATH=/usr/bin", "AIRO_SANDBOX_CONFIG=stale_value"}
-
-	cmd, err := sandbox.WrapCommand(context.Background(), cfg, spec, baseEnv)
-	if err != nil {
-		t.Fatalf("WrapCommand returned unexpected error: %v", err)
-	}
-
-	// Should have PATH + new AIRO_SANDBOX_CONFIG (stale one removed)
-	if len(cmd.Env) != 2 {
-		t.Errorf("expected 2 env vars, got %d: %v", len(cmd.Env), cmd.Env)
-	}
-	for _, entry := range cmd.Env {
-		if entry == "AIRO_SANDBOX_CONFIG=stale_value" {
-			t.Error("stale AIRO_SANDBOX_CONFIG should have been removed")
-		}
-	}
-}
-
 func TestFilterEnv(t *testing.T) {
 	t.Parallel()
 
@@ -379,5 +407,34 @@ func TestFilterEnv_NotPresent(t *testing.T) {
 	filtered := sandbox.FilterEnv(environ, "AIRO_SANDBOX_CONFIG")
 	if len(filtered) != 2 {
 		t.Fatalf("expected 2 env vars, got %d", len(filtered))
+	}
+}
+
+// helpers
+
+func makePathMap(paths []sandbox.PathRule) map[string]string {
+	m := make(map[string]string, len(paths))
+	for _, p := range paths {
+		m[p.Path] = p.Mode
+	}
+	return m
+}
+
+func assertPath(t *testing.T, pathMap map[string]string, path, wantMode string) {
+	t.Helper()
+	mode, ok := pathMap[path]
+	if !ok {
+		t.Errorf("expected path %q in profile", path)
+		return
+	}
+	if mode != wantMode {
+		t.Errorf("path %q mode = %q, want %q", path, mode, wantMode)
+	}
+}
+
+func assertNoPath(t *testing.T, pathMap map[string]string, path string) {
+	t.Helper()
+	if _, ok := pathMap[path]; ok {
+		t.Errorf("path %q should NOT be in profile", path)
 	}
 }

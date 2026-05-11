@@ -42,29 +42,6 @@ func TestParseConfig_Valid(t *testing.T) {
 	if len(cfg.BindTCP) != 1 {
 		t.Errorf("BindTCP length = %d, want 1", len(cfg.BindTCP))
 	}
-	// Defaults should be true by default
-	if !cfg.Defaults {
-		t.Error("Defaults should be true by default")
-	}
-}
-
-func TestParseConfig_DefaultsFalse(t *testing.T) {
-	t.Parallel()
-
-	input := `{
-		"defaults": false,
-		"command": "echo hello",
-		"work_dir": "/tmp"
-	}`
-
-	cfg, err := ParseConfig([]byte(input))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if cfg.Defaults {
-		t.Error("Defaults should be false when explicitly set")
-	}
 }
 
 func TestParseConfig_MissingCommand(t *testing.T) {
@@ -233,43 +210,6 @@ func TestIsValidMode(t *testing.T) {
 			got := sandbox.IsValidMode(tt.mode)
 			if got != tt.want {
 				t.Errorf("IsValidMode(%q) = %v, want %v", tt.mode, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestParsePathRulesString(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name    string
-		input   string
-		want    int
-		wantErr bool
-	}{
-		{"empty", "", 0, false},
-		{"single", "rx:/usr/bin", 1, false},
-		{"multiple", "rx:/usr/bin,r:/etc/hosts,rwc:/app", 3, false},
-		{"with_spaces", "rx:/usr/bin , r:/etc/hosts", 2, false},
-		{"invalid_mode", "z:/app", 0, true},
-		{"missing_colon", "/usr/bin", 0, true},
-		{"empty_path", "r:", 0, true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			rules, err := sandbox.ParsePathRulesString(tt.input)
-			if (err != nil) != tt.wantErr {
-				t.Errorf(
-					"ParsePathRulesString(%q) error = %v, wantErr %v",
-					tt.input, err, tt.wantErr)
-				return
-			}
-			if !tt.wantErr && len(rules) != tt.want {
-				t.Errorf(
-					"ParsePathRulesString(%q) got %d rules, want %d",
-					tt.input, len(rules), tt.want)
 			}
 		})
 	}

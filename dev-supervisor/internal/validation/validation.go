@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 )
@@ -18,13 +19,29 @@ const (
 	MaxCommandLength = 8192
 )
 
+// forkBombPattern detects classic bash fork bomb patterns like :(){ :|:& };:
+// Landlock cannot restrict process creation, so this must be caught at validation time.
+var forkBombPattern = regexp.MustCompile(`:\(\)\s*\{.*\|.*&\s*\}\s*;?\s*:`)
+
+// chownRecursiveRootPattern matches recursive chown to the root user (privilege
+// escalation). Covers `-r`, `-R`, combined flags (`-Rv`), and `--recursive`.
+// Requires a word boundary after "root" so `rootless:rootless` does not match.
+// Applied after strings.ToLower, so -R is seen as -r.
+var chownRecursiveRootPattern = regexp.MustCompile(`\bchown\s+(?:-[a-z]*r[a-z]*|--recursive)\s+root(?:[:\s/]|$)`)
+
 // ValidateProcessStartRequest validates a process start request
 func ValidateProcessStartRequest(req ProcessStartRequest) error {
 	if strings.TrimSpace(req.Command) == "" {
 		return errors.New("command cannot be empty")
 	}
 
-	// Check for potentially dangerous commands
+	if isForkBomb(req.Command) {
+		return errors.New("potentially dangerous command pattern detected")
+	}
+
+	// Defense in depth: the Landlock sandbox is the primary line of defense, but it can be
+	// disabled (DEV_SUPERVISOR_SANDBOX_ENABLED=false) and is unavailable on kernels < 6.12.
+	// These pre-exec checks give actionable errors and a baseline floor when sandbox is off.
 	if isDangerousCommand(req.Command) {
 		return errors.New("potentially dangerous command detected")
 	}
@@ -53,6 +70,15 @@ func ValidateCommandRequest(req CommandRequest) error {
 		return errors.New("command cannot be empty")
 	}
 
+	if isForkBomb(req.Command) {
+		return errors.New("potentially dangerous command pattern detected")
+	}
+
+	// See note on ValidateProcessStartRequest — same defense-in-depth rationale.
+	if isDangerousCommand(req.Command) {
+		return errors.New("potentially dangerous command detected")
+	}
+
 	// Check timeout limits
 	if req.Timeout < 0 {
 		return errors.New("timeout cannot be negative")
@@ -66,11 +92,6 @@ func ValidateCommandRequest(req CommandRequest) error {
 	// that resolve against the executor's default working directory).
 	if req.WorkingDir != "" && !isValidWorkingDir(req.WorkingDir) {
 		return errors.New("invalid working directory path")
-	}
-
-	// Check for potentially dangerous commands
-	if isDangerousCommand(req.Command) {
-		return errors.New("potentially dangerous command detected")
 	}
 
 	return nil
@@ -99,46 +120,6 @@ func ValidateEnvironmentSetRequest(req EnvironmentSetRequest) error {
 	}
 
 	return nil
-}
-
-// isDangerousCommand checks if a command might be dangerous to execute
-func isDangerousCommand(command string) bool {
-	command = strings.ToLower(strings.TrimSpace(command))
-
-	// List of potentially dangerous command patterns.
-	// All patterns must be lowercase since the command is lowered above.
-	dangerousPatterns := []string{
-		"rm -rf /",
-		"dd if=",
-		"mkfs.",
-		"fdisk",
-		"init 0",
-		"init 6",
-		"kill -9 1",
-		"killall -9",
-		":(){ :|:& };:", // Fork bomb
-		"chmod -r 777 /",
-		"chown -r",
-		"rm -rf --no-preserve-root",
-	}
-
-	for _, pattern := range dangerousPatterns {
-		idx := strings.Index(command, pattern)
-		if idx == -1 {
-			continue
-		}
-		// Word-boundary check: if the pattern ends with a digit, ensure it's not
-		// followed by another digit. Prevents "kill -9 1" from matching "kill -9 12345".
-		endIdx := idx + len(pattern)
-		lastChar := pattern[len(pattern)-1]
-		if lastChar >= '0' && lastChar <= '9' && endIdx < len(command) &&
-			command[endIdx] >= '0' && command[endIdx] <= '9' {
-			continue
-		}
-		return true
-	}
-
-	return false
 }
 
 // isValidPath checks if a path looks valid for process start requests.
@@ -313,6 +294,56 @@ func resolveSymlinksWithinBase(resolved string, baseDirClean string) (string, er
 // isWithinDir checks if path is equal to or a child of dir.
 func isWithinDir(path string, dir string) bool {
 	return path == dir || strings.HasPrefix(path, dir+"/")
+}
+
+// isForkBomb detects fork bomb patterns that Landlock cannot prevent.
+// Landlock restricts filesystem and network access but cannot limit process creation.
+func isForkBomb(command string) bool {
+	return forkBombPattern.MatchString(command)
+}
+
+// isDangerousCommand checks for substrings that destroy host state, escalate privilege,
+// or fall outside the Landlock sandbox's coverage. Kept as pre-exec defense in depth
+// so we fail fast with actionable errors when the sandbox is disabled (opt-out for
+// diagnostics, or kernels without Landlock ABI v6).
+func isDangerousCommand(command string) bool {
+	command = strings.ToLower(strings.TrimSpace(command))
+
+	if chownRecursiveRootPattern.MatchString(command) {
+		return true
+	}
+
+	// All patterns must be lowercase since command is lowered above.
+	dangerousPatterns := []string{
+		"rm -rf /",
+		"dd if=",
+		"mkfs.",
+		"fdisk",
+		"init 0",
+		"init 6",
+		"kill -9 1",
+		"killall -9",
+		"chmod -r 777 /",
+		"rm -rf --no-preserve-root",
+	}
+
+	for _, pattern := range dangerousPatterns {
+		idx := strings.Index(command, pattern)
+		if idx == -1 {
+			continue
+		}
+		// Word-boundary check: if the pattern ends with a digit, ensure it's not
+		// followed by another digit. Prevents "kill -9 1" from matching "kill -9 12345".
+		endIdx := idx + len(pattern)
+		lastChar := pattern[len(pattern)-1]
+		if lastChar >= '0' && lastChar <= '9' && endIdx < len(command) &&
+			command[endIdx] >= '0' && command[endIdx] <= '9' {
+			continue
+		}
+		return true
+	}
+
+	return false
 }
 
 // SanitizeCommand performs basic command sanitization

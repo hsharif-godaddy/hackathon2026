@@ -27,6 +27,7 @@ import (
 	"github.com/airo-ai-builder/dev-supervisor/internal/processmanager"
 	httpproxy "github.com/airo-ai-builder/dev-supervisor/internal/proxy/http"
 	smtpproxy "github.com/airo-ai-builder/dev-supervisor/internal/proxy/smtp"
+	"github.com/airo-ai-builder/dev-supervisor/internal/sandbox"
 	"github.com/airo-ai-builder/dev-supervisor/internal/validation"
 )
 
@@ -127,6 +128,12 @@ type ErrorResponse struct {
 type SetupExecuteResponse struct {
 	Status string  `json:"status"` // "executed", "already_executed", "not_configured", "error"
 	Error  *string `json:"error,omitempty"`
+}
+
+// sharedStorageDir returns the SHARED_STORAGE_DIR environment variable value.
+// This is used by sandbox profiles to resolve the shared storage assets path.
+func sharedStorageDir() string {
+	return os.Getenv("SHARED_STORAGE_DIR")
 }
 
 func NewServer() *Server {
@@ -269,6 +276,32 @@ func (s *Server) StartWithConfig(cfg *Config) error {
 	// Configure process manager logging
 	s.procMgr.SetProcessLogging(cfg.ProcessLogging)
 	s.procMgr.SetStructuredLogging(cfg.ProcessLoggingToStdout)
+
+	// Configure sandbox for child processes
+	storageDir := sharedStorageDir()
+	s.cmdExec.SetSandboxEnabled(cfg.SandboxEnabled)
+	s.cmdExec.SetSharedStorageDir(storageDir)
+	s.procMgr.SetSandboxEnabled(cfg.SandboxEnabled)
+	s.procMgr.SetSharedStorageDir(storageDir)
+	s.procMgr.SetProcessVariant(sandbox.DetectProcessVariant())
+	s.procMgr.SetDefaultBindPort(cfg.ProxyTargetPort)
+
+	if cfg.SandboxEnabled {
+		if _, err := os.Stat(sandbox.BinaryPath()); err != nil {
+			return fmt.Errorf("sandbox enabled but binary not found at %s: %w", sandbox.BinaryPath(), err)
+		}
+		variant := sandbox.DetectProcessVariant()
+		slog.Info("sandbox.enabled",
+			"binary", sandbox.BinaryPath(),
+			"shared_storage_dir", storageDir,
+			"process_variant", string(variant),
+			"exec_paths", sandbox.ExecPaths(storageDir),
+			"process_paths", sandbox.ProcessPaths(variant, storageDir),
+			"connect_tcp", sandbox.ConnectTCPPorts,
+		)
+	} else {
+		slog.Info("sandbox.disabled")
+	}
 
 	if cfg.UseTCP {
 		return s.startTCPServer(cfg.TCPPort, cfg.ShutdownTimeout)

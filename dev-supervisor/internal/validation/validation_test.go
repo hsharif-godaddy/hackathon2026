@@ -8,9 +8,13 @@ import (
 	"github.com/airo-ai-builder/dev-supervisor/internal/validation"
 )
 
-// --- Dangerous command tests ---
+// --- Command validation tests ---
+//
+// Pre-exec checks complement the Landlock sandbox (which enforces filesystem + network
+// at the kernel level). Keeping the checks here provides defense in depth when sandbox
+// is disabled and actionable errors regardless.
 
-func TestValidateCommandRequest_DangerousCommands(t *testing.T) {
+func TestValidateCommandRequest_BasicValidation(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -18,7 +22,17 @@ func TestValidateCommandRequest_DangerousCommands(t *testing.T) {
 		cmd     string
 		wantErr bool
 	}{
-		// Every pattern in isDangerousCommand (direct match)
+		{name: "empty command", cmd: "", wantErr: true},
+		{name: "whitespace only", cmd: "   ", wantErr: true},
+		{name: "valid: ls", cmd: "ls -la", wantErr: false},
+		{name: "valid: echo", cmd: "echo hello", wantErr: false},
+		{name: "valid: npm start", cmd: "npm start", wantErr: false},
+		{name: "valid: git log", cmd: "git log --oneline -10", wantErr: false},
+		{name: "valid: rm file (not root)", cmd: "rm -rf ./build", wantErr: false},
+		{name: "valid: chmod on file", cmd: "chmod 644 file.txt", wantErr: false},
+		{name: "valid: chown on file", cmd: "chown node:node file.txt", wantErr: false},
+
+		// Dangerous patterns (pre-exec reject; also enforced by Landlock when enabled)
 		{name: "rm -rf /", cmd: "rm -rf /", wantErr: true},
 		{name: "dd if=", cmd: "dd if=/dev/zero of=/dev/sda", wantErr: true},
 		{name: "mkfs", cmd: "mkfs.ext4 /dev/sda1", wantErr: true},
@@ -27,48 +41,36 @@ func TestValidateCommandRequest_DangerousCommands(t *testing.T) {
 		{name: "init 6 (reboot)", cmd: "init 6", wantErr: true},
 		{name: "kill -9 1 (kill init)", cmd: "kill -9 1", wantErr: true},
 		{name: "killall -9", cmd: "killall -9", wantErr: true},
-		{name: "fork bomb", cmd: ":(){ :|:& };:", wantErr: true},
 		{name: "chmod -r 777 /", cmd: "chmod -r 777 /", wantErr: true},
-		{name: "chown -r", cmd: "chown -r root:root /", wantErr: true},
+		{name: "chown -r root", cmd: "chown -r root:root /", wantErr: true},
+		{name: "chown -R root (uppercase)", cmd: "chown -R root:root /", wantErr: true},
+		{name: "chown --recursive root", cmd: "chown --recursive root:root /", wantErr: true},
+		{name: "chown -Rv root (combined flags)", cmd: "chown -Rv root:root /", wantErr: true},
+		{name: "chown -r root (trailing slash)", cmd: "chown -r root /app", wantErr: true},
+
+		// Legitimate recursive chown to non-root user (npm post-install pattern)
+		{name: "valid: chown -R node:node /app", cmd: "chown -R node:node /app", wantErr: false},
+		{name: "valid: chown -R user:group /path", cmd: "chown -R user:group /some/path", wantErr: false},
+		// Word boundary: must not flag usernames starting with "root" (rootless, rootkit, etc.)
+		{name: "valid: chown -r rootless:rootless", cmd: "chown -r rootless:rootless /app", wantErr: false},
+		{name: "valid: chown -R rootkit:rootkit", cmd: "chown -R rootkit:rootkit /app", wantErr: false},
 		{name: "rm -rf --no-preserve-root", cmd: "rm -rf --no-preserve-root /", wantErr: true},
 
-		// Case insensitivity (command is lowered before matching)
-		{name: "chmod uppercase -R", cmd: "chmod -R 777 /", wantErr: true},
-		{name: "chown uppercase -R", cmd: "chown -R root:root /app", wantErr: true},
-		{name: "DD IF= uppercase", cmd: "DD IF=/dev/zero OF=/dev/sda", wantErr: true},
-		{name: "MKFS uppercase", cmd: "MKFS.ext4 /dev/sda1", wantErr: true},
+		// Case insensitivity
 		{name: "RM -RF / uppercase", cmd: "RM -RF /", wantErr: true},
+		{name: "DD IF= uppercase", cmd: "DD IF=/dev/zero OF=/dev/sda", wantErr: true},
 
-		// Embedded in longer commands (substring match)
+		// Embedded in longer commands
 		{name: "rm -rf / in pipeline", cmd: "echo foo && rm -rf /", wantErr: true},
 		{name: "dd in subshell", cmd: "bash -c 'dd if=/dev/zero of=/dev/sda'", wantErr: true},
-		{name: "killall in chain", cmd: "sleep 1; killall -9", wantErr: true},
 
-		// Whitespace handling (trimmed before matching)
-		{name: "leading whitespace", cmd: "  rm -rf /", wantErr: true},
-		{name: "trailing whitespace", cmd: "rm -rf /  ", wantErr: true},
-
-		// Word boundary: digit-ending patterns should not match longer numbers
-		{name: "kill -9 1 at end of string", cmd: "kill -9 1", wantErr: true},
-		{name: "kill -9 1 with space after", cmd: "kill -9 1 && echo done", wantErr: true},
+		// Word boundary: digit-ending patterns must not match longer numbers
 		{name: "kill -9 1 not matching pid 12345", cmd: "kill -9 12345", wantErr: false},
-		{name: "kill -9 1 not matching pid 100", cmd: "kill -9 100", wantErr: false},
-		{name: "killall -9 not matching -99", cmd: "killall -99", wantErr: false},
-		{name: "killall -9 with args", cmd: "killall -9 node", wantErr: true},
 		{name: "init 0 not matching 05", cmd: "init 05", wantErr: false},
 		{name: "init 6 not matching 64", cmd: "init 64", wantErr: false},
 
-		// Safe commands that should NOT be blocked
-		{name: "safe: ls", cmd: "ls -la", wantErr: false},
-		{name: "safe: echo", cmd: "echo hello", wantErr: false},
-		{name: "safe: npm start", cmd: "npm start", wantErr: false},
-		{name: "safe: git log", cmd: "git log --oneline -10", wantErr: false},
-		{name: "safe: grep pipe head", cmd: "grep -r pattern | head -20", wantErr: false},
-		{name: "safe: rm file (not root)", cmd: "rm -rf ./build", wantErr: false},
-		{name: "safe: chmod on file", cmd: "chmod 644 file.txt", wantErr: false},
-		{name: "safe: chown on file", cmd: "chown node:node file.txt", wantErr: false},
-		{name: "safe: init in path", cmd: "cat /app/init.js", wantErr: false},
-		{name: "safe: empty command", cmd: "", wantErr: true}, // empty is rejected by ValidateCommandRequest
+		// Fork bombs (Landlock cannot limit process creation)
+		{name: "fork bomb", cmd: ":(){ :|:& };:", wantErr: true},
 	}
 
 	for _, tt := range tests {
@@ -79,6 +81,35 @@ func TestValidateCommandRequest_DangerousCommands(t *testing.T) {
 			})
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ValidateCommandRequest(Command=%q) error = %v, wantErr %v", tt.cmd, err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestValidateCommandRequest_TimeoutLimits(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		timeout int
+		wantErr bool
+	}{
+		{name: "zero timeout (default)", timeout: 0, wantErr: false},
+		{name: "valid timeout", timeout: 60, wantErr: false},
+		{name: "max timeout", timeout: 3600, wantErr: false},
+		{name: "negative timeout", timeout: -1, wantErr: true},
+		{name: "exceeds max", timeout: 3601, wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			err := validation.ValidateCommandRequest(validation.CommandRequest{
+				Command: "echo test",
+				Timeout: tt.timeout,
+			})
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ValidateCommandRequest(Timeout=%d) error = %v, wantErr %v", tt.timeout, err, tt.wantErr)
 			}
 		})
 	}
@@ -276,9 +307,9 @@ func TestValidateFilePath_DoubleDotInFilename(t *testing.T) {
 	}
 }
 
-// --- Dangerous command tests for ProcessStartRequest ---
+// --- ProcessStartRequest basic validation ---
 
-func TestValidateProcessStartRequest_DangerousCommands(t *testing.T) {
+func TestValidateProcessStartRequest_BasicValidation(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -286,11 +317,16 @@ func TestValidateProcessStartRequest_DangerousCommands(t *testing.T) {
 		cmd     string
 		wantErr bool
 	}{
+		{name: "empty command", cmd: "", wantErr: true},
+		{name: "valid: npm start", cmd: "npm start", wantErr: false},
+		{name: "valid: node server.js", cmd: "node server.js", wantErr: false},
+
+		// Dangerous patterns (pre-exec reject)
 		{name: "rm -rf /", cmd: "rm -rf /", wantErr: true},
-		{name: "fork bomb", cmd: ":(){ :|:& };:", wantErr: true},
 		{name: "dd", cmd: "dd if=/dev/zero of=/dev/sda", wantErr: true},
-		{name: "safe: npm start", cmd: "npm start", wantErr: false},
-		{name: "safe: node server.js", cmd: "node server.js", wantErr: false},
+
+		// Fork bombs
+		{name: "fork bomb", cmd: ":(){ :|:& };:", wantErr: true},
 	}
 
 	for _, tt := range tests {

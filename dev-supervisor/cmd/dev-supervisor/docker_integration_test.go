@@ -33,6 +33,10 @@ func TestDockerIntegration(t *testing.T) {
 				t.Fatalf("Test 4 failed: Orphan reaping")
 			case 5:
 				t.Fatalf("Test 5 failed: Signal handling")
+			case 6:
+				t.Fatalf("Test 6 failed: Sandbox blocks disallowed paths")
+			case 7:
+				t.Fatalf("Test 7 failed: Sandbox allows allowed paths")
 			case 99:
 				t.Fatalf("Test setup failed")
 			default:

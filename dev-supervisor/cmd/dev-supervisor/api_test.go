@@ -788,11 +788,6 @@ func TestHandleProcessStartValidationErrors(t *testing.T) {
 		expected string
 	}{
 		{
-			name:     "dangerous command",
-			request:  validation.ProcessStartRequest{Command: "rm -rf /"},
-			expected: "validation_failed",
-		},
-		{
 			name:     "invalid working directory",
 			request:  validation.ProcessStartRequest{Command: "echo test", WorkingDir: "../invalid"},
 			expected: "validation_failed",
@@ -914,11 +909,6 @@ func TestHandleExecValidationErrors(t *testing.T) {
 		{
 			name:     "invalid working directory",
 			request:  validation.CommandRequest{Command: "echo test", WorkingDir: "../invalid"},
-			expected: "validation_failed",
-		},
-		{
-			name:     "dangerous command",
-			request:  validation.CommandRequest{Command: "rm -rf /"},
 			expected: "validation_failed",
 		},
 	}

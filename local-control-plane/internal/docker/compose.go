@@ -233,6 +233,14 @@ func generatePreviewEnvironment(app *store.App) map[string]string {
 		"DEV_SUPERVISOR_SETUP_SCRIPT":        "/management-scripts/nomad_setup.sh",
 		"DEV_SUPERVISOR_DEFER_RESTART_SETUP": "true",
 
+		// Sandbox configuration (Landlock-based process isolation).
+		// Off by default in local dev: Docker Desktop on macOS passes host binds
+		// through a fakeowner layer that silently defeats Landlock rules, and
+		// colima needs a recent HWE kernel (≥ 6.12) plus an explicit mount for
+		// the workspace root. Set DEV_SUPERVISOR_SANDBOX_ENABLED=true in the
+		// local-control-plane environment to opt in.
+		"DEV_SUPERVISOR_SANDBOX_ENABLED": getEnvOrDefault("DEV_SUPERVISOR_SANDBOX_ENABLED", "false"),
+
 		// Persistent assets mount location (matches container volume mount)
 		"SHARED_STORAGE_DIR": "/shared-storage",
 	}

@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"time"
 
+	"github.com/airo-ai-builder/dev-supervisor/internal/sandbox"
 	"github.com/airo-ai-builder/dev-supervisor/internal/validation"
 )
 
@@ -27,8 +28,10 @@ type CommandResult struct {
 }
 
 type CommandExecutor struct {
-	defaultTimeout int
-	defaultWorkDir string
+	defaultTimeout   int
+	defaultWorkDir   string
+	sandboxEnabled   bool
+	sharedStorageDir string
 }
 
 func NewCommandExecutor() *CommandExecutor {
@@ -42,6 +45,16 @@ func NewCommandExecutor() *CommandExecutor {
 		defaultTimeout: 30, // 30 seconds default
 		defaultWorkDir: defaultDir,
 	}
+}
+
+// SetSandboxEnabled configures whether command execution uses Landlock sandboxing.
+func (ce *CommandExecutor) SetSandboxEnabled(enabled bool) {
+	ce.sandboxEnabled = enabled
+}
+
+// SetSharedStorageDir sets the shared storage directory for sandbox path resolution.
+func (ce *CommandExecutor) SetSharedStorageDir(dir string) {
+	ce.sharedStorageDir = dir
 }
 
 func (ce *CommandExecutor) Execute(req validation.CommandRequest) (*CommandResult, error) {
@@ -68,11 +81,32 @@ func (ce *CommandExecutor) Execute(req validation.CommandRequest) (*CommandResul
 	ctx, cancel := context.WithTimeout(context.Background(), timeoutDuration)
 	defer cancel()
 
-	// Create command
-	//nolint:gosec // G204: Command execution is the intended functionality
-	// nosemgrep: go.lang.security.audit.dangerous-exec-command.dangerous-exec-command
-	cmd := exec.CommandContext(ctx, "sh", "-c", req.Command)
-	cmd.Dir = workDir
+	// Create command (sandboxed or direct)
+	spec := sandbox.BuildExecProfile(ce.sharedStorageDir, req.Command, workDir)
+	sandboxCmd, sandboxErr := sandbox.WrapCommand(ctx, ce.sandboxEnabled, spec, os.Environ())
+	if sandboxErr != nil {
+		return nil, sandboxErr
+	}
+
+	var cmd *exec.Cmd
+	if sandboxCmd != nil {
+		cmd = sandboxCmd
+	} else {
+		//nolint:gosec // G204: Command execution is the intended functionality
+		// nosemgrep: go.lang.security.audit.dangerous-exec-command.dangerous-exec-command
+		cmd = exec.CommandContext(ctx, "sh", "-c", req.Command)
+		cmd.Dir = workDir
+	}
+
+	// Attach a status pipe for wrapper-level failures (only meaningful when sandboxed).
+	var statusRead *os.File
+	if sandboxCmd != nil {
+		var pipeErr error
+		statusRead, pipeErr = sandbox.AttachStatusPipe(cmd)
+		if pipeErr != nil {
+			return nil, pipeErr
+		}
+	}
 
 	var stdout, stderr bytes.Buffer
 	if req.CaptureOutput {
@@ -90,8 +124,27 @@ func (ce *CommandExecutor) Execute(req validation.CommandRequest) (*CommandResul
 		"capture_output", req.CaptureOutput,
 	)
 
-	// Execute command
-	err := cmd.Run()
+	// Execute command (with status-pipe handling when sandboxed)
+	var err error
+	var sandboxFatal string
+	if statusRead != nil {
+		if startErr := cmd.Start(); startErr != nil {
+			_ = statusRead.Close()
+			sandbox.ReleaseStatusWrite(cmd)
+			err = startErr
+		} else {
+			sandbox.ReleaseStatusWrite(cmd)
+			fatalCh := make(chan string, 1)
+			go func() {
+				fatalCh <- sandbox.ReadFatal(statusRead)
+				_ = statusRead.Close()
+			}()
+			err = cmd.Wait()
+			sandboxFatal = <-fatalCh
+		}
+	} else {
+		err = cmd.Run()
+	}
 	duration := time.Since(startTime)
 
 	// Ensure duration is at least 1ms to avoid 0 values for very fast commands
@@ -137,9 +190,20 @@ func (ce *CommandExecutor) Execute(req validation.CommandRequest) (*CommandResul
 		result.Stderr = stderr.String()
 	}
 
+	// Surface airo-sandbox wrapper failures reported via the status pipe (fd 3).
+	if sandboxFatal != "" {
+		result.Error = "sandbox wrapper failed: " + sandboxFatal
+		slog.Error("command_executor.execute.sandbox_error",
+			"command_preview", commandPreview,
+			"exit_code", result.ExitCode,
+			"duration_ms", result.Duration,
+			"reason", sandboxFatal,
+		)
+		return result, nil
+	}
+
 	switch {
 	case result.ExitCode == -1:
-		// Supervisor failure: couldn't execute the command at all
 		slog.Error("command_executor.execute.failed",
 			"command_preview", commandPreview,
 			"exit_code", result.ExitCode,
@@ -150,13 +214,11 @@ func (ce *CommandExecutor) Execute(req validation.CommandRequest) (*CommandResul
 		)
 	case err != nil:
 		// Command ran but returned non-zero exit code.
-		// This is not a supervisor error - the caller decides whether
-		// the exit code is meaningful (e.g. git rev-parse returns 1 for missing refs).
 		slog.Debug("command_executor.execute.non_zero_exit",
 			"command_preview", commandPreview,
 			"exit_code", result.ExitCode,
 			"duration_ms", result.Duration,
-			"stderr_length", len(result.Stderr),
+			"stderr_preview", truncate(result.Stderr, 256),
 			"stdout_length", len(result.Stdout),
 		)
 	default:

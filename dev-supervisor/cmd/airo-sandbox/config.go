@@ -10,9 +10,9 @@ import (
 )
 
 // SandboxConfig defines the sandbox restrictions for a child process.
+// System defaults (see defaults.go) are always applied in addition to Paths.
 type SandboxConfig struct {
 	Paths      []sandbox.PathRule `json:"paths"`       // Filesystem access rules with per-path modes
-	Defaults   bool               `json:"defaults"`    // Include built-in system defaults (default: true)
 	ConnectTCP []uint16           `json:"connect_tcp"` // Allowed outbound TCP ports
 	BindTCP    []uint16           `json:"bind_tcp"`    // Allowed bind TCP ports
 	Command    string             `json:"command"`     // Shell command to exec
@@ -22,8 +22,6 @@ type SandboxConfig struct {
 // ParseConfig parses a SandboxConfig from JSON bytes.
 func ParseConfig(data []byte) (*SandboxConfig, error) {
 	var cfg SandboxConfig
-	// Defaults is true unless explicitly set to false in JSON
-	cfg.Defaults = true
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return nil, fmt.Errorf("failed to parse sandbox config: %w", err)
 	}

@@ -3,9 +3,132 @@
 package sandbox
 
 import (
-	"fmt"
-	"strings"
+	"os"
+	"path/filepath"
 )
+
+// binaryPath is the path to the airo-sandbox binary inside the container.
+// A package-level var (not const) so BinaryPathForTesting can point it at a
+// temp binary under test control. Normal callers read it via BinaryPath().
+var binaryPath = "/usr/local/bin/airo-sandbox"
+
+// BinaryPath returns the airo-sandbox binary path used by WrapCommand.
+func BinaryPath() string { return binaryPath }
+
+// BinaryPathForTesting overrides BinaryPath for the duration of the test
+// and restores it via t.Cleanup. Kept in production code (not _test.go) so
+// tests in other packages can call it.
+func BinaryPathForTesting(tb interface {
+	Helper()
+	Cleanup(func())
+}, path string) {
+	tb.Helper()
+	prev := binaryPath
+	binaryPath = path
+	tb.Cleanup(func() { binaryPath = prev })
+}
+
+// ProcessVariant selects which filesystem paths a managed process gets.
+// Preview and publish containers ship different runtimes (preview keeps deps
+// at /node_modules, publish extracts to /dist and execs /publish/run-app.sh),
+// so they need distinct profiles rather than a union.
+type ProcessVariant string
+
+const (
+	VariantPreview ProcessVariant = "preview"
+	VariantPublish ProcessVariant = "publish"
+)
+
+// DetectProcessVariant returns the variant for the current container based on
+// NOMAD_TASK_NAME (the same signal used to gate SMTP proxy / start-on-request).
+// Anything other than "preview" is treated as publish.
+func DetectProcessVariant() ProcessVariant {
+	if os.Getenv("NOMAD_TASK_NAME") == "preview" {
+		return VariantPreview
+	}
+	return VariantPublish
+}
+
+// ConnectTCPPorts lists the TCP ports that sandboxed processes may connect to.
+// Applied uniformly to every sandboxed process (agent /exec commands and the
+// managed app process). These are the default outbound ports for this
+// environment — customer apps routinely need all of them:
+//   - 80/443  — HTTP(S) to package registries, APIs, CDNs
+//   - 53      — DNS resolution
+//   - 3306    — MySQL (customer apps connecting to their provisioned DB)
+//   - 25      — SMTP (dev-supervisor's SMTP proxy on localhost:2525 forwards here)
+//
+// Narrowing this list further (e.g. per-skill or per-command allowlists) would
+// require a more expressive profile system and is not part of the current
+// threat model.
+var ConnectTCPPorts = []uint16{80, 443, 53, 3306, 25}
+
+// ExecPaths returns filesystem access rules for agent one-off commands (/exec).
+// Only relevant in preview containers — publish containers don't expose /exec.
+// sharedStorageDir is the SHARED_STORAGE_DIR env var value (e.g. "/shared-storage").
+func ExecPaths(sharedStorageDir string) []PathRule {
+	paths := []PathRule{
+		{Mode: "rwc", Path: "/app"},
+		{Mode: "rwc", Path: "/tmp"},
+		{Mode: "rwc", Path: "/dist"},
+		{Mode: "rwc", Path: "/home/agent"},
+		{Mode: "rwc", Path: "/git-repo"},
+		{Mode: "rwc", Path: "/private"},
+		// npm writes its cache when fetching packages not already in the pre-populated
+		// store (e.g. agent-driven `npm install <new-pkg>`), so it must be writable.
+		{Mode: "rwc", Path: "/npm-cache"},
+		// Preview image stores dependencies at /node_modules (not /app/node_modules)
+		// and puts /node_modules/.bin on PATH (vite, tsc, etc.).
+		{Mode: "rx", Path: "/node_modules"},
+	}
+	if sharedStorageDir != "" {
+		paths = append(paths, PathRule{Mode: "rwc", Path: filepath.Join(sharedStorageDir, "public", "assets")})
+	}
+	return paths
+}
+
+// PreviewProcessPaths returns filesystem access rules for the preview container's
+// managed app process (the customer's `npm run dev` or similar).
+func PreviewProcessPaths(sharedStorageDir string) []PathRule {
+	paths := []PathRule{
+		{Mode: "rwc", Path: "/app"},
+		{Mode: "rwc", Path: "/tmp"},
+		{Mode: "rwc", Path: "/home/agent"},
+		{Mode: "rwc", Path: "/private"},
+		// v8 template dependency store; /node_modules/.bin is on PATH (vite, tsc, etc.).
+		{Mode: "rx", Path: "/node_modules"},
+	}
+	if sharedStorageDir != "" {
+		paths = append(paths, PathRule{Mode: "rwc", Path: filepath.Join(sharedStorageDir, "public", "assets")})
+	}
+	return paths
+}
+
+// PublishProcessPaths returns filesystem access rules for the publish container's
+// managed app process. The entrypoint is /publish/run-app.sh, which extracts the
+// archive into /dist and execs the app from there.
+func PublishProcessPaths(sharedStorageDir string) []PathRule {
+	paths := []PathRule{
+		{Mode: "rwc", Path: "/app"},
+		{Mode: "rwc", Path: "/tmp"},
+		{Mode: "rwc", Path: "/home/agent"},
+		{Mode: "rwc", Path: "/private"},
+		{Mode: "rwc", Path: "/dist"},
+		{Mode: "rx", Path: "/publish"},
+	}
+	if sharedStorageDir != "" {
+		paths = append(paths, PathRule{Mode: "rwc", Path: filepath.Join(sharedStorageDir, "public", "assets")})
+	}
+	return paths
+}
+
+// ProcessPaths returns the filesystem access rules for the given container variant.
+func ProcessPaths(variant ProcessVariant, sharedStorageDir string) []PathRule {
+	if variant == VariantPublish {
+		return PublishProcessPaths(sharedStorageDir)
+	}
+	return PreviewProcessPaths(sharedStorageDir)
+}
 
 // PathRule defines a filesystem path with its access mode.
 // Mode uses OpenBSD-style unveil permissions: r (read), w (write), x (execute), c (create/delete).
@@ -43,52 +166,11 @@ func IsValidMode(mode string) bool {
 	return true
 }
 
-// ParsePathRulesString parses a comma-separated string of "mode:path" entries.
-// Example: "rx:/usr/bin,r:/etc/hosts,rwc:/app"
-// Returns an error if any entry has an invalid format, mode, or empty path.
-func ParsePathRulesString(value string) ([]PathRule, error) {
-	if value == "" {
-		return nil, nil
-	}
-	var rules []PathRule
-	for entry := range strings.SplitSeq(value, ",") {
-		entry = strings.TrimSpace(entry)
-		if entry == "" {
-			continue
-		}
-		mode, path, ok := strings.Cut(entry, ":")
-		if !ok {
-			return nil, fmt.Errorf(
-				"invalid path rule %q: expected mode:path format", entry)
-		}
-		mode = strings.TrimSpace(mode)
-		path = strings.TrimSpace(path)
-		if !IsValidMode(mode) {
-			return nil, fmt.Errorf(
-				"invalid mode %q in path rule %q", mode, entry)
-		}
-		if path == "" {
-			return nil, fmt.Errorf("empty path in path rule %q", entry)
-		}
-		rules = append(rules, PathRule{Mode: mode, Path: path})
-	}
-	return rules, nil
-}
-
-// Config holds the sandbox configuration loaded from environment variables.
-type Config struct {
-	Enabled    bool       // Whether sandboxing is enabled
-	BinaryPath string     // Path to the airo-sandbox binary
-	Paths      []PathRule // Filesystem access rules with per-path modes
-	Defaults   bool       // Include built-in system defaults (default: true)
-	ConnectTCP []uint16   // Allowed outbound TCP ports
-	BindTCP    []uint16   // Allowed bind TCP ports
-}
-
 // Spec is the JSON config passed to the airo-sandbox binary via AIRO_SANDBOX_CONFIG.
+// System defaults (binaries, libs, DNS, TLS, etc. — see cmd/airo-sandbox/defaults.go)
+// are always prepended to Paths by airo-sandbox.
 type Spec struct {
 	Paths      []PathRule `json:"paths"`
-	Defaults   bool       `json:"defaults"`
 	ConnectTCP []uint16   `json:"connect_tcp"`
 	BindTCP    []uint16   `json:"bind_tcp"`
 	Command    string     `json:"command"`
@@ -96,46 +178,25 @@ type Spec struct {
 }
 
 // BuildExecProfile builds a Spec for a one-off /exec command.
-func BuildExecProfile(cfg Config, command, workDir string) Spec {
+func BuildExecProfile(sharedStorageDir, command, workDir string) Spec {
 	return Spec{
-		Paths:      cfg.Paths,
-		Defaults:   cfg.Defaults,
-		ConnectTCP: cfg.ConnectTCP,
-		BindTCP:    nil, // One-off commands don't bind ports
+		Paths:      ExecPaths(sharedStorageDir),
+		ConnectTCP: ConnectTCPPorts,
+		BindTCP:    nil,
 		Command:    command,
 		WorkDir:    workDir,
 	}
 }
 
 // BuildProcessProfile builds a Spec for a /process/start managed process.
-// Additional bind ports (e.g., the app's listening port) are merged with the base config.
-func BuildProcessProfile(cfg Config, command, workDir string, extraBindPorts []uint16) Spec {
-	bindPorts := mergeUint16(cfg.BindTCP, extraBindPorts)
+// bindPorts are the ports the process needs to listen on (from ProcessStartRequest.Ports).
+// variant selects the preview vs publish filesystem layout.
+func BuildProcessProfile(variant ProcessVariant, sharedStorageDir, command, workDir string, bindPorts []uint16) Spec {
 	return Spec{
-		Paths:      cfg.Paths,
-		Defaults:   cfg.Defaults,
-		ConnectTCP: cfg.ConnectTCP,
+		Paths:      ProcessPaths(variant, sharedStorageDir),
+		ConnectTCP: ConnectTCPPorts,
 		BindTCP:    bindPorts,
 		Command:    command,
 		WorkDir:    workDir,
 	}
-}
-
-// mergeUint16 combines two uint16 slices, deduplicating values.
-func mergeUint16(a, b []uint16) []uint16 {
-	seen := make(map[uint16]bool, len(a)+len(b))
-	var result []uint16
-	for _, v := range a {
-		if !seen[v] {
-			seen[v] = true
-			result = append(result, v)
-		}
-	}
-	for _, v := range b {
-		if !seen[v] {
-			seen[v] = true
-			result = append(result, v)
-		}
-	}
-	return result
 }

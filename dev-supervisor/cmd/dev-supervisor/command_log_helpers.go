@@ -21,3 +21,13 @@ func commandLogPreview(command string) string {
 
 	return string(runes[:commandLogPreviewLength]) + "…"
 }
+
+// truncate returns s truncated to maxLen runes with an ellipsis suffix.
+// Rune-safe so multi-byte UTF-8 characters aren't bisected.
+func truncate(s string, maxLen int) string {
+	runes := []rune(s)
+	if len(runes) <= maxLen {
+		return s
+	}
+	return string(runes[:maxLen]) + "..."
+}

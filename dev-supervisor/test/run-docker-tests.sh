@@ -14,6 +14,7 @@ CONTAINER_NAME="dev-supervisor-test-$$"
 # This makes dev-supervisor PID 1 but with no supervised child process
 if ! docker run -d --name "$CONTAINER_NAME" \
     --init=false \
+    -e DEV_SUPERVISOR_SANDBOX_ENABLED=true \
     -v /tmp/test-docker-integration:/tmp \
     dev-supervisor:test; then
     echo "❌ Failed to start container"
@@ -38,6 +39,8 @@ else
         3) echo "   Test 3 failed: Process lifecycle" ;;
         4) echo "   Test 4 failed: Orphan reaping" ;;
         5) echo "   Test 5 failed: Signal handling" ;;
+        6) echo "   Test 6 failed: Sandbox blocks disallowed paths" ;;
+        7) echo "   Test 7 failed: Sandbox allows allowed paths" ;;
         99) echo "   Test setup failed (Docker, socket, etc.)" ;;
     esac
 fi

@@ -3,11 +3,13 @@ WORKDIR /build
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /usr/local/bin/dev-supervisor ./cmd/dev-supervisor
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /usr/local/bin/dev-supervisor ./cmd/dev-supervisor && \
+    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /usr/local/bin/airo-sandbox ./cmd/airo-sandbox
 
 FROM alpine:3.22
 RUN apk add --no-cache bash curl procps
 COPY --from=builder /usr/local/bin/dev-supervisor /usr/local/bin/dev-supervisor
+COPY --from=builder /usr/local/bin/airo-sandbox /usr/local/bin/airo-sandbox
 COPY test/docker-integration-tests.sh /test/
 RUN chmod +x /test/docker-integration-tests.sh
 ENTRYPOINT ["/usr/local/bin/dev-supervisor"]

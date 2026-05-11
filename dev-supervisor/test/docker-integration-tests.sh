@@ -287,16 +287,56 @@ fi
 
 echo "✓ PASS: Signal handling working correctly (child processes terminated)"
 
-# Test 6: Conditional Startup - No Scripts (Backward Compatibility)
+# Test 6: Sandbox - Blocks Writes to Disallowed Paths
 echo ""
-echo "Test 6: Conditional Startup - No Scripts (Backward Compatibility)"
+echo "Test 6: Sandbox - Blocks Writes to Disallowed Paths"
+
+# /opt is not in the exec profile's allowed paths, so writing there should fail
+EXEC_RESPONSE=$(api_call POST /exec '{"command":"touch /opt/sandbox-test-file","working_dir":"/tmp"}')
+EXEC_EXIT=$(echo "$EXEC_RESPONSE" | grep -o '"exit_code":[0-9]*' | cut -d: -f2)
+
+if [ "$EXEC_EXIT" = "0" ]; then
+    echo "❌ FAIL: Command writing to /opt should have been blocked by sandbox"
+    echo "Response: $EXEC_RESPONSE"
+    exit 6
+fi
+echo "✓ PASS: Sandbox blocked write to disallowed path (/opt)"
+
+# Test 7: Sandbox - Allows Commands in Allowed Paths
+echo ""
+echo "Test 7: Sandbox - Allows Commands in Allowed Paths"
+
+# /tmp is in the exec profile's allowed paths, so writing there should succeed
+EXEC_RESPONSE=$(api_call POST /exec '{"command":"echo sandbox-ok > /tmp/sandbox-test-file && cat /tmp/sandbox-test-file","working_dir":"/tmp"}')
+EXEC_EXIT=$(echo "$EXEC_RESPONSE" | grep -o '"exit_code":[0-9]*' | cut -d: -f2)
+if [ "$EXEC_EXIT" != "0" ]; then
+    echo "❌ FAIL: Command in allowed path should have succeeded (exit_code=$EXEC_EXIT)"
+    echo "Response: $EXEC_RESPONSE"
+    exit 7
+fi
+
+# Verify stdout contains the expected output (echo adds a trailing newline)
+if ! echo "$EXEC_RESPONSE" | grep -q '"stdout":"sandbox-ok'; then
+    echo "❌ FAIL: Expected stdout to contain 'sandbox-ok'"
+    echo "Response: $EXEC_RESPONSE"
+    exit 7
+fi
+
+# Clean up test file
+api_call POST /exec '{"command":"rm -f /tmp/sandbox-test-file","working_dir":"/tmp"}' >/dev/null 2>&1
+
+echo "✓ PASS: Sandbox allows commands in allowed paths (/tmp)"
+
+# Test 8: Conditional Startup - No Scripts (Backward Compatibility)
+echo ""
+echo "Test 8: Conditional Startup - No Scripts (Backward Compatibility)"
 # This test verifies that without detection/setup scripts, processes start immediately
 # This is tested by the fact that we've already started a process in Test 3 without any scripts
 echo "✓ PASS: Backward compatibility verified (processes start immediately without scripts)"
 
-# Test 7: Conditional Startup - Detection Script Exit 1 (Immediate Start)
+# Test 9: Conditional Startup - Detection Script Exit 1 (Immediate Start)
 echo ""
-echo "Test 7: Conditional Startup - Detection Script Exit 1 (Immediate Start)"
+echo "Test 9: Conditional Startup - Detection Script Exit 1 (Immediate Start)"
 # Note: This test requires a custom Docker container with detection/setup scripts configured
 # It cannot be run in the current container without those scripts present
 # To test this scenario:
@@ -306,9 +346,9 @@ echo "Test 7: Conditional Startup - Detection Script Exit 1 (Immediate Start)"
 # 4. Verify process starts immediately
 echo "⚠ SKIP: Requires custom container with detection script (exit 1 scenario)"
 
-# Test 8: Conditional Startup - Detection Script Exit 0 (Deferred Start)
+# Test 10: Conditional Startup - Detection Script Exit 0 (Deferred Start)
 echo ""
-echo "Test 8: Conditional Startup - Detection Script Exit 0 (Deferred Start)"
+echo "Test 10: Conditional Startup - Detection Script Exit 0 (Deferred Start)"
 # Note: This test requires a custom Docker container with detection/setup scripts configured
 # It cannot be run in the current container without those scripts present
 # To test this scenario:
@@ -320,9 +360,9 @@ echo "Test 8: Conditional Startup - Detection Script Exit 0 (Deferred Start)"
 # 6. Verify process starts after HTTP request
 echo "⚠ SKIP: Requires custom container with detection script (exit 0 scenario)"
 
-# Test 9: Conditional Startup - Setup Script Success
+# Test 11: Conditional Startup - Setup Script Success
 echo ""
-echo "Test 9: Conditional Startup - Setup Script Success"
+echo "Test 11: Conditional Startup - Setup Script Success"
 # Note: This test requires a custom Docker container with setup script configured
 # It cannot be run in the current container without the setup script present
 # To test this scenario:
@@ -333,9 +373,9 @@ echo "Test 9: Conditional Startup - Setup Script Success"
 # 5. Verify process starts after setup completes
 echo "⚠ SKIP: Requires custom container with setup script"
 
-# Test 10: Conditional Startup - Setup Script Failure
+# Test 12: Conditional Startup - Setup Script Failure
 echo ""
-echo "Test 10: Conditional Startup - Setup Script Failure"
+echo "Test 12: Conditional Startup - Setup Script Failure"
 # Note: This test requires a custom Docker container with setup script configured
 # It cannot be run in the current container without the setup script present
 # To test this scenario:
@@ -347,10 +387,9 @@ echo "⚠ SKIP: Requires custom container with failing setup script"
 
 # Note about skipped tests
 echo ""
-echo "NOTE: Tests 7-10 are integration tests for conditional startup that require"
+echo "NOTE: Tests 9-12 are integration tests for conditional startup that require"
 echo "      custom Docker containers with detection and setup scripts configured."
 echo "      These tests should be run separately with appropriate test fixtures."
-echo "      See Task 8 in the implementation plan for test scenario details."
 
 # All tests passed
 echo ""

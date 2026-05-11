@@ -80,6 +80,12 @@ type Config struct {
 	SetupScript        string        // Path to unified setup script (handles first-start and restart)
 	SetupScriptTimeout time.Duration // Timeout for setup script execution (default: 10m)
 	DeferRestartSetup  bool          // Defer restart setup to first HTTP request (default: false; docker-compose sets true for preview)
+
+	// Sandbox configuration (Landlock-based process isolation)
+	// When enabled, child processes are spawned via the airo-sandbox binary which applies
+	// kernel-enforced filesystem and network restrictions before exec-ing the command.
+	// Profiles (paths, ports, defaults) are embedded in internal/sandbox/profile.go.
+	SandboxEnabled bool // Enable sandbox for child processes (default: false — opt-in per environment)
 }
 
 // LoadConfig loads configuration from environment variables with defaults
@@ -180,6 +186,9 @@ func LoadConfig() *Config {
 	config.SetupScript = GetEnvStringWithDefault("DEV_SUPERVISOR_SETUP_SCRIPT", defaultSetupScript)
 	config.SetupScriptTimeout = GetEnvDurationWithDefault("DEV_SUPERVISOR_SETUP_TIMEOUT", 10*time.Minute)
 	config.DeferRestartSetup = GetEnvBoolWithDefault("DEV_SUPERVISOR_DEFER_RESTART_SETUP", false)
+
+	// Sandbox configuration (Landlock-based process isolation)
+	config.SandboxEnabled = GetEnvBoolWithDefault("DEV_SUPERVISOR_SANDBOX_ENABLED", false)
 
 	return config
 }
