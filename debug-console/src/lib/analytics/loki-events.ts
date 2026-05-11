@@ -12,6 +12,7 @@ const WEBSOCKET_ERROR_EVENTS = ['websocket.conversation.error'];
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
+const FIVE_MIN_MS = 5 * 60 * 1000;
 
 interface LokiMetricSeries {
   metric: Record<string, string>;
@@ -63,6 +64,10 @@ function dayStart(date: Date): Date {
 
 function hourStart(date: Date): Date {
   return new Date(Math.floor(date.getTime() / HOUR_MS) * HOUR_MS);
+}
+
+function fiveMinStart(date: Date): Date {
+  return new Date(Math.floor(date.getTime() / FIVE_MIN_MS) * FIVE_MIN_MS);
 }
 
 function resolveRange(startDate?: string, endDate?: string): { start: Date; end: Date } {
@@ -394,6 +399,84 @@ export async function getDirectRollingHourlyWebsocketErrors() {
       const timestamp = hourStart(new Date(end.getTime() - (hoursAgo + 1) * HOUR_MS)).toISOString();
       return {
         hoursAgo,
+        timestamp,
+        errors: websocketErrorCountFor(eventCounts.get(timestamp)),
+        apps: 0,
+      };
+    }),
+  };
+}
+
+// --- Rolling last-1h with 5-minute buckets -------------------------------
+// These power the "1h" preset on the analytics Dynamic section. Each returns
+// 12 buckets of 5-min width over the last hour.
+
+export async function getDirectLast1HourSummarizations() {
+  const end = new Date();
+  const queryStart = new Date(end.getTime() - 11 * FIVE_MIN_MS);
+  const bucketStart = (sampleMs: number) => fiveMinStart(new Date(sampleMs - FIVE_MIN_MS)).toISOString();
+
+  const eventSeries = await queryLokiMetricRange(eventCountQuery(SUMMARIZATION_EVENTS), queryStart, end, '5m', '5m');
+  const eventCounts = mapEventSamples(eventSeries, bucketStart);
+
+  return {
+    start: new Date(end.getTime() - HOUR_MS).toISOString(),
+    end: end.toISOString(),
+    minute_stats: Array.from({ length: 12 }, (_, i) => {
+      const minutesAgo = i * 5;
+      const timestamp = fiveMinStart(new Date(end.getTime() - (i + 1) * FIVE_MIN_MS)).toISOString();
+      return {
+        minutesAgo,
+        timestamp,
+        ...summarizationStatsFor(eventCounts.get(timestamp)),
+        apps: 0,
+      };
+    }),
+  };
+}
+
+export async function getDirectLast1HourPublish() {
+  const end = new Date();
+  const queryStart = new Date(end.getTime() - 11 * FIVE_MIN_MS);
+  const bucketStart = (sampleMs: number) => fiveMinStart(new Date(sampleMs - FIVE_MIN_MS)).toISOString();
+
+  const eventSeries = await queryLokiMetricRange(eventCountRegexQuery(PUBLISH_EVENT_REGEX), queryStart, end, '5m', '5m');
+  const eventCounts = mapEventSamples(eventSeries, bucketStart);
+
+  return {
+    start: new Date(end.getTime() - HOUR_MS).toISOString(),
+    end: end.toISOString(),
+    minute_stats: Array.from({ length: 12 }, (_, i) => {
+      const minutesAgo = i * 5;
+      const timestamp = fiveMinStart(new Date(end.getTime() - (i + 1) * FIVE_MIN_MS)).toISOString();
+      const stats = publishStatsFor(eventCounts.get(timestamp));
+      return {
+        minutesAgo,
+        timestamp,
+        begins: stats.begins,
+        successes: stats.successes,
+        failures: stats.failures,
+      };
+    }),
+  };
+}
+
+export async function getDirectLast1HourWebsocketErrors() {
+  const end = new Date();
+  const queryStart = new Date(end.getTime() - 11 * FIVE_MIN_MS);
+  const bucketStart = (sampleMs: number) => fiveMinStart(new Date(sampleMs - FIVE_MIN_MS)).toISOString();
+
+  const eventSeries = await queryLokiMetricRange(eventCountQuery(WEBSOCKET_ERROR_EVENTS), queryStart, end, '5m', '5m');
+  const eventCounts = mapEventSamples(eventSeries, bucketStart);
+
+  return {
+    start: new Date(end.getTime() - HOUR_MS).toISOString(),
+    end: end.toISOString(),
+    minute_stats: Array.from({ length: 12 }, (_, i) => {
+      const minutesAgo = i * 5;
+      const timestamp = fiveMinStart(new Date(end.getTime() - (i + 1) * FIVE_MIN_MS)).toISOString();
+      return {
+        minutesAgo,
         timestamp,
         errors: websocketErrorCountFor(eventCounts.get(timestamp)),
         apps: 0,

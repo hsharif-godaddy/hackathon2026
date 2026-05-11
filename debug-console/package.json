@@ -18,6 +18,8 @@
     "@aws-sdk/client-secrets-manager": "^3.1034.0",
     "@elastic/elasticsearch": "catalog:",
     "archiver": "catalog:",
+    "echarts": "catalog:",
+    "echarts-for-react": "catalog:",
     "gd-auth": "catalog:",
     "gd-auth-client": "catalog:",
     "hyparquet": "catalog:",
