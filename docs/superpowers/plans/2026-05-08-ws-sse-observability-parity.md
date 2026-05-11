@@ -56,7 +56,9 @@ Canonical agent ID for observability: `airo-app-builder-${agentName}`. This alre
 
 - `agents/src/server/conversation-persistence.ts` — `emitConversationStart` stays where it is.
 - `packages/ai-transport/src/response-metadata-capture.ts` — wrapped by the new module; signature unchanged.
-- Mid-stream budget retry (WS-only `onBudgetExhaustedMidStream` path) — kept in WS. The handle's `endError(err, { finishReason: 'budget_retry' | 'budget_continuation' })` is called at the same retry sites WS already has.
+- Mid-stream budget retry (WS-only `onBudgetExhaustedMidStream` path) — kept in WS, **not ported to SSE**. The handle's `endError(err, { finishReason: 'budget_retry' | 'budget_continuation' })` is called at the same retry sites WS already has.
+
+  **Rationale (2026-05-11):** the retry path is coupled to the grants budget model (`grantSessionManager.advanceToNextGrant` → swap `context.metadata.user` → recurse). Grants are being retired in favor of BMS (`feat(bms): disabled grant functionality when bms flag is on`, #3417; ongoing BMS rollout via #3465). WS's `onBudgetExhaustedMidStream` already early-returns `{retry: false}` when `budgetServiceEnabled === true`, so mid-stream advancement is dead code for any BMS-enabled turn. Grants users are kept on WS at the transport-selection layer (`app/src/hooks/useChatTransport.ts` requires both `app-builder-sse-transport` and `app-builder-budget-service`). Once grants is fully removed the distinction disappears. If BMS grows its own mid-stream recovery semantics later, design the shared helper then against BMS's contract rather than porting grants-specific control flow now.
 
 ---
 
