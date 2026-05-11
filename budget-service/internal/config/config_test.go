@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 )
 
 func restoreAutoMigrateEnv(t *testing.T, prev string, had bool) {
@@ -457,5 +458,109 @@ func TestLoadRejectsSingleQuotedArrayWithApostropheInValue(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "AUTH_ALLOWED_ROLES") {
 		t.Fatalf("error: %v", err)
+	}
+}
+
+func TestGetEnvInt(t *testing.T) {
+	t.Run("unset returns fallback", func(t *testing.T) {
+		t.Setenv("TEST_INT_UNSET", "")
+		if got := getEnvInt("TEST_INT_UNSET", 42); got != 42 {
+			t.Fatalf("got %d want 42", got)
+		}
+	})
+	t.Run("valid int", func(t *testing.T) {
+		t.Setenv("TEST_INT_VALID", "99")
+		if got := getEnvInt("TEST_INT_VALID", 0); got != 99 {
+			t.Fatalf("got %d want 99", got)
+		}
+	})
+	t.Run("invalid returns fallback", func(t *testing.T) {
+		t.Setenv("TEST_INT_BAD", "not-a-number")
+		if got := getEnvInt("TEST_INT_BAD", 7); got != 7 {
+			t.Fatalf("got %d want 7", got)
+		}
+	})
+}
+
+func TestGetEnvDuration(t *testing.T) {
+	t.Run("unset returns fallback", func(t *testing.T) {
+		t.Setenv("TEST_DUR_UNSET", "")
+		if got := getEnvDuration("TEST_DUR_UNSET", 5*time.Second); got != 5*time.Second {
+			t.Fatalf("got %v want 5s", got)
+		}
+	})
+	t.Run("valid duration", func(t *testing.T) {
+		t.Setenv("TEST_DUR_VALID", "30s")
+		if got := getEnvDuration("TEST_DUR_VALID", 0); got != 30*time.Second {
+			t.Fatalf("got %v want 30s", got)
+		}
+	})
+	t.Run("invalid returns fallback", func(t *testing.T) {
+		t.Setenv("TEST_DUR_BAD", "xyz")
+		if got := getEnvDuration("TEST_DUR_BAD", time.Minute); got != time.Minute {
+			t.Fatalf("got %v want 1m", got)
+		}
+	})
+}
+
+func TestSlogLevelWarning(t *testing.T) {
+	if SlogLevel("warning") != slog.LevelWarn {
+		t.Fatal("warning should map to warn")
+	}
+}
+
+func TestSlogLevelError(t *testing.T) {
+	if SlogLevel("error") != slog.LevelError {
+		t.Fatal("error should map to LevelError")
+	}
+}
+
+func TestAutoMigrateFromEnvExplicitlyOn(t *testing.T) {
+	prev, had := os.LookupEnv("AUTO_MIGRATE")
+	restoreAutoMigrateEnv(t, prev, had)
+	t.Setenv("AUTO_MIGRATE", "1")
+	if !autoMigrateFromEnv("postgres://localhost:5432/budget?sslmode=disable") {
+		t.Fatal("autoMigrateFromEnv: want true when AUTO_MIGRATE=1 and DATABASE_URL is set")
+	}
+}
+
+func TestAutoMigrateFromEnvEmptyDatabaseURL(t *testing.T) {
+	prev, had := os.LookupEnv("AUTO_MIGRATE")
+	restoreAutoMigrateEnv(t, prev, had)
+	t.Setenv("AUTO_MIGRATE", "1")
+	if autoMigrateFromEnv("") {
+		t.Fatal("autoMigrateFromEnv: want false when DATABASE_URL is empty regardless of AUTO_MIGRATE")
+	}
+}
+
+func TestGetEnvBoolDefault(t *testing.T) {
+	cases := []struct {
+		name     string
+		value    string
+		fallback bool
+		want     bool
+	}{
+		{"empty returns fallback true", "", true, true},
+		{"empty returns fallback false", "", false, false},
+		{"true", "true", false, true},
+		{"TRUE", "TRUE", false, true},
+		{"1", "1", false, true},
+		{"yes", "yes", false, true},
+		{"on", "on", false, true},
+		{"false", "false", true, false},
+		{"0", "0", true, false},
+		{"no", "no", true, false},
+		{"off", "off", true, false},
+		{"unknown returns fallback true", "maybe", true, true},
+		{"unknown returns fallback false", "maybe", false, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("TEST_BOOL_DEFAULT", tc.value)
+			got := getEnvBoolDefault("TEST_BOOL_DEFAULT", tc.fallback)
+			if got != tc.want {
+				t.Fatalf("getEnvBoolDefault(%q, %v) = %v, want %v", tc.value, tc.fallback, got, tc.want)
+			}
+		})
 	}
 }

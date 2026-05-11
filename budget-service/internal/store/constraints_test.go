@@ -111,9 +111,11 @@ func TestProductsProductKeyLengthCheck(t *testing.T) {
 	st := testIntegrationStore(t)
 	ctx := context.Background()
 
-	// A 36-char uuid leaves room to build values of length 1 (truncated) and 256
-	// (padded). Collisions are impossible because each invocation gets a fresh uuid.
+	// Use unique prefixes to avoid collisions with other tests' product rows.
 	runID := strings.ReplaceAll(uuid.NewString(), "-", "")
+	// For the "length 1" check we use a unique 5-char prefix to avoid PK collisions
+	// with the 16 possible single hex-digit values that other runs may have inserted.
+	shortUnique := "z" + runID[:4]
 
 	cases := []struct {
 		name     string
@@ -121,7 +123,7 @@ func TestProductsProductKeyLengthCheck(t *testing.T) {
 		wantCode string
 	}{
 		{"empty_rejected", "", pgCheckViolation},
-		{"length_1_accepted", runID[:1], ""},
+		{"length_1_accepted", shortUnique, ""},
 		{"exactly_256_accepted", runID + strings.Repeat("x", 256-len(runID)), ""},
 		{"257_rejected", strings.Repeat("c", 257), pgCheckViolation},
 	}

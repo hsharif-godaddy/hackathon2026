@@ -829,3 +829,271 @@ func TestMiddleware_AuthenticateAWSIAMService_ClientWithNilGDAuth(t *testing.T) 
 		t.Fatalf("body=%s", rec.Body.String())
 	}
 }
+
+type stubProdGDAuthWithErrors struct {
+	claims *gdauth.TokenClaims
+	arnErr error
+	cnErr  error
+	arn    string
+	cn     string
+}
+
+func (s *stubProdGDAuthWithErrors) ParseToken(token string, opts *gdauth.AuthOptions) (*gdauth.TokenClaims, error) {
+	return s.claims, nil
+}
+
+func (s *stubProdGDAuthWithErrors) GetAwsIamArn(claims *gdauth.TokenClaims) (string, error) {
+	return s.arn, s.arnErr
+}
+
+func (s *stubProdGDAuthWithErrors) GetCommonName(claims *gdauth.TokenClaims) (string, error) {
+	return s.cn, s.cnErr
+}
+
+func TestMiddleware_AuthenticateAWSIAMService_ArnExtractionFailed(t *testing.T) {
+	t.Parallel()
+
+	claims := gdauth.NewTokenClaims(map[string]any{
+		"typ": string(gdauth.AuthTypeAWSIAM),
+		"jti": "prod-test-arn-err",
+	})
+	m := &Middleware{
+		authType:     "jwt",
+		allowedRoles: []string{"arn:aws:iam::123:role/x"},
+		allowedCerts: []string{"cn.example"},
+		client:       &Client{SSOHost: "https://sso.test.godaddy.com"},
+		validator:    &stubProdGDAuthWithErrors{claims: claims, arnErr: errors.New("arn extraction failed")},
+	}
+	h := m.AuthenticateAWSIAMService(dummyHandler())
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/x", nil)
+	req.Header.Set("Authorization", "Bearer token")
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("want 403, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "IAM_ROLE_EXTRACT_FAILED") {
+		t.Fatalf("body=%s", rec.Body.String())
+	}
+}
+
+func TestMiddleware_AuthenticateAWSIAMService_RoleDenied(t *testing.T) {
+	t.Parallel()
+
+	claims := gdauth.NewTokenClaims(map[string]any{
+		"typ": string(gdauth.AuthTypeAWSIAM),
+		"jti": "prod-test-role-denied",
+	})
+	m := &Middleware{
+		authType:     "jwt",
+		allowedRoles: []string{"arn:aws:iam::999:role/allowed-only"},
+		allowedCerts: []string{"cn.example"},
+		client:       &Client{SSOHost: "https://sso.test.godaddy.com"},
+		validator:    &stubProdGDAuthWithErrors{claims: claims, arn: "arn:aws:iam::123:role/denied"},
+	}
+	h := m.AuthenticateAWSIAMService(dummyHandler())
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/x", nil)
+	req.Header.Set("Authorization", "Bearer token")
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("want 403, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "IAM_ROLE_DENIED") {
+		t.Fatalf("body=%s", rec.Body.String())
+	}
+}
+
+func TestMiddleware_AuthenticateAWSIAMService_CnExtractionFailed(t *testing.T) {
+	t.Parallel()
+
+	claims := gdauth.NewTokenClaims(map[string]any{
+		"typ": string(gdauth.AuthTypeCERT),
+		"jti": "prod-test-cn-err",
+	})
+	m := &Middleware{
+		authType:     "jwt",
+		allowedRoles: []string{"arn:aws:iam::123:role/x"},
+		allowedCerts: []string{"cn.example"},
+		client:       &Client{SSOHost: "https://sso.test.godaddy.com"},
+		validator:    &stubProdGDAuthWithErrors{claims: claims, cnErr: errors.New("cn extraction failed")},
+	}
+	h := m.AuthenticateAWSIAMService(dummyHandler())
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/x", nil)
+	req.Header.Set("Authorization", "sso-jwt token")
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("want 403, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "CERT_CN_EXTRACT_FAILED") {
+		t.Fatalf("body=%s", rec.Body.String())
+	}
+}
+
+func TestMiddleware_AuthenticateAWSIAMService_CertDenied(t *testing.T) {
+	t.Parallel()
+
+	claims := gdauth.NewTokenClaims(map[string]any{
+		"typ": string(gdauth.AuthTypeCERT),
+		"jti": "prod-test-cert-denied",
+	})
+	m := &Middleware{
+		authType:     "jwt",
+		allowedRoles: []string{"arn:aws:iam::123:role/x"},
+		allowedCerts: []string{"allowed-cert.godaddy.com"},
+		client:       &Client{SSOHost: "https://sso.test.godaddy.com"},
+		validator:    &stubProdGDAuthWithErrors{claims: claims, cn: "denied-cert.evil.com"},
+	}
+	h := m.AuthenticateAWSIAMService(dummyHandler())
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/x", nil)
+	req.Header.Set("Authorization", "sso-jwt token")
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("want 403, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "CERT_CN_DENIED") {
+		t.Fatalf("body=%s", rec.Body.String())
+	}
+}
+
+func TestMiddleware_AuthenticateAWSIAMService_InvalidToken(t *testing.T) {
+	t.Parallel()
+
+	m := &Middleware{
+		authType:     "jwt",
+		allowedRoles: []string{"arn:aws:iam::123:role/x"},
+		allowedCerts: []string{"cn.example"},
+		client:       &Client{SSOHost: "https://sso.test.godaddy.com"},
+		validator:    &stubProdGDAuth{parseErr: errors.New("invalid token")},
+	}
+	h := m.AuthenticateAWSIAMService(dummyHandler())
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/x", nil)
+	req.Header.Set("Authorization", "Bearer bad-token")
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("want 401, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "INVALID_TOKEN") {
+		t.Fatalf("body=%s", rec.Body.String())
+	}
+}
+
+func TestMiddleware_AuthenticateAWSIAMService_NilClient(t *testing.T) {
+	t.Parallel()
+
+	m := &Middleware{
+		authType:     "jwt",
+		allowedRoles: []string{"arn:aws:iam::123:role/x"},
+		allowedCerts: []string{"cn.example"},
+		client:       nil,
+	}
+	h := m.AuthenticateAWSIAMService(dummyHandler())
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/x", nil)
+	req.Header.Set("Authorization", "Bearer token")
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("want 401, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "AUTH_MISCONFIGURED") {
+		t.Fatalf("body=%s", rec.Body.String())
+	}
+}
+
+func TestNewMiddleware_JWTWithNilClient(t *testing.T) {
+	t.Parallel()
+
+	// When GetClient() returns nil (InitClient not called), NewMiddleware still returns
+	// a Middleware, but AuthenticateAWSIAMService will return 401 AUTH_MISCONFIGURED.
+	if GetClient() != nil {
+		t.Skip("singleton already initialized")
+	}
+	m := NewMiddleware("jwt", []string{"role"}, []string{"cert"})
+	if m == nil {
+		t.Fatal("NewMiddleware returned nil")
+	}
+	if m.authType != "jwt" {
+		t.Fatalf("authType = %q want jwt", m.authType)
+	}
+	// Verify the middleware rejects requests since client is nil
+	h := m.AuthenticateAWSIAMService(dummyHandler())
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/x", nil)
+	req.Header.Set("Authorization", "Bearer token")
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("want 401, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestMiddleware_AuthenticateAWSIAMService_WrongTokenType(t *testing.T) {
+	t.Parallel()
+	claims := gdauth.NewTokenClaims(map[string]any{
+		"typ": string(gdauth.AuthTypeJOMAX),
+		"jti": "prod-wrong-type",
+	})
+	m := &Middleware{
+		authType:     "jwt",
+		allowedRoles: []string{"arn:aws:iam::123:role/x"},
+		allowedCerts: []string{"cn.example"},
+		client:       &Client{SSOHost: "https://sso.test.godaddy.com"},
+		validator:    &stubProdGDAuth{claims: claims},
+	}
+	h := m.AuthenticateAWSIAMService(dummyHandler())
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/x", nil)
+	req.Header.Set("Authorization", "Bearer token")
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("want 401, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "UNAUTHORIZED_TOKEN_TYPE") {
+		t.Fatalf("body=%s", rec.Body.String())
+	}
+}
+
+func TestGdAuthMethodReturnsPriority(t *testing.T) {
+	t.Parallel()
+	stub := &stubProdGDAuth{}
+	// validator takes priority over client.GDAuth
+	m := &Middleware{validator: stub, client: &Client{SSOHost: "x"}}
+	if m.gdAuth() != stub {
+		t.Fatal("validator should take priority")
+	}
+	// nil validator and nil client → nil
+	m2 := &Middleware{validator: nil, client: nil}
+	if m2.gdAuth() != nil {
+		t.Fatal("should return nil when both are nil")
+	}
+	// nil validator, client present but GDAuth is nil → nil
+	m3 := &Middleware{validator: nil, client: &Client{SSOHost: "x", GDAuth: nil}}
+	if m3.gdAuth() != nil {
+		t.Fatal("should return nil when client.GDAuth is nil")
+	}
+}
+
+func TestMiddleware_AuthenticateAWSIAMService_MissingAuthHeader(t *testing.T) {
+	t.Parallel()
+
+	claims := gdauth.NewTokenClaims(map[string]any{"typ": string(gdauth.AuthTypeAWSIAM)})
+	m := &Middleware{
+		authType:     "jwt",
+		allowedRoles: []string{"arn:aws:iam::123:role/x"},
+		allowedCerts: []string{"cn.example"},
+		client:       &Client{SSOHost: "https://sso.test.godaddy.com"},
+		validator:    &stubProdGDAuth{claims: claims},
+	}
+	h := m.AuthenticateAWSIAMService(dummyHandler())
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/x", nil)
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("want 401, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "MISSING_AUTHORIZATION") {
+		t.Fatalf("body=%s", rec.Body.String())
+	}
+}

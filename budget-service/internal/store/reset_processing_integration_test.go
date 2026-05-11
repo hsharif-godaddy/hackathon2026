@@ -568,12 +568,13 @@ func TestOutboxDrainAndMarkCompleted(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Insert a test outbox event directly
+	// Insert a test outbox event directly with an early next_attempt_at so it
+	// sorts first regardless of leftover rows from other tests.
 	eventID := uuid.NewString()
 	idempotencyKey := "test:" + uuid.NewString()
 	if _, err := st.db.ExecContext(ctx, `
-		INSERT INTO webhook_outbox (id, event_type, product_key, payload, idempotency_key)
-		VALUES ($1, 'test.event', $2, '{"test": true}'::jsonb, $3)
+		INSERT INTO webhook_outbox (id, event_type, product_key, payload, idempotency_key, next_attempt_at)
+		VALUES ($1, 'test.event', $2, '{"test": true}'::jsonb, $3, '2000-01-01T00:00:00Z')
 	`, eventID, productKey, idempotencyKey); err != nil {
 		t.Fatal(err)
 	}

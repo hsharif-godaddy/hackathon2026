@@ -7,3 +7,6 @@
 .cursor
 # k6 load test result JSON files
 load-test/results/
+# Coverage artifacts
+coverage.out
+/coverage/

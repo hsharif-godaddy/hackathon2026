@@ -75,37 +75,24 @@ func main() {
 	var sqlDB *sql.DB
 	var st *store.Store
 	if cfg.DatabaseURL != "" {
-		// Pool + ping; failed ping still starts (degraded /health).
-		dbHost := "unknown"
-		if u, err := url.Parse(cfg.DatabaseURL); err == nil && u.Host != "" {
-			dbHost = u.Hostname()
-		}
-		connectStart := time.Now()
-		sqlDB, err = sql.Open("postgres", cfg.DatabaseURL)
+		sqlDB, err = openDatabase(&cfg)
 		if err != nil {
-			slog.Error("database.connect.failed", "error", err, "host", dbHost)
 			os.Exit(1)
 		}
 		defer sqlDB.Close()
-		sqlDB.SetMaxOpenConns(cfg.DBMaxOpenConns)
-		sqlDB.SetMaxIdleConns(cfg.DBMaxIdleConns)
-		sqlDB.SetConnMaxLifetime(cfg.DBConnMaxLifetime)
+
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		pingErr := sqlDB.PingContext(ctx)
 		cancel()
+
+		dbHost := dbHostname(cfg.DatabaseURL)
 		if pingErr != nil {
 			slog.Warn("database.ping.initial.failed", "error", pingErr, "host", dbHost)
 		} else {
-			slog.Info("database.connected", "host", dbHost, "elapsed", time.Since(connectStart).String())
+			slog.Info("database.connected", "host", dbHost)
 			if cfg.AutoMigrate {
-				migrateURL := cfg.MigrateDatabaseURL
-				if migrateURL == "" {
-					migrateURL = cfg.DatabaseURL
-				}
-				migrateHost := dbHost
-				if u, err := url.Parse(migrateURL); err == nil && u.Host != "" {
-					migrateHost = u.Hostname()
-				}
+				migrateURL := resolveMigrateURL(&cfg)
+				migrateHost := dbHostname(migrateURL)
 				migrateStart := time.Now()
 				if err := schemamigrate.Up(migrateURL); err != nil {
 					slog.Error("database.migrate.failed", "error", err, "migrateHost", migrateHost, "poolHost", dbHost)
@@ -116,7 +103,6 @@ func main() {
 		}
 		st = store.New(sqlDB)
 	} else {
-		// Handlers use requireStore for writes; /health reports unconfigured.
 		slog.Info("database.disabled", "message", "DATABASE_URL not set; /health reports database unconfigured")
 	}
 
@@ -131,7 +117,6 @@ func main() {
 		authType = "none"
 	}
 
-	// Initialize singleton GDAuth client (used by middleware, token generator, and auth validator)
 	if !cfg.LocalAuthDisable {
 		if err := auth.InitClient(cfg.SSOHost); err != nil {
 			slog.Error("auth.client.init.failed", "error", err)
@@ -141,8 +126,6 @@ func main() {
 
 	authMW := auth.NewMiddleware(authType, cfg.AuthAllowedRoles, cfg.AuthAllowedCerts)
 
-	// Token generator is required for webhook delivery when auth is enabled.
-	// Fail fast at startup if token generation is not working.
 	// Use api.TokenProvider (nil interface) when disabled — do not assign (*TokenGenerator)(nil)
 	// or getHealth's `TokenGenerator != nil` is true (typed nil) and Healthy() panics.
 	var tokenGen api.TokenProvider
@@ -165,7 +148,6 @@ func main() {
 		handler = otelClient.Tracer.TracingMiddleware(handler)
 	}
 
-	// Start background worker for periodic resets and expirations
 	var workerCancel context.CancelFunc
 	var workerWg sync.WaitGroup
 	if cfg.WorkerEnabled && st != nil {
@@ -182,42 +164,20 @@ func main() {
 		slog.Info("worker.disabled", "message", "WORKER_ENABLED is false")
 	}
 
-	httpSrv := &http.Server{
-		Addr:         cfg.Addr,
-		Handler:      handler,
-		ReadTimeout:  cfg.HTTPReadTimeout,
-		WriteTimeout: cfg.HTTPWriteTimeout,
-		IdleTimeout:  cfg.HTTPIdleTimeout,
+	httpSrv, err := buildHTTPServer(&cfg, handler)
+	if err != nil {
+		slog.Error("tls.keypair.load_failed", "certPath", cfg.TLSCertPath, "keyPath", cfg.TLSKeyPath, "error", err)
+		os.Exit(1)
 	}
 
-	slog.Info("budget_service.start", "addr", cfg.Addr)
+	slog.Info("budget_service.start", "addr", cfg.Addr, "localAuthDisable", cfg.LocalAuthDisable)
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
 	errCh := make(chan error, 1)
-	if cfg.TLSCertPath != "" && cfg.TLSKeyPath != "" {
-		cert, err := tls.LoadX509KeyPair(cfg.TLSCertPath, cfg.TLSKeyPath)
-		if err != nil {
-			slog.Error("tls.keypair.load_failed", "certPath", cfg.TLSCertPath, "keyPath", cfg.TLSKeyPath, "error", err)
-			os.Exit(1)
-		}
-		httpSrv.TLSConfig = &tls.Config{
-			Certificates: []tls.Certificate{cert},
-			MinVersion:   tls.VersionTLS13,
-		}
-	}
-
 	go func() {
-		var listenErr error
-		if httpSrv.TLSConfig != nil {
-			slog.Info("budget_service.listen.tls", "addr", cfg.Addr, "localAuthDisable", cfg.LocalAuthDisable, "certPath", cfg.TLSCertPath)
-			listenErr = httpSrv.ListenAndServeTLS("", "")
-		} else {
-			slog.Info("budget_service.listen", "addr", cfg.Addr, "localAuthDisable", cfg.LocalAuthDisable)
-			listenErr = httpSrv.ListenAndServe()
-		}
-		if listenErr != nil && !errors.Is(listenErr, http.ErrServerClosed) {
+		if listenErr := listenAndServe(httpSrv); listenErr != nil {
 			errCh <- listenErr
 		}
 	}()
@@ -230,21 +190,87 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Stop background worker and wait for in-flight work to finish
-	if workerCancel != nil {
-		workerCancel()
-		workerWg.Wait()
-	}
-
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 15*time.Second)
-	errShutdown := httpSrv.Shutdown(shutdownCtx)
-	shutdownCancel()
-	if errShutdown != nil {
-		slog.Error("budget_service.shutdown.failed", "error", errShutdown)
+	if err := shutdownServer(httpSrv, workerCancel, &workerWg, 15*time.Second); err != nil {
+		slog.Error("budget_service.shutdown.failed", "error", err)
 		os.Exit(1)
 	}
 
 	slog.Info("budget_service.stopped")
+}
+
+func dbHostname(databaseURL string) string {
+	if u, err := url.Parse(databaseURL); err == nil && u.Host != "" {
+		return u.Hostname()
+	}
+	return "unknown"
+}
+
+func resolveMigrateURL(cfg *config.Config) string {
+	if cfg.MigrateDatabaseURL != "" {
+		return cfg.MigrateDatabaseURL
+	}
+	return cfg.DatabaseURL
+}
+
+func openDatabase(cfg *config.Config) (*sql.DB, error) {
+	dbHost := dbHostname(cfg.DatabaseURL)
+	connectStart := time.Now()
+	sqlDB, err := sql.Open("postgres", cfg.DatabaseURL)
+	if err != nil {
+		slog.Error("database.connect.failed", "error", err, "host", dbHost)
+		return nil, err
+	}
+	sqlDB.SetMaxOpenConns(cfg.DBMaxOpenConns)
+	sqlDB.SetMaxIdleConns(cfg.DBMaxIdleConns)
+	sqlDB.SetConnMaxLifetime(cfg.DBConnMaxLifetime)
+	slog.Debug("database.pool.configured", "host", dbHost, "elapsed", time.Since(connectStart).String())
+	return sqlDB, nil
+}
+
+func buildHTTPServer(cfg *config.Config, handler http.Handler) (*http.Server, error) {
+	srv := &http.Server{
+		Addr:         cfg.Addr,
+		Handler:      handler,
+		ReadTimeout:  cfg.HTTPReadTimeout,
+		WriteTimeout: cfg.HTTPWriteTimeout,
+		IdleTimeout:  cfg.HTTPIdleTimeout,
+	}
+	if cfg.TLSCertPath != "" && cfg.TLSKeyPath != "" {
+		cert, err := tls.LoadX509KeyPair(cfg.TLSCertPath, cfg.TLSKeyPath)
+		if err != nil {
+			return nil, err
+		}
+		srv.TLSConfig = &tls.Config{
+			Certificates: []tls.Certificate{cert},
+			MinVersion:   tls.VersionTLS13,
+		}
+	}
+	return srv, nil
+}
+
+func listenAndServe(srv *http.Server) error {
+	var err error
+	if srv.TLSConfig != nil {
+		err = srv.ListenAndServeTLS("", "")
+	} else {
+		err = srv.ListenAndServe()
+	}
+	if errors.Is(err, http.ErrServerClosed) {
+		return nil
+	}
+	return err
+}
+
+func shutdownServer(srv *http.Server, workerCancel context.CancelFunc, workerWg *sync.WaitGroup, timeout time.Duration) error {
+	if workerCancel != nil {
+		workerCancel()
+	}
+	if workerWg != nil {
+		workerWg.Wait()
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	return srv.Shutdown(ctx)
 }
 
 func bootstrapLogLevel() string {

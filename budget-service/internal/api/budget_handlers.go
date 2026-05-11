@@ -129,6 +129,13 @@ func requireUUIDParam(w http.ResponseWriter, id, label string) bool {
 	return true
 }
 
+func validationErrorCode(msg string) string {
+	if msg == store.ErrCreditsUsedExceedsTotal.Error() {
+		return "CREDITS_EXCEED_TOTAL"
+	}
+	return "BAD_REQUEST"
+}
+
 func writeBudgetStoreError(w http.ResponseWriter, op string, err error) {
 	if errors.Is(err, store.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "resource not found")
@@ -700,7 +707,7 @@ func (s *Server) patchBudget(w http.ResponseWriter, r *http.Request) {
 	// the payload fields only. We call it again after hydration to get the final values.
 	for i := range payload.Items {
 		if _, msg := payload.Items[i].toPutItemInput(false); msg != "" {
-			writeError(w, http.StatusBadRequest, "BAD_REQUEST", msg)
+			writeError(w, http.StatusBadRequest, validationErrorCode(msg), msg)
 			return
 		}
 		if msg := validateCreditsUsedReason(payload.Items[i].CreditsUsed, payload.Items[i].CreditsUsedReason); msg != "" {
@@ -748,7 +755,7 @@ func (s *Server) patchBudget(w http.ResponseWriter, r *http.Request) {
 	for i := range payload.Items {
 		row, msg := payload.Items[i].toPutItemInput(false)
 		if msg != "" {
-			writeError(w, http.StatusBadRequest, "BAD_REQUEST", msg)
+			writeError(w, http.StatusBadRequest, validationErrorCode(msg), msg)
 			return
 		}
 		rows[i] = row
@@ -868,7 +875,7 @@ func (s *Server) patchBudgetItem(w http.ResponseWriter, r *http.Request) {
 	// further below. NOTE: The result here is intentionally discarded — this call validates the
 	// payload fields only. We call it again after hydration to get the final values.
 	if _, msg := payload.toPutItemInput(false); msg != "" {
-		writeError(w, http.StatusBadRequest, "BAD_REQUEST", msg)
+		writeError(w, http.StatusBadRequest, validationErrorCode(msg), msg)
 		return
 	}
 
@@ -909,7 +916,7 @@ func (s *Server) patchBudgetItem(w http.ResponseWriter, r *http.Request) {
 
 	putRow, msg := payload.toPutItemInput(false)
 	if msg != "" {
-		writeError(w, http.StatusBadRequest, "BAD_REQUEST", msg)
+		writeError(w, http.StatusBadRequest, validationErrorCode(msg), msg)
 		return
 	}
 	row := store.ItemInput{

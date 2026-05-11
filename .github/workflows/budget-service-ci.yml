@@ -67,11 +67,27 @@ jobs:
           fi
 
   test:
-    name: Unit tests
+    name: Unit + integration tests
     runs-on:
       labels:
         - airo-cicd-runners
         - self-hosted
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: budget
+          POSTGRES_PASSWORD: budget
+          POSTGRES_DB: budget_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U budget -d budget_test"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 30
+
     steps:
       - name: Checkout
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
@@ -102,9 +118,25 @@ jobs:
           export GONOSUMDB="github.com/gdcorp-identity/*"
           go mod download
 
-      - name: go test
+      - name: go test (with database)
         working-directory: budget-service
-        run: go test -race ./...
+        env:
+          TEST_DATABASE_URL: postgres://budget:budget@localhost:5432/budget_test?sslmode=disable
+        run: |
+          go test -race -coverprofile=coverage.out ./internal/... ./cmd/server/...
+          go test -race ./cmd/...
+
+      - name: Convert coverage to lcov
+        working-directory: budget-service
+        run: |
+          go install github.com/jandelgado/gcov2lcov@v1.1.1
+          mkdir -p coverage
+          gcov2lcov -infile=coverage.out -outfile=coverage/lcov.info
+
+      - name: SPAQ Actions
+        uses: gdcorp-actions/spaq-actions@v3
+        with:
+          coveragePath: budget-service/coverage/lcov.info
 
   e2e:
     name: E2E (Postgres + container + curl)

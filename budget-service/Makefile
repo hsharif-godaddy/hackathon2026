@@ -1,6 +1,6 @@
 # budget-service — see README.md, docs/budget-service-spec.md, docs/local-e2e.md
 
-.PHONY: build dev test clean up down logs otel e2e-up e2e-down e2e-local dev-budget-ui verify-iam-auth \
+.PHONY: build dev test coverage clean up down logs otel e2e-up e2e-down e2e-local dev-budget-ui verify-iam-auth \
        load-test load-test-contention load-test-throughput load-test-lifecycle load-test-monitor \
        bench-baseline bench-candidate bench-diff
 
@@ -25,6 +25,20 @@ dev:
 
 test:
 	go test ./...
+
+coverage:
+	TEST_DATABASE_URL=postgres://budget:budget@localhost:5432/budget_test?sslmode=disable \
+	go test -race -coverprofile=coverage.out ./internal/... ./cmd/server/...
+	go test -race ./cmd/...
+	go install github.com/jandelgado/gcov2lcov@v1.1.1
+	mkdir -p coverage
+	gcov2lcov -infile=coverage.out -outfile=coverage/lcov.info
+	go tool cover -html=coverage.out -o coverage/index.html
+	@echo ""
+	@go tool cover -func=coverage.out
+	@echo ""
+	@echo "lcov written to coverage/lcov.info"
+	@echo "HTML report: coverage/index.html"
 
 clean:
 	rm -rf bin/ tmp/

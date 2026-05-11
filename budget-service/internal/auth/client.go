@@ -23,6 +23,14 @@ var (
 	clientErr      error
 )
 
+// normalizeSSOHost ensures the host string has a protocol prefix.
+func normalizeSSOHost(host string) string {
+	if strings.HasPrefix(host, "https://") || strings.HasPrefix(host, "http://") {
+		return host
+	}
+	return "https://" + host
+}
+
 // InitClient initializes the singleton GDAuth client with the given SSO host.
 // Must be called once at startup before GetClient().
 // Subsequent calls are no-ops (singleton pattern).
@@ -40,12 +48,7 @@ func InitClient(ssoHost string) error {
 			return
 		}
 
-		// Ensure ssoHost has a protocol prefix
-		normalizedHost := ssoHost
-		if !strings.HasPrefix(ssoHost, "https://") && !strings.HasPrefix(ssoHost, "http://") {
-			normalizedHost = "https://" + ssoHost
-		}
-
+		normalizedHost := normalizeSSOHost(ssoHost)
 		clientInstance = &Client{
 			GDAuth:  gdClient,
 			SSOHost: normalizedHost,

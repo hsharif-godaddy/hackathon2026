@@ -816,3 +816,77 @@ func TestDeliverWebhook_OmitsAuthHeaderWithoutTokenGenerator(t *testing.T) {
 		t.Errorf("Authorization header = %q, want empty", receivedAuth)
 	}
 }
+
+func TestDeliverEventWebhooksNilStore(t *testing.T) {
+	t.Parallel()
+	s := &Server{Store: nil}
+	err := s.DeliverEventWebhooks(context.Background(), "report.created", "pk", map[string]string{"k": "v"})
+	if err != nil {
+		t.Fatalf("expected nil error for nil store, got %v", err)
+	}
+}
+
+func TestDeliverEventWebhooksEmptyProductKey(t *testing.T) {
+	t.Parallel()
+	s := &Server{Store: testStore(t)}
+	err := s.DeliverEventWebhooks(context.Background(), "report.created", "  ", map[string]string{"k": "v"})
+	if err != nil {
+		t.Fatalf("expected nil error for empty productKey, got %v", err)
+	}
+}
+
+func TestDeliverEventWebhooksIntegration(t *testing.T) {
+	ctx := context.Background()
+	st := testStore(t)
+
+	pk := "deliver-test-" + uuid.NewString()
+	if _, err := st.CreateProduct(ctx, pk); err != nil {
+		t.Fatal(err)
+	}
+
+	var receivedBody []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedBody, _ = io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	whID := uuid.NewString()
+	if err := st.CreateWebhook(ctx, whID, "report.created", pk, srv.URL+"/hook"); err != nil {
+		t.Fatal(err)
+	}
+
+	s := &Server{
+		Store:         st,
+		WebhookClient: srv.Client(),
+	}
+
+	data := map[string]string{"test": "payload"}
+	err := s.DeliverEventWebhooks(ctx, "report.created", pk, data)
+	if err != nil {
+		t.Fatalf("DeliverEventWebhooks: %v", err)
+	}
+
+	if len(receivedBody) == 0 {
+		t.Fatal("webhook handler did not receive body")
+	}
+	if !strings.Contains(string(receivedBody), "report.created") {
+		t.Fatalf("payload missing eventType, got: %s", receivedBody)
+	}
+}
+
+func TestDeliverEventWebhooksNoSubscribers(t *testing.T) {
+	ctx := context.Background()
+	st := testStore(t)
+
+	pk := "deliver-nosub-" + uuid.NewString()
+	if _, err := st.CreateProduct(ctx, pk); err != nil {
+		t.Fatal(err)
+	}
+
+	s := &Server{Store: st}
+	err := s.DeliverEventWebhooks(ctx, "report.created", pk, map[string]string{"k": "v"})
+	if err != nil {
+		t.Fatalf("expected nil when no subscribers, got %v", err)
+	}
+}
