@@ -15,41 +15,57 @@ export function userMenuTrigger(page: Page) {
 export type SsoDetectionResult = 'iframe' | 'modal' | 'redirect' | 'authenticated' | 'timeout' | null;
 
 /**
- * CSS selector matching the SSO sign-in iframe across both the legacy and
- * post-29-Apr-2026 GoDaddy surfaces:
+ * CSS selector matching the SSO sign-in iframe across every GoDaddy surface:
  *
  *   - `iframe[title="Container for sign in"]` — legacy named iframe
- *   - `[role="dialog"] iframe` — new generic `<dialog>` (or `role=dialog`)
- *     wrapper around an unnamed cross-origin iframe. The wrapper does not
- *     carry the airo `.sso-login-modal` class and the iframe has no `title`
- *     attribute, so we have to match by structural relationship instead.
+ *   - `[role="dialog"] iframe` — generic `<dialog>` wrapper around the SSO iframe
+ *   - `.sso-login-modal iframe` — airo's SsoLogin.tsx wrapper around the SSO
+ *     iframe. Current prod shape: a `.sso-login-modal` element containing a
+ *     cross-origin iframe pointing at `sso.godaddy.com`. Without this entry the
+ *     modal racer wins (Playwright's `has`-filter traverses cross-origin
+ *     iframes, so the autocomplete-input filter matches even though the input
+ *     is inside the iframe), then fillCredentials runs against the top-level
+ *     page and times out because no input exists there.
  *
  * Used by both `detectSsoType` and `handleSsoLogin` so the same string works
  * with `page.locator(...)` (for visibility waits) and `page.frameLocator(...)`
  * (for credential fill).
  */
-const SSO_IFRAME_SELECTOR = 'iframe[title="Container for sign in"], [role="dialog"] iframe';
+const SSO_IFRAME_SELECTOR =
+  'iframe[title="Container for sign in"], [role="dialog"] iframe, .sso-login-modal iframe';
 
 /**
  * Locator for the direct-DOM sign-in modal that GoDaddy's redesigned
- * universal sign-in dialog uses (rolled out ~29 Apr 2026). The form is
- * rendered inline in the parent page (no cross-origin iframe) inside the
- * `.sso-login-modal` wrapper applied by `app/src/components/auth/SsoLogin.tsx`.
+ * universal sign-in dialog uses when the form is rendered inline in the
+ * parent page (no cross-origin iframe) inside the `.sso-login-modal`
+ * wrapper applied by `app/src/components/auth/SsoLogin.tsx`.
  *
- * The `.filter({ has: ... })` guard requires the username/email input to be
- * present so we don't race against an empty wrapper that's mounted but not
- * yet hydrated, AND so the modal racer naturally loses when the form is
- * inside a cross-origin iframe (in which case DOM queries from the parent
- * cannot see the input and the iframe branch should win the race instead).
+ * `hasNot: iframe` is the key disambiguator: current prod also uses
+ * `.sso-login-modal`, but with a cross-origin iframe inside that loads
+ * `sso.godaddy.com`. Playwright's `has`-filter traverses into cross-origin
+ * iframes, so a bare `has: input[autocomplete=...]` matches in BOTH the
+ * direct-DOM case and the iframe-wrapped case — the modal racer wins
+ * incorrectly, then `fillCredentials(page, ...)` fails because the input
+ * is in an iframe, not the top-level page. Excluding modals that contain
+ * an iframe routes the iframe-wrapped case to the iframe branch where it
+ * belongs.
+ *
+ * The remaining `has: input[autocomplete=...]` guard requires the username
+ * input to be present so we don't race against an empty wrapper.
  *
  * Match by `autocomplete` attribute rather than label text — labels are
  * Material-style floating spans without proper aria association on the new
  * dialog, so role-by-name does not find them.
  */
 function signInModalLocator(page: Page) {
-  return page.locator('.sso-login-modal').filter({
-    has: page.locator('input[autocomplete="username"], input[autocomplete="email"], input[autocomplete="username webauthn"]'),
-  });
+  return page
+    .locator('.sso-login-modal')
+    .filter({ hasNot: page.locator('iframe') })
+    .filter({
+      has: page.locator(
+        'input[autocomplete="username"], input[autocomplete="email"], input[autocomplete="username webauthn"]',
+      ),
+    });
 }
 
 /**
@@ -80,11 +96,25 @@ export async function detectSsoType(page: Page, includeAuthenticatedCheck = fals
 
   // Each branch needs its own .catch() so losing racers don't produce
   // unhandled rejections after the race settles.
+  //
+  // IMPORTANT: do not add a bare `page.locator('.sso-login-modal').waitFor(...)`
+  // racer here. The current prod shape is `.sso-login-modal` wrapping a
+  // cross-origin iframe; the wrapper becomes visible before the iframe loads,
+  // so an unfiltered modal racer fires first, returns 'modal', and
+  // `handleSsoLogin`'s modal branch then tries `fillCredentials(page, ...)`
+  // against the top-level page — where the input doesn't exist, so fill
+  // times out at 30s. `signInModalLocator` already filters with
+  // `hasNot: iframe` AND requires the autocomplete input, so it only
+  // matches a genuine direct-DOM modal. The iframe-wrapped case is caught
+  // by `signInIframe` via the `.sso-login-modal iframe` selector below.
   const promises: Promise<SsoDetectionResult>[] = [
     signInModal.waitFor({ state: 'visible', timeout }).then(() => 'modal' as const).catch(() => null),
     signInIframe.waitFor({ state: 'visible', timeout }).then(() => 'iframe' as const).catch(() => null),
     page.waitForURL('**/login**', { timeout }).then(() => 'redirect' as const).catch(() => null),
     page.waitForURL('**/sso**', { timeout }).then(() => 'redirect' as const).catch(() => null),
+    // Gasket auth may redirect to the same page with hbi_code / auth_reason
+    // query params instead of navigating to a dedicated /login URL.
+    page.waitForURL((url) => url.searchParams.has('hbi_code') || url.searchParams.has('auth_reason'), { timeout }).then(() => 'redirect' as const).catch(() => null),
   ];
 
   if (includeAuthenticatedCheck) {
@@ -184,7 +214,12 @@ export async function handleSsoLogin(page: Page, timeout: number = SSO_TIMEOUT):
 
   console.log('Waiting for sign-in (DOM modal, iframe modal, or redirect)...');
 
-  const signInType = await detectSsoType(page, false, timeout);
+  const signInType = await detectSsoType(page, true, timeout);
+
+  if (signInType === 'authenticated') {
+    console.log('Already authenticated, no sign-in needed');
+    return;
+  }
 
   if (signInType === 'modal') {
     // Post-29-Apr-2026 GoDaddy universal sign-in: form rendered directly in
@@ -438,6 +473,55 @@ export async function handleReauthIfPresent(page: Page): Promise<boolean> {
 
 /** @deprecated Use handleReauthIfPresent instead */
 export const dismissAuthModalIfPresent = handleReauthIfPresent;
+
+/**
+ * Check whether the user is logged in and, if not, sign in via the user menu.
+ * Useful before homepage prompt submission so the test does not depend on the
+ * submit → 401 → SSO chain, which is unreliable on slower test environments.
+ */
+export async function loginIfNeeded(page: Page, timeout: number = SSO_TIMEOUT): Promise<void> {
+  const menuTrigger = userMenuTrigger(page);
+  await menuTrigger.waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT });
+  await menuTrigger.click({ force: true });
+
+  // Verify the popover actually opened before reading its contents. A
+  // `force: true` click bypasses the actionability check, so if an overlay
+  // covers the trigger (the `My Apps` popover is the known case on the
+  // homepage) the click fires at covered coordinates and the user menu
+  // never opens. Previously the code then just observed "Sign Out not
+  // visible" and incorrectly treated an authenticated user as unauthenticated,
+  // calling `signIn()` which timed out waiting for a "Sign In" button that
+  // never appeared (the menu showed "Sign Out" instead). Wait for the
+  // popover-open data-state, and surface a clear error if it doesn't open.
+  const openPopover = page.locator('[data-slot="popover-content"][data-state="open"]');
+  try {
+    await openPopover.waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT });
+  } catch {
+    throw new Error(
+      'loginIfNeeded: user-menu popover did not open after click — likely covered by another overlay. ' +
+      'Call `dismissOverlays(page)` (or close `My Apps` explicitly) before `loginIfNeeded(page)`.',
+    );
+  }
+
+  // Now that we know the popover is open, both Sign Out (authed) and
+  // Sign In (unauthed) live inside it. Scope to the popover so we don't
+  // pick up a header-chrome Sign In button.
+  const signOutInPopover = openPopover.getByRole('button', { name: /sign\s*out|builder_user_menu_signout/i });
+  const alreadyAuthed = await signOutInPopover.isVisible({ timeout: SHORT_TIMEOUT });
+  await page.keyboard.press('Escape');
+
+  if (alreadyAuthed) {
+    console.log('Already authenticated, skipping login');
+    return;
+  }
+
+  console.log('Not authenticated — signing in via user menu...');
+  await signIn(page);
+  await handleSsoLogin(page, timeout);
+
+  await verifyAuthenticated(page);
+  console.log('✅ Login confirmed');
+}
 
 /**
  * Handle re-authentication if SSO appeared during a long-running test step.

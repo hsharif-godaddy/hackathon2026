@@ -267,7 +267,14 @@ test.describe('Authentication', () => {
     // ========================================
     console.log('📝 Step 5: Testing SSO on app creation...');
     await page.getByTestId('homepage-prompt-input').fill('A simple page that displays hello world');
-    await page.locator('[data-eid*="homepage.prompt.submit"]').click();
+    // Wait for React hydration before clicking — the disabled→enabled flip
+    // is server-rendered, so toBeEnabled alone isn't proof; pair with a
+    // fixed wait. Without this, clicks before hydration silently no-op and
+    // detectSsoType below times out with `null`.
+    const submitButton = page.locator('[data-eid*="homepage.prompt.submit"]');
+    await expect(submitButton).toBeEnabled({ timeout: DEFAULT_TIMEOUT });
+    await page.waitForTimeout(10_000);
+    await submitButton.click();
 
     // SSO can appear as the post-29-Apr-2026 in-page modal (prod), the legacy
     // cross-origin SsoDeck iframe, or a full-page redirect (deployed test/dev

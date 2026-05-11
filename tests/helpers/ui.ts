@@ -160,6 +160,11 @@ export async function dismissOverlays(page: Page): Promise<void> {
     // `alert "privacyAlert"` with a named "Accept" button. Scope the role
     // lookup to the alert so we don't click an unrelated "Accept" elsewhere.
     page.getByRole('alert', { name: /privacyAlert/i }).getByRole('button', { name: /^accept$/i }),
+    // Fallback: cookie consent banner with Manage/Decline/Accept buttons
+    // where the buttons live in a sibling container rather than inside the
+    // alert element. Scoped to a parent that also contains "Decline" to
+    // avoid false-positive clicks on unrelated "Accept" buttons.
+    page.locator(':has(> button:text("Decline")) > button:text("Accept")'),
   ];
 
   for (const btn of candidates) {
@@ -173,6 +178,24 @@ export async function dismissOverlays(page: Page): Promise<void> {
 
   for (let i = 0; i < 3; i++) {
     await page.keyboard.press('Escape');
+  }
+
+  // "My Apps" popover auto-opens on the authenticated homepage when the
+  // user has existing apps. It overlays the prompt area and blocks
+  // submission. Only the homepage renders this button, so skip the
+  // SHORT_TIMEOUT wait entirely on every other page (develop, apps, etc.)
+  // — the wait was burning 2s on every call from a non-homepage test.
+  const pathname = new URL(page.url()).pathname;
+  if (pathname === '/' || pathname === '') {
+    const myAppsBtn = page.getByRole('button', { name: 'My Apps' });
+    const myAppsVisible = await myAppsBtn
+      .waitFor({ state: 'visible', timeout: SHORT_TIMEOUT })
+      .then(() => true)
+      .catch(() => false);
+    if (myAppsVisible && (await myAppsBtn.getAttribute('aria-expanded').catch(() => null)) === 'true') {
+      await myAppsBtn.click();
+      console.log('  ✓ Collapsed My Apps popover');
+    }
   }
 }
 

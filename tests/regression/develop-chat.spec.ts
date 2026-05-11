@@ -71,6 +71,7 @@ test.describe('Develop Page', () => {
     await promptInput.waitFor({ state: 'visible', timeout: LONG_TIMEOUT });
     await promptInput.fill(`${getSpecPrefix('develop')} Single page hello world app - do not ask follow up questions`);
 
+    await dismissOverlays(page);
     await page.locator('[data-eid*="homepage.prompt.submit"]').click();
 
     // Handle SSO login
@@ -398,7 +399,13 @@ test.describe('Develop Page', () => {
     // Multiline via fill (controlled textarea + Playwright keys is flaky; Shift+Enter covered in ChatInput.test.tsx)
     await chatInput.clear();
     await chatInput.fill('Line 1\nLine 2');
-    await expect(chatInput).toHaveValue('Line 1\nLine 2');
+    // chat-input-textarea may be a native <textarea> OR a Lexical ContentEditable
+    // <div>; toHaveValue only works on form elements, so read text generically.
+    const chatText = await chatInput.evaluate((el) =>
+      el instanceof HTMLTextAreaElement ? el.value : ((el as HTMLElement).innerText ?? ''),
+    );
+    expect(chatText).toContain('Line 1');
+    expect(chatText).toContain('Line 2');
     await expect(page.getByTestId('chat-send-button')).not.toBeDisabled();
     console.log('  ✓ Multiline prompt text accepted');
 
