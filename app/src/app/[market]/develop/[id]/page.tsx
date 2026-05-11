@@ -21,6 +21,7 @@ import { ChatTab, IframeMessageType, MobileMode, SettingsSection, ViewMode } fro
 import { extractNewPageRoute, handlePreviewRefresh, navigatePreviewToRoute, requestPreviewScreenshot, useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import { clearExpiredWidgetStates } from '@/app/[market]/develop/components/widgets'
 import { sendPendingAutoSendMessage } from '@/app/[market]/develop/hooks/sendPendingAutoSendMessage'
+import { useAppGenerationFeedbackTrigger } from '@/app/[market]/develop/hooks/useAppGenerationFeedbackTrigger'
 import { useChatPaneLoadingState } from '@/app/[market]/develop/hooks/useChatPaneLoadingState'
 import { useEvalSnapshotCapture } from '@/app/[market]/develop/hooks/useEvalSnapshotCapture'
 import { deriveIsAwaitingStream, useInitialization } from '@/app/[market]/develop/hooks/useInitialization'
@@ -134,6 +135,10 @@ function DevelopPageContent() {
 
   // Unified initialization hook - handles all sequencing and UI state
   const init = useInitialization({ appId, isJobId })
+
+  // Shows the "happy with how your app looks?" banner on the first app
+  // generation complete. Localstorage-gated per-app; fires at most once.
+  useAppGenerationFeedbackTrigger(init.context.hasSeenFirstFileEdit)
 
   // Check for venture home logo to airo builder experiment
   const { cohort: ventureHomeLogoCohort } = useHivemind(EXPERIMENT_IDS.ventureHomeLogo);

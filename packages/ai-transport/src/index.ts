@@ -108,6 +108,10 @@ export { redactSkillOutput } from './redact-skill-output.js'
 // Non-idempotent tool detection (for mid-stream budget retry decisions)
 export { hasNonIdempotentTools } from './non-idempotent-tools.js'
 
+// OTel trace/span ID capture (for correlating client feedback to Langfuse)
+export { getCurrentTraceIds } from './otel-trace-ids.js'
+export type { TraceIds } from './otel-trace-ids.js'
+
 // Signals + OTEL trace context for chat transports (WS handshake, SSE request)
 export { buildChatSignalsTraceContext } from './chat-signals-trace-context.js'
 export type {

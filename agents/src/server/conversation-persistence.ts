@@ -10,6 +10,7 @@ import type {
   PersistenceStreamingEvent,
   ConversationContext
 } from '@airo/ai-transport'
+import { getCurrentTraceIds } from '@airo/ai-transport'
 import { calculateCostEstimate } from '@airo/ai-lib'
 import { emitConversationStart } from '@godaddy/agent-otel-sdk'
 import { appRepository } from '../database/repositories/index.js'
@@ -636,6 +637,8 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
     // Get usedFreeGrants from context (set by beforeMessageComplete callback)
     const usedFreeGrants = (context as { usedFreeGrants?: boolean }).usedFreeGrants ?? false
 
+    const traceIds = getCurrentTraceIds()
+
     if (activeConversation?.agentMessageId) {
       await this.messageStore.updateMessage(activeConversation.agentMessageId, {
         content: accumulatedContent,
@@ -646,7 +649,8 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
           finalResult: result,
           streamingEvents: streamingEvents.length,
           inProgress: false,
-          usedFreeGrants
+          usedFreeGrants,
+          ...traceIds
         }
       })
       contextLogger.info('conversation.agent_response.updated', {
@@ -661,7 +665,8 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
           agentId: context.agentName,
           finalResult: result,
           streamingEvents: streamingEvents.length,
-          usedFreeGrants
+          usedFreeGrants,
+          ...traceIds
         },
         origin: fallbackOrigin
       })

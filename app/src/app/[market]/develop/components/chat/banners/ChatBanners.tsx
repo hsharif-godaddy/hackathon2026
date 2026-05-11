@@ -12,6 +12,7 @@ import {
 } from '@/lib/subscription'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useSiteStore } from '@/stores/useSiteStore'
+import AppGenerationFeedbackBanner from './AppGenerationFeedbackBanner'
 import FeedbackBanner from './FeedbackBanner'
 import SuspendedComplianceBanner from './SuspendedComplianceBanner'
 import SuspendedNonPaymentBanner from './SuspendedNonPaymentBanner'
@@ -39,7 +40,8 @@ function isUpgradeBannerDismissedToday(): boolean {
  * 2. SuspendedNonPaymentBanner (subscription suspended for non-payment)
  * 3. UsageWarningBanner (usage >= 90%)
  * 4. UpgradeBanner (no Airo Plus subscription)
- * 5. FeedbackBanner (prompt for user feedback)
+ * 5. FeedbackBanner (session-based NPS prompt)
+ * 6. AppGenerationFeedbackBanner (thumbs up/down after first app generation; Switchboard-gated upstream in useAppGenerationFeedbackTrigger)
  */
 export default function ChatBanners({ appId }: ChatBannersProps) {
   const { isWarningBannerActive } = useUsage({ appId, enabled: !!appId })
@@ -50,6 +52,7 @@ export default function ChatBanners({ appId }: ChatBannersProps) {
   const { showPaywall, isLoading: isPaywallLoading } = usePaywallEligibility()
   const { data: subscription } = useSubscription()
   const showFeedbackBannerFromStore = useDevelopPageStore((state) => state.showFeedbackBanner)
+  const showAppGenerationFeedbackBanner = useDevelopPageStore((state) => state.showAppGenerationFeedbackBanner)
   const [isUpgradeBannerDismissed, setIsUpgradeBannerDismissed] = useState(true)
   const [mounted, setMounted] = useState(false)
 
@@ -112,6 +115,13 @@ export default function ChatBanners({ appId }: ChatBannersProps) {
   // Priority 5: Feedback banner (only if feature flag is enabled)
   if (showFeedbackBanner) {
     return <FeedbackBanner />
+  }
+
+  // Priority 6: App-generation feedback (thumbs up/down after first app generation).
+  // Switchboard gating is upstream in useAppGenerationFeedbackTrigger — if the flag
+  // is off, showAppGenerationFeedbackBanner never flips to true, so no render check here.
+  if (mounted && showAppGenerationFeedbackBanner) {
+    return <AppGenerationFeedbackBanner />
   }
 
   return null

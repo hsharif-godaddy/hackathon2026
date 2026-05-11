@@ -19,6 +19,7 @@ import { classifyError, BudgetExceededError, isBudgetExceededAPIError, containsB
 import { StreamPartProcessor } from './stream-part-processor.js'
 import { awaitResponseMetadata } from './response-metadata-capture.js'
 import { redactSkillOutput } from './redact-skill-output.js'
+import { getCurrentTraceIds } from './otel-trace-ids.js'
 import type { AgentsCollection } from '@airo/ai-lib'
 import type { HandoffStateManager } from '@airo/ai-lib'
 import {
@@ -3282,6 +3283,7 @@ export class WebSocketServer {
       commitHash, // null if no commit, hash string if commit was created
       usedFreeGrants, // true if task used free grants (publish/domain/fix task budget)
       messageId: handoffConversation?.context?.agentMessageId,
+      ...getCurrentTraceIds(),
       ...(finishReason && { finishReason }),
     }, agentName)
 
@@ -4091,7 +4093,8 @@ Please try again with corrected formatting.`
           agentId: agentName,
           duration,
           finishReason: finalResult.finishReason,
-          messageId: activeConversation?.context?.agentMessageId  // NEW: Include message ID for pending message tracking
+          messageId: activeConversation?.context?.agentMessageId,  // NEW: Include message ID for pending message tracking
+          ...getCurrentTraceIds(),
         }, agentName)
       }
 

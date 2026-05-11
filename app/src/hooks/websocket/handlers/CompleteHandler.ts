@@ -9,12 +9,28 @@ import {
   trackInitialBuildComplete,
   updateSiteTimestamp,
 } from '@/hooks/shared/completionSideEffects'
+import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
 import type { LifecycleHandlerContext, MessageHandler, WebSocketMessage } from './types'
 
 function commitHashFromComplete(data: WebSocketMessage): string | undefined {
   const raw = data.data?.commitHash
   return typeof raw === 'string' && raw.length > 0 ? raw : undefined
+}
+
+function traceIdsFromComplete(
+  data: WebSocketMessage,
+): { traceId: string; observationId: string; agentName?: string } | null {
+  const traceId = data.data?.traceId
+  const observationId = data.data?.observationId
+  if (typeof traceId !== 'string' || typeof observationId !== 'string') return null
+  if (!traceId || !observationId) return null
+  const agentName = data.data?.agentId
+  return {
+    traceId,
+    observationId,
+    ...(typeof agentName === 'string' && agentName.length > 0 && { agentName }),
+  }
 }
 
 export class CompleteHandler implements MessageHandler {
@@ -28,6 +44,9 @@ export class CompleteHandler implements MessageHandler {
 
     incrementSessionPromptCount(appId)
     maybeShowFeedbackBanner()
+
+    const traceIds = traceIdsFromComplete(data)
+    useDevelopPageStore.getState().setLastCompleteTraceIds(traceIds)
 
     context.machine.send({ type: 'STREAM_COMPLETE' })
 

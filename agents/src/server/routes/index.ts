@@ -36,4 +36,5 @@ export { runtimeErrorsRouter } from './runtime-errors.js';
 export { default as brandDataRouter } from './brand-data.js';
 export { default as rebuildRouter } from './rebuild.js';
 export { default as nextActionsRouter } from './next-actions.js';
+export { default as feedbackRouter } from './feedback.js';
 export { captureScreenshotRouter } from './capture-screenshot.js';

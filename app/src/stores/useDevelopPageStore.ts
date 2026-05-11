@@ -17,6 +17,18 @@ import { postMessageToIframe } from '@/utils/postMessage'
 // Loading phases for proper sequencing
 type LoadingPhase = 'idle' | 'loading-app' | 'loading-site' | 'loading-conversations' | 'ready'
 
+/** OTel trace/span IDs captured from complete events, used to correlate
+ * app-generation feedback submissions to Langfuse traces and observations.
+ * `agentName` carries the raw agent that produced the turn (e.g. "InitialAgent");
+ * consumers prefix with the repo's canonical `airo-app-builder-` scope when
+ * they need the full agentId. Optional because historical turns may have
+ * emitted complete events before this field was wired through. */
+export interface TraceIds {
+  traceId: string
+  observationId: string
+  agentName?: string
+}
+
 // Chat pane width constants
 export const DEFAULT_CHAT_PANE_WIDTH = 415
 const WIDE_CHAT_PANE_WIDTH = 640 - 24 // 640px - 24px (12px left + 12px right padding)
@@ -205,6 +217,14 @@ interface DevelopPageStore {
   // Feedback banner UI
   showFeedbackBanner: boolean
 
+  // App-generation feedback (thumbs up/down on first app generation)
+  /** Updated on every WS 'complete' event so the trigger can snapshot the latest IDs. */
+  lastCompleteTraceIds: TraceIds | null
+  /** Snapshot taken the moment the banner opens — pinned through submit. */
+  appGenerationFeedbackTraceIds: TraceIds | null
+  showAppGenerationFeedbackBanner: boolean
+  appGenerationFeedbackSubmitted: boolean
+
   // Tour UI
   showIntroTour: boolean
 
@@ -290,6 +310,11 @@ interface DevelopPageStore {
 
   // Feedback banner actions
   setShowFeedbackBanner: (show: boolean) => void
+
+  // App-generation feedback actions
+  setLastCompleteTraceIds: (ids: TraceIds | null) => void
+  setShowAppGenerationFeedbackBanner: (show: boolean, ids: TraceIds | null) => void
+  markAppGenerationFeedbackSubmitted: () => void
 
   // Tour actions
   setShowIntroTour: (show: boolean) => void
@@ -410,6 +435,12 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
 
     // Feedback banner state
     showFeedbackBanner: false,
+
+    // App-generation feedback state
+    lastCompleteTraceIds: null,
+    appGenerationFeedbackTraceIds: null,
+    showAppGenerationFeedbackBanner: false,
+    appGenerationFeedbackSubmitted: false,
 
     // Tour state
     showIntroTour: false,
@@ -607,6 +638,19 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     // Feedback banner actions
     setShowFeedbackBanner: (show: boolean) => set((state) => {
       state.showFeedbackBanner = show
+    }),
+
+    // App-generation feedback actions
+    setLastCompleteTraceIds: (ids: TraceIds | null) => set((state) => {
+      state.lastCompleteTraceIds = ids
+    }),
+    setShowAppGenerationFeedbackBanner: (show: boolean, ids: TraceIds | null) => set((state) => {
+      state.showAppGenerationFeedbackBanner = show
+      state.appGenerationFeedbackTraceIds = show ? ids : null
+    }),
+    markAppGenerationFeedbackSubmitted: () => set((state) => {
+      state.appGenerationFeedbackSubmitted = true
+      state.showAppGenerationFeedbackBanner = false
     }),
 
     // Tour actions

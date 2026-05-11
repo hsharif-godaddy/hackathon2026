@@ -34,6 +34,15 @@ vi.mock('@/stores/useSitesStore', () => ({
   },
 }))
 
+const mockSetLastCompleteTraceIds = vi.fn()
+vi.mock('@/stores/useDevelopPageStore', () => ({
+  useDevelopPageStore: {
+    getState: vi.fn(() => ({
+      setLastCompleteTraceIds: mockSetLastCompleteTraceIds,
+    })),
+  },
+}))
+
 const mockTrackCompletion = vi.fn()
 const mockIncrementSessionPromptCount = vi.fn()
 const mockMaybeShowFeedbackBanner = vi.fn()
@@ -337,5 +346,80 @@ describe('CompleteHandler', () => {
     )
 
     expect(mockScheduleUsageRefresh).toHaveBeenCalledTimes(1)
+  })
+
+  describe('trace ID dispatch', () => {
+    beforeEach(() => {
+      mockStore.getState.mockReturnValue({
+        connectionRetry: { isRetrying: false },
+        clearConnectionRetry: vi.fn(),
+        messages: [],
+      })
+    })
+
+    it('forwards trace + observation + agentName when the complete event carries all three', async () => {
+      await handler.handle(
+        {
+          type: 'complete',
+          content: '',
+          data: {
+            agentId: 'develop',
+            traceId: '0123456789abcdef0123456789abcdef',
+            observationId: 'fedcba9876543210',
+          },
+        },
+        createMockMessageContext()
+      )
+
+      expect(mockSetLastCompleteTraceIds).toHaveBeenCalledTimes(1)
+      expect(mockSetLastCompleteTraceIds).toHaveBeenCalledWith({
+        traceId: '0123456789abcdef0123456789abcdef',
+        observationId: 'fedcba9876543210',
+        agentName: 'develop',
+      })
+    })
+
+    it('forwards null when the complete event is missing traceId or observationId', async () => {
+      await handler.handle(
+        {
+          type: 'complete',
+          content: '',
+          data: {
+            agentId: 'develop',
+            traceId: '0123456789abcdef0123456789abcdef',
+          },
+        },
+        createMockMessageContext()
+      )
+
+      expect(mockSetLastCompleteTraceIds).toHaveBeenCalledTimes(1)
+      expect(mockSetLastCompleteTraceIds).toHaveBeenCalledWith(null)
+    })
+
+    it('sources agentName from data.agentId, not data.agentName (server-rename guard)', async () => {
+      // The complete-event shape uses `agentId` as the name field. If the
+      // server ever renames this to `agentName`, feedback events would
+      // silently lose agent context with no compile or runtime error —
+      // this test is the canary for that regression.
+      await handler.handle(
+        {
+          type: 'complete',
+          content: '',
+          data: {
+            agentId: 'initial',
+            agentName: 'should-not-be-used',
+            traceId: '0123456789abcdef0123456789abcdef',
+            observationId: 'fedcba9876543210',
+          } as unknown as WebSocketMessage['data'],
+        },
+        createMockMessageContext()
+      )
+
+      expect(mockSetLastCompleteTraceIds).toHaveBeenCalledWith({
+        traceId: '0123456789abcdef0123456789abcdef',
+        observationId: 'fedcba9876543210',
+        agentName: 'initial',
+      })
+    })
   })
 })

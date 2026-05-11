@@ -1,0 +1,84 @@
+/**
+ * Shared client for the agents `POST /feedback` route.
+ *
+ * One helper backs every feedback surface in the app so callers don't
+ * reimplement the cookie lookup, agent-base-url resolution, or POST body
+ * shape. The server emits an `urn:shared:ai:event:/agent/user-feedback/v1`
+ * event via the events team's shared schema.
+ *
+ * Backend route: `agents/src/server/routes/feedback.ts`
+ */
+
+import { dynamicApiConfigService } from '@/config/dynamic-api'
+import { getConversationIdFromCookie } from '@/hooks/websocket/useWebSocketHelpers'
+import { agentFetch } from '@/lib/agent-fetch'
+
+/** Scope of what's being rated. Matches the events-team schema enum. */
+export type FeedbackTargetLevel = 'conversation' | 'invocation' | 'artifact' | 'general'
+
+/** Thumbs up / thumbs down — matches the events-team schema enum. */
+export type FeedbackValue = 'positive' | 'negative'
+
+export interface SubmitFeedbackInput {
+  /** Thumbs up/down signal. Passed straight through to the schema. */
+  feedback: FeedbackValue
+  /** What's being rated — 'artifact' for app-generation, 'invocation' for
+   * per-turn, etc. Each surface picks. */
+  targetLevel: FeedbackTargetLevel
+  /** Stable identifier for the rated target. For app-generation this is the
+   * appId; for invocation-level feedback it's the rated invocation's id. */
+  targetId: string
+  /** OTel trace ID of the turn being rated. 32-char hex. Optional — only
+   * present when the backend emitted it on the complete WS event. */
+  traceId?: string
+  /** OTel span ID of the turn being rated. 16-char hex. Optional for the
+   * same reason as traceId. */
+  observationId?: string
+  appId: string
+  /** Raw agent name that produced the turn, e.g. 'InitialAgent' — pulled from
+   * the complete WS event. Optional for surfaces that can't identify the
+   * producing agent; backend canonicalizes to the repo-scoped form. */
+  agentName?: string
+}
+
+export interface SubmitFeedbackResult {
+  /** True when the agents route accepted the POST (2xx). */
+  ok: boolean
+  /** Populated when the call failed for a non-HTTP reason (cookie missing, network). */
+  reason?: 'missing_conversation_id' | 'network_error'
+}
+
+/**
+ * Submit a feedback signal to agents. Resolves the agents base URL, reads
+ * the per-app conversationId cookie, and POSTs the body that the backend
+ * route expects.
+ *
+ * Fail-closed on missing conversationId — the WS connect flow always writes
+ * this cookie before any turn completes, so a missing value means something
+ * upstream broke; callers should treat it as a non-recoverable dismiss.
+ */
+export async function submitFeedback(input: SubmitFeedbackInput): Promise<SubmitFeedbackResult> {
+  const conversationId = getConversationIdFromCookie(input.appId)
+  if (!conversationId) return { ok: false, reason: 'missing_conversation_id' }
+
+  try {
+    const config = await dynamicApiConfigService.getConfigForSite(input.appId)
+    const response = await agentFetch(`${config.baseUrl}/feedback`, {
+      method: 'POST',
+      siteId: input.appId,
+      body: JSON.stringify({
+        feedback: input.feedback,
+        targetLevel: input.targetLevel,
+        targetId: input.targetId,
+        appId: input.appId,
+        conversationId,
+        ...(input.traceId !== undefined && { traceId: input.traceId }),
+        ...(input.observationId !== undefined && { observationId: input.observationId }),
+        ...(input.agentName !== undefined && { agentName: input.agentName }),
+      }),
+    })
+    return { ok: response.ok }
+  } catch {
+    return { ok: false, reason: 'network_error' }
+  }
+}

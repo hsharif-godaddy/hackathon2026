@@ -4,6 +4,7 @@ import {
   executeAgentLoop,
   buildChatSignalsTraceContext,
   createAgentInvocation,
+  getCurrentTraceIds,
   formatAgentId,
   emitTurnError,
   classifyTurnError,
@@ -220,7 +221,7 @@ export class MessageExecutionService {
       this.activeStreams.delete(conversationId)
       void this.publishTerminal(active.appId, conversationId, {
         conversationId, type: 'complete', content: '',
-        data: { finishReason: 'user_stopped' },
+        data: { finishReason: 'user_stopped', ...getCurrentTraceIds() },
         agentName: 'system',
       }).finally(() => {
         const nextOwner = this.activeStreams.get(conversationId)
@@ -619,7 +620,7 @@ export class MessageExecutionService {
         conversationId, agentName: 'system',
       })
       await this.publishTerminal(appId, conversationId, {
-        type: 'complete', content: '', data: { finishReason: 'error' },
+        type: 'complete', content: '', data: { finishReason: 'error', ...getCurrentTraceIds() },
         conversationId, agentName: 'system',
       })
       if (this.activeStreams.get(conversationId) === streamState) {
@@ -974,7 +975,7 @@ export class MessageExecutionService {
 
         await this.publishTerminal(appId, conversationId, {
           conversationId, type: 'complete', content: '',
-          data: { agentId: finalAgentName, finishReason, totalSteps: lastTurnResult?.currentStep ?? 1, commitHash, usedFreeGrants },
+          data: { agentId: finalAgentName, finishReason, totalSteps: lastTurnResult?.currentStep ?? 1, commitHash, usedFreeGrants, ...getCurrentTraceIds() },
           agentName: finalAgentName,
         })
       }
@@ -1029,7 +1030,7 @@ export class MessageExecutionService {
       } else if (abortController.signal.aborted) {
         logger.info('sse.execution.aborted', { appId, conversationId })
         await this.publishTerminal(appId, conversationId, {
-          type: 'complete', content: '', data: { finishReason: 'aborted' },
+          type: 'complete', content: '', data: { finishReason: 'aborted', ...getCurrentTraceIds() },
           conversationId, agentName: resolvedAgentId,
         })
       } else {
@@ -1045,7 +1046,7 @@ export class MessageExecutionService {
           conversationId, agentName: 'system',
         })
         await this.publishTerminal(appId, conversationId, {
-          type: 'complete', content: '', data: { finishReason: 'error' },
+          type: 'complete', content: '', data: { finishReason: 'error', ...getCurrentTraceIds() },
           conversationId, agentName: 'system',
         })
         emitTurnError({

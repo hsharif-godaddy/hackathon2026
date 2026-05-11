@@ -140,6 +140,23 @@ test.describe('Develop Page', () => {
     await expect(page.getByTestId('chat-send-button')).toBeVisible({ timeout: AI_RESPONSE_TIMEOUT_MS });
     console.log('  ✓ Initial app generation completed');
 
+    // App-generation feedback banner should appear once per app after first generation.
+    // Wait deterministically so the test covers the banner flow even if it renders shortly
+    // after the initial generation completes.
+    const generationFeedbackBanner = page.getByTestId('app-generation-feedback-banner');
+    await expect(generationFeedbackBanner).toBeVisible({ timeout: 10000 });
+    console.log('  ✓ App-generation feedback banner appeared');
+
+    await page.getByTestId('app-generation-feedback-thumbs-up').click();
+    await expect(page.getByTestId('app-generation-feedback-thanks')).toBeVisible({ timeout: 5000 });
+    console.log('  ✓ Thumbs-up click transitions to thanks state');
+
+    // Reload the page — banner must not reappear (localStorage guard, per-app scope).
+    await page.reload();
+    await expect(page.getByTestId('chat-send-button')).toBeVisible({ timeout: AI_RESPONSE_TIMEOUT_MS });
+    await expect(page.getByTestId('app-generation-feedback-banner')).not.toBeVisible();
+    console.log('  ✓ Banner does not reappear after reload');
+
     // Session may have expired during AI generation
     await ensureAuthenticated(page);
 
