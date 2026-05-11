@@ -158,6 +158,10 @@ export function processBudgetReport(context: BudgetReportContext): BudgetReportR
       costOverrideActionsDetected: executionData.costOverride.actions.size,
       costOverrideActions: Array.from(executionData.costOverride.actions.values()),
     })
+  } else if (wasUserAborted) {
+    // analyzeExecution is skipped when steps are empty, so noValueDelivered is never derived.
+    // Force it here to reach the user_aborted attribution branch.
+    executionData.noValueDelivered = true
   }
 
   // Determine report items using cost attribution logic

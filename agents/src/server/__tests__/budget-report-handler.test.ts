@@ -1014,7 +1014,7 @@ describe('processBudgetReport', () => {
         sessionId: 'sess-1',
         totalCost: 3.0,
         sessionItems: createSessionItems(1, 3.0),
-        steps: [{ stepType: 'tool-call', content: [] }] as unknown as ExecutionStep[],
+        steps: [],
         wasUserAborted: true,
       }
     }
@@ -1047,6 +1047,34 @@ describe('processBudgetReport', () => {
 
       expect(result.attributionPath).toBe('user_aborted')
       expect(result.labels).toEqual([ReportLabel.General])
+      expect(result.sessionWasFree).toBe(false)
+      expect(result.reportItems[0]).toEqual({
+        budgetCost: '3',
+        productCost: '0',
+        label: ReportLabel.General,
+      })
+    })
+
+    // Empty/absent steps routes by wasUserAborted: aborted → user_aborted,
+    // not aborted → default (preserves SSE completion-path billing, since SSE
+    // reconciles with a hardcoded empty steps array).
+    it.each([
+      ['empty steps + aborted', 'user_aborted', { steps: [] as ExecutionStep[], wasUserAborted: true }],
+      ['undefined steps + aborted', 'user_aborted', { wasUserAborted: true }],
+      ['empty steps + not aborted', 'default', { steps: [] as ExecutionStep[], wasUserAborted: false }],
+      ['undefined steps + not aborted', 'default', { wasUserAborted: false }],
+    ])('%s → attributionPath=%s', (_, expectedPath, overrides) => {
+      const result = processBudgetReport({
+        budgetId: 'b-1',
+        sessionId: 'sess-1',
+        totalCost: 3.0,
+        sessionItems: createSessionItems(1, 3.0),
+        ...overrides,
+      })
+
+      expect(result.attributionPath).toBe(expectedPath)
+      expect(result.labels).toEqual([ReportLabel.General])
+      expect(result.sessionWasFree).toBe(false)
     })
 
     it('default branch: attributionPath="default" with [General]', () => {
