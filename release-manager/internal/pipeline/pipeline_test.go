@@ -1886,3 +1886,146 @@ func TestFetchReleaseNotesFallsBackOnResolveError(t *testing.T) {
 		t.Errorf("values[commit] = %q, want %q (should stay as branch on resolve error)", got, "main")
 	}
 }
+
+func TestFetchReleaseNotesWithBaseCommitOverride(t *testing.T) {
+	fullSHA := "abc123def456789012345678901234567890abcd"
+	override := "feedface1234567890abcdef1234567890abcdef"
+	runner := &mockRunner{
+		resolveCommitFn: func(_ context.Context, _, _ string) (string, error) {
+			return fullSHA, nil
+		},
+		compareFn: func(_ context.Context, _, base, head string) (*gh.CompareResult, error) {
+			if base != override {
+				t.Errorf("Compare base = %q, want override %q", base, override)
+			}
+			if head != fullSHA {
+				t.Errorf("Compare head = %q, want %q", head, fullSHA)
+			}
+			return &gh.CompareResult{
+				HTMLURL: "https://github.com/org/app/compare/" + override + "..." + fullSHA,
+				Commits: []gh.CompareCommit{
+					{SHA: "aaa", Message: "New feature (#9)", Author: "dev"},
+				},
+			}, nil
+		},
+	}
+
+	cfg := &config.Config{
+		Pipeline: config.PipelineConfig{
+			Rollback: config.RollbackConfig{
+				Sources: config.RollbackSources{
+					ArtifactID: config.RollbackSource{Repo: "org/app"},
+				},
+			},
+		},
+	}
+
+	p := New(cfg, runner, false, "main", nil)
+	p.Snapshot.AgentImageTag = "pi-e2420b0-ext-4ba7665"
+	p.BaseCommitOverride = override
+
+	notes, htmlURL, err := p.FetchReleaseNotes(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(notes) != 1 || notes[0].Number != 9 {
+		t.Errorf("unexpected notes: %+v", notes)
+	}
+	if want := "https://github.com/org/app/compare/" + override + "..." + fullSHA; htmlURL != want {
+		t.Errorf("htmlURL = %q, want %q", htmlURL, want)
+	}
+	if p.Values()["commit"] != fullSHA {
+		t.Errorf("values[commit] = %q, want head %q", p.Values()["commit"], fullSHA)
+	}
+}
+
+func TestFetchReleaseNotesBaseCommitOverrideFallsBackOnResolveError(t *testing.T) {
+	override := "feedface1234567890abcdef1234567890abcdef"
+	runner := &mockRunner{
+		resolveCommitFn: func(_ context.Context, _, _ string) (string, error) {
+			return "", fmt.Errorf("network timeout")
+		},
+		compareFn: func(_ context.Context, _, base, head string) (*gh.CompareResult, error) {
+			if base != override {
+				t.Errorf("Compare base = %q, want override %q", base, override)
+			}
+			if head != "main" {
+				t.Errorf("Compare head = %q, want %q (should fall back to branch)", head, "main")
+			}
+			return &gh.CompareResult{
+				HTMLURL: "https://github.com/org/app/compare/" + override + "...main",
+				Commits: []gh.CompareCommit{
+					{SHA: "aaa", Message: "Fix bug (#42)", Author: "dev"},
+				},
+			}, nil
+		},
+	}
+
+	cfg := &config.Config{
+		Pipeline: config.PipelineConfig{
+			Rollback: config.RollbackConfig{
+				Sources: config.RollbackSources{
+					ArtifactID: config.RollbackSource{Repo: "org/app"},
+				},
+			},
+		},
+	}
+
+	p := New(cfg, runner, false, "main", nil)
+	p.Snapshot.AgentImageTag = "pi-no-ext-hash-here"
+	p.BaseCommitOverride = override
+
+	notes, _, err := p.FetchReleaseNotes(context.Background())
+	if err != nil {
+		t.Fatalf("expected graceful fallback, got error: %v", err)
+	}
+	if len(notes) != 1 || notes[0].Number != 42 {
+		t.Errorf("unexpected notes: %+v", notes)
+	}
+	if got := p.Values()["commit"]; got != "main" {
+		t.Errorf("values[commit] = %q, want %q (should stay as branch on resolve error)", got, "main")
+	}
+}
+
+func TestFetchReleaseNotesBaseCommitOverrideBypassesBadImageTag(t *testing.T) {
+	fullSHA := "abc123def456789012345678901234567890abcd"
+	override := "feedface1234567890abcdef1234567890abcdef"
+	runner := &mockRunner{
+		resolveCommitFn: func(_ context.Context, _, _ string) (string, error) {
+			return fullSHA, nil
+		},
+		compareFn: func(_ context.Context, _, base, _ string) (*gh.CompareResult, error) {
+			if base != override {
+				t.Errorf("Compare base = %q, want override %q", base, override)
+			}
+			return &gh.CompareResult{
+				HTMLURL: "https://github.com/org/app/compare/" + override + "..." + fullSHA,
+				Commits: []gh.CompareCommit{
+					{SHA: "aaa", Message: "Fix bug (#11)", Author: "dev"},
+				},
+			}, nil
+		},
+	}
+
+	cfg := &config.Config{
+		Pipeline: config.PipelineConfig{
+			Rollback: config.RollbackConfig{
+				Sources: config.RollbackSources{
+					ArtifactID: config.RollbackSource{Repo: "org/app"},
+				},
+			},
+		},
+	}
+
+	p := New(cfg, runner, false, "main", nil)
+	p.Snapshot.AgentImageTag = "pi-no-ext-hash-here"
+	p.BaseCommitOverride = override
+
+	notes, _, err := p.FetchReleaseNotes(context.Background())
+	if err != nil {
+		t.Fatalf("expected override to bypass bad image tag, got error: %v", err)
+	}
+	if len(notes) != 1 || notes[0].Number != 11 {
+		t.Errorf("unexpected notes: %+v", notes)
+	}
+}

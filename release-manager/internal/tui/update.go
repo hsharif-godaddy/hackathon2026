@@ -863,6 +863,7 @@ func checkRepoAccess(runner gh.Runner, ctx context.Context, repos []string) tea.
 func (m Model) handleReleaseNotes(msg releaseNotesMsg) (tea.Model, tea.Cmd) {
 	if msg.err != nil {
 		logger.Log("release-notes: FAILED — %s (continuing without notes)", msg.err)
+		m.releaseNotesErr = msg.err.Error()
 	} else {
 		m.releaseNotes = msg.notes
 		m.releaseNotesURL = msg.htmlURL

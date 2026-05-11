@@ -177,6 +177,11 @@ func (m Model) renderSnapshot(sb *strings.Builder) {
 	if snap.ImagesSourceURL != "" {
 		sb.WriteString(fmt.Sprintf("  %s %s\n", m.theme.SnapshotLabelStyle.Render("Images source:"), m.theme.SnapshotURLStyle.Render(snap.ImagesSourceURL)))
 	}
+	if m.pipeline.BaseCommitOverride != "" {
+		sb.WriteString(fmt.Sprintf("\n  %s %s\n",
+			m.theme.SnapshotLabelStyle.Render("Release notes base:"),
+			m.theme.SnapshotValueStyle.Render(m.pipeline.BaseCommitOverride+" (overridden via --rollback-base-commit)")))
+	}
 }
 
 // snapshotString renders snapshot details for tea.Println.
@@ -187,6 +192,14 @@ func (m Model) snapshotString() string {
 }
 
 func (m Model) renderReleaseNotes(sb *strings.Builder) {
+	if m.releaseNotesErr != "" {
+		sb.WriteString("\n" + m.theme.SectionStyle.Render("Release Notes") + "\n")
+		sb.WriteString(fmt.Sprintf("  %s %s\n",
+			m.theme.PreflightWarnStyle.Render("⚠"),
+			m.theme.MutedStyle.Render("Failed to fetch release notes: "+m.releaseNotesErr)))
+		m.renderPinnedCommit(sb)
+		return
+	}
 	if len(m.releaseNotes) == 0 {
 		sb.WriteString("\n" + m.theme.SectionStyle.Render("Release Notes") + "\n")
 		sb.WriteString("  " + m.theme.MutedStyle.Render("No PRs found between last production deploy and "+m.branch) + "\n")

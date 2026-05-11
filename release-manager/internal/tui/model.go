@@ -92,6 +92,7 @@ type Model struct {
 
 	releaseNotes    []pipeline.ReleaseNote
 	releaseNotesURL string
+	releaseNotesErr string
 
 	checklistStageIdx   int
 	failedStageIdx      int
@@ -115,7 +116,7 @@ type Model struct {
 	lastSlackUpdate time.Time
 }
 
-func NewModel(cfg *config.Config, runner gh.Runner, dryRun bool, branch string, autoApprove bool, noSlack bool, noRelease bool, forceLock bool, failStages []string, overrides pipeline.SnapshotOverrides) Model {
+func NewModel(cfg *config.Config, runner gh.Runner, dryRun bool, branch string, autoApprove bool, noSlack bool, noRelease bool, forceLock bool, failStages []string, overrides pipeline.SnapshotOverrides, baseCommitOverride string) Model {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	var operator string
@@ -152,6 +153,7 @@ func NewModel(cfg *config.Config, runner gh.Runner, dryRun bool, branch string, 
 
 	p := pipeline.New(cfg, runner, dryRun, branch, failStages)
 	p.Overrides = overrides
+	p.BaseCommitOverride = baseCommitOverride
 
 	return Model{
 		config:         cfg,

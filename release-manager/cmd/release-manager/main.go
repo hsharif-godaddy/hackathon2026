@@ -31,6 +31,7 @@ func main() {
 	rollbackAgentTag := flag.String("rollback-agent-tag", "", "Override the previous-good agent image tag")
 	rollbackPreviewTag := flag.String("rollback-preview-tag", "", "Override the previous-good preview image tag")
 	rollbackPublishTag := flag.String("rollback-publish-tag", "", "Override the previous-good publish image tag")
+	rollbackBaseCommit := flag.String("rollback-base-commit", "", "Override the base commit SHA used for release-notes comparison (bypasses ext-hash extraction from agent image tag)")
 	flag.Var(&failStages, "fail-stage", "Simulate failure for a stage ID in dry-run (repeatable)")
 	flag.Parse()
 
@@ -44,6 +45,7 @@ func main() {
 		PreviewImageTag: strings.TrimSpace(*rollbackPreviewTag),
 		PublishImageTag: strings.TrimSpace(*rollbackPublishTag),
 	}
+	baseCommit := strings.TrimSpace(*rollbackBaseCommit)
 
 	projectRoot, err := findProjectRoot()
 	if err != nil {
@@ -65,8 +67,8 @@ func main() {
 	if len(failStages) > 0 {
 		logger.Log("config: fail-stages=%s", strings.Join(failStages, ", "))
 	}
-	if overrides.ArtifactID != "" || overrides.AgentImageTag != "" || overrides.PreviewImageTag != "" || overrides.PublishImageTag != "" {
-		logger.Log("config: rollback-overrides artifact_id=%q agent=%q preview=%q publish=%q", overrides.ArtifactID, overrides.AgentImageTag, overrides.PreviewImageTag, overrides.PublishImageTag)
+	if overrides.ArtifactID != "" || overrides.AgentImageTag != "" || overrides.PreviewImageTag != "" || overrides.PublishImageTag != "" || baseCommit != "" {
+		logger.Log("config: rollback-overrides artifact_id=%q agent=%q preview=%q publish=%q base_commit=%q", overrides.ArtifactID, overrides.AgentImageTag, overrides.PreviewImageTag, overrides.PublishImageTag, baseCommit)
 	}
 	logger.Log("config: loading %s", configPath)
 
@@ -83,7 +85,7 @@ func main() {
 		runner = &gh.DryRunner{Real: &gh.LiveRunner{}}
 	}
 
-	model := tui.NewModel(cfg, runner, *dryRun, *branch, *autoApprove, *noSlack, *noRelease, *forceLock, failStages, overrides)
+	model := tui.NewModel(cfg, runner, *dryRun, *branch, *autoApprove, *noSlack, *noRelease, *forceLock, failStages, overrides, baseCommit)
 	p := tea.NewProgram(model)
 	if _, err := p.Run(); err != nil {
 		logger.Log("program: error: %v", err)

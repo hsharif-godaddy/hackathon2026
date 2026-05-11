@@ -40,6 +40,7 @@ aws sso login --profile airobuild-dev-private-sso
 | `--rollback-agent-tag`   |       | Override the previous-good agent image tag                                                                 |
 | `--rollback-preview-tag` |       | Override the previous-good preview image tag                                                               |
 | `--rollback-publish-tag` |       | Override the previous-good publish image tag                                                               |
+| `--rollback-base-commit` |       | Override the base commit SHA used for release-notes comparison (bypasses ext-hash extraction)              |
 
 ### Overriding rollback values
 
@@ -56,6 +57,8 @@ When release-manager starts it fetches the current production state from GitHub 
 Any flag that is set wins over whatever was discovered from GitHub. If `--rollback-artifact-id` is set, the artifact-ID GitHub lookup is skipped entirely. If all three image tag flags are set, the image-tags GitHub lookup is skipped entirely — so a broken PROD preprov-management history cannot block a release. Partial overrides are allowed; only the fields you set are replaced.
 
 Overridden values still appear in the "Rollback Snapshot" confirmation step so you can double-check them before the release proceeds.
+
+Release notes are cut by comparing the base commit against the target branch HEAD. The base is normally the ext hash embedded in the previous-good agent image tag (e.g. `pi-abc123-ext-def456` → base `def456`). Use `--rollback-base-commit <sha>` to override just that base — useful when the discovered or overridden agent tag has no embedded ext hash, or when notes should span a different base than the rollback image. Unlike the other overrides, this one doesn't mutate the snapshot; it only changes what `FetchReleaseNotes` compares.
 
 ## Configuration
 

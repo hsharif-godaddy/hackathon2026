@@ -151,14 +151,15 @@ var defaultHealthCheckDelays = []time.Duration{0, 5 * time.Second, 10 * time.Sec
 
 // Pipeline manages the full deployment flow.
 type Pipeline struct {
-	Config            *config.Config
-	Runner            gh.Runner
-	DryRun            bool
-	Branch            string
-	Snapshot          RollbackSnapshot
-	Overrides         SnapshotOverrides
-	FailStages        map[string]bool
-	HealthCheckDelays []time.Duration
+	Config             *config.Config
+	Runner             gh.Runner
+	DryRun             bool
+	Branch             string
+	Snapshot           RollbackSnapshot
+	Overrides          SnapshotOverrides
+	BaseCommitOverride string
+	FailStages         map[string]bool
+	HealthCheckDelays  []time.Duration
 
 	mu     sync.RWMutex
 	stages []*StageRun
@@ -932,14 +933,23 @@ func applySnapshotOverrides(snap *RollbackSnapshot, ov SnapshotOverrides) {
 }
 
 // FetchReleaseNotes resolves the target branch to a specific commit SHA,
-// then compares the last production ext hash against that pinned SHA.
-// The resolved SHA is stored in values["commit"] so all downstream stages
-// build from the exact commit shown in the release notes. If resolution
-// fails, falls back to comparing against the branch name and logs a warning.
+// then compares the previous-good base commit against that pinned SHA.
+// The base is normally the ext hash embedded in the agent image tag; if
+// p.BaseCommitOverride is set, that SHA is used instead (bypassing ext-hash
+// extraction entirely). The resolved head SHA is stored in values["commit"]
+// so all downstream stages build from the exact commit shown in the release
+// notes. If resolution fails, falls back to comparing against the branch
+// name and logs a warning.
 func (p *Pipeline) FetchReleaseNotes(ctx context.Context) ([]ReleaseNote, string, error) {
-	extHash := gh.ExtractExtHash(p.Snapshot.AgentImageTag)
-	if extHash == "" {
-		return nil, "", fmt.Errorf("could not extract ext hash from image tag %q", p.Snapshot.AgentImageTag)
+	var base string
+	if p.BaseCommitOverride != "" {
+		base = p.BaseCommitOverride
+		logger.Log("release-notes: using overridden base commit %s (skipped ext-hash extraction from image tag %q)", base, p.Snapshot.AgentImageTag)
+	} else {
+		base = gh.ExtractExtHash(p.Snapshot.AgentImageTag)
+		if base == "" {
+			return nil, "", fmt.Errorf("could not extract ext hash from image tag %q", p.Snapshot.AgentImageTag)
+		}
 	}
 
 	repo := p.Config.Pipeline.Rollback.Sources.ArtifactID.Repo
@@ -957,12 +967,12 @@ func (p *Pipeline) FetchReleaseNotes(ctx context.Context) ([]ReleaseNote, string
 		logger.Log("release-notes: pinned %s to %s", p.Branch, commitSHA)
 	}
 
-	result, err := p.Runner.Compare(ctx, repo, extHash, head)
+	result, err := p.Runner.Compare(ctx, repo, base, head)
 	if err != nil {
 		return nil, "", err
 	}
 
-	logger.Log("release-notes: comparing %s...%s in %s — %d commits", extHash, head, repo, len(result.Commits))
+	logger.Log("release-notes: comparing %s...%s in %s — %d commits", base, head, repo, len(result.Commits))
 
 	return ParseReleaseNotes(result.Commits), result.HTMLURL, nil
 }
