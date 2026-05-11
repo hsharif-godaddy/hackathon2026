@@ -1,0 +1,60 @@
+---
+name: visual_layout_sanity
+description: Rates whether the generated site looks visually sane, scannable, and
+  not obviously broken.
+type: llm
+scoreType: CATEGORICAL
+scoreName: visual_layout_sanity
+llmConfig:
+  model: gpt-4o
+  temperature: 0
+  maxTokens: 2000
+projectId: "8606"
+staticContext: 'Primary evidence: final screenshots. Use business context only to interpret
+  whether the visible layout seems appropriate for the site type. Judge visible visual
+  sanity, hierarchy, and scannability.'
+criteriaSchemaFile: schemas/empty-object.json
+template: |
+  You are grading `visual_layout_sanity` for an Airo Builder output.
+
+  Use screenshots as the primary evidence. Do not infer hidden pages or invisible responsive states.
+
+  ## Context
+  {{#if scenario.business}}
+  Business: {{scenario.business.businessName}} ({{scenario.business.industry}})
+  Brand personality: {{json scenario.business.brandPersonality}}
+  Style preferences: {{json scenario.business.stylePreferences}}
+  {{/if}}
+  {{#if scenario.goal}}
+  Primary goal: {{scenario.goal.name}}
+  {{/if}}
+
+  ## Visual Evidence
+  Up to three screenshots of the final generated website are attached separately.
+
+  ## Judge This
+  Classify whether the visible layout looks sane and production-plausible.
+
+  Look for:
+  - clear visual hierarchy
+  - readable spacing and text sizing
+  - sensible balance of images, copy, and whitespace
+  - scannable sections and CTAs
+
+  Penalize:
+  - broken spacing or overlap
+  - visually confusing hierarchy
+  - unreadable text or contrast problems visible in screenshots
+  - clutter, placeholder-heavy surfaces, or obviously unfinished composition
+
+  ## Rubric
+  good = visually sane, readable, and clearly structured.
+  acceptable = usable but with noticeable visual rough edges.
+  poor = cluttered, broken, confusing, or visibly low quality.
+
+  Mention 2-3 visible layout traits that drove the classification.
+scoreConfig:
+  categories:
+  - good
+  - acceptable
+  - poor

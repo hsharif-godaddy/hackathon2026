@@ -1,8 +1,9 @@
 name: Refill Test Subscription Credits
 
-# Manually-triggered workflow that walks a hardcoded list of TEST subscription
-# IDs, checks remaining credits on each via mgmt-airo, and grants a credit-pack
-# if the remaining balance drops below the threshold.
+# Walks a hardcoded list of TEST subscription IDs, checks remaining credits on
+# each via mgmt-airo, and grants a credit-pack if the balance drops below the
+# threshold. Triggered manually or called from another workflow
+# (e.g. simulation_evaluation.yml) as a pre-step.
 #
 # References:
 #   - https://godaddy-corp.atlassian.net/wiki/spaces/PAR/pages/4258595687/Running+Grants+Locally
@@ -10,8 +11,12 @@ name: Refill Test Subscription Credits
 
 on:
   workflow_dispatch:
+  # Allow other workflows to call this as a pre-step so TEST credits are
+  # topped up before they run.
+  workflow_call:
 
 # Prevent parallel runs — double-granting credits is wasteful and confusing.
+# Applies whether triggered manually or via workflow_call.
 concurrency:
   group: refill-test-credits
   cancel-in-progress: false

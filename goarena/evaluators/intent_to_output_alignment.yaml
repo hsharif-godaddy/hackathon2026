@@ -1,0 +1,84 @@
+---
+name: intent_to_output_alignment
+description: Scores whether the resulting website reflects the inferred user intent
+  instead of a shallow literal build.
+type: llm
+scoreType: NUMERIC
+scoreName: intent_to_output_alignment
+llmConfig:
+  model: gpt-4o
+  temperature: 0
+  maxTokens: 2000
+projectId: "8606"
+staticContext: 'Use both the requested outcome from the conversation and the final
+  website artifact. Judge whether the output reflects what the user meant to build,
+  not just literal keyword overlap.'
+criteriaSchemaFile: schemas/empty-object.json
+template: |
+  You are grading `intent_to_output_alignment` for an Airo Builder session.
+
+  Compare what the user was trying to get built with what the final site visibly delivers.
+
+  ## Requested Outcome
+  {{#if scenario.goal}}
+  Primary goal: {{scenario.goal.name}}
+  Goal bullets:
+  {{#each scenario.goal.goals}}
+  - {{this}}
+  {{/each}}
+  {{/if}}
+  {{#if conversation.originalPrompt}}
+  Original request:
+  {{conversation.originalPrompt}}
+  {{/if}}
+  {{#if conversation.userMessages}}
+  User refinements:
+  {{#each conversation.userMessages}}
+  - {{this}}
+  {{/each}}
+  {{/if}}
+
+  ## Final Output Evidence
+  Page title: {{pageContent.title}}
+  Main H1: {{pageContent.h1}}
+  Headings:
+  {{#each pageContent.headings}}
+  - {{this}}
+  {{/each}}
+  Buttons:
+  {{#each pageContent.buttons}}
+  - {{this}}
+  {{/each}}
+  Links:
+  {{#each pageContent.links}}
+  - {{this}}
+  {{/each}}
+  Form count: {{pageContent.formCount}}
+  Main text:
+  {{pageContent.mainText}}
+
+  ## Judge This
+  Determine whether the site reflects the user's intended outcome, not just a shallow reading of the prompt.
+
+  Reward:
+  - correct site type and visitor journey
+  - visible support for the business use case
+  - incorporation of important refinements or implied needs
+
+  Penalize:
+  - literal keyword matching that misses the real purpose of the site
+  - correct business label but wrong visitor flow
+  - output that is adjacent to the request rather than aligned to it
+
+  ## Rubric
+  5 = strongly matches the intended site and user goal.
+  4 = core intent is reflected with only minor misses.
+  3 = partial alignment; usable, but a meaningful part of the intended outcome is missing.
+  2 = weak alignment with major gaps or misdirection.
+  1 = only loosely related to the user's intent.
+  0 = does not reflect the intended website at all.
+
+  In the reasoning, compare requested outcome vs visible output directly.
+scoreConfig:
+  min: 0
+  max: 5

@@ -1,0 +1,32 @@
+---
+name: New photographer launching FrameNest Photos
+type: airo-baseline-syn_b42d8e6f0a13c975
+persona:
+  name: New photographer launching FrameNest Photos (Creative Services)
+  coreTraits:
+    - cares about images
+    - does not know design terms
+    - wants a simple logo
+    - prefers fewer pages
+    - "risk tolerance: Medium - open to visual suggestions"
+    - "Complexity: easy | Primary intent: portfolio website + logo + inquiry | Skill under test:
+      media-logo/media/forms | Scenario cluster: Creative portfolio with lead capture | Expected:
+      generate logo, create gallery-first site, and add inquiry flow"
+  decisionPattern: They approve when the gallery looks polished, the logo feels gentle, and visitors
+    can ask about booking a shoot.
+  communicationStyle:
+    formality: low
+    detailLevel: medium
+    technicalLevel: low
+    examples:
+      - I take family photos and need somewhere to show them.
+      - Can it have a little logo? I don't have one yet.
+      - People should be able to message me about a session.
+  rejectionTriggers:
+    - generic-logo
+    - tiny-photo-grid
+    - missing-contact-form
+  acceptanceTriggers:
+    - big-gallery
+    - simple-logo
+    - clear-inquiry-button

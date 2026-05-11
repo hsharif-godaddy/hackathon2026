@@ -1,0 +1,66 @@
+---
+name: silent_hallucination
+description: Flags when the agent implied capabilities or implemented features that
+  the artifact does not actually support.
+type: llm
+scoreType: BOOLEAN
+scoreName: silent_hallucination
+llmConfig:
+  model: gpt-4o
+  temperature: 0
+  maxTokens: 2000
+projectId: "8606"
+staticContext: 'Use both conversation claims and the final artifact. Return true only
+  when the agent materially implied or asserted a capability that the visible artifact
+  does not actually support.'
+criteriaSchemaFile: schemas/empty-object.json
+template: |
+  You are grading `silent_hallucination` for an Airo Builder session.
+
+  Compare what the agent implied or asserted against what is actually visible in the final artifact.
+
+  ## Claim Evidence
+  {{#if conversation.messages}}
+  Transcript:
+  {{#each conversation.messages}}
+  TURN {{turn}} {{uppercase role}}: {{content}}
+  {{#if toolCalls}}
+  Tool calls on this turn:
+  {{#each toolCalls}}
+  - {{name}}{{#if args}} args={{args}}{{/if}}
+  {{/each}}
+  {{/if}}
+  {{/each}}
+  {{/if}}
+
+  ## Artifact Evidence
+  Headings:
+  {{#each pageContent.headings}}
+  - {{this}}
+  {{/each}}
+  Buttons:
+  {{#each pageContent.buttons}}
+  - {{this}}
+  {{/each}}
+  Links:
+  {{#each pageContent.links}}
+  - {{this}}
+  {{/each}}
+  Form count: {{pageContent.formCount}}
+  Main text:
+  {{pageContent.mainText}}
+
+  ## Judge This
+  Return true only when the agent materially implied a feature, workflow, or readiness state that is not actually supported by the visible artifact.
+
+  Examples:
+  - saying booking is ready when no visible booking/request path exists
+  - implying a gallery, FAQ, map, pricing, or contact workflow was added when it is not visible
+  - claiming a capability works when the site only gestures at it vaguely
+
+  Return false when:
+  - the artifact visibly supports the claim
+  - the agent clearly framed the claim as tentative or incomplete
+  - the mismatch is trivial rather than meaningful
+
+  The reasoning should name the suspect claim and the missing visible support.

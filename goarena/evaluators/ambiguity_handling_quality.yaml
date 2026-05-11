@@ -1,0 +1,75 @@
+---
+name: ambiguity_handling_quality
+description: Rates how well the agent handled vague or incomplete builder requests.
+type: llm
+scoreType: CATEGORICAL
+scoreName: ambiguity_handling_quality
+llmConfig:
+  model: gpt-4o
+  temperature: 0
+  maxTokens: 2000
+projectId: "8606"
+staticContext: 'Primary evidence: conversation and tool calls. Judge how the agent
+  handled vague, underspecified, or changing requests. Ignore final-site polish.'
+criteriaSchemaFile: schemas/empty-object.json
+template: |
+  You are grading `ambiguity_handling_quality` for an Airo Builder session.
+
+  Use only the conversation and tool-call evidence. Do not use the final website as the primary basis for this judgment.
+
+  ## Context
+  {{#if scenario.goal}}
+  Primary goal: {{scenario.goal.name}}
+  {{/if}}
+  Customer summary: {{scenario.customerSummary}}
+
+  ## Conversation Evidence
+  {{#if conversation.originalPrompt}}
+  Original request:
+  {{conversation.originalPrompt}}
+  {{/if}}
+  {{#if conversation.userMessages}}
+  User refinements:
+  {{#each conversation.userMessages}}
+  - {{this}}
+  {{/each}}
+  {{/if}}
+  {{#if conversation.messages}}
+  Transcript:
+  {{#each conversation.messages}}
+  TURN {{turn}} {{uppercase role}}: {{content}}
+  {{#if toolCalls}}
+  Tool calls on this turn:
+  {{#each toolCalls}}
+  - {{name}}{{#if args}} args={{args}}{{/if}}
+  {{/each}}
+  {{/if}}
+  {{/each}}
+  {{/if}}
+
+  ## Judge This
+  Classify how well the agent handled ambiguity.
+
+  Good handling means:
+  - it identified what was genuinely underspecified
+  - it asked only the clarifying questions that materially affected the build
+  - it made safe, reasonable assumptions when it did not need to block
+  - it adapted cleanly when the user refined or changed direction
+
+  Poor handling means:
+  - generic or repetitive questioning
+  - overconfident assumptions that were not justified
+  - missing an obvious ambiguity that later causes misalignment
+  - getting stuck instead of making a sensible default choice
+
+  ## Rubric
+  good = clarifies the right things, makes sensible assumptions, and adapts well.
+  acceptable = some awkwardness or minor misses, but ambiguity is handled competently overall.
+  poor = repetitive, unhelpful, overconfident, or clearly misaligned handling of ambiguity.
+
+  In the reasoning, call out at least one concrete ambiguous point and how the agent handled it.
+scoreConfig:
+  categories:
+  - good
+  - acceptable
+  - poor

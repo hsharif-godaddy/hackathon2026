@@ -14,8 +14,11 @@ suite:
     has a weight and the overall score is the weighted average.
 
   scenarios:
-    - key: "airo-restaurant-website-requester"
-    #- key: "airo-portfolio-demanding-client"
+    - key: "airo-baseline-candle-maker-launching-ember-wick-retail-e-commerce"
+    - key: "airo-baseline-event-planner-using-a-competitor-site-as-inspiration-for-moontable-events"
+    - key: "airo-baseline-fitness-coach-building-lift-flow-studio-health-wellness"
+    - key: "airo-baseline-frustrated-consultant-redesigning-clearpath-ops-business-services"
+    - key: "airo-baseline-home-baker-creating-sweet-porch-bakery-food-beverage"
 
   config:
     mode: "simulation"

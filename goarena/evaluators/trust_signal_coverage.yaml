@@ -1,0 +1,68 @@
+---
+name: trust_signal_coverage
+description: Scores how well the final site includes trust-building signals appropriate
+  to the business type.
+type: llm
+scoreType: NUMERIC
+scoreName: trust_signal_coverage
+llmConfig:
+  model: gpt-4o
+  temperature: 0
+  maxTokens: 2000
+projectId: "8606"
+staticContext: 'Primary evidence: business context plus final website artifact. Evaluate
+  visible trust cues only. Return checklist evidence and assign a numeric score based
+  on the strength of trust-signal coverage for this business type.'
+criteriaSchemaFile: schemas/checklist-single-item.json
+template: |
+  You are grading `trust_signal_coverage` for an Airo Builder output.
+
+  Judge only visible trust cues on the final site. Do not assume off-page reputation, hidden policies, or backend systems.
+
+  ## Business Context
+  {{#if scenario.business}}
+  Business: {{scenario.business.businessName}} ({{scenario.business.industry}})
+  Description: {{scenario.business.businessDescription}}
+  Audience: {{scenario.business.targetAudience}}
+  {{/if}}
+  Customer summary: {{scenario.customerSummary}}
+
+  ## Final Site Evidence
+  Page title: {{pageContent.title}}
+  Main H1: {{pageContent.h1}}
+  Headings:
+  {{#each pageContent.headings}}
+  - {{this}}
+  {{/each}}
+  Links:
+  {{#each pageContent.links}}
+  - {{this}}
+  {{/each}}
+  Buttons:
+  {{#each pageContent.buttons}}
+  - {{this}}
+  {{/each}}
+  Main text:
+  {{pageContent.mainText}}
+
+  ## Checklist
+  Evaluate each trust-signal item as pass/fail with brief visible evidence.
+  {{#each criteria.checklist}}
+  - {{id}}: {{description}}
+  {{/each}}
+
+  ## Judge This
+  Trust signals should be appropriate for the business type. Examples may include real contact paths, service area/location, pricing cues, testimonials or social proof, professionalism cues, credentials, process clarity, or policies when relevant.
+
+  Set the numeric score from 0 to 5 using the checklist and overall importance of the missing items:
+  - 5 = trust coverage is strong and all important items pass
+  - 4 = mostly strong with only minor trust gaps
+  - 3 = mixed; enough trust to proceed, but notable gaps remain
+  - 2 = weak trust coverage with several important omissions
+  - 1 = very little visible basis for trust
+  - 0 = trust signals are essentially absent
+
+  Weight business-critical trust items more heavily than nice-to-have polish.
+scoreConfig:
+  min: 0
+  max: 5

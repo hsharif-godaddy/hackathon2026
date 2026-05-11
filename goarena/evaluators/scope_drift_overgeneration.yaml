@@ -1,0 +1,70 @@
+---
+name: scope_drift_overgeneration
+description: Flags when the site adds irrelevant features or drifts materially beyond
+  the user's request.
+type: llm
+scoreType: BOOLEAN
+scoreName: scope_drift_overgeneration
+llmConfig:
+  model: gpt-4o
+  temperature: 0
+  maxTokens: 2000
+projectId: "8606"
+staticContext: 'Use the requested scope plus the final artifact. Return true only for
+  meaningful scope drift, irrelevant overgeneration, or extra complexity that weakens
+  the requested site.'
+criteriaSchemaFile: schemas/empty-object.json
+template: |
+  You are grading `scope_drift_overgeneration` for an Airo Builder output.
+
+  Compare the requested site scope with the visible output. This evaluator is about irrelevant or dilutive additions, not missing features.
+
+  ## Requested Scope
+  {{#if scenario.goal}}
+  Primary goal: {{scenario.goal.name}}
+  Goal bullets:
+  {{#each scenario.goal.goals}}
+  - {{this}}
+  {{/each}}
+  {{/if}}
+  {{#if conversation.originalPrompt}}
+  Original request:
+  {{conversation.originalPrompt}}
+  {{/if}}
+  {{#if conversation.userMessages}}
+  User refinements:
+  {{#each conversation.userMessages}}
+  - {{this}}
+  {{/each}}
+  {{/if}}
+
+  ## Final Output Evidence
+  Headings:
+  {{#each pageContent.headings}}
+  - {{this}}
+  {{/each}}
+  Buttons:
+  {{#each pageContent.buttons}}
+  - {{this}}
+  {{/each}}
+  Links:
+  {{#each pageContent.links}}
+  - {{this}}
+  {{/each}}
+  Main text:
+  {{pageContent.mainText}}
+
+  ## Judge This
+  Return true only if the site materially drifts from scope by adding irrelevant sections, workflows, or complexity that dilute the requested purpose.
+
+  Do not penalize:
+  - small helpful additions
+  - normal marketing/supporting sections
+  - reasonable defaults that strengthen the requested site
+
+  Do penalize:
+  - extra feature areas that pull the site toward a different use case
+  - unnecessary complexity that muddies the visitor journey
+  - irrelevant sections that compete with the requested primary outcome
+
+  The reasoning should explain why the extra material is genuinely off-scope rather than merely additional.

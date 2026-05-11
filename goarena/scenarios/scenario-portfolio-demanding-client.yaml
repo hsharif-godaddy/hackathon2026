@@ -39,24 +39,6 @@ llmConfig:
 # Browser-based configuration (URL and auth come from Agent)
 # Note: elementHints support multi-page flows (home page -> develop page redirect)
 browserConfig:
-  elementHints:
-    chatInputHint: "Home page: textarea[data-testid='homepage-prompt-input']. Develop page (after redirect): textarea[data-testid='chat-input-textarea'] or #chat-input-textarea"
-    sendButtonHint: "Home page: button[aria-label='Start building'] or button[data-eid='appbuilder.homepage.prompt.submit.click']. Develop page: button[data-testid='chat-send-button'] or button[aria-label='Send message'] or #chat-send-button"
-    messageAreaHint: "Develop page: div[data-testid='chat-transcript'] - contains conversation history and agent responses"
-    previewFrameHint: "Only on develop page: iframe[data-testid='preview-iframe'] or #preview-iframe. Not present on home page."
-  viewport:
-    width: 1440
-    height: 900
-  responseTimeout: 300000
-  outputCapture:
-    pageScreenshots: true
-    previewScreenshots: true
-    screenshotPositions:
-      - top
-      - middle
-      - bottom
-    previewUrl: true
-    htmlContent: true
   qualityEval:
     enabled: true
     siteType: portfolio

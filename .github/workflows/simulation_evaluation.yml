@@ -102,7 +102,17 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Top up TEST subscription credits before running scenarios so a low balance
+  # doesn't silently fail the run mid-way. The refill workflow is a no-op when
+  # all subscriptions are above the threshold, so this is safe to run every time.
+  refill-credits:
+    name: Refill TEST subscription credits
+    uses: ./.github/workflows/refill-test-credits.yml
+    permissions:
+      contents: read
+
   run-browser-scenarios:
+    needs: refill-credits
     runs-on:
       labels:
         - airo-cicd-runners
@@ -150,21 +160,21 @@ jobs:
 
       - name: Load Synthetic Users
         id: load-users
-        uses: gdcorp-dna/synthia/actions/load-synthetic-users@84b518097ac3f42f1e3b604b7c2c4344e2f70452 # release-1.0.2
+        uses: gdcorp-dna/synthia/actions/load-synthetic-users@f11b73e55b89458c729d78f8f10cb9cb4a92528c # release-1.1.1
         with:
           config-path: goarena/synthetic-users
           synthia-env: ${{ inputs.synthia-env }}
 
       - name: Load Evaluators
         id: load-evaluators
-        uses: gdcorp-dna/synthia/actions/load-evaluators@84b518097ac3f42f1e3b604b7c2c4344e2f70452 # release-1.0.2
+        uses: gdcorp-dna/synthia/actions/load-evaluators@f11b73e55b89458c729d78f8f10cb9cb4a92528c # release-1.1.1
         with:
           config-path: goarena/evaluators
           synthia-env: ${{ inputs.synthia-env }}
 
       - name: Load Scenarios
         id: load-scenarios
-        uses: gdcorp-dna/synthia/actions/load-scenarios@84b518097ac3f42f1e3b604b7c2c4344e2f70452 # release-1.0.2
+        uses: gdcorp-dna/synthia/actions/load-scenarios@f11b73e55b89458c729d78f8f10cb9cb4a92528c # release-1.1.1
         with:
           config-path: goarena/scenarios
           agent-name: ${{ inputs.agent-name }}
@@ -172,7 +182,7 @@ jobs:
 
       - name: Run Browser Scenarios
         id: synthia
-        uses: gdcorp-dna/synthia/actions/run-scenarios@84b518097ac3f42f1e3b604b7c2c4344e2f70452 # release-1.0.2
+        uses: gdcorp-dna/synthia/actions/run-scenarios@f11b73e55b89458c729d78f8f10cb9cb4a92528c # release-1.1.1
         with:
           config-path: ${{ inputs.config-file }}
           agent-name: ${{ inputs.agent-name }}

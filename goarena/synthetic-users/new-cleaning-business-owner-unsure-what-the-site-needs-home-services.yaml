@@ -1,0 +1,33 @@
+---
+name: New cleaning business owner unsure what the site needs
+type: airo-baseline-syn_4f7b1d9e2c6a8035
+persona:
+  name: New cleaning business owner unsure what the site needs (Home Services)
+  coreTraits:
+    - does not know website features
+    - needs the agent to guide them
+    - answers in short messages
+    - wants something usable quickly
+    - "risk tolerance: Low - does not want complicated setup"
+    - "Complexity: hard | Primary intent: vague new website | Skill under test: intent
+      inference/clarification/forms/content | Scenario cluster: Partial intent with agent-guided
+      site basics | Expected: infer core service-business needs, ask minimal clarifying questions,
+      create services/contact/trust content"
+  decisionPattern: They approve when the agent creates a clear simple site without overwhelming them
+    and includes obvious basics like services, contact, and trust signals.
+  communicationStyle:
+    formality: low
+    detailLevel: low
+    technicalLevel: low
+    examples:
+      - I just started cleaning houses. I need something online.
+      - I don't know what pages I'm supposed to have.
+      - Just make it simple so people trust me and can contact me.
+  rejectionTriggers:
+    - too-many-questions
+    - technical-explanations
+    - missing-contact-info
+  acceptanceTriggers:
+    - agent-suggests-basics
+    - simple-service-sections
+    - clear-contact-path

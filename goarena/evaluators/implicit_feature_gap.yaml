@@ -1,0 +1,70 @@
+---
+name: implicit_feature_gap
+description: Flags whether important implied features are missing from the final site.
+type: llm
+scoreType: BOOLEAN
+scoreName: implicit_feature_gap
+llmConfig:
+  model: gpt-4o
+  temperature: 0
+  maxTokens: 2000
+projectId: "8606"
+staticContext: 'Use the requested goal plus the final artifact to determine whether
+  important implied features are missing. Evaluate each checklist item as pass/fail
+  and set the boolean score to true only when there is a meaningful implied-feature
+  gap.'
+criteriaSchemaFile: schemas/checklist-single-item.json
+template: |
+  You are grading `implicit_feature_gap` for an Airo Builder output.
+
+  Judge whether the final site is missing features that are reasonably implied by the requested business goal, even if the user did not spell them out word for word.
+
+  ## Requested Outcome
+  {{#if scenario.business}}
+  Business: {{scenario.business.businessName}} ({{scenario.business.industry}})
+  Description: {{scenario.business.businessDescription}}
+  {{/if}}
+  {{#if scenario.goal}}
+  Primary goal: {{scenario.goal.name}}
+  Goal bullets:
+  {{#each scenario.goal.goals}}
+  - {{this}}
+  {{/each}}
+  {{/if}}
+  Customer summary: {{scenario.customerSummary}}
+  {{#if conversation.originalPrompt}}
+  Original request:
+  {{conversation.originalPrompt}}
+  {{/if}}
+
+  ## Final Artifact Evidence
+  Headings:
+  {{#each pageContent.headings}}
+  - {{this}}
+  {{/each}}
+  Buttons:
+  {{#each pageContent.buttons}}
+  - {{this}}
+  {{/each}}
+  Links:
+  {{#each pageContent.links}}
+  - {{this}}
+  {{/each}}
+  Form count: {{pageContent.formCount}}
+  Main text:
+  {{pageContent.mainText}}
+
+  ## Checklist
+  Evaluate each implied-feature checklist item as pass/fail with brief visible evidence.
+  {{#each criteria.checklist}}
+  - {{id}}: {{description}}
+  {{/each}}
+
+  ## Judge This
+  Only count meaningful implied gaps. A gap is meaningful when a normal visitor would reasonably expect it for the requested site type or when its absence weakens the main use case.
+
+  Do not count cosmetic extras or low-priority nice-to-haves.
+
+  Set the top-level boolean score:
+  - true = one or more checklist failures reveal a meaningful implied-feature gap
+  - false = implied needs are reasonably covered or an acceptable visible alternative exists
