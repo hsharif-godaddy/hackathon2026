@@ -120,6 +120,12 @@ export type {
 export { inferProviderFromModelName } from './infer-llm-provider.js'
 export type { ChatLlmProvider } from './infer-llm-provider.js'
 
+// Turn-level error emission + canonical agent ID formatting.
+// (Invocation span lifecycle — createAgentInvocation / AgentInvocationHandle
+// — is added alongside here in Stage 2 of the WS/SSE parity series.)
+export { formatAgentId, emitTurnError } from './agent-invocation.js'
+export type { EmitTurnErrorOptions, TurnErrorLogger } from './agent-invocation.js'
+
 // Agent Execution Loop
 export { executeAgentLoop, AgentNotFoundError, MAX_HANDOFFS } from './agent-execution-loop.js'
 export type { AgentExecutionLoopCallbacks, AgentExecutionLoopResult, AgentExecutionTermination } from './agent-execution-loop.js'
