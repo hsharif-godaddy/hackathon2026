@@ -1,5 +1,5 @@
 import type { LanguageModelUsage, ModelMessage } from 'ai'
-import { APICallError, RetryError } from 'ai'
+import { APICallError } from 'ai'
 import { Server as SocketIOServer } from 'socket.io'
 import type { Socket, ServerOptions } from 'socket.io'
 import { Server as HTTPServer } from 'http'
@@ -16,7 +16,6 @@ import {
 } from '@airo/ai-lib'
 import type { ExecutionStep } from '@airo/ai-lib/budget'
 import { classifyError, BudgetExceededError, isBudgetExceededAPIError, containsBudgetExceededPattern, createLogger } from '@airo/ai-common'
-import { isBudgetServiceError, mapBudgetErrorToResponse } from '@airo/shared/budget'
 import { StreamPartProcessor } from './stream-part-processor.js'
 import { awaitResponseMetadata } from './response-metadata-capture.js'
 import { redactSkillOutput } from './redact-skill-output.js'
@@ -44,6 +43,8 @@ import { context as otelContext, trace } from '@opentelemetry/api'
 import { buildChatSignalsTraceContext, type JwtAgentContextSubset } from './chat-signals-trace-context.js'
 import { inferProviderFromModelName, type ChatLlmProvider } from './infer-llm-provider.js'
 import { createAgentInvocation, emitTurnError } from './agent-invocation.js'
+import { analyzeStreamError, isNetworkError } from './analyze-stream-error.js'
+import { classifyTurnError } from './classify-turn-error.js'
 import {
   StreamTimingTracker,
   type StreamTimingData,
@@ -1803,7 +1804,7 @@ export class WebSocketServer {
           if (abortController?.signal.reason === 'chunk_timeout') {
             tracker.recordTimeout(errorMessage)
           }
-          if (this.isNetworkError(readError)) {
+          if (isNetworkError(readError)) {
             this.logger.warn('stream.read.network_error', {
               socketId,
               agentName,
@@ -1883,7 +1884,7 @@ export class WebSocketServer {
         throw error;
       }
 
-      const errorInfo = this.analyzeStreamError(error);
+      const errorInfo = analyzeStreamError(error);
       const activeConv = this.getConversation(socketId)
       const convAppId = activeConv?.context?.metadata && typeof (activeConv.context.metadata as any).appId === 'string'
         ? (activeConv.context.metadata as any).appId
@@ -1922,7 +1923,7 @@ export class WebSocketServer {
           socket, streamResult, currentStep, agentName, modelName
         )
       } catch (fallbackError: unknown) {
-        const fallbackInfo = this.analyzeStreamError(fallbackError);
+        const fallbackInfo = analyzeStreamError(fallbackError);
         this.extractResponseMetadata(streamResult).then(responseMeta => {
           this.logger.error('stream.text_fallback.error', {
             socketId,
@@ -2012,7 +2013,7 @@ export class WebSocketServer {
         )
       }
     } catch (error: unknown) {
-      const errorInfo = this.analyzeStreamError(error)
+      const errorInfo = analyzeStreamError(error)
 
       if (abortController?.signal.reason === 'chunk_timeout') {
         tracker.recordTimeout(errorInfo.message)
@@ -2046,128 +2047,6 @@ export class WebSocketServer {
       guard?.dispose()
     }
     return tracker.finalize()
-  }
-
-  /**
-   * Analyze stream errors to provide better error handling
-   */
-  private analyzeStreamError(error: unknown): {
-    type: string
-    message: string
-    isNetworkError: boolean
-    isAbortError: boolean
-    code: string | undefined
-    causeChain: string[]
-    statusCode: number | undefined
-    responseBody: string | undefined
-  } {
-    const errorMessage = error instanceof Error ? error.message : String(error)
-    const errorName = error instanceof Error ? error.name : 'UnknownError'
-
-    // Check for abort/cancellation errors (both UK and US spellings)
-    const isAbortError = errorName === 'AbortError' ||
-                        errorMessage.includes('aborted') ||
-                        errorMessage.includes('cancelled') ||
-                        errorMessage.includes('canceled')
-
-    // Check for network-related errors
-    const isNetworkError = this.isNetworkError(error)
-
-    let errorType = 'UnknownError'
-    if (isAbortError) {
-      errorType = 'AbortError'
-    } else if (isNetworkError) {
-      errorType = 'NetworkError'
-    } else if (errorName) {
-      errorType = errorName
-    }
-
-    // Extract error code (e.g. UND_ERR_SOCKET from undici)
-    const code = (error as any)?.code as string | undefined
-
-    // Walk the cause chain to surface the root network/socket error
-    const causeChain: string[] = []
-    let current: unknown = (error as any)?.cause
-    while (current && causeChain.length < 5) {
-      if (current instanceof Error) {
-        const causeCode = (current as any).code ? ` [${(current as any).code}]` : ''
-        causeChain.push(`${current.name}: ${current.message}${causeCode}`)
-        current = (current as any).cause
-      } else if (typeof current === 'string') {
-        causeChain.push(current)
-        break
-      } else if (typeof current === 'object' && current !== null) {
-        // Duck-type plain objects with code/message (common in undici causes)
-        const obj = current as Record<string, unknown>
-        const causeCode = typeof obj.code === 'string' ? ` [${obj.code}]` : ''
-        const msg = typeof obj.message === 'string' ? obj.message : JSON.stringify(current)
-        const name = typeof obj.name === 'string' ? obj.name : 'Object'
-        causeChain.push(`${name}: ${msg}${causeCode}`)
-        current = obj.cause
-      } else {
-        causeChain.push(String(current))
-        break
-      }
-    }
-
-    // Extract any HTTP response info from AI SDK APICallError or similar
-    const statusCode = (error as any)?.statusCode as number | undefined
-    const rawBody = (error as any)?.responseBody
-    const responseBody = typeof rawBody === 'string' ? rawBody.slice(0, 500) : undefined
-
-    return {
-      type: errorType,
-      message: errorMessage,
-      isNetworkError,
-      isAbortError,
-      code,
-      causeChain,
-      statusCode,
-      responseBody,
-    }
-  }
-
-  /**
-   * Check if an error is network-related
-   */
-  private isNetworkError(error: unknown): boolean {
-    if (!error) {return false}
-
-    const errorMessage = error instanceof Error ? error.message : ''
-    const errorName = error instanceof Error ? error.name : ''
-    const errorCode = (error as any)?.code || ''
-    const errorCause = (error as any)?.cause
-
-    // Known undici/fetch network error codes (explicit whitelist)
-    const knownNetworkCodes = new Set([
-      'UND_ERR_SOCKET',
-      'UND_ERR_RES_CONTENT_LENGTH_MISMATCH',
-      'UND_ERR_CONNECT_TIMEOUT',
-      'UND_ERR_HEADERS_TIMEOUT',
-      'UND_ERR_BODY_TIMEOUT',
-      'UND_ERR_REQUEST_TIMEOUT'
-    ])
-
-    // Check explicit error codes first
-    if (knownNetworkCodes.has(errorCode) || (errorCause && knownNetworkCodes.has(errorCause.code))) {
-      return true
-    }
-
-    // Check for specific well-defined network error messages
-    const networkErrorMessages = [
-      'terminated',
-      'other side closed',
-      'content-length'
-    ]
-
-    // Only check exact error names for fetch/network errors
-    const isNetworkErrorName = errorName === 'TypeError' && errorMessage.includes('terminated') ||
-                              errorName === 'FetchError' ||
-                              errorName === 'SocketError'
-
-    const hasNetworkMessage = networkErrorMessages.some(msg => errorMessage.includes(msg))
-
-    return isNetworkErrorName || hasNetworkMessage
   }
 
   /** Delegates to the shared `awaitResponseMetadata` helper. Preserved as a
@@ -2832,56 +2711,19 @@ export class WebSocketServer {
       }
 
     } catch (error: unknown) {
-      // Extract error details for UI
-      let errorMessage = error instanceof Error ? error.message : String(error);
-      let errorType: string | undefined;
-      let statusCode: number | undefined;
-      let retryAttempts: number | undefined;
-      let retryReason: string | undefined;
+      const classified = classifyTurnError(error)
+      const rawMessage = error instanceof Error ? error.message : String(error)
+      // Prefer classified.clientMessage for errors that sanitize internal
+      // detail (BMS API paths, internal agent names). Falls back to the
+      // raw message for unclassified errors.
+      const errorMessage = classified.clientMessage ?? rawMessage
+      const { errorType, statusCode, retryAttempts, retryReason } = classified
 
-      // AgentNotFoundError — hide the internal agent name from the wire;
-      // the real name is already in error.agentName for server-side logging.
       if (error instanceof AgentNotFoundError) {
-        this.logger.warn('agent.not_found', { socketId, requestedAgent: error.agentName });
-        errorMessage = 'Agent unavailable';
-        errorType = 'AGENT_NOT_FOUND';
-        statusCode = 500;
-      }
-      // Check if it's an AppNotFoundError (duck-typed from agents service)
-      else if (error instanceof Error && 'errorType' in error && (error as any).errorType === 'APP_NOT_FOUND') {
-        errorMessage = error.message;
-        errorType = 'APP_NOT_FOUND';
-        statusCode = 404;
-      }
-      // Check if it's a BudgetExceededError (from LiteLLM stream or pre-execution budget check)
-      else if (BudgetExceededError.isInstance(error)) {
-        errorMessage = error.message;
-        errorType = 'BUDGET_EXCEEDED';
-        statusCode = error.statusCode;
-      }
-      // BudgetService errors — use shared utility to map to sanitized response
-      else if (isBudgetServiceError(error)) {
-        const response = mapBudgetErrorToResponse(error)
-        errorMessage = response.message
-        errorType = response.errorType
-        statusCode = response.statusCode
-      }
-      // Check if it's AI SDK's RetryError
-      else if (RetryError.isInstance(error)) {
-        errorMessage = error.message;
-        errorType = 'RETRY_ERROR';
-        statusCode = 500;
-        // Extract retry metadata
-        retryAttempts = error.errors.length;
-        retryReason = error.reason;
-      }
-      // Check if it's AI SDK's APICallError (but not a budget error)
-      else if (APICallError.isInstance(error)) {
-        errorMessage = error.message;
-        statusCode = error.statusCode;
+        this.logger.warn('agent.not_found', { socketId, requestedAgent: error.agentName })
       }
 
-      const topLevelErrorInfo = this.analyzeStreamError(error)
+      const topLevelErrorInfo = analyzeStreamError(error)
       this.logger.warn('agent.error', {
         message: errorMessage,
         errorType,
@@ -2932,7 +2774,7 @@ export class WebSocketServer {
           error,
           errorType: errorType || error?.constructor?.name || 'Error',
           errorPhase: 'execution',
-          isRetryable: errorType === 'RETRY_ERROR' || statusCode === 503 || statusCode === 429 || (errorType === 'BUDGET_SERVICE_ERROR' && statusCode !== undefined && statusCode >= 500),
+          isRetryable: classified.isRetryable,
           logger: { warn: (event, fields) => this.logger.warn(event, fields) },
         })
       }
@@ -3787,7 +3629,7 @@ export class WebSocketServer {
       }
 
       const isAPIError = APICallError.isInstance(error)
-      const streamErrorInfo = this.analyzeStreamError(error)
+      const streamErrorInfo = analyzeStreamError(error)
       const streamErrorClassification = classifyError(error)
 
       const isToolValidationError =
@@ -4151,6 +3993,15 @@ Please try again with corrected formatting.`
         await invocation.awaitMetadata(streamResult.response)
       }
 
+      this.logger.info('llm.response.metadata', {
+        ...(appId !== undefined && { appId }),
+        ...(conversationId !== undefined && { conversationId }),
+        ...(invocation.metadata.responseId !== undefined && { responseId: invocation.metadata.responseId }),
+        ...(invocation.metadata.modelId !== undefined && { modelId: invocation.metadata.modelId }),
+        ...(invocation.metadata.headers?.['x-correlation-id'] && { correlationId: invocation.metadata.headers['x-correlation-id'] }),
+        ...(finalResult?.finishReason !== undefined && { finishReason: finalResult.finishReason }),
+      })
+
       // Call LLM end hook for observability
       if (onLlmEnd) {
         try {
@@ -4415,7 +4266,7 @@ Please try again with corrected formatting.`
 
       invocation.endError(postStreamError)
 
-      const postErrorInfo = this.analyzeStreamError(postStreamError)
+      const postErrorInfo = analyzeStreamError(postStreamError)
       this.logger.error('stream.post_stream.error', {
         socketId: socket.id,
         appId,

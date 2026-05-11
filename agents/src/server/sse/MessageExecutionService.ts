@@ -6,6 +6,7 @@ import {
   createAgentInvocation,
   formatAgentId,
   emitTurnError,
+  classifyTurnError,
 } from '@airo/ai-transport'
 import type { ResponseMetadata } from '@airo/ai-transport'
 import { BudgetExceededError, containsBudgetExceededPattern } from '@airo/ai-common'
@@ -473,12 +474,13 @@ export class MessageExecutionService {
 
       const finalMetadata: ResponseMetadata = await invocation.awaitMetadata(streamResult.response)
 
-      logger.info('sse.llm.response.metadata', {
-        appId, conversationId,
-        responseId: finalMetadata.responseId,
-        modelId: finalMetadata.modelId,
-        correlationId: finalMetadata.headers?.['x-correlation-id'],
-        finishReason,
+      logger.info('llm.response.metadata', {
+        ...(appId !== undefined && { appId }),
+        ...(conversationId !== undefined && { conversationId }),
+        ...(finalMetadata.responseId !== undefined && { responseId: finalMetadata.responseId }),
+        ...(finalMetadata.modelId !== undefined && { modelId: finalMetadata.modelId }),
+        ...(finalMetadata.headers?.['x-correlation-id'] && { correlationId: finalMetadata.headers['x-correlation-id'] }),
+        ...(finishReason !== undefined && { finishReason }),
       })
 
       const { accumulatedContent, currentStep } = processor.getState()
@@ -1006,24 +1008,27 @@ export class MessageExecutionService {
         })
       } else {
         const err = error instanceof Error ? error : new Error(String(error))
+        const classified = classifyTurnError(err)
+        // Prefer classified.clientMessage for errors that sanitize internal
+        // detail (BMS API paths). Matches the WS wire contract.
+        const clientMessage = classified.clientMessage ?? err.message
         logger.error('sse.execution.error', { appId, conversationId, ...errorFields(err) })
         await this.publishTerminal(appId, conversationId, {
-          type: 'error', content: err.message,
-          data: { error: err.message, timestamp: new Date().toISOString() },
+          type: 'error', content: clientMessage,
+          data: { error: clientMessage, timestamp: new Date().toISOString() },
           conversationId, agentName: 'system',
         })
         await this.publishTerminal(appId, conversationId, {
           type: 'complete', content: '', data: { finishReason: 'error' },
           conversationId, agentName: 'system',
         })
-        // SSE has no WS-style statusCode/errorType classification yet — fall
-        // back to defaults. When classification lands (mirror WS analyzeStreamError),
-        // forward errorType + isRetryable here.
         emitTurnError({
           conversationId,
           agentId: formatAgentId(resolvedAgentId),
           error: err,
+          ...(classified.errorType !== undefined && { errorType: classified.errorType }),
           errorPhase: 'execution',
+          isRetryable: classified.isRetryable,
           logger: { warn: (event, fields) => logger.warn(event, fields) },
         })
       }

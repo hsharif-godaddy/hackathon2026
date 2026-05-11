@@ -120,6 +120,12 @@ export type {
 export { inferProviderFromModelName } from './infer-llm-provider.js'
 export type { ChatLlmProvider } from './infer-llm-provider.js'
 
+// Turn-level error classification (shared by WS catch block + SSE outer catch).
+export { analyzeStreamError, isNetworkError } from './analyze-stream-error.js'
+export type { AnalyzedStreamError } from './analyze-stream-error.js'
+export { classifyTurnError } from './classify-turn-error.js'
+export type { ClassifiedTurnError, TurnErrorType } from './classify-turn-error.js'
+
 // Turn-level observability primitives (invocation span + error emission).
 export { formatAgentId, emitTurnError, createAgentInvocation } from './agent-invocation.js'
 export type {
