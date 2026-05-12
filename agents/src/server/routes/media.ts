@@ -212,6 +212,118 @@ router.post('/:appId/slots/import', async (req: Request, res: Response) => {
 });
 
 /**
+ * Getty API item shape returned by the proxy search endpoint
+ */
+interface GettySearchItem {
+  id: string;
+  display_sizes: Array<{ name: string; uri: string; is_watermarked: boolean }>;
+}
+
+interface GettySearchResponse {
+  result_count?: number;
+  images?: GettySearchItem[];
+}
+
+function extractDisplayUrl(item: GettySearchItem): string | null {
+  const order = ['high_res_comp', 'mid_res_comp', 'comp', 'preview'];
+  for (const name of order) {
+    const size = item.display_sizes.find((s) => s.name === name);
+    if (size?.uri) return size.uri;
+  }
+  return null;
+}
+
+/**
+ * GET /media/:appId/search
+ * Search Getty Images and return display URLs + IDs for the media panel search UI.
+ * Query params: q, page (default 1), pageSize (default 9, max 24), orientations
+ */
+router.get('/:appId/search', async (req: Request, res: Response) => {
+  const appId = req.params.appId;
+  if (!appId) {
+    return res.status(400).json({ success: false, error: 'App ID is required' });
+  }
+
+  const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+  if (!q) {
+    return res.status(400).json({ success: false, error: 'Query parameter q is required' });
+  }
+
+  const page = Math.max(1, parseInt(String(req.query.page || '1'), 10) || 1);
+  const pageSize = Math.min(24, Math.max(1, parseInt(String(req.query.pageSize || '9'), 10) || 9));
+  const orientations = typeof req.query.orientations === 'string' && req.query.orientations !== 'any'
+    ? req.query.orientations
+    : null;
+
+  const gettyBaseUrl = (process.env.GETTY_API_URL || 'https://getty-images-proxy.api.test-godaddy.com')
+    .replace(/\/(v1|img).*$/, '');
+  const gettyToken = process.env.GETTY_TOKEN;
+  const ssoJwt = process.env.SSO_JWT;
+  const appKey = process.env.GETTY_APP_KEY || 'airo-app-builder';
+
+  const authHeader = gettyToken
+    ? `Bearer ${gettyToken}`
+    : ssoJwt
+    ? `sso-jwt ${ssoJwt}`
+    : '';
+
+  const params = new URLSearchParams({
+    phrase: q,
+    page: String(page),
+    page_size: String(pageSize),
+  });
+  if (orientations) {
+    params.append('orientations', orientations);
+  }
+
+  logger.info('route.media.search', { appId, q, page, pageSize, orientations });
+
+  try {
+    const response = await fetch(`${gettyBaseUrl}/v1/search?${params.toString()}`, {
+      method: 'GET',
+      headers: {
+        ...(authHeader && { Authorization: authHeader }),
+        'x-app-key': appKey,
+        Accept: 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      logger.warn('route.media.search.upstream_error', { appId, status: response.status, text: text.slice(0, 200) });
+      return res.status(502).json({ success: false, error: 'Getty search failed' });
+    }
+
+    const data = (await response.json()) as GettySearchResponse;
+    const items: GettySearchItem[] = data.images ?? [];
+
+    const images: string[] = [];
+    const gettyIds: string[] = [];
+    for (const item of items) {
+      const url = extractDisplayUrl(item);
+      if (url) {
+        images.push(url);
+        gettyIds.push(item.id);
+      }
+    }
+
+    return res.json({
+      success: true,
+      images,
+      gettyIds,
+      totalResults: data.result_count ?? 0,
+    });
+  } catch (error) {
+    logger.error('route.media.search.error', {
+      appId,
+      q,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return res.status(500).json({ success: false, error: 'Failed to search images' });
+  }
+});
+
+/**
  * GET /media/:appId/slots/:slotName
  * Get a specific slot from the manifest
  */
@@ -273,7 +385,7 @@ router.put('/:appId/slots/:slotName(*)', async (req: Request, res: Response) => 
       });
     }
 
-    const { newUrl, alternativeIndex } = req.body;
+    const { newUrl, alternativeIndex, allowExternalUrl, gettyId, searchQuery } = req.body;
 
     if (!newUrl && alternativeIndex === undefined) {
       return res.status(400).json({
@@ -292,6 +404,9 @@ router.put('/:appId/slots/:slotName(*)', async (req: Request, res: Response) => 
       newUrl: newUrl || '',
       alternativeIndex,
       markUserModified: true,
+      allowExternalUrl: allowExternalUrl === true,
+      gettyId: typeof gettyId === 'string' ? gettyId : undefined,
+      searchQuery: typeof searchQuery === 'string' && searchQuery.trim() ? searchQuery.trim() : undefined,
     });
 
     if (!result.success) {

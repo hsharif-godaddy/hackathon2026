@@ -377,4 +377,83 @@ describe('MediaManifestService - Getty upload integration', () => {
     });
   });
 
+  // ---------------------------------------------------------------------------
+  // updateSlot — allowExternalUrl (search-selected images)
+  // ---------------------------------------------------------------------------
+  describe('updateSlot with allowExternalUrl', () => {
+    it('sets CDN URL as currentUrl when upload succeeds', async () => {
+      const existingSlot = makeSlot({
+        currentUrl: 'https://cdn.example.com/current.jpg',
+        gettyId: undefined,
+        alternatives: ['https://cdn.example.com/alt1.jpg'],
+      });
+      vi.mocked(fs.readFile).mockResolvedValue(
+        JSON.stringify({ 'hero-image': existingSlot })
+      );
+      vi.mocked(gettyUploadService.uploadAndReport).mockResolvedValue([
+        { id: 'getty-search-1', url: 'https://cdn.example.com/licensed.jpg' },
+      ]);
+
+      const result = await service.updateSlot('test-app', 'hero-image', {
+        newUrl: 'https://preview.getty.com/watermarked.jpg',
+        allowExternalUrl: true,
+        gettyId: 'getty-search-1',
+        markUserModified: true,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.slot?.currentUrl).toBe('https://cdn.example.com/licensed.jpg');
+      expect(gettyUploadService.uploadAndReport).toHaveBeenCalledWith(['getty-search-1']);
+    });
+
+    it('returns error and does not write manifest when CDN upload fails', async () => {
+      const existingSlot = makeSlot({
+        currentUrl: 'https://cdn.example.com/current.jpg',
+        gettyId: undefined,
+        alternatives: [],
+      });
+      vi.mocked(fs.readFile).mockResolvedValue(
+        JSON.stringify({ 'hero-image': existingSlot })
+      );
+      vi.mocked(gettyUploadService.uploadAndReport).mockResolvedValue([]);
+
+      const result = await service.updateSlot('test-app', 'hero-image', {
+        newUrl: 'https://preview.getty.com/watermarked.jpg',
+        allowExternalUrl: true,
+        gettyId: 'getty-search-1',
+        markUserModified: true,
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/Failed to license/i);
+      expect(fs.writeFile).not.toHaveBeenCalled();
+    });
+
+    it('updates searchQuery metadata when provided', async () => {
+      const existingSlot = makeSlot({
+        currentUrl: 'https://cdn.example.com/current.jpg',
+        gettyId: undefined,
+        alternatives: [],
+        searchQuery: 'old query',
+      });
+      vi.mocked(fs.readFile).mockResolvedValue(
+        JSON.stringify({ 'hero-image': existingSlot })
+      );
+      vi.mocked(gettyUploadService.uploadAndReport).mockResolvedValue([
+        { id: 'getty-search-1', url: 'https://cdn.example.com/licensed.jpg' },
+      ]);
+
+      const result = await service.updateSlot('test-app', 'hero-image', {
+        newUrl: 'https://preview.getty.com/watermarked.jpg',
+        allowExternalUrl: true,
+        gettyId: 'getty-search-1',
+        searchQuery: 'new query',
+        markUserModified: true,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.slot?.searchQuery).toBe('new query');
+    });
+  });
+
 });

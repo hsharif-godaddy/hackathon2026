@@ -97,6 +97,12 @@ export interface UpdateSlotOptions {
   alternativeIndex?: number;
   /** Mark as user-modified (prevents AI from overwriting) */
   markUserModified?: boolean;
+  /** Allow injecting a URL that is not currently in the slot's alternatives (e.g. from user search) */
+  allowExternalUrl?: boolean;
+  /** Getty image ID to associate with an externally-injected URL (triggers CDN licensing) */
+  gettyId?: string;
+  /** Update the slot's search query metadata (shown in subtext under slot name) */
+  searchQuery?: string;
 }
 
 /**
@@ -713,6 +719,21 @@ export class MediaManifestService {
             }
           });
           newAlternativeGettyIds = newAlternatives.map((url) => urlToGettyId.get(url) || '');
+        } else if (options.allowExternalUrl && options.newUrl.startsWith('http')) {
+          // Allow injecting an arbitrary URL from user-driven search (e.g. Getty search panel).
+          // The existing allUrls remain as alternatives; the injected URL becomes current.
+          newCurrentUrl = options.newUrl;
+          newCurrentGettyId = options.gettyId || undefined;
+          const altGettyIds = existingSlot.alternativeGettyIds || [];
+          const urlToGettyId = new Map<string, string>();
+          urlToGettyId.set(existingSlot.currentUrl, existingSlot.gettyId || '');
+          existingSlot.alternatives.forEach((url, i) => {
+            if (!urlToGettyId.has(url)) {
+              urlToGettyId.set(url, altGettyIds[i] || '');
+            }
+          });
+          newAlternatives = [...new Set(allUrls)];
+          newAlternativeGettyIds = newAlternatives.map((url) => urlToGettyId.get(url) || '');
         } else {
           return {
             success: false,
@@ -747,6 +768,13 @@ export class MediaManifestService {
             gettyId: newCurrentGettyId,
             cdnUrl: newCurrentUrl,
           });
+        } else if (options.allowExternalUrl) {
+          // Search-selected URLs are watermarked comp images — never persist without a CDN URL.
+          logger.warn('media_manifest.update_slot.getty_cdn_upload_failed', {
+            ...logContext,
+            gettyId: newCurrentGettyId,
+          });
+          return { success: false, error: 'Failed to license Getty image. Please try again.' };
         }
       }
 
@@ -761,6 +789,7 @@ export class MediaManifestService {
         alternativeGettyIds: newAlternativeGettyIds.some((id) => id)
           ? newAlternativeGettyIds
           : undefined,
+        ...(options.searchQuery !== undefined && { searchQuery: options.searchQuery }),
       };
 
       manifest[slotName] = updatedSlot;
@@ -892,6 +921,7 @@ export class MediaManifestService {
         alternatives: deduplicatedAlternatives,
         userModified: true,
         lastUpdated: new Date().toISOString(),
+        searchQuery: '',  // upload is unrelated to any prior search term
         gettyId: undefined, // Uploaded image has no Getty ID
         alternativeGettyIds: newAlternativeGettyIds.some((id) => id)
           ? newAlternativeGettyIds

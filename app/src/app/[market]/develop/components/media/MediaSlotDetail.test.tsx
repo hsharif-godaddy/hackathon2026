@@ -46,10 +46,22 @@ vi.mock('@/utils/image-compression', () => ({
 
 vi.mock('@/utils/postMessage', () => ({
   postMessageToIframe: vi.fn(),
+  isOriginAllowed: vi.fn().mockReturnValue(true),
+}));
+
+vi.mock('@/lib/agent-fetch', () => ({
+  agentFetch: vi.fn().mockResolvedValue({
+    ok: true,
+    json: async () => ({ images: [], gettyIds: [], totalResults: 0 }),
+  }),
 }));
 
 vi.mock('@/hooks/useIsEmbedded', () => ({
   useIsEmbedded: vi.fn().mockReturnValue(false),
+}));
+
+vi.mock('@/hooks/useSwitchboard', () => ({
+  useSwitchboard: vi.fn().mockReturnValue(true),
 }));
 
 vi.mock('@/components/security/allowed-frame-ancestors', () => ({
@@ -146,11 +158,11 @@ describe('MediaSlotDetail', () => {
     });
 
     const { user } = renderWithProviders(<MediaSlotDetail appId={mockAppId} slotName={mockSlotName} />);
-    
-    // Select an alternative image
-    const images = screen.getAllByRole('button', { pressed: false });
+
+    // Select an alternative image (wait for search to complete before querying)
+    const images = await screen.findAllByRole('button', { pressed: false });
     await user.click(images[0]); // Click the first unselected image
-    
+
     // Click use image
     const useButton = screen.getByText('builder_mediaslot_use_image');
     await user.click(useButton);
@@ -177,8 +189,8 @@ describe('MediaSlotDetail', () => {
     });
 
     const { user } = renderWithProviders(<MediaSlotDetail appId={mockAppId} slotName={mockSlotName} />);
-    
-    const images = screen.getAllByRole('button', { pressed: false });
+
+    const images = await screen.findAllByRole('button', { pressed: false });
     await user.click(images[0]);
     
     const useButton = screen.getByText('builder_mediaslot_use_image');
