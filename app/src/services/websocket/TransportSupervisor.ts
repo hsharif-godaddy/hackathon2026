@@ -465,6 +465,16 @@ export class TransportSupervisor extends EventEmitter {
       this.emit('budget:update', data);
     });
 
+    // OAuth result from the agents service. Normalized into a window
+    // CustomEvent so listeners work the same under WS and SSE transports.
+    // SSETransport dispatches the same event for the SSE path.
+    socket.on('oauth:result', (data: Record<string, unknown>) => {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('oauth:result', { detail: data }))
+      }
+    })
+
+
     socket.on('message', async (data: { type: string; content: string; data?: any }, ack?: () => void) => {
       if (data.data?.conversationId && messageContext.currentAppId && typeof data.data.conversationId === 'string') {
         setConversationIdCookie(messageContext.currentAppId, data.data.conversationId)

@@ -802,6 +802,28 @@ describe('TransportSupervisor', () => {
       expect(typeof statusHandlerCall![1]).toBe('function')
     })
 
+    it('dispatches window CustomEvent("oauth:result") on oauth:result socket event', async () => {
+      await supervisor.connect('app-123')
+      const callbacks = (mockConnectionManager.connect as any).mock.calls[0][1] as ConnectionCallbacks
+      callbacks.onSocketReady?.(mockSocket, { isNew: true })
+
+      const oauthHandler = (mockSocket.on as any).mock.calls.find((call: any) => call[0] === 'oauth:result')?.[1]
+      expect(typeof oauthHandler).toBe('function')
+
+      const listener = vi.fn()
+      window.addEventListener('oauth:result', listener)
+      try {
+        const payload = { success: true, appId: 'app-123', state: 'st', provider: 'godaddy' }
+        oauthHandler(payload)
+
+        expect(listener).toHaveBeenCalledTimes(1)
+        const event = listener.mock.calls[0]?.[0] as CustomEvent
+        expect(event.detail).toEqual(payload)
+      } finally {
+        window.removeEventListener('oauth:result', listener)
+      }
+    })
+
     it('should send recovery ack immediately if expectedCount is 0', async () => {
       await supervisor.connect('app-123')
       const callbacks = (mockConnectionManager.connect as any).mock.calls[0][1] as ConnectionCallbacks

@@ -2,7 +2,7 @@ import { generateCodeVerifier, generateCodeChallenge, generateState } from '../u
 import { TokenStore } from './token-store.js';
 import { Logger } from '../logging/index.js';
 import { OAuthTokenRepository } from '../database/repositories/OAuthTokenRepository.js';
-import { emitToApp } from '../server/ai-lib-websocket-server.js';
+import { emitOAuthResult } from '../server/oauth-emit.js';
 import { getNomadAllocConfig } from '../utils/nomad-config.js';
 
 const logger = Logger.create({ component: 'auth-service' });
@@ -465,11 +465,7 @@ export class AuthService {
         hasRefreshToken: !!tokenData.refresh_token,
       });
 
-      // Emit OAuth result scoped to sockets authenticated for this appId.
-      // emitToApp returns 0 when Socket.IO is uninitialized or no authenticated
-      // socket for the appId is connected; surface that as a warn.
-      // Don't log state value — sensitive PKCE flow state.
-      const delivered = emitToApp(appId, 'oauth:result', {
+      emitOAuthResult({
         success: true,
         appId,
         state,
@@ -477,17 +473,6 @@ export class AuthService {
         expiresAt,
         scopes: [...new Set(scopes)].sort(),
       });
-      if (delivered === 0) {
-        logger.warn('auth-service.oauth-result.no-recipient', {
-          message: 'No authenticated socket matched appId for oauth:result',
-          appId,
-        });
-      } else {
-        logger.info('auth-service.oauth-result.emitted', {
-          appId,
-          delivered,
-        });
-      }
 
       return { accessToken: tokenData.access_token, expiresAt, sub: this.parseSubClaim(tokenData.access_token) };
     } catch (err) {

@@ -6,7 +6,6 @@ import Button from '@ux/button'
 import { useWebSocketContext } from '@/contexts/WebSocketContext'
 import { openOAuthPopupAndAwait } from '@/lib/oauth-popup'
 import { logger } from '@/lib/request-context'
-import { getSharedSocket } from '@/lib/socketRegistry'
 import { useCurrentAppId } from '@/stores/useStreamingConversationStore'
 
 /**
@@ -46,16 +45,23 @@ export default function ChatAuthRequestMessage({
     const { title, description, redirectUrl, state, provider } = payload
 
     /**
-     * Listen for OAuth completion events via WebSocket
-     * When OAuth succeeds, automatically notify agent to continue
+     * Listen for OAuth completion via transport-agnostic window CustomEvent
+     * (dispatched by both TransportSupervisor for WS and SSETransport for SSE).
+     * When OAuth succeeds, automatically notify agent to continue.
      */
     useEffect(() => {
-        const socket = getSharedSocket()
-        if (!socket) return
+        if (typeof window === 'undefined') return
 
-        const handleOAuthResult = (data: any) => {
-            // Check if this OAuth result matches our state
-            if (data.state !== state) return
+        const handleOAuthResult = (event: Event) => {
+            const data = (event as CustomEvent).detail as {
+                state?: string
+                appId?: string
+                success?: boolean
+                provider?: string
+                error?: string
+                description?: string
+            }
+            if (!data || data.state !== state) return
             if (data.appId !== currentAppId) return
 
             if (data.success) {
@@ -68,9 +74,7 @@ export default function ChatAuthRequestMessage({
                 setStatus('success')
 
                 // Notify agent in a microtask to avoid background-tab rAF throttling.
-                if (typeof window === 'undefined') {
-                  sendMessage({ content: 'OAuth authentication completed successfully. Please continue.' })
-                } else if (typeof queueMicrotask === 'function') {
+                if (typeof queueMicrotask === 'function') {
                   queueMicrotask(() => {
                     void sendMessage({ content: 'OAuth authentication completed successfully. Please continue.' })
                   })
@@ -90,10 +94,10 @@ export default function ChatAuthRequestMessage({
             }
         }
 
-        socket.on('oauth:result', handleOAuthResult)
+        window.addEventListener('oauth:result', handleOAuthResult)
 
         return () => {
-            socket.off('oauth:result', handleOAuthResult)
+            window.removeEventListener('oauth:result', handleOAuthResult)
         }
     }, [state, currentAppId, conversationId, sendMessage])
 

@@ -332,7 +332,8 @@ export class SSETransport implements ChatTransport {
       'history_message', 'history_loaded', 'history_complete',
       'recovery_status', 'replay_complete', 'catchup_status', 'catchup_complete',
       'client_action', 'video', 'status', 'request_grant_refresh', 'resync',
-      'auth_expired'
+      'auth_expired',
+      'oauth_result',
     ]
 
     for (const type of eventTypes) {
@@ -367,6 +368,17 @@ export class SSETransport implements ChatTransport {
         appId: this.appId, conversationId: this.conversationId,
         eventType: type, error: errMessage(err),
       })
+      return
+    }
+
+    // oauth_result is an out-of-band app event, not a conversation event —
+    // short-circuit before eventSubscribers / onEvent so it never flows
+    // through the conversation channel. TransportSupervisor dispatches the
+    // same CustomEvent for the WS path.
+    if (type === 'oauth_result') {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('oauth:result', { detail: data }))
+      }
       return
     }
 

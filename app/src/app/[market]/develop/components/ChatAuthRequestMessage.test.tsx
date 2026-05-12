@@ -9,16 +9,6 @@ import { screen, waitFor } from '@testing-library/react';
 import { renderWithProviders } from '@/tests/test-utils';
 import ChatAuthRequestMessage, { AuthRequestPayload } from './ChatAuthRequestMessage';
 
-const mockSocket = {
-  on: vi.fn(),
-  off: vi.fn(),
-  emit: vi.fn(),
-};
-
-vi.mock('@/lib/socketRegistry', () => ({
-  getSharedSocket: () => mockSocket,
-}));
-
 vi.mock('@/stores/useStreamingConversationStore', () => ({
   useCurrentAppId: () => 'app-123',
 }));
@@ -128,18 +118,22 @@ describe('ChatAuthRequestMessage', () => {
     });
   });
 
-  it('should register socket listener for oauth:result', () => {
+  it('should register window oauth:result listener', () => {
+    const addSpy = vi.spyOn(window, 'addEventListener');
     renderWithProviders(<ChatAuthRequestMessage payload={defaultPayload} />);
 
-    expect(mockSocket.on).toHaveBeenCalledWith('oauth:result', expect.any(Function));
+    expect(addSpy).toHaveBeenCalledWith('oauth:result', expect.any(Function));
+    addSpy.mockRestore();
   });
 
-  it('should unregister socket listener on unmount', () => {
+  it('should unregister window oauth:result listener on unmount', () => {
+    const removeSpy = vi.spyOn(window, 'removeEventListener');
     const { unmount } = renderWithProviders(<ChatAuthRequestMessage payload={defaultPayload} />);
 
     unmount();
 
-    expect(mockSocket.off).toHaveBeenCalledWith('oauth:result', expect.any(Function));
+    expect(removeSpy).toHaveBeenCalledWith('oauth:result', expect.any(Function));
+    removeSpy.mockRestore();
   });
 
   it('should render lock icon', () => {

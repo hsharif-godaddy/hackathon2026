@@ -51,10 +51,11 @@ vi.mock('../../utils/nomad-config.js', () => ({
     getNomadAllocConfig: vi.fn(() => null),
 }));
 
-// Mock websocket server
-const emitToAppMock = vi.fn(() => 0);
+// Mock websocket server. getSocketIO returns a truthy stub so emitOAuthResult's
+// WS path fires; emitToApp is spied so tests can assert the scoped-emit call.
+const emitToAppMock = vi.fn(() => 1);
 vi.mock('../../server/ai-lib-websocket-server.js', () => ({
-    getSocketIO: vi.fn(() => null),
+    getSocketIO: vi.fn(() => ({})),
     emitToApp: (appId: string, event: string, payload: unknown) => emitToAppMock(appId, event, payload),
 }));
 

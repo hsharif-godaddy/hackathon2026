@@ -2,7 +2,7 @@ import { Router, type IRouter } from 'express';
 import { randomBytes } from 'crypto';
 import { AuthService, pkceStateStore } from '../../services/auth-service.js';
 import { Logger } from '../../logging/index.js';
-import { emitToApp } from '../ai-lib-websocket-server.js';
+import { emitOAuthResult } from '../oauth-emit.js';
 
 const logger = Logger.create({ component: 'oauth-router' });
 const router: IRouter = Router();
@@ -24,7 +24,7 @@ function emitOAuthErrorAndCleanup(
   const s = state || '';
   const pkce = s ? pkceStateStore.get(s) : undefined;
   if (pkce?.appId) {
-    emitToApp(pkce.appId, 'oauth:result', {
+    emitOAuthResult({
       success: false,
       appId: pkce.appId,
       state: s,
