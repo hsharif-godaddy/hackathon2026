@@ -12,6 +12,7 @@ Defined in `app/main.ts` and registered in the `STACK_NAME` input of `.github/wo
 | `MySQLV2Stack`           | Aurora MySQL cluster                                                | dev, test, prod |
 | `PostgresStack`          | Aurora PostgreSQL cluster                                           | dev, test, prod |
 | `AiroJWTKeyStack`        | JWT signing keys (Secrets Manager) with scheduled rotation          | dev, test, prod |
+| `AiroStripeServiceStack` | DynamoDB + RSA KMS + Secrets Manager entries for stripe-service     | dev             |
 | `GocaasSpendLambdaStack` | Lambda that syncs GoCode spend logs to ESSP                         | dev, prod       |
 | `EvalSnapshotsStack`     | S3 bucket + IAM for eval snapshots                                  | dev, prod       |
 | `FeedbackS3Stack`        | S3 bucket + IAM for user feedback                                   | dev, prod       |

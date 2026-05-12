@@ -23,6 +23,7 @@ on:
           - "MySQLV2Stack"
           - "PostgresStack"
           - "AiroJWTKeyStack"
+          - "AiroStripeServiceStack"
           - "GocaasSpendLambdaStack"
           - "LangfuseMetricsEsspExporterStack"
           - "EvalSnapshotsStack"

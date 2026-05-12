@@ -4,6 +4,7 @@ import {AiroBuilderStack} from "../lib/application-stack";
 import { MySQLV2Stack } from "../lib/mysql-v2-stack";
 import { PostgresStack } from "../lib/postgres-stack";
 import { AiroJWTKeyStack } from "../lib/airo-jwt-key-stack";
+import { AiroStripeServiceStack } from "../lib/airo-stripe-service-stack";
 import { MonitoringStack } from '../lib/monitoring-stack';
 import { GocaasSpendLambdaStack } from "../lib/gocaas-spend-lambda-stack";
 import { ImageSearchStack } from "../lib/image-search-stack";
@@ -49,6 +50,14 @@ async function main() {
 
   // Create JWT Key Management stack for secure token signing
   new AiroJWTKeyStack(app, 'AiroJWTKeyStack', { env: env });
+
+  // DynamoDB tables, KMS RSA CMK, Secrets Manager entries used by stripe-service.
+  // Service runtime (ALB/ECS/ECR) is Katana-managed; this stack owns the data plane.
+  // Gated to dev for now — widen to test/prod with a one-line change once we're
+  // ready to provision real Stripe resources beyond dev-private.
+  if (config.envName === 'dev') {
+    new AiroStripeServiceStack(app, 'AiroStripeServiceStack', { env });
+  }
 
   // Create GoCode Spend ESSP Lambda stack
   new GocaasSpendLambdaStack(app, 'GocaasSpendLambdaStack', { env });
