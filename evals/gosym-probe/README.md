@@ -61,6 +61,56 @@ in the `ALL_SCENARIOS` array in `src/index.ts`.
 
 ---
 
+## Performance (Local Evals)
+
+To get the best throughput from local eval runs:
+
+### Docker Resource Allocation
+
+AAB's preview and publish containers run in Docker. Give them as much
+headroom as possible:
+
+1. **CPU:** Allow Docker to use all available cores (Docker Desktop →
+   Settings → Resources → CPUs: max).
+2. **RAM:** Allocate as much memory as you can spare from other
+   applications. On a 48 GB machine, 32-40 GB for Docker is a good
+   target.
+
+### Concurrency
+
+Set `MAX_CONCURRENCY=5` in `evals/gosym-probe/.env` as a starting point:
+
+```dotenv
+MAX_CONCURRENCY=5
+```
+
+Optimal concurrency depends on scenario complexity. Resource-heavy
+scenarios (multi-agent handoffs, large DOM captures) may need a lower
+value. Monitor system load and adjust accordingly.
+
+### AAB Launch Configuration
+
+Start AAB with socket diagnostics and mock auth:
+
+```bash
+SOCKET_DIAGNOSTICS=true AUTH_TYPE=mock pnpm run dev
+```
+
+Or set both in `agents/.env` so they persist across restarts:
+
+```dotenv
+SOCKET_DIAGNOSTICS=true
+AUTH_TYPE=mock
+```
+
+- `AUTH_TYPE=mock` bypasses JWT validation (AWS Secrets Manager is
+  unavailable locally).
+- `SOCKET_DIAGNOSTICS=true` emits real-time socket timing events,
+  required by `LatencyEvaluator` and useful for diagnosing stalled
+  trials.
+
+---
+
 ## Debugging
 
 ### PROBE_DEBUG_EVENTS
@@ -158,6 +208,7 @@ results/
           trials/
             {trialIndex}/
               transcript.json          # turns + snapshot count (no binaries)
+              conversation.json        # human-readable conversation (role, content, timing)
               eval-results.json        # per-evaluator verdicts and scores
               tool_calls.json          # ordered tool call sequence + frequency
               snapshots/

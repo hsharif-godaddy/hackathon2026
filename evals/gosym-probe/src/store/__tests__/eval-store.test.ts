@@ -45,7 +45,12 @@ vi.mock('node:util', async (importOriginal) => {
 
 vi.mock('../../reporters/md-reporter.js');
 vi.mock('../../util/conversation-renderer.js', () => ({
-  renderConversation: vi.fn().mockReturnValue('# mock conversation'),
+  renderConversation: vi.fn().mockReturnValue({
+    scenarioName: 'test-scenario',
+    trial: 1,
+    turns: [{ role: 'user', content: 'hello', durationSeconds: 0 }],
+    summary: { messageCount: 1, totalElapsedSeconds: 0 },
+  }),
 }));
 
 import {
@@ -254,7 +259,12 @@ describe('EvalStore', () => {
     mockRenderTrialEvalResultsMarkdown.mockReturnValue(
       '## mock eval results\n',
     );
-    mockRenderConversation.mockReturnValue('# mock conversation');
+    mockRenderConversation.mockReturnValue({
+      scenarioName: 'test-scenario',
+      trial: 1,
+      turns: [{ role: 'user', content: 'hello', durationSeconds: 0 }],
+      summary: { messageCount: 1, totalElapsedSeconds: 0 },
+    });
   });
 
   describe('save()', () => {
@@ -1555,17 +1565,20 @@ describe('EvalStore', () => {
       expect(parsed).toHaveProperty('totalCount');
     });
 
-    it('writes conversation.md for the trial', async () => {
+    it('writes conversation.json for the trial', async () => {
       const store = new EvalStore();
       const trial = makeTrialResult(0);
 
       await store.writeTrial(DIR_NAME, 'test-scenario', trial);
 
       const call = mockWriteFile.mock.calls.find(([p]) =>
-        (p as string).endsWith('conversation.md'),
+        (p as string).endsWith('conversation.json'),
       );
       expect(call).toBeDefined();
-      expect(typeof call![1]).toBe('string');
+      const parsed = JSON.parse(call![1] as string);
+      expect(parsed).toHaveProperty('scenarioName');
+      expect(parsed).toHaveProperty('turns');
+      expect(parsed).toHaveProperty('summary');
       expect(
         (call![0] as string).includes('trials/0'),
       ).toBe(true);

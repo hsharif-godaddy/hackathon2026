@@ -1,59 +1,72 @@
 import type { Turn } from '../runner/transcript.js';
 
-function formatRelativeTime(offsetMs: number): string {
-  const seconds = offsetMs / 1000;
-  const sign = seconds < 0 ? '-' : '+';
-  return `${sign}${Math.abs(seconds).toFixed(1)}s`;
+export interface ConversationTurn {
+  role: Turn['role'];
+  content: string;
+  durationSeconds: number;
+}
+
+export interface ConversationJson {
+  scenarioName: string;
+  trial: number;
+  turns: ConversationTurn[];
+  summary: {
+    messageCount: number;
+    totalElapsedSeconds: number;
+  };
 }
 
 export function renderConversation(
   turns: Turn[],
   scenarioName: string,
   trialIndex: number,
-): string {
-  const header =
-    `# Conversation: ${scenarioName}` +
-    ` (Trial ${trialIndex + 1})`;
-
-  if (turns.length === 0) {
-    return `${header}\n\n*(no turns)*\n`;
-  }
-
-  const baseTimestamp =
-    turns.find((t) => Number.isFinite(t.timestamp))?.timestamp ?? 0;
-  const lines: string[] = [header, ''];
-
+): ConversationJson {
   const contentTurns = turns.filter(
     (t) => t.content.trim() !== '',
   );
-  for (const turn of contentTurns) {
-    const rawOffset = turn.timestamp - baseTimestamp;
-    const offset = Number.isFinite(rawOffset) ? rawOffset : 0;
-    const relTime = formatRelativeTime(offset);
-    const role = turn.role === 'user' ? 'User' : 'Assistant';
 
-    lines.push('---', '');
-    lines.push(`**${role}** [${relTime}]`, '');
-    // Content is not sanitized — it may contain legitimate markdown.
-    lines.push(turn.content, '');
-  }
+  const baseTimestamp =
+    turns.find((t) => Number.isFinite(t.timestamp))?.timestamp ?? 0;
 
-  const lastContentTimestamp = contentTurns.length > 0
-    ? contentTurns[contentTurns.length - 1].timestamp
-    : baseTimestamp;
+  const jsonTurns: ConversationTurn[] = contentTurns.map(
+    (turn, i) => {
+      let durationMs: number;
+      if (i === 0) {
+        durationMs = 0;
+      } else {
+        const prevTimestamp = contentTurns[i - 1].timestamp;
+        const raw = turn.timestamp - prevTimestamp;
+        durationMs = Number.isFinite(raw) ? Math.max(0, raw) : 0;
+      }
+
+      return {
+        role: turn.role,
+        content: turn.content,
+        durationSeconds: parseFloat(
+          (durationMs / 1000).toFixed(1),
+        ),
+      };
+    },
+  );
+
+  const lastContentTimestamp =
+    contentTurns.length > 0
+      ? contentTurns[contentTurns.length - 1].timestamp
+      : baseTimestamp;
   const rawElapsed = lastContentTimestamp - baseTimestamp;
   const elapsedMs = Number.isFinite(rawElapsed)
     ? Math.max(0, rawElapsed)
     : 0;
-  const elapsedStr = (elapsedMs / 1000).toFixed(1);
-  const count = contentTurns.length;
-  const plural = count === 1 ? 'message' : 'messages';
 
-  lines.push('---', '');
-  lines.push(
-    `*${count} ${plural}, ${elapsedStr}s elapsed*`,
-  );
-  lines.push('');
-
-  return lines.join('\n');
+  return {
+    scenarioName,
+    trial: trialIndex + 1,
+    turns: jsonTurns,
+    summary: {
+      messageCount: contentTurns.length,
+      totalElapsedSeconds: parseFloat(
+        (elapsedMs / 1000).toFixed(1),
+      ),
+    },
+  };
 }

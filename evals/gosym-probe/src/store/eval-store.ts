@@ -624,7 +624,7 @@ export class EvalStore {
   ): Promise<void> {
     // Compute pure render before any I/O so a render failure
     // occurs before any files have been written.
-    const conversationMd = renderConversation(
+    const conversationJson = renderConversation(
       trial.transcript.turns,
       trial.transcript.scenarioName,
       trial.transcript.trialIndex,
@@ -664,8 +664,8 @@ export class EvalStore {
     );
 
     await writeFile(
-      join(trialDir, 'conversation.md'),
-      conversationMd,
+      join(trialDir, 'conversation.json'),
+      JSON.stringify(conversationJson, null, 2),
     );
 
     const artifacts = extractArtifacts(trial.transcript.turns);

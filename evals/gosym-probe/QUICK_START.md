@@ -67,16 +67,23 @@ from the team's shared secrets store.
 
 ## 4. Start airo-app-builder (AAB) Locally
 
-> **Important:** Start the agents service with `AUTH_TYPE=mock`. The default
-> JWT mode requires AWS Secrets Manager access that is not available locally.
+> **Important:** Start the agents service with `AUTH_TYPE=mock` and
+> `SOCKET_DIAGNOSTICS=true`. The default JWT mode requires AWS Secrets
+> Manager access that is not available locally. Socket diagnostics
+> enables timing events used by the latency evaluator.
 
 From the repo root:
 
 ```bash
-AUTH_TYPE=mock pnpm run dev
+SOCKET_DIAGNOSTICS=true AUTH_TYPE=mock pnpm run dev
 ```
 
+Or add both variables to `agents/.env` so they persist across restarts.
+
 Wait until both services are ready before running the harness.
+
+See [Performance (Local Evals)](README.md#performance-local-evals) for
+Docker resource allocation and concurrency tuning.
 
 ---
 
