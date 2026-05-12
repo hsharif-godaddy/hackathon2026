@@ -340,6 +340,7 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
       templateId, modelOverride,
       visualContext, aiEditContext, selectedAssets,
       todoListContext, isActionRequest, customContext, buildErrorContext,
+      market,
     } = req.body
 
     // WS permits empty content after stripping /agent markers and when the
@@ -348,6 +349,11 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
     // refuses truly-empty submissions (no text, assets, or referenced files).
     if (typeof content !== 'string') {
       res.status(400).json({ error: 'content must be a string' })
+      return
+    }
+
+    if (market !== undefined && typeof market !== 'string') {
+      res.status(400).json({ error: 'market must be a string' })
       return
     }
 
@@ -436,6 +442,7 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
       budgetSessionId,
       subscriptionId: effectiveSubscriptionId,
       authType: agentContext?.authType,
+      market,
       requestHeaders: req.headers as Record<string, string | string[] | undefined>,
       lifecycleContext: {
         agentContext: {

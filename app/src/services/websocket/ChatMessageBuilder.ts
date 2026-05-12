@@ -55,6 +55,7 @@ export interface BuildMessageParams<
   templateId?: string
   modelOverride?: string
   agentProfile?: string
+  market?: string
 }
 
 export class ChatMessageBuilder {
@@ -245,6 +246,7 @@ export class ChatMessageBuilder {
         ...(params.templateId && { templateId: params.templateId }),
         ...(params.modelOverride && { modelOverride: params.modelOverride }),
         ...(params.agentProfile && { agentProfile: params.agentProfile }),
+        ...(params.market && { market: params.market }),
       },
 
       conversation: {

@@ -1,3 +1,4 @@
+import { useParams } from 'next/navigation'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getMessageOriginForAuthType } from '@airo/shared/auth'
 
@@ -139,6 +140,10 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
 
   const currentAppId = useCurrentAppId()
   const { tokenAuthType } = useAuthContext()
+  const routeParams = useParams()
+  const market = typeof routeParams?.market === 'string' ? routeParams.market : undefined
+  const marketRef = useRef(market)
+  marketRef.current = market
 
   const subscriptionId = useSitesStore((state) => {
     if (!currentAppId) return undefined
@@ -815,6 +820,7 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
         isActionRequest: options.isActionRequest,
         customContext: options.customContext,
         budgetServiceEnabled: isBudgetServiceEnabledRef.current || undefined,
+        market: marketRef.current,
         subscriptionId: subscriptionIdRef.current,
         buildErrorContext: store.buildErrorContext,
       })

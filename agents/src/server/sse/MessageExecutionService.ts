@@ -132,6 +132,7 @@ interface ExecuteParams {
   requestHeaders?: Record<string, string | string[] | undefined>
   /** JWT agent context + derived lifecycle hints (isInitialPrompt, multi-turn caches). */
   lifecycleContext?: LifecycleContext
+  market?: string
 }
 
 interface ActiveStream {
@@ -547,7 +548,7 @@ export class MessageExecutionService {
       visualContext, aiEditContext, selectedAssets,
       todoListContext, isActionRequest, customContext, buildErrorContext,
       bmsBudgetId, budgetSessionId, subscriptionId, authType,
-      lifecycleContext,
+      lifecycleContext, market,
     } = params
 
     const resolvedAgentId = agentId
@@ -707,6 +708,7 @@ export class MessageExecutionService {
         ...(agentCtx?.customerId && { customerId: agentCtx.customerId }),
         ...(bmsBudgetId && { bmsBudgetId, budgetServiceEnabled: true }),
         ...(budgetSessionId && { budgetSessionId }),
+        ...(market && { market }),
       },
       ...(contextAttachments.length > 0 && { contextAttachments }),
       todoListContext, isActionRequest, customContext,

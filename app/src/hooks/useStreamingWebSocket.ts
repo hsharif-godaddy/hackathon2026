@@ -5,6 +5,7 @@
  * Wires controller events to React state and provides a clean sendMessage API.
  */
 
+import { useParams } from 'next/navigation'
 import { useCallback, useEffect, useRef } from 'react'
 import { getMessageOriginForAuthType } from '@airo/shared/auth'
 
@@ -153,6 +154,10 @@ export function useStreamingWebSocket({ enabled = true }: { enabled?: boolean } 
   const webSocketState = useWebSocketState()
   const currentAppId = useCurrentAppId()
   const { tokenAuthType } = useAuthContext()
+  const routeParams = useParams()
+  const market = typeof routeParams?.market === 'string' ? routeParams.market : undefined
+  const marketRef = useRef(market)
+  marketRef.current = market
 
   // Get subscription_id from site store for grant context
   const subscriptionId = useSitesStore((state) => {
@@ -399,6 +404,7 @@ export function useStreamingWebSocket({ enabled = true }: { enabled?: boolean } 
           modelOverride: defaults.modelOverride,
           agentProfile: defaults.agentProfile,
           uploadedFileName: options.uploadedFileName,
+          market: marketRef.current,
         })
       } catch (error) {
         // Convert to structured error with context

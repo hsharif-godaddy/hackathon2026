@@ -114,6 +114,7 @@ export class SSETransport implements ChatTransport {
         budgetServiceEnabled: params.budgetServiceEnabled,
         subscriptionId: params.subscriptionId,
         buildErrorContext: params.buildErrorContext,
+        market: params.market,
       })
     })
 

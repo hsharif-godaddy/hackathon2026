@@ -28,6 +28,7 @@ export interface SendMessageParams {
   budgetServiceEnabled?: boolean
   subscriptionId?: string
   buildErrorContext?: { error: string; details: string; exitCode?: number } | null
+  market?: string
 }
 
 export interface ChatTransport {
