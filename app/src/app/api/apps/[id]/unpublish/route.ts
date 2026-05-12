@@ -9,6 +9,7 @@ import {
 } from '@/lib/customer-auth';
 import { getJWTService } from '@/lib/jwt-service';
 import { AiroMgmtClient } from '@/lib/mgmt-airo';
+import { mgmtAiro401Response } from '@/lib/mgmt-airo/auth-error';
 import { logger } from '@/lib/request-context';
 import { checkSwitchboardFlag } from '@/lib/switchboard/server';
 
@@ -177,6 +178,12 @@ export const POST = withCustomerAuth(async (
           domainJobId,
         });
       } catch (domainError) {
+        const authResponse = mgmtAiro401Response(domainError, 'unpublish.api.disconnect_domain.hbi-expired', {
+          siteId,
+          domainFqdn: body.domainFqdn,
+        });
+        if (authResponse) return authResponse;
+
         const errorMessage = domainError instanceof Error ? domainError.message : String(domainError);
         logger.error('unpublish.api.disconnect_domain.failed', {
           siteId,
@@ -291,6 +298,9 @@ export const POST = withCustomerAuth(async (
           domainJobId,
         });
       } catch (cpError) {
+        const authResponse = mgmtAiro401Response(cpError, 'unpublish.api.control_plane.hbi-expired', { siteId });
+        if (authResponse) return authResponse;
+
         const status = (cpError as { status?: number })?.status;
 
         // 409 means no publish variant exists - app is already unpublished
@@ -339,6 +349,9 @@ export const POST = withCustomerAuth(async (
     );
 
   } catch (error) {
+    const authResponse = mgmtAiro401Response(error, 'unpublish.api.hbi-expired', { siteId });
+    if (authResponse) return authResponse;
+
     logger.error('unpublish.api.error', {
       siteId,
       error: error instanceof Error ? error.message : String(error),

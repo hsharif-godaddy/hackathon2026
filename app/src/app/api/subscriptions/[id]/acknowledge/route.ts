@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { type CustomerAuthContext, withCustomerAuth } from '@/lib/customer-auth';
 import { AiroHttpError, AiroMgmtClient } from '@/lib/mgmt-airo';
+import { mgmtAiro401Response } from '@/lib/mgmt-airo/auth-error';
 import { logger } from '@/lib/request-context';
 
 export const dynamic = 'force-dynamic';
@@ -43,6 +44,9 @@ export const POST = withCustomerAuth(async (
 
     return NextResponse.json({ success: true, data: updated });
   } catch (error) {
+    const authResponse = mgmtAiro401Response(error, 'subscription.acknowledge.hbi-expired', { subscriptionId, customerId });
+    if (authResponse) return authResponse;
+
     if (error instanceof AiroHttpError) {
       logger.error('subscription.acknowledge.api-error', {
         subscriptionId,
@@ -66,4 +70,4 @@ export const POST = withCustomerAuth(async (
       { status: 500 }
     );
   }
-}, { level: 3 });
+});

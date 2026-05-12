@@ -11,6 +11,7 @@
 import { NextRequest } from 'next/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { AiroHttpError } from '@/lib/mgmt-airo';
 import { POST } from '../route';
 
 /**
@@ -45,8 +46,10 @@ vi.mock('@/lib/control-plane', function mockControlPlaneModule() {
 /**
  * Mock mgmt-airo client
  */
-vi.mock('@/lib/mgmt-airo', function mockMgmtAiroModule() {
+vi.mock('@/lib/mgmt-airo', async function mockMgmtAiroModule() {
+  const actual = await vi.importActual<typeof import('@/lib/mgmt-airo')>('@/lib/mgmt-airo');
   return {
+    ...actual,
     AiroMgmtClient: vi.fn().mockImplementation(() => mockAiroMgmtClient)
   };
 });
@@ -437,6 +440,29 @@ describe('deployments POST', function packageTests() {
       expect(data.error).toBe('Failed to create deployment');
       expect(data.details).toBe('API connection failed');
       expect(mockLogger.error).toHaveBeenCalledWith('deployments.api.create.error', expect.any(Object));
+    });
+
+    it('propagates downstream 401 AiroHttpError as 401 with authReason:2', async function mgmtAiroUnauthorized() {
+      mockAuthenticateCustomer.mockResolvedValue({
+        isAuthenticated: true,
+        user: MOCK_USER,
+        jwt: 'user-jwt-token'
+      });
+
+      mockControlPlaneAdapter.getSite.mockResolvedValue(MOCK_V2_SITE);
+      mockAiroMgmtClient.publishApp.mockRejectedValue(new AiroHttpError(401, 'Unauthorized', ''));
+
+      const request = createMockRequest(MOCK_SITE_ID, { gitHash: MOCK_GIT_HASH });
+      const response = await POST(request, { params: Promise.resolve({ id: MOCK_SITE_ID }) });
+      const data = await response.json();
+
+      expect(response.status).toBe(401);
+      expect(data).toEqual({ error: 'Unauthorized', authReason: 2 });
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        'deployments.api.create.hbi-expired',
+        { siteId: MOCK_SITE_ID },
+        { tags: ['security'] }
+      );
     });
 
     it('should handle mgmt-airo API returning error status', async function mgmtAiroStatusError() {

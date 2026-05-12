@@ -108,4 +108,4 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
 
     return handleControlPlaneError(error, 'deploy');
   }
-}, { level: 3 });
+});

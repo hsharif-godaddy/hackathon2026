@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { type CustomerAuthContext, withCustomerAuth } from '@/lib/customer-auth';
 import { AiroHttpError, AiroMgmtClient } from '@/lib/mgmt-airo';
+import { mgmtAiro401Response } from '@/lib/mgmt-airo/auth-error';
 import { logger } from '@/lib/request-context';
 
 const MGMT_AIRO_BASE_URL = process.env.MGMT_AIRO_BASE_URL || 'https://mgmt.nstk.net';
@@ -37,6 +38,9 @@ export const POST = withCustomerAuth(async (
     logger.info('transfer.accept.success', { status: data.status, appId: data.appId });
     return NextResponse.json(data);
   } catch (error) {
+    const authResponse = mgmtAiro401Response(error, 'transfer.accept.hbi-expired');
+    if (authResponse) return authResponse;
+
     if (error instanceof AiroHttpError) {
       logger.error('transfer.accept.failed', { status: error.status, error: error.body });
       return NextResponse.json(error.body || { error: error.statusText }, { status: error.status });

@@ -39,6 +39,10 @@ vi.mock('@/lib/mgmt-airo', () => ({
   },
 }));
 
+vi.mock('@/lib/mgmt-airo/auth-error', () => ({
+  mgmtAiro401Response: vi.fn(() => null),
+}));
+
 vi.mock('@/lib/jwt-service', () => ({
   getJWTService: () => ({
     createToken: (...args: any[]) => mockCreateToken(...args),

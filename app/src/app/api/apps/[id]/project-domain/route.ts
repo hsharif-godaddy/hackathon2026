@@ -7,6 +7,7 @@ import {
   customerHasAccount,
   withCustomerAuth} from '@/lib/customer-auth';
 import { AiroMgmtClient } from '@/lib/mgmt-airo';
+import { mgmtAiro401Response } from '@/lib/mgmt-airo/auth-error';
 import { logger } from '@/lib/request-context';
 
 export const dynamic = 'force-dynamic';
@@ -149,6 +150,9 @@ export const PUT = withCustomerAuth(
       return NextResponse.json(response);
 
     } catch (error: any) {
+      const authResponse = mgmtAiro401Response(error, 'update-project-domain.api.hbi-expired');
+      if (authResponse) return authResponse;
+
       logger.error('update-project-domain.api.error', {
         error: error instanceof Error ? error.message : 'Unknown error',
         errorStack: error instanceof Error ? error.stack : undefined,

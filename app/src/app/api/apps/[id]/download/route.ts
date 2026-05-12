@@ -27,6 +27,7 @@ import {
 } from '@/lib/customer-auth';
 import { getJWTService } from '@/lib/jwt-service';
 import { AiroMgmtClient } from '@/lib/mgmt-airo';
+import { mgmtAiro401Response } from '@/lib/mgmt-airo/auth-error';
 import { checkPaywallEligibility, PaywallAction } from '@/lib/paywall/core';
 import { ServerPaywallProvider } from '@/lib/paywall/server-provider';
 import { logger } from '@/lib/request-context';
@@ -49,7 +50,7 @@ async function recordExportTracking(
   siteId: string,
   authContext: CustomerAuthContext,
   siteName?: string
-): Promise<TrackingResult> {
+): Promise<TrackingResult | { authResponse: NextResponse }> {
   const { user, jwt } = authContext;
 
   try {
@@ -125,6 +126,9 @@ async function recordExportTracking(
     return { tracked: true, exportId: response.id };
 
   } catch (error) {
+    const authResponse = mgmtAiro401Response(error, 'download.tracking.hbi-expired', { siteId });
+    if (authResponse) return { authResponse };
+
     logger.warn('download.tracking.error', {
       siteId,
       error: error instanceof Error ? error.message : String(error),
@@ -226,6 +230,9 @@ export const POST = withCustomerAuth(async (
     }
 
     const trackingResult = await recordExportTracking(siteId, authContext, site.name);
+    if ('authResponse' in trackingResult) {
+      return trackingResult.authResponse;
+    }
 
     logger.info('download.proxy.tracking-complete', {
       siteId,
@@ -266,6 +273,9 @@ export const POST = withCustomerAuth(async (
     });
 
   } catch (error) {
+    const authResponse = mgmtAiro401Response(error, 'download.proxy.hbi-expired', { siteId });
+    if (authResponse) return authResponse;
+
     logger.error('download.proxy.error', {
       siteId,
       error: error instanceof Error ? error.message : String(error),

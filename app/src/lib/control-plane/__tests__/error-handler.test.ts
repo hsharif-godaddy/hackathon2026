@@ -47,6 +47,7 @@ describe('handleControlPlaneError', function errorHandlerTests() {
       // Client's authFetch() will intercept this 401 and redirect to SSO login
       expect(response.status).toBe(401);
       expect(body.error).toBe('Unauthorized');
+      expect(body.authReason).toBe(2);
     });
 
     it('should return 403 response for forbidden error', async function test403() {

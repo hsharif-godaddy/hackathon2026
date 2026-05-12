@@ -9,7 +9,8 @@ import {
   setSpanAppId,
   setSpanJobId,
   withCustomerAuth} from '@/lib/customer-auth';
-import { AIRO_PRODUCT_IDS,AiroHttpError } from '@/lib/mgmt-airo/types';
+import { mgmtAiro401Response } from '@/lib/mgmt-airo/auth-error';
+import { AIRO_PRODUCT_IDS } from '@/lib/mgmt-airo/types';
 import { logger } from '@/lib/request-context';
 import { detectLocale } from '@/lib/translations/server-intl';
 import { getByteLength, MAX_PROMPT_BYTES } from '@/lib/waf-validation';
@@ -130,19 +131,10 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     }, { status: 201 });
 
   } catch (error) {
-    // Propagate downstream 401 (e.g. mgmt-airo HBI rejection) so the client
-    // opens SSO for a fresher business-level token. Route-level withCustomerAuth
-    // and client-side authPreflight may each accept a token that mgmt-airo's
-    // stricter gdhttp.High check still rejects. This is an expected business
-    // condition, not an error -- log at info so it doesn't trip alerts on
-    // sites.quick-create.error.
-    if (error instanceof AiroHttpError && error.status === 401) {
-      logger.info('sites.quick-create.hbi-expired', { accountId: authContext.user.accountId });
-      return NextResponse.json(
-        { error: 'Unauthorized', authReason: 2 },
-        { status: 401 }
-      );
-    }
+    const authResponse = mgmtAiro401Response(error, 'sites.quick-create.hbi-expired', {
+      accountId: authContext.user.accountId
+    });
+    if (authResponse) return authResponse;
 
     if (error instanceof Error && error.message.includes('APP_LIMIT_EXCEEDED')) {
       logger.warn('sites.quick-create.app-limit-exceeded', { accountId: authContext.user.accountId });

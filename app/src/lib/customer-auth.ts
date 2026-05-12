@@ -17,6 +17,7 @@ import {
 } from '@/lib/apm-context';
 import { isFeatureEnabled } from '@/lib/features';
 import { extractTokenFromRequest } from '@/lib/gd-auth-service';
+import { mgmtAiro401Response } from '@/lib/mgmt-airo/auth-error';
 import { MOCK_USER } from '@/lib/mock-auth';
 import { createRequestContext, logger, RequestContextService } from '@/lib/request-context';
 import { extractCustomerId, extractShopperId } from '@/lib/utils/jwt-utils';
@@ -328,6 +329,18 @@ export function withCustomerAuth<T extends unknown[]>(
 
           return response;
         } catch (error) {
+          // Safety net: any uncaught mgmt-airo 401 bubbling out of a route
+          // handler should surface as the standard SSO re-auth response,
+          // not a generic 500. Routes with their own catch blocks should
+          // still call mgmtAiro401Response explicitly so they can log a
+          // route-specific event; this only catches the "forgot to handle"
+          // case.
+          const authResponse = mgmtAiro401Response(error, 'auth.handler.mgmt-airo.hbi-expired');
+          if (authResponse) {
+            transaction?.end('HTTP 401');
+            return authResponse;
+          }
+
           // Log here (inside run()) so the ALS store is still active and context fields are present
           logger.error('auth.handler.unhandled', {
             errorMessage: error instanceof Error ? error.message : String(error)

@@ -8,6 +8,7 @@ import {
   withCustomerAuth
 } from '@/lib/customer-auth';
 import { AiroHttpError, AiroMgmtClient } from '@/lib/mgmt-airo';
+import { mgmtAiro401Response } from '@/lib/mgmt-airo/auth-error';
 import { logger } from '@/lib/request-context';
 
 export const dynamic = 'force-dynamic';
@@ -77,6 +78,9 @@ export const POST = withCustomerAuth(async (
     return NextResponse.json({ jobId: response.statusJobId });
 
   } catch (error) {
+    const authResponse = mgmtAiro401Response(error, 'purge-cache.hbi-expired', { siteId });
+    if (authResponse) return authResponse;
+
     if (error instanceof AiroHttpError && error.status === 409) {
       let body: Record<string, unknown> | null = null;
       try {

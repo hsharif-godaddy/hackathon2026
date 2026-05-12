@@ -14,6 +14,7 @@ import {
   withCustomerAuth
 } from '@/lib/customer-auth';
 import { AiroMgmtClient } from '@/lib/mgmt-airo';
+import { mgmtAiro401Response } from '@/lib/mgmt-airo/auth-error';
 import { logger } from '@/lib/request-context';
 
 export const dynamic = 'force-dynamic';
@@ -254,6 +255,9 @@ export const POST = withCustomerAuth(async (
     });
 
   } catch (error) {
+    const authResponse = mgmtAiro401Response(error, 'exports.api.create.hbi-expired', { siteId });
+    if (authResponse) return authResponse;
+
     // Log error but return success - export tracking shouldn't block exports
     logger.error('exports.api.create.error', {
       siteId,

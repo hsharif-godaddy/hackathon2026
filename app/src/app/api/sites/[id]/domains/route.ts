@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getControlPlaneAdapter } from '@/lib/control-plane';
 import { type CustomerAuthContext, withCustomerAuth } from '@/lib/customer-auth';
 import { type AiroApiError, type AiroApiErrorV2, AiroHttpError, AiroMgmtClient } from '@/lib/mgmt-airo';
+import { mgmtAiro401Response } from '@/lib/mgmt-airo/auth-error';
 import { logger } from '@/lib/request-context';
 import { ApiErrorCode } from '@/utils/api-errors';
 import { DomainApiErrorCode } from '@/utils/domain-validation';
@@ -183,6 +184,9 @@ export const POST = withCustomerAuth(async (
     return NextResponse.json(response);
 
   } catch (error) {
+    const authResponse = mgmtAiro401Response(error, 'sites.domains.modify.hbi-expired', { siteId });
+    if (authResponse) return authResponse;
+
     logger.error('sites.domains.modify.error', {
       message: 'Failed to modify domains',
       siteId,

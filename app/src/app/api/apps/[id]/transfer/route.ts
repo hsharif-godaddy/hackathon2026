@@ -6,6 +6,7 @@ import { type SiteInfo } from '@/lib/control-plane/types';
 import { type CustomerAuthContext, withCustomerAuth } from '@/lib/customer-auth';
 import { getJWTService } from '@/lib/jwt-service';
 import { AiroHttpError, AiroMgmtClient } from '@/lib/mgmt-airo';
+import { mgmtAiro401Response } from '@/lib/mgmt-airo/auth-error';
 import { logger } from '@/lib/request-context';
 
 const MGMT_AIRO_BASE_URL = process.env.MGMT_AIRO_BASE_URL || 'https://mgmt.nstk.net';
@@ -155,6 +156,9 @@ export const POST = withCustomerAuth(async (
 
     return NextResponse.json(data, { status: 201 });
   } catch (error) {
+    const authResponse = mgmtAiro401Response(error, 'transfer.initiate.hbi-expired', { appId: id });
+    if (authResponse) return authResponse;
+
     if (error instanceof AiroHttpError) {
       logger.error('transfer.initiate.failed', { appId: id, status: error.status, error: error.body });
       return NextResponse.json(error.body || { error: error.statusText }, { status: error.status });
@@ -212,6 +216,9 @@ export const DELETE = withCustomerAuth(async (
     logger.info('transfer.cancel.success', { appId: id });
     return NextResponse.json(data);
   } catch (error) {
+    const authResponse = mgmtAiro401Response(error, 'transfer.cancel.hbi-expired', { appId: id });
+    if (authResponse) return authResponse;
+
     if (error instanceof AiroHttpError) {
       logger.error('transfer.cancel.failed', { appId: id, status: error.status, error: error.body });
       return NextResponse.json(error.body || { error: error.statusText }, { status: error.status });
@@ -222,4 +229,4 @@ export const DELETE = withCustomerAuth(async (
     });
     return NextResponse.json({ error: 'Failed to cancel transfer' }, { status: 500 });
   }
-}, { level: 3 });
+});

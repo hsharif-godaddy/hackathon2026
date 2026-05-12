@@ -225,6 +225,24 @@ describe('exports API', function exportsApiTests() {
       expect(data.message).toBe('Export not tracked (MHP-Airo call failed)');
     });
 
+    it('propagates downstream 401 AiroHttpError as 401 with authReason:2', async function mgmtAiroUnauthorized() {
+      const { AiroHttpError } = await import('@/lib/mgmt-airo/types');
+      mockAuthenticateCustomer.mockResolvedValue({
+        isAuthenticated: true,
+        user: MOCK_USER,
+        jwt: 'user-jwt-token'
+      });
+      mockControlPlaneAdapter.getSite.mockResolvedValue(MOCK_V2_SITE);
+      mockAiroMgmtClient.recordExport.mockRejectedValue(new AiroHttpError(401, 'Unauthorized', ''));
+
+      const request = createMockPostRequest(MOCK_SITE_ID, { format: 'zip' });
+      const response = await POST(request, { params: Promise.resolve({ id: MOCK_SITE_ID }) });
+      const data = await response.json();
+
+      expect(response.status).toBe(401);
+      expect(data).toEqual({ error: 'Unauthorized', authReason: 2 });
+    });
+
     it('should return 400 when request body is invalid JSON', async function invalidJson() {
       mockAuthenticateCustomer.mockResolvedValue({
         isAuthenticated: true,

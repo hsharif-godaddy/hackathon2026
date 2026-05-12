@@ -162,7 +162,7 @@ describe('POST /api/subscriptions/[id]/acknowledge', () => {
     expect(mockClient.getSubscription).not.toHaveBeenCalled();
   });
 
-  it('uses level 3 auth', async () => {
-    expect((POST as any).__authOptions).toEqual({ level: 3 });
+  it('uses default auth (not level 3)', async () => {
+    expect((POST as any).__authOptions).toBeUndefined();
   });
 });

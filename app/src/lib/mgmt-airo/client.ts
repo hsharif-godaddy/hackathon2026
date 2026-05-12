@@ -1234,7 +1234,11 @@ export class AiroMgmtClient {
         { logEvent: 'mgmt-airo.record-export' }
       );
     } catch (error) {
-      // Log but don't throw - export tracking is non-critical
+      // Re-throw 401s so callers can surface SSO re-auth (authReason: 2).
+      // Every other error is swallowed — export tracking is non-critical.
+      if (error instanceof AiroHttpError && error.status === 401) {
+        throw error;
+      }
       logger.warn('mgmt-airo.record-export.failed', {
         subscriptionId,
         systemId,

@@ -456,4 +456,27 @@ describe('withCustomerAuth handler-throws path', () => {
       expect.objectContaining({ tags: ['security'] })
     );
   });
+
+  it('converts uncaught mgmt-airo AiroHttpError(401) to authReason:2 without logging auth.handler.unhandled', async () => {
+    const { logger } = await import('@/lib/request-context');
+    const { withCustomerAuth } = await import('./customer-auth');
+    const { AiroHttpError } = await import('@/lib/mgmt-airo/types');
+
+    const handlerError = new AiroHttpError(401, 'Unauthorized', 'token expired');
+    const wrappedHandler = withCustomerAuth(vi.fn().mockRejectedValue(handlerError));
+    const request = new NextRequest('http://localhost/api/test', {
+      headers: { cookie: 'auth_idp=test-token' }
+    });
+
+    const response = await wrappedHandler(request);
+    const body = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(body).toEqual({ error: 'Unauthorized', authReason: 2 });
+    expect(vi.mocked(logger.error)).not.toHaveBeenCalledWith(
+      'auth.handler.unhandled',
+      expect.anything(),
+      expect.anything()
+    );
+  });
 });

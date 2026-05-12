@@ -18,7 +18,10 @@ export function handleControlPlaneError(error: unknown, operation: string): Next
     const status = (error as any).status;
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
-    // Auth errors: return same status code so client-side authFetch can redirect
+    // Auth errors: return same status code so client-side authFetch can redirect.
+    // 401s from downstream (e.g. mgmt-airo / frontdoor level-3 HBI rejection)
+    // are surfaced with authReason: 2 so the client's AuthBoundary / SSO Deck
+    // flow picks them up the same way a BFF-side level-3 rejection would.
     if (status === 401 || status === 403) {
       logger.warn(`control-plane.${operation}.auth-error`, {
         message: `Auth error - returning ${status} for client-side redirect`,
@@ -29,7 +32,9 @@ export function handleControlPlaneError(error: unknown, operation: string): Next
       });
 
       return NextResponse.json(
-        { error: status === 401 ? 'Unauthorized' : 'Forbidden' },
+        status === 401
+          ? { error: 'Unauthorized', authReason: 2 }
+          : { error: 'Forbidden' },
         { status }
       );
     }

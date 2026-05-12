@@ -67,6 +67,12 @@ vi.mock('@/lib/mgmt-airo', function mockMgmtAiroModule() {
   };
 });
 
+vi.mock('@/lib/mgmt-airo/auth-error', function mockAuthErrorModule() {
+  return {
+    mgmtAiro401Response: vi.fn(() => null),
+  };
+});
+
 /**
  * Mock logger
  */

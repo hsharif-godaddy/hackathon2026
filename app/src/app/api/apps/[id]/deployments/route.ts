@@ -7,6 +7,7 @@ import {
   customerHasAccount,
   withCustomerAuth} from '@/lib/customer-auth';
 import { AiroMgmtClient } from '@/lib/mgmt-airo';
+import { mgmtAiro401Response } from '@/lib/mgmt-airo/auth-error';
 import { logger } from '@/lib/request-context';
 
 export const dynamic = 'force-dynamic';
@@ -271,6 +272,9 @@ export const POST = withCustomerAuth(async (
     });
 
   } catch (error) {
+    const authResponse = mgmtAiro401Response(error, 'deployments.api.create.hbi-expired', { siteId });
+    if (authResponse) return authResponse;
+
     logger.error('deployments.api.create.error', {
       siteId,
       gitHash: body.gitHash?.substring(0, 7),
