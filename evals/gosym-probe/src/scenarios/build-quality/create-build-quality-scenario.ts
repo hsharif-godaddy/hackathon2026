@@ -7,8 +7,8 @@ import { PromptEfficiencyEvaluator }
   from '../../evaluators/prompt-efficiency.js';
 import { JTBDCompletionEvaluator }
   from '../../evaluators/jtbd-completion.js';
-import { OutputQualityEvaluator }
-  from '../../evaluators/output-quality.js';
+import { createBuildQualityEvaluators }
+  from '../../evaluators/build-quality-evaluators/index.js';
 import { AgentStepsEvaluator }
   from '../../evaluators/agent-steps.js';
 import { LatencyEvaluator }
@@ -77,7 +77,7 @@ export function createBuildQualityScenario(
     new ToolFailureRateEvaluator(),
     new PromptEfficiencyEvaluator(),
     new JTBDCompletionEvaluator(gocode),
-    new OutputQualityEvaluator(gocode),
+    ...createBuildQualityEvaluators(gocode),
     new AgentStepsEvaluator({ maxSteps: config.agentStepBudget }),
     new LatencyEvaluator(),
     new ToolParallelismEvaluator(),

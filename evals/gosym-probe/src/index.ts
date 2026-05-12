@@ -514,6 +514,21 @@ async function main(): Promise<void> {
         return;
       }
 
+      const versionSkipped = results.filter(
+        (r) => r.category === 'regression' && r.regressionStatus?.gate === 'version-skipped',
+      );
+      if (versionSkipped.length > 0) {
+        for (const r of versionSkipped) {
+          console.error(
+            `Error: all evaluator comparisons skipped for "${r.scenarioName}" ` +
+            `due to version mismatch. Regenerate the baseline:\n` +
+            `  pnpm run save-baseline <run-id> --scenario ${r.scenarioName}`,
+          );
+        }
+        process.exitCode = 1;
+        return;
+      }
+
       const regressionFailures = results.filter(
         (r) =>
           r.regressionStatus?.gate === 'error' ||

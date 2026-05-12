@@ -734,6 +734,83 @@ describe('EvalStore', () => {
       expect(evalSummary.lowerIsBetter).toBe(true);
     });
 
+    it('persists evalVersion in aggregated.json when present', async () => {
+      const store = new EvalStore();
+      const trial: TrialResult = {
+        trialIndex: 0,
+        transcript: {
+          scenarioName: 'test-scenario',
+          trialIndex: 0,
+          turns: [
+            {
+              role: 'user',
+              content: 'Go',
+              toolCalls: [],
+              timestamp: 1000,
+            },
+            {
+              role: 'assistant',
+              content: 'Done',
+              toolCalls: [],
+              timestamp: 3000,
+            },
+          ],
+          snapshots: [],
+          errors: [],
+        },
+        evalResults: [
+          {
+            evaluator: 'test-evaluator',
+            score: 0.9,
+            verdict: 'pass',
+            reason: 'ok',
+          },
+        ],
+      };
+      const scenario = makeScenario();
+      const result: ScenarioResult = {
+        scenarioName: scenario.name,
+        category: scenario.category,
+        stabilityLevel: 'medium',
+        trials: [trial],
+        aggregated: {
+          'test-evaluator': {
+            passAtK: true,
+            passToTheK: true,
+            passingTrials: 1,
+            totalTrials: 1,
+            evalVersion: '2.0',
+          },
+        },
+      };
+
+      await store.save('run-001', [result], [scenario], makeConfig());
+
+      const call = mockWriteFile.mock.calls.find(([p]) =>
+        (p as string).endsWith('aggregated.json'),
+      );
+      expect(call).toBeDefined();
+      const parsed = JSON.parse(call![1] as string);
+      const evalSummary = parsed.evaluators['test-evaluator'];
+      expect(evalSummary.evalVersion).toBe('2.0');
+    });
+
+    it('omits evalVersion from aggregated.json when undefined', async () => {
+      const store = new EvalStore();
+      const scenario = makeScenario();
+      const result = makeScenarioResult(scenario, [makeTrialResult()]);
+
+      await store.save('run-001', [result], [scenario], makeConfig());
+
+      const call = mockWriteFile.mock.calls.find(([p]) =>
+        (p as string).endsWith('aggregated.json'),
+      );
+      expect(call).toBeDefined();
+      const parsed = JSON.parse(call![1] as string);
+      const evalSummary = parsed.evaluators['test-evaluator'];
+      expect(evalSummary).not.toHaveProperty('evalVersion');
+    });
+
     it('includes regressionStatus in aggregated.json when present', async () => {
       const store = new EvalStore();
       const scenario = makeScenario({ category: 'regression' });

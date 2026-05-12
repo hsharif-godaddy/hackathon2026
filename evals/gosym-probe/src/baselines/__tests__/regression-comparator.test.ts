@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { RegressionComparator } from '../regression-comparator.js';
 import type { ScenarioResult, AggregatedResult } from
   '../../runner/types.js';
-import type { BaselineScores } from '../types.js';
+import type { BaselineScores, ComparedRegressionEvalResult } from '../types.js';
 
 // ── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -125,7 +125,7 @@ describe('RegressionComparator', () => {
         'bug-hit-rate': makeAgg(3, 3),
       });
       const r = comparator.compare(result, null, THRESHOLDS);
-      const e = r.evaluators.find((x) => x.evaluator === 'bug-hit-rate');
+      const e = r.evaluators.find((x) => x.evaluator === 'bug-hit-rate') as ComparedRegressionEvalResult | undefined;
       expect(e?.exceeded).toBe(false);
       expect(Number.isNaN(e?.baselineScore)).toBe(true);
     });
@@ -137,7 +137,7 @@ describe('RegressionComparator', () => {
       const r = comparator.compare(result, null, THRESHOLDS);
       expect(r.gate).toBe('missing-baseline');
       expect(r.hasBaseline).toBe(false);
-      const e = r.evaluators.find((x) => x.evaluator === 'latency');
+      const e = r.evaluators.find((x) => x.evaluator === 'latency') as ComparedRegressionEvalResult | undefined;
       expect(e?.exceeded).toBe(false);
       expect(Number.isNaN(e?.baselineScore)).toBe(true);
     });
@@ -151,35 +151,17 @@ describe('RegressionComparator', () => {
       });
       const baseline = makeScoreBaseline(0.9);
       baseline.scores.latency.evalVersion = 'baseline-version';
-      const consoleWarnSpy = vi
-        .spyOn(console, 'warn')
-        .mockImplementation(function warn() {});
-      const consoleErrorSpy = vi
-        .spyOn(console, 'error')
-        .mockImplementation(function error() {});
 
       const r = comparator.compare(result, baseline, THRESHOLDS);
       const e = r.evaluators.find((x) => x.evaluator === 'latency');
 
       expect(e).toMatchObject({
-        exceeded: false,
-        skipped: true,
+        type: 'skipped',
         skipReason: 'evaluator-version-mismatch',
         currentEvalVersion: 'current-version',
         baselineEvalVersion: 'baseline-version',
       });
-      expect(r.gate).toBe('error');
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        'Regression gate failed because all evaluator comparisons were skipped.',
-        {
-          gate: 'error',
-          reasons: 'evaluator-version-mismatch',
-        },
-      );
-      expect(Number.isNaN(e?.currentScore)).toBe(true);
-      expect(Number.isNaN(e?.baselineScore)).toBe(true);
-      consoleWarnSpy.mockRestore();
-      consoleErrorSpy.mockRestore();
+      expect(r.gate).toBe('version-skipped');
     });
 
     it('skips evaluator comparison when baseline version is missing', () => {
@@ -189,30 +171,15 @@ describe('RegressionComparator', () => {
           evalVersion: 'current-version',
         },
       });
-      const consoleWarnSpy = vi
-        .spyOn(console, 'warn')
-        .mockImplementation(function warn() {});
-      const consoleErrorSpy = vi
-        .spyOn(console, 'error')
-        .mockImplementation(function error() {});
       const r = comparator.compare(result, makeScoreBaseline(0.9), THRESHOLDS);
       const e = r.evaluators.find((x) => x.evaluator === 'latency');
 
       expect(e).toMatchObject({
-        skipped: true,
+        type: 'skipped',
         skipReason: 'evaluator-version-mismatch',
         currentEvalVersion: 'current-version',
       });
-      expect(r.gate).toBe('error');
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        'Regression gate failed because all evaluator comparisons were skipped.',
-        {
-          gate: 'error',
-          reasons: 'evaluator-version-mismatch',
-        },
-      );
-      consoleWarnSpy.mockRestore();
-      consoleErrorSpy.mockRestore();
+      expect(r.gate).toBe('version-skipped');
     });
   });
 
@@ -272,7 +239,7 @@ describe('RegressionComparator', () => {
       });
       const baseline = makeBaseline({ 'bug-hit-rate': { passingTrials: 3, totalTrials: 3 } });
       const r = comparator.compare(result, baseline, THRESHOLDS);
-      const e = r.evaluators.find((x) => x.evaluator === 'bug-hit-rate');
+      const e = r.evaluators.find((x) => x.evaluator === 'bug-hit-rate') as ComparedRegressionEvalResult | undefined;
       expect(e?.exceeded).toBe(true);
     });
 
@@ -283,7 +250,7 @@ describe('RegressionComparator', () => {
       });
       const baseline = makeBaseline({ 'bug-hit-rate': { passingTrials: 3, totalTrials: 3 } });
       const r = comparator.compare(result, baseline, THRESHOLDS);
-      const e = r.evaluators.find((x) => x.evaluator === 'bug-hit-rate');
+      const e = r.evaluators.find((x) => x.evaluator === 'bug-hit-rate') as ComparedRegressionEvalResult | undefined;
       expect(e?.currentScore).toBeCloseTo(2 / 3);
       expect(e?.baselineScore).toBeCloseTo(1.0);
       expect(e?.delta).toBeCloseTo(2 / 3 - 1.0);
@@ -322,9 +289,60 @@ describe('RegressionComparator', () => {
         'capability',
       );
       const r = comparator.compare(result, baseline, THRESHOLDS);
-      const e = r.evaluators.find((x) => x.evaluator === 'bug-hit-rate');
+      const e = r.evaluators.find((x) => x.evaluator === 'bug-hit-rate') as ComparedRegressionEvalResult | undefined;
       expect(e?.exceeded).toBe(true);
       expect(e?.delta).toBeCloseTo(-1.0);
+    });
+  });
+
+  // ── Version-skipped gate (all evaluators skipped) ─────────────────────────
+
+  describe('version-skipped gate', () => {
+    it('gate is version-skipped when all evaluators are skipped due to version mismatch', () => {
+      const result = makeResult('regression', {
+        latency: {
+          ...makeScoreAgg(0.7),
+          evalVersion: 'v2',
+        },
+        'output-quality': {
+          ...makeAgg(2, 3),
+          evalVersion: 'v2',
+        },
+      });
+      const baseline = makeScoreBaseline(0.9);
+      baseline.scores.latency.evalVersion = 'v1';
+      baseline.scores['output-quality'] = {
+        passAtK: true,
+        passToTheK: true,
+        passingTrials: 3,
+        totalTrials: 3,
+        evalVersion: 'v1',
+      };
+
+      const r = comparator.compare(result, baseline, THRESHOLDS);
+      expect(r.gate).toBe('version-skipped');
+      expect(r.evaluators.every((e) => e.type === 'skipped')).toBe(true);
+    });
+
+    it('gate is not version-skipped when at least one evaluator is not skipped', () => {
+      const result = makeResult('regression', {
+        latency: {
+          ...makeScoreAgg(0.7),
+          evalVersion: 'v2',
+        },
+        'bug-hit-rate': makeAgg(3, 3),
+      });
+      const baseline = makeScoreBaseline(0.9);
+      baseline.scores.latency.evalVersion = 'v1';
+      baseline.scores['bug-hit-rate'] = {
+        passAtK: true,
+        passToTheK: true,
+        passingTrials: 3,
+        totalTrials: 3,
+      };
+
+      const r = comparator.compare(result, baseline, THRESHOLDS);
+      expect(r.gate).not.toBe('version-skipped');
     });
   });
 
@@ -340,7 +358,7 @@ describe('RegressionComparator', () => {
       const baseline = makeBaseline({ 'bug-hit-rate': { passingTrials: 10, totalTrials: 10 } });
       const r = comparator.compare(result, baseline, THRESHOLDS);
       expect(r.gate).toBe('pass');
-      const e = r.evaluators.find((x) => x.evaluator === 'bug-hit-rate');
+      const e = r.evaluators.find((x) => x.evaluator === 'bug-hit-rate') as ComparedRegressionEvalResult | undefined;
       expect(e?.exceeded).toBe(false);
     });
 
@@ -352,7 +370,7 @@ describe('RegressionComparator', () => {
       const baseline = makeBaseline({ 'bug-hit-rate': { passingTrials: 10, totalTrials: 10 } });
       const r = comparator.compare(result, baseline, THRESHOLDS);
       expect(r.gate).toBe('error');
-      const e = r.evaluators.find((x) => x.evaluator === 'bug-hit-rate');
+      const e = r.evaluators.find((x) => x.evaluator === 'bug-hit-rate') as ComparedRegressionEvalResult | undefined;
       expect(e?.exceeded).toBe(true);
     });
 
@@ -362,7 +380,7 @@ describe('RegressionComparator', () => {
       });
       const baseline = makeBaseline({ 'bug-hit-rate': { passingTrials: 3, totalTrials: 3 } });
       const r = comparator.compare(result, baseline, THRESHOLDS);
-      const e = r.evaluators.find((x) => x.evaluator === 'bug-hit-rate');
+      const e = r.evaluators.find((x) => x.evaluator === 'bug-hit-rate') as ComparedRegressionEvalResult | undefined;
       expect(e?.exceeded).toBe(false);
       expect(Number.isNaN(e?.currentScore)).toBe(true);
     });
@@ -373,7 +391,7 @@ describe('RegressionComparator', () => {
       });
       const baseline = makeBaseline({ 'bug-hit-rate': { passingTrials: 0, totalTrials: 0 } });
       const r = comparator.compare(result, baseline, THRESHOLDS);
-      const e = r.evaluators.find((x) => x.evaluator === 'bug-hit-rate');
+      const e = r.evaluators.find((x) => x.evaluator === 'bug-hit-rate') as ComparedRegressionEvalResult | undefined;
       expect(e?.exceeded).toBe(false);
       expect(Number.isNaN(e?.baselineScore)).toBe(true);
     });
@@ -385,7 +403,7 @@ describe('RegressionComparator', () => {
       });
       const baseline = makeBaseline({ 'bug-hit-rate': { passingTrials: 3, totalTrials: 3 } });
       const r = comparator.compare(result, baseline, THRESHOLDS);
-      const e = r.evaluators.find((x) => x.evaluator === 'new-eval');
+      const e = r.evaluators.find((x) => x.evaluator === 'new-eval') as ComparedRegressionEvalResult | undefined;
       expect(e?.exceeded).toBe(false);
       expect(Number.isNaN(e?.baselineScore)).toBe(true);
     });
@@ -516,7 +534,7 @@ describe('RegressionComparator', () => {
       });
       const baseline = makeScoreBaseline(0.8);
       const r = comparator.compare(result, baseline, THRESHOLDS);
-      const e = r.evaluators.find((x) => x.evaluator === 'latency');
+      const e = r.evaluators.find((x) => x.evaluator === 'latency') as ComparedRegressionEvalResult | undefined;
       expect(e?.exceeded).toBe(true);
       expect(r.gate).toBe('error');
     });
@@ -528,7 +546,7 @@ describe('RegressionComparator', () => {
       });
       const baseline = makeScoreBaseline(0.8);
       const r = comparator.compare(result, baseline, THRESHOLDS);
-      const e = r.evaluators.find((x) => x.evaluator === 'latency');
+      const e = r.evaluators.find((x) => x.evaluator === 'latency') as ComparedRegressionEvalResult | undefined;
       expect(e?.exceeded).toBe(false);
       expect(r.gate).toBe('pass');
     });
@@ -540,7 +558,7 @@ describe('RegressionComparator', () => {
       });
       const baseline = makeScoreBaseline();
       const r = comparator.compare(result, baseline, THRESHOLDS);
-      const e = r.evaluators.find((x) => x.evaluator === 'latency');
+      const e = r.evaluators.find((x) => x.evaluator === 'latency') as ComparedRegressionEvalResult | undefined;
       expect(e?.exceeded).toBe(false);
       expect(Number.isNaN(e?.baselineScore)).toBe(true);
     });
@@ -551,7 +569,7 @@ describe('RegressionComparator', () => {
       });
       const baseline = makeScoreBaseline(8.0);
       const r = comparator.compare(result, baseline, THRESHOLDS);
-      const e = r.evaluators.find((x) => x.evaluator === 'latency');
+      const e = r.evaluators.find((x) => x.evaluator === 'latency') as ComparedRegressionEvalResult | undefined;
       expect(e?.exceeded).toBe(false);
       expect(Number.isNaN(e?.currentScore)).toBe(true);
     });
@@ -564,7 +582,7 @@ describe('RegressionComparator', () => {
       });
       const baseline = makeScoreBaseline(0.8, { latency: 0.25 });
       const r = comparator.compare(result, baseline, THRESHOLDS);
-      const e = r.evaluators.find((x) => x.evaluator === 'latency');
+      const e = r.evaluators.find((x) => x.evaluator === 'latency') as ComparedRegressionEvalResult | undefined;
       expect(e?.exceeded).toBe(false);
       expect(r.gate).toBe('pass');
     });
@@ -576,7 +594,7 @@ describe('RegressionComparator', () => {
         });
         const baseline = makeScoreBaseline(0);
         const r = comparator.compare(result, baseline, THRESHOLDS);
-        const e = r.evaluators.find((x) => x.evaluator === 'latency');
+        const e = r.evaluators.find((x) => x.evaluator === 'latency') as ComparedRegressionEvalResult | undefined;
         expect(e?.exceeded).toBe(false);
       },
     );
@@ -587,7 +605,7 @@ describe('RegressionComparator', () => {
       });
       const baseline = makeScoreBaseline(0.8);
       const r = comparator.compare(result, baseline, THRESHOLDS);
-      const e = r.evaluators.find((x) => x.evaluator === 'latency');
+      const e = r.evaluators.find((x) => x.evaluator === 'latency') as ComparedRegressionEvalResult | undefined;
       expect(e?.currentScore).toBeCloseTo(0.56);
       expect(e?.baselineScore).toBeCloseTo(0.8);
       expect(e?.delta).toBeCloseTo(0.56 - 0.8);
@@ -601,7 +619,7 @@ describe('RegressionComparator', () => {
         });
         const baseline = makeScoreBaseline(7000);
         const r = comparator.compare(result, baseline, THRESHOLDS);
-        const e = r.evaluators.find((x) => x.evaluator === 'latency');
+        const e = r.evaluators.find((x) => x.evaluator === 'latency') as ComparedRegressionEvalResult | undefined;
         expect(e?.exceeded).toBe(true);
         expect(r.gate).toBe('error');
       });
@@ -613,7 +631,7 @@ describe('RegressionComparator', () => {
         });
         const baseline = makeScoreBaseline(7000);
         const r = comparator.compare(result, baseline, THRESHOLDS);
-        const e = r.evaluators.find((x) => x.evaluator === 'latency');
+        const e = r.evaluators.find((x) => x.evaluator === 'latency') as ComparedRegressionEvalResult | undefined;
         expect(e?.exceeded).toBe(false);
         expect(r.gate).toBe('pass');
       });
@@ -625,7 +643,7 @@ describe('RegressionComparator', () => {
         });
         const baseline = makeScoreBaseline(7000);
         const r = comparator.compare(result, baseline, THRESHOLDS);
-        const e = r.evaluators.find((x) => x.evaluator === 'latency');
+        const e = r.evaluators.find((x) => x.evaluator === 'latency') as ComparedRegressionEvalResult | undefined;
         expect(e?.exceeded).toBe(false);
       });
 
@@ -635,7 +653,7 @@ describe('RegressionComparator', () => {
         });
         const baseline = makeScoreBaseline(0);
         const r = comparator.compare(result, baseline, THRESHOLDS);
-        const e = r.evaluators.find((x) => x.evaluator === 'latency');
+        const e = r.evaluators.find((x) => x.evaluator === 'latency') as ComparedRegressionEvalResult | undefined;
         expect(e?.exceeded).toBe(true);
       });
 
@@ -645,7 +663,7 @@ describe('RegressionComparator', () => {
         });
         const baseline = makeScoreBaseline(0);
         const r = comparator.compare(result, baseline, THRESHOLDS);
-        const e = r.evaluators.find((x) => x.evaluator === 'latency');
+        const e = r.evaluators.find((x) => x.evaluator === 'latency') as ComparedRegressionEvalResult | undefined;
         expect(e?.exceeded).toBe(false);
       });
     });

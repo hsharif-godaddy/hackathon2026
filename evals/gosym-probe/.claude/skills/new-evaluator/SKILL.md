@@ -34,15 +34,7 @@ Extract description (everything before `--` flags), plus
 Read all files in `src/evaluators/`. Present this inventory and
 assess overlap with the requested description:
 
-| Evaluator                     | Scoring  | Coverage                          |
-| ----------------------------- | -------- | --------------------------------- |
-| BugHitRateEvaluator           | computed | Error count in transcript.errors  |
-| PromptEfficiencyEvaluator     | computed | User turns vs scenario.maxTurns   |
-| ToolCallVerificationEvaluator | computed | scenario.expectedTools assertions |
-| TurnDurationEvaluator         | computed | Latency vs maxDurationMs          |
-| AgentStepsEvaluator           | computed | Step count vs maxSteps            |
-| JTBDCompletionEvaluator       | LLM      | Task success via transcript+goals |
-| OutputQualityEvaluator        | LLM      | Visual quality via DOM snapshot   |
+Read all evaluator files in `src/evaluators/` to build the current inventory dynamically.
 
 - **Already covered**: stop. Name the evaluator and suggest
   configuring it instead. Do not proceed.
@@ -131,8 +123,8 @@ Create `src/evaluators/<evaluator-name>.ts`.
   (no constructor) or `src/evaluators/turn-duration.ts` (constructor
   options object) depending on whether the threshold is configurable.
 - **LLM-based pattern**: follow `src/evaluators/jtbd-completion.ts`
-  (categorical) or `src/evaluators/output-quality.ts` (continuous
-  SCORE/VERDICT/REASON format).
+  (categorical) or `src/evaluators/llm-json-evaluator.ts` (continuous
+  scoring via Zod-validated JSON response).
 
 Key rules: `.js` extensions on local imports, 80-char wrap, prefix
 unused params with `_`, clamp scores with `Math.max(0, Math.min(1, …))`.

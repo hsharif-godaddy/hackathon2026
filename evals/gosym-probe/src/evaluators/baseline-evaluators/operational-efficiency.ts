@@ -60,7 +60,6 @@ function verdictFromScore(score: number): EvalResult['verdict'] {
 
 export class TotalTimeTakenEvaluator implements Evaluator {
   readonly name = 'total_time_taken';
-  readonly deterministic = true;
 
   async evaluate(
     transcript: Transcript,

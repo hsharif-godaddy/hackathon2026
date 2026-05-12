@@ -106,13 +106,7 @@ CLI (src/index.ts)
 
 **Evaluators**
 
-| Evaluator | Kind | What it checks |
-|---|---|---|
-| `bug-hit-rate` | computed | Unrecovered error events in transcript |
-| `prompt-efficiency` | computed | Turn count vs. `maxTurns` |
-| `tool-call-verification` | computed | Expected tools called / not called |
-| `jtbd-completion` | LLM-judged | Scenario goals met (positive/negative assertions) |
-| `output-quality` | LLM-judged | DOM snapshot quality vs. rubric / reference |
+See `src/evaluators/` for the full set of evaluators and their implementations.
 
 **Trial strategy**
 
@@ -139,10 +133,10 @@ parallelism within a single scenario. Use when running scenarios at high trial v
 Every scenario has a `category` that controls how baseline comparison
 behaves:
 
-| Category | Baseline required? | Score drop beyond threshold | Use case |
-|---|---|---|---|
-| `capability` | No | Logged, never blocks | New or experimental scenarios |
-| `regression` | Yes (exit 1 if missing) | **Blocks the run** (exit 1) | Stable, graduated scenarios |
+| Category     | Baseline required?      | Score drop beyond threshold | Use case                      |
+| ------------ | ----------------------- | --------------------------- | ----------------------------- |
+| `capability` | No                      | Logged, never blocks        | New or experimental scenarios |
+| `regression` | Yes (exit 1 if missing) | **Blocks the run** (exit 1) | Stable, graduated scenarios   |
 
 New scenarios start as `capability` so you can iterate without
 breaking eval runs. Once behavior is stable, **graduate** the
@@ -184,11 +178,11 @@ sequence with timing and error flags, plus aggregate counts by tool name.
 
 **artifacts/** extracts useful outputs from specific tool calls:
 
-| Tool | Artifact |
-|---|---|
-| `readFile` | Source file content (line numbers stripped) |
-| `handoff` | Handoff prompt text |
-| `fontTheme` / `colorScheme` | Config JSON (when output > 200 chars) |
+| Tool                        | Artifact                                    |
+| --------------------------- | ------------------------------------------- |
+| `readFile`                  | Source file content (line numbers stripped) |
+| `handoff`                   | Handoff prompt text                         |
+| `fontTheme` / `colorScheme` | Config JSON (when output > 200 chars)       |
 
 ---
 
@@ -200,18 +194,21 @@ Baseline comparison is **on by default**. Pass `--skip-baseline` to opt out:
 pnpm run eval --skip-baseline
 ```
 
-Each `regression`-category scenario is compared against a saved baseline.
-Baselines are versioned per scenario under
-`baselines/{scenario-name}/{timestamp}_{runId}.json` and committed to the
-repo so the whole team shares the same reference point. The most recent
-file in each directory is loaded automatically.
+Each scenario with `hasBaseline: true` is compared against a saved baseline.
+Baselines are stored per scenario under
+`baselines/{scenario-name}/{timestamp}_{runId}.json` but are **local-only**
+(gitignored). Each developer generates their own baselines against their
+local AAB instance using `pnpm run save-baseline`. This avoids committing
+environment-specific scores that would cause false regressions across
+different machines or configurations.
 
 **What a baseline stores:** aggregated `passAtK`, `passToTheK`,
 `passingTrials`, and `totalTrials` per evaluator, not raw trial transcripts.
 
-**Missing baselines block by default.** If a `regression`-category scenario
-has no saved baseline, the run exits 1. Pass `--skip-baseline` to bypass
-comparison entirely.
+**Missing baselines cause a hard failure.** If a scenario has no local
+baseline, the eval exits 1 with an error directing you to run
+`save-baseline` or `--graduate`. Use `--skip-baseline` on initial runs
+before baselines have been saved.
 
 **How regression is detected:** for each evaluator, the harness computes
 `drop = baselineScore - currentScore`. If `drop > threshold` the evaluator is
@@ -221,7 +218,6 @@ evaluator in `config/environments/*.ts`:
 ```typescript
 regression: {
   thresholds: {
-    'output-quality':    0.15,   // allow up to 15% drop
     'prompt-efficiency': 0.20,
   },
   defaultThreshold: 0.1,         // fallback for unlisted evaluators
@@ -245,11 +241,11 @@ at a high rate before recommending promotion.
 
 1. Runs trials based on the scenario's stability level (or the
    `--stability` override):
-   | Level    | Trials |
+   | Level | Trials |
    |----------|--------|
-   | `low`    | 1      |
+   | `low` | 1 |
    | `medium` | 5 (default) |
-   | `high`   | 10     |
+   | `high` | 10 |
 2. Aggregates all trial results → pass rate per evaluator.
 3. **Always saves a baseline**, whether or not promotion is recommended.
 4. If `min(pass rate across all evaluators) ≥ graduationPassRateThreshold`
@@ -375,11 +371,17 @@ src/
 
   evaluators/
     evaluator.ts          # Evaluator interface + EvalResult type
+    llm-json-evaluator.ts # LLMJsonEvaluator base class
+    shared.ts             # clamp01, extractBodyHtml, htmlToText, truncate
     bug-hit-rate.ts
     prompt-efficiency.ts
     tool-call-verification.ts
     jtbd-completion.ts
-    output-quality.ts
+    build-quality-evaluators/
+      index.ts            # createBuildQualityEvaluators factory
+      deterministic-dom-evaluator.ts
+      quality-llm-evaluators.ts
+      specs/              # 7 StructuralEvalSpec implementations
 
   scenarios/
     types.ts              # Scenario / ScenarioGoal / ToolCallAssertion types
@@ -407,7 +409,7 @@ src/
 
   index.ts                # CLI entrypoint
 
-baselines/                # Version-controlled baseline snapshots
+baselines/                # Local-only baseline snapshots (gitignored)
 results/                  # Run output (gitignored)
 NOTES.md                  # Integration discoveries and known issues
 ```

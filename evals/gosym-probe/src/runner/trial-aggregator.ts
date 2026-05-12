@@ -61,6 +61,13 @@ export class TrialAggregator {
         : null;
       const lowerIsBetter = lowerIsBetterMap.get(name);
 
+      if (versions.size > 1) {
+        console.warn(
+          '[TrialAggregator] evaluator reported multiple evalVersions across trials, omitting from aggregation:',
+          { evaluator: name, count: versions.size, totalTrials, versions: [...versions] },
+        );
+      }
+
       aggregated[name] = {
         ...(mode !== 'score' && {
           passAtK: passingTrials > 0,

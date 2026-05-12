@@ -31,8 +31,14 @@ export interface BaselineScores {
   regressionThresholds?: Record<string, number>;
 }
 
-export interface RegressionEvalResult {
+interface RegressionEvalResultBase {
   evaluator: string;
+  currentEvalVersion?: string;
+  baselineEvalVersion?: string;
+}
+
+export interface ComparedRegressionEvalResult extends RegressionEvalResultBase {
+  type: 'compared';
   /**
    * Pass-rate mode: passingTrials / totalTrials.
    * Score mode: median score across trials.
@@ -67,6 +73,13 @@ export interface RegressionEvalResult {
   baselineEvalVersion?: string;
 }
 
+export interface SkippedRegressionEvalResult extends RegressionEvalResultBase {
+  type: 'skipped';
+  skipReason: string;
+}
+
+export type RegressionEvalResult = ComparedRegressionEvalResult | SkippedRegressionEvalResult;
+
 export interface RegressionResult {
   scenarioName: string;
   category: Scenario['category'];
@@ -88,7 +101,8 @@ export interface RegressionResult {
     | 'error'
     | 'critical'
     | 'informational'
-    | 'missing-baseline';
+    | 'missing-baseline'
+    | 'version-skipped';
   stabilityLevel: StabilityLevel;
   evaluators: RegressionEvalResult[];
 }

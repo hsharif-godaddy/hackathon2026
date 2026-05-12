@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { TrialAggregator } from '../trial-aggregator.js';
 import type { Scenario } from '../../scenarios/types.js';
 import type { Persona } from '../../personas/types.js';
@@ -694,6 +694,80 @@ describe('TrialAggregator', () => {
     it('defaults to medium when stabilityLevel is absent', () => {
       const result = agg.aggregate(makeScenario(), []);
       expect(result.stabilityLevel).toBe('medium');
+    });
+  });
+
+  describe('evalVersion aggregation', () => {
+    function makeTrialWithVersion(
+      trialIndex: number,
+      evalName: string,
+      verdict: EvalResult['verdict'],
+      evalVersion?: string,
+    ): TrialResult {
+      const evalResults: EvalResult[] = [{
+        evaluator: evalName,
+        score: verdict === 'pass' ? 1.0 : 0.0,
+        verdict,
+        reason: 'test',
+        ...(evalVersion !== undefined && { evalVersion }),
+      }];
+      return {
+        trialIndex,
+        transcript: {
+          scenarioName: 'test-scenario',
+          trialIndex,
+          turns: [],
+          snapshots: [],
+          errors: [],
+        },
+        evalResults,
+      };
+    }
+
+    it('propagates evalVersion when all trials report the same version', () => {
+      const trials = [
+        makeTrialWithVersion(0, 'eval', 'pass', '1.0.0'),
+        makeTrialWithVersion(1, 'eval', 'pass', '1.0.0'),
+        makeTrialWithVersion(2, 'eval', 'pass', '1.0.0'),
+      ];
+      const result = agg.aggregate(makeScenario(), trials);
+      expect(result.aggregated['eval'].evalVersion).toBe('1.0.0');
+    });
+
+    it('omits evalVersion and warns when trials report different versions', () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const trials = [
+        makeTrialWithVersion(0, 'eval', 'pass', '1.0.0'),
+        makeTrialWithVersion(1, 'eval', 'pass', '2.0.0'),
+      ];
+      const result = agg.aggregate(makeScenario(), trials);
+      expect(result.aggregated['eval'].evalVersion).toBeUndefined();
+      expect(warnSpy).toHaveBeenCalledWith(
+        '[TrialAggregator] evaluator reported multiple evalVersions across trials, omitting from aggregation:',
+        expect.objectContaining({ evaluator: 'eval', count: 2, totalTrials: 2 }),
+      );
+      warnSpy.mockRestore();
+    });
+
+    it('omits evalVersion when only some trials carry a version', () => {
+      const trials = [
+        makeTrialWithVersion(0, 'eval', 'pass', '1.0.0'),
+        makeTrialWithVersion(1, 'eval', 'pass'), // no version
+      ];
+      const result = agg.aggregate(makeScenario(), trials);
+      expect(result.aggregated['eval'].evalVersion).toBeUndefined();
+    });
+
+    it('omits evalVersion without warning when no trials carry a version', () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const trials = [
+        makeTrialWithVersion(0, 'eval', 'pass'),
+        makeTrialWithVersion(1, 'eval', 'pass'),
+      ];
+      const result = agg.aggregate(makeScenario(), trials);
+      expect(result.aggregated['eval'].evalVersion).toBeUndefined();
+      expect(warnSpy).not.toHaveBeenCalled();
+      warnSpy.mockRestore();
     });
   });
 });

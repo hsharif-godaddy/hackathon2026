@@ -57,7 +57,6 @@ export interface LLMJsonEvaluatorConfig<T> {
 
 export class LLMJsonEvaluator<T> implements Evaluator {
   readonly name: string;
-  readonly deterministic = false;
   readonly evalVersion?: string;
 
   constructor(

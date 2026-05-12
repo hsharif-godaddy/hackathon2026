@@ -4,6 +4,7 @@ import type {
   BaselineScores,
   RegressionEvalResult,
   RegressionResult,
+  SkippedRegressionEvalResult,
 } from './types.js';
 
 interface RegressionConfig {
@@ -88,7 +89,7 @@ export class RegressionComparator {
       !Number.isNaN(delta) &&
       baselineScore - currentScore > threshold;
 
-    return { evaluator: name, currentScore, baselineScore, delta, exceeded };
+    return { type: 'compared', evaluator: name, currentScore, baselineScore, delta, exceeded };
   }
 
   private buildScoreModeResult(
@@ -133,40 +134,37 @@ export class RegressionComparator {
           : baselineScore > 0 && exceededNumerator / baselineScore > threshold
       );
 
-    return { evaluator: name, currentScore, baselineScore, delta, exceeded };
+    return { type: 'compared', evaluator: name, currentScore, baselineScore, delta, exceeded };
   }
 
+  /**
+   * Detects evaluator version changes between current run and baseline.
+   * Returns a skip-result when versions differ (forces re-baselining).
+   * NOTE: Adding evalVersion to an evaluator that previously lacked one
+   * is a breaking change — the baseline must be regenerated.
+   */
   private versionMismatch(
     name: string,
     agg: AggregatedResult,
     baseline: BaselineScores | null,
-  ): RegressionEvalResult | null {
+  ): SkippedRegressionEvalResult | null {
     const currentEvalVersion = agg.evalVersion;
     const baselineEvalVersion = baseline?.scores[name]?.evalVersion;
     if (baseline === null) return null;
-    if (!currentEvalVersion && !baselineEvalVersion) return null;
+    if (currentEvalVersion === undefined && baselineEvalVersion === undefined) return null;
     if (currentEvalVersion === baselineEvalVersion) {
       return null;
     }
 
-    console.warn('Skipping baseline comparison because evaluator version changed.', {
-      evaluator: name,
-      currentEvalVersion,
-      baselineEvalVersion: baselineEvalVersion ?? 'missing',
-    });
-
     return {
+      type: 'skipped',
       evaluator: name,
-      currentScore: NaN,
-      baselineScore: NaN,
-      delta: NaN,
-      exceeded: false,
-      skipped: true,
       skipReason: 'evaluator-version-mismatch',
       currentEvalVersion,
       ...(baselineEvalVersion !== undefined && { baselineEvalVersion }),
     };
   }
+
 
   private computeGate(
     category: 'capability' | 'regression',
@@ -178,38 +176,12 @@ export class RegressionComparator {
     if (!hasBaseline) return 'missing-baseline';
     if (
       evaluators.length > 0 &&
-      evaluators.every((e) => e.skipped)
+      evaluators.every((e) => e.type === 'skipped')
     ) {
-      const gate = STABILITY_GATE[stabilityLevel];
-      this.logSkippedGate(evaluators, gate);
-      return gate;
+      return 'version-skipped';
     }
-    if (!evaluators.some((e) => e.exceeded)) return 'pass';
+    if (!evaluators.some((e) => e.type === 'compared' && e.exceeded)) return 'pass';
     return STABILITY_GATE[stabilityLevel];
   }
 
-  private logSkippedGate(
-    evaluators: RegressionEvalResult[],
-    gate: RegressionResult['gate'],
-  ): void {
-    const reasons = [
-      ...new Set(
-        evaluators.map(function reason(evaluator) {
-          return evaluator.skipReason ?? 'unknown';
-        }),
-      ),
-    ].join(', ');
-    if (gate === 'error' || gate === 'critical') {
-      console.error('Regression gate failed because all evaluator comparisons were skipped.', {
-        gate,
-        reasons,
-      });
-      return;
-    }
-
-    console.warn('Regression gate warning because all evaluator comparisons were skipped.', {
-      gate,
-      reasons,
-    });
-  }
 }

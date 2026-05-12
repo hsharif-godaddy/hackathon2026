@@ -89,7 +89,7 @@ config/
                   local.prod.ts
   index.ts        loadConfig() — reads GD_ENV, returns Config
 
-baselines/        Committed baseline snapshots (one JSON per scenario)
+baselines/        Local-only baseline snapshots (gitignored, per-developer)
 runs/             Run output — gitignored
 ```
 
@@ -177,7 +177,6 @@ thresholds per evaluator:
 ```typescript
 regression: {
   thresholds: {
-    'output-quality':    0.15,
     'prompt-efficiency': 0.20,
   },
   defaultThreshold: 0.1,

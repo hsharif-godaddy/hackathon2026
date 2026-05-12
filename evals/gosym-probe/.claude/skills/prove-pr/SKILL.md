@@ -78,7 +78,7 @@ or more categories:
 |                    |                                        | TurnDuration / |
 |                    |                                        | AgentSteps     |
 | `ui-change`        | Visual output or DOM structure changes | MEDIUM —       |
-|                    |                                        | OutputQuality  |
+|                    |                                        | build-quality  |
 | `infrastructure`   | Config, build, deps, infra only        | LOW — no eval  |
 |                    |                                        | needed         |
 

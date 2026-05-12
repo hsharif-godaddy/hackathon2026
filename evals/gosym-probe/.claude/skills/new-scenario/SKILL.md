@@ -25,7 +25,7 @@ before generating scenario code, tests, and registry entry.
 - `--persona beginner|standard`: override persona selection (auto if
   omitted)
 - `--visual`: hint that the scenario involves visual/UI output
-  (triggers OutputQuality evaluator)
+  (triggers build-quality evaluators via `createBuildQualityEvaluators`)
 - `--sequential`: force sequential execution mode (parallel is default
   for standalone scenarios)
 
@@ -101,10 +101,10 @@ first two. Add others based on the conditions shown.
 |                         | success that requires LLM judgment.  |
 |                         | This is an LLM-based evaluator.      |
 |                         | Include for most scenarios.          |
-| OutputQualityEvaluator  | When `--visual` flag is set OR the   |
-|                         | scenario involves UI output that     |
-|                         | should be visually inspected.        |
-|                         | LLM-based.                           |
+| createBuildQualityEvaluators | When `--visual` flag is set OR  |
+|                         | the scenario involves UI output.     |
+|                         | Factory function returning multiple  |
+|                         | evaluators.                          |
 | TurnDurationEvaluator   | When response latency matters (e.g.  |
 |                         | performance-sensitive flows).        |
 | AgentStepsEvaluator     | When measuring agent efficiency      |
@@ -295,7 +295,7 @@ If the suite directory already exists, add the export to the existing
 - Use `.js` extensions on all local imports (ESM convention)
 - Hard-wrap at 80 characters
 - LLM-based evaluators (`JTBDCompletionEvaluator`,
-  `OutputQualityEvaluator`) need `gocode` in their constructor
+  `createBuildQualityEvaluators`) need `gocode` in their constructor
 - Computed evaluators take no constructor args
 - All scenarios start as `category: 'capability'` (use `/graduate`
   to promote later)

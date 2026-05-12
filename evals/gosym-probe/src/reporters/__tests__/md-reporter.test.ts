@@ -548,6 +548,7 @@ function makeRegressionStatus(
     stabilityLevel: 'medium' as const,
     evaluators: [
       {
+        type: 'compared' as const,
         evaluator,
         currentScore,
         baselineScore: currentScore - delta,
@@ -629,6 +630,7 @@ describe('MdReporter — vs. baseline column', () => {
         stabilityLevel: 'medium' as const,
         evaluators: [
           {
+            type: 'compared' as const,
             evaluator: 'bug-hit-rate',
             currentScore: 1.0,
             baselineScore: NaN,
@@ -1207,5 +1209,126 @@ describe('MdReporter — formatDuration', () => {
     expect(content).toContain('| Evaluator | Verdict | Score | Reason |');
     expect(content).toContain('| eval-a | pass | 1.00 | good |');
     expect(content).toContain('| eval-b | fail | 0.25 | bad   reason |');
+  });
+});
+
+// ── Composite breakdown section ──────────────────────────────
+
+function makeCompositeEvalResult(
+  evaluatorName: string,
+  breakdown: Array<{ evaluator: string; score: number; verdict: string; reason: string; scoreable: boolean }>,
+  score = 0.8,
+): ReturnType<typeof makeEvalResult> & { details: Record<string, unknown> } {
+  return {
+    evaluator: evaluatorName,
+    score,
+    verdict: 'pass',
+    reason: `Composite of ${breakdown.length}/${breakdown.length} sub-evaluators`,
+    details: {
+      _composite: true,
+      breakdown,
+      scoredCount: breakdown.filter((e) => e.scoreable).length,
+      totalCount: breakdown.length,
+    },
+  };
+}
+
+describe('MdReporter — composite breakdown', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockMkdir.mockResolvedValue(undefined);
+    mockWriteFile.mockResolvedValue(undefined);
+  });
+
+  it('renders a breakdown <details> block for a composite evaluator', () => {
+    const composite = makeCompositeEvalResult('output-quality', [
+      { evaluator: 'heading-hierarchy', score: 0.9, verdict: 'pass', reason: 'ok', scoreable: true },
+      { evaluator: 'visual-coherence', score: 0.7, verdict: 'pass', reason: 'ok', scoreable: true },
+    ]);
+
+    const result: ScenarioResult = {
+      scenarioName: 'composite-scenario',
+      category: 'capability',
+      stabilityLevel: 'medium',
+      trials: [makeTrial(0, [composite])],
+      aggregated: {
+        'output-quality': {
+          passAtK: true,
+          passToTheK: true,
+          passingTrials: 1,
+          totalTrials: 1,
+        },
+      },
+    };
+
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [result]);
+
+    expect(content).toContain('output-quality breakdown');
+    expect(content).toContain('heading-hierarchy');
+    expect(content).toContain('visual-coherence');
+  });
+
+  it('does not render a breakdown block for non-composite evaluator results', () => {
+    const result: ScenarioResult = {
+      scenarioName: 'plain-scenario',
+      category: 'capability',
+      stabilityLevel: 'medium',
+      trials: [makeTrial(0, [makeEvalResult('bug-hit-rate', 'pass', 1.0)])],
+      aggregated: {
+        'bug-hit-rate': {
+          passAtK: true,
+          passToTheK: true,
+          passingTrials: 1,
+          totalTrials: 1,
+        },
+      },
+    };
+
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [result]);
+
+    expect(content).not.toContain('breakdown');
+  });
+
+  it('shows per-trial sub-evaluator scores in the breakdown table', () => {
+    const breakdownT1 = [
+      { evaluator: 'heading-hierarchy', score: 0.9, verdict: 'pass', reason: 'ok', scoreable: true },
+      { evaluator: 'visual-coherence', score: 0.5, verdict: 'partial', reason: 'ok', scoreable: true },
+    ];
+    const breakdownT2 = [
+      { evaluator: 'heading-hierarchy', score: 0.6, verdict: 'partial', reason: 'ok', scoreable: true },
+      { evaluator: 'visual-coherence', score: 0.8, verdict: 'pass', reason: 'ok', scoreable: true },
+    ];
+
+    const result: ScenarioResult = {
+      scenarioName: 'multi-trial-composite',
+      category: 'capability',
+      stabilityLevel: 'medium',
+      trials: [
+        makeTrial(0, [makeCompositeEvalResult('output-quality', breakdownT1, 0.7)]),
+        makeTrial(1, [makeCompositeEvalResult('output-quality', breakdownT2, 0.7)]),
+      ],
+      aggregated: {
+        'output-quality': {
+          passAtK: true,
+          passToTheK: true,
+          passingTrials: 2,
+          totalTrials: 2,
+        },
+      },
+    };
+
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [result]);
+
+    // Sub-evaluator rows present
+    expect(content).toContain('heading-hierarchy');
+    expect(content).toContain('visual-coherence');
+    // Per-trial scores present
+    expect(content).toContain('0.90');
+    expect(content).toContain('0.50');
+    expect(content).toContain('0.60');
+    expect(content).toContain('0.80');
   });
 });

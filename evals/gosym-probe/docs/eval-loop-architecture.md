@@ -68,8 +68,8 @@ accumulation.
 
 After each assistant turn, Playwright optionally captures a screenshot and
 the raw HTML of the AAB Next.js UI. The `<body>` content is extracted (up to
-10,000 chars, truncated if larger) and stored as a `DOMSnapshot`. This is
-what the `output-quality` judge evaluates.
+20,000 chars, truncated if larger) and stored as a `DOMSnapshot`. This is
+what the build-quality evaluator suite evaluates.
 
 ### 5. Repeat
 
@@ -108,24 +108,18 @@ Sends to GoCode:
 Model is instructed to reply with exactly one word: `pass`, `partial`, `fail`,
 or `unknown`. Score mapping: pass=1.0, partial=0.5, fail/unknown=0.0.
 
-**`output-quality`** — DOM snapshot quality judge.
+**Build-Quality Evaluators** — DOM snapshot quality suite.
 
-Sends to GoCode:
-- Task description (all goal descriptions joined with `;`)
-- Raw `<body>` HTML from the last Playwright snapshot (≤10,000 chars)
-- Optional reference DOM if `scenario.referenceSolution` is a `DOMSnapshot`
+Two LLM-based evaluators (`visual_coherence`, `content_substance`) using
+the `LLMJsonEvaluator` framework. Each receives scenario goals + body
+HTML/text evidence and returns structured JSON `{score, verdict, reason}`.
 
-Model responds in a structured format:
-```
-SCORE: [0.0-1.0]
-VERDICT: [pass|partial|fail|unknown]
-REASON: [brief explanation]
-```
+Additionally, 7 deterministic `DeterministicDomEvaluator` specs run once
+per scenario: `heading_hierarchy`, `semantic_density`,
+`accessibility_coverage`, `link_quality`, `responsive_readiness`,
+`inline_style_ratio`, `component_decomposition`.
 
-Scale: 1.0=excellent, 0.7–0.9=good, 0.4–0.6=partial, 0.1–0.3=poor,
-0.0=failed.
-
-Both judges use the same `GocodeClient` as the synthetic user — no separate
+All judges use the same `GocodeClient` as the synthetic user — no separate
 judge model is configured.
 
 ---

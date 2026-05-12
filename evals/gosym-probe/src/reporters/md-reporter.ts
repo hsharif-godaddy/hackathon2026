@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import type { ScenarioResult, AggregatedResult, TrialResult } from
   '../runner/types.js';
 import type { EvalResult } from '../evaluators/evaluator.js';
+import type { CompositeBreakdownEntry } from '../evaluators/composite-evaluator.js';
 import type { RegressionEvalResult } from '../baselines/types.js';
 import {
   trialDurationMs,
@@ -54,7 +55,7 @@ function baselineCell(
   const entry = evalResults.find(
     (e) => e.evaluator === evaluator,
   );
-  if (!entry || Number.isNaN(entry.delta)) {
+  if (!entry || entry.type === 'skipped') {
     return '\u2014';
   }
   const sign = entry.delta >= 0 ? '+' : '';
@@ -98,6 +99,81 @@ function renderEvaluatorReasoning(
     ...blocks,
     '</details>',
   ].join('\n');
+}
+
+function renderCompositeBreakdown(
+  evalNames: string[],
+  evalIndex: Map<number, Map<string, EvalResult>>,
+  trialCount: number,
+): string | null {
+  const blocks: string[] = [];
+
+  for (const name of evalNames) {
+    const trialBreakdowns: Array<CompositeBreakdownEntry[] | undefined> = [];
+    for (let i = 0; i < trialCount; i++) {
+      const r = evalIndex.get(i)?.get(name);
+      const bd = r?.details?.['breakdown'];
+      if (r?.details?.['_composite'] === true && Array.isArray(bd)) {
+        trialBreakdowns.push(bd as CompositeBreakdownEntry[]);
+      } else {
+        trialBreakdowns.push(undefined);
+      }
+    }
+
+    if (!trialBreakdowns.some((b) => b !== undefined)) continue;
+
+    const subEvalNames: string[] = [];
+    const seen = new Set<string>();
+    for (const b of trialBreakdowns) {
+      if (!b) continue;
+      for (const entry of b) {
+        if (!seen.has(entry.evaluator)) {
+          seen.add(entry.evaluator);
+          subEvalNames.push(entry.evaluator);
+        }
+      }
+    }
+
+    const trialHeaders = Array.from(
+      { length: trialCount },
+      (_, i) => `T${i + 1}`,
+    );
+    const cols = ['Sub-Evaluator', ...trialHeaders];
+    const header = `| ${cols.join(' | ')} |`;
+    const separator = `|${cols
+      .map((c) => '-'.repeat(c.length + 2))
+      .join('|')}|`;
+
+    const rows = subEvalNames.map((subName) => {
+      const cells: string[] = [subName];
+      for (let i = 0; i < trialCount; i++) {
+        const b = trialBreakdowns[i];
+        const entry = b?.find((e) => e.evaluator === subName);
+        if (!entry) {
+          cells.push('\u2014');
+        } else if (entry.scoreable) {
+          cells.push(entry.score.toFixed(2));
+        } else {
+          cells.push('unknown');
+        }
+      }
+      return `| ${cells.join(' | ')} |`;
+    });
+
+    blocks.push(
+      '<details>',
+      `<summary>${name} breakdown</summary>`,
+      '',
+      header,
+      separator,
+      ...rows,
+      '',
+      '</details>',
+    );
+  }
+
+  if (blocks.length === 0) return null;
+  return blocks.join('\n');
 }
 
 function collectUnknowns(
@@ -589,6 +665,11 @@ export class MdReporter {
       lines.push('', reasoning);
     }
 
+    const breakdown = renderCompositeBreakdown(evalNames, evalIndex, k);
+    if (breakdown) {
+      lines.push('', breakdown);
+    }
+
     return lines;
   }
 
@@ -611,7 +692,7 @@ export class MdReporter {
     const scores: number[] = [];
     for (let i = 0; i < trialCount; i++) {
       const r = evalIndex.get(i)?.get(evaluator);
-      if (r && Number.isFinite(r.score)) scores.push(r.score);
+      if (r && Number.isFinite(r.score) && r.verdict !== 'unknown') scores.push(r.score);
     }
     const stats = scores.length > 0 ? computeScoreStats(scores) : null;
     const mean = stats ? stats.mean.toFixed(2) : '\u2014';

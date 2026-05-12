@@ -24,6 +24,7 @@ export interface EvalResult {
 
 export interface Evaluator {
   name: string;
+  evalVersion?: string;
   /**
    * Controls how RegressionComparator handles this evaluator.
    * - 'passRate' (default): compare pass-rate across trials

@@ -110,11 +110,12 @@ sorted by timestamp. For each run:
 
 ## Baselines
 
-Baseline snapshots live in `baselines/` and are committed to the repo.
+Baseline snapshots live in `baselines/` and are local-only (gitignored).
+Each developer generates baselines against their own local AAB instance.
 
 **Save baseline from run** — prompts for a run ID and runs
 `pnpm run save-baseline <run-id>`, promoting the run's aggregated results
-to versioned baseline files under `baselines/<name>/`.
+to baseline files under `baselines/<name>/`.
 
 **Graduate scenario** — runs the pass-rate check
 (`pnpm run eval --graduate <name>`) after a confirmation prompt.

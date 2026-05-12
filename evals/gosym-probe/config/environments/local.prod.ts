@@ -28,7 +28,6 @@ export function createConfig(): Config {
     },
     regression: {
       thresholds: {
-        'output-quality': 0.1,
         'prompt-efficiency': 0.15,
         'turn-duration': 1.5,
         'token-usage': 1.5,
