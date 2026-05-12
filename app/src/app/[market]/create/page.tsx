@@ -7,6 +7,7 @@ import Spinner from '@ux/spinner'
 
 import { validateTemplate } from '@/app/[market]/components/types'
 import { useSsoSignIn } from '@/hooks/useSsoSignIn'
+import { ITC_QUERY_PARAM } from '@/lib/itc'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { logger } from '@/lib/request-context'
 import { createSiteAndRedirect } from '@/lib/site-creation'
@@ -85,9 +86,12 @@ function CreatePageContent() {
 
           // Set redirect URL so SSO returns to this page after auth. Modal
           // path uses this via the store; redirect path consumes it from the
-          // `redirectUrl` arg to signIn below.
+          // `redirectUrl` arg to signIn below. Preserve `itc` so attribution
+          // survives even if localStorage is cleared during the SSO bounce.
           const params = new URLSearchParams({ initialPrompt: trimmedPrompt })
           if (template) params.set('template', template)
+          const itc = searchParams.get(ITC_QUERY_PARAM)
+          if (itc) params.set(ITC_QUERY_PARAM, itc)
           const redirectUrl = `/create?${params.toString()}`
           setRedirectUrl(redirectUrl)
 

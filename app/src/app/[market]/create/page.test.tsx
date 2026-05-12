@@ -234,6 +234,34 @@ describe('CreatePage', () => {
     })
   })
 
+  it('preserves itc param in redirect URL on auth required', async () => {
+    mockSearchParams.get.mockImplementation((key: string) => {
+      if (key === 'initialPrompt') return 'test prompt'
+      if (key === 'itc') return 'build_for_free'
+      return null
+    })
+    let onAuthRequiredCallback: any
+
+    ;(createSiteAndRedirect as any).mockImplementation((options: any) => {
+      onAuthRequiredCallback = options.onAuthRequired
+    })
+
+    render(<CreatePage />)
+
+    await waitFor(() => {
+      expect(createSiteAndRedirect).toHaveBeenCalled()
+    })
+
+    onAuthRequiredCallback('test prompt')
+
+    expect(mockSetRedirectUrl).toHaveBeenCalledWith(
+      '/create?initialPrompt=test+prompt&itc=build_for_free'
+    )
+    expect(mockSignIn).toHaveBeenCalledWith({
+      redirectUrl: '/create?initialPrompt=test+prompt&itc=build_for_free',
+    })
+  })
+
   it('redirects to homepage on SSO dismiss', async () => {
     mockSearchParams.get.mockReturnValue('test prompt')
 
