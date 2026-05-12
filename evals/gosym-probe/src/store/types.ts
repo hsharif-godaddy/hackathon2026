@@ -23,7 +23,6 @@ export interface RunMetadata {
 
 export interface StoredScenarioConfig {
   name: string;
-  category: 'capability' | 'regression';
   trials: number;
   executionMode?: 'parallel' | 'sequential';
   maxTurns?: number;
@@ -79,7 +78,6 @@ export interface TimingStats {
 
 export interface StoredAggregated {
   scenarioName: string;
-  category: 'capability' | 'regression';
   evaluators: Record<string, EvaluatorSummary>;
   timing: TimingStats;
   regressionStatus?: RegressionResult;

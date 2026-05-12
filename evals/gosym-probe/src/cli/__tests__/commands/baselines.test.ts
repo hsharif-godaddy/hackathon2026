@@ -12,7 +12,6 @@ const mockBaseline: BaselineScores = {
   scenarioName: 'build-landing-page',
   runId: 'run-001',
   createdAt: '2026-04-10T12:00:00.000Z',
-  category: 'capability',
   scores: {
     'tool-call': {
       passAtK: true,

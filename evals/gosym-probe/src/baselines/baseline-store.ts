@@ -56,7 +56,6 @@ export class BaselineStore {
       scenarioName: result.scenarioName,
       runId,
       createdAt: new Date().toISOString(),
-      category: result.category,
       stabilityLevel: result.stabilityLevel,
       stabilityTrials: result.trials.length,
       scores: Object.fromEntries(
@@ -148,7 +147,6 @@ export class BaselineStore {
       scenarioName: stored.scenarioName,
       runId,
       createdAt: new Date().toISOString(),
-      category: stored.category,
       ...(stabilityLevel !== undefined && { stabilityLevel }),
       ...(stabilityTrials !== undefined && { stabilityTrials }),
       scores: Object.fromEntries(

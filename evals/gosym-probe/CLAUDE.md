@@ -203,7 +203,6 @@ export function buildMyScenario(
   return {
     name: "my-scenario",
     suite: "my-suite", // optional; groups related scenarios
-    category: "capability", // promote to 'regression' after graduating
     persona: beginnerPersona,
     goals: [
       {

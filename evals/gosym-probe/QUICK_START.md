@@ -120,7 +120,7 @@ Scenarios with `executionMode: 'parallel'` fan out trials concurrently.
 Default `maxConcurrency` per environment:
 
 | Environment  | Default |
-|--------------|---------|
+| ------------ | ------- |
 | `local.dev`  | 2       |
 | `local.test` | 2       |
 | `local.prod` | 4       |
@@ -155,11 +155,12 @@ keyboard reference.
 
 ---
 
-## 6. Graduate a Scenario to Regression
+## 6. Graduate a Scenario
 
-New scenarios start as `category: 'capability'` (informational scoring).
-Once behavior is stable, graduate to `category: 'regression'` so the
-scenario gates future runs.
+New scenarios have no baseline and are informational (results never block
+runs). Once behavior is stable, **graduate** the scenario to save a
+baseline. From that point on the scenario gates future runs automatically
+— no code change required.
 
 ```bash
 pnpm run eval --graduate build-landing-page
@@ -180,34 +181,29 @@ pnpm run eval --graduate-suite smoke
 ```
 
 Graduation runs N trials, computes a pass rate per evaluator, and
-**always saves a baseline**. If every evaluator reaches the pass-rate
-threshold (default 90%), the scenario is promoted and the required config
-change is printed:
+**saves a baseline only on successful promotion**. If every evaluator
+reaches the pass-rate threshold (default 90%), the scenario is promoted:
 
 ```
 ✓ Scenario "build-landing-page" promoted [medium / 5 trials]
   Baseline saved.
   Min pass rate: 100% (threshold: 90%)
-
-  To graduate, update the scenario config:
-    category: 'regression'  // was: 'capability'
 ```
 
-If the threshold is not met, the baseline is saved as an informational
-checkpoint and per-evaluator rates are shown:
+If the threshold is not met, no baseline is saved and per-evaluator
+rates are shown:
 
 ```
 ✗ Scenario "build-landing-page" not promoted [medium / 5 trials]
-  Baseline saved (informational checkpoint).
+  Baseline not saved (scenario did not meet pass-rate threshold).
   Per-evaluator pass rates (threshold: 90%):
     bug-hit-rate: 100% ✓
     jtbd-completion: 60% ✗
 ```
 
-Apply the config change in `src/scenarios/build-landing-page.ts` and
-open a PR. See
-[Graduating a Scenario](README.md#graduating-a-scenario-capability--regression)
-in the README for full details.
+Improve the failing evaluators and rerun graduation. See
+[Graduating a Scenario](README.md#graduating-a-scenario) in the README
+for full details.
 
 ---
 

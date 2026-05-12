@@ -22,7 +22,7 @@ exit at any time.
     [3] Custom run             prompts for scenario, trials, env
     [b] Back
 
-[2] List Scenarios             table: name / category / trials /
+[2] List Scenarios             table: name / trials /
                                execution mode / evaluator count
 
 [3] Config
@@ -119,7 +119,7 @@ to baseline files under `baselines/<name>/`.
 
 **Graduate scenario** — runs the pass-rate check
 (`pnpm run eval --graduate <name>`) after a confirmation prompt.
-See [Graduating a Scenario](../README.md#graduating-a-scenario-capability--regression)
+See [Graduating a Scenario](../README.md#graduating-a-scenario)
 in the README for full details.
 
 ---

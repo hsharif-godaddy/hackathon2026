@@ -1,4 +1,4 @@
-import type { Scenario, StabilityLevel } from '../scenarios/types.js';
+import type { StabilityLevel } from '../scenarios/types.js';
 
 export interface BaselineEvalScores {
   /** Absent when regressionMode === 'score'. */
@@ -18,7 +18,6 @@ export interface BaselineScores {
   scenarioName: string;
   runId: string;
   createdAt: string;
-  category: Scenario['category'];
   stabilityLevel?: StabilityLevel;
   stabilityTrials?: number;
   /** Keyed by evaluator name. */
@@ -82,26 +81,17 @@ export type RegressionEvalResult = ComparedRegressionEvalResult | SkippedRegress
 
 export interface RegressionResult {
   scenarioName: string;
-  category: Scenario['category'];
-  hasBaseline: boolean;
   /**
-   * 'warning'          — low-stability scenario with threshold breach; exit 0
-   * 'error'            — medium-stability scenario with threshold breach;
-   *                      exit 1
-   * 'critical'         — high-stability scenario with threshold breach; exit 1
-   * 'pass'             — regression-category scenario within thresholds
-   * 'informational'    — capability-category scenario; never blocks
-   * 'missing-baseline' — regression-category scenario with no saved baseline;
-   *                      blocks the run (save a baseline first via
-   *                      save-baseline <run-id>)
+   * 'warning'  — low-stability scenario with threshold breach; exit 0
+   * 'error'    — medium-stability scenario with threshold breach; exit 1
+   * 'critical' — high-stability scenario with threshold breach; exit 1
+   * 'pass'     — scenario within thresholds
    */
   gate:
     | 'pass'
     | 'warning'
     | 'error'
     | 'critical'
-    | 'informational'
-    | 'missing-baseline'
     | 'version-skipped';
   stabilityLevel: StabilityLevel;
   evaluators: RegressionEvalResult[];

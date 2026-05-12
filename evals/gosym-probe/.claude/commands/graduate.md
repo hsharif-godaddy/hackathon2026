@@ -1,7 +1,5 @@
-Graduate a scenario from `capability` to `regression`.
-
-Runs the graduation stability check and, if promoted, updates the
-scenario file automatically.
+Graduate a scenario by running a stability check and saving a validated
+baseline. Once a baseline exists the scenario gates future runs automatically.
 
 ## Usage
 
@@ -13,7 +11,7 @@ scenario file automatically.
 - `--stability`: override stability level (low=1, medium=5, high=10
   trials). Defaults to the scenario's own level or medium.
 - `--suite`: treat `<name>` as a suite, graduating all its scenarios
-- `--commit`: commit the category change after promotion
+- `--commit`: commit the saved baseline JSON after promotion
 
 ## Instructions
 
@@ -30,36 +28,7 @@ Extract from `$ARGUMENTS`:
 
 If no target is provided, print the Usage block above and stop.
 
-### 2. Locate scenario file(s)
-
-Find which `.ts` files define the target scenario(s) under
-`src/scenarios/`:
-
-**Single scenario mode (default):**
-
-```bash
-grep -rl "name: '<target>'" src/scenarios/ --include='*.ts'
-```
-
-**Suite mode (`--suite`):**
-
-```bash
-grep -rl "suite: '<target>'" src/scenarios/ --include='*.ts'
-```
-
-If no files match, report an error and stop.
-
-### 3. Check current category
-
-Read each matched file. Look for the `category:` field.
-
-- If `category: 'regression'` already, report the scenario is
-  already graduated and skip it.
-- If `category: 'capability'`, it is eligible for graduation.
-
-If all matched scenarios are already graduated, stop with a summary.
-
-### 4. Run graduation
+### 2. Run graduation
 
 Build the eval command:
 
@@ -80,52 +49,32 @@ multiple trials against a live AAB instance and takes time.
 
 Display the full output to the user.
 
-### 5. Check the result
+### 3. Check the result
 
-- **Exit code 0**: promoted. Proceed to step 6.
+- **Exit code 0**: promoted. Proceed to step 4.
 - **Non-zero exit code**: not promoted. Display the failure output
-  showing per-evaluator pass rates. Do NOT edit any files. Stop here.
+  showing per-evaluator pass rates. Do NOT commit anything. Stop here.
 
 For suite mode, identify which scenarios were promoted by looking for
-`Scenario "<name>" promoted` in the output. Only update those.
+`Scenario "<name>" promoted` in the output. Only commit those.
 
-### 6. Update scenario file(s)
+### 4. Commit (if requested)
 
-For each promoted scenario, use the Edit tool to change:
-
-```
-category: 'capability'
-```
-
-to:
+**If `--commit` was passed:** stage the new baseline JSON file(s) under
+`baselines/` and commit:
 
 ```
-category: 'regression'
-```
-
-Only change the `category` line. Do not modify anything else.
-
-Report each file updated.
-
-### 7. Run tests
-
-Run `npx vitest run` to confirm the edit is safe.
-
-If tests fail, revert the category change and report the failure.
-
-### 8. Commit (if requested)
-
-**If `--commit` was passed:** stage the changed scenario file(s) and
-commit:
-
-```
-graduate: promote <name> to regression
+graduate: save baseline for <name>
 
 Stability: <level> (<N> trials)
 Min pass rate: <X>%
 ```
 
-**If `--commit` was NOT passed**, remind the user to commit manually.
+For suite mode, include all promoted scenario names in the commit
+message.
+
+**If `--commit` was NOT passed**, remind the user to commit the baseline
+file(s) manually.
 
 ### Output
 
@@ -137,7 +86,7 @@ Summarize the result:
 Graduated <name>:
   Stability: <level> (<N> trials)
   Min pass rate: <X>% (threshold: 90%)
-  Updated: <filepath> -> category: 'regression'
+  Baseline saved to baselines/<name>/
 ```
 
 **Not promoted:**
@@ -147,10 +96,4 @@ Graduated <name>:
   Stability: <level> (<N> trials)
   Per-evaluator pass rates shown above.
   No files changed.
-```
-
-**Already graduated:**
-
-```
-<name> is already category: 'regression'. Nothing to do.
 ```

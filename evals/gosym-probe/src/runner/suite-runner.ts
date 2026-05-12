@@ -242,12 +242,14 @@ export class SuiteRunner {
         const baseline = await baselineStore.load(
           scenario.name,
         );
-        result.regressionStatus =
-          this.comparator.compare(
-            result,
-            baseline,
-            config.regression,
-          );
+        if (baseline) {
+          result.regressionStatus =
+            this.comparator.compare(
+              result,
+              baseline,
+              config.regression,
+            );
+        }
       }
 
       return result;

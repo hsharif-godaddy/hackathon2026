@@ -825,7 +825,6 @@ export class EvalStore {
     } = scenario.persona;
     return {
       name: scenario.name,
-      category: scenario.category,
       trials: scenario.trials,
       ...(scenario.executionMode !== undefined && {
         executionMode: scenario.executionMode,
@@ -889,7 +888,6 @@ export class EvalStore {
 
     return {
       scenarioName: result.scenarioName,
-      category: result.category,
       evaluators,
       timing: computeTimingStats(result.trials),
       ...(result.regressionStatus !== undefined && {

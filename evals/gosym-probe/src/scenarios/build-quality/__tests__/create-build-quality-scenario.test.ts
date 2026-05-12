@@ -109,24 +109,6 @@ describe('createBuildQualityScenario', () => {
     expect(scenario.suite).toBe('build-quality');
   });
 
-  it("defaults category to 'capability'", () => {
-    const scenario = createBuildQualityScenario(
-      makeBaseConfig(),
-      gocode,
-      ctrlPlane,
-    );
-    expect(scenario.category).toBe('capability');
-  });
-
-  it("allows category override to 'regression'", () => {
-    const scenario = createBuildQualityScenario(
-      { ...makeBaseConfig(), category: 'regression' },
-      gocode,
-      ctrlPlane,
-    );
-    expect(scenario.category).toBe('regression');
-  });
-
   it('defaults trials to 3', () => {
     const scenario = createBuildQualityScenario(
       makeBaseConfig(),

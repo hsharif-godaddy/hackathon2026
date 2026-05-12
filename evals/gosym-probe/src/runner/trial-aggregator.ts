@@ -85,7 +85,6 @@ export class TrialAggregator {
 
     return {
       scenarioName: scenario.name,
-      category: scenario.category,
       stabilityLevel: scenario.stabilityLevel ?? 'medium',
       trials,
       aggregated,

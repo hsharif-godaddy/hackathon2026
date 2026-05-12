@@ -67,7 +67,6 @@ function makeScenario(overrides: Partial<Scenario> = {}): Scenario {
     goals: [{ description: 'build a page', assertion: 'positive' }],
     evaluators: [],
     trials: 1,
-    category: 'regression',
     setup: vi.fn().mockResolvedValue(undefined),
     teardown: vi.fn().mockResolvedValue(undefined),
     ...overrides,

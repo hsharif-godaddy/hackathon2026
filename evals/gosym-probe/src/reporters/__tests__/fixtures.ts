@@ -54,7 +54,6 @@ export function makeScenarioResult(
 ): ScenarioResult {
   return {
     scenarioName: 'test-scenario',
-    category: 'capability',
     stabilityLevel: 'low',
     trials: [],
     aggregated: {},

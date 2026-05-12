@@ -157,7 +157,6 @@ function makeScenario(
 ): Scenario {
   return {
     name: 'test-scenario',
-    category: 'capability',
     trials: 2,
     persona: {
       name: 'Test User',
@@ -181,7 +180,6 @@ function makeScenarioResult(
 ): ScenarioResult {
   return {
     scenarioName: scenario.name,
-    category: scenario.category,
     stabilityLevel: 'medium',
     trials,
     aggregated: {
@@ -360,7 +358,6 @@ describe('EvalStore', () => {
       expect(call).toBeDefined();
       const parsed = JSON.parse(call![1] as string);
       expect(parsed.name).toBe('test-scenario');
-      expect(parsed.category).toBe('capability');
       expect(parsed.trials).toBe(2);
       expect(parsed.executionMode).toBe('parallel');
       expect(parsed.evaluators).toEqual(['test-evaluator']);
@@ -629,7 +626,6 @@ describe('EvalStore', () => {
       const scenario = makeScenario();
       const result: ScenarioResult = {
         scenarioName: scenario.name,
-        category: scenario.category,
         stabilityLevel: 'medium',
         trials,
         aggregated: {
@@ -650,7 +646,6 @@ describe('EvalStore', () => {
       expect(call).toBeDefined();
       const parsed = JSON.parse(call![1] as string);
       expect(parsed.scenarioName).toBe('test-scenario');
-      expect(parsed.category).toBe('capability');
 
       const evalSummary = parsed.evaluators['test-evaluator'];
       expect(evalSummary.passAtK).toBe(true);
@@ -705,7 +700,6 @@ describe('EvalStore', () => {
       const scenario = makeScenario();
       const result: ScenarioResult = {
         scenarioName: scenario.name,
-        category: scenario.category,
         stabilityLevel: 'medium',
         trials: [trial],
         aggregated: {
@@ -770,7 +764,6 @@ describe('EvalStore', () => {
       const scenario = makeScenario();
       const result: ScenarioResult = {
         scenarioName: scenario.name,
-        category: scenario.category,
         stabilityLevel: 'medium',
         trials: [trial],
         aggregated: {
@@ -813,12 +806,10 @@ describe('EvalStore', () => {
 
     it('includes regressionStatus in aggregated.json when present', async () => {
       const store = new EvalStore();
-      const scenario = makeScenario({ category: 'regression' });
+      const scenario = makeScenario();
       const trial = makeTrialResult();
       const regressionStatus = {
         scenarioName: 'test-scenario',
-        category: 'regression' as const,
-        hasBaseline: true,
         gate: 'pass' as const,
         stabilityLevel: 'medium' as const,
         evaluators: [],
@@ -2045,7 +2036,6 @@ describe('EvalStore', () => {
         const store = new EvalStore();
         const aggregated: StoredAggregated = {
           scenarioName: 'test-scenario',
-          category: 'capability',
           evaluators: {
             'test-evaluator': {
               passAtK: true,

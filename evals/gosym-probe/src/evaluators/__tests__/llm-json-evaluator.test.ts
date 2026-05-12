@@ -25,7 +25,6 @@ const testScenario: Scenario = {
   goals: [],
   evaluators: [],
   trials: 1,
-  category: 'capability',
 };
 
 function validResponse(score: number = 0.8): string {

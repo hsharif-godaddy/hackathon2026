@@ -19,7 +19,6 @@ const scenario = {
   goals: [],
   evaluators: [],
   trials: 1,
-  category: 'capability',
 } satisfies Scenario;
 
 function makeTranscript(): Transcript {

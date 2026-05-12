@@ -18,8 +18,6 @@ import {
 } from './scenario-test-helpers.js';
 import type { Scenario } from '../types.js';
 
-const VALID_CATEGORIES = ['capability', 'regression'] as const;
-
 const PVS_REQUIRED_EVALUATORS = [
   'bug-hit-rate',
   'tool-failure-rate',
@@ -32,11 +30,11 @@ const PVS_REQUIRED_EVALUATORS = [
   'llm-cost',
 ];
 
+
 function assertScenarioShape(scenario: Scenario, expectedName: string): void {
   expect(scenario.name).toBe(expectedName);
   expect(scenario.goals.length).toBeGreaterThan(0);
   expect(scenario.trials).toBeGreaterThanOrEqual(1);
-  expect(VALID_CATEGORIES).toContain(scenario.category);
 
   const evaluatorNames = scenario.evaluators.map((e) => e.name);
   expect(evaluatorNames).toContain('token-usage');

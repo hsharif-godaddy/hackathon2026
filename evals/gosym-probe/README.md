@@ -128,21 +128,15 @@ Each scenario is forced to `trial=1` in this mode — per-scenario
 `executionMode: 'parallel'` on individual scenarios when you need multi-trial
 parallelism within a single scenario. Use when running scenarios at high trial values.
 
-**Scenario categories**
+**Regression gating**
 
-Every scenario has a `category` that controls how baseline comparison
-behaves:
-
-| Category     | Baseline required?      | Score drop beyond threshold | Use case                      |
-| ------------ | ----------------------- | --------------------------- | ----------------------------- |
-| `capability` | No                      | Logged, never blocks        | New or experimental scenarios |
-| `regression` | Yes (exit 1 if missing) | **Blocks the run** (exit 1) | Stable, graduated scenarios   |
-
-New scenarios start as `capability` so you can iterate without
-breaking eval runs. Once behavior is stable, **graduate** the
-scenario to `regression` (see
-[Graduating a Scenario](#graduating-a-scenario-capability--regression))
-to enforce it as a gate against future changes.
+Regression gating is driven by baseline presence: scenarios with a
+saved baseline are compared and gated; scenarios without one are
+informational (logged, never block). New scenarios start without a
+baseline so you can iterate without breaking eval runs. Once behavior
+is stable, **graduate** the scenario (see
+[Graduating a Scenario](#graduating-a-scenario)) to save a baseline
+and enforce it as a gate against future changes.
 
 ---
 
@@ -194,21 +188,21 @@ Baseline comparison is **on by default**. Pass `--skip-baseline` to opt out:
 pnpm run eval --skip-baseline
 ```
 
-Each scenario with `hasBaseline: true` is compared against a saved baseline.
 Baselines are stored per scenario under
-`baselines/{scenario-name}/{timestamp}_{runId}.json` but are **local-only**
+`baselines/{scenario-name}/{timestamp}_{runId}.json` and are **local-only**
 (gitignored). Each developer generates their own baselines against their
 local AAB instance using `pnpm run save-baseline`. This avoids committing
 environment-specific scores that would cause false regressions across
 different machines or configurations.
 
+Each scenario with a saved baseline is compared against it. The most recent
+file in each directory is loaded automatically.
+
 **What a baseline stores:** aggregated `passAtK`, `passToTheK`,
 `passingTrials`, and `totalTrials` per evaluator, not raw trial transcripts.
 
-**Missing baselines cause a hard failure.** If a scenario has no local
-baseline, the eval exits 1 with an error directing you to run
-`save-baseline` or `--graduate`. Use `--skip-baseline` on initial runs
-before baselines have been saved.
+**No baseline = informational.** Scenarios without a saved baseline are
+reported but never block. Pass `--skip-baseline` to skip comparison entirely.
 
 **How regression is detected:** for each evaluator, the harness computes
 `drop = baselineScore - currentScore`. If `drop > threshold` the evaluator is
@@ -226,11 +220,10 @@ regression: {
 
 ---
 
-## Graduating a Scenario: capability → regression
+## Graduating a Scenario
 
-A scenario starts as `category: 'capability'` while the agent is still
-improving. Once behaviour is stable, it graduates to `category: 'regression'`
-to gate future PRs.
+A scenario starts without a baseline (informational only). Once behaviour
+is stable, it graduates by saving a validated baseline that gates future PRs.
 
 **Why a graduation check?** Saving a baseline from a single run that happened
 to score well is unreliable — the score might not reproduce. The graduation
@@ -250,7 +243,7 @@ at a high rate before recommending promotion.
 3. **Always saves a baseline**, whether or not promotion is recommended.
 4. If `min(pass rate across all evaluators) ≥ graduationPassRateThreshold`
    (default `0.9`):
-   - Prints the required `category` config change and exits 0.
+   - Saves the baseline and exits 0. The scenario is now gated.
 5. Otherwise: prints per-evaluator pass rates with threshold markers
    and exits 1. The baseline is saved as an informational checkpoint.
 
@@ -282,9 +275,6 @@ pnpm run eval --graduate-suite smoke
 ✓ Scenario "build-landing-page" promoted [medium / 5 trials]
   Baseline saved.
   Min pass rate: 100% (threshold: 90%)
-
-  To graduate, update the scenario config:
-    category: 'regression'  // was: 'capability'
 ```
 
 **Not promoted output (exit 1):**
@@ -297,7 +287,7 @@ pnpm run eval --graduate-suite smoke
     jtbd-completion: 60% ✗
 ```
 
-Apply the suggested change in `src/scenarios/<name>.ts` and open a PR.
+The baseline is now saved and the scenario will be gated on future runs.
 
 ### Suite graduation parallelism
 
@@ -394,7 +384,7 @@ src/
   baselines/
     baseline-store.ts     # Save/load baselines/{scenario}.json
     regression-comparator.ts
-    graduation-runner.ts  # Stability check before category promotion
+    graduation-runner.ts  # Stability check before baseline promotion
     types.ts
 
   store/

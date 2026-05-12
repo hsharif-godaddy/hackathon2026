@@ -44,7 +44,6 @@ function makeMinimalTrial(trialIndex: number): TrialResult {
 
 const SCENARIO_RESULT: ScenarioResult = {
   scenarioName: 'build-landing-page',
-  category: 'regression',
   stabilityLevel: 'medium',
   trials: [],
   aggregated: {
@@ -67,7 +66,6 @@ const STORED_BASELINE: BaselineScores = {
   scenarioName: 'build-landing-page',
   runId: 'run-001',
   createdAt: '2026-04-03T00:00:00.000Z',
-  category: 'regression',
   scores: {
     'bug-hit-rate': {
       passAtK: true,
@@ -80,7 +78,6 @@ const STORED_BASELINE: BaselineScores = {
 
 const STORED_AGGREGATED: StoredAggregated = {
   scenarioName: 'build-landing-page',
-  category: 'regression',
   evaluators: {
     'bug-hit-rate': {
       passAtK: true,
@@ -175,7 +172,7 @@ describe('BaselineStore', () => {
       expect(parsed).not.toHaveProperty('trials');
     });
 
-    it('includes runId, scenarioName, category, createdAt', async () => {
+    it('includes runId, scenarioName, createdAt', async () => {
       const store = new BaselineStore();
       await store.save('run-42', SCENARIO_RESULT);
 
@@ -184,7 +181,6 @@ describe('BaselineStore', () => {
 
       expect(parsed.runId).toBe('run-42');
       expect(parsed.scenarioName).toBe('build-landing-page');
-      expect(parsed.category).toBe('regression');
       expect(typeof parsed.createdAt).toBe('string');
       expect(() => new Date(parsed.createdAt)).not.toThrow();
     });
@@ -523,7 +519,6 @@ describe('BaselineStore', () => {
     it('omits passAtK and passToTheK for score-mode evaluator (passAtK absent)', async () => {
       const stored: StoredAggregated = {
         scenarioName: 'build-landing-page',
-        category: 'regression',
         evaluators: {
           'latency': {
             passingTrials: 3,
@@ -565,7 +560,6 @@ describe('BaselineStore', () => {
   describe('saveFromStored() — regressionThresholds', () => {
     const STORED_WITH_SCORE_EVALUATOR: StoredAggregated = {
       scenarioName: 'build-landing-page',
-      category: 'regression',
       evaluators: {
         'latency-evaluator': {
           passAtK: true,
@@ -719,7 +713,6 @@ describe('BaselineStore', () => {
       async () => {
         const stored: StoredAggregated = {
           scenarioName: 'build-landing-page',
-          category: 'regression',
           evaluators: {
             'latency': {
               passAtK: true,
@@ -828,7 +821,7 @@ describe('BaselineStore', () => {
       expect(parsed.stabilityTrials).toBe(5);
     });
 
-    it('includes runId, scenarioName, category, createdAt', async () => {
+    it('includes runId, scenarioName, createdAt', async () => {
       const store = new BaselineStore();
       await store.saveFromStored('run-42', STORED_AGGREGATED);
 
@@ -837,14 +830,12 @@ describe('BaselineStore', () => {
 
       expect(parsed.runId).toBe('run-42');
       expect(parsed.scenarioName).toBe('build-landing-page');
-      expect(parsed.category).toBe('regression');
       expect(typeof parsed.createdAt).toBe('string');
     });
 
     it('preserves medianScore of 0 for score-mode evaluators', async () => {
       const stored: StoredAggregated = {
         scenarioName: 'build-landing-page',
-        category: 'regression',
         evaluators: {
           'latency': {
             passAtK: true,
@@ -878,7 +869,6 @@ describe('BaselineStore', () => {
     it('uses filtered medianScore over scores.median', async () => {
       const stored: StoredAggregated = {
         scenarioName: 'build-landing-page',
-        category: 'regression',
         evaluators: {
           'latency': {
             passAtK: true,

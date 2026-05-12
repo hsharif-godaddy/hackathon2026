@@ -51,7 +51,6 @@ export function makeScenario(overrides: Partial<Scenario> = {}): Scenario {
     goals: [],
     evaluators: [],
     trials: 1,
-    category: 'regression',
     ...overrides,
   };
 }

@@ -21,23 +21,15 @@ const STABILITY_GATE: Record<StabilityLevel, RegressionResult['gate']> = {
 export class RegressionComparator {
   compare(
     result: ScenarioResult,
-    baseline: BaselineScores | null,
+    baseline: BaselineScores,
     config: RegressionConfig,
   ): RegressionResult {
     const evaluators = this.buildEvalResults(result, baseline, config);
-    const hasBaseline = baseline !== null;
     const stabilityLevel =
-      baseline?.stabilityLevel ?? result.stabilityLevel;
-    const gate = this.computeGate(
-      result.category,
-      hasBaseline,
-      evaluators,
-      stabilityLevel,
-    );
+      baseline.stabilityLevel ?? result.stabilityLevel;
+    const gate = this.computeGate(evaluators, stabilityLevel);
     return {
       scenarioName: result.scenarioName,
-      category: result.category,
-      hasBaseline,
       gate,
       stabilityLevel,
       evaluators,
@@ -46,7 +38,7 @@ export class RegressionComparator {
 
   private buildEvalResults(
     result: ScenarioResult,
-    baseline: BaselineScores | null,
+    baseline: BaselineScores,
     config: RegressionConfig,
   ): RegressionEvalResult[] {
     return Object.entries(result.aggregated).map(([name, agg]) => {
@@ -60,7 +52,7 @@ export class RegressionComparator {
   private buildPassRateResult(
     name: string,
     agg: AggregatedResult,
-    baseline: BaselineScores | null,
+    baseline: BaselineScores,
     config: RegressionConfig,
   ): RegressionEvalResult {
     const versionMismatch = this.versionMismatch(name, agg, baseline);
@@ -71,7 +63,7 @@ export class RegressionComparator {
         ? agg.passingTrials / agg.totalTrials
         : NaN;
 
-    const baselineEntry = baseline?.scores[name];
+    const baselineEntry = baseline.scores[name];
     const baselineScore =
       baselineEntry && baselineEntry.totalTrials > 0
         ? baselineEntry.passingTrials / baselineEntry.totalTrials
@@ -95,7 +87,7 @@ export class RegressionComparator {
   private buildScoreModeResult(
     name: string,
     agg: AggregatedResult,
-    baseline: BaselineScores | null,
+    baseline: BaselineScores,
     config: RegressionConfig,
   ): RegressionEvalResult {
     const versionMismatch = this.versionMismatch(name, agg, baseline);
@@ -103,7 +95,7 @@ export class RegressionComparator {
 
     const currentScore = agg.medianScore ?? NaN;
 
-    const baselineEntry = baseline?.scores[name];
+    const baselineEntry = baseline.scores[name];
     const baselineScore = baselineEntry?.medianScore ?? NaN;
 
     const delta =
@@ -113,7 +105,7 @@ export class RegressionComparator {
 
     // Threshold: baseline JSON overrides config map overrides default
     const threshold =
-      baseline?.regressionThresholds?.[name]
+      baseline.regressionThresholds?.[name]
       ?? config.thresholds[name]
       ?? config.defaultThreshold;
 
@@ -167,13 +159,9 @@ export class RegressionComparator {
 
 
   private computeGate(
-    category: 'capability' | 'regression',
-    hasBaseline: boolean,
     evaluators: RegressionEvalResult[],
     stabilityLevel: StabilityLevel,
   ): RegressionResult['gate'] {
-    if (category === 'capability') return 'informational';
-    if (!hasBaseline) return 'missing-baseline';
     if (
       evaluators.length > 0 &&
       evaluators.every((e) => e.type === 'skipped')

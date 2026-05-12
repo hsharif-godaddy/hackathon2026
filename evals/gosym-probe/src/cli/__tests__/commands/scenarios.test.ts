@@ -18,7 +18,6 @@ function makeScenario(
     evaluators: [],
     trials: 3,
     executionMode: 'sequential',
-    category: 'regression',
     setup: noop,
     teardown: noop,
     ...overrides,
@@ -30,7 +29,6 @@ describe('formatScenariosTable', () => {
   it('includes all column headers', () => {
     const result = (formatScenariosTable([]));
     expect(result).toContain('Name');
-    expect(result).toContain('Category');
     expect(result).toContain('Trials');
     expect(result).toContain('Mode');
     expect(result).toContain('Evaluators');
@@ -41,11 +39,6 @@ describe('formatScenariosTable', () => {
     expect(formatScenariosTable([s])).toContain(
       'build-landing-page',
     );
-  });
-
-  it('includes category', () => {
-    const s = makeScenario({ category: 'capability' });
-    expect(formatScenariosTable([s])).toContain('capability');
   });
 
   it('includes trial count', () => {

@@ -45,7 +45,6 @@ export interface BuildQualityConfig {
   staticFirstMessage?: string;
   persona?: Persona;
   suite?: string | null;
-  category?: 'capability' | 'regression';
   trials?: number;
   extraEvaluators?: Evaluator[];
 }
@@ -103,7 +102,6 @@ export function createBuildQualityScenario(
     evaluators: allEvaluators,
     trials: config.trials ?? 3,
     executionMode: 'parallel',
-    category: config.category ?? 'capability',
     maxTurns: config.maxTurns,
 
     setup: async () => {

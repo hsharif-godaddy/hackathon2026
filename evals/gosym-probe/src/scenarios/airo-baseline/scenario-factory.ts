@@ -74,9 +74,6 @@ export function buildAiroBaselineScenarioFromSyntheticUser(
     evaluators: useBaselineEvaluators ? createBaselineEvaluators(gocode) : [],
     trials: scenarioDefinition.trials,
     executionMode: scenarioDefinition.executionMode,
-    category: useBaselineEvaluators
-      ? 'regression'
-      : scenarioDefinition.category,
     maxTurns: scenarioDefinition.maxTurns ?? defaultMaxTurns(scenarioDefinition.complexity ?? null),
 
     setup: async () => {

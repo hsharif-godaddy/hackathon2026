@@ -18,6 +18,7 @@ import type { Config } from '../../../config/environments/types.js';
 import type { AgentClient } from '../../clients/agent-client.js';
 import type { SyntheticUserAgent } from '../synthetic-user.js';
 import type { Transcript } from '../transcript.js';
+import type { BaselineScores } from '../../baselines/types.js';
 
 const mockClient = {
   configure: vi.fn(),
@@ -78,7 +79,6 @@ function makeScenario(overrides: Partial<Scenario> = {}): Scenario {
     goals: [],
     evaluators: [],
     trials: 3,
-    category: 'regression',
     ...overrides,
   };
 }
@@ -658,7 +658,7 @@ describe('SuiteRunner — onTrialEvaluated callback', () => {
 
 describe('SuiteRunner — baseline comparison', () => {
   const mockBaselineStore = {
-    load: vi.fn<() => Promise<null>>().mockResolvedValue(null),
+    load: vi.fn<() => Promise<BaselineScores | null>>().mockResolvedValue(null),
   };
 
   beforeEach(() => {
@@ -667,7 +667,7 @@ describe('SuiteRunner — baseline comparison', () => {
     mockBaselineStore.load.mockResolvedValue(null);
   });
 
-  it('attaches regressionStatus when baselineStore is provided', async () => {
+  it('regressionStatus is undefined when baseline load returns null', async () => {
     const scenario = makeScenario({ trials: 1 });
     const [result] = await new SuiteRunner({
       scenarios: [scenario],
@@ -677,9 +677,7 @@ describe('SuiteRunner — baseline comparison', () => {
       baselineStore: mockBaselineStore,
     }).run();
 
-    expect(result.regressionStatus).toBeDefined();
-    expect(result.regressionStatus?.hasBaseline).toBe(false);
-    expect(result.regressionStatus?.gate).toBe('missing-baseline');
+    expect(result.regressionStatus).toBeUndefined();
   });
 
   it('regressionStatus is undefined when no baselineStore', async () => {
@@ -707,9 +705,52 @@ describe('SuiteRunner — baseline comparison', () => {
     expect(mockBaselineStore.load).toHaveBeenCalledWith('my-scenario');
   });
 
-  it('gate is missing-baseline on first run (no baseline)', async () => {
+  it('does not call comparator when no baseline exists', async () => {
     mockBaselineStore.load.mockResolvedValue(null);
-    const scenario = makeScenario({ category: 'regression', trials: 1 });
+    const { RegressionComparator } = await import(
+      '../../baselines/regression-comparator.js'
+    );
+    const compareSpy = vi.spyOn(
+      RegressionComparator.prototype,
+      'compare',
+    );
+
+    const scenario = makeScenario({ trials: 1 });
+    await new SuiteRunner({
+      scenarios: [scenario],
+      config: mockConfig,
+      makeAgentClient,
+      syntheticUser: mockSyntheticUser,
+      baselineStore: mockBaselineStore,
+    }).run();
+
+    expect(compareSpy).not.toHaveBeenCalled();
+    compareSpy.mockRestore();
+  });
+
+  it('populates regressionStatus when baseline exists', async () => {
+    mockBaselineStore.load.mockResolvedValue({
+      scenarioName: 'test-scenario',
+      runId: 'baseline-run',
+      createdAt: '2026-01-01T00:00:00Z',
+      scores: {
+        'test-eval': {
+          passAtK: true,
+          passToTheK: true,
+          passingTrials: 3,
+          totalTrials: 3,
+        },
+      },
+    });
+    const evaluator = makeEvaluator(
+      'test-eval',
+      makePassResult('test-eval'),
+    );
+    const scenario = makeScenario({
+      trials: 1,
+      evaluators: [evaluator],
+    });
+
     const [result] = await new SuiteRunner({
       scenarios: [scenario],
       config: mockConfig,
@@ -718,7 +759,9 @@ describe('SuiteRunner — baseline comparison', () => {
       baselineStore: mockBaselineStore,
     }).run();
 
-    expect(result.regressionStatus?.gate).toBe('missing-baseline');
+    expect(result.regressionStatus).toBeDefined();
+    expect(result.regressionStatus!.gate).toBe('pass');
+    expect(result.regressionStatus!.scenarioName).toBe('test-scenario');
   });
 });
 

@@ -1,9 +1,6 @@
 import type { Transcript } from './transcript.js';
 import type { EvalResult } from '../evaluators/evaluator.js';
-import type {
-  Scenario,
-  StabilityLevel,
-} from '../scenarios/types.js';
+import type { StabilityLevel } from '../scenarios/types.js';
 import type { RegressionResult } from '../baselines/types.js';
 
 export interface TrialResult {
@@ -38,7 +35,6 @@ export interface AggregatedResult {
 
 export interface ScenarioResult {
   scenarioName: string;
-  category: Scenario['category'];
   stabilityLevel: StabilityLevel;
   trials: TrialResult[];
   /** Keyed by evaluator name. */

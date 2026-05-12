@@ -18,7 +18,6 @@ export const testScenario: Scenario = {
   goals: [],
   evaluators: [],
   trials: 1,
-  category: 'capability',
 };
 
 export function makeTranscript(overrides: Partial<Transcript> = {}): Transcript {

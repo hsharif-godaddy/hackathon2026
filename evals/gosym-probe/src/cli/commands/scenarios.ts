@@ -5,11 +5,10 @@ import type { Scenario } from '../../scenarios/types.js';
 
 export function formatScenariosTable(scenarios: Scenario[]): string {
   const headers = [
-    'Name', 'Category', 'Trials', 'Mode', 'Evaluators',
+    'Name', 'Trials', 'Mode', 'Evaluators',
   ];
   const rows = scenarios.map((s) => [
     s.name,
-    s.category,
     String(s.trials),
     s.executionMode ?? 'sequential',
     String(s.evaluators.length),

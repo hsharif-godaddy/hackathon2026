@@ -257,7 +257,6 @@ export function build<PascalName>Scenario(
     ],
     trials: 3,
     executionMode: '<parallel|sequential>',
-    category: 'capability',
 
     setup: async () => {
       const { appId, previewUrl } =
@@ -297,8 +296,8 @@ If the suite directory already exists, add the export to the existing
 - LLM-based evaluators (`JTBDCompletionEvaluator`,
   `createBuildQualityEvaluators`) need `gocode` in their constructor
 - Computed evaluators take no constructor args
-- All scenarios start as `category: 'capability'` (use `/graduate`
-  to promote later)
+- Regression gating is driven by baseline presence (use `/graduate`
+  to save a baseline and enable regression checks)
 - Always include `setup` and `teardown` for app provisioning
 
 ### 5. Update registry
@@ -354,10 +353,6 @@ describe('<scenario-name> scenario', () => {
     expect(names).toContain('bug-hit-rate');
     expect(names).toContain('prompt-efficiency');
     // ... other expected evaluators
-  });
-
-  it('starts as capability', () => {
-    expect(scenario.category).toBe('capability');
   });
 
   it('has trials set', () => {

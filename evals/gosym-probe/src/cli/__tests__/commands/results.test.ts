@@ -20,7 +20,6 @@ const baseMetadata: RunMetadata = {
 
 const baseAgg: StoredAggregated = {
   scenarioName: 'scenario-a',
-  category: 'capability',
   evaluators: {
     'tool-call': {
       passAtK: true,

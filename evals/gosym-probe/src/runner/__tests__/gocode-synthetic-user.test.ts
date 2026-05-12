@@ -15,7 +15,6 @@ function makeClient(response = 'DONE'): GocodeClient {
 function makeScenario(): Scenario {
   return {
     name: 'test',
-    category: 'regression',
     trials: 1,
     persona: {
       name: 'tester',

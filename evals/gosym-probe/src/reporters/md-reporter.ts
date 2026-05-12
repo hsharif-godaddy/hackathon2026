@@ -360,8 +360,8 @@ export class MdReporter {
   }
 
   public render(runId: string, results: ScenarioResult[]): string {
-    const regression = results.filter((r) => r.category === 'regression');
-    const capability = results.filter((r) => r.category === 'capability');
+    const gated = results.filter((r) => r.regressionStatus !== undefined);
+    const informational = results.filter((r) => r.regressionStatus === undefined);
     const unknowns = collectUnknowns(results);
 
     const sections: string[] = [
@@ -376,16 +376,16 @@ export class MdReporter {
       '',
       '---',
       '',
-      this.renderCategory(
-        'Regression Scenarios',
+      this.renderSection(
+        'Gated Scenarios',
         '> Results in this section gate the PR.',
-        regression,
+        gated,
       ),
       '',
-      this.renderCategory(
-        'Capability Scenarios',
+      this.renderSection(
+        'Informational Scenarios',
         '> Results in this section are informational only.',
-        capability,
+        informational,
       ),
     ];
 
@@ -399,8 +399,8 @@ export class MdReporter {
   private renderSuiteSummary(
     results: ScenarioResult[],
   ): string {
-    const regression = results.filter((r) => r.category === 'regression');
-    const capability = results.filter((r) => r.category === 'capability');
+    const gated = results.filter((r) => r.regressionStatus !== undefined);
+    const informational = results.filter((r) => r.regressionStatus === undefined);
     const totalTrials = results.reduce(
       (sum, result) => sum + result.trials.length,
       0,
@@ -408,10 +408,10 @@ export class MdReporter {
     const scenarioPasses = results.filter(
       (result) => scenarioOverall(result) === 'pass',
     ).length;
-    const regressionPasses = regression.filter(
+    const gatedPasses = gated.filter(
       (result) => scenarioOverall(result) === 'pass',
     ).length;
-    const capabilityPasses = capability.filter(
+    const informationalPasses = informational.filter(
       (result) => scenarioOverall(result) === 'pass',
     ).length;
 
@@ -422,10 +422,10 @@ export class MdReporter {
       `- Trials: **${totalTrials}**`,
       `- Scenarios passed: **${scenarioPasses}** / ${results.length} `
         + `(${formatPercent(scenarioPasses, results.length)})`,
-      `- Regression passed: **${regressionPasses}** / ${regression.length} `
-        + `(${formatPercent(regressionPasses, regression.length)})`,
-      `- Capability passed: **${capabilityPasses}** / ${capability.length} `
-        + `(${formatPercent(capabilityPasses, capability.length)})`,
+      `- Gated passed: **${gatedPasses}** / ${gated.length} `
+        + `(${formatPercent(gatedPasses, gated.length)})`,
+      `- Informational passed: **${informationalPasses}** / ${informational.length} `
+        + `(${formatPercent(informationalPasses, informational.length)})`,
       '',
       '### Scenario pass rate (overall)',
       '',
@@ -441,8 +441,8 @@ export class MdReporter {
     results: ScenarioResult[],
   ): string[] {
     const lines = [
-      '| Scenario ID | Scenario name | Category | Overall | Evaluators passed | Links |',
-      '|------------|---------------|----------|---------|------------------|-------|',
+      '| Scenario ID | Scenario name | Overall | Evaluators passed | Links |',
+      '|------------|---------------|---------|------------------|-------|',
     ];
 
     for (const result of results) {
@@ -450,7 +450,6 @@ export class MdReporter {
       lines.push(
         `| ${escapePipeForMarkdown(result.scenarioName)}`
         + ` | ${truncateCell(result.scenarioName, 120)}`
-        + ` | ${result.category}`
         + ` | ${scenarioOverall(result)}`
         + ` | ${counts.passed}/${counts.total} `
         + `(${formatPercent(counts.passed, counts.total)})`
@@ -556,9 +555,9 @@ export class MdReporter {
     return total;
   }
 
-  // ── Category rendering ───────────────────────────────────
+  // ── Section rendering ────────────────────────────────────
 
-  private renderCategory(
+  private renderSection(
     heading: string,
     note: string,
     results: ScenarioResult[],

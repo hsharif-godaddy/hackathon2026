@@ -15,7 +15,6 @@ function makeScenario(
   return {
     name,
     suite,
-    category: 'capability',
     trials: 1,
     persona: {
       name: 'Test',

@@ -59,14 +59,6 @@ describe("createPromptVsSkillScenario", () => {
       expect(scenario.executionMode).toBe("sequential");
     });
 
-    it("sets category to 'capability'", () => {
-      const scenario = createPromptVsSkillScenario(
-        minimalConfig(),
-        makeGocodeClient(),
-        makeCtrlPlaneClient(),
-      );
-      expect(scenario.category).toBe("capability");
-    });
   });
 
   describe("integration seam — evaluator list", () => {

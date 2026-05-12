@@ -21,7 +21,6 @@ function makeScenario(overrides: Partial<Scenario> = {}): Scenario {
     goals: [],
     evaluators: [],
     trials: 3,
-    category: 'regression',
     ...overrides,
   };
 }
@@ -215,16 +214,14 @@ describe('TrialAggregator', () => {
   });
 
   describe('ScenarioResult metadata', () => {
-    it('preserves scenario name and category', () => {
+    it('preserves scenario name', () => {
       const scenario = makeScenario({
         name: 'my-scenario',
-        category: 'capability',
       });
       const result = agg.aggregate(scenario, [
         makeTrial(0, { eval: 'pass' }),
       ]);
       expect(result.scenarioName).toBe('my-scenario');
-      expect(result.category).toBe('capability');
     });
 
     it('includes all TrialResults verbatim', () => {

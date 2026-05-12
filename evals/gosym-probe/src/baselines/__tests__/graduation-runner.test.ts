@@ -86,7 +86,6 @@ function makeScenarioResult(
   const passing = verdicts.filter((v) => v === 'pass').length;
   return {
     scenarioName: 'test-scenario',
-    category: 'capability',
     stabilityLevel: 'medium',
     trials,
     aggregated: {
@@ -105,7 +104,6 @@ const mockScenario: Scenario = {
   goals: [],
   evaluators: [],
   trials: 3,
-  category: 'capability',
 };
 
 const mockConfig: Config = {
@@ -222,7 +220,6 @@ describe('GraduationRunner', () => {
       // expected: latency is skipped, minPassRate=1.0, promoted=true
       const result: ScenarioResult = {
         scenarioName: 'test-scenario',
-        category: 'capability',
         stabilityLevel: 'medium',
         trials: [],
         aggregated: {
@@ -248,7 +245,6 @@ describe('GraduationRunner', () => {
     it('score-mode evaluator excluded; failing pass-rate evaluator still blocks', async () => {
       const result: ScenarioResult = {
         scenarioName: 'test-scenario',
-        category: 'capability',
         stabilityLevel: 'medium',
         trials: [],
         aggregated: {
@@ -273,7 +269,6 @@ describe('GraduationRunner', () => {
     it('all evaluators score-mode → NaN minPassRate → not promoted', async () => {
       const result: ScenarioResult = {
         scenarioName: 'test-scenario',
-        category: 'capability',
         stabilityLevel: 'medium',
         trials: [],
         aggregated: {
@@ -391,7 +386,6 @@ describe('GraduationRunner', () => {
       // minPassRate should be 0.6 → not promoted
       const twoEvalResult: ScenarioResult = {
         scenarioName: 'test-scenario',
-        category: 'capability',
         stabilityLevel: 'medium',
         trials: [],
         aggregated: {

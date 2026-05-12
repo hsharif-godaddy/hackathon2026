@@ -60,10 +60,6 @@ function printGraduationResult(result: GraduationResult): void {
       `  Min pass rate: ${rateStr}` +
       ` (threshold: ${(passRateThreshold * 100).toFixed(0)}%)`,
     );
-    console.log(
-      '\n  To graduate, update the scenario config:',
-    );
-    console.log(`    category: 'regression'  // was: 'capability'`);
   } else {
     console.error(
       `\n✗ Scenario "${scenarioName}" not promoted` +
@@ -499,23 +495,8 @@ async function main(): Promise<void> {
     console.log(`  ${runDir}`);
 
     if (!skipBaseline) {
-      const missingBaselines = results.filter(
-        (r) => r.regressionStatus?.gate === 'missing-baseline',
-      );
-      if (missingBaselines.length > 0) {
-        for (const r of missingBaselines) {
-          console.error(
-            `Error: regression scenario "${r.scenarioName}" has no ` +
-            `baseline. Run save-baseline after a stable eval run, or ` +
-            `use --graduate ${r.scenarioName} to validate stability.`,
-          );
-        }
-        process.exitCode = 1;
-        return;
-      }
-
       const versionSkipped = results.filter(
-        (r) => r.category === 'regression' && r.regressionStatus?.gate === 'version-skipped',
+        (r) => r.regressionStatus?.gate === 'version-skipped',
       );
       if (versionSkipped.length > 0) {
         for (const r of versionSkipped) {
@@ -551,7 +532,7 @@ async function main(): Promise<void> {
       for (const r of results) {
         if (r.regressionStatus?.gate === 'warning') {
           console.warn(
-            `⚠ Warning: regression detected in "${r.scenarioName}"` +
+            `Warning: regression detected in "${r.scenarioName}"` +
             ` (low stability). Consider re-graduating at medium or` +
             ` high stability.`,
           );

@@ -30,7 +30,6 @@ export interface AiroBaselineScenarioDefinition {
   complexity?: string;
   trials: number;
   executionMode: 'sequential' | 'parallel';
-  category: 'capability' | 'regression';
   maxTurns?: number;
 }
 
@@ -64,7 +63,6 @@ const requiredScenarioFields = [
   'trials',
   'maxTurns',
   'executionMode',
-  'category',
   'llmConfig',
   'browserConfig',
   'evaluators',
@@ -95,7 +93,6 @@ const scenarioDefinitionSchema = z.object({
   complexity: nonEmptyString.optional(),
   trials: z.number().int().positive(),
   executionMode: z.enum(['sequential', 'parallel']),
-  category: z.enum(['capability', 'regression']),
   maxTurns: z.number().int().positive(),
   llmConfig: z.object({}).passthrough(),
   browserConfig: z.object({}).passthrough(),

@@ -46,7 +46,6 @@ export function complexPromptLatencyScenario(
     ],
     trials: 5,
     executionMode: 'parallel',
-    category: 'capability',
 
     setup: async () => {
       const { appId, previewUrl } =

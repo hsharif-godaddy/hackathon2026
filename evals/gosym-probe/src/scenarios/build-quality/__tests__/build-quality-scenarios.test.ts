@@ -89,10 +89,6 @@ describe('build-quality suite', () => {
         }
       });
 
-      it('starts as capability', () => {
-        expect(scenario.category).toBe('capability');
-      });
-
       it('has 3 trials', () => {
         expect(scenario.trials).toBe(3);
       });

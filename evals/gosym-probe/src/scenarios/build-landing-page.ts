@@ -29,7 +29,6 @@ export function buildLandingPageScenario(
       ],
       persona: beginnerPersona,
       suite: null,
-      category: 'regression',
       trials: 1,
       agentStepBudget: 15,
       maxTurns: 8,

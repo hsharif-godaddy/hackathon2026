@@ -10,7 +10,6 @@ const scenario = {
   goals: [],
   evaluators: [],
   trials: 1,
-  category: 'capability',
 } satisfies Scenario;
 
 describe('baseline operational efficiency', function operationalTests() {

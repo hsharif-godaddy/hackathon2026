@@ -49,10 +49,15 @@ function makeTrial(
   };
 }
 
-const REGRESSION_RESULT: ScenarioResult = {
+const BASELINED_RESULT: ScenarioResult = {
   scenarioName: 'build-landing-page',
-  category: 'regression',
   stabilityLevel: 'medium',
+  regressionStatus: {
+    scenarioName: 'build-landing-page',
+    gate: 'pass' as const,
+    stabilityLevel: 'medium' as const,
+    evaluators: [],
+  },
   trials: [
     makeTrial(
       0,
@@ -107,9 +112,8 @@ const REGRESSION_RESULT: ScenarioResult = {
   },
 };
 
-const CAPABILITY_RESULT: ScenarioResult = {
+const NO_BASELINE_RESULT: ScenarioResult = {
   scenarioName: 'new-feature',
-  category: 'capability',
   stabilityLevel: 'medium',
   trials: [
     makeTrial(0, [makeEvalResult('output-quality', 'pass')]),
@@ -135,7 +139,7 @@ describe('MdReporter', () => {
 
   it('creates results dir before writing', async () => {
     const reporter = new MdReporter();
-    await reporter.write('run-001', [REGRESSION_RESULT]);
+    await reporter.write('run-001', [BASELINED_RESULT]);
 
     expect(mockMkdir).toHaveBeenCalledWith('results', { recursive: true });
     expect(mockMkdir).toHaveBeenCalledBefore(mockWriteFile);
@@ -143,7 +147,7 @@ describe('MdReporter', () => {
 
   it('writes to results/{runId}.md', async () => {
     const reporter = new MdReporter();
-    await reporter.write('run-abc', [REGRESSION_RESULT]);
+    await reporter.write('run-abc', [BASELINED_RESULT]);
 
     const [path] = mockWriteFile.mock.calls[0];
     expect(path).toBe('results/run-abc.md');
@@ -151,51 +155,50 @@ describe('MdReporter', () => {
 
   it('returns the output file path', async () => {
     const reporter = new MdReporter();
-    const path = await reporter.write('run-xyz', [REGRESSION_RESULT]);
+    const path = await reporter.write('run-xyz', [BASELINED_RESULT]);
     expect(path).toBe('results/run-xyz.md');
   });
 
   it('includes runId in report header', async () => {
     const reporter = new MdReporter();
-    await reporter.write('run-001', [REGRESSION_RESULT]);
+    await reporter.write('run-001', [BASELINED_RESULT]);
 
     const [, content] = mockWriteFile.mock.calls[0];
     expect(content as string).toContain('run-001');
   });
 
-  it('has a Regression Scenarios section', async () => {
+  it('has a Gated Scenarios section', async () => {
     const reporter = new MdReporter();
-    await reporter.write('run-001', [REGRESSION_RESULT]);
+    await reporter.write('run-001', [BASELINED_RESULT]);
 
     const [, content] = mockWriteFile.mock.calls[0];
-    expect(content as string).toContain('Regression Scenarios');
+    expect(content as string).toContain('Gated Scenarios');
   });
 
-  it('has a Capability Scenarios section', async () => {
+  it('has an Informational Scenarios section', async () => {
     const reporter = new MdReporter();
-    await reporter.write('run-001', [REGRESSION_RESULT, CAPABILITY_RESULT]);
+    await reporter.write('run-001', [BASELINED_RESULT, NO_BASELINE_RESULT]);
 
     const [, content] = mockWriteFile.mock.calls[0];
-    expect(content as string).toContain('Capability Scenarios');
+    expect(content as string).toContain('Informational Scenarios');
   });
 
   it('includes the suite summary tables', () => {
     const reporter = new MdReporter();
     const content = reporter.render(
       'run-001',
-      [REGRESSION_RESULT, CAPABILITY_RESULT],
+      [BASELINED_RESULT, NO_BASELINE_RESULT],
     );
 
     expect(content).toContain('## Suite Summary');
     expect(content).toContain('### Scenario pass rate (overall)');
     expect(content).toContain('### Evaluator rollup (across scenarios)');
-    expect(content).toContain('| Scenario ID | Scenario name | Category | Overall | Evaluators passed | Links |');
     expect(content).toContain('| Evaluator | pass | partial | fail | unknown | pass rate |');
   });
 
   it('links scenario pass-rate rows to every trial markdown result', () => {
     const reporter = new MdReporter();
-    const content = reporter.render('run-001', [REGRESSION_RESULT]);
+    const content = reporter.render('run-001', [BASELINED_RESULT]);
 
     expect(content).toContain(
       '[T1](scenarios/build-landing-page/trials/0/eval-results.md)',
@@ -208,9 +211,9 @@ describe('MdReporter', () => {
     );
   });
 
-  it('includes a category-level evaluator matrix', () => {
+  it('includes an evaluator matrix', () => {
     const reporter = new MdReporter();
-    const content = reporter.render('run-001', [REGRESSION_RESULT]);
+    const content = reporter.render('run-001', [BASELINED_RESULT]);
 
     expect(content).toContain('| Scenario | Evaluator | pass@k | pass^k | T1 | T2 | T3 |');
     expect(content).toContain(
@@ -218,17 +221,17 @@ describe('MdReporter', () => {
     );
   });
 
-  it('lists regression scenario name in regression section', async () => {
+  it('lists baselined scenario name in gated section', async () => {
     const reporter = new MdReporter();
-    await reporter.write('run-001', [REGRESSION_RESULT]);
+    await reporter.write('run-001', [BASELINED_RESULT]);
 
     const [, content] = mockWriteFile.mock.calls[0];
     expect(content as string).toContain('build-landing-page');
   });
 
-  it('lists capability scenario name in capability section', async () => {
+  it('lists non-baselined scenario name in informational section', async () => {
     const reporter = new MdReporter();
-    await reporter.write('run-001', [REGRESSION_RESULT, CAPABILITY_RESULT]);
+    await reporter.write('run-001', [BASELINED_RESULT, NO_BASELINE_RESULT]);
 
     const [, content] = mockWriteFile.mock.calls[0];
     expect(content as string).toContain('new-feature');
@@ -236,7 +239,7 @@ describe('MdReporter', () => {
 
   it('shows evaluator names in table', async () => {
     const reporter = new MdReporter();
-    await reporter.write('run-001', [REGRESSION_RESULT]);
+    await reporter.write('run-001', [BASELINED_RESULT]);
 
     const [, content] = mockWriteFile.mock.calls[0];
     expect(content as string).toContain('bug-hit-rate');
@@ -245,7 +248,7 @@ describe('MdReporter', () => {
 
   it('shows pass@k and pass^k columns', async () => {
     const reporter = new MdReporter();
-    await reporter.write('run-001', [REGRESSION_RESULT]);
+    await reporter.write('run-001', [BASELINED_RESULT]);
 
     const [, content] = mockWriteFile.mock.calls[0];
     expect(content as string).toContain('pass@k');
@@ -256,7 +259,7 @@ describe('MdReporter', () => {
     const reporter = new MdReporter();
     // bug-hit-rate: passAtK=true, passToTheK=true
     // jtbd-completion: passAtK=true, passToTheK=false
-    const content = reporter.render('run-001', [REGRESSION_RESULT]);
+    const content = reporter.render('run-001', [BASELINED_RESULT]);
     const lines = content.split('\n');
     const bugRow = lines.find((l) =>
       l.includes('| bug-hit-rate | pass | pass |'));
@@ -270,7 +273,7 @@ describe('MdReporter', () => {
 
   it('shows per-trial verdict columns (T1, T2, T3)', async () => {
     const reporter = new MdReporter();
-    await reporter.write('run-001', [REGRESSION_RESULT]);
+    await reporter.write('run-001', [BASELINED_RESULT]);
 
     const [, content] = mockWriteFile.mock.calls[0];
     expect(content as string).toContain('T1');
@@ -280,7 +283,7 @@ describe('MdReporter', () => {
 
   it('flags unknown verdicts in human review section', async () => {
     const reporter = new MdReporter();
-    await reporter.write('run-001', [REGRESSION_RESULT]);
+    await reporter.write('run-001', [BASELINED_RESULT]);
 
     const [, content] = mockWriteFile.mock.calls[0];
     expect(content as string).toContain(
@@ -291,7 +294,7 @@ describe('MdReporter', () => {
 
   it('shows T2 label for unknown verdict from trialIndex 1', async () => {
     const reporter = new MdReporter();
-    await reporter.write('run-001', [REGRESSION_RESULT]);
+    await reporter.write('run-001', [BASELINED_RESULT]);
 
     const [, content] = mockWriteFile.mock.calls[0];
     // trialIndex 1 → T2 (1-based)
@@ -305,7 +308,6 @@ describe('MdReporter', () => {
   it('sanitizes | in unknown verdict reason to prevent table corruption', async () => {
     const resultWithPipe: ScenarioResult = {
       scenarioName: 'pipe-scenario',
-      category: 'regression',
       stabilityLevel: 'medium',
       trials: [
         makeTrial(0, [
@@ -341,7 +343,6 @@ describe('MdReporter', () => {
   it('sanitizes newlines in unknown verdict reason', async () => {
     const resultWithNewline: ScenarioResult = {
       scenarioName: 'nl-scenario',
-      category: 'regression',
       stabilityLevel: 'medium',
       trials: [
         makeTrial(0, [
@@ -377,7 +378,6 @@ describe('MdReporter', () => {
   it('uses fallback text when unknown verdict reason is empty', async () => {
     const resultEmpty: ScenarioResult = {
       scenarioName: 'empty-reason',
-      category: 'regression',
       stabilityLevel: 'medium',
       trials: [
         makeTrial(0, [makeEvalResult('my-eval', 'unknown', 0, '')]),
@@ -401,7 +401,6 @@ describe('MdReporter', () => {
   it('does not produce a <details> block when all trials pass', async () => {
     const allPass: ScenarioResult = {
       scenarioName: 'all-pass',
-      category: 'regression',
       stabilityLevel: 'medium',
       trials: [
         makeTrial(0, [makeEvalResult('bug-hit-rate', 'pass')]),
@@ -426,7 +425,6 @@ describe('MdReporter', () => {
   it('omits unknown verdicts section when none present', async () => {
     const noUnknown: ScenarioResult = {
       scenarioName: 'clean',
-      category: 'regression',
       stabilityLevel: 'medium',
       trials: [
         makeTrial(0, [makeEvalResult('bug-hit-rate', 'pass')]),
@@ -447,17 +445,17 @@ describe('MdReporter', () => {
     expect(content as string).not.toContain('Unknown Verdicts');
   });
 
-  it('notes capability section is informational', async () => {
+  it('notes informational section is informational', async () => {
     const reporter = new MdReporter();
-    await reporter.write('run-001', [CAPABILITY_RESULT]);
+    await reporter.write('run-001', [NO_BASELINE_RESULT]);
 
     const [, content] = mockWriteFile.mock.calls[0];
     expect(content as string).toMatch(/[Ii]nformational/);
   });
 
-  it('notes regression section gates the PR', async () => {
+  it('notes gated section gates the PR', async () => {
     const reporter = new MdReporter();
-    await reporter.write('run-001', [REGRESSION_RESULT]);
+    await reporter.write('run-001', [BASELINED_RESULT]);
 
     const [, content] = mockWriteFile.mock.calls[0];
     expect(content as string).toMatch(/gate|PR/i);
@@ -474,14 +472,14 @@ describe('MdReporter', () => {
 
   it('render() is callable directly as a public method', () => {
     const reporter = new MdReporter();
-    const content = reporter.render('run-001', [REGRESSION_RESULT]);
+    const content = reporter.render('run-001', [BASELINED_RESULT]);
     expect(typeof content).toBe('string');
     expect(content).toContain('run-001');
   });
 
   it('respects custom resultsDir', async () => {
     const reporter = new MdReporter('/custom/dir');
-    await reporter.write('run-001', [REGRESSION_RESULT]);
+    await reporter.write('run-001', [BASELINED_RESULT]);
 
     expect(mockMkdir).toHaveBeenCalledWith('/custom/dir', {
       recursive: true,
@@ -495,7 +493,6 @@ describe('MdReporter', () => {
     async () => {
       const observed: ScenarioResult = {
         scenarioName: 'latency-check',
-        category: 'capability',
         stabilityLevel: 'medium',
         trials: [
           makeTrial(0, [
@@ -542,8 +539,6 @@ function makeRegressionStatus(
   const currentScore = 0.8;
   return {
     scenarioName: 'build-landing-page',
-    category: 'regression' as const,
-    hasBaseline: true,
     gate: exceeded ? ('error' as const) : ('pass' as const),
     stabilityLevel: 'medium' as const,
     evaluators: [
@@ -560,7 +555,7 @@ function makeRegressionStatus(
 }
 
 const RESULT_WITH_BASELINE: import('../../runner/types.js').ScenarioResult = {
-  ...REGRESSION_RESULT,
+  ...BASELINED_RESULT,
   regressionStatus: makeRegressionStatus('bug-hit-rate', -0.1, false),
 };
 
@@ -573,7 +568,7 @@ describe('MdReporter — vs. baseline column', () => {
 
   it('omits baseline column when regressionStatus is absent', async () => {
     const reporter = new MdReporter();
-    await reporter.write('run-001', [REGRESSION_RESULT]);
+    await reporter.write('run-001', [NO_BASELINE_RESULT]);
 
     const [, content] = mockWriteFile.mock.calls[0];
     expect(content as string).not.toContain('vs. baseline');
@@ -597,7 +592,7 @@ describe('MdReporter — vs. baseline column', () => {
 
   it('shows formatted positive delta with + prefix', async () => {
     const result = {
-      ...REGRESSION_RESULT,
+      ...BASELINED_RESULT,
       regressionStatus: makeRegressionStatus('bug-hit-rate', 0.05, false),
     };
     const reporter = new MdReporter();
@@ -609,7 +604,7 @@ describe('MdReporter — vs. baseline column', () => {
 
   it('prefixes ⚠️ for exceeded evaluator', async () => {
     const result = {
-      ...REGRESSION_RESULT,
+      ...BASELINED_RESULT,
       regressionStatus: makeRegressionStatus('bug-hit-rate', -0.33, true),
     };
     const reporter = new MdReporter();
@@ -621,11 +616,9 @@ describe('MdReporter — vs. baseline column', () => {
 
   it('shows — for NaN delta (no baseline data for evaluator)', async () => {
     const result = {
-      ...REGRESSION_RESULT,
+      ...BASELINED_RESULT,
       regressionStatus: {
         scenarioName: 'build-landing-page',
-        category: 'regression' as const,
-        hasBaseline: false,
         gate: 'pass' as const,
         stabilityLevel: 'medium' as const,
         evaluators: [
@@ -662,7 +655,7 @@ describe('MdReporter — run details', () => {
     const reporter = new MdReporter();
     const content = reporter.render(
       'run-001',
-      [REGRESSION_RESULT, CAPABILITY_RESULT],
+      [BASELINED_RESULT, NO_BASELINE_RESULT],
     );
     expect(content).toContain('Scenarios');
     expect(content).toContain('2');
@@ -673,7 +666,7 @@ describe('MdReporter — run details', () => {
     const reporter = new MdReporter();
     const content = reporter.render(
       'run-001',
-      [REGRESSION_RESULT],
+      [BASELINED_RESULT],
     );
     expect(content).toContain('Total Trials');
     expect(content).toContain('3');
@@ -683,7 +676,7 @@ describe('MdReporter — run details', () => {
     const reporter = new MdReporter();
     const content = reporter.render(
       'run-001',
-      [REGRESSION_RESULT],
+      [BASELINED_RESULT],
     );
     expect(content).toContain('Duration');
   });
@@ -700,7 +693,7 @@ describe('MdReporter — per-scenario sections', () => {
     const reporter = new MdReporter();
     const content = reporter.render(
       'run-001',
-      [REGRESSION_RESULT],
+      [BASELINED_RESULT],
     );
     expect(content).toContain('### build-landing-page');
   });
@@ -709,7 +702,7 @@ describe('MdReporter — per-scenario sections', () => {
     const reporter = new MdReporter();
     const content = reporter.render(
       'run-001',
-      [REGRESSION_RESULT],
+      [BASELINED_RESULT],
     );
     expect(content).toContain('**Trials:** 3');
     expect(content).toMatch(/Avg Duration/);
@@ -720,7 +713,7 @@ describe('MdReporter — per-scenario sections', () => {
     const reporter = new MdReporter();
     const content = reporter.render(
       'run-001',
-      [REGRESSION_RESULT],
+      [BASELINED_RESULT],
     );
     expect(content).toContain('Mean');
     expect(content).toContain('Range');
@@ -730,7 +723,7 @@ describe('MdReporter — per-scenario sections', () => {
     const reporter = new MdReporter();
     const content = reporter.render(
       'run-001',
-      [REGRESSION_RESULT],
+      [BASELINED_RESULT],
     );
     // bug-hit-rate T1 is pass with score 1.0
     expect(content).toContain('pass (1.00)');
@@ -740,7 +733,7 @@ describe('MdReporter — per-scenario sections', () => {
     const reporter = new MdReporter();
     const content = reporter.render(
       'run-001',
-      [REGRESSION_RESULT],
+      [BASELINED_RESULT],
     );
     expect(content).toContain('<details>');
     expect(content).toContain('Evaluator Reasoning');
@@ -751,7 +744,6 @@ describe('MdReporter — per-scenario sections', () => {
   it('shows "(no reason given)" placeholder for fail/partial with empty reason', () => {
     const emptyReasonResult: ScenarioResult = {
       scenarioName: 'empty-reasons',
-      category: 'capability',
       stabilityLevel: 'medium',
       trials: [
         makeTrial(0, [
@@ -783,7 +775,6 @@ describe('MdReporter — per-scenario sections', () => {
   it('does not render NaN when an evaluator score is NaN', () => {
     const nanResult: ScenarioResult = {
       scenarioName: 'nan-score',
-      category: 'capability',
       stabilityLevel: 'medium',
       trials: [
         makeTrial(0, [makeEvalResult('my-eval', 'fail', NaN)]),
@@ -806,9 +797,9 @@ describe('MdReporter — per-scenario sections', () => {
     // unknown verdicts have their own ## Unknown Verdicts section;
     // they must not also appear in the per-scenario <details> block
     const reporter = new MdReporter();
-    const content = reporter.render('run-001', [REGRESSION_RESULT]);
+    const content = reporter.render('run-001', [BASELINED_RESULT]);
 
-    // REGRESSION_RESULT has an unknown verdict with reason 'Insufficient info'
+    // BASELINED_RESULT has an unknown verdict with reason 'Insufficient info'
     // on jtbd-completion T2. It should appear only in the unknowns table,
     // not in the <details> reasoning block.
     const detailsSection = content.split('<details>')[1]?.split('</details>')[0];
@@ -821,7 +812,6 @@ describe('MdReporter — per-scenario sections', () => {
   it('sanitizes newlines in fail reason in <details> block', () => {
     const resultWithNewline: ScenarioResult = {
       scenarioName: 'nl-details',
-      category: 'capability',
       stabilityLevel: 'medium',
       trials: [
         makeTrial(0, [
@@ -849,7 +839,6 @@ describe('MdReporter — per-scenario sections', () => {
   it('sanitizes | in fail/partial reason in <details> block', () => {
     const resultWithPipe: ScenarioResult = {
       scenarioName: 'pipe-details',
-      category: 'capability',
       stabilityLevel: 'medium',
       trials: [
         makeTrial(0, [
@@ -875,7 +864,6 @@ describe('MdReporter — per-scenario sections', () => {
   it('shows numeric mean and range for known scores', () => {
     const scoreResult: ScenarioResult = {
       scenarioName: 'score-check',
-      category: 'capability',
       stabilityLevel: 'medium',
       trials: [
         makeTrial(0, [makeEvalResult('eval-x', 'fail', 0.0)]),
@@ -908,7 +896,6 @@ describe('MdReporter — failure/error counts', () => {
   it('shows Tool Errors count when tool calls have errors', () => {
     const result: ScenarioResult = {
       scenarioName: 'fails-scenario',
-      category: 'capability',
       stabilityLevel: 'medium',
       trials: [
         makeTrial(
@@ -934,7 +921,6 @@ describe('MdReporter — failure/error counts', () => {
   it('shows Runtime Errors count when transcript has runtime errors', () => {
     const result: ScenarioResult = {
       scenarioName: 'errors-scenario',
-      category: 'capability',
       stabilityLevel: 'medium',
       trials: [
         makeTrial(
@@ -961,7 +947,6 @@ describe('MdReporter — failure/error counts', () => {
   it('shows both Tool Errors and Runtime Errors when both are present', () => {
     const result: ScenarioResult = {
       scenarioName: 'both-scenario',
-      category: 'capability',
       stabilityLevel: 'medium',
       trials: [
         makeTrial(
@@ -989,7 +974,6 @@ describe('MdReporter — failure/error counts', () => {
   it('omits Tool Errors when all tool calls succeed', () => {
     const result: ScenarioResult = {
       scenarioName: 'clean-tools',
-      category: 'capability',
       stabilityLevel: 'medium',
       trials: [
         makeTrial(
@@ -1015,7 +999,6 @@ describe('MdReporter — failure/error counts', () => {
   it('omits Runtime Errors when transcript has no runtime errors', () => {
     const result: ScenarioResult = {
       scenarioName: 'clean-errors',
-      category: 'capability',
       stabilityLevel: 'medium',
       trials: [
         makeTrial(0, [makeEvalResult('eval-a', 'pass')]),
@@ -1037,7 +1020,6 @@ describe('MdReporter — failure/error counts', () => {
   it('aggregates Tool Errors and Runtime Errors across multiple trials', () => {
     const result: ScenarioResult = {
       scenarioName: 'multi-trial',
-      category: 'capability',
       stabilityLevel: 'medium',
       trials: [
         makeTrial(
@@ -1079,7 +1061,6 @@ describe('MdReporter — score-mode pass@k rendering', () => {
   it('renders — in pass@k and pass^k columns when passAtK is absent', () => {
     const scoreModeResult: ScenarioResult = {
       scenarioName: 'latency-check',
-      category: 'capability',
       stabilityLevel: 'medium',
       trials: [
         makeTrial(0, [makeEvalResult('latency', 'observed', 0.75)]),
@@ -1103,7 +1084,7 @@ describe('MdReporter — score-mode pass@k rendering', () => {
 
   it('still renders pass/fail for pass-rate evaluator with defined passAtK', () => {
     const reporter = new MdReporter();
-    const content = reporter.render('run-001', [REGRESSION_RESULT]);
+    const content = reporter.render('run-001', [BASELINED_RESULT]);
     const lines = content.split('\n');
     const bugRow = lines.find((l) =>
       l.startsWith('| build-landing-page | bug-hit-rate |'));
@@ -1113,7 +1094,6 @@ describe('MdReporter — score-mode pass@k rendering', () => {
   it('renders — for passAtK: undefined even when regressionMode is absent', () => {
     const noModeResult: ScenarioResult = {
       scenarioName: 'no-mode',
-      category: 'capability',
       stabilityLevel: 'medium',
       trials: [
         makeTrial(0, [makeEvalResult('my-eval', 'observed', 0.5)]),
@@ -1139,7 +1119,6 @@ describe('MdReporter — formatDuration', () => {
     // Single trial with 30s span
     const scenario: ScenarioResult = {
       scenarioName: 'quick',
-      category: 'regression',
       stabilityLevel: 'medium',
       trials: [
         makeTrial(
@@ -1168,7 +1147,6 @@ describe('MdReporter — formatDuration', () => {
   it('formats minutes + seconds duration', () => {
     const scenario: ScenarioResult = {
       scenarioName: 'medium',
-      category: 'regression',
       stabilityLevel: 'medium',
       trials: [
         makeTrial(
@@ -1248,7 +1226,6 @@ describe('MdReporter — composite breakdown', () => {
 
     const result: ScenarioResult = {
       scenarioName: 'composite-scenario',
-      category: 'capability',
       stabilityLevel: 'medium',
       trials: [makeTrial(0, [composite])],
       aggregated: {
@@ -1272,7 +1249,6 @@ describe('MdReporter — composite breakdown', () => {
   it('does not render a breakdown block for non-composite evaluator results', () => {
     const result: ScenarioResult = {
       scenarioName: 'plain-scenario',
-      category: 'capability',
       stabilityLevel: 'medium',
       trials: [makeTrial(0, [makeEvalResult('bug-hit-rate', 'pass', 1.0)])],
       aggregated: {
@@ -1303,7 +1279,6 @@ describe('MdReporter — composite breakdown', () => {
 
     const result: ScenarioResult = {
       scenarioName: 'multi-trial-composite',
-      category: 'capability',
       stabilityLevel: 'medium',
       trials: [
         makeTrial(0, [makeCompositeEvalResult('output-quality', breakdownT1, 0.7)]),
