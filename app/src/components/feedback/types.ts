@@ -59,6 +59,14 @@ export interface FeedbackStorePayload {
   subscription_status: SubscriptionStatus | null;
   total_credit_cnt: number | null;
   available_credit_cnt: number | null;
+  /** JSON array of topic strings; client sends sorted/deduped JSON, server re-normalizes. */
+  feedback_topic_list?: string | null;
+  /** Product surface or entry context label at submit time. */
+  feedback_origin_name?: string | null;
+  /** Matches `hasBeenPublished(site)` at submit time. */
+  app_publish_flag?: boolean | null;
+  /** Public site URL when `app_publish_flag` is true; otherwise null. */
+  publish_url?: string | null;
 }
 
 export interface DiagnosticContext {

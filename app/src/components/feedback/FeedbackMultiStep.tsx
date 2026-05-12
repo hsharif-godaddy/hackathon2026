@@ -10,7 +10,9 @@ import { shipAnalyticsLog } from '@/lib/logging';
 import { logger } from '@/lib/request-context';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { useSitesStore } from '@/stores/useSitesStore';
+import { useSiteStore } from '@/stores/useSiteStore';
 import { logClickEvent } from '@/utils/instrumentation';
+import { hasBeenPublished } from '@/utils/site';
 import { buildBugReportBlocks, buildFeedbackBlocks, buildSupportRequestBlocks } from './slackBuilders';
 import { CategorySelectStep } from './steps/CategorySelectStep';
 import { GetSupportStep } from './steps/GetSupportStep';
@@ -74,7 +76,9 @@ export function FeedbackMultiStep(props: FeedbackProps) {
   const [step, setStep] = useState<FeedbackStep>(initialStep ?? 'category');
 
   const currentAppId = useDevelopPageStore((state) => state.currentAppId);
-  const getSite = useSitesStore((state) => state.getSite);
+  const getSite = useCallback((id: string) => {
+    return useSiteStore.getState().getSite(id) ?? useSitesStore.getState().getSite(id) ?? null;
+  }, []);
 
   const handleSelectCategory = useCallback((category: FeedbackCategory) => {
     setStep(category);
@@ -220,8 +224,20 @@ export function FeedbackMultiStep(props: FeedbackProps) {
       logger.info('feedback.share.submit.success', { feedbackId, appId: currentAppId });
 
       // Fire after all awaited ops succeed — prevents duplicate S3 records on retry
+      const effectiveAppId = currentAppId ?? getAppIdFromUrl();
+      const site = effectiveAppId ? getSite(effectiveAppId) ?? null : null;
+      const appPublishFlag =
+        site != null
+          ? hasBeenPublished(site)
+          : effectiveAppId
+            ? null
+            : false;
+      const publishedUrlRaw = site?.published_url?.trim();
+      const topicJson = data.topics.length > 0
+        ? JSON.stringify([...new Set(data.topics.map(t => t.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b)))
+        : null;
       storeToS3({
-        app_id: currentAppId ?? getAppIdFromUrl(),
+        app_id: effectiveAppId,
         feedback_text: data.comment ?? null,
         consent_flag: data.customerConsent,
         rating: data.rating ?? null,
@@ -230,6 +246,10 @@ export function FeedbackMultiStep(props: FeedbackProps) {
         subscription_status: ctx.subscriptionStatus,
         total_credit_cnt: ctx.totalCredits,
         available_credit_cnt: ctx.availableCredits,
+        feedback_topic_list: topicJson,
+        feedback_origin_name: origin?.trim() ? origin.trim() : null,
+        app_publish_flag: appPublishFlag,
+        publish_url: appPublishFlag === true && publishedUrlRaw ? publishedUrlRaw : null,
       });
       return true;
     } catch (err) {

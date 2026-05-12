@@ -2,7 +2,7 @@
  * Feedback S3 Store API Endpoint
  *
  * Persists structured feedback records to S3 for analytics (Athena/Lake Formation).
- * Called fire-and-forget from FeedbackForm (legacy) and FeedbackMultiStep "Share Feedback" mode only.
+ * Called fire-and-forget from FeedbackMultiStep "Share Feedback" mode only.
  * Support and issue/bug-report modes do not write to S3.
  *
  * S3 key structure:
@@ -11,6 +11,9 @@
  * Table prefix:
  *   prod bucket  → airo_builder_feedback_cln
  *   dev/local    → airo_builder_feedback_cln_laketest
+ *
+ * Optional lake columns (see FeedbackS3Record): feedback_topic_list (JSON array string),
+ * feedback_origin_name, app_publish_flag, publish_url (only when flag true).
  */
 
 import { randomUUID } from 'node:crypto';
@@ -68,6 +71,83 @@ function formatUtcTs(date: Date): string {
   return date.toISOString().replace('T', ' ').replace('Z', '');
 }
 
+function previewForInvalidTopicList(raw: unknown): string {
+  try {
+    if (typeof raw === 'string') {
+      return raw.slice(0, 200);
+    }
+    return JSON.stringify(raw).slice(0, 200);
+  } catch {
+    return '[unserializable]';
+  }
+}
+
+function parseFeedbackTopicListInput(raw: unknown): string | null {
+  if (raw == null) {
+    return null;
+  }
+  let strings: string[];
+  if (typeof raw === 'string') {
+    const t = raw.trim();
+    if (!t) {
+      return null;
+    }
+    try {
+      const parsed = JSON.parse(t) as unknown;
+      if (!Array.isArray(parsed)) {
+        return null;
+      }
+      strings = parsed.filter((x): x is string => typeof x === 'string');
+    } catch {
+      return null;
+    }
+  } else if (Array.isArray(raw)) {
+    strings = raw.filter((x): x is string => typeof x === 'string');
+  } else {
+    return null;
+  }
+  const cleaned = [...new Set(strings.map(s => s.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  if (cleaned.length === 0) {
+    return null;
+  }
+  return JSON.stringify(cleaned);
+}
+
+function parseFeedbackOriginName(raw: unknown): string | null {
+  if (typeof raw !== 'string') {
+    return null;
+  }
+  const t = raw.trim();
+  if (!t) {
+    return null;
+  }
+  return t;
+}
+
+function parseAppPublishFlag(raw: unknown): boolean | null {
+  if (typeof raw === 'boolean') {
+    return raw;
+  }
+  return null;
+}
+
+function parsePublishUrl(raw: unknown, appPublishFlag: boolean | null): string | null {
+  if (appPublishFlag !== true) {
+    return null;
+  }
+  if (typeof raw !== 'string') {
+    return null;
+  }
+  const t = raw.trim();
+  if (!t) {
+    return null;
+  }
+  if (!/^https?:\/\//i.test(t)) {
+    return null;
+  }
+  return t;
+}
+
 // Default auth (no { level: 3 }): same UX contract as POST /api/slack-webhook/feedback —
 // optional fire-and-forget from a long-lived tab; level 3 HBI would prompt re-auth without
 // changing the fact that a valid customer JWT is still required.
@@ -120,6 +200,22 @@ export const POST = withCustomerAuth(async (
     logger.warn('feedback.store.s3.invalid_credits', { field: 'available_credit_cnt', value: body.available_credit_cnt });
   }
 
+  const feedbackTopicList = parseFeedbackTopicListInput(body.feedback_topic_list);
+  if (body.feedback_topic_list != null && feedbackTopicList === null) {
+    logger.warn('feedback.store.s3.invalid_topic_list', {
+      type: typeof body.feedback_topic_list,
+      preview: previewForInvalidTopicList(body.feedback_topic_list),
+    });
+  }
+  const feedbackOriginName = parseFeedbackOriginName(body.feedback_origin_name);
+  const appPublishFlag = parseAppPublishFlag(body.app_publish_flag);
+  const publishUrl = parsePublishUrl(body.publish_url, appPublishFlag);
+  if (appPublishFlag === true && publishUrl === null) {
+    logger.warn('feedback.store.s3.missing_publish_url', {
+      hadClientUrl: typeof body.publish_url === 'string' && body.publish_url.trim().length > 0,
+    });
+  }
+
   // Reject app_id values that would corrupt the Hive partition key (e.g. containing /)
   if (appId !== null && !APP_ID_PATTERN.test(appId)) {
     logger.warn('feedback.store.s3.invalid_app_id', { appId });
@@ -143,6 +239,10 @@ export const POST = withCustomerAuth(async (
     subscription_status: subscriptionStatus,
     total_credit_cnt: totalCreditCnt,
     available_credit_cnt: availableCreditCnt,
+    feedback_topic_list: feedbackTopicList,
+    feedback_origin_name: feedbackOriginName,
+    app_publish_flag: appPublishFlag,
+    publish_url: publishUrl,
     cln_create_utc_ts: tsStr,
   };
 

@@ -226,6 +226,143 @@ describe('/api/feedback/s3-store', function s3StoreTests() {
       expect((record.cln_create_utc_ts as Date).getTime()).toBe((record.feedback_utc_ts as Date).getTime());
     });
 
+    it('should persist lake enrichment columns when provided', async function lakeEnrichmentColumns() {
+      mockS3Send.mockResolvedValueOnce({});
+      const { POST } = await import('./route');
+      await POST(createRequest({
+        app_id: 'app-abc',
+        feedback_text: 't',
+        consent_flag: true,
+        rating: 5,
+        plan_type_name: null,
+        subscription_id: null,
+        subscription_status: null,
+        total_credit_cnt: null,
+        available_credit_cnt: null,
+        feedback_topic_list: '["AI assistant","Editor & design"]',
+        feedback_origin_name: 'develop',
+        app_publish_flag: true,
+        publish_url: 'https://example.com/app',
+      }));
+      const record = await readParquetRow(mockS3Send.mock.calls[0][0].Body);
+      expect(record.feedback_topic_list).toBe('["AI assistant","Editor & design"]');
+      expect(record.feedback_origin_name).toBe('develop');
+      expect(record.app_publish_flag).toBe(true);
+      expect(record.publish_url).toBe('https://example.com/app');
+    });
+
+    it('should null publish_url when app_publish_flag is false', async function publishedUrlGated() {
+      mockS3Send.mockResolvedValueOnce({});
+      const { POST } = await import('./route');
+      await POST(createRequest({
+        app_id: 'app-abc',
+        feedback_text: 't',
+        consent_flag: null,
+        rating: null,
+        app_publish_flag: false,
+        publish_url: 'https://ignored.example/',
+      }));
+      const record = await readParquetRow(mockS3Send.mock.calls[0][0].Body);
+      expect(record.app_publish_flag).toBe(false);
+      expect(record.publish_url == null).toBe(true);
+    });
+
+    it('should accept feedback_topic_list as array and normalize JSON', async function topicListFromArray() {
+      mockS3Send.mockResolvedValueOnce({});
+      const { POST } = await import('./route');
+      await POST(createRequest({
+        app_id: 'app-abc',
+        feedback_text: 't',
+        consent_flag: null,
+        rating: null,
+        feedback_topic_list: ['b', 'a', 'a'],
+      }));
+      const record = await readParquetRow(mockS3Send.mock.calls[0][0].Body);
+      expect(record.feedback_topic_list).toBe('["a","b"]');
+    });
+
+    it('should warn and store null feedback_topic_list for non-JSON string', async function topicListInvalidJsonString() {
+      mockS3Send.mockResolvedValueOnce({});
+      const { POST } = await import('./route');
+      await POST(createRequest({
+        app_id: 'app-abc',
+        feedback_text: 't',
+        consent_flag: null,
+        rating: null,
+        feedback_topic_list: 'NOT_JSON_ARRAY',
+      }));
+      const record = await readParquetRow(mockS3Send.mock.calls[0][0].Body);
+      expect(record.feedback_topic_list == null).toBe(true);
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        'feedback.store.s3.invalid_topic_list',
+        expect.objectContaining({ preview: 'NOT_JSON_ARRAY', type: 'string' }),
+      );
+    });
+
+    it('should store null feedback_topic_list when JSON array has no strings', async function topicListNoStringsInJson() {
+      mockS3Send.mockResolvedValueOnce({});
+      const { POST } = await import('./route');
+      await POST(createRequest({
+        app_id: 'app-abc',
+        feedback_text: 't',
+        consent_flag: null,
+        rating: null,
+        feedback_topic_list: '[1,2,3]',
+      }));
+      const record = await readParquetRow(mockS3Send.mock.calls[0][0].Body);
+      expect(record.feedback_topic_list == null).toBe(true);
+    });
+
+    it('should store null publish_url and warn when flag true but URL not http(s)', async function publishedUrlNonHttp() {
+      mockS3Send.mockResolvedValueOnce({});
+      const { POST } = await import('./route');
+      await POST(createRequest({
+        app_id: 'app-abc',
+        feedback_text: 't',
+        consent_flag: null,
+        rating: null,
+        app_publish_flag: true,
+        publish_url: 'ftp://example.com/a',
+      }));
+      const record = await readParquetRow(mockS3Send.mock.calls[0][0].Body);
+      expect(record.app_publish_flag).toBe(true);
+      expect(record.publish_url == null).toBe(true);
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        'feedback.store.s3.missing_publish_url',
+        expect.objectContaining({ hadClientUrl: true }),
+      );
+    });
+
+    it('should store null feedback_origin_name for whitespace-only value', async function originWhitespace() {
+      mockS3Send.mockResolvedValueOnce({});
+      const { POST } = await import('./route');
+      await POST(createRequest({
+        app_id: 'app-abc',
+        feedback_text: 't',
+        consent_flag: null,
+        rating: null,
+        feedback_origin_name: '   \t  ',
+      }));
+      const record = await readParquetRow(mockS3Send.mock.calls[0][0].Body);
+      expect(record.feedback_origin_name == null).toBe(true);
+    });
+
+    it('should coerce non-boolean app_publish_flag to null', async function coerceAppPublishFlag() {
+      mockS3Send.mockResolvedValueOnce({});
+      const { POST } = await import('./route');
+      await POST(createRequest({
+        app_id: 'app-abc',
+        feedback_text: 't',
+        consent_flag: null,
+        rating: null,
+        app_publish_flag: 'true' as unknown as boolean,
+        publish_url: 'https://example.com/',
+      }));
+      const record = await readParquetRow(mockS3Send.mock.calls[0][0].Body);
+      expect(record.app_publish_flag == null).toBe(true);
+      expect(record.publish_url == null).toBe(true);
+    });
+
     it('should use prod table prefix when prod bucket is set', async function prodPrefix() {
       process.env.FEEDBACK_BUCKET = 'airo-builder-feedback-prod';
       mockS3Send.mockResolvedValueOnce({});

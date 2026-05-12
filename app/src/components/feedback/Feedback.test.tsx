@@ -115,12 +115,35 @@ vi.mock('@/components/providers/AuthProvider', () => ({
   useAuthContext: vi.fn(),
 }));
 
+// Default: no app id and no site in store → storeToS3 gets app_publish_flag false and
+// publish_url null. Lake "published" assertions need overrides (see storeToS3LakePublishedSite).
+const feedbackSitesStoreApi = vi.hoisted(() => ({
+  getSite: vi.fn((_id: string) => undefined as unknown),
+}));
+
+const feedbackSiteStoreApi = vi.hoisted(() => ({
+  getSite: vi.fn((_id: string) => null as unknown),
+}));
+
 vi.mock('@/stores/useDevelopPageStore', () => ({
-  useDevelopPageStore: vi.fn(() => null),
+  useDevelopPageStore: vi.fn((selector: (s: any) => unknown) =>
+    selector({ currentAppId: null })),
 }));
 
 vi.mock('@/stores/useSitesStore', () => ({
-  useSitesStore: vi.fn(() => vi.fn()),
+  useSitesStore: Object.assign(
+    vi.fn((selector: (s: typeof feedbackSitesStoreApi) => unknown) =>
+      selector(feedbackSitesStoreApi)),
+    { getState: () => feedbackSitesStoreApi },
+  ),
+}));
+
+vi.mock('@/stores/useSiteStore', () => ({
+  useSiteStore: Object.assign(
+    vi.fn((selector: (s: typeof feedbackSiteStoreApi) => unknown) =>
+      selector(feedbackSiteStoreApi)),
+    { getState: () => feedbackSiteStoreApi },
+  ),
 }));
 
 vi.mock('@/lib/request-context', () => ({
@@ -201,11 +224,13 @@ import { buildExperimentsLineFromSwitchboard } from '@/components/feedback/exper
 import { useAuthContext } from '@/components/providers/AuthProvider';
 import { EXPERIMENT_IDS } from '@/config/experiments';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
+import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { renderWithProviders } from '@/tests/test-utils';
 import { isLocalDev } from '@/utils/is-local-dev';
 import { Feedback } from './Feedback';
 import { buildBugReportBlocks, buildFeedbackBlocks, buildSupportRequestBlocks } from './slackBuilders';
 import { fetchDiagnosticContext, saveToCompanionHub, sendFeedbackToSlack, storeToS3 } from './submitFeedback';
+import { getAppIdFromUrl } from './utils';
 
 const defaultProps = {
   feedbackId: 'airo#app-builder',
@@ -253,6 +278,13 @@ describe('Feedback', function feedbackTests() {
       ok: true,
       json: async () => ({ success: true }),
     } as Response));
+    vi.mocked(useDevelopPageStore).mockImplementation((selector) =>
+      selector({ currentAppId: null } as any));
+    feedbackSitesStoreApi.getSite.mockReset();
+    feedbackSitesStoreApi.getSite.mockImplementation(() => undefined);
+    feedbackSiteStoreApi.getSite.mockReset();
+    feedbackSiteStoreApi.getSite.mockImplementation(() => null);
+    vi.mocked(getAppIdFromUrl).mockReturnValue(null);
   });
 
   describe('category selection screen', function categoryTests() {
@@ -647,6 +679,10 @@ describe('Feedback', function feedbackTests() {
           subscription_status: null,
           total_credit_cnt: null,
           available_credit_cnt: null,
+          feedback_topic_list: '["AI assistant"]',
+          feedback_origin_name: null,
+          app_publish_flag: false,
+          publish_url: null,
         }));
         expect(mockLogImpressionEvent).toHaveBeenCalledWith('feedback.share.submitSuccess');
       });
@@ -757,6 +793,10 @@ describe('Feedback', function feedbackTests() {
           subscription_status: null,
           total_credit_cnt: null,
           available_credit_cnt: null,
+          feedback_topic_list: null,
+          feedback_origin_name: null,
+          app_publish_flag: false,
+          publish_url: null,
         }));
       });
     });
@@ -791,6 +831,104 @@ describe('Feedback', function feedbackTests() {
           subscription_status: 'active',
           total_credit_cnt: 500,
           available_credit_cnt: 300,
+          feedback_topic_list: null,
+          feedback_origin_name: null,
+          app_publish_flag: false,
+          publish_url: null,
+        }));
+      });
+    });
+
+    it('should pass lake enrichment fields to storeToS3 when site is published', async function storeToS3LakePublishedSite() {
+      vi.mocked(useDevelopPageStore).mockImplementation((selector) =>
+        selector({ currentAppId: 'app-published' } as any));
+      feedbackSiteStoreApi.getSite.mockImplementation((id: string) =>
+        id === 'app-published'
+          ? ({
+              published_url: 'https://customer.example/',
+              variantsWithLifecycle: [{ variant: 'publish', status: 'active' }],
+            } as any)
+          : null);
+      feedbackSitesStoreApi.getSite.mockImplementation(() => undefined);
+      mockAuth('basic');
+      renderWithProviders(<Feedback {...defaultProps} />);
+      await navigateToFeedback();
+      fireEvent.click(screen.getByText('5'));
+      fireEvent.click(screen.getByText('builder_feedback_share_topic_editor'));
+      fireEvent.click(screen.getByText('builder_feedback_share_submit'));
+      await waitFor(() => {
+        expect(storeToS3).toHaveBeenCalledWith(expect.objectContaining({
+          app_id: 'app-published',
+          feedback_topic_list: '["Editor & design"]',
+          app_publish_flag: true,
+          publish_url: 'https://customer.example/',
+        }));
+      });
+    });
+
+    it('should use URL app id for site lookup and storeToS3 when currentAppId is absent', async function storeToS3EffectiveAppIdFromUrl() {
+      vi.mocked(useDevelopPageStore).mockImplementation((selector) =>
+        selector({ currentAppId: null } as any));
+      vi.mocked(getAppIdFromUrl).mockReturnValue('app-from-url');
+      feedbackSiteStoreApi.getSite.mockImplementation(() => null);
+      feedbackSitesStoreApi.getSite.mockImplementation((id: string) =>
+        id === 'app-from-url'
+          ? ({
+              published_url: 'https://from-url.example/',
+              variantsWithLifecycle: [{ variant: 'publish', status: 'active' }],
+            } as any)
+          : undefined);
+      mockAuth('basic');
+      renderWithProviders(<Feedback {...defaultProps} />);
+      await navigateToFeedback();
+      fireEvent.click(screen.getByText('5'));
+      fireEvent.click(screen.getByText('builder_feedback_share_submit'));
+      await waitFor(() => {
+        expect(storeToS3).toHaveBeenCalledWith(expect.objectContaining({
+          app_id: 'app-from-url',
+          app_publish_flag: true,
+          publish_url: 'https://from-url.example/',
+        }));
+      });
+    });
+
+    it('should pass null app_publish_flag when app id resolves but site is missing', async function storeToS3UnknownPublishState() {
+      vi.mocked(useDevelopPageStore).mockImplementation((selector) =>
+        selector({ currentAppId: 'not-in-store' } as any));
+      feedbackSiteStoreApi.getSite.mockImplementation(() => null);
+      feedbackSitesStoreApi.getSite.mockImplementation(() => undefined);
+      mockAuth('basic');
+      renderWithProviders(<Feedback {...defaultProps} />);
+      await navigateToFeedback();
+      fireEvent.click(screen.getByText('5'));
+      fireEvent.click(screen.getByText('builder_feedback_share_submit'));
+      await waitFor(() => {
+        expect(storeToS3).toHaveBeenCalledWith(expect.objectContaining({
+          app_id: 'not-in-store',
+          app_publish_flag: null,
+          publish_url: null,
+        }));
+      });
+    });
+
+    it('should not set lake publish fields from published_url alone when lifecycle omits publish', async function storeToS3UrlOnlyWithoutLifecycle() {
+      vi.mocked(useDevelopPageStore).mockImplementation((selector) =>
+        selector({ currentAppId: 'app-url-only' } as any));
+      feedbackSiteStoreApi.getSite.mockImplementation(() => null);
+      feedbackSitesStoreApi.getSite.mockImplementation((id: string) =>
+        id === 'app-url-only'
+          ? ({ published_url: 'https://customer.example/live/' } as any)
+          : undefined);
+      mockAuth('basic');
+      renderWithProviders(<Feedback {...defaultProps} />);
+      await navigateToFeedback();
+      fireEvent.click(screen.getByText('5'));
+      fireEvent.click(screen.getByText('builder_feedback_share_submit'));
+      await waitFor(() => {
+        expect(storeToS3).toHaveBeenCalledWith(expect.objectContaining({
+          app_id: 'app-url-only',
+          app_publish_flag: false,
+          publish_url: null,
         }));
       });
     });

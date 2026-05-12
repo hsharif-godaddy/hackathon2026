@@ -40,6 +40,10 @@ try {
     subscription_status: { type: 'UTF8', optional: true, compression: 'UNCOMPRESSED' },
     total_credit_cnt: { type: 'INT32', optional: true, compression: 'UNCOMPRESSED' },
     available_credit_cnt: { type: 'INT32', optional: true, compression: 'UNCOMPRESSED' },
+    feedback_topic_list: { type: 'UTF8', optional: true, compression: 'UNCOMPRESSED' },
+    feedback_origin_name: { type: 'UTF8', optional: true, compression: 'UNCOMPRESSED' },
+    app_publish_flag: { type: 'BOOLEAN', optional: true, compression: 'UNCOMPRESSED' },
+    publish_url: { type: 'UTF8', optional: true, compression: 'UNCOMPRESSED' },
     cln_create_utc_ts: { type: 'TIMESTAMP_MILLIS', compression: 'UNCOMPRESSED' },
   });
 } catch (err) {
@@ -84,6 +88,10 @@ function rowForParquet(record: FeedbackS3Record): Record<string, unknown> {
     subscription_status: record.subscription_status,
     total_credit_cnt: toInt32Credit(record.total_credit_cnt),
     available_credit_cnt: toInt32Credit(record.available_credit_cnt),
+    feedback_topic_list: record.feedback_topic_list,
+    feedback_origin_name: record.feedback_origin_name,
+    app_publish_flag: record.app_publish_flag,
+    publish_url: record.publish_url,
     cln_create_utc_ts: parseFeedbackUtcStringToDate(record.cln_create_utc_ts),
   };
 }

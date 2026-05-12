@@ -12,5 +12,9 @@ export interface FeedbackS3Record {
   subscription_status: string | null;
   total_credit_cnt: number | null;
   available_credit_cnt: number | null;
+  feedback_topic_list: string | null;
+  feedback_origin_name: string | null;
+  app_publish_flag: boolean | null;
+  publish_url: string | null;
   cln_create_utc_ts: string;
 }
