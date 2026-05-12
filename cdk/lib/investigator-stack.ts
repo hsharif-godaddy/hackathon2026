@@ -37,12 +37,35 @@ export class AiroInvestigatorStack extends GDStack {
   constructor(scope: Construct, id: string, props: GDStackProps) {
     super(scope, id, props);
 
+    // debug-console fetches presigned GET URLs for result.md directly from
+    // the browser so the report can stream regardless of size. Without CORS
+    // the browser blocks the cross-origin request even though the signature
+    // is valid.
+    const corsAllowedOrigins: string[] = config.envName === 'prod'
+      ? ['https://console.airo-builder.godaddy.com']
+      : [
+        'https://console.airo-builder.test-godaddy.com',
+        'http://localhost:3000',
+        'http://localhost:8080',
+      ];
+
     // ---- S3 bucket ----
     this.stateBucket = new s3.Bucket(this, 'InvestigationsBucket', {
       bucketName: `airo-investigations-${config.envName}`,
       versioned: false,
       encryption: s3.BucketEncryption.S3_MANAGED,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      cors: [
+        {
+          allowedMethods: [s3.HttpMethods.GET, s3.HttpMethods.HEAD],
+          allowedOrigins: corsAllowedOrigins,
+          // Presigned GETs carry auth in the query string — no custom
+          // request headers are needed. Keep tight to shrink surface.
+          allowedHeaders: [],
+          exposedHeaders: ['ETag', 'Content-Length', 'Content-Type'],
+          maxAge: 300,
+        },
+      ],
       lifecycleRules: [
         {
           // Prune history older than 90 days. Active state is overwritten in place.

@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { withAuth } from '@/lib/api-auth';
-import { INVESTIGATE_CONFIG } from '@/lib/investigate/config';
-import { isStaleHeartbeat, isTerminal, readResult, readState } from '@/lib/investigate/state';
+import { headResult, isStaleHeartbeat, isTerminal, readState } from '@/lib/investigate/state';
 import { keysFor } from '@/lib/investigate/types';
 import { logger } from '@/lib/logger';
 
@@ -11,11 +10,8 @@ export const revalidate = 0;
 
 // GET /api/investigate/latest?appId=...&customerId=...
 //
-// Used by the Investigate tab in AppDetailsPanel to surface the most recent
-// investigation for a given (customerId, appId) without needing its
-// investigationId. Reads the `active/` state row (which is overwritten on
-// every new run for the same pair) and inlines the report markdown when the
-// run is complete.
+// Returns the most recent investigation for a (customerId, appId) pair.
+// Report body is not inlined — client fetches it via /report when needed.
 export const GET = withAuth(async (request) => {
   const url = new URL(request.url);
   const appId = url.searchParams.get('appId');
@@ -30,8 +26,6 @@ export const GET = withAuth(async (request) => {
   try {
     state = await readState(keys.stateKey);
   } catch (err) {
-    // Transient S3 error. Return 503 so the tab distinguishes "never
-    // ran" (200 exists:false) from "backend flaky" and can retry.
     logger.error(
       'investigate.latest.read.failed',
       { appId, customerId, stateKey: keys.stateKey },
@@ -40,16 +34,28 @@ export const GET = withAuth(async (request) => {
     return NextResponse.json({ error: 'state_read_failed' }, { status: 503 });
   }
   if (!state) {
-    // No prior investigation for this pair — not an error, just empty.
     return NextResponse.json({ exists: false }, { status: 200 });
   }
 
   const terminal = isTerminal(state.status);
   const stale = !terminal && isStaleHeartbeat(state);
 
-  let markdown: string | null = null;
+  let reportSize: number | null = null;
+  let reportEtag: string | null = null;
   if (terminal && state.status === 'completed' && state.resultKey) {
-    markdown = await readResult(state.resultKey, INVESTIGATE_CONFIG.inlineResultMaxBytes);
+    try {
+      const head = await headResult(state.resultKey);
+      if (head) {
+        reportSize = head.size;
+        reportEtag = head.etag;
+      }
+    } catch (err) {
+      logger.warn(
+        'investigate.latest.head.failed',
+        { appId, customerId, resultKey: state.resultKey },
+        { error: err as Error },
+      );
+    }
   }
 
   return NextResponse.json({
@@ -68,6 +74,7 @@ export const GET = withAuth(async (request) => {
     error: state.error,
     reportAvailable: !!state.resultKey,
     reportFilename: state.reportFilename,
-    markdown,
+    reportSize,
+    reportEtag,
   });
 });

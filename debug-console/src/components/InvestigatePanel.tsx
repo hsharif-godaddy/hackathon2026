@@ -1,9 +1,17 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+
+import { splitMarkdownBlocks } from '@/lib/investigate/markdown';
+
+const CLIENT_AUTO_FETCH_MAX_BYTES = 50 * 1024 * 1024;
+
+const MarkdownBlock = memo(function MarkdownBlock({ source }: { source: string }) {
+  return <ReactMarkdown remarkPlugins={[remarkGfm]}>{source}</ReactMarkdown>;
+});
 
 type StartResponse = {
   investigationId: string;
@@ -34,12 +42,20 @@ type StatusResponse = {
   error: string | null;
   reportAvailable: boolean;
   reportFilename: string | null;
-  markdown: string | null;
+  reportSize: number | null;
+  reportEtag: string | null;
 };
 
 const POLL_MS = 2500;
 const CLIENT_POLL_TIMEOUT_MS = 16 * 60 * 1000;
 const GOCODE_KEY_STORAGE = 'airo-investigate.gocodeApiKey';
+
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
 
 function formatDurationMs(ms: number | null): string {
   if (ms == null) return '';
@@ -135,6 +151,17 @@ export default function InvestigatePanel(props: Props = {}) {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  // Report streaming state. Keyed on etag so a reopened-but-unchanged report
+  // reuses the cached text without re-downloading.
+  const [reportText, setReportText] = useState<string>('');
+  const [reportEtagLoaded, setReportEtagLoaded] = useState<string | null>(null);
+  const [reportProgress, setReportProgress] = useState<number>(0); // 0..1
+  const [reportError, setReportError] = useState<string | null>(null);
+  const [reportLoading, setReportLoading] = useState<boolean>(false);
+  const [reportOversized, setReportOversized] = useState<boolean>(false);
+  const [reportDownloading, setReportDownloading] = useState<boolean>(false);
+  const reportAbortRef = useRef<AbortController | null>(null);
+
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Prefill from query string (standalone /investigate route) or parent
@@ -155,6 +182,126 @@ export default function InvestigatePanel(props: Props = {}) {
     if (pollTimerRef.current) {
       clearTimeout(pollTimerRef.current);
       pollTimerRef.current = null;
+    }
+  }, []);
+
+  const abortReportFetch = useCallback(() => {
+    if (reportAbortRef.current) {
+      reportAbortRef.current.abort();
+      reportAbortRef.current = null;
+    }
+  }, []);
+
+  const streamReport = useCallback(async (
+    invId: string,
+    app: string,
+    cust: string,
+    expectedSize: number,
+    expectedEtag: string | null,
+  ) => {
+    abortReportFetch();
+    const ac = new AbortController();
+    reportAbortRef.current = ac;
+    setReportLoading(true);
+    setReportError(null);
+    setReportText('');
+    setReportProgress(0);
+    setReportOversized(false);
+
+    try {
+      const metaRes = await fetch(
+        `/api/investigate/${encodeURIComponent(invId)}/report?appId=${encodeURIComponent(app)}&customerId=${encodeURIComponent(cust)}`,
+        { cache: 'no-store', signal: ac.signal },
+      );
+      if (!metaRes.ok) {
+        setReportError(`Report fetch failed: ${metaRes.status}`);
+        setReportLoading(false);
+        return;
+      }
+      const meta = (await metaRes.json()) as { url: string; size: number; etag: string | null };
+
+      // Above auto-fetch ceiling: surface download button, don't stream into
+      // DOM. The click handler will re-fetch a fresh presigned URL so the
+      // user can leave the panel open past the 5-min TTL without hitting a
+      // silent 403.
+      if (meta.size > CLIENT_AUTO_FETCH_MAX_BYTES) {
+        setReportOversized(true);
+        setReportEtagLoaded(meta.etag ?? expectedEtag ?? null);
+        setReportLoading(false);
+        return;
+      }
+
+      const res = await fetch(meta.url, { signal: ac.signal });
+      if (!res.ok || !res.body) {
+        setReportError(`S3 fetch failed: ${res.status}`);
+        setReportLoading(false);
+        return;
+      }
+
+      const total = Number(res.headers.get('content-length')) || meta.size || expectedSize || 0;
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder('utf-8');
+      let received = 0;
+      let buffer = '';
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        received += value.byteLength;
+        buffer += decoder.decode(value, { stream: true });
+        setReportText(buffer);
+        if (total > 0) setReportProgress(Math.min(1, received / total));
+      }
+      buffer += decoder.decode();
+      setReportText(buffer);
+      setReportProgress(1);
+      setReportEtagLoaded(meta.etag ?? expectedEtag ?? null);
+      setReportLoading(false);
+    } catch (err) {
+      if ((err as Error).name === 'AbortError') return;
+      // Surface a generic failure without echoing raw error text — keeps
+      // presigned-URL fragments or internal details out of the DOM.
+      console.error('investigate.report.fetch.failed', err);
+      setReportError('Report fetch failed. Retry or reload.');
+      setReportLoading(false);
+    }
+  }, [abortReportFetch]);
+
+  const handleDownloadOversized = useCallback(async (
+    invId: string,
+    app: string,
+    cust: string,
+  ) => {
+    // Open the window synchronously inside the click gesture. Safari (and
+    // some Chromium popup-blocker modes) suppress window.open() called
+    // after an await — the user-gesture token is gone by then. The blank
+    // tab is then navigated to the presigned URL once it arrives.
+    const popup = window.open('about:blank', '_blank', 'noopener,noreferrer');
+    setReportDownloading(true);
+    setReportError(null);
+    try {
+      const metaRes = await fetch(
+        `/api/investigate/${encodeURIComponent(invId)}/report?appId=${encodeURIComponent(app)}&customerId=${encodeURIComponent(cust)}`,
+        { cache: 'no-store' },
+      );
+      if (!metaRes.ok) {
+        popup?.close();
+        setReportError(`Could not prepare download: ${metaRes.status}`);
+        return;
+      }
+      const meta = (await metaRes.json()) as { url: string };
+      if (popup) {
+        popup.location.href = meta.url;
+      } else {
+        // Popup blocker killed the tab — fall back to same-tab navigation
+        // so the user isn't left with no download path.
+        window.location.href = meta.url;
+      }
+    } catch (err) {
+      popup?.close();
+      console.error('investigate.report.download.failed', err);
+      setReportError('Download failed. Try again.');
+    } finally {
+      setReportDownloading(false);
     }
   }, []);
 
@@ -196,6 +343,32 @@ export default function InvestigatePanel(props: Props = {}) {
   }, [stopPolling]);
 
   useEffect(() => () => { stopPolling(); }, [stopPolling]);
+  useEffect(() => () => { abortReportFetch(); }, [abortReportFetch]);
+
+  // Kick off (or reuse cached) report fetch whenever we see a completed
+  // investigation with a fresh etag. Etag match = skip re-download.
+  useEffect(() => {
+    if (!status || status.status !== 'completed' || !status.reportAvailable) return;
+    if (!status.investigationId || !status.appId || !status.customerId) return;
+    if (status.reportEtag && status.reportEtag === reportEtagLoaded) return;
+    void streamReport(
+      status.investigationId,
+      status.appId,
+      status.customerId,
+      status.reportSize ?? 0,
+      status.reportEtag,
+    );
+  }, [
+    status?.investigationId,
+    status?.status,
+    status?.reportAvailable,
+    status?.reportEtag,
+    status?.reportSize,
+    status?.appId,
+    status?.customerId,
+    reportEtagLoaded,
+    streamReport,
+  ]);
 
   // Embedded mode: on mount (or when appId changes) fetch the most recent
   // investigation for this (customer, app). Lets users reopen the tab later
@@ -224,8 +397,12 @@ export default function InvestigatePanel(props: Props = {}) {
             pollOnce(data.investigationId, appId, customerId);
           }
         }
-      } catch {
-        // Best-effort load — silently ignore so the tab still renders.
+      } catch (err) {
+        // Best-effort load — render the empty state so the tab still
+        // works. A breadcrumb in devtools distinguishes a genuine "never
+        // ran" from an auth/network failure that happens to look the same
+        // to the user.
+        console.error('investigate.autoLoad.failed', err);
       } finally {
         if (!cancelled) setAutoLoadedOnce(true);
       }
@@ -248,6 +425,12 @@ export default function InvestigatePanel(props: Props = {}) {
     setStatus(null);
     setInvestigationId(null);
     stopPolling();
+    abortReportFetch();
+    setReportText('');
+    setReportEtagLoaded(null);
+    setReportProgress(0);
+    setReportError(null);
+    setReportOversized(false);
 
     // Store only for the current browser session. A malicious extension or XSS
     // on the debug-console origin could still read it while the tab is active,
@@ -299,9 +482,9 @@ export default function InvestigatePanel(props: Props = {}) {
   const copyLabel = copiedAt ? 'Copied ✓' : 'Copy markdown';
 
   async function handleCopy() {
-    if (!status?.markdown) return;
+    if (!reportText) return;
     try {
-      await navigator.clipboard.writeText(status.markdown);
+      await navigator.clipboard.writeText(reportText);
       setCopiedAt(Date.now());
       setTimeout(() => setCopiedAt(null), 2000);
     } catch {
@@ -312,6 +495,8 @@ export default function InvestigatePanel(props: Props = {}) {
   const running = status?.status === 'pending' || status?.status === 'running';
   const activelyPolling = running && !status?.stale;
   const actionDisabled = submitting || activelyPolling;
+
+  const reportBlocks = useMemo(() => splitMarkdownBlocks(reportText), [reportText]);
 
   const headerBadge = useMemo(() => {
     if (!status) return null;
@@ -572,23 +757,31 @@ export default function InvestigatePanel(props: Props = {}) {
             </div>
           )}
 
-          {status.markdown && (
+          {status.reportAvailable && status.status === 'completed' && (
             <>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16 }}>
-                <h2 style={{ margin: 0, fontSize: 16 }}>Report</h2>
+                <h2 style={{ margin: 0, fontSize: 16 }}>
+                  Report
+                  {status.reportSize != null && (
+                    <span style={{ marginLeft: 10, fontSize: 12, color: '#6b7280', fontWeight: 400 }}>
+                      {formatBytes(status.reportSize)}
+                    </span>
+                  )}
+                </h2>
                 <button
                   type="button"
                   onClick={handleCopy}
+                  disabled={!reportText || reportLoading}
                   style={{
                     padding: '6px 12px',
-                    background: '#1f2937',
+                    background: (reportText && !reportLoading) ? '#1f2937' : '#9ca3af',
                     color: 'white',
                     border: 0,
                     borderRadius: 6,
                     fontSize: 12,
-                    cursor: 'pointer',
+                    cursor: (reportText && !reportLoading) ? 'pointer' : 'not-allowed',
                   }}
-                  title="Copies the raw markdown source to your clipboard"
+                  title={reportLoading ? 'Wait for the stream to finish' : 'Copies the raw markdown source to your clipboard'}
                 >
                   {copyLabel}
                 </button>
@@ -596,18 +789,103 @@ export default function InvestigatePanel(props: Props = {}) {
               <div style={{ ...wipWarningStyle, marginTop: 10 }}>
                 <strong>Verify before sharing:</strong> This report is a work-in-progress AI investigation. Confirm cited logs and coverage gaps before using it as a decision record.
               </div>
-              <div className="investigate-report" style={{
-                marginTop: 8,
-                padding: '16px 20px',
-                background: '#ffffff',
-                border: '1px solid #e5e7eb',
-                borderRadius: 6,
-                fontSize: 14,
-                lineHeight: 1.6,
-                color: '#111827',
-              }}>
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{status.markdown}</ReactMarkdown>
-              </div>
+
+              {reportLoading && (
+                <div style={{ marginTop: 10, fontSize: 12, color: '#6b7280' }}>
+                  Streaming report… {Math.round(reportProgress * 100)}%
+                  <div style={{ height: 4, background: '#e5e7eb', borderRadius: 2, marginTop: 4, overflow: 'hidden' }}>
+                    <div style={{
+                      width: `${Math.round(reportProgress * 100)}%`,
+                      height: '100%',
+                      background: '#3b82f6',
+                      transition: 'width 120ms linear',
+                    }} />
+                  </div>
+                </div>
+              )}
+
+              {reportError && (
+                <div style={{ marginTop: 10, color: '#dc2626', fontSize: 13 }}>
+                  {reportError}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (status.investigationId && status.appId && status.customerId) {
+                        void streamReport(
+                          status.investigationId,
+                          status.appId,
+                          status.customerId,
+                          status.reportSize ?? 0,
+                          status.reportEtag,
+                        );
+                      }
+                    }}
+                    style={{ ...smallBtn, marginLeft: 10 }}
+                  >
+                    Retry
+                  </button>
+                </div>
+              )}
+
+              {reportOversized && (
+                <div style={{ marginTop: 12, padding: '10px 14px', background: '#fff7ed', border: '1px solid #fdba74', borderRadius: 6, fontSize: 13, color: '#7c2d12' }}>
+                  Report is {formatBytes(status.reportSize ?? 0)} — above the {formatBytes(CLIENT_AUTO_FETCH_MAX_BYTES)} auto-render limit. Download instead:
+                  <div style={{ marginTop: 8 }}>
+                    <button
+                      type="button"
+                      disabled={reportDownloading}
+                      onClick={() => {
+                        if (status.investigationId && status.appId && status.customerId) {
+                          void handleDownloadOversized(
+                            status.investigationId,
+                            status.appId,
+                            status.customerId,
+                          );
+                        }
+                      }}
+                      style={{
+                        padding: '8px 14px',
+                        background: reportDownloading ? '#9ca3af' : '#2563eb',
+                        color: 'white',
+                        border: 0,
+                        borderRadius: 6,
+                        fontSize: 13,
+                        cursor: reportDownloading ? 'wait' : 'pointer',
+                      }}
+                    >
+                      {reportDownloading ? 'Preparing…' : 'Download result.md'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {reportText && (
+                <div className="investigate-report" style={{
+                  marginTop: 8,
+                  padding: '16px 20px',
+                  background: '#ffffff',
+                  border: '1px solid #e5e7eb',
+                  borderRadius: 6,
+                  fontSize: 14,
+                  lineHeight: 1.6,
+                  color: '#111827',
+                }}>
+                  {reportBlocks.map((block, i) => {
+                    // Append-only stream: finalized block indices are stable,
+                    // so keying by index lets React.memo skip re-rendering
+                    // prior blocks while the last (growing) block re-renders
+                    // as source changes.
+                    const isTail = i === reportBlocks.length - 1;
+                    return (
+                      <MarkdownBlock
+                        key={isTail && reportLoading ? 'tail' : `b${i}`}
+                        source={block}
+                      />
+                    );
+                  })}
+                </div>
+              )}
+
               <style>{`
                 .investigate-report h1 { font-size: 22px; margin: 16px 0 10px; }
                 .investigate-report h2 { font-size: 18px; margin: 20px 0 8px; border-bottom: 1px solid #e5e7eb; padding-bottom: 4px; }
@@ -626,15 +904,6 @@ export default function InvestigatePanel(props: Props = {}) {
                 .investigate-report hr { border: 0; border-top: 1px solid #e5e7eb; margin: 16px 0; }
               `}</style>
             </>
-          )}
-
-          {!status.markdown && status.reportAvailable && (
-            <div style={{ marginTop: 12, padding: '10px 14px', background: '#f3f4f6', borderRadius: 6, fontSize: 13, color: '#374151' }}>
-              Report saved to S3 but exceeds the 1 MB inline limit — fetch it directly:
-              <pre style={{ margin: '8px 0 0', fontSize: 12, background: '#e5e7eb', padding: '6px 10px', borderRadius: 4, overflowX: 'auto' }}>
-                {`aws s3 cp s3://<INVESTIGATE_BUCKET>/active/${status.customerId}/${status.appId}/result.md /tmp/report.md`}
-              </pre>
-            </div>
           )}
         </section>
       )}

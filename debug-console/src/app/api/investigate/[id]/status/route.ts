@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { withAuth } from '@/lib/api-auth';
-import { INVESTIGATE_CONFIG } from '@/lib/investigate/config';
-import { isStaleHeartbeat, isTerminal, readResult, readState } from '@/lib/investigate/state';
+import { headResult, isStaleHeartbeat, isTerminal, readState } from '@/lib/investigate/state';
 import { keysFor } from '@/lib/investigate/types';
 import { logger } from '@/lib/logger';
 
@@ -26,9 +25,6 @@ export const GET = withAuth<{ id: string }>(async (request, _auth, context) => {
   try {
     state = await readState(keys.stateKey);
   } catch (err) {
-    // Transient S3 error (throttle, AccessDenied mid-rotation, etc.).
-    // Surface as 503 with a breadcrumb so the UI's poll loop gets a
-    // retryable signal rather than a 500 that looks like a bug.
     logger.error(
       'investigate.status.read.failed',
       { investigationId, appId, customerId, stateKey: keys.stateKey },
@@ -40,16 +36,34 @@ export const GET = withAuth<{ id: string }>(async (request, _auth, context) => {
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }
   if (state.investigationId !== investigationId) {
-    // A newer investigation superseded this one for the same (cust, app).
     return NextResponse.json({ error: 'superseded', current: state.investigationId }, { status: 410 });
   }
 
   const terminal = isTerminal(state.status);
   const stale = !terminal && isStaleHeartbeat(state);
 
-  let markdown: string | null = null;
+  // Status payload no longer carries the report body — client fetches it
+  // via /report with a presigned URL. Keeps this route O(1) regardless of
+  // report size and avoids the 1MB cliff that used to dead-end the UI.
+  let reportSize: number | null = null;
+  let reportEtag: string | null = null;
   if (terminal && state.status === 'completed' && state.resultKey) {
-    markdown = await readResult(state.resultKey, INVESTIGATE_CONFIG.inlineResultMaxBytes);
+    try {
+      const head = await headResult(state.resultKey);
+      if (head) {
+        reportSize = head.size;
+        reportEtag = head.etag;
+      }
+    } catch (err) {
+      // Transient S3 HEAD failure (throttle, network flap). Don't 500 the
+      // whole poll — the client can still show status; report metadata
+      // will fill in on the next poll tick.
+      logger.warn(
+        'investigate.status.head.failed',
+        { investigationId, appId, customerId, resultKey: state.resultKey },
+        { error: err as Error },
+      );
+    }
   }
 
   return NextResponse.json({
@@ -67,7 +81,8 @@ export const GET = withAuth<{ id: string }>(async (request, _auth, context) => {
     error: state.error,
     reportAvailable: !!state.resultKey,
     reportFilename: state.reportFilename,
+    reportSize,
+    reportEtag,
     evidence: state.evidence ?? null,
-    markdown,
   });
 });
