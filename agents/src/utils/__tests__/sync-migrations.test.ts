@@ -31,6 +31,8 @@ interface MigrationEvent {
   durationMs: number;
   error?: string;
   reason?: string;
+  changed?: boolean;
+  vitePluginApiRoutesPreserved?: boolean;
 }
 
 function parseMigrationEvents(spy: ReturnType<typeof vi.spyOn>): MigrationEvent[] {
@@ -187,6 +189,60 @@ describe('sync-template-files migrations', () => {
       expect(pkg.devDependencies).not.toHaveProperty('esbuild');
       expect(pkg.scripts.build).toBe('vite build && vite build --ssr src/server/entry.ts');
       expect(existsSync(join(dir, 'src/server/configure.js'))).toBe(false);
+    });
+
+    it.each(['vite.config.ts', 'vite.config.js', 'vite.config.mjs', 'vite.config.cjs'])(
+      'preserves vite-plugin-api-routes dep when %s still references it',
+      (configName) => {
+        // Guard against the AIROBUILD-1591 regression across every supported
+        // config extension — a regression that narrowed VITE_CONFIG_CANDIDATES
+        // would silently let the dep-delete crash the preview container.
+        setupBareAppWith({ entry: MARKED_ENTRY });
+        writeFileSync(
+          join(dir, configName),
+          `import apiRoutes from 'vite-plugin-api-routes';\nexport default { plugins: [apiRoutes()] };\n`,
+          'utf8',
+        );
+        const result = migration.run(dir, new Set());
+        const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
+        expect(pkg.dependencies['vite-plugin-api-routes']).toBe('^1.0.0');
+        // Trip surfaces to telemetry so Loki can count affected apps without
+        // grepping the ⚠️ warning log line.
+        expect(typeof result === 'object' && result?.extra).toEqual({ vitePluginApiRoutesPreserved: true });
+      },
+    );
+
+    it('still removes dep when vite.config.ts has been cleaned of the reference', () => {
+      setupBareAppWith({ entry: MARKED_ENTRY });
+      writeFileSync(
+        join(dir, 'vite.config.ts'),
+        `import react from '@vitejs/plugin-react';\nexport default { plugins: [react()] };\n`,
+        'utf8',
+      );
+      const result = migration.run(dir, new Set());
+      const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
+      expect(pkg.dependencies).not.toHaveProperty('vite-plugin-api-routes');
+      expect(typeof result === 'object' && result?.extra).toEqual({ vitePluginApiRoutesPreserved: false });
+    });
+
+    it('still removes dep when vite.config.ts only mentions the plugin in a comment', () => {
+      // The preservation guard must match only real import specifiers, not
+      // comments or changelog strings — otherwise apps that cleaned up the
+      // import but left a "// vite-plugin-api-routes removed YYYY-MM-DD" line
+      // stay stuck with the dep and isSsrInstalled() stays false.
+      setupBareAppWith({ entry: MARKED_ENTRY });
+      writeFileSync(
+        join(dir, 'vite.config.ts'),
+        `// vite-plugin-api-routes removed 2026-04-01 in favor of entry.ts\n` +
+        `import react from '@vitejs/plugin-react';\n` +
+        `const name = 'vite-plugin-api-routes';\n` +
+        `export default { plugins: [react()] };\n`,
+        'utf8',
+      );
+      const result = migration.run(dir, new Set());
+      const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
+      expect(pkg.dependencies).not.toHaveProperty('vite-plugin-api-routes');
+      expect(typeof result === 'object' && result?.extra).toEqual({ vitePluginApiRoutesPreserved: false });
     });
 
     it('is idempotent on already-marked entry.ts', () => {
@@ -600,6 +656,208 @@ export default app;
       const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
       expect(pkg.scripts.build).toBe('vite build && vite build --ssr src/server/entry.ts');
       expect(existsSync(join(dir, 'src/server/configure.js'))).toBe(false);
+    });
+  });
+
+  describe('ensure-helmet-provider', () => {
+    const migration = findMigration('ensure-helmet-provider');
+
+    function writeMain(content: string) {
+      mkdirSync(join(dir, 'src'), { recursive: true });
+      writeFileSync(join(dir, 'src/main.tsx'), content, 'utf8');
+    }
+
+    function writeAppEntry(content: string) {
+      mkdirSync(join(dir, 'src'), { recursive: true });
+      writeFileSync(join(dir, 'src/app-entry.tsx'), content, 'utf8');
+    }
+
+    it('skips when src/main.tsx is missing', () => {
+      const result = migration.run(dir, new Set());
+      expect(resultStatus(result)).toBe('skipped');
+      expect(typeof result === 'object' && result?.reason).toBe('main_tsx_missing');
+    });
+
+    it('wraps a createRoot(...).render(<App/>) tree and adds the import', () => {
+      writeMain(
+        `import { createRoot } from 'react-dom/client';\n` +
+        `import App from './App';\n` +
+        `createRoot(document.getElementById('app')!).render(<App />);\n`
+      );
+      expect(resultStatus(migration.run(dir, new Set()))).toBe('applied');
+      const out = readFileSync(join(dir, 'src/main.tsx'), 'utf8');
+      expect(out).toContain('@dr.pogodin/react-helmet');
+      expect(out).toContain('HelmetProvider');
+      expect(out).toMatch(/<HelmetProvider>[\s\S]*<App[\s\S]*<\/HelmetProvider>/);
+    });
+
+    it('wraps a hydrateRoot(el, <App/>) tree', () => {
+      writeMain(
+        `import { hydrateRoot } from 'react-dom/client';\n` +
+        `import App from './App';\n` +
+        `hydrateRoot(document.getElementById('app')!, <App />);\n`
+      );
+      expect(resultStatus(migration.run(dir, new Set()))).toBe('applied');
+      const out = readFileSync(join(dir, 'src/main.tsx'), 'utf8');
+      expect(out).toMatch(/hydrateRoot\([^,]+,\s*<HelmetProvider>/);
+    });
+
+    it('wraps a tree bound to a const before the render call', () => {
+      writeMain(
+        `import { hydrateRoot, createRoot } from 'react-dom/client';\n` +
+        `import App from './App';\n` +
+        `const tree = <App />;\n` +
+        `const el = document.getElementById('app')!;\n` +
+        `if (el.hasChildNodes()) hydrateRoot(el, tree);\n` +
+        `else createRoot(el).render(tree);\n`
+      );
+      expect(resultStatus(migration.run(dir, new Set()))).toBe('applied');
+      const out = readFileSync(join(dir, 'src/main.tsx'), 'utf8');
+      expect(out).toMatch(/const tree = <HelmetProvider>[\s\S]*<\/HelmetProvider>/);
+      // Shared declarator must be wrapped exactly once even though two
+      // separate render calls reference it.
+      expect(out.match(/<HelmetProvider>/g)?.length).toBe(1);
+    });
+
+    it('wraps both render calls when hydrateRoot/createRoot use separate inline JSX branches', () => {
+      // Customer pattern: inline JSX in each branch rather than a shared
+      // `const tree`. Stopping after the first wrap would leave the other
+      // branch rendering unwrapped at runtime (`<Helmet>` crash persists).
+      writeMain(
+        `import { hydrateRoot, createRoot } from 'react-dom/client';\n` +
+        `import App from './App';\n` +
+        `const el = document.getElementById('app')!;\n` +
+        `if (el.hasChildNodes()) hydrateRoot(el, <App />);\n` +
+        `else createRoot(el).render(<App />);\n`
+      );
+      expect(resultStatus(migration.run(dir, new Set()))).toBe('applied');
+      const out = readFileSync(join(dir, 'src/main.tsx'), 'utf8');
+      expect(out.match(/<HelmetProvider>/g)?.length).toBe(2);
+      expect(out).toMatch(/hydrateRoot\([^,]+,\s*<HelmetProvider>/);
+      expect(out).toMatch(/createRoot\([^)]+\)\.render\(<HelmetProvider>/);
+    });
+
+    it('returns applied with changed=false when HelmetProvider already wraps the tree', () => {
+      writeMain(
+        `import { createRoot } from 'react-dom/client';\n` +
+        `import { HelmetProvider } from '@dr.pogodin/react-helmet';\n` +
+        `import App from './App';\n` +
+        `createRoot(document.getElementById('app')!).render(<HelmetProvider><App /></HelmetProvider>);\n`
+      );
+      const before = readFileSync(join(dir, 'src/main.tsx'), 'utf8');
+      const result = migration.run(dir, new Set());
+      expect(resultStatus(result)).toBe('applied');
+      expect(typeof result === 'object' && result?.changed).toBe(false);
+      expect(readFileSync(join(dir, 'src/main.tsx'), 'utf8')).toBe(before);
+    });
+
+    it('augments an existing @dr.pogodin/react-helmet import with HelmetProvider specifier', () => {
+      writeMain(
+        `import { createRoot } from 'react-dom/client';\n` +
+        `import { Helmet } from '@dr.pogodin/react-helmet';\n` +
+        `import App from './App';\n` +
+        `createRoot(document.getElementById('app')!).render(<App />);\n`
+      );
+      expect(resultStatus(migration.run(dir, new Set()))).toBe('applied');
+      const out = readFileSync(join(dir, 'src/main.tsx'), 'utf8');
+      // A single import line with both specifiers, not a duplicate import.
+      const importLines = out.split('\n').filter((l) => l.includes('@dr.pogodin/react-helmet'));
+      expect(importLines.length).toBe(1);
+      expect(importLines[0]).toContain('Helmet');
+      expect(importLines[0]).toContain('HelmetProvider');
+    });
+
+    it('recurses into app-entry.tsx when main.tsx is a stub wrapper', () => {
+      writeMain(`import './app-entry';\n`);
+      writeAppEntry(
+        `import { createRoot } from 'react-dom/client';\n` +
+        `import App from './App';\n` +
+        `createRoot(document.getElementById('app')!).render(<App />);\n`
+      );
+      expect(resultStatus(migration.run(dir, new Set()))).toBe('applied');
+      // main.tsx unchanged
+      expect(readFileSync(join(dir, 'src/main.tsx'), 'utf8')).toBe(`import './app-entry';\n`);
+      // app-entry.tsx wrapped
+      expect(readFileSync(join(dir, 'src/app-entry.tsx'), 'utf8')).toContain('HelmetProvider');
+    });
+
+    it('skips when render tree cannot be located', () => {
+      writeMain(
+        `import { createRoot } from 'react-dom/client';\n` +
+        `// render call commented out\n` +
+        `// createRoot(document.getElementById('app')!).render(<App />);\n`
+      );
+      const result = migration.run(dir, new Set());
+      expect(resultStatus(result)).toBe('skipped');
+      expect(typeof result === 'object' && result?.reason).toBe('render_tree_not_found');
+    });
+
+    it('skips on parse failure and surfaces the babel error on the skipped event', () => {
+      writeMain(`import x from ;;;broken(\n`);
+      const result = migration.run(dir, new Set());
+      expect(resultStatus(result)).toBe('skipped');
+      expect(typeof result === 'object' && result?.reason).toBe('parse_failed');
+      // Parse error detail surfaces via `extra` so Loki shows the underlying
+      // babel SyntaxError (line/col) instead of an opaque parse_failed count.
+      const extra = typeof result === 'object' ? (result as { extra?: Record<string, unknown> }).extra : undefined;
+      expect(extra?.parseError).toEqual(expect.stringMatching(/./));
+    });
+
+    it('honors an aliased HelmetProvider import when emitting JSX', () => {
+      // Aliased import: local binding is HP, not HelmetProvider. Emitting a
+      // hardcoded <HelmetProvider> tag would reference an unbound identifier
+      // and also defeat the idempotency check (which anchors on local name).
+      writeMain(
+        `import { createRoot } from 'react-dom/client';\n` +
+        `import { HelmetProvider as HP } from '@dr.pogodin/react-helmet';\n` +
+        `import App from './App';\n` +
+        `createRoot(document.getElementById('app')!).render(<App />);\n`
+      );
+      const first = migration.run(dir, new Set());
+      expect(resultStatus(first)).toBe('applied');
+      const out = readFileSync(join(dir, 'src/main.tsx'), 'utf8');
+      expect(out).toContain('<HP>');
+      expect(out).toContain('</HP>');
+      expect(out).not.toContain('<HelmetProvider>');
+
+      // Idempotent: the JSX-presence scan must recognize the aliased local name.
+      const second = migration.run(dir, new Set());
+      expect(resultStatus(second)).toBe('applied');
+      expect(typeof second === 'object' && second?.changed).toBe(false);
+    });
+
+    it('adds a sibling named import when the only HELMET_PKG import is a namespace import', () => {
+      // ESM disallows mixing ImportNamespaceSpecifier with named specifiers in
+      // a single declaration; mutating the existing import would produce
+      // invalid syntax. A separate `import { HelmetProvider } from ...` decl
+      // is the only legal shape.
+      writeMain(
+        `import { createRoot } from 'react-dom/client';\n` +
+        `import * as Helmet from '@dr.pogodin/react-helmet';\n` +
+        `import App from './App';\n` +
+        `createRoot(document.getElementById('app')!).render(<App />);\n`
+      );
+      expect(resultStatus(migration.run(dir, new Set()))).toBe('applied');
+      const out = readFileSync(join(dir, 'src/main.tsx'), 'utf8');
+      expect(out).toContain(`import * as Helmet from`);
+      const named = out.match(/import\s*\{[^}]*HelmetProvider[^}]*\}\s*from\s*['"]@dr\.pogodin\/react-helmet['"]/);
+      expect(named, 'expected a separate named-specifier import for HelmetProvider').toBeTruthy();
+    });
+
+    it('wraps even when a foreign-package HelmetProvider (e.g. react-helmet-async) already wraps', () => {
+      // react-helmet-async's provider doesn't satisfy @dr.pogodin/react-helmet's
+      // <Helmet> (independent heaps). Detection must be anchored to HELMET_PKG
+      // so we still wrap with ours.
+      writeMain(
+        `import { createRoot } from 'react-dom/client';\n` +
+        `import { HelmetProvider } from 'react-helmet-async';\n` +
+        `import App from './App';\n` +
+        `createRoot(document.getElementById('app')!).render(<HelmetProvider><App /></HelmetProvider>);\n`
+      );
+      expect(resultStatus(migration.run(dir, new Set()))).toBe('applied');
+      const out = readFileSync(join(dir, 'src/main.tsx'), 'utf8');
+      expect(out).toContain(`from 'react-helmet-async'`);
+      expect(out).toContain(`from "@dr.pogodin/react-helmet"`);
     });
   });
 
@@ -1079,6 +1337,84 @@ export default app;
       // this assertion, a regression like renaming `result.reason` in the
       // runner would pass all other tests while silently dropping the field.
       expect(skipped!.reason).toBe('gitignore_missing');
+    });
+
+    it('surfaces changed=true on applied events that wrote bytes', () => {
+      // remove-public-assets-gitignore + a gitignore containing the legacy
+      // entry: migration mutates the file → changed=true.
+      writeFileSync(join(dir, '.gitignore'), 'node_modules\n# Public Assets\npublic/assets\n', 'utf8');
+
+      runMigrations(dir, new Set());
+
+      const events = parseMigrationEvents(consoleLogSpy);
+      const applied = events.find((e) => e.event === 'migration.remove-public-assets-gitignore.applied');
+      expect(applied).toBeDefined();
+      expect(applied!.changed).toBe(true);
+    });
+
+    it('surfaces changed=false on applied events that were converged no-ops', () => {
+      // gitignore without the legacy entry: migration returns applied with no write.
+      writeFileSync(join(dir, '.gitignore'), 'node_modules\ndist\n', 'utf8');
+
+      runMigrations(dir, new Set());
+
+      const events = parseMigrationEvents(consoleLogSpy);
+      const applied = events.find((e) => e.event === 'migration.remove-public-assets-gitignore.applied');
+      expect(applied).toBeDefined();
+      expect(applied!.changed).toBe(false);
+    });
+
+    it('protects canonical event/migrationId/durationMs from being overwritten by extra', () => {
+      // A future migration could accidentally return extra keys that collide
+      // with the canonical fields; runner must keep its own fields authoritative
+      // so Loki dashboards keyed on event name don't lose rows.
+      const original = (MIGRATIONS as unknown as Array<{ id: string; description: string; run: unknown }>).find((m) => m.id === 'remove-public-assets-gitignore');
+      const save = original!.run;
+      (original as unknown as { run: () => unknown }).run = () => ({
+        status: 'applied',
+        changed: true,
+        extra: { event: 'hijacked', migrationId: 'other', durationMs: -1, custom: 'ok' },
+      });
+      try {
+        runMigrations(dir, new Set());
+      } finally {
+        (original as unknown as { run: unknown }).run = save;
+      }
+      const events = parseMigrationEvents(consoleLogSpy);
+      const applied = events.find((e) => e.migrationId === 'remove-public-assets-gitignore');
+      expect(applied?.event).toBe('migration.remove-public-assets-gitignore.applied');
+      expect(applied?.durationMs).toBeGreaterThanOrEqual(0);
+      expect((applied as unknown as { custom?: string }).custom).toBe('ok');
+    });
+
+    it('merges extra telemetry fields onto applied events', () => {
+      // migrate-to-ssr-entry emits vitePluginApiRoutesPreserved via its extra bag.
+      mkdirSync(join(dir, 'src/server/api/health'), { recursive: true });
+      writeFileSync(join(dir, 'src/server/entry.ts'), MARKED_ENTRY, 'utf8');
+      writeFileSync(join(dir, 'src/server/api/health/GET.ts'), 'export default () => {};', 'utf8');
+      writeFileSync(join(dir, 'src/entry-server.tsx'), 'export function render() {}', 'utf8');
+      writeFileSync(join(dir, 'package.json'), JSON.stringify({
+        scripts: { build: 'vite build && vite build --ssr src/server/entry.ts' },
+        dependencies: { 'vite-plugin-api-routes': '^1.0.0' },
+      }, null, 2) + '\n', 'utf8');
+      writeFileSync(join(dir, 'vite.config.ts'),
+        `import apiRoutes from 'vite-plugin-api-routes';\nexport default { plugins: [apiRoutes()] };\n`, 'utf8');
+
+      runMigrations(dir, new Set());
+
+      const events = parseMigrationEvents(consoleLogSpy);
+      const applied = events.find((e) => e.event === 'migration.migrate-to-ssr-entry.applied');
+      expect(applied?.vitePluginApiRoutesPreserved).toBe(true);
+    });
+
+    it('omits changed on skipped events', () => {
+      runMigrations(dir, new Set());
+      const events = parseMigrationEvents(consoleLogSpy);
+      for (const e of events) {
+        if (e.event.endsWith('.skipped')) {
+          expect(e.changed, `skipped events must not carry changed (${e.migrationId})`).toBeUndefined();
+        }
+      }
     });
 
     it('omits reason on applied events and preserves it across all skip paths', () => {

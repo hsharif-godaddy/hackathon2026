@@ -23,6 +23,13 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync, readdir
 import { createHash } from 'node:crypto';
 import { dirname, join, relative, basename, extname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parse as babelParse } from '@babel/parser';
+import _traverse from '@babel/traverse';
+import _generate from '@babel/generator';
+import * as t from '@babel/types';
+
+const traverse = _traverse.default || _traverse;
+const generate = _generate.default || _generate;
 
 const METHOD_FILES = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']);
 
@@ -87,6 +94,7 @@ const SYNC_MANIFEST = [
       'dc37acfb8a11bc79e0159310eaede77d', // before data-router refactor (pre-2026-05-01)
       // Historical backfill (generated from git log of app-templates/v8/src/main.tsx):
       'cd27c646bde48f518e3a9911fa045a10', // 42c8f2c16 - SSR + SEO foundation shape
+      'e1607af67d71eba3273e7fec193ba5a3', // AIROBUILD-1591 - dominant live-prod shape before ensure-helmet-provider migration
       'e790c445cade0cb4ba4c3aa4715b04b2', // d16667fa5 - before hydrateRoot branch / react-helmet introduction
       '52eb36f89189ccba172bc8abb8819434', // 0bd48df3b - ENV mode fix
       'a5ddaa13c9e6cfc91bf3e433953d301e', // 072cb6366 - post-revert of SCC c2 tracking
@@ -339,6 +347,45 @@ function generateEntryApiBlocks(entries) {
   return { imports, registrations };
 }
 
+const VITE_CONFIG_CANDIDATES = ['vite.config.ts', 'vite.config.js', 'vite.config.mjs', 'vite.config.cjs'];
+
+// Match only actual import/require specifier contexts — not comments, string
+// literals in unrelated code, or changelog references. Allows single or
+// double quotes; permits optional path suffix (we're matching the package
+// name only, so no suffix is the common case).
+const VITE_PLUGIN_IMPORT_RE =
+  /(?:from\s*['"]vite-plugin-api-routes['"]|require\s*\(\s*['"]vite-plugin-api-routes['"]\s*\)|import\s*\(\s*['"]vite-plugin-api-routes['"]\s*\))/;
+
+/**
+ * Returns true if any vite.config.* file still imports `vite-plugin-api-routes`.
+ * Read-only; swallows unexpected read errors (a misread as "still referenced"
+ * would preserve the dep — safer fallback than removing it and crashing the
+ * preview container).
+ */
+function isVitePluginApiRoutesReferenced(customerDir) {
+  for (const name of VITE_CONFIG_CANDIDATES) {
+    const p = join(customerDir, name);
+    if (!existsSync(p)) continue;
+    try {
+      const content = readFileSync(p, 'utf8');
+      if (VITE_PLUGIN_IMPORT_RE.test(content)) return true;
+    } catch (err) {
+      // Be conservative: unreadable config could still import the plugin.
+      // Emit a structured event so ops can correlate a preserved dep with a
+      // specific fs error (EACCES / EIO / symlink loop) rather than an
+      // unobservable silent-true — preservation stays safe either way.
+      console.error(JSON.stringify({
+        event: 'vite-config.read-error',
+        file: name,
+        code: err && err.code ? err.code : undefined,
+        error: err instanceof Error ? err.message : String(err),
+      }));
+      return true;
+    }
+  }
+  return false;
+}
+
 /**
  * Returns true iff the customer app is fully migrated to SSR. Read-only,
  * never throws. Used to gate HTML migrations (marker injection, stale
@@ -463,6 +510,188 @@ function injectGlobalsCssLink(html) {
   };
 }
 
+const HELMET_PKG = '@dr.pogodin/react-helmet';
+const STUB_TARGETS = new Set(['./app-entry', './app-entry.tsx', './app-entry.ts', './app-entry.jsx', './app-entry.js']);
+
+/**
+ * If src is a stub wrapper (only imports, one of which targets a known app-entry
+ * sibling), return the resolved path to that sibling. Otherwise null. Stubs
+ * exist on apps where an agent moved the render logic out of main.tsx so
+ * platform-plugin injections wouldn't cascade HMR through the whole module
+ * graph; in that case we need to transform app-entry.tsx, not main.tsx.
+ */
+function resolveEntryStub(src, currentFileDir) {
+  let ast;
+  try {
+    ast = babelParse(src, { sourceType: 'module', plugins: ['jsx', 'typescript'] });
+  } catch (_err) {
+    return null;
+  }
+  let stubTarget = null;
+  for (const node of ast.program.body) {
+    if (node.type === 'ImportDeclaration') {
+      if (STUB_TARGETS.has(node.source.value)) stubTarget = node.source.value;
+    } else if (node.type !== 'EmptyStatement') {
+      return null;
+    }
+  }
+  if (!stubTarget) return null;
+  // Try each known sibling extension — the import may omit the extension.
+  const baseName = stubTarget.replace(/^\.\//, '').replace(/\.(tsx|ts|jsx|js)$/, '');
+  for (const ext of ['tsx', 'ts', 'jsx', 'js']) {
+    const candidate = join(currentFileDir, `${baseName}.${ext}`);
+    if (existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+function isJsxRoot(node) {
+  return t.isJSXElement(node) || t.isJSXFragment(node);
+}
+
+function renderArgIndex(callee) {
+  if (t.isIdentifier(callee) && callee.name === 'hydrateRoot') return 1;
+  if (t.isMemberExpression(callee) && t.isIdentifier(callee.property)) {
+    if (callee.property.name === 'render') return 0;
+    if (callee.property.name === 'hydrateRoot') return 1;
+  }
+  return -1;
+}
+
+/**
+ * Wrap the render tree in <HelmetProvider> and ensure the import exists.
+ * Returns transformed source on success, or { reason } on skip:
+ *   - helmet_already_wraps_tree  : <HelmetProvider> already in JSX (converged, no write)
+ *   - render_tree_not_found      : couldn't locate createRoot/hydrateRoot call site
+ *   - parse_failed               : AST parse failed (customer syntax error)
+ */
+function applyHelmetProviderTransform(source) {
+  let ast;
+  try {
+    ast = babelParse(source, { sourceType: 'module', plugins: ['jsx', 'typescript'] });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { reason: 'parse_failed', error: message };
+  }
+
+  // Anchor detection to HELMET_PKG specifically. A wrap via react-helmet-async
+  // or another Helmet package wouldn't satisfy @dr.pogodin/react-helmet's
+  // <Helmet> (separate provider heaps) — we must still wrap with our provider.
+  let helmetProviderLocalName = null;
+  let helmetPkgImportDecl = null;
+  let helmetPkgHasNamespaceImport = false;
+  for (const node of ast.program.body) {
+    if (node.type !== 'ImportDeclaration') continue;
+    if (node.source.value !== HELMET_PKG) continue;
+    helmetPkgImportDecl = node;
+    for (const spec of node.specifiers) {
+      if (spec.type === 'ImportSpecifier' && spec.imported.name === 'HelmetProvider') {
+        helmetProviderLocalName = spec.local.name;
+      } else if (spec.type === 'ImportNamespaceSpecifier') {
+        helmetPkgHasNamespaceImport = true;
+      }
+    }
+  }
+
+  const providerTagName = helmetProviderLocalName ?? 'HelmetProvider';
+  const wrapJsxInProvider = (jsxNode) => t.jsxElement(
+    t.jsxOpeningElement(t.jsxIdentifier(providerTagName), [], false),
+    t.jsxClosingElement(t.jsxIdentifier(providerTagName)),
+    [jsxNode],
+    false,
+  );
+
+  // Detection must complete before the wrap pass: otherwise (a) an existing
+  // <HelmetProvider> wrap would be re-wrapped by the CallExpression visitor
+  // before the JSX visitor fires, and (b) a freshly-inserted wrap would
+  // satisfy the JSX visitor and falsely flag the file as already-wrapped.
+  if (helmetProviderLocalName) {
+    let alreadyWrapped = false;
+    traverse(ast, {
+      JSXOpeningElement(path) {
+        if (path.node.name.type === 'JSXIdentifier' &&
+            path.node.name.name === helmetProviderLocalName) {
+          alreadyWrapped = true;
+          path.stop();
+        }
+      },
+    });
+    if (alreadyWrapped) return { reason: 'helmet_already_wraps_tree' };
+  }
+
+  // Tracks declarators we've already wrapped. A single `const tree = <App/>`
+  // shared across hydrateRoot + createRoot branches must not get wrapped twice.
+  const wrappedDeclarators = new WeakSet();
+  let patched = false;
+  const wrapExpression = (exprPath) => {
+    const node = exprPath.node;
+    if (isJsxRoot(node)) {
+      exprPath.replaceWith(wrapJsxInProvider(node));
+      patched = true;
+      return;
+    }
+    if (!t.isIdentifier(node)) return;
+    const binding = exprPath.scope.getBinding(node.name);
+    if (!binding?.path.isVariableDeclarator()) return;
+    if (wrappedDeclarators.has(binding.path.node)) {
+      patched = true;
+      return;
+    }
+    const init = binding.path.get('init');
+    if (!init.node) return;
+    if (isJsxRoot(init.node)) {
+      init.replaceWith(wrapJsxInProvider(init.node));
+      wrappedDeclarators.add(binding.path.node);
+      patched = true;
+      return;
+    }
+    if (t.isParenthesizedExpression(init.node) && isJsxRoot(init.node.expression)) {
+      init.get('expression').replaceWith(wrapJsxInProvider(init.node.expression));
+      wrappedDeclarators.add(binding.path.node);
+      patched = true;
+    }
+  };
+
+  // Visit every render call, not just the first — customer main.tsx can split
+  // hydrateRoot/createRoot across inline branches (no shared `const tree`);
+  // stopping after the first wrap would leave the other branch unwrapped.
+  traverse(ast, {
+    CallExpression(path) {
+      const argIdx = renderArgIndex(path.node.callee);
+      if (argIdx < 0 || path.node.arguments.length <= argIdx) return;
+      wrapExpression(path.get(`arguments.${argIdx}`));
+    },
+  });
+
+  if (!patched) return { reason: 'render_tree_not_found' };
+
+  const hasSpec = !!helmetPkgImportDecl?.specifiers.some(
+    (s) => s.type === 'ImportSpecifier' && s.imported.name === 'HelmetProvider',
+  );
+
+  if (!hasSpec) {
+    const newSpec = t.importSpecifier(t.identifier('HelmetProvider'), t.identifier('HelmetProvider'));
+    // A namespace-only import (`import * as H from ...`) can't legally carry
+    // named specifiers alongside it, so add a sibling declaration rather than
+    // mutating the existing one.
+    if (helmetPkgImportDecl && !helmetPkgHasNamespaceImport) {
+      helmetPkgImportDecl.specifiers.push(newSpec);
+    } else {
+      const newImport = t.importDeclaration([newSpec], t.stringLiteral(HELMET_PKG));
+      const body = ast.program.body;
+      let insertAt = 0;
+      for (let i = 0; i < body.length; i++) {
+        if (body[i].type === 'ImportDeclaration') insertAt = i + 1;
+        else break;
+      }
+      body.splice(insertAt, 0, newImport);
+    }
+  }
+
+  const out = generate(ast, { retainLines: false, comments: true }, source);
+  return out.code.endsWith('\n') ? out.code : out.code + '\n';
+}
+
 /**
  * Migrations run targeted transforms on specific files rather than hash-based
  * whole-file replacement. Each migration has an `id` (for logging) and a `run`
@@ -473,6 +702,10 @@ function injectGlobalsCssLink(html) {
  * - 'applied' (or undefined) — body completed its primary work plan (writes,
  *   no-ops on already-converged state, or safe partial writes on customized
  *   paths where the core deliverable still landed).
+ * - { status: 'applied', changed: boolean } — preferred form: `changed`
+ *   surfaces to the migration.<id>.applied event so Loki dashboards can
+ *   distinguish "wrote bytes" from "already converged." A migration that
+ *   returns bare 'applied' omits the field.
  * - 'skipped' — migration's primary deliverable could not run (precondition
  *   not met, or a prerequisite file missing). Minor idempotent writes may
  *   still have landed, but the core work was omitted — operators reading
@@ -499,12 +732,45 @@ export const MIGRATIONS = [
       const updated = content
         .replace(/^# Public Assets\s*$\r?\n?/gm, '')
         .replace(/^public\/assets\/?\s*$\r?\n?/gm, '');
-      if (updated !== content) {
+      const changed = updated !== content;
+      if (changed) {
         writeFileSync(gitignorePath, updated, 'utf8');
         console.log('  Removed public/assets from .gitignore');
       }
 
-      return 'applied';
+      return { status: 'applied', changed };
+    }
+  },
+  {
+    id: 'ensure-helmet-provider',
+    description: 'Wrap render tree in <HelmetProvider> so <Helmet> usages in children/layouts do not throw',
+    run(customerDir, _syncedFiles) {
+      const mainPath = join(customerDir, 'src/main.tsx');
+      if (!existsSync(mainPath)) return { status: 'skipped', reason: 'main_tsx_missing' };
+
+      const mainSrc = readFileSync(mainPath, 'utf8');
+      const stubTarget = resolveEntryStub(mainSrc, dirname(mainPath));
+      const targetPath = stubTarget ?? mainPath;
+      const targetSrc = stubTarget ? readFileSync(targetPath, 'utf8') : mainSrc;
+
+      const result = applyHelmetProviderTransform(targetSrc);
+      if (typeof result !== 'string') {
+        // Converged state (provider already wraps the tree) maps to applied/
+        // no-op rather than skipped — matches inject-ssr-markers and keeps
+        // the "still mutating trees" dashboard query consistent across
+        // migrations.
+        if (result.reason === 'helmet_already_wraps_tree') {
+          return { status: 'applied', changed: false };
+        }
+        return {
+          status: 'skipped',
+          reason: result.reason,
+          ...(result.error ? { extra: { parseError: result.error } } : {}),
+        };
+      }
+      writeFileSync(targetPath, result, 'utf8');
+      console.log(`  Wrapped render tree in <HelmetProvider> in ${relative(customerDir, targetPath)}`);
+      return { status: 'applied', changed: true };
     }
   },
   {
@@ -526,6 +792,8 @@ export const MIGRATIONS = [
         console.log('  ⏭️  src/server/entry.ts or src/server/api not present');
         return { status: 'skipped', reason: 'server_entry_or_api_missing' };
       }
+
+      let anyChanges = false;
 
       // 1. entry.ts API registrations. Idempotent: marked-block shape is
       // detected and rewritten in place; bare template shape is upgraded;
@@ -551,6 +819,7 @@ export const MIGRATIONS = [
         const updated = content.replace(markedImportRe, importBlock).replace(markedRegRe, regBlock);
         if (updated !== content) {
           writeFileSync(entryPath, updated, 'utf8');
+          anyChanges = true;
           console.log(`  Regenerated ${entries.length} API registration(s) in src/server/entry.ts`);
         }
         entryHasMarkers = true;
@@ -567,6 +836,7 @@ export const MIGRATIONS = [
         const updated = content.replace(bareImportRe, importBlock).replace(bareRegRe, regBlock);
         if (updated !== content) {
           writeFileSync(entryPath, updated, 'utf8');
+          anyChanges = true;
           console.log(`  Generated ${entries.length} API registration(s) in src/server/entry.ts`);
         }
         entryHasMarkers = true;
@@ -580,21 +850,36 @@ export const MIGRATIONS = [
       // didn't will self-heal on the next restart. Each inspection is
       // idempotent (checking for presence before removal / rewrite).
       let buildHasSsr = false;
+      let vitePluginPreserved = false;
       if (entryHasMarkers) {
         const pkgPath = join(customerDir, 'package.json');
         if (existsSync(pkgPath)) {
           const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
           let changed = false;
 
-          if (pkg.dependencies && 'vite-plugin-api-routes' in pkg.dependencies) {
-            delete pkg.dependencies['vite-plugin-api-routes'];
-            changed = true;
-            console.log('  Removed dependencies.vite-plugin-api-routes');
-          }
-          if (pkg.devDependencies && 'vite-plugin-api-routes' in pkg.devDependencies) {
-            delete pkg.devDependencies['vite-plugin-api-routes'];
-            changed = true;
-            console.log('  Removed devDependencies.vite-plugin-api-routes');
+          // Preservation guard: only prune vite-plugin-api-routes when no
+          // source still imports it. A customer-modified vite.config.* that we
+          // left un-synced (hash miss) may still reference the plugin; deleting
+          // the dep would crash vite startup with `Cannot find package
+          // 'vite-plugin-api-routes'`. Skip the filesystem scan entirely when
+          // the dep isn't even in package.json — the fully-migrated hot path.
+          const depPresent =
+            !!(pkg.dependencies && 'vite-plugin-api-routes' in pkg.dependencies) ||
+            !!(pkg.devDependencies && 'vite-plugin-api-routes' in pkg.devDependencies);
+          if (depPresent && !isVitePluginApiRoutesReferenced(customerDir)) {
+            if (pkg.dependencies && 'vite-plugin-api-routes' in pkg.dependencies) {
+              delete pkg.dependencies['vite-plugin-api-routes'];
+              changed = true;
+              console.log('  Removed dependencies.vite-plugin-api-routes');
+            }
+            if (pkg.devDependencies && 'vite-plugin-api-routes' in pkg.devDependencies) {
+              delete pkg.devDependencies['vite-plugin-api-routes'];
+              changed = true;
+              console.log('  Removed devDependencies.vite-plugin-api-routes');
+            }
+          } else if (depPresent) {
+            vitePluginPreserved = true;
+            console.log('  ⚠️  vite-plugin-api-routes still referenced in source; preserving dep');
           }
           if (pkg.devDependencies && 'esbuild' in pkg.devDependencies) {
             delete pkg.devDependencies.esbuild;
@@ -664,6 +949,7 @@ export const MIGRATIONS = [
 
           if (changed) {
             writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n', 'utf8');
+            anyChanges = true;
           }
           if (pkg.scripts?.build?.includes('--ssr')) {
             buildHasSsr = true;
@@ -691,16 +977,22 @@ export const MIGRATIONS = [
         const configurePath = join(customerDir, 'src/server/configure.js');
         if (existsSync(configurePath)) {
           unlinkSync(configurePath);
+          anyChanges = true;
           console.log('  Deleted src/server/configure.js');
         }
         const bundlePath = join(customerDir, 'bundle.js');
         if (existsSync(bundlePath)) {
           unlinkSync(bundlePath);
+          anyChanges = true;
           console.log('  Deleted bundle.js');
         }
       }
 
-      return 'applied';
+      return {
+        status: 'applied',
+        changed: anyChanges,
+        extra: { vitePluginApiRoutesPreserved: vitePluginPreserved },
+      };
     }
   },
   {
@@ -727,7 +1019,7 @@ export const MIGRATIONS = [
         if (GLOBALS_CSS_LINK_RE.test(updated)) {
           // The customized boot path already has the stylesheet fallback,
           // so the migration target is present without another write.
-          return 'applied';
+          return { status: 'applied', changed: false };
         }
 
         const globalsPath = join(customerDir, 'src/styles/globals.css');
@@ -749,11 +1041,12 @@ export const MIGRATIONS = [
       // Returning applied for the already-static-entry state is intentional:
       // the migration's target shape is present, so dashboards can treat this
       // app as converged without requiring a filesystem write.
-      if (updated !== original) {
+      const changed = updated !== original;
+      if (changed) {
         writeFileSync(htmlPath, updated, 'utf8');
       }
 
-      return 'applied';
+      return { status: 'applied', changed };
     }
   },
   {
@@ -778,7 +1071,7 @@ export const MIGRATIONS = [
       const hasHead = original.includes('<!--app-head-->');
       const hasHtml = original.includes('<!--app-html-->');
       if (hasHead && hasHtml) {
-        return 'applied';
+        return { status: 'applied', changed: false };
       }
 
       const appDivRe = /<div id="app"([^>]*)><\/div>/;
@@ -800,12 +1093,13 @@ export const MIGRATIONS = [
         updated = updated.replace(appDivRe, '<div id="app"$1><!--app-html--></div>');
       }
 
-      if (updated !== original) {
+      const changed = updated !== original;
+      if (changed) {
         writeFileSync(htmlPath, updated, 'utf8');
         console.log('  Injected SSR markers into index.html');
       }
 
-      return 'applied';
+      return { status: 'applied', changed };
     }
   },
   {
@@ -827,12 +1121,13 @@ export const MIGRATIONS = [
       if (!titleRe.test(original)) return { status: 'skipped', reason: 'no_stale_title' };
 
       const updated = original.replace(titleRe, '');
-      if (updated !== original) {
+      const changed = updated !== original;
+      if (changed) {
         writeFileSync(htmlPath, updated, 'utf8');
         console.log('  Stripped stale <title> from index.html (Helmet owns <head>)');
       }
 
-      return 'applied';
+      return { status: 'applied', changed };
     }
   }
 ];
@@ -925,15 +1220,27 @@ export function runMigrations(customerDir, syncedFiles) {
     const start = Date.now();
     let status;
     let reason;
+    let changed;
+    let extra;
     try {
       const result = migration.run(customerDir, syncedFiles);
       // Result contract: bare 'skipped' | 'applied' | undefined for backward-
-      // compatible paths that don't carry a reason; { status, reason? } when
-      // the migration wants to surface a skip classification to telemetry.
+      // compatible paths; { status, reason? } for skipped; { status: 'applied',
+      // changed: boolean, extra?: Record<string, unknown> } for applied. `extra`
+      // keys merge onto the applied event payload so migrations can surface
+      // guard trips or other structured signals without new scalar params on
+      // runMigrations — dashboards query those fields directly instead of
+      // grepping free-text log lines.
       const resultStatus = typeof result === 'string' ? result : result?.status;
       status = resultStatus === 'skipped' ? 'skipped' : 'applied';
-      if (status === 'skipped' && typeof result === 'object' && result?.reason) {
+      if (status === 'skipped' && result?.reason) {
         reason = result.reason;
+      }
+      if (status === 'applied' && typeof result?.changed === 'boolean') {
+        changed = result.changed;
+      }
+      if (result?.extra && typeof result.extra === 'object') {
+        extra = result.extra;
       }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
@@ -950,11 +1257,15 @@ export function runMigrations(customerDir, syncedFiles) {
       }));
       throw error;
     }
+    // Canonical fields spread last so a migration that accidentally returns
+    // `extra: { event, migrationId, durationMs }` can't displace them in Loki.
     console.log(JSON.stringify({
+      ...(extra ?? {}),
       event: `migration.${migration.id}.${status}`,
       migrationId: migration.id,
       durationMs: Date.now() - start,
       ...(reason ? { reason } : {}),
+      ...(typeof changed === 'boolean' ? { changed } : {}),
     }));
   }
 }

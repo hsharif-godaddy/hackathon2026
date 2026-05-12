@@ -15,6 +15,9 @@ catalogs:
     '@airo/components':
       specifier: ^3.3.0
       version: 3.3.0
+    '@babel/generator':
+      specifier: ^7.29.1
+      version: 7.29.1
     '@babel/parser':
       specifier: ^7.29.3
       version: 7.29.3
@@ -238,6 +241,9 @@ importers:
         specifier: 17.2.3
         version: 17.2.3
     devDependencies:
+      '@babel/generator':
+        specifier: 'catalog:'
+        version: 7.29.1
       '@babel/parser':
         specifier: 'catalog:'
         version: 7.29.3
@@ -351,7 +357,7 @@ importers:
         specifier: workspace:*
         version: link:../packages/shared
       '@babel/generator':
-        specifier: ^7.29.1
+        specifier: 'catalog:'
         version: 7.29.1
       '@babel/parser':
         specifier: 'catalog:'

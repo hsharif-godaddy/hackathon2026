@@ -329,6 +329,7 @@ async function git(cwd: string, args: string[]): Promise<string> {
 describe('sync-template-files black-box migration harness', () => {
   const migrationOrder = [
     'remove-public-assets-gitignore',
+    'ensure-helmet-provider',
     'migrate-to-ssr-entry',
     'normalize-vite-html-entry',
     'inject-ssr-markers',
@@ -341,6 +342,7 @@ describe('sync-template-files black-box migration harness', () => {
       label: '2026-03-12 closeBundle plugin era',
       expectedEvents: [
         'migration.remove-public-assets-gitignore.applied',
+        'migration.ensure-helmet-provider.applied',
         'migration.migrate-to-ssr-entry.applied',
         'migration.normalize-vite-html-entry.skipped',
         'migration.inject-ssr-markers.skipped',
@@ -352,6 +354,7 @@ describe('sync-template-files black-box migration harness', () => {
       label: '2026-04-14 tsc Vite plugin era',
       expectedEvents: [
         'migration.remove-public-assets-gitignore.applied',
+        'migration.ensure-helmet-provider.applied',
         'migration.migrate-to-ssr-entry.applied',
         'migration.normalize-vite-html-entry.skipped',
         'migration.inject-ssr-markers.skipped',
@@ -363,6 +366,7 @@ describe('sync-template-files black-box migration harness', () => {
       label: '2026-04-23 pinned vite-plugin-api-routes',
       expectedEvents: [
         'migration.remove-public-assets-gitignore.applied',
+        'migration.ensure-helmet-provider.applied',
         'migration.migrate-to-ssr-entry.applied',
         'migration.normalize-vite-html-entry.skipped',
         'migration.inject-ssr-markers.skipped',
@@ -374,6 +378,7 @@ describe('sync-template-files black-box migration harness', () => {
       label: '2026-04-23 optional db import suppression',
       expectedEvents: [
         'migration.remove-public-assets-gitignore.applied',
+        'migration.ensure-helmet-provider.applied',
         'migration.migrate-to-ssr-entry.applied',
         'migration.normalize-vite-html-entry.skipped',
         'migration.inject-ssr-markers.skipped',
@@ -385,6 +390,7 @@ describe('sync-template-files black-box migration harness', () => {
       label: '2026-04-24 latest pre-branch template hash backfill',
       expectedEvents: [
         'migration.remove-public-assets-gitignore.applied',
+        'migration.ensure-helmet-provider.applied',
         'migration.migrate-to-ssr-entry.applied',
         'migration.normalize-vite-html-entry.skipped',
         'migration.inject-ssr-markers.skipped',
@@ -396,6 +402,7 @@ describe('sync-template-files black-box migration harness', () => {
       label: '2026-04-30 latest origin/main template',
       expectedEvents: [
         'migration.remove-public-assets-gitignore.applied',
+        'migration.ensure-helmet-provider.applied',
         'migration.migrate-to-ssr-entry.applied',
         'migration.normalize-vite-html-entry.skipped',
         'migration.inject-ssr-markers.skipped',

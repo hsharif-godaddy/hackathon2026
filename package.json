@@ -35,6 +35,7 @@
     "release": "cd release-manager && make build && ./dist/release-manager"
   },
   "devDependencies": {
+    "@babel/generator": "catalog:",
     "@babel/parser": "catalog:",
     "@babel/traverse": "catalog:",
     "@babel/types": "catalog:",
