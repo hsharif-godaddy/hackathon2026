@@ -23,8 +23,8 @@
     "gd-auth-client": "catalog:",
     "helmet": "catalog:",
     "multer": "catalog:",
-    "pino": "^9.6.0",
-    "pino-http": "^10.3.0"
+    "pino": "^9.14.0",
+    "pino-http": "^10.5.0"
   },
   "devDependencies": {
     "@airo/eslint-config": "workspace:*",

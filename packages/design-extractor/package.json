@@ -17,13 +17,13 @@
   "dependencies": {
     "@airo/ai-lib": "workspace:*",
     "dotenv": "catalog:",
-    "pdf2pic": "^3.1.3",
-    "pdfjs-dist": "^5.6.205"
+    "pdf2pic": "^3.2.0",
+    "pdfjs-dist": "^5.7.284"
   },
   "devDependencies": {
     "@airo/eslint-config": "workspace:*",
     "@types/node": "catalog:",
-    "@types/pdf-parse": "^1.1.4",
+    "@types/pdf-parse": "^1.1.5",
     "eslint": "catalog:",
     "tsx": "catalog:",
     "typescript": "catalog:"

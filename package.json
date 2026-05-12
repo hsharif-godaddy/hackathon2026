@@ -40,10 +40,10 @@
     "@babel/types": "catalog:",
     "@elastic/elasticsearch": "catalog:",
     "@playwright/test": "^1.59.1",
-    "husky": "^8.0.0",
-    "lint-staged": "^15.2.0",
+    "husky": "^8.0.3",
+    "lint-staged": "^15.5.2",
     "prettier": "catalog:",
-    "turbo": "^2.8.17"
+    "turbo": "^2.9.12"
   },
   "lint-staged": {
     "agents/**/*.{ts,tsx,js,jsx}": [
@@ -96,14 +96,14 @@
       "dotenv": "17.2.3",
       "eslint": "9.28.0",
       "glob": ">=10.5.0 <11 || >=11.1.0",
-      "hono": "4.11.7",
+      "hono": "4.12.16",
       "jsdom": "26.1.0",
       "next": "16.2.3",
       "prettier": "3.4.2",
       "qs": "6.14.1",
       "react": "19.1.0",
       "react-dom": "19.1.0",
-      "vite": "6.4.1",
+      "vite": "6.4.2",
       "vitest": "3.2.4",
       "@ux/alert": "2500.11.1",
       "@ux/box": "2500.9.0",

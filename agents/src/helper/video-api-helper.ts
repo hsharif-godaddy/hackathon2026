@@ -10,6 +10,9 @@ export async function getVideoAuthToken(openaiClient: OpenAI): Promise<string> {
   if (isS2SAuthEnabled()) {
     return getS2SToken();
   }
+  if (!openaiClient.apiKey) {
+    throw new Error('OpenAI apiKey is not set and S2S auth is disabled');
+  }
   return openaiClient.apiKey;
 }
 

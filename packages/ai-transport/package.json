@@ -38,7 +38,7 @@
   },
   "devDependencies": {
     "@airo/eslint-config": "workspace:*",
-    "@types/negotiator": "^0.6.3",
+    "@types/negotiator": "^0.6.4",
     "@types/node": "catalog:",
     "@types/ws": "catalog:",
     "eslint": "catalog:",

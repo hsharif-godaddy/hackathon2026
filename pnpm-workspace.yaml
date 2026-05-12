@@ -20,14 +20,14 @@ catalog:
   # Note: eslint, prettier, vitest, and dotenv also exist in pnpm.overrides
   # (root package.json) to enforce versions for transitive deps pulled by
   # plugins/configs.
-  "@ai-sdk/openai": ^3.0.50
-  "@ai-sdk/provider": ^3.0.8
-  "@airo/components": ^3.0.0
+  "@ai-sdk/openai": ^3.0.63
+  "@ai-sdk/provider": ^3.0.10
+  "@airo/components": ^3.3.0
 
   # Shared runtime
-  "@babel/parser": ^7.28.0
-  "@babel/traverse": ^7.28.0
-  "@babel/types": ^7.28.0
+  "@babel/parser": ^7.29.3
+  "@babel/traverse": ^7.29.0
+  "@babel/types": ^7.29.0
   "@elastic/elasticsearch": ^8.19.1
   "@godaddy/agent-observability-events": ^2.2.0
   "@godaddy/agent-otel-sdk": ^2.4.1
@@ -35,14 +35,14 @@ catalog:
 
   # Observability
   "@langfuse/tracing": ^4.6.1
-  "@opentelemetry/api": ^1.9.0
+  "@opentelemetry/api": ^1.9.1
   '@testing-library/dom': ^10.4.1
   '@testing-library/react': ^16.3.2
   "@types/archiver": ^6.0.4
-  "@types/express": ^4.17.21
+  "@types/express": ^4.17.25
   # Shared type definitions
   "@types/multer": ^2.1.0
-  "@types/node": ^22.18.12
+  "@types/node": ^22.19.18
   "@types/react": ^19.2.14
   "@types/react-dom": ^19.2.3
   "@types/supertest": ^7.2.0
@@ -51,7 +51,7 @@ catalog:
   "@vitest/ui": ^3.2.4
 
   # AI SDK
-  ai: ^6.0.144
+  ai: ^6.0.177
   ai-tokenizer: ^1.0.6
   archiver: ^7.0.1
   commander: ^12.1.0
@@ -67,15 +67,15 @@ catalog:
   gd-auth: 1.5.0
   gd-auth-client: ^2.1.1
   gray-matter: ^4.0.3
-  helmet: ^8.0.0
-  hyparquet: ^1.25.6
-  jose: ^6.1.3
+  helmet: ^8.1.0
+  hyparquet: ^1.25.8
+  jose: ^6.2.3
   jszip: ^3.10.1
   jwt-decode: ^4.0.0
   magic-string: 0.30.17
   multer: ^2.1.1
   next: ^16.2.6
-  openai: ^6.0.0
+  openai: ^6.37.0
   parquetjs: ^0.11.2
   prettier: 3.8.3
   react: ^19.2.4
@@ -88,11 +88,11 @@ catalog:
   supertest: ^7.2.2
   tsx: ^4.21.0
   typescript: 5.9.3
-  uuid: ^11.1.0
+  uuid: ^11.1.1
   vitest: 3.2.4
-  ws: ^8.18.3
-  yaml: ^2.7.1
-  zod: ^4.3.6
+  ws: ^8.20.0
+  yaml: ^2.8.4
+  zod: ^4.4.3
   # AWS SDK - not cataloged; pinned versions are sensitive to
   # Artifactory mirror lag for transitive @smithy/* deps.
   # Coordinate AWS SDK bumps manually across app/ and ai-lib/.

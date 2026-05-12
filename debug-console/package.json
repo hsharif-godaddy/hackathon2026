@@ -13,9 +13,9 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@aws-sdk/client-lambda": "^3.1034.0",
-    "@aws-sdk/client-s3": "^3.1034.0",
-    "@aws-sdk/client-secrets-manager": "^3.1034.0",
+    "@aws-sdk/client-lambda": "^3.1045.0",
+    "@aws-sdk/client-s3": "^3.1045.0",
+    "@aws-sdk/client-secrets-manager": "^3.1045.0",
     "@elastic/elasticsearch": "catalog:",
     "archiver": "catalog:",
     "echarts": "catalog:",

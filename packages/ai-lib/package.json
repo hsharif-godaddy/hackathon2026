@@ -56,21 +56,21 @@
     "setup": "echo 'Copy env.example to .env and fill in your API keys, then run npm run example:basic-openai'"
   },
   "dependencies": {
-    "@ai-sdk/google": "^3.0.63",
+    "@ai-sdk/google": "^3.0.71",
     "@ai-sdk/openai": "catalog:",
-    "@ai-sdk/openai-compatible": "^2.0.38",
+    "@ai-sdk/openai-compatible": "^2.0.47",
     "@ai-sdk/provider": "catalog:",
     "@airo/ai-common": "workspace:*",
     "@airo/ai-grants": "workspace:*",
-    "@godaddy/agent-otel-sdk": "catalog:",
     "@airo/shared": "workspace:*",
+    "@godaddy/agent-otel-sdk": "catalog:",
     "@langfuse/tracing": "catalog:",
     "ai": "catalog:",
     "ai-tokenizer": "catalog:",
     "dotenv": "catalog:",
     "gd-auth-client": "catalog:",
     "openai": "catalog:",
-    "undici": "^6.21.3",
+    "undici": "^6.25.0",
     "zod": "catalog:"
   },
   "peerDependencies": {
