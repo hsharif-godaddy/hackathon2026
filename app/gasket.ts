@@ -336,7 +336,7 @@ export default makeGasket({
       logPath: '/log'
     },
     componentTypes: [
-      'godaddyUnifiedPlansAndPricingLibrary'
+      'godaddyUnifiedPlansAndPricingLibraryEsm'
     ],
     appName: 'airo-app-builder',
     enabledRoutes: ['/', '/page', '/develop', '/develop/*'],

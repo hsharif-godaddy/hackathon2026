@@ -1,81 +1,38 @@
 'use client'
 
-import dynamic from 'next/dynamic'
-import { ComponentType, ReactNode, useCallback, useEffect, useRef, useState } from 'react'
-import * as ReactIntl from 'react-intl'
+import { ReactNode, useCallback, useEffect, useRef, useState } from 'react'
+import CdsComponentLoader from '@venture/cds-loader'
 
 import { shipAnalyticsLog } from '@/lib/logging'
 import { logger } from '@/lib/request-context'
-import { ensurePropTypes } from '@/utils/propTypes'
 import { shimReactInternals } from '@/utils/reactCompat'
 
-/**
- * Props for the CDS ComponentLoader.
- * Uses Record type to allow for the dynamic props the CDS library accepts.
- */
+shimReactInternals()
+
 interface CdsComponentLoaderProps extends Record<string, unknown> {
-  /** CDS component type identifier */
   type: string
-  /** CDS configuration object */
   cds?: unknown
-  /** Component subtype (e.g., 'SinglePlanUpgrade', 'StandaloneAddon') */
   subType?: string
-  /** UX component dependencies with module and version */
-  deps?: Record<string, { module: unknown; version: string }>
-  /** Locale for i18n */
+  deps?: Record<string, unknown>
   locale?: string
-  /** Loading component to show while CDS loads */
-  LoadingComponent?: ReactNode
-  /** Error fallback render function - receives the actual error */
+  loaderMode?: string
+  // Widens upstream @venture/cds-loader (ReactElement | null) to accept the factory form we pass.
+  LoadingComponent?: ReactNode | (() => ReactNode)
   renderErrorFallback?: (error: Error) => ReactNode
-  /** Source identifier for analytics */
   source?: string
-  /** Callback when CDS/UPP fails */
   onLoadError?: (error: Error) => void
 }
 
-/**
- * Dynamically loaded CDS ComponentLoader with required global setup.
- */
-const DynamicComponentLoader: ComponentType<CdsComponentLoaderProps> = dynamic(
-  async () => {
-    try {
-      shimReactInternals()
-      const [, cdsLoaderModule] = await Promise.all([
-        ensurePropTypes(),
-        import('@venture/cds-loader'),
-      ])
+// TODO: remove MutationObserver fallback detection once CDS surfaces proper
+// error callbacks. The onError prop is already wired; once CDS fires it for
+// load failures, the entire observer block can be deleted.
+//
+// The CDS ESM loader temporarily renders a FallbackComponent div during async
+// import map setup. To avoid treating that transient state as a real error, the
+// observer starts immediately but only acts on fallback-container elements that
+// persist for this duration.
+const FALLBACK_DEBOUNCE_MS = 5000
 
-      if (typeof window !== 'undefined') {
-        if (!(window as any).ux) {
-          (window as any).ux = {}
-        }
-        (window as any).ux.intl = ReactIntl
-      }
-
-      return cdsLoaderModule.default
-    } catch (error) {
-      logger.error('cds-loader.dynamic-import.failed', {
-        error: error instanceof Error ? error.message : String(error),
-      })
-      shipAnalyticsLog('paywall.cds.import.failed', {
-        error: error instanceof Error ? error.message : String(error),
-        errorType: 'dynamic_import',
-        component: 'cdsLoader',
-      })
-      throw error
-    }
-  },
-  { ssr: false }
-)
-
-/**
- * CDS ComponentLoader with error handling for:
- * 1. Async errors from CDS/UPP (via onError callback)
- * 2. CDS internal fallback detection (MutationObserver)
- *
- * Render errors should be caught by the parent ErrorBoundary in container components.
- */
 export function ComponentLoader({
   renderErrorFallback,
   source,
@@ -84,57 +41,86 @@ export function ComponentLoader({
 }: CdsComponentLoaderProps) {
   const [error, setError] = useState<Error | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const observerRef = useRef<MutationObserver | null>(null)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const onLoadErrorRef = useRef(onLoadError)
+  const erroredRef = useRef(false)
 
   const handleError = useCallback((err: Error) => {
-    logger.error('cds-loader.error', {
-      error: err.message,
-      source,
-      stack: err.stack,
-    })
+    if (erroredRef.current) return
+    erroredRef.current = true
+    observerRef.current?.disconnect()
+    logger.error('cds-loader.error', { error: err.message, source, stack: err.stack })
     shipAnalyticsLog('paywall.cds.error', {
       source,
       error: err.message,
       errorType: 'cds_callback',
       component: 'cdsLoader',
     })
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current)
+      debounceRef.current = null
+    }
     setError(err)
     onLoadError?.(err)
   }, [source, onLoadError])
 
-  // Detect CDS's internal fallback-container
-  // CDS has a hardcoded FallbackComponent that cannot be overridden via props
-  // TODO: remove once CDS is updated to allow for an error fallback component
+  onLoadErrorRef.current = onLoadError
+
   useEffect(() => {
     const container = containerRef.current
     if (!container || error) return
 
+    const triggerFallbackError = () => {
+      if (erroredRef.current) return
+      erroredRef.current = true
+      observerRef.current?.disconnect()
+      const fallbackError = new Error('CDS internal error - fallback component rendered')
+      logger.error('cds-loader.internal-fallback-detected', { source, type: props.type, subType: props.subType })
+      shipAnalyticsLog('paywall.cds.internal-fallback.detected', {
+        source,
+        type: props.type,
+        subType: props.subType,
+        errorType: 'internal_fallback',
+        component: 'cdsLoader',
+      })
+      setError(fallbackError)
+      onLoadErrorRef.current?.(fallbackError)
+    }
+
     const checkForFallback = () => {
-      if (container.querySelector('[data-testid="fallback-container"]')) {
-        const fallbackError = new Error('CDS internal error - fallback component rendered')
-        logger.error('cds-loader.internal-fallback-detected', { source })
-        shipAnalyticsLog('paywall.cds.internal-fallback.detected', {
-          source,
-          errorType: 'internal_fallback',
-          component: 'cdsLoader',
-        })
-        setError(fallbackError)
-        onLoadError?.(fallbackError)
+      if (erroredRef.current) return
+      const hasFallback = !!container.querySelector('[data-testid="fallback-container"]')
+      if (hasFallback && !debounceRef.current) {
+        debounceRef.current = setTimeout(() => {
+          if (container.querySelector('[data-testid="fallback-container"]')) {
+            triggerFallbackError()
+          }
+          debounceRef.current = null
+        }, FALLBACK_DEBOUNCE_MS)
+      } else if (!hasFallback && debounceRef.current) {
+        clearTimeout(debounceRef.current)
+        debounceRef.current = null
       }
     }
 
     checkForFallback()
-    const observer = new MutationObserver(checkForFallback)
-    observer.observe(container, { childList: true, subtree: true })
-    return () => observer.disconnect()
-  }, [source, error, onLoadError])
+    observerRef.current = new MutationObserver(checkForFallback)
+    observerRef.current.observe(container, { childList: true, subtree: true })
 
-  if (error) {
-    return renderErrorFallback ? <>{renderErrorFallback(error)}</> : null
-  }
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+      debounceRef.current = null
+      observerRef.current?.disconnect()
+      observerRef.current = null
+    }
+  }, [source, error])
+
+  if (error) return renderErrorFallback ? <>{renderErrorFallback(error)}</> : null
 
   return (
     <div ref={containerRef}>
-      <DynamicComponentLoader source={source} onError={handleError} {...props} />
+      <CdsComponentLoader source={source} onError={handleError} {...props} />
     </div>
   )
 }

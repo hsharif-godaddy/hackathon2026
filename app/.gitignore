@@ -64,3 +64,6 @@ next-env.d.ts
 
 # App secrets storage (local development)
 /app-secrets
+
+# CDS generated ESM dependencies
+/cds

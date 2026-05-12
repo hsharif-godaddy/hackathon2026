@@ -1,35 +1,51 @@
-import { logger } from '@/lib/request-context';
+/**
+ * React 18/19 compatibility for UMD bundles that read legacy React internals.
+ *
+ * CDS ESM components no longer need shims here because deps-esm.js supplies
+ * react/jsx-runtime from the host (Muse/BAM pattern), so CDS uses React 19's
+ * jsx-runtime natively.
+ *
+ * This module retains only the shimReactInternals() export used by
+ * DomainPurchaseWidget for @px/checkouts UMD compatibility.
+ */
+
+import { logger } from '@/lib/request-context'
+
+function applyReact18Compat(react: unknown): boolean {
+  if (!react || typeof react !== 'object') return false
+  const r = react as Record<string, { ReactCurrentOwner?: { current: unknown } } | undefined>
+
+  let applied = false
+
+  if (!r.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED) {
+    const internals = r.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE
+    if (internals) {
+      r.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED = internals
+      applied = true
+    }
+  }
+
+  const secret = r.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED
+  if (secret && !secret.ReactCurrentOwner) {
+    secret.ReactCurrentOwner = { current: null }
+    applied = true
+  }
+
+  return applied
+}
 
 /**
- * Shim React 18's __SECRET_INTERNALS onto React 19 for legacy UMD bundles.
- *
- * Next.js 16 vendors React 19 which renamed the internals property from
- * __SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED to
- * __CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE.
- *
- * Remote checkout bundles (e.g. cart CDN's express.js loaded by @px/checkouts)
- * read window.React and expect the React 18 internals path. This shim bridges
- * the gap so their jsx-runtime can find ReactCurrentOwner.
- *
- * Remove once the cart team ships a React 19-compatible express.js bundle.
+ * Legacy shim for non-CDS consumers (e.g. DomainPurchaseWidget / @px/checkouts).
+ * Bridges React 19's renamed internals key so UMD bundles that read
+ * window.React.__SECRET_INTERNALS find the value they expect.
  */
 export function shimReactInternals(): void {
-  if (typeof window === 'undefined') return;
-
-  const react = (window as any).React;
-  if (!react) {
-    logger.warn('reactCompat.shim.skipped', { reason: 'window.React not set' });
-    return;
-  }
-  if (react.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED) return;
-
-  const internals = react.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
-  if (internals) {
-    react.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED = internals;
-  } else {
-    logger.warn('reactCompat.shim.skipped', {
-      reason: 'React 19 internals key not found on window.React',
-      reactVersion: react.version,
-    });
+  if (typeof window === 'undefined') return
+  const applied = applyReact18Compat((window as any).React)
+  if (applied) {
+    logger.info('reactCompat.shimReactInternals.activated', {
+      hasSecretInternals: !!((window as any).React?.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED),
+      hasReactCurrentOwner: !!((window as any).React?.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED?.ReactCurrentOwner),
+    })
   }
 }

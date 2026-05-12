@@ -14,6 +14,7 @@ import DevelopSkeleton from '@/app/[market]/develop/components/DevelopSkeleton'
 import DevelopHeader from '@/app/[market]/develop/components/layout/Header'
 import PanelSkeleton from '@/app/[market]/develop/components/PanelSkeleton'
 import { DevelopCreditsModal, PaywallErrorFallback, RenewalPollingModal, UpgradeContainer, UpgradePollingModal } from '@/app/[market]/develop/components/paywall'
+import { CdsEsmPreload } from '@/app/[market]/develop/components/paywall/CdsEsmPreload'
 import PreviewPane, { type PublishSnapshotRequestDetail } from '@/app/[market]/develop/components/preview/PreviewPane'
 import ResizableDivider from '@/app/[market]/develop/components/ResizableDivider'
 import { SettingsLoadingState } from '@/app/[market]/develop/components/settings/components/SettingsLoadingState'
@@ -1726,6 +1727,9 @@ function DevelopPageContent() {
 
           {appId && <DevelopCreditsModal appId={appId} />}
           {appId && <FirstPublishCongratsModal appId={appId} />}
+        </ErrorBoundary>
+        <ErrorBoundary fallback={() => null}>
+          <CdsEsmPreload />
         </ErrorBoundary>
 
         {showPublishLimitModal && publishLimitData && appId && (

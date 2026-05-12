@@ -21,11 +21,6 @@ vi.mock('@/lib/request-context', () => ({
   },
 }))
 
-// Mock propTypes utility
-vi.mock('@/utils/propTypes', () => ({
-  ensurePropTypes: vi.fn().mockResolvedValue(undefined),
-}))
-
 // Mock the CDS loader module
 const mockCdsComponent = vi.fn()
 vi.mock('@venture/cds-loader', () => ({
@@ -137,7 +132,15 @@ describe('ComponentLoader', function componentLoaderTests() {
   })
 
   describe('MutationObserver fallback detection', function mutationObserverTests() {
-    it('should set up MutationObserver to detect CDS internal fallback', async function setupMutationObserver() {
+    beforeEach(() => {
+      vi.useFakeTimers()
+    })
+
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('should set up MutationObserver immediately', async function setupMutationObserver() {
       const observeSpy = vi.spyOn(MutationObserver.prototype, 'observe')
       const disconnectSpy = vi.spyOn(MutationObserver.prototype, 'disconnect')
 
@@ -149,26 +152,26 @@ describe('ComponentLoader', function componentLoaderTests() {
         />
       )
 
-      await waitFor(() => {
-        expect(screen.getByTestId('cds-component')).toBeInTheDocument()
-      })
+      await act(async () => { await vi.runAllTimersAsync() })
 
-      // MutationObserver should be set up to watch for fallback container
-      expect(observeSpy).toHaveBeenCalledWith(
-        expect.any(HTMLElement),
-        { childList: true, subtree: true }
+      expect(screen.getByTestId('cds-component')).toBeInTheDocument()
+
+      const hasContainerObserve = observeSpy.mock.calls.some(
+        ([target, options]) =>
+          target instanceof HTMLDivElement &&
+          options?.childList === true &&
+          options?.subtree === true
       )
+      expect(hasContainerObserve).toBe(true)
 
       unmount()
-
-      // Should disconnect on unmount
       expect(disconnectSpy).toHaveBeenCalled()
 
       observeSpy.mockRestore()
       disconnectSpy.mockRestore()
     })
 
-    it('should trigger error when fallback-container is injected into DOM', async function detectInjectedFallback() {
+    it('should not trigger error when fallback-container is removed before debounce elapses', async function fallbackRemovedBeforeDebounce() {
       const mockOnLoadError = vi.fn()
       const mockRenderErrorFallback = vi.fn().mockReturnValue(
         <div data-testid="error-fallback">Error Fallback</div>
@@ -183,24 +186,53 @@ describe('ComponentLoader', function componentLoaderTests() {
         />
       )
 
-      // Wait for CDS component to render
-      await waitFor(() => {
-        expect(screen.getByTestId('cds-component')).toBeInTheDocument()
+      await act(async () => { await vi.runAllTimersAsync() })
+
+      const cdsContainer = screen.getByTestId('cds-component')
+      const fallbackElement = document.createElement('div')
+      fallbackElement.setAttribute('data-testid', 'fallback-container')
+
+      await act(async () => {
+        cdsContainer.appendChild(fallbackElement)
+        vi.advanceTimersByTime(2000)
       })
 
-      // Inject the fallback-container element (simulating CDS internal error)
+      await act(async () => {
+        fallbackElement.remove()
+        vi.advanceTimersByTime(5000)
+      })
+
+      expect(mockOnLoadError).not.toHaveBeenCalled()
+      expect(mockRenderErrorFallback).not.toHaveBeenCalled()
+    })
+
+    it('should trigger error when fallback-container persists past debounce', async function detectInjectedFallback() {
+      const mockOnLoadError = vi.fn()
+      const mockRenderErrorFallback = vi.fn().mockReturnValue(
+        <div data-testid="error-fallback">Error Fallback</div>
+      )
+
+      render(
+        <ComponentLoader
+          type="test"
+          source="test-source"
+          onLoadError={mockOnLoadError}
+          renderErrorFallback={mockRenderErrorFallback}
+        />
+      )
+
+      await act(async () => { await vi.runAllTimersAsync() })
+
+      expect(screen.getByTestId('cds-component')).toBeInTheDocument()
+
       const cdsContainer = screen.getByTestId('cds-component')
       const fallbackElement = document.createElement('div')
       fallbackElement.setAttribute('data-testid', 'fallback-container')
       fallbackElement.textContent = 'CDS Internal Error'
 
-      act(() => {
+      await act(async () => {
         cdsContainer.appendChild(fallbackElement)
-      })
-
-      // MutationObserver should detect the fallback and trigger error handling
-      await waitFor(() => {
-        expect(mockOnLoadError).toHaveBeenCalled()
+        await vi.runAllTimersAsync()
       })
 
       expect(mockOnLoadError).toHaveBeenCalledWith(
@@ -209,7 +241,6 @@ describe('ComponentLoader', function componentLoaderTests() {
         })
       )
 
-      // Error fallback should be rendered with the error
       expect(mockRenderErrorFallback).toHaveBeenCalledWith(
         expect.objectContaining({
           message: 'CDS internal error - fallback component rendered',
@@ -217,7 +248,6 @@ describe('ComponentLoader', function componentLoaderTests() {
       )
       expect(screen.getByTestId('error-fallback')).toBeInTheDocument()
 
-      // Analytics should be logged
       expect(mockShipAnalyticsLog).toHaveBeenCalledWith(
         'paywall.cds.internal-fallback.detected',
         expect.objectContaining({
@@ -229,21 +259,30 @@ describe('ComponentLoader', function componentLoaderTests() {
     })
   })
 
-  describe('rendering', function renderingTests() {
-    it('should render loading component while CDS loads', async function renderLoading() {
-      render(
+  describe('error fallback edge cases', function errorEdgeCases() {
+    it('should render null on error when no renderErrorFallback provided', async function renderNullOnError() {
+      const { container } = render(
         <ComponentLoader
           type="test"
-          LoadingComponent={<div data-testid="loading">Loading...</div>}
+          source="test-source"
         />
       )
 
-      // CDS should eventually render
       await waitFor(() => {
         expect(screen.getByTestId('cds-component')).toBeInTheDocument()
       })
-    })
 
+      const cdsProps = mockCdsComponent.mock.calls[0][0]
+      act(() => {
+        cdsProps.onError(new Error('No fallback'))
+      })
+
+      expect(screen.queryByTestId('cds-component')).not.toBeInTheDocument()
+      expect(container.innerHTML).toBe('')
+    })
+  })
+
+  describe('rendering', function renderingTests() {
     it('should pass props to CDS component', async function passProps() {
       render(
         <ComponentLoader
@@ -264,6 +303,22 @@ describe('ComponentLoader', function componentLoaderTests() {
       expect(passedProps.subType).toBe('test-subtype')
       expect(passedProps.locale).toBe('en-US')
       expect(passedProps.customProp).toBe('custom-value')
+    })
+
+    it('should pass LoadingComponent through to CDS loader', async function passLoadingComponent() {
+      render(
+        <ComponentLoader
+          type="test"
+          LoadingComponent={<div data-testid="loading">Loading...</div>}
+        />
+      )
+
+      await waitFor(() => {
+        expect(mockCdsComponent).toHaveBeenCalled()
+      })
+
+      const passedProps = mockCdsComponent.mock.calls[0][0]
+      expect(passedProps.LoadingComponent).toBeDefined()
     })
   })
 })

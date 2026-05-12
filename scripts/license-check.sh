@@ -39,7 +39,7 @@ ALLOWED_LICENSES=(
 )
 
 # Internal package prefixes - these use private/custom licenses and are trusted.
-INTERNAL_PREFIX_REGEX='^(@airo/|@airo-ux/|@gd-|@godaddy/|@px/|@signals/|@site/|@sso/|@switchboard/|@ux/|@venture/|@wsb/|gd-auth)'
+INTERNAL_PREFIX_REGEX='^(@airo/|@airo-ux/|@exp/|@gd-|@godaddy/|@px/|@signals/|@site/|@sso/|@switchboard/|@ux/|@venture/|@wsb/|gd-auth)'
 
 # Packages with missing/incorrect license metadata in package.json.
 # Actual licenses verified manually from LICENSE files in each package.
@@ -51,6 +51,7 @@ KNOWN_EXCEPTIONS=(
   "@img/sharp-libvips-linux-x64"
   "@img/sharp-libvips-linuxmusl-arm64"
   "@img/sharp-libvips-linuxmusl-x64"
+  "jsonp"                     # MIT (npm registry, missing package.json field)
   "object-stream"             # MIT (README; missing package.json field; transitive of parquetjs)
   "only"                      # MIT (TJ Holowaychuk, missing metadata)
   "stackframe"                # Unlicense (public domain, LICENSE file present)

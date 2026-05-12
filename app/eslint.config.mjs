@@ -16,6 +16,7 @@ const config = [
       "gasket-data.js",
       "src/generated/**",
       "prisma/generated/**",
+      "cds/**",
     ],
   },
 

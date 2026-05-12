@@ -29,7 +29,6 @@ export default function UpgradeContainer(props: UpgradeContainerProps) {
   const isInTreatment = useIsInCohort(EXPERIMENT_IDS.recommendedPlan, 'treatment')
   const recommendedPlan = isInTreatment ? SubscriptionPlan.Ultimate : SubscriptionPlan.Professional;
 
-  // Check if user has subscription and builderEntitlementId for upgrade flow
   const hasSubscriptionWithEntitlement = subscription && subscription.builderEntitlementId
 
   useEffect(() => {
@@ -46,8 +45,6 @@ export default function UpgradeContainer(props: UpgradeContainerProps) {
     resetFocusOnModalClose()
   }, [onClose])
 
-  // Show loading modal while subscription data is being fetched
-  // This prevents incorrect routing before we know the user's subscription state
   if (subscriptionLoading) {
     return (
       <PaywallLoadingModal
@@ -59,8 +56,7 @@ export default function UpgradeContainer(props: UpgradeContainerProps) {
     )
   }
 
-  // If user does NOT have a subscription or builderEntitlementId, use Direct-to-Paid flow
-  // This allows new users without existing subscriptions to purchase
+  // D2P (no subscription) vs F2P/P2P upgrade (has subscription + entitlement)
   if (!hasSubscriptionWithEntitlement) {
     return (
       <DirectToPaidContainer

@@ -1,5 +1,5 @@
 export type { UpgradeProductId } from './constants'
-export { D2P_OFFER_GROUP_IDS, UPGRADE_DEPS, UPGRADE_PRODUCT_IDS } from './constants'
+export { D2P_OFFER_GROUP_IDS, UPGRADE_PRODUCT_IDS } from './constants'
 export { default as CreditsUpgradeContainer } from './CreditsUpgradeContainer'
 export { DevelopCreditsModal } from './DevelopCreditsModal'
 export { default as DirectToPaidContainer } from './DirectToPaidContainer'

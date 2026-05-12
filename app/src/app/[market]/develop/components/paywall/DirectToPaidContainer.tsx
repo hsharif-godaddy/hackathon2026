@@ -4,16 +4,18 @@ import { useCallback, useEffect, useRef } from 'react'
 
 import ErrorBoundary from '@/components/ErrorBoundary'
 import { useGasketData } from '@/hooks/useGasketData'
+import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useUpgradePurchase } from '@/hooks/useUpgradePurchase'
+import esmDeps from '@/lib/cdsEsmDeps'
 import { getItcOverride } from '@/lib/itc'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { SubscriptionPlan } from '@/types/credits'
 import { resetFocusOnModalClose } from '@/utils/focus'
 import { logImpressionEvent } from '@/utils/instrumentation'
+import { CDS_TYPE_ESM, CDS_TYPE_UMD, PAYWALL_UMD_FALLBACK } from './cdsConfig'
 import { ComponentLoader } from './cdsLoader'
-import { D2P_OFFER_GROUP_IDS, UPGRADE_DEPS, UPGRADE_PRODUCT_IDS } from './constants'
+import { D2P_OFFER_GROUP_IDS, UPGRADE_PRODUCT_IDS } from './constants'
 import { PaywallErrorFallback } from './PaywallErrorFallback'
-import { PaywallLoadingModal, PaywallLoadingModalVariant } from './PaywallLoadingModal'
 
 const COMPONENT_NAME = 'DirectToPaidContainer'
 
@@ -52,6 +54,7 @@ const DirectToPaidContainer = ({
 }: DirectToPaidContainerProps) => {
   const gasketData = useGasketData()
   const { handlePurchaseSuccess } = useUpgradePurchase()
+  const umdFallback = useSwitchboard(PAYWALL_UMD_FALLBACK) ?? false
 
   const productId = UPGRADE_PRODUCT_IDS.AIRO_BUILDER
 
@@ -221,6 +224,8 @@ const DirectToPaidContainer = ({
     onError?.(error)
   }, [source, productId, onError])
 
+  const LoadingComponent = useCallback(() => null, [])
+
   return (
     <ErrorBoundary
       fallback={(error) => (
@@ -235,12 +240,12 @@ const DirectToPaidContainer = ({
       )}
     >
       <ComponentLoader
-        type='godaddyUnifiedPlansAndPricingLibrary'
+        type={umdFallback ? CDS_TYPE_UMD : CDS_TYPE_ESM}
+        {...(!umdFallback && { loaderMode: 'esm', deps: esmDeps })}
         subType='DirectToPaid'
         offerGroupId={D2P_OFFER_GROUP_IDS.AIRO_BUILDER_LINEUP}
         productId={productId}
         cds={gasketData?.cds}
-        deps={UPGRADE_DEPS}
         locale={gasketData?.intl?.locale || 'en-US'}
         app="airo-builder"
         source={source || 'app-builder-D2P'}
@@ -255,14 +260,7 @@ const DirectToPaidContainer = ({
         onClose={handleClose}
         // CDS loader callbacks
         onLoadError={handleLoadError}
-        LoadingComponent={
-          <PaywallLoadingModal
-            onClose={handleClose}
-            variant={PaywallLoadingModalVariant.HigherPlans}
-            source={source}
-            component={COMPONENT_NAME}
-          />
-        }
+        LoadingComponent={LoadingComponent}
         renderErrorFallback={(error) => (
           <PaywallErrorFallback
             error={error}

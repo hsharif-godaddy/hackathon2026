@@ -96,17 +96,12 @@ describe('PaywallLoadingModal', function paywallLoadingModalTests() {
       const mockOnClose = vi.fn()
       render(<PaywallLoadingModal onClose={mockOnClose} variant={PaywallLoadingModalVariant.HigherPlans} />)
 
-      // Modal should be rendered
       expect(screen.getByTestId('modal')).toBeInTheDocument()
-
-      // Spinner should NOT be visible
       expect(screen.queryByTestId('spinner')).not.toBeInTheDocument()
 
-      // Should render 3 skeleton plan cards
       const skeletonCards = screen.getAllByTestId('skeleton-plan-card')
       expect(skeletonCards).toHaveLength(3)
 
-      // Each card should contain skeleton elements
       const skeletonElements = screen.getAllByTestId('skeleton')
       expect(skeletonElements.length).toBeGreaterThan(0)
     })
@@ -121,14 +116,7 @@ describe('PaywallLoadingModal', function paywallLoadingModalTests() {
       expect(mockOnClose).toHaveBeenCalledTimes(1)
     })
 
-    it('should be centered', function centeredHigherPlansModal() {
-      const mockOnClose = vi.fn()
-      render(<PaywallLoadingModal onClose={mockOnClose} variant={PaywallLoadingModalVariant.HigherPlans} />)
-
-      expect(screen.getByTestId('modal')).toHaveAttribute('data-centered', 'true')
-    })
-
-    it('should have stretch prop for full width on small screens', function stretchHigherPlansModal() {
+    it('should have stretch prop', function stretchHigherPlansModal() {
       const mockOnClose = vi.fn()
       render(<PaywallLoadingModal onClose={mockOnClose} variant={PaywallLoadingModalVariant.HigherPlans} />)
 

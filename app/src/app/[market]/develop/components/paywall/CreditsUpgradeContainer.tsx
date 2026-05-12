@@ -1,19 +1,22 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 
 import ErrorBoundary from '@/components/ErrorBoundary'
 import { useAuth } from '@/hooks/useAuth'
 import { useCreditPurchase } from '@/hooks/useCreditPurchase'
 import { useGasketData } from '@/hooks/useGasketData'
+import { useSwitchboard } from '@/hooks/useSwitchboard'
+import esmDeps from '@/lib/cdsEsmDeps'
 import { getErrorMessage } from '@/lib/errors'
 import { getItcOverride } from '@/lib/itc'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { logger } from '@/lib/request-context'
 import { resetFocusOnModalClose } from '@/utils/focus'
 import { logImpressionEvent } from '@/utils/instrumentation'
+import { CDS_TYPE_ESM, CDS_TYPE_UMD, PAYWALL_UMD_FALLBACK } from './cdsConfig'
 import { ComponentLoader } from './cdsLoader'
-import { UPGRADE_DEPS, UPGRADE_PRODUCT_IDS } from './constants'
+import { UPGRADE_PRODUCT_IDS } from './constants'
 import { PaywallErrorFallback } from './PaywallErrorFallback'
 import { PaywallLoadingModal, PaywallLoadingModalVariant } from './PaywallLoadingModal'
 
@@ -57,6 +60,7 @@ const CreditsUpgradeContainer = ({
   const { getUserInfo } = useAuth()
   const shopperId = getUserInfo()?.shopperId
   const { handlePurchaseSuccess, invalidateQueries } = useCreditPurchase()
+  const umdFallback = useSwitchboard(PAYWALL_UMD_FALLBACK) ?? false
   const hasLoggedImpressionRef = useRef(false)
 
   useEffect(() => {
@@ -122,7 +126,7 @@ const CreditsUpgradeContainer = ({
     resetFocusOnModalClose()
   }, [onClose])
 
-  const loadingComponent = useMemo(() => (
+  const LoadingComponent = useCallback(() => (
     <PaywallLoadingModal
       onClose={handleClose}
       variant={PaywallLoadingModalVariant.Credits}
@@ -160,11 +164,11 @@ const CreditsUpgradeContainer = ({
       )}
     >
       <ComponentLoader
-        type='godaddyUnifiedPlansAndPricingLibrary'
+        type={umdFallback ? CDS_TYPE_UMD : CDS_TYPE_ESM}
+        {...(!umdFallback && { loaderMode: 'esm', deps: esmDeps })}
         locale={gasketData?.intl?.locale || 'en-US'}
         cds={gasketData?.cds}
         subType='StandaloneAddon'
-        deps={UPGRADE_DEPS}
         shopperId={shopperId}
         productId={UPGRADE_PRODUCT_IDS.AIRO_BUILDER_CREDITS}
         entitlementId={entitlementId}
@@ -174,7 +178,7 @@ const CreditsUpgradeContainer = ({
         onClose={handleClose}
         onErrorClick={onErrorClick}
         onLoadError={handleError}
-        LoadingComponent={loadingComponent}
+        LoadingComponent={LoadingComponent}
         renderErrorFallback={renderErrorFallback}
       />
     </ErrorBoundary>

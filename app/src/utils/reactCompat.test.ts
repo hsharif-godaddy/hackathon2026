@@ -8,10 +8,10 @@ import { shimReactInternals } from './reactCompat';
 vi.mock('@/lib/request-context', () => ({
   logger: {
     warn: vi.fn(),
+    info: vi.fn(),
+    error: vi.fn(),
   },
 }));
-
-import { logger } from '@/lib/request-context';
 
 describe('shimReactInternals', () => {
   const internals = { ReactCurrentOwner: { current: null } };
@@ -25,12 +25,8 @@ describe('shimReactInternals', () => {
     delete (window as any).React;
   });
 
-  it('warns when window.React is not set', () => {
+  it('is a no-op when window.React is not set', () => {
     shimReactInternals();
-
-    expect(logger.warn).toHaveBeenCalledWith('reactCompat.shim.skipped', {
-      reason: 'window.React not set',
-    });
   });
 
   it('aliases React 19 internals to the React 18 property name', () => {
@@ -57,14 +53,23 @@ describe('shimReactInternals', () => {
     expect((window as any).React.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED).toBe(existingInternals);
   });
 
-  it('warns when neither internals key exists', () => {
+  it('injects ReactCurrentOwner when __SECRET_INTERNALS lacks it', () => {
+    (window as any).React = {
+      version: '19.0.0',
+      __CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE: {},
+    };
+
+    shimReactInternals();
+
+    const secret = (window as any).React.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
+    expect(secret.ReactCurrentOwner).toEqual({ current: null });
+  });
+
+  it('is a no-op when neither internals key exists', () => {
     (window as any).React = { version: '99.0.0' };
 
     shimReactInternals();
 
-    expect(logger.warn).toHaveBeenCalledWith('reactCompat.shim.skipped', {
-      reason: 'React 19 internals key not found on window.React',
-      reactVersion: '99.0.0',
-    });
+    expect((window as any).React.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED).toBeUndefined();
   });
 });

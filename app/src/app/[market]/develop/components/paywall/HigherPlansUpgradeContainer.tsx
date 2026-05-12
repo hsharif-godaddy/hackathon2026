@@ -7,7 +7,9 @@ import ErrorBoundary from '@/components/ErrorBoundary'
 import { useAuth } from '@/hooks/useAuth'
 import { useGasketData } from '@/hooks/useGasketData'
 import { useSubscription } from '@/hooks/useSubscription'
+import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useUpgradePurchase } from '@/hooks/useUpgradePurchase'
+import esmDeps from '@/lib/cdsEsmDeps'
 import { getItcOverride } from '@/lib/itc'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { AiroSubscription } from '@/lib/mgmt-airo/types';
@@ -17,10 +19,10 @@ import type { CreditGrant } from '@/types/credits';
 import { GrantType, SubscriptionPlan } from '@/types/credits';
 import { resetFocusOnModalClose } from '@/utils/focus'
 import { logImpressionEvent } from '@/utils/instrumentation'
+import { CDS_TYPE_ESM, CDS_TYPE_UMD, PAYWALL_UMD_FALLBACK } from './cdsConfig'
 import { ComponentLoader } from './cdsLoader'
-import { UPGRADE_DEPS, UPGRADE_PRODUCT_IDS } from './constants'
+import { UPGRADE_PRODUCT_IDS } from './constants'
 import { PaywallErrorFallback } from './PaywallErrorFallback'
-import { PaywallLoadingModal, PaywallLoadingModalVariant } from './PaywallLoadingModal'
 
 const COMPONENT_NAME = 'HigherPlansUpgradeContainer'
 
@@ -49,6 +51,7 @@ const HigherPlansUpgradeContainer = ({
   const queryClient = useQueryClient()
   const shopperId = getUserInfo()?.shopperId
   const { handlePurchaseSuccess } = useUpgradePurchase()
+  const umdFallback = useSwitchboard(PAYWALL_UMD_FALLBACK) ?? false
 
   const { data: subscription } = useSubscription()
   const productId = UPGRADE_PRODUCT_IDS.AIRO_BUILDER
@@ -173,6 +176,8 @@ const HigherPlansUpgradeContainer = ({
     resetFocusOnModalClose()
   }, [onSuccessClick])
 
+  const LoadingComponent = useCallback(() => null, [])
+
   return (
     <ErrorBoundary
       fallback={(error) => (
@@ -187,13 +192,12 @@ const HigherPlansUpgradeContainer = ({
       )}
     >
       <ComponentLoader
-        type='godaddyUnifiedPlansAndPricingLibrary'
+        type={umdFallback ? CDS_TYPE_UMD : CDS_TYPE_ESM}
+        {...(!umdFallback && { loaderMode: 'esm', deps: esmDeps })}
         subType='UniversalUpgrade'
-        // spelling of airobuildr is correct
-        productNamespace='airobuildr'
+        productNamespace='airobuildr' // spelling of airobuildr is correct
         allowPaidToPaidModal
         cds={gasketData?.cds}
-        deps={UPGRADE_DEPS}
         shopperId={shopperId}
         overrideItc={getItcOverride() ?? itc}
         accountId={entitlementId}
@@ -207,14 +211,7 @@ const HigherPlansUpgradeContainer = ({
         onPostUpgradeSuccessClick={handleSuccessClick}
         errorCallback={onErrorClick}
         onLoadError={handleError}
-        LoadingComponent={
-          <PaywallLoadingModal
-            onClose={handleClose}
-            variant={PaywallLoadingModalVariant.HigherPlans}
-            source={source}
-            component={COMPONENT_NAME}
-          />
-        }
+        LoadingComponent={LoadingComponent}
         renderErrorFallback={(error) => (
           <PaywallErrorFallback
             error={error}

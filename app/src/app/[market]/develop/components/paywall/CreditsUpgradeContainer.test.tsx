@@ -45,8 +45,10 @@ vi.mock('@/utils/instrumentation', () => ({
   logImpressionEvent: vi.fn(() => vi.fn()),
 }));
 
-vi.mock('@/utils/propTypes', () => ({
-  ensurePropTypes: vi.fn().mockResolvedValue(undefined),
+vi.mock('@/lib/cdsEsmDeps', () => ({ default: {} }));
+
+vi.mock('@/hooks/useSwitchboard', () => ({
+  useSwitchboard: vi.fn(() => false),
 }));
 
 vi.mock('./PaywallLoadingModal', async () => {
@@ -65,6 +67,8 @@ vi.mock('./cdsLoader', () => ({
   ComponentLoader: (props: any) => {
     return (
       <div data-testid="credits-upgrade-modal">
+        <span data-testid="type">{props.type}</span>
+        <span data-testid="loader-mode">{props.loaderMode}</span>
         <span data-testid="product-id">{props.productId}</span>
         <span data-testid="entitlement-id">{props.entitlementId}</span>
         <span data-testid="sub-type">{props.subType}</span>
@@ -100,6 +104,8 @@ describe('CreditsUpgradeContainer', function creditsUpgradeContainerTests() {
       await waitFor(function checkModal() {
         expect(screen.getByTestId('credits-upgrade-modal')).toBeInTheDocument();
       });
+      expect(screen.getByTestId('type')).toHaveTextContent('godaddyUnifiedPlansAndPricingLibraryEsm');
+      expect(screen.getByTestId('loader-mode')).toHaveTextContent('esm');
     });
 
     it('should pass correct productId for credits', async function correctProductId() {

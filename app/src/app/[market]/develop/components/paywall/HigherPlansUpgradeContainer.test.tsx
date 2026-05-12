@@ -43,7 +43,7 @@ vi.mock('@tanstack/react-query', async () => {
 });
 
 vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: vi.fn(() => (true)),
+  useSwitchboard: vi.fn(() => false),
 }));
 
 vi.mock('@/hooks/useSubscription', () => ({
@@ -85,8 +85,12 @@ vi.mock('@/utils/instrumentation', () => ({
   logImpressionEvent: vi.fn(() => vi.fn()),
 }));
 
+vi.mock('@/lib/cdsEsmDeps', () => ({ default: {} }));
+
 vi.mock('./cdsLoader', () => ({
   ComponentLoader: (props: {
+    type: string;
+    loaderMode: string;
     subType: string;
     productNamespace: string;
     allowPaidToPaidModal: boolean;
@@ -106,6 +110,8 @@ vi.mock('./cdsLoader', () => ({
   }) => {
     return (
       <div data-testid="higher-plans-modal">
+        <span data-testid="type">{props.type}</span>
+        <span data-testid="loader-mode">{props.loaderMode}</span>
         <span data-testid="sub-type">{props.subType}</span>
         <span data-testid="product-namespace">{props.productNamespace}</span>
         <span data-testid="allow-paid-to-paid">{props.allowPaidToPaidModal?.toString()}</span>
@@ -217,6 +223,8 @@ describe('HigherPlansUpgradeContainer', function higherPlansUpgradeContainerTest
     );
 
     expect(screen.getByTestId('higher-plans-modal')).toBeInTheDocument();
+    expect(screen.getByTestId('type')).toHaveTextContent('godaddyUnifiedPlansAndPricingLibraryEsm');
+    expect(screen.getByTestId('loader-mode')).toHaveTextContent('esm');
     expect(screen.getByTestId('sub-type')).toHaveTextContent('UniversalUpgrade');
     expect(screen.getByTestId('product-namespace')).toHaveTextContent('airobuildr');
     expect(screen.getByTestId('allow-paid-to-paid')).toHaveTextContent('true');

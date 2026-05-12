@@ -37,13 +37,21 @@ vi.mock('@/utils/focus', () => ({
   resetFocusOnModalClose: vi.fn(),
 }));
 
-// Mock the CDS loader to avoid dynamic imports
+vi.mock('@/lib/cdsEsmDeps', () => ({ default: {} }));
+
+vi.mock('@/hooks/useSwitchboard', () => ({
+  useSwitchboard: vi.fn(() => false),
+}));
+
 vi.mock('./cdsLoader', () => ({
-  ComponentLoader: ({ onClose, source, subType, offerGroupId }: any) => (
+  ComponentLoader: ({ onClose, source, subType, offerGroupId, type, loaderMode, deps }: any) => (
     <div data-testid="component-loader">
+      <span data-testid="type">{type}</span>
+      <span data-testid="loader-mode">{loaderMode || ''}</span>
       <span data-testid="sub-type">{subType}</span>
       <span data-testid="offer-group-id">{offerGroupId}</span>
       <span data-testid="source">{source}</span>
+      <span data-testid="has-deps">{deps ? 'true' : 'false'}</span>
       <button data-testid="close-btn" onClick={onClose}>Close</button>
     </div>
   ),
@@ -86,6 +94,8 @@ describe('DirectToPaidContainer', function directToPaidContainerTests() {
     );
 
     expect(screen.getByTestId('component-loader')).toBeInTheDocument();
+    expect(screen.getByTestId('type')).toHaveTextContent('godaddyUnifiedPlansAndPricingLibraryEsm');
+    expect(screen.getByTestId('loader-mode')).toHaveTextContent('esm');
     expect(screen.getByTestId('sub-type')).toHaveTextContent('DirectToPaid');
     expect(screen.getByTestId('offer-group-id')).toHaveTextContent('airoBuilderLineup');
   });
@@ -131,5 +141,30 @@ describe('DirectToPaidContainer', function directToPaidContainerTests() {
     expect(screen.getByTestId('component-loader')).toBeInTheDocument();
     screen.getByTestId('close-btn').click();
     expect(mockOnClose).toHaveBeenCalled();
+  });
+
+  it('should pass ESM props when umd-fallback flag is false (default)', function esmDefault() {
+    renderWithProviders(
+      <DirectToPaidContainer onClose={vi.fn()} source="test" />
+    );
+
+    expect(screen.getByTestId('type')).toHaveTextContent('godaddyUnifiedPlansAndPricingLibraryEsm');
+    expect(screen.getByTestId('loader-mode')).toHaveTextContent('esm');
+    expect(screen.getByTestId('has-deps')).toHaveTextContent('true');
+  });
+
+  it('should pass UMD props when umd-fallback flag is true', async function umdFallback() {
+    const mod = await import('@/hooks/useSwitchboard');
+    vi.mocked(mod.useSwitchboard).mockReturnValue(true);
+
+    renderWithProviders(
+      <DirectToPaidContainer onClose={vi.fn()} source="test" />
+    );
+
+    expect(screen.getByTestId('type')).toHaveTextContent('godaddyUnifiedPlansAndPricingLibrary');
+    expect(screen.getByTestId('loader-mode')).toHaveTextContent('');
+    expect(screen.getByTestId('has-deps')).toHaveTextContent('false');
+
+    vi.mocked(mod.useSwitchboard).mockReturnValue(false);
   });
 });
