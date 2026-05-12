@@ -67,6 +67,7 @@ export default defineConfig({
     // Default to lightweight node environment (35% of tests don't need jsdom)
     // Component/hook tests specify @vitest-environment jsdom at file top
     environment: 'node',
+    globalSetup: ['./vitest.globalSetup.ts'],
     setupFiles: ['./vitest.setup.ts'],
     include: [
       'src/**/__tests__/**/*.test.ts',

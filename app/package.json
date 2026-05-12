@@ -9,9 +9,10 @@
     "local:test:v2": "GASKET_ENV=local.test node ../scripts/load-env.js npm run local",
     "local:prod": "GASKET_ENV=local.prod node ../scripts/load-env.js npm run local",
     "local:prod:v2": "GASKET_ENV=local.prod node ../scripts/load-env.js npm run local",
+    "prelocal": "node scripts/generate-cds-deps.js",
     "local": "concurrently \"npm run build:tsc:watch\" \"npm run local:https\" \"next dev --webpack\"",
     "local:https": "tsx watch server.ts",
-    "prebuild": "tsx gasket.ts build",
+    "prebuild": "node scripts/generate-cds-deps.js && tsx gasket.ts build",
     "build": "npm run build:tsc && next build --webpack",
     "build:tsc": "tsc -p ./tsconfig.server.json",
     "build:tsc:watch": "tsc -p ./tsconfig.server.json --watch",
@@ -28,8 +29,7 @@
     "lint:fix": "eslint --fix .",
     "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
     "generate:landing-lookup": "tsx src/data/landing-pages/generate-lookup.ts",
-    "install-gd-packages": "pnpm --registry https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/ install @godaddy/gasket-plugin-auth",
-    "postinstall": "node scripts/post-install.js"
+    "install-gd-packages": "pnpm --registry https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/ install @godaddy/gasket-plugin-auth"
   },
   "dependencies": {
     "@airo-ux/loader": "^2.1.1",

@@ -57,7 +57,7 @@ RUN mkdir -p /workspace/app/certs && \
     -days 365 -nodes -subj "/C=US/ST=CA/L=San Francisco/O=Airo/CN=*" \
     -addext "subjectAltName=DNS:*,IP:127.0.0.1,IP:0.0.0.0"
 
-RUN pnpm prebuild && pnpm build
+RUN pnpm build
 
 RUN mkdir -p /workspace/app/data && chown -R node:node /workspace/app
 
