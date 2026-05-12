@@ -153,17 +153,26 @@ export class MgmtControlPlaneAdapter {
         }
 
         // The tree endpoint returns stale/incorrect published values. Fetch the
-        // correct value from the individual app endpoint for each app in parallel.
-        return Promise.all(
-            baseApps.map(async (app): Promise<MgmtCustomerApp> => {
-                try {
-                    const details = await this.getAppDetails(app.appId, { includeResources: false });
-                    return { ...app, published: details.published };
-                } catch {
-                    return app;
-                }
-            })
-        );
+        // correct value from the individual app endpoint for each app, batching
+        // so a customer with many apps doesn't fire off an unbounded burst of
+        // concurrent requests at the management API.
+        const CONCURRENCY = 10;
+        const results: MgmtCustomerApp[] = [];
+        for (let i = 0; i < baseApps.length; i += CONCURRENCY) {
+            const batch = baseApps.slice(i, i + CONCURRENCY);
+            const resolved = await Promise.all(
+                batch.map(async (app): Promise<MgmtCustomerApp> => {
+                    try {
+                        const details = await this.getAppDetails(app.appId, { includeResources: false });
+                        return { ...app, published: details.published };
+                    } catch {
+                        return app;
+                    }
+                })
+            );
+            results.push(...resolved);
+        }
+        return results;
     }
 }
 
