@@ -56,6 +56,12 @@ import { agentFetch } from '@/lib/agent-fetch'
 import { JourneyTracker } from '@/lib/journeyTracker'
 import { regenerateToken } from '@/lib/jwt-regeneration'
 import { shipAnalyticsLog } from '@/lib/logging'
+import {
+  hasAutoSwitchedLogoDesignerPreview,
+  isLogoDesignerApp,
+  markAutoSwitchedLogoDesignerPreview,
+  markLogoDesignerApp,
+} from '@/lib/logo-designer-preview-switch-storage'
 import { PAYWALL_ITC } from '@/lib/paywall/shared'
 import { logger } from '@/lib/request-context'
 import { claimTodoListHandoff, releaseTodoListHandoff } from '@/lib/todo-list-handoff-dedupe'
@@ -145,13 +151,34 @@ function DevelopPageContent() {
   const { cohort: ventureHomeLogoCohort } = useHivemind(EXPERIMENT_IDS.ventureHomeLogo);
   const isVentureHomeLogo = ventureHomeLogoCohort === 'on';
 
-  // Default to Brand Book tab for logo-designer template
+  // Default to Brand Book tab for logo-designer template. Also persist a
+  // per-app localStorage marker because `init.ui.templateId` is cleared from
+  // sessionStorage the moment the first prompt is sent — downstream effects
+  // (the Brand → Preview auto-switch below) can't rely on reading it later.
   const isBrandBookEnabled = useSwitchboard('appbuilder-brandbook');
   useEffect(() => {
     if (init.ui.templateId === 'logo-designer' && (isBrandBookEnabled || isVentureHomeLogo)) {
+      if (appId) markLogoDesignerApp(appId)
       useDevelopPageStore.getState().setViewMode(ViewMode.BRAND)
     }
-  }, [init.ui.templateId, isBrandBookEnabled, isVentureHomeLogo])
+  }, [init.ui.templateId, isBrandBookEnabled, isVentureHomeLogo, appId])
+
+  // Logo-designer handoff → website build: switch Brand → Preview when the
+  // first page file edit lands. localStorage-gated per appId so a reload after
+  // we've already switched once doesn't re-hijack a tab the user has since
+  // moved off of. Yields to manual navigation away from Brand.
+  useEffect(() => {
+    if (!appId) return
+    if (!isLogoDesignerApp(appId)) return
+    if (!init.context.hasSeenFirstFileEdit) return
+    if (hasAutoSwitchedLogoDesignerPreview(appId)) return
+
+    markAutoSwitchedLogoDesignerPreview(appId)
+    const { viewMode: currentViewMode, setViewMode } = useDevelopPageStore.getState()
+    if (currentViewMode === ViewMode.BRAND) {
+      setViewMode(ViewMode.PREVIEW)
+    }
+  }, [init.context.hasSeenFirstFileEdit, appId])
 
   // Hibernation handling - auto-resume when app is hibernated
   const appDetails = useAppDetails(appId);
