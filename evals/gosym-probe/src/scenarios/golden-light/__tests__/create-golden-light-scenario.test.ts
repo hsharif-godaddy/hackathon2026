@@ -1,8 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
-import { createBuildQualityScenario }
-  from '../create-build-quality-scenario.js';
-import type { BuildQualityConfig }
-  from '../create-build-quality-scenario.js';
+import { createGoldenLightScenario }
+  from '../create-golden-light-scenario.js';
+import type { GoldenLightConfig }
+  from '../create-golden-light-scenario.js';
 import { standardPersona } from '../../../personas/standard.js';
 import { beginnerPersona } from '../../../personas/beginner.js';
 import {
@@ -17,7 +17,7 @@ import type { Transcript, DOMSnapshot }
   from '../../../runner/transcript.js';
 import type { Scenario } from '../../types.js';
 
-function makeBaseConfig(): BuildQualityConfig {
+function makeBaseConfig(): GoldenLightConfig {
   return {
     name: 'test-scenario',
     goals: [{ description: 'test goal', assertion: 'positive' }],
@@ -40,12 +40,12 @@ function makeMockEvaluator(name: string): Evaluator {
   };
 }
 
-describe('createBuildQualityScenario', () => {
+describe('createGoldenLightScenario', () => {
   const gocode = makeGocodeClient();
   const ctrlPlane = makeCtrlPlaneClient();
 
   it('uses standardPersona when no persona override provided', () => {
-    const scenario = createBuildQualityScenario(
+    const scenario = createGoldenLightScenario(
       makeBaseConfig(),
       gocode,
       ctrlPlane,
@@ -54,7 +54,7 @@ describe('createBuildQualityScenario', () => {
   });
 
   it('uses provided persona override', () => {
-    const scenario = createBuildQualityScenario(
+    const scenario = createGoldenLightScenario(
       { ...makeBaseConfig(), persona: beginnerPersona },
       gocode,
       ctrlPlane,
@@ -62,17 +62,17 @@ describe('createBuildQualityScenario', () => {
     expect(scenario.persona).toBe(beginnerPersona);
   });
 
-  it("defaults suite to 'build-quality' when not provided", () => {
-    const scenario = createBuildQualityScenario(
+  it("defaults suite to 'golden-light' when not provided", () => {
+    const scenario = createGoldenLightScenario(
       makeBaseConfig(),
       gocode,
       ctrlPlane,
     );
-    expect(scenario.suite).toBe('build-quality');
+    expect(scenario.suite).toBe('golden-light');
   });
 
   it('uses suite override when provided', () => {
-    const scenario = createBuildQualityScenario(
+    const scenario = createGoldenLightScenario(
       { ...makeBaseConfig(), suite: 'custom-suite' },
       gocode,
       ctrlPlane,
@@ -81,7 +81,7 @@ describe('createBuildQualityScenario', () => {
   });
 
   it('omits suite when suite is null', () => {
-    const scenario = createBuildQualityScenario(
+    const scenario = createGoldenLightScenario(
       { ...makeBaseConfig(), suite: null },
       gocode,
       ctrlPlane,
@@ -89,17 +89,17 @@ describe('createBuildQualityScenario', () => {
     expect(scenario.suite).toBeUndefined();
   });
 
-  it("defaults suite to 'build-quality' when suite is explicitly undefined", () => {
-    const scenario = createBuildQualityScenario(
+  it("defaults suite to 'golden-light' when suite is explicitly undefined", () => {
+    const scenario = createGoldenLightScenario(
       { ...makeBaseConfig(), suite: undefined },
       gocode,
       ctrlPlane,
     );
-    expect(scenario.suite).toBe('build-quality');
+    expect(scenario.suite).toBe('golden-light');
   });
 
   it('defaults trials to 3', () => {
-    const scenario = createBuildQualityScenario(
+    const scenario = createGoldenLightScenario(
       makeBaseConfig(),
       gocode,
       ctrlPlane,
@@ -108,7 +108,7 @@ describe('createBuildQualityScenario', () => {
   });
 
   it('allows trials override', () => {
-    const scenario = createBuildQualityScenario(
+    const scenario = createGoldenLightScenario(
       { ...makeBaseConfig(), trials: 7 },
       gocode,
       ctrlPlane,
@@ -118,23 +118,23 @@ describe('createBuildQualityScenario', () => {
 
   it('prepends extraEvaluators before standard evaluators', () => {
     const extra = makeMockEvaluator('my-extra');
-    const scenario = createBuildQualityScenario(
+    const scenario = createGoldenLightScenario(
       { ...makeBaseConfig(), extraEvaluators: [extra] },
       gocode,
       ctrlPlane,
     );
     expect(scenario.evaluators[0].name).toBe('my-extra');
-    expect(scenario.evaluators.map((e) => e.name)).toContain('bug-hit-rate');
+    expect(scenario.evaluators.map((e: Evaluator) => e.name)).toContain('bug-hit-rate');
   });
 
   it('includes agent-steps evaluator with sigmoid-normalized score', async () => {
-    const scenario = createBuildQualityScenario(
+    const scenario = createGoldenLightScenario(
       makeBaseConfig(),
       gocode,
       ctrlPlane,
     );
     const agentStepsEval = scenario.evaluators.find(
-      (e) => e.name === 'agent-steps',
+      (e: Evaluator) => e.name === 'agent-steps',
     );
     expect(agentStepsEval).toBeDefined();
 
@@ -160,7 +160,7 @@ describe('createBuildQualityScenario', () => {
 
   describe('config validation', () => {
     it('throws RangeError when trials is 0', () => {
-      expect(() => createBuildQualityScenario(
+      expect(() => createGoldenLightScenario(
         { ...makeBaseConfig(), trials: 0 },
         gocode,
         ctrlPlane,
@@ -168,7 +168,7 @@ describe('createBuildQualityScenario', () => {
     });
 
     it('throws RangeError when trials is NaN', () => {
-      expect(() => createBuildQualityScenario(
+      expect(() => createGoldenLightScenario(
         { ...makeBaseConfig(), trials: NaN },
         gocode,
         ctrlPlane,
@@ -176,7 +176,7 @@ describe('createBuildQualityScenario', () => {
     });
 
     it('throws RangeError when trials is Infinity', () => {
-      expect(() => createBuildQualityScenario(
+      expect(() => createGoldenLightScenario(
         { ...makeBaseConfig(), trials: Infinity },
         gocode,
         ctrlPlane,
@@ -184,7 +184,7 @@ describe('createBuildQualityScenario', () => {
     });
 
     it('throws RangeError when trials is negative', () => {
-      expect(() => createBuildQualityScenario(
+      expect(() => createGoldenLightScenario(
         { ...makeBaseConfig(), trials: -1 },
         gocode,
         ctrlPlane,
@@ -193,7 +193,7 @@ describe('createBuildQualityScenario', () => {
   });
 
   it('leaves staticFirstMessage undefined when not provided in config', () => {
-    const scenario = createBuildQualityScenario(
+    const scenario = createGoldenLightScenario(
       makeBaseConfig(),
       gocode,
       ctrlPlane,
@@ -203,7 +203,7 @@ describe('createBuildQualityScenario', () => {
 
   describe('setup return value', () => {
     it('returns appId and previewUrl from provisionApp', async () => {
-      const scenario = createBuildQualityScenario(
+      const scenario = createGoldenLightScenario(
         makeBaseConfig(),
         gocode,
         ctrlPlane,
@@ -227,7 +227,7 @@ describe('createBuildQualityScenario', () => {
     it('calls deleteApp when appId is a string', async () => {
       let deletedId: string | undefined;
       const spyCtrlPlane = makeSpyCtrlPlane((id) => { deletedId = id; });
-      const scenario = createBuildQualityScenario(
+      const scenario = createGoldenLightScenario(
         makeBaseConfig(),
         gocode,
         spyCtrlPlane,
@@ -242,7 +242,7 @@ describe('createBuildQualityScenario', () => {
         .mockImplementation(() => {});
       let deleteCalled = false;
       const spyCtrlPlane = makeSpyCtrlPlane(() => { deleteCalled = true; });
-      const scenario = createBuildQualityScenario(
+      const scenario = createGoldenLightScenario(
         makeBaseConfig(),
         gocode,
         spyCtrlPlane,

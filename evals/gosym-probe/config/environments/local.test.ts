@@ -38,6 +38,11 @@ export function createConfig(): Config {
         'latency': 1.5,
         'tool-parallelism': 0.5,
         'tool-failure-rate': 1.5,
+        'intent-to-output-alignment': 0.15,
+        'implicit-feature-gap': 0.15,
+        'scope-drift-overgeneration': 0.15,
+        'silent-hallucination': 0.15,
+        'output-quality': 0.15,
       },
       // Loose gate for score-mode evaluators to absorb infrastructure variance noise
       defaultThreshold: 0.25,

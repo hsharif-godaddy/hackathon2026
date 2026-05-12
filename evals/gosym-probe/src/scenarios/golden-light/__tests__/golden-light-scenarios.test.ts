@@ -3,7 +3,9 @@ import {
   simplePortfolioScenario,
   businessSiteScenario,
   multipageCatalogScenario,
+  cleaningBizAmbiguityScenario,
 } from '../index.js';
+
 import {
   makeGocodeClient,
   makeCtrlPlaneClient,
@@ -21,11 +23,11 @@ const REQUIRED_EVALUATORS = [
   'jtbd-completion',
   'output-quality',
   'agent-steps',
-  'latency',
   'token-usage',
-  'llm-cost',
-  'tool-parallelism',
-  'turn-duration',
+  'intent-to-output-alignment',
+  'implicit-feature-gap',
+  'scope-drift-overgeneration',
+  'silent-hallucination',
 ];
 
 type ScenarioBuilder = (
@@ -37,36 +39,48 @@ const scenarios: {
   builder: ScenarioBuilder;
   name: string;
   goalCount: number;
+  hasStaticFirstMessage: boolean;
+  expectedPersonaName?: string;
 }[] = [
   {
     builder: simplePortfolioScenario,
     name: 'simple-portfolio',
     goalCount: 1,
+    hasStaticFirstMessage: true,
   },
   {
     builder: businessSiteScenario,
     name: 'business-site',
     goalCount: 2,
+    hasStaticFirstMessage: true,
   },
   {
     builder: multipageCatalogScenario,
     name: 'multipage-catalog',
     goalCount: 3,
+    hasStaticFirstMessage: true,
+  },
+  {
+    builder: cleaningBizAmbiguityScenario,
+    name: 'cleaning-biz-ambiguity',
+    goalCount: 1,
+    hasStaticFirstMessage: false,
+    expectedPersonaName: 'cleaning-biz-owner',
   },
 ];
 
-describe('build-quality suite', () => {
+describe('golden-light suite', () => {
   const gocode = makeGocodeClient();
   const ctrlPlane = makeCtrlPlaneClient();
 
   describe.each(scenarios)(
     '$name',
-    ({ builder, name, goalCount }) => {
+    ({ builder, name, goalCount, hasStaticFirstMessage, expectedPersonaName }) => {
       const scenario = builder(gocode, ctrlPlane);
 
       it('has correct name and suite', () => {
         expect(scenario.name).toBe(name);
-        expect(scenario.suite).toBe('build-quality');
+        expect(scenario.suite).toBe('golden-light');
       });
 
       it(`has ${goalCount} goal(s)`, () => {
@@ -93,11 +107,19 @@ describe('build-quality suite', () => {
         expect(scenario.executionMode).toBe('parallel');
       });
 
-      it('has a static first message', () => {
-        expect(
-          scenario.staticFirstMessage ?? '',
-        ).not.toHaveLength(0);
-      });
+      if (hasStaticFirstMessage) {
+        it('has a static first message', () => {
+          expect(
+            scenario.staticFirstMessage ?? '',
+          ).not.toHaveLength(0);
+        });
+      } else {
+        it('has no static first message but has a persona', () => {
+          expect(scenario.staticFirstMessage).toBeUndefined();
+          expect(scenario.persona).toBeDefined();
+          expect(scenario.persona?.name).toBe(expectedPersonaName);
+        });
+      }
     },
   );
 });

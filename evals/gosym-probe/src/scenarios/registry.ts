@@ -1,9 +1,10 @@
 import { buildAiroBaselineScenarios } from './airo-baseline/index.js';
 import {
   businessSiteScenario,
+  cleaningBizAmbiguityScenario,
   multipageCatalogScenario,
   simplePortfolioScenario,
-} from './build-quality/index.js';
+} from './golden-light/index.js';
 import { buildLandingPageScenario } from './build-landing-page.js';
 import {
   complexPromptLatencyScenario,
@@ -28,6 +29,7 @@ export function createAllScenarios(
     simplePortfolioScenario(gocode, ctrlPlane),
     businessSiteScenario(gocode, ctrlPlane),
     multipageCatalogScenario(gocode, ctrlPlane),
+    cleaningBizAmbiguityScenario(gocode, ctrlPlane),
     buildLandingPageScenario(gocode, ctrlPlane),
     symptomBlankPageScenario(gocode, ctrlPlane),
     symptomChangesNotShowingScenario(gocode, ctrlPlane),

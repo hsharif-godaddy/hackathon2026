@@ -3,7 +3,7 @@ import {
   simplePortfolioScenario,
   businessSiteScenario,
   multipageCatalogScenario,
-} from '../build-quality/index.js';
+} from '../golden-light/index.js';
 import { buildLandingPageScenario } from '../build-landing-page.js';
 import {
   symptomBlankPageScenario,
@@ -38,7 +38,6 @@ function assertScenarioShape(scenario: Scenario, expectedName: string): void {
 
   const evaluatorNames = scenario.evaluators.map((e) => e.name);
   expect(evaluatorNames).toContain('token-usage');
-  expect(evaluatorNames).toContain('llm-cost');
 }
 
 describe('scenario shapes', () => {

@@ -28,8 +28,25 @@ type EvidenceInput =
   | 'final_artifacts'
   | 'metadata';
 
+export type BaselineEvaluatorName =
+  | 'intent-inference-quality'
+  | 'intent-to-output-alignment'
+  | 'implicit-feature-gap'
+  | 'trust-signal-coverage'
+  | 'scope-drift-overgeneration'
+  | 'primary-use-case-support'
+  | 'conversion-path-clarity'
+  | 'content-tone-alignment'
+  | 'content-specificity'
+  | 'conversation-to-artifact-consistency'
+  | 'silent-hallucination'
+  | 'ambiguity-handling-quality'
+  | 'flow-efficiency'
+  | 'structural-coherence'
+  | 'visual-layout-sanity';
+
 interface BaseBaselineEvaluatorSpec {
-  name: string;
+  name: BaselineEvaluatorName;
   dimension: string;
   description: string;
   inputsUsed: EvidenceInput[];
@@ -292,7 +309,7 @@ function mapCategorical(spec: CategoricalBaselineEvaluatorSpec) {
 
 const BASELINE_SPECS: BaselineEvaluatorSpec[] = [
   {
-    name: 'intent_inference_quality',
+    name: 'intent-inference-quality',
     dimension: 'Intent Understanding & Alignment',
     scoreType: 'numerical',
     description:
@@ -300,7 +317,7 @@ const BASELINE_SPECS: BaselineEvaluatorSpec[] = [
     inputsUsed: ['conversation', 'tool_calls', 'final_artifacts'],
   },
   {
-    name: 'intent_to_output_alignment',
+    name: 'intent-to-output-alignment',
     dimension: 'Intent Understanding & Alignment',
     scoreType: 'numerical',
     description:
@@ -308,7 +325,7 @@ const BASELINE_SPECS: BaselineEvaluatorSpec[] = [
     inputsUsed: ['conversation', 'final_artifacts'],
   },
   {
-    name: 'implicit_feature_gap',
+    name: 'implicit-feature-gap',
     dimension: 'Implicit Feature Completeness',
     scoreType: 'boolean',
     description:
@@ -317,7 +334,7 @@ const BASELINE_SPECS: BaselineEvaluatorSpec[] = [
     inputsUsed: ['conversation', 'final_artifacts'],
   },
   {
-    name: 'trust_signal_coverage',
+    name: 'trust-signal-coverage',
     dimension: 'Implicit Feature Completeness',
     scoreType: 'numerical',
     description:
@@ -325,7 +342,7 @@ const BASELINE_SPECS: BaselineEvaluatorSpec[] = [
     inputsUsed: ['conversation', 'final_artifacts'],
   },
   {
-    name: 'scope_drift_overgeneration',
+    name: 'scope-drift-overgeneration',
     dimension: 'Scope Control',
     scoreType: 'boolean',
     description:
@@ -334,7 +351,7 @@ const BASELINE_SPECS: BaselineEvaluatorSpec[] = [
     inputsUsed: ['conversation', 'final_artifacts'],
   },
   {
-    name: 'primary_use_case_support',
+    name: 'primary-use-case-support',
     dimension: 'Conversion Effectiveness',
     scoreType: 'numerical',
     description:
@@ -342,7 +359,7 @@ const BASELINE_SPECS: BaselineEvaluatorSpec[] = [
     inputsUsed: ['conversation', 'final_artifacts'],
   },
   {
-    name: 'conversion_path_clarity',
+    name: 'conversion-path-clarity',
     dimension: 'Conversion Effectiveness',
     scoreType: 'numerical',
     description:
@@ -350,7 +367,7 @@ const BASELINE_SPECS: BaselineEvaluatorSpec[] = [
     inputsUsed: ['conversation', 'final_artifacts'],
   },
   {
-    name: 'content_tone_alignment',
+    name: 'content-tone-alignment',
     dimension: 'Content Quality & Fit',
     scoreType: 'numerical',
     description:
@@ -358,7 +375,7 @@ const BASELINE_SPECS: BaselineEvaluatorSpec[] = [
     inputsUsed: ['conversation', 'final_artifacts'],
   },
   {
-    name: 'content_specificity',
+    name: 'content-specificity',
     dimension: 'Content Quality & Fit',
     scoreType: 'numerical',
     description:
@@ -366,7 +383,7 @@ const BASELINE_SPECS: BaselineEvaluatorSpec[] = [
     inputsUsed: ['final_artifacts'],
   },
   {
-    name: 'conversation_to_artifact_consistency',
+    name: 'conversation-to-artifact-consistency',
     dimension: 'Consistency & Truthfulness',
     scoreType: 'numerical',
     description:
@@ -374,7 +391,7 @@ const BASELINE_SPECS: BaselineEvaluatorSpec[] = [
     inputsUsed: ['conversation', 'final_artifacts'],
   },
   {
-    name: 'silent_hallucination',
+    name: 'silent-hallucination',
     dimension: 'Consistency & Truthfulness',
     scoreType: 'boolean',
     description:
@@ -383,7 +400,7 @@ const BASELINE_SPECS: BaselineEvaluatorSpec[] = [
     inputsUsed: ['conversation', 'tool_calls', 'final_artifacts'],
   },
   {
-    name: 'ambiguity_handling_quality',
+    name: 'ambiguity-handling-quality',
     dimension: 'Ambiguity Handling',
     scoreType: 'categorical',
     allowedValues: ['good', 'acceptable', 'poor'],
@@ -392,7 +409,7 @@ const BASELINE_SPECS: BaselineEvaluatorSpec[] = [
     inputsUsed: ['conversation'],
   },
   {
-    name: 'flow_efficiency',
+    name: 'flow-efficiency',
     dimension: 'Interaction Quality',
     scoreType: 'numerical',
     description:
@@ -400,7 +417,7 @@ const BASELINE_SPECS: BaselineEvaluatorSpec[] = [
     inputsUsed: ['conversation', 'tool_calls', 'metadata'],
   },
   {
-    name: 'structural_coherence',
+    name: 'structural-coherence',
     dimension: 'Structural & Visual Coherence',
     scoreType: 'numerical',
     description:
@@ -408,7 +425,7 @@ const BASELINE_SPECS: BaselineEvaluatorSpec[] = [
     inputsUsed: ['final_artifacts'],
   },
   {
-    name: 'visual_layout_sanity',
+    name: 'visual-layout-sanity',
     dimension: 'Structural & Visual Coherence',
     scoreType: 'categorical',
     allowedValues: ['good', 'acceptable', 'poor'],
@@ -418,42 +435,69 @@ const BASELINE_SPECS: BaselineEvaluatorSpec[] = [
   },
 ];
 
+const BASELINE_SPEC_BY_NAME = new Map<BaselineEvaluatorName, BaselineEvaluatorSpec>(
+  BASELINE_SPECS.map((spec) => [spec.name, spec]),
+);
+
+function createEvaluatorFromSpec(
+  gocode: GocodeClient,
+  spec: BaselineEvaluatorSpec,
+): Evaluator {
+  if (spec.scoreType === 'numerical') {
+    return new LLMJsonEvaluator(gocode, {
+      name: spec.name,
+      evalVersion: version(spec),
+      schema: JudgeNumericalSchema,
+      prompt: numericalPrompt(spec),
+      toEvalResult: mapNumerical(spec),
+    });
+  }
+
+  if (spec.scoreType === 'boolean') {
+    return new LLMJsonEvaluator(gocode, {
+      name: spec.name,
+      evalVersion: version(spec),
+      schema: JudgeBooleanSchema,
+      prompt: booleanPrompt(spec),
+      toEvalResult: mapBoolean(spec),
+    });
+  }
+
+  if (spec.scoreType === 'categorical') {
+    return new LLMJsonEvaluator(gocode, {
+      name: spec.name,
+      evalVersion: version(spec),
+      schema: JudgeCategoricalSchema.extend({
+        value: z.enum(spec.allowedValues),
+      }),
+      prompt: categoricalPrompt(spec),
+      toEvalResult: mapCategorical(spec),
+    });
+  }
+
+  return assertNever(spec);
+}
+
 export function createBaselineLLMEvaluators(
   gocode: GocodeClient,
 ): Evaluator[] {
-  return BASELINE_SPECS.map(function create(spec) {
-    if (spec.scoreType === 'numerical') {
-      return new LLMJsonEvaluator(gocode, {
-        name: spec.name,
-        evalVersion: version(spec),
-        schema: JudgeNumericalSchema,
-        prompt: numericalPrompt(spec),
-        toEvalResult: mapNumerical(spec),
-      });
-    }
+  return BASELINE_SPECS.map((spec) => createEvaluatorFromSpec(gocode, spec));
+}
 
-    if (spec.scoreType === 'boolean') {
-      return new LLMJsonEvaluator(gocode, {
-        name: spec.name,
-        evalVersion: version(spec),
-        schema: JudgeBooleanSchema,
-        prompt: booleanPrompt(spec),
-        toEvalResult: mapBoolean(spec),
-      });
-    }
-
-    if (spec.scoreType === 'categorical') {
-      return new LLMJsonEvaluator(gocode, {
-        name: spec.name,
-        evalVersion: version(spec),
-        schema: JudgeCategoricalSchema.extend({
-          value: z.enum(spec.allowedValues),
-        }),
-        prompt: categoricalPrompt(spec),
-        toEvalResult: mapCategorical(spec),
-      });
-    }
-
-    return assertNever(spec);
+export function createSelectiveBaselineLLMEvaluators(
+  gocode: GocodeClient,
+  names: readonly BaselineEvaluatorName[],
+): Evaluator[] {
+  const unknown = names.filter((n) => !BASELINE_SPEC_BY_NAME.has(n));
+  if (unknown.length > 0) {
+    throw new Error(
+      `Unknown baseline evaluator names: ${unknown.join(', ')}. ` +
+        `Valid names: ${[...BASELINE_SPEC_BY_NAME.keys()].join(', ')}`,
+    );
+  }
+  return names.map((n) => {
+    // Safe: upfront validation guarantees all names exist in the map
+    const spec = BASELINE_SPEC_BY_NAME.get(n)!;
+    return createEvaluatorFromSpec(gocode, spec);
   });
 }

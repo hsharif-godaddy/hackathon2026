@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 
-import type { DOMSnapshot } from '../runner/transcript.js';
+import type { DOMSnapshot, Turn, ToolCall } from '../runner/transcript.js';
 
 const MAX_TEXT_CHARS = 20_000;
 const MAX_HTML_CHARS = 20_000;
@@ -93,4 +93,70 @@ export async function readSnapshotHtml(snapshot?: DOMSnapshot): Promise<string> 
     );
     return '';
   }
+}
+
+// ---------------------------------------------------------------------------
+// Transcript formatting helpers (shared across evaluator families)
+// ---------------------------------------------------------------------------
+
+const MAX_TOOL_OUTPUT_CHARS = 600;
+const CONSOLE_LOG_TAIL = 30;
+
+function turnToLine(turn: Turn): string {
+  return `${turn.role.toUpperCase()}: ${(turn.content ?? '').trim()}`;
+}
+
+export function safeStringify(value: unknown): string {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return '[unserializable]';
+  }
+}
+
+export function buildConversationText(turns: Turn[]): string {
+  if (turns.length === 0) return '';
+  return truncate(turns.map(turnToLine).join('\n'), MAX_TEXT_CHARS);
+}
+
+export function summarizeToolCalls(toolCalls: ToolCall[]): string {
+  if (toolCalls.length === 0) return '(none)';
+  return truncate(
+    toolCalls
+      .map((tc) => {
+        const status = tc.error ? `error=${tc.error}` : 'ok';
+        const output = tc.output !== undefined
+          ? safeStringify(tc.output)
+          : '(no output)';
+        return `- ${tc.name} (${status}) input=${safeStringify(tc.input)} output=${truncate(output, MAX_TOOL_OUTPUT_CHARS)}`;
+      })
+      .join('\n'),
+    MAX_TEXT_CHARS,
+  );
+}
+
+export async function lastSnapshotSection(snapshot?: DOMSnapshot): Promise<string> {
+  if (!snapshot) return '(no snapshot)';
+
+  const rawHtml = await readSnapshotHtml(snapshot);
+  const body = extractBodyHtml(rawHtml);
+  const text = htmlToText(body);
+  const consoleLogs = (snapshot.consoleLogs ?? [])
+    .slice(-CONSOLE_LOG_TAIL)
+    .map((log) => `${log.type}: ${log.text}`)
+    .join('\n');
+
+  return [
+    `URL: ${snapshot.url}`,
+    snapshot.htmlPath ? `HTML_PATH: ${snapshot.htmlPath}` : '',
+    '',
+    'BODY_HTML:',
+    body || '(empty)',
+    '',
+    'BODY_TEXT:',
+    text || '(empty)',
+    '',
+    'CONSOLE_LOGS (tail):',
+    consoleLogs || '(none)',
+  ].join('\n');
 }

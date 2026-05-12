@@ -19,7 +19,11 @@ export function createBaselineEvaluators(gocode: GocodeClient): Evaluator[] {
   ];
 }
 
-export { createBaselineLLMEvaluators } from './baseline-llm-evaluators.js';
+export {
+  createBaselineLLMEvaluators,
+  createSelectiveBaselineLLMEvaluators,
+  type BaselineEvaluatorName,
+} from './baseline-llm-evaluators.js';
 export {
   HeroSectionPresenceEvaluator,
   NavigationPresenceEvaluator,

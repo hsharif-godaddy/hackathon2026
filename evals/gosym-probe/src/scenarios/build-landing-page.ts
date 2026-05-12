@@ -1,5 +1,5 @@
-import { createBuildQualityScenario }
-  from './build-quality/create-build-quality-scenario.js';
+import { createGoldenLightScenario }
+  from './golden-light/create-golden-light-scenario.js';
 import { beginnerPersona } from '../personas/beginner.js';
 import type { GocodeClient }
   from '../clients/gocode-client.js';
@@ -11,7 +11,7 @@ export function buildLandingPageScenario(
   gocode: GocodeClient,
   ctrlPlane: AABCtrlPlaneClient,
 ): Scenario {
-  return createBuildQualityScenario(
+  return createGoldenLightScenario(
     {
       name: 'build-landing-page',
       goals: [

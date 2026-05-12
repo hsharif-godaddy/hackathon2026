@@ -1,5 +1,7 @@
 import type { Evaluator } from '../evaluator.js';
 import type { GocodeClient } from '../../clients/gocode-client.js';
+
+export { createAlignmentLLMEvaluators } from './alignment-llm-evaluators.js';
 import { CompositeEvaluator } from '../composite-evaluator.js';
 import { DeterministicDomEvaluator } from './deterministic-dom-evaluator.js';
 import { createQualityLLMEvaluators } from './quality-llm-evaluators.js';
@@ -21,7 +23,7 @@ const DETERMINISTIC_SPECS = [
   componentDecompositionSpec,
 ];
 
-export function createBuildQualityEvaluators(gocode: GocodeClient): Evaluator[] {
+export function createGoldenLightEvaluators(gocode: GocodeClient): Evaluator[] {
   const deterministicEvaluators = DETERMINISTIC_SPECS.map(
     (spec) => new DeterministicDomEvaluator(spec),
   );

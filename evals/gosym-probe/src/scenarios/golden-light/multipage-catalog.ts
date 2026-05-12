@@ -1,5 +1,5 @@
-import { createBuildQualityScenario }
-  from './create-build-quality-scenario.js';
+import { createGoldenLightScenario }
+  from './create-golden-light-scenario.js';
 import type { GocodeClient }
   from '../../clients/gocode-client.js';
 import type { AABCtrlPlaneClient }
@@ -26,7 +26,7 @@ export function multipageCatalogScenario(
   gocode: GocodeClient,
   ctrlPlane: AABCtrlPlaneClient,
 ): Scenario {
-  return createBuildQualityScenario(
+  return createGoldenLightScenario(
     {
       name: 'multipage-catalog',
       staticFirstMessage: STATIC_PROMPT,

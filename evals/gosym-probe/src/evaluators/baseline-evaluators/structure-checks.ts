@@ -73,7 +73,7 @@ function passFail(
 }
 
 export class HeroSectionPresenceEvaluator implements Evaluator {
-  readonly name = 'hero_section_presence';
+  readonly name = 'hero-section-presence';
 
   async evaluate(
     _transcript: Transcript,
@@ -101,7 +101,7 @@ export class HeroSectionPresenceEvaluator implements Evaluator {
 }
 
 export class NavigationPresenceEvaluator implements Evaluator {
-  readonly name = 'navigation_presence';
+  readonly name = 'navigation-presence';
 
   async evaluate(
     _transcript: Transcript,
@@ -127,7 +127,7 @@ export class NavigationPresenceEvaluator implements Evaluator {
 }
 
 export class PrimaryCtaPresenceEvaluator implements Evaluator {
-  readonly name = 'primary_cta_presence';
+  readonly name = 'primary-cta-presence';
 
   async evaluate(
     _transcript: Transcript,
@@ -155,7 +155,7 @@ export class PrimaryCtaPresenceEvaluator implements Evaluator {
 // Compatibility aggregate only. Do not register this alongside the individual
 // structure evaluators; createBaselineEvaluators() registers the components.
 export class MandatoryStructureComplianceEvaluator implements Evaluator {
-  readonly name = 'mandatory_structure_compliance';
+  readonly name = 'mandatory-structure-compliance';
 
   async evaluate(
     _transcript: Transcript,

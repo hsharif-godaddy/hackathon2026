@@ -13,7 +13,7 @@ const scenario = {
 } satisfies Scenario;
 
 describe('baseline operational efficiency', function operationalTests() {
-  it('computes total_time_taken from turn timestamps', async function time() {
+  it('computes total-time-taken from turn timestamps', async function time() {
     const t: Transcript = {
       scenarioName: 's',
       trialIndex: 0,

@@ -7,8 +7,10 @@ import { PromptEfficiencyEvaluator }
   from '../../evaluators/prompt-efficiency.js';
 import { JTBDCompletionEvaluator }
   from '../../evaluators/jtbd-completion.js';
-import { createBuildQualityEvaluators }
-  from '../../evaluators/build-quality-evaluators/index.js';
+import {
+  createGoldenLightEvaluators,
+  createAlignmentLLMEvaluators,
+} from '../../evaluators/golden-light-evaluators/index.js';
 import { AgentStepsEvaluator }
   from '../../evaluators/agent-steps.js';
 import { LatencyEvaluator }
@@ -17,8 +19,11 @@ import { ToolParallelismEvaluator }
   from '../../evaluators/tool-parallelism.js';
 import { TurnDurationEvaluator }
   from '../../evaluators/turn-duration.js';
-import { createTokenEvaluators }
-  from '../../evaluators/create-token-evaluators.js';
+import { TokenUsageCollector }
+  from '../../evaluators/token-usage-collector.js';
+import { TokenUsageEvaluator }
+  from '../../evaluators/token-usage.js';
+
 import type { GocodeClient }
   from '../../clients/gocode-client.js';
 import type { AABCtrlPlaneClient }
@@ -28,12 +33,11 @@ import type { Scenario, ScenarioGoal }
 import type { Persona } from '../../personas/types.js';
 import type { Evaluator } from '../../evaluators/evaluator.js';
 
-export interface BuildQualityConfig {
-  // Required: always varies per scenario
+
+export interface GoldenLightConfig {
   name: string;
   goals: [ScenarioGoal, ...ScenarioGoal[]];
 
-  // Optional with defaults
   staticFirstMessage?: string;
   persona?: Persona;
   suite?: string | null;
@@ -41,8 +45,8 @@ export interface BuildQualityConfig {
   extraEvaluators?: Evaluator[];
 }
 
-export function createBuildQualityScenario(
-  config: BuildQualityConfig,
+export function createGoldenLightScenario(
+  config: GoldenLightConfig,
   gocode: GocodeClient,
   ctrlPlane: AABCtrlPlaneClient,
 ): Scenario {
@@ -52,18 +56,19 @@ export function createBuildQualityScenario(
       `[${config.name}] trials must be > 0, got ${config.trials}`,
     );
   }
-  const tokenEvaluators = createTokenEvaluators(gocode);
+  const collector = new TokenUsageCollector();
   const builtinEvaluators = [
     new BugHitRateEvaluator(),
     new ToolFailureRateEvaluator(),
     new PromptEfficiencyEvaluator(),
     new JTBDCompletionEvaluator(gocode),
-    ...createBuildQualityEvaluators(gocode),
+    ...createGoldenLightEvaluators(gocode),
     new AgentStepsEvaluator(),
     new LatencyEvaluator(),
     new ToolParallelismEvaluator(),
     new TurnDurationEvaluator(),
-    ...tokenEvaluators,
+    new TokenUsageEvaluator({ collector, gocodeClient: gocode }),
+    ...createAlignmentLLMEvaluators(gocode),
   ];
   const allEvaluators = [...(config.extraEvaluators ?? []), ...builtinEvaluators];
   const names = allEvaluators.map((e) => e.name);
@@ -77,7 +82,7 @@ export function createBuildQualityScenario(
     name: config.name,
     suite: config.suite === null
       ? undefined
-      : (config.suite ?? 'build-quality'),
+      : (config.suite ?? 'golden-light'),
     persona: config.persona ?? standardPersona,
     staticFirstMessage: config.staticFirstMessage,
     goals: config.goals,
