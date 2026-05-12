@@ -137,11 +137,11 @@ export class MgmtControlPlaneAdapter {
             { timeoutMs: 30000 }
         );
 
-        const apps: MgmtCustomerApp[] = [];
+        const baseApps: MgmtCustomerApp[] = [];
         for (const sub of tree.subscriptions ?? []) {
             for (const sys of sub.systems ?? []) {
                 for (const app of sys.apps ?? []) {
-                    apps.push({
+                    baseApps.push({
                         appId: app.id,
                         subscriptionId: sub.subscriptionId,
                         systemId: sys.systemId,
@@ -151,7 +151,19 @@ export class MgmtControlPlaneAdapter {
                 }
             }
         }
-        return apps;
+
+        // The tree endpoint returns stale/incorrect published values. Fetch the
+        // correct value from the individual app endpoint for each app in parallel.
+        return Promise.all(
+            baseApps.map(async (app): Promise<MgmtCustomerApp> => {
+                try {
+                    const details = await this.getAppDetails(app.appId, { includeResources: false });
+                    return { ...app, published: details.published };
+                } catch {
+                    return app;
+                }
+            })
+        );
     }
 }
 
