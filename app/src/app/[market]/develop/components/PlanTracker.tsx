@@ -34,17 +34,17 @@ export default function PlanTracker({
   return (
     <>
       {/* Plan Status Bar */}
-      <div className="border-b border-gray-200">
+      <div className="border-b">
         <button
           onClick={onToggleExpandedPlan}
           className="w-full flex items-center justify-between px-2 py-1 hover:bg-gray-50 transition-colors"
         >
           <div className="flex items-center min-w-0 flex-1">
-            <div className="w-2 h-2 bg-green-500 rounded-full flex items-center justify-center mr-1 flex-shrink-0">
+            <div className="w-2 h-2 rounded-full flex items-center justify-center mr-1 flex-shrink-0">
               <PlayIcon className="w-1 h-1 text-white" />
             </div>
             <div className="text-left min-w-0 flex-1">
-              <p className="text-xs font-medium text-gray-900 truncate">{activeItem.title}</p>
+              <p className="text-xs font-medium truncate">{activeItem.title}</p>
             </div>
           </div>
           <div className="flex items-center space-x-1 flex-shrink-0">
@@ -62,14 +62,14 @@ export default function PlanTracker({
       <div className={`overflow-hidden transition-all duration-300 ease-in-out ${
         expandedPlan ? 'max-h-48' : 'max-h-0'
       }`}>
-        <div className="bg-gray-50 border-b border-gray-200">
+        <div className="bg-gray-50 border-b">
           <div className="p-2 space-y-2">
             {/* Active Plan Details */}
             <div className="rounded-lg p-2 shadow-sm">
               <div className="flex items-start justify-between mb-1.5">
                 <div>
-                  <h3 className="text-sm font-semibold text-gray-900">{activeItem.title}</h3>
-                  <p className="text-xs text-gray-700 mt-0.5">{activeItem.description}</p>
+                  <h3 className="text-sm font-semibold">{activeItem.title}</h3>
+                  <p className="text-xs mt-0.5">{activeItem.description}</p>
                 </div>
                 <div className="flex items-center space-x-0.5 text-xs">
                   <span>Est. {activeItem.estimatedTime}</span>
@@ -80,7 +80,7 @@ export default function PlanTracker({
               <div className="space-y-1">
                 <p className="text-xs font-medium text-gray-800">Current Tasks:</p>
                 {activeItem.tasks.map((task, index) => (
-                  <div key={index} className="flex items-center text-xs text-gray-700">
+                  <div key={index} className="flex items-center text-xs">
                     <CheckCircleIcon className="w-1.5 h-1.5 text-green-500 mr-1 flex-shrink-0" />
                     <span>{task}</span>
                   </div>
@@ -90,10 +90,10 @@ export default function PlanTracker({
 
             {/* Progress Overview */}
             <div className="rounded-lg p-2 shadow-sm">
-              <h4 className="text-sm font-medium text-gray-900 mb-1.5">Development Progress</h4>
+              <h4 className="text-sm font-medium mb-1.5">Development Progress</h4>
               <div className="grid grid-cols-3 gap-2">
                 <div className="text-center">
-                  <div className="text-lg font-semibold text-green-600">3</div>
+                  <div className="text-lg font-semibold">3</div>
                   <div className="text-xs">Complete</div>
                 </div>
                 <div className="text-center">
@@ -101,14 +101,14 @@ export default function PlanTracker({
                   <div className="text-xs">In Progress</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-lg font-semibold text-gray-400">3</div>
+                  <div className="text-lg font-semibold">3</div>
                   <div className="text-xs">Pending</div>
                 </div>
               </div>
 
               {/* Progress Bar */}
               <div className="mt-2">
-                <div className="flex justify-between text-xs text-gray-600 mb-0.5">
+                <div className="flex justify-between text-xs mb-0.5">
                   <span>Overall Progress</span>
                   <span>43%</span>
                 </div>

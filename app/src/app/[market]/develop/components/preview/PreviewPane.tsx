@@ -14,8 +14,9 @@ import PreviewCode from '@/app/[market]/develop/components/preview/PreviewCode'
 import PreviewError from '@/app/[market]/develop/components/preview/PreviewError'
 import PreviewLoadingState from '@/app/[market]/develop/components/preview/PreviewLoadingState'
 import PreviewSkeleton from '@/app/[market]/develop/components/preview/PreviewSkeleton'
+import ThinkingIndicator from '@/app/[market]/develop/components/ThinkingIndicator'
 import Tips from '@/app/[market]/develop/components/tips/Tips'
-import { PreviewViewMode, ViewMode } from '@/app/[market]/develop/components/types'
+import { MobileMode, PreviewViewMode, ViewMode } from '@/app/[market]/develop/components/types'
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import ErrorBoundary from '@/components/ErrorBoundary'
 import { buildDynamicApiUrl } from '@/config/dynamic-api'
@@ -138,6 +139,8 @@ export default function PreviewPane({
   const viewMode = useDevelopPageStore((state) => state.viewMode)
   const selectedDeviceId = useDevelopPageStore((state) => state.selectedDeviceId)
   const setPreviewViewMode = useDevelopPageStore((state) => state.setPreviewViewMode)
+  const mobileMode = useDevelopPageStore((state) => state.mobileMode)
+  const handleMobileModeChange = useDevelopPageStore((state) => state.handleMobileModeChange)
   // Get device dimensions from preset
   const selectedDevice = getDevicePreset(selectedDeviceId)
   const isFullSize = previewViewMode === PreviewViewMode.DESKTOP || selectedDeviceId === 'full'
@@ -625,11 +628,30 @@ export default function PreviewPane({
         }
       }
 
+      if (event.data?.type === 'CLEAR_AI_EDIT_CONTEXT' && fromPreviewIframe) {
+        // Dev-tool dismissed (user clicked outside selected element).
+        // Treat this as "selection cleared" only; do not directly disable
+        // mobile inline edit mode here, otherwise the parent UI becomes
+        // desynchronized from the iframe's actual edit-mode state.
+        return
+      }
+
       if (event.data?.type === 'IFRAME_READY' && fromPreviewIframe) {
         // Mark bootstrap complete: this signal only arrives if the
         // preview app's own script ran, which means the iframe didn't
         // end up on a builder-redirect or CSP-block.
         setIframeBootstrapped(true)
+
+        // Reset mobile inline edit state when iframe reloads.
+        // Must reset both flags to stay in sync with page.tsx's sendEditModeMessage(isEditModeEnabled).
+        const currentEditState = useDevelopPageStore.getState().isMobileInlineEditActive
+        if (currentEditState) {
+          useDevelopPageStore.setState({
+            isMobileInlineEditActive: false,
+            isEditModeEnabled: false,
+          })
+        }
+
         if (isWaitingForIframeReady) {
           logger.debug('preview-pane.iframe.ready', { message: 'Iframe ready signal received, restoring state immediately' })
           if (attemptStateRestorationRef.current) {
@@ -1017,6 +1039,27 @@ export default function PreviewPane({
                       />
                     </div>
                   </div>
+
+                  {/* Thinking indicator for mobile preview mode */}
+                  {isMobile && mobileMode === MobileMode.PREVIEW && isProcessing && !showBuildingOverlay && (
+                    <div
+                      className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 cursor-pointer"
+                      onClick={() => handleMobileModeChange(MobileMode.TOOLS)}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={t('devtools_open')}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          handleMobileModeChange(MobileMode.TOOLS)
+                        }
+                      }}
+                    >
+                      <div className="bg-intents-ux-box-backgroundColor rounded-full px-2 pt-0.5 pb-0 shadow-lg border">
+                        <ThinkingIndicator active={true} inline={true} />
+                      </div>
+                    </div>
+                  )}
                 </motion.div>
 
                 {/* Code View */}

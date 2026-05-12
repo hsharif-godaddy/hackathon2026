@@ -47,6 +47,7 @@ catalog:
   "@types/node": ^22.19.18
   "@types/react": ^19.2.14
   "@types/react-dom": ^19.2.3
+  '@types/react-speech-recognition': ^3.9.6
   "@types/supertest": ^7.2.0
   "@types/ws": ^8.18.1
   "@ux/util": ^2400.11.0
@@ -87,6 +88,7 @@ catalog:
   react-filerobot-image-editor: 5.0.0-beta.156
   react-focus-lock: ^2.13.7
   react-markdown: ^10.1.0
+  react-speech-recognition: ^4.0.1
   react-transition-group: ^4.4.5
   remark-gfm: ^4.0.1
   socket.io: ^4.8.3

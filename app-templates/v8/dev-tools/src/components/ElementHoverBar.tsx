@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { safePostMessage } from "../utils/postMessage";
 import { generatePreciseSelector, extractDevContext, getElementClassName } from "../utils/element-helpers";
+import { isTouchDevice } from "../utils/device";
 import {
   showSelectionOverlay,
   addNumberedOverlay,
@@ -82,6 +83,19 @@ export default function ElementHoverBar({
     pendingContextRef.current = null;
   }, [element]);
 
+  // Auto-open toolbar on mobile (skip the click requirement)
+  useEffect(() => {
+    if (isTouchDevice()) {
+      // Small delay to let the component render first
+      const timer = setTimeout(() => {
+        toolbarElementRef.current = element;
+        toolbarHoveredElementRef.current = hoveredElement;
+        setToolbarMode(true);
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [element, hoveredElement]);
+
   // Notify parent when toolbar or quick edit is active so it can freeze the element
   useEffect(() => {
     onQuickEditModeChange?.(toolbarMode || quickEditMode);
@@ -138,16 +152,41 @@ export default function ElementHoverBar({
     const computeBarStyle = (): React.CSSProperties => {
       const r = element.getBoundingClientRect();
       const GAP = 8;
+      const EDGE_MARGIN = 16; // Minimum distance from viewport edge
       const centerX = r.left + r.width / 2;
       const hasSpaceAbove = r.top > 50;
+
+      // Estimate bar width (approximate, can be adjusted based on actual measurements)
+      const estimatedBarWidth = 300;
+      const halfBarWidth = estimatedBarWidth / 2;
+
+      // Determine horizontal position
+      let leftPos = centerX;
+      let horizontalTransform = "translateX(-50%)";
+
+      // Check if centered position would overflow left edge
+      if (centerX - halfBarWidth < EDGE_MARGIN) {
+        leftPos = r.left;
+        horizontalTransform = "translateX(0)";
+      }
+      // Check if centered position would overflow right edge
+      else if (centerX + halfBarWidth > window.innerWidth - EDGE_MARGIN) {
+        leftPos = r.right;
+        horizontalTransform = "translateX(-100%)";
+      }
+
       const style: React.CSSProperties = {
         position: "fixed",
-        left: `${centerX}px`,
-        transform: "translateX(-50%)",
+        left: `${leftPos}px`,
+        transform: horizontalTransform,
       };
       if (hasSpaceAbove) {
         style.top = `${r.top - GAP}px`;
-        style.transform = "translate(-50%, -100%)";
+        style.transform = horizontalTransform === "translateX(-50%)"
+          ? "translate(-50%, -100%)"
+          : horizontalTransform === "translateX(0)"
+          ? "translate(0, -100%)"
+          : "translate(-100%, -100%)";
       } else {
         style.top = `${r.bottom + GAP}px`;
       }

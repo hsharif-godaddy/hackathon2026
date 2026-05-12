@@ -168,7 +168,7 @@ export default function CartPage() {
                   <span>{t('stripe.subtotal_label')} ({cartCount} {cartCount === 1 ? t('stripe.item_singular') : t('stripe.items_plural')})</span>
                   <span>{formatPrice(cartTotal, cart[0]?.currency || 'usd')}</span>
                 </div>
-                <div className="border-t border-gray-200 pt-3 flex justify-between text-xl font-bold text-gray-900">
+                <div className="border-t pt-3 flex justify-between text-xl font-bold text-gray-900">
                   <span>{t('stripe.total_label')}</span>
                   <span>{formatPrice(cartTotal, cart[0]?.currency || 'usd')}</span>
                 </div>

@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { isDevToolsElement, isContentElement, detectImage, getMediaSlotPath } from "../utils/element-detection";
+import { isTouchDevice } from "../utils/device";
 
 export interface HoveredImage {
   element: HTMLElement;
@@ -48,6 +49,7 @@ export function useImageHoverDetection(
     if (!isEditModeActive) return;
 
     const SHOW_DELAY_MS = 400;
+    const isMobile = isTouchDevice();
 
     const handleMouseOver = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
@@ -88,11 +90,13 @@ export function useImageHoverDetection(
         // Update ref immediately so mouseout bounds check uses this element
         hoveredElementRef.current = { type: "content", element: target };
         hoveredImageRef.current = null;
+        // On mobile, show immediately on tap (no delay); on desktop use delay for hover
+        const delay = isMobile ? 0 : 150;
         showBarTimerRef.current = setTimeout(() => {
           showBarTimerRef.current = null;
           updateHoveredImage(null);
           updateHoveredElement({ type: "content", element: target });
-        }, 150);
+        }, delay);
         return;
       }
 
@@ -137,11 +141,13 @@ export function useImageHoverDetection(
           if (hideBarTimerRef.current) { clearTimeout(hideBarTimerRef.current); hideBarTimerRef.current = null; }
           if (hoveredElementRef.current?.element === target) return;
           if (showBarTimerRef.current) clearTimeout(showBarTimerRef.current);
+          // On mobile, show immediately on tap (no delay); on desktop use delay for hover
+          const delay = isMobile ? 0 : 150;
           showBarTimerRef.current = setTimeout(() => {
             showBarTimerRef.current = null;
             updateHoveredImage(null); // Clear image state
             updateHoveredElement({ type: "content", element: target });
-          }, 150); // Shorter delay for content elements
+          }, delay);
           return;
         }
 
@@ -177,6 +183,8 @@ export function useImageHoverDetection(
       }
 
       const slotPath = getMediaSlotPath(imageInfo.imageUrl);
+      // On mobile, show immediately on tap (no delay); on desktop use delay for hover
+      const delay = isMobile ? 0 : SHOW_DELAY_MS;
       showBarTimerRef.current = setTimeout(() => {
         showBarTimerRef.current = null;
         updateHoveredImage({
@@ -185,7 +193,7 @@ export function useImageHoverDetection(
           isMediaSlot: slotPath !== null,
           slotPath,
         });
-      }, SHOW_DELAY_MS);
+      }, delay);
     };
 
     const handleMouseOut = (e: MouseEvent) => {

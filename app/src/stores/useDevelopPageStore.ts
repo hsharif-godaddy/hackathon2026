@@ -192,6 +192,7 @@ interface DevelopPageStore {
   isChatPaneCollapsed: boolean
   isMobile: boolean
   isPreviewVisible: boolean
+  isMobileInlineEditActive: boolean
 
   // Tab state (stored in memory, synced to URL)
   activeChatTab: ChatTab
@@ -299,6 +300,7 @@ interface DevelopPageStore {
   setIsMobile: (isMobile: boolean) => void
   setIsVersionHistoryOpen: (open: boolean) => void
   setIsPreviewVisible: (visible: boolean) => void
+  toggleMobileInlineEdit: () => void
   // Tab setters
   setActiveChatTab: (tab: ChatTab) => void
   setActiveSettingsSection: (section: SettingsSection) => void
@@ -417,6 +419,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     isChatPaneCollapsed: false,
     isMobile: false,
     isPreviewVisible: false,
+    isMobileInlineEditActive: false,
     isRestarting: false,
     hasUnsavedChanges: false,
     selectedModel: null,
@@ -505,14 +508,41 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         }
       })
 
-      // Mobile UI doesn't support ViewMode.EDIT, so we're switching to PREVIEW
+      // Mobile UI doesn't support ViewMode.EDIT, so coerce to PREVIEW first,
+      // then switch the mobile UI to TOOLS.
       const enteringMobile = !wasMobile && isMobile
       if (enteringMobile && viewMode === ViewMode.EDIT) {
-        get().handleMobileModeChange(MobileMode.PREVIEW)
+        set((state) => {
+          state.viewMode = ViewMode.PREVIEW
+          state.isEditModeEnabled = false
+        })
+        get().handleMobileModeChange(MobileMode.TOOLS)
       }
     },
     setIsVersionHistoryOpen: (open) => set((state) => { state.isVersionHistoryOpen = open }),
     setIsPreviewVisible: (visible) => set((state) => { state.isPreviewVisible = visible }),
+
+    toggleMobileInlineEdit: () => {
+      const newState = !get().isMobileInlineEditActive
+      set((state) => {
+        state.isMobileInlineEditActive = newState
+        // Keep isEditModeEnabled in sync so other code checking edit-mode state
+        // (e.g., sendEditMessage, multiSelectMode syncing) sees the correct value
+        state.isEditModeEnabled = newState
+      })
+
+      const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement
+      if (iframe) {
+        if (newState) {
+          // Turning ON: enable edit mode
+          postMessageToIframe(iframe, { type: IframeMessageType.EDIT_MODE_ENABLED })
+        } else {
+          // Turning OFF: clear selection and disable edit mode
+          postMessageToIframe(iframe, { type: 'CLEAR_SELECTION' })
+          postMessageToIframe(iframe, { type: IframeMessageType.EDIT_MODE_DISABLED })
+        }
+      }
+    },
 
     // Tab setters
     setActiveChatTab: (tab) => set((state) => {

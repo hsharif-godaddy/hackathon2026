@@ -779,7 +779,7 @@ describe('useDevelopPageStore', function useDevelopPageStoreTests() {
 
       const state = useDevelopPageStore.getState();
       expect(state.isMobile).toBe(true);
-      expect(state.mobileMode).toBe(MobileMode.PREVIEW);
+      expect(state.mobileMode).toBe(MobileMode.TOOLS);
       expect(state.viewMode).toBe(ViewMode.PREVIEW);
       expect(state.isEditModeEnabled).toBe(false);
     });
@@ -1145,6 +1145,136 @@ describe('useDevelopPageStore', function useDevelopPageStoreTests() {
         startedAt,
         jobStatus: 'RUNNING',
       });
+    });
+  });
+
+  describe('#toggleMobileInlineEdit', function toggleMobileInlineEditTests() {
+    let postMessageSpy: ReturnType<typeof vi.spyOn>;
+    let mockIframe: HTMLIFrameElement;
+
+    beforeEach(function setup() {
+      // Reset state
+      act(function reset() {
+        useDevelopPageStore.setState({
+          isMobileInlineEditActive: false,
+          isEditModeEnabled: false,
+        });
+      });
+
+      // Mock iframe
+      mockIframe = document.createElement('iframe');
+      mockIframe.id = 'preview-iframe';
+      document.body.appendChild(mockIframe);
+
+      // Spy on postMessageToIframe
+      postMessageSpy = vi.spyOn(postMessageModule, 'postMessageToIframe');
+    });
+
+    afterEach(function cleanup() {
+      mockIframe.remove();
+      postMessageSpy.mockRestore();
+    });
+
+    it('should toggle isMobileInlineEditActive from false to true', function toggleOn() {
+      act(function toggle() {
+        useDevelopPageStore.getState().toggleMobileInlineEdit();
+      });
+
+      const state = useDevelopPageStore.getState();
+      expect(state.isMobileInlineEditActive).toBe(true);
+    });
+
+    it('should toggle isMobileInlineEditActive from true to false', function toggleOff() {
+      act(function setup() {
+        useDevelopPageStore.setState({
+          isMobileInlineEditActive: true,
+          isEditModeEnabled: true,
+        });
+      });
+
+      act(function toggle() {
+        useDevelopPageStore.getState().toggleMobileInlineEdit();
+      });
+
+      const state = useDevelopPageStore.getState();
+      expect(state.isMobileInlineEditActive).toBe(false);
+    });
+
+    it('should sync isEditModeEnabled with isMobileInlineEditActive when toggling on', function syncOnToggleOn() {
+      act(function toggle() {
+        useDevelopPageStore.getState().toggleMobileInlineEdit();
+      });
+
+      const state = useDevelopPageStore.getState();
+      expect(state.isMobileInlineEditActive).toBe(true);
+      expect(state.isEditModeEnabled).toBe(true);
+    });
+
+    it('should sync isEditModeEnabled with isMobileInlineEditActive when toggling off', function syncOnToggleOff() {
+      act(function setup() {
+        useDevelopPageStore.setState({
+          isMobileInlineEditActive: true,
+          isEditModeEnabled: true,
+        });
+      });
+
+      act(function toggle() {
+        useDevelopPageStore.getState().toggleMobileInlineEdit();
+      });
+
+      const state = useDevelopPageStore.getState();
+      expect(state.isMobileInlineEditActive).toBe(false);
+      expect(state.isEditModeEnabled).toBe(false);
+    });
+
+    it('should send EDIT_MODE_ENABLED message to iframe when toggling on', function postMessageOnEnable() {
+      act(function toggle() {
+        useDevelopPageStore.getState().toggleMobileInlineEdit();
+      });
+
+      expect(postMessageSpy).toHaveBeenCalledWith(
+        mockIframe,
+        { type: 'EDIT_MODE_ENABLED' }
+      );
+    });
+
+    it('should send CLEAR_SELECTION and EDIT_MODE_DISABLED messages when toggling off', function postMessagesOnDisable() {
+      act(function setup() {
+        useDevelopPageStore.setState({
+          isMobileInlineEditActive: true,
+          isEditModeEnabled: true,
+        });
+      });
+
+      postMessageSpy.mockClear();
+
+      act(function toggle() {
+        useDevelopPageStore.getState().toggleMobileInlineEdit();
+      });
+
+      expect(postMessageSpy).toHaveBeenCalledWith(
+        mockIframe,
+        { type: 'CLEAR_SELECTION' }
+      );
+      expect(postMessageSpy).toHaveBeenCalledWith(
+        mockIframe,
+        { type: 'EDIT_MODE_DISABLED' }
+      );
+      expect(postMessageSpy).toHaveBeenCalledTimes(2);
+    });
+
+    it('should not throw if iframe does not exist', function noIframeGraceful() {
+      mockIframe.remove();
+
+      expect(function toggle() {
+        act(function toggleAction() {
+          useDevelopPageStore.getState().toggleMobileInlineEdit();
+        });
+      }).not.toThrow();
+
+      const state = useDevelopPageStore.getState();
+      expect(state.isMobileInlineEditActive).toBe(true);
+      expect(state.isEditModeEnabled).toBe(true);
     });
   });
 });

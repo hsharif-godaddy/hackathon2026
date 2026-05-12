@@ -10,6 +10,7 @@ import HistoryIcon from '@ux/icon/history'
 import ImageIcon from '@ux/icon/image'
 import RefreshIcon from '@ux/icon/refresh'
 import ShowIcon from '@ux/icon/show'
+import WandIcon from '@ux/icon/wand'
 
 import { ButtonGroup } from '@/app/[market]/develop/components/ButtonGroup'
 import IconButton from '@/app/[market]/develop/components/IconButton'
@@ -51,6 +52,8 @@ export default function ChatToolbar({
   const mobileMode = useDevelopPageStore((state) => state.mobileMode);
   const hasUnsavedChanges = useDevelopPageStore((state) => state.hasUnsavedChanges);
   const handleViewModeChange = useDevelopPageStore((state) => state.handleViewModeChange);
+  const isMobileInlineEditActive = useDevelopPageStore((state) => state.isMobileInlineEditActive);
+  const toggleMobileInlineEdit = useDevelopPageStore((state) => state.toggleMobileInlineEdit);
 
   // Use optimistic tab for UI selection state, fall back to URL-based state
   const displayActiveTab = optimisticActiveTab ?? activeChatTab
@@ -58,6 +61,7 @@ export default function ChatToolbar({
   const returnToMain = useGitStore((state) => state.returnToMain);
   const setSelectedCommitHash = useGitStore((state) => state.setSelectedCommitHash);
   const isAnalyticsEnabled = useSwitchboard('appbuilder-analytics');
+  const isMobileInlineEditEnabled = useSwitchboard('airo-builder-mobile-inline-edit');
 
   const { data: gitHistoryData } = useGitHistoryQuery({
     appId: appId || '',
@@ -189,15 +193,15 @@ export default function ChatToolbar({
           </ButtonGroup>
 
           {isMobile && (
-            <>
+            <Box orientation="horizontal" gap="sm">
               <DomainMenu />
               <AppPublish location="develop.chat_toolbar" />
-            </>
+            </Box>
           )}
         </>
       )}
 
-      {/* PREVIEW mode: View/Code + Refresh + Domain + Publish */}
+      {/* PREVIEW mode: View/Code + Wand + Refresh + Domain + Publish */}
       {showPreviewMode && (
         <>
           <Box orientation="horizontal" gap="sm">
@@ -225,6 +229,28 @@ export default function ChatToolbar({
                 label={t('builder_chat_toolbar_button_code')}
               />
             </ButtonGroup>
+
+            <AnimatePresence>
+              {viewMode === ViewMode.PREVIEW && isMobileInlineEditEnabled && (
+                <motion.div
+                  initial={{ x: -20, opacity: 0 }}
+                  animate={{ x: 0, opacity: 1 }}
+                  exit={{ x: -20, opacity: 0 }}
+                  transition={{ duration: 0.2, ease: 'easeInOut', delay: 0.5 }}
+                >
+                  <IconButton
+                    icon={<WandIcon className="size-2.5" />}
+                    onClick={() => {
+                      logClickEvent('develop.chat_toolbar.inline_edit', clickContext)()
+                      toggleMobileInlineEdit()
+                    }}
+                    label={t('builder_preview_button_edit')}
+                    showLabelWhenActive={false}
+                    active={isMobileInlineEditActive}
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             <AnimatePresence>
               {viewMode === ViewMode.PREVIEW && onPreviewRefresh && (
