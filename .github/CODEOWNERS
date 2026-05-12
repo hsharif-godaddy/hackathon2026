@@ -14,8 +14,8 @@
 # Services & packages
 /agentic-qa/ @hdewan-godaddy @deverton-godaddy @jpatel2-godaddy
 /agentic-qa-langfuse/ @abertin-godaddy @deverton-godaddy
-/agents/ @gdcorp-partners/dev-airo-ai-builders-squad
-/app/ @gdcorp-partners/dev-airo-ai-builders-squad
+/agents/ @gdcorp-partners/dev-airo-ai-core-agent-squad
+/app/ @gdcorp-partners/dev-airo-ai-core-agent-squad
 #/agents/ @jeichorn-godaddy @deverton-godaddy @arai1-godaddy @matkinson-godaddy @hmaheshwari-godaddy @hdewan-godaddy @mlefebvre1-godaddy @jlemay-godaddy @ugupta-godaddy @hgupta2-godaddy
 #/app/ @deverton-godaddy @jeichorn-godaddy @jlemay-godaddy @mlefebvre1-godaddy @hdewan-godaddy @arai1-godaddy @matkinson-godaddy @enelmes-godaddy @hgupta2-godaddy @skemp-godaddy @kra-godaddy
 /app-publish/ @deverton-godaddy @jeichorn-godaddy @matkinson-godaddy
