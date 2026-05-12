@@ -329,10 +329,10 @@ export class SSETransport implements ChatTransport {
       'chunk', 'tool_start', 'tool_input_delta', 'tool_call', 'tool_result',
       'step_start', 'step_complete', 'complete', 'error', 'stream_error',
       'budget_update',
+      'validation_message',
       'history_message', 'history_loaded', 'history_complete',
       'recovery_status', 'replay_complete', 'catchup_status', 'catchup_complete',
       'client_action', 'video', 'status', 'request_grant_refresh', 'resync',
-      'auth_expired',
       'oauth_result',
     ]
 
@@ -398,9 +398,6 @@ export class SSETransport implements ChatTransport {
       this.setState('connected')
     } else if (type === 'error' || type === 'stream_error') {
       this.setState('connected')
-    } else if (type === 'auth_expired') {
-      this.callbacks?.onError(new Error('auth_expired'))
-      return
     }
 
     this.callbacks?.onEvent(transportEvent)

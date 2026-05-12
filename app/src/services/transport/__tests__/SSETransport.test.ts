@@ -228,4 +228,31 @@ describe('SSETransport', () => {
     transport.disconnect()
     expect(transport.state).toBe('disconnected')
   })
+
+  it('forwards validation_message events to onEvent', async () => {
+    transport.connect('app_1', 'token_123', 'conv_1')
+    await vi.waitFor(() => {
+      expect(callbacks.onStateChange).toHaveBeenCalledWith('connected')
+    })
+
+    const handlers = eventListeners['validation_message'] ?? []
+    expect(handlers.length).toBeGreaterThan(0)
+
+    const payload = {
+      conversationId: 'conv_1',
+      content: 'validating',
+      data: { metadata: { validationStatus: 'running' } },
+    }
+    for (const h of handlers) {
+      h({ data: JSON.stringify(payload) } as MessageEvent)
+    }
+
+    expect(callbacks.onEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'validation_message',
+        conversationId: 'conv_1',
+        content: 'validating',
+      })
+    )
+  })
 })

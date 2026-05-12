@@ -150,6 +150,12 @@ Multiple tabs to the same app share the conversation stream. All tabs open Event
 | `step_complete`    | Step finished             | `{step, isFinal, toolCalls[], agentId}`               |
 | `complete`         | Stream finished           | `{agentId, finishReason, totalSteps}`                 |
 
+### Validation Events
+
+| Event                | When                                     | Payload                                                                |
+| -------------------- | ---------------------------------------- | ---------------------------------------------------------------------- |
+| `validation_message` | Post-stream validation progress / result | `{content, data: {metadata: {validationStatus, ...}, ...}, agentName}` |
+
 ### Budget & Grant Events
 
 | Event                   | When                      | Payload                                     |
@@ -175,8 +181,12 @@ Multiple tabs to the same app share the conversation stream. All tabs open Event
 | ---------------- | ----------------------------------- | ---------------------------------- |
 | `error`          | Non-fatal stream error              | `{error, timestamp}`               |
 | `stream_error`   | SSE delivery error                  | `{error, timestamp}`               |
-| `auth_expired`   | JWT expired                         | `{}`                               |
 | `recovery_error` | Invalid conversationId on reconnect | `{error, requestedConversationId}` |
+
+JWT expiry is not signaled as a stream event. The server validates the
+bearer at HTTP request time only; mid-stream expiry surfaces at the next
+HTTP boundary (next POST or EventSource reconnect), where the client
+refreshes the token via `agent-fetch` 401 retry.
 
 ## SSE Wire Format
 
