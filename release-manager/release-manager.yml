@@ -56,7 +56,18 @@ pipeline:
               job_match: "build-airo-app-builder-publish.*Send Notifications"
               pattern: "MOST_SPECIFIC_IMMUTABLE_TAG_SUFFIX=(pi-[a-f0-9]+-ext-[a-f0-9]+)"
 
-        # --- E2E + manual checklist run in parallel after deploy group finishes ---
+        # --- Prepull images onto every eligible Nomad client after upsert ---
+        - id: prepull-images-test
+          name: Prepull Images (Test Cells)
+          group: prepull-test
+          repo: gdcorp-commerce/pioneer-infra
+          workflow: image-prepull.yml
+          active_run_check: false
+          inputs:
+            environment: mgmt-dev-private-us-west-2
+            # cellIds left blank → state machine fans out to every cell in the fleet
+
+        # --- E2E + manual checklist run in parallel after deploy → prepull groups finish ---
         - id: e2e-test
           name: E2E + Regression Tests
           group: validate
@@ -98,6 +109,7 @@ pipeline:
             - "Verify an existing app upgrades correctly and the agent is working"
             - "Verify that you can add a credit pack"
             - "Verify any new features in the release notes are working"
+            - "Check AWS Step Functions console for the ImagePrepull execution, and verify image-prepull-default Nomad system jobs completed on one or more dev cells with the expected image tags"
 
         # --- Simulation evaluation gate — fails test stage (blocking prod) if score < 70 (0-100 scale) ---
         - id: simulation-eval-test
@@ -163,6 +175,17 @@ pipeline:
             appTemplateName: default
             batchConcurrency: "5"
 
+        # --- Prepull images onto every eligible Nomad client after upsert ---
+        - id: prepull-images-prod
+          name: Prepull Images (Prod Cells)
+          group: prepull-prod
+          repo: gdcorp-commerce/pioneer-infra
+          workflow: image-prepull.yml
+          active_run_check: false
+          inputs:
+            environment: mgmt-prod-us-west-2
+            # cellIds left blank → state machine fans out to every cell in the fleet
+
         # --- E2E + manual checklist run in parallel ---
         - id: e2e-prod
           name: E2E + Regression Tests (Prod)
@@ -205,6 +228,7 @@ pipeline:
             - "Verify an existing app upgrades correctly and the agent is working"
             - "Verify that you can add a credit pack"
             - "Verify any new features in the release notes are working"
+            - "Check AWS Step Functions console for the ImagePrepull execution, and verify image-prepull-default Nomad system jobs completed on one or more prod cells with the expected image tags"
 
   dry_run:
     # Dry run queries last successful runs and exercises real log parsing.
@@ -255,3 +279,14 @@ pipeline:
           compositionVersion: v4
           appTemplateName: default
           batchConcurrency: "5"
+
+      # --- Prepull rolled-back images onto every eligible Nomad client ---
+      - id: rollback-prepull
+        name: Prepull Rolled-Back Images (Prod Cells)
+        group: rollback-prepull
+        repo: gdcorp-commerce/pioneer-infra
+        workflow: image-prepull.yml
+        active_run_check: false
+        inputs:
+          environment: mgmt-prod-us-west-2
+          # cellIds left blank → state machine fans out to every cell in the fleet
