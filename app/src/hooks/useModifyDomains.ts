@@ -52,6 +52,7 @@ export interface DomainMutationDetails {
   message: string;
   domainSpecificError?: Record<string, string>;
   nestedCode?: string;
+  tldValue?: string;
   conflictDetails?: {
     existingAppId: string;
     existingSystemId?: string;
@@ -190,6 +191,11 @@ export function useModifyDomains() {
             errorBody: JSON.stringify(errorData),
           });
         }
+        const tldValue =
+          effectiveNestedCode === 'TLD_NOT_SUPPORTED' &&
+          typeof conflictSource?.tld === 'string'
+            ? conflictSource.tld
+            : undefined;
         const conflictDetails = airoConflictDetails ?? mwpConflictDetails;
         const errorMessage =
           (typeof details === 'object' ? (details?.message ?? details?.error?.message) : details) ||
@@ -214,6 +220,7 @@ export function useModifyDomains() {
           code: errorData.code,
           message: errorMessage,
           ...(effectiveNestedCode && { nestedCode: effectiveNestedCode }),
+          ...(tldValue && { tldValue }),
           ...(conflictDetails && { conflictDetails }),
           ...(Object.keys(domainSpecificError).length > 0 && { domainSpecificError }),
         });

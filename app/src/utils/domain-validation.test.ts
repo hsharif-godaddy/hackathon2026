@@ -144,7 +144,7 @@ describe('getDomainErrorMessage', () => {
       }];
       const result = getDomainErrorMessage(errors, t);
       expect(result).toBe('Invalid fully qualified domain name.');
-      expect(t).toHaveBeenCalledWith('builder_domain_error_fqdn_invalid');
+      expect(t).toHaveBeenCalledWith('builder_domain_error_fqdn_invalid', undefined);
     });
 
     it('should handle DOMAIN_SUBDOMAIN_INVALID error', () => {
@@ -157,7 +157,7 @@ describe('getDomainErrorMessage', () => {
       }];
       const result = getDomainErrorMessage(errors, t);
       expect(result).toBe('Invalid subdomain format.');
-      expect(t).toHaveBeenCalledWith('builder_domain_error_subdomain_invalid');
+      expect(t).toHaveBeenCalledWith('builder_domain_error_subdomain_invalid', undefined);
     });
 
     it('should handle DOMAIN_LABEL_TOO_LONG error', () => {
@@ -170,7 +170,7 @@ describe('getDomainErrorMessage', () => {
       }];
       const result = getDomainErrorMessage(errors, t);
       expect(result).toBe('Domain label is too long.');
-      expect(t).toHaveBeenCalledWith('builder_domain_error_label_too_long');
+      expect(t).toHaveBeenCalledWith('builder_domain_error_label_too_long', undefined);
     });
   });
 
@@ -211,7 +211,7 @@ describe('getDomainErrorMessage', () => {
       }];
       const result = getDomainErrorMessage(errors, t);
       expect(result).toBe('This domain is already in use.');
-      expect(t).toHaveBeenCalledWith('builder_domain_error_already_in_use');
+      expect(t).toHaveBeenCalledWith('builder_domain_error_already_in_use', undefined);
     });
 
     it('should handle DOMAIN_ALREADY_OWNED error with fqdn field', () => {
@@ -224,7 +224,21 @@ describe('getDomainErrorMessage', () => {
       }];
       const result = getDomainErrorMessage(errors, t);
       expect(result).toBe('This domain is already in use.');
-      expect(t).toHaveBeenCalledWith('builder_domain_error_already_in_use');
+      expect(t).toHaveBeenCalledWith('builder_domain_error_already_in_use', undefined);
+    });
+
+    it('should handle TLD_NOT_SUPPORTED error with fqdn field', () => {
+      const t = createMockTranslations();
+      const errors: DomainValidationErrorObject[] = [{
+        code: DomainValidationError.TLD_NOT_SUPPORTED,
+        message: 'The top-level domain .xyz is not supported',
+        field: 'fqdn',
+        value: 'example.xyz',
+        tld: 'xyz',
+      }];
+      const result = getDomainErrorMessage(errors, t);
+      expect(result).toBe('builder_domain_error_tld_not_supported');
+      expect(t).toHaveBeenCalledWith('builder_domain_error_tld_not_supported', { tld: 'xyz' });
     });
   });
 
@@ -323,6 +337,8 @@ describe('translateDomainApiError', () => {
       .toBe('builder_domain_api_error_fqdn_required');
     expect(translateDomainApiError(DomainApiErrorCode.INVALID_DOMAIN_FORMAT, t))
       .toBe('builder_domain_api_error_invalid_format');
+    expect(translateDomainApiError(DomainApiErrorCode.TLD_NOT_SUPPORTED, t, undefined, { tld: 'drinks' }))
+      .toBe('builder_domain_error_tld_not_supported');
   });
 
   it('should fall back to generic API error codes', () => {

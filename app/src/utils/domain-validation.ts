@@ -16,6 +16,7 @@ export enum DomainApiErrorCode {
   INVALID_TRANSFER_FROM = 'INVALID_TRANSFER_FROM',
   DOMAIN_ALREADY_IN_USE = 'DOMAIN_ALREADY_IN_USE',
   DOMAIN_MODIFY_FAILED = 'DOMAIN_MODIFY_FAILED',
+  TLD_NOT_SUPPORTED = 'TLD_NOT_SUPPORTED',
 }
 
 const DOMAIN_API_ERROR_KEYS: Record<string, string> = {
@@ -28,10 +29,12 @@ const DOMAIN_API_ERROR_KEYS: Record<string, string> = {
   [DomainApiErrorCode.INVALID_TRANSFER_FROM]: 'builder_domain_error_invalid_transfer',
   [DomainApiErrorCode.DOMAIN_ALREADY_IN_USE]: 'builder_domain_api_error_already_in_use',
   [DomainApiErrorCode.DOMAIN_MODIFY_FAILED]: 'builder_domain_api_error_modify_failed',
+  [DomainApiErrorCode.TLD_NOT_SUPPORTED]: 'builder_domain_error_tld_not_supported',
 };
 
 const DOMAIN_API_ERROR_DEFAULT_MESSAGES: Partial<Record<DomainApiErrorCode, string>> = {
   [DomainApiErrorCode.INVALID_TRANSFER_FROM]: 'Invalid domain transfer request.',
+  [DomainApiErrorCode.TLD_NOT_SUPPORTED]: 'The top-level domain is not supported.',
 };
 
 /**
@@ -43,13 +46,14 @@ const DOMAIN_API_ERROR_DEFAULT_MESSAGES: Partial<Record<DomainApiErrorCode, stri
 export function translateDomainApiError(
   code: string | undefined,
   t: ReturnType<typeof useTranslations>,
-  fallback?: string
+  fallback?: string,
+  variables?: Record<string, unknown>
 ): string {
   if (code) {
     const domainKey = DOMAIN_API_ERROR_KEYS[code];
     if (domainKey) {
       const defaultMessage = DOMAIN_API_ERROR_DEFAULT_MESSAGES[code as DomainApiErrorCode];
-      return t(domainKey, undefined, defaultMessage);
+      return t(domainKey, variables, defaultMessage);
     }
   }
   return translateApiError(code, t, fallback);
@@ -68,7 +72,8 @@ const PROJECT_PREFIX_ERROR_KEYS: Record<DomainValidationError, string> = {
   [DomainValidationError.DOMAIN_ALREADY_OWNED]: 'builder_domain_error_already_taken',
   [DomainValidationError.DOMAIN_FQDN_INVALID]: 'builder_domain_error_default',
   [DomainValidationError.DOMAIN_SUBDOMAIN_INVALID]: 'builder_domain_error_default',
-  [DomainValidationError.DOMAIN_LABEL_TOO_LONG]: 'builder_domain_error_default'
+  [DomainValidationError.DOMAIN_LABEL_TOO_LONG]: 'builder_domain_error_default',
+  [DomainValidationError.TLD_NOT_SUPPORTED]: 'builder_domain_error_default',
 };
 
 /**
@@ -84,7 +89,8 @@ const FQDN_ERROR_KEYS: Record<DomainValidationError, string> = {
   [DomainValidationError.DOMAIN_LABEL_INVALID]: 'builder_domain_error_default',
   [DomainValidationError.DOMAIN_TOO_SHORT]: 'builder_domain_error_default',
   [DomainValidationError.DOMAIN_RESERVED]: 'builder_domain_error_default',
-  [DomainValidationError.DOMAIN_PROFANITY]: 'builder_domain_error_default'
+  [DomainValidationError.DOMAIN_PROFANITY]: 'builder_domain_error_default',
+  [DomainValidationError.TLD_NOT_SUPPORTED]: 'builder_domain_error_tld_not_supported',
 };
 
 /**
@@ -132,7 +138,8 @@ export function getDomainErrorMessage(errors: DomainValidationErrorObject[] | un
     }
     case 'fqdn': {
       const translationKey = FQDN_ERROR_KEYS[errorCode];
-      return translationKey ? t(translationKey) : defaultMessage;
+      if (!translationKey) return defaultMessage;
+      return t(translationKey, firstError.tld ? { tld: firstError.tld } : undefined);
     }
     default:
       return defaultMessage;

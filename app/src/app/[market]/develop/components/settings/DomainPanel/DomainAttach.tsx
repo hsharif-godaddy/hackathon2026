@@ -240,9 +240,10 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
     if (modifyDomainsMutation.error) {
       if (modifyDomainsMutation.error instanceof DomainMutationError) {
         return translateDomainApiError(
-          modifyDomainsMutation.error.details.code,
+          modifyDomainsMutation.error.details.nestedCode ?? modifyDomainsMutation.error.details.code,
           t,
-          modifyDomainsMutation.error.details.message
+          modifyDomainsMutation.error.details.message,
+          modifyDomainsMutation.error.details.tldValue ? { tld: modifyDomainsMutation.error.details.tldValue } : undefined
         );
       }
       return modifyDomainsMutation.error instanceof Error

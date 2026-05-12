@@ -267,6 +267,8 @@ export enum DomainValidationError {
   DOMAIN_NOT_UNIQUE = 'DOMAIN_NOT_UNIQUE',
   /** Domain is already owned by this account */
   DOMAIN_ALREADY_OWNED = 'DOMAIN_ALREADY_OWNED',
+  /** Top-level domain is not supported */
+  TLD_NOT_SUPPORTED = 'TLD_NOT_SUPPORTED',
 }
 
 /**
@@ -283,6 +285,8 @@ export interface DomainValidationErrorObject {
   field: string;
   /** Value that was rejected */
   value: string;
+  /** Top-level domain value, present when code is TLD_NOT_SUPPORTED */
+  tld?: string;
 }
 
 /**
