@@ -41,6 +41,12 @@ vi.mock('../ai-lib-tools/drivers/website-scraper-driver.js', () => ({
   }))
 }));
 
+// Mock emitToApp so tests can assert per-app scoped WS emits.
+const emitToAppMock = vi.fn(() => 1);
+vi.mock('../../server/ai-lib-websocket-server.js', () => ({
+  emitToApp: (appId: string, event: string, payload: unknown) => emitToAppMock(appId, event, payload),
+}));
+
 import { execa } from 'execa';
 import { videoApiFetch } from '../../helper/video-api-helper.js';
 import { logger } from '../../logging/index.js';
@@ -191,15 +197,13 @@ describe('video-generation-tool', function packageTests() {
         text: async () => 'Internal Server Error'
       } as any);
 
-      const mockIo = { emit: vi.fn() };
       const tool = createTool();
-      tool.setSocketIO(mockIo);
       await callInitiate(tool);
 
       const metadata = JSON.parse(fs.readFileSync(path.join(airoDir, 'video.json'), 'utf-8'));
       expect(metadata.status).toBe('failed');
       expect(metadata.error).toBe('Failed to submit video job to OpenAI');
-      expect(mockIo.emit).toHaveBeenCalledWith('message', expect.objectContaining({
+      expect(emitToAppMock).toHaveBeenCalledWith('test-app-123', 'message', expect.objectContaining({
         type: 'video',
         data: expect.objectContaining({
           status: 'failed',
@@ -257,16 +261,14 @@ describe('video-generation-tool', function packageTests() {
         json: async () => ({ status: 'failed' })
       } as any);
 
-      const mockIo = { emit: vi.fn() };
       const tool = createPollingTool();
-      tool.setSocketIO(mockIo);
 
       await callPolling(tool, 'vid-failed');
 
       const metadata = JSON.parse(fs.readFileSync(path.join(airoDir, 'video.json'), 'utf-8'));
       expect(metadata.status).toBe('failed');
       expect(metadata.error).toBeTruthy();
-      expect(mockIo.emit).toHaveBeenCalledWith('message', expect.objectContaining({
+      expect(emitToAppMock).toHaveBeenCalledWith('test-app-123', 'message', expect.objectContaining({
         type: 'video',
         data: expect.objectContaining({ status: 'failed', jobId: 'vid-failed' })
       }));
@@ -362,9 +364,7 @@ describe('video-generation-tool', function packageTests() {
         json: async () => ({ status: 'in_progress' })
       } as any);
 
-      const mockIo = { emit: vi.fn() };
       const tool = createTool({ pollIntervalMs: 0, maxPollAttempts: 3 });
-      tool.setSocketIO(mockIo);
 
       await callPolling(tool, 'vid-timeout');
 
@@ -375,7 +375,7 @@ describe('video-generation-tool', function packageTests() {
       const metadata = JSON.parse(fs.readFileSync(path.join(airoDir, 'video.json'), 'utf-8'));
       expect(metadata.status).toBe('failed');
       expect(metadata.error).toBeTruthy();
-      expect(mockIo.emit).toHaveBeenCalledWith('message', expect.objectContaining({
+      expect(emitToAppMock).toHaveBeenCalledWith('test-app-123', 'message', expect.objectContaining({
         type: 'video',
         data: expect.objectContaining({ status: 'failed', jobId: 'vid-timeout' })
       }));
@@ -517,9 +517,7 @@ describe('video-generation-tool', function packageTests() {
       }
 
       try {
-        const mockIo = { emit: vi.fn() };
         const tool = createTool();
-        tool.setSocketIO(mockIo);
         await callDownload(tool, 'vid-outro-fail');
 
         expect(logger.warn).toHaveBeenCalledWith(
@@ -531,7 +529,7 @@ describe('video-generation-tool', function packageTests() {
         expect(metadata.status).toBe('completed');
         expect(metadata.url).toBeTruthy();
 
-        expect(mockIo.emit).toHaveBeenCalledWith('message', expect.objectContaining({
+        expect(emitToAppMock).toHaveBeenCalledWith('test-app-123', 'message', expect.objectContaining({
           type: 'video',
           data: expect.objectContaining({
             status: 'completed',
@@ -574,16 +572,14 @@ describe('video-generation-tool', function packageTests() {
       }
 
       try {
-        const mockIo = { emit: vi.fn() };
         const tool = createTool();
-        tool.setSocketIO(mockIo);
         await callDownload(tool, 'vid-success');
 
         const metadata = JSON.parse(fs.readFileSync(path.join(airoDir, 'video.json'), 'utf-8'));
         expect(metadata.status).toBe('completed');
         expect(metadata.url).toBeTruthy();
 
-        expect(mockIo.emit).toHaveBeenCalledWith('message', {
+        expect(emitToAppMock).toHaveBeenCalledWith('test-app-123', 'message', {
           type: 'video',
           content: '',
           data: {
@@ -640,9 +636,7 @@ describe('video-generation-tool', function packageTests() {
         JSON.stringify({ jobId: 'vid-1', status: 'pending', createdAt: '2024-01-01T00:00:00.000Z' })
       );
 
-      const mockIo = { emit: vi.fn() };
       const tool = createTool();
-      tool.setSocketIO(mockIo);
       await callDelete(tool, 'vid-1', 'Test error message');
 
       const metadata = JSON.parse(fs.readFileSync(path.join(airoDir, 'video.json'), 'utf-8'));
@@ -650,7 +644,7 @@ describe('video-generation-tool', function packageTests() {
       expect(metadata.error).toBe('Test error message');
       expect(metadata.jobId).toBe('vid-1');
       expect(metadata.createdAt).toBe('2024-01-01T00:00:00.000Z');
-      expect(mockIo.emit).toHaveBeenCalledWith('message', {
+      expect(emitToAppMock).toHaveBeenCalledWith('test-app-123', 'message', {
         type: 'video',
         content: '',
         data: {
@@ -663,15 +657,13 @@ describe('video-generation-tool', function packageTests() {
     });
 
     it('should create metadata with failed status when file does not exist', async function writeFailedStatusNonexistent() {
-      const mockIo = { emit: vi.fn() };
       const tool = createTool();
-      tool.setSocketIO(mockIo);
       await callDelete(tool, 'vid-1', 'Test error');
 
       const metadata = JSON.parse(fs.readFileSync(path.join(airoDir, 'video.json'), 'utf-8'));
       expect(metadata.status).toBe('failed');
       expect(metadata.error).toBe('Test error');
-      expect(mockIo.emit).toHaveBeenCalledWith('message', expect.objectContaining({
+      expect(emitToAppMock).toHaveBeenCalledWith('test-app-123', 'message', expect.objectContaining({
         type: 'video',
         data: expect.objectContaining({ status: 'failed' })
       }));

@@ -16,6 +16,7 @@ import { nanoid } from 'nanoid';
 import { createOpenAIClient } from '@airo/ai-lib';
 import { videoApiFetch } from '../helper/video-api-helper.js';
 import { logger } from '../logging/index.js';
+import { emitToApp } from '../server/ai-lib-websocket-server.js';
 import { getPersistentPublicDir } from '../utils/persistent-assets.js';
 import { getVideoPromptGenerationService } from '../services/video-prompt-generation.js';
 import { WebsiteScraperDriver } from './ai-lib-tools/drivers/website-scraper-driver.js';
@@ -69,7 +70,6 @@ export interface VideoAppContext {
  * Service for generating videos using OpenAI Sora API
  */
 export class VideoGenerationTool {
-  private io: { emit: (event: string, data: unknown) => void } | null = null;
   private sseRegistry: { sendEvent: (appId: string, type: string, data: Record<string, unknown>) => void } | null = null;
   private readonly appId: string;
   private readonly appPath: string;
@@ -87,10 +87,6 @@ export class VideoGenerationTool {
     this.videoMetadataPath = path.join(ctx.appPath, '.airo', 'video.json');
     this.pollIntervalMs = ctx.pollIntervalMs ?? 10000;
     this.maxPollAttempts = ctx.maxPollAttempts ?? 100;
-  }
-
-  setSocketIO(io: { emit: (event: string, data: unknown) => void }): void {
-    this.io = io;
   }
 
   setSSERegistry(registry: { sendEvent: (appId: string, type: string, data: Record<string, unknown>) => void }): void {
@@ -533,35 +529,28 @@ export class VideoGenerationTool {
       errorMessage || 'Video generation failed'
     );
 
-    this.emitVideoEvent(this.appId, {
+    this.emitVideoEvent({
       status: 'failed',
       jobId: videoId,
       error: errorMessage || 'Video generation failed'
     });
   }
 
-  /**
-   * Emit a video event on the 'message' channel so it flows through the
-   * client's existing handler pipeline (socket.on('message') → registry → VideoHandler).
-   */
-  private emitVideoEvent(appId: string, data: Record<string, unknown>): void {
-    const payload = { type: 'video', content: '', data: { ...data, appId } };
+  // WS delivery is scoped via emitToApp so the event only reaches sockets
+  // authenticated for this appId (no cross-tenant broadcast).
+  private emitVideoEvent(data: Record<string, unknown>): void {
+    const { appId } = this;
+    const eventData = { ...data, appId };
+    const payload = { type: 'video', content: '', data: eventData };
 
-    if (this.io) {
-      logger.info('video-generation.websocket.emit', { appId, status: data.status, jobId: data.jobId });
-      this.io.emit('message', payload);
-    }
+    const wsDelivered = emitToApp(appId, 'message', payload);
+    logger.info('video-generation.websocket.emit', {
+      appId, status: data.status, jobId: data.jobId, wsDelivered,
+    });
 
     if (this.sseRegistry) {
       logger.info('video-generation.sse.emit', { appId, status: data.status, jobId: data.jobId });
-      this.sseRegistry.sendEvent(appId, 'video', { ...data, appId });
-    }
-
-    if (!this.io && !this.sseRegistry) {
-      logger.warn('video-generation.emit.no-transport', {
-        appId, status: data.status, jobId: data.jobId,
-        reason: 'Neither Socket.IO nor SSE registry set - client will not receive this event'
-      });
+      this.sseRegistry.sendEvent(appId, 'video', eventData);
     }
   }
 
@@ -630,13 +619,11 @@ export class VideoGenerationTool {
 
     const videoUrl = this.previewUrl ? `${this.previewUrl.replace(/\/+$/, '')}${publicPath}` : publicPath;
 
-    if (this.io) {
-      this.emitVideoEvent(this.appId, {
-        status: 'completed',
-        jobId: videoId,
-        videoUrl
-      });
-    }
+    this.emitVideoEvent({
+      status: 'completed',
+      jobId: videoId,
+      videoUrl
+    });
   }
 
 }
