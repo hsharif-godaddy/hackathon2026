@@ -28,7 +28,7 @@ class GettyClient extends BaseClient {
   constructor() {
     super({
       serviceName: 'Getty',
-      ssoHost: 'sso.godaddy.com',
+      ssoHost: config.sso.host,
       defaultRetries: 2
     });
   }
