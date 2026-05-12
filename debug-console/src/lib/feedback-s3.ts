@@ -22,7 +22,8 @@ export type FeedbackRangeDays = (typeof FEEDBACK_RANGE_DAYS_LIST)[number];
 
 export type FeedbackWindow =
   | { kind: 'rolling'; days: FeedbackRangeDays }
-  | { kind: 'absolute'; startYmd: string; endYmd: string };
+  | { kind: 'absolute'; startYmd: string; endYmd: string }
+  | { kind: 'all' };
 
 export function parseFeedbackRequest(sp: URLSearchParams): FeedbackWindow | { error: string } {
   const start = sp.get('start')?.trim();
@@ -35,6 +36,10 @@ export function parseFeedbackRequest(sp: URLSearchParams): FeedbackWindow | { er
       return { error: getDateRangeError(start, end) ?? 'Invalid date range' };
     }
     return { kind: 'absolute', startYmd: start, endYmd: end };
+  }
+  const allParam = sp.get('all')?.trim().toLowerCase();
+  if (allParam === '1' || allParam === 'true' || allParam === 'yes') {
+    return { kind: 'all' };
   }
   const daysRaw = sp.get('days');
   if (daysRaw !== null && daysRaw !== '') {
@@ -50,6 +55,9 @@ export function parseFeedbackRequest(sp: URLSearchParams): FeedbackWindow | { er
 export function feedbackWindowCacheKey(window: FeedbackWindow): string {
   if (window.kind === 'rolling') {
     return `rolling:${window.days}`;
+  }
+  if (window.kind === 'all') {
+    return 'all';
   }
   return `abs:${window.startYmd}:${window.endYmd}`;
 }
@@ -75,11 +83,17 @@ function feedbackWindowSpanDays(window: FeedbackWindow): number {
   if (window.kind === 'rolling') {
     return window.days;
   }
+  if (window.kind === 'all') {
+    return 30;
+  }
   return inclusiveUtcDayCount(window.startYmd, window.endYmd);
 }
 
 function itemTimestampInWindow(ts: Date | null, window: FeedbackWindow): boolean {
   if (!ts) return false;
+  if (window.kind === 'all') {
+    return true;
+  }
   if (window.kind === 'rolling') {
     const cutoff = Date.now() - window.days * MS_PER_DAY;
     return ts.getTime() >= cutoff;
@@ -368,6 +382,55 @@ async function fetchFeedbackFromS3Absolute(
   };
 }
 
+async function fetchFeedbackFromS3All(): Promise<{ items: FeedbackItem[]; merged_truncated: boolean; partition_errors: number }> {
+  const bucket = getFeedbackS3Bucket();
+  if (!bucket) return { items: [], merged_truncated: false, partition_errors: 0 };
+
+  const base = (process.env.FEEDBACK_S3_PREFIX?.trim() || DEFAULT_PREFIX).replace(/\/?$/, '/');
+  let keys: string[] = [];
+  let partition_errors = 0;
+  try {
+    keys = await listAllKeys(bucket, base);
+  } catch (err) {
+    partition_errors += 1;
+    console.error('feedback-s3: listAllKeys failed (all)', { bucket, base }, err);
+    return { items: [], merged_truncated: false, partition_errors };
+  }
+
+  keys.sort((a, b) => b.localeCompare(a));
+
+  const feedbackItems: FeedbackItem[] = [];
+  let keysFullyConsumed = true;
+  for (const key of keys) {
+    if (feedbackItems.length >= MAX_MERGED_ITEMS) {
+      keysFullyConsumed = false;
+      break;
+    }
+    const { items: fromKey, malformedLineCount } = await getObjectItems(bucket, key);
+    if (malformedLineCount > 0) {
+      console.warn('feedback-s3: skipped malformed lines', { bucket, key, count: malformedLineCount });
+    }
+    for (const item of fromKey) {
+      feedbackItems.push(item);
+      if (feedbackItems.length >= MAX_MERGED_ITEMS) {
+        keysFullyConsumed = false;
+        break;
+      }
+    }
+    if (feedbackItems.length >= MAX_MERGED_ITEMS) {
+      break;
+    }
+  }
+
+  feedbackItems.sort((a, b) => String(b.feedback_utc_ts ?? '').localeCompare(String(a.feedback_utc_ts ?? '')));
+  const merged_truncated = !keysFullyConsumed;
+  return {
+    items: feedbackItems.slice(0, MAX_MERGED_ITEMS),
+    merged_truncated,
+    partition_errors,
+  };
+}
+
 export async function getFeedbackItemsCached(
   window: FeedbackWindow,
 ): Promise<{ items: FeedbackItem[]; merged_truncated: boolean; partition_errors: number }> {
@@ -381,9 +444,11 @@ export async function getFeedbackItemsCached(
     };
   }
   const merged =
-    window.kind === 'rolling'
-      ? await fetchFeedbackFromS3Rolling(window.days)
-      : await fetchFeedbackFromS3Absolute(window.startYmd, window.endYmd);
+    window.kind === 'all'
+      ? await fetchFeedbackFromS3All()
+      : window.kind === 'rolling'
+        ? await fetchFeedbackFromS3Rolling(window.days)
+        : await fetchFeedbackFromS3Absolute(window.startYmd, window.endYmd);
   if (merged.partition_errors === 0) {
     itemsCache = {
       at: now,
@@ -413,6 +478,81 @@ export function parseFeedbackUtc(tsStr: string): Date | null {
   }
 }
 
+export interface FeedbackDailyRow {
+  ymd: string;
+  label: string;
+  total: number;
+  positive: number;
+  neutral: number;
+  negative: number;
+}
+
+function utcYmdFromDate(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+function chartDayLabels(window: FeedbackWindow, inWindow: FeedbackItem[]): string[] {
+  if (window.kind === 'rolling') {
+    const now = new Date();
+    const utcMid = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    const out: string[] = [];
+    for (let i = window.days - 1; i >= 0; i -= 1) {
+      out.push(utcYmdFromDate(new Date(utcMid.getTime() - i * MS_PER_DAY)));
+    }
+    return out;
+  }
+  if (window.kind === 'all') {
+    if (!inWindow.length) return [];
+    let minYmd = '9999-12-31';
+    let maxYmd = '0000-01-01';
+    for (const item of inWindow) {
+      const ts = parseFeedbackUtc(String(item.feedback_utc_ts ?? ''));
+      if (!ts) continue;
+      const ymd = utcYmdFromDate(ts);
+      if (ymd < minYmd) minYmd = ymd;
+      if (ymd > maxYmd) maxYmd = ymd;
+    }
+    if (minYmd === '9999-12-31' || maxYmd === '0000-01-01') return [];
+    const days = enumerateUtcDaysInclusive(minYmd, maxYmd).map((d) => utcYmdFromDate(d));
+    if (days.length <= 14) return days;
+    return days.slice(-14);
+  }
+  const days = enumerateUtcDaysInclusive(window.startYmd, window.endYmd).map((d) => utcYmdFromDate(d));
+  if (days.length <= 14) return days;
+  return days.slice(-14);
+}
+
+function mdyLabel(ymd: string): string {
+  const parts = ymd.split('-');
+  if (parts.length !== 3) return ymd;
+  return `${parts[1]}/${parts[2]}`;
+}
+
+function buildDaily(inWindow: FeedbackItem[], window: FeedbackWindow): FeedbackDailyRow[] {
+  const labels = chartDayLabels(window, inWindow);
+  const map = new Map<string, { total: number; positive: number; neutral: number; negative: number }>();
+  for (const ymd of labels) {
+    map.set(ymd, { total: 0, positive: 0, neutral: 0, negative: 0 });
+  }
+  for (const item of inWindow) {
+    const ts = parseFeedbackUtc(String(item.feedback_utc_ts ?? ''));
+    if (!ts) continue;
+    const ymd = utcYmdFromDate(ts);
+    const bucket = map.get(ymd);
+    if (!bucket) continue;
+    const r = Number(item.rating) || 0;
+    const s = classifySentiment(r);
+    bucket.total += 1;
+    if (s === 'positive') bucket.positive += 1;
+    else if (s === 'neutral') bucket.neutral += 1;
+    else bucket.negative += 1;
+  }
+  return labels.map(function mapDay(ymd) {
+    const b = map.get(ymd)!;
+    return { ymd, label: mdyLabel(ymd), ...b };
+  });
+}
+
 export function buildFeedbackSummary(
   items: FeedbackItem[],
   window: FeedbackWindow,
@@ -425,9 +565,11 @@ export function buildFeedbackSummary(
       neutral: 0,
       negative: 0,
       total: 0,
+      daily: [] as FeedbackDailyRow[],
       merged_truncated: mergedTruncated,
       rangeDays: window.kind === 'rolling' ? window.days : undefined,
       absoluteRange: window.kind === 'absolute' ? { start: window.startYmd, end: window.endYmd } : undefined,
+      allTime: window.kind === 'all' ? true : undefined,
     };
   }
 
@@ -449,31 +591,81 @@ export function buildFeedbackSummary(
     neutral,
     negative,
     total: inWindow.length,
+    daily: buildDaily(inWindow, window),
     merged_truncated: mergedTruncated,
     rangeDays: window.kind === 'rolling' ? window.days : undefined,
     absoluteRange: window.kind === 'absolute' ? { start: window.startYmd, end: window.endYmd } : undefined,
+    allTime: window.kind === 'all' ? true : undefined,
   };
 }
 
 export interface FeedbackRecentRow {
   time: string;
+  /** UTC calendar date YYYY-MM-DD when `feedback_utc_ts` parsed. */
+  dateUtc?: string;
+  /** UTC time HH:MM:SS (24h) when `feedback_utc_ts` parsed. */
+  clockUtc?: string;
+  shortTime?: string;
+  userKey?: string;
+  appId?: string;
   channel: string;
   sentiment: string;
   summary: string;
+  fullMessage?: string;
+  message?: string;
+  comment?: string;
   rating: number;
+  plan?: string;
+  status?: string;
+  subscriptionStatus?: string;
+  instanceId?: string;
+  customerId?: string;
+  creditsUsed?: number;
+  creditsLimit?: number;
+  availableCredits?: number;
+  totalCredits?: number;
+}
+
+export interface BuildFeedbackRecentOptions {
+  limit?: number;
+  /** Omit or positive: cap length. `<= 0` keeps full feedback text. */
+  summaryMaxLen?: number;
+}
+
+function strField(item: FeedbackItem, keys: readonly string[]): string | undefined {
+  for (const k of keys) {
+    const v = item[k];
+    if (typeof v === 'string' && v.trim()) return v.trim();
+  }
+}
+
+function numField(item: FeedbackItem, keys: readonly string[]): number | undefined {
+  for (const k of keys) {
+    const v = item[k];
+    if (typeof v === 'number' && Number.isFinite(v)) return v;
+    if (typeof v === 'string') {
+      const n = Number(v);
+      if (Number.isFinite(n)) return n;
+    }
+  }
 }
 
 export function buildFeedbackRecent(
   items: FeedbackItem[],
   window: FeedbackWindow,
   mergedTruncated: boolean,
+  options?: BuildFeedbackRecentOptions,
 ): { error?: string; items: FeedbackRecentRow[]; merged_truncated?: boolean } {
   if (!items.length) {
     return { error: 'No feedback data available', items: [], merged_truncated: mergedTruncated };
   }
 
   const spanDays = feedbackWindowSpanDays(window);
-  const recentLimit = spanDays >= 7 ? 12 : 8;
+  const defaultLimit = spanDays >= 7 ? 12 : 8;
+  const cap = options?.limit ?? defaultLimit;
+  const recentLimit = Math.min(Math.max(1, cap), 500);
+  const summaryMaxLen = options?.summaryMaxLen ?? 80;
+  const truncateSummary = summaryMaxLen > 0;
   const sorted = filterFeedbackItemsForWindow(items, window).sort((a, b) =>
     String(b.feedback_utc_ts ?? '').localeCompare(String(a.feedback_utc_ts ?? '')),
   );
@@ -481,36 +673,76 @@ export function buildFeedbackRecent(
   for (const item of sorted.slice(0, recentLimit)) {
     const tsStr = String(item.feedback_utc_ts ?? '');
     let formattedTime = '??:??';
+    let shortTime = '??:??';
+    let dateUtc: string | undefined;
+    let clockUtc: string | undefined;
     if (tsStr) {
       const ts = parseFeedbackUtc(tsStr);
       if (ts) {
-        formattedTime =
-          spanDays <= 1
-            ? `${String(ts.getUTCHours()).padStart(2, '0')}:${String(ts.getUTCMinutes()).padStart(2, '0')} UTC`
-            : ts.toLocaleString('en-US', {
-                month: 'short',
-                day: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit',
-                hour12: false,
-                timeZone: 'UTC',
-              }) + ' UTC';
+        dateUtc = ts.toISOString().slice(0, 10);
+        const h = String(ts.getUTCHours()).padStart(2, '0');
+        const m = String(ts.getUTCMinutes()).padStart(2, '0');
+        const s = String(ts.getUTCSeconds()).padStart(2, '0');
+        shortTime = `${h}:${m}`;
+        clockUtc = `${h}:${m}:${s}`;
+        formattedTime = `${dateUtc} ${clockUtc} UTC`;
       }
     }
 
     const rating = Number(item.rating) || 0;
     const sentiment = classifySentiment(rating);
-    let feedbackText = String(item.feedback_text ?? '').trim();
-    if (feedbackText.length > 80) {
-      feedbackText = `${feedbackText.slice(0, 77)}...`;
+    const rawMessage =
+      strField(item, ['comment', 'message', 'full_message', 'fullMessage']) || String(item.feedback_text ?? '').trim();
+    let feedbackText = rawMessage;
+    if (truncateSummary && feedbackText.length > summaryMaxLen) {
+      feedbackText = `${feedbackText.slice(0, summaryMaxLen - 3)}...`;
     }
+
+    const appId = strField(item, ['app_id', 'appId']);
+    const visitor = strField(item, ['visitor_id', 'visitorId', 'global_app_id', 'globalAppId']);
+    const displayApp =
+      appId && appId.length > 0
+        ? appId
+        : visitor && visitor.length > 0
+          ? visitor.length > 12
+            ? `${visitor.slice(0, 12)}…`
+            : visitor
+          : '—';
+    const shortUser = displayApp;
+
+    const totalCr = numField(item, ['total_credit_cnt', 'totalCredits']);
+    const availCr = numField(item, ['available_credit_cnt', 'availableCredits']);
+    const legacyUsed = numField(item, ['credits_used', 'creditsUsed']);
+    const legacyLimit = numField(item, ['credits_limit', 'credit_limit', 'creditsLimit']);
+    const hasRemainTotal =
+      totalCr !== undefined &&
+      totalCr > 0 &&
+      availCr !== undefined &&
+      Number.isFinite(availCr);
 
     recentItems.push({
       time: formattedTime,
+      dateUtc,
+      clockUtc,
+      shortTime,
+      userKey: shortUser,
+      appId: appId ?? undefined,
       channel: '#feedback',
       sentiment,
       summary: feedbackText,
+      fullMessage: rawMessage,
+      message: strField(item, ['message']),
+      comment: strField(item, ['comment']),
       rating,
+      plan: strField(item, ['plan_type_name', 'plan_type', 'planTypeName', 'plan', 'plan_tier', 'planTier'])?.toUpperCase(),
+      status: strField(item, ['status', 'subscription_status', 'subscriptionStatus'])?.toLowerCase(),
+      subscriptionStatus: strField(item, ['subscription_status', 'subscriptionStatus'])?.toLowerCase(),
+      instanceId: strField(item, ['feedback_id', 'id', 'instance_id', 'instanceId']),
+      customerId: strField(item, ['customer_id', 'customerId']),
+      creditsUsed: hasRemainTotal ? undefined : legacyUsed,
+      creditsLimit: hasRemainTotal ? undefined : legacyLimit,
+      availableCredits: hasRemainTotal ? availCr : undefined,
+      totalCredits: hasRemainTotal ? totalCr : undefined,
     });
   }
 

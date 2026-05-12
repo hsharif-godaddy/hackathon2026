@@ -28,6 +28,70 @@ describe('feedback-s3', function feedbackS3Package() {
     vi.resetModules();
   });
 
+  it('parseFeedbackRequest accepts all=1', async function parseAllOne() {
+    const { parseFeedbackRequest } = await import('@/lib/feedback-s3');
+    const w = parseFeedbackRequest(new URLSearchParams({ all: '1' }));
+    expect('error' in w).toBe(false);
+    if ('error' in w) return;
+    expect(w).toEqual({ kind: 'all' });
+  });
+
+  it('parseFeedbackRequest accepts all=true', async function parseAllTrue() {
+    const { parseFeedbackRequest } = await import('@/lib/feedback-s3');
+    const w = parseFeedbackRequest(new URLSearchParams({ all: 'true' }));
+    expect('error' in w).toBe(false);
+    if ('error' in w) return;
+    expect(w).toEqual({ kind: 'all' });
+  });
+
+  it('buildFeedbackSummary counts all items in all-time window', async function allWindowTotals() {
+    const { buildFeedbackSummary } = await import('@/lib/feedback-s3');
+    const window = { kind: 'all' as const };
+    const items = [
+      { feedback_text: 'a', rating: 8, feedback_utc_ts: '2026-05-05T10:00:00.000Z' },
+      { feedback_text: 'b', rating: 2, feedback_utc_ts: '2019-01-01T08:00:00.000Z' },
+    ];
+    const summary = buildFeedbackSummary(items, window, false);
+    expect(summary.total).toBe(2);
+    expect(summary.allTime).toBe(true);
+  });
+
+  it('getFeedbackItemsCached lists hive root prefix for all-time window', async function s3AllFetch() {
+    vi.stubEnv('FEEDBACK_S3_BUCKET', 'test-feedback-bucket');
+    ctx.send.mockImplementation(async function send(cmd: { input?: { Prefix?: string; Key?: string } }) {
+      const input = cmd.input ?? {};
+      if (input.Prefix !== undefined) {
+        if (input.Prefix === 'airo_builder_feedback_cln/') {
+          return {
+            IsTruncated: false,
+            Contents: [{ Key: `${input.Prefix}year=2026/month=05/day=06/batch.json` }],
+          };
+        }
+        return { IsTruncated: false, Contents: [] };
+      }
+      if (input.Key) {
+        return {
+          Body: {
+            transformToString: () =>
+              Promise.resolve(
+                '{"feedback_text":"Legacy","rating":6,"feedback_utc_ts":"2026-05-06T11:15:30.000Z"}\n',
+              ),
+          },
+        };
+      }
+      throw new Error('unexpected S3 command');
+    });
+
+    const { getFeedbackItemsCached, buildFeedbackSummary } = await import('@/lib/feedback-s3');
+    const window = { kind: 'all' as const };
+    const { items, merged_truncated, partition_errors } = await getFeedbackItemsCached(window);
+    expect(items.length).toBeGreaterThanOrEqual(1);
+    expect(partition_errors).toBe(0);
+    const summary = buildFeedbackSummary(items, window, merged_truncated);
+    expect(summary.total).toBe(1);
+    expect(summary.allTime).toBe(true);
+  });
+
   it('parseFeedbackRequest accepts a 7-day rolling window', async function parseSevenDays() {
     const { parseFeedbackRequest } = await import('@/lib/feedback-s3');
     const sp = new URLSearchParams({ days: '7' });

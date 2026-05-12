@@ -9,16 +9,17 @@ const FUNNEL_STEPS: [string, string][] = [
   ['Plan purchase success', 'appbuilder.plan.purchase.success.impression'],
 ];
 
-export type C1Period = 'day' | 'week' | '14days' | 'month';
+export type C1Period = 'day' | 'week' | '14days' | '15days' | 'month';
 
 export function isC1Period(v: string): v is C1Period {
-  return v === 'day' || v === 'week' || v === '14days' || v === 'month';
+  return v === 'day' || v === 'week' || v === '14days' || v === '15days' || v === 'month';
 }
 
 function funnelCalendarDaySpan(period: C1Period): number {
   if (period === 'day') return 1;
   if (period === 'week') return 7;
   if (period === '14days') return 14;
+  if (period === '15days') return 15;
   return 30;
 }
 
@@ -31,6 +32,60 @@ export async function buildDau() {
               AND event_date = today()
         `);
   return { today_dau: Math.trunc(chFirstNumber(rows[0], ['today_dau'])) };
+}
+
+export interface C1Engagement7dRow {
+  ymd: string;
+  label: string;
+  dau: number;
+  wau: number;
+}
+
+function dayLabelFromYmd(ymd: string): string {
+  const parts = ymd.split('-');
+  if (parts.length !== 3) return ymd;
+  return `${parts[1]}/${parts[2]}`;
+}
+
+/** Last 7 UTC calendar days: DAU per day and rolling 7-day unique visitors (WAU) ending each day. */
+export async function buildEngagement7d(): Promise<C1Engagement7dRow[]> {
+  const rows = await c1Query<Record<string, unknown>>(`
+            WITH days AS (
+              SELECT toDate(today() - (6 - number)) AS d
+              FROM numbers(7)
+            )
+            SELECT
+              toString(day_row.d) AS ymd,
+              countDistinctIf(j.visitor_id, j.event_date = day_row.d) AS dau,
+              countDistinct(j.visitor_id) AS wau
+            FROM days AS day_row
+            LEFT JOIN (
+              SELECT
+                day_anchor.d AS join_d,
+                e.visitor_id,
+                e.event_date
+              FROM days AS day_anchor
+              CROSS JOIN (
+                SELECT visitor_id, event_date
+                FROM analytics.c1_events
+                WHERE event_type = 'page-view'
+                  AND event_date >= addDays(toDate(today()), -12)
+                  AND event_date <= toDate(today())
+              ) AS e
+              WHERE e.event_date BETWEEN addDays(day_anchor.d, -6) AND day_anchor.d
+            ) AS j ON j.join_d = day_row.d
+            GROUP BY day_row.d
+            ORDER BY day_row.d ASC
+        `);
+  return rows.map(function mapEngagementRow(r) {
+    const ymd = String(r.ymd ?? '');
+    return {
+      ymd,
+      label: dayLabelFromYmd(ymd),
+      dau: Math.trunc(chFirstNumber(r, ['dau'])),
+      wau: Math.trunc(chFirstNumber(r, ['wau'])),
+    };
+  });
 }
 
 export async function buildWau() {
@@ -163,6 +218,24 @@ function sessionsSql(period: C1Period): string {
                 )
             `;
   }
+  if (period === '15days') {
+    return `
+                SELECT
+                  curr_sessions,
+                  prev_sessions,
+                  (curr_sessions - prev_sessions) * 100.0 / prev_sessions AS pct_change
+                FROM (
+                  SELECT
+                    COUNT(DISTINCT IF(processed_timestamp >= now() - INTERVAL 15 DAY,
+                                      session_id, NULL)) AS curr_sessions,
+                    COUNT(DISTINCT IF(processed_timestamp < now() - INTERVAL 15 DAY
+                                      AND processed_timestamp >= now() - INTERVAL 30 DAY,
+                                      session_id, NULL)) AS prev_sessions
+                  FROM analytics.c1_events
+                  WHERE event_type = 'page-view'
+                )
+            `;
+  }
   return `
                 SELECT
                   curr_sessions,
@@ -265,6 +338,32 @@ function avgSessionSql(period: C1Period): string {
                     session_id,
                     dateDiff('second', start_ts, end_ts) AS duration_sec,
                     IF(start_ts >= now() - INTERVAL 14 DAY, 'curr', 'prev') AS period
+                  FROM sessions
+                )
+                SELECT
+                  AVGIf(duration_sec, period = 'curr') / 60 AS curr_avg_min,
+                  AVGIf(duration_sec, period = 'prev') / 60 AS prev_avg_min,
+                  (curr_avg_min - prev_avg_min) * 100.0 / NULLIF(prev_avg_min, 0) AS pct_change
+                FROM labeled
+            `;
+  }
+  if (period === '15days') {
+    return `
+                WITH sessions AS (
+                  SELECT
+                    session_id,
+                    MIN(processed_timestamp) AS start_ts,
+                    MAX(processed_timestamp) AS end_ts
+                  FROM analytics.c1_events
+                  WHERE event_type = 'page-view'
+                    AND processed_timestamp >= now() - INTERVAL 30 DAY
+                  GROUP BY session_id
+                ),
+                labeled AS (
+                  SELECT
+                    session_id,
+                    dateDiff('second', start_ts, end_ts) AS duration_sec,
+                    IF(start_ts >= now() - INTERVAL 15 DAY, 'curr', 'prev') AS period
                   FROM sessions
                 )
                 SELECT
@@ -378,6 +477,27 @@ function tasksPerSessionSql(period: C1Period): string {
                 FROM base
             `;
   }
+  if (period === '15days') {
+    return `
+                WITH base AS (
+                  SELECT
+                    session_id,
+                    COUNTIf(event_type = 'click') AS clicks,
+                    IF(event_date >= today() - 15, 'curr', 'prev') AS period
+                  FROM analytics.c1_events
+                  WHERE event_type IN ('click', 'page-view')
+                    AND event_date >= today() - 30
+                  GROUP BY session_id, period
+                )
+                SELECT
+                  AVGIf(clicks, period = 'curr') AS curr_clicks_per_session,
+                  AVGIf(clicks, period = 'prev') AS prev_clicks_per_session,
+                  curr_clicks_per_session - prev_clicks_per_session AS absolute_change,
+                  (curr_clicks_per_session - prev_clicks_per_session)
+                    * 100.0 / NULLIF(prev_clicks_per_session, 0) AS pct_change
+                FROM base
+            `;
+  }
   return `
                 WITH base AS (
                   SELECT
@@ -416,13 +536,14 @@ export async function buildTasksPerSession(period: C1Period) {
 }
 
 export async function buildC1Bundle(period: C1Period) {
-  const [dau, wau, funnel, sessions, avgSession, tasksPerSession] = await Promise.all([
+  const [dau, wau, funnel, sessions, avgSession, tasksPerSession, engagement7d] = await Promise.all([
     buildDau(),
     buildWau(),
     buildFunnel(period),
     buildSessions(period),
     buildAvgSession(period),
     buildTasksPerSession(period),
+    buildEngagement7d(),
   ]);
   return {
     period,
@@ -432,5 +553,6 @@ export async function buildC1Bundle(period: C1Period) {
     sessions,
     avgSession,
     tasksPerSession,
+    engagement7d,
   };
 }

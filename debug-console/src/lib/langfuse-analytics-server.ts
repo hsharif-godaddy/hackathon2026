@@ -79,6 +79,16 @@ function rowName(r: LfRow): string {
   return str(r, 'name');
 }
 
+function rowTimestampDay(r: LfRow): string {
+  const raw =
+    str(r, 'timestampDay') ||
+    str(r, 'timestamp_day') ||
+    str(r, 'time') ||
+    str(r, 'bucket') ||
+    '';
+  return raw.length >= 10 ? raw.slice(0, 10) : raw;
+}
+
 const BASE_METRICS = [
   { measure: 'latency', aggregation: 'p50' },
   { measure: 'latency', aggregation: 'p90' },
@@ -302,7 +312,7 @@ export async function buildToolErrors(fromTs: string, toTs: string) {
     fromTimestamp: fromTs,
     toTimestamp: toTs,
   });
-  rows = rows.filter((r) => rowStringValue(r) !== 'other');
+  rows = rows.filter((r) => rowStringValue(r).toLowerCase() !== 'other');
   rows.sort((a, b) => rowCount(b) - rowCount(a));
   const total = rows.reduce((s, r) => s + rowCount(r), 0);
   return {
@@ -314,6 +324,29 @@ export async function buildToolErrors(fromTs: string, toTs: string) {
       count: rowCount(r),
       pct: total ? Math.round((rowCount(r) / total) * 1000) / 10 : 0,
     })),
+  };
+}
+
+export async function buildToolErrorsDaily(fromTs: string, toTs: string) {
+  let rows = await lfMetrics({
+    view: 'scores-categorical',
+    dimensions: [{ field: 'timestampDay' }, { field: 'stringValue' }],
+    metrics: [{ measure: 'count', aggregation: 'count' }],
+    filters: [{ column: 'name', type: 'string', operator: '=', value: 'tool-error-eval' }],
+    fromTimestamp: fromTs,
+    toTimestamp: toTs,
+  });
+  rows = rows.filter((r) => rowStringValue(r).toLowerCase() !== 'other');
+  return {
+    from_date: fromTs.slice(0, 10),
+    to_date: toTs.slice(0, 10),
+    rows: rows
+      .map((r) => ({
+        day: rowTimestampDay(r),
+        error_type: rowStringValue(r) || '(none)',
+        count: rowCount(r),
+      }))
+      .filter((r) => r.day),
   };
 }
 
@@ -457,6 +490,13 @@ export function emptyLangfusePerformance(fromTs: string, toTs: string): Awaited<
 
 export function emptyLangfuseToolErrors(fromTs: string, toTs: string): Awaited<ReturnType<typeof buildToolErrors>> {
   return { from_date: fromTs.slice(0, 10), to_date: toTs.slice(0, 10), total: 0, rows: [] };
+}
+
+export function emptyLangfuseToolErrorsDaily(
+  fromTs: string,
+  toTs: string,
+): Awaited<ReturnType<typeof buildToolErrorsDaily>> {
+  return { from_date: fromTs.slice(0, 10), to_date: toTs.slice(0, 10), rows: [] };
 }
 
 export function emptyLangfuseRecentErrors(fromTs: string, toTs: string): Awaited<ReturnType<typeof buildRecentErrors>> {

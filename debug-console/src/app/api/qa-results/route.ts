@@ -20,12 +20,19 @@ interface QARunSource {
   costEstimateUSD: number;
   actionCount: number;
   previewUrl: string;
-  runNumber: number;
+  runNumber: number | string;
   gitBranch: string;
   runUrl: string;
   uniquePageUrls: string[];
   finalPageUrl: string;
   message: string;
+  qualityScore?: number;
+  qualityGrade?: string;
+  environment?: string;
+  eventName?: string;
+  actor?: string;
+  triggerActor?: string;
+  workflow?: string;
 }
 
 function getClient(): Client | null {
@@ -34,6 +41,38 @@ function getClient(): Client | null {
   if (!endpoint || !apiKey) return null;
   return new Client({ node: endpoint, auth: { apiKey } });
 }
+
+function utcSevenDayWindow(): { gte: string; lte: string } {
+  const now = new Date();
+  const lte = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 23, 59, 59, 999));
+  const gte = new Date(lte);
+  gte.setUTCDate(gte.getUTCDate() - 6);
+  gte.setUTCHours(0, 0, 0, 0);
+  return { gte: gte.toISOString(), lte: lte.toISOString() };
+}
+
+function runNumberClause(runNumber: string): Record<string, unknown> {
+  const clauses: Record<string, unknown>[] = [{ term: { runNumber } }];
+  const n = Number.parseInt(runNumber, 10);
+  if (!Number.isNaN(n) && String(n) === runNumber.trim()) {
+    clauses.push({ term: { runNumber: n } });
+  }
+  return { bool: { should: clauses, minimum_should_match: 1 } };
+}
+
+type FilterAgg = { doc_count?: number };
+type DayHistBucket = {
+  key: number;
+  passed?: FilterAgg;
+  failed?: FilterAgg;
+};
+type ScenarioBucket = {
+  key: string;
+  doc_count?: number;
+  passed?: FilterAgg;
+  failed?: FilterAgg;
+  by_day?: { buckets?: DayHistBucket[] };
+};
 
 export const GET = withAuth(async (request, _auth) => {
   const client = getClient();
@@ -83,6 +122,242 @@ export const GET = withAuth(async (request, _auth) => {
         });
 
         return NextResponse.json({ run: result._source });
+      }
+
+      case 'summary-7d': {
+        const { gte, lte } = utcSevenDayWindow();
+        const result = await client.search({
+          index: QA_INDEX,
+          size: 0,
+          body: {
+            query: {
+              range: {
+                timestamp: { gte, lte },
+              },
+            },
+            aggs: {
+              passed: { filter: { term: { success: true } } },
+              failed: { filter: { term: { success: false } } },
+            },
+          },
+        });
+        const aggs = result.aggregations as
+          | { passed?: { doc_count?: number }; failed?: { doc_count?: number } }
+          | undefined;
+        const passed = aggs?.passed?.doc_count ?? 0;
+        const failed = aggs?.failed?.doc_count ?? 0;
+        const total = passed + failed;
+        return NextResponse.json({ passed, failed, total, since: gte, until: lte });
+      }
+
+      case 'analytics-7d': {
+        const { gte, lte } = utcSevenDayWindow();
+        const runFilter = searchParams.get('run');
+        const must: Record<string, unknown>[] = [
+          { range: { timestamp: { gte, lte } } },
+        ];
+        if (runFilter) {
+          must.push(runNumberClause(runFilter));
+        }
+
+        const result = await client.search({
+          index: QA_INDEX,
+          size: 0,
+          body: {
+            query: { bool: { must } },
+            aggs: {
+              by_day: {
+                date_histogram: {
+                  field: 'timestamp',
+                  calendar_interval: '1d',
+                  min_doc_count: 0,
+                  extended_bounds: { min: gte, max: lte },
+                  time_zone: 'UTC',
+                },
+                aggs: {
+                  passed: { filter: { term: { success: true } } },
+                  failed: { filter: { term: { success: false } } },
+                },
+              },
+              by_scenario: {
+                terms: { field: 'scenario.keyword', size: 50, order: { _count: 'desc' } },
+                aggs: {
+                  passed: { filter: { term: { success: true } } },
+                  failed: { filter: { term: { success: false } } },
+                  by_day: {
+                    date_histogram: {
+                      field: 'timestamp',
+                      calendar_interval: '1d',
+                      min_doc_count: 0,
+                      extended_bounds: { min: gte, max: lte },
+                      time_zone: 'UTC',
+                    },
+                    aggs: {
+                      passed: { filter: { term: { success: true } } },
+                      failed: { filter: { term: { success: false } } },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        });
+
+        const aggs = result.aggregations as
+          | {
+              by_day?: { buckets?: DayHistBucket[] };
+              by_scenario?: { buckets?: ScenarioBucket[] };
+            }
+          | undefined;
+
+        const dayBuckets = aggs?.by_day?.buckets ?? [];
+        const days = dayBuckets.map(function mapDay(b) {
+          return {
+            ts: b.key,
+            passed: b.passed?.doc_count ?? 0,
+            failed: b.failed?.doc_count ?? 0,
+          };
+        });
+
+        const scenarioBuckets = aggs?.by_scenario?.buckets ?? [];
+        const scenarios = scenarioBuckets.map(function mapScenario(b) {
+          const trend = (b.by_day?.buckets ?? []).map(function mapTrendDay(d) {
+            return {
+              ts: d.key,
+              passed: d.passed?.doc_count ?? 0,
+              failed: d.failed?.doc_count ?? 0,
+            };
+          });
+          return {
+            scenario: b.key,
+            passed: b.passed?.doc_count ?? 0,
+            failed: b.failed?.doc_count ?? 0,
+            trend,
+          };
+        });
+
+        return NextResponse.json({ gte, lte, days, scenarios });
+      }
+
+      case 'run-summaries': {
+        const { gte, lte } = utcSevenDayWindow();
+        const result = await client.search({
+          index: QA_INDEX,
+          size: 0,
+          body: {
+            query: { range: { timestamp: { gte, lte } } },
+            aggs: {
+              runs: {
+                terms: {
+                  field: 'runNumber',
+                  size: 80,
+                  order: { max_ts: 'desc' },
+                },
+                aggs: {
+                  max_ts: { max: { field: 'timestamp' } },
+                  passed: { filter: { term: { success: true } } },
+                  failed: { filter: { term: { success: false } } },
+                  sample: {
+                    top_hits: {
+                      size: 1,
+                      sort: [{ timestamp: 'desc' }],
+                      _source: {
+                        includes: [
+                          'environment',
+                          'eventName',
+                          'triggerActor',
+                          'actor',
+                          'workflow',
+                          'timestamp',
+                        ],
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        });
+
+        const runsAgg = (result.aggregations as { runs?: { buckets?: Array<{
+          key: number | string;
+          max_ts?: { value_as_string?: string; value?: number | null };
+          passed?: FilterAgg;
+          failed?: FilterAgg;
+          sample?: { hits?: { hits?: Array<{ _source?: Record<string, unknown> }> } };
+        }> } } | undefined)?.runs?.buckets ?? [];
+
+        const runs = runsAgg.map(function mapRun(b) {
+          const hit = b.sample?.hits?.hits?.[0]?._source ?? {};
+          const env = typeof hit.environment === 'string' ? hit.environment : 'unknown';
+          const eventName = typeof hit.eventName === 'string' ? hit.eventName : '';
+          const triggerActor = typeof hit.triggerActor === 'string' ? hit.triggerActor : '';
+          const actor = typeof hit.actor === 'string' ? hit.actor : '';
+          const ts = typeof hit.timestamp === 'string' ? hit.timestamp : (b.max_ts?.value_as_string ?? '');
+          return {
+            runNumber: String(b.key),
+            timestamp: ts,
+            passed: b.passed?.doc_count ?? 0,
+            failed: b.failed?.doc_count ?? 0,
+            environment: env,
+            eventName,
+            triggerActor: triggerActor || actor,
+          };
+        });
+
+        return NextResponse.json({ gte, lte, runs });
+      }
+
+      case 'list-7d': {
+        const { gte, lte } = utcSevenDayWindow();
+        const runFilter = searchParams.get('run');
+        const outcome = searchParams.get('outcome');
+        const limitRaw = Number.parseInt(searchParams.get('limit') ?? '30', 10);
+        const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 100) : 30;
+
+        const must: Record<string, unknown>[] = [
+          { range: { timestamp: { gte, lte } } },
+        ];
+        if (runFilter) {
+          must.push(runNumberClause(runFilter));
+        }
+        if (outcome === 'passed') {
+          must.push({ term: { success: true } });
+        } else if (outcome === 'failed') {
+          must.push({ term: { success: false } });
+        }
+
+        const result = await client.search({
+          index: QA_INDEX,
+          size: limit,
+          body: {
+            query: { bool: { must } },
+            sort: [{ timestamp: 'desc' }],
+            _source: [
+              'scenario',
+              'success',
+              'timestamp',
+              'durationMinutes',
+              'totalTokens',
+              'costEstimateUSD',
+              'runUrl',
+              'runNumber',
+              'qualityScore',
+              'qualityGrade',
+              'environment',
+              'eventName',
+              'triggerActor',
+              'actor',
+            ],
+          },
+        });
+
+        const runs = result.hits.hits.map(hit => ({
+          id: hit._id as string,
+          ...(hit._source as QARunSource),
+        }));
+
+        return NextResponse.json({ runs, gte, lte });
       }
 
       default:

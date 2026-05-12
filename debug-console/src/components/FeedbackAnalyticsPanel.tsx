@@ -44,6 +44,14 @@ function sentimentColor(s: string): string {
   return '#64748b';
 }
 
+function sentimentLabel(raw: string): string {
+  const s = raw.toLowerCase();
+  if (s === 'positive') return 'Positive';
+  if (s === 'negative') return 'Negative';
+  if (s === 'neutral') return 'Neutral';
+  return raw;
+}
+
 function feedbackQuery(datePreset: AnalyticsDatePreset, customStart: string, customEnd: string): string | null {
   if (datePreset === 'custom') {
     if (!customStart || !customEnd || !isDateRangeValid(customStart, customEnd)) {
@@ -322,7 +330,7 @@ export default function FeedbackAnalyticsPanel({ datePreset, customStart, custom
               <HorizontalBarChart
                 title="Latest rows — rating (1–7)"
                 data={recent.items.map((row, i) => ({
-                  name: `${i + 1}. ${row.sentiment}`,
+                  name: `${i + 1}. ${sentimentLabel(row.sentiment)}`,
                   value: row.rating,
                 }))}
                 barColor="#0d9488"
@@ -359,7 +367,7 @@ export default function FeedbackAnalyticsPanel({ datePreset, customStart, custom
                       <td style={{ padding: '0.5rem 0.65rem', color: '#64748b', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
                         {row.time}
                       </td>
-                      <td style={{ padding: '0.5rem 0.65rem', fontWeight: 700, color: sentimentColor(row.sentiment) }}>{row.sentiment}</td>
+                      <td style={{ padding: '0.5rem 0.65rem', fontWeight: 700, color: sentimentColor(row.sentiment) }}>{sentimentLabel(row.sentiment)}</td>
                       <td style={{ padding: '0.5rem 0.65rem', color: '#475569' }}>{row.rating}/7</td>
                       <td style={{ padding: '0.5rem 0.65rem', color: '#334155', lineHeight: 1.35 }}>{row.summary}</td>
                     </tr>

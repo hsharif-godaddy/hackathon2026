@@ -17,7 +17,7 @@ export function langfuseEbTraceUrl(traceId: string): string {
 }
 
 export function langfuseEbSessionUrl(sessionId: string): string {
-    return `${BASE_URL}/project/${PROJECT_ID}/sessions/${sessionId}`;
+    return `${BASE_URL}/project/${PROJECT_ID}/sessions/${encodeURIComponent(sessionId)}`;
 }
 
 export function langfuseEbProjectUrl(): string {

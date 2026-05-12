@@ -59,4 +59,14 @@ describe('feedback-s3 filterFeedbackItemsForWindow', function filterWindow() {
     const filtered = filterFeedbackItemsForWindow(items, window);
     expect(filtered.map((x) => x.feedback_text).sort()).toEqual(['early', 'late']);
   });
+
+  it('includes all timestamped rows for all-time window', function allTimeWindow() {
+    const window: FeedbackWindow = { kind: 'all' };
+    const items = [
+      { feedback_text: 'recent', rating: 7, feedback_utc_ts: '2026-05-09T10:00:00.000Z' },
+      { feedback_text: 'old', rating: 2, feedback_utc_ts: '2019-01-01T00:00:00.000Z' },
+    ];
+    const filtered = filterFeedbackItemsForWindow(items, window);
+    expect(filtered).toHaveLength(2);
+  });
 });

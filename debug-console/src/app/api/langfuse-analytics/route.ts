@@ -10,6 +10,7 @@ import {
   buildRecentErrors,
   buildSentiment,
   buildToolErrors,
+  buildToolErrorsDaily,
   buildVerticals,
   emptyLangfuseActionIntents,
   emptyLangfuseModel,
@@ -18,6 +19,7 @@ import {
   emptyLangfuseRecentErrors,
   emptyLangfuseSentiment,
   emptyLangfuseToolErrors,
+  emptyLangfuseToolErrorsDaily,
   emptyLangfuseVerticals,
 } from '@/lib/langfuse-analytics-server';
 import { logger } from '@/lib/logger';
@@ -32,6 +34,8 @@ const LANGFUSE_BUNDLE_LABELS = [
   'toolErrors',
   'recentErrors',
   'model',
+  'toolErrors24h',
+  'toolErrorsDaily',
 ] as const;
 
 export const GET = withAuth(async (request, _auth) => {
@@ -117,6 +121,8 @@ export const GET = withAuth(async (request, _auth) => {
       const data = await routeCached(`langfuse_bundle:${fromTs}:${toTs}`, 90_000, async () => {
         const from = fromTs!;
         const to = toTs!;
+        const toMs = new Date(to).getTime();
+        const from24h = new Date(toMs - 24 * 60 * 60 * 1000).toISOString();
         const settled = await Promise.allSettled([
           buildOverview(from, to),
           buildSentiment(from, to),
@@ -126,6 +132,8 @@ export const GET = withAuth(async (request, _auth) => {
           buildToolErrors(from, to),
           buildRecentErrors(from, to),
           buildModel(),
+          buildToolErrors(from24h, to),
+          buildToolErrorsDaily(from, to),
         ]);
 
         const panelErrors: Partial<Record<(typeof LANGFUSE_BUNDLE_LABELS)[number], string>> = {};
@@ -150,6 +158,8 @@ export const GET = withAuth(async (request, _auth) => {
         const toolErrors = take(5, emptyLangfuseToolErrors(from, to), 'toolErrors');
         const recentErrors = take(6, emptyLangfuseRecentErrors(from, to), 'recentErrors');
         const model = take(7, emptyLangfuseModel(), 'model');
+        const toolErrors24h = take(8, emptyLangfuseToolErrors(from24h, to), 'toolErrors24h');
+        const toolErrorsDaily = take(9, emptyLangfuseToolErrorsDaily(from, to), 'toolErrorsDaily');
 
         return {
           meta: {
@@ -164,6 +174,8 @@ export const GET = withAuth(async (request, _auth) => {
           toolErrors,
           recentErrors,
           model,
+          toolErrors24h,
+          toolErrorsDaily,
         };
       });
       return NextResponse.json(data);

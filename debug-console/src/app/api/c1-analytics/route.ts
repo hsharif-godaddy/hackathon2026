@@ -19,7 +19,7 @@ function parsePeriod(sp: URLSearchParams, fallback: C1Period): C1Period | NextRe
   const raw = sp.get('period');
   if (!raw) return fallback;
   if (!isC1Period(raw)) {
-    return NextResponse.json({ error: 'Invalid period. Use: day, week, 14days, month' }, { status: 400 });
+    return NextResponse.json({ error: 'Invalid period. Use: day, week, 14days, 15days, month' }, { status: 400 });
   }
   return raw;
 }

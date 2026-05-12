@@ -776,6 +776,21 @@ export default function Dashboard() {
               Analytics
             </a>
             <a
+              href="/risq"
+              style={{
+                display: "inline-block",
+                padding: "0.375rem 0.875rem",
+                backgroundColor: "#7c3aed",
+                color: "white",
+                borderRadius: "4px",
+                textDecoration: "none",
+                fontSize: "0.813rem",
+                fontWeight: 600,
+              }}
+            >
+              RISQ
+            </a>
+            <a
               href="/agentic-qa-results"
               style={{
                 display: "inline-block",

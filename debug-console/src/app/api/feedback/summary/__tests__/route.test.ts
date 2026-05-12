@@ -83,5 +83,7 @@ describe('feedback summary route', function feedbackSummaryRoute() {
     expect(body.positive).toBe(1);
     expect(body.partition_errors).toBe(0);
     expect(body.error).toBeUndefined();
+    expect(Array.isArray(body.daily)).toBe(true);
+    expect(body.daily.length).toBe(7);
   });
 });

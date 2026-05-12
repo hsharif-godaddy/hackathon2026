@@ -203,10 +203,41 @@ export function EChartsMiniChart({
       tooltip: {
         trigger: 'axis',
         confine: true,
-        textStyle: { fontSize: 11 },
+        position: function tooltipPosition(
+          point: [number, number],
+          _params: unknown,
+          _dom: unknown,
+          _rect: unknown,
+          size: { contentSize: [number, number]; viewSize: [number, number] },
+        ) {
+          const gap = 14;
+          let x = point[0] - size.contentSize[0] - gap;
+          if (x < 8) {
+            x = point[0] + gap;
+          }
+          const y = Math.min(
+            Math.max(8, point[1] - size.contentSize[1] / 2),
+            size.viewSize[1] - size.contentSize[1] - 8,
+          );
+          return [x, y];
+        },
+        backgroundColor: 'rgba(255, 255, 255, 0.94)',
+        borderColor: '#e2e8f0',
+        borderWidth: 1,
+        padding: [10, 12],
+        textStyle: { fontSize: 11, color: '#0f172a' },
+        extraCssText:
+          'border-radius:12px;box-shadow:0 10px 30px rgba(59,130,246,0.12),0 2px 8px rgba(15,23,42,0.06);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);',
         axisPointer: {
           type: 'shadow',
-          shadowStyle: { color: 'rgba(30, 64, 175, 0.08)' },
+          z: 0,
+          shadowStyle: {
+            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+              { offset: 0, color: 'rgba(191, 219, 254, 0.42)' },
+              { offset: 0.45, color: 'rgba(224, 242, 254, 0.2)' },
+              { offset: 1, color: 'rgba(255, 255, 255, 0.03)' },
+            ]),
+          },
         },
         formatter: (params: unknown) => {
           const arr = Array.isArray(params) ? params : [params];
@@ -273,7 +304,14 @@ export function EChartsMiniChart({
                   color: ss.color,
                   borderRadius: isTop ? ([2, 2, 0, 0] as [number, number, number, number]) : ([0, 0, 0, 0] as [number, number, number, number]),
                 },
-                emphasis: { focus: 'series' as const },
+                emphasis: {
+                  focus: 'series' as const,
+                  itemStyle: {
+                    shadowBlur: 14,
+                    shadowColor: 'rgba(37, 99, 235, 0.28)',
+                    shadowOffsetY: 2,
+                  },
+                },
                 barMaxWidth: data.length <= 7 ? 40 : data.length <= 14 ? 28 : 14,
                 cursor: onClick ? 'pointer' : 'default',
                 // Large-mode rendering: uses a simplified path that
@@ -316,8 +354,10 @@ export function EChartsMiniChart({
                   ]),
                   opacity: 0.35,
                 },
-                emphasis: { focus: 'series' as const },
-                cursor: onClick ? 'pointer' : 'default',
+                emphasis: {
+                  focus: 'series' as const,
+                  lineStyle: { width: 3, shadowBlur: 10, shadowColor: 'rgba(37, 99, 235, 0.22)' },
+                },
                 ...(markLineConfig ? { markLine: markLineConfig } : {}),
                 ...(markAreaConfig ? { markArea: markAreaConfig } : {}),
               }]
@@ -331,7 +371,13 @@ export function EChartsMiniChart({
                   borderRadius: [2, 2, 0, 0] as [number, number, number, number],
                 },
                 emphasis: {
-                  itemStyle: { color: barColor, opacity: 0.85 },
+                  itemStyle: {
+                    color: barColor,
+                    opacity: 1,
+                    shadowBlur: 16,
+                    shadowColor: 'rgba(37, 99, 235, 0.32)',
+                    shadowOffsetY: 3,
+                  },
                 },
                 barMaxWidth: data.length <= 7 ? 40 : data.length <= 14 ? 28 : 14,
                 cursor: onClick ? 'pointer' : 'default',

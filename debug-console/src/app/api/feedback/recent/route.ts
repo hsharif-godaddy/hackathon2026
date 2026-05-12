@@ -21,9 +21,17 @@ export const GET = withAuth(async (request, _auth) => {
     if ('error' in window) {
       return NextResponse.json({ error: window.error }, { status: 400 });
     }
-    const data = await routeCached(`feedback_recent_${feedbackWindowCacheKey(window)}`, 180_000, async () => {
+    const limitRaw = request.nextUrl.searchParams.get('limit');
+    const parsed = limitRaw ? Number.parseInt(limitRaw, 10) : NaN;
+    const limit = Number.isInteger(parsed) && parsed > 0 ? Math.min(parsed, 500) : undefined;
+    const recentOpts = limit !== undefined ? { limit, summaryMaxLen: 0 } : undefined;
+    const cacheKey = `feedback_recent_${feedbackWindowCacheKey(window)}_l${limit ?? 'def'}_fs1`;
+    const data = await routeCached(cacheKey, 180_000, async () => {
       const { items, merged_truncated, partition_errors } = await getFeedbackItemsCached(window);
-      return { ...buildFeedbackRecent(items, window, merged_truncated), partition_errors };
+      return {
+        ...buildFeedbackRecent(items, window, merged_truncated, recentOpts),
+        partition_errors,
+      };
     });
     return NextResponse.json(data);
   } catch (error) {
