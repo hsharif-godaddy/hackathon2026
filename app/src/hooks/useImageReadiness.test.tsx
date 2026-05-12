@@ -350,6 +350,15 @@ describe('useImageReadiness', function useImageReadinessTests() {
         { wrapper: createWrapper() }
       );
 
+      // Server polling MUST be started when status flips to 'current' —
+      // this is the cutover-completion signal. Asserting this explicitly
+      // prevents a silent regression where the call is removed from the
+      // poll-result effect (the completion effect would still fire
+      // because mockServerReady=true in beforeEach, masking the bug).
+      await waitFor(() => {
+        expect(mockStartPollingForServer).toHaveBeenCalledWith('test-app-123');
+      });
+
       await waitFor(() => {
         expect(result.current.isReady).toBe(true);
       });
@@ -417,6 +426,53 @@ describe('useImageReadiness', function useImageReadinessTests() {
         expect(result.current.isReady).toBe(true);
       }, { timeout: 10000 });
     });
+
+    it('should NOT start polling while phase is polling-images — only after image becomes current', async function pollingGatedOnPollingImages() {
+      // Regression guard for the container-cutover bug: during the reload
+      // window, two containers serve simultaneously (old being torn down,
+      // new starting up). Bootstrapping during this window can hit the OLD
+      // container's binary, which may lack the cookie-setting code path.
+      // Polling MUST wait until image-status confirms 'current' (cutover
+      // complete) before firing.
+      //
+      // The hook moves to phase 'polling-images' (not 'reloading') when the
+      // initial status is reloading — see useImageReadiness.ts where the
+      // 'reloading' status check sets setPhase('polling-images'). The gate
+      // applies to that phase.
+      //
+      // After the first reloading response, the hook continues polling
+      // image-status every IMAGE_POLL_INTERVAL_MS (5s). Mock the second
+      // response too so we can let real time elapse past one poll interval
+      // and verify polling was still NOT started — proving the gate holds
+      // across multiple poll cycles, not just the first response.
+      (appFetch as any)
+        .mockResolvedValueOnce(mockImageStatusResponse('reloading'))
+        .mockResolvedValueOnce(mockImageStatusResponse('reloading'));
+
+      renderHook(
+        () => useImageReadiness(NOT_HIBERNATED, 'test-app-123'),
+        { wrapper: createWrapper() }
+      );
+
+      // Wait for the initial status check to complete and phase to settle.
+      await waitFor(() => {
+        expect(appFetch).toHaveBeenCalledWith('/api/sites/test-app-123/image-status');
+      }, { timeout: 5000 });
+
+      // Wait for the second poll to fire (one IMAGE_POLL_INTERVAL_MS = 5s
+      // tick) — this proves the gate holds across multiple polls. Without
+      // this longer wait, the test only exercises the immediate post-mount
+      // path and a regression that started polling on the second poll
+      // would slip through.
+      await waitFor(() => {
+        const statusCalls = vi.mocked(appFetch).mock.calls.filter(
+          ([url]) => url === '/api/sites/test-app-123/image-status'
+        );
+        expect(statusCalls.length).toBeGreaterThanOrEqual(2);
+      }, { timeout: 7000 });
+
+      expect(mockStartPollingForServer).not.toHaveBeenCalled();
+    }, 10000);
   });
 
   describe('#hibernation dependency', function hibernationDependencyTests() {
@@ -620,8 +676,18 @@ describe('useImageReadiness', function useImageReadinessTests() {
     });
   });
 
-  describe('#reloading polls exhausted', function reloadingExhaustedTests() {
-    it('should give up after 2 polls and fall through to server wait', async function reloadingGaveUp() {
+  describe('#reloading budget exhausted', function reloadingExhaustedTests() {
+    // RELOADING_MAX_POLLS is now sized to match IMAGE_RELOAD_TIMEOUT_MS, so
+    // count-based gave-up requires ~18 polls × 5s = 90s of real time —
+    // impractical to wait in a unit test. Instead, anchor reloadStartTimeRef
+    // (which the hook now sets in the initial-reloading path) and advance
+    // Date.now() past the 90s budget. The time-based timed-out fallback
+    // fires on the next poll, asserting the same end behavior as the
+    // pre-change gave-up test: server polling starts and isReady flips true.
+    it('should fall through to server wait once the 90s reload budget is exhausted', async function reloadingBudgetExhausted() {
+      let now = Date.now();
+      const nowSpy = vi.spyOn(Date, 'now').mockImplementation(() => now);
+
       (appFetch as any)
         .mockResolvedValueOnce(mockImageStatusResponse('reloading'))
         .mockResolvedValue(mockImageStatusResponse('reloading'));
@@ -631,23 +697,39 @@ describe('useImageReadiness', function useImageReadinessTests() {
         { wrapper: createWrapper() }
       );
 
+      // Wait for the initial status check to register so reloadStartTimeRef
+      // is set by the hook.
+      await waitFor(() => {
+        expect(appFetch).toHaveBeenCalledWith('/api/sites/test-app-123/image-status');
+      }, { timeout: 5000 });
+
+      // Advance simulated time past the 90s budget. The next poll's queryFn
+      // checks `Date.now() - reloadStartTimeRef.current > 90000` and returns
+      // 'timed-out' before count-based gave-up can fire.
+      now += 91_000;
+
       await waitFor(async () => {
         const { logger } = await import('@/lib/request-context');
         expect(logger.warn).toHaveBeenCalledWith(
-          'image-readiness.reloading.gave-up',
+          'image-readiness.reload.timeout',
           expect.objectContaining({ appId: 'test-app-123' })
         );
-      }, { timeout: 15000 });
+      }, { timeout: 10000 });
+
+      // Server polling MUST start when the budget is exhausted so the user
+      // gets a recovery path. Without this assertion, silently removing the
+      // polling call from the timed-out branch would leave the hook stuck
+      // in waiting-server with no live polling.
+      await waitFor(() => {
+        expect(mockStartPollingForServer).toHaveBeenCalledWith('test-app-123');
+      }, { timeout: 5000 });
 
       await waitFor(() => {
         expect(result.current.isReady).toBe(true);
       }, { timeout: 5000 });
 
-      const statusCalls = vi.mocked(appFetch).mock.calls.filter(
-        ([url]) => url === '/api/sites/test-app-123/image-status'
-      );
-      expect(statusCalls).toHaveLength(3);
-    }, 20000);
+      nowSpy.mockRestore();
+    }, 25000);
   });
 
   describe('#reload 90s timeout', function reloadTimeoutTests() {
@@ -678,6 +760,15 @@ describe('useImageReadiness', function useImageReadinessTests() {
           expect.objectContaining({ appId: 'test-app-123' })
         );
       }, { timeout: 10000 });
+
+      // Server polling MUST be started in the timed-out fallback so the
+      // user gets a chance to recover after the 90s reload budget is
+      // exhausted. Without this assertion, removing the polling call
+      // from this branch would silently break recovery (mockServerReady
+      // in beforeEach would still produce isReady=true).
+      await waitFor(() => {
+        expect(mockStartPollingForServer).toHaveBeenCalledWith('test-app-123');
+      }, { timeout: 5000 });
 
       await waitFor(() => {
         expect(result.current.isReady).toBe(true);

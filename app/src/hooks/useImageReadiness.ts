@@ -12,7 +12,13 @@ import { useSwitchboard } from './useSwitchboard';
 const IMAGE_POLL_INTERVAL_MS = 5000;
 const IMAGE_RELOAD_TIMEOUT_MS = 90_000;
 const SERVER_HEALTH_TIMEOUT_MS = 3 * 60 * 1000;
-const RELOADING_MAX_POLLS = 2;
+// Sized to match IMAGE_RELOAD_TIMEOUT_MS so the count-based gave-up fallback
+// (used when the user opens the develop page mid-reload) covers the same
+// ~90s window as the time-based timed-out fallback. A smaller value would
+// fire while the container cutover (30-90s) might still be in progress and
+// start server polling against the OLD container — defeating this PR's
+// main intent. See PR for the cutover-window analysis.
+const RELOADING_MAX_POLLS = Math.ceil(IMAGE_RELOAD_TIMEOUT_MS / IMAGE_POLL_INTERVAL_MS);
 
 export interface UseImageReadinessReturn {
   isChecking: boolean;
@@ -122,9 +128,20 @@ export function useImageReadiness(
       }
 
       if (data.status === 'reloading') {
+        // NOTE: Do NOT start server polling here. During the reload window,
+        // two containers may serve simultaneously (the OLD one being torn
+        // down, the NEW one starting up). Bootstrapping during this window
+        // can hit the OLD container's binary, which may lack newer cookie-
+        // setting code. Polling is started later, when image-status flips
+        // to 'current' (in the poll-result effect below).
         isReloadingInitialRef.current = true;
-        if (appId) startPollingForServer(appId);
         reloadingPollCountRef.current = 0;
+        // Anchor the time-based timed-out budget to "now" — without this,
+        // reloadStartTimeRef stays null for the user-opens-page-mid-reload
+        // path, leaving only the count-based gave-up as the escape. With
+        // it set, both budgets fire at ~IMAGE_RELOAD_TIMEOUT_MS, giving
+        // belt-and-suspenders for the cutover window.
+        reloadStartTimeRef.current = Date.now();
         setPhase('polling-images');
         return;
       }
@@ -152,8 +169,12 @@ export function useImageReadiness(
       return triggerReload(appId);
     },
     onSuccess: () => {
+      // NOTE: Do NOT start server polling here. The container is mid-cutover
+      // (old container being torn down, new container starting). Polling
+      // bootstraps during this window can hit the OLD container's binary
+      // and miss the cookie-setting code path. Polling fires later, when
+      // image-status flips to 'current' in the poll-result effect below.
       reloadStartTimeRef.current = Date.now();
-      if (appId) startPollingForServer(appId);
       reloadingPollCountRef.current = 0;
       setPhase('polling-images');
     },
@@ -162,6 +183,10 @@ export function useImageReadiness(
         appId,
         error: err instanceof Error ? err.message : String(err),
       });
+      // Reload trigger failed but the container may still come up via
+      // other means (manual deploy, retry). Start polling now as a fallback
+      // — at this point we've already given up on the orchestrated reload,
+      // so cutover-window risk no longer applies.
       if (appId) startPollingForServer(appId);
       logger.info('image-readiness.server-wait.start', { appId, reason: 'reload-failed' });
       serverWaitStartTimeRef.current = Date.now();
@@ -210,28 +235,49 @@ export function useImageReadiness(
   // React to poll results — state transitions happen here, not inside queryFn.
   // `serverWaitStartTimeRef` uses `??` to preserve any timestamp already set earlier
   // in the polling-images phase, consistent with the `action === 'current'` case.
+  //
+  // Server polling is started HERE (not earlier in the lifecycle) — this is the
+  // first point at which image-status has either confirmed 'current' or we've
+  // given up waiting. Starting earlier would race the container cutover and
+  // bootstrap against the OLD container, which may lack the cookie-setting
+  // code path that the NEW container has. See plan doc for full context.
+  //
+  // All terminal actions (`gave-up` | `timed-out` | `current`) start polling and
+  // transition to `waiting-server`. The `poll-error` case stays in
+  // `polling-images` and waits for the next poll tick — this is bounded by:
+  //   - `isReloadingInitialRef` path: `gave-up` after RELOADING_MAX_POLLS (~15s)
+  //   - `stale → reload` path: `timed-out` after IMAGE_RELOAD_TIMEOUT_MS (90s)
+  // So repeated poll errors can't hold the user indefinitely.
   useEffect(() => {
     if (phase !== 'polling-images' || !poll.data) return;
 
     const { action } = poll.data;
 
+    // Non-terminal: stay in polling-images and wait for the next refetch tick.
+    // Bounded by the gave-up/timed-out budgets above.
+    if (action === 'polling') return;
+    if (action === 'poll-error') {
+      logger.warn('image-readiness.poll.error', { appId });
+      return;
+    }
+
+    // Terminal actions — log per-action context, then start polling and
+    // transition to waiting-server uniformly.
     if (action === 'gave-up') {
       logger.warn('image-readiness.reloading.gave-up', { appId, polls: reloadingPollCountRef.current });
       logger.info('image-readiness.server-wait.start', { appId, reason: 'reloading-polls-exhausted' });
-      serverWaitStartTimeRef.current = serverWaitStartTimeRef.current ?? Date.now();
-      setPhase('waiting-server');
     } else if (action === 'timed-out') {
       logger.warn('image-readiness.reload.timeout', { appId });
       logger.info('image-readiness.server-wait.start', { appId, reason: 'reload-timeout' });
-      serverWaitStartTimeRef.current = serverWaitStartTimeRef.current ?? Date.now();
-      setPhase('waiting-server');
-    } else if (action === 'current') {
-      serverWaitStartTimeRef.current = serverWaitStartTimeRef.current ?? Date.now();
-      setPhase('waiting-server');
-    } else if (action === 'poll-error') {
-      logger.warn('image-readiness.poll.error', { appId });
     }
-  }, [phase, poll.data, appId]);
+    // `action === 'current'`: image-status confirms cutover is complete. Safe
+    // to bootstrap now — the request will land on the new container with the
+    // correct binary. (No log: this is the happy path.)
+
+    serverWaitStartTimeRef.current = serverWaitStartTimeRef.current ?? Date.now();
+    if (appId) startPollingForServer(appId);
+    setPhase('waiting-server');
+  }, [phase, poll.data, appId, startPollingForServer]);
 
   // Server health timeout check
   useEffect(() => {

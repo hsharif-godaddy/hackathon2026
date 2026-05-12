@@ -224,6 +224,32 @@ describe('PreviewPane', () => {
     expect(mockServerPollingStore.stopPollingForServer).toHaveBeenCalledWith('test-app-123');
   });
 
+  it('should NOT start polling while isImageReloading is true', () => {
+    // Regression guard for the on-demand-reload cutover bug: during the
+    // 30-90s window when an old container is being torn down and a new
+    // one is starting up, bootstrapping can hit the OLD container and
+    // miss the cookie-setting code path. PreviewPane must NOT fire its
+    // polling effect while useImageReadiness reports isImageUpdating=true
+    // (passed through as isImageReloading prop).
+    renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} isImageReloading={true} />);
+
+    expect(mockServerPollingStore.startPollingForServer).not.toHaveBeenCalled();
+  });
+
+  it('should start polling once isImageReloading flips to false', () => {
+    // After the image reload completes, isImageReloading flips false and
+    // the gate releases. Polling should fire on the next render.
+    const { rerender } = renderWithProviders(
+      <PreviewPane onPreviewRefresh={vi.fn()} isImageReloading={true} />
+    );
+
+    expect(mockServerPollingStore.startPollingForServer).not.toHaveBeenCalled();
+
+    rerender(<PreviewPane onPreviewRefresh={vi.fn()} isImageReloading={false} />);
+
+    expect(mockServerPollingStore.startPollingForServer).toHaveBeenCalledWith('test-app-123');
+  });
+
   it('should show tips overlay and make iframe non-interactive when showBuildingOverlay is true', () => {
     mockServerPollingStore.getServerState = vi.fn(() => ({
       isReady: true,

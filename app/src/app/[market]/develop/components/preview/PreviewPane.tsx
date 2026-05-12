@@ -374,17 +374,29 @@ export default function PreviewPane({
     }
   }, [])
 
-  // Server polling lifecycle - PreviewPane owns its server state
-  // The store prevents duplicate polling if multiple components try to poll the same appId
+  // Server polling lifecycle - PreviewPane owns its server state.
+  // The store prevents duplicate polling if multiple components try to poll
+  // the same appId.
+  //
+  // Gate: skip polling while the image is reloading. During an on-demand
+  // image upgrade, two containers serve simultaneously for ~30-90s — the
+  // OLD one being torn down and the NEW one starting up. Bootstrapping
+  // during this window can hit the OLD container's binary, which may
+  // lack the cookie-setting code path that the NEW container has, leaving
+  // the user with no `preview_auth` cookie and a 307'd iframe. By gating
+  // on isImageReloading, polling only fires once the cutover is complete
+  // and all requests route to the new container. useImageReadiness owns
+  // the orchestration during the reload window.
   useEffect(() => {
     if (!appId) return
+    if (isImageReloading) return
 
     startPollingForServer(appId)
 
     return () => {
       stopPollingForServer(appId)
     }
-  }, [appId, startPollingForServer, stopPollingForServer])
+  }, [appId, isImageReloading, startPollingForServer, stopPollingForServer])
 
   // Track if we've already requested a screenshot for this app
   const screenshotRequestedRef = useRef<string | null>(null)
