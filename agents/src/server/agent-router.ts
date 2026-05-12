@@ -2,6 +2,20 @@ import { resolveProfile, runWithProfile, profileValue } from '../profiles/index.
 import { errorFields, logger } from '../logging/index.js'
 import { profileDefinesCustomModularPromptFiles } from '../agents/modular-prompt-files.js'
 import { getRegisteredInitialV3ModularAgentIds } from '../agents/registered-initial-modular-agent-ids.js'
+import { getRegisteredInitialNamedVariantAgentId } from '../agents/registered-initial-named-variant-ids.js'
+
+/**
+ * A `promptVersion` enters the named-variant resolver branch only when it is
+ * a non-empty, non-numeric string. Numeric values like `"1.0"` reserve the
+ * default initial-agent path; registered numeric variants (`"2.0"`, `"3.0"`)
+ * are handled by their explicit branches above.
+ */
+function isNamedVariantVersion(promptVersion: string | null | undefined): promptVersion is string {
+  if (promptVersion == null) return false
+  const trimmed = promptVersion.trim()
+  if (trimmed.length === 0) return false
+  return !/^\d+(\.\d+)*$/.test(trimmed)
+}
 
 interface AgentRouterDeps {
   hasMessagesForApp: (appId: string) => boolean | Promise<boolean>
@@ -108,6 +122,21 @@ export function createAgentRouter(deps: AgentRouterDeps) {
               resolvedAgentId = 'initial-v2'
             } else if (promptVersion === '3.0') {
               resolvedAgentId = 'initial-v3'
+            } else if (isNamedVariantVersion(promptVersion)) {
+              // Only non-numeric, non-empty strings enter the named-variant
+              // branch. Numeric versions like `1.0` (current) or `4.0`
+              // (hypothetical) fall through to the default selection and
+              // must not emit `initial_named_variant_unregistered` warns.
+              const namedVariantAgentId = getRegisteredInitialNamedVariantAgentId(promptVersion)
+              if (namedVariantAgentId) {
+                resolvedAgentId = namedVariantAgentId
+              } else {
+                logger.warn('agent_router.initial_named_variant_unregistered', {
+                  appId,
+                  profileName: profile.name,
+                  promptVersion,
+                })
+              }
             }
           }
         }

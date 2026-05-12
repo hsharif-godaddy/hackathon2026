@@ -75,4 +75,41 @@ describe('resolveInitialVariantForProfileHandoff', function resolutionTests() {
     })
     expect(result?.id).toBe('initial-v2')
   })
+
+  it('returns the named-variant config when promptVersion is a registered non-numeric name', function namedVariant() {
+    const named = { id: 'initial-prompt-enhancer' } as AgentConfig
+    const result = resolveInitialVariantForProfileHandoff({
+      promptVersion: 'prompt-enhancer',
+      profileName: 'enhancer',
+      profileInitialV3ModularConfigs: {},
+      namedVariantInitialConfigs: { 'initial-prompt-enhancer': named },
+      initialV2Config: initialV2,
+      initialV3Config: initialV3,
+    })
+    expect(result).toBe(named)
+  })
+
+  it('returns null when named-variant promptVersion is not registered', function namedVariantMissing() {
+    const result = resolveInitialVariantForProfileHandoff({
+      promptVersion: 'prompt-enhancer',
+      profileName: 'enhancer',
+      profileInitialV3ModularConfigs: {},
+      namedVariantInitialConfigs: {},
+      initialV2Config: initialV2,
+      initialV3Config: initialV3,
+    })
+    expect(result).toBeNull()
+  })
+
+  it('ignores numeric-like promptVersion in the named-variant branch (e.g. future "4.0")', function numericFuture() {
+    const result = resolveInitialVariantForProfileHandoff({
+      promptVersion: '4.0',
+      profileName: 'future',
+      profileInitialV3ModularConfigs: {},
+      namedVariantInitialConfigs: { 'initial-4.0': { id: 'initial-4.0' } as AgentConfig },
+      initialV2Config: initialV2,
+      initialV3Config: initialV3,
+    })
+    expect(result).toBeNull()
+  })
 })

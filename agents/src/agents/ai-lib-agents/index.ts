@@ -19,7 +19,8 @@ import {
   createInitialAgent,
   DevelopAgent,
   MarketingAgent,
-  ExampleAgent
+  ExampleAgent,
+  discoverNamedInitialVariants
 } from '../index.js'
 import { getTemplateIds } from '../template-registry.js'
 import type { EnhancedAgentContext } from './types.js'
@@ -28,6 +29,7 @@ import { errorFields, logger } from '../../logging/index.js'
 import { getProfileRegistry, runWithProfile, profileValue } from '../../profiles/index.js'
 import { AgentContextPipeline } from './agent-context-pipeline.js'
 import { setRegisteredInitialV3ModularAgentIds } from '../registered-initial-modular-agent-ids.js'
+import { setRegisteredInitialNamedVariantIds } from '../registered-initial-named-variant-ids.js'
 import { profileDefinesCustomModularPromptFiles } from '../modular-prompt-files.js'
 import { resolveInitialVariantForProfileHandoff } from './initial-variant-resolution.js'
 
@@ -125,6 +127,50 @@ export async function createUnifiedAgentFactory(options?: {
     templateInitialConfigs[`initial-${templateId}`] = await createInitialAgent(stateManager, templateId)
   }
 
+  // Pre-create named manifest variants (e.g. initial-prompt-enhancer). Each variant is
+  // a sibling of the numbered versions under `agents/src/prompts/initial/<name>/` and is
+  // selectable via a profile's `initial.promptVersion` property.
+  const namedVariantInitialConfigs: Record<string, AgentConfig> = {}
+  const namedVariantByVersion = new Map<string, string>()
+  // Reserved agent ids that a named variant must not overwrite. Includes the
+  // built-in initials, any pre-created template initials, and the modular v3
+  // variant prefix. A variant directory named `v2` (→ `initial-v2`) or a
+  // name colliding with a template id would otherwise silently replace the
+  // built-in agent, making the bug invisible until request-time routing.
+  const reservedInitialAgentIds = new Set<string>([
+    'initial', 'initial-v2', 'initial-v3',
+    ...Object.keys(templateInitialConfigs),
+  ])
+  for (const variantName of discoverNamedInitialVariants()) {
+    try {
+      // createInitialAgent assigns the correct `initial-<variantName>` id /
+      // name internally when passed a non-numeric promptVersion, so the
+      // handoff tool + telemetry logger reference the right agent.
+      const config = await createInitialAgent(stateManager, undefined, variantName)
+      const agentId = config.id
+      if (!agentId) {
+        // createInitialAgent always sets id; defensive narrow for the
+        // optional AgentConfig.id type signature.
+        throw new Error(`createInitialAgent returned config with no id for variant ${variantName}`)
+      }
+      if (reservedInitialAgentIds.has(agentId) || agentId.startsWith('initial-v3-')) {
+        logger.error('agent_factory.initial_named_variant_id_collision', {
+          variantName,
+          agentId,
+          message: 'Named variant directory name would override a reserved agent id; skipping registration. Rename the variant directory.',
+        })
+        continue
+      }
+      namedVariantInitialConfigs[agentId] = config
+      namedVariantByVersion.set(variantName, agentId)
+    } catch (error) {
+      logger.error('agent_factory.initial_named_variant_build_failed', {
+        variantName,
+        ...errorFields(error),
+      })
+    }
+  }
+
   // Create handoff tools BEFORE defining agents (using only agent IDs)
   // Extract valid targets from handoffs configuration
   const developHandoffTool = createHandoffTool({
@@ -193,6 +239,7 @@ export async function createUnifiedAgentFactory(options?: {
       promptVersion,
       profileName: name,
       profileInitialV3ModularConfigs,
+      namedVariantInitialConfigs,
       initialV2Config,
       initialV3Config,
     })
@@ -230,12 +277,17 @@ export async function createUnifiedAgentFactory(options?: {
     config.contextPipeline = contextPipeline
   }
 
+  for (const config of Object.values(namedVariantInitialConfigs)) {
+    config.contextPipeline = contextPipeline
+  }
+
   // Build agent definitions conditionally
   const agentDefinitions: Record<string, AgentConfig> = {
     initial: initialConfig,
     'initial-v2': initialV2Config,
     'initial-v3': initialV3Config,
     ...profileInitialV3ModularConfigs,
+    ...namedVariantInitialConfigs,
     develop: developConfig,
     ...profileDevelopConfigs,
     marketing: marketingConfig,
@@ -247,6 +299,7 @@ export async function createUnifiedAgentFactory(options?: {
 
   // After agents exist in the factory — avoids routing to variant ids before defineAgents completes
   setRegisteredInitialV3ModularAgentIds(new Set(Object.keys(profileInitialV3ModularConfigs)))
+  setRegisteredInitialNamedVariantIds(namedVariantByVersion)
 
   return { factory, agents, stateManager }
 }

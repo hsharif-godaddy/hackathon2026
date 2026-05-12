@@ -54,7 +54,14 @@ vi.mock('fs', async () => {
   return {
     ...actual,
     existsSync: (path: string) => {
-      // 3.0 modular files exist
+      // prompt-enhancer version uses manifest-mode at initial/prompt-enhancer/: manifest.json
+      // + its local overrides exist, and the base 3.0 files referenced by the manifest resolve.
+      if (path.includes('initial/prompt-enhancer/manifest.json')) return true;
+      if (path.includes('initial/prompt-enhancer/questioning.md')) return true;
+      if (path.includes('initial/prompt-enhancer/prompt-enhancer.md')) return true;
+      if (path.includes('initial/prompt-enhancer/handoff-template.md')) return true;
+      // 3.0 modular files exist — but NOT manifest.json (3.0 is the base, not a manifest variant)
+      if (path.includes('initial/3.0/manifest.json')) return false;
       if (path.includes('initial/3.0/')) return true;
       // Legacy files: core.md always exists, optional files exist for 1.0
       if (path.includes('core.md')) return true;
@@ -66,6 +73,22 @@ vi.mock('fs', async () => {
       // identity.md only exists in 3.0 (sentinel for modular detection)
       if (path.includes('identity.md') && !path.includes('3.0')) return false;
       return false;
+    },
+    readFileSync: (path: string, encoding?: string) => {
+      if (typeof path === 'string' && path.includes('initial/prompt-enhancer/manifest.json')) {
+        return JSON.stringify({
+          base: '3.0',
+          files: [
+            { src: 'base', file: 'identity.md' },
+            { src: 'variant', file: 'questioning.md' },
+            { src: 'variant', file: 'prompt-enhancer.md' },
+            { src: 'base', file: 'project-name.md' },
+            { src: 'base', file: 'feature-list.md' },
+            { src: 'variant', file: 'handoff-template.md' }
+          ]
+        });
+      }
+      return (actual as any).readFileSync(path, encoding);
     }
   };
 });
@@ -189,6 +212,44 @@ describe('initial-agent', function initialAgentTests() {
 
     it('should throw for unknown templateId', async function unknownTemplate() {
       await expect(createInitialAgent(undefined, 'nonexistent')).rejects.toThrow('Unknown template: nonexistent');
+    });
+
+    it('should assign initial-<name> id for a named manifest variant', async function namedVariantId() {
+      const config = await createInitialAgent(undefined, undefined, 'prompt-enhancer');
+      expect(config.id).toBe('initial-prompt-enhancer');
+      expect(config.name).toBe('Initial (prompt-enhancer)');
+    });
+
+    it('should treat empty / whitespace promptVersion as the default initial agent', async function emptyPromptVersion() {
+      const a = await createInitialAgent(undefined, undefined, '');
+      expect(a.id).toBe('initial');
+      expect(a.name).toBe('Initial');
+
+      const b = await createInitialAgent(undefined, undefined, '   ');
+      expect(b.id).toBe('initial');
+      expect(b.name).toBe('Initial');
+    });
+
+    it('should treat numeric promptVersion as the default initial-id (no named-variant derivation)', async function numericPromptVersion() {
+      const a = await createInitialAgent(undefined, undefined, '1.0');
+      expect(a.id).toBe('initial');
+      const b = await createInitialAgent(undefined, undefined, '2.0');
+      expect(b.id).toBe('initial');
+    });
+
+    it('should load prompt-enhancer version via manifest without error', async function promptEnhancerManifest() {
+      await createInitialAgent(undefined, undefined, 'prompt-enhancer');
+
+      // Manifest composes base identity + variant questioning/prompt-enhancer +
+      // base project-name/feature-list + variant handoff-template (the variant
+      // overrides the base handoff to lead with TODAY'S PREVIEW).
+      expect(fileCalls.some(p => p.includes('initial/3.0/identity.md'))).toBe(true);
+      expect(fileCalls.some(p => p.includes('initial/prompt-enhancer/questioning.md'))).toBe(true);
+      expect(fileCalls.some(p => p.includes('initial/prompt-enhancer/prompt-enhancer.md'))).toBe(true);
+      expect(fileCalls.some(p => p.includes('initial/prompt-enhancer/handoff-template.md'))).toBe(true);
+      expect(fileCalls.some(p => p.includes('initial/3.0/handoff-template.md'))).toBe(false);
+      // Should NOT load the base 3.0 questioning file (overridden by variant)
+      expect(fileCalls.some(p => p.includes('initial/3.0/questioning.md'))).toBe(false);
     });
 
     it('should keep default id when no templateId is provided', async function defaultId() {
