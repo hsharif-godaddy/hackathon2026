@@ -51,6 +51,18 @@ export function getAuth() {
 
     secret: authSecret,
 
+    // Protect admin status field from user input
+    user: {
+      additionalFields: {
+        isAdmin: {
+          type: 'boolean',
+          defaultValue: false,
+          input: false,  // Prevent clients from writing this field
+          returned: true,
+        },
+      },
+    },
+
     // CORS: Trusts .airoapp.ai subdomains and localhost by default.
     // If your app has a custom domain, add it here or set BETTER_AUTH_TRUSTED_ORIGINS.
     trustedOrigins: (request?: Request) => {

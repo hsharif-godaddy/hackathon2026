@@ -1,10 +1,18 @@
 import { createCheckoutSession, type CheckoutCustomer } from '../commerce-client';
 
 /**
- * Replace with real IDs from Commerce onboarding/handoff context.
+ * Store ID configuration
+ *
+ * Reads from VITE_GODADDY_STORE_ID environment variable (set by commerce skill setup).
+ * Final fallback to code constant for manual configuration.
  */
-export const STORE_ID = 'REPLACE_WITH_STORE_ID';
+const STORE_ID = 'REPLACE_WITH_STORE_ID';
 export const CHANNEL_ID = 'REPLACE_WITH_CHANNEL_ID';
+
+function getStoreId(): string {
+  // Use import.meta.env for Vite browser bundle compatibility
+  return import.meta.env.VITE_GODADDY_STORE_ID || STORE_ID;
+}
 
 function getPreviewUrl(): string {
   if (import.meta.env.VITE_PREVIEW_URL) {
@@ -27,13 +35,13 @@ export async function startOneTimeCommerceCheckout(params: {
 }) {
   const previewUrl = getPreviewUrl();
   const quantity = params.quantity ?? 1;
-  const storeId = params.storeId ?? STORE_ID;
+  const storeId = params.storeId ?? getStoreId();
   const channelId = params.channelId ?? (CHANNEL_ID !== 'REPLACE_WITH_CHANNEL_ID' ? CHANNEL_ID : undefined);
 
   if (!storeId || storeId === 'REPLACE_WITH_STORE_ID') {
     return {
       success: false,
-      error: 'Store ID is not configured. Update STORE_ID in src/lib/commerce/payment-flow.ts',
+      error: 'Store ID is not configured. Set VITE_GODADDY_STORE_ID environment variable via commerce skill setup.',
     };
   }
 

@@ -62,6 +62,7 @@ keys/jwt-public.pem
 # IDE specific files
 .idea/
 .cursor/debug-*.log
+*.iml
 
 proxy-logs/
 

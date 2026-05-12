@@ -1,5 +1,22 @@
 import { addMinutes, format, parse, isAfter, isBefore, isSameDay, setHours, setMinutes, setSeconds, setMilliseconds } from 'date-fns';
 import { z } from 'zod';
+import { logger } from './logger';
+
+/**
+ * Pricing Tier Schema - for variable pricing with multiple SKUs
+ */
+export const PricingTierSchema = z.object({
+  /** Tier name/label (e.g., "30 minutes", "1 hour", "2 hours") */
+  label: z.string().min(1).max(100),
+  /** Duration in minutes for this tier */
+  duration: z.number().int().min(5).max(480),
+  /** Price in cents (e.g., 5000 for $50.00) */
+  amount: z.number().int().min(0),
+  /** Commerce SKU ID for this tier */
+  skuId: z.string().min(1),
+});
+
+export type PricingTier = z.infer<typeof PricingTierSchema>;
 
 /**
  * Configuration Schema - validates config at runtime
@@ -10,7 +27,24 @@ export const AppointmentsConfigSchema = z.object({
   businessHoursStart: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, 'Use HH:mm format'),
   businessHoursEnd: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, 'Use HH:mm format'),
   workingDays: z.array(z.number().int().min(0).max(6)).min(1, 'At least one working day required'),
-});
+  /** Pricing tiers with SKU mappings. Optional only for free appointments (no payment). */
+  pricingTiers: z.array(PricingTierSchema).min(1).optional(),
+}).refine(
+  (config) => {
+    // Skip validation if pricingTiers not present (free appointments only)
+    if (!config.pricingTiers || config.pricingTiers.length === 0) {
+      return true;
+    }
+    // Validate no duplicate amounts (prevents unreachable SKUs)
+    const amounts = config.pricingTiers.map(t => t.amount);
+    const uniqueAmounts = new Set(amounts);
+    return uniqueAmounts.size === amounts.length;
+  },
+  {
+    message: 'Pricing tiers must have unique amounts. Duplicate amounts make some SKUs unreachable.',
+    path: ['pricingTiers'],
+  }
+);
 
 export type AppointmentsConfig = z.infer<typeof AppointmentsConfigSchema>;
 
@@ -36,9 +70,19 @@ async function loadConfig(): Promise<AppointmentsConfig> {
     if (result.success) {
       return result.data;
     }
-    console.warn('Invalid appointments config, using defaults:', result.error.message);
+    // Acceptable: logs top-level Zod message instead of per-field issues for simplicity.
+    // Misconfigured fields (e.g. duplicate pricingTiers amounts) will show generic message.
+    logger.warn('appointments.config.invalid', {
+      error: result.error.message,
+      message: 'Invalid appointments config, using defaults'
+    });
     return defaultConfig;
-  } catch {
+  } catch (error) {
+    // Import error (syntax error, missing file, etc.) - log before falling back to defaults
+    logger.warn('appointments.config.load_failed', {
+      error: error instanceof Error ? error.message : String(error),
+      message: 'Failed to load appointments.config.ts, using defaults'
+    });
     return defaultConfig;
   }
 }
@@ -74,7 +118,21 @@ export const AppointmentInputSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Invalid date format. Use YYYY-MM-DD'),
   time: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, 'Invalid time format. Use HH:mm'),
   notes: z.string().max(5000, 'Notes too long (max 5000 characters)').optional(),
-});
+  requiresPayment: z.boolean().optional().default(false),
+  amount: z.number().int().min(0).optional(),
+}).refine(
+  (data) => {
+    // If payment required, amount must be present and > 0
+    if (data.requiresPayment) {
+      return data.amount !== undefined && data.amount > 0;
+    }
+    return true;
+  },
+  {
+    message: 'Amount must be greater than 0 when payment is required',
+    path: ['amount'],
+  }
+);
 
 export type AppointmentInput = z.infer<typeof AppointmentInputSchema>;
 
@@ -93,6 +151,9 @@ export interface Appointment {
   status: 'confirmed' | 'cancelled' | 'completed';
   notes?: string;
   createdAt: Date;
+  requiresPayment: boolean;
+  amount?: number;
+  orderId?: string;
 }
 
 export interface BookingRequest {

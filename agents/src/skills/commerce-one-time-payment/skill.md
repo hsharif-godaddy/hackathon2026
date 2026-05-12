@@ -29,6 +29,17 @@ This skill is **UI wiring only**.
 4. Keep preview URL fallback behavior for return/success URLs.
 5. Do not request Commerce OAuth secrets manually (system-managed in task-local config.json).
 
+## Understanding draftOrderId and Payment Flow
+
+**IMPORTANT:** `createCheckoutSession` returns an `orderId` which is a **draft order ID** (unpaid order in GoDaddy Commerce).
+
+- **Store the draftOrderId** in your database immediately after session creation (e.g., `booking.orderId = session.orderId`)
+- **Customer pays** at the returned `checkoutUrl` (redirects to GoDaddy Commerce checkout)
+- **On successUrl redirect** (customer returns after payment), use the same `orderId` to check payment status via `GET /api/commerce/order-status?orderId={orderId}`
+- **If payment succeeded**, the draft order is now a paid order (same ID, status transitions from `pending` → `paid`)
+- **If customer doesn't pay**, draft order auto-expires after 24 hours in GoDaddy Commerce
+- **Use case:** For booking/reservation features, create your DB record first with `orderId: null`, then create payment session, then update record with `orderId` from session response
+
 ---
 
 ## Pre-Check: Existing Storefront UI

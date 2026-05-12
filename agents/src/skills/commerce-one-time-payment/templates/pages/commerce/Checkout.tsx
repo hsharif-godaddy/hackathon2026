@@ -62,11 +62,6 @@ export default function CommerceCheckoutPage() {
           </div>
 
           <div>
-            <div className="text-sm text-gray-500">SKU ID (required for checkout)</div>
-            <code className="rounded bg-gray-100 px-2 py-1 text-sm">{product.skuId}</code>
-          </div>
-
-          <div>
             <div className="text-sm text-gray-500">Amount</div>
             <div className="text-xl font-semibold">
               {formatPrice(product.price, product.currencyCode)}

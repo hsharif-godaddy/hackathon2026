@@ -4,6 +4,7 @@ import { and, gte, lte, ne } from 'drizzle-orm';
 import { db } from '../../../db/client';
 import { appointment } from '../../../db/schema';
 import { getAvailableSlots, getConfig } from '../../../../lib/appointments';
+import { logger } from '../../../../lib/logger';
 
 /**
  * GET /api/appointments/availability
@@ -75,7 +76,10 @@ export default async function handler(req: Request, res: Response) {
       slots,
     });
   } catch (error) {
-    console.error('Error fetching availability:', error);
+    logger.error('appointments.availability.fetch_failed', {
+      error: error instanceof Error ? error.message : String(error),
+      date: req.query.date,
+    });
     return res.status(500).json({
       error: 'Internal Server Error',
       message: 'Failed to fetch availability',
