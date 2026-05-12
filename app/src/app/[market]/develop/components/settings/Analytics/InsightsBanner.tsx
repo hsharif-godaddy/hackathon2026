@@ -65,8 +65,8 @@ function isDemoMode(demoItems: InsightsBannerItem[] | undefined): demoItems is I
 function Pill({ children }: { children: React.ReactNode }) {
   return (
     <text.span
-      className="!inline-flex !h-[28px] !min-w-0 !max-w-full !items-center !justify-center !overflow-hidden !text-ellipsis !whitespace-nowrap !px-3 !rounded-lg !text-center !text-[12px] !font-medium !leading-tight"
-      style={{ background: 'var(--color-ai-glow)', color: 'var(--color-ai)' }}
+      className="!inline-flex !h-[28px] !min-w-0 !max-w-full !items-center !justify-center !overflow-hidden !text-ellipsis !whitespace-nowrap !px-3 !rounded-lg !text-center !text-[12px] !font-medium !leading-tight !text-intents-ux-box-foregroundColor"
+      style={{ background: 'var(--color-ai-glow)' }}
     >
       {children}
     </text.span>
@@ -176,8 +176,8 @@ export default function InsightsBanner(props: InsightsBannerProps = {}) {
             <div className="min-w-0 flex-1">
               <div className="flex items-center justify-between gap-2">
                 <div className="flex min-w-0 items-center gap-1.5">
-                  <Pill>{insightKindLabel(current.kind, t)}</Pill>
                   <KindGlyph kind={current.kind} />
+                  <Pill>{insightKindLabel(current.kind, t)}</Pill>
                 </div>
                 {items.length > 1 ? (
                   <div className="flex items-center gap-1.5">
