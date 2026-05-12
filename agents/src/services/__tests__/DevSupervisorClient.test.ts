@@ -293,6 +293,21 @@ describe('DevSupervisorClient', () => {
         expect.any(Function)
       );
     });
+
+    it('forwards commandId as command_id query param to scope to a single exec call', async () => {
+      const mockRequest = createMockRequest(200, { logs: [] });
+      vi.mocked(http.request).mockReturnValue(mockRequest as any);
+
+      await client.getLogs({ source: 'exec', commandId: 42 });
+
+      expect(http.request).toHaveBeenCalledWith(
+        expect.objectContaining({
+          method: 'GET',
+          path: '/logs?source=exec&command_id=42'
+        }),
+        expect.any(Function)
+      );
+    });
   });
 
   describe('configureHealthCheck', () => {

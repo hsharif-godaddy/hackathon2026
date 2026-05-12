@@ -17,7 +17,15 @@ export interface CustomerLogsRequest {
   /** Number of log lines to fetch (optional, default: 100, max: configurable) */
   lines?: number;
   /** Filter by output sources - supports multiple values. If not provided, returns all sources */
-  sources?: Array<'stdout' | 'stderr'>;
+  /**
+   * Restrict upstream log fetch to specific sources. `stdout`/`stderr` are
+   * the managed dev-server's streams; `exec` is output from one-shot
+   * /exec commands (install/build during zip-upload). Customer-facing
+   * callers typically omit this or pass `['stdout', 'stderr']`. Diagnose
+   * passes `['stdout', 'stderr', 'exec']` when triaging the preview
+   * container to catch build failures.
+   */
+  sources?: Array<'stdout' | 'stderr' | 'exec'>;
 }
 
 /**
@@ -41,7 +49,15 @@ export interface LogFetchOptions {
   /** Fetch logs since this ISO 8601 timestamp (optional - if not provided, returns latest logs) */
   since?: string;
   /** Filter by output sources - supports multiple values. If not provided, returns all sources */
-  sources?: Array<'stdout' | 'stderr'>;
+  /**
+   * Restrict upstream log fetch to specific sources. `stdout`/`stderr` are
+   * the managed dev-server's streams; `exec` is output from one-shot
+   * /exec commands (install/build during zip-upload). Customer-facing
+   * callers typically omit this or pass `['stdout', 'stderr']`. Diagnose
+   * passes `['stdout', 'stderr', 'exec']` when triaging the preview
+   * container to catch build failures.
+   */
+  sources?: Array<'stdout' | 'stderr' | 'exec'>;
   /** Number of log lines to fetch (optional) */
   lines?: number;
 }
@@ -51,7 +67,16 @@ export const DEFAULT_MAX_LINES = 500;
 export const MAX_LINES = parseInt(process.env.CUSTOMER_LOGS_MAX_LINES || '', 10) || DEFAULT_MAX_LINES;
 const DEFAULT_LINES = 100;
 const VALID_TARGETS = ['preview', 'publish'] as const;
-const VALID_SOURCES = ['stdout', 'stderr'] as const;
+const VALID_SOURCES = ['stdout', 'stderr', 'exec'] as const;
+/**
+ * Default `sources` for getLogs when the caller does not specify one.
+ * Restricts the upstream request to the managed-process streams so
+ * /exec orchestration output (dev-supervisor Source="exec") stays out
+ * of customer-facing surfaces and agent LLM tool context. Callers that
+ * need exec/system entries (e.g. diagnose triaging a failed build) must
+ * opt in by passing `sources` explicitly.
+ */
+const DEFAULT_CUSTOMER_SOURCES: Array<'stdout' | 'stderr'> = ['stdout', 'stderr'];
 
 /** Factory function type for creating DevSupervisorClient instances */
 type DevSupervisorClientFactory = (socketPath: string) => DevSupervisorClient;
@@ -121,26 +146,7 @@ export class CustomerLogsService {
         logOptions.since = since;
       }
 
-      // Fetch logs from supervisor
-      let rawLogs: LogEntry[];
-
-      if (sources && sources.length > 0) {
-        // Fetch specified sources and merge
-        const logPromises = sources.map(src =>
-          client.getLogs({ ...logOptions, source: src })
-        );
-        const logsArrays = await Promise.all(logPromises);
-        rawLogs = logsArrays.flat();
-        // Sort by timestamp
-        rawLogs.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-      } else {
-        // All sources (no filter)
-        rawLogs = await client.getLogs(logOptions);
-      }
-
-      // Sanitize logs and apply lines limit after sanitization
-      // (so we return requested count after filtering out debug/noise logs)
-      const sanitizedLogs = this.logSanitizer.sanitizeLogs(rawLogs).slice(0, logOptions.lines);
+      const { rawLogs, sanitizedLogs } = await this.getSanitizedLogs(client, logOptions, sources);
 
       const executionTime = Date.now() - startTime;
       this.logger.info('customer_logs.fetch.success', {
@@ -167,6 +173,41 @@ export class CustomerLogsService {
 
       return this.errorResponse('Failed to fetch logs', 'FETCH_ERROR');
     }
+  }
+
+  /**
+   * Fan out log fetches across an explicit source list, merge, sort,
+   * sanitize, and tail-keep the requested line count.
+   *
+   * Always scope to an explicit source list — never an unfiltered
+   * request — so orchestration output (dev-supervisor Source="exec")
+   * and health-monitor entries never leak into the customer-facing
+   * response. When the caller omits `sources`, fall back to the
+   * managed-process defaults; callers that need other sources
+   * (diagnose for /exec triage) must opt in explicitly.
+   *
+   * Trims with slice(-lines), not slice(0, lines): failure signals
+   * (build errors, stack traces, exit messages) cluster at the end of
+   * long runs, so preserving the newest entries after merging across
+   * sources is what callers actually need.
+   */
+  private async getSanitizedLogs(
+    client: DevSupervisorClient,
+    logOptions: LogOptions,
+    sources?: Array<'stdout' | 'stderr' | 'exec'>
+  ): Promise<{ rawLogs: LogEntry[]; sanitizedLogs: SanitizedLogEntry[] }> {
+    const effectiveSources = sources && sources.length > 0 ? sources : DEFAULT_CUSTOMER_SOURCES;
+    const logPromises = effectiveSources.map(src =>
+      client.getLogs({ ...logOptions, source: src })
+    );
+    const logsArrays = await Promise.all(logPromises);
+    const rawLogs: LogEntry[] = logsArrays.flat();
+    rawLogs.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+    const sanitized = this.logSanitizer.sanitizeLogs(rawLogs);
+    const sanitizedLogs = logOptions.lines ? sanitized.slice(-logOptions.lines) : sanitized;
+
+    return { rawLogs, sanitizedLogs };
   }
 
   /**

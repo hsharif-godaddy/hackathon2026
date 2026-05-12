@@ -123,6 +123,32 @@ func TestCommandExecutor_Execute(t *testing.T) {
 			},
 		},
 		{
+			// Regression: the timeout branch previously returned before
+			// populating result.Stdout/Stderr, so the most diagnostic
+			// failure mode (a timed-out pnpm install or build) produced
+			// no output for callers or the /exec ring-buffer mirror.
+			name: "timed-out command captures partial stdout/stderr",
+			request: validation.CommandRequest{
+				Command:       "echo partial-stdout; echo partial-stderr >&2; sleep 5",
+				CaptureOutput: true,
+				Timeout:       1,
+			},
+			expectError:  false,
+			expectedExit: -1,
+			validateOutput: func(result *CommandResult) error {
+				if !result.TimedOut {
+					t.Error("Expected command to time out")
+				}
+				if !strings.Contains(result.Stdout, "partial-stdout") {
+					t.Errorf("Expected partial stdout to be captured, got: %q", result.Stdout)
+				}
+				if !strings.Contains(result.Stderr, "partial-stderr") {
+					t.Errorf("Expected partial stderr to be captured, got: %q", result.Stderr)
+				}
+				return nil
+			},
+		},
+		{
 			name: "working directory test",
 			request: validation.CommandRequest{
 				Command:       "pwd",

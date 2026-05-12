@@ -269,11 +269,21 @@ func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {
 		"capture_output", req.CaptureOutput,
 	)
 
+	// Allocate a command ID before executing. Used to tag every log entry
+	// mirrored for this command and returned on the response so callers can
+	// correlate follow-up GET /logs?command_id=N queries.
+	cmdID := s.execCmdSeq.Add(1)
+
 	result, err := s.cmdExec.Execute(req)
 	if err != nil {
 		s.sendError(w, http.StatusInternalServerError, "execution_failed", err.Error())
 		return
 	}
+
+	// Mirror /exec output into the ring buffer so it's observable via
+	// GET /logs, the same channel used for the managed process's output.
+	// HTTP response body remains the authoritative copy.
+	s.recordExecOutput(result, cmdID)
 
 	requestDurationMs := time.Since(startTime).Milliseconds()
 
@@ -301,7 +311,14 @@ func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(result); err != nil {
+	// Additive response shape: existing CommandResult fields plus command_id
+	// at the top level. Clients unaware of command_id ignore it.
+	response := struct {
+		*CommandResult
+
+		CommandID uint64 `json:"command_id"`
+	}{CommandResult: result, CommandID: cmdID}
+	if err := json.NewEncoder(w).Encode(response); err != nil {
 		slog.Error("failed to encode JSON response", "error", err)
 	}
 }
@@ -374,6 +391,12 @@ func parseLogsGetRequest(r *http.Request) logs.GetRequest {
 
 	req.Source = r.URL.Query().Get("source")
 	req.Since = r.URL.Query().Get("since")
+
+	if cid := r.URL.Query().Get("command_id"); cid != "" {
+		if parsed, err := strconv.ParseUint(cid, 10, 64); err == nil {
+			req.CommandID = parsed
+		}
+	}
 
 	return req
 }

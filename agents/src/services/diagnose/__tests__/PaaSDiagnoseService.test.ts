@@ -126,6 +126,34 @@ describe('PaaSDiagnoseService', () => {
     });
   });
 
+  describe('log source selection', () => {
+    it('includes "exec" source when target=preview so build/install output is seen for zip-upload triage', async () => {
+      const logs = makeLogsService({ success: true, logs: [], total: 0 });
+      const pattern = new FakeClassifier('pattern', async () => ({ handled: false, issues: [] }));
+      const llm = new FakeClassifier('llm', async () => ({ handled: true, issues: [] }));
+
+      const svc = new PaaSDiagnoseService({ customerLogsService: logs as never, patternClassifier: pattern, llmClassifier: llm, clock });
+      await svc.diagnose(makeRequest({ target: 'preview' }));
+
+      expect(logs.getLogs).toHaveBeenCalledWith(
+        expect.objectContaining({ sources: ['stdout', 'stderr', 'exec'] }),
+      );
+    });
+
+    it('excludes "exec" source when target=publish since the publish container never runs /exec builds', async () => {
+      const logs = makeLogsService({ success: true, logs: [], total: 0 });
+      const pattern = new FakeClassifier('pattern', async () => ({ handled: false, issues: [] }));
+      const llm = new FakeClassifier('llm', async () => ({ handled: true, issues: [] }));
+
+      const svc = new PaaSDiagnoseService({ customerLogsService: logs as never, patternClassifier: pattern, llmClassifier: llm, clock });
+      await svc.diagnose(makeRequest({ target: 'publish' }));
+
+      expect(logs.getLogs).toHaveBeenCalledWith(
+        expect.objectContaining({ sources: ['stdout', 'stderr'] }),
+      );
+    });
+  });
+
   describe('tier selection', () => {
     it('returns pattern tier result when PatternClassifier handles', async () => {
       const logs = makeLogsService({ success: true, logs: makeLogs(), total: 1 });

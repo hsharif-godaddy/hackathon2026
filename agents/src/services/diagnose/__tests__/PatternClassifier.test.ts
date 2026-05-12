@@ -102,6 +102,24 @@ describe('PatternClassifier', () => {
       expectedId: 'env-var-missing',
       expectedCategory: 'Env Var Missing',
     },
+    {
+      name: 'esbuild could not resolve (zip-upload vite.config failure)',
+      log: `✘ [ERROR] Could not resolve "./source-mapper/src/index"`,
+      expectedId: 'esbuild-resolve-failure',
+      expectedCategory: 'Missing Dependency',
+    },
+    {
+      name: 'vite config load failure',
+      log: `failed to load config from /app/vite.config.ts`,
+      expectedId: 'vite-config-load-failure',
+      expectedCategory: 'Vite Config Error',
+    },
+    {
+      name: 'esbuild build failed summary',
+      log: `Error: Build failed with 5 errors:`,
+      expectedId: 'esbuild-build-failed',
+      expectedCategory: 'Build Failed',
+    },
   ])('matches $name', ({ log, expectedId, expectedCategory, expectedRecommendation }) => {
     it(`produces an issue with id=${expectedId}`, async () => {
       const result = await run(classifier, [logLine(log)]);

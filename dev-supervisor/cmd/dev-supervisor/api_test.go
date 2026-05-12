@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -405,6 +406,240 @@ func TestHandleExecInvalidCommand(t *testing.T) {
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("Expected status code 400, got %d", w.Code)
 	}
+}
+
+// TestHandleExec_TeesOutputToLogManager verifies that /exec output lines are
+// mirrored into the ring buffer under a distinct Source="exec" with a
+// non-zero CommandID. Using a distinct source prevents leaking orchestration
+// output into customer-facing log surfaces (which filter to stdout/stderr),
+// and the CommandID lets consumers scope queries to a single /exec call.
+func TestHandleExec_TeesOutputToLogManager(t *testing.T) {
+	t.Parallel()
+
+	server := NewServer()
+
+	execReq := validation.CommandRequest{
+		Command:       "echo tee-stdout-line; echo tee-stderr-line >&2; exit 1",
+		Timeout:       5,
+		CaptureOutput: true,
+	}
+
+	reqBody := mustMarshalJSON(t, execReq)
+	req := httptest.NewRequest(http.MethodPost, "/exec", bytes.NewBuffer(reqBody))
+	req.Header.Set("Content-Type", contentTypeJSON)
+	w := httptest.NewRecorder()
+
+	server.handleExec(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf(
+			"Expected status 200 (exec succeeded despite non-zero exit code), got %d: %s",
+			w.Code, w.Body.String(),
+		)
+	}
+
+	// /exec response must include command_id so callers can correlate.
+	var resp struct {
+		CommandResult
+
+		CommandID uint64 `json:"command_id"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode exec response: %v", err)
+	}
+	if resp.CommandID == 0 {
+		t.Fatal("expected non-zero command_id in /exec response")
+	}
+
+	execLogs, err := server.logMgr.GetLogs(logs.GetRequest{Source: "exec"})
+	if err != nil {
+		t.Fatalf("GetLogs Source=exec: %v", err)
+	}
+	// Both stdout and stderr lines land under Source="exec" — a single call
+	// retrieves all of a command's output.
+	if !containsLogMessage(execLogs.Logs, "tee-stdout-line") {
+		t.Errorf("expected Source=exec to contain 'tee-stdout-line'; got %v", logMessages(execLogs.Logs))
+	}
+	if !containsLogMessage(execLogs.Logs, "tee-stderr-line") {
+		t.Errorf("expected Source=exec to contain 'tee-stderr-line'; got %v", logMessages(execLogs.Logs))
+	}
+	// Every exec entry carries the same CommandID as the response.
+	for _, e := range execLogs.Logs {
+		if e.CommandID != resp.CommandID {
+			t.Errorf("expected CommandID=%d on every exec entry; got %d for message %q",
+				resp.CommandID, e.CommandID, e.Message)
+		}
+	}
+
+	// Customer-log channel (source=stdout) must not contain exec output —
+	// this is the leak guard. Managed-process entries would appear here; in
+	// this test the managed process never ran, so stdout/stderr must be empty.
+	stdoutLogs, err := server.logMgr.GetLogs(logs.GetRequest{Source: "stdout"})
+	if err != nil {
+		t.Fatalf("GetLogs Source=stdout: %v", err)
+	}
+	if containsLogMessage(stdoutLogs.Logs, "tee-stdout-line") {
+		t.Error(
+			"exec output leaked into Source=stdout — consumers filtering to stdout " +
+				"will see orchestration logs",
+		)
+	}
+}
+
+// TestHandleExec_TruncatesOutputKeepingTail verifies that a chatty command
+// does not unboundedly flood the ring buffer, and that the *tail* of the
+// output is preserved — failure signals (error summaries, stack traces,
+// non-zero exit messages) cluster at the end, so losing the tail would
+// defeat the whole purpose.
+func TestHandleExec_TruncatesOutputKeepingTail(t *testing.T) {
+	t.Parallel()
+
+	server := NewServer()
+
+	// Emit twice the cap plus one final marker line, so we can assert
+	// only the last maxExecLogLines landed and the final marker is
+	// preserved.
+	total := maxExecLogLines*2 + 1
+	cmd := "for i in $(seq 1 " + strconv.Itoa(total-1) + "); do echo line-$i; done; echo FINAL-MARKER-LINE"
+	execReq := validation.CommandRequest{
+		Command:       cmd,
+		Timeout:       30,
+		CaptureOutput: true,
+	}
+	reqBody := mustMarshalJSON(t, execReq)
+	req := httptest.NewRequest(http.MethodPost, "/exec", bytes.NewBuffer(reqBody))
+	req.Header.Set("Content-Type", contentTypeJSON)
+	w := httptest.NewRecorder()
+
+	server.handleExec(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	execLogs, err := server.logMgr.GetLogs(logs.GetRequest{Source: "exec"})
+	if err != nil {
+		t.Fatalf("GetLogs: %v", err)
+	}
+
+	if len(execLogs.Logs) > maxExecLogLines {
+		t.Errorf("expected at most %d lines tee'd to ring buffer, got %d", maxExecLogLines, len(execLogs.Logs))
+	}
+	if !hasExactMessage(execLogs.Logs, "FINAL-MARKER-LINE") {
+		t.Error("expected final output line to be preserved when truncating from the head")
+	}
+	// And the very first line must be gone — we're keeping the tail. Use
+	// exact match here (not Contains) because "line-1" is a substring of
+	// "line-1002", "line-1500", etc., which *are* retained.
+	if hasExactMessage(execLogs.Logs, "line-1") {
+		t.Error("expected earliest output line to be truncated, but it's still in the ring buffer")
+	}
+}
+
+// TestHandleExec_CommandIDIncrementsAcrossCalls verifies that successive
+// /exec calls receive distinct monotonic command_id values, so consumers
+// can unambiguously scope GET /logs?command_id=N to a specific invocation.
+func TestHandleExec_CommandIDIncrementsAcrossCalls(t *testing.T) {
+	t.Parallel()
+
+	server := NewServer()
+
+	id1 := runExecForID(t, server, "echo first-call")
+	id2 := runExecForID(t, server, "echo second-call")
+
+	if id1 == 0 || id2 == 0 {
+		t.Fatalf("expected non-zero command_ids, got id1=%d id2=%d", id1, id2)
+	}
+	if id2 <= id1 {
+		t.Fatalf("expected monotonic increasing command_id (id1=%d < id2=%d)", id1, id2)
+	}
+}
+
+// TestHandleLogs_FilterByCommandID verifies end-to-end that
+// GET /logs?command_id=N restricts results to that invocation's entries.
+func TestHandleLogs_FilterByCommandID(t *testing.T) {
+	t.Parallel()
+
+	server := NewServer()
+
+	id1 := runExecForID(t, server, "echo alpha-line")
+	id2 := runExecForID(t, server, "echo beta-line")
+
+	// Filter to command 1 only.
+	req := httptest.NewRequest(http.MethodGet,
+		"/logs?source=exec&command_id="+strconv.FormatUint(id1, 10), nil)
+	w := httptest.NewRecorder()
+	server.handleLogs(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("handleLogs status=%d body=%s", w.Code, w.Body.String())
+	}
+	var resp logs.GetResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode logs response: %v", err)
+	}
+	if !containsLogMessage(resp.Logs, "alpha-line") {
+		t.Errorf("expected command %d entries to include 'alpha-line'; got %v", id1, logMessages(resp.Logs))
+	}
+	if containsLogMessage(resp.Logs, "beta-line") {
+		t.Errorf(
+			"expected command_id=%d filter to exclude command %d's output; got %v",
+			id1, id2, logMessages(resp.Logs),
+		)
+	}
+}
+
+// runExecForID is a small helper: run one /exec call against the server,
+// assert it succeeded, and return the response's command_id.
+func runExecForID(t *testing.T, server *Server, command string) uint64 {
+	t.Helper()
+	execReq := validation.CommandRequest{
+		Command:       command,
+		Timeout:       5,
+		CaptureOutput: true,
+	}
+	req := httptest.NewRequest(http.MethodPost, "/exec",
+		bytes.NewBuffer(mustMarshalJSON(t, execReq)))
+	req.Header.Set("Content-Type", contentTypeJSON)
+	w := httptest.NewRecorder()
+	server.handleExec(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("handleExec(%q) status=%d body=%s", command, w.Code, w.Body.String())
+	}
+	var resp struct {
+		CommandResult
+
+		CommandID uint64 `json:"command_id"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode exec response: %v", err)
+	}
+	return resp.CommandID
+}
+
+func containsLogMessage(entries []logs.LogEntry, needle string) bool {
+	for _, e := range entries {
+		if strings.Contains(e.Message, needle) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasExactMessage(entries []logs.LogEntry, want string) bool {
+	for _, e := range entries {
+		if e.Message == want {
+			return true
+		}
+	}
+	return false
+}
+
+func logMessages(entries []logs.LogEntry) []string {
+	out := make([]string, len(entries))
+	for i, e := range entries {
+		out[i] = e.Message
+	}
+	return out
 }
 
 func TestHandleEnvironmentGet(t *testing.T) {

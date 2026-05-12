@@ -14,6 +14,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -112,6 +113,11 @@ type Server struct {
 	processLogging         bool       // Current process logging configuration
 	processLoggingToStdout bool       // Current structured logging configuration
 	pruneMu                sync.Mutex // Serialize prune operations
+	// execCmdSeq hands out monotonically increasing IDs for each /exec
+	// invocation. The ID is stamped on every log entry mirrored for that
+	// command and returned to the caller on the HTTP response, so consumers
+	// can later scope GET /logs?command_id=N to a specific command.
+	execCmdSeq atomic.Uint64
 }
 
 type HealthResponse struct {

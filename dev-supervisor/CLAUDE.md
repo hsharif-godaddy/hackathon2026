@@ -37,6 +37,8 @@ make check          # All checks (fmt, vet, lint, test)
 
 **Structured logging** uses `log/slog`. Terminal gets text format, non-terminal (Docker) gets JSON.
 
+**`/exec` output is mirrored into the log ring buffer** under a distinct `source: "exec"` (not `"stdout"`/`"stderr"`, which are reserved for the managed process's own streams) with a monotonic `command_id`, in addition to being returned on the HTTP response. Capped per command. The response body is still authoritative. Fetch all output for a single command with `GET /logs?source=exec&command_id=N`; `/exec` returns the `command_id` in its JSON response so callers can correlate. Customer-facing log consumers restrict to `source=stdout,stderr` so orchestration output stays out of end-user-visible surfaces. `GET /logs` is unsanitized; callers that surface it to end users must sanitize on their side.
+
 ## golangci-lint v2
 
 **Version:** v2.8.0 (required for CI consistency). Config format is v2 (`linters.settings`, `formatters.settings`).

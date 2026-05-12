@@ -333,6 +333,61 @@ func TestLogManager_GetLogsWithSince(t *testing.T) {
 	}
 }
 
+func TestLogManager_GetLogsFilterByCommandID(t *testing.T) {
+	t.Parallel()
+	lm := NewManager(100)
+
+	// Interleave entries from three different sources: command 1, command 2,
+	// and a non-exec entry with CommandID=0 (matches what the managed process
+	// and health monitor emit).
+	base := time.Now().Add(-10 * time.Second)
+	entries := []LogEntry{
+		{Timestamp: base.Add(1 * time.Second), Source: "exec", Message: "cmd1-a", CommandID: 1},
+		{Timestamp: base.Add(2 * time.Second), Source: "stdout", Message: "managed-a"},
+		{Timestamp: base.Add(3 * time.Second), Source: "exec", Message: "cmd2-a", CommandID: 2},
+		{Timestamp: base.Add(4 * time.Second), Source: "exec", Message: "cmd1-b", CommandID: 1},
+		{Timestamp: base.Add(5 * time.Second), Source: "exec", Message: "cmd2-b", CommandID: 2},
+	}
+	for _, e := range entries {
+		lm.AddLog(e)
+	}
+
+	// Filter by CommandID=1 returns only that command's lines.
+	resp, err := lm.GetLogs(GetRequest{CommandID: 1})
+	if err != nil {
+		t.Fatalf("GetLogs CommandID=1: %v", err)
+	}
+	if len(resp.Logs) != 2 {
+		t.Fatalf("expected 2 entries for CommandID=1, got %d: %+v", len(resp.Logs), resp.Logs)
+	}
+	for _, got := range resp.Logs {
+		if got.CommandID != 1 {
+			t.Errorf("expected CommandID=1, got %d (message=%q)", got.CommandID, got.Message)
+		}
+	}
+
+	// Combined filter: Source=exec + CommandID=2 → only command 2's exec
+	// lines (ignores the managed-process entry whose CommandID is 0).
+	resp, err = lm.GetLogs(GetRequest{Source: "exec", CommandID: 2})
+	if err != nil {
+		t.Fatalf("GetLogs Source=exec CommandID=2: %v", err)
+	}
+	if len(resp.Logs) != 2 {
+		t.Fatalf("expected 2 entries for Source=exec CommandID=2, got %d", len(resp.Logs))
+	}
+
+	// CommandID=0 is the "no filter" sentinel, not a match for zero-valued
+	// entries — otherwise a caller that forgets to set CommandID would
+	// accidentally restrict results to managed-process lines only.
+	resp, err = lm.GetLogs(GetRequest{CommandID: 0})
+	if err != nil {
+		t.Fatalf("GetLogs CommandID=0: %v", err)
+	}
+	if len(resp.Logs) != len(entries) {
+		t.Fatalf("expected all %d entries when CommandID=0 (no filter), got %d", len(entries), len(resp.Logs))
+	}
+}
+
 func TestLogManager_GetLogsInvalidSince(t *testing.T) {
 	t.Parallel()
 	lm := NewManager(100)

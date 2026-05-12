@@ -46,7 +46,13 @@ describe('CustomerLogsService', () => {
 
     mockDevSupervisorClient = {
       isAvailable: vi.fn().mockReturnValue(true),
-      getLogs: vi.fn().mockResolvedValue(mockLogs)
+      // Mirror the real supervisor's server-side source filter so callers
+      // that request `source: 'stdout'` only get stdout entries — matters
+      // now that CustomerLogsService defaults to filtered-per-source
+      // requests instead of one unfiltered call.
+      getLogs: vi.fn().mockImplementation((opts: { source?: string } = {}) =>
+        Promise.resolve(opts.source ? mockLogs.filter((l) => l.source === opts.source) : mockLogs)
+      )
     };
 
     mockAppRepository = {
@@ -148,6 +154,26 @@ describe('CustomerLogsService', () => {
       expect(result.code).toBe('INVALID_LINES');
     });
 
+    it('defaults to stdout+stderr and never forwards source="exec" or an unfiltered request', async () => {
+      // Leak guard: when no `sources` is provided, CustomerLogsService must
+      // restrict the upstream request to managed-process streams so /exec
+      // orchestration output (Source="exec" in the supervisor ring buffer)
+      // doesn't reach customer-facing surfaces or the agent LLM tool.
+      const getLogsSpy = vi.fn().mockResolvedValue([]);
+      mockDevSupervisorClient.getLogs = getLogsSpy;
+
+      await service.getLogs({ ...defaultParams });
+
+      const sources = getLogsSpy.mock.calls.map(([opts]) => opts.source);
+      // Every upstream call must specify a source — never an unfiltered
+      // (empty/undefined) request.
+      expect(sources.every((s) => s === 'stdout' || s === 'stderr')).toBe(true);
+      // And the set of sources covers both managed-process streams.
+      expect(new Set(sources)).toEqual(new Set(['stdout', 'stderr']));
+      // Specifically, "exec" must not appear.
+      expect(sources).not.toContain('exec');
+    });
+
     it('should filter by sources array (stdout)', async () => {
       const result = await service.getLogs({ ...defaultParams, sources: ['stdout'] });
 
@@ -212,7 +238,9 @@ describe('CustomerLogsService', () => {
         { timestamp: '2025-01-22T10:00:00Z', source: 'stdout', message: 'Info log', level: 'info' },
         { timestamp: '2025-01-22T10:01:00Z', source: 'stdout', message: 'Debug log', level: 'debug' }
       ];
-      mockDevSupervisorClient.getLogs = vi.fn().mockResolvedValue(logsWithDebug);
+      mockDevSupervisorClient.getLogs = vi.fn().mockImplementation((opts: { source?: string } = {}) =>
+        Promise.resolve(opts.source ? logsWithDebug.filter((l) => l.source === opts.source) : logsWithDebug)
+      );
 
       const result = await service.getLogs({ ...defaultParams });
 
@@ -258,6 +286,34 @@ describe('CustomerLogsService', () => {
       expect(result.logs[1].message).toContain('later stdout');
     });
 
+    it('returns the newest N sanitized entries, not the oldest, when total exceeds lines', async () => {
+      // Regression: fan-out across sources means each per-source call
+      // returns up to `lines` entries, and naive slice(0, lines) on the
+      // merged array discards the newest entries — where failure signals
+      // (build errors, stack traces, exit messages) actually live.
+      //
+      // Construct two sources whose merged timeline has 5 entries, request
+      // lines=2, and assert we get the last two (newest) — not the first two.
+      const stdoutLogs: LogEntry[] = [
+        { timestamp: '2025-01-22T10:00:00Z', source: 'stdout', message: 'oldest-stdout', level: 'info' },
+        { timestamp: '2025-01-22T10:02:00Z', source: 'stdout', message: 'middle-stdout', level: 'info' },
+        { timestamp: '2025-01-22T10:04:00Z', source: 'stdout', message: 'newest-stdout', level: 'info' }
+      ];
+      const stderrLogs: LogEntry[] = [
+        { timestamp: '2025-01-22T10:01:00Z', source: 'stderr', message: 'oldest-stderr', level: 'error' },
+        { timestamp: '2025-01-22T10:03:00Z', source: 'stderr', message: 'newest-stderr', level: 'error' }
+      ];
+      mockDevSupervisorClient.getLogs = vi.fn().mockImplementation((opts: { source?: string } = {}) =>
+        Promise.resolve(opts.source === 'stderr' ? stderrLogs : stdoutLogs)
+      );
+
+      const result = await service.getLogs({ ...defaultParams, lines: 2, sources: ['stdout', 'stderr'] });
+
+      expect(result.success).toBe(true);
+      expect(result.logs).toHaveLength(2);
+      expect(result.logs.map(l => l.message)).toEqual(['newest-stderr', 'newest-stdout']);
+    });
+
     it('should use single source when sources array has one element', async () => {
       const result = await service.getLogs({ ...defaultParams, sources: ['stdout'] });
 
@@ -276,15 +332,9 @@ describe('CustomerLogsService', () => {
       expect(result.code).toBe('MISSING_TARGET');
     });
 
-    it('should return all sources when sources is not provided', async () => {
-      const result = await service.getLogs({ ...defaultParams });
-
-      expect(result.success).toBe(true);
-      // getLogs should be called without source filter
-      expect(mockDevSupervisorClient.getLogs).toHaveBeenCalledWith(
-        expect.not.objectContaining({ source: expect.anything() })
-      );
-    });
+    // NOTE: the former test "should return all sources when sources is not
+    // provided" was removed — it documented the leak we're now fixing. The
+    // new behavior is covered by the "defaults to stdout+stderr" test above.
   });
 
   describe('getPreviewLogs', () => {

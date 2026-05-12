@@ -83,23 +83,34 @@ export interface RestartResult {
 }
 
 export interface LogOptions {
-  /** Source filter (stdout, stderr) */
+  /** Source filter (stdout, stderr, exec, health_monitor, ...) */
   source?: string;
   /** Number of lines to retrieve */
   lines?: number;
   /** Since timestamp (ISO 8601) */
   since?: string;
+  /**
+   * Restrict results to entries produced by a single /exec invocation.
+   * Combine with `source: 'exec'` to scope to one command's output.
+   */
+  commandId?: number;
 }
 
 export interface LogEntry {
   /** Timestamp */
   timestamp: string;
-  /** Source (stdout, stderr, system) */
+  /** Source (stdout, stderr, exec, health_monitor, ...) */
   source: string;
   /** Log level */
   level?: string;
   /** Log message */
   message: string;
+  /**
+   * Non-zero for entries produced by /exec; correlates lines emitted by
+   * the same command and matches the `command_id` returned on the /exec
+   * response body.
+   */
+  command_id?: number;
 }
 
 export interface HealthCheckConfig {
@@ -530,6 +541,7 @@ export class DevSupervisorClient {
       if (options.source) params.set('source', options.source);
       if (options.lines) params.set('lines', options.lines.toString());
       if (options.since) params.set('since', options.since);
+      if (options.commandId) params.set('command_id', options.commandId.toString());
 
       const url = `/logs${params.toString() ? '?' + params.toString() : ''}`;
       const response = await this.makeRequest('GET', url);

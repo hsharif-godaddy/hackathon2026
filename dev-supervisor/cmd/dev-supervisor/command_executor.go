@@ -163,10 +163,21 @@ func (ce *CommandExecutor) Execute(req validation.CommandRequest) (*CommandResul
 		result.TimedOut = true
 		result.Error = "command timed out"
 		result.ExitCode = -1
+		// Capture bytes already written before the kill. The non-timeout
+		// branch below is the only other site that populates these fields,
+		// so without this a timed-out `pnpm install`/build — the most
+		// diagnostically valuable failure mode — would surface no output
+		// to callers or to the ring-buffer mirror in recordExecOutput.
+		if req.CaptureOutput {
+			result.Stdout = stdout.String()
+			result.Stderr = stderr.String()
+		}
 		slog.Warn("command_executor.execute.timeout",
 			"command_preview", commandPreview,
 			"timeout_seconds", timeout,
 			"duration_ms", result.Duration,
+			"stdout_length", len(result.Stdout),
+			"stderr_length", len(result.Stderr),
 		)
 		return result, nil
 	}

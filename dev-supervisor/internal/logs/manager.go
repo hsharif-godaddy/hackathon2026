@@ -69,6 +69,13 @@ func (lm *Manager) GetLogs(req GetRequest) (*GetResponse, error) {
 			continue
 		}
 
+		// Filter by command ID. Zero is the "no filter" sentinel so
+		// callers that omit CommandID see every entry (including those
+		// with CommandID=0 from the managed process and health monitor).
+		if req.CommandID != 0 && log.CommandID != req.CommandID {
+			continue
+		}
+
 		filteredLogs = append(filteredLogs, log)
 	}
 

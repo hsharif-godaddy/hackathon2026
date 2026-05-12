@@ -132,11 +132,21 @@ export class PaaSDiagnoseService implements DiagnoseService {
 
     // Internal log-fetch window: last 3 hours, up to 500 lines.
     const sinceIso = toIsoDateString(startedAt, DEFAULT_SINCE_HOURS * 60);
+    // Include Source="exec" only when diagnosing the preview container —
+    // that's where /exec commands (install/build during zip-upload etc.)
+    // actually run. The publish container executes `$pm start` and never
+    // runs /exec builds, so including exec there would only surface stale
+    // entries. Passing sources explicitly (rather than relying on the
+    // customer-logs default) makes diagnose's intent clear at the call site
+    // and robust to future default changes.
+    const sources: Array<'stdout' | 'stderr' | 'exec'> =
+      request.target === 'preview' ? ['stdout', 'stderr', 'exec'] : ['stdout', 'stderr'];
     const logsResponse = await this.customerLogsService.getLogs({
       appId: request.appId,
       target: request.target,
       since: sinceIso,
       lines: this.defaultLines,
+      sources,
     });
 
     if (!logsResponse.success) {
