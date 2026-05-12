@@ -34,11 +34,13 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
         with:
-          node-version: "22.12"
+          # Node 22.12 shipped a corepack with the pre-rotation npm signing
+          # keys; `corepack prepare` fails with "Cannot find matching keyid"
+          # against current pnpm releases (nodejs/corepack#612). 22.22.x carries
+          # the updated keys. packageManager's +sha512 suffix continues to pin
+          # the pnpm binary.
+          node-version: "22.22.2"
 
-      # Uses the corepack shim bundled with Node 22 — no separate install.
-      # `corepack enable` activates the version declared in packageManager,
-      # whose +sha512 integrity suffix pins the pnpm binary.
       - name: Enable Corepack and activate pnpm
         run: |
           set -euo pipefail
