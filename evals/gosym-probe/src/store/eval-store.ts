@@ -829,9 +829,6 @@ export class EvalStore {
       ...(scenario.executionMode !== undefined && {
         executionMode: scenario.executionMode,
       }),
-      ...(scenario.maxTurns !== undefined && {
-        maxTurns: scenario.maxTurns,
-      }),
       persona: personaWithoutPrompt,
       goals: scenario.goals,
       evaluators: scenario.evaluators.map((e) => e.name),

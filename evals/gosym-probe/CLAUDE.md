@@ -212,8 +212,6 @@ export function buildMyScenario(
     ],
     evaluators: [new JTBDCompletionEvaluator(gocode)],
     trials: 3,
-    // maxTurns?: number  — optional; falls back to config.eval.maxTurns
-    //                       (default 30) when omitted
   };
 }
 ```

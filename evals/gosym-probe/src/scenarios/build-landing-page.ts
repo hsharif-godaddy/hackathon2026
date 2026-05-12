@@ -30,8 +30,6 @@ export function buildLandingPageScenario(
       persona: beginnerPersona,
       suite: null,
       trials: 1,
-      agentStepBudget: 15,
-      maxTurns: 8,
     },
     gocode,
     ctrlPlane,

@@ -378,7 +378,7 @@ describe('EvalStore', () => {
 
     it('omits systemPrompt from scenario-config.json persona', async () => {
       const store = new EvalStore();
-      const scenario = makeScenario({ maxTurns: 5 });
+      const scenario = makeScenario();
       const result = makeScenarioResult(scenario, [makeTrialResult()]);
 
       await store.save('run-001', [result], [scenario], makeConfig());
@@ -390,7 +390,6 @@ describe('EvalStore', () => {
       expect(parsed.persona).not.toHaveProperty('systemPrompt');
       expect(parsed.persona.name).toBe('Test User');
       expect(parsed.persona.description).toBe('A test user');
-      expect(parsed.maxTurns).toBe(5);
     });
 
     it('writes transcript.json with snapshotCount, no binary data', async () => {

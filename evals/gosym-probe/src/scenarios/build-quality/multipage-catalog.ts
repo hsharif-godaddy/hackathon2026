@@ -54,8 +54,6 @@ export function multipageCatalogScenario(
           assertion: 'positive',
         },
       ],
-      agentStepBudget: 30,
-      maxTurns: 15,
     },
     gocode,
     ctrlPlane,

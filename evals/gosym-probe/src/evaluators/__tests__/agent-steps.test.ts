@@ -4,6 +4,10 @@ import type { Transcript, Turn } from '../../runner/transcript.js';
 import type { Scenario } from '../../scenarios/types.js';
 import type { Persona } from '../../personas/types.js';
 
+function expectedSigmoid(count: number): number {
+  return 1 / (1 + Math.exp(0.2 * (count - 15)));
+}
+
 const mockPersona: Persona = {
   name: 'test',
   description: '',
@@ -47,7 +51,7 @@ function makeScenario(overrides: Partial<Scenario> = {}): Scenario {
 
 describe('AgentStepsEvaluator', () => {
   it("returns 'unknown' when no assistant turns have totalSteps", async () => {
-    const evaluator = new AgentStepsEvaluator({ maxSteps: 10 });
+    const evaluator = new AgentStepsEvaluator();
     const result = await evaluator.evaluate(
       makeTranscript([makeAssistantTurn()]),
       makeScenario(),
@@ -56,7 +60,7 @@ describe('AgentStepsEvaluator', () => {
   });
 
   it("returns 'unknown' when transcript has only user turns", async () => {
-    const evaluator = new AgentStepsEvaluator({ maxSteps: 10 });
+    const evaluator = new AgentStepsEvaluator();
     const result = await evaluator.evaluate(
       makeTranscript([makeUserTurn()]),
       makeScenario(),
@@ -64,109 +68,79 @@ describe('AgentStepsEvaluator', () => {
     expect(result.verdict).toBe('unknown');
   });
 
-  it('scores 1.0 when totalSteps sums to 0', async () => {
-    const evaluator = new AgentStepsEvaluator({ maxSteps: 10 });
+  it('returns high score when totalSteps sums to 0', async () => {
+    const evaluator = new AgentStepsEvaluator();
     const result = await evaluator.evaluate(
       makeTranscript([makeAssistantTurn(0)]),
       makeScenario(),
     );
-    expect(result.score).toBe(1.0);
+    expect(result.score).toBeCloseTo(expectedSigmoid(0), 10);
     expect(result.verdict).toBe('observed');
   });
 
-  it("returns 'observed' at 2 of 10 max steps (score 0.8)", async () => {
-    const evaluator = new AgentStepsEvaluator({ maxSteps: 10 });
+  it('applies sigmoid normalization to step count', async () => {
+    const evaluator = new AgentStepsEvaluator();
     const result = await evaluator.evaluate(
-      makeTranscript([makeAssistantTurn(2)]),
+      makeTranscript([makeAssistantTurn(4)]),
       makeScenario(),
     );
-    expect(result.score).toBeCloseTo(0.8);
-    expect(result.verdict).toBe('observed');
-  });
-
-  it("returns 'observed' at boundary (6 of 10 → score 0.4)", async () => {
-    const evaluator = new AgentStepsEvaluator({ maxSteps: 10 });
-    const result = await evaluator.evaluate(
-      makeTranscript([makeAssistantTurn(6)]),
-      makeScenario(),
-    );
-    expect(result.score).toBeCloseTo(0.4);
-    expect(result.verdict).toBe('observed');
-  });
-
-  it("returns 'observed' when steps meet max", async () => {
-    const evaluator = new AgentStepsEvaluator({ maxSteps: 10 });
-    const result = await evaluator.evaluate(
-      makeTranscript([makeAssistantTurn(10)]),
-      makeScenario(),
-    );
-    expect(result.score).toBe(0);
-    expect(result.verdict).toBe('observed');
-  });
-
-  it('score clamps to 0 when steps exceed max', async () => {
-    const evaluator = new AgentStepsEvaluator({ maxSteps: 10 });
-    const result = await evaluator.evaluate(
-      makeTranscript([makeAssistantTurn(15)]),
-      makeScenario(),
-    );
-    expect(result.score).toBe(0);
+    expect(result.score).toBeCloseTo(expectedSigmoid(4), 10);
     expect(result.verdict).toBe('observed');
   });
 
   it('sums totalSteps across multiple assistant turns', async () => {
-    const evaluator = new AgentStepsEvaluator({ maxSteps: 10 });
+    const evaluator = new AgentStepsEvaluator();
     const result = await evaluator.evaluate(
-      makeTranscript([makeAssistantTurn(1), makeAssistantTurn(1)]),
+      makeTranscript([makeAssistantTurn(3), makeAssistantTurn(5)]),
       makeScenario(),
     );
-    expect(result.score).toBeCloseTo(0.8);
+    expect(result.score).toBeCloseTo(expectedSigmoid(8), 10);
     expect(result.verdict).toBe('observed');
   });
 
   it('only counts assistant turns; user turns are ignored', async () => {
-    const evaluator = new AgentStepsEvaluator({ maxSteps: 10 });
+    const evaluator = new AgentStepsEvaluator();
     const result = await evaluator.evaluate(
-      makeTranscript([makeAssistantTurn(2), makeUserTurn()]),
+      makeTranscript([makeAssistantTurn(4), makeUserTurn()]),
       makeScenario(),
     );
-    expect(result.score).toBeCloseTo(0.8);
+    expect(result.score).toBeCloseTo(expectedSigmoid(4), 10);
   });
 
-  it('details contains totalSteps and maxSteps', async () => {
-    const evaluator = new AgentStepsEvaluator({ maxSteps: 10 });
+  it('details contains totalSteps', async () => {
+    const evaluator = new AgentStepsEvaluator();
     const result = await evaluator.evaluate(
       makeTranscript([makeAssistantTurn(3)]),
       makeScenario(),
     );
     expect(result.details?.totalSteps).toBe(3);
-    expect(result.details?.maxSteps).toBe(10);
+  });
+
+  it('includes evalVersion in result', async () => {
+    const evaluator = new AgentStepsEvaluator();
+    const result = await evaluator.evaluate(
+      makeTranscript([makeAssistantTurn(5)]),
+      makeScenario(),
+    );
+    expect(result.evalVersion).toBe('1.0');
+  });
+
+  it("returns 'unknown' when totalSteps sum is NaN", async () => {
+    const evaluator = new AgentStepsEvaluator();
+    const result = await evaluator.evaluate(
+      makeTranscript([makeAssistantTurn(NaN)]),
+      makeScenario(),
+    );
+    expect(result.verdict).toBe('unknown');
+    expect(result.reason).toContain('Invalid totalSteps');
+    expect(result.evalVersion).toBe('1.0');
   });
 
   it('has correct name and properties', () => {
-    const evaluator = new AgentStepsEvaluator({ maxSteps: 10 });
+    const evaluator = new AgentStepsEvaluator();
     expect(evaluator.name).toBe('agent-steps');
     expect(evaluator.regressionMode).toBe('score');
+    expect(evaluator.evalVersion).toBe('1.0');
     expect(evaluator.lowerIsBetter).toBe(false);
-  });
-
-  it('throws RangeError when maxSteps is 0', () => {
-    expect(() => new AgentStepsEvaluator({ maxSteps: 0 }))
-      .toThrow(RangeError);
-  });
-
-  it('throws RangeError when maxSteps is negative', () => {
-    expect(() => new AgentStepsEvaluator({ maxSteps: -5 }))
-      .toThrow(RangeError);
-  });
-
-  it('throws RangeError when maxSteps is NaN', () => {
-    expect(() => new AgentStepsEvaluator({ maxSteps: NaN }))
-      .toThrow(RangeError);
-  });
-
-  it('throws RangeError when maxSteps is Infinity', () => {
-    expect(() => new AgentStepsEvaluator({ maxSteps: Infinity }))
-      .toThrow(RangeError);
   });
 });

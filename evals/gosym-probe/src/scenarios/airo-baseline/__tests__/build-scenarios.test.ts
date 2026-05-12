@@ -77,9 +77,7 @@ function validScenario(overrides: Record<string, unknown> = {}): Record<string, 
     },
     customerSummary: 'A test customer',
     testingCapability: 'Test capability',
-    complexity: 'easy',
     trials: 1,
-    maxTurns: 25,
     executionMode: 'sequential',
     llmConfig: {},
     browserConfig: {},
@@ -173,10 +171,10 @@ describe('airo baseline scenarios', function airoBaselineTests() {
     );
   });
 
-  it('accepts scenario YAML without optional complexity', async function optionalComplexity() {
+  it('accepts scenario YAML without extra fields', async function minimalScenario() {
     const path = await writeScenarios(
       JSON.stringify({
-        scenario1: validScenario({ complexity: undefined }),
+        scenario1: validScenario(),
       }),
     );
 

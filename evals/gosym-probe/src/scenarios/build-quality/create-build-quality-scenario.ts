@@ -32,14 +32,6 @@ export interface BuildQualityConfig {
   // Required: always varies per scenario
   name: string;
   goals: [ScenarioGoal, ...ScenarioGoal[]];
-  /** Upper bound on agent steps for AgentStepsEvaluator.
-   *  Must be > 0 (zero causes NaN via 0/0 in the score formula).
-   *  Should exceed maxTurns because multi-step agent behavior
-   *  means total steps typically exceed total turns. */
-  agentStepBudget: number;
-  /** Max conversation turns before the simulation terminates.
-   *  Must be > 0 (zero exits the simulation loop immediately). */
-  maxTurns: number;
 
   // Optional with defaults
   staticFirstMessage?: string;
@@ -54,16 +46,6 @@ export function createBuildQualityScenario(
   gocode: GocodeClient,
   ctrlPlane: AABCtrlPlaneClient,
 ): Scenario {
-  if (!Number.isFinite(config.agentStepBudget) || config.agentStepBudget <= 0) {
-    throw new RangeError(
-      `[${config.name}] agentStepBudget must be > 0, got ${config.agentStepBudget}`,
-    );
-  }
-  if (!Number.isFinite(config.maxTurns) || config.maxTurns <= 0) {
-    throw new RangeError(
-      `[${config.name}] maxTurns must be > 0, got ${config.maxTurns}`,
-    );
-  }
   if (config.trials !== undefined
     && (!Number.isFinite(config.trials) || config.trials <= 0)) {
     throw new RangeError(
@@ -77,7 +59,7 @@ export function createBuildQualityScenario(
     new PromptEfficiencyEvaluator(),
     new JTBDCompletionEvaluator(gocode),
     ...createBuildQualityEvaluators(gocode),
-    new AgentStepsEvaluator({ maxSteps: config.agentStepBudget }),
+    new AgentStepsEvaluator(),
     new LatencyEvaluator(),
     new ToolParallelismEvaluator(),
     new TurnDurationEvaluator(),
@@ -102,7 +84,6 @@ export function createBuildQualityScenario(
     evaluators: allEvaluators,
     trials: config.trials ?? 3,
     executionMode: 'parallel',
-    maxTurns: config.maxTurns,
 
     setup: async () => {
       const { appId, previewUrl } =

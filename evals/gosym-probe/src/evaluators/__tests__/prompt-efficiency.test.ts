@@ -36,98 +36,75 @@ function makeScenario(overrides: Partial<Scenario> = {}): Scenario {
   };
 }
 
+function expectedSigmoid(count: number): number {
+  return 1 / (1 + Math.exp(0.2 * (count - 15)));
+}
+
 describe('PromptEfficiencyEvaluator', () => {
   const evaluator = new PromptEfficiencyEvaluator();
 
-  it('scores 1.0 with zero user turns', async () => {
+  it('returns sigmoid score for zero user turns', async () => {
     const result = await evaluator.evaluate(
       makeTranscript({ turns: [] }),
-      makeScenario({ maxTurns: 10 }),
+      makeScenario(),
     );
-    expect(result.score).toBe(1.0);
+    expect(result.score).toBeCloseTo(expectedSigmoid(0), 10);
     expect(result.verdict).toBe('observed');
   });
 
-  it('scores high with few turns relative to maxTurns', async () => {
-    // 2 of 10 max → score 0.8
+  it('applies sigmoid normalization to single turn', async () => {
+    const result = await evaluator.evaluate(
+      makeTranscript({ turns: [makeTurn('user')] }),
+      makeScenario(),
+    );
+    expect(result.score).toBeCloseTo(expectedSigmoid(1), 10);
+    expect(result.verdict).toBe('observed');
+  });
+
+  it('applies sigmoid normalization to multiple turns', async () => {
     const turns = [makeTurn('user'), makeTurn('user')];
     const result = await evaluator.evaluate(
       makeTranscript({ turns }),
-      makeScenario({ maxTurns: 10 }),
+      makeScenario(),
     );
-    expect(result.verdict).toBe('observed');
-    expect(result.score).toBeCloseTo(0.8);
-  });
-
-  it("returns 'observed' when approaching maxTurns", async () => {
-    // 6 user turns of 10 max → score 0.4
-    const turns = Array.from({ length: 6 }, () => makeTurn('user'));
-    const result = await evaluator.evaluate(
-      makeTranscript({ turns }),
-      makeScenario({ maxTurns: 10 }),
-    );
+    expect(result.score).toBeCloseTo(expectedSigmoid(2), 10);
     expect(result.verdict).toBe('observed');
   });
 
-  it("returns 'observed' when user turns equal maxTurns", async () => {
-    const turns = Array.from({ length: 10 }, () => makeTurn('user'));
-    const result = await evaluator.evaluate(
-      makeTranscript({ turns }),
-      makeScenario({ maxTurns: 10 }),
-    );
-    expect(result.score).toBe(0);
-    expect(result.verdict).toBe('observed');
-  });
-
-  it('score does not go below 0 when turns exceed maxTurns', async () => {
-    const turns = Array.from({ length: 15 }, () => makeTurn('user'));
-    const result = await evaluator.evaluate(
-      makeTranscript({ turns }),
-      makeScenario({ maxTurns: 10 }),
-    );
-    expect(result.score).toBe(0);
-    expect(result.verdict).toBe('observed');
-  });
-
-  it('only counts user turns, not assistant turns', async () => {
+  it('only counts user turns; assistant turns are ignored', async () => {
     const turns = [
       ...Array.from({ length: 2 }, () => makeTurn('user')),
       ...Array.from({ length: 8 }, () => makeTurn('assistant')),
     ];
     const result = await evaluator.evaluate(
       makeTranscript({ turns }),
-      makeScenario({ maxTurns: 10 }),
+      makeScenario(),
     );
-    // 2 user turns of 10 max → score 0.8
-    expect(result.score).toBeCloseTo(0.8);
+    expect(result.score).toBeCloseTo(expectedSigmoid(2), 10);
     expect(result.verdict).toBe('observed');
   });
 
-  it('uses scenario.maxTurns when set', async () => {
-    const turns = [makeTurn('user'), makeTurn('user')]; // 2 of 4
+  it('details contains userTurns', async () => {
+    const turns = [makeTurn('user'), makeTurn('user'), makeTurn('assistant')];
     const result = await evaluator.evaluate(
       makeTranscript({ turns }),
-      makeScenario({ maxTurns: 4 }),
-    );
-    expect(result.score).toBeCloseTo(0.5);
-  });
-
-  it('includes userTurns and maxTurns in details', async () => {
-    const turns = [
-      makeTurn('user'),
-      makeTurn('user'),
-      makeTurn('assistant'),
-    ];
-    const result = await evaluator.evaluate(
-      makeTranscript({ turns }),
-      makeScenario({ maxTurns: 10 }),
+      makeScenario(),
     );
     expect(result.details?.userTurns).toBe(2);
-    expect(result.details?.maxTurns).toBe(10);
+  });
+
+  it('includes evalVersion in result', async () => {
+    const result = await evaluator.evaluate(
+      makeTranscript({ turns: [makeTurn('user')] }),
+      makeScenario(),
+    );
+    expect(result.evalVersion).toBe('1.0');
   });
 
   it('has correct properties', () => {
+    expect(evaluator.name).toBe('prompt-efficiency');
     expect(evaluator.regressionMode).toBe('score');
+    expect(evaluator.evalVersion).toBe('1.0');
     expect(evaluator.lowerIsBetter).toBe(false);
   });
 });

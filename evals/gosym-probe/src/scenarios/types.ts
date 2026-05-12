@@ -40,7 +40,6 @@ export interface Scenario {
   /** Default: 'sequential'. Use 'parallel' only for stateless/remote
    *  agents that can handle concurrent access. */
   executionMode?: 'parallel' | 'sequential';
-  maxTurns?: number;
   referenceSolution?: string | DOMSnapshot;
   expectedTools?: ToolCallAssertion[];
   setup?: () => Promise<SetupContext | void>;

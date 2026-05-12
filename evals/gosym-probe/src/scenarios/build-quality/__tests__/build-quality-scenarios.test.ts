@@ -37,25 +37,21 @@ const scenarios: {
   builder: ScenarioBuilder;
   name: string;
   goalCount: number;
-  expectedMaxTurns: number;
 }[] = [
   {
     builder: simplePortfolioScenario,
     name: 'simple-portfolio',
     goalCount: 1,
-    expectedMaxTurns: 5,
   },
   {
     builder: businessSiteScenario,
     name: 'business-site',
     goalCount: 2,
-    expectedMaxTurns: 8,
   },
   {
     builder: multipageCatalogScenario,
     name: 'multipage-catalog',
     goalCount: 3,
-    expectedMaxTurns: 15,
   },
 ];
 
@@ -65,7 +61,7 @@ describe('build-quality suite', () => {
 
   describe.each(scenarios)(
     '$name',
-    ({ builder, name, goalCount, expectedMaxTurns }) => {
+    ({ builder, name, goalCount }) => {
       const scenario = builder(gocode, ctrlPlane);
 
       it('has correct name and suite', () => {
@@ -95,10 +91,6 @@ describe('build-quality suite', () => {
 
       it('uses parallel execution', () => {
         expect(scenario.executionMode).toBe('parallel');
-      });
-
-      it('has correct maxTurns', () => {
-        expect(scenario.maxTurns).toBe(expectedMaxTurns);
       });
 
       it('has a static first message', () => {

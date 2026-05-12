@@ -70,7 +70,6 @@ describe('scenario shapes', () => {
     const scenario = buildLandingPageScenario(gocode, ctrlPlane);
     assertScenarioShape(scenario, 'build-landing-page');
     expect(scenario.evaluators.map((e) => e.name)).toContain('agent-steps');
-    expect(scenario.maxTurns).toBe(8);
   });
 
   it('pvs-symptom-blank-page has token evaluators and valid shape', () => {

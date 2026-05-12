@@ -12,23 +12,6 @@ import {
   loadAiroBaselineSyntheticUsers,
 } from './loader.js';
 
-function defaultMaxTurns(complexity: string | null): number | undefined {
-  if (!complexity) return undefined;
-
-  switch (complexity.toLowerCase()) {
-    case 'easy':
-      return 25;
-    case 'hard':
-    case 'adversarial':
-      return 45;
-    case 'out-of-bound':
-    case 'out-of-bounds':
-      return 30;
-    default:
-      return undefined;
-  }
-}
-
 type Environment = Record<string, string | undefined>;
 
 function environment(): Environment {
@@ -74,7 +57,6 @@ export function buildAiroBaselineScenarioFromSyntheticUser(
     evaluators: useBaselineEvaluators ? createBaselineEvaluators(gocode) : [],
     trials: scenarioDefinition.trials,
     executionMode: scenarioDefinition.executionMode,
-    maxTurns: scenarioDefinition.maxTurns ?? defaultMaxTurns(scenarioDefinition.complexity ?? null),
 
     setup: async () => {
       const { appId, previewUrl } = await ctrlPlane.provisionApp();

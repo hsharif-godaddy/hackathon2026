@@ -31,7 +31,6 @@ export function complexPromptLatencyScenario(
   return {
     name: 'complex-prompt-latency',
     persona: standardPersona,
-    maxTurns: 30,
     goals: [
       {
         description:

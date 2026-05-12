@@ -32,8 +32,6 @@ export function simplePortfolioScenario(
           assertion: 'positive',
         },
       ],
-      agentStepBudget: 10,
-      maxTurns: 5,
     },
     gocode,
     ctrlPlane,

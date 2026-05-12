@@ -43,8 +43,6 @@ export function businessSiteScenario(
           assertion: 'positive',
         },
       ],
-      agentStepBudget: 20,
-      maxTurns: 8,
     },
     gocode,
     ctrlPlane,

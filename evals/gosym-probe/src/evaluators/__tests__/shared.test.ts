@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { extractBodyHtml, escapeRegExp, clamp01, readSnapshotHtml } from '../shared.js';
+import { extractBodyHtml, escapeRegExp, clamp01, readSnapshotHtml, sigmoidScore, SIGMOID_MIDPOINT, SIGMOID_STEEPNESS } from '../shared.js';
 import type { DOMSnapshot } from '../../clients/dom-capture.js';
 
 vi.mock('node:fs/promises', () => ({
@@ -194,5 +194,69 @@ describe('readSnapshotHtml', () => {
     const result = await readSnapshotHtml(snapshot);
     expect(result).toBe('<div>inline wins</div>');
     expect(readFile).not.toHaveBeenCalled();
+  });
+});
+
+describe('sigmoidScore', () => {
+  const midpoint = 15;
+  const steepness = 0.2;
+
+  it('exports shared SIGMOID_MIDPOINT and SIGMOID_STEEPNESS constants', () => {
+    expect(SIGMOID_MIDPOINT).toBe(15);
+    expect(SIGMOID_STEEPNESS).toBe(0.2);
+  });
+
+  it('returns 0.5 at the midpoint', () => {
+    expect(sigmoidScore(midpoint, midpoint, steepness)).toBeCloseTo(0.5, 10);
+  });
+
+  it('returns high score for low counts', () => {
+    expect(sigmoidScore(1, midpoint, steepness)).toBeGreaterThan(0.9);
+    expect(sigmoidScore(5, midpoint, steepness)).toBeGreaterThan(0.85);
+  });
+
+  it('returns low score for high counts', () => {
+    expect(sigmoidScore(30, midpoint, steepness)).toBeLessThan(0.1);
+  });
+
+  it('is monotonically decreasing', () => {
+    expect(sigmoidScore(5, midpoint, steepness)).toBeGreaterThan(sigmoidScore(10, midpoint, steepness));
+    expect(sigmoidScore(10, midpoint, steepness)).toBeGreaterThan(sigmoidScore(20, midpoint, steepness));
+    expect(sigmoidScore(20, midpoint, steepness)).toBeGreaterThan(sigmoidScore(30, midpoint, steepness));
+  });
+
+  it('returns value in (0, 1) for any non-negative count', () => {
+    expect(sigmoidScore(0, midpoint, steepness)).toBeGreaterThan(0);
+    expect(sigmoidScore(0, midpoint, steepness)).toBeLessThan(1);
+    expect(sigmoidScore(100, midpoint, steepness)).toBeGreaterThan(0);
+    expect(sigmoidScore(100, midpoint, steepness)).toBeLessThan(1);
+  });
+
+  it('throws RangeError when count is NaN', () => {
+    expect(() => sigmoidScore(NaN, midpoint, steepness)).toThrow(RangeError);
+  });
+
+  it('throws RangeError when count is negative', () => {
+    expect(() => sigmoidScore(-5, midpoint, steepness)).toThrow(RangeError);
+  });
+
+  it('throws RangeError when midpoint is NaN', () => {
+    expect(() => sigmoidScore(5, NaN, steepness)).toThrow(RangeError);
+  });
+
+  it('throws RangeError when midpoint is Infinity', () => {
+    expect(() => sigmoidScore(5, Infinity, steepness)).toThrow(RangeError);
+  });
+
+  it('throws RangeError when steepness is 0', () => {
+    expect(() => sigmoidScore(5, midpoint, 0)).toThrow(RangeError);
+  });
+
+  it('throws RangeError when steepness is negative', () => {
+    expect(() => sigmoidScore(5, midpoint, -0.1)).toThrow(RangeError);
+  });
+
+  it('throws RangeError when steepness is NaN', () => {
+    expect(() => sigmoidScore(5, midpoint, NaN)).toThrow(RangeError);
   });
 });

@@ -21,8 +21,6 @@ function makeBaseConfig(): BuildQualityConfig {
   return {
     name: 'test-scenario',
     goals: [{ description: 'test goal', assertion: 'positive' }],
-    agentStepBudget: 10,
-    maxTurns: 5,
   };
 }
 
@@ -45,15 +43,6 @@ function makeMockEvaluator(name: string): Evaluator {
 describe('createBuildQualityScenario', () => {
   const gocode = makeGocodeClient();
   const ctrlPlane = makeCtrlPlaneClient();
-
-  it('sets maxTurns from config', () => {
-    const scenario = createBuildQualityScenario(
-      { ...makeBaseConfig(), maxTurns: 12 },
-      gocode,
-      ctrlPlane,
-    );
-    expect(scenario.maxTurns).toBe(12);
-  });
 
   it('uses standardPersona when no persona override provided', () => {
     const scenario = createBuildQualityScenario(
@@ -138,9 +127,9 @@ describe('createBuildQualityScenario', () => {
     expect(scenario.evaluators.map((e) => e.name)).toContain('bug-hit-rate');
   });
 
-  it('passes agentStepBudget to AgentStepsEvaluator as maxSteps', async () => {
+  it('includes agent-steps evaluator with sigmoid-normalized score', async () => {
     const scenario = createBuildQualityScenario(
-      { ...makeBaseConfig(), agentStepBudget: 10 },
+      makeBaseConfig(),
       gocode,
       ctrlPlane,
     );
@@ -164,57 +153,15 @@ describe('createBuildQualityScenario', () => {
       snapshots: [],
       errors: [],
     };
-    // score = Math.max(0, 1 - 5/10) = 0.5
-    const result = await agentStepsEval!.evaluate(
-      transcript, scenario,
-    );
-    expect(result.score).toBeCloseTo(0.5);
+    const result = await agentStepsEval!.evaluate(transcript, scenario);
+    const expectedScore = 1 / (1 + Math.exp(0.2 * (5 - 15)));
+    expect(result.score).toBeCloseTo(expectedScore, 10);
   });
 
   describe('config validation', () => {
-    it('throws RangeError when agentStepBudget is 0', () => {
-      expect(() => createBuildQualityScenario(
-        { ...makeBaseConfig(), agentStepBudget: 0 },
-        gocode,
-        ctrlPlane,
-      )).toThrow(RangeError);
-    });
-
-    it('throws RangeError when maxTurns is 0', () => {
-      expect(() => createBuildQualityScenario(
-        { ...makeBaseConfig(), maxTurns: 0 },
-        gocode,
-        ctrlPlane,
-      )).toThrow(RangeError);
-    });
-
     it('throws RangeError when trials is 0', () => {
       expect(() => createBuildQualityScenario(
         { ...makeBaseConfig(), trials: 0 },
-        gocode,
-        ctrlPlane,
-      )).toThrow(RangeError);
-    });
-
-    it('throws RangeError when agentStepBudget is negative', () => {
-      expect(() => createBuildQualityScenario(
-        { ...makeBaseConfig(), agentStepBudget: -1 },
-        gocode,
-        ctrlPlane,
-      )).toThrow(RangeError);
-    });
-
-    it('throws RangeError when agentStepBudget is NaN', () => {
-      expect(() => createBuildQualityScenario(
-        { ...makeBaseConfig(), agentStepBudget: NaN },
-        gocode,
-        ctrlPlane,
-      )).toThrow(RangeError);
-    });
-
-    it('throws RangeError when maxTurns is NaN', () => {
-      expect(() => createBuildQualityScenario(
-        { ...makeBaseConfig(), maxTurns: NaN },
         gocode,
         ctrlPlane,
       )).toThrow(RangeError);
@@ -228,33 +175,9 @@ describe('createBuildQualityScenario', () => {
       )).toThrow(RangeError);
     });
 
-    it('throws RangeError when agentStepBudget is Infinity', () => {
-      expect(() => createBuildQualityScenario(
-        { ...makeBaseConfig(), agentStepBudget: Infinity },
-        gocode,
-        ctrlPlane,
-      )).toThrow(RangeError);
-    });
-
-    it('throws RangeError when maxTurns is Infinity', () => {
-      expect(() => createBuildQualityScenario(
-        { ...makeBaseConfig(), maxTurns: Infinity },
-        gocode,
-        ctrlPlane,
-      )).toThrow(RangeError);
-    });
-
     it('throws RangeError when trials is Infinity', () => {
       expect(() => createBuildQualityScenario(
         { ...makeBaseConfig(), trials: Infinity },
-        gocode,
-        ctrlPlane,
-      )).toThrow(RangeError);
-    });
-
-    it('throws RangeError when maxTurns is negative', () => {
-      expect(() => createBuildQualityScenario(
-        { ...makeBaseConfig(), maxTurns: -1 },
         gocode,
         ctrlPlane,
       )).toThrow(RangeError);

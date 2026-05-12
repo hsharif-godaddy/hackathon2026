@@ -58,8 +58,7 @@ Available fields — pick only what is needed:
 
 - `transcript.errors[]`, `transcript.turns[]` (role, content,
   toolCalls, durationMs, totalSteps)
-- `scenario.goals[]`, `scenario.maxTurns`,
-  `scenario.expectedTools`
+- `scenario.goals[]`, `scenario.expectedTools`
 - `snapshot?.html` (visual evaluators only)
 
 Flag any field that does not exist in the current types — that needs a

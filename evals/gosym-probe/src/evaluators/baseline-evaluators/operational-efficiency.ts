@@ -3,6 +3,10 @@ import type { DOMSnapshot, Transcript } from '../../runner/transcript.js';
 import type { Scenario } from '../../scenarios/types.js';
 import { clamp01 } from './shared.js';
 
+// Tuned for ~30-turn conversations: perfect at <=108s, zero at >=720s.
+const PERFECT_SECONDS = 108;
+const ZERO_SECONDS = 720;
+
 function parseIsoMs(value: string | undefined): number | null {
   if (!value) return null;
   const ms = Date.parse(value);
@@ -27,27 +31,13 @@ function lastSnapshotMs(snapshot?: DOMSnapshot): number | null {
   return parseIsoMs(snapshot?.timestamp);
 }
 
-function timeThresholds(maxTurns: number | undefined): {
-  perfectSeconds: number;
-  zeroSeconds: number;
-} {
-  const scale = Math.max(maxTurns ?? 25, 1) / 25;
-  return {
-    perfectSeconds: 90 * scale,
-    zeroSeconds: 600 * scale,
-  };
-}
-
-function mapDurationToScore(
-  seconds: number,
-  thresholds: { perfectSeconds: number; zeroSeconds: number },
-): number {
-  if (seconds <= thresholds.perfectSeconds) return 1.0;
-  if (seconds >= thresholds.zeroSeconds) return 0.0;
+function mapDurationToScore(seconds: number): number {
+  if (seconds <= PERFECT_SECONDS) return 1.0;
+  if (seconds >= ZERO_SECONDS) return 0.0;
   return clamp01(
     1 - (
-      (seconds - thresholds.perfectSeconds)
-      / (thresholds.zeroSeconds - thresholds.perfectSeconds)
+      (seconds - PERFECT_SECONDS)
+      / (ZERO_SECONDS - PERFECT_SECONDS)
     ),
   );
 }
@@ -60,10 +50,11 @@ function verdictFromScore(score: number): EvalResult['verdict'] {
 
 export class TotalTimeTakenEvaluator implements Evaluator {
   readonly name = 'total_time_taken';
+  readonly evalVersion = '1.1';
 
   async evaluate(
     transcript: Transcript,
-    scenario: Scenario,
+    _scenario: Scenario,
     snapshot?: DOMSnapshot,
   ): Promise<EvalResult> {
     const start = firstTurnMs(transcript);
@@ -77,28 +68,28 @@ export class TotalTimeTakenEvaluator implements Evaluator {
         score: 0,
         verdict: 'unknown',
         reason: 'Insufficient timestamps to compute total time taken',
+        evalVersion: this.evalVersion,
       };
     }
 
     const ms = end - start;
     const seconds = ms / 1000;
-    const thresholds = timeThresholds(scenario.maxTurns);
-    const score = mapDurationToScore(seconds, thresholds);
+    const score = mapDurationToScore(seconds);
 
     return {
       evaluator: this.name,
       score,
       verdict: verdictFromScore(score),
       reason: `Total session time: ${seconds.toFixed(1)}s`,
+      evalVersion: this.evalVersion,
       details: {
         unit: 'seconds',
         seconds,
         ms,
         startMs: start,
         endMs: end,
-        maxTurns: scenario.maxTurns,
-        perfectSeconds: thresholds.perfectSeconds,
-        zeroSeconds: thresholds.zeroSeconds,
+        perfectSeconds: PERFECT_SECONDS,
+        zeroSeconds: ZERO_SECONDS,
       },
     };
   }

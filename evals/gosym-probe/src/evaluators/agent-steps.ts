@@ -1,27 +1,24 @@
 import type { EvalResult, Evaluator } from './evaluator.js';
 import type { DOMSnapshot, Transcript } from '../runner/transcript.js';
 import type { Scenario } from '../scenarios/types.js';
+import { SIGMOID_MIDPOINT, SIGMOID_STEEPNESS, sigmoidScore } from './shared.js';
 
+/**
+ * Measures total agent steps across a conversation.
+ * Scoring uses sigmoid normalization (midpoint=15, steepness=0.2)
+ * tuned for discrimination in the 3-30 step range.
+ */
 export class AgentStepsEvaluator implements Evaluator {
   readonly name = 'agent-steps';
+  readonly evalVersion = '1.0';
   readonly regressionMode = 'score' as const;
-  // Score formula is 1 - usedSteps/maxSteps, so higher = fewer steps = better
   readonly lowerIsBetter = false;
-
-  constructor(private readonly options: { maxSteps: number }) {
-    if (!Number.isFinite(options.maxSteps) || options.maxSteps <= 0) {
-      throw new RangeError(
-        `AgentStepsEvaluator requires maxSteps > 0, got ${options.maxSteps}`,
-      );
-    }
-  }
 
   async evaluate(
     transcript: Transcript,
     _scenario: Scenario,
     _snapshot?: DOMSnapshot,
   ): Promise<EvalResult> {
-    const { maxSteps } = this.options;
     const assistantTurns = transcript.turns.filter(
       (t) => t.role === 'assistant',
     );
@@ -36,6 +33,7 @@ export class AgentStepsEvaluator implements Evaluator {
         verdict: 'unknown',
         reason: 'No assistant turns with totalSteps data',
         details: {},
+        evalVersion: this.evalVersion,
       };
     }
 
@@ -43,17 +41,25 @@ export class AgentStepsEvaluator implements Evaluator {
       (sum, t) => sum + (t.totalSteps ?? 0),
       0,
     );
-    const score = Math.max(0, 1 - totalSteps / maxSteps);
+
+    if (!Number.isFinite(totalSteps)) {
+      return {
+        evaluator: this.name,
+        score: 0,
+        verdict: 'unknown',
+        reason: `Invalid totalSteps sum: ${totalSteps}`,
+        details: { totalSteps },
+        evalVersion: this.evalVersion,
+      };
+    }
 
     return {
       evaluator: this.name,
-      score,
+      score: sigmoidScore(totalSteps, SIGMOID_MIDPOINT, SIGMOID_STEEPNESS),
       verdict: 'observed',
-      reason: (
-        `Used ${totalSteps} of ${maxSteps} max agent steps` +
-        ` (efficiency: ${(score * 100).toFixed(0)}%)`
-      ),
-      details: { totalSteps, maxSteps },
+      reason: `${totalSteps} agent steps`,
+      details: { totalSteps },
+      evalVersion: this.evalVersion,
     };
   }
 }

@@ -93,7 +93,7 @@ evaluators. Each returns
 | Evaluator | What it measures | Scoring |
 |---|---|---|
 | `bug-hit-rate` | Count of socket `error` events | `1 / (1 + errorCount)` — pass if ≤1 error |
-| `prompt-efficiency` | User turns taken vs. `scenario.maxTurns` (default 30) | `max(0, 1 - turns/maxTurns)` — pass at ≥0.7 |
+| `prompt-efficiency` | User turn count (observed) | Sigmoid: `1 / (1 + e^(steepness*(turns - midpoint)))` — midpoint=15, steepness=0.2 |
 | `tool-call-verification` | Expected tools called (or not called) | Fraction of `scenario.expectedTools` assertions satisfied |
 
 ### LLM Judge Evaluators (GoCode, re-run every trial)

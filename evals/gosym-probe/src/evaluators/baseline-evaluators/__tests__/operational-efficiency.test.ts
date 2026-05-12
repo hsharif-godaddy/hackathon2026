@@ -25,34 +25,49 @@ describe('baseline operational efficiency', function operationalTests() {
       errors: [],
     };
 
-    const res = await new TotalTimeTakenEvaluator().evaluate(t, scenario);
+    const evaluator = new TotalTimeTakenEvaluator();
+    expect(evaluator.evalVersion).toBe('1.1');
+    const res = await evaluator.evaluate(t, scenario);
     expect(res.verdict).toBe('pass');
     expect(res.score).toBe(1);
     expect(res.details).toMatchObject({ unit: 'seconds' });
+    expect(res.evalVersion).toBe('1.1');
   });
 
-  it('scales total_time_taken thresholds by max turns', async function scales() {
+  it('returns partial for duration between perfect and zero thresholds', async function partial() {
     const transcript: Transcript = {
       scenarioName: 's',
       trialIndex: 0,
       turns: [
         { role: 'user', content: 'hi', toolCalls: [], timestamp: 0 },
-        { role: 'assistant', content: 'done', toolCalls: [], timestamp: 120_000 },
+        { role: 'assistant', content: 'done', toolCalls: [], timestamp: 400_000 },
       ],
       snapshots: [],
       errors: [],
     };
 
-    expect(
-      (await new TotalTimeTakenEvaluator().evaluate(transcript, {
-        ...scenario,
-        maxTurns: 25,
-      })).score,
-    ).toBeLessThan(
-      (await new TotalTimeTakenEvaluator().evaluate(transcript, {
-        ...scenario,
-        maxTurns: 45,
-      })).score,
-    );
+    const evaluator = new TotalTimeTakenEvaluator();
+    const res = await evaluator.evaluate(transcript, scenario);
+    expect(res.verdict).toBe('partial');
+    expect(res.score).toBeGreaterThan(0);
+    expect(res.score).toBeLessThan(1);
+  });
+
+  it('returns fail for duration exceeding zero threshold', async function fail() {
+    const transcript: Transcript = {
+      scenarioName: 's',
+      trialIndex: 0,
+      turns: [
+        { role: 'user', content: 'hi', toolCalls: [], timestamp: 0 },
+        { role: 'assistant', content: 'done', toolCalls: [], timestamp: 800_000 },
+      ],
+      snapshots: [],
+      errors: [],
+    };
+
+    const evaluator = new TotalTimeTakenEvaluator();
+    const res = await evaluator.evaluate(transcript, scenario);
+    expect(res.verdict).toBe('fail');
+    expect(res.score).toBe(0);
   });
 });

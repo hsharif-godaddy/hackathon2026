@@ -25,7 +25,6 @@ export interface StoredScenarioConfig {
   name: string;
   trials: number;
   executionMode?: 'parallel' | 'sequential';
-  maxTurns?: number;
   persona: Omit<Persona, 'systemPrompt'>;
   goals: ScenarioGoal[];
   evaluators: string[];

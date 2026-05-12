@@ -239,30 +239,6 @@ describe('Simulation', () => {
     expect(assistantTurns).toHaveLength(2);
   });
 
-  it(
-    'scenario.maxTurns overrides config.eval.maxTurns',
-    async () => {
-      // config says 5 turns, scenario says 2 — scenario wins
-      const scenario = makeScenario({ maxTurns: 2 });
-      const syntheticUser: SyntheticUserAgent = {
-        nextMessage: vi.fn().mockResolvedValue('keep going'),
-      };
-      const agent = makeAutoAgent();
-
-      const transcript = await new Simulation({
-        scenario,
-        agentClient: agent,
-        syntheticUser,
-        config: mockConfig, // config.eval.maxTurns = 5
-      }).run(0);
-
-      const assistantTurns = transcript.turns.filter(
-        (t) => t.role === 'assistant',
-      );
-      expect(assistantTurns).toHaveLength(2);
-    },
-  );
-
   it('records error events in the transcript', async () => {
     const scenario = makeScenario();
     const syntheticUser: SyntheticUserAgent = {

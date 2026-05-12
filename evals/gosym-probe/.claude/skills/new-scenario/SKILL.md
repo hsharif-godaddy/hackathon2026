@@ -129,10 +129,9 @@ Choose a persona based on the scenario's interaction style:
 If `--persona` was provided, use that. Otherwise, select based on the
 scenario description and print your reasoning.
 
-Both personas have no `maxTurns` set. The simulation loop uses
-`scenario.maxTurns ?? config.eval.maxTurns` (default 30). If the
-scenario needs a different turn ceiling, set `maxTurns` on the
-scenario object (e.g. `maxTurns: 10`).
+Both personas have no turn-ceiling setting. The simulation loop uses
+`config.eval.maxTurns` (default 30) as the global ceiling. Per-scenario
+turn limits are not supported; adjust the global config if needed.
 
 #### 2d. Execution mode
 
