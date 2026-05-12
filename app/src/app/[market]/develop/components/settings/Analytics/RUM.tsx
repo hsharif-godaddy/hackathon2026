@@ -28,9 +28,11 @@ import {
   SegmentedController,
   SegmentedControllerItem,
 } from '@/components/ui/SegmentedController'
+import { SWITCHBOARD_APPBUILDER_INSIGHTS_BANNER } from '@/config/switchboard-flags'
 import { useClickhouseAnalytics } from '@/hooks/useClickhouseAnalytics'
 import { useInsightsAnalytics } from '@/hooks/useInsightsAnalytics'
 import { useSubscription } from '@/hooks/useSubscription'
+import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import type {
   ActivityHitRow,
@@ -103,6 +105,7 @@ export default function RUM() {
   const intl = useIntl()
   const appId = useAppIdFromParams()
   const publishedUrl = usePublishedUrl()
+  const isInsightsBannerEnabled = useSwitchboard(SWITCHBOARD_APPBUILDER_INSIGHTS_BANNER) === true
   const [selectedPeriod, setSelectedPeriod] = useState<TimePeriod>('7')
 
   // Calculate days based on selected period
@@ -559,7 +562,7 @@ export default function RUM() {
       className="pb-2 px-1.5 md:px-0.5"
     >
       <Box gap="md">
-        <InsightsBanner />
+        {isInsightsBannerEnabled && <InsightsBanner />}
 
         <div>
         {/* ═══════════ OVERVIEW ═══════════ */}

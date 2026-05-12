@@ -92,6 +92,7 @@ export default function InsightsBanner(props: InsightsBannerProps = {}) {
   const { demoItems } = props
   const t = useTranslations()
   const demo = isDemoMode(demoItems)
+
   const appId = useAppIdFromParams()
   const publishedUrl = usePublishedUrl()
   const { date, error, items: fetchedItems, raw } = useHostInsights({

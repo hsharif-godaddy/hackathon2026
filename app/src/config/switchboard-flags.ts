@@ -4,3 +4,4 @@
  */
 
 export const SWITCHBOARD_APPBUILDER_GO_LIVE_FEATURE = 'appbuilder-go-live-feature';
+export const SWITCHBOARD_APPBUILDER_INSIGHTS_BANNER = 'appbuilder-insights-banner';
