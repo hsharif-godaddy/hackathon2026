@@ -74,7 +74,7 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
       <motion.div
         className="p-1.5 md:ps-2.5 md:pe-0 shrink-0 flex items-center gap-1.5"
         animate={{
-          width: (isChatPaneCollapsed || isMobile) ? undefined : `${chatPaneWidth}px`,
+          width: (isChatPaneCollapsed || isMobile) ? 'auto' : `${chatPaneWidth}px`,
           justifyContent: isChatPaneCollapsed ? 'flex-start' : 'space-between'
         }}
         transition={{
