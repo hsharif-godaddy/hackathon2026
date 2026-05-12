@@ -52,8 +52,10 @@ vi.mock('../../utils/nomad-config.js', () => ({
 }));
 
 // Mock websocket server
+const emitToAppMock = vi.fn(() => 0);
 vi.mock('../../server/ai-lib-websocket-server.js', () => ({
     getSocketIO: vi.fn(() => null),
+    emitToApp: (appId: string, event: string, payload: unknown) => emitToAppMock(appId, event, payload),
 }));
 
 // Mock logger
@@ -453,6 +455,38 @@ describe('AuthService', () => {
                 });
 
                 expect(pkceStateStore.has(testState)).toBe(false);
+            });
+
+            it('should emit oauth:result scoped to the initiating appId', async () => {
+                emitToAppMock.mockClear();
+                const mockResponse = {
+                    ok: true,
+                    json: vi.fn().mockResolvedValue({
+                        access_token: 'token',
+                        refresh_token: 'refresh',
+                        expires_in: 3600,
+                        token_type: 'Bearer',
+                    }),
+                };
+                vi.mocked(global.fetch).mockResolvedValue(mockResponse as any);
+
+                await AuthService.exchangeCode({
+                    code: testCode,
+                    state: testState,
+                });
+
+                expect(emitToAppMock).toHaveBeenCalledTimes(1);
+                const [appIdArg, eventArg, payload] = emitToAppMock.mock.calls[0] as unknown as [string, string, Record<string, unknown>];
+                expect(appIdArg).toBe(testSessionId);
+                expect(eventArg).toBe('oauth:result');
+                expect(payload).toMatchObject({
+                    success: true,
+                    appId: testSessionId,
+                    state: testState,
+                    provider: 'godaddy',
+                    expiresAt: expect.any(Number),
+                    scopes: expect.any(Array),
+                });
             });
 
             it('should handle tokens without refresh token', async () => {

@@ -2,7 +2,7 @@ import { Router, type IRouter } from 'express';
 import { randomBytes } from 'crypto';
 import { AuthService, pkceStateStore } from '../../services/auth-service.js';
 import { Logger } from '../../logging/index.js';
-import { getSocketIO } from '../ai-lib-websocket-server.js';
+import { emitToApp } from '../ai-lib-websocket-server.js';
 
 const logger = Logger.create({ component: 'oauth-router' });
 const router: IRouter = Router();
@@ -12,6 +12,28 @@ const FALLBACK_MESSAGE_DELAY_MS = 100; // Allow time for window.close() to compl
 
 function generateNonce(): string {
   return randomBytes(16).toString('base64');
+}
+
+// Notify the initiating app of an OAuth failure (if we can map state -> appId)
+// and unconditionally clear the PKCE state to prevent replay.
+function emitOAuthErrorAndCleanup(
+  state: string | undefined,
+  error: string,
+  description: string,
+): void {
+  const s = state || '';
+  const pkce = s ? pkceStateStore.get(s) : undefined;
+  if (pkce?.appId) {
+    emitToApp(pkce.appId, 'oauth:result', {
+      success: false,
+      appId: pkce.appId,
+      state: s,
+      provider: 'godaddy',
+      error,
+      description,
+    });
+  }
+  if (s) pkceStateStore.delete(s);
 }
 
 router.get('/godaddy/callback', async (req, res) => {
@@ -36,27 +58,11 @@ router.get('/godaddy/callback', async (req, res) => {
       description: error_description,
     });
 
-    // Try to emit error via WebSocket if we can map state -> appId
-    const s = (state as string) || '';
-    const pkce = s ? pkceStateStore.get(s) : undefined;
-    if (pkce?.appId) {
-      const io = getSocketIO();
-      if (io) {
-        io.emit('oauth:result', {
-          success: false,
-          appId: pkce.appId,
-          state: s,
-          provider: 'godaddy',
-          error: String(error),
-          description: error_description ? String(error_description) : '',
-        });
-      }
-    }
-
-    // Always delete PKCE state on OAuth error to prevent replay attacks
-    if (s) {
-      pkceStateStore.delete(s);
-    }
+    emitOAuthErrorAndCleanup(
+      state as string | undefined,
+      String(error),
+      error_description ? String(error_description) : '',
+    );
 
     return res
       .status(400)
@@ -75,63 +81,32 @@ router.get('/godaddy/callback', async (req, res) => {
   }
 
   try {
-    const result = await AuthService.exchangeCode({
+    await AuthService.exchangeCode({
       code: code as string,
       state: state as string,
     });
 
-    logger.info('oauth.callback.godaddy.success', {
-      state: state as string,
-    });
+    // Don't log state value — sensitive PKCE flow state (see auth-service.ts).
+    logger.info('oauth.callback.godaddy.success', {});
 
-    const s = state as string;
-    const pkce = pkceStateStore.get(s);
-    if (pkce?.appId) {
-      const io = getSocketIO();
-      if (io) {
-        io.emit('oauth:result', {
-          success: true,
-          appId: pkce.appId,
-          state: s,
-          provider: 'godaddy',
-        });
-      }
-    }
+    // Success emit is owned by AuthService.exchangeCode (single owner,
+    // scoped via emitToApp, carries expiresAt/scopes).
 
     const successPage = renderSuccessPage(state as string, nonce);
 
-    // Clean up PKCE state only after successful exchange
-    pkceStateStore.delete(s);
+    // AuthService.exchangeCode already deletes the PKCE state on success;
+    // this redundant delete is a safety net for any future refactor.
+    pkceStateStore.delete(state as string);
 
     return res.status(200).send(successPage);
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);
 
-    // Try to emit error via WebSocket if we can map state -> appId
-    const s = (state as string) || '';
-    const pkce = s ? pkceStateStore.get(s) : undefined;
-    if (pkce?.appId) {
-      const io = getSocketIO();
-      if (io) {
-        io.emit('oauth:result', {
-          success: false,
-          appId: pkce.appId,
-          state: s,
-          provider: 'godaddy',
-          error: 'exchange_failed',
-          description: errorMessage,
-        });
-      }
-    }
+    emitOAuthErrorAndCleanup(state as string | undefined, 'exchange_failed', errorMessage);
 
-    // Always delete PKCE state on exchange failure to prevent replay attacks
-    if (s) {
-      pkceStateStore.delete(s);
-    }
-
+    // Don't log state value — sensitive PKCE flow state (see auth-service.ts).
     logger.error('oauth.callback.godaddy.exchange-failed', {
       error: errorMessage,
-      state: state as string,
     });
 
     return res.status(500).send(renderErrorPage('exchange_failed', errorMessage, nonce, state as string));

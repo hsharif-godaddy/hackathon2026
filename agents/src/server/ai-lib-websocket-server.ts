@@ -2918,6 +2918,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
             decoded: authResult.claims,
             agentContext: authResult.agentContext,
           };
+          socket.data = { ...socket.data, authenticated: true };
 
           logger.info('websocket.auth.connection_approved', {
             message: 'Connection approved: JWT validation passed (authenticate event)',
@@ -3177,6 +3178,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
               iat: now
             }
           };
+          socket.data = { ...socket.data, authenticated: true };
           next();
           return;
         }
@@ -3243,6 +3245,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           decoded: authResult.claims,
           agentContext: authResult.agentContext
         };
+        socket.data = { ...socket.data, authenticated: true };
 
         logger.info('websocket.auth.connection_approved', {
           message: 'Connection approved: JWT validation passed (handshake)',
@@ -3309,16 +3312,48 @@ export function getWebSocketServerInfo() {
  *
  * @returns Socket.IO server instance or null if not initialized
  *
- * @example
- * ```typescript
- * const io = getSocketIO();
- * if (io) {
- *   io.emit('oauth:result', { success: true, appId, state });
- * }
- * ```
+ * Prefer `emitToApp` over `io.emit` for per-app events — global `io.emit`
+ * broadcasts cross-tenant.
  */
 export function getSocketIO() {
   return ioInstance
+}
+
+/**
+ * Predicate: can this socket receive per-app events for `appId`?
+ *
+ * Both checks matter. `socket.data.authenticated` is a server-only flag set
+ * after successful JWT validation — the client cannot forge it. `siteId`
+ * lives on `handshake.auth`, which is a spread of client-sent input; a
+ * connect-then-auth client can preserve a client-chosen `agentContext`
+ * until auth completes, so it is only trustworthy once `authenticated` is
+ * true.
+ *
+ * Exported so tests can exercise the exact predicate used by `emitToApp`.
+ */
+export function isAppEligibleForEmit(
+  socket: { data?: { authenticated?: boolean }; handshake: { auth?: { agentContext?: { siteId?: string } } } },
+  appId: string,
+): boolean {
+  if (socket.data?.authenticated !== true) return false
+  const siteId: string | undefined = socket.handshake.auth?.agentContext?.siteId
+  return !!siteId && siteId === appId
+}
+
+/**
+ * Emit an event only to sockets authenticated for the given appId.
+ *
+ * Returns the number of sockets the event was delivered to.
+ */
+export function emitToApp(appId: string, event: string, payload: unknown): number {
+  if (!ioInstance || !appId) return 0
+  let delivered = 0
+  for (const socket of ioInstance.sockets.sockets.values()) {
+    if (!isAppEligibleForEmit(socket, appId)) continue
+    socket.emit(event, payload)
+    delivered++
+  }
+  return delivered
 }
 
 /**
