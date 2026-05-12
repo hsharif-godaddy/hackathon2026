@@ -22,40 +22,40 @@ describe('StatusMessage', () => {
     expect(screen.getByText('Task completed')).toBeInTheDocument();
   });
 
-  it('should render executing_tools status with blue styling', () => {
+  it('should render executing_tools status with blue icon', () => {
     const { container } = renderWithProviders(
       <StatusMessage status="executing_tools" message="Executing..." />
     );
 
-    const statusDiv = container.querySelector('.bg-blue-50');
-    expect(statusDiv).toBeInTheDocument();
+    const icon = container.querySelector('.text-blue-500');
+    expect(icon).toBeInTheDocument();
   });
 
-  it('should render completed status with green styling', () => {
+  it('should render completed status with green icon', () => {
     const { container } = renderWithProviders(
       <StatusMessage status="completed" message="Completed" />
     );
 
-    const statusDiv = container.querySelector('.bg-green-50');
-    expect(statusDiv).toBeInTheDocument();
+    const icon = container.querySelector('.text-green-500');
+    expect(icon).toBeInTheDocument();
   });
 
-  it('should render error status with red styling', () => {
+  it('should render error status with red icon', () => {
     const { container } = renderWithProviders(
       <StatusMessage status="error" message="Error occurred" />
     );
 
-    const statusDiv = container.querySelector('.bg-red-50');
-    expect(statusDiv).toBeInTheDocument();
+    const icon = container.querySelector('.text-red-500');
+    expect(icon).toBeInTheDocument();
   });
 
-  it('should render default status with gray styling', () => {
+  it('should render default status with blue icon', () => {
     const { container } = renderWithProviders(
       <StatusMessage status="unknown" message="Unknown status" />
     );
 
-    const statusDiv = container.querySelector('.bg-gray-50');
-    expect(statusDiv).toBeInTheDocument();
+    const icon = container.querySelector('.text-blue-500');
+    expect(icon).toBeInTheDocument();
   });
 
   it('should render clock icon for executing_tools status', () => {
