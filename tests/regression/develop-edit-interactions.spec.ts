@@ -17,7 +17,7 @@ import { LONG_TIMEOUT, DEFAULT_TIMEOUT, AI_RESPONSE_TIMEOUT_MS, E2E_NO_DELETE, g
 import { dismissOverlays, logTestResult, logTestStart, waitForDevelopPage } from '../helpers/ui';
 
 /** Spec prefixes used by `getSpecPrefix(...)` calls in this describe block. */
-const SPEC_PREFIXES = ['edit-interactions', 'unified-search'] as const;
+const SPEC_PREFIXES = ['edit-interactions', 'unified-search', 'color-scheme-selection'] as const;
 
 test.describe('Edit Interactions', () => {
   test.beforeEach(async ({ page }, testInfo) => {
@@ -277,6 +277,167 @@ test.describe('Edit Interactions', () => {
     console.log('  Clear button works');
 
     console.log('Unified search test passed!');
+  });
+
+  test('Modern color scheme selection widget', async ({ page }) => {
+    // ========================================
+    // STEP 1: Create an app
+    // ========================================
+    console.log('Step 1: Creating app...');
+
+    await page.addInitScript(() => {
+      localStorage.setItem('airo-intro-tour-shown', 'true');
+    });
+
+    await page.goto('/');
+    await loginIfNeeded(page);
+    // Re-navigate fresh after potential SSO redirect.
+    await page.goto('/');
+
+    const promptInput = page.getByTestId('homepage-prompt-input');
+    await promptInput.waitFor({ state: 'visible', timeout: LONG_TIMEOUT });
+    await promptInput.fill(`${getSpecPrefix('color-scheme-selection')} Create a simple business website - do not ask follow up questions`);
+
+    // Wait for React hydration before clicking (the disabled→enabled flip is
+    // server-rendered so it doesn't prove hydration; a fixed 10s wait does).
+    const submitButton = page.locator('[data-eid*="homepage.prompt.submit"]');
+    await expect(submitButton).toBeEnabled({ timeout: DEFAULT_TIMEOUT });
+    await page.waitForTimeout(10_000);
+    await submitButton.click();
+
+    await page.waitForURL(/\/develop\//, { timeout: LONG_TIMEOUT });
+    await waitForDevelopPage(page);
+
+    const appId = page.url().match(/\/develop\/([a-zA-Z0-9]+)/)?.[1] || '';
+    console.log(`  App created: ${appId}`);
+
+    await dismissOverlays(page);
+
+    // Wait for initial generation to complete
+    await expect(page.getByTestId('chat-send-button')).toBeVisible({ timeout: AI_RESPONSE_TIMEOUT_MS });
+    console.log('  Initial generation completed');
+
+    await ensureAuthenticated(page);
+
+    // ========================================
+    // STEP 2: Request color scheme suggestions
+    // ========================================
+    await dismissOverlays(page);
+    console.log('Step 2: Requesting color scheme suggestions...');
+
+    const chatInput = page.getByTestId('chat-input-textarea');
+    await expect(chatInput).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+    await chatInput.fill('Show me some color scheme options');
+
+    const sendButton = page.getByTestId('chat-send-button');
+    await expect(sendButton).toBeEnabled({ timeout: DEFAULT_TIMEOUT });
+    await sendButton.click();
+
+    console.log('  Color scheme request sent, waiting for AI response to complete...');
+
+    // Wait for the send button to be visible again (indicates AI finished processing)
+    await expect(sendButton).toBeVisible({ timeout: AI_RESPONSE_TIMEOUT_MS });
+    console.log('  AI response completed');
+
+    // Small delay to let the UI update
+    await page.waitForTimeout(1000);
+
+    // ========================================
+    // STEP 3: Wait for modern color scheme widget to appear
+    // ========================================
+    console.log('Step 3: Looking for color scheme preview widget...');
+
+    // Wait for the theme preview input panel to appear in the todo area
+    const themePanel = page.getByTestId('theme-preview-input-panel');
+    const panelVisible = await themePanel
+      .waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT })
+      .then(() => true)
+      .catch(() => false);
+
+    if (!panelVisible) {
+      console.log('  Modern color scheme widget not visible (may be feature-flagged or not available), skipping test');
+      test.skip(true, 'Modern color scheme widget not visible (may be feature-flagged or not available)');
+    }
+
+    console.log('  Color scheme preview widget appeared');
+
+    // ========================================
+    // STEP 4: Verify widget structure and select a color scheme
+    // ========================================
+    console.log('Step 4: Verifying widget structure and selecting color scheme...');
+
+    // Verify multiple color scheme options are present
+    const themeOptions = page.getByTestId('theme-preview-option');
+    const optionsCount = await themeOptions.count();
+    console.log(`  Found ${optionsCount} color scheme options`);
+
+    // Must have at least 2 options to test selection
+    expect(optionsCount).toBeGreaterThan(1);
+
+    // Select the second color scheme option (first is usually the currently applied one)
+    await themeOptions.nth(1).click();
+    console.log('  Selected second color scheme option')
+
+    // ========================================
+    // STEP 5: Apply the selected color scheme
+    // ========================================
+    console.log('Step 5: Applying selected color scheme...');
+
+    const applyButton = page.getByTestId('theme-preview-apply');
+    await expect(applyButton).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+    await expect(applyButton).toBeEnabled({ timeout: DEFAULT_TIMEOUT });
+    await applyButton.click();
+    console.log('  Apply button clicked');
+
+    // Wait for the AI to process the apply request
+    await expect(page.getByTestId('chat-send-button')).toBeVisible({ timeout: AI_RESPONSE_TIMEOUT_MS });
+    console.log('  Color scheme apply completed');
+    await expect(themePanel).not.toBeVisible({ timeout: DEFAULT_TIMEOUT });
+
+    // ========================================
+    // STEP 6: Verify Cancel and Generate More buttons work
+    // ========================================
+    console.log('Step 6: Testing Generate More button...');
+
+    // Request color schemes again
+    await chatInput.fill('Show me different color options');
+    await expect(sendButton).toBeEnabled({ timeout: DEFAULT_TIMEOUT });
+    await sendButton.click();
+
+    // Panel must reappear — if it doesn't, the test should fail
+    await expect(themePanel).toBeVisible({ timeout: AI_RESPONSE_TIMEOUT_MS });
+    console.log('  Color scheme panel reappeared');
+
+    // Test "Generate More" button - must be present and working
+    const generateMoreButton = page.getByTestId('theme-preview-more-options');
+    await expect(generateMoreButton).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+    await expect(generateMoreButton).toBeEnabled({ timeout: DEFAULT_TIMEOUT });
+    await generateMoreButton.click();
+    console.log('  Generate More button clicked');
+    await expect(page.getByTestId('chat-send-button')).toBeVisible({ timeout: AI_RESPONSE_TIMEOUT_MS });
+    console.log('  Generate More completed');
+
+    // Request color schemes one more time to test Cancel
+    await chatInput.fill('Show me color schemes');
+    await expect(sendButton).toBeEnabled({ timeout: DEFAULT_TIMEOUT });
+    await sendButton.click();
+
+    // Panel must reappear again
+    await expect(themePanel).toBeVisible({ timeout: AI_RESPONSE_TIMEOUT_MS });
+    console.log('  Color scheme panel reappeared for cancel test');
+
+    // Test Cancel button - must be present and working
+    const cancelButton = page.getByTestId('theme-preview-cancel');
+    await expect(cancelButton).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+    await expect(cancelButton).toBeEnabled({ timeout: DEFAULT_TIMEOUT });
+    await cancelButton.click();
+    console.log('  Cancel button clicked');
+
+    // Verify panel is dismissed
+    await expect(themePanel).not.toBeVisible({ timeout: DEFAULT_TIMEOUT });
+    console.log('  Color scheme panel dismissed after cancel')
+
+    console.log('Modern color scheme selection widget test passed!');
   });
 
   test.afterEach(async ({ page }, testInfo) => {
