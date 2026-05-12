@@ -85,7 +85,7 @@
     "@langfuse/otel": "^4.6.1",
     "@langfuse/tracing": "catalog:",
     "@opentelemetry/api": "catalog:",
-    "@opentelemetry/sdk-node": "^0.208.0",
+    "@opentelemetry/sdk-node": "^0.217.0",
     "@qdrant/js-client-rest": "^1.17.0",
     "@signals/otel-sdk": "^0.2.0",
     "@types/multer": "catalog:",

@@ -99,7 +99,7 @@
       "glob": ">=10.5.0 <11 || >=11.1.0",
       "hono": "4.12.16",
       "jsdom": "26.1.0",
-      "next": "16.2.3",
+      "next": "16.2.6",
       "prettier": "3.4.2",
       "qs": "6.14.1",
       "react": "19.1.0",
@@ -135,7 +135,15 @@
       "@ux/toggle-button": "2500.11.1",
       "@ux/tooltip": "2500.11.1",
       "basic-ftp": ">=5.2.0",
-      "fast-xml-parser": ">=5.3.5"
+      "fast-xml-parser": ">=5.3.5",
+      "fastify": ">=5.7.2",
+      "fast-uri": ">=3.1.2",
+      "koa": ">=2.16.4 <3",
+      "thrift": ">=0.23.0",
+      "protobufjs": ">=8.0.2",
+      "@opentelemetry/sdk-node": ">=0.217.0",
+      "@opentelemetry/auto-instrumentations-node": ">=0.75.0",
+      "@opentelemetry/exporter-prometheus": ">=0.217.0"
     },
     "onlyBuiltDependencies": [
       "better-sqlite3"
