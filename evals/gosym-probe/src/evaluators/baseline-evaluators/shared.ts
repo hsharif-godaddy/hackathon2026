@@ -1,4 +1,5 @@
 import type { DOMSnapshot, Transcript, Turn, ToolCall } from '../../runner/transcript.js';
+import { readSnapshotHtml } from '../shared.js';
 
 const MAX_TEXT_CHARS = 20_000;
 const MAX_HTML_CHARS = 20_000;
@@ -65,13 +66,11 @@ export function summarizeToolCalls(toolCalls: ToolCall[]): string {
   );
 }
 
-export function lastSnapshotSection(snapshot?: DOMSnapshot): string {
+export async function lastSnapshotSection(snapshot?: DOMSnapshot): Promise<string> {
   if (!snapshot) return '(no snapshot)';
 
-  const inlineHtml = 'html' in snapshot && typeof snapshot.html === 'string'
-    ? snapshot.html
-    : '';
-  const body = extractBodyHtml(inlineHtml);
+  const rawHtml = await readSnapshotHtml(snapshot);
+  const body = extractBodyHtml(rawHtml);
   const text = htmlToText(body);
   const consoleLogs = (snapshot.consoleLogs ?? [])
     .slice(-30)
@@ -80,7 +79,7 @@ export function lastSnapshotSection(snapshot?: DOMSnapshot): string {
 
   return [
     `URL: ${snapshot.url}`,
-    'htmlPath' in snapshot ? `HTML_PATH: ${snapshot.htmlPath}` : '',
+    snapshot.htmlPath ? `HTML_PATH: ${snapshot.htmlPath}` : '',
     '',
     'BODY_HTML:',
     body || '(empty)',
@@ -93,20 +92,20 @@ export function lastSnapshotSection(snapshot?: DOMSnapshot): string {
   ].join('\n');
 }
 
-export function buildEvidence(
+export async function buildEvidence(
   transcript: Transcript,
   snapshot?: DOMSnapshot,
-): {
+): Promise<{
   conversation: string;
   tools: string;
   finalSite: string;
   totalToolCalls: number;
-} {
+}> {
   const toolCalls = transcript.turns.flatMap((turn) => turn.toolCalls);
   return {
     conversation: buildConversationText(transcript.turns),
     tools: summarizeToolCalls(toolCalls),
-    finalSite: lastSnapshotSection(snapshot),
+    finalSite: await lastSnapshotSection(snapshot),
     totalToolCalls: toolCalls.length,
   };
 }

@@ -1,9 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { JTBDCompletionEvaluator } from '../jtbd-completion.js';
 import type { GocodeClient } from '../../clients/gocode-client.js';
-import type { Transcript } from '../../runner/transcript.js';
+import type { Transcript, DOMSnapshot } from '../../runner/transcript.js';
 import type { Scenario } from '../../scenarios/types.js';
 import type { Persona } from '../../personas/types.js';
+
+vi.mock('node:fs/promises', () => ({
+  readFile: vi.fn(),
+}));
+
+import { readFile } from 'node:fs/promises';
 
 const mockPersona: Persona = {
   name: 'test',
@@ -33,11 +39,23 @@ function makeScenario(overrides: Partial<Scenario> = {}): Scenario {
   };
 }
 
+function makeSnapshot(overrides: Partial<DOMSnapshot> = {}): DOMSnapshot {
+  return {
+    url: 'http://test',
+    screenshotPath: '/tmp/snap.png',
+    htmlPath: '/tmp/snap.html',
+    timestamp: '2026-01-01T00:00:00.000Z',
+    consoleLogs: [],
+    ...overrides,
+  };
+}
+
 describe('JTBDCompletionEvaluator', () => {
   let mockGocode: { complete: ReturnType<typeof vi.fn> };
   let evaluator: JTBDCompletionEvaluator;
 
   beforeEach(() => {
+    vi.resetAllMocks();
     mockGocode = { complete: vi.fn() };
     evaluator = new JTBDCompletionEvaluator(
       mockGocode as unknown as GocodeClient,
@@ -191,5 +209,70 @@ describe('JTBDCompletionEvaluator', () => {
 
   it('is named jtbd-completion', () => {
     expect(evaluator.name).toBe('jtbd-completion');
+  });
+
+  describe('DOM snapshot HTML context', () => {
+    const scenario = {
+      name: 'test-scenario',
+      persona: mockPersona,
+      goals: [{ description: 'build a page', assertion: 'positive' as const }],
+      evaluators: [],
+      trials: 1,
+    };
+
+    it('includes inline html from snapshot in LLM prompt', async () => {
+      mockGocode.complete.mockResolvedValue('pass');
+      const snapshot = makeSnapshot({ html: '<html><body>hello</body></html>' });
+      const result = await evaluator.evaluate(makeTranscript(), scenario, snapshot);
+      const prompt = mockGocode.complete.mock.calls[0][0][0].content as string;
+      expect(prompt).toContain('Preview HTML:');
+      expect(prompt).not.toContain('truncated to');
+      expect(prompt).toContain('<html><body>hello</body></html>');
+      expect(result.details?.htmlContextAvailable).toBe(true);
+    });
+
+    it('reads htmlPath from disk when inline html is absent', async () => {
+      vi.mocked(readFile).mockResolvedValue('<html>from-file</html>' as string);
+      mockGocode.complete.mockResolvedValue('pass');
+      const snapshot = makeSnapshot({ htmlPath: '/tmp/page.html' });
+      const result = await evaluator.evaluate(makeTranscript(), scenario, snapshot);
+      expect(vi.mocked(readFile)).toHaveBeenCalledWith('/tmp/page.html', 'utf-8');
+      const prompt = mockGocode.complete.mock.calls[0][0][0].content as string;
+      expect(prompt).toContain('Preview HTML:');
+      expect(prompt).not.toContain('truncated to');
+      expect(prompt).toContain('<html>from-file</html>');
+      expect(result.details?.htmlContextAvailable).toBe(true);
+    });
+
+    it('truncates HTML longer than 8000 chars to 8000 + "... [truncated]"', async () => {
+      mockGocode.complete.mockResolvedValue('pass');
+      const longHtml = 'x'.repeat(10_000);
+      const snapshot = makeSnapshot({ html: longHtml });
+      await evaluator.evaluate(makeTranscript(), scenario, snapshot);
+      const prompt = mockGocode.complete.mock.calls[0][0][0].content as string;
+      expect(prompt).toContain('x'.repeat(8_000));
+      expect(prompt).toContain('... [truncated]');
+      expect(prompt).not.toContain('x'.repeat(8_001));
+      expect(prompt).toContain('Preview HTML (truncated to 8000 chars):');
+    });
+
+    it('omits HTML section when snapshot is undefined', async () => {
+      mockGocode.complete.mockResolvedValue('pass');
+      const result = await evaluator.evaluate(makeTranscript(), scenario, undefined);
+      const prompt = mockGocode.complete.mock.calls[0][0][0].content as string;
+      expect(prompt).not.toContain('Preview HTML');
+      expect(result.details?.htmlContextAvailable).toBe(false);
+    });
+
+    it('omits HTML section and does not throw when fs.readFile rejects', async () => {
+      vi.mocked(readFile).mockRejectedValue(new Error('ENOENT'));
+      mockGocode.complete.mockResolvedValue('pass');
+      const snapshot = makeSnapshot({ htmlPath: '/tmp/missing.html' });
+      const result = await evaluator.evaluate(makeTranscript(), scenario, snapshot);
+      expect(result.verdict).toBe('pass');
+      const prompt = mockGocode.complete.mock.calls[0][0][0].content as string;
+      expect(prompt).not.toContain('Preview HTML');
+      expect(result.details?.htmlContextAvailable).toBe(false);
+    });
   });
 });

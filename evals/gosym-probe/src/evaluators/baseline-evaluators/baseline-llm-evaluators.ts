@@ -18,7 +18,8 @@ import {
   JudgeCategoricalSchema,
   JudgeNumericalSchema,
 } from './llm-json-evaluator.js';
-import { buildEvidence, clamp01, truncate } from './shared.js';
+import { buildEvidence, clamp01, extractBodyHtml, htmlToText, lastSnapshotSection, truncate } from './shared.js';
+import { readSnapshotHtml } from '../shared.js';
 
 type ScoreType = 'numerical' | 'boolean' | 'categorical';
 type EvidenceInput =
@@ -70,6 +71,10 @@ function version(spec: BaselineEvaluatorSpec): string {
         categoricalPrompt: String(categoricalPrompt),
         buildEvidence: String(buildEvidence),
         truncate: String(truncate),
+        lastSnapshotSection: String(lastSnapshotSection),
+        readSnapshotHtml: String(readSnapshotHtml),
+        extractBodyHtml: String(extractBodyHtml),
+        htmlToText: String(htmlToText),
       },
       promptFamily: 'baseline-llm-evaluators-v1',
     }))
@@ -114,12 +119,12 @@ function protocol(): string {
   ].join('\n');
 }
 
-function baseEvidence(
+async function baseEvidence(
   transcript: Transcript,
   scenario: Scenario,
   snapshot?: DOMSnapshot,
-): string {
-  const evidence = buildEvidence(transcript, snapshot);
+): Promise<string> {
+  const evidence = await buildEvidence(transcript, snapshot);
   return [
     `SCENARIO: ${scenario.name}`,
     `GOALS: ${scenario.goals.map((goal) => goal.description).join('; ') || '(none)'}`,
@@ -146,8 +151,8 @@ function numericalPrompt(spec: NumericalBaselineEvaluatorSpec): (
   transcript: Transcript,
   scenario: Scenario,
   snapshot?: DOMSnapshot,
-) => string {
-  return (transcript, scenario, snapshot) => [
+) => Promise<string> {
+  return async (transcript, scenario, snapshot) => [
     'ROLE:',
     'You are an expert evaluator for a browser-based website builder agent.',
     '',
@@ -171,7 +176,7 @@ function numericalPrompt(spec: NumericalBaselineEvaluatorSpec): (
     '- fail: clear violation or missing requirement, supported by evidence',
     '- unknown: cannot determine from evidence provided',
     '',
-    baseEvidence(transcript, scenario, snapshot),
+    await baseEvidence(transcript, scenario, snapshot),
   ].join('\n');
 }
 
@@ -179,8 +184,8 @@ function booleanPrompt(spec: BooleanBaselineEvaluatorSpec): (
   transcript: Transcript,
   scenario: Scenario,
   snapshot?: DOMSnapshot,
-) => string {
-  return (transcript, scenario, snapshot) => [
+) => Promise<string> {
+  return async (transcript, scenario, snapshot) => [
     'ROLE:',
     'You are an expert evaluator for a browser-based website builder agent.',
     '',
@@ -194,7 +199,7 @@ function booleanPrompt(spec: BooleanBaselineEvaluatorSpec): (
     '{"value": <true|false>, "verdict": "pass|partial|fail|unknown", "reason": "<brief>"}',
     '',
     'Use verdict=unknown if evidence is insufficient.',
-    baseEvidence(transcript, scenario, snapshot),
+    await baseEvidence(transcript, scenario, snapshot),
   ].join('\n');
 }
 
@@ -202,8 +207,8 @@ function categoricalPrompt(spec: CategoricalBaselineEvaluatorSpec): (
   transcript: Transcript,
   scenario: Scenario,
   snapshot?: DOMSnapshot,
-) => string {
-  return (transcript, scenario, snapshot) => [
+) => Promise<string> {
+  return async (transcript, scenario, snapshot) => [
     'ROLE:',
     'You are an expert evaluator for a browser-based website builder agent.',
     '',
@@ -217,7 +222,7 @@ function categoricalPrompt(spec: CategoricalBaselineEvaluatorSpec): (
     '{"value": "<one allowed value>", "verdict": "pass|partial|fail|unknown", "reason": "<brief>"}',
     '',
     'Use verdict=unknown if evidence is insufficient.',
-    baseEvidence(transcript, scenario, snapshot),
+    await baseEvidence(transcript, scenario, snapshot),
   ].join('\n');
 }
 

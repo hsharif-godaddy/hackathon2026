@@ -46,7 +46,7 @@ export interface LLMJsonEvaluatorConfig<T> {
   name: string;
   evalVersion?: string;
   schema: z.ZodType<T>;
-  prompt: (transcript: Transcript, scenario: Scenario, snapshot?: DOMSnapshot) => string;
+  prompt: (transcript: Transcript, scenario: Scenario, snapshot?: DOMSnapshot) => string | Promise<string>;
   toEvalResult: (
     parsed: T,
     transcript: Transcript,
@@ -72,7 +72,7 @@ export class LLMJsonEvaluator<T> implements Evaluator {
     scenario: Scenario,
     snapshot?: DOMSnapshot,
   ): Promise<EvalResult> {
-    const prompt = this.config.prompt(transcript, scenario, snapshot);
+    const prompt = await this.config.prompt(transcript, scenario, snapshot);
     let response: string;
     try {
       response = await this.gocode.complete([{ role: 'user', content: prompt }]);

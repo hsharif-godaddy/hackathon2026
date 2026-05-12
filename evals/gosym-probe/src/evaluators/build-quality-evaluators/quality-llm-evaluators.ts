@@ -7,16 +7,12 @@ import {
   JudgeNumericalSchema,
   type JudgeNumerical,
 } from '../llm-json-evaluator.js';
-import { extractBodyHtml, htmlToText, truncate, readSnapshotHtml } from '../shared.js';
-
-// Smaller than shared MAX_HTML_CHARS (20K) because LLM prompt context is expensive.
-// extractBodyHtml truncates at 20K; this further trims for the evaluator prompt.
-const MAX_HTML_EVIDENCE = 8_000;
+import { extractBodyHtml, htmlToText, truncate, readSnapshotHtml, LLM_PROMPT_HTML_MAX_CHARS } from '../shared.js';
 
 async function buildHtmlEvidence(scenario: Scenario, snapshot?: DOMSnapshot): Promise<string> {
   const html = await readSnapshotHtml(snapshot);
   const bodyHtml = extractBodyHtml(html);
-  const bodyText = truncate(htmlToText(bodyHtml), MAX_HTML_EVIDENCE);
+  const bodyText = truncate(htmlToText(bodyHtml), LLM_PROMPT_HTML_MAX_CHARS);
   const goals = scenario.goals.map((g) => g.description).join('; ');
 
   return [
@@ -24,7 +20,7 @@ async function buildHtmlEvidence(scenario: Scenario, snapshot?: DOMSnapshot): Pr
     `GOALS: ${goals || '(none)'}`,
     '',
     'BODY_HTML:',
-    truncate(bodyHtml, MAX_HTML_EVIDENCE) || '(empty)',
+    truncate(bodyHtml, LLM_PROMPT_HTML_MAX_CHARS) || '(empty)',
     '',
     'BODY_TEXT:',
     bodyText || '(empty)',
@@ -98,7 +94,7 @@ export function createQualityLLMEvaluators(gocode: GocodeClient): Evaluator[] {
     name: 'visual-coherence',
     evalVersion: '1.0',
     schema: JudgeNumericalSchema,
-    canEvaluate: (_transcript, _scenario, snapshot) => Boolean(snapshot?.htmlPath),
+    canEvaluate: (_transcript, _scenario, snapshot) => Boolean(snapshot?.htmlPath || snapshot?.html),
     validateEvidence: async (_transcript, _scenario, snapshot) => {
       const html = await readSnapshotHtml(snapshot);
       const body = extractBodyHtml(html);
@@ -112,7 +108,7 @@ export function createQualityLLMEvaluators(gocode: GocodeClient): Evaluator[] {
     name: 'content-substance',
     evalVersion: '1.0',
     schema: JudgeNumericalSchema,
-    canEvaluate: (_transcript, _scenario, snapshot) => Boolean(snapshot?.htmlPath),
+    canEvaluate: (_transcript, _scenario, snapshot) => Boolean(snapshot?.htmlPath || snapshot?.html),
     validateEvidence: async (_transcript, _scenario, snapshot) => {
       const html = await readSnapshotHtml(snapshot);
       const body = extractBodyHtml(html);

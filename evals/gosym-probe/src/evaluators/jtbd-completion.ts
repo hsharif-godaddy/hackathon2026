@@ -2,6 +2,7 @@ import type { EvalResult, Evaluator } from './evaluator.js';
 import type { DOMSnapshot, Transcript } from '../runner/transcript.js';
 import type { Scenario } from '../scenarios/types.js';
 import type { GocodeClient } from '../clients/gocode-client.js';
+import { readSnapshotHtml, truncate, LLM_PROMPT_HTML_MAX_CHARS } from './shared.js';
 
 function buildTranscriptText(transcript: Transcript): string {
   return transcript.turns
@@ -35,6 +36,14 @@ function verdictToScore(verdict: EvalResult['verdict']): number {
   }
 }
 
+function buildHtmlSection(rawHtml: string): string {
+  const htmlContent = truncate(rawHtml, LLM_PROMPT_HTML_MAX_CHARS);
+  const htmlLabel = rawHtml.length > LLM_PROMPT_HTML_MAX_CHARS
+    ? `Preview HTML (truncated to ${LLM_PROMPT_HTML_MAX_CHARS} chars):`
+    : 'Preview HTML:';
+  return `\n${htmlLabel}\n${htmlContent}\n`;
+}
+
 function parseVerdict(response: string): EvalResult['verdict'] {
   const lower = response.trim().toLowerCase();
   if (lower.includes('partial')) return 'partial';
@@ -52,7 +61,7 @@ export class JTBDCompletionEvaluator implements Evaluator {
   async evaluate(
     transcript: Transcript,
     scenario: Scenario,
-    _snapshot?: DOMSnapshot,
+    snapshot?: DOMSnapshot,
   ): Promise<EvalResult> {
     if (scenario.goals.length === 0) {
       return {
@@ -75,6 +84,12 @@ export class JTBDCompletionEvaluator implements Evaluator {
         `\nReference Solution:\n${scenario.referenceSolution}\n`;
     }
 
+    const rawHtml = await readSnapshotHtml(snapshot);
+    const htmlContextAvailable = snapshot !== undefined && rawHtml.length > 0;
+    const htmlSection = rawHtml
+      ? buildHtmlSection(rawHtml)
+      : '';
+
     const prompt = [
       'You are an evaluator assessing whether an AI agent completed',
       'its assigned goals. Review the conversation transcript and goals.',
@@ -85,6 +100,7 @@ export class JTBDCompletionEvaluator implements Evaluator {
       'Goals:',
       goalsText,
       refSection,
+      ...(htmlSection ? [htmlSection] : []),
       'Reply with exactly one word: pass, partial, fail, or unknown.',
       'Use "unknown" if the transcript provides insufficient information',
       'to make a determination.',
@@ -102,6 +118,7 @@ export class JTBDCompletionEvaluator implements Evaluator {
       score,
       verdict,
       reason: `LLM judge verdict: ${verdict}`,
+      details: { htmlContextAvailable },
     };
   }
 }

@@ -143,7 +143,8 @@ describe('readSnapshotHtml', () => {
 
   it('returns empty string and calls console.warn when readFile throws', async () => {
     const { readFile } = await import('node:fs/promises');
-    vi.mocked(readFile).mockRejectedValue(new Error('ENOENT: no such file'));
+    const enoent = Object.assign(new Error('ENOENT: no such file'), { code: 'ENOENT' });
+    vi.mocked(readFile).mockRejectedValue(enoent);
 
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
@@ -163,5 +164,35 @@ describe('readSnapshotHtml', () => {
       expect.stringContaining('/tmp/missing.html'),
       expect.stringContaining('ENOENT'),
     );
+  });
+
+  it('returns inline html when snapshot.html is defined', async () => {
+    const snapshot: DOMSnapshot = {
+      url: 'http://localhost',
+      screenshotPath: '/tmp/s.png',
+      htmlPath: '/tmp/s.html',
+      timestamp: '2024-01-01T00:00:00.000Z',
+      consoleLogs: [],
+      html: '<div>inline</div>',
+    };
+    const result = await readSnapshotHtml(snapshot);
+    expect(result).toBe('<div>inline</div>');
+  });
+
+  it('prefers inline html over htmlPath when both present', async () => {
+    const { readFile } = await import('node:fs/promises');
+    vi.mocked(readFile).mockResolvedValue('<html>from-file</html>' as string);
+
+    const snapshot: DOMSnapshot = {
+      url: 'http://localhost',
+      screenshotPath: '/tmp/s.png',
+      htmlPath: '/tmp/s.html',
+      timestamp: '2024-01-01T00:00:00.000Z',
+      consoleLogs: [],
+      html: '<div>inline wins</div>',
+    };
+    const result = await readSnapshotHtml(snapshot);
+    expect(result).toBe('<div>inline wins</div>');
+    expect(readFile).not.toHaveBeenCalled();
   });
 });

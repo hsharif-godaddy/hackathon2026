@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import type { DOMSnapshot } from '../../../runner/transcript.js';
 import type { GocodeClient } from '../../../clients/gocode-client.js';
 import { createQualityLLMEvaluators } from '../quality-llm-evaluators.js';
 import {
@@ -178,5 +179,45 @@ describe('content-substance evaluator', function contentSubstanceTests() {
       makeTranscript(), scenario, await makeSnapshot('<html><body><p>Real content</p></body></html>'),
     );
     expect(result.details).toMatchObject({ dimension: 'Content Substance' });
+  });
+});
+
+describe('inline snapshot.html support (no htmlPath)', function inlineHtmlTests() {
+  it('visual-coherence evaluates inline html snapshot', async function inlineVisual() {
+    const evs = createQualityLLMEvaluators(
+      makeGocode({ score: 0.8, verdict: 'pass', reason: 'coherent layout' }),
+    );
+    const ev = evs.find((e) => e.name === 'visual-coherence')!;
+    const snapshot: DOMSnapshot = {
+      url: 'https://example.test',
+      screenshotPath: '/tmp/test.png',
+      htmlPath: '',
+      timestamp: new Date().toISOString(),
+      consoleLogs: [],
+      html: '<html><body><h1>Inline Content</h1></body></html>',
+    };
+    const result = await ev.evaluate(makeTranscript(), scenario, snapshot);
+    expect(result.evaluator).toBe('visual-coherence');
+    expect(result.score).toBeCloseTo(0.8);
+    expect(result.verdict).toBe('pass');
+  });
+
+  it('content-substance evaluates inline html snapshot', async function inlineContent() {
+    const evs = createQualityLLMEvaluators(
+      makeGocode({ score: 0.9, verdict: 'pass', reason: 'specific content' }),
+    );
+    const ev = evs.find((e) => e.name === 'content-substance')!;
+    const snapshot: DOMSnapshot = {
+      url: 'https://example.test',
+      screenshotPath: '/tmp/test.png',
+      htmlPath: '',
+      timestamp: new Date().toISOString(),
+      consoleLogs: [],
+      html: '<html><body><p>Jane Doe, Full-Stack Developer</p></body></html>',
+    };
+    const result = await ev.evaluate(makeTranscript(), scenario, snapshot);
+    expect(result.evaluator).toBe('content-substance');
+    expect(result.score).toBeCloseTo(0.9);
+    expect(result.verdict).toBe('pass');
   });
 });

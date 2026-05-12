@@ -5,6 +5,13 @@ import type { DOMSnapshot } from '../runner/transcript.js';
 const MAX_TEXT_CHARS = 20_000;
 const MAX_HTML_CHARS = 20_000;
 
+/**
+ * Cap for HTML injected into LLM evaluator prompts.
+ * ~2k tokens at ~4 chars/token, leaving headroom for transcript + goals + instructions.
+ * Smaller than MAX_HTML_CHARS (20K) which is used for full-page extraction.
+ */
+export const LLM_PROMPT_HTML_MAX_CHARS = 8_000;
+
 const BODY_RE = /<body[^>]*>([\s\S]*)<\/body>/i;
 
 export function clamp01(x: number): number {
@@ -37,15 +44,21 @@ export function htmlToText(html: string): string {
 }
 
 /**
- * Reads the HTML content from a DOMSnapshot's htmlPath.
+ * Reads the HTML content from a DOMSnapshot.
+ * Prefers inline `snapshot.html` when present (test fixtures, pre-populated snapshots).
+ * Falls back to reading from `snapshot.htmlPath` on disk.
  * Returns empty string when snapshot is undefined or the file cannot be read.
  */
 export async function readSnapshotHtml(snapshot?: DOMSnapshot): Promise<string> {
-  if (!snapshot?.htmlPath) return '';
+  if (!snapshot) return '';
+  if (snapshot.html !== undefined) return snapshot.html;
+  if (!snapshot.htmlPath) return '';
   try {
     return await readFile(snapshot.htmlPath, 'utf-8');
   } catch (err) {
-    console.warn(
+    const isNotFound = err instanceof Error && 'code' in err && (err as NodeJS.ErrnoException).code === 'ENOENT';
+    const logFn = isNotFound ? console.warn : console.error;
+    logFn(
       'readSnapshotHtml: failed to read snapshot HTML at',
       snapshot.htmlPath + ':',
       err instanceof Error ? err.message : String(err),

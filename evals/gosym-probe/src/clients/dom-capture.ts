@@ -24,6 +24,8 @@ export interface DOMSnapshot {
   htmlPath: string;
   timestamp: string;
   consoleLogs: ConsoleLogEntry[];
+  /** Inline HTML content. When present, evaluators prefer this over reading htmlPath from disk. */
+  html?: string;
 }
 
 export interface CapturedTrial {

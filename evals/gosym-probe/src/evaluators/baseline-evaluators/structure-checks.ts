@@ -1,8 +1,7 @@
-import { readFile } from 'node:fs/promises';
-
 import type { EvalResult, Evaluator } from '../evaluator.js';
 import type { DOMSnapshot, Transcript } from '../../runner/transcript.js';
 import type { Scenario } from '../../scenarios/types.js';
+import { readSnapshotHtml } from '../shared.js';
 import { extractBodyHtml, htmlToText } from './shared.js';
 
 const CTA_WORDS =
@@ -24,13 +23,6 @@ function hasHero(bodyHtml: string, bodyText: string): boolean {
   const hasH1 = /<h1\b/i.test(bodyHtml) || /\nH1[:\s]/i.test(bodyText);
   const hasHeadline = hasH1 || /\bheadline\b/i.test(bodyText) || bodyText.length > 60;
   return hasHeadline && hasCTA(bodyText);
-}
-
-async function readSnapshotHtml(snapshot: DOMSnapshot): Promise<string> {
-  if ('html' in snapshot && typeof snapshot.html === 'string') {
-    return snapshot.html;
-  }
-  return readFile(snapshot.htmlPath, 'utf-8');
 }
 
 async function snapshotBody(
