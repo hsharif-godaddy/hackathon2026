@@ -39,8 +39,15 @@ After calling `media-logo__generate_logo` or `media-logo__edit_logo`, always cal
 `media-logo__offer_logo_actions` with the transparent URL of the first generated logo.
 This gives the user quick-action buttons in the chat (e.g. "Add to my library", "Set as my logo").
 
+Use the layout-specific transparent URL field — passing the wrong field yields `undefined` and no buttons render:
+
+- `layout: "horizontal"` → `result.logos[0].horizontalTransparentUrl`
+- `layout: "vertical"` → `result.logos[0].verticalTransparentUrl`
+- `layout: "square"` (or omitted) → `result.logos[0].transparentUrl`
+
 ```typescript
-media-logo__offer_logo_actions({ imageUrl: result.logos[0].transparentUrl })
+// Example for a horizontal generation
+media-logo__offer_logo_actions({ imageUrl: result.logos[0].horizontalTransparentUrl })
 ```
 
 ## Context Gathering

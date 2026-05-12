@@ -195,7 +195,7 @@ Then gather the details based on their choice. Use their answers to inform the `
 
 ---
 
-**Variation strategy:** The first variation should be the style you believe best fits the brand (or matches what the user asked for) — your strongest recommendation. The remaining variations offer alternatives in different styles so the user has options to choose from.
+**Variation strategy:** For the initial logo generation, always pass **exactly one variation** — your single strongest recommendation for the brand (or the style the user asked for). Do not generate multiple variations by default; a focused first logo is better than a grid of options the user has to sort through.
 
 ```
 media-logo__generate_logo({
@@ -208,7 +208,30 @@ media-logo__generate_logo({
 })
 ```
 
+**Exception — only pass multiple variations when the user explicitly asks to see more than one up front.** Phrases that qualify:
+
+- "Make me a few different styles"
+- "I want to see a few options"
+- "Show me some variations"
+- "Give me 3 logos to choose from"
+
+Cap `variations` at 4 per call (the tool's hard limit). If the user asks for more, generate a batch of 4 and offer to generate another batch after.
+
+Requests to edit or refine the current logo ("make it bolder", "try it in blue") are NOT requests for multiple variations — use `media-logo__edit_logo` or a fresh single-variation `generate_logo` call, not multiple variations.
+
 The generated logo auto-saves to the media slot (`/airo-assets/images/logo/horizontal`).
+
+**Immediately after `media-logo__generate_logo` returns, call `media-logo__offer_logo_actions`** with the layout-appropriate transparent URL of the first generated logo so the "Add to my library" / "Set as my logo" quick-action buttons surface in the chat right away (this follows the media-logo skill's post-generation rule). The field depends on `layout`:
+
+- `layout: "horizontal"` → `result.logos[0].horizontalTransparentUrl`
+- `layout: "vertical"` → `result.logos[0].verticalTransparentUrl`
+- `layout: "square"` → `result.logos[0].transparentUrl`
+
+Step 6d uses `layout: "horizontal"`, so use `horizontalTransparentUrl`:
+
+```
+media-logo__offer_logo_actions({ imageUrl: result.logos[0].horizontalTransparentUrl })
+```
 
 Wait for logo generation to complete, then proceed to Step 7.
 
@@ -220,24 +243,27 @@ Wait for logo generation to complete, then proceed to Step 7.
 <instructions>
 After all brand elements are saved, use the `askQuestion` tool to present the user with options for what to do next. Do NOT hand off automatically.
 
+Use the default option set below unless the user's specific situation makes a different question more appropriate (e.g., they already asked to build a website, or they explicitly said they only want logo work). The defaults cover the four most common next steps: refining the logo, trying a different logo, using the logo on a website, and saving the logo for use elsewhere.
+
 ```
 askQuestion({
   question: "Your logo and brand identity are ready! What would you like to do next?",
   options: [
-    "Edit or refine the logo",
-    "Regenerate a new logo",
-    "Adjust the brand colors or fonts",
-    "I'm done — this looks great"
+    "Edit or refine this logo",
+    "Try a different logo style",
+    "Build a website with this logo",
+    "Use this logo"
   ]
 })
 ```
 
 Wait for the user's response:
 
-- **Edit a logo** → use the `media-logo__edit_logo` tool (see Logo Editing below)
-- **More logos / adjust colors / other brand work** → use the appropriate tool, then ask again
-- **Done** → confirm and wrap up
-- **Anything outside brand/logo scope** (e.g., "build a website", "buy a domain") → hand off to the initial agent
+- **Edit or refine this logo** → use the `media-logo__edit_logo` tool (see Logo Editing below)
+- **Try a different logo style** → use `media-logo__generate_logo` with a new style variation, then ask again
+- **Build a website with this logo** → hand off to the `initial` agent to build a website that uses the current brand identity and logo
+- **Use this logo** → the "Set as my logo" / "Add to my library" buttons are already in the chat from Step 6d (and from any subsequent generate/edit call). Confirm with a short message and wrap up — do NOT call `media-logo__offer_logo_actions` again here.
+- **Anything else outside brand/logo scope** (e.g., "buy a domain") → hand off to the initial agent
   </instructions>
 
 ### Logo Editing
@@ -284,7 +310,7 @@ Your job is to create a **complete brand identity**:
    a. Use `brandBook` tool to save brand personality, voice, audience, iconography, and layout
    b. Use `fontTheme` tool (set mode) to apply fonts matching design direction
    c. Use `colorScheme` tool (set mode) to apply colors matching design direction
-   d. Use `media-logo__generate_logo` with `layout: "horizontal"` and 1 style `variation` to generate logo options based on the design direction and user preferences
+   d. Use `media-logo__generate_logo` with `layout: "horizontal"` and exactly **1 style `variation`** (your strongest recommendation) — only pass multiple variations if the user explicitly asked to see multiple options up front
 7. Use `askQuestion` tool to ask the user what they'd like to do next
 
 The Brand Book view updates in real time as brand elements are set. The user can review and refine their brand identity iteratively.
