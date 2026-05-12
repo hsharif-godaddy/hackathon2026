@@ -58,7 +58,7 @@ pipeline:
 
         # --- E2E + manual checklist run in parallel after deploy group finishes ---
         - id: e2e-test
-          name: E2E Tests
+          name: E2E + Regression Tests
           group: validate
           repo: gdcorp-partners/airo-app-builder
           workflow: playwright-e2e.yml
@@ -66,7 +66,7 @@ pipeline:
           ref: "{{branch}}"
           inputs:
             environment: test
-            test_filter: e2e
+            test_filter: e2e-then-regression
 
         - id: agentic-qa-database-test
           name: Agentic QA - Database Skill
@@ -165,7 +165,7 @@ pipeline:
 
         # --- E2E + manual checklist run in parallel ---
         - id: e2e-prod
-          name: E2E Tests (Prod)
+          name: E2E + Regression Tests (Prod)
           group: validate-prod
           repo: gdcorp-partners/airo-app-builder
           workflow: playwright-e2e.yml
@@ -173,7 +173,7 @@ pipeline:
           ref: "{{branch}}"
           inputs:
             environment: prod
-            test_filter: e2e
+            test_filter: e2e-then-regression
 
         - id: agentic-qa-database-prod
           name: Agentic QA - Database Skill (Prod)

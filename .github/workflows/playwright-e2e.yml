@@ -1,10 +1,16 @@
 name: E2E Tests
 
-run-name: "E2E Tests - ${{ inputs.environment || 'prod' }}${{ inputs.test_filter && inputs.test_filter != 'all' && format(' [{0}]', inputs.test_filter) || '' }} (by ${{ github.actor }})"
+run-name: "E2E Tests - ${{ inputs.environment || 'prod' }}${{ (inputs.test_filter && format(' [{0}]', inputs.test_filter)) || (github.event.schedule == '0 6 * * *' && ' [regression]') || (github.event.schedule == '0 */2 * * *' && ' [e2e]') || '' }} (by ${{ github.actor }})"
 
 on:
   # Scheduled runs against prod. github.event.schedule (the cron string itself)
   # is used below to dispatch to the right test suite.
+  #
+  # NOTE: Each cron string is referenced in three places that must stay in sync:
+  #   1. This block (trigger registration)
+  #   2. run-name expression (line 3) — labels scheduled runs as [e2e] vs [regression]
+  #   3. "Run Playwright tests" step's bash dispatcher — picks FILTER from $GITHUB_EVENT_SCHEDULE
+  # Update all three when adding or changing a schedule.
   schedule:
     # Critical-path E2E every 2 hours - fast post-deploy/regression gate.
     - cron: "0 */2 * * *"
@@ -34,7 +40,7 @@ on:
         options:
           - e2e
           - regression
-          - all
+          - e2e-then-regression
           - authentication
           - apps-page
           - develop-chat
@@ -57,7 +63,7 @@ on:
         default: "test" # The workflow_call will mostly be called building for the test env
         type: string
       test_filter:
-        description: "Test suite: e2e, regression, all, or individual spec name (e.g. authentication, apps-page)"
+        description: "Test suite: e2e, regression, e2e-then-regression (sequential, fail-fast), or individual spec name (e.g. authentication, apps-page)"
         required: false
         default: "e2e"
         type: string
@@ -73,7 +79,9 @@ permissions:
 
 jobs:
   test:
-    timeout-minutes: 60
+    # Sized for the worst case (e2e-then-regression with one retry):
+    # ~5 min setup + ~10 min e2e + ~30 min regression + retry headroom.
+    timeout-minutes: 90
     runs-on:
       labels:
         - airo-cicd-runners
@@ -291,9 +299,21 @@ jobs:
               echo "Running full regression suite"
               npx playwright test --project=regression
               ;;
+            e2e-then-regression)
+              # bash -eo pipefail (GH Actions default shell) aborts the run
+              # step on the first nonzero exit, so regression never starts
+              # if e2e fails and the step is marked failed (fail-fast).
+              echo "Running E2E critical path, then regression suite if E2E passes"
+              npx playwright test --project=e2e
+              echo "E2E passed, running regression suite"
+              npx playwright test --project=regression
+              ;;
             all)
-              echo "Running all tests (E2E + regression)"
-              npx playwright test
+              # Removed in favor of e2e-then-regression. Reject explicitly
+              # so callers that haven't migrated get a clear error instead
+              # of falling through to "*)" and trying to run all.spec.ts.
+              echo "ERROR: 'all' filter was removed. Use 'e2e-then-regression' for sequential fail-fast execution, or run 'e2e' and 'regression' as separate dispatches if you need both regardless of failures." >&2
+              exit 1
               ;;
             *)
               echo "Running filtered regression test: $FILTER"
