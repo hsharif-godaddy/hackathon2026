@@ -4,7 +4,6 @@ import type { Scenario } from '../scenarios/types.js';
 
 export class BugHitRateEvaluator implements Evaluator {
   readonly name = 'bug-hit-rate';
-  readonly deterministic = true;
 
   async evaluate(
     transcript: Transcript,

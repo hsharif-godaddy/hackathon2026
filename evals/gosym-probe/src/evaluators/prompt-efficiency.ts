@@ -1,13 +1,13 @@
 import type { EvalResult, Evaluator } from './evaluator.js';
 import type { DOMSnapshot, Transcript } from '../runner/transcript.js';
 import type { Scenario } from '../scenarios/types.js';
-import { scoreToVerdict } from './eval-utils.js';
-
 const DEFAULT_MAX_TURNS = 30;
 
 export class PromptEfficiencyEvaluator implements Evaluator {
   readonly name = 'prompt-efficiency';
-  readonly deterministic = true;
+  readonly regressionMode = 'score' as const;
+  // Score formula is 1 - usedTurns/maxTurns, so higher = fewer turns = better
+  readonly lowerIsBetter = false;
 
   async evaluate(
     transcript: Transcript,
@@ -19,12 +19,11 @@ export class PromptEfficiencyEvaluator implements Evaluator {
       (t) => t.role === 'user',
     ).length;
     const score = Math.max(0, 1 - userTurns / maxTurns);
-    const verdict = scoreToVerdict(score);
 
     return {
       evaluator: this.name,
       score,
-      verdict,
+      verdict: 'observed',
       reason: (
         `Used ${userTurns} of ${maxTurns} max turns` +
         ` (efficiency: ${(score * 100).toFixed(0)}%)`

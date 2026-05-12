@@ -243,7 +243,6 @@ function maxGapMs(times: number[]): number {
 
 export class LatencyEvaluator implements Evaluator {
   readonly name = 'latency';
-  readonly deterministic = false;
   readonly regressionMode = 'score' as const;
 
   private readonly collector =

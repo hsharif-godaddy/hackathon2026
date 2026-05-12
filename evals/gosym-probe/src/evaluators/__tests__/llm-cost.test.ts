@@ -19,14 +19,6 @@ describe('LLMCostEvaluator', () => {
     expect(evaluator.name).toBe('llm-cost');
   });
 
-  it('is not deterministic', () => {
-    const evaluator = new LLMCostEvaluator({
-      collector: makeMockCollector(),
-      gocodeClient: makeMockGocodeClient(),
-    });
-    expect(evaluator.deterministic).toBe(false);
-  });
-
   it('has regressionMode "score"', () => {
     const evaluator = new LLMCostEvaluator({
       collector: makeMockCollector(),

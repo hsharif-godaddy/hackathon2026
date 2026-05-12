@@ -178,8 +178,8 @@ describe('ToolCallVerificationEvaluator', () => {
     expect(result.details?.calledTools).toContain('create-page');
   });
 
-  it('is deterministic', () => {
-    expect(evaluator.deterministic).toBe(true);
+  it('is named tool-call-verification', () => {
+    expect(evaluator.name).toBe('tool-call-verification');
   });
 
   describe('match: prefix', () => {

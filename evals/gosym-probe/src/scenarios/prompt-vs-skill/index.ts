@@ -1,3 +1,5 @@
+export { createPromptVsSkillScenario }
+  from './create-prompt-vs-skill-scenario.js';
 export { symptomBlankPageScenario }
   from './symptom-blank-page.js';
 export { symptomChangesNotShowingScenario }

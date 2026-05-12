@@ -127,9 +127,11 @@ export class RegressionComparator {
       : baselineScore - currentScore;  // regression when score dropped
 
     const exceeded =
-      !Number.isNaN(delta) &&
-      baselineScore > 0 &&
-      exceededNumerator / baselineScore > threshold;
+      !Number.isNaN(delta) && (
+        agg.lowerIsBetter === true && baselineScore === 0
+          ? currentScore > 0
+          : baselineScore > 0 && exceededNumerator / baselineScore > threshold
+      );
 
     return { evaluator: name, currentScore, baselineScore, delta, exceeded };
   }

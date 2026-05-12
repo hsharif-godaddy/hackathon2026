@@ -27,7 +27,6 @@ function matchesAny(
 
 export class ToolCallVerificationEvaluator implements Evaluator {
   readonly name = 'tool-call-verification';
-  readonly deterministic = true;
 
   async evaluate(
     transcript: Transcript,

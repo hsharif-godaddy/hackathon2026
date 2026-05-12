@@ -63,12 +63,10 @@ function makePassResult(evalName: string): EvalResult {
 
 function makeEvaluator(
   name: string,
-  deterministic: boolean,
   result: EvalResult,
 ): Evaluator {
   return {
     name,
-    deterministic,
     evaluate: vi.fn().mockResolvedValue(result),
   };
 }
@@ -243,10 +241,10 @@ describe('SuiteRunner', () => {
     expect(mockSimulationRun).toHaveBeenCalledTimes(1);
   });
 
-  it('calls deterministic evaluators once across k trials', async () => {
+  it('calls evaluators once per trial', async () => {
     mockSimulationRun.mockResolvedValue(makeTranscript());
-    const detEval = makeEvaluator('det', true, makePassResult('det'));
-    const scenario = makeScenario({ trials: 3, evaluators: [detEval] });
+    const evaluator = makeEvaluator('ev', makePassResult('ev'));
+    const scenario = makeScenario({ trials: 3, evaluators: [evaluator] });
 
     await new SuiteRunner({
       scenarios: [scenario],
@@ -255,77 +253,37 @@ describe('SuiteRunner', () => {
       syntheticUser: mockSyntheticUser,
     }).run();
 
-    expect(detEval.evaluate).toHaveBeenCalledTimes(1);
+    expect(evaluator.evaluate).toHaveBeenCalledTimes(3);
   });
 
-  it('does not reuse resumed trial results for deterministic evaluators', async () => {
-    mockSimulationRun.mockResolvedValue(makeTranscript('resume-scenario', 1));
-    const detEval: Evaluator = {
-      name: 'det',
-      deterministic: true,
-      evaluate: vi.fn(async function evaluate(transcript): Promise<EvalResult> {
-        return {
-          evaluator: 'det',
-          score: transcript.trialIndex,
-          verdict: 'pass',
-          reason: `trial ${transcript.trialIndex}`,
-        };
-      }),
-    };
-    const scenario = makeScenario({
-      name: 'resume-scenario',
-      trials: 2,
-      evaluators: [detEval],
-    });
+  it('calls evaluators with distinct transcripts per trial', async () => {
+    const t0 = makeTranscript('test-scenario', 0);
+    const t1 = makeTranscript('test-scenario', 1);
+    const t2 = makeTranscript('test-scenario', 2);
+    mockSimulationRun
+      .mockResolvedValueOnce(t0)
+      .mockResolvedValueOnce(t1)
+      .mockResolvedValueOnce(t2);
 
-    const [result] = await new SuiteRunner({
+    const evaluator = makeEvaluator('ev', makePassResult('ev'));
+    const scenario = makeScenario({ trials: 3, evaluators: [evaluator] });
+
+    await new SuiteRunner({
       scenarios: [scenario],
       config: mockConfig,
       makeAgentClient,
       syntheticUser: mockSyntheticUser,
-      existingTrialsByScenario: new Map([
-        [
-          'resume-scenario',
-          [{
-            trialIndex: 0,
-            transcript: makeTranscript('resume-scenario', 0),
-            evalResults: [{
-              evaluator: 'det',
-              score: 999,
-              verdict: 'pass',
-              reason: 'existing result should not be cached',
-            }],
-          }],
-        ],
-      ]),
-      trialIndicesByScenario: new Map([['resume-scenario', [1]]]),
     }).run();
 
-    expect(detEval.evaluate).toHaveBeenCalledTimes(1);
-    expect(result.trials.map(function index(trial) {
-      return trial.trialIndex;
-    })).toEqual([0, 1]);
-    expect(result.trials[1].evalResults[0]).toEqual(
-      expect.objectContaining({
-        score: 1,
-        reason: 'trial 1',
-      }),
+    const receivedTranscripts = (evaluator.evaluate as ReturnType<typeof vi.fn>).mock.calls.map(
+      (args) => args[0] as Transcript,
     );
-  });
-
-  it('calls non-deterministic evaluators once per trial', async () => {
-    mockSimulationRun.mockResolvedValue(makeTranscript());
-    const ndEval = makeEvaluator('nd', false, makePassResult('nd'));
-    const scenario = makeScenario({ trials: 3, evaluators: [ndEval] });
-
-    await new SuiteRunner({
-      scenarios: [scenario],
-      config: mockConfig,
-      makeAgentClient,
-      syntheticUser: mockSyntheticUser,
-    }).run();
-
-    expect(ndEval.evaluate).toHaveBeenCalledTimes(3);
+    expect(receivedTranscripts).toHaveLength(3);
+    expect(receivedTranscripts[0]).toBe(t0);
+    expect(receivedTranscripts[1]).toBe(t1);
+    expect(receivedTranscripts[2]).toBe(t2);
+    expect(receivedTranscripts[0]).not.toBe(receivedTranscripts[1]);
+    expect(receivedTranscripts[1]).not.toBe(receivedTranscripts[2]);
   });
 
   it('includes per-trial TrialResults with correct trialIndex', async () => {
@@ -628,7 +586,7 @@ describe('SuiteRunner — onTrialEvaluated callback', () => {
 
   it('fires for each evaluated trial with correct args', async () => {
     const onTrialEvaluated = vi.fn();
-    const ev = makeEvaluator('ev', false, makePassResult('ev'));
+    const ev = makeEvaluator('ev', makePassResult('ev'));
     const scenario = makeScenario({
       name: 'my-scenario',
       trials: 2,
@@ -921,7 +879,6 @@ describe('SuiteRunner — evaluator error resilience', () => {
   it('returns verdict unknown when evaluator.evaluate rejects', async () => {
     const failingEval: Evaluator = {
       name: 'failing-eval',
-      deterministic: false,
       evaluate: vi.fn().mockRejectedValue(new Error('eval crashed')),
     };
     const scenario = makeScenario({
@@ -945,12 +902,10 @@ describe('SuiteRunner — evaluator error resilience', () => {
   it('other evaluators still produce results when one fails', async () => {
     const failingEval: Evaluator = {
       name: 'failing',
-      deterministic: false,
       evaluate: vi.fn().mockRejectedValue(new Error('boom')),
     };
     const passingEval = makeEvaluator(
       'passing',
-      false,
       makePassResult('passing'),
     );
     const scenario = makeScenario({
@@ -978,7 +933,6 @@ describe('SuiteRunner — evaluator error resilience', () => {
   it('captures error message in reason field', async () => {
     const failingEval: Evaluator = {
       name: 'failing',
-      deterministic: false,
       evaluate: vi.fn().mockRejectedValue(
         new Error('specific error message'),
       ),
@@ -1023,7 +977,6 @@ describe('SuiteRunner -- beforeTrial lifecycle', () => {
         evaluators: [
           makeEvaluator(
             'e',
-            true,
             makePassResult('e'),
           ),
         ],
@@ -1060,7 +1013,6 @@ describe('SuiteRunner -- beforeTrial lifecycle', () => {
       const evaluator = {
         ...makeEvaluator(
           'hooked',
-          false,
           makePassResult('hooked'),
         ),
         hookClient,
@@ -1096,7 +1048,6 @@ describe('SuiteRunner -- beforeTrial lifecycle', () => {
       const evaluator = {
         ...makeEvaluator(
           'with-unhook',
-          false,
           makePassResult('with-unhook'),
         ),
         unhookTrial,
@@ -1129,7 +1080,6 @@ describe('SuiteRunner — EvalResult normalization', () => {
   it('clamps NaN score to 0', async () => {
     const evaluator = makeEvaluator(
       'bad-score',
-      false,
       { evaluator: 'bad-score', score: NaN, verdict: 'fail', reason: 'oops' },
     );
     const scenario = makeScenario({
@@ -1150,7 +1100,6 @@ describe('SuiteRunner — EvalResult normalization', () => {
   it('clamps score above 1 to 1', async () => {
     const evaluator = makeEvaluator(
       'over-score',
-      false,
       { evaluator: 'over-score', score: 2.5, verdict: 'pass', reason: 'ok' },
     );
     const scenario = makeScenario({
@@ -1171,7 +1120,6 @@ describe('SuiteRunner — EvalResult normalization', () => {
   it('flattens multiline reason to single line', async () => {
     const evaluator = makeEvaluator(
       'multiline',
-      false,
       {
         evaluator: 'multiline',
         score: 0.5,
@@ -1199,7 +1147,6 @@ describe('SuiteRunner — EvalResult normalization', () => {
   it('normalizes catch-path result when evaluator throws', async () => {
     const failingEval: Evaluator = {
       name: 'throwing',
-      deterministic: false,
       evaluate: vi.fn().mockRejectedValue(
         new Error('line1\nline2\r\nline3'),
       ),

@@ -88,7 +88,7 @@ The resulting `Transcript` (all turns + tool calls) is passed to a set of
 evaluators. Each returns
 `{ score: 0.0–1.0, verdict: pass|partial|fail|unknown, reason: string }`.
 
-### Deterministic Evaluators (no LLM, run once per scenario)
+### Computed Evaluators (no LLM)
 
 | Evaluator | What it measures | Scoring |
 |---|---|---|
@@ -134,7 +134,7 @@ judge model is configured.
 
 `SuiteRunner` runs `k` trials per scenario:
 
-- Deterministic evaluators run on trial 0 only; result is cloned to all trials
+- All evaluators run once per trial; TrialAggregator handles cross-trial aggregation.
 - Judge evaluators run fresh on every trial
 - `pass@k` — any trial passes
 - `pass^k` — all trials pass

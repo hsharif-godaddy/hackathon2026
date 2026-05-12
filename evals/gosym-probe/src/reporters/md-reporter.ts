@@ -527,10 +527,10 @@ export class MdReporter {
       + ` | **Avg Duration:** ${formatDuration(timing.avgTrialDurationMs)}`
       + ` | **Avg Turns:** ${Math.round(timing.avgTurnsPerTrial)}`;
     if (toolFailureCount > 0) {
-      summaryLine += ` | **Tool Failures:** ${toolFailureCount}`;
+      summaryLine += ` | **Tool Errors:** ${toolFailureCount}`;
     }
     if (runtimeErrorCount > 0) {
-      summaryLine += ` | **Errors:** ${runtimeErrorCount}`;
+      summaryLine += ` | **Runtime Errors:** ${runtimeErrorCount}`;
     }
 
     const lines: string[] = [

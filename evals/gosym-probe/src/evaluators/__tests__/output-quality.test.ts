@@ -277,7 +277,7 @@ describe('OutputQualityEvaluator', () => {
     expect(result.evaluator).toBe('output-quality');
   });
 
-  it('is not deterministic', () => {
-    expect(evaluator.deterministic).toBe(false);
+  it('is named output-quality', () => {
+    expect(evaluator.name).toBe('output-quality');
   });
 });

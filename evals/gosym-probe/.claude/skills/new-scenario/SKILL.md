@@ -99,13 +99,12 @@ first two. Add others based on the conditions shown.
 |                         | must/must not call specific tools).  |
 | JTBDCompletionEvaluator | When goals involve subjective task   |
 |                         | success that requires LLM judgment.  |
-|                         | This is an LLM-based evaluator       |
-|                         | (`deterministic: false`). Include    |
-|                         | for most scenarios.                  |
+|                         | This is an LLM-based evaluator.      |
+|                         | Include for most scenarios.          |
 | OutputQualityEvaluator  | When `--visual` flag is set OR the   |
 |                         | scenario involves UI output that     |
 |                         | should be visually inspected.        |
-|                         | LLM-based (`deterministic: false`).  |
+|                         | LLM-based.                           |
 | TurnDurationEvaluator   | When response latency matters (e.g.  |
 |                         | performance-sensitive flows).        |
 | AgentStepsEvaluator     | When measuring agent efficiency      |
@@ -297,7 +296,7 @@ If the suite directory already exists, add the export to the existing
 - Hard-wrap at 80 characters
 - LLM-based evaluators (`JTBDCompletionEvaluator`,
   `OutputQualityEvaluator`) need `gocode` in their constructor
-- Deterministic evaluators take no constructor args
+- Computed evaluators take no constructor args
 - All scenarios start as `category: 'capability'` (use `/graduate`
   to promote later)
 - Always include `setup` and `teardown` for app provisioning

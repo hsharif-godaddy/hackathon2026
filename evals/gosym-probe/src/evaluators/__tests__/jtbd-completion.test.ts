@@ -190,7 +190,7 @@ describe('JTBDCompletionEvaluator', () => {
     expect(result.evaluator).toBe('jtbd-completion');
   });
 
-  it('is not deterministic', () => {
-    expect(evaluator.deterministic).toBe(false);
+  it('is named jtbd-completion', () => {
+    expect(evaluator.name).toBe('jtbd-completion');
   });
 });

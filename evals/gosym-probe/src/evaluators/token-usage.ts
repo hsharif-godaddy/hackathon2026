@@ -17,7 +17,6 @@ import { computeProbeDelta } from './eval-utils.js';
 
 export class TokenUsageEvaluator implements Evaluator {
   readonly name = 'token-usage';
-  readonly deterministic = false;
   readonly regressionMode = 'score' as const;
   readonly lowerIsBetter = true;
 

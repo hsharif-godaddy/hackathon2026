@@ -29,7 +29,6 @@ function makeBaseConfig(): BuildQualityConfig {
 function makeMockEvaluator(name: string): Evaluator {
   return {
     name,
-    deterministic: true,
     evaluate: async (
       _transcript: Transcript,
       _scenario: Scenario,

@@ -46,7 +46,6 @@ function parseVerdict(response: string): EvalResult['verdict'] {
 
 export class JTBDCompletionEvaluator implements Evaluator {
   readonly name = 'jtbd-completion';
-  readonly deterministic = false;
 
   constructor(private readonly gocodeClient: GocodeClient) {}
 

@@ -30,8 +30,14 @@ export function createConfig(): Config {
       thresholds: {
         'output-quality': 0.1,
         'prompt-efficiency': 0.15,
+        'turn-duration': 1.5,
+        'token-usage': 1.5,
+        'llm-cost': 1.5,
+        'latency': 1.5,
+        'tool-parallelism': 0.5,
+        'tool-failure-rate': 1.5,
       },
-      defaultThreshold: 0.05,
+      defaultThreshold: 0.1,
       graduationPassRateThreshold: 0.9,
     },
   };

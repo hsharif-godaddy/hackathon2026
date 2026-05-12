@@ -629,9 +629,19 @@ describe('RegressionComparator', () => {
         expect(e?.exceeded).toBe(false);
       });
 
-      it('baseline 0 with lowerIsBetter → exceeded = false (no division by zero)', () => {
+      it('baseline 0 with lowerIsBetter, currentScore > 0 → exceeded = true (regression from perfect baseline)', () => {
         const result = makeResult('regression', {
           latency: { ...makeScoreAgg(100), lowerIsBetter: true },
+        });
+        const baseline = makeScoreBaseline(0);
+        const r = comparator.compare(result, baseline, THRESHOLDS);
+        const e = r.evaluators.find((x) => x.evaluator === 'latency');
+        expect(e?.exceeded).toBe(true);
+      });
+
+      it('baseline 0 with lowerIsBetter, currentScore also 0 → exceeded = false (no regression from perfect baseline)', () => {
+        const result = makeResult('regression', {
+          latency: { ...makeScoreAgg(0), lowerIsBetter: true },
         });
         const baseline = makeScoreBaseline(0);
         const r = comparator.compare(result, baseline, THRESHOLDS);

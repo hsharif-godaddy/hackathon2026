@@ -75,11 +75,6 @@ function makeMockClient(): {
 }
 
 describe('LatencyEvaluator', () => {
-  it('is non-deterministic', () => {
-    const evaluator = new LatencyEvaluator();
-    expect(evaluator.deterministic).toBe(false);
-  });
-
   it('has name "latency"', () => {
     const evaluator = new LatencyEvaluator();
     expect(evaluator.name).toBe('latency');

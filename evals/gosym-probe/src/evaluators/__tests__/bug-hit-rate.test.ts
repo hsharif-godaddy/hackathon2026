@@ -102,7 +102,7 @@ describe('BugHitRateEvaluator', () => {
     expect(result.evaluator).toBe('bug-hit-rate');
   });
 
-  it('is deterministic', () => {
-    expect(evaluator.deterministic).toBe(true);
+  it('is named bug-hit-rate', () => {
+    expect(evaluator.name).toBe('bug-hit-rate');
   });
 });

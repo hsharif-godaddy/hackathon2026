@@ -19,14 +19,6 @@ describe('TokenUsageEvaluator', () => {
     expect(evaluator.name).toBe('token-usage');
   });
 
-  it('is not deterministic', () => {
-    const evaluator = new TokenUsageEvaluator({
-      collector: makeMockCollector(),
-      gocodeClient: makeMockGocodeClient(),
-    });
-    expect(evaluator.deterministic).toBe(false);
-  });
-
   it('has regressionMode "score"', () => {
     const evaluator = new TokenUsageEvaluator({
       collector: makeMockCollector(),

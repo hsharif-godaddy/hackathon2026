@@ -903,7 +903,7 @@ describe('MdReporter — failure/error counts', () => {
     mockWriteFile.mockResolvedValue(undefined);
   });
 
-  it('shows Tool Failures count when tool calls have errors', () => {
+  it('shows Tool Errors count when tool calls have errors', () => {
     const result: ScenarioResult = {
       scenarioName: 'fails-scenario',
       category: 'capability',
@@ -926,10 +926,10 @@ describe('MdReporter — failure/error counts', () => {
     };
     const reporter = new MdReporter();
     const content = reporter.render('run-001', [result]);
-    expect(content).toContain('**Tool Failures:** 1');
+    expect(content).toContain('**Tool Errors:** 1');
   });
 
-  it('shows Errors count when transcript has runtime errors', () => {
+  it('shows Runtime Errors count when transcript has runtime errors', () => {
     const result: ScenarioResult = {
       scenarioName: 'errors-scenario',
       category: 'capability',
@@ -953,10 +953,10 @@ describe('MdReporter — failure/error counts', () => {
     };
     const reporter = new MdReporter();
     const content = reporter.render('run-001', [result]);
-    expect(content).toContain('**Errors:** 2');
+    expect(content).toContain('**Runtime Errors:** 2');
   });
 
-  it('shows both Tool Failures and Errors when both are present', () => {
+  it('shows both Tool Errors and Runtime Errors when both are present', () => {
     const result: ScenarioResult = {
       scenarioName: 'both-scenario',
       category: 'capability',
@@ -980,11 +980,11 @@ describe('MdReporter — failure/error counts', () => {
     };
     const reporter = new MdReporter();
     const content = reporter.render('run-001', [result]);
-    expect(content).toContain('**Tool Failures:** 1');
-    expect(content).toContain('**Errors:** 1');
+    expect(content).toContain('**Tool Errors:** 1');
+    expect(content).toContain('**Runtime Errors:** 1');
   });
 
-  it('omits Tool Failures when all tool calls succeed', () => {
+  it('omits Tool Errors when all tool calls succeed', () => {
     const result: ScenarioResult = {
       scenarioName: 'clean-tools',
       category: 'capability',
@@ -1007,10 +1007,10 @@ describe('MdReporter — failure/error counts', () => {
     };
     const reporter = new MdReporter();
     const content = reporter.render('run-001', [result]);
-    expect(content).not.toContain('Tool Failures');
+    expect(content).not.toContain('Tool Errors');
   });
 
-  it('omits Errors when transcript has no runtime errors', () => {
+  it('omits Runtime Errors when transcript has no runtime errors', () => {
     const result: ScenarioResult = {
       scenarioName: 'clean-errors',
       category: 'capability',
@@ -1029,10 +1029,10 @@ describe('MdReporter — failure/error counts', () => {
     };
     const reporter = new MdReporter();
     const content = reporter.render('run-001', [result]);
-    expect(content).not.toContain('**Errors:**');
+    expect(content).not.toContain('**Runtime Errors:**');
   });
 
-  it('aggregates Tool Failures and Errors across multiple trials', () => {
+  it('aggregates Tool Errors and Runtime Errors across multiple trials', () => {
     const result: ScenarioResult = {
       scenarioName: 'multi-trial',
       category: 'capability',
@@ -1062,8 +1062,8 @@ describe('MdReporter — failure/error counts', () => {
     };
     const reporter = new MdReporter();
     const content = reporter.render('run-001', [result]);
-    expect(content).toContain('**Tool Failures:** 3');
-    expect(content).toContain('**Errors:** 3');
+    expect(content).toContain('**Tool Errors:** 3');
+    expect(content).toContain('**Runtime Errors:** 3');
   });
 });
 

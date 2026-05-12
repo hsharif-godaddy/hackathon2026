@@ -72,37 +72,37 @@ describe('AgentStepsEvaluator', () => {
       makeScenario(),
     );
     expect(result.score).toBe(1.0);
-    expect(result.verdict).toBe('pass');
+    expect(result.verdict).toBe('observed');
   });
 
-  it("returns 'pass' at 2 of 10 max steps (score 0.8)", async () => {
+  it("returns 'observed' at 2 of 10 max steps (score 0.8)", async () => {
     const evaluator = new AgentStepsEvaluator({ maxSteps: 10 });
     const result = await evaluator.evaluate(
       makeTranscript([makeAssistantTurn(2)]),
       makeScenario(),
     );
     expect(result.score).toBeCloseTo(0.8);
-    expect(result.verdict).toBe('pass');
+    expect(result.verdict).toBe('observed');
   });
 
-  it("returns 'partial' at boundary (6 of 10 → score 0.4)", async () => {
+  it("returns 'observed' at boundary (6 of 10 → score 0.4)", async () => {
     const evaluator = new AgentStepsEvaluator({ maxSteps: 10 });
     const result = await evaluator.evaluate(
       makeTranscript([makeAssistantTurn(6)]),
       makeScenario(),
     );
     expect(result.score).toBeCloseTo(0.4);
-    expect(result.verdict).toBe('partial');
+    expect(result.verdict).toBe('observed');
   });
 
-  it("returns 'fail' when steps meet max", async () => {
+  it("returns 'observed' when steps meet max", async () => {
     const evaluator = new AgentStepsEvaluator({ maxSteps: 10 });
     const result = await evaluator.evaluate(
       makeTranscript([makeAssistantTurn(10)]),
       makeScenario(),
     );
     expect(result.score).toBe(0);
-    expect(result.verdict).toBe('fail');
+    expect(result.verdict).toBe('observed');
   });
 
   it('score clamps to 0 when steps exceed max', async () => {
@@ -112,7 +112,7 @@ describe('AgentStepsEvaluator', () => {
       makeScenario(),
     );
     expect(result.score).toBe(0);
-    expect(result.verdict).toBe('fail');
+    expect(result.verdict).toBe('observed');
   });
 
   it('sums totalSteps across multiple assistant turns', async () => {
@@ -122,7 +122,7 @@ describe('AgentStepsEvaluator', () => {
       makeScenario(),
     );
     expect(result.score).toBeCloseTo(0.8);
-    expect(result.verdict).toBe('pass');
+    expect(result.verdict).toBe('observed');
   });
 
   it('only counts assistant turns; user turns are ignored', async () => {
@@ -144,10 +144,11 @@ describe('AgentStepsEvaluator', () => {
     expect(result.details?.maxSteps).toBe(10);
   });
 
-  it('is deterministic and named agent-steps', () => {
+  it('has correct name and properties', () => {
     const evaluator = new AgentStepsEvaluator({ maxSteps: 10 });
-    expect(evaluator.deterministic).toBe(true);
     expect(evaluator.name).toBe('agent-steps');
+    expect(evaluator.regressionMode).toBe('score');
+    expect(evaluator.lowerIsBetter).toBe(false);
   });
 
   it('throws RangeError when maxSteps is 0', () => {

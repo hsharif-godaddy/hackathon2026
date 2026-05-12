@@ -5,8 +5,7 @@ Local, offline eval harness for the Airo App Builder (AAB) agent.
 Runs entirely on the developer's machine: drives a synthetic user (powered by
 GoCode / Claude Sonnet 4.6) through scripted scenarios against a locally
 running AAB instance, records full conversation transcripts, captures DOM
-snapshots via Playwright, and scores results with deterministic and
-LLM-as-a-Judge evaluators.
+snapshots via Playwright, and scores results with LLM-as-a-Judge evaluators.
 
 See [QUICK_START.md](QUICK_START.md) to get up and running.
 
@@ -57,8 +56,8 @@ Options:
 in the `ALL_SCENARIOS` array in `src/index.ts`.
 
 **Adding an evaluator:** implement the `Evaluator` interface
-(`src/evaluators/evaluator.ts`) with a `deterministic` flag and register it in
-the relevant scenario's `evaluators` array.
+(`src/evaluators/evaluator.ts`) and register it in the relevant scenario's
+`evaluators` array.
 
 ---
 
@@ -107,20 +106,18 @@ CLI (src/index.ts)
 
 **Evaluators**
 
-| Evaluator | Type | What it checks |
+| Evaluator | Kind | What it checks |
 |---|---|---|
-| `bug-hit-rate` | deterministic | Unrecovered error events in transcript |
-| `prompt-efficiency` | deterministic | Turn count vs. `maxTurns` |
-| `tool-call-verification` | deterministic | Expected tools called / not called |
-| `jtbd-completion` | LLM judge | Scenario goals met (positive/negative assertions) |
-| `output-quality` | LLM judge | DOM snapshot quality vs. rubric / reference |
+| `bug-hit-rate` | computed | Unrecovered error events in transcript |
+| `prompt-efficiency` | computed | Turn count vs. `maxTurns` |
+| `tool-call-verification` | computed | Expected tools called / not called |
+| `jtbd-completion` | LLM-judged | Scenario goals met (positive/negative assertions) |
+| `output-quality` | LLM-judged | DOM snapshot quality vs. rubric / reference |
 
 **Trial strategy**
 
 - `executionMode: 'sequential'` (default) — one trial at a time.
 - `executionMode: 'parallel'` — `Promise.all(k)` fan-out; for stateless agents.
-- Deterministic evaluators run once per scenario and their score is reused across
-  all `k` trials.
 
 **Suite-level parallelism**
 

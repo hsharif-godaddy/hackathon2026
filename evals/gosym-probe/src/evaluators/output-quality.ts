@@ -30,7 +30,6 @@ async function readHtml(snapshot: DOMSnapshot): Promise<string> {
 
 export class OutputQualityEvaluator implements Evaluator {
   readonly name = 'output-quality';
-  readonly deterministic = false;
 
   constructor(private readonly gocodeClient: GocodeClient) {}
 

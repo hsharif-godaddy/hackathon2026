@@ -68,7 +68,6 @@ describe('formatScenariosTable', () => {
       evaluators: [
         {
           name: 'ev-1',
-          deterministic: true,
           evaluate: async () => ({
             evaluator: 'ev-1',
             score: 1,
@@ -78,7 +77,6 @@ describe('formatScenariosTable', () => {
         },
         {
           name: 'ev-2',
-          deterministic: true,
           evaluate: async () => ({
             evaluator: 'ev-2',
             score: 1,

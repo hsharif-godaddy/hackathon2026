@@ -2,10 +2,7 @@ import { Simulation } from './simulation.js';
 import type { SimulationCaptureContext } from './simulation.js';
 import { TrialAggregator } from './trial-aggregator.js';
 import { RegressionComparator } from '../baselines/regression-comparator.js';
-import type {
-  Scenario,
-  SetupContext,
-} from '../scenarios/types.js';
+import type { Scenario } from '../scenarios/types.js';
 import type { ScenarioResult, TrialResult } from './types.js';
 import type { Config } from '../../config/environments/types.js';
 import type { AgentClient } from '../clients/agent-client.js';
@@ -195,7 +192,6 @@ export class SuiteRunner {
           config,
           maxTurnsOverride: this.options.maxTurnsOverride,
         }).run(i);
-        const indexedTranscript = { ...transcript, trialIndex: i };
         for (const ev of scenario.evaluators) {
           try {
             ev.afterSimulation?.(i);
@@ -210,7 +206,7 @@ export class SuiteRunner {
             );
           }
         }
-        return indexedTranscript;
+        return transcript;
       } finally {
         client.disconnect();
       }
@@ -231,6 +227,7 @@ export class SuiteRunner {
       const newTrialResults = await this.evaluateTrials(
         scenario,
         transcripts,
+        trialIndices,
       );
       const trialResults = [
         ...(existingTrialsByScenario?.get(scenario.name) ?? []),
@@ -304,31 +301,23 @@ export class SuiteRunner {
   private async evaluateTrials(
     scenario: Scenario,
     transcripts: Transcript[],
+    trialIndices: number[],
   ): Promise<TrialResult[]> {
     const trialResults: TrialResult[] = [];
 
-    for (const transcript of transcripts) {
-      const trialIndex = transcript.trialIndex;
+    for (let i = 0; i < transcripts.length; i++) {
+      const transcript = transcripts[i];
+      const trialIndex = trialIndices[i];
 
-      // Outer trial loop stays sequential: trial 0 must complete so
-      // deterministic results are cached before later trials read them.
       const snaps = transcript.snapshots;
       const lastSnapshot = snaps.length > 0
         ? snaps[snaps.length - 1]
         : undefined;
 
       const evalResults = await Promise.all(
-        scenario.evaluators.map((evaluator) => {
-          if (evaluator.deterministic && trialResults.length > 0) {
-            const cached = trialResults[0].evalResults.find(
-              (r) => r.evaluator === evaluator.name,
-            );
-            if (cached) return Promise.resolve(cached);
-          }
-          return this.safeEvaluate(
-            evaluator, transcript, scenario, lastSnapshot,
-          );
-        }),
+        scenario.evaluators.map((evaluator) =>
+          this.safeEvaluate(evaluator, transcript, scenario, lastSnapshot),
+        ),
       );
 
       const trialResult = { trialIndex, transcript, evalResults };

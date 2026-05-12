@@ -133,7 +133,7 @@ run directly:
 Priority | Change              | Gap               | Command
 ---------|---------------------|-------------------|--------
 HIGH     | <change>            | No scenario       | /new-scenario <description derived from the change> [--suite <relevant-suite>]
-MEDIUM   | <change>            | No latency eval   | /new-evaluator <description> --deterministic
+MEDIUM   | <change>            | No latency eval   | /new-evaluator <description>
 ```
 
 Rules for pre-filling commands:

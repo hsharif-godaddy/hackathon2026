@@ -16,6 +16,7 @@ import type { Scenario } from '../../types.js';
 
 const REQUIRED_EVALUATORS = [
   'bug-hit-rate',
+  'tool-failure-rate',
   'prompt-efficiency',
   'jtbd-completion',
   'output-quality',
@@ -23,6 +24,8 @@ const REQUIRED_EVALUATORS = [
   'latency',
   'token-usage',
   'llm-cost',
+  'tool-parallelism',
+  'turn-duration',
 ];
 
 type ScenarioBuilder = (

@@ -30,7 +30,6 @@ const MODEL_PRICING: Record<
 
 export class LLMCostEvaluator implements Evaluator {
   readonly name = 'llm-cost';
-  readonly deterministic = false;
   readonly regressionMode = 'score' as const;
   readonly lowerIsBetter = true;
 

@@ -20,6 +20,18 @@ import type { Scenario } from '../types.js';
 
 const VALID_CATEGORIES = ['capability', 'regression'] as const;
 
+const PVS_REQUIRED_EVALUATORS = [
+  'bug-hit-rate',
+  'tool-failure-rate',
+  'prompt-efficiency',
+  'tool-call-verification',
+  'jtbd-completion',
+  'tool-parallelism',
+  'turn-duration',
+  'token-usage',
+  'llm-cost',
+];
+
 function assertScenarioShape(scenario: Scenario, expectedName: string): void {
   expect(scenario.name).toBe(expectedName);
   expect(scenario.goals.length).toBeGreaterThan(0);
@@ -64,31 +76,39 @@ describe('scenario shapes', () => {
   });
 
   it('pvs-symptom-blank-page has token evaluators and valid shape', () => {
-    assertScenarioShape(
-      symptomBlankPageScenario(gocode, ctrlPlane),
-      'pvs-symptom-blank-page',
-    );
+    const scenario = symptomBlankPageScenario(gocode, ctrlPlane);
+    assertScenarioShape(scenario, 'pvs-symptom-blank-page');
+    const names = scenario.evaluators.map((e) => e.name);
+    for (const evalName of PVS_REQUIRED_EVALUATORS) {
+      expect(names).toContain(evalName);
+    }
   });
 
   it('pvs-symptom-changes-not-showing has token evaluators and valid shape', () => {
-    assertScenarioShape(
-      symptomChangesNotShowingScenario(gocode, ctrlPlane),
-      'pvs-symptom-changes-not-showing',
-    );
+    const scenario = symptomChangesNotShowingScenario(gocode, ctrlPlane);
+    assertScenarioShape(scenario, 'pvs-symptom-changes-not-showing');
+    const names = scenario.evaluators.map((e) => e.name);
+    for (const evalName of PVS_REQUIRED_EVALUATORS) {
+      expect(names).toContain(evalName);
+    }
   });
 
   it('pvs-symptom-module-not-found has token evaluators and valid shape', () => {
-    assertScenarioShape(
-      symptomModuleNotFoundScenario(gocode, ctrlPlane),
-      'pvs-symptom-module-not-found',
-    );
+    const scenario = symptomModuleNotFoundScenario(gocode, ctrlPlane);
+    assertScenarioShape(scenario, 'pvs-symptom-module-not-found');
+    const names = scenario.evaluators.map((e) => e.name);
+    for (const evalName of PVS_REQUIRED_EVALUATORS) {
+      expect(names).toContain(evalName);
+    }
   });
 
   it('pvs-multi-turn-publish-flow has token evaluators and valid shape', () => {
-    assertScenarioShape(
-      multiTurnPublishFlowScenario(gocode, ctrlPlane),
-      'pvs-multi-turn-publish-flow',
-    );
+    const scenario = multiTurnPublishFlowScenario(gocode, ctrlPlane);
+    assertScenarioShape(scenario, 'pvs-multi-turn-publish-flow');
+    const names = scenario.evaluators.map((e) => e.name);
+    for (const evalName of PVS_REQUIRED_EVALUATORS) {
+      expect(names).toContain(evalName);
+    }
   });
 
   it('complex-prompt-latency has token evaluators and valid shape', () => {

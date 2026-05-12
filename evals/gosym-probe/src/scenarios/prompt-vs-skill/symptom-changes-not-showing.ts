@@ -1,14 +1,4 @@
-import { beginnerPersona } from '../../personas/beginner.js';
-import { BugHitRateEvaluator }
-  from '../../evaluators/bug-hit-rate.js';
-import { PromptEfficiencyEvaluator }
-  from '../../evaluators/prompt-efficiency.js';
-import { ToolCallVerificationEvaluator }
-  from '../../evaluators/tool-call-verification.js';
-import { JTBDCompletionEvaluator }
-  from '../../evaluators/jtbd-completion.js';
-import { createTokenEvaluators }
-  from '../../evaluators/create-token-evaluators.js';
+import { createPromptVsSkillScenario } from './create-prompt-vs-skill-scenario.js';
 import type { GocodeClient }
   from '../../clients/gocode-client.js';
 import type { AABCtrlPlaneClient }
@@ -19,44 +9,23 @@ export function symptomChangesNotShowingScenario(
   gocode: GocodeClient,
   ctrlPlane: AABCtrlPlaneClient,
 ): Scenario {
-  const tokenEvaluators = createTokenEvaluators(gocode);
-  return {
-    name: 'pvs-symptom-changes-not-showing',
-    suite: 'prompt-vs-skill',
-    persona: beginnerPersona,
-    goals: [
-      {
-        description: 'Build a simple hello world site',
-        assertion: 'positive',
-      },
-      {
-        description:
-          'The changes I made are not showing up for my customers' +
-          ' — get the agent to diagnose and resolve the issue',
-        assertion: 'positive',
-      },
-    ],
-    evaluators: [
-      new BugHitRateEvaluator(),
-      new PromptEfficiencyEvaluator(),
-      new ToolCallVerificationEvaluator(),
-      new JTBDCompletionEvaluator(gocode),
-      ...tokenEvaluators,
-    ],
-    trials: 1,
-    executionMode: 'sequential',
-    category: 'capability',
-
-    setup: async () => {
-      const { appId, previewUrl } = await ctrlPlane.provisionApp();
-      return { appId, previewUrl };
+  return createPromptVsSkillScenario(
+    {
+      name: 'pvs-symptom-changes-not-showing',
+      goals: [
+        {
+          description: 'Build a simple hello world site',
+          assertion: 'positive',
+        },
+        {
+          description:
+            'The changes I made are not showing up for my customers' +
+            ' — get the agent to diagnose and resolve the issue',
+          assertion: 'positive',
+        },
+      ],
     },
-
-    teardown: async (ctx) => {
-      const appId = ctx.appId;
-      if (appId) {
-        await ctrlPlane.deleteApp(appId);
-      }
-    },
-  };
+    gocode,
+    ctrlPlane,
+  );
 }

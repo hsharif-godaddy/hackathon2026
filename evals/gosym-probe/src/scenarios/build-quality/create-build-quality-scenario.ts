@@ -1,6 +1,8 @@
 import { standardPersona } from '../../personas/standard.js';
 import { BugHitRateEvaluator }
   from '../../evaluators/bug-hit-rate.js';
+import { ToolFailureRateEvaluator }
+  from '../../evaluators/tool-failure-rate.js';
 import { PromptEfficiencyEvaluator }
   from '../../evaluators/prompt-efficiency.js';
 import { JTBDCompletionEvaluator }
@@ -11,6 +13,10 @@ import { AgentStepsEvaluator }
   from '../../evaluators/agent-steps.js';
 import { LatencyEvaluator }
   from '../../evaluators/latency-evaluator.js';
+import { ToolParallelismEvaluator }
+  from '../../evaluators/tool-parallelism.js';
+import { TurnDurationEvaluator }
+  from '../../evaluators/turn-duration.js';
 import { createTokenEvaluators }
   from '../../evaluators/create-token-evaluators.js';
 import type { GocodeClient }
@@ -66,6 +72,26 @@ export function createBuildQualityScenario(
     );
   }
   const tokenEvaluators = createTokenEvaluators(gocode);
+  const builtinEvaluators = [
+    new BugHitRateEvaluator(),
+    new ToolFailureRateEvaluator(),
+    new PromptEfficiencyEvaluator(),
+    new JTBDCompletionEvaluator(gocode),
+    new OutputQualityEvaluator(gocode),
+    new AgentStepsEvaluator({ maxSteps: config.agentStepBudget }),
+    new LatencyEvaluator(),
+    new ToolParallelismEvaluator(),
+    new TurnDurationEvaluator(),
+    ...tokenEvaluators,
+  ];
+  const allEvaluators = [...(config.extraEvaluators ?? []), ...builtinEvaluators];
+  const names = allEvaluators.map((e) => e.name);
+  const duplicates = names.filter((n, i) => names.indexOf(n) !== i);
+  if (duplicates.length > 0) {
+    throw new Error(
+      `[${config.name}] duplicate evaluator name(s): ${[...new Set(duplicates)].join(', ')}`,
+    );
+  }
   return {
     name: config.name,
     suite: config.suite === null
@@ -74,16 +100,7 @@ export function createBuildQualityScenario(
     persona: config.persona ?? standardPersona,
     staticFirstMessage: config.staticFirstMessage,
     goals: config.goals,
-    evaluators: [
-      ...(config.extraEvaluators ?? []),
-      new BugHitRateEvaluator(),
-      new PromptEfficiencyEvaluator(),
-      new JTBDCompletionEvaluator(gocode),
-      new OutputQualityEvaluator(gocode),
-      new AgentStepsEvaluator({ maxSteps: config.agentStepBudget }),
-      new LatencyEvaluator(),
-      ...tokenEvaluators,
-    ],
+    evaluators: allEvaluators,
     trials: config.trials ?? 3,
     executionMode: 'parallel',
     category: config.category ?? 'capability',

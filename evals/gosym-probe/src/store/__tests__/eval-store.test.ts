@@ -168,7 +168,6 @@ function makeScenario(
     evaluators: [
       {
         name: 'test-evaluator',
-        deterministic: true,
         evaluate: vi.fn(),
       },
     ],

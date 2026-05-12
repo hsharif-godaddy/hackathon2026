@@ -75,7 +75,7 @@ src/runner/       SuiteRunner, Simulation, TrialAggregator,
                   GoalTracker, types
 src/clients/      AABClient (Socket.IO), GocodeClient (OpenAI-compat),
                   DOMCapture (Playwright)
-src/evaluators/   Evaluator interface + 5 concrete evaluators
+src/evaluators/   Evaluator interface + concrete evaluators
 src/scenarios/    Scenario types + registry + concrete scenarios
                   (prompt-vs-skill/ suite)
 src/baselines/    BaselineStore, RegressionComparator, GraduationRunner
@@ -255,7 +255,6 @@ import type { Scenario } from "../scenarios/types.js";
 
 export class MyEvaluator implements Evaluator {
   readonly name = "my-evaluator";
-  readonly deterministic = true; // false for LLM-based evaluators
 
   async evaluate(
     transcript: Transcript,
@@ -275,10 +274,6 @@ export class MyEvaluator implements Evaluator {
 
 **Key rules:**
 
-- `deterministic: true` — evaluator runs once; score is reused across
-  all trials (e.g. structural checks on DOM or transcript).
-- `deterministic: false` — evaluator runs once per trial (e.g. LLM
-  judge).
 - `score` must be in `[0.0, 1.0]` for non-observed verdicts (`pass`,
   `fail`, `partial`, `unknown`). For `observed`-verdict evaluators
   (`regressionMode: 'score'`), emit the raw measurement (e.g. token

@@ -274,7 +274,6 @@ describe('TrialAggregator', () => {
   describe('medianScore', () => {
     const scoreEvaluator = {
       name: 'eval',
-      deterministic: false,
       regressionMode: 'score' as const,
       evaluate: async () => ({
         evaluator: 'eval',
@@ -447,7 +446,6 @@ describe('TrialAggregator', () => {
   describe('lowerIsBetter propagation', () => {
     const lowerIsBetterEval = {
       name: 'token-usage',
-      deterministic: true,
       regressionMode: 'score' as const,
       lowerIsBetter: true,
       evaluate: async () => ({
@@ -525,7 +523,6 @@ describe('TrialAggregator', () => {
   describe('score-mode: passAtK and passToTheK omitted', () => {
     const scoreModeEval = {
       name: 'score-eval',
-      deterministic: false,
       regressionMode: 'score' as const,
       evaluate: async () => ({
         evaluator: 'score-eval',
@@ -592,7 +589,6 @@ describe('TrialAggregator', () => {
     it('treats regressionMode absent as pass-rate (boolean fields present)', () => {
       const noModeEval = {
         name: 'no-mode',
-        deterministic: false,
         evaluate: async () => ({
           evaluator: 'no-mode',
           score: 1.0,
@@ -610,7 +606,6 @@ describe('TrialAggregator', () => {
     it('mixed: score-mode omits passAtK/passToTheK, pass-rate retains them', () => {
       const passRateEval = {
         name: 'pass-rate-eval',
-        deterministic: false,
         evaluate: async () => ({
           evaluator: 'pass-rate-eval',
           score: 0,

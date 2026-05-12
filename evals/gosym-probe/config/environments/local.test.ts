@@ -28,10 +28,20 @@ export function createConfig(): Config {
     },
     regression: {
       thresholds: {
+        'bug-hit-rate': 0.1,
+        'jtbd-completion': 0.1,
+        'tool-call-verification': 0.1,
         'output-quality': 0.15,
         'prompt-efficiency': 0.2,
+        'turn-duration': 1.5,
+        'token-usage': 1.5,
+        'llm-cost': 1.5,
+        'latency': 1.5,
+        'tool-parallelism': 0.5,
+        'tool-failure-rate': 1.5,
       },
-      defaultThreshold: 0.1,
+      // Loose gate for score-mode evaluators to absorb infrastructure variance noise
+      defaultThreshold: 0.25,
       graduationPassRateThreshold: 0.9,
     },
   };

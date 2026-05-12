@@ -46,38 +46,38 @@ describe('PromptEfficiencyEvaluator', () => {
       makeScenario({ maxTurns: 10 }),
     );
     expect(result.score).toBe(1.0);
-    expect(result.verdict).toBe('pass');
+    expect(result.verdict).toBe('observed');
   });
 
-  it('passes with few turns relative to maxTurns', async () => {
+  it('scores high with few turns relative to maxTurns', async () => {
     // 2 of 10 max → score 0.8
     const turns = [makeTurn('user'), makeTurn('user')];
     const result = await evaluator.evaluate(
       makeTranscript({ turns }),
       makeScenario({ maxTurns: 10 }),
     );
-    expect(result.verdict).toBe('pass');
+    expect(result.verdict).toBe('observed');
     expect(result.score).toBeCloseTo(0.8);
   });
 
-  it('returns partial when approaching maxTurns', async () => {
-    // 6 user turns of 10 max → score 0.4 (partial boundary)
+  it("returns 'observed' when approaching maxTurns", async () => {
+    // 6 user turns of 10 max → score 0.4
     const turns = Array.from({ length: 6 }, () => makeTurn('user'));
     const result = await evaluator.evaluate(
       makeTranscript({ turns }),
       makeScenario({ maxTurns: 10 }),
     );
-    expect(result.verdict).toBe('partial');
+    expect(result.verdict).toBe('observed');
   });
 
-  it('fails when user turns equal maxTurns', async () => {
+  it("returns 'observed' when user turns equal maxTurns", async () => {
     const turns = Array.from({ length: 10 }, () => makeTurn('user'));
     const result = await evaluator.evaluate(
       makeTranscript({ turns }),
       makeScenario({ maxTurns: 10 }),
     );
     expect(result.score).toBe(0);
-    expect(result.verdict).toBe('fail');
+    expect(result.verdict).toBe('observed');
   });
 
   it('score does not go below 0 when turns exceed maxTurns', async () => {
@@ -87,7 +87,7 @@ describe('PromptEfficiencyEvaluator', () => {
       makeScenario({ maxTurns: 10 }),
     );
     expect(result.score).toBe(0);
-    expect(result.verdict).toBe('fail');
+    expect(result.verdict).toBe('observed');
   });
 
   it('only counts user turns, not assistant turns', async () => {
@@ -101,7 +101,7 @@ describe('PromptEfficiencyEvaluator', () => {
     );
     // 2 user turns of 10 max → score 0.8
     expect(result.score).toBeCloseTo(0.8);
-    expect(result.verdict).toBe('pass');
+    expect(result.verdict).toBe('observed');
   });
 
   it('uses scenario.maxTurns when set', async () => {
@@ -127,7 +127,8 @@ describe('PromptEfficiencyEvaluator', () => {
     expect(result.details?.maxTurns).toBe(10);
   });
 
-  it('is deterministic', () => {
-    expect(evaluator.deterministic).toBe(true);
+  it('has correct properties', () => {
+    expect(evaluator.regressionMode).toBe('score');
+    expect(evaluator.lowerIsBetter).toBe(false);
   });
 });
