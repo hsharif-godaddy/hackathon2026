@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { FormattedMessage } from 'react-intl';
 import Box from '@ux/box';
 import Button from '@ux/button';
 import Checkbox from '@ux/checkbox';
@@ -67,21 +66,7 @@ export function GetSupportStep({ onBack, onSubmit, onDone }: GetSupportStepProps
     <div className="flex flex-col flex-1 min-h-0">
       <Box gap="lg" className="flex-1 overflow-y-auto min-h-0">
         <text.p size={-1} emphasis="passive">
-          <FormattedMessage
-            id="builder_feedback_support_description"
-            values={{
-              link: (
-                <a
-                  href="https://www.godaddy.com/help/contact-us"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="underline text-intents-ux-link-foregroundColor"
-                >
-                  {t('builder_feedback_support_contact_link')}
-                </a>
-              ),
-            }}
-          />
+          {t('builder_feedback_support_description')}
         </text.p>
 
         <Box gap="sm">
