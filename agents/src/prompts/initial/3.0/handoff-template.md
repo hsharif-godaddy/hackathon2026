@@ -50,7 +50,7 @@ VISUAL ELEMENTS:
 - Primary: [Photography / Organic shapes / Geometric graphics / Illustrations / Mix]
 - Style: [If using graphics: soft blobs, geometric, hand-drawn, gradient meshes, etc.]
 - Application: [Where they appear: hero background, section accents, decorative elements]
-- Logo: [If a logo is needed, describe its style and placement. Use the media-logo skill to generate it.]
+- Logo: [Describe the logo's style and placement. ALWAYS use the `media-logo` skill to generate the logo — do NOT substitute a text wordmark, emoji, or icon character. The only exception is if the user explicitly requested a text-only or wordmark logo.]
 
 MOTION DESIGN:
 - Level: [Static / Subtle / Dynamic]
@@ -137,7 +137,7 @@ VISUAL ELEMENTS:
 - Primary: [Photography / Organic shapes / Geometric graphics / Illustrations / Mix]
 - Style: [If using graphics: soft blobs, geometric, hand-drawn, gradient meshes, etc.]
 - Application: [Where they appear: UI elements, backgrounds, decorative accents]
-- Logo: [If a logo is needed, describe its style and placement. Use the media-logo skill to generate it.]
+- Logo: [Describe the logo's style and placement. ALWAYS use the `media-logo` skill to generate the logo — do NOT substitute a text wordmark, emoji, or icon character. The only exception is if the user explicitly requested a text-only or wordmark logo.]
 
 MOTION DESIGN:
 - Level: [Static / Subtle / Dynamic]

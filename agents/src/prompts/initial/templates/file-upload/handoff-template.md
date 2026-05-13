@@ -50,7 +50,7 @@ VISUAL ELEMENTS:
 - Primary: [Photography / Organic shapes / Geometric graphics / Illustrations / Mix]
 - Style: [If using graphics: soft blobs, geometric, hand-drawn, gradient meshes, etc.]
 - Application: [Where they appear: hero background, section accents, decorative elements]
-- Logo: [CHECK THE UPLOAD CLASSIFICATION. If assetRole is "logo", write EXACTLY: "Use the uploaded logo image at src/assets/{filename} via <img> tag in the header. Do NOT create a text logo." Otherwise describe a logo style or use the media-logo skill.]
+- Logo: [CHECK THE UPLOAD CLASSIFICATION. If assetRole is "logo", write EXACTLY: "Use the uploaded logo via <img src=\"/assets/{filename}\"> in the header (file is on disk at src/assets/{filename}). Do NOT create a text logo." Otherwise describe the logo's style and placement and ALWAYS use the `media-logo` skill to generate it — do NOT substitute a text wordmark, emoji, or icon character. The only exception is if the user explicitly requested a text-only or wordmark logo.]
 
 MOTION DESIGN:
 - Level: [Static / Subtle / Dynamic]
@@ -137,7 +137,7 @@ VISUAL ELEMENTS:
 - Primary: [Photography / Organic shapes / Geometric graphics / Illustrations / Mix]
 - Style: [If using graphics: soft blobs, geometric, hand-drawn, gradient meshes, etc.]
 - Application: [Where they appear: UI elements, backgrounds, decorative accents]
-- Logo: [CHECK THE UPLOAD CLASSIFICATION. If assetRole is "logo", write EXACTLY: "Use the uploaded logo image at src/assets/{filename} via <img> tag in the header. Do NOT create a text logo." Otherwise describe a logo style or use the media-logo skill.]
+- Logo: [CHECK THE UPLOAD CLASSIFICATION. If assetRole is "logo", write EXACTLY: "Use the uploaded logo via <img src=\"/assets/{filename}\"> in the header (file is on disk at src/assets/{filename}). Do NOT create a text logo." Otherwise describe the logo's style and placement and ALWAYS use the `media-logo` skill to generate it — do NOT substitute a text wordmark, emoji, or icon character. The only exception is if the user explicitly requested a text-only or wordmark logo.]
 
 MOTION DESIGN:
 - Level: [Static / Subtle / Dynamic]
