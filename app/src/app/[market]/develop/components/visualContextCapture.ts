@@ -21,6 +21,11 @@ function isValidOrigin(origin: string): boolean {
     return true;
   }
 
+  // Allow gasket local dev hostname on any port (app runs on :8443, preview on :5001)
+  if (/^https:\/\/local\.gasket\.dev-godaddy\.com(:\d+)?$/.test(origin)) {
+    return true;
+  }
+
   // Allow preview domains from hosting platform
   // Pattern: https://{appId}.preview.c{cell}.{env}airoapp.ai
   // Examples:
