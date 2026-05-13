@@ -500,7 +500,7 @@ const LexicalChatEditorInner = forwardRef<LexicalChatEditorHandle, LexicalChatEd
               aria-disabled={disabled}
               aria-placeholder={props.placeholder}
               placeholder={
-                <div className="pointer-events-none absolute top-0 left-0 text-intents-ux-box-foregroundColor/50 text-base md:text-sm p-0">
+                <div className="pointer-events-none absolute top-0 left-0 text-intents-ux-controlVoid-foregroundColor text-base md:text-sm p-0">
                   {props.placeholder}
                 </div>
               }

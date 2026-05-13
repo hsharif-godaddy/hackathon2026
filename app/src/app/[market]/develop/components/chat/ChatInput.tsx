@@ -539,7 +539,7 @@ export default function ChatInput({
                   placeholder={getPlaceholder()}
                   rows={3}
                   disabled={(isDisabled && !isStreaming) || isListening || isBudgetExceeded}
-                  className={`w-full h-full resize-none border-0 focus:ring-0 focus:outline-none text-base md:text-sm chat-input-text`}
+                  className={`w-full h-full resize-none border-0 focus:ring-0 focus:outline-none text-base md:text-sm chat-input-text placeholder:text-intents-ux-controlVoid-foregroundColor`}
                 />
               )}
             </div>
