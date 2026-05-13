@@ -27,6 +27,7 @@ import config from './config';
  *   history/<customerId>/<appId>/<investigationId>/state.json     frozen snapshot
  *   history/<customerId>/<appId>/<investigationId>/result.md      frozen report
  *   history/<customerId>/<appId>/<investigationId>/trace.jsonl    claude stream log
+ *   events/<customerId>/<appId>/<investigationId>/NNNNNN.json     append-only event log (SSE source)
  *
  * The Lambda is invoked async (InvocationType=Event) by the debug-console API.
  */
@@ -71,6 +72,13 @@ export class AiroInvestigatorStack extends GDStack {
           // Prune history older than 90 days. Active state is overwritten in place.
           prefix: 'history/',
           expiration: cdk.Duration.days(90),
+        },
+        {
+          // Event log for live SSE stream + future subscribers. Short-lived —
+          // once an investigation is terminal, the history/ snapshot is the
+          // record of truth. 30 days is plenty for debugging replays.
+          prefix: 'events/',
+          expiration: cdk.Duration.days(30),
         },
         {
           // Multi-part upload orphans.
@@ -251,14 +259,26 @@ export class AiroInvestigatorStack extends GDStack {
         principals,
       }));
 
+      // SSE stream route reads per-investigation event objects. Read-only —
+      // the Lambda is the sole writer. Same cross-customer isolation rationale
+      // as history/: a compromised console role must not be able to forge
+      // events for other customers.
       this.stateBucket.addToResourcePolicy(new iam.PolicyStatement({
-        sid: 'ConsoleListActivePrefix',
+        sid: 'ConsoleReadEventsPrefix',
+        effect: iam.Effect.ALLOW,
+        actions: ['s3:GetObject'],
+        resources: [`${this.stateBucket.bucketArn}/events/*`],
+        principals,
+      }));
+
+      this.stateBucket.addToResourcePolicy(new iam.PolicyStatement({
+        sid: 'ConsoleListActiveAndEventsPrefix',
         effect: iam.Effect.ALLOW,
         actions: ['s3:ListBucket'],
         resources: [this.stateBucket.bucketArn],
         principals,
         conditions: {
-          StringLike: { 's3:prefix': ['active/*'] },
+          StringLike: { 's3:prefix': ['active/*', 'events/*'] },
         },
       }));
     }

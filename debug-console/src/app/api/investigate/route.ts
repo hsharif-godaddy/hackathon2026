@@ -7,7 +7,7 @@ import { gdAuthService } from '@/lib/gd-auth-service';
 import { INVESTIGATE_CONFIG } from '@/lib/investigate/config';
 import { invokeInvestigator } from '@/lib/investigate/lambda-client';
 import { acquireLock } from '@/lib/investigate/lock';
-import { keysFor } from '@/lib/investigate/types';
+import { keysForInvestigation } from '@/lib/investigate/types';
 import type { InvestigationState } from '@/lib/investigate/types';
 import { logger } from '@/lib/logger';
 
@@ -68,7 +68,7 @@ export const POST = withAuth(async (request, auth) => {
   }
 
   const investigationId = newInvestigationId();
-  const keys = keysFor(customerId, appId);
+  const keys = keysForInvestigation(customerId, appId, investigationId);
   const now = new Date().toISOString();
   const startedBy = auth.user?.email || auth.user?.cid || auth.user?.shopperId || 'unknown';
 
@@ -127,6 +127,7 @@ export const POST = withAuth(async (request, auth) => {
       historyPrefix: keys.historyPrefix,
       resultKey: keys.resultKey,
       tracePrefix: keys.tracePrefix,
+      eventsPrefix: keys.eventsPrefix,
       jomaxToken,
       gocodeApiKey,
     });

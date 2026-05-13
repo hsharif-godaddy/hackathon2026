@@ -4,6 +4,7 @@ import path from 'node:path';
 import { S3Client, GetObjectCommand, PutObjectCommand, CopyObjectCommand } from '@aws-sdk/client-s3';
 
 import { buildPrompt } from './prompt.mjs';
+import { createEventEmitter } from './events.mjs';
 
 const REGION = process.env.AWS_REGION || 'us-west-2';
 const STATE_BUCKET = process.env.STATE_BUCKET;
@@ -176,6 +177,7 @@ export async function handler(event) {
     historyPrefix,
     resultKey,
     tracePrefix,
+    eventsPrefix,
     jomaxToken,
     gocodeApiKey,
   } = event;
@@ -183,6 +185,20 @@ export async function handler(event) {
   if (!investigationId || !appId || !stateKey) {
     throw new Error('investigationId, appId, stateKey are required');
   }
+
+  const emitEvent = createEventEmitter({
+    s3,
+    bucket: STATE_BUCKET,
+    eventsPrefix,
+    investigationId,
+  });
+
+  await emitEvent('investigation.started', {
+    appId,
+    customerId,
+    input: { feedback, fullstoryUrl, timeWindow },
+    lambdaRequestId: process.env.AWS_LAMBDA_REQUEST_ID || null,
+  });
 
   try {
     await mergeState(stateKey, {
@@ -202,6 +218,8 @@ export async function handler(event) {
     await bootstrap();
   } catch (err) {
     console.error('[investigator] bootstrap failed', { stateKey, err });
+    const errMsg = err instanceof Error ? err.message : String(err);
+    await emitEvent('investigation.failed', { phase: 'bootstrap', error: errMsg });
     await tryReleaseLockAsFailed(stateKey, {
       status: 'failed',
       phase: 'bootstrap',
@@ -210,7 +228,7 @@ export async function handler(event) {
       completedAt: new Date().toISOString(),
       durationMs: Date.now() - started,
       lambdaRequestId: process.env.AWS_LAMBDA_REQUEST_ID || null,
-      error: err instanceof Error ? err.message : String(err),
+      error: errMsg,
     });
     return { statusCode: 500, body: 'bootstrap failed' };
   }
@@ -223,6 +241,7 @@ export async function handler(event) {
   // containers, so if an exception escapes before the cleanup runs, the
   // next invocation could inherit the previous user's credentials.
   if (!jomaxToken || typeof jomaxToken !== 'string') {
+    await emitEvent('investigation.failed', { phase: 'credentials', error: 'jomaxToken missing' });
     await tryReleaseLockAsFailed(stateKey, {
       status: 'failed',
       lastEvent: 'missing jomax token from caller',
@@ -232,6 +251,7 @@ export async function handler(event) {
     return { statusCode: 400, body: 'jomaxToken required' };
   }
   if (!gocodeApiKey || typeof gocodeApiKey !== 'string') {
+    await emitEvent('investigation.failed', { phase: 'credentials', error: 'gocodeApiKey missing' });
     await tryReleaseLockAsFailed(stateKey, {
       status: 'failed',
       lastEvent: 'missing gocode api key from caller',
@@ -263,6 +283,7 @@ export async function handler(event) {
     heartbeatAt: new Date().toISOString(),
     lambdaRequestId: process.env.AWS_LAMBDA_REQUEST_ID || null,
   });
+  await emitEvent('phase.started', { phase: 'claude-analysis' });
 
   const prompt = buildPrompt({ appId, feedback, fullstoryUrl, timeWindow });
   const child = spawnClaude(prompt, logStream);
@@ -275,7 +296,11 @@ export async function handler(event) {
     const s = buf.toString('utf-8');
     for (const line of s.split('\n')) {
       const phase = parsePhaseFromLine(line);
-      if (phase) latestPhase = phase;
+      if (phase && phase !== latestPhase) {
+        latestPhase = phase;
+        // Fire-and-forget phase transition — don't block stdout handler on S3.
+        emitEvent('phase.started', { phase }).catch(() => {});
+      }
       if (line.length > 0) latestEvent = line.slice(0, 240);
     }
   });
@@ -291,6 +316,7 @@ export async function handler(event) {
   let heartbeatFailures = 0;
   const heartbeat = setInterval(() => {
     if (finalized) return;
+    emitEvent('heartbeat', { phase: latestPhase, lastEvent: latestEvent }).catch(() => {});
     mergeState(stateKey, {
       heartbeatAt: new Date().toISOString(),
       phase: latestPhase,
@@ -437,6 +463,24 @@ export async function handler(event) {
       console.error('[investigator] report upload failed', { resultKey, err });
     }
   }
+
+  if (reportUploaded) {
+    await emitEvent('report.ready', { resultKey, reportFilename: reportName });
+  }
+
+  const terminalType =
+    status === 'completed'
+      ? 'investigation.completed'
+      : status === 'killed'
+        ? 'investigation.killed'
+        : 'investigation.failed';
+  await emitEvent(terminalType, {
+    status,
+    phase: latestPhase,
+    durationMs: Date.now() - started,
+    reason: wasKilled ? 'timeout' : undefined,
+    error: status === 'failed' ? `claude exit code ${exitInfo.code}` : undefined,
+  });
 
   const finalState = await mergeState(stateKey, {
     status,

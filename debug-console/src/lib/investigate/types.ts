@@ -63,6 +63,10 @@ export interface InvestigationKeys {
   tracePrefix: string;
 }
 
+export interface InvestigationKeysWithEvents extends InvestigationKeys {
+  eventsPrefix: string;
+}
+
 export function keysFor(customerId: string, appId: string): InvestigationKeys {
   const base = `active/${encodeURIComponent(customerId)}/${encodeURIComponent(appId)}`;
   return {
@@ -71,4 +75,60 @@ export function keysFor(customerId: string, appId: string): InvestigationKeys {
     historyPrefix: `history/${encodeURIComponent(customerId)}/${encodeURIComponent(appId)}/`,
     tracePrefix: `${base}/`,
   };
+}
+
+// Per-investigation keys including the per-id events prefix. Use this (not
+// keysFor) whenever you need to read or write events — scoping the prefix to
+// investigationId prevents accidentally listing or fetching another
+// investigation's event stream.
+export function keysForInvestigation(
+  customerId: string,
+  appId: string,
+  investigationId: string,
+): InvestigationKeysWithEvents {
+  const base = keysFor(customerId, appId);
+  const eventsBase = `events/${encodeURIComponent(customerId)}/${encodeURIComponent(appId)}`;
+  return {
+    ...base,
+    eventsPrefix: `${eventsBase}/${investigationId}/`,
+  };
+}
+
+export type InvestigationEventType =
+  | 'investigation.started'
+  | 'phase.started'
+  | 'log'
+  | 'evidence.ready'
+  | 'heartbeat'
+  | 'report.ready'
+  | 'investigation.completed'
+  | 'investigation.failed'
+  | 'investigation.killed';
+
+export interface InvestigationEvent {
+  v: 1;
+  seq: number;
+  investigationId: string;
+  ts: string;
+  type: InvestigationEventType;
+  data: Record<string, unknown>;
+}
+
+export const TERMINAL_EVENT_TYPES: ReadonlySet<InvestigationEventType> = new Set<InvestigationEventType>([
+  'investigation.completed',
+  'investigation.failed',
+  'investigation.killed',
+]);
+
+export function isTerminalEvent(e: InvestigationEvent): boolean {
+  return TERMINAL_EVENT_TYPES.has(e.type);
+}
+
+export function seqFromKey(key: string): number | null {
+  const m = key.match(/\/(\d{6})\.json$/);
+  return m ? Number.parseInt(m[1]!, 10) : null;
+}
+
+export function eventKey(eventsPrefix: string, seq: number): string {
+  return `${eventsPrefix}${String(seq).padStart(6, '0')}.json`;
 }

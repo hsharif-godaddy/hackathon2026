@@ -49,7 +49,7 @@ COPY docker/claude-template/ /opt/claude-template/
 WORKDIR ${LAMBDA_TASK_ROOT}
 COPY package.json ./
 RUN npm install --omit=dev --no-audit --no-fund
-COPY handler.mjs prompt.mjs ./
+COPY handler.mjs prompt.mjs events.mjs ./
 
 # Lambda invokes the image as its own least-privileged runtime user, not
 # necessarily the user Docker used during local tests. Make startup/runtime

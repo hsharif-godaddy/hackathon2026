@@ -6,6 +6,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
 import { splitMarkdownBlocks } from '@/lib/investigate/markdown';
+import type { InvestigationEvent } from '@/lib/investigate/types';
 
 const CLIENT_AUTO_FETCH_MAX_BYTES = 50 * 1024 * 1024;
 
@@ -46,9 +47,9 @@ type StatusResponse = {
   reportEtag: string | null;
 };
 
-const POLL_MS = 2500;
-const CLIENT_POLL_TIMEOUT_MS = 16 * 60 * 1000;
 const GOCODE_KEY_STORAGE = 'airo-investigate.gocodeApiKey';
+
+type TimelineEvent = InvestigationEvent;
 
 function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`;
@@ -70,15 +71,28 @@ function formatDurationMs(ms: number | null): string {
 // prints). Keep this list in sync with the skill's phase files so the UI
 // always has a friendly label. Unknown phases fall through to the raw
 // string.
+// Map Claude skill phase markers to user-facing labels.
+// phase-0/1/2 are collapsed into one label so the card doesn't flash through
+// setup noise — user sees a single "Analyzing agent conversation" step.
 const PHASE_LABELS: Record<string, string> = {
   bootstrap: 'Warming up',
-  'phase-0-gather': 'Gathering multi-source log evidence',
-  'phase-1-fullstory': 'FullStory session analysis (skipped in Lambda)',
+  'claude-analysis': 'Launching Claude analysis',
+  'phase-0-gather': 'Analyzing agent conversation',
+  'phase-1-fullstory': 'Analyzing agent conversation',
   'phase-2-conversation': 'Analyzing agent conversation',
   'phase-3-logs': 'Querying logs',
   'phase-4-blast-radius': 'Assessing blast radius',
   'phase-5-codebase': 'Cross-referencing codebase',
   'phase-6-synthesis': 'Writing report',
+};
+
+const EVENT_TYPE_LABELS: Record<string, string> = {
+  'investigation.started': 'Investigation started',
+  'evidence.ready': 'Evidence collected',
+  'report.ready': 'Report ready',
+  'investigation.completed': '✓ Completed',
+  'investigation.failed': '✗ Failed',
+  'investigation.killed': '⚠ Timed out',
 };
 
 function friendlyPhase(phase: string | null): string {
@@ -151,6 +165,9 @@ export default function InvestigatePanel(props: Props = {}) {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  const esRef = useRef<EventSource | null>(null);
+  const [timeline, setTimeline] = useState<TimelineEvent[]>([]);
+
   // Report streaming state. Keyed on etag so a reopened-but-unchanged report
   // reuses the cached text without re-downloading.
   const [reportText, setReportText] = useState<string>('');
@@ -161,8 +178,6 @@ export default function InvestigatePanel(props: Props = {}) {
   const [reportOversized, setReportOversized] = useState<boolean>(false);
   const [reportDownloading, setReportDownloading] = useState<boolean>(false);
   const reportAbortRef = useRef<AbortController | null>(null);
-
-  const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Prefill from query string (standalone /investigate route) or parent
   // props (embedded in AppDetailsPanel tab). Props win because the parent
@@ -178,10 +193,10 @@ export default function InvestigatePanel(props: Props = {}) {
     if (c && !customerId) setCustomerId(c);
   }, [searchParams, appId, customerId, props.appId, props.customerId]);
 
-  const stopPolling = useCallback(() => {
-    if (pollTimerRef.current) {
-      clearTimeout(pollTimerRef.current);
-      pollTimerRef.current = null;
+  const stopStream = useCallback(() => {
+    if (esRef.current) {
+      esRef.current.close();
+      esRef.current = null;
     }
   }, []);
 
@@ -220,10 +235,6 @@ export default function InvestigatePanel(props: Props = {}) {
       }
       const meta = (await metaRes.json()) as { url: string; size: number; etag: string | null };
 
-      // Above auto-fetch ceiling: surface download button, don't stream into
-      // DOM. The click handler will re-fetch a fresh presigned URL so the
-      // user can leave the panel open past the 5-min TTL without hitting a
-      // silent 403.
       if (meta.size > CLIENT_AUTO_FETCH_MAX_BYTES) {
         setReportOversized(true);
         setReportEtagLoaded(meta.etag ?? expectedEtag ?? null);
@@ -258,8 +269,6 @@ export default function InvestigatePanel(props: Props = {}) {
       setReportLoading(false);
     } catch (err) {
       if ((err as Error).name === 'AbortError') return;
-      // Surface a generic failure without echoing raw error text — keeps
-      // presigned-URL fragments or internal details out of the DOM.
       console.error('investigate.report.fetch.failed', err);
       setReportError('Report fetch failed. Retry or reload.');
       setReportLoading(false);
@@ -271,10 +280,6 @@ export default function InvestigatePanel(props: Props = {}) {
     app: string,
     cust: string,
   ) => {
-    // Open the window synchronously inside the click gesture. Safari (and
-    // some Chromium popup-blocker modes) suppress window.open() called
-    // after an await — the user-gesture token is gone by then. The blank
-    // tab is then navigated to the presigned URL once it arrives.
     const popup = window.open('about:blank', '_blank', 'noopener,noreferrer');
     setReportDownloading(true);
     setReportError(null);
@@ -292,8 +297,6 @@ export default function InvestigatePanel(props: Props = {}) {
       if (popup) {
         popup.location.href = meta.url;
       } else {
-        // Popup blocker killed the tab — fall back to same-tab navigation
-        // so the user isn't left with no download path.
         window.location.href = meta.url;
       }
     } catch (err) {
@@ -305,44 +308,124 @@ export default function InvestigatePanel(props: Props = {}) {
     }
   }, []);
 
-  const pollOnce = useCallback(async (id: string, app: string, cust: string) => {
+  // Fetch final /status once after terminal event. Merge (not replace) so
+  // fields we maintained from the live event stream (phase, lastEvent)
+  // aren't clobbered if the server-side state.json write lags behind the
+  // terminal event.
+  const fetchFinalStatus = useCallback(async (id: string, app: string, cust: string) => {
     try {
       const res = await fetch(
         `/api/investigate/${encodeURIComponent(id)}/status?appId=${encodeURIComponent(app)}&customerId=${encodeURIComponent(cust)}`,
         { cache: 'no-store' },
       );
-      if (!res.ok) {
-        // 410 superseded or 404 — stop polling.
-        stopPolling();
-        setStatus(null);
-        setSubmitError(`Status lookup failed: ${res.status}`);
-        return;
-      }
-      const data = (await res.json()) as StatusResponse;
-      setStatus(data);
-      const running = data.status === 'pending' || data.status === 'running';
-      const startedMs = Date.parse(data.startedAt);
-      const exceededClientTimeout =
-        running &&
-        !Number.isNaN(startedMs) &&
-        Date.now() - startedMs > CLIENT_POLL_TIMEOUT_MS;
-      if (exceededClientTimeout) {
-        stopPolling();
-        setSubmitError('Investigation exceeded the Lambda time limit without a terminal state. Polling stopped.');
-        return;
-      }
-      if (running && !data.stale) {
-        pollTimerRef.current = setTimeout(() => { pollOnce(id, app, cust); }, POLL_MS);
-      } else {
-        stopPolling();
+      if (res.ok) {
+        const next = (await res.json()) as StatusResponse;
+        setStatus((prev) => (prev ? { ...prev, ...next } : next));
       }
     } catch (err) {
-      stopPolling();
-      setSubmitError(err instanceof Error ? err.message : 'Polling failed');
+      console.error('investigate.status.final.fetch.failed', err);
     }
-  }, [stopPolling]);
+  }, []);
 
-  useEffect(() => () => { stopPolling(); }, [stopPolling]);
+  const openStream = useCallback((id: string, app: string, cust: string) => {
+    if (esRef.current) esRef.current.close();
+    const url = `/api/investigate/${encodeURIComponent(id)}/stream?appId=${encodeURIComponent(app)}&customerId=${encodeURIComponent(cust)}`;
+    const es = new EventSource(url, { withCredentials: true });
+    esRef.current = es;
+
+    const handleEvent = (evt: MessageEvent): void => {
+      try {
+        const parsed = JSON.parse(evt.data) as TimelineEvent;
+        setTimeline((prev) => (prev.some((e) => e.seq === parsed.seq) ? prev : [...prev, parsed].sort((a, b) => a.seq - b.seq)));
+
+        // Derive status fields from event data for live UI updates.
+        if (parsed.type === 'phase.started') {
+          setStatus((s) => (s ? { ...s, phase: (parsed.data.phase as string) ?? s.phase } : s));
+        } else if (parsed.type === 'heartbeat') {
+          setStatus((s) => s ? {
+            ...s,
+            phase: (parsed.data.phase as string) ?? s.phase,
+            lastEvent: (parsed.data.lastEvent as string) ?? s.lastEvent,
+            heartbeatAt: parsed.ts,
+          } : s);
+        } else if (
+          parsed.type === 'investigation.completed' ||
+          parsed.type === 'investigation.failed' ||
+          parsed.type === 'investigation.killed'
+        ) {
+          es.close();
+          esRef.current = null;
+          void fetchFinalStatus(id, app, cust);
+        }
+      } catch {
+        /* ignore malformed */
+      }
+    };
+
+    // Prelude: server sends `hello` with the authoritative state snapshot
+    // (status, startedAt) before any events. Use it to seed the card in the
+    // reopen / 409-conflict cases where the client has no local snapshot.
+    es.addEventListener('hello', (evt: MessageEvent) => {
+      try {
+        const hello = JSON.parse(evt.data) as {
+          investigationId: string;
+          status: StatusResponse['status'];
+          startedAt: string;
+        };
+        setStatus((prev) => prev ?? {
+          investigationId: hello.investigationId,
+          appId: app,
+          customerId: cust,
+          status: hello.status,
+          phase: 'bootstrap',
+          lastEvent: null,
+          startedAt: hello.startedAt,
+          heartbeatAt: hello.startedAt,
+          completedAt: null,
+          durationMs: null,
+          stale: false,
+          error: null,
+          reportAvailable: false,
+          reportFilename: null,
+          reportSize: null,
+          reportEtag: null,
+        });
+      } catch {
+        /* ignore malformed */
+      }
+    });
+
+    // Generic fallback (server always sets explicit event name, but guard).
+    es.onmessage = handleEvent;
+    for (const type of [
+      'investigation.started',
+      'phase.started',
+      'log',
+      'evidence.ready',
+      'heartbeat',
+      'report.ready',
+      'investigation.completed',
+      'investigation.failed',
+      'investigation.killed',
+    ]) {
+      es.addEventListener(type, handleEvent as EventListener);
+    }
+    es.addEventListener('close', () => {
+      // Skip if a terminal event handler already closed + fetched — avoids
+      // a duplicate /status hit when the server sends both the terminal
+      // event and the explicit close frame.
+      if (esRef.current !== es) return;
+      esRef.current = null;
+      es.close();
+      void fetchFinalStatus(id, app, cust);
+    });
+    es.onerror = () => {
+      // Browser auto-reconnects with Last-Event-ID. Leave open unless server
+      // explicitly closed (handled above).
+    };
+  }, [fetchFinalStatus]);
+
+  useEffect(() => () => { stopStream(); }, [stopStream]);
   useEffect(() => () => { abortReportFetch(); }, [abortReportFetch]);
 
   // Kick off (or reuse cached) report fetch whenever we see a completed
@@ -394,7 +477,7 @@ export default function InvestigatePanel(props: Props = {}) {
           setInvestigationId(data.investigationId);
           // If it's still running, resume polling. Otherwise static display.
           if ((data.status === 'pending' || data.status === 'running') && !data.stale) {
-            pollOnce(data.investigationId, appId, customerId);
+            openStream(data.investigationId, appId, customerId);
           }
         }
       } catch (err) {
@@ -408,7 +491,7 @@ export default function InvestigatePanel(props: Props = {}) {
       }
     })();
     return () => { cancelled = true; };
-  }, [embedded, appId, customerId, pollOnce]);
+  }, [embedded, appId, customerId, openStream]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -424,7 +507,8 @@ export default function InvestigatePanel(props: Props = {}) {
     setSubmitting(true);
     setStatus(null);
     setInvestigationId(null);
-    stopPolling();
+    setTimeline([]);
+    stopStream();
     abortReportFetch();
     setReportText('');
     setReportEtagLoaded(null);
@@ -455,7 +539,7 @@ export default function InvestigatePanel(props: Props = {}) {
         const data = (await res.json()) as ConflictResponse;
         setInvestigationId(data.investigationId);
         setSubmitError(`Another investigation is already running for this app (started ${data.startedAt}). Showing its status.`);
-        pollOnce(data.investigationId, appId.trim(), customerId.trim());
+        openStream(data.investigationId, appId.trim(), customerId.trim());
         return;
       }
 
@@ -467,7 +551,29 @@ export default function InvestigatePanel(props: Props = {}) {
 
       const data = (await res.json()) as StartResponse;
       setInvestigationId(data.investigationId);
-      pollOnce(data.investigationId, appId.trim(), customerId.trim());
+      // Seed a minimal pending card so the UI isn't blank until the first
+      // SSE event lands — events update this shell via `setStatus((prev) =>
+      // prev ? ... : prev)` so an initial row must exist.
+      const nowIso = new Date().toISOString();
+      setStatus({
+        investigationId: data.investigationId,
+        appId: appId.trim(),
+        customerId: customerId.trim(),
+        status: 'pending',
+        phase: 'bootstrap',
+        lastEvent: 'awaiting lambda cold start',
+        startedAt: nowIso,
+        heartbeatAt: nowIso,
+        completedAt: null,
+        durationMs: null,
+        stale: false,
+        error: null,
+        reportAvailable: false,
+        reportFilename: null,
+        reportSize: null,
+        reportEtag: null,
+      });
+      openStream(data.investigationId, appId.trim(), customerId.trim());
       // Embedded: collapse the form so the user sees the live progress +
       // (eventually) the report without scrolling past their own inputs.
       if (embedded) setShowForm(false);
@@ -733,7 +839,7 @@ export default function InvestigatePanel(props: Props = {}) {
                 <span><strong>{friendlyPhase(status.phase)}</strong></span>
               </div>
               <div style={{ marginTop: 6, color: '#6b7280', fontSize: 12 }}>
-                Typical run: 3–6 minutes. Updates every {POLL_MS / 1000}s.
+                Typical run: 3–6 minutes. Live updates.
               </div>
               <style>{`@keyframes pulse { 0%, 100% { opacity: 1 } 50% { opacity: .3 } }`}</style>
             </div>
@@ -741,7 +847,7 @@ export default function InvestigatePanel(props: Props = {}) {
 
           {running && status.stale && (
             <div style={{ marginTop: 12, color: '#b45309', fontSize: 13 }}>
-              Investigation appears stuck because the Lambda heartbeat is stale. Polling has stopped; run a new investigation after the Lambda deploy is healthy.
+              Investigation appears stuck because the Lambda heartbeat is stale. The live stream has stopped; run a new investigation after the Lambda deploy is healthy.
             </div>
           )}
 
@@ -756,6 +862,44 @@ export default function InvestigatePanel(props: Props = {}) {
               Investigation hit the 15-minute Lambda cap and was killed.
             </div>
           )}
+
+          {(() => {
+            // Hide heartbeats (too chatty) and collapse runs of the same
+            // phase label (phase-0/1/2 all map to "Analyzing agent
+            // conversation" — we don't want three identical lines).
+            const visible: Array<{ key: number; label: string; ts: string }> = [];
+            let lastLabel: string | null = null;
+            for (const e of timeline) {
+              if (e.type === 'heartbeat') continue;
+              let label: string;
+              if (e.type === 'phase.started') {
+                const phase = typeof e.data.phase === 'string' ? e.data.phase : null;
+                label = phase ? (PHASE_LABELS[phase] ?? phase) : 'Phase started';
+              } else {
+                label = EVENT_TYPE_LABELS[e.type] ?? e.type;
+              }
+              if (label === lastLabel) continue;
+              lastLabel = label;
+              visible.push({ key: e.seq, label, ts: e.ts });
+            }
+            if (visible.length === 0) return null;
+            return (
+              <details style={{ marginTop: 12 }} open>
+                <summary style={{ cursor: 'pointer', fontSize: 13, color: '#6b7280' }}>
+                  Timeline ({visible.length} steps)
+                </summary>
+                <ol style={{ marginTop: 8, paddingLeft: 20, fontSize: 12, color: '#374151', maxHeight: 240, overflowY: 'auto' }}>
+                  {visible.map((e) => (
+                    <li key={e.key} style={{ marginBottom: 4 }}>
+                      <span style={{ color: '#1f2937' }}>{e.label}</span>
+                      {' · '}
+                      <span style={{ color: '#9ca3af' }}>{new Date(e.ts).toLocaleTimeString()}</span>
+                    </li>
+                  ))}
+                </ol>
+              </details>
+            );
+          })()}
 
           {status.reportAvailable && status.status === 'completed' && (
             <>

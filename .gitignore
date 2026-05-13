@@ -80,3 +80,8 @@ local-control-plane/server
 gci-metadata.json
 all.log
 .claude/skills/
+
+# investigator/ is a standalone Docker build (not in pnpm workspace).
+# Local test runs generate an npm lockfile we do not track.
+investigator/package-lock.json
+investigator/node_modules/
