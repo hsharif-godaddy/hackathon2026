@@ -206,7 +206,7 @@ export default function InsightsBanner(props: InsightsBannerProps = {}) {
                 </text.strong>
               ) : null}
               {content.description ? (
-                <text.p className="mt-1.5 mb-0 text-sm leading-relaxed sm:text-[15px] opacity-90" emphasis="passive">
+                <text.p className="mt-1.5 mb-0 text-sm leading-relaxed sm:text-[15px] text-intents-ux-text-textColor">
                   {content.description}
                 </text.p>
               ) : null}
