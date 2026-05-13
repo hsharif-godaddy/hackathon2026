@@ -1,6 +1,19 @@
 name: Merge Queue
 
+# Triggers on both pull_request and merge_group so that "Merge Gate" always
+# reports a status. On pull_request all CI jobs are skipped (gated by the
+# if: condition below); the sentinel sees all-skipped and passes immediately,
+# satisfying the required status check. On merge_group the full suite runs.
+#
+# Scope: the queue gates only the JS/TS surface (agents, app, proxy) plus the
+# v8 template checks that interact with agents via template sync. Go services
+# and other independent checks are validated by their per-service path-filtered
+# PR workflows; they don't need re-validation in the queue because their PRs
+# can't conflict with unrelated JS/TS work.
+#
+# Pattern from: https://boinkor.net/2023/11/neat-github-actions-patterns-for-github-merge-queues/
 on:
+  pull_request:
   merge_group:
     branches: [main]
 
@@ -9,10 +22,11 @@ permissions:
   contents: read
 
 jobs:
-  # Passes immediately so developers have a link to click while CI is running.
-  # See: https://boinkor.net/2023/11/neat-github-actions-patterns-for-github-merge-queues/
+  # Only runs in the merge queue. Passes immediately so developers have a link
+  # to click while CI is running rather than waiting for the sentinel to finish.
   ci-running:
     name: Merge Queue (CI running...)
+    if: github.event_name == 'merge_group'
     runs-on:
       labels:
         - airo-cicd-runners
@@ -22,6 +36,7 @@ jobs:
 
   # JS/TS packages — call _quality-checks.yml directly
   agents:
+    if: github.event_name == 'merge_group'
     uses: ./.github/workflows/_quality-checks.yml
     with:
       package-name: agents
@@ -30,6 +45,7 @@ jobs:
     secrets: inherit
 
   app-lint-build:
+    if: github.event_name == 'merge_group'
     uses: ./.github/workflows/_quality-checks.yml
     with:
       package-name: app
@@ -40,6 +56,7 @@ jobs:
     secrets: inherit
 
   app-unit-tests:
+    if: github.event_name == 'merge_group'
     uses: ./.github/workflows/_quality-checks.yml
     with:
       package-name: app-unit
@@ -50,6 +67,7 @@ jobs:
     secrets: inherit
 
   app-integration-tests:
+    if: github.event_name == 'merge_group'
     uses: ./.github/workflows/_quality-checks.yml
     with:
       package-name: app-integration
@@ -60,6 +78,7 @@ jobs:
     secrets: inherit
 
   proxy:
+    if: github.event_name == 'merge_group'
     uses: ./.github/workflows/_quality-checks.yml
     with:
       package-name: proxy
@@ -67,40 +86,23 @@ jobs:
       working-directory: ./proxy
     secrets: inherit
 
-  # Go services and other checks — call service workflows directly
-  go-agent:
-    uses: ./.github/workflows/go-agent.yml
-    secrets: inherit
-
-  dev-supervisor:
-    uses: ./.github/workflows/dev-supervisor.yml
-
-  local-control-plane:
-    uses: ./.github/workflows/local-control-plane.yml
-    secrets: inherit
-
-  stripe-service:
-    uses: ./.github/workflows/quality-checks-stripe-service.yml
-    secrets: inherit
-
-  budget-service:
-    uses: ./.github/workflows/budget-service-ci.yml
-    secrets: inherit
-
-  tools-security:
-    uses: ./.github/workflows/tools-security-check.yml
-
+  # v8 template checks — gated because template changes flow into agents via
+  # the sync scripts, so a v8 change can break agents in a way that only shows
+  # up when both land together.
   v8-license:
+    if: github.event_name == 'merge_group'
     uses: ./.github/workflows/v8-template-license-check.yml
     secrets: inherit
 
   v8-migration:
+    if: github.event_name == 'merge_group'
     uses: ./.github/workflows/v8-template-migration-checks.yml
     secrets: inherit
 
-  # Single required status check for the merge queue ruleset.
-  # Uses if: always() + explicit jq check so that a skipped dep doesn't
-  # silently count as passing. See the boinkor.net article above.
+  # The single required status check for the merge queue ruleset.
+  # if: always() ensures this runs even when all deps are skipped (pull_request
+  # event). The jq check accepts "skipped" as success so it passes immediately
+  # on PRs and only gates on real failures in the merge queue.
   merge-gate:
     name: Merge Gate
     needs:
@@ -109,12 +111,6 @@ jobs:
       - app-unit-tests
       - app-integration-tests
       - proxy
-      - go-agent
-      - dev-supervisor
-      - local-control-plane
-      - stripe-service
-      - budget-service
-      - tools-security
       - v8-license
       - v8-migration
     if: always()
