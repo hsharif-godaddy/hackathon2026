@@ -819,7 +819,7 @@ function DevelopPageContent() {
     }
   }, [appId, t])
 
-  const sendTextUpdate = useCallback(async (textData: { selector: string; oldText: string; newText: string; devContext: Record<string, unknown> }) => {
+  const sendTextUpdate = useCallback(async (textData: { selector: string; preciseSelector?: string; oldText: string; newText: string; newHtml?: string; devContext: Record<string, unknown> }) => {
     if (!appId) return
 
     logger.info('develop-page.text-update.begin', {

@@ -164,7 +164,8 @@ describe('ASTTextEditor — Hello World test app', () => {
   // ── Helper to run an edit and return the updated file content ──
   async function editAndRead(request: Parameters<ASTTextEditor['editElementText']>[1]) {
     const result = await editor.editElementText(testAppPath, request);
-    const updatedContent = await readFile(testFilePath, 'utf-8');
+    const filePath = join(testAppPath, request.devContext.fileName);
+    const updatedContent = await readFile(filePath, 'utf-8');
     return { result, updatedContent };
   }
 
@@ -603,6 +604,277 @@ describe('ASTTextEditor — Hello World test app', () => {
       // Page structure intact
       expect(updatedContent).toContain('Get Started');
       expect(updatedContent).toContain('All systems operational');
+    });
+  });
+
+  // ────────────────────────────────────────────────────────────────
+  // BUG: br-segment edits — editing one line of a multi-line heading
+  // destroys text on the other side of <br />
+  // ────────────────────────────────────────────────────────────────
+
+  describe('br-segment edits — text split by <br />', () => {
+    const BR_HEADING_FIXTURE = `import { motion } from 'motion/react';
+
+export default function HeroPage() {
+  return (
+    <section className="hero">
+      <motion.h1
+        className="font-bold text-white"
+        initial={{ opacity: 0, y: 30 }}
+        animate={{ opacity: 1, y: 0 }}>
+        30 Years of
+        <br />
+        Friendship
+      </motion.h1>
+      <p className="subtitle">A celebration of three decades</p>
+    </section>
+  );
+}`;
+
+    let brFixturePath: string;
+
+    beforeEach(async () => {
+      brFixturePath = join(testAppPath, 'src', 'pages', 'hero.tsx');
+      await writeFile(brFixturePath, BR_HEADING_FIXTURE);
+    });
+
+    it('should preserve text after <br /> when editing text before it (newHtml path)', async () => {
+      // Customer scenario: agent generated <h1>30 Years of<br />Friendship</h1>
+      // User edits first segment "30 Years of" → "30 Years of great"
+      // The segment commit sends newHtml to preserve the br structure.
+      //
+      // Without newHtml support, updateTextContent jams all text into the first
+      // JSXText node and clears the rest — "Friendship" disappears.
+      const { result, updatedContent } = await editAndRead({
+        selector: 'motion.h1',
+        oldText: '30 Years of Friendship',
+        newText: '30 Years of great Friendship',
+        newHtml: '30 Years of great\n<br />\nFriendship',
+        devContext: {
+          fileName: 'src/pages/hero.tsx',
+          componentName: 'unknown',
+          lineNumber: 6,
+        }
+      });
+
+      expect(result.success).toBe(true);
+      // "Friendship" MUST still exist as text AFTER the br
+      expect(updatedContent).toContain('Friendship');
+      expect(updatedContent).toContain('30 Years of great');
+      // The <br /> must still be present
+      expect(updatedContent).toContain('<br />');
+      // Text must be on separate sides of the br, not jammed together
+      const brIndex = updatedContent.indexOf('<br />');
+      const friendshipIndex = updatedContent.indexOf('Friendship', brIndex);
+      expect(friendshipIndex).toBeGreaterThan(brIndex);
+    });
+
+    it('should produce valid JSX when using newHtml with br structure', async () => {
+      const { result, updatedContent } = await editAndRead({
+        selector: 'motion.h1',
+        oldText: '30 Years of Friendship',
+        newText: '30 Years of great Friendship',
+        newHtml: '30 Years of great\n<br />\nFriendship',
+        devContext: {
+          fileName: 'src/pages/hero.tsx',
+          componentName: 'unknown',
+          lineNumber: 6,
+        }
+      });
+
+      expect(result.success).toBe(true);
+      const { parse } = await import('@babel/parser');
+      expect(() => {
+        parse(updatedContent, {
+          sourceType: 'module',
+          plugins: ['jsx', 'typescript']
+        });
+      }).not.toThrow();
+    });
+
+    it('should not destroy sibling elements when newHtml replaces children', async () => {
+      const { result, updatedContent } = await editAndRead({
+        selector: 'motion.h1',
+        oldText: '30 Years of Friendship',
+        newText: '30 Years of great Friendship',
+        newHtml: '30 Years of great\n<br />\nFriendship',
+        devContext: {
+          fileName: 'src/pages/hero.tsx',
+          componentName: 'unknown',
+          lineNumber: 6,
+        }
+      });
+
+      expect(result.success).toBe(true);
+      // Sibling <p> must survive
+      expect(updatedContent).toContain('A celebration of three decades');
+      // motion.h1 attributes must survive
+      expect(updatedContent).toContain('font-bold text-white');
+      expect(updatedContent).toContain('opacity: 0');
+    });
+
+    it('should allow a second edit on the same br-segment element', async () => {
+      // Round-trip: first edit changes "30 Years of" → "30 Years of great",
+      // second edit changes "great" → "amazing". The element must remain
+      // findable after the first edit writes bare text + <br /> (no artifact spans).
+      await editAndRead({
+        selector: 'motion.h1',
+        oldText: '30 Years of Friendship',
+        newText: '30 Years of great Friendship',
+        newHtml: '30 Years of great\n<br />\nFriendship',
+        devContext: {
+          fileName: 'src/pages/hero.tsx',
+          componentName: 'unknown',
+          lineNumber: 6,
+        }
+      });
+
+      // Second edit on the same element — oldText is the full textContent
+      // which extractTextContent builds from direct JSXText nodes
+      const { result, updatedContent } = await editAndRead({
+        selector: 'motion.h1',
+        oldText: '30 Years of great Friendship',
+        newText: '30 Years of amazing Friendship',
+        newHtml: '30 Years of amazing\n<br />\nFriendship',
+        devContext: {
+          fileName: 'src/pages/hero.tsx',
+          componentName: 'unknown',
+          lineNumber: 6,
+        }
+      });
+
+      expect(result.success).toBe(true);
+      expect(updatedContent).toContain('30 Years of amazing');
+      expect(updatedContent).toContain('Friendship');
+      expect(updatedContent).toContain('<br />');
+    });
+
+    it('should fail explicitly when newHtml is malformed (not silently degrade)', async () => {
+      const { result, updatedContent } = await editAndRead({
+        selector: 'motion.h1',
+        oldText: '30 Years of Friendship',
+        newText: '30 Years of great Friendship',
+        newHtml: '<unclosed',
+        devContext: {
+          fileName: 'src/pages/hero.tsx',
+          componentName: 'unknown',
+          lineNumber: 6,
+        }
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Failed to parse newHtml');
+      // Source must be unchanged — no silent degradation
+      expect(updatedContent).toContain('30 Years of');
+      expect(updatedContent).toContain('Friendship');
+      expect(updatedContent).not.toContain('30 Years of great');
+    });
+
+    it('should handle newHtml with only text change (no structural change)', async () => {
+      // Even when newHtml is provided, if it's just plain text the result
+      // should be equivalent to a plain text edit
+      const { result, updatedContent } = await editAndRead({
+        selector: 'p',
+        oldText: 'A celebration of three decades',
+        newText: 'A celebration of thirty years',
+        newHtml: 'A celebration of thirty years',
+        devContext: {
+          fileName: 'src/pages/hero.tsx',
+          componentName: 'unknown',
+          lineNumber: 14,
+        }
+      });
+
+      expect(result.success).toBe(true);
+      expect(updatedContent).toContain('A celebration of thirty years');
+      expect(updatedContent).not.toContain('A celebration of three decades');
+    });
+
+    it('should use devId to match h1 over inner span (complex br + styled span)', async () => {
+      // Scenario: <h1>BURGERS<br /><span className="text-primary">THAT MEAN</span><br />BUSINESS.</h1>
+      // Without devId, the span's text "THAT MEAN" scores higher as "contains-text"
+      // because extractTextContent (shallow) for h1 = "BURGERS BUSINESS." which only
+      // partially matches oldText "BURGERS THAT MEAN BUSINESS."
+      // DevId ensures the h1 wins with 50000 score.
+      const complexFixture = `export default function Hero() {
+  return (
+    <section className="hero">
+      <h1 className="font-heading text-6xl font-bold">
+        BURGERS
+        <br />
+        <span className="text-primary">THAT MEAN</span>
+        <br />
+        BUSINESS.
+      </h1>
+    </section>
+  );
+}`;
+      const complexPath = join(testAppPath, 'src', 'pages', 'hero.tsx');
+      await writeFile(complexPath, complexFixture);
+
+      // devId for h1: structuralKey = "src/pages/hero.tsx:section>h1#0" → DJB2 hash
+      const expectedDevId = 'bf26af';
+
+      const { result, updatedContent } = await editAndRead({
+        selector: 'h1',
+        oldText: 'BURGERS THAT MEAN BUSINESS.',
+        newText: 'SMASH BURGERS THAT MEAN BUSINESS.',
+        newHtml: 'SMASH BURGERS\n<br />\n<span className="text-primary">THAT MEAN</span>\n<br />\nBUSINESS.',
+        devContext: {
+          fileName: 'src/pages/hero.tsx',
+          componentName: 'unknown',
+          lineNumber: 4,
+          devId: expectedDevId,
+        }
+      });
+
+      expect(result.success).toBe(true);
+      expect(updatedContent).toContain('SMASH BURGERS');
+      expect(updatedContent).toContain('THAT MEAN');
+      expect(updatedContent).toContain('BUSINESS.');
+      // The span must still exist (not get content dumped into it)
+      expect(updatedContent).toContain('text-primary');
+      // No duplication
+      const burgerCount = (updatedContent.match(/SMASH BURGERS/g) || []).length;
+      expect(burgerCount).toBe(1);
+    });
+
+    it('should compute correct devId for same-tag siblings after expression wrappers', async () => {
+      // Source-mapper counts ALL same-tag elements under a JSXElement ancestor
+      // frame, including those inside .map() or conditionals. The static <h1>
+      // after the mapped one gets siblingIndex=1, not 0.
+      const mapFixture = `export default function Page({ items }) {
+  return (
+    <div>
+      {items.map(item => <h1 key={item.id}>{item.title}</h1>)}
+      <h1 className="static">Static Heading</h1>
+    </div>
+  );
+}`;
+      const mapFixturePath = join(testAppPath, 'src', 'pages', 'hero.tsx');
+      await writeFile(mapFixturePath, mapFixture);
+
+      // devId for static h1: structuralKey = "src/pages/hero.tsx:div>h1#1"
+      // (siblingIndex=1 because the mapped h1 counts as #0)
+      const expectedDevId = '34655e';
+
+      const { result, updatedContent } = await editAndRead({
+        selector: 'h1',
+        oldText: 'Static Heading',
+        newText: 'Updated Heading',
+        devContext: {
+          fileName: 'src/pages/hero.tsx',
+          componentName: 'unknown',
+          lineNumber: 5,
+          devId: expectedDevId,
+        }
+      });
+
+      expect(result.success).toBe(true);
+      expect(updatedContent).toContain('Updated Heading');
+      expect(updatedContent).not.toContain('Static Heading');
+      // The mapped h1 template must be untouched
+      expect(updatedContent).toContain('{item.title}');
     });
   });
 

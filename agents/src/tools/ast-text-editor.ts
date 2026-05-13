@@ -1,4 +1,5 @@
 import * as t from '@babel/types';
+import { parse } from '@babel/parser';
 import { ASTEditorBase, BaseEditContext, BaseEditResult } from './ast-editor-base.js';
 import { Logger } from '../logging/index.js';
 
@@ -11,6 +12,7 @@ export interface TextEditRequest {
   preciseSelector?: string;
   oldText: string;
   newText: string;
+  newHtml?: string;
   devContext: TextEditContext;
 }
 
@@ -138,6 +140,109 @@ export class ASTTextEditor extends ASTEditorBase {
       }
     }
     return text;
+  }
+
+  // ── Dev-ID computation (mirrors source-mapper's DJB2 hash) ──
+
+  private hashStructuralKey(key: string): string {
+    let hash = 5381;
+    for (let i = 0; i < key.length; i++) {
+      hash = ((hash << 5) + hash) + key.charCodeAt(i);
+      hash |= 0;
+    }
+    return (hash >>> 0).toString(16).slice(-6).padStart(6, '0');
+  }
+
+  private getFullTagName(element: t.JSXElement): string {
+    const name = element.openingElement.name;
+    if (t.isJSXIdentifier(name)) return name.name;
+    if (t.isJSXMemberExpression(name)) {
+      const parts: string[] = [];
+      let cur: t.JSXMemberExpression | t.JSXIdentifier = name;
+      while (t.isMemberExpression(cur) || t.isJSXMemberExpression(cur)) {
+        if (t.isJSXMemberExpression(cur)) {
+          parts.unshift(cur.property.name);
+          cur = cur.object;
+        } else break;
+      }
+      if (t.isJSXIdentifier(cur)) parts.unshift(cur.name);
+      return parts.join('.');
+    }
+    if (t.isJSXNamespacedName(name)) {
+      return `${name.namespace.name}:${name.name.name}`;
+    }
+    return 'unknown';
+  }
+
+  private computeDevIds(ast: t.File, fileName: string): Map<t.JSXElement, string> {
+    const devIds = new Map<t.JSXElement, string>();
+    const normalizedFile = this.normalizeFileName(fileName);
+
+    // Mirror source-mapper's stack-based counter. Each frame represents a
+    // JSXElement ancestor and tracks how many same-tag children have been
+    // entered beneath it (including those inside expression wrappers).
+    const ancestorStack: Array<{ tagName: string; sameTagChildCount: Map<string, number> }> = [];
+
+    this.traverse(ast, {
+      JSXElement: {
+        enter: (path: any): void => {
+          const node = path.node as t.JSXElement;
+          const tagName = this.getFullTagName(node);
+
+          const parentFrame = ancestorStack[ancestorStack.length - 1];
+          let siblingIndex = 0;
+          if (parentFrame) {
+            siblingIndex = parentFrame.sameTagChildCount.get(tagName) || 0;
+            parentFrame.sameTagChildCount.set(tagName, siblingIndex + 1);
+          }
+
+          ancestorStack.push({ tagName, sameTagChildCount: new Map() });
+
+          const ancestorChain = ancestorStack.slice(0, -1).map(f => f.tagName).join('>');
+          const structuralKey = `${normalizedFile}:${ancestorChain}${ancestorChain ? '>' : ''}${tagName}#${siblingIndex}`;
+          devIds.set(node, this.hashStructuralKey(structuralKey));
+        },
+        exit: (): void => {
+          ancestorStack.pop();
+        },
+      },
+    });
+
+    return devIds;
+  }
+
+  private normalizeFileName(raw: string): string {
+    const normalized = raw.replace(/\\/g, '/');
+    const srcIdx = normalized.indexOf('/src/');
+    if (srcIdx !== -1) return normalized.slice(srcIdx + 1);
+    const appIdx = normalized.indexOf('/app/');
+    if (appIdx !== -1) return normalized.slice(appIdx + 1);
+    return normalized;
+  }
+
+  /**
+   * Parse a JSX children string into AST nodes. Used by the newHtml path
+   * to replace element children with structured content (preserving <br /> etc).
+   */
+  private parseJsxChildren(jsxString: string): t.JSXElement['children'] | null {
+    try {
+      const code = `const _x = <>${jsxString}</>`;
+      const ast = parse(code, {
+        sourceType: 'module',
+        plugins: ['jsx', 'typescript'],
+      });
+      const decl = ast.program.body[0];
+      if (!t.isVariableDeclaration(decl)) return null;
+      const init = decl.declarations[0]?.init;
+      if (!t.isJSXFragment(init)) return null;
+      return init.children;
+    } catch (err) {
+      logger.warn('ast.text-editor.parse-jsx-children.failed', {
+        error: err instanceof Error ? err.message : String(err),
+        jsxString: jsxString.slice(0, 200),
+      });
+      return null;
+    }
   }
 
   /**
@@ -312,6 +417,11 @@ export class ASTTextEditor extends ASTEditorBase {
       }
     });
 
+    // Compute structural dev-ids for all elements (mirrors source-mapper's hash)
+    const devIdMap = devContext.devId
+      ? this.computeDevIds(ast, devContext.fileName)
+      : null;
+
     // Find matches prioritizing text content over line number
     const normalizedOldText = oldText.replace(/\s+/g, ' ').trim();
     const exactMatches: Array<{ element: t.JSXElement; line: number; score: number }> = [];
@@ -330,8 +440,9 @@ export class ASTTextEditor extends ASTEditorBase {
 
       // Skip candidates too far from target line unless they have a text-based match
       // or a devId match. DevId matching is immune to line drift by design.
-      const hasDevIdMatch = request.devContext.devId
-        ? this.getDevId(candidate.element) === request.devContext.devId
+      const candidateDevId = devIdMap?.get(candidate.element) ?? this.getDevId(candidate.element);
+      const hasDevIdMatch = devContext.devId
+        ? candidateDevId === devContext.devId
         : false;
       const hasTextOverlap = normalizedCandidateText === normalizedOldText ||
         normalizedCandidateText.includes(normalizedOldText) ||
@@ -344,12 +455,9 @@ export class ASTTextEditor extends ASTEditorBase {
       let matchType = 'no-match';
 
       // Structural ID matching (highest priority — immune to line shifts)
-      if (request.devContext.devId) {
-        const candidateDevId = this.getDevId(candidate.element);
-        if (candidateDevId && candidateDevId === request.devContext.devId) {
-          score += 50000;
-          matchType = 'dev-id';
-        }
+      if (devContext.devId && candidateDevId === devContext.devId) {
+        score += 50000;
+        matchType = 'dev-id';
       }
 
       // Text matching (highest priority after dev-id)
@@ -413,7 +521,20 @@ export class ASTTextEditor extends ASTEditorBase {
     // Update the target element if found
     if (elementFound && targetElement) {
       actualOldText = this.extractTextContent(targetElement);
-      this.updateTextContent(targetElement, newText);
+
+      if (request.newHtml) {
+        const parsedChildren = this.parseJsxChildren(request.newHtml);
+        if (parsedChildren) {
+          targetElement.children = parsedChildren;
+        } else {
+          return {
+            success: false,
+            error: `Failed to parse newHtml for element at line ${devContext.lineNumber}`,
+          };
+        }
+      } else {
+        this.updateTextContent(targetElement, newText);
+      }
 
       logger.debug('ast.text-editor.updated', {
         matchScore: bestMatch?.score,
@@ -421,7 +542,8 @@ export class ASTTextEditor extends ASTEditorBase {
         exactMatchCount: exactMatches.length,
         usedOccurrenceIndex: exactMatches.length > 1 && targetOccurrenceIndex !== null,
         oldText: actualOldText.slice(0, 80),
-        newText: newText.slice(0, 80)
+        newText: newText.slice(0, 80),
+        hasNewHtml: !!request.newHtml,
       });
     }
 

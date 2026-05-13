@@ -756,7 +756,7 @@ router.post('/:id/files/search', async (req: Request, res: Response) => {
 router.post('/:id/text/edit', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { selector, preciseSelector, oldText, newText, devContext } = req.body;
+    const { selector, preciseSelector, oldText, newText, newHtml, devContext } = req.body;
 
     if (!id) {
       return res.status(400).json({ error: 'App ID is required' });
@@ -819,6 +819,7 @@ router.post('/:id/text/edit', async (req: Request, res: Response) => {
       preciseSelector,
       oldText,
       newText,
+      newHtml,
       devContext
     }, id);
 

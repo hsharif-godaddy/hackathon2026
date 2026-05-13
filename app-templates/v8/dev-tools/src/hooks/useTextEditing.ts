@@ -283,7 +283,7 @@ export function useTextEditing(isEditModeActive: boolean) {
       }
 
       const parentInnerHtml = normalizeHtml(clone.innerHTML);
-      const structured = htmlToJsxStructured("<p>" + parentInnerHtml + "</p>", true);
+      const structured = htmlToJsxStructured("<p>" + parentInnerHtml + "</p>", !!newSegmentHtml);
 
       const devContext = extractDevContext(parent);
       const selector = generateSelector(parent);
@@ -361,12 +361,13 @@ export function useTextEditing(isEditModeActive: boolean) {
   const blurHandlerRef = useRef<(() => void) | null>(null);
 
   const startEditingLegacy = useCallback(
-    (element: HTMLElement) => {
+    (element: HTMLElement, brParent?: HTMLElement) => {
       if (stateRef.current.editingElement && stateRef.current.editingElement !== element) {
         stopEditing(true);
       }
 
       const originalText = element.textContent?.trim() || "";
+      const parentOriginalText = brParent?.textContent?.trim() || "";
       element.contentEditable = "true";
       element.style.outline = "none";
       element.focus();
@@ -385,14 +386,18 @@ export function useTextEditing(isEditModeActive: boolean) {
         element.removeEventListener("blur", onBlur);
         blurHandlerRef.current = null;
         const newText = element.textContent?.trim() || "";
-        handleCommit(element, originalText, newText, null);
+        if (brParent) {
+          handleSegmentCommit(element, brParent, parentOriginalText, newText, null);
+        } else {
+          handleCommit(element, originalText, newText, null);
+        }
       };
       blurHandlerRef.current = onBlur;
       element.addEventListener("blur", onBlur);
 
       updateState({ editingElement: element, originalText });
     },
-    [stopEditing, handleCommit, updateState],
+    [stopEditing, handleCommit, handleSegmentCommit, updateState],
   );
 
   // ── Start editing (Lexical) ──
@@ -400,7 +405,7 @@ export function useTextEditing(isEditModeActive: boolean) {
   const startEditing = useCallback(
     (element: HTMLElement, brParent?: HTMLElement) => {
       if (!import.meta.env.VITE_ENABLE_LEXICAL_EDITOR) {
-        startEditingLegacy(element);
+        startEditingLegacy(element, brParent);
         return;
       }
 

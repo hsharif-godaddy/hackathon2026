@@ -62,6 +62,7 @@ export interface TextUpdateData {
   preciseSelector?: string
   oldText: string
   newText: string
+  newHtml?: string
   devContext: Record<string, unknown>
 }
 
@@ -397,7 +398,8 @@ export class AppService {
       preciseSelector: textData.preciseSelector,
       oldText: textData.oldText,
       newText: textData.newText,
-      devContext: textData.devContext
+      newHtml: textData.newHtml,
+      devContext: textData.devContext,
     };
 
     const apiUrl = await buildDynamicApiUrl(`text/edit`, appId)
