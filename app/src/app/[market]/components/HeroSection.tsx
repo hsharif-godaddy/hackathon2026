@@ -448,7 +448,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
   const showCharCount = bytesRemaining <= 20
 
   return (
-    <Box className="flex flex-col gap-2 md:gap-3 px-2 sm:px-3 lg:px-4 pt-6 md:pt-12 min-h-[calc(100vh-3rem)] items-center justify-center">
+    <Box className="flex flex-col gap-2 md:gap-3 px-2 sm:px-3 lg:px-4 pt-12 min-h-[calc(100vh-3rem)] items-center justify-center">
       <text.h1
         as='heading'
         size={isBelowSmBreakpoint ? 2 : isMdBreakpoint ? 3 : 4}
