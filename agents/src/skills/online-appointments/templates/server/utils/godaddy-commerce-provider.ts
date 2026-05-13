@@ -12,7 +12,7 @@ import type {
 	CreatePaymentSessionParams,
 } from "./payment-provider";
 import { PaymentProviderError, PaymentProviderErrorCode } from "./payment-provider";
-import { logger } from "../../../lib/logger";
+import { logger } from "../../lib/logger";
 
 /**
  * Maps GoDaddy Commerce order status to standardized status
