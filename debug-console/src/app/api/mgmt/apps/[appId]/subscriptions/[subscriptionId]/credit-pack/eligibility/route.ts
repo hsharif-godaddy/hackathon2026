@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { OPS_ADMIN } from '@/lib/ad-groups';
-import { CREDITS_MAX, getLatestCreditPack } from '@/lib/credit-pack-utils';
+import { CREDIT_PACK_OPTIONS, CREDITS_MAX } from '@/lib/credit-pack-utils';
 import { withAuth } from '@/lib/api-auth';
 import { computeUseBefore } from '@/lib/date-utils';
 import { logger } from '@/lib/logger';
@@ -27,18 +27,6 @@ export const GET = withAuth<{ appId: string, subscriptionId: string }>(async fun
         return handleMgmtError(error, 'fetch app details', { appId, subscriptionId, shopperId: auth.user?.shopperId });
     }
 
-    let recentCreditPack = null;
-    try {
-        recentCreditPack = await getLatestCreditPack(subscriptionId);
-    } catch (error) {
-        logger.warn('credit-pack.eligibility.es-query-failed', {
-            appId,
-            subscriptionId,
-            shopperId: auth.user?.shopperId,
-            message: error instanceof Error ? error.message : String(error),
-        });
-    }
-
     logger.info('credit-pack.eligibility.success', {
         appId,
         subscriptionId,
@@ -48,7 +36,7 @@ export const GET = withAuth<{ appId: string, subscriptionId: string }>(async fun
     return NextResponse.json({
         type: 'credit-pack',
         creditsMax: CREDITS_MAX,
+        creditPackOptions: CREDIT_PACK_OPTIONS,
         useBefore: computeUseBefore(),
-        recentCreditPack,
     });
 }, { adGroup: OPS_ADMIN });

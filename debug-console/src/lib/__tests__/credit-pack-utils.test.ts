@@ -17,11 +17,9 @@ vi.mock('@/lib/date-utils', () => ({
 
 import type { AuthUser } from '../api-auth';
 import {
-    claimCreditPackSlot,
     CREDITS_MAX,
     CREDIT_PACK_STATUS,
     getCreditPackDoc,
-    getLatestCreditPack,
     indexCreditPackDoc,
 } from '../credit-pack-utils';
 
@@ -135,92 +133,6 @@ describe('credit-pack-utils', () => {
         });
     });
 
-    describe('getLatestCreditPack', () => {
-        it('should return null when no hits are found', async () => {
-            const { writeClient } = await import('@/lib/analytics/es-client');
-            vi.mocked(writeClient.search).mockResolvedValue({
-                hits: { hits: [], total: { value: 0, relation: 'eq' } },
-            } as never);
-
-            expect(await getLatestCreditPack('sub-1')).toBeNull();
-        });
-
-        it('should return the document with is_credit_allowed true when next_credit_allowed_after is in the past', async () => {
-            const { writeClient } = await import('@/lib/analytics/es-client');
-            vi.mocked(writeClient.search).mockResolvedValue({
-                hits: {
-                    hits: [{
-                        _source: {
-                            es_id: 'id-1',
-                            timestamp: '2026-04-03T12:00:00Z',
-                            app_id: 'app-1',
-                            subscription_id: 'sub-1',
-                            status: 'complete',
-                            credits_max: 250,
-                            use_before: '2026-05-03T13:00:00Z',
-                            next_credit_allowed_after: '2020-01-01T00:00:00Z',
-                        },
-                    }],
-                    total: { value: 1, relation: 'eq' },
-                },
-            } as never);
-
-            const result = await getLatestCreditPack('sub-1');
-
-            expect(result).not.toBeNull();
-            expect(result!.es_id).toBe('id-1');
-            expect(result!.is_credit_allowed).toBe(true);
-        });
-
-        it('should return is_credit_allowed false when next_credit_allowed_after is in the future', async () => {
-            const { writeClient } = await import('@/lib/analytics/es-client');
-            vi.mocked(writeClient.search).mockResolvedValue({
-                hits: {
-                    hits: [{
-                        _source: {
-                            es_id: 'id-2',
-                            timestamp: '2026-04-03T12:00:00Z',
-                            app_id: 'app-1',
-                            subscription_id: 'sub-1',
-                            status: 'complete',
-                            credits_max: 250,
-                            use_before: '2026-05-03T13:00:00Z',
-                            next_credit_allowed_after: '2099-12-31T23:59:59Z',
-                        },
-                    }],
-                    total: { value: 1, relation: 'eq' },
-                },
-            } as never);
-
-            const result = await getLatestCreditPack('sub-1');
-
-            expect(result!.is_credit_allowed).toBe(false);
-        });
-
-        it('should query with correct filters and sort', async () => {
-            const { writeClient, INDICES } = await import('@/lib/analytics/es-client');
-            vi.mocked(writeClient.search).mockResolvedValue({
-                hits: { hits: [], total: { value: 0, relation: 'eq' } },
-            } as never);
-
-            await getLatestCreditPack('sub-xyz');
-
-            expect(writeClient.search).toHaveBeenCalledWith({
-                index: INDICES.CREDIT_PACKS,
-                size: 1,
-                query: {
-                    bool: {
-                        filter: [
-                            { term: { subscription_id: 'sub-xyz' } },
-                            { term: { status: 'complete' } },
-                        ]
-                    }
-                },
-                sort: [{ next_credit_allowed_after: { order: 'desc' } }],
-            });
-        });
-    });
-
     describe('indexCreditPackDoc', () => {
         beforeEach(() => {
             vi.clearAllMocks();
@@ -274,59 +186,4 @@ describe('credit-pack-utils', () => {
         });
     });
 
-    describe('claimCreditPackSlot', () => {
-        beforeEach(() => {
-            vi.clearAllMocks();
-        });
-
-        const sampleDoc = {
-            es_id: 'doc-1',
-            timestamp: '2026-04-04T15:21:31.000Z',
-            app_id: 'app-1',
-            subscription_id: 'sub-1',
-            status: 'init',
-            credits_max: 250,
-            use_before: '2026-05-04T16:00:00Z',
-            next_credit_allowed_after: '2026-04-05T15:21:31.000Z',
-        };
-
-        it('should return claimed on successful create', async () => {
-            const { writeClient, initIndices } = await import('@/lib/analytics/es-client');
-            vi.mocked(initIndices).mockResolvedValue(undefined as never);
-            vi.mocked(writeClient.create).mockResolvedValue({} as never);
-
-            expect(await claimCreditPackSlot(sampleDoc)).toBe('claimed');
-        });
-
-        it('should use a deterministic lock ID based on subscriptionId and day', async () => {
-            const { writeClient, initIndices, INDICES } = await import('@/lib/analytics/es-client');
-            vi.mocked(initIndices).mockResolvedValue(undefined as never);
-            vi.mocked(writeClient.create).mockResolvedValue({} as never);
-
-            await claimCreditPackSlot(sampleDoc);
-
-            expect(writeClient.create).toHaveBeenCalledWith(expect.objectContaining({
-                index: INDICES.CREDIT_PACKS,
-                id: 'lock-sub-1-2026-04-04',
-            }));
-        });
-
-        it('should return conflict on 409 version_conflict', async () => {
-            const { writeClient, initIndices } = await import('@/lib/analytics/es-client');
-            vi.mocked(initIndices).mockResolvedValue(undefined as never);
-
-            const conflictError = Object.assign(new Error('version_conflict_engine_exception'), { statusCode: 409 });
-            vi.mocked(writeClient.create).mockRejectedValue(conflictError);
-
-            expect(await claimCreditPackSlot(sampleDoc)).toBe('conflict');
-        });
-
-        it('should re-throw non-409 errors', async () => {
-            const { writeClient, initIndices } = await import('@/lib/analytics/es-client');
-            vi.mocked(initIndices).mockResolvedValue(undefined as never);
-            vi.mocked(writeClient.create).mockRejectedValue(new Error('ES connection timeout'));
-
-            await expect(claimCreditPackSlot(sampleDoc)).rejects.toThrow('ES connection timeout');
-        });
-    });
 });

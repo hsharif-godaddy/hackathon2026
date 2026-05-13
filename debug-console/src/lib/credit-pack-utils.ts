@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 
-import { bulkIndex, INDICES, initIndices, writeClient } from '@/lib/analytics/es-client';
+import { bulkIndex, INDICES, initIndices } from '@/lib/analytics/es-client';
 import type { AuthUser } from '@/lib/api-auth';
 import { computeUseBefore } from '@/lib/date-utils';
 import { logger } from '@/lib/logger';
@@ -24,6 +24,8 @@ function ensureCreditPackIndex(): Promise<void> {
 }
 
 export const CREDITS_MAX = 250;
+export const CREDIT_PACK_OPTIONS = [100, 250] as const;
+export type CreditPackOption = typeof CREDIT_PACK_OPTIONS[number];
 
 export const CREDIT_PACK_STATUS = {
     COMPLETE: 'complete',
@@ -31,7 +33,7 @@ export const CREDIT_PACK_STATUS = {
     FAILED: 'failed',
 } as const;
 
-export function getCreditPackDoc(appId: string, subscriptionId: string, user: AuthUser | undefined, notes: string): CreditPackDoc {
+export function getCreditPackDoc(appId: string, subscriptionId: string, user: AuthUser | undefined, notes: string, creditsMax: CreditPackOption = CREDITS_MAX): CreditPackDoc {
     const now = new Date();
     const use_before = computeUseBefore();
     const next_credit_allowed_after = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
@@ -42,7 +44,7 @@ export function getCreditPackDoc(appId: string, subscriptionId: string, user: Au
         app_id: appId,
         subscription_id: subscriptionId,
         status: CREDIT_PACK_STATUS.INIT,
-        credits_max: CREDITS_MAX,
+        credits_max: creditsMax,
         use_before,
         next_credit_allowed_after,
         added_by_shopper_id: user?.shopperId,
@@ -66,66 +68,6 @@ export interface CreditPackDoc {
     added_by_email?: string;
     llm_budget_user_id?: string;
     notes?: string;
-}
-
-export type LatestCreditPack = CreditPackDoc & { is_credit_allowed: boolean };
-
-export async function getLatestCreditPack(subscriptionId: string): Promise<LatestCreditPack | null> {
-    await ensureCreditPackIndex();
-    const result = await writeClient.search<CreditPackDoc>({
-        index: INDICES.CREDIT_PACKS,
-        size: 1,
-        query: {
-            bool: {
-                filter: [
-                    { term: { subscription_id: subscriptionId } },
-                    { term: { status: CREDIT_PACK_STATUS.COMPLETE } },
-                ]
-            }
-        },
-        sort: [{ next_credit_allowed_after: { order: 'desc' } }],
-    });
-
-    const doc = result.hits.hits[0]?._source;
-    if (!doc) return null;
-
-    return {
-        ...doc,
-        is_credit_allowed: new Date(doc.next_credit_allowed_after) <= new Date(),
-    };
-}
-
-/**
- * Atomic lock: uses op_type:create on a deterministic ID so only the first
- * concurrent request for a given subscription+day succeeds. Subsequent
- * requests within the same UTC day get a 409 version_conflict from ES.
- *
- * Lock documents include expire_at (24h TTL). An ILM policy with a delete
- * phase keyed on expire_at is required to prevent unbounded index growth.
- */
-export async function claimCreditPackSlot(doc: CreditPackDoc): Promise<'claimed' | 'conflict'> {
-    const dayBucket = doc.timestamp.slice(0, 10);
-    const lockId = `lock-${doc.subscription_id}-${dayBucket}`;
-
-    try {
-        await ensureCreditPackIndex();
-        await writeClient.create({
-            index: INDICES.CREDIT_PACKS,
-            id: lockId,
-            document: {
-                ...doc as unknown as Record<string, unknown>,
-                expire_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-            },
-        });
-        logger.info('credit-pack.slot.claimed', { subscriptionId: doc.subscription_id, lockId });
-        return 'claimed';
-    } catch (error: unknown) {
-        if (error instanceof Error && 'statusCode' in error && (error as { statusCode: number }).statusCode === 409) {
-            logger.warn('credit-pack.slot.conflict', { subscriptionId: doc.subscription_id, lockId });
-            return 'conflict';
-        }
-        throw error;
-    }
 }
 
 export async function indexCreditPackDoc(doc: CreditPackDoc): Promise<boolean> {

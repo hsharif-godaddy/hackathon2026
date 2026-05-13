@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { OPS_ADMIN } from '@/lib/ad-groups';
 import { withAuth } from '@/lib/api-auth';
 import { NOTES_MAX_WORDS, NOTES_RE } from '@/lib/credit-pack-constants';
-import { claimCreditPackSlot, CREDIT_PACK_STATUS, CreditPackDoc, getCreditPackDoc, getLatestCreditPack, indexCreditPackDoc } from '@/lib/credit-pack-utils';
+import { CREDIT_PACK_OPTIONS, CREDIT_PACK_STATUS, CreditPackDoc, CreditPackOption, getCreditPackDoc, indexCreditPackDoc } from '@/lib/credit-pack-utils';
 import { logger } from '@/lib/logger';
 import mgmtControlPlaneAdapter, { MgmtGrant } from '@/lib/mgmt-control-plane-adapter';
 import { APP_ID_RE, handleMgmtError, SUBSCRIPTION_ID_RE, validateId } from '@/lib/mgmt-helpers';
@@ -49,6 +49,14 @@ export const POST = withAuth<{ appId: string; subscriptionId: string }>(async fu
 
     const notes = (result as { ok: true; value: string }).value;
 
+    const requestedCredits = Number(body.creditsMax);
+    if (!(CREDIT_PACK_OPTIONS as readonly number[]).includes(requestedCredits)) {
+        return NextResponse.json({
+            error: `creditsMax must be one of ${CREDIT_PACK_OPTIONS.join(', ')}`,
+        }, { status: 400 });
+    }
+    const creditsMax = requestedCredits as CreditPackOption;
+
     try {
         const appDetails = await mgmtControlPlaneAdapter.getAppDetails(appId, { includeResources: false });
         if (appDetails.subscriptionId !== subscriptionId) {
@@ -58,44 +66,28 @@ export const POST = withAuth<{ appId: string; subscriptionId: string }>(async fu
         return handleMgmtError(error, 'fetch app details', { appId });
     }
 
-    let recentCreditPack = null;
+    const ACTIVE_CREDITS_LIMIT = 500;
     try {
-        recentCreditPack = await getLatestCreditPack(subscriptionId);
+        const { grants } = await mgmtControlPlaneAdapter.getSubscriptionGrants(subscriptionId);
+        const activeCredits = grants.filter(g => g.isAvailable && g.type === 'credit-pack' && g.source === 'admin').reduce((sum, g) => sum + g.creditsMax, 0);
+        if (activeCredits >= ACTIVE_CREDITS_LIMIT) {
+            logger.warn('credit-pack.add.active-limit-exceeded', { appId, subscriptionId, shopperId: auth.user?.shopperId, activeCredits });
+            return NextResponse.json({
+                error: `User already has ${activeCredits} active credits (limit: ${ACTIVE_CREDITS_LIMIT}). Adding more is not allowed until existing credits are consumed or expire.`,
+                error_code: 'ACTIVE_CREDITS_LIMIT_EXCEEDED',
+            }, { status: 400 });
+        }
     } catch (error) {
-        logger.warn('credit-pack.eligibility.es-query-failed', {
-            appId,
-            subscriptionId,
-            shopperId: auth.user?.shopperId,
-            message: error instanceof Error ? error.message : String(error),
-        });
+        return handleMgmtError(error, 'fetch subscription grants', { appId, subscriptionId });
     }
 
-    if (recentCreditPack && !recentCreditPack.is_credit_allowed) {
-        return NextResponse.json({
-            error: `Credit pack already added, next credit pack can be added after ${recentCreditPack.next_credit_allowed_after}`,
-            error_code: 'CREDIT_PACK_ALREADY_ADDED',
-        }, { status: 400 });
-    }
-
-    const doc = getCreditPackDoc(appId, subscriptionId, auth.user, notes);
+    const doc = getCreditPackDoc(appId, subscriptionId, auth.user, notes, creditsMax);
 
     logger.info('credit-pack.add.init', { appId, subscriptionId, esId: doc.es_id, status: doc.status, shopperId: auth.user?.shopperId });
-    let slotResult: 'claimed' | 'conflict';
-    try {
-        slotResult = await claimCreditPackSlot(doc);
-    } catch (error) {
-        logger.error('credit-pack.add.slot-claim-failed', { appId, subscriptionId, shopperId: auth.user?.shopperId }, { error: error as Error });
+    const initSuccess = await indexCreditPackDoc(doc);
+    if (!initSuccess) {
         return addIndexError(doc, CREDIT_PACK_STATUS.INIT);
     }
-
-    if (slotResult === 'conflict') {
-        logger.warn('credit-pack.add.slot-claim-conflict', { appId, subscriptionId, shopperId: auth.user?.shopperId });
-        return NextResponse.json({
-            error: `Credit pack already added, next credit pack can be added after ${doc.next_credit_allowed_after}`,
-            error_code: 'CREDIT_PACK_ALREADY_ADDED',
-        }, { status: 400 });
-    }
-    logger.info('credit-pack.add.slot-claimed', { appId, subscriptionId, shopperId: auth.user?.shopperId });
 
     const responseData: { grant: MgmtGrant | null; creditPack: CreditPackDoc } = { grant: null, creditPack: doc };
     try {

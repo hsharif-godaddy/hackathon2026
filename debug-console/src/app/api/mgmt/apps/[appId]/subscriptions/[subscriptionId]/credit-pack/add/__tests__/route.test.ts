@@ -39,16 +39,16 @@ vi.mock('@/lib/credit-pack-utils', () => ({
         next_credit_allowed_after: '2026-04-05T00:00:00Z',
         notes: 'valid note',
     })),
-    getLatestCreditPack: vi.fn().mockResolvedValue(null),
-    claimCreditPackSlot: vi.fn().mockResolvedValue('claimed'),
     indexCreditPackDoc: vi.fn().mockResolvedValue(true),
     CREDIT_PACK_STATUS: { INIT: 'init', COMPLETE: 'complete', FAILED: 'failed' },
+    CREDIT_PACK_OPTIONS: [100, 250],
     CREDITS_MAX: 250,
 }));
 
 vi.mock('@/lib/mgmt-control-plane-adapter', () => ({
     default: {
         getAppDetails: vi.fn().mockResolvedValue({ subscriptionId: 'sub1' }),
+        getSubscriptionGrants: vi.fn().mockResolvedValue({ grants: [], activeGrant: null }),
         addCreditGrant: vi.fn().mockResolvedValue({
             grant: { llmBudgetUserId: 'budget-1' },
         }),
@@ -132,10 +132,10 @@ describe('credit-pack add route', () => {
         expect(body.error).toContain('200 word limit');
     });
 
-    it('should return 201 when notes is provided', async () => {
+    it('should return 201 when notes and creditsMax are provided', async () => {
         const { POST } = await import('../route');
         const response = await (POST as RouteHandler)(
-            makePostRequest({ notes: 'Customer reported downtime' }),
+            makePostRequest({ notes: 'Customer reported downtime', creditsMax: 250 }),
             mockContext,
         );
 
@@ -147,13 +147,138 @@ describe('credit-pack add route', () => {
         const { POST } = await import('../route');
 
         await (POST as RouteHandler)(
-            makePostRequest({ notes: 'valid note <script>alert(1)</script>' }),
+            makePostRequest({ notes: 'valid note <script>alert(1)</script>', creditsMax: 250 }),
             mockContext,
         );
 
         expect(vi.mocked(getCreditPackDoc)).toHaveBeenCalledWith(
             'app1', 'sub1', mockAuth.authenticated ? mockAuth.user : undefined,
             expect.not.stringContaining('<script>'),
+            250,
         );
+    });
+
+    it('should return 400 when creditsMax is missing', async () => {
+        const { POST } = await import('../route');
+        const response = await (POST as RouteHandler)(
+            makePostRequest({ notes: 'valid note' }),
+            mockContext,
+        );
+
+        expect(response.status).toBe(400);
+        const body = await response.json();
+        expect(body.error).toContain('creditsMax must be one of');
+    });
+
+    it('should return 400 when creditsMax is not in CREDIT_PACK_OPTIONS', async () => {
+        const { POST } = await import('../route');
+        const response = await (POST as RouteHandler)(
+            makePostRequest({ notes: 'valid note', creditsMax: 1000 }),
+            mockContext,
+        );
+
+        expect(response.status).toBe(400);
+        const body = await response.json();
+        expect(body.error).toContain('creditsMax must be one of');
+    });
+
+    it('should pass selected creditsMax (100) through to getCreditPackDoc', async () => {
+        const { getCreditPackDoc } = await import('@/lib/credit-pack-utils');
+        const { POST } = await import('../route');
+
+        await (POST as RouteHandler)(
+            makePostRequest({ notes: 'valid note', creditsMax: 100 }),
+            mockContext,
+        );
+
+        expect(vi.mocked(getCreditPackDoc)).toHaveBeenCalledWith(
+            'app1', 'sub1', mockAuth.authenticated ? mockAuth.user : undefined,
+            'valid note', 100,
+        );
+    });
+
+    it('should reject when active admin credit-pack credits sum to >= 500', async () => {
+        const mgmt = (await import('@/lib/mgmt-control-plane-adapter')).default;
+        vi.mocked(mgmt.getSubscriptionGrants).mockResolvedValueOnce({
+            grants: [
+                { type: 'credit-pack', source: 'admin', isAvailable: true, creditsMax: 250 },
+                { type: 'credit-pack', source: 'admin', isAvailable: true, creditsMax: 250 },
+            ] as never,
+            activeGrant: null,
+        });
+
+        const { POST } = await import('../route');
+        const response = await (POST as RouteHandler)(
+            makePostRequest({ notes: 'valid note', creditsMax: 100 }),
+            mockContext,
+        );
+
+        expect(response.status).toBe(400);
+        const body = await response.json();
+        expect(body.error_code).toBe('ACTIVE_CREDITS_LIMIT_EXCEEDED');
+    });
+
+    it('should ignore non-admin source grants in the active credits check', async () => {
+        const mgmt = (await import('@/lib/mgmt-control-plane-adapter')).default;
+        vi.mocked(mgmt.getSubscriptionGrants).mockResolvedValueOnce({
+            grants: [
+                { type: 'credit-pack', source: 'ecomm', isAvailable: true, creditsMax: 1000 },
+            ] as never,
+            activeGrant: null,
+        });
+
+        const { POST } = await import('../route');
+        const response = await (POST as RouteHandler)(
+            makePostRequest({ notes: 'valid note', creditsMax: 100 }),
+            mockContext,
+        );
+
+        expect(response.status).toBe(201);
+    });
+
+    it('should ignore non-credit-pack type grants in the active credits check', async () => {
+        const mgmt = (await import('@/lib/mgmt-control-plane-adapter')).default;
+        vi.mocked(mgmt.getSubscriptionGrants).mockResolvedValueOnce({
+            grants: [
+                { type: 'plan-monthly', source: 'admin', isAvailable: true, creditsMax: 1000 },
+            ] as never,
+            activeGrant: null,
+        });
+
+        const { POST } = await import('../route');
+        const response = await (POST as RouteHandler)(
+            makePostRequest({ notes: 'valid note', creditsMax: 100 }),
+            mockContext,
+        );
+
+        expect(response.status).toBe(201);
+    });
+
+    it('should write INIT-state ES doc before calling addCreditGrant', async () => {
+        const { indexCreditPackDoc } = await import('@/lib/credit-pack-utils');
+        const { POST } = await import('../route');
+
+        await (POST as RouteHandler)(
+            makePostRequest({ notes: 'valid note', creditsMax: 250 }),
+            mockContext,
+        );
+
+        const calls = vi.mocked(indexCreditPackDoc).mock.calls;
+        expect(calls.length).toBeGreaterThanOrEqual(2);
+        expect(calls[0][0].status).toBe('init');
+        expect(calls[calls.length - 1][0].status).toBe('complete');
+    });
+
+    it('should fail with 500 when INIT-state ES write fails', async () => {
+        const { indexCreditPackDoc } = await import('@/lib/credit-pack-utils');
+        vi.mocked(indexCreditPackDoc).mockResolvedValueOnce(false);
+
+        const { POST } = await import('../route');
+        const response = await (POST as RouteHandler)(
+            makePostRequest({ notes: 'valid note', creditsMax: 250 }),
+            mockContext,
+        );
+
+        expect(response.status).toBe(500);
     });
 });

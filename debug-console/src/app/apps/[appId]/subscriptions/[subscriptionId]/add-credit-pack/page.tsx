@@ -8,32 +8,19 @@ import { formatTimestamp } from '@/lib/date-utils';
 
 type AuthStatus = 'loading' | 'authenticated' | 'forbidden' | 'unauthorized';
 
-function Countdown({ target }: { target: string }) {
-    const [remaining, setRemaining] = useState('');
-
-    useEffect(function tick() {
-        function compute() {
-            const diff = new Date(target).getTime() - Date.now();
-            if (diff <= 0) {
-                setRemaining('now — reload the page');
-                return;
-            }
-            const h = Math.floor(diff / 3_600_000);
-            const m = Math.floor((diff % 3_600_000) / 60_000);
-            const s = Math.floor((diff % 60_000) / 1_000);
-            setRemaining(`${h}h ${m}m ${s}s`);
-        }
-        compute();
-        const id = setInterval(compute, 1_000);
-        return () => clearInterval(id);
-    }, [target]);
-
-    return (
-        <span style={{ fontFamily: 'monospace', fontSize: '0.85rem', fontWeight: 600, color: '#b45309' }}>
-            {remaining}
-        </span>
-    );
+interface CreditGrant {
+    id: string;
+    type: string;
+    source: string;
+    creditsMax: number;
+    creditsSpent: number;
+    isAvailable: boolean;
+    finalState: string | null;
+    useBefore: string;
+    createdAt: string;
+    removedAt: string | null;
 }
+
 
 function Timestamp({ iso, style }: { iso: string; style?: React.CSSProperties }) {
     return (
@@ -43,23 +30,11 @@ function Timestamp({ iso, style }: { iso: string; style?: React.CSSProperties })
     );
 }
 
-interface RecentCreditPack {
-    es_id: string;
-    timestamp: string;
-    credits_max: number;
-    use_before: string;
-    next_credit_allowed_after: string;
-    is_credit_allowed: boolean;
-    added_by_shopper_id?: string;
-    added_by_cid?: string;
-    added_by_email?: string;
-}
-
 interface Eligibility {
     type: string;
     creditsMax: number;
+    creditPackOptions: number[];
     useBefore: string;
-    recentCreditPack: RecentCreditPack | null;
 }
 
 function redirectToSso(): void {
@@ -92,6 +67,11 @@ export default function AddCreditPackPage() {
     const [adding, setAdding] = useState(false);
     const [addResult, setAddResult] = useState<{ success: boolean; message: string } | null>(null);
     const [notes, setNotes] = useState('');
+    const [selectedCredits, setSelectedCredits] = useState<number>(100);
+    const [grants, setGrants] = useState<CreditGrant[] | null>(null);
+    const [grantsError, setGrantsError] = useState<string | null>(null);
+    const [grantsExpanded, setGrantsExpanded] = useState(false);
+    const hasActiveAdminGrant = grants !== null && grants.some(g => g.isAvailable);
     const wordCount = notes.trim() ? notes.trim().split(/\s+/).filter(Boolean).length : 0;
 
     useEffect(() => {
@@ -122,6 +102,22 @@ export default function AddCreditPackPage() {
             })
             .catch((err: Error) => setEligibilityError(err.message));
     }, [status, appId, subscriptionId]);
+
+    useEffect(() => {
+        if (status !== 'authenticated' || !subscriptionId) return;
+
+        fetch(`/api/mgmt/subscriptions/${encodeURIComponent(subscriptionId)}/grants`)
+            .then(async function handleGrants(response) {
+                if (response.ok) {
+                    const data = await response.json() as { grants: CreditGrant[] };
+                    setGrants(data.grants.filter(g => g.type === 'credit-pack' && g.source === 'admin'));
+                } else {
+                    const body = await response.json().catch(() => ({}));
+                    setGrantsError(body.error || `Failed to load admin credit history (${response.status})`);
+                }
+            })
+            .catch((err: Error) => setGrantsError(err.message));
+    }, [status, subscriptionId]);
 
     useEffect(() => {
         if (status === 'unauthorized') {
@@ -190,7 +186,7 @@ export default function AddCreditPackPage() {
                 }}>
                     <span style={{ fontSize: '1.25rem', lineHeight: 1, flexShrink: 0 }}>⚠️</span>
                     <p style={{ margin: 0, fontSize: '0.8125rem', color: '#92400e', lineHeight: 1.5 }}>
-                        <strong>Caution:</strong> This activity is logged for auditing purposes. Please use with care as it adds cost to the company by providing free credits to the user.
+                        <strong>Caution:</strong> Activity is logged for auditing purposes. Please use carefully - it adds cost to the company, always validate if user actually lost credits based on agent conversation.
                     </p>
                 </div>
 
@@ -202,13 +198,7 @@ export default function AddCreditPackPage() {
                 }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
                         <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 600, color: '#1a1a1a' }}>
-                            {eligibility ? (
-                                (!eligibility.recentCreditPack || eligibility.recentCreditPack.is_credit_allowed)
-                                    ? '✅ Eligible'
-                                    : <>❌ Ineligible —
-                                    <span style={{ fontSize: '0.875rem', color: '#6b7280' }}> &nbsp;
-                                    Credit pack addition unlocks in <Countdown target={eligibility.recentCreditPack!.next_credit_allowed_after} />.</span></>
-                            ) : 'Checking...'}
+                            {eligibility ? 'Provide credits' : 'Checking...'}
                         </h2>
                         <span style={{
                             fontSize: '0.7rem',
@@ -237,86 +227,77 @@ export default function AddCreditPackPage() {
 
                     {eligibility && (
                         <>
-                            {(!eligibility.recentCreditPack || eligibility.recentCreditPack.is_credit_allowed) && (
-                                <div style={{
-                                    display: 'grid',
-                                    gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
-                                    gap: '1rem',
-                                    padding: '1rem',
-                                    backgroundColor: '#f9fafb',
-                                    borderRadius: '6px',
-                                    border: '1px solid #e5e7eb',
-                                }}>
-                                    <div>
-                                        <div style={{ fontSize: '0.7rem', color: '#9ca3af', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>Type</div>
-                                        <div style={{ fontFamily: 'monospace', fontSize: '0.875rem', color: '#111827' }}>{eligibility.type}</div>
-                                    </div>
-                                    <div>
-                                        <div style={{ fontSize: '0.7rem', color: '#9ca3af', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>Credits Max</div>
-                                        <div style={{ fontFamily: 'monospace', fontSize: '0.875rem', color: '#111827' }}>{eligibility.creditsMax}</div>
-                                    </div>
-                                    <div>
-                                        <div style={{ fontSize: '0.7rem', color: '#9ca3af', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>Use Before</div>
-                                        <div style={{ fontFamily: 'monospace', fontSize: '0.875rem', color: '#111827' }}><Timestamp iso={eligibility.useBefore} /></div>
-                                    </div>
+                            {grantsError && (
+                                <div style={{ marginTop: '1rem', padding: '0.75rem 1rem', backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: '6px', color: '#dc2626', fontSize: '0.8125rem' }}>
+                                    Could not load admin credit history: {grantsError}. Existing credits may not be visible — proceed with caution.
                                 </div>
                             )}
 
-                            {eligibility.recentCreditPack && (
-                                <div style={{ marginTop: '1.25rem' }}>
-                                    <h3 style={{ margin: '0 0 0.75rem 0', fontSize: '1rem', fontWeight: 600, color: '#1a1a1a' }}>
-                                        Recent Credit Pack
-                                    </h3>
-                                    <div style={{
-                                        display: 'grid',
-                                        gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
-                                        gap: '1rem',
-                                        padding: '1rem',
-                                        backgroundColor: '#eff6ff',
-                                        borderRadius: '6px',
-                                        border: '1px solid #bfdbfe',
-                                    }}>
-                                        <div>
-                                            <div style={{ fontSize: '0.7rem', color: '#6b7280', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>Added At</div>
-                                            <div style={{ fontFamily: 'monospace', fontSize: '0.8rem', color: '#1e3a5f' }}><Timestamp iso={eligibility.recentCreditPack.timestamp} /></div>
-                                        </div>
-                                        <div>
-                                            <div style={{ fontSize: '0.7rem', color: '#6b7280', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>Credits</div>
-                                            <div style={{ fontFamily: 'monospace', fontSize: '0.8rem', color: '#1e3a5f' }}>{eligibility.recentCreditPack.credits_max}</div>
-                                        </div>
-                                        <div>
-                                            <div style={{ fontSize: '0.7rem', color: '#6b7280', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>Use Before</div>
-                                            <div style={{ fontFamily: 'monospace', fontSize: '0.8rem', color: '#1e3a5f' }}><Timestamp iso={eligibility.recentCreditPack.use_before} /></div>
-                                        </div>
-                                        <div>
-                                            <div style={{ fontSize: '0.7rem', color: '#6b7280', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>Next Credit Allowed After</div>
-                                            <div style={{ fontFamily: 'monospace', fontSize: '0.8rem', color: '#1e3a5f' }}><Timestamp iso={eligibility.recentCreditPack.next_credit_allowed_after} /></div>
-                                        </div>
-                                        {eligibility.recentCreditPack.added_by_shopper_id && (
-                                            <div>
-                                                <div style={{ fontSize: '0.7rem', color: '#6b7280', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>Added By</div>
-                                                <div style={{ fontFamily: 'monospace', fontSize: '0.8rem', color: '#1e3a5f' }}>{eligibility.recentCreditPack.added_by_shopper_id}</div>
-                                            </div>
-                                        )}
-                                    </div>
+                            {grants !== null && grants.length > 0 && (
+                                <div style={{ marginTop: '1.5rem' }}>
+                                    <button
+                                        onClick={() => setGrantsExpanded(v => !v)}
+                                        style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '0.375rem',
+                                            background: 'none',
+                                            border: 'none',
+                                            padding: 0,
+                                            cursor: 'pointer',
+                                            fontSize: '1rem',
+                                            fontWeight: 600,
+                                            color: hasActiveAdminGrant ? '#dc2626' : '#1a1a1a',
+                                            marginBottom: grantsExpanded ? '0.75rem' : 0,
+                                        }}
+                                    >
+                                        <span style={{ fontSize: '0.75rem', color: hasActiveAdminGrant ? '#dc2626' : '#6b7280' }}>{grantsExpanded ? '▾' : '▸'}</span>
+                                        Admin Credit History ({grants.length})
+                                    </button>
+                                    {grantsExpanded && (<div style={{ overflowX: 'auto' }}>
+                                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem', fontFamily: 'monospace' }}>
+                                            <thead>
+                                                <tr style={{ backgroundColor: '#f3f4f6', borderBottom: '1px solid #e5e7eb' }}>
+                                                    {(['Created', 'Source', 'Credits', 'Spent', 'Use Before', 'State', 'Available'] as const).map(col => (
+                                                        <th key={col} style={{ padding: '0.5rem 0.75rem', textAlign: 'left', fontWeight: 600, color: '#374151', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>{col}</th>
+                                                    ))}
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {grants.map((grant, i) => {
+                                                    const expired = new Date(grant.useBefore) < new Date();
+                                                    const rowBg = i % 2 === 0 ? 'white' : '#f9fafb';
+                                                    return (
+                                                        <tr key={grant.id} style={{ backgroundColor: rowBg, borderBottom: '1px solid #f3f4f6', opacity: expired ? 0.6 : 1 }}>
+                                                            <td style={{ padding: '0.5rem 0.75rem', color: '#111827', whiteSpace: 'nowrap' }}><Timestamp iso={grant.createdAt} /></td>
+                                                            <td style={{ padding: '0.5rem 0.75rem', color: '#6b7280', fontFamily: 'monospace', fontSize: '0.75rem' }}>{grant.source}</td>
+                                                            <td style={{ padding: '0.5rem 0.75rem', color: '#111827' }}>{grant.creditsMax}</td>
+                                                            <td style={{ padding: '0.5rem 0.75rem', color: '#111827' }}>{grant.creditsSpent}</td>
+                                                            <td style={{ padding: '0.5rem 0.75rem', color: expired ? '#9ca3af' : '#111827', whiteSpace: 'nowrap' }}><Timestamp iso={grant.useBefore} /></td>
+                                                            <td style={{ padding: '0.5rem 0.75rem' }}>
+                                                                <span style={{
+                                                                    display: 'inline-block',
+                                                                    padding: '0.125rem 0.5rem',
+                                                                    borderRadius: '4px',
+                                                                    fontSize: '0.7rem',
+                                                                    fontWeight: 600,
+                                                                    backgroundColor: grant.finalState ? '#fef2f2' : expired ? '#f3f4f6' : '#f0fdf4',
+                                                                    color: grant.finalState ? '#dc2626' : expired ? '#6b7280' : '#166534',
+                                                                }}>
+                                                                    {grant.finalState ?? (expired ? 'expired' : 'active')}
+                                                                </span>
+                                                            </td>
+                                                            <td style={{ padding: '0.5rem 0.75rem', color: grant.isAvailable ? '#166534' : '#9ca3af' }}>{grant.isAvailable ? 'yes' : 'no'}</td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>)}
                                 </div>
                             )}
 
-                            {eligibility.recentCreditPack && !eligibility.recentCreditPack.is_credit_allowed && (
-                                <div style={{
-                                    marginTop: '1rem',
-                                    padding: '0.75rem 1rem',
-                                    borderRadius: '6px',
-                                    fontSize: '0.875rem',
-                                    backgroundColor: '#fefce8',
-                                    border: '1px solid #fde68a',
-                                    color: '#854d0e',
-                                }}>
-                                    Next credit pack can be added after <Timestamp iso={eligibility.recentCreditPack.next_credit_allowed_after} />.
-                                </div>
-                            )}
-
-                            {(!eligibility.recentCreditPack || eligibility.recentCreditPack.is_credit_allowed) && (
+                            {(
                                 <>
                                     {addResult && (
                                         <div style={{
@@ -333,9 +314,50 @@ export default function AddCreditPackPage() {
                                     )}
 
                                     <div style={{ marginTop: '1rem' }}>
-                                        <label htmlFor="credit-pack-notes" style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: '#374151', marginBottom: '0.375rem' }}>
+                                        <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#374151', marginBottom: '0.5rem' }}>
+                                            Credits <span style={{ fontWeight: 400, color: '#6b7280' }}>(use before &mdash; <Timestamp iso={eligibility.useBefore} />)</span> <span style={{ color: '#dc2626' }}>*</span>
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '0.75rem' }}>
+                                            {(eligibility.creditPackOptions ?? [100, 250]).map((option: number) => (
+                                                <label
+                                                    key={option}
+                                                    style={{
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '0.5rem',
+                                                        padding: '0.5rem 1rem',
+                                                        border: `2px solid ${selectedCredits === option ? '#2563eb' : '#d1d5db'}`,
+                                                        borderRadius: '6px',
+                                                        cursor: adding || addResult?.success === true ? 'not-allowed' : 'pointer',
+                                                        backgroundColor: selectedCredits === option ? '#eff6ff' : 'white',
+                                                        fontSize: '0.875rem',
+                                                        fontWeight: selectedCredits === option ? 600 : 400,
+                                                        color: selectedCredits === option ? '#1d4ed8' : '#374151',
+                                                        opacity: adding || addResult?.success === true ? 0.6 : 1,
+                                                    }}
+                                                >
+                                                    <input
+                                                        type="radio"
+                                                        name="creditsAmount"
+                                                        value={option}
+                                                        checked={selectedCredits === option}
+                                                        disabled={adding || addResult?.success === true}
+                                                        onChange={() => setSelectedCredits(option)}
+                                                        style={{ accentColor: '#2563eb' }}
+                                                    />
+                                                    {option} credits
+                                                </label>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <div style={{ marginTop: '1rem' }}>
+                                        <label htmlFor="credit-pack-notes" style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: '#374151', marginBottom: '0.25rem' }}>
                                             Notes <span style={{ color: '#dc2626' }}>*</span>
                                         </label>
+                                        <p style={{ margin: '0 0 0.375rem 0', fontSize: '0.75rem', color: '#6b7280' }}>
+                                            Provide links to discussions, tickets, or support cases that justify this credit grant. Include any relevant context.
+                                        </p>
                                         <textarea
                                             id="credit-pack-notes"
                                             value={notes}
@@ -343,7 +365,7 @@ export default function AddCreditPackPage() {
                                                 setNotes(e.target.value.replace(NOTES_RE, ''));
                                             }}
                                             disabled={adding || addResult?.success === true}
-                                            placeholder="Reason for adding the credit pack (required)"
+                                            placeholder="e.g. https://link-to-ticket-or-discussion — reason for the credit grant"
                                             rows={4}
                                             style={{
                                                 width: '100%',
@@ -380,18 +402,12 @@ export default function AddCreditPackPage() {
                                                     {
                                                         method: 'POST',
                                                         headers: { 'Content-Type': 'application/json' },
-                                                        body: JSON.stringify({ notes: notes.trim() }),
+                                                        body: JSON.stringify({ notes: notes.trim(), creditsMax: selectedCredits }),
                                                     }
                                                 );
                                                 const body = await response.json().catch(() => ({}));
                                                 if (response.ok) {
                                                     setAddResult({ success: true, message: `Credit pack added successfully (ID: ${body.grant?.llmBudgetUserId})` });
-                                                } else if (response.status === 400 && body.error_code === 'CREDIT_PACK_ALREADY_ADDED') {
-                                                    setAddResult({ success: false, message: body.error || `Failed to add credit pack (${response.status})` });
-                                                    setTimeout(() => {
-                                                        window.location.reload();
-                                                    }, 2000);
-                                                    return;
                                                 } else {
                                                     setAddResult({ success: false, message: body.error || `Failed to add credit pack (${response.status})` });
                                                 }
