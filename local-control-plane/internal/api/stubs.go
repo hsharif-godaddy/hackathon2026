@@ -242,10 +242,11 @@ func (s *Server) ReloadImages(w http.ResponseWriter, r *http.Request) {
 func (s *Server) UpdateEntitlement(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	subID := vars["subId"]
+	custID := customerIDFromRequest(r)
 
-	existing, err := s.DB.EnsureSubscription(subID)
+	existing, err := s.DB.EnsureSubscription(subID, custID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeStoreError(w, err)
 		return
 	}
 
@@ -271,10 +272,11 @@ func (s *Server) UpdateEntitlement(w http.ResponseWriter, r *http.Request) {
 func (s *Server) CreateBuilderPlan(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	subID := vars["subId"]
+	custID := customerIDFromRequest(r)
 
-	sub, err := s.DB.EnsureSubscription(subID)
+	sub, err := s.DB.EnsureSubscription(subID, custID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeStoreError(w, err)
 		return
 	}
 
@@ -289,15 +291,17 @@ func (s *Server) CreateBuilderPlan(w http.ResponseWriter, r *http.Request) {
 // Credit/budget stubs
 
 func (s *Server) GetCreditGrants(w http.ResponseWriter, r *http.Request) {
+	custID := customerIDFromRequest(r)
+	vars := mux.Vars(r)
 	now := time.Now().UTC()
 	writeJSON(w, http.StatusOK, map[string]any{
 		"grants": []map[string]any{
 			{
-				"id":              "local-grant-001",
-				"subscriptionId":  "local-sub-001",
+				"id":              fmt.Sprintf("local-grant-%s", custID),
+				"subscriptionId":  vars["subId"],
 				"type":            "plan-monthly",
-				"llmBudgetUserId": fmt.Sprintf("local-budget-user-%s", store.DefaultCustomerID),
-				"llmBudgetId":     "local-budget-001",
+				"llmBudgetUserId": fmt.Sprintf("local-budget-user-%s", custID),
+				"llmBudgetId":     fmt.Sprintf("local-budget-%s", custID),
 				"creditsMax":      999999,
 				"creditsSpent":    0,
 				"isAvailable":     true,
@@ -310,11 +314,12 @@ func (s *Server) GetCreditGrants(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) GetTokenBudget(w http.ResponseWriter, r *http.Request) {
+	custID := customerIDFromRequest(r)
 	writeJSON(w, http.StatusOK, map[string]any{
-		"userId": store.DefaultCustomerID,
+		"userId": custID,
 		"spend":  0,
 		"budget": map[string]any{
-			"budgetId":       "local-budget-001",
+			"budgetId":       fmt.Sprintf("local-budget-%s", custID),
 			"budgetDuration": "monthly",
 			"maxBudget":      999999,
 		},
@@ -578,7 +583,7 @@ func (s *Server) UpdateAttribute(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"id":        vars["attributeId"],
 		"ownerType": "user",
-		"ownerId":   store.DefaultCustomerID,
+		"ownerId":   customerIDFromRequest(r),
 		"key":       "unknown",
 		"value":     body.Value,
 		"createdAt": now,

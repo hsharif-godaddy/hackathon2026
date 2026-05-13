@@ -512,6 +512,9 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			m.refreshPanes()
 		}
 	case key.Matches(msg, m.keys.DevSetting):
+		if m.authType == "jwt" {
+			return nil
+		}
 		return m.openDevSettings()
 	case key.Matches(msg, m.keys.Mouse):
 		m.mouseEnabled = !m.mouseEnabled

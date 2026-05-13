@@ -129,7 +129,8 @@ func (s *Server) ListApps(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) GetAllApps(w http.ResponseWriter, r *http.Request) {
-	apps, err := s.DB.ListAllApps()
+	custID := customerIDFromRequest(r)
+	apps, err := s.DB.ListAppsByCustomer(custID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -243,7 +244,16 @@ func (s *Server) Signup(w http.ResponseWriter, r *http.Request) {
 		variables["initialPrompt"] = body.InitialPrompt
 	}
 
-	app, err := s.DB.CreateApp(store.DefaultSubscriptionID, store.DefaultSystemID, variables, variants)
+	custID := customerIDFromRequest(r)
+	subID := store.SubscriptionIDForCustomer(custID)
+	sysID := store.SystemIDForCustomer(custID)
+
+	if _, err := s.DB.EnsureSubscription(subID, custID); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+
+	app, err := s.DB.CreateApp(subID, sysID, variables, variants)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

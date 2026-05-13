@@ -1,6 +1,12 @@
 package store
 
-import "time"
+import (
+	"errors"
+	"time"
+)
+
+// ErrSubscriptionNotOwned is returned when a subscription exists but belongs to a different customer.
+var ErrSubscriptionNotOwned = errors.New("access denied: not subscription owner")
 
 type App struct {
 	ID                    string            `json:"id"`
@@ -64,11 +70,9 @@ type Subscription struct {
 }
 
 const (
-	DefaultSubscriptionID = "local-sub-001"
-	DefaultSystemID       = "local-sys-001"
-	DefaultCustomerID     = "local-customer-001"
-	DefaultDatacenter     = "local-dc"
-	DefaultProductID      = "aab-v1"
+	DefaultCustomerID = "local-customer-001"
+	DefaultDatacenter = "local-dc"
+	DefaultProductID  = "aab-v1"
 )
 
 // Lifecycle state constants (matching hosting backend)
@@ -95,3 +99,17 @@ const (
 	LifecycleReasonOnDemandStaleImages = "on_demand_stale_images"
 	LifecycleReasonColdArchive         = "cold_archive"
 )
+
+func SubscriptionIDForCustomer(customerID string) string {
+	if customerID == DefaultCustomerID {
+		return "local-sub-001"
+	}
+	return "local-sub-" + customerID
+}
+
+func SystemIDForCustomer(customerID string) string {
+	if customerID == DefaultCustomerID {
+		return "local-sys-001"
+	}
+	return "local-sys-" + customerID
+}

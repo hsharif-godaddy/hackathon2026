@@ -10,11 +10,13 @@ import (
 var defaultTimestamp = time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC).Format(time.RFC3339)
 
 func (s *Server) ListSystems(w http.ResponseWriter, r *http.Request) {
+	custID := customerIDFromRequest(r)
+	sysID := store.SystemIDForCustomer(custID)
 	writeJSON(w, http.StatusOK, []map[string]any{
 		{
-			"id":             store.DefaultSystemID,
-			"systemId":       store.DefaultSystemID,
-			"subscriptionId": store.DefaultSubscriptionID,
+			"id":             sysID,
+			"systemId":       sysID,
+			"subscriptionId": store.SubscriptionIDForCustomer(custID),
 			"datacenter":     store.DefaultDatacenter,
 			"ownerProduct":   "AiroAppBuilder",
 			"productId":      store.DefaultProductID,

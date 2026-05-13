@@ -61,7 +61,7 @@ internal/
 
 Implements the mgmt-airo API routes used by `AiroMgmtClient` in `app/src/lib/mgmt-airo/client.ts`. All routes are under `/api/airo/v1/`.
 
-Auth: No authentication is enforced. All requests use a default dev customer ID. The service mints JWTs (via AWS Secrets Manager signing keys) only for outbound agent registration calls.
+Auth: When `AUTH_TYPE=jwt`, SSO tokens are validated and the shopper ID from the token is used as the customer ID (per-request). When `AUTH_TYPE=none` (default), all requests use a fixed customer ID (`local-customer-001`). Each customer ID gets isolated data: subscriptions, apps, plans, credits, grants. The service mints JWTs (via AWS Secrets Manager signing keys) only for outbound agent registration calls.
 
 ## Local Dev Logs
 

@@ -16,6 +16,7 @@ import (
 	"github.com/airo-ai-builder/local-control-plane/internal/auth"
 	"github.com/airo-ai-builder/local-control-plane/internal/setup"
 	"github.com/airo-ai-builder/local-control-plane/internal/store"
+	"github.com/gdcorp-golang/auth/gdtoken"
 	"github.com/gorilla/mux"
 )
 
@@ -127,6 +128,8 @@ func TestListAppsHandler(t *testing.T) {
 func TestGetAllAppsHandler(t *testing.T) {
 	srv := newTestServer(t)
 
+	srv.DB.EnsureSubscription("sub-1", store.DefaultCustomerID)
+	srv.DB.EnsureSubscription("sub-2", store.DefaultCustomerID)
 	srv.DB.CreateApp("sub-1", "sys-1", nil, nil)
 	srv.DB.CreateApp("sub-2", "sys-2", nil, nil)
 
@@ -1447,8 +1450,8 @@ func TestGetCustomerTreeEmpty(t *testing.T) {
 	}
 
 	sub := subs[0].(map[string]any)
-	if sub["subscriptionId"] != store.DefaultSubscriptionID {
-		t.Errorf("expected subscriptionId %s, got %v", store.DefaultSubscriptionID, sub["subscriptionId"])
+	if sub["subscriptionId"] != store.SubscriptionIDForCustomer(store.DefaultCustomerID) {
+		t.Errorf("expected subscriptionId %s, got %v", store.SubscriptionIDForCustomer(store.DefaultCustomerID), sub["subscriptionId"])
 	}
 
 	systems := sub["systems"].([]any)
@@ -1463,6 +1466,8 @@ func TestGetCustomerTreeGroupsBySubscriptionID(t *testing.T) {
 	srv := newTestServer(t)
 
 	// Create apps with different subscription IDs
+	srv.DB.EnsureSubscription("sub-a", store.DefaultCustomerID)
+	srv.DB.EnsureSubscription("sub-b", store.DefaultCustomerID)
 	srv.DB.CreateApp("sub-a", "sys-1", nil, nil)
 	srv.DB.CreateApp("sub-a", "sys-1", nil, nil)
 	srv.DB.CreateApp("sub-b", "sys-1", nil, nil)
@@ -1507,11 +1512,12 @@ func TestGetCustomerTreeGroupsBySubscriptionID(t *testing.T) {
 	}
 }
 
-func TestGetCustomerTreeUsesDefaultForEmptySubscriptionID(t *testing.T) {
+func TestGetCustomerTreeUsesDefaultSubscription(t *testing.T) {
 	srv := newTestServer(t)
 
-	// Create an app with empty subscription ID (will use default)
-	srv.DB.CreateApp("", "sys-1", nil, nil)
+	defaultSubID := store.SubscriptionIDForCustomer(store.DefaultCustomerID)
+	srv.DB.EnsureSubscription(defaultSubID, store.DefaultCustomerID)
+	srv.DB.CreateApp(defaultSubID, "sys-1", nil, nil)
 
 	req := httptest.NewRequest("GET", "/customers/me/tree", nil)
 	w := httptest.NewRecorder()
@@ -1530,8 +1536,8 @@ func TestGetCustomerTreeUsesDefaultForEmptySubscriptionID(t *testing.T) {
 	}
 
 	sub := subs[0].(map[string]any)
-	if sub["subscriptionId"] != store.DefaultSubscriptionID {
-		t.Errorf("expected subscriptionId %s, got %v", store.DefaultSubscriptionID, sub["subscriptionId"])
+	if sub["subscriptionId"] != store.SubscriptionIDForCustomer(store.DefaultCustomerID) {
+		t.Errorf("expected subscriptionId %s, got %v", store.SubscriptionIDForCustomer(store.DefaultCustomerID), sub["subscriptionId"])
 	}
 }
 
@@ -1539,6 +1545,9 @@ func TestGetCustomerTreeDeterministicOrdering(t *testing.T) {
 	srv := newTestServer(t)
 
 	// Create apps with subscription IDs in non-alphabetical order
+	srv.DB.EnsureSubscription("sub-z", store.DefaultCustomerID)
+	srv.DB.EnsureSubscription("sub-a", store.DefaultCustomerID)
+	srv.DB.EnsureSubscription("sub-m", store.DefaultCustomerID)
 	srv.DB.CreateApp("sub-z", "sys-1", nil, nil)
 	srv.DB.CreateApp("sub-a", "sys-1", nil, nil)
 	srv.DB.CreateApp("sub-m", "sys-1", nil, nil)
@@ -1571,6 +1580,7 @@ func TestGetCustomerTreeGroupsBySystemID(t *testing.T) {
 	srv := newTestServer(t)
 
 	// Create apps with same subscription but different system IDs
+	srv.DB.EnsureSubscription("sub-a", store.DefaultCustomerID)
 	srv.DB.CreateApp("sub-a", "sys-1", nil, nil)
 	srv.DB.CreateApp("sub-a", "sys-1", nil, nil)
 	srv.DB.CreateApp("sub-a", "sys-2", nil, nil)
@@ -1623,6 +1633,8 @@ func TestGetCustomerTreeGroupsBySubscriptionAndSystemID(t *testing.T) {
 	srv := newTestServer(t)
 
 	// Create apps with different combinations of subscription and system IDs
+	srv.DB.EnsureSubscription("sub-a", store.DefaultCustomerID)
+	srv.DB.EnsureSubscription("sub-b", store.DefaultCustomerID)
 	srv.DB.CreateApp("sub-a", "sys-1", nil, nil)
 	srv.DB.CreateApp("sub-a", "sys-2", nil, nil)
 	srv.DB.CreateApp("sub-b", "sys-1", nil, nil)
@@ -1682,6 +1694,8 @@ func TestGetCustomerTreeGroupsBySubscriptionAndSystemID(t *testing.T) {
 func TestGetAppsForSubscriptionFiltersCorrectly(t *testing.T) {
 	srv := newTestServer(t)
 
+	srv.DB.EnsureSubscription("sub-1", store.DefaultCustomerID)
+	srv.DB.EnsureSubscription("sub-2", store.DefaultCustomerID)
 	srv.DB.CreateApp("sub-1", "sys-1", nil, nil)
 	srv.DB.CreateApp("sub-1", "sys-1", nil, nil)
 	srv.DB.CreateApp("sub-2", "sys-1", nil, nil)
@@ -1704,14 +1718,15 @@ func TestGetAppsForSubscriptionFiltersCorrectly(t *testing.T) {
 	}
 }
 
-func TestGetAppsForSubscriptionUsesDefaultForEmptySubscriptionID(t *testing.T) {
+func TestGetAppsForSubscriptionUsesDefaultSubscription(t *testing.T) {
 	srv := newTestServer(t)
 
-	// Create an app with empty subscription ID
-	srv.DB.CreateApp("", "sys-1", nil, nil)
+	defaultSubID := store.SubscriptionIDForCustomer(store.DefaultCustomerID)
+	srv.DB.EnsureSubscription(defaultSubID, store.DefaultCustomerID)
+	srv.DB.CreateApp(defaultSubID, "sys-1", nil, nil)
 
-	req := httptest.NewRequest("GET", "/subscriptions/"+store.DefaultSubscriptionID+"/apps", nil)
-	req = setMuxVars(req, map[string]string{"subId": store.DefaultSubscriptionID})
+	req := httptest.NewRequest("GET", "/subscriptions/"+defaultSubID+"/apps", nil)
+	req = setMuxVars(req, map[string]string{"subId": defaultSubID})
 
 	w := httptest.NewRecorder()
 	srv.GetAppsForSubscription(w, req)
@@ -1731,6 +1746,7 @@ func TestGetAppsForSubscriptionUsesDefaultForEmptySubscriptionID(t *testing.T) {
 func TestGetAppsForSubscriptionReturnsEmptyForUnknown(t *testing.T) {
 	srv := newTestServer(t)
 
+	srv.DB.EnsureSubscription("sub-1", store.DefaultCustomerID)
 	srv.DB.CreateApp("sub-1", "sys-1", nil, nil)
 
 	req := httptest.NewRequest("GET", "/subscriptions/unknown-sub/apps", nil)
@@ -1771,14 +1787,17 @@ func TestListSubscriptionsReturnsDefaultWhenNoApps(t *testing.T) {
 		t.Fatalf("expected 1 subscription, got %d", len(resp))
 	}
 
-	if resp[0]["id"] != store.DefaultSubscriptionID {
-		t.Errorf("expected id %s, got %v", store.DefaultSubscriptionID, resp[0]["id"])
+	if resp[0]["id"] != store.SubscriptionIDForCustomer(store.DefaultCustomerID) {
+		t.Errorf("expected id %s, got %v", store.SubscriptionIDForCustomer(store.DefaultCustomerID), resp[0]["id"])
 	}
 }
 
 func TestListSubscriptionsReturnsAllUniqueSubscriptions(t *testing.T) {
 	srv := newTestServer(t)
 
+	defaultSubID := store.SubscriptionIDForCustomer(store.DefaultCustomerID)
+	srv.DB.EnsureSubscription("sub-a", store.DefaultCustomerID)
+	srv.DB.EnsureSubscription("sub-b", store.DefaultCustomerID)
 	srv.DB.CreateApp("sub-a", "sys-1", nil, nil)
 	srv.DB.CreateApp("sub-a", "sys-1", nil, nil) // Duplicate
 	srv.DB.CreateApp("sub-b", "sys-1", nil, nil)
@@ -1794,13 +1813,13 @@ func TestListSubscriptionsReturnsAllUniqueSubscriptions(t *testing.T) {
 	var resp []map[string]any
 	decodeJSON(t, w, &resp)
 
-	// sub-a + sub-b from apps + default local-sub-001 always included
+	// sub-a + sub-b from apps + default always included
 	if len(resp) != 3 {
 		t.Fatalf("expected 3 unique subscriptions (sub-a, sub-b, default), got %d", len(resp))
 	}
 
-	// Should be sorted alphabetically: local-sub-001, sub-a, sub-b
-	expected := []string{"local-sub-001", "sub-a", "sub-b"}
+	// Should be sorted alphabetically
+	expected := []string{defaultSubID, "sub-a", "sub-b"}
 	for i, want := range expected {
 		if resp[i]["id"] != want {
 			t.Errorf("expected subscription[%d]=%s, got %v", i, want, resp[i]["id"])
@@ -1808,10 +1827,12 @@ func TestListSubscriptionsReturnsAllUniqueSubscriptions(t *testing.T) {
 	}
 }
 
-func TestListSubscriptionsUsesDefaultForEmptySubscriptionID(t *testing.T) {
+func TestListSubscriptionsUsesDefaultSubscription(t *testing.T) {
 	srv := newTestServer(t)
 
-	srv.DB.CreateApp("", "sys-1", nil, nil)
+	defaultSubID := store.SubscriptionIDForCustomer(store.DefaultCustomerID)
+	srv.DB.EnsureSubscription(defaultSubID, store.DefaultCustomerID)
+	srv.DB.CreateApp(defaultSubID, "sys-1", nil, nil)
 
 	req := httptest.NewRequest("GET", "/subscriptions", nil)
 	w := httptest.NewRecorder()
@@ -1828,8 +1849,8 @@ func TestListSubscriptionsUsesDefaultForEmptySubscriptionID(t *testing.T) {
 		t.Fatalf("expected 1 subscription, got %d", len(resp))
 	}
 
-	if resp[0]["id"] != store.DefaultSubscriptionID {
-		t.Errorf("expected id %s, got %v", store.DefaultSubscriptionID, resp[0]["id"])
+	if resp[0]["id"] != store.SubscriptionIDForCustomer(store.DefaultCustomerID) {
+		t.Errorf("expected id %s, got %v", store.SubscriptionIDForCustomer(store.DefaultCustomerID), resp[0]["id"])
 	}
 }
 
@@ -2065,7 +2086,7 @@ func TestUpdateSubscriptionPatchInvalidJSON(t *testing.T) {
 func TestEnsureSubscriptionCreatesWithDefaults(t *testing.T) {
 	db := newTestDB(t)
 
-	sub, err := db.EnsureSubscription("test-sub-1")
+	sub, err := db.EnsureSubscription("test-sub-1", store.DefaultCustomerID)
 	if err != nil {
 		t.Fatalf("EnsureSubscription: %v", err)
 	}
@@ -2091,7 +2112,7 @@ func TestEnsureSubscriptionReturnsExisting(t *testing.T) {
 	db := newTestDB(t)
 
 	// Create
-	sub1, err := db.EnsureSubscription("test-sub-1")
+	sub1, err := db.EnsureSubscription("test-sub-1", store.DefaultCustomerID)
 	if err != nil {
 		t.Fatalf("first EnsureSubscription: %v", err)
 	}
@@ -2103,7 +2124,7 @@ func TestEnsureSubscriptionReturnsExisting(t *testing.T) {
 	}
 
 	// Ensure again - should return the updated version, not re-create
-	sub2, err := db.EnsureSubscription("test-sub-1")
+	sub2, err := db.EnsureSubscription("test-sub-1", store.DefaultCustomerID)
 	if err != nil {
 		t.Fatalf("second EnsureSubscription: %v", err)
 	}
@@ -2124,5 +2145,109 @@ func TestUpdateSubscriptionNotFound(t *testing.T) {
 	_, err := db.UpdateSubscription("nonexistent", map[string]any{"plan": "starter"})
 	if err == nil {
 		t.Fatal("expected error for nonexistent subscription")
+	}
+}
+
+// --- customerIDFromRequest ---
+
+func TestCustomerIDFromRequest_NoToken(t *testing.T) {
+	req := httptest.NewRequest("GET", "/", nil)
+	got := customerIDFromRequest(req)
+	if got != store.DefaultCustomerID {
+		t.Errorf("expected %q, got %q", store.DefaultCustomerID, got)
+	}
+}
+
+func TestCustomerIDFromRequest_WithShopperID(t *testing.T) {
+	token := gdtoken.NewToken(
+		gdtoken.WithKind(gdtoken.ShopperKind),
+		gdtoken.WithBaseToken(gdtoken.BaseToken{ShopperID: "shopper-42"}),
+	)
+	req := httptest.NewRequest("GET", "/", nil)
+	ctx := gdtoken.ContextWithToken(req.Context(), token)
+	req = req.WithContext(ctx)
+
+	got := customerIDFromRequest(req)
+	if got != "shopper-42" {
+		t.Errorf("expected %q, got %q", "shopper-42", got)
+	}
+}
+
+func TestCustomerIDFromRequest_EmptyShopperID(t *testing.T) {
+	token := gdtoken.NewToken(
+		gdtoken.WithKind(gdtoken.ShopperKind),
+		gdtoken.WithBaseToken(gdtoken.BaseToken{}),
+	)
+	req := httptest.NewRequest("GET", "/", nil)
+	ctx := gdtoken.ContextWithToken(req.Context(), token)
+	req = req.WithContext(ctx)
+
+	got := customerIDFromRequest(req)
+	if got != store.DefaultCustomerID {
+		t.Errorf("expected %q, got %q", store.DefaultCustomerID, got)
+	}
+}
+
+func TestCrossCustomerSubscriptionAccess_Returns403(t *testing.T) {
+	db := newTestDB(t)
+	router := NewRouter(db, nil, noopSSOMiddleware(t))
+
+	// Create subscription owned by shopper-A
+	db.EnsureSubscription("sub-owned-by-A", "shopper-A")
+
+	// shopper-B tries to access shopper-A's subscription → 403
+	tokenB := gdtoken.NewToken(
+		gdtoken.WithKind(gdtoken.ShopperKind),
+		gdtoken.WithBaseToken(gdtoken.BaseToken{ShopperID: "shopper-B"}),
+	)
+	req := httptest.NewRequest("GET", "/api/airo/v1/subscriptions/sub-owned-by-A", nil)
+	req = mux.SetURLVars(req, map[string]string{"subId": "sub-owned-by-A"})
+	req = req.WithContext(gdtoken.ContextWithToken(req.Context(), tokenB))
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Errorf("expected 403 for cross-customer access, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCustomerIDFromRequest_DataIsolation(t *testing.T) {
+	db := newTestDB(t)
+	router := NewRouter(db, nil, noopSSOMiddleware(t))
+
+	// Create app as shopper-A
+	tokenA := gdtoken.NewToken(
+		gdtoken.WithKind(gdtoken.ShopperKind),
+		gdtoken.WithBaseToken(gdtoken.BaseToken{ShopperID: "shopper-A"}),
+	)
+	signupBody := `{"datacenter":"local","isTrial":true,"productId":"aab-v1","appConfigs":[{"templateName":"v8","variants":["preview"],"variables":{}}]}`
+	req := httptest.NewRequest("POST", "/api/airo/v1/signup", strings.NewReader(signupBody))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(gdtoken.ContextWithToken(req.Context(), tokenA))
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK && w.Code != http.StatusCreated {
+		t.Fatalf("signup failed: %d %s", w.Code, w.Body.String())
+	}
+
+	// List apps as shopper-B -- should see nothing
+	tokenB := gdtoken.NewToken(
+		gdtoken.WithKind(gdtoken.ShopperKind),
+		gdtoken.WithBaseToken(gdtoken.BaseToken{ShopperID: "shopper-B"}),
+	)
+	req = httptest.NewRequest("GET", "/api/airo/v1/customers/me/apps", nil)
+	req = req.WithContext(gdtoken.ContextWithToken(req.Context(), tokenB))
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("list apps failed: %d %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		Apps []map[string]any `json:"apps"`
+	}
+	decodeJSON(t, w, &resp)
+	if len(resp.Apps) != 0 {
+		t.Errorf("shopper-B should see 0 apps, got %d", len(resp.Apps))
 	}
 }

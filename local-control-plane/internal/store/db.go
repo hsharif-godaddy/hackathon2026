@@ -160,6 +160,12 @@ func (d *DB) migrate() error {
 		}
 	}
 
+	if _, err := d.db.Exec(`ALTER TABLE subscriptions ADD COLUMN customer_id TEXT NOT NULL DEFAULT 'local-customer-001'`); err != nil {
+		if !strings.Contains(err.Error(), "duplicate column") {
+			return fmt.Errorf("add customer_id column: %w", err)
+		}
+	}
+
 	if _, err := d.db.Exec(`CREATE TABLE IF NOT EXISTS deployments (
 		id TEXT PRIMARY KEY,
 		app_id TEXT NOT NULL,
@@ -300,6 +306,27 @@ func (d *DB) ListAllApps() ([]*App, error) {
 	)
 	if err != nil {
 		return nil, fmt.Errorf("query all apps: %w", err)
+	}
+	defer rows.Close()
+
+	return d.scanApps(rows)
+}
+
+func (d *DB) ListAppsByCustomer(customerID string) ([]*App, error) {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+
+	rows, err := d.db.Query(
+		`SELECT a.id, a.subscription_id, a.system_id, a.status, a.variables, a.variants,
+		        a.preview_port, a.publish_port, a.supervisor_port, a.publish_supervisor_port,
+		        a.created_at, a.updated_at
+		 FROM apps a
+		 JOIN subscriptions s ON a.subscription_id = s.id
+		 WHERE s.customer_id = ?
+		 ORDER BY a.created_at DESC`, customerID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("query apps by customer: %w", err)
 	}
 	defer rows.Close()
 
@@ -638,8 +665,7 @@ func (d *DB) GetDeployments(appID string, limit int) ([]Deployment, error) {
 	return deps, nil
 }
 
-// EnsureSubscription returns the subscription with the given ID, creating it with defaults if it doesn't exist.
-func (d *DB) EnsureSubscription(id string) (*Subscription, error) {
+func (d *DB) EnsureSubscription(id, customerID string) (*Subscription, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
@@ -648,13 +674,16 @@ func (d *DB) EnsureSubscription(id string) (*Subscription, error) {
 		return nil, err
 	}
 	if sub != nil {
+		if sub.CustomerID != customerID {
+			return nil, ErrSubscriptionNotOwned
+		}
 		return sub, nil
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339)
 	_, err = d.db.Exec(
-		`INSERT INTO subscriptions (id, created_at, updated_at) VALUES (?, ?, ?)`,
-		id, now, now,
+		`INSERT INTO subscriptions (id, customer_id, created_at, updated_at) VALUES (?, ?, ?, ?)`,
+		id, customerID, now, now,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("insert subscription: %w", err)

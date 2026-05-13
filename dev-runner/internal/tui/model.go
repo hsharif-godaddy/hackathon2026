@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"time"
 
 	"charm.land/bubbles/v2/help"
@@ -163,6 +164,7 @@ type Model struct {
 	// Dev settings tab state
 	devSettingsPreset   string // current preset name
 	controlPlaneBaseURL string
+	authType            string // "jwt", "none", etc. from local-control-plane/.env
 
 	// E2E tab state
 	e2eRunner          *e2e.Runner
@@ -237,6 +239,7 @@ func NewModel(cfg *config.Config, projectRoot string) Model {
 		preflightAutoFollow: true,
 		devSettingsPreset:   "free-trial",
 		controlPlaneBaseURL: controlPlaneBaseURL(cfg),
+		authType:            controlPlaneAuthType(projectRoot),
 		e2eRunner:           e2eRunner,
 		e2ePane:             e2ePane,
 	}
@@ -476,4 +479,16 @@ func controlPlaneBaseURL(cfg *config.Config) string {
 		}
 	}
 	return "http://localhost:4100"
+}
+
+func controlPlaneAuthType(projectRoot string) string {
+	envPath := filepath.Join(projectRoot, "local-control-plane", ".env")
+	env, err := preflight.ParseEnvFile(envPath)
+	if err != nil {
+		return "none"
+	}
+	if v, ok := env["AUTH_TYPE"]; ok && v != "" {
+		return v
+	}
+	return "none"
 }

@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"github.com/airo-ai-builder/local-control-plane/internal/docker"
 	"github.com/airo-ai-builder/local-control-plane/internal/setup"
 	"github.com/airo-ai-builder/local-control-plane/internal/store"
+	"github.com/gdcorp-golang/auth/gdtoken"
 	"github.com/gorilla/mux"
 )
 
@@ -148,6 +150,24 @@ func writeError(w http.ResponseWriter, status int, message string) {
 	writeJSON(w, status, map[string]string{"error": message})
 }
 
+func writeStoreError(w http.ResponseWriter, err error) {
+	if errors.Is(err, store.ErrSubscriptionNotOwned) {
+		writeError(w, http.StatusForbidden, "Access denied: not subscription owner")
+		return
+	}
+	writeError(w, http.StatusInternalServerError, err.Error())
+}
+
 func readJSON(r *http.Request, v any) error {
 	return json.NewDecoder(r.Body).Decode(v)
+}
+
+func customerIDFromRequest(r *http.Request) string {
+	token, err := gdtoken.TokenFromContext(r.Context())
+	if err == nil && token != nil {
+		if id := token.GetShopperID(); id != "" {
+			return id
+		}
+	}
+	return store.DefaultCustomerID
 }

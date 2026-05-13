@@ -27,7 +27,10 @@ func subscriptionToResponse(sub *store.Subscription) map[string]any {
 }
 
 func (s *Server) ListSubscriptions(w http.ResponseWriter, r *http.Request) {
-	apps, err := s.DB.ListAllApps()
+	custID := customerIDFromRequest(r)
+	defaultSubID := store.SubscriptionIDForCustomer(custID)
+
+	apps, err := s.DB.ListAppsByCustomer(custID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -36,15 +39,11 @@ func (s *Server) ListSubscriptions(w http.ResponseWriter, r *http.Request) {
 	// Collect unique subscription IDs from apps
 	subIDs := make(map[string]bool)
 	for _, app := range apps {
-		subID := app.SubscriptionID
-		if subID == "" {
-			subID = store.DefaultSubscriptionID
-		}
-		subIDs[subID] = true
+		subIDs[app.SubscriptionID] = true
 	}
 
-	// Always include default subscription
-	subIDs[store.DefaultSubscriptionID] = true
+	// Always include default subscription for this customer
+	subIDs[defaultSubID] = true
 
 	// Sort for deterministic ordering
 	sortedIDs := make([]string, 0, len(subIDs))
@@ -56,9 +55,9 @@ func (s *Server) ListSubscriptions(w http.ResponseWriter, r *http.Request) {
 	// Ensure all referenced subscriptions exist in DB and build response
 	result := make([]map[string]any, 0, len(sortedIDs))
 	for _, id := range sortedIDs {
-		sub, err := s.DB.EnsureSubscription(id)
+		sub, err := s.DB.EnsureSubscription(id, custID)
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
+			writeStoreError(w, err)
 			return
 		}
 		result = append(result, subscriptionToResponse(sub))
@@ -69,9 +68,10 @@ func (s *Server) ListSubscriptions(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) GetSubscription(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	sub, err := s.DB.EnsureSubscription(vars["subId"])
+	custID := customerIDFromRequest(r)
+	sub, err := s.DB.EnsureSubscription(vars["subId"], custID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeStoreError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, subscriptionToResponse(sub))
@@ -79,9 +79,10 @@ func (s *Server) GetSubscription(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) GetEntitlement(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	sub, err := s.DB.EnsureSubscription(vars["subId"])
+	custID := customerIDFromRequest(r)
+	sub, err := s.DB.EnsureSubscription(vars["subId"], custID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeStoreError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, subscriptionToResponse(sub))
@@ -90,10 +91,11 @@ func (s *Server) GetEntitlement(w http.ResponseWriter, r *http.Request) {
 func (s *Server) UpdateSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	subID := vars["subId"]
+	custID := customerIDFromRequest(r)
 
 	// Ensure subscription exists before updating
-	if _, err := s.DB.EnsureSubscription(subID); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+	if _, err := s.DB.EnsureSubscription(subID, custID); err != nil {
+		writeStoreError(w, err)
 		return
 	}
 
@@ -115,7 +117,9 @@ func (s *Server) GetAppsForSubscription(w http.ResponseWriter, r *http.Request) 
 	vars := mux.Vars(r)
 	subId := vars["subId"]
 
-	apps, err := s.DB.ListAllApps()
+	custID := customerIDFromRequest(r)
+
+	apps, err := s.DB.ListAppsByCustomer(custID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -123,12 +127,7 @@ func (s *Server) GetAppsForSubscription(w http.ResponseWriter, r *http.Request) 
 
 	result := make([]map[string]any, 0, len(apps))
 	for _, app := range apps {
-		// Filter by subscription ID, treating empty as default
-		appSubId := app.SubscriptionID
-		if appSubId == "" {
-			appSubId = store.DefaultSubscriptionID
-		}
-		if appSubId == subId {
+		if app.SubscriptionID == subId {
 			result = append(result, appToResponse(app))
 		}
 	}

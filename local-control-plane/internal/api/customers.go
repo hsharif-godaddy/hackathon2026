@@ -9,73 +9,68 @@ import (
 
 func (s *Server) GetCustomer(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
-		"customerId": store.DefaultCustomerID,
+		"customerId": customerIDFromRequest(r),
 		"exists":     true,
 		"status":     "active",
 	})
 }
 
 func (s *Server) GetCustomerTree(w http.ResponseWriter, r *http.Request) {
-	apps, err := s.DB.ListAllApps()
+	custID := customerIDFromRequest(r)
+	subID := store.SubscriptionIDForCustomer(custID)
+
+	apps, err := s.DB.ListAppsByCustomer(custID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
 	// Group apps by (subscriptionId, systemId)
-	// subSysApps[subID][sysID] = []apps
 	subSysApps := make(map[string]map[string][]map[string]any)
 	for _, app := range apps {
-		subID := app.SubscriptionID
-		if subID == "" {
-			subID = store.DefaultSubscriptionID
-		}
-		sysID := app.SystemID
-		if sysID == "" {
-			sysID = store.DefaultSystemID
-		}
+		aSubID := app.SubscriptionID
+		aSysID := app.SystemID
 
-		if subSysApps[subID] == nil {
-			subSysApps[subID] = make(map[string][]map[string]any)
+		if subSysApps[aSubID] == nil {
+			subSysApps[aSubID] = make(map[string][]map[string]any)
 		}
-		subSysApps[subID][sysID] = append(subSysApps[subID][sysID], appToResponse(app))
+		subSysApps[aSubID][aSysID] = append(subSysApps[aSubID][aSysID], appToResponse(app))
 	}
 
 	// Build subscriptions array with deterministic ordering
 	subIDs := make([]string, 0, len(subSysApps))
-	for subID := range subSysApps {
-		subIDs = append(subIDs, subID)
+	for id := range subSysApps {
+		subIDs = append(subIDs, id)
 	}
 	sort.Strings(subIDs)
 
 	subscriptions := make([]map[string]any, 0, len(subSysApps))
-	for _, subID := range subIDs {
-		sysApps := subSysApps[subID]
+	for _, id := range subIDs {
+		sysApps := subSysApps[id]
 
-		// Sort system IDs for deterministic ordering
 		sysIDs := make([]string, 0, len(sysApps))
-		for sysID := range sysApps {
-			sysIDs = append(sysIDs, sysID)
+		for sID := range sysApps {
+			sysIDs = append(sysIDs, sID)
 		}
 		sort.Strings(sysIDs)
 
 		systems := make([]map[string]any, 0, len(sysApps))
-		for _, sysID := range sysIDs {
+		for _, sID := range sysIDs {
 			systems = append(systems, map[string]any{
-				"systemId":   sysID,
+				"systemId":   sID,
 				"datacenter": store.DefaultDatacenter,
-				"apps":       sysApps[sysID],
+				"apps":       sysApps[sID],
 			})
 		}
 
-		sub, err := s.DB.EnsureSubscription(subID)
+		sub, err := s.DB.EnsureSubscription(id, custID)
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
+			writeStoreError(w, err)
 			return
 		}
 
 		subEntry := map[string]any{
-			"subscriptionId": subID,
+			"subscriptionId": id,
 			"productId":      sub.ProductID,
 			"ownerProduct":   sub.OwnerProduct,
 			"status":         sub.Status,
@@ -89,7 +84,7 @@ func (s *Server) GetCustomerTree(w http.ResponseWriter, r *http.Request) {
 
 	// If no apps exist, return empty subscription with default ID
 	if len(subscriptions) == 0 {
-		sub, err := s.DB.EnsureSubscription(store.DefaultSubscriptionID)
+		sub, err := s.DB.EnsureSubscription(subID, custID)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
@@ -105,7 +100,7 @@ func (s *Server) GetCustomerTree(w http.ResponseWriter, r *http.Request) {
 			"reason":         sub.Reason,
 			"systems": []map[string]any{
 				{
-					"systemId":   store.DefaultSystemID,
+					"systemId":   store.SystemIDForCustomer(custID),
 					"datacenter": store.DefaultDatacenter,
 					"apps":       []map[string]any{},
 				},
@@ -115,7 +110,7 @@ func (s *Server) GetCustomerTree(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"customerId":    store.DefaultCustomerID,
+		"customerId":    custID,
 		"subscriptions": subscriptions,
 	})
 }

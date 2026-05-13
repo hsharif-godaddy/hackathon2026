@@ -108,10 +108,35 @@ func (m *Model) closeDevSettings() {
 	m.devSettingsValue = nil
 }
 
+func fetchDefaultSubscriptionID(baseURL string) (string, error) {
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get(baseURL + "/api/airo/v1/subscriptions")
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	var subs []struct {
+		ID string `json:"id"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&subs); err != nil {
+		return "", err
+	}
+	if len(subs) == 0 {
+		return "", fmt.Errorf("no subscriptions found")
+	}
+	return subs[0].ID, nil
+}
+
 func applyPresetCmd(baseURL string, preset subscriptionPreset) tea.Cmd {
 	return func() tea.Msg {
+		subID, err := fetchDefaultSubscriptionID(baseURL)
+		if err != nil {
+			return devSettingsPresetMsg{Preset: preset.Name, Err: fmt.Errorf("fetch subscription: %w", err)}
+		}
+
 		body, _ := json.Marshal(preset.Fields)
-		url := baseURL + "/api/airo/v1/subscriptions/local-sub-001"
+		url := baseURL + "/api/airo/v1/subscriptions/" + subID
 
 		req, err := http.NewRequest(http.MethodPatch, url, bytes.NewReader(body))
 		if err != nil {
