@@ -215,7 +215,7 @@ export async function handleToolResultSideEffects(
     (tool.name === 'media-logo__generate_logo' || tool.name === 'media-logo__edit_logo')
   if (isLogoTool && typeof window !== 'undefined') {
     try {
-      const result = (tool as any).result
+      const result = tool.output ?? tool.result
       const resultObj = typeof result === 'string' ? JSON.parse(result) : result
       const logos = resultObj?.structuredContent?.logos || resultObj?.logos
       if (logos?.[0]) {
