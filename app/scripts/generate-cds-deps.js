@@ -13,6 +13,7 @@ const depsPath = 'cds'
 // its vendored React 18 copy, eliminating $$typeof / Symbol.for mismatches.
 const manualDeps = [
   { specifier: 'react/jsx-runtime', importName: 'jsxRuntime', importPath: 'react/jsx-runtime', versionExpr: 'react.version' },
+  { specifier: 'axios', importName: 'axios', importPath: 'axios' },
   { specifier: '@ux/util', importName: 'uxUtil', importPath: '@ux/util' },
   { specifier: 'react-device-detect', importName: 'reactDeviceDetect', importPath: 'react-device-detect' },
   { specifier: 'react-focus-lock', importName: 'reactFocusLock', importPath: 'react-focus-lock' },

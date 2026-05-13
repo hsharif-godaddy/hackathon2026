@@ -25,17 +25,50 @@ describe('shimReactInternals', () => {
     delete (window as any).React;
   });
 
-  it('is a no-op when window.React is not set', () => {
-    shimReactInternals();
-  });
-
-  it('aliases React 19 internals to the React 18 property name', () => {
+  it('patches immediately when window.React exists at call time', () => {
     (window as any).React = {
       version: '19.3.0-canary',
       __CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE: internals,
     };
 
     shimReactInternals();
+
+    expect((window as any).React.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED).toBe(internals);
+  });
+
+  it('installs a trap and patches when window.React is set later', () => {
+    shimReactInternals();
+
+    (window as any).React = {
+      version: '19.3.0-canary',
+      __CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE: internals,
+    };
+
+    expect((window as any).React.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED).toBe(internals);
+  });
+
+  it('restores a normal property descriptor after trap fires', () => {
+    shimReactInternals();
+
+    (window as any).React = {
+      version: '19.3.0-canary',
+      __CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE: internals,
+    };
+
+    const descriptor = Object.getOwnPropertyDescriptor(window, 'React');
+    expect(descriptor?.writable).toBe(true);
+    expect(descriptor?.get).toBeUndefined();
+    expect(descriptor?.set).toBeUndefined();
+  });
+
+  it('is idempotent when called multiple times', () => {
+    shimReactInternals();
+    shimReactInternals();
+
+    (window as any).React = {
+      version: '19.3.0-canary',
+      __CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE: internals,
+    };
 
     expect((window as any).React.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED).toBe(internals);
   });

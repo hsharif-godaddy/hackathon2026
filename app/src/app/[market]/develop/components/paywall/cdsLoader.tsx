@@ -1,13 +1,27 @@
 'use client'
 
 import { ReactNode, useCallback, useEffect, useRef, useState } from 'react'
+import * as ReactIntl from 'react-intl'
 import CdsComponentLoader from '@venture/cds-loader'
 
 import { shipAnalyticsLog } from '@/lib/logging'
 import { logger } from '@/lib/request-context'
+import { ensurePropTypes } from '@/utils/propTypes'
 import { shimReactInternals } from '@/utils/reactCompat'
 
 shimReactInternals()
+
+// UMD CDS components expect PropTypes and react-intl on window globals.
+// The ESM path injects deps directly, but UMD fallback still needs these.
+if (typeof window !== 'undefined') {
+  if (!(window as unknown as Record<string, unknown>).ux) {
+    (window as unknown as Record<string, unknown>).ux = {}
+  }
+  ;(window as unknown as Record<string, Record<string, unknown>>).ux.intl = ReactIntl as unknown as Record<string, unknown>
+  ensurePropTypes().catch((err: Error) =>
+    logger.error('cdsLoader.propTypesLoadFailed', { error: err.message })
+  )
+}
 
 interface CdsComponentLoaderProps extends Record<string, unknown> {
   type: string
