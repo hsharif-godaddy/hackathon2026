@@ -189,7 +189,9 @@ function collectUnknowns(
             scenario: result.scenarioName,
             evaluator: r.evaluator,
             trialLabel: `T${trial.trialIndex + 1}`,
-            reason: r.reason,
+            reason: r.evaluatorFailed === true
+              ? `${r.reason} (evaluator crashed)`
+              : r.reason,
           });
         }
       }
@@ -243,6 +245,9 @@ function formatPercent(
 function scenarioPassCounts(
   result: ScenarioResult,
 ): { passed: number; total: number } {
+  // Only evaluators with passAtK defined have pass/fail semantics.
+  // Unenriched score-mode evaluators (passAtK === undefined) are excluded
+  // from both numerator and denominator.
   const withPassAtK = Object.values(result.aggregated).filter(
     (agg) => agg.passAtK !== undefined,
   );
@@ -687,7 +692,9 @@ export class MdReporter {
   ): string {
     const passAtK = agg.passAtK === undefined
       ? '\u2014'
-      : agg.passAtK ? 'pass' : 'fail';
+      : agg.baselinePassingTrials !== undefined
+        ? `${agg.passAtK ? 'pass' : 'fail'} (${agg.baselinePassingTrials}/${agg.totalTrials})`
+        : agg.passAtK ? 'pass' : 'fail';
     const passToTheK = agg.passToTheK === undefined
       ? '\u2014'
       : agg.passToTheK ? 'pass' : 'fail';

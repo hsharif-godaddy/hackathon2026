@@ -46,7 +46,6 @@ export function createConfig(): Config {
       },
       // Loose gate for score-mode evaluators to absorb infrastructure variance noise
       defaultThreshold: 0.25,
-      graduationPassRateThreshold: 0.9,
     },
   };
 }

@@ -300,15 +300,15 @@ describe('RegressionComparator', () => {
       expect(e?.exceeded).toBe(true);
     });
 
-    it('current totalTrials === 0 → NaN score, exceeded = false', () => {
+    it('current totalTrials === 0 → skipped with no-trial-data', () => {
       const result = makeResult({
         'bug-hit-rate': makeAgg(0, 0),
       });
       const baseline = makeBaseline({ 'bug-hit-rate': { passingTrials: 3, totalTrials: 3 } });
       const r = comparator.compare(result, baseline, THRESHOLDS);
-      const e = r.evaluators.find((x) => x.evaluator === 'bug-hit-rate') as ComparedRegressionEvalResult | undefined;
-      expect(e?.exceeded).toBe(false);
-      expect(Number.isNaN(e?.currentScore)).toBe(true);
+      const e = r.evaluators.find((x) => x.evaluator === 'bug-hit-rate');
+      expect(e?.type).toBe('skipped');
+      expect(e && 'skipReason' in e && e.skipReason).toBe('no-trial-data');
     });
 
     it('baseline totalTrials === 0 → NaN baseline score, exceeded = false', () => {
@@ -485,15 +485,15 @@ describe('RegressionComparator', () => {
       expect(Number.isNaN(e?.baselineScore)).toBe(true);
     });
 
-    it('absent current medianScore -> exceeded = false', () => {
+    it('absent current medianScore → skipped with no-score-data', () => {
       const result = makeResult({
         latency: makeScoreAgg(),
       });
       const baseline = makeScoreBaseline(8.0);
       const r = comparator.compare(result, baseline, THRESHOLDS);
-      const e = r.evaluators.find((x) => x.evaluator === 'latency') as ComparedRegressionEvalResult | undefined;
-      expect(e?.exceeded).toBe(false);
-      expect(Number.isNaN(e?.currentScore)).toBe(true);
+      const e = r.evaluators.find((x) => x.evaluator === 'latency');
+      expect(e?.type).toBe('skipped');
+      expect(e && 'skipReason' in e && e.skipReason).toBe('no-score-data');
     });
 
     it('baseline threshold overrides config threshold', () => {

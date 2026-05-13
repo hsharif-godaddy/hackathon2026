@@ -2,6 +2,7 @@ import { Simulation } from './simulation.js';
 import type { SimulationCaptureContext } from './simulation.js';
 import { TrialAggregator } from './trial-aggregator.js';
 import { RegressionComparator } from '../baselines/regression-comparator.js';
+import { enrichScoreModePassRates } from '../baselines/score-mode-enricher.js';
 import type { Scenario } from '../scenarios/types.js';
 import type { ScenarioResult, TrialResult } from './types.js';
 import type { Config } from '../../config/environments/types.js';
@@ -196,6 +197,7 @@ export class SuiteRunner {
               'afterSimulation failed.',
               {
                 evaluator: ev.name,
+                scenarioName: scenario.name,
                 trialIndex: i,
                 error: err instanceof Error ? err.message : String(err),
               },
@@ -230,17 +232,30 @@ export class SuiteRunner {
         trialResults,
       );
 
+      // Ordering contract: the comparator reads result.aggregated FIRST to
+      // detect score regressions, then enrichScoreModePassRates produces a
+      // NEW aggregated record with passAtK/passToTheK derived from per-trial
+      // baseline comparison. The enriched record replaces result.aggregated
+      // AFTER the comparator finishes. The comparator must see the raw
+      // aggregated state (without passAtK), and downstream consumers
+      // (reporter, store) see the enriched version.
       if (baselineStore) {
         const baseline = await baselineStore.load(
           scenario.name,
         );
         if (baseline) {
-          result.regressionStatus =
-            this.comparator.compare(
-              result,
-              baseline,
-              config.regression,
-            );
+          const regressionStatus = this.comparator.compare(
+            result,
+            baseline,
+            config.regression,
+          );
+          const enrichedAggregated = enrichScoreModePassRates(
+            result,
+            baseline,
+            config.regression,
+          );
+          result.regressionStatus = regressionStatus;
+          result.aggregated = enrichedAggregated;
         }
       }
 
@@ -277,6 +292,7 @@ export class SuiteRunner {
         score: 0,
         verdict: 'unknown',
         reason: err instanceof Error ? err.message : String(err),
+        evaluatorFailed: true,
       });
     }
   }

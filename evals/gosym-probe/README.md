@@ -151,6 +151,7 @@ CLI (src/index.ts)
        │
        ├─ TrialAggregator   →  pass@k / pass^k per evaluator
        ├─ RegressionComparator  →  current vs. baseline
+       ├─ ScoreModeEnricher  →  passAtK from per-trial baseline delta
        └─ EvalStore  →  results/runs/{runId}/ (transcripts, evals, artifacts)
 ```
 
@@ -243,22 +244,32 @@ Each scenario with a saved baseline is compared against it. The most recent
 file in each directory is loaded automatically.
 
 **What a baseline stores:** aggregated `passAtK`, `passToTheK`,
-`passingTrials`, and `totalTrials` per evaluator, not raw trial transcripts.
+`passingTrials`, `totalTrials`, and `medianScore` (for score-mode
+evaluators) per evaluator, not raw trial transcripts.
 
 **No baseline = informational.** Scenarios without a saved baseline are
 reported but never block. Pass `--skip-baseline` to skip comparison entirely.
 
-**How regression is detected:** for each evaluator, the harness computes
-`drop = baselineScore - currentScore`. If `drop > threshold` the evaluator is
-flagged `exceeded: true` and the run exits 1. Thresholds are configured per
-evaluator in `config/environments/*.ts`:
+**How regression is detected:** two modes based on `regressionMode`:
+
+- **Pass-rate evaluators** (default): compares pass rate
+  (`passingTrials / totalTrials`) against baseline. A drop exceeding the
+  threshold flags a regression.
+- **Score-mode evaluators** (`regressionMode: 'score'`): compares median
+  score via relative percentage change against the baseline median.
+  Respects `lowerIsBetter` directionality. After regression comparison,
+  `enrichScoreModePassRates` derives `passAtK`/`passToTheK` by checking
+  each trial's score against the baseline median within the threshold.
+
+Thresholds are configured per evaluator in `config/environments/*.ts`:
 
 ```typescript
 regression: {
   thresholds: {
     'prompt-efficiency': 0.20,
+    'token-usage': 1.5,
   },
-  defaultThreshold: 0.1,         // fallback for unlisted evaluators
+  defaultThreshold: 0.25,         // fallback for unlisted evaluators
 }
 ```
 
@@ -271,8 +282,7 @@ is stable, it graduates by saving a validated baseline that gates future PRs.
 
 **Why a graduation check?** Saving a baseline from a single run that happened
 to score well is unreliable — the score might not reproduce. The graduation
-command runs an elevated trial count and requires that every evaluator passes
-at a high rate before recommending promotion.
+command runs an elevated trial count to establish a representative baseline.
 
 ### How it works
 
@@ -280,19 +290,17 @@ at a high rate before recommending promotion.
    `--stability` override):
    | Level | Trials |
    |----------|--------|
-   | `low` | 1 |
-   | `medium` | 5 (default) |
+   | `low` | 3 (default) |
+   | `medium` | 5 |
    | `high` | 10 |
-2. Aggregates all trial results → pass rate per evaluator.
-3. **Always saves a baseline**, whether or not promotion is recommended.
-4. If `min(pass rate across all evaluators) ≥ graduationPassRateThreshold`
-   (default `0.9`):
-   - Saves the baseline and exits 0. The scenario is now gated.
-5. Otherwise: prints per-evaluator pass rates with threshold markers
-   and exits 1. The baseline is saved as an informational checkpoint.
+2. Aggregates all trial results.
+3. Saves the baseline unconditionally, unless all trials produced only
+   `unknown` verdicts (indicating infrastructure failure rather than
+   meaningful eval data).
 
-`unknown` verdicts count toward `totalTrials` as failures. A DOM snapshot
-timeout or a judge that cannot score a turn will reduce the pass rate.
+The baseline is saved regardless of pass rates. There is no pass-rate
+gate. The purpose of graduation is to capture a stable representative
+measurement, not to enforce a quality bar.
 
 The command **never modifies scenario files** — the config change is always a
 manual code commit.
@@ -300,7 +308,7 @@ manual code commit.
 ### Running graduation
 
 ```bash
-# Uses the scenario's stability level (defaults to medium / 5 trials)
+# Uses the scenario's stability level (defaults to low / 3 trials)
 pnpm run eval --graduate build-landing-page
 
 # Override with a higher stability level (10 trials)
@@ -313,25 +321,23 @@ pnpm run eval --graduate build-landing-page --concurrency 2
 pnpm run eval --graduate-suite smoke
 ```
 
-**Promoted output (exit 0):**
+**Success output (exit 0):**
 
 ```
-✓ Scenario "build-landing-page" promoted [medium / 5 trials]
+✓ Scenario "build-landing-page" graduated [low / 3 trials]
   Baseline saved.
-  Min pass rate: 100% (threshold: 90%)
 ```
 
-**Not promoted output (exit 1):**
+**Failure output (exit 1):**
 
 ```
-✗ Scenario "build-landing-page" not promoted [medium / 5 trials]
-  Baseline saved (informational checkpoint).
-  Per-evaluator pass rates (threshold: 90%):
-    bug-hit-rate: 100% ✓
-    jtbd-completion: 60% ✗
+✓ Scenario "build-landing-page" graduated [low / 3 trials]
+  Baseline NOT saved (all trials produced unknown verdicts).
 ```
 
-The baseline is now saved and the scenario will be gated on future runs.
+Exit 1 indicates infrastructure failure (no valid trial data) rather
+than eval quality issues. The scenario will be gated on future runs
+once a baseline is successfully saved.
 
 ### Suite graduation parallelism
 
@@ -347,12 +353,6 @@ This avoids combinatorial explosion (scenario × trial parallelism) while
 still making use of available concurrency at the appropriate level.
 
 ### Graduation config
-
-```typescript
-regression: {
-  graduationPassRateThreshold: 0.9, // min required pass rate per evaluator
-}
-```
 
 Trial counts are determined by the stability level (see table above).
 Use `--stability` to override at the CLI, or set `stabilityLevel` on the
@@ -428,7 +428,9 @@ src/
   baselines/
     baseline-store.ts     # Save/load baselines/{scenario}.json
     regression-comparator.ts
-    graduation-runner.ts  # Stability check before baseline promotion
+    graduation-runner.ts  # Stability check before baseline save
+    score-mode-enricher.ts # Derives passAtK from per-trial baseline delta
+    threshold.ts          # Shared threshold logic (exceedsThreshold, resolveThreshold)
     types.ts
 
   store/

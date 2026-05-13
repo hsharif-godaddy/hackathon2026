@@ -119,7 +119,6 @@ const mockConfig: Config = {
   regression: {
     thresholds: {},
     defaultThreshold: 0.1,
-    graduationPassRateThreshold: 0.9,
   },
 };
 
@@ -138,316 +137,6 @@ const mockBaselineStore = {
 describe('GraduationRunner', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-  });
-
-  describe('pass rate computation', () => {
-    it('all trials pass → passRate = 1.0', async () => {
-      mockSuiteRunnerRun.mockResolvedValue([
-        makeScenarioResult([
-          'pass', 'pass', 'pass', 'pass', 'pass',
-        ]),
-      ]);
-
-      const runner = new GraduationRunner({
-        scenario: { ...mockScenario, stabilityLevel: 'medium' },
-        config: mockConfig,
-        baselineStore: mockBaselineStore,
-      });
-      const result = await runner.run('run-all-pass');
-
-      expect(result.passRates['bug-hit-rate']).toBe(1.0);
-      expect(result.minPassRate).toBe(1.0);
-    });
-
-    it('mixed verdicts → fractional pass rate', async () => {
-      // 3 pass, 2 fail → 3/5 = 0.6
-      mockSuiteRunnerRun.mockResolvedValue([
-        makeScenarioResult([
-          'pass', 'pass', 'pass', 'fail', 'fail',
-        ]),
-      ]);
-
-      const runner = new GraduationRunner({
-        scenario: { ...mockScenario, stabilityLevel: 'medium' },
-        config: mockConfig,
-        baselineStore: mockBaselineStore,
-      });
-      const result = await runner.run('run-mixed');
-
-      expect(result.passRates['bug-hit-rate']).toBeCloseTo(0.6);
-      expect(result.minPassRate).toBeCloseTo(0.6);
-    });
-
-    it('zero trials → NaN pass rate', async () => {
-      mockSuiteRunnerRun.mockResolvedValue([
-        makeScenarioResult([]),
-      ]);
-
-      const runner = new GraduationRunner({
-        scenario: { ...mockScenario, stabilityLevel: 'medium' },
-        config: mockConfig,
-        baselineStore: mockBaselineStore,
-      });
-      const result = await runner.run('run-zero-trials');
-
-      expect(Number.isNaN(result.passRates['bug-hit-rate'])).toBe(true);
-      expect(Number.isNaN(result.minPassRate)).toBe(true);
-    });
-
-    it('unknown verdicts count as failures toward pass rate', async () => {
-      // 3 pass, 2 unknown → 3/5 = 0.6 (not 3/3 = 1.0)
-      mockSuiteRunnerRun.mockResolvedValue([
-        makeScenarioResult([
-          'pass', 'pass', 'pass', 'unknown', 'unknown',
-        ]),
-      ]);
-
-      const runner = new GraduationRunner({
-        scenario: { ...mockScenario, stabilityLevel: 'medium' },
-        config: mockConfig,
-        baselineStore: mockBaselineStore,
-      });
-      const result = await runner.run('run-unknowns');
-
-      expect(result.passRates['bug-hit-rate']).toBeCloseTo(0.6);
-    });
-  });
-
-  describe('score-mode evaluators excluded from pass rate', () => {
-    it('score-mode evaluator with all-observed verdicts does not block promotion', async () => {
-      // latency: regressionMode='score', passingTrials=0 → would give passRate=0
-      // bug-hit-rate: 5/5 pass-rate evaluator
-      // expected: latency is skipped, minPassRate=1.0, promoted=true
-      const result: ScenarioResult = {
-        scenarioName: 'test-scenario',
-        stabilityLevel: 'medium',
-        trials: [],
-        aggregated: {
-          'bug-hit-rate': makeAgg(5, 5),
-          'latency': { ...makeAgg(0, 5), regressionMode: 'score' },
-        },
-      };
-      mockSuiteRunnerRun.mockResolvedValue([result]);
-
-      const runner = new GraduationRunner({
-        scenario: { ...mockScenario, stabilityLevel: 'medium' },
-        config: mockConfig,
-        baselineStore: mockBaselineStore,
-      });
-      const r = await runner.run('run-score-excluded');
-
-      expect(r.passRates['latency']).toBeUndefined();
-      expect(r.passRates['bug-hit-rate']).toBe(1.0);
-      expect(r.minPassRate).toBe(1.0);
-      expect(r.promoted).toBe(true);
-    });
-
-    it('score-mode evaluator excluded; failing pass-rate evaluator still blocks', async () => {
-      const result: ScenarioResult = {
-        scenarioName: 'test-scenario',
-        stabilityLevel: 'medium',
-        trials: [],
-        aggregated: {
-          'bug-hit-rate': makeAgg(3, 5),
-          'latency': { ...makeAgg(0, 5), regressionMode: 'score' },
-        },
-      };
-      mockSuiteRunnerRun.mockResolvedValue([result]);
-
-      const runner = new GraduationRunner({
-        scenario: { ...mockScenario, stabilityLevel: 'medium' },
-        config: mockConfig,
-        baselineStore: mockBaselineStore,
-      });
-      const r = await runner.run('run-score-fail-other');
-
-      expect(r.passRates['latency']).toBeUndefined();
-      expect(r.passRates['bug-hit-rate']).toBeCloseTo(0.6);
-      expect(r.promoted).toBe(false);
-    });
-
-    it('all evaluators score-mode → NaN minPassRate → not promoted', async () => {
-      const result: ScenarioResult = {
-        scenarioName: 'test-scenario',
-        stabilityLevel: 'medium',
-        trials: [],
-        aggregated: {
-          'latency': { ...makeAgg(0, 5), regressionMode: 'score' },
-        },
-      };
-      mockSuiteRunnerRun.mockResolvedValue([result]);
-
-      const runner = new GraduationRunner({
-        scenario: { ...mockScenario, stabilityLevel: 'medium' },
-        config: mockConfig,
-        baselineStore: mockBaselineStore,
-      });
-      const r = await runner.run('run-all-score');
-
-      expect(Object.keys(r.passRates)).toHaveLength(0);
-      expect(Number.isNaN(r.minPassRate)).toBe(true);
-      expect(r.promoted).toBe(false);
-    });
-  });
-
-  describe('promotion gate', () => {
-    it('all evaluators >= threshold → promoted', async () => {
-      mockSuiteRunnerRun.mockResolvedValue([
-        makeScenarioResult([
-          'pass', 'pass', 'pass', 'pass', 'pass',
-        ]),
-      ]);
-
-      const runner = new GraduationRunner({
-        scenario: { ...mockScenario, stabilityLevel: 'medium' },
-        config: mockConfig,
-        baselineStore: mockBaselineStore,
-      });
-      const result = await runner.run('run-promoted');
-
-      expect(result.promoted).toBe(true);
-    });
-
-    it('any evaluator below threshold → not promoted', async () => {
-      // 3/5 = 0.6 < 0.9
-      mockSuiteRunnerRun.mockResolvedValue([
-        makeScenarioResult([
-          'pass', 'pass', 'pass', 'fail', 'fail',
-        ]),
-      ]);
-
-      const runner = new GraduationRunner({
-        scenario: { ...mockScenario, stabilityLevel: 'medium' },
-        config: mockConfig,
-        baselineStore: mockBaselineStore,
-      });
-      const result = await runner.run('run-not-promoted');
-
-      expect(result.promoted).toBe(false);
-    });
-
-    it('reads graduationPassRateThreshold from config', async () => {
-      mockSuiteRunnerRun.mockResolvedValue([
-        makeScenarioResult([
-          'pass', 'pass', 'pass', 'pass', 'pass',
-        ]),
-      ]);
-
-      const runner = new GraduationRunner({
-        scenario: { ...mockScenario, stabilityLevel: 'medium' },
-        config: mockConfig,
-        baselineStore: mockBaselineStore,
-      });
-      const result = await runner.run('run-threshold');
-
-      expect(result.passRateThreshold).toBe(0.9);
-    });
-
-    it('defaults to 0.9 when absent from config', async () => {
-      mockSuiteRunnerRun.mockResolvedValue([
-        makeScenarioResult([
-          'pass', 'pass', 'pass', 'pass', 'pass',
-        ]),
-      ]);
-
-      const configNoGrad: Config = {
-        ...mockConfig,
-        regression: { thresholds: {}, defaultThreshold: 0.1 },
-      };
-      const runner = new GraduationRunner({
-        scenario: { ...mockScenario, stabilityLevel: 'medium' },
-        config: configNoGrad,
-        baselineStore: mockBaselineStore,
-      });
-      const result = await runner.run('run-default-threshold');
-
-      expect(result.passRateThreshold).toBe(0.9);
-    });
-
-    it('not promoted when NaN minPassRate (zero trials)', async () => {
-      mockSuiteRunnerRun.mockResolvedValue([
-        makeScenarioResult([]),
-      ]);
-
-      const runner = new GraduationRunner({
-        scenario: { ...mockScenario, stabilityLevel: 'medium' },
-        config: mockConfig,
-        baselineStore: mockBaselineStore,
-      });
-      const result = await runner.run('run-nan-promoted');
-
-      expect(result.promoted).toBe(false);
-    });
-
-    it('minPassRate is the lowest rate across all evaluators', async () => {
-      // Build a result with two evaluators:
-      //   eval-a: 5/5 = 1.0
-      //   eval-b: 3/5 = 0.6
-      // minPassRate should be 0.6 → not promoted
-      const twoEvalResult: ScenarioResult = {
-        scenarioName: 'test-scenario',
-        stabilityLevel: 'medium',
-        trials: [],
-        aggregated: {
-          'eval-a': makeAgg(5, 5),
-          'eval-b': makeAgg(3, 5),
-        },
-      };
-      mockSuiteRunnerRun.mockResolvedValue([twoEvalResult]);
-
-      const runner = new GraduationRunner({
-        scenario: { ...mockScenario, stabilityLevel: 'medium' },
-        config: mockConfig,
-        baselineStore: mockBaselineStore,
-      });
-      const result = await runner.run('run-multi-eval');
-
-      expect(result.minPassRate).toBeCloseTo(0.6);
-      expect(result.promoted).toBe(false);
-    });
-  });
-
-  describe('baseline save gated on promotion', () => {
-    it('saves baseline when promoted', async () => {
-      mockSuiteRunnerRun.mockResolvedValue([
-        makeScenarioResult([
-          'pass', 'pass', 'pass', 'pass', 'pass',
-        ]),
-      ]);
-
-      const runner = new GraduationRunner({
-        scenario: { ...mockScenario, stabilityLevel: 'medium' },
-        config: mockConfig,
-        baselineStore: mockBaselineStore,
-      });
-      await runner.run('run-save-promoted');
-
-      expect(mockBaselineStore.save).toHaveBeenCalledWith(
-        'run-save-promoted',
-        expect.objectContaining({
-          scenarioName: 'test-scenario',
-        }),
-        { defaultThreshold: 0.1 },
-      );
-    });
-
-    it('does not save baseline when not promoted', async () => {
-      // 3/5 = 0.6 < 0.9 → not promoted, baseline must not be overwritten
-      mockSuiteRunnerRun.mockResolvedValue([
-        makeScenarioResult([
-          'pass', 'pass', 'pass', 'fail', 'fail',
-        ]),
-      ]);
-
-      const runner = new GraduationRunner({
-        scenario: { ...mockScenario, stabilityLevel: 'medium' },
-        config: mockConfig,
-        baselineStore: mockBaselineStore,
-      });
-      await runner.run('run-save-not-promoted');
-
-      expect(mockBaselineStore.save).not.toHaveBeenCalled();
-    });
   });
 
   describe('stability-based trial counts', () => {
@@ -860,6 +549,135 @@ describe('GraduationRunner', () => {
       await runner.run('run-no-store');
 
       expect(mockStore.save).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('baseline saved unconditionally', () => {
+    it('saves baseline even when all verdicts fail', async () => {
+      mockSuiteRunnerRun.mockResolvedValue([
+        makeScenarioResult(['fail', 'fail', 'fail']),
+      ]);
+
+      const runner = new GraduationRunner({
+        scenario: { ...mockScenario, stabilityLevel: 'low' },
+        config: mockConfig,
+        baselineStore: mockBaselineStore,
+      });
+      await runner.run('run-always-save-fail');
+
+      expect(mockBaselineStore.save).toHaveBeenCalledWith(
+        'run-always-save-fail',
+        expect.objectContaining({ scenarioName: 'test-scenario' }),
+        { defaultThreshold: 0.1 },
+      );
+    });
+
+    it('saves baseline when all verdicts pass', async () => {
+      mockSuiteRunnerRun.mockResolvedValue([
+        makeScenarioResult(['pass', 'pass', 'pass']),
+      ]);
+
+      const runner = new GraduationRunner({
+        scenario: { ...mockScenario, stabilityLevel: 'low' },
+        config: mockConfig,
+        baselineStore: mockBaselineStore,
+      });
+      await runner.run('run-always-save-pass');
+
+      expect(mockBaselineStore.save).toHaveBeenCalledWith(
+        'run-always-save-pass',
+        expect.objectContaining({ scenarioName: 'test-scenario' }),
+        { defaultThreshold: 0.1 },
+      );
+    });
+  });
+
+  describe('GraduationResult shape', () => {
+    it('result contains scenarioName, stabilityLevel, stabilityTrials, baselineSaved', async () => {
+      mockSuiteRunnerRun.mockResolvedValue([
+        makeScenarioResult(['pass', 'pass', 'pass']),
+      ]);
+
+      const runner = new GraduationRunner({
+        scenario: { ...mockScenario, stabilityLevel: 'low' },
+        config: mockConfig,
+        baselineStore: mockBaselineStore,
+      });
+      const result = await runner.run('run-shape');
+
+      expect(result).toHaveProperty('scenarioName', 'test-scenario');
+      expect(result).toHaveProperty('stabilityLevel', 'low');
+      expect(result).toHaveProperty('stabilityTrials', 3);
+      expect(result).toHaveProperty('baselineSaved', true);
+      expect(Object.keys(result)).toHaveLength(4);
+    });
+
+    it('result does not contain promoted, passRates, minPassRate, passRateThreshold', async () => {
+      mockSuiteRunnerRun.mockResolvedValue([
+        makeScenarioResult(['pass', 'pass', 'pass']),
+      ]);
+
+      const runner = new GraduationRunner({
+        scenario: { ...mockScenario, stabilityLevel: 'low' },
+        config: mockConfig,
+        baselineStore: mockBaselineStore,
+      });
+      const result = await runner.run('run-no-gate-fields');
+
+      expect('promoted' in result).toBe(false);
+      expect('passRates' in result).toBe(false);
+      expect('minPassRate' in result).toBe(false);
+      expect('passRateThreshold' in result).toBe(false);
+    });
+  });
+
+  describe('baseline save sanity check', () => {
+    it('skips baseline save when all trial verdicts are unknown', async () => {
+      mockSuiteRunnerRun.mockResolvedValue([
+        makeScenarioResult(['unknown', 'unknown', 'unknown']),
+      ]);
+
+      const runner = new GraduationRunner({
+        scenario: mockScenario,
+        config: mockConfig,
+        baselineStore: mockBaselineStore,
+      });
+      const result = await runner.run('run-all-unknown');
+
+      expect(mockBaselineStore.save).not.toHaveBeenCalled();
+      expect(result.baselineSaved).toBe(false);
+    });
+
+    it('saves baseline when verdicts include fail (fail != unknown)', async () => {
+      mockSuiteRunnerRun.mockResolvedValue([
+        makeScenarioResult(['fail', 'fail', 'fail']),
+      ]);
+
+      const runner = new GraduationRunner({
+        scenario: mockScenario,
+        config: mockConfig,
+        baselineStore: mockBaselineStore,
+      });
+      const result = await runner.run('run-all-fail');
+
+      expect(mockBaselineStore.save).toHaveBeenCalledOnce();
+      expect(result.baselineSaved).toBe(true);
+    });
+
+    it('saves baseline when mix of pass and unknown', async () => {
+      mockSuiteRunnerRun.mockResolvedValue([
+        makeScenarioResult(['pass', 'unknown', 'unknown']),
+      ]);
+
+      const runner = new GraduationRunner({
+        scenario: mockScenario,
+        config: mockConfig,
+        baselineStore: mockBaselineStore,
+      });
+      const result = await runner.run('run-mixed');
+
+      expect(mockBaselineStore.save).toHaveBeenCalledOnce();
+      expect(result.baselineSaved).toBe(true);
     });
   });
 

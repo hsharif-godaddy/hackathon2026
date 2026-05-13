@@ -22,6 +22,8 @@ export interface EvalResult {
   reason: string;
   details?: Record<string, unknown>;
   evalVersion?: string;
+  /** True when this result was synthesized due to an evaluator exception. */
+  evaluatorFailed?: boolean;
 }
 
 export interface Evaluator {

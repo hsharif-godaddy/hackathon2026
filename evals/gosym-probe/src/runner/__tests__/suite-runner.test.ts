@@ -592,6 +592,82 @@ describe('SuiteRunner — onTrialEvaluated callback', () => {
   });
 });
 
+describe('SuiteRunner — score-mode enrichment', () => {
+  const mockBaselineStore = {
+    load: vi.fn<() => Promise<BaselineScores | null>>().mockResolvedValue(null),
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockSimulationRun.mockResolvedValue(makeTranscript());
+    mockBaselineStore.load.mockResolvedValue(null);
+  });
+
+  it('enriches score-mode evaluator with passAtK when baseline has medianScore', async () => {
+    const scoreEval: Evaluator = {
+      name: 'token-count',
+      regressionMode: 'score',
+      lowerIsBetter: true,
+      evaluate: vi.fn().mockResolvedValue({
+        evaluator: 'token-count',
+        score: 95,
+        verdict: 'observed',
+        reason: 'measured',
+      }),
+    };
+    mockBaselineStore.load.mockResolvedValue({
+      scenarioName: 'test-scenario',
+      runId: 'baseline-run',
+      createdAt: '2026-01-01T00:00:00Z',
+      scores: {
+        'token-count': {
+          passingTrials: 0,
+          totalTrials: 3,
+          medianScore: 100,
+        },
+      },
+    });
+    const scenario = makeScenario({ trials: 1, evaluators: [scoreEval] });
+
+    const [result] = await new SuiteRunner({
+      scenarios: [scenario],
+      config: mockConfig,
+      makeAgentClient,
+      syntheticUser: mockSyntheticUser,
+      baselineStore: mockBaselineStore,
+    }).run();
+
+    // (95 - 100) / 100 = -0.05 <= defaultThreshold 0.1 → passes
+    expect(result.aggregated['token-count'].passAtK).toBeDefined();
+    expect(result.aggregated['token-count'].passAtK).toBe(true);
+  });
+
+  it('leaves score-mode passAtK undefined when no baseline exists', async () => {
+    const scoreEval: Evaluator = {
+      name: 'token-count',
+      regressionMode: 'score',
+      evaluate: vi.fn().mockResolvedValue({
+        evaluator: 'token-count',
+        score: 95,
+        verdict: 'observed',
+        reason: 'measured',
+      }),
+    };
+    mockBaselineStore.load.mockResolvedValue(null);
+    const scenario = makeScenario({ trials: 1, evaluators: [scoreEval] });
+
+    const [result] = await new SuiteRunner({
+      scenarios: [scenario],
+      config: mockConfig,
+      makeAgentClient,
+      syntheticUser: mockSyntheticUser,
+      baselineStore: mockBaselineStore,
+    }).run();
+
+    expect(result.aggregated['token-count'].passAtK).toBeUndefined();
+  });
+});
+
 describe('SuiteRunner — baseline comparison', () => {
   const mockBaselineStore = {
     load: vi.fn<() => Promise<BaselineScores | null>>().mockResolvedValue(null),

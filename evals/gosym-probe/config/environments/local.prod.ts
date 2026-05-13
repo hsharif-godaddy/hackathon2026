@@ -42,7 +42,6 @@ export function createConfig(): Config {
         'output-quality': 0.15,
       },
       defaultThreshold: 0.1,
-      graduationPassRateThreshold: 0.9,
     },
   };
 }

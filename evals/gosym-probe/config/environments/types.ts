@@ -1,3 +1,5 @@
+import type { ThresholdConfig } from '../../src/baselines/threshold.js';
+
 export interface Config {
   env: string;
   aab: {
@@ -19,12 +21,7 @@ export interface Config {
   playwright: {
     ignoreHttpsErrors: boolean;
   };
-  regression: {
-    thresholds: Record<string, number>;
-    defaultThreshold: number;
-    /** Min pass rate across all evaluators required to graduate. Default: 0.9. */
-    graduationPassRateThreshold?: number;
-  };
+  regression: ThresholdConfig;
   storage?: {
     maxRuns?: number;
   };

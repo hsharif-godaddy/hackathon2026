@@ -775,7 +775,7 @@ export const MIGRATIONS = [
       console.log(`  Seeded src/entry-server.tsx from ${templatePath}`);
       console.log(JSON.stringify({
         event: 'sync.file.seeded',
-        file: 'src/entry-server.tsx',
+        seededFile: 'src/entry-server.tsx',
         migration: 'seed-entry-server-tsx',
       }));
       // Always changed on the apply path: the migration only runs when the

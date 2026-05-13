@@ -43,51 +43,15 @@ import type {
 } from './scenarios/types.js';
 
 function printGraduationResult(result: GraduationResult): void {
-  const {
-    scenarioName,
-    promoted,
-    stabilityLevel,
-    stabilityTrials,
-    passRates,
-    minPassRate,
-    passRateThreshold,
-  } = result;
-
-  if (promoted) {
-    console.log(
-      `\n✓ Scenario "${scenarioName}" promoted` +
-      ` [${stabilityLevel} / ${stabilityTrials} trials]`,
-    );
+  const { scenarioName, stabilityLevel, stabilityTrials, baselineSaved } = result;
+  console.log(
+    `\n✓ Scenario "${scenarioName}" graduated` +
+    ` [${stabilityLevel} / ${stabilityTrials} trials]`,
+  );
+  if (baselineSaved) {
     console.log('  Baseline saved.');
-    const rateStr = Number.isNaN(minPassRate)
-      ? 'N/A'
-      : `${(minPassRate * 100).toFixed(0)}%`;
-    console.log(
-      `  Min pass rate: ${rateStr}` +
-      ` (threshold: ${(passRateThreshold * 100).toFixed(0)}%)`,
-    );
   } else {
-    console.error(
-      `\n✗ Scenario "${scenarioName}" not promoted` +
-      ` [${stabilityLevel} / ${stabilityTrials} trials]`,
-    );
-    console.error(
-      '  Baseline not saved (scenario did not meet pass-rate threshold).',
-    );
-    console.error(
-      `  Per-evaluator pass rates` +
-      ` (threshold: ${(passRateThreshold * 100).toFixed(0)}%):`,
-    );
-    for (const [ev, rate] of Object.entries(passRates)) {
-      if (Number.isNaN(rate)) {
-        console.error(`    ${ev}: N/A (no valid trials)`);
-      } else {
-        const flag = rate >= passRateThreshold ? ' ✓' : ' ✗';
-        console.error(
-          `    ${ev}: ${(rate * 100).toFixed(0)}%${flag}`,
-        );
-      }
-    }
+    console.warn('  Baseline NOT saved (all trials produced unknown verdicts).');
   }
 }
 
@@ -273,14 +237,13 @@ async function main(): Promise<void> {
         allResults.push(await runScenario(gradScenario));
       }
     }
-    let allPromoted = true;
     for (const gradResult of allResults) {
       printGraduationResult(gradResult);
-      if (!gradResult.promoted) allPromoted = false;
     }
 
     await gradStore.prune();
-    process.exit(allPromoted ? 0 : 1);
+    const anyUnsaved = allResults.some((r) => !r.baselineSaved);
+    process.exit(anyUnsaved ? 1 : 0);
   }
 
   const { scenarios, error: filterError } = filterScenarios(
@@ -339,7 +302,7 @@ async function main(): Promise<void> {
 
     printGraduationResult(gradResult);
     await singleGradStore.prune();
-    process.exit(gradResult.promoted ? 0 : 1);
+    process.exit(gradResult.baselineSaved ? 0 : 1);
   }
 
   const baselineStore = skipBaseline ? undefined : new BaselineStore();
@@ -527,11 +490,30 @@ async function main(): Promise<void> {
       );
       if (versionSkipped.length > 0) {
         for (const r of versionSkipped) {
-          console.error(
-            `Error: all evaluator comparisons skipped for "${r.scenarioName}" ` +
-            `due to version mismatch. Regenerate the baseline:\n` +
-            `  pnpm run save-baseline <run-id> --scenario ${r.scenarioName}`,
+          const skipped = r.regressionStatus!.evaluators.filter(
+            (e) => e.type === 'skipped',
           );
+          const hasVersionMismatch = skipped.some(
+            (e) => 'skipReason' in e && e.skipReason === 'evaluator-version-mismatch',
+          );
+          const hasDataGap = skipped.some(
+            (e) =>
+              'skipReason' in e &&
+              (e.skipReason === 'no-score-data' || e.skipReason === 'no-trial-data'),
+          );
+          if (hasVersionMismatch) {
+            console.error(
+              `Error: evaluator comparisons skipped for "${r.scenarioName}" ` +
+              `due to version mismatch. Regenerate the baseline:\n` +
+              `  pnpm run save-baseline <run-id> --scenario ${r.scenarioName}`,
+            );
+          }
+          if (hasDataGap) {
+            console.error(
+              `Error: evaluator comparisons skipped for "${r.scenarioName}" ` +
+              `— no score/trial data available. Check probe health or run more trials.`,
+            );
+          }
         }
         process.exitCode = 1;
         return;

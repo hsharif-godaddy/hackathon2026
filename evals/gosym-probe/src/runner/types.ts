@@ -10,11 +10,30 @@ export interface TrialResult {
 }
 
 export interface AggregatedResult {
-  /** At least one trial passed. Absent when regressionMode === 'score'. */
+  /**
+   * At least one trial passed. For pass-rate evaluators this is always present.
+   * For score-mode evaluators (`regressionMode === 'score'`): present when a
+   * baseline exists and is derived from per-trial comparison against the
+   * baseline median; absent when no baseline is available.
+   */
   passAtK?: boolean;
-  /** All trials passed. Absent when regressionMode === 'score'. */
+  /**
+   * All trials passed. For pass-rate evaluators this is always present.
+   * For score-mode evaluators (`regressionMode === 'score'`): present when a
+   * baseline exists and is derived from per-trial comparison against the
+   * baseline median; absent when no baseline is available.
+   */
   passToTheK?: boolean;
+  /**
+   * Count of trials that passed based on their own verdict (verdict === 'pass').
+   */
   passingTrials: number;
+  /**
+   * Count of trials whose score fell within the regression threshold of the
+   * baseline median. Only present for enriched score-mode evaluators with a
+   * baseline comparison.
+   */
+  baselinePassingTrials?: number;
   /** Total number of trials run (includes all verdicts). */
   totalTrials: number;
   /** Median score across non-unknown trials; present only for score-mode evaluators. */

@@ -6,11 +6,8 @@ import type {
   RegressionResult,
   SkippedRegressionEvalResult,
 } from './types.js';
-
-interface RegressionConfig {
-  thresholds: Record<string, number>;
-  defaultThreshold: number;
-}
+import { exceedsThreshold, resolveThreshold, hasVersionMismatch } from './threshold.js';
+import type { ThresholdConfig } from './threshold.js';
 
 const STABILITY_GATE: Record<StabilityLevel, RegressionResult['gate']> = {
   low: 'warning',
@@ -22,7 +19,7 @@ export class RegressionComparator {
   compare(
     result: ScenarioResult,
     baseline: BaselineScores,
-    config: RegressionConfig,
+    config: ThresholdConfig,
   ): RegressionResult {
     const evaluators = this.buildEvalResults(result, baseline, config);
     const stabilityLevel =
@@ -39,7 +36,7 @@ export class RegressionComparator {
   private buildEvalResults(
     result: ScenarioResult,
     baseline: BaselineScores,
-    config: RegressionConfig,
+    config: ThresholdConfig,
   ): RegressionEvalResult[] {
     return Object.entries(result.aggregated).map(([name, agg]) => {
       if (agg.regressionMode === 'score') {
@@ -53,15 +50,16 @@ export class RegressionComparator {
     name: string,
     agg: AggregatedResult,
     baseline: BaselineScores,
-    config: RegressionConfig,
+    config: ThresholdConfig,
   ): RegressionEvalResult {
     const versionMismatch = this.versionMismatch(name, agg, baseline);
     if (versionMismatch) return versionMismatch;
 
-    const currentScore =
-      agg.totalTrials > 0
-        ? agg.passingTrials / agg.totalTrials
-        : NaN;
+    if (agg.totalTrials === 0) {
+      return { type: 'skipped', evaluator: name, skipReason: 'no-trial-data' };
+    }
+
+    const currentScore = agg.passingTrials / agg.totalTrials;
 
     const baselineEntry = baseline.scores[name];
     const baselineScore =
@@ -74,9 +72,12 @@ export class RegressionComparator {
         ? NaN
         : currentScore - baselineScore;
 
-    const threshold =
-      config.thresholds[name] ?? config.defaultThreshold;
+    const threshold = resolveThreshold(name, config);
 
+    // Pass-rate uses absolute difference: threshold of 0.1 means "flag when
+    // pass-rate drops by more than 10 percentage points." This differs from
+    // score-mode's percentage-relative detection (via exceedsThreshold()) because
+    // pass-rates are bounded [0,1] where absolute thresholds are more intuitive.
     const exceeded =
       !Number.isNaN(delta) &&
       baselineScore - currentScore > threshold;
@@ -88,12 +89,16 @@ export class RegressionComparator {
     name: string,
     agg: AggregatedResult,
     baseline: BaselineScores,
-    config: RegressionConfig,
+    config: ThresholdConfig,
   ): RegressionEvalResult {
     const versionMismatch = this.versionMismatch(name, agg, baseline);
     if (versionMismatch) return versionMismatch;
 
     const currentScore = agg.medianScore ?? NaN;
+
+    if (Number.isNaN(currentScore)) {
+      return { type: 'skipped', evaluator: name, skipReason: 'no-score-data' };
+    }
 
     const baselineEntry = baseline.scores[name];
     const baselineScore = baselineEntry?.medianScore ?? NaN;
@@ -103,28 +108,11 @@ export class RegressionComparator {
         ? NaN
         : currentScore - baselineScore;
 
-    // Threshold: baseline JSON overrides config map overrides default
-    const threshold =
-      baseline.regressionThresholds?.[name]
-      ?? config.thresholds[name]
-      ?? config.defaultThreshold;
+    const threshold = resolveThreshold(name, config, baseline.regressionThresholds);
 
-    // Relative delta: for higher-is-better evaluators, regression = score drop.
-    // For lowerIsBetter evaluators (e.g. token counts, cost), regression =
-    // score increase. We achieve this by checking opposite numerators.
-    // baselineScore > 0 guards against division by zero.
-    // Note: we read lowerIsBetter from the live run's AggregatedResult (not
-    // baselineEntry) because the current evaluator config is the source of truth.
-    const exceededNumerator = agg.lowerIsBetter === true
-      ? currentScore - baselineScore   // regression when score increased
-      : baselineScore - currentScore;  // regression when score dropped
-
-    const exceeded =
-      !Number.isNaN(delta) && (
-        agg.lowerIsBetter === true && baselineScore === 0
-          ? currentScore > 0
-          : baselineScore > 0 && exceededNumerator / baselineScore > threshold
-      );
+    const exceeded = exceedsThreshold(
+      currentScore, baselineScore, threshold, agg.lowerIsBetter === true,
+    );
 
     return { type: 'compared', evaluator: name, currentScore, baselineScore, delta, exceeded };
   }
@@ -138,15 +126,11 @@ export class RegressionComparator {
   private versionMismatch(
     name: string,
     agg: AggregatedResult,
-    baseline: BaselineScores | null,
+    baseline: BaselineScores,
   ): SkippedRegressionEvalResult | null {
     const currentEvalVersion = agg.evalVersion;
-    const baselineEvalVersion = baseline?.scores[name]?.evalVersion;
-    if (baseline === null) return null;
-    if (currentEvalVersion === undefined && baselineEvalVersion === undefined) return null;
-    if (currentEvalVersion === baselineEvalVersion) {
-      return null;
-    }
+    const baselineEvalVersion = baseline.scores[name]?.evalVersion;
+    if (!hasVersionMismatch(currentEvalVersion, baselineEvalVersion)) return null;
 
     return {
       type: 'skipped',

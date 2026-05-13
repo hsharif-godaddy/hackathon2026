@@ -49,11 +49,13 @@ pnpm run eval          # headless eval with flags (CI / scripting)
 --env <env>              Override GD_ENV
 --trials <n>             Override per-scenario trial count
 --concurrency <n>        Cap concurrent trials (clamped to config.eval.maxConcurrency)
+--max-turns <n>          Override max turns per simulation
 --skip-baseline          Skip baseline comparison
 --parallel-suites        Fan out scenarios in parallel; standard runs use 1 trial each, graduation keeps full stability trial count
 --graduate <name>        Stability check one scenario before promoting
 --graduate-suite <name>  Stability check all scenarios in a suite
 --stability <level>      Override stability level (low|medium|high)
+--resume <run-id>        Resume a previous incomplete run
 ```
 
 ### `pnpm run save-baseline` usage
@@ -78,7 +80,8 @@ src/clients/      AABClient (Socket.IO), GocodeClient (OpenAI-compat),
 src/evaluators/   Evaluator interface + concrete evaluators
 src/scenarios/    Scenario types + registry + concrete scenarios
                   (prompt-vs-skill/ suite)
-src/baselines/    BaselineStore, RegressionComparator, GraduationRunner
+src/baselines/    BaselineStore, RegressionComparator, GraduationRunner,
+                  ScoreModeEnricher, threshold utils
 src/reporters/    Markdown run reporter
 src/store/        EvalStore (run results persistence)
 src/personas/     Persona types (e.g. beginner)
@@ -104,6 +107,7 @@ main.ts / index.ts
        │    └─ DOMCapture          →  AAB Next.js UI :8443
        ├─ TrialAggregator  →  pass@k / pass^k per evaluator
        ├─ RegressionComparator  →  current vs baseline
+       ├─ ScoreModeEnricher  →  passAtK from per-trial baseline delta
        └─ MdReporter  →  runs/{runId}/
 ```
 
@@ -178,10 +182,15 @@ thresholds per evaluator:
 regression: {
   thresholds: {
     'prompt-efficiency': 0.20,
+    'token-usage': 1.5,
   },
-  defaultThreshold: 0.1,
+  defaultThreshold: 0.25,
 }
 ```
+
+The `defaultThreshold` acts as a loose gate for score-mode evaluators
+to absorb infrastructure variance. Per-evaluator thresholds override it.
+Threshold logic lives in `src/baselines/threshold.ts`.
 
 ---
 

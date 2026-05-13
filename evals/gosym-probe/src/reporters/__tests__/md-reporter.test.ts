@@ -1371,3 +1371,84 @@ describe('MdReporter — composite breakdown', () => {
     expect(content).toContain('0.80');
   });
 });
+
+// ── Score-mode pass fraction ──────────────────────────────────
+
+describe('MdReporter — score-mode pass fraction', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockMkdir.mockResolvedValue(undefined);
+    mockWriteFile.mockResolvedValue(undefined);
+  });
+
+  it('includes enriched score-mode evaluator (passAtK defined) in scenario pass fraction denominator', () => {
+    // 1 pass-rate evaluator (passAtK: true) + 1 enriched score-mode (passAtK: true)
+    // Both have meaningful pass/fail semantics → denominator should be 2
+    const result: ScenarioResult = {
+      scenarioName: 'mixed-enriched',
+      stabilityLevel: 'medium',
+      trials: [
+        makeTrial(0, [
+          makeEvalResult('jtbd-completion', 'pass'),
+          makeEvalResult('latency', 'observed', 0.5),
+        ]),
+      ],
+      aggregated: {
+        'jtbd-completion': {
+          passAtK: true,
+          passToTheK: true,
+          passingTrials: 1,
+          totalTrials: 1,
+        },
+        'latency': {
+          passAtK: true,
+          passToTheK: true,
+          passingTrials: 1,
+          totalTrials: 1,
+          medianScore: 0.5,
+          regressionMode: 'score',
+        },
+      },
+    };
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [result]);
+    // Both evaluators in denominator → 2/2 (100%)
+    expect(content).toContain('2/2');
+    expect(content).toContain('100%');
+  });
+
+  it('excludes unenriched score-mode evaluator (passAtK absent) from scenario pass fraction denominator', () => {
+    // 1 pass-rate evaluator (passAtK: true) + 1 unenriched score-mode (passAtK: undefined)
+    // Only the pass-rate evaluator has pass/fail semantics → denominator should be 1
+    const result: ScenarioResult = {
+      scenarioName: 'mixed-unenriched',
+      stabilityLevel: 'medium',
+      trials: [
+        makeTrial(0, [
+          makeEvalResult('jtbd-completion', 'pass'),
+          makeEvalResult('latency', 'observed', 0.5),
+        ]),
+      ],
+      aggregated: {
+        'jtbd-completion': {
+          passAtK: true,
+          passToTheK: true,
+          passingTrials: 1,
+          totalTrials: 1,
+        },
+        'latency': {
+          // no passAtK — unenriched (no baseline)
+          passingTrials: 0,
+          totalTrials: 1,
+          medianScore: 0.5,
+          regressionMode: 'score',
+        },
+      },
+    };
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [result]);
+    // Only jtbd-completion in denominator → 1/1 (100%), not 1/2 (50%)
+    expect(content).toContain('1/1');
+    expect(content).toContain('100%');
+  });
+});
