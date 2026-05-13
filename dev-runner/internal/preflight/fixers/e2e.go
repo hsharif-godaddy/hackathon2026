@@ -11,9 +11,10 @@ import (
 	"github.com/airo-ai-builder/dev-runner/internal/preflight/checks"
 )
 
-// E2EFixer mirrors scripts/setup-e2e.sh:
+// E2EFixer follows scripts/setup-e2e.sh for dependency + credential setup,
+// but intentionally installs Playwright Chromium only in the fixer path:
 //  1. pnpm install (if node_modules missing)
-//  2. pnpm exec playwright install
+//  2. pnpm exec playwright install chromium (via EnsurePlaywrightBrowsers)
 //  3. write tests/.env with E2E_USERNAME/E2E_PASSWORD (mode 0600), if needed
 //  4. smoke-test by listing project=e2e
 //
@@ -80,14 +81,8 @@ func (f *E2EFixer) Fix(ctx context.Context, projectRoot string) error {
 		}
 	}
 
-	hasBrowsers, err := checks.PlaywrightBrowsersInstalled()
-	if err != nil {
-		return fmt.Errorf("locating Playwright cache: %w", err)
-	}
-	if !hasBrowsers {
-		if _, err := RunCommand(ctx, projectRoot, "pnpm", "exec", "playwright", "install"); err != nil {
-			return fmt.Errorf("playwright install: %w", err)
-		}
+	if err := EnsurePlaywrightBrowsers(ctx, projectRoot); err != nil {
+		return err
 	}
 
 	// Re-check creds at write time rather than blindly trusting the form
