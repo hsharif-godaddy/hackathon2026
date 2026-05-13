@@ -13,6 +13,8 @@ on:
       - "agents/src/utils/__tests__/sync-migrations.integration.test.ts"
       - "scripts/smoke-v8-template-migration.mjs"
       - ".github/workflows/v8-template-migration-checks.yml"
+  merge_group:
+    branches: [main]
   push:
     branches: [main]
     paths:

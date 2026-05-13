@@ -11,10 +11,12 @@ on:
     paths:
       - "dev-supervisor/**"
       - ".github/workflows/dev-supervisor.yml"
+  merge_group:
+    branches: [main]
 
 jobs:
   lint:
-    name: Lint
+    name: dev-supervisor / Lint
     runs-on:
       labels:
         - airo-cicd-runners
@@ -49,7 +51,7 @@ jobs:
           fi
 
   test:
-    name: Test
+    name: dev-supervisor / Test
     runs-on:
       labels:
         - airo-cicd-runners
@@ -83,7 +85,7 @@ jobs:
           name: dev-supervisor
 
   test-docker:
-    name: Docker Integration Tests
+    name: dev-supervisor / Docker Integration Tests
     runs-on:
       labels:
         - airo-cicd-runners
@@ -99,7 +101,7 @@ jobs:
           ./test/run-docker-tests.sh
 
   build:
-    name: Build
+    name: dev-supervisor / Build
     runs-on:
       labels:
         - airo-cicd-runners
@@ -149,7 +151,7 @@ jobs:
           path: dev-supervisor/dist/
 
   docker-build:
-    name: Docker Build
+    name: dev-supervisor / Docker Build
     runs-on:
       labels:
         - airo-cicd-runners

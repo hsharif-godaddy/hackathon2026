@@ -11,10 +11,12 @@ on:
     paths:
       - "go-agent/**"
       - ".github/workflows/go-agent.yml"
+  merge_group:
+    branches: [main]
 
 jobs:
   lint:
-    name: Lint
+    name: go-agent / Lint
     runs-on:
       labels:
         - airo-cicd-runners
@@ -49,7 +51,7 @@ jobs:
           fi
 
   test:
-    name: Test
+    name: go-agent / Test
     runs-on:
       labels:
         - airo-cicd-runners
@@ -83,7 +85,7 @@ jobs:
           name: go-agent
 
   build:
-    name: Build
+    name: go-agent / Build
     runs-on:
       labels:
         - airo-cicd-runners

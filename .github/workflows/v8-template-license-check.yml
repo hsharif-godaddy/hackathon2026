@@ -9,6 +9,8 @@ on:
       - "app-templates/v8/package-lock.json"
       - "scripts/license-check.sh"
       - ".github/workflows/v8-template-license-check.yml"
+  merge_group:
+    branches: [main]
   push:
     branches: [main]
     paths:

@@ -1,0 +1,89 @@
+{
+  "name": "main branch",
+  "target": "branch",
+  "enforcement": "active",
+  "bypass_actors": [
+    {
+      "actor_type": "RepositoryRole",
+      "actor_id": 5,
+      "bypass_mode": "always"
+    }
+  ],
+  "conditions": {
+    "ref_name": {
+      "include": ["~DEFAULT_BRANCH"],
+      "exclude": []
+    }
+  },
+  "rules": [
+    {
+      "type": "deletion"
+    },
+    {
+      "type": "non_fast_forward"
+    },
+    {
+      "type": "required_linear_history"
+    },
+    {
+      "type": "pull_request",
+      "parameters": {
+        "required_approving_review_count": 0,
+        "dismiss_stale_reviews_on_push": false,
+        "require_code_owner_review": false,
+        "require_last_push_approval": false,
+        "required_review_thread_resolution": false,
+        "allowed_merge_methods": ["squash"]
+      }
+    },
+    {
+      "type": "copilot_code_review",
+      "parameters": {
+        "review_on_push": false,
+        "review_draft_pull_requests": false
+      }
+    },
+    {
+      "type": "required_status_checks",
+      "parameters": {
+        "strict_required_status_checks_policy": false,
+        "required_status_checks": [
+          { "context": "quality-checks-agents / lint-build" },
+          { "context": "quality-checks-agents / test" },
+          { "context": "quality-checks-app-lint-build / lint-build" },
+          { "context": "quality-checks-app-unit-tests / test" },
+          { "context": "quality-checks-app-integration-tests / test" },
+          { "context": "quality-checks-proxy / lint-build" },
+          { "context": "quality-checks-proxy / test" },
+          { "context": "go-agent / Lint" },
+          { "context": "go-agent / Test" },
+          { "context": "dev-supervisor / Lint" },
+          { "context": "dev-supervisor / Test" },
+          { "context": "dev-supervisor / Docker Integration Tests" },
+          { "context": "local-control-plane / Lint" },
+          { "context": "local-control-plane / Test" },
+          { "context": "stripe-service / Lint" },
+          { "context": "stripe-service / Test" },
+          { "context": "budget-service / Lint" },
+          { "context": "budget-service / Test" },
+          { "context": "pnpm audit (high+ advisories)" },
+          { "context": "Check for dangerous process execution" },
+          { "context": "v8-template-license-check" },
+          { "context": "v8-template-migration-checks" }
+        ]
+      }
+    },
+    {
+      "type": "merge_queue",
+      "parameters": {
+        "check_response_timeout_minutes": 60,
+        "grouping_strategy": "ALLGREEN",
+        "min_entries_to_merge": 1,
+        "min_entries_to_merge_wait_minutes": 5,
+        "max_entries_to_build": 5,
+        "max_entries_to_merge": 5,
+        "merge_method": "SQUASH"
+      }
+    }
+  ]
+}
