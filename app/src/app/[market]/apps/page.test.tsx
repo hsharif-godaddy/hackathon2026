@@ -410,19 +410,33 @@ describe('Sites Page', () => {
     });
   });
 
-  describe('hides transfer UI for TLA accounts', () => {
-    beforeEach(() => {
+  describe('transfer UI visibility based on flag', () => {
+    it('should show transfer card when flag is true (even for TLAs)', async () => {
       vi.mocked(useSwitchboard).mockReturnValue(true);
+      const { useAuth } = await import('@/hooks/useAuth');
+      vi.mocked(useAuth).mockReturnValue({
+        authState: { details: { shopperId: 'abc' } },
+      } as ReturnType<typeof useAuth>);
+
+      renderWithProviders(<Sites />);
+
+      expect(screen.getByTestId('transfer-app-card')).toBeInTheDocument();
     });
 
-    afterEach(async () => {
+    it('should show transfer card for non-TLAs when flag is true', async () => {
+      vi.mocked(useSwitchboard).mockReturnValue(true);
       const { useAuth } = await import('@/hooks/useAuth');
       vi.mocked(useAuth).mockReturnValue({
         authState: { details: { shopperId: '123456789' } },
       } as ReturnType<typeof useAuth>);
+
+      renderWithProviders(<Sites />);
+
+      expect(screen.getByTestId('transfer-app-card')).toBeInTheDocument();
     });
 
-    it('should not show transfer card when user is a TLA (shopperId === 3 chars)', async () => {
+    it('should hide transfer card for TLAs when flag is false (no override)', async () => {
+      vi.mocked(useSwitchboard).mockReturnValue(false);
       const { useAuth } = await import('@/hooks/useAuth');
       vi.mocked(useAuth).mockReturnValue({
         authState: { details: { shopperId: 'abc' } },
@@ -433,7 +447,20 @@ describe('Sites Page', () => {
       expect(screen.queryByTestId('transfer-app-card')).not.toBeInTheDocument();
     });
 
-    it('should show transfer card when shopperId is longer than 3 chars', async () => {
+    it('should hide transfer card for TLAs when flag is loading (undefined)', async () => {
+      vi.mocked(useSwitchboard).mockReturnValue(undefined);
+      const { useAuth } = await import('@/hooks/useAuth');
+      vi.mocked(useAuth).mockReturnValue({
+        authState: { details: { shopperId: 'abc' } },
+      } as ReturnType<typeof useAuth>);
+
+      renderWithProviders(<Sites />);
+
+      expect(screen.queryByTestId('transfer-app-card')).not.toBeInTheDocument();
+    });
+
+    it('should show transfer card for non-TLAs when flag is loading (undefined)', async () => {
+      vi.mocked(useSwitchboard).mockReturnValue(undefined);
       const { useAuth } = await import('@/hooks/useAuth');
       vi.mocked(useAuth).mockReturnValue({
         authState: { details: { shopperId: '123456789' } },
@@ -445,6 +472,7 @@ describe('Sites Page', () => {
     });
 
     it('should show transfer card when authState is null (non-JWT/mock-auth mode)', async () => {
+      vi.mocked(useSwitchboard).mockReturnValue(true);
       const { useAuth } = await import('@/hooks/useAuth');
       vi.mocked(useAuth).mockReturnValue({
         authState: null,

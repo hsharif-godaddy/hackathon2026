@@ -654,9 +654,9 @@ describe('AppCard', () => {
     });
   });
 
-  describe('hides transfer UI for TLA accounts', () => {
-    it('should not show transfer menu item for TLA users', async function hideTransferForTLA() {
-      const { user } = renderWithProviders(<AppCard site={mockSite} isTLA={true} />);
+  describe('hides transfer UI when transferAllowed is false', () => {
+    it('should not show transfer menu item when transferAllowed is false', async function hideTransferForTLA() {
+      const { user } = renderWithProviders(<AppCard site={mockSite} transferAllowed={false} />);
 
       const actionsMenuButton = screen.getByRole('button', { name: 'builder_apps_menu_actions' });
       await user.click(actionsMenuButton);
@@ -668,8 +668,8 @@ describe('AppCard', () => {
       expect(screen.queryByText('Transfer')).not.toBeInTheDocument();
     });
 
-    it('should skip transfer status fetch for TLA users', async function skipFetchForTLA() {
-      renderWithProviders(<AppCard site={mockSite} isTLA={true} />);
+    it('should skip transfer status fetch when transferAllowed is false', async function skipFetchForTLA() {
+      renderWithProviders(<AppCard site={mockSite} transferAllowed={false} />);
 
       // Wait for component to mount and effects to flush
       await screen.findByRole('button', { name: 'builder_apps_menu_actions' });
@@ -693,7 +693,7 @@ describe('AppCard', () => {
         return { ok: true, json: async () => mockSite } as Response;
       });
 
-      const { user } = renderWithProviders(<AppCard site={mockSite} />);
+      const { user } = renderWithProviders(<AppCard site={mockSite} transferAllowed={true} />);
 
       await waitFor(() => {
         expect(appFetch).toHaveBeenCalled();
@@ -722,7 +722,7 @@ describe('AppCard', () => {
         return { ok: true, json: async () => mockSite } as Response;
       });
 
-      renderWithProviders(<AppCard site={mockSite} />);
+      renderWithProviders(<AppCard site={mockSite} transferAllowed={true} />);
 
       await waitFor(() => {
         expect(screen.getByText('TRANSFER PENDING')).toBeInTheDocument();
@@ -744,7 +744,7 @@ describe('AppCard', () => {
         return { ok: true, json: async () => mockSite } as Response;
       });
 
-      renderWithProviders(<AppCard site={mockSite} />);
+      renderWithProviders(<AppCard site={mockSite} transferAllowed={true} />);
 
       await waitFor(() => {
         expect(screen.getByText('TRANSFER PENDING')).toBeInTheDocument();
@@ -766,7 +766,7 @@ describe('AppCard', () => {
         return { ok: true, json: async () => mockSite } as Response;
       });
 
-      const { user } = renderWithProviders(<AppCard site={mockSite} />);
+      const { user } = renderWithProviders(<AppCard site={mockSite} transferAllowed={true} />);
 
       await waitFor(() => {
         expect(screen.getByText('TRANSFER PENDING')).toBeInTheDocument();
@@ -793,7 +793,7 @@ describe('AppCard', () => {
       });
 
       useSitesStore.setState({ refreshSites: vi.fn() });
-      const { user } = renderWithProviders(<AppCard site={mockSite} />);
+      const { user } = renderWithProviders(<AppCard site={mockSite} transferAllowed={true} />);
 
       await waitFor(() => {
         expect(screen.getByText('TRANSFER PENDING')).toBeInTheDocument();
@@ -822,7 +822,7 @@ describe('AppCard', () => {
         return { ok: true, json: async () => mockSite } as Response;
       });
 
-      const { user } = renderWithProviders(<AppCard site={mockSite} />);
+      const { user } = renderWithProviders(<AppCard site={mockSite} transferAllowed={true} />);
 
       await waitFor(() => {
         expect(screen.getByText('TRANSFER PENDING')).toBeInTheDocument();
@@ -851,7 +851,7 @@ describe('AppCard', () => {
         return { ok: true, json: async () => mockSite } as Response;
       });
 
-      const { user } = renderWithProviders(<AppCard site={mockSite} />);
+      const { user } = renderWithProviders(<AppCard site={mockSite} transferAllowed={true} />);
 
       await waitFor(() => {
         expect(screen.getByText('TRANSFER PENDING')).toBeInTheDocument();
@@ -882,7 +882,7 @@ describe('AppCard', () => {
     it('should call validate endpoint when Transfer is clicked', async function callsValidate() {
       mockTransferValidation(true, false);
 
-      const { user } = renderWithProviders(<AppCard site={mockSite} />);
+      const { user } = renderWithProviders(<AppCard site={mockSite} transferAllowed={true} />);
 
       await waitFor(() => {
         expect(appFetch).toHaveBeenCalled();
@@ -905,7 +905,7 @@ describe('AppCard', () => {
     it('should show blocked message when canTransfer is false', async function blockedByCommerce() {
       mockTransferValidation(false, true);
 
-      const { user } = renderWithProviders(<AppCard site={mockSite} />);
+      const { user } = renderWithProviders(<AppCard site={mockSite} transferAllowed={true} />);
 
       await waitFor(() => {
         expect(appFetch).toHaveBeenCalled();
@@ -929,7 +929,7 @@ describe('AppCard', () => {
     it('should open transfer dialog when canTransfer is true', async function allowsTransfer() {
       mockTransferValidation(true, false);
 
-      const { user } = renderWithProviders(<AppCard site={mockSite} />);
+      const { user } = renderWithProviders(<AppCard site={mockSite} transferAllowed={true} />);
 
       await waitFor(() => {
         expect(appFetch).toHaveBeenCalled();
@@ -960,7 +960,7 @@ describe('AppCard', () => {
         return { ok: true, json: async () => mockSite } as Response;
       });
 
-      const { user } = renderWithProviders(<AppCard site={mockSite} />);
+      const { user } = renderWithProviders(<AppCard site={mockSite} transferAllowed={true} />);
 
       await waitFor(() => {
         expect(appFetch).toHaveBeenCalled();

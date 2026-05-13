@@ -52,7 +52,7 @@ interface ActiveTransfer {
   expiresAt?: string
 }
 
-export default function AppCard({ site, isTLA = false }: { site: SiteInfo; isTLA?: boolean }) {
+export default function AppCard({ site, transferAllowed = false }: { site: SiteInfo; transferAllowed?: boolean }) {
   const router = useRouter();
   const t = useTranslations();
 
@@ -83,7 +83,6 @@ export default function AppCard({ site, isTLA = false }: { site: SiteInfo; isTLA
   const refreshSites = useSitesStore((state) => state.refreshSites)
   const { mutate: renameApp, isPending: isRenamePending } = useAppRename()
   const isUnpublishEnabled = useSwitchboard('appbuilder-unpublish')
-  const isTransferEnabled = useSwitchboard('appbuilder-transfer-ownership')
   const { data: subscription } = useSubscription()
   const suspendedComplianceBannerEnabled = useSwitchboard('appbuilder-suspended-compliance-banner')
   const unpublishMutation = useUnpublishApp()
@@ -107,11 +106,11 @@ export default function AppCard({ site, isTLA = false }: { site: SiteInfo; isTLA
   }, [site.id])
 
   useEffect(function loadTransferStatus() {
-    if (!isTransferEnabled || isTLA) return
+    if (!transferAllowed) return
     const controller = new AbortController()
     fetchTransferStatus(controller.signal)
     return () => controller.abort()
-  }, [site.id, fetchTransferStatus, isTransferEnabled, isTLA])
+  }, [site.id, fetchTransferStatus, transferAllowed])
 
   const handleDeleteSite = async (siteId: string) => {
     setActionLoading(siteId)
@@ -427,7 +426,7 @@ export default function AppCard({ site, isTLA = false }: { site: SiteInfo; isTLA
               <text.span>{t('builder_common_rename')}</text.span>
             </Box>
           </MenuItem>
-          {isTransferEnabled && !isTLA && !hasActiveTransfer && transferMenuItem}
+          {transferAllowed && !hasActiveTransfer && transferMenuItem}
           <MenuSeparator />
           <MenuItem
             onClick={() => showDeleteAlert(site.id, site.name || t('builder_apps_alert_delete_untitled'))}
@@ -504,7 +503,7 @@ export default function AppCard({ site, isTLA = false }: { site: SiteInfo; isTLA
     </div>
   )
 
-  if (isTransferEnabled && !isTLA && hasActiveTransfer) {
+  if (transferAllowed && hasActiveTransfer) {
     return (
       <>
         <Card className="relative">
@@ -621,7 +620,7 @@ export default function AppCard({ site, isTLA = false }: { site: SiteInfo; isTLA
       </div>
 
       {/* Transfer Dialog */}
-      {isTransferEnabled && !isTLA && isTransferDialogOpen && (
+      {transferAllowed && isTransferDialogOpen && (
         <TransferInitiateDialog
           appId={site.id}
           appName={site.name || t('builder_apps_alert_delete_untitled')}

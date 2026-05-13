@@ -59,6 +59,14 @@ function SitesPageContent() {
     return typeof sid === 'string' && sid.length === 3;
   }, [authState]);
 
+  // Allow transfer when flag is loaded and true, or fall back to TLA check while loading
+  const canUseTransfer = useMemo(() => {
+    if (isTransferEnabled !== undefined) {
+      return isTransferEnabled; // Flag loaded - use as source of truth
+    }
+    return !isTLA; // Loading - block TLAs by default
+  }, [isTransferEnabled, isTLA]);
+
 
   useEffect(() => {
     setAppsPage((p) => Math.min(p, appsTotalPages))
@@ -162,18 +170,16 @@ function SitesPageContent() {
         <div className="grid gap-2 md:gap-3 md:grid-cols-2 xl:grid-cols-3">
           <AppCardEmptyState />
 
-          {!isTLA && (
-            <TransferAppCard
-              isTransferEnabled={isTransferEnabled}
-              onAcceptTransfer={() => setIsAcceptTransferOpen(true)}
-            />
-          )}
+          <TransferAppCard
+            isTransferEnabled={canUseTransfer}
+            onAcceptTransfer={() => setIsAcceptTransferOpen(true)}
+          />
 
           {totalSites > 0 && paginatedSites.map((site) => (
             <AppCard
               key={site.id}
               site={site}
-              isTLA={isTLA}
+              transferAllowed={canUseTransfer}
             />
           ))}
         </div>
@@ -192,7 +198,7 @@ function SitesPageContent() {
         )}
       </main>
 
-      {isTransferEnabled && !isTLA && isAcceptTransferOpen && (
+      {canUseTransfer && isAcceptTransferOpen && (
         <AcceptTransferDialog onClose={() => setIsAcceptTransferOpen(false)} />
       )}
     </div>
